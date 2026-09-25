@@ -15,7 +15,8 @@ host profiles. Everything is installed under `build/toolchains/` (ignored), not
 
 Steps are idempotent: an install whose recorded revision matches is reused.
 `check` verifies versions against the profiles (Blender, OIDN, OpenUSD Python,
-KTX revision), required compile tools and `bsp2tool pack-world-lit`.
+KTX revision, the xatlas revision and `xatlas_chart` source it was built
+from), required compile tools and `bsp2tool pack-world-lit`.
 
 The native Vulkan client needs the pinned KTX reader (a PIC static archive the
 ktx-reader step builds under dependencies/, outside every Waf output tree) to
@@ -41,7 +42,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "quality/product_profiles/pbrt-map-linux-tools.json"
-STEPS = ("sources", "openusd", "ktx", "ktx-reader", "compile-tools", "write")
+STEPS = ("sources", "openusd", "ktx", "ktx-reader", "compile-tools", "xatlas", "write")
 
 
 def load_profiles(path=PROFILE):
@@ -72,17 +73,18 @@ def git_revision(path):
             bool(dirty.stdout.strip()))
 
 
-def pinned_sources(linked):
+def pinned_sources(profile, linked):
     openusd = linked["openusd"]["dependencies"]
     return {"openusd": openusd["openusd"], "onetbb": openusd["onetbb"],
-            "ktx_software": linked["ktx"]["dependencies"]["ktx_software"]}
+            "ktx_software": linked["ktx"]["dependencies"]["ktx_software"],
+            "xatlas": profile["dependencies"]["xatlas"]}
 
 
 def provision_sources(profile, linked, mirrors):
     root = absolute(profile["layout"]["sources"])
     root.mkdir(parents=True, exist_ok=True)
     paths = {}
-    for name, pin in pinned_sources(linked).items():
+    for name, pin in pinned_sources(profile, linked).items():
         destination = root / name
         if not destination.exists():
             origin = mirrors.get(name, pin["repository"])
@@ -213,6 +215,33 @@ def provision_compile_tools(profile, jobs):
         {"revision": revision, "dirty_checkout": dirty}) + "\n")
 
 
+def xatlas_stamp(profile):
+    """What an xatlas_chart build must record: the pinned xatlas revision and
+    the digest of the pipeline's own xatlas_chart.cpp."""
+    pin = profile["dependencies"]["xatlas"]
+    return {"revision": pin["revision"],
+            "source_sha256": file_digest([ROOT / pin["build"]["sources"][0]])}
+
+
+def provision_xatlas(profile, sources):
+    """Build xatlas_chart from the pipeline's source and the pinned xatlas."""
+    pin = profile["dependencies"]["xatlas"]
+    build = absolute(profile["layout"]["xatlas_build"])
+    binary = build / pin["build"]["binary"]
+    stamp = build / ".pbrt-map-provisioned.json"
+    expected = xatlas_stamp(profile)
+    if binary.is_file() and stamp.is_file() and json.loads(stamp.read_text()) == expected:
+        print("[xatlas] up to date")
+        return
+    build.mkdir(parents=True, exist_ok=True)
+    source = sources["xatlas"]
+    files = [ROOT / pin["build"]["sources"][0]] + [source / name
+                                                   for name in pin["build"]["sources"][1:]]
+    run([pin["build"]["cxx"]] + pin["build"]["flags"] + ["-I", source / pin["build"]["include"]]
+        + files + ["-o", binary])
+    stamp.write_text(json.dumps(expected) + "\n")
+
+
 def toolchain_document(profile, linked):
     layout = profile["layout"]
     ktx = linked["ktx"]["build"]["binary"]
@@ -225,6 +254,8 @@ def toolchain_document(profile, linked):
             "compile_tools": str(compile_tools),
             "bsp2tool": str(compile_tools / "bsp2tool"),
             "ktx": str(absolute(layout["ktx_build"]) / ktx),
+            "xatlas": str(absolute(layout["xatlas_build"]) /
+                          profile["dependencies"]["xatlas"]["build"]["binary"]),
             "runtime": profile["runtime"]["runtime"],
             "client_build": profile["runtime"]["client_build"]}
 
@@ -254,7 +285,7 @@ def load(path, profile_path=PROFILE):
     profile, linked = load_profiles(profile_path)
     problems = []
     keys = ("blender", "ocio", "usd_python", "usd_pythonpath", "compile_tools", "ktx",
-            "runtime", "client_build")
+            "xatlas", "runtime", "client_build")
     for key in keys:
         value = toolchain.get(key)
         if not value:
@@ -295,6 +326,11 @@ def load(path, profile_path=PROFILE):
     ktx_version = subprocess.run([toolchain["ktx"], "--version"], capture_output=True, text=True)
     if revision[:7] not in ktx_version.stdout + ktx_version.stderr:
         problems.append("ktx: %s is not revision %s" % (toolchain["ktx"], revision[:7]))
+    stamp = Path(toolchain["xatlas"]).parent / ".pbrt-map-provisioned.json"
+    if not stamp.is_file() or json.loads(stamp.read_text()) != xatlas_stamp(profile):
+        problems.append("xatlas: %s was not built from revision %s and the current "
+                        "xatlas_chart.cpp; run provision --steps sources,xatlas"
+                        % (toolchain["xatlas"], profile["dependencies"]["xatlas"]["revision"]))
     oidn = profile["host_packages"]["openimagedenoise"]
     try:
         found = oidn_version(oidn["library"])
@@ -306,7 +342,8 @@ def load(path, profile_path=PROFILE):
         raise SystemExit("toolchain problems:\n  " + "\n  ".join(problems))
     toolchain["profile_id"] = profile["id"]
     toolchain["versions"] = {"blender": match.group(1), "openusd": tag, "ktx": revision,
-                             "openimagedenoise": found}
+                             "openimagedenoise": found,
+                             "xatlas": profile["dependencies"]["xatlas"]["revision"]}
     return toolchain
 
 
@@ -324,7 +361,8 @@ def file_digest(paths):
 # Identity of each tool a map build step runs: its verified version and the
 # bytes of what it executes or reads, so a rebuilt tool, OCIO configuration
 # or compile-tool prefix invalidates the steps that used it.
-IDENTITY_TOOLS = ("blender", "ocio", "openimagedenoise", "openusd", "ktx", "compile_tools")
+IDENTITY_TOOLS = ("blender", "ocio", "openimagedenoise", "openusd", "ktx", "compile_tools",
+                  "xatlas")
 
 
 def identity(toolchain, name):
@@ -344,6 +382,8 @@ def identity(toolchain, name):
         return {"revision": versions["ktx"], "sha256": file_digest([toolchain["ktx"]])}
     if name == "compile_tools":
         return {"sha256": file_digest([toolchain["compile_tools"]])}
+    if name == "xatlas":
+        return {"revision": versions["xatlas"], "sha256": file_digest([toolchain["xatlas"]])}
     raise ValueError("unknown toolchain identity " + name)
 
 
@@ -378,7 +418,7 @@ def main():
         parser.error("unknown steps: " + ", ".join(sorted(unknown)))
     mirrors = dict(item.split("=", 1) for item in args.mirror)
     sources = provision_sources(profile, linked, mirrors) if (
-        {"sources", "openusd", "ktx", "ktx-reader"} & set(steps)) else None
+        {"sources", "openusd", "ktx", "ktx-reader", "xatlas"} & set(steps)) else None
     if "openusd" in steps:
         provision_openusd(profile, linked, sources, args.jobs)
     if "ktx" in steps:
@@ -387,6 +427,8 @@ def main():
         provision_ktx_reader(profile, linked, sources, args.jobs)
     if "compile-tools" in steps:
         provision_compile_tools(profile, args.jobs)
+    if "xatlas" in steps:
+        provision_xatlas(profile, sources)
     if "write" in steps:
         toolchain_file.parent.mkdir(parents=True, exist_ok=True)
         toolchain_file.write_text(json.dumps(toolchain_document(profile, linked), indent=2) + "\n")

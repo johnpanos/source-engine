@@ -837,6 +837,41 @@ static bool LuxelPosition( SurfaceHandle_t surfID, int s, int t, Vector *out )
 	return true;
 }
 
+// A luxel's light from the volume. Luxels pad past their face, so one on a
+// face at the volume's edge (a door's bottom row, on the floor) can lie just
+// outside every grid: it takes the light of the nearest point inside one.
+static bool ProbeSampleClamped( const mapcontainer::ProbeVolumeView &view, const float at[3],
+    const float normal[3], float light[3] )
+{
+	if ( view.Sample( at, normal, mapcontainer::ProbeVolumeLayer::Total, true, light ) )
+		return true;
+	const mapcontainer::ProbeVolumeLayout &layout = view.Layout();
+	float best[3] = {};
+	float bestDistance2 = -1.0f;
+	for ( uint32_t g = 0; g < layout.gridCount; ++g )
+	{
+		const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
+		const float smallest = fminf( grid.spacing[0], fminf( grid.spacing[1], grid.spacing[2] ) );
+		// Inside by more than the sampler's normal bias, which moves the point.
+		const float margin = 1.01f * mapcontainer::kProbeNormalBias * smallest;
+		float clamped[3];
+		float distance2 = 0.0f;
+		for ( int k = 0; k < 3; ++k )
+		{
+			const float hi = grid.origin[k] + float( grid.dims[k] - 1 ) * grid.spacing[k];
+			clamped[k] = fminf( fmaxf( at[k], grid.origin[k] + margin ), hi - margin );
+			distance2 += ( clamped[k] - at[k] ) * ( clamped[k] - at[k] );
+		}
+		if ( bestDistance2 < 0.0f || distance2 < bestDistance2 )
+		{
+			bestDistance2 = distance2;
+			best[0] = clamped[0], best[1] = clamped[1], best[2] = clamped[2];
+		}
+	}
+	return bestDistance2 >= 0.0f &&
+	       view.Sample( best, normal, mapcontainer::ProbeVolumeLayer::Total, true, light );
+}
+
 bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view )
 {
 	if ( !view )
@@ -849,6 +884,11 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 		return false;
 	static ConVarRef report( "r_indirect_report" );
 	const double start = Plat_FloatTime();
+	float smallest = FLT_MAX;
+	for ( uint32_t g = 0; g < view->Layout().gridCount; ++g )
+		for ( const float spacing : view->Layout().grids[g].spacing )
+			smallest = fminf( smallest, spacing );
+	const float offset = smallest < FLT_MAX ? 0.5f * smallest : 1.0f;
 	std::vector<Vector4D> luxels;
 	int lit = 0, noLight = 0, baked = 0, noLightmap = 0, whitePage = 0;
 	size_t luxelCount = 0, unsampled = 0;
@@ -899,14 +939,14 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 					Vector position;
 					if ( !LuxelPosition( surfID, s, t, &position ) )
 						position = centroid;
-					// A little off the face, toward the side it shows.
-					const float at[3] = {
-					    position.x + normal.x, position.y + normal.y, position.z + normal.z };
+					// Half a probe spacing off the face, toward the side it shows,
+					// so a thin door takes the probes of its own side.
+					const float at[3] = { position.x + normal.x * offset,
+					    position.y + normal.y * offset, position.z + normal.z * offset };
 					const float facing[3] = { normal.x, normal.y, normal.z };
 					float light[3] = {};
 					++luxelCount;
-					if ( view->Sample(
-					         at, facing, mapcontainer::ProbeVolumeLayer::Total, true, light ) )
+					if ( ProbeSampleClamped( *view, at, facing, light ) )
 					{
 						luxels[size_t( t ) * width + s].Init( light[0], light[1], light[2], 1.0f );
 						luxelSum += ( light[0] + light[1] + light[2] ) / 3.0f;

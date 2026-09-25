@@ -922,10 +922,45 @@ indirect-view checks pass as before; the new shaded checks give:
 The control stays lit and fails, as it must. `gi_temporal.py` on `door`
 scores 0 for baked, radiosity, sdf and rayquery.
 
+**Door face lit from the probe volume (2026-09-25).** The door brush drew
+flat and unlit-bright: vbsp could not resolve its material, so its faces
+were `SURF_NOLIGHT` on the white page. Three fixes:
+
+- `pbrt_collision_vmf.py` writes a stub VMT for a door's named material, so
+  the faces get lightmaps.
+- It gives each side Hammer's world-aligned axes for its dominant axis. Every
+  side had used `[1 0 0]`/`[0 -1 0]`, which leave vbsp's lightmap vectors
+  degenerate on x- and y-facing sides.
+- `R_RelightBrushEntitiesFromProbes` (engine/gl_lightmap.cpp) relights every
+  brush-entity surface from each consumed volume:
+  - Each luxel samples half a probe spacing off its face, along the face's
+    own plane normal. `SURFDRAW_PLANEBACK` relates a face to its node, not
+    to its plane.
+  - A luxel outside every grid takes the nearest point inside one (lightmaps
+    pad past their face).
+  - A luxel with degenerate lightmap vectors takes the face centroid.
+  - `R_BuildLightMapGuts` uses these samples in place of the lightstyle bake.
+
+`r_indirect_report 1` prints the counts, the mean and the time per relight.
+
+With the door closed, from room A the face reads 145–187 in 8-bit sRGB
+against 138–156 on the wall beside it; the probes are brighter near the
+light. From room B it reads 0.0 against 0.22 on B's back wall. Before the
+half-spacing offset it read 14.9 from room B, with light leaking from A's
+probes.
+
+The door gates still pass after this change:
+- `gi_sdf.py door` passes G6.2 for sdf and G7.2 for rayquery
+  (`quality-results/rfc0011-g8/door-recheck2`, `door-rq2`).
+- `gi_temporal.py` scores 0 flicker for all four producers
+  (`quality-results/rfc0011-temporal/door2`).
+
+A relight takes 0.14–0.37 ms for the door's 6 surfaces (104 luxels). It
+runs once per published volume, about 100 times over the 2.5 s the producer
+takes to converge after a change. Maps with many brush entities should
+measure it.
+
 **Open:**
-- The door brush itself draws flat and unlit-bright. It uses the legacy
-  brush path, which has no light for it in this pipeline. Drawing moving
-  doors with probe lighting (as models are) is the fix; not done.
 - The occlusion recompose takes 12–35 ms in one frame per door change.
 - The G7 cost should be re-measured on an idle host.
 

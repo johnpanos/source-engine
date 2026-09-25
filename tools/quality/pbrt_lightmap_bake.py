@@ -401,12 +401,13 @@ NOISE_PAIR = {"dir": None, "halves": {}}
 def bake_light(image, pass_filter, label, size, render, keep=None):
     """DIFFUSE-bake the light into `image` (its BakeTarget nodes already set):
     once, or as the mean of two half-sample halves; `keep` names halves to
-    save as <dir>/<keep>-a.exr and -b.exr."""
+    save as <dir>/<keep>-a.exr and -b.exr. Returns the halves (None when
+    baked once)."""
     import numpy as np
     if NOISE_PAIR["dir"] is None:
         announce(label, size)
         bpy.ops.object.bake(type="DIFFUSE", pass_filter=pass_filter)
-        return
+        return None
     samples, seed = render.cycles.samples, render.cycles.seed
     halves = []
     try:
@@ -419,16 +420,22 @@ def bake_light(image, pass_filter, label, size, render, keep=None):
     finally:
         render.cycles.samples, render.cycles.seed = samples, seed
     if keep:
-        for index, half in enumerate(halves):
-            copy = bpy.data.images.new("%s_half%d" % (keep, index), width=size, height=size,
-                                       alpha=True, float_buffer=True)
-            copy.pixels.foreach_set(half)
-            path = NOISE_PAIR["dir"] / ("%s-%s.exr" % (keep, "ab"[index]))
-            copy.save_render(filepath=str(path.resolve()), scene=render)
-            if not path.is_file():
-                raise RuntimeError("Cycles did not save noise half " + path.name)
-            NOISE_PAIR["halves"][path.name] = sha256(path)
+        save_halves(halves, keep, size, render)
     image.pixels.foreach_set((halves[0] + halves[1]) / 2)
+    return halves
+
+
+def save_halves(halves, keep, size, render):
+    """Write a page's two half-sample bakes as <dir>/<keep>-a.exr and -b.exr."""
+    for index, half in enumerate(halves):
+        copy = bpy.data.images.new("%s_half%d" % (keep, index), width=size, height=size,
+                                   alpha=True, float_buffer=True)
+        copy.pixels.foreach_set(half)
+        path = NOISE_PAIR["dir"] / ("%s-%s.exr" % (keep, "ab"[index]))
+        copy.save_render(filepath=str(path.resolve()), scene=render)
+        if not path.is_file():
+            raise RuntimeError("Cycles did not save noise half " + path.name)
+        NOISE_PAIR["halves"][path.name] = sha256(path)
 
 
 def bake_sun_visibility(merged, scene, path, size, render):
@@ -492,12 +499,20 @@ def bake_sun_visibility(merged, scene, path, size, render):
 
 
 # Separated diffuse light (RFC 0011): the same bake as the total atlas with
-# one Cycles pass filter, so total = direct + indirect up to sampling noise.
+# one Cycles pass filter. When both are baked the total is their sum
+# (summed_total) instead of a third bake, so total = direct + indirect exactly.
 SEPARATED_PASSES = {"direct": {"DIRECT"}, "indirect": {"INDIRECT"}}
 
 
-def bake_separated_layers(merged, layers, out_dir, size, render):
-    """Bake each separated layer into <out_dir>/<role>.exr; returns receipts."""
+def summed_total(layers):
+    """Whether the total atlas is the sum of the separated layers."""
+    return set(SEPARATED_PASSES) <= set(layers)
+
+
+def bake_separated_layers(merged, layers, out_dir, size, render, parts=None):
+    """Bake each separated layer into <out_dir>/<role>.exr; returns receipts.
+    `parts`, when given, receives each role's (pixels, halves)."""
+    import numpy as np
     out_dir.mkdir(parents=True, exist_ok=True)
     targets = [slot.material.node_tree.nodes["BakeTarget"] for slot in merged.material_slots
                if slot.material and "BakeTarget" in slot.material.node_tree.nodes]
@@ -511,7 +526,9 @@ def bake_separated_layers(merged, layers, out_dir, size, render):
         bpy.ops.object.select_all(action="DESELECT")
         merged.select_set(True)
         bpy.context.view_layer.objects.active = merged
-        bake_light(image, SEPARATED_PASSES[role], role, size, render)
+        halves = bake_light(image, SEPARATED_PASSES[role], role, size, render)
+        if parts is not None:
+            parts[role] = (np.array(image.pixels[:], dtype=np.float32), halves)
         path = out_dir / (role + ".exr")
         image.save_render(filepath=str(path.resolve()), scene=render)
         if not path.is_file():
@@ -792,7 +809,23 @@ def main():
         ", coverage" if args.out_coverage_exr else ""))
     render.render.image_settings.file_format = "OPEN_EXR"
     render.render.image_settings.color_depth = "32"
-    bake_light(atlas, {"DIRECT", "INDIRECT"}, "total", args.size, render, keep="total")
+    import numpy as np
+    separated, parts = {}, {}
+    if summed_total(layers):
+        separated = bake_separated_layers(merged, layers, args.layers_dir, args.size, render,
+                                          parts)
+        (direct, direct_halves), (indirect, indirect_halves) = \
+            parts["direct"], parts["indirect"]
+        total = direct + indirect
+        total[3::4] = np.maximum(direct[3::4], indirect[3::4])
+        atlas.pixels.foreach_set(total)
+        if direct_halves is not None:
+            halves = [a + b for a, b in zip(direct_halves, indirect_halves)]
+            for half, a, b in zip(halves, direct_halves, indirect_halves):
+                half[3::4] = np.maximum(a[3::4], b[3::4])
+            save_halves(halves, "total", args.size, render)
+    else:
+        bake_light(atlas, {"DIRECT", "INDIRECT"}, "total", args.size, render, keep="total")
     args.out_exr.parent.mkdir(parents=True, exist_ok=True)
     # Image.save() applies the display transform to generated images even for
     # EXR; save_render() keeps scene-linear texels.
@@ -801,8 +834,8 @@ def main():
     atlas.save_render(filepath=str(args.out_exr.resolve()), scene=render)
     if not args.out_exr.is_file():
         raise RuntimeError("Cycles did not save the lightmap atlas")
-    separated = bake_separated_layers(merged, layers, args.layers_dir, args.size, render) \
-        if layers else {}
+    if layers and not separated:
+        separated = bake_separated_layers(merged, layers, args.layers_dir, args.size, render)
     sun = None
     if scene.get("distant_lights"):
         sun = bake_sun_visibility(merged, scene, args.out_exr.with_name("sun_visibility.exr"),
@@ -872,6 +905,7 @@ def main():
                 "excluded_materials": sorted(excluded), "layout": args.layout,
                 "excluded_dynamic_models": sorted(props),
                 "layers": separated,
+                "total": "direct + indirect" if summed_total(layers) else "baked",
                 "light_paths": light_paths,
                 "emitter_count": len(scene["emitters"]),
                 "atlas_coverage_estimate": covered,

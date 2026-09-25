@@ -28,7 +28,8 @@ emitters stay invisible, and there is no sky dome or traversal gate. Steps:
     stage        PBRT -> USD stage in Blender (+ optional Cycles reference render)
     reference-gate  Cycles render vs the scene's reference image (manifest reference.gate)
     layout       (lightmap.layout "planar") lightmap_layout.py: exact lightmap UVs for flat
-                 geometry, written into a copy of the stage; the bake uses them unchanged
+                 geometry and xatlas charts (within a verified stretch) for curved surfaces,
+                 written into a copy of the stage; the bake uses them unchanged
     bake         shared lightmap UVs (Blender charting unless laid out) + Cycles diffuse
                  irradiance atlas
     noise        (lightmap.noise_target) lightmap_noise.py: the bake's measured Monte Carlo
@@ -122,7 +123,7 @@ USD_TOOLS = ("openusd", "compile_tools")
 # The tools each step runs (pbrt_map_toolchain.identity names); boot steps
 # name their client build in their settings.
 STEP_TOOLS = {"legacy-scene": USD_TOOLS, "scene": USD_TOOLS, "stage": BLENDER_TOOLS,
-              "layout": USD_TOOLS, "bake": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
+              "layout": USD_TOOLS + ("xatlas",), "bake": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
               "noise": ("openimagedenoise",),
               "directional": ("openimagedenoise",), "probe": BLENDER_TOOLS,
               "probe-volume": BLENDER_TOOLS, "radiosity": BLENDER_TOOLS, "sdf": BLENDER_TOOLS,
@@ -622,6 +623,7 @@ class Pipeline:
                           "author", "--stage", p["stage"], "--out", p["layout_stage"],
                           "--size", str(self.lightmap["size"]),
                           "--reserve-rows", str(probe_width // 2),
+                          "--xatlas", self.tools["xatlas"],
                           "--receipt", p["layout_receipt"]] +
                           [item for name in sorted(unbaked) for item in ("--exclude-mesh", name)]))
             bake_stage = p["layout_stage"]

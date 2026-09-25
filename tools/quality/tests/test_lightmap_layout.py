@@ -253,5 +253,206 @@ class PlanarLayoutTest(unittest.TestCase):
         self.assertEqual(seams.chart_invariants(positions, uvs, SIZE)["bleed_texels"], 0)
 
 
+def xatlas_tool():
+    """The provisioned xatlas_chart (pbrt_map_toolchain provision --steps
+    sources,xatlas), or None."""
+    import pbrt_map_toolchain
+    profile, _ = pbrt_map_toolchain.load_profiles()
+    tool = pbrt_map_toolchain.absolute(profile["layout"]["xatlas_build"]) / \
+        profile["dependencies"]["xatlas"]["build"]["binary"]
+    return tool if tool.is_file() else None
+
+
+def smooth_cylinder(rng, radius, height, segments, rings, faceted=False):
+    """Triangles (n, 3, 3) and shading normals (n, 3, 3) of an open cylinder,
+    randomly placed; smooth normals unless `faceted`."""
+    rotation, offset = random_rotation(rng), rng.uniform(-3, 3, 3)
+    tris, normals = [], []
+    for i in range(segments):
+        # The closing column reuses angle 0: 2 pi would not meet it exactly.
+        a0, a1 = 2 * math.pi * i / segments, 2 * math.pi * ((i + 1) % segments) / segments
+        mid = 2 * math.pi * (i + 0.5) / segments
+        for j in range(rings):
+            z0, z1 = height * j / rings, height * (j + 1) / rings
+
+            def point(a, z):
+                return (radius * math.cos(a), radius * math.sin(a), z)
+
+            def normal(a):
+                a = mid if faceted else a
+                return (math.cos(a), math.sin(a), 0.0)
+            tris += [(point(a0, z0), point(a1, z0), point(a1, z1)),
+                     (point(a0, z0), point(a1, z1), point(a0, z1))]
+            normals += [(normal(a0), normal(a1), normal(a1)), (normal(a0), normal(a1), normal(a0))]
+    return (np.array(tris) @ rotation.T + offset, np.array(normals) @ rotation.T)
+
+
+def smooth_sphere(rng, radius, segments, rings):
+    rotation, offset = random_rotation(rng), rng.uniform(-3, 3, 3)
+    tris, normals = [], []
+
+    def direction(theta, phi):
+        return np.array((math.sin(theta) * math.cos(phi), math.sin(theta) * math.sin(phi),
+                         math.cos(theta)))
+    for i in range(rings):
+        for j in range(segments):
+            t0, t1 = math.pi * i / rings, math.pi * (i + 1) / rings
+            p0, p1 = 2 * math.pi * j / segments, 2 * math.pi * ((j + 1) % segments) / segments
+            a, b, c, d = direction(t0, p0), direction(t1, p0), direction(t1, p1), direction(t0, p1)
+            for tri in ((a, b, c), (a, c, d)):
+                if np.linalg.norm(np.cross(tri[1] - tri[0], tri[2] - tri[0])) > 1e-9:
+                    tris.append([radius * v for v in tri])
+                    normals.append(list(tri))
+    return (np.array(tris) @ rotation.T + offset, np.array(normals) @ rotation.T)
+
+
+def closed_box(rng):
+    """A randomly placed closed box of two triangles per face, (12, 3, 3)."""
+    size = rng.uniform(0.5, 2.0, 3)
+    rotation, offset = random_rotation(rng), rng.uniform(-3, 3, 3)
+    tris = []
+    for axis in range(3):
+        for sign in (-1.0, 1.0):
+            normal = np.zeros(3)
+            normal[axis] = sign
+            u = np.zeros(3)
+            u[(axis + 1) % 3] = 1.0
+            v = np.cross(normal, u)
+            centre = normal * size / 2
+            quad = [centre + (a * u + b * v) * size / 2
+                    for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+            tris += [(quad[0], quad[1], quad[2]), (quad[0], quad[2], quad[3])]
+    return np.array(tris) @ rotation.T + offset
+
+
+def flat_normals(positions):
+    normals, _ = seams.triangle_normals(positions)
+    return np.repeat(normals[:, None], 3, axis=1)
+
+
+@unittest.skipIf(xatlas_tool() is None, "xatlas_chart is not provisioned "
+                 "(pbrt_map_toolchain.py provision --steps sources,xatlas)")
+class CurvedLayoutTest(unittest.TestCase):
+    """Curved surfaces through xatlas: invariants, stretch and determinism."""
+
+    def scene(self, seed):
+        rng = np.random.default_rng(seed)
+        cylinder = smooth_cylinder(rng, rng.uniform(0.3, 1.0), rng.uniform(1, 3),
+                                   int(rng.integers(12, 32)), int(rng.integers(2, 8)))
+        sphere = smooth_sphere(rng, rng.uniform(0.2, 0.8), int(rng.integers(12, 24)),
+                               int(rng.integers(6, 12)))
+        box = closed_box(rng)
+        positions = np.concatenate([cylinder[0], sphere[0], box])
+        normals = np.concatenate([cylinder[1], sphere[1], flat_normals(box)])
+        curved = np.zeros(len(positions), bool)
+        curved[:len(cylinder[0]) + len(sphere[0])] = True
+        return positions, normals, curved
+
+    def test_invariants_and_stretch(self):
+        for seed in range(6):
+            with self.subTest(seed=seed):
+                positions, normals, curved = self.scene(seed)
+                uvs, record = layout.planar_layout(positions, SIZE, corner_normals=normals,
+                                                   xatlas=xatlas_tool())
+                np.testing.assert_array_equal(record["curved_mask"], curved)
+                invariants = seams.chart_invariants(positions, uvs, SIZE,
+                                                    layout.MAX_STRETCH ** 2)
+                for key in ("out_of_bounds", "overlap_texels", "bleed_texels"):
+                    self.assertEqual(invariants[key], 0, key)
+                low, high = layout.stretch(positions, uvs * SIZE, record["texels_per_metre"])
+                self.assertGreaterEqual(low[curved].min(), 1 / layout.MAX_STRETCH - 1e-6)
+                self.assertLessEqual(high[curved].max(), layout.MAX_STRETCH + 1e-6)
+                # Flat triangles keep the exact atlas density.
+                self.assertLess(np.abs(low[~curved] - 1).max(), 1e-6)
+                self.assertLess(np.abs(high[~curved] - 1).max(), 1e-6)
+
+    def test_curved_chart_area_matches_surface_area(self):
+        positions, normals, curved = self.scene(3)
+        uvs, record = layout.planar_layout(positions, SIZE, corner_normals=normals,
+                                           xatlas=xatlas_tool())
+        density = record["texels_per_metre"]
+        texels = uvs * SIZE
+        uv_area = layout.triangle_areas(texels)
+        area = layout.triangle_areas(positions)
+        # Summed over every curved chart, the UV area is the surface area at
+        # the atlas density (each chart is scaled to it on its own).
+        self.assertAlmostEqual(uv_area[curved].sum() / (area[curved].sum() * density ** 2), 1.0,
+                               delta=1e-6)
+
+    def test_same_uvs_in_any_triangle_and_corner_order(self):
+        for seed in (0, 4):
+            with self.subTest(seed=seed):
+                positions, normals, _ = self.scene(seed)
+                uvs, _ = layout.planar_layout(positions, SIZE, corner_normals=normals,
+                                              xatlas=xatlas_tool())
+                rng = np.random.default_rng(100 + seed)
+                order = rng.permutation(len(positions))
+                turn = rng.integers(0, 3, len(positions))
+                shuffled = np.array([np.roll(positions[i], -r, axis=0)
+                                     for i, r in zip(order, turn)])
+                shuffled_normals = np.array([np.roll(normals[i], -r, axis=0)
+                                             for i, r in zip(order, turn)])
+                again, _ = layout.planar_layout(shuffled, SIZE, corner_normals=shuffled_normals,
+                                                xatlas=xatlas_tool())
+                expected = np.array([np.roll(uvs[i], -r, axis=0) for i, r in zip(order, turn)])
+                self.assertEqual(expected.tobytes(), again.tobytes())
+
+    def test_only_smooth_edges_make_a_surface_curved(self):
+        rng = np.random.default_rng(8)
+        smooth = smooth_cylinder(rng, 0.5, 2.0, 16, 3)
+        faceted = smooth_cylinder(rng, 0.5, 2.0, 16, 3, faceted=True)
+        box = closed_box(rng)
+        live = np.ones(len(smooth[0]), bool)
+        self.assertTrue(layout.curved_triangles(smooth[0], smooth[1], live).all())
+        self.assertFalse(layout.curved_triangles(faceted[0], faceted[1], live).any())
+        # A BSP's world faces carry their plane's normal: never curved.
+        self.assertFalse(layout.curved_triangles(box, flat_normals(box),
+                                                 np.ones(len(box), bool)).any())
+        # Faceted surfaces chart as planar faces and need no xatlas.
+        uvs, record = layout.planar_layout(faceted[0], SIZE, corner_normals=faceted[1])
+        self.assertEqual(record["curved_triangles"], 0)
+        self.assertEqual(record["charts"], 16)
+
+    def test_stretch_limit_is_what_refines_charts(self):
+        """Negative control: a charter whose first answer stretches every
+        chart 2:1. With the limit lifted that stretch comes through; with it,
+        the over-stretched charts are charted again (smaller) until they hold."""
+        positions, normals = smooth_sphere(np.random.default_rng(2), 0.4, 24, 12)
+        real = layout.xatlas_charts
+        calls = []
+
+        def stretched_first(positions, corner_normals, members, tool, max_area=0.0):
+            labels, flat = real(positions, corner_normals, members, tool, max_area)
+            calls.append(max_area)
+            if max_area == 0.0:
+                flat = flat * np.array([2.0, 1.0])
+            return labels, flat
+
+        limit = layout.MAX_STRETCH
+        layout.xatlas_charts = stretched_first
+        try:
+            layout.MAX_STRETCH = 1e9
+            uvs, record = layout.planar_layout(positions, SIZE, corner_normals=normals,
+                                               xatlas=xatlas_tool())
+            low, high = layout.stretch(positions, uvs * SIZE, record["texels_per_metre"])
+            self.assertGreater(high.max() / low.min(), 2 * limit / 1.5)
+            layout.MAX_STRETCH = limit
+            calls.clear()
+            uvs, record = layout.planar_layout(positions, SIZE, corner_normals=normals,
+                                               xatlas=xatlas_tool())
+        finally:
+            layout.xatlas_charts = real
+            layout.MAX_STRETCH = limit
+        self.assertTrue(any(area > 0 for area in calls))
+        low, high = layout.stretch(positions, uvs * SIZE, record["texels_per_metre"])
+        self.assertLessEqual(high.max(), limit + 1e-6)
+        self.assertGreaterEqual(low.min(), 1 / limit - 1e-6)
+
+    def test_curved_surfaces_need_xatlas(self):
+        positions, normals, _ = self.scene(1)
+        with self.assertRaisesRegex(ValueError, "curved surfaces"):
+            layout.planar_layout(positions, SIZE, corner_normals=normals)
+
+
 if __name__ == "__main__":
     unittest.main()

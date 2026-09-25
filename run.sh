@@ -14,7 +14,7 @@ cd "$(dirname "$0")"
 ROOT="$(pwd)"
 
 # ---- Configuration: built-in defaults < run.conf < environment --------------
-CONFIG_KEYS="MAP WIDTH HEIGHT WINDOWED FPS_MAX RENDERER PHYSICS JOB_ARGS EXTRA_ARGS \
+CONFIG_KEYS="MAP WIDTH HEIGHT WINDOWED FPS_MAX RENDERER PHYSICS JOB_ARGS MAT_ARGS EXTRA_ARGS \
              BUILD BUILD_DIR RUNTIME BASE_RUNTIME SDL_VIDEODRIVER"
 # Remember values already provided via the environment so they win over run.conf.
 for k in $CONFIG_KEYS; do eval "__set_$k=\${$k+set}" "__val_$k=\${$k-}"; done
@@ -24,6 +24,7 @@ WIDTH=1920; HEIGHT=1080; WINDOWED=1; FPS_MAX=120
 RENDERER=native-vulkan
 PHYSICS=vphysics_box3d
 JOB_ARGS=                  # job-system ConVars; run.conf enables the pooled graphs
+MAT_ARGS=                  # material-quality ConVars; run.conf pins full bump maps
 EXTRA_ARGS="-novid -insecure +mat_queue_mode 0"
 BUILD=1
 BUILD_DIR=build
@@ -66,9 +67,22 @@ export LD_LIBRARY_PATH="$PWD/bin:${LD_LIBRARY_PATH:-}"
 
 # shellcheck disable=SC2206  # JOB_ARGS is intentionally word-split
 job_args=($JOB_ARGS)
-# Job-system ConVars go before +map so the first frame already uses them.
+# Each +command and its values become ONE argument ("+mat_picmip -1"): the
+# engine reads a separate argument starting with '-' as a launcher flag, so a
+# negative value would otherwise be dropped. The engine runs these after
+# config.cfg, so they win over saved settings.
+mat_args=()
+for word in $MAT_ARGS; do
+    if [ "${word#+}" != "$word" ] || [ ${#mat_args[@]} -eq 0 ]; then
+        mat_args+=("$word")
+    else
+        mat_args[-1]+=" $word"
+    fi
+done
+# Job-system and material ConVars go before +map so the first frame (and the
+# map's first texture load) already uses them.
 cmd=(./hl2_launcher -game portal -w "$WIDTH" -h "$HEIGHT"
-     -renderer "$RENDERER" -physics "$PHYSICS" +fps_max "$FPS_MAX" "${job_args[@]}" +map "$MAP")
+     -renderer "$RENDERER" -physics "$PHYSICS" +fps_max "$FPS_MAX" "${job_args[@]}" "${mat_args[@]}" +map "$MAP")
 [ "$WINDOWED" = 1 ] && cmd+=(-windowed)
 # Headless (offscreen) runs have no one listening: mute them.
 [ "$SDL_VIDEODRIVER" = offscreen ] && cmd+=(+volume 0)

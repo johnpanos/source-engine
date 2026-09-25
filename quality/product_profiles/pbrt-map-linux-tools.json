@@ -14,6 +14,14 @@
     "openimagedenoise": {"library": "libOpenImageDenoise.so.2", "version": "2.4.0",
                          "purpose": "RTLightmap atlas denoise"}
   },
+  "dependencies": {
+    "xatlas": {"repository": "https://github.com/jpcy/xatlas.git",
+               "revision": "f700c7790aaa030e794b52ba7791a05c085faf0c", "license": "MIT",
+               "purpose": "cuts and flattens curved surfaces into lightmap charts (lightmap_layout.py)",
+               "build": {"cxx": "g++", "flags": ["-std=c++17", "-O2", "-pthread"],
+                         "sources": ["tools/quality/xatlas_chart.cpp", "source/xatlas/xatlas.cpp"],
+                         "include": "source/xatlas", "binary": "xatlas_chart"}}
+  },
   "fixtures": {
     "ocio": {"path": "quality/fixtures/staircase2-ocio/config.ocio",
              "purpose": "OCIO 2.4 config readable by the distro Blender build"}
@@ -27,6 +35,7 @@
     "ktx_reader_source": "dependencies/pbrt-map/ktx-software",
     "ktx_reader_build": "dependencies/pbrt-map/ktx-reader-build",
     "compile_tools": "build/toolchains/pbrt-map-tools",
+    "xatlas_build": "build/toolchains/xatlas-chart",
     "toolchain_file": "build/toolchains/pbrt-map-toolchain.json"
   },
   "compile_tools": {
