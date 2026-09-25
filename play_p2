@@ -11,11 +11,10 @@ P2_BUILD_DIR="${P2_BUILD_DIR:-$ROOT/build-p2}"
 P2_WAFLOCK=.lock-waf-p2
 PHYSICS="${PHYSICS:-vphysics_box3d}"
 # Job system (RFC 0003), as run.conf's JOB_ARGS for Portal: the pooled
-# render-start and query-cache graphs, and the listen server's tick on the
-# compute pool beside rendering (host_thread_mode 1; server-simulated objects
-# show one frame later). portal_carve_job_graph is Portal-only. JOB_ARGS= rolls
-# back to the engine defaults.
-JOB_ARGS="${JOB_ARGS-+cl_render_start_graph 2 +sv_querycache_job_graph 2 +host_thread_mode 1}"
+# render-start and query-cache graphs. portal_carve_job_graph is Portal-only;
+# host_thread_mode stays 0 (see run.conf). JOB_ARGS= rolls back to the engine
+# defaults.
+JOB_ARGS="${JOB_ARGS-+cl_render_start_graph 2 +sv_querycache_job_graph 2}"
 # Quality: the system levels (portal2_system_level.cpp) already pick retail's
 # highest settings (mat_picmip -1, r_lod 0, dxlevel 100, clamped to the
 # renderer's 95). They leave color correction to the saved video config, which

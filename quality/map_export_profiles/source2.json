@@ -1,11 +1,11 @@
 {
   "schema": "map-export-profile/v1",
   "name": "source2",
-  "description": "Default export quality for scene-derived maps: GPU path-traced lightmaps with OIDN, directional (normal-map-aware) baked light, a map reflection probe, every authored material channel, and a camera-matched Cycles reference for the runtime gate.",
+  "description": "Default export quality for scene-derived maps: path-traced lightmaps (Cycles on the CPU) with OIDN, directional (normal-map-aware) baked light, a map reflection probe, every authored material channel, and a camera-matched Cycles reference for the runtime gate.",
   "lightmap": {
     "size": 2048,
     "samples": 2048,
-    "device": "gpu",
+    "device": "cpu",
     "denoise": true,
     "directional": true
   },

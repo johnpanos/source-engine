@@ -51,6 +51,9 @@ private:
 	const char *GetConsoleLogFilename() const;
 };
 
+// Set by Con_Shutdown: the log file is closed and stays closed until Con_Init.
+static bool s_bConsoleLogClosed = false;
+
 // Wrap the ConsoleLogManager in a function to ensure that the object is always
 // constructed before it is used.
 ConsoleLogManager& GetConsoleLogManager()
@@ -301,7 +304,7 @@ ConsoleLogManager::~ConsoleLogManager()
 {
 	// This fails because of destructor order problems. The file
 	// system has already been shut down by the time this runs.
-	// We'll have to count on the OS to close the file for us.
+	// Con_Shutdown closes the file instead.
 	//CloseFileIfOpen();
 }
 
@@ -386,6 +389,7 @@ void Con_Init (void)
 	}
 #endif // !DEDICATED
 
+	s_bConsoleLogClosed = false;
 	con_initialized = true;
 }
 
@@ -397,6 +401,13 @@ Con_Shutdown
 void Con_Shutdown (void)
 {
 	con_initialized = false;
+
+	// Close the log while the filesystem is up. On POSIX an open writable
+	// file holds its inode's write lock (CStdioFile), and the filesystem's
+	// destructor would free that locked mutex at exit. Later spew reaches
+	// only the tier0 log; Con_Init reopens the file after a restart.
+	s_bConsoleLogClosed = true;
+	GetConsoleLogManager().CloseFileIfOpen();
 }
 
 /*
@@ -424,6 +435,9 @@ void Con_DebugLog( const char *fmt, ...)
     va_start(argptr, fmt);
     Q_vsnprintf(data, sizeof(data), fmt, argptr);
     va_end(argptr);
+
+	if ( s_bConsoleLogClosed )
+		return;
 
 	FileHandle_t fh = GetConsoleLogManager().GetConsoleLogFileHandleForAppend();
 	if (fh != FILESYSTEM_INVALID_HANDLE )

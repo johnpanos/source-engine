@@ -82,6 +82,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 import bsp2_reader  # noqa: E402
+import cycles_device  # noqa: E402
 import gi_reference  # noqa: E402
 import gi_runtime  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
@@ -629,7 +630,7 @@ def main():
     c.add_argument("--fixture", required=True, choices=("mirror-room", "mirror-lamp"))
     c.add_argument("--samples", type=int, default=1024)
     c.add_argument("--seed", type=int, default=0)
-    c.add_argument("--device", default="gpu")
+    c.add_argument("--device", default=cycles_device.CHECK_DEVICE)
     c.add_argument("--work", type=Path, default=ROOT / "quality-results/reflection-references")
     c.add_argument("--toolchain", type=Path)
     for name, text in (("mirror", "the parallax gate on mirror-room"),

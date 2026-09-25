@@ -646,6 +646,11 @@ def door(out):
     manifest["collision"]["doors"] = [{"name": "Door", "bounds_m": [
         [wall0 + 0.075, hole_y[0], hole_z[0]], [wall0 + 0.125, hole_y[1], hole_z[1]]],
         "material": "gi_door_fallback/wall"}]
+    # R50-PARALLAX: parallax-corrected, blended reflection probes (the
+    # gi-fixture profile has none): placement gives each room its own probe,
+    # rendered with the fixture's light paths.
+    manifest["reflection_probe"] = {"width": 512, "face_size": 256, "samples": 256,
+                                    "light_paths": "gi-reference"}
     write_json(directory / "map.json", manifest)
 
 

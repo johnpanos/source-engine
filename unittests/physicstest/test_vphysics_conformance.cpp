@@ -33,6 +33,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <atomic>
+#include <thread>
+
 #include "tier0/dbg.h"
 #include "tier1/interface.h"
 #include "tier1/utlvector.h"
@@ -151,6 +154,15 @@ public:
 	{
 		if ( FaultIs( "surfaceprops-index" ) )
 			return 0;
+		if ( FaultIs( "surfaceprops-unsynchronized" ) )
+		{
+			// Resolves through one shared search slot, as an unlocked
+			// CUtlSymbolTable::Find does: a concurrent caller can overwrite
+			// the name before it is used.
+			m_pSearch = pName;
+			std::this_thread::yield();
+			return m_pInner->GetSurfaceIndex( m_pSearch );
+		}
 		return m_pInner->GetSurfaceIndex( pName );
 	}
 	virtual void GetPhysicsProperties( int i, float *d, float *t, float *f, float *e ) const { m_pInner->GetPhysicsProperties( i, d, t, f, e ); }
@@ -167,6 +179,7 @@ public:
 
 private:
 	IPhysicsSurfaceProps *m_pInner;
+	mutable std::atomic<const char *> m_pSearch{ NULL };
 };
 
 class CFaultCollision : public IPhysicsCollision
@@ -414,6 +427,55 @@ static bool TestModule( const char *pProviderPath )
 //-----------------------------------------------------------------------------
 // Surface properties
 //-----------------------------------------------------------------------------
+
+// Game code resolves surface names on several threads at once: pooled
+// particle traces reach GetSurfaceIndex through
+// CEngineTrace::ClipRayToCollideable while the main thread and physics
+// workers trace too. Each thread resolves its own rotation of names, and
+// every answer must equal the serial one.
+static void TestSurfacePropsConcurrentLookup( int count )
+{
+	CUtlVector<const char *> names;
+	CUtlVector<int> expected;
+	for ( int i = 0; i < count; i++ )
+	{
+		const char *pName = s_pProps->GetPropName( i );
+		if ( !pName || pName[0] == '$' )
+			continue;
+		names.AddToTail( pName );
+		expected.AddToTail( s_pProps->GetSurfaceIndex( pName ) );
+	}
+	if ( names.Count() < 2 )
+	{
+		Check( TIER_BOOT, "surfaceprops.concurrent-lookup", false, "only %d named surfaces",
+		    names.Count() );
+		return;
+	}
+
+	const int kThreads = 4;
+	const int kLookups = 50000;
+	std::atomic<int> wrong( 0 );
+	std::thread threads[kThreads];
+	for ( int t = 0; t < kThreads; t++ )
+	{
+		threads[t] = std::thread(
+		    [&names, &expected, &wrong, t]()
+		    {
+			    for ( int i = 0; i < kLookups; i++ )
+			    {
+				    int k = ( i * 7 + t * 13 ) % names.Count();
+				    if ( s_pProps->GetSurfaceIndex( names[k] ) != expected[k] )
+					    wrong++;
+			    }
+		    } );
+	}
+	for ( int t = 0; t < kThreads; t++ )
+		threads[t].join();
+	Check( TIER_BOOT, "surfaceprops.concurrent-lookup", wrong.load() == 0,
+	    "%d of %d lookups on %d threads returned another index", wrong.load(), kThreads * kLookups,
+	    kThreads );
+}
+
 static void TestSurfaceProps( const CUtlVector<const char *> &files )
 {
 	int parsed = 0;
@@ -449,6 +511,7 @@ static void TestSurfaceProps( const CUtlVector<const char *> &files )
 	}
 	if ( roundTrip )
 		Check( TIER_BOOT, "surfaceprops.name-roundtrip", true );
+	TestSurfacePropsConcurrentLookup( count );
 
 	// Game code dereferences GetSurfaceData unconditionally (player
 	// CategorizePosition, footsteps, impact sounds).

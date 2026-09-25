@@ -1,7 +1,7 @@
 {
   "schema": "map-export-profile/v1",
   "name": "reflection-relight-fixture",
-  "description": "R50-RELIGHT reflection fixtures (quality/fixtures/reflection/): the reflection fixtures' automatically placed RPRB probes with relight bands (RPRB v2: each probe's Diffuse Color, Normal and depth passes), and the GI fixtures' converged flat lightmap with separated layers, PRBV probe volume and SDFV, so an unbaked light's shadowed direct light and the indirect producer's change reach the probes (tools/quality/reflection_runtime.py relight). The radiosity transfer the SDFV's light styles follow. No directional page or pipeline reference render. Baked and rendered on the CPU: a GPU shared with long foreign kernels can stall HIP queue creation for hours.",
+  "description": "R50-RELIGHT reflection fixtures (quality/fixtures/reflection/): the reflection fixtures' automatically placed RPRB probes with relight bands (RPRB v2: each probe's Diffuse Color, Normal and depth passes), and the GI fixtures' converged flat lightmap with separated layers, PRBV probe volume and SDFV, so an unbaked light's shadowed direct light and the indirect producer's change reach the probes (tools/quality/reflection_runtime.py relight). The radiosity transfer the SDFV's light styles follow. No directional page or pipeline reference render. Baked and rendered on the CPU, so the fixtures do not depend on the host GPU's HIP compute (which wedged on 2026-09-25 and hung every Cycles GPU job).",
   "lightmap": {
     "size": 1024,
     "samples": 1024,

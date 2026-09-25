@@ -258,33 +258,53 @@ No measurable difference, as the profile predicted (the cohorts are well under
 control of both cohorts from their existing ConVars to this one, which is a
 product decision rather than a measured gain.
 
-## 6. Threaded listen server in the launchers (2026-09-25)
+## 6. Threaded listen server: tried in the launchers, then withdrawn (2026-09-25)
 
 `host_thread_mode 1` runs the listen server's tick on the compute pool while
-the client renders; the engine default stays 0. The Portal (`run.conf`
-`JOB_ARGS`, used by `./play`) and Portal 2 (`play_p2`) launchers now pass it,
-with the pooled render-start and query-cache graphs.
+the client renders; the engine default stays 0. The Portal (`run.conf`) and
+Portal 2 (`play_p2`) launchers passed it for part of 2026-09-25 and no longer
+do. The pooled render-start, query-cache and carve graphs don't depend on it
+and stay on.
 
-Frame cost, portal-frame-pacing-v1 warm pass, three interleaved rounds
-(`frame_pacing.py --extra-arg="+host_thread_mode N"`, host load 11 to 18):
+Why it was withdrawn:
 
-| `host_thread_mode` | Median frame (ms), per round | p99 (ms), per round |
-| --- | --- | --- |
-| 0 | 11.34, 12.59, 10.98 | 19.37, 22.31, 19.20 |
-| 2 | 8.73, 8.96, 9.59 | 15.76, 14.36, 32.29 |
+- **It broke movement after the first map.** Threaded input stamped user
+  commands with `host_tickcount`, which never resets. After a map load the
+  new server's tick starts over, and `CBasePlayer::IsUserCmdDataValid`
+  (a window of 2.5 s either side) made every command inert. Fixed in
+  `ff6f287f`: threaded input uses the client's tick
+  (`cl.GetClientTickCount() + tick`) in `engine/host.cpp`,
+  `engine/host_frame_phases.h` and the legacy oracle. Evidence: a two-map
+  walk in Portal 2 and Portal 1 (`getpos` and the server's own origin) moves
+  on both maps; before the fix the server logged "UserCommand out-of-range"
+  for every command on map 2.
+- **The recorded gain did not reproduce.** The first record (three rounds at
+  host load 11 to 18) gave warm medians of 11.0 to 12.6 ms for mode 0 and
+  8.7 to 9.6 ms for mode 2. At host load about 2, six warm passes per mode
+  over three interleaved rounds fall into two clusters in every mode: about
+  12.5 ms and about 17 ms per frame. In a slow run every CPU-side cost is
+  about 30% higher (emit 10.6 against 8.1 ms, backend 1.05 against 0.71 ms),
+  so the cluster follows CPU scheduling, not the mode. Fast runs only:
+  mode 0 12.5 and 13.4 ms, mode 1 12.5, 12.6 and 13.1 ms. That matches the
+  profile in section 1: the whole single-player server tick is 0.35 ms, so
+  overlapping it can save no more than that.
+- **It adds a frame of movement latency.** The earlier note said the player
+  view is predicted; in single-player it is not (`cl_predict 0`, Portal 2
+  retail too), so the view shows the server's result from the frame before.
 
-- The round-3 p99 of mode 2 comes from draw-emission spikes in `walk_orange`.
-  Mode 0 hitches in the same frames under load.
-- On this host (compute pool 3 threads), mode 2 and mode 1 select the same
-  path. The launchers use 1, which stays unthreaded when the pool is empty.
-- Cost: server-simulated objects reach the screen one frame later. The player
-  view is predicted.
-- Portal 2 with `host_thread_mode 1`: `portal2_scenarios.py --extra-arg` passes
-  triple laser, catapult and the four wheatley-v1 story scenarios.
-- Not measured: a Portal 2 frame-time workload, mobile profiles (the Android
-  packages don't use these launchers), and input latency.
+Method note for later frame-pacing comparisons: compare `engine` and `emit`
+per run, not only the interval median, so a run in the slow cluster is
+recognized rather than read as a gain or a loss.
 
-Rollback: `JOB_ARGS= ./play` or `JOB_ARGS= ./play_p2`.
+The frame is emission-bound (8 to 10.6 ms of emit in a 12.5 to 17 ms frame).
+The queued material system (`mat_queue_mode 2`, R32-QUEUED) moves emission to
+the render thread: in the same session it measured 9.9, 8.4 and 12.9 ms
+against 12.8, 23.1 (noisy) and 16.5 ms for mode 0 in three interleaved
+rounds, with the p99 about 19 ms instead of about 24 ms. Its launcher trial
+is recorded in the
+[queued rendering record](0001-native-vulkan-queued-rendering-progress.md).
+
+Rollback of the job args: `JOB_ARGS= ./play` or `JOB_ARGS= ./play_p2`.
 
 ## Gates run
 
@@ -306,10 +326,10 @@ Rollback: `JOB_ARGS= ./play` or `JOB_ARGS= ./play_p2`.
 ## Open (rows stay partial)
 
 - Legacy order leaves nothing to overlap in the render-start region. The
-  measured big items are draw submission (4.8 ms, a render-thread question)
-  and the server tick against client rendering, which `host_thread_mode 2`
-  already overlaps and which now runs; making threaded mode the default is a
-  separately measured latency decision (RFC 0003).
+  measured big item is draw submission (4.8 ms), which the queued material
+  system moves to its render thread (section 6). Overlapping the server tick
+  with client rendering (`host_thread_mode`) runs now, but it saves at most
+  the 0.35 ms tick and adds a frame of latency; see section 6.
 - The pooled executor overlaps only within a wave; an executor that keeps
   batches running across several host nodes would be needed for longer
   overlap.

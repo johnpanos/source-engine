@@ -78,7 +78,7 @@ python3 tools/quality/pbrt_map_toolchain.py configure-client --build build
 | `reference.gate` | `max_mae`, `min_ssim`, `max_exposure_stops` for that render against the supplied image (scored through the reference's own fitted display curve) |
 | `runtime_gate` | `max_mae`, `min_ssim`, `max_grain_ratio`, `max_mottle_ratio`, optional `min_edge_f1` and `min_fine_edge_precision` for the camera-matched game frame against the Cycles render; the receipt always records orientation-aware structural and fine edge parity |
 | `lightmap.size` / `samples` | atlas edge and Cycles samples (2048 / 64 default; the shipped manifests use 4096 samples) |
-| `lightmap.device` | `gpu` (default: HIP/CUDA/OptiX/oneAPI/Metal, failing without one; HIP on the AMD Fedora host), `auto` (GPU when Cycles finds one, else CPU) or `cpu`; the reflection-probe and probe-volume bakes use the same device, and each receipt records it |
+| `lightmap.device` | `cpu` (default), `gpu` (HIP/CUDA/OptiX/oneAPI/Metal, failing without one; HIP on the AMD Fedora host) or `auto` (GPU when Cycles finds one, else CPU); the reflection-probe and probe-volume bakes use the same device, and each receipt records it |
 | `lightmap.exclude_materials` | extra materials that get no atlas space (transmissive and fully metallic ones never read the atlas and are always excluded) |
 | `lightmap.denoise` | OpenImageDenoise `RTLightmap` pass on the atlas (default `true`; needs `libOpenImageDenoise.so.2`); the UV gutter fill still runs when this is `false` |
 | `lightmap.preview_gain` | temporary display gain for the Source preview (default 1) |
@@ -186,7 +186,7 @@ Options:
 | `--cycles-vrad PATH` | the toolchain's `vrad` |
 | `--cycles-toolchain FILE` | the provisioned toolchain |
 | `--cycles-from STEP` | none |
-| `--cycles-device gpu\|cpu\|auto` | the profile's `gpu`; `cpu` and `auto` are opt-ins for hosts without a usable GPU |
+| `--cycles-device gpu\|cpu\|auto` | the profile's `cpu`; `gpu` and `auto` are explicit opt-ins |
 | `--cycles-boot` | off |
 | `--cycles-keep-going` | off |
 | `--cycles-no-publish` | off |
@@ -211,20 +211,25 @@ version, the KTX revision, the compile tools and `bsp2tool pack-world-lit`.
 checked the same way. The game runtime and client build are inputs from the
 native Vulkan Portal profile, not provisioned here.
 
-GPU baking is the practical path to noise-free lightmaps: the living room's
-4096-sample 2048² bake takes about 6 minutes on a Radeon 8060S (HIP). The bake
-merges the baked meshes into one bake-only object, because Blender otherwise
-runs one render job per object and re-syncs the scene each time.
+Every Cycles step bakes on the CPU (user decision, 2026-09-25;
+[`cycles_device.py`](../../../tools/quality/cycles_device.py) owns the policy).
+That day this host's HIP compute wedged (amdgpu "MES failed to respond to
+msg=REMOVE_QUEUE"), and every Cycles GPU job hung until a reboot, while CPU bakes
+kept working. The CPU is also the one device with bit-identical bakes and Cycles'
+path guiding. On the GPU (HIP), the living room's 4096-sample 2048² bake took
+about 6 minutes; its CPU time has not yet been measured. The bake merges the
+baked meshes into one bake-only object, because Blender otherwise runs one
+render job per object and re-syncs the scene each time.
 
 On Fedora, Cycles HIP needs `rocm-hip` and `rocm-runtime` (Fedora's `blender`
 package ships precompiled kernels, including `gfx1151`), plus membership of the
 `render` and `video` groups for `/dev/kfd` and `/dev/dri/renderD*`. `rocminfo`
-and `rocm-smi` are optional diagnostics. A bake without a usable GPU fails with
-"no Cycles GPU device is available"; pass `--device auto` or set
-`lightmap.device` to `cpu` only on a host that intentionally bakes on the CPU.
+and `rocm-smi` are optional diagnostics; they matter only when a manifest opts in
+with `lightmap.device: gpu`, which fails with "no Cycles GPU device is
+available" on a host without one. Check `dmesg` for amdgpu MES errors before
+blaming a stalled GPU bake on load.
 
-Correctness checks run on the CPU instead
-([`cycles_device.py`](../../../tools/quality/cycles_device.py) owns this policy):
+Correctness checks also run on the CPU:
 - the pipeline's reference render;
 - `gi_reference.py`;
 - the basis oracle and supplemental bakes;
@@ -232,7 +237,8 @@ Correctness checks run on the CPU instead
 
 On this host a CPU bake is bit-identical across runs at the same seed, while
 two HIP bakes of the same scene differ. CPU+GPU hybrid rendering was measured
-about 24% slower than the GPU alone, so it is not offered.
+about 24% slower than the GPU alone (a shared power budget), so it is not
+offered.
 
 ## Owners
 

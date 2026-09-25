@@ -17,6 +17,21 @@ the default physics in `./play` (`PHYSICS=vphysics` selects IVP). This closes no
 roadmap gate: there are no performance budgets, no CI lane, no dedicated-server
 or non-Linux profile, and no gameplay soak.
 
+Surface-property race (fixed 2026-09-25): Box3D's surface database used a
+plain `CUtlSymbolTable`, whose `Find` writes a shared search context. Pooled
+particle traces reach `GetSurfaceIndex` on several workers at once
+(`CEngineTrace::ClipRayToCollideable`), so a lookup could return another
+thread's index; a queued-mode TSan run of Portal found it. The table is now a
+`CUtlSymbolTableMT`, as IVP's is. The shared suite's new
+`surfaceprops.concurrent-lookup` (four threads, 200,000 lookups) failed Box3D
+before the fix (54,724 wrong) and passes both providers after it; the bad
+provider `surfaceprops-unsynchronized` is detected. The gate on `build-p2`:
+IVP 603/603; Box3D 600/603, whose three gameplay failures
+(`vcollide.model-simulates`, `dynamics.tumble-travel-bounded`,
+`dynamics.held-floor-quiet`) come from the shared tree's uncommitted
+`box3d/src/contact_solver.c` patch and fail the same way without this fix;
+all 18 sensitivity faults are detected.
+
 Gameplay regression fixes (2026-09-22): with Box3D, walking into props left the
 player stuck, and walking into a portal stopped the player short of it. Both came
 from provider traces and the player controller, not from the game:

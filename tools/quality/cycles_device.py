@@ -1,9 +1,12 @@
 """Cycles device policy for the map, bake and GI tools (no Blender import).
 
-Bakes and previews run on the GPU: HIP on the AMD Linux host, failing when
-Cycles finds none rather than silently taking hours on the CPU. Correctness
-checks run on the CPU: reference renders, analytic and held-out oracles, and
-fixture builds that oracles judge. On this host a CPU bake is bit-identical
+Bakes, previews and correctness checks run on the CPU (user decision,
+2026-09-25). On 2026-09-25 this host's HIP compute wedged (amdgpu MES failed to
+respond to REMOVE_QUEUE): every Cycles GPU job then hung in hipStreamCreate
+until a reboot, while CPU bakes kept working. The CPU is also the only device
+with bit-identical results, and the one where Cycles offers path guiding.
+`gpu` (HIP, failing when Cycles finds none) remains an explicit opt-in per
+manifest or profile. On this host a CPU bake is bit-identical
 across runs at the same seed, while two HIP bakes of the same scene differ, so
 only the CPU satisfies the RFC 0007 `Exact` determinism class. CPU+GPU hybrid
 rendering was measured about 24% slower than the GPU alone on the shared
@@ -14,7 +17,7 @@ GPU-less hosts; its results are not reproducible across hosts.
 """
 
 DEVICES = ("gpu", "auto", "cpu")
-BAKE_DEVICE = "gpu"
+BAKE_DEVICE = "cpu"
 CHECK_DEVICE = "cpu"
 
 

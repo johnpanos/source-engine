@@ -19,7 +19,7 @@
   "lightmap": {
     "size": 2048,
     "samples": 4096,
-    "device": "gpu"
+    "device": "cpu"
   },
   "collision": {
     "envelope_meshes": [

@@ -22,7 +22,7 @@
     "exclude_materials": [
       "SpotHolder"
     ],
-    "device": "gpu"
+    "device": "cpu"
   },
   "world_mesh": {
     "weld_materials": [

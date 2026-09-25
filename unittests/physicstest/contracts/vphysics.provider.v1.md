@@ -34,7 +34,7 @@ proves a map loads; it does not prove the game plays.
 | Prefix | Clause | Legacy consumers |
 | --- | --- | --- |
 | `module.` | Exports all three interfaces; `IPhysics::QueryInterface` returns the same sibling pointers; `Connect`/`Init` succeed | AppSystem group, engine/game factories |
-| `surfaceprops.` | Parses the manifest-listed files; `default` is index 0; unknown names are -1; names round-trip; `GetSurfaceData` is never null for any index; re-parsing a file is a no-op returning 0; `$MATERIAL_INDEX_SHADOW` is reserved (0xF000, friction 0.8, elasticity 0.001); sound names resolve | player `CategorizePosition`, footsteps, impact sounds |
+| `surfaceprops.` | Parses the manifest-listed files; `default` is index 0; unknown names are -1; names round-trip; `GetSurfaceData` is never null for any index; re-parsing a file is a no-op returning 0; `$MATERIAL_INDEX_SHADOW` is reserved (0xF000, friction 0.8, elasticity 0.001); sound names resolve; four threads resolving names at once get the serial answers | player `CategorizePosition`, footsteps, impact sounds; traces on pool workers |
 | `pairhash.` | Pair lookups are symmetric; counts/lists track add/remove; removing all pairs for an object clears it | `g_EntityCollisionHash`, `CTraceFilterEntity` |
 | `collisionset.` | Sets are stable per id; every pair starts **disabled**; enable/disable are symmetric; destroy-all clears | ragdoll self-collision rules |
 | `collide.` | Box collides report exact AABBs (including rotated), support-map extents and volume; convex, hull and query-model paths build usable geometry; debug meshes lie inside the AABB | `CCollisionProperty`, tools, debug overlays |
@@ -84,11 +84,11 @@ Each fault below is injected into the oracle provider (a decorator over the
 real interface, or suppression at the `Simulate` call boundary); the runner
 fails unless the targeted checks fail:
 
-`surfaceprops-null`, `surfaceprops-index`, `pairhash-ordered`,
-`collision-unit-aabb`, `collision-trace-miss`, `vcollide-keyvalues`, `sim-noop`,
-`constraint-inactive`, `fluid-inert`, `spring-inert`, `events-silent`,
-`drag-off`, `save-dropped`, `soup-null`, `collide-write-stub`, `player-inert`,
-`vehicle-stub`.
+`surfaceprops-null`, `surfaceprops-index`, `surfaceprops-unsynchronized`,
+`pairhash-ordered`, `collision-unit-aabb`, `collision-trace-miss`,
+`vcollide-keyvalues`, `sim-noop`, `constraint-inactive`, `fluid-inert`,
+`spring-inert`, `events-silent`, `drag-off`, `save-dropped`, `soup-null`,
+`collide-write-stub`, `player-inert`, `vehicle-stub`.
 
 ## 6. Legacy behaviors the suite pins down
 

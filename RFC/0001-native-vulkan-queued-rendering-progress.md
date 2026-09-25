@@ -154,14 +154,65 @@ The frame-interval comparison is not a controlled benchmark: the host was
 overloaded and the `cpu` column is the presenting thread's time, which is the
 render thread in mode 2, so it does not compare across modes.
 
+## Launcher trial (2026-09-25)
+
+`./play` now passes `+mat_queue_mode 2` (`run.conf`/`run.sh` `EXTRA_ARGS`;
+it pinned 0 before). The ConVar is archived, so the launcher passes 2
+explicitly: a `config.cfg` saved under the old pin holds 0. `./play_p2` never
+pinned it, and the SDL3 default is 2, so Portal 2 already ran queued. The same
+change withdrew `+host_thread_mode 1`
+([scheduler record, section 6](0003-scheduler-nodes-progress.md)).
+
+Host: load about 2 on 32 threads, `build/` and `build-p2/` at `341e6c0b`,
+headless unless stated.
+
+| Check | Result |
+| --- | --- |
+| `frame_pacing.py` portal scenario, 3 interleaved rounds, mode 0 / mode 2 | warm interval median 12.8 / 9.9, 23.1 (noisy) / 8.4, 16.5 / 12.9 ms; p99 about 24 / 19 ms |
+| Portal 2 scenarios, all four workloads (wheatley 4, triple laser 3, catapult 1, paint 1) | 9/9 pass; every run presents from the render thread with 0 cross-thread calls |
+| Portal 1 two-map walk with the new `./play` arguments | the player moves on both maps; 1491 render-thread presents, 0 cross-thread calls |
+| `portal_boot --resize-stress`, isolated headless mutter, mode 2 / mode 0 | both fail the harness, differently. Every size completes in both. Mode 0: blank images at 640x480 and 1024x576. Mode 2: three intermediate sizes coalesced and 35 presents scaled while a size settled. Both: each resize request costs the main thread 13 to 35 ms (budget 2 ms queued, 16.7 ms sync). No run of this harness on native had passed before |
+| TSan product tree (clang, `build-tsan-queued`), frame-pacing scenario, one pass per mode | mode 0: 1901 reports, 158 signatures (pooled bones and particles, traces, spatial partition, model cache: known engine-pool debt). Mode 2: 1966 reports, 191 signatures, 46 not seen in mode 0 |
+
+The 46 mode-2-only signatures, by kind:
+
+- Source's queued design, the same under D3D9 and DXVK: material proxies on
+  the main thread against queued `CMaterialVar::Set*` on the render thread;
+  `R_MarkLights` marking surfaces against the queued `R_BuildLightMapGuts`;
+  `g_nDebugVarsSignature` written in `BeginFrame` and read in `DrawMesh`;
+  spew from `DrawElements`. At worst a value one frame old or torn.
+- Native backend, debug only: `EnableDebugTextureList` writes a flag that
+  the render thread's `EndFrame` reads (texture list panel).
+- Existing families in new pairings, not queue-specific: particle random
+  contexts, bone setup, SDL audio, the spatial partition.
+- Not queue-specific but a real bug, found in this run by chance: Box3D's
+  `GetSurfaceIndex` calls `CUtlSymbolTable::Find`, which writes a shared
+  search context, from pooled particle traces on two workers at once. A
+  lookup can return another thread's index. Fixed the same day: the Box3D
+  table is a `CUtlSymbolTableMT`, as IVP's is
+  (`vphysics_box3d/physics_material.h`). The shared physics suite's new
+  `surfaceprops.concurrent-lookup` (four threads, 200,000 lookups) failed
+  Box3D before the fix (54,724 wrong) and passes both providers after it;
+  its bad provider `surfaceprops-unsynchronized` is detected. A queued TSan
+  rerun has no `GetSurfaceIndex` report (8 and 10 before).
+
+At exit TSan hung inside its own report of a mutex destroyed while locked in
+`CFileSystem_Stdio`'s destructor, in both modes, so those runs were killed
+after their workload. The mutex was `console.log`'s: on POSIX an open
+writable file holds its inode's write lock, and the `-condebug` log handle
+was never closed (`~ConsoleLogManager` runs after the filesystem). Fixed the
+same day: `Con_Shutdown` closes the log, and later spew goes only to the
+tier0 log until `Con_Init` (`engine/console.cpp`). At filesystem teardown
+`console.log` is no longer open, it still ends with the last shutdown
+lines, and the queued TSan rerun exits by itself (88 s, TSan status 66 for
+the remaining reports).
+
 ## Not done
 
-- No TSan run of the product in queued mode; the census covers the hooked
-  entry points only (bind, passes, draws, constants, textures, targets,
-  clears, present, read-back, snapshots, world batches, light set).
 - Android, macOS and iOS are unmeasured; Android stays pinned to mode 0.
-- Resize, alt-tab/device-loss and window-mode changes under queued native
-  were not exercised (`portal_boot --resize-stress --resize-mode queued`).
+- Alt-tab/device-loss and window-mode changes under queued native were not
+  exercised. Resize was (see the trial), and the resize harness does not pass
+  in either mode.
 - `IWorldMeshUpload::IsResident` is read on the main thread; it changes only
   at map load and unload, which run single-threaded.
 - Portal 2's intro scenes take `materials->Lock()` about once per frame in

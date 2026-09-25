@@ -53,7 +53,9 @@ private:
 	int GetReservedFallBack( int materialIndex ) const;
 	int GetReservedSurfaceIndex( const char *pPropertyName ) const;
 
-	CUtlSymbolTable m_strings;
+	// Locked, as IVP's: Find writes a shared search context, and traces on
+	// pool workers look names up concurrently (GetSurfaceIndex).
+	CUtlSymbolTableMT m_strings;
 	CUtlVector<CSurfaceBox3D> m_props;
 	CUtlVector<CUtlSymbol> m_fileList;
 	bool m_init;

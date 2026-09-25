@@ -70,6 +70,7 @@ CORPUS_VPKS = ["portal/portal_pak_dir.vpk", "hl2/hl2_misc_dir.vpk"]
 FAULTS = {
     "surfaceprops-null": ["surfaceprops.data-never-null"],
     "surfaceprops-index": ["surfaceprops.unknown-name", "surfaceprops.name-roundtrip"],
+    "surfaceprops-unsynchronized": ["surfaceprops.concurrent-lookup"],
     "pairhash-ordered": ["pairhash.symmetric-lookup"],
     "collision-unit-aabb": ["collide.bbox-aabb", "vcollide.solid-aabb"],
     "collision-trace-miss": ["trace.", "vcollide.solid-trace-down"],

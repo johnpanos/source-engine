@@ -5,7 +5,7 @@
   "lightmap": {
     "size": 2048,
     "samples": 256,
-    "device": "gpu",
+    "device": "cpu",
     "denoise": true,
     "directional": false,
     "light_paths": "blender-default",

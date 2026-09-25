@@ -163,8 +163,14 @@ def main():
     pbrt_blender.rebind_materials(scene)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
+    # Dynamic models' Cycles stand-ins can move: like the lightmap bake, the
+    # probes neither reflect them nor place captures around them.
+    props = map_scene.prop_shape_names(scene)
+    for obj in bpy.data.objects:
+        if obj.name in props:
+            obj.hide_render = True
 
-    meshes = pbrt_blender.source_meshes()
+    meshes = [obj for obj in pbrt_blender.source_meshes() if obj.name not in props]
     triangles = scene_triangles(meshes)
     caster = BvhCaster(triangles)
     if args.bounds:
@@ -267,7 +273,8 @@ def main():
                "placement": dict(params, bounds_min=[float(v) for v in bounds_min],
                                  bounds_max=[float(v) for v in bounds_max],
                                  seeds=[[float(v) for v in s] for s in seeds],
-                                 glossy_shapes=glossy_names, **report),
+                                 glossy_shapes=glossy_names,
+                                 excluded_dynamic_models=sorted(props), **report),
                "probes": records, "blender": bpy.app.version_string}
     (args.out_dir / "probes.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) +
                                               "\n")
