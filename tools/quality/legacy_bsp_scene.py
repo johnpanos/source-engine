@@ -595,30 +595,112 @@ def texdata_reflectivity(texdata, record):
 
 # ------------------------------------------------------------------ USD
 
+def widest_triangulation(polygon, normal):
+    """Triangles (index triples, counter-clockwise about `normal`) of a
+    convex polygon whose thinnest triangle is as wide as possible.
+
+    vbsp adds vertices along face edges so neighbouring faces meet without
+    cracks; a fan from the first corner then makes zero-area slivers through
+    those collinear vertices. Among all triangulations of the polygon, this
+    picks the one maximizing the smallest triangle altitude (dynamic
+    programming over diagonals; ties go to the lowest corner index), so no
+    triangle is thinner than the face forces. Triangles facing against
+    `normal` score as unusable.
+    """
+    count = len(polygon)
+    if count == 3:
+        return [(0, 1, 2)]
+    points = np.asarray(polygon, dtype=np.float64)
+
+    def quality(a, b, c):
+        cross = np.cross(points[b] - points[a], points[c] - points[a])
+        signed = np.dot(cross, normal)
+        longest = max(np.linalg.norm(points[b] - points[a]),
+                      np.linalg.norm(points[c] - points[b]),
+                      np.linalg.norm(points[a] - points[c]))
+        return signed / longest if signed > 0 and longest > 0 else -np.inf
+
+    best = {}
+    choice = {}
+    for span in range(2, count):
+        for i in range(count - span):
+            j = i + span
+            top = None
+            for k in range(i + 1, j):
+                score = min(quality(i, k, j), best.get((i, k), np.inf),
+                            best.get((k, j), np.inf))
+                if top is None or score > top:
+                    top, choice[(i, j)] = score, k
+            best[(i, j)] = top
+    triangles = []
+    stack = [(0, count - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j - i < 2:
+            continue
+        k = choice[(i, j)]
+        triangles.append((i, k, j))
+        stack += [(i, k), (k, j)]
+    return sorted(triangles)
+
+
+def clean_winding(keys):
+    """Positions of a winding to keep: consecutive repeats and spikes
+    (a b a, where the winding folds back on itself) removed, as vbsp's folded
+    windings need; fewer than 3 left means the face has no area."""
+    keep = list(range(len(keys)))
+    changed = True
+    while changed and len(keep) >= 3:
+        changed = False
+        for index in range(len(keep)):
+            before, here, after = (keep[index - 1], keep[index],
+                                   keep[(index + 1) % len(keep)])
+            if keys[here] == keys[after]:
+                del keep[index]
+                changed = True
+                break
+            if keys[before] == keys[after]:
+                # Spike: drop the tip and one copy of the base.
+                for position in sorted({index, (index + 1) % len(keep)}, reverse=True):
+                    del keep[position]
+                changed = True
+                break
+    return keep if len(keep) >= 3 else []
+
+
 def indexed_triangles(polygons, uvs, plane_normals, vertex_ids=None):
-    """Fan-triangulate polygons into one indexed mesh.
+    """Triangulate polygons into one indexed mesh (widest_triangulation).
 
     Faces share points the way the BSP shares vertices: by BSP vertex index
     when `vertex_ids` gives each polygon's, otherwise by exact float32
     position. Copying every corner instead made each triangle a separate
     piece, which the lightmap bake then charted alone - a seam along every
     triangle edge. Normals and material UVs stay per corner (faceVarying).
-    Returns (points, counts, indices, normals, st).
+    Returns (points, counts, indices, normals, st, sources): sources[i] is the
+    polygon triangle i came from (faces with no area give none).
     """
-    points, counts, indices, normals, st = [], [], [], [], []
+    points, counts, indices, normals, st, sources = [], [], [], [], [], []
     shared = {}
     ids = vertex_ids if vertex_ids is not None else [None] * len(polygons)
-    for polygon, uv, normal, corner_ids in zip(polygons, uvs, plane_normals, ids):
+    for source, (polygon, uv, normal, corner_ids) in enumerate(
+            zip(polygons, uvs, plane_normals, ids)):
+        keys = [int(corner_ids[k]) if corner_ids is not None else
+                np.asarray(polygon[k], dtype=np.float32).tobytes() for k in range(len(polygon))]
+        kept = clean_winding(keys)
+        if not kept:
+            continue
+        polygon, uv = np.asarray(polygon)[kept], np.asarray(uv)[kept]
+        corner_ids = [keys[k] for k in kept]
         area = np.zeros(3)
         for i in range(1, len(polygon) - 1):
             area += np.cross(polygon[i] - polygon[0], polygon[i + 1] - polygon[0])
         # Counter-clockwise about the plane normal (USD's front face).
         order = list(range(len(polygon)) if np.dot(area, normal) >= 0 else
                      range(len(polygon) - 1, -1, -1))
-        for i in range(1, len(order) - 1):
-            for corner in (order[0], order[i], order[i + 1]):
-                key = int(corner_ids[corner]) if corner_ids is not None else \
-                    np.asarray(polygon[corner], dtype=np.float32).tobytes()
+        ordered = np.asarray(polygon, dtype=np.float64)[order]
+        for triangle in widest_triangulation(ordered, np.asarray(normal, dtype=np.float64)):
+            for corner in (order[i] for i in triangle):
+                key = corner_ids[corner]
                 if key not in shared:
                     shared[key] = len(points)
                     points.append(polygon[corner])
@@ -626,7 +708,8 @@ def indexed_triangles(polygons, uvs, plane_normals, vertex_ids=None):
                 st.append(uv[corner])
                 normals.append(normal)
             counts.append(3)
-    return points, counts, indices, normals, st
+            sources.append(source)
+    return points, counts, indices, normals, st, sources
 
 
 def write_usd(model, path, map_name):
@@ -708,16 +791,14 @@ def write_usd(model, path, map_name):
 
     def mesh(name, polygons, uvs, plane_normals, mat, vertex_ids=None, planes=None):
         prim = UsdGeom.Mesh.Define(stage, world.AppendChild(name))
-        points, counts, indices, normals, st = indexed_triangles(polygons, uvs, plane_normals,
-                                                                 vertex_ids)
+        points, counts, indices, normals, st, sources = indexed_triangles(
+            polygons, uvs, plane_normals, vertex_ids)
         if planes is not None:
             # The BSP plane of every triangle: lightmap_layout.py charts only
             # triangles on one plane together (exact, no angle tolerance).
-            per_triangle = [plane for polygon, plane in zip(polygons, planes)
-                            for _ in range(len(polygon) - 2)]
             UsdGeom.PrimvarsAPI(prim).CreatePrimvar(
                 PLANE_PRIMVAR, Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform).Set(
-                Vt.IntArray(per_triangle))
+                Vt.IntArray([int(planes[source]) for source in sources]))
         prim.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*map(float, p)) for p in points]))
         prim.CreateFaceVertexCountsAttr(Vt.IntArray(counts))
         prim.CreateFaceVertexIndicesAttr(Vt.IntArray(indices))

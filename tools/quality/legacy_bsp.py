@@ -191,7 +191,8 @@ class LegacyBsp:
 
     def world_faces(self):
         """Model 0's faces: [{index, points (N,3), vertices (N BSP vertex
-        indices), plane (BSP plane index), plane_normal, texinfo, dispinfo,
+        indices, the lowest index at each exact position), plane (BSP plane
+        index), plane_normal, texinfo, dispinfo,
         styles, area}]; windings are
         clockwise seen from the front. Faces share vertices by index, as vbsp
         wrote them."""
@@ -199,6 +200,10 @@ class LegacyBsp:
         edges = np.frombuffer(self.lump(LUMP_EDGES, 4), dtype="<u2").reshape(-1, 2)
         surfedges = np.frombuffer(self.lump(LUMP_SURFEDGES, 4), dtype="<i4")
         vertices = np.frombuffer(self.lump(LUMP_VERTEXES, 12), dtype="<f4").reshape(-1, 3)
+        # vbsp can store one position under several indices: name each vertex
+        # by the lowest index at its exact position, so faces meeting there share it.
+        _, first, canonical = np.unique(vertices, axis=0, return_index=True, return_inverse=True)
+        canonical = first[canonical.reshape(-1)]
         normals, _ = self.planes()
         texinfo_count = len(self.lump(LUMP_TEXINFO, TEXINFO_BYTES)) // TEXINFO_BYTES
         world = self.models()[0]
@@ -224,7 +229,7 @@ class LegacyBsp:
             # gives a face its own oriented plane; `side` only records the flip.
             normal = normals[plane]
             result.append({"index": index, "points": vertices[corner].astype(np.float64),
-                           "vertices": corner.astype(np.int64), "plane": int(plane),
+                           "vertices": canonical[corner].astype(np.int64), "plane": int(plane),
                            "plane_normal": normal, "texinfo": texinfo,
                            "dispinfo": dispinfo, "styles": (s0, s1, s2, s3), "area": area})
         return result

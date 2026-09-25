@@ -144,13 +144,14 @@ class SharedVerticesTest(unittest.TestCase):
         b = a + [1, 0, 0]
         normal = np.array([0, 0, 1.0])
         uvs = [np.zeros((4, 2)), np.zeros((4, 2))]
-        points, counts, indices, _, st = scene.indexed_triangles(
+        points, counts, indices, _, st, _ = scene.indexed_triangles(
             [a, b], uvs, [normal, normal], [np.array([0, 1, 2, 3]), np.array([1, 4, 5, 2])])
         self.assertEqual(len(points), 6)
         self.assertEqual(len(indices), 12)
-        np.testing.assert_array_equal(np.asarray(points)[indices].reshape(-1, 3),
-                                      np.concatenate([a[[0, 1, 2, 0, 2, 3]],
-                                                      b[[0, 1, 2, 0, 2, 3]]]))
+        triangles = np.asarray(points)[indices].reshape(-1, 3, 3)
+        areas = np.linalg.norm(np.cross(triangles[:, 1] - triangles[:, 0],
+                                        triangles[:, 2] - triangles[:, 0]), axis=1) / 2
+        self.assertAlmostEqual(areas.sum(), 2.0)  # both unit quads, exactly covered
 
     def test_every_triangle_corner_is_its_polygon_corner(self):
         """Random polygons: each triangle corner's point is exactly the polygon
@@ -162,10 +163,142 @@ class SharedVerticesTest(unittest.TestCase):
             polygon = np.stack([np.cos(angles), np.sin(angles), np.zeros(count)], axis=1)
             ids = rng.permutation(100)[:count]
             for vertex_ids in (None, [ids]):
-                points, counts, indices, _, _ = scene.indexed_triangles(
+                points, counts, indices, _, _, _ = scene.indexed_triangles(
                     [polygon], [np.zeros((count, 2))], [np.array([0, 0, 1.0])], vertex_ids)
                 self.assertEqual(len(counts), count - 2)
                 self.assertEqual(len(points), count)
+
+
+def convex_polygon(rng, corners, junctions, noise):
+    """A random convex polygon in a random plane, with `junctions` extra
+    vertices along random edges (vbsp's crack fixes) and `noise` rounding."""
+    angles = np.sort(rng.uniform(0, 2 * np.pi, corners))
+    flat = np.stack([np.cos(angles), np.sin(angles)], axis=1) * rng.uniform(0.5, 4)
+    ring = list(flat)
+    for _ in range(junctions):
+        edge = int(rng.integers(0, len(ring)))
+        a, b = ring[edge], ring[(edge + 1) % len(ring)]
+        ring.insert(edge + 1, a + (b - a) * rng.uniform(0.05, 0.95))
+    flat = np.array(ring) + rng.normal(0, noise, (len(ring), 2))
+    q, _ = np.linalg.qr(rng.standard_normal((3, 3)))
+    points = flat @ q[:, :2].T + rng.uniform(-100, 100, 3)
+    return points, q[:, 2] * np.sign(np.linalg.det(q))
+
+
+def all_triangulations(i, j):
+    """Every triangulation of polygon corners i..j (brute force)."""
+    if j - i < 2:
+        yield []
+        return
+    for k in range(i + 1, j):
+        for left in all_triangulations(i, k):
+            for right in all_triangulations(k, j):
+                yield left + [(i, k, j)] + right
+
+
+def altitude(points, triangle, normal):
+    a, b, c = (points[i] for i in triangle)
+    signed = np.dot(np.cross(b - a, c - a), normal)
+    return signed / max(np.linalg.norm(b - a), np.linalg.norm(c - b), np.linalg.norm(a - c))
+
+
+class CleanWindingTest(unittest.TestCase):
+    def test_repeats_and_spikes_go(self):
+        self.assertEqual(scene.clean_winding([1, 2, 3, 4]), [0, 1, 2, 3])
+        self.assertEqual(scene.clean_winding([1, 2, 2, 2, 3, 4]), [0, 3, 4, 5])
+        keys = [1, 2, 3, 4, 1]                                                 # wraps
+        self.assertEqual(sorted(keys[i] for i in scene.clean_winding(keys)), [1, 2, 3, 4])
+        self.assertEqual(scene.clean_winding([1, 2, 1, 3, 4]), [0, 3, 4])      # spike 1 2 1
+        self.assertEqual(scene.clean_winding([1, 2, 1]), [])
+        self.assertEqual(scene.clean_winding([5, 5, 5]), [])
+
+    def test_folded_face_triangulates_without_zero_area(self):
+        """The testchmb_a_00 face that lists one corner three times: cleaned,
+        its triangles all have area, and each names its source polygon."""
+        points = np.array([[-12.8014, -7.7724, 0.2032], [-12.9541, -7.9251, 0.2032],
+                           [-13.0429, -7.874, 0.0], [-13.0429, -7.874, 0.0],
+                           [-13.0429, -7.874, 0.0], [-12.8524, -7.6835, 0.0]])
+        normal = np.cross(points[1] - points[0], points[2] - points[0])
+        normal /= np.linalg.norm(normal)
+        result = scene.indexed_triangles([points], [np.zeros((6, 2))], [normal],
+                                         [np.array([1, 2, 3, 3, 3, 4])])
+        corners = np.asarray(result[0])[result[2]].reshape(-1, 3, 3)
+        areas = np.linalg.norm(np.cross(corners[:, 1] - corners[:, 0],
+                                        corners[:, 2] - corners[:, 0]), axis=1)
+        self.assertEqual(len(corners), 2)
+        self.assertGreater(areas.min(), 1e-3)
+        self.assertEqual(result[5], [0, 0])
+
+
+class WidestTriangulationTest(unittest.TestCase):
+    def setUp(self):
+        self.rng = np.random.default_rng(11)
+
+    def polygons(self, count):
+        for _ in range(count):
+            yield convex_polygon(self.rng, int(self.rng.integers(3, 9)),
+                                 int(self.rng.integers(0, 5)), 1e-7)
+
+    def test_result_is_a_valid_triangulation(self):
+        """n - 2 counter-clockwise triangles; polygon edges used once and
+        diagonals twice; areas sum to the polygon's area."""
+        for points, normal in self.polygons(300):
+            triangles = scene.widest_triangulation(points, normal)
+            count = len(points)
+            self.assertEqual(len(triangles), count - 2)
+            uses = {}
+            for triangle in triangles:
+                self.assertGreater(altitude(points, triangle, normal), 0)
+                for a, b in ((0, 1), (1, 2), (0, 2)):
+                    edge = tuple(sorted((triangle[a], triangle[b])))
+                    uses[edge] = uses.get(edge, 0) + 1
+            for edge, used in uses.items():
+                boundary = edge[1] - edge[0] in (1, count - 1)
+                self.assertEqual(used, 1 if boundary else 2, edge)
+            polygon_area = abs(sum(np.dot(np.cross(points[k] - points[0], points[k + 1] - points[0]),
+                                          normal) for k in range(1, count - 1))) / 2
+            triangle_area = sum(np.dot(np.cross(points[b] - points[a], points[c] - points[a]),
+                                       normal) / 2 for a, b, c in triangles)
+            self.assertAlmostEqual(triangle_area, polygon_area, places=9)
+
+    def test_thinnest_triangle_is_optimal(self):
+        """Against brute force over every triangulation (up to 8 corners)."""
+        for points, normal in self.polygons(120):
+            if len(points) > 8:
+                continue
+            chosen = min(altitude(points, t, normal)
+                         for t in scene.widest_triangulation(points, normal))
+            best = max(min(altitude(points, t, normal) for t in candidate)
+                       for candidate in all_triangulations(0, len(points) - 1))
+            self.assertAlmostEqual(chosen, best, places=12)
+
+    def test_crack_fix_vertices_make_no_slivers(self):
+        """A rectangle wall with vbsp junction vertices along its edges (and
+        float rounding lifting them micrometres off): the fan leaves
+        micron-wide slivers, the widest triangulation none thinner than the
+        wall allows."""
+        for _ in range(100):
+            width, height = self.rng.uniform(1, 4), self.rng.uniform(1, 4)
+            # Junctions sit at neighbouring faces' corners: spread along the edge.
+            bottom = np.linspace(0, width, 5)[1:-1] + self.rng.uniform(-0.1, 0.1, 3)
+            top = np.linspace(0, width, 4)[1:-1] + self.rng.uniform(-0.1, 0.1, 2)
+            ring = [(0, 0)] + [(x, 0) for x in bottom] + [(width, 0), (width, height)]
+            ring += [(x, height) for x in top[::-1]] + [(0, height)]
+            flat = np.array(ring, dtype=np.float64)
+            flat[1:4, 1] += self.rng.normal(0, 5e-6, 3)     # rounding off the edge
+            points = np.concatenate([flat, np.zeros((len(flat), 1))], axis=1)
+            normal = np.array([0, 0, 1.0])
+            fan = min(altitude(points, (0, k, k + 1), normal) for k in range(1, len(points) - 1))
+            widest = min(altitude(points, t, normal)
+                         for t in scene.widest_triangulation(points, normal))
+            self.assertLess(fan, 1e-3)
+            self.assertGreater(widest, 1e-3)          # no micron slivers
+            self.assertGreater(widest, 100 * max(fan, 1e-12))
+
+    def test_same_polygon_same_triangles(self):
+        points, normal = convex_polygon(self.rng, 7, 3, 1e-7)
+        self.assertEqual(scene.widest_triangulation(points, normal),
+                         scene.widest_triangulation(points.copy(), normal.copy()))
 
 
 class TextureMappingVariantsTest(unittest.TestCase):
