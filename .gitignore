@@ -59,6 +59,10 @@ hammer/gtk/hammer_gtk
 /bedroom/
 /living-room/
 /staircase2/
+# NVIDIA Omniverse "World Lobby" OpenUSD sample (Collected_World_Lobby.zip, ~1.7 GB
+# unpacked without its USDZ), unpacked at the repository root for
+# quality/fixtures/usd-maps/world-lobby.json (see quality/fixtures/usd-maps/README.md).
+/World_Lobby/
 /*.zip
 # Large binary data and build outputs.
 *.so

@@ -100,9 +100,54 @@ vec3 ApplyPixelFog( vec3 color )
 		factor *= factor;
 	return mix( color, fragFogColor.rgb, factor );
 }
+// shadow_ps2x.fxc (alphaParams.y == 2): the render-to-texture shadow projected
+// onto a surface. The shadow texture is sampled at five jittered taps; the
+// vertex color carries the jitter ( 1 / width, 1 / height ) in rg (the shader
+// reads only the color's alpha) and the fade in a; the modulation is
+// g_ShadowColor (c1). The result multiplies the frame (ZERO, SRC_COLOR), so it
+// fades to white in fog instead of blending toward the fog color.
+vec4 ShadowProjection( int flags )
+{
+	const vec2 jitter0 = fragVertexColor.rg;
+	const vec2 jitter1 = vec2( jitter0.x, -jitter0.y );
+	const float coverageSum = texture( baseTexture, fragUv ).a +
+	                          texture( baseTexture, fragUv + jitter0 ).a +
+	                          texture( baseTexture, fragUv - jitter0 ).a +
+	                          texture( baseTexture, fragUv + jitter1 ).a +
+	                          texture( baseTexture, fragUv - jitter1 ).a;
+	const float shadowCoverage = clamp( coverageSum * 0.2 - fragVertexColor.a, 0.0, 1.0 );
+	vec3 result = 1.0 + ( shadowCoverage * fragModulation.rgb - shadowCoverage );
+	// CalcPixelFogFactor without BlendPixelFog's squaring.
+	float fogFactor = 0.0;
+	const float fogType = fragFogColor.w;
+	if ( fogType > -0.5 )
+	{
+		const float projZ = fragFogDepth.x;
+		if ( fogType < 0.5 )
+		{
+			fogFactor = clamp(
+			    min( fragFogParams.z, projZ * fragFogParams.w - fragFogParams.x ), 0.0, 1.0 );
+		}
+		else
+		{
+			const float worldZ = fragFogDepth.y;
+			const float f = clamp( ( fragFogParams.y - worldZ ) / ( fragFogMisc.x - worldZ ), 0.0, 1.0 );
+			fogFactor = clamp( f * projZ * fragFogParams.w, 0.0, 1.0 );
+		}
+	}
+	result = 1.0 - ( ( 1.0 - result ) * pow( 1.0 - fogFactor, 4.0 ) );
+	if ( ( flags & 4 ) != 0 )
+		result = LinearToSrgb( result );
+	return vec4( result, 1.0 );
+}
 void main()
 {
 	const int flags = int( consts.alphaParams.z );
+	if ( consts.alphaParams.y > 1.5 )
+	{
+		outColor = ShadowProjection( flags );
+		return;
+	}
 	if ( ( flags & 262144 ) != 0 )
 	{
 		// refract_ps2x.fxc: sampler 0 is the completed frame copy, sampler 1

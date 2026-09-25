@@ -28,6 +28,10 @@ namespace light_set
 {
 class ILightSetConsumer;
 }
+namespace gpu_compute
+{
+class IGpuCompute;
+}
 
 namespace render
 {
@@ -46,6 +50,9 @@ struct LegacyShaderServices
 	// Optional per-frame light set sink (render/light_set.h, RFC 0011), queried
 	// the same way.
 	light_set::ILightSetConsumer *lightSetConsumer = nullptr;
+	// Optional compute service for engine-side GPU producers
+	// (render/gpu_compute.h, RFC 0011 G6), queried the same way.
+	gpu_compute::IGpuCompute *gpuCompute = nullptr;
 
 	// Optional. Backend-owned facts the legacy MaterialAdapterInfo_t cannot carry:
 	// semantic features, driverApi, memory and software status for an adapter the

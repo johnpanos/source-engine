@@ -21,7 +21,12 @@
 #include "convar.h"
 #include "lightcache.h"
 #include "materialsystem/imaterialsystem.h"
+#include "gl_model_private.h"
+#include "icliententity.h"
+#include "icliententitylist.h"
+#include "render/gpu_compute.h"
 #include "render/indirect_radiosity.h"
+#include "render/indirect_sdf.h"
 #include "render/indirect_switcher.h"
 #include "render/light_set.h"
 #include "render/world_mesh_upload.h"
@@ -140,6 +145,10 @@ public:
 			return true;
 		if ( kind == ProducerKind::PrecomputedRadiosity )
 			return scene.transfer != nullptr;
+		// The GPU producer: the map's field and a device that runs compute.
+		if ( kind == ProducerKind::SdfTraced )
+			return scene.sdf != nullptr && scene.gpu != nullptr &&
+			       scene.gpu->Capabilities().compute;
 		// The contract's scripted fake: switching tests only, never players.
 		return kind == ProducerKind::ScriptedFake && r_indirect_test_fake.GetBool();
 	}
@@ -149,6 +158,8 @@ public:
 			return std::make_unique<BakedProducer>();
 		if ( kind == ProducerKind::PrecomputedRadiosity )
 			return std::make_unique<RadiosityProducer>();
+		if ( kind == ProducerKind::SdfTraced )
+			return std::make_unique<SdfTracedProducer>();
 		if ( kind == ProducerKind::ScriptedFake )
 			return std::make_unique<ScriptedFakeProducer>();
 		return nullptr;
@@ -165,6 +176,8 @@ struct Host
 	std::shared_ptr<const Volume> current;
 	std::optional<mapcontainer::ProbeVolumeView> view;
 	std::vector<unsigned char> change; // the world's change atlas (BakedPlusDelta)
+	std::vector<Proxy> proxies;         // this frame's moving geometry
+	std::vector<LightOverride> lightOverrides; // r_indirect_light_direction
 	uint64_t uploadedGeneration = 0;
 	uint64_t mapSerial = 0;
 	bool deviceLost = false;
@@ -175,6 +188,42 @@ Host &TheHost()
 {
 	static Host host;
 	return host;
+}
+
+gpu_compute::IGpuCompute *GpuCompute()
+{
+	return materials ? static_cast<gpu_compute::IGpuCompute *>(
+	                       materials->QueryInterface( gpu_compute::kGpuComputeInterface ) )
+	                 : nullptr;
+}
+
+// Moving geometry the static field lacks: every drawn brush entity (a door,
+// a func_brush), as its world-space bounds. The producer takes the first
+// kMaxProxies.
+void GatherProxies( std::vector<Proxy> *out )
+{
+	out->clear();
+	if ( !entitylist )
+		return;
+	const int highest = entitylist->GetHighestEntityIndex();
+	for ( int i = 1; i <= highest && out->size() < SdfTraceParams::kMaxProxies; ++i )
+	{
+		IClientEntity *entity = entitylist->GetClientEntity( i );
+		if ( !entity || entity->IsDormant() || !entity->ShouldDraw() )
+			continue;
+		const model_t *model = entity->GetModel();
+		if ( !model || model->type != mod_brush )
+			continue;
+		Vector lo, hi;
+		entity->GetRenderBoundsWorldspace( lo, hi );
+		Proxy proxy;
+		for ( int k = 0; k < 3; ++k )
+		{
+			proxy.lo[k] = lo[k];
+			proxy.hi[k] = hi[k];
+		}
+		out->push_back( proxy );
+	}
 }
 
 world_mesh_gpu::IWorldMeshUpload *Uploader()
@@ -301,10 +350,47 @@ void OnProducerChanged( IConVar *var, const char *oldValue, float )
 	Msg( "indirect light: switching to %s\n", ProducerName( kind ) );
 }
 
+// A scene light's direction by light style (a sun moved for a test); the
+// producers that claim LightDirection trace it.
+CON_COMMAND_F( r_indirect_light_direction,
+    "r_indirect_light_direction <style> <x> <y> <z>: the direction light of style <style> "
+    "travels, for producers that respond to light direction; 'clear' restores the baked ones",
+    FCVAR_CHEAT )
+{
+	Host &host = TheHost();
+	if ( args.ArgC() == 2 && !Q_stricmp( args[1], "clear" ) )
+	{
+		host.lightOverrides.clear();
+		return;
+	}
+	if ( args.ArgC() != 5 )
+	{
+		Msg( "usage: r_indirect_light_direction <style> <x> <y> <z> | clear\n" );
+		return;
+	}
+	LightOverride light;
+	light.style = atoi( args[1] );
+	Vector direction( atof( args[2] ), atof( args[3] ), atof( args[4] ) );
+	if ( VectorNormalize( direction ) <= 0.0f )
+	{
+		Msg( "r_indirect_light_direction: zero direction\n" );
+		return;
+	}
+	for ( int k = 0; k < 3; ++k )
+		light.direction[k] = direction[k];
+	for ( LightOverride &existing : host.lightOverrides )
+		if ( existing.style == light.style )
+		{
+			existing = light;
+			return;
+		}
+	host.lightOverrides.push_back( light );
+}
+
 } // namespace
 
-void IndirectLight_BeginMap(
-    const unsigned char *prbv, size_t size, const unsigned char *rtrn, size_t rtrnSize )
+void IndirectLight_BeginMap( const unsigned char *prbv, size_t size, const unsigned char *rtrn,
+    size_t rtrnSize, const unsigned char *sdfv, size_t sdfvSize )
 {
 	Host &host = TheHost();
 	IndirectLight_EndMap();
@@ -329,6 +415,21 @@ void IndirectLight_BeginMap(
 			Warning( "indirect light: RTRN rejected (malformed, or not baked for this map's "
 			         "PRBV); radiosity is not offered\n" );
 	}
+	if ( sdfv && sdfvSize )
+	{
+		host.scene.sdf = SdfData::FromBytes( std::vector<unsigned char>( sdfv, sdfv + sdfvSize ) );
+		if ( host.scene.sdf )
+		{
+			const mapcontainer::SdfVolumeLayout &f = host.scene.sdf->layout;
+			Msg( "indirect light: SDFV %ux%ux%u voxels of %.1f units, %u lights, %u KB\n",
+			    f.dims[0], f.dims[1], f.dims[2], f.voxel, f.lightCount,
+			    unsigned( sdfvSize / 1024 ) );
+		}
+		else
+			Warning( "indirect light: SDFV rejected (malformed); the SDF producer is not "
+			         "offered\n" );
+	}
+	host.scene.gpu = GpuCompute();
 	host.switcher = std::make_unique<Switcher>( host.catalog, host.tracker );
 	ReportOffered();
 	ProducerKind requested = ProducerKind::Baked;
@@ -367,6 +468,8 @@ void IndirectLight_EndMap()
 	host.view.reset();
 	host.current.reset();
 	host.change.clear();
+	host.proxies.clear();
+	host.lightOverrides.clear();
 	host.uploadedGeneration = 0;
 	host.scene = IndirectScene();
 }
@@ -380,6 +483,9 @@ void IndirectLight_Frame( const light_set::Snapshot &lights )
 	work.frameSerial = host.tracker.Frame() + 1;
 	work.resources = &host.tracker;
 	work.executor = &host.executor;
+	GatherProxies( &host.proxies );
+	work.proxies = host.proxies;
+	work.lightOverrides = host.lightOverrides;
 	const FrameVolume frame = host.switcher->Frame( work, lights );
 	// The jobs run in order on this thread; their batches on the executor.
 	const double started = Plat_FloatTime();

@@ -1,0 +1,440 @@
+#version 450
+// RFC 0011 G6: the SDF-traced producer's probe update. One workgroup per
+// probe; each of its 128 invocations traces one ray (a spherical Fibonacci
+// direction under this frame's random rotation) through the static world's
+// signed distance volume and this frame's proxy boxes. A hit's reflected
+// light is its reflectance times the direct light of the analytic lights
+// there (one shadow-tested sample each) plus the light the previous estimate
+// of the probe field holds for its normal (the multi-bounce term); its
+// emission, and the dome for a ray that escapes, are light the probe sees
+// directly. Then 36 invocations fold the rays into the probe's octahedral
+// texels (irradiance / pi, the cosine-weighted mean radiance) together with
+// the analytic lights' direct light at the probe (128 shadow-tested samples
+// per light), and blend into the next estimate with `alpha`.
+//
+// Units are Source units; light is the lightmap's diffuse light unit.
+layout( local_size_x = 128, local_size_y = 1, local_size_z = 1 ) in;
+
+const uint kRays = 128u;
+const uint kTexels = 36u;
+const uint kInterior = 6u;
+const uint kNoSource = 0xFFFFu;
+const float kPi = 3.14159265358979;
+
+struct Light
+{
+	vec4 kind; // x: 0 rect, 1 distant, 2 dome
+	vec4 rgb;  // rect/dome radiance, distant irradiance; times the current scalar
+	vec4 a;    // rect centre; distant: the direction light travels
+	vec4 b;    // rect half-axis u; distant: x the angular diameter
+	vec4 c;    // rect half-axis v
+};
+struct Proxy
+{
+	vec4 lo; // w: reflectance
+	vec4 hi;
+};
+
+layout( std430, set = 0, binding = 0 ) readonly buffer Voxels
+{
+	uvec4 voxels[];
+};
+layout( std430, set = 0, binding = 1 ) readonly buffer Params
+{
+	vec4 sdfOrigin;    // xyz first voxel centre, w voxel size
+	uvec4 sdfDims;     // xyz, w light count
+	vec4 probeOrigin;  // xyz, w normal bias
+	vec4 probeSpacing; // xyz, w max distance
+	uvec4 probeDims;   // xyz, w probe count
+	uvec4 counts;      // x proxy count
+	vec4 sourceScale[16];
+	Light lights[16];
+	Proxy proxies[16];
+}
+params;
+layout( std430, set = 0, binding = 2 ) readonly buffer Probes
+{
+	vec4 probes[]; // xyz position, w active
+};
+// Per probe, per texel: total, indirect, analytic direct (vec4 each).
+layout( std430, set = 0, binding = 3 ) readonly buffer Previous
+{
+	vec4 previous[];
+};
+layout( std430, set = 0, binding = 4 ) writeonly buffer Next
+{
+	vec4 next[];
+};
+layout( push_constant ) uniform Push
+{
+	float alpha;
+	uint frame;
+}
+push;
+
+shared vec3 sDir[kRays];
+shared vec3 sDirect[kRays];
+shared vec3 sIndirect[kRays];
+shared vec3 sLightDir[kRays];
+shared vec3 sLightValue[kRays];
+
+uint Hash( uint x )
+{
+	x ^= x >> 16;
+	x *= 0x7feb352du;
+	x ^= x >> 15;
+	x *= 0x846ca68bu;
+	x ^= x >> 16;
+	return x;
+}
+
+float Random( inout uint state )
+{
+	state = Hash( state );
+	return float( state >> 8 ) * ( 1.0 / 16777216.0 );
+}
+
+vec3 VoxelWords( uint index, out vec3 reflectance, out vec3 emission, out uint source )
+{
+	const uvec4 w = voxels[index];
+	const vec2 w0 = unpackHalf2x16( w.x );
+	const vec2 w1 = unpackHalf2x16( w.y );
+	const vec2 w2 = unpackHalf2x16( w.z );
+	const vec2 w3 = unpackHalf2x16( w.w );
+	reflectance = vec3( w0.y, w1.x, w1.y );
+	emission = vec3( w2.x, w2.y, w3.x );
+	source = w.w >> 16;
+	return vec3( w0.x, 0.0, 0.0 );
+}
+
+float VoxelDistance( uvec3 i )
+{
+	const uint index = i.x + params.sdfDims.x * ( i.y + params.sdfDims.y * i.z );
+	return unpackHalf2x16( voxels[index].x ).x;
+}
+
+// Trilinear signed distance of the static world; far outside its grid.
+float WorldDistance( vec3 p, out bool inside )
+{
+	const vec3 g = ( p - params.sdfOrigin.xyz ) / params.sdfOrigin.w;
+	const vec3 dims = vec3( params.sdfDims.xyz );
+	inside = all( greaterThanEqual( g, vec3( 0.0 ) ) ) && all( lessThanEqual( g, dims - 1.0 ) );
+	if ( !inside )
+		return params.probeSpacing.w;
+	const uvec3 i0 = uvec3( min( floor( g ), dims - 2.0 ) );
+	const vec3 f = g - vec3( i0 );
+	const float c000 = VoxelDistance( i0 );
+	const float c100 = VoxelDistance( i0 + uvec3( 1, 0, 0 ) );
+	const float c010 = VoxelDistance( i0 + uvec3( 0, 1, 0 ) );
+	const float c110 = VoxelDistance( i0 + uvec3( 1, 1, 0 ) );
+	const float c001 = VoxelDistance( i0 + uvec3( 0, 0, 1 ) );
+	const float c101 = VoxelDistance( i0 + uvec3( 1, 0, 1 ) );
+	const float c011 = VoxelDistance( i0 + uvec3( 0, 1, 1 ) );
+	const float c111 = VoxelDistance( i0 + uvec3( 1, 1, 1 ) );
+	return mix( mix( mix( c000, c100, f.x ), mix( c010, c110, f.x ), f.y ),
+	    mix( mix( c001, c101, f.x ), mix( c011, c111, f.x ), f.y ), f.z );
+}
+
+float BoxDistance( vec3 p, vec3 lo, vec3 hi )
+{
+	const vec3 q = abs( p - ( lo + hi ) * 0.5 ) - ( hi - lo ) * 0.5;
+	return length( max( q, vec3( 0.0 ) ) ) + min( max( q.x, max( q.y, q.z ) ), 0.0 );
+}
+
+// The scene's distance; `proxy` names the nearest proxy, or -1 for the world.
+float SceneDistance( vec3 p, out int proxy, out bool inGrid )
+{
+	float d = WorldDistance( p, inGrid );
+	proxy = -1;
+	for ( uint k = 0u; k < params.counts.x; ++k )
+	{
+		const float b = BoxDistance( p, params.proxies[k].lo.xyz, params.proxies[k].hi.xyz );
+		if ( b < d )
+		{
+			d = b;
+			proxy = int( k );
+		}
+	}
+	return d;
+}
+
+// Sphere tracing: true on a hit within `tMax` (then `t` is its distance).
+bool Trace( vec3 origin, vec3 direction, float tMax, out float t, out int proxy, out bool escaped )
+{
+	const float voxel = params.sdfOrigin.w;
+	t = 0.0;
+	escaped = false;
+	proxy = -1;
+	for ( int step = 0; step < 160; ++step )
+	{
+		bool inGrid;
+		const float d = SceneDistance( origin + direction * t, proxy, inGrid );
+		if ( !inGrid && proxy < 0 && t > voxel )
+		{
+			escaped = true;
+			return false;
+		}
+		if ( d < 0.1 * voxel )
+			return true;
+		t += max( d, 0.2 * voxel );
+		if ( t > tMax )
+			return false;
+	}
+	return false;
+}
+
+vec3 SceneNormal( vec3 p )
+{
+	const float h = 0.5 * params.sdfOrigin.w;
+	int proxy;
+	bool inGrid;
+	const vec3 n = vec3( SceneDistance( p + vec3( h, 0, 0 ), proxy, inGrid ) -
+	                         SceneDistance( p - vec3( h, 0, 0 ), proxy, inGrid ),
+	    SceneDistance( p + vec3( 0, h, 0 ), proxy, inGrid ) -
+	        SceneDistance( p - vec3( 0, h, 0 ), proxy, inGrid ),
+	    SceneDistance( p + vec3( 0, 0, h ), proxy, inGrid ) -
+	        SceneDistance( p - vec3( 0, 0, h ), proxy, inGrid ) );
+	const float l = length( n );
+	return l > 1e-6 ? n / l : vec3( 0.0, 0.0, 1.0 );
+}
+
+bool Visible( vec3 from, vec3 to )
+{
+	const vec3 delta = to - from;
+	const float distance = length( delta );
+	float t;
+	int proxy;
+	bool escaped;
+	return !Trace( from, delta / distance, distance - 0.5 * params.sdfOrigin.w, t, proxy, escaped );
+}
+
+// One sample of analytic light `l` at `p`: the unshadowed diffuse light
+// along `w` for a normal facing it (irradiance / pi), 0 when it cannot light p.
+vec3 LightSample( uint l, vec3 p, inout uint rng, out vec3 w, out vec3 target )
+{
+	const Light light = params.lights[l];
+	const uint kind = uint( light.kind.x );
+	if ( kind == 0u )
+	{
+		const vec3 q = light.a.xyz + ( 2.0 * Random( rng ) - 1.0 ) * light.b.xyz +
+		               ( 2.0 * Random( rng ) - 1.0 ) * light.c.xyz;
+		const vec3 axes = cross( light.b.xyz, light.c.xyz );
+		const float area = 4.0 * length( axes );
+		const vec3 normal = normalize( axes );
+		const vec3 delta = q - p;
+		const float d2 = max( dot( delta, delta ), 1e-4 );
+		w = delta * inversesqrt( d2 );
+		target = q;
+		const float cosLight = max( 0.0, dot( -w, normal ) );
+		return light.rgb.rgb * cosLight * area / ( kPi * d2 );
+	}
+	if ( kind == 1u )
+	{
+		// A direction within the disc's angular radius.
+		const float radius = 0.5 * light.b.x;
+		const vec3 toward = -normalize( light.a.xyz );
+		const vec3 t0 = normalize( abs( toward.z ) < 0.9 ? cross( toward, vec3( 0, 0, 1 ) )
+		                                                 : cross( toward, vec3( 1, 0, 0 ) ) );
+		const vec3 t1 = cross( toward, t0 );
+		const float r = sqrt( Random( rng ) ) * tan( radius );
+		const float phi = 2.0 * kPi * Random( rng );
+		w = normalize( toward + r * ( cos( phi ) * t0 + sin( phi ) * t1 ) );
+		target = p + w * ( 4.0 * params.probeSpacing.w );
+		return light.rgb.rgb / kPi;
+	}
+	w = vec3( 0.0, 0.0, 1.0 );
+	target = p;
+	return vec3( 0.0 );
+}
+
+vec2 OctEncode( vec3 d )
+{
+	d /= abs( d.x ) + abs( d.y ) + abs( d.z );
+	vec2 p = d.xy;
+	if ( d.z < 0.0 )
+		p = ( vec2( 1.0 ) - abs( p.yx ) ) * vec2( p.x >= 0.0 ? 1.0 : -1.0, p.y >= 0.0 ? 1.0 : -1.0 );
+	return p;
+}
+
+vec3 OctDecode( vec2 p )
+{
+	vec3 v = vec3( p, 1.0 - abs( p.x ) - abs( p.y ) );
+	if ( v.z < 0.0 )
+		v.xy = ( vec2( 1.0 ) - abs( p.yx ) ) *
+		       vec2( p.x >= 0.0 ? 1.0 : -1.0, p.y >= 0.0 ? 1.0 : -1.0 );
+	return normalize( v );
+}
+
+uint TexelOf( vec3 n )
+{
+	const vec2 uv = OctEncode( n ) * 0.5 + 0.5;
+	const uvec2 t = min( uvec2( uv * float( kInterior ) ), uvec2( kInterior - 1u ) );
+	return t.y * kInterior + t.x;
+}
+
+// The previous estimate's light at a surface point for its normal, less the
+// analytic lights' direct light (which the hit samples itself), from the
+// surrounding probes the point can see (an SDF-traced visibility test).
+vec3 FieldLight( vec3 p, vec3 n )
+{
+	// A surface beyond the grid's outer probes takes the nearest ones.
+	const vec3 dims = vec3( params.probeDims.xyz );
+	const vec3 g = clamp( ( p + n * params.probeOrigin.w - params.probeOrigin.xyz ) /
+	                          params.probeSpacing.xyz,
+	    vec3( 0.0 ), dims - 1.0 );
+	const uvec3 base = uvec3( min( floor( g ), dims - 2.0 ) );
+	const vec3 a = g - vec3( base );
+	const uint texel = TexelOf( n );
+	vec3 sum = vec3( 0.0 );
+	float weights = 0.0;
+	for ( uint corner = 0u; corner < 8u; ++corner )
+	{
+		const uvec3 bits = uvec3( corner & 1u, ( corner >> 1 ) & 1u, ( corner >> 2 ) & 1u );
+		const uvec3 i = base + bits;
+		const uint index = i.x + params.probeDims.x * ( i.y + params.probeDims.y * i.z );
+		const vec4 probe = probes[index];
+		if ( probe.w < 0.5 )
+			continue;
+		// Only probes the point can see: a probe behind a wall or a proxy
+		// holds another space's light.
+		if ( !Visible( p + n * ( 0.5 * params.sdfOrigin.w ), probe.xyz ) )
+			continue;
+		const vec3 t = mix( vec3( 1.0 ) - a, a, vec3( bits ) );
+		const vec3 toProbe = probe.xyz - p;
+		const float length = max( sqrt( dot( toProbe, toProbe ) ), 1e-4 );
+		const float back = ( dot( toProbe / length, n ) + 1.0 ) * 0.5;
+		const float w = ( back * back + 0.2 ) * t.x * t.y * t.z;
+		const uint slot = ( index * kTexels + texel ) * 3u;
+		sum += w * ( previous[slot].rgb - previous[slot + 2u].rgb );
+		weights += w;
+	}
+	return weights > 0.0 ? max( sum / weights, vec3( 0.0 ) ) : vec3( 0.0 );
+}
+
+void main()
+{
+	const uint probe = gl_WorkGroupID.x;
+	const uint lane = gl_LocalInvocationID.x;
+	const vec4 position = probes[probe];
+	if ( position.w < 0.5 )
+	{
+		if ( lane < kTexels * 3u )
+			next[probe * kTexels * 3u + lane] = vec4( 0.0 );
+		return;
+	}
+	uint rng = Hash( probe * 7919u + lane * 104729u + push.frame * 1299709u + 17u );
+	// This frame's rotation of the spherical Fibonacci set.
+	uint frameRng = Hash( push.frame * 2654435761u + 3u );
+	const float angle = 2.0 * kPi * Random( frameRng );
+	const float z = Random( frameRng ) * 2.0 - 1.0;
+	const vec3 axis = vec3( sqrt( 1.0 - z * z ) * cos( angle ), sqrt( 1.0 - z * z ) * sin( angle ), z );
+	const float spin = 2.0 * kPi * Random( frameRng );
+	const float i = float( lane ) + 0.5;
+	const float fz = 1.0 - 2.0 * i / float( kRays );
+	const float fr = sqrt( max( 0.0, 1.0 - fz * fz ) );
+	const float fphi = kPi * ( 3.0 - sqrt( 5.0 ) ) * i;
+	vec3 dir = vec3( fr * cos( fphi ), fr * sin( fphi ), fz );
+	dir = dir * cos( spin ) + cross( axis, dir ) * sin( spin ) + axis * dot( axis, dir ) * ( 1.0 - cos( spin ) );
+
+	float t;
+	int proxy;
+	bool escaped;
+	vec3 direct = vec3( 0.0 );
+	vec3 indirect = vec3( 0.0 );
+	const float tMax = 4.0 * params.probeSpacing.w;
+	if ( Trace( position.xyz, dir, tMax, t, proxy, escaped ) )
+	{
+		const vec3 hit = position.xyz + dir * t;
+		vec3 n = SceneNormal( hit );
+		if ( dot( n, dir ) > 0.0 )
+			n = -n; // a two-sided surface, seen from behind
+		vec3 reflectance = vec3( 0.0 );
+		vec3 emission = vec3( 0.0 );
+		uint source = kNoSource;
+		if ( proxy >= 0 )
+			reflectance = vec3( params.proxies[proxy].lo.w );
+		else
+		{
+			// The voxel on the air side of the hit: each voxel holds its nearest
+			// surface's attributes, so this is the face the ray hit even on a
+			// wall thinner than a voxel.
+			const vec3 g = clamp( round( ( hit + n * ( 0.5 * params.sdfOrigin.w ) -
+			                                 params.sdfOrigin.xyz ) /
+			                          params.sdfOrigin.w ),
+			    vec3( 0.0 ), vec3( params.sdfDims.xyz ) - 1.0 );
+			const uvec3 v = uvec3( g );
+			VoxelWords( v.x + params.sdfDims.x * ( v.y + params.sdfDims.y * v.z ), reflectance,
+			    emission, source );
+			if ( source != kNoSource )
+				emission *= params.sourceScale[source >> 2u][source & 3u];
+			else
+				emission = vec3( 0.0 );
+		}
+		const vec3 lift = hit + n * ( 0.5 * params.sdfOrigin.w );
+		vec3 arriving = FieldLight( hit, n );
+		for ( uint l = 0u; l < params.sdfDims.w; ++l )
+		{
+			vec3 w, target;
+			const vec3 value = LightSample( l, lift, rng, w, target );
+			const float cosSurface = max( 0.0, dot( n, w ) );
+			if ( cosSurface > 0.0 && any( greaterThan( value, vec3( 0.0 ) ) ) &&
+			     Visible( lift, target ) )
+				arriving += value * cosSurface;
+		}
+		direct = emission;
+		indirect = reflectance * arriving;
+	}
+	else if ( escaped )
+	{
+		for ( uint l = 0u; l < params.sdfDims.w; ++l )
+			if ( uint( params.lights[l].kind.x ) == 2u )
+				direct += params.lights[l].rgb.rgb;
+	}
+	sDir[lane] = dir;
+	sDirect[lane] = direct;
+	sIndirect[lane] = indirect;
+	barrier();
+
+	vec3 texelDir = vec3( 0.0 );
+	vec3 analytic = vec3( 0.0 );
+	if ( lane < kTexels )
+	{
+		const uint u = lane % kInterior;
+		const uint v = lane / kInterior;
+		texelDir = OctDecode( ( vec2( u, v ) + 0.5 ) / float( kInterior ) * 2.0 - 1.0 );
+	}
+	// The analytic lights' direct light at the probe: 128 samples per light.
+	for ( uint l = 0u; l < params.sdfDims.w; ++l )
+	{
+		vec3 w, target;
+		vec3 value = LightSample( l, position.xyz, rng, w, target );
+		if ( any( greaterThan( value, vec3( 0.0 ) ) ) && !Visible( position.xyz, target ) )
+			value = vec3( 0.0 );
+		barrier();
+		sLightDir[lane] = w;
+		sLightValue[lane] = value;
+		barrier();
+		if ( lane < kTexels )
+			for ( uint j = 0u; j < kRays; ++j )
+				analytic += sLightValue[j] * max( 0.0, dot( texelDir, sLightDir[j] ) ) / float( kRays );
+	}
+	if ( lane >= kTexels )
+		return;
+	vec3 seenDirect = vec3( 0.0 );
+	vec3 seenIndirect = vec3( 0.0 );
+	float weights = 0.0;
+	for ( uint j = 0u; j < kRays; ++j )
+	{
+		const float w = max( 0.0, dot( texelDir, sDir[j] ) );
+		seenDirect += w * sDirect[j];
+		seenIndirect += w * sIndirect[j];
+		weights += w;
+	}
+	seenDirect /= max( weights, 1e-6 );
+	seenIndirect /= max( weights, 1e-6 );
+	const uint slot = ( probe * kTexels + lane ) * 3u;
+	const vec3 total = analytic + seenDirect + seenIndirect;
+	next[slot] = vec4( mix( previous[slot].rgb, total, push.alpha ), 0.0 );
+	next[slot + 1u] = vec4( mix( previous[slot + 1u].rgb, seenIndirect, push.alpha ), 0.0 );
+	next[slot + 2u] = vec4( mix( previous[slot + 2u].rgb, analytic, push.alpha ), 0.0 );
+}

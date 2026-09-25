@@ -2464,6 +2464,62 @@ public:
 
 static CVulkanLightSetConsumer g_LightSetConsumer;
 
+// RFC 0011 G6: the renderer's compute service (render/gpu_compute.h) for
+// engine-side GPU producers, over the device's compute resources. Dispatches
+// queued before a frame's submission are recorded at the end of its command
+// buffer (SetComputeFlush) and carry its serial. Like the rest of the device
+// it is used from the thread that owns the device.
+class CVulkanGpuCompute final : public gpu_compute::IGpuCompute
+{
+public:
+	CVulkanGpuCompute()
+	    : m_service( g_VulkanContext.Compute(), [this] { return NextSerial(); },
+	          [] { return g_VulkanContext.CompletedFrameSerial(); } )
+	{
+	}
+	void Install()
+	{
+		g_VulkanContext.SetComputeFlush( [this]( VkCommandBuffer cmd, uint64_t serial )
+		    {
+			    if ( !m_service.Pending() )
+				    return;
+			    m_service.Record( cmd, serial );
+			    m_lastRecorded = serial;
+		    } );
+	}
+	gpu_compute::Caps Capabilities() const override { return m_service.Capabilities(); }
+	uint32_t CreateBuffer( size_t bytes ) override { return m_service.CreateBuffer( bytes ); }
+	void *Map( uint32_t buffer ) override { return m_service.Map( buffer ); }
+	uint32_t CreateProgram( const char *name, uint32_t buffers, uint32_t pushBytes ) override
+	{
+		return m_service.CreateProgram( name, buffers, pushBytes );
+	}
+	uint64_t QueueDispatch( uint32_t program, const uint32_t *buffers, uint32_t count,
+	    const void *push, uint32_t pushBytes, uint32_t groupsX, uint32_t groupsY,
+	    uint32_t groupsZ ) override
+	{
+		return m_service.QueueDispatch(
+		    program, buffers, count, push, pushBytes, groupsX, groupsY, groupsZ );
+	}
+	uint64_t CompletedSerial() const override { return m_service.CompletedSerial(); }
+	void Retire( uint32_t resource, uint64_t afterSerial ) override
+	{
+		m_service.Retire( resource, afterSerial );
+	}
+
+private:
+	// The serial the next flush records under: the next submission's, and
+	// never one already flushed (a frame whose submission failed).
+	uint64_t NextSerial() const
+	{
+		return std::max( g_VulkanContext.NextSubmitSerial(), m_lastRecorded + 1 );
+	}
+	render_vulkan::GpuComputeService m_service;
+	uint64_t m_lastRecorded = 0;
+};
+
+static CVulkanGpuCompute g_GpuCompute;
+
 static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
@@ -2476,6 +2532,8 @@ static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *servi
 	services->debugTextures = &g_ShaderAPIEmpty;
 	services->worldMeshUpload = &g_WorldMeshUpload;
 	services->lightSetConsumer = &g_LightSetConsumer;
+	g_GpuCompute.Install();
+	services->gpuCompute = &g_GpuCompute;
 	services->describeAdapter = DescribeNativeVulkanAdapter;
 	return true;
 }

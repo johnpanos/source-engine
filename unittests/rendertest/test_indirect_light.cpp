@@ -11,6 +11,7 @@
 
 #include "render/indirect_light.h"
 #include "render/indirect_radiosity.h"
+#include "indirect_contract.h"
 #include "render/indirect_switcher.h"
 #include "testing/conformance_result.h"
 
@@ -27,6 +28,7 @@
 namespace
 {
 using namespace indirect_light;
+using namespace indirect_contract;
 using indirect_policy::Policy;
 
 unsigned long g_checks = 0;
@@ -42,119 +44,6 @@ void Check( bool condition, const std::string &description )
 	}
 }
 
-// A GPU timeline: frames complete kLag frames after submission unless
-// stalled. A resource released before a submitted frame that may read it has
-// completed is a violation.
-class FakeGpu final : public IResourceTracker
-{
-public:
-	static constexpr uint64_t kLag = 2;
-
-	uint64_t Acquire( size_t bytes ) override
-	{
-		const uint64_t id = ++m_nextId;
-		m_live[id] = bytes;
-		return id;
-	}
-	void Release( uint64_t id, uint64_t afterSerial ) override
-	{
-		if ( m_lost.count( id ) )
-			return; // the device took it; a late release is a no-op
-		if ( !m_live.count( id ) )
-		{
-			m_violations.push_back( "release of an unknown or released resource" );
-			return;
-		}
-		// Every frame submitted so far may read a producer's resource.
-		if ( afterSerial < m_submitted )
-			m_violations.push_back( "resource " + std::to_string( id ) + " freed after serial " +
-			                        std::to_string( afterSerial ) + " while frame " +
-			                        std::to_string( m_submitted ) + " may read it" );
-		m_pending[id] = afterSerial;
-	}
-	uint64_t SubmittedSerial() const override { return m_submitted; }
-	uint64_t CompletedSerial() const override { return m_completed; }
-
-	void Submit()
-	{
-		++m_submitted;
-		if ( !m_stalled && m_submitted > kLag )
-			m_completed = m_submitted - kLag;
-		Collect();
-	}
-	void Drain()
-	{
-		m_completed = m_submitted;
-		Collect();
-	}
-	void Stall( bool stalled ) { m_stalled = stalled; }
-	void Lose()
-	{
-		// Device loss: every resource is gone without waiting.
-		for ( const auto &entry : m_live )
-			m_lost.insert( entry.first );
-		m_live.clear();
-		m_pending.clear();
-		m_completed = m_submitted;
-	}
-	size_t LiveCount() const { return m_live.size(); }
-	const std::vector<std::string> &Violations() const { return m_violations; }
-	void ClearViolations() { m_violations.clear(); }
-
-private:
-	void Collect()
-	{
-		for ( auto it = m_pending.begin(); it != m_pending.end(); )
-		{
-			if ( m_completed >= it->second )
-			{
-				m_live.erase( it->first );
-				it = m_pending.erase( it );
-			}
-			else
-				++it;
-		}
-	}
-	uint64_t m_nextId = 0;
-	uint64_t m_submitted = 0;
-	uint64_t m_completed = 0;
-	bool m_stalled = false;
-	std::map<uint64_t, size_t> m_live;
-	std::set<uint64_t> m_lost;
-	std::map<uint64_t, uint64_t> m_pending;
-	std::vector<std::string> m_violations;
-};
-
-std::vector<unsigned char> LoadFile( const char *path )
-{
-	std::vector<unsigned char> bytes;
-	if ( std::FILE *file = std::fopen( path, "rb" ) )
-	{
-		unsigned char block[4096];
-		size_t read;
-		while ( ( read = std::fread( block, 1, sizeof( block ), file ) ) > 0 )
-			bytes.insert( bytes.end(), block, block + read );
-		std::fclose( file );
-	}
-	return bytes;
-}
-
-std::shared_ptr<const Volume> LoadSeed()
-{
-	return Volume::FromBytes( LoadFile( "quality/fixtures/gi/prbv/contract.prbv" ) );
-}
-
-// The seed's transfer: its lit side is a furnace enclosure (converged light
-// 0.75, indirect 0.45; radiosity_transfer.fixture_contract).
-std::shared_ptr<const Transfer> LoadTransfer( const Volume &seed )
-{
-	return Transfer::FromBytes( LoadFile( "quality/fixtures/gi/rtrn/contract.rtrn" ), seed );
-}
-
-// The suite's light change: every source at half its baked intensity.
-constexpr float kLightScale = 0.5f;
-
-// A copy of `seed` with layer `layer`'s irradiance scaled by `scale` on every
 // texel, and (optionally) layer 0 recomposed as seed direct + new indirect.
 std::shared_ptr<Volume> Scaled( const Volume &seed, uint32_t layer, float scale )
 {
@@ -242,10 +131,6 @@ void StripVisibility( Volume &volume )
 			}
 	}
 }
-
-// The scripted fake's world: a door that, opened (value 1), raises the
-// indirect light by 20%. It converges linearly over convergenceFrames.
-constexpr float kDoorGain = 0.2f;
 
 enum Defect
 {
@@ -372,186 +257,6 @@ private:
 	uint64_t m_ticket = 0;
 };
 
-float DirectLight( const Volume &volume )
-{
-	return volume.MeanIrradiance( 0 ) - volume.MeanIrradiance( 1 );
-}
-
-// The dark side of the seed's wall, with visibility.
-float DarkSample( const Volume &volume )
-{
-	const float position[3] = { 56.0f, 16.0f, 16.0f };
-	const float normal[3] = { 1.0f, 0.0f, 0.0f };
-	float irradiance[3] = {};
-	if ( !volume.View().Sample(
-	         position, normal, mapcontainer::ProbeVolumeLayer::Total, true, irradiance ) )
-		return -1.0f;
-	return irradiance[0];
-}
-
-// The shared suite: returns the obligations a producer breaks.
-std::vector<std::string> RunContract(
-    const std::function<std::unique_ptr<IProducer>( const FakeGpu & )> &create,
-    const std::shared_ptr<const Volume> &seed, const std::shared_ptr<const Transfer> &transfer,
-    bool *destroyedEarly )
-{
-	std::vector<std::string> broken;
-	FakeGpu gpu;
-	const auto make = [&]
-	{
-		return create( gpu );
-	};
-	const light_set::Snapshot lights;
-	const ProducerCaps caps = make()->Caps();
-	const float seedMean = seed->MeanIrradiance( 0 );
-	const float seedDirect = DirectLight( *seed );
-	const float seedDark = DarkSample( *seed );
-
-	// Validation: missing scene data fails without side effects.
-	{
-		auto producer = make();
-		IndirectScene scene;
-		const auto begun = producer->Begin( scene, PublishedVolume{}, gpu );
-		if ( begun || begun.Error() != IndirectError::MissingSceneData || gpu.LiveCount() )
-			broken.push_back( "Begin without a probe volume must fail with missing-scene-data and "
-			                  "leave nothing behind" );
-		// An unclaimed policy is rejected.
-		for ( Policy policy : { Policy::Baked, Policy::BakedPlusDelta, Policy::RuntimeIndirect } )
-		{
-			if ( caps.policies & PolicyBit( policy ) )
-				continue;
-			IndirectScene unsupported;
-			unsupported.baked = seed;
-			unsupported.transfer = transfer;
-			unsupported.policy = policy;
-			auto other = make();
-			const auto result = other->Begin( unsupported, PublishedVolume{ 0, seed }, gpu );
-			if ( result || result.Error() != IndirectError::UnsupportedPolicy || gpu.LiveCount() )
-				broken.push_back( "an unclaimed policy must fail with unsupported-policy and leave "
-				                  "nothing behind" );
-		}
-	}
-
-	for ( Policy policy : { Policy::Baked, Policy::BakedPlusDelta, Policy::RuntimeIndirect } )
-	{
-		if ( !( caps.policies & PolicyBit( policy ) ) )
-			continue;
-		const std::string under = std::string( " (policy " ) +
-		                          ( policy == Policy::Baked              ? "Baked"
-		                              : policy == Policy::BakedPlusDelta ? "BakedPlusDelta"
-		                                                                 : "RuntimeIndirect" ) +
-		                          ")";
-		auto producer = make();
-		IndirectScene scene;
-		scene.baked = seed;
-		scene.transfer = transfer;
-		scene.policy = policy;
-		if ( !producer->Begin( scene, PublishedVolume{ 0, seed }, gpu ) )
-		{
-			broken.push_back( "Begin with a valid scene fails" + under );
-			continue;
-		}
-		uint64_t lastEpoch = 0;
-		std::shared_ptr<const Volume> lastVolume;
-		bool first = true;
-		const uint32_t changeFrame = 12;
-		const uint32_t frames = changeFrame + caps.convergenceFrames + 8;
-		double slowest = 0.0;
-		// A producer that claims light intensity sees every light halved at
-		// the change: its direct light halves at once, its indirect light
-		// within convergenceFrames (light is linear in the sources).
-		const bool lightResponse = ( caps.responds & kLightIntensity ) != 0;
-		for ( uint32_t frame = 1; frame <= frames; ++frame )
-		{
-			const SceneChange changes[2] = {
-			    { kGeometryMotion, 1, 1.0f }, { kLightIntensity, kEverySource, kLightScale } };
-			FrameWork work;
-			work.frameSerial = gpu.SubmittedSerial() + 1;
-			work.resources = &gpu;
-			if ( frame == changeFrame )
-				work.changes = std::span<const SceneChange>( changes, 2 );
-			// Schedule runs while the GPU is stalled: it must not wait for it.
-			gpu.Stall( frame == 3 );
-			const auto start = std::chrono::steady_clock::now();
-			producer->Schedule( work, lights );
-			slowest = std::max( slowest, std::chrono::duration<double, std::milli>(
-			                                 std::chrono::steady_clock::now() - start )
-			                                 .count() );
-			for ( auto &job : work.jobs )
-				job();
-			gpu.Submit();
-			const auto published = producer->Published();
-			if ( !published )
-				continue;
-			const Volume &volume = *published->volume;
-			if ( !volume.SameTopology( *seed ) )
-				broken.push_back( "a published volume changes the scene's grid topology" + under );
-			if ( first && volume.MeanIrradiance( 0 ) < ( 1.0f - caps.seedTolerance ) * seedMean )
-				broken.push_back( "the first publication is darker than the seed" + under );
-			first = false;
-			if ( published->volume != lastVolume )
-			{
-				if ( published->epoch <= lastEpoch )
-					broken.push_back( "a new publication reuses or lowers its epoch" + under );
-				lastEpoch = published->epoch;
-				lastVolume = published->volume;
-			}
-			if ( DarkSample( volume ) > seedDark + 0.02f )
-				broken.push_back(
-				    "a published volume leaks light through the seed's wall" + under );
-			const float directScale = lightResponse && frame >= changeFrame ? kLightScale : 1.0f;
-			if ( std::fabs( DirectLight( volume ) - directScale * seedDirect ) >
-			     0.01f * seedDirect )
-				broken.push_back( "total minus indirect departs from the seed's direct light (a "
-				                  "double count)" +
-				                  under );
-			if ( lightResponse && frame == changeFrame + caps.convergenceFrames + 2 )
-			{
-				const float expected = seed->MeanIrradiance( 1 ) * kLightScale;
-				if ( std::fabs( volume.MeanIrradiance( 1 ) - expected ) >
-				     caps.responseTolerance * expected )
-					broken.push_back( "claims LightIntensity but its indirect light is not the "
-					                  "halved lights' steady state within convergenceFrames" +
-					                  under );
-			}
-			if ( ( caps.responds & kGeometryMotion ) &&
-			     frame == changeFrame + caps.convergenceFrames + 2 )
-			{
-				const float expected = seed->MeanIrradiance( 1 ) * ( 1.0f + kDoorGain );
-
-				if ( std::fabs( volume.MeanIrradiance( 1 ) - expected ) >
-				     caps.responseTolerance * expected )
-					broken.push_back( "claims GeometryMotion but its indirect light is not the "
-					                  "opened door's steady state within convergenceFrames" +
-					                  under );
-			}
-		}
-		gpu.Stall( false );
-		if ( !producer->Published() )
-			broken.push_back( "never publishes" + under );
-		if ( slowest > 5.0 )
-			broken.push_back( "Schedule took " + std::to_string( slowest ) +
-			                  " ms while the GPU was stalled: it waits for the GPU" + under );
-		const RetireTicket ticket = producer->End();
-		// Destroyed only once its ticket completes (the switcher's rule).
-		while ( gpu.CompletedSerial() < ticket.afterSerial )
-			gpu.Submit();
-		producer.reset();
-		gpu.Drain();
-		for ( const std::string &violation : gpu.Violations() )
-			broken.push_back( "lifetime: " + violation + under );
-		gpu.ClearViolations();
-		if ( gpu.LiveCount() )
-			broken.push_back( "resources remain after the ticket completed" + under );
-	}
-	if ( destroyedEarly && *destroyedEarly )
-		broken.push_back( "destroyed before its ticket completed" );
-	// Deduplicate for the report.
-	std::sort( broken.begin(), broken.end() );
-	broken.erase( std::unique( broken.begin(), broken.end() ), broken.end() );
-	return broken;
-}
-
 class Catalog final : public IProducerCatalog
 {
 public:
@@ -621,6 +326,20 @@ int main()
 	    "the seed's transfer (quality/fixtures/gi/rtrn/contract.rtrn) loads and pairs with it" );
 	if ( !transfer )
 		return testing::ReportConformance( g_checks, g_failures );
+	// The fake's world: its scripted door, opened, raises the indirect light
+	// by kDoorGain.
+	Scenario world;
+	world.seed = seed;
+	world.transfer = transfer;
+	world.geometryChanges = { { kGeometryMotion, 1, 1.0f } };
+	world.geometryOracle = []( const Volume &volume, const Volume &seed, const ProducerCaps &caps )
+	{
+		const float expected = seed.MeanIrradiance( 1 ) * ( 1.0f + kDoorGain );
+		return std::fabs( volume.MeanIrradiance( 1 ) - expected ) <= caps.responseTolerance * expected
+		           ? std::string()
+		           : std::string( "its indirect light is not the opened door's steady state within "
+		                          "convergenceFrames" );
+	};
 
 	// The shared suite: the good producers pass...
 	{
@@ -629,7 +348,7 @@ int main()
 		    {
 			    return std::make_unique<BakedProducer>();
 		    },
-		    seed, transfer, nullptr );
+		    world, nullptr );
 		for ( const auto &b : broken )
 			std::fprintf( stderr, "  baked: %s\n", b.c_str() );
 		Check( broken.empty(), "the Baked producer passes the shared suite" );
@@ -641,7 +360,7 @@ int main()
 		    {
 			    return std::make_unique<ScriptedFake>( kNoDefect, &early, &gpu );
 		    },
-		    seed, transfer, &early );
+		    world, &early );
 		for ( const auto &b : broken )
 			std::fprintf( stderr, "  fake: %s\n", b.c_str() );
 		Check( broken.empty(), "the scripted fake passes the shared suite" );
@@ -652,7 +371,7 @@ int main()
 		    {
 			    return std::make_unique<ScriptedFakeProducer>( 1.0f, 2 );
 		    },
-		    seed, transfer, nullptr );
+		    world, nullptr );
 		for ( const auto &b : broken )
 			std::fprintf( stderr, "  product fake: %s\n", b.c_str() );
 		Check( broken.empty(), "the product's scripted fake passes the shared suite" );
@@ -663,7 +382,7 @@ int main()
 		    {
 			    return std::make_unique<RadiosityProducer>();
 		    },
-		    seed, transfer, nullptr );
+		    world, nullptr );
 		for ( const auto &b : broken )
 			std::fprintf( stderr, "  radiosity: %s\n", b.c_str() );
 		Check( broken.empty(), "the precomputed radiosity producer passes the shared suite" );
@@ -678,7 +397,7 @@ int main()
 		    {
 			    return std::make_unique<RadiosityProducer>( oneBounce );
 		    },
-		    seed, transfer, nullptr );
+		    world, nullptr );
 		bool caught = false;
 		for ( const auto &b : broken )
 			caught |= b.find( "claims LightIntensity" ) != std::string::npos;
@@ -712,7 +431,7 @@ int main()
 		    {
 			    return std::make_unique<ScriptedFake>( entry.defect, &early, &gpu );
 		    },
-		    seed, transfer, &early );
+		    world, &early );
 		bool caught = false;
 		for ( const auto &b : broken )
 			caught |= b.find( entry.expected ) != std::string::npos;

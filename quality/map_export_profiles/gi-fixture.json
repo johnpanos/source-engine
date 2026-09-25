@@ -1,7 +1,7 @@
 {
   "schema": "map-export-profile/v1",
   "name": "gi-fixture",
-  "description": "RFC 0011 GI fixtures: a converged, denoised flat lightmap baked with the gi-reference Cycles light paths (64 diffuse bounces, no clamping), with separated direct and indirect LMAP v2 layers, and a PRBV probe volume at 1 m spacing (tools/quality/probe_volume_bake.py). No reflection probe, no directional page and no pipeline reference render: the fixtures' Cycles references come from tools/quality/gi_reference.py and their oracles from tools/quality/gi_runtime.py.",
+  "description": "RFC 0011 GI fixtures: a converged, denoised flat lightmap baked with the gi-reference Cycles light paths (64 diffuse bounces, no clamping), with separated direct and indirect LMAP v2 layers, and a PRBV probe volume at 1 m spacing (tools/quality/probe_volume_bake.py), a radiosity transfer, and an SDFV signed distance volume at 0.1 m voxels for the SDF-traced producer. No reflection probe, no directional page and no pipeline reference render: the fixtures' Cycles references come from tools/quality/gi_reference.py and their oracles from tools/quality/gi_runtime.py.",
   "lightmap": {
     "size": 1024,
     "samples": 2048,
@@ -20,6 +20,9 @@
     "transfer_rays": 256,
     "gather_rays": 4096,
     "samples": 1024
+  },
+  "sdf_volume": {
+    "voxel_m": 0.1
   },
   "reflection_probe": null,
   "reference": null,

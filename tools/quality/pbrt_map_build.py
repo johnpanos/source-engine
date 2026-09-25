@@ -31,6 +31,10 @@ pinned tools under build/toolchains/ and writes the default toolchain file;
                  patches, form factors, per-light injection and the probe gather
                  (radiosity_transfer_bake.py); its switchable lights become named
                  `light` entities in `collision` and the transfer is packed beside PRBV
+    sdf          optional RFC 0011 G6 SDFV (profile/manifest sdf_volume, needs radiosity):
+                 the static world's signed distance, reflectance and emission per voxel
+                 and its analytic lights, styled as the transfer's sources
+                 (sdf_volume_bake.py); packed beside RTRN
     ktx2         atlas -> linear RGBA16F KTX2 (LMAP payload)
     sky          render stage = lighting stage + SkyDome for window views (scenes with a sky)
     collision    shell/solids/spawn VMF
@@ -75,7 +79,7 @@ import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
 
 STEPS = ("scene", "environment", "stage", "reference-gate", "bake", "denoise", "directional",
-         "probe", "probe-volume", "radiosity", "ktx2", "sky",
+         "probe", "probe-volume", "radiosity", "sdf", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
          "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
@@ -199,6 +203,9 @@ class Pipeline:
         self.radiosity = with_defaults(manifest, self.profile, "radiosity")
         if self.radiosity and not self.probe_volume:
             raise ValueError("radiosity needs the probe_volume it gathers into")
+        self.sdf_volume = with_defaults(manifest, self.profile, "sdf_volume")
+        if self.sdf_volume and not self.radiosity:
+            raise ValueError("sdf_volume needs the radiosity transfer its light styles follow")
         reference = dict(self.profile.get("reference") or {}, **manifest.get("reference", {}))
         self.reference_render = reference.get("render")
         self.runtime_gate = with_defaults(manifest, self.profile, "runtime_gate")
@@ -228,6 +235,8 @@ class Pipeline:
             "prbv_work": self.out / "lighting" / "probe_volume",
             "rtrn": self.out / "lighting" / "radiosity.rtrn",
             "rtrn_work": self.out / "lighting" / "radiosity",
+            "sdfv": self.out / "lighting" / "field.sdfv",
+            "sdfv_work": self.out / "lighting" / "sdf",
             "bsp_ambient": self.out / (self.map + "_leaf_ambient.bsp"),
             "sky_texture": self.out / "sky.png",
             "render_stage": self.out / "lighting" / (self.map + "_render.usda"),
@@ -505,6 +514,18 @@ class Pipeline:
                       [p["rtrn"], p["rtrn_work"]],
                       lambda: self.blender("radiosity", "radiosity_transfer_bake.py",
                                            radiosity_args))
+        field = self.sdf_volume
+        if field:
+            field_args = ["--scene", scene, "--stage", p["stage"],
+                          "--voxel", str(field["voxel_m"]),
+                          "--transfer-receipt", p["rtrn_work"] / "rtrn-bake.json",
+                          "--out", p["sdfv"], "--work", p["sdfv_work"]] + env_args
+            self.step("sdf", [p["stage"], p["rtrn"]] + ([environment] if environment else []),
+                      dict(field),
+                      SCENE_SCRIPTS + ["sdf_volume_bake.py", "sdf_volume.py",
+                                       "radiosity_transfer_bake.py", "pbrt_blender.py"],
+                      [p["sdfv"], p["sdfv_work"]],
+                      lambda: self.blender("sdf", "sdf_volume_bake.py", field_args))
         # A scene sun: baked visibility + marker texels for dynamic specular.
         sun_args = []
         if self.scene.get("distant_lights") and probe:
@@ -609,12 +630,15 @@ class Pipeline:
                       [item for name in sorted(map_scene.prop_shape_names(self.scene))
                        for item in ("--exclude-mesh", name)] +
                       (["--probe-volume", p["prbv"]] if volume else []) +
-                      (["--radiosity-transfer", p["rtrn"]] if radiosity else []))
+                      (["--radiosity-transfer", p["rtrn"]] if radiosity else []) +
+                      (["--sdf-volume", p["sdfv"]] if self.sdf_volume else []))
         self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["ktx2"]] +
-                  ([p["prbv"]] if volume else []) + ([p["rtrn"]] if radiosity else []),
+                  ([p["prbv"]] if volume else []) + ([p["rtrn"]] if radiosity else []) +
+                  ([p["sdfv"]] if self.sdf_volume else []),
                   dict({"prefix": self.map, **self.world_mesh},
                        **({"probe_volume": True} if volume else {}),
-                       **({"radiosity_transfer": True} if radiosity else {})),
+                       **({"radiosity_transfer": True} if radiosity else {}),
+                       **({"sdf_volume": True} if self.sdf_volume else {})),
                   ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py"] +
                   (["leaf_ambient_from_prbv.py", "probe_volume.py"] if volume else []) +
                   (["bsp_worldlights.py"] if controls else []),

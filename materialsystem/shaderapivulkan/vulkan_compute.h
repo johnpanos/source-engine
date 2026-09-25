@@ -18,10 +18,13 @@
 #ifndef VULKAN_COMPUTE_H
 #define VULKAN_COMPUTE_H
 
+#include "render/gpu_compute.h"
+
 #include <vulkan/vulkan.h>
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -84,6 +87,7 @@ public:
 	    std::string *error );
 	void Shutdown();
 	bool Ready() const { return m_device != VK_NULL_HANDLE && m_enabled.compute; }
+	const ComputeCaps &Enabled() const { return m_enabled; }
 
 	// Resources, by handle (0 is never valid).
 	uint32_t CreateBuffer( size_t bytes, std::string *error );
@@ -156,6 +160,49 @@ private:
 	std::vector<Retired> m_retired;
 	uint32_t m_next = 0;
 	bool m_earlyFree = false;
+};
+
+// render/gpu_compute.h over ComputeResources: the renderer's compute service
+// for engine-side producers. The owner records the queued dispatches into its
+// next submission (Record) and reports serials: `nextSerial` is the serial of
+// that submission, `completedSerial` the newest complete one.
+class GpuComputeService final : public gpu_compute::IGpuCompute
+{
+public:
+	GpuComputeService( ComputeResources &resources, std::function<uint64_t()> nextSerial,
+	    std::function<uint64_t()> completedSerial )
+	    : m_resources( resources ), m_nextSerial( std::move( nextSerial ) ),
+	      m_completedSerial( std::move( completedSerial ) )
+	{
+	}
+	gpu_compute::Caps Capabilities() const override;
+	uint32_t CreateBuffer( size_t bytes ) override;
+	void *Map( uint32_t buffer ) override;
+	uint32_t CreateProgram( const char *name, uint32_t buffers, uint32_t pushBytes ) override;
+	uint64_t QueueDispatch( uint32_t program, const uint32_t *buffers, uint32_t count,
+	    const void *push, uint32_t pushBytes, uint32_t groupsX, uint32_t groupsY,
+	    uint32_t groupsZ ) override;
+	uint64_t CompletedSerial() const override { return m_completedSerial(); }
+	void Retire( uint32_t resource, uint64_t afterSerial ) override
+	{
+		m_resources.Retire( resource, afterSerial );
+	}
+	// Records every queued dispatch, in order, into the owner's submission.
+	void Record( VkCommandBuffer cmd, uint64_t serial );
+	bool Pending() const { return !m_queue.empty(); }
+
+private:
+	struct Queued
+	{
+		uint32_t program;
+		std::vector<uint32_t> buffers;
+		std::vector<unsigned char> push;
+		uint32_t groups[3];
+	};
+	ComputeResources &m_resources;
+	std::function<uint64_t()> m_nextSerial;
+	std::function<uint64_t()> m_completedSerial;
+	std::vector<Queued> m_queue;
 };
 
 } // namespace render_vulkan

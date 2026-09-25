@@ -2938,6 +2938,20 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		return false;
 	if ( !InitSkinPipeline( outError ) )
 		return false;
+	// Optional: without them LightmappedGeneric keeps the textured pipeline's
+	// flat lightmap, and the bloom and color-correction passes are declined.
+	std::string lightmappedError;
+	if ( !InitLightmappedPipeline( &lightmappedError ) )
+	{
+		Log( "LightmappedGeneric pipeline unavailable: %s\n", lightmappedError.c_str() );
+		DestroyLightmappedPipeline();
+	}
+	std::string postError;
+	if ( !InitPostPipeline( &postError ) )
+	{
+		Log( "post-processing pipeline unavailable: %s\n", postError.c_str() );
+		DestroyPostPipeline();
+	}
 	std::string pbrError;
 	if ( !InitPbrDirectPipeline( &pbrError ) )
 	{
@@ -3149,6 +3163,51 @@ VkPipeline CVulkanContext::SolidEnergyPipeline(
 	m_solidEnergyPipelines[key] = pipeline;
 	if ( pipeline != VK_NULL_HANDLE )
 		NotePipelineVariant( kPipelineSolidEnergy, key );
+	return pipeline;
+}
+
+VkPipeline CVulkanContext::LightmappedPipeline(
+    const DynRasterState &state, bool srgbPass, int samples )
+{
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
+	const auto existing = m_lightmappedPipelines.find( key );
+	if ( existing != m_lightmappedPipelines.end() )
+		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
+	if ( m_lightmappedVert == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_lightmappedVert, m_lightmappedFrag,
+	    m_lightmappedPipelineLayout, &m_lightmappedVin, pass, samples );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (LightmappedGeneric, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_lightmappedPipelines[key] = pipeline;
+	if ( pipeline != VK_NULL_HANDLE )
+		NotePipelineVariant( kPipelineLightmapped, key );
+	return pipeline;
+}
+
+VkPipeline CVulkanContext::PostPipeline( const DynRasterState &state, bool srgbPass, int samples )
+{
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
+	const auto existing = m_postPipelines.find( key );
+	if ( existing != m_postPipelines.end() )
+		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
+	if ( m_postVert == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline(
+	    state, m_postVert, m_postFrag, m_skinPipelineLayout, &m_skinVin, pass, samples );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (post-processing, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_postPipelines[key] = pipeline;
+	if ( pipeline != VK_NULL_HANDLE )
+		NotePipelineVariant( kPipelinePost, key );
 	return pipeline;
 }
 
@@ -3642,6 +3701,150 @@ void CVulkanContext::DestroySkinPipeline()
 	m_skinUboLayout = VK_NULL_HANDLE;
 }
 
+bool CVulkanContext::InitLightmappedPipeline( std::string *outError )
+{
+	VkPhysicalDeviceProperties properties = {};
+	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
+	if ( m_skinPipelineLayout == VK_NULL_HANDLE || properties.limits.maxBoundDescriptorSets < 9 ||
+	     properties.limits.maxVertexInputAttributes < 13 )
+	{
+		SetError( outError, "needs the skin constants, nine descriptor sets and 13 attributes" );
+		return false;
+	}
+	VkPushConstantRange pc = {};
+	pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	pc.size = kSkinPushBytes;
+	// lightmapped.frag: s0 base, s1 lightmap, s2 envmap, s4 bump map, s5 second
+	// bump map or envmap mask, s7 second base texture, the constants, s8 bump
+	// mask, s12 detail.
+	const VkDescriptorSetLayout sets[9] = { m_dynTexDescLayout, m_dynTexDescLayout,
+	    m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout,
+	    m_skinUboLayout, m_dynTexDescLayout, m_dynTexDescLayout };
+	VkPipelineLayoutCreateInfo pl = {};
+	pl.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pl.setLayoutCount = 9;
+	pl.pSetLayouts = sets;
+	pl.pushConstantRangeCount = 1;
+	pl.pPushConstantRanges = &pc;
+	if ( vkCreatePipelineLayout( m_device, &pl, nullptr, &m_lightmappedPipelineLayout ) !=
+	     VK_SUCCESS )
+	{
+		SetError( outError, "vkCreatePipelineLayout (LightmappedGeneric) failed" );
+		return false;
+	}
+	VkShaderModule vert = VK_NULL_HANDLE;
+	if ( !CreateShaderModule( g_lightmappedVertSpv, sizeof( g_lightmappedVertSpv ), &vert,
+	         outError ) ||
+	     !CreateShaderModule( g_lightmappedFragSpv, sizeof( g_lightmappedFragSpv ),
+	         &m_lightmappedFrag, outError ) )
+	{
+		if ( vert != VK_NULL_HANDLE )
+			vkDestroyShaderModule( m_device, vert, nullptr );
+		return false;
+	}
+	// The textured record's position, color, uv, lightmap uv, normal, tangent S
+	// (three of the tangent's four floats), alpha and the fog stream, then the
+	// tangent T and the bumped lightmap offset.
+	std::memcpy( m_lightmappedAttrs, m_texTemplate.attrs, sizeof( m_lightmappedAttrs[0] ) * 11 );
+	m_lightmappedAttrs[5].format = VK_FORMAT_R32G32B32_SFLOAT;
+	m_lightmappedAttrs[11].location = 11;
+	m_lightmappedAttrs[11].binding = 0;
+	m_lightmappedAttrs[11].format = VK_FORMAT_R32G32B32_SFLOAT;
+	m_lightmappedAttrs[11].offset = sizeof( float ) * 18;
+	m_lightmappedAttrs[12].location = 12;
+	m_lightmappedAttrs[12].binding = 0;
+	m_lightmappedAttrs[12].format = VK_FORMAT_R32_SFLOAT;
+	m_lightmappedAttrs[12].offset = sizeof( float ) * 21;
+	m_lightmappedVin = m_texTemplate.vin;
+	m_lightmappedVin.vertexAttributeDescriptionCount = 13;
+	m_lightmappedVin.pVertexAttributeDescriptions = m_lightmappedAttrs;
+	m_lightmappedVert = vert;
+	if ( LightmappedPipeline( DynRasterState() ) == VK_NULL_HANDLE )
+	{
+		m_lightmappedVert = VK_NULL_HANDLE;
+		vkDestroyShaderModule( m_device, vert, nullptr );
+		SetError( outError, "vkCreateGraphicsPipelines (LightmappedGeneric) failed" );
+		return false;
+	}
+	return true;
+}
+
+void CVulkanContext::DestroyLightmappedPipeline()
+{
+	for ( const auto &entry : m_lightmappedPipelines )
+	{
+		if ( entry.second != VK_NULL_HANDLE )
+			vkDestroyPipeline( m_device, entry.second, nullptr );
+	}
+	m_lightmappedPipelines.clear();
+	for ( VkShaderModule *module : { &m_lightmappedVert, &m_lightmappedFrag } )
+	{
+		if ( *module != VK_NULL_HANDLE )
+			vkDestroyShaderModule( m_device, *module, nullptr );
+		*module = VK_NULL_HANDLE;
+	}
+	if ( m_lightmappedPipelineLayout != VK_NULL_HANDLE )
+		vkDestroyPipelineLayout( m_device, m_lightmappedPipelineLayout, nullptr );
+	m_lightmappedPipelineLayout = VK_NULL_HANDLE;
+}
+
+bool CVulkanContext::InitPostPipeline( std::string *outError )
+{
+	if ( m_skinPipelineLayout == VK_NULL_HANDLE )
+	{
+		SetError( outError, "needs the skin layout" );
+		return false;
+	}
+	VkPhysicalDeviceProperties properties = {};
+	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
+	m_maxImageDimension3D = properties.limits.maxImageDimension3D;
+	// The unused color-correction samplers read a white volume.
+	m_whiteVolumeHandle = CreateManagedTexture(
+	    1, 1, VK_FORMAT_R8G8B8A8_UNORM, outError, 0, 1, VK_FORMAT_UNDEFINED, false, 2 );
+	if ( m_whiteVolumeHandle < 0 )
+		return false;
+	const uint8_t white[8] = { 255, 255, 255, 255, 255, 255, 255, 255 };
+	if ( !UploadManagedTexture( m_whiteVolumeHandle, white, sizeof( white ), outError ) )
+		return false;
+	VkShaderModule vert = VK_NULL_HANDLE;
+	if ( !CreateShaderModule( g_postVertSpv, sizeof( g_postVertSpv ), &vert, outError ) ||
+	     !CreateShaderModule( g_postFragSpv, sizeof( g_postFragSpv ), &m_postFrag, outError ) )
+	{
+		if ( vert != VK_NULL_HANDLE )
+			vkDestroyShaderModule( m_device, vert, nullptr );
+		return false;
+	}
+	m_postVert = vert;
+	if ( PostPipeline( DynRasterState() ) == VK_NULL_HANDLE )
+	{
+		m_postVert = VK_NULL_HANDLE;
+		vkDestroyShaderModule( m_device, vert, nullptr );
+		SetError( outError, "vkCreateGraphicsPipelines (post-processing) failed" );
+		return false;
+	}
+	return true;
+}
+
+void CVulkanContext::DestroyPostPipeline()
+{
+	for ( const auto &entry : m_postPipelines )
+	{
+		if ( entry.second != VK_NULL_HANDLE )
+			vkDestroyPipeline( m_device, entry.second, nullptr );
+	}
+	m_postPipelines.clear();
+	for ( VkShaderModule *module : { &m_postVert, &m_postFrag } )
+	{
+		if ( *module != VK_NULL_HANDLE )
+			vkDestroyShaderModule( m_device, *module, nullptr );
+		*module = VK_NULL_HANDLE;
+	}
+	if ( m_whiteVolumeHandle >= 0 )
+		DestroyManagedTexture( m_whiteVolumeHandle );
+	m_whiteVolumeHandle = -1;
+	m_maxImageDimension3D = 0;
+}
+
 void CVulkanContext::SetDynamicTransform( const float *m16 )
 {
 	if ( m16 )
@@ -3672,7 +3875,10 @@ VkSampler CVulkanContext::CreateManagedSampler( int state, int anisotropy ) cons
 	                                               : VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	info.addressModeV = ( state & kSamplerClampV ) ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
 	                                               : VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	// Only volumes read W. D3D9's third coordinate (TEXTUREFLAGS_CLAMPU) is
+	// clamped with the first here: the volumes this backend creates (the color
+	// correction lookups) clamp all three.
+	info.addressModeW = info.addressModeU;
 	if ( ( state & kSamplerAnisotropic ) && anisotropy > 1 )
 	{
 		info.magFilter = VK_FILTER_LINEAR;
@@ -3754,14 +3960,26 @@ void CVulkanContext::SetAnisotropicLevel( int level )
 
 int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format,
     std::string *outError, VkImageUsageFlags extraUsage, uint32_t mipLevels, VkFormat srgbAlias,
-    bool cube )
+    bool cube, uint32_t depth )
 {
 	CFrameCostScope cost( m_frameCost, kCostTextureCreate );
-	if ( !IsValid() || width <= 0 || height <= 0 || ( cube && width != height ) )
+	const bool volume = depth > 1;
+	if ( !IsValid() || width <= 0 || height <= 0 || ( cube && width != height ) ||
+	     depth == 0 || ( volume && cube ) )
 	{
 		SetError( outError, "CreateManagedTexture with invalid size or context" );
 		return -1;
 	}
+	if ( volume && ( static_cast<uint32_t>( width ) > m_maxImageDimension3D ||
+	                   static_cast<uint32_t>( height ) > m_maxImageDimension3D ||
+	                   depth > m_maxImageDimension3D ) )
+	{
+		SetError( outError, "requested volume texture exceeds the selected device's 3D limit" );
+		return -1;
+	}
+	// A volume is filled whole, one level; its uploads carry every slice.
+	if ( volume )
+		mipLevels = 1;
 	const uint32_t maxDimension = MaxSampledTextureDimension();
 	if ( static_cast<uint32_t>( width ) > maxDimension ||
 	     static_cast<uint32_t>( height ) > maxDimension )
@@ -3786,6 +4004,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	t.width = static_cast<uint32_t>( width );
 	t.height = static_cast<uint32_t>( height );
 	t.layers = cube ? 6 : 1;
+	t.depth = depth;
 	t.format = format;
 	uint32_t fullChain = 1;
 	for ( uint32_t size = std::max( t.width, t.height ); size > 1; size >>= 1 )
@@ -3795,11 +4014,11 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | extraUsage;
 	VkImageFormatProperties imageLimits = {};
 	const VkResult imageSupport = vkGetPhysicalDeviceImageFormatProperties( m_physicalDevice,
-	    format, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, usage,
+	    format, volume ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, usage,
 	    cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0, &imageLimits );
 	if ( imageSupport != VK_SUCCESS || t.width > imageLimits.maxExtent.width ||
-	     t.height > imageLimits.maxExtent.height || t.mipLevels > imageLimits.maxMipLevels ||
-	     t.layers > imageLimits.maxArrayLayers ||
+	     t.height > imageLimits.maxExtent.height || t.depth > imageLimits.maxExtent.depth ||
+	     t.mipLevels > imageLimits.maxMipLevels || t.layers > imageLimits.maxArrayLayers ||
 	     !( imageLimits.sampleCounts & VK_SAMPLE_COUNT_1_BIT ) )
 	{
 		SetError( outError,
@@ -3809,9 +4028,9 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 
 	VkImageCreateInfo ii = {};
 	ii.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	ii.imageType = VK_IMAGE_TYPE_2D;
+	ii.imageType = volume ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
 	ii.format = format;
-	ii.extent = { t.width, t.height, 1 };
+	ii.extent = { t.width, t.height, t.depth };
 	ii.mipLevels = t.mipLevels;
 	ii.arrayLayers = t.layers;
 	ii.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -3891,7 +4110,9 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	VkImageViewCreateInfo iv = {};
 	iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	iv.image = t.image;
-	iv.viewType = cube ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
+	iv.viewType = cube ? VK_IMAGE_VIEW_TYPE_CUBE
+	              : volume ? VK_IMAGE_VIEW_TYPE_3D
+	                       : VK_IMAGE_VIEW_TYPE_2D;
 	iv.format = format;
 	iv.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, t.mipLevels, 0, t.layers };
 	if ( vkCreateImageView( m_device, &iv, nullptr, &t.view ) != VK_SUCCESS )
@@ -4351,6 +4572,15 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 		return false;
 	}
 	const bool whole = x == 0 && y == 0 && width == levelWidth && height == levelHeight;
+	// A volume (8-bit color) is uploaded whole: every slice, tightly packed, one
+	// after another.
+	if ( t.depth > 1 && ( !whole || dataSize != static_cast<size_t>( width ) * height * t.depth * 4 ||
+	                        ( t.format != VK_FORMAT_R8G8B8A8_UNORM &&
+	                            t.format != VK_FORMAT_B8G8R8A8_UNORM ) ) )
+	{
+		SetError( outError, "UploadManagedTexture: a volume texture is uploaded whole" );
+		return false;
+	}
 	// A block-compressed region must start on a 4x4 block and end on one or at
 	// the level's edge (vkCmdCopyBufferToImage's rule for compressed images).
 	const size_t blockBytes = TextureBlockBytes( t.format );
@@ -4384,6 +4614,7 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 	upload.height = height;
 	upload.level = level;
 	upload.face = face;
+	upload.depth = t.depth;
 	upload.preserve = t.mipLevels > 1 || t.layers > 1 || ( !whole && t.uploaded );
 	// A part of a never-filled single-level image: the rest reads as zero rather
 	// than undefined memory.
@@ -4472,7 +4703,7 @@ void CVulkanContext::RecordTextureUpload( VkCommandBuffer cmd, VkImage image,
 	copy.bufferOffset = offset;
 	copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, upload.face, 1 };
 	copy.imageOffset = { static_cast<int32_t>( upload.x ), static_cast<int32_t>( upload.y ), 0 };
-	copy.imageExtent = { upload.width, upload.height, 1 };
+	copy.imageExtent = { upload.width, upload.height, std::max( 1u, upload.depth ) };
 	vkCmdCopyBufferToImage( cmd, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );
 	VkImageMemoryBarrier toRead = toDst;
 	toRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -4755,8 +4986,10 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	std::memcpy( d.samplerHandles, m_dynSamplerHandles, sizeof( d.samplerHandles ) );
 	d.portal = m_dynPortal;
 	d.fog = m_dynFog;
+	d.texturedMode = m_dynTexturedMode;
 	if ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy ||
-	     d.shaderIndex == kDynShaderPbrModel )
+	     d.shaderIndex == kDynShaderPbrModel || d.shaderIndex == kDynShaderLightmapped ||
+	     d.shaderIndex == kDynShaderPost )
 	{
 		d.skin = static_cast<int>( m_dynSkinConstants.size() );
 		m_dynSkinConstants.push_back( m_dynSkin );
@@ -4802,9 +5035,7 @@ void CVulkanContext::EndDynamicDraw( uint32_t vertexCount, uint32_t indexCount )
 		// Withdraw the draw and everything it reserved.
 		m_dynQueued.resize( static_cast<size_t>( d.firstVertex ) * kDynVertexFloats );
 		m_dynIndices.resize( d.firstIndex );
-		if ( d.skin >= 0 &&
-		     ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy ||
-		         d.shaderIndex == kDynShaderPbrModel ) )
+		if ( d.skin >= 0 )
 			m_dynSkinConstants.pop_back();
 		m_dynDrawRecords.pop_back();
 		return;
@@ -4873,6 +5104,7 @@ void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, ui
 		else
 			std::fill( out + 10, out + 17, 0.0f );
 		out[17] = vertexAlpha ? vertexAlpha[v] : 1.0f;
+		std::fill( out + 18, out + kDynVertexFloats, 0.0f );
 	}
 	EndDynamicDraw( vertexCount );
 }
@@ -5025,7 +5257,9 @@ static bool SrgbCapableShader( int shaderIndex )
 	       shaderIndex == CVulkanContext::kDynShaderPortalRefract ||
 	       shaderIndex == CVulkanContext::kDynShaderSkin ||
 	       shaderIndex == CVulkanContext::kDynShaderSolidEnergy ||
-	       shaderIndex == CVulkanContext::kDynShaderPbrModel;
+	       shaderIndex == CVulkanContext::kDynShaderPbrModel ||
+	       shaderIndex == CVulkanContext::kDynShaderLightmapped ||
+	       shaderIndex == CVulkanContext::kDynShaderPost;
 }
 
 bool CVulkanContext::RecordWantsSrgb( const DynDraw &r ) const
@@ -5183,6 +5417,8 @@ void CVulkanContext::DestroyDynamicMesh()
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_portalPipelines.clear();
 	DestroyPbrModelPipeline();
+	DestroyLightmappedPipeline();
+	DestroyPostPipeline();
 	DestroySkinPipeline();
 	DestroyPbrDirectPipeline();
 	for ( VkShaderModule *module : { &m_portalVert, &m_portalFrag } )
@@ -6166,6 +6402,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool pbrModel = false;
 			bool pbrModelEnv = false;
 			bool pbrModelProbe = false;
+			bool lightmapped = false; // on skin's push block and constants
+			bool post = false;        // on the skin layout
 			bool pbrWorldLights = false;
 			bool pbrWorldRuntime = false;
 			bool pbrWorldDelta = false;
@@ -6286,6 +6524,29 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				skin = true;
 				pbrModel = true;
 			}
+			else if ( d.shaderIndex == kDynShaderLightmapped )
+			{
+				selected = d.worldMesh ? VK_NULL_HANDLE
+				                       : LightmappedPipeline( d.raster, openSrgb, passSamples );
+				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
+				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
+					continue;
+				selectedLayout = m_lightmappedPipelineLayout;
+				// The skin push block and constants; its own layout and samplers.
+				skin = true;
+				lightmapped = true;
+			}
+			else if ( d.shaderIndex == kDynShaderPost )
+			{
+				selected = d.worldMesh ? VK_NULL_HANDLE
+				                       : PostPipeline( d.raster, openSrgb, passSamples );
+				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
+				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
+					continue;
+				selectedLayout = m_skinPipelineLayout;
+				skin = true;
+				post = true;
+			}
 			if ( selected == VK_NULL_HANDLE )
 				continue;
 			if ( selected != boundPipeline )
@@ -6382,6 +6643,46 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					    pbrModelProbe ? m_skinProbePipelineLayout : m_skinPipelineLayout, 0,
 					    pbrModelProbe ? 9 : 7, sets, 1, &offset );
+				}
+				else if ( lightmapped )
+				{
+					// shaders/lightmapped.frag: s0 base, s1 lightmap, s2 envmap
+					// (a cube, the white cube without one), s4 bump map, s5 second
+					// bump map or envmap mask, s7 second base, the constants, s8
+					// bump mask, s12 detail.
+					const int envmap =
+					    ManagedTextureIsCube( d.samplerHandles[2] ) ? d.samplerHandles[2]
+					                                                : m_whiteCubeHandle;
+					const VkDescriptorSet sets[9] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.lightmapHandle, kColorSrgbReadLightmap ),
+					    sampledSet( envmap, kColorSrgbReadSampler2 ),
+					    sampledSet( d.samplerHandles[4], 0 ), sampledSet( d.samplerHandles[5], 0 ),
+					    sampledSet( d.samplerHandles[7], kColorSrgbReadSampler7 ),
+					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set,
+					    sampledSet( d.samplerHandles[8], 0 ),
+					    sampledSet( d.samplerHandles[12], kColorSrgbReadSampler12 ) };
+					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
+					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					    m_lightmappedPipelineLayout, 0, 9, sets, 1, &offset );
+				}
+				else if ( post )
+				{
+					// shaders/screenspace_post.frag: s0 source, s1 frame buffer,
+					// s2..s5 color-correction volumes (the white volume without
+					// one), then the constants.
+					const auto volume = [&]( int handle )
+					{
+						return sampledSet(
+						    ManagedTextureIsVolume( handle ) ? handle : m_whiteVolumeHandle, 0 );
+					};
+					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.samplerHandles[1], kColorSrgbReadLightmap ),
+					    volume( d.samplerHandles[2] ), volume( d.samplerHandles[3] ),
+					    volume( d.samplerHandles[4] ), volume( d.samplerHandles[5] ),
+					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
+					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
+					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					    m_skinPipelineLayout, 0, 7, sets, 1, &offset );
 				}
 				else if ( skin )
 				{
@@ -6620,8 +6921,11 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				pushData[28] = ( d.colorFlags & kFragmentMonitor )
 				                   ? d.monitorContrast
 				                   : d.alphaRef; // alphaParams.x
-				// alphaParams.y: multiply by the lightmap; .z: kColorSrgb* flags.
-				pushData[29] = d.lightmapHandle >= 0 ? 1.0f : 0.0f;
+				// alphaParams.y: multiply by the lightmap, or another pixel stage
+				// (kTexturedMode*); .z: kColorSrgb* flags.
+				pushData[29] = d.texturedMode != kTexturedModeDefault
+				                   ? static_cast<float>( d.texturedMode )
+				                   : ( d.lightmapHandle >= 0 ? 1.0f : 0.0f );
 				pushData[30] = static_cast<float>( d.colorFlags & ~decodedFlags );
 				pushData[31] = d.outputScale; // alphaParams.w
 				pushFloats = 32;
@@ -7550,6 +7854,8 @@ bool CVulkanContext::EndFrame( std::string *outError )
 		RecordPresentBlit( cmd, imageIndex, backBufferLayout, capturePresented );
 	m_captureRequested = m_capturePresented = false;
 
+	if ( m_computeFlush )
+		m_computeFlush( cmd, m_submitSerial + 1 );
 	if ( m_timestampPool != VK_NULL_HANDLE )
 		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool,
 		    m_currentFrame * 2 + 1 );
@@ -7763,6 +8069,10 @@ int CVulkanContext::PrewarmPipelines()
 			pipeline = PbrModelPipeline( state, family == kPipelinePbrModelEnv, srgb, samples );
 		else if ( family == kPipelinePbrDirect )
 			pipeline = PbrDirectPipeline( state, srgb, samples );
+		else if ( family == kPipelineLightmapped )
+			pipeline = LightmappedPipeline( state, srgb, samples );
+		else if ( family == kPipelinePost )
+			pipeline = PostPipeline( state, srgb, samples );
 		if ( pipeline != VK_NULL_HANDLE )
 			++built;
 	}

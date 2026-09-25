@@ -26,6 +26,7 @@
 #include "ctexturecompositor.h"
 #include "materialsystem/idebugtextureinfo.h"
 #include "legacy_render_backend_provider.h"
+#include "render/gpu_compute.h"
 #include "render/light_set.h"
 #include "render/world_mesh_upload.h"
 
@@ -851,6 +852,8 @@ void *CMaterialSystem::QueryInterface( const char *pInterfaceName )
 		return m_ShaderServices.worldMeshUpload;
 	if ( pInterfaceName && !Q_strcmp( pInterfaceName, light_set::kLightSetConsumerInterface ) )
 		return m_ShaderServices.lightSetConsumer;
+	if ( pInterfaceName && !Q_strcmp( pInterfaceName, gpu_compute::kGpuComputeInterface ) )
+		return m_ShaderServices.gpuCompute;
 
 	if ( pInterfaceName &&
 	     !Q_strcmp( pInterfaceName, MATERIALSYSTEM_WINDOW_RESIZE_INTERFACE_VERSION ) )

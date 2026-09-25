@@ -1,0 +1,100 @@
+{
+ "schema": "sdfv-fixtures/v1",
+ "contract": {
+  "bytes": 56912,
+  "origin": [
+   -32.0,
+   -32.0,
+   -32.0
+  ],
+  "voxel": 8.0,
+  "dims": [
+   21,
+   13,
+   13
+  ],
+  "lights": [
+   {
+    "kind": "dome",
+    "style": -1,
+    "rgb": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "a": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "b": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "c": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  ],
+  "max_distance": 64.0,
+  "inside_fraction": 0.6258100873485489,
+  "emissive_voxels": 1690
+ },
+ "malformations": [
+  {
+   "name": "truncated",
+   "error": "truncated"
+  },
+  {
+   "name": "short",
+   "error": "size-mismatch"
+  },
+  {
+   "name": "bad-magic",
+   "error": "bad-magic"
+  },
+  {
+   "name": "version",
+   "error": "unsupported-version"
+  },
+  {
+   "name": "flags",
+   "error": "unsupported-version"
+  },
+  {
+   "name": "voxel-size",
+   "error": "invalid-grid"
+  },
+  {
+   "name": "dims",
+   "error": "invalid-grid"
+  },
+  {
+   "name": "max-distance",
+   "error": "invalid-grid"
+  },
+  {
+   "name": "reflectance",
+   "error": "invalid-voxel"
+  },
+  {
+   "name": "emission",
+   "error": "invalid-voxel"
+  },
+  {
+   "name": "distance",
+   "error": "invalid-voxel"
+  },
+  {
+   "name": "light-kind",
+   "error": "invalid-light"
+  },
+  {
+   "name": "light-style",
+   "error": "invalid-light"
+  }
+ ]
+}

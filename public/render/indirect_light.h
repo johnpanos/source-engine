@@ -32,9 +32,12 @@
 #include "foundation/expected.h"
 #include "mapcontainer/probe_volume.h"
 #include "mapcontainer/radiosity_transfer.h"
+#include "mapcontainer/sdf_volume.h"
+#include "render/gpu_compute.h"
 #include "render/indirect_policy.h"
 #include "render/light_set.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -108,6 +111,10 @@ struct ProducerCaps
 	uint32_t policies = PolicyBit( indirect_policy::Policy::Baked );
 	uint32_t requiredFeatures = 0; // device feature bits (RFC 0011 G5)
 	uint32_t convergenceFrames = 0;
+	// Frames after Begin before responses count (a producer that first
+	// converges its own estimate of the baked scene); the seed stays
+	// published meanwhile.
+	uint32_t warmupFrames = 0;
 	bool publishesSurfaceAtlas = false;
 	float seedTolerance = 0.05f;     // first publication: at least (1 - this) x the seed
 	float responseTolerance = 0.05f; // converged: within this of the steady state
@@ -283,6 +290,40 @@ struct Transfer
 	}
 };
 
+// A validated SDFV signed distance volume (the SDF-traced producer's input).
+struct SdfData
+{
+	std::vector<unsigned char> bytes;
+	mapcontainer::SdfVolumeLayout layout{};
+
+	[[nodiscard]] static std::shared_ptr<const SdfData> FromBytes( std::vector<unsigned char> bytes )
+	{
+		auto sdf = std::make_shared<SdfData>();
+		if ( mapcontainer::ValidateSdfVolume( bytes.data(), bytes.size(), &sdf->layout ) !=
+		     mapcontainer::SdfVolumeError::Ok )
+			return nullptr;
+		sdf->bytes = std::move( bytes );
+		return sdf;
+	}
+};
+
+// A moving occluder this frame (a closed door, a pushed crate): its world
+// box (Source units) and reflectance. Producers that claim kGeometryMotion
+// include it; the others ignore it.
+struct Proxy
+{
+	float lo[3] = {};
+	float hi[3] = {};
+	float reflectance = 0.5f;
+};
+
+// A scene light's current direction, by light style (a moved sun).
+struct LightOverride
+{
+	int32_t style = -1;
+	float direction[3] = { 0, 0, -1 };
+};
+
 struct PublishedVolume
 {
 	uint64_t epoch = 0;
@@ -311,6 +352,8 @@ struct IndirectScene
 	indirect_policy::Policy policy = indirect_policy::Policy::Baked;
 	uint32_t deviceFeatures = 0;
 	std::shared_ptr<const Transfer> transfer; // RTRN: the radiosity producer's input
+	std::shared_ptr<const SdfData> sdf;       // SDFV: the SDF-traced producer's input
+	gpu_compute::IGpuCompute *gpu = nullptr;  // the renderer's compute service, if any
 };
 
 // GPU resources a producer owns, released behind the provider's completion
@@ -340,6 +383,157 @@ public:
 	    const char *name, uint32_t count, void ( *body )( void *, uint32_t ), void *context ) = 0;
 };
 
+// Composes a published volume: a base volume plus per-probe changes of its
+// two irradiance layers (36 rgb per probe, the interior's order), clamped at
+// zero, borders rewritten (probe_volume.with_border). A probe whose change is
+// zero keeps the base's tiles. Batches of probes run on the executor (null:
+// inline); the base's interior texels are decoded once per base.
+class ChangeComposer
+{
+public:
+	static constexpr uint32_t kInterior = mapcontainer::kProbeIrradianceTile - 2;
+	static constexpr uint32_t kTexels = kInterior * kInterior;
+	static constexpr uint32_t kBlock = 8;
+
+	[[nodiscard]] std::shared_ptr<const Volume> Compose( const Volume &base, const float *total,
+	    const float *indirect, uint32_t probeCount, IBatchExecutor *executor ) const
+	{
+		if ( m_baseBytes != base.bytes.data() || m_baseSize != base.bytes.size() )
+			DecodeBase( base, probeCount );
+		auto volume = std::make_shared<Volume>( base );
+		Context context{ this, volume.get(), total, indirect, probeCount };
+		const uint32_t blocks = ( probeCount + kBlock - 1 ) / kBlock;
+		if ( executor )
+			executor->ParallelFor( "indirect.compose", blocks, &Block, &context );
+		else
+			for ( uint32_t b = 0; b < blocks; ++b )
+				Block( &context, b );
+		return volume;
+	}
+
+private:
+	struct Context
+	{
+		const ChangeComposer *self;
+		Volume *volume;
+		const float *total;
+		const float *indirect;
+		uint32_t probeCount;
+	};
+
+	void DecodeBase( const Volume &base, uint32_t probeCount ) const
+	{
+		const mapcontainer::ProbeVolumeLayout &layout = base.layout;
+		const uint32_t tile = mapcontainer::kProbeIrradianceTile;
+		m_baseInterior.assign( size_t( probeCount ) * 2 * kTexels * 3, 0.0f );
+		uint32_t first = 0;
+		for ( uint32_t g = 0; g < layout.gridCount; ++g )
+		{
+			const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
+			for ( uint32_t local = 0; local < grid.probeCount && first + local < probeCount; ++local )
+			{
+				for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
+				{
+					const uint32_t x0 =
+					    grid.irradianceOrigin[layer][0] + ( local % grid.tilesPerRow ) * tile + 1;
+					const uint32_t y0 =
+					    grid.irradianceOrigin[layer][1] + ( local / grid.tilesPerRow ) * tile + 1;
+					float *out =
+					    &m_baseInterior[( size_t( first + local ) * 2 + layer ) * kTexels * 3];
+					for ( uint32_t v = 0; v < kInterior; ++v )
+						for ( uint32_t u = 0; u < kInterior; ++u )
+							for ( int c = 0; c < 3; ++c )
+							{
+								uint16_t half;
+								std::memcpy( &half,
+								    base.bytes.data() + layout.atlasOffset +
+								        ( uint64_t( y0 + v ) * layout.atlasWidth + x0 + u ) * 8 +
+								        2 * c,
+								    2 );
+								out[( v * kInterior + u ) * 3 + c] = mapcontainer::HalfToFloat( half );
+							}
+				}
+			}
+			first += grid.probeCount;
+		}
+		m_baseBytes = base.bytes.data();
+		m_baseSize = base.bytes.size();
+	}
+
+	static void Block( void *context, uint32_t block )
+	{
+		const Context &compose = *static_cast<const Context *>( context );
+		const ChangeComposer &self = *compose.self;
+		Volume &volume = *compose.volume;
+		const mapcontainer::ProbeVolumeLayout &layout = volume.layout;
+		const uint32_t begin = block * kBlock;
+		const uint32_t end = std::min( begin + kBlock, compose.probeCount );
+		uint32_t first = 0; // the global index of the grid's first probe
+		for ( uint32_t g = 0; g < layout.gridCount; ++g )
+		{
+			const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
+			for ( uint32_t i = std::max( begin, first ); i < std::min( end, first + grid.probeCount );
+			      ++i )
+			{
+				const float *total = compose.total + size_t( i ) * kTexels * 3;
+				const float *indirect = compose.indirect + size_t( i ) * kTexels * 3;
+				bool changed = false;
+				for ( uint32_t k = 0; k < kTexels * 3 && !changed; ++k )
+					changed = total[k] != 0.0f || indirect[k] != 0.0f;
+				if ( !changed )
+					continue;
+				for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
+					WriteTile( volume, grid.irradianceOrigin[layer], i - first, grid.tilesPerRow,
+					    &self.m_baseInterior[( size_t( i ) * 2 + layer ) * kTexels * 3],
+					    layer == 0 ? total : indirect );
+			}
+			first += grid.probeCount;
+		}
+	}
+
+	static void WriteTile( Volume &volume, const uint32_t origin[2], uint32_t probe,
+	    uint32_t tilesPerRow, const float *base, const float *change )
+	{
+		const uint32_t tile = mapcontainer::kProbeIrradianceTile;
+		const uint32_t x0 = origin[0] + ( probe % tilesPerRow ) * tile;
+		const uint32_t y0 = origin[1] + ( probe / tilesPerRow ) * tile;
+		// Each interior texel is encoded once; the border repeats the halves.
+		uint16_t interior[kInterior][kInterior][3];
+		for ( uint32_t v = 0; v < kInterior; ++v )
+			for ( uint32_t u = 0; u < kInterior; ++u )
+				for ( int c = 0; c < 3; ++c )
+				{
+					const uint32_t k = ( v * kInterior + u ) * 3 + c;
+					interior[v][u][c] = FloatToHalf( std::max( 0.0f, base[k] + change[k] ) );
+				}
+		const auto put = [&]( uint32_t x, uint32_t y, const uint16_t rgb[3] )
+		{
+			std::memcpy( volume.bytes.data() + volume.layout.atlasOffset +
+			                 ( uint64_t( y0 + y ) * volume.layout.atlasWidth + x0 + x ) * 8,
+			    rgb, 6 );
+		};
+		const uint32_t n = kInterior;
+		for ( uint32_t v = 0; v < n; ++v )
+			for ( uint32_t u = 0; u < n; ++u )
+				put( 1 + u, 1 + v, interior[v][u] );
+		for ( uint32_t k = 0; k < n; ++k )
+		{
+			put( 1 + k, 0, interior[0][n - 1 - k] );
+			put( 1 + k, n + 1, interior[n - 1][n - 1 - k] );
+			put( 0, 1 + k, interior[n - 1 - k][0] );
+			put( n + 1, 1 + k, interior[n - 1 - k][n - 1] );
+		}
+		put( 0, 0, interior[n - 1][n - 1] );
+		put( n + 1, 0, interior[n - 1][0] );
+		put( 0, n + 1, interior[0][n - 1] );
+		put( n + 1, n + 1, interior[0][0] );
+	}
+
+	mutable std::vector<float> m_baseInterior;
+	mutable const unsigned char *m_baseBytes = nullptr;
+	mutable size_t m_baseSize = 0;
+};
+
 // One frame's work: CPU jobs the frame's executor runs (a producer never
 // creates threads; a CPU producer's serial mode runs its jobs in order), the
 // executor those jobs may fan out on (null: inline and serial), the frame's
@@ -351,6 +545,8 @@ struct FrameWork
 	IBatchExecutor *executor = nullptr;
 	IResourceTracker *resources = nullptr;
 	std::span<const SceneChange> changes;
+	std::span<const Proxy> proxies;
+	std::span<const LightOverride> lightOverrides;
 };
 
 struct RetireTicket

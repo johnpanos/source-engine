@@ -6,6 +6,7 @@
 
 #include "vulkan_compute.h"
 
+#include "material_spv.h"
 #include "render/render_backend.h"
 
 #include <algorithm>
@@ -533,6 +534,76 @@ void ComputeResources::Collect( uint64_t completedSerial )
 bool ComputeResources::Alive( uint32_t resource ) const
 {
 	return Find( resource ) != nullptr;
+}
+
+gpu_compute::Caps GpuComputeService::Capabilities() const
+{
+	gpu_compute::Caps caps;
+	caps.compute = m_resources.Ready();
+	caps.storageImages = caps.compute && m_resources.Enabled().storageImages;
+	caps.rayQuery = caps.compute && m_resources.Enabled().rayQuery;
+	return caps;
+}
+
+uint32_t GpuComputeService::CreateBuffer( size_t bytes )
+{
+	std::string error;
+	return m_resources.CreateBuffer( bytes, &error );
+}
+
+void *GpuComputeService::Map( uint32_t buffer )
+{
+	return m_resources.Map( buffer );
+}
+
+uint32_t GpuComputeService::CreateProgram( const char *name, uint32_t buffers, uint32_t pushBytes )
+{
+	// The renderer's built-in programs; their bindings are storage buffers.
+	struct Builtin
+	{
+		const char *name;
+		const uint32_t *words;
+		size_t bytes;
+	};
+	static const Builtin builtins[] = {
+		{ "sdf-probe-trace", g_sdfProbeTraceSpv, sizeof( g_sdfProbeTraceSpv ) },
+	};
+	for ( const Builtin &builtin : builtins )
+	{
+		if ( std::strcmp( builtin.name, name ) != 0 )
+			continue;
+		std::string error;
+		return m_resources.CreateProgram( builtin.words, builtin.bytes,
+		    std::vector<ComputeBinding>( buffers, ComputeBinding::StorageBuffer ), pushBytes, &error );
+	}
+	return 0;
+}
+
+uint64_t GpuComputeService::QueueDispatch( uint32_t program, const uint32_t *buffers,
+    uint32_t count, const void *push, uint32_t pushBytes, uint32_t groupsX, uint32_t groupsY,
+    uint32_t groupsZ )
+{
+	if ( !m_resources.Alive( program ) )
+		return 0;
+	Queued queued;
+	queued.program = program;
+	queued.buffers.assign( buffers, buffers + count );
+	const unsigned char *bytes = static_cast<const unsigned char *>( push );
+	queued.push.assign( bytes, bytes + pushBytes );
+	queued.groups[0] = groupsX;
+	queued.groups[1] = groupsY;
+	queued.groups[2] = groupsZ;
+	m_queue.push_back( std::move( queued ) );
+	return m_nextSerial();
+}
+
+void GpuComputeService::Record( VkCommandBuffer cmd, uint64_t serial )
+{
+	for ( const Queued &queued : m_queue )
+		m_resources.RecordDispatch( cmd, serial, queued.program, queued.buffers,
+		    queued.push.data(), uint32_t( queued.push.size() ), queued.groups[0], queued.groups[1],
+		    queued.groups[2] );
+	m_queue.clear();
 }
 
 } // namespace render_vulkan

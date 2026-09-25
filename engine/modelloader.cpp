@@ -23,6 +23,7 @@
 #include "indirect_light_host.h"
 #include "mapcontainer/probe_volume.h"
 #include "mapcontainer/radiosity_transfer.h"
+#include "mapcontainer/sdf_volume.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
 #include "mapcontainer/world_mesh_format.h"
@@ -5019,10 +5020,37 @@ void CModelLoader::Map_LoadProbeVolume()
 			}
 		}
 	}
+	// The signed distance volume (RFC 0011 G6), when the map carries one; the
+	// host validates it and offers the SDF-traced producer only then.
+	CUtlVector<byte> field;
+	mapcontainer::MapLumpInfo fieldLump{};
+	if ( s_pMapContainer->FindLump( mapcontainer::kLumpSdfVolume, &fieldLump ) )
+	{
+		const uint64_t maxBytes = mapcontainer::kSdfVolumeHeaderBytes +
+		                          uint64_t( mapcontainer::kSdfMaxVoxels ) * mapcontainer::kSdfVoxelBytes +
+		                          uint64_t( mapcontainer::kSdfMaxLights ) * mapcontainer::kSdfLightBytes;
+		if ( fieldLump.version != mapcontainer::kSdfVolumeVersion || fieldLump.flags != 0 ||
+		     fieldLump.storedSize < mapcontainer::kSdfVolumeHeaderBytes ||
+		     fieldLump.storedSize > maxBytes )
+			Warning( "Map %s: SDFV version, flags or size unsupported; the SDF producer is not "
+			         "offered\n",
+			    s_szMapName );
+		else
+		{
+			field.SetCount( (int)fieldLump.storedSize );
+			if ( !s_MapByteSource.ReadAt( fieldLump.offset, field.Base(), field.Count() ) ||
+			     !s_pMapContainer->VerifyContent( fieldLump, field.Base(), field.Count() ).Ok() )
+			{
+				Warning( "Map %s: SDFV read or hash failed; the SDF producer is not offered\n",
+				    s_szMapName );
+				field.Purge();
+			}
+		}
+	}
 	// The indirect-light host owns the volume from here: its producers
 	// publish what the ambient cube and the renderer sample.
 	IndirectLight_BeginMap( m_ProbeVolumeBytes.Base(), size_t( m_ProbeVolumeBytes.Count() ),
-	    transfer.Base(), size_t( transfer.Count() ) );
+	    transfer.Base(), size_t( transfer.Count() ), field.Base(), size_t( field.Count() ) );
 	m_ProbeVolumeBytes.Purge();
 }
 

@@ -193,6 +193,19 @@ def build(bld):
 		use=['VULKAN'],
 		install_path=None)
 
+	# RFC 0011 G6 render.indirect-light.sdf: the shared producer suite run
+	# against the SDF-traced producer through the renderer's compute service
+	# on a headless device. Skips (exit 77) without a device.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_indirect_sdf.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp'],
+		target='indirect_sdf_native_conformance',
+		name='indirect_sdf_native_conformance',
+		includes=includes,
+		use=['VULKAN', 'mapcontainer'],
+		install_path=None)
+
 	# RFC 0011 render.indirect-switching on native Vulkan: the producer
 	# switcher driving the per-pixel probe volume with real frames and
 	# completion serials. Skips (exit 77) without a device/display.

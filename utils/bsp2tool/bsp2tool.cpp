@@ -14,6 +14,9 @@
 //   bsp2tool pack-world-gi <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv>
 //            <transfer.rtrn> <out.bsp2>   and its radiosity transfer, validated
 //                                          against that volume
+//   bsp2tool pack-world-sdf <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv>
+//            <transfer.rtrn> <field.sdfv> <out.bsp2>   and the signed distance
+//                                          volume of RFC 0011 G6
 //
 // Exit status: 0 success, 1 container error, 2 usage or file I/O error.
 //
@@ -23,6 +26,7 @@
 #include "mapcontainer/map_container_builder.h"
 #include "mapcontainer/probe_volume.h"
 #include "mapcontainer/radiosity_transfer.h"
+#include "mapcontainer/sdf_volume.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
 #include "mapcontainer/world_mesh_format.h"
@@ -144,6 +148,25 @@ bool ReadRadiosityTransfer(
 	return true;
 }
 
+bool ReadSdfVolume( const char *pPath, std::vector<std::byte> *pBytes )
+{
+	FileByteSource source( pPath );
+	if ( !source.IsOpen() || source.Size() < kSdfVolumeHeaderBytes ||
+	     source.Size() > kSdfVolumeHeaderBytes + uint64_t( kSdfMaxVoxels ) * kSdfVoxelBytes +
+	                         uint64_t( kSdfMaxLights ) * kSdfLightBytes )
+		return false;
+	pBytes->resize( size_t( source.Size() ) );
+	if ( !source.ReadAt( 0, pBytes->data(), pBytes->size() ) )
+		return false;
+	const SdfVolumeError error = ValidateSdfVolume( pBytes->data(), pBytes->size() );
+	if ( error != SdfVolumeError::Ok )
+	{
+		std::fprintf( stderr, "bsp2tool: SDFV %s\n", SdfVolumeErrorName( error ) );
+		return false;
+	}
+	return true;
+}
+
 std::string FourCCText( uint32_t fourcc )
 {
 	std::string text;
@@ -209,13 +232,15 @@ int main( int argc, char **argv )
 		    "pack-world-lit <legacy.bsp> <world.wmsh> <atlas.ktx2> <out.bsp2> | "
 		    "pack-world-probed <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv> "
 		    "<out.bsp2> | pack-world-gi <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv> "
-		    "<transfer.rtrn> <out.bsp2>\n" );
+		    "<transfer.rtrn> <out.bsp2> | pack-world-sdf <legacy.bsp> <world.wmsh> <atlas.ktx2> "
+		    "<volume.prbv> <transfer.rtrn> <field.sdfv> <out.bsp2>\n" );
 		return 2;
 	}
 	const std::string command = argv[1];
 	const bool bTwoPaths = command == "convert" || command == "export";
 	const bool bPackWorld = command == "pack-world";
-	const bool bPackWorldGi = command == "pack-world-gi";
+	const bool bPackWorldSdf = command == "pack-world-sdf";
+	const bool bPackWorldGi = command == "pack-world-gi" || bPackWorldSdf;
 	const bool bPackWorldProbed = command == "pack-world-probed" || bPackWorldGi;
 	const bool bPackWorldLit = command == "pack-world-lit" || bPackWorldProbed;
 	if ( !bTwoPaths && !bPackWorld && !bPackWorldLit && command != "info" && command != "verify" )
@@ -223,7 +248,8 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "bsp2tool: unknown command '%s'\n", command.c_str() );
 		return 2;
 	}
-	if ( argc != ( bPackWorldGi         ? 8
+	if ( argc != ( bPackWorldSdf        ? 9
+	               : bPackWorldGi       ? 8
 	                 : bPackWorldProbed ? 7
 	                 : bPackWorldLit    ? 6
 	                 : bPackWorld       ? 5
@@ -275,7 +301,14 @@ int main( int argc, char **argv )
 		    stderr, "bsp2tool: invalid RTRN file %s (or not baked for %s)\n", argv[6], argv[5] );
 		return 2;
 	}
-	const char *pOutput = argv[bPackWorldGi       ? 7
+	std::vector<std::byte> field;
+	if ( bPackWorldSdf && !ReadSdfVolume( argv[7], &field ) )
+	{
+		std::fprintf( stderr, "bsp2tool: invalid SDFV file %s\n", argv[7] );
+		return 2;
+	}
+	const char *pOutput = argv[bPackWorldSdf        ? 8
+	                           : bPackWorldGi       ? 7
 	                           : bPackWorldProbed ? 6
 	                           : bPackWorldLit    ? 5
 	                           : bPackWorld       ? 4
@@ -293,9 +326,12 @@ int main( int argc, char **argv )
 	    kLumpProbeVolume, kProbeVolumeVersion, 0, kBsp2BulkAlignment, probeVolume };
 	const Bsp2LumpInput transferLump{
 	    kLumpRadiosityTransfer, kRadiosityTransferVersion, 0, kBsp2BulkAlignment, transfer };
-	const std::array<Bsp2LumpInput, 4> probedLumps = {
-	    worldLump, lightmapLump, probeLump, transferLump };
-	const std::span<const Bsp2LumpInput> litLumps( probedLumps.data(), bPackWorldGi       ? 4
+	const Bsp2LumpInput fieldLump{
+	    kLumpSdfVolume, kSdfVolumeVersion, 0, kBsp2BulkAlignment, field };
+	const std::array<Bsp2LumpInput, 5> probedLumps = {
+	    worldLump, lightmapLump, probeLump, transferLump, fieldLump };
+	const std::span<const Bsp2LumpInput> litLumps( probedLumps.data(), bPackWorldSdf      ? 5
+	                                                                   : bPackWorldGi     ? 4
 	                                                                   : bPackWorldProbed ? 3
 	                                                                                      : 2 );
 	const MapContainerStatus status =

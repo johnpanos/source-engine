@@ -214,18 +214,11 @@ public:
 	}
 
 	// `base` plus the probes' changes, clamped at zero (the published volume).
-	// The base's interior texels are decoded once per base.
 	[[nodiscard]] std::shared_ptr<const Volume> Compose(
 	    const Volume &base, IBatchExecutor *executor ) const
 	{
-		if ( m_baseBytes != base.bytes.data() || m_baseSize != base.bytes.size() )
-			DecodeBase( base );
-		auto volume = std::make_shared<Volume>( base );
-		ComposeContext context{ this, volume.get() };
-		const uint32_t probes = m_transfer->layout.probeCount;
-		RunWith( executor, "radiosity.compose", ( probes + kProbeBlock - 1 ) / kProbeBlock,
-		    &ComposeBlock, &context );
-		return volume;
+		return m_composer.Compose( base, m_probeTotal.data(), m_probeIndirect.data(),
+		    m_transfer->layout.probeCount, executor );
 	}
 
 	static void OctDecode( const float p[2], float out[3] )
@@ -261,53 +254,6 @@ public:
 	}
 
 private:
-	struct ComposeContext
-	{
-		const RadiositySolver *solver;
-		Volume *volume;
-	};
-
-	// The base's irradiance interiors as floats: [probe][layer][texel][rgb].
-	void DecodeBase( const Volume &base ) const
-	{
-		const mapcontainer::ProbeVolumeLayout &layout = base.layout;
-		const uint32_t tile = mapcontainer::kProbeIrradianceTile;
-		m_baseInterior.assign( size_t( m_transfer->layout.probeCount ) * 2 * kTexels * 3, 0.0f );
-		uint32_t first = 0;
-		for ( uint32_t g = 0; g < layout.gridCount; ++g )
-		{
-			const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
-			for ( uint32_t local = 0; local < grid.probeCount; ++local )
-			{
-				for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
-				{
-					const uint32_t x0 =
-					    grid.irradianceOrigin[layer][0] + ( local % grid.tilesPerRow ) * tile + 1;
-					const uint32_t y0 =
-					    grid.irradianceOrigin[layer][1] + ( local / grid.tilesPerRow ) * tile + 1;
-					float *out =
-					    &m_baseInterior[( size_t( first + local ) * 2 + layer ) * kTexels * 3];
-					for ( uint32_t v = 0; v < kInterior; ++v )
-						for ( uint32_t u = 0; u < kInterior; ++u )
-							for ( int c = 0; c < 3; ++c )
-							{
-								uint16_t half;
-								std::memcpy( &half,
-								    base.bytes.data() + layout.atlasOffset +
-								        ( uint64_t( y0 + v ) * layout.atlasWidth + x0 + u ) * 8 +
-								        2 * c,
-								    2 );
-								out[( v * kInterior + u ) * 3 + c] =
-								    mapcontainer::HalfToFloat( half );
-							}
-				}
-			}
-			first += grid.probeCount;
-		}
-		m_baseBytes = base.bytes.data();
-		m_baseSize = base.bytes.size();
-	}
-
 	void Run( IBatchExecutor *executor, const char *name, uint32_t count,
 	    void ( *body )( void *, uint32_t ) )
 	{
@@ -425,89 +371,6 @@ private:
 		}
 	}
 
-	static void ComposeBlock( void *context, uint32_t block )
-	{
-		const ComposeContext &compose = *static_cast<const ComposeContext *>( context );
-		const RadiositySolver &self = *compose.solver;
-		Volume &volume = *compose.volume;
-		const mapcontainer::ProbeVolumeLayout &layout = volume.layout;
-		const uint32_t probeCount = self.m_transfer->layout.probeCount;
-		const uint32_t begin = block * kProbeBlock;
-		const uint32_t end = std::min( begin + kProbeBlock, probeCount );
-		uint32_t first = 0; // the global index of the grid's first probe
-		for ( uint32_t g = 0; g < layout.gridCount; ++g )
-		{
-			const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
-			for ( uint32_t i = std::max( begin, first );
-			    i < std::min( end, first + grid.probeCount ); ++i )
-			{
-				const uint32_t local = i - first;
-				// A probe the change does not reach keeps the base's tiles.
-				const float *total = self.ProbeTotal( i );
-				bool changed = false;
-				for ( uint32_t k = 0; k < kTexels * 3 && !changed; ++k )
-					changed = total[k] != 0.0f || self.ProbeIndirect( i )[k] != 0.0f;
-				if ( !changed )
-					continue;
-				for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
-				{
-					const float *change =
-					    layer == 0 ? self.ProbeTotal( i ) : self.ProbeIndirect( i );
-					const float *baseTexels =
-					    &self.m_baseInterior[( size_t( i ) * 2 + layer ) * kTexels * 3];
-					WriteTile( volume, grid.irradianceOrigin[layer], local, grid.tilesPerRow,
-					    baseTexels, change );
-				}
-			}
-			first += grid.probeCount;
-		}
-	}
-
-	// Writes a probe's 8 x 8 tile as `base` plus `change` (36 rgb each,
-	// interior order), clamped at zero: the interior, then the octahedral
-	// border (probe_volume.with_border).
-	static void WriteTile( Volume &volume, const uint32_t origin[2], uint32_t probe,
-	    uint32_t tilesPerRow, const float *base, const float *change )
-	{
-		const uint32_t tile = mapcontainer::kProbeIrradianceTile;
-		const uint32_t x0 = origin[0] + ( probe % tilesPerRow ) * tile;
-		const uint32_t y0 = origin[1] + ( probe / tilesPerRow ) * tile;
-		// Each interior texel is encoded once; the border repeats the halves.
-		uint16_t interior[kInterior][kInterior][3];
-		for ( uint32_t v = 0; v < kInterior; ++v )
-			for ( uint32_t u = 0; u < kInterior; ++u )
-				for ( int c = 0; c < 3; ++c )
-				{
-					const uint32_t k = ( v * kInterior + u ) * 3 + c;
-					interior[v][u][c] = FloatToHalf( std::max( 0.0f, base[k] + change[k] ) );
-				}
-		const auto put = [&]( uint32_t x, uint32_t y, const uint16_t rgb[3] )
-		{
-			std::memcpy( Texel( volume, x0 + x, y0 + y ), rgb, 6 );
-		};
-		const uint32_t n = kInterior;
-		for ( uint32_t v = 0; v < n; ++v )
-			for ( uint32_t u = 0; u < n; ++u )
-				put( 1 + u, 1 + v, interior[v][u] );
-		for ( uint32_t k = 0; k < n; ++k )
-		{
-			put( 1 + k, 0, interior[0][n - 1 - k] );
-			put( 1 + k, n + 1, interior[n - 1][n - 1 - k] );
-			put( 0, 1 + k, interior[n - 1 - k][0] );
-			put( n + 1, 1 + k, interior[n - 1 - k][n - 1] );
-		}
-		put( 0, 0, interior[n - 1][n - 1] );
-		put( n + 1, 0, interior[n - 1][0] );
-		put( 0, n + 1, interior[0][n - 1] );
-		put( n + 1, n + 1, interior[0][0] );
-	}
-
-	static unsigned char *Texel( Volume &volume, uint32_t x, uint32_t y )
-	{
-		return volume.bytes.data() + volume.layout.atlasOffset +
-		       ( uint64_t( y ) * volume.layout.atlasWidth + x ) * 8;
-	}
-
 	std::shared_ptr<const Transfer> m_transfer;
 	RadiosityOptions m_options;
 	std::vector<float> m_reference;
@@ -521,10 +384,7 @@ private:
 	std::vector<float> m_probeIndirect;
 	std::vector<float> m_probeTotal;
 	std::array<float, kTexels * 9> m_basis{};
-	// Compose's decoded base (see DecodeBase), keyed by the base's bytes.
-	mutable std::vector<float> m_baseInterior;
-	mutable const unsigned char *m_baseBytes = nullptr;
-	mutable size_t m_baseSize = 0;
+	ChangeComposer m_composer;
 	float m_lastChange = 0.0f;
 	uint64_t m_iterations = 0;
 	bool m_dirty = false;

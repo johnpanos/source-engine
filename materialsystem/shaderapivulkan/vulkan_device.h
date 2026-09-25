@@ -152,6 +152,15 @@ public:
 		m_computeWork.push_back( std::move( work ) );
 	}
 	uint64_t NextSubmitSerial() const { return m_submitSerial + 1; }
+	// Compute whose results the CPU reads back (render/gpu_compute.h, RFC 0011
+	// G6): `flush` records it at the end of each frame's command buffer, after
+	// every render pass, stamped with that frame's serial (valid once
+	// CompletedFrameSerial() reaches it). Cleared with an empty function.
+	void SetComputeFlush( std::function<void( VkCommandBuffer, uint64_t )> flush )
+	{
+		m_computeFlush = std::move( flush );
+	}
+	uint64_t CompletedFrameSerial() const { return m_completedSerial; }
 	bool ProbeDeltaResident() const { return m_probeDeltaHandle >= 0 && ProbeVolumeResident(); }
 	// Whether PBRMetalRough models can sample the volume per pixel: the device
 	// binds the nine descriptor sets its pipelines use.
@@ -289,10 +298,13 @@ public:
 	bool DynamicMeshReady() const { return m_dynPipeline != VK_NULL_HANDLE; }
 	// Append triangle-list vertices as interleaved [x,y,z, r,g,b, u,v] floats,
 	// plus [u,v] lightmap coordinates per vertex when the draw has them (zeros
-	// otherwise). They are stored as one kDynVertexFloats-wide record.
+	// otherwise). They are stored as one kDynVertexFloats-wide record: position
+	// (0..2), color (3..5), uv (6..7), lightmap uv (8..9), normal (10..12),
+	// tangent (13..16), alpha (17), then for LightmappedGeneric the world tangent
+	// T (18..20) and the bumped lightmap page offset (21, TEXCOORD2.x).
 	enum
 	{
-		kDynVertexFloats = 18
+		kDynVertexFloats = 22
 	};
 	// `normalTangent`, when given, holds each vertex's normal (3) and tangent
 	// (4, TANGENT/USERDATA with the binormal sign in w), 7 floats per vertex; it
@@ -374,8 +386,63 @@ public:
 		kDynShaderPbrGlass = 10,
 		// PBRMetalRough on dynamic meshes (models and props), on the skin
 		// pipeline's layout and vertex stage; shaders/model_pbr.frag.
-		kDynShaderPbrModel = 11
+		kDynShaderPbrModel = 11,
+		// LightmappedGeneric and WorldVertexTransition (lightmappedgeneric_vs20 /
+		// lightmappedgeneric_ps20b): bumped lightmaps, the second base texture,
+		// detail and masked cubemaps; shaders/lightmapped.{vert,frag}. Its
+		// constants arrive through SetDynamicSkinConstants.
+		kDynShaderLightmapped = 12,
+		// The bloom and color-correction passes (Downsample_nohdr, BlurFilterX/Y,
+		// Engine_Post) on the skin pipeline's layout; shaders/screenspace_post.*.
+		// Its constants arrive through SetDynamicSkinConstants, `combos` holding
+		// the pass (kPost*).
+		kDynShaderPost = 13
 	};
+	// lightmapped.frag's static combo flags (SkinConstants::combos).
+	enum
+	{
+		kLightmappedBaseTexture2 = 1,
+		kLightmappedDetailTexture = 2,
+		kLightmappedBumpmap = 4,
+		kLightmappedSsbump = 8,
+		kLightmappedBumpmap2 = 16,
+		kLightmappedCubemap = 32,
+		kLightmappedEnvmapMask = 64,
+		kLightmappedBaseAlphaEnvmapMask = 128,
+		kLightmappedSelfIllum = 256,
+		kLightmappedNormalMapAlphaEnvmapMask = 512,
+		kLightmappedDiffuseBumpmap = 1024,
+		kLightmappedBaseTextureNoEnvmap = 2048,
+		kLightmappedBaseTexture2NoEnvmap = 4096,
+		kLightmappedBumpMask = 8192,
+		kLightmappedMaskedBlending = 16384
+	};
+	// screenspace_post.frag's passes (SkinConstants::combos).
+	enum
+	{
+		kPostDownsample = 1,
+		kPostBlur = 2,
+		kPostEnginePost = 3
+	};
+	// False when the device cannot bind lightmapped.frag's nine descriptor sets
+	// or the skin push block; LightmappedGeneric then keeps the textured
+	// pipeline's flat-lightmap approximation.
+	bool LightmappedPipelineSupported() const { return m_lightmappedVert != VK_NULL_HANDLE; }
+	// False without the skin layout or a volume texture fallback; the post
+	// passes are then declined.
+	bool PostPipelineSupported() const
+	{
+		return m_postVert != VK_NULL_HANDLE && m_whiteVolumeHandle >= 0;
+	}
+	// The textured pipeline's alternative pixel stages (alphaParams.y), per draw:
+	// 0 the material shader the flags describe, 2 shadow_ps2x's projected
+	// render-to-texture shadow (1 is taken by "multiply by the lightmap").
+	enum
+	{
+		kTexturedModeDefault = 0,
+		kTexturedModeShadow = 2
+	};
+	void SelectDynamicTexturedMode( int mode ) { m_dynTexturedMode = mode; }
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
 	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
 	// material's IShaderShadow selects: blend factors (applied to color and alpha
@@ -526,9 +593,13 @@ public:
 	// any image or memory is allocated.
 	// `srgbAlias`, when set, is the sRGB twin of `format`: the image is created
 	// mutable between the two and also gets an sRGB view (render targets).
+	// `depth` > 1 makes a volume (3D) texture, one level, not a cube; its
+	// uploads cover every slice at once.
 	int CreateManagedTexture( int width, int height, VkFormat format, std::string *outError,
 	    VkImageUsageFlags extraUsage = 0, uint32_t mipLevels = 1,
-	    VkFormat srgbAlias = VK_FORMAT_UNDEFINED, bool cube = false );
+	    VkFormat srgbAlias = VK_FORMAT_UNDEFINED, bool cube = false, uint32_t depth = 1 );
+	// The selected device's largest volume texture edge.
+	uint32_t MaxVolumeTextureDimension() const { return m_maxImageDimension3D; }
 	bool UploadManagedTexture( int handle, const uint8_t *data, size_t dataSize,
 	    std::string *outError, uint32_t level = 0, uint32_t face = 0 );
 	// Releases a managed texture (IShaderAPI::DeleteTexture). The handle stops
@@ -555,6 +626,11 @@ public:
 	{
 		return handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
 		       m_managedTextures[static_cast<size_t>( handle )].layers == 6;
+	}
+	bool ManagedTextureIsVolume( int handle ) const
+	{
+		return handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
+		       m_managedTextures[static_cast<size_t>( handle )].depth > 1;
 	}
 	void BindManagedTexture( int handle );
 	// The lightmap page the textured pipeline multiplies by (LightmappedGeneric's
@@ -749,6 +825,9 @@ public:
 		kColorSrgbReadBase = 1,
 		kColorSrgbReadLightmap = 2,
 		kColorSrgbWrite = 4,
+		// LightmappedGeneric's second base texture (s7) and detail (s12).
+		kColorSrgbReadSampler7 = 4194304,
+		kColorSrgbReadSampler12 = 8388608,
 		kFragmentAlphaGreater = 8,
 		kFragmentLuminanceCompare = 16,
 		kVertexScreenSpace = 32,
@@ -1423,6 +1502,8 @@ private:
 		kPipelineSolidEnergy = 4,
 		kPipelinePbrModel = 5,
 		kPipelinePbrModelEnv = 6,
+		kPipelineLightmapped = 7,
+		kPipelinePost = 8,
 		kPipelineFamilies
 	};
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
@@ -1450,6 +1531,29 @@ private:
 	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	VkShaderModule m_solidEnergyVert = VK_NULL_HANDLE;
 	VkShaderModule m_solidEnergyFrag = VK_NULL_HANDLE;
+	// LightmappedGeneric: the skin push block and nine sets (s0, s1, s2, s4, s5,
+	// s7, the constants, s8, s12), with its own vertex input (the tangent T and
+	// the bumped lightmap offset beyond the skin record, and the fog stream).
+	std::map<uint64_t, VkPipeline> m_lightmappedPipelines;
+	VkPipeline LightmappedPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
+	VkPipelineLayout m_lightmappedPipelineLayout = VK_NULL_HANDLE;
+	VkShaderModule m_lightmappedVert = VK_NULL_HANDLE;
+	VkShaderModule m_lightmappedFrag = VK_NULL_HANDLE;
+	VkVertexInputAttributeDescription m_lightmappedAttrs[13] = {};
+	VkPipelineVertexInputStateCreateInfo m_lightmappedVin = {};
+	bool InitLightmappedPipeline( std::string *outError );
+	void DestroyLightmappedPipeline();
+	// The bloom and color-correction passes on the skin layout (s0..s5 and the
+	// constants); samplers 2..5 are volumes, with a 1x1x1 white fallback.
+	std::map<uint64_t, VkPipeline> m_postPipelines;
+	VkPipeline PostPipeline( const DynRasterState &state, bool srgbPass = false, int samples = 1 );
+	VkShaderModule m_postVert = VK_NULL_HANDLE;
+	VkShaderModule m_postFrag = VK_NULL_HANDLE;
+	int m_whiteVolumeHandle = -1;
+	uint32_t m_maxImageDimension3D = 0;
+	bool InitPostPipeline( std::string *outError );
+	void DestroyPostPipeline();
 	// PBRMetalRough models share the skin layout and vertex stage. Variant 0
 	// reads the map probe from the LMAP atlas in set 5; variant 1 ($envmap)
 	// reads a cube there; variant 2 is the indirect view (a 2D set 5).
@@ -1581,6 +1685,7 @@ private:
 		uint32_t height = 0;
 		uint32_t mipLevels = 1;
 		uint32_t layers = 1;
+		uint32_t depth = 1; // > 1: a volume texture
 		VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 		// False until pixel data has actually been uploaded. Sampling an image
 		// that was created but never filled yields undefined contents.
@@ -1615,6 +1720,7 @@ private:
 	DeviceFeatureChain m_featureChain;
 	ComputeResources m_compute;
 	std::vector<std::function<void( VkCommandBuffer, uint64_t )>> m_computeWork;
+	std::function<void( VkCommandBuffer, uint64_t )> m_computeFlush;
 	int m_probeSampling = 1;
 	DirectLight m_directLights[kMaxDirectLights] = {};
 	uint32_t m_directLightCount = 0;
@@ -1670,6 +1776,7 @@ private:
 	    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 	PortalConstants m_dynPortal;
 	SkinConstants m_dynSkin;
+	int m_dynTexturedMode = kTexturedModeDefault;
 	// The skin constants of this frame's skin draws (DynDraw::skin indexes them).
 	std::vector<SkinConstants> m_dynSkinConstants;
 	// Column-major model->projection matrix; identity by default.
@@ -1704,6 +1811,7 @@ private:
 	{
 		int handle;
 		uint32_t x, y, width, height, level, face;
+		uint32_t depth; // slices, all of a volume texture's
 		// The image's contents outside the region survive (a mip chain level, a
 		// part of an uploaded image); a never-filled image's rest is cleared.
 		bool preserve;
@@ -1808,6 +1916,7 @@ private:
 		PortalConstants portal;
 		int skin = -1; // index into m_dynSkinConstants
 		DrawFog fog;
+		int texturedMode = kTexturedModeDefault; // the textured pipeline's alphaParams.y
 	};
 	// A draw record carrying the state current now, before its geometry.
 	DynDraw &AppendDrawRecord();

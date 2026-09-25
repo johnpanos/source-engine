@@ -632,6 +632,7 @@
         "jobsystem/parallel_batch.cpp",
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
+        "mapcontainer/sdf_volume.cpp",
         "unittests/jobsystemtest/radiositytest.cpp"
       ],
       "extra_flags": [
@@ -655,6 +656,7 @@
         "jobsystem/parallel_batch.cpp",
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
+        "mapcontainer/sdf_volume.cpp",
         "unittests/jobsystemtest/radiositytest.cpp"
       ],
       "extra_flags": [
@@ -686,6 +688,7 @@
         "jobsystem/parallel_batch.cpp",
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
+        "mapcontainer/sdf_volume.cpp",
         "unittests/jobsystemtest/radiositytest.cpp"
       ],
       "extra_flags": [
@@ -1058,7 +1061,8 @@
       "sources": [
         "unittests/rendertest/test_indirect_light.cpp",
         "mapcontainer/probe_volume.cpp",
-        "mapcontainer/radiosity_transfer.cpp"
+        "mapcontainer/radiosity_transfer.cpp",
+        "mapcontainer/sdf_volume.cpp"
       ],
       "expect": "pass"
     },
@@ -1075,7 +1079,8 @@
       "sources": [
         "unittests/rendertest/test_indirect_radiosity.cpp",
         "mapcontainer/probe_volume.cpp",
-        "mapcontainer/radiosity_transfer.cpp"
+        "mapcontainer/radiosity_transfer.cpp",
+        "mapcontainer/sdf_volume.cpp"
       ],
       "expect": "pass"
     },
@@ -2397,7 +2402,9 @@
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
-        "mapcontainer/probe_volume.cpp"
+        "mapcontainer/probe_volume.cpp",
+        "mapcontainer/radiosity_transfer.cpp",
+        "mapcontainer/sdf_volume.cpp"
       ],
       "expect": "pass"
     },
@@ -2517,6 +2524,7 @@
       "sources": [
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
+        "mapcontainer/sdf_volume.cpp",
         "unittests/mapcontainertest/test_radiosity_transfer.cpp"
       ],
       "expect": "pass"

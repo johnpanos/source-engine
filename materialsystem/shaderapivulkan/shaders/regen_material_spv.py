@@ -51,6 +51,8 @@ SHADERS = (
                                                                "-DCLIP_PLANES"]),
     # RFC 0011 G5: the compute conformance suite's program.
     ("g_computeFillSpv", "compute_fill.comp", []),
+    # RFC 0011 G6: the SDF-traced producer's probe update.
+    ("g_sdfProbeTraceSpv", "sdf_probe_trace.comp", []),
     ("g_worldGlassFragSpv", "world_pbr_glass.frag", []),
     ("g_worldGlassClipFragSpv", "world_pbr_glass.frag", ["-DCLIP_PLANES"]),
     ("g_materialTexFragSpv", "demo_dyn_tex.frag", []),
@@ -58,6 +60,12 @@ SHADERS = (
     ("g_portalRefractFragSpv", "portal_refract.frag", []),
     ("g_skinVertSpv", "skin.vert", []),
     ("g_skinFragSpv", "skin.frag", []),
+    # LightmappedGeneric / WorldVertexTransition (lightmappedgeneric_vs20 / _ps2_3_x).
+    ("g_lightmappedVertSpv", "lightmapped.vert", []),
+    ("g_lightmappedFragSpv", "lightmapped.frag", []),
+    # The bloom and color-correction passes (Downsample_nohdr, BlurFilter, Engine_Post).
+    ("g_postVertSpv", "screenspace_post.vert", []),
+    ("g_postFragSpv", "screenspace_post.frag", []),
     ("g_solidEnergyVertSpv", "solidenergy.vert", []),
     ("g_solidEnergyFragSpv", "solidenergy.frag", []),
     ("g_modelPbrFragSpv", "model_pbr.frag", []),

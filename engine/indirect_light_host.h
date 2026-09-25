@@ -20,13 +20,14 @@ namespace mapcontainer
 class ProbeVolumeView;
 }
 
-// Map lifetime. BeginMap takes the map's validated PRBV bytes and its RTRN
-// radiosity transfer bytes, if any (both copied; the transfer is validated
-// against the volume, and radiosity is offered only with a valid one), and
-// starts the Baked producer, then the saved r_indirect_producer (an unoffered
-// value is reported and Baked kept).
-void IndirectLight_BeginMap(
-    const unsigned char *prbv, size_t size, const unsigned char *rtrn, size_t rtrnSize );
+// Map lifetime. BeginMap takes the map's validated PRBV bytes, its RTRN
+// radiosity transfer bytes and its SDFV signed distance volume, if any (all
+// copied; the transfer is validated against the volume, and radiosity is
+// offered only with a valid one; the SDF producer only with a valid SDFV and
+// a renderer compute service), and starts the Baked producer, then the saved
+// r_indirect_producer (an unoffered value is reported and Baked kept).
+void IndirectLight_BeginMap( const unsigned char *prbv, size_t size, const unsigned char *rtrn,
+    size_t rtrnSize, const unsigned char *sdfv, size_t sdfvSize );
 void IndirectLight_EndMap();
 
 // Once per rendered frame on the main thread, before the view renders, with
