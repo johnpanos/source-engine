@@ -38,7 +38,7 @@ VSTDLIB_INTERFACE void DestroyDeclaredFrameGraph( jobsystem::DeclaredFrameGraph 
 // only its own runners; it never waits on or runs unrelated queued work.
 // Stores the outcome in *pResult and returns pResult->valid.
 VSTDLIB_INTERFACE bool RunDeclaredFrameGraph( IThreadPool *pPool,
-    jobsystem::DeclaredFrameGraph *pGraph, const jobsystem::FrameNodeDesc *pNodes,
-    unsigned nNodes, jobsystem::FrameGraphMode mode, jobsystem::DeclaredFrameRun *pResult );
+    jobsystem::DeclaredFrameGraph *pGraph, const jobsystem::FrameNodeDesc *pNodes, unsigned nNodes,
+    jobsystem::FrameGraphMode mode, jobsystem::DeclaredFrameRun *pResult );
 
 #endif // VSTDLIB_JOBGRAPH_FRAME_H

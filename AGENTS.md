@@ -360,7 +360,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | partial |
 | 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active |
 | 9 / R09 | Physics A feasibility and IVP baseline; 0004, Q-PHYSICS | R01, R02, R05 | Method/profile inventory, units/assets and measurements; tested solution or explicit scope decision for impact state, contact mutation, ragdoll limits and hull/decoder blockers | planned ([0004 progress](RFC/0004-progress.md)) |
-| 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active ([0003 progress](RFC/0003-progress.md); [host graph](RFC/0003-scheduler-trust-progress.md)) |
+| 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active ([0003 progress](RFC/0003-progress.md); [host graph](RFC/0003-scheduler-trust-progress.md); [render nodes](RFC/0003-scheduler-nodes-progress.md)) |
 | 11 / R11 | Paths and module resolution; 0001 rank 5 | R05, R07 | Native/virtual paths distinct; resolution/verification separate from opening; encoding/search/failure corpus passes | planned |
 | 12 / R12 | Dedicated-server composition; 0001 rank 6 | R06, R07, R11 | Installed startup/shutdown and partial failure pass; link/runtime evidence shows render and desktop UI absent | partial ([composition migration slice](RFC/0001-dedicated-composition-progress.md)) |
 | 13 / R13 | Hammer geometry and scene seams; 0002 H1 | R05, R08 | Strict headless targets; geometry/reference/reparent tests and independent documents pass; selected legacy callers route through shared owner | planned |
@@ -370,7 +370,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 17 / R17 | Hammer real renderer feasibility; 0002 R1 | R08, R15, R16 | Source-material viewport on declared GTK X11/Wayland profiles; state/target restoration, scale, capture, sharing and teardown measured | planned |
 | 18 / R18 | SDL3 provider parity; 0001 rank 10 | R14, R16 | Same window/input suites and representative behavior pass for SDL2/SDL3; SDK dependency is private; supported interop pairs tested | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 19 / R19 | Box3D one-worker vertical slice; 0004 B | R05, R09 | Pinned coherent provider loads existing BSP/PHY, compound prop, inside trace, verified impact, ragdoll and matching-schema restore | planned |
-| 20 / R20 | Parallel scheduler and controlled legacy bridge; 0003 C, 0006 M2 | R10 | Bounded queue/worker contracts, publication/wake/overflow and native stress pass; no forbidden helping/nested wait; total capacity and overhead measured | partial ([batch migration](RFC/0003-batch-migration-progress.md); [pool trust](RFC/0003-scheduler-trust-progress.md)) |
+| 20 / R20 | Parallel scheduler and controlled legacy bridge; 0003 C, 0006 M2 | R10 | Bounded queue/worker contracts, publication/wake/overflow and native stress pass; no forbidden helping/nested wait; total capacity and overhead measured | partial ([batch migration](RFC/0003-batch-migration-progress.md); [pool trust](RFC/0003-scheduler-trust-progress.md); [bounds, budgets](RFC/0003-scheduler-nodes-progress.md)) |
 | 21 / R21 | Particle reference migration; 0003 D | R20 | Legacy/serial/parallel captured outputs agree; attachment/lifetime tests, improvement and small-workload budgets pass; quiescent rollback works | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
 | 22 / R22 | Hammer persistence slice; 0002 H2 | R11, R13 | Declared VMF features round-trip and compile; independent acceptance, unknown/loss reporting, detached import and save failure/recovery pass | planned |
 | 23 / R23 | Hammer application authority; 0002 H3 | R13, R22 | One selection/mutation/history owner; draft resolution, transform/cancel/undo/redo/save-position and generated sequences pass headlessly | planned |
@@ -656,10 +656,31 @@ Keep the table concise and link details below or from the domain progress file.
     Wake latency is +5 µs. CTSQueue is 16% slower at 1:1 but no longer crashes
     at 4:4. In-game frames show no measurable difference (build B/A median
     1.008, within ±0.8 ms noise).
-  - Open: the threaded listen-server live comparison (`host_thread_mode 2`
-    deadlocks on base too), a bound for the shared queue, nested-wait detection,
-    capacity budgets and a full-product TSan run.
-    See the [scheduler trust record](RFC/0003-scheduler-trust-progress.md).
+  - See the [scheduler trust record](RFC/0003-scheduler-trust-progress.md).
+  - Follow-up (2026-09-24, [scheduler nodes record](RFC/0003-scheduler-nodes-progress.md)):
+    - Profile first: the headless Portal main thread spends 4.8 of 7.4 ms/frame
+      in draw submission; the whole server tick is 0.35 ms; particles and
+      bones cost less than their pooled dispatch (0.07 ms).
+    - The `Render` phase is 14 oracle-verified sub-nodes (120/120 step-order
+      mutants detected); live legacy/graph captures match.
+    - The `host_thread_mode 2` deadlock was a per-thread array overrun
+      (`MAX_THREADS_SUPPORTED` 32 against thread ids up to 127, into the
+      spatial partition's lock). Threaded Portal now runs; legacy and graph
+      threaded captures are identical. The filesystem I/O pool's lost cap of 4
+      is restored (it ran 32 threads here).
+    - R20 items: bounded shared queue with a no-drop overflow policy,
+      forbidden nested-wait and starvation detection, and
+      [capacity/overhead budgets](quality/budgets/scheduler-v1.json) with a
+      live census.
+    - Declared frame graph: nodes ordered by declared resource access; the
+      pooled executor overlaps host and pool work where they allow. The
+      client render-start region (with the particle and bone cohorts as
+      gather/batch/commit) runs on it under `cl_render_start_graph` (default
+      0); its legacy order leaves no pair to overlap, which the oracle
+      asserts.
+    - Open: an executor that overlaps across several host nodes, audited
+      declarations for legacy blocks, TickServer split, a semantic live
+      oracle for the client region, mobile budgets, full-product TSan.
 
 - R32-VIDEO-OPTIONS: `partial` (2026-09-23). The Video options take effect on
   native Vulkan: real display modes and mode-change callbacks, vsync through

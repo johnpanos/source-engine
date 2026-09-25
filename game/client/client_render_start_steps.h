@@ -80,7 +80,8 @@ public:
 inline void CRenderStartSteps::Begin( void * )
 {
 #ifdef PORTAL
-	g_pPortalRender->UpdatePortalPixelVisibility(); //updating this one or two lines before querying again just isn't cutting it. Update as soon as it's cheap to do so.
+	g_pPortalRender
+	    ->UpdatePortalPixelVisibility(); //updating this one or two lines before querying again just isn't cutting it. Update as soon as it's cheap to do so.
 #endif
 
 	partition->SuppressLists( PARTITION_ALL_CLIENT_EDICTS, true );
@@ -102,7 +103,7 @@ inline void CRenderStartSteps::InvalidateBones( void * )
 {
 	{
 		// vprof node for this bloc of math
-		VPROF( "OnRenderStart: dirty bone caches");
+		VPROF( "OnRenderStart: dirty bone caches" );
 		// Invalidate any bone information.
 		C_BaseAnimating::InvalidateBoneCaches();
 
@@ -111,7 +112,8 @@ inline void CRenderStartSteps::InvalidateBones( void * )
 
 		// Enable access to all model bones except view models.
 		// This is necessary for aim-ent computation to occur properly
-		C_BaseAnimating::PushAllowBoneAccess( true, false, "OnRenderStart->CViewRender::SetUpView" ); // pops in CViewRender::SetUpView
+		C_BaseAnimating::PushAllowBoneAccess( true, false,
+		    "OnRenderStart->CViewRender::SetUpView" ); // pops in CViewRender::SetUpView
 
 		// FIXME: This needs to be done before the player moves; it forces
 		// aiments the player may be attached to to forcibly update their position
@@ -176,7 +178,7 @@ inline void CRenderStartSteps::Simulate( void * )
 inline void CRenderStartSteps::TempEnts( void * )
 {
 	{
-		VPROF_("Client TempEnts", 0, VPROF_BUDGETGROUP_CLIENT_SIM, false, BUDGETFLAG_CLIENT);
+		VPROF_( "Client TempEnts", 0, VPROF_BUDGETGROUP_CLIENT_SIM, false, BUDGETFLAG_CLIENT );
 		// This creates things like temp entities.
 		engine->FireEvents();
 
@@ -311,84 +313,85 @@ inline void CRenderStartSteps::ParticlesCommit( void * )
 //-----------------------------------------------------------------------------
 
 static const jobsystem::FrameAccess s_RenderStartUnaudited[] = {
-	{ jobsystem::FRAME_DOMAIN_ALL, true },
+    { jobsystem::FRAME_DOMAIN_ALL, true },
 };
 // Items set up bones from animation state and transforms; each entity's bone
 // cache is its own (C_BaseAnimating::SetupBones locks it per entity).
 static const jobsystem::FrameAccess s_RenderStartBonesBatch[] = {
-	{ RS_DOMAIN_ANIMATION_STATE, false },
-	{ RS_DOMAIN_ENTITY_TRANSFORMS, false },
-	{ RS_DOMAIN_BONE_CACHE, true },
+    { RS_DOMAIN_ANIMATION_STATE, false },
+    { RS_DOMAIN_ENTITY_TRANSFORMS, false },
+    { RS_DOMAIN_BONE_CACHE, true },
 };
 static const jobsystem::FrameAccess s_RenderStartBonesGatherCommit[] = {
-	{ RS_DOMAIN_BONE_CACHE, true },
+    { RS_DOMAIN_BONE_CACHE, true },
 };
 // Items simulate their own collection; operators may trace the world and the
 // partition. Control points were gathered before the batch.
 static const jobsystem::FrameAccess s_RenderStartParticlesBatch[] = {
-	{ RS_DOMAIN_PARTICLE_STATE, true },
-	{ RS_DOMAIN_WORLD_QUERIES, false },
+    { RS_DOMAIN_PARTICLE_STATE, true },
+    { RS_DOMAIN_WORLD_QUERIES, false },
 };
 // Gather reads attachments (bones) and entity state for control points and
 // updates dirty partition entries; commit publishes bounds to the leaf system.
 static const jobsystem::FrameAccess s_RenderStartParticlesGatherCommit[] = {
-	{ RS_DOMAIN_PARTICLE_STATE, true },
-	{ RS_DOMAIN_WORLD_QUERIES, true },
-	{ RS_DOMAIN_BONE_CACHE, true },
-	{ RS_DOMAIN_ENTITY_TRANSFORMS, false },
+    { RS_DOMAIN_PARTICLE_STATE, true },
+    { RS_DOMAIN_WORLD_QUERIES, true },
+    { RS_DOMAIN_BONE_CACHE, true },
+    { RS_DOMAIN_ENTITY_TRANSFORMS, false },
 };
 
 #define RENDER_START_HOST( fn, access )                                                            \
-	{ #fn, jobsystem::FRAME_NODE_HOST, NULL, &CRenderStartSteps::fn, NULL, NULL, NULL, NULL, access,     \
-		ARRAYSIZE( access ) }
+	{ #fn, jobsystem::FRAME_NODE_HOST, NULL, &CRenderStartSteps::fn, NULL, NULL, NULL, NULL,       \
+	    access, ARRAYSIZE( access ) }
 
 static const jobsystem::FrameNodeDesc s_RenderStartNodes[] = {
-	RENDER_START_HOST( Begin, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Interpolate, s_RenderStartUnaudited ),
-	RENDER_START_HOST( InvalidateBones, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Camera, s_RenderStartUnaudited ),
-	RENDER_START_HOST( View, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Ropes, s_RenderStartUnaudited ),
-	RENDER_START_HOST( ClientSideAnimations, s_RenderStartUnaudited ),
-	RENDER_START_HOST( DataChanged, s_RenderStartUnaudited ),
-	RENDER_START_HOST( ResetOverlays, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Simulate, s_RenderStartUnaudited ),
-	RENDER_START_HOST( BonesGather, s_RenderStartBonesGatherCommit ),
-	{ "BonesBatch", jobsystem::FRAME_NODE_BATCH, NULL, NULL, &CRenderStartSteps::BonesCount,
-		&CRenderStartSteps::BonesItem, &CRenderStartSteps::BonesRunnerBegin, &CRenderStartSteps::BonesRunnerEnd,
-		s_RenderStartBonesBatch, ARRAYSIZE( s_RenderStartBonesBatch ) },
-	RENDER_START_HOST( BonesCommit, s_RenderStartBonesGatherCommit ),
-	RENDER_START_HOST( TempEnts, s_RenderStartUnaudited ),
-	RENDER_START_HOST( ParticlesGather, s_RenderStartParticlesGatherCommit ),
-	{ "ParticlesBatch", jobsystem::FRAME_NODE_BATCH, NULL, NULL, &CRenderStartSteps::ParticlesCount,
-		&CRenderStartSteps::ParticlesItem, NULL, NULL, s_RenderStartParticlesBatch,
-		ARRAYSIZE( s_RenderStartParticlesBatch ) },
-	RENDER_START_HOST( ParticlesCommit, s_RenderStartParticlesGatherCommit ),
-	RENDER_START_HOST( AimEnts, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Tools, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Replay, s_RenderStartUnaudited ),
-	RENDER_START_HOST( VisibleEntities, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Begin, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Interpolate, s_RenderStartUnaudited ),
+    RENDER_START_HOST( InvalidateBones, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Camera, s_RenderStartUnaudited ),
+    RENDER_START_HOST( View, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Ropes, s_RenderStartUnaudited ),
+    RENDER_START_HOST( ClientSideAnimations, s_RenderStartUnaudited ),
+    RENDER_START_HOST( DataChanged, s_RenderStartUnaudited ),
+    RENDER_START_HOST( ResetOverlays, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Simulate, s_RenderStartUnaudited ),
+    RENDER_START_HOST( BonesGather, s_RenderStartBonesGatherCommit ),
+    { "BonesBatch", jobsystem::FRAME_NODE_BATCH, NULL, NULL, &CRenderStartSteps::BonesCount,
+        &CRenderStartSteps::BonesItem, &CRenderStartSteps::BonesRunnerBegin,
+        &CRenderStartSteps::BonesRunnerEnd, s_RenderStartBonesBatch,
+        ARRAYSIZE( s_RenderStartBonesBatch ) },
+    RENDER_START_HOST( BonesCommit, s_RenderStartBonesGatherCommit ),
+    RENDER_START_HOST( TempEnts, s_RenderStartUnaudited ),
+    RENDER_START_HOST( ParticlesGather, s_RenderStartParticlesGatherCommit ),
+    { "ParticlesBatch", jobsystem::FRAME_NODE_BATCH, NULL, NULL, &CRenderStartSteps::ParticlesCount,
+        &CRenderStartSteps::ParticlesItem, NULL, NULL, s_RenderStartParticlesBatch,
+        ARRAYSIZE( s_RenderStartParticlesBatch ) },
+    RENDER_START_HOST( ParticlesCommit, s_RenderStartParticlesGatherCommit ),
+    RENDER_START_HOST( AimEnts, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Tools, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Replay, s_RenderStartUnaudited ),
+    RENDER_START_HOST( VisibleEntities, s_RenderStartUnaudited ),
 };
 
 // The same blocks with each cohort as one legacy call (cl_render_start_graph 0).
 static const jobsystem::FrameNodeDesc s_RenderStartLegacyNodes[] = {
-	RENDER_START_HOST( Begin, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Interpolate, s_RenderStartUnaudited ),
-	RENDER_START_HOST( InvalidateBones, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Camera, s_RenderStartUnaudited ),
-	RENDER_START_HOST( View, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Ropes, s_RenderStartUnaudited ),
-	RENDER_START_HOST( ClientSideAnimations, s_RenderStartUnaudited ),
-	RENDER_START_HOST( DataChanged, s_RenderStartUnaudited ),
-	RENDER_START_HOST( ResetOverlays, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Simulate, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Bones, s_RenderStartUnaudited ),
-	RENDER_START_HOST( TempEnts, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Particles, s_RenderStartUnaudited ),
-	RENDER_START_HOST( AimEnts, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Tools, s_RenderStartUnaudited ),
-	RENDER_START_HOST( Replay, s_RenderStartUnaudited ),
-	RENDER_START_HOST( VisibleEntities, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Begin, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Interpolate, s_RenderStartUnaudited ),
+    RENDER_START_HOST( InvalidateBones, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Camera, s_RenderStartUnaudited ),
+    RENDER_START_HOST( View, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Ropes, s_RenderStartUnaudited ),
+    RENDER_START_HOST( ClientSideAnimations, s_RenderStartUnaudited ),
+    RENDER_START_HOST( DataChanged, s_RenderStartUnaudited ),
+    RENDER_START_HOST( ResetOverlays, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Simulate, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Bones, s_RenderStartUnaudited ),
+    RENDER_START_HOST( TempEnts, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Particles, s_RenderStartUnaudited ),
+    RENDER_START_HOST( AimEnts, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Tools, s_RenderStartUnaudited ),
+    RENDER_START_HOST( Replay, s_RenderStartUnaudited ),
+    RENDER_START_HOST( VisibleEntities, s_RenderStartUnaudited ),
 };
 
 #undef RENDER_START_HOST

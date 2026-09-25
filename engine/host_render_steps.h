@@ -59,10 +59,10 @@ static void HostRender_UpdateScreenBegin( HostRenderState_t & )
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "_Host_RunFrame_Render - UpdateScreen" );
 
 #ifdef _DEBUG
-	if( r_ForceRestore.GetInt() )
+	if ( r_ForceRestore.GetInt() )
 	{
 		ForceMatSysRestore();
-		r_ForceRestore.SetValue(0);
+		r_ForceRestore.SetValue( 0 );
 	}
 #endif // _DEBUG
 }
@@ -221,7 +221,7 @@ static void HostRender_DecayLights( HostRenderState_t & )
 {
 	VPROF( "_Host_RunFrame_Render - CL_DecayLights" );
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "_Host_RunFrame_Render - CL_DecayLights" );
-	CL_DecayLights ();
+	CL_DecayLights();
 }
 
 static void HostRender_End( HostRenderState_t &r )
@@ -245,20 +245,20 @@ static void HostRender_End( HostRenderState_t &r )
 //-----------------------------------------------------------------------------
 
 static const HostRenderStep_t g_HostRenderSteps[HOST_RENDER_STEP_COUNT] = {
-	{ "RenderBegin", HostRender_Begin, false },
-	{ "UpdateScreenBegin", HostRender_UpdateScreenBegin, false },
-	{ "ScreenAdmit", HostRender_ScreenAdmit, false },
-	{ "ScreenBeginFrame", HostRender_ScreenBeginFrame, true },
-	{ "ClientRenderStart", HostRender_ClientRenderStart, true },
-	{ "EngineFrameBegin", HostRender_EngineFrameBegin, true },
-	{ "ViewRender", HostRender_ViewRender, true },
-	{ "Present", HostRender_Present, true },
-	{ "ClientRenderEnd", HostRender_ClientRenderEnd, true },
-	{ "EngineFrameEnd", HostRender_EngineFrameEnd, true },
-	{ "DynamicModels", HostRender_DynamicModels, true },
-	{ "MaterialsEndFrame", HostRender_MaterialsEndFrame, true },
-	{ "DecayLights", HostRender_DecayLights, false },
-	{ "RenderEnd", HostRender_End, false },
+    { "RenderBegin", HostRender_Begin, false },
+    { "UpdateScreenBegin", HostRender_UpdateScreenBegin, false },
+    { "ScreenAdmit", HostRender_ScreenAdmit, false },
+    { "ScreenBeginFrame", HostRender_ScreenBeginFrame, true },
+    { "ClientRenderStart", HostRender_ClientRenderStart, true },
+    { "EngineFrameBegin", HostRender_EngineFrameBegin, true },
+    { "ViewRender", HostRender_ViewRender, true },
+    { "Present", HostRender_Present, true },
+    { "ClientRenderEnd", HostRender_ClientRenderEnd, true },
+    { "EngineFrameEnd", HostRender_EngineFrameEnd, true },
+    { "DynamicModels", HostRender_DynamicModels, true },
+    { "MaterialsEndFrame", HostRender_MaterialsEndFrame, true },
+    { "DecayLights", HostRender_DecayLights, false },
+    { "RenderEnd", HostRender_End, false },
 };
 
 // Runs one step; a screen step runs only if the screen update was admitted.

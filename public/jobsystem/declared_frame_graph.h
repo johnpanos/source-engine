@@ -70,10 +70,10 @@ enum FrameGraphMode
 
 struct DeclaredFrameRun
 {
-	bool valid;              // false: invalid input or graph; no node ran
-	unsigned hostNodesRun;   // host nodes whose run() was called
-	unsigned batchItemsRun;  // batch items processed
-	unsigned batchRunners;   // runners per batch in this run's graph
+	bool valid;             // false: invalid input or graph; no node ran
+	unsigned hostNodesRun;  // host nodes whose run() was called
+	unsigned batchItemsRun; // batch items processed
+	unsigned batchRunners;  // runners per batch in this run's graph
 };
 
 // The sealed graph is reused while the shape (node names, kinds, callbacks,
@@ -85,8 +85,8 @@ public:
 	DeclaredFrameGraph();
 	~DeclaredFrameGraph();
 
-	DeclaredFrameRun Run( const FrameNodeDesc *nodes, unsigned count, IWorkerBackend *backend,
-	    FrameGraphMode mode );
+	DeclaredFrameRun Run(
+	    const FrameNodeDesc *nodes, unsigned count, IWorkerBackend *backend, FrameGraphMode mode );
 
 	// For the last sealed shape: nodes a and b are unordered by the declared
 	// edges, so a pooled run may execute them at the same time.

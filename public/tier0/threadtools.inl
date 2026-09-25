@@ -215,21 +215,28 @@ INLINE_ON_PS3 bool CThread::Join( unsigned timeout )
 {
 #ifdef _WIN32
 	if ( m_hThread )
-#elif defined(POSIX)
-	if ( m_threadId || m_threadZombieId )
-#endif
 	{
-		AssertMsg(GetCurrentCThread() != this, _T("Thread cannot be joined with self"));
-
-#ifdef _WIN32
+		AssertMsg( GetCurrentCThread() != this, _T("Thread cannot be joined with self") );
 		return ThreadJoin( (ThreadHandle_t)m_hThread, timeout );
-#elif defined(POSIX)
-		bool ret = ThreadJoin(  (ThreadHandle_t)(m_threadId ? m_threadId : m_threadZombieId), timeout );
-		m_threadZombieId = 0;
-		return ret;
-#endif
 	}
 	return true;
+#elif defined( POSIX )
+	// The exiting thread moves m_threadId to m_threadZombieId under m_Lock, so
+	// read them under it; join outside it, because the exiting thread takes
+	// m_Lock on its way out.
+	ThreadHandle_t hThread;
+	{
+		AUTO_LOCK( m_Lock );
+		hThread = (ThreadHandle_t)( m_threadId ? m_threadId : m_threadZombieId );
+	}
+	if ( !hThread )
+		return true;
+	AssertMsg( GetCurrentCThread() != this, _T("Thread cannot be joined with self") );
+	bool ret = ThreadJoin( hThread, timeout );
+	AUTO_LOCK( m_Lock );
+	m_threadZombieId = 0;
+	return ret;
+#endif
 }
 
 //---------------------------------------------------------
@@ -472,6 +479,19 @@ INLINE_ON_PS3 void* CThread::ThreadProc(LPVOID pv)
 
 	CThread *pThread = pInit->pThread;
 	g_pCurThread = pThread;
+
+#if defined( LINUX )
+	// Show the name given before Start (e.g. a pool's "Glob0", "IOJob2") to
+	// the OS: ps, top, perf and gdb. The kernel keeps 15 characters. The main
+	// thread is never renamed here, so the process name is unchanged.
+	if ( pThread->m_szName[0] )
+	{
+		char szName[16];
+		strncpy( szName, pThread->m_szName, sizeof( szName ) - 1 );
+		szName[sizeof( szName ) - 1] = 0;
+		pthread_setname_np( pthread_self(), szName );
+	}
+#endif
 
 	pThread->m_pStackBase = AlignValue( &pThread, 4096 );
 

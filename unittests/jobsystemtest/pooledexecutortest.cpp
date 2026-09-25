@@ -409,7 +409,6 @@ static void Test_EmptyGraph()
 	CHECK( backend.batches == 0 );
 }
 
-
 // A wave's main-thread job and compute job are independent, so they may run at
 // the same time. Each waits for the other to start: only concurrent execution
 // lets both see the other's flag before the deadline.

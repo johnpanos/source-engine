@@ -1921,11 +1921,6 @@ void CL_ProcessVoiceData()
 }
 #endif
 
-
-
-
-
-
 // Host_UpdateScreen is the render stage's UpdateScreenBegin step plus the
 // screen steps (host_render_steps.h).
 
@@ -2527,8 +2522,7 @@ void CheckSpecialCheatVars()
 	HandleServerAllowColorCorrection();
 }
 
-
-// _Host_RunFrame_Render is in host_render.cpp (client builds) and cl_null.cpp.
+// _Host_RunFrame_Render is in gl_screen.cpp (client builds) and cl_null.cpp.
 
 void CL_FindInterpolatedAddAngle( float t, float& frac, AddAngle **prev, AddAngle **next )
 {

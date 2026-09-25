@@ -121,8 +121,6 @@ extern bool gbCheckNotMultithreaded;
 // g_nThreadID must have this many entries; AllocateThreadID enforces the bound.
 #define MAX_THREADS_SUPPORTED 128
 
-
-
 //-----------------------------------------------------------------------------
 //
 //-----------------------------------------------------------------------------

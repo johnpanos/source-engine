@@ -171,7 +171,6 @@ static void Test_RealPoolZeroWorkersInline()
 	for ( int x : runs ) CHECK( x == 1 );
 }
 
-
 // The engine pool bridge overlaps a wave's main-thread jobs with its compute
 // jobs: each waits for the other to start, which only concurrent execution
 // satisfies before the deadline.

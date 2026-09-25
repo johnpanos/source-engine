@@ -2140,7 +2140,6 @@ void UpdatePVSNotifiers()
 	}
 }
 
-
 // 0: OnRenderStart's blocks in order, each cohort with its own dispatch.
 // 1/2: the declared render-start frame graph (client_render_start_steps.h),
 // serial or on the engine pool; the graph then owns the bone and particle
@@ -2158,7 +2157,8 @@ void OnRenderStart()
 	const int nGraphMode = cl_render_start_graph.GetInt();
 	if ( nGraphMode != 1 && nGraphMode != 2 )
 	{
-		CRenderStartSteps::RunHostNodes( s_RenderStartLegacyNodes, ARRAYSIZE( s_RenderStartLegacyNodes ) );
+		CRenderStartSteps::RunHostNodes(
+		    s_RenderStartLegacyNodes, ARRAYSIZE( s_RenderStartLegacyNodes ) );
 		return;
 	}
 
@@ -2167,7 +2167,8 @@ void OnRenderStart()
 	jobsystem::DeclaredFrameRun run;
 	if ( !RunDeclaredFrameGraph( nGraphMode == 2 ? g_pThreadPool : NULL, s_pRenderStartGraph,
 	         s_RenderStartNodes, ARRAYSIZE( s_RenderStartNodes ),
-	         nGraphMode == 2 ? jobsystem::FRAME_GRAPH_POOLED : jobsystem::FRAME_GRAPH_SERIAL, &run ) )
+	         nGraphMode == 2 ? jobsystem::FRAME_GRAPH_POOLED : jobsystem::FRAME_GRAPH_SERIAL,
+	         &run ) )
 	{
 		Error( "Invalid render-start frame graph\n" );
 	}

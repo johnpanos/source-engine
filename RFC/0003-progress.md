@@ -3,7 +3,7 @@
 Updated: 2026-09-22
 Source revision at assessment: `0649f377` (working tree; AGENTS.md portfolio row: R10)
 
-**Latest increment (2026-09-25):** [scheduler trust](0003-scheduler-trust-progress.md)
+**Latest increment (2026-09-24):** [scheduler nodes](0003-scheduler-nodes-progress.md) (render sub-nodes, threaded deadlock, pool bounds and budgets, declared frame graph); before it, [scheduler trust](0003-scheduler-trust-progress.md)
 runs the host frame as an ordered serial graph that matches captured legacy
 frames (R10). It also makes the engine pool TSan-clean on native fixtures,
 fixes the CTSQueue crash, adds bounded worker steal deques, and forbids waits

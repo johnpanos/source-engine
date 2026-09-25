@@ -137,8 +137,8 @@ struct BatchNode
 {
 	Recorder *recorder;
 	unsigned items = 0;
-	std::vector<int> ran;         // times each item ran
-	std::vector<int> values;      // item outputs
+	std::vector<int> ran;    // times each item ran
+	std::vector<int> values; // item outputs
 	std::atomic<int> begins{ 0 }, ends{ 0 };
 	std::function<void( unsigned )> body;
 	bool record = true;
@@ -176,7 +176,8 @@ static FrameNodeDesc Host( HostNode &node, const FrameAccess *access, unsigned n
 	return desc;
 }
 
-static FrameNodeDesc Batch( const char *name, BatchNode &node, const FrameAccess *access, unsigned n )
+static FrameNodeDesc Batch(
+    const char *name, BatchNode &node, const FrameAccess *access, unsigned n )
 {
 	FrameNodeDesc desc = {};
 	desc.name = name;
@@ -224,8 +225,8 @@ static void Test_SerialIsArrayOrder()
 	// A backend is ignored in serial mode.
 	DeclaredFrameRun run = graph.Run( nodes, 4, &backend, FRAME_GRAPH_SERIAL );
 	CHECK( run.valid && run.hostNodesRun == 3 && run.batchItemsRun == 5 && run.batchRunners == 1 );
-	const std::vector<std::string> expected = { "gather", "item0", "item1", "item2", "item3",
-		"item4", "unrelated", "commit" };
+	const std::vector<std::string> expected = {
+	    "gather", "item0", "item1", "item2", "item3", "item4", "unrelated", "commit" };
 	CHECK( recorder.events == expected );
 	CHECK( recorder.hostOffCaller == 0 );
 	CHECK( batch.begins == 1 && batch.ends == 1 );
@@ -248,14 +249,14 @@ static void Test_AllDomainOrdersEverything()
 	batch.recorder = &recorder;
 	batch.items = 2;
 	const FrameNodeDesc nodes[] = { Host( gather, kWriteInput, 1 ),
-		Batch( "compute", batch, kBatchAccess, 2 ), Host( legacy, kAll, 1 ) };
+	    Batch( "compute", batch, kBatchAccess, 2 ), Host( legacy, kAll, 1 ) };
 	DeclaredFrameGraph graph;
 	CHECK( graph.Run( nodes, 3, nullptr, FRAME_GRAPH_SERIAL ).valid );
 	CHECK( graph.OverlappingPairs() == 0 );
 
 	// A batch with no declarations overlaps every non-conflicting node.
 	const FrameNodeDesc undeclared[] = { Host( gather, kWriteInput, 1 ),
-		Batch( "compute", batch, nullptr, 0 ), Host( legacy, kUnrelated, 1 ) };
+	    Batch( "compute", batch, nullptr, 0 ), Host( legacy, kUnrelated, 1 ) };
 	CHECK( graph.Run( undeclared, 3, nullptr, FRAME_GRAPH_SERIAL ).valid );
 	CHECK( graph.MayOverlap( 0, 1 ) && graph.MayOverlap( 1, 2 ) );
 }
@@ -271,10 +272,10 @@ static void Test_PooledOverlapsUnorderedNodes()
 		std::atomic<bool> itemSaw( false ), hostSaw( false );
 		HostNode gather = { &recorder, "gather", {} };
 		HostNode unrelated = { &recorder, "unrelated", [&]
-			{
-				hostStarted = true;
-				hostSaw = AwaitFlag( itemStarted );
-			} };
+		    {
+			    hostStarted = true;
+			    hostSaw = AwaitFlag( itemStarted );
+		    } };
 		HostNode commit = { &recorder, "commit", {} };
 		BatchNode batch;
 		batch.recorder = &recorder;
@@ -285,8 +286,8 @@ static void Test_PooledOverlapsUnorderedNodes()
 			itemSaw = AwaitFlag( hostStarted );
 		};
 		const FrameNodeDesc nodes[] = { Host( gather, kWriteInput, 1 ),
-			Batch( "compute", batch, kBatchAccess, 2 ), Host( unrelated, kUnrelated, 1 ),
-			Host( commit, kReadItems, 1 ) };
+		    Batch( "compute", batch, kBatchAccess, 2 ), Host( unrelated, kUnrelated, 1 ),
+		    Host( commit, kReadItems, 1 ) };
 		DeclaredFrameGraph graph;
 		ThreadBackend backend( 2 );
 		DeclaredFrameRun run = graph.Run( nodes, 4, &backend, FRAME_GRAPH_POOLED );
@@ -308,18 +309,18 @@ static void Test_PooledPublishesToConflictingNodes()
 		batch.recorder = &recorder;
 		batch.record = false;
 		HostNode gather = { &recorder, "gather", [&]
-			{
-				batch.items = 1000 + (unsigned)round;
-			} };
+		    {
+			    batch.items = 1000 + (unsigned)round;
+		    } };
 		int sum = -1;
 		HostNode commit = { &recorder, "commit", [&]
-			{
-				sum = 0;
-				for ( int value : batch.values )
-					sum += value;
-			} };
+		    {
+			    sum = 0;
+			    for ( int value : batch.values )
+				    sum += value;
+		    } };
 		const FrameNodeDesc nodes[] = { Host( gather, kWriteInput, 1 ),
-			Batch( "compute", batch, kBatchAccess, 2 ), Host( commit, kReadItems, 1 ) };
+		    Batch( "compute", batch, kBatchAccess, 2 ), Host( commit, kReadItems, 1 ) };
 		DeclaredFrameGraph graph;
 		ThreadBackend backend( 3 );
 		DeclaredFrameRun run = graph.Run( nodes, 3, &backend, FRAME_GRAPH_POOLED );
@@ -343,8 +344,8 @@ static void Test_EmptyBatchRunsNoHooks()
 	BatchNode batch;
 	batch.recorder = &recorder;
 	batch.items = 0;
-	const FrameNodeDesc nodes[] = { Host( gather, kWriteInput, 1 ),
-		Batch( "compute", batch, kBatchAccess, 2 ) };
+	const FrameNodeDesc nodes[] = {
+	    Host( gather, kWriteInput, 1 ), Batch( "compute", batch, kBatchAccess, 2 ) };
 	DeclaredFrameGraph graph;
 	ThreadBackend backend( 2 );
 	DeclaredFrameRun run = graph.Run( nodes, 2, &backend, FRAME_GRAPH_POOLED );
@@ -382,8 +383,8 @@ static void Test_NestedBatchRunsInline()
 		nestedRunners = run.valid ? (int)run.batchRunners : -2;
 	};
 	HostNode gather = { &recorder, "gather", {} };
-	const FrameNodeDesc nodes[] = { Host( gather, kWriteInput, 1 ),
-		Batch( "outer", outer, kBatchAccess, 2 ) };
+	const FrameNodeDesc nodes[] = {
+	    Host( gather, kWriteInput, 1 ), Batch( "outer", outer, kBatchAccess, 2 ) };
 	DeclaredFrameGraph graph;
 	CHECK( graph.Run( nodes, 2, &backend, FRAME_GRAPH_POOLED ).valid );
 	CHECK( nestedRunners == 1 );

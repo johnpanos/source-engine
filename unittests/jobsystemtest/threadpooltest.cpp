@@ -880,7 +880,6 @@ static void TestTSQueueConcurrent()
 	delete pQueue;
 }
 
-
 //-----------------------------------------------------------------------------
 // 12. Bounded shared queue: capacity and overflow policy
 //-----------------------------------------------------------------------------
@@ -942,8 +941,8 @@ static void TestSharedQueueBlocksProducer()
 
 	const ThreadPoolSchedulingStats_t after = Stats( blocked.pPool );
 	std::printf( "bounded producer: peak %d blocked %d caller-runs %d over %d\n",
-	    after.nSharedQueuePeak, after.nSharedQueueBlockedAdmissions,
-	    after.nSharedQueueCallerRuns, after.nSharedQueueOverCapacity );
+	    after.nSharedQueuePeak, after.nSharedQueueBlockedAdmissions, after.nSharedQueueCallerRuns,
+	    after.nSharedQueueOverCapacity );
 	CHECK( after.nSharedQueuePeak == nCapacity );
 	CHECK( after.nSharedQueueBlockedAdmissions > before.nSharedQueueBlockedAdmissions );
 	CHECK( after.nSharedQueueCallerRuns == 0 );
@@ -1327,8 +1326,8 @@ static void TestThreadIdsFitPerThreadArrays()
 			nUnique++;
 		}
 	}
-	std::printf( "thread ids: %d threads, max id %d, bound %d\n", nThreads, maxId,
-	    MAX_THREADS_SUPPORTED );
+	std::printf(
+	    "thread ids: %d threads, max id %d, bound %d\n", nThreads, maxId, MAX_THREADS_SUPPORTED );
 	CHECK( nInBounds == nThreads );
 	CHECK( nUnique == nThreads );
 

@@ -197,10 +197,10 @@ private:
 	std::deque<CJob *>	m_Queues[JP_HIGH + 1];
 	int					m_nItems;
 	int					m_nMaxItems;
-	int					m_nPeakItems;
+	int m_nPeakItems;
 	CThreadMutex		m_mutex;
 	CThreadManualEvent	m_JobAvailableEvent;
-	CThreadManualEvent	m_SpaceAvailableEvent;
+	CThreadManualEvent m_SpaceAvailableEvent;
 
 } ALIGN16_POST;
 
@@ -343,7 +343,7 @@ private:
 	CInterlockedInt m_nStarvationEvents;
 
 	CThreadMutex			m_SuspendMutex;
-	CInterlockedInt			m_nSuspend; // written under m_SuspendMutex; read by producers
+	CInterlockedInt m_nSuspend; // written under m_SuspendMutex; read by producers
 	CInterlockedInt			m_nJobs;
 
 	// Some jobs should only be executed on the threadpool thread(s). Ie: the rendering thread has the GL context

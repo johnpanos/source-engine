@@ -148,8 +148,8 @@ VSTDLIB_INTERFACE bool RunThreadPoolJobBatch(
 }
 
 VSTDLIB_INTERFACE bool RunDeclaredFrameGraph( IThreadPool *pPool,
-    jobsystem::DeclaredFrameGraph *pGraph, const jobsystem::FrameNodeDesc *pNodes,
-    unsigned nNodes, jobsystem::FrameGraphMode mode, jobsystem::DeclaredFrameRun *pResult )
+    jobsystem::DeclaredFrameGraph *pGraph, const jobsystem::FrameNodeDesc *pNodes, unsigned nNodes,
+    jobsystem::FrameGraphMode mode, jobsystem::DeclaredFrameRun *pResult )
 {
 	// As RunThreadPoolJobBatch: a stack-owned binding to the borrowed pool.
 	CThreadPoolWorkerBackend backend( pPool, pPool ? pPool->NumThreads() : 0 );

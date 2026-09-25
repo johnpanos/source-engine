@@ -1830,7 +1830,6 @@ static int CountParticleSystemActiveParticles( CParticleCollection *p )
 	return nCount;
 }
 
-
 // UpdateNewEffects in its three parts: gather (control points from entities,
 // early retirement), the independent per-effect simulation, and change
 // detection. The parts keep their state in m_NewEffectsUpdate between them.

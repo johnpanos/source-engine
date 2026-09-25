@@ -1,0 +1,55 @@
+{
+  "schema": "scheduler-budget/v1",
+  "rfc": "0003",
+  "row": "R20",
+  "recorded": "2026-09-24",
+  "policy": "Process-wide scheduler capacity and overhead budgets (AGENTS.md: budgets before optimization; include low-core workloads). Capacity rows bound each engine thread pool's workers and their total; a live census (scheduler_budgets.py census) compares a running product with them. Overhead rows are regression gates on the declared runner: limits are about twice the worst median seen across three interleaved runs on a shared, frequency-scaled host, so they catch lost wakes, polling and serialization, not small drifts. A profile without its own measurements is unverified.",
+  "measurement": {
+    "pool_bench": "median microseconds per sample of unittests/jobsystemtest/threadpoolbench.cpp at the row's worker count (release --tests tree); every sample is validated before it counts",
+    "graph_node_ns": "nanoseconds added per node by the serial frame graph over a direct call loop (hostframetest MeasureOverhead) at the row's node count",
+    "census": "threads of a running Portal product by OS thread name with the index stripped; tier0 names pool workers <pool><index> on Linux"
+  },
+  "profiles": {
+    "linux-x86_64-desktop": {
+      "runner": "AMD RYZEN AI MAX+ PRO 395 (16 cores / 32 threads), Linux 7.2, g++ 16.2.1 release --tests tree",
+      "capacity": {
+        "owner": "R20",
+        "pools": {"CmpJob": 3, "IOJob": 4, "SaveJob": 1, "MatQueue": 1},
+        "total_pool_workers": 9,
+        "note": "CmpJob is the engine compute pool (physical cores - 1, capped at 3 unless -threads); IOJob the filesystem async pool (capped at 4: the cap was lost upstream in f2fa241a and restored here, 32 -> 4 workers on this runner); MatQueue exists only in queued material-system modes. Census 2026-09-24, testchmb_a_00 native Vulkan: CmpJob 3, IOJob 4, SaveJob 1, no MatQueue (8 workers). Dedicated threads (audio, packet sender, achievement save) are not pools."
+      },
+      "overhead": {
+        "fanout_3w":        {"owner": "R20", "kind": "pool_bench", "workload": "shared_fanout_4096", "workers": 3, "limit": 12000},
+        "fanout_1w":        {"owner": "R20", "kind": "pool_bench", "workload": "shared_fanout_4096", "workers": 1, "limit": 12000},
+        "nested_spawn_3w":  {"owner": "R20", "kind": "pool_bench", "workload": "nested_spawn_8x256", "workers": 3, "limit": 3000},
+        "nested_spawn_1w":  {"owner": "R20", "kind": "pool_bench", "workload": "nested_spawn_8x256", "workers": 1, "limit": 8000},
+        "waits_3w":         {"owner": "R20", "kind": "pool_bench", "workload": "recursive_waits_1365", "workers": 3, "limit": 2500},
+        "waits_1w":         {"owner": "R20", "kind": "pool_bench", "workload": "recursive_waits_1365", "workers": 1, "limit": 3000},
+        "parallel_3w":      {"owner": "R20", "kind": "pool_bench", "workload": "parallel_process_8192", "workers": 3, "limit": 5000},
+        "parallel_1w":      {"owner": "R20", "kind": "pool_bench", "workload": "parallel_process_8192", "workers": 1, "limit": 18000},
+        "wake_3w":          {"owner": "R20", "kind": "pool_bench", "workload": "wake_latency", "workers": 3, "limit": 150},
+        "wake_1w":          {"owner": "R20", "kind": "pool_bench", "workload": "wake_latency", "workers": 1, "limit": 150},
+        "tsqueue_1p1c":     {"owner": "R20", "kind": "pool_bench", "workload": "ctsqueue_1p1c_200k", "workers": 3, "limit": 150000},
+        "tsqueue_4p4c":     {"owner": "R20", "kind": "pool_bench", "workload": "ctsqueue_4p4c_800k", "workers": 3, "limit": 1500000},
+        "graph_node":       {"owner": "R10", "kind": "graph_node_ns", "phases": 31, "limit": 50}
+      },
+      "baseline": {
+        "medians_us_3w": {"shared_fanout_4096": [2915.4, 3684.0, 6089.1], "nested_spawn_8x256": [1164.3, 1181.8, 1438.5], "recursive_waits_1365": [1000.3, 812.8, 982.5], "parallel_process_8192": [1895.8, 1895.9, 2311.2], "wake_latency": [14.5, 28.6, 30.3], "ctsqueue_1p1c_200k": [54149.9, 62737.9, 65645.7], "ctsqueue_4p4c_800k": [383399.3, 583707.3, 606011.9]},
+        "medians_us_1w": {"shared_fanout_4096": [4311.8, 5114.2, 5266.4], "nested_spawn_8x256": [2993.4, 3628.3, 3644.3], "recursive_waits_1365": [1105.0, 1359.6, 1390.0], "parallel_process_8192": [7332.1, 8843.8, 8861.9], "wake_latency": [26.2, 30.5, 77.3]},
+        "graph_node_ns_31": [13.0, 13.3, 13.4],
+        "host_load": "load average 4-6 during the runs; CPU frequency scaling active",
+        "in_game": "perf profile, testchmb_a_02 headless native Vulkan, 3781 frames: main thread 7.41 ms/frame steady, of which caller-side pooled batch dispatch (particles, bones) 0.070 ms and host frame graph executor under 0.01 ms (RFC/0003-scheduler-nodes-progress.md)"
+      }
+    },
+    "portal-android-native-vulkan": {
+      "status": "unverified",
+      "owner": "R29",
+      "note": "Same pool policy applies (CmpJob physical-1 capped at 3, IOJob logical capped at 4); no device census or benchmark yet. Mobile power/thermal budgets need R29 device runs."
+    },
+    "apple-arm64": {
+      "status": "unverified",
+      "owner": "R29",
+      "note": "No macOS/iOS runner."
+    }
+  }
+}

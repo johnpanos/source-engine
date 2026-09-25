@@ -652,10 +652,10 @@ public:
 	// Between SimulateBegin and SimulateEnd, SimulateBatchItem( i ) for each
 	// i < SimulateBatchCount() may run on any thread, concurrently with the
 	// other items and with nothing else touching particle state.
-	void			SimulateBegin( float fTimeDelta );
-	unsigned		SimulateBatchCount() const;
-	void			SimulateBatchItem( unsigned iItem );
-	void			SimulateEnd();
+	void SimulateBegin( float fTimeDelta );
+	unsigned SimulateBatchCount() const;
+	void SimulateBatchItem( unsigned iItem );
+	void SimulateEnd();
 
 	// This just marks effects that were drawn so during their next simulation they can know
 	// if they were drawn in the previous frame.
@@ -719,9 +719,9 @@ private:
 	void UpdateAllEffectsEnd();
 
 	void UpdateNewEffects( float flTimeDelta );				// update new particle effects
-	void UpdateNewEffectsBegin( float flTimeDelta );		// gather and retire
-	void UpdateNewEffectsSimulate();						// simulate the gathered effects
-	void UpdateNewEffectsEnd();								// detect changes
+	void UpdateNewEffectsBegin( float flTimeDelta );        // gather and retire
+	void UpdateNewEffectsSimulate();                        // simulate the gathered effects
+	void UpdateNewEffectsEnd();                             // detect changes
 	unsigned NewEffectsSimulateCount() const;
 	void NewEffectsSimulateItem( unsigned iEffect );
 
@@ -751,8 +751,8 @@ private:
 	bool							m_bRenderParticleEffects;
 
 	// Between the parts of Simulate / UpdateNewEffects.
-	bool							m_bSimulateUpdating;
-	bool							m_bSimulateNewEffectsPending;
+	bool m_bSimulateUpdating;
+	bool m_bSimulateNewEffectsPending;
 	struct NewEffectsUpdate_t
 	{
 		float flTimeDelta;
@@ -760,7 +760,7 @@ private:
 		int nParticleStatsTriggerCount;
 		CUtlVector<CNewParticleEffect *> particlesToSimulate;
 	};
-	NewEffectsUpdate_t				m_NewEffectsUpdate;
+	NewEffectsUpdate_t m_NewEffectsUpdate;
 
 	// All the active effects.
 	CUtlLinkedList<CParticleEffectBinding*, unsigned short>		m_Effects;

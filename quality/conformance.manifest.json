@@ -884,6 +884,58 @@
       "expect": "pass"
     },
     {
+      "id": "jobsystem.declaredframe",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-DECLARED-001",
+      "contract": "public/jobsystem/declared_frame_graph.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "jobsystem/declared_frame_graph.cpp",
+        "unittests/jobsystemtest/declaredframetest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobsystem.renderstart",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-RENDERSTART-001",
+      "contract": "game/client/client_render_start_steps.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "jobsystem/declared_frame_graph.cpp",
+        "unittests/jobsystemtest/renderstarttest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.bench.smoke",
       "domain": "Q-JOBS",
       "rfc": "0003",

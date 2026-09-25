@@ -524,7 +524,6 @@ struct CMDLCacheCriticalSection
 	~CMDLCacheCriticalSection() { Record( "MDLCache unlock" ); }
 };
 
-
 //-----------------------------------------------------------------------------
 // Render stage services (legacy _Host_RunFrame_Render / SCR_UpdateScreen and
 // engine/host_render_steps.h call the same ones)
@@ -651,8 +650,12 @@ struct FakeLauncherMgr
 static FakeLauncherMgr s_launcherMgr;
 FakeLauncherMgr *g_pLauncherMgr = NULL;
 // Live capture only; not part of the compared behavior.
-void Host_TraceFrameEvent( const char *, int ) {}
-void Host_TraceServerJob( bool ) {}
+void Host_TraceFrameEvent( const char *, int )
+{
+}
+void Host_TraceServerJob( bool )
+{
+}
 void SCR_UpdateScreen( void );
 void _Host_RunFrame_Render(); // the verbatim legacy stage (hostframe_render_legacy_oracle.h)
 

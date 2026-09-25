@@ -112,9 +112,11 @@ static Frame MakeFrame( unsigned seed )
 #define VPROF_BUDGETGROUP_PARTICLE_SIMULATION 0
 #define BUDGETFLAG_CLIENT 0
 
-// Without FP_EXCEPTIONS_ENABLED the real enabler is empty.
+// Without FP_EXCEPTIONS_ENABLED the real enabler does nothing.
 struct FPExceptionEnabler
 {
+	FPExceptionEnabler() {}
+	~FPExceptionEnabler() {}
 };
 
 struct FakePortalRender
@@ -126,7 +128,10 @@ FakePortalRender *g_pPortalRender = &s_portalRender;
 
 struct FakePartition
 {
-	void SuppressLists( int mask, bool b ) { Record( "partition.suppress " + std::to_string( mask ) + " " + std::to_string( b ) ); }
+	void SuppressLists( int mask, bool b )
+	{
+		Record( "partition.suppress " + std::to_string( mask ) + " " + std::to_string( b ) );
+	}
 };
 static FakePartition s_partition;
 FakePartition *partition = &s_partition;
@@ -139,9 +144,15 @@ void Rope_ResetCounters()
 class C_BaseEntity
 {
 public:
-	static void SetAbsQueriesValid( bool b ) { Record( std::string( "SetAbsQueriesValid " ) + ( b ? "1" : "0" ) ); }
+	static void SetAbsQueriesValid( bool b )
+	{
+		Record( std::string( "SetAbsQueriesValid " ) + ( b ? "1" : "0" ) );
+	}
 	static void InterpolateServerEntities() { Record( "InterpolateServerEntities" ); }
-	static void EnableAbsRecomputations( bool b ) { Record( std::string( "EnableAbsRecomputations " ) + ( b ? "1" : "0" ) ); }
+	static void EnableAbsRecomputations( bool b )
+	{
+		Record( std::string( "EnableAbsRecomputations " ) + ( b ? "1" : "0" ) );
+	}
 	static void MarkAimEntsDirty() { Record( "MarkAimEntsDirty" ); }
 	static void CalcAimEntPositions() { Record( "CalcAimEntPositions" ); }
 	static void ToolRecordEntities() { Record( "ToolRecordEntities" ); }
@@ -156,7 +167,8 @@ public:
 	static void InvalidateBoneCaches() { Record( "InvalidateBoneCaches" ); }
 	static void PushAllowBoneAccess( bool a, bool b, const char *tag )
 	{
-		Record( std::string( "PushAllowBoneAccess " ) + ( a ? "1" : "0" ) + ( b ? "1" : "0" ) + tag );
+		Record(
+		    std::string( "PushAllowBoneAccess " ) + ( a ? "1" : "0" ) + ( b ? "1" : "0" ) + tag );
 	}
 	static void UpdateClientSideAnimations() { Record( "UpdateClientSideAnimations" ); }
 
@@ -166,7 +178,10 @@ public:
 		Record( "bones.begin " + std::to_string( s_items ) );
 	}
 	static unsigned ThreadedBoneSetupCount() { return (unsigned)s_items; }
-	static void ThreadedBoneSetupItem( unsigned i ) { Record( "bones.item " + std::to_string( i ) ); }
+	static void ThreadedBoneSetupItem( unsigned i )
+	{
+		Record( "bones.item " + std::to_string( i ) );
+	}
 	static void ThreadedBoneSetupRunnerBegin() { Record( "bones.runner.begin" ); }
 	static void ThreadedBoneSetupRunnerEnd() { Record( "bones.runner.end" ); }
 	static void ThreadedBoneSetupEnd()
@@ -371,8 +386,8 @@ enum Path
 static const jobsystem::FrameNodeDesc *s_pNodes = s_RenderStartNodes;
 static unsigned s_nNodes = ARRAYSIZE( s_RenderStartNodes );
 
-static std::vector<std::string> RunFrame( const Frame &f, Path path, jobsystem::DeclaredFrameGraph &graph,
-    ThreadBackend &backend )
+static std::vector<std::string> RunFrame(
+    const Frame &f, Path path, jobsystem::DeclaredFrameGraph &graph, ThreadBackend &backend )
 {
 	std::vector<std::string> trace;
 	s_pFrame = &f;
@@ -385,13 +400,15 @@ static std::vector<std::string> RunFrame( const Frame &f, Path path, jobsystem::
 		OnRenderStart();
 		break;
 	case PATH_LEGACY_TABLE:
-		CRenderStartSteps::RunHostNodes( s_RenderStartLegacyNodes, ARRAYSIZE( s_RenderStartLegacyNodes ) );
+		CRenderStartSteps::RunHostNodes(
+		    s_RenderStartLegacyNodes, ARRAYSIZE( s_RenderStartLegacyNodes ) );
 		break;
 	case PATH_GRAPH_SERIAL:
 	case PATH_GRAPH_POOLED:
 	{
 		jobsystem::DeclaredFrameRun run = graph.Run( s_pNodes, s_nNodes, &backend,
-		    path == PATH_GRAPH_SERIAL ? jobsystem::FRAME_GRAPH_SERIAL : jobsystem::FRAME_GRAPH_POOLED );
+		    path == PATH_GRAPH_SERIAL ? jobsystem::FRAME_GRAPH_SERIAL
+		                              : jobsystem::FRAME_GRAPH_POOLED );
 		if ( !run.valid )
 			trace.push_back( "graph invalid" );
 		break;
@@ -460,15 +477,17 @@ static void TestEquivalence( int nFrames )
 		CHECK( ok );
 		if ( !ok && ++mismatches <= 2 )
 		{
-			printf( "seed %d: legacy %zu table %zu serial %zu pooled %zu events\n", seed, legacy.size(),
-			    table.size(), serial.size(), pooled.size() );
+			printf( "seed %d: legacy %zu table %zu serial %zu pooled %zu events\n", seed,
+			    legacy.size(), table.size(), serial.size(), pooled.size() );
 			const std::vector<std::string> a = Normalize( legacy ), b = Normalize( pooled );
 			for ( size_t i = 0; i < a.size() || i < b.size(); i++ )
 			{
-				const std::string x = i < a.size() ? a[i] : "<end>", y = i < b.size() ? b[i] : "<end>";
+				const std::string x = i < a.size() ? a[i] : "<end>",
+				                  y = i < b.size() ? b[i] : "<end>";
 				if ( x != y )
 				{
-					printf( "  first difference at %zu: legacy '%s' pooled '%s'\n", i, x.c_str(), y.c_str() );
+					printf( "  first difference at %zu: legacy '%s' pooled '%s'\n", i, x.c_str(),
+					    y.c_str() );
 					break;
 				}
 			}
@@ -496,9 +515,10 @@ static void TestDeclaredOrder()
 	s_pFrame = &f;
 	std::vector<std::string> trace;
 	s_pTrace = &trace;
-	CHECK( graph.Run( s_RenderStartNodes, ARRAYSIZE( s_RenderStartNodes ), &backend,
-	           jobsystem::FRAME_GRAPH_POOLED )
-	           .valid );
+	CHECK( graph
+	        .Run( s_RenderStartNodes, ARRAYSIZE( s_RenderStartNodes ), &backend,
+	            jobsystem::FRAME_GRAPH_POOLED )
+	        .valid );
 	s_pTrace = NULL;
 	printf( "declared order: %u overlapping node pairs of %u nodes\n", graph.OverlappingPairs(),
 	    (unsigned)ARRAYSIZE( s_RenderStartNodes ) );

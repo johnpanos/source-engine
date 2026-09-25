@@ -37,8 +37,8 @@ public:
 	// ParallelFor and then caller(), which overlaps nothing (the order before
 	// this hook existed); a backend with asynchronous workers starts body(i)
 	// before running caller().
-	virtual void ParallelForWithCaller( int n, const std::function<void( int )> &body,
-	    const std::function<void()> &caller )
+	virtual void ParallelForWithCaller(
+	    int n, const std::function<void( int )> &body, const std::function<void()> &caller )
 	{
 		ParallelFor( n, body );
 		caller();

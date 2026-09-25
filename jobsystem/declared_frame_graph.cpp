@@ -94,7 +94,8 @@ struct DeclaredFrameGraph::Impl
 		std::vector<FrameAccess> access;
 	};
 
-	bool SameShape( const FrameNodeDesc *nodes, unsigned n, FrameGraphMode m, unsigned runners ) const
+	bool SameShape(
+	    const FrameNodeDesc *nodes, unsigned n, FrameGraphMode m, unsigned runners ) const
 	{
 		if ( !sealed || shape.size() != n || mode != m || batchRunners != runners )
 			return false;
