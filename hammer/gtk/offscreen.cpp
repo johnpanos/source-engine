@@ -26,7 +26,7 @@
 
 // The offscreen path is self-contained and free of GTK. It reads the file via the
 // shared DiskFileStore and imports full-fidelity VMF geometry directly through the
-// keyvalues codec + brush bridge (not the editable box model), so a screenshot of
+// keyvalues codec + VMF geometry decoder (not the editable box model), so a screenshot of
 // an arbitrary map shows its real brushes.
 #include "hammer/adapters/platform/disk_byte_store.h"
 #include "hammer/adapters/platform/disk_file_store.h"
@@ -34,6 +34,7 @@
 #include "hammer/formats/keyvalues.h"
 #include "hammer/formats/material_catalog.h"
 #include "hammer/formats/search_path_assets.h"
+#include "hammer/formats/vmf_geometry.h"
 #ifdef HAMMER_KTX_PREVIEW
 #include "hammer/adapters/source/ktx2_preview.h"
 #endif
@@ -60,7 +61,7 @@ bool LoadSceneForScreenshot(
 		error = pr.error;
 		return false;
 	}
-	scene = hammer::geometry::BuildSceneFromDocument( pr.root );
+	scene = hammer::formats::BuildSceneFromDocument( pr.root );
 	return true;
 }
 

@@ -166,8 +166,10 @@ The editing authority (`hammer::app::EditorController`) and file I/O
 (`hammer::adapters::platform::DiskFileStore`, `SaveDocument`) live in the shared
 core, not here — the host only presents them. There is no host-local file store.
 
-The geometry bridge itself lives in the strict core
-(`public/hammer/geometry/brush.h`, `hammer/core/geometry/brush.cpp`) and is
-covered by the `hammer.geometry.brush` Q-EDITOR conformance suites
-(`unittests/hammertest/`), so it is exercised headlessly under gcc and clang
-independently of this GTK product.
+The geometry bridge itself lives in the strict core: brush geometry in
+`public/hammer/geometry/brush.h` and `hammer/core/geometry/brush.cpp`, and the
+VMF decoder in `public/hammer/formats/vmf_geometry.h` and
+`hammer/core/formats/vmf_geometry.cpp`. Both are covered by the
+`hammer.geometry.brush` Q-EDITOR conformance suites (`unittests/hammertest/`),
+so they are exercised headlessly under gcc and clang independently of this GTK
+product.

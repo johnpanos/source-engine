@@ -2,9 +2,12 @@
 
 Module: `hammer.geometry`
 Header: `public/hammer/geometry/displacement.h` · Impl: `hammer/core/geometry/displacement.cpp`
+VMF decoder (`hammer.formats`): `hammer::formats::ParseDispInfo` in
+`public/hammer/formats/vmf_geometry.h` · `hammer/core/formats/vmf_geometry.cpp`
 Conformance: `unittests/hammertest/geometry/test_displacement.cpp` (+ `_negative`)
 Migration: `HAM-DISP-001`
-Depends on: `hammer.formats` (keyvalues codec), `hammer.geometry` brush `Vec3d`
+Depends on: `hammer.geometry` brush `Vec3d` (the geometry core); the decoder
+depends on the `hammer.formats` keyvalues codec
 
 Turns a VMF `dispinfo` block plus its host quad face into the subdivided,
 per-vertex-displaced surface Source uses for terrain. This is the "later

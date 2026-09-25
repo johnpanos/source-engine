@@ -11,12 +11,13 @@
 
 #include "hammer/geometry/displacement.h"
 #include "hammer/formats/keyvalues.h"
+#include "hammer/formats/vmf_geometry.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
 
-using hammer::geometry::ParseDispInfo;
+using hammer::formats::ParseDispInfo;
 
 namespace
 {

@@ -37,17 +37,15 @@
 #include <string_view>
 
 #include "foundation/expected.h"
+#include "foundation/strong_id.h"
 
 namespace debugapi
 {
 
-struct ConnectionId
-{
-	uint32_t value = 0;
-
-	friend bool operator==( ConnectionId, ConnectionId ) = default;
-	friend auto operator<=>( ConnectionId, ConnectionId ) = default;
-};
+// One transport connection. Transports number connections from 1; the default
+// (0) names no connection.
+struct ConnectionIdTag;
+using ConnectionId = foundation::StrongId<ConnectionIdTag, uint32_t>;
 
 class ITransportSink
 {

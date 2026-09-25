@@ -358,7 +358,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | done (re-audited 2026-09-25; [Q0 baseline](RFC/0005-progress.md#re-audit-2026-09-25)) |
 | 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | done ([Q1 runner](RFC/0005-progress.md#q1--r02-runner-shared-conformance-runner)) |
 | 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | active (R03-A ABI contract and R03-B full target coverage and Android x86_64 done 2026-09-25; open: Apple/MSVC, CI, R54 ABI island; [0006 progress](RFC/0006-progress.md#r03-b-complete-linux-target-coverage-and-android-x86_64-slice-done-2026-09-25)) |
-| 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | active (`archlint check --all` passes since R04-DRIFT and R04-CAP; `--compile-deps` transitive include and portable link-graph checks installed and declared as `arch.compile-deps` (R04-DEPS) 2026-09-25; hermetic contract-header compiles installed (R04-HERMETIC); open: per-target `arch_module` ownership for mixed targets, the Hammer include cycle; [Phase A record](RFC/0001-phase-a-progress.md#r04-deps-compiler-grounded-transitive-include-check-slice-done-2026-09-25)) |
+| 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | active (`archlint check --all` passes since R04-DRIFT and R04-CAP; `--compile-deps` transitive include and portable link-graph checks installed and declared as `arch.compile-deps` (R04-DEPS) 2026-09-25; hermetic contract-header compiles (R04-HERMETIC) and the Hammer include graph (R04-HAMGRAPH) installed; open: per-target `arch_module` ownership for mixed targets; [Phase A record](RFC/0001-phase-a-progress.md#r04-deps-compiler-grounded-transitive-include-check-slice-done-2026-09-25)) |
 | 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | partial ([`Expected` and consumers](RFC/0006-progress.md)) |
 | 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | partial (`platform/composition.cpp`; [conformance record](RFC/0001-conformance-progress.md)) |
 | 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | partial |
@@ -400,7 +400,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 43 / R51 | Stage reference rendering; 0007 G | R49, R54 | Versioned Cycles reference fixtures rendered from stages; seeded material-mapping error detected | planned |
 | 44 / R52 | Hammer compile/preview and vvis job graph; 0007 H | R20, R25, R49 | GTK compile/run and progressive preview with cancellation/recovery; serial/parallel/legacy PVS byte equivalence | planned |
 | 45 / R57 | Incremental map build graph; 0008 F6 | R52, R54 | Cache-hit traces per change class and source-producer identity; cancellation leaves the previous package intact; native USD inputs extend the graph under R59 | planned |
-| 46 / R59 | USD-native map schema and compiler; 0009 U0–U2 | R05, R48, R53, R54 | A hand-authored USD room compiles without VMF or prior BSP and runs in client/server; world, static, dynamic and physics roles validate distinctly; collision/visibility and negative fixtures pass | planned ([RFC 0009](RFC/0009-usd-native-map-authoring.md)) |
+| 46 / R59 | USD-native map schema and compiler; 0009 U0–U2 | R05, R48, R53, R54 | A hand-authored USD room compiles without VMF or prior BSP and runs in client/server; world, static, dynamic and physics roles validate distinctly; collision/visibility and negative fixtures pass | active (U0 authoring schema and validator, 2026-09-25; [RFC 0009 progress](RFC/0009-progress.md)) |
 | 47 / R60 | USD-native editor workflow and VMF migration; 0009 U3–U4 | R13, R25, R59 | USD owns save/reopen/history and compile; role-aware block/mesh/prop editing, material/light viewport, object-linked diagnostics, edit-to-preview budgets, two-document workflow, external edit, import loss reports and installed product gates pass | planned ([RFC 0009](RFC/0009-usd-native-map-authoring.md)) |
 | 48 / R61 | Modern map spatial/gameplay data; 0008 F8 | R31, R53, R59 | Versioned USD-native geometry/collision/visibility payload passes client/server semantic and malformed-input suites; legacy BSP bytes and behavior remain compatible | planned ([RFC 0008](RFC/0008-canonical-world-data-and-runtime-formats.md)) |
 | 49 / R62 | Modern model asset path; 0008 F9 | R47, R55, R59 | Authored/compiled model assets serve static, dynamic and physics roles with materials, LOD, collision and required animation; MDL corpus and lifecycle gates pass | planned ([RFC 0008](RFC/0008-canonical-world-data-and-runtime-formats.md)) |
@@ -636,6 +636,16 @@ Keep the table concise and link details below or from the domain progress file.
   scalability, and direct USD development-runtime iteration. They extend the
   Source 2-like outcome without marking F1–F7 or the current preview complete.
 
+- Hammer scope (user direction, 2026-09-25): the goal is not a perfect or
+  legacy-complete Hammer. "We need hammer and a game, and they both need to
+  evolve together."
+  - Prefer thin vertical slices where an editor capability lands with the map
+    or gameplay that uses it: R17's renderer, a minimal R25 workflow, and
+    R59/R60 USD author → compile → play.
+  - Legacy-parity breadth (R08 inventory coverage, MFC parity, R33 feature
+    families, R43 retirement) proceeds only when a game feature needs it.
+  - Cheap enforcement (HAM002/HAM003, the module graph) stays. Row
+    definitions are unchanged; this sets priority among ready work.
 - R08: `active`. See the
   [RFC 0002 current state](RFC/0002-progress.md#current-state-2026-09-25).
   - The ledger has 28 migrations, 11 of them extracted format cores.
@@ -643,8 +653,11 @@ Keep the table concise and link details below or from the domain progress file.
   - `archlint hammer --verify` passes again (2026-09-25, user decision): the
     validator accepts Hammer edges to registered capability modules, such as
     the R47 schema's `hammer.formats` → `render.contracts`.
-  - Include-graph checking is not installed. Strict Hammer files already
-    form a geometry↔formats cycle, and nothing fails.
+  - Strict Hammer include-graph checking (HAM002, include edges and cycles) is installed (R04-HAMGRAPH,
+    2026-09-25). The VMF decoders moved from geometry to formats, which
+    removed the geometry↔formats cycle. App → formats is a recorded
+    exception owned by R22 until a `hammer.ports` persistence contract
+    exists.
 
 - R16: `done` (2026-09-22) for the rank 9 scope:
   - Contract: `public/render/render_presentation.h` (`render.presentation.v1`).

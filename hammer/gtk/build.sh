@@ -50,6 +50,7 @@ $ROOT/hammer/core/geometry/brush.cpp \
 $ROOT/hammer/core/geometry/displacement.cpp \
 $ROOT/hammer/core/geometry/rounding.cpp \
 $ROOT/hammer/core/formats/keyvalues.cpp \
+$ROOT/hammer/core/formats/vmf_geometry.cpp \
 $ROOT/hammer/core/formats/vpk_archive.cpp \
 $ROOT/hammer/core/formats/vtf_image.cpp \
 $ROOT/hammer/core/formats/material.cpp \

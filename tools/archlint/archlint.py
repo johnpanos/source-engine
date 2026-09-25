@@ -1456,6 +1456,94 @@ def hammer_scaffold_command(root: Path, manifest: dict, args: argparse.Namespace
     return 0
 
 
+HAMMER_INCLUDE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*"([^"]+)"', re.M)
+HAMMER_EXCEPTION_FIELDS = ("path", "dependency", "count", "reason", "owner", "tracking", "removal")
+
+
+def hammer_strict_module(path: str, module_block: dict) -> str | None:
+    """hammer/core/<area>/... and public/hammer/<area>/... belong to hammer.<area>."""
+    for root in module_block.get("strictIncludeRoots", []):
+        if path.startswith(root):
+            area = path[len(root):].split("/", 1)[0]
+            return f"hammer.{area}" if "/" in path[len(root):] else None
+    return None
+
+
+def hammer_include_graph(root: Path, module_block: dict, capability_block: dict | None) -> list[str]:
+    """HAM002: strict editor sources include only their allowed modules, and the
+    module include graph that the sources really form is acyclic (RFC 0002).
+
+    Includes of another Hammer area or of a registered capability module must be
+    allowed edges. A deviation needs an exact-count `includeExceptions` entry
+    with an owner and a removal condition; nothing can excuse a cycle.
+    """
+    modules = {module["id"]: module for module in module_block.get("modules", [])}
+    errors: list[str] = []
+    found: dict[tuple[str, str], int] = {}
+    edges: dict[str, set[str]] = {mid: set() for mid in modules}
+    for path in sorted(
+        path
+        for strict_root in module_block.get("strictIncludeRoots", [])
+        for path in (root / strict_root).rglob("*")
+        if path.is_file() and path.suffix in {".h", ".cpp", ".inl", ".hpp", ".cc"}
+    ):
+        relative = path.relative_to(root).as_posix()
+        mid = hammer_strict_module(relative, module_block)
+        if mid is None:
+            continue
+        if mid not in modules:
+            errors.append(f"[HAM002] {relative}: strict directory has no module {mid}")
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        stripped = strip_comments_and_literals(text).splitlines()
+        for match in HAMMER_INCLUDE.finditer(text):
+            if not re.search(r"#\s*include\b", stripped[text.count("\n", 0, match.start())]):
+                continue
+            name = match.group(1)
+            if name.startswith("hammer/") and name.count("/") >= 2:
+                dependency = "hammer." + name.split("/")[1]
+            elif capability_block and (root / "public" / name).is_file():
+                dependency = capabilities.owner("public/" + name, capability_block)
+            else:
+                continue
+            if dependency is None or dependency == mid:
+                continue
+            edges[mid].add(dependency)
+            if dependency not in modules[mid]["allowedEdges"]:
+                found[(relative, dependency)] = found.get((relative, dependency), 0) + 1
+    exceptions = {}
+    for index, entry in enumerate(module_block.get("includeExceptions", [])):
+        missing = [field for field in HAMMER_EXCEPTION_FIELDS if field not in entry]
+        if missing:
+            errors.append(f"[HAM002] includeExceptions[{index}]: missing {', '.join(missing)}")
+            continue
+        key = (entry["path"], entry["dependency"])
+        if key in exceptions:
+            errors.append(f"[HAM002] duplicate include exception {key[0]} -> {key[1]}")
+        if not (root / entry["path"]).is_file():
+            errors.append(f"[HAM002] include exception names a missing file {entry['path']}")
+        if not EXCEPTION_ROW.match(str(entry["owner"])) or not str(entry["reason"]).strip() \
+                or not str(entry["removal"]).strip():
+            errors.append(f"[HAM002] include exception {key[0]} -> {key[1]} needs owner row, reason and removal")
+        if not (root / str(entry["tracking"]).split("#", 1)[0]).is_file():
+            errors.append(f"[HAM002] include exception {key[0]} -> {key[1]} tracking record missing")
+        exceptions[key] = entry
+    for key, count in sorted(found.items()):
+        entry = exceptions.get(key)
+        if entry is None:
+            errors.append(f"[HAM002] {key[0]}: include of {key[1]} is not an allowed edge of "
+                          f"{hammer_strict_module(key[0], module_block)}")
+        elif entry["count"] != count:
+            errors.append(f"[HAM002] {key[0]}: exception allows exactly {entry['count']} include(s) of "
+                          f"{key[1]}, found {count}")
+    for key in sorted(set(exceptions) - set(found)):
+        errors.append(f"[HAM002] stale include exception {key[0]} -> {key[1]}; remove it")
+    cycle = _detect_cycle({mid: sorted(deps) for mid, deps in edges.items()})
+    if cycle:
+        errors.append("[HAM002] strict include cycle: " + " -> ".join(cycle))
+    return errors
+
+
 def hammer_command(root: Path, manifest: dict) -> int:
     module_block = hammer_modules(manifest)
     capabilities = frozenset(module["id"] for module in manifest["capabilityModules"]["modules"])
@@ -1472,6 +1560,7 @@ def hammer_command(root: Path, manifest: dict) -> int:
 
     compatibility = _load_json(root, "architecture/hammer_compatibility.json")
     errors.extend(f"[compatibility] {message}" for message in validate_compatibility(compatibility))
+    errors.extend(hammer_include_graph(root, module_block, manifest.get("capabilityModules")))
 
     baseline = _load_json(root, "architecture/hammer_baseline.json")
     new, stale = hammer_native_token_report(root, module_block, baseline)

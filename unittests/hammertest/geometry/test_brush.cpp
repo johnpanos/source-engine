@@ -12,6 +12,7 @@
 //=============================================================================//
 
 #include "hammer/formats/keyvalues.h"
+#include "hammer/formats/vmf_geometry.h"
 #include "hammer/geometry/brush.h"
 #include "testing/conformance_result.h"
 
@@ -19,12 +20,12 @@
 #include <cstdio>
 #include <string>
 
+using hammer::formats::BuildSceneFromDocument;
+using hammer::formats::BuildSolidFromBlock;
 using hammer::formats::ParseKeyValues;
 using hammer::formats::ParseResult;
 using hammer::geometry::BrushFace;
 using hammer::geometry::BrushSolid;
-using hammer::geometry::BuildSceneFromDocument;
-using hammer::geometry::BuildSolidFromBlock;
 using hammer::geometry::BuildSolidFromPlanes;
 using hammer::geometry::ParsePlanePoints;
 using hammer::geometry::Plane;
@@ -315,7 +316,7 @@ void TestDisplacementImport()
 	{
 		return;
 	}
-	const hammer::geometry::WorldScene scene = hammer::geometry::BuildSceneFromDocument( pr.root );
+	const hammer::geometry::WorldScene scene = hammer::formats::BuildSceneFromDocument( pr.root );
 
 	CHECK( scene.solids.size() == 1 ); // the box brush still imports
 	CHECK( scene.displacements.size() == 1 );

@@ -12,6 +12,7 @@
 
 #include "hammer/geometry/displacement.h"
 #include "hammer/formats/keyvalues.h"
+#include "hammer/formats/vmf_geometry.h"
 #include "testing/conformance_result.h"
 
 #include <array>
@@ -19,10 +20,10 @@
 #include <cstdio>
 #include <string>
 
+using hammer::formats::ParseDispInfo;
 using hammer::geometry::BuildDisplacementSurface;
 using hammer::geometry::DispInfo;
 using hammer::geometry::DisplacementSurface;
-using hammer::geometry::ParseDispInfo;
 using hammer::geometry::Vec3d;
 
 namespace

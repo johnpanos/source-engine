@@ -593,6 +593,7 @@
       "cassert",
       "chrono",
       "cmath",
+      "compare",
       "concepts",
       "condition_variable",
       "cstdarg",
@@ -1116,6 +1117,26 @@
       "IMaterialSystem",
       "vgui::",
       "CVGuiWnd"
+    ],
+    "includeExceptions": [
+      {
+        "path": "public/hammer/app/editor_document.h",
+        "dependency": "hammer.formats",
+        "count": 1,
+        "reason": "EditorDocument stores formats::KeyValueNode snapshots and the controller parses and writes VMF directly.",
+        "owner": "R22",
+        "tracking": "RFC/0002-progress.md#current-state-2026-09-25",
+        "removal": "EditorDocument's content and the controller's VMF read/write go through a hammer.ports persistence contract that hammer.formats implements (RFC 0002: app consumes persistence ports and does not select codecs)."
+      },
+      {
+        "path": "hammer/core/app/editor_controller.cpp",
+        "dependency": "hammer.formats",
+        "count": 1,
+        "reason": "EditorDocument stores formats::KeyValueNode snapshots and the controller parses and writes VMF directly.",
+        "owner": "R22",
+        "tracking": "RFC/0002-progress.md#current-state-2026-09-25",
+        "removal": "EditorDocument's content and the controller's VMF read/write go through a hammer.ports persistence contract that hammer.formats implements (RFC 0002: app consumes persistence ports and does not select codecs)."
+      }
     ]
   }
 }

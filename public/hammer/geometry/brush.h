@@ -5,13 +5,14 @@
 //			"side" planes, each plane written as three points. The renderable form
 //			of a brush is the convex polyhedron that is the intersection of the
 //			half-spaces behind those planes; this module derives that polyhedron
-//			(per-face polygons with outward normals) from the parsed keyvalues tree.
+//			(per-face polygons with outward normals) from those side planes.
 //
-//			This is the headless VMF -> scene geometry bridge the GTK desktop shell
-//			and any viewport consume. It is dependency-free apart from the C++
-//			standard library and hammer.formats: no MFC, tier0, platform.h, PCH, or
-//			GPU. Geometry is computed in double precision for clip robustness and
-//			exposed as float for GPU upload.
+//			This is the headless scene geometry the GTK desktop shell and any
+//			viewport consume. It depends only on the C++ standard library: no
+//			editor module, MFC, tier0, platform.h, PCH, or GPU. Decoding VMF
+//			keyvalues blocks into these types is hammer.formats' job
+//			(public/hammer/formats/vmf_geometry.h). Geometry is computed in double
+//			precision for clip robustness and exposed as float for GPU upload.
 //
 //			Robustness policy: the outward orientation of each side plane is derived
 //			from a point known to be interior to the brush (the centroid of the
@@ -23,8 +24,6 @@
 
 #ifndef HAMMER_GEOMETRY_BRUSH_H
 #define HAMMER_GEOMETRY_BRUSH_H
-
-#include "hammer/formats/keyvalues.h"
 
 #include <array>
 #include <cstddef>
@@ -93,8 +92,9 @@ struct SceneEntity
 // A displaced (dispinfo) surface reduced to a renderable triangle mesh: a
 // row-major grid of world-space vertices, a per-vertex blend weight (0..255), and
 // a triangle index list. This is the presentation form the scene carries; the
-// subdivision math lives in hammer.geometry.displacement, and brush.cpp fills this
-// from it (kept here so WorldScene needs no dependency on that module's header).
+// subdivision math lives in hammer.geometry.displacement, and the VMF decoder
+// (hammer.formats) fills this from it (kept here so WorldScene needs no dependency
+// on that module's header).
 struct DisplacementMesh
 {
 	std::vector<Vec3d> vertices;
@@ -117,7 +117,17 @@ struct WorldScene
 
 	std::size_t TotalFaces() const;
 	std::size_t TotalVertices() const;
+
+	// Appends 'solid' and, when it is bounded, grows the scene bounds to cover it.
+	void AddSolid( BrushSolid solid );
+
+	// Appends 'mesh' and grows the scene bounds to cover each of its vertices.
+	void AddDisplacement( DisplacementMesh mesh );
 };
+
+// Parses three whitespace-separated numbers "x y z" (surrounding whitespace
+// allowed). Returns nullopt for a missing, extra, or non-numeric component.
+std::optional<Vec3d> ParseVec3( const std::string &text );
 
 // Parses a VMF "plane" value: exactly three parenthesised points
 //   (x1 y1 z1) (x2 y2 z2) (x3 y3 z3)
@@ -141,15 +151,11 @@ std::optional<Plane> PlaneFromPoints( const Vec3d &a, const Vec3d &b, const Vec3
 BrushSolid BuildSolidFromPlanes(
     const std::vector<Plane> &planes, const std::vector<std::string> &materials = {}, int id = 0 );
 
-// Extracts a single "solid" keyvalues block into a BrushSolid (parsing its side
-// planes and materials). Returns a solid with no faces when the block has fewer
-// than four valid side planes or does not bound a finite region.
-BrushSolid BuildSolidFromBlock( const formats::KeyValueNode &solidBlock );
-
-// Imports a parsed VMF document (the root whose children are the top-level
-// blocks) into a renderable WorldScene: every solid under "world" and under brush
-// entities is resolved; entities are summarised. Never throws.
-WorldScene BuildSceneFromDocument( const formats::KeyValueNode &root );
+// Finds the built face of 'solid' that lies on 'plane' (the same plane up to
+// normal sign): normals must be near-parallel (|dot| >= 0.999) and the offsets
+// must agree within 0.5 units once the sign is reconciled. Among matches the
+// most parallel wins (a later face wins a tie). Returns nullptr when none matches.
+const BrushFace *FindFaceOnPlane( const BrushSolid &solid, const Plane &plane );
 
 } // namespace hammer::geometry
 

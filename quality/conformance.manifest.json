@@ -177,6 +177,7 @@
         "hammer/core/geometry/brush.cpp",
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/formats/keyvalues.cpp",
+        "hammer/core/formats/vmf_geometry.cpp",
         "unittests/hammertest/geometry/test_brush.cpp"
       ],
       "expect": "pass"
@@ -1725,6 +1726,7 @@
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/rounding.cpp",
         "hammer/core/formats/keyvalues.cpp",
+        "hammer/core/formats/vmf_geometry.cpp",
         "hammer/core/app/document_history.cpp",
         "unittests/hammertest/app/test_editor_controller.cpp"
       ],
@@ -1745,6 +1747,7 @@
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/rounding.cpp",
         "hammer/core/formats/keyvalues.cpp",
+        "hammer/core/formats/vmf_geometry.cpp",
         "hammer/core/app/document_history.cpp",
         "unittests/hammertest/app/test_editor_controller_negative.cpp"
       ],
@@ -1765,6 +1768,7 @@
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/rounding.cpp",
         "hammer/core/formats/keyvalues.cpp",
+        "hammer/core/formats/vmf_geometry.cpp",
         "hammer/core/app/document_history.cpp",
         "unittests/hammertest/app/test_editor_controller_pick.cpp"
       ],
@@ -1833,6 +1837,7 @@
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/brush.cpp",
         "hammer/core/formats/keyvalues.cpp",
+        "hammer/core/formats/vmf_geometry.cpp",
         "unittests/hammertest/geometry/test_displacement.cpp"
       ],
       "expect": "pass"
@@ -1850,6 +1855,7 @@
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/brush.cpp",
         "hammer/core/formats/keyvalues.cpp",
+        "hammer/core/formats/vmf_geometry.cpp",
         "unittests/hammertest/geometry/test_displacement_negative.cpp"
       ],
       "expect": "pass"

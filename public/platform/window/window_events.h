@@ -20,6 +20,8 @@
 #ifndef PLATFORM_WINDOW_WINDOW_EVENTS_H
 #define PLATFORM_WINDOW_WINDOW_EVENTS_H
 
+#include "foundation/strong_id.h"
+
 #include <cstdint>
 
 namespace platform::window
@@ -27,13 +29,8 @@ namespace platform::window
 
 // Identifies one window of one window system. Zero is never a live window.
 // Values are not reused while the window system is alive.
-struct WindowId
-{
-	std::uint32_t value = 0;
-
-	constexpr bool IsValid() const noexcept { return value != 0; }
-	friend constexpr bool operator==( WindowId, WindowId ) noexcept = default;
-};
+struct WindowIdTag;
+using WindowId = foundation::StrongId<WindowIdTag, std::uint32_t>;
 
 enum class EventType : std::uint32_t
 {

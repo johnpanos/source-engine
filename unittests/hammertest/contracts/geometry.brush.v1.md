@@ -2,13 +2,17 @@
 
 Module: `hammer.geometry` · Types: `hammer::geometry::Plane`, `BrushFace`, `BrushSolid`, `WorldScene`
 Header: `public/hammer/geometry/brush.h` · Impl: `hammer/core/geometry/brush.cpp`
+VMF decoder (`hammer.formats`): `hammer::formats::BuildSolidFromBlock`,
+`BuildSceneFromDocument` in `public/hammer/formats/vmf_geometry.h` ·
+`hammer/core/formats/vmf_geometry.cpp`
 Conformance suite: `unittests/hammertest/geometry/test_brush.cpp`
 Migration: `HAM-GEOMETRY-001`
 
 This is the RFC 0002 required contract record for the headless VMF → convex brush
 geometry bridge — the renderable form of a Source brush that the GTK desktop shell
-and any viewport consume. It depends only on the C++ standard library and
-`hammer.formats` (the VMF/keyvalues model): no MFC, tier0, platform.h, PCH, or GPU.
+and any viewport consume. The geometry module depends only on the C++ standard
+library; the keyvalues decoding lives in `hammer.formats`, which depends on
+geometry and not the reverse. Neither uses MFC, tier0, platform.h, PCH, or GPU.
 Any substitute implementation must satisfy every clause here and pass the shared
 suite.
 

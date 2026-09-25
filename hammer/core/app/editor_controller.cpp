@@ -10,7 +10,7 @@
 
 #include "hammer/app/editor_controller.h"
 
-#include "hammer/formats/keyvalues.h"
+#include "hammer/formats/vmf_geometry.h" // also the keyvalues codec
 #include "hammer/geometry/rounding.h"
 
 #include <algorithm>
@@ -908,25 +908,7 @@ geometry::WorldScene EditorController::BuildScene() const
 		{
 			return;
 		}
-		if ( solid.bounded )
-		{
-			if ( !scene.bounded )
-			{
-				scene.mins = solid.mins;
-				scene.maxs = solid.maxs;
-				scene.bounded = true;
-			}
-			else
-			{
-				scene.mins = Vec3d( std::min( scene.mins.x, solid.mins.x ),
-				    std::min( scene.mins.y, solid.mins.y ),
-				    std::min( scene.mins.z, solid.mins.z ) );
-				scene.maxs = Vec3d( std::max( scene.maxs.x, solid.maxs.x ),
-				    std::max( scene.maxs.y, solid.maxs.y ),
-				    std::max( scene.maxs.z, solid.maxs.z ) );
-			}
-		}
-		scene.solids.push_back( std::move( solid ) );
+		scene.AddSolid( std::move( solid ) );
 	};
 
 	// Render each brush's true shape from its own planes -- not a bounding box.
@@ -966,25 +948,9 @@ geometry::WorldScene EditorController::BuildScene() const
 	// Carry any loaded displacement (dispinfo terrain) surfaces so the interactive
 	// viewport renders them alongside the brushes. They are display-only in this
 	// slice (not editable), and their vertices extend the scene bounds.
-	scene.displacements = m_displacements;
-	for ( const geometry::DisplacementMesh &d : scene.displacements )
+	for ( const geometry::DisplacementMesh &d : m_displacements )
 	{
-		for ( const geometry::Vec3d &v : d.vertices )
-		{
-			if ( !scene.bounded )
-			{
-				scene.mins = v;
-				scene.maxs = v;
-				scene.bounded = true;
-			}
-			else
-			{
-				scene.mins = Vec3d( std::min( scene.mins.x, v.x ), std::min( scene.mins.y, v.y ),
-				    std::min( scene.mins.z, v.z ) );
-				scene.maxs = Vec3d( std::max( scene.maxs.x, v.x ), std::max( scene.maxs.y, v.y ),
-				    std::max( scene.maxs.z, v.z ) );
-			}
-		}
+		scene.AddDisplacement( d );
 	}
 	return scene;
 }
@@ -1065,7 +1031,7 @@ bool EditorController::LoadVmf( const std::string &vmfText, std::string &error )
 		return false;
 	}
 
-	const geometry::WorldScene scene = geometry::BuildSceneFromDocument( pr.root );
+	const geometry::WorldScene scene = formats::BuildSceneFromDocument( pr.root );
 
 	m_brushes.clear();
 	m_entities.clear();

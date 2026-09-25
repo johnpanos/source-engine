@@ -308,3 +308,79 @@ class CoverageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HammerIncludeGraphTests(unittest.TestCase):
+    """HAM002: strict editor include edges follow the module graph and form no cycle."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.block = copy.deepcopy(MODULE_BLOCK)
+        self.write("RFC/record.md", "# record\n")
+
+    def write(self, relative: str, text: str) -> None:
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    def errors(self, capability_block=None) -> list[str]:
+        return archlint.hammer_include_graph(self.root, self.block, capability_block)
+
+    def exception(self, **overrides) -> dict:
+        entry = {"path": "hammer/core/app/controller.cpp", "dependency": "hammer.formats", "count": 1,
+                 "reason": "r", "owner": "R22", "tracking": "RFC/record.md", "removal": "port"}
+        entry.update(overrides)
+        return entry
+
+    def test_allowed_edges_pass(self) -> None:
+        self.write("public/hammer/geometry/vec.h", "")
+        self.write("public/hammer/scene/doc.h", '#include "hammer/geometry/vec.h"\n')
+        self.write("hammer/core/app/controller.cpp", '#include "hammer/scene/doc.h"\n#include "hammer/app/x.h"\n')
+        self.assertEqual([], self.errors())
+
+    def test_disallowed_edge_is_rejected_and_comments_ignored(self) -> None:
+        self.write("public/hammer/geometry/vec.h", '// #include "hammer/scene/doc.h"\n')
+        self.assertEqual([], self.errors())
+        self.write("public/hammer/geometry/vec.h", '#include "hammer/scene/doc.h"\n')
+        errors = self.errors()
+        self.assertTrue(any("not an allowed edge of hammer.geometry" in e for e in errors))
+
+    def test_cycle_is_rejected_even_with_an_exception(self) -> None:
+        self.write("public/hammer/geometry/vec.h", '#include "hammer/scene/doc.h"\n')
+        self.write("public/hammer/scene/doc.h", '#include "hammer/geometry/vec.h"\n')
+        self.block["includeExceptions"] = [self.exception(
+            path="public/hammer/geometry/vec.h", dependency="hammer.scene")]
+        errors = self.errors()
+        self.assertTrue(any("strict include cycle" in e for e in errors))
+        self.assertFalse(any("not an allowed edge" in e for e in errors))
+
+    def test_exception_counts_are_exact_and_stale_ones_fail(self) -> None:
+        self.block["modules"].append({"id": "hammer.formats", "strict": True,
+                                      "allowedEdges": ["hammer.geometry"]})
+        self.block["includeExceptions"] = [self.exception()]
+        self.write("hammer/core/app/controller.cpp", '#include "hammer/formats/kv.h"\n')
+        self.assertEqual([], self.errors())
+        self.write("hammer/core/app/controller.cpp",
+                   '#include "hammer/formats/kv.h"\n#include "hammer/formats/other.h"\n')
+        self.assertTrue(any("allows exactly 1" in e for e in self.errors()))
+        self.write("hammer/core/app/controller.cpp", "")
+        self.assertTrue(any("stale include exception" in e for e in self.errors()))
+
+    def test_incomplete_exception_is_rejected(self) -> None:
+        self.block["includeExceptions"] = [{"path": "hammer/core/app/controller.cpp"}]
+        self.write("hammer/core/app/controller.cpp", "")
+        self.assertTrue(any("missing" in e for e in self.errors()))
+
+    def test_capability_module_edges_are_checked(self) -> None:
+        capability = {"modules": [{"id": "render.contracts", "paths": ["public/render/"], "allowedEdges": []}]}
+        self.write("public/render/schema.h", "")
+        self.write("public/hammer/geometry/vec.h", '#include "render/schema.h"\n')
+        self.assertTrue(any("render.contracts" in e for e in self.errors(capability)))
+        self.block["modules"][0]["allowedEdges"] = ["render.contracts"]
+        self.assertEqual([], self.errors(capability))
+
+    def test_strict_directory_without_a_module_is_reported(self) -> None:
+        self.write("hammer/core/orphan/x.cpp", "")
+        self.assertTrue(any("has no module hammer.orphan" in e for e in self.errors()))

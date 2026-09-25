@@ -325,8 +325,10 @@ Per the RFC's three-increment plan, only increment 1 is installed:
 
 1. **Installed:** deterministic inventory/schema/DAG validation and the HAM003
    lexical native-token ratchet over strict roots.
-2. **Not yet:** hermetic header builds and resolved target/link-graph checks
-   (HAM001 ownership-in-build-graph, HAM002 forbidden edges via includes/link).
+2. **Partly installed (2026-09-25):** HAM002's include edges and cycle check
+   over the strict roots (see the resolution below). Not yet: hermetic header
+   builds for Hammer, and resolved target/link-graph checks (HAM001
+   ownership-in-build-graph, HAM002 via the link graph).
 3. **Not yet:** compiler-grounded transitive include and symbol checks (HAM004
    ambient access, HAM005 transaction authority, HAM009 pick-ID narrowing).
 
@@ -348,6 +350,38 @@ and nothing fails:
   `hammer.formats`.
 
 Either the graph or the includes must change before increment 2 can pass.
+
+**Resolved 2026-09-25 (R04-HAMGRAPH).** Increment 2's include check is
+installed as HAM002 (forbidden module edge or architectural cycle, RFC 0002's rule table) in `archlint hammer --verify`. Each strict file
+(`hammer/core/<area>/`, `public/hammer/<area>/`) belongs to `hammer.<area>`,
+and its includes of another Hammer area or of a registered capability module
+must be allowed edges. The module include graph the sources really form must
+be acyclic; no exception can excuse a cycle. A deviation needs an exact-count
+`hammerModules.includeExceptions` entry with an owner row, a tracking record
+and a removal condition. Stale or miscounted entries fail. There are
+7 fixtures, and three mutants (cycle, edge, stale exception) are each
+detected.
+
+- **The cycle is gone.** The VMF decoders `BuildSolidFromBlock`,
+  `BuildSceneFromDocument` and `ParseDispInfo` moved from `hammer.geometry`
+  into `hammer.formats` (`public/hammer/formats/vmf_geometry.h`,
+  `hammer/core/formats/vmf_geometry.cpp`, namespace `hammer::formats`) with
+  unchanged bodies. Geometry exposes the key-value-free helpers they need:
+  `ParseVec3`, `FindFaceOnPlane`, `WorldScene::AddSolid` and
+  `WorldScene::AddDisplacement`. `EditorController::BuildScene` now uses the
+  last two, so the scene-bounds rule has one owner.
+- **App → formats is a recorded exception.** `editor_document.h` and
+  `editor_controller.cpp` hold one include each, owned by R22. The removal
+  condition is that the document content and the controller's VMF
+  read/write go through a `hammer.ports` persistence contract that formats
+  implements, as RFC 0002 requires.
+- **Evidence.**
+  - Q-EDITOR 60/60 with g++ and with clang++, 1,570 checks each, the same
+    counts as before the move.
+  - The Wine parity run 60/60.
+  - `build.tools` and `hammer.gtk-viewport-smoke` pass.
+  - `archlint hammer --verify` passes (104 archlint tests).
+  - The static audit shows 0 deviations.
 
 ## Gate status
 

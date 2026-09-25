@@ -1,14 +1,12 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Implementation of the VMF -> convex brush geometry bridge declared in
+// Purpose: Implementation of the convex brush and scene geometry declared in
 //			public/hammer/geometry/brush.h (RFC 0002, hammer.geometry). See that
 //			header for the contract and the outward-orientation robustness policy.
 //
 //=============================================================================//
 
 #include "hammer/geometry/brush.h"
-
-#include "hammer/geometry/displacement.h"
 
 #include <algorithm>
 #include <cctype>
@@ -246,6 +244,8 @@ bool ParseDouble( const std::string &token, double &out )
 	return true;
 }
 
+} // namespace
+
 std::optional<Vec3d> ParseVec3( const std::string &text )
 {
 	double c[3];
@@ -283,8 +283,6 @@ std::optional<Vec3d> ParseVec3( const std::string &text )
 	}
 	return Vec3d( c[0], c[1], c[2] );
 }
-
-} // namespace
 
 std::size_t WorldScene::TotalFaces() const
 {
@@ -480,119 +478,62 @@ BrushSolid BuildSolidFromPlanes(
 	return solid;
 }
 
-BrushSolid BuildSolidFromBlock( const formats::KeyValueNode &solidBlock )
+void WorldScene::AddSolid( BrushSolid solid )
 {
-	std::vector<Plane> planes;
-	std::vector<std::string> materials;
-
-	int id = 0;
-	if ( const std::string *idStr = solidBlock.Find( "id" ) )
+	if ( solid.bounded )
 	{
-		id = std::atoi( idStr->c_str() );
+		if ( !bounded )
+		{
+			mins = solid.mins;
+			maxs = solid.maxs;
+			bounded = true;
+		}
+		else
+		{
+			mins = Vec3d( std::min( mins.x, solid.mins.x ), std::min( mins.y, solid.mins.y ),
+			    std::min( mins.z, solid.mins.z ) );
+			maxs = Vec3d( std::max( maxs.x, solid.maxs.x ), std::max( maxs.y, solid.maxs.y ),
+			    std::max( maxs.z, solid.maxs.z ) );
+		}
 	}
-
-	for ( const formats::KeyValueNode &child : solidBlock.children )
-	{
-		if ( child.name != "side" )
-		{
-			continue;
-		}
-		const std::string *planeStr = child.Find( "plane" );
-		if ( !planeStr )
-		{
-			continue;
-		}
-		const std::optional<std::array<Vec3d, 3>> pts = ParsePlanePoints( *planeStr );
-		if ( !pts )
-		{
-			continue;
-		}
-		const std::optional<Plane> plane = PlaneFromPoints( ( *pts )[0], ( *pts )[1], ( *pts )[2] );
-		if ( !plane )
-		{
-			continue;
-		}
-		planes.push_back( *plane );
-		const std::string *mat = child.Find( "material" );
-		materials.push_back( mat ? *mat : std::string() );
-	}
-
-	return BuildSolidFromPlanes( planes, materials, id );
+	solids.push_back( std::move( solid ) );
 }
 
-namespace
+void WorldScene::AddDisplacement( DisplacementMesh mesh )
 {
-
-void AccumulateBounds( WorldScene &scene, const BrushSolid &solid )
-{
-	if ( !solid.bounded )
+	for ( const Vec3d &p : mesh.vertices )
 	{
-		return;
-	}
-	if ( !scene.bounded )
-	{
-		scene.mins = solid.mins;
-		scene.maxs = solid.maxs;
-		scene.bounded = true;
-		return;
-	}
-	scene.mins = Vec3d( std::min( scene.mins.x, solid.mins.x ),
-	    std::min( scene.mins.y, solid.mins.y ), std::min( scene.mins.z, solid.mins.z ) );
-	scene.maxs = Vec3d( std::max( scene.maxs.x, solid.maxs.x ),
-	    std::max( scene.maxs.y, solid.maxs.y ), std::max( scene.maxs.z, solid.maxs.z ) );
-}
-
-void ImportSolids(
-    const formats::KeyValueNode &container, WorldScene &scene, std::size_t &solidCount )
-{
-	for ( const formats::KeyValueNode &child : container.children )
-	{
-		if ( child.name != "solid" )
+		if ( !bounded )
 		{
-			continue;
+			mins = p;
+			maxs = p;
+			bounded = true;
 		}
-		++solidCount;
-		BrushSolid solid = BuildSolidFromBlock( child );
-		if ( solid.faces.empty() )
+		else
 		{
-			continue;
+			mins =
+			    Vec3d( std::min( mins.x, p.x ), std::min( mins.y, p.y ), std::min( mins.z, p.z ) );
+			maxs =
+			    Vec3d( std::max( maxs.x, p.x ), std::max( maxs.y, p.y ), std::max( maxs.z, p.z ) );
 		}
-		AccumulateBounds( scene, solid );
-		scene.solids.push_back( std::move( solid ) );
 	}
+	displacements.push_back( std::move( mesh ) );
 }
 
-void AccumulateVertexBounds( WorldScene &scene, const Vec3d &p )
-{
-	if ( !scene.bounded )
-	{
-		scene.mins = p;
-		scene.maxs = p;
-		scene.bounded = true;
-		return;
-	}
-	scene.mins = Vec3d( std::min( scene.mins.x, p.x ), std::min( scene.mins.y, p.y ),
-	    std::min( scene.mins.z, p.z ) );
-	scene.maxs = Vec3d( std::max( scene.maxs.x, p.x ), std::max( scene.maxs.y, p.y ),
-	    std::max( scene.maxs.z, p.z ) );
-}
-
-// Finds the built face whose plane matches a displacement side's plane (same plane
-// up to normal sign). Returns nullptr when none matches within tolerance.
-const BrushFace *FaceForSidePlane( const BrushSolid &solid, const Plane &sidePlane )
+const BrushFace *FindFaceOnPlane( const BrushSolid &solid, const Plane &plane )
 {
 	const BrushFace *best = nullptr;
 	double bestAbsDot = 0.999; // require near-parallel normals
 	for ( const BrushFace &face : solid.faces )
 	{
-		const double d = Dot( face.plane.normal, sidePlane.normal );
+		const double d = Dot( face.plane.normal, plane.normal );
 		const double ad = std::fabs( d );
 		if ( ad < bestAbsDot )
 		{
 			continue;
 		}
 		// Same plane: the offset must agree once the sign is reconciled.
-		const double expected = ( d > 0.0 ) ? sidePlane.dist : -sidePlane.dist;
+		const double expected = ( d > 0.0 ) ? plane.dist : -plane.dist;
 		if ( std::fabs( face.plane.dist - expected ) > 0.5 )
 		{
 			continue;
@@ -601,152 +542,6 @@ const BrushFace *FaceForSidePlane( const BrushSolid &solid, const Plane &sidePla
 		best = &face;
 	}
 	return best;
-}
-
-// Imports any displaced (dispinfo) faces of the container's solids into the scene
-// as renderable DisplacementMesh surfaces, via the hammer.geometry.displacement
-// core. A displacement side's face must be a quad; malformed dispinfo is skipped.
-void ImportDisplacements( const formats::KeyValueNode &container, WorldScene &scene )
-{
-	for ( const formats::KeyValueNode &solidBlock : container.children )
-	{
-		if ( solidBlock.name != "solid" )
-		{
-			continue;
-		}
-		// Cheap pre-check: does any side carry a dispinfo child block?
-		bool anyDisp = false;
-		for ( const formats::KeyValueNode &side : solidBlock.children )
-		{
-			if ( side.name != "side" )
-			{
-				continue;
-			}
-			for ( const formats::KeyValueNode &sc : side.children )
-			{
-				if ( sc.name == "dispinfo" )
-				{
-					anyDisp = true;
-					break;
-				}
-			}
-			if ( anyDisp )
-			{
-				break;
-			}
-		}
-		if ( !anyDisp )
-		{
-			continue;
-		}
-
-		const BrushSolid solid = BuildSolidFromBlock( solidBlock );
-		if ( solid.faces.empty() )
-		{
-			continue;
-		}
-
-		for ( const formats::KeyValueNode &side : solidBlock.children )
-		{
-			if ( side.name != "side" )
-			{
-				continue;
-			}
-			const formats::KeyValueNode *dispBlock = nullptr;
-			for ( const formats::KeyValueNode &sc : side.children )
-			{
-				if ( sc.name == "dispinfo" )
-				{
-					dispBlock = &sc;
-					break;
-				}
-			}
-			if ( !dispBlock )
-			{
-				continue;
-			}
-			const std::string *planeStr = side.Find( "plane" );
-			if ( !planeStr )
-			{
-				continue;
-			}
-			const std::optional<std::array<Vec3d, 3>> pts = ParsePlanePoints( *planeStr );
-			if ( !pts )
-			{
-				continue;
-			}
-			const std::optional<Plane> sidePlane =
-			    PlaneFromPoints( ( *pts )[0], ( *pts )[1], ( *pts )[2] );
-			if ( !sidePlane )
-			{
-				continue;
-			}
-			const BrushFace *face = FaceForSidePlane( solid, *sidePlane );
-			if ( !face || face->vertices.size() != 4 )
-			{
-				continue; // a displacement side must resolve to a quad face
-			}
-			const std::optional<DispInfo> disp = ParseDispInfo( *dispBlock );
-			if ( !disp )
-			{
-				continue;
-			}
-			const std::array<Vec3d, 4> corners = {
-			    face->vertices[0], face->vertices[1], face->vertices[2], face->vertices[3] };
-			const DisplacementSurface surf =
-			    BuildDisplacementSurface( corners, face->plane.normal, *disp );
-
-			DisplacementMesh mesh;
-			mesh.vertices = surf.vertices;
-			mesh.alphas = surf.vertexAlphas;
-			mesh.triangles = surf.triangles;
-			for ( const Vec3d &v : mesh.vertices )
-			{
-				AccumulateVertexBounds( scene, v );
-			}
-			scene.displacements.push_back( std::move( mesh ) );
-		}
-	}
-}
-
-} // namespace
-
-WorldScene BuildSceneFromDocument( const formats::KeyValueNode &root )
-{
-	WorldScene scene;
-
-	for ( const formats::KeyValueNode &block : root.children )
-	{
-		if ( block.name == "world" )
-		{
-			std::size_t ignored = 0;
-			ImportSolids( block, scene, ignored );
-			ImportDisplacements( block, scene );
-		}
-		else if ( block.name == "entity" )
-		{
-			SceneEntity entity;
-			if ( const std::string *cls = block.Find( "classname" ) )
-			{
-				entity.classname = *cls;
-			}
-			if ( const std::string *name = block.Find( "targetname" ) )
-			{
-				entity.targetname = *name;
-			}
-			if ( const std::string *origin = block.Find( "origin" ) )
-			{
-				entity.origin = ParseVec3( *origin );
-			}
-			std::size_t solidCount = 0;
-			ImportSolids( block, scene, solidCount );
-			ImportDisplacements( block, scene );
-			entity.solidCount = solidCount;
-			scene.entities.push_back( std::move( entity ) );
-		}
-	}
-
-	return scene;
 }
 
 } // namespace hammer::geometry

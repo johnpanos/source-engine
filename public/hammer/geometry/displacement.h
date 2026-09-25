@@ -4,9 +4,11 @@
 //			(RFC 0002, hammer.geometry). A displacement turns one quadrilateral
 //			brush face into a subdivided, per-vertex-offset surface -- the terrain
 //			primitive Source maps rely on. This module is the strict, MFC-free,
-//			GPU-free core: it parses a dispinfo keyvalues block and builds the
-//			displaced vertex grid + triangle list that a renderer or the scene
-//			bridge later consumes. It owns none of the presentation.
+//			GPU-free core: from a parsed dispinfo record it builds the displaced
+//			vertex grid + triangle list that a renderer or the scene bridge later
+//			consumes. It owns none of the presentation, and it does not read VMF:
+//			hammer.formats decodes a "dispinfo" keyvalues block into a DispInfo
+//			(public/hammer/formats/vmf_geometry.h).
 //
 //			The brush contract (geometry.brush.v1) deliberately excludes
 //			displacements as "a later migration"; this is that migration's core.
@@ -28,7 +30,6 @@
 #ifndef HAMMER_GEOMETRY_DISPLACEMENT_H
 #define HAMMER_GEOMETRY_DISPLACEMENT_H
 
-#include "hammer/formats/keyvalues.h"
 #include "hammer/geometry/brush.h" // Vec3d
 
 #include <array>
@@ -68,13 +69,6 @@ struct DisplacementSurface
 
 	std::size_t VertexCount() const { return vertices.size(); }
 };
-
-// Parses a "dispinfo" keyvalues block. Returns nullopt when the block is malformed
-// or internally inconsistent: power outside [1, 4]; a normals/distances/offsets
-// grid whose row count != side or whose row length != side (offsets may be
-// absent). "elevation" and "offsets" are optional; "power", "startposition",
-// "normals" and "distances" are required.
-std::optional<DispInfo> ParseDispInfo( const formats::KeyValueNode &dispBlock );
 
 // Builds the displaced surface for a quad face. 'corners' are the face's four
 // quad corners in winding order; the grid origin is whichever corner is nearest
