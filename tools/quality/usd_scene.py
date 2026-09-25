@@ -290,7 +290,7 @@ def preview_summary(name, material):
     surface = material.ComputeSurfaceSource()[0]
     if not surface or shader_id(surface) != "UsdPreviewSurface":
         for context in ("mtlx", "mdl"):
-            other = material.ComputeSurfaceSource([context])[0]
+            other = material.ComputeSurfaceSource(context)[0]
             if other:
                 identifier = shader_id(other) or context
                 return default_summary(name, PREVIEW_DEFAULTS["diffuseColor"], path,

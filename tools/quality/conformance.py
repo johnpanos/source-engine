@@ -25,6 +25,7 @@
 # ============================================================================
 
 import argparse
+import concurrent.futures
 import datetime
 import hashlib
 import json
@@ -465,6 +466,31 @@ def build_command(root, cxx, profile, suite, out_bin, config="default"):
             *profile.get("link_flags", []), "-o", out_bin]
 
 
+def separate_build_commands(root, cxx, profile, suite, out_bin, config="default"):
+    """build_command() split into one compile per source plus a link, the
+    shape a compiler cache (ccache) can cache: it declines commands that
+    compile several sources or compile and link at once. Same flags, sources
+    and link inputs, so the binary is equivalent."""
+    flags = ["-std=" + profile["cxx_std"]]
+    flags += list(profile.get("base_flags", []))
+    flags += rooted_flags(root, suite.get("extra_flags", []))
+    flags += BUILD_CONFIGS[config]
+    includes = []
+    for inc in profile.get("include_roots", []):
+        includes += ["-I", os.path.join(root, inc)]
+    commands, objects = [], []
+    for index, source in enumerate(suite["sources"]):
+        obj = "%s.%d.o" % (out_bin, index)
+        objects.append(obj)
+        commands.append([cxx, *flags, *includes, "-c", os.path.join(root, source), "-o", obj])
+    # The link keeps the whole command's flags (e.g. -pthread, sanitizers) so
+    # it links what the single-step build would have.
+    commands.append([cxx, *flags, *objects,
+                     *rooted_flags(root, suite.get("link_flags", [])),
+                     *profile.get("link_flags", []), "-o", out_bin])
+    return commands
+
+
 def unit_build_commands(root, cxx, profile, suite, out_bin, config="default"):
     """Mixed-dialect suites: each unit compiles its sources with its own policy
     dialect (plus the profile's warnings and the suite's shared flags) into
@@ -633,23 +659,34 @@ def write_log(log_dir, name, sections):
     return path
 
 
-def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
-              seed=DEFAULT_SEED, log_dir=None):
+def _finish(result, expect, outcome, detail=None):
+    result["outcome"] = outcome
+    if detail is not None:
+        result["detail"] = detail
+    result["matched"] = (outcome == expect)
+    result["certified"] = result["matched"]
+    return result
+
+
+def build_suite(root, cxx, profile, suite, out_dir, config="default", log_dir=None,
+                launcher=None):
+    """Preflight and compile one suite without running it.
+
+    Returns {"result", "done", "out_bin", "log_dir"}. When "done" is true the
+    result is final (skipped, unavailable, missing source, invalid oracle or a
+    compile error) and must not be run. Builds of different suites touch
+    disjoint outputs, so any number may run at once; runs stay serial.
+    """
     sid = suite["id"]
     expect = suite.get("expect", OUTCOME_PASS)
-    timeout = suite.get("timeout_seconds", profile.get("timeout_seconds", 60))
     result = new_result(suite)
     result["input_digest"] = suite_input_digest(root, suite)
     safe = sid.replace("/", "_")
     suite_log_dir = os.path.join(log_dir, safe) if log_dir else None
+    built = {"result": result, "done": True, "out_bin": None, "log_dir": suite_log_dir}
 
     def finish(outcome, detail=None):
-        result["outcome"] = outcome
-        if detail is not None:
-            result["detail"] = detail
-        result["matched"] = (outcome == expect)
-        result["certified"] = result["matched"]
-        return result
+        return _finish(result, expect, outcome, detail)
 
     # An unavailable provider is never a pass. Required suites fail; optional
     # suites record why they were skipped and certify nothing.
@@ -663,27 +700,35 @@ def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
             result["detail"] = reason
             result["matched"] = True   # a declared optional skip is not a gate failure
             result["certified"] = False
-            return result
-        return finish(OUTCOME_UNAVAILABLE, reason)
+            return built
+        finish(OUTCOME_UNAVAILABLE, reason)
+        return built
 
     # Missing sources are a runner-level failure: a suite that cannot be found
     # can never certify anything (RFC 0005: fail on missing fixtures).
     absent = [s for s in suite_sources(suite) if not os.path.exists(os.path.join(root, s))]
     if absent:
-        return finish(OUTCOME_MISSING_SOURCE, "missing source(s): " + ", ".join(absent))
+        finish(OUTCOME_MISSING_SOURCE, "missing source(s): " + ", ".join(absent))
+        return built
 
     offenders = assert_users(root, suite)
     if offenders:
         result["first_divergence"] = "FAIL assert() in test source(s): " + ", ".join(offenders)
-        return finish(OUTCOME_INVALID_ORACLE,
-                      "assert() is compiled out by NDEBUG; use counted checks reported "
-                      "through testing::ReportConformance")
+        finish(OUTCOME_INVALID_ORACLE,
+               "assert() is compiled out by NDEBUG; use counted checks reported "
+               "through testing::ReportConformance")
+        return built
 
     out_bin = os.path.join(out_dir, "%s.%s" % (safe.replace(".", "_"), config))
     if suite.get("units") is not None:
         commands = unit_build_commands(root, cxx, profile, suite, out_bin, config)
+    elif launcher:
+        commands = separate_build_commands(root, cxx, profile, suite, out_bin, config)
     else:
         commands = [build_command(root, cxx, profile, suite, out_bin, config)]
+    if launcher:
+        # A compiler launcher (ccache) wraps every compile and link command.
+        commands = [[launcher, *cmd] for cmd in commands]
     result["repro"] = " && ".join(" ".join(cmd) for cmd in commands)
 
     build_output = []
@@ -692,7 +737,8 @@ def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
         try:
             build = subprocess.run(cmd, capture_output=True, text=True, check=False)
         except OSError as e:
-            return finish(OUTCOME_UNAVAILABLE, "compiler %s could not be started: %s" % (cxx, e))
+            finish(OUTCOME_UNAVAILABLE, "compiler %s could not be started: %s" % (cmd[0], e))
+            return built
         build_output.append(("$ " + " ".join(cmd), build.stdout + build.stderr))
         build_rc = build.returncode
         if build_rc != 0:
@@ -707,8 +753,26 @@ def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
         if suite.get("expected_diagnostic"):
             result["matched"] = result["matched"] and suite["expected_diagnostic"] in stderr
             result["certified"] = result["matched"]
-        return result
+        return built
     result["build_ok"] = True
+    built.update(done=False, out_bin=out_bin)
+    return built
+
+
+def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
+              seed=DEFAULT_SEED, log_dir=None, launcher=None, built=None):
+    """Build (unless `built` is a build_suite() result) and run one suite."""
+    if built is None:
+        built = build_suite(root, cxx, profile, suite, out_dir, config=config,
+                            log_dir=log_dir, launcher=launcher)
+    result = built["result"]
+    if built["done"]:
+        return result
+    sid = suite["id"]
+    expect = suite.get("expect", OUTCOME_PASS)
+    timeout = suite.get("timeout_seconds", profile.get("timeout_seconds", 60))
+    out_bin = built["out_bin"]
+    suite_log_dir = built["log_dir"]
 
     limit = memory_limit_mb(profile, suite)
     result["memory_limit_mb"] = limit
@@ -904,6 +968,12 @@ def cmd_check(args):
     if args.repeat < 1:
         print("FATAL: --repeat must be at least 1", file=sys.stderr)
         return 2
+    if args.jobs < 1:
+        print("FATAL: --jobs must be at least 1", file=sys.stderr)
+        return 2
+    if args.launcher and shutil.which(args.launcher) is None:
+        print("FATAL: compiler launcher %r is unavailable" % args.launcher, file=sys.stderr)
+        return 2
 
     cxx = args.cxx
     if shutil.which(cxx) is None:
@@ -926,9 +996,12 @@ def cmd_check(args):
         "config_flags": BUILD_CONFIGS[args.config],
         "repeat": args.repeat,
         "seed": args.seed,
+        "jobs": args.jobs,
+        "launcher": args.launcher,
     }
-    print("conformance: %d suite(s) selected, cxx=%s, config=%s, repeat=%d, seed=%d"
-          % (len(selected), cxx, args.config, args.repeat, args.seed))
+    print("conformance: %d suite(s) selected, cxx=%s, config=%s, repeat=%d, seed=%d, jobs=%d%s"
+          % (len(selected), cxx, args.config, args.repeat, args.seed, args.jobs,
+             ", launcher=" + args.launcher if args.launcher else ""))
 
     identity = source_identity(root)
     identity.update(compiler_identity(cxx))
@@ -952,9 +1025,17 @@ def cmd_check(args):
                 expected_ids, decision, log_dir))
 
     record("incomplete")
+    # With --jobs > 1 every suite is compiled first, concurrently; the runs
+    # then happen one at a time in manifest order, with no compiler competing
+    # for the host, so timeouts, memory limits and evidence order are the same
+    # as a serial run.
+    prebuilt = {}
+    if args.jobs > 1:
+        prebuilt = build_all(root, cxx, profiles, selected, out_dir, args, log_dir)
     for s in selected:
         r = run_suite(root, cxx, profiles[s["profile"]], s, out_dir, config=args.config,
-                      repeat=args.repeat, seed=args.seed, log_dir=log_dir)
+                      repeat=args.repeat, seed=args.seed, log_dir=log_dir,
+                      launcher=args.launcher, built=prebuilt.get(s["id"]))
         results.append(r)
         record("incomplete")
         if r["outcome"] == OUTCOME_SKIPPED:
@@ -991,6 +1072,26 @@ def cmd_check(args):
     if evidence_path:
         print("evidence: " + os.path.relpath(evidence_path, root))
     return 0 if decision == "pass" else 1
+
+
+def build_all(root, cxx, profiles, selected, out_dir, args, log_dir):
+    """Compile every selected suite on `args.jobs` workers; {suite id: build}."""
+    started = datetime.datetime.now()
+    builds = {}
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs)
+    try:
+        futures = {pool.submit(build_suite, root, cxx, profiles[s["profile"]], s, out_dir,
+                               config=args.config, log_dir=log_dir,
+                               launcher=args.launcher): s["id"] for s in selected}
+        for future in concurrent.futures.as_completed(futures):
+            builds[futures[future]] = future.result()
+    except BaseException:
+        pool.shutdown(wait=True, cancel_futures=True)
+        raise
+    pool.shutdown(wait=True)
+    print("conformance: built %d suite(s) on %d job(s) in %.1fs"
+          % (len(builds), args.jobs, (datetime.datetime.now() - started).total_seconds()))
+    return builds
 
 
 def count(results):
@@ -1103,6 +1204,12 @@ def build_parser():
                      help="Run each suite N times; every attempt is retained and all must match.")
     chk.add_argument("--seed", type=int, default=DEFAULT_SEED,
                      help="Deterministic seed exported to suites as CONFORMANCE_SEED.")
+    chk.add_argument("--jobs", type=int, default=1,
+                     help="Compile suites on N concurrent jobs before running them; runs stay "
+                          "serial in manifest order (default: 1, build and run each in turn).")
+    chk.add_argument("--launcher", default=os.environ.get("CONFORMANCE_LAUNCHER") or None,
+                     help="Compiler launcher prefixed to every build command, e.g. ccache "
+                          "(default: $CONFORMANCE_LAUNCHER).")
     chk.add_argument("--build-dir", default=os.path.join(repo_root(), "build", "quality"),
                      help="Directory for compiled suite binaries.")
     chk.add_argument("--out", default=None,

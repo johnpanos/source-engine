@@ -11,7 +11,11 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade
+
+try:
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade
+except ImportError as error:  # system Python has no OpenUSD; see the docstring
+    raise unittest.SkipTest("test_usd_scene needs OpenUSD's pxr: %s" % error)
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools/quality"))
@@ -69,8 +73,14 @@ class FixtureTest(unittest.TestCase):
     def test_st_transform_is_applied_to_stage_uvs(self):
         mesh = UsdGeom.Mesh(self.stage.GetPrimAtPath("/root/Floor/Floor"))
         st = np.asarray(UsdGeom.PrimvarsAPI(mesh).GetPrimvar("st").Get())
-        # Floor st is metres (0.01 * cm), tiled at 0.5: the 6.4 m span becomes 3.2.
-        self.assertAlmostEqual(float(st[:, 0].max() - st[:, 0].min()), 3.2, places=4)
+        fixture = Usd.Stage.Open(str(FIXTURE))
+        source = fixture.GetPrimAtPath("/Room/Shell/Floor")
+        authored = np.asarray(UsdGeom.PrimvarsAPI(source).GetPrimvar("st").Get())
+        # WoodFloor tiles at 0.5. The Floor is a box, so its side faces map z onto
+        # u: the authored u span is 8.4 and the stage's must be 4.2.
+        span = float(authored[:, 0].max() - authored[:, 0].min())
+        self.assertAlmostEqual(span, 8.4, places=4)
+        self.assertAlmostEqual(float(st[:, 0].max() - st[:, 0].min()), 0.5 * span, places=4)
 
     def test_stage_meshes_keep_the_source_vertex_sharing(self):
         """Stage meshes share vertices as their source meshes do (no triangle

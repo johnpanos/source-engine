@@ -441,7 +441,7 @@ public:
 	int GetFirstBrushSide();
 
 private:
-	CPhysConvex *CPlaneList::BuildConvexForBrush(
+	CPhysConvex *BuildConvexForBrush(
 	    int brushnumber, float shrink, CPhysCollide *pCollideTest, float shrinkMinimum );
 
 public:

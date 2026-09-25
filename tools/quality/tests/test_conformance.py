@@ -546,6 +546,72 @@ GPU1:
 """
 
 
+class ParallelBuildTest(unittest.TestCase):
+    """--jobs compiles concurrently but must not change any result or its order."""
+
+    _check = EndToEndTest._check
+
+    SUITES = [
+        ("p1", ["pass.cpp"], "pass"),
+        ("f", ["failing.cpp"], "fail"),
+        ("c", ["compile_error.cpp"], "compile-error"),
+        ("p2", ["pass.cpp"], "pass"),
+        ("crash", ["crash.cpp"], "crash"),
+        ("p3", ["pass.cpp"], "pass"),
+    ]
+
+    def _evidence(self, extra_args):
+        out = os.path.join(tempfile.mkdtemp(prefix="conf-par-"), "evidence.json")
+        suites = [make_suite(sid, src, expect=expect) for sid, src, expect in self.SUITES]
+        rc = self._check(suites, extra_args=extra_args, out=out)
+        with open(out, encoding="utf-8") as f:
+            return rc, json.load(f)
+
+    @staticmethod
+    def _summary(evidence):
+        return [(r["id"], r["outcome"], r["matched"], r["build_ok"])
+                for r in evidence["suites"]]
+
+    def test_parallel_matches_serial_in_manifest_order(self):
+        rc1, serial = self._evidence(["--jobs", "1"])
+        rc4, parallel = self._evidence(["--jobs", "4"])
+        self.assertEqual(rc1, rc4)
+        self.assertEqual(self._summary(serial), self._summary(parallel))
+        self.assertEqual([r["id"] for r in parallel["suites"]], [sid for sid, _, _ in self.SUITES])
+        self.assertEqual(parallel["decision"], "pass")
+        self.assertEqual(parallel["run"]["jobs"], 4)
+
+    def test_launcher_wraps_every_build_command(self):
+        work = tempfile.mkdtemp(prefix="conf-launcher-")
+        record = os.path.join(work, "calls.txt")
+        launcher = os.path.join(work, "launcher.sh")
+        with open(launcher, "w", encoding="utf-8") as f:
+            f.write('#!/bin/sh\necho "$1" >> "%s"\nexec "$@"\n' % record)
+        os.chmod(launcher, 0o755)
+        rc, evidence = self._evidence(["--jobs", "3", "--launcher", launcher])
+        self.assertEqual(rc, 0)
+        self.assertEqual(evidence["run"]["launcher"], launcher)
+        with open(record, encoding="utf-8") as f:
+            calls = f.read().split()
+        # Each suite compiles its source and links separately (the shape a
+        # compiler cache accepts); the compile error stops before its link.
+        self.assertEqual(len(calls), 2 * len(self.SUITES) - 1)
+        self.assertTrue(all(c == CXX for c in calls))
+        for r in evidence["suites"]:
+            commands = r["repro"].split(" && ")
+            self.assertTrue(all(c.startswith(launcher + " ") for c in commands), r["repro"])
+            self.assertIn(" -c ", commands[0])
+
+    def test_unavailable_launcher_is_fatal(self):
+        rc = self._check([make_suite("p", ["pass.cpp"])],
+                         extra_args=["--launcher", "no-such-launcher-xyz"])
+        self.assertEqual(rc, 2)
+
+    def test_zero_jobs_is_fatal(self):
+        self.assertEqual(self._check([make_suite("p", ["pass.cpp"])],
+                                     extra_args=["--jobs", "0"]), 2)
+
+
 class RunnerClassTest(unittest.TestCase):
     """GPU profiles: class selection, profile env/link/providers, device probing."""
 

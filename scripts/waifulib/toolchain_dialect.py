@@ -61,6 +61,18 @@ def _target_name(tg):
 	return getattr(tg, 'name', None) or str(getattr(tg, 'target', ''))
 
 
+SOURCE_EXTENSIONS = {'c++': ('.cpp', '.cc', '.cxx', '.c++'), 'c': ('.c',)}
+
+
+def _compiles(tg, language, waf_feature):
+	"""Whether `tg` compiles `language`: Waf creates C tasks for .c sources of a
+	cxx-only target, and those tasks need a dialect as much as a C target's do."""
+	if waf_feature in tg.features:
+		return True
+	names = (getattr(source, 'name', str(source)) for source in tg.to_list(getattr(tg, 'source', [])))
+	return any(name.lower().endswith(SOURCE_EXTENSIONS[language]) for name in names)
+
+
 @feature('c', 'cxx')
 @after_method('propagate_uselib_vars')
 def apply_toolchain_dialect(self):
@@ -73,7 +85,7 @@ def apply_toolchain_dialect(self):
 	selected = {}
 	try:
 		for language, variable, attribute, compiler, waf_feature in LANGUAGES:
-			if waf_feature not in self.features or not self.env[compiler]:
+			if not _compiles(self, language, waf_feature) or not self.env[compiler]:
 				continue
 			family = module.compiler_family(policy, self.env[compiler])
 			own = self.to_list(getattr(self, attribute, []))

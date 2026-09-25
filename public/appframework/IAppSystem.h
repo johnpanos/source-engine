@@ -58,12 +58,12 @@ class CBaseAppSystem : public IInterface
 {
 public:
 	// Here's where the app systems get to learn about each other 
-	virtual bool Connect( CreateInterfaceFn factory ) { return true; }
+	virtual bool Connect( CreateInterfaceFn /* factory */ ) { return true; }
 	virtual void Disconnect() {}
 
 	// Here's where systems can access other interfaces implemented by this object
 	// Returns NULL if it doesn't implement the requested interface
-	virtual void *QueryInterface( const char *pInterfaceName ) { return NULL; }
+	virtual void *QueryInterface( const char * /* pInterfaceName */ ) { return NULL; }
 
 	// Init, shutdown
 	virtual InitReturnVal_t Init() { return INIT_OK; }

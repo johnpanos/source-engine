@@ -41,7 +41,7 @@ class ProfileTests(unittest.TestCase):
     def test_pins_are_complete(self):
         archives = {name: dependency for name, dependency in self.profile["dependencies"].items()
                     if "url" in dependency}
-        self.assertEqual(sorted(archives), ["ndk", "sdk_build_tools", "sdk_platform", "sdl3"])
+        self.assertEqual(sorted(archives), ["ktx_software", "ndk", "sdk_build_tools", "sdk_platform", "sdl3"])
         for name, dependency in archives.items():
             self.assertRegex(dependency["sha256"], r"^[0-9a-f]{64}$", name)
             self.assertGreater(dependency["archive_bytes"], 0, name)
