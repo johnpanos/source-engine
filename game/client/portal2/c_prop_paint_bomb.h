@@ -37,6 +37,8 @@ public:
 	virtual void PostDataUpdate( DataUpdateType_t updateType );
 
 	virtual bool ShouldDraw() { return true; }
+	// Portal 2 port: CS:GO renderable API bridged onto DrawModel( int ).
+	PORTAL2_DRAWMODEL_BRIDGE();
 	virtual int DrawModel( int flags, const RenderableInstance_t &instance );
 
 	virtual void ClientThink();

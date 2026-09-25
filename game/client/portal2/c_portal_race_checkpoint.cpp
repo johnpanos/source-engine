@@ -30,6 +30,8 @@ public:
 	C_PortalRaceCheckpoint();
 	virtual ~C_PortalRaceCheckpoint();
 
+	// Portal 2 port: CS:GO renderable API bridged onto DrawModel( int ).
+	PORTAL2_DRAWMODEL_BRIDGE();
 	virtual int DrawModel( int flags, const RenderableInstance_t &instance );
 	virtual bool ShouldDraw( void );
 

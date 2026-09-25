@@ -43,6 +43,8 @@ public:
 
 	virtual void			Spawn( void );
 	virtual void			OnNewParticleEffect( const char *pszParticleName, CNewParticleEffect *pNewParticleEffect );
+	// Portal 2 port: CS:GO renderable API bridged onto DrawModel( int ).
+	PORTAL2_DRAWMODEL_BRIDGE();
 	virtual int				DrawModel( int flags, const RenderableInstance_t &instance );
 	virtual bool			ShouldDraw( void );
 	virtual void			UpdateOnRemove( void );

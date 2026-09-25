@@ -98,6 +98,8 @@ public:
 
 	bool ShouldSkipRenderingViewpointPlayerForThisView( void );
 	virtual const char *GetPlayerModelName( void );
+	// Portal 2 port: CS:GO renderable API bridged onto DrawModel( int ).
+	PORTAL2_DRAWMODEL_BRIDGE();
 	virtual int DrawModel( int flags, const RenderableInstance_t &instance );
 	// Portal 2 port: this SDK always simulates entities and exposes void Simulate().
 	virtual void Simulate( void );

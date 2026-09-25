@@ -222,4 +222,75 @@ QA_Do( "go to the exit", function()
 }, 1.5 )
 QA_Do( "shot exit", function() { QA_Shot( "exit_open" ) }, 1.0 )
 
+// 8: portal rendering cases the head-on shots miss: a steep oblique view,
+// right up against the portal, and a ceiling portal seen from below.
+QA_Do( "oblique portal B", function()
+{
+	local eye = Vector( 7250, -5400, 110 )
+	local angles = QA_AnglesTo( eye, Vector( 7424, -5312, 56 ) )
+	QA_PlaceEye( eye, angles.pitch, angles.yaw )
+}, 1.5 )
+QA_Do( "shot oblique", function() { QA_Shot( "portal_oblique" ) }, 1.0 )
+QA_Do( "close to portal B", function()
+{
+	QA_PlaceEye( Vector( 7424, -5350, 64 ), 0.0, 90.0 )
+}, 1.5 )
+QA_Do( "shot close", function() { QA_Shot( "portal_close" ) }, 1.0 )
+QA_Do( "aim at the ceiling", function()
+{
+	QA_PlaceEye( Vector( 7700, -5380, 64 ), -89.0, 90.0 )
+}, 1.0 )
+QA_Do( "fire portal B up", function() { QA_Press( "attack2", 0.1 ) }, 1.5 )
+QA_Do( "look up at it", function()
+{
+	local p = null
+	local ceiling = null
+	while ( p = Entities.FindByClassname( p, "prop_portal" ) )
+	{
+		QA_Log( "portal at " + QA_Vec( p.GetOrigin() ) + " angles " + QA_Vec( p.GetAngles() ) )
+		if ( p.GetOrigin().z > 100 )
+			ceiling = p.GetOrigin()
+	}
+	if ( ceiling == null )
+		throw "no ceiling portal"
+	local eye = Vector( ceiling.x - 120, ceiling.y - 60, 64 )
+	local angles = QA_AnglesTo( eye, ceiling )
+	QA_PlaceEye( eye, angles.pitch, angles.yaw )
+}, 1.5 )
+QA_Do( "shot ceiling", function() { QA_Shot( "portal_ceiling" ) }, 1.0 )
+QA_Do( "far from portal A", function()
+{
+	local eye = Vector( 8000, -5950, 64 )
+	local angles = QA_AnglesTo( eye, Vector( 8000, -5504, 56 ) )
+	QA_PlaceEye( eye, angles.pitch, angles.yaw )
+}, 1.5 )
+QA_Do( "shot far", function() { QA_Shot( "portal_far" ) }, 1.0 )
+
+// 9: recursion: portal B on the laser room's south wall facing portal A, so
+// each portal shows the other (the fast path's second stencil level).
+QA_Do( "aim at the south wall", function()
+{
+	QA_PlaceEye( Vector( 7900, -5600, 64 ), 0.0, -90.0 )
+}, 1.0 )
+QA_Do( "fire portal B south", function() { QA_Press( "attack2", 0.1 ) }, 1.5 )
+QA_Do( "look down the tunnel", function()
+{
+	local p = null
+	while ( p = Entities.FindByClassname( p, "prop_portal" ) )
+		QA_Log( "portal at " + QA_Vec( p.GetOrigin() ) + " angles " + QA_Vec( p.GetAngles() ) )
+	local eye = Vector( 7960, -5700, 64 )
+	local angles = QA_AnglesTo( eye, Vector( 8000, -5504, 56 ) )
+	QA_PlaceEye( eye, angles.pitch, angles.yaw )
+}, 1.5 )
+QA_Do( "shot tunnel", function() { QA_Shot( "portal_recursion" ) }, 1.0 )
+
+// 10: the player model itself (seen through portals above).
+QA_Do( "third person", function()
+{
+	QA_PlaceEye( Vector( 7700, -5760, 64 ), 10.0, 0.0 )
+	SendToConsole( "thirdperson" )
+}, 2.0 )
+QA_Do( "shot player", function() { QA_Shot( "player_model" ) }, 1.0 )
+QA_Do( "first person", function() { SendToConsole( "firstperson" ) }, 0.5 )
+
 QA_Start( "sp_a2_triple_laser" )

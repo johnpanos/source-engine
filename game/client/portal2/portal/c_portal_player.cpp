@@ -1906,7 +1906,11 @@ ShadowType_t C_Portal_Player::ShadowCastType( void )
 
 bool C_Portal_Player::ShouldDraw( void )
 {
-	if ( !BaseClass::ShouldDraw() )
+	// Portal 2 port: skip C_BasePlayer::ShouldDraw, which drops the local
+	// first-person player from the leaf system; then it would never draw in
+	// portal views either. DrawModel() (ShouldSkipRenderingViewpointPlayerForThisView)
+	// hides it in the main view instead, as Portal 1's C_Portal_Player does.
+	if ( !C_BaseAnimating::ShouldDraw() )
 		return false;
 
 	if ( !IsAlive() )

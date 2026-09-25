@@ -49,6 +49,8 @@ public:
 
 	virtual void			UpdateOnRemove( void );
 	virtual CollideType_t	GetCollideType( void );
+	// Portal 2 port: CS:GO renderable API bridged onto DrawModel( int ).
+	PORTAL2_DRAWMODEL_BRIDGE();
 	virtual int				DrawModel( int flags, const RenderableInstance_t &instance );
 	virtual bool			ShouldDraw( void ) { return true; }
 	virtual void			GetRenderBounds( Vector &vecMins, Vector &vecMaxs );

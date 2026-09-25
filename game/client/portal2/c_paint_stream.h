@@ -43,6 +43,8 @@ public:
 	virtual const Vector& WorldSpaceCenter() const;
 	virtual void ComputeWorldSpaceSurroundingBox( Vector *pMins, Vector *pMaxs );
 
+	// Portal 2 port: CS:GO renderable API bridged onto DrawModel( int ).
+	PORTAL2_DRAWMODEL_BRIDGE();
 	virtual int DrawModel( int flags, const RenderableInstance_t &instance );
 	virtual bool ShouldDraw() { return true; }
 
