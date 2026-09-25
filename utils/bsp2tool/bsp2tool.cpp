@@ -151,9 +151,9 @@ bool ReadRadiosityTransfer(
 bool ReadSdfVolume( const char *pPath, std::vector<std::byte> *pBytes )
 {
 	FileByteSource source( pPath );
-	if ( !source.IsOpen() || source.Size() < kSdfVolumeHeaderBytes ||
+	if ( !source.IsOpen() || source.Size() < kSdfVolumeV1HeaderBytes ||
 	     source.Size() > kSdfVolumeHeaderBytes + uint64_t( kSdfMaxVoxels ) * kSdfVoxelBytes +
-	                         uint64_t( kSdfMaxLights ) * kSdfLightBytes )
+	                         uint64_t( kSdfMaxLights ) * kSdfLightBytes + ( 64ull << 20 ) )
 		return false;
 	pBytes->resize( size_t( source.Size() ) );
 	if ( !source.ReadAt( 0, pBytes->data(), pBytes->size() ) )
@@ -326,8 +326,10 @@ int main( int argc, char **argv )
 	    kLumpProbeVolume, kProbeVolumeVersion, 0, kBsp2BulkAlignment, probeVolume };
 	const Bsp2LumpInput transferLump{
 	    kLumpRadiosityTransfer, kRadiosityTransferVersion, 0, kBsp2BulkAlignment, transfer };
+	// The lump version repeats the payload's own (v1 and v2 both pack).
+	const uint32_t fieldVersion = field.empty() ? kSdfVolumeVersion : ReadU32( field.data() + 4 );
 	const Bsp2LumpInput fieldLump{
-	    kLumpSdfVolume, kSdfVolumeVersion, 0, kBsp2BulkAlignment, field };
+	    kLumpSdfVolume, fieldVersion, 0, kBsp2BulkAlignment, field };
 	const std::array<Bsp2LumpInput, 5> probedLumps = {
 	    worldLump, lightmapLump, probeLump, transferLump, fieldLump };
 	const std::span<const Bsp2LumpInput> litLumps( probedLumps.data(), bPackWorldSdf      ? 5

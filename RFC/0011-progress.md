@@ -17,13 +17,13 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | Gate | State | Summary |
 | --- | --- | --- |
 | G0 baseline, fixtures and runner | done (2026-09-24) | Six fixtures with Cycles total/indirect references; GPU runner; `mat_indirect_view` matches Cycles on five fixtures and rejects a seeded double; budgets per profile; models receive no baked indirect light today |
-| G1 probe volume, baked producer | active | Bake, pack, engine load and fallback, per-pixel `model_pbr` sampling and the CPU ambient cube done; all native oracles pass; the DXVK check (G1.7) is deferred by user direction; corpus load and memory open: one of four corpus maps built (see [G1 corpus](#g1-corpus-open)) |
+| G1 probe volume, baked producer | done (2026-09-25, native Vulkan; the G1.7 DXVK capture deferred by user direction) | Bake, pack, engine load and fallback, per-pixel `model_pbr` sampling and the CPU ambient cube; all native oracles pass; corpus load and memory recorded: living-room and bedroom are well within budget, staircase2 is over (21 MB, 44.7 ms) and its remedy is per-map spacing; bathroom not built at the user's direction ([G1 corpus](#g1-corpus-recorded-2026-09-25)) |
 | G2 light set, separated bake, policy | done (2026-09-24, native Vulkan) | `render.light-set.v1` published each frame, with seeded ID reuse rejected; separated-bake consistency with swapped and doubled layers rejected; `render.indirect-policy.v1` with the double count rejected by the furnace in the CPU model, the GPU and the engine; native WMSH direct light from unbaked lights |
 | G3 producer contract and switching | done (2026-09-24, native Vulkan) | Shared suite (Baked, radiosity, fake; seven bad producers and a one-bounce producer rejected); `r_indirect_producer` validation; native switching with no black frame, no early free and device loss mid-fade; backgrounding on the Fold7; `portal-view` through a real portal pair matches Cycles for baked and radiosity |
 | G4 precomputed radiosity | done (2026-09-24, native Vulkan; see open notes) | RTRN bake/reader/fuzzing; furnace on the real map (9 of 30 frames, one-bounce rejected); room-states panel/screen toggles converge in 7 frames and match Cycles in game (baked control fails); serial/pooled byte identity under TSan; desktop median 0.78–0.87 ms and Fold7 about 1.2 ms per update (one first update 2.75 ms), 10.4 MB; runs on the Fold7 APK with background/resume |
 | G5 GPU compute foundation | done (2026-09-24) | `vulkan_compute` on the native device: features queried and enabled through a `VkPhysicalDeviceFeatures2` chain, compute programs, storage buffers and images dispatched on the graphics queue, retirement by completion serial; `kStorageImages`/`kRayQuery` bits claimed only as enabled (`ValidateDeviceClaims` rejects a bad provider); `render.compute` passes on the Radeon 8060S (validation-clean) and on the Fold7 |
 | G6 SDF-traced producer | done (2026-09-25, native Vulkan desktop; Android declared unsupported) | SDFV bake/pack/reader; shared suite plus a traced-field thin-wall oracle with a seeded leak; in game the door closes the far room to Cycles' dark within 64 frames while radiosity and baked fail; the sun move settles toward Cycles; 0.49 ms per update for 400 probes (budget 2.0) |
-| G7 ray-query producer | planned | — |
+| G7 ray-query producer | done (2026-09-25, native Vulkan desktop; Android declared unsupported) | Same producer and shader as G6, traced by ray queries against the world's triangles and proxy boxes; `rayquery` offered only with device ray query; shared suite plus thin-wall oracle; door (indirect and shaded) and sun gates pass at SDF's tolerance; 1.0 ms per update for 400 probes on a loaded host (budget 1.5) |
 | G8 product defaults and soak | planned | — |
 
 ## G0: Baseline, fixtures and runner
@@ -503,22 +503,30 @@ python3 tools/quality/gi_runtime.py indirect-view --gate-models --fixture room-s
 python3 tools/quality/conformance.py check --suite render.model-pbr.native-pixels
 ```
 
-### G1 corpus (open)
+### G1 corpus (recorded 2026-09-25)
 
-The corpus run (`quality-results/rfc0011-corpus/build.log`, finished 18:56)
-built one of the four maps:
+Each built corpus map booted headless on native Vulkan (`portal_boot.py`,
+the Radeon 8060S). The engine's own `PRBV v1 … KB, … ms` line gives the load
+cost: read, content hash, validation and the host's copy. Memory is the PRBV
+payload, held once on the CPU (the ambient cube's view) and once on the GPU
+(the atlas); the budget row is quality/budgets/indirect-light-v1.json, baked:
+load 20 ms, 16 MB.
 
-| Map | Result |
-| --- | --- |
-| living-room | Every step passed (the bake alone took 3104 s) |
-| staircase2 | Baked; the probe-volume step ended with SIGTERM (exit −15) |
-| bedroom | Stopped at the reference gate: luminance SSIM 0.884, −0.22 stops |
-| bathroom | Stopped at the reference gate: luminance SSIM 0.917, −0.18 stops |
+| Map | Probes (active) | Atlas | PRBV | Load | CPU + GPU | Budget |
+| --- | --- | --- | --- | --- | --- | --- |
+| living-room | 168 (166) | 208 × 417 | 677 KB | 1.48 ms | 1.4 MB | within |
+| bedroom | 252 (252) | 256 × 513 | 1026 KB | 2.28 ms | 2.0 MB | within |
+| staircase2 | 5280 (4628) | 1168 × 2341 | 21361 KB | 44.69 ms | 41.7 MB | **over**: load 2.2×, memory 2.6× |
+| bathroom | — | — | — | — | — | not built: its lightmap bake was stopped at the user's request |
 
-The reference gate runs before the bake and compares the staged scene with
-its display reference, so the two failures belong to scene staging, not to
-the probe volume. Load time and memory per map aren't recorded yet. G1 stays
-active until they are.
+staircase2 is over because the pipeline's default 1 m spacing is applied
+over its whole large exterior: about 3 KB per probe times 5280 probes. The
+remedy is a per-map spacing or bounds (`probe_volume.spacing_m` /
+`bounds_m` in its manifest), not a runtime change. The load is dominated by
+hashing and validating 21 MB. The other two maps are an order of magnitude
+inside the budget.
+
+Evidence: `quality-results/rfc0011-corpus/load/<map>/runtime/engine.log`.
 
 ### G1.7 Legacy leaf ambient and DXVK
 
@@ -846,3 +854,80 @@ build/unittests/shaderapivulkantest/indirect_sdf_native_conformance --bench \
     quality-results/rfc0011-maps/room-states/lighting/probe_volume.prbv \
     quality-results/rfc0011-maps/room-states/lighting/field.sdfv
 ```
+
+### G6 follow-ups (2026-09-25, from play-testing)
+
+- **Flicker in a still scene.** The traced producers hashed all 64
+  light-style scalars into their configuration. The stock styles 1–11 are
+  animated flicker patterns, so the "configuration" changed several times a
+  second, and each change restarted the update at alpha 0.5 with fresh noisy
+  traces. The fix: only the styles the SDFV uses (its lights' and emissive
+  voxels' styles) count.
+  [`gi_temporal.py`](../tools/quality/gi_temporal.py) now scores it. It takes
+  a burst of screenshots of a still scene per producer and measures per-pixel
+  temporal variation in linear light (limits 0.2% RMS and 0.2% per step).
+  Baked is the control and must score exactly 0; synthetic flicker and a
+  one-frame pop fail (`test_gi_tools.py`). On `door` before the fix SDF
+  scored 2.6% RMS with a 29% per-pixel range; after it, baked, radiosity, SDF
+  and ray query all score 0.
+- **A closed door left the far room lit.** The producers change indirect
+  light only. The bright floor patch was the panel's direct light through
+  the doorway, baked into the lightmap with the door open, and the gates
+  above looked only at the indirect view. Two fixes, independent of the
+  producer:
+  - [`direct_occlusion.h`](../public/render/direct_occlusion.h), baked
+    direct light: each lightmap texel's position and normal come from the
+    WMSH triangles rasterized in lightmap space, grown two texels past
+    coverage and oriented per texel to the side its lights reach (the door
+    floor's fan triangles are wound both ways). When the proxies change, each
+    texel loses the share of its direct layer that the proxies block. The
+    share is taken of the light it actually saw (its baked direct light over
+    the lights' unoccluded estimate), since static occlusion is in the bake.
+    The host re-uploads the lightmap total: 12–35 ms on the pool per door
+    change for 88k texels on this loaded host.
+    `render.direct-occlusion` has 17 headless checks: an exact footprint under
+    a sun, a rectangle-light shadow, untouched texels beside and behind, and
+    a downward-wound floor.
+  - `OccludeProbeVisibility`: probes near a proxy get their visibility
+    distance moments cut at the proxy, so probes behind a closed door stop
+    lighting through it. The doorframe glow is gone.
+  - `r_indirect_occlusion 0` (cheat) turns both off; the door gate uses it as
+    its negative control.
+- **The door drew red:** the dev texture on the legacy brush path. Doors now
+  name their material; the door fixture uses the map's wall material.
+- **SDFV v2 (another session's format change)** made the engine reject every
+  v1 lump, silently dropping `sdf`/`rayquery`. The loader now accepts
+  versions 1 through the current one, and `bsp2tool` stamps the payload's
+  own version.
+- The per-frame `PRBV ready` log now prints once per map.
+
+## G7: Ray-query producer (done 2026-09-25, native Vulkan desktop)
+
+| Done criterion | State |
+| --- | --- |
+| 1. The device queries and enables acceleration-structure and ray-query features; devices without them do not offer the option | Passes. G5's `DeviceFeatureChain` enables them when queried. `vulkan_compute` now builds acceleration structures: `CreateGeometry` makes a triangle BLAS, `CreateScene` a TLAS of instances, and both are built in the compute service's queue ahead of the dispatches that use them and retired by completion serial. The program binding is `ComputeBinding::AccelerationStructure`. The engine offers `rayquery` only when the device reports ray query and the map has an SDFV and a WMSH (`offered: baked radiosity sdf rayquery` on the Radeon 8060S). Without ray query, `RayQueryProducer::Begin` fails with missing-feature and creates nothing (checked in `render.indirect-light.sdf`). Android is declared unsupported until measured, as the budget file states. |
+| 2. Same producer suite and scenarios as G6, tolerances at least as tight | Passes. `RayQueryProducer` is the G6 producer with its tracer swapped: `sdf_probe_trace.comp -DRAY_QUERY` traces rays and visibility against a scene of the world's triangles (instance 0) and a unit cube per proxy (instances 1..). The SDFV still supplies surface attributes and lights. It declares SDF's response tolerance (0.1). In `render.indirect-light.sdf` it passes the shared suite; its field's thin-wall oracle reads lit 0.716 and dark 0.0000, and removing the wall's triangles leaks 0.072 and is caught. It is validation-clean. `gi_sdf.py door --producer rayquery`: open matches, closed matches, and radiosity and baked closed fail. `gi_sdf.py sun --producer rayquery` settles, moves every region toward sun-low, and radiosity does not (floor 0.061 and model 0.075 against Cycles 0.094 and 0.088). |
+| 3. GPU cost (budget 1.5 ms at 1920×1080) | Desktop: 1.005 ms median (p95 1.125) with 400 probes on room-states, and 0.265 ms with 200 on the door (`indirect_sdf_native_conformance --bench <prbv> <sdfv> <wmsh>`). These are per-probe costs, independent of resolution, and were measured at host load 66 (three CPU bakes). An earlier contended run read 0.378 ms. Fold7: declared unsupported. |
+
+**Door, shaded view (both producers, rebuilt door map, 2026-09-25).**
+`gi_sdf.py door` passes for `sdf` (G6.2) and `rayquery` (G7.2). The
+indirect-view checks pass as before; the new shaded checks give:
+
+| Capture | Walls | Model |
+| --- | --- | --- |
+| open | 0.0172 | 0.0100 |
+| closed | 0.0005 | 0.0000 |
+| closed, `r_indirect_occlusion 0` (the control) | 0.0063 | — |
+
+The control stays lit and fails, as it must. `gi_temporal.py` on `door`
+scores 0 for baked, radiosity, sdf and rayquery.
+
+**Open:**
+- The door brush itself draws flat and unlit-bright. It uses the legacy
+  brush path, which has no light for it in this pipeline. Drawing moving
+  doors with probe lighting (as models are) is the fix; not done.
+- The occlusion recompose takes 12–35 ms in one frame per door change.
+- The G7 cost should be re-measured on an idle host.
+
+Evidence: `quality-results/rfc0011-g{6,7}/{door,sun}/gate.json`,
+`quality-results/rfc0011-g7/cost/`, `quality-results/rfc0011-temporal/door/temporal.json`.

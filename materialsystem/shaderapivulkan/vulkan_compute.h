@@ -36,9 +36,9 @@ namespace render_vulkan
 struct ComputeCaps
 {
 	uint32_t deviceApiVersion = 0;
-	bool compute = false;        // the graphics queue family also computes
-	bool storageImages = false;  // RGBA16F and R32F storage images, optimal tiling
-	bool rayQuery = false;       // VK_KHR_ray_query + acceleration structures, all features
+	bool compute = false;       // the graphics queue family also computes
+	bool storageImages = false; // RGBA16F and R32F storage images, optimal tiling
+	bool rayQuery = false;      // VK_KHR_ray_query + acceleration structures, all features
 	bool timelineSemaphore = false;
 	uint32_t maxWorkgroupInvocations = 0;
 	uint32_t maxBoundDescriptorSets = 0;
@@ -95,8 +95,8 @@ public:
 	// host-cached memory (CPU reads), otherwise the first host-visible type
 	// (device-local first on devices that expose it).
 	uint32_t CreateBuffer( size_t bytes, std::string *error, bool readback = false );
-	uint32_t CreateStorageImage( uint32_t width, uint32_t height, VkFormat format,
-	    std::string *error );
+	uint32_t CreateStorageImage(
+	    uint32_t width, uint32_t height, VkFormat format, std::string *error );
 	// A program over the given bindings (set 0, in order) and push bytes.
 	uint32_t CreateProgram( const uint32_t *spirv, size_t bytes,
 	    const std::vector<ComputeBinding> &bindings, uint32_t pushBytes, std::string *error );
@@ -115,7 +115,8 @@ public:
 	{
 		uint32_t geometry = 0;
 		float transform[12] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 }; // row-major 3 x 4
-		uint32_t customIndex = 0;                                       // 24 bits
+		uint32_t customIndex = 0;                                     // 24 bits
+		uint32_t mask = 0xFF;                                         // 8 bits: cull mask match
 	};
 	uint32_t CreateGeometry( const float *positions, uint32_t vertexCount, const uint32_t *indices,
 	    uint32_t indexCount, std::string *error );
@@ -167,7 +168,8 @@ private:
 		// inputs and scratch (extra), and what RecordBuild needs.
 		VkAccelerationStructureKHR structure = VK_NULL_HANDLE;
 		std::vector<std::pair<VkBuffer, VkDeviceMemory>> extra;
-		VkAccelerationStructureTypeKHR structureType = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+		VkAccelerationStructureTypeKHR structureType =
+		    VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 		VkAccelerationStructureGeometryKHR geometry = {};
 		uint32_t primitives = 0;
 		VkDeviceAddress scratch = 0;
@@ -187,8 +189,8 @@ private:
 	bool MakeBuffer( VkDeviceSize bytes, VkBufferUsageFlags usage, VkMemoryPropertyFlags flags,
 	    VkBuffer *buffer, VkDeviceMemory *memory, void **mapped, std::string *error );
 	VkDeviceAddress Address( VkBuffer buffer ) const;
-	uint32_t FinishStructure( Resource &resource, VkBuildAccelerationStructureFlagsKHR flags,
-	    std::string *error );
+	uint32_t FinishStructure(
+	    Resource &resource, VkBuildAccelerationStructureFlagsKHR flags, std::string *error );
 	void Destroy( Resource &resource );
 
 	VkPhysicalDevice m_physical = VK_NULL_HANDLE;

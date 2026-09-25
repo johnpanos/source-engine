@@ -24,6 +24,7 @@ import gi_runtime  # noqa: E402
 import lightmap_layers  # noqa: E402
 import radiosity_transfer  # noqa: E402
 import gi_temporal  # noqa: E402
+import indirect_defaults  # noqa: E402
 import sdf_volume  # noqa: E402
 
 FIXTURES = HERE.parents[2] / "quality" / "fixtures" / "gi"
@@ -291,6 +292,17 @@ class TemporalStabilityTest(unittest.TestCase):
         frames = self.burst()
         frames[5, :4, :4] += 1.0 / 255.0
         self.assertEqual(gi_temporal.score(frames)["status"], "pass")
+
+
+class IndirectDefaultsTest(unittest.TestCase):
+    """The engine's default producers are the product profiles' (G8)."""
+
+    def test_header_matches_the_profiles(self):
+        self.assertEqual(indirect_defaults.HEADER.read_text(), indirect_defaults.render())
+
+    def test_every_list_ends_with_baked(self):
+        for _, profile in indirect_defaults.PLATFORMS:
+            self.assertEqual(indirect_defaults.producers(profile)[-1], "baked")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,13 @@ the sun (xyz, w = 2) and texel (W - 3, 0) = its irradiance (rgb, w = disc
 angle in degrees). `world_pbr.frag` adds the sun's specular dynamically,
 shadowed by that alpha; its diffuse light is already in the bake.
 
+With `--seams` (lightmap_seams.py extract) every page - total, directional
+gradient, sun visibility and separated layers - is stitched before encoding:
+its bilinear lookups agree on both sides of every lightmap chart seam, and
+the package fails when a stitched page's seam discontinuity exceeds
+`--max-seam-p99` or `--max-seam`. The receipt records each page's seam
+statistics before and after.
+
 With `--layer ROLE=EXR` (denoised separated light from the bake's `--layers`)
 the package is an LMAP v2 2D array (public/mapcontainer/world_lightmap.h):
 layer 0 is the total page above; then `indirect` (two layers) or `direct`
@@ -46,6 +53,58 @@ def run(command):
     return subprocess.run(command, check=True, capture_output=True, text=True).stdout
 
 
+# Seam gate: relative luminance discontinuity across stitched chart seams.
+DEFAULT_MAX_SEAM_P99 = 0.002
+DEFAULT_MAX_SEAM = 0.02
+
+
+def seam_stitcher(args):
+    """A function (page name, EXR-oriented image) -> stitched image, with a
+    `record` of per-page seam statistics; the identity without --seams."""
+    if not args.seams:
+        identity = lambda name, image: image  # noqa: E731
+        identity.record = None
+        return identity
+    if not args.coverage_exr:
+        raise ValueError("--seams needs --coverage-exr")
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import lightmap_seams
+    found = lightmap_seams.load_seams(args.seams)
+    covered = iio.imread(args.coverage_exr)[:, :, :3].min(axis=2) > 0.5
+    if covered.shape != (found["size"], found["size"]):
+        raise ValueError("coverage and seam samples are for different atlas sizes")
+    buried = None
+    if args.buried_exr:
+        raw = iio.imread(args.buried_exr)
+        if raw.shape[:2] != covered.shape:
+            raise ValueError("--buried-exr is not atlas-sized")
+        buried = lightmap_seams.buried_texels(raw, covered)
+    record = {"seams_sha256": sha256(args.seams), "samples": int(len(found["uv_a"])),
+              "buried_texels": int(buried.sum()) if buried is not None else None,
+              "gate": {"p99": args.max_seam_p99, "max": args.max_seam}, "pages": {}}
+    system = lightmap_seams.stitch_system(found, covered, buried) if len(found["uv_a"]) else None
+
+    def stitch(name, image, reference=None, absolute=False):
+        """Stitch one page; light pages are judged relative to `reference`
+        (the stitched total for a separated layer), `absolute` pages by value."""
+        if system is None:
+            record["pages"][name] = {"stitched": False}
+            return image
+        before = lightmap_seams.measure(image, found, covered, reference, absolute)
+        result = lightmap_seams.stitch(image, system)
+        after = lightmap_seams.measure(result, found, covered, reference, absolute)
+        record["pages"][name] = {"before": before, "after": after}
+        if after["p99"] > args.max_seam_p99 or after["max"] > args.max_seam:
+            raise ValueError("%s page: stitched seam discontinuity p99 %.4g / max %.4g exceeds "
+                             "the gate (%g / %g)" % (name, after["p99"], after["max"],
+                                                     args.max_seam_p99, args.max_seam))
+        return result
+
+    stitch.record = record
+    return stitch
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--exr", type=Path, required=True)
@@ -70,8 +129,18 @@ def main():
                         help="the bake receipt whose `sun` names the visibility EXR")
     parser.add_argument("--layer", action="append", default=[], metavar="ROLE=EXR",
                         help="separated-light layer (direct, indirect) and its denoised EXR")
+    parser.add_argument("--seams", type=Path,
+                        help="lightmap-seams/v1 samples of the lighting stage (needs --coverage-exr)")
+    parser.add_argument("--buried-exr", type=Path,
+                        help="raw (undenoised) total bake: its covered black texels are hidden "
+                             "surfaces that stitching may move freely")
+    parser.add_argument("--max-seam-p99", type=float, default=DEFAULT_MAX_SEAM_P99,
+                        help="gate: stitched seam discontinuity 99th percentile (relative)")
+    parser.add_argument("--max-seam", type=float, default=DEFAULT_MAX_SEAM,
+                        help="gate: stitched seam discontinuity maximum (relative)")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    stitch = seam_stitcher(args)
     separated = {}
     for item in args.layer:
         role, _, path = item.partition("=")
@@ -92,6 +161,7 @@ def main():
     if (pixels.shape != (evidence["size"], evidence["size"], 4) or
             not np.isfinite(pixels).all() or np.min(pixels[:, :, :3]) < 0):
         raise ValueError("Cycles atlas has invalid dimensions or pixels")
+    pixels = stitch("total", pixels)
     if not np.isfinite(args.preview_gain) or not 0 < args.preview_gain <= 1:
         raise ValueError("preview gain must be finite and in (0, 1]")
     size = evidence["size"]
@@ -107,6 +177,7 @@ def main():
         beta = iio.imread(args.directional_exr)
         if beta.shape != pixels.shape or not np.isfinite(beta).all():
             raise ValueError("directional page has invalid dimensions or pixels")
+        beta = stitch("directional", beta, absolute=True)
         width = 2 * size
     rgba = np.empty((size, width, 4), dtype="<f2")
     rgba[:, :size, :3] = (pixels[::-1, :, :3] * args.preview_gain).astype("<f2")
@@ -132,7 +203,9 @@ def main():
         if visibility.shape != (size, size) or covered.shape != (size, size):
             raise ValueError("sun visibility or coverage has the wrong size")
         _, (rows, columns) = ndimage.distance_transform_edt(~covered, return_indices=True)
-        rgba[:, :size, 3] = visibility[rows, columns][::-1].astype("<f2")
+        filled = stitch("sun_visibility", visibility[rows, columns][:, :, None],
+                        absolute=True)[:, :, 0]
+        rgba[:, :size, 3] = np.clip(filled, 0.0, 1.0)[::-1].astype("<f2")
     band = 0
     probe = None
     if args.probe_dir:
@@ -183,6 +256,7 @@ def main():
         light = iio.imread(path)
         if light.shape != pixels.shape or not np.isfinite(light).all() or light[..., :3].min() < 0:
             raise ValueError("%s layer has invalid dimensions or pixels" % role)
+        light = stitch(role, light, reference=pixels)
         page = np.zeros((size, width, 4), dtype="<f2")
         page[:, :size, :3] = (light[::-1, :, :3] * args.preview_gain).astype("<f2")
         page[:, :, 3] = 1.0
@@ -229,6 +303,7 @@ def main():
                   rgba[::-1][:rgba.shape[0] - band, :size, :3].astype(np.float32) -
                   pixels[:pixels.shape[0] - band, :, :3] * args.preview_gain))),
               "reflection_probe": probe,
+              "seams": stitch.record,
               "sun": {"texels": [[width - 2, 0], [width - 3, 0]],
                       "visibility_exr_sha256": sha256(args.sun_visibility),
                       "direction_to_sun": (-np.asarray(sun["direction"])).tolist(),

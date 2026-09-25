@@ -40,12 +40,14 @@ enum class Binding
 };
 
 // One instance of a scene: geometry placed by a row-major 3 x 4 transform;
-// programs read `customIndex` (24 bits) on a hit.
+// programs read `customIndex` (24 bits) on a hit, and a ray's cull mask
+// selects instances by `mask` (8 bits).
 struct SceneInstance
 {
 	uint32_t geometry = 0;
 	float transform[12] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 };
 	uint32_t customIndex = 0;
+	uint32_t mask = 0xFF;
 };
 
 struct Caps

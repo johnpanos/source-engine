@@ -48,9 +48,15 @@ public:
 		return true;
 	}
 
+	// The surface is an ordinary VkSurfaceKHR of our instance: destroy it with
+	// Vulkan. SDL_Vulkan_DestroySurface does nothing under a video driver that
+	// has no destroy hook (SDL's offscreen driver, the headless runs), which
+	// left the surface alive at vkDestroyInstance
+	// (VUID-vkDestroyInstance-instance-00629).
 	void DestroySurface( VkInstance instance, VkSurfaceKHR surface ) override
 	{
-		SDL_Vulkan_DestroySurface( instance, surface, nullptr );
+		if ( instance != VK_NULL_HANDLE && surface != VK_NULL_HANDLE )
+			vkDestroySurfaceKHR( instance, surface, nullptr );
 	}
 
 	void GetDrawableSize( int *outWidth, int *outHeight ) const override

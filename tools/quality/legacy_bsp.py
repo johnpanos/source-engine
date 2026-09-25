@@ -190,8 +190,10 @@ class LegacyBsp:
                 for index in range(len(raw) // MODEL_BYTES)]
 
     def world_faces(self):
-        """Model 0's faces: [{index, points (N,3), plane_normal, texinfo,
-        dispinfo, styles, area}]; windings are clockwise seen from the front."""
+        """Model 0's faces: [{index, points (N,3), vertices (N BSP vertex
+        indices), plane_normal, texinfo, dispinfo, styles, area}]; windings are
+        clockwise seen from the front. Faces share vertices by index, as vbsp
+        wrote them."""
         faces = self.lump(LUMP_FACES, FACE.size)
         edges = np.frombuffer(self.lump(LUMP_EDGES, 4), dtype="<u2").reshape(-1, 2)
         surfedges = np.frombuffer(self.lump(LUMP_SURFEDGES, 4), dtype="<i4")
@@ -221,6 +223,7 @@ class LegacyBsp:
             # gives a face its own oriented plane; `side` only records the flip.
             normal = normals[plane]
             result.append({"index": index, "points": vertices[corner].astype(np.float64),
+                           "vertices": corner.astype(np.int64),
                            "plane_normal": normal, "texinfo": texinfo,
                            "dispinfo": dispinfo, "styles": (s0, s1, s2, s3), "area": area})
         return result
@@ -300,6 +303,18 @@ class LegacyBsp:
             ("maxs", "<i2", 3), ("rest", "V12")]))
         return (raw["contents"].astype(np.int64), raw["cluster"].astype(np.int64),
                 raw["mins"].astype(np.float64), raw["maxs"].astype(np.float64))
+
+    def point_leaf(self, point):
+        """The leaf of model 0's tree holding `point` (front of a plane on ties)."""
+        nodes = self.lump(LUMP_NODES, NODE_BYTES)
+        normals, dists = self.planes()
+        node = self.models()[0]["headnode"]
+        for _ in range(len(nodes) // NODE_BYTES + 1):
+            if node < 0:
+                return -1 - node
+            plane, front, back = struct.unpack_from("<iii", nodes, node * NODE_BYTES)
+            node = front if np.dot(normals[plane], point) - dists[plane] >= 0 else back
+        raise ValueError("BSP node tree has a cycle")
 
     def visibility(self):
         """The potentially visible set: a (clusters, clusters) bool matrix,

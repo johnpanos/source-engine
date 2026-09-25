@@ -11,7 +11,8 @@
 //          Build (once per map): each lightmap texel's world position and
 //          normal, from the WMSH triangles rasterized in lightmap space, and
 //          the map's analytic lights (SDFV records: rectangles sampled 4 x 4,
-//          distant lights by direction). Compose (when the occluders
+//          spheres and spots at their centres, distant lights by
+//          direction). Compose (when the occluders
 //          change): per texel, the light of the samples whose path a proxy
 //          blocks, as a share of the light the texel sees (its baked direct
 //          light: static occlusion is in the bake and is not re-traced), times
@@ -45,7 +46,7 @@ class DirectOcclusion
 {
 public:
 	static constexpr uint32_t kRectSamples = 4; // per axis
-	static constexpr int kDilation = 2;          // texels grown past coverage
+	static constexpr int kDilation = 2;         // texels grown past coverage
 
 	// False (and nothing built) without a direct layer, lights or triangles.
 	[[nodiscard]] bool Build( const void *wmsh, size_t wmshSize, const void *lmap, size_t lmapSize,
@@ -185,7 +186,11 @@ private:
 		bool distant;
 		float point[3];
 		float normal[3];
-		float power; // luminance: radiance x patch area, or distant irradiance
+		float power; // luminance: radiance x (projected) area, or distant irradiance
+		bool omni = false; // a sphere: no emitting side
+		// A spot's vrad cone: cosines of the inner and outer cones and the
+		// exponent; inner < -1 when the sample has none.
+		float cone[3] = { -2.0f, -2.0f, 1.0f };
 	};
 	struct Context
 	{
@@ -205,10 +210,10 @@ private:
 		if ( light.kind == uint32_t( mapcontainer::SdfLightKind::Rect ) )
 		{
 			float normal[3] = { light.b[1] * light.c[2] - light.b[2] * light.c[1],
-				light.b[2] * light.c[0] - light.b[0] * light.c[2],
-				light.b[0] * light.c[1] - light.b[1] * light.c[0] };
+			    light.b[2] * light.c[0] - light.b[0] * light.c[2],
+			    light.b[0] * light.c[1] - light.b[1] * light.c[0] };
 			const float area = 4.0f * std::sqrt( normal[0] * normal[0] + normal[1] * normal[1] +
-			                                      normal[2] * normal[2] );
+			                                     normal[2] * normal[2] );
 			if ( !( area > 0.0f ) )
 				return;
 			for ( float &n : normal )
@@ -236,6 +241,30 @@ private:
 			for ( int k = 0; k < 3; ++k )
 				sample.point[k] = -light.a[k]; // toward the light
 			sample.power = Luminance( light.rgb );
+			m_samples.push_back( sample );
+		}
+		else if ( light.kind == uint32_t( mapcontainer::SdfLightKind::Sphere ) ||
+		          light.kind == uint32_t( mapcontainer::SdfLightKind::Spot ) )
+		{
+			// One sample at the centre: these lights are small. A sphere
+			// shows every side its disc of pi r^2; a spot is a one-sided disk
+			// with vrad's cone.
+			const bool sphere = light.kind == uint32_t( mapcontainer::SdfLightKind::Sphere );
+			const float radius = sphere ? light.b[0] : light.c[0];
+			Sample sample = {};
+			for ( int k = 0; k < 3; ++k )
+			{
+				sample.point[k] = light.a[k];
+				sample.normal[k] = sphere ? 0.0f : light.b[k];
+			}
+			sample.power = Luminance( light.rgb ) * 3.14159265f * radius * radius;
+			sample.omni = sphere;
+			if ( !sphere )
+			{
+				sample.cone[0] = light.c[1];
+				sample.cone[1] = light.c[2];
+				sample.cone[2] = light.reserved[0];
+			}
 			m_samples.push_back( sample );
 		}
 		// A dome's direct light is sky, which a box blocks little of: kept.
@@ -281,12 +310,14 @@ private:
 				continue;
 			for ( float &n : normal )
 				n /= length;
-			const int x0 = std::max( 0, int( std::floor( std::min( { uv[0][0], uv[1][0], uv[2][0] } ) ) ) );
+			const int x0 =
+			    std::max( 0, int( std::floor( std::min( { uv[0][0], uv[1][0], uv[2][0] } ) ) ) );
 			const int x1 = std::min( int( m_flatWidth ) - 1,
 			    int( std::ceil( std::max( { uv[0][0], uv[1][0], uv[2][0] } ) ) ) );
-			const int y0 = std::max( 0, int( std::floor( std::min( { uv[0][1], uv[1][1], uv[2][1] } ) ) ) );
-			const int y1 = std::min(
-			    int( m_height ) - 1, int( std::ceil( std::max( { uv[0][1], uv[1][1], uv[2][1] } ) ) ) );
+			const int y0 =
+			    std::max( 0, int( std::floor( std::min( { uv[0][1], uv[1][1], uv[2][1] } ) ) ) );
+			const int y1 = std::min( int( m_height ) - 1,
+			    int( std::ceil( std::max( { uv[0][1], uv[1][1], uv[2][1] } ) ) ) );
 			for ( int y = y0; y <= y1; ++y )
 				for ( int x = x0; x <= x1; ++x )
 				{
@@ -333,7 +364,8 @@ private:
 						for ( int dx = -1; dx <= 1; ++dx )
 						{
 							const int nx = int( x ) + dx, ny = int( y ) + dy;
-							if ( nx < 0 || ny < 0 || nx >= int( m_flatWidth ) || ny >= int( m_height ) )
+							if ( nx < 0 || ny < 0 || nx >= int( m_flatWidth ) ||
+							     ny >= int( m_height ) )
 								continue;
 							const int32_t neighbour = slot[size_t( ny ) * m_width + size_t( nx )];
 							if ( neighbour < 0 || neighbour >= int32_t( m_texels.size() ) )
@@ -367,25 +399,38 @@ private:
 
 	// A sample's unoccluded light at `origin` for `normal`, and the path to
 	// it in `d`.
-	static float Weight( const Sample &sample, const float origin[3], const float normal[3],
-	    float d[3] )
+	static float Weight(
+	    const Sample &sample, const float origin[3], const float normal[3], float d[3] )
 	{
 		if ( sample.distant )
 		{
 			for ( int k = 0; k < 3; ++k )
 				d[k] = sample.point[k] * kFar;
-			return sample.power * std::max( 0.0f, normal[0] * sample.point[0] +
-			                                          normal[1] * sample.point[1] +
-			                                          normal[2] * sample.point[2] );
+			return sample.power *
+			       std::max( 0.0f, normal[0] * sample.point[0] + normal[1] * sample.point[1] +
+			                           normal[2] * sample.point[2] );
 		}
 		for ( int k = 0; k < 3; ++k )
 			d[k] = sample.point[k] - origin[k];
 		const float d2 = std::max( d[0] * d[0] + d[1] * d[1] + d[2] * d[2], 1.0f );
 		const float inv = 1.0f / std::sqrt( d2 );
 		const float cosSurface = ( normal[0] * d[0] + normal[1] * d[1] + normal[2] * d[2] ) * inv;
-		const float cosLight =
-		    -( sample.normal[0] * d[0] + sample.normal[1] * d[1] + sample.normal[2] * d[2] ) * inv;
-		return sample.power * std::max( 0.0f, cosSurface ) * std::max( 0.0f, cosLight ) / d2;
+		float cosLight =
+		    sample.omni
+		        ? 1.0f
+		        : -( sample.normal[0] * d[0] + sample.normal[1] * d[1] + sample.normal[2] * d[2] ) *
+		              inv;
+		cosLight = std::max( 0.0f, cosLight );
+		float cone = 1.0f;
+		if ( sample.cone[0] >= -1.0f && cosLight < sample.cone[0] )
+		{
+			cone = std::clamp( ( cosLight - sample.cone[1] ) /
+			                       std::max( sample.cone[0] - sample.cone[1], 1e-6f ),
+			    0.0f, 1.0f );
+			if ( sample.cone[2] != 0.0f && sample.cone[2] != 1.0f )
+				cone = std::pow( cone, sample.cone[2] );
+		}
+		return sample.power * std::max( 0.0f, cosSurface ) * cosLight * cone / d2;
 	}
 
 	// A triangle's winding does not say which side the bake lit (fan
@@ -395,7 +440,8 @@ private:
 		for ( Texel &texel : m_texels )
 		{
 			const float flipped[3] = { -texel.normal[0], -texel.normal[1], -texel.normal[2] };
-			if ( Unoccluded( texel.position, flipped ) > Unoccluded( texel.position, texel.normal ) )
+			if ( Unoccluded( texel.position, flipped ) >
+			     Unoccluded( texel.position, texel.normal ) )
 				for ( float &n : texel.normal )
 					n = -n;
 		}
@@ -492,7 +538,8 @@ private:
 			unsigned char *out = context.total + size_t( texel.index ) * 8;
 			for ( int c = 0; c < 3; ++c )
 			{
-				const float value = std::max( 0.0f, Half( out + 2 * c ) - share * Half( light + 2 * c ) );
+				const float value =
+				    std::max( 0.0f, Half( out + 2 * c ) - share * Half( light + 2 * c ) );
 				const uint16_t half = FloatToHalf( value );
 				std::memcpy( out + 2 * c, &half, 2 );
 			}
@@ -535,7 +582,10 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 	constexpr uint32_t kTile = mapcontainer::kProbeVisibilityTile;
 	constexpr uint32_t kInterior = kTile - 2;
 	unsigned char *atlas = volume.bytes.data() + layout.atlasOffset;
-	const auto texel = [&]( uint32_t x, uint32_t y ) { return atlas + ( size_t( y ) * layout.atlasWidth + x ) * 8; };
+	const auto texel = [&]( uint32_t x, uint32_t y )
+	{
+		return atlas + ( size_t( y ) * layout.atlasWidth + x ) * 8;
+	};
 	const auto read = [&]( const unsigned char *p, int c )
 	{
 		uint16_t half;
@@ -579,7 +629,7 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 			if ( read( state, 3 ) < 0.5f )
 				continue;
 			const uint32_t index[3] = { i % grid.dims[0], ( i / grid.dims[0] ) % grid.dims[1],
-				i / ( grid.dims[0] * grid.dims[1] ) };
+			    i / ( grid.dims[0] * grid.dims[1] ) };
 			float probe[3];
 			for ( int k = 0; k < 3; ++k )
 				probe[k] = grid.origin[k] + float( index[k] ) * grid.spacing[k] + read( state, k );
@@ -590,7 +640,8 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 				float d2 = 0.0f;
 				for ( int k = 0; k < 3; ++k )
 				{
-					const float e = std::max( { proxy.lo[k] - probe[k], 0.0f, probe[k] - proxy.hi[k] } );
+					const float e =
+					    std::max( { proxy.lo[k] - probe[k], 0.0f, probe[k] - proxy.hi[k] } );
 					d2 += e * e;
 				}
 				near = near || d2 < grid.maxDistance * grid.maxDistance;
@@ -641,7 +692,9 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 			++changedProbes;
 			// The octahedral border (probe_volume.py with_border).
 			const auto copy = [&]( uint32_t tx, uint32_t ty, uint32_t sx, uint32_t sy )
-			{ std::memcpy( texel( x0 + tx, y0 + ty ), texel( x0 + 1 + sx, y0 + 1 + sy ), 8 ); };
+			{
+				std::memcpy( texel( x0 + tx, y0 + ty ), texel( x0 + 1 + sx, y0 + 1 + sy ), 8 );
+			};
 			const uint32_t n = kInterior;
 			for ( uint32_t k = 0; k < n; ++k )
 			{

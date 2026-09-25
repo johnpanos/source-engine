@@ -38,7 +38,7 @@ bool StorageFormat( VkPhysicalDevice physical, VkFormat format )
 }
 
 const char *const kRayQueryExtensions[] = { VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-	VK_KHR_RAY_QUERY_EXTENSION_NAME, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME };
+    VK_KHR_RAY_QUERY_EXTENSION_NAME, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME };
 
 } // namespace
 
@@ -54,7 +54,8 @@ ComputeCaps QueryComputeCaps( VkPhysicalDevice physical, uint32_t queueFamily )
 	vkGetPhysicalDeviceQueueFamilyProperties( physical, &families, nullptr );
 	std::vector<VkQueueFamilyProperties> family( families );
 	vkGetPhysicalDeviceQueueFamilyProperties( physical, &families, family.data() );
-	caps.compute = queueFamily < families && ( family[queueFamily].queueFlags & VK_QUEUE_COMPUTE_BIT );
+	caps.compute =
+	    queueFamily < families && ( family[queueFamily].queueFlags & VK_QUEUE_COMPUTE_BIT );
 	caps.storageImages = caps.compute && StorageFormat( physical, VK_FORMAT_R16G16B16A16_SFLOAT ) &&
 	                     StorageFormat( physical, VK_FORMAT_R32_SFLOAT );
 	if ( VK_API_VERSION_MINOR( caps.deviceApiVersion ) >= 2 ||
@@ -133,9 +134,11 @@ void DeviceFeatureChain::Build( VkPhysicalDevice physical, const ComputeCaps &ca
 		m_vulkan12.pNext = &m_accelerationStructure;
 		m_accelerationStructure.pNext = &m_rayQuery;
 		for ( const char *name : kRayQueryExtensions )
-			if ( std::find_if( extensions->begin(), extensions->end(), [&]( const char *have ) {
-				     return std::strcmp( have, name ) == 0;
-			     } ) == extensions->end() )
+			if ( std::find_if( extensions->begin(), extensions->end(),
+			         [&]( const char *have )
+			         {
+				         return std::strcmp( have, name ) == 0;
+			         } ) == extensions->end() )
 				extensions->push_back( name );
 		m_enabled.rayQuery = true;
 	}
@@ -316,20 +319,21 @@ uint32_t ComputeResources::CreateGeometry( const float *positions, uint32_t vert
 	Resource resource;
 	resource.kind = ComputeBinding::AccelerationStructure;
 	resource.structureType = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-	const VkBufferUsageFlags input = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-	                                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	const VkBufferUsageFlags input =
+	    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+	    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 	const VkMemoryPropertyFlags visible =
 	    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 	const VkDeviceSize vertexBytes = VkDeviceSize( vertexCount ) * 12;
 	const VkDeviceSize indexBytes = VkDeviceSize( indexCount ) * 4;
 	std::pair<VkBuffer, VkDeviceMemory> vertices, triangles;
 	void *vertexData = nullptr, *indexData = nullptr;
-	if ( !MakeBuffer( vertexBytes, input, visible, &vertices.first, &vertices.second, &vertexData,
-	         error ) )
+	if ( !MakeBuffer(
+	         vertexBytes, input, visible, &vertices.first, &vertices.second, &vertexData, error ) )
 		return 0;
 	resource.extra.push_back( vertices );
-	if ( !MakeBuffer( indexBytes, input, visible, &triangles.first, &triangles.second, &indexData,
-	         error ) )
+	if ( !MakeBuffer(
+	         indexBytes, input, visible, &triangles.first, &triangles.second, &indexData, error ) )
 	{
 		Destroy( resource );
 		return 0;
@@ -375,7 +379,8 @@ uint32_t ComputeResources::CreateScene(
 	         &table.first, &table.second, &mapped, error ) )
 		return 0;
 	resource.extra.push_back( table );
-	VkAccelerationStructureInstanceKHR *out = static_cast<VkAccelerationStructureInstanceKHR *>( mapped );
+	VkAccelerationStructureInstanceKHR *out =
+	    static_cast<VkAccelerationStructureInstanceKHR *>( mapped );
 	for ( uint32_t i = 0; i < count; ++i )
 	{
 		const Resource *geometry = Find( instances[i].geometry );
@@ -393,7 +398,7 @@ uint32_t ComputeResources::CreateScene(
 		VkAccelerationStructureInstanceKHR instance = {};
 		std::memcpy( instance.transform.matrix, instances[i].transform, sizeof( float ) * 12 );
 		instance.instanceCustomIndex = instances[i].customIndex & 0xFFFFFFu;
-		instance.mask = 0xFF;
+		instance.mask = instances[i].mask & 0xFFu;
 		instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 		instance.accelerationStructureReference = m_structureAddress( m_device, &address );
 		out[i] = instance;
@@ -426,20 +431,21 @@ uint32_t ComputeResources::FinishStructure(
 	m_buildSizes( m_device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &build,
 	    &resource.primitives, &sizes );
 	std::pair<VkBuffer, VkDeviceMemory> scratch;
-	bool ok = MakeBuffer( sizes.accelerationStructureSize,
-	              VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR |
-	                  VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-	              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &resource.buffer, &resource.memory, nullptr,
-	              error ) &&
-	          MakeBuffer( sizes.buildScratchSize + m_scratchAlignment,
-	              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-	              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &scratch.first, &scratch.second, nullptr,
-	              error );
+	bool ok =
+	    MakeBuffer( sizes.accelerationStructureSize,
+	        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR |
+	            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+	        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &resource.buffer, &resource.memory, nullptr,
+	        error ) &&
+	    MakeBuffer( sizes.buildScratchSize + m_scratchAlignment,
+	        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+	        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &scratch.first, &scratch.second, nullptr, error );
 	if ( scratch.first != VK_NULL_HANDLE )
 	{
 		resource.extra.push_back( scratch );
 		const VkDeviceAddress base = Address( scratch.first );
-		resource.scratch = ( base + m_scratchAlignment - 1 ) / m_scratchAlignment * m_scratchAlignment;
+		resource.scratch =
+		    ( base + m_scratchAlignment - 1 ) / m_scratchAlignment * m_scratchAlignment;
 	}
 	if ( ok )
 	{
@@ -563,7 +569,7 @@ uint32_t ComputeResources::CreateProgram( const uint32_t *spirv, size_t bytes,
 		                               : VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 		layout[i].descriptorCount = 1;
 		layout[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-		( bindings[i] == ComputeBinding::StorageBuffer  ? buffers
+		( bindings[i] == ComputeBinding::StorageBuffer    ? buffers
 		    : bindings[i] == ComputeBinding::StorageImage ? images
 		                                                  : structures ) += 1;
 	}
@@ -600,11 +606,10 @@ uint32_t ComputeResources::CreateProgram( const uint32_t *spirv, size_t bytes,
 	bool ok = vkCreateDescriptorSetLayout( m_device, &setInfo, nullptr, &resource.setLayout ) ==
 	          VK_SUCCESS;
 	pipelineLayout.pSetLayouts = &resource.setLayout;
-	ok = ok && vkCreatePipelineLayout( m_device, &pipelineLayout, nullptr,
-	               &resource.pipelineLayout ) == VK_SUCCESS;
-	ok = ok && ( sizes.empty() ||
-	               vkCreateDescriptorPool( m_device, &pool, nullptr, &resource.pool ) ==
-	                   VK_SUCCESS );
+	ok = ok && vkCreatePipelineLayout(
+	               m_device, &pipelineLayout, nullptr, &resource.pipelineLayout ) == VK_SUCCESS;
+	ok = ok && ( sizes.empty() || vkCreateDescriptorPool(
+	                                  m_device, &pool, nullptr, &resource.pool ) == VK_SUCCESS );
 	ok = ok && vkCreateShaderModule( m_device, &module, nullptr, &shader ) == VK_SUCCESS;
 	if ( ok )
 	{
@@ -615,8 +620,8 @@ uint32_t ComputeResources::CreateProgram( const uint32_t *spirv, size_t bytes,
 		info.stage.module = shader;
 		info.stage.pName = "main";
 		info.layout = resource.pipelineLayout;
-		ok = vkCreateComputePipelines( m_device, VK_NULL_HANDLE, 1, &info, nullptr,
-		         &resource.pipeline ) == VK_SUCCESS;
+		ok = vkCreateComputePipelines(
+		         m_device, VK_NULL_HANDLE, 1, &info, nullptr, &resource.pipeline ) == VK_SUCCESS;
 	}
 	if ( shader != VK_NULL_HANDLE )
 		vkDestroyShaderModule( m_device, shader, nullptr );
@@ -669,8 +674,8 @@ void ComputeResources::RecordImageLayout( VkCommandBuffer cmd, uint32_t image )
 }
 
 bool ComputeResources::RecordDispatch( VkCommandBuffer cmd, uint64_t serial, uint32_t program,
-    const std::vector<uint32_t> &resources, const void *push, uint32_t pushBytes,
-    uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ )
+    const std::vector<uint32_t> &resources, const void *push, uint32_t pushBytes, uint32_t groupsX,
+    uint32_t groupsY, uint32_t groupsZ )
 {
 	Resource *pipeline = Find( program );
 	if ( !pipeline || !pipeline->program || resources.size() != pipeline->bindings.size() ||
@@ -718,8 +723,7 @@ bool ComputeResources::RecordDispatch( VkCommandBuffer cmd, uint64_t serial, uin
 		else
 		{
 			structures[i] = {};
-			structures[i].sType =
-			    VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+			structures[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
 			structures[i].accelerationStructureCount = 1;
 			structures[i].pAccelerationStructures = &resource->structure;
 			write.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
@@ -731,11 +735,11 @@ bool ComputeResources::RecordDispatch( VkCommandBuffer cmd, uint64_t serial, uin
 		vkUpdateDescriptorSets( m_device, uint32_t( writes.size() ), writes.data(), 0, nullptr );
 	vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipeline );
 	if ( set != VK_NULL_HANDLE )
-		vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipelineLayout, 0,
-		    1, &set, 0, nullptr );
+		vkCmdBindDescriptorSets(
+		    cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipelineLayout, 0, 1, &set, 0, nullptr );
 	if ( pushBytes )
-		vkCmdPushConstants( cmd, pipeline->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-		    pushBytes, push );
+		vkCmdPushConstants(
+		    cmd, pipeline->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, pushBytes, push );
 	vkCmdDispatch( cmd, groupsX, groupsY, groupsZ );
 	VkMemoryBarrier barrier = {};
 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -859,13 +863,14 @@ uint32_t GpuComputeService::CreateProgram(
 		size_t bytes;
 	};
 	static const Builtin builtins[] = {
-		{ "sdf-probe-trace", g_sdfProbeTraceSpv, sizeof( g_sdfProbeTraceSpv ) },
-		{ "ray-query-probe-trace", g_rayQueryProbeTraceSpv, sizeof( g_rayQueryProbeTraceSpv ) },
+	    { "sdf-probe-trace", g_sdfProbeTraceSpv, sizeof( g_sdfProbeTraceSpv ) },
+	    { "ray-query-probe-trace", g_rayQueryProbeTraceSpv, sizeof( g_rayQueryProbeTraceSpv ) },
 	};
 	std::vector<ComputeBinding> kinds( count );
 	for ( uint32_t i = 0; i < count; ++i )
-		kinds[i] = bindings[i] == gpu_compute::Binding::Scene ? ComputeBinding::AccelerationStructure
-		                                                      : ComputeBinding::StorageBuffer;
+		kinds[i] = bindings[i] == gpu_compute::Binding::Scene
+		               ? ComputeBinding::AccelerationStructure
+		               : ComputeBinding::StorageBuffer;
 	for ( const Builtin &builtin : builtins )
 	{
 		if ( std::strcmp( builtin.name, name ) != 0 )
@@ -876,8 +881,8 @@ uint32_t GpuComputeService::CreateProgram(
 	return 0;
 }
 
-uint32_t GpuComputeService::CreateGeometry( const float *positions, uint32_t vertexCount,
-    const uint32_t *indices, uint32_t indexCount )
+uint32_t GpuComputeService::CreateGeometry(
+    const float *positions, uint32_t vertexCount, const uint32_t *indices, uint32_t indexCount )
 {
 	std::string error;
 	const uint32_t geometry =
@@ -900,6 +905,7 @@ uint32_t GpuComputeService::CreateScene(
 		placed[i].geometry = instances[i].geometry;
 		std::memcpy( placed[i].transform, instances[i].transform, sizeof( placed[i].transform ) );
 		placed[i].customIndex = instances[i].customIndex;
+		placed[i].mask = instances[i].mask;
 	}
 	std::string error;
 	const uint32_t scene = m_resources.CreateScene( placed.data(), count, &error );

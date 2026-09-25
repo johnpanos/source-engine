@@ -3,7 +3,9 @@
 #extension GL_EXT_ray_query : require
 #endif
 // RFC 0011 G6: the SDF-traced producer's probe update. One workgroup per
-// probe; each of its 128 invocations traces one ray (a spherical Fibonacci
+// entry of this dispatch's schedule (a probe and its blend weight; weight 0
+// copies the probe's previous estimate forward untouched); each of its 128
+// invocations traces one ray (a spherical Fibonacci
 // direction under this frame's random rotation) through the static world's
 // signed distance volume and this frame's proxy boxes. A hit's reflected
 // light is its reflectance times the direct light of the analytic lights
@@ -13,7 +15,13 @@
 // directly. Then 36 invocations fold the rays into the probe's octahedral
 // texels (irradiance / pi, the cosine-weighted mean radiance) together with
 // the analytic lights' direct light at the probe (128 shadow-tested samples
-// per light), and blend into the next estimate with `alpha`.
+// per light), and blend into the next estimate with the entry's weight.
+//
+// Lights come from the SDFV's light cells: a probe and a hit are lit only by
+// the lights their cell lists (a point outside the cell grid uses the
+// nearest cell). Kinds: rectangles, distant lights, the dome, spheres and
+// spots (one-sided disks with vrad's cone). The dispatch's lights buffer is
+// either the live configuration's (style scalars applied) or the baked one's.
 //
 // RAY_QUERY (G7, the ray-query producer): rays and visibility are traced
 // against a scene of the world's triangles (instance 0) and this frame's
@@ -31,11 +39,13 @@ const float kPi = 3.14159265358979;
 
 struct Light
 {
-	vec4 kind; // x: 0 rect, 1 distant, 2 dome
-	vec4 rgb;  // rect/dome radiance, distant irradiance; times the current scalar
-	vec4 a;    // rect centre; distant: the direction light travels
-	vec4 b;    // rect half-axis u; distant: x the angular diameter
-	vec4 c;    // rect half-axis v
+	vec4 kind; // x: 0 rect, 1 distant, 2 dome, 3 sphere, 4 spot
+	vec4 rgb;  // radiance (distant: irradiance), times the dispatch's scalar
+	vec4 a;    // rect/sphere/spot centre; distant: the direction light travels
+	vec4 b;    // rect half-axis u; distant: x the angular diameter; sphere: x radius;
+	           // spot: the emitting normal
+	vec4 c;    // rect half-axis v; spot: x radius, y cos inner, z cos outer
+	vec4 d;    // spot: x the cone exponent
 };
 struct Proxy
 {
@@ -54,9 +64,10 @@ layout( std430, set = 0, binding = 1 ) readonly buffer Params
 	vec4 probeOrigin;  // xyz, w normal bias
 	vec4 probeSpacing; // xyz, w max distance
 	uvec4 probeDims;   // xyz, w probe count
-	uvec4 counts;      // x proxy count
+	uvec4 counts;      // x proxy count, y ray-query instance mask (1: the world only)
+	vec4 cellOrigin;   // xyz the light cells' low corner, w cell size
+	uvec4 cellDims;    // xyz
 	vec4 sourceScale[16];
-	Light lights[16];
 	Proxy proxies[16];
 }
 params;
@@ -75,7 +86,7 @@ layout( std430, set = 0, binding = 4 ) writeonly buffer Next
 };
 layout( push_constant ) uniform Push
 {
-	float alpha;
+	uint entries; // this dispatch's schedule length (its workgroups)
 	uint frame;
 }
 push;
@@ -89,7 +100,28 @@ layout( std430, set = 0, binding = 7 ) readonly buffer WorldIndices
 {
 	uint worldIndices[];
 };
+#define LIGHT_BINDINGS 8
+#else
+#define LIGHT_BINDINGS 5
 #endif
+layout( std430, set = 0, binding = LIGHT_BINDINGS ) readonly buffer Lights
+{
+	Light lights[];
+};
+// Per cell (x fastest) its first entry, then the entry count.
+layout( std430, set = 0, binding = LIGHT_BINDINGS + 1 ) readonly buffer CellFirst
+{
+	uint cellFirst[];
+};
+layout( std430, set = 0, binding = LIGHT_BINDINGS + 2 ) readonly buffer CellLights
+{
+	uint cellLights[];
+};
+// Per workgroup: x the probe, y its blend weight's bits (0: copy it forward).
+layout( std430, set = 0, binding = LIGHT_BINDINGS + 3 ) readonly buffer Schedule
+{
+	uvec2 schedule[];
+};
 
 shared vec3 sDir[kRays];
 shared vec3 sDirect[kRays];
@@ -185,7 +217,8 @@ vec3 gHitNormal = vec3( 0.0, 0.0, 1.0 );
 bool Trace( vec3 origin, vec3 direction, float tMax, out float t, out int proxy, out bool escaped )
 {
 	rayQueryEXT query;
-	rayQueryInitializeEXT( query, scene, gl_RayFlagsOpaqueEXT, 0xFF, origin, 0.0, direction, tMax );
+	rayQueryInitializeEXT( query, scene, gl_RayFlagsOpaqueEXT, params.counts.y, origin, 0.0,
+	    direction, tMax );
 	while ( rayQueryProceedEXT( query ) )
 	{
 	}
@@ -229,7 +262,8 @@ bool Visible( vec3 from, vec3 to )
 	const float distance = length( delta );
 	rayQueryEXT query;
 	rayQueryInitializeEXT( query, scene, gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
-	    0xFF, from, 0.0, delta / distance, max( distance - 0.5 * params.sdfOrigin.w, 0.0 ) );
+	    params.counts.y, from, 0.0, delta / distance,
+	    max( distance - 0.5 * params.sdfOrigin.w, 0.0 ) );
 	while ( rayQueryProceedEXT( query ) )
 	{
 	}
@@ -297,11 +331,21 @@ vec3 HitNormal( vec3 p )
 }
 #endif
 
+// The lights of the cell holding `p` (the nearest cell outside the grid):
+// entries [x, y) of cellLights.
+uvec2 CellRange( vec3 p )
+{
+	const vec3 g = floor( ( p - params.cellOrigin.xyz ) / params.cellOrigin.w );
+	const uvec3 c = uvec3( clamp( g, vec3( 0.0 ), vec3( params.cellDims.xyz ) - 1.0 ) );
+	const uint cell = c.x + params.cellDims.x * ( c.y + params.cellDims.y * c.z );
+	return uvec2( cellFirst[cell], cellFirst[cell + 1u] );
+}
+
 // One sample of analytic light `l` at `p`: the unshadowed diffuse light
 // along `w` for a normal facing it (irradiance / pi), 0 when it cannot light p.
 vec3 LightSample( uint l, vec3 p, inout uint rng, out vec3 w, out vec3 target )
 {
-	const Light light = params.lights[l];
+	const Light light = lights[l];
 	const uint kind = uint( light.kind.x );
 	if ( kind == 0u )
 	{
@@ -330,6 +374,59 @@ vec3 LightSample( uint l, vec3 p, inout uint rng, out vec3 w, out vec3 target )
 		w = normalize( toward + r * ( cos( phi ) * t0 + sin( phi ) * t1 ) );
 		target = p + w * ( 4.0 * params.probeSpacing.w );
 		return light.rgb.rgb / kPi;
+	}
+	if ( kind == 3u )
+	{
+		// A direction uniform within the cone the sphere subtends: the
+		// estimate is its radiance times that solid angle over pi.
+		const vec3 toCentre = light.a.xyz - p;
+		const float d2 = dot( toCentre, toCentre );
+		const float r = light.b.x;
+		const vec3 axis = toCentre * inversesqrt( max( d2, 1e-8 ) );
+		if ( d2 <= r * r )
+		{
+			w = axis;
+			target = light.a.xyz;
+			return light.rgb.rgb;
+		}
+		const float cosMax = sqrt( max( 0.0, 1.0 - r * r / d2 ) );
+		const float cosTheta = mix( cosMax, 1.0, Random( rng ) );
+		const float sinTheta = sqrt( max( 0.0, 1.0 - cosTheta * cosTheta ) );
+		const float phi = 2.0 * kPi * Random( rng );
+		const vec3 t0 = normalize( abs( axis.z ) < 0.9 ? cross( axis, vec3( 0, 0, 1 ) )
+		                                               : cross( axis, vec3( 1, 0, 0 ) ) );
+		const vec3 t1 = cross( axis, t0 );
+		w = cosTheta * axis + sinTheta * ( cos( phi ) * t0 + sin( phi ) * t1 );
+		// The near side of the sphere along w.
+		const float along = dot( toCentre, w );
+		target = p + w * ( along - sqrt( max( 0.0, r * r - ( d2 - along * along ) ) ) );
+		return light.rgb.rgb * ( 2.0 * kPi * ( 1.0 - cosMax ) ) / kPi;
+	}
+	if ( kind == 4u )
+	{
+		// A point uniform on the disk (area pi r^2), weighted by vrad's cone
+		// at the angle toward p; the disk's own cosine is the projection.
+		const vec3 normal = light.b.xyz;
+		const vec3 t0 = normalize( abs( normal.z ) < 0.9 ? cross( normal, vec3( 0, 0, 1 ) )
+		                                                 : cross( normal, vec3( 1, 0, 0 ) ) );
+		const vec3 t1 = cross( normal, t0 );
+		const float radius = light.c.x * sqrt( Random( rng ) );
+		const float phi = 2.0 * kPi * Random( rng );
+		const vec3 q = light.a.xyz + radius * ( cos( phi ) * t0 + sin( phi ) * t1 );
+		const vec3 delta = q - p;
+		const float d2 = max( dot( delta, delta ), 1e-4 );
+		w = delta * inversesqrt( d2 );
+		target = q;
+		const float cosLight = max( 0.0, dot( -w, normal ) );
+		float cone = 1.0;
+		if ( cosLight < light.c.y )
+		{
+			cone = clamp( ( cosLight - light.c.z ) / max( light.c.y - light.c.z, 1e-6 ), 0.0, 1.0 );
+			if ( light.d.x != 0.0 && light.d.x != 1.0 )
+				cone = pow( cone, light.d.x );
+		}
+		const float area = kPi * light.c.x * light.c.x;
+		return light.rgb.rgb * cone * cosLight * area / ( kPi * d2 );
 	}
 	w = vec3( 0.0, 0.0, 1.0 );
 	target = p;
@@ -402,8 +499,17 @@ vec3 FieldLight( vec3 p, vec3 n )
 
 void main()
 {
-	const uint probe = gl_WorkGroupID.x;
+	const uvec2 entry = schedule[gl_WorkGroupID.x];
+	const uint probe = entry.x;
+	const float alpha = uintBitsToFloat( entry.y );
 	const uint lane = gl_LocalInvocationID.x;
+	if ( alpha <= 0.0 )
+	{
+		// Not updated this time: its estimate carries forward.
+		if ( lane < kTexels * 3u )
+			next[probe * kTexels * 3u + lane] = previous[probe * kTexels * 3u + lane];
+		return;
+	}
 	const vec4 position = probes[probe];
 	if ( position.w < 0.5 )
 	{
@@ -411,6 +517,7 @@ void main()
 			next[probe * kTexels * 3u + lane] = vec4( 0.0 );
 		return;
 	}
+	const uvec2 probeLights = CellRange( position.xyz );
 	uint rng = Hash( probe * 7919u + lane * 104729u + push.frame * 1299709u + 17u );
 	// This frame's rotation of the spherical Fibonacci set.
 	uint frameRng = Hash( push.frame * 2654435761u + 3u );
@@ -465,8 +572,10 @@ void main()
 		}
 		const vec3 lift = hit + n * ( 0.5 * params.sdfOrigin.w );
 		vec3 arriving = FieldLight( hit, n );
-		for ( uint l = 0u; l < params.sdfDims.w; ++l )
+		const uvec2 hitLights = CellRange( lift );
+		for ( uint e = hitLights.x; e < hitLights.y; ++e )
 		{
+			const uint l = cellLights[e];
 			vec3 w, target;
 			const vec3 value = LightSample( l, lift, rng, w, target );
 			const float cosSurface = max( 0.0, dot( n, w ) );
@@ -479,9 +588,9 @@ void main()
 	}
 	else if ( escaped )
 	{
-		for ( uint l = 0u; l < params.sdfDims.w; ++l )
-			if ( uint( params.lights[l].kind.x ) == 2u )
-				direct += params.lights[l].rgb.rgb;
+		for ( uint e = probeLights.x; e < probeLights.y; ++e )
+			if ( uint( lights[cellLights[e]].kind.x ) == 2u )
+				direct += lights[cellLights[e]].rgb.rgb;
 	}
 	sDir[lane] = dir;
 	sDirect[lane] = direct;
@@ -497,8 +606,9 @@ void main()
 		texelDir = OctDecode( ( vec2( u, v ) + 0.5 ) / float( kInterior ) * 2.0 - 1.0 );
 	}
 	// The analytic lights' direct light at the probe: 128 samples per light.
-	for ( uint l = 0u; l < params.sdfDims.w; ++l )
+	for ( uint e = probeLights.x; e < probeLights.y; ++e )
 	{
+		const uint l = cellLights[e];
 		vec3 w, target;
 		vec3 value = LightSample( l, position.xyz, rng, w, target );
 		if ( any( greaterThan( value, vec3( 0.0 ) ) ) && !Visible( position.xyz, target ) )
@@ -527,7 +637,7 @@ void main()
 	seenIndirect /= max( weights, 1e-6 );
 	const uint slot = ( probe * kTexels + lane ) * 3u;
 	const vec3 total = analytic + seenDirect + seenIndirect;
-	next[slot] = vec4( mix( previous[slot].rgb, total, push.alpha ), 0.0 );
-	next[slot + 1u] = vec4( mix( previous[slot + 1u].rgb, seenIndirect, push.alpha ), 0.0 );
-	next[slot + 2u] = vec4( mix( previous[slot + 2u].rgb, analytic, push.alpha ), 0.0 );
+	next[slot] = vec4( mix( previous[slot].rgb, total, alpha ), 0.0 );
+	next[slot + 1u] = vec4( mix( previous[slot + 1u].rgb, seenIndirect, alpha ), 0.0 );
+	next[slot + 2u] = vec4( mix( previous[slot + 2u].rgb, analytic, alpha ), 0.0 );
 }

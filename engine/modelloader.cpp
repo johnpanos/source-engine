@@ -5032,11 +5032,15 @@ void CModelLoader::Map_LoadProbeVolume()
 	mapcontainer::MapLumpInfo fieldLump{};
 	if ( s_pMapContainer->FindLump( mapcontainer::kLumpSdfVolume, &fieldLump ) )
 	{
+		// Every SDFV version the reader accepts (v1 maps stay valid); the
+		// host validates the payload itself. v2 appends per-cell light lists.
 		const uint64_t maxBytes = mapcontainer::kSdfVolumeHeaderBytes +
 		                          uint64_t( mapcontainer::kSdfMaxVoxels ) * mapcontainer::kSdfVoxelBytes +
-		                          uint64_t( mapcontainer::kSdfMaxLights ) * mapcontainer::kSdfLightBytes;
-		if ( fieldLump.version != mapcontainer::kSdfVolumeVersion || fieldLump.flags != 0 ||
-		     fieldLump.storedSize < mapcontainer::kSdfVolumeHeaderBytes ||
+		                          uint64_t( mapcontainer::kSdfMaxLights ) * mapcontainer::kSdfLightBytes +
+		                          ( 64ull << 20 );
+		if ( fieldLump.version < 1 || fieldLump.version > mapcontainer::kSdfVolumeVersion ||
+		     fieldLump.flags != 0 ||
+		     fieldLump.storedSize < mapcontainer::kSdfVolumeV1HeaderBytes ||
 		     fieldLump.storedSize > maxBytes )
 			Warning( "Map %s: SDFV version, flags or size unsupported; the SDF producer is not "
 			         "offered\n",

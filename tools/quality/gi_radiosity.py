@@ -42,6 +42,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 import gi_budgets  # noqa: E402
+import gi_runtime  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
 
 MAPS = ROOT / "quality-results" / "rfc0011-maps"
@@ -145,17 +146,22 @@ def budget(args):
 def states(args):
     map_build = Path(args.map_build or MAPS / "room-states")
     out = Path(args.out)
-    captures = {"default": ("default", ["r_indirect_producer radiosity"], True),
-                "panel-off": ("panel-off", ["r_indirect_producer radiosity; wait 60; " +
-                                            STATES["panel-off"][1]], True),
-                "screen-off": ("screen-off", ["r_indirect_producer radiosity; wait 60; " +
-                                              STATES["screen-off"][1]], True),
-                "baked-panel-off": ("panel-off", [STATES["panel-off"][1]], False)}
+    # --producer runs the same toggles against another producer (G8's
+    # measurements); a traced producer's warm-up needs --warm frames first.
+    select = "r_indirect_producer %s; wait %d; " % (args.producer, args.warm)
+    captures = {"default": ("default", [select.rstrip("; ")], True),
+                "panel-off": ("panel-off", [select + STATES["panel-off"][1]], True),
+                "screen-off": ("screen-off", [select + STATES["screen-off"][1]], True),
+                # Explicitly baked: a runtime's saved r_indirect_producer must
+                # not stand in for the control.
+                "baked-panel-off": ("panel-off", ["r_indirect_producer baked; " +
+                                                  STATES["panel-off"][1]], False)}
     results, passed = {}, True
     for name, (state, commands, should_pass) in captures.items():
         target = out / name
         capture = [sys.executable, HERE / "gi_runtime.py", "capture", "--fixture", "room-states",
-                   "--map-build", map_build, "--out", target, "--build", args.build]
+                   "--map-build", map_build, "--out", target, "--build", args.build,
+                   "--capture-wait", str(max(gi_runtime.CAPTURE_WAIT, gi_runtime.PLACEMENT_FRAMES + args.warm + 120))]
         if args.runtime:
             capture += ["--runtime", args.runtime]
         for command in commands:
@@ -176,6 +182,7 @@ def states(args):
                          "compare_log": compare.stdout[-2000:]}
     return write(out / "states.json", {"gate": "G4.3 states", "status":
                                        "pass" if passed else "fail", "build": args.build,
+                                       "producer": args.producer, "warm_frames": args.warm,
                                        "captures": results})
 
 
@@ -193,6 +200,9 @@ def main():
             command.add_argument("--build", default="build",
                                  help="the client build tree carrying the producer")
             command.add_argument("--runtime", help="base runtime (a private copy is booted)")
+            command.add_argument("--producer", default="radiosity")
+            command.add_argument("--warm", type=int, default=60,
+                                 help="frames between selecting the producer and the toggle")
     args = parser.parse_args()
     return {"furnace": furnace, "convergence": convergence, "budget": budget,
             "states": states}[args.command](args)

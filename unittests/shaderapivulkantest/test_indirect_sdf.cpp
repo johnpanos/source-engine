@@ -14,11 +14,12 @@
 //          that the probe goes dark (total and indirect near zero). Also
 //          reported: the GPU time of one update (a fenced submission).
 //
-//          `--bench <volume.prbv> <field.sdfv>` instead measures a map's
-//          update cost (RFC 0011 G6.4, the budget's gpu_ms: the median over
-//          warm updates of the dispatch's timestamps): the reference phase
-//          and a live phase after the first switchable light (style 32)
-//          halves.
+//          `--bench <volume.prbv> <field.sdfv> [world.wmsh] [--focus file]
+//          [--budget n] [--proxy x0 y0 z0 x1 y1 z1] [--frames n]` instead
+//          measures a map's update cost (RFC 0011 G6.4, the budget's gpu_ms:
+//          the median over warm updates of the dispatch's timestamps): the
+//          reference phase and a live phase after the first switchable light
+//          (style 32) halves and, with --proxy, a box appears.
 //
 //===========================================================================//
 
@@ -34,6 +35,8 @@
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <cstdlib>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -63,9 +66,16 @@ class Frames final : public IResourceTracker
 {
 public:
 	Frames( Device &device, ComputeResources &resources )
-	    : m_device( device ), m_resources( resources ),
-	      m_service( resources, [this] { return m_submitted + 1; },
-	          [this] { return m_completed; } )
+	    : m_device( device ), m_resources( resources ), m_service(
+	                                                        resources,
+	                                                        [this]
+	                                                        {
+		                                                        return m_submitted + 1;
+	                                                        },
+	                                                        [this]
+	                                                        {
+		                                                        return m_completed;
+	                                                        } )
 	{
 	}
 	// Before the device goes.
@@ -105,7 +115,8 @@ public:
 			    vkCmdResetQueryPool( c, m_queries, query, 2 );
 			    vkCmdWriteTimestamp( c, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_queries, query );
 			    m_service.Record( c, serial );
-			    vkCmdWriteTimestamp( c, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_queries, query + 1 );
+			    vkCmdWriteTimestamp(
+			        c, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_queries, query + 1 );
 		    } );
 		m_inFlight.push_back( { serial, fence, cmd, start, work } );
 		Poll();
@@ -207,7 +218,8 @@ std::shared_ptr<const WorldGeometry> LoadTriangles( const char *path )
 	geometry->indices.resize( header[2] );
 	std::memcpy( geometry->positions.data(), bytes.data() + sizeof( header ),
 	    geometry->positions.size() * 4 );
-	std::memcpy( geometry->indices.data(), bytes.data() + sizeof( header ) + geometry->positions.size() * 4,
+	std::memcpy( geometry->indices.data(),
+	    bytes.data() + sizeof( header ) + geometry->positions.size() * 4,
 	    geometry->indices.size() * 4 );
 	for ( uint32_t index : geometry->indices )
 		if ( index >= header[1] )
@@ -368,24 +380,269 @@ std::shared_ptr<const WorldGeometry> WithoutTheWallTriangles( const WorldGeometr
 	return out;
 }
 
-// A map's update cost: warm updates' median and p95 GPU time.
-int Bench( Device &d, Frames &frames, const char *prbvPath, const char *sdfvPath,
-    const char *wmshPath )
+// The contract field with its lights replaced: its one light cell lists
+// every light, or (`emptyCell`, the defect of a cell that omits a light)
+// none.
+std::shared_ptr<const SdfData> WithLights(
+    const SdfData &sdf, const std::vector<mapcontainer::SdfLight> &lights, bool emptyCell )
 {
-	auto baked = Volume::FromBytes( LoadFile( prbvPath ) );
-	auto sdf = SdfData::FromBytes( LoadFile( sdfvPath ) );
-	std::shared_ptr<const WorldGeometry> geometry;
-	if ( wmshPath )
+	const mapcontainer::SdfVolumeLayout &f = sdf.layout;
+	std::vector<unsigned char> bytes( sdf.bytes.begin(), sdf.bytes.begin() + f.lightOffset );
+	const uint32_t count = uint32_t( lights.size() ), entries = emptyCell ? 0 : count;
+	std::memcpy( &bytes[44], &count, 4 );
+	std::memcpy( &bytes[92], &entries, 4 );
+	const unsigned char *raw = reinterpret_cast<const unsigned char *>( lights.data() );
+	bytes.insert( bytes.end(), raw, raw + lights.size() * sizeof( mapcontainer::SdfLight ) );
+	for ( uint32_t first : { 0u, entries } )
+		bytes.insert( bytes.end(), reinterpret_cast<const unsigned char *>( &first ),
+		    reinterpret_cast<const unsigned char *>( &first ) + 4 );
+	for ( uint32_t l = 0; l < entries; ++l )
 	{
-		const std::vector<unsigned char> wmsh = LoadFile( wmshPath );
+		const uint16_t index = uint16_t( l );
+		bytes.insert( bytes.end(), reinterpret_cast<const unsigned char *>( &index ),
+		    reinterpret_cast<const unsigned char *>( &index ) + 2 );
+	}
+	if ( entries % 2 )
+		bytes.insert( bytes.end(), 2, 0 );
+	return SdfData::FromBytes( std::move( bytes ) );
+}
+
+mapcontainer::SdfLight SmallLight( bool spot, float x, float y, float z, int style )
+{
+	mapcontainer::SdfLight light = {};
+	light.kind = uint32_t( spot ? mapcontainer::SdfLightKind::Spot : mapcontainer::SdfLightKind::Sphere );
+	light.style = style;
+	light.rgb[0] = light.rgb[1] = light.rgb[2] = 400.0f;
+	light.a[0] = x, light.a[1] = y, light.a[2] = z;
+	if ( spot )
+	{
+		light.b[2] = -1.0f; // aims down
+		light.c[0] = 2.0f;
+		light.c[1] = 0.95f; // inner cone, 18 degrees
+		light.c[2] = 0.90f; // outer cone, 26 degrees
+		light.reserved[0] = 1.0f;
+	}
+	else
+		light.b[0] = 2.0f;
+	return light;
+}
+
+// Octahedral texel t's direction (sdf_probe_trace.comp OctDecode).
+void TexelDirection( uint32_t t, float out[3] )
+{
+	constexpr uint32_t kInterior = 6;
+	const float px = ( float( t % kInterior ) + 0.5f ) / float( kInterior ) * 2.0f - 1.0f;
+	const float py = ( float( t / kInterior ) + 0.5f ) / float( kInterior ) * 2.0f - 1.0f;
+	float v[3] = { px, py, 1.0f - std::fabs( px ) - std::fabs( py ) };
+	if ( v[2] < 0.0f )
+	{
+		const float x = ( 1.0f - std::fabs( py ) ) * ( px >= 0.0f ? 1.0f : -1.0f );
+		const float y = ( 1.0f - std::fabs( px ) ) * ( py >= 0.0f ? 1.0f : -1.0f );
+		v[0] = x, v[1] = y;
+	}
+	const float length = std::sqrt( v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );
+	for ( int k = 0; k < 3; ++k )
+		out[k] = v[k] / length;
+}
+
+// A traced producer driven for `frames` frames with a focus and a budget;
+// `scalar` (if >= 0) sets style 32 from frame `change` on.
+struct Driven
+{
+	std::vector<float> reference;
+	bool live = false;
+	uint64_t probeUpdates = 0;
+	std::vector<uint32_t> liveUpdates;
+	std::vector<uint8_t> referenced;
+};
+
+Driven Drive( Frames &frames, const std::shared_ptr<const Volume> &seed,
+    const std::shared_ptr<const SdfData> &sdf, uint32_t count, std::vector<uint32_t> focus,
+    uint32_t budget, float scalar = -1.0f, uint32_t change = 0,
+    std::vector<uint32_t> focusAfter = {} )
+{
+	Driven out;
+	SdfTracedProducer producer;
+	IndirectScene scene;
+	scene.baked = seed;
+	scene.sdf = sdf;
+	scene.gpu = &frames.Service();
+	scene.policy = indirect_policy::Policy::BakedPlusDelta;
+	if ( !producer.Begin( scene, PublishedVolume{ 0, seed }, frames ) )
+		return out;
+	light_set::Snapshot lights;
+	for ( uint32_t frame = 0; frame < count; ++frame )
+	{
+		if ( scalar >= 0.0f && frame == change )
+		{
+			lights.styleScalars.assign( 64, 1.0f );
+			lights.styleScalars[32] = scalar;
+			focus = focusAfter;
+		}
+		FrameWork work;
+		work.resources = &frames;
+		work.frameSerial = uint64_t( frame ) + 1;
+		work.focusProbes = focus;
+		work.probeBudget = budget;
+		producer.Schedule( work, lights );
+		for ( auto &job : work.jobs )
+			job();
+		frames.Submit();
+	}
+	frames.Drain();
+	out.reference = producer.ReferenceField();
+	out.live = producer.Live();
+	out.probeUpdates = producer.ProbeUpdates();
+	const uint32_t probes = seed->layout.grids[0].probeCount;
+	for ( uint32_t p = 0; p < probes; ++p )
+	{
+		out.liveUpdates.push_back( producer.LiveUpdates( p ) );
+		out.referenced.push_back( producer.Referenced( p ) );
+	}
+	(void)producer.End();
+	frames.Drain();
+	return out;
+}
+
+// Probe p's analytic direct light per texel (the field's third vec4).
+float Analytic( const std::vector<float> &field, uint32_t p, uint32_t t )
+{
+	return field[( size_t( p ) * SdfTracedProducer::kTexels + t ) * 12 + 8];
+}
+
+// Sphere and spot lights against their closed forms at the contract's
+// probes 0 (0, 0, 0) and 1 (32, 0, 0), from a light 32 units above probe 0:
+// L r^2 / d^2 times each texel's cosine toward the light. The spot's cone
+// (26 degrees) excludes probe 1 (45 degrees off its axis), which the sphere
+// lights. A light cell that omits the light leaves the probe unlit.
+void NativeLights( Frames &frames, const std::shared_ptr<const Volume> &seed, const SdfData &sdf )
+{
+	const uint32_t warm = SdfTracedProducer{}.Caps().warmupFrames;
+	const auto run = [&]( bool spot, bool emptyCell )
+	{
+		const auto field = WithLights( sdf, { SmallLight( spot, 0.0f, 0.0f, 32.0f, -1 ) }, emptyCell );
+		Check( bool( field ), "a field with a native light validates" );
+		return field ? Drive( frames, seed, field, warm, {}, 0 ).reference : std::vector<float>{};
+	};
+	for ( const bool spot : { false, true } )
+	{
+		const std::string name = spot ? "spot" : "sphere";
+		const std::vector<float> field = run( spot, false );
+		if ( field.empty() )
+			continue;
+		// Probe 0: the light straight up, at 32 units.
+		const float peak = 400.0f * 4.0f / ( 32.0f * 32.0f );
+		double worst = 0.0;
+		for ( uint32_t t = 0; t < SdfTracedProducer::kTexels; ++t )
+		{
+			float dir[3];
+			TexelDirection( t, dir );
+			const float expected = peak * std::max( 0.0f, dir[2] );
+			if ( expected > 0.3f * peak )
+				worst = std::max( worst, double( std::fabs( Analytic( field, 0, t ) - expected ) / expected ) );
+		}
+		std::printf( "%s light: probe 0 worst texel error %.3f\n", name.c_str(), worst );
+		Check( worst < 0.05, name + " light: probe 0's analytic light is L r^2 / d^2 cos (5%)" );
+		// Probe 1: 45 degrees off, at 32 sqrt 2.
+		float best = 0.0f;
+		for ( uint32_t t = 0; t < SdfTracedProducer::kTexels; ++t )
+			best = std::max( best, Analytic( field, 1, t ) );
+		const float sideways = 400.0f * 4.0f / ( 2.0f * 32.0f * 32.0f );
+		std::printf( "%s light: probe 1 brightest texel %.4f (unshaded sphere %.4f)\n", name.c_str(),
+		    best, sideways );
+		Check( spot ? best < 0.01f * sideways : best > 0.8f * sideways,
+		    spot ? name + " light: probe 1, outside the cone, is unlit"
+		         : name + " light: probe 1 is lit (the cone check's control)" );
+	}
+	const std::vector<float> omitted = run( false, true );
+	float lit = 0.0f;
+	for ( uint32_t t = 0; t < SdfTracedProducer::kTexels && !omitted.empty(); ++t )
+		lit = std::max( lit, Analytic( omitted, 0, t ) );
+	Check( !omitted.empty() && lit == 0.0f, "a light cell that omits the light leaves its probes unlit" );
+}
+
+// Focus and budget: with a focus of probe 0 and no budget, only probe 0
+// builds its reference; a focus of every probe is the no-focus schedule byte
+// for byte; after a change, a focused probe updates while an unfocused one
+// waits, and a budget brings every probe to rest.
+void Scheduling( Frames &frames, const std::shared_ptr<const Volume> &seed, const SdfData &sdf )
+{
+	const uint32_t warm = SdfTracedProducer{}.Caps().warmupFrames;
+	const uint32_t probes = seed->layout.grids[0].probeCount;
+	const auto field = WithLights( sdf, { SmallLight( false, 0.0f, 0.0f, 32.0f, 32 ) }, false );
+	if ( !field )
+		return;
+	const Driven one = Drive( frames, seed, field, warm, { 0 }, 0 );
+	uint32_t others = 0;
+	for ( uint32_t p = 1; p < probes; ++p )
+		others += one.referenced[p];
+	Check( one.referenced[0] && others == 0 &&
+	           one.probeUpdates == SdfTracedProducer::kReferenceUpdates,
+	    "a focus of probe 0 without a budget references probe 0 only (" +
+	        std::to_string( one.probeUpdates ) + " probe updates)" );
+	std::vector<uint32_t> every( probes );
+	for ( uint32_t p = 0; p < probes; ++p )
+		every[p] = p;
+	const Driven all = Drive( frames, seed, field, warm, every, 0 );
+	const Driven none = Drive( frames, seed, field, warm, {}, 0 );
+	Check( all.live && none.live && all.reference == none.reference,
+	    "a focus of every probe is the no-focus schedule, byte for byte" );
+	// Live: the reference with no focus, then style 32 at 0.5 with a focus of probe 0.
+	const uint32_t settle = warm + 20;
+	const Driven focused = Drive( frames, seed, field, settle, {}, 0, 0.5f, warm, { 0 } );
+	Check( focused.liveUpdates[0] > 0 && focused.liveUpdates[1] == 0,
+	    "after a change, the focused probe updates and an unfocused one waits (" +
+	        std::to_string( focused.liveUpdates[0] ) + ", " +
+	        std::to_string( focused.liveUpdates[1] ) + ")" );
+	const Driven budgeted =
+	    Drive( frames, seed, field, warm + 400, {}, 4, 0.5f, warm, { 0 } );
+	bool rested = true;
+	for ( uint32_t p = 0; p < probes; ++p )
+		rested = rested && budgeted.liveUpdates[p] >= SdfTracedProducer::kActiveUpdates;
+	Check( rested, "with a budget every probe's live updates finish" );
+}
+
+// A map's update cost: warm updates' median and p95 GPU time, in the
+// reference phase and after a change at frame 120 (style 32 halves, and
+// with --proxy a box appears). --focus names the probes updated every
+// update (a file of probe indices, e.g. tools/quality/gi_focus.py's), the
+// others take --budget an update; without --focus every probe updates.
+struct BenchOptions
+{
+	const char *prbv = nullptr;
+	const char *sdfv = nullptr;
+	const char *wmsh = nullptr;
+	std::vector<uint32_t> focus;
+	uint32_t budget = 128;
+	bool proxy = false;
+	Proxy box;
+	int frames = 240;
+};
+
+double Median( std::vector<double> times, double fraction = 0.5 )
+{
+	if ( times.empty() )
+		return 0.0;
+	std::sort( times.begin(), times.end() );
+	return times[std::min( times.size() - 1, size_t( double( times.size() ) * fraction ) )];
+}
+
+int Bench( Device &d, Frames &frames, const BenchOptions &options )
+{
+	auto baked = Volume::FromBytes( LoadFile( options.prbv ) );
+	auto sdf = SdfData::FromBytes( LoadFile( options.sdfv ) );
+	std::shared_ptr<const WorldGeometry> geometry;
+	if ( options.wmsh )
+	{
+		const std::vector<unsigned char> wmsh = LoadFile( options.wmsh );
 		geometry = WorldGeometryFromMesh( wmsh.data(), wmsh.size() );
 	}
-	if ( !baked || !sdf || ( wmshPath && !geometry ) )
+	if ( !baked || !sdf || ( options.wmsh && !geometry ) )
 	{
-		std::fprintf( stderr, "bench: cannot load %s / %s\n", prbvPath, sdfvPath );
+		std::fprintf( stderr, "bench: cannot load %s / %s\n", options.prbv, options.sdfv );
 		return 2;
 	}
-	TracedProducer producer( wmshPath ? TraceMode::RayQuery : TraceMode::Sdf );
+	TracedProducer producer( options.wmsh ? TraceMode::RayQuery : TraceMode::Sdf );
 	IndirectScene scene;
 	scene.baked = baked;
 	scene.sdf = sdf;
@@ -396,34 +653,49 @@ int Bench( Device &d, Frames &frames, const char *prbvPath, const char *sdfvPath
 		return 2;
 	light_set::Snapshot lights;
 	constexpr int kWarm = 8;
-	for ( int frame = 0; frame < 240; ++frame )
+	constexpr int kChange = 120;
+	std::vector<double> reference;
+	std::vector<Proxy> proxies;
+	uint64_t probesBefore = 0;
+	for ( int frame = 0; frame < options.frames; ++frame )
 	{
 		if ( frame == kWarm )
 			frames.ResetTiming();
-		if ( frame == 120 )
+		if ( frame == kChange )
 		{
+			frames.Drain();
+			reference = frames.Times();
+			probesBefore = producer.ProbeUpdates();
+			frames.ResetTiming();
 			lights.styleScalars.assign( 64, 1.0f );
 			lights.styleScalars[32] = 0.5f; // the first switchable light
+			if ( options.proxy )
+				proxies = { options.box };
 		}
 		FrameWork work;
 		work.resources = &frames;
 		work.frameSerial = uint64_t( frame ) + 1;
+		work.focusProbes = options.focus;
+		work.probeBudget = options.budget;
+		work.proxies = proxies;
 		producer.Schedule( work, lights );
 		for ( auto &job : work.jobs )
 			job();
 		frames.Submit();
 	}
 	frames.Drain();
-	std::vector<double> times = frames.Times();
-	std::sort( times.begin(), times.end() );
-	if ( times.empty() )
-		return 2;
-	std::printf( "BENCH {\"producer\": \"%s\", \"probes\": %u, \"voxels\": [%u, %u, %u], \"updates\": %zu, "
-	             "\"gpu_ms_median\": %.3f, \"gpu_ms_p95\": %.3f, \"gpu_ms_max\": %.3f, "
-	             "\"device\": \"%s\"}\n",
-	    wmshPath ? "rayquery" : "sdf", baked->layout.grids[0].probeCount, sdf->layout.dims[0], sdf->layout.dims[1],
-	    sdf->layout.dims[2], times.size(), times[times.size() / 2], times[times.size() * 95 / 100],
-	    times.back(), d.name.c_str() );
+	const std::vector<double> live = frames.Times();
+	std::printf( "BENCH {\"producer\": \"%s\", \"probes\": %u, \"voxels\": [%u, %u, %u], "
+	             "\"lights\": %u, \"focus\": %zu, \"budget\": %u, \"reference_updates\": %zu, "
+	             "\"reference_ms_median\": %.3f, \"reference_ms_p95\": %.3f, "
+	             "\"live_updates\": %zu, \"live_ms_median\": %.3f, \"live_ms_p95\": %.3f, "
+	             "\"probe_updates\": [%llu, %llu], \"live\": %s, \"device\": \"%s\"}\n",
+	    options.wmsh ? "rayquery" : "sdf", baked->layout.grids[0].probeCount, sdf->layout.dims[0],
+	    sdf->layout.dims[1], sdf->layout.dims[2], sdf->layout.lightCount, options.focus.size(),
+	    options.budget, reference.size(), Median( reference ), Median( reference, 0.95 ),
+	    live.size(), Median( live ), Median( live, 0.95 ), (unsigned long long)probesBefore,
+	    (unsigned long long)( producer.ProbeUpdates() - probesBefore ),
+	    producer.Live() ? "true" : "false", d.name.c_str() );
 	(void)producer.End();
 	frames.Drain();
 	return 0;
@@ -443,9 +715,38 @@ int main( int argc, char **argv )
 	std::string error;
 	Check( resources.Init( d.physical, d.device, d.chain.Enabled(), &error ), "compute: " + error );
 	Frames frames( d, resources );
-	if ( ( argc == 4 || argc == 5 ) && std::string( argv[1] ) == "--bench" )
+	if ( argc >= 4 && std::string( argv[1] ) == "--bench" )
 	{
-		const int status = Bench( d, frames, argv[2], argv[3], argc == 5 ? argv[4] : nullptr );
+		BenchOptions options;
+		options.prbv = argv[2];
+		options.sdfv = argv[3];
+		for ( int i = 4; i < argc; ++i )
+		{
+			const std::string arg = argv[i];
+			if ( arg == "--focus" && i + 1 < argc )
+			{
+				std::ifstream file( argv[++i] );
+				uint32_t probe;
+				while ( file >> probe )
+					options.focus.push_back( probe );
+			}
+			else if ( arg == "--budget" && i + 1 < argc )
+				options.budget = uint32_t( std::strtoul( argv[++i], nullptr, 10 ) );
+			else if ( arg == "--frames" && i + 1 < argc )
+				options.frames = std::atoi( argv[++i] );
+			else if ( arg == "--proxy" && i + 6 < argc )
+			{
+				options.proxy = true;
+				for ( int k = 0; k < 3; ++k )
+					options.box.lo[k] = std::strtof( argv[++i], nullptr );
+				for ( int k = 0; k < 3; ++k )
+					options.box.hi[k] = std::strtof( argv[++i], nullptr );
+				options.box.reflectance = 0.5f;
+			}
+			else
+				options.wmsh = argv[i];
+		}
+		const int status = Bench( d, frames, options );
 		vkDeviceWaitIdle( d.device );
 		frames.Release();
 		resources.Shutdown();
@@ -465,7 +766,10 @@ int main( int argc, char **argv )
 	scene.geometry = geometry;
 	scene.gpu = &frames.Service();
 	scene.resources = &frames;
-	scene.afterFrame = [&] { frames.Submit(); };
+	scene.afterFrame = [&]
+	{
+		frames.Submit();
+	};
 	// A proxy box around the probe at the origin, clear of room A's walls.
 	Proxy box;
 	box.lo[0] = box.lo[1] = box.lo[2] = -9.0f;
@@ -495,11 +799,15 @@ int main( int argc, char **argv )
 		}
 		const auto started = std::chrono::steady_clock::now();
 		const auto broken = RunContract(
-		    [mode]( const FakeGpu & ) { return std::make_unique<TracedProducer>( mode ); }, scene,
-		    nullptr );
+		    [mode]( const FakeGpu & )
+		    {
+			    return std::make_unique<TracedProducer>( mode );
+		    },
+		    scene, nullptr );
 		for ( const auto &b : broken )
 			std::fprintf( stderr, "  %s: %s\n", name, b.c_str() );
-		Check( broken.empty(), std::string( "the " ) + name + " producer passes the shared suite on the GPU" );
+		Check( broken.empty(),
+		    std::string( "the " ) + name + " producer passes the shared suite on the GPU" );
 		std::printf( "%s shared suite: %.1f s\n", name,
 		    std::chrono::duration<double>( std::chrono::steady_clock::now() - started ).count() );
 
@@ -517,14 +825,17 @@ int main( int argc, char **argv )
 		const bool leakyTraced =
 		    rq ? ReferenceSides( frames, mode, seed, sdf, WithoutTheWallTriangles( *geometry ),
 		             &leakyLit, &leakyDark )
-		       : ReferenceSides( frames, mode, seed, WithoutTheWall( *sdf ), geometry, &leakyLit,
-		             &leakyDark );
-		std::printf( "%s without the wall: lit side %.4f, dark side %.4f\n", name, leakyLit,
-		    leakyDark );
+		       : ReferenceSides(
+		             frames, mode, seed, WithoutTheWall( *sdf ), geometry, &leakyLit, &leakyDark );
+		std::printf(
+		    "%s without the wall: lit side %.4f, dark side %.4f\n", name, leakyLit, leakyDark );
 		Check( leakyTraced && leakyDark >= 0.02f * leakyLit,
 		    std::string( "erasing the wall (the leak defect) is detected for the " ) + name +
 		        " producer" );
 	}
+
+	NativeLights( frames, seed, *sdf );
+	Scheduling( frames, seed, *sdf );
 
 	// A device without ray query does not run the ray-query producer: Begin
 	// fails with missing-feature and creates nothing.

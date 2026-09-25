@@ -29,6 +29,9 @@ emitters stay invisible, and there is no sky dome or traversal gate. Steps:
     reference-gate  Cycles render vs the scene's reference image (manifest reference.gate)
     bake         shared lightmap UVs + Cycles diffuse irradiance atlas
     denoise      OpenImageDenoise RTLightmap filter (manifest lightmap.denoise, default on)
+    seams        lightmap_seams.py extract --check: the lighting stage's chart seams, and a
+                 gate on its chart invariants (no overlap, bleed, escaped UVs or split
+                 flat regions); ktx2 stitches every page across those seams
     probe        optional reflection probe (manifest reflection_probe): six Cycles cube
                  faces, stored as roughness mips in rows the bake reserved in the LMAP
     probe-volume optional RFC 0011 PRBV (profile/manifest probe_volume): Cycles-baked
@@ -97,7 +100,7 @@ import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
 
 STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "bake", "denoise", "directional",
-         "probe", "probe-volume", "radiosity", "sdf", "ktx2", "sky",
+         "seams", "probe", "probe-volume", "radiosity", "sdf", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
          "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
@@ -115,7 +118,7 @@ STEP_TOOLS = {"legacy-scene": USD_TOOLS, "scene": USD_TOOLS, "stage": BLENDER_TO
               "bake": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
               "directional": ("openimagedenoise",), "probe": BLENDER_TOOLS,
               "probe-volume": BLENDER_TOOLS, "radiosity": BLENDER_TOOLS, "sdf": BLENDER_TOOLS,
-              "ktx2": ("ktx",), "sky": USD_TOOLS, "collision": USD_TOOLS,
+              "seams": USD_TOOLS, "ktx2": ("ktx",), "sky": USD_TOOLS, "collision": USD_TOOLS,
               "compile": ("compile_tools",), "pack": USD_TOOLS, "content": ("compile_tools",)}
 
 
@@ -325,6 +328,7 @@ class Pipeline:
             "directional": self.out / "lighting" / "atlas-directional.exr",
             "audit": self.out / "audit.json",
             "ktx2": self.out / "lighting" / "atlas.ktx2",
+            "seams": self.out / "lighting" / "seams.npz",
             "probe": self.out / "lighting" / "probe",
             "prbv": self.out / "lighting" / "probe_volume.prbv",
             "prbv_work": self.out / "lighting" / "probe_volume",
@@ -655,6 +659,12 @@ class Pipeline:
                           "--out", p["directional"]] +
                           ([] if self.lightmap["denoise"] else ["--skip-denoise"])))
             directional_args = ["--directional-exr", p["directional"]]
+        # Chart seams of the lighting stage, gated on the chart invariants.
+        self.step("seams", [p["lighting_stage"]], {"size": self.lightmap["size"]},
+                  ["lightmap_seams.py"], [p["seams"], p["seams"].with_suffix(".json")],
+                  lambda: self.usd_python("seams", "lightmap_seams.py", [
+                      "extract", "--check", "--stage", p["lighting_stage"],
+                      "--size", str(self.lightmap["size"]), "--out", p["seams"]]))
         probe_args = []
         if probe:
             face_args = ["--scene", scene, "--stage", p["lighting_stage"], "--out-dir", p["probe"],
@@ -738,9 +748,13 @@ class Pipeline:
                         "--sun-bake-evidence", p["atlas_receipt"]]
         layer_args = [item for role, out in denoised_layers.items()
                       for item in ("--layer", "%s=%s" % (role, out))]
-        self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"]] +
+        # The raw total marks buried texels, which stitching may move freely.
+        seam_args = ["--seams", p["seams"], "--buried-exr", p["atlas"]] + (
+            [] if sun_args else ["--coverage-exr", p["coverage"]])
+        self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"], p["seams"],
+                           p["coverage"], p["atlas"]] +
                   list(denoised_layers.values()) +
-                  ([p["sun_visibility"], p["coverage"]] if sun_args else []) +
+                  ([p["sun_visibility"]] if sun_args else []) +
                   ([p["probe"] / "probe.json"] if probe else []) +
                   ([p["directional"]] if directional else []),
                   {"preview_gain": self.lightmap["preview_gain"], "scope": scope,
@@ -752,7 +766,8 @@ class Pipeline:
                                             "--ktx-tool", self.tools["ktx"],
                                             "--preview-gain", str(self.lightmap["preview_gain"]),
                                             "--expected-scope", scope, "--out", p["ktx2"]] +
-                                           probe_args + directional_args + sun_args + layer_args))
+                                           probe_args + directional_args + sun_args + layer_args +
+                                           seam_args))
         pack_stage = p["lighting_stage"]
         # A relit map keeps its own skybox; no sky dome joins its world mesh.
         if environment and not self.legacy:

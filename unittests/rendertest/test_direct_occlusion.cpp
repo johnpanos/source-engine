@@ -70,7 +70,7 @@ mapcontainer::SdfLight RectAbove()
 	light.style = -1;
 	light.rgb[0] = light.rgb[1] = light.rgb[2] = 10.0f;
 	light.a[0] = 50.0f, light.a[1] = 50.0f, light.a[2] = 100.0f;
-	light.b[0] = 10.0f;  // b x c = -z: it emits down
+	light.b[0] = 10.0f; // b x c = -z: it emits down
 	light.c[1] = -10.0f;
 	return light;
 }
@@ -83,6 +83,28 @@ mapcontainer::SdfLight SunDown()
 	light.rgb[0] = light.rgb[1] = light.rgb[2] = 3.0f;
 	light.a[2] = -1.0f; // travels down
 	light.b[0] = 0.01f;
+	return light;
+}
+
+// A small light above the floor's centre: a sphere, or a spot aiming down
+// with vrad's cone (full within 18 degrees, none beyond 26).
+mapcontainer::SdfLight SmallAbove( bool spot )
+{
+	mapcontainer::SdfLight light = {};
+	light.kind = uint32_t( spot ? mapcontainer::SdfLightKind::Spot : mapcontainer::SdfLightKind::Sphere );
+	light.style = -1;
+	light.rgb[0] = light.rgb[1] = light.rgb[2] = 1000.0f;
+	light.a[0] = 50.0f, light.a[1] = 50.0f, light.a[2] = 100.0f;
+	if ( spot )
+	{
+		light.b[2] = -1.0f;
+		light.c[0] = 2.0f;
+		light.c[1] = 0.95f;
+		light.c[2] = 0.90f;
+		light.reserved[0] = 1.0f;
+	}
+	else
+		light.b[0] = 2.0f;
 	return light;
 }
 
@@ -154,6 +176,32 @@ int main()
 		    name + ": a box behind the lit side changes nothing" );
 	}
 
+	// Sphere and spot lights: a box over the centre takes its direct light
+	// from either; a box on the path to a corner darkens it under the sphere,
+	// but not under the spot, whose cone never reaches the corner (35
+	// degrees off its axis).
+	for ( const bool spot : { false, true } )
+	{
+		const std::string name = spot ? "spot light" : "sphere light";
+		const mapcontainer::SdfLight light = SmallAbove( spot );
+		DirectOcclusion occlusion;
+		Check( occlusion.BuildLayers( positions, uvs, indices, kSize, kSize, total.data(),
+		           direct.data(), std::span<const mapcontainer::SdfLight>( &light, 1 ) ),
+		    name + ": builds" );
+		const Proxy between = Box( 40, 40, 40, 60, 60, 60 );
+		occlusion.Compose( std::span<const Proxy>( &between, 1 ), nullptr, &out );
+		Check( std::fabs( Red( out, kSize / 2, kSize / 2 ) - 0.1f ) < 0.01f,
+		    name + ": the box over the centre takes its direct light" );
+		const Proxy cornerPath = Box( 8, 8, 18, 22, 22, 32 );
+		occlusion.Compose( std::span<const Proxy>( &cornerPath, 1 ), nullptr, &out );
+		const float corner = Red( out, 0, 0 );
+		std::printf( "%s: corner %.4f behind a box on its path (baked %.4f)\n", name.c_str(), corner,
+		    Red( total, 0, 0 ) );
+		Check( spot ? corner == Red( total, 0, 0 ) : std::fabs( corner - 0.1f ) < 0.01f,
+		    spot ? name + ": outside the cone, the corner keeps its light"
+		         : name + ": the corner loses the light the box blocks" );
+	}
+
 	// A floor wound the other way (its face normal down) is lit from above
 	// all the same: its texels face their light.
 	{
@@ -171,8 +219,8 @@ int main()
 	// Without a light there is nothing to occlude: not built.
 	{
 		DirectOcclusion occlusion;
-		Check( !occlusion.BuildLayers( positions, uvs, indices, kSize, kSize, total.data(),
-		           direct.data(), {} ),
+		Check( !occlusion.BuildLayers(
+		           positions, uvs, indices, kSize, kSize, total.data(), direct.data(), {} ),
 		    "no lights: not built" );
 	}
 	return testing::ReportConformance( g_checks, g_failures );

@@ -204,11 +204,39 @@ def sanitize(name):
     return text
 
 
-def face_st(points, texinfo, texdata):
+def face_st(points, texinfo, mapping):
+    """USD `st` of face points: the engine's texture coordinate (texinfo
+    vectors over the material's mapping size, gl_matsysiface.cpp), with v
+    flipped to USD's bottom-left origin. `mapping` is {width, height}."""
     vectors = texinfo["vectors"]
-    u = (points @ vectors[0, :3] + vectors[0, 3]) / texdata["width"]
-    v = (points @ vectors[1, :3] + vectors[1, 3]) / texdata["height"]
+    u = (points @ vectors[0, :3] + vectors[0, 3]) / mapping["width"]
+    v = (points @ vectors[1, :3] + vectors[1, 3]) / mapping["height"]
     return np.stack([u, 1.0 - v], axis=1)
+
+
+# CMaterial::FindRepresentativeTexture's order; the engine divides texture
+# coordinates by that texture's mapping (full-resolution VTF) size.
+REPRESENTATIVE_TEXTURES = ("$basetexture", "$envmapmask", "$bumpmap", "$dudvmap", "$normalmap")
+ERROR_TEXTURE_SIZE = 32  # texturemanager.cpp: a missing texture maps as the error texture
+
+
+def mapping_size(materials, name):
+    """({width, height}, source) the engine maps material `name`'s surfaces with."""
+    _, params, _ = materials.vmt(name)
+    for key in REPRESENTATIVE_TEXTURES:
+        texture = params.get(key)
+        if isinstance(texture, str) and texture:
+            texture = re.sub(r"\.vtf$", "", re.sub(r"^materials/", "",
+                                                    texture.replace("\\", "/").lower()))
+            data, _ = materials.read("materials/%s.vtf" % texture)
+            if data is None:
+                return {"width": ERROR_TEXTURE_SIZE, "height": ERROR_TEXTURE_SIZE}, \
+                    "%s %s missing: error texture" % (key, texture)
+            header = vtf_decode.header(data)
+            return {"width": header["width"], "height": header["height"]}, \
+                "%s %s" % (key, texture)
+    return {"width": ERROR_TEXTURE_SIZE, "height": ERROR_TEXTURE_SIZE}, \
+        "no representative texture: error texture"
 
 
 def point_in_polygon(point, polygon, normal, tolerance):
@@ -518,8 +546,25 @@ def build_model(bsp, resolver, texture_dir):
             sum(r["type"] == "sky_ambient" for r in light_records) > 1:
         raise ValueError("more than one sun or sky ambient light")
 
+    # Texture coordinates follow the engine's mapping size, which can differ
+    # from the compile-time texdata size (content revised after compiling).
+    mappings, mapping_differs = {}, []
+    used = {face["texinfo"] for faces_of in meshes.values() for face in faces_of}
+    for index in sorted({texinfo[i]["texdata"] for i in used}):
+        record = texdata[index]
+        try:
+            size, source = mapping_size(materials, record["name"])
+        except (OSError, ValueError) as error:
+            size, source = {"width": record["width"], "height": record["height"]}, \
+                "material unreadable (%s): texdata size" % error
+        mappings[index] = size
+        if (size["width"], size["height"]) != (record["width"], record["height"]):
+            mapping_differs.append({"material": record["name"], "source": source,
+                                    "texdata": [record["width"], record["height"]],
+                                    "mapping": [size["width"], size["height"]]})
     model = {"materials": records, "meshes": meshes, "occluders": occluders,
-             "lights": light_records, "texinfo": texinfo, "texdata": texdata}
+             "lights": light_records, "texinfo": texinfo, "texdata": texdata,
+             "mappings": mappings}
     receipt = {"schema": SCHEMA, "world_light_lump": light_lump,
                "relit_faces": sum(len(v) for v in meshes.values()),
                "excluded_faces": excluded, "materials": len(records),
@@ -535,6 +580,7 @@ def build_model(bsp, resolver, texture_dir):
                "kept_world_light_styles": sorted(dark_styles),
                "unbaked_surface_lights": len(unmatched),
                "approximations": approximations, "notes": notes,
+               "mapping_differs_from_texdata": mapping_differs,
                "textures": {"%s:%s" % key: value for key, value in decoded.items()}}
     return model, receipt
 
@@ -548,20 +594,20 @@ def texdata_reflectivity(texdata, record):
 
 # ------------------------------------------------------------------ USD
 
-def indexed_triangles(polygons, uvs, plane_normals):
+def indexed_triangles(polygons, uvs, plane_normals, vertex_ids=None):
     """Fan-triangulate polygons into one indexed mesh.
 
-    Corners at the same float32 position share a point, so faces that meet
-    (the triangles of one BSP face, and neighbouring faces of the same
-    material) are connected: the lightmap bake charts a flat wall as one
-    island instead of one island per triangle, whose separately baked and
-    denoised edges showed as seams along every triangle edge. Normals and
-    material UVs stay per corner (faceVarying), so shading inputs are the
-    polygon's own. Returns (points, counts, indices, normals, st).
+    Faces share points the way the BSP shares vertices: by BSP vertex index
+    when `vertex_ids` gives each polygon's, otherwise by exact float32
+    position. Copying every corner instead made each triangle a separate
+    piece, which the lightmap bake then charted alone - a seam along every
+    triangle edge. Normals and material UVs stay per corner (faceVarying).
+    Returns (points, counts, indices, normals, st).
     """
     points, counts, indices, normals, st = [], [], [], [], []
     shared = {}
-    for polygon, uv, normal in zip(polygons, uvs, plane_normals):
+    ids = vertex_ids if vertex_ids is not None else [None] * len(polygons)
+    for polygon, uv, normal, corner_ids in zip(polygons, uvs, plane_normals, ids):
         area = np.zeros(3)
         for i in range(1, len(polygon) - 1):
             area += np.cross(polygon[i] - polygon[0], polygon[i + 1] - polygon[0])
@@ -570,7 +616,8 @@ def indexed_triangles(polygons, uvs, plane_normals):
                      range(len(polygon) - 1, -1, -1))
         for i in range(1, len(order) - 1):
             for corner in (order[0], order[i], order[i + 1]):
-                key = np.asarray(polygon[corner], dtype=np.float32).tobytes()
+                key = int(corner_ids[corner]) if corner_ids is not None else \
+                    np.asarray(polygon[corner], dtype=np.float32).tobytes()
                 if key not in shared:
                     shared[key] = len(points)
                     points.append(polygon[corner])
@@ -658,9 +705,10 @@ def write_usd(model, path, map_name):
         bound[name] = mat
         return mat
 
-    def mesh(name, polygons, uvs, plane_normals, mat):
+    def mesh(name, polygons, uvs, plane_normals, mat, vertex_ids=None):
         prim = UsdGeom.Mesh.Define(stage, world.AppendChild(name))
-        points, counts, indices, normals, st = indexed_triangles(polygons, uvs, plane_normals)
+        points, counts, indices, normals, st = indexed_triangles(polygons, uvs, plane_normals,
+                                                                 vertex_ids)
         prim.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*map(float, p)) for p in points]))
         prim.CreateFaceVertexCountsAttr(Vt.IntArray(counts))
         prim.CreateFaceVertexIndicesAttr(Vt.IntArray(indices))
@@ -674,13 +722,14 @@ def write_usd(model, path, map_name):
         UsdShade.MaterialBindingAPI.Apply(prim.GetPrim()).Bind(mat)
         return prim
 
-    texinfo, texdata = model["texinfo"], model["texdata"]
+    texinfo = model["texinfo"]
     for name, faces in sorted(model["meshes"].items()):
         mat = material(name, model["materials"][name])
         polygons = [face["points"] for face in faces]
         uvs = [face_st(face["points"], texinfo[face["texinfo"]],
-                       texdata[texinfo[face["texinfo"]]["texdata"]]) for face in faces]
-        mesh(name, polygons, uvs, [face["plane_normal"] for face in faces], mat)
+                       model["mappings"][texinfo[face["texinfo"]]["texdata"]]) for face in faces]
+        mesh(name, polygons, uvs, [face["plane_normal"] for face in faces], mat,
+             [face["vertices"] for face in faces])
     if model["occluders"]:
         mat = material(OCCLUDER, {"base_color": (0.0, 0.0, 0.0), "roughness": 1.0})
         polygons = [polygon for polygon, _normal in model["occluders"]]

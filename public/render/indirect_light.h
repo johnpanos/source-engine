@@ -568,6 +568,11 @@ struct FrameWork
 	std::span<const SceneChange> changes;
 	std::span<const Proxy> proxies;
 	std::span<const LightOverride> lightOverrides;
+	// Traced producers: the probes (indices into the volume's first grid) to
+	// update every update, the camera's surroundings; empty means every
+	// probe. The others take turns, `probeBudget` probes an update.
+	std::span<const uint32_t> focusProbes;
+	uint32_t probeBudget = 128;
 };
 
 struct RetireTicket

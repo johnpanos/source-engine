@@ -223,5 +223,13 @@
       "2026-09-22: arm64-v8a APK on a Galaxy Z Fold7 (SM-F971U1, Adreno 840, API 37): menu and test chambers render; the back buffer followed inner 2448x1848 -> cover landscape 1972x1248 -> cover portrait 1248x1972; touch controls usable",
       "Not yet run: x86_64 emulator smoke, background/foreground surface recreation, hosted CI lane"
     ]
+  },
+  "indirect_light": {
+    "default_producers": [
+      "radiosity",
+      "baked"
+    ],
+    "chosen_from": "RFC/0011-progress.md#g8-product: radiosity passes the light toggles on the Fold7 at about 1.2 ms CPU per update (budget 2.0); sdf and rayquery are declared unsupported on Android until measured within a budget (quality/budgets/indirect-light-v1.json)",
+    "rollback": "r_indirect_producer baked"
   }
 }

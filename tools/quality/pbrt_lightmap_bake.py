@@ -48,8 +48,18 @@ FRAME_SAMPLES = 16
 SUN_SAMPLES = 256
 PROJECTED_PART_LIMIT = 4096
 PROXY_PREFIX = "_lightmap_footprint_"
+CHART_PREFIX = "_lightmap_chart_"
+CHART_FACE = "_lightmap_chart_face"
+CHART_OBJECT = "_lightmap_chart_object"
 # Vertices this close (stage metres) are one vertex for charting.
 WELD_DISTANCE = 1e-6
+T_JUNCTION_PASSES = 64
+# Edges sharper than this never join two charts (smart_project's angle limit
+# is 66 degrees; see split_creases).
+CREASE_DEGREES = 60.0
+# A source corner and its charting-surface corner, both in world space, agree
+# to float32 rounding of the world transform.
+MATCH_DISTANCE = 1e-5
 
 
 # Bake tile edge: a 4096 atlas reports 16 tiles of progress per pass.
@@ -129,20 +139,195 @@ def apply_footprint_chart(obj, proxy):
     obj.data.uv_layers["lightmap_st"].data.foreach_set("uv", vertex_uv[loops].ravel())
 
 
-def pack_lightmap_uvs(meshes, margin):
+def chart_copy(obj, weld):
+    """A charting copy of `obj` in world space, each face tagged with its
+    source face index, with coincident vertices welded and T-junctions split.
+
+    Charts are connected regions, so faces must share vertices and edges: a
+    triangle soup (usd_scene's normalized stages, relit BSP faces) would
+    chart every triangle alone. The source mesh itself is never modified -
+    welding re-encodes Blender's custom corner normals and moves merged
+    vertices - so its positions, normals and material UVs stay exactly as
+    imported; only the lightmap UVs are copied back (`transfer_chart`).
+    """
+    mesh = obj.data.copy()
+    mesh.transform(obj.matrix_world)
+    tag = mesh.attributes.new(CHART_FACE, "INT", "FACE")
+    tag.data.foreach_set("value", list(range(len(mesh.polygons))))
+    copy = bpy.data.objects.new(CHART_PREFIX + obj.name, mesh)
+    bpy.context.scene.collection.objects.link(copy)
+    if weld:
+        weld_mesh(mesh)
+    return copy
+
+
+def weld_mesh(mesh):
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=WELD_DISTANCE)
+    split_t_junctions(bm)
+    bm.to_mesh(mesh)
+    bm.free()
+
+
+def split_creases(mesh):
+    """Cut the charting surface along sharp edges (dihedral above
+    CREASE_DEGREES). smart_project projects the faces on either side onto
+    different planes, but where both projections give the shared edge the
+    same UVs the packer treats the two faces as one island and packs them
+    touching: lookups along the corner then read the other face's light."""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    limit = math.radians(CREASE_DEGREES)
+    sharp = [edge for edge in bm.edges if len(edge.link_faces) == 2 and
+             edge.calc_face_angle(0.0) > limit]
+    if sharp:
+        bmesh.ops.split_edges(bm, edges=sharp)
+    bm.to_mesh(mesh)
+    bm.free()
+
+
+def join_chart_copies(copies, weld):
+    """One charting surface from per-object copies, faces tagged with their
+    object index (CHART_OBJECT), welded across objects.
+
+    Lightmap UVs do not depend on material, so a flat wall made of several
+    materials - several meshes - must chart as one island: charted apart,
+    every material boundary would be a lightmap seam."""
+    for index, copy in enumerate(copies):
+        tag = copy.data.attributes.new(CHART_OBJECT, "INT", "FACE")
+        tag.data.foreach_set("value", [index] * len(copy.data.polygons))
+    bpy.ops.object.select_all(action="DESELECT")
+    for copy in copies:
+        copy.select_set(True)
+    bpy.context.view_layer.objects.active = copies[0]
+    if len(copies) > 1 and bpy.ops.object.join() != {"FINISHED"}:
+        raise RuntimeError("Blender could not join the lightmap charting copies")
+    joined = bpy.context.view_layer.objects.active
+    joined.name = CHART_PREFIX + "surface"
+    if weld:
+        weld_mesh(joined.data)
+    split_creases(joined.data)
+    joined.data.uv_layers.active = joined.data.uv_layers["lightmap_st"]
+    return joined
+
+
+def split_t_junctions(bm):
+    """Split open edges at vertices lying inside them, then weld.
+
+    Where one face's edge meets two faces' shorter edges (a T-junction) the
+    faces share no edge and would chart apart. Splitting the long edge at
+    the junction vertex gives them a common edge; faces keep their tags.
+    Each pass splits every open edge at its first interior junction.
+    """
+    import bmesh
+    from mathutils import kdtree
+    for _ in range(T_JUNCTION_PASSES):
+        open_edges = [e for e in bm.edges if len(e.link_faces) == 1]
+        open_verts = list({v for e in open_edges for v in e.verts})
+        if not open_verts:
+            return
+        tree = kdtree.KDTree(len(open_verts))
+        for index, vert in enumerate(open_verts):
+            tree.insert(vert.co, index)
+        tree.balance()
+        splits = []
+        for edge in open_edges:
+            a, b = edge.verts[0].co, edge.verts[1].co
+            length = (b - a).length
+            if length <= 2 * WELD_DISTANCE:
+                continue
+            first = None
+            for co, _, _ in tree.find_range((a + b) / 2, length / 2 + WELD_DISTANCE):
+                t = (co - a).dot(b - a) / (length * length)
+                if WELD_DISTANCE / length < t < 1 - WELD_DISTANCE / length and \
+                        (a + (b - a) * t - co).length <= WELD_DISTANCE:
+                    first = t if first is None else min(first, t)
+            if first is not None:
+                splits.append((edge, first))
+        if not splits:
+            return
+        for edge, t in splits:
+            bmesh.utils.edge_split(edge, edge.verts[0], t)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=WELD_DISTANCE)
+    raise RuntimeError("T-junction splitting did not converge in %d passes" % T_JUNCTION_PASSES)
+
+
+def transfer_chart(surface, obj, index):
+    """Copy the charting surface's lightmap UVs onto `obj`'s corners: each
+    source corner takes the UV of the surface corner of its tagged face at
+    the same world position (exactly one must match); faces the weld
+    collapsed (zero area) keep a degenerate UV. Returns their corner count."""
+    import numpy as np
+    source, charted = obj.data, surface.data
+    uv = np.zeros((len(source.loops), 2))
+    matched = np.zeros(len(source.loops), dtype=bool)
+    objects = np.empty(len(charted.polygons), dtype=np.int64)
+    faces = np.empty(len(charted.polygons), dtype=np.int64)
+    charted.attributes[CHART_OBJECT].data.foreach_get("value", objects)
+    charted.attributes[CHART_FACE].data.foreach_get("value", faces)
+    chart_uv = np.empty(len(charted.loops) * 2)
+    charted.uv_layers["lightmap_st"].data.foreach_get("uv", chart_uv)
+    chart_uv = chart_uv.reshape(-1, 2)
+    chart_co = np.empty(len(charted.vertices) * 3)
+    charted.vertices.foreach_get("co", chart_co)
+    chart_co = chart_co.reshape(-1, 3)
+    chart_vertex = np.empty(len(charted.loops), dtype=np.int64)
+    charted.loops.foreach_get("vertex_index", chart_vertex)
+    source_co = np.empty(len(source.vertices) * 3)
+    source.vertices.foreach_get("co", source_co)
+    world = np.array(obj.matrix_world)
+    source_co = source_co.reshape(-1, 3) @ world[:3, :3].T + world[:3, 3]
+    source_vertex = np.empty(len(source.loops), dtype=np.int64)
+    source.loops.foreach_get("vertex_index", source_vertex)
+    tolerance = max(MATCH_DISTANCE, 8 * np.finfo(np.float32).eps * np.abs(source_co).max())
+    for polygon_index in np.flatnonzero(objects == index):
+        polygon = charted.polygons[polygon_index]
+        face = source.polygons[faces[polygon_index]]
+        corners = np.arange(polygon.loop_start, polygon.loop_start + polygon.loop_total)
+        positions = chart_co[chart_vertex[corners]]
+        for loop in range(face.loop_start, face.loop_start + face.loop_total):
+            distance = np.linalg.norm(positions - source_co[source_vertex[loop]], axis=1)
+            close = np.flatnonzero(distance <= tolerance)
+            if len(close) != 1:
+                raise RuntimeError("lightmap chart corner of %s face %d matches %d corners"
+                                   % (obj.name, face.index, len(close)))
+            uv[loop] = chart_uv[corners[close[0]]]
+            matched[loop] = True
+    # A face the weld collapsed has zero area: park it on one texel.
+    uv[~matched] = uv[matched][0] if matched.any() else 0.0
+    source.uv_layers["lightmap_st"].data.foreach_set("uv", uv.ravel())
+    return int((~matched).sum())
+
+
+def pack_lightmap_uvs(meshes, margin, weld=True):
     """Chart and jointly pack `meshes`; return {name: parts} of projected meshes.
 
-    A mesh with more than PROJECTED_PART_LIMIT separate parts (fur, grass,
-    foliage cards) gets one planar chart of its footprint instead of one
-    chart per part: hundreds of thousands of islands make Blender's FRACTION
-    margin pack collapse the whole atlas to nothing. A footprint proxy quad
-    is packed with the other charts so the projected chart gets the same
-    texel density and margin; overlapping parts share its texels.
+    Charting runs on one welded world-space surface of all the meshes
+    (`chart_copy`, `join_chart_copies`), so coplanar regions chart as one
+    island across mesh and material boundaries; `weld=False` charts the
+    triangles as they are connected, for tests that show what the weld is for. A mesh
+    with more than PROJECTED_PART_LIMIT separate parts after welding (fur,
+    grass, foliage cards) gets one planar chart of its footprint instead of
+    one chart per part: hundreds of thousands of islands make Blender's
+    FRACTION margin pack collapse the whole atlas to nothing. A footprint
+    proxy quad is packed with the other charts so the projected chart gets
+    the same texel density and margin; overlapping parts share its texels.
     """
-    parts = {obj.name: connected_parts(obj) for obj in meshes}
+    copies = {obj.name: chart_copy(obj, weld) for obj in meshes}
+    parts = {obj.name: connected_parts(copies[obj.name]) for obj in meshes}
     projected = [obj for obj in meshes if parts[obj.name] > PROJECTED_PART_LIMIT]
+    for obj in projected:
+        copy = copies.pop(obj.name)
+        mesh = copy.data
+        bpy.data.objects.remove(copy, do_unlink=True)
+        bpy.data.meshes.remove(mesh)
     proxies = {obj.name: add_footprint_proxy(obj) for obj in projected}
-    charted = [obj for obj in meshes if obj not in projected] + list(proxies.values())
+    kept = [obj for obj in meshes if obj.name in copies]
+    surface = join_chart_copies([copies[obj.name] for obj in kept], weld) if kept else None
+    charted = ([surface] if surface else []) + list(proxies.values())
     bpy.ops.object.select_all(action="DESELECT")
     for obj in charted:
         obj.select_set(True)
@@ -152,14 +337,6 @@ def pack_lightmap_uvs(meshes, margin):
     # a selected UV face so projection and packing see the whole atlas.
     bpy.context.scene.tool_settings.use_uv_select_sync = True
     bpy.ops.mesh.select_all(action="SELECT")
-    # Charts are connected regions, so faces must share their vertices: a
-    # triangle soup (usd_scene's normalized stages, relit BSP faces) would
-    # chart every triangle alone, and each chart's separately baked and
-    # denoised border shows as a seam along every triangle edge. Welding
-    # exactly coincident vertices changes connectivity only; positions and
-    # per-corner UVs and normals are kept.
-    if bpy.ops.mesh.remove_doubles(threshold=WELD_DISTANCE) != {"FINISHED"}:
-        raise RuntimeError("Blender could not weld coincident lightmap vertices")
     if bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=margin,
                                 area_weight=0.0, correct_aspect=True,
                                 scale_to_bounds=False) != {"FINISHED"}:
@@ -173,6 +350,12 @@ def pack_lightmap_uvs(meshes, margin):
                                rotate=True) != {"FINISHED"}:
         raise RuntimeError("Blender could not pack the shared lightmap atlas")
     bpy.ops.object.mode_set(mode="OBJECT")
+    if surface:
+        for index, obj in enumerate(kept):
+            transfer_chart(surface, obj, index)
+        mesh = surface.data
+        bpy.data.objects.remove(surface, do_unlink=True)
+        bpy.data.meshes.remove(mesh)
     for obj in projected:
         apply_footprint_chart(obj, proxies[obj.name])
     return {obj.name: {"parts": parts[obj.name], "proxy": proxies[obj.name]} for obj in projected}

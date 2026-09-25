@@ -136,6 +136,88 @@ class GeometryTests(unittest.TestCase):
         self.assertEqual(st.tolist(), [[0.0, 1.0], [1.0, 0.5]])
 
 
+class SharedVerticesTest(unittest.TestCase):
+    def test_faces_share_points_by_bsp_vertex_index(self):
+        """Two quads naming the same two BSP vertices share those points: the
+        scene keeps the BSP's connectivity (6 points, not 8 corners)."""
+        a = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=np.float64)
+        b = a + [1, 0, 0]
+        normal = np.array([0, 0, 1.0])
+        uvs = [np.zeros((4, 2)), np.zeros((4, 2))]
+        points, counts, indices, _, st = scene.indexed_triangles(
+            [a, b], uvs, [normal, normal], [np.array([0, 1, 2, 3]), np.array([1, 4, 5, 2])])
+        self.assertEqual(len(points), 6)
+        self.assertEqual(len(indices), 12)
+        np.testing.assert_array_equal(np.asarray(points)[indices].reshape(-1, 3),
+                                      np.concatenate([a[[0, 1, 2, 0, 2, 3]],
+                                                      b[[0, 1, 2, 0, 2, 3]]]))
+
+    def test_every_triangle_corner_is_its_polygon_corner(self):
+        """Random polygons: each triangle corner's point is exactly the polygon
+        corner it came from, whichever sharing key is used."""
+        rng = np.random.default_rng(3)
+        for _ in range(50):
+            count = int(rng.integers(3, 8))
+            angles = np.sort(rng.uniform(0, 2 * np.pi, count))
+            polygon = np.stack([np.cos(angles), np.sin(angles), np.zeros(count)], axis=1)
+            ids = rng.permutation(100)[:count]
+            for vertex_ids in (None, [ids]):
+                points, counts, indices, _, _ = scene.indexed_triangles(
+                    [polygon], [np.zeros((count, 2))], [np.array([0, 0, 1.0])], vertex_ids)
+                self.assertEqual(len(counts), count - 2)
+                self.assertEqual(len(points), count)
+
+
+class TextureMappingVariantsTest(unittest.TestCase):
+    """The relit world mesh must texture every face exactly as the engine
+    does: WMSH st = the engine's (p . s + w) / mapping size, top-left origin."""
+
+    class Materials:
+        def __init__(self, params, files):
+            self.params, self.files = params, files
+
+        def vmt(self, name):
+            return "LightmappedGeneric", self.params[name], "test:" + name
+
+        def read(self, relative):
+            data = self.files.get(relative)
+            return (data, "test:" + relative) if data else (None, None)
+
+    def test_st_through_the_world_mesh_flip_is_the_engine_coordinate(self):
+        rng = np.random.default_rng(7)
+        for _ in range(200):
+            vectors = rng.uniform(-2, 2, (2, 4)) * [1, 1, 1, 64]
+            mapping = {"width": int(2 ** rng.integers(3, 12)),
+                       "height": int(2 ** rng.integers(3, 12))}
+            points = rng.uniform(-4096, 4096, (int(rng.integers(3, 9)), 3))
+            st = scene.face_st(points, {"vectors": vectors}, mapping)
+            stored = np.stack([st[:, 0], 1.0 - st[:, 1]], axis=1)  # usd_worldmesh_pack
+            engine = np.stack([(points @ vectors[j, :3] + vectors[j, 3]) /
+                               (mapping["width"], mapping["height"])[j] for j in (0, 1)], axis=1)
+            np.testing.assert_allclose(stored, engine, rtol=0, atol=1e-9 * np.abs(engine).max())
+
+    def test_mapping_size_follows_the_representative_texture_order(self):
+        """$basetexture, then $envmapmask, $bumpmap, $dudvmap, $normalmap; the
+        size is the VTF's full-resolution header size, not the texdata size."""
+        files = {"materials/a.vtf": vtf(13, 512, 256, b""),
+                 "materials/b.vtf": vtf(13, 128, 128, b"")}
+        order = list(scene.REPRESENTATIVE_TEXTURES)
+        for index, key in enumerate(order):
+            params = {later: "b" for later in order[index + 1:]}
+            params[key] = "A.vtf" if index % 2 else "materials\\a"
+            materials = self.Materials({"m": params}, files)
+            size, source = scene.mapping_size(materials, "m")
+            self.assertEqual((size["width"], size["height"]), (512, 256), key)
+            self.assertIn(key, source)
+
+    def test_missing_or_absent_texture_maps_as_the_error_texture(self):
+        materials = self.Materials({"missing": {"$basetexture": "nope"}, "none": {}}, {})
+        for name in ("missing", "none"):
+            size, _ = scene.mapping_size(materials, name)
+            self.assertEqual((size["width"], size["height"]),
+                             (scene.ERROR_TEXTURE_SIZE, scene.ERROR_TEXTURE_SIZE))
+
+
 class MaterialTests(unittest.TestCase):
     class Resolver:
         def __init__(self, files):
