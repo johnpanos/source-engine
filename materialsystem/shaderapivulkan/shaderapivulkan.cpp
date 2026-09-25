@@ -6580,7 +6580,43 @@ static void CommitLightmappedConstants( const CShaderAPIVulkan &api )
 	c.ps[22][2] = static_cast<float>( g_PixelShaderDynamicIndex );
 	c.ps[22][3] = vsFastPath ? 1.0f : 0.0f;
 	c.ps[23][0] = static_cast<float>( g_CurrentLightmappedDetailMode );
-	c.ps[23][1] = c.ps[23][2] = c.ps[23][3] = 0.0f;
+	c.ps[23][1] = 1.0f;
+	c.ps[23][2] = c.ps[23][3] = 0.0f;
+	// Portal 2's LightmappedGeneric parameters, which this SDK's shader does not
+	// declare but the material keeps: $ssbumpmathfix scales ssbump basis
+	// weights by 1/sqrt(3) (c23.y); $envmaplightscale darkens the cubemap by
+	// the lightmap (c23.z), mapped through $envmaplightscaleminmax (c21.xy, as
+	// the Portal 2/CS:GO helper packs c20.zw).
+	if ( g_pBoundMaterial )
+	{
+		bool found = false;
+		IMaterialVar *var = g_pBoundMaterial->FindVar( "$ssbumpmathfix", &found, false );
+		if ( found && var && var->GetIntValue() != 0 )
+			c.ps[23][1] = 0.57735025882720947f;
+		var = g_pBoundMaterial->FindVar( "$envmaplightscale", &found, false );
+		if ( found && var )
+			c.ps[23][2] = var->GetFloatValue();
+		float minMax[2] = { 0.0f, 1.0f };
+		var = g_pBoundMaterial->FindVar( "$envmaplightscaleminmax", &found, false );
+		if ( found && var )
+			var->GetVecValue( minMax, 2 );
+		c.ps[21][0] = minMax[0];
+		c.ps[21][1] = minMax[1] + minMax[0];
+	}
+	// VK_DEBUG_LIGHTMAPPED=1: each material's combos once (diagnosis).
+	static const bool s_debugLightmapped = getenv( "VK_DEBUG_LIGHTMAPPED" ) != nullptr;
+	if ( s_debugLightmapped && g_pBoundMaterial )
+	{
+		static std::unordered_set<std::string> s_seen;
+		if ( s_seen.insert( g_pBoundMaterial->GetName() ).second )
+		{
+			fprintf( stderr, "[vulkan] lightmapped %s combos=%#x detail=%d vs=%d psdyn=%d fast=%d c12=(%g %g %g) c8=(%g %g %g %g) ssbumpscale=%g envlight=%g\n",
+			    g_pBoundMaterial->GetName(), g_CurrentLightmappedCombos, g_CurrentLightmappedDetailMode,
+			    g_CurrentLightmappedVsCombos, g_PixelShaderDynamicIndex, vsFastPath ? 1 : 0,
+			    c.ps[12][0], c.ps[12][1], c.ps[12][2], c.ps[8][0], c.ps[8][1], c.ps[8][2], c.ps[8][3],
+			    c.ps[23][1], c.ps[23][2] );
+		}
+	}
 	MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), c.viewProj );
 	c.eyePos[3] = 0.0f;
 	api.GetWorldSpaceCameraPosition( c.eyePos );

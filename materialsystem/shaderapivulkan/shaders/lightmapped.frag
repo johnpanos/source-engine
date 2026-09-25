@@ -351,8 +351,18 @@ void main()
 	{
 		if ( bSsbump )
 		{
+			// Portal 2's TCOMBINE_SSBUMP_BUMP on an ssbump: the detail ssbump
+			// scales the basis weights (then alpha is 1).
+			if ( bDetailTexture && detailBlendMode == 10 )
+			{
+				vNormal.xyz *= mix( vec3( 1.0 ), 2.0 * detailColor.rgb, alpha );
+				alpha = 1.0;
+			}
 			diffuseLighting = vNormal.x * lightmapColor1 + vNormal.y * lightmapColor2 +
 			                  vNormal.z * lightmapColor3;
+			// $ssbumpmathfix: the weights of a flat ssbump sum to 1.733, not 1
+			// (c23.y is 0.57735 with the fix, 1 without).
+			diffuseLighting *= ps.c[23].y;
 			diffuseLighting *= ps.c[12].rgb;
 			vNormal.xyz = normalize( bumpBasis[0] * vNormal.x + bumpBasis[1] * vNormal.y +
 			                         bumpBasis[2] * vNormal.z );
@@ -397,6 +407,13 @@ void main()
 		if ( ( flags & kSrgbEnvmap ) != 0 )
 			envmap = SrgbToLinear( envmap );
 		specularLighting = ps.c[30].z * envmap; // ENV_MAP_SCALE
+		// $envmaplightscale (c23.z, min/max in c21.xy): the cubemap darkened
+		// where the lightmap is dark.
+		if ( ps.c[23].z > 0.0 )
+		{
+			const vec3 cubemapLight = clamp( ( diffuseLighting - ps.c[21].x ) * ps.c[21].y, 0.0, 1.0 );
+			specularLighting = mix( specularLighting, specularLighting * cubemapLight, ps.c[23].z );
+		}
 		specularLighting *= specularFactor;
 		specularLighting *= ps.c[0].rgb;
 		const vec3 specularLightingSquared = specularLighting * specularLighting;
