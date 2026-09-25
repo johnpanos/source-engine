@@ -1,9 +1,10 @@
 # RFC 0013: Opt-in Box3D Physics Capabilities
 
 - Status: Proposed (2026-09-24). P0 to P3 are implemented on the Linux desktop
-  profile: parallel stepping on the engine pool, the step profile, the
-  game collision-filter audit, and an opt-in server environment
-  (`-physics_workers N`). No product enables it by default.
+  profile: parallel stepping on the engine pool, the step profile, the game
+  collision-filter audit, and the server environment. **Parallel stepping is
+  the server default** (user decision, 2026-09-25), with `-physics_workers 1`
+  to turn it off.
 - Date: 2026-09-24
 - Scope: How Box3D behavior that IVP cannot provide is exposed beside the
   VPhysics compatibility contract: one narrow, versioned interface per
@@ -348,20 +349,27 @@ for the conformance suite and the benchmark, and no new `dlopen` site.
 
 ## Composition and selection (P3)
 
-- The server's level environment (`CPhysicsHook::LevelInitPreEntity`,
-  `game/server/physics.cpp`) reads `-physics_workers N` once, at level start:
-  - With the capability and a started compute pool, it creates the
-    environment with `min( N, pool threads + 1 )` workers and logs the result.
-  - Without either, it logs the fallback and uses `CreateEnvironment()`.
-  - With `-physics_workers_required` added, a missing capability is a
-    `Sys_Error` instead.
+- **Default on (user decision, 2026-09-25).** When the provider offers the
+  capability and the engine compute pool is running, the server's level
+  environment (`CPhysicsHook::LevelInitPreEntity`, `game/server/physics.cpp`)
+  steps on every pool thread plus the calling thread. That is 4 workers on
+  the Linux desktop's 3-thread `CmpJob` pool.
+  - `-physics_workers N` sets the count instead; `-physics_workers 1` turns
+    parallel stepping off.
+  - The count is read once, at level start, and clamped to the pool.
+  - A provider without the capability (IVP) keeps one worker silently. With
+    an explicit `N > 1` it logs a warning instead.
+  - `-physics_workers_required`, with or without `N`, turns a missing
+    capability into a `Sys_Error`.
+- The default applies on every platform that runs this server code,
+  including the Android listen server, whose profile has no physics
+  measurements yet (see the open decisions).
 
   Portal's simulators share this environment (`physenv_main`), so they are
   covered. Nothing reads a console variable to change workers on a live
   environment.
-- A product profile opts in by adding these arguments to its launch
-  arguments. None does today. Enabling one by default is a per-profile
-  product decision after its gates pass.
+- A product profile opts out with `-physics_workers 1` in its launch
+  arguments. None does today.
 - The client environment keeps one worker until its own captures exist. The
   dedicated server uses the same server code and needs its own profile row.
 - `physics_step_profile` prints the server environment's last step profile,
@@ -391,6 +399,7 @@ decision after that profile's gates pass.
 
 | Risk | Effect | Mitigation |
 | --- | --- | --- |
+| Default-on parallel stepping on contended or mobile hosts | Frame spikes when solver workers are descheduled | `-physics_workers 1` opt-out per profile; `physics_step_profile` to diagnose; Fold7 measurement owed |
 | Game filter code assumes the main thread | Subtle gameplay bugs, asserts | Filter audit with forbidden rule classes and an exact ratchet, in CI; the serialized policy is recorded in the contract |
 | Oversubscription from several worlds | Frame spikes (40–70 ms seen under load) | Worker tasks run on the engine pool, whose size is the budget, and the provider adds no threads. Spinning solver workers still occupy pool threads during a solve, so medians and per-profile limits apply. |
 | Capabilities drift into parity behavior | IVP rollback breaks | Parity gate stays required; capability-off runs match IVP |
@@ -410,8 +419,14 @@ decision after that profile's gates pass.
 
 ## Open decisions and required evidence
 
-- Worker defaults per profile, from Fold7 and Linux gameplay measurements.
-  No profile enables parallel stepping yet.
+- Whether the default suits every profile.
+  - It is on everywhere by user decision.
+  - On a contended host, spinning solver workers lose their cores: 40–70 ms
+    benchmark spikes, and one 6.6 ms in-game step at host load 50 against
+    0.23 ms at load 3.
+  - The Fold7 and Apple profiles have no measurements.
+  - A profile that fails its gate should opt out with `-physics_workers 1`
+    until the adapter or scheduler is fixed.
 - Event order across worker counts: all 12,416 parity-suite observations,
   including touch, impact and sleep/wake events, are identical at 1 and 4
   workers. A direct event-sequence comparison is not yet a contract clause.

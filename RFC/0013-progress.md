@@ -296,6 +296,28 @@ Most in-game solver calls stay on the main thread because Portal constantly
 rechecks collision rules outside the step. The 1,114 off-thread calls are the
 broad-phase pair tests Box3D runs on pool workers.
 
+## Default on (2026-09-25, user decision)
+
+At the user's direction, the server environment now steps in parallel by
+default. Auto uses the compute pool's threads plus the calling thread.
+`-physics_workers N` sets the count, `-physics_workers 1` turns it off, and
+`-physics_workers_required` makes a missing capability an error. IVP keeps
+one worker silently.
+
+Evidence (rebased build, headless Portal, `testchmb_a_02`):
+
+| Boot | Result |
+| --- | --- |
+| Box3D, no arguments | "steps on 4 workers (default, compute pool 3 threads)"; the game's filter ran 159,557 times, 1,521 on pool threads |
+| Box3D, `-physics_workers 1` | One worker; 0 calls off the main thread |
+| IVP, no arguments | One worker; no warning; step profile not available |
+
+In the default run, the last step took 6.6 ms, against 0.23–0.33 ms at 1
+worker and in the earlier 4-worker run. It is one sample taken at host
+load ~50. It matches the benchmark's contended-host spikes, which are this
+default's main risk. No timing gate has certified the default on a
+contended host or on any mobile profile.
+
 ## Unverified and open
 
 - No product enables parallel stepping by default; that is a per-profile

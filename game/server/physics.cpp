@@ -222,44 +222,57 @@ const char *PhysCheck( IPhysicsObject *pPhys )
 #endif
 
 //-----------------------------------------------------------------------------
-// RFC 0013 P3: the server environment opts into parallel stepping when the
-// process starts with -physics_workers N (N > 1). The count is read when the
-// level's environment is created and fixed for its lifetime; worker tasks
-// run on the engine's compute pool, so N is clamped to its threads plus this
-// thread. Without the capability or a started pool the environment keeps one
-// worker, unless -physics_workers_required makes that an error. The game's
-// collision filters then run on pool threads, one call at a time; their
+// RFC 0013 P3: the server environment steps in parallel by default (user
+// decision, 2026-09-25). When the provider offers vphysics.parallel-step.v1
+// and the engine's compute pool is running, the environment uses every pool
+// thread plus this one. -physics_workers N sets the count instead, and
+// -physics_workers 1 turns parallel stepping off. The count is read when the
+// level's environment is created and fixed for its lifetime; worker tasks run
+// on the compute pool, so a larger N is clamped to its threads plus this
+// thread. A provider without the capability (IVP) keeps one worker; with an
+// explicit N > 1 that is a warning. -physics_workers_required makes it an
+// error, with or without N.
+// The game's collision filters run on pool threads, one call at a time; their
 // audit is tools/quality/physics_filter_audit.py.
 //-----------------------------------------------------------------------------
 static IPhysicsEnvironment *CreateServerPhysicsEnvironment()
 {
-	int requested = CommandLine()->ParmValue( "-physics_workers", 1 );
-	if ( requested <= 1 )
+	const int kAuto = -1;
+	int requested = CommandLine()->ParmValue( "-physics_workers", kAuto );
+	if ( requested != kAuto && requested <= 1 )
 		return physics->CreateEnvironment();
 
 	IPhysicsParallelStep *pParallel =
 	    (IPhysicsParallelStep *)physics->QueryInterface( VPHYSICS_PARALLEL_STEP_INTERFACE_VERSION );
 	int available = g_pThreadPool ? g_pThreadPool->NumThreads() + 1 : 1;
+	int wanted = requested == kAuto ? available : requested;
 	if ( pParallel && available > 1 )
 	{
 		physics_parallelparams_t params;
 		params.Defaults();
-		params.workerCount = MIN( MIN( requested, available ), pParallel->GetMaxWorkerCount() );
+		params.workerCount = MIN( MIN( wanted, available ), pParallel->GetMaxWorkerCount() );
 		params.pThreadPool = g_pThreadPool;
 		IPhysicsEnvironment *pEnvironment = pParallel->CreateParallelEnvironment( params );
 		if ( pEnvironment )
 		{
-			Msg( "Physics: server environment steps on %d workers (requested %d, compute pool %d "
-			     "threads)\n",
-			    pParallel->GetWorkerCount( pEnvironment ), requested, available - 1 );
+			Msg( "Physics: server environment steps on %d workers (%s, compute pool %d threads)\n",
+			    pParallel->GetWorkerCount( pEnvironment ),
+			    requested == kAuto ? "default" : "-physics_workers", available - 1 );
 			return pEnvironment;
 		}
 	}
-	if ( CommandLine()->FindParm( "-physics_workers_required" ) )
+	bool required = CommandLine()->FindParm( "-physics_workers_required" ) != 0;
+	if ( requested == kAuto && !required )
+	{
+		DevMsg( "Physics: server environment steps on one worker (provider %s, pool threads %d)\n",
+		    pParallel ? "has the capability" : "lacks the capability", available - 1 );
+		return physics->CreateEnvironment();
+	}
+	if ( required )
 	{
 		Error( "Physics: -physics_workers %d needs the %s capability and a started compute pool "
 		       "(provider %s, pool threads %d)\n",
-		    requested, VPHYSICS_PARALLEL_STEP_INTERFACE_VERSION, pParallel ? "has it" : "lacks it",
+		    wanted, VPHYSICS_PARALLEL_STEP_INTERFACE_VERSION, pParallel ? "has it" : "lacks it",
 		    available - 1 );
 	}
 	Warning( "Physics: -physics_workers %d unavailable (provider %s, pool threads %d); using one "

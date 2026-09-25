@@ -479,8 +479,11 @@ Keep the table concise and link details below or from the domain progress file.
     - live Portal at 4 workers ran the game's filter 1,114 times on pool
       threads;
     - the parity suite at 4 workers matches its serial observations bitwise.
+  - Parallel stepping is the server default (user decision, 2026-09-25):
+    auto workers from the compute pool, with `-physics_workers 1` to opt out.
+    Unmeasured on the Fold7 and Apple profiles.
   - Not done:
-    - no default in any profile; the client environment has one worker;
+    - the client environment has one worker;
     - no gameplay soak;
     - no Android or Apple measurements;
     - no CI lane for the benchmark itself.
