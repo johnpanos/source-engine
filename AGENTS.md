@@ -353,7 +353,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 
 | Rank / ID | Work and RFC scope | Prerequisites | Done looks like | State |
 | --- | --- | --- | --- | --- |
-| 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | partial (reopened 2026-09-25: audit deviates; [Q0 baseline](RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory)) |
+| 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | active (re-audit 2026-09-25; [Q0 baseline](RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory)) |
 | 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | done ([Q1 runner](RFC/0005-progress.md#q1--r02-runner-shared-conformance-runner)) |
 | 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | active ([0006 progress](RFC/0006-progress.md)) |
 | 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | partial |

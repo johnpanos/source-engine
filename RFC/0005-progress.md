@@ -120,6 +120,15 @@ Drift fixed while recording the baseline:
 - The R39 row linked a non-existent `RFC/0001-phase-d-progress.md`. It now links
   the Phase B record section that tracks Phase D.
 
+### Re-audit (2026-09-25, active)
+
+Scope: rerun `baseline.py audit` for the static, suites, build and runtime
+groups at the current tree, review every deviating outcome, and fix each
+deviation or record it with its owner. A change to a declared outcome is a
+user decision; this slice proposes such changes and does not make them.
+The package group (`package.android-arm64`) is not rerun in this slice.
+Evidence: `quality-results/baseline/r01-reaudit-2026-09-25/`.
+
 ### Host availability
 
 Available: g++ 16.2.1, clang++ 22.1.8, clang ASan/UBSan and TSan, MinGW g++
