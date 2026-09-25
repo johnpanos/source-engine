@@ -422,6 +422,7 @@ static void HostPhase_ThreadedServerSubmit( HostFrameState_t &s, int )
 	s.pGameJob = new CFunctorJob( CreateFunctor( _Host_RunFrame_Server_Async, s.serverticks ) );
 
 	g_pThreadPool->AddJob( s.pGameJob );
+	Host_TraceServerJob( true );
 }
 
 #endif // !SWDS
@@ -435,6 +436,7 @@ static void HostPhase_Log( HostFrameState_t &, int )
 	g_Log.RunFrame();
 }
 
+#ifdef SWDS
 static void HostPhase_Render( HostFrameState_t &, int )
 {
 	//-------------------
@@ -442,6 +444,14 @@ static void HostPhase_Render( HostFrameState_t &, int )
 	//-------------------
 	_Host_RunFrame_Render();
 }
+#else
+// One step of the render stage (engine/host_render_steps.h). The stage's
+// locals live in s.render, reset when the frame starts.
+static void HostPhase_RenderStep( HostFrameState_t &s, int iStep )
+{
+	Host_RunRenderStep( iStep, s.render );
+}
+#endif
 
 static void HostPhase_Sound( HostFrameState_t &, int )
 {
@@ -509,6 +519,7 @@ static void HostPhase_AsyncServerJoin( HostFrameState_t &s, int )
 			}
 		}
 		s.pGameJob = NULL;
+		Host_TraceServerJob( false );
 		SV_FrameExecuteThreadDeferred();
 	}
 }
@@ -652,7 +663,15 @@ static void HostFrame_BuildPhases(
 	HOST_FRAME_PHASE( phases, Log, s, 0 );
 	if ( s.shouldrender )
 	{
+#ifdef SWDS
 		HOST_FRAME_PHASE( phases, Render, s, 0 );
+#else
+		for ( int iStep = 0; iStep < HOST_RENDER_STEP_COUNT; iStep++ )
+		{
+			HostFrame_AddPhase( phases, Host_GetRenderStepName( iStep ),
+			    &HostFrame_RunPhase<&HostPhase_RenderStep>, s, iStep );
+		}
+#endif
 		HOST_FRAME_PHASE( phases, Sound, s, 0 );
 	}
 	else
@@ -672,6 +691,7 @@ static HostFrameExit_t HostFrame_RunGraph( jobsystem::SerialFrameGraph *pGraph, 
     CUtlVector<jobsystem::FramePhaseDesc> &phases )
 {
 	s.pGameJob = NULL;
+	s.render = HostRenderState_t();
 	s.clientticks = 0;
 	s.serverticks = 0;
 	s.saveTick = 0;

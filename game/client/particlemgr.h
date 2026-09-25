@@ -648,6 +648,15 @@ public:
 	// This updates all the particle effects and inserts them into the leaves.
 	void			Simulate( float fTimeDelta );
 
+	// Simulate in three parts, for frame graphs (Simulate runs them in order).
+	// Between SimulateBegin and SimulateEnd, SimulateBatchItem( i ) for each
+	// i < SimulateBatchCount() may run on any thread, concurrently with the
+	// other items and with nothing else touching particle state.
+	void			SimulateBegin( float fTimeDelta );
+	unsigned		SimulateBatchCount() const;
+	void			SimulateBatchItem( unsigned iItem );
+	void			SimulateEnd();
+
 	// This just marks effects that were drawn so during their next simulation they can know
 	// if they were drawn in the previous frame.
 	void			PostRender();
@@ -706,8 +715,15 @@ private:
 
 	// Call Update() on all the effects.
 	void UpdateAllEffects( float flTimeDelta );
+	void UpdateAllEffectsBegin( float flTimeDelta );
+	void UpdateAllEffectsEnd();
 
 	void UpdateNewEffects( float flTimeDelta );				// update new particle effects
+	void UpdateNewEffectsBegin( float flTimeDelta );		// gather and retire
+	void UpdateNewEffectsSimulate();						// simulate the gathered effects
+	void UpdateNewEffectsEnd();								// detect changes
+	unsigned NewEffectsSimulateCount() const;
+	void NewEffectsSimulateItem( unsigned iEffect );
 
 	CParticleSubTextureGroup* FindOrAddSubTextureGroup( IMaterial *pPageMaterial );
 
@@ -733,6 +749,18 @@ private:
 
 	bool							m_bUpdatingEffects;
 	bool							m_bRenderParticleEffects;
+
+	// Between the parts of Simulate / UpdateNewEffects.
+	bool							m_bSimulateUpdating;
+	bool							m_bSimulateNewEffectsPending;
+	struct NewEffectsUpdate_t
+	{
+		float flTimeDelta;
+		int nParticleActiveParticlesCount;
+		int nParticleStatsTriggerCount;
+		CUtlVector<CNewParticleEffect *> particlesToSimulate;
+	};
+	NewEffectsUpdate_t				m_NewEffectsUpdate;
 
 	// All the active effects.
 	CUtlLinkedList<CParticleEffectBinding*, unsigned short>		m_Effects;

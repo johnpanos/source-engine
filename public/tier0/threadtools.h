@@ -116,7 +116,10 @@ extern bool gbCheckNotMultithreaded;
 
 	#define CHECK_NOT_MULTITHREADED()
 
-#define MAX_THREADS_SUPPORTED 32
+// The number of thread ids tier0 hands out (g_nThreadID is 0 for threads that
+// never allocated one, else 1 .. MAX_THREADS_SUPPORTED - 1). Arrays indexed by
+// g_nThreadID must have this many entries; AllocateThreadID enforces the bound.
+#define MAX_THREADS_SUPPORTED 128
 
 
 

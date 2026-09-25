@@ -174,9 +174,14 @@ public:
 	//-----------------------------------------------------
 	// Wait for events or jobs. A waiting thread never services unrelated
 	// queued work: waiting on events runs nothing, and waiting on jobs may
-	// run only those jobs, inline, when no worker has started them and they
-	// are eligible for this thread (owned by this pool, not JF_SERIAL, not
-	// bound to a service thread, pool not bExecOnThreadPoolThreadsOnly).
+	// run only those jobs, inline, when no thread has started them and they
+	// are eligible for this thread. Eligible: owned by this pool, and either
+	// the waiter is one of the pool's workers and the job is unbound or bound
+	// to that worker (JF_SERIAL binds to worker 0), or the waiter is another
+	// thread, the job is unbound and not JF_SERIAL, and the pool is not
+	// bExecOnThreadPoolThreadsOnly. A worker waiting for an unstarted job it
+	// may not run is a forbidden nested wait; it is detected and counted
+	// (ThreadPoolSchedulingStats_t) but still waits.
 	// Timeouts are not implemented; waits last until signaled.
 	//-----------------------------------------------------
 	virtual int YieldWait( CThreadEvent **pEvents, int nEvents, bool bWaitAll = true, unsigned timeout = TT_INFINITE ) = 0;
@@ -438,10 +443,32 @@ struct ThreadPoolSchedulingStats_t
 	int nStealDequeSpills;    // worker-spawned jobs sent to the shared queue (deque full)
 	int nSteals;              // jobs a worker took from another worker's steal deque
 	int nWaitedJobsRunInline; // waited jobs a waiting thread ran itself (YieldWait)
+
+	// Bounded shared queue (overflow policy in vstdlib/jobthread.cpp,
+	// CThreadPool::AdmitToFullSharedQueue).
+	int nSharedQueueCapacity;
+	int nSharedQueuePeak;              // most entries ever held at once
+	int nSharedQueueCallerRuns;        // full: a submitting worker ran its own job
+	int nSharedQueueBlockedAdmissions; // full: another thread waited for space
+	int nSharedQueueOverCapacity;      // full while the pool could not consume
+
+	// Waits by this pool's workers (CThreadPool::CheckNestedWait).
+	int nNestedWaits;          // YieldWait on jobs from inside a worker
+	int nForbiddenNestedWaits; // ... for an unstarted job bound to another thread
+	int nWorkerEventWaits;     // YieldWait on bare events from inside a worker
+	int nStarvationEvents;     // every worker blocked in a wait with work queued
 };
 
 JOB_INTERFACE void GetThreadPoolSchedulingStats(
     IThreadPool *pPool, ThreadPoolSchedulingStats_t *pStats );
+
+// The shared (injection) queue admits at most this many jobs by default. A
+// full queue never drops or overwrites work: see
+// CThreadPool::AdmitToFullSharedQueue for the overflow policy.
+#define TP_DEFAULT_SHARED_QUEUE_CAPACITY 4096
+
+// Changes the bound; entries already queued above a lowered bound stay queued.
+JOB_INTERFACE void SetThreadPoolSharedQueueCapacity( IThreadPool *pPool, int nCapacity );
 
 //-------------------------------------
 

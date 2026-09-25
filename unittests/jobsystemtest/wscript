@@ -39,6 +39,9 @@ def build(bld):
 		# Pool/CTSQueue microbenchmarks; old-API only, so it also builds against older trees.
 		( 'jobsystemthreadpoolbench', 'threadpoolbench.cpp', ['vstdlib', 'tier1', 'tier0'] + dl_log ),
 		( 'jobsystempooledtest', 'pooledexecutortest.cpp', ['jobsystem'] ),
+		( 'jobsystemdeclaredframetest', 'declaredframetest.cpp', ['jobsystem'] ),
+		# Client render-start blocks vs the legacy OnRenderStart (recording stand-ins).
+		( 'jobsystemrenderstarttest', 'renderstarttest.cpp', ['jobsystem'] ),
 		( 'jobsystembatchtest', 'parallelbatchtest.cpp', ['jobsystem'] ),
 		( 'jobsystemtest',        'jobsystemtest.cpp',    ['jobsystem'] ),
 		( 'jobsystemframetest',   'frametest.cpp',        ['jobsystem'] ),

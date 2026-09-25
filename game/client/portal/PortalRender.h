@@ -268,6 +268,7 @@ public:
 
 	friend class CPortalRenderable;
 	friend void OnRenderStart();
+	friend class CRenderStartSteps; // OnRenderStart's blocks (client_render_start_steps.h)
 };
 
 extern CPortalRender* g_pPortalRender;

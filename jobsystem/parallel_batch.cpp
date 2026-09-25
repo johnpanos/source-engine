@@ -6,6 +6,7 @@
 
 #include "jobsystem/parallel_batch.h"
 #include "jobsystem/pooled_executor.h"
+#include "batch_depth.h"
 
 #include <algorithm>
 #include <atomic>
@@ -16,18 +17,24 @@
 
 namespace jobsystem
 {
+namespace detail
+{
+unsigned &BatchDepth()
+{
+	// A callback cannot start a blocking fork/join on a pool whose workers it
+	// may occupy.
+	thread_local unsigned t_depth = 0;
+	return t_depth;
+}
+} // namespace detail
+
 namespace
 {
-// Execution context only, not a worker pool or a service locator. A callback
-// cannot start a blocking fork/join on a pool whose workers it may occupy.
-thread_local unsigned s_batchDepth = 0;
-
 class ParticipantScope
 {
 public:
 	explicit ParticipantScope( const BatchDesc &desc ) : m_desc( desc )
 	{
-		++s_batchDepth;
 		if ( m_desc.begin )
 			m_desc.begin( m_desc.context );
 	}
@@ -36,10 +43,10 @@ public:
 	{
 		if ( m_desc.end )
 			m_desc.end( m_desc.context );
-		--s_batchDepth;
 	}
 
 private:
+	detail::BatchDepthScope m_depth; // entered before begin, left after end
 	const BatchDesc &m_desc;
 };
 
@@ -167,7 +174,7 @@ bool ExecuteParallelBatch( const BatchDesc &desc, IWorkerBackend *backend, Batch
 	if ( !desc.process || desc.maxParticipants == 0 )
 		return false;
 
-	const bool serial = mode == BatchMode::Serial || s_batchDepth != 0;
+	const bool serial = mode == BatchMode::Serial || detail::BatchDepth() != 0;
 	unsigned participants = 1;
 	if ( !serial && backend && backend->WorkerCount() > 0 )
 	{

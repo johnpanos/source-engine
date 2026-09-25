@@ -258,8 +258,17 @@ static CFrameTimer g_HostTimes;
 // Frame-segment timing for the host frame graph phases (host_frame_graph.h).
 static int HostFrameSegmentIndex( HostFrameSegment_t segment )
 {
-	return ( segment == HOST_FRAME_SEGMENT_CMD_EXECUTE ) ? FRAME_SEGMENT_CMD_EXECUTE
-	                                                     : FRAME_SEGMENT_CLDLL;
+	switch ( segment )
+	{
+	case HOST_FRAME_SEGMENT_CMD_EXECUTE:
+		return FRAME_SEGMENT_CMD_EXECUTE;
+	case HOST_FRAME_SEGMENT_CLDLL:
+		return FRAME_SEGMENT_CLDLL;
+	case HOST_FRAME_SEGMENT_RENDER:
+		return FRAME_SEGMENT_RENDER;
+	}
+	Assert( 0 );
+	return FRAME_SEGMENT_CLDLL;
 }
 
 void Host_StartFrameSegment( HostFrameSegment_t segment )
@@ -1917,29 +1926,8 @@ void CL_ProcessVoiceData()
 
 
 
-/*
-=====================
-Host_UpdateScreen
-
-Refresh the screen
-=====================
-*/
-void Host_UpdateScreen( void )
-{
-#ifndef SWDS 
-
-#ifdef _DEBUG
-	if( r_ForceRestore.GetInt() )
-	{
-		ForceMatSysRestore();
-		r_ForceRestore.SetValue(0);
-	}
-#endif // _DEBUG
-
-	// Refresh the screen
-	SCR_UpdateScreen ();
-#endif
-}
+// Host_UpdateScreen is the render stage's UpdateScreenBegin step plus the
+// screen steps (host_render_steps.h).
 
 /*
 ====================
@@ -2328,10 +2316,32 @@ static void HostFrameTrace_Open()
 	}
 }
 
+static bool s_bHostFrameTraceServerInFlight = false;
+
+void Host_TraceServerJob( bool bInFlight )
+{
+	s_bHostFrameTraceServerInFlight = bInFlight;
+}
+
 static void HostFrameTrace( const char *pszEvent, int nArg )
 {
 	if ( !s_pHostFrameTrace || !ThreadInMainThread() )
 		return;
+	if ( s_bHostFrameTraceServerInFlight )
+	{
+		// Server state belongs to the async server job until the join.
+		fprintf( s_pHostFrameTrace,
+		    "%s %d | ht=%d cft=%d hft=%d hfc=%d svt=- sg=- cg=%d/%d ins=%d ia=%.4f\n", pszEvent,
+		    nArg, host_tickcount, host_currentframetick, host_frameticks, host_framecount,
+#ifndef SWDS
+		    g_ClientGlobalVariables.tickcount, g_ClientGlobalVariables.simTicksThisFrame,
+		    cl.insimulation ? 1 : 0, g_ClientGlobalVariables.interpolation_amount
+#else
+		    0, 0, 0, 0.0f
+#endif
+		);
+		return;
+	}
 	fprintf( s_pHostFrameTrace,
 	    "%s %d | ht=%d cft=%d hft=%d hfc=%d svt=%d sg=%d/%d cg=%d/%d ins=%d ia=%.4f\n", pszEvent,
 	    nArg, host_tickcount, host_currentframetick, host_frameticks, host_framecount,
@@ -2344,6 +2354,11 @@ static void HostFrameTrace( const char *pszEvent, int nArg )
 	    0, 0, 0, 0.0f
 #endif
 	);
+}
+
+void Host_TraceFrameEvent( const char *pszEvent, int nArg )
+{
+	HostFrameTrace( pszEvent, nArg );
 }
 
 static void HostFrameTrace_BeginFrame( int numticks, bool shouldrender, bool bGraph )
@@ -2513,53 +2528,7 @@ void CheckSpecialCheatVars()
 }
 
 
-void _Host_RunFrame_Render()
-{
-#ifndef SWDS
-	VPROF( "_Host_RunFrame_Render" );
-	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "_Host_RunFrame_Render" );
-	HostFrameTrace( "Render", 0 );
-
-	CheckSpecialCheatVars();
-
-	int nOrgNoRendering = mat_norendering.GetInt();
-
-	if ( cl_takesnapshot )
-	{
-		// turn off no-rendering mode, if taking screenshot
-		mat_norendering.SetValue( 0 );
-	}
-
-	// update video if not running in background
-	g_HostTimes.StartFrameSegment( FRAME_SEGMENT_RENDER );
-
-	CL_LatchInterpolationAmount();
-
-	{
-		VPROF( "_Host_RunFrame_Render - UpdateScreen" );
-		tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "_Host_RunFrame_Render - UpdateScreen" );
-		Host_UpdateScreen();
-	}
-	{
-		VPROF( "_Host_RunFrame_Render - CL_DecayLights" );
-		tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "_Host_RunFrame_Render - CL_DecayLights" );
-		CL_DecayLights ();
-	}
-
-	g_HostTimes.EndFrameSegment( FRAME_SEGMENT_RENDER );
-
-	saverestore->OnFrameRendered();
-
-#ifdef USE_SDL
-	if ( g_pLauncherMgr )
-	{
-		g_pLauncherMgr->OnFrameRendered();
-	}
-#endif
-
-	mat_norendering.SetValue( nOrgNoRendering );
-#endif
-}
+// _Host_RunFrame_Render is in host_render.cpp (client builds) and cl_null.cpp.
 
 void CL_FindInterpolatedAddAngle( float t, float& frac, AddAngle **prev, AddAngle **next )
 {
@@ -3266,6 +3235,7 @@ void _Host_RunFrame (float time)
 			pGameJob = new CFunctorJob( CreateFunctor( _Host_RunFrame_Server_Async, serverticks ) );
 			
 			g_pThreadPool->AddJob( pGameJob );
+			Host_TraceServerJob( true );
 #if LOG_FRAME_OUTPUT
 			if ( !cl.IsPaused() || !sv.IsPaused() )
 			{
@@ -3349,6 +3319,7 @@ void _Host_RunFrame (float time)
 					pGameJob->WaitForFinishAndRelease();
 				}
 			}
+			Host_TraceServerJob( false );
 			SV_FrameExecuteThreadDeferred();
 		}
 

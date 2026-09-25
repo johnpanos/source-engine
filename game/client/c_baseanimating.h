@@ -418,6 +418,16 @@ public:
 	static void						PushAllowBoneAccess( bool bAllowForNormalModels, bool bAllowForViewModels, char const *tagPush );
 	static void						PopBoneAccess( char const *tagPop );
 	static void						ThreadedBoneSetup();
+	// ThreadedBoneSetup in three parts, for frame graphs (it runs them in
+	// order). Between Begin and End, ThreadedBoneSetupItem( i ) for each
+	// i < ThreadedBoneSetupCount() may run on any thread, between that
+	// thread's RunnerBegin and RunnerEnd.
+	static void						ThreadedBoneSetupBegin();
+	static unsigned					ThreadedBoneSetupCount();
+	static void						ThreadedBoneSetupItem( unsigned iItem );
+	static void						ThreadedBoneSetupRunnerBegin();
+	static void						ThreadedBoneSetupRunnerEnd();
+	static void						ThreadedBoneSetupEnd();
 	static void						InitBoneSetupThreadPool();
 	static void						ShutdownBoneSetupThreadPool();
 

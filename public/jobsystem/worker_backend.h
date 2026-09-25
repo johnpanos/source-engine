@@ -31,6 +31,19 @@ public:
 	// the caller does next. Implementations must run each index exactly once.
 	virtual void ParallelFor( int n, const std::function<void( int )> &body ) = 0;
 
+	// As ParallelFor, and additionally run caller() once on the calling thread.
+	// caller() is independent of every body(i) (the scheduler guarantees it) and
+	// may run concurrently with them; the return joins both. The default runs
+	// ParallelFor and then caller(), which overlaps nothing (the order before
+	// this hook existed); a backend with asynchronous workers starts body(i)
+	// before running caller().
+	virtual void ParallelForWithCaller( int n, const std::function<void( int )> &body,
+	    const std::function<void()> &caller )
+	{
+		ParallelFor( n, body );
+		caller();
+	}
+
 	// Number of worker threads available (0 => work runs on the caller).
 	virtual int WorkerCount() const = 0;
 };

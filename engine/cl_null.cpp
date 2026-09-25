@@ -80,6 +80,10 @@ void SCR_UpdateScreen (void)
 {
 }
 
+void _Host_RunFrame_Render()
+{
+}
+
 void SCR_EndLoadingPlaque (void)
 {
 }

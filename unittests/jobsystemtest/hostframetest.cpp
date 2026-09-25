@@ -55,6 +55,7 @@ static void Check( bool value, const char *expression, int line )
 
 static std::vector<std::string> *s_pTrace = NULL;
 static std::string Snapshot();
+static std::string RenderSnapshot();
 
 static void Record( const char *fmt, ... )
 {
@@ -106,6 +107,16 @@ struct FrameScript
 	bool timedemo;
 	bool skipping;
 	bool playbackPaused;
+	// Render stage guards (SCR_UpdateScreen early-outs and friends).
+	bool disabledForLoading;
+	bool screenInitialized;
+	bool consoleInitialized;
+	bool demoPlayingBack;
+	bool windowSizeOk;
+	bool takeSnapshot;
+	int noRendering;
+	bool launcherMgr;
+	int nextDrawTickSet; // written to scr_nextdrawtick before the frame when nonzero
 };
 
 struct Scenario
@@ -139,7 +150,8 @@ static Scenario MakeScenario( unsigned seed )
 	sc.nextdrawtick = rng.Chance( 70 ) ? 0 : 5;
 
 	static const char *s_injectSites[] = { "Cbuf_Execute", "Input", "Server", "Client", "Render",
-	    "ClientDLL_Update", "ServerAsync", "CL_RunPrediction", "SV_FrameExecuteThreadDeferred" };
+	    "ClientDLL_Update", "ServerAsync", "CL_RunPrediction", "SV_FrameExecuteThreadDeferred",
+	    "FrameStageNotify", "V_RenderView", "CL_DecayLights" };
 
 	const int nFrames = rng.Range( 1, 6 );
 	for ( int i = 0; i < nFrames; i++ )
@@ -164,6 +176,15 @@ static Scenario MakeScenario( unsigned seed )
 		f.timedemo = rng.Chance( 15 );
 		f.skipping = rng.Chance( 10 );
 		f.playbackPaused = rng.Chance( 10 );
+		f.disabledForLoading = rng.Chance( 10 );
+		f.screenInitialized = !rng.Chance( 5 );
+		f.consoleInitialized = !rng.Chance( 5 );
+		f.demoPlayingBack = rng.Chance( 20 );
+		f.windowSizeOk = !rng.Chance( 10 );
+		f.takeSnapshot = rng.Chance( 15 );
+		f.noRendering = rng.Chance( 20 ) ? 1 : 0;
+		f.launcherMgr = !rng.Chance( 10 );
+		f.nextDrawTickSet = rng.Chance( 10 ) ? rng.Range( 1, 12 ) : 0;
 		sc.frames.push_back( f );
 	}
 	return sc;
@@ -243,6 +264,7 @@ struct FakeClientState
 		Record( "cl.SetFrameTime %.6f", t );
 	}
 	int GetClientTickCount() { return clientTick; }
+	void UpdateAreaBits_BackwardsCompatible() { Record( "cl.UpdateAreaBits" ); }
 	bool IsActive() { return s_pScenario->active; }
 	bool IsPaused() { return false; }
 } cl;
@@ -290,7 +312,7 @@ static std::string Snapshot()
 	    g_ClientGlobalVariables.frametime, cl.insimulation ? 1 : 0, cl.m_tickRemainder,
 	    cl.frameTime, host_idealtime, host_jitterhistorypos, host_time, s_netMultiplayer ? 1 : 0,
 	    cl.clientTick );
-	return buffer;
+	return std::string( buffer ) + RenderSnapshot();
 }
 
 void Cbuf_Execute()
@@ -440,11 +462,6 @@ void _Host_RunFrame_Client( bool framefinished )
 	Record( "Client %d", framefinished ? 1 : 0 );
 	MaybeInject( "Client" );
 }
-void _Host_RunFrame_Render()
-{
-	Record( "Render" );
-	MaybeInject( "Render" );
-}
 void _Host_RunFrame_Sound()
 {
 	Record( "Sound" );
@@ -467,12 +484,16 @@ FakeClientDLL *g_ClientDLL = NULL;
 struct FakeToolFramework
 {
 	void Think( bool b ) { Record( "toolframework.Think %d", b ? 1 : 0 ); }
+	void RenderFrameBegin() { Record( "toolframework.RenderFrameBegin" ); }
+	void RenderFrameEnd() { Record( "toolframework.RenderFrameEnd" ); }
 };
 static FakeToolFramework s_toolFramework;
 FakeToolFramework *toolframework = &s_toolFramework;
 
 struct FakeDemoPlayer
 {
+	bool IsPlayingBack() { return s_pFrame && s_pFrame->demoPlayingBack; }
+	void InterpolateViewpoint() { Record( "demoplayer.InterpolateViewpoint" ); }
 	bool IsPlayingTimeDemo() { return s_pFrame && s_pFrame->timedemo; }
 	bool IsSkipping() { return s_pFrame && s_pFrame->skipping; }
 	bool IsPlaybackPaused() { return s_pFrame && s_pFrame->playbackPaused; }
@@ -502,6 +523,145 @@ struct CMDLCacheCriticalSection
 	explicit CMDLCacheCriticalSection( FakeMDLCache * ) { Record( "MDLCache lock" ); }
 	~CMDLCacheCriticalSection() { Record( "MDLCache unlock" ); }
 };
+
+
+//-----------------------------------------------------------------------------
+// Render stage services (legacy _Host_RunFrame_Render / SCR_UpdateScreen and
+// engine/host_render_steps.h call the same ones)
+//-----------------------------------------------------------------------------
+
+#define USE_SDL 1
+#define TELEMETRY_LEVEL0 0
+#define TMZF_NONE 0
+
+enum ClientFrameStage_t
+{
+	FRAME_RENDER_START = 5,
+	FRAME_RENDER_END = 6,
+};
+
+struct FakeConVar
+{
+	const char *name;
+	int value;
+	int GetInt()
+	{
+		Record( "%s.GetInt", name );
+		return value;
+	}
+	void SetValue( int v )
+	{
+		value = v;
+		Record( "%s.SetValue %d", name, v );
+	}
+};
+FakeConVar mat_norendering = { "mat_norendering", 0 };
+bool cl_takesnapshot = false;
+bool scr_disabled_for_loading = false;
+bool scr_initialized = true;
+bool con_initialized = true;
+
+void CheckSpecialCheatVars()
+{
+	Record( "CheckSpecialCheatVars" );
+	MaybeInject( "Render" );
+}
+void CL_LatchInterpolationAmount()
+{
+	Record( "CL_LatchInterpolationAmount" );
+}
+void R_StudioCheckReinitLightingCache()
+{
+	Record( "R_StudioCheckReinitLightingCache" );
+}
+bool V_CheckGamma()
+{
+	Record( "V_CheckGamma" );
+	return true;
+}
+void V_RenderVGuiOnly()
+{
+	Record( "V_RenderVGuiOnly" );
+}
+void SCR_ShowVCRPlaybackAmount()
+{
+	Record( "SCR_ShowVCRPlaybackAmount" );
+}
+bool VideoMode_UpdateWindowSize()
+{
+	Record( "VideoMode_UpdateWindowSize" );
+	return !s_pFrame || s_pFrame->windowSizeOk;
+}
+struct FakeMaterials
+{
+	void BeginFrame( float t ) { Record( "materials.BeginFrame %.6f", t ); }
+	void EndFrame() { Record( "materials.EndFrame" ); }
+};
+static FakeMaterials s_materials;
+FakeMaterials *materials = &s_materials;
+struct FakeEngineVGui
+{
+	void Simulate() { Record( "EngineVGui.Simulate" ); }
+};
+static FakeEngineVGui s_engineVGui;
+FakeEngineVGui *EngineVGui()
+{
+	return &s_engineVGui;
+}
+void ClientDLL_FrameStageNotify( ClientFrameStage_t stage )
+{
+	Record( "ClientDLL_FrameStageNotify %d", (int)stage );
+	MaybeInject( "FrameStageNotify" );
+}
+struct FakeEngineRenderer
+{
+	void FrameBegin() { Record( "g_EngineRenderer.FrameBegin" ); }
+	void FrameEnd() { Record( "g_EngineRenderer.FrameEnd" ); }
+};
+static FakeEngineRenderer s_engineRenderer;
+FakeEngineRenderer *g_EngineRenderer = &s_engineRenderer;
+void Shader_BeginRendering()
+{
+	Record( "Shader_BeginRendering" );
+}
+void V_RenderView()
+{
+	Record( "V_RenderView" );
+	MaybeInject( "V_RenderView" );
+}
+void CL_TakeSnapshotAndSwap()
+{
+	Record( "CL_TakeSnapshotAndSwap" );
+}
+void CL_DecayLights()
+{
+	Record( "CL_DecayLights" );
+	MaybeInject( "CL_DecayLights" );
+}
+struct FakeSaveRestore
+{
+	void OnFrameRendered() { Record( "saverestore.OnFrameRendered" ); }
+};
+static FakeSaveRestore s_saveRestore;
+FakeSaveRestore *saverestore = &s_saveRestore;
+struct FakeLauncherMgr
+{
+	void OnFrameRendered() { Record( "launcher.OnFrameRendered" ); }
+};
+static FakeLauncherMgr s_launcherMgr;
+FakeLauncherMgr *g_pLauncherMgr = NULL;
+// Live capture only; not part of the compared behavior.
+void Host_TraceFrameEvent( const char *, int ) {}
+void Host_TraceServerJob( bool ) {}
+void SCR_UpdateScreen( void );
+void _Host_RunFrame_Render(); // the verbatim legacy stage (hostframe_render_legacy_oracle.h)
+
+static std::string RenderSnapshot()
+{
+	char buffer[64];
+	snprintf( buffer, sizeof( buffer ), " ndt=%d nr=%d", scr_nextdrawtick, mat_norendering.value );
+	return buffer;
+}
 
 struct FakeTestScriptMgr
 {
@@ -583,6 +743,8 @@ enum Mutation
 };
 static Mutation s_mutation = MUTATE_NONE;
 static unsigned s_mutationIndex = 0;
+static bool s_mutationApplied = false;
+static bool s_mutationTouchesNoOp = false;
 
 bool RunSerialFrameGraph( jobsystem::SerialFrameGraph *pGraph,
     const jobsystem::FramePhaseDesc *pPhases, unsigned nPhases, jobsystem::SerialFrameRun *pResult )
@@ -592,7 +754,21 @@ bool RunSerialFrameGraph( jobsystem::SerialFrameGraph *pGraph,
 		*pResult = pGraph->Run( pPhases, nPhases );
 		return pResult->valid;
 	}
+	// A mutation that moves a phase with no behavior in this build (the
+	// _DEBUG-only UpdateScreenBegin step) is equivalent, not undetectable: that
+	// frame runs unmutated.
+	const unsigned last = s_mutation == MUTATE_SWAP ? s_mutationIndex + 1 : s_mutationIndex;
+	for ( unsigned i = s_mutationIndex; i <= last; i++ )
+	{
+		if ( strcmp( pPhases[i].name, "UpdateScreenBegin" ) == 0 )
+		{
+			s_mutationTouchesNoOp = true;
+			*pResult = pGraph->Run( pPhases, nPhases );
+			return pResult->valid;
+		}
+	}
 	std::vector<jobsystem::FramePhaseDesc> mutated( pPhases, pPhases + nPhases );
+	s_mutationApplied = true;
 	switch ( s_mutation )
 	{
 	case MUTATE_SWAP:
@@ -628,7 +804,19 @@ struct OracleCarry
 static OracleCarry g_OracleCarry;
 
 #include "hostframe_legacy_oracle.h"
+#include "hostframe_render_legacy_oracle.h"
+#include "../../engine/host_render_steps.h"
 #include "../../engine/host_frame_phases.h"
+
+// As engine/gl_screen.cpp exports them.
+void Host_RunRenderStep( int iStep, HostRenderState_t &state )
+{
+	HostRender_RunStep( iStep, state );
+}
+const char *Host_GetRenderStepName( int iStep )
+{
+	return g_HostRenderSteps[iStep].name;
+}
 
 static HostFrameCarry_t g_GraphCarry;
 static jobsystem::SerialFrameGraph *s_pGraph = NULL;
@@ -749,6 +937,14 @@ static std::vector<std::string> RunScenario( const Scenario &sc, Path path )
 		s_injectCounter = 0;
 		s_serverCalls = 0;
 		host_frametime = f.frametime;
+		scr_disabled_for_loading = f.disabledForLoading;
+		scr_initialized = f.screenInitialized;
+		con_initialized = f.consoleInitialized;
+		cl_takesnapshot = f.takeSnapshot;
+		mat_norendering.value = f.noRendering;
+		g_pLauncherMgr = f.launcherMgr ? &s_launcherMgr : NULL;
+		if ( f.nextDrawTickSet )
+			scr_nextdrawtick = f.nextDrawTickSet;
 		Record( "frame.begin %u numticks=%d", (unsigned)i, f.numticks );
 		RunOneFrame( path, f );
 		const OracleCarry carry =
@@ -784,6 +980,7 @@ struct Coverage
 {
 	int threaded, unthreaded, dedicated, enddemo, abortserver, zeroTicks, multiTicks, hltvMidFrame,
 	    asyncJoins;
+	int renderStages, screenUpdates, vguiOnly, renderExits;
 };
 
 static void TestEquivalence( int nScenarios, Coverage &coverage )
@@ -810,8 +1007,19 @@ static void TestEquivalence( int nScenarios, Coverage &coverage )
 		coverage.threaded += sc.threaded ? 1 : 0;
 		coverage.unthreaded += sc.threaded ? 0 : 1;
 		coverage.dedicated += sc.dedicated ? 1 : 0;
-		for ( const std::string &event : legacy )
+		for ( size_t i = 0; i < legacy.size(); i++ )
 		{
+			const std::string &event = legacy[i];
+			coverage.renderStages += event.compare( 0, 21, "CheckSpecialCheatVars" ) == 0 ? 1 : 0;
+			coverage.screenUpdates += event.compare( 0, 20, "materials.BeginFrame" ) == 0 ? 1 : 0;
+			coverage.vguiOnly += event.compare( 0, 16, "V_RenderVGuiOnly" ) == 0 ? 1 : 0;
+			if ( i > 0 && event.find( "longjmp" ) != std::string::npos &&
+			     ( legacy[i - 1].compare( 0, 12, "V_RenderView" ) == 0 ||
+			         legacy[i - 1].compare( 0, 26, "ClientDLL_FrameStageNotify" ) == 0 ||
+			         legacy[i - 1].compare( 0, 14, "CL_DecayLights" ) == 0 ) )
+			{
+				coverage.renderExits++;
+			}
 			coverage.enddemo += event.compare( 0, 18, "frame.exit enddemo" ) == 0 ? 1 : 0;
 			coverage.abortserver += event.compare( 0, 22, "frame.exit abortserver" ) == 0 ? 1 : 0;
 			coverage.hltvMidFrame += event.compare( 0, 13, "hltv.RunFrame" ) == 0 ? 1 : 0;
@@ -837,6 +1045,13 @@ static void TestCoverage( const Coverage &coverage )
 	    coverage.threaded, coverage.unthreaded, coverage.dedicated, coverage.enddemo,
 	    coverage.abortserver, coverage.zeroTicks, coverage.multiTicks, coverage.hltvMidFrame,
 	    coverage.asyncJoins );
+	printf( "render coverage: stages %d screen-updates %d vgui-only %d render-exits %d\n",
+	    coverage.renderStages, coverage.screenUpdates, coverage.vguiOnly, coverage.renderExits );
+	CHECK( coverage.renderStages > 0 );
+	CHECK( coverage.screenUpdates > 0 );
+	CHECK( coverage.screenUpdates < coverage.renderStages ); // some screen updates rejected
+	CHECK( coverage.vguiOnly > 0 );
+	CHECK( coverage.renderExits > 0 );
 	CHECK( coverage.threaded > 0 );
 	CHECK( coverage.unthreaded > 0 );
 	CHECK( coverage.dedicated > 0 );
@@ -852,12 +1067,16 @@ static void TestCoverage( const Coverage &coverage )
 static void TestSensitivity( int nScenarios )
 {
 	static const Mutation s_mutations[] = { MUTATE_SWAP, MUTATE_DROP, MUTATE_DUPLICATE };
+	int nChecked = 0, nEquivalent = 0;
 	for ( Mutation mutation : s_mutations )
 	{
-		for ( unsigned index = 0; index < 6; index++ )
+		// Every position of the longest frames (render steps included).
+		for ( unsigned index = 0; index < 40; index++ )
 		{
 			s_mutation = mutation;
 			s_mutationIndex = index;
+			s_mutationApplied = false;
+			s_mutationTouchesNoOp = false;
 			bool bDetected = false;
 			for ( int seed = 1; seed <= nScenarios && !bDetected; seed++ )
 			{
@@ -866,11 +1085,19 @@ static void TestSensitivity( int nScenarios )
 				                RunScenario( sc, PATH_GRAPH ) ) >= 0;
 			}
 			s_mutation = MUTATE_NONE;
+			nEquivalent += s_mutationTouchesNoOp ? 1 : 0;
+			if ( !s_mutationApplied )
+				continue; // no frame that long, or only equivalent placements
+			nChecked++;
 			if ( !bDetected )
 				printf( "undetected mutation %d at phase %u\n", (int)mutation, index );
 			CHECK( bDetected );
 		}
 	}
+	printf( "sensitivity: %d phase-list mutations checked (%d also had an equivalent placement "
+	        "on the no-op step, run unmutated)\n",
+	    nChecked, nEquivalent );
+	CHECK( nChecked >= 110 );
 }
 
 //-----------------------------------------------------------------------------

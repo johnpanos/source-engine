@@ -44,10 +44,27 @@ inline void ServiceJobAndRelease( CJob *pJob, int iThread = -1 )
 
 //-----------------------------------------------------------------------------
 
+// A mutex-guarded priority FIFO. Topology: MPMC; producers are any thread,
+// consumers are the owning pool's workers, a waiting thread running a job it
+// waits for (by identity, never by popping), and the quiescent bulk operations.
+// Payloads are counted CJob references: an entry holds one reference from
+// admission until the consumer that pops it releases it.
+//
+// Capacity bounds admission through TryPush, which never runs or drops a job:
+// a full queue refuses and the pool applies its overflow policy
+// (CThreadPool::AdmitToFullSharedQueue). ForcePush re-inserts already
+// admitted work (priority changes, quiescent spills and put-backs) and may
+// exceed capacity. Direct (affinity) queues keep the default unbounded
+// capacity. The space event is set whenever the queue holds fewer items than
+// its capacity; it is a wake hint for blocked producers, and TryPush under the
+// queue mutex is the authoritative check.
 class ALIGN16 CJobQueue
 {
 public:
-	CJobQueue() : m_nItems( 0 ), m_nMaxItems( INT_MAX ) {}
+	CJobQueue() : m_nItems( 0 ), m_nMaxItems( INT_MAX ), m_nPeakItems( 0 )
+	{
+		m_SpaceAvailableEvent.Set();
+	}
 
 	int Count()
 	{
@@ -61,28 +78,40 @@ public:
 		return (int)m_Queues[priority].size();
 	}
 
-	int Push( CJob *pJob, int iThread = -1 )
+	int PeakCount()
 	{
-		pJob->AddRef();
-		CJob *pOverflowJob = NULL;
-		{
-			AUTO_LOCK( m_mutex );
-			if ( m_nItems >= m_nMaxItems )
-				PopLocked( &pOverflowJob );
-			m_Queues[pJob->GetPriority()].push_back( pJob );
-			if ( ++m_nItems == 1 )
-				m_JobAvailableEvent.Set();
-		}
+		AUTO_LOCK( m_mutex );
+		return m_nPeakItems;
+	}
 
-		// Queue mutation and notification are one locked transition. Executing
-		// an overflow callback is outside that lock and releases the popped
-		// job's queue reference, never the incoming job's reference.
-		if ( pOverflowJob )
-		{
-			ServiceJobAndRelease( pOverflowJob, iThread );
-			return 1;
-		}
-		return 0;
+	int Capacity()
+	{
+		AUTO_LOCK( m_mutex );
+		return m_nMaxItems;
+	}
+
+	void SetCapacity( int nMaxItems )
+	{
+		AUTO_LOCK( m_mutex );
+		m_nMaxItems = nMaxItems;
+		UpdateSpaceLocked();
+	}
+
+	// Admits pJob unless the queue already holds its capacity.
+	bool TryPush( CJob *pJob )
+	{
+		AUTO_LOCK( m_mutex );
+		if ( m_nItems >= m_nMaxItems )
+			return false;
+		PushLocked( pJob );
+		return true;
+	}
+
+	// Admits pJob regardless of capacity (see the class comment).
+	void ForcePush( CJob *pJob )
+	{
+		AUTO_LOCK( m_mutex );
+		PushLocked( pJob );
 	}
 
 	bool Pop( CJob **ppJob )
@@ -96,6 +125,12 @@ public:
 		return m_JobAvailableEvent;
 	}
 
+	// Blocks until the queue has space or the timeout elapses; runs nothing.
+	void WaitForSpace( unsigned timeoutMs ) { m_SpaceAvailableEvent.Wait( timeoutMs ); }
+
+	// Wakes blocked producers so they re-evaluate the pool's state.
+	void NotifySpaceWaiters() { m_SpaceAvailableEvent.Set(); }
+
 	void Flush()
 	{
 		// Only safe to call when the system is suspended. Detach queue ownership
@@ -107,6 +142,7 @@ public:
 				pending[i].swap( m_Queues[i] );
 			m_nItems = 0;
 			m_JobAvailableEvent.Reset();
+			UpdateSpaceLocked();
 		}
 		for ( int i = JP_HIGH; i >= 0; --i )
 		{
@@ -119,6 +155,18 @@ public:
 	}
 
 private:
+	// Queue mutation and notification are one locked transition.
+	void PushLocked( CJob *pJob )
+	{
+		pJob->AddRef();
+		m_Queues[pJob->GetPriority()].push_back( pJob );
+		if ( ++m_nItems == 1 )
+			m_JobAvailableEvent.Set();
+		if ( m_nItems > m_nPeakItems )
+			m_nPeakItems = m_nItems;
+		UpdateSpaceLocked();
+	}
+
 	bool PopLocked( CJob **ppJob )
 	{
 		for ( int i = JP_HIGH; i >= 0; --i )
@@ -129,6 +177,7 @@ private:
 				m_Queues[i].pop_front();
 				if ( --m_nItems == 0 )
 					m_JobAvailableEvent.Reset();
+				UpdateSpaceLocked();
 				return true;
 			}
 		}
@@ -137,11 +186,21 @@ private:
 		return false;
 	}
 
+	void UpdateSpaceLocked()
+	{
+		if ( m_nItems < m_nMaxItems )
+			m_SpaceAvailableEvent.Set();
+		else
+			m_SpaceAvailableEvent.Reset();
+	}
+
 	std::deque<CJob *>	m_Queues[JP_HIGH + 1];
 	int					m_nItems;
 	int					m_nMaxItems;
+	int					m_nPeakItems;
 	CThreadMutex		m_mutex;
 	CThreadManualEvent	m_JobAvailableEvent;
+	CThreadManualEvent	m_SpaceAvailableEvent;
 
 } ALIGN16_POST;
 
@@ -245,7 +304,12 @@ private:
 	bool TakeJob( CJobThread *pWorker, CJob **ppJob );
 	bool HasWorkFor( CJobThread *pWorker );
 	void WakeWorkers( CJobThread *pExclude );
-	bool TryExecuteWaitedJob( CJob *pJob );
+	bool TryExecuteWaitedJob( CJob *pJob, CJobThread *pWorker );
+	bool IsEligibleWaiter( CJob *pJob, CJobThread *pWorker );
+	void CheckNestedWait( CJob **ppJobs, int nJobs, CJobThread *pWorker );
+	void AdmitToFullSharedQueue( CJob *pJob, CJobThread *pWorker );
+	bool HasPendingWork();
+	void BeginWorkerWait();
 	void SpillStealDeques();
 	int AbortStealDeques();
 	int WaitForEvents( CThreadEvent **pEvents, int nEvents, bool bWaitAll );
@@ -253,6 +317,7 @@ private:
 private:
 	friend class CJobThread;
 	friend void GetThreadPoolSchedulingStats( IThreadPool *, ThreadPoolSchedulingStats_t * );
+	friend void SetThreadPoolSharedQueueCapacity( IThreadPool *, int );
 
 	CJobQueue				m_SharedQueue;
 	CInterlockedInt			m_nIdleThreads;
@@ -266,8 +331,19 @@ private:
 	CInterlockedInt m_nWorkers;
 	CInterlockedInt m_nWaitedJobsRunInline;
 
+	// Bounded shared queue and nested-wait observations (see
+	// ThreadPoolSchedulingStats_t).
+	CInterlockedInt m_nSharedQueueCallerRuns;
+	CInterlockedInt m_nSharedQueueBlockedAdmissions;
+	CInterlockedInt m_nSharedQueueOverCapacity;
+	CInterlockedInt m_nNestedWaits;
+	CInterlockedInt m_nForbiddenNestedWaits;
+	CInterlockedInt m_nWorkerEventWaits;
+	CInterlockedInt m_nWorkersBlockedInWait;
+	CInterlockedInt m_nStarvationEvents;
+
 	CThreadMutex			m_SuspendMutex;
-	int						m_nSuspend;
+	CInterlockedInt			m_nSuspend; // written under m_SuspendMutex; read by producers
 	CInterlockedInt			m_nJobs;
 
 	// Some jobs should only be executed on the threadpool thread(s). Ie: the rendering thread has the GL context
@@ -534,6 +610,21 @@ JOB_INTERFACE void GetThreadPoolSchedulingStats(
 		pStats->nSteals += ThreadAtomicLoad( &pWorker->m_nSteals );
 	}
 	pStats->nWaitedJobsRunInline = pThreadPool->m_nWaitedJobsRunInline;
+	pStats->nSharedQueueCapacity = pThreadPool->m_SharedQueue.Capacity();
+	pStats->nSharedQueuePeak = pThreadPool->m_SharedQueue.PeakCount();
+	pStats->nSharedQueueCallerRuns = pThreadPool->m_nSharedQueueCallerRuns;
+	pStats->nSharedQueueBlockedAdmissions = pThreadPool->m_nSharedQueueBlockedAdmissions;
+	pStats->nSharedQueueOverCapacity = pThreadPool->m_nSharedQueueOverCapacity;
+	pStats->nNestedWaits = pThreadPool->m_nNestedWaits;
+	pStats->nForbiddenNestedWaits = pThreadPool->m_nForbiddenNestedWaits;
+	pStats->nWorkerEventWaits = pThreadPool->m_nWorkerEventWaits;
+	pStats->nStarvationEvents = pThreadPool->m_nStarvationEvents;
+}
+
+JOB_INTERFACE void SetThreadPoolSharedQueueCapacity( IThreadPool *pPool, int nCapacity )
+{
+	Assert( nCapacity >= 1 );
+	static_cast<CThreadPool *>( pPool )->m_SharedQueue.SetCapacity( MAX( nCapacity, 1 ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -543,10 +634,14 @@ JOB_INTERFACE void GetThreadPoolSchedulingStats(
 //-----------------------------------------------------------------------------
 
 CThreadPool::CThreadPool()
-    : m_nIdleThreads( 0 ), m_nWorkers( 0 ), m_nWaitedJobsRunInline( 0 ), m_nSuspend( 0 ),
-      m_nJobs( 0 ), m_bExecOnThreadPoolThreadsOnly( false )
+    : m_nIdleThreads( 0 ), m_nWorkers( 0 ), m_nWaitedJobsRunInline( 0 ),
+      m_nSharedQueueCallerRuns( 0 ), m_nSharedQueueBlockedAdmissions( 0 ),
+      m_nSharedQueueOverCapacity( 0 ), m_nNestedWaits( 0 ), m_nForbiddenNestedWaits( 0 ),
+      m_nWorkerEventWaits( 0 ), m_nWorkersBlockedInWait( 0 ), m_nStarvationEvents( 0 ),
+      m_nSuspend( 0 ), m_nJobs( 0 ), m_bExecOnThreadPoolThreadsOnly( false )
 {
 	memset( m_pWorkers, 0, sizeof( m_pWorkers ) );
+	m_SharedQueue.SetCapacity( TP_DEFAULT_SHARED_QUEUE_CAPACITY );
 }
 
 //---------------------------------------------------------
@@ -622,7 +717,10 @@ int CThreadPool::SuspendExecution()
 		}
 	}
 
-	return m_nSuspend++;
+	int result = m_nSuspend++;
+	// A producer blocked on a full shared queue must now admit instead.
+	m_SharedQueue.NotifySpaceWaiters();
+	return result;
 }
 
 //---------------------------------------------------------
@@ -658,7 +756,18 @@ int CThreadPool::YieldWait( CThreadEvent **pEvents, int nEvents, bool bWaitAll, 
 	// Timeouts remain unimplemented: the legacy loop always waited until the
 	// events were signaled, and callers depend on that.
 	Assert( timeout == TT_INFINITE );
-	return WaitForEvents( pEvents, nEvents, bWaitAll );
+
+	// A worker blocking on bare events holds a worker for a dependency the
+	// pool cannot see. It is counted, not refused.
+	CJobThread *pWorker = FindCurrentWorker();
+	if ( !pWorker )
+		return WaitForEvents( pEvents, nEvents, bWaitAll );
+
+	m_nWorkerEventWaits++;
+	BeginWorkerWait();
+	int result = WaitForEvents( pEvents, nEvents, bWaitAll );
+	m_nWorkersBlockedInWait--;
+	return result;
 }
 
 int CThreadPool::WaitForEvents( CThreadEvent **pEvents, int nEvents, bool bWaitAll )
@@ -684,26 +793,37 @@ int CThreadPool::WaitForEvents( CThreadEvent **pEvents, int nEvents, bool bWaitA
 
 //---------------------------------------------------------
 
-// Runs a waited job on the waiting thread when no worker has started it and it
-// carries no thread requirement: it must belong to this pool, the pool must
-// allow non-pool threads to execute (m_bExecOnThreadPoolThreadsOnly), and it
-// must be neither JF_SERIAL nor bound to a service thread. Its queue entry
-// stays admitted and is released (not rerun) by the worker that later pops it.
-bool CThreadPool::TryExecuteWaitedJob( CJob *pJob )
+// Whether the waiting thread may run pJob itself. pWorker is the waiter's
+// worker in this pool, or NULL for any other thread. The job must belong to
+// this pool; a thread that is not one of its workers is eligible only when the
+// pool allows that (m_bExecOnThreadPoolThreadsOnly) and the job has no thread
+// requirement; a worker is eligible for unbound jobs and for jobs bound to it
+// (its service thread, or JF_SERIAL work for worker 0). Call with the job
+// mutex held: a job's service thread is written under it.
+bool CThreadPool::IsEligibleWaiter( CJob *pJob, CJobThread *pWorker )
 {
-	if ( m_bExecOnThreadPoolThreadsOnly || pJob->m_pThreadPool != this ||
-	     ( pJob->GetFlags() & JF_SERIAL ) || !pJob->CanExecute() )
-	{
+	if ( pJob->m_pThreadPool != this )
 		return false;
-	}
+	const int iRequired = ( pJob->GetFlags() & JF_SERIAL ) ? 0 : pJob->GetServiceThread();
+	if ( !pWorker )
+		return !m_bExecOnThreadPoolThreadsOnly && iRequired == -1;
+	return iRequired == -1 || iRequired == pWorker->m_iThread;
+}
+
+// Runs a waited job on the waiting thread when no thread has started it and
+// the waiter is eligible (IsEligibleWaiter). Its queue entry stays admitted
+// and is released (not rerun) by the worker that later pops it.
+bool CThreadPool::TryExecuteWaitedJob( CJob *pJob, CJobThread *pWorker )
+{
+	if ( pJob->m_pThreadPool != this || !pJob->CanExecute() )
+		return false;
 
 	// TryLock fails only if another thread is executing or aborting it.
 	if ( !pJob->TryLock() )
 		return false;
 
-	// The service thread is written under the job mutex.
 	bool bExecuted = false;
-	if ( pJob->GetServiceThread() == -1 && pJob->CanExecute() )
+	if ( pJob->CanExecute() && IsEligibleWaiter( pJob, pWorker ) )
 	{
 		pJob->Execute();
 		m_nWaitedJobsRunInline++;
@@ -711,6 +831,73 @@ bool CThreadPool::TryExecuteWaitedJob( CJob *pJob )
 	}
 	pJob->Unlock();
 	return bExecuted;
+}
+
+//---------------------------------------------------------
+// Nested waits. A worker that waits inside a job holds a worker while it
+// waits. Waiting for a job another thread is already running is allowed.
+// Waiting for a job of this pool that no thread has started and that the
+// waiter cannot run itself (it is bound to another worker) is a forbidden
+// nested wait: the graph contract never implements dependencies by blocking
+// pool jobs, and such a wait deadlocks if the job's worker is (transitively)
+// waiting for the waiter. Forbidden waits are detected and counted, and warned
+// about once; the wait still proceeds as the legacy contract requires. When
+// every worker is blocked in a wait while queued work remains, the pool can
+// make no progress: that is counted and warned about as starvation.
+//---------------------------------------------------------
+
+void CThreadPool::CheckNestedWait( CJob **ppJobs, int nJobs, CJobThread *pWorker )
+{
+	m_nNestedWaits++;
+	for ( int i = 0; i < nJobs; i++ )
+	{
+		CJob *pJob = ppJobs[i];
+		if ( pJob->m_pThreadPool != this || !pJob->CanExecute() || !pJob->TryLock() )
+			continue; // another pool's job, finished, or running
+		const bool bForbidden = pJob->CanExecute() && !IsEligibleWaiter( pJob, pWorker );
+		pJob->Unlock();
+		if ( bForbidden )
+		{
+			static CInterlockedInt s_nWarned( 0 );
+			if ( m_nForbiddenNestedWaits++ == 0 && s_nWarned++ == 0 )
+			{
+				Warning( "Thread pool worker %d waits for unstarted job '%s' bound to another "
+				         "thread (forbidden nested wait)\n",
+				    pWorker->m_iThread, pJob->Describe() );
+			}
+		}
+	}
+}
+
+// Marks the calling worker blocked in a wait and reports starvation.
+void CThreadPool::BeginWorkerWait()
+{
+	if ( ++m_nWorkersBlockedInWait == m_nWorkers && HasPendingWork() )
+	{
+		static CInterlockedInt s_nWarned( 0 );
+		if ( m_nStarvationEvents++ == 0 && s_nWarned++ == 0 )
+		{
+			Warning( "Thread pool starvation: all %d workers are blocked in waits with queued "
+			         "work\n",
+			    (int)m_nWorkers );
+		}
+	}
+}
+
+bool CThreadPool::HasPendingWork()
+{
+	if ( m_SharedQueue.Count() )
+		return true;
+	const int nWorkers = m_nWorkers;
+	for ( int i = 0; i < nWorkers; i++ )
+	{
+		if ( m_pWorkers[i]->AccessDirectQueue().Count() ||
+		     m_pWorkers[i]->AccessStealDeque().Count() )
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 //---------------------------------------------------------
@@ -723,9 +910,10 @@ int CThreadPool::YieldWait( CJob **ppJobs, int nJobs, bool bWaitAll, unsigned ti
 		return TW_FAILED;
 	}
 
+	CJobThread *pWorker = FindCurrentWorker();
 	for ( int i = 0; i < nJobs; i++ )
 	{
-		if ( TryExecuteWaitedJob( ppJobs[i] ) && !bWaitAll )
+		if ( TryExecuteWaitedJob( ppJobs[i], pWorker ) && !bWaitAll )
 			break;
 	}
 
@@ -734,7 +922,15 @@ int CThreadPool::YieldWait( CJob **ppJobs, int nJobs, bool bWaitAll, unsigned ti
 		handles.AddToTail( ppJobs[i]->AccessEvent() );
 	}
 
-	return YieldWait( handles.Base(), handles.Count(), bWaitAll, timeout );
+	Assert( timeout == TT_INFINITE );
+	if ( !pWorker )
+		return WaitForEvents( handles.Base(), handles.Count(), bWaitAll );
+
+	CheckNestedWait( ppJobs, nJobs, pWorker );
+	BeginWorkerWait();
+	int result = WaitForEvents( handles.Base(), handles.Count(), bWaitAll );
+	m_nWorkersBlockedInWait--;
+	return result;
 }
 
 //---------------------------------------------------------
@@ -797,50 +993,91 @@ void CThreadPool::AddJob( CJob *pJob )
 
 void CThreadPool::InsertJobInQueue( CJob *pJob )
 {
-	CJobQueue *pQueue;
+	// Thread-affine and JF_SERIAL work goes to that worker's direct queue,
+	// which is unbounded and never stolen.
 	CJobThread *pDirectWorker = NULL;
-
-	if ( !( pJob->GetFlags() & JF_SERIAL ) )
-	{
-		int iThread = pJob->GetServiceThread();
-		if ( iThread == -1 || !m_Threads.IsValidIndex( iThread ) )
-		{
-			// Work spawned by one of this pool's workers goes to that worker's
-			// bounded steal deque; when it is full, the shared queue takes it.
-			CJobThread *pWorker = FindCurrentWorker();
-			if ( pWorker )
-			{
-				pJob->AddRef(); // the deque entry's reference
-				if ( pWorker->AccessStealDeque().PushBottom( pJob ) )
-				{
-					CJobThread::CountEvent( &pWorker->m_nStealDequePushes );
-					if ( NumIdleThreads() )
-						WakeWorkers( pWorker );
-					return;
-				}
-				pJob->Release();
-				CJobThread::CountEvent( &pWorker->m_nStealDequeSpills );
-			}
-			pQueue = &m_SharedQueue;
-		}
-		else
-		{
-			pDirectWorker = m_Threads[iThread];
-			pQueue = &pDirectWorker->AccessDirectQueue();
-		}
-	}
-	else
+	if ( pJob->GetFlags() & JF_SERIAL )
 	{
 		pDirectWorker = m_Threads[0];
-		pQueue = &pDirectWorker->AccessDirectQueue();
+	}
+	else
+	{
+		int iThread = pJob->GetServiceThread();
+		if ( iThread != -1 && m_Threads.IsValidIndex( iThread ) )
+			pDirectWorker = m_Threads[iThread];
+	}
+	if ( pDirectWorker )
+	{
+		pDirectWorker->AccessDirectQueue().ForcePush( pJob );
+		pDirectWorker->Wake();
+		return;
 	}
 
-	m_nJobs -= pQueue->Push( pJob );
+	// Work spawned by one of this pool's workers goes to that worker's
+	// bounded steal deque; when it is full, the shared queue takes it.
+	CJobThread *pWorker = FindCurrentWorker();
+	if ( pWorker )
+	{
+		pJob->AddRef(); // the deque entry's reference
+		if ( pWorker->AccessStealDeque().PushBottom( pJob ) )
+		{
+			CJobThread::CountEvent( &pWorker->m_nStealDequePushes );
+			if ( NumIdleThreads() )
+				WakeWorkers( pWorker );
+			return;
+		}
+		pJob->Release();
+		CJobThread::CountEvent( &pWorker->m_nStealDequeSpills );
+	}
 
-	if ( pDirectWorker )
-		pDirectWorker->Wake();
-	else
-		WakeWorkers( NULL );
+	if ( !m_SharedQueue.TryPush( pJob ) )
+	{
+		AdmitToFullSharedQueue( pJob, pWorker );
+		return;
+	}
+	WakeWorkers( NULL );
+}
+
+//---------------------------------------------------------
+// Overflow policy for the bounded shared queue (RFC 0006 "Ring buffers and
+// bounded queues"). Required work is never dropped, overwritten or run on a
+// thread that did not submit it:
+//  - A worker of this pool runs the job it is submitting itself (caller
+//    runs). Blocking a worker on queue space could stall every worker.
+//  - Any other thread blocks until the queue has space. The wait runs no job
+//    and holds no pool lock.
+//  - While the pool cannot consume (suspended, or no running workers), the
+//    job is admitted beyond capacity instead of blocking forever; each such
+//    admission is counted.
+//---------------------------------------------------------
+
+void CThreadPool::AdmitToFullSharedQueue( CJob *pJob, CJobThread *pWorker )
+{
+	if ( pWorker )
+	{
+		m_nSharedQueueCallerRuns++;
+		pJob->AddRef(); // the reference a queue entry would have held
+		ServiceJobAndRelease( pJob, pWorker->m_iThread );
+		m_nJobs--;
+		return;
+	}
+
+	m_nSharedQueueBlockedAdmissions++;
+	for ( ;; )
+	{
+		if ( m_nSuspend != 0 || m_nWorkers == 0 )
+		{
+			m_SharedQueue.ForcePush( pJob );
+			m_nSharedQueueOverCapacity++;
+			break;
+		}
+		// Workers were woken when the queue filled; the timeout bounds the
+		// time to notice suspension, not the wake protocol.
+		m_SharedQueue.WaitForSpace( 100 );
+		if ( m_SharedQueue.TryPush( pJob ) )
+			break;
+	}
+	WakeWorkers( NULL );
 }
 
 //---------------------------------------------------------
@@ -918,7 +1155,7 @@ void CThreadPool::SpillStealDeques()
 		CJob *pJob;
 		while ( m_Threads[i]->AccessStealDeque().StealTop( &pJob ) )
 		{
-			m_SharedQueue.Push( pJob );
+			m_SharedQueue.ForcePush( pJob );
 			pJob->Release(); // the shared queue holds its own reference
 		}
 	}
@@ -974,7 +1211,9 @@ void CThreadPool::ChangePriority( CJob *pJob, JobPriority_t priority )
 	if ( pJob->GetPriority() < priority )
 	{
 		pJob->SetPriority( priority );
-		m_SharedQueue.Push( pJob );
+		// A re-insertion of admitted work: the earlier entry is released
+		// unrun when popped, so this does not count against admission.
+		m_SharedQueue.ForcePush( pJob );
 		WakeWorkers( NULL );
 	}
 	else

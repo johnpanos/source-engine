@@ -1039,6 +1039,8 @@ CParticleMgr::CParticleMgr()
 {
 	m_nToolParticleEffectId = 0;
 	m_bUpdatingEffects = false;
+	m_bSimulateUpdating = false;
+	m_bSimulateNewEffectsPending = false;
 	m_bRenderParticleEffects = true;
 	m_pMaterialSystem = NULL;
 	m_pThreadPool[0] = 0;
@@ -1429,6 +1431,21 @@ void CParticleMgr::IncrementFrameCode()
 //-----------------------------------------------------------------------------
 void CParticleMgr::Simulate( float flTimeDelta )
 {
+	SimulateBegin( flTimeDelta );
+	if ( m_bSimulateNewEffectsPending )
+		UpdateNewEffectsSimulate();
+	SimulateEnd();
+}
+
+// Simulate in three parts, for frame graphs: SimulateBegin updates the old
+// effects and gathers the new ones; the new effects' simulation is a batch of
+// SimulateBatchCount() independent items (SimulateBatchItem); SimulateEnd
+// detects changes and removes effects. Simulate runs them in this order.
+void CParticleMgr::SimulateBegin( float flTimeDelta )
+{
+	m_bSimulateUpdating = false;
+	m_bSimulateNewEffectsPending = false;
+
 	g_nParticlesDrawn = 0;
 
 	if(!m_pMaterialSystem)
@@ -1438,7 +1455,26 @@ void CParticleMgr::Simulate( float flTimeDelta )
 	}
 
 	// Update all the effects.
-	UpdateAllEffects( flTimeDelta );
+	m_bSimulateUpdating = true;
+	UpdateAllEffectsBegin( flTimeDelta );
+}
+
+unsigned CParticleMgr::SimulateBatchCount() const
+{
+	return m_bSimulateNewEffectsPending ? NewEffectsSimulateCount() : 0;
+}
+
+void CParticleMgr::SimulateBatchItem( unsigned iItem )
+{
+	NewEffectsSimulateItem( iItem );
+}
+
+void CParticleMgr::SimulateEnd()
+{
+	if ( !m_bSimulateUpdating )
+		return;
+	m_bSimulateUpdating = false;
+	UpdateAllEffectsEnd();
 }
 
 bool g_bMeasureParticlePerformance;
@@ -1795,7 +1831,17 @@ static int CountParticleSystemActiveParticles( CParticleCollection *p )
 }
 
 
+// UpdateNewEffects in its three parts: gather (control points from entities,
+// early retirement), the independent per-effect simulation, and change
+// detection. The parts keep their state in m_NewEffectsUpdate between them.
 void CParticleMgr::UpdateNewEffects( float flTimeDelta )
+{
+	UpdateNewEffectsBegin( flTimeDelta );
+	UpdateNewEffectsSimulate();
+	UpdateNewEffectsEnd();
+}
+
+void CParticleMgr::UpdateNewEffectsBegin( float flTimeDelta )
 {
 // #ifdef TF_CLIENT_DLL
 // 	extern bool g_bDontMakeSkipToTimeTakeForever;
@@ -1806,13 +1852,17 @@ void CParticleMgr::UpdateNewEffects( float flTimeDelta )
 
 	g_pParticleSystemMgr->SetLastSimulationTime( gpGlobals->curtime );
 
-	int nParticleActiveParticlesCount = 0;
-	int nParticleStatsTriggerCount = cl_particle_stats_trigger_count.GetInt();
+	int &nParticleActiveParticlesCount = m_NewEffectsUpdate.nParticleActiveParticlesCount;
+	int &nParticleStatsTriggerCount = m_NewEffectsUpdate.nParticleStatsTriggerCount;
+	nParticleActiveParticlesCount = 0;
+	nParticleStatsTriggerCount = cl_particle_stats_trigger_count.GetInt();
 
 	BeginSimulateParticles();
-	CUtlVector<CNewParticleEffect *> particlesToSimulate;
+	CUtlVector<CNewParticleEffect *> &particlesToSimulate = m_NewEffectsUpdate.particlesToSimulate;
+	particlesToSimulate.RemoveAll();
 	BuildParticleSimList( particlesToSimulate );
 	s_flThreadedPSystemTimeStep = flTimeDelta;
+	m_NewEffectsUpdate.flTimeDelta = flTimeDelta;
 
 	int nCount = particlesToSimulate.Count();
 
@@ -1839,6 +1889,17 @@ void CParticleMgr::UpdateNewEffects( float flTimeDelta )
 	if ( nCount )
 	{
 		UpdateDirtySpatialPartitionEntities();
+	}
+}
+
+void CParticleMgr::UpdateNewEffectsSimulate()
+{
+	float flTimeDelta = m_NewEffectsUpdate.flTimeDelta;
+	CUtlVector<CNewParticleEffect *> &particlesToSimulate = m_NewEffectsUpdate.particlesToSimulate;
+	int nCount = particlesToSimulate.Count();
+
+	if ( nCount )
+	{
 		if ( !r_threaded_particles.GetBool() )
 		{
 			for( int i=0; i<nCount; i++)
@@ -1883,6 +1944,26 @@ void CParticleMgr::UpdateNewEffects( float flTimeDelta )
 			}
 		}
 	}
+}
+
+unsigned CParticleMgr::NewEffectsSimulateCount() const
+{
+	return (unsigned)m_NewEffectsUpdate.particlesToSimulate.Count();
+}
+
+// One effect of UpdateNewEffectsSimulate's batch; effects are independent.
+void CParticleMgr::NewEffectsSimulateItem( unsigned iEffect )
+{
+	ProcessPSystemAtTime(
+	    m_NewEffectsUpdate.particlesToSimulate[iEffect], m_NewEffectsUpdate.flTimeDelta );
+}
+
+void CParticleMgr::UpdateNewEffectsEnd()
+{
+	CUtlVector<CNewParticleEffect *> &particlesToSimulate = m_NewEffectsUpdate.particlesToSimulate;
+	int nCount = particlesToSimulate.Count();
+	int nParticleActiveParticlesCount = m_NewEffectsUpdate.nParticleActiveParticlesCount;
+	int nParticleStatsTriggerCount = m_NewEffectsUpdate.nParticleStatsTriggerCount;
 
 	// now, run non-reentrant part for updating changes
 	for( int i=0; i<nCount; i++)
@@ -1925,6 +2006,18 @@ void CParticleMgr::UpdateNewEffects( float flTimeDelta )
 
 void CParticleMgr::UpdateAllEffects( float flTimeDelta )
 {
+	UpdateAllEffectsBegin( flTimeDelta );
+	if ( m_bSimulateNewEffectsPending )
+		UpdateNewEffectsSimulate();
+	UpdateAllEffectsEnd();
+}
+
+// Through the new effects' gather. With g_bMeasureParticlePerformance the
+// whole fixed-step new-effects update runs here and nothing is left pending.
+void CParticleMgr::UpdateAllEffectsBegin( float flTimeDelta )
+{
+	m_bSimulateNewEffectsPending = false;
+
 	// These reflect the convars so we don't parse the strings every particle.
 	g_cl_particle_show_bbox = cl_particle_show_bbox.GetBool();
 	g_cl_particle_show_bbox_cost = cl_particle_show_bbox_cost.GetInt();
@@ -1980,7 +2073,17 @@ void CParticleMgr::UpdateAllEffects( float flTimeDelta )
 	}
 	else
 	{
-		UpdateNewEffects( flTimeDelta );
+		UpdateNewEffectsBegin( flTimeDelta );
+		m_bSimulateNewEffectsPending = true;
+	}
+}
+
+void CParticleMgr::UpdateAllEffectsEnd()
+{
+	if ( m_bSimulateNewEffectsPending )
+	{
+		m_bSimulateNewEffectsPending = false;
+		UpdateNewEffectsEnd();
 	}
 
 	m_bUpdatingEffects = false;

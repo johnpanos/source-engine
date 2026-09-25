@@ -20,7 +20,10 @@
 #include "jobsystem/pilot_particles.h"
 #include "vstdlib/jobgraph_pool_bridge.h"
 
+#include <atomic>
+#include <chrono>
 #include <cstdio>
+#include <thread>
 #include <vector>
 
 using namespace jobsystem;
@@ -168,6 +171,56 @@ static void Test_RealPoolZeroWorkersInline()
 	for ( int x : runs ) CHECK( x == 1 );
 }
 
+
+// The engine pool bridge overlaps a wave's main-thread jobs with its compute
+// jobs: each waits for the other to start, which only concurrent execution
+// satisfies before the deadline.
+static bool AwaitFlag( const std::atomic<bool> &flag )
+{
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds( 5 );
+	while ( !flag.load() )
+	{
+		if ( std::chrono::steady_clock::now() > deadline )
+			return false;
+		std::this_thread::yield();
+	}
+	return true;
+}
+
+static void Test_RealPoolOverlapsCallerJobs()
+{
+	RealPool pool( 2 );
+	for ( int round = 0; round < 20; ++round )
+	{
+		JobGraphBuilder b;
+		std::atomic<bool> computeStarted( false ), mainStarted( false );
+		std::atomic<bool> computeSaw( false ), mainSaw( false );
+		JobDesc compute;
+		compute.name = "compute";
+		compute.function = [&]( JobRunContext & )
+		{
+			computeStarted = true;
+			computeSaw = AwaitFlag( mainStarted );
+		};
+		JobDesc main;
+		main.name = "main";
+		main.executor = Executor::MainThread();
+		main.function = [&]( JobRunContext & )
+		{
+			mainStarted = true;
+			mainSaw = AwaitFlag( computeStarted );
+		};
+		b.AddJob( compute );
+		b.AddJob( main );
+		SealedGraph g = b.Seal().Value();
+		RunOptions options;
+		options.pumpMainThread = true;
+		RunResult r = PooledExecutor( pool.backend ).Execute( g, options );
+		CHECK( r.AllSucceeded() );
+		CHECK( computeSaw.load() && mainSaw.load() );
+	}
+}
+
 int main()
 {
 	std::printf( "enginebridgetest (RFC 0003 real vstdlib pool executes job graphs)\n" );
@@ -176,6 +229,7 @@ int main()
 	RUN( Test_RealPoolMatchesDeterministic );
 	RUN( Test_RealPoolFailurePropagation );
 	RUN( Test_RealPoolZeroWorkersInline );
+	RUN( Test_RealPoolOverlapsCallerJobs );
 	std::printf( "\n%d checks, %d failures\n", g_checks, g_failures );
 	return g_failures == 0 ? 0 : 1;
 }

@@ -12,12 +12,14 @@
 //          the backend; MainThread/BlockingIO jobs run only on the caller with
 //          RunOptions::pumpMainThread enabled. No dedicated blocking executor
 //          is provided. Unpumped lanes and their dependents remain nonterminal
-//          and are reported as stalled. A null/zero-worker backend runs every
+//          and are reported as stalled. Within a wave, the caller's jobs run
+//          while workers run the wave's compute jobs
+//          (IWorkerBackend::ParallelForWithCaller); a wave ends when both have. A null/zero-worker backend runs every
 //          lane inline, matching ParallelExecutor's low-capacity mode.
 //
 //          Execute is a synchronous host entry point: it must not be nested
 //          inside a job on the same backend. The wave join does not pump caller
-//          work while workers run. For serviceable graphs its terminal states
+//          work of later waves while workers run. For serviceable graphs its terminal states
 //          must agree with the Deterministic/Parallel executors.
 //
 //=============================================================================//

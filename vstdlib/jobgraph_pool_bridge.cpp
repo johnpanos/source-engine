@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "vstdlib/jobgraph_pool_bridge.h"
+#include "vstdlib/jobgraph_frame.h"
 #include "vstdlib/jobgraph_parallel.h"
 #include "jobsystem/worker_backend.h"
 #include "vstdlib/jobthread.h"
@@ -54,6 +55,44 @@ public:
 			jobs.push_back( m_pPool->QueueCall( &run, &ParallelRun::Run ) );
 
 		run.Run();
+		JoinRunners( jobs );
+	}
+
+	// Workers start on body() before the caller runs caller(); the caller then
+	// claims whatever body() indices remain and joins. Only this call's runners
+	// are queued and joined.
+	virtual void ParallelForWithCaller(
+	    int n, const std::function<void( int )> &body, const std::function<void()> &caller )
+	{
+		if ( n <= 0 || !m_pPool || m_nWorkers <= 0 )
+		{
+			caller();
+			for ( int i = 0; i < n; ++i )
+				body( i );
+			return;
+		}
+
+		// The caller is busy with caller() first, so queue a runner per index
+		// up to the worker count.
+		const int nRunners = n < m_nWorkers ? n : m_nWorkers;
+		std::vector<CJob *> jobs;
+		jobs.reserve( (size_t)nRunners );
+		ParallelRun run( (unsigned)n, body );
+		for ( int i = 0; i < nRunners; ++i )
+			jobs.push_back( m_pPool->QueueCall( &run, &ParallelRun::Run ) );
+
+		caller();
+		run.Run();
+		JoinRunners( jobs );
+	}
+
+	virtual int WorkerCount() const { return m_nWorkers; }
+
+	IThreadPool *m_pPool;
+
+private:
+	static void JoinRunners( std::vector<CJob *> &jobs )
+	{
 		for ( CJob *job : jobs )
 		{
 			// Abort cancels unclaimed runners or joins a running one. Acquire the
@@ -66,11 +105,6 @@ public:
 		}
 	}
 
-	virtual int WorkerCount() const { return m_nWorkers; }
-
-	IThreadPool *m_pPool;
-
-private:
 	class ParallelRun
 	{
 	public:
@@ -111,6 +145,16 @@ VSTDLIB_INTERFACE bool RunThreadPoolJobBatch(
 	// caller and joins/aborts only its own CJobs; no unrelated queue is drained.
 	CThreadPoolWorkerBackend backend( pool, pool ? pool->NumThreads() : 0 );
 	return jobsystem::ExecuteParallelBatch( desc, &backend, mode );
+}
+
+VSTDLIB_INTERFACE bool RunDeclaredFrameGraph( IThreadPool *pPool,
+    jobsystem::DeclaredFrameGraph *pGraph, const jobsystem::FrameNodeDesc *pNodes,
+    unsigned nNodes, jobsystem::FrameGraphMode mode, jobsystem::DeclaredFrameRun *pResult )
+{
+	// As RunThreadPoolJobBatch: a stack-owned binding to the borrowed pool.
+	CThreadPoolWorkerBackend backend( pPool, pPool ? pPool->NumThreads() : 0 );
+	*pResult = pGraph->Run( pNodes, nNodes, &backend, mode );
+	return pResult->valid;
 }
 
 //-----------------------------------------------------------------------------

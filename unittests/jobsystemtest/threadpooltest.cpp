@@ -10,8 +10,9 @@
 //          rule (no unrelated work runs on a waiting thread; waited jobs run
 //          inline only when eligible), quiescent spill/abort of steal deques,
 //          recursive fan-out with nested waits, the legacy parallel
-//          processors, concurrent status observation, and CTSQueue MPMC
-//          exactly-once/FIFO behavior.
+//          processors, concurrent status observation, CTSQueue MPMC
+//          exactly-once/FIFO behavior, the bounded shared queue's overflow
+//          policy, and nested-wait detection.
 //
 //=============================================================================//
 
@@ -692,6 +693,9 @@ static void TestRecursiveFanOut()
 		    return pPool->GetJobCount() == 0;
 	    } ) );
 	CHECK( Stats( pPool ).nSteals > 0 );
+	// Workers waited on their own unbound children, which is allowed.
+	CHECK( Stats( pPool ).nNestedWaits > 0 );
+	CHECK( Stats( pPool ).nForbiddenNestedWaits == 0 );
 	StopPool( pPool );
 }
 
@@ -876,6 +880,466 @@ static void TestTSQueueConcurrent()
 	delete pQueue;
 }
 
+
+//-----------------------------------------------------------------------------
+// 12. Bounded shared queue: capacity and overflow policy
+//-----------------------------------------------------------------------------
+
+static CProbeJob *NewProbe( std::atomic<int> *pDone, unsigned flags = JF_QUEUE )
+{
+	CProbeJob *pJob = new CProbeJob;
+	pJob->SetFlags( flags );
+	pJob->m_pDone = pDone;
+	return pJob;
+}
+
+// A non-worker producer blocks on a full queue, running nothing, until the
+// workers drain it.
+static void TestSharedQueueBlocksProducer()
+{
+	BlockedPool blocked( 1 );
+	const int nCapacity = 4, nJobs = 12;
+	SetThreadPoolSharedQueueCapacity( blocked.pPool, nCapacity );
+	const ThreadPoolSchedulingStats_t before = Stats( blocked.pPool );
+	CHECK( before.nSharedQueueCapacity == nCapacity );
+
+	std::atomic<int> done( 0 );
+	std::thread opener(
+	    [&]
+	    {
+		    CHECK( WaitUntil(
+		        [&]
+		        {
+			        return Stats( blocked.pPool ).nSharedQueueBlockedAdmissions >
+			               before.nSharedQueueBlockedAdmissions;
+		        } ) );
+		    SleepMs( 50 );
+		    CHECK( done.load() == 0 );
+		    blocked.gate = true;
+	    } );
+	std::vector<CProbeJob *> jobs;
+	for ( int i = 0; i < nJobs; i++ )
+	{
+		jobs.push_back( NewProbe( &done ) );
+		blocked.pPool->AddJob( jobs.back() );
+	}
+	opener.join();
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return done.load() == nJobs;
+	    } ) );
+
+	int nOnce = 0, nOnProducer = 0;
+	for ( CProbeJob *pJob : jobs )
+	{
+		nOnce += pJob->m_nExecuted == 1 ? 1 : 0;
+		nOnProducer += pJob->m_thread.load() == ThreadGetCurrentId() ? 1 : 0;
+		pJob->Release();
+	}
+	CHECK( nOnce == nJobs );
+	CHECK( nOnProducer == 0 );
+
+	const ThreadPoolSchedulingStats_t after = Stats( blocked.pPool );
+	std::printf( "bounded producer: peak %d blocked %d caller-runs %d over %d\n",
+	    after.nSharedQueuePeak, after.nSharedQueueBlockedAdmissions,
+	    after.nSharedQueueCallerRuns, after.nSharedQueueOverCapacity );
+	CHECK( after.nSharedQueuePeak == nCapacity );
+	CHECK( after.nSharedQueueBlockedAdmissions > before.nSharedQueueBlockedAdmissions );
+	CHECK( after.nSharedQueueCallerRuns == 0 );
+	CHECK( after.nSharedQueueOverCapacity == 0 );
+	blocked.Release();
+}
+
+// A worker whose steal deque and the shared queue are full runs the job it is
+// submitting itself.
+static void TestSharedQueueWorkerCallerRuns()
+{
+	IThreadPool *pPool = StartPool( 1 );
+	const int nCapacity = 4, nCallerRuns = 40;
+	const int nChildren = 256 + nCapacity + nCallerRuns;
+	SetThreadPoolSharedQueueCapacity( pPool, nCapacity );
+	CSpawnJob *pParent = new CSpawnJob( pPool, nChildren, false );
+	pParent->SetFlags( JF_QUEUE );
+	pPool->AddJob( pParent );
+	JoinStartedOnWorker( pPool, pParent );
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return pParent->m_nDone.load() == nChildren;
+	    } ) );
+
+	int nOnce = 0;
+	for ( CProbeJob *pChild : pParent->m_children )
+	{
+		nOnce +=
+		    ( pChild->m_nExecuted == 1 && pChild->m_thread.load() == pParent->m_thread ) ? 1 : 0;
+		pChild->Release();
+	}
+	CHECK( nOnce == nChildren );
+
+	const ThreadPoolSchedulingStats_t stats = Stats( pPool );
+	std::printf( "bounded worker: pushes %d spills %d peak %d caller-runs %d blocked %d\n",
+	    stats.nStealDequePushes, stats.nStealDequeSpills, stats.nSharedQueuePeak,
+	    stats.nSharedQueueCallerRuns, stats.nSharedQueueBlockedAdmissions );
+	CHECK( stats.nStealDequePushes == 256 );
+	CHECK( stats.nSharedQueuePeak == nCapacity );
+	CHECK( stats.nSharedQueueCallerRuns == nCallerRuns );
+	CHECK( stats.nSharedQueueBlockedAdmissions == 0 );
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return pPool->GetJobCount() == 0;
+	    } ) );
+	pParent->Release();
+	StopPool( pPool );
+}
+
+// A suspended pool cannot drain, so admission exceeds the bound (counted)
+// instead of blocking the producer forever; nothing runs until resume.
+static void TestSharedQueueSuspendedOverCapacity()
+{
+	IThreadPool *pPool = StartPool( 1 );
+	const int nCapacity = 4, nJobs = 7;
+	SetThreadPoolSharedQueueCapacity( pPool, nCapacity );
+	pPool->SuspendExecution();
+	std::atomic<int> done( 0 );
+	std::vector<CProbeJob *> jobs;
+	for ( int i = 0; i < nJobs; i++ )
+	{
+		jobs.push_back( NewProbe( &done ) );
+		pPool->AddJob( jobs.back() );
+	}
+	SleepMs( 50 );
+	CHECK( done.load() == 0 );
+	ThreadPoolSchedulingStats_t stats = Stats( pPool );
+	CHECK( stats.nSharedQueueOverCapacity == nJobs - nCapacity );
+	CHECK( stats.nSharedQueuePeak == nJobs );
+	pPool->ResumeExecution();
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return done.load() == nJobs;
+	    } ) );
+	for ( CProbeJob *pJob : jobs )
+	{
+		CHECK( pJob->m_nExecuted == 1 && pJob->m_thread.load() != ThreadGetCurrentId() );
+		pJob->Release();
+	}
+	StopPool( pPool );
+}
+
+// Suspending the pool while a producer is blocked on a full queue releases the
+// producer into over-capacity admission rather than blocking it until resume.
+static void TestSharedQueueSuspendReleasesBlockedProducer()
+{
+	BlockedPool blocked( 1 );
+	SetThreadPoolSharedQueueCapacity( blocked.pPool, 2 );
+	std::atomic<int> done( 0 );
+	std::vector<CProbeJob *> jobs;
+	for ( int i = 0; i < 6; i++ )
+		jobs.push_back( NewProbe( &done ) );
+	std::atomic<bool> produced( false );
+	std::thread producer(
+	    [&]
+	    {
+		    for ( CProbeJob *pJob : jobs )
+			    blocked.pPool->AddJob( pJob );
+		    produced = true;
+	    } );
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return Stats( blocked.pPool ).nSharedQueueBlockedAdmissions > 0;
+	    } ) );
+	// Suspension needs the blocker's worker to reach its suspend point, so
+	// open the gate from here; the worker then observes the pending suspend
+	// before popping further work.
+	std::thread suspender(
+	    [&]
+	    {
+		    blocked.pPool->SuspendExecution();
+	    } );
+	SleepMs( 50 );
+	blocked.gate = true;
+	suspender.join();
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return produced.load();
+	    } ) );
+	producer.join();
+	CHECK( Stats( blocked.pPool ).nSharedQueueOverCapacity > 0 );
+	blocked.pPool->ResumeExecution();
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return done.load() == 6;
+	    } ) );
+	for ( CProbeJob *pJob : jobs )
+	{
+		CHECK( pJob->m_nExecuted == 1 );
+		pJob->Release();
+	}
+	blocked.Release();
+}
+
+//-----------------------------------------------------------------------------
+// 13. Nested waits by workers: allowed, forbidden, starvation
+//-----------------------------------------------------------------------------
+
+// A queued job, optionally bound to a worker, that waits for another job.
+class CWaitForJob : public CJob
+{
+public:
+	CWaitForJob( IThreadPool *pPool, CJob *pWaitFor )
+	    : m_pPool( pPool ), m_pWaitFor( pWaitFor ), m_thread( 0 ), m_bWaited( false )
+	{
+	}
+
+	virtual JobStatus_t DoExecute()
+	{
+		m_thread = ThreadGetCurrentId();
+		m_bWaited = m_pWaitFor->WaitForFinish( TT_INFINITE, m_pPool );
+		return JOB_OK;
+	}
+
+	IThreadPool *m_pPool;
+	CJob *m_pWaitFor;
+	std::atomic<ThreadId_t> m_thread;
+	std::atomic<bool> m_bWaited;
+};
+
+static CJob *Bind( CJob *pJob, int iThread, unsigned flags = JF_QUEUE )
+{
+	pJob->SetFlags( flags );
+	if ( iThread >= 0 )
+		pJob->SetServiceThread( iThread );
+	return pJob;
+}
+
+static void TestNestedWaitForbidden()
+{
+	// Worker 0 waits for an unstarted job bound to worker 1, which is busy.
+	IThreadPool *pPool = StartPool( 2 );
+	std::atomic<bool> gate( false );
+	CProbeJob *pBlocker = new CProbeJob;
+	pBlocker->m_pGate = &gate;
+	pPool->AddJob( Bind( pBlocker, 1 ) );
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return pBlocker->m_thread.load() != 0;
+	    } ) );
+	CProbeJob *pBound = new CProbeJob;
+	pPool->AddJob( Bind( pBound, 1 ) );
+	CWaitForJob *pWaiter = new CWaitForJob( pPool, pBound );
+	pPool->AddJob( Bind( pWaiter, 0 ) );
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return Stats( pPool ).nForbiddenNestedWaits == 1;
+	    } ) );
+	CHECK( pBound->m_nExecuted == 0 );
+	gate = true;
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return pWaiter->IsFinished();
+	    } ) );
+	CHECK( pWaiter->m_bWaited );
+	CHECK( pBound->m_nExecuted == 1 );
+	CHECK( pBound->m_thread.load() == pBlocker->m_thread.load() );
+	CHECK( pBound->m_thread.load() != pWaiter->m_thread.load() );
+	CHECK( Stats( pPool ).nWaitedJobsRunInline == 0 );
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return pPool->GetJobCount() == 0;
+	    } ) );
+	pBlocker->Release();
+	pBound->Release();
+	pWaiter->Release();
+	StopPool( pPool );
+}
+
+static void TestNestedWaitOnOwnBoundJob( unsigned flags )
+{
+	// Worker 0 waits for an unstarted job bound to itself (by service thread,
+	// or JF_SERIAL). It is eligible and runs inline; the legacy pool and the
+	// first wait-rule pool deadlocked here.
+	IThreadPool *pPool = StartPool( 2 );
+	CProbeJob *pBound = new CProbeJob;
+	Bind( pBound, ( flags & JF_SERIAL ) ? -1 : 0, flags );
+	CWaitForJob *pWaiter = new CWaitForJob( pPool, pBound );
+	pWaiter->SetFlags( JF_QUEUE );
+	pWaiter->SetServiceThread( 0 );
+	// Queue the waiter first so worker 0 is inside it when the bound job is
+	// admitted behind it.
+	std::atomic<bool> go( false );
+	class CGate : public CJob
+	{
+	public:
+		CGate( std::atomic<bool> *pGo ) : m_pGo( pGo ) {}
+		virtual JobStatus_t DoExecute()
+		{
+			while ( !m_pGo->load() )
+				SleepMs( 1 );
+			return JOB_OK;
+		}
+		std::atomic<bool> *m_pGo;
+	};
+	CGate *pGate = new CGate( &go );
+	pPool->AddJob( Bind( pGate, 0 ) );
+	pPool->AddJob( pWaiter );
+	pPool->AddJob( pBound );
+	go = true;
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return pWaiter->IsFinished();
+	    } ) );
+	CHECK( pWaiter->m_bWaited );
+	CHECK( pBound->m_nExecuted == 1 );
+	CHECK( pBound->m_thread.load() == pWaiter->m_thread.load() );
+	const ThreadPoolSchedulingStats_t stats = Stats( pPool );
+	CHECK( stats.nWaitedJobsRunInline == 1 );
+	CHECK( stats.nForbiddenNestedWaits == 0 );
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return pPool->GetJobCount() == 0;
+	    } ) );
+	pGate->Release();
+	pBound->Release();
+	pWaiter->Release();
+	StopPool( pPool );
+}
+
+class CEventWaitJob : public CJob
+{
+public:
+	CEventWaitJob( IThreadPool *pPool, CThreadEvent *pEvent, std::atomic<bool> *pGo )
+	    : m_pPool( pPool ), m_pEvent( pEvent ), m_pGo( pGo )
+	{
+	}
+
+	virtual JobStatus_t DoExecute()
+	{
+		while ( !m_pGo->load() )
+			SleepMs( 1 );
+		m_pPool->YieldWait( *m_pEvent );
+		return JOB_OK;
+	}
+
+	IThreadPool *m_pPool;
+	CThreadEvent *m_pEvent;
+	std::atomic<bool> *m_pGo;
+};
+
+static void TestWorkerWaitStarvation()
+{
+	// The only worker blocks on an event while a job is queued.
+	IThreadPool *pPool = StartPool( 1 );
+	CThreadEvent event;
+	std::atomic<bool> go( false );
+	CEventWaitJob *pWaiter = new CEventWaitJob( pPool, &event, &go );
+	pWaiter->SetFlags( JF_QUEUE );
+	pPool->AddJob( pWaiter );
+	std::atomic<int> done( 0 );
+	CProbeJob *pQueued = NewProbe( &done );
+	pPool->AddJob( pQueued );
+	go = true;
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return Stats( pPool ).nStarvationEvents == 1;
+	    } ) );
+	CHECK( Stats( pPool ).nWorkerEventWaits == 1 );
+	CHECK( done.load() == 0 );
+	event.Set();
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    return done.load() == 1;
+	    } ) );
+	CHECK( pWaiter->WaitForFinish( TT_INFINITE, pPool ) );
+	pWaiter->Release();
+	pQueued->Release();
+	StopPool( pPool );
+}
+
+//-----------------------------------------------------------------------------
+// 14. Thread ids fit the per-thread arrays indexed by them
+//-----------------------------------------------------------------------------
+
+class CIdThread : public CThread
+{
+public:
+	explicit CIdThread( std::atomic<bool> *pRelease ) : m_pRelease( pRelease ), m_id( -1 ) {}
+
+	virtual int Run()
+	{
+		m_id = g_nThreadID;
+		while ( !m_pRelease->load() )
+			SleepMs( 1 );
+		return 0;
+	}
+
+	std::atomic<bool> *m_pRelease;
+	std::atomic<int> m_id;
+};
+
+// Engine and game code index arrays of MAX_THREADS_SUPPORTED entries by
+// g_nThreadID (the spatial partition's per-thread visit sets and the dirty
+// partition list's read-lock counts). Every id tier0 hands out must fit, with
+// many threads alive at once; an id past the bound writes into whatever
+// follows the array (in the voxel tree, its lock).
+static void TestThreadIdsFitPerThreadArrays()
+{
+	const int nThreads = 48;
+	std::atomic<bool> release( false );
+	std::vector<CIdThread *> threads;
+	for ( int i = 0; i < nThreads; i++ )
+	{
+		threads.push_back( new CIdThread( &release ) );
+		CHECK( threads.back()->Start() );
+	}
+	CHECK( WaitUntil(
+	    [&]
+	    {
+		    for ( CIdThread *pThread : threads )
+			    if ( pThread->m_id.load() < 0 )
+				    return false;
+		    return true;
+	    } ) );
+
+	std::vector<bool> seen( 1024, false );
+	int nInBounds = 0, nUnique = 0, maxId = 0;
+	for ( CIdThread *pThread : threads )
+	{
+		const int id = pThread->m_id.load();
+		maxId = id > maxId ? id : maxId;
+		nInBounds += ( id > 0 && id < MAX_THREADS_SUPPORTED ) ? 1 : 0;
+		if ( id >= 0 && id < (int)seen.size() && !seen[id] )
+		{
+			seen[id] = true;
+			nUnique++;
+		}
+	}
+	std::printf( "thread ids: %d threads, max id %d, bound %d\n", nThreads, maxId,
+	    MAX_THREADS_SUPPORTED );
+	CHECK( nInBounds == nThreads );
+	CHECK( nUnique == nThreads );
+
+	release = true;
+	for ( CIdThread *pThread : threads )
+	{
+		CHECK( pThread->Join() );
+		delete pThread;
+	}
+}
+
 //-----------------------------------------------------------------------------
 
 int main( int argc, char **argv )
@@ -904,6 +1368,15 @@ int main( int argc, char **argv )
 	TestQuiescentDequeHandling( QUIESCENT_STOP );
 	TestRecursiveFanOut();
 	TestParallelProcessors();
+	TestSharedQueueBlocksProducer();
+	TestSharedQueueWorkerCallerRuns();
+	TestSharedQueueSuspendedOverCapacity();
+	TestSharedQueueSuspendReleasesBlockedProducer();
+	TestNestedWaitForbidden();
+	TestNestedWaitOnOwnBoundJob( JF_QUEUE );
+	TestNestedWaitOnOwnBoundJob( JF_QUEUE | JF_SERIAL );
+	TestWorkerWaitStarvation();
+	TestThreadIdsFitPerThreadArrays();
 
 	return testing::ReportConformance( s_checks.load(), s_failures.load() );
 }

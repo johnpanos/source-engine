@@ -1478,6 +1478,7 @@ public:
 
 private:
 	friend void OnRenderStart();
+	friend class CRenderStartSteps; // OnRenderStart's blocks (client_render_start_steps.h)
 
 	// Figure out the smoothly interpolated origin for all server entities. Happens right before
 	// letting all entities simulate.

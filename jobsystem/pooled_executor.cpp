@@ -147,10 +147,26 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 				caller.push_back( id );
 		}
 
-		if ( !compute.empty() )
+		// The wave's caller jobs run on this thread while workers run its
+		// compute jobs (they are mutually independent); the backend joins both.
+		if ( !compute.empty() && !caller.empty() )
+		{
+			m_backend->ParallelForWithCaller( (int)compute.size(), runCompute,
+			    [&]
+			    {
+				    for ( uint32_t id : caller )
+					    runJob( id );
+			    } );
+		}
+		else if ( !compute.empty() )
+		{
 			m_backend->ParallelFor( (int)compute.size(), runCompute );
-		for ( uint32_t id : caller )
-			runJob( id );
+		}
+		else
+		{
+			for ( uint32_t id : caller )
+				runJob( id );
+		}
 
 		// Finalize this wave and advance readiness (single-threaded; the barrier
 		// above published all worker writes).

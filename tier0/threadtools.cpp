@@ -75,7 +75,8 @@ ASSERT_INVARIANT(TT_INFINITE == INFINITE);
 // thread creation counter.
 // this is used to provide a unique threadid for each running thread in g_nThreadID ( a thread local variable ).
 
-const int MAX_THREAD_IDS = 128;
+// One bound for the ids and for every array indexed by them.
+const int MAX_THREAD_IDS = MAX_THREADS_SUPPORTED;
 
 static volatile bool s_bThreadIDAllocated[MAX_THREAD_IDS];
 

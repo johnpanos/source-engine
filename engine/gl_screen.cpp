@@ -31,14 +31,40 @@
 #include "replay_internal.h"
 #endif
 #include "tier0/vprof.h"
-
-// memdbgon must be the last include file in a .cpp file!!!
-#include "tier0/memdbgon.h"
+#include "host.h"
+#include "host_saverestore.h"
+#include "gl_shader.h"
+#include "render.h"
+#include "modelloader.h"
+#if defined( USE_SDL )
+#include "appframework/ilaunchermgr.h"
+#endif
 
 // In other C files.
 extern bool V_CheckGamma( void );
 extern void	V_RenderView( void );
 extern void V_RenderVGuiOnly( void );
+#if defined( USE_SDL )
+extern ILauncherMgr *g_pLauncherMgr;
+#endif
+
+// The render steps (host_render_steps.h) use these, defined below or in host.cpp.
+extern bool scr_initialized;
+extern ConVar r_ForceRestore;
+inline void SCR_ShowVCRPlaybackAmount();
+
+// The render steps time their segment with host.cpp's frame-segment timer.
+static const HostFrameSegment_t FRAME_SEGMENT_RENDER = HOST_FRAME_SEGMENT_RENDER;
+static struct CHostFrameSegmentTimer
+{
+	void StartFrameSegment( HostFrameSegment_t segment ) { Host_StartFrameSegment( segment ); }
+	void EndFrameSegment( HostFrameSegment_t segment ) { Host_EndFrameSegment( segment ); }
+} g_HostTimes;
+
+#include "host_render_steps.h"
+
+// memdbgon must be the last include file in a .cpp file!!!
+#include "tier0/memdbgon.h"
 
 bool		scr_initialized;		// ready to draw
 bool		scr_disabled_for_loading;
@@ -207,111 +233,32 @@ inline void SCR_ShowVCRPlaybackAmount()
 
 //-----------------------------------------------------------------------------
 // Purpose: This is called every frame, and can also be called explicitly to flush
-//  text to the screen.
+//  text to the screen. Runs the screen steps of host_render_steps.h in order.
 //-----------------------------------------------------------------------------
 void SCR_UpdateScreen( void )
 {
-	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__ );
+	HostRenderState_t state = {};
+	for ( int i = HOST_RENDER_STEP_SCREEN_ADMIT; i <= HOST_RENDER_STEP_MATERIALS_END_FRAME; i++ )
+		HostRender_RunStep( i, state );
+}
 
-	R_StudioCheckReinitLightingCache();
-	
-	// Always force the Gamma Table to be rebuilt. Otherwise,
-	// we'll load textures with an all white gamma lookup table.
-	V_CheckGamma();
+//-----------------------------------------------------------------------------
+// Purpose: The host frame's render stage: every render step, in order. The
+//  host frame graph runs the same steps as separate nodes (Host_RunRenderStep).
+//-----------------------------------------------------------------------------
+void _Host_RunFrame_Render()
+{
+	HostRenderState_t state = {};
+	for ( int i = 0; i < HOST_RENDER_STEP_COUNT; i++ )
+		HostRender_RunStep( i, state );
+}
 
-	// This is a HACK to let things settle for a bit on level start
-	// NOTE: If you remove scr_nextdrawtick, remove it from enginetool.cpp too
-	if ( scr_nextdrawtick != 0 )
-	{
-		if ( host_tickcount < scr_nextdrawtick )
-			return;
+void Host_RunRenderStep( int iStep, HostRenderState_t &state )
+{
+	HostRender_RunStep( iStep, state );
+}
 
-		scr_nextdrawtick = 0;
-	}
-
-	if ( scr_disabled_for_loading )
-	{
-		if ( !Host_IsSinglePlayerGame() )
-		{
-			V_RenderVGuiOnly();
-		}
-		return;
-	}
-
-	if ( !scr_initialized || !con_initialized )
-	{
-		// not initialized yet
-		return;				
-	}
-
-	SCR_ShowVCRPlaybackAmount();
-
-	// Let demo system overwrite view origin/angles during playback
-	if ( demoplayer->IsPlayingBack() )
-	{
-		demoplayer->InterpolateViewpoint();
-	}
-
-	if ( !VideoMode_UpdateWindowSize() )
-		return;
-	materials->BeginFrame( host_frametime );
-	{
-		tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "EngineVGui_Simulate" );
-		EngineVGui()->Simulate();
-	}
-
-	ClientDLL_FrameStageNotify( FRAME_RENDER_START );
-
-	// Simulation meant to occur before any views are rendered
-	// This needs to happen before the client DLL is called because the client DLL depends on 
-	// some of the setup in FRAME_RENDER_START.
-	{
-		tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "FrameBegin" );
-	
-		g_EngineRenderer->FrameBegin();
-		toolframework->RenderFrameBegin();
-	}
-
-	cl.UpdateAreaBits_BackwardsCompatible();
-	
-	Shader_BeginRendering();
-				
-	// Draw world, etc.
-	V_RenderView();
-
-	CL_TakeSnapshotAndSwap();	   
-	
-#if defined( REPLAY_ENABLED )
-	if ( g_pReplay )
-	{
-		g_pReplay->CL_Render();
-	}
-#endif
-
-	ClientDLL_FrameStageNotify( FRAME_RENDER_END );
-
-	{
-		tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "FrameEnd" );
-
-		toolframework->RenderFrameEnd();
-
-		g_EngineRenderer->FrameEnd();
-	}
-
-	// moved dynamic model update here because this takes the materials lock
-	// and materials->EndFrame() is where we will synchronize anyway.
-	// Moved here to leave as much of the frame as possible to overlap threads in the case
-	// where we actually have models to load here
-	{
-		tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "modelloader->UpdateDynamicModels" );
-		VPROF( "UpdateDynamicModels" );
-		CMDLCacheCriticalSection critsec( g_pMDLCache );
-		modelloader->UpdateDynamicModels();
-	}
-
-	{
-		tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "materials_EndFrame" );
-
-		materials->EndFrame();
-	}
+const char *Host_GetRenderStepName( int iStep )
+{
+	return g_HostRenderSteps[iStep].name;
 }

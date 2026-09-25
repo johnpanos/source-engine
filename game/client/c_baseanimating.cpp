@@ -2705,8 +2705,17 @@ void C_BaseAnimating::ShutdownBoneSetupThreadPool()
 {
 }
 
-void C_BaseAnimating::ThreadedBoneSetup()
+// ThreadedBoneSetup in three parts, for frame graphs: Begin decides whether the
+// previous frame's bone setups run as a batch this frame; the batch is
+// ThreadedBoneSetupCount() independent entities, each set up by
+// ThreadedBoneSetupItem between a runner's RunnerBegin/RunnerEnd (model cache
+// lock); End clears the list for the next frame.
+static int s_nThreadedBoneSetupItems;
+static float s_flThreadedBoneSetupTime;
+
+void C_BaseAnimating::ThreadedBoneSetupBegin()
 {
+	s_nThreadedBoneSetupItems = 0;
 	g_bDoThreadedBoneSetup = cl_threaded_bone_setup.GetBool();
 	if ( g_bDoThreadedBoneSetup )
 	{
@@ -2714,7 +2723,50 @@ void C_BaseAnimating::ThreadedBoneSetup()
 		if ( nCount > 1 )
 		{
 			g_bInThreadedBoneSetup = true;
+			s_nThreadedBoneSetupItems = nCount;
+			s_flThreadedBoneSetupTime = gpGlobals->curtime;
+		}
+	}
+}
 
+unsigned C_BaseAnimating::ThreadedBoneSetupCount()
+{
+	return (unsigned)s_nThreadedBoneSetupItems;
+}
+
+void C_BaseAnimating::ThreadedBoneSetupItem( unsigned iItem )
+{
+	SetupBonesOnBaseAnimatingAtTime( g_PreviousBoneSetups[iItem], s_flThreadedBoneSetupTime );
+}
+
+void C_BaseAnimating::ThreadedBoneSetupRunnerBegin()
+{
+	PreThreadedBoneSetup();
+}
+
+void C_BaseAnimating::ThreadedBoneSetupRunnerEnd()
+{
+	PostThreadedBoneSetup();
+}
+
+void C_BaseAnimating::ThreadedBoneSetupEnd()
+{
+	if ( s_nThreadedBoneSetupItems )
+	{
+		g_bInThreadedBoneSetup = false;
+		s_nThreadedBoneSetupItems = 0;
+	}
+	g_iPreviousBoneCounter++;
+	g_PreviousBoneSetups.RemoveAll();
+}
+
+void C_BaseAnimating::ThreadedBoneSetup()
+{
+	ThreadedBoneSetupBegin();
+	{
+		int nCount = s_nThreadedBoneSetupItems;
+		if ( nCount )
+		{
 			const int nGraphMode = cl_bone_job_graph.GetInt();
 			if ( nGraphMode == 0 )
 			{
@@ -2737,12 +2789,9 @@ void C_BaseAnimating::ThreadedBoneSetup()
 					Error( "Invalid previous-frame bone setup job graph batch\n" );
 				}
 			}
-
-			g_bInThreadedBoneSetup = false;
 		}
 	}
-	g_iPreviousBoneCounter++;
-	g_PreviousBoneSetups.RemoveAll();
+	ThreadedBoneSetupEnd();
 }
 
 bool C_BaseAnimating::SetupBones( matrix3x4_t *pBoneToWorldOut, int nMaxBones, int boneMask, float currentTime )

@@ -18,6 +18,16 @@ VSTDLIB_INTERFACE void DestroySerialFrameGraph( jobsystem::SerialFrameGraph *pGr
 	delete pGraph;
 }
 
+VSTDLIB_INTERFACE jobsystem::DeclaredFrameGraph *CreateDeclaredFrameGraph()
+{
+	return new jobsystem::DeclaredFrameGraph;
+}
+
+VSTDLIB_INTERFACE void DestroyDeclaredFrameGraph( jobsystem::DeclaredFrameGraph *pGraph )
+{
+	delete pGraph;
+}
+
 VSTDLIB_INTERFACE bool RunSerialFrameGraph( jobsystem::SerialFrameGraph *pGraph,
     const jobsystem::FramePhaseDesc *pPhases, unsigned nPhases, jobsystem::SerialFrameRun *pResult )
 {

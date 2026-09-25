@@ -27,6 +27,7 @@ def build(bld):
 		'parallel_batch.cpp',
 		'frame_graph.cpp',
 		'serial_frame_graph.cpp',
+		'declared_frame_graph.cpp',
 		'pilot_particles.cpp',
 		'dynamic_scope.cpp',
 	]

@@ -18,6 +18,7 @@ enum HostFrameSegment_t
 {
 	HOST_FRAME_SEGMENT_CMD_EXECUTE,
 	HOST_FRAME_SEGMENT_CLDLL,
+	HOST_FRAME_SEGMENT_RENDER,
 };
 
 void Host_StartFrameSegment( HostFrameSegment_t segment );
@@ -41,6 +42,57 @@ enum HostFrameExit_t
 	HOST_FRAME_GRAPH_FAILED,     // graph rejected before any phase ran
 };
 
+// The render stage's steps (engine/host_render_steps.h), in legacy order.
+enum HostRenderStepIndex_t
+{
+	HOST_RENDER_STEP_BEGIN,
+	HOST_RENDER_STEP_UPDATE_SCREEN_BEGIN,
+	HOST_RENDER_STEP_SCREEN_ADMIT, // first step of SCR_UpdateScreen
+	HOST_RENDER_STEP_SCREEN_BEGIN_FRAME,
+	HOST_RENDER_STEP_CLIENT_RENDER_START,
+	HOST_RENDER_STEP_ENGINE_FRAME_BEGIN,
+	HOST_RENDER_STEP_VIEW_RENDER,
+	HOST_RENDER_STEP_PRESENT,
+	HOST_RENDER_STEP_CLIENT_RENDER_END,
+	HOST_RENDER_STEP_ENGINE_FRAME_END,
+	HOST_RENDER_STEP_DYNAMIC_MODELS,
+	HOST_RENDER_STEP_MATERIALS_END_FRAME, // last step of SCR_UpdateScreen
+	HOST_RENDER_STEP_DECAY_LIGHTS,
+	HOST_RENDER_STEP_END,
+
+	HOST_RENDER_STEP_COUNT
+};
+
+// Locals the render stage carried between its blocks.
+struct HostRenderState_t
+{
+	int nOrgNoRendering;
+	bool bScreenAdmitted; // SCR_UpdateScreen passed its early-out checks
+};
+
+struct HostRenderStep_t
+{
+	const char *name;
+	void ( *run )( HostRenderState_t & );
+	bool bScreenStep; // runs only when the screen update was admitted
+};
+
+// The render stage: every step in order (the host_frame_graph 0 path), and
+// one step at a time (the graph). engine/gl_screen.cpp; dedicated builds have
+// only the empty _Host_RunFrame_Render in engine/cl_null.cpp.
+void _Host_RunFrame_Render();
+void Host_RunRenderStep( int iStep, HostRenderState_t &state );
+const char *Host_GetRenderStepName( int iStep );
+
+// Host services the render steps use (engine/host.cpp).
+void CheckSpecialCheatVars();
+void Host_TraceFrameEvent( const char *pszEvent, int nArg );
+
+// Live capture (-hostframetrace): the async server job is in flight, so the
+// host thread must not read server state for the trace (it would race with the
+// job and differ run to run). Set after submission, cleared after the join.
+void Host_TraceServerJob( bool bInFlight );
+
 // Per-frame values the legacy body kept in locals.
 struct HostFrameState_t
 {
@@ -58,6 +110,8 @@ struct HostFrameState_t
 	int serverticks;
 	int saveTick;
 	bool bFinalTick;
+
+	HostRenderState_t render;
 
 	HostFrameCarry_t *pCarry;
 	HostFrameExit_t exit;

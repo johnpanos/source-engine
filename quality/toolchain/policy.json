@@ -203,6 +203,14 @@
       "dialect": "cxx20",
       "rfc": "0003"
     },
+    "jobsystemdeclaredframetest": {
+      "dialect": "cxx20",
+      "rfc": "0003"
+    },
+    "jobsystemrenderstarttest": {
+      "dialect": "cxx20",
+      "rfc": "0003"
+    },
     "jobsystembatchtest": {
       "dialect": "cxx20",
       "rfc": "0003"

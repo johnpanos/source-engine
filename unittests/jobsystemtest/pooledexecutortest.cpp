@@ -9,6 +9,7 @@
 #include "testing/conformance_result.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <functional>
 #include <mutex>
@@ -69,8 +70,37 @@ public:
 			thread.join();
 	}
 
+	// With asyncCaller, workers start before the caller's jobs run, as the
+	// engine pool bridge does; otherwise the interface default runs the
+	// caller's jobs after the compute jobs.
+	void ParallelForWithCaller( int count, const std::function<void( int )> &body,
+	    const std::function<void()> &caller ) override
+	{
+		if ( !asyncCaller )
+		{
+			IWorkerBackend::ParallelForWithCaller( count, body, caller );
+			return;
+		}
+		++batches;
+		dispatched += count;
+		std::vector<std::thread> threads;
+		for ( int worker = 0; worker < m_workers; ++worker )
+		{
+			threads.emplace_back(
+			    [&, worker]
+			    {
+				    for ( int index = worker; index < count; index += m_workers )
+					    body( index );
+			    } );
+		}
+		caller();
+		for ( std::thread &thread : threads )
+			thread.join();
+	}
+
 	int batches = 0;
 	int dispatched = 0;
+	bool asyncCaller = false;
 	std::function<void()> beforeDispatch;
 
 private:
@@ -379,6 +409,61 @@ static void Test_EmptyGraph()
 	CHECK( backend.batches == 0 );
 }
 
+
+// A wave's main-thread job and compute job are independent, so they may run at
+// the same time. Each waits for the other to start: only concurrent execution
+// lets both see the other's flag before the deadline.
+static bool AwaitFlag( const std::atomic<bool> &flag )
+{
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds( 5 );
+	while ( !flag.load() )
+	{
+		if ( std::chrono::steady_clock::now() > deadline )
+			return false;
+		std::this_thread::yield();
+	}
+	return true;
+}
+
+static void Test_CallerJobsOverlapWaveCompute()
+{
+	for ( bool asyncCaller : { true, false } )
+	{
+		JobGraphBuilder builder;
+		std::atomic<bool> computeStarted( false ), mainStarted( false );
+		std::atomic<bool> computeSaw( false ), mainSaw( false );
+		AddJob( builder, Executor::Compute(),
+		    [&]( JobRunContext & )
+		    {
+			    computeStarted = true;
+			    // Without overlap, skip the wait so the run cannot stall.
+			    computeSaw = asyncCaller ? AwaitFlag( mainStarted ) : mainStarted.load();
+		    } );
+		AddJob( builder, Executor::MainThread(),
+		    [&]( JobRunContext & )
+		    {
+			    mainStarted = true;
+			    mainSaw = asyncCaller ? AwaitFlag( computeStarted ) : computeStarted.load();
+		    } );
+		SealedGraph graph = Seal( builder );
+		RunOptions options;
+		options.pumpMainThread = true;
+		ThreadBackend backend( 2 );
+		backend.asyncCaller = asyncCaller;
+		RunResult result = PooledExecutor( &backend ).Execute( graph, options );
+		CHECK( result.AllSucceeded() );
+		if ( asyncCaller )
+		{
+			CHECK( computeSaw.load() && mainSaw.load() ); // ran concurrently
+		}
+		else
+		{
+			// The default backend hook runs the caller's jobs afterwards.
+			CHECK( !computeSaw.load() && mainSaw.load() );
+		}
+	}
+}
+
 int main()
 {
 	std::printf( "pooledexecutortest (RFC 0003 external backend contracts)\n" );
@@ -389,6 +474,7 @@ int main()
 	RUN( Test_RunningJobFinishesWhilePendingJobsCancel );
 	RUN( Test_FailureCleanupAndRepeatedRuns );
 	RUN( Test_EmptyGraph );
+	RUN( Test_CallerJobsOverlapWaveCompute );
 	std::printf( "\n%d checks, %d failures\n", g_checks, g_failures );
 	return testing::ReportConformance( g_checks, g_failures );
 }

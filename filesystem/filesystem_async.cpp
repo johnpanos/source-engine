@@ -644,7 +644,10 @@ void CBaseFileSystem::InitAsync()
 		params.iThreadPriority = 0;
 		params.bIOThreads = true;
 		{
-			params.nThreadsMax = MIN(params.nThreads, 4); // Limit count of IO threads to a maximum of 4.
+			// Limit count of IO threads to a maximum of 4. (params.nThreads is -1,
+			// "choose for me", so MIN(params.nThreads, 4) was -1: no limit, and
+			// one I/O thread per logical processor.)
+			params.nThreadsMax = 4;
 			params.nStackSize = 256*1024;
 		}
 
