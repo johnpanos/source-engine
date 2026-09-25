@@ -596,6 +596,8 @@ def qa(recipe: dict, packaged: dict[str, Path], prepared_normal_dx: Path, source
                         "max": round(float(channel.max()), 3)}
     if mrao[..., 1].min() < 0.02:
         problems.append("roughness below the shader's 0.02 floor")
+    if recipe["roughness"]["noise_amp"] > 0 and mrao[..., 1].std() < recipe["roughness"]["noise_amp"] / 10:
+        problems.append("recipe asks for roughness breakup but the roughness channel is constant")
     metal = mrao[..., 0]
     report["metal_non_binary_fraction"] = round(float(((metal > 0.1) & (metal < 0.9)).mean()), 4)
     base = images["basecolor"].astype(np.float64) / 255

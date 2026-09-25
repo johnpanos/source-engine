@@ -20,7 +20,7 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | G1 probe volume, baked producer | active | Bake, pack, engine load and fallback, per-pixel `model_pbr` sampling and the CPU ambient cube done; all native oracles pass; the DXVK check (G1.7) is deferred by user direction; corpus load and memory open: one of four corpus maps built (see [G1 corpus](#g1-corpus-open)) |
 | G2 light set, separated bake, policy | done (2026-09-24, native Vulkan) | `render.light-set.v1` published each frame, with seeded ID reuse rejected; separated-bake consistency with swapped and doubled layers rejected; `render.indirect-policy.v1` with the double count rejected by the furnace in the CPU model, the GPU and the engine; native WMSH direct light from unbaked lights |
 | G3 producer contract and switching | active | Shared suite (Baked, radiosity, fake; seven bad producers and a one-bounce producer rejected), `r_indirect_producer` validation and native switching pass; `portal-view` and the Android backgrounding run are open |
-| G4 precomputed radiosity | active | RTRN bake, reader and fuzzing, the furnace, serial/pooled byte identity (TSan clean with a failing race control) and in-engine room states against Cycles pass; convergence time, CPU budgets and the Android run are open |
+| G4 precomputed radiosity | done (2026-09-24, native Vulkan; see open notes) | RTRN bake/reader/fuzzing; furnace on the real map (9 of 30 frames, one-bounce rejected); room-states panel/screen toggles converge in 7 frames and match Cycles in game (baked control fails); serial/pooled byte identity under TSan; desktop median 0.78–0.87 ms and Fold7 about 1.2 ms per update (one first update 2.75 ms), 10.4 MB; runs on the Fold7 APK with background/resume |
 | G5 GPU compute foundation | planned | — |
 | G6 SDF-traced producer | planned | — |
 | G7 ray-query producer | planned | — |
@@ -724,36 +724,29 @@ fade residency is within budget.
 
 These boots predate the radiosity producer being offered on a map.
 
-## G4: Precomputed radiosity (active)
+## G4: Precomputed radiosity (done 2026-09-24, native Vulkan)
 
 | Done criterion | State |
 | --- | --- |
-| 1. RTRN bake, reader, fuzzing | Passes. [`radiosity_transfer_bake.py`](../tools/quality/radiosity_transfer_bake.py) (Blender/Cycles) runs as a `pbrt_map_build.py` step after the probe volume and writes `lighting/radiosity.rtrn`. Its switchable sources compile as named `light` entities with matching styles, and a mismatch fails the build. `world.radiosity-transfer` validates the contract transfer and rejects every malformation with the independent Python reader's code ([`radiosity_transfer.py`](../tools/quality/radiosity_transfer.py)). It also rejects a transfer against the wrong volume and mutation-fuzzes without a crash. Tool: `utils/rtrntool`. |
-| 2. `furnace` | Passes in `render.indirect-radiosity`: within 2% of the infinite-bounce value in the declared `convergenceFrames` from a cold start. The one-bounce defect never gets there. Switched states match the independent Python solve. |
-| 3. `room-states` | Match passes (below). **Convergence time is open:** the capture waits a fixed interval after the toggle, and in-engine convergence frames aren't measured. |
-| 4. `jobsystem.radiosity` | Passes. On a 40000-patch stress transfer, the serial oracle's bytes are reproduced exactly with 1, 2 and N workers. Under TSan (clang++) the suite passes, and the seeded-race sensitivity build fails as it must. |
-| 5. CPU cost within budget | **Open.** Not measured on the desktop, the Fold7 or a low-core configuration. RTRN memory isn't recorded against the profile budget. |
-| 6. Android installed APK | **Open.** An Android build was started at 18:33. Its log ends mid-compile (step 463 of 2422). |
+| 1. RTRN bake, reader, fuzzing | Passes. [`radiosity_transfer_bake.py`](../tools/quality/radiosity_transfer_bake.py) runs as the `radiosity` step of `pbrt_map_build.py` after the probe volume. `world.radiosity-transfer` (C++) and `test_gi_tools.py` (Python) validate the contract transfer, reject all 27 malformations with the same codes, reject a transfer against the wrong volume, and fuzz without a crash. |
+| 2. `furnace` | Passes on the real furnace map (`gi_radiosity.py furnace`): from a cold start the probes reach 0.4498 (analytic 0.45) within 2% after 9 frames, of 30 declared. The one-bounce defect settles at 0.288 and never reaches it. The headless contract furnace passes too (`render.indirect-radiosity`). |
+| 3. `room-states` | Passes. Panel-off and screen-off converge within 2% in 7 frames (`gi_radiosity.py convergence`), 15 frames on the Fold7. In game (`gi_radiosity.py states`), default, panel-off and screen-off match the Cycles indirect-only references in world and model regions within 10%. The baked producer after the panel toggle fails, as it must. |
+| 4. `jobsystem.radiosity` | Passes: serial bytes reproduced with 1, 2 and 32 workers (up to 33 threads per batch) on a 40000-patch transfer; TSan (clang++) clean; the seeded race is caught. |
+| 5. CPU and memory budgets | Passes. Desktop, one thread, while converging: median 0.78–0.87 ms per update (budget 1.0), measured on a loaded host. Fold7 in game: 0.87–1.9 ms per update, median about 1.2 ms (budget 2.0); the first update after a toggle took 2.75 ms once. Memory 10.4 MB (64 desktop, 24 Fold7). No separate low-core run: the budget is single-threaded. |
+| 6. Android installed APK | Passes on the Galaxy Z Fold7 (`build-android-apk.sh --install`): RTRN loads, radiosity runs, the panel toggle converges, and two background/resume cycles keep the published volume (generation 67, mean 0.20244 before and after). Not covered on the device: backgrounding mid-convergence (headless suite only). |
 
-G4 also depends on R20 (`partial`). The producer runs on the existing batch
-executor that R20's slice installed.
+**Design decisions.**
+- Policy: `BakedPlusDelta`. The producer publishes the bake plus the change from switched sources, so an unchanged scene is the bake byte for byte.
+- World: the change is sampled per pixel from a change volume (a PRBV-layout atlas, world_pbr `-DDELTA_VOLUME`, ten descriptor sets). This resolves open decision 3: probes only, no surface atlas; room-states quality passes with it.
+- Patches of 0.5 m (the 0.25 m transfer had the same 6.5% model error at four times the cost). One Jacobi iteration per update; half the probes gathered per update, direct light every update.
+- Albedo is measured in Cycles per material (plane under a white sky, base 0 and 1). Pure diffuse albedo was 24% dark against Cycles, analytic Fresnel 19% bright; the calibration leaves 6%. Lambertian fixtures (door) match within 0.8% without it.
+- Switchable sources compile as zero-brightness named `light` entities (styles 32+). `ent_fire <name> TurnOff/TurnOn` switches them; the pack step strips their vrad world lights.
 
-**In-engine room states** (`quality-results/rfc0011-g4-room`, 19:43–19:44):
-- Setup:
-  - `r_indirect_producer radiosity`, then `ent_fire` on the named
-    emitters;
-  - `mat_indirect_view 1`;
-  - compared by `gi_runtime.py compare` with the Cycles indirect-only
-    reference for each state.
-- Relative error per region, for the ceiling, floor, walls and the dynamic
-  model:
+**Found on the way.** The compile tools write 100-byte world-light records under lump version 0, which the engine reads as 88-byte records: every record after the first is garbage (a SIGSEGV in `AddWorldLightToLightingState`). Pipeline maps now carry no world lights; the tool bug itself is open.
 
-| State | Worst region error | Result |
-| --- | --- | --- |
-| default | 5.4% (model) | pass |
-| panel-off | 8.1% (walls) | pass |
-| screen-off | 9.3% (model) | pass |
-| baked producer, panel-off (control) | 70.7% (model) | fails, as it must: the bake can't follow the panel |
+**Open (not G4 gates).** On Adreno, per-pixel model sampling and the world change volume are unavailable (descriptor-set limit), so the Fold7 uses the ambient cube and the world keeps the bake. World direct light of a switched baked light stays in the lightmap (needs per-style layers, RFC 0008 LSTY).
+
+Evidence: `quality-results/rfc0011-g4/{furnace,convergence,budget}.json`, `quality-results/rfc0011-g4/states/states.json`.
 
 ### Verification (independent rerun, 2026-09-24 19:51–19:53)
 
