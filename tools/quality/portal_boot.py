@@ -634,6 +634,12 @@ def main(argv=None):
                              "screenshot (repeatable). Player commands such as setpos and "
                              "setang need the client prefix: 'cmd setpos 0 0 64'")
     parser.add_argument("--map", default="testchmb_a_00")
+    parser.add_argument("--engine-arg", action="append", default=[],
+                        help="extra launcher argument placed before +map (repeatable), e.g. "
+                             "'-hostframetrace' '<file>'")
+    parser.add_argument("--startup-command", action="append", default=[],
+                        help="console command run at startup, before +map (repeatable). Written "
+                             "to a cfg, which keeps the launcher's 512-character command line short")
     parser.add_argument("--physics", default="vphysics",
                         help="physics provider module name (e.g. vphysics, vphysics_box3d)")
     parser.add_argument("--renderer", default=None,
@@ -683,8 +689,14 @@ def main(argv=None):
                    "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", args.physics,
                    # mat_vsync 0: a real present-mode wait must not stretch the boot.
                    "+sv_cheats", "1", "+mat_queue_mode", "0", "+mat_vsync", "0", "+fps_max", "60",
+                   *args.engine_arg,
+                   *( ["+exec", "portal_boot_startup.cfg"] if args.startup_command else [] ),
                    "+map", args.map,
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0"]
+        if args.startup_command:
+            (stage / "portal/cfg").mkdir(parents=True, exist_ok=True)
+            (stage / "portal/cfg/portal_boot_startup.cfg").write_text(
+                "".join(line + "\n" for line in args.startup_command))
         # Extra console commands run once the map has loaded, before the capture
         # (e.g. "setpos X Y Z" / "setang P Y R" to frame the same view on every
         # backend).

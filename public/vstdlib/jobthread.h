@@ -172,7 +172,12 @@ public:
 	virtual int ResumeExecution() = 0;
 
 	//-----------------------------------------------------
-	// Offer the current thread to the pool
+	// Wait for events or jobs. A waiting thread never services unrelated
+	// queued work: waiting on events runs nothing, and waiting on jobs may
+	// run only those jobs, inline, when no worker has started them and they
+	// are eligible for this thread (owned by this pool, not JF_SERIAL, not
+	// bound to a service thread, pool not bExecOnThreadPoolThreadsOnly).
+	// Timeouts are not implemented; waits last until signaled.
 	//-----------------------------------------------------
 	virtual int YieldWait( CThreadEvent **pEvents, int nEvents, bool bWaitAll = true, unsigned timeout = TT_INFINITE ) = 0;
 	virtual int YieldWait( CJob **, int nJobs, bool bWaitAll = true, unsigned timeout = TT_INFINITE ) = 0;
@@ -421,6 +426,22 @@ public:
 
 JOB_INTERFACE IThreadPool *CreateThreadPool();
 JOB_INTERFACE void DestroyThreadPool( IThreadPool *pPool );
+
+//-------------------------------------
+// Scheduling observations for diagnostics and tests. Counters are cumulative
+// since Start and may be stale by the time they are read. pPool must be
+// g_pThreadPool or come from CreateThreadPool.
+//-------------------------------------
+struct ThreadPoolSchedulingStats_t
+{
+	int nStealDequePushes;    // worker-spawned jobs placed in the spawner's steal deque
+	int nStealDequeSpills;    // worker-spawned jobs sent to the shared queue (deque full)
+	int nSteals;              // jobs a worker took from another worker's steal deque
+	int nWaitedJobsRunInline; // waited jobs a waiting thread ran itself (YieldWait)
+};
+
+JOB_INTERFACE void GetThreadPoolSchedulingStats(
+    IThreadPool *pPool, ThreadPoolSchedulingStats_t *pStats );
 
 //-------------------------------------
 

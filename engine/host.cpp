@@ -255,6 +255,27 @@ private:
 
 static CFrameTimer g_HostTimes;
 
+// Frame-segment timing for the host frame graph phases (host_frame_graph.h).
+static int HostFrameSegmentIndex( HostFrameSegment_t segment )
+{
+	return ( segment == HOST_FRAME_SEGMENT_CMD_EXECUTE ) ? FRAME_SEGMENT_CMD_EXECUTE
+	                                                     : FRAME_SEGMENT_CLDLL;
+}
+
+void Host_StartFrameSegment( HostFrameSegment_t segment )
+{
+	g_HostTimes.StartFrameSegment( HostFrameSegmentIndex( segment ) );
+}
+
+void Host_EndFrameSegment( HostFrameSegment_t segment )
+{
+	g_HostTimes.EndFrameSegment( HostFrameSegmentIndex( segment ) );
+}
+
+void Host_MarkSwapTime()
+{
+	g_HostTimes.MarkSwapTime();
+}
 
 //------------------------------------------
 
@@ -2283,6 +2304,65 @@ void _Host_SetGlobalTime()
 #endif
 }
 
+//-----------------------------------------------------------------------------
+// Host frame capture (RFC 0003 R10). "-hostframetrace <file>" records every
+// frame's host-level calls, in order, each with the tick and simulation state
+// it observes (no wall-clock values). Captures of the same deterministic run
+// (fixed host_framerate) under host_frame_graph 0 and 1 must be identical;
+// tools/quality/host_frame_capture.py compares them. Main thread only.
+//-----------------------------------------------------------------------------
+static FILE *s_pHostFrameTrace = NULL;
+
+static void HostFrameTrace_Open()
+{
+	static bool s_bChecked = false;
+	if ( s_bChecked )
+		return;
+	s_bChecked = true;
+	const char *pszPath = CommandLine()->ParmValue( "-hostframetrace", (const char *)NULL );
+	if ( pszPath && pszPath[0] )
+	{
+		s_pHostFrameTrace = fopen( pszPath, "w" );
+		if ( s_pHostFrameTrace )
+			fprintf( s_pHostFrameTrace, "host-frame-trace/v1\n" );
+	}
+}
+
+static void HostFrameTrace( const char *pszEvent, int nArg )
+{
+	if ( !s_pHostFrameTrace || !ThreadInMainThread() )
+		return;
+	fprintf( s_pHostFrameTrace,
+	    "%s %d | ht=%d cft=%d hft=%d hfc=%d svt=%d sg=%d/%d cg=%d/%d ins=%d ia=%.4f\n", pszEvent,
+	    nArg, host_tickcount, host_currentframetick, host_frameticks, host_framecount,
+	    sv.m_nTickCount, g_ServerGlobalVariables.tickcount,
+	    g_ServerGlobalVariables.simTicksThisFrame,
+#ifndef SWDS
+	    g_ClientGlobalVariables.tickcount, g_ClientGlobalVariables.simTicksThisFrame,
+	    cl.insimulation ? 1 : 0, g_ClientGlobalVariables.interpolation_amount
+#else
+	    0, 0, 0, 0.0f
+#endif
+	);
+}
+
+static void HostFrameTrace_BeginFrame( int numticks, bool shouldrender, bool bGraph )
+{
+	HostFrameTrace_Open();
+	if ( !s_pHostFrameTrace )
+		return;
+	fflush( s_pHostFrameTrace );
+	// The frame path is metadata, not part of the compared frame.
+	static int s_nTracedGraphMode = -1;
+	if ( s_nTracedGraphMode != ( bGraph ? 1 : 0 ) )
+	{
+		s_nTracedGraphMode = bGraph ? 1 : 0;
+		fprintf( s_pHostFrameTrace, "# host_frame_graph %d\n", s_nTracedGraphMode );
+	}
+	fprintf( s_pHostFrameTrace, "frame numticks=%d render=%d threaded=%d\n", numticks,
+	    shouldrender ? 1 : 0, IsEngineThreaded() ? 1 : 0 );
+}
+
 /*
 ==================
 _Host_RunFrame
@@ -2294,6 +2374,7 @@ Runs all active servers
 void _Host_RunFrame_Input( float accumulated_extra_samples, bool bFinalTick )
 {
 	VPROF_BUDGET( "_Host_RunFrame_Input", _T("Input") );
+	HostFrameTrace( "Input", bFinalTick );
 
 	// Run a test script?
 	static bool bFirstFrame = true;
@@ -2335,6 +2416,7 @@ void _Host_RunFrame_Server( bool finaltick )
 {
 	VPROF_BUDGET( "_Host_RunFrame_Server", VPROF_BUDGETGROUP_GAME );
 	VPROF_INCREMENT_COUNTER( "ticks", 1 );
+	HostFrameTrace( "Server", finaltick );
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__ );
 
 	// Run the Server frame ( read, run physics, respond )
@@ -2349,6 +2431,7 @@ void _Host_RunFrame_Server( bool finaltick )
 void _Host_RunFrame_Server_Async( int numticks )
 {
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s %d", __FUNCTION__, numticks );
+	HostFrameTrace( "ServerAsync", numticks );
 
 	for ( int tick = 0; tick < numticks; tick++ )
 	{ 
@@ -2365,6 +2448,7 @@ void _Host_RunFrame_Client( bool framefinished )
 #ifndef SWDS
 	VPROF( "_Host_RunFrame_Client" );
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s %d", __FUNCTION__, framefinished );
+	HostFrameTrace( "Client", framefinished );
 
 	g_HostTimes.StartFrameSegment( FRAME_SEGMENT_CLIENT );
 
@@ -2434,6 +2518,7 @@ void _Host_RunFrame_Render()
 #ifndef SWDS
 	VPROF( "_Host_RunFrame_Render" );
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "_Host_RunFrame_Render" );
+	HostFrameTrace( "Render", 0 );
 
 	CheckSpecialCheatVars();
 
@@ -2543,6 +2628,7 @@ void CL_DiscardOldAddAngleEntries( float t )
 void CL_ApplyAddAngle()
 {
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__ );
+	HostFrameTrace( "ApplyAddAngle", 0 );
 
 	float curtime = cl.GetTime() - host_state.interval_per_tick;
 
@@ -2581,6 +2667,7 @@ void _Host_RunFrame_Sound()
 #ifndef SWDS
 
 	VPROF_BUDGET( "_Host_RunFrame_Sound", VPROF_BUDGETGROUP_OTHER_SOUND );
+	HostFrameTrace( "Sound", 0 );
 
 	g_HostTimes.StartFrameSegment( FRAME_SEGMENT_SOUND );
 
@@ -2695,6 +2782,7 @@ void Host_ShowIPCCallCount()
 
 void Host_SetClientInSimulation( bool bInSimulation )
 {
+	HostFrameTrace( "SetClientInSimulation", bInSimulation );
 #ifndef SWDS
 	// Tracker 77931:  If the game is paused, then lock the client clock at the previous tick boundary 
 	//  (otherwise we'll keep interpolating through the "remainder" time causing the paused characters
@@ -2713,6 +2801,15 @@ void Host_SetClientInSimulation( bool bInSimulation )
 static ConVar host_Sleep( "host_sleep", "0", FCVAR_CHEAT, "Force the host to sleep a certain number of milliseconds each frame." );
 extern ConVar sv_alternateticks;
 #define LOG_FRAME_OUTPUT 0
+
+// RFC 0003 R10: run the post-admission frame as an ordered serial graph
+// (engine/host_frame_graph.h). 0 is the legacy hand-ordered body, kept as the
+// rollback and comparison path. Read once per frame, before any phase runs.
+static ConVar host_frame_graph( "host_frame_graph", "1", 0,
+    "Run the host frame as an ordered serial job graph (0 = legacy hand-ordered frame)." );
+
+// Threaded listen-server carry-over state; one owner for both frame paths.
+HostFrameCarry_t g_HostFrameCarry;
 
 void _Host_RunFrame (float time)
 {
@@ -2804,6 +2901,44 @@ void _Host_RunFrame (float time)
 		host_nexttick = host_state.interval_per_tick - host_remainder;
 
 		g_pMDLCache->MarkFrame();
+	}
+
+	const bool bFrameGraph = host_frame_graph.GetBool();
+	HostFrameTrace_BeginFrame( numticks, shouldrender, bFrameGraph );
+
+	if ( bFrameGraph )
+	{
+		HostFrameExit_t frameExit;
+		{
+			// Profile scope, closed before a re-issued error exit below
+			VPROF( "_Host_RunFrame" );
+			tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "_Host_RunFrame" );
+
+			HostFrameState_t state;
+			state.numticks = numticks;
+			state.prevremainder = prevremainder;
+			state.host_remainder = host_remainder;
+			state.shouldrender = shouldrender;
+			state.threaded = IsEngineThreaded();
+			state.checkheap = host_checkheap;
+			state.pCarry = &g_HostFrameCarry;
+			frameExit = Host_RunFrameGraph( state );
+		}
+
+		switch ( frameExit )
+		{
+		case HOST_FRAME_COMPLETED:
+			break;
+		case HOST_FRAME_EXIT_ENDDEMO:
+			return; // demo finished, as from the setjmp above
+		case HOST_FRAME_EXIT_ABORTSERVER:
+			longjmp( host_abortserver, 1 );
+		case HOST_FRAME_GRAPH_FAILED:
+			Sys_Error( "_Host_RunFrame: host frame graph rejected its phases\n" );
+		}
+
+		Host_ShowIPCCallCount();
+		return;
 	}
 
 	{
@@ -3018,8 +3153,9 @@ void _Host_RunFrame (float time)
 #ifndef SWDS
 		else
 		{
-			static int numticks_last_frame = 0;
-			static float host_remainder_last_frame = 0, prev_remainder_last_frame = 0, last_frame_time = 0;
+			int &numticks_last_frame = g_HostFrameCarry.numticks_last_frame;
+			float &host_remainder_last_frame = g_HostFrameCarry.host_remainder_last_frame;
+			float &last_frame_time = g_HostFrameCarry.last_frame_time;
 
 			int clientticks;
 			int serverticks;

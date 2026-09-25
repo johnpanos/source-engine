@@ -18,7 +18,7 @@
 #include "tier1/utlvector.h"
 #include "tier1/generichash.h"
 #include "tier0/vprof.h"
-
+#include "job_steal_deque.h"
 
 #include "tier0/native_module_load_telemetry.h"
 #include "tier0/memdbgon.h"
@@ -238,13 +238,33 @@ private:
 	//-----------------------------------------------------
 	int Run();
 
+	//-----------------------------------------------------
+	// Worker scheduling (see CJobThread)
+	//-----------------------------------------------------
+	CJobThread *FindCurrentWorker();
+	bool TakeJob( CJobThread *pWorker, CJob **ppJob );
+	bool HasWorkFor( CJobThread *pWorker );
+	void WakeWorkers( CJobThread *pExclude );
+	bool TryExecuteWaitedJob( CJob *pJob );
+	void SpillStealDeques();
+	int AbortStealDeques();
+	int WaitForEvents( CThreadEvent **pEvents, int nEvents, bool bWaitAll );
+
 private:
 	friend class CJobThread;
+	friend void GetThreadPoolSchedulingStats( IThreadPool *, ThreadPoolSchedulingStats_t * );
 
 	CJobQueue				m_SharedQueue;
 	CInterlockedInt			m_nIdleThreads;
 	CUtlVector<CJobThread *> m_Threads;
 	CUtlVector<CThreadEvent *>		m_IdleEvents;
+
+	// Workers read the steal-victim set without touching m_Threads, which only
+	// the controlling thread mutates. Entries [0, m_nWorkers) are published
+	// before the count and stay valid until Stop has joined every worker.
+	CJobThread *m_pWorkers[TP_MAX_POOL_THREADS];
+	CInterlockedInt m_nWorkers;
+	CInterlockedInt m_nWaitedJobsRunInline;
 
 	CThreadMutex			m_SuspendMutex;
 	int						m_nSuspend;
@@ -267,6 +287,10 @@ JOB_INTERFACE void DestroyThreadPool( IThreadPool *pPool )
 {
 	delete pPool;
 }
+
+// Defined after CJobThread.
+JOB_INTERFACE void GetThreadPoolSchedulingStats(
+    IThreadPool *pPool, ThreadPoolSchedulingStats_t *pStats );
 
 //-----------------------------------------------------------------------------
 
@@ -299,13 +323,26 @@ public:
 
 //-----------------------------------------------------------------------------
 
+// Each worker services, in order: its direct queue (thread-affine and
+// JF_SERIAL work, never stolen), its own steal deque (jobs it spawned, newest
+// first), the pool's shared queue, then the oldest entry of another worker's
+// steal deque. A worker sleeps on its own auto-reset wake event, which every
+// producer sets after publishing work the worker may take, and on its call
+// event (exit/suspend). A long fallback timeout bounds the cost of any missed
+// wake to latency; it is not part of the wake protocol.
 class CJobThread : public CWorkerThread
 {
 public:
-	CJobThread( CThreadPool *pOwner, int iThread ) : 
-		m_SharedQueue( pOwner->m_SharedQueue ),
-		m_pOwner( pOwner ),
-		m_iThread( iThread )
+	enum
+	{
+		STEAL_DEQUE_CAPACITY = 256,
+		WAKE_FALLBACK_MS = 1000,
+	};
+
+	CJobThread( CThreadPool *pOwner, int iThread )
+	    : m_SharedQueue( pOwner->m_SharedQueue ), m_pOwner( pOwner ), m_WakeEvent( false ),
+	      m_iThread( iThread ), m_nThreadId( 0 ), m_nStealDequePushes( 0 ),
+	      m_nStealDequeSpills( 0 ), m_nSteals( 0 )
 	{
 	}
 
@@ -317,6 +354,17 @@ public:
 	CJobQueue &AccessDirectQueue()
 	{ 
 		return m_DirectQueue;
+	}
+
+	CJobStealDeque<CJob *, STEAL_DEQUE_CAPACITY> &AccessStealDeque() { return m_StealDeque; }
+
+	// Called after publishing work this worker may take, or after sending it
+	// a call. Idempotent.
+	void Wake() { m_WakeEvent.Set(); }
+
+	bool IsCurrentThread() const
+	{
+		return ThreadAtomicLoad( &m_nThreadId ) == ThreadGetCurrentId();
 	}
 
 	bool JoinForShutdown()
@@ -332,9 +380,11 @@ public:
 	}
 
 private:
+	friend class CThreadPool;
+	friend void GetThreadPoolSchedulingStats( IThreadPool *, ThreadPoolSchedulingStats_t * );
+
 	unsigned Wait()
 	{
-		unsigned waitResult;
 		tmZone( TELEMETRY_LEVEL0, TMZF_IDLE, "%s", __FUNCTION__ );
 #ifdef WIN32
 		enum Event_t
@@ -342,6 +392,7 @@ private:
 			CALL_FROM_MASTER,
 			SHARED_QUEUE,
 			DIRECT_QUEUE,
+			WAKE,
 
 			NUM_EVENTS
 		};
@@ -351,54 +402,45 @@ private:
 		waitHandles[CALL_FROM_MASTER]	= GetCallHandle().GetHandle();
 		waitHandles[SHARED_QUEUE]		= m_SharedQueue.GetEventHandle().GetHandle();
 		waitHandles[DIRECT_QUEUE] 		= m_DirectQueue.GetEventHandle().GetHandle();
-		
-#ifdef _DEBUG
-		while ( ( waitResult = WaitForMultipleObjects( ARRAYSIZE(waitHandles), waitHandles, FALSE, 10 ) ) == WAIT_TIMEOUT )
+		waitHandles[WAKE] = m_WakeEvent.GetHandle();
+
+		for ( ;; )
 		{
-			waitResult = waitResult; // break here
+			if ( PeekCall() || m_pOwner->HasWorkFor( this ) )
+				return WAIT_OBJECT_0;
+			unsigned waitResult = WaitForMultipleObjects(
+			    ARRAYSIZE( waitHandles ), waitHandles, FALSE, WAKE_FALLBACK_MS );
+			if ( waitResult == WAIT_FAILED )
+				return waitResult;
 		}
 #else
-		waitResult = WaitForMultipleObjects( ARRAYSIZE(waitHandles), waitHandles, FALSE, INFINITE );
-#endif
-#else
-		bool bSet = false;
-		int nWaitTime = 100;
-
-		while( !bSet )
+		for ( ;; )
 		{
-			// Jobs are typically enqueued to the shared job queue so wait on it first.
-			bSet = m_SharedQueue.GetEventHandle().Wait( nWaitTime );
-			if( !bSet )
-				bSet = m_DirectQueue.GetEventHandle().Wait( 10 );
-			if ( !bSet )
-				bSet = GetCallHandle().Wait( 0 );
+			// Check after every wake: the wake event is set after publication,
+			// so work published before this check is seen here and work
+			// published after it leaves the event set for the wait below.
+			if ( PeekCall() || m_pOwner->HasWorkFor( this ) )
+				return WAIT_OBJECT_0;
+			m_WakeEvent.Wait( WAKE_FALLBACK_MS );
 		}
-
-		if ( !bSet )
-			waitResult = WAIT_TIMEOUT;
-		else
-			waitResult = WAIT_OBJECT_0;
 #endif
-		return waitResult;
 	}
 
 	int Run()
 	{
-
-
 		// Wait for either a call from the master thread, or an item in the queue...
 		unsigned waitResult;
 		bool	 bExit = false;
 
 		tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__ );
 
+		ThreadAtomicStore( &m_nThreadId, ThreadGetCurrentId() );
 		m_pOwner->m_nIdleThreads++;
 		m_IdleEvent.Set();
 		while (!bExit && ( ( waitResult = Wait() ) != WAIT_FAILED ) )
 		{
 			if ( PeekCall() )
 			{
-				CFunctor *pFunctor = NULL;
 				tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s PeekCall():%d", __FUNCTION__, GetCallParam() );
 
 				switch ( GetCallParam() )
@@ -412,19 +454,6 @@ private:
 					Reply( true );
 					Suspend();
 					break;
-
-/*				case TPM_RUNFUNCTOR:
-					if( pFunctor )
-					{
-						( *pFunctor )();
-						Reply( true );
-					}
-					else
-					{
-						Assert( pFunctor );
-						Reply( false );
-					}
-					break;*/
 
 				default:
 					AssertMsg( 0, "Unknown call to thread" );
@@ -440,13 +469,10 @@ private:
 				bool bTookJob = false;
 				do
 				{
-					if ( !m_DirectQueue.Pop( &pJob) )
+					if ( !m_pOwner->TakeJob( this, &pJob ) )
 					{
-						if ( !m_SharedQueue.Pop( &pJob ) )
-						{
-							// Nothing to process, return to wait state
-							break;
-						}
+						// Nothing to process, return to wait state
+						break;
 					}
 					if ( !bTookJob )
 					{
@@ -471,10 +497,22 @@ private:
 	}
 
 	CJobQueue			m_DirectQueue;
+	CJobStealDeque<CJob *, STEAL_DEQUE_CAPACITY> m_StealDeque;
 	CJobQueue &			m_SharedQueue;
 	CThreadPool *		m_pOwner;
 	CThreadManualEvent	m_IdleEvent;
+	CThreadEvent m_WakeEvent;
 	int					m_iThread;
+	volatile ThreadId_t m_nThreadId;
+
+	// Written only by this worker's thread; read atomically by stats queries.
+	static void CountEvent( volatile int *pCounter )
+	{
+		ThreadAtomicStore( pCounter, *pCounter + 1 );
+	}
+	volatile int m_nStealDequePushes;
+	volatile int m_nStealDequeSpills;
+	volatile int m_nSteals;
 };
 
 //-----------------------------------------------------------------------------
@@ -482,17 +520,33 @@ private:
 CGlobalThreadPool g_ThreadPool;
 IThreadPool *g_pThreadPool = &g_ThreadPool;
 
+JOB_INTERFACE void GetThreadPoolSchedulingStats(
+    IThreadPool *pPool, ThreadPoolSchedulingStats_t *pStats )
+{
+	CThreadPool *pThreadPool = static_cast<CThreadPool *>( pPool );
+	memset( pStats, 0, sizeof( *pStats ) );
+	const int nWorkers = pThreadPool->m_nWorkers;
+	for ( int i = 0; i < nWorkers; i++ )
+	{
+		CJobThread *pWorker = pThreadPool->m_pWorkers[i];
+		pStats->nStealDequePushes += ThreadAtomicLoad( &pWorker->m_nStealDequePushes );
+		pStats->nStealDequeSpills += ThreadAtomicLoad( &pWorker->m_nStealDequeSpills );
+		pStats->nSteals += ThreadAtomicLoad( &pWorker->m_nSteals );
+	}
+	pStats->nWaitedJobsRunInline = pThreadPool->m_nWaitedJobsRunInline;
+}
+
 //-----------------------------------------------------------------------------
 //
 // CThreadPool
 //
 //-----------------------------------------------------------------------------
 
-CThreadPool::CThreadPool() :
-	m_nIdleThreads( 0 ),
-	m_nJobs( 0 ),
-	m_nSuspend( 0 )
+CThreadPool::CThreadPool()
+    : m_nIdleThreads( 0 ), m_nWorkers( 0 ), m_nWaitedJobsRunInline( 0 ), m_nSuspend( 0 ),
+      m_nJobs( 0 ), m_bExecOnThreadPoolThreadsOnly( false )
 {
+	memset( m_pWorkers, 0, sizeof( m_pWorkers ) );
 }
 
 //---------------------------------------------------------
@@ -546,7 +600,10 @@ int CThreadPool::SuspendExecution()
 		int i;
 		for ( i = 0; i < m_Threads.Count(); i++ )
 		{
+			// Send without waiting, then wake: a sleeping worker observes its
+			// call event only when woken (see CJobThread::Wait).
 			m_Threads[i]->CallWorker( TPM_SUSPEND, 0 );
+			m_Threads[i]->Wake();
 		}
 
 		for ( i = 0; i < m_Threads.Count(); i++ )
@@ -587,40 +644,73 @@ int CThreadPool::ResumeExecution()
 
 //---------------------------------------------------------
 
+// Wait rule: a waiting thread never services unrelated queued work. The
+// previous implementation popped arbitrary shared-queue jobs while waiting,
+// which ran them at the waiter's program point (for example queued AI work
+// in the middle of a host frame). A wait may only run the specific jobs it is
+// waiting for, and only when they are eligible to run on this thread (see
+// TryExecuteWaitedJob). Waiting on bare events therefore helps nothing.
 int CThreadPool::YieldWait( CThreadEvent **pEvents, int nEvents, bool bWaitAll, unsigned timeout )
 {
-	tmZone( TELEMETRY_LEVEL0, TMZF_IDLE, "%s(%d) SPINNING %t", __FUNCTION__, timeout, tmSendCallStack( TELEMETRY_LEVEL0, 0 ) );
+	tmZone( TELEMETRY_LEVEL0, TMZF_IDLE, "%s(%d) %t", __FUNCTION__, timeout,
+	    tmSendCallStack( TELEMETRY_LEVEL0, 0 ) );
 
-	Assert( timeout == TT_INFINITE ); // unimplemented
+	// Timeouts remain unimplemented: the legacy loop always waited until the
+	// events were signaled, and callers depend on that.
+	Assert( timeout == TT_INFINITE );
+	return WaitForEvents( pEvents, nEvents, bWaitAll );
+}
+
+int CThreadPool::WaitForEvents( CThreadEvent **pEvents, int nEvents, bool bWaitAll )
+{
+	if ( nEvents == 1 || bWaitAll )
+	{
+		// Blocking waits in sequence are equivalent to waiting for all, and
+		// avoid the polling multi-object wait on POSIX.
+		for ( int i = 0; i < nEvents; i++ )
+		{
+			pEvents[i]->Wait();
+		}
+		return 0;
+	}
 
 	int result;
-	CJob *pJob;
-	// Always wait for zero milliseconds initially, to let us process jobs on this thread.
-	timeout = 0;
-	while ( ( result = CThreadEvent::WaitForMultiple( nEvents, pEvents, bWaitAll, timeout ) ) == TW_TIMEOUT )
+	while ( ( result = CThreadEvent::WaitForMultiple( nEvents, pEvents, false, TT_INFINITE ) ) ==
+	        TW_TIMEOUT )
 	{
-		if ( !m_bExecOnThreadPoolThreadsOnly && m_SharedQueue.Pop( &pJob ) )
-		{
-			ServiceJobAndRelease( pJob );
-			m_nJobs--;
-		}
-		else
-		{
-			// Since there are no jobs for the main thread set the timeout to infinite.
-			// The only disadvantage to this is that if a job thread creates a new job
-			// then the main thread will not be available to pick it up, but if that
-			// is a problem you can just create more worker threads. Debugging test runs
-			// of TF2 suggests that jobs are only ever added from the main thread which
-			// means that there is no disadvantage.
-			// Waiting on the events instead of busy spinning has multiple advantages.
-			// It avoids wasting CPU time/electricity, it makes it more obvious in profiles
-			// when the main thread is idle versus busy, and it allows ready thread analysis
-			// in xperf to find out what woke up a waiting thread.
-			// It also avoids unnecessary CPU starvation -- seen on customer traces of TF2.
-			timeout = TT_INFINITE;
-		}
 	}
 	return result;
+}
+
+//---------------------------------------------------------
+
+// Runs a waited job on the waiting thread when no worker has started it and it
+// carries no thread requirement: it must belong to this pool, the pool must
+// allow non-pool threads to execute (m_bExecOnThreadPoolThreadsOnly), and it
+// must be neither JF_SERIAL nor bound to a service thread. Its queue entry
+// stays admitted and is released (not rerun) by the worker that later pops it.
+bool CThreadPool::TryExecuteWaitedJob( CJob *pJob )
+{
+	if ( m_bExecOnThreadPoolThreadsOnly || pJob->m_pThreadPool != this ||
+	     ( pJob->GetFlags() & JF_SERIAL ) || !pJob->CanExecute() )
+	{
+		return false;
+	}
+
+	// TryLock fails only if another thread is executing or aborting it.
+	if ( !pJob->TryLock() )
+		return false;
+
+	// The service thread is written under the job mutex.
+	bool bExecuted = false;
+	if ( pJob->GetServiceThread() == -1 && pJob->CanExecute() )
+	{
+		pJob->Execute();
+		m_nWaitedJobsRunInline++;
+		bExecuted = true;
+	}
+	pJob->Unlock();
+	return bExecuted;
 }
 
 //---------------------------------------------------------
@@ -635,10 +725,16 @@ int CThreadPool::YieldWait( CJob **ppJobs, int nJobs, bool bWaitAll, unsigned ti
 
 	for ( int i = 0; i < nJobs; i++ )
 	{
+		if ( TryExecuteWaitedJob( ppJobs[i] ) && !bWaitAll )
+			break;
+	}
+
+	for ( int i = 0; i < nJobs; i++ )
+	{
 		handles.AddToTail( ppJobs[i]->AccessEvent() );
 	}
 
-	return YieldWait( handles.Base(), handles.Count(), bWaitAll, timeout);
+	return YieldWait( handles.Base(), handles.Count(), bWaitAll, timeout );
 }
 
 //---------------------------------------------------------
@@ -702,25 +798,147 @@ void CThreadPool::AddJob( CJob *pJob )
 void CThreadPool::InsertJobInQueue( CJob *pJob )
 {
 	CJobQueue *pQueue;
+	CJobThread *pDirectWorker = NULL;
 
 	if ( !( pJob->GetFlags() & JF_SERIAL ) )
 	{
 		int iThread = pJob->GetServiceThread();
 		if ( iThread == -1 || !m_Threads.IsValidIndex( iThread ) )
 		{
+			// Work spawned by one of this pool's workers goes to that worker's
+			// bounded steal deque; when it is full, the shared queue takes it.
+			CJobThread *pWorker = FindCurrentWorker();
+			if ( pWorker )
+			{
+				pJob->AddRef(); // the deque entry's reference
+				if ( pWorker->AccessStealDeque().PushBottom( pJob ) )
+				{
+					CJobThread::CountEvent( &pWorker->m_nStealDequePushes );
+					if ( NumIdleThreads() )
+						WakeWorkers( pWorker );
+					return;
+				}
+				pJob->Release();
+				CJobThread::CountEvent( &pWorker->m_nStealDequeSpills );
+			}
 			pQueue = &m_SharedQueue;
 		}
 		else
 		{
-			pQueue = &(m_Threads[iThread]->AccessDirectQueue());
+			pDirectWorker = m_Threads[iThread];
+			pQueue = &pDirectWorker->AccessDirectQueue();
 		}
 	}
 	else
 	{
-		pQueue = &(m_Threads[0]->AccessDirectQueue());
+		pDirectWorker = m_Threads[0];
+		pQueue = &pDirectWorker->AccessDirectQueue();
 	}
 
 	m_nJobs -= pQueue->Push( pJob );
+
+	if ( pDirectWorker )
+		pDirectWorker->Wake();
+	else
+		WakeWorkers( NULL );
+}
+
+//---------------------------------------------------------
+// Worker scheduling
+//---------------------------------------------------------
+
+CJobThread *CThreadPool::FindCurrentWorker()
+{
+	const int nWorkers = m_nWorkers;
+	for ( int i = 0; i < nWorkers; i++ )
+	{
+		if ( m_pWorkers[i]->IsCurrentThread() )
+			return m_pWorkers[i];
+	}
+	return NULL;
+}
+
+bool CThreadPool::TakeJob( CJobThread *pWorker, CJob **ppJob )
+{
+	if ( pWorker->AccessDirectQueue().Pop( ppJob ) )
+		return true;
+	if ( pWorker->AccessStealDeque().PopBottom( ppJob ) )
+		return true;
+	if ( m_SharedQueue.Pop( ppJob ) )
+		return true;
+
+	// Steal the oldest entry of another worker, starting after this one so
+	// that thieves spread across victims.
+	const int nWorkers = m_nWorkers;
+	for ( int i = 1; i < nWorkers; i++ )
+	{
+		CJobThread *pVictim = m_pWorkers[( pWorker->m_iThread + i ) % nWorkers];
+		if ( pVictim->AccessStealDeque().StealTop( ppJob ) )
+		{
+			CJobThread::CountEvent( &pWorker->m_nSteals );
+			return true;
+		}
+	}
+	return false;
+}
+
+bool CThreadPool::HasWorkFor( CJobThread *pWorker )
+{
+	if ( pWorker->AccessDirectQueue().Count() || pWorker->AccessStealDeque().Count() ||
+	     m_SharedQueue.Count() )
+	{
+		return true;
+	}
+
+	const int nWorkers = m_nWorkers;
+	for ( int i = 0; i < nWorkers; i++ )
+	{
+		if ( m_pWorkers[i] != pWorker && m_pWorkers[i]->AccessStealDeque().Count() )
+			return true;
+	}
+	return false;
+}
+
+void CThreadPool::WakeWorkers( CJobThread *pExclude )
+{
+	const int nWorkers = m_nWorkers;
+	for ( int i = 0; i < nWorkers; i++ )
+	{
+		if ( m_pWorkers[i] != pExclude )
+			m_pWorkers[i]->Wake();
+	}
+}
+
+// Quiescent only (suspended or stopped): return every steal-deque entry to the
+// shared queue so priority-ordered bulk operations see it.
+void CThreadPool::SpillStealDeques()
+{
+	for ( int i = 0; i < m_Threads.Count(); i++ )
+	{
+		CJob *pJob;
+		while ( m_Threads[i]->AccessStealDeque().StealTop( &pJob ) )
+		{
+			m_SharedQueue.Push( pJob );
+			pJob->Release(); // the shared queue holds its own reference
+		}
+	}
+}
+
+// Quiescent only: abort and release every steal-deque entry.
+int CThreadPool::AbortStealDeques()
+{
+	int nAborted = 0;
+	for ( int i = 0; i < m_Threads.Count(); i++ )
+	{
+		CJob *pJob;
+		while ( m_Threads[i]->AccessStealDeque().StealTop( &pJob ) )
+		{
+			pJob->Abort();
+			pJob->Release();
+			nAborted++;
+		}
+	}
+	return nAborted;
 }
 
 //---------------------------------------------------------
@@ -757,6 +975,7 @@ void CThreadPool::ChangePriority( CJob *pJob, JobPriority_t priority )
 	{
 		pJob->SetPriority( priority );
 		m_SharedQueue.Push( pJob );
+		WakeWorkers( NULL );
 	}
 	else
 	{
@@ -772,6 +991,7 @@ void CThreadPool::ChangePriority( CJob *pJob, JobPriority_t priority )
 int CThreadPool::ExecuteToPriority( JobPriority_t iToPriority, JobFilter_t pfnFilter )
 {
 	SuspendExecution();
+	SpillStealDeques();
 
 	CJob *pJob;
 	int nExecuted = 0;
@@ -871,6 +1091,7 @@ int CThreadPool::AbortAll()
 		}
 
 	}
+	iAborted += AbortStealDeques();
 
 	m_nJobs = 0;
 
@@ -918,6 +1139,11 @@ bool CThreadPool::Start( const ThreadPoolStartParams_t &startParams, const char 
 	if ( nThreads <= 0 )
 	{
 		return true;
+	}
+
+	if ( nThreads > TP_MAX_POOL_THREADS )
+	{
+		nThreads = TP_MAX_POOL_THREADS;
 	}
 
 	int nStackSize = startParams.nStackSize;
@@ -974,6 +1200,10 @@ bool CThreadPool::Start( const ThreadPoolStartParams_t &startParams, const char 
 		m_Threads[iThread] = new CJobThread( this, iThread );
 		m_IdleEvents[iThread] = &m_Threads[iThread]->GetIdleEvent();
 		m_Threads[iThread]->SetName( CFmtStr( "%s%d", pszName, iThread ) );
+		// Publish the victim before the count; running workers may steal from
+		// it once they observe the count.
+		m_pWorkers[iThread] = m_Threads[iThread];
+		m_nWorkers = iThread + 1;
 		m_Threads[iThread]->Start( nStackSize );
 		m_Threads[iThread]->GetIdleEvent().Wait();
 #ifdef WIN32
@@ -1081,7 +1311,10 @@ bool CThreadPool::Stop( int timeout )
 	// CallWorker or the old IsAlive spin. An exit acknowledgment is not a join.
 	for ( int i = 0; i < m_Threads.Count(); i++ )
 	{
-		m_Threads[i]->CallWorker( TPM_EXIT );
+		// Send, wake, then wait for the acknowledgment (see CJobThread::Wait).
+		m_Threads[i]->CallWorker( TPM_EXIT, 0 );
+		m_Threads[i]->Wake();
+		m_Threads[i]->WaitForReply();
 	}
 
 	for ( int i = 0; i < m_Threads.Count(); ++i )
@@ -1089,9 +1322,12 @@ bool CThreadPool::Stop( int timeout )
 		if ( !m_Threads[i]->JoinForShutdown() )
 			return false;
 	}
+	AbortStealDeques();
+	m_nWorkers = 0;
 	for ( int i = 0; i < m_Threads.Count(); ++i )
 	{
 		m_Threads[i]->AccessDirectQueue().Flush();
+		m_pWorkers[i] = NULL;
 		delete m_Threads[i];
 	}
 

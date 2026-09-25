@@ -25,7 +25,7 @@ CInterlockedInt g_nPushes;
 CInterlockedInt g_nPops;
 CTSQueue<int, true> g_TestQueue;
 CTSList<int> g_TestList;
-volatile bool g_bStart;
+CInterlockedInt g_bStart; // start gate; an interlocked flag, since workers poll it
 std::list<ThreadHandle_t> g_ThreadHandles;
 
 int *g_pTestBuckets;

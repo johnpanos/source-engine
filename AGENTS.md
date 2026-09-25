@@ -360,7 +360,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | partial |
 | 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active |
 | 9 / R09 | Physics A feasibility and IVP baseline; 0004, Q-PHYSICS | R01, R02, R05 | Method/profile inventory, units/assets and measurements; tested solution or explicit scope decision for impact state, contact mutation, ragdoll limits and hull/decoder blockers | planned ([0004 progress](RFC/0004-progress.md)) |
-| 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active ([0003 progress](RFC/0003-progress.md)) |
+| 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active ([0003 progress](RFC/0003-progress.md); [host graph](RFC/0003-scheduler-trust-progress.md)) |
 | 11 / R11 | Paths and module resolution; 0001 rank 5 | R05, R07 | Native/virtual paths distinct; resolution/verification separate from opening; encoding/search/failure corpus passes | planned |
 | 12 / R12 | Dedicated-server composition; 0001 rank 6 | R06, R07, R11 | Installed startup/shutdown and partial failure pass; link/runtime evidence shows render and desktop UI absent | partial ([composition migration slice](RFC/0001-dedicated-composition-progress.md)) |
 | 13 / R13 | Hammer geometry and scene seams; 0002 H1 | R05, R08 | Strict headless targets; geometry/reference/reparent tests and independent documents pass; selected legacy callers route through shared owner | planned |
@@ -370,7 +370,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 17 / R17 | Hammer real renderer feasibility; 0002 R1 | R08, R15, R16 | Source-material viewport on declared GTK X11/Wayland profiles; state/target restoration, scale, capture, sharing and teardown measured | planned |
 | 18 / R18 | SDL3 provider parity; 0001 rank 10 | R14, R16 | Same window/input suites and representative behavior pass for SDL2/SDL3; SDK dependency is private; supported interop pairs tested | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 19 / R19 | Box3D one-worker vertical slice; 0004 B | R05, R09 | Pinned coherent provider loads existing BSP/PHY, compound prop, inside trace, verified impact, ragdoll and matching-schema restore | planned |
-| 20 / R20 | Parallel scheduler and controlled legacy bridge; 0003 C, 0006 M2 | R10 | Bounded queue/worker contracts, publication/wake/overflow and native stress pass; no forbidden helping/nested wait; total capacity and overhead measured | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
+| 20 / R20 | Parallel scheduler and controlled legacy bridge; 0003 C, 0006 M2 | R10 | Bounded queue/worker contracts, publication/wake/overflow and native stress pass; no forbidden helping/nested wait; total capacity and overhead measured | partial ([batch migration](RFC/0003-batch-migration-progress.md); [pool trust](RFC/0003-scheduler-trust-progress.md)) |
 | 21 / R21 | Particle reference migration; 0003 D | R20 | Legacy/serial/parallel captured outputs agree; attachment/lifetime tests, improvement and small-workload budgets pass; quiescent rollback works | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
 | 22 / R22 | Hammer persistence slice; 0002 H2 | R11, R13 | Declared VMF features round-trip and compile; independent acceptance, unknown/loss reporting, detached import and save failure/recovery pass | planned |
 | 23 / R23 | Hammer application authority; 0002 H3 | R13, R22 | One selection/mutation/history owner; draft resolution, transform/cancel/undo/redo/save-position and generated sequences pass headlessly | planned |
@@ -635,6 +635,31 @@ Keep the table concise and link details below or from the domain progress file.
   [recorded with microbenchmarks and oracles](RFC/0003-scheduler-performance-progress.md).
   Examples: real-pool 1-worker 2048-item dispatch 38.8→4.4 µs, and Seal up to 42×
   faster. Q-JOBS is now 10/10. This sets no frame budget and closes no gate.
+
+- R10-HOST-GRAPH / R20-POOL-TRUST: `partial` (2026-09-25). The host frame after
+  admission runs as an ordered serial graph (one legacy node per phase,
+  `host_frame_graph 1` by default, `0` = legacy rollback). A longjmp guard keeps
+  `Host_EndGame`/`Host_AbortServer` exits off the executor. An oracle built from
+  the pre-change body matches it over 4,000 seeded scenarios and detects every
+  mutant. Live Portal captures of legacy and graph frames match; see the record
+  for the tolerated `ia` noise.
+  - The engine pool fixtures are TSan-clean. Real bugs fixed: the CThread
+    init-flag race, the acquire-only `ThreadInterlockedExchange` (no release on
+    ARM64), the `WaitForReply` race and the consumed exit event.
+  - CTSQueue is a synchronized queue, so the gcc `unittest_legacy` CTSQueue
+    crash is gone. Workers own bounded steal deques that spill to the shared
+    queue.
+  - A wait runs only the jobs it waits on (when eligible), never unrelated
+    queued work.
+  - Benchmarks against base `504ee284`: the pool runs its microbenchmark
+    workloads in 0.44 to 0.50 of the old time (the old worker wait missed work).
+    Wake latency is +5 µs. CTSQueue is 16% slower at 1:1 but no longer crashes
+    at 4:4. In-game frames show no measurable difference (build B/A median
+    1.008, within ±0.8 ms noise).
+  - Open: the threaded listen-server live comparison (`host_thread_mode 2`
+    deadlocks on base too), a bound for the shared queue, nested-wait detection,
+    capacity budgets and a full-product TSan run.
+    See the [scheduler trust record](RFC/0003-scheduler-trust-progress.md).
 
 - R32-VIDEO-OPTIONS: `partial` (2026-09-23). The Video options take effect on
   native Vulkan: real display modes and mode-change callbacks, vsync through

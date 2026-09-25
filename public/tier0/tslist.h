@@ -582,17 +582,25 @@ private:
 } TSLIST_HEAD_ALIGN_POST;
 
 //-----------------------------------------------------------------------------
-// Lock free queue
+// Thread-safe FIFO queue (multi-producer, multi-consumer, unbounded).
 //
-// A special consideration: the element type should be simple. This code
-// actually dereferences freed nodes as part of pop, but later detects
-// that. If the item in the queue is a complex type, only bad things can
-// come of that. Also, therefore, if you're using Push/Pop instead of
-// push item, be aware that the node memory cannot be freed until
-// all threads that might have been popping have completed the pop.
-// The PushItem()/PopItem() for handles this by keeping a persistent
-// free list. Dont mix Push/PushItem. Note also nodes will be freed at the end, 
-// and are expected to have been allocated with operator new.
+// The former lock-free implementation was unsound: Push read the tail without
+// synchronization, its help path could install a recycled node's free-list link
+// as the tail, and the pNext CAS had no ABA tag. It crashed the legacy queue
+// tests. Structure changes are now serialized by a mutex; a lock-free design
+// needs native stress, sanitizer and performance evidence before replacing it.
+//
+// Contract (unchanged for callers):
+//  - FIFO per queue; each pushed element is popped exactly once.
+//  - Push(Node_t *) transfers the node to the queue and returns the previous
+//    tail node (for identification only). Pop() returns a node the caller now
+//    owns, carrying the popped element; delete it or hand it to FreeNode().
+//    Node memory is never read after it leaves the queue, so it may be freed.
+//  - PushItem/PopItem recycle nodes through a private free list. Element copies
+//    happen under the lock, so T may be any copyable type.
+//  - Count() is an atomic observation that may be stale when it returns.
+//  - Purge, RemoveAll and ValidateQueue require that no other thread uses the
+//    queue concurrently.
 //-----------------------------------------------------------------------------
 
 template <typename T, bool bTestOptimizer = false>
@@ -669,160 +677,69 @@ public:
 		T elem;
 	} TSLIST_NODE_ALIGN_POST;
 
-	union TSLIST_HEAD_ALIGN NodeLink_t
-	{
-		// override new/delete so we can guarantee 8-byte aligned allocs
-		static void * operator new(size_t size)
-		{
-			NodeLink_t *pNode = (NodeLink_t *)MemAlloc_AllocAlignedFileLine( size, TSLIST_HEAD_ALIGNMENT, __FILE__, __LINE__ );
-			return pNode;
-		}
-
-		static void operator delete(void *p)
-		{
-			MemAlloc_FreeAligned( p );
-		}
-
-		struct Value_t
-		{
-			Node_t *pNode;
-			intp	sequence;
-		} value;
-
-#ifdef PLATFORM_64BITS
-		int128 value64x128;
-#else
-		int64 value64x128;
-#endif
-	} TSLIST_HEAD_ALIGN_POST;
-
 	CTSQueue()
 	{
-		COMPILE_TIME_ASSERT( sizeof(Node_t) >= sizeof(TSLNodeBase_t) );
-		if ( ((size_t)&m_Head) % TSLIST_HEAD_ALIGNMENT != 0 )
-		{
-			Error( "CTSQueue: Misaligned queue\n" );
-			DebuggerBreak();
-		}
-		if ( ((size_t)&m_Tail) % TSLIST_HEAD_ALIGNMENT != 0 )
-		{
-			Error( "CTSQueue: Misaligned queue\n" );
-			DebuggerBreak();
-		}
 		m_Count = 0;
-		m_Head.value.sequence = m_Tail.value.sequence = 0;
-		m_Head.value.pNode = m_Tail.value.pNode = new Node_t; // list always contains a dummy node
-		m_Head.value.pNode->pNext = End();
+		m_pFreeNodes = NULL;
+		m_pHead = m_pTail = new Node_t; // list always contains a dummy node
+		m_pHead->pNext = NULL;
 	}
 
 	~CTSQueue()
 	{
 		Purge();
 		Assert( m_Count == 0 );
-		Assert( m_Head.value.pNode == m_Tail.value.pNode );
-		Assert( m_Head.value.pNode->pNext == End() );
-		delete m_Head.value.pNode;
+		Assert( m_pHead == m_pTail );
+		delete m_pHead;
 	}
 
-	// Note: Purge, RemoveAll, and Validate are *not* threadsafe
 	void Purge()
 	{
-		if ( IsDebug() )
-		{
-			ValidateQueue();
-		}
-
 		Node_t *pNode;
-		while ( (pNode = Pop()) != NULL )
+		while ( ( pNode = Pop() ) != NULL )
 		{
 			delete pNode;
 		}
 
-		while ( (pNode = (Node_t *)m_FreeNodes.Pop()) != NULL )
+		AUTO_LOCK( m_Mutex );
+		while ( ( pNode = m_pFreeNodes ) != NULL )
 		{
+			m_pFreeNodes = pNode->pNext;
 			delete pNode;
 		}
-
 		Assert( m_Count == 0 );
-		Assert( m_Head.value.pNode == m_Tail.value.pNode );
-		Assert( m_Head.value.pNode->pNext == End() );
-
-		m_Head.value.sequence = m_Tail.value.sequence = 0;
+		Assert( m_pHead == m_pTail && m_pHead->pNext == NULL );
 	}
 
 	void RemoveAll()
 	{
-		if ( IsDebug() )
-		{
-			ValidateQueue();
-		}
-
+		AUTO_LOCK( m_Mutex );
 		Node_t *pNode;
-		while ( (pNode = Pop()) != NULL )
+		while ( ( pNode = PopNodeLocked( NULL ) ) != NULL )
 		{
-			m_FreeNodes.Push( (TSLNodeBase_t *)pNode );
+			FreeNodeLocked( pNode );
 		}
 	}
 
 	bool ValidateQueue()
 	{
-		if ( IsDebug() )
+		AUTO_LOCK( m_Mutex );
+		int nNodes = 0;
+		Node_t *pLast = m_pHead;
+		for ( Node_t *pNode = m_pHead->pNext; pNode; pNode = pNode->pNext )
 		{
-			bool bResult = true;
-			int nNodes = 0;
-			if ( m_Tail.value.pNode->pNext != End() )
-			{
-				DebuggerBreakIfDebugging();
-				bResult = false;
-			}
-
-			if ( m_Count == 0 )
-			{
-				if ( m_Head.value.pNode != m_Tail.value.pNode )
-				{
-					DebuggerBreakIfDebugging();
-					bResult = false;
-				}
-			}
-
-			Node_t *pNode = m_Head.value.pNode;
-			while ( pNode != End() )
-			{
-				nNodes++;
-				pNode = pNode->pNext;
-			}
-
-			nNodes--;// skip dummy node
-
-			if ( nNodes != m_Count )
-			{
-				DebuggerBreakIfDebugging();
-				bResult = false;
-			}
-
-			if ( !bResult )
-			{
-				Msg( "Corrupt CTSQueueDetected" );
-			}
-
-			return bResult;
+			++nNodes;
+			pLast = pNode;
 		}
-		else
+
+		const bool bResult =
+		    ( pLast == m_pTail ) && ( m_pTail->pNext == NULL ) && ( nNodes == m_Count );
+		if ( !bResult )
 		{
-			return true;
+			DebuggerBreakIfDebugging();
+			Msg( "Corrupt CTSQueueDetected" );
 		}
-	}
-
-	void FinishPush( Node_t *pNode, const NodeLink_t &oldTail )
-	{
-		NodeLink_t newTail;
-
-		newTail.value.pNode = pNode;
-		newTail.value.sequence = oldTail.value.sequence + 1;
-
-		ThreadMemoryBarrier();
-
-		InterlockedCompareExchangeNodeLink( &m_Tail, newTail, oldTail );
+		return bResult;
 	}
 
 	Node_t *Push( Node_t *pNode )
@@ -834,131 +751,47 @@ public:
 			DebuggerBreak();
 		}
 #endif
-
-		NodeLink_t oldTail;
-
-		pNode->pNext = End();
-
-		for ( ;; )
-		{
-			oldTail.value.sequence = m_Tail.value.sequence;
-			oldTail.value.pNode = m_Tail.value.pNode;
-			if ( InterlockedCompareExchangeNode( &(oldTail.value.pNode->pNext), pNode, End() ) == End() )
-			{
-				break;
-			}
-			else
-			{
-				// Another thread is trying to push, help it along
-				FinishPush( oldTail.value.pNode->pNext, oldTail );
-			}
-		}
-
-		FinishPush( pNode, oldTail ); // This can fail if another thread pushed between the sequence and node grabs above. Later pushes or pops corrects
-
-		m_Count++;
-
-		return oldTail.value.pNode;
+		AUTO_LOCK( m_Mutex );
+		return PushNodeLocked( pNode );
 	}
 
 	Node_t *Pop()
 	{
-#define TSQUEUE_BAD_NODE_LINK ( (Node_t *)INT_TO_POINTER( 0xdeadbeef ) )
-		NodeLink_t * volatile		pHead = &m_Head;
-		NodeLink_t * volatile		pTail = &m_Tail;
-		Node_t * volatile *			pHeadNode = &m_Head.value.pNode;
-		volatile intp * volatile	pHeadSequence = &m_Head.value.sequence;
-		Node_t * volatile * 		pTailNode = &pTail->value.pNode;
-
-		NodeLink_t head;
-		NodeLink_t newHead;
-		Node_t *pNext;
-		intp tailSequence;
-		T elem;
-
-		for ( ;; )
-		{
-			head.value.sequence = *pHeadSequence; // must grab sequence first, which allows condition below to ensure pNext is valid
-			ThreadMemoryBarrier(); // need a barrier to prevent reordering of these assignments
-			head.value.pNode = *pHeadNode;
-			tailSequence = pTail->value.sequence;
-			pNext = head.value.pNode->pNext;
-
-			// Checking pNext only to force optimizer to not reorder the assignment
-			// to pNext and the compare of the sequence
-			if ( !pNext || head.value.sequence != *pHeadSequence )
-				continue;
-
-			if ( bTestOptimizer )
-			{
-				if ( pNext == TSQUEUE_BAD_NODE_LINK )
-				{
-					Msg( "Bad node link detected\n" );
-					continue;
-				}
-			}
-
-			if ( head.value.pNode == *pTailNode )
-			{
-				if ( pNext == End() )
-					return NULL;
-
-				// Another thread is trying to push, help it along
-				NodeLink_t &oldTail = head; // just reuse local memory for head to build old tail
-				oldTail.value.sequence = tailSequence; // reuse head pNode
-				FinishPush( pNext, oldTail );
-				continue;
-			}
-
-			if ( pNext != End() )
-			{
-				elem = pNext->elem; // NOTE: next could be a freed node here, by design
-				newHead.value.pNode = pNext;
-				newHead.value.sequence = head.value.sequence + 1;
-				if ( InterlockedCompareExchangeNodeLink( pHead, newHead, head ) )
-				{
-					ThreadMemoryBarrier();
-					if ( bTestOptimizer )
-					{
-						head.value.pNode->pNext = TSQUEUE_BAD_NODE_LINK;
-					}
-					break;
-				}
-			}
-		}
-
-		m_Count--;
-		head.value.pNode->elem = elem;
-		return head.value.pNode;
+		AUTO_LOCK( m_Mutex );
+		return PopNodeLocked( NULL );
 	}
 
 	void FreeNode( Node_t *pNode )
 	{
-		m_FreeNodes.Push( (TSLNodeBase_t *)pNode );
+		AUTO_LOCK( m_Mutex );
+		FreeNodeLocked( pNode );
 	}
 
 	void PushItem( const T &init )
 	{
-		Node_t *pNode = (Node_t *)m_FreeNodes.Pop();
-		if ( pNode )
 		{
-			pNode->elem = init;
+			AUTO_LOCK( m_Mutex );
+			Node_t *pNode = m_pFreeNodes;
+			if ( pNode )
+			{
+				m_pFreeNodes = pNode->pNext;
+				pNode->elem = init;
+				PushNodeLocked( pNode );
+				return;
+			}
 		}
-		else
-		{
-			pNode = new Node_t( init );
-		}
-		Push( pNode );
+
+		// Allocate outside the lock; the node is private until it is linked.
+		Push( new Node_t( init ) );
 	}
 
 	bool PopItem( T *pResult )
 	{
-		Node_t *pNode = Pop();
+		AUTO_LOCK( m_Mutex );
+		Node_t *pNode = PopNodeLocked( pResult );
 		if ( !pNode )
 			return false;
-
-		*pResult = pNode->elem;
-		m_FreeNodes.Push( (TSLNodeBase_t *)pNode );
+		FreeNodeLocked( pNode );
 		return true;
 	}
 
@@ -968,24 +801,46 @@ public:
 	}
 
 private:
-	Node_t *End() { return (Node_t *)this; } // just need a unique signifier
-
-	Node_t *InterlockedCompareExchangeNode( Node_t * volatile *ppNode, Node_t *value, Node_t *comperand )
+	Node_t *PushNodeLocked( Node_t *pNode )
 	{
-		return (Node_t *)::ThreadInterlockedCompareExchangePointer( (void **)ppNode, value, comperand );
+		pNode->pNext = NULL;
+		Node_t *pOldTail = m_pTail;
+		pOldTail->pNext = pNode;
+		m_pTail = pNode;
+		++m_Count;
+		return pOldTail;
 	}
 
-	bool InterlockedCompareExchangeNodeLink( NodeLink_t volatile *pLink, const NodeLink_t &value, const NodeLink_t &comperand )
+	// Unlinks the dummy head. Its successor becomes the new dummy and the popped
+	// element is returned in the old dummy (and/or copied to pResult).
+	Node_t *PopNodeLocked( T *pResult )
 	{
-		return ThreadInterlockedAssignIf64x128( &pLink->value64x128, value.value64x128, comperand.value64x128 );
+		Node_t *pHead = m_pHead;
+		Node_t *pNext = pHead->pNext;
+		if ( !pNext )
+			return NULL;
+
+		if ( pResult )
+			*pResult = pNext->elem;
+		else
+			pHead->elem = pNext->elem;
+		m_pHead = pNext;
+		pHead->pNext = NULL;
+		--m_Count;
+		return pHead;
 	}
 
-	NodeLink_t m_Head;
-	NodeLink_t m_Tail;
+	void FreeNodeLocked( Node_t *pNode )
+	{
+		pNode->pNext = m_pFreeNodes;
+		m_pFreeNodes = pNode;
+	}
 
+	CThreadMutex m_Mutex;
+	Node_t *m_pHead;
+	Node_t *m_pTail;
+	Node_t *m_pFreeNodes;
 	CInterlockedInt m_Count;
-
-	CTSListBase m_FreeNodes;
 } TSLIST_NODE_ALIGN_POST;
 
 #if defined( _WIN32 )

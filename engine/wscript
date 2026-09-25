@@ -167,6 +167,7 @@ def build(bld):
 		'hltvserver.cpp',
 		'hltvtest.cpp',
 		'host.cpp',
+		'host_frame_graph.cpp',
 		'host_cmd.cpp',
 		'host_listmaps.cpp',
 		'host_phonehome.cpp',

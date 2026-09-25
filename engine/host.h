@@ -14,6 +14,7 @@
 
 #include "convar.h"
 #include "steam/steamclientpublic.h"
+#include "host_frame_graph.h"
 
 #define SCRIPT_DIR			"scripts/"
 

@@ -848,6 +848,42 @@
       "expect": "pass"
     },
     {
+      "id": "jobsystem.hostframe",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-HOSTFRAME-001",
+      "contract": "engine/host_frame_graph.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "units": [
+        {
+          "id": "host-kernel",
+          "dialect": "legacy-cxx11",
+          "sources": [
+            "unittests/jobsystemtest/hostframetest.cpp"
+          ]
+        },
+        {
+          "id": "jobsystem",
+          "dialect": "cxx20",
+          "sources": [
+            "jobsystem/job_graph.cpp",
+            "jobsystem/deterministic_executor.cpp",
+            "jobsystem/frame_graph.cpp",
+            "jobsystem/serial_frame_graph.cpp"
+          ]
+        }
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.bench.smoke",
       "domain": "Q-JOBS",
       "rfc": "0003",

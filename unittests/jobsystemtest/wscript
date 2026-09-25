@@ -32,6 +32,12 @@ def build(bld):
 	# only need the self-contained jobsystem library.
 	programs = [
 		( 'jobsystemlegacybatchtest', 'legacybatchtest.cpp', ['vstdlib', 'tier1', 'tier0'] + dl_log ),
+		# Host frame graph vs the legacy hand-ordered frame (recording stand-ins).
+		( 'jobsystemhostframetest', 'hostframetest.cpp', ['jobsystem'] ),
+		# Real vstdlib pool + tier0 CTSQueue race/contract fixture (run under TSan).
+		( 'jobsystemthreadpooltest', 'threadpooltest.cpp', ['vstdlib', 'tier1', 'tier0'] + dl_log ),
+		# Pool/CTSQueue microbenchmarks; old-API only, so it also builds against older trees.
+		( 'jobsystemthreadpoolbench', 'threadpoolbench.cpp', ['vstdlib', 'tier1', 'tier0'] + dl_log ),
 		( 'jobsystempooledtest', 'pooledexecutortest.cpp', ['jobsystem'] ),
 		( 'jobsystembatchtest', 'parallelbatchtest.cpp', ['jobsystem'] ),
 		( 'jobsystemtest',        'jobsystemtest.cpp',    ['jobsystem'] ),
@@ -48,7 +54,7 @@ def build(bld):
 	]
 	# Dialects are selected in quality/toolchain/policy.json: the C++20 tests are
 	# listed there; the legacy-facade tests keep the default C++11 dialect.
-	cxx11 = [ 'jobsystemlegacybatchtest', 'jobsystemportalcarvetest' ]
+	cxx11 = [ 'jobsystemlegacybatchtest', 'jobsystemhostframetest', 'jobsystemthreadpooltest', 'jobsystemthreadpoolbench', 'jobsystemportalcarvetest' ]
 
 	for target, src, use_libs in programs:
 		bld.program(

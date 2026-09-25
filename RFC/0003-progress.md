@@ -3,7 +3,13 @@
 Updated: 2026-09-22
 Source revision at assessment: `0649f377` (working tree; AGENTS.md portfolio row: R10)
 
-**Latest performance increment (2026-09-23):** [scheduler microbenchmarks and
+**Latest increment (2026-09-25):** [scheduler trust](0003-scheduler-trust-progress.md)
+runs the host frame as an ordered serial graph that matches captured legacy
+frames (R10). It also makes the engine pool TSan-clean on native fixtures,
+fixes the CTSQueue crash, adds bounded worker steal deques, and forbids waits
+from running unrelated work (R20). It closes neither row.
+
+**Earlier performance increment (2026-09-23):** [scheduler microbenchmarks and
 contract-preserving optimization](0003-scheduler-performance-progress.md) adds
 oracle-validated microbenchmarks, a differential seal oracle and an executor
 stress suite. It optimizes Seal, both graph executors, the batch facade and dynamic

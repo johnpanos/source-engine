@@ -111,7 +111,11 @@ that the new runtime must account for:
 - Workers use direct queues and a shared priority queue; this implementation does not provide general worker-local work stealing.
 
 These are observations about the checked-in implementation, not measurements
-of the effective configuration in a particular running game.
+of the effective configuration in a particular running game. The R20
+scheduler-trust increment changed the last two: a wait now runs only the jobs
+it waits for (when eligible), never unrelated queued work, and workers own
+bounded steal deques. See
+[the scheduler trust record](0003-scheduler-trust-progress.md).
 
 ### Host scheduling
 

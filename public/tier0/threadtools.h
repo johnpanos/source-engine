@@ -269,7 +269,10 @@ inline int32 ThreadInterlockedDecrement( int32 volatile *p )
 inline int32 ThreadInterlockedExchange( int32 volatile *p, int32 value )
 {
 	Assert( (size_t)p % 4 == 0 );
-	return __sync_lock_test_and_set( p, value );
+	// Full barrier, matching InterlockedExchange. __sync_lock_test_and_set is
+	// only an acquire barrier, so an exchange used to release a lock or publish
+	// data did not order the preceding writes (observable on ARM64).
+	return __atomic_exchange_n( p, value, __ATOMIC_SEQ_CST );
 }
 
 inline int32 ThreadInterlockedExchangeAdd( int32 volatile *p, int32 value )
@@ -401,6 +404,35 @@ inline bool ThreadInterlockedAssignIf( uint32 volatile *p, uint32 value, uint32 
 //inline int ThreadInterlockedCompareExchange( int volatile *p, int value, int comperand )	{ return ThreadInterlockedCompareExchange( (int32 volatile *)p, value, comperand ); }
 //inline bool ThreadInterlockedAssignIf( int volatile *p, int value, int comperand )	{ return ThreadInterlockedAssignIf( (int32 volatile *)p, value, comperand ); }
 
+//-----------------------------------------------------------------------------
+// Atomic observation/publication of storage that other threads update with the
+// interlocked operations above. A plain volatile access is not an atomic
+// operation in the C++ memory model and does not order the data it guards;
+// these keep the advertised plain storage and layout. Loads acquire and stores
+// release, pairing with the full-barrier interlocked read-modify-writes.
+//-----------------------------------------------------------------------------
+#if defined( COMPILER_GCC )
+template <typename T> inline T ThreadAtomicLoad( T const volatile *p )
+{
+	return __atomic_load_n( p, __ATOMIC_ACQUIRE );
+}
+
+template <typename T> inline void ThreadAtomicStore( T volatile *p, T value )
+{
+	__atomic_store_n( p, value, __ATOMIC_RELEASE );
+}
+#else
+// MSVC volatile accesses have acquire/release semantics (/volatile:ms).
+template <typename T> inline T ThreadAtomicLoad( T const volatile *p )
+{
+	return *p;
+}
+
+template <typename T> inline void ThreadAtomicStore( T volatile *p, T value )
+{
+	*p = value;
+}
+#endif
 
 #if defined( _WIN64 )
 typedef __m128i int128;
@@ -618,100 +650,114 @@ inline int64 ThreadInterlockedDecrement64(int64 volatile *p)										{ AssertDb
 //
 //-----------------------------------------------------------------------------
 
-template <typename T>
-class CInterlockedIntT
+template <typename T> class CInterlockedIntT
 {
 public:
-	CInterlockedIntT() : m_value( 0 ) 				{ COMPILE_TIME_ASSERT( ( sizeof(T) == sizeof(int32) ) || ( sizeof(T) == sizeof(int64) ) ); }
-
-	CInterlockedIntT( T value ) : m_value( value ) 	{}
-
-	T operator()( void ) const      { return m_value; }
-	operator T() const				{ return m_value; }
-
-	bool operator!() const			{ return ( m_value == 0 ); }
-	bool operator==( T rhs ) const	{ return ( m_value == rhs ); }
-	bool operator!=( T rhs ) const	{ return ( m_value != rhs ); }
-
-	T operator++()					{
-										if ( sizeof(T) == sizeof(int32) ) 
-											return (T)ThreadInterlockedIncrement( (int32 *)&m_value );
-										else
-											return (T)ThreadInterlockedIncrement64( (int64 *)&m_value );
+	CInterlockedIntT() : m_value( 0 )
+	{
+		COMPILE_TIME_ASSERT(
+		    ( sizeof( T ) == sizeof( int32 ) ) || ( sizeof( T ) == sizeof( int64 ) ) );
 	}
-	T operator++(int)				{ return operator++() - 1; }
 
-	T operator--()					{	
-										if ( sizeof(T) == sizeof(int32) )
-											return (T)ThreadInterlockedDecrement( (int32 *)&m_value );
-										else
-											return (T)ThreadInterlockedDecrement64( (int64 *)&m_value );
-									}
+	CInterlockedIntT( T value ) : m_value( value ) {}
 
-	T operator--(int)				{ return operator--() + 1; }
+	T operator()( void ) const { return Load(); }
+	operator T() const { return Load(); }
 
-	bool AssignIf( T conditionValue, T newValue )	
-									{ 
-										if ( sizeof(T) == sizeof(int32) )
-											return ThreadInterlockedAssignIf( (int32 *)&m_value, (int32)newValue, (int32)conditionValue );
-										else
-											return ThreadInterlockedAssignIf64( (int64 *)&m_value, (int64)newValue, (int64)conditionValue );
-									}
+	bool operator!() const { return ( Load() == 0 ); }
+	bool operator==( T rhs ) const { return ( Load() == rhs ); }
+	bool operator!=( T rhs ) const { return ( Load() != rhs ); }
 
+	T operator++()
+	{
+		if ( sizeof( T ) == sizeof( int32 ) )
+			return (T)ThreadInterlockedIncrement( (int32 *)&m_value );
+		else
+			return (T)ThreadInterlockedIncrement64( (int64 *)&m_value );
+	}
+	T operator++( int ) { return operator++() - 1; }
 
-	T operator=( T newValue )		{ 
-										if ( sizeof(T) == sizeof(int32) )
-											ThreadInterlockedExchange((int32 *)&m_value, newValue); 
-										else
-											ThreadInterlockedExchange64((int64 *)&m_value, newValue); 
-										return m_value; 
-									}
+	T operator--()
+	{
+		if ( sizeof( T ) == sizeof( int32 ) )
+			return (T)ThreadInterlockedDecrement( (int32 *)&m_value );
+		else
+			return (T)ThreadInterlockedDecrement64( (int64 *)&m_value );
+	}
+
+	T operator--( int ) { return operator--() + 1; }
+
+	bool AssignIf( T conditionValue, T newValue )
+	{
+		if ( sizeof( T ) == sizeof( int32 ) )
+			return ThreadInterlockedAssignIf(
+			    (int32 *)&m_value, (int32)newValue, (int32)conditionValue );
+		else
+			return ThreadInterlockedAssignIf64(
+			    (int64 *)&m_value, (int64)newValue, (int64)conditionValue );
+	}
+
+	// Interlocked store; returns the stored value without rereading it.
+	T operator=( T newValue )
+	{
+		if ( sizeof( T ) == sizeof( int32 ) )
+			ThreadInterlockedExchange( (int32 *)&m_value, newValue );
+		else
+			ThreadInterlockedExchange64( (int64 *)&m_value, newValue );
+		return newValue;
+	}
 
 	// Atomic add is like += except it returns the previous value as its return value
-	T AtomicAdd( T add )			{ 
-										if ( sizeof(T) == sizeof(int32) )
-											return (T)ThreadInterlockedExchangeAdd( (int32 *)&m_value, (int32)add );
-										else
-											return (T)ThreadInterlockedExchangeAdd64( (int64 *)&m_value, (int64)add );
-									}
+	T AtomicAdd( T add )
+	{
+		if ( sizeof( T ) == sizeof( int32 ) )
+			return (T)ThreadInterlockedExchangeAdd( (int32 *)&m_value, (int32)add );
+		else
+			return (T)ThreadInterlockedExchangeAdd64( (int64 *)&m_value, (int64)add );
+	}
 
+	void operator+=( T add )
+	{
+		if ( sizeof( T ) == sizeof( int32 ) )
+			ThreadInterlockedExchangeAdd( (int32 *)&m_value, (int32)add );
+		else
+			ThreadInterlockedExchangeAdd64( (int64 *)&m_value, (int64)add );
+	}
 
-	void operator+=( T add )		{ 
-										if ( sizeof(T) == sizeof(int32) )
-											ThreadInterlockedExchangeAdd( (int32 *)&m_value, (int32)add );
-										else
-											ThreadInterlockedExchangeAdd64( (int64 *)&m_value, (int64)add );
-									}
-
-	void operator-=( T subtract )	{ operator+=( -subtract ); }
-	void operator*=( T multiplier )	{ 
-		T original, result; 
-		do 
-		{ 
-			original = m_value; 
-			result = original * multiplier; 
+	void operator-=( T subtract ) { operator+=( -subtract ); }
+	void operator*=( T multiplier )
+	{
+		T original, result;
+		do
+		{
+			original = Load();
+			result = original * multiplier;
 		} while ( !AssignIf( original, result ) );
 	}
-	void operator/=( T divisor )	{ 
-		T original, result; 
-		do 
-		{ 
-			original = m_value; 
+	void operator/=( T divisor )
+	{
+		T original, result;
+		do
+		{
+			original = Load();
 			result = original / divisor;
 		} while ( !AssignIf( original, result ) );
 	}
 
-	T operator+( T rhs ) const		{ return m_value + rhs; }
-	T operator-( T rhs ) const		{ return m_value - rhs; }
+	T operator+( T rhs ) const { return Load() + rhs; }
+	T operator-( T rhs ) const { return Load() - rhs; }
 
-	T InterlockedExchange(T newValue) {
-		if (sizeof(T) == sizeof(int32))
-			return (T)ThreadInterlockedExchange((int32*)&m_value, newValue);
+	T InterlockedExchange( T newValue )
+	{
+		if ( sizeof( T ) == sizeof( int32 ) )
+			return (T)ThreadInterlockedExchange( (int32 *)&m_value, newValue );
 		else
-			return (T)ThreadInterlockedExchange64((int64*)&m_value, newValue);
+			return (T)ThreadInterlockedExchange64( (int64 *)&m_value, newValue );
 	}
 
 private:
+	T Load() const { return ThreadAtomicLoad( &m_value ); }
+
 	volatile T m_value;
 };
 
@@ -727,11 +773,11 @@ public:
 	CInterlockedPtr() : m_value( 0 ) 				{}
 	CInterlockedPtr( T *value ) : m_value( value ) 	{}
 
-	operator T *() const			{ return m_value; }
+	operator T *() const { return Load(); }
 
-	bool operator!() const			{ return ( m_value == 0 ); }
-	bool operator==( T *rhs ) const	{ return ( m_value == rhs ); }
-	bool operator!=( T *rhs ) const	{ return ( m_value != rhs ); }
+	bool operator!() const { return ( Load() == 0 ); }
+	bool operator==( T *rhs ) const { return ( Load() == rhs ); }
+	bool operator!=( T *rhs ) const { return ( Load() != rhs ); }
 
 	T *operator++()					{ return ((T *)_InterlockedExchangeAdd64( (volatile __int64 *)&m_value, sizeof(T) )) + 1; }
 	T *operator++(int)				{ return (T *)_InterlockedExchangeAdd64( (volatile __int64 *)&m_value, sizeof(T) ); }
@@ -749,14 +795,16 @@ public:
 	// Atomic add is like += except it returns the previous value as its return value
 	T *AtomicAdd( int add ) { return ( T * )_InterlockedExchangeAdd64( (volatile __int64 *)&m_value, add * sizeof(T) ); }
 
-	T *operator+( int rhs ) const		{ return m_value + rhs; }
-	T *operator-( int rhs ) const		{ return m_value - rhs; }
-	T *operator+( unsigned rhs ) const	{ return m_value + rhs; }
-	T *operator-( unsigned rhs ) const	{ return m_value - rhs; }
-	size_t operator-( T *p ) const		{ return m_value - p; }
-	size_t operator-( const CInterlockedPtr<T> &p ) const	{ return m_value - p.m_value; }
+	T *operator+( int rhs ) const { return Load() + rhs; }
+	T *operator-( int rhs ) const { return Load() - rhs; }
+	T *operator+( unsigned rhs ) const { return Load() + rhs; }
+	T *operator-( unsigned rhs ) const { return Load() - rhs; }
+	size_t operator-( T *p ) const { return Load() - p; }
+	size_t operator-( const CInterlockedPtr<T> &p ) const { return Load() - p.Load(); }
 
 private:
+	T *Load() const { return ThreadAtomicLoad( &m_value ); }
+
 	T * volatile m_value;
 };
 #else
@@ -777,11 +825,11 @@ public:
 
 	CInterlockedPtr( T *value ) : m_value( value ) 	{}
 
-	operator T *() const			{ return m_value; }
+	operator T *() const { return Load(); }
 
-	bool operator!() const			{ return ( m_value == 0 ); }
-	bool operator==( T *rhs ) const	{ return ( m_value == rhs ); }
-	bool operator!=( T *rhs ) const	{ return ( m_value != rhs ); }
+	bool operator!() const { return ( Load() == 0 ); }
+	bool operator==( T *rhs ) const { return ( Load() == rhs ); }
+	bool operator!=( T *rhs ) const { return ( Load() != rhs ); }
 
 	T *operator++()					{ return ((T *)THREADINTERLOCKEDEXCHANGEADD( (int32 *)&m_value, sizeof(T) )) + 1; }
 	T *operator++(int)				{ return (T *)THREADINTERLOCKEDEXCHANGEADD( (int32 *)&m_value, sizeof(T) ); }
@@ -799,14 +847,16 @@ public:
 	// Atomic add is like += except it returns the previous value as its return value
 	T *AtomicAdd( int add ) { return ( T * ) THREADINTERLOCKEDEXCHANGEADD( (int32 *)&m_value, add * sizeof(T) ); }
 
-	T *operator+( int rhs ) const		{ return m_value + rhs; }
-	T *operator-( int rhs ) const		{ return m_value - rhs; }
-	T *operator+( unsigned rhs ) const	{ return m_value + rhs; }
-	T *operator-( unsigned rhs ) const	{ return m_value - rhs; }
-	size_t operator-( T *p ) const		{ return m_value - p; }
-	size_t operator-( const CInterlockedPtr<T> &p ) const	{ return m_value - p.m_value; }
+	T *operator+( int rhs ) const { return Load() + rhs; }
+	T *operator-( int rhs ) const { return Load() - rhs; }
+	T *operator+( unsigned rhs ) const { return Load() + rhs; }
+	T *operator-( unsigned rhs ) const { return Load() - rhs; }
+	size_t operator-( T *p ) const { return Load() - p; }
+	size_t operator-( const CInterlockedPtr<T> &p ) const { return Load() - p.Load(); }
 
 private:
+	T *Load() const { return ThreadAtomicLoad( &m_value ); }
+
 	T * volatile m_value;
 
 #undef THREADINTERLOCKEDEXCHANGEADD
@@ -909,7 +959,10 @@ public:
 private:
 	FORCEINLINE bool TryLockInline( const uint32 threadId ) volatile
 	{
-		if ( threadId != m_ownerID && !ThreadInterlockedAssignIf( (volatile int32 *)&m_ownerID, (int32)threadId, 0 ) )
+		// Only the owner can observe its own id, so a relaxed owner check is
+		// enough to recognize recursion; acquisition is the interlocked CAS.
+		if ( threadId != GetOwnerId() &&
+		     !ThreadInterlockedAssignIf( (volatile int32 *)&m_ownerID, (int32)threadId, 0 ) )
 			return false;
 
 		ThreadMemoryBarrier();
@@ -927,14 +980,14 @@ private:
 public:
 	bool TryLock() volatile
 	{
+		// Depth belongs to the owner: validate it only after acquisition.
+		if ( !TryLockInline( ThreadGetCurrentId() ) )
+			return false;
 #ifdef _DEBUG
-		if ( m_depth == INT_MAX )
-			DebuggerBreak();
-
-		if ( m_depth < 0 )
+		if ( m_depth == INT_MAX || m_depth <= 0 )
 			DebuggerBreak();
 #endif
-		return TryLockInline( ThreadGetCurrentId() );
+		return true;
 	}
 
 #ifndef _DEBUG 
@@ -950,7 +1003,7 @@ public:
 			Lock( threadId, nSpinSleepTime );
 		}
 #ifdef _DEBUG
-		if ( m_ownerID != (int32)ThreadGetCurrentId() )
+		if ( GetOwnerId() != ThreadGetCurrentId() )
 			DebuggerBreak();
 
 		if ( m_depth == INT_MAX )
@@ -967,7 +1020,7 @@ public:
 	void Unlock() volatile
 	{
 #ifdef _DEBUG
-		if ( m_ownerID != (int32)ThreadGetCurrentId() )
+		if ( GetOwnerId() != ThreadGetCurrentId() )
 			DebuggerBreak();
 
 		if ( m_depth <= 0 )
@@ -990,7 +1043,7 @@ public:
 	bool AssertOwnedByCurrentThread()	{ return true; }
 	void SetTrace( bool )				{}
 
-	uint32 GetOwnerId() const			{ return m_ownerID;	}
+	uint32 GetOwnerId() const volatile { return ThreadAtomicLoad( &m_ownerID ); }
 	int	GetDepth() const				{ return m_depth; }
 private:
 	volatile uint32 m_ownerID;

@@ -20,6 +20,7 @@ def build(bld):
 		'cvar.cpp',
 		'jobthread.cpp',
 		'jobgraph_pool_bridge.cpp',
+		'jobgraph_frame.cpp',
 		'KeyValuesSystem.cpp',
 		'random.cpp',
 		'vcover.cpp',

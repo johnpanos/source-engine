@@ -10,16 +10,16 @@ CTHREADLOCALPTR(CThread) g_pCurThread;
 
 #define INLINE_ON_PS3
 
-INLINE_ON_PS3 CThread::CThread() :	
+INLINE_ON_PS3 CThread::CThread()
+    : // Manual reset: "this thread has exited" is a state that every waiter must
+      // observe (WaitForReply and shutdown joins), not a token one of them consumes.
+      m_ExitEvent( true ),
 #ifdef _WIN32
-m_hThread( NULL ),
-m_threadId( 0 ),
+      m_hThread( NULL ), m_threadId( 0 ),
 #elif defined( _POSIX )
-m_threadId( 0 ),
-m_threadZombieId( 0 ) ,
+      m_threadId( 0 ), m_threadZombieId( 0 ),
 #endif
-m_result( 0 ),
-m_flags( 0 )
+      m_result( 0 ), m_flags( 0 )
 {
 	m_szName[0] = 0;
 	m_NotSuspendedEvent.Set();
@@ -101,6 +101,7 @@ INLINE_ON_PS3 bool CThread::Start( unsigned nBytesStack, ThreadPriorityEnum_t nP
 
 	bool  bInitSuccess = false;
 	CThreadEvent createComplete;
+	m_ExitEvent.Reset();
 	ThreadInit_t init = { this, &createComplete, &bInitSuccess };
 
 #if defined( THREAD_PARENT_STACK_TRACE_ENABLED )
@@ -144,7 +145,9 @@ INLINE_ON_PS3 bool CThread::Start( unsigned nBytesStack, ThreadPriorityEnum_t nP
 		AssertMsg1( 0, "Failed to create thread (error 0x%x)", GetLastError() );
 		return false;
 	}
-	bInitSuccess = true;
+	// The new thread publishes Init()'s result through pfInitSuccess before it
+	// signals createComplete; writing it here raced with (and could overwrite)
+	// a failed Init.
 #endif
 
 

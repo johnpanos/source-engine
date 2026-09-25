@@ -1375,7 +1375,8 @@ long ThreadInterlockedDecrement( long volatile *pDest )
 
 long ThreadInterlockedExchange( long volatile *pDest, long value )
 {
-	return __sync_lock_test_and_set( pDest, value );
+	// Full barrier like InterlockedExchange (__sync_lock_test_and_set is acquire-only).
+	return __atomic_exchange_n( pDest, value, __ATOMIC_SEQ_CST );
 }
 
 long ThreadInterlockedExchangeAdd( long volatile *pDest, long value )
@@ -1409,7 +1410,8 @@ bool ThreadInterlockedAssignPointerIf( void * volatile *pDest, void *value, void
 
 void *ThreadInterlockedExchangePointer( void * volatile *pDest, void *value )
 {
-	return __sync_lock_test_and_set( pDest, value );
+	// Full barrier like InterlockedExchangePointer (see ThreadInterlockedExchange).
+	return __atomic_exchange_n( pDest, value, __ATOMIC_SEQ_CST );
 }
 
 void *ThreadInterlockedCompareExchangePointer( void * volatile *p, void *value, void *comparand ) {
@@ -2265,12 +2267,12 @@ int CWorkerThread::Call(unsigned dwParam, unsigned timeout, bool fBoostPriority,
 	m_EventComplete.Reset();
 	m_EventSend.Set();
 
-	WaitForReply( timeout, waitFunc );
+	int result = WaitForReply( timeout, waitFunc );
 
 	if (fBoostPriority)
 		SetPriority(iInitialPriority);
 
-	return m_ReturnVal;
+	return result;
 }
 
 //---------------------------------------------------------
@@ -2318,22 +2320,25 @@ int CWorkerThread::WaitForReply( unsigned timeout, WaitFunc_t pfnWait )
 
 	} while ( bInDebugger && ( timeout == TT_INFINITE && result == TW_TIMEOUT ) );
 
+	// Only the worker writes m_ReturnVal (in Reply, before signaling
+	// completion). A timed-out caller must not write it: the worker may be
+	// replying concurrently, and a later WaitForReply reads the real reply.
 	if ( result != 0 )
 	{
 		if (result == TW_TIMEOUT)
 		{
-			m_ReturnVal = WTCR_TIMEOUT;
+			return WTCR_TIMEOUT;
 		}
 		else if (result == 1)
 		{
 			DevMsg( 2, "Thread failed to respond, probably exited\n");
 			m_EventSend.Reset();
-			m_ReturnVal = WTCR_TIMEOUT;
+			return WTCR_TIMEOUT;
 		}
 		else
 		{
 			m_EventSend.Reset();
-			m_ReturnVal = WTCR_THREAD_GONE;
+			return WTCR_THREAD_GONE;
 		}
 	}
 
