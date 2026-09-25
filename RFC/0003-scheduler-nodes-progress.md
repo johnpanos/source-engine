@@ -89,11 +89,15 @@ more wrote past `m_pVisits` into the members after it, the tree's
 tier0's id allocator too. A fixture starts 48 threads at once and checks every
 id fits (failed before the fix: ids up to 48 against 32).
 
-Threaded Portal now runs: 8 of 8 threaded captures complete (every threaded
-run hung before). The trace no longer reads server state while the async
-server job is in flight (that read raced with the job and differed run to
-run; the fields print `-` between submit and join). Legacy and graph threaded
-captures are identical: 6 of 6 pairs, 5398 events, 237 of 245 frames threaded.
+Threaded Portal now runs: every threaded capture since the fix completes
+(every threaded run hung before). Two trace corrections make threaded runs
+comparable: the trace no longer reads server state while the async server job
+is in flight (that read raced with the job; the fields print `-` between
+submit and join), and it leaves out the job's own events, because the job runs
+on a worker or, when no worker has started it, on the host thread at the join,
+which varies run to run. Legacy (`host_frame_graph 0`, `cl_render_start_graph
+0`) and full-graph (`1`, `2`) threaded captures on the rebased build are
+identical: 6 of 6 pairs, 5398 events, 237 of 245 frames threaded.
 
 Why ids reached 32: the filesystem's async I/O pool had
 `nThreadsMax = MIN( params.nThreads, 4 )`, and `nThreads` is -1 ("choose"), so

@@ -2312,6 +2312,8 @@ static void HostFrameTrace_Open()
 }
 
 static bool s_bHostFrameTraceServerInFlight = false;
+// Host thread only: set while the host thread itself runs the async server job.
+static bool s_bHostFrameTraceMuted = false;
 
 void Host_TraceServerJob( bool bInFlight )
 {
@@ -2320,7 +2322,7 @@ void Host_TraceServerJob( bool bInFlight )
 
 static void HostFrameTrace( const char *pszEvent, int nArg )
 {
-	if ( !s_pHostFrameTrace || !ThreadInMainThread() )
+	if ( !s_pHostFrameTrace || !ThreadInMainThread() || s_bHostFrameTraceMuted )
 		return;
 	if ( s_bHostFrameTraceServerInFlight )
 	{
@@ -2361,6 +2363,7 @@ static void HostFrameTrace_BeginFrame( int numticks, bool shouldrender, bool bGr
 	HostFrameTrace_Open();
 	if ( !s_pHostFrameTrace )
 		return;
+	s_bHostFrameTraceMuted = false; // in case a longjmp left the async server job
 	fflush( s_pHostFrameTrace );
 	// The frame path is metadata, not part of the compared frame.
 	static int s_nTracedGraphMode = -1;
@@ -2441,7 +2444,14 @@ void _Host_RunFrame_Server( bool finaltick )
 void _Host_RunFrame_Server_Async( int numticks )
 {
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s %d", __FUNCTION__, numticks );
-	HostFrameTrace( "ServerAsync", numticks );
+
+	// The async server job runs on a worker or, when no worker has started it,
+	// on the host thread at the join; which one varies run to run, so the trace
+	// leaves its events out. The join and the state after it are traced.
+	const bool bHostThread = ThreadInMainThread();
+	const bool bWasMuted = s_bHostFrameTraceMuted;
+	if ( bHostThread )
+		s_bHostFrameTraceMuted = true;
 
 	for ( int tick = 0; tick < numticks; tick++ )
 	{ 
@@ -2450,6 +2460,9 @@ void _Host_RunFrame_Server_Async( int numticks )
 		bool bFinalTick = ( tick == (numticks - 1) );
 		_Host_RunFrame_Server( bFinalTick );
 	}
+
+	if ( bHostThread )
+		s_bHostFrameTraceMuted = bWasMuted;
 }
 
 
