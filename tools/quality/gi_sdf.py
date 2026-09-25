@@ -3,6 +3,10 @@
 
     python3 tools/quality/gi_sdf.py door --out quality-results/rfc0011-g6/door
     python3 tools/quality/gi_sdf.py sun --out quality-results/rfc0011-g6/sun
+    python3 tools/quality/gi_sdf.py door --producer rayquery --out quality-results/rfc0011-g7/door
+
+`--producer rayquery` runs the same scenarios against the ray-query producer
+(RFC 0011 G7.2, tolerances as tight as SDF's).
 
 Each capture boots a fixture's map (quality-results/rfc0011-maps/<fixture>,
 or --map-build; built with the gi-fixture profile, so it carries the SDFV)
@@ -51,7 +55,9 @@ MAPS = ROOT / "quality-results" / "rfc0011-maps"
 WARM_FRAMES = 150
 CHANGE_FRAMES = 64
 SETTLE_FRAMES = 240  # the later capture a converged producer must agree with
-RESPONSE_TOLERANCE = 0.1  # SdfTracedProducer::Caps().responseTolerance
+# TracedProducer::Caps().responseTolerance: both traced producers declare it,
+# so the ray-query producer's tolerance is exactly as tight as the SDF one's.
+RESPONSE_TOLERANCE = 0.1
 
 
 def run_captures(fixture, map_build, out, captures, level_state, args):
@@ -110,14 +116,18 @@ def write(out, gate, passed, results, **extra):
     return 0 if passed else 1
 
 
+GATES = {"sdf": ("G6.2 door", "G6.3 sun"), "rayquery": ("G7.2 door", "G7.2 sun")}
+
+
 def door(args):
-    """G6.2. The closed room is dark throughout, so it is judged at the open
-    state's light level."""
+    """G6.2 (and G7.2 with --producer rayquery). The closed room is dark
+    throughout, so it is judged at the open state's light level."""
+    producer = args.producer
+    select = "r_indirect_report 1; r_indirect_producer %s; " % producer
     change = "wait %d; ent_fire Door Enable" % WARM_FRAMES
     captures = {
-        "sdf-open": ("open", "r_indirect_report 1; r_indirect_producer sdf; wait %d" %
-                     WARM_FRAMES, True),
-        "sdf-closed": ("closed", "r_indirect_report 1; r_indirect_producer sdf; " + change, True),
+        producer + "-open": ("open", select + "wait %d" % WARM_FRAMES, True),
+        producer + "-closed": ("closed", select + change, True),
         "radiosity-closed": ("closed", "r_indirect_report 1; r_indirect_producer radiosity; " +
                              change, False),
         "baked-closed": ("closed", "r_indirect_report 1; r_indirect_producer baked; " + change,
@@ -125,26 +135,27 @@ def door(args):
     }
     passed, results = run_captures("door", Path(args.map_build or MAPS / "door"),
                                    Path(args.out), captures, "open", args)
-    return write(Path(args.out), "G6.2 door", passed, results, build=args.build)
+    return write(Path(args.out), GATES[producer][0], passed, results, build=args.build,
+                 producer=producer)
 
 
 def sun(args):
-    """G6.3. The sun (its light style from the radiosity transfer) is moved
-    to the fixture's sun-low direction by the light-direction override."""
+    """G6.3 (and G7.2 with --producer rayquery). The sun (its light style
+    from the radiosity transfer) is moved to the fixture's sun-low direction
+    by the light-direction override."""
+    producer = args.producer
     fixture = json.loads((ROOT / "quality/fixtures/gi/room-states/fixture.json").read_text())
     direction = fixture["states"]["sun-low"]["sun_direction"]
     map_build = Path(args.map_build or MAPS / "room-states")
     sources = json.loads((map_build / "lighting/radiosity/rtrn-bake.json").read_text())["sources"]
     style = next(source["style"] for source in sources if source["name"] == "Sun")
+    select = "r_indirect_report 1; r_indirect_producer %s; " % producer
     change = "wait %d; r_indirect_light_direction %d %s" % (
         WARM_FRAMES, style, " ".join("%.6f" % v for v in direction))
     captures = {
-        "sdf-default": ("default", "r_indirect_report 1; r_indirect_producer sdf; wait %d" %
-                        WARM_FRAMES, True),
-        "sdf-sun-low": ("sun-low", "r_indirect_report 1; r_indirect_producer sdf; " + change,
-                        None),
-        "sdf-sun-low-settled": ("sun-low", "r_indirect_report 1; r_indirect_producer sdf; " +
-                                change, None, SETTLE_FRAMES),
+        producer + "-default": ("default", select + "wait %d" % WARM_FRAMES, True),
+        producer + "-sun-low": ("sun-low", select + change, None),
+        producer + "-sun-low-settled": ("sun-low", select + change, None, SETTLE_FRAMES),
         "radiosity-sun-low": ("sun-low", "r_indirect_report 1; r_indirect_producer radiosity; " +
                               change, None),
     }
@@ -155,8 +166,9 @@ def sun(args):
     # Toward the reference: every region's error against the sun-low
     # reference is below the unchanged bake's (the default-state capture);
     # radiosity, which claims no LightDirection, must not get there.
-    before = results["sdf-default"]["regions"]
-    early, late = results["sdf-sun-low"]["regions"], results["sdf-sun-low-settled"]["regions"]
+    before = results[producer + "-default"]["regions"]
+    early = results[producer + "-sun-low"]["regions"]
+    late = results[producer + "-sun-low-settled"]["regions"]
     level = max(reference for _, reference in late.values())
     settled = {region: abs(early[region][0] - late[region][0]) <=
                RESPONSE_TOLERANCE * (late[region][0] + level) for region in late}
@@ -164,8 +176,10 @@ def sun(args):
     def toward(moved):
         return {region: abs(moved[region][0] - moved[region][1]) <
                 abs(before[region][0] - moved[region][1]) for region in moved}
-    sdf_toward, radiosity_toward = toward(early), toward(results["radiosity-sun-low"]["regions"])
-    checks = {"settled": all(settled.values()), "sdf_toward_reference": all(sdf_toward.values()),
+    moved_toward = toward(early)
+    radiosity_toward = toward(results["radiosity-sun-low"]["regions"])
+    checks = {"settled": all(settled.values()),
+              producer + "_toward_reference": all(moved_toward.values()),
               "radiosity_not_toward_reference": not all(radiosity_toward.values())}
     for check, ok in checks.items():
         print("%-32s %s" % (check, "pass" if ok else "fail"))
@@ -173,10 +187,11 @@ def sun(args):
     accuracy = {region: {"measured": value, "reference": reference,
                          "relative_error": abs(value - reference) / max(reference, 1e-9)}
                 for region, (value, reference) in early.items()}
-    return write(Path(args.out), "G6.3 sun", passed, results, build=args.build, sun_style=style,
-                 sun_direction=direction, checks=checks, settled=settled,
-                 toward_reference={"sdf": sdf_toward, "radiosity": radiosity_toward},
-                 sdf_accuracy_measured=accuracy, settle_frames=SETTLE_FRAMES)
+    return write(Path(args.out), GATES[producer][1], passed, results, build=args.build,
+                 producer=producer, sun_style=style, sun_direction=direction, checks=checks,
+                 settled=settled,
+                 toward_reference={producer: moved_toward, "radiosity": radiosity_toward},
+                 accuracy_measured=accuracy, settle_frames=SETTLE_FRAMES)
 
 
 def producer_log(target):
@@ -200,6 +215,8 @@ def main():
         command.add_argument("--build", default="build",
                              help="the client build tree carrying the producer")
         command.add_argument("--runtime", help="base runtime (a private copy is booted)")
+        command.add_argument("--producer", choices=sorted(GATES), default="sdf",
+                             help="the traced producer under test (rayquery: RFC 0011 G7)")
     args = parser.parse_args()
     return {"door": door, "sun": sun}[args.command](args)
 

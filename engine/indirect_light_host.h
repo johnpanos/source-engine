@@ -20,14 +20,28 @@ namespace mapcontainer
 class ProbeVolumeView;
 }
 
-// Map lifetime. BeginMap takes the map's validated PRBV bytes, its RTRN
-// radiosity transfer bytes and its SDFV signed distance volume, if any (all
-// copied; the transfer is validated against the volume, and radiosity is
-// offered only with a valid one; the SDF producer only with a valid SDFV and
-// a renderer compute service), and starts the Baked producer, then the saved
+// A map's indirect-light inputs, borrowed for BeginMap (it copies what it
+// keeps): the validated PRBV, and when the map has them its RTRN radiosity
+// transfer, SDFV signed distance volume and WMSH world mesh.
+struct IndirectLightMapData
+{
+	const unsigned char *prbv = nullptr;
+	size_t prbvSize = 0;
+	const unsigned char *rtrn = nullptr;
+	size_t rtrnSize = 0;
+	const unsigned char *sdfv = nullptr;
+	size_t sdfvSize = 0;
+	const unsigned char *wmsh = nullptr;
+	size_t wmshSize = 0;
+};
+
+// Map lifetime. BeginMap validates the optional inputs (the transfer against
+// the volume) and offers each producer only with what it needs: radiosity a
+// valid transfer; the SDF producer a valid SDFV and a renderer compute
+// service; the ray-query producer those, the world's triangles and a device
+// with ray query. It starts the Baked producer, then the saved
 // r_indirect_producer (an unoffered value is reported and Baked kept).
-void IndirectLight_BeginMap( const unsigned char *prbv, size_t size, const unsigned char *rtrn,
-    size_t rtrnSize, const unsigned char *sdfv, size_t sdfvSize );
+void IndirectLight_BeginMap( const IndirectLightMapData &map );
 void IndirectLight_EndMap();
 
 // Once per rendered frame on the main thread, before the view renders, with

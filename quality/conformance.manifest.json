@@ -2389,15 +2389,17 @@
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
       "result_protocol": "checks-v1",
-      "description": "RFC 0011 G6 SDF-traced producer on a headless device through the renderer's compute service (render/gpu_compute.h over vulkan_compute's GpuComputeService): the shared producer suite (unittests/rendertest/indirect_contract.h) on the contract SDFV scene, including its geometry oracle (a proxy box around a probe darkens it below 5% of the seed); the radiosity producer claims no GeometryMotion; the GPU time of one update; validation-clean with the layer. The same source runs on Android from /data/local/tmp",
+      "description": "RFC 0011 G6/G7 traced producers on a headless device through the renderer's compute service (render/gpu_compute.h over vulkan_compute's GpuComputeService): the shared producer suite (unittests/rendertest/indirect_contract.h) against the SDF-traced producer and, on a device with ray query, the ray-query producer (the contract scene's triangles as a scene with proxy-box instances), including the geometry oracle (a proxy box around a probe darkens it below 5% of the seed); each traced field's own reference sees no light through the thin wall, and erasing the wall (from the field, or its triangles) is detected; without ray query the ray-query producer fails with missing-feature and creates nothing; validation-clean with the layer. The same source runs on Android from /data/local/tmp",
       "sources": [
         "unittests/shaderapivulkantest/test_indirect_sdf.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
-        "mapcontainer/sdf_volume.cpp"
+        "mapcontainer/sdf_volume.cpp",
+        "mapcontainer/world_mesh.cpp"
       ],
-      "expect": "pass"
+      "expect": "pass",
+      "min_checks": 16
     },
     {
       "id": "render.indirect-switching.native-pixels",

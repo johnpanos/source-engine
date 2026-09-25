@@ -5049,8 +5049,17 @@ void CModelLoader::Map_LoadProbeVolume()
 	}
 	// The indirect-light host owns the volume from here: its producers
 	// publish what the ambient cube and the renderer sample.
-	IndirectLight_BeginMap( m_ProbeVolumeBytes.Base(), size_t( m_ProbeVolumeBytes.Count() ),
-	    transfer.Base(), size_t( transfer.Count() ), field.Base(), size_t( field.Count() ) );
+	IndirectLightMapData map;
+	map.prbv = m_ProbeVolumeBytes.Base();
+	map.prbvSize = size_t( m_ProbeVolumeBytes.Count() );
+	map.rtrn = transfer.Base();
+	map.rtrnSize = size_t( transfer.Count() );
+	map.sdfv = field.Base();
+	map.sdfvSize = size_t( field.Count() );
+	// The world mesh stays loaded while it is drawn (Map_LoadWorldMesh ran first).
+	map.wmsh = m_WorldMeshBytes.Base();
+	map.wmshSize = size_t( m_WorldMeshBytes.Count() );
+	IndirectLight_BeginMap( map );
 	m_ProbeVolumeBytes.Purge();
 }
 

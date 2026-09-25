@@ -54,10 +54,14 @@ bool CVulkanWorldMeshUpload::UploadProbeVolume(
 		Warning( "[NativeVulkan] PRBV rejected: %s\n", error.c_str() );
 		return false;
 	}
-	Msg( "[NativeVulkan] PRBV ready (%u x %u atlas, %u grid%s, per-pixel model sampling %s)\n",
-	    request.atlasWidth, request.atlasHeight, request.gridCount,
-	    request.gridCount == 1 ? "" : "s",
-	    m_context.ProbeVolumeSamplingSupported() ? "on" : "unavailable" );
+	// Producers republish the volume as often as every frame: report its
+	// first upload per map, not each update.
+	if ( !m_probeVolumeReported )
+		Msg( "[NativeVulkan] PRBV ready (%u x %u atlas, %u grid%s, per-pixel model sampling %s)\n",
+		    request.atlasWidth, request.atlasHeight, request.gridCount,
+		    request.gridCount == 1 ? "" : "s",
+		    m_context.ProbeVolumeSamplingSupported() ? "on" : "unavailable" );
+	m_probeVolumeReported = true;
 	return true;
 }
 
@@ -69,6 +73,7 @@ bool CVulkanWorldMeshUpload::DrawBatch( uint32_t firstIndex, uint32_t indexCount
 
 void CVulkanWorldMeshUpload::Release()
 {
+	m_probeVolumeReported = false;
 	m_context.ReleaseWorldMesh();
 }
 

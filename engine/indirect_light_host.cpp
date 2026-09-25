@@ -136,8 +136,10 @@ public:
 
 #ifdef ANDROID
 constexpr bool kSdfProfileSupported = false;
+constexpr bool kRayQueryProfileSupported = false;
 #else
 constexpr bool kSdfProfileSupported = true;
+constexpr bool kRayQueryProfileSupported = true;
 #endif
 
 class EngineCatalog final : public IProducerCatalog
@@ -151,13 +153,17 @@ public:
 			return true;
 		if ( kind == ProducerKind::PrecomputedRadiosity )
 			return scene.transfer != nullptr;
-		// The GPU producer: the map's field and a device that runs compute, on
-		// a profile whose budget it was measured within
-		// (quality/budgets/indirect-light-v1.json: unsupported on Android
-		// until measured there, RFC 0011 G6.4).
+		// The GPU producers: the map's field and a device that runs compute, on
+		// a profile whose budget they were measured within
+		// (quality/budgets/indirect-light-v1.json: both unsupported on Android
+		// until measured there, RFC 0011 G6.4 and G7.3).
 		if ( kind == ProducerKind::SdfTraced )
 			return kSdfProfileSupported && scene.sdf != nullptr && scene.gpu != nullptr &&
 			       scene.gpu->Capabilities().compute;
+		// Ray query: also the world's triangles and a device that has it.
+		if ( kind == ProducerKind::RayQuery )
+			return kRayQueryProfileSupported && scene.sdf != nullptr && scene.geometry != nullptr &&
+			       scene.gpu != nullptr && scene.gpu->Capabilities().rayQuery;
 		// The contract's scripted fake: switching tests only, never players.
 		return kind == ProducerKind::ScriptedFake && r_indirect_test_fake.GetBool();
 	}
@@ -169,6 +175,8 @@ public:
 			return std::make_unique<RadiosityProducer>();
 		if ( kind == ProducerKind::SdfTraced )
 			return std::make_unique<SdfTracedProducer>();
+		if ( kind == ProducerKind::RayQuery )
+			return std::make_unique<RayQueryProducer>();
 		if ( kind == ProducerKind::ScriptedFake )
 			return std::make_unique<ScriptedFakeProducer>();
 		return nullptr;
@@ -398,9 +406,10 @@ CON_COMMAND_F( r_indirect_light_direction,
 
 } // namespace
 
-void IndirectLight_BeginMap( const unsigned char *prbv, size_t size, const unsigned char *rtrn,
-    size_t rtrnSize, const unsigned char *sdfv, size_t sdfvSize )
+void IndirectLight_BeginMap( const IndirectLightMapData &map )
 {
+	const unsigned char *prbv = map.prbv, *rtrn = map.rtrn, *sdfv = map.sdfv;
+	const size_t size = map.prbvSize, rtrnSize = map.rtrnSize, sdfvSize = map.sdfvSize;
 	Host &host = TheHost();
 	IndirectLight_EndMap();
 	auto baked = Volume::FromBytes( std::vector<unsigned char>( prbv, prbv + size ) );
@@ -438,6 +447,8 @@ void IndirectLight_BeginMap( const unsigned char *prbv, size_t size, const unsig
 			Warning( "indirect light: SDFV rejected (malformed); the SDF producer is not "
 			         "offered\n" );
 	}
+	if ( map.wmsh && map.wmshSize && host.scene.sdf )
+		host.scene.geometry = WorldGeometryFromMesh( map.wmsh, map.wmshSize );
 	host.scene.gpu = GpuCompute();
 	host.switcher = std::make_unique<Switcher>( host.catalog, host.tracker );
 	ReportOffered();

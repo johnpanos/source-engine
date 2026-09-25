@@ -34,6 +34,7 @@ public:
 private:
 	CVulkanContext &m_context;
 	DrawMaterialBatch m_drawBatch;
+	bool m_probeVolumeReported = false; // this map's first PRBV upload was logged
 };
 
 } // namespace render_vulkan

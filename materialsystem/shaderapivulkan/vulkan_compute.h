@@ -139,6 +139,7 @@ public:
 	void Collect( uint64_t completedSerial );
 	bool Alive( uint32_t resource ) const;
 	size_t PendingRetirements() const { return m_retired.size(); }
+	size_t LiveCount() const { return m_resources.size(); }
 	// The seeded early-free defect (the retirement check's control): destroy
 	// at Retire, ignoring the serial.
 	void SetEarlyFreeDefect( bool on ) { m_earlyFree = on; }
