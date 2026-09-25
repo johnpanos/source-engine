@@ -19,7 +19,7 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | G0 baseline, fixtures and runner | done (2026-09-24) | Six fixtures with Cycles total/indirect references; GPU runner; `mat_indirect_view` matches Cycles on five fixtures and rejects a seeded double; budgets per profile; models receive no baked indirect light today |
 | G1 probe volume, baked producer | active | Bake, pack, engine load and fallback, per-pixel `model_pbr` sampling and the CPU ambient cube done; all native oracles pass; the DXVK check (G1.7) is deferred by user direction; corpus load and memory open: one of four corpus maps built (see [G1 corpus](#g1-corpus-open)) |
 | G2 light set, separated bake, policy | done (2026-09-24, native Vulkan) | `render.light-set.v1` published each frame, with seeded ID reuse rejected; separated-bake consistency with swapped and doubled layers rejected; `render.indirect-policy.v1` with the double count rejected by the furnace in the CPU model, the GPU and the engine; native WMSH direct light from unbaked lights |
-| G3 producer contract and switching | active | Shared suite (Baked, radiosity, fake; seven bad producers and a one-bounce producer rejected), `r_indirect_producer` validation and native switching pass; `portal-view` and the Android backgrounding run are open |
+| G3 producer contract and switching | done (2026-09-24, native Vulkan) | Shared suite (Baked, radiosity, fake; seven bad producers and a one-bounce producer rejected); `r_indirect_producer` validation; native switching with no black frame, no early free and device loss mid-fade; backgrounding on the Fold7; `portal-view` through a real portal pair matches Cycles for baked and radiosity |
 | G4 precomputed radiosity | done (2026-09-24, native Vulkan; see open notes) | RTRN bake/reader/fuzzing; furnace on the real map (9 of 30 frames, one-bounce rejected); room-states panel/screen toggles converge in 7 frames and match Cycles in game (baked control fails); serial/pooled byte identity under TSan; desktop median 0.78–0.87 ms and Fold7 about 1.2 ms per update (one first update 2.75 ms), 10.4 MB; runs on the Fold7 APK with background/resume |
 | G5 GPU compute foundation | planned | — |
 | G6 SDF-traced producer | planned | — |
@@ -681,7 +681,7 @@ world.
   key is a struct, because `<tuple>` is not on the standard-header list. No
   finding is in G2 files.
 
-## G3: Producer contract and runtime switching (active)
+## G3: Producer contract and runtime switching (done 2026-09-24, native Vulkan)
 
 This section was written on 2026-09-24 from another session's evidence and
 an independent rerun. It records where each done criterion stands; the work
@@ -691,8 +691,8 @@ is still in progress.
 | --- | --- |
 | 1. `render.indirect-light.v1` and its shared suite | Passes. Baked, the radiosity producer (`BakedPlusDelta` over the furnace transfer) and a scripted fake pass. Seven deliberately bad producers and a one-bounce radiosity producer are rejected. |
 | 2. `r_indirect_producer` saved and validated | Passes in engine (18:19–18:29 boots, below). |
-| 3. `render.indirect-switching` on native Vulkan | Passes for baked↔fake, a failed `Begin` and a simulated device loss mid-fade. **Android backgrounding is open:** it is covered only against the fake GPU timeline in the headless suite, not on a device. |
-| 4. `portal-view` | **Open.** No evidence yet. |
+| 3. `render.indirect-switching` on native Vulkan | Passes for baked↔fake, a failed `Begin` and a simulated device loss mid-fade. Android backgrounding passes on the Galaxy Z Fold7 (installed APK, radiosity active): two HOME/resume cycles log `background (radiosity stops scheduling)` and `resume (radiosity)`, and the published volume is unchanged across them (generation 67, mean indirect 0.20244), so no black frame. Backgrounding mid-convergence is covered by the headless suite only. |
+| 4. `portal-view` | Passes. The map now carries a linked, activated `prop_portal` pair (fixture `collision.portals`). A camera 5 cm in front of the south portal renders the room through the pair and is judged against the Cycles `through` reference (`reference_cameras`). Baked and radiosity: floor 0.1%, red wall 0.7%, model 4.5%, all within tolerance. Evidence: `quality-results/rfc0011-g3-portal/{baked,radiosity}/gate.json`, `proof.png`. |
 
 **Contract and switcher.**
 [`render/indirect_light.h`](../public/render/indirect_light.h) holds the

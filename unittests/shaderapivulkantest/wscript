@@ -31,6 +31,7 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_vulkan_bringup.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
@@ -49,7 +50,8 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['../rendertest/test_render_backend_vulkan.cpp',
 			'../rendertest/conformance/render_backend_conformance.cpp',
-			'../../materialsystem/shaderapivulkan/vulkan_render_backend.cpp'],
+			'../../materialsystem/shaderapivulkan/vulkan_render_backend.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp'],
 		target='render_backend_vulkan_conformance',
 		name='render_backend_vulkan_conformance',
 		includes=['../rendertest', '../../materialsystem/shaderapivulkan', '../../public',
@@ -72,6 +74,7 @@ def build(bld):
 			'../rendertest/conformance/render_backend_conformance.cpp',
 			'../rendertest/conformance/render_presentation_conformance.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_render_backend.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_presentation.cpp',
 			'../../platform/sdl3/render_surface/sdl3_render_surfaces.cpp'],
 		target='render_presentation_sdl3_vulkan_conformance',
@@ -88,6 +91,7 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_pbr_pixels.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
@@ -104,6 +108,7 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_ktx2_pixels.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
@@ -123,6 +128,7 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_world_pbr_pixels.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
@@ -141,6 +147,7 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_world_glass_pixels.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
@@ -161,6 +168,7 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_model_pbr_pixels.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
@@ -173,6 +181,18 @@ def build(bld):
 		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'mapcontainer'],
 		install_path=None)
 
+	# RFC 0011 G5 render.compute: the compute foundation on a headless device
+	# (no window), so the same program also runs on an Android device.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_compute.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp'],
+		target='compute_native_conformance',
+		name='compute_native_conformance',
+		includes=includes,
+		use=['VULKAN'],
+		install_path=None)
+
 	# RFC 0011 render.indirect-switching on native Vulkan: the producer
 	# switcher driving the per-pixel probe volume with real frames and
 	# completion serials. Skips (exit 77) without a device/display.
@@ -180,6 +200,7 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_indirect_switching.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
@@ -202,6 +223,7 @@ def build(bld):
 			# core into the test too; its non-virtual methods operate on the same
 			# g_VulkanContext instance the backend's exported accessor returns.
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
@@ -223,6 +245,7 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_material_equivalence.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',

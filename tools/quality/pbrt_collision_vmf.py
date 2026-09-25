@@ -341,6 +341,10 @@ def main():
                         help="omit the fallback light entity: the map's probe volume "
                              "(RFC 0011 PRBV) lights models and derives the leaf ambient, "
                              "so vrad must add no light of its own")
+    parser.add_argument("--portal", action="append", default=[], metavar="X,Y,Z,NX,NY,NZ,TWO",
+                        help="a map-placed, activated prop_portal of linkage group 0: its centre "
+                             "and normal in meters (stage space) and 1 for the pair's second "
+                             "portal")
     parser.add_argument("--light-control", action="append", default=[], metavar="NAME",
                         help="a switchable baked light (RFC 0011 RTRN source), in style order: "
                              "a named zero-brightness `light`, so vbsp gives it light style "
@@ -452,6 +456,16 @@ def main():
                   ] + ([] if args.no_fallback_light else [
                   "entity", "{", '\t"id" "3"', '\t"classname" "light"',
                   '\t"origin" "%g %g %g"' % tuple(light), '\t"_light" "255 255 240 300"', "}"]))
+    for index, spec in enumerate(args.portal):
+        values = [float(v) for v in spec.split(",")]
+        centre = [v * SOURCE_UNITS_PER_METER for v in values[0:3]]
+        nx, ny, nz = values[3:6]
+        pitch = -math.degrees(math.asin(max(-1.0, min(1.0, nz))))
+        yaw = math.degrees(math.atan2(ny, nx))
+        lines.extend(["entity", "{", '\t"id" "%d"' % (80 + index), '\t"classname" "prop_portal"',
+                      '\t"origin" "%.3f %.3f %.3f"' % tuple(centre),
+                      '\t"angles" "%g %g 0"' % (pitch, yaw), '\t"Activated" "1"',
+                      '\t"PortalTwo" "%d"' % int(values[6]), '\t"LinkageGroupID" "0"', "}"])
     # Switchable baked lights: the runtime owns their light (the radiosity
     # transfer and its style scalar); vrad adds none.
     for index, name in enumerate(args.light_control):
@@ -485,6 +499,7 @@ def main():
                "skipped_outside_or_thin": skipped,
                "spawn": spawn, "walkable_tops": tops, "dynamic_models": placed,
                "fallback_light": not args.no_fallback_light,
+               "portals": args.portal,
                "light_controls": [{"name": name, "style": 32 + index}
                                   for index, name in enumerate(args.light_control)],
                "policy": "18-DOP per connected component; floor triangles extruded; "

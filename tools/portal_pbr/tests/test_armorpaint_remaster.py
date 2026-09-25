@@ -36,8 +36,8 @@ def base_recipe():
 
 class RecipeTest(unittest.TestCase):
     def test_checked_in_recipes_are_valid(self):
-        paths = sorted(RECIPE_DIR.glob("*/*.json"))
-        self.assertGreaterEqual(len(paths), 4)
+        paths = sorted(RECIPE_DIR.glob("**/*.json"))
+        self.assertGreaterEqual(len(paths), 5)
         for path in paths:
             recipe = ar.load_recipe(path)
             self.assertEqual(path.relative_to(RECIPE_DIR).with_suffix("").as_posix(), recipe["material"])
@@ -53,6 +53,10 @@ class RecipeTest(unittest.TestCase):
             lambda r: r["roughness"].update(seam_range=[0.9, 0.1]),
             lambda r: r["delight"].update(strength=2.0),
             lambda r: r.pop("occlusion"),
+            lambda r: r.pop("tiling"),
+            lambda r: r["roughness"].update(from_exponent={}),     # two roughness modes
+            lambda r: r.update(tiling=False),                      # atlas cannot be de-lit
+            lambda r: r.update(emission={"source": "glow", "scale": 1}),
         ]
         for index, mutate in enumerate(mutations):
             recipe = copy.deepcopy(good)
@@ -88,9 +92,23 @@ class SeamTest(unittest.TestCase):
         self.assertGreater(ar.seam_ratio(broken), 1.0)
 
 
+class ConversionTest(unittest.TestCase):
+    def test_tileable_noise_is_periodic(self):
+        noise = ar.tileable_noise(128, 12, "fixture")
+        self.assertLessEqual(ar.seam_ratio(noise), 1.0)
+        self.assertAlmostEqual(float(noise.mean()), 0.5, delta=0.05)
+        self.assertGreater(float(noise.std()), 0.05)
+
+    def test_exponent_roughness_follows_the_phong_decode(self):
+        rough = ar.exponent_roughness(np.array([0.0, 0.5, 1.0]))
+        self.assertTrue(np.all(np.diff(rough) < 0))                 # sharper highlight, smoother
+        # n = 1 + 149 * 0.5 = 75.5; alpha = sqrt(2 / (4n + 2)); perceptual = sqrt(alpha)
+        self.assertAlmostEqual(float(rough[1]), (2 / (4 * 75.5 + 2)) ** 0.25, places=9)
+
+
 class GraphTest(unittest.TestCase):
     def test_references_resolve_and_outputs_are_wired(self):
-        for path in sorted(RECIPE_DIR.glob("*/*.json")):
+        for path in sorted(RECIPE_DIR.glob("**/*.json")):
             calls = ar.graph_calls(ar.load_recipe(path))
             saved = {c["save"] for c in calls if "save" in c}
 
@@ -159,6 +177,23 @@ class QaTest(unittest.TestCase):
         self.assertTrue(any("0.02 floor" in p for p in self.run_qa(self.gl, low)))
         self.recipe["size"] = SIZE * 2
         self.assertTrue(any("expected" in p for p in self.run_qa(self.gl)))
+
+    def test_seam_is_not_judged_on_an_atlas(self):
+        broken = self.mrao.copy()
+        broken[..., 1] = np.linspace(0.3, 0.8, SIZE)[None, :] * np.ones((SIZE, 1))
+        self.recipe["tiling"] = False
+        self.assertEqual([], self.run_qa(self.gl, broken))
+
+    def test_black_emission_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            paths = self.write_set(tmp, self.gl, self.mrao)
+            paths["emission"] = tmp / "emission.png"
+            ar.save8(paths["emission"], np.zeros((SIZE, SIZE, 3)))
+            prepared = tmp / "prepared-dx.png"
+            ar.save8(prepared, self.dx * 0.5 + 0.5)
+            problems = ar.qa(self.recipe, paths, prepared, {})["problems"]
+        self.assertTrue(any("emission" in p for p in problems), problems)
 
     def test_seam_in_export_is_rejected(self):
         broken = self.mrao.copy()          # a ramp does not tile: small interior steps, one big wrap step

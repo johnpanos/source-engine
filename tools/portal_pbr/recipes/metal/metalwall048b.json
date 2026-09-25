@@ -2,6 +2,7 @@
 	"schema": "portal-pbr-armorpaint-recipe-v1",
 	"material": "metal/metalwall048b",
 	"size": 4096,
+	"tiling": true,
 	"intent": "Dark non-portalable steel panels: bare coated metal faces, rough dielectric grime in the seams. The legacy warm envmap tint and its SSBump-alpha spec mask are the metal and gloss evidence.",
 	"cavity": {"source": "base_alpha"},
 	"delight": {"strength": 1.0, "blur_px": 20},

@@ -205,7 +205,14 @@ bool CVulkanContext::CreateInstance( std::string *outError )
 	appInfo.applicationVersion = VK_MAKE_VERSION( 1, 0, 0 );
 	appInfo.pEngineName = "Source";
 	appInfo.engineVersion = VK_MAKE_VERSION( 1, 0, 0 );
-	appInfo.apiVersion = VK_API_VERSION_1_1;
+	// Vulkan 1.2 where the loader has it: the compute foundation's feature
+	// chain (RFC 0011 G5) uses its core structures; devices below 1.2 still
+	// run everything else.
+	uint32_t loaderVersion = VK_API_VERSION_1_1;
+	if ( const auto enumerate = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+	         vkGetInstanceProcAddr( VK_NULL_HANDLE, "vkEnumerateInstanceVersion" ) ) )
+		enumerate( &loaderVersion );
+	appInfo.apiVersion = loaderVersion >= VK_API_VERSION_1_2 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1;
 
 	VkInstanceCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -531,13 +538,18 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 		m_sceneDepthUsable = ( depthProps.optimalTilingFeatures & readable ) == readable;
 	}
 
+	// Every feature goes through the VkPhysicalDeviceFeatures2 chain: the
+	// ones above plus what the compute foundation's queries found.
+	m_featureChain.Build( m_physicalDevice,
+	    QueryComputeCaps( m_physicalDevice, m_graphicsQueueFamily ), features, &deviceExts );
+	m_computeCaps = m_featureChain.Enabled();
 	VkDeviceCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+	createInfo.pNext = m_featureChain.Chain();
 	createInfo.queueCreateInfoCount = static_cast<uint32_t>( queueInfos.size() );
 	createInfo.pQueueCreateInfos = queueInfos.data();
 	createInfo.enabledExtensionCount = static_cast<uint32_t>( deviceExts.size() );
 	createInfo.ppEnabledExtensionNames = deviceExts.data();
-	createInfo.pEnabledFeatures = &features;
 
 	VkResult r = vkCreateDevice( m_physicalDevice, &createInfo, nullptr, &m_device );
 	if ( r != VK_SUCCESS )
@@ -548,6 +560,14 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 
 	vkGetDeviceQueue( m_device, m_graphicsQueueFamily, 0, &m_graphicsQueue );
 	vkGetDeviceQueue( m_device, m_presentQueueFamily, 0, &m_presentQueue );
+	std::string computeError;
+	if ( !m_compute.Init( m_physicalDevice, m_device, m_computeCaps, &computeError ) )
+		std::fprintf( stderr, "[NativeVulkan] compute unavailable: %s\n", computeError.c_str() );
+	std::fprintf( stderr,
+	    "[NativeVulkan] compute %s, storage images %s, ray query %s (device API %u.%u)\n",
+	    m_computeCaps.compute ? "on" : "off", m_computeCaps.storageImages ? "on" : "off",
+	    m_computeCaps.rayQuery ? "on" : "off", VK_API_VERSION_MAJOR( m_computeCaps.deviceApiVersion ),
+	    VK_API_VERSION_MINOR( m_computeCaps.deviceApiVersion ) );
 	return true;
 }
 
@@ -4034,6 +4054,7 @@ void CVulkanContext::DestroyManagedTexture( int handle )
 
 void CVulkanContext::RetireCompletedTextures()
 {
+	m_compute.Collect( m_completedSerial );
 	size_t kept = 0;
 	for ( RetiredTexture &r : m_retiredTextures )
 	{
@@ -5229,6 +5250,8 @@ void CVulkanContext::DestroyDynamicMesh()
 	for ( RetiredTexture &r : m_retiredTextures )
 		ReleaseManagedTextureObjects( r.texture );
 	m_retiredTextures.clear();
+	m_computeWork.clear();
+	m_compute.Shutdown();
 	m_freeTextureHandles.clear();
 	m_liveTextureSets = 0;
 	if ( m_dynPipelineLayout != VK_NULL_HANDLE )
@@ -5709,6 +5732,11 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		vkCmdResetQueryPool( cmd, m_timestampPool, first, 2 );
 		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_timestampPool, first );
 	}
+	// Compute work queued since the last frame (RFC 0011 G5), ahead of every
+	// render pass; its barriers make the writes visible to this frame's draws.
+	for ( auto &work : m_computeWork )
+		work( cmd, m_submitSerial + 1 );
+	m_computeWork.clear();
 	// Texel uploads deferred since the last frame, ahead of every draw. This
 	// slot's staging buffer is free: its fence was waited on above.
 	if ( !RecordPendingUploads( cmd, m_uploadStreams[m_currentFrame] ) )

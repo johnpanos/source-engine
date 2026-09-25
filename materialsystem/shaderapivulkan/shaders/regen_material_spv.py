@@ -49,6 +49,8 @@ SHADERS = (
     ("g_worldPbrIndirectDeltaClipFragSpv", "world_pbr.frag", ["-DINDIRECT_VIEW",
                                                                "-DDELTA_VOLUME",
                                                                "-DCLIP_PLANES"]),
+    # RFC 0011 G5: the compute conformance suite's program.
+    ("g_computeFillSpv", "compute_fill.comp", []),
     ("g_worldGlassFragSpv", "world_pbr_glass.frag", []),
     ("g_worldGlassClipFragSpv", "world_pbr_glass.frag", ["-DCLIP_PLANES"]),
     ("g_materialTexFragSpv", "demo_dyn_tex.frag", []),

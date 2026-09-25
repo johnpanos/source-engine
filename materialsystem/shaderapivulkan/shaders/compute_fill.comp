@@ -1,0 +1,27 @@
+#version 450
+// RFC 0011 G5 compute conformance: each invocation writes its index into a
+// storage buffer and a pattern into an R32F storage image, from a push seed.
+layout( local_size_x = 8, local_size_y = 8, local_size_z = 1 ) in;
+
+layout( set = 0, binding = 0 ) buffer Values
+{
+	uint values[];
+};
+layout( set = 0, binding = 1, r32f ) uniform writeonly image2D pattern;
+
+layout( push_constant ) uniform Push
+{
+	uint width;
+	uint seed;
+}
+push;
+
+void main()
+{
+	const uvec2 id = gl_GlobalInvocationID.xy;
+	if ( id.x >= push.width || id.y >= push.width )
+		return;
+	const uint index = id.y * push.width + id.x;
+	values[index] = index * 2u + push.seed;
+	imageStore( pattern, ivec2( id ), vec4( float( id.x ) + float( id.y ) * 0.5 + float( push.seed ) ) );
+}

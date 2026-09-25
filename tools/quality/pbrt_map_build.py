@@ -544,6 +544,10 @@ class Pipeline:
         controls = self.light_controls() if radiosity else []
         for control in controls:
             collision_args += ["--light-control", control["name"]]
+        for portal in collision.get("portals", []):
+            collision_args += ["--portal", ",".join(
+                "%g" % v for v in list(portal["center_m"]) + list(portal["normal"]) +
+                [1 if portal.get("portal_two") else 0])]
         for flag, key in (("--envelope-mesh", "envelope_meshes"),
                           ("--solid-material", "solid_materials"),
                           ("--solid-mesh", "solid_meshes")):

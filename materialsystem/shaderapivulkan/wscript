@@ -29,6 +29,7 @@ def build(bld):
 
 	source = [
 		'shaderapivulkan.cpp',
+		'vulkan_compute.cpp',
 		'vulkan_device.cpp',
 		'vulkan_adapter.cpp',
 		'../dxsupport_keyvalues.cpp',

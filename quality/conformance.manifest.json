@@ -2330,6 +2330,7 @@
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "mapcontainer/world_lightmap.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
@@ -2350,6 +2351,7 @@
       "sources": [
         "unittests/shaderapivulkantest/test_model_pbr_pixels.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
@@ -2358,6 +2360,20 @@
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
         "mapcontainer/probe_volume.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.compute",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "result_protocol": "checks-v1",
+      "description": "RFC 0011 G5 compute foundation on a headless device: capabilities queried and enabled through the VkPhysicalDeviceFeatures2 chain and claimed only as enabled (a provider claiming unenabled ray query is rejected); a compute program writes a storage buffer and an R32F storage image on the graphics queue, read back exactly; a retired resource lives until its submission completes and the seeded early free is caught; validation-clean with the layer. The same source runs on Android from /data/local/tmp",
+      "sources": [
+        "unittests/shaderapivulkantest/test_compute.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp"
       ],
       "expect": "pass"
     },
@@ -2373,6 +2389,7 @@
       "sources": [
         "unittests/shaderapivulkantest/test_indirect_switching.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
@@ -2395,6 +2412,7 @@
       "sources": [
         "unittests/shaderapivulkantest/test_pbr_pixels.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
@@ -2415,6 +2433,7 @@
       "sources": [
         "unittests/shaderapivulkantest/test_world_glass_pixels.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
@@ -2434,6 +2453,7 @@
       "sources": [
         "unittests/shaderapivulkantest/test_gpu_zero_checks.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",

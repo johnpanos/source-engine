@@ -1,0 +1,14 @@
+{
+	"schema": "portal-pbr-armorpaint-recipe-v1",
+	"material": "models/props/door_01",
+	"size": 4096,
+	"tiling": false,
+	"intent": "Round test-chamber door (model atlas): glossy painted panels and a dark painted frame, both dielectric. Roughness comes from the authored Phong exponent map; the eye and light bars self-illuminate through the base alpha, carried as emission. The legacy normal map is flat, so no relief is invented.",
+	"cavity": {"source": "none"},
+	"delight": {"strength": 0.0, "blur_px": 0},
+	"metal": {"constant": 0.0},
+	"f0": {"value_gain": 1.0, "saturation": 1.0},
+	"roughness": {"from_exponent": {}, "seam_range": [0.0, 1.0], "seam": 0.5, "noise_scale": 120, "noise_amp": 0.03},
+	"occlusion": {"from": [0.0, 1.0], "to": [1.0, 1.0]},
+	"emission": {"source": "selfillum", "scale": 1.0}
+}

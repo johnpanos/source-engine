@@ -18,6 +18,23 @@
         1.0
       ]
     },
+    "portal": {
+      "eye": [
+        4.0,
+        0.05,
+        1.4
+      ],
+      "forward": [
+        -0.6273786225552799,
+        -0.768538812630218,
+        -0.12547572451105596
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
     "through": {
       "eye": [
         4.0,
@@ -85,8 +102,22 @@
     "radius_m": 0.51435
   },
   "purpose": "The same indirect contribution seen directly and through a portal pair",
+  "reference_cameras": {
+    "portal": "through"
+  },
   "regions": {
     "direct": {
+      "floor": [
+        "C_Zn"
+      ],
+      "model": [
+        "ProbeC"
+      ],
+      "red_wall": [
+        "C_Xn"
+      ]
+    },
+    "portal": {
       "floor": [
         "C_Zn"
       ],

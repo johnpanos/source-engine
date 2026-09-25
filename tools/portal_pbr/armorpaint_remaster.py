@@ -71,6 +71,8 @@ def load_recipe(path: Path) -> dict:
         problems.append("material must be a relative material name")
     if recipe.get("size") not in LAYER_RES:
         problems.append("size must be one of %s" % sorted(LAYER_RES))
+    if not isinstance(recipe.get("tiling"), bool):
+        problems.append("tiling must be true (world texture) or false (model atlas)")
     cavity = recipe.get("cavity", {}).get("source")
     if cavity not in ("base_alpha", "height", "none"):
         problems.append("cavity.source must be base_alpha, height or none")
@@ -80,8 +82,8 @@ def load_recipe(path: Path) -> dict:
     if "cavity_range" in metal and cavity == "none":
         problems.append("metal.cavity_range needs a cavity source")
     rough = recipe.get("roughness", {})
-    if not ("constant" in rough) ^ ("from_spec" in rough):
-        problems.append("roughness needs exactly one of constant or from_spec")
+    if sum(key in rough for key in ("constant", "from_spec", "from_exponent")) != 1:
+        problems.append("roughness needs exactly one of constant, from_spec or from_exponent")
     for key in ("seam", "noise_scale", "noise_amp"):
         if not isinstance(rough.get(key), (int, float)):
             problems.append("roughness." + key + " must be a number")
@@ -96,6 +98,17 @@ def load_recipe(path: Path) -> dict:
     delight = recipe.get("delight", {})
     if not 0 <= delight.get("strength", -1) <= 1 or delight.get("blur_px", -1) < 0:
         problems.append("delight needs strength in [0, 1] and blur_px >= 0")
+    if recipe.get("tiling") is False:
+        # A model atlas has UV islands: no periodic height, and no directional
+        # light fit across unrelated islands.
+        if cavity == "height":
+            problems.append("a non-tiling atlas cannot take cavity from integrated height")
+        if delight.get("strength", 0) != 0:
+            problems.append("a non-tiling atlas cannot be de-lit; set delight.strength 0")
+    emission = recipe.get("emission")
+    if emission is not None and (emission.get("source") != "selfillum" or
+                                 not isinstance(emission.get("scale"), (int, float))):
+        problems.append("emission must be {source: selfillum, scale: number}")
     if problems:
         raise ValueError("%s: %s" % (path, "; ".join(problems)))
     return recipe
@@ -135,7 +148,7 @@ def material_facts(resolved: dict) -> dict:
     params = resolved["params"]
     if "$basetexture" not in params:
         raise ValueError("material has no $basetexture")
-    unsupported = sorted(k for k in ("$additive", "$translucent", "$alphatest", "$selfillum",
+    unsupported = sorted(k for k in ("$additive", "$translucent", "$alphatest", "$selfillummask",
                                      "$envmapmask", "$basetexture2") if truthy(params.get(k)))
     if unsupported or resolved["proxies"]:
         raise ValueError("needs review before remastering: %s" %
@@ -154,6 +167,10 @@ def material_facts(resolved: dict) -> dict:
         "envmaptint": params.get("$envmaptint"),
         "surfaceprop": params.get("$surfaceprop"),
         "detail": params.get("$detail"),
+        "selfillum": truthy(params.get("$selfillum")),
+        "exponent": texture_name(params["$phongexponenttexture"]) if "$phongexponenttexture" in params else None,
+        "not_represented": sorted(k for k in ("$phongfresnelranges", "$phongboost", "$lightwarptexture",
+                                              "$detail", "$phongalbedotint", "$rimlight") if k in params),
     }
 
 
@@ -176,10 +193,10 @@ def linear_to_srgb(x):
     return np.where(x <= 0.0031308, x * 12.92, 1.055 * np.power(np.maximum(x, 0), 1 / 2.4) - 0.055)
 
 
-def upscale_float(x: np.ndarray, size: int, pad: int = 16) -> np.ndarray:
-    """Wrap-padded bicubic resize, so a tiling texture stays seamless."""
+def upscale_float(x: np.ndarray, size: int, pad: int = 16, mode: str = "wrap") -> np.ndarray:
+    """Padded bicubic resize: wrap keeps a tiling texture seamless, edge suits an atlas."""
     edge = x.shape[0]
-    padded = np.pad(x, pad, mode="wrap").astype(np.float32)
+    padded = np.pad(x, pad, mode=mode).astype(np.float32)
     image = Image.fromarray(padded, mode="F").resize(((edge + 2 * pad) * size // edge,) * 2,
                                                      Image.BICUBIC)
     k = pad * size // edge
@@ -239,18 +256,48 @@ def seam_ratio(image: np.ndarray) -> float:
     return float(max(col, row))
 
 
+def tileable_noise(size: int, scale: float, seed: str, octaves: int = 4) -> np.ndarray:
+    """Periodic fBm in [0, 1] with mean 0.5; `scale` is feature cycles across the texture.
+
+    ArmorPaint's TEX_NOISE is not periodic over UV 0..1, so a tiling texture
+    would gain a seam at its edge; this noise is periodic by construction.
+    """
+    rng = np.random.default_rng(int(hashlib.sha256(seed.encode()).hexdigest()[:8], 16))
+    work = min(size, 2048)
+    total = np.zeros((work, work))
+    for octave in range(octaves):
+        sigma = work / (scale * 2 ** octave) / 2
+        total += 0.5 ** octave * gaussian_filter(rng.standard_normal((work, work)), sigma, mode="wrap") * sigma
+    total = (total - total.mean()) / max(total.std(), 1e-9)
+    noise = np.clip(0.5 + total / 6, 0, 1)
+    return upscale_float(noise, size) if work != size else noise
+
+
+def exponent_roughness(red: np.ndarray) -> np.ndarray:
+    """Source's Phong exponent map as the native shader's perceptual roughness.
+
+    skin_ps20b.fxc decodes n = 1 + 149 * R and lights with pow(R.L, n), which is
+    Phong; the Blinn-Phong equivalent is about 4n. Beckmann/GGX alpha is then
+    sqrt(2 / (4n + 2)), and pbr_direct.frag squares perceptual roughness into
+    alpha, so the stored value is sqrt(alpha).
+    """
+    phong = 1.0 + 149.0 * red
+    return np.sqrt(np.sqrt(2.0 / (4.0 * phong + 2.0)))
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 # --------------------------------------------------------------------------- prep
 
-def upscale_base(source_png: Path, size: int, work: Path, upscaler: Path, models: Path) -> Path:
+def upscale_base(source_png: Path, size: int, work: Path, upscaler: Path, models: Path,
+                 mode: str = "wrap") -> Path:
     rgb = np.asarray(Image.open(source_png).convert("RGB"))
     edge = rgb.shape[0]
     if rgb.shape[0] != rgb.shape[1]:
         raise ValueError("non-square base textures need a reviewed recipe")
-    padded = np.pad(rgb, ((WRAP_PAD, WRAP_PAD), (WRAP_PAD, WRAP_PAD), (0, 0)), mode="wrap")
+    padded = np.pad(rgb, ((WRAP_PAD, WRAP_PAD), (WRAP_PAD, WRAP_PAD), (0, 0)), mode=mode)
     padded_png, model_png = work / "base-wrap-pad.png", work / "base-wrap-x4.png"
     Image.fromarray(padded).save(padded_png)
     subprocess.run([str(upscaler), "-i", str(padded_png), "-o", str(model_png),
@@ -268,6 +315,8 @@ def upscale_base(source_png: Path, size: int, work: Path, upscaler: Path, models
 
 def prepare(recipe: dict, facts: dict, layers: dict, work: Path, upscaler: Path, models: Path) -> dict:
     size = recipe["size"]
+    tiling = recipe["tiling"]
+    pad = "wrap" if tiling else "edge"
     base_rgba = load(layers["base"])
     edge = base_rgba.shape[0]
     report = {"source_edge": edge, "source_seam_ratio": {"basecolor": round(seam_ratio(base_rgba[..., :3]), 3)}}
@@ -280,37 +329,55 @@ def prepare(recipe: dict, facts: dict, layers: dict, work: Path, upscaler: Path,
             bump_rgb = bump[..., :3]
         n_src = decode_normal(bump_rgb, facts["ssbump"])
         report["source_seam_ratio"]["normal"] = round(seam_ratio(n_src), 3)
+    if layers.get("bump") is not None and tiling:
         report["source_convention_residual"] = convention_residuals(n_src)
         if report["source_convention_residual"]["directx"] > report["source_convention_residual"]["opengl"]:
             raise ValueError("source normal integrates better as OpenGL; review the recipe")
         nz = np.maximum(n_src[..., 2], 1e-3)
         h_src = poisson_height(-n_src[..., 0] / nz, -n_src[..., 1] / nz)     # DirectX: +Y down
         height = upscale_float(h_src, size) * (size / edge)                  # keep physical slope
+        gx, grow = gradients(height)
+        normal = np.dstack([-gx, -grow, np.ones_like(height)])
+    elif layers.get("bump") is not None:
+        # Atlas islands do not integrate into one surface: resample the vectors.
+        height = np.zeros((size, size))
+        normal = np.dstack([upscale_float(n_src[..., c], size, mode="edge") for c in range(3)])
     else:
         height = np.zeros((size, size))
-    gx, grow = gradients(height)
-    normal = np.dstack([-gx, -grow, np.ones_like(height)])
+        normal = np.dstack([np.zeros_like(height), np.zeros_like(height), np.ones_like(height)])
     normal /= np.linalg.norm(normal, axis=-1, keepdims=True)
 
     span = height.max() - height.min()
     height01 = (height - height.min()) / span if span > 1e-9 else np.full_like(height, 0.5)
     source = recipe["cavity"]["source"]
     if source == "base_alpha":
-        cavity = upscale_float(base_rgba[..., 3], size)
+        cavity = upscale_float(base_rgba[..., 3], size, mode=pad)
     elif source == "height":
         lo, hi = recipe["cavity"]["range"]
         cavity = np.clip((height01 - lo) / (hi - lo), 0, 1)
     else:
         cavity = np.ones((size, size))
-    if facts["spec_mask"] == "bump_alpha":
-        spec = upscale_float(load(layers["bump"])[..., 3], size)
+    # Mask G is the roughness evidence: a legacy spec mask, or roughness itself
+    # converted from a Phong exponent map.
+    if "from_exponent" in recipe["roughness"]:
+        red = load(layers["exponent"])[..., 0]
+        gloss = upscale_float(exponent_roughness(red), size, mode=pad)
+        report["exponent_roughness"] = {"min": round(float(gloss.min()), 3), "max": round(float(gloss.max()), 3)}
+    elif facts["spec_mask"] == "bump_alpha":
+        gloss = upscale_float(load(layers["bump"])[..., 3], size, mode=pad)
     elif facts["spec_mask"] == "base_alpha":
-        spec = upscale_float(base_rgba[..., 3], size)
+        gloss = upscale_float(base_rgba[..., 3], size, mode=pad)
     else:
-        spec = np.full((size, size), 0.5)
+        gloss = np.full((size, size), 0.5)
 
-    base_png = upscale_base(layers["base"], size, work, upscaler, models)
+    base_png = upscale_base(layers["base"], size, work, upscaler, models, pad)
     linear = srgb_to_linear(load(base_png))
+    if recipe.get("emission"):
+        # Source self-illumination adds base * alpha mask; carry exactly that.
+        mask = np.clip(upscale_float(base_rgba[..., 3], size, mode=pad), 0, 1)
+        emission = work / "emission.png"
+        save8(emission, linear_to_srgb(linear * mask[..., None]))
+        report["emission"] = {"path": str(emission), "mask_coverage": round(float((mask > 0.5).mean()), 5)}
     faces = cavity > 0.8
     delight = recipe["delight"]
     if delight["strength"] > 0 and layers.get("bump") is not None and faces.sum() > 1000:
@@ -320,7 +387,7 @@ def prepare(recipe: dict, facts: dict, layers: dict, work: Path, upscaler: Path,
         coef, *_ = np.linalg.lstsq(X, y, rcond=None)
         r2 = 1 - ((y - X @ coef) ** 2).sum() / max(((y - y.mean()) ** 2).sum(), 1e-12)
         shade = gaussian_filter(coef[1] * normal[..., 0] + coef[2] * normal[..., 1],
-                                delight["blur_px"], mode="wrap")
+                                delight["blur_px"], mode=pad)
         weight = np.clip((cavity - 0.6) / 0.3, 0, 1)
         linear = linear * np.exp(-delight["strength"] * weight * shade)[..., None]
         lum2 = np.maximum(linear @ [0.2126, 0.7152, 0.0722], 1e-4)
@@ -336,10 +403,12 @@ def prepare(recipe: dict, facts: dict, layers: dict, work: Path, upscaler: Path,
         "base": work / ("in-%s-base.png" % token),
         "normal": work / ("in-%s-normal-dx.png" % token),
         "masks": work / ("in-%s-masks.png" % token),
+        "noise": work / ("in-%s-noise.png" % token),
     }
     save8(inputs["base"], linear_to_srgb(np.clip(linear, 0, 1)))
     save8(inputs["normal"], normal * 0.5 + 0.5)      # DirectX; ArmorPaint converts on import
-    save8(inputs["masks"], np.dstack([cavity, spec, height01]))
+    save8(inputs["masks"], np.dstack([cavity, gloss, height01]))
+    save8(inputs["noise"], tileable_noise(size, recipe["roughness"]["noise_scale"], recipe["material"]))
     report["relief_px"] = round(float(span), 2)
     report["inputs"] = {k: str(v) for k, v in inputs.items()}
     return report
@@ -366,9 +435,8 @@ def graph_calls(recipe: dict) -> list[dict]:
         ("f0", "HUE_SAT", -900, -400, [("float", 0, 0.5), ("float", 1, recipe["f0"]["saturation"]),
                                        ("float", 2, recipe["f0"]["value_gain"]), ("float", 3, 1.0)]),
         ("albedo", "MIX_RGB", -600, -300, []),
-        ("rnoise", "TEX_NOISE", -1150, 350, [("float", 1, rough["noise_scale"]), ("float", 2, 6.0),
-                                             ("float", 3, 0.6)]),
-        ("rjit", "MAPRANGE", -900, 400, [("float", 1, 0.3), ("float", 2, 0.7),
+        ("rnoise", "TEX_IMAGE", -1150, 350, [("button", 0, 3), ("button", 1, 1)]),  # tileable noise
+        ("rjit", "MAPRANGE", -900, 400, [("float", 1, 0.0), ("float", 2, 1.0),
                                          ("float", 3, -rough["noise_amp"]), ("float", 4, rough["noise_amp"])]),
         ("radd", "MATH", -700, 300, [("button", 0, 0), ("button", 1, 1)]),
         ("rseam", "VALUE", -700, 150, [("float", 0, rough["seam"], False)]),
@@ -381,6 +449,9 @@ def graph_calls(recipe: dict) -> list[dict]:
         nodes.append(("rbase", "MAPRANGE", -900, 250, [("float", 1, 0.0), ("float", 2, 1.0),
                                                        ("float", 3, rough["from_spec"][0]),
                                                        ("float", 4, rough["from_spec"][1])]))
+    elif "from_exponent" in rough:
+        nodes.append(("rbase", "MAPRANGE", -900, 250, [("float", 1, 0.0), ("float", 2, 1.0),
+                                                       ("float", 3, 0.0), ("float", 4, 1.0)]))
     else:
         nodes.append(("rbase", "VALUE", -900, 250, [("float", 0, rough["constant"], False)]))
     if "cavity_range" in metal:
@@ -398,7 +469,7 @@ def graph_calls(recipe: dict) -> list[dict]:
         ("albedo", 0, "OUT", 0), ("ao", 0, "OUT", 2), ("rough", 0, "OUT", 3),
         ("metal", 0, "OUT", 4), ("normal", 0, "OUT", 5), ("split", 2, "OUT", 7),
     ]
-    if "from_spec" in rough:
+    if "from_spec" in rough or "from_exponent" in rough:
         links.append(("split", 1, "rbase", 0))
     if "cavity_range" in metal:
         links.append(("split", 0, "metal", 0))
@@ -425,7 +496,7 @@ def author_plan(recipe: dict, inputs: dict, plane: Path, export_dir: Path, proje
         {"tool": "ap_project_new"},
         {"tool": "ap_import_asset", "args": {"path": str(plane)}},
         *({"tool": "ap_import_asset", "args": {"path": str(inputs[key])}}
-          for key in ("base", "normal", "masks")),
+          for key in ("base", "normal", "masks", "noise")),
         {"tool": "ap_material_create", "args": {"name": recipe["material"].replace("/", "_")}},
         *graph_calls(recipe),
         {"tool": "ap_material_update"},
@@ -582,7 +653,9 @@ def qa(recipe: dict, packaged: dict[str, Path], prepared_normal_dx: Path, source
     residual = convention_residuals(decode_normal(small.astype(np.float64) / 255, False))
     report["normal_convention_residual"] = {k: round(v, 3) for k, v in residual.items()}
     relief = float(np.abs(normal[..., :2]).mean())
-    if relief > 0.004 and residual["opengl"] >= residual["directx"]:
+    # Integrability only means something for one continuous surface; atlas
+    # islands are checked by the export-vs-prepared comparison below.
+    if recipe["tiling"] and relief > 0.004 and residual["opengl"] >= residual["directx"]:
         problems.append("exported normal is not OpenGL +Y")
     prepared = load(prepared_normal_dx) * 2 - 1
     prepared[..., 1] *= -1                                    # expected OpenGL encoding
@@ -618,7 +691,13 @@ def qa(recipe: dict, packaged: dict[str, Path], prepared_normal_dx: Path, source
     if albedo_mean is not None and not 0.02 <= albedo_mean <= 0.9:
         warnings.append("dielectric albedo luminance %.3f is outside 0.02-0.9" % albedo_mean)
     report["warnings"] = warnings
-    report["seam_ratio"] = {k: round(seam_ratio(v), 3) for k, v in images.items()}
+    if "emission" in images:
+        emission = images["emission"].astype(np.float64) / 255
+        lit = emission.max(axis=-1) > 0.02
+        report["emission_coverage"] = round(float(lit.mean()), 5)
+        if not lit.any():
+            problems.append("emission texture is black")
+    report["seam_ratio"] = {k: round(seam_ratio(v), 3) for k, v in images.items()} if recipe["tiling"] else {}
     for key, ratio in report["seam_ratio"].items():
         allowed = max(SEAM_RATIO_LIMIT, SEAM_SOURCE_MARGIN * source_seams.get(key, 0.0))
         if ratio > allowed:
@@ -632,7 +711,7 @@ def contact_sheet(layers: dict, packaged: dict, lit: Path | None, path: Path) ->
     tiles = [("legacy base", layers["base"])]
     if layers.get("bump"):
         tiles.append(("legacy bump", layers["bump"]))
-    tiles += [("basecolor", packaged["basecolor"]), ("mrao", packaged["mrao"]), ("normal", packaged["normal"])]
+    tiles += [(key, packaged[key]) for key in ("basecolor", "mrao", "normal", "emission") if key in packaged]
     if lit:
         tiles.append(("ArmorPaint lit", lit))
     cell = 384
@@ -660,7 +739,12 @@ def remaster(recipe_path: Path, args, session: IsolatedArmorPaint | None) -> dic
     facts = material_facts(resolved)
     cache: dict[str, dict] = {}
     layers, decodes = {}, {}
-    for key in ("base", "bump"):
+    if facts["selfillum"] != bool(recipe.get("emission")):
+        raise ValueError("VMT $selfillum=%d but the recipe %s emission" %
+                         (facts["selfillum"], "declares" if recipe.get("emission") else "has no"))
+    if "from_exponent" in recipe["roughness"] and not facts["exponent"]:
+        raise ValueError("roughness.from_exponent needs a $phongexponenttexture")
+    for key in ("base", "bump", "exponent"):
         if facts[key]:
             info = get_image(args.vpk, facts[key], root / "source" / (key + ".png"), cache)
             if "error" in info:
@@ -712,6 +796,9 @@ def remaster(recipe_path: Path, args, session: IsolatedArmorPaint | None) -> dic
 
     textures = args.out.resolve() / "textures/portal_pbr" / name
     packaged = package(find_export(export_dir), textures)
+    if "emission" in prep:
+        packaged["emission"] = textures / "emission.png"
+        shutil.copyfile(prep["emission"]["path"], packaged["emission"])
     entry["qa"] = qa(recipe, packaged, Path(prep["inputs"]["normal"]), prep["source_seam_ratio"])
     entry["textures"] = {k: {"path": str(p), "sha256": sha256(p)} for k, p in packaged.items()}
 
@@ -719,7 +806,13 @@ def remaster(recipe_path: Path, args, session: IsolatedArmorPaint | None) -> dic
     params = {"$surfaceprop": facts["surfaceprop"]} if facts["surfaceprop"] else {}
     vmt = args.out.resolve() / "materials/portal_pbr" / (name + ".vmt")
     vmt.parent.mkdir(parents=True, exist_ok=True)
-    vmt.write_text(make_material(name, params, True, schema), encoding="utf-8")
+    text = make_material(name, params, True, schema)
+    if recipe.get("emission"):
+        # Parameter names from the schema helper's contract (pbr_material_schema.h).
+        extra = '\t"$emissiontexture" "portal_pbr/%s/emission"\n\t"$emissionscale" "%g"\n' % (
+            name, recipe["emission"]["scale"])
+        text = text[:text.rindex("}")] + extra + "}\n"
+    vmt.write_text(text, encoding="utf-8")
     validation = subprocess.run([str(HELPER), "validate", str(vmt), str(original)],
                                 text=True, capture_output=True)
     entry["vmt"] = {"candidate": str(vmt), "fallback": str(original),
@@ -791,6 +884,17 @@ def main() -> int:
             except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
                 failures.append({"recipe": str(path), "error": str(error)})
                 print("%s: %s" % (path, error), file=sys.stderr, flush=True)
+    # Re-running some recipes keeps the other materials' entries.
+    previous = out / "manifest.json"
+    if previous.exists():
+        old = json.loads(previous.read_text(encoding="utf-8"))
+        if old.get("schema") == MANIFEST_SCHEMA and old.get("stage") == args.stage:
+            done = {entry["material"] for entry in entries}
+            done |= {load_recipe(path)["material"] for path in args.recipes}
+            entries = [e for e in old["materials"] if e["material"] not in done] + entries
+            failures = [f for f in old["failures"] if f.get("material") not in done and
+                        f.get("recipe") not in {str(path) for path in args.recipes}] + failures
+    entries.sort(key=lambda entry: entry["material"])
     manifest = {"schema": MANIFEST_SCHEMA, "stage": args.stage, "vpks": [str(p) for p in args.vpk],
                 "upscaler": {"executable": str(args.upscaler), "sha256": sha256(args.upscaler),
                              "model_bin_sha256": sha256(args.model_dir / "realesrgan-x4plus.bin")}

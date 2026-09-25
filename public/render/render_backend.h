@@ -88,6 +88,12 @@ enum class RenderFeature : uint32_t
 	kMultiSample4x = 3,
 	kRuntimeShaderCompile = 4,
 	kOffscreenRender = 5,
+	// RFC 0011 G5: storage images a compute pass writes (RGBA16F and R32F),
+	// and ray queries (acceleration structures, VK_KHR_ray_query). Claimed only
+	// when the provider's device has them enabled (render_profile.h
+	// ValidateDeviceClaims).
+	kStorageImages = 6,
+	kRayQuery = 7,
 	kNeverSupported = 31,
 };
 

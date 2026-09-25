@@ -1,5 +1,33 @@
 {
   "collision": {
+    "portals": [
+      {
+        "center_m": [
+          4.0,
+          0.0,
+          1.4
+        ],
+        "normal": [
+          0,
+          1,
+          0
+        ],
+        "portal_two": false
+      },
+      {
+        "center_m": [
+          4.0,
+          5.0,
+          1.4
+        ],
+        "normal": [
+          0,
+          -1,
+          0
+        ],
+        "portal_two": true
+      }
+    ],
     "solid_meshes": []
   },
   "map": "gi_portal_view",

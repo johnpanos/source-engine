@@ -2406,6 +2406,11 @@ static bool DescribeNativeVulkanAdapter( int adapter, render::RenderAdapterInfo 
 		return false;
 	*info = render::RenderAdapterInfo();
 	Q_strncpy( info->driverApi, "vulkan", sizeof( info->driverApi ) );
+	// RFC 0011 G5: compute, storage images and ray query, exactly as the
+	// created device enabled them (none before the device exists).
+	if ( g_VulkanContext.IsValid() )
+		info->supportedFeatures.bits =
+		    render_vulkan::ComputeFeatureBits( g_VulkanContext.ComputeCapabilities() );
 	return true;
 }
 

@@ -6,6 +6,7 @@
 //===========================================================================//
 
 #include "vulkan_render_backend_native.h"
+#include "vulkan_compute.h"
 
 #include <vulkan/vulkan.h>
 
@@ -25,6 +26,8 @@ namespace
 // feature set. Portable code asks these questions; it never asks "is this
 // Vulkan". kNeverSupported is never advertised, so the conformance suite can
 // always form an unsatisfiable required-feature request.
+int FindGraphicsQueueFamily( VkPhysicalDevice phys );
+
 RenderFeatureSet FeaturesFor( VkPhysicalDevice phys )
 {
 	VkPhysicalDeviceProperties props = {};
@@ -33,8 +36,16 @@ RenderFeatureSet FeaturesFor( VkPhysicalDevice phys )
 	RenderFeatureSet set;
 	set.Add( RenderFeature::kSampledSrgb ); // core in Vulkan
 	set.Add( RenderFeature::kDepthColorPairing );
-	set.Add(
-	    RenderFeature::kComputeShaders ); // every Vulkan queue family set has compute-capable HW
+	// Compute and storage images from the device's queries (RFC 0011 G5);
+	// neither needs a device feature enabled. Ray query does, and this
+	// provider does not enable it, so it never claims it.
+	const int family = FindGraphicsQueueFamily( phys );
+	const ComputeCaps compute =
+	    family >= 0 ? QueryComputeCaps( phys, uint32_t( family ) ) : ComputeCaps();
+	if ( compute.compute )
+		set.Add( RenderFeature::kComputeShaders );
+	if ( compute.storageImages )
+		set.Add( RenderFeature::kStorageImages );
 	set.Add( RenderFeature::kOffscreenRender );
 	if ( props.limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_4_BIT )
 		set.Add( RenderFeature::kMultiSample4x );

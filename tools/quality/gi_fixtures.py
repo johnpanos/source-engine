@@ -697,19 +697,29 @@ def portal_view(out):
     direct = camera_pose((6.5, 1.0, 1.6), (2.0, 2.5, 1.0))
     # The north portal's view: from its centre (4, 4.95, 1.4) into the room.
     through = camera_pose((4.0, 4.95, 1.4), (2.0, 2.5, 1.0))
+    # The same view in game, through the portal pair: the portals face each
+    # other on opposite walls, so looking into the south one is a translation
+    # of +5 m in y. A camera 5 cm in front of it sees the `through` view from
+    # 10 cm further back, and is judged against the `through` reference.
+    portal = {"eye": [4.0, 0.05, 1.4], "forward": through["forward"], "up": through["up"]}
     author.camera("Camera", direct)
     author.save()
+    regions = {"model": ["ProbeC"], "red_wall": ["C_Xn"], "floor": ["C_Zn"]}
     write_json(directory / "fixture.json", fixture_record(
         "portal-view", "The same indirect contribution seen directly and through a portal "
         "pair", "portal-view.usda", {"default": {"layer": None}},
-        {"direct": direct, "through": through},
-        {"direct": {"model": ["ProbeC"], "red_wall": ["C_Xn"], "floor": ["C_Zn"]},
-         "through": {"model": ["ProbeC"], "red_wall": ["C_Xn"], "floor": ["C_Zn"]}},
+        {"direct": direct, "through": through, "portal": portal},
+        {"direct": regions, "through": regions, "portal": regions},
         "default", {"portals": {"south": {"center_m": [4.0, 0.0, 1.4], "normal": [0, 1, 0]},
                                 "north": {"center_m": [4.0, 5.0, 1.4], "normal": [0, -1, 0]},
-                                "size_m": [1.3, 2.3]}}))
-    write_json(directory / "map.json", map_manifest(
-        "gi_portal_view", "quality/fixtures/gi/portal-view/portal-view.usda"))
+                                "size_m": [1.3, 2.3]},
+                    "reference_cameras": {"portal": "through"}}))
+    manifest = map_manifest("gi_portal_view", "quality/fixtures/gi/portal-view/portal-view.usda")
+    # The linked pair as map-placed, activated prop_portal entities.
+    manifest["collision"]["portals"] = [
+        {"center_m": [4.0, 0.0, 1.4], "normal": [0, 1, 0], "portal_two": False},
+        {"center_m": [4.0, 5.0, 1.4], "normal": [0, -1, 0], "portal_two": True}]
+    write_json(directory / "map.json", manifest)
 
 
 FIXTURES = (furnace, thin_wall, room_states, door, probe_grid, portal_view)
@@ -724,7 +734,7 @@ def generate(out):
     write_json(out / "index.json", index)
 
 
-OTHER_WRITERS = {"prbv"}
+OTHER_WRITERS = {"prbv", "rtrn"}
 
 
 def compare_trees(expected, actual):

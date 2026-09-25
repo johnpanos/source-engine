@@ -2,6 +2,7 @@
 	"schema": "portal-pbr-armorpaint-recipe-v1",
 	"material": "plastic/plasticwall001a",
 	"size": 4096,
+	"tiling": true,
 	"intent": "White portalable wall panel: dielectric plastic with a satin finish. The legacy envmap tint is only 0.03 and there is no spec mask, so roughness is a constant with fine breakup; the authored normal carries the gentle surface waviness.",
 	"cavity": {"source": "none"},
 	"delight": {"strength": 0.0, "blur_px": 0},

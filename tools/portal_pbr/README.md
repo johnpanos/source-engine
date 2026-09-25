@@ -161,3 +161,61 @@ islands, labels, tiling seams, alpha edges, and legacy material effects before
 calling a particular material remastered. As with the lower-resolution output,
 the VMTs are candidates until the native PBR material runtime and texture path
 are implemented and validated.
+
+## ArmorPaint PBR remaster (recipe pipeline)
+
+`armorpaint_remaster.py` turns one Portal material into a high-resolution PBR set
+authored in ArmorPaint through the armorpaint-mcp server. It goes beyond the
+colour-only remaster above: it authors metalness, roughness, occlusion and normal
+from legacy evidence. Each material has a recipe in `recipes/<material>.json`
+that records **decisions only**. The facts come from the VPK: the VMT, its DirectX 9
+fallback block (`portal_assets material` resolves `_HDR_DX9`/`_DX9`, where
+Portal keeps `$bumpmap`/`$ssbump`), and the decoded VTF layers.
+
+| Stage | What happens |
+| --- | --- |
+| resolve | Base, bump, SSBump flag, spec-mask source (`$normalmapalphaenvmapmask` → bump alpha, `$basealphaenvmapmask` → base alpha), Phong exponent map, `$selfillum`. The VMT governs where it disagrees with a VTF flag; unsupported effects stop the material. |
+| prep | Real-ESRGAN colour, wrap-padded for tiling textures and edge-padded for model atlases. For tiling textures, a tileable Poisson height is integrated from the Source normal/SSBump (DirectX +Y; the integrability test must confirm it) and upscaled in float. Masks: R = cavity, G = roughness evidence, B = height. Then log-space de-lighting of colour baked from the normal, and a periodic noise image (ArmorPaint's `TEX_NOISE` is not periodic over UV 0–1). |
+| author | One MCP session per material: new project, plane mesh, four imports, a named node graph (base/F0 mix, cavity metal mask, spec or exponent roughness with seam blend and noise, occlusion, DirectX-normal import), fill, texture export and `.arm` save. The full call transcript is kept. |
+| package | `basecolor.png` (sRGB), `mrao.png` (R metal, G perceptual roughness, B AO), `normal.png` (OpenGL +Y) and `emission.png` (base × self-illum mask). A `PBRMetalRough` candidate VMT is validated against `pbr_material_schema.h`, with the original VMT as its fallback. VTFs are optional (`--vtex`). |
+| qa | Size, normal tilt and convention (integrability), export-vs-input normal, roughness floor and variation, the wrap seam against the largest interior step and the source's own edge (tiling only), emission coverage, and advisory PBR ranges. |
+
+Run it from the repository root, with output outside the tree:
+
+```sh
+python3 tools/portal_pbr/armorpaint_remaster.py $(find tools/portal_pbr/recipes -name '*.json') \
+  --vpk /path/to/portal/portal_pak_dir.vpk --vpk /path/to/hl2/hl2_textures_dir.vpk \
+  --out /path/to/portal-pbr-armorpaint \
+  --upscaler build/portal-pbr/upscaler/unpacked/realesrgan-ncnn-vulkan \
+  --model-dir build/portal-pbr/upscaler/unpacked/models \
+  --vtex build/toolchains/pbrt-map-tools/vtex --launch-isolated
+```
+
+`--launch-isolated` starts ArmorPaint in a private headless sway/Xwayland
+session. ArmorPaint reads its layer resolution only at startup, so the run
+writes `layer_res` for the recipes' size, enables the bridge plugin, and restores
+`config.json` afterwards. `--discard-armorpaint-project` drives an already running
+ArmorPaint instead; each material starts a new project there, which discards the
+open one. `--stage inspect` writes each material's source layers and resolved
+facts; write a new recipe from those. The unit oracles, including negative
+fixtures for DirectX exports, tilted normals, flat roughness, seams and black
+emission, run with
+`python3 -m unittest discover -s tools/portal_pbr/tests -p 'test_armorpaint*'`.
+
+Recipe fields: `tiling` (world texture vs model atlas), `cavity.source`
+(`base_alpha`, `height` with a range, or `none`), `delight` (strength and blur),
+`metal` (`constant` or `cavity_range`), `f0` (value gain and saturation for metal
+base colour), `roughness` (`constant`, `from_spec` [spec 0 → a, spec 1 → b] or
+`from_exponent`, plus `seam_range`, `seam`, `noise_scale` in cycles and
+`noise_amp`), `occlusion` (cavity range to AO range) and optional `emission`
+(`selfillum` with a scale). `from_exponent` uses the engine's decode,
+n = 1 + 149·R (`skin_ps20b.fxc`). Source's Phong is about Blinn-Phong 4n, so
+alpha = √(2/(4n+2)), and the stored perceptual roughness is √alpha because the
+native shader squares it.
+
+Limits: ArmorPaint's `BUMP` node tilts a connected normal (measured mean XY
+0.23), so micro-relief is not authored in the graph. De-lighting removes the
+component that is linear in the normal; baked specular sheen can remain. Metal
+F0 below bare steel is reported as an art-directed dark finish. The output is
+a reviewed candidate: in-engine rendering is subject to the same
+`PBRMetalRough` runtime caveats as above.

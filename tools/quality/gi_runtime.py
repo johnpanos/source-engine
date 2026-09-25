@@ -214,6 +214,9 @@ def compare_view(fixture, state, camera, capture_path, scale, gate_models, toler
                  light="indirect"):
     references = fixture["directory"] / "references"
     record = json.loads((references / "references.json").read_text())
+    # A camera that renders another's view (the portal-view camera looking
+    # through the portal pair) is judged against that camera's reference.
+    camera = fixture.get("reference_cameras", {}).get(camera, camera)
     view = record["views"]["%s.%s" % (state, camera)]
     import imageio.v3 as iio
     reference = np.asarray(iio.imread(references / view["files"]["indirect"]["file"]),

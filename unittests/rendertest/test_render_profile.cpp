@@ -391,12 +391,36 @@ void CheckAdapterValueEquality()
 
 } // namespace
 
+// RFC 0011 G5: a provider may claim only what its device enabled.
+void CheckDeviceClaims()
+{
+	RenderAdapterInfo adapter;
+	adapter.supportedFeatures.Add( RenderFeature::kComputeShaders );
+	adapter.supportedFeatures.Add( RenderFeature::kStorageImages );
+	adapter.supportedFeatures.Add( RenderFeature::kRayQuery );
+	RenderFeatureSet enabled = adapter.supportedFeatures;
+	RenderProfileError error;
+	CHECK( render::ValidateDeviceClaims( adapter, enabled, &error ) );
+	// The bad provider: claims ray query, its device creation did not enable it.
+	RenderFeatureSet withoutRayQuery;
+	withoutRayQuery.Add( RenderFeature::kComputeShaders );
+	withoutRayQuery.Add( RenderFeature::kStorageImages );
+	CHECK( !render::ValidateDeviceClaims( adapter, withoutRayQuery, &error ) );
+	CHECK( error.status == RenderProfileStatus::kClaimNotEnabled &&
+	       error.feature == RenderFeature::kRayQuery );
+	// Enabling more than it claims is not an error (a claim is a promise).
+	RenderAdapterInfo modest;
+	modest.supportedFeatures.Add( RenderFeature::kComputeShaders );
+	CHECK( render::ValidateDeviceClaims( modest, enabled, &error ) );
+}
+
 int main()
 {
 	CheckPositiveSelection();
 	CheckQuirkApplication();
 	CheckFailures();
 	CheckAdapterValueEquality();
+	CheckDeviceClaims();
 	std::printf( "CONFORMANCE %d %d\n", g_Checks, g_Failures );
 	return g_Checks > 0 && g_Failures == 0 ? 0 : 1;
 }

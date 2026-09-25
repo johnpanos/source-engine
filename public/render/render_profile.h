@@ -146,6 +146,7 @@ enum class RenderProfileStatus : uint32_t
 	kTooManyQuirks,          // more than kRenderMaxAppliedQuirks matched
 	kInvalidProvider,        // the provider's adapter facts are inconsistent
 	kInvalidAdapter,         // the requested adapter does not exist
+	kClaimNotEnabled,        // a claimed feature is not enabled on the created device
 };
 
 struct RenderProfileError
@@ -221,6 +222,21 @@ inline bool RenderQuirkMatches(
 	       adapter.deviceId >= quirk.deviceIdMin && adapter.deviceId <= quirk.deviceIdMax &&
 	       adapter.driverVersion >= quirk.driverVersionMin &&
 	       adapter.driverVersion <= quirk.driverVersionMax;
+}
+
+// A provider's claim for a device it created: every feature its adapter
+// advertises is enabled on that device (`enabledOnDevice` is the provider's
+// record of what its device creation enabled, from the device's own queries).
+// A claim beyond it fails with kClaimNotEnabled naming the lowest such feature.
+inline bool ValidateDeviceClaims( const RenderAdapterInfo &adapter,
+    const RenderFeatureSet &enabledOnDevice, RenderProfileError *error )
+{
+	const uint32_t unclaimed = adapter.supportedFeatures.bits & ~enabledOnDevice.bits;
+	if ( unclaimed )
+		return profile_detail::Fail( error, RenderProfileStatus::kClaimNotEnabled,
+		    "the adapter claims a feature its device did not enable",
+		    profile_detail::LowestFeature( unclaimed ) );
+	return true;
 }
 
 // Selects the profile for one adapter of the provider identified by backendId.

@@ -28,6 +28,7 @@
 
 #include "render/render_gamma_ramp.h"
 #include "vulkan_adapter.h"
+#include "vulkan_compute.h"
 #include "vulkan_frame_stats.h"
 #include "vulkan_surface_host.h"
 
@@ -37,6 +38,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -137,6 +139,19 @@ public:
 	// sampled with the volume's grid table; -1 when none. Replacing or
 	// releasing destroys the previous image behind the frames that sample it.
 	void SetProbeDeltaHandle( int atlas );
+	// RFC 0011 G5 compute foundation: what the device enabled (queried per
+	// device, enabled through the VkPhysicalDeviceFeatures2 chain), its
+	// compute resources, and compute work recorded at the start of the next
+	// frame's command buffer, before any render pass, on the graphics queue.
+	// `serial` is that frame's submission serial: retire what the work reads
+	// behind it (Compute().Retire), collected with the managed textures.
+	const ComputeCaps &ComputeCapabilities() const { return m_computeCaps; }
+	ComputeResources &Compute() { return m_compute; }
+	void QueueComputeWork( std::function<void( VkCommandBuffer, uint64_t )> work )
+	{
+		m_computeWork.push_back( std::move( work ) );
+	}
+	uint64_t NextSubmitSerial() const { return m_submitSerial + 1; }
 	bool ProbeDeltaResident() const { return m_probeDeltaHandle >= 0 && ProbeVolumeResident(); }
 	// Whether PBRMetalRough models can sample the volume per pixel: the device
 	// binds the nine descriptor sets its pipelines use.
@@ -1596,6 +1611,10 @@ private:
 	int m_probeGridHandle = -1;
 	uint32_t m_probeGridCount = 0;
 	int m_probeDeltaHandle = -1;
+	ComputeCaps m_computeCaps;
+	DeviceFeatureChain m_featureChain;
+	ComputeResources m_compute;
+	std::vector<std::function<void( VkCommandBuffer, uint64_t )>> m_computeWork;
 	int m_probeSampling = 1;
 	DirectLight m_directLights[kMaxDirectLights] = {};
 	uint32_t m_directLightCount = 0;
