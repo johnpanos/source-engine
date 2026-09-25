@@ -584,6 +584,9 @@ def main():
                         help="directory for the separated layer EXRs (<role>.exr)")
     parser.add_argument("--seed", type=int, default=pbrt_blender.SEED,
                         help="Cycles seed for every bake pass (recorded in the receipt)")
+    parser.add_argument("--layout", choices=("blender", "authored"), default="blender",
+                        help="authored: use the stage's lightmap_st (lightmap_layout.py) "
+                             "unchanged; blender: chart and pack in Blender")
     parser.add_argument("--margin-texels", type=int, default=2,
                         help="gap between packed charts; bake dilation uses half")
     args = parser.parse_args(arguments)
@@ -600,12 +603,7 @@ def main():
     unknown = set(args.exclude_material) - set(scene["materials"])
     if unknown:
         parser.error("excluded materials are not in the PBRT scene: " + ", ".join(sorted(unknown)))
-    # Transmissive previews are unlit, and the WMSH PBR shader weights baked
-    # diffuse by (1 - metalness), so neither reads the atlas.
-    excluded = set(args.exclude_material) | {
-        name for name in scene["materials"]
-        if map_scene.material_summary(scene, name)["transmission"] > 0 or
-        map_scene.material_summary(scene, name)["metallic"] >= 1.0}
+    excluded, unbaked = map_scene.lightmap_exclusions(scene, args.exclude_material)
     pbrt_blender.clear_scene()
     message("importing the stage")
     if bpy.ops.wm.usd_import(filepath=str(args.stage.resolve()), import_materials=True,
@@ -619,11 +617,21 @@ def main():
     # Dynamic models are not static lighting: their stand-ins neither get
     # atlas space nor take part in the bake's light transport.
     props = map_scene.prop_shape_names(scene)
+    authored = args.layout == "authored"
     for obj in meshes:
         if not obj.data.uv_layers.get("st"):
             raise ValueError("source mesh lacks material UVs: " + obj.name)
+        if authored:
+            # lightmap_layout.py wrote every mesh's lightmap UVs, parked ones
+            # included; the bake uses them as they are.
+            if not obj.data.uv_layers.get("lightmap_st"):
+                raise ValueError("stage mesh lacks authored lightmap_st: " + obj.name)
+            obj.data.uv_layers.active = obj.data.uv_layers["lightmap_st"]
+            if obj.name not in unbaked:
+                baked.append(obj)
+            continue
         obj.data.uv_layers.active = obj.data.uv_layers.new(name="lightmap_st")
-        if obj.name in props or assignments[obj.name] in excluded:
+        if obj.name in unbaked:
             # One texel at the far corner, away from a reflection probe band.
             corner = 1.0 - 0.5 / args.size
             for loop in obj.data.uv_layers.active.data:
@@ -632,10 +640,13 @@ def main():
             baked.append(obj)
     if not baked:
         raise ValueError("no meshes selected for baking")
-    message("packing lightmap UVs for %d meshes" % len(baked))
-    # Keep roughly four texels between charts at the requested atlas size.
-    projected = pack_lightmap_uvs(baked, margin=args.margin_texels / args.size)
-    if args.reserve_rows:
+    if authored:
+        projected = {}
+    else:
+        message("packing lightmap UVs for %d meshes" % len(baked))
+        # Keep roughly four texels between charts at the requested atlas size.
+        projected = pack_lightmap_uvs(baked, margin=args.margin_texels / args.size)
+    if args.reserve_rows and not authored:
         # Atlas texel row r holds lightmap v = (r + 0.5) / size after the KTX2
         # packager's row flip, so rows [0, N) are v < N / size. Squeeze every
         # chart into v >= N / size; lightmap_ktx2 asserts those rows are empty.
@@ -811,7 +822,7 @@ def main():
                 "mesh_count": len(meshes), "baked_mesh_count": len(baked),
                 "projected_meshes": {name: {"parts": value["parts"]}
                                      for name, value in projected.items()},
-                "excluded_materials": sorted(excluded),
+                "excluded_materials": sorted(excluded), "layout": args.layout,
                 "excluded_dynamic_models": sorted(props),
                 "layers": separated,
                 "light_paths": light_paths,

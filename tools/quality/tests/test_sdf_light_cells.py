@@ -1,5 +1,6 @@
 """SDFV light cells (sdf_light_cells.py): conservative culling by range, side
-and visibility, with a seeded wrong variant the property test must catch."""
+and visibility, with a seeded wrong variant the property test must catch; and
+the traced producers' probe focus (gi_focus.py)."""
 
 import math
 import sys
@@ -11,6 +12,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import gi_focus as focus_module  # noqa: E402
 import sdf_light_cells as cells  # noqa: E402
 import sdf_volume  # noqa: E402
 
@@ -139,6 +141,63 @@ class LightCellTests(unittest.TestCase):
             cells.build([], (0, 0, 0), (1, 1, 1), 0.0, 1e-3)
         self.assertTrue(math.isinf(cells.light_reach(
             {"kind": "dome", "rgb": (1, 1, 1)})[2]))
+
+
+
+
+class FocusTests(unittest.TestCase):
+    """gi_focus.py, the host ProbeFocus's independent implementation."""
+
+    class Bsp:
+        # Rooms 0 | 1 | 2 in a row (x 0..100, 101..200, 201..300) and room 3
+        # apart (x 400..500); room 0 sees room 1, room 2 only touches room 1.
+        contents = np.array([0, 0, 0, 0])
+        clusters = np.array([0, 1, 2, 3])
+        mins = np.array([(0, 0, 0), (101, 0, 0), (201, 0, 0), (400, 0, 0)], float)
+        maxs = np.array([(99, 100, 100), (199, 100, 100), (300, 100, 100), (500, 100, 100)],
+                        float)
+
+        def __init__(self, vis=True):
+            self.vis = vis
+
+        def visibility(self):
+            if not self.vis:
+                return None
+            pvs = np.eye(4, dtype=bool)
+            pvs[0, 1] = pvs[1, 0] = True
+            return pvs
+
+        def leaves(self):
+            return self.contents, self.clusters, self.mins, self.maxs
+
+        def point_leaf(self, point):
+            return int(np.flatnonzero((self.mins[:, 0] - 1 <= point[0]) &
+                                      (point[0] <= self.maxs[:, 0] + 1))[0])
+
+    def focus_at(self, eye, vis=True, radius=150.0):
+        positions = np.array([(50, 50, 50), (150, 50, 50), (250, 50, 50), (450, 50, 50),
+                              (460, 50, 50)], float)
+        active = np.array([True, True, True, True, False])
+        with mock.patch.object(focus_module, "probe_positions",
+                               lambda volume: (positions, active)):
+            return focus_module.focus(self.Bsp(vis), None, eye, radius)
+
+    def test_visible_clusters_and_their_neighbours(self):
+        # From room 0: rooms 0 and 1 are visible, room 2 touches room 1; room
+        # 3 is neither. From room 3 only room 3.
+        chosen, summary = self.focus_at((50, 50, 50))
+        self.assertEqual((chosen, summary["mode"]), ([0, 1, 2], "visibility"))
+        chosen, summary = self.focus_at((450, 50, 50))
+        self.assertEqual((chosen, summary["mode"]), ([3], "visibility"))
+
+    def test_the_fallback_uses_distance(self):
+        # No visibility: the active probes within the radius.
+        chosen, summary = self.focus_at((50, 50, 50), vis=False, radius=120.0)
+        self.assertEqual((chosen, summary["mode"]), ([0, 1], "distance"))
+
+    def test_neighbours_touch_within_a_unit(self):
+        found = focus_module.neighbours(*self.Bsp().leaves())
+        self.assertEqual([sorted(n) for n in found], [[1], [0, 2], [1], []])
 
 
 if __name__ == "__main__":

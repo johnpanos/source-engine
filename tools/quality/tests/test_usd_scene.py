@@ -72,6 +72,56 @@ class FixtureTest(unittest.TestCase):
         # Floor st is metres (0.01 * cm), tiled at 0.5: the 6.4 m span becomes 3.2.
         self.assertAlmostEqual(float(st[:, 0].max() - st[:, 0].min()), 3.2, places=4)
 
+    def test_stage_meshes_keep_the_source_vertex_sharing(self):
+        """Stage meshes share vertices as their source meshes do (no triangle
+        soup), and every corner still sits exactly where the model says."""
+        shared = 0
+        for name, shape in self.shapes.items():
+            prim = self.stage.GetPrimAtPath("/root/%s/%s" % (name, name))
+            if not prim:
+                continue
+            mesh = UsdGeom.Mesh(prim)
+            points = np.asarray(mesh.GetPointsAttr().Get(), dtype=np.float64)
+            indices = np.asarray(mesh.GetFaceVertexIndicesAttr().Get())
+            self.assertEqual(len(indices), 3 * shape["triangles"])
+            self.assertEqual(len(np.unique(indices)), len(points))  # every point used
+            shared += len(points) < len(indices)
+        self.assertGreater(shared, 0)
+
+    def test_face_data_follows_each_triangle(self):
+        """A uniform sourceEngine:* integer primvar reaches the stage with one
+        value per triangle, the value of the source face it came from."""
+        with tempfile.TemporaryDirectory() as name:
+            out = Path(name)
+            source = Usd.Stage.CreateNew(str(out / "quad.usda"))
+            UsdGeom.SetStageUpAxis(source, UsdGeom.Tokens.z)
+            UsdGeom.SetStageMetersPerUnit(source, 1.0)
+            mesh = UsdGeom.Mesh.Define(source, "/World/Quads")
+            mesh.CreatePointsAttr([Gf.Vec3f(x, y, 0) for x, y in
+                                   ((0, 0), (1, 0), (1, 1), (0, 1), (2, 0), (2, 1))])
+            mesh.CreateFaceVertexCountsAttr([4, 4])
+            mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3, 1, 4, 5, 2])
+            UsdGeom.PrimvarsAPI(mesh).CreatePrimvar(
+                "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex).Set(
+                [Gf.Vec2f(x, y) for x, y in ((0, 0), (1, 0), (1, 1), (0, 1), (2, 0), (2, 1))])
+            UsdGeom.PrimvarsAPI(mesh).CreatePrimvar(
+                "sourceEngine:plane", Sdf.ValueTypeNames.IntArray,
+                UsdGeom.Tokens.uniform).Set([7, 9])
+            source.GetRootLayer().Save()
+            usd_scene.extract(out / "quad.usda", out / "scene.json", out / "stage.usdc")
+            stage = Usd.Stage.Open(str(out / "stage.usdc"))
+            meshes = [UsdGeom.Mesh(p) for p in stage.Traverse() if p.IsA(UsdGeom.Mesh)]
+            self.assertEqual(len(meshes), 1)
+            planes = UsdGeom.PrimvarsAPI(meshes[0]).GetPrimvar("sourceEngine:plane")
+            self.assertEqual(planes.GetInterpolation(), UsdGeom.Tokens.uniform)
+            points = np.asarray(meshes[0].GetPointsAttr().Get())
+            corners = points[np.asarray(meshes[0].GetFaceVertexIndicesAttr().Get())]
+            centres = corners.reshape(-1, 3, 3).mean(axis=1)
+            # Each triangle carries its source quad's plane (quad 0: x < 1).
+            expected = [7 if centre[0] < 1 else 9 for centre in centres]
+            self.assertEqual(list(planes.Get()), expected)
+            self.assertEqual(len(points), 6)  # the two quads still share an edge
+
     def test_lights_follow_usdlux_units(self):
         (panel,) = self.model["emitters"]
         self.assertAlmostEqual(panel["area_m2"], 0.64, places=6)

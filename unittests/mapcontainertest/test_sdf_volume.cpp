@@ -116,7 +116,8 @@ void ReadsEveryLightKind( const std::vector<unsigned char> &sdfv )
 	for ( uint32_t i = 0; i < 5 && layout.lightCount == 5; ++i )
 	{
 		SdfLight light;
-		std::memcpy( &light, sdfv.data() + layout.lightOffset + i * kSdfLightBytes, sizeof( light ) );
+		std::memcpy(
+		    &light, sdfv.data() + layout.lightOffset + i * kSdfLightBytes, sizeof( light ) );
 		kinds = kinds && light.kind == i;
 		if ( light.kind == uint32_t( SdfLightKind::Spot ) )
 			Check( light.reserved[0] == 2.0f && light.c[1] > light.c[2] && light.style == 33,
@@ -126,7 +127,8 @@ void ReadsEveryLightKind( const std::vector<unsigned char> &sdfv )
 	}
 	Check( kinds, "light i has kind i (rect, distant, dome, sphere, spot)" );
 	Check( layout.cellDims[0] == 2 && layout.cellDims[1] == 2 && layout.cellDims[2] == 1 &&
-	           layout.cellSize == 40.0f && layout.cellEntries == 15 && layout.cellOrigin[0] == -8.0f,
+	           layout.cellSize == 40.0f && layout.cellEntries == 15 &&
+	           layout.cellOrigin[0] == -8.0f,
 	    "the 2 x 2 x 1 cells of 40 units, 15 entries" );
 	Check( CellEntry( sdfv, layout, 1, 2 ) == 2 && CellEntry( sdfv, layout, 3, 3 ) == 4,
 	    "cell 1 lists the dome third; cell 3 lists the spot last" );
@@ -207,8 +209,8 @@ void SurvivesFuzzing( const std::vector<unsigned char> &sdfv )
 		                         ? lightsEnd
 		                         : layout.cellEntryOffset + uint64_t( layout.cellEntries ) * 2 +
 		                               ( layout.cellEntries % 2 ) * 2;
-		if ( layout.voxelOffset + voxels * kSdfVoxelBytes <= mutant.size() &&
-		     lightsEnd <= end && end == mutant.size() )
+		if ( layout.voxelOffset + voxels * kSdfVoxelBytes <= mutant.size() && lightsEnd <= end &&
+		     end == mutant.size() )
 			++inRange;
 	}
 	Check( accepted == inRange, "every accepted mutant's sections lie inside its bytes (" +

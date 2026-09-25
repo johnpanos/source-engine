@@ -23,6 +23,7 @@ import gi_reference  # noqa: E402
 import gi_runtime  # noqa: E402
 import lightmap_layers  # noqa: E402
 import radiosity_transfer  # noqa: E402
+import gi_soak  # noqa: E402
 import gi_temporal  # noqa: E402
 import indirect_defaults  # noqa: E402
 import sdf_volume  # noqa: E402
@@ -303,6 +304,43 @@ class IndirectDefaultsTest(unittest.TestCase):
     def test_every_list_ends_with_baked(self):
         for _, profile in indirect_defaults.PLATFORMS:
             self.assertEqual(indirect_defaults.producers(profile)[-1], "baked")
+
+
+class SoakAnalysisTest(unittest.TestCase):
+    """gi_soak's gate on a synthetic engine log and memory series."""
+
+    LOG = "\n".join(
+        ["[1.0] indirect light: map 1, producer baked (offered: baked radiosity)"] +
+        ["[%d.5] indirect light: switching to %s" % (t, p)
+         for t, p in ((2, "radiosity"), (3, "baked"), (12, "radiosity"), (22, "baked"))] +
+        ['[4.0] r_indirect_producer "sdf" unavailable (not-offered); keeping baked'] +
+        ["[%d.0] gi_soak [%d.1] loop" % (t, t) for t in (10, 20, 30, 40)])
+
+    def samples(self, leak=0.0):
+        return [(t + 0.5, 500.0 + leak * t + (300.0 if t % 10 == 5 else 0.0))
+                for t in range(0, 40)]
+
+    def test_a_clean_run_passes(self):
+        result = gi_soak.analyse(self.LOG, "", self.samples(), 0, False)
+        self.assertEqual(result["status"], "pass", result["checks"])
+
+    def test_load_spikes_are_not_a_leak(self):
+        result = gi_soak.analyse(self.LOG, "", self.samples(), 0, False)
+        self.assertLess(result["rss_growth_mb"], 1.0)
+
+    def test_a_steady_leak_fails(self):
+        result = gi_soak.analyse(self.LOG, "", self.samples(leak=4.0), 0, False)
+        self.assertFalse(result["checks"]["no_leak"])
+
+    def test_an_unoffered_producer_taken_fails(self):
+        log = self.LOG + "\n[25.0] indirect light: switching to sdf"
+        result = gi_soak.analyse(log, "", self.samples(), 0, False)
+        self.assertFalse(result["checks"]["unoffered_never_taken"])
+
+    def test_a_validation_message_fails(self):
+        result = gi_soak.analyse(self.LOG, "Validation Error: [ VUID-x ]", self.samples(), 0,
+                                 False)
+        self.assertFalse(result["checks"]["no_validation_messages"])
 
 
 if __name__ == "__main__":

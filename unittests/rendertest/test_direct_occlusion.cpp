@@ -91,7 +91,8 @@ mapcontainer::SdfLight SunDown()
 mapcontainer::SdfLight SmallAbove( bool spot )
 {
 	mapcontainer::SdfLight light = {};
-	light.kind = uint32_t( spot ? mapcontainer::SdfLightKind::Spot : mapcontainer::SdfLightKind::Sphere );
+	light.kind =
+	    uint32_t( spot ? mapcontainer::SdfLightKind::Spot : mapcontainer::SdfLightKind::Sphere );
 	light.style = -1;
 	light.rgb[0] = light.rgb[1] = light.rgb[2] = 1000.0f;
 	light.a[0] = 50.0f, light.a[1] = 50.0f, light.a[2] = 100.0f;
@@ -195,8 +196,8 @@ int main()
 		const Proxy cornerPath = Box( 8, 8, 18, 22, 22, 32 );
 		occlusion.Compose( std::span<const Proxy>( &cornerPath, 1 ), nullptr, &out );
 		const float corner = Red( out, 0, 0 );
-		std::printf( "%s: corner %.4f behind a box on its path (baked %.4f)\n", name.c_str(), corner,
-		    Red( total, 0, 0 ) );
+		std::printf( "%s: corner %.4f behind a box on its path (baked %.4f)\n", name.c_str(),
+		    corner, Red( total, 0, 0 ) );
 		Check( spot ? corner == Red( total, 0, 0 ) : std::fabs( corner - 0.1f ) < 0.01f,
 		    spot ? name + ": outside the cone, the corner keeps its light"
 		         : name + ": the corner loses the light the box blocks" );

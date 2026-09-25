@@ -191,7 +191,8 @@ class LegacyBsp:
 
     def world_faces(self):
         """Model 0's faces: [{index, points (N,3), vertices (N BSP vertex
-        indices), plane_normal, texinfo, dispinfo, styles, area}]; windings are
+        indices), plane (BSP plane index), plane_normal, texinfo, dispinfo,
+        styles, area}]; windings are
         clockwise seen from the front. Faces share vertices by index, as vbsp
         wrote them."""
         faces = self.lump(LUMP_FACES, FACE.size)
@@ -223,7 +224,7 @@ class LegacyBsp:
             # gives a face its own oriented plane; `side` only records the flip.
             normal = normals[plane]
             result.append({"index": index, "points": vertices[corner].astype(np.float64),
-                           "vertices": corner.astype(np.int64),
+                           "vertices": corner.astype(np.int64), "plane": int(plane),
                            "plane_normal": normal, "texinfo": texinfo,
                            "dispinfo": dispinfo, "styles": (s0, s1, s2, s3), "area": area})
         return result

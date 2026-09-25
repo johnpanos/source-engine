@@ -9,6 +9,7 @@
     "denoise": true,
     "directional": false,
     "light_paths": "blender-default",
+    "layout": "planar",
     "layers": [
       "direct",
       "indirect"

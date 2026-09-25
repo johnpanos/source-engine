@@ -410,7 +410,8 @@ std::shared_ptr<const SdfData> WithLights(
 mapcontainer::SdfLight SmallLight( bool spot, float x, float y, float z, int style )
 {
 	mapcontainer::SdfLight light = {};
-	light.kind = uint32_t( spot ? mapcontainer::SdfLightKind::Spot : mapcontainer::SdfLightKind::Sphere );
+	light.kind =
+	    uint32_t( spot ? mapcontainer::SdfLightKind::Spot : mapcontainer::SdfLightKind::Sphere );
 	light.style = style;
 	light.rgb[0] = light.rgb[1] = light.rgb[2] = 400.0f;
 	light.a[0] = x, light.a[1] = y, light.a[2] = z;
@@ -520,7 +521,8 @@ void NativeLights( Frames &frames, const std::shared_ptr<const Volume> &seed, co
 	const uint32_t warm = SdfTracedProducer{}.Caps().warmupFrames;
 	const auto run = [&]( bool spot, bool emptyCell )
 	{
-		const auto field = WithLights( sdf, { SmallLight( spot, 0.0f, 0.0f, 32.0f, -1 ) }, emptyCell );
+		const auto field =
+		    WithLights( sdf, { SmallLight( spot, 0.0f, 0.0f, 32.0f, -1 ) }, emptyCell );
 		Check( bool( field ), "a field with a native light validates" );
 		return field ? Drive( frames, seed, field, warm, {}, 0 ).reference : std::vector<float>{};
 	};
@@ -539,7 +541,8 @@ void NativeLights( Frames &frames, const std::shared_ptr<const Volume> &seed, co
 			TexelDirection( t, dir );
 			const float expected = peak * std::max( 0.0f, dir[2] );
 			if ( expected > 0.3f * peak )
-				worst = std::max( worst, double( std::fabs( Analytic( field, 0, t ) - expected ) / expected ) );
+				worst = std::max(
+				    worst, double( std::fabs( Analytic( field, 0, t ) - expected ) / expected ) );
 		}
 		std::printf( "%s light: probe 0 worst texel error %.3f\n", name.c_str(), worst );
 		Check( worst < 0.05, name + " light: probe 0's analytic light is L r^2 / d^2 cos (5%)" );
@@ -548,8 +551,8 @@ void NativeLights( Frames &frames, const std::shared_ptr<const Volume> &seed, co
 		for ( uint32_t t = 0; t < SdfTracedProducer::kTexels; ++t )
 			best = std::max( best, Analytic( field, 1, t ) );
 		const float sideways = 400.0f * 4.0f / ( 2.0f * 32.0f * 32.0f );
-		std::printf( "%s light: probe 1 brightest texel %.4f (unshaded sphere %.4f)\n", name.c_str(),
-		    best, sideways );
+		std::printf( "%s light: probe 1 brightest texel %.4f (unshaded sphere %.4f)\n",
+		    name.c_str(), best, sideways );
 		Check( spot ? best < 0.01f * sideways : best > 0.8f * sideways,
 		    spot ? name + " light: probe 1, outside the cone, is unlit"
 		         : name + " light: probe 1 is lit (the cone check's control)" );
@@ -558,7 +561,8 @@ void NativeLights( Frames &frames, const std::shared_ptr<const Volume> &seed, co
 	float lit = 0.0f;
 	for ( uint32_t t = 0; t < SdfTracedProducer::kTexels && !omitted.empty(); ++t )
 		lit = std::max( lit, Analytic( omitted, 0, t ) );
-	Check( !omitted.empty() && lit == 0.0f, "a light cell that omits the light leaves its probes unlit" );
+	Check( !omitted.empty() && lit == 0.0f,
+	    "a light cell that omits the light leaves its probes unlit" );
 }
 
 // Focus and budget: with a focus of probe 0 and no budget, only probe 0
@@ -594,8 +598,9 @@ void Scheduling( Frames &frames, const std::shared_ptr<const Volume> &seed, cons
 	    "after a change, the focused probe updates and an unfocused one waits (" +
 	        std::to_string( focused.liveUpdates[0] ) + ", " +
 	        std::to_string( focused.liveUpdates[1] ) + ")" );
-	const Driven budgeted =
-	    Drive( frames, seed, field, warm + 400, {}, 4, 0.5f, warm, { 0 } );
+	// 15 unfocused probes x 72 live updates at 8 a update: 135 updates, in
+	// frames enough for a GPU shared with other work.
+	const Driven budgeted = Drive( frames, seed, field, warm + 800, {}, 8, 0.5f, warm, { 0 } );
 	bool rested = true;
 	for ( uint32_t p = 0; p < probes; ++p )
 		rested = rested && budgeted.liveUpdates[p] >= SdfTracedProducer::kActiveUpdates;

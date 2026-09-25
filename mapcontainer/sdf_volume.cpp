@@ -48,7 +48,7 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 	const uint32_t version = U32( p + 4 );
 	const uint32_t headerBytes = U32( p + 8 );
 	if ( !( ( version == 1 && headerBytes == kSdfVolumeV1HeaderBytes ) ||
-	        ( version == 2 && headerBytes == kSdfVolumeHeaderBytes ) ) ||
+	         ( version == 2 && headerBytes == kSdfVolumeHeaderBytes ) ) ||
 	     size < headerBytes || U32( p + 12 ) != 0 || U32( p + 52 ) || U32( p + 56 ) ||
 	     U32( p + 60 ) )
 		return SdfVolumeError::UnsupportedVersion;
@@ -91,8 +91,8 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 		cellCount = uint64_t( layout.cellDims[0] ) * layout.cellDims[1] * layout.cellDims[2];
 		if ( !std::isfinite( layout.cellOrigin[0] ) || !std::isfinite( layout.cellOrigin[1] ) ||
 		     !std::isfinite( layout.cellOrigin[2] ) || !( layout.cellSize > 0.0f ) ||
-		     !std::isfinite( layout.cellSize ) || layout.cellDims[0] < 1 || layout.cellDims[1] < 1 ||
-		     layout.cellDims[2] < 1 || cellCount > kSdfMaxCells )
+		     !std::isfinite( layout.cellSize ) || layout.cellDims[0] < 1 ||
+		     layout.cellDims[1] < 1 || layout.cellDims[2] < 1 || cellCount > kSdfMaxCells )
 			return SdfVolumeError::InvalidCells;
 		layout.cellOffset = lightsEnd;
 		layout.cellEntryOffset = layout.cellOffset + ( cellCount + 1 ) * 4;
@@ -132,7 +132,9 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 			ok = std::isfinite( light.rgb[k] ) && light.rgb[k] >= 0.0f && std::isfinite( light.a[k] ) &&
 			     std::isfinite( light.b[k] ) && std::isfinite( light.c[k] );
 		const auto length = []( const float *v )
-		{ return std::sqrt( v[0] * v[0] + v[1] * v[1] + v[2] * v[2] ); };
+		{
+			return std::sqrt( v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );
+		};
 		if ( ok && light.kind == uint32_t( SdfLightKind::Distant ) )
 			ok = std::fabs( length( light.a ) - 1.0f ) <= 1e-3f;
 		if ( ok && light.kind == uint32_t( SdfLightKind::Sphere ) )
@@ -167,7 +169,8 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 		}
 		if ( layout.cellEntries % 2 )
 		{
-			const unsigned char *pad = p + layout.cellEntryOffset + uint64_t( layout.cellEntries ) * 2;
+			const unsigned char *pad =
+			    p + layout.cellEntryOffset + uint64_t( layout.cellEntries ) * 2;
 			if ( pad[0] || pad[1] )
 				return SdfVolumeError::InvalidCells;
 		}

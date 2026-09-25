@@ -48,6 +48,9 @@ COPLANAR_COS = math.cos(math.radians(2.0))
 # One flat region: a seam between such triangles of one mesh is a charting error.
 FLAT_COS = math.cos(math.radians(0.01))
 QUANTUM = 1e-5            # world position key (stage metres)
+# A pixel at Portal's near clip plane (~0.18 m, 90 degree field, 1920 wide) is
+# about 0.19 mm: a triangle thinner than this never covers one.
+SLIVER_METRES = 1e-4
 LINE_QUANTUM = 1e-4       # line direction and offset key
 MIN_UV_AREA = 1e-12       # triangles with no chart (excluded materials)
 SAMPLES_PER_TEXEL = 2
@@ -114,13 +117,32 @@ def uv_area(uv):
     return 0.5 * np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0])
 
 
+def visible_triangles(positions):
+    """Triangles at least SLIVER_METRES wide: thinner ones (vbsp's T-junction
+    slivers, microns wide) cover no pixel even at the near clip plane, and
+    their float normals are noise, so the seam check leaves them out (they
+    still join the charts they are continuous with)."""
+    longest = np.max([np.linalg.norm(positions[:, (k + 1) % 3] - positions[:, k], axis=1)
+                      for k in range(3)], axis=0)
+    area2 = np.linalg.norm(np.cross(positions[:, 1] - positions[:, 0],
+                                    positions[:, 2] - positions[:, 0]), axis=1)
+    return area2 / np.maximum(longest, 1e-30) >= SLIVER_METRES
+
+
 def triangle_normals(positions):
     normals = np.cross(positions[:, 1] - positions[:, 0], positions[:, 2] - positions[:, 0])
     lengths = np.linalg.norm(normals, axis=1)
     return normals / np.maximum(lengths, 1e-30)[:, None], lengths > 1e-12
 
 
-def line_overlaps(positions, edges, normals, coplanar_cos=None):
+def opposite_sides(positions, normals, t, a, t2, a2, direction):
+    """True when triangles t and t2 lie on opposite sides of their shared line."""
+    side = np.cross(direction, positions[t].mean(axis=0) - positions[t, a])
+    side2 = np.cross(direction, positions[t2].mean(axis=0) - positions[t2, a2])
+    return np.dot(side, normals[t]) * np.dot(side2, normals[t]) < 0
+
+
+def line_overlaps(positions, edges, normals, coplanar_cos=None, opposite=True):
     """Pairs of triangle edges that overlap along one world line, from
     coplanar triangles on opposite sides of it: shared edges and T-junctions
     alike. `edges` are (t, a, b) corner pairs. Returns
@@ -157,10 +179,8 @@ def line_overlaps(positions, edges, normals, coplanar_cos=None):
                     continue
                 if np.dot(normals[t], normals[t2]) < limit:
                     continue
-                # Opposite sides of the shared line within the plane.
-                side = np.cross(direction, positions[t].mean(axis=0) - positions[t, a])
-                side2 = np.cross(direction, positions[t2].mean(axis=0) - positions[t2, a2])
-                if np.dot(side, normals[t]) * np.dot(side2, normals[t]) >= 0:
+                if opposite and not opposite_sides(positions, normals, t, a, t2, a2,
+                                                   direction):
                     continue
                 pairs.append((t, a, b, t2, a2, b2, direction, lo, hi))
     return pairs
@@ -179,6 +199,7 @@ def boundary_pairs(positions, uvs, size):
     """
     normals, solid = triangle_normals(positions)
     charted = (uv_area(uvs) > MIN_UV_AREA) & solid
+    visible = visible_triangles(positions)
     keys = np.round(positions / QUANTUM).astype(np.int64)
     uv_keys = np.round(uvs * size * 64).astype(np.int64)
 
@@ -199,10 +220,22 @@ def boundary_pairs(positions, uvs, size):
                                 for t, a, b in edges))
     pairs = []
     gap = CONTINUOUS_TEXELS / size
-    for t, a, b, t2, a2, b2, direction, lo, hi in line_overlaps(positions, edges, normals):
+    # Pieces whose UVs agree along a shared line are one chart whatever their
+    # normals (a vbsp sliver's float normal can be degrees off). A pair that
+    # disagrees is a seam only between coplanar triangles on opposite sides.
+    for t, a, b, t2, a2, b2, direction, lo, hi in line_overlaps(positions, edges, normals,
+                                                                -2.0, opposite=False):
         continuous = all(np.abs(edge_uv(uvs, positions, t, a, b, direction, s) -
                                 edge_uv(uvs, positions, t2, a2, b2, direction, s)
                                 ).max() < gap for s in (lo, hi))
+        # Slivers join charts through continuous pairs, but their noisy
+        # normals cannot say whether a discontinuity is a seam or a crease;
+        # being thinner than a pixel, they cannot show one either.
+        if not continuous and (not (visible[t] and visible[t2]) or
+                               np.dot(normals[t], normals[t2]) < COPLANAR_COS or
+                               not opposite_sides(positions, normals, t, a, t2, a2,
+                                                  direction)):
+            continue
         pairs.append((t, a, b, t2, a2, b2, direction, lo, hi, continuous))
     stats = {"triangles": int(len(positions)), "charted_triangles": int(charted.sum()),
              "boundary_edges": boundary_edges, "boundary_length_m": boundary_length}
@@ -411,6 +444,16 @@ def chart_invariants(positions, uvs, size, max_density_spread=1.5):
     usable = charted & (area_world > 1e-12)
     if usable.any():
         density = uv_area(uvs)[usable] * size * size / area_world[usable]
+        # A triangle thinner than a texel (a vbsp sliver whose corner float
+        # rounding lifted off its plane) covers no texel: its area ratio
+        # means nothing. Judge the rest, at the median texel size.
+        longest = np.max([np.linalg.norm(positions[:, (k + 1) % 3] - positions[:, k], axis=1)
+                          for k in range(3)], axis=0)
+        altitude = 2 * area_world / np.maximum(longest, 1e-30)
+        texel = 1.0 / math.sqrt(float(np.median(density)))
+        visible = altitude[usable] >= texel
+        result["subtexel_triangles"] = int((~visible).sum())
+        density = density[visible] if visible.any() else density
         result["density_spread"] = float(density.max() / density.min())
     else:
         result["density_spread"] = 1.0

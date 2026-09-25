@@ -1160,9 +1160,9 @@
       "rfc": "0011",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "RFC 0011 baked direct light blocked by moving geometry (render/direct_occlusion.h) on a synthetic floor: no occluder leaves the bake's bytes; a box between the floor and a rectangle light, or under a distant light, takes exactly the direct light of the texels it shadows (the sun's footprint only) and leaves the rest as baked; a box beside every path or behind the lit side changes nothing; no lights, nothing built",
+      "description": "RFC 0011 baked direct light blocked by moving geometry (render/direct_occlusion.h) on a synthetic floor: no occluder leaves the bake's bytes; a box between the floor and a rectangle light, or under a distant light, takes exactly the direct light of the texels it shadows (the sun's footprint only) and leaves the rest as baked; a box beside every path or behind the lit side changes nothing; a box over the centre takes a sphere's or a spot's direct light, and a box on the path to a corner darkens it under the sphere but not under the spot, whose cone never reaches it; no lights, nothing built",
       "result_protocol": "checks-v1",
-      "min_checks": 16,
+      "min_checks": 21,
       "sources": [
         "unittests/rendertest/test_direct_occlusion.cpp",
         "mapcontainer/probe_volume.cpp",
@@ -2496,7 +2496,7 @@
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
       "result_protocol": "checks-v1",
-      "description": "RFC 0011 G6/G7 traced producers on a headless device through the renderer's compute service (render/gpu_compute.h over vulkan_compute's GpuComputeService): the shared producer suite (unittests/rendertest/indirect_contract.h) against the SDF-traced producer and, on a device with ray query, the ray-query producer (the contract scene's triangles as a scene with proxy-box instances), including the geometry oracle (a proxy box around a probe darkens it below 5% of the seed); each traced field's own reference sees no light through the thin wall, and erasing the wall (from the field, or its triangles) is detected; without ray query the ray-query producer fails with missing-feature and creates nothing; validation-clean with the layer. The same source runs on Android from /data/local/tmp",
+      "description": "RFC 0011 G6/G7 traced producers on a headless device through the renderer's compute service (render/gpu_compute.h over vulkan_compute's GpuComputeService): the shared producer suite (unittests/rendertest/indirect_contract.h) against the SDF-traced producer and, on a device with ray query, the ray-query producer (the contract scene's triangles as a scene with proxy-box instances), including the geometry oracle (a proxy box around a probe darkens it below 5% of the seed); each traced field's own reference sees no light through the thin wall, and erasing the wall (from the field, or its triangles) is detected; without ray query the ray-query producer fails with missing-feature and creates nothing; sphere and spot lights (SDFV v2) match L r^2 / d^2 cos per texel and the spot's cone leaves a probe outside it unlit (the sphere lights it); a light cell that omits the light leaves its probe unlit; a focus of probe 0 without a budget references probe 0 only, a focus of every probe is the no-focus schedule byte for byte, after a change a focused probe updates while an unfocused one waits, and a budget brings every probe to rest; validation-clean with the layer. The same source runs on Android from /data/local/tmp",
       "sources": [
         "unittests/shaderapivulkantest/test_indirect_sdf.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
@@ -2506,7 +2506,7 @@
         "mapcontainer/world_mesh.cpp"
       ],
       "expect": "pass",
-      "min_checks": 16
+      "min_checks": 26
     },
     {
       "id": "render.indirect-switching.native-pixels",
@@ -2661,9 +2661,9 @@
       "rfc": "0011",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "RFC 0011 G6 SDFV reader: the contract volume validates and its layout is the fixture record's; every malformation of the shared corpus is rejected with the independent Python reader's code; mutation fuzzing never crashes and accepted mutants' sections lie inside their bytes",
+      "description": "RFC 0011 G6 SDFV reader: the contract volume (version 2, one light cell) validates and its layout is the fixture record's; the every-light-kind volume (rect, distant, dome, sphere, spot with vrad's cone) and its 2 x 2 x 1 light cells read as declared; the previous version-1 contract still validates (no cells); every malformation of the shared corpus (20, including v2 light kinds and cells) is rejected with the independent Python reader's code; mutation fuzzing never crashes and accepted mutants' sections lie inside their bytes",
       "result_protocol": "checks-v1",
-      "min_checks": 20,
+      "min_checks": 36,
       "sources": [
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/sdf_volume.cpp",

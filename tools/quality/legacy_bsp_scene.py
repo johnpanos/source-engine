@@ -216,6 +216,7 @@ def face_st(points, texinfo, mapping):
 
 # CMaterial::FindRepresentativeTexture's order; the engine divides texture
 # coordinates by that texture's mapping (full-resolution VTF) size.
+PLANE_PRIMVAR = "sourceEngine:plane"
 REPRESENTATIVE_TEXTURES = ("$basetexture", "$envmapmask", "$bumpmap", "$dudvmap", "$normalmap")
 ERROR_TEXTURE_SIZE = 32  # texturemanager.cpp: a missing texture maps as the error texture
 
@@ -705,10 +706,18 @@ def write_usd(model, path, map_name):
         bound[name] = mat
         return mat
 
-    def mesh(name, polygons, uvs, plane_normals, mat, vertex_ids=None):
+    def mesh(name, polygons, uvs, plane_normals, mat, vertex_ids=None, planes=None):
         prim = UsdGeom.Mesh.Define(stage, world.AppendChild(name))
         points, counts, indices, normals, st = indexed_triangles(polygons, uvs, plane_normals,
                                                                  vertex_ids)
+        if planes is not None:
+            # The BSP plane of every triangle: lightmap_layout.py charts only
+            # triangles on one plane together (exact, no angle tolerance).
+            per_triangle = [plane for polygon, plane in zip(polygons, planes)
+                            for _ in range(len(polygon) - 2)]
+            UsdGeom.PrimvarsAPI(prim).CreatePrimvar(
+                PLANE_PRIMVAR, Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform).Set(
+                Vt.IntArray(per_triangle))
         prim.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*map(float, p)) for p in points]))
         prim.CreateFaceVertexCountsAttr(Vt.IntArray(counts))
         prim.CreateFaceVertexIndicesAttr(Vt.IntArray(indices))
@@ -729,7 +738,7 @@ def write_usd(model, path, map_name):
         uvs = [face_st(face["points"], texinfo[face["texinfo"]],
                        model["mappings"][texinfo[face["texinfo"]]["texdata"]]) for face in faces]
         mesh(name, polygons, uvs, [face["plane_normal"] for face in faces], mat,
-             [face["vertices"] for face in faces])
+             [face["vertices"] for face in faces], [face["plane"] for face in faces])
     if model["occluders"]:
         mat = material(OCCLUDER, {"base_color": (0.0, 0.0, 0.0), "roughness": 1.0})
         polygons = [polygon for polygon, _normal in model["occluders"]]

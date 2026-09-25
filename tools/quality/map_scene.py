@@ -103,6 +103,20 @@ def prop_shape_names(scene):
     return {name for prop in props(scene) for name in prop["shapes"]}
 
 
+def lightmap_exclusions(scene, extra_materials=()):
+    """(materials, shapes) that get no lightmap space: transmissive or fully
+    metallic materials (the WMSH shader leaves them unlit or weights baked
+    diffuse by 1 - metalness), `extra_materials`, and every shape using one
+    of them or standing in for a dynamic model."""
+    materials = set(extra_materials) | {
+        name for name in scene["materials"]
+        if material_summary(scene, name)["transmission"] > 0 or
+        material_summary(scene, name)["metallic"] >= 1.0}
+    shapes = prop_shape_names(scene) | {shape["name"] for shape in scene["shapes"]
+                                        if shape["material"] in materials}
+    return materials, shapes
+
+
 def prop_model_path(map_name, prop):
     """Game path of a dynamic model's map-scoped copy (materials retargeted to
     `materials/models/<map>/<prop>/`); the collision step places it and the
@@ -134,6 +148,11 @@ def emitter_to_stage(shape):
     if shape.get("space") == "stage":
         return tuple(tuple(row) for row in world)
     return pbrt_scene.matmul(pbrt_scene.PBRT_TO_USD, world)
+
+
+# Emitter meshes are named with these prefixes (emitter_name); they are light
+# sources, never world geometry, so no step lightmaps, packs or collides them.
+EMITTER_PREFIXES = ("LightQuad", "LightDisk")
 
 
 def emitter_name(index, shape):

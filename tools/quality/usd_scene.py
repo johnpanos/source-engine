@@ -38,8 +38,11 @@ from pathlib import Path
 import numpy as np
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade, Vt
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import map_scene  # noqa: E402
+
 SCHEMA = "map-scene/v1"
-EMITTER_PREFIXES = ("LightQuad", "LightDisk")
+EMITTER_PREFIXES = map_scene.EMITTER_PREFIXES
 DEFAULT_FILM_WIDTH = 1920
 # UsdPreviewSurface defaults (UsdPreviewSurface specification).
 PREVIEW_DEFAULTS = {"diffuseColor": (0.18, 0.18, 0.18), "emissiveColor": (0.0, 0.0, 0.0),
@@ -50,6 +53,9 @@ PREVIEW_DEFAULTS = {"diffuseColor": (0.18, 0.18, 0.18), "emissiveColor": (0.0, 0
 TEXTURE_CHANNELS = ("base", "roughness", "metallic", "occlusion", "normal", "emission",
                     "opacity")
 NAME_LIMIT = 48
+
+
+FACE_DATA_PREFIX = "sourceEngine:"
 
 
 def sha256(path):
@@ -658,6 +664,18 @@ class Extractor:
         triangles, triangle_faces = triangulate(points, counts, indices)
         if flip:
             triangles = triangles[:, ::-1]
+        # Per-face integer data the pipeline carries to the stage, such as a
+        # relit BSP face's plane (sourceEngine:plane, read by lightmap_layout).
+        face_data = {}
+        for primvar in UsdGeom.PrimvarsAPI(prim).GetPrimvarsWithValues():
+            name = primvar.GetPrimvarName()
+            if name.startswith(FACE_DATA_PREFIX) and \
+                    primvar.GetInterpolation() == UsdGeom.Tokens.uniform:
+                values = np.asarray(primvar.Get(), dtype=np.int64)
+                if len(values) != len(counts):
+                    raise ValueError("%s: uniform %s has %d values for %d faces" %
+                                     (prim.GetPath(), name, len(values), len(counts)))
+                face_data[name] = values
         double_sided = bool(mesh.GetDoubleSidedAttr().Get())
         subdivision = mesh.GetSubdivisionSchemeAttr().Get()
         for (subset_name, material, faces) in groups.values():
@@ -675,12 +693,17 @@ class Extractor:
             if not len(corner_triangles):
                 continue
             corner_points = world_points[indices]
+            # Corners keep their source vertex, so the stage shares vertices
+            # as the source mesh does (a triangle soup would make the
+            # lightmap bake chart every triangle alone).
+            corner_vertex = indices
             for pattern, cell in self.simplify:
                 if fnmatch.fnmatchcase(str(prim.GetPath()), pattern):
                     self.simplify_used.add(pattern)
                     before = len(corner_triangles)
                     corner_triangles, corner_points = cluster_simplify(
                         corner_points, corner_triangles, cell)
+                    corner_vertex = None  # clustering moved corners apart
                     self.notes.append("%s simplified by %g m vertex clustering: %d -> %d "
                                       "triangles" % (prim.GetPath(), cell, before,
                                                      len(corner_triangles)))
@@ -693,6 +716,10 @@ class Extractor:
                 "double_sided": double_sided, "subdivision": str(subdivision),
                 "st_primvar": primvar_name,
                 "corner_triangles": corner_triangles, "points": corner_points,
+                "corner_vertex": corner_vertex, "vertex_points": world_points,
+                "face_data": {name: values[triangle_faces[selected]][:len(corner_triangles)]
+                              for name, values in face_data.items()}
+                if corner_vertex is not None else {},
                 "normals": world_normals, "uv": uv})
 
     def prop_for(self, prim):
@@ -1088,12 +1115,21 @@ def write_stage(path, shapes, emitters, summaries):
         xform = UsdGeom.Xform.Define(stage, "/root/" + shape["name"])
         mesh = UsdGeom.Mesh.Define(stage, xform.GetPath().AppendChild(shape["name"]))
         corners = shape["corner_triangles"].reshape(-1)
-        points = shape["points"][corners]
         count = len(corners)
+        if shape.get("corner_vertex") is not None:
+            used, remapped = np.unique(shape["corner_vertex"][corners], return_inverse=True)
+            points = shape["vertex_points"][used]
+            face_vertex_indices = remapped.astype(np.int32)
+        else:
+            points = shape["points"][corners]
+            face_vertex_indices = np.arange(count, dtype=np.int32)
         mesh.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(points.astype(np.float32)))
         mesh.CreateFaceVertexCountsAttr(Vt.IntArray([3] * (count // 3)))
-        mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(
-            np.arange(count, dtype=np.int32)))
+        mesh.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(face_vertex_indices))
+        for name, values in sorted(shape.get("face_data", {}).items()):
+            UsdGeom.PrimvarsAPI(mesh).CreatePrimvar(
+                name, Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform).Set(
+                Vt.IntArray.FromNumpy(values.astype(np.int32)))
         mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
         mesh.CreateDoubleSidedAttr(shape["double_sided"])
         mesh.CreateNormalsAttr(Vt.Vec3fArray.FromNumpy(

@@ -24,7 +24,7 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | G5 GPU compute foundation | done (2026-09-24) | `vulkan_compute` on the native device: features queried and enabled through a `VkPhysicalDeviceFeatures2` chain, compute programs, storage buffers and images dispatched on the graphics queue, retirement by completion serial; `kStorageImages`/`kRayQuery` bits claimed only as enabled (`ValidateDeviceClaims` rejects a bad provider); `render.compute` passes on the Radeon 8060S (validation-clean) and on the Fold7 |
 | G6 SDF-traced producer | done (2026-09-25, native Vulkan desktop; Android declared unsupported) | SDFV bake/pack/reader; shared suite plus a traced-field thin-wall oracle with a seeded leak; in game the door closes the far room to Cycles' dark within 64 frames while radiosity and baked fail; the sun move settles toward Cycles; 0.49 ms per update for 400 probes (budget 2.0) |
 | G7 ray-query producer | done (2026-09-25, native Vulkan desktop; Android declared unsupported) | Same producer and shader as G6, traced by ray queries against the world's triangles and proxy boxes; `rayquery` offered only with device ray query; shared suite plus thin-wall oracle; door (indirect and shaded) and sun gates pass at SDF's tolerance; 1.0 ms per update for 400 probes on a loaded host (budget 1.5) |
-| G8 product defaults and soak | planned | — |
+| G8 product defaults and soak | done (2026-09-25; Android soak shortened to 5 min by the user; Apple unverified) | Per-profile defaults chosen from measurements, recorded in the product profiles and generated into the engine (`r_indirect_producer auto`; rollback `baked`); Linux 30-minute soak under validation passes (777 switches, 56 map changes, 0 validation messages, flat memory); Android soak passes; Apple has no R29 runner |
 
 ## G0: Baseline, fixtures and runner
 
@@ -931,3 +931,66 @@ scores 0 for baked, radiosity, sdf and rayquery.
 
 Evidence: `quality-results/rfc0011-g{6,7}/{door,sun}/gate.json`,
 `quality-results/rfc0011-g7/cost/`, `quality-results/rfc0011-temporal/door/temporal.json`.
+
+## G8: Product (done 2026-09-25)
+
+| Done criterion | State |
+| --- | --- |
+| 1. Per-profile default producer chosen from measurements, recorded in the product profiles; rollback is a setting | Passes. The measurements are below. The product profiles now carry `indirect_light.default_producers`: Linux desktop `sdf, radiosity, baked`, Android `radiosity, baked`. [`indirect_defaults.py`](../tools/quality/indirect_defaults.py) generates [`engine/indirect_light_defaults.h`](../engine/indirect_light_defaults.h) from them; `--check` and a `test_gi_tools` test fail if the header drifts from the profiles. `r_indirect_producer` now defaults to `auto`, the first producer in the profile's list that the map and device offer; `baked` closes every list, so a map without the others' data still lights. Rollback: `r_indirect_producer baked`, no rebuild. |
+| 2. Installed Linux and Android products pass a switching soak | See below. [`gi_soak.py`](../tools/quality/gi_soak.py) boots the installed product (Linux: portal_boot's private runtime with the build's binaries; Android: the installed APK, maps pushed as a custom folder, the script as autoexec). It plays a looping script: on each GI map every ordered producer pair with the door toggled between switches, then a map change, with the stock chambers between (no switcher there). It stops on the wall clock through a stop cfg. Gate: no crash; every offered producer taken and no unoffered one; the per-loop memory floor grows by at most 64 MB after the first loop; no Vulkan validation message (desktop; no layer ships in the APK). |
+| 3. Apple profiles | Unverified: R29 has no Apple runner, so baked and radiosity have not run on macOS or iOS. |
+
+**Measurements that chose the defaults** (desktop, Radeon 8060S; Android,
+Galaxy Z Fold7):
+
+| Producer | Light toggles (room-states, `gi_radiosity.py states --producer`) | Door | Sun | Flicker (`gi_temporal`) | Cost per update (budget) |
+| --- | --- | --- | --- | --- | --- |
+| baked | control: fails, as it must | fails | fails | 0 | — |
+| radiosity | passes | fails | fails | 0 | 0.8 ms CPU desktop (1.0); about 1.2 ms Fold7 (2.0) |
+| sdf | passes | passes | passes | 0 | 0.49 ms GPU desktop (2.0); Android unsupported |
+| rayquery | passes | passes | passes | 0 | 1.0 ms GPU desktop (1.5); Android unsupported |
+
+sdf is the cheapest producer that passes every scenario within the desktop
+budget. rayquery passes the same scenarios at twice the cost, and needs the
+same map data plus ray-query hardware, so it stays opt-in. On Android only
+radiosity has a measured budget. The baked control in `states` now selects
+`baked` explicitly: before, it silently took a runtime's saved producer and
+could pass.
+
+**Linux soak** (30 minutes, installed product, Khronos validation layer on):
+passes (`quality-results/rfc0011-g8/soak-linux/soak.json`).
+- 11 loops over gi_door, gi_room_states, gi_portal_view and the stock
+  chambers testchmb_a_00 and testchmb_a_01: 56 map changes and 777 switches
+  (baked, radiosity and sdf 203 each; rayquery 168).
+- 0 validation messages.
+- The per-loop memory floor holds at 430–452 MB, +0.06 MB from the second
+  loop to the last.
+- It quit cleanly on schedule through the stop cfg. The boot wrapper's own
+  final screenshot is skipped, so its "no screenshot" note is expected and
+  not part of the gate.
+
+**Android soak** (5 minutes rather than 30, at the user's direction): passes.
+- 8 loops over gi_door, gi_room_states and testchmb_a_00: 25 map changes and
+  80 switches taken (baked 40, radiosity 40). sdf and rayquery were refused
+  96 times as unavailable, as the Android profile declares.
+- The memory floor (dumpsys total PSS) holds at 858–863 MB, +4.9 MB over the
+  run. Map-load transients reach 1.6 GB and return. No crash.
+- The run completed its 5 minutes, but the app was then ended by a task
+  removal (the phone was picked up), not by the scripted quit. The relaunch
+  replaced the on-device engine.log, so the soak's engine output was
+  recovered from logcat. The phone was restored afterwards (cfgs and pushed
+  maps removed, the displaced custom folder back), then updated to the
+  current APK with `r_indirect_producer auto`.
+
+**Found on the way.**
+- Every headless native-Vulkan boot ended with a validation error
+  (VUID-vkDestroyInstance-instance-00629: a surface alive at instance
+  destruction). SDL_Vulkan_DestroySurface does nothing under SDL's
+  offscreen driver; the surface host now destroys its VkSurfaceKHR with
+  vkDestroySurfaceKHR, and a plain boot is validation-clean.
+- `SDL3 relative mouse mode failed` was logged every frame under a driver
+  without relative mode (4 MB of log in the soak). It now warns once, until
+  the call next succeeds.
+- The engine's `echo` puts a timestamp between words. Screenshots requested
+  while one is being written are dropped. A console line is cut at about 512
+  characters. The soak and flicker harnesses work within all three.

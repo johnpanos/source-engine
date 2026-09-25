@@ -6,8 +6,9 @@ and PRBV: an independent implementation of the engine host's ProbeFocus
     python3 tools/quality/gi_focus.py --bsp map.bsp --prbv probe_volume.prbv \\
         --eye X Y Z [--radius 1500] [--out focus.txt]
 
-The focus is the active probes in the clusters the camera's cluster can see
-(its PVS, and itself) and in those clusters' neighbours (clusters whose open
+The focus is the active probes with a cluster (that of an open leaf at the
+probe or half a spacing along an axis) among those the camera's cluster can see
+(its PVS, and itself) and those clusters' neighbours (clusters whose open
 leaves' bounds, one unit apart, touch); by distance (the probes within
 --radius) when that does not narrow the map: no visibility, the camera in no
 cluster, no probe found, or more than three quarters of the active probes.
@@ -53,12 +54,25 @@ def neighbours(contents, clusters, mins, maxs):
     return result
 
 
+def probe_clusters(bsp, clusters, positions, active, spacing):
+    """(N, 7) clusters of each probe's centre and its six half-spacing
+    offsets (-1: solid, none, or an inactive probe)."""
+    offsets = [np.zeros(3)]
+    for axis in range(3):
+        for sign in (0.5, -0.5):
+            step = np.zeros(3)
+            step[axis] = sign * spacing[axis]
+            offsets.append(step)
+    return np.array([[clusters[bsp.point_leaf(p + o)] if a else -1 for o in offsets]
+                     for p, a in zip(positions, active)])
+
+
 def focus(bsp, volume, eye, radius):
     positions, active = probe_positions(volume)
     pvs = bsp.visibility()
     contents, clusters, mins, maxs = bsp.leaves()
-    probe_cluster = np.array([clusters[bsp.point_leaf(p)] if a else -1
-                              for p, a in zip(positions, active)])
+    spacing = volume.grids[0].spacing if volume is not None else np.ones(3)
+    probe_cluster = probe_clusters(bsp, clusters, positions, active, spacing)
     camera = int(clusters[bsp.point_leaf(np.asarray(eye, np.float64))]) if pvs is not None else -1
     chosen, mode = [], "distance"
     if pvs is not None and 0 <= camera < len(pvs):
@@ -69,8 +83,8 @@ def focus(bsp, volume, eye, radius):
             if seen[c]:
                 for other in others:
                     near[other] = True
-        chosen = [int(p) for p in np.flatnonzero((probe_cluster >= 0) &
-                                                 near[np.maximum(probe_cluster, 0)])]
+        hit = (probe_cluster >= 0) & near[np.maximum(probe_cluster, 0)]
+        chosen = [int(p) for p in np.flatnonzero(hit.any(axis=1))]
         if chosen and len(chosen) * 4 <= int(active.sum()) * 3:
             mode = "visibility"
     if mode == "distance":

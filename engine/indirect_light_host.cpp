@@ -80,7 +80,7 @@ ConVar r_indirect_occlusion( "r_indirect_occlusion", "1", FCVAR_CHEAT,
     "visibility behind it (0: the bake's, the negative control of the door test)" );
 ConVar r_indirect_report( "r_indirect_report", "0", FCVAR_NONE,
     "Print each indirect-light update: the producer's CPU time and the published volume's mean "
-    "indirect light" );
+    "indirect light, and the traced producers' focus when it changes (2: its probes too)" );
 
 ConVar r_indirect_focus( "r_indirect_focus", "1", FCVAR_NONE,
     "Traced producers (sdf, rayquery) update the probes around the camera every update (those "
@@ -92,7 +92,7 @@ ConVar r_indirect_focus_radius( "r_indirect_focus_radius", "1500", FCVAR_NONE,
     "The focus radius (units) where the map's visibility does not narrow the focus" );
 
 // The traced producers' focus (FrameWork::focusProbes): the probes around
-// the camera. Each active probe's cluster, and each cluster's neighbours
+// the camera. Each active probe's clusters (its open leaves'), and each cluster's neighbours
 // (clusters whose open leaves touch its own: the room beyond a doorway), are
 // found once per map. Per frame the focus is the probes in the clusters the
 // camera's cluster can see (its PVS) and their neighbours; where that does
@@ -108,19 +108,35 @@ public:
 		m_positions = ProbePositions( volume );
 		const size_t probes = m_positions.size() / 4;
 		m_clusters = CM_NumClusters();
-		m_probeCluster.assign( probes, -1 );
+		// A probe's clusters: those of the open leaves at its centre and half a
+		// spacing along each axis (a probe inside a brush or on a wall still
+		// lights the rooms beside it).
+		const mapcontainer::ProbeGridLayout &grid = volume.layout.grids[0];
+		m_probeClusters.assign( probes * kProbeSamples, -1 );
 		for ( size_t p = 0; p < probes; ++p )
 		{
 			if ( m_positions[p * 4 + 3] < 0.5f )
 				continue;
 			++m_active;
-			const Vector at( m_positions[p * 4], m_positions[p * 4 + 1], m_positions[p * 4 + 2] );
-			m_probeCluster[p] = CM_LeafCluster( CM_PointLeafnum( at ) );
+			for ( int k = 0; k < kProbeSamples; ++k )
+			{
+				Vector at( m_positions[p * 4], m_positions[p * 4 + 1], m_positions[p * 4 + 2] );
+				if ( k > 0 )
+					at[( k - 1 ) / 2] += ( k % 2 ? 0.5f : -0.5f ) * grid.spacing[( k - 1 ) / 2];
+				m_probeClusters[p * kProbeSamples + k] = CM_LeafCluster( CM_PointLeafnum( at ) );
+			}
 		}
+	}
+
+	// The clusters' neighbours, from the world's leaves (loaded after the
+	// map's indirect-light data, so found at the first update).
+	void BuildNeighbours()
+	{
 		m_neighbours.assign( size_t( std::max( m_clusters, 0 ) ), {} );
 		const worldbrushdata_t *world = host_state.worldbrush;
 		if ( !world || m_clusters <= 1 )
 			return;
+		m_haveNeighbours = true;
 		struct Leaf
 		{
 			Vector lo, hi;
@@ -138,7 +154,10 @@ public:
 			    leaf.m_vecCenter + leaf.m_vecHalfDiagonal + margin, leaf.cluster } );
 		}
 		std::sort( leaves.begin(), leaves.end(),
-		    []( const Leaf &a, const Leaf &b ) { return a.lo.x < b.lo.x; } );
+		    []( const Leaf &a, const Leaf &b )
+		    {
+			    return a.lo.x < b.lo.x;
+		    } );
 		for ( size_t i = 0; i < leaves.size(); ++i )
 			for ( size_t j = i + 1; j < leaves.size() && leaves[j].lo.x <= leaves[i].hi.x; ++j )
 			{
@@ -160,6 +179,11 @@ public:
 	// by distance, moves 64 units).
 	std::span<const uint32_t> Update( const Vector &eye )
 	{
+		if ( !m_haveNeighbours && m_clusters > 1 && host_state.worldbrush )
+		{
+			BuildNeighbours();
+			m_valid = false;
+		}
 		const int cluster = m_clusters > 1 ? CM_LeafCluster( CM_PointLeafnum( eye ) ) : -1;
 		const bool moved = ( eye - m_eye ).LengthSqr() > 64.0f * 64.0f;
 		if ( m_valid && cluster == m_cameraCluster && ( !m_byDistance || !moved ) &&
@@ -181,22 +205,30 @@ public:
 					seen[c] = 1;
 			seen[cluster] = 1;
 			std::vector<uint8_t> near = seen;
-			for ( int c = 0; c < m_clusters; ++c )
+			for ( int c = 0; c < m_clusters && size_t( c ) < m_neighbours.size(); ++c )
 				if ( seen[c] )
 					for ( int n : m_neighbours[c] )
 						near[n] = 1;
-			for ( size_t p = 0; p < m_probeCluster.size(); ++p )
-				if ( m_probeCluster[p] >= 0 && near[m_probeCluster[p]] )
-					m_focus.push_back( uint32_t( p ) );
+			for ( size_t p = 0; p * kProbeSamples < m_probeClusters.size(); ++p )
+				for ( int k = 0; k < kProbeSamples; ++k )
+				{
+					const int c = m_probeClusters[p * kProbeSamples + k];
+					if ( c >= 0 && c < m_clusters && near[c] )
+					{
+						m_focus.push_back( uint32_t( p ) );
+						break;
+					}
+				}
 			m_byDistance = m_focus.empty() || m_focus.size() * 4 > m_active * 3;
 		}
 		if ( m_byDistance )
 		{
 			m_focus.clear();
 			const float r2 = m_radius * m_radius;
-			for ( size_t p = 0; p < m_probeCluster.size(); ++p )
+			for ( size_t p = 0; p * 4 < m_positions.size(); ++p )
 			{
-				const Vector at( m_positions[p * 4], m_positions[p * 4 + 1], m_positions[p * 4 + 2] );
+				const Vector at(
+				    m_positions[p * 4], m_positions[p * 4 + 1], m_positions[p * 4 + 2] );
 				if ( m_positions[p * 4 + 3] >= 0.5f && ( at - eye ).LengthSqr() <= r2 )
 					m_focus.push_back( uint32_t( p ) );
 			}
@@ -204,12 +236,21 @@ public:
 		if ( r_indirect_report.GetBool() )
 			Msg( "indirect light: focus %zu of %zu active probes (%s, camera cluster %d)\n",
 			    m_focus.size(), m_active, m_byDistance ? "distance" : "visibility", cluster );
+		if ( r_indirect_report.GetInt() >= 2 )
+		{
+			// The probes themselves, for tools/quality/gi_focus.py to compare.
+			std::string list;
+			for ( uint32_t p : m_focus )
+				list += " " + std::to_string( p );
+			Msg( "indirect light: focus probes%s\n", list.c_str() );
+		}
 		return m_focus;
 	}
 
 private:
+	static constexpr int kProbeSamples = 7; // the centre and six half-spacing offsets
 	std::vector<float> m_positions;
-	std::vector<int> m_probeCluster;
+	std::vector<int> m_probeClusters; // kProbeSamples per probe (-1: solid or none)
 	std::vector<std::vector<int>> m_neighbours;
 	std::vector<uint32_t> m_focus;
 	Vector m_eye{ 0, 0, 0 };
@@ -219,6 +260,7 @@ private:
 	size_t m_active = 0;
 	bool m_valid = false;
 	bool m_byDistance = true;
+	bool m_haveNeighbours = false;
 };
 
 // Frames in flight the host assumes for producers without device resources.
@@ -274,7 +316,8 @@ public:
 		desc.context = context;
 		desc.count = count;
 		desc.process = body;
-		const bool pooled = ( m_alwaysPooled || r_indirect_executor.GetInt() == 1 ) && g_pThreadPool;
+		const bool pooled =
+		    ( m_alwaysPooled || r_indirect_executor.GetInt() == 1 ) && g_pThreadPool;
 		desc.maxParticipants = pooled ? unsigned( g_pThreadPool->NumThreads() ) + 1 : 1;
 		if ( !RunThreadPoolJobBatch( pooled ? g_pThreadPool : nullptr, desc,
 		         pooled ? jobsystem::BatchMode::Parallel : jobsystem::BatchMode::Serial ) )
@@ -357,7 +400,7 @@ struct Host
 	EngineExecutor occlusionExecutor{ true };
 	std::vector<Proxy> occluded;
 	std::vector<unsigned char> occludedTotal;
-	std::vector<Proxy> visibilityProxies; // the proxies the consumed volume's visibility has
+	std::vector<Proxy> visibilityProxies;      // the proxies the consumed volume's visibility has
 	std::vector<LightOverride> lightOverrides; // r_indirect_light_direction
 	ProbeFocus focus;                          // the traced producers' probes near the camera
 	uint64_t uploadedGeneration = 0;
@@ -727,7 +770,8 @@ void IndirectLight_BeginMap( const IndirectLightMapData &map )
 	host.tracker.Advance();
 	Msg( "indirect light: map %llu, producer %s%s (offered: %s)\n",
 	    (unsigned long long)host.scene.mapSerial, ProducerName( host.switcher->Active() ),
-	    std::strcmp( saved, "auto" ) == 0 ? " (auto)" : "", r_indirect_producer_offered.GetString() );
+	    std::strcmp( saved, "auto" ) == 0 ? " (auto)" : "",
+	    r_indirect_producer_offered.GetString() );
 }
 
 void IndirectLight_EndMap()

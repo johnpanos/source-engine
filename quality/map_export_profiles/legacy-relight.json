@@ -9,6 +9,7 @@
     "denoise": true,
     "directional": false,
     "light_paths": "gi-reference",
+    "layout": "planar",
     "layers": [
       "direct",
       "indirect"

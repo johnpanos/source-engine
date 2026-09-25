@@ -17,7 +17,7 @@ import map_scene
 import pbrt_scene
 
 PBRT_TO_USD = Matrix(pbrt_scene.PBRT_TO_USD)
-EMITTER_PREFIXES = ("LightQuad", "LightDisk")
+EMITTER_PREFIXES = map_scene.EMITTER_PREFIXES
 
 
 def matrix(values):

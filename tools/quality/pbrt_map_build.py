@@ -27,7 +27,10 @@ emitters stay invisible, and there is no sky dome or traversal gate. Steps:
                  display texture (if any sky)
     stage        PBRT -> USD stage in Blender (+ optional Cycles reference render)
     reference-gate  Cycles render vs the scene's reference image (manifest reference.gate)
-    bake         shared lightmap UVs + Cycles diffuse irradiance atlas
+    layout       (lightmap.layout "planar") lightmap_layout.py: exact lightmap UVs for flat
+                 geometry, written into a copy of the stage; the bake uses them unchanged
+    bake         shared lightmap UVs (Blender charting unless laid out) + Cycles diffuse
+                 irradiance atlas
     denoise      OpenImageDenoise RTLightmap filter (manifest lightmap.denoise, default on)
     seams        lightmap_seams.py extract --check: the lighting stage's chart seams, and a
                  gate on its chart invariants (no overlap, bleed, escaped UVs or split
@@ -99,7 +102,7 @@ import pbrt_traversal  # noqa: E402
 import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
 
-STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "bake", "denoise", "directional",
+STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "layout", "bake", "denoise", "directional",
          "seams", "probe", "probe-volume", "radiosity", "sdf", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
          "traversal-boot", "traversal", "audit")
@@ -115,7 +118,7 @@ USD_TOOLS = ("openusd", "compile_tools")
 # The tools each step runs (pbrt_map_toolchain.identity names); boot steps
 # name their client build in their settings.
 STEP_TOOLS = {"legacy-scene": USD_TOOLS, "scene": USD_TOOLS, "stage": BLENDER_TOOLS,
-              "bake": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
+              "layout": USD_TOOLS, "bake": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
               "directional": ("openimagedenoise",), "probe": BLENDER_TOOLS,
               "probe-volume": BLENDER_TOOLS, "radiosity": BLENDER_TOOLS, "sdf": BLENDER_TOOLS,
               "seams": USD_TOOLS, "ktx2": ("ktx",), "sky": USD_TOOLS, "collision": USD_TOOLS,
@@ -289,7 +292,11 @@ class Pipeline:
                          "layers": list(lightmap.get("layers", [])),
                          # Cycles seed of the bake and probe (pbrt_blender.pin_sampling).
                          "seed": lightmap.get("seed", 0),
-                         "exclude_materials": lightmap.get("exclude_materials", [])}
+                         "exclude_materials": lightmap.get("exclude_materials", []),
+                         # "planar": lightmap_layout.py; "blender": Blender charting.
+                         "layout": lightmap.get("layout", "blender")}
+        if self.lightmap["layout"] not in ("blender", "planar"):
+            raise ValueError("unknown lightmap layout " + str(self.lightmap["layout"]))
         self.probe = with_defaults(manifest, self.profile, "reflection_probe")
         self.probe_volume = with_defaults(manifest, self.profile, "probe_volume")
         self.radiosity = with_defaults(manifest, self.profile, "radiosity")
@@ -315,6 +322,8 @@ class Pipeline:
             "environment": self.out / "environment.exr",
             "stage": self.out / "stage" / (self.map + ".usdc"),
             "stage_receipt": self.out / "stage.json",
+            "layout_stage": self.out / "stage" / (self.map + "_layout.usdc"),
+            "layout_receipt": self.out / "stage" / "layout.json",
             "reference": self.out / "reference" / "cycles.png",
             "lighting_stage": self.out / "lighting" / (self.map + "_lighting.usdc"),
             "atlas": self.out / "lighting" / "atlas.exr",
@@ -591,8 +600,24 @@ class Pipeline:
                                        gate_args))
         probe = self.probe
         probe_width = probe.get("width", 512) if probe else 0
+        bake_stage = p["stage"]
+        if self.lightmap["layout"] == "planar":
+            _, unbaked = map_scene.lightmap_exclusions(self.scene,
+                                                       self.lightmap["exclude_materials"])
+            layout_settings = {"size": self.lightmap["size"], "reserve_rows": probe_width // 2,
+                               "unbaked": sorted(unbaked)}
+            self.step("layout", [p["stage"]] + self.scene_sources(), layout_settings,
+                      ["lightmap_layout.py"], [p["layout_stage"], p["layout_receipt"]],
+                      lambda: self.usd_python("layout", "lightmap_layout.py", [
+                          "author", "--stage", p["stage"], "--out", p["layout_stage"],
+                          "--size", str(self.lightmap["size"]),
+                          "--reserve-rows", str(probe_width // 2),
+                          "--receipt", p["layout_receipt"]] +
+                          [item for name in sorted(unbaked) for item in ("--exclude-mesh", name)]))
+            bake_stage = p["layout_stage"]
         bake_args = ["--reserve-rows", str(probe_width // 2),
-                     "--scene", scene, "--stage", p["stage"], "--out-stage", p["lighting_stage"],
+                     "--layout", "authored" if bake_stage != p["stage"] else "blender",
+                     "--scene", scene, "--stage", bake_stage, "--out-stage", p["lighting_stage"],
                      "--out-exr", p["atlas"], "--out-coverage-exr", p["coverage"],
                      "--size", str(self.lightmap["size"]),
                      "--samples", str(self.lightmap["samples"]),
@@ -606,11 +631,11 @@ class Pipeline:
         layers = self.lightmap["layers"]
         if layers:
             bake_args += ["--layers", ",".join(layers), "--layers-dir", p["layers"]]
-        self.step("bake", [p["stage"]] + self.scene_sources() +
+        self.step("bake", [bake_stage] + self.scene_sources() +
                   ([environment] if environment else []),
                   dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
                                                       "device", "directional", "light_paths",
-                                                      "layers", "seed")},
+                                                      "layers", "seed", "layout")},
                        reserve_rows=probe_width // 2),
                   SCENE_SCRIPTS + ["pbrt_blender.py", "pbrt_lightmap_bake.py"],
                   [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]] +

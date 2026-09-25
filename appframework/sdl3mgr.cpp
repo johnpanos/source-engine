@@ -162,6 +162,9 @@ private:
 	bool m_bCursorDirty = true;
 	bool m_bVisibilitySetThisFrame = false;
 	bool m_bForbidMouseGrab = true;
+	// The relative-mode failure was reported; not again until it succeeds
+	// (a driver without it, such as the offscreen one, fails every frame).
+	bool m_bRelativeModeFailureReported = false;
 	bool m_bGammaReported = false;
 	float m_MouseDeltaX = 0;
 	float m_MouseDeltaY = 0;
@@ -439,8 +442,13 @@ void CSDL3Mgr::OnFrameRendered()
 	{
 		const bool capture = m_bHasFocus && !m_bCursorVisible;
 		// Wayland FPS control requires relative motion; there is no global warp.
-		if ( !SDL_SetWindowRelativeMouseMode( m_Window, capture ) )
+		if ( SDL_SetWindowRelativeMouseMode( m_Window, capture ) )
+			m_bRelativeModeFailureReported = false;
+		else if ( !m_bRelativeModeFailureReported )
+		{
 			Warning( "SDL3 relative mouse mode failed: %s\n", SDL_GetError() );
+			m_bRelativeModeFailureReported = true;
+		}
 		SDL_SetWindowMouseGrab( m_Window, capture && !m_bForbidMouseGrab );
 		if ( m_bCursorVisible || !m_bHasFocus )
 		{

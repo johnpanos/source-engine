@@ -297,8 +297,8 @@ public:
 			m_referenceSchedule[k] = make( size_t( m_probes ) * 8, BufferUse::Upload );
 		}
 		using gpu_compute::Binding;
-		std::vector<Binding> bindings = { Binding::Buffer, Binding::Buffer, Binding::Buffer,
-		    Binding::Buffer, Binding::Buffer };
+		std::vector<Binding> bindings = {
+		    Binding::Buffer, Binding::Buffer, Binding::Buffer, Binding::Buffer, Binding::Buffer };
 		if ( rayQuery )
 			bindings.insert( bindings.end(), { Binding::Scene, Binding::Buffer, Binding::Buffer } );
 		bindings.insert( bindings.end(), 4, Binding::Buffer ); // lights, cells, entries, schedule
@@ -748,15 +748,16 @@ private:
 		    kWorldInstanceMask | kProxyInstanceMask );
 		WriteLights( static_cast<SdfTraceLight *>( m_gpu->Map( m_liveLights[slot] ) ), config );
 		const uint32_t previous = m_field[m_written % kRing];
-		const auto queue = [&]( uint32_t params, uint32_t lights, uint32_t schedule, uint32_t count )
+		const auto queue = [&](
+		                       uint32_t params, uint32_t lights, uint32_t schedule, uint32_t count )
 		{
 			struct
 			{
 				uint32_t entries;
 				uint32_t frame;
 			} push = { count, ++m_frame };
-			std::vector<uint32_t> buffers = { m_voxels, params, m_positions, previous,
-			    m_field[slot] };
+			std::vector<uint32_t> buffers = {
+			    m_voxels, params, m_positions, previous, m_field[slot] };
 			if ( rayQuery )
 				buffers.insert( buffers.end(), { m_scene, m_worldVertices, m_worldIndices } );
 			buffers.insert( buffers.end(), { lights, m_cellFirst, m_cellLights, schedule } );

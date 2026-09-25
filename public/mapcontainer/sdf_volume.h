@@ -37,7 +37,7 @@ enum class SdfLightKind : uint32_t
 	Distant = 1,
 	Dome = 2,
 	Sphere = 3, // a centre, b[0] radius
-	Spot = 4,   // a centre, b emitting normal, c radius / cos inner / cos outer, reserved[0] exponent
+	Spot = 4, // a centre, b emitting normal, c radius / cos inner / cos outer, reserved[0] exponent
 };
 
 enum class SdfVolumeError

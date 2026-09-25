@@ -186,7 +186,7 @@ private:
 		bool distant;
 		float point[3];
 		float normal[3];
-		float power; // luminance: radiance x (projected) area, or distant irradiance
+		float power;       // luminance: radiance x (projected) area, or distant irradiance
 		bool omni = false; // a sphere: no emitting side
 		// A spot's vrad cone: cosines of the inner and outer cones and the
 		// exponent; inner < -1 when the sample has none.
@@ -424,8 +424,8 @@ private:
 		float cone = 1.0f;
 		if ( sample.cone[0] >= -1.0f && cosLight < sample.cone[0] )
 		{
-			cone = std::clamp( ( cosLight - sample.cone[1] ) /
-			                       std::max( sample.cone[0] - sample.cone[1], 1e-6f ),
+			cone = std::clamp(
+			    ( cosLight - sample.cone[1] ) / std::max( sample.cone[0] - sample.cone[1], 1e-6f ),
 			    0.0f, 1.0f );
 			if ( sample.cone[2] != 0.0f && sample.cone[2] != 1.0f )
 				cone = std::pow( cone, sample.cone[2] );
