@@ -138,6 +138,28 @@ public:
 	{
 		return m_skinProbePipelineLayout != VK_NULL_HANDLE;
 	}
+	// RFC 0011 G2: the frame's unbaked lights (dynamic and entity lights from
+	// the engine's light set, render/light_set.h) that WMSH PBR adds as direct
+	// light, through the legacy dlight falloff times the Lambert cosine. At most
+	// kMaxDirectLights (one 512-byte constants block); read when a frame is
+	// recorded. The GPU layout is shaders/world_pbr.frag's DirectLights block.
+	struct DirectLight
+	{
+		float position[3] = {};
+		float radius = 0.0f;
+		float color[3] = {};
+		float minLight = 0.0f;
+		float direction[3] = { 0, 0, -1 };
+		float outerCos = -2.0f; // below -1: no cone
+		float innerCos = 1.0f;
+		float pad[3] = {};
+	};
+	static constexpr uint32_t kMaxDirectLights = 7;
+	void SetDirectLights( const DirectLight *lights, uint32_t count );
+	uint32_t DirectLightCount() const { return m_directLightCount; }
+	// Whether WMSH PBR can add direct lights: the device binds eight sets and
+	// the per-frame constants ring exists.
+	bool DirectLightsSupported() const { return m_worldPbrLightPipelineLayout != VK_NULL_HANDLE; }
 	// Per-pixel probe sampling: 0 off (models use their ambient cube), 1 with
 	// the visibility test, 2 without it. Read when a frame is recorded.
 	void SetProbeVolumeSampling( int mode ) { m_probeSampling = mode < 0 || mode > 2 ? 0 : mode; }
@@ -1291,8 +1313,10 @@ private:
 	std::map<uint64_t, VkPipeline> m_worldPbrPipelines;
 	// world_pbr.frag -DINDIRECT_VIEW, selected while the indirect view is on.
 	std::map<uint64_t, VkPipeline> m_worldPbrIndirectPipelines;
-	VkPipeline WorldPbrPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
+	// `directLights`: world_pbr.frag -DDIRECT_LIGHTS, which adds the frame's
+	// direct-light block (set 7, m_worldPbrLightPipelineLayout).
+	VkPipeline WorldPbrPipeline( const DynRasterState &state, bool srgbPass = false,
+	    int samples = 1, bool directLights = false );
 	bool PbrWorldTexturesReady(
 	    int base, int mrao, int normal, bool useNormal, bool baseReadSrgb ) const;
 	bool PbrWorldNormalReady( int handle ) const;
@@ -1542,6 +1566,14 @@ private:
 	int m_probeGridHandle = -1;
 	uint32_t m_probeGridCount = 0;
 	int m_probeSampling = 1;
+	DirectLight m_directLights[kMaxDirectLights] = {};
+	uint32_t m_directLightCount = 0;
+	// This frame's direct-light block in the constants ring (UINT32_MAX: none).
+	uint32_t m_directLightOffset = UINT32_MAX;
+	VkPipelineLayout m_worldPbrLightPipelineLayout = VK_NULL_HANDLE;
+	void DestroyWorldPbrLightVariant();
+	VkShaderModule m_worldPbrLightFrag = VK_NULL_HANDLE;
+	std::map<uint64_t, VkPipeline> m_worldPbrLightPipelines;
 	// Deleted textures awaiting the completion of the submission that may still
 	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
 	struct RetiredTexture

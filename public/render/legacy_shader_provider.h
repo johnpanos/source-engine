@@ -24,6 +24,10 @@ namespace world_mesh_gpu
 {
 class IWorldMeshUpload;
 }
+namespace light_set
+{
+class ILightSetConsumer;
+}
 
 namespace render
 {
@@ -39,6 +43,9 @@ struct LegacyShaderServices
 	// Optional map-scoped upload capability. Queried through the material adapter
 	// only while this selected provider remains bound.
 	world_mesh_gpu::IWorldMeshUpload *worldMeshUpload = nullptr;
+	// Optional per-frame light set sink (render/light_set.h, RFC 0011), queried
+	// the same way.
+	light_set::ILightSetConsumer *lightSetConsumer = nullptr;
 
 	// Optional. Backend-owned facts the legacy MaterialAdapterInfo_t cannot carry:
 	// semantic features, driverApi, memory and software status for an adapter the

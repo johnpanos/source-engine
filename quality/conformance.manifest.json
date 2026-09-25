@@ -960,6 +960,71 @@
       "expect": "pass"
     },
     {
+      "id": "render.light-set",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.light-set.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0011 runtime light set: stable IDs, style scalars, baked-state comparison, epochs and value semantics over a scripted frame sequence",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_light_set.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.light-set.slot-ids",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.light-set.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: dynamic IDs from table slots (ID reuse) must be rejected",
+      "extra_flags": [
+        "-DLIGHT_SET_SEEDED_SLOT_IDS"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_light_set.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.light-set.style-ignored",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.light-set.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: style scalars ignored must be rejected",
+      "extra_flags": [
+        "-DLIGHT_SET_SEEDED_STYLE_IGNORED"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_light_set.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.light-set.frozen-epoch",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.light-set.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a non-advancing epoch must be rejected",
+      "extra_flags": [
+        "-DLIGHT_SET_SEEDED_FROZEN_EPOCH"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_light_set.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.present-policy",
       "domain": "Q-PRESENTATION",
       "rfc": "0001",

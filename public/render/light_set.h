@@ -34,7 +34,7 @@
 #include <tuple>
 #include <vector>
 
-namespace render::lightset
+namespace light_set
 {
 static const char *const kLightSetConsumerInterface = "RenderLightSetConsumer001";
 
@@ -65,6 +65,7 @@ struct RuntimeLight
 	float radius = 0.0f;               // 0: unbounded
 	float innerCos = 1.0f;             // spot cone
 	float outerCos = 1.0f;
+	float minLight = 0.0f; // dynamic lights: the falloff's threshold (see Falloff)
 	int style = 0;
 	float styleScalar = 1.0f;
 };
@@ -101,8 +102,24 @@ struct DynamicLightInput
 	float radius = 0.0f;
 	float innerCos = 1.0f;
 	float outerCos = 1.0f;
+	float minLight = 0.0f;
 	bool spot = false;
 };
+
+// A dynamic light's distance falloff, as Source adds a dlight to a lightmap
+// (engine/gl_lightmap.cpp AddSingleDynamicLight): radius^2 * minLight / d^2
+// times ( 1 - d^2 / radius^2 ), at most 2, and 0 beyond the radius. The
+// native world path multiplies it by the Lambert cosine (shaders/world_pbr.frag
+// mirrors this function).
+[[nodiscard]] inline float Falloff( float distanceSquared, float radius, float minLight )
+{
+	const float radiusSquared = radius * radius;
+	if ( !( radiusSquared > 0.0f ) || distanceSquared >= radiusSquared )
+		return 0.0f;
+	float scale = distanceSquared > 0.0f ? radiusSquared * minLight / distanceSquared : 1.0f;
+	scale *= 1.0f - distanceSquared / radiusSquared;
+	return scale > 2.0f ? 2.0f : scale;
+}
 
 // A world light matches its bake when its style scalar is the baked value.
 constexpr float kBakedStyleScalar = 1.0f;
@@ -177,6 +194,7 @@ public:
 			light.radius = input.radius;
 			light.innerCos = input.innerCos;
 			light.outerCos = input.outerCos;
+			light.minLight = input.minLight;
 			snapshot.lights.push_back( light );
 		}
 		// A light absent this frame loses its identity: if its slot and key
@@ -206,6 +224,6 @@ public:
 	virtual void PublishLightSet( const Snapshot &snapshot ) = 0;
 };
 
-} // namespace render::lightset
+} // namespace light_set
 
 #endif // RENDER_LIGHT_SET_H

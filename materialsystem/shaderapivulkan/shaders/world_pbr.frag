@@ -5,6 +5,12 @@
 // (sRGB, decoded here) adds its color times $emissionscale. The native pixel
 // fixture checks normal, metalness, roughness, emission and the environment.
 //
+// DIRECT_LIGHTS (RFC 0011 G2) adds the frame's unbaked lights, from the
+// engine's light set (render/light_set.h), through the legacy dlight falloff
+// times the Lambert cosine and the layered BRDF (set 7). The push block's
+// lightDirection / lightRadiance directional light is the pixel suite's
+// hook; the engine never sets it.
+//
 // INDIRECT_VIEW (RFC 0011 debug view) replaces the shading with the indirect
 // light alone, for comparison with Cycles' DiffInd pass: the bound lightmap
 // is then the map's LMAP indirect layer, and the push block's lightDirection
@@ -82,6 +88,93 @@ bool ImageRadiance( vec3 direction, float roughness, out vec3 radiance )
 	return ProbeRadiance( direction, roughness, radiance );
 }
 
+// GGX specular (height-correlated Smith visibility, Schlick Fresnel) for a
+// light from `light`, without the cosine.
+vec3 SpecularBrdf( vec3 normal, vec3 view, vec3 light, vec3 f0, float roughness )
+{
+	float normalDotView = max( dot( normal, view ), 0.0 );
+	float normalDotLight = max( dot( normal, light ), 0.0 );
+	vec3 halfVector = normalize( view + light );
+	float normalDotHalf = max( dot( normal, halfVector ), 0.0 );
+	float viewDotHalf = max( dot( view, halfVector ), 0.0 );
+	float alpha = roughness * roughness;
+	float alphaSquared = alpha * alpha;
+	float denominator = normalDotHalf * normalDotHalf * ( alphaSquared - 1.0 ) + 1.0;
+	float distribution = alphaSquared / ( kPi * denominator * denominator );
+	float lambdaView =
+	    sqrt( alphaSquared + ( 1.0 - alphaSquared ) * normalDotView * normalDotView );
+	float lambdaLight =
+	    sqrt( alphaSquared + ( 1.0 - alphaSquared ) * normalDotLight * normalDotLight );
+	float visibility = 0.5 / ( normalDotView * lambdaLight + normalDotLight * lambdaView );
+	float grazing = 1.0 - viewDotHalf;
+	float grazing5 = grazing * grazing * grazing * grazing * grazing;
+	vec3 fresnel = f0 + ( vec3( 1.0 ) - f0 ) * grazing5;
+	return fresnel * distribution * visibility;
+}
+
+#ifdef DIRECT_LIGHTS
+// Four vec4 per light: position.xyz, radius; color.rgb, minLight;
+// direction.xyz, outer cone cosine (below -1: no cone); inner cone cosine.
+layout( set = 7, binding = 0 ) uniform DirectLights
+{
+	vec4 header; // x: the light count
+	vec4 lights[28];
+}
+directLights;
+
+// render/light_set.h Falloff(): the legacy dlight falloff.
+float DynamicFalloff( float distanceSquared, float radius, float minLight )
+{
+	float radiusSquared = radius * radius;
+	if ( !( radiusSquared > 0.0 ) || distanceSquared >= radiusSquared )
+		return 0.0;
+	float scale = distanceSquared > 0.0 ? radiusSquared * minLight / distanceSquared : 1.0;
+	scale *= 1.0 - distanceSquared / radiusSquared;
+	return min( scale, 2.0 );
+}
+
+// The direct light the frame's unbaked lights return toward the eye: the
+// diffuse albedo times their diffuse light (the bake's unit), plus pi times
+// their incident light through the specular lobe, as model_pbr.frag lights.
+vec3 DirectLightRadiance( vec3 normal, vec3 view, vec3 diffuseAlbedo, vec3 f0, float roughness )
+{
+	vec3 total = vec3( 0.0 );
+	int count = int( directLights.header.x );
+	for ( int i = 0; i < 7; ++i )
+	{
+		if ( i >= count )
+			break;
+		vec4 positionRadius = directLights.lights[4 * i];
+		vec4 colorMinLight = directLights.lights[4 * i + 1];
+		vec4 directionOuter = directLights.lights[4 * i + 2];
+		float innerCos = directLights.lights[4 * i + 3].x;
+		vec3 toLight = positionRadius.xyz - fragPosition;
+		float distanceSquared = dot( toLight, toLight );
+		float falloff = DynamicFalloff( distanceSquared, positionRadius.w, colorMinLight.w );
+		if ( falloff <= 0.0 )
+			continue;
+		vec3 light = toLight * inversesqrt( max( distanceSquared, 1e-8 ) );
+		if ( directionOuter.w >= -1.0 )
+		{
+			float cosine = dot( -light, normalize( directionOuter.xyz ) );
+			falloff *= innerCos > directionOuter.w + 1e-4
+			               ? smoothstep( directionOuter.w, innerCos, cosine )
+			               : step( directionOuter.w, cosine );
+		}
+		float normalDotLight = max( dot( normal, light ), 0.0 );
+		if ( falloff <= 0.0 || normalDotLight <= 0.0 )
+			continue;
+		vec3 incident = colorMinLight.rgb * falloff;
+		vec3 lit = diffuseAlbedo * incident * normalDotLight;
+		if ( dot( normal, view ) > 0.0 )
+			lit += kPi * incident * SpecularBrdf( normal, view, light, f0, roughness ) *
+			       normalDotLight;
+		total += lit;
+	}
+	return total;
+}
+#endif
+
 // Clear coat, after Filament's standard model (Apache-2.0, google/filament
 // shaders/src/surface_shading_model_standard.fs): IOR 1.5 (F0 0.04), GGX with
 // Kelemen visibility, on the geometric normal; the base beneath is attenuated
@@ -135,26 +228,8 @@ void main()
 	vec3 light = normalize( -consts.lightDirection.xyz );
 	float normalDotLight = max( dot( normal, light ), 0.0 );
 	if ( normalDotView > 0.0 && normalDotLight > 0.0 )
-	{
-		vec3 halfVector = normalize( view + light );
-		float normalDotHalf = max( dot( normal, halfVector ), 0.0 );
-		float viewDotHalf = max( dot( view, halfVector ), 0.0 );
-		float alpha = roughness * roughness;
-		float alphaSquared = alpha * alpha;
-		float denominator = normalDotHalf * normalDotHalf * ( alphaSquared - 1.0 ) + 1.0;
-		float distribution = alphaSquared / ( kPi * denominator * denominator );
-		float lambdaView = sqrt( alphaSquared +
-		    ( 1.0 - alphaSquared ) * normalDotView * normalDotView );
-		float lambdaLight = sqrt( alphaSquared +
-		    ( 1.0 - alphaSquared ) * normalDotLight * normalDotLight );
-		float visibility = 0.5 /
-		    ( normalDotView * lambdaLight + normalDotLight * lambdaView );
-		float grazing = 1.0 - viewDotHalf;
-		float grazing5 = grazing * grazing * grazing * grazing * grazing;
-		vec3 fresnel = f0 + ( vec3( 1.0 ) - f0 ) * grazing5;
-		specular = consts.lightRadiance.rgb * fresnel * distribution *
-		    visibility * normalDotLight;
-	}
+		specular = consts.lightRadiance.rgb * SpecularBrdf( normal, view, light, f0, roughness ) *
+		           normalDotLight;
 	float coat = consts.eyePosition.w;
 	vec3 coatNormal = normalize( fragNormal );
 	if ( coat > 0.0 )
@@ -205,5 +280,9 @@ void main()
 		               step( 0.04045, encoded ) ) *
 		           consts.material.z;
 	}
+#ifdef DIRECT_LIGHTS
+	specular += DirectLightRadiance(
+	    normal, view, base * ( 1.0 - metalness ) * ( vec3( 1.0 ) - directionalAlbedo ), f0, roughness );
+#endif
 	outColor = vec4( image + specular + emission, baseSample.a );
 }

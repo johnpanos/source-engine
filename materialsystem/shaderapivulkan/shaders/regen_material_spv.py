@@ -26,6 +26,9 @@ SHADERS = (
     ("g_worldPbrFragSpv", "world_pbr.frag", []),
     ("g_worldPbrClipFragSpv", "world_pbr.frag", ["-DCLIP_PLANES"]),
     ("g_worldPbrIndirectFragSpv", "world_pbr.frag", ["-DINDIRECT_VIEW"]),
+    # RFC 0011 G2: the frame's unbaked lights (set 7).
+    ("g_worldPbrLightFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS"]),
+    ("g_worldPbrLightClipFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS", "-DCLIP_PLANES"]),
     ("g_worldPbrIndirectClipFragSpv", "world_pbr.frag", ["-DINDIRECT_VIEW", "-DCLIP_PLANES"]),
     ("g_worldGlassFragSpv", "world_pbr_glass.frag", []),
     ("g_worldGlassClipFragSpv", "world_pbr_glass.frag", ["-DCLIP_PLANES"]),

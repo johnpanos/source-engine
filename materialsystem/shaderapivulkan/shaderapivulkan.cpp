@@ -31,6 +31,7 @@
 #include "tier1/KeyValues.h"
 #include "vulkan_device.h"
 #include "vulkan_world_mesh_upload.h"
+#include "render/light_set.h"
 #include "sdl3/sdl3_vulkan_surface_host.h"
 #include "vtf/vtf.h"
 #include "pixelwriter.h"
@@ -2408,6 +2409,45 @@ static bool DrawWorldMaterialBatch( uint32_t firstIndex, uint32_t indexCount )
 static render_vulkan::CVulkanWorldMeshUpload g_WorldMeshUpload(
     g_VulkanContext, DrawWorldMaterialBatch );
 
+// RFC 0011 G2: the engine's per-frame light set. WMSH PBR adds its unbaked
+// point and spot lights as direct light (the first kMaxDirectLights of them;
+// baked lights are already in the bake, and directional ones have no dynamic
+// source today).
+class CVulkanLightSetConsumer final : public light_set::ILightSetConsumer
+{
+public:
+	void PublishLightSet( const light_set::Snapshot &snapshot ) override
+	{
+		using Direct = render_vulkan::CVulkanContext::DirectLight;
+		Direct lights[render_vulkan::CVulkanContext::kMaxDirectLights];
+		uint32_t count = 0;
+		for ( const light_set::RuntimeLight &light : snapshot.lights )
+		{
+			if ( light.baked || light.shape == light_set::LightShape::Directional ||
+			     count == render_vulkan::CVulkanContext::kMaxDirectLights )
+				continue;
+			Direct &out = lights[count++];
+			out = Direct();
+			for ( int k = 0; k < 3; ++k )
+			{
+				out.position[k] = light.position[k];
+				out.color[k] = light.color[k];
+				out.direction[k] = light.direction[k];
+			}
+			out.radius = light.radius;
+			out.minLight = light.minLight;
+			if ( light.shape == light_set::LightShape::Spot )
+			{
+				out.outerCos = light.outerCos;
+				out.innerCos = light.innerCos;
+			}
+		}
+		g_VulkanContext.SetDirectLights( lights, count );
+	}
+};
+
+static CVulkanLightSetConsumer g_LightSetConsumer;
+
 static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
@@ -2419,6 +2459,7 @@ static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *servi
 	services->hardware = &g_ShaderAPIEmpty;
 	services->debugTextures = &g_ShaderAPIEmpty;
 	services->worldMeshUpload = &g_WorldMeshUpload;
+	services->lightSetConsumer = &g_LightSetConsumer;
 	services->describeAdapter = DescribeNativeVulkanAdapter;
 	return true;
 }

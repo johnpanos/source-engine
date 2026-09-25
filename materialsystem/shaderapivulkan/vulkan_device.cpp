@@ -3503,14 +3503,28 @@ void CVulkanContext::DestroyPbrDirectPipeline()
 	m_pbrDirectReady = false;
 }
 
+void CVulkanContext::SetDirectLights( const DirectLight *lights, uint32_t count )
+{
+	m_directLightCount = std::min( count, kMaxDirectLights );
+	for ( uint32_t i = 0; i < m_directLightCount; ++i )
+		m_directLights[i] = lights[i];
+}
+
 bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 {
 	offsets->clear();
-	if ( m_dynSkinConstants.empty() || m_skinUbos.empty() )
+	m_directLightOffset = UINT32_MAX;
+	// The frame's direct lights ride in the same ring, one block after the
+	// draws' constants.
+	const bool lights = m_directLightCount > 0 && m_worldPbrLightPipelineLayout != VK_NULL_HANDLE;
+	if ( ( m_dynSkinConstants.empty() && !lights ) || m_skinUbos.empty() )
 		return !m_dynSkinConstants.empty() ? false : true;
 	const VkDeviceSize block = sizeof( m_dynSkinConstants[0].ps );
+	static_assert( sizeof( float[4] ) + sizeof( DirectLight ) * kMaxDirectLights <=
+	                   sizeof( SkinConstants::ps ),
+	    "the direct lights fit one constants block" );
 	const VkDeviceSize stride = ( block + m_uboAlignment - 1 ) / m_uboAlignment * m_uboAlignment;
-	const VkDeviceSize needed = stride * m_dynSkinConstants.size();
+	const VkDeviceSize needed = stride * ( m_dynSkinConstants.size() + ( lights ? 1 : 0 ) );
 	// This frame's slot: its fence was waited on when the frame began, so the
 	// GPU no longer reads it.
 	SkinUniformBuffer &slot = m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()];
@@ -3558,6 +3572,16 @@ bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 		std::memcpy( static_cast<unsigned char *>( slot.mapped ) + stride * i,
 		    m_dynSkinConstants[i].ps, block );
 		offsets->push_back( static_cast<uint32_t>( stride * i ) );
+	}
+	if ( lights )
+	{
+		unsigned char *out =
+		    static_cast<unsigned char *>( slot.mapped ) + stride * m_dynSkinConstants.size();
+		const float header[4] = { static_cast<float>( m_directLightCount ), 0.0f, 0.0f, 0.0f };
+		std::memcpy( out, header, sizeof( header ) );
+		std::memcpy( out + sizeof( header ), m_directLights,
+		    sizeof( DirectLight ) * m_directLightCount );
+		m_directLightOffset = static_cast<uint32_t>( stride * m_dynSkinConstants.size() );
 	}
 	return true;
 }
@@ -6102,6 +6126,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool pbrModel = false;
 			bool pbrModelEnv = false;
 			bool pbrModelProbe = false;
+			bool pbrWorldLights = false;
 			// sRGB inputs decoded by the sampler and output encoded by the view,
 			// which the shader must then not apply itself.
 			int decodedFlags = openSrgb ? kColorSrgbWrite : 0;
@@ -6137,11 +6162,15 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				         d.pbrWorld.material[1] >= 0.5f,
 				         ( d.colorFlags & kColorSrgbReadBase ) != 0 ) )
 					continue;
-				selected = d.worldMesh ? WorldPbrPipeline( d.raster, openSrgb, passSamples )
-				                       : VK_NULL_HANDLE;
+				// With this frame's direct lights, the variant that adds them.
+				pbrWorldLights = m_directLightOffset != UINT32_MAX && m_indirectViewMode == 0;
+				selected = d.worldMesh
+				               ? WorldPbrPipeline( d.raster, openSrgb, passSamples, pbrWorldLights )
+				               : VK_NULL_HANDLE;
 				if ( selected == VK_NULL_HANDLE )
 					continue;
-				selectedLayout = m_worldPbrPipelineLayout;
+				selectedLayout =
+				    pbrWorldLights ? m_worldPbrLightPipelineLayout : m_worldPbrPipelineLayout;
 				pbrWorld = true;
 			}
 			else if ( d.shaderIndex == kDynShaderPbrGlass )
@@ -6342,7 +6371,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					// the push block says the layer is absent.
 					const bool indirectViewLayer =
 					    !glass && m_indirectViewMode != 0 && m_worldLightmapIndirectHandle >= 0;
-					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					// The direct-light variant adds this frame's light block (set 7).
+					const VkDescriptorSet sets[8] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[2], 0 ),
 					    sampledSet( indirectViewLayer ? m_worldLightmapIndirectHandle
 					                                  : m_worldLightmapHandle,
@@ -6353,10 +6383,17 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					          : sampledSet( d.samplerHandles[kPbrWorldEmissionSampler], 0 ),
 					    glass
 					        ? sampledSet( m_sceneDepthHandle, 0 )
-					        : sampledSet( environment >= 0 ? environment : m_whiteCubeHandle, 0 ) };
+					        : sampledSet( environment >= 0 ? environment : m_whiteCubeHandle, 0 ),
+					    pbrWorldLights ? m_skinUbos[static_cast<size_t>( m_currentFrame ) %
+					                                m_skinUbos.size()]
+					                         .set
+					                   : VK_NULL_HANDLE };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					    glass ? m_worldGlassPipelineLayout : m_worldPbrPipelineLayout, 0, 7, sets,
-					    0, nullptr );
+					    glass            ? m_worldGlassPipelineLayout
+					    : pbrWorldLights ? m_worldPbrLightPipelineLayout
+					                     : m_worldPbrPipelineLayout,
+					    0, pbrWorldLights ? 8 : 7, sets, pbrWorldLights ? 1 : 0,
+					    pbrWorldLights ? &m_directLightOffset : nullptr );
 				}
 				else
 				{

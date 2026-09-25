@@ -47,6 +47,7 @@
 #include "replay/iclientreplay.h"
 #include "replay_internal.h"
 #endif
+#include "light_set_publisher.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -260,6 +261,9 @@ void V_RenderView( void )
 		// since we know we're going to render the world, check for lightmap updates while it is easy
 		// to tear down and rebuild
 		R_CheckForLightingConfigChanges();
+		// The frame's runtime light set, before render work (RFC 0011). A
+		// dlight created while the view renders is published next frame.
+		LightSet_PublishFrame();
 		// We can get into situations where some other material system app
 		// is trying to start up; in those cases, we shouldn't render...
 		vrect_t scr_vrect = videomode->GetClientViewRect();
