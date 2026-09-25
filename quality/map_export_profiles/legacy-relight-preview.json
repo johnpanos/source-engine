@@ -1,0 +1,42 @@
+{
+  "schema": "map-export-profile/v1",
+  "name": "legacy-relight-preview",
+  "description": "Quick relight of a compiled legacy map for checking the whole chain (tools/quality/legacy_bsp_relight.py --quality legacy-relight-preview): the legacy-relight outputs at preview cost: a 2048 atlas at 256 samples with Blender's default light paths, a PRBV at 4 m, radiosity patches of 2 m and SDFV voxels of 0.5 m. Not for judging light quality.",
+  "lightmap": {
+    "size": 2048,
+    "samples": 256,
+    "device": "gpu",
+    "denoise": true,
+    "directional": false,
+    "light_paths": "blender-default",
+    "layers": [
+      "direct",
+      "indirect"
+    ],
+    "exclude_materials": [
+      "relight_occluder"
+    ]
+  },
+  "probe_volume": {
+    "spacing_m": 4.0,
+    "samples": 256
+  },
+  "radiosity": {
+    "patch_size_m": 2.0,
+    "transfer_rays": 128,
+    "gather_rays": 1024,
+    "samples": 256
+  },
+  "sdf_volume": {
+    "voxel_m": 0.5
+  },
+  "world_mesh": {
+    "exclude_materials": [
+      "relight_occluder"
+    ]
+  },
+  "reflection_probe": null,
+  "reference": null,
+  "runtime_gate": null,
+  "audit": null
+}

@@ -237,6 +237,24 @@ public:
 			    m_sdf->bytes.data() + m_sdf->layout.lightOffset + i * sizeof( mapcontainer::SdfLight ),
 			    sizeof( mapcontainer::SdfLight ) );
 		m_overrides.assign( 64, -1.0f );
+		// The styles this scene's light comes from: its lights' and its
+		// emissive voxels'. Only their scalars are the configuration; another
+		// style animating (the stock flicker patterns) must not restart the
+		// update, or the probes are re-traced and re-blended every frame.
+		m_usedStyles = 0;
+		for ( const mapcontainer::SdfLight &light : m_lights )
+			if ( light.style >= 0 && light.style < 64 )
+				m_usedStyles |= 1ull << light.style;
+		const unsigned char *voxels = m_sdf->bytes.data() + m_sdf->layout.voxelOffset;
+		const size_t voxelCount = size_t( m_sdf->layout.dims[0] ) * m_sdf->layout.dims[1] *
+		                          m_sdf->layout.dims[2];
+		for ( size_t v = 0; v < voxelCount; ++v )
+		{
+			uint16_t source;
+			std::memcpy( &source, voxels + v * mapcontainer::kSdfVoxelBytes + 14, 2 );
+			if ( source < 64 )
+				m_usedStyles |= 1ull << source;
+		}
 		m_reference.clear();
 		m_phase = Phase::Reference;
 		m_updates = 0;
@@ -405,6 +423,8 @@ private:
 		Config config = BakedConfig();
 		for ( uint32_t s = 0; s < 64; ++s )
 		{
+			if ( !( m_usedStyles & ( 1ull << s ) ) )
+				continue;
 			if ( m_overrides[s] >= 0.0f )
 				config.scale[s] = m_overrides[s];
 			else if ( s < lights.styleScalars.size() )
@@ -581,6 +601,7 @@ private:
 		5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5 };
 
 	TraceMode m_mode;
+	uint64_t m_usedStyles = 0; // bit s: light style s lights this scene
 	uint32_t m_worldVertices = 0;
 	uint32_t m_worldIndices = 0;
 	uint32_t m_worldGeometry = 0;

@@ -79,6 +79,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import bake_progress  # noqa: E402
 import cycles_device  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
@@ -294,20 +295,28 @@ class Pipeline:
         }
         self.logs = self.out / "logs"
 
-    def run(self, step, command, env=None):
+    def run(self, step, command, env=None, progress=None):
+        """Run a step's command, its output going to logs/<step>.log; the
+        lines `progress.feed` returns for its output are shown as they come."""
         self.logs.mkdir(parents=True, exist_ok=True)
         log = self.logs / (step + ".log")
         started = time.monotonic()
         with log.open("a") as handle:
             handle.write("$ " + " ".join(map(str, command)) + "\n")
             handle.flush()
-            result = subprocess.run([str(part) for part in command], stdout=handle,
-                                    stderr=subprocess.STDOUT, cwd=ROOT,
-                                    env=dict(os.environ, **(env or {})))
-        if result.returncode:
+            process = subprocess.Popen([str(part) for part in command], stdout=subprocess.PIPE,
+                                       stderr=subprocess.STDOUT, cwd=ROOT, text=True,
+                                       errors="replace", bufsize=1,
+                                       env=dict(os.environ, **(env or {})))
+            for line in process.stdout:
+                handle.write(line)
+                for message in (progress.feed(line) if progress else []):
+                    print("[%s] %s" % (step, message), flush=True)
+            process.wait()
+        if process.returncode:
             tail = log.read_text().splitlines()[-15:]
             raise SystemExit("step %s failed (exit %d); log %s:\n  %s" %
-                             (step, result.returncode, log, "\n  ".join(tail)))
+                             (step, process.returncode, log, "\n  ".join(tail)))
         return time.monotonic() - started
 
     def light_controls(self):
@@ -317,9 +326,13 @@ class Pipeline:
         return [source for source in sources if source["style"] >= 0]
 
     def blender(self, step, script, arguments):
+        # Cycles' debug log reports each bake's tiles and sample batches;
+        # bake_progress turns it (and the script's PROGRESS lines) into progress.
         return self.run(step, [self.tools["blender"], "-b", "--factory-startup",
+                               "--log-level", "debug", "--log", "cycles",
                                "--python-exit-code", "9", "--python", HERE / script,
-                               "--"] + arguments, env={"OCIO": self.tools["ocio"]})
+                               "--"] + arguments, env={"OCIO": self.tools["ocio"]},
+                        progress=bake_progress.CyclesProgress())
 
     def usd_python(self, step, script, arguments):
         return self.run(step, [self.tools["usd_python"], HERE / script] + arguments,

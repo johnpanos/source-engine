@@ -34,6 +34,7 @@ from pathlib import Path
 import bpy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import bake_progress  # noqa: E402
 import pbrt_blender  # noqa: E402
 import map_scene  # noqa: E402
 
@@ -46,6 +47,20 @@ FRAME_SAMPLES = 16
 SUN_SAMPLES = 256
 PROJECTED_PART_LIMIT = 4096
 PROXY_PREFIX = "_lightmap_footprint_"
+
+
+# Bake tile edge: a 4096 atlas reports 16 tiles of progress per pass.
+BAKE_TILE = 1024
+
+
+def announce(label, size):
+    """Name the next bake for the pipeline's progress (bake_progress.py)."""
+    print(bake_progress.progress_line(event="bake", label=label, size=[size, size],
+                                      samples=bpy.context.scene.cycles.samples), flush=True)
+
+
+def message(text):
+    print(bake_progress.progress_line(message=text), flush=True)
 
 
 def sha256(path):
@@ -214,6 +229,7 @@ def bake_sun_visibility(merged, scene, path, size, render):
             target = material.node_tree.nodes["BakeTarget"]
             target.image = image
             material.node_tree.nodes.active = target
+        announce("sun %s" % ("shadowed" if shadows else "unshadowed"), size)
         bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT"})
         planes.append(np.array(image.pixels[:], dtype=np.float64).reshape(size, size, 4))
     sun.data.use_shadow = True
@@ -262,6 +278,7 @@ def bake_separated_layers(merged, layers, out_dir, size, render):
         bpy.ops.object.select_all(action="DESELECT")
         merged.select_set(True)
         bpy.context.view_layer.objects.active = merged
+        announce(role, size)
         bpy.ops.object.bake(type="DIFFUSE", pass_filter=SEPARATED_PASSES[role])
         path = out_dir / (role + ".exr")
         image.save_render(filepath=str(path.resolve()), scene=render)
@@ -296,6 +313,7 @@ def bake_rnm(merged, out_dir, size, render):
             target = tree.nodes["BakeTarget"]
             target.image = image
             tree.nodes.active = target
+        announce("RNM basis %d" % index, size)
         bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"})
         path = out_dir / ("rnm%d.exr" % index)
         image.save_render(filepath=str(path.resolve()), scene=render)
@@ -330,6 +348,7 @@ def bake_frame(merged, out_dir, size, render):
         tree.nodes.active = target
         merged.data.materials.clear()
         merged.data.materials.append(material)
+        announce("frame %s" % axis, size)
         if bpy.ops.object.bake(type="EMIT") != {"FINISHED"}:
             raise RuntimeError("Cycles could not bake the lightmap frame")
         path = out_dir / ("frame_%s.exr" % axis)
@@ -392,6 +411,7 @@ def main():
         if map_scene.material_summary(scene, name)["transmission"] > 0 or
         map_scene.material_summary(scene, name)["metallic"] >= 1.0}
     pbrt_blender.clear_scene()
+    message("importing the stage")
     if bpy.ops.wm.usd_import(filepath=str(args.stage.resolve()), import_materials=True,
                              import_lights=True, import_cameras=True) != {"FINISHED"}:
         raise RuntimeError("could not import the USD stage")
@@ -416,6 +436,7 @@ def main():
             baked.append(obj)
     if not baked:
         raise ValueError("no meshes selected for baking")
+    message("packing lightmap UVs for %d meshes" % len(baked))
     # Keep roughly four texels between charts at the requested atlas size.
     projected = pack_lightmap_uvs(baked, margin=args.margin_texels / args.size)
     if args.reserve_rows:
@@ -477,6 +498,8 @@ def main():
     device = pbrt_blender.configure_cycles(args.samples, args.device)
     light_paths = pbrt_blender.configure_light_paths(args.light_paths)
     render = bpy.context.scene
+    render.cycles.use_auto_tile = True
+    render.cycles.tile_size = BAKE_TILE
     render.render.bake.use_clear = True
     render.render.bake.margin = max(1, args.margin_texels // 2)
     render.render.bake.use_pass_color = False
@@ -510,6 +533,12 @@ def main():
     bpy.ops.object.select_all(action="DESELECT")
     merged.select_set(True)
     bpy.context.view_layer.objects.active = merged
+    message("baking a %d x %d atlas at %d samples: total%s%s%s%s" % (
+        args.size, args.size, args.samples, "".join(", " + role for role in layers),
+        ", sun visibility" if scene.get("distant_lights") else "",
+        ", RNM basis" if args.directional_dir else "",
+        ", coverage" if args.out_coverage_exr else ""))
+    announce("total", args.size)
     bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"})
     args.out_exr.parent.mkdir(parents=True, exist_ok=True)
     # Image.save() applies the display transform to generated images even for
@@ -545,6 +574,7 @@ def main():
         merged.data.materials.clear()
         merged.data.materials.append(material)
         render.render.bake.margin = 0
+        announce("coverage", args.size)
         if bpy.ops.object.bake(type="EMIT") != {"FINISHED"}:
             raise RuntimeError("Cycles could not bake the UV footprint")
         args.out_coverage_exr.parent.mkdir(parents=True, exist_ok=True)
