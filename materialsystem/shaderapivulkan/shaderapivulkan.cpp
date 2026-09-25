@@ -582,6 +582,23 @@ static float g_LightingOrigin[3] = {};
 // The vertex shader's dynamic combo index (SetVertexShaderIndex), which selects
 // vertexlit_and_unlit_generic_vs20's DYNAMIC_LIGHT and STATIC_LIGHT.
 static int g_VertexShaderDynamicIndex = 0;
+// Parallel to g_snapshotShaders: SpriteCard's vertex expansion (spritecard_vs20,
+// or splinecard_vs20 with kSpriteCardSpline) and spritecard_ps2x's static
+// combos, -1 for other shaders. EmitToNativeQueue expands the corners.
+enum
+{
+	kSpriteCardSpline = 1,
+	kSpriteCardAnimBlend = 2,
+	kSpriteCardAddSelf = 4,
+	kSpriteCardAddBaseTexture2 = 8,
+	kSpriteCardExtractGreenAlpha = 16,
+	kSpriteCardMaxLumFrameBlend = 32,
+	kSpriteCardDualSequence = 64,
+	kSpriteCardColorRamp = 128,
+	kSpriteCardDepthBlend = 256
+};
+static std::vector<int> g_snapshotSpriteCard;
+static int g_CurrentSpriteCard = -1;
 // The pixel shader's dynamic combo index (SetPixelShaderIndex), as D3D9's shader
 // manager keeps it. -1 is the default state's "no index".
 static int g_PixelShaderDynamicIndex = 0;
@@ -635,6 +652,10 @@ void CommitViewProj();
 void ResetTextureMatrices( int count );
 // The MODEL matrix of the matrix stack (stored transposed, for row vectors).
 const float *ModelMatrix();
+// The VIEW matrix, stored the same way.
+const float *ViewMatrix();
+// Vertex shader constant register <reg> (four floats) as the shaders wrote it.
+const float *VsConstant( int reg );
 } // namespace
 
 static bool HasResidentBaseTexture()
@@ -882,6 +903,21 @@ public:
 	// holds tightly packed 4-byte D3DCOLORs, which is how the engine fills it.
 	void SetVertexFormat( VertexFormat_t format ) { m_format = format; }
 	bool IsColorStream() const { return m_format == VERTEX_SPECULAR; }
+	// Formats with texture coordinates wider than two floats, or beyond the
+	// three sets the base record carries (SpriteCard's five float4 sets), keep
+	// all eight sets in m_wideTexCoords at kWideTexCoordFloats per vertex; Unlock
+	// copies sets 0-2's xy into the base record for the ordinary readers.
+	static bool IsWideFormat( VertexFormat_t format );
+	void SetWideTexCoords( VertexFormat_t format )
+	{
+		m_wideTexCoordFormat = IsWideFormat( format ) ? format : 0;
+	}
+	bool HasWideTexCoords() const { return m_wideTexCoordFormat != 0; }
+	int WideTexCoordSize( int set ) const { return TexCoordSize( set, m_wideTexCoordFormat ); }
+	const float *WideTexCoords( int v ) const
+	{
+		return m_wideTexCoords.data() + static_cast<size_t>( v ) * kWideTexCoordFloats;
+	}
 
 	virtual int IndexCount() const { return m_numIndices; }
 
@@ -911,6 +947,9 @@ private:
 	// every build overwrote the last and every draw replayed whichever mesh was
 	// locked most recently.
 	std::vector<unsigned char> m_vertexData;
+	VertexFormat_t m_wideTexCoordFormat = 0;
+	std::vector<float> m_wideTexCoords;
+	void CopyWideTexCoordsToRecord();
 	// Index list the mesh builder writes into (unsigned short). Draw() uses it to
 	// assemble triangles in the authored order.
 	std::vector<unsigned short> m_indexData;
@@ -966,7 +1005,8 @@ public:
 		kMeshUserDataOffset = 56,
 		kMeshTangentSOffset = 72,
 		kMeshTangentTOffset = 84,
-		kMeshTexCoord2Offset = 96
+		kMeshTexCoord2Offset = 96,
+		kWideTexCoordFloats = VERTEX_MAX_TEXTURE_COORDINATES * 4
 	};
 };
 
@@ -3086,6 +3126,7 @@ IMesh *CShaderDeviceVulkan::CreateStaticMesh(
 	// its own; the caller owns it until DestroyStaticMesh.
 	CEmptyMesh *pMesh = new CEmptyMesh( false );
 	pMesh->SetVertexFormat( fmt );
+	pMesh->SetWideTexCoords( fmt );
 	return pMesh;
 }
 
@@ -3326,6 +3367,18 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 			desc.m_VertexSize_TexCoord[i] = 0;
 		}
 	}
+	if ( m_wideTexCoordFormat )
+	{
+		const size_t wideFloats = ( static_cast<size_t>( nVertexCount ) + 1 ) * kWideTexCoordFloats;
+		if ( m_wideTexCoords.size() < wideFloats )
+			m_wideTexCoords.resize( wideFloats );
+		std::fill( m_wideTexCoords.begin(), m_wideTexCoords.begin() + wideFloats, 0.0f );
+		for ( i = 0; i < VERTEX_MAX_TEXTURE_COORDINATES; ++i )
+		{
+			desc.m_pTexCoord[i] = m_wideTexCoords.data() + i * 4;
+			desc.m_VertexSize_TexCoord[i] = kWideTexCoordFloats * sizeof( float );
+		}
+	}
 	// Bone weights and indices: what hardware skinning blends (SkinPosition).
 	desc.m_pBoneWeight = (float *)( vertexMemory + kMeshBoneWeightOffset );
 	desc.m_pBoneMatrixIndex = vertexMemory + kMeshBoneIndexOffset;
@@ -3352,6 +3405,35 @@ void CEmptyMesh::Unlock( int nVertexCount, VertexDesc_t &desc )
 	NoteWrite();
 	if ( nVertexCount >= 0 && nVertexCount <= m_numVerts )
 		m_numVerts = nVertexCount;
+	CopyWideTexCoordsToRecord();
+}
+
+bool CEmptyMesh::IsWideFormat( VertexFormat_t format )
+{
+	for ( int i = 0; i < VERTEX_MAX_TEXTURE_COORDINATES; ++i )
+	{
+		const int size = TexCoordSize( i, format );
+		if ( size > 2 || ( i >= 3 && size > 0 ) )
+			return true;
+	}
+	return false;
+}
+
+void CEmptyMesh::CopyWideTexCoordsToRecord()
+{
+	if ( !m_wideTexCoordFormat || IsColorStream() )
+		return;
+	const size_t verts = std::min( static_cast<size_t>( m_numVerts ),
+	    std::min( m_vertexData.size() / kMeshVertexStride,
+	        m_wideTexCoords.size() / kWideTexCoordFloats ) );
+	for ( size_t v = 0; v < verts; ++v )
+	{
+		unsigned char *base = m_vertexData.data() + v * kMeshVertexStride;
+		const float *wide = m_wideTexCoords.data() + v * kWideTexCoordFloats;
+		memcpy( base + 16, wide, 2 * sizeof( float ) );
+		memcpy( base + 24, wide + 4, 2 * sizeof( float ) );
+		memcpy( base + kMeshTexCoord2Offset, wide + 8, 2 * sizeof( float ) );
+	}
 }
 
 void CEmptyMesh::Spew( int nVertexCount, const VertexDesc_t &desc )
@@ -3377,6 +3459,7 @@ void CEmptyMesh::UnlockMesh( int numVerts, int numIndices, MeshDesc_t &desc )
 		m_numVerts = numVerts;
 	if ( numIndices >= 0 )
 		m_numIndices = numIndices;
+	CopyWideTexCoordsToRecord();
 }
 
 void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, int firstIndex,
@@ -3872,6 +3955,269 @@ static void NoteEmitReuseCheck( bool equal )
 static const float *MonitorTexture2Rows();
 static const float *ShadowJitter();
 
+// SpriteCard (spritecard_vsxx.fxc) and Portal 2's spline cards
+// (splinecard_vsxx.fxc) build each particle's corners in the vertex shader from
+// a center, the corner id and the particle's radius, rotation and yaw. The
+// native pipelines transform positions by cModelViewProj only, so the corners
+// are built here, on the draw's constants, into model-space positions.
+struct SpriteCardFrame
+{
+	float model[16];
+	float modelView[16];
+	float invModel[9]; // world to model rotation part (inverse of model's 3x3)
+	float eye[3];      // world space
+	float sizeParms[4];
+	float sizeParms2[4];
+	int orientation;
+	bool spline;
+	bool splineRange; // TEXCOORD4 holds the sheet range and TEXCOORD5 the end color
+};
+
+static void SpriteCardMat3Inverse( const float *m4, float *inv )
+{
+	// The 3x3 of a row-vector matrix (rows 0..2, columns 0..2).
+	const float a = m4[0], b = m4[1], c = m4[2];
+	const float d = m4[4], e = m4[5], f = m4[6];
+	const float g = m4[8], h = m4[9], i = m4[10];
+	const float det = a * ( e * i - f * h ) - b * ( d * i - f * g ) + c * ( d * h - e * g );
+	const float r = fabsf( det ) > 1e-20f ? 1.0f / det : 0.0f;
+	inv[0] = ( e * i - f * h ) * r;
+	inv[1] = ( c * h - b * i ) * r;
+	inv[2] = ( b * f - c * e ) * r;
+	inv[3] = ( f * g - d * i ) * r;
+	inv[4] = ( a * i - c * g ) * r;
+	inv[5] = ( c * d - a * f ) * r;
+	inv[6] = ( d * h - e * g ) * r;
+	inv[7] = ( b * g - a * h ) * r;
+	inv[8] = ( a * e - b * d ) * r;
+}
+
+static void SpriteCardBuildFrame( SpriteCardFrame &f, const CEmptyMesh &vertices )
+{
+	memcpy( f.model, ModelMatrix(), sizeof( f.model ) );
+	const float *view = ViewMatrix();
+	for ( int i = 0; i < 4; ++i )
+		for ( int j = 0; j < 4; ++j )
+		{
+			float sum = 0.0f;
+			for ( int k = 0; k < 4; ++k )
+				sum += f.model[i * 4 + k] * view[k * 4 + j];
+			f.modelView[i * 4 + j] = sum;
+		}
+	SpriteCardMat3Inverse( f.model, f.invModel );
+	// The eye is where the view takes to its origin: e * R + t = 0 with R
+	// orthonormal, e_j = -sum_k t_k R[j][k] (cEyePos).
+	for ( int j = 0; j < 3; ++j )
+		f.eye[j] = -( view[12] * view[j * 4] + view[13] * view[j * 4 + 1] +
+		              view[14] * view[j * 4 + 2] );
+	memcpy( f.sizeParms, VsConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_8 ), sizeof( f.sizeParms ) );
+	memcpy( f.sizeParms2, VsConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_9 ), sizeof( f.sizeParms2 ) );
+	f.orientation = g_VertexShaderDynamicIndex % 3;
+	f.spline = ( g_CurrentSpriteCard & kSpriteCardSpline ) != 0;
+	f.splineRange = vertices.WideTexCoordSize( 4 ) >= 4;
+}
+
+static void SpriteCardModelToWorld( const SpriteCardFrame &f, const float *p, float *out )
+{
+	for ( int j = 0; j < 3; ++j )
+		out[j] = p[0] * f.model[j] + p[1] * f.model[4 + j] + p[2] * f.model[8 + j] + f.model[12 + j];
+}
+
+static void SpriteCardWorldToModel( const SpriteCardFrame &f, const float *w, float *out )
+{
+	const float d[3] = { w[0] - f.model[12], w[1] - f.model[13], w[2] - f.model[14] };
+	for ( int j = 0; j < 3; ++j )
+		out[j] = d[0] * f.invModel[j] + d[1] * f.invModel[3 + j] + d[2] * f.invModel[6 + j];
+}
+
+static float SpriteCardGammaToLinear( float c )
+{
+	return powf( std::max( c, 0.0f ), 2.2f );
+}
+
+static float SpriteCardLinearToGamma( float c )
+{
+	return powf( std::max( c, 0.0f ), 1.0f / 2.2f );
+}
+
+// One corner of a sprite card: model-space position, uv, and the color the
+// record carries (gamma RGB, which the pipeline decodes, and linear alpha).
+static void ExpandSpriteCardVertex( const SpriteCardFrame &f, const float *center,
+    const unsigned char *bgra, const float *tc, float *out )
+{
+	const float *tc0 = tc;
+	const float *parms = tc + 8; // frame blend, rotation, radius, yaw
+	const float *corner = tc + 12;
+	const float cosYaw = cosf( parms[3] ), sinYaw = sinf( parms[3] );
+	const float cosRot = cosf( parms[1] ), sinRot = sinf( parms[1] );
+	const float ix = 2.0f * corner[0] - 1.0f, iy = 2.0f * corner[1] - 1.0f;
+	const float x1 = ix * cosRot + iy * sinRot;
+	const float y1 = cosRot * iy - sinRot * ix;
+
+	float world[3];
+	SpriteCardModelToWorld( f, center, world );
+	const float v2p[3] = { world[0] - f.eye[0], world[1] - f.eye[1], world[2] - f.eye[2] };
+	const float l = sqrtf( v2p[0] * v2p[0] + v2p[1] * v2p[1] + v2p[2] * v2p[2] );
+	float rad = std::max( parms[2], f.sizeParms[0] * l );
+	float tint = 1.0f;
+	if ( rad > f.sizeParms[2] * l )
+	{
+		if ( rad > f.sizeParms[3] * l )
+		{
+			tint = 0.0f;
+			rad = 0.0f;
+		}
+		else
+		{
+			const float range = f.sizeParms[3] * l - f.sizeParms[2] * l;
+			tint *= range > 0.0f ? 1.0f - ( rad - f.sizeParms[2] * l ) / range : 0.0f;
+		}
+	}
+	const float farScale =
+	    1.0f - std::min( 1.0f, std::max( 0.0f, ( l - f.sizeParms2[0] ) * f.sizeParms2[1] ) );
+	tint *= farScale;
+	if ( farScale <= 0.0f )
+		rad = 0.0f;
+	rad = std::min( rad, f.sizeParms[1] * l );
+
+	float pos[3];
+	if ( f.orientation == 0 )
+	{
+		// Screen aligned: displaced in view space, which the model-view's
+		// (orthonormal) rows take back to model space.
+		const float disp[3] = { -x1 * cosYaw, y1, x1 * sinYaw };
+		for ( int j = 0; j < 3; ++j )
+			pos[j] = center[j] + rad * ( disp[0] * f.modelView[j * 4] +
+			                             disp[1] * f.modelView[j * 4 + 1] +
+			                             disp[2] * f.modelView[j * 4 + 2] );
+	}
+	else if ( f.orientation == 1 )
+	{
+		// Z aligned: turns about world z to face the eye.
+		if ( l > rad / 2.0f )
+		{
+			float right[3] = { -v2p[1], v2p[0], 0.0f };
+			const float length = sqrtf( right[0] * right[0] + right[1] * right[1] );
+			if ( length > 0.0f )
+			{
+				right[0] /= length;
+				right[1] /= length;
+			}
+			const float rx = right[0] * cosYaw + right[1] * sinYaw;
+			const float ry = right[1] * cosYaw - right[0] * sinYaw;
+			world[0] += x1 * rad * rx;
+			world[1] += x1 * rad * ry;
+			world[2] += y1 * rad;
+			if ( l < rad * 2.0f )
+			{
+				const float t = std::min( 1.0f, std::max( 0.0f, ( l - rad / 2.0f ) / ( rad / 2.0f ) ) );
+				tint *= t * t * ( 3.0f - 2.0f * t );
+			}
+		}
+		SpriteCardWorldToModel( f, world, pos );
+	}
+	else
+	{
+		// Parallel to the ground, in model space, at the unclamped radius.
+		pos[0] = center[0] + parms[2] * y1;
+		pos[1] = center[1] + parms[2] * x1;
+		pos[2] = center[2];
+	}
+
+	memcpy( out, pos, sizeof( pos ) );
+	const float gammaTint = SpriteCardLinearToGamma( tint );
+	out[3] = bgra[2] / 255.0f * gammaTint;
+	out[4] = bgra[1] / 255.0f * gammaTint;
+	out[5] = bgra[0] / 255.0f * gammaTint;
+	out[17] = bgra[3] / 255.0f * tint;
+	out[6] = tc0[2] + ( tc0[0] - tc0[2] ) * corner[0];
+	out[7] = tc0[3] + ( tc0[1] - tc0[3] ) * corner[1];
+}
+
+static void SpriteCardCatmullRom( const float *a, const float *b, const float *c, const float *d,
+    float t, int n, float *out )
+{
+	for ( int k = 0; k < n; ++k )
+		out[k] = b[k] + 0.5f * t *
+		                    ( c[k] - a[k] +
+		                        t * ( 2.0f * a[k] - 5.0f * b[k] + 4.0f * c[k] - d[k] +
+		                                t * ( -a[k] + 3.0f * b[k] - 3.0f * c[k] + d[k] ) ) );
+}
+
+static void SpriteCardCatmullRomTangent( const float *a, const float *b, const float *c,
+    const float *d, float t, float *out )
+{
+	for ( int k = 0; k < 3; ++k )
+		out[k] = 0.5f * ( c[k] - a[k] +
+		                  t * ( 2.0f * a[k] - 5.0f * b[k] + 4.0f * c[k] - d[k] +
+		                          t * ( 3.0f * b[k] - a[k] - 3.0f * c[k] + d[k] ) ) +
+		                  t * ( 2.0f * a[k] - 5.0f * b[k] + 4.0f * c[k] - d[k] +
+		                          2.0f * ( t * ( 3.0f * b[k] - a[k] - 3.0f * c[k] + d[k] ) ) ) );
+}
+
+// One vertex of a spline card (a rope segment or a sprite trail): POSITION is
+// ( t along the segment, v, side ), TEXCOORD0..3 the Catmull-Rom points
+// ( xyz, width ). Portal 2 trails add the sheet range (TEXCOORD4) and the end
+// point's color (TEXCOORD5).
+static void ExpandSplineCardVertex( const SpriteCardFrame &f, const float *parms,
+    const unsigned char *bgra, const float *tc, float *out )
+{
+	const float t = parms[0], v = parms[1], side = parms[2];
+	float posrad[4];
+	SpriteCardCatmullRom( tc, tc + 4, tc + 8, tc + 12, t, 4, posrad );
+	float v2p[3] = { 0.0f, 0.0f, 1.0f };
+	if ( f.orientation == 0 )
+	{
+		for ( int k = 0; k < 3; ++k )
+			v2p[k] = posrad[k] - f.eye[k];
+	}
+	float tangent[3];
+	SpriteCardCatmullRomTangent( tc, tc + 4, tc + 8, tc + 12, t, tangent );
+	const float tl = sqrtf( tangent[0] * tangent[0] + tangent[1] * tangent[1] + tangent[2] * tangent[2] );
+	if ( tl > 0.0f )
+	{
+		for ( float &component : tangent )
+			component /= tl;
+	}
+	float ofs[3] = { v2p[1] * tangent[2] - v2p[2] * tangent[1], v2p[2] * tangent[0] - v2p[0] * tangent[2],
+	    v2p[0] * tangent[1] - v2p[1] * tangent[0] };
+	const float ol = sqrtf( ofs[0] * ofs[0] + ofs[1] * ofs[1] + ofs[2] * ofs[2] );
+	if ( ol > 0.0f )
+	{
+		for ( float &component : ofs )
+			component /= ol;
+	}
+	float world[3];
+	for ( int k = 0; k < 3; ++k )
+		world[k] = posrad[k] + ofs[k] * ( posrad[3] * ( side - 0.5f ) );
+	SpriteCardWorldToModel( f, world, out );
+
+	float rgba[4] = { bgra[2] / 255.0f, bgra[1] / 255.0f, bgra[0] / 255.0f, bgra[3] / 255.0f };
+	if ( f.splineRange )
+	{
+		const float *range = tc + 16;
+		const float *endColor = tc + 20;
+		out[6] = range[2] + ( range[0] - range[2] ) * side;
+		out[7] = range[1] + ( range[3] - range[1] ) * v;
+		for ( int k = 0; k < 3; ++k )
+		{
+			const float c1 = SpriteCardGammaToLinear( rgba[k] );
+			const float c2 = SpriteCardGammaToLinear( endColor[k] );
+			rgba[k] = SpriteCardLinearToGamma( c1 + ( c2 - c1 ) * t );
+		}
+		rgba[3] = rgba[3] + ( endColor[3] - rgba[3] ) * t;
+	}
+	else
+	{
+		out[6] = 1.0f - side;
+		out[7] = v;
+	}
+	out[3] = rgba[0];
+	out[4] = rgba[1];
+	out[5] = rgba[2];
+	out[17] = rgba[3];
+}
+
 void CEmptyMesh::EmitToNativeQueue()
 {
 	render_vulkan::CFrameCostScope cost( g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostEmit );
@@ -3985,6 +4331,21 @@ void CEmptyMesh::EmitToNativeQueue()
 	{
 		DropDraw( "draw dropped: no indices in range" );
 		return;
+	}
+
+	// SpriteCard and spline cards: the corners are built from the vertices'
+	// wide texture coordinates, and the uv they produce is final.
+	const bool spriteCard = g_CurrentSpriteCard >= 0 && vertices.HasWideTexCoords();
+	SpriteCardFrame spriteFrame = {};
+	if ( spriteCard )
+	{
+		static const float identityRows[8] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f };
+		SpriteCardBuildFrame( spriteFrame, vertices );
+		g_VulkanContext.SetDynamicBaseTexTransform( identityRows, identityRows + 4 );
+	}
+	else if ( g_CurrentSpriteCard >= 0 )
+	{
+		NoteUnimplemented( "SpriteCard: vertices without wide texture coordinates" );
 	}
 
 	// Normal and tangent, only for the shaders that read them: PortalRefract
@@ -4303,6 +4664,14 @@ void CEmptyMesh::EmitToNativeQueue()
 		memcpy( out, pos, sizeof( pos ) );
 		out[6] = uv[0];
 		out[7] = uv[1];
+		if ( spriteCard )
+		{
+			const float *wide = vertices.WideTexCoords( v );
+			if ( spriteFrame.spline )
+				ExpandSplineCardVertex( spriteFrame, pos, base + 12, wide, out );
+			else
+				ExpandSpriteCardVertex( spriteFrame, pos, base + 12, wide, out );
+		}
 	};
 
 	// Element i of this draw, in mesh vertex indices. Indexed geometry reads the
@@ -5428,6 +5797,7 @@ static void ClearSnapshotTables()
 	g_snapshotEnabledSamplers.clear();
 	g_snapshotToneMap.clear();
 	g_snapshotSpriteCombos.clear();
+	g_snapshotSpriteCard.clear();
 	g_snapshotPixelFog.clear();
 }
 
@@ -5479,6 +5849,12 @@ struct VsConstantFile
 	}
 };
 VsConstantFile g_vsConstants;
+
+const float *VsConstant( int reg )
+{
+	static const float zero[4] = {};
+	return reg >= 0 && reg < kVsRegCount ? g_vsConstants.regs[reg] : zero;
+}
 
 // A pass begins: return the material registers the native textured pipeline
 // reads to their identities. D3D9 constants persist between draws, but a vs_2_0
@@ -5691,6 +6067,13 @@ static int SnapshotShaderFlags( const CShaderShadowVulkan &shadow )
 		if ( !( shadow.m_colorFlags & CVulkanContext::kColorSrgbReadBase ) )
 			flags |= CVulkanContext::kVertexColorNoGammaConvert;
 	}
+	// spritecard_ps2x.fxc multiplies the frame by the vertex color, which
+	// spritecard_vs20 (and Portal 2's splinecard_vs20) gamma-decodes (RGB only).
+	if ( !V_strnicmp( shadow.m_pixelShaderName, "spritecard_ps20", 15 ) )
+	{
+		flags |= CVulkanContext::kFragmentModulateVertexColor |
+		         CVulkanContext::kFragmentSpriteVertexAlpha;
+	}
 	// vertexlit_and_unlit_generic (UnlitGeneric: VGUI, fonts, sprites) with a
 	// vertex color stream, which its vertex shader's VERTEXCOLOR combo reads
 	// ($vertexcolor or $vertexalpha; vertexlitgeneric_dx9_helper.cpp). The pixel
@@ -5898,6 +6281,12 @@ const float *ModelMatrix()
 {
 	EnsureMatricesInit();
 	return g_matrices.mat[MATERIAL_MODEL];
+}
+
+const float *ViewMatrix()
+{
+	EnsureMatricesInit();
+	return g_matrices.mat[MATERIAL_VIEW];
 }
 
 // view * proj, for world-space (skinned) positions.
@@ -6372,6 +6761,46 @@ enum SnapshotToneMap
 // sprite_ps2x.fxc's CONSTANTCOLOR and HDRTYPE static combos (fxctmp9
 // sprite_ps20b.inc strides 16 and 32; sprite_ps20.inc 8 and 16), packed as
 // CONSTANTCOLOR | HDRTYPE << 1; -1 for other pixel shaders.
+// spritecard_ps2x.fxc's static combos (fxctmp9/spritecard_ps20b.inc and
+// spritecard_ps20.inc strides) for a SpriteCard vertex shader's pass.
+static int SnapshotSpriteCard( const CShaderShadowVulkan &shadow )
+{
+	const bool sprite = !V_stricmp( shadow.m_vertexShaderName, "spritecard_vs20" );
+	const bool spline = !V_stricmp( shadow.m_vertexShaderName, "splinecard_vs20" );
+	if ( !sprite && !spline )
+		return -1;
+	int flags = spline ? kSpriteCardSpline : 0;
+	const int index = shadow.m_pixelShaderIndex;
+	const bool ps20b = !V_stricmp( shadow.m_pixelShaderName, "spritecard_ps20b" );
+	if ( !ps20b && V_stricmp( shadow.m_pixelShaderName, "spritecard_ps20" ) )
+	{
+		NoteUnimplemented( "SpriteCard: pixel shader other than spritecard_ps20/ps20b" );
+		return flags;
+	}
+	// ps20b has CONVERT_TO_SRGB (stride 1) in front of the ps20 combos, so its
+	// strides are twice ps20's; DEPTHBLEND exists only in ps20b.
+	const int scale = ps20b ? 2 : 1;
+	const auto combo = [index, scale]( int ps20Stride )
+	{ return ( index / ( ps20Stride * scale ) ) % 2 != 0; };
+	if ( combo( 1 ) )
+		flags |= kSpriteCardDualSequence;
+	if ( combo( 6 ) )
+		flags |= kSpriteCardAddBaseTexture2;
+	if ( combo( 12 ) )
+		flags |= kSpriteCardMaxLumFrameBlend;
+	if ( combo( 48 ) )
+		flags |= kSpriteCardExtractGreenAlpha;
+	if ( combo( 96 ) )
+		flags |= kSpriteCardColorRamp;
+	if ( combo( 192 ) )
+		flags |= kSpriteCardAnimBlend;
+	if ( combo( 384 ) )
+		flags |= kSpriteCardAddSelf;
+	if ( ps20b && combo( 768 ) )
+		flags |= kSpriteCardDepthBlend;
+	return flags;
+}
+
 static int SnapshotSpriteCombos( const CShaderShadowVulkan &shadow )
 {
 	const int index = shadow.m_pixelShaderIndex;
@@ -6479,15 +6908,16 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	const int shaderFlags = SnapshotShaderFlags( g_ShaderShadow );
 	const int toneMap = SnapshotToneMapType( g_ShaderShadow );
 	const int spriteCombos = SnapshotSpriteCombos( g_ShaderShadow );
-	char key[176];
-	V_snprintf( key, sizeof( key ), "|%d|%llx|%d|%.6g|%llx|%d|%d|%d|%d|%x|%d|%d",
+	const int spriteCard = SnapshotSpriteCard( g_ShaderShadow );
+	char key[192];
+	V_snprintf( key, sizeof( key ), "|%d|%llx|%d|%.6g|%llx|%d|%d|%d|%d|%x|%d|%d|%d",
 	    static_cast<int>( id ),
 	    static_cast<unsigned long long>( render_vulkan::CVulkanContext::RasterStateKey( raster ) ),
 	    static_cast<int>( g_ShaderShadow.m_polyOffset ), alphaRef,
 	    static_cast<unsigned long long>( g_ShaderShadow.m_vertexUsage ), shaderFlags,
 	    g_ShaderShadow.m_vertexShaderIndex, static_cast<int>( g_ShaderShadow.m_fogMode ),
 	    g_ShaderShadow.m_disableFogGammaCorrection ? 1 : 0, g_ShaderShadow.m_enabledSamplers,
-	    toneMap, spriteCombos );
+	    toneMap, spriteCombos, spriteCard );
 	const std::string stateKey = SnapshotShaderRoute( g_ShaderShadow ) + key;
 	const auto existing = g_snapshotIds.find( stateKey );
 	if ( existing != g_snapshotIds.end() )
@@ -6516,6 +6946,7 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	g_snapshotEnabledSamplers.push_back( g_ShaderShadow.m_enabledSamplers );
 	g_snapshotToneMap.push_back( toneMap );
 	g_snapshotSpriteCombos.push_back( spriteCombos );
+	g_snapshotSpriteCard.push_back( spriteCard );
 	g_snapshotPixelFog.push_back( SnapshotPixelFog( g_ShaderShadow ) );
 	// Flags occupy bits 0..3; the index fits the remaining 11 bits of the short.
 	id = static_cast<StateSnapshot_t>( id | static_cast<int>( index << 4 ) );
@@ -6894,6 +7325,11 @@ IMesh *CShaderAPIVulkan::GetDynamicMeshEx( IMaterial *pMaterial, VertexFormat_t 
 	// static mesh's vertices, and a batch passes this mesh back as its own index
 	// override to keep the indices it just built.
 	m_Mesh.SetSources( pVertexOverride, pIndexOverride );
+	// The dynamic mesh takes the vertex format of the material it draws (D3D9's
+	// mesh manager sizes its dynamic vertex buffer the same way).
+	if ( !fmt && pMaterial )
+		fmt = pMaterial->GetVertexFormat();
+	m_Mesh.SetWideTexCoords( pVertexOverride ? 0 : fmt );
 	return &m_Mesh;
 }
 
@@ -7026,6 +7462,8 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	g_CurrentToneMap = index < g_snapshotToneMap.size() ? g_snapshotToneMap[index] : 0;
 	g_CurrentSpriteCombos =
 	    index < g_snapshotSpriteCombos.size() ? g_snapshotSpriteCombos[index] : -1;
+	g_CurrentSpriteCard =
+	    index < g_snapshotSpriteCard.size() ? g_snapshotSpriteCard[index] : -1;
 	g_CurrentPixelFog =
 	    index < g_snapshotPixelFog.size() ? g_snapshotPixelFog[index] : PixelFogInputs();
 	if ( index < g_snapshotFog.size() )
@@ -7097,6 +7535,31 @@ static void CommitPassPixelConstants()
 	{
 		// Sky_DX9's sky_ps2x.fxc reads $color from pixel constant c0.
 		g_VulkanContext.SetDynamicModulation( g_psConstants[0] );
+		return;
+	}
+	if ( g_CurrentSpriteCard >= 0 )
+	{
+		// spritecard_ps2x.fxc: the frame's RGB times fOverbrightFactor (c0.y),
+		// then times the vertex color. The other combos are reported.
+		const float overbright = g_psConstants[0][1];
+		const float modulation[4] = { overbright, overbright, overbright, 1.0f };
+		if ( g_CurrentSpriteCard & kSpriteCardAnimBlend )
+			NoteUnimplemented( "SpriteCard: ANIMBLEND (drawn with the first frame)" );
+		if ( g_CurrentSpriteCard & kSpriteCardAddSelf )
+			NoteUnimplemented( "SpriteCard: ADDSELF" );
+		if ( g_CurrentSpriteCard & kSpriteCardAddBaseTexture2 )
+			NoteUnimplemented( "SpriteCard: ADDBASETEXTURE2" );
+		if ( g_CurrentSpriteCard & kSpriteCardExtractGreenAlpha )
+			NoteUnimplemented( "SpriteCard: EXTRACTGREENALPHA" );
+		if ( g_CurrentSpriteCard & kSpriteCardMaxLumFrameBlend )
+			NoteUnimplemented( "SpriteCard: MAXLUMFRAMEBLEND" );
+		if ( g_CurrentSpriteCard & kSpriteCardDualSequence )
+			NoteUnimplemented( "SpriteCard: DUALSEQUENCE" );
+		if ( g_CurrentSpriteCard & kSpriteCardColorRamp )
+			NoteUnimplemented( "SpriteCard: COLORRAMP" );
+		if ( g_CurrentSpriteCard & kSpriteCardDepthBlend )
+			NoteUnimplemented( "SpriteCard: DEPTHBLEND" );
+		g_VulkanContext.SetDynamicModulation( modulation );
 		return;
 	}
 	if ( g_CurrentSpriteCombos >= 0 )

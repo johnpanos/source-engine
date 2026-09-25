@@ -715,6 +715,26 @@ bool CVTFTexture::LoadImageData( CUtlBuffer &buf, const VTFFileHeader_t &header,
 		}
 	}
 
+	// Portal 2 and later write 7.5 cubemaps with six faces and no spheremap;
+	// SDK 2013 tools wrote 7.5 with the spheremap. Only the data size tells
+	// them apart. The spheremap slice is then left black (it is a fallback
+	// for hardware without cubemaps).
+	int nFacesInFile = m_nFaceCount;
+	if ( IsCubeMap() && ( header.version[0] == 7 ) && ( header.version[1] >= 5 ) )
+	{
+		int nStoredFaceSize = 0;
+		for ( int iMip = 0; iMip < m_nMipCount && iMip < header.numMipLevels - nSkipMipLevels; ++iMip )
+		{
+			nStoredFaceSize += ComputeMipSize( iMip );
+		}
+		int nBytesRemaining = buf.TellMaxPut() - buf.TellGet();
+		if ( nBytesRemaining < nStoredFaceSize * m_nFaceCount * m_nFrameCount )
+		{
+			nFacesInFile = CUBEMAP_FACE_SPHEREMAP;
+			memset( ImageData(), 0, iImageSize );
+		}
+	}
+
 	int nGet = buf.TellGet();
 
 retryCubemapLoad:
@@ -728,7 +748,7 @@ retryCubemapLoad:
 
 		for (int iFrame = 0; iFrame < m_nFrameCount; ++iFrame)
 		{
-			for (int iFace = 0; iFace < m_nFaceCount; ++iFace)
+			for (int iFace = 0; iFace < nFacesInFile; ++iFace)
 			{
 				// printf("\n tex %p mip %i frame %i face %i  size %i  buf offset %i", this, iMip, iFrame, iFace, iMipSize, buf.TellGet() );
 				unsigned char *pMipBits = ImageData( iFrame, iFace, iMip );
