@@ -106,6 +106,19 @@ class ConversionTest(unittest.TestCase):
         self.assertAlmostEqual(float(rough[1]), (2 / (4 * 75.5 + 2)) ** 0.25, places=9)
 
 
+class GuidedUpsampleTest(unittest.TestCase):
+    def test_blocky_diagonal_edge_follows_the_sharp_guide(self):
+        size = 128
+        y, x = np.mgrid[0:size, 0:size]
+        guide = (x + 0.5 * y > 80).astype(float)                   # sharp full-resolution edge
+        cy, cx = np.mgrid[0:8, 0:8] * 16 + 8
+        coarse = (cx + 0.5 * cy > 80).astype(float)                # the same edge on a 16x grid
+        plain = ar.upscale_float(coarse, size, mode="edge")
+        guided = ar.guided_upsample(coarse, guide, size, "edge")
+        error = lambda m: float(np.abs(m - guide).mean())
+        self.assertLess(error(guided), 0.6 * error(plain))            # measured 0.55x
+
+
 class GraphTest(unittest.TestCase):
     def test_references_resolve_and_outputs_are_wired(self):
         for path in sorted(RECIPE_DIR.glob("**/*.json")):

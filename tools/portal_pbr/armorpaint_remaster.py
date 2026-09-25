@@ -36,7 +36,7 @@ import time
 
 import numpy as np
 from PIL import Image, ImageDraw
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, uniform_filter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "quality"))
 from workflow import HELPER, ROOT, build_helper, get_image, make_material, valid_name  # noqa: E402
@@ -273,6 +273,24 @@ def tileable_noise(size: int, scale: float, seed: str, octaves: int = 4) -> np.n
     return upscale_float(noise, size) if work != size else noise
 
 
+def guided_upsample(mask: np.ndarray, guide: np.ndarray, size: int, mode: str, eps: float = 1e-3) -> np.ndarray:
+    """Upscale a low-resolution mask, then align its edges to a sharp guide.
+
+    A guided filter (He et al.) fits the mask locally as a*guide + b over a
+    window about one source texel wide, so the mask's edges follow the
+    upscaled colour's edges instead of the source's blocky texel grid.
+    """
+    radius = max(1, size // mask.shape[0])
+    p = upscale_float(mask, size, mode=mode)
+    box = lambda x: uniform_filter(x, 2 * radius + 1, mode="wrap" if mode == "wrap" else "nearest")
+    mean_i, mean_p = box(guide), box(p)
+    var_i = box(guide * guide) - mean_i ** 2
+    cov = box(guide * p) - mean_i * mean_p
+    a = cov / (var_i + eps)
+    b = mean_p - a * mean_i
+    return np.clip(box(a) * guide + box(b), 0, 1)
+
+
 def exponent_roughness(red: np.ndarray) -> np.ndarray:
     """Source's Phong exponent map as the native shader's perceptual roughness.
 
@@ -359,9 +377,16 @@ def prepare(recipe: dict, facts: dict, layers: dict, work: Path, upscaler: Path,
         cavity = np.ones((size, size))
     # Mask G is the roughness evidence: a legacy spec mask, or roughness itself
     # converted from a Phong exponent map.
+    base_png = upscale_base(layers["base"], size, work, upscaler, models, pad)
+    linear = srgb_to_linear(load(base_png))
+    guide = linear_to_srgb(linear) @ [0.2126, 0.7152, 0.0722]
     if "from_exponent" in recipe["roughness"]:
         red = load(layers["exponent"])[..., 0]
-        gloss = upscale_float(exponent_roughness(red), size, mode=pad)
+        if red.shape[0] < edge:
+            gloss = guided_upsample(exponent_roughness(red), guide, size, pad)
+            report["guided_upsample"] = {"exponent": [red.shape[0], size]}
+        else:
+            gloss = upscale_float(exponent_roughness(red), size, mode=pad)
         report["exponent_roughness"] = {"min": round(float(gloss.min()), 3), "max": round(float(gloss.max()), 3)}
     elif facts["spec_mask"] == "bump_alpha":
         gloss = upscale_float(load(layers["bump"])[..., 3], size, mode=pad)
@@ -369,9 +394,6 @@ def prepare(recipe: dict, facts: dict, layers: dict, work: Path, upscaler: Path,
         gloss = upscale_float(base_rgba[..., 3], size, mode=pad)
     else:
         gloss = np.full((size, size), 0.5)
-
-    base_png = upscale_base(layers["base"], size, work, upscaler, models, pad)
-    linear = srgb_to_linear(load(base_png))
     if recipe.get("emission"):
         # Source self-illumination adds base * alpha mask; carry exactly that.
         mask = np.clip(upscale_float(base_rgba[..., 3], size, mode=pad), 0, 1)
