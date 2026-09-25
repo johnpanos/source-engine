@@ -28,6 +28,74 @@ The `.rdc` path is printed. It is also recorded in `evidence.json`
 `portal_boot.py --renderdoc` is the underlying option. A boot that writes no
 capture fails.
 
+Both commands also run the debug shader variants (`portal_boot.py
+--shader-debug`, below). `rdc.py capture --release-shaders` captures the
+embedded release shaders instead.
+
+## What a capture shows
+
+The native backend makes captures readable in three ways:
+
+- **Object names.** `VK_EXT_debug_utils` names are set on images, views,
+  framebuffers, shader modules and pipelines. Examples:
+  - Source's own texture names (`gi_door/wall/basecolor`, `_rt_poweroftwofb`);
+  - the backend's textures (`RPRB reflection probes`, `PRBV probe atlas`,
+    `LMAP total`, `SDFV shadow field`, `PBR split-sum LUT`, `back buffer 4x
+    MSAA`);
+  - pipelines by their shaders (`skin.vert / model_pbr.frag -DPROBE_VOLUME
+    (MSAA)`).
+- **Labels.** Each render pass gets a marker naming its target (`pass: back
+  buffer (sRGB)`). Backend phases are regions: `compute work`, `texture
+  uploads`, `copy to render target`, `MSAA resolve`, `scene capture (glass)`
+  and `present: gamma`. Compute dispatches are labelled with their program.
+  Source's PIX events (`IShaderAPI::BeginPIXEvent`) become regions in record
+  order: `CSimpleWorldView::Draw`, `DrawViewModels`, `DoEnginePostProcessing`
+  and Portal's `Portal_Step*`. The cvar `mat_pix_events` decides at run time
+  which are gathered (`PIXEventLevel`, `public/materialsystem/imaterialsystem.h`):
+  - `-1` (the default) is auto: 1 while names and labels are on, else 0;
+  - `0` gathers none, so a plain run only compares an integer at each site;
+  - `1` gathers the view events;
+  - `2` also gathers per-object events: `R_StudioDrawGroupHWSkin
+    (<model>)`, brush models and flex.
+
+  Portal's portal-rendering events call `BeginPIXEvent` directly and are
+  always sent. A `PIX_ENABLE` build gathers every event, as Valve's did.
+- **Debug shaders.** `shaders/regen_material_spv.py --debug-out DIR` compiles
+  every embedded shader again with source-level debug information
+  (`glslangValidator -gVS`: NonSemantic.Shader.DebugInfo.100, unoptimized).
+  With `SOURCE_VK_SHADER_DIR=DIR`, the backend creates its modules from these
+  variants. Bindings then have their GLSL names (`reflectionProbes`,
+  `probeAtlas`), and `debug-pixel` reports GLSL variables (`environment`,
+  `flags`) and steps source.
+  - Each file is keyed by the FNV-1a hash of the embedded array it replaces
+    (`material_spv_index.h`, generated with `material_spv.h`). A file whose
+    shader has changed since it was written is never used; the boot log
+    lists it with the reason.
+  - The variants are unoptimized, so floating-point results can differ
+    slightly from the release shaders. In the gi_door example below, the
+    sphere pixel was identical.
+
+When names and labels are emitted is one policy
+(`render_vulkan::DebugLabelsWanted`):
+
+- by default, when the validation layer is on or a capture tool reports that
+  it wants debug markers through `VK_EXT_tooling_info` (RenderDoc does);
+- always with `-vkdebuglabels`;
+- never with `-novkdebuglabels`.
+
+A plain run pays nothing. The boot log says which applied:
+`[NativeVulkan] debug names and labels on (RenderDoc)`. The shader directory
+is an environment variable because the launcher's command line is limited to
+512 characters, and harness boots already come close.
+
+To see all of this in the qrenderdoc window on your own desktop (not run by
+the tooling, since it opens a window):
+
+```sh
+python3 materialsystem/shaderapivulkan/shaders/regen_material_spv.py --debug-out /tmp/vkdebug
+SOURCE_VK_SHADER_DIR=/tmp/vkdebug renderdoccmd capture --opt-hook-children ./play gi_door
+```
+
 ## Inspect
 
 ```sh
@@ -77,10 +145,9 @@ Traps found while building this (RenderDoc 1.45, Fedora package):
   capture` therefore needs `--opt-hook-children`, or the game process runs
   without RenderDoc and `vk_renderdoc_capture` reports "not running under
   RenderDoc".
-- The engine's SPIR-V is built with `glslc -O`, which strips names. Bindings
-  are therefore shown as `set.binding`. `debug-pixel` reports registers
-  (`_2047`) instead of GLSL variables, and native objects have generic names
-  (`2D Image 1402`). Match set and binding against the shader source.
+- The embedded SPIR-V is built with `glslc -O`, which strips names. A capture
+  made with `--release-shaders` shows bindings as `set.binding` and registers
+  (`_2047`) instead of GLSL variables.
 - `str()` of a RenderDoc enum is its number. Compare against `rd.VarType.*`
   instead.
 
@@ -95,9 +162,24 @@ answer, a worker error, no response, a hang, and missing tools. The replay
 worker needs RenderDoc and a capture, so it is exercised by running the
 commands above on a real capture.
 
+The engine side is covered by the `render.vulkan-debug-tools` conformance
+suite (`python3 tools/quality/conformance.py check --suite
+render.vulkan-debug-tools`), which needs no device. It checks that:
+
+- the generated index agrees with every embedded array;
+- the shader library rejects stale, malformed and unsupported variants;
+- the label policy table holds;
+- labels stay balanced in every command buffer under seeded random sequences.
+
+The GPU suites that enable validation run with names and labels on, and are
+validation-clean.
+
 ## Worked example: gi_door's sphere stays lit with the door closed (2026-09-25)
 
 `gi_runtime.py capture --renderdoc` (above) with the door closed, then:
+
+This was found before names and debug shaders existed, so it uses event ids
+and set/binding numbers.
 
 1. `rdc.py draws`: EID 98 draws 2,280 indices, the sphere (`model_pbr`).
 2. `rdc.py pixel --x 600 --y 330`: the wall behind the sphere writes 0.0012
@@ -113,3 +195,7 @@ commands above on a real capture.
 The sphere's specular comes from static reflection probes baked with the door
 open. `model_pbr` reads them unrelit, and RPRB v1 carries no relight bands.
 `mat_reflection_probes 0` makes the sphere black.
+
+With the debug shaders, `rdc.py debug-pixel --event <sphere> --x 600 --y 330`
+shows the same thing by name. `environment` (the probe radiance) is 1.63, and
+`flags` is 8.

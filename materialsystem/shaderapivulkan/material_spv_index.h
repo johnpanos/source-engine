@@ -31,22 +31,33 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
     { 0xd4a5911b68b73439ull, "g_worldPbrClipFragSpv", "world_pbr.frag -DCLIP_PLANES" },
     { 0xf8c73026f0562847ull, "g_worldPbrIndirectFragSpv", "world_pbr.frag -DINDIRECT_VIEW" },
     { 0x800b89d2989a57c2ull, "g_worldPbrLightFragSpv", "world_pbr.frag -DDIRECT_LIGHTS" },
-    { 0x91543ffb8a611006ull, "g_worldPbrLightClipFragSpv", "world_pbr.frag -DDIRECT_LIGHTS -DCLIP_PLANES" },
+    { 0x91543ffb8a611006ull, "g_worldPbrLightClipFragSpv",
+        "world_pbr.frag -DDIRECT_LIGHTS -DCLIP_PLANES" },
     { 0x47b33ecebbf5162eull, "g_worldPbrRuntimeFragSpv", "world_pbr.frag -DRUNTIME_INDIRECT" },
-    { 0xcac45bd99c235985ull, "g_worldPbrRuntimeClipFragSpv", "world_pbr.frag -DRUNTIME_INDIRECT -DCLIP_PLANES" },
-    { 0x3b774e80df974687ull, "g_worldPbrLightRuntimeFragSpv", "world_pbr.frag -DDIRECT_LIGHTS -DRUNTIME_INDIRECT" },
-    { 0x079b7ec2012ca9c9ull, "g_worldPbrLightRuntimeClipFragSpv", "world_pbr.frag -DDIRECT_LIGHTS -DRUNTIME_INDIRECT -DCLIP_PLANES" },
-    { 0x3f3231e0692ddf13ull, "g_worldPbrIndirectClipFragSpv", "world_pbr.frag -DINDIRECT_VIEW -DCLIP_PLANES" },
+    { 0xcac45bd99c235985ull, "g_worldPbrRuntimeClipFragSpv",
+        "world_pbr.frag -DRUNTIME_INDIRECT -DCLIP_PLANES" },
+    { 0x3b774e80df974687ull, "g_worldPbrLightRuntimeFragSpv",
+        "world_pbr.frag -DDIRECT_LIGHTS -DRUNTIME_INDIRECT" },
+    { 0x079b7ec2012ca9c9ull, "g_worldPbrLightRuntimeClipFragSpv",
+        "world_pbr.frag -DDIRECT_LIGHTS -DRUNTIME_INDIRECT -DCLIP_PLANES" },
+    { 0x3f3231e0692ddf13ull, "g_worldPbrIndirectClipFragSpv",
+        "world_pbr.frag -DINDIRECT_VIEW -DCLIP_PLANES" },
     { 0xf36d92be4646a02aull, "g_worldPbrDeltaFragSpv", "world_pbr.frag -DDELTA_VOLUME" },
-    { 0xadaf8e9926dcb25full, "g_worldPbrDeltaClipFragSpv", "world_pbr.frag -DDELTA_VOLUME -DCLIP_PLANES" },
-    { 0x1f48939e32555e6cull, "g_worldPbrLightDeltaFragSpv", "world_pbr.frag -DDIRECT_LIGHTS -DDELTA_VOLUME" },
-    { 0x0e81dce154255430ull, "g_worldPbrLightDeltaClipFragSpv", "world_pbr.frag -DDIRECT_LIGHTS -DDELTA_VOLUME -DCLIP_PLANES" },
-    { 0xe188bcf03acf025aull, "g_worldPbrIndirectDeltaFragSpv", "world_pbr.frag -DINDIRECT_VIEW -DDELTA_VOLUME" },
-    { 0x3c6a4e102d706fdbull, "g_worldPbrIndirectDeltaClipFragSpv", "world_pbr.frag -DINDIRECT_VIEW -DDELTA_VOLUME -DCLIP_PLANES" },
+    { 0xadaf8e9926dcb25full, "g_worldPbrDeltaClipFragSpv",
+        "world_pbr.frag -DDELTA_VOLUME -DCLIP_PLANES" },
+    { 0x1f48939e32555e6cull, "g_worldPbrLightDeltaFragSpv",
+        "world_pbr.frag -DDIRECT_LIGHTS -DDELTA_VOLUME" },
+    { 0x0e81dce154255430ull, "g_worldPbrLightDeltaClipFragSpv",
+        "world_pbr.frag -DDIRECT_LIGHTS -DDELTA_VOLUME -DCLIP_PLANES" },
+    { 0xe188bcf03acf025aull, "g_worldPbrIndirectDeltaFragSpv",
+        "world_pbr.frag -DINDIRECT_VIEW -DDELTA_VOLUME" },
+    { 0x3c6a4e102d706fdbull, "g_worldPbrIndirectDeltaClipFragSpv",
+        "world_pbr.frag -DINDIRECT_VIEW -DDELTA_VOLUME -DCLIP_PLANES" },
     { 0x2f8a9e6d376b11d5ull, "g_computeFillSpv", "compute_fill.comp" },
     { 0x974a4ae6f40baa18ull, "g_sdfProbeTraceSpv", "sdf_probe_trace.comp" },
     { 0x2f0efeaaeb8c4a5cull, "g_reflectionProbesCheckSpv", "reflection_probes_check.comp" },
-    { 0x710848e76f097403ull, "g_rayQueryProbeTraceSpv", "sdf_probe_trace.comp --target-env=vulkan1.2 -DRAY_QUERY" },
+    { 0x710848e76f097403ull, "g_rayQueryProbeTraceSpv",
+        "sdf_probe_trace.comp --target-env=vulkan1.2 -DRAY_QUERY" },
     { 0x40b02fe6c2189a0dull, "g_worldGlassFragSpv", "world_pbr_glass.frag" },
     { 0x7c1afaefe9504203ull, "g_worldGlassClipFragSpv", "world_pbr_glass.frag -DCLIP_PLANES" },
     { 0xaf4db10025824b57ull, "g_materialTexFragSpv", "demo_dyn_tex.frag" },
@@ -65,8 +76,10 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
     { 0x7d37989aef3562d1ull, "g_modelPbrEnvFragSpv", "model_pbr.frag -DENV_CUBE" },
     { 0xd135e65d37455cc8ull, "g_modelPbrIndirectFragSpv", "model_pbr.frag -DINDIRECT_VIEW" },
     { 0x32a8a1de5ed5acdaull, "g_modelPbrProbeFragSpv", "model_pbr.frag -DPROBE_VOLUME" },
-    { 0x0c88688c1f15b113ull, "g_modelPbrEnvProbeFragSpv", "model_pbr.frag -DENV_CUBE -DPROBE_VOLUME" },
-    { 0x2f1d88c69d83d941ull, "g_modelPbrIndirectProbeFragSpv", "model_pbr.frag -DINDIRECT_VIEW -DPROBE_VOLUME" },
+    { 0x0c88688c1f15b113ull, "g_modelPbrEnvProbeFragSpv",
+        "model_pbr.frag -DENV_CUBE -DPROBE_VOLUME" },
+    { 0x2f1d88c69d83d941ull, "g_modelPbrIndirectProbeFragSpv",
+        "model_pbr.frag -DINDIRECT_VIEW -DPROBE_VOLUME" },
     { 0xabb75cd64f4600adull, "g_pbrDirectFragSpv", "pbr_direct.frag" },
     { 0xceab061f59287ab6ull, "g_pbrDirectClipFragSpv", "pbr_direct.frag -DCLIP_PLANES" },
     { 0xe2b8e6ce9f238241ull, "g_pbrBrdfCheckSpv", "pbr_brdf_check.comp" },
@@ -75,58 +88,57 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
 };
 
 // X( array ) for every array, for suites that include material_spv.h.
-#define MATERIAL_SPV_ARRAYS( X ) \
-    X( g_materialTexVertSpv ) \
-    X( g_materialTexClipVertSpv ) \
-    X( g_worldMeshVertSpv ) \
-    X( g_worldMeshClipVertSpv ) \
-    X( g_worldPbrVertSpv ) \
-    X( g_worldPbrClipVertSpv ) \
-    X( g_worldPbrFragSpv ) \
-    X( g_worldPbrClipFragSpv ) \
-    X( g_worldPbrIndirectFragSpv ) \
-    X( g_worldPbrLightFragSpv ) \
-    X( g_worldPbrLightClipFragSpv ) \
-    X( g_worldPbrRuntimeFragSpv ) \
-    X( g_worldPbrRuntimeClipFragSpv ) \
-    X( g_worldPbrLightRuntimeFragSpv ) \
-    X( g_worldPbrLightRuntimeClipFragSpv ) \
-    X( g_worldPbrIndirectClipFragSpv ) \
-    X( g_worldPbrDeltaFragSpv ) \
-    X( g_worldPbrDeltaClipFragSpv ) \
-    X( g_worldPbrLightDeltaFragSpv ) \
-    X( g_worldPbrLightDeltaClipFragSpv ) \
-    X( g_worldPbrIndirectDeltaFragSpv ) \
-    X( g_worldPbrIndirectDeltaClipFragSpv ) \
-    X( g_computeFillSpv ) \
-    X( g_sdfProbeTraceSpv ) \
-    X( g_reflectionProbesCheckSpv ) \
-    X( g_rayQueryProbeTraceSpv ) \
-    X( g_worldGlassFragSpv ) \
-    X( g_worldGlassClipFragSpv ) \
-    X( g_materialTexFragSpv ) \
-    X( g_portalRefractVertSpv ) \
-    X( g_portalRefractFragSpv ) \
-    X( g_skinVertSpv ) \
-    X( g_skinFragSpv ) \
-    X( g_lightmappedVertSpv ) \
-    X( g_lightmappedFragSpv ) \
-    X( g_postVertSpv ) \
-    X( g_postFragSpv ) \
-    X( g_solidEnergyVertSpv ) \
-    X( g_solidEnergyFragSpv ) \
-    X( g_paintBlobFragSpv ) \
-    X( g_modelPbrFragSpv ) \
-    X( g_modelPbrEnvFragSpv ) \
-    X( g_modelPbrIndirectFragSpv ) \
-    X( g_modelPbrProbeFragSpv ) \
-    X( g_modelPbrEnvProbeFragSpv ) \
-    X( g_modelPbrIndirectProbeFragSpv ) \
-    X( g_pbrDirectFragSpv ) \
-    X( g_pbrDirectClipFragSpv ) \
-    X( g_pbrBrdfCheckSpv ) \
-    X( g_presentGammaVertSpv ) \
-    X( g_presentGammaFragSpv ) \
-
+#define MATERIAL_SPV_ARRAYS( X )                                                                   \
+	X( g_materialTexVertSpv )                                                                      \
+	X( g_materialTexClipVertSpv )                                                                  \
+	X( g_worldMeshVertSpv )                                                                        \
+	X( g_worldMeshClipVertSpv )                                                                    \
+	X( g_worldPbrVertSpv )                                                                         \
+	X( g_worldPbrClipVertSpv )                                                                     \
+	X( g_worldPbrFragSpv )                                                                         \
+	X( g_worldPbrClipFragSpv )                                                                     \
+	X( g_worldPbrIndirectFragSpv )                                                                 \
+	X( g_worldPbrLightFragSpv )                                                                    \
+	X( g_worldPbrLightClipFragSpv )                                                                \
+	X( g_worldPbrRuntimeFragSpv )                                                                  \
+	X( g_worldPbrRuntimeClipFragSpv )                                                              \
+	X( g_worldPbrLightRuntimeFragSpv )                                                             \
+	X( g_worldPbrLightRuntimeClipFragSpv )                                                         \
+	X( g_worldPbrIndirectClipFragSpv )                                                             \
+	X( g_worldPbrDeltaFragSpv )                                                                    \
+	X( g_worldPbrDeltaClipFragSpv )                                                                \
+	X( g_worldPbrLightDeltaFragSpv )                                                               \
+	X( g_worldPbrLightDeltaClipFragSpv )                                                           \
+	X( g_worldPbrIndirectDeltaFragSpv )                                                            \
+	X( g_worldPbrIndirectDeltaClipFragSpv )                                                        \
+	X( g_computeFillSpv )                                                                          \
+	X( g_sdfProbeTraceSpv )                                                                        \
+	X( g_reflectionProbesCheckSpv )                                                                \
+	X( g_rayQueryProbeTraceSpv )                                                                   \
+	X( g_worldGlassFragSpv )                                                                       \
+	X( g_worldGlassClipFragSpv )                                                                   \
+	X( g_materialTexFragSpv )                                                                      \
+	X( g_portalRefractVertSpv )                                                                    \
+	X( g_portalRefractFragSpv )                                                                    \
+	X( g_skinVertSpv )                                                                             \
+	X( g_skinFragSpv )                                                                             \
+	X( g_lightmappedVertSpv )                                                                      \
+	X( g_lightmappedFragSpv )                                                                      \
+	X( g_postVertSpv )                                                                             \
+	X( g_postFragSpv )                                                                             \
+	X( g_solidEnergyVertSpv )                                                                      \
+	X( g_solidEnergyFragSpv )                                                                      \
+	X( g_paintBlobFragSpv )                                                                        \
+	X( g_modelPbrFragSpv )                                                                         \
+	X( g_modelPbrEnvFragSpv )                                                                      \
+	X( g_modelPbrIndirectFragSpv )                                                                 \
+	X( g_modelPbrProbeFragSpv )                                                                    \
+	X( g_modelPbrEnvProbeFragSpv )                                                                 \
+	X( g_modelPbrIndirectProbeFragSpv )                                                            \
+	X( g_pbrDirectFragSpv )                                                                        \
+	X( g_pbrDirectClipFragSpv )                                                                    \
+	X( g_pbrBrdfCheckSpv )                                                                         \
+	X( g_presentGammaVertSpv )                                                                     \
+	X( g_presentGammaFragSpv )
 
 #endif // SHADERAPIVULKAN_MATERIAL_SPV_INDEX_H

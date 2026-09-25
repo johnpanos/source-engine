@@ -6,10 +6,13 @@ Capture (a private runtime under `renderdoccmd`, offscreen, never a window):
     rdc.py capture --out DIR --map gi_door --content-root MAPBUILD/content \
         --console-command "ent_fire Door Enable"
 
-forwards to `tools/quality/portal_boot.py --renderdoc --headless`, which
-captures the frame after the final screenshot command; `gi_runtime.py capture
+forwards to `tools/quality/portal_boot.py --renderdoc --headless
+--shader-debug`, which captures the frame after the final screenshot command
+with the backend's debug shader variants (GLSL names, source-level debugging;
+`--release-shaders` keeps the embedded ones); `gi_runtime.py capture
 --renderdoc` does the same for a GI fixture camera. The .rdc paths are printed
-and recorded in the boot's evidence.json.
+and recorded in the boot's evidence.json. Under RenderDoc the backend names its
+objects and labels its passes (README.md).
 
 Inspect (qrenderdoc's embedded Python, replayed offscreen; rdc_replay.py):
 
@@ -217,8 +220,10 @@ def capture(forwarded):
     """portal_boot.py --renderdoc --headless with the caller's arguments."""
     if not shutil.which("renderdoccmd"):
         raise RdcError("renderdoccmd is not installed")
+    release = "--release-shaders" in forwarded
+    forwarded = [arg for arg in forwarded if arg != "--release-shaders"]
     boot = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"), "--renderdoc",
-            "--headless"] + forwarded
+            "--headless"] + ([] if release else ["--shader-debug"]) + forwarded
     if "--renderer" not in forwarded:
         boot += ["--renderer", "native-vulkan"]
     if "--runtime" not in forwarded:

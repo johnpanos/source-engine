@@ -2104,11 +2104,12 @@ int CStudioRender::R_StudioDrawGroupHWSkin( IMatRenderContext *pRenderContext, s
 	PROFILE_STUDIO("HwSkin");
 	int numTrianglesRendered = 0;
 
-#if PIX_ENABLE
-	char szPIXEventName[128];
-	sprintf( szPIXEventName, "R_StudioDrawGroupHWSkin (%s)", m_pStudioHdr->name );	// PIX
-	PIXEVENT( pRenderContext, szPIXEventName );
-#endif
+	// A per-model PIX event, named only when it will be gathered.
+	char szPIXEventName[128] = "";
+	if ( PIXEventLevel() >= PIX_EVENTS_OBJECT )
+		V_snprintf( szPIXEventName, sizeof( szPIXEventName ), "R_StudioDrawGroupHWSkin (%s)",
+		    m_pStudioHdr->name );
+	PIXEvent pixModelEvent( pRenderContext, szPIXEventName, PIX_VALVE_ORANGE, PIX_EVENTS_OBJECT );
 
 	if ( m_pStudioHdr->numbones == 1 )
 	{
@@ -2303,7 +2304,8 @@ int CStudioRender::R_StudioDrawStaticMesh( IMatRenderContext *pRenderContext, ms
 	bool bUseSOFlex = g_pMaterialSystemHardwareConfig->SupportsStreamOffset() && !bUseHWFlex;
 	if ( (pGroup->m_Flags & MESHGROUP_IS_DELTA_FLEXED) && m_pRC->m_Config.bFlex )
 	{
-		PIXEVENT( pRenderContext, "Delta Flex Processing" );
+		PIXEvent pixEvent(
+		    pRenderContext, "Delta Flex Processing", PIX_VALVE_ORANGE, PIX_EVENTS_OBJECT );
 		if ( bUseHWFlex )
 		{
 			pRenderContext->BindMorph( pGroup->m_pMorph );

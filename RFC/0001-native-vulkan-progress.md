@@ -1963,3 +1963,90 @@ Open:
 - DXVK comparison captures are deferred by direction.
 - No in-game frame isolates a projected model shadow yet. The oracle covers the
   shader, not ShadowBuild's atlas placement.
+
+## Capture-tool support: object names, labels, debug shaders (2026-09-25)
+
+User goal: make RenderDoc captures of the native backend readable. Before this
+change, captures showed `2D Image 1402` and `res472`, and pixel debugging
+showed only registers.
+
+- `vulkan_debug_utils.{h,cpp}` is the one owner of the `VK_EXT_debug_utils`
+  entry points and of the policy (`DebugLabelsWanted`) that decides when names
+  and labels are emitted:
+  - by default, under validation or a tool reporting debug markers through
+    `VK_EXT_tooling_info` (RenderDoc does);
+  - always with `-vkdebuglabels`, never with `-novkdebuglabels`.
+
+  Named objects:
+  - images and views, framebuffers and descriptor sets of managed textures
+    (Source's texture names, and `RPRB reflection probes`, `PRBV probe atlas`,
+    `LMAP total`, `SDFV shadow field` and the rest);
+  - back buffers, the MSAA targets and swapchain images;
+  - shader modules, and pipelines by their shaders.
+
+  Labels:
+  - a marker at each render pass naming its target;
+  - regions for compute work, uploads, copies, the MSAA resolve, scene
+    capture and present;
+  - compute dispatches, by program;
+  - `IShaderAPI` PIX events, kept in record order through a side list that
+    replays with the draw records.
+
+  A frame's open regions close at the end of its command buffer.
+- `vulkan_shader_library.{h,cpp}` is the one path from embedded SPIR-V to a
+  module:
+  - `material_spv_index.h`, generated with `material_spv.h`, names each
+    array by its FNV-1a hash;
+  - `regen_material_spv.py --debug-out DIR` writes the same GLSL with
+    NonSemantic source debug information (`glslangValidator -gVS`), keyed by
+    the embedded hash;
+  - `SOURCE_VK_SHADER_DIR=DIR` substitutes those variants. Stale, malformed
+    or unsupported files are reported and not used, and
+    `VK_KHR_shader_non_semantic_info` is enabled when present.
+- Tooling: `portal_boot.py --shader-debug`, `rdc.py capture` and
+  `gi_runtime.py capture --renderdoc` capture with the debug shaders by
+  default. See `tools/renderdoc/README.md`.
+
+Evidence at `e6ee16ba` plus the working tree, on RADV Strix Halo:
+
+- `render.vulkan-debug-tools` (new, device-free, 196 checks) passes with gcc,
+  clang and release builds:
+  - index/array hash agreement and the shader library's rejections;
+  - the policy table;
+  - balanced labels over 200 seeded sequences, with controls.
+- All 15 `linux-native-vulkan-gpu` suites pass.
+  - The 9 context suites that enable validation ran with names and labels on
+    (`debug names and labels on (validation)`), and none logged a validation
+    message.
+  - Of those, `indirect-switching` (both variants) and `pbr-direct` assert a
+    zero validation error count.
+- A headless gi_door RenderDoc capture logged `debug names and labels on
+  (RenderDoc)` and `debug shaders: 51`. In the capture:
+  - bindings read as GLSL names (`reflectionProbes`, `probeAtlas`);
+  - `debug-pixel` on the sphere reports `environment`, `flags` and the other
+    GLSL variables over 4,534 steps;
+  - the debug variant's output (0.0226612) equals the release shader's.
+
+Engine PIX events are gathered at run time (user direction, same day):
+- `PIXEVENT` sites are compiled in everywhere and gated by `PIXEventLevel()`,
+  which reads `mat_pix_events` through a cached `ConVarRef`.
+- The native backend registers the cvar with default `-1`, which resolves when
+  the device starts: 1 while labels are on, else 0.
+- Level 2 adds the per-object events (studio mesh groups, brush models, flex,
+  eyeball glints); their names are formatted only when gathered.
+- A `PIX_ENABLE` build gathers every event, and keeps its window-title marker.
+  Builds without the cvar (D3D9/DXVK, dedicated) gather none.
+
+Evidence:
+- A plain boot resolves the cvar to 0; under RenderDoc it resolves to 1.
+- The gi_door capture shows the world draws under `CSimpleWorldView::Draw`,
+  then `DrawViewModels` and `DoEnginePostProcessing`. At level 2, the sphere's
+  `R_StudioDrawGroupHWSkin (gi_door/probeb.mdl)` is nested inside the world
+  view.
+- A boot with `-vkvalidate -vkdebuglabels` and level 2 logs no validation
+  messages.
+- All 157 headless conformance suites pass: 155 matched, 2 optional skipped.
+
+Not done: no frame-time measurement of levels 1 and 2. The D3D9/DXVK tree was
+not rebuilt with the header change. No Android, Apple or combined validation
+and RenderDoc runs.

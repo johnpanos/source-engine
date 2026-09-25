@@ -34,7 +34,9 @@ bool ParseDebugFileName( const std::string &file, uint64_t *outHash )
 	for ( size_t i = suffix - 16; i < suffix; ++i )
 	{
 		const char c = file[i];
-		const int digit = ( c >= '0' && c <= '9' ) ? c - '0' : ( c >= 'a' && c <= 'f' ) ? c - 'a' + 10 : -1;
+		const int digit = ( c >= '0' && c <= '9' )   ? c - '0'
+		                  : ( c >= 'a' && c <= 'f' ) ? c - 'a' + 10
+		                                             : -1;
 		if ( digit < 0 )
 			return false;
 		hash = ( hash << 4 ) | uint64_t( digit );
@@ -87,7 +89,8 @@ bool SpirvUsesNonSemanticInfo( const uint32_t *code, size_t words )
 bool VulkanShaderLibrary::AddDebugVariant( uint64_t hash, std::vector<uint32_t> code,
     bool nonSemanticInfoSupported, std::string *outReason )
 {
-	const auto reject = [&]( const char *reason ) {
+	const auto reject = [&]( const char *reason )
+	{
 		if ( outReason )
 			*outReason = reason;
 		return false;

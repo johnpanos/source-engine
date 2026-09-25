@@ -77,12 +77,12 @@ void CheckIndex()
 #undef CHECK_ARRAY
 	Check( arrays == sizeof( g_materialSpvIndex ) / sizeof( g_materialSpvIndex[0] ),
 	    "the index lists every embedded array once" );
-	Check( std::strcmp( EmbeddedShaderName( SpirvHash( g_modelPbrFragSpv,
-	                        sizeof( g_modelPbrFragSpv ) ) ),
+	Check( std::strcmp(
+	           EmbeddedShaderName( SpirvHash( g_modelPbrFragSpv, sizeof( g_modelPbrFragSpv ) ) ),
 	           "model_pbr.frag" ) == 0,
 	    "g_modelPbrFragSpv is named by its source" );
-	std::vector<uint32_t> changed( g_modelPbrFragSpv,
-	    g_modelPbrFragSpv + sizeof( g_modelPbrFragSpv ) / sizeof( uint32_t ) );
+	std::vector<uint32_t> changed(
+	    g_modelPbrFragSpv, g_modelPbrFragSpv + sizeof( g_modelPbrFragSpv ) / sizeof( uint32_t ) );
 	changed.back() ^= 1u;
 	Check( EmbeddedShaderName( SpirvHash( changed.data(), changed.size() * 4 ) ) == nullptr,
 	    "control: one changed bit leaves code unnamed" );
@@ -106,7 +106,7 @@ std::vector<uint32_t> ModuleImporting( const char *set )
 	const size_t chars = std::strlen( set ) + 1;
 	const uint32_t words = uint32_t( ( chars + 3 ) / 4 );
 	code.push_back( ( ( 2 + words ) << 16 ) | 11u ); // OpExtInstImport
-	code.push_back( 1u );                             // result id
+	code.push_back( 1u );                            // result id
 	std::vector<uint32_t> literal( words, 0u );
 	std::memcpy( literal.data(), set, chars );
 	code.insert( code.end(), literal.begin(), literal.end() );
@@ -122,14 +122,15 @@ void CheckLibrary()
 	VulkanShaderLibrary empty;
 	const ShaderModuleCode plain = empty.Resolve( g_modelPbrFragSpv, sizeof( g_modelPbrFragSpv ) );
 	Check( plain.code == g_modelPbrFragSpv && plain.sizeBytes == sizeof( g_modelPbrFragSpv ) &&
-	           !plain.debugVariant && plain.name && std::strcmp( plain.name, "model_pbr.frag" ) == 0,
+	           !plain.debugVariant && plain.name &&
+	           std::strcmp( plain.name, "model_pbr.frag" ) == 0,
 	    "without variants the embedded code resolves to itself, named" );
 
 	VulkanShaderLibrary library;
 	// The variant here is the world shader's code: Resolve must return what
 	// was loaded for the hash, not the embedded words.
-	Check( library.AddDebugVariant( pbr, Copy( g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) ),
-	           false, &reason ),
+	Check( library.AddDebugVariant(
+	           pbr, Copy( g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) ), false, &reason ),
 	    "a well-formed variant for a known hash is taken" );
 	const ShaderModuleCode resolved =
 	    library.Resolve( g_modelPbrFragSpv, sizeof( g_modelPbrFragSpv ) );
@@ -147,8 +148,7 @@ void CheckLibrary()
 	    "a variant for an unknown (stale) hash is rejected" );
 	std::vector<uint32_t> notSpirv = Copy( g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) );
 	notSpirv[0] = 0xdeadbeefu;
-	Check( !library.AddDebugVariant( world, notSpirv, false, &reason ) &&
-	           reason == "not SPIR-V",
+	Check( !library.AddDebugVariant( world, notSpirv, false, &reason ) && reason == "not SPIR-V",
 	    "a variant without the SPIR-V magic is rejected" );
 	Check( !library.AddDebugVariant( world, { 0x07230203u, 0u }, false, &reason ),
 	    "a truncated variant is rejected" );
@@ -156,8 +156,8 @@ void CheckLibrary()
 	const std::vector<uint32_t> nonSemantic = ModuleImporting( "NonSemantic.Shader.DebugInfo.100" );
 	Check( SpirvUsesNonSemanticInfo( nonSemantic.data(), nonSemantic.size() ),
 	    "a NonSemantic import is found" );
-	Check( !SpirvUsesNonSemanticInfo( ModuleImporting( "GLSL.std.450" ).data(),
-	           ModuleImporting( "GLSL.std.450" ).size() ),
+	Check( !SpirvUsesNonSemanticInfo(
+	           ModuleImporting( "GLSL.std.450" ).data(), ModuleImporting( "GLSL.std.450" ).size() ),
 	    "GLSL.std.450 is not NonSemantic" );
 	Check( !library.AddDebugVariant( world, nonSemantic, false, &reason ) &&
 	           reason.find( "VK_KHR_shader_non_semantic_info" ) != std::string::npos,
@@ -195,7 +195,8 @@ void CheckLibrary()
 	const VulkanShaderLibrary::LoadReport report =
 	    scanned.LoadDebugDirectory( dir.string().c_str(), false );
 	Check( report.loaded == 1 && scanned.DebugVariants() == 1, "the scan loads the one good file" );
-	Check( report.rejected.size() == 3, "the scan reports the stale, partial and NonSemantic files" );
+	Check(
+	    report.rejected.size() == 3, "the scan reports the stale, partial and NonSemantic files" );
 	size_t reasons = 0;
 	for ( const std::string &line : report.rejected )
 		reasons += ( line.find( "no embedded shader" ) != std::string::npos ) +
@@ -304,7 +305,8 @@ void CheckPolicy()
 {
 	Check( !DebugLabelsWanted( DebugLabelPolicy::Auto, false, false ), "Auto: off on a plain run" );
 	Check( DebugLabelsWanted( DebugLabelPolicy::Auto, true, false ), "Auto: on under validation" );
-	Check( DebugLabelsWanted( DebugLabelPolicy::Auto, false, true ), "Auto: on for a capture tool" );
+	Check(
+	    DebugLabelsWanted( DebugLabelPolicy::Auto, false, true ), "Auto: on for a capture tool" );
 	Check( DebugLabelsWanted( DebugLabelPolicy::On, false, false ), "On: on without tools" );
 	Check( !DebugLabelsWanted( DebugLabelPolicy::Off, true, true ), "Off: off even under tools" );
 }
@@ -328,10 +330,10 @@ void CheckLabels()
 	debug.NameF( VK_OBJECT_TYPE_PIPELINE, uint64_t( 0x99 ), "%s / %s", "skin.vert", "skin.frag" );
 	debug.Name( VK_OBJECT_TYPE_IMAGE, uint64_t( 0 ), "null handle" );
 	Check( g_calls.size() == 2 && g_calls[0].target == 0x1234 &&
-	           g_calls[0].text == std::to_string( int( VK_OBJECT_TYPE_IMAGE ) ) +
-	                                  ":RPRB reflection probes" &&
-	           g_calls[1].text == std::to_string( int( VK_OBJECT_TYPE_PIPELINE ) ) +
-	                                  ":skin.vert / skin.frag",
+	           g_calls[0].text ==
+	               std::to_string( int( VK_OBJECT_TYPE_IMAGE ) ) + ":RPRB reflection probes" &&
+	           g_calls[1].text ==
+	               std::to_string( int( VK_OBJECT_TYPE_PIPELINE ) ) + ":skin.vert / skin.frag",
 	    "names reach the device with type and handle; a null handle is skipped" );
 
 	g_calls.clear();

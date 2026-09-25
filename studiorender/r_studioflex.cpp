@@ -765,7 +765,8 @@ void CStudioRender::R_StudioEyeballGlint( const eyeballstate_t *pstate, IMateria
 {
 	// Kick off a PIX event, since this process encompasses a bunch of locks etc...
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-	PIXEVENT( pRenderContext, "GenerateEyeballGlint" );
+	PIXEvent pixEvent(
+	    pRenderContext, "GenerateEyeballGlint", PIX_VALVE_ORANGE, PIX_EVENTS_OBJECT );
 
 	// Don't do a procedural glint texture if there are enough pixels covered by the eyeball onscreen,
 	// and the eye isn't backfaced.

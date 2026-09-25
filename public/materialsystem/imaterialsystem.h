@@ -31,6 +31,7 @@
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "materialsystem/IColorCorrection.h"
 #include "tier1/memhelpers.h"
+#include "tier1/convar.h"
 
 //-----------------------------------------------------------------------------
 // forward declarations
@@ -1732,33 +1733,52 @@ private:
 //-----------------------------------------------------------------------------
 #define PIX_VALVE_ORANGE	0xFFF5940F
 
+// Also be sure to enable PIX_INSTRUMENTATION in shaderdevicedx8.h
+//#define PIX_ENABLE 1		// set this to 1 and build engine/studiorender to enable pix events in the engine
+
+// The PIX events gathered: PIX_ENABLE builds gather every event. Otherwise
+// mat_pix_events decides at run time, when a shader API that consumes the
+// events registers it (the native Vulkan backend: capture-tool labels): 0
+// none, 1 the view events, 2 also per-model events. 0 when none registers it.
+enum PIXEventLevel_t
+{
+	PIX_EVENTS_VIEW = 1,   // views, shadows, post-processing: a few per view
+	PIX_EVENTS_OBJECT = 2, // per model, brush model or flex: many per view
+};
+
+inline int PIXEventLevel()
+{
+#if PIX_ENABLE
+	return PIX_EVENTS_OBJECT;
+#else
+	static ConVarRef s_level( "mat_pix_events", true );
+	return s_level.IsValid() ? s_level.GetInt() : 0;
+#endif
+}
+
 class PIXEvent
 {
 public:
-	PIXEvent( IMatRenderContext *pRenderContext, const char *szName, unsigned long color = PIX_VALVE_ORANGE )
+	PIXEvent( IMatRenderContext *pRenderContext, const char *szName,
+	    unsigned long color = PIX_VALVE_ORANGE, int level = PIX_EVENTS_VIEW )
 	{
-		m_pRenderContext = pRenderContext;
-		Assert( m_pRenderContext );
-		Assert( szName );
-		m_pRenderContext->BeginPIXEvent( color, szName );
+		m_pRenderContext = PIXEventLevel() >= level ? pRenderContext : NULL;
+		if ( m_pRenderContext )
+		{
+			Assert( szName );
+			m_pRenderContext->BeginPIXEvent( color, szName );
+		}
 	}
 	~PIXEvent()
 	{
-		m_pRenderContext->EndPIXEvent();
+		if ( m_pRenderContext )
+			m_pRenderContext->EndPIXEvent();
 	}
 private:
 	IMatRenderContext *m_pRenderContext;
 };
 
-
-// Also be sure to enable PIX_INSTRUMENTATION in shaderdevicedx8.h
-//#define PIX_ENABLE 1		// set this to 1 and build engine/studiorender to enable pix events in the engine
-
-#if PIX_ENABLE
-#	define PIXEVENT PIXEvent _pixEvent
-#else
-#	define PIXEVENT 
-#endif
+#define PIXEVENT PIXEvent _pixEvent
 
 //-----------------------------------------------------------------------------
 

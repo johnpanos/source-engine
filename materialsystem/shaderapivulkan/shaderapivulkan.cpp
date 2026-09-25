@@ -118,6 +118,14 @@ static const render_vulkan::VulkanAdapterCaps &CurrentAdapterCaps()
 	return s_Probe;
 }
 
+// PIXEventLevel (public/materialsystem/imaterialsystem.h): which of the
+// engine's PIX events are gathered, as capture-tool labels here. -1 resolves
+// when the device starts: 1 while names and labels are on (under RenderDoc or
+// validation, or -vkdebuglabels), else 0, so a plain run gathers none.
+static ConVar mat_pix_events( "mat_pix_events", "-1", 0,
+    "Engine PIX events gathered as capture labels: -1 auto (1 while labels are on), 0 none, "
+    "1 view events, 2 also per-object events" );
+
 // Brings the context up against the engine's window. The window reference is
 // handed to the pair-specific bridge untouched; nothing here interprets it.
 static bool InitVulkanContext(
@@ -129,17 +137,21 @@ static bool InitVulkanContext(
 		return false;
 	// Capture-tool support (tools/renderdoc/README.md): object names and command
 	// labels (-vkdebuglabels, -novkdebuglabels; by default on under validation
-	// or a capture tool) and debug shader variants (-vkshaderdir DIR, written by
-	// shaders/regen_material_spv.py --debug-out).
+	// or a capture tool) and debug shader variants (the directory
+	// shaders/regen_material_spv.py --debug-out wrote, in SOURCE_VK_SHADER_DIR:
+	// an environment variable, since the launcher's command line is limited to
+	// 512 characters and harness boots already come close).
 	render_vulkan::VulkanContextConfig withTools = config;
 	if ( CommandLine()->FindParm( "-vkdebuglabels" ) )
 		withTools.debugLabels = render_vulkan::DebugLabelPolicy::On;
 	else if ( CommandLine()->FindParm( "-novkdebuglabels" ) )
 		withTools.debugLabels = render_vulkan::DebugLabelPolicy::Off;
-	if ( const char *shaderDir = CommandLine()->ParmValue( "-vkshaderdir", (const char *)NULL ) )
+	if ( const char *shaderDir = getenv( "SOURCE_VK_SHADER_DIR" ) )
 		withTools.shaderDebugDirectory = shaderDir;
 	if ( !g_VulkanContext.Init( *host, withTools, outError ) )
 		return false;
+	if ( mat_pix_events.GetInt() < 0 )
+		mat_pix_events.SetValue( g_VulkanContext.DebugUtils().Active() ? 1 : 0 );
 	g_VulkanSurfaceHost = std::move( host );
 	// Frame-pacing telemetry (tools/quality/frame_pacing.py): one line per
 	// presented frame. Optional, so a sink that cannot be created only warns.

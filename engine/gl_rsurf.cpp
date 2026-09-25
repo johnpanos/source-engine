@@ -4550,7 +4550,7 @@ public:
 	{
 		CMatRenderContextPtr pRenderContext( materials );
 
-		PIXEVENT( pRenderContext, "DrawTransLists" );
+		PIXEvent pixEvent( pRenderContext, "DrawTransLists", PIX_VALVE_ORANGE, PIX_EVENTS_OBJECT );
 
 		bool skipLight = false;
 		if ( g_pMaterialSystemConfig->nFullbright == 1 )
@@ -4864,7 +4864,8 @@ void CBrushBatchRender::DrawOpaqueBrushModel( IClientEntity *baseentity, model_t
 	bool skipLight = false;
 	CMatRenderContextPtr pRenderContext( materials );
 
-	PIXEVENT( pRenderContext, "DrawOpaqueBrushModel" );
+	PIXEvent pixEvent(
+	    pRenderContext, "DrawOpaqueBrushModel", PIX_VALVE_ORANGE, PIX_EVENTS_OBJECT );
 
 	if ( (g_pMaterialSystemConfig->nFullbright == 1) || DepthMode == DEPTH_MODE_SHADOW )
 	{

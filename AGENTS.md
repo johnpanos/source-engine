@@ -25,6 +25,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0011](RFC/0011-runtime-indirect-lighting.md) | Runtime indirect light: probe volume with visibility, indirect policy, runtime light set, substitutable baked/radiosity/SDF/ray-query producers switchable at runtime (proposed) |
 | [0012](RFC/0012-antialiasing-msaa-specular-alpha-coverage.md) | Antialiasing: per-profile 4x MSAA target policy, alpha to coverage, PBR specular AA, offline normal-variance roughness and alpha-coverage mips (proposed) |
 | [0013](RFC/0013-opt-in-physics-capabilities.md) | Opt-in Box3D capabilities beside the IVP-parity contract: one versioned interface per capability, profile selection, per-capability benchmark gates; parallel step first (proposed) |
+| [0014](RFC/0014-native-vulkan-and-bsp2-debug-controls.md) | Native Vulkan and BSP2 debug controls: one device-owned view catalog in separate `DEBUG_VIEW` variants, draw pick/bisection, shader reload/capture, sync/reuse checks, BSP2 lump inspection (proposed) |
 
 RFC status and implementation status are separate. A proposed interface, tool,
 directory, or command is not installed infrastructure. Read the relevant RFC
@@ -777,6 +778,42 @@ Keep the table concise and link details below or from the domain progress file.
     - Open: an executor that overlaps across several host nodes, audited
       declarations for legacy blocks, TickServer split, a semantic live
       oracle for the client region, mobile budgets, full-product TSan.
+
+- R32-DEBUG-CONTROLS: `planned` (2026-09-25, user direction). These are the
+  `cl_vk_debug_*` and `cl_bsp2_*` controls of
+  [RFC 0014](RFC/0014-native-vulkan-and-bsp2-debug-controls.md), in phases
+  D0–D7. Each control ships with an oracle and a negative control. With all
+  controls at default, shipped shader modules and pixels must be unchanged.
+  `mat_indirect_view` and `VK_DEBUG_LIGHTMAPPED` move into the new owner and
+  are deleted once their callers have moved. D6–D7 also support R53/R54/R56.
+  Nothing is implemented yet, and this closes no other row's criterion.
+
+- R32-RENDER-BUDGETS: `planned` (2026-09-25, user direction). This sets
+  per-profile render budgets, which close the `presentation.frame-budgets`
+  entry in [`quality/baseline.json`](quality/baseline.json). It is currently
+  `missing`, and R32 owns it.
+  - Method: RFC 0005's "Performance and promotion". Set absolute budgets
+    and regression allowances per profile before measuring or optimizing.
+  - Profiles: `portal-linux-wayland-native-vulkan` and
+    `portal-android-native-vulkan` (Fold7) first. Apple rows stay
+    unverified until R29.
+  - Rows: profile × workload, starting with
+    `quality/workloads/portal-frame-pacing-v1.json`. Each row covers frame
+    time p50/p95/p99, GPU time, GPU memory and render-pass count. A small
+    workload is included.
+  - Record: `quality/budgets/render-v1.json`, checked by a budget script
+    listed in `baseline.json`, like `gi.budgets`. Measurements come from
+    `tools/quality/frame_pacing.py`.
+  - Feature budgets stay with their owners: `indirect-light-v1.json`
+    (RFC 0011), RFC 0012 A0 (MSAA) and RFC 0008 F10. The render file links
+    to them and doesn't copy their numbers.
+  - Per-pass GPU rows wait for `cl_vk_debug_gpu_timers` (R32-DEBUG-CONTROLS
+    D4). The frame-level rows don't.
+  - Done: both first profiles have recorded budgets and a passing check;
+    the baseline entry is `recorded`; and an RFC 0001 progress record holds
+    the measurement method and the reproduction commands.
+  - How to split the frame's GPU time across features is out of scope. It
+    needs its own decision.
 
 - R32-QUEUED: `partial` (2026-09-25, user goal). Native Vulkan runs the queued
   material system (`mat_queue_mode 2`): the main thread builds the next frame

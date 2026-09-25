@@ -222,16 +222,32 @@ def embedded_arrays(path=OUTPUT):
     return arrays
 
 
+# .clang-format's column limit; the index is written in the layout it keeps.
+COLUMNS = 100
+
+
+def macro_line(text):
+    """`text` with its continuation backslash at the last column (tabs are 4)."""
+    width = len(text.expandtabs(4))
+    return text + " " * (COLUMNS - 1 - width) + "\\\n"
+
+
 def index_text(arrays):
     parts = [INDEX_HEADER, "static const MaterialSpvIndexEntry g_materialSpvIndex[] = {\n"]
     for name, source, extra in SHADERS:
-        parts.append("    { 0x%016xull, \"%s\", \"%s\" },\n" % (
-            spirv_hash(arrays[name]), name, describe(source, extra)))
+        head = "    { 0x%016xull, \"%s\"," % (spirv_hash(arrays[name]), name)
+        tail = "\"%s\" }," % describe(source, extra)
+        if len(head) + 1 + len(tail) <= COLUMNS:
+            parts.append(head + " " + tail + "\n")
+        else:
+            parts.append(head + "\n        " + tail + "\n")
     parts.append("};\n\n")
     parts.append("// X( array ) for every array, for suites that include material_spv.h.\n")
-    parts.append("#define MATERIAL_SPV_ARRAYS( X ) \\\n")
-    parts.extend("    X( %s ) \\\n" % name for name, _, _ in SHADERS)
-    parts.append("\n\n#endif // SHADERAPIVULKAN_MATERIAL_SPV_INDEX_H\n")
+    parts.append(macro_line("#define MATERIAL_SPV_ARRAYS( X )"))
+    names = [name for name, _, _ in SHADERS]
+    parts.extend(macro_line("\tX( %s )" % name) for name in names[:-1])
+    parts.append("\tX( %s )\n" % names[-1])
+    parts.append("\n#endif // SHADERAPIVULKAN_MATERIAL_SPV_INDEX_H\n")
     return "".join(parts)
 
 

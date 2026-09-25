@@ -186,7 +186,7 @@ def capture(args):
              "--height", str(CAPTURE_HEIGHT),
              "--capture-wait", str(getattr(args, "capture_wait", None) or CAPTURE_WAIT),
              "--console-command", line, "--out", boot] +
-            (["--renderdoc"] if getattr(args, "renderdoc", False) else []),
+            (["--renderdoc", "--shader-debug"] if getattr(args, "renderdoc", False) else []),
             cwd=ROOT, capture_output=True, text=True)
         evidence = json.loads((boot / "evidence.json").read_text()) \
             if (boot / "evidence.json").is_file() else {}
@@ -478,8 +478,9 @@ def main():
     capture_options(c)
     c.add_argument("--view", type=int, default=1, choices=(0, 1, 2, 3))
     c.add_argument("--renderdoc", action="store_true",
-                   help="also capture the scored frame with RenderDoc (portal_boot.py "
-                        "--renderdoc; inspect with tools/renderdoc/rdc.py)")
+                   help="also capture the scored frame with RenderDoc, with the debug "
+                        "shader variants (portal_boot.py --renderdoc --shader-debug; inspect "
+                        "with tools/renderdoc/rdc.py)")
     c.add_argument("--capture-wait", type=int,
                    help="frames from the start of the console line to the scored screenshot "
                         "(default %d; the camera placement uses %d of them)" % (

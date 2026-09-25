@@ -1296,8 +1296,10 @@ bool CViewRender::UpdateShadowDepthTexture( ITexture *pRenderTarget, ITexture *p
 
 	CMatRenderContextPtr pRenderContext( materials );
 
-	char szPIXEventName[128];
-	sprintf( szPIXEventName, "UpdateShadowDepthTexture (%s)", pDepthTexture->GetName() );
+	char szPIXEventName[128] = "";
+	if ( PIXEventLevel() >= PIX_EVENTS_VIEW )
+		V_snprintf( szPIXEventName, sizeof( szPIXEventName ), "UpdateShadowDepthTexture (%s)",
+		    pDepthTexture->GetName() );
 	PIXEVENT( pRenderContext, szPIXEventName );
 
 	CRefPtr<CShadowDepthView> pShadowDepthView = new CShadowDepthView( this );

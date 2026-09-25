@@ -22,6 +22,8 @@ import render_trace
 import product_profile
 
 
+SHADER_REGEN = (Path(__file__).resolve().parents[2] /
+                "materialsystem/shaderapivulkan/shaders/regen_material_spv.py")
 IMMUTABLE_ASSETS = {
     ".vpk", ".bsp", ".vtf", ".vmt", ".mdl", ".vvd", ".vtx", ".phy",
     ".wav", ".mp3", ".ogg", ".webm", ".bik",
@@ -616,6 +618,11 @@ def main(argv=None):
                         help="run under RenderDoc (renderdoccmd) and capture the frame after "
                              "the final screenshot command into renderdoc/*.rdc "
                              "(tools/renderdoc/rdc.py inspects it)")
+    parser.add_argument("--shader-debug", action="store_true",
+                        help="run the native backend's debug shader variants: GLSL names and "
+                             "source-level debug information for capture tools "
+                             "(regen_material_spv.py --debug-out into shader-debug/, "
+                             "SOURCE_VK_SHADER_DIR)")
     parser.add_argument("--resize-stress", action="store_true",
                         help="resize the actual native game window through a versioned workload")
     parser.add_argument("--resize-mode", choices=("queued", "sync"), default="queued",
@@ -723,6 +730,17 @@ def main(argv=None):
                    "+wait", "10", "+quit"]
         if args.renderer:
             command[1:1] = ["-renderer", args.renderer]
+        if args.shader_debug:
+            shader_dir = output / "shader-debug"
+            subprocess.run([sys.executable, str(SHADER_REGEN), "--debug-out", str(shader_dir)],
+                           check=True, capture_output=True, text=True)
+            manifest = json.loads((shader_dir / "manifest.json").read_text())
+            evidence["shader_debug"] = {
+                "directory": str(shader_dir),
+                "written": sum(entry["status"] == "written" for entry in manifest["entries"]),
+                "skipped": [entry["array"] for entry in manifest["entries"]
+                            if entry["status"] != "written"]}
+            shader_environment = str(shader_dir)
         if args.no_mouse:
             command[1:1] = ["-nomouse"]
         if args.draw_state_fixtures:
@@ -741,6 +759,8 @@ def main(argv=None):
         if args.require_provider_catalog:
             command += ["-moduleloadtelemetry"]
         environment = os.environ.copy()
+        if args.shader_debug:
+            environment["SOURCE_VK_SHADER_DIR"] = shader_environment
         environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
         environment["SteamAppId"] = "400"
         environment["SteamGameId"] = "400"

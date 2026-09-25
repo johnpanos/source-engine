@@ -214,9 +214,12 @@ bool CVulkanContext::CreateInstance( std::string *outError )
 	m_debugUtilsExtension =
 	    m_validationEnabled || ( m_config.debugLabels != DebugLabelPolicy::Off &&
 	                               InstanceHasExtension( VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) );
-	if ( m_debugUtilsExtension &&
-	     std::none_of( extensions.begin(), extensions.end(), []( const char *name )
-	         { return std::strcmp( name, VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) == 0; } ) )
+	if ( m_debugUtilsExtension && std::none_of( extensions.begin(), extensions.end(),
+	                                  []( const char *name )
+	                                  {
+		                                  return std::strcmp(
+		                                             name, VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) == 0;
+	                                  } ) )
 		extensions.push_back( VK_EXT_DEBUG_UTILS_EXTENSION_NAME );
 
 	VkApplicationInfo appInfo = {};
@@ -611,11 +614,11 @@ void CVulkanContext::SetupDebugTools( bool toolingInfo )
 {
 	bool toolWantsMarkers = false;
 	std::string tools;
-	const auto getTools = toolingInfo
-	                          ? reinterpret_cast<PFN_vkGetPhysicalDeviceToolPropertiesEXT>(
-	                                vkGetInstanceProcAddr(
-	                                    m_instance, "vkGetPhysicalDeviceToolPropertiesEXT" ) )
-	                          : nullptr;
+	const auto getTools =
+	    toolingInfo
+	        ? reinterpret_cast<PFN_vkGetPhysicalDeviceToolPropertiesEXT>(
+	              vkGetInstanceProcAddr( m_instance, "vkGetPhysicalDeviceToolPropertiesEXT" ) )
+	        : nullptr;
 	if ( getTools )
 	{
 		uint32_t count = 0;
@@ -636,10 +639,10 @@ void CVulkanContext::SetupDebugTools( bool toolingInfo )
 	if ( DebugLabelsWanted( m_config.debugLabels, m_validationEnabled, toolWantsMarkers ) )
 	{
 		if ( m_debugUtilsExtension && m_debugUtils.Load( m_instance, m_device ) )
-			Log( "debug names and labels on (%s)\n",
-			    m_config.debugLabels == DebugLabelPolicy::On ? "-vkdebuglabels"
-			    : m_validationEnabled                        ? "validation"
-			                                                 : tools.c_str() );
+			Log( "debug names and labels on (%s)\n", m_config.debugLabels == DebugLabelPolicy::On
+			                                             ? "-vkdebuglabels"
+			                                         : m_validationEnabled ? "validation"
+			                                                               : tools.c_str() );
 		else
 			Log( "debug names and labels unavailable (no VK_EXT_debug_utils)\n" );
 	}
@@ -1369,9 +1372,8 @@ static bool VertexInputLocations( const uint32_t *words, size_t count, uint64_t 
 	return true;
 }
 
-bool CVulkanContext::CreateShaderModule(
-    const uint32_t *embedded, size_t embeddedBytes, VkShaderModule *outModule,
-    std::string *outError )
+bool CVulkanContext::CreateShaderModule( const uint32_t *embedded, size_t embeddedBytes,
+    VkShaderModule *outModule, std::string *outError )
 {
 	// The embedded code, or its debug variant (vulkan_shader_library.h).
 	const ShaderModuleCode resolved = m_shaderLibrary.Resolve( embedded, embeddedBytes );
@@ -2764,6 +2766,7 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 			SetError( outError, "vkCreateImage (dynamic texture) failed" );
 			return false;
 		}
+		m_debugUtils.Name( VK_OBJECT_TYPE_IMAGE, m_dynTexImage, "built-in fallback texture" );
 		VkMemoryRequirements req = {};
 		vkGetImageMemoryRequirements( m_device, m_dynTexImage, &req );
 		bool found = false;
@@ -5447,7 +5450,9 @@ void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb
 		                              : std::string();
 		char label[160];
 		std::snprintf( label, sizeof( label ), "pass: %s%s",
-		    target < 0 ? "back buffer" : name.empty() ? "render target" : name.c_str(),
+		    target < 0     ? "back buffer"
+		    : name.empty() ? "render target"
+		                   : name.c_str(),
 		    srgb ? " (sRGB)" : "" );
 		m_debugUtils.InsertLabel( label );
 	}
@@ -5486,7 +5491,7 @@ void CVulkanContext::QueueFrameLabel( FrameLabelOp op, const char *name, uint32_
 void CVulkanContext::ReplayFrameLabels( size_t *cursor, size_t throughRecord )
 {
 	for ( ; *cursor < m_frameLabels.size() && m_frameLabels[*cursor].record <= throughRecord;
-	      ++*cursor )
+	    ++*cursor )
 	{
 		const FrameLabel &label = m_frameLabels[*cursor];
 		switch ( label.op )
@@ -5997,7 +6002,7 @@ bool CVulkanContext::SetReflectionProbes(
 	std::string detail;
 	const int handle =
 	    CreateManagedTexture( int( width ), int( height ), VK_FORMAT_R16G16B16A16_SFLOAT, &detail );
-	    NameManagedTexture( handle, "RPRB reflection probes" );
+	NameManagedTexture( handle, "RPRB reflection probes" );
 	if ( handle < 0 ||
 	     !UploadManagedTexture(
 	         handle, reinterpret_cast<const uint8_t *>( copy.data() ), copy.size() * 2, &detail ) )
@@ -6389,8 +6394,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	rp.renderArea.extent = m_swapExtent;
 	rp.clearValueCount = 2;
 	rp.pClearValues = clears;
-	m_debugUtils.InsertLabel( firstPassSrgb ? "pass: back buffer, cleared (sRGB)"
-	                                        : "pass: back buffer, cleared" );
+	m_debugUtils.InsertLabel(
+	    firstPassSrgb ? "pass: back buffer, cleared (sRGB)" : "pass: back buffer, cleared" );
 	vkCmdBeginRenderPass( cmd, &rp, VK_SUBPASS_CONTENTS_INLINE );
 	m_frameCost.Add( kCostRenderPass, 0 );
 
@@ -7742,6 +7747,8 @@ bool CVulkanContext::CreateMsaaTargets( int samples, std::string *outError )
 	    createFramebuffer( m_msPassClear, m_msColorView, &m_msFramebuffer ) &&
 	    ( !m_srgbAttachments ||
 	        createFramebuffer( m_msPassClearSrgb, m_msColorViewSrgb, &m_msFramebufferSrgb ) );
+	m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE, m_msColor, "back buffer %dx MSAA", samples );
+	m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE, m_msDepth, "back buffer depth %dx MSAA", samples );
 	if ( !created )
 	{
 		SetError( outError, "multisampled back buffer could not be created" );
