@@ -411,6 +411,35 @@ def configure_light_paths(policy):
         "sample_clamp_direct", "sample_clamp_indirect")}}
 
 
+# Bakes pin their sampling rather than inherit Blender's defaults, and record
+# it: a fixed seed, no adaptive stopping (every texel or pixel takes all its
+# samples), and Cycles' own denoiser only where the caller asks for it, as
+# OpenImageDenoise on the CPU. With the CPU device the result is then a pure
+# function of scene, settings and toolchain (cycles_device.determinism).
+SEED = 0
+
+
+def pin_sampling(seed=SEED, denoise=False):
+    """Pin the scene's Cycles sampling and denoising; return what is now used."""
+    cycles = bpy.context.scene.cycles
+    cycles.seed = seed
+    cycles.use_animated_seed = False
+    cycles.sample_offset = 0
+    cycles.use_adaptive_sampling = False
+    cycles.auto_scrambling_distance = False
+    cycles.scrambling_distance = 1.0
+    cycles.use_denoising = denoise
+    if denoise:
+        cycles.denoiser = "OPENIMAGEDENOISE"
+        cycles.denoising_use_gpu = False
+    return {"seed": seed, "adaptive_sampling": False, "sampling_pattern": cycles.sampling_pattern,
+            "light_tree": cycles.use_light_tree,
+            "denoise": {"denoiser": cycles.denoiser, "gpu": False,
+                        "input_passes": cycles.denoising_input_passes,
+                        "prefilter": cycles.denoising_prefilter,
+                        "quality": cycles.denoising_quality} if denoise else None}
+
+
 def configure_cycles(samples, device=DEFAULT_DEVICE):
     """Select Cycles, its sample count and device; return the device used.
 

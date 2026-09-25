@@ -57,7 +57,14 @@ emitters stay invisible, and there is no sky dome or traversal gate. Steps:
 
 Each step records the digests of its inputs, script and settings in
 `<out>/steps.json`; unchanged steps are skipped, so editing collision does not
-re-run the bake. `--from STEP` forces a step and everything after it.
+re-run the bake. `--from STEP` forces a step and everything after it; `--until
+STEP` stops after it. A key covers every tools/quality module the step's
+scripts import, the identity of the tools it runs (Blender and OCIO, OIDN,
+OpenUSD and the compile-tool prefix, KTX) and, for steps that build the
+scene's materials and lights, every scene source file. A running step's
+previous outputs are set aside under `.previous/<step>` and put back when it
+fails or is interrupted (the next build also restores them after a crash),
+so a failed rebuild never leaves a step without its last good outputs.
 A failing pixel gate stops the build unless `--keep-going` is given; then the
 map is still finished, build.json reports `gate-failed` and the exit is nonzero.
 A finished map is published to run/maps/<map> (`playable_maps.py`), so
@@ -65,6 +72,8 @@ A finished map is published to run/maps/<map> (`playable_maps.py`), so
 """
 
 import argparse
+import ast
+import functools
 import hashlib
 import json
 import os
@@ -97,6 +106,42 @@ PROFILES = ROOT / "quality" / "map_export_profiles"
 DEFAULT_QUALITY = "source2"
 LEGACY_QUALITY = "legacy-relight"
 SCENE_SCRIPTS = ["pbrt_scene.py", "map_scene.py"]
+PREVIOUS = ".previous"
+BLENDER_TOOLS = ("blender", "ocio")
+USD_TOOLS = ("openusd", "compile_tools")
+# The tools each step runs (pbrt_map_toolchain.identity names); boot steps
+# name their client build in their settings.
+STEP_TOOLS = {"legacy-scene": USD_TOOLS, "scene": USD_TOOLS, "stage": BLENDER_TOOLS,
+              "bake": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
+              "directional": ("openimagedenoise",), "probe": BLENDER_TOOLS,
+              "probe-volume": BLENDER_TOOLS, "radiosity": BLENDER_TOOLS, "sdf": BLENDER_TOOLS,
+              "ktx2": ("ktx",), "sky": USD_TOOLS, "collision": USD_TOOLS,
+              "compile": ("compile_tools",), "pack": USD_TOOLS, "content": ("compile_tools",)}
+
+
+class StopAfter(Exception):
+    """Raised after the `--until` step."""
+
+
+@functools.lru_cache(maxsize=None)
+def script_closure(scripts):
+    """`scripts` and every tools/quality module they import, transitively."""
+    pending, seen = list(scripts), set()
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        for node in ast.walk(ast.parse((HERE / name).read_text())):
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                modules = [node.module]
+            else:
+                continue
+            pending += [module.split(".")[0] + ".py" for module in modules
+                        if (HERE / (module.split(".")[0] + ".py")).is_file()]
+    return tuple(sorted(seen))
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -200,10 +245,13 @@ def with_defaults(manifest, profile, key):
 
 class Pipeline:
     def __init__(self, manifest, toolchain, out, force_from, boot, keep_going=False,
-                 publish=True):
+                 publish=True, until=None):
         self.manifest = manifest
         self.tools = toolchain
         self.out = out.resolve()
+        self.until = until
+        self.digests = {}
+        self.identities = {}
         self.map = manifest["map"]
         self.usd = manifest["scene_format"] == "usd"
         self.legacy = manifest.get("legacy_bsp")
@@ -215,6 +263,10 @@ class Pipeline:
         self.state_path = self.out / "steps.json"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.is_file() else {}
         self.force_from = STEPS.index(force_from) if force_from else len(STEPS)
+        # A crash or kill mid-step left the step's last good outputs aside.
+        previous = self.out / PREVIOUS
+        for name in sorted(p.name for p in previous.iterdir()) if previous.is_dir() else []:
+            self.restore(name)
         self.boot = boot
         self.keep_going = keep_going
         self.publish = publish
@@ -340,12 +392,63 @@ class Pipeline:
                              "PXR_PLUGINPATH_NAME": str(Path(self.tools["compile_tools"]) /
                                                         "share/sourceWorld")})
 
+    def file_sha256(self, path):
+        """sha256 of a file, computed once per build for unchanged files."""
+        status = os.stat(path)
+        memo = (str(Path(path).resolve()), status.st_mtime_ns, status.st_size)
+        if memo not in self.digests:
+            self.digests[memo] = sha256(path)
+        return self.digests[memo]
+
+    def identity(self, name):
+        if name not in self.identities:
+            self.identities[name] = pbrt_map_toolchain.identity(self.tools, name)
+        return self.identities[name]
+
+    def scene_sources(self):
+        """Every scene file the material- and light-building steps read."""
+        return map_scene.source_files(self.scene)
+
+    def step_key(self, name, inputs, settings, scripts):
+        return digest({"inputs": {str(p): self.file_sha256(p) if Path(p).is_file() else None
+                                  for p in inputs},
+                       "settings": settings,
+                       "scripts": {s: self.file_sha256(HERE / s)
+                                   for s in script_closure(tuple(scripts))},
+                       "tools": {t: self.identity(t) for t in STEP_TOOLS.get(name, ())}})
+
+    def set_aside(self, name, outputs):
+        """Move a step's existing outputs to .previous/<name> before it runs."""
+        backup = self.out / PREVIOUS / name
+        shutil.rmtree(backup, ignore_errors=True)
+        backup.mkdir(parents=True)
+        moved = {}
+        for index, path in enumerate(map(Path, outputs)):
+            if path.exists() or path.is_symlink():
+                shutil.move(str(path), str(backup / str(index)))
+                moved[str(index)] = str(path)
+        (backup / "outputs.json").write_text(json.dumps(moved, indent=2, sort_keys=True) + "\n")
+
+    def restore(self, name):
+        """Put a step's set-aside outputs back, replacing any partial new ones."""
+        backup = self.out / PREVIOUS / name
+        manifest = backup / "outputs.json"
+        moved = json.loads(manifest.read_text()) if manifest.is_file() else {}
+        for index, original in sorted(moved.items()):
+            original = Path(original)
+            if original.is_dir() and not original.is_symlink():
+                shutil.rmtree(original)
+            elif original.exists() or original.is_symlink():
+                original.unlink()
+            original.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(backup / index), str(original))
+        if moved:
+            print("[%s] restored the previous outputs" % name, flush=True)
+        shutil.rmtree(backup, ignore_errors=True)
+
     def step(self, name, inputs, settings, scripts, outputs, action):
-        """Run `action` unless its inputs, settings and scripts are unchanged."""
-        key = digest({"inputs": {str(p): sha256(p) if Path(p).is_file() else None
-                                 for p in inputs},
-                      "settings": settings,
-                      "scripts": {s: sha256(HERE / s) for s in scripts}})
+        """Run `action` unless its inputs, settings, scripts and tools are unchanged."""
+        key = self.step_key(name, inputs, settings, scripts)
         index = STEPS.index(name)
         previous = self.state.get(name, {})
         # Keys hash every input file, so a rebuilt upstream output invalidates
@@ -354,33 +457,41 @@ class Pipeline:
                  all(Path(p).exists() for p in outputs))
         if fresh:
             print("[%s] up to date" % name)
+            self.stop_after(name)
             return
-        for path in outputs:
-            path = Path(path)
-            if path.is_dir():
-                shutil.rmtree(path)
-            elif path.exists():
-                path.unlink()
+        self.set_aside(name, outputs)
         (self.logs / (name + ".log")).unlink(missing_ok=True)
         print("[%s] running..." % name, flush=True)
         try:
             seconds = action()
+            missing = [str(p) for p in outputs if not Path(p).exists()]
+            if missing:
+                raise SystemExit("step %s did not produce %s" % (name, ", ".join(missing)))
         except SystemExit as failure:
             if not (self.keep_going and name in GATES):
+                self.restore(name)
                 raise
-            # Not recorded in steps.json, so the gate runs again next build.
+            # A failed gate's own verdict replaces the old one; it is not
+            # recorded in steps.json, so the gate runs again next build.
+            shutil.rmtree(self.out / PREVIOUS / name, ignore_errors=True)
             print("[%s] FAILED, continuing (--keep-going): %s" % (name, failure), flush=True)
             self.failed_gates.append(name)
             return
-        missing = [str(p) for p in outputs if not Path(p).exists()]
-        if missing:
-            raise SystemExit("step %s did not produce %s" % (name, ", ".join(missing)))
+        except BaseException:
+            self.restore(name)
+            raise
+        shutil.rmtree(self.out / PREVIOUS / name)
         self.state[name] = {"key": key, "seconds": round(seconds or 0, 1),
                             "outputs": {str(Path(p).relative_to(self.out)):
                                         sha256(p) if Path(p).is_file() else "directory"
                                         for p in outputs}}
         self.state_path.write_text(json.dumps(self.state, indent=2, sort_keys=True) + "\n")
         print("[%s] done in %.1fs" % (name, seconds or 0), flush=True)
+        self.stop_after(name)
+
+    def stop_after(self, name):
+        if name == self.until:
+            raise StopAfter(name)
 
     def extract_usd_scene(self):
         """`scene` step: the USD scene's model and normalized stage."""
@@ -451,8 +562,8 @@ class Pipeline:
                            "--scale", str(reference.get("scale", 1.0)),
                            "--device", reference.get("device", cycles_device.CHECK_DEVICE)]
         # A USD scene's stage is the `scene` step's output: an input here.
-        self.step("stage", [scene] + ([environment] if environment else []) +
-                  ([p["stage"]] if self.usd else []),
+        self.step("stage", [scene] + self.scene_sources() +
+                  ([environment] if environment else []) + ([p["stage"]] if self.usd else []),
                   {"reference": reference}, SCENE_SCRIPTS + ["pbrt_blender.py",
                                                              "pbrt_usd_stage.py"],
                   ([] if self.usd else [p["stage"]]) + [p["stage_receipt"]] +
@@ -489,7 +600,8 @@ class Pipeline:
         layers = self.lightmap["layers"]
         if layers:
             bake_args += ["--layers", ",".join(layers), "--layers-dir", p["layers"]]
-        self.step("bake", [p["stage"]] + ([environment] if environment else []),
+        self.step("bake", [p["stage"]] + self.scene_sources() +
+                  ([environment] if environment else []),
                   dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
                                                       "device", "directional", "light_paths",
                                                       "layers")},
@@ -549,7 +661,8 @@ class Pipeline:
                          "--device", self.lightmap["device"]] + env_args
             if probe.get("position"):
                 face_args += ["--position"] + [str(value) for value in probe["position"]]
-            self.step("probe", [p["lighting_stage"]] + ([environment] if environment else []),
+            self.step("probe", [p["lighting_stage"]] + self.scene_sources() +
+                      ([environment] if environment else []),
                       probe, SCENE_SCRIPTS + ["pbrt_reflection_probe.py",
                                               "reflection_probe.py", "pbrt_blender.py"],
                       [p["probe"]],
@@ -565,7 +678,8 @@ class Pipeline:
                            "--out", p["prbv"], "--work", p["prbv_work"]] + env_args
             if volume.get("bounds_m"):
                 volume_args += ["--bounds"] + [str(value) for value in volume["bounds_m"]]
-            self.step("probe-volume", [p["stage"]] + ([environment] if environment else []),
+            self.step("probe-volume", [p["stage"]] + self.scene_sources() +
+                      ([environment] if environment else []),
                       dict(volume, light_paths=self.lightmap["light_paths"]),
                       SCENE_SCRIPTS + ["probe_volume_bake.py", "probe_volume.py",
                                        "pbrt_blender.py"],
@@ -581,8 +695,8 @@ class Pipeline:
                               "--device", self.lightmap["device"],
                               "--light-paths", self.lightmap["light_paths"],
                               "--out", p["rtrn"], "--work", p["rtrn_work"]] + env_args
-            self.step("radiosity", [p["stage"], p["prbv"]] + ([environment] if environment
-                                                               else []),
+            self.step("radiosity", [p["stage"], p["prbv"]] + self.scene_sources() +
+                      ([environment] if environment else []),
                       dict(radiosity, light_paths=self.lightmap["light_paths"]),
                       SCENE_SCRIPTS + ["radiosity_transfer_bake.py", "radiosity_transfer.py",
                                        "probe_volume.py", "pbrt_blender.py"],
@@ -595,7 +709,8 @@ class Pipeline:
                           "--voxel", str(field["voxel_m"]),
                           "--transfer-receipt", p["rtrn_work"] / "rtrn-bake.json",
                           "--out", p["sdfv"], "--work", p["sdfv_work"]] + env_args
-            self.step("sdf", [p["stage"], p["rtrn"]] + ([environment] if environment else []),
+            self.step("sdf", [p["stage"], p["rtrn"]] + self.scene_sources() +
+                      ([environment] if environment else []),
                       dict(field),
                       SCENE_SCRIPTS + ["sdf_volume_bake.py", "sdf_volume.py",
                                        "radiosity_transfer_bake.py", "pbrt_blender.py"],
@@ -760,7 +875,7 @@ class Pipeline:
         tools = Path(self.tools["compile_tools"])
         sky = environment and not self.legacy
         sky_args = ["--sky-texture", p["sky_texture"]] if sky else []
-        self.step("content", [scene, p["stage_receipt"], p["bsp2"]] +
+        self.step("content", [scene, p["stage_receipt"], p["bsp2"]] + self.scene_sources() +
                   ([p["sky_texture"]] if sky else []), {},
                   SCENE_SCRIPTS + ["pbrt_playable_content.py", "vtf_content.py"],
                   [p["content"], p["content"].with_suffix(".json")],
@@ -871,6 +986,8 @@ def main():
     parser.add_argument("--out", type=Path)
     parser.add_argument("--from", dest="force_from", choices=STEPS,
                         help="rebuild this step and every later step")
+    parser.add_argument("--until", choices=STEPS,
+                        help="stop after this step (no later step, no publish)")
     parser.add_argument("--boot", action="store_true",
                         help="boot the map headless in native Vulkan and screenshot it")
     parser.add_argument("--keep-going", action="store_true",
@@ -889,8 +1006,11 @@ def main():
         return
     if not args.out:
         parser.error("--out is required")
-    Pipeline(manifest, toolchain, args.out, args.force_from, args.boot,
-             args.keep_going, not args.no_publish).build()
+    try:
+        Pipeline(manifest, toolchain, args.out, args.force_from, args.boot,
+                 args.keep_going, not args.no_publish, args.until).build()
+    except StopAfter as stop:
+        print("stopped after %s (--until)" % stop)
 
 
 if __name__ == "__main__":
