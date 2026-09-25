@@ -387,7 +387,9 @@ static void HostPhase_ThreadedInputTick( HostFrameState_t &s, int tick )
 	// NOTE:  Do we want do this at start or end of this loop?
 	++host_tickcount;
 	++host_currentframetick;
-	g_ClientGlobalVariables.tickcount = host_tickcount;
+	// The client's tick space, as in the legacy body (engine/host.cpp): the
+	// server rejects commands stamped with host_tickcount after a map load.
+	g_ClientGlobalVariables.tickcount = cl.GetClientTickCount() + tick;
 	bool bFinalTick = tick == ( s.serverticks - 1 ) ? true : false;
 	_Host_RunFrame_Input( s.prevremainder, bFinalTick );
 	s.prevremainder = 0;

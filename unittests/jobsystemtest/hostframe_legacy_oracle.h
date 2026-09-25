@@ -6,7 +6,10 @@
 //          substitutions: the admission locals (numticks, prevremainder,
 //          shouldrender, host_remainder) are parameters, and the threaded
 //          path's function statics are the oracle's resettable carry state.
-//          Do not edit the body; regenerate it from the source revision.
+//          One later source fix is carried over: the threaded input tick
+//          uses the client tick, not host_tickcount (2026-09-25).
+//          Do not edit the body otherwise; regenerate it from the source
+//          revision.
 //
 //=============================================================================//
 
@@ -310,7 +313,7 @@ static void LegacyHostFrameBody( int numticks, double prevremainder, bool should
 				// NOTE:  Do we want do this at start or end of this loop?
 				++host_tickcount;
 				++host_currentframetick;
-				g_ClientGlobalVariables.tickcount = host_tickcount;
+				g_ClientGlobalVariables.tickcount = cl.GetClientTickCount() + tick;
 				bool bFinalTick = tick==(serverticks-1) ? true : false;
 				_Host_RunFrame_Input( prevremainder, bFinalTick );
 				prevremainder = 0;

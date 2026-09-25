@@ -3214,7 +3214,11 @@ void _Host_RunFrame (float time)
 				// NOTE:  Do we want do this at start or end of this loop?
 				++host_tickcount;
 				++host_currentframetick;
-				g_ClientGlobalVariables.tickcount = host_tickcount;
+				// Stamp commands in the client's tick space, as the unthreaded
+				// path does. host_tickcount never resets, so after a map load it
+				// runs ahead of the new server's tick and the server rejects
+				// every command as out of range (IsUserCmdDataValid).
+				g_ClientGlobalVariables.tickcount = cl.GetClientTickCount() + tick;
 				bool bFinalTick = tick==(serverticks-1) ? true : false;
 				_Host_RunFrame_Input( prevremainder, bFinalTick );
 				prevremainder = 0;
