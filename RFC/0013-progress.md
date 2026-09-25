@@ -149,8 +149,10 @@ Acceptance runs: see [gate runs](#gate-runs) below.
 
   This change measures the pinned source. The patch needs an owner decision:
   commit it to a pinned fork or revision, or drop it. It was not modified.
-  Still open on 2026-09-25: the shared tree's `box3d` checkout still shows
-  `M src/contact_solver.c`, and HEAD still pins `9e5a4cd`.
+  Resolved 2026-09-25 (user decision, R01 re-audit): the patch is committed
+  as `78c90a0` on branch `source-engine-restitution` of the fork
+  `johnpanos/box3d`, and the parent now pins it. The three gameplay failures
+  above are therefore the pinned behavior until R19 fixes them.
 - **Box3D's default continuous collision loses to IVP against thin dynamic
   bodies** (56 of 64 projectiles through panes, IVP 24). IVP's look-ahead also
   stops most tunneling against static walls at the 2000 in/s speed limit. The

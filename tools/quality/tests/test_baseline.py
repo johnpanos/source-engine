@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -24,7 +25,7 @@ PY = sys.executable
 
 def check(ident, argv, outcome="pass", **extra):
     entry = {"id": ident, "group": "static", "domain": "Q-ARCH", "rows": ["R01"], "argv": argv,
-        "timeout": 30, "baseline": {"outcome": outcome}}
+        "budget_seconds": 10, "timeout": 30, "baseline": {"outcome": outcome}}
     if outcome != "pass":
         entry["baseline"].update({"reason": "seeded", "owner": "R01"})
     entry.update(extra)
@@ -210,6 +211,152 @@ class AuditTests(BaselineTestCase):
         self.assertEqual("unverified", facts["profile_facts"]["evidence_status"])
         self.assertEqual(["tool:absent"], facts["host_requirements_missing"])
         self.assertEqual({"ok": "pass"}, facts["checks"])
+
+
+def sleeper(ident, seconds, stamp_dir, **extra):
+    """A check that records its start and end times, then sleeps."""
+    code = ("import time,sys; p=sys.argv[1]; open(p+'.start','w').write(repr(time.time())); "
+        "time.sleep(%r); open(p+'.end','w').write(repr(time.time()))" % seconds)
+    return check(ident, [PY, "-c", code, os.path.join(stamp_dir, ident)], **extra)
+
+
+def stamps(stamp_dir, ident):
+    with open(os.path.join(stamp_dir, ident + ".start")) as a, \
+            open(os.path.join(stamp_dir, ident + ".end")) as b:
+        return float(a.read()), float(b.read())
+
+
+class BudgetValidationTests(BaselineTestCase):
+    def assertRejected(self, data, fragment):
+        code, text = self.run_main(data, "validate")
+        self.assertEqual(2, code, text)
+        self.assertIn(fragment, text)
+
+    def test_every_check_needs_a_budget(self):
+        entry = check("x", [PY, "-c", "pass"])
+        del entry["budget_seconds"]
+        self.assertRejected(declaration(checks=[entry]), "budget_seconds")
+
+    def test_budget_must_be_positive(self):
+        self.assertRejected(declaration(checks=[check("x", [PY, "-c", "pass"], budget_seconds=0)]),
+            "budget_seconds")
+
+    def test_timeout_far_above_budget_needs_a_reason(self):
+        loose = check("x", [PY, "-c", "pass"], budget_seconds=2, timeout=600)
+        self.assertRejected(declaration(checks=[loose]), "timeout_reason")
+        loose["timeout_reason"] = "a from-scratch build"
+        code, text = self.run_main(declaration(checks=[loose]), "validate")
+        self.assertEqual(0, code, text)
+
+    def test_default_timeout_is_three_budgets_with_a_floor(self):
+        self.assertEqual(30, baseline.check_timeout({"budget_seconds": 10}))
+        self.assertEqual(10, baseline.check_timeout({"budget_seconds": 0.5}))
+        self.assertEqual(7, baseline.check_timeout({"budget_seconds": 100, "timeout": 7}))
+
+    def test_after_must_name_a_known_check(self):
+        self.assertRejected(declaration(checks=[check("x", [PY, "-c", "pass"], after=["nope"])]),
+            "unknown check")
+
+    def test_after_cycle_is_rejected(self):
+        self.assertRejected(declaration(checks=[
+            check("a", [PY, "-c", "pass"], after=["b"]),
+            check("b", [PY, "-c", "pass"], after=["a"])]), "cycle")
+
+    def test_concurrent_check_cannot_follow_a_serial_one(self):
+        self.assertRejected(declaration(checks=[
+            check("s", [PY, "-c", "pass"], schedule="serial"),
+            check("p", [PY, "-c", "pass"], after=["s"])]), "cannot run after serial")
+
+    def test_unknown_schedule_is_rejected(self):
+        self.assertRejected(declaration(checks=[check("x", [PY, "-c", "pass"], schedule="later")]),
+            "schedule")
+
+
+class SchedulingTests(BaselineTestCase):
+    def setUp(self):
+        super().setUp()
+        self.stamps = os.path.join(self.root, "stamps")
+        os.makedirs(self.stamps)
+
+    def test_independent_checks_run_concurrently(self):
+        checks = [sleeper("c%d" % i, 1.0, self.stamps) for i in range(4)]
+        started = time.monotonic()
+        code, text, evidence = self.audit(declaration(checks=checks), "--parallel", "4")
+        self.assertEqual(0, code, text)
+        self.assertLess(time.monotonic() - started, 3.0, "four 1 s checks did not overlap")
+        self.assertEqual(4, evidence["parallel"])
+
+    def test_after_waits_for_its_dependency(self):
+        checks = [sleeper("build", 0.8, self.stamps),
+            sleeper("run", 0.1, self.stamps, after=["build"]),
+            sleeper("other", 0.1, self.stamps)]
+        code, text, _ = self.audit(declaration(checks=checks), "--parallel", "3")
+        self.assertEqual(0, code, text)
+        self.assertGreaterEqual(stamps(self.stamps, "run")[0], stamps(self.stamps, "build")[1])
+        self.assertLess(stamps(self.stamps, "other")[0], stamps(self.stamps, "build")[1])
+
+    def test_serial_checks_run_alone_after_the_rest(self):
+        checks = [sleeper("p1", 0.5, self.stamps), sleeper("p2", 0.5, self.stamps),
+            sleeper("s1", 0.3, self.stamps, schedule="serial"),
+            sleeper("s2", 0.3, self.stamps, schedule="serial")]
+        code, text, _ = self.audit(declaration(checks=checks), "--parallel", "4")
+        self.assertEqual(0, code, text)
+        last_parallel_end = max(stamps(self.stamps, i)[1] for i in ("p1", "p2"))
+        s1, s2 = stamps(self.stamps, "s1"), stamps(self.stamps, "s2")
+        self.assertGreaterEqual(s1[0], last_parallel_end)
+        self.assertGreaterEqual(s2[0], s1[1])
+
+    def test_evidence_keeps_declaration_order(self):
+        checks = [sleeper("slow", 0.6, self.stamps), sleeper("fast", 0.0, self.stamps)]
+        code, text, evidence = self.audit(declaration(checks=checks), "--parallel", "2")
+        self.assertEqual(0, code, text)
+        self.assertEqual(["slow", "fast"], list(evidence["checks"]))
+
+    def test_zero_parallel_is_an_error(self):
+        code, text = self.run_main(declaration(), "audit", "--out", "-", "--parallel", "0")
+        self.assertEqual(2, code, text)
+
+
+class BudgetTests(BaselineTestCase):
+    def test_over_budget_is_reported_and_fails_only_when_strict(self):
+        slow = check("slow", [PY, "-c", "import time; time.sleep(0.4)"], budget_seconds=0.1, timeout=10)
+        code, text, evidence = self.audit(declaration(checks=[slow]))
+        self.assertEqual(0, code, text)
+        self.assertEqual(["slow"], evidence["over_budget"])
+        self.assertTrue(evidence["checks"]["slow"]["over_budget"])
+        self.assertIn("SLOW", text)
+        code, text, evidence = self.audit(declaration(checks=[slow]), "--strict-budget")
+        self.assertEqual(1, code, text)
+
+    def test_within_budget_is_not_flagged(self):
+        code, text, evidence = self.audit(declaration())
+        self.assertEqual(0, code, text)
+        self.assertEqual([], evidence["over_budget"])
+
+    def test_timeout_kills_descendants_holding_the_output(self):
+        # The check starts a child that keeps stdout open, then hangs itself.
+        # The child would leave a marker if it outlived the timeout.
+        marker = os.path.join(self.root, "orphan-ran")
+        hang = check("hang", ["sh", "-c", "(sleep 2; touch %s) & sleep 60" % marker],
+            outcome="timeout", budget_seconds=0.1, timeout=1)
+        started = time.monotonic()
+        code, text, evidence = self.audit(declaration(checks=[hang]))
+        self.assertLess(time.monotonic() - started, 5.0, "the timeout did not bound the check")
+        self.assertEqual("timeout", evidence["checks"]["hang"]["outcome"])
+        time.sleep(2.5)
+        self.assertFalse(os.path.exists(marker), "a descendant survived the timeout")
+
+    def test_exited_check_is_not_held_by_a_background_child(self):
+        marker = os.path.join(self.root, "orphan-ran")
+        quick = check("quick", ["sh", "-c", "(sleep 2; touch %s) & echo done" % marker],
+            budget_seconds=1, timeout=10)
+        started = time.monotonic()
+        code, text, evidence = self.audit(declaration(checks=[quick]))
+        self.assertEqual(0, code, text)
+        self.assertLess(time.monotonic() - started, 5.0, "the audit waited on a background child")
+        self.assertEqual("pass", evidence["checks"]["quick"]["outcome"])
+        time.sleep(2.5)
+        self.assertFalse(os.path.exists(marker), "a check left a process running")
 
 
 class RepositoryDeclarationTests(unittest.TestCase):

@@ -393,7 +393,7 @@ bspbrush_t *CopyBrush (bspbrush_t *brush)
 	bspbrush_t *newbrush;
 	int			size;
 	int			i;
-	
+
 	size = (int)( offsetof( bspbrush_t, sides ) + sizeof( side_t ) * brush->numsides );
 
 	newbrush = AllocBrush (brush->numsides);

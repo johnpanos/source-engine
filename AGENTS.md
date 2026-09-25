@@ -488,8 +488,8 @@ Keep the table concise and link details below or from the domain progress file.
   - Not done:
     - the parity runner's verdict fails: 602/602 checks pass but
       `dynamics.tumble.audible-impacts` diverges (2026-09-25);
-    - the `box3d` submodule carries an uncommitted `contact_solver.c` patch,
-      so the build is not the pinned source;
+    - the `box3d` restitution patch is pinned in the fork `johnpanos/box3d`
+      (`78c90a0`, 2026-09-25), and with it three Box3D gameplay checks fail;
     - pool-bridge timing on the merged code is uncertified (busy host);
     - the client environment has one worker;
     - no gameplay soak;
@@ -638,10 +638,9 @@ Keep the table concise and link details below or from the domain progress file.
   [RFC 0002 current state](RFC/0002-progress.md#current-state-2026-09-25).
   - The ledger has 28 migrations, 11 of them extracted format cores.
     Inventory coverage is 46 of 530 files. There are 60 Q-EDITOR suites.
-  - `archlint hammer --verify` has failed since `7035c29e` (2026-09-22). It
-    rejects the `hammer.formats` → `render.contracts` edge added by the R47
-    PBR schema. Fixing it needs a decision: the validator accepts edges to
-    capability modules, or Hammer reaches the schema through its own port.
+  - `archlint hammer --verify` passes again (2026-09-25, user decision): the
+    validator accepts Hammer edges to registered capability modules, such as
+    the R47 schema's `hammer.formats` → `render.contracts`.
   - Include-graph checking is not installed. Strict Hammer files already
     form a geometry↔formats cycle, and nothing fails.
 

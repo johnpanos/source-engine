@@ -4,8 +4,12 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from selftest import slow  # noqa: E402
 
 
 QUALITY = Path(__file__).resolve().parents[1]
@@ -767,6 +771,7 @@ class ModelLightTest(unittest.TestCase):
     def disagreements(self, report):
         return [f for f in self.light.check_model(report) if "disagree" in f]
 
+    @slow  # slow tier: tools/quality/selftest.py --tier slow
     def test_d3d9_references_satisfy_their_own_oracle(self):
         for hdr, report in self.references.items():
             self.assertEqual(report["renderer"], "vulkan-compat")
@@ -952,6 +957,7 @@ class PbrModelTest(unittest.TestCase):
     def _case(self, report, name):
         return next(case for case in report["cases"] if case["name"] == name)
 
+    @slow  # slow tier: tools/quality/selftest.py --tier slow
     def test_native_capture_satisfies_the_layered_brdf(self):
         self.assertEqual(oracle.evaluate(self.report, "none"), [])
 
@@ -985,6 +991,7 @@ class PbrModelTest(unittest.TestCase):
                 _, wrong, _ = self.frames.disagreements(self.report, case, defect, stride=4)
                 self.assertTrue(wrong, "%s: %s" % (name, defect))
 
+    @slow  # slow tier: tools/quality/selftest.py --tier slow
     def test_cross_backend_reference_is_refused(self):
         failures = oracle.evaluate(self.report, "none", self.report)
         self.assertTrue(any("no cross-backend reference" in f for f in failures))

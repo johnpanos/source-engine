@@ -13,6 +13,13 @@
 #              this revision's baseline (pass, or a known failure with an owner)
 #   baselines  identified baseline captures and budgets per harness domain
 #
+# Every check declares `budget_seconds`, how long it should take on the
+# declared host, so the expected cost of an audit is known before it runs. Its
+# timeout defaults to 3x the budget (at least 10 s); a longer timeout needs a
+# `timeout_reason`, such as a from-scratch build. `after` names checks whose
+# outputs it reads; `schedule: serial` runs a timing- or device-sensitive
+# check alone, after every concurrent check has finished.
+#
 # `audit` probes availability, runs the selected checks and writes
 # baseline-evidence/v1. A check whose outcome differs from its recorded
 # baseline -- a new failure or a known failure that now passes -- fails the
@@ -26,12 +33,15 @@
 # ============================================================================
 
 import argparse
+import concurrent.futures
 import datetime
 import json
+import math
 import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -51,6 +61,18 @@ TIERS = ("north-star", "preserved", "product-scope")
 BASELINE_KINDS = ("capture", "budget")
 BASELINE_STATES = ("recorded", "partial", "missing")
 ROW_PATTERN = re.compile(r"^R\d+$")
+SCHEDULES = ("parallel", "serial")
+TIMEOUT_FACTOR = 3
+MIN_TIMEOUT_SECONDS = 10
+
+
+def budget_timeout(check):
+    """The longest a check may run without a stated reason."""
+    return max(MIN_TIMEOUT_SECONDS, int(math.ceil(TIMEOUT_FACTOR * check["budget_seconds"])))
+
+
+def check_timeout(check):
+    return check.get("timeout", budget_timeout(check))
 
 
 class BaselineError(Exception):
@@ -73,6 +95,23 @@ def _unique(entries, where):
     if duplicates:
         raise BaselineError("%s: duplicate id(s) %s" % (where, ", ".join(duplicates)))
     return set(ids)
+
+
+def _reject_cycles(by_id):
+    state = {}
+
+    def visit(ident, path):
+        if state.get(ident) == "done":
+            return
+        if state.get(ident) == "active":
+            raise BaselineError("checks form an after-cycle: %s" % " -> ".join(path + [ident]))
+        state[ident] = "active"
+        for dep in by_id[ident].get("after", []):
+            visit(dep, path + [ident])
+        state[ident] = "done"
+
+    for ident in by_id:
+        visit(ident, [])
 
 
 def validate(root, declaration):
@@ -115,7 +154,28 @@ def validate(root, declaration):
             if not ROW_PATTERN.match(row):
                 raise BaselineError("check %s: row %r is not an R<number> id" % (check["id"], row))
         check_requires("check %s" % check["id"], check.get("requires", []))
+        budget = check.get("budget_seconds")
+        if isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget <= 0:
+            raise BaselineError("check %s: budget_seconds must be a positive number of seconds"
+                % check["id"])
+        if check.get("timeout", 0) > budget_timeout(check) and not check.get("timeout_reason"):
+            raise BaselineError("check %s: timeout %ss exceeds %sx its %ss budget; "
+                "state a timeout_reason or tighten it"
+                % (check["id"], check["timeout"], TIMEOUT_FACTOR, budget))
+        if check.get("schedule", "parallel") not in SCHEDULES:
+            raise BaselineError("check %s: schedule %r is not one of %s"
+                % (check["id"], check.get("schedule"), ", ".join(SCHEDULES)))
     check_ids = _unique(declaration["checks"], "checks")
+    by_id = {check["id"]: check for check in declaration["checks"]}
+    for check in declaration["checks"]:
+        for dep in check.get("after", []):
+            if dep not in check_ids or dep == check["id"]:
+                raise BaselineError("check %s: after names unknown check %r" % (check["id"], dep))
+            if check.get("schedule", "parallel") == "parallel" and \
+                    by_id[dep].get("schedule", "parallel") == "serial":
+                raise BaselineError("check %s: a concurrent check cannot run after serial %s"
+                    % (check["id"], dep))
+    _reject_cycles(by_id)
 
     for profile in declaration["profiles"]:
         _require(profile, ("id", "tier", "product", "os", "arch", "profile"), "profile")
@@ -263,6 +323,31 @@ def _substitute(value, variables):
     return value
 
 
+def _run_group(argv, cwd, env, timeout):
+    """Run argv in its own process group with output in a file.
+
+    A pipe would keep the check open for as long as any descendant (a
+    compiler, wineserver) holds it, past the check's own exit or timeout;
+    a file does not. On timeout the whole group is killed, so the timeout
+    bounds the check's cost. Returns (returncode or None on timeout, text)."""
+    with tempfile.TemporaryFile() as output:
+        process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+            stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            code = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            code = None
+        finally:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            if code is None:
+                process.wait()
+        output.seek(0)
+        return code, output.read().decode("utf-8", "replace")
+
+
 def run_check(root, check, variables, log_dir):
     """Run one check; classify pass/fail/crash/timeout from the process result."""
     argv = [_substitute(arg, variables) for arg in check["argv"]]
@@ -270,22 +355,18 @@ def run_check(root, check, variables, log_dir):
     for key, value in check.get("env", {}).items():
         env[key] = _substitute(value, variables)
     cwd = os.path.join(root, check.get("cwd", "."))
-    timeout = check.get("timeout", 600)
+    timeout = check_timeout(check)
     started = time.monotonic()
     try:
-        completed = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, timeout=timeout, check=False)
-        code = completed.returncode
-        text = conformance._as_text(completed.stdout) + conformance._as_text(completed.stderr)
-        if code == 0:
+        code, text = _run_group(argv, cwd, env, timeout)
+        if code is None:
+            outcome = "timeout"
+        elif code == 0:
             outcome = "pass"
         elif code < 0:
             outcome = "crash"
         else:
             outcome = "fail"
-    except subprocess.TimeoutExpired as expired:
-        code = None
-        text = conformance._as_text(expired.stdout) + conformance._as_text(expired.stderr)
-        outcome = "timeout"
     except OSError as error:
         code = None
         text = str(error)
@@ -302,11 +383,44 @@ def run_check(root, check, variables, log_dir):
         "exit_code": code,
         "signal": -code if code is not None and code < 0 else None,
         "seconds": seconds,
+        "budget_seconds": check["budget_seconds"],
+        "timeout": timeout,
+        "over_budget": seconds > check["budget_seconds"],
         "command": argv,
         "cwd": check.get("cwd", "."),
         "log": log,
         "tail": conformance.tail(text, 12),
     }
+
+
+def schedule(checks, parallel, execute):
+    """Run `execute(check)` for every check and return {id: result}.
+
+    Concurrent checks start as soon as every selected check they run `after`
+    has finished, at most `parallel` at a time. Serial checks then run one at
+    a time in declaration order, with nothing else running."""
+    selected = {check["id"] for check in checks}
+    concurrent_checks = [c for c in checks if c.get("schedule", "parallel") == "parallel"]
+    serial_checks = [c for c in checks if c.get("schedule", "parallel") == "serial"]
+    results = {}
+    pending = list(concurrent_checks)
+    running = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
+        while pending or running:
+            for check in list(pending):
+                if len(running) >= parallel:
+                    break
+                deps = [d for d in check.get("after", []) if d in selected]
+                if all(d in results for d in deps):
+                    pending.remove(check)
+                    running[pool.submit(execute, check)] = check
+            done, _ = concurrent.futures.wait(running, return_when=concurrent.futures.FIRST_COMPLETED)
+            for future in done:
+                check = running.pop(future)
+                results[check["id"]] = future.result()
+    for check in serial_checks:
+        results[check["id"]] = execute(check)
+    return results
 
 
 def compare(check, result):
@@ -423,6 +537,8 @@ def cmd_probe(args):
 
 def cmd_audit(args):
     root = args.root
+    if args.parallel < 1:
+        raise BaselineError("--parallel must be at least 1")
     declaration = load(root, args.declaration)
     checks = select_checks(declaration, args.group, args.check)
     tools, content = probe_all(root, declaration)
@@ -439,17 +555,19 @@ def cmd_audit(args):
         if status["available"]:
             variables["content:%s" % ident] = status["detail"]
 
-    print("checks:")
-    results = {}
-    deviations = []
-    unavailable = []
-    for check in checks:
+    print("checks (%d concurrent, budget %.0fs of serial work):"
+        % (args.parallel, sum(check["budget_seconds"] for check in checks)))
+    started = time.monotonic()
+    log_dir = os.path.join(out_dir, "logs") if out_dir else None
+
+    def execute(check):
         missing = requirement_status(root, check.get("requires", []), tools, content)
         if missing:
-            result = {"outcome": UNAVAILABLE, "missing": missing}
-            unavailable.append(check["id"])
+            result = {"outcome": UNAVAILABLE, "missing": missing, "seconds": 0.0,
+                "budget_seconds": check["budget_seconds"], "timeout": check_timeout(check),
+                "over_budget": False}
         else:
-            result = run_check(root, check, variables, os.path.join(out_dir, "logs") if out_dir else None)
+            result = run_check(root, check, variables, log_dir)
         deviation = compare(check, result)
         result.update({
             "id": check["id"],
@@ -459,19 +577,28 @@ def cmd_audit(args):
             "baseline": check["baseline"],
             "deviation": deviation,
         })
-        if deviation:
-            deviations.append(check["id"])
-        results[check["id"]] = result
         marker = "ok  " if deviation is None and result["outcome"] != UNAVAILABLE else (
             "n/a " if result["outcome"] == UNAVAILABLE else "DEV ")
         detail = deviation or (", ".join(result["missing"]) if result["outcome"] == UNAVAILABLE else "")
-        print("  [%s] %-34s recorded=%-8s observed=%-11s %s" % (
-            marker, check["id"], check["baseline"]["outcome"], result["outcome"], detail))
+        slow = " SLOW" if result["over_budget"] else ""
+        print("  [%s] %-34s recorded=%-8s observed=%-11s %6.1fs/%-5gs%s %s" % (
+            marker, check["id"], check["baseline"]["outcome"], result["outcome"],
+            result["seconds"], check["budget_seconds"], slow, detail))
         sys.stdout.flush()
+        return result
+
+    by_id = schedule(checks, args.parallel, execute)
+    # Evidence lists checks in declaration order, whatever order they finished in.
+    results = {check["id"]: by_id[check["id"]] for check in checks}
+    deviations = [ident for ident, result in results.items() if result["deviation"]]
+    unavailable = [ident for ident, result in results.items() if result["outcome"] == UNAVAILABLE]
+    over_budget = [ident for ident, result in results.items() if result["over_budget"]]
+    elapsed = round(time.monotonic() - started, 2)
 
     profiles = [profile_status(root, profile, tools, content, results) for profile in declaration["profiles"]]
     counts = {outcome: sum(1 for r in results.values() if r["outcome"] == outcome) for outcome in OUTCOMES + (UNAVAILABLE,)}
-    decision = "fail" if deviations or (args.strict and unavailable) else "pass"
+    decision = "fail" if deviations or (args.strict and unavailable) or \
+        (args.strict_budget and over_budget) else "pass"
     evidence = {
         "schema": EVIDENCE_SCHEMA,
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -488,12 +615,16 @@ def cmd_audit(args):
         "counts": counts,
         "deviations": deviations,
         "unavailable": unavailable,
+        "over_budget": over_budget,
+        "parallel": args.parallel,
+        "seconds": elapsed,
         "strict": args.strict,
+        "strict_budget": args.strict_budget,
         "decision": decision,
     }
-    print("%d check(s): %s; %d deviation(s), %d unavailable -> %s" % (
+    print("%d check(s): %s; %d deviation(s), %d unavailable, %d over budget in %.1fs -> %s" % (
         len(results), ", ".join("%d %s" % (n, k) for k, n in counts.items() if n),
-        len(deviations), len(unavailable), decision.upper()))
+        len(deviations), len(unavailable), len(over_budget), elapsed, decision.upper()))
     if out_dir:
         path = os.path.join(out_dir, "evidence.json")
         with open(path, "w", encoding="utf-8") as stream:
@@ -514,7 +645,11 @@ def build_parser():
     audit.add_argument("--group", action="append", help="select a check group (repeatable)")
     audit.add_argument("--check", action="append", help="select a check id (repeatable)")
     audit.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2), help="build parallelism")
+    audit.add_argument("--parallel", type=int, default=4,
+        help="concurrent checks (default 4); serial-scheduled checks always run alone")
     audit.add_argument("--strict", action="store_true", help="also fail when a selected check is unavailable")
+    audit.add_argument("--strict-budget", action="store_true",
+        help="also fail when a check takes longer than its budget_seconds")
     audit.add_argument("--out", default=None, help="evidence directory ('-' to skip writing)")
     return parser
 

@@ -14,9 +14,10 @@
   increment 1 (inventory/DAG validation and the HAM003 native-token ratchet),
   and corpus scaffolding. Strict `hammer.geometry`, `hammer.scene`,
   `hammer.ports`, `hammer.formats` and `hammer.app` sources have 60 registered
-  Q-EDITOR suites. Inventory coverage is partial (46 of 530 files), and
-  `archlint hammer --verify` currently fails: `hammer.formats` declares an edge
-  to `render.contracts`, which is outside the Hammer module graph.
+  Q-EDITOR suites. Inventory coverage is partial (46 of 530 files).
+  `archlint hammer --verify` passes; since 2026-09-25 it accepts Hammer edges
+  to registered capability modules, such as `hammer.formats` →
+  `render.contracts`.
   Gate decisions, current state and open-question answers are in
   [0002-progress.md](0002-progress.md). The viewport, tools and presenters
   modules, enforcement increments 2–3, and the remaining contracts and CI

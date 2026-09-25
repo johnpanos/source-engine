@@ -90,6 +90,25 @@ class ModuleGraphTests(unittest.TestCase):
         errors = archlint.validate_module_graph(block)
         self.assertTrue(any("hammer.ghost" in message for message in errors))
 
+    def test_edge_to_registered_capability_module_is_accepted(self) -> None:
+        block = copy.deepcopy(MODULE_BLOCK)
+        block["modules"][1]["allowedEdges"].append("render.contracts")
+        self.assertEqual([], archlint.validate_module_graph(block, frozenset({"render.contracts"})))
+
+    def test_edge_to_unregistered_capability_module_is_rejected(self) -> None:
+        block = copy.deepcopy(MODULE_BLOCK)
+        block["modules"][1]["allowedEdges"].append("render.contracts")
+        errors = archlint.validate_module_graph(block, frozenset({"render.presentation"}))
+        self.assertTrue(any("unknown module render.contracts" in message for message in errors))
+        self.assertTrue(any("render.contracts" in message
+                            for message in archlint.validate_module_graph(block)))
+
+    def test_hammer_module_cannot_reuse_a_capability_module_id(self) -> None:
+        block = copy.deepcopy(MODULE_BLOCK)
+        shadow = block["modules"][0]["id"]
+        errors = archlint.validate_module_graph(block, frozenset({shadow}))
+        self.assertTrue(any("also a registered capability module" in message for message in errors))
+
     def test_cycle_is_rejected(self) -> None:
         block = copy.deepcopy(MODULE_BLOCK)
         block["modules"][0]["allowedEdges"].append("hammer.scene")  # geometry <-> scene

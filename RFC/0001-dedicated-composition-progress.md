@@ -49,8 +49,10 @@ other planned platforms.
 
 State on 2026-09-25: the dedicated Waf target still links `materialsystem`,
 `shaderapiempty` and `studiorender`, and `CSys::LoadModules` still loads the
-physics provider by filename. R01's [baseline](../quality/baseline.json) still
-records `build.dedicated` failing on a protected `LoadModule` call at
-`dedicated/sys_linux.cpp:277`. That call became `LoadPhysicsModule` in
-`97e298c6` (2026-09-23), before the build evidence above, so the baseline
-outcome is stale until R01 re-runs it.
+physics provider by filename. The dedicated builds pass: the R01 re-audit
+(2026-09-25) built `build.dedicated` (gcc) and `build.dedicated-clang` after
+`97e298c6` replaced the protected `LoadModule` call. The clang build also
+needed a `(void *)` cast of `CSys::GetProcAddress`'s `long` handle for
+`dlsym` (`sys_linux.cpp:118`). [`quality/baseline.json`](../quality/baseline.json)
+records both as `pass` (user decision). This is build evidence only; the
+installed startup/shutdown and link gates of R12 remain open.

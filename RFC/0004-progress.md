@@ -12,13 +12,17 @@ Current state (2026-09-25, read from the tree; nothing rerun):
 - The parity runner does not pass as a whole in the latest recorded runs. It
   fails on any divergent observation (`physics_conformance.py`, default
   `--require all`).
-  - Pinned Box3D source (worktree, 2026-09-24): 602 of 602 checks pass, but
-    `dynamics.tumble.audible-impacts` diverges (IVP 4, Box3D 1, tolerance ±2).
-  - The shared tree's source: `box3d/src/contact_solver.c` still carries the
-    uncommitted restitution patch (`git -C box3d status`), while the parent
-    pins `9e5a4cd`. With it, three Box3D gameplay checks fail (see below).
-  - `quality/baseline.json` still declares `physics.conformance` (rows R09,
-    R19) with outcome `pass`. It was not rerun for this update.
+  - Upstream Box3D `9e5a4cd` (worktree, 2026-09-24): 602 of 602 checks pass,
+    but `dynamics.tumble.audible-impacts` diverges (IVP 4, Box3D 1, tolerance
+    ±2).
+  - The restitution patch ("only a touching point bounces") is now the pinned
+    source (user decision, 2026-09-25): commit `78c90a0` on branch
+    `source-engine-restitution` of the fork `johnpanos/box3d`, which
+    `.gitmodules` now names. With it, three Box3D gameplay checks fail
+    (`vcollide.model-simulates`, `dynamics.tumble-travel-bounded`,
+    `dynamics.held-floor-quiet`; R01 re-audit, 2026-09-25).
+  - `quality/baseline.json` records `physics.conformance` as a known `fail`
+    owned by R19 (user decision, 2026-09-25).
 - Provider selection: the launcher and the dedicated server default to
   `-physics vphysics` (IVP), and Waf's `--physics-backend` defaults to `ivp`.
   `./play`, `./play_p2` and `run.sh` select Box3D. The Android launcher
@@ -39,8 +43,8 @@ Roadmap criteria against this record (2026-09-25):
 | Row | Has evidence | Missing |
 | --- | --- | --- |
 | R09 | Impact state (pre-step velocities, `events.*`), contact mutation (`contacts.*`), asymmetric ragdoll limits (`constraint.ragdoll-*`), decoder over every Portal and HL2 `.phy` (`corpus.*`), with convexes over Box3D's hull limits split into patch hulls (`BuildHulls`); synthetic IVP measurements (`physics-v1.json`) | Method-level consumer inventory; map/gameplay and load-time IVP measurements |
-| R19 | BSP and `.phy` load, compound props, inside-start traces, impact events, one ragdoll, save/restore (`bsp.*`, `vcollide.*`, `trace.*`, `events.*`, `save.*`/`restore.*`) | A coherent pinned source (the uncommitted patch above); a passing runner; a CI lane |
-| R31 | Provider-level traces, filters, events, materials, constraints, controllers and persistence | Client/dedicated gameplay corpus; the dedicated build fails (`build.dedicated`, R12) |
+| R19 | BSP and `.phy` load, compound props, inside-start traces, impact events, one ragdoll, save/restore (`bsp.*`, `vcollide.*`, `trace.*`, `events.*`, `save.*`/`restore.*`) | The pinned patched source's three gameplay failures fixed, or the patch revised; a passing runner; a CI lane |
+| R31 | Provider-level traces, filters, events, materials, constraints, controllers and persistence | Client/dedicated gameplay corpus; the dedicated builds pass since 2026-09-25, but installed dedicated startup (R12) is unverified |
 
 Evidence (2026-09-24): `python3 tools/quality/physics_conformance.py --out <dir>`
 passes. IVP and Box3D each pass 559 checks (149 boot, 410 gameplay); 12,373
@@ -177,7 +181,7 @@ Those are the three failures earlier noted as pre-existing on main's build.
 | Interface & Consumer Inventory | A | Partial | Every VPhysics interface implemented and covered by the contract; no method-level consumer inventory |
 | Asset Corpus & IVP Baselines | A | Partial | Conformance corpus: every `.phy` in the Portal and HL2 packs, `testchmb_a_00.bsp`, HL2 vehicle scripts, with IVP as the oracle; no performance baselines |
 | Event & Contact-mutation Prototypes | A | Done (provider) | Pre-step velocities for `PreCollision`; snapshot contact deletion via pre-solve (`contacts.*`) |
-| Box3D Build Integration (Pinned) | B | Done | `box3d/` pinned, private C17 target; the shared tree's checkout carries an uncommitted `contact_solver.c` patch (2026-09-25), so its build differs from the pin |
+| Box3D Build Integration (Pinned) | B | Done | `box3d/` pinned, private C17 target; since 2026-09-25 the pin is the fork `johnpanos/box3d` `78c90a0` (upstream `9e5a4cd` plus the restitution patch) |
 | VPhysics Adapter & World Lifecycle | B | Done | `vphysics_box3d` module, `-physics` selection |
 | Legacy Geometry Decoder | B | Done | `.phy`/BSP decode (`vcollide.*`, `corpus.*`, `bsp.*`), IVP-format writer (`collide.write-*`) |
 | Trace & Query Foundation | B | Done | `trace.*`, `bsp.world-traces` |

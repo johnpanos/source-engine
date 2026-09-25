@@ -57,7 +57,7 @@ template< class IInterface >
 class CBaseAppSystem : public IInterface
 {
 public:
-	// Here's where the app systems get to learn about each other 
+	// Here's where the app systems get to learn about each other
 	virtual bool Connect( CreateInterfaceFn /* factory */ ) { return true; }
 	virtual void Disconnect() {}
 

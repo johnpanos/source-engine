@@ -938,7 +938,9 @@ def _detect_cycle(edges: dict[str, list[str]]) -> list[str]:
     return []
 
 
-def validate_module_graph(module_block: dict) -> list[str]:
+def validate_module_graph(module_block: dict, external: frozenset[str] = frozenset()) -> list[str]:
+    """Validate a module block. `external` names modules registered elsewhere in
+    the manifest (capabilityModules) that this block's modules may depend on."""
     errors: list[str] = []
     modules = module_block.get("modules", [])
     ids = [module["id"] for module in modules]
@@ -946,11 +948,13 @@ def validate_module_graph(module_block: dict) -> list[str]:
     for module_id, count in Counter(ids).items():
         if count > 1:
             errors.append(f"module {module_id} declared {count} times")
+        if module_id in external:
+            errors.append(f"module {module_id} is also a registered capability module")
     edges: dict[str, list[str]] = {}
     for module in modules:
         edges[module["id"]] = list(module.get("allowedEdges", []))
         for target in module.get("allowedEdges", []):
-            if target not in known:
+            if target not in known and target not in external:
                 errors.append(f"module {module['id']} allows edge to unknown module {target}")
             if target == module["id"]:
                 errors.append(f"module {module['id']} declares a self edge")
@@ -1344,8 +1348,11 @@ def hammer_scaffold_command(root: Path, manifest: dict, args: argparse.Namespace
 
 def hammer_command(root: Path, manifest: dict) -> int:
     module_block = hammer_modules(manifest)
+    capabilities = frozenset(module["id"] for module in manifest["capabilityModules"]["modules"])
     errors: list[str] = []
-    errors.extend(f"[modules] {message}" for message in validate_module_graph(module_block))
+    errors.extend(
+        f"[modules] {message}" for message in validate_module_graph(module_block, capabilities)
+    )
 
     inventory = _load_json(root, "architecture/hammer_inventory.json")
     errors.extend(f"[inventory] {message}" for message in validate_inventory(root, module_block, inventory))

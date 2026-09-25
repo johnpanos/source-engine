@@ -34,9 +34,8 @@ verification gaps, not inferred support.
   passing over the recorded Linux trees. It also records passing `tests`,
   `tools` and native-Vulkan Portal builds with gcc and clang, and an `hl2`
   build with the default compiler.
-  `build.dedicated` is recorded as failing; see the
-  [dedicated record](0001-dedicated-composition-progress.md) for why that
-  outcome is stale.
+  `build.dedicated` and `build.dedicated-clang` pass since the R01 re-audit
+  (2026-09-25); see the [dedicated record](0001-dedicated-composition-progress.md).
 - `build-android-apk.sh` runs `toolchain_boundary.py check` on each ABI's
   final commands and stops the package build on failure. R01 records
   `package.android-arm64` passing, so the arm64 Android final commands passed

@@ -22,15 +22,15 @@ are history.
 - AGENTS.md row R08 is `active`. No RFC 0002 delivery gate is complete.
   `tools/roadmap/roadmap.py show` reports R08 and R17 startable. R13, R22–R25,
   R33 and R43 are `planned` and blocked on prerequisites.
-- **`archlint hammer --verify` fails.** Since `7035c29e` (2026-09-22, the RFC
-  0007 R47 PBR schema), `hammerModules` lets `hammer.formats` depend on
-  `render.contracts`. That is a capability module the Hammer graph validator
-  does not know: `module hammer.formats allows edge to unknown module
-  render.contracts`. It is the only reported problem; the inventory, ledger,
-  compatibility and HAM003 checks pass. `quality/baseline.json` still expects
-  `arch.hammer` to pass, and CI (`tests.yml`) runs the command. The fix needs a
-  decision: let the validator accept declared edges to capability modules, or
-  reach the schema through a Hammer-owned port.
+- **`archlint hammer --verify` passes again (2026-09-25).** From `7035c29e`
+  (2026-09-22, the RFC 0007 R47 PBR schema) it rejected the `hammer.formats`
+  → `render.contracts` edge, because the Hammer graph validator knew only
+  Hammer modules. By user decision in the R01 re-audit, the validator now
+  accepts a Hammer module's edge to a module registered in
+  `capabilityModules`. It still rejects unknown targets and cycles, and it
+  rejects a Hammer module that reuses a capability module's id (3 new tests
+  in `tools/archlint/tests/test_hammer.py`). The inventory, ledger,
+  compatibility and HAM003 checks pass.
 - Strict sources exist for `hammer.geometry` (5), `hammer.scene` (2),
   `hammer.formats` (16) and `hammer.app` (7), plus three `hammer.ports`
   headers. `hammer.viewport`, `hammer.tools` and `hammer.presenters` are
@@ -532,10 +532,9 @@ stack, with no new document, global, or second selection owner:
 - 2026-09-25 at `d6260d90`: `check --all` and `baseline --verify` report 64 new
   and 1 stale occurrence (0 relocated). `inventory --verify` reports 13
   uninstrumented native sites. None of them is in a Hammer path.
-- 2026-09-25: `archlint hammer --verify` fails on the `render.contracts` edge
-  that the RFC 0007 PBR schema slice added to `hammer.formats` (see
-  [current state](#current-state-2026-09-25)). The failure is in RFC 0002's own
-  check, but RFC 0002 work did not introduce it.
+- 2026-09-25: `archlint hammer --verify` failed on the `render.contracts` edge
+  that the RFC 0007 PBR schema slice added to `hammer.formats`. It passes again
+  after the validator change above ([current state](#current-state-2026-09-25)).
 
 ### VPK + texture (VTF/VMT) loading: asset catalog and textured viewport (HAM-ASSET-001)
 
@@ -694,7 +693,8 @@ describe. The ledger is authoritative for each entry.
   `public/render/pbr_material_schema.h` and follows primary and fallback patch
   chains with depth and cycle limits. The `render.pbr-material-schema` suite
   (Q-CONTENT) compiles the Hammer catalog sources. This slice added the
-  `render.contracts` edge that now fails `archlint hammer --verify`. See the
+  `render.contracts` edge, which `archlint hammer --verify` accepts since
+  2026-09-25 as an edge to a registered capability module. See the
   [RFC 0007 record](0007-progress.md).
 - **KTX2 preview (RFC 0008 F3, `97e298c6`).** `MaterialCatalog` prefers a
   packaged KTX2 asset over the VTF of the same `$basetexture` through a decoder
@@ -711,8 +711,8 @@ editor (D8).
 ## Next dependency-ready migrations
 
 2026-09-25 status: item 1 is open. For items 2–4, the first step named below
-is done and the rest remains, as noted in each item. Before them, restore
-`archlint hammer --verify` ([current state](#current-state-2026-09-25)).
+is done and the rest remains, as noted in each item. `archlint hammer
+--verify` passes again ([current state](#current-state-2026-09-25)).
 
 1. **HAM-INVENTORY-001 (continue):** expand `hammer_inventory.json` toward
    exhaustive per-file/per-symbol coverage; flip `coverage.status` to `complete`

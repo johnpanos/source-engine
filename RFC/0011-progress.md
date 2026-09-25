@@ -41,8 +41,9 @@ Current notes (2026-09-25, checked at `d6260d90`):
     references (both states). Not yet explained.
 
   The gallery fixtures and `swing` pass (301 oracles, 4,369 checks).
-  `quality/baseline.json` still records `gi.references` as pass, so the R01
-  audit should deviate. This weakens the G0.1 and G10 reference records.
+  `quality/baseline.json` records `gi.references` as a known `fail` owned by
+  R70 (R01 re-audit, user decision 2026-09-25); re-rendering waits for R70's
+  ranking. This weakens the G0.1 and G10 reference records.
   The in-game gates were not rerun.
 - **Descriptor sets.** The PBR and GI stages now bind three grouped sets
   (RFC 0007's
