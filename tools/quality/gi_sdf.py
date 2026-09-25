@@ -25,7 +25,10 @@ at spawn), closed by `ent_fire Door Enable`. SDF open must match `open` and
 SDF closed must match `closed`; radiosity and baked closed must NOT (they
 claim no GeometryMotion): the scenario tells them apart. The closed room is
 dark throughout (its reference is 0), so `closed` is judged at the `open`
-state's light level.
+state's light level. Those are indirect-light views; the shaded view (what a
+player sees, the baked direct light included) must also go dark when the
+door closes: every region at most SHADED_DARK of its open-door light, which
+it does not with `r_indirect_occlusion 0` (the negative control).
 
 `sun` (G6.3, "sun angle changes converge"): room-states' sun (its light
 style from the radiosity transfer) is moved to the fixture's recorded sun-low
@@ -58,20 +61,27 @@ SETTLE_FRAMES = 240  # the later capture a converged producer must agree with
 # TracedProducer::Caps().responseTolerance: both traced producers declare it,
 # so the ray-query producer's tolerance is exactly as tight as the SDF one's.
 RESPONSE_TOLERANCE = 0.1
+# A shaded closed-door region may keep at most this fraction of its shaded
+# open-door light (Cycles: none; what remains is the door's own lit face
+# bouncing and the capture's floor).
+SHADED_DARK = 0.1
 
 
 def run_captures(fixture, map_build, out, captures, level_state, args):
     """Each capture: (state, console command, expected to pass the state's
-    gate (None: measured only)[, extra frames before the screenshot]).
-    Returns (all as expected, per-capture results)."""
+    gate (None: measured only)[, extra frames before the screenshot[, the
+    view: 1 indirect light (default), 0 shaded]]). Returns (all as expected,
+    per-capture results)."""
     results, passed = {}, True
     for name, (state, command, should_pass, *extra) in captures.items():
         settle = extra[0] if extra else 0
+        view = extra[1] if len(extra) > 1 else 1
         target = out / name
         capture = [sys.executable, HERE / "gi_runtime.py", "capture", "--fixture", fixture,
                    "--map-build", map_build, "--out", target, "--build", args.build,
                    "--console-command", command, "--capture-wait",
-                   str(gi_runtime.PLACEMENT_FRAMES + WARM_FRAMES + CHANGE_FRAMES + settle)]
+                   str(gi_runtime.PLACEMENT_FRAMES + WARM_FRAMES + CHANGE_FRAMES + settle),
+                   "--view", str(view)]
         if args.runtime:
             capture += ["--runtime", args.runtime]
         booted = subprocess.run([str(part) for part in capture], capture_output=True, text=True,
@@ -132,11 +142,28 @@ def door(args):
                              change, False),
         "baked-closed": ("closed", "r_indirect_report 1; r_indirect_producer baked; " + change,
                          False),
+        # What a player sees (shaded, direct light included): the closed room
+        # must go dark, and does not without the moving-geometry occlusion.
+        producer + "-shaded-open": ("open", select + "wait %d" % WARM_FRAMES, None, 0, 0),
+        producer + "-shaded-closed": ("closed", select + change, None, 0, 0),
+        producer + "-shaded-closed-no-occlusion": (
+            "closed", "r_indirect_occlusion 0; " + select + change, None, 0, 0),
     }
     passed, results = run_captures("door", Path(args.map_build or MAPS / "door"),
                                    Path(args.out), captures, "open", args)
+    opened = results[producer + "-shaded-open"]["regions"]
+    dark = {name: {region: results[name]["regions"][region][0] <=
+                   SHADED_DARK * opened[region][0] for region in opened}
+            for name in (producer + "-shaded-closed", producer + "-shaded-closed-no-occlusion")}
+    checks = {"shaded_closed_dark": all(dark[producer + "-shaded-closed"].values()),
+              "without_occlusion_not_dark":
+                  not all(dark[producer + "-shaded-closed-no-occlusion"].values())}
+    for check, ok in checks.items():
+        print("%-32s %s" % (check, "pass" if ok else "fail"))
+    passed &= all(checks.values())
     return write(Path(args.out), GATES[producer][0], passed, results, build=args.build,
-                 producer=producer)
+                 producer=producer, shaded_dark_fraction=SHADED_DARK, shaded_dark=dark,
+                 checks=checks)
 
 
 def sun(args):

@@ -67,6 +67,9 @@ ConVar r_indirect_executor( "r_indirect_executor", "0", FCVAR_NONE,
     "How CPU indirect-light producers run their batches (RFC 0003 job system): 0 serially on "
     "the main thread (one worker, the pooled mode's oracle), 1 on the engine's worker pool; "
     "both produce identical volumes" );
+ConVar r_indirect_occlusion( "r_indirect_occlusion", "1", FCVAR_CHEAT,
+    "Moving geometry (drawn brush entities) blocks the baked direct light and the probe "
+    "visibility behind it (0: the bake's, the negative control of the door test)" );
 ConVar r_indirect_report( "r_indirect_report", "0", FCVAR_NONE,
     "Print each indirect-light update: the producer's CPU time and the published volume's mean "
     "indirect light" );
@@ -263,14 +266,16 @@ world_mesh_gpu::IWorldMeshUpload *Uploader();
 // the bake's total less the direct light they block (DirectOcclusion).
 void ApplyOcclusion( Host &host )
 {
-	if ( !host.occlusion.Ready() || host.deviceLost || host.proxies == host.occluded )
+	static const std::vector<Proxy> none;
+	const std::vector<Proxy> &proxies = r_indirect_occlusion.GetBool() ? host.proxies : none;
+	if ( !host.occlusion.Ready() || host.deviceLost || proxies == host.occluded )
 		return;
 	world_mesh_gpu::IWorldMeshUpload *uploader = Uploader();
 	if ( !uploader || !uploader->IsResident() )
 		return;
 	const double started = Plat_FloatTime();
 	const size_t blocked =
-	    host.occlusion.Compose( host.proxies, &host.occlusionExecutor, &host.occludedTotal );
+	    host.occlusion.Compose( proxies, &host.occlusionExecutor, &host.occludedTotal );
 	const mapcontainer::WorldLightmapLayout &layout = host.occlusion.Layout();
 	world_mesh_gpu::WorldLightmapUploadRequest request;
 	request.width = layout.width;
@@ -288,10 +293,10 @@ void ApplyOcclusion( Host &host )
 		Warning( "indirect light: the occluded lightmap upload failed; the bake stays\n" );
 		return;
 	}
-	host.occluded = host.proxies;
+	host.occluded = proxies;
 	if ( r_indirect_report.GetBool() )
 		Msg( "indirect light: %zu occluder(s) block baked direct light at %zu texels (%.2f ms)\n",
-		    host.proxies.size(), blocked, ( Plat_FloatTime() - started ) * 1000.0 );
+		    proxies.size(), blocked, ( Plat_FloatTime() - started ) * 1000.0 );
 }
 
 world_mesh_gpu::IWorldMeshUpload *Uploader()
@@ -349,7 +354,7 @@ void Consume( const FrameVolume &frame )
 	// on its far side from lighting through it (a copy; the producer's
 	// volume stays as published).
 	host.visibilityProxies = host.proxies;
-	if ( !host.proxies.empty() )
+	if ( !host.proxies.empty() && r_indirect_occlusion.GetBool() )
 	{
 		auto occluded = std::make_shared<Volume>( *frame.volume );
 		if ( OccludeProbeVisibility( *occluded, host.proxies ) )
