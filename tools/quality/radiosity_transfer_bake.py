@@ -353,16 +353,17 @@ def world_bvh(objects):
     return BVHTree.FromPolygons(vertices, polygons, epsilon=0.0), np.asarray(owner)
 
 
-def cosine_directions(normal, count, rng):
-    u1, u2 = rng.random(count), rng.random(count)
+def cosine_directions(normals, rng):
+    """One cosine-weighted direction about each unit normal (N, 3)."""
+    n = np.asarray(normals, dtype=np.float64)
+    u1, u2 = rng.random(len(n)), rng.random(len(n))
     r, phi = np.sqrt(u1), 2 * math.pi * u2
-    local = np.stack([r * np.cos(phi), r * np.sin(phi), np.sqrt(np.maximum(0, 1 - u1))], -1)
-    n = np.asarray(normal)
-    a = np.array([1.0, 0, 0]) if abs(n[0]) < 0.9 else np.array([0, 1.0, 0])
-    t = np.cross(n, a)
-    t /= np.linalg.norm(t)
+    helper = np.where((np.abs(n[:, 0]) < 0.9)[:, None], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+    t = np.cross(n, helper)
+    t /= np.linalg.norm(t, axis=1, keepdims=True)
     b = np.cross(n, t)
-    return local[:, 0:1] * t + local[:, 1:2] * b + local[:, 2:3] * n
+    return (r * np.cos(phi))[:, None] * t + (r * np.sin(phi))[:, None] * b + \
+        np.sqrt(np.maximum(0.0, 1.0 - u1))[:, None] * n
 
 
 def first_hits(bvh, owner, patches, origins, directions, limit):
@@ -484,7 +485,8 @@ def main():
     emitters = [obj for obj in bpy.data.objects if obj.type == "MESH" and
                 obj.name.startswith(pbrt_blender.EMITTER_PREFIXES)]
     assignments = {shape["name"]: shape["material"] for shape in scene["shapes"]}
-    materials = {obj.data.materials[0].name: obj.data.materials[0] for obj in world
+    # By scene material name (Blender may suffix its datablocks).
+    materials = {assignments[obj.name]: obj.data.materials[0] for obj in world
                  if obj.data.materials}
     sources = collect_sources(scene, materials)
     if not sources:
@@ -513,8 +515,7 @@ def main():
     for p in range(count):
         members = patches.members[p]
         chosen = members[rng.integers(0, len(members), args.transfer_rays)]
-        directions = np.vstack([cosine_directions(samples["normal"][s] * patches.side[p], 1, rng)
-                                for s in chosen])
+        directions = cosine_directions(samples["normal"][chosen] * patches.side[p], rng)
         origins = samples["position"][chosen] + \
             samples["normal"][chosen] * patches.side[p] * RAY_OFFSET
         for q in first_hits(bvh, owner, patches, origins, directions, limit):
@@ -587,8 +588,10 @@ def main():
         per_patch /= RECEIVERS_PER_PATCH
         injection.append([(int(p), tuple(float(v) for v in per_patch[p]))
                           for p in np.nonzero(per_patch.max(axis=1) > 0)[0]])
-        probe_direct.append(light[patch_quads:patch_quads + len(probe_positions) * len(
-            directions)].reshape(len(probe_positions), len(directions), 3))
+        direct = light[patch_quads:patch_quads + len(probe_positions) * len(
+            directions)].reshape(len(probe_positions), len(directions), 3).copy()
+        direct[~probe_active.astype(bool)] = 0.0  # inside geometry: never sampled
+        probe_direct.append(direct)
     isolate(sources, None)
     baked = time.monotonic()
 
