@@ -18,6 +18,7 @@ import pbrt_scene
 
 PBRT_TO_USD = Matrix(pbrt_scene.PBRT_TO_USD)
 EMITTER_PREFIXES = map_scene.EMITTER_PREFIXES
+LAMP_SUFFIX = "Lamp"
 
 
 def matrix(values):
@@ -279,6 +280,31 @@ def add_emitter(index, shape):
     return obj
 
 
+def cone_strength(tree, cone, scale, cosine):
+    """A Source spot's strength: `scale` times vrad's cone multiplier of the
+    cosine between the emitting normal and the direction to the lit point:
+    1 inside the inner cone, 0 outside the outer one,
+    ((cos - outer) / (inner - outer)) ** exponent between."""
+    nodes, links = tree.nodes, tree.links
+    ramp = nodes.new("ShaderNodeMapRange")
+    ramp.clamp = True
+    ramp.inputs["From Min"].default_value = cone["outer"]
+    ramp.inputs["From Max"].default_value = max(cone["inner"], cone["outer"] + 1e-6)
+    links.new(cosine, ramp.inputs["Value"])
+    multiplier = ramp.outputs["Result"]
+    if cone["exponent"] not in (0.0, 1.0):
+        power = nodes.new("ShaderNodeMath")
+        power.operation = "POWER"
+        links.new(multiplier, power.inputs[0])
+        power.inputs[1].default_value = cone["exponent"]
+        multiplier = power.outputs["Value"]
+    strength = nodes.new("ShaderNodeMath")
+    strength.operation = "MULTIPLY"
+    strength.inputs[0].default_value = scale
+    links.new(multiplier, strength.inputs[1])
+    return strength.outputs["Value"]
+
+
 def emitter_material(index, shape):
     emission = shape["emission"]
     result = bpy.data.materials.new("Emitter%02d_Cycles" % index)
@@ -291,33 +317,15 @@ def emitter_material(index, shape):
     node.inputs["Strength"].default_value = emission["scale"]
     cone = shape.get("cone")
     if cone:
-        # A Source spot: the disk's radiance times vrad's cone multiplier of
-        # the angle to the lit point (the disk's projected area supplies the
-        # cosine vrad also applies): 1 inside the inner cone, 0 outside the
-        # outer one, ((cos - outer) / (inner - outer)) ** exponent between.
-        links = result.node_tree.links
+        # The disk's projected area supplies the cosine vrad also applies.
         geometry = nodes.new("ShaderNodeNewGeometry")
         cosine = nodes.new("ShaderNodeVectorMath")
         cosine.operation = "DOT_PRODUCT"
-        links.new(geometry.outputs["Incoming"], cosine.inputs[0])
-        links.new(geometry.outputs["True Normal"], cosine.inputs[1])
-        ramp = nodes.new("ShaderNodeMapRange")
-        ramp.clamp = True
-        ramp.inputs["From Min"].default_value = cone["outer"]
-        ramp.inputs["From Max"].default_value = max(cone["inner"], cone["outer"] + 1e-6)
-        links.new(cosine.outputs["Value"], ramp.inputs["Value"])
-        multiplier = ramp.outputs["Result"]
-        if cone["exponent"] not in (0.0, 1.0):
-            power = nodes.new("ShaderNodeMath")
-            power.operation = "POWER"
-            links.new(multiplier, power.inputs[0])
-            power.inputs[1].default_value = cone["exponent"]
-            multiplier = power.outputs["Value"]
-        strength = nodes.new("ShaderNodeMath")
-        strength.operation = "MULTIPLY"
-        strength.inputs[0].default_value = emission["scale"]
-        links.new(multiplier, strength.inputs[1])
-        links.new(strength.outputs["Value"], node.inputs["Strength"])
+        result.node_tree.links.new(geometry.outputs["Incoming"], cosine.inputs[0])
+        result.node_tree.links.new(geometry.outputs["True Normal"], cosine.inputs[1])
+        result.node_tree.links.new(
+            cone_strength(result.node_tree, cone, emission["scale"], cosine.outputs["Value"]),
+            node.inputs["Strength"])
     surface = node.outputs["Emission"]
     if emission.get("one_sided"):
         # UsdLux area lights emit from their front face only.
@@ -332,15 +340,114 @@ def emitter_material(index, shape):
     return result
 
 
+def lamp_kind(shape):
+    """The Cycles lamp that lights the scene in place of an emitter mesh, or
+    None to light with the mesh itself.
+
+    A USD sphere, disk or rect light carries its analytic `shape`, and Cycles
+    has the exact lamp for each: a point lamp with a radius is a true sphere,
+    and a disk or rectangle area lamp emits from its front face, as a
+    one-sided UsdLux light does. A lamp is sampled by the solid angle it
+    covers; the tessellated mesh is sampled triangle by triangle, half of
+    them facing away, which on the sphere fixture is some 300 times the
+    noise at equal samples. Two-sided flat emitters and PBRT meshes keep
+    their mesh."""
+    kind = (shape.get("shape") or {}).get("kind")
+    if kind == "sphere":
+        return kind
+    if kind in ("disk", "rect") and shape["emission"].get("one_sided"):
+        return kind
+    return None
+
+
+def emitter_objects(index, shape):
+    """Names of the Blender objects that emit for scene emitter `index`: its
+    mesh and, when it has one, its lamp. Switch them together."""
+    name = emitter_name(index, shape)
+    return [name] + ([name + LAMP_SUFFIX] if lamp_kind(shape) else [])
+
+
+def add_lamp(index, shape, mesh):
+    """The emitter's Cycles lamp, with the same radiance, size and placement.
+
+    Cycles gives a lamp of power P the radiance P / (pi * A) over its
+    emitting area A (both faces of a sphere count: A = 4 pi r^2). The mesh
+    stays for camera rays only - probes and reference views still see the
+    fixture - and every other ray (diffuse, glossy, transmission, shadow)
+    sees the lamp alone, so nothing is lit twice or shadowed by its own
+    bulb."""
+    kind = lamp_kind(shape)
+    analytic = shape["shape"]
+    emission = shape["emission"]
+    radiance = [value * emission["scale"] for value in emission["radiance"]]
+    peak = max(radiance)
+    centre = Vector(analytic["centre"])
+    name = emitter_name(index, shape) + LAMP_SUFFIX
+    if kind == "sphere":
+        radius = analytic["radius_m"]
+        data = bpy.data.lights.new(name, "POINT")
+        data.shadow_soft_size = radius
+        area = 4 * math.pi * radius * radius
+        rotation = Matrix.Identity(3)
+    elif kind == "disk":
+        radius = analytic["radius_m"]
+        data = bpy.data.lights.new(name, "AREA")
+        data.shape = "DISK"
+        data.size = 2 * radius
+        area = math.pi * radius * radius
+        # An area lamp emits along its local -Z.
+        rotation = Vector(analytic["normal"]).normalized().to_track_quat("-Z", "Y").to_matrix()
+    else:
+        world = matrix(map_scene.emitter_to_stage(shape))
+        corners = [world @ Vector(point) for point in shape["points"][:4]]
+        u, v = corners[1] - corners[0], corners[3] - corners[0]
+        data = bpy.data.lights.new(name, "AREA")
+        data.shape = "RECTANGLE"
+        data.size, data.size_y = u.length, v.length
+        area = u.length * v.length
+        # usd_scene winds a rect so it emits along -(u x v): the lamp's -Z.
+        rotation = Matrix((u.normalized(), v.normalized(),
+                           u.cross(v).normalized())).transposed()
+    data.energy = peak * math.pi * area
+    data.color = tuple(value / peak for value in radiance) if peak > 0 else (1.0, 1.0, 1.0)
+    cone = shape.get("cone")
+    if cone:
+        data.use_nodes = True
+        tree = data.node_tree
+        node = next(node for node in tree.nodes if node.type == "EMISSION")
+        geometry = tree.nodes.new("ShaderNodeNewGeometry")
+        cosine = tree.nodes.new("ShaderNodeVectorMath")
+        cosine.operation = "DOT_PRODUCT"
+        tree.links.new(geometry.outputs["Incoming"], cosine.inputs[0])
+        cosine.inputs[1].default_value = tuple(-rotation.col[2])
+        tree.links.new(cone_strength(tree, cone, 1.0, cosine.outputs["Value"]),
+                       node.inputs["Strength"])
+    obj = bpy.data.objects.new(name, data)
+    bpy.context.scene.collection.objects.link(obj)
+    obj.matrix_world = Matrix.Translation(centre) @ rotation.to_4x4()
+    obj.visible_camera = False
+    low = mesh.matrix_world @ Vector([min(v.co[i] for v in mesh.data.vertices) for i in range(3)])
+    high = mesh.matrix_world @ Vector([max(v.co[i] for v in mesh.data.vertices)
+                                       for i in range(3)])
+    if ((low + high) / 2 - centre).length > 1e-3 * (high - low).length + 1e-6:
+        raise ValueError("%s: the analytic light sits off its mesh" % name)
+    mesh.visible_diffuse = mesh.visible_glossy = mesh.visible_transmission = False
+    mesh.visible_shadow = mesh.visible_volume_scatter = False
+    return obj
+
+
 def restore_emitters(scene):
     """Rebind emitter radiance (Blender's USD preview-surface bridge drops
-    emission) and add the scene's distant lights as sun lamps."""
+    emission), add each analytic emitter's lamp, and add the scene's
+    distant lights as sun lamps."""
     for index, shape in enumerate(scene["emitters"]):
         obj = bpy.data.objects.get(emitter_name(index, shape))
         if not obj or obj.type != "MESH":
             raise ValueError("USD stage lost scene emitter " + emitter_name(index, shape))
         obj.data.materials.clear()
         obj.data.materials.append(emitter_material(index, shape))
+        if lamp_kind(shape):
+            add_lamp(index, shape, obj)
     for index, light in enumerate(scene.get("distant_lights", [])):
         add_sun(index, light)
 

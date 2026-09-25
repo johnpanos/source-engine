@@ -124,9 +124,15 @@ def brush_text(brush_id, side_id, planes, vertices, material=MATERIAL):
         v = np.cross(normal, u)
         points = (center + 64 * u, center, center + 64 * v)
         text = " ".join("(%.4f %.4f %.4f)" % tuple(point) for point in points)
+        # Hammer's world-aligned axes for the side's dominant axis: an axis
+        # along the normal would leave vbsp's lightmap vectors degenerate.
+        axis = int(np.argmax(np.abs(normal)))
+        uaxis, vaxis = (("[0 1 0 0]", "[0 0 -1 0]") if axis == 0 else
+                        ("[1 0 0 0]", "[0 0 -1 0]") if axis == 1 else
+                        ("[1 0 0 0]", "[0 -1 0 0]"))
         result.extend(("\t\tside", "\t\t{", f'\t\t\t"id" "{side_id + index}"',
                        f'\t\t\t"plane" "{text}"', f'\t\t\t"material" "{material}"',
-                       '\t\t\t"uaxis" "[1 0 0 0] 0.25"', '\t\t\t"vaxis" "[0 -1 0 0] 0.25"',
+                       f'\t\t\t"uaxis" "{uaxis} 0.25"', f'\t\t\t"vaxis" "{vaxis} 0.25"',
                        '\t\t\t"rotation" "0"', '\t\t\t"lightmapscale" "16"',
                        '\t\t\t"smoothing_groups" "0"', "\t\t}"))
     return "\n".join(result + ["\t}"])

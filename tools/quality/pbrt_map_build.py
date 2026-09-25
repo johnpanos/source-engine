@@ -33,7 +33,8 @@ emitters stay invisible, and there is no sky dome or traversal gate. Steps:
                  irradiance atlas
     noise        (lightmap.noise_target) lightmap_noise.py: the bake's measured Monte Carlo
                  noise (every light page is the mean of two half-sample bakes) must be under
-                 the target, or the step reports the sample count that would meet it
+                 the target, or the step reports the sample count that would meet it; with
+                 lightmap.denoise it judges what remains after the per-chart denoise
     denoise      OpenImageDenoise RTLightmap filter (manifest lightmap.denoise, default on)
     seams        lightmap_seams.py extract --check: the lighting stage's chart seams, and a
                  gate on its chart invariants (no overlap, bleed, escaped UVs or split
@@ -122,6 +123,7 @@ USD_TOOLS = ("openusd", "compile_tools")
 # name their client build in their settings.
 STEP_TOOLS = {"legacy-scene": USD_TOOLS, "scene": USD_TOOLS, "stage": BLENDER_TOOLS,
               "layout": USD_TOOLS, "bake": BLENDER_TOOLS, "denoise": ("openimagedenoise",),
+              "noise": ("openimagedenoise",),
               "directional": ("openimagedenoise",), "probe": BLENDER_TOOLS,
               "probe-volume": BLENDER_TOOLS, "radiosity": BLENDER_TOOLS, "sdf": BLENDER_TOOLS,
               "seams": USD_TOOLS, "ktx2": ("ktx",), "sky": USD_TOOLS, "collision": USD_TOOLS,
@@ -658,15 +660,17 @@ class Pipeline:
         if noise_target:
             halves = [p["noise_pair"] / "total-a.exr", p["noise_pair"] / "total-b.exr"]
             mean_samples = 2 * max(1, (self.lightmap["samples"] + 1) // 2)
+            denoised = ["--after-denoise"] if self.lightmap["denoise"] else []
             self.step("noise", halves + [p["coverage"]],
-                      {"target": noise_target, "samples": mean_samples}, ["lightmap_noise.py"],
+                      {"target": noise_target, "samples": mean_samples,
+                       "after_denoise": bool(denoised)}, ["lightmap_noise.py"],
                       [p["noise_receipt"]],
                       lambda: self.run("noise", [sys.executable, HERE / "lightmap_noise.py",
                                                  "--first", halves[0], "--second", halves[1],
                                                  "--coverage", p["coverage"],
                                                  "--samples", str(mean_samples),
                                                  "--target", str(noise_target),
-                                                 "--out", p["noise_receipt"]]))
+                                                 "--out", p["noise_receipt"]] + denoised))
         atlas, atlas_receipt, scope = p["atlas"], p["atlas_receipt"], BAKE_SCOPE
         denoised_layers = {role: p["layers"] / (role + "-denoised.exr") for role in layers}
 

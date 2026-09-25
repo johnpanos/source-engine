@@ -792,8 +792,9 @@ unsigned int R_UpdateDlightState( dlight_t *pLights, SurfaceHandle_t surfID, con
 //-----------------------------------------------------------------------------
 static std::unordered_map<SurfaceHandle_t, std::vector<Vector4D>> g_ProbeLitSurfaces;
 
-void R_BuildLightMapGuts( dlight_t *pLights, SurfaceHandle_t surfID, const matrix3x4_t &entityToWorld,
-    unsigned int dlightMask, bool needsBumpmap, bool needsLightmap );
+void R_BuildLightMapGuts( dlight_t *pLights, SurfaceHandle_t surfID,
+    const matrix3x4_t &entityToWorld, unsigned int dlightMask, bool needsBumpmap,
+    bool needsLightmap );
 
 static bool R_ProbeLitSamples( SurfaceHandle_t surfID, Vector4D *samples, int size )
 {
@@ -814,8 +815,8 @@ static bool LuxelPosition( SurfaceHandle_t surfID, int s, int t, Vector *out )
 	const short *mins = MSurf_LightmapMins( surfID );
 	const Vector4D &u = info->lightmapVecsLuxelsPerWorldUnits[0];
 	const Vector4D &v = info->lightmapVecsLuxelsPerWorldUnits[1];
-	const float rows[3][3] = { { u.x, u.y, u.z }, { v.x, v.y, v.z },
-		{ plane.normal.x, plane.normal.y, plane.normal.z } };
+	const float rows[3][3] = {
+	    { u.x, u.y, u.z }, { v.x, v.y, v.z }, { plane.normal.x, plane.normal.y, plane.normal.z } };
 	const float rhs[3] = { float( s + mins[0] ) - u.w, float( t + mins[1] ) - v.w, plane.dist };
 	const float det = rows[0][0] * ( rows[1][1] * rows[2][2] - rows[1][2] * rows[2][1] ) -
 	                  rows[0][1] * ( rows[1][0] * rows[2][2] - rows[1][2] * rows[2][0] ) +
@@ -831,7 +832,7 @@ static bool LuxelPosition( SurfaceHandle_t surfID, int s, int t, Vector *out )
 		( *out )[k] = ( m[0][0] * ( m[1][1] * m[2][2] - m[1][2] * m[2][1] ) -
 		                  m[0][1] * ( m[1][0] * m[2][2] - m[1][2] * m[2][0] ) +
 		                  m[0][2] * ( m[1][0] * m[2][1] - m[1][1] * m[2][0] ) ) /
-		                det;
+		              det;
 	}
 	return true;
 }
@@ -846,8 +847,11 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 	// Not yet: the map's lightmap pages are allocated after its volume loads.
 	if ( !host_state.worldbrush || !materialSortInfoArray )
 		return false;
+	static ConVarRef report( "r_indirect_report" );
 	std::vector<Vector4D> luxels;
 	int lit = 0, noLight = 0, baked = 0, noLightmap = 0, whitePage = 0;
+	size_t luxelCount = 0, unsampled = 0;
+	double luxelSum = 0.0;
 	for ( int model = 1; model < host_state.worldbrush->numsubmodels; ++model )
 	{
 		char name[16];
@@ -857,8 +861,8 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 			continue;
 		for ( int i = 0; i < brush->brush.nummodelsurfaces; ++i )
 		{
-			const SurfaceHandle_t surfID = SurfaceHandleFromIndex(
-			    brush->brush.firstmodelsurface + i, brush->brush.pShared );
+			const SurfaceHandle_t surfID =
+			    SurfaceHandleFromIndex( brush->brush.firstmodelsurface + i, brush->brush.pShared );
 			if ( MSurf_Flags( surfID ) & SURFDRAW_NOLIGHT )
 			{
 				++noLight;
@@ -881,9 +885,8 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 			++lit;
 			const int width = MSurf_LightmapExtents( surfID )[0] + 1;
 			const int height = MSurf_LightmapExtents( surfID )[1] + 1;
-			Vector normal = MSurf_Plane( surfID ).normal;
-			if ( MSurf_Flags( surfID ) & SURFDRAW_PLANEBACK )
-				normal = -normal;
+			// The face's own plane: SURFDRAW_PLANEBACK only relates it to its node.
+			const Vector normal = MSurf_Plane( surfID ).normal;
 			luxels.assign( size_t( width ) * height, Vector4D( 0, 0, 0, 1 ) );
 			for ( int t = 0; t < height; ++t )
 				for ( int s = 0; s < width; ++s )
@@ -892,24 +895,40 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 					if ( !LuxelPosition( surfID, s, t, &position ) )
 						continue;
 					// A little off the face, toward the side it shows.
-					const float at[3] = { position.x + normal.x, position.y + normal.y,
-						position.z + normal.z };
+					const float at[3] = {
+					    position.x + normal.x, position.y + normal.y, position.z + normal.z };
 					const float facing[3] = { normal.x, normal.y, normal.z };
 					float light[3] = {};
-					if ( view->Sample( at, facing, mapcontainer::ProbeVolumeLayer::Total, true, light ) )
+					++luxelCount;
+					if ( view->Sample(
+					         at, facing, mapcontainer::ProbeVolumeLayer::Total, true, light ) )
+					{
 						luxels[size_t( t ) * width + s].Init( light[0], light[1], light[2], 1.0f );
+						luxelSum += ( light[0] + light[1] + light[2] ) / 3.0f;
+					}
+					else
+						++unsampled;
 				}
 			g_ProbeLitSurfaces[surfID] = luxels;
+			if ( report.IsValid() && report.GetInt() > 1 ) // DBGDOOR
+				Msg( "DBGDOOR surf page %d offset %d %d size %dx%d normal %.2f %.2f %.2f first %.4f "
+				     "flags %x\n",
+				    page, MSurf_OffsetIntoLightmapPage( surfID )[0],
+				    MSurf_OffsetIntoLightmapPage( surfID )[1], width, height, normal.x, normal.y,
+				    normal.z, luxels[0].x, MSurf_Flags( surfID ) );
 			matrix3x4_t identity;
 			SetIdentityMatrix( identity );
-			R_BuildLightMapGuts( NULL, surfID, identity, 0, SurfNeedsBumpedLightmaps( surfID ), true );
+			R_BuildLightMapGuts(
+			    NULL, surfID, identity, 0, SurfNeedsBumpedLightmaps( surfID ), true );
 		}
 	}
-	static ConVarRef report( "r_indirect_report" );
 	if ( report.IsValid() && report.GetBool() )
-		Msg( "indirect light: %d brush-entity surface(s) lit from probes (%d replacing baked light; "
-		     "skipped: %d unlit, %d without a lightmap, %d on the white page)\n",
-		    lit, baked, noLight, noLightmap, whitePage );
+		Msg(
+		    "indirect light: %d brush-entity surface(s) lit from probes (%d replacing baked light; "
+		    "skipped: %d unlit, %d without a lightmap, %d on the white page); %zu luxels, "
+		    "%zu outside the volume, mean %.4f\n",
+		    lit, baked, noLight, noLightmap, whitePage, luxelCount, unsampled,
+		    luxelCount > unsampled ? luxelSum / double( luxelCount - unsampled ) : 0.0 );
 	return true;
 }
 
@@ -952,15 +971,15 @@ void R_BuildLightMapGuts( dlight_t *pLights, SurfaceHandle_t surfID, const matri
 
 	// add all the lightmaps
 	// Here, it's got the data it needs. So use it!
-	if( probeLit )
+	if ( probeLit )
 	{
-		for( bumpID = 1; needsBumpmap && bumpID < NUM_BUMP_VECTS + 1; bumpID++ )
+		for ( bumpID = 1; needsBumpmap && bumpID < NUM_BUMP_VECTS + 1; bumpID++ )
 		{
-			for( int i = 0; i < size; i++ )
+			for ( int i = 0; i < size; i++ )
 				blocklights[bumpID][i] = blocklights[0][i];
 		}
 	}
-	else if( ( hasLightmap && needsLightmap ) || ( hasBumpmap && needsBumpmap ) )
+	else if ( ( hasLightmap && needsLightmap ) || ( hasBumpmap && needsBumpmap ) )
 	{
 		ComputeLightmapFromLightstyle( pLighting, ( hasLightmap && needsLightmap ),
 			( hasBumpmap && needsBumpmap ), size, hasBumpmap );

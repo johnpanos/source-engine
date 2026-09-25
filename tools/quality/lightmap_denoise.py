@@ -32,6 +32,11 @@ OIDN_FORMAT_FLOAT3 = 3
 # Border (texels) around each chart's crop in denoise_charts, filled from the
 # chart itself so the filter's edge handling never touches its texels.
 CHART_PAD = 16
+# Width (texels) of the Gaussian that continues a chart's light into its
+# border. A copy of the nearest edge texel repeats that texel's noise as a
+# streak the filter keeps as detail; on testchmb_a_00 (256 samples) the
+# edge texels' residual p99 was 94% with copies and 50% with this fill.
+CHART_FILL_SIGMA = 4.0
 
 
 def sha256(path):
@@ -100,10 +105,10 @@ class Denoiser:
 def denoise_charts(color, covered, denoiser, pad=CHART_PAD, input_scale=None):
     """Denoise each chart - a connected region of covered texels - alone.
 
-    A chart is cropped with `pad` texels of border, and every crop texel
-    outside the chart takes its nearest chart texel, so the filter sees only
-    the chart's own light: no neighbouring chart, however close in the atlas,
-    reaches it. One input scale (1 / the covered median unless given) serves
+    A chart is cropped with `pad` texels of border, filled with the chart's
+    own light smoothed (chart_fill), so the filter sees only that chart: no
+    neighbouring chart, however close in the atlas, reaches it. One input
+    scale (1 / the covered median unless given) serves
     every chart. Covered texels get the result; others keep `color`.
     Returns (image, record)."""
     result = np.array(color, dtype=np.float32, copy=True)
@@ -118,12 +123,27 @@ def denoise_charts(color, covered, denoiser, pad=CHART_PAD, input_scale=None):
         y0, y1 = max(box[0].start - pad, 0), min(box[0].stop + pad, height)
         x0, x1 = max(box[1].start - pad, 0), min(box[1].stop + pad, width)
         own = labels[y0:y1, x0:x1] == index
-        _, (rows, columns) = ndimage.distance_transform_edt(~own, return_indices=True)
-        crop = color[y0:y1, x0:x1][rows, columns]
+        crop = chart_fill(color[y0:y1, x0:x1], own)
         filtered = np.maximum(denoiser.run(crop, input_scale), 0.0)
         region = result[y0:y1, x0:x1]
         region[own] = filtered[own]
     return result, {"charts": int(count), "pad": pad, "input_scale": float(input_scale)}
+
+
+def chart_fill(crop, own, sigma=CHART_FILL_SIGMA):
+    """`crop` with every texel outside `own` replaced by the chart's light
+    smoothed: a Gaussian of width `sigma` over chart texels only, normalized
+    by the chart weight it reaches; texels it does not reach take their
+    nearest reached value. Chart texels are unchanged."""
+    weight = ndimage.gaussian_filter(own.astype(np.float64), sigma)
+    smooth = np.stack([ndimage.gaussian_filter(np.where(own, crop[..., channel], 0.0), sigma)
+                       for channel in range(crop.shape[2])], axis=-1)
+    reached = weight > 1e-4
+    smooth = smooth / np.where(reached, weight, 1.0)[..., None]
+    _, (rows, columns) = ndimage.distance_transform_edt(~reached, return_indices=True)
+    result = smooth[rows, columns].astype(np.float32)
+    result[own] = crop[own]
+    return result
 
 
 def denoise(library, color):

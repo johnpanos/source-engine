@@ -97,13 +97,14 @@ def collect_sources(scene, materials):
     `sourceEngine:lightStyle` on its styled lights): then each light keeps its
     own style and every other source is fixed."""
     sources = []
-    lights = [(shape, pbrt_blender.emitter_name(index, shape))
+    lights = [(shape, pbrt_blender.emitter_objects(index, shape))
               for index, shape in enumerate(scene["emitters"])] + \
-        [(light, "Sun%02d" % index) for index, light in enumerate(scene.get("distant_lights", []))]
+        [(light, ["Sun%02d" % index])
+         for index, light in enumerate(scene.get("distant_lights", []))]
     authored = scene.get("authored_light_styles") or any("style" in light for light, _ in lights)
-    for light, obj in lights:
-        sources.append({"name": prim_name(light.get("source") or obj), "kind": "light",
-                        "objects": [obj]})
+    for light, objects in lights:
+        sources.append({"name": prim_name(light.get("source") or objects[0]), "kind": "light",
+                        "objects": objects})
         if authored:
             sources[-1]["authored_style"] = light.get("style", -1)
     if scene["environment"]:

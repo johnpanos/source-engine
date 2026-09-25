@@ -57,6 +57,46 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class ChartFillTest(unittest.TestCase):
+    """The border a chart is denoised with continues its own light smoothly."""
+
+    def setUp(self):
+        rng = np.random.default_rng(9)
+        self.own = np.zeros((40, 48), bool)
+        self.own[10:30, 12:36] = True
+        self.own[10:14, 36:40] = True           # a notch: not a plain rectangle
+        self.crop = (0.5 + 0.2 * rng.standard_normal((40, 48, 3))).astype(np.float32)
+
+    def test_chart_texels_unchanged_and_border_from_chart_only(self):
+        filled = denoise.chart_fill(self.crop, self.own)
+        np.testing.assert_array_equal(filled[self.own], self.crop[self.own])
+        other = self.crop.copy()
+        other[~self.own] = 1e6
+        np.testing.assert_array_equal(denoise.chart_fill(other, self.own), filled)
+        self.assertTrue(np.isfinite(filled).all())
+
+    def test_constant_chart_fills_constant(self):
+        crop = np.where(self.own[..., None], 0.25, 7.0).astype(np.float32)
+        filled = denoise.chart_fill(crop, self.own)
+        np.testing.assert_allclose(filled, 0.25, rtol=1e-5)
+
+    def test_border_does_not_repeat_edge_noise(self):
+        """A nearest-texel copy repeats each edge texel's noise out to the
+        crop edge; the fill's texel-to-texel noise must be far below the
+        chart's."""
+        filled = denoise.chart_fill(self.crop, self.own)
+        border = ~ndimage.binary_dilation(self.own, iterations=2)
+        chart_step = np.abs(np.diff(self.crop[..., 0], axis=0))[self.own[1:] & self.own[:-1]]
+        border_step = np.abs(np.diff(filled[..., 0], axis=0))[border[1:] & border[:-1]]
+        self.assertLess(border_step.mean(), 0.1 * chart_step.mean())
+        _, (rows, columns) = ndimage.distance_transform_edt(~self.own, return_indices=True)
+        copied = self.crop[rows, columns][..., 0]
+        # Negative control: along a copied streak the value is constant, so
+        # the streak runs across the border the filter sees as structure.
+        copy_step = np.abs(np.diff(copied, axis=1))[border[:, 1:] & border[:, :-1]]
+        self.assertGreater(copy_step.mean(), 0.3 * chart_step.mean())
+
+
 def _oidn():
     try:
         return denoise.load_oidn("libOpenImageDenoise.so.2")
@@ -117,3 +157,33 @@ class PerChartDenoiseTest(unittest.TestCase):
         before, after = self.color[self.covered], out[self.covered]
         self.assertLess(after.std(), 0.5 * before.std())
         self.assertAlmostEqual(after.mean() / before.mean(), 1.0, delta=0.03)
+
+
+    def test_edge_residual_below_nearest_copy(self):
+        """Variant: two noise draws of one chart; after denoising, the edge
+        texels' difference must be smaller with the smooth fill than with
+        the old nearest-texel copy (the negative control)."""
+        rng = np.random.default_rng(12)
+        size = 64
+        covered = np.zeros((size, size), bool)
+        covered[16:48, 12:52] = True
+        light = np.where(covered, 0.4, 0.0)[..., None] * np.ones(3, np.float32)
+        draws = [np.maximum(light * (1 + 0.5 * rng.standard_normal(light.shape)), 0)
+                 .astype(np.float32) for _ in range(2)]
+        edge = covered & ~ndimage.binary_erosion(covered, iterations=2)
+
+        def residual(fill):
+            original = denoise.chart_fill
+            denoise.chart_fill = fill
+            try:
+                out = [denoise.denoise_charts(d, covered, self.denoiser, input_scale=2.5)[0]
+                       for d in draws]
+            finally:
+                denoise.chart_fill = original
+            return float(np.abs(out[0][edge] - out[1][edge]).mean())
+
+        def nearest(crop, own):
+            _, (rows, columns) = ndimage.distance_transform_edt(~own, return_indices=True)
+            return crop[rows, columns]
+
+        self.assertLess(residual(denoise.chart_fill), 0.8 * residual(nearest))
