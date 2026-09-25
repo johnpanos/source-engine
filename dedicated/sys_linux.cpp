@@ -115,7 +115,7 @@ void CSys::Sleep( int msec )
 //-----------------------------------------------------------------------------
 void *CSys::GetProcAddress( long library, const char *name )
 {
-	return dlsym( library, name );
+	return dlsym( (void *)library, name );
 }
 
 //-----------------------------------------------------------------------------
