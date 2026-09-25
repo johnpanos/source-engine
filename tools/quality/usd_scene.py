@@ -237,6 +237,18 @@ def texture_input(surface, name, notes, context):
             "primvar": varname, "transform": transform}
 
 
+def light_style(prim):
+    """A light's authored `sourceEngine:lightStyle` (a compiled map's switchable
+    light style, which the radiosity transfer then uses), or None."""
+    attribute = prim.GetAttribute("sourceEngine:lightStyle")
+    if not attribute or not attribute.HasAuthoredValue():
+        return None
+    style = int(attribute.Get())
+    if not 0 < style <= 63:
+        raise ValueError("%s: light style %d is outside 1..63" % (prim.GetPath(), style))
+    return style
+
+
 def default_summary(name, color, source, approximation):
     return {"name": name, "pbrt_type": "usdpreviewsurface", "source": source,
             "base_color": tuple(float(c) for c in color), "base_texture": None,
@@ -803,6 +815,9 @@ class Extractor:
             "emission": {"radiance": radiance.tolist(), "scale": 1.0,
                          "two_sided": not one_sided, "one_sided": one_sided},
             "normalized": normalized, "area_m2": float(area)})
+        style = light_style(prim)
+        if style is not None:
+            self.emitters[-1]["style"] = style
 
     def add_distant_light(self, prim, world):
         light = UsdLux.DistantLight(prim)
@@ -819,6 +834,9 @@ class Extractor:
         self.distant.append({"source": str(prim.GetPath()), "direction": direction.tolist(),
                              "irradiance": np.asarray(irradiance).tolist(),
                              "angle_degrees": angle})
+        style = light_style(prim)
+        if style is not None:
+            self.distant[-1]["style"] = style
 
     def add_dome_light(self, prim, world):
         if self.environment:

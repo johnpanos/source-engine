@@ -14,6 +14,12 @@
 //          that the probe goes dark (total and indirect near zero). Also
 //          reported: the GPU time of one update (a fenced submission).
 //
+//          `--bench <volume.prbv> <field.sdfv>` instead measures a map's
+//          update cost (RFC 0011 G6.4, the budget's gpu_ms: the median over
+//          warm updates of the dispatch's timestamps): the reference phase
+//          and a live phase after the first switchable light (style 32)
+//          halves.
+//
 //===========================================================================//
 
 #include "../../materialsystem/shaderapivulkan/material_spv.h"
@@ -23,6 +29,7 @@
 #include "render/indirect_sdf.h"
 #include "testing/conformance_result.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -126,7 +133,13 @@ public:
 	}
 	// The GPU time of the slowest submission that carried work (timestamps).
 	double SlowestMs() const { return m_slowest; }
-	void ResetTiming() { m_slowest = 0.0; }
+	void ResetTiming()
+	{
+		m_slowest = 0.0;
+		m_times.clear();
+	}
+	// Every timed submission since ResetTiming, in milliseconds.
+	const std::vector<double> &Times() const { return m_times; }
 
 private:
 	struct Pending
@@ -146,7 +159,11 @@ private:
 			if ( vkGetQueryPoolResults( m_device.device, m_queries,
 			         uint32_t( done.serial % kQuerySlots ) * 2, 2, sizeof( stamps ), stamps,
 			         sizeof( uint64_t ), VK_QUERY_RESULT_64_BIT ) == VK_SUCCESS )
-				m_slowest = std::max( m_slowest, double( stamps[1] - stamps[0] ) * m_period * 1e-6 );
+			{
+				const double ms = double( stamps[1] - stamps[0] ) * m_period * 1e-6;
+				m_slowest = std::max( m_slowest, ms );
+				m_times.push_back( ms );
+			}
 		}
 		headless_vulkan::Finish( m_device, done.fence, done.cmd );
 		m_completed = done.serial;
@@ -162,6 +179,7 @@ private:
 	uint64_t m_completed = 0;
 	uint64_t m_ids = 0;
 	double m_slowest = 0.0;
+	std::vector<double> m_times;
 	static constexpr uint32_t kQuerySlots = 8;
 	VkQueryPool m_queries = VK_NULL_HANDLE;
 	float m_period = 1.0f;
@@ -192,9 +210,130 @@ float ProbeMean( const Volume &volume, uint32_t layer )
 	return float( sum / 36.0 );
 }
 
+// The traced field's own estimate of the baked scene (its reference phase),
+// per side of the contract's thin wall (x 47..49): the mean total light of
+// the probes left (x < 47) and right (x > 49) of it.
+bool ReferenceSides( Frames &frames, const std::shared_ptr<const Volume> &seed,
+    const std::shared_ptr<const SdfData> &sdf, float *lit, float *dark )
+{
+	SdfTracedProducer producer;
+	IndirectScene scene;
+	scene.baked = seed;
+	scene.sdf = sdf;
+	scene.gpu = &frames.Service();
+	scene.policy = indirect_policy::Policy::BakedPlusDelta;
+	if ( !producer.Begin( scene, PublishedVolume{ 0, seed }, frames ) )
+		return false;
+	const light_set::Snapshot lights;
+	for ( uint32_t frame = 0; frame < producer.Caps().warmupFrames; ++frame )
+	{
+		FrameWork work;
+		work.resources = &frames;
+		work.frameSerial = uint64_t( frame ) + 1;
+		producer.Schedule( work, lights );
+		for ( auto &job : work.jobs )
+			job();
+		frames.Submit();
+	}
+	frames.Drain();
+	Check( producer.Live(), "the reference phase ends within warmupFrames" );
+	const std::vector<float> field = producer.ReferenceField();
+	(void)producer.End();
+	frames.Drain();
+	const mapcontainer::ProbeGridLayout &grid = seed->layout.grids[0];
+	if ( field.size() != size_t( grid.probeCount ) * SdfTracedProducer::kTexels * 12 )
+		return false;
+	double sums[2] = {}, counts[2] = {};
+	for ( uint32_t probe = 0; probe < grid.probeCount; ++probe )
+	{
+		const float x = grid.origin[0] + float( probe % grid.dims[0] ) * grid.spacing[0];
+		const int side = x > 49.0f ? 1 : 0;
+		for ( uint32_t t = 0; t < SdfTracedProducer::kTexels; ++t )
+			sums[side] += field[( size_t( probe ) * SdfTracedProducer::kTexels + t ) * 12];
+		counts[side] += SdfTracedProducer::kTexels;
+	}
+	*lit = float( sums[0] / counts[0] );
+	*dark = float( sums[1] / counts[1] );
+	return true;
+}
+
+// The contract field with its thin wall erased (the leak defect): the wall's
+// voxels take the clamp distance.
+std::shared_ptr<const SdfData> WithoutTheWall( const SdfData &sdf )
+{
+	std::vector<unsigned char> bytes = sdf.bytes;
+	const mapcontainer::SdfVolumeLayout &f = sdf.layout;
+	const uint16_t far = FloatToHalf( f.maxDistance );
+	for ( uint32_t z = 0; z < f.dims[2]; ++z )
+		for ( uint32_t y = 0; y < f.dims[1]; ++y )
+			for ( uint32_t x = 0; x < f.dims[0]; ++x )
+			{
+				const float cx = f.origin[0] + float( x ) * f.voxel;
+				if ( cx < 40.0f || cx > 56.0f )
+					continue;
+				const size_t voxel = ( size_t( z ) * f.dims[1] + y ) * f.dims[0] + x;
+				std::memcpy(
+				    bytes.data() + f.voxelOffset + voxel * mapcontainer::kSdfVoxelBytes, &far, 2 );
+			}
+	return SdfData::FromBytes( std::move( bytes ) );
+}
+
+// A map's update cost: warm updates' median and p95 GPU time.
+int Bench( Device &d, Frames &frames, const char *prbvPath, const char *sdfvPath )
+{
+	auto baked = Volume::FromBytes( LoadFile( prbvPath ) );
+	auto sdf = SdfData::FromBytes( LoadFile( sdfvPath ) );
+	if ( !baked || !sdf )
+	{
+		std::fprintf( stderr, "bench: cannot load %s / %s\n", prbvPath, sdfvPath );
+		return 2;
+	}
+	SdfTracedProducer producer;
+	IndirectScene scene;
+	scene.baked = baked;
+	scene.sdf = sdf;
+	scene.gpu = &frames.Service();
+	scene.policy = indirect_policy::Policy::BakedPlusDelta;
+	if ( !producer.Begin( scene, PublishedVolume{ 0, baked }, frames ) )
+		return 2;
+	light_set::Snapshot lights;
+	constexpr int kWarm = 8;
+	for ( int frame = 0; frame < 240; ++frame )
+	{
+		if ( frame == kWarm )
+			frames.ResetTiming();
+		if ( frame == 120 )
+		{
+			lights.styleScalars.assign( 64, 1.0f );
+			lights.styleScalars[32] = 0.5f; // the first switchable light
+		}
+		FrameWork work;
+		work.resources = &frames;
+		work.frameSerial = uint64_t( frame ) + 1;
+		producer.Schedule( work, lights );
+		for ( auto &job : work.jobs )
+			job();
+		frames.Submit();
+	}
+	frames.Drain();
+	std::vector<double> times = frames.Times();
+	std::sort( times.begin(), times.end() );
+	if ( times.empty() )
+		return 2;
+	std::printf( "BENCH {\"probes\": %u, \"voxels\": [%u, %u, %u], \"updates\": %zu, "
+	             "\"gpu_ms_median\": %.3f, \"gpu_ms_p95\": %.3f, \"gpu_ms_max\": %.3f, "
+	             "\"device\": \"%s\"}\n",
+	    baked->layout.grids[0].probeCount, sdf->layout.dims[0], sdf->layout.dims[1],
+	    sdf->layout.dims[2], times.size(), times[times.size() / 2], times[times.size() * 95 / 100],
+	    times.back(), d.name.c_str() );
+	(void)producer.End();
+	frames.Drain();
+	return 0;
+}
+
 } // namespace
 
-int main()
+int main( int argc, char **argv )
 {
 	Device d;
 	if ( !CreateDevice( &d ) )
@@ -206,6 +345,15 @@ int main()
 	std::string error;
 	Check( resources.Init( d.physical, d.device, d.chain.Enabled(), &error ), "compute: " + error );
 	Frames frames( d, resources );
+	if ( argc == 4 && std::string( argv[1] ) == "--bench" )
+	{
+		const int status = Bench( d, frames, argv[2], argv[3] );
+		vkDeviceWaitIdle( d.device );
+		frames.Release();
+		resources.Shutdown();
+		DestroyDevice( d );
+		return status;
+	}
 	const auto seed = LoadSeed();
 	const auto sdf = LoadSdf();
 	Check( seed && sdf, "the contract seed and its SDF scene load" );
@@ -242,6 +390,25 @@ int main()
 	Check( broken.empty(), "the SDF-traced producer passes the shared suite on the GPU" );
 	std::printf( "shared suite: %.1f s\n",
 	    std::chrono::duration<double>( std::chrono::steady_clock::now() - started ).count() );
+
+	// Thin wall: the composition (the bake times the field's ratio) would
+	// hide a leak in the traced field, so the field's own reference is
+	// judged: the dark side of the wall stays dark while the lit side holds
+	// the furnace's light. Erasing the wall must fail it.
+	{
+		float lit = 0.0f, dark = 0.0f;
+		const bool traced = ReferenceSides( frames, seed, sdf, &lit, &dark );
+		std::printf( "reference field: lit side %.4f, dark side %.4f\n", lit, dark );
+		Check( traced && lit > 0.5f && dark < 0.02f * lit,
+		    "the traced field sees no light through the thin wall" );
+		const auto leaky = WithoutTheWall( *sdf );
+		float leakyLit = 0.0f, leakyDark = 0.0f;
+		const bool leakyTraced =
+		    leaky && ReferenceSides( frames, seed, leaky, &leakyLit, &leakyDark );
+		std::printf( "without the wall: lit side %.4f, dark side %.4f\n", leakyLit, leakyDark );
+		Check( leakyTraced && leakyDark >= 0.02f * leakyLit,
+		    "erasing the wall (the leak defect) is detected" );
+	}
 
 	// The radiosity producer, which claims no GeometryMotion, run on the SDF
 	// scene's geometry change: it cannot darken the enclosed probe (the

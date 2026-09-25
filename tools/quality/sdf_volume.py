@@ -48,6 +48,9 @@ from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import radiosity_transfer  # noqa: E402  (its byte-diff recipe for the corpus)
+
 MAGIC = 0x56464453  # "SDFV"
 VERSION = 1
 HEADER_BYTES = 64
@@ -222,10 +225,16 @@ def write_fixtures(out):
             code = None
         except SdfError as error:
             code = error.code
-        variants.append({"name": name, "error": code})
+        variants.append({"name": name, "error": code, **radiosity_transfer.recipe(data, variant)})
     (out / "fixtures.json").write_text(json.dumps({"schema": "sdfv-fixtures/v1",
                                                    "contract": Volume(data).info(),
                                                    "malformations": variants}, indent=1) + "\n")
+    # The same corpus as plain text for the C++ reader's test:
+    #   name error length [offset:hex ...]
+    (out / "malformations.txt").write_text("".join(
+        "%s %s %d%s\n" % (v["name"], v["error"], v["length"],
+                          "".join(" %d:%s" % (o, h) for o, h in v["edits"]))
+        for v in variants))
     if any(v["error"] is None for v in variants):
         raise SdfError("fixture", "a malformation was accepted")
     return len(data)

@@ -23,6 +23,7 @@ import gi_reference  # noqa: E402
 import gi_runtime  # noqa: E402
 import lightmap_layers  # noqa: E402
 import radiosity_transfer  # noqa: E402
+import sdf_volume  # noqa: E402
 
 FIXTURES = HERE.parents[2] / "quality" / "fixtures" / "gi"
 
@@ -226,6 +227,37 @@ class RadiosityTransferTest(unittest.TestCase):
         counts = radiosity_transfer.fuzz(self.rtrn, self.prbv, iterations=400)
         self.assertGreater(counts["rejected"], 50)
         self.assertGreater(counts["accepted"], 10)
+
+
+class SdfVolumeTest(unittest.TestCase):
+    """SDFV (RFC 0011 G6): the independent reader and its fixture corpus."""
+
+    def setUp(self):
+        self.sdfv = (FIXTURES / "sdfv" / "contract.sdfv").read_bytes()
+
+    def test_checked_in_fixture_is_the_generator_output(self):
+        self.assertEqual(sdf_volume.fixture_contract(), self.sdfv)
+        with tempfile.TemporaryDirectory() as out:
+            sdf_volume.write_fixtures(out)
+            for name in ("fixtures.json", "malformations.txt"):
+                with self.subTest(file=name):
+                    self.assertEqual((Path(out) / name).read_bytes(),
+                                     (FIXTURES / "sdfv" / name).read_bytes())
+
+    def test_every_malformation_is_rejected_with_its_code(self):
+        codes = {line.split()[0]: line.split()[1] for line in
+                 (FIXTURES / "sdfv" / "malformations.txt").read_text().splitlines()}
+        for name, variant in sdf_volume.malformations(self.sdfv):
+            with self.subTest(name=name):
+                with self.assertRaises(sdf_volume.SdfError) as caught:
+                    sdf_volume.Volume(variant)
+                self.assertEqual(caught.exception.code, codes[name])
+
+    def test_contract_scene(self):
+        volume = sdf_volume.Volume(self.sdfv)
+        self.assertEqual(volume.dims, [21, 13, 13])
+        self.assertEqual([light["kind"] for light in volume.lights], ["dome"])
+        self.assertGreater(volume.info()["emissive_voxels"], 0)
 
 
 if __name__ == "__main__":

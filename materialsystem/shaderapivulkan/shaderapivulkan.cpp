@@ -2519,11 +2519,24 @@ public:
 		    } );
 	}
 	gpu_compute::Caps Capabilities() const override { return m_service.Capabilities(); }
-	uint32_t CreateBuffer( size_t bytes ) override { return m_service.CreateBuffer( bytes ); }
-	void *Map( uint32_t buffer ) override { return m_service.Map( buffer ); }
-	uint32_t CreateProgram( const char *name, uint32_t buffers, uint32_t pushBytes ) override
+	uint32_t CreateBuffer( size_t bytes, gpu_compute::BufferUse use ) override
 	{
-		return m_service.CreateProgram( name, buffers, pushBytes );
+		return m_service.CreateBuffer( bytes, use );
+	}
+	void *Map( uint32_t buffer ) override { return m_service.Map( buffer ); }
+	uint32_t CreateProgram( const char *name, const gpu_compute::Binding *bindings, uint32_t count,
+	    uint32_t pushBytes ) override
+	{
+		return m_service.CreateProgram( name, bindings, count, pushBytes );
+	}
+	uint32_t CreateGeometry( const float *positions, uint32_t vertexCount, const uint32_t *indices,
+	    uint32_t indexCount ) override
+	{
+		return m_service.CreateGeometry( positions, vertexCount, indices, indexCount );
+	}
+	uint32_t CreateScene( const gpu_compute::SceneInstance *instances, uint32_t count ) override
+	{
+		return m_service.CreateScene( instances, count );
 	}
 	uint64_t QueueDispatch( uint32_t program, const uint32_t *buffers, uint32_t count,
 	    const void *push, uint32_t pushBytes, uint32_t groupsX, uint32_t groupsY,
@@ -3995,8 +4008,8 @@ void CEmptyMesh::EmitToNativeQueue()
 	// SHADER_SPECIFIC_CONST_2, in the vertex color it does not otherwise read.
 	const bool shadowProjection = g_CurrentShadowProjection;
 	const float *shadowJitter = ShadowJitter();
-	const bool wantsTangents = g_CurrentPortalStage >= 0 || skin || envmap || refract ||
-	                           solidEnergy || lightmappedFamily;
+	const bool wantsTangents =
+	    g_CurrentPortalStage >= 0 || skin || envmap || refract || solidEnergy || lightmappedFamily;
 	float envContrast = 0.0f, envSaturation = 1.0f, fresnelReflection = 1.0f;
 	if ( envmap && g_pBoundMaterial )
 	{
@@ -4475,7 +4488,8 @@ void CEmptyMesh::EmitToNativeQueue()
 		key.skinLightCount = skinLightCount;
 		key.lightCount = lightCount;
 		// The constants the conversion reads, beyond the bones.
-		if ( g_NumBoneWeights <= 0 && ( skin || vertexLighting || solidEnergy || lightmappedFamily ) )
+		if ( g_NumBoneWeights <= 0 &&
+		     ( skin || vertexLighting || solidEnergy || lightmappedFamily ) )
 			inputs.insert( inputs.end(), ModelMatrix(), ModelMatrix() + 16 );
 		if ( shadowProjection )
 			inputs.insert( inputs.end(), shadowJitter, shadowJitter + 2 );
@@ -7174,8 +7188,9 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	// The bloom and color-correction passes, when their ps20b build was routed
 	// to the post-processing pipeline.
 	if ( g_CurrentPostMode > 0 &&
-	     ( !V_stricmp( shaderName, "Downsample_nohdr" ) || !V_stricmp( shaderName, "BlurFilterX" ) ||
-	         !V_stricmp( shaderName, "BlurFilterY" ) || !V_stricmp( shaderName, "Engine_Post_dx9" ) ) )
+	     ( !V_stricmp( shaderName, "Downsample_nohdr" ) ||
+	         !V_stricmp( shaderName, "BlurFilterX" ) || !V_stricmp( shaderName, "BlurFilterY" ) ||
+	         !V_stricmp( shaderName, "Engine_Post_dx9" ) ) )
 		return true;
 	// Both the canonical native material and legacy PBR's sampler contract can
 	// feed WMSH tangents and the map-scoped HDR lightmap. Ordinary dynamic
@@ -7324,8 +7339,7 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		// (SnapshotToneMapType): GAMMA by GAMMA_LIGHT_SCALE, c30.w.
 		const bool linearToneScale =
 		    lightmapped || g_CurrentLightmappedCombos >= 0 || g_CurrentPortalStage == 2 ||
-		    g_CurrentModulationInPixelC1 ||
-		    g_CurrentSkinCombos >= 0 || g_CurrentPbrModel ||
+		    g_CurrentModulationInPixelC1 || g_CurrentSkinCombos >= 0 || g_CurrentPbrModel ||
 		    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSky ) ||
 		    g_CurrentToneMap == kToneMapLinear;
 		float outputScale = 1.0f;
@@ -8588,21 +8602,23 @@ void CShaderAPIVulkan::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 		}
 		const ImageFormat image = g_TextureRecords[static_cast<size_t>( handle )].format;
 		const bool imageIsBgra = image == IMAGE_FORMAT_BGRA8888 || image == IMAGE_FORMAT_BGRX8888;
-		const bool srcIsBgr =
-		    src == IMAGE_FORMAT_BGR888 || src == IMAGE_FORMAT_BGRA8888 || src == IMAGE_FORMAT_BGRX8888;
+		const bool srcIsBgr = src == IMAGE_FORMAT_BGR888 || src == IMAGE_FORMAT_BGRA8888 ||
+		                      src == IMAGE_FORMAT_BGRX8888;
 		const size_t texels = static_cast<size_t>( w ) * h * d;
 		std::vector<uint8_t> converted( texels * 4 );
 		for ( size_t i = 0; i < texels; ++i )
 		{
 			const unsigned char *in = bits + i * srcBytes;
 			uint8_t rgba[4] = { in[srcIsBgr ? 2 : 0], in[1], in[srcIsBgr ? 0 : 2],
-			    static_cast<uint8_t>( srcBytes == 4 && src != IMAGE_FORMAT_BGRX8888 ? in[3] : 255 ) };
+			    static_cast<uint8_t>(
+			        srcBytes == 4 && src != IMAGE_FORMAT_BGRX8888 ? in[3] : 255 ) };
 			if ( imageIsBgra )
 				std::swap( rgba[0], rgba[2] );
 			memcpy( &converted[i * 4], rgba, 4 );
 		}
 		std::string error;
-		if ( !g_VulkanContext.UploadManagedTexture( handle, converted.data(), converted.size(), &error ) )
+		if ( !g_VulkanContext.UploadManagedTexture(
+		         handle, converted.data(), converted.size(), &error ) )
 			Warning( "[NativeVulkan] TexImageFromVTF volume upload failed: %s\n", error.c_str() );
 		return;
 	}
@@ -8826,12 +8842,12 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 		    dstImageFormat );
 		return 0;
 	}
-	const int native = ( flags & TEXTURE_CREATE_RENDERTARGET )
-	                       ? g_VulkanContext.CreateRenderTargetTexture( width, height, &error )
-	                       : g_VulkanContext.CreateManagedTexture( width, height, vkFormat, &error,
-	                             0, static_cast<uint32_t>( std::max( 1, numMipLevels ) ),
-	                             VK_FORMAT_UNDEFINED, ( flags & TEXTURE_CREATE_CUBEMAP ) != 0,
-	                             volumeDepth );
+	const int native =
+	    ( flags & TEXTURE_CREATE_RENDERTARGET )
+	        ? g_VulkanContext.CreateRenderTargetTexture( width, height, &error )
+	        : g_VulkanContext.CreateManagedTexture( width, height, vkFormat, &error, 0,
+	              static_cast<uint32_t>( std::max( 1, numMipLevels ) ), VK_FORMAT_UNDEFINED,
+	              ( flags & TEXTURE_CREATE_CUBEMAP ) != 0, volumeDepth );
 	if ( native < 0 )
 	{
 		Warning( "[NativeVulkan] CreateTexture failed: %s\n", error.c_str() );

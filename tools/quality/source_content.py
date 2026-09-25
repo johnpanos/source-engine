@@ -3,19 +3,20 @@
 """Read installed Source game content: VPK v1/v2 directories and loose files.
 
 `ContentResolver(runtime)` searches a staged runtime in portal/gameinfo.txt
-order (Portal VPK, Portal loose files, the shared HL2 VPK and loose files).
-Shared by the physics corpus harness and the map pipeline's dynamic-model
-step.
+order (Portal VPK, Portal loose files, the shared HL2 texture and misc VPKs
+and loose files). Shared by the physics corpus harness, the map pipeline's
+dynamic-model step and the legacy relight scene.
 """
 
 import os
 import struct
 
 # Search order mirrors portal/gameinfo.txt: Portal VPK, Portal loose files,
-# then the shared HL2 VPK and loose files.
+# then the shared HL2 texture and misc VPKs and loose files.
 SEARCH_PATHS = [
     ("vpk", "portal/portal_pak_dir.vpk"),
     ("dir", "portal"),
+    ("vpk", "hl2/hl2_textures_dir.vpk"),
     ("vpk", "hl2/hl2_misc_dir.vpk"),
     ("dir", "hl2"),
 ]

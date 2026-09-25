@@ -1,0 +1,13 @@
+truncated truncated 62
+short size-mismatch 56904
+bad-magic bad-magic 56912 0:00000000
+version unsupported-version 56912 4:09
+flags unsupported-version 56912 12:01
+voxel-size invalid-grid 56912 31:00
+dims invalid-grid 56912 32:01
+max-distance invalid-grid 56912 50:c07f
+reflectance invalid-voxel 56912 66:003e
+emission invalid-voxel 56912 72:00bc
+distance invalid-voxel 56912 64:537b
+light-kind invalid-light 56912 56848:09
+light-style invalid-light 56912 56852:63000000

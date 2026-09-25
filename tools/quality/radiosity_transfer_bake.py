@@ -90,15 +90,21 @@ def prim_name(path):
 
 
 def collect_sources(scene, materials):
-    """[{name, kind, style, objects, world, material}] in style order."""
+    """[{name, kind, style, objects, world, material}] in style order.
+
+    Styles are assigned in order (32, 33, ...) unless the scene authors them
+    (`sourceEngine:lightStyle` on its lights, as a relit compiled map does):
+    then each light keeps its own style and every other source is fixed."""
     sources = []
-    for index, shape in enumerate(scene["emitters"]):
-        sources.append({"name": prim_name(shape.get("source") or pbrt_blender.emitter_name(
-            index, shape)), "kind": "light",
-            "objects": [pbrt_blender.emitter_name(index, shape)]})
-    for index, light in enumerate(scene.get("distant_lights", [])):
-        sources.append({"name": prim_name(light.get("source") or "Sun%02d" % index),
-                        "kind": "light", "objects": ["Sun%02d" % index]})
+    lights = [(shape, pbrt_blender.emitter_name(index, shape))
+              for index, shape in enumerate(scene["emitters"])] + \
+        [(light, "Sun%02d" % index) for index, light in enumerate(scene.get("distant_lights", []))]
+    authored = any("style" in light for light, _ in lights)
+    for light, obj in lights:
+        sources.append({"name": prim_name(light.get("source") or obj), "kind": "light",
+                        "objects": [obj]})
+        if authored:
+            sources[-1]["authored_style"] = light.get("style", -1)
     if scene["environment"]:
         sources.append({"name": prim_name(scene["environment"].get("source") or "Sky"),
                         "kind": "sky", "world": True})
@@ -118,7 +124,10 @@ def collect_sources(scene, materials):
             source["name"] = "%s_%d" % (base, suffix)
             suffix += 1
         names.add(source["name"])
-        source["style"] = FIRST_STYLE + index if index < MAX_SWITCHED else -1
+        if authored:
+            source["style"] = source.pop("authored_style", -1)
+        else:
+            source["style"] = FIRST_STYLE + index if index < MAX_SWITCHED else -1
     return sources
 
 

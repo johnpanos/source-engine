@@ -3733,10 +3733,10 @@ bool CVulkanContext::InitLightmappedPipeline( std::string *outError )
 		return false;
 	}
 	VkShaderModule vert = VK_NULL_HANDLE;
-	if ( !CreateShaderModule( g_lightmappedVertSpv, sizeof( g_lightmappedVertSpv ), &vert,
-	         outError ) ||
-	     !CreateShaderModule( g_lightmappedFragSpv, sizeof( g_lightmappedFragSpv ),
-	         &m_lightmappedFrag, outError ) )
+	if ( !CreateShaderModule(
+	         g_lightmappedVertSpv, sizeof( g_lightmappedVertSpv ), &vert, outError ) ||
+	     !CreateShaderModule(
+	         g_lightmappedFragSpv, sizeof( g_lightmappedFragSpv ), &m_lightmappedFrag, outError ) )
 	{
 		if ( vert != VK_NULL_HANDLE )
 			vkDestroyShaderModule( m_device, vert, nullptr );
@@ -3964,8 +3964,8 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 {
 	CFrameCostScope cost( m_frameCost, kCostTextureCreate );
 	const bool volume = depth > 1;
-	if ( !IsValid() || width <= 0 || height <= 0 || ( cube && width != height ) ||
-	     depth == 0 || ( volume && cube ) )
+	if ( !IsValid() || width <= 0 || height <= 0 || ( cube && width != height ) || depth == 0 ||
+	     ( volume && cube ) )
 	{
 		SetError( outError, "CreateManagedTexture with invalid size or context" );
 		return -1;
@@ -4110,7 +4110,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	VkImageViewCreateInfo iv = {};
 	iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	iv.image = t.image;
-	iv.viewType = cube ? VK_IMAGE_VIEW_TYPE_CUBE
+	iv.viewType = cube     ? VK_IMAGE_VIEW_TYPE_CUBE
 	              : volume ? VK_IMAGE_VIEW_TYPE_3D
 	                       : VK_IMAGE_VIEW_TYPE_2D;
 	iv.format = format;
@@ -4574,9 +4574,9 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 	const bool whole = x == 0 && y == 0 && width == levelWidth && height == levelHeight;
 	// A volume (8-bit color) is uploaded whole: every slice, tightly packed, one
 	// after another.
-	if ( t.depth > 1 && ( !whole || dataSize != static_cast<size_t>( width ) * height * t.depth * 4 ||
-	                        ( t.format != VK_FORMAT_R8G8B8A8_UNORM &&
-	                            t.format != VK_FORMAT_B8G8R8A8_UNORM ) ) )
+	if ( t.depth > 1 &&
+	     ( !whole || dataSize != static_cast<size_t>( width ) * height * t.depth * 4 ||
+	         ( t.format != VK_FORMAT_R8G8B8A8_UNORM && t.format != VK_FORMAT_B8G8R8A8_UNORM ) ) )
 	{
 		SetError( outError, "UploadManagedTexture: a volume texture is uploaded whole" );
 		return false;
@@ -6538,8 +6538,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			else if ( d.shaderIndex == kDynShaderPost )
 			{
-				selected = d.worldMesh ? VK_NULL_HANDLE
-				                       : PostPipeline( d.raster, openSrgb, passSamples );
+				selected =
+				    d.worldMesh ? VK_NULL_HANDLE : PostPipeline( d.raster, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
 					continue;
@@ -6650,9 +6650,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					// (a cube, the white cube without one), s4 bump map, s5 second
 					// bump map or envmap mask, s7 second base, the constants, s8
 					// bump mask, s12 detail.
-					const int envmap =
-					    ManagedTextureIsCube( d.samplerHandles[2] ) ? d.samplerHandles[2]
-					                                                : m_whiteCubeHandle;
+					const int envmap = ManagedTextureIsCube( d.samplerHandles[2] )
+					                       ? d.samplerHandles[2]
+					                       : m_whiteCubeHandle;
 					const VkDescriptorSet sets[9] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( d.lightmapHandle, kColorSrgbReadLightmap ),
 					    sampledSet( envmap, kColorSrgbReadSampler2 ),

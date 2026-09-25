@@ -198,11 +198,12 @@ def leaf_faces(bsp_path):
 
 
 def leaf_volumes(bsp_path):
-    """Per BSP leaf: (contents, mins, maxs) from the v21 leaf lump (shorts)."""
+    """Per BSP leaf: (contents, mins, maxs) from the version-1 leaf lump
+    (shorts) of a v20 or v21 BSP (a relit legacy map may be v20)."""
     data = bsp_path.read_bytes()
     header = parse_legacy_header(data, len(data))
-    if header["version"] != 21 or header["lumps"][10][2] != 1:
-        raise ValueError("WMSH leaf volumes require a compiled v21 BSP")
+    if header["version"] not in (20, 21) or header["lumps"][10][2] != 1:
+        raise ValueError("WMSH leaf volumes require a v20/v21 BSP with version-1 leaves")
     offset, size, *_ = header["lumps"][10]
     leaves = data[offset:offset + size]
     if not leaves or len(leaves) % 32:

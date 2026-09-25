@@ -12,8 +12,16 @@ optional material exclusions. Its `scene` is a `.pbrt` file or an authored
 `map_scene`. The toolchain file (`pbrt-map-toolchain/v1`)
 holds machine paths. `tools/quality/pbrt_map_toolchain.py provision` builds the
 pinned tools under build/toolchains/ and writes the default toolchain file;
-`--check-toolchain` validates versions and capabilities and exits. Steps:
+`--check-toolchain` validates versions and capabilities and exits.
 
+A manifest with `legacy_bsp` instead of `scene` relights a compiled map
+(`legacy_bsp_relight.py` writes one): the scene is authored from the BSP, the
+BSP itself replaces `collision` and `compile` (its gameplay lumps are carried
+unchanged), its baked world lights are removed in `pack`, the scene's light
+emitters stay invisible, and there is no sky dome or traversal gate. Steps:
+
+    legacy-scene (legacy_bsp manifests) legacy_bsp_scene.py: the BSP's world faces,
+                 materials, occluders and lights as an authored USD scene
     scene        (USD scenes) usd_scene.py extract: map-scene/v1 model + normalized stage
     environment  sky (PBRT equal-area map or USD DomeLight) -> Z-up equirect EXR +
                  display texture (if any sky)
@@ -78,7 +86,7 @@ import pbrt_traversal  # noqa: E402
 import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
 
-STEPS = ("scene", "environment", "stage", "reference-gate", "bake", "denoise", "directional",
+STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "bake", "denoise", "directional",
          "probe", "probe-volume", "radiosity", "sdf", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
          "traversal-boot", "traversal", "audit")
@@ -86,6 +94,7 @@ BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
 GATES = ("reference-gate", "runtime-gate", "traversal", "audit")
 PROFILES = ROOT / "quality" / "map_export_profiles"
 DEFAULT_QUALITY = "source2"
+LEGACY_QUALITY = "legacy-relight"
 SCENE_SCRIPTS = ["pbrt_scene.py", "map_scene.py"]
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -109,6 +118,17 @@ def load_manifest(path):
     name = manifest.get("map", "")
     if not name.replace("_", "").isalnum() or name.lower() != name:
         raise ValueError("manifest map must be lowercase [a-z0-9_]")
+    if "legacy_bsp" in manifest:
+        if "scene" in manifest:
+            raise ValueError("a manifest names a scene or a legacy_bsp, not both")
+        manifest["legacy_bsp"] = str((ROOT / manifest["legacy_bsp"]).resolve())
+        if not Path(manifest["legacy_bsp"]).is_file():
+            raise ValueError("legacy_bsp does not exist: " + manifest["legacy_bsp"])
+        # The `legacy-scene` step writes the scene (Pipeline sets its path).
+        manifest["scene"] = None
+        manifest["scene_format"] = "usd"
+        manifest.setdefault("quality", LEGACY_QUALITY)
+        return manifest
     manifest["scene"] = str((ROOT / manifest["scene"]).resolve())
     manifest["scene_format"] = "usd" if map_scene.is_usd(manifest["scene"]) else "pbrt"
     manifest.setdefault("quality", DEFAULT_QUALITY)
@@ -144,6 +164,16 @@ def bsp_entities(path):
     return entities
 
 
+def check_legacy_light_styles(bsp, controls):
+    """Each switchable source of a relit map is a style of the map's own named
+    lights (vbsp gives every `light*` entity of one targetname one style)."""
+    styles = {entity.get("style") for entity in bsp_entities(bsp)
+              if entity.get("classname", "").startswith("light") and entity.get("targetname")}
+    wrong = [(c["name"], c["style"]) for c in controls if str(c["style"]) not in styles]
+    if wrong:
+        raise ValueError("switchable sources with no named light of their style: %s" % wrong)
+
+
 def check_light_styles(bsp, controls):
     """Each switchable source's `light` entity compiled with its RTRN style."""
     styles = {entity.get("targetname"): entity.get("style") for entity in bsp_entities(bsp)
@@ -174,6 +204,9 @@ class Pipeline:
         self.out = out.resolve()
         self.map = manifest["map"]
         self.usd = manifest["scene_format"] == "usd"
+        self.legacy = manifest.get("legacy_bsp")
+        if self.legacy:
+            manifest["scene"] = str(out.resolve() / "legacy-scene" / "scene.usda")
         # A USD scene is read through the model its `scene` step extracts.
         self.scene_file = (self.out / "scene" / "scene.json") if self.usd else manifest["scene"]
         self.scene = None if self.usd else map_scene.parse(self.scene_file)
@@ -204,16 +237,22 @@ class Pipeline:
         if self.radiosity and not self.probe_volume:
             raise ValueError("radiosity needs the probe_volume it gathers into")
         self.sdf_volume = with_defaults(manifest, self.profile, "sdf_volume")
+        if self.legacy and not self.probe_volume:
+            raise ValueError("a relit map needs a probe_volume: its world lights move there")
         if self.sdf_volume and not self.radiosity:
             raise ValueError("sdf_volume needs the radiosity transfer its light styles follow")
         reference = dict(self.profile.get("reference") or {}, **manifest.get("reference", {}))
         self.reference_render = reference.get("render")
         self.runtime_gate = with_defaults(manifest, self.profile, "runtime_gate")
-        world_mesh = manifest.get("world_mesh", {})
+        world_mesh = with_defaults(manifest, self.profile, "world_mesh") or {}
         self.world_mesh = {"weld_materials": world_mesh.get("weld_materials", []),
                            "weld_distance_source_units":
                                world_mesh.get("weld_distance_source_units", 0.0)}
+        # Materials baked and occluding but never drawn (a relit map's nodraw
+        # brush sides): left out of the WMSH.
+        self.hidden_materials = list(world_mesh.get("exclude_materials", []))
         self.paths = {
+            "legacy_scene": self.out / "legacy-scene",
             "environment": self.out / "environment.exr",
             "stage": self.out / "stage" / (self.map + ".usdc"),
             "stage_receipt": self.out / "stage.json",
@@ -351,9 +390,25 @@ class Pipeline:
                       "--out-stage", p["stage"]] + simplify_args))
         self.scene = map_scene.parse(model)
 
+    def legacy_scene(self):
+        """`legacy-scene` step: the compiled map's world as an authored scene."""
+        p = self.paths
+        runtime = Path(self.tools["runtime"])
+        runtime = runtime if runtime.is_absolute() else ROOT / runtime
+        # The game content the materials come from (VPK directories).
+        content = sorted(runtime.resolve().glob("*/*_dir.vpk"))
+        self.step("legacy-scene", [self.legacy] + content, {"runtime": str(runtime)},
+                  ["legacy_bsp_scene.py", "legacy_bsp.py", "vtf_decode.py", "source_content.py",
+                   "bsp2_reader.py"], [p["legacy_scene"]],
+                  lambda: self.usd_python("legacy-scene", "legacy_bsp_scene.py", [
+                      "--bsp", self.legacy, "--runtime", runtime, "--map-name", self.map,
+                      "--out", p["legacy_scene"]]))
+
     def build(self):
         self.out.mkdir(parents=True, exist_ok=True)
         p = self.paths
+        if self.legacy:
+            self.legacy_scene()
         if self.usd:
             self.extract_usd_scene()
         scene = str(self.scene_file)
@@ -555,7 +610,8 @@ class Pipeline:
                                             "--expected-scope", scope, "--out", p["ktx2"]] +
                                            probe_args + directional_args + sun_args + layer_args))
         pack_stage = p["lighting_stage"]
-        if environment:
+        # A relit map keeps its own skybox; no sky dome joins its world mesh.
+        if environment and not self.legacy:
             pack_stage = p["render_stage"]
             self.step("sky", [p["lighting_stage"], p["sky_texture"]], {},
                       ["pbrt_sky_dome.py"],
@@ -563,12 +619,93 @@ class Pipeline:
                       lambda: self.usd_python("sky", "pbrt_sky_dome.py", [
                           "--stage", p["lighting_stage"], "--sky-texture", p["sky_texture"],
                           "--out-stage", p["render_stage"]]))
+        controls = self.light_controls() if radiosity else []
+        if self.legacy:
+            self.state.pop("collision", None)
+            self.state.pop("compile", None)
+            p["bsp"] = Path(self.legacy)
+        else:
+            self.collision_and_compile(scene, volume, controls)
+        pack_bsp = p["bsp_ambient"] if volume else p["bsp"]
+        scene_receipt = p["legacy_scene"] / "scene-receipt.json"
+
+        def pack():
+            seconds = 0.0
+            if controls:
+                if self.legacy:
+                    check_legacy_light_styles(p["bsp"], controls)
+                else:
+                    check_light_styles(p["bsp"], controls)
+            if volume:
+                seconds += self.run("pack", [sys.executable, HERE / "leaf_ambient_from_prbv.py",
+                                             "--bsp", p["bsp"], "--prbv", p["prbv"],
+                                             "--out", p["bsp_ambient"], "--receipt",
+                                             p["bsp_ambient"].with_suffix(".json")])
+            worldlights = p["bsp_ambient"].with_name(p["bsp_ambient"].stem + "_worldlights.json")
+            if self.legacy:
+                # vrad's lights are in the bake now; only the lights it left
+                # out (named lights that start dark) stay world lights.
+                kept = json.loads(scene_receipt.read_text())["kept_world_light_styles"]
+                seconds += self.run("pack", [sys.executable, HERE / "bsp_worldlights.py",
+                                             "--bsp", pack_bsp, "--out", pack_bsp,
+                                             "--keep-only", "--receipt", worldlights] +
+                                    [item for style in kept for item in ("--style", str(style))])
+            elif controls:
+                # The switchable lights' zero-light vrad world lights: the
+                # transfer owns their light.
+                seconds += self.run("pack", [sys.executable, HERE / "bsp_worldlights.py",
+                                             "--bsp", p["bsp_ambient"], "--out",
+                                             p["bsp_ambient"], "--receipt", worldlights] +
+                                    [item for control in controls
+                                     for item in ("--style", str(control["style"]))])
+            return seconds + self.usd_python("pack", "usd_worldmesh_pack.py", pack_args)
+        hidden = {shape["name"] for shape in self.scene["shapes"]
+                  if shape["material"] in self.hidden_materials}
+        pack_args = ([
+                      "--stage", pack_stage, "--bsp", pack_bsp, "--material-prefix",
+                      self.map, "--require-lightmap-uv"] +
+                      # A relit map's lights are invisible, as the entities were.
+                      (["--include-emitters"] if self.scene["emitters"] and not self.legacy
+                       else []) + [
+                      "--lightmap-ktx2", p["ktx2"], "--bsp2tool", self.tools["bsp2tool"],
+                      "--out", p["wmsh"], "--out-bsp2", p["bsp2"]] +
+                      (["--weld-distance-source-units",
+                        str(self.world_mesh["weld_distance_source_units"])]
+                       if self.world_mesh["weld_materials"] else []) +
+                      [item for material in self.world_mesh["weld_materials"]
+                       for item in ("--weld-material", material)] +
+                      # Dynamic models are placed as entities, not world mesh.
+                      [item for name in sorted(map_scene.prop_shape_names(self.scene) | hidden)
+                       for item in ("--exclude-mesh", name)] +
+                      (["--probe-volume", p["prbv"]] if volume else []) +
+                      (["--radiosity-transfer", p["rtrn"]] if radiosity else []) +
+                      (["--sdf-volume", p["sdfv"]] if self.sdf_volume else []))
+        self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["ktx2"]] +
+                  ([p["prbv"]] if volume else []) + ([p["rtrn"]] if radiosity else []) +
+                  ([p["sdfv"]] if self.sdf_volume else []) +
+                  ([scene_receipt] if self.legacy else []),
+                  dict({"prefix": self.map, **self.world_mesh},
+                       **({"probe_volume": True} if volume else {}),
+                       **({"radiosity_transfer": True} if radiosity else {}),
+                       **({"sdf_volume": True} if self.sdf_volume else {}),
+                       **({"hidden_meshes": sorted(hidden)} if hidden else {}),
+                       **({"legacy": True} if self.legacy else {})),
+                  ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py", "worldstage_mesh_pack.py"] +
+                  (["leaf_ambient_from_prbv.py", "probe_volume.py"] if volume else []) +
+                  (["bsp_worldlights.py"] if controls or self.legacy else []),
+                  [p["wmsh"], p["wmsh"].with_name(p["wmsh"].name + ".json"), p["bsp2"]] +
+                  ([p["bsp_ambient"], p["bsp_ambient"].with_suffix(".json")] if volume else []),
+                  pack)
+        self.finish(scene, environment, reference)
+
+    def collision_and_compile(self, scene, volume, controls):
+        """`collision` and `compile`: a collision/PVS BSP for a scene map."""
+        p = self.paths
         collision = self.manifest.get("collision", {})
         collision_args = ["--scene", scene, "--stage", p["lighting_stage"], "--map-name",
                           self.map, "--out-dir", p["collision"]]
         if volume:
             collision_args.append("--no-fallback-light")
-        controls = self.light_controls() if radiosity else []
         for control in controls:
             collision_args += ["--light-control", control["name"]]
         for door in collision.get("doors", []):
@@ -602,61 +739,15 @@ class Pipeline:
                                             "-game", game, p["bsp"]])
             return seconds
         self.step("compile", [vmf], {"tools": str(tools)}, [], [p["bsp"]], compile_map)
-        pack_bsp = p["bsp_ambient"] if volume else p["bsp"]
 
-        def pack():
-            seconds = 0.0
-            if controls:
-                check_light_styles(p["bsp"], controls)
-            if volume:
-                seconds += self.run("pack", [sys.executable, HERE / "leaf_ambient_from_prbv.py",
-                                             "--bsp", p["bsp"], "--prbv", p["prbv"],
-                                             "--out", p["bsp_ambient"], "--receipt",
-                                             p["bsp_ambient"].with_suffix(".json")])
-            if controls:
-                # The switchable lights' zero-light vrad world lights: the
-                # transfer owns their light.
-                seconds += self.run("pack", [sys.executable, HERE / "bsp_worldlights.py",
-                                             "--bsp", p["bsp_ambient"], "--out",
-                                             p["bsp_ambient"], "--receipt",
-                                             p["bsp_ambient"].with_name(
-                                                 p["bsp_ambient"].stem + "_worldlights.json")] +
-                                    [item for control in controls
-                                     for item in ("--style", str(control["style"]))])
-            return seconds + self.usd_python("pack", "usd_worldmesh_pack.py", pack_args)
-        pack_args = ([
-                      "--stage", pack_stage, "--bsp", pack_bsp, "--material-prefix",
-                      self.map, "--require-lightmap-uv"] +
-                      (["--include-emitters"] if self.scene["emitters"] else []) + [
-                      "--lightmap-ktx2", p["ktx2"], "--bsp2tool", self.tools["bsp2tool"],
-                      "--out", p["wmsh"], "--out-bsp2", p["bsp2"]] +
-                      (["--weld-distance-source-units",
-                        str(self.world_mesh["weld_distance_source_units"])]
-                       if self.world_mesh["weld_materials"] else []) +
-                      [item for material in self.world_mesh["weld_materials"]
-                       for item in ("--weld-material", material)] +
-                      # Dynamic models are placed as entities, not world mesh.
-                      [item for name in sorted(map_scene.prop_shape_names(self.scene))
-                       for item in ("--exclude-mesh", name)] +
-                      (["--probe-volume", p["prbv"]] if volume else []) +
-                      (["--radiosity-transfer", p["rtrn"]] if radiosity else []) +
-                      (["--sdf-volume", p["sdfv"]] if self.sdf_volume else []))
-        self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["ktx2"]] +
-                  ([p["prbv"]] if volume else []) + ([p["rtrn"]] if radiosity else []) +
-                  ([p["sdfv"]] if self.sdf_volume else []),
-                  dict({"prefix": self.map, **self.world_mesh},
-                       **({"probe_volume": True} if volume else {}),
-                       **({"radiosity_transfer": True} if radiosity else {}),
-                       **({"sdf_volume": True} if self.sdf_volume else {})),
-                  ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py"] +
-                  (["leaf_ambient_from_prbv.py", "probe_volume.py"] if volume else []) +
-                  (["bsp_worldlights.py"] if controls else []),
-                  [p["wmsh"], p["wmsh"].with_name(p["wmsh"].name + ".json"), p["bsp2"]] +
-                  ([p["bsp_ambient"], p["bsp_ambient"].with_suffix(".json")] if volume else []),
-                  pack)
-        sky_args = ["--sky-texture", p["sky_texture"]] if environment else []
+    def finish(self, scene, environment, reference):
+        """`content` and the boot, gate and audit steps of a packed map."""
+        p = self.paths
+        tools = Path(self.tools["compile_tools"])
+        sky = environment and not self.legacy
+        sky_args = ["--sky-texture", p["sky_texture"]] if sky else []
         self.step("content", [scene, p["stage_receipt"], p["bsp2"]] +
-                  ([p["sky_texture"]] if environment else []), {},
+                  ([p["sky_texture"]] if sky else []), {},
                   SCENE_SCRIPTS + ["pbrt_playable_content.py", "vtf_content.py"],
                   [p["content"], p["content"].with_suffix(".json")],
                   lambda: self.run("content", [sys.executable, HERE / "pbrt_playable_content.py",
@@ -702,7 +793,8 @@ class Pipeline:
                       lambda: self.run("runtime-gate", [sys.executable,
                                                         HERE / "reference_compare.py"] +
                                        gate_args))
-        if self.boot:
+        # A relit map keeps its compiled collision; its drop test is the game's.
+        if self.boot and not self.legacy:
             receipt_path = p["collision"] / "collision-receipt.json"
             probe_commands = pbrt_traversal.commands(json.loads(receipt_path.read_text()))
             content_files = sorted(f for f in p["content"].rglob("*") if f.is_file())

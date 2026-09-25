@@ -347,8 +347,8 @@ int CMaterialPixelApp::Main()
 	const bool shadow = !Q_stricmp( family, "shadow" );
 	const bool post = !Q_stricmp( family, "post" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
-	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !monitor && !sprite &&
-	         !pbrFallback && !pbrModel && !bump && !shadow && !post &&
+	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !monitor &&
+	         !sprite && !pbrFallback && !pbrModel && !bump && !shadow && !post &&
 	         Q_stricmp( family, "lightmap" ) ) )
 	{
 		Warning( "material pixel conformance: need -out <file>, -hdr <none|integer> and "
@@ -1284,9 +1284,9 @@ struct BumpCase
 };
 const BumpCase kBumpCases[] = {
     { "normal_up", false, { 128, 128, 255 } },
-    { "normal_basis0", false, { 232, 128, 201 } },  // ( 0.816, 0, 0.577 )
-    { "normal_basis1", false, { 75, 218, 201 } },   // ( -0.408, 0.707, 0.577 )
-    { "normal_basis2", false, { 75, 37, 201 } },    // ( -0.408, -0.707, 0.577 )
+    { "normal_basis0", false, { 232, 128, 201 } }, // ( 0.816, 0, 0.577 )
+    { "normal_basis1", false, { 75, 218, 201 } },  // ( -0.408, 0.707, 0.577 )
+    { "normal_basis2", false, { 75, 37, 201 } },   // ( -0.408, -0.707, 0.577 )
     { "ssbump_first", true, { 255, 0, 0 } },
     { "ssbump_second_third", true, { 0, 128, 128 } },
 };
@@ -1428,7 +1428,8 @@ public:
 		int width = 0, height = 0, depth = 0;
 		pVTF->ComputeMipLevelDimensions( 0, &width, &height, &depth );
 		CPixelWriter writer;
-		writer.SetPixelMemory( pVTF->Format(), pVTF->ImageData( 0, 0, 0 ), pVTF->RowSizeInBytes( 0 ) );
+		writer.SetPixelMemory(
+		    pVTF->Format(), pVTF->ImageData( 0, 0, 0 ), pVTF->RowSizeInBytes( 0 ) );
 		for ( int y = 0; y < height; ++y )
 		{
 			writer.Seek( 0, y );
@@ -1445,8 +1446,9 @@ bool CMaterialPixelApp::RunShadowCases( FILE *out )
 	static CColumnAlphaRegenerator s_ShadowRegenerator;
 	ITexture *pShadow = g_pMaterialSystem->CreateProceduralTexture( "conformance/shadow_rtt",
 	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
-	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY |
-	        TEXTUREFLAGS_POINTSAMPLE | TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT );
+	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
+	        TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_POINTSAMPLE | TEXTUREFLAGS_CLAMPS |
+	        TEXTUREFLAGS_CLAMPT );
 	if ( !pShadow )
 		return false;
 	pShadow->SetTextureRegenerator( &s_ShadowRegenerator );
@@ -1545,9 +1547,9 @@ bool CMaterialPixelApp::RunPostCases( FILE *out )
 	// The engine's frame copy (matsys_interface.cpp CreateFullFrameFBTexture).
 	g_pMaterialSystem->BeginRenderTargetAllocation();
 	ITexture *pFrameBuffer = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2(
-	    "_rt_FullFrameFB", 1, 1, RT_SIZE_FULL_FRAME_BUFFER, g_pMaterialSystem->GetBackBufferFormat(),
-	    MATERIAL_RT_DEPTH_SHARED, TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT,
-	    CREATERENDERTARGETFLAGS_HDR );
+	    "_rt_FullFrameFB", 1, 1, RT_SIZE_FULL_FRAME_BUFFER,
+	    g_pMaterialSystem->GetBackBufferFormat(), MATERIAL_RT_DEPTH_SHARED,
+	    TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT, CREATERENDERTARGETFLAGS_HDR );
 	g_pMaterialSystem->EndRenderTargetAllocation();
 	if ( !pFrameBuffer || pFrameBuffer->IsError() )
 		return false;
@@ -1555,8 +1557,8 @@ bool CMaterialPixelApp::RunPostCases( FILE *out )
 	static CSolidColorRegenerator s_BloomRegenerator;
 	ITexture *pBloom = g_pMaterialSystem->CreateProceduralTexture( "conformance/post_bloom",
 	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
-	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY |
-	        TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT );
+	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
+	        TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT );
 	if ( !pBloom )
 		return false;
 	pBloom->SetTextureRegenerator( &s_BloomRegenerator );

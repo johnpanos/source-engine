@@ -1,0 +1,35 @@
+{
+  "schema": "map-export-profile/v1",
+  "name": "legacy-relight",
+  "description": "Relight of a compiled legacy map (tools/quality/legacy_bsp_relight.py): the gi-fixture light paths (64 diffuse bounces, no clamping) baked on the GPU into a denoised 4096 atlas with separated direct and indirect LMAP v2 layers, a PRBV probe volume at 2 m (a whole Portal map spans about 100 x 60 x 40 m), a radiosity transfer at 1 m patches and an SDFV at 0.4 m voxels for the SDF-traced producer. The map's nodraw brush sides (relight_occluder) occlude in every bake but get no atlas space and are left out of the world mesh. No reflection probe, directional page or pipeline reference render.",
+  "lightmap": {
+    "size": 4096,
+    "samples": 1024,
+    "device": "gpu",
+    "denoise": true,
+    "directional": false,
+    "light_paths": "gi-reference",
+    "layers": ["direct", "indirect"],
+    "exclude_materials": ["relight_occluder"]
+  },
+  "probe_volume": {
+    "spacing_m": 2.0,
+    "samples": 1024
+  },
+  "radiosity": {
+    "patch_size_m": 1.0,
+    "transfer_rays": 256,
+    "gather_rays": 4096,
+    "samples": 1024
+  },
+  "sdf_volume": {
+    "voxel_m": 0.4
+  },
+  "world_mesh": {
+    "exclude_materials": ["relight_occluder"]
+  },
+  "reflection_probe": null,
+  "reference": null,
+  "runtime_gate": null,
+  "audit": null
+}

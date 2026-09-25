@@ -93,7 +93,11 @@ public:
 		caps.policies = PolicyBit( indirect_policy::Policy::BakedPlusDelta );
 		caps.requiredFeatures = 1u << 2; // RenderFeature::kComputeShaders
 		caps.convergenceFrames = kConvergenceFrames;
-		caps.warmupFrames = kReferenceUpdates + 2 * kMaxInFlight + 4;
+		// A dispatch completes kMaxInFlight frames after its submission, so
+		// the reference phase takes (kMaxInFlight + 1) / kMaxInFlight frames
+		// per update.
+		caps.warmupFrames =
+		    kReferenceUpdates * ( kMaxInFlight + 1 ) / kMaxInFlight + 2 * kMaxInFlight + 4;
 		caps.seedTolerance = 0.0f;
 		caps.responseTolerance = 0.1f;
 		return caps;
@@ -117,19 +121,21 @@ public:
 		m_probes = grid.probeCount;
 		const size_t field = size_t( m_probes ) * kTexels * 3 * 16;
 		std::vector<uint32_t> made;
-		const auto make = [&]( size_t bytes )
+		const auto make = [&]( size_t bytes, gpu_compute::BufferUse use )
 		{
-			const uint32_t buffer = m_gpu->CreateBuffer( bytes );
+			const uint32_t buffer = m_gpu->CreateBuffer( bytes, use );
 			if ( buffer )
 				made.push_back( buffer );
 			return buffer;
 		};
-		m_voxels = make( m_sdf->bytes.size() - m_sdf->layout.voxelOffset );
-		m_positions = make( size_t( m_probes ) * 16 );
+		using gpu_compute::BufferUse;
+		m_voxels = make( m_sdf->bytes.size() - m_sdf->layout.voxelOffset, BufferUse::Upload );
+		m_positions = make( size_t( m_probes ) * 16, BufferUse::Upload );
 		for ( uint32_t k = 0; k < kRing; ++k )
 		{
-			m_field[k] = make( field );
-			m_params[k] = make( sizeof( SdfTraceParams ) );
+			// The CPU reads each field back to compose the published volume.
+			m_field[k] = make( field, BufferUse::Readback );
+			m_params[k] = make( sizeof( SdfTraceParams ), BufferUse::Upload );
 		}
 		m_program = m_gpu->CreateProgram( "sdf-probe-trace", 5, 8 );
 		if ( made.size() != 2 + 2 * kRing || !m_program )

@@ -1899,3 +1899,67 @@ Evidence (RADV, private tree `build-vk59`, `SDL_VIDEODRIVER=offscreen`):
   `escape_00`. Their captures were inspected. An escape_00 A/B against the
   DXVK tree agrees except for bloom, whose post-process chain native still
   declines.
+
+## Bumped lightmaps, bloom and color correction, model shadows (2026-09-24)
+
+Scope: the three largest visible gaps an audit of the native backend found.
+Before this change, `testchmb_a_01` and `escape_02` dropped `engine_post`,
+`downsample_non_hdr`, `blurfilterx/y_nohdr` and `engine/shadowbuild` every frame,
+and LightmappedGeneric sampled only the flat lightmap page.
+
+- **LightmappedGeneric / WorldVertexTransition** (`lightmappedgeneric_ps20b`,
+  `lightmappedgeneric_vs20`) have their own pipeline:
+  `shaders/lightmapped.{vert,frag}`, a port of `lightmappedgeneric_ps2_3_x.h`.
+  - It covers bumped lightmaps (three pages at the TEXCOORD2 offset), `$ssbump`,
+    `$bumpmap2` and `$bumpmask`, `$basetexture2` blending, `$detail` (all
+    TextureCombine modes, and mode 10 on ssbump), and the cubemap with the
+    bumped world normal.
+  - Also covered: the envmap masks, self-illumination, the vertex-shader and
+    pixel-shader fast paths, fog, depth-to-dest-alpha, and the alpha test.
+  - The static combos are decoded from the ps20b strides. WARPLIGHTING,
+    FANCY_BLENDING, SEAMLESS and OUTLINE/SOFTEDGES are reported unimplemented.
+  - The mesh carries TEXCOORD2 (stride 104). The dynamic record grew to 22
+    floats: the world tangent T and the page offset.
+  - It needs nine descriptor sets; a device without them keeps the old
+    flat-lightmap path.
+- **Bloom and color correction**: `Downsample_nohdr`, `BlurFilterX/Y` and
+  `Engine_Post_dx9` (bloom add, color correction with up to four volume
+  lookups, software AA) are ported in `shaders/screenspace_post.{vert,frag}` on
+  the skin layout.
+  - Supporting changes: volume (3D) textures (`CreateManagedTexture` depth,
+    whole-volume uploads, W clamped with U), `MaxTextureDepth`, and
+    `GetCurrentColorCorrection` forwarded to the material system.
+  - **Engine bug fixed** in `public/pixelwriter.h`: 24-bit `WritePixel` never
+    wrote the green byte. That left every color-correction lookup (BGR888 on
+    this backend) with garbage green, which turned the whole frame green and
+    purple once correction ran.
+- **Model shadows**: `ShadowBuild_DX9` draws through the textured pipeline. Its
+  alpha is exact; its RGB, white on D3D9, is unread.
+  - `Shadow` (`shadow_ps2x`) is a textured-pipeline stage (`alphaParams.y == 2`):
+    five jittered taps, the vertex-alpha fade, lerp to `$color`, and fog to white.
+
+Evidence (native Vulkan, RADV, headless):
+
+- New `material_pixel_conformance` families, native-only closed forms, with
+  fixtures in `quality/fixtures/material-pixels/*-native-vulkan-*.json`:
+  - `bump` (none and integer): the integer mode models the material system's
+    bumped-page correction (`LinearToBumpedLightmap`).
+  - `shadow` (none and integer).
+  - `post` (none and integer).
+  - All pass. Seeded defects in `tools/quality/tests/test_material_pixel_conformance.py`
+    are all detected: flat-page-only lighting, swapped pages, a mis-decoded
+    ssbump, missing jitter, fade or color, a declined pass, ignored bloom,
+    correction or default weight, and an unshaped downsample. 99 plus 19 tests
+    pass.
+- No regressions: `lightmap` (none and integer, against the D3D9 references)
+  now draws through the new pipeline and passes. So do `exposure`, `skinning`,
+  `portal`, `modellight`, `cable`, `sky`, `monitor`, `sprite` and `pbr-model`.
+- `portal_boot` passes on `testchmb_a_01` and `escape_02`. The only dropped
+  material left is `dev/motion_blur`.
+
+Open:
+
+- Motion blur, flashlight (P7), water, eyes and teeth are still declined.
+- DXVK comparison captures are deferred by direction.
+- No in-game frame isolates a projected model shadow yet. The oracle covers the
+  shader, not ShadowBuild's atlas placement.

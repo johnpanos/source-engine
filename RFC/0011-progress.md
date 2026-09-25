@@ -22,7 +22,7 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | G3 producer contract and switching | done (2026-09-24, native Vulkan) | Shared suite (Baked, radiosity, fake; seven bad producers and a one-bounce producer rejected); `r_indirect_producer` validation; native switching with no black frame, no early free and device loss mid-fade; backgrounding on the Fold7; `portal-view` through a real portal pair matches Cycles for baked and radiosity |
 | G4 precomputed radiosity | done (2026-09-24, native Vulkan; see open notes) | RTRN bake/reader/fuzzing; furnace on the real map (9 of 30 frames, one-bounce rejected); room-states panel/screen toggles converge in 7 frames and match Cycles in game (baked control fails); serial/pooled byte identity under TSan; desktop median 0.78–0.87 ms and Fold7 about 1.2 ms per update (one first update 2.75 ms), 10.4 MB; runs on the Fold7 APK with background/resume |
 | G5 GPU compute foundation | done (2026-09-24) | `vulkan_compute` on the native device: features queried and enabled through a `VkPhysicalDeviceFeatures2` chain, compute programs, storage buffers and images dispatched on the graphics queue, retirement by completion serial; `kStorageImages`/`kRayQuery` bits claimed only as enabled (`ValidateDeviceClaims` rejects a bad provider); `render.compute` passes on the Radeon 8060S (validation-clean) and on the Fold7 |
-| G6 SDF-traced producer | planned | — |
+| G6 SDF-traced producer | done (2026-09-25, native Vulkan desktop; Android declared unsupported) | SDFV bake/pack/reader; shared suite plus a traced-field thin-wall oracle with a seeded leak; in game the door closes the far room to Cycles' dark within 64 frames while radiosity and baked fail; the sun move settles toward Cycles; 0.49 ms per update for 400 probes (budget 2.0) |
 | G7 ray-query producer | planned | — |
 | G8 product defaults and soak | planned | — |
 
@@ -790,3 +790,59 @@ python3 tools/quality/gi_runtime.py compare --fixture room-states --state panel-
 | 2. Truthful feature bits | Passes. `RenderFeature` gains `kStorageImages` and `kRayQuery`. The engine's native adapter report takes them from the created device's enabled caps (`ComputeFeatureBits`); the render-backend provider claims compute and storage images from queries and never claims ray query, which it does not enable. `render_profile.h` `ValidateDeviceClaims` fails a claim beyond the device's enables (`kClaimNotEnabled`); `render.profile` (138 checks) and `render.compute` reject a provider that claims ray query without enabling it. |
 | 3. Retirement by completion serial | Passes. Buffers, images, programs and each dispatch's descriptor set retire behind their submission's serial, collected with the managed textures. `render.compute` shows a retired buffer alive while its submission is pending and freed after; the seeded early-free defect fails that check. |
 | 4. Compute conformance on Linux and the Fold7 | Passes. `render.compute` (GPU runner, RADV 8060S): 14 checks, 0 validation messages with the layer. The same source cross-compiled with NDK r30 runs from `/data/local/tmp` on the Galaxy Z Fold7 (Adreno 840, Vulkan 1.4): 13 checks (no layer on the device). Both devices report ray query. All seven GPU rows pass with the new device creation. |
+
+## G6: SDF-traced producer (done 2026-09-25, native Vulkan desktop; Android declared unsupported)
+
+| Done criterion | State |
+| --- | --- |
+| 1. Shared producer suite, including `thin-wall` | Passes. `render.indirect-light.sdf` (GPU runner, RADV 8060S) runs the shared suite ([`indirect_contract.h`](../unittests/rendertest/indirect_contract.h)) against [`SdfTracedProducer`](../public/render/indirect_sdf.h) through the renderer's compute service on the contract SDFV: seed, light response, a proxy box that darkens the probe it encloses, no GPU wait in `Schedule`, and the suite's per-publication leak check behind the thin wall. Because the composition could hide a leak in the traced field (a dark bake times any ratio stays dark), the field's own converged reference is also judged: lit side 0.740 (analytic 0.75), dark side 0.0000. The seeded leak defect (the wall's voxels erased) reads 0.042 behind the wall and is caught. 9 checks, validation-clean with the layer. The same suite ran on the Fold7 (Adreno 840) before the memory change below. |
+| 2. `door` | Passes in game (`gi_sdf.py door`, [`gate.json`](../quality-results/rfc0011-g6/door/gate.json)). The door is a moving `func_brush` (`Door`, open at spawn), so the bakes and the SDFV never contain it, and the engine passes drawn brush entities to the producer as proxy boxes. SDF open matches Cycles `open` (walls 0.0197 against 0.0194, model 0.0161 against 0.0158). SDF closed, captured 64 frames after `ent_fire Door Enable`, matches `closed` (walls 0.0010 and model 0.0000 against 0; the allowance is 0.0019). Radiosity and baked closed still read the open room's 0.019 and fail. The log shows the proxy arriving in all three closed captures. |
+| 3. `room-states`: sun angle changes converge | Passes (`gi_sdf.py sun`). `r_indirect_light_direction 33 <dir>` moves the sun (light style 33) to the fixture's recorded sun-low direction. The capture 64 frames after the move agrees with one 240 frames later (settled), and every region moves toward the Cycles sun-low reference; radiosity does not. The absolute accuracy is recorded, not gated: floor 0.063 and model 0.062 against Cycles 0.094 and 0.088 (walls 0.048/0.052, ceiling 0.052/0.061). At the probes the field is closer: mean error 0.009 against the probes of a Cycles sun-low bake, against 0.047 for the unchanged bake. The world and model residual sits next to the brushed-metal sphere, which the SDF treats as diffuse (a hypothesis, not verified). |
+| 4. GPU cost | Desktop passes: 0.489 ms median per update (p95 0.559) with 400 probes on room-states, and 0.422 ms (p95 0.455) with 200 on the door (budget 2.0 ms, median over warm updates; `indirect_sdf_native_conformance --bench`, [`cost/`](../quality-results/rfc0011-g6/cost)). The trace is per probe, so the cost does not depend on resolution. Android is declared unsupported, as the budget file already stated: the engine does not offer `sdf` on Android builds (`kSdfProfileSupported`). |
+
+**Pipeline.** [`sdf_volume_bake.py`](../tools/quality/sdf_volume_bake.py) runs as
+the `sdf` step of `pbrt_map_build.py` when a profile or manifest sets
+`sdf_volume` (the gi-fixture profile: 0.1 m voxels). It reuses the radiosity
+bake's Cycles-calibrated reflectance and source styles from its receipt, so
+both producers agree on the scene. Per voxel it records the nearest static
+surface's distance (Blender BVH; negative inside closed meshes), reflectance
+and emission, including textured emission (the room's screen). The scene's
+lights become analytic records: rectangles, distant lights and a mean-radiance
+dome. `bsp2tool pack-world-sdf` packs the SDFV lump beside RTRN. The engine
+validates it on load (`world.sdf-volume`: 23 checks, 13 malformations with the
+Python reader's codes, fuzzing), and offers `sdf` only with a valid field and
+a device that runs compute.
+
+**Engine and renderer.**
+- The renderer exposes `render/gpu_compute.h` through the material system's
+  `QueryInterface` (`RenderGpuCompute001`). Dispatches are recorded at the
+  end of the frame's command buffer and stamped with its serial.
+- Buffers take a use: `Readback` is host-cached. Before, the field lived in
+  memory that was slow for the GPU as well as the CPU. The change cut the
+  update from 1.87 to 0.49 ms and removed a flaky 5 ms `Schedule` (the
+  CPU reading the field back).
+- Composition: light removed is relative (the bake times the field's ratio
+  to its own reference), light added is absolute. Without that, the door's
+  far room kept 5–25% of its light; with it the probes read 0.
+- `warmupFrames` was understated: two dispatches in flight give 1.5 frames
+  per update. It is now 104, and the thin-wall check asserts the reference
+  phase ends within it.
+- `vbsp2`'s World Stage emitter now writes WorldSpawn only and reports the
+  brush entity models it leaves out, instead of failing any map with one.
+
+**Open (not G6 gates).** Thin walls and grid-aligned planes: a plane between
+voxel centres can be stepped over, and the fixtures align walls to the grid.
+Proxies are brush-entity boxes only (models are not proxies, because the
+references render them receiver-only). Specular surfaces are traced as diffuse.
+
+```sh
+python3 tools/quality/pbrt_map_build.py --manifest quality/fixtures/gi/door/map.json \
+    --out quality-results/rfc0011-maps/door
+python3 tools/quality/conformance.py check --runner gpu --suite render.indirect-light.sdf
+python3 tools/quality/conformance.py check --suite world.sdf-volume
+python3 tools/quality/gi_sdf.py door --out quality-results/rfc0011-g6/door
+python3 tools/quality/gi_sdf.py sun --out quality-results/rfc0011-g6/sun
+build/unittests/shaderapivulkantest/indirect_sdf_native_conformance --bench \
+    quality-results/rfc0011-maps/room-states/lighting/probe_volume.prbv \
+    quality-results/rfc0011-maps/room-states/lighting/field.sdfv
+```

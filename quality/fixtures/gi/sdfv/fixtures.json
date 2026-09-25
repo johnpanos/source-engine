@@ -46,55 +46,136 @@
  "malformations": [
   {
    "name": "truncated",
-   "error": "truncated"
+   "error": "truncated",
+   "length": 62,
+   "edits": []
   },
   {
    "name": "short",
-   "error": "size-mismatch"
+   "error": "size-mismatch",
+   "length": 56904,
+   "edits": []
   },
   {
    "name": "bad-magic",
-   "error": "bad-magic"
+   "error": "bad-magic",
+   "length": 56912,
+   "edits": [
+    [
+     0,
+     "00000000"
+    ]
+   ]
   },
   {
    "name": "version",
-   "error": "unsupported-version"
+   "error": "unsupported-version",
+   "length": 56912,
+   "edits": [
+    [
+     4,
+     "09"
+    ]
+   ]
   },
   {
    "name": "flags",
-   "error": "unsupported-version"
+   "error": "unsupported-version",
+   "length": 56912,
+   "edits": [
+    [
+     12,
+     "01"
+    ]
+   ]
   },
   {
    "name": "voxel-size",
-   "error": "invalid-grid"
+   "error": "invalid-grid",
+   "length": 56912,
+   "edits": [
+    [
+     31,
+     "00"
+    ]
+   ]
   },
   {
    "name": "dims",
-   "error": "invalid-grid"
+   "error": "invalid-grid",
+   "length": 56912,
+   "edits": [
+    [
+     32,
+     "01"
+    ]
+   ]
   },
   {
    "name": "max-distance",
-   "error": "invalid-grid"
+   "error": "invalid-grid",
+   "length": 56912,
+   "edits": [
+    [
+     50,
+     "c07f"
+    ]
+   ]
   },
   {
    "name": "reflectance",
-   "error": "invalid-voxel"
+   "error": "invalid-voxel",
+   "length": 56912,
+   "edits": [
+    [
+     66,
+     "003e"
+    ]
+   ]
   },
   {
    "name": "emission",
-   "error": "invalid-voxel"
+   "error": "invalid-voxel",
+   "length": 56912,
+   "edits": [
+    [
+     72,
+     "00bc"
+    ]
+   ]
   },
   {
    "name": "distance",
-   "error": "invalid-voxel"
+   "error": "invalid-voxel",
+   "length": 56912,
+   "edits": [
+    [
+     64,
+     "537b"
+    ]
+   ]
   },
   {
    "name": "light-kind",
-   "error": "invalid-light"
+   "error": "invalid-light",
+   "length": 56912,
+   "edits": [
+    [
+     56848,
+     "09"
+    ]
+   ]
   },
   {
    "name": "light-style",
-   "error": "invalid-light"
+   "error": "invalid-light",
+   "length": 56912,
+   "edits": [
+    [
+     56852,
+     "63000000"
+    ]
+   ]
   }
  ]
 }

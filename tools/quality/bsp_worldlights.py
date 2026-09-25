@@ -13,6 +13,14 @@ exactly the world lights with one of the given styles and zero intensity from
 LUMP_WORLDLIGHTS (15) and LUMP_WORLDLIGHTS_HDR (54); any other world light
 with such a style is an error. Like leaf_ambient_from_prbv.py, the new lumps
 are appended and the old ranges zeroed, so every other lump keeps its offset.
+
+    python3 tools/quality/bsp_worldlights.py --bsp in.bsp --out out.bsp \
+        --keep-only [--style 32 ...]
+
+A relit legacy map (`legacy_bsp_relight.py`) bakes vrad's lights into its
+lightmap layers and probe volume, so the engine must not add them to models
+again: `--keep-only` removes every world light except those of the given
+styles (named lights that start dark, which the bake leaves out).
 """
 
 import argparse
@@ -35,8 +43,9 @@ RECORD = struct.Struct("<3f3f3f3fiiifffffffiii")
 RECORD_V0 = struct.Struct("<3f3f3fiiifffffffiii")
 
 
-def strip(data, styles):
-    """(bytes, removed per lump) without the controls' world lights."""
+def filter_lights(data, drop):
+    """(bytes, removed per lump) without the world lights `drop(style,
+    intensity)` selects, in both world-light lumps."""
     _, lumps = leaf_ambient_from_prbv.read_lumps(data)
     replacements, removed = {}, {}
     for lump in (LUMP_WORLDLIGHTS, LUMP_WORLDLIGHTS_HDR):
@@ -56,10 +65,7 @@ def strip(data, styles):
             values = record.unpack(raw)
             intensity = values[3:6]
             style = values[14] if record is RECORD else values[11]
-            if style in styles:
-                if any(abs(v) > 0 for v in intensity):
-                    raise ValueError("world light with control style %d carries light %s" %
-                                     (style, intensity))
+            if drop(style, intensity):
                 dropped += 1
                 continue
             kept += raw
@@ -69,21 +75,45 @@ def strip(data, styles):
     return (leaf_ambient_from_prbv.rewrite(data, replacements) if replacements else data), removed
 
 
+def strip(data, styles):
+    """(bytes, removed per lump) without the controls' world lights."""
+    def drop(style, intensity):
+        if style not in styles:
+            return False
+        if any(abs(v) > 0 for v in intensity):
+            raise ValueError("world light with control style %d carries light %s" %
+                             (style, intensity))
+        return True
+    return filter_lights(data, drop)
+
+
+def keep_only(data, styles):
+    """(bytes, removed per lump) keeping only the world lights of `styles`."""
+    return filter_lights(data, lambda style, _intensity: style not in styles)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--bsp", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--style", type=int, action="append", default=[])
+    parser.add_argument("--keep-only", action="store_true",
+                        help="relit legacy map: remove every world light except those of "
+                             "the given styles (the bake now carries their light)")
     parser.add_argument("--receipt", type=Path)
     args = parser.parse_args()
     data = args.bsp.read_bytes()
-    out, removed = strip(data, set(args.style))
-    if sum(removed.values()) < len(args.style):
-        raise SystemExit("expected a world light per control style %s, removed %s" %
-                         (sorted(args.style), removed))
+    if args.keep_only:
+        out, removed = keep_only(data, set(args.style))
+    else:
+        out, removed = strip(data, set(args.style))
+        if sum(removed.values()) < len(args.style):
+            raise SystemExit("expected a world light per control style %s, removed %s" %
+                             (sorted(args.style), removed))
     args.out.write_bytes(out)
     receipt = {"schema": "bsp-worldlights-strip/v1", "styles": sorted(args.style),
+               "mode": "keep-only" if args.keep_only else "strip-controls",
                "removed": {str(k): v for k, v in removed.items()},
                "in_sha256": hashlib.sha256(data).hexdigest(),
                "out_sha256": hashlib.sha256(out).hexdigest()}
