@@ -30,6 +30,7 @@ options; the next ./play (or waf build) rebuilds the affected modules.
 
 import argparse
 import ctypes
+import hashlib
 import json
 import os
 import re
@@ -304,7 +305,46 @@ def load(path, profile_path=PROFILE):
     if problems:
         raise SystemExit("toolchain problems:\n  " + "\n  ".join(problems))
     toolchain["profile_id"] = profile["id"]
+    toolchain["versions"] = {"blender": match.group(1), "openusd": tag, "ktx": revision,
+                             "openimagedenoise": found}
     return toolchain
+
+
+def file_digest(paths):
+    """sha256 over the relative names and bytes of `paths` (files or trees)."""
+    digest = hashlib.sha256()
+    for path in map(Path, paths):
+        files = sorted(f for f in path.rglob("*") if f.is_file()) if path.is_dir() else [path]
+        for item in files:
+            digest.update(str(item.relative_to(path) if path.is_dir() else item.name).encode())
+            digest.update(hashlib.sha256(item.read_bytes()).digest())
+    return digest.hexdigest()
+
+
+# Identity of each tool a map build step runs: its verified version and the
+# bytes of what it executes or reads, so a rebuilt tool, OCIO configuration
+# or compile-tool prefix invalidates the steps that used it.
+IDENTITY_TOOLS = ("blender", "ocio", "openimagedenoise", "openusd", "ktx", "compile_tools")
+
+
+def identity(toolchain, name):
+    """The identity record of one tool of a `load`ed toolchain."""
+    versions = toolchain["versions"]
+    if name == "blender":
+        return {"version": versions["blender"],
+                "sha256": file_digest([os.path.realpath(toolchain["blender"])])}
+    if name == "ocio":
+        # A configuration resolves its LUTs and search paths beside itself.
+        return {"sha256": file_digest([Path(toolchain["ocio"]).parent])}
+    if name == "openimagedenoise":
+        return {"version": versions["openimagedenoise"]}
+    if name == "openusd":
+        return {"version": versions["openusd"], "python": toolchain["usd_python"]}
+    if name == "ktx":
+        return {"revision": versions["ktx"], "sha256": file_digest([toolchain["ktx"]])}
+    if name == "compile_tools":
+        return {"sha256": file_digest([toolchain["compile_tools"]])}
+    raise ValueError("unknown toolchain identity " + name)
 
 
 def main():

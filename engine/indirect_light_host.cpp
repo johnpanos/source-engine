@@ -24,6 +24,7 @@
 #include "gl_model_private.h"
 #include "icliententity.h"
 #include "icliententitylist.h"
+#include "render/direct_occlusion.h"
 #include "render/gpu_compute.h"
 #include "render/indirect_radiosity.h"
 #include "render/indirect_sdf.h"
@@ -194,6 +195,11 @@ struct Host
 	std::optional<mapcontainer::ProbeVolumeView> view;
 	std::vector<unsigned char> change; // the world's change atlas (BakedPlusDelta)
 	std::vector<Proxy> proxies;         // this frame's moving geometry
+	// Baked direct light moving geometry blocks, and the occluders the
+	// uploaded lightmap was composed for.
+	DirectOcclusion occlusion;
+	std::vector<Proxy> occluded;
+	std::vector<unsigned char> occludedTotal;
 	std::vector<LightOverride> lightOverrides; // r_indirect_light_direction
 	uint64_t uploadedGeneration = 0;
 	uint64_t mapSerial = 0;
@@ -241,6 +247,43 @@ void GatherProxies( std::vector<Proxy> *out )
 		}
 		out->push_back( proxy );
 	}
+}
+
+world_mesh_gpu::IWorldMeshUpload *Uploader();
+
+// Re-composes and uploads the world's lightmap when the occluders change:
+// the bake's total less the direct light they block (DirectOcclusion).
+void ApplyOcclusion( Host &host )
+{
+	if ( !host.occlusion.Ready() || host.deviceLost || host.proxies == host.occluded )
+		return;
+	world_mesh_gpu::IWorldMeshUpload *uploader = Uploader();
+	if ( !uploader || !uploader->IsResident() )
+		return;
+	const double started = Plat_FloatTime();
+	const size_t blocked =
+	    host.occlusion.Compose( host.proxies, &host.executor, &host.occludedTotal );
+	const mapcontainer::WorldLightmapLayout &layout = host.occlusion.Layout();
+	world_mesh_gpu::WorldLightmapUploadRequest request;
+	request.width = layout.width;
+	request.height = layout.height;
+	request.layerCount = layout.layerCount;
+	for ( uint32_t i = 0; i < layout.layerCount; ++i )
+	{
+		request.roles[i] = static_cast<world_mesh_gpu::WorldLightmapRole>( layout.roles[i] );
+		request.layers[i] = layout.roles[i] == mapcontainer::WorldLightmapLayer::Total
+		                        ? static_cast<const void *>( host.occludedTotal.data() )
+		                        : host.occlusion.Bytes() + layout.layerOffset[i];
+	}
+	if ( !uploader->UploadLightmap( request ) )
+	{
+		Warning( "indirect light: the occluded lightmap upload failed; the bake stays\n" );
+		return;
+	}
+	host.occluded = host.proxies;
+	if ( r_indirect_report.GetBool() )
+		Msg( "indirect light: %zu occluder(s) block baked direct light at %zu texels (%.2f ms)\n",
+		    host.proxies.size(), blocked, ( Plat_FloatTime() - started ) * 1000.0 );
 }
 
 world_mesh_gpu::IWorldMeshUpload *Uploader()
@@ -450,6 +493,19 @@ void IndirectLight_BeginMap( const IndirectLightMapData &map )
 	if ( map.wmsh && map.wmshSize && host.scene.sdf )
 		host.scene.geometry = WorldGeometryFromMesh( map.wmsh, map.wmshSize );
 	host.scene.gpu = GpuCompute();
+	host.occluded.clear();
+	if ( host.scene.sdf && map.wmsh && map.lmap )
+	{
+		const mapcontainer::SdfVolumeLayout &f = host.scene.sdf->layout;
+		std::vector<mapcontainer::SdfLight> lights( f.lightCount );
+		std::memcpy( lights.data(), host.scene.sdf->bytes.data() + f.lightOffset,
+		    lights.size() * sizeof( mapcontainer::SdfLight ) );
+		if ( host.occlusion.Build(
+		         map.wmsh, map.wmshSize, map.lmap, map.lmapSize, map.lmapVersion, lights ) )
+			Msg( "indirect light: baked direct light follows moving geometry (%zu texels, %u "
+			     "light(s))\n",
+			    host.occlusion.CoveredTexels(), f.lightCount );
+	}
 	host.switcher = std::make_unique<Switcher>( host.catalog, host.tracker );
 	ReportOffered();
 	ProducerKind requested = ProducerKind::Baked;
@@ -490,6 +546,9 @@ void IndirectLight_EndMap()
 	host.change.clear();
 	host.proxies.clear();
 	host.lightOverrides.clear();
+	host.occlusion = DirectOcclusion();
+	host.occluded.clear();
+	host.occludedTotal.clear();
 	host.uploadedGeneration = 0;
 	host.scene = IndirectScene();
 }
@@ -514,6 +573,7 @@ void IndirectLight_Frame( const light_set::Snapshot &lights )
 	}
 	work.proxies = host.proxies;
 	work.lightOverrides = host.lightOverrides;
+	ApplyOcclusion( host );
 	const FrameVolume frame = host.switcher->Frame( work, lights );
 	// The jobs run in order on this thread; their batches on the executor.
 	const double started = Plat_FloatTime();
@@ -567,6 +627,9 @@ void IndirectLight_DeviceRestored()
 {
 	Host &host = TheHost();
 	host.deviceLost = false;
+	// The recreated device has the bake's lightmap: re-compose for the
+	// occluders on the next frame.
+	host.occluded.clear();
 	if ( !host.switcher )
 		return;
 	const auto recovered = host.switcher->DeviceRecovered();

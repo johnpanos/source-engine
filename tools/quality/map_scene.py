@@ -71,6 +71,25 @@ def is_usd_scene(scene):
     return scene.get("format") == "usd"
 
 
+def source_files(scene):
+    """Every file a step that builds this scene's materials and lights reads.
+
+    An extracted USD model already digests its layers and textures
+    (`source_sha256` over `source_files`), so the model itself stands for
+    them. A PBRT scene is the `.pbrt` file plus the textures, PLY meshes and
+    sky it names, relative to the scene file.
+    """
+    if is_usd_scene(scene):
+        return [scene["model"]]
+    root = Path(scene["source"]).parent
+    names = [texture["filename"] for texture in scene["textures"].values()]
+    names += [shape["filename"] for shape in scene["shapes"] + scene["emitters"]
+              if shape.get("filename")]
+    if scene["environment"]:
+        names.append(scene["environment"]["filename"])
+    return [scene["source"]] + sorted({str(root / name) for name in names})
+
+
 def props(scene):
     """Dynamic model placements; PBRT scenes have none."""
     return list(scene.get("props", []))

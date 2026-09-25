@@ -10,6 +10,7 @@
 #define ENGINE_INDIRECT_LIGHT_HOST_H
 
 #include <cstddef>
+#include <cstdint>
 
 namespace light_set
 {
@@ -33,13 +34,18 @@ struct IndirectLightMapData
 	size_t sdfvSize = 0;
 	const unsigned char *wmsh = nullptr;
 	size_t wmshSize = 0;
+	const unsigned char *lmap = nullptr; // the LMAP lump, for baked direct-light occlusion
+	size_t lmapSize = 0;
+	uint32_t lmapVersion = 0;
 };
 
 // Map lifetime. BeginMap validates the optional inputs (the transfer against
 // the volume) and offers each producer only with what it needs: radiosity a
 // valid transfer; the SDF producer a valid SDFV and a renderer compute
 // service; the ray-query producer those, the world's triangles and a device
-// with ray query. It starts the Baked producer, then the saved
+// with ray query. With an SDFV's lights, the WMSH and an LMAP direct layer it
+// also removes the baked direct light moving geometry blocks (the proxies)
+// from the world's lightmap. It starts the Baked producer, then the saved
 // r_indirect_producer (an unoffered value is reported and Baked kept).
 void IndirectLight_BeginMap( const IndirectLightMapData &map );
 void IndirectLight_EndMap();

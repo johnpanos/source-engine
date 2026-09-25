@@ -375,6 +375,10 @@ private:
 	void BuildWorldMeshGroups();
 	void Map_ReleaseWorldMeshMaterials();
 	CUtlVector<byte> m_WorldMeshBytes;
+	// The validated LMAP lump while the map is loaded: the indirect-light host
+	// re-composes its total when moving geometry blocks baked direct light.
+	CUtlVector<byte> m_WorldLightmapBytes;
+	uint32_t m_WorldLightmapVersion = 0;
 	CUtlVector<worldmeshbatch_t> m_WorldMeshBatches;
 	CUtlVector<worldmeshcluster_t> m_WorldMeshClusters;
 	CUtlVector<worldmeshleafrange_t> m_WorldMeshLeafRanges;
@@ -4702,6 +4706,8 @@ void CModelLoader::Map_LoadWorldMesh()
 	}
 	m_worldBrushData.pWorldMeshData = m_WorldMeshBytes.Base();
 	m_worldBrushData.worldMeshSize = m_WorldMeshBytes.Count();
+	m_WorldLightmapBytes.Swap( lightmapBytes );
+	m_WorldLightmapVersion = hasLightmap ? lightmapLump.version : 0;
 	// The validator established batch/material ordering, section bounds and
 	// UTF-8 paths. Resolve each path once while the map is loading; the world
 	// brush borrows the finished array until unload.
@@ -5059,6 +5065,9 @@ void CModelLoader::Map_LoadProbeVolume()
 	// The world mesh stays loaded while it is drawn (Map_LoadWorldMesh ran first).
 	map.wmsh = m_WorldMeshBytes.Base();
 	map.wmshSize = size_t( m_WorldMeshBytes.Count() );
+	map.lmap = m_WorldLightmapBytes.Base();
+	map.lmapSize = size_t( m_WorldLightmapBytes.Count() );
+	map.lmapVersion = m_WorldLightmapVersion;
 	IndirectLight_BeginMap( map );
 	m_ProbeVolumeBytes.Purge();
 }
@@ -5089,6 +5098,7 @@ void CModelLoader::Map_LoadModel( model_t *mod )
 	if ( world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshUploader() )
 		uploader->Release();
 	m_WorldMeshBytes.Purge();
+	m_WorldLightmapBytes.Purge();
 	Map_ReleaseProbeVolume();
 	Map_ReleaseWorldMeshMaterials();
 	m_WorldMeshClusters.Purge();
@@ -5461,6 +5471,7 @@ void CModelLoader::Map_UnloadModel( model_t *mod )
 	m_worldBrushData.worldMeshLeafCount = 0;
 	m_worldBrushData.pWorldMeshLeafReferences = NULL;
 	m_WorldMeshBytes.Purge();
+	m_WorldLightmapBytes.Purge();
 	Map_ReleaseWorldMeshMaterials();
 	m_WorldMeshClusters.Purge();
 	m_WorldMeshLeafRanges.Purge();
