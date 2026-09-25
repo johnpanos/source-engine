@@ -579,6 +579,16 @@ class Pipeline:
                                              "--bsp", p["bsp"], "--prbv", p["prbv"],
                                              "--out", p["bsp_ambient"], "--receipt",
                                              p["bsp_ambient"].with_suffix(".json")])
+            if controls:
+                # The switchable lights' zero-light vrad world lights: the
+                # transfer owns their light.
+                seconds += self.run("pack", [sys.executable, HERE / "bsp_worldlights.py",
+                                             "--bsp", p["bsp_ambient"], "--out",
+                                             p["bsp_ambient"], "--receipt",
+                                             p["bsp_ambient"].with_name(
+                                                 p["bsp_ambient"].stem + "_worldlights.json")] +
+                                    [item for control in controls
+                                     for item in ("--style", str(control["style"]))])
             return seconds + self.usd_python("pack", "usd_worldmesh_pack.py", pack_args)
         pack_args = ([
                       "--stage", pack_stage, "--bsp", pack_bsp, "--material-prefix",
@@ -602,7 +612,8 @@ class Pipeline:
                        **({"probe_volume": True} if volume else {}),
                        **({"radiosity_transfer": True} if radiosity else {})),
                   ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py"] +
-                  (["leaf_ambient_from_prbv.py", "probe_volume.py"] if volume else []),
+                  (["leaf_ambient_from_prbv.py", "probe_volume.py"] if volume else []) +
+                  (["bsp_worldlights.py"] if controls else []),
                   [p["wmsh"], p["wmsh"].with_name(p["wmsh"].name + ".json"), p["bsp2"]] +
                   ([p["bsp_ambient"], p["bsp_ambient"].with_suffix(".json")] if volume else []),
                   pack)

@@ -1,0 +1,29 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# rtrntool (RFC 0011 G4): runs the product's precomputed radiosity solver on a
+# baked map's PRBV and RTRN for the convergence scenarios and CPU budgets.
+# Host tool; C++20 (quality/toolchain/policy.json) over mapcontainer only.
+
+top = '.'
+PROJECT_NAME = 'rtrntool'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	bld(
+		source       = [ 'rtrntool.cpp' ],
+		target       = PROJECT_NAME,
+		name         = PROJECT_NAME,
+		features     = 'c cxx cxxprogram',
+		includes     = [ '../../public' ],
+		defines      = [],
+		use          = [ 'mapcontainer' ],
+		install_path = bld.env.BINDIR,
+		subsystem    = bld.env.MSVC_SUBSYSTEM,
+		idx          = bld.get_taskgen_count()
+	)

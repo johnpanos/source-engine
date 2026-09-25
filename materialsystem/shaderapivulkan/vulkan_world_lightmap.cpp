@@ -106,7 +106,27 @@ bool UploadWorldProbeVolume( CVulkanContext &context,
 	                                                  CVulkanContext::kSamplerLinear );
 	context.SetManagedTextureSamplerState(
 	    grids, CVulkanContext::kSamplerClampU | CVulkanContext::kSamplerClampV );
+	int delta = -1;
+	if ( request.deltaAtlas )
+	{
+		delta = context.CreateManagedTexture( int( request.atlasWidth ), int( request.atlasHeight ),
+		    VK_FORMAT_R16G16B16A16_SFLOAT, &detail );
+		if ( delta < 0 ||
+		     !context.UploadManagedTexture( delta, static_cast<const uint8_t *>( request.deltaAtlas ),
+		         size_t( request.atlasWidth ) * request.atlasHeight * 8, &detail ) )
+		{
+			if ( delta >= 0 )
+				context.DestroyManagedTexture( delta );
+			context.DestroyManagedTexture( grids );
+			context.DestroyManagedTexture( atlas );
+			return fail( "PRBV change atlas upload failed: " + detail );
+		}
+		context.SetManagedTextureSamplerState( delta, CVulkanContext::kSamplerClampU |
+		                                                  CVulkanContext::kSamplerClampV |
+		                                                  CVulkanContext::kSamplerLinear );
+	}
 	context.SetProbeVolumeHandles( atlas, grids, request.gridCount );
+	context.SetProbeDeltaHandle( delta );
 	return true;
 }
 

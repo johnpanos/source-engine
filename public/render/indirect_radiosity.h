@@ -50,9 +50,15 @@ namespace indirect_light
 
 struct RadiosityOptions
 {
-	uint32_t iterationsPerUpdate = 2;
+	// One bounce per update: 30 updates (0.5 s at 60 Hz) converge the fixtures,
+	// and one update fits the desktop budget (quality/budgets/indirect-light-v1.json).
+	uint32_t iterationsPerUpdate = 1;
 	// A patch change below this (diffuse light units) ends the updates.
 	float convergedChange = 1e-5f;
+	// Each update gathers every probeStride-th probe block, in turn; once the
+	// patches converge, the remaining blocks are gathered before the updates
+	// stop, so a converged publication is complete.
+	uint32_t probeStride = 2;
 	// The one-bounce sensitivity defect: each patch gathers the injected light
 	// only, never the previous iteration's (the furnace must reject it).
 	bool oneBounce = false;
@@ -103,6 +109,9 @@ public:
 		}
 		m_dirty = false;
 		m_iterations = 0;
+		m_probePhase = 0;
+		m_settling = 0;
+		m_patchesSettled = false;
 	}
 
 	[[nodiscard]] uint32_t SourceCount() const { return m_transfer->layout.sourceCount; }
@@ -129,11 +138,12 @@ public:
 			const float scale = m_scalars[s] - m_reference[s];
 			if ( scale == 0.0f )
 				continue;
-			for ( auto *l = view.InjectionBegin( s ); l != view.InjectionEnd( s ); ++l )
+			for ( auto *l = view.InjectionBegin( s ), *end = view.InjectionEnd( s ); l != end; ++l )
 				for ( int c = 0; c < 3; ++c )
 					m_injection[size_t( l->patch ) * 3 + c] += scale * l->light[c];
 		}
 		m_dirty = true;
+		m_patchesSettled = false;
 	}
 
 	// True while updates still change the solution.
@@ -148,7 +158,7 @@ public:
 		if ( !m_dirty )
 			return false;
 		const auto &layout = m_transfer->layout;
-		for ( uint32_t k = 0; k < m_options.iterationsPerUpdate; ++k )
+		for ( uint32_t k = 0; !m_patchesSettled && k < m_options.iterationsPerUpdate; ++k )
 		{
 			m_reflectInjection = m_options.oneBounce;
 			Run( executor, "radiosity.reflect", uint32_t( m_blockChange.size() ), &ReflectBlock );
@@ -161,12 +171,29 @@ public:
 			if ( m_lastChange < m_options.convergedChange )
 				break;
 		}
-		// The probes gather the patches' reflected light.
+		// The probes gather the patches' reflected light: this update's share.
 		m_reflectInjection = false;
 		Run( executor, "radiosity.reflect", uint32_t( m_blockChange.size() ), &ReflectBlock );
-		Run( executor, "radiosity.probes", ( layout.probeCount + kProbeBlock - 1 ) / kProbeBlock,
+		const uint32_t stride = std::max( 1u, m_options.probeStride );
+		const uint32_t blocks = ( layout.probeCount + kProbeBlock - 1 ) / kProbeBlock;
+		m_probePhase = ( m_probePhase + 1 ) % stride;
+		Run( executor, "radiosity.probes", ( blocks + stride - 1 - m_probePhase ) / stride,
 		    &ProbeBlock );
-		if ( m_lastChange < m_options.convergedChange )
+		// Every probe's total: its indirect plus the switched sources' direct
+		// light, which follows a switch at once.
+		Run( executor, "radiosity.direct", blocks, &DirectBlock );
+		if ( !m_patchesSettled )
+		{
+			if ( m_lastChange < m_options.convergedChange )
+			{
+				// Settled: the other phases gather the settled patches next.
+				m_patchesSettled = true;
+				m_settling = stride - 1;
+			}
+		}
+		else if ( m_settling > 0 )
+			--m_settling;
+		if ( m_patchesSettled && m_settling == 0 )
 			m_dirty = false;
 		return true;
 	}
@@ -187,9 +214,12 @@ public:
 	}
 
 	// `base` plus the probes' changes, clamped at zero (the published volume).
+	// The base's interior texels are decoded once per base.
 	[[nodiscard]] std::shared_ptr<const Volume> Compose(
 	    const Volume &base, IBatchExecutor *executor ) const
 	{
+		if ( m_baseBytes != base.bytes.data() || m_baseSize != base.bytes.size() )
+			DecodeBase( base );
 		auto volume = std::make_shared<Volume>( base );
 		ComposeContext context{ this, volume.get() };
 		const uint32_t probes = m_transfer->layout.probeCount;
@@ -237,6 +267,47 @@ private:
 		Volume *volume;
 	};
 
+	// The base's irradiance interiors as floats: [probe][layer][texel][rgb].
+	void DecodeBase( const Volume &base ) const
+	{
+		const mapcontainer::ProbeVolumeLayout &layout = base.layout;
+		const uint32_t tile = mapcontainer::kProbeIrradianceTile;
+		m_baseInterior.assign( size_t( m_transfer->layout.probeCount ) * 2 * kTexels * 3, 0.0f );
+		uint32_t first = 0;
+		for ( uint32_t g = 0; g < layout.gridCount; ++g )
+		{
+			const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
+			for ( uint32_t local = 0; local < grid.probeCount; ++local )
+			{
+				for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
+				{
+					const uint32_t x0 = grid.irradianceOrigin[layer][0] +
+					                    ( local % grid.tilesPerRow ) * tile + 1;
+					const uint32_t y0 = grid.irradianceOrigin[layer][1] +
+					                    ( local / grid.tilesPerRow ) * tile + 1;
+					float *out = &m_baseInterior[( size_t( first + local ) * 2 + layer ) *
+					                             kTexels * 3];
+					for ( uint32_t v = 0; v < kInterior; ++v )
+						for ( uint32_t u = 0; u < kInterior; ++u )
+							for ( int c = 0; c < 3; ++c )
+							{
+								uint16_t half;
+								std::memcpy( &half,
+								    base.bytes.data() + layout.atlasOffset +
+								        ( uint64_t( y0 + v ) * layout.atlasWidth + x0 + u ) * 8 +
+								        2 * c,
+								    2 );
+								out[( v * kInterior + u ) * 3 + c] =
+								    mapcontainer::HalfToFloat( half );
+							}
+				}
+			}
+			first += grid.probeCount;
+		}
+		m_baseBytes = base.bytes.data();
+		m_baseSize = base.bytes.size();
+	}
+
 	void Run( IBatchExecutor *executor, const char *name, uint32_t count,
 	    void ( *body )( void *, uint32_t ) )
 	{
@@ -276,7 +347,7 @@ private:
 		{
 			float sum[3] = { self.m_injection[size_t( p ) * 3], self.m_injection[size_t( p ) * 3 + 1],
 			    self.m_injection[size_t( p ) * 3 + 2] };
-			for ( auto *l = view.TransferBegin( p ); l != view.TransferEnd( p ); ++l )
+			for ( auto *l = view.TransferBegin( p ), *end = view.TransferEnd( p ); l != end; ++l )
 			{
 				const float *q = reflected + size_t( l->patch ) * 3;
 				sum[0] += l->factor * q[0];
@@ -292,26 +363,27 @@ private:
 		self.m_blockChange[block] = largest;
 	}
 
-	static void ProbeBlock( void *context, uint32_t block )
+	static void ProbeBlock( void *context, uint32_t item )
 	{
 		RadiositySolver &self = *static_cast<RadiositySolver *>( context );
 		const mapcontainer::RadiosityTransferView view = self.m_transfer->View();
 		const auto &layout = self.m_transfer->layout;
+		const uint32_t block = item * std::max( 1u, self.m_options.probeStride ) + self.m_probePhase;
 		const uint32_t begin = block * kProbeBlock;
 		const uint32_t end = std::min( begin + kProbeBlock, layout.probeCount );
 		const float *reflected = self.m_reflected.data();
 		for ( uint32_t i = begin; i < end; ++i )
 		{
-			float sh[9][3] = {};
-			for ( auto *l = view.GatherBegin( i ); l != view.GatherEnd( i ); ++l )
+			// Per channel, the nine coefficients: contiguous, so they vectorize.
+			float sh[3][9] = {};
+			for ( auto *l = view.GatherBegin( i ), *end = view.GatherEnd( i ); l != end; ++l )
 			{
 				const float *q = reflected + size_t( l->patch ) * 3;
-				for ( int k = 0; k < 9; ++k )
-					for ( int c = 0; c < 3; ++c )
-						sh[k][c] += l->sh[k] * q[c];
+				for ( int c = 0; c < 3; ++c )
+					for ( int k = 0; k < 9; ++k )
+						sh[c][k] += l->sh[k] * q[c];
 			}
 			float *indirect = &self.m_probeIndirect[size_t( i ) * kTexels * 3];
-			float *total = &self.m_probeTotal[size_t( i ) * kTexels * 3];
 			for ( uint32_t t = 0; t < kTexels; ++t )
 			{
 				const float *basis = &self.m_basis[t * 9];
@@ -319,11 +391,26 @@ private:
 				{
 					float value = 0.0f;
 					for ( int k = 0; k < 9; ++k )
-						value += basis[k] * sh[k][c];
+						value += basis[k] * sh[c][k];
 					indirect[t * 3 + c] = value;
-					total[t * 3 + c] = value;
 				}
 			}
+		}
+	}
+
+	static void DirectBlock( void *context, uint32_t block )
+	{
+		RadiositySolver &self = *static_cast<RadiositySolver *>( context );
+		const mapcontainer::RadiosityTransferView view = self.m_transfer->View();
+		const auto &layout = self.m_transfer->layout;
+		const uint32_t begin = block * kProbeBlock;
+		const uint32_t end = std::min( begin + kProbeBlock, layout.probeCount );
+		for ( uint32_t i = begin; i < end; ++i )
+		{
+			const float *indirect = &self.m_probeIndirect[size_t( i ) * kTexels * 3];
+			float *total = &self.m_probeTotal[size_t( i ) * kTexels * 3];
+			for ( uint32_t k = 0; k < kTexels * 3; ++k )
+				total[k] = indirect[k];
 			for ( uint32_t s = 0; s < layout.sourceCount; ++s )
 			{
 				const float scale = self.m_scalars[s] - self.m_reference[s];
@@ -353,47 +440,47 @@ private:
 			      ++i )
 			{
 				const uint32_t local = i - first;
+				// A probe the change does not reach keeps the base's tiles.
+				const float *total = self.ProbeTotal( i );
+				bool changed = false;
+				for ( uint32_t k = 0; k < kTexels * 3 && !changed; ++k )
+					changed = total[k] != 0.0f || self.ProbeIndirect( i )[k] != 0.0f;
+				if ( !changed )
+					continue;
 				for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
 				{
 					const float *change = layer == 0 ? self.ProbeTotal( i ) : self.ProbeIndirect( i );
-					WriteTile( volume, grid.irradianceOrigin[layer], local, grid.tilesPerRow, change );
+					const float *baseTexels =
+					    &self.m_baseInterior[( size_t( i ) * 2 + layer ) * kTexels * 3];
+					WriteTile( volume, grid.irradianceOrigin[layer], local, grid.tilesPerRow,
+					    baseTexels, change );
 				}
 			}
 			first += grid.probeCount;
 		}
 	}
 
-	// Adds `change` (36 rgb, interior order) to a probe's 8 x 8 tile: the
-	// interior, then the octahedral border (probe_volume.with_border).
+	// Writes a probe's 8 x 8 tile as `base` plus `change` (36 rgb each,
+	// interior order), clamped at zero: the interior, then the octahedral
+	// border (probe_volume.with_border).
 	static void WriteTile( Volume &volume, const uint32_t origin[2], uint32_t probe,
-	    uint32_t tilesPerRow, const float *change )
+	    uint32_t tilesPerRow, const float *base, const float *change )
 	{
 		const uint32_t tile = mapcontainer::kProbeIrradianceTile;
 		const uint32_t x0 = origin[0] + ( probe % tilesPerRow ) * tile;
 		const uint32_t y0 = origin[1] + ( probe / tilesPerRow ) * tile;
-		float interior[kInterior][kInterior][3];
+		// Each interior texel is encoded once; the border repeats the halves.
+		uint16_t interior[kInterior][kInterior][3];
 		for ( uint32_t v = 0; v < kInterior; ++v )
-		{
 			for ( uint32_t u = 0; u < kInterior; ++u )
-			{
-				unsigned char *texel = Texel( volume, x0 + 1 + u, y0 + 1 + v );
 				for ( int c = 0; c < 3; ++c )
 				{
-					uint16_t half;
-					std::memcpy( &half, texel + 2 * c, 2 );
-					interior[v][u][c] = std::max(
-					    0.0f, mapcontainer::HalfToFloat( half ) + change[( v * kInterior + u ) * 3 + c] );
+					const uint32_t k = ( v * kInterior + u ) * 3 + c;
+					interior[v][u][c] = FloatToHalf( std::max( 0.0f, base[k] + change[k] ) );
 				}
-			}
-		}
-		const auto put = [&]( uint32_t x, uint32_t y, const float rgb[3] )
+		const auto put = [&]( uint32_t x, uint32_t y, const uint16_t rgb[3] )
 		{
-			unsigned char *texel = Texel( volume, x0 + x, y0 + y );
-			for ( int c = 0; c < 3; ++c )
-			{
-				const uint16_t half = FloatToHalf( rgb[c] );
-				std::memcpy( texel + 2 * c, &half, 2 );
-			}
+			std::memcpy( Texel( volume, x0 + x, y0 + y ), rgb, 6 );
 		};
 		const uint32_t n = kInterior;
 		for ( uint32_t v = 0; v < n; ++v )
@@ -431,10 +518,17 @@ private:
 	std::vector<float> m_probeIndirect;
 	std::vector<float> m_probeTotal;
 	std::array<float, kTexels * 9> m_basis{};
+	// Compose's decoded base (see DecodeBase), keyed by the base's bytes.
+	mutable std::vector<float> m_baseInterior;
+	mutable const unsigned char *m_baseBytes = nullptr;
+	mutable size_t m_baseSize = 0;
 	float m_lastChange = 0.0f;
 	uint64_t m_iterations = 0;
 	bool m_dirty = false;
 	bool m_reflectInjection = false;
+	uint32_t m_probePhase = 0;
+	uint32_t m_settling = 0;
+	bool m_patchesSettled = false;
 };
 
 // The product producer: BakedPlusDelta over the map's transfer. Each source's

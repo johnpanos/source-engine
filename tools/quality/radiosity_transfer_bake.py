@@ -18,8 +18,13 @@ samples binned per mesh, side, dominant normal axis and cube cell of the
 patch size. A closed (manifold) mesh has one side, its normals' side; an
 open one (a single wall plane) two, because Cycles shades both sides of a
 face. A patch's position and normal are its samples' area-weighted means, its
-albedo the material policy's diffuse albedo there: base colour or texture
-times (1 - metallic) (1 - transmission).
+albedo the material's reflectance under uniform light there, redistributed
+diffusely (the radiosity approximation of glossy light). Cycles measures it:
+per material, a large plane under a uniform white sky is baked onto a
+downward-facing receiver just above it, once with the base colour 0 and once
+with 1. Reflectance is affine in the base colour for a dielectric (specular
+plus diffuse times base), and nearly so for a metal, so a patch's albedo is
+specular + diffuse x its base colour (or texture) there.
 
 Transfer and gather. From random samples of each patch, cosine-weighted rays
 against a BVH of the world (dynamic props excluded, emitters as occluders)
@@ -138,13 +143,60 @@ def isolate(sources, active):
 
 # ---------------------------------------------------------------- albedo
 
-class Albedo:
-    """The material policy's diffuse albedo of a scene shape at a UV."""
+CALIBRATION_PLANE = 1000.0  # meters: the receiver sees only the plane below it
+CALIBRATION_SAMPLES = 1024
 
-    def __init__(self, scene):
+
+def calibrate_materials(scene, names, device, light_paths, work):
+    """Per material, (specular, diffuse) reflectance under uniform white light
+    from Cycles: reflectance = specular + diffuse * base colour."""
+    pbrt_blender.clear_scene()
+    world = bpy.context.scene.world or bpy.data.worlds.new("World")
+    bpy.context.scene.world = world
+    world.use_nodes = True
+    world.node_tree.nodes.get("Background").inputs["Strength"].default_value = 1.0
+    world.node_tree.nodes.get("Background").inputs["Color"].default_value = (1, 1, 1, 1)
+    bpy.ops.mesh.primitive_plane_add(size=CALIBRATION_PLANE)
+    plane = bpy.context.active_object
+    uv = plane.data.uv_layers.active
+    uv.name = "st"
+    receiver, target, height = receiver_mesh([((0.0, 0.0, 1e-3), (0.0, 0.0, -1.0))])
+    pbrt_blender.configure_cycles(CALIBRATION_SAMPLES, device)
+    pbrt_blender.configure_light_paths(light_paths)
+    bpy.context.scene.cycles.use_adaptive_sampling = False
+    bpy.context.scene.cycles.seed = SEED
+    bpy.context.scene.render.bake.use_clear = True
+    bpy.context.scene.render.bake.margin = 0
+    bpy.context.scene.render.bake.use_pass_color = False
+    result = {}
+    for name in names:
+        values = []
+        for base in (0.0, 1.0):
+            material = pbrt_blender.build_material(scene, name, normal_maps=False)
+            shader = material.node_tree.nodes.get("Principled BSDF")
+            for link in list(shader.inputs["Base Color"].links):
+                material.node_tree.links.remove(link)
+            shader.inputs["Base Color"].default_value = (base, base, base, 1.0)
+            shader.inputs["Emission Strength"].default_value = 0.0
+            plane.data.materials.clear()
+            plane.data.materials.append(material)
+            light, _ = bake_direct(receiver, target, height, "Calibration", work,
+                                   passes={"DIRECT", "INDIRECT"})
+            values.append(float(light[0].mean()))
+        result[name] = (values[0], max(0.0, values[1] - values[0]))
+    pbrt_blender.clear_scene()
+    return result
+
+
+class Albedo:
+    """A scene shape's reflectance at a UV: the material's calibrated
+    specular part plus its diffuse part times the base colour there."""
+
+    def __init__(self, scene, calibration):
         self.scene = scene
         self.root = map_scene.material_root(scene)
         self.images = {}
+        self.calibration = calibration
 
     def texture(self, record):
         path = (self.root / record["file"]).resolve()
@@ -163,7 +215,7 @@ class Albedo:
         return self.images[key]
 
     def evaluate(self, material_name, uv):
-        """(N, 3) diffuse albedo at (N, 2) texture coordinates."""
+        """(N, 3) hemispherical reflectance at (N, 2) texture coordinates."""
         summary = map_scene.material_summary(self.scene, material_name)
         count = len(uv)
         if summary["base_texture"]:
@@ -178,8 +230,8 @@ class Albedo:
             base = base * scale + bias
         else:
             base = np.tile(np.asarray(summary["base_color"][:3], dtype=np.float64), (count, 1))
-        diffuse = (1.0 - float(summary["metallic"])) * (1.0 - float(summary["transmission"]))
-        return np.clip(base * diffuse, 0.0, 1.0)
+        specular, diffuse = self.calibration[material_name]
+        return np.clip(specular + diffuse * base, 0.0, 1.0)
 
 
 # ---------------------------------------------------------------- patches
@@ -200,10 +252,14 @@ def mesh_triangles(obj):
     if uv_layer is not None and len(loops):
         coords = np.array([tuple(d.uv) for d in uv_layer.data], dtype=np.float64)
         uv = coords[loops]
-    # Closed: every edge is shared by exactly two faces.
+    # Closed: with coincident vertices welded (the USD import splits them per
+    # face corner), every edge is shared by exactly two triangles.
+    welded = np.unique(np.round(vertices / 1e-5).astype(np.int64), axis=0,
+                       return_inverse=True)[1].reshape(-1)
     uses = {}
-    for polygon in mesh.polygons:
-        for key in polygon.edge_keys:
+    for a, b, c in welded[verts] if len(verts) else []:
+        for key in ((a, b), (b, c), (c, a)):
+            key = (min(key), max(key))
             uses[key] = uses.get(key, 0) + 1
     closed = bool(uses) and all(count == 2 for count in uses.values())
     evaluated.to_mesh_clear()
@@ -427,14 +483,14 @@ def receiver_mesh(quads):
     return obj, target, height
 
 
-def bake_direct(obj, target, height, name, work):
+def bake_direct(obj, target, height, name, work, passes=None):
     image = bpy.data.images.new(name, width=BAKE_WIDTH, height=height, alpha=True,
                                 float_buffer=True)
     target.image = image
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
-    if bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT"}) != {"FINISHED"}:
+    if bpy.ops.object.bake(type="DIFFUSE", pass_filter=passes or {"DIRECT"}) != {"FINISHED"}:
         raise RuntimeError("Cycles could not bake the radiosity receivers")
     path = work / (name + ".exr")
     scene = bpy.context.scene
@@ -467,6 +523,10 @@ def main():
     started = time.monotonic()
     rng = np.random.default_rng(SEED)
     scene = map_scene.parse(args.scene)
+    args.work.mkdir(parents=True, exist_ok=True)
+    used = sorted({shape["material"] for shape in scene["shapes"]})
+    calibration = calibrate_materials(scene, used, args.device, args.light_paths, args.work)
+    calibrated = time.monotonic()
     pbrt_blender.clear_scene()
     if bpy.ops.wm.usd_import(filepath=str(args.stage.resolve()), import_materials=True,
                              import_lights=True, import_cameras=False) != {"FINISHED"}:
@@ -493,7 +553,7 @@ def main():
         raise ValueError("the scene has no light source")
 
     # Patches.
-    albedo = Albedo(scene)
+    albedo = Albedo(scene, calibration)
     spacing = args.patch_size / SAMPLES_PER_PATCH_EDGE
     samples, closed = sample_surfaces(
         world, lambda obj, uv: albedo.evaluate(assignments[obj.name], uv), spacing, rng)
@@ -642,11 +702,20 @@ def main():
                "rtrn_bytes": len(data), "cycles_device": device, "samples": args.samples,
                "seed": SEED, "light_paths": light_paths, "normal_maps": False,
                "patch_size_m": args.patch_size, "transfer_rays": args.transfer_rays,
+               "material_reflectance": {name: {"specular": round(v[0], 5),
+                                               "diffuse": round(v[1], 5)}
+                                        for name, v in calibration.items()},
                "gather_rays": args.gather_rays, "receivers_per_patch": RECEIVERS_PER_PATCH,
                "sources": [{"name": s["name"], "kind": s["kind"], "style": s["style"]}
                            for s in sources],
                "patches": {"sampled": count, "kept": int(len(keep)),
-                           "closed_meshes": int(sum(closed)), "meshes": len(world)},
+                           "closed_meshes": int(sum(closed)), "meshes": len(world),
+                           "kept_area_m2_by_mesh": {
+                               world[o].name: round(float(patches.area[keep][
+                                   patches.object[keep] == o].sum()), 3)
+                               for o in sorted(set(patches.object[keep].tolist()))},
+                           "kept_sides": {"front": int((patches.side[keep] > 0).sum()),
+                                          "back": int((patches.side[keep] < 0).sum())}},
                **{"info": result.info()},
                "baked_state": {
                    "probe_direct_vs_prbv": relative(total - indirect,
@@ -657,7 +726,7 @@ def main():
                            "to the Cycles probe bake; the product publishes the bake plus "
                            "the change, so these bound the change's model error"},
                "bake_images": images,
-               "seconds": {"sample": sampled - started, "transfer": traced - sampled,
+               "seconds": {"calibrate": calibrated - started, "sample": sampled - calibrated, "transfer": traced - sampled,
                            "gather": gathered - traced, "bake": baked - gathered,
                            "total": time.monotonic() - started},
                "baker_sha256": sha256(__file__)}

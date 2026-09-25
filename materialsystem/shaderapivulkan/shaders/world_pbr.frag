@@ -9,6 +9,13 @@
 // the bound lightmap is the bake's direct layer, and the producer's indirect
 // light is added from its atlas (set 8), sampled at the lightmap coordinate.
 //
+// DELTA_VOLUME (RFC 0011 render.indirect-policy.v1's BakedPlusDelta): the
+// bound lightmap is the bake's total, and the producer's signed change of
+// indirect light is added from its change volume (sets 8 and 9: a PRBV-layout
+// atlas whose indirect layer holds the change, and the grid table), sampled
+// at the surface with the probes' visibility. Under INDIRECT_VIEW the change
+// is added to the view's indirect layer.
+//
 // DIRECT_LIGHTS (RFC 0011 G2) adds the frame's unbaked lights, from the
 // engine's light set (render/light_set.h), through the legacy dlight falloff
 // times the Lambert cosine and the layered BRDF (set 7). The push block's
@@ -120,6 +127,19 @@ vec3 SpecularBrdf( vec3 normal, vec3 view, vec3 light, vec3 f0, float roughness 
 layout( set = 8, binding = 0 ) uniform sampler2D producerIndirect;
 #endif
 
+#ifdef DELTA_VOLUME
+layout( set = 8, binding = 0 ) uniform sampler2D probeAtlas; // the change, PRBV layout
+layout( set = 9, binding = 0 ) uniform sampler2D probeGrids; // grid table, RGBA32F
+#include "probe_volume.glsl"
+
+// The producer's change of indirect diffuse light along the geometric normal.
+vec3 IndirectChange( vec3 normal )
+{
+	vec3 change;
+	return ProbeIrradiance( fragPosition, normal, 1, true, change ) ? change : vec3( 0.0 );
+}
+#endif
+
 #ifdef DIRECT_LIGHTS
 // Four vec4 per light: position.xyz, radius; color.rgb, minLight;
 // direction.xyz, outer cone cosine (below -1: no cone); inner cone cosine.
@@ -203,6 +223,9 @@ void main()
 	{
 		vec3 indirectLight =
 		    consts.lightDirection.z > 0.5 ? BakedIrradiance( normalize( fragNormal ) ) : vec3( 0.0 );
+#ifdef DELTA_VOLUME
+		indirectLight = max( indirectLight + IndirectChange( normalize( fragNormal ) ), vec3( 0.0 ) );
+#endif
 		vec3 viewed = indirectLight;
 		if ( consts.lightDirection.x > 1.5 )
 		{
@@ -232,6 +255,9 @@ void main()
 	vec3 bakedDiffuse = BakedIrradiance( normal );
 #ifdef RUNTIME_INDIRECT
 	bakedDiffuse += texture( producerIndirect, fragLightmapUv ).rgb;
+#endif
+#ifdef DELTA_VOLUME
+	bakedDiffuse = max( bakedDiffuse + IndirectChange( normalize( fragNormal ) ), vec3( 0.0 ) );
 #endif
 	vec3 diffuse = base * ( 1.0 - metalness ) *
 	    ( vec3( 1.0 ) - directionalAlbedo ) * bakedDiffuse * occlusion;

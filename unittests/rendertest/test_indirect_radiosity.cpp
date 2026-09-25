@@ -116,12 +116,12 @@ void Furnace( const std::shared_ptr<const Transfer> &transfer )
 	Check( never == 0 && std::fabs( settled - 0.6f * 0.48f ) < 1e-3f,
 	    "the one-bounce defect settles at 0.288 and never meets the furnace tolerance" );
 
-	// A single iteration per update still converges, just later: the frame
-	// count is the declared contract, not luck.
-	RadiosityOptions slow;
-	slow.iterationsPerUpdate = 1;
-	const uint32_t slowFrames = FurnaceFrames( transfer, slow, declared * 4, &settled );
-	Check( slowFrames > frames, "fewer iterations per update take more frames" );
+	// More iterations per update converge in fewer frames: the frame count
+	// follows from the declared iterations, not luck.
+	RadiosityOptions fast;
+	fast.iterationsPerUpdate = 2;
+	const uint32_t fastFrames = FurnaceFrames( transfer, fast, declared * 4, &settled );
+	Check( fastFrames >= 1 && fastFrames < frames, "more iterations per update take fewer frames" );
 }
 
 void MatchesPython( const std::shared_ptr<const Transfer> &transfer )

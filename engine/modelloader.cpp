@@ -22,6 +22,7 @@
 #ifndef SWDS
 #include "indirect_light_host.h"
 #include "mapcontainer/probe_volume.h"
+#include "mapcontainer/radiosity_transfer.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
 #include "mapcontainer/world_mesh_format.h"
@@ -4991,9 +4992,37 @@ void CModelLoader::Map_LoadProbeVolume()
 	    s_szMapName, lump.version, layout.gridCount, layout.gridCount == 1 ? "" : "s", probes,
 	    layout.activeProbes, layout.atlasWidth, layout.atlasHeight,
 	    m_ProbeVolumeBytes.Count() / 1024, ( Plat_FloatTime() - started ) * 1000.0 );
+	// The radiosity transfer baked for this volume (RFC 0011 G4), when the map
+	// carries one; the host validates the pair and offers radiosity only then.
+	CUtlVector<byte> transfer;
+	mapcontainer::MapLumpInfo transferLump{};
+	if ( s_pMapContainer->FindLump( mapcontainer::kLumpRadiosityTransfer, &transferLump ) )
+	{
+		if ( transferLump.version != mapcontainer::kRadiosityTransferVersion ||
+		     transferLump.flags != 0 ||
+		     transferLump.storedSize < mapcontainer::kRadiosityTransferHeaderBytes ||
+		     transferLump.storedSize > mapcontainer::kRadiosityTransferMaxBytes )
+			Warning( "Map %s: RTRN version, flags or size unsupported; radiosity is not "
+			         "offered\n",
+			    s_szMapName );
+		else
+		{
+			transfer.SetCount( (int)transferLump.storedSize );
+			if ( !s_MapByteSource.ReadAt(
+			         transferLump.offset, transfer.Base(), transfer.Count() ) ||
+			     !s_pMapContainer->VerifyContent( transferLump, transfer.Base(), transfer.Count() )
+			          .Ok() )
+			{
+				Warning( "Map %s: RTRN read or hash failed; radiosity is not offered\n",
+				    s_szMapName );
+				transfer.Purge();
+			}
+		}
+	}
 	// The indirect-light host owns the volume from here: its producers
 	// publish what the ambient cube and the renderer sample.
-	IndirectLight_BeginMap( m_ProbeVolumeBytes.Base(), size_t( m_ProbeVolumeBytes.Count() ) );
+	IndirectLight_BeginMap( m_ProbeVolumeBytes.Base(), size_t( m_ProbeVolumeBytes.Count() ),
+	    transfer.Base(), size_t( transfer.Count() ) );
 	m_ProbeVolumeBytes.Purge();
 }
 

@@ -40,13 +40,20 @@ VkPipeline CVulkanContext::WorldPbrPipeline(
 	const uint64_t key = PipelineKey( state, srgbPass, samples );
 	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
 	const bool indirectView = m_indirectViewMode != 0;
-	if ( extended < 0 || extended > 3 ||
-	     ( extended && ( indirectView || m_worldPbrExtendedLayout == VK_NULL_HANDLE ) ) )
+	const bool delta = ( extended & kWorldPbrDeltaVolume ) != 0;
+	if ( extended < 0 || extended > 7 || ( delta && ( extended & kWorldPbrRuntimeIndirect ) ) )
 		return VK_NULL_HANDLE;
-	std::map<uint64_t, VkPipeline> &pipelines = extended ? m_worldPbrExtendedPipelines[extended]
+	if ( delta ? m_worldPbrDeltaLayout == VK_NULL_HANDLE ||
+	                 ( indirectView && extended != kWorldPbrDeltaVolume )
+	           : extended && ( indirectView || m_worldPbrExtendedLayout == VK_NULL_HANDLE ) )
+		return VK_NULL_HANDLE;
+	const bool indirectDelta = delta && indirectView;
+	std::map<uint64_t, VkPipeline> &pipelines = indirectDelta ? m_worldPbrIndirectDeltaPipelines
+	                                            : extended ? m_worldPbrExtendedPipelines[extended]
 	                                            : indirectView ? m_worldPbrIndirectPipelines
 	                                                           : m_worldPbrPipelines;
-	const VkShaderModule fragment = extended       ? m_worldPbrExtendedFrag[extended]
+	const VkShaderModule fragment = indirectDelta  ? m_worldPbrIndirectDeltaFrag
+	                                : extended     ? m_worldPbrExtendedFrag[extended]
 	                                : indirectView ? m_worldPbrIndirectFrag
 	                                               : m_worldPbrFrag;
 	const auto existing = pipelines.find( key );
@@ -57,13 +64,16 @@ VkPipeline CVulkanContext::WorldPbrPipeline(
 	if ( m_worldPbrVert == VK_NULL_HANDLE || fragment == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
 	VkPipeline pipeline = BuildMaterialPipeline( state, m_worldPbrVert, fragment,
-	    extended ? m_worldPbrExtendedLayout : m_worldPbrPipelineLayout, &m_worldPbrVin, pass,
-	    samples );
+	    delta      ? m_worldPbrDeltaLayout
+	    : extended ? m_worldPbrExtendedLayout
+	               : m_worldPbrPipelineLayout,
+	    &m_worldPbrVin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
-		WorldPbrLog( "vkCreateGraphicsPipelines (WMSH PBR%s%s%s, state %#llx) failed\n",
+		WorldPbrLog( "vkCreateGraphicsPipelines (WMSH PBR%s%s%s%s, state %#llx) failed\n",
 		    ( extended & kWorldPbrDirectLights ) ? " direct lights" : "",
 		    ( extended & kWorldPbrRuntimeIndirect ) ? " runtime indirect" : "",
-		    indirectView ? " indirect view" : "", static_cast<unsigned long long>( key ) );
+		    delta ? " change volume" : "", indirectView ? " indirect view" : "",
+		    static_cast<unsigned long long>( key ) );
 	pipelines[key] = pipeline;
 	return pipeline;
 }
@@ -176,11 +186,87 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 	else
 		WorldPbrLog( "WMSH PBR direct lights and RuntimeIndirect unavailable (descriptor sets "
 		             "or constants ring)\n" );
+	// RFC 0011 G4: BakedPlusDelta on ten sets: the extended nine with the
+	// producer's change volume in set 8 and its grid table in set 9. Optional:
+	// without it the world keeps the bake and the log says so (models still
+	// sample the published volume).
+	if ( properties.limits.maxBoundDescriptorSets >= 10 &&
+	     m_worldPbrExtendedLayout != VK_NULL_HANDLE )
+	{
+		VkDescriptorSetLayout deltaLayouts[10];
+		for ( VkDescriptorSetLayout &layout : deltaLayouts )
+			layout = m_dynTexDescLayout;
+		deltaLayouts[7] = m_skinUboLayout;
+		info.setLayoutCount = 10;
+		info.pSetLayouts = deltaLayouts;
+		const struct
+		{
+			VkShaderModule *module;
+			const uint32_t *words;
+			size_t bytes;
+		} variants[3] = {
+			{ &m_worldPbrExtendedFrag[kWorldPbrDeltaVolume],
+			    m_clipPlanesSupported ? g_worldPbrDeltaClipFragSpv : g_worldPbrDeltaFragSpv,
+			    m_clipPlanesSupported ? sizeof( g_worldPbrDeltaClipFragSpv )
+			                          : sizeof( g_worldPbrDeltaFragSpv ) },
+			{ &m_worldPbrExtendedFrag[kWorldPbrDeltaVolume | kWorldPbrDirectLights],
+			    m_clipPlanesSupported ? g_worldPbrLightDeltaClipFragSpv
+			                          : g_worldPbrLightDeltaFragSpv,
+			    m_clipPlanesSupported ? sizeof( g_worldPbrLightDeltaClipFragSpv )
+			                          : sizeof( g_worldPbrLightDeltaFragSpv ) },
+			{ &m_worldPbrIndirectDeltaFrag,
+			    m_clipPlanesSupported ? g_worldPbrIndirectDeltaClipFragSpv
+			                          : g_worldPbrIndirectDeltaFragSpv,
+			    m_clipPlanesSupported ? sizeof( g_worldPbrIndirectDeltaClipFragSpv )
+			                          : sizeof( g_worldPbrIndirectDeltaFragSpv ) } };
+		std::string deltaError;
+		bool ready =
+		    vkCreatePipelineLayout( m_device, &info, nullptr, &m_worldPbrDeltaLayout ) == VK_SUCCESS;
+		for ( const auto &variant : variants )
+			ready = ready &&
+			        CreateShaderModule( variant.words, variant.bytes, variant.module, &deltaError );
+		ready = ready && WorldPbrPipeline( DynRasterState(), false, 1, kWorldPbrDeltaVolume ) !=
+		                     VK_NULL_HANDLE;
+		if ( !ready )
+		{
+			WorldPbrLog( "WMSH PBR BakedPlusDelta unavailable%s%s\n",
+			    deltaError.empty() ? "" : ": ", deltaError.c_str() );
+			DestroyWorldPbrDeltaVariants();
+		}
+	}
+	else
+		WorldPbrLog( "WMSH PBR BakedPlusDelta unavailable (descriptor sets)\n" );
 	return true;
+}
+
+void CVulkanContext::DestroyWorldPbrDeltaVariants()
+{
+	for ( std::map<uint64_t, VkPipeline> *pipelines :
+	    { &m_worldPbrExtendedPipelines[kWorldPbrDeltaVolume],
+	        &m_worldPbrExtendedPipelines[kWorldPbrDeltaVolume | kWorldPbrDirectLights],
+	        &m_worldPbrIndirectDeltaPipelines } )
+	{
+		for ( const auto &entry : *pipelines )
+			if ( entry.second != VK_NULL_HANDLE )
+				vkDestroyPipeline( m_device, entry.second, nullptr );
+		pipelines->clear();
+	}
+	for ( VkShaderModule *module : { &m_worldPbrExtendedFrag[kWorldPbrDeltaVolume],
+	          &m_worldPbrExtendedFrag[kWorldPbrDeltaVolume | kWorldPbrDirectLights],
+	          &m_worldPbrIndirectDeltaFrag } )
+	{
+		if ( *module != VK_NULL_HANDLE )
+			vkDestroyShaderModule( m_device, *module, nullptr );
+		*module = VK_NULL_HANDLE;
+	}
+	if ( m_worldPbrDeltaLayout != VK_NULL_HANDLE )
+		vkDestroyPipelineLayout( m_device, m_worldPbrDeltaLayout, nullptr );
+	m_worldPbrDeltaLayout = VK_NULL_HANDLE;
 }
 
 void CVulkanContext::DestroyWorldPbrExtendedVariants()
 {
+	DestroyWorldPbrDeltaVariants();
 	for ( std::map<uint64_t, VkPipeline> &pipelines : m_worldPbrExtendedPipelines )
 	{
 		for ( const auto &entry : pipelines )
@@ -201,12 +287,14 @@ void CVulkanContext::DestroyWorldPbrExtendedVariants()
 
 void CVulkanContext::SetIndirectPolicy( int policy, bool seedDoubleCount )
 {
-	m_indirectPolicy = policy < 0 || policy > 2 ? 0 : policy;
+	m_indirectPolicy = policy < -1 || policy > 2 ? -1 : policy;
 	m_indirectPolicySeedDouble = seedDoubleCount;
 }
 
 int CVulkanContext::EffectiveIndirectPolicy() const
 {
+	if ( m_indirectPolicy < 0 )
+		return ProbeDeltaResident() && m_worldPbrDeltaLayout != VK_NULL_HANDLE ? 1 : 0;
 	// indirect_policy::Available: RuntimeIndirect needs both separated layers.
 	if ( m_indirectPolicy == 2 &&
 	     ( m_worldLightmapDirectHandle < 0 || m_worldLightmapIndirectHandle < 0 ||

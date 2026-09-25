@@ -144,6 +144,7 @@ projects={
 		'utils/vtex',
 		'utils/vtexconv',
 		'utils/bsp2tool',
+		'utils/rtrntool',
 	],
 	'dedicated': [
 		'jobsystem',

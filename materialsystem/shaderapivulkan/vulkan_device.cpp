@@ -5382,6 +5382,7 @@ bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, 
 	}
 	SetWorldLightmapHandle( -1 );
 	SetProbeVolumeHandles( -1, -1, 0 );
+	SetProbeDeltaHandle( -1 );
 	DestroyStreamBuffer( m_worldIndexBuffer );
 	DestroyStreamBuffer( m_worldVertexBuffer );
 	newVertices.capacity = vertexBytes;
@@ -5414,6 +5415,16 @@ void CVulkanContext::SetWorldLightmapHandles( int total, int direct, int indirec
 		if ( old >= 0 )
 			DestroyManagedTexture( old );
 	}
+}
+
+void CVulkanContext::SetProbeDeltaHandle( int atlas )
+{
+	if ( m_probeDeltaHandle == atlas )
+		return;
+	const int old = m_probeDeltaHandle;
+	m_probeDeltaHandle = atlas;
+	if ( old >= 0 )
+		DestroyManagedTexture( old );
 }
 
 void CVulkanContext::SetProbeVolumeHandles( int atlas, int grids, uint32_t gridCount )
@@ -5532,6 +5543,7 @@ void CVulkanContext::ReleaseWorldMesh()
 		vkDeviceWaitIdle( m_device );
 	SetWorldLightmapHandle( -1 );
 	SetProbeVolumeHandles( -1, -1, 0 );
+	SetProbeDeltaHandle( -1 );
 	DestroyStreamBuffer( m_worldIndexBuffer );
 	DestroyStreamBuffer( m_worldVertexBuffer );
 	m_worldVertexCount = 0;
@@ -6128,6 +6140,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool pbrModelProbe = false;
 			bool pbrWorldLights = false;
 			bool pbrWorldRuntime = false;
+			bool pbrWorldDelta = false;
 			// sRGB inputs decoded by the sampler and output encoded by the view,
 			// which the shader must then not apply itself.
 			int decodedFlags = openSrgb ? kColorSrgbWrite : 0;
@@ -6167,8 +6180,13 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				// RuntimeIndirect policy (render/indirect_policy.h).
 				pbrWorldLights = m_directLightOffset != UINT32_MAX && m_indirectViewMode == 0;
 				pbrWorldRuntime = m_indirectViewMode == 0 && EffectiveIndirectPolicy() == 2;
+				// BakedPlusDelta: the producer's change volume, also in the
+				// indirect view.
+				pbrWorldDelta = EffectiveIndirectPolicy() == 1 && ProbeDeltaResident() &&
+				                m_worldPbrDeltaLayout != VK_NULL_HANDLE;
 				const int extended = ( pbrWorldLights ? kWorldPbrDirectLights : 0 ) |
-				                     ( pbrWorldRuntime ? kWorldPbrRuntimeIndirect : 0 );
+				                     ( pbrWorldRuntime ? kWorldPbrRuntimeIndirect : 0 ) |
+				                     ( pbrWorldDelta ? kWorldPbrDeltaVolume : 0 );
 				selected = d.worldMesh
 				               ? WorldPbrPipeline( d.raster, openSrgb, passSamples, extended )
 				               : VK_NULL_HANDLE;
@@ -6392,7 +6410,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					    glass
 					        ? sampledSet( m_sceneDepthHandle, 0 )
 					        : sampledSet( environment >= 0 ? environment : m_whiteCubeHandle, 0 ) };
-					const VkPipelineLayout layout = glass ? m_worldGlassPipelineLayout
+					const VkPipelineLayout layout = glass           ? m_worldGlassPipelineLayout
+					                                : pbrWorldDelta ? m_worldPbrDeltaLayout
 					                                : ( pbrWorldLights || pbrWorldRuntime )
 					                                    ? m_worldPbrExtendedLayout
 					                                    : m_worldPbrPipelineLayout;
@@ -6410,6 +6429,14 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 						    sampledSet( m_worldLightmapIndirectHandle, 0 );
 						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 8, 1,
 						    &producer, 0, nullptr );
+					}
+					if ( pbrWorldDelta )
+					{
+						// The producer's change volume and the volume's grid table.
+						const VkDescriptorSet change[2] = { sampledSet( m_probeDeltaHandle, 0 ),
+						    sampledSet( m_probeGridHandle, 0 ) };
+						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 8, 2,
+						    change, 0, nullptr );
 					}
 				}
 				else

@@ -54,6 +54,9 @@ struct FrameVolume
 	std::shared_ptr<const Volume> volume;
 	uint64_t generation = 0;
 	ProducerKind producer = ProducerKind::Baked;
+	// The world's policy this frame: the active producer's, or during a fade
+	// the stronger of the two, so a change fades out as its volume does.
+	indirect_policy::Policy policy = indirect_policy::Policy::Baked;
 	bool fading = false;
 	float weight = 1.0f;
 };
@@ -84,7 +87,7 @@ public:
 		const auto begun = baked->Begin( m_scene, none, m_resources );
 		if ( !begun )
 			return foundation::MakeUnexpected( begun.Error() );
-		m_active = { ProducerKind::Baked, std::move( baked ) };
+		m_active = { ProducerKind::Baked, std::move( baked ), indirect_policy::Policy::Baked };
 		m_selected = ProducerKind::Baked;
 		m_activeEpoch = m_active.producer->Published()->epoch;
 		Publish( m_active.producer->Published()->volume, false, 1.0f );
@@ -127,7 +130,7 @@ public:
 		// A previous pending producer is superseded.
 		if ( m_pending.producer )
 			Retire( std::move( m_pending.producer ), m_lastFrame );
-		m_pending = { kind, std::move( producer ) };
+		m_pending = { kind, std::move( producer ), scene.policy };
 		m_selected = kind;
 		return {};
 	}
@@ -193,6 +196,8 @@ public:
 		                     } ),
 		    m_retired.end() );
 		m_frame.producer = m_active.kind;
+		m_frame.policy = m_fading.producer ? std::max( m_active.policy, m_fading.policy )
+		                                   : m_active.policy;
 		TrackResidency();
 		return m_frame;
 	}
@@ -253,6 +258,7 @@ private:
 	{
 		ProducerKind kind = ProducerKind::Baked;
 		std::unique_ptr<IProducer> producer;
+		indirect_policy::Policy policy = indirect_policy::Policy::Baked;
 	};
 	struct Retired
 	{

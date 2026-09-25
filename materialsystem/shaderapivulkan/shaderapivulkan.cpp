@@ -237,11 +237,12 @@ static ConVar mat_indirect_view( "mat_indirect_view", "0", FCVAR_CHEAT,
     "(black without one), PBRMetalRough models their ambient cube.",
     true, 0.0f, true, 2.0f );
 // RFC 0011 render.indirect-policy.v1 for the world (CVulkanContext::SetIndirectPolicy).
-static ConVar r_indirect_policy( "r_indirect_policy", "0", FCVAR_CHEAT,
-    "World indirect-light policy: 0 Baked (the lightmap's total layer), 1 BakedPlusDelta, 2 "
-    "RuntimeIndirect (the direct layer plus the producer's indirect; needs LMAP v2 direct and "
-    "indirect layers)",
-    true, 0.0f, true, 2.0f );
+static ConVar r_indirect_policy( "r_indirect_policy", "-1", FCVAR_CHEAT,
+    "World indirect-light policy: -1 the producer's (BakedPlusDelta while a radiosity change "
+    "volume is resident, else Baked), 0 Baked (the lightmap's total layer), 1 BakedPlusDelta "
+    "(the total layer plus the producer's change), 2 RuntimeIndirect (the direct layer plus the "
+    "producer's indirect; needs LMAP v2 direct and indirect layers)",
+    true, -1.0f, true, 2.0f );
 static ConVar r_indirect_policy_seed_double( "r_indirect_policy_seed_double", "0", FCVAR_CHEAT,
     "Sensitivity control: the RuntimeIndirect variant reads the total layer (a double count)" );
 static ConVar mat_indirect_view_scale( "mat_indirect_view_scale", "1", FCVAR_CHEAT,

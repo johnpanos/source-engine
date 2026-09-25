@@ -132,6 +132,12 @@ public:
 	// behind the frames that sample them; ReleaseWorldMesh releases them.
 	void SetProbeVolumeHandles( int atlas, int grids, uint32_t gridCount );
 	bool ProbeVolumeResident() const { return m_probeAtlasHandle >= 0 && m_probeGridCount > 0; }
+	// RFC 0011 G4: a BakedPlusDelta producer's change volume (an RGBA16F atlas
+	// in the volume's layout whose indirect layer holds the signed change),
+	// sampled with the volume's grid table; -1 when none. Replacing or
+	// releasing destroys the previous image behind the frames that sample it.
+	void SetProbeDeltaHandle( int atlas );
+	bool ProbeDeltaResident() const { return m_probeDeltaHandle >= 0 && ProbeVolumeResident(); }
 	// Whether PBRMetalRough models can sample the volume per pixel: the device
 	// binds the nine descriptor sets its pipelines use.
 	bool ProbeVolumeSamplingSupported() const
@@ -162,13 +168,15 @@ public:
 	// exists (m_worldPbrExtendedLayout).
 	bool DirectLightsSupported() const { return m_worldPbrExtendedLayout != VK_NULL_HANDLE; }
 	// RFC 0011 render.indirect-policy.v1 for the world (indirect_policy.h):
-	// 0 Baked, 1 BakedPlusDelta, 2 RuntimeIndirect. RuntimeIndirect takes
-	// effect only while the map's LMAP carries direct and indirect layers; the
-	// world then reads the direct layer plus the producer's indirect atlas (the
-	// baked producer's: the LMAP indirect layer). BakedPlusDelta reads the
-	// total layer, and no producer publishes a delta yet. `seedDoubleCount` is
-	// the sensitivity control: the RuntimeIndirect variant reads the total
-	// layer. Read when a frame is recorded.
+	// -1 the producer's (BakedPlusDelta while a change volume is resident,
+	// else Baked), 0 Baked, 1 BakedPlusDelta, 2 RuntimeIndirect.
+	// RuntimeIndirect takes effect only while the map's LMAP carries direct and
+	// indirect layers; the world then reads the direct layer plus the
+	// producer's indirect atlas (the baked producer's: the LMAP indirect
+	// layer). BakedPlusDelta reads the total layer plus the change volume while
+	// one is resident. `seedDoubleCount` is the sensitivity control: the
+	// RuntimeIndirect variant reads the total layer. Read when a frame is
+	// recorded.
 	void SetIndirectPolicy( int policy, bool seedDoubleCount );
 	int EffectiveIndirectPolicy() const;
 	// Per-pixel probe sampling: 0 off (models use their ambient cube), 1 with
@@ -1328,10 +1336,14 @@ private:
 	// frame's direct-light block in set 7) and kWorldPbrRuntimeIndirect
 	// (-DRUNTIME_INDIRECT, the producer's indirect atlas in set 8), on
 	// m_worldPbrExtendedLayout.
+	// kWorldPbrDeltaVolume (-DDELTA_VOLUME, the change volume in sets 8 and
+	// 9) is on m_worldPbrDeltaLayout and excludes kWorldPbrRuntimeIndirect;
+	// alone it is also the indirect view's variant.
 	enum
 	{
 		kWorldPbrDirectLights = 1,
 		kWorldPbrRuntimeIndirect = 2,
+		kWorldPbrDeltaVolume = 4,
 	};
 	VkPipeline WorldPbrPipeline(
 	    const DynRasterState &state, bool srgbPass = false, int samples = 1, int extended = 0 );
@@ -1583,20 +1595,28 @@ private:
 	int m_probeAtlasHandle = -1;
 	int m_probeGridHandle = -1;
 	uint32_t m_probeGridCount = 0;
+	int m_probeDeltaHandle = -1;
 	int m_probeSampling = 1;
 	DirectLight m_directLights[kMaxDirectLights] = {};
 	uint32_t m_directLightCount = 0;
 	// This frame's direct-light block in the constants ring (UINT32_MAX: none).
 	uint32_t m_directLightOffset = UINT32_MAX;
-	int m_indirectPolicy = 0;
+	int m_indirectPolicy = -1;
 	bool m_indirectPolicySeedDouble = false;
 	// world_pbr.frag's extended variants on nine sets (the seven texture sets,
 	// the direct-light block, the producer's indirect atlas), indexed by
 	// kWorldPbrDirectLights | kWorldPbrRuntimeIndirect (index 0 unused).
 	VkPipelineLayout m_worldPbrExtendedLayout = VK_NULL_HANDLE;
-	VkShaderModule m_worldPbrExtendedFrag[4] = {};
-	std::map<uint64_t, VkPipeline> m_worldPbrExtendedPipelines[4];
+	VkShaderModule m_worldPbrExtendedFrag[8] = {};
+	std::map<uint64_t, VkPipeline> m_worldPbrExtendedPipelines[8];
+	// The BakedPlusDelta variants on ten sets (the extended nine with the
+	// change atlas in set 8, and the grid table in set 9), and the indirect
+	// view's.
+	VkPipelineLayout m_worldPbrDeltaLayout = VK_NULL_HANDLE;
+	VkShaderModule m_worldPbrIndirectDeltaFrag = VK_NULL_HANDLE;
+	std::map<uint64_t, VkPipeline> m_worldPbrIndirectDeltaPipelines;
 	void DestroyWorldPbrExtendedVariants();
+	void DestroyWorldPbrDeltaVariants();
 	// Deleted textures awaiting the completion of the submission that may still
 	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
 	struct RetiredTexture

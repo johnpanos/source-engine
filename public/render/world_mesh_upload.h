@@ -65,6 +65,10 @@ struct ProbeVolumeUploadRequest
 	uint32_t gridCount = 0;
 	uint32_t tableFloats = 0;
 	const float *gridTable = nullptr;
+	// RFC 0011 G4: a BakedPlusDelta producer's change volume, the same size
+	// and layout as `atlas` with the signed change in its indirect layer; null
+	// when the published volume is the bake (the world then reads the bake).
+	const void *deltaAtlas = nullptr;
 };
 
 class IWorldMeshUpload

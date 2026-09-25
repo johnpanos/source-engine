@@ -6,6 +6,7 @@
 //=============================================================================//
 
 #include "hammer/adapters/platform/disk_byte_store.h"
+#include "hammer/formats/keyvalues.h"
 #include "hammer/formats/material.h"
 #include "hammer/formats/vpk_archive.h"
 #include "hammer/formats/vtf_image.h"
@@ -13,12 +14,15 @@
 
 #include <png.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace
@@ -147,6 +151,57 @@ void PrintParameters( const std::vector<hammer::formats::KeyValue> &parameters )
 	std::cout << ']';
 }
 
+bool EqualsIgnoreCase( const std::string &a, const std::string &b )
+{
+	return a.size() == b.size() &&
+	       std::equal( a.begin(), a.end(), b.begin(), []( unsigned char x, unsigned char y )
+	           { return std::tolower( x ) == std::tolower( y ); } );
+}
+
+// The DirectX 9 shader-fallback block ("<Shader>_HDR_DX9", else "<Shader>_DX9")
+// overrides top-level parameters on the hardware the PBR family replaces. Its
+// $bumpmap/$ssbump are otherwise invisible to the top-level material model.
+std::optional<hammer::formats::KeyValueNode> FindDx9Block( const std::string &vmtText )
+{
+	const hammer::formats::ParseResult parsed = hammer::formats::ParseKeyValues( vmtText );
+	if ( !parsed.ok || parsed.root.children.empty() )
+		return std::nullopt;
+	const hammer::formats::KeyValueNode &shader = parsed.root.children.front();
+	for ( const char *suffix : { "_HDR_DX9", "_DX9" } )
+	{
+		for ( const auto &child : shader.children )
+		{
+			if ( EqualsIgnoreCase( child.name, shader.name + suffix ) )
+				return child;
+		}
+	}
+	return std::nullopt;
+}
+
+void PrintMaterialRecord( const std::string &path, const std::string &bytes )
+{
+	const auto material = hammer::formats::ParseMaterial( bytes );
+	std::cout << "{\"path\":" << JsonQuote( path );
+	if ( !material )
+	{
+		std::cout << ",\"error\":\"cannot parse VMT\"}\n";
+		return;
+	}
+	std::cout << ",\"shader\":" << JsonQuote( material->shader )
+	          << ",\"proxies\":" << ( material->hasProxies ? "true" : "false" )
+	          << ",\"parameters\":";
+	PrintParameters( material->parameters );
+	std::cout << ",\"patch_replace\":";
+	PrintParameters( material->patchReplace );
+	std::cout << ",\"patch_insert\":";
+	PrintParameters( material->patchInsert );
+	const auto dx9 = FindDx9Block( bytes );
+	std::cout << ",\"dx9_block\":" << ( dx9 ? JsonQuote( dx9->name ) : std::string( "null" ) )
+	          << ",\"dx9_parameters\":";
+	PrintParameters( dx9 ? dx9->pairs : std::vector<hammer::formats::KeyValue>() );
+	std::cout << "}\n";
+}
+
 int Scan( const hammer::formats::VpkArchive &archive, const std::filesystem::path &legacyDir )
 {
 	for ( const auto &entry : archive.Entries() )
@@ -166,23 +221,31 @@ int Scan( const hammer::formats::VpkArchive &archive, const std::filesystem::pat
 			std::cerr << "cannot write " << outputPath << '\n';
 			return 1;
 		}
-		const auto material = hammer::formats::ParseMaterial( bytes );
-		std::cout << "{\"path\":" << JsonQuote( entry.path );
-		if ( !material )
-		{
-			std::cout << ",\"error\":\"cannot parse VMT\"}\n";
-			continue;
-		}
-		std::cout << ",\"shader\":" << JsonQuote( material->shader )
-		          << ",\"proxies\":" << ( material->hasProxies ? "true" : "false" )
-		          << ",\"parameters\":";
-		PrintParameters( material->parameters );
-		std::cout << ",\"patch_replace\":";
-		PrintParameters( material->patchReplace );
-		std::cout << ",\"patch_insert\":";
-		PrintParameters( material->patchInsert );
-		std::cout << "}\n";
+		PrintMaterialRecord( entry.path, bytes );
 	}
+	return std::cout.good() ? 0 : 1;
+}
+
+int PrintMaterial( const hammer::formats::VpkArchive &archive, const std::string &path,
+    const char *vmtOutput )
+{
+	if ( !IsMaterialPath( path, ".vmt" ) )
+	{
+		std::cerr << "invalid material path\n";
+		return 2;
+	}
+	std::string bytes;
+	if ( !archive.ReadAsset( path, bytes ) )
+	{
+		std::cerr << "cannot read " << path << '\n';
+		return 4;
+	}
+	if ( vmtOutput && !WriteBytes( vmtOutput, bytes ) )
+	{
+		std::cerr << "cannot write " << vmtOutput << '\n';
+		return 1;
+	}
+	PrintMaterialRecord( path, bytes );
 	return std::cout.good() ? 0 : 1;
 }
 
@@ -271,7 +334,8 @@ int main( int argc, char **argv )
 	if ( argc < 4 )
 	{
 		std::cerr << "usage: portal_assets scan <dir.vpk> <legacy-dir> | "
-		             "decode <dir.vpk> <materials/path.vtf> <output.png>\n";
+		             "decode <dir.vpk> <materials/path.vtf> <output.png> | "
+		             "material <dir.vpk> <materials/path.vmt> [original.vmt]\n";
 		return 2;
 	}
 	hammer::adapters::platform::DiskByteStore store;
@@ -286,6 +350,8 @@ int main( int argc, char **argv )
 	const std::string mode = argv[1];
 	if ( mode == "scan" && argc == 4 )
 		return Scan( *archive, argv[3] );
+	if ( mode == "material" && ( argc == 4 || argc == 5 ) )
+		return PrintMaterial( *archive, argv[3], argc == 5 ? argv[4] : nullptr );
 	if ( mode == "decode" && argc == 5 )
 		return Decode( *archive, argv[3], argv[4] );
 	std::cerr << "invalid arguments\n";

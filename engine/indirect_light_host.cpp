@@ -4,11 +4,15 @@
 //          switcher, r_indirect_producer, and the volume consumers sample.
 //
 //          The host runs on the main thread. CPU producers' jobs run in
-//          order on it for now (the frame executor's serial mode); their
-//          volumes are CPU data, uploaded to the renderer when the published
-//          generation changes. The renderer retires each replaced upload
-//          behind its own completion serial, so the host's resource tracker
-//          only models frame latency for producers that own none.
+//          order on it; a job's data-parallel batches go through the job
+//          system (RunThreadPoolJobBatch), serially by default (the budget's
+//          one worker, and the pooled mode's oracle) or on the engine's pool
+//          (r_indirect_executor 1). Their volumes are CPU data, uploaded to
+//          the renderer when the published generation changes, with the
+//          change from the bake for the world under BakedPlusDelta. The
+//          renderer retires each replaced upload behind its own completion
+//          serial, so the host's resource tracker only models frame latency
+//          for producers that own none.
 //
 //===========================================================================//
 
@@ -17,11 +21,15 @@
 #include "convar.h"
 #include "lightcache.h"
 #include "materialsystem/imaterialsystem.h"
+#include "render/indirect_radiosity.h"
 #include "render/indirect_switcher.h"
 #include "render/light_set.h"
 #include "render/world_mesh_upload.h"
 #include "tier0/dbg.h"
+#include "tier0/platform.h"
+#include "vstdlib/jobgraph_parallel.h"
 
+#include <cstring>
 #include <map>
 #include <memory>
 #include <optional>
@@ -48,6 +56,14 @@ ConVar r_indirect_producer_offered( "r_indirect_producer_offered", "baked", FCVA
 ConVar r_indirect_test_fake( "r_indirect_test_fake", "0", FCVAR_CHEAT,
     "Offer the scripted fake producer (\"fake\") for switching tests; takes effect at the next "
     "map" );
+
+ConVar r_indirect_executor( "r_indirect_executor", "0", FCVAR_NONE,
+    "How CPU indirect-light producers run their batches (RFC 0003 job system): 0 serially on "
+    "the main thread (one worker, the pooled mode's oracle), 1 on the engine's worker pool; "
+    "both produce identical volumes" );
+ConVar r_indirect_report( "r_indirect_report", "0", FCVAR_NONE,
+    "Print each indirect-light update: the producer's CPU time and the published volume's mean "
+    "indirect light" );
 
 // Frames in flight the host assumes for producers without device resources.
 constexpr uint64_t kFrameLatency = 3;
@@ -89,6 +105,30 @@ private:
 	std::map<uint64_t, uint64_t> m_pending;
 };
 
+// The frame executor's batches on the job system (jobsystem/parallel_batch.h).
+class EngineExecutor final : public IBatchExecutor
+{
+public:
+	void ParallelFor( const char *name, uint32_t count, void ( *body )( void *, uint32_t ),
+	    void *context ) override
+	{
+		jobsystem::BatchDesc desc;
+		desc.name = name;
+		desc.context = context;
+		desc.count = count;
+		desc.process = body;
+		const bool pooled = r_indirect_executor.GetInt() == 1 && g_pThreadPool;
+		desc.maxParticipants = pooled ? unsigned( g_pThreadPool->NumThreads() ) + 1 : 1;
+		if ( !RunThreadPoolJobBatch( pooled ? g_pThreadPool : nullptr, desc,
+		         pooled ? jobsystem::BatchMode::Parallel : jobsystem::BatchMode::Serial ) )
+		{
+			// Rejected before any item ran (invalid input): run them here.
+			for ( uint32_t i = 0; i < count; ++i )
+				body( context, i );
+		}
+	}
+};
+
 class EngineCatalog final : public IProducerCatalog
 {
 public:
@@ -98,6 +138,8 @@ public:
 			return false;
 		if ( kind == ProducerKind::Baked )
 			return true;
+		if ( kind == ProducerKind::PrecomputedRadiosity )
+			return scene.transfer != nullptr;
 		// The contract's scripted fake: switching tests only, never players.
 		return kind == ProducerKind::ScriptedFake && r_indirect_test_fake.GetBool();
 	}
@@ -105,6 +147,8 @@ public:
 	{
 		if ( kind == ProducerKind::Baked )
 			return std::make_unique<BakedProducer>();
+		if ( kind == ProducerKind::PrecomputedRadiosity )
+			return std::make_unique<RadiosityProducer>();
 		if ( kind == ProducerKind::ScriptedFake )
 			return std::make_unique<ScriptedFakeProducer>();
 		return nullptr;
@@ -114,11 +158,13 @@ public:
 struct Host
 {
 	EngineCatalog catalog;
+	EngineExecutor executor;
 	FrameTracker tracker;
 	std::unique_ptr<Switcher> switcher;
 	IndirectScene scene;
 	std::shared_ptr<const Volume> current;
 	std::optional<mapcontainer::ProbeVolumeView> view;
+	std::vector<unsigned char> change; // the world's change atlas (BakedPlusDelta)
 	uint64_t uploadedGeneration = 0;
 	uint64_t mapSerial = 0;
 	bool deviceLost = false;
@@ -136,6 +182,39 @@ world_mesh_gpu::IWorldMeshUpload *Uploader()
 	return materials ? static_cast<world_mesh_gpu::IWorldMeshUpload *>(
 	                       materials->QueryInterface( world_mesh_gpu::kWorldMeshUploadInterface ) )
 	                 : nullptr;
+}
+
+// The world's change atlas under BakedPlusDelta: `published`'s atlas with its
+// indirect layer's irradiance texels replaced by published minus baked.
+bool ChangeAtlas( const Volume &published, const Volume &baked, std::vector<unsigned char> *out )
+{
+	const mapcontainer::ProbeVolumeLayout &layout = published.layout;
+	if ( layout.layerCount < 2 || !published.SameTopology( baked ) )
+		return false;
+	out->assign( published.bytes.begin() + layout.atlasOffset, published.bytes.end() );
+	for ( uint32_t g = 0; g < layout.gridCount; ++g )
+	{
+		const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
+		const uint32_t rows = ( grid.probeCount + grid.tilesPerRow - 1 ) / grid.tilesPerRow;
+		for ( uint32_t y = 0; y < rows * mapcontainer::kProbeIrradianceTile; ++y )
+		{
+			const uint64_t row = uint64_t( grid.irradianceOrigin[1][1] + y ) * layout.atlasWidth;
+			for ( uint32_t x = 0; x < grid.tilesPerRow * mapcontainer::kProbeIrradianceTile; ++x )
+			{
+				const uint64_t texel = ( row + grid.irradianceOrigin[1][0] + x ) * 8;
+				for ( int c = 0; c < 3; ++c )
+				{
+					uint16_t now, then;
+					std::memcpy( &now, published.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
+					std::memcpy( &then, baked.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
+					const uint16_t change = FloatToHalf(
+					    mapcontainer::HalfToFloat( now ) - mapcontainer::HalfToFloat( then ) );
+					std::memcpy( out->data() + texel + 2 * c, &change, 2 );
+				}
+			}
+		}
+	}
+	return true;
 }
 
 // Makes `frame` what consumers sample: the CPU view (the ambient cube) and
@@ -163,6 +242,11 @@ void Consume( const FrameVolume &frame )
 	request.gridCount = layout.gridCount;
 	request.tableFloats = mapcontainer::kProbeGridTableFloats;
 	request.gridTable = table.data();
+	// BakedPlusDelta: the world adds the change from the bake.
+	if ( frame.policy == indirect_policy::Policy::BakedPlusDelta && host.scene.baked &&
+	     host.current != host.scene.baked &&
+	     ChangeAtlas( *host.current, *host.scene.baked, &host.change ) )
+		request.deltaAtlas = host.change.data();
 	if ( !uploader->UploadProbeVolume( request ) )
 		Warning( "indirect light: probe volume upload failed; models use the ambient cube\n" );
 }
@@ -217,7 +301,8 @@ void OnProducerChanged( IConVar *var, const char *oldValue, float )
 
 } // namespace
 
-void IndirectLight_BeginMap( const unsigned char *prbv, size_t size )
+void IndirectLight_BeginMap(
+    const unsigned char *prbv, size_t size, const unsigned char *rtrn, size_t rtrnSize )
 {
 	Host &host = TheHost();
 	IndirectLight_EndMap();
@@ -227,6 +312,21 @@ void IndirectLight_BeginMap( const unsigned char *prbv, size_t size )
 	host.scene = IndirectScene();
 	host.scene.mapSerial = ++host.mapSerial;
 	host.scene.baked = baked;
+	if ( rtrn && rtrnSize )
+	{
+		host.scene.transfer =
+		    Transfer::FromBytes( std::vector<unsigned char>( rtrn, rtrn + rtrnSize ), *baked );
+		if ( host.scene.transfer )
+		{
+			const mapcontainer::RadiosityTransferLayout &t = host.scene.transfer->layout;
+			Msg( "indirect light: RTRN %u sources, %u patches, %u + %u links, %u KB\n",
+			    t.sourceCount, t.patchCount, t.transferLinks, t.gatherLinks,
+			    unsigned( rtrnSize / 1024 ) );
+		}
+		else
+			Warning( "indirect light: RTRN rejected (malformed, or not baked for this map's "
+			         "PRBV); radiosity is not offered\n" );
+	}
 	host.switcher = std::make_unique<Switcher>( host.catalog, host.tracker );
 	ReportOffered();
 	ProducerKind requested = ProducerKind::Baked;
@@ -245,6 +345,7 @@ void IndirectLight_BeginMap( const unsigned char *prbv, size_t size )
 	FrameWork work;
 	work.frameSerial = host.tracker.Frame() + 1;
 	work.resources = &host.tracker;
+	work.executor = &host.executor;
 	const light_set::Snapshot none;
 	Consume( host.switcher->Frame( work, none ) );
 	for ( auto &job : work.jobs )
@@ -263,6 +364,7 @@ void IndirectLight_EndMap()
 	host.switcher.reset();
 	host.view.reset();
 	host.current.reset();
+	host.change.clear();
 	host.uploadedGeneration = 0;
 	host.scene = IndirectScene();
 }
@@ -275,12 +377,23 @@ void IndirectLight_Frame( const light_set::Snapshot &lights )
 	FrameWork work;
 	work.frameSerial = host.tracker.Frame() + 1;
 	work.resources = &host.tracker;
+	work.executor = &host.executor;
 	const FrameVolume frame = host.switcher->Frame( work, lights );
-	// The frame executor's serial mode: jobs in order on this thread.
+	// The jobs run in order on this thread; their batches on the executor.
+	const double started = Plat_FloatTime();
 	for ( auto &job : work.jobs )
 		job();
+	const double updateMs = ( Plat_FloatTime() - started ) * 1000.0;
 	host.tracker.Advance();
+	const bool published = frame.volume && frame.generation != host.uploadedGeneration;
 	Consume( frame );
+	if ( r_indirect_report.GetBool() && ( !work.jobs.empty() || published ) )
+		Msg( "indirect light: frame %llu %s update %.3f ms (%s), generation %llu, policy %d, "
+		     "indirect mean %.5f\n",
+		    (unsigned long long)work.frameSerial, ProducerName( frame.producer ), updateMs,
+		    r_indirect_executor.GetInt() == 1 ? "pooled" : "serial",
+		    (unsigned long long)frame.generation, int( frame.policy ),
+		    frame.volume ? frame.volume->MeanIrradiance( 1 ) : 0.0f );
 }
 
 const mapcontainer::ProbeVolumeView *IndirectLight_CurrentVolume()
@@ -329,6 +442,7 @@ void IndirectLight_DeviceRestored()
 	FrameWork work;
 	work.frameSerial = host.tracker.Frame() + 1;
 	work.resources = &host.tracker;
+	work.executor = &host.executor;
 	const light_set::Snapshot none;
 	const FrameVolume frame = host.switcher->Frame( work, none );
 	for ( auto &job : work.jobs )

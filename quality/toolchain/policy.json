@@ -175,6 +175,10 @@
       "dialect": "cxx20",
       "rfc": "0008"
     },
+    "rtrntool": {
+      "dialect": "cxx20",
+      "rfc": "0011"
+    },
     "platform_composition": {
       "dialect": "cxx20",
       "rfc": "0001"
