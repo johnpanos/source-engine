@@ -258,6 +258,34 @@ No measurable difference, as the profile predicted (the cohorts are well under
 control of both cohorts from their existing ConVars to this one, which is a
 product decision rather than a measured gain.
 
+## 6. Threaded listen server in the launchers (2026-09-25)
+
+`host_thread_mode 1` runs the listen server's tick on the compute pool while
+the client renders; the engine default stays 0. The Portal (`run.conf`
+`JOB_ARGS`, used by `./play`) and Portal 2 (`play_p2`) launchers now pass it,
+with the pooled render-start and query-cache graphs.
+
+Frame cost, portal-frame-pacing-v1 warm pass, three interleaved rounds
+(`frame_pacing.py --extra-arg="+host_thread_mode N"`, host load 11 to 18):
+
+| `host_thread_mode` | Median frame (ms), per round | p99 (ms), per round |
+| --- | --- | --- |
+| 0 | 11.34, 12.59, 10.98 | 19.37, 22.31, 19.20 |
+| 2 | 8.73, 8.96, 9.59 | 15.76, 14.36, 32.29 |
+
+- The round-3 p99 of mode 2 comes from draw-emission spikes in `walk_orange`.
+  Mode 0 hitches in the same frames under load.
+- On this host (compute pool 3 threads), mode 2 and mode 1 select the same
+  path. The launchers use 1, which stays unthreaded when the pool is empty.
+- Cost: server-simulated objects reach the screen one frame later. The player
+  view is predicted.
+- Portal 2 with `host_thread_mode 1`: `portal2_scenarios.py --extra-arg` passes
+  triple laser, catapult and the four wheatley-v1 story scenarios.
+- Not measured: a Portal 2 frame-time workload, mobile profiles (the Android
+  packages don't use these launchers), and input latency.
+
+Rollback: `JOB_ARGS= ./play` or `JOB_ARGS= ./play_p2`.
+
 ## Gates run
 
 - gcc release `--tests` tree: all 15 job-system programs pass after the rebase

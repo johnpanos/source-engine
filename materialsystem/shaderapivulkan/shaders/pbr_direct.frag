@@ -29,41 +29,7 @@ layout( push_constant ) uniform Constants
 }
 consts;
 
-const float kPi = 3.14159265358979323846;
-
-vec2 SampleSplitSum( float normalDotView, float roughness )
-{
-	return texture( splitSumTexture,
-	    clamp( vec2( normalDotView, roughness ), vec2( 0.0 ), vec2( 1.0 ) ) ).rg;
-}
-
-float GgxDistribution( float normalDotHalf, float roughness )
-{
-	float alpha = roughness * roughness;
-	float alphaSquared = alpha * alpha;
-	float denominator = normalDotHalf * normalDotHalf * ( alphaSquared - 1.0 ) + 1.0;
-	return alphaSquared / ( kPi * denominator * denominator );
-}
-
-float SmithVisibility( float normalDotView, float normalDotLight, float roughness )
-{
-	float alpha = roughness * roughness;
-	float alphaSquared = alpha * alpha;
-	float lambdaView =
-	    sqrt( alphaSquared + ( 1.0 - alphaSquared ) * normalDotView * normalDotView );
-	float lambdaLight =
-	    sqrt( alphaSquared + ( 1.0 - alphaSquared ) * normalDotLight * normalDotLight );
-	float denominator = normalDotView * lambdaLight + normalDotLight * lambdaView;
-	return denominator > 0.0 ? 0.5 / denominator : 0.0;
-}
-
-vec3 FresnelSchlick( vec3 reflectanceAtNormal, float viewDotHalf )
-{
-	float grazing = 1.0 - viewDotHalf;
-	float grazingSquared = grazing * grazing;
-	return reflectanceAtNormal +
-	       ( vec3( 1.0 ) - reflectanceAtNormal ) * grazingSquared * grazingSquared * grazing;
-}
+#include "pbr_brdf.glsl"
 
 void main()
 {
@@ -78,12 +44,11 @@ void main()
 	vec3 mrao = texture( mraoTexture, fragUv ).rgb;
 	float roughness = max( mrao.g, 0.02 );
 	vec3 f0 = mix( vec3( 0.04 ), base, mrao.r );
-	vec3 fresnel = FresnelSchlick( f0, consts.angles.w );
-	float distribution = GgxDistribution( consts.angles.z, roughness );
-	float visibility = SmithVisibility( normalDotView, normalDotLight, roughness );
-	vec2 splitSum = SampleSplitSum( normalDotView, roughness );
-	vec3 directionalAlbedo = min( vec3( 1.0 ), f0 * splitSum.x + vec3( splitSum.y ) );
-	vec3 diffuse = base * ( 1.0 - mrao.r ) * ( vec3( 1.0 ) - directionalAlbedo ) / kPi;
-	vec3 specular = fresnel * distribution * visibility;
+	vec2 splitSum = PbrSplitSum( splitSumTexture, normalDotView, roughness );
+	vec3 diffuse =
+	    base * ( 1.0 - mrao.r ) * ( vec3( 1.0 ) - PbrDirectionalAlbedo( f0, splitSum ) ) / kPi;
+	vec3 specular = PbrSpecular( f0, normalDotView, normalDotLight, consts.angles.z,
+	                    consts.angles.w, roughness ) *
+	                PbrEnergyCompensation( f0, splitSum );
 	outColor = vec4( consts.radiance.rgb * ( diffuse + specular ) * normalDotLight, 1.0 );
 }

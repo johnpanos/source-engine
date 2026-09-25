@@ -17,6 +17,10 @@
     "absolute_ms": 0.05,
     "improved_ratio": 0.67
   },
+  "host": {
+    "max_load_per_cpu": 1.0,
+    "why": "timings from a host whose one-minute load average exceeds its CPU count are contention, not the code: their rows are unverified (never passed or failed), and neither calibration nor --update-baselines records them. The calibration ran at 0.96 per CPU; a verification at 2.7 per CPU (two Blender bakes) measured every stage 2-4x slower."
+  },
   "metrics": {
     "load_ms": "PRBV and SDFV validation of bytes in memory (the map load's share)",
     "begin_ms": "SdfTracedProducer::Begin: light cells, voxel style scan, buffer creation and uploads",

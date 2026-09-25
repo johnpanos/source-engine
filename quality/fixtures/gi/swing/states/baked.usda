@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "Swing"
+    metersPerUnit = 1
+    subLayers = [
+        @../swing.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "Swing"
+{
+    over "World"
+    {
+        over "Bulb"
+        {
+            token visibility = "invisible"
+        }
+    }
+}
+

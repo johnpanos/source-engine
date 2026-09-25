@@ -32,6 +32,7 @@
 #include "vulkan_device.h"
 #include "vulkan_world_mesh_upload.h"
 #include "render/light_set.h"
+#include "render/direct_light_selection.h"
 #include "sdl3/sdl3_vulkan_surface_host.h"
 #include "vtf/vtf.h"
 #include "pixelwriter.h"
@@ -2543,11 +2544,12 @@ public:
 		using Direct = render_vulkan::CVulkanContext::DirectLight;
 		Direct lights[render_vulkan::CVulkanContext::kMaxDirectLights];
 		uint32_t count = 0;
-		for ( const light_set::RuntimeLight &light : snapshot.lights )
+		// The strongest unbaked lights at the viewer, not the first in table
+		// order (render/direct_light_selection.h).
+		for ( size_t index : light_set::SelectDirectLights(
+		          snapshot, render_vulkan::CVulkanContext::kMaxDirectLights ) )
 		{
-			if ( light.baked || light.shape == light_set::LightShape::Directional ||
-			     count == render_vulkan::CVulkanContext::kMaxDirectLights )
-				continue;
+			const light_set::RuntimeLight &light = snapshot.lights[index];
 			Direct &out = lights[count++];
 			out = Direct();
 			for ( int k = 0; k < 3; ++k )
@@ -7811,6 +7813,22 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	return false;
 }
 
+// A Refract material parameter, or its default when the material has none.
+static float RefractMaterialFloat( IMaterialInternal *material, const char *name, float value )
+{
+	bool found = false;
+	IMaterialVar *var = material->FindVar( name, &found, false );
+	return found && var ? var->GetFloatValue() : value;
+}
+
+// Portal 2's $localrefract: the base texture refracted in texture space
+// (refract_ps2x LOCALREFRACT) instead of the frame behind the surface.
+static bool RefractMaterialIsLocal( IMaterialInternal *material )
+{
+	return material && !V_stricmp( material->GetShaderName(), "Refract_DX90" ) &&
+	       RefractMaterialFloat( material, "$localrefract", 0.0f ) != 0.0f;
+}
+
 static bool NativeRefractMaterialSupported( IMaterialInternal *material )
 {
 	if ( !material || V_stricmp( material->GetShaderName(), "Refract_DX90" ) )
@@ -7831,9 +7849,11 @@ static bool NativeRefractMaterialSupported( IMaterialInternal *material )
 	     enabled( "$vertexcolormodulate" ) || hasTexture( "$normalmap2" ) ||
 	     hasTexture( "$refracttinttexture" ) )
 		return false;
+	// The local variant applies $envmapsaturation (Portal 2's CUBEMAP term);
+	// the screen-space one follows the older refract_ps2x, which has none.
 	bool found = false;
 	IMaterialVar *saturation = material->FindVar( "$envmapsaturation", &found, false );
-	if ( found && saturation )
+	if ( found && saturation && !RefractMaterialIsLocal( material ) )
 	{
 		float rgb[3];
 		saturation->GetVecValue( rgb, 3 );
@@ -7913,6 +7933,8 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 			IMaterialVar *blur = g_pBoundMaterial->FindVar( "$bluramount", &found, false );
 			if ( found && blur->GetIntValue() > 0 )
 				g_CurrentColorFlags |= render_vulkan::CVulkanContext::kFragmentRefractBlur;
+			if ( RefractMaterialIsLocal( g_pBoundMaterial ) )
+				g_CurrentColorFlags |= render_vulkan::CVulkanContext::kFragmentRefractLocal;
 			g_VulkanContext.BindManagedTexture( g_boundEnvmapHandle );
 			g_VulkanContext.BindManagedSampler( 1, g_boundRefractNormalHandle );
 			g_VulkanContext.BindManagedSampler( 2, g_boundRefractCubeHandle );
@@ -7965,8 +7987,19 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		CommitPassPixelConstants();
 		if ( refract )
 		{
-			const float tintAndScale[4] = { g_psConstants[1][0], g_psConstants[1][1],
+			float tintAndScale[4] = { g_psConstants[1][0], g_psConstants[1][1],
 			    g_psConstants[1][2], g_psConstants[5][0] };
+			if ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentRefractLocal )
+			{
+				// LOCALREFRACT does not warp screen coordinates, so the refract
+				// scale's slot carries $localrefractdepth (c7.z). Refract does not
+				// tone-map its output (TONEMAP_SCALE_NONE), so the output scale's
+				// slot carries $envmapsaturation (c3).
+				tintAndScale[3] =
+				    RefractMaterialFloat( g_pBoundMaterial, "$localrefractdepth", 0.05f );
+				g_VulkanContext.SetDynamicOutputScale(
+				    RefractMaterialFloat( g_pBoundMaterial, "$envmapsaturation", 1.0f ) );
+			}
 			g_VulkanContext.SetDynamicModulation( tintAndScale );
 			g_VulkanContext.SelectDynamicAlphaTest( g_psConstants[2][0] );
 		}

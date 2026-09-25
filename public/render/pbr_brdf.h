@@ -2,9 +2,12 @@
 //
 // Purpose: The metal/roughness direct BRDF for RFC 0007. Inputs are unit-vector
 //          dot products in [0, 1]. The layered evaluator clamps roughness to
-//          0.02 before evaluating the finite GGX lobe and weights Lambertian
-//          diffuse by the split-sum specular directional albedo. Results are
-//          linear radiometric values without color encoding or exposure.
+//          0.02 before evaluating the finite GGX lobe, compensates it for
+//          multiple scattering, and weights Lambertian diffuse by what the
+//          split-sum specular directional albedo leaves. Results are linear
+//          radiometric values without color encoding or exposure.
+//          shaders/pbr_brdf.glsl is the GPU copy of these functions; the
+//          render.pbr-brdf.glsl suite evaluates both on the same inputs.
 //
 //===========================================================================//
 
@@ -98,8 +101,45 @@ struct Color
 	return { bottomA + ( topA - bottomA ) * fractionY, bottomB + ( topB - bottomB ) * fractionY };
 }
 
-// Direct BRDF, before multiplying incident radiance and N.L. The diffuse layer
-// uses the view-direction specular albedo from the same split-sum table as IBL.
+// Multiple-scattering energy compensation (Kulla and Conty 2017, in the form
+// of Filament's surface_shading_lobes: 1 + F0 (1 / E(1) - 1)). The GGX lobe
+// above is single-scatter: light that bounces between microfacets more than
+// once is lost, up to 1 - ln(2) of it for a rough white metal. E(1) = A + B is
+// the table's single-scatter albedo for F0 = 1, so a white conductor's
+// compensated albedo is exactly one; other F0 are scaled proportionally.
+[[nodiscard]] inline float SpecularEnergyCompensation(
+    float reflectanceAtNormal, SplitSumCoefficients albedo )
+{
+	const float white = std::fmax( albedo.a + albedo.b, 1e-4f );
+	return 1.0f + reflectanceAtNormal * ( 1.0f / white - 1.0f );
+}
+
+// The multiple-scattering directional specular albedo, F0 A + B times the
+// compensation, clamped to one. Image light is weighted by it, and the
+// Lambertian layer beneath receives what it leaves.
+[[nodiscard]] inline float SpecularDirectionalAlbedo(
+    float reflectanceAtNormal, SplitSumCoefficients albedo )
+{
+	return std::fmin( 1.0f, ( reflectanceAtNormal * albedo.a + albedo.b ) *
+	                            SpecularEnergyCompensation( reflectanceAtNormal, albedo ) );
+}
+
+// EvaluateSpecular times the energy compensation at N.V.
+[[nodiscard]] inline Color EvaluateSpecularMultiScatter( Color reflectanceAtNormal,
+    float normalDotView, float normalDotLight, float normalDotHalf, float viewDotHalf,
+    float perceptualRoughness )
+{
+	const Color single = EvaluateSpecular( reflectanceAtNormal, normalDotView, normalDotLight,
+	    normalDotHalf, viewDotHalf, perceptualRoughness );
+	const SplitSumCoefficients albedo = SampleSplitSum( normalDotView, perceptualRoughness );
+	return { single.red * SpecularEnergyCompensation( reflectanceAtNormal.red, albedo ),
+	    single.green * SpecularEnergyCompensation( reflectanceAtNormal.green, albedo ),
+	    single.blue * SpecularEnergyCompensation( reflectanceAtNormal.blue, albedo ) };
+}
+
+// Direct BRDF, before multiplying incident radiance and N.L: the compensated
+// specular lobe, and the diffuse layer weighted by what the view-direction
+// specular albedo (the same split-sum table as IBL) leaves.
 [[nodiscard]] inline Color EvaluateLayeredDirect( Color base, float metalness, float normalDotView,
     float normalDotLight, float normalDotHalf, float viewDotHalf, float perceptualRoughness )
 {
@@ -109,16 +149,37 @@ struct Color
 	const Color f0 = { 0.04f * ( 1.0f - metalness ) + base.red * metalness,
 	    0.04f * ( 1.0f - metalness ) + base.green * metalness,
 	    0.04f * ( 1.0f - metalness ) + base.blue * metalness };
-	const Color specular = EvaluateSpecular(
+	const Color specular = EvaluateSpecularMultiScatter(
 	    f0, normalDotView, normalDotLight, normalDotHalf, viewDotHalf, roughness );
 	const SplitSumCoefficients albedo = SampleSplitSum( normalDotView, roughness );
 	const float diffuseScale = ( 1.0f - metalness ) / kPi;
-	return { specular.red + base.red * diffuseScale *
-	                            ( 1.0f - std::fmin( 1.0f, f0.red * albedo.a + albedo.b ) ),
-	    specular.green + base.green * diffuseScale *
-	                         ( 1.0f - std::fmin( 1.0f, f0.green * albedo.a + albedo.b ) ),
-	    specular.blue + base.blue * diffuseScale *
-	                        ( 1.0f - std::fmin( 1.0f, f0.blue * albedo.a + albedo.b ) ) };
+	return { specular.red +
+	             base.red * diffuseScale * ( 1.0f - SpecularDirectionalAlbedo( f0.red, albedo ) ),
+	    specular.green +
+	        base.green * diffuseScale * ( 1.0f - SpecularDirectionalAlbedo( f0.green, albedo ) ),
+	    specular.blue +
+	        base.blue * diffuseScale * ( 1.0f - SpecularDirectionalAlbedo( f0.blue, albedo ) ) };
+}
+
+// Clear coat, after Filament's standard model (Apache-2.0, google/filament
+// shaders/src/surface_shading_model_standard.fs): a dielectric layer of IOR
+// 1.5 (F0 0.04) with a GGX lobe and Kelemen visibility 1 / (4 (L.H)^2), shaded
+// with its own normal. `weight` is $clearcoat in [0, 1]. The coat's specular
+// BRDF (before incident radiance and N.L) is `specular`; the layer beneath is
+// attenuated by 1 - `fresnel`.
+struct ClearCoat
+{
+	float specular;
+	float fresnel;
+};
+
+[[nodiscard]] inline ClearCoat EvaluateClearCoat(
+    float weight, float coatNormalDotHalf, float lightDotHalf, float perceptualRoughness )
+{
+	const float roughness = std::fmax( perceptualRoughness, 0.02f );
+	const float fresnel = FresnelSchlick( 0.04f, lightDotHalf ) * weight;
+	const float visibility = 0.25f / std::fmax( lightDotHalf * lightDotHalf, 1e-6f );
+	return { GgxDistribution( coatNormalDotHalf, roughness ) * visibility * fresnel, fresnel };
 }
 } // namespace render::pbr
 

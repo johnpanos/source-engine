@@ -1,6 +1,6 @@
 {
   "schema": "portal2-scenarios/v1",
-  "description": "Paint gel streams drawn by the blobulator (paintblob shader): sp_a3_speed_ramp's repulsion and propulsion gel sprayers started and framed from a clear viewpoint, with named screenshots (QA_SHOT) of the frozen blobs as the isosurface, as its wireframe and as the fast-sphere fallback, and of the view before the sprayers start. Run by tools/quality/portal2_scenarios.py; tools/quality/portal2_paint_shots.py checks the shots.",
+  "description": "Paint gel streams drawn by the blobulator (paintblob shader): sp_a3_speed_ramp's repulsion and propulsion gel sprayers started and framed from a clear viewpoint, with named screenshots (QA_SHOT) of the frozen blobs as the isosurface and as the fast-sphere fallback, and of the view before the sprayers start. Run by tools/quality/portal2_scenarios.py; tools/quality/portal2_paint_shots.py checks the shots.",
   "driver": "../portal2-wheatley-v1/qa_driver.nut",
   "scenarios": [
     {

@@ -393,13 +393,22 @@ def judge(row, budget, values, tolerance):
     return result
 
 
+def host_load():
+    """The host's one-minute load average per CPU (None where unknown)."""
+    try:
+        return os.getloadavg()[0] / (os.cpu_count() or 1)
+    except (AttributeError, OSError):
+        return None
+
+
 def run_workloads(root, fixtures, names, binaries, files_by_scene, rounds, timeout, env_by_bench,
                   seed_slow=None, log=print):
     """{workload: {"records": [...], "problems": [...]}} over interleaved rounds."""
-    runs = {name: {"records": [], "problems": [], "argv": None} for name in names}
+    runs = {name: {"records": [], "problems": [], "argv": None, "loads": []} for name in names}
     for index in range(rounds):
         for name in names:
             workload = fixtures["workloads"][name]
+            runs[name]["loads"].append(host_load())
             files = files_by_scene.get(workload.get("scene"), {})
             argv = workload_argv(binaries[workload["bench"]], workload, files,
                                  (seed_slow or {}).get(name))
@@ -426,9 +435,11 @@ def run_workloads(root, fixtures, names, binaries, files_by_scene, rounds, timeo
 
 def evaluate(fixtures, profile_id, runs, budgets, unavailable):
     """Row results for a profile: runs of each workload, or `unverified` for
-    workloads not run (unavailable: {workload: reason})."""
+    workloads not run (unavailable: {workload: reason}) and for timings taken
+    on a host busier than the fixtures' max_load_per_cpu."""
     profile = fixtures["profiles"][profile_id]
     tolerance = fixtures["tolerance"]
+    max_load = fixtures.get("host", {}).get("max_load_per_cpu")
     results = []
     for row in profile["rows"]:
         budget = resolve_budget(row, budgets, profile.get("indirect_light_profile"))
@@ -443,9 +454,15 @@ def evaluate(fixtures, profile_id, runs, budgets, unavailable):
         run = runs[name]
         values = [metric_value(r, row["metric"]) if r else None for r in run["records"]]
         result = judge(row, budget, values, tolerance)
+        loads = [l for l in run.get("loads", []) if l is not None]
         if run["problems"]:
             result["verdict"] = "failed"
             result["detail"] = "; ".join(run["problems"][:3])
+        elif max_load is not None and loads and max(loads) > max_load:
+            result["timing_verdict"] = result["verdict"]
+            result["verdict"] = "unverified"
+            result["detail"] = ("host load %.2f per CPU exceeds %.2f: the timing (%s) is not "
+                                "judged" % (max(loads), max_load, result["timing_verdict"]))
         results.append(result)
     return results
 
@@ -457,7 +474,8 @@ def update_baselines(fixtures, profile_id, results, calibrate=False):
     changes = []
     for row in fixtures["profiles"][profile_id]["rows"]:
         result = by_key.get((row["workload"], row["metric"]))
-        if not result or "measured_ms" not in result or result["verdict"] in ("failed", "missing"):
+        if not result or "measured_ms" not in result or \
+                result["verdict"] in ("failed", "missing", "unverified"):
             continue
         if calibrate or result["verdict"] == "improved":
             new = round(result["measured_ms"], 3)
@@ -584,11 +602,12 @@ def cmd_run(args):
         items = [i for i in fixtures.get("sensitivity", []) if i["workload"] in names]
         if not items:
             raise FixtureError("--sensitivity: no declared sensitivity workload was run")
-        slow_runs = run_workloads(root, fixtures, [i["workload"] for i in items], binaries,
-                                  files_by_scene, 1, args.timeout, envs,
-                                  {i["workload"]: i["seed_slow"] for i in items})
-        slow_results = evaluate(fixtures, profile_id, slow_runs, budgets, {})
         for item in items:
+            # One run per item: items may share a workload.
+            slow_runs = run_workloads(root, fixtures, [item["workload"]], binaries,
+                                      files_by_scene, 1, args.timeout, envs,
+                                      {item["workload"]: item["seed_slow"]})
+            slow_results = evaluate(fixtures, profile_id, slow_runs, budgets, {})
             match = [r for r in slow_results
                      if r["workload"] == item["workload"] and r["metric"] == item["metric"]]
             detected = bool(match) and match[0]["verdict"] == "regressed"
@@ -609,7 +628,10 @@ def cmd_run(args):
             print("baseline %s %s: %s -> %s" % (workload, metric, old, new))
 
     failing = [r for r in results if r["verdict"] in FAILING]
-    failing_sensitivity = [s for s in sensitivity if not s["detected"]]
+    failing_sensitivity = [s for s in sensitivity
+                           if not s["detected"] and s["verdict"] != "unverified"]
+    overloaded = [r for r in results if r.get("timing_verdict")] + \
+        [s for s in sensitivity if s["verdict"] == "unverified"]
     evidence = {
         "schema": EVIDENCE_SCHEMA,
         "recorded": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -627,7 +649,8 @@ def cmd_run(args):
         "debt": debt_list(results),
         "sensitivity": sensitivity,
         "baseline_changes": [list(c) for c in changes],
-        "decision": "fail" if failing or failing_sensitivity else "pass",
+        "decision": "fail" if failing or failing_sensitivity else
+                    "unverified" if overloaded else "pass",
     }
     path = os.path.join(out_dir, "evidence.json")
     with open(path, "w") as stream:
@@ -637,7 +660,10 @@ def cmd_run(args):
     print("\n%s; %d debt row(s)" % (", ".join("%s %d" % (v, c) for v, c in counts.items() if c),
                                      len(evidence["debt"])))
     print("evidence: %s -> %s" % (os.path.relpath(path, root), evidence["decision"].upper()))
-    return 1 if evidence["decision"] == "fail" else 0
+    if overloaded:
+        print("%d row(s) unverified: the host was over max_load_per_cpu; rerun when it is quiet"
+              % len(overloaded))
+    return {"pass": 0, "fail": 1}.get(evidence["decision"], 3)
 
 
 def cmd_validate(args):

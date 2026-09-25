@@ -36,6 +36,7 @@ enum ClientRenderStartDomain_t
 	RS_DOMAIN_BONE_CACHE,          // bone caches and the previous-frame setup list
 	RS_DOMAIN_PARTICLE_STATE,      // new particle effects' collections and the sim list
 	RS_DOMAIN_WORLD_QUERIES,       // world/partition traces from particle operators
+	RS_DOMAIN_DYNAMIC_LIGHTS,      // the engine's dlight table (spark lights)
 };
 
 // OnRenderStart's blocks. A class so that the classes that befriend
@@ -326,18 +327,22 @@ static const jobsystem::FrameAccess s_RenderStartBonesGatherCommit[] = {
     { RS_DOMAIN_BONE_CACHE, true },
 };
 // Items simulate their own collection; operators may trace the world and the
-// partition. Control points were gathered before the batch.
+// partition. Control points were gathered before the batch. An item gathers its
+// effect's spark light into the effect's own burst; the commit lights it.
 static const jobsystem::FrameAccess s_RenderStartParticlesBatch[] = {
     { RS_DOMAIN_PARTICLE_STATE, true },
     { RS_DOMAIN_WORLD_QUERIES, false },
 };
 // Gather reads attachments (bones) and entity state for control points and
 // updates dirty partition entries; commit publishes bounds to the leaf system.
+// Both write spark lights: gather the old-style trail sparks' (simulated there)
+// and commit the particle systems' (gathered by the batch items).
 static const jobsystem::FrameAccess s_RenderStartParticlesGatherCommit[] = {
     { RS_DOMAIN_PARTICLE_STATE, true },
     { RS_DOMAIN_WORLD_QUERIES, true },
     { RS_DOMAIN_BONE_CACHE, true },
     { RS_DOMAIN_ENTITY_TRANSFORMS, false },
+    { RS_DOMAIN_DYNAMIC_LIGHTS, true },
 };
 
 #define RENDER_START_HOST( fn, access )                                                            \

@@ -15,6 +15,7 @@
 #include "materialsystem/imaterialsystem.h"
 #include "mathlib/mathlib.h"
 #include "r_local.h"
+#include "render.h"
 #include "render/light_set.h"
 
 #include <cmath>
@@ -124,7 +125,11 @@ void LightSet_PublishFrame()
 	std::vector<DynamicLightInput> dynamic;
 	GatherDynamic( cl_dlights, MAX_DLIGHTS, LightKind::Dynamic, &dynamic );
 	GatherDynamic( cl_elights, MAX_ELIGHTS, LightKind::Entity, &dynamic );
-	const Snapshot snapshot = s_builder.Build( worldLights, styles, dynamic );
+	Snapshot snapshot = s_builder.Build( worldLights, styles, dynamic );
+	// Renderers with a direct-light budget rank lights from the last main view.
+	snapshot.hasView = true;
+	for ( int k = 0; k < 3; ++k )
+		snapshot.viewOrigin[k] = MainViewOrigin()[k];
 	if ( s_consumer )
 		s_consumer->PublishLightSet( snapshot );
 	// The indirect-light producers see the same frame's lights.

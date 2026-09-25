@@ -1375,6 +1375,71 @@
       "expect": "pass"
     },
     {
+      "id": "render.direct-light-selection",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.direct-light-selection.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0011 direct-light budget: the strongest unbaked lights at the viewer, by luminance, falloff and view coverage, with deterministic ties",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_direct_light_selection.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.direct-light-selection.table-order",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.direct-light-selection.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: the original first-in-table-order choice must be rejected",
+      "extra_flags": [
+        "-DDIRECT_LIGHT_SELECTION_SEEDED_TABLE_ORDER"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_direct_light_selection.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.direct-light-selection.no-distance",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.direct-light-selection.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a ranking that ignores the view must be rejected",
+      "extra_flags": [
+        "-DDIRECT_LIGHT_SELECTION_SEEDED_NO_DISTANCE"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_direct_light_selection.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.direct-light-selection.unstable-ties",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.direct-light-selection.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: ties to the higher ID must be rejected",
+      "extra_flags": [
+        "-DDIRECT_LIGHT_SELECTION_SEEDED_UNSTABLE_TIES"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_direct_light_selection.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "client.particle-plane-crossing",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",

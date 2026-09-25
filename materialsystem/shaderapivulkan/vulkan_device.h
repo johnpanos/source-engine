@@ -886,7 +886,12 @@ public:
 		kFragmentRefract = 262144,
 		kFragmentRefractBlur = 524288,
 		kFragmentBaseAlphaEnvmapMask = 1048576,
-		kFragmentNormalAlphaEnvmapMask = 2097152
+		kFragmentNormalAlphaEnvmapMask = 2097152,
+		// With kFragmentRefract only: Portal 2's LOCALREFRACT, which refracts the
+		// base texture in texture space. It shares the bit of the envmap mask that
+		// only the other (LightmappedGeneric envmap) branch reads; every bit a
+		// float flag word holds exactly is in use.
+		kFragmentRefractLocal = kFragmentBaseAlphaEnvmapMask
 	};
 	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
 	// Linear scale applied to the textured pipeline's color before the sRGB

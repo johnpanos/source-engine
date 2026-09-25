@@ -97,11 +97,11 @@ void main()
 	float ior = max( consts.glass.y, 1.0 );
 	float f0 = ( ior - 1.0 ) / ( ior + 1.0 );
 	f0 *= f0;
-	vec2 splitSum = texture( splitSumTexture,
-	    clamp( vec2( normalDotView, roughness ), vec2( 0.0 ), vec2( 1.0 ) ) ).rg;
-	// Directional reflectance of one interface. A thin sheet has two parallel
-	// interfaces; their incoherent inter-reflections reflect 2E / (1 + E).
-	float single = min( 1.0, f0 * splitSum.x + splitSum.y );
+	vec2 splitSum = PbrSplitSum( splitSumTexture, normalDotView, roughness );
+	// Directional reflectance of one interface (multiple scattering,
+	// pbr_brdf.glsl). A thin sheet has two parallel interfaces; their
+	// incoherent inter-reflections reflect 2E / (1 + E).
+	float single = PbrDirectionalAlbedo( vec3( f0 ), splitSum ).x;
 	float thickness = max( consts.glass.z, 0.0 );
 	float reflectance = thickness > 0.0 ? single : 2.0 * single / ( 1.0 + single );
 

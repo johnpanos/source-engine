@@ -392,6 +392,7 @@ $Project
 		$File	"particles_attractor.cpp"
 		$File	"particles_ez.cpp"
 		$File	"particles_localspace.cpp"
+		$File	"particle_light.cpp"
 		$File	"particles_new.cpp"
 		$File	"particles_simple.cpp"
 		$File	"$SRCDIR\game\shared\particlesystemquery.cpp"

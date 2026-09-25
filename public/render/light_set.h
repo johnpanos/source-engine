@@ -92,6 +92,10 @@ struct Snapshot
 	// Every light style's current scalar (1 is its baked value): the lights
 	// a map carries only in its bake (RTRN sources) are switched by style.
 	std::vector<float> styleScalars;
+	// The main view the frame's lights are ranked from (the last rendered main
+	// view; see direct_light_selection.h). Without one, ranking ignores distance.
+	bool hasView = false;
+	float viewOrigin[3] = {};
 };
 
 // The per-frame source data the engine gathers.

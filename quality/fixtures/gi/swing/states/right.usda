@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "Swing"
+    metersPerUnit = 1
+    subLayers = [
+        @../swing.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "Swing"
+{
+    over "World"
+    {
+        over "Bulb"
+        {
+            double3 xformOp:translate = (3.464181, 2.5, 1.850933)
+        }
+    }
+}
+

@@ -159,6 +159,29 @@ class Runs(unittest.TestCase):
     def test_a_crashed_round_leaves_the_row_missing(self):
         self.assertEqual(self.evaluate([record(0.5), None])["verdict"], "missing")
 
+    def evaluate_loaded(self, loads, problems=()):
+        data = {"tolerance": TOLERANCE, "host": {"max_load_per_cpu": 1.0},
+                "profiles": {"p": {"rows": [row(1.0)]}}}
+        runs = {"producer/x": {"records": [record(9.0)] * len(loads), "problems": list(problems),
+                               "loads": loads}}
+        return gi_sdf_bench.evaluate(data, "p", runs, {}, {})[0]
+
+    def test_timings_from_an_overloaded_host_are_unverified_not_judged(self):
+        result = self.evaluate_loaded([0.5, 2.7])
+        self.assertEqual(result["verdict"], "unverified")
+        self.assertEqual(result["timing_verdict"], "regressed")
+        self.assertEqual(self.evaluate_loaded([0.5, 0.9])["verdict"], "regressed")
+
+    def test_an_oracle_failure_fails_even_on_an_overloaded_host(self):
+        result = self.evaluate_loaded([3.0], ["round 1: oracle: 1 of 8 checks failed"])
+        self.assertEqual(result["verdict"], "failed")
+
+    def test_overloaded_rows_never_become_baselines(self):
+        data = {"profiles": {"p": {"rows": [row(3.0)]}}}
+        results = [{"workload": "producer/x", "metric": "frame_publish.median_ms",
+                    "verdict": "unverified", "timing_verdict": "improved", "measured_ms": 0.1}]
+        self.assertEqual(gi_sdf_bench.update_baselines(data, "p", results, calibrate=True), [])
+
     def test_unavailable_scenes_are_unverified_never_passed(self):
         data = {"tolerance": TOLERANCE, "profiles": {"p": {"rows": [row(1.0)]}}}
         result = gi_sdf_bench.evaluate(data, "p", {}, {}, {"producer/x": "scene absent"})[0]

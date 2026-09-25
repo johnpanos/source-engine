@@ -1592,6 +1592,9 @@ static void ProcessPSystemAtTime( CNewParticleEffect *pNewEffect, float flTimeSt
 		pNewEffect->Simulate( flTimeStep );
 	}
 
+	// This item's part of the spark light: only this effect's burst.
+	pNewEffect->GatherLight();
+
 	if ( pNewEffect->IsFinished() )
 	{
 		pNewEffect->SetRemoveFlag();
@@ -1969,6 +1972,13 @@ void CParticleMgr::UpdateNewEffectsEnd()
 	{
 		// this one can call into random entity code which may not be thread-safe
 		particlesToSimulate[i]->DetectChanges();
+	}
+
+	// Light the bursts the batch gathered, in effect order; an effect that did
+	// not simulate this frame releases its light.
+	for ( CNewParticleEffect *pNewEffect = m_NewEffects.m_pHead; pNewEffect; pNewEffect = pNewEffect->m_pNext )
+	{
+		pNewEffect->CommitLight();
 	}
 
 	EndSimulateParticles();

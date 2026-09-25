@@ -15,6 +15,7 @@ that builds the fixture's baked state into a playable BSP2 map:
   door         a room lit through a doorway, door open and closed
   probe-grid   a large floor under a uniform sky, and under one sun
   portal-view  a lit chamber seen directly and from the two portal cameras
+  swing        a bulb swinging on a rope, at rest and 40 degrees either side
 
 plus the gallery (`gi_gallery.py`): dozens of smaller fixtures (colored
 lights blending, colored and cluttered furnaces, color bleeding, leaks,
@@ -61,7 +62,7 @@ HORIZONTAL_FOV = 90.0
 # The 4-unit panel of `thin-wall` (RFC 0011 fixture table).
 THIN_WALL_M = 4.0 / SOURCE_UNITS_PER_METER
 # Every dynamic model a fixture places (Author.probe_model / room_states).
-DYNAMIC_MODELS = ("ProbeSphere", "ProbeA", "ProbeB", "ProbeC", "ProbeD")
+DYNAMIC_MODELS = ("ProbeSphere", "ProbeA", "ProbeB", "ProbeC", "ProbeD", "ProbeS")
 
 
 # ------------------------------------------------------------------ geometry
@@ -743,7 +744,90 @@ def portal_view(out):
     write_json(directory / "map.json", manifest)
 
 
-FIXTURES = (furnace, thin_wall, room_states, door, probe_grid, portal_view)
+# `swing` (RFC 0011 G9): the bulb, its rope and the swing it is released into.
+SWING_ANCHOR_M = (2.5, 2.5, 3.0)
+SWING_LENGTH_M = 1.5
+SWING_ANGLE_DEGREES = 40.0
+# The bulb is a sphere of the light set's inverse-square source radius
+# (light_set::kInverseSquareSourceRadius, 2 units) emitting radiance
+# SWING_RADIANCE: its diffuse light at distance d is L (R / d)^2, which the
+# engine's inverse-square light gives with color L (R / 100 units)^2.
+SWING_BULB_RADIUS_M = 2.0 / SOURCE_UNITS_PER_METER
+SWING_RADIANCE = 500.0
+
+
+def swing_position(angle_degrees):
+    """The bulb at `angle_degrees` from straight down, swinging in the xz plane."""
+    angle = math.radians(angle_degrees)
+    ax, ay, az = SWING_ANCHOR_M
+    return (round(ax + SWING_LENGTH_M * math.sin(angle), 6), ay,
+            round(az - SWING_LENGTH_M * math.cos(angle), 6))
+
+
+def swing(out):
+    """A 5 x 5 x 3 m room (red west wall, a pillar, a dim baked ceiling panel)
+    with a bulb hanging on a 1.5 m rope from the ceiling's centre. The bulb
+    is a dynamic light, absent from the bake (`baked` hides it); the states
+    place it at rest and 40 degrees either side of it, where the in-game
+    lamp is held for the moved-light oracle (G9)."""
+    directory = out / "swing"
+    author = Author(directory / "swing.usda", "Swing")
+    author.material("White", (0.7, 0.7, 0.7))
+    author.material("Red", (0.7, 0.1, 0.1))
+    author.material("ProbeGrey", (0.6, 0.6, 0.6))
+    author.material("Bulb", (0.0, 0.0, 0.0), (SWING_RADIANCE,) * 3)
+    walls = author.room("S", (0.0, 0.0, 0.0), (5.0, 5.0, 3.0), "White", skip=("Xn",))
+    author.mesh("S_Xn", [box_faces((0.0, 0.0, 0.0), (5.0, 5.0, 3.0), inward=True)[0][1:]],
+                "Red")
+    author.solid("Pillar", (3.7, 2.2, 0.0), (4.2, 2.8, 1.4), "White")
+    author.rect_light("Panel", (4.3, 0.7, 2.99), (0.6, 0.6), 2.0)
+    author.probe_model("ProbeS", (1.2, 3.9, 0.6), "ProbeGrey")
+    bulb = author.root_path.AppendPath("World/Bulb")
+    xform = UsdGeom.Xform.Define(author.stage, bulb)
+    xform.AddTranslateOp().Set(Gf.Vec3d(*swing_position(0.0)))
+    sphere_mesh(author.stage, bulb.AppendChild("BulbShape"), SWING_BULB_RADIUS_M, 24, 12)
+    UsdShade.MaterialBindingAPI.Apply(author.stage.GetPrimAtPath(
+        bulb.AppendChild("BulbShape"))).Bind(author.materials["Bulb"])
+    pose = camera_pose((4.7, 0.3, 1.8), (1.5, 3.5, 0.8))
+    author.camera("Camera", pose)
+    author.save()
+    base = directory / "swing.usda"
+    states = {"rest": {"layer": None, "note": "bulb hanging straight down",
+                       "bulb_m": list(swing_position(0.0))}}
+    for name, angle in (("left", -SWING_ANGLE_DEGREES), ("right", SWING_ANGLE_DEGREES)):
+        position = swing_position(angle)
+        state_layer(directory / "states" / (name + ".usda"), base,
+                    [(str(bulb), "xformOp:translate", Sdf.ValueTypeNames.Double3,
+                      Gf.Vec3d(*position))])
+        states[name] = {"layer": "states/%s.usda" % name,
+                        "note": "bulb %g degrees from rest" % angle, "bulb_m": list(position)}
+    state_layer(directory / "states" / "baked.usda", base,
+                [(str(bulb), "visibility", None, UsdGeom.Tokens.invisible)])
+    states["baked"] = {"layer": "states/baked.usda", "note": "bulb hidden: the map's bake"}
+    write_json(directory / "fixture.json", fixture_record(
+        "swing", "Moved-light oracle: a bulb on a rope lights the room directly, through its "
+        "shadows and by its bounce, wherever it swings", "swing.usda", states,
+        {"room": pose},
+        {"room": {"floor": ["S_Zn"], "red_wall": ["S_Xn"], "back_wall": ["S_Yp"],
+                  "pillar": ["Pillar"], "model": ["ProbeS"]}},
+        "baked",
+        {"swing": {"anchor_m": list(SWING_ANCHOR_M), "length_m": SWING_LENGTH_M,
+                   "angle_degrees": SWING_ANGLE_DEGREES, "bulb_radius_m": SWING_BULB_RADIUS_M,
+                   "radiance": SWING_RADIANCE,
+                   "engine_color": SWING_RADIANCE * (2.0 / 100.0) ** 2}}))
+    manifest = map_manifest("gi_swing", "quality/fixtures/gi/swing/states/baked.usda",
+                            solid_meshes=["Pillar"])
+    # The lamp: a physics prop on a rope constraint from the anchor, carrying
+    # an inverse-square light_dynamic of the bulb's light, released from the
+    # left extreme so it swings.
+    manifest["collision"]["lamps"] = [{
+        "name": "Lamp", "anchor_m": list(SWING_ANCHOR_M), "length_m": SWING_LENGTH_M,
+        "release_degrees": -SWING_ANGLE_DEGREES,
+        "color_linear": SWING_RADIANCE * (2.0 / 100.0) ** 2}]
+    write_json(directory / "map.json", manifest)
+
+
+FIXTURES = (furnace, thin_wall, room_states, door, probe_grid, portal_view, swing)
 
 
 def generate(out):

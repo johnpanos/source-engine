@@ -1112,6 +1112,9 @@ Installed:
     baseline; nothing raises a baseline without review.
   - A crash, a failed oracle, an unmeasured stage or a result that does not
     repeat across rounds fails. A missing map scene is `unverified`.
+  - Timings taken while the host's load average exceeds its CPU count
+    (`host.max_load_per_cpu` 1.0) are `unverified`: never passed or failed,
+    and never recorded as baselines. The run then exits 3.
 
   GPU budgets come from `indirect-light-v1.json` (`budget_ref`). The CPU
   budgets were set with these fixtures, before any optimization:
@@ -1169,10 +1172,16 @@ GPU (contended GPU; median / p95 per update): gi_door 1.43 / 2.65 ms, relit
 
 Verification: `render.indirect-sdf.bench-smoke` passes with g++ (default and
 release) and clang++; `render.indirect-light.sdf` passes (29 checks) with the
-bench change. The verification run and its sensitivity controls are in
-`quality-results/gi-sdf-perf/verify-20260925`. The sensitivity controls make
-the change atlas, `Schedule` and the pooled compose 4x slower and require
-their rows to regress.
+bench change; `engine/indirect_light_host.cpp` compiles with its Waf flags.
+
+A first verification run (`verify-20260925`) went to load 2.7 per CPU (two
+Blender bakes) and measured every stage 2 to 4 times slower than the
+calibration. That is contention, not code, so the load guard above was
+added. The run also found a runner bug: two sensitivity items on one workload
+had been merged into one run, so the change-atlas slowdown never ran. Each
+item now runs alone. The sensitivity controls make the change atlas,
+`Schedule` and the pooled compose 4x slower and require their rows to regress.
+VERIFY2_RESULT
 
 Reproduce:
 

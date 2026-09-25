@@ -1,8 +1,8 @@
-// Shared by world_pbr.frag and world_pbr_glass.frag: the map reflection probe
-// and the tangent-space normal. The includer declares `lightmapTexture`, the
-// map's LMAP atlas, whose top rows carry the probe.
+// Shared by world_pbr.frag, world_pbr_glass.frag and model_pbr.frag: the map
+// reflection probe and the tangent-space normal. The includer declares
+// `lightmapTexture`, the map's LMAP atlas, whose top rows carry the probe.
 
-const float kPi = 3.14159265358979323846;
+#include "pbr_brdf.glsl"
 
 // Reflection probe packed into the LMAP atlas's top rows by the map pipeline
 // (tools/quality/reflection_probe.py): equirect mips side by side from x = 0,

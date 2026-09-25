@@ -140,6 +140,55 @@ vec4 ShadowProjection( int flags )
 		result = LinearToSrgb( result );
 	return vec4( result, 1.0 );
 }
+// Portal 2's refract_ps2x.fxc with LOCALREFRACT and CUBEMAP (flag 1048576 with
+// 262144): sampler 0 is the base texture, refracted in texture space. The
+// tangent-space vertex-to-eye vector (vertex color) offsets the lookup by the
+// normal map, scaled by the base texture's aspect (c7.xy) and
+// $localrefractdepth (c7.z, in the modulation's alpha); the result is tinted by
+// c1 (modulation rgb) and darkened by the normal's z cubed. The shader
+// recomputes that eye vector per pixel; the interpolated one is normalized here.
+// The cubemap term adds c0 tint, c2 contrast, c3 saturation (the output scale's
+// slot) and Portal 2's fresnel. BLUR does not apply; alpha is the normal map's.
+vec4 LocalRefract( int flags, vec4 normal )
+{
+	const vec3 normalTs = normal.xyz * 2.0 - 1.0;
+	const vec3 eyeTs = normalize( fragVertexColor.rgb );
+	const float rDotN = -eyeTs.z;
+	vec2 refractedUv = eyeTs.xy / rDotN;
+	refractedUv += normalTs.xy;
+	refractedUv += ( 1.0 - normalTs.z ) * eyeTs.xy / rDotN;
+	const vec2 size = vec2( textureSize( baseTexture, 0 ) );
+	refractedUv *= vec2( size.y / size.x, 1.0 ) * consts.modulation.a;
+	refractedUv += fragUv;
+	vec4 refracted = texture( baseTexture, clamp( refractedUv, 0.0, 1.0 ) );
+	const float mask = texture( baseTexture, clamp( fragUv + normalTs.xy * 0.1, 0.0, 1.0 ) ).a;
+	if ( ( flags & 1 ) != 0 )
+		refracted.rgb = SrgbToLinear( refracted.rgb );
+	refracted.rgb = mix( refracted.rgb, vec3( mask ), 0.025 );
+	vec3 color = refracted.rgb * pow( max( normalTs.z, 0.0 ), 3.0 ) * consts.modulation.rgb;
+
+	vec3 worldNormal = normalize( fragReflection );
+	vec3 worldTangent = normalize( fragEnvTint.xyz );
+	vec3 worldBinormal = normalize( cross( worldNormal, worldTangent ) ) * fragEnvTint.w;
+	vec3 bumpedWorldNormal = normalTs.x * worldTangent + normalTs.y * worldBinormal +
+	    normalTs.z * worldNormal;
+	// As refract_ps2x does, the world-space normal reflects the interpolated
+	// tangent-space eye vector (CalcReflectionVectorUnnormalized's inputs).
+	const vec3 eyeTangent = fragVertexColor.rgb;
+	vec3 reflectDirection = 2.0 * dot( bumpedWorldNormal, eyeTangent ) * bumpedWorldNormal -
+	    dot( bumpedWorldNormal, bumpedWorldNormal ) * eyeTangent;
+	vec3 envTint = vec3( fragLightmapUv, fragVertexColor.a );
+	vec3 reflection = texture( envmapTexture, reflectDirection ).rgb * normal.a * envTint;
+	reflection = mix( reflection, reflection * reflection, consts.alphaParams.x );
+	const float luminance = dot( reflection, vec3( 0.299, 0.587, 0.114 ) );
+	reflection = mix( vec3( luminance ), reflection, consts.alphaParams.w );
+	const float nDotV = clamp( dot( normalTs, eyeTangent ), 0.0, 1.0 );
+	color += reflection * ( 0.6 + 0.4 * ( 1.0 - nDotV ) );
+	color = ApplyPixelFog( color );
+	if ( ( flags & 4 ) != 0 )
+		color = LinearToSrgb( color );
+	return vec4( color, normal.a );
+}
 void main()
 {
 	const int flags = int( consts.alphaParams.z );
@@ -154,6 +203,11 @@ void main()
 		// is the normal map, and sampler 2 is the local cubemap. The authored
 		// glass uses BLUR=1, CUBEMAP=1 and no optional masks or second normal.
 		vec4 normal = texture( lightmapTexture, fragUv );
+		if ( ( flags & 1048576 ) != 0 )
+		{
+			outColor = LocalRefract( flags, normal );
+			return;
+		}
 		vec2 warped = fragScreenUv + ( normal.xy * 2.0 - 1.0 ) *
 		    ( normal.a * consts.modulation.a );
 		vec3 color;

@@ -74,9 +74,8 @@ layout( push_constant ) uniform Constants
 }
 consts;
 
-#ifdef ENV_CUBE
-const float kPi = 3.14159265358979323846;
-#else
+#include "pbr_brdf.glsl"
+#ifndef ENV_CUBE
 #include "world_pbr_probe.glsl"
 #endif
 #ifdef PROBE_VOLUME
@@ -138,22 +137,6 @@ vec3 LightPosition( int n )
 	return ps.c[21 + 2 * n].xyz;
 }
 
-float GgxDistribution( float normalDotHalf, float alphaSquared )
-{
-	float denominator = normalDotHalf * normalDotHalf * ( alphaSquared - 1.0 ) + 1.0;
-	return alphaSquared / ( kPi * denominator * denominator );
-}
-
-float SmithVisibility( float normalDotView, float normalDotLight, float alphaSquared )
-{
-	float lambdaView =
-	    sqrt( alphaSquared + ( 1.0 - alphaSquared ) * normalDotView * normalDotView );
-	float lambdaLight =
-	    sqrt( alphaSquared + ( 1.0 - alphaSquared ) * normalDotLight * normalDotLight );
-	float denominator = normalDotView * lambdaLight + normalDotLight * lambdaView;
-	return denominator > 0.0 ? 0.5 / denominator : 0.0;
-}
-
 // Specular image light in `direction` at `roughness`.
 vec3 EnvironmentRadiance( vec3 direction, float roughness, int flags )
 {
@@ -166,17 +149,6 @@ vec3 EnvironmentRadiance( vec3 direction, float roughness, int flags )
 		environment = AmbientCube( direction );
 #endif
 	return environment;
-}
-
-// Clear coat, after Filament's standard model (Apache-2.0, google/filament
-// shaders/src/surface_shading_model_standard.fs): a dielectric layer of IOR
-// 1.5 (F0 0.04) with a GGX lobe and Kelemen visibility 1 / ( 4 L.H^2 ), shaded
-// with the geometric normal. The base layer beneath is attenuated by 1 - Fc.
-float SchlickF( float f0, float cosine )
-{
-	float grazing = 1.0 - cosine;
-	float grazing2 = grazing * grazing;
-	return f0 + ( 1.0 - f0 ) * grazing2 * grazing2 * grazing;
 }
 
 void main()
@@ -198,8 +170,6 @@ void main()
 	float metalness = clamp( mrao.r, 0.0, 1.0 );
 	float roughness = max( mrao.g, 0.02 );
 	float occlusion = clamp( mrao.b, 0.0, 1.0 );
-	float alpha = roughness * roughness;
-	float alphaSquared = alpha * alpha;
 
 	vec3 view = normalize( vWorldVertToEye );
 	// A mesh without normals (a screen-space rectangle) faces the eye rather
@@ -214,9 +184,11 @@ void main()
 	}
 	float normalDotView = max( dot( normal, view ), 0.0 );
 	vec3 f0 = mix( vec3( 0.04 ), base, metalness );
-	vec2 splitSum = texture( splitSumTexture,
-	    clamp( vec2( normalDotView, roughness ), vec2( 0.0 ), vec2( 1.0 ) ) ).rg;
-	vec3 directionalAlbedo = min( vec3( 1.0 ), f0 * splitSum.x + vec3( splitSum.y ) );
+	vec2 splitSum = PbrSplitSum( splitSumTexture, normalDotView, roughness );
+	// Multiple scattering (pbr_brdf.glsl): the compensated lobe's albedo
+	// weights image light and leaves the rest to the diffuse layer.
+	vec3 compensation = PbrEnergyCompensation( f0, splitSum );
+	vec3 directionalAlbedo = PbrDirectionalAlbedo( f0, splitSum );
 	vec3 diffuseColor = base * ( 1.0 - metalness ) * ( vec3( 1.0 ) - directionalAlbedo );
 #ifdef INDIRECT_VIEW
 	{
@@ -234,8 +206,6 @@ void main()
 	const bool clearCoat = ( flags & kClearCoat ) != 0;
 	const float coat = clearCoat ? ps.c[2].y : 0.0;
 	const float coatRoughness = max( ps.c[2].z, 0.02 );
-	const float coatAlpha = coatRoughness * coatRoughness;
-	const float coatAlphaSquared = coatAlpha * coatAlpha;
 	vec3 coatNormal = dot( vNormal, vNormal ) > 1e-12 ? normalize( vNormal ) : view;
 	const float coatNormalDotView = max( dot( coatNormal, view ), 0.0 );
 
@@ -256,29 +226,17 @@ void main()
 			continue;
 		vec3 incident = LightColor( i ) * lightAtten[i];
 		vec3 lighting = diffuseColor * incident * normalDotLight;
-		if ( normalDotView > 0.0 )
-		{
-			vec3 halfVector = normalize( view + light );
-			float normalDotHalf = max( dot( normal, halfVector ), 0.0 );
-			float viewDotHalf = max( dot( view, halfVector ), 0.0 );
-			float grazing = 1.0 - viewDotHalf;
-			float grazing5 = grazing * grazing * grazing * grazing * grazing;
-			vec3 fresnel = f0 + ( vec3( 1.0 ) - f0 ) * grazing5;
-			lighting += kPi * incident * fresnel * GgxDistribution( normalDotHalf, alphaSquared ) *
-			            SmithVisibility( normalDotView, normalDotLight, alphaSquared ) *
-			            normalDotLight;
-		}
+		lighting += kPi * incident * PbrSpecular( normal, view, light, f0, roughness ) *
+		            compensation * normalDotLight;
 		if ( clearCoat )
 		{
+			// The coat (pbr_brdf.glsl, after Filament's standard model) on the
+			// geometric normal; the base beneath is attenuated by 1 - Fc.
 			vec3 halfVector = normalize( view + light );
-			float lightDotHalf = max( dot( light, halfVector ), 0.0 );
-			float coatFresnel = SchlickF( 0.04, lightDotHalf ) * coat;
-			float coatNormalDotLight = max( dot( coatNormal, light ), 0.0 );
-			float coatNormalDotHalf = max( dot( coatNormal, halfVector ), 0.0 );
-			lighting = lighting * ( 1.0 - coatFresnel ) +
-			           kPi * incident * GgxDistribution( coatNormalDotHalf, coatAlphaSquared ) *
-			               ( 0.25 / max( lightDotHalf * lightDotHalf, 1e-6 ) ) * coatFresnel *
-			               coatNormalDotLight;
+			vec2 coatLobe = PbrClearCoat( coat, max( dot( coatNormal, halfVector ), 0.0 ),
+			    max( dot( light, halfVector ), 0.0 ), coatRoughness );
+			lighting = lighting * ( 1.0 - coatLobe.y ) +
+			           kPi * incident * coatLobe.x * max( dot( coatNormal, light ), 0.0 );
 		}
 		direct += lighting;
 	}
@@ -289,7 +247,7 @@ void main()
 	if ( clearCoat )
 	{
 		// The coat's image light over the attenuated base image light.
-		float coatFresnel = SchlickF( 0.04, coatNormalDotView ) * coat;
+		float coatFresnel = PbrFresnelSchlick( 0.04, coatNormalDotView ) * coat;
 		indirect = indirect * ( 1.0 - coatFresnel ) +
 		           EnvironmentRadiance( reflect( -view, coatNormal ), coatRoughness, flags ) *
 		               coatFresnel * occlusion;

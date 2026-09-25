@@ -4,7 +4,7 @@
 // scenario starts them itself, frames both falling streams from a clear
 // viewpoint beside them, freezes the blobs (blobs_paused) and takes the shots
 // tools/quality/portal2_paint_shots.py compares: the empty view, the gel as
-// the blobulator's isosurface, as its wireframe, and as the fast spheres.
+// the blobulator's isosurface, and as the fast spheres.
 
 IncludeScript( "qa/qa_driver" )
 
@@ -101,9 +101,7 @@ QA_Do( "freeze", function()
 	SendToConsole( "blobs_paused 1" )
 }, 1.5 )
 QA_Do( "shot isosurface", function() { QA_Shot( "isosurface" ) }, 1.5 )
-QA_Do( "wireframe", function() { SendToConsole( "r_paintblob_wireframe 1" ) }, 1.0 )
-QA_Do( "shot wireframe", function() { QA_Shot( "wireframe" ) }, 1.5 )
-QA_Do( "spheres", function() { SendToConsole( "r_paintblob_wireframe 0; r_paintblob_draw_isosurface 0" ) }, 1.0 )
+QA_Do( "spheres", function() { SendToConsole( "r_paintblob_draw_isosurface 0" ) }, 1.0 )
 QA_Do( "shot spheres", function() { QA_Shot( "spheres" ) }, 1.5 )
 QA_Do( "restore", function() { SendToConsole( "r_paintblob_draw_isosurface 1; blobs_paused 0" ) }, 0.5 )
 

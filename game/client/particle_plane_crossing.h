@@ -17,8 +17,8 @@ namespace ParticlePlaneCrossing
 // the plane (within flEpsilon) to behind it. The second case catches a
 // particle that starts on a surface (an effect origin quantized onto it by the
 // network) and moves into it; a particle behind the plane never hits it. On a
-// hit, *pFraction is the step's fraction at the plane (0 for a particle
-// already on it).
+// hit, *pFraction is the step's fraction at the plane, within [0, 1]: 0 for a
+// particle already on it, and 1 for a step that ends within flEpsilon in front.
 inline bool Hits( float flStart, float flEnd, float flEpsilon, float *pFraction )
 {
 	bool bHit;
@@ -27,7 +27,10 @@ inline bool Hits( float flStart, float flEnd, float flEpsilon, float *pFraction 
 	else
 		bHit = flStart >= -flEpsilon && flEnd < -flEpsilon;
 	if ( bHit )
-		*pFraction = flStart > 0.0f ? flStart / ( flStart - flEnd ) : 0.0f;
+	{
+		const float flFraction = flStart > 0.0f ? flStart / ( flStart - flEnd ) : 0.0f;
+		*pFraction = flFraction < 1.0f ? flFraction : 1.0f;
+	}
 	return bHit;
 }
 

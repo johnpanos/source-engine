@@ -35,6 +35,8 @@ import argparse
 import hashlib
 import json
 import math
+import multiprocessing
+import os
 import sys
 import time
 from pathlib import Path
@@ -136,6 +138,59 @@ def place(bvh, position, directions, spacing_min):
     return offset, fraction <= BACKFACE_LIMIT, fraction
 
 
+# Probe placement and visibility read only the BVH, so forked workers trace
+# contiguous runs of probes; each probe's result is computed exactly as it
+# would be serially, so the output does not depend on the worker count.
+_TRACE = {}
+
+
+def trace_run(bounds):
+    """Place and trace probes [first, last) of _TRACE's grid."""
+    job = _TRACE
+    first, last = bounds
+    homes, rays, lobes = job["homes"], job["rays"], job["lobes"]
+    positions = np.zeros((last - first, 3))
+    offsets = np.zeros((last - first, 3))
+    active = np.zeros(last - first)
+    fractions = np.zeros(last - first)
+    visibility = np.zeros((last - first, VIS_INTERIOR, VIS_INTERIOR, 2), dtype=np.float32)
+    for k, home in enumerate(homes[first:last]):
+        offset, is_active, fractions[k] = place(job["bvh"], home, rays[::4],
+                                                job["spacing_min"])
+        positions[k], offsets[k], active[k] = home + offset, offset, is_active
+        distances, _ = trace(job["bvh"], positions[k], rays, job["max_distance"])
+        visibility[k, ..., 0] = (lobes @ distances).reshape(VIS_INTERIOR, VIS_INTERIOR)
+        visibility[k, ..., 1] = (lobes @ distances ** 2).reshape(VIS_INTERIOR, VIS_INTERIOR)
+    return first, positions, offsets, active, fractions, visibility
+
+
+def trace_probes(bvh, homes, rays, lobes, spacing_min, max_distance, workers):
+    """(positions, offsets, active, backface fractions, visibility) per probe."""
+    count = len(homes)
+    _TRACE.update(bvh=bvh, homes=homes, rays=rays, lobes=lobes, spacing_min=spacing_min,
+                  max_distance=max_distance)
+    run = max(1, min(64, count // max(1, 4 * workers)))
+    runs = [(first, min(first + run, count)) for first in range(0, count, run)]
+    try:
+        if workers > 1 and len(runs) > 1:
+            with multiprocessing.get_context("fork").Pool(min(workers, len(runs))) as pool:
+                results = pool.map(trace_run, runs, chunksize=1)
+        else:
+            results = [trace_run(bounds) for bounds in runs]
+    finally:
+        _TRACE.clear()
+    positions = np.zeros((count, 3))
+    offsets = np.zeros((count, 3))
+    active = np.zeros(count)
+    fractions = np.zeros(count)
+    visibility = np.zeros((count, VIS_INTERIOR, VIS_INTERIOR, 2), dtype=np.float32)
+    for first, *parts in results:
+        last = first + len(parts[0])
+        for array, part in zip((positions, offsets, active, fractions, visibility), parts):
+            array[first:last] = part
+    return positions, offsets, active, fractions, visibility
+
+
 def receiver_mesh(positions, directions):
     """One tiny quad per (probe, texel direction), each mapped to its own bake
     texel; returns the object and the image height."""
@@ -224,6 +279,9 @@ def main():
     parser.add_argument("--light-paths", default="gi-reference")
     parser.add_argument("--out", type=Path, required=True, help="PRBV file")
     parser.add_argument("--work", type=Path, required=True, help="bake images and receipt")
+    parser.add_argument("--trace-workers", type=int, default=os.cpu_count() or 1,
+                        help="processes placing and tracing probes (the result does not "
+                             "depend on it)")
     args = parser.parse_args(arguments)
     started = time.monotonic()
     scene = map_scene.parse(args.scene)
@@ -266,23 +324,14 @@ def main():
     texels = probe_volume.interior_directions(VIS_INTERIOR).reshape(-1, 3)
     lobes = np.maximum(texels @ rays.T, 0.0) ** VISIBILITY_SHARPNESS
     lobes /= lobes.sum(axis=1, keepdims=True)
-    positions = np.zeros((count, 3))
-    offsets = np.zeros((count, 3))
-    active = np.zeros(count)
-    visibility = np.zeros((count, VIS_INTERIOR, VIS_INTERIOR, 2), dtype=np.float32)
-    backfaces = []
+    homes = np.zeros((count, 3))
     for z in range(dims[2]):
         for y in range(dims[1]):
             for x in range(dims[0]):
-                i = probe_volume.probe_index(dims, x, y, z)
-                home = origin + np.array([x, y, z]) * step
-                offset, is_active, fraction = place(bvh, home, rays[::4], spacing_min)
-                positions[i], offsets[i], active[i] = home + offset, offset, is_active
-                backfaces.append(fraction)
-                distances, _ = trace(bvh, positions[i], rays, max_distance)
-                visibility[i, ..., 0] = (lobes @ distances).reshape(VIS_INTERIOR, VIS_INTERIOR)
-                visibility[i, ..., 1] = (lobes @ distances ** 2).reshape(VIS_INTERIOR,
-                                                                        VIS_INTERIOR)
+                homes[probe_volume.probe_index(dims, x, y, z)] = \
+                    origin + np.array([x, y, z]) * step
+    positions, offsets, active, backfaces, visibility = trace_probes(
+        bvh, homes, rays, lobes, spacing_min, max_distance, args.trace_workers)
     traced = time.monotonic()
 
     device = pbrt_blender.configure_cycles(args.samples, args.device)
@@ -334,7 +383,7 @@ def main():
                         "max_distance": grid["max_distance"]},
                "probes": count, "active_probes": int(active.sum()),
                "relocated_probes": int((np.abs(offsets).max(axis=1) > 1e-9).sum()),
-               "max_backface_fraction": max(backfaces),
+               "max_backface_fraction": float(backfaces.max()),
                "rays_per_probe": RAYS_PER_PROBE, "visibility_sharpness": VISIBILITY_SHARPNESS,
                "atlas": [volume.width, volume.height],
                "seconds": {"trace": traced - started, "total": time.monotonic() - started},

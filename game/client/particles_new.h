@@ -17,6 +17,7 @@
 #include "particlesphererenderer.h"
 #include "smartptr.h"
 #include "particles_simple.h"
+#include "particle_light.h"
 #include "tier1/utlobjectreference.h"
 
 
@@ -123,6 +124,16 @@ public:
 
 	int AllocateToolParticleEffectId();
 	int GetToolParticleEffectId() const;
+
+	// The light of a system drawn with a spark material (render/spark_light.h),
+	// in the particle job graph's two parts. GatherLight runs in this effect's
+	// simulate item, on a pool worker, after it simulates; it reads only this
+	// effect's collections and writes only its burst. CommitLight runs on the
+	// host in the ordered pass after the batch (CParticleMgr::UpdateNewEffectsEnd)
+	// and lights or releases the dlight; an effect not gathered this frame
+	// (asleep or not simulated) releases its light.
+	void GatherLight();
+	void CommitLight();
 	CNewParticleEffect( CBaseEntity *pOwner, const char *pEffectName );
 	CNewParticleEffect( CBaseEntity *pOwner, CParticleSystemDefinition *pEffect );
 	virtual ~CNewParticleEffect();
@@ -162,6 +173,11 @@ private:
 	
 	int			m_RefCount;		// When this goes to zero and the effect has no more active
 								// particles, (and it's dynamically allocated), it will delete itself.
+
+	SparkLight::CBurst		m_LightBurst;		// written by GatherLight only
+	CParticleDynamicLight	m_Light;			// host only
+	signed char				m_nLightClass;		// -1 unclassified, 0 no light, 1 sparks
+	bool					m_bLightGathered;	// GatherLight ran since the last CommitLight
 
 	CNewParticleEffect( const CNewParticleEffect & ); // not defined, not accessible
 };

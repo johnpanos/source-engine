@@ -1,0 +1,24 @@
+{
+  "collision": {
+    "lamps": [
+      {
+        "anchor_m": [
+          2.5,
+          2.5,
+          3.0
+        ],
+        "color_linear": 0.2,
+        "length_m": 1.5,
+        "name": "Lamp",
+        "release_degrees": -40.0
+      }
+    ],
+    "solid_meshes": [
+      "Pillar"
+    ]
+  },
+  "map": "gi_swing",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/swing/states/baked.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

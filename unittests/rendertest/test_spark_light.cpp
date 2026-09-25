@@ -56,14 +56,20 @@ bool Near( float a, float b, float tolerance = 1.0e-5f )
 class BurstUnderTest
 {
 public:
+	explicit BurstUnderTest( float fullEmission = 0.0f ) : m_burst( fullEmission ) {}
 	void BeginFrame() { m_burst.BeginFrame(); }
 	void Add( const float pos[3], float emission )
 	{
+		static const float kWhite[3] = { 1.0f, 1.0f, 1.0f };
+		Add( pos, emission, kWhite );
+	}
+	void Add( const float pos[3], float emission, const float color[3] )
+	{
 #ifdef SPARK_LIGHT_SEEDED_UNWEIGHTED
 		// Every live spark counts the same, however much of it is drawn.
-		m_burst.Add( pos, emission > 0.0f ? 1.0f : 0.0f );
+		m_burst.Add( pos, emission > 0.0f ? 1.0f : 0.0f, color );
 #else
-		m_burst.Add( pos, emission );
+		m_burst.Add( pos, emission, color );
 #endif
 	}
 	Light_t Current() const
@@ -195,6 +201,69 @@ int main()
 		burst.BeginFrame();
 		light = burst.Current();
 		Check( !light.m_bLit && light.m_flScale == 0.0f, "a burst whose sparks are gone is dark" );
+	}
+
+	// System particles: alpha times the tint's brightest channel.
+	{
+		const float orange[3] = { 1.0f, 0.5f, 0.2f }, dark[3] = { 0.0f, 0.0f, 0.0f };
+		Check( Near( SystemEmission( 0.5f, orange ), 0.5f ) &&
+		           Near( SystemEmission( 2.0f, orange ), 1.0f ) &&
+		           SystemEmission( -1.0f, orange ) == 0.0f && SystemEmission( 1.0f, dark ) == 0.0f,
+		    "a system particle emits its clamped alpha times its brightest tint channel" );
+	}
+
+	// Spark materials: every Portal 2 spark material, in any case and either
+	// slash; nothing else.
+	{
+		const char *sparks[] = { "effects/spark", "particle\\sparks\\sparks.vmt",
+			"particle/particle_spark", "particle/glow_spark_01", "particle/sparks/sparks_ob",
+			"PARTICLE/SPARKS/SPARKS_NONTRAIL" };
+		bool all = true;
+		for ( const char *name : sparks )
+			all &= IsSparkMaterial( name );
+		Check( all, "every spark material is recognized" );
+		Check( !IsSparkMaterial( "particle/smoke1/smoke1" ) && !IsSparkMaterial( "effects/spar" ) &&
+		           !IsSparkMaterial( "" ) && !IsSparkMaterial( nullptr ),
+		    "other materials are not sparks" );
+	}
+
+	// Color: the emission-weighted tint, brightest channel 1.
+	{
+		BurstUnderTest burst;
+		const float at[3] = { 0, 0, 0 };
+		const float orange[3] = { 1.0f, 0.5f, 0.0f }, blue[3] = { 0.0f, 0.0f, 1.0f };
+		burst.BeginFrame();
+		burst.Add( at, 3.0f, orange );
+		burst.Add( at, 1.0f, blue );
+		const Light_t light = burst.Current();
+		Check( Near( light.m_Color[0], 1.0f ) && Near( light.m_Color[1], 0.5f ) &&
+		           Near( light.m_Color[2], 1.0f / 3.0f ),
+		    "the light's color is the emission-weighted tint, brightest channel 1" );
+		BurstUnderTest white;
+		white.BeginFrame();
+		white.Add( at, 0.25f );
+		const Light_t w = white.Current();
+		Check( w.m_Color[0] == 1.0f && w.m_Color[1] == 1.0f && w.m_Color[2] == 1.0f,
+		    "untinted sparks light white" );
+	}
+
+	// A full burst: a system of a few faint sparks lights less than a shower.
+	{
+		BurstUnderTest burst( kSystemFullEmission );
+		const float at[3] = { 0, 0, 0 };
+		burst.BeginFrame();
+		burst.Add( at, 1.0f );
+		burst.Add( at, 1.0f );
+		Check( Near( burst.Current().m_flScale, 2.0f / kSystemFullEmission ),
+		    "a burst below full emission lights in proportion" );
+		burst.BeginFrame();
+		for ( int i = 0; i < 16; ++i )
+			burst.Add( at, 1.0f );
+		Check( burst.Current().m_flScale == 1.0f, "a burst above full emission is at full strength" );
+		burst.BeginFrame();
+		for ( int i = 0; i < 8; ++i )
+			burst.Add( at, 1.0f );
+		Check( Near( burst.Current().m_flScale, 0.5f ), "and then fades against its own peak" );
 	}
 
 	// A scripted burst of falling sparks: the light fades monotonically,

@@ -1,0 +1,107 @@
+{
+  "baked_state": "baked",
+  "cameras": {
+    "room": {
+      "eye": [
+        4.7,
+        0.3,
+        1.8
+      ],
+      "forward": [
+        -0.6904509632033649,
+        0.6904509632033649,
+        -0.21576592600105152
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeS",
+      "stand_in_mesh": "ProbeSShape"
+    }
+  ],
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "swing",
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Moved-light oracle: a bulb on a rope lights the room directly, through its shadows and by its bounce, wherever it swings",
+  "regions": {
+    "room": {
+      "back_wall": [
+        "S_Yp"
+      ],
+      "floor": [
+        "S_Zn"
+      ],
+      "model": [
+        "ProbeS"
+      ],
+      "pillar": [
+        "Pillar"
+      ],
+      "red_wall": [
+        "S_Xn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "swing.usda",
+  "states": {
+    "baked": {
+      "layer": "states/baked.usda",
+      "note": "bulb hidden: the map's bake"
+    },
+    "left": {
+      "bulb_m": [
+        1.535819,
+        2.5,
+        1.850933
+      ],
+      "layer": "states/left.usda",
+      "note": "bulb -40 degrees from rest"
+    },
+    "rest": {
+      "bulb_m": [
+        2.5,
+        2.5,
+        1.5
+      ],
+      "layer": null,
+      "note": "bulb hanging straight down"
+    },
+    "right": {
+      "bulb_m": [
+        3.464181,
+        2.5,
+        1.850933
+      ],
+      "layer": "states/right.usda",
+      "note": "bulb 40 degrees from rest"
+    }
+  },
+  "swing": {
+    "anchor_m": [
+      2.5,
+      2.5,
+      3.0
+    ],
+    "angle_degrees": 40.0,
+    "bulb_radius_m": 0.0508,
+    "engine_color": 0.2,
+    "length_m": 1.5,
+    "radiance": 500.0
+  }
+}

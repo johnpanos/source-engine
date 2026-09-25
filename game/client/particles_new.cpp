@@ -58,6 +58,9 @@ void CNewParticleEffect::Construct()
 
 	m_nToolParticleEffectId = TOOLPARTICLESYSTEMID_INVALID;
 	m_RefCount = 0;
+	m_LightBurst = SparkLight::CBurst( SparkLight::kSystemFullEmission );
+	m_nLightClass = -1;
+	m_bLightGathered = false;
 	ParticleMgr()->AddEffect( this );
 	m_LastMax = Vector( -1.0e6, -1.0e6, -1.0e6 );
 	m_LastMin = Vector( 1.0e6, 1.0e6, 1.0e6 );
@@ -130,6 +133,73 @@ void CNewParticleEffect::Release()
 			}
 		}
 	}
+}
+
+//-----------------------------------------------------------------------------
+// Spark light (render/spark_light.h)
+//-----------------------------------------------------------------------------
+static bool DrawsSparks( CParticleCollection *pCollection )
+{
+	return pCollection->m_pDef && SparkLight::IsSparkMaterial( pCollection->m_pDef->MaterialName() );
+}
+
+static bool TreeDrawsSparks( CParticleCollection *pCollection )
+{
+	if ( DrawsSparks( pCollection ) )
+		return true;
+	for ( CParticleCollection *pChild = pCollection->m_Children.m_pHead; pChild; pChild = pChild->m_pNext )
+	{
+		if ( TreeDrawsSparks( pChild ) )
+			return true;
+	}
+	return false;
+}
+
+// Adds the live particles of every spark-drawing collection in the tree.
+static void AddSparkEmission( CParticleCollection *pCollection, SparkLight::CBurst *pBurst )
+{
+	if ( DrawsSparks( pCollection ) )
+	{
+		for ( int i = 0; i < pCollection->m_nActiveParticles; ++i )
+		{
+			// Vector attributes are stored as four x, four y, four z.
+			const float *pXYZ = pCollection->GetFloatAttributePtr( PARTICLE_ATTRIBUTE_XYZ, i );
+			const float *pTint = pCollection->GetFloatAttributePtr( PARTICLE_ATTRIBUTE_TINT_RGB, i );
+			const float flAlpha = *pCollection->GetFloatAttributePtr( PARTICLE_ATTRIBUTE_ALPHA, i );
+			const float pos[3] = { pXYZ[0], pXYZ[4], pXYZ[8] };
+			const float tint[3] = { pTint[0], pTint[4], pTint[8] };
+			pBurst->Add( pos, SparkLight::SystemEmission( flAlpha, tint ), tint );
+		}
+	}
+	for ( CParticleCollection *pChild = pCollection->m_Children.m_pHead; pChild; pChild = pChild->m_pNext )
+	{
+		AddSparkEmission( pChild, pBurst );
+	}
+}
+
+void CNewParticleEffect::GatherLight()
+{
+	// Children are created with the effect, so one look classifies it.
+	if ( m_nLightClass < 0 )
+		m_nLightClass = TreeDrawsSparks( this ) ? 1 : 0;
+	if ( !m_nLightClass )
+		return;
+	m_LightBurst.BeginFrame();
+	AddSparkEmission( this, &m_LightBurst );
+	m_bLightGathered = true;
+}
+
+void CNewParticleEffect::CommitLight()
+{
+	if ( !m_bLightGathered )
+	{
+		m_Light.Release();
+		return;
+	}
+	m_bLightGathered = false;
+	if ( !m_Light.IsConfigured() )
+		m_Light.Configure( SparkLightParams( 2, 160.0f ) );
+	m_Light.Commit( m_LightBurst.Current() );
 }
 
 void CNewParticleEffect::NotifyRemove()
