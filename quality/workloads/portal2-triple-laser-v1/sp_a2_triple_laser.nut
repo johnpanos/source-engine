@@ -34,7 +34,7 @@ function TL_WallAhead( from, dir )
 
 QA_Do( "setup", function()
 {
-	SendToConsole( "sv_cheats 1; con_drawnotify 0; cl_drawhud 0; developer 0" )
+	SendToConsole( "sv_cheats 1; con_drawnotify 0; cl_drawhud 0; developer 0; mat_forceaniso 16; mat_picmip; mat_forceaniso; mat_trilinear; mat_dxlevel; mat_hdr_level; r_rootlod; mat_bumpmap; mat_detail_tex; mat_specular" )
 	foreach ( name in ::TL.catchers )
 	{
 		QA_Watch( name, "OnPowered" )
@@ -70,6 +70,14 @@ QA_Do( "enter the chamber", function()
 	QA_PlaceEye( Vector( 7760, -5340, 64 ), 12.0, -155.0 )
 }, 1.5 )
 QA_Do( "shot catchers", function() { QA_Shot( "catchers_unpowered" ) }, 1.0 )
+
+// Material detail up close: the floor's ssbump tiles and detail dot grid
+// (tile/white_floor_tile002a) and a black wall panel.
+QA_Do( "look down at the floor", function()
+{
+	QA_PlaceEye( Vector( 7700, -5380, 64 ), 60.0, -100.0 )
+}, 1.5 )
+QA_Do( "shot floor", function() { QA_Shot( "floor_close" ) }, 1.0 )
 
 QA_Expect( "catchers.start_unpowered", function()
 {

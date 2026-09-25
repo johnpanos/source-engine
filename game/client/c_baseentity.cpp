@@ -6560,12 +6560,11 @@ static ConCommand cl_find_ent_index("cl_find_ent_index", CC_CL_Find_Ent_Index, "
 
 #ifdef PORTAL2
 //-----------------------------------------------------------------------------
-// CPU/GPU detail levels (retail Portal 2 engine convars; CS:GO base semantics).
-// cpu_level: 0 low .. 2 high. gpu_level: 0 low .. 3 very high. The advanced
-// video options and portal render targets read the same convars.
+// CPU/GPU detail levels (retail Portal 2 convars, defined with the system level
+// configuration in portal2/portal2_system_level.cpp).
 //-----------------------------------------------------------------------------
-ConVar cpu_level( "cpu_level", "2", FCVAR_ARCHIVE, "CPU detail level: 0 low, 1 medium, 2 high." );
-ConVar gpu_level( "gpu_level", "3", FCVAR_ARCHIVE, "GPU detail level: 0 low, 1 medium, 2 high, 3 very high." );
+extern ConVar cpu_level;
+extern ConVar gpu_level;
 
 bool C_BaseEntity::IsOutsideDetailLevels() const
 {

@@ -50,6 +50,9 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#if defined( POSIX )
+#include <dlfcn.h>
+#endif
 #include <vector>
 
 //-----------------------------------------------------------------------------
@@ -164,6 +167,34 @@ CON_COMMAND( vk_frame_mark, "Label the current frame in the -vkframestats stream
 	for ( int i = 1; i < args.ArgC(); ++i )
 		g_VulkanContext.MarkFrame( args[i] );
 }
+
+#if defined( POSIX )
+// Captures the next presented frame when the process runs under RenderDoc
+// (renderdoccmd capture ...), through RenderDoc's in-application API
+// (renderdoc_app.h, RENDERDOC_API_1_1_2: TriggerCapture is its 16th entry).
+// Scenario scripts use it to capture exactly the frame they compare.
+CON_COMMAND( vk_renderdoc_capture, "Capture the next frame with RenderDoc when running under it" )
+{
+	void *pModule = dlopen( "librenderdoc.so", RTLD_NOW | RTLD_NOLOAD );
+	if ( !pModule )
+	{
+		Warning( "vk_renderdoc_capture: not running under RenderDoc\n" );
+		return;
+	}
+	typedef int ( *GetApiFn )( int version, void **outApi );
+	GetApiFn pGetApi = reinterpret_cast<GetApiFn>( dlsym( pModule, "RENDERDOC_GetAPI" ) );
+	void **pApi = nullptr;
+	const int kApiVersion_1_1_2 = 10102;
+	const int kTriggerCaptureSlot = 15;
+	if ( !pGetApi || !pGetApi( kApiVersion_1_1_2, reinterpret_cast<void **>( &pApi ) ) || !pApi )
+	{
+		Warning( "vk_renderdoc_capture: RenderDoc API 1.1.2 unavailable\n" );
+		return;
+	}
+	reinterpret_cast<void ( * )()>( pApi[kTriggerCaptureSlot] )();
+	Msg( "vk_renderdoc_capture: capturing the next frame\n" );
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Unimplemented-entry census.
@@ -4331,6 +4362,24 @@ void CEmptyMesh::EmitToNativeQueue()
 	{
 		DropDraw( "draw dropped: no indices in range" );
 		return;
+	}
+
+	// VK_DEBUG_LIGHTMAPPED=1: the first vertex's lightmap coordinate and bumped
+	// page offset (TEXCOORD1, TEXCOORD2.x) once per lightmapped material.
+	static const bool s_debugLightmappedVerts = getenv( "VK_DEBUG_LIGHTMAPPED" ) != nullptr;
+	if ( s_debugLightmappedVerts && g_CurrentLightmappedCombos >= 0 && g_pBoundMaterial )
+	{
+		static std::unordered_set<std::string> s_seenVerts;
+		if ( s_seenVerts.insert( g_pBoundMaterial->GetName() ).second )
+		{
+			const unsigned char *base = vertices.m_vertexData.data();
+			float lm[2], tc2[2];
+			memcpy( lm, base + 24, sizeof( lm ) );
+			memcpy( tc2, base + kMeshTexCoord2Offset, sizeof( tc2 ) );
+			fprintf( stderr, "[vulkan] lightmapped-vertex %s lm=(%g %g) tc2=(%g %g) wide=%d fmt=%#llx\n",
+			    g_pBoundMaterial->GetName(), lm[0], lm[1], tc2[0], tc2[1],
+			    vertices.HasWideTexCoords() ? 1 : 0, static_cast<unsigned long long>( vertices.m_format ) );
+		}
 	}
 
 	// SpriteCard and spline cards: the corners are built from the vertices'

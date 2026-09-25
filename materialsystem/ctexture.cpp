@@ -4278,8 +4278,11 @@ int ComputeActualMipCount( const TexDimensions_t& actualDims, unsigned int nFlag
 
 	// Unless ALLMIPS is set, we stop mips at 32x32
 	const int nMaxMipSize = 32;
-	// Clamp border textures on Posix to fix L4D2 flashlight cookie issue
-#ifdef DX_TO_GL_ABSTRACTION
+	// Clamp border textures on Posix to fix L4D2 flashlight cookie issue.
+	// POSIX builds keep every mip as the retail Linux/Mac (togl) builds do:
+	// stopping at 32x32 is the Windows D3D rule, and it aliases distant
+	// surfaces (Portal 2's detail dot grids shimmer instead of resolving).
+#if defined( DX_TO_GL_ABSTRACTION ) || defined( POSIX )
 	if ( ( false && !g_bForceTextureAllMips && !( nFlags & TEXTUREFLAGS_ALL_MIPS ) ) || ( true && ( nFlags & TEXTUREFLAGS_BORDER ) ) )
 #else
 	if ( ( true && !g_bForceTextureAllMips && !( nFlags & TEXTUREFLAGS_ALL_MIPS ) ) || ( false && ( nFlags & TEXTUREFLAGS_BORDER ) ) )
