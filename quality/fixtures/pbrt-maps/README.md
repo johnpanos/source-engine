@@ -124,11 +124,18 @@ the `legacy-relight` profile:
      lit twice.
    The run fails on any other difference.
 
+The SDFV carries point lights as spheres and spot lights as disks with vrad's
+cone, and its light cells use the map's PVS, so `r_indirect_producer sdf`
+traces only the lights near each probe. The producer updates the probes
+around the camera every update and the rest in turn (`r_indirect_focus`,
+`r_indirect_probe_budget`). `--quality legacy-relight-preview` builds in
+minutes instead of hours. Boot on a client with the RTRN/SDFV loaders, such
+as `--build build`: the toolchain's `client_build` offers only `baked`.
+
 The engine replaces only the opaque world with the relit world mesh. Brush
 entities, displacements, water and translucent faces keep their vrad
 lightmaps. Other current limits, each recorded in the receipt:
 
-- spot cones become cosine lobes;
 - constant and linear falloffs are matched at vrad's 100-unit normalization
   distance;
 - named lights that start dark stay world lights and are not baked;
@@ -197,6 +204,9 @@ about 24% slower than the GPU alone, so it is not offered.
 | Legacy map → relight scene, vrad light conversion | `tools/quality/legacy_bsp_scene.py` |
 | VTF decoding | `tools/quality/vtf_decode.py` |
 | Relight driver and gameplay-identity oracle | `tools/quality/legacy_bsp_relight.py` |
+| SDFV light cells (range, side, PVS culling) | `tools/quality/sdf_light_cells.py` (tests: `tests/test_sdf_light_cells.py`) |
+| Traced producers' probe focus, independent of the engine host | `tools/quality/gi_focus.py` |
+| Bake progress from Cycles' log | `tools/quality/bake_progress.py` (tests: `tests/test_bake_progress.py`) |
 | Publishing to `./play` (store, mounts, launch arguments) | `tools/quality/playable_maps.py` (tests: `tests/test_playable_maps.py`) |
 
 ## Known limits (preview, not RFC 0008 acceptance)

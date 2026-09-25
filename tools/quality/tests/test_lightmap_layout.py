@@ -188,22 +188,54 @@ class PlanarLayoutTest(unittest.TestCase):
         self.assertEqual(a.tobytes(), b.tobytes())
 
     def test_plane_ids_decide_exactly(self):
-        """With plane ids, a sliver whose float normal is degrees off still
-        joins its plane's chart, and two faces that only look coplanar but
-        carry different planes stay apart."""
+        """With plane ids, a sliver whose float normal is a fraction of a
+        degree off still joins its plane's chart; without them it does not."""
         rng = np.random.default_rng(1)
         quad = grid(rng, 2, 1, 2.0, 1.0)
         # A sliver along the quad's right edge, tilted by float noise.
         sliver = np.array([[[2.0, 0, 0], [2.0005, 0.5, 2e-6], [2.0, 1.0, 0]]])
         positions = np.concatenate([quad, sliver])
         planes = np.array([4] * len(quad) + [4])
-        _, record = layout.planar_layout(positions, SIZE, planes=planes)
+        normals = np.tile([0, 0, 1.0], (len(positions), 1))
+        _, record = layout.planar_layout(positions, SIZE, planes=planes, plane_normals=normals)
         self.assertEqual(record["charts"], 1)
-        _, record = layout.planar_layout(positions, SIZE)          # geometric test
+        _, record = layout.planar_layout(positions, SIZE)          # geometry alone
         self.assertEqual(record["charts"], 2)
-        planes = np.array([4] * 2 + [5] * (len(quad) - 2) + [5])
-        _, record = layout.planar_layout(positions, SIZE, planes=planes)
+
+    def test_nearly_parallel_planes_join_and_bends_do_not(self):
+        """Two faces meeting on an edge: planes 0.03 degrees apart (vbsp's
+        neighbouring brushes) chart together; a 0.5 degree bend does not."""
+        rng = np.random.default_rng(2)
+        for degrees, charts in ((0.03, 1), (0.5, 2)):
+            angle = math.radians(degrees)
+            bend = np.array([[math.cos(angle), 0, -math.sin(angle)], [0, 1, 0],
+                             [math.sin(angle), 0, math.cos(angle)]])
+            left = grid(rng, 1, 1, 1.0, 1.0)
+            right = grid(rng, 1, 1, 1.0, 1.0) @ bend.T + [1.0, 0, 0]
+            positions = np.concatenate([left, right])
+            planes = np.array([1] * len(left) + [2] * len(right))
+            normals = np.concatenate([np.tile([0, 0, 1.0], (len(left), 1)),
+                                      np.tile(bend @ [0, 0, 1.0], (len(right), 1))])
+            uvs, record = layout.planar_layout(positions, SIZE, planes=planes,
+                                               plane_normals=normals)
+            self.assertEqual(record["charts"], charts, degrees)
+            self.assertLess(seams.chart_invariants(positions, uvs, SIZE)["density_spread"],
+                            1.001)
+
+    def test_a_face_far_off_its_plane_charts_by_its_corners(self):
+        """vbsp can leave a millimetres-wide face's corners 60 degrees off its
+        nominal plane; the renderer draws the corners, so the layout projects
+        that face on its own plane (no foreshortening), not the nominal one."""
+        rng = np.random.default_rng(3)
+        wall = grid(rng, 1, 1, 1.0, 1.0)                        # z = 0 plane
+        strip = np.array([[[1.0, 0, 0], [1.005, 0, 0], [1.0, 1.0, 0.0]]])
+        strip[0, 1, 2] = 0.0087                                  # lifted 60 degrees
+        positions = np.concatenate([wall, strip])
+        planes = np.array([7] * len(positions))                  # all say plane 7
+        normals = np.tile([0, 0, 1.0], (len(positions), 1))
+        uvs, record = layout.planar_layout(positions, SIZE, planes=planes, plane_normals=normals)
         self.assertEqual(record["charts"], 2)
+        self.assertLess(seams.chart_invariants(positions, uvs, SIZE)["density_spread"], 1.001)
 
     def test_a_bent_panel_is_two_charts(self):
         """Negative control: two quads meeting at 1 degree are not one plane.

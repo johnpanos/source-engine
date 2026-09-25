@@ -994,3 +994,49 @@ passes (`quality-results/rfc0011-g8/soak-linux/soak.json`).
 - The engine's `echo` puts a timestamp between words. Screenshots requested
   while one is being written are dropped. A console line is cut at about 512
   characters. The soak and flicker harnesses work within all three.
+
+## Traced producers at map scale: SDFV v2, light cells, probe focus (2026-09-25)
+
+A user-directed follow-up to G6–G7, prompted by relighting shipped maps
+(`tools/quality/legacy_bsp_relight.py`). The SDF producer refused a relit
+`testchmb_a_00`: its SDFV held 64 light records, and the producer's limit was
+16. Each point light cost six rectangle records. The bigger cost was
+elsewhere. Every update traced every probe against every light, and a whole
+Portal map has 30× the fixtures' probes.
+
+| Part | Change | Evidence |
+| --- | --- | --- |
+| Native lights | SDFV v2 (`tools/quality/sdf_volume.py` owns the format) adds `sphere` and `spot`. A spot is a one-sided disk with vrad's cone: full inside the inner cone, `((cos − outer)/(inner − outer))^exponent` between, nothing outside. The C++ and Python readers still accept v1. The scene model carries each emitter's analytic `shape` and a DiskLight's Source cone (`sourceEngine:cone*`). The Cycles bakes apply the same cone as an emission mask (`pbrt_blender.emitter_material`). `DirectOcclusion` samples both kinds. | `world.sdf-volume` 40 checks (20 malformations, the every-kind fixture, v1 compatibility). `render.direct-occlusion` 23 checks: a box on a corner's path darkens it under a sphere, but not under a spot whose cone misses the corner. GPU: probe analytic light against L r²/d² cos, sphere 0.1% and spot 0.5% worst texel error; the spot's cone leaves a probe 45° off axis at 0, where the sphere control gives 0.74. The relit map drops from 64 records to 14. A scratch Cycles bake of the cone matched analytic within 0.3% on axis. |
+| Light cells | The bake lists, per 2 m cell, the lights that can reach it (`tools/quality/sdf_light_cells.py`). A light is culled only where its brightest light, at 2.1× for styled lights, is below 0.001, where the cell is behind a one-sided light, or, for a compiled map, by the BSP's PVS between their open leaves. The trace program lights probes and ray hits from their cell's lists, which live in storage buffers, so there is no light limit. | Python: a conservativeness property over random lights and points, a seeded wrong variant (distance to the cell centre) detected, visibility, side and buried cases. GPU: a cell that omits the light leaves its probe unlit. Relit `testchmb_a_00`: 37k cells, 0.51 lights per cell on average, PVS culled 182k pairs. |
+| Probe focus | Each probe has its own reference and update counts. The host (`engine/indirect_light_host.cpp` ProbeFocus) passes `FrameWork::focusProbes`: probes with an open-leaf cluster in the camera's PVS or a touching cluster. It falls back to camera distance (`r_indirect_focus_radius`) when visibility does not narrow the set. Other probes take turns, `r_indirect_probe_budget` (128) per update. `r_indirect_focus 0` restores every probe every update. An update's live dispatch lists only its traced probes and those its ring slot is stale for. | GPU: a focus of probe 0 with no budget references probe 0 only; a focus of every probe is the no-focus schedule byte for byte; after a change a focused probe updates while an unfocused one waits; a budget brings every probe to rest. In game the host's focus equals the independent `tools/quality/gi_focus.py` (94 identical probes at the relit spawn). |
+
+GPU cost, Radeon 8060S, `indirect_sdf_native_conformance --bench` (median /
+p95 per update; live = a door-sized proxy appearing in view). Evidence:
+`quality-results/relight/sdf-gates/bench/bench-final.txt`.
+
+| Map | Probes | Focus | Reference | Live |
+| --- | --- | --- | --- | --- |
+| relit `testchmb_a_00`, 4 m | 4862 | none | 3.48 / 3.79 ms | 4.11 / 4.59 ms |
+| relit `testchmb_a_00`, 4 m | 4862 | 94 | 0.61 / 0.72 ms | 0.48 / 1.07 ms |
+| 2 m grid, open-leaf probes only | 647 active | 301 | 0.85 / 0.94 ms | 1.58 / 2.61 ms |
+| 2 m grid, every probe active | 34272 | 630 | 1.57 / 1.67 ms | 0.50 / 3.32 ms |
+
+The same 2 m grid without a focus costs 21.4 ms per reference update.
+
+Kept green on the final build (`quality-results/relight/sdf-gates/final2`):
+- `render.indirect-light.sdf`: 28 checks.
+- `gi_sdf.py door`: G6.2 and G7.2 pass. `gi_sdf.py sun`: G6.3 and G7.2 pass.
+- `gi_temporal.py door`: 0 flicker for every producer.
+- `render.direct-occlusion`: 23 checks. `world.sdf-volume`: 40 checks.
+
+A first rerun failed G6.3. Room-states probes inside brushes (cluster −1)
+had fallen out of the focus. A probe's clusters now include its six
+half-spacing neighbours, and the gate passes.
+
+Open:
+- The live p95 exceeds 2 ms at 2 m spacing; the medians fit.
+- A relit map's probe bake keeps probes in the void outside the map active:
+  4859 active at 4 m, but 116 in open leaves. The budget spends turns on them.
+- The validation layer is absent on this host, so these runs are not
+  validation-checked.
+- Android was not measured.

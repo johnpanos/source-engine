@@ -41,6 +41,14 @@ struct msurfacelighting_t;
 void R_AddDynamicLights( SurfaceHandle_t surfID, msurfacelighting_t *pLighting, const matrix3x4_t& entityToWorld );
 void R_BuildLightMap( struct dlight_t *pLights, class ICallQueue *pCallQueue, SurfaceHandle_t surfID, const matrix3x4_t& entityToWorld );
 void R_RedownloadAllLightmaps();
+namespace mapcontainer
+{
+class ProbeVolumeView;
+}
+// RFC 0011: light brush entities without baked light from the probe volume
+// (null: forget every such surface, at map end). False when the map's
+// lightmap pages are not allocated yet (try again later).
+bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view );
 void GL_RebuildLightmaps( void );
 void FASTCALL R_RenderDynamicLightmaps( dlight_t *pLights, ICallQueue *pCallQueue, SurfaceHandle_t surfID, const matrix3x4_t& entityToWorld );
 int R_AddLightmapPolyChain( SurfaceHandle_t surfID );

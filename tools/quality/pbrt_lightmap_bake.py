@@ -392,6 +392,45 @@ def lightmap_frame(tree):
     return normal, t, b
 
 
+# --noise-pair: every light page is the mean of two independent half-sample
+# bakes (seeds s and s + 1); the total's halves go to this directory for the
+# noise gate (lightmap_noise.py). None bakes each page once.
+NOISE_PAIR = {"dir": None, "halves": {}}
+
+
+def bake_light(image, pass_filter, label, size, render, keep=None):
+    """DIFFUSE-bake the light into `image` (its BakeTarget nodes already set):
+    once, or as the mean of two half-sample halves; `keep` names halves to
+    save as <dir>/<keep>-a.exr and -b.exr."""
+    import numpy as np
+    if NOISE_PAIR["dir"] is None:
+        announce(label, size)
+        bpy.ops.object.bake(type="DIFFUSE", pass_filter=pass_filter)
+        return
+    samples, seed = render.cycles.samples, render.cycles.seed
+    halves = []
+    try:
+        render.cycles.samples = max(1, (samples + 1) // 2)
+        for index in range(2):
+            render.cycles.seed = seed + index
+            announce("%s half %d" % (label, index + 1), size)
+            bpy.ops.object.bake(type="DIFFUSE", pass_filter=pass_filter)
+            halves.append(np.array(image.pixels[:], dtype=np.float32))
+    finally:
+        render.cycles.samples, render.cycles.seed = samples, seed
+    if keep:
+        for index, half in enumerate(halves):
+            copy = bpy.data.images.new("%s_half%d" % (keep, index), width=size, height=size,
+                                       alpha=True, float_buffer=True)
+            copy.pixels.foreach_set(half)
+            path = NOISE_PAIR["dir"] / ("%s-%s.exr" % (keep, "ab"[index]))
+            copy.save_render(filepath=str(path.resolve()), scene=render)
+            if not path.is_file():
+                raise RuntimeError("Cycles did not save noise half " + path.name)
+            NOISE_PAIR["halves"][path.name] = sha256(path)
+    image.pixels.foreach_set((halves[0] + halves[1]) / 2)
+
+
 def bake_sun_visibility(merged, scene, path, size, render):
     """Sun-only direct diffuse with / without shadows; their ratio is visibility."""
     import numpy as np
@@ -472,8 +511,7 @@ def bake_separated_layers(merged, layers, out_dir, size, render):
         bpy.ops.object.select_all(action="DESELECT")
         merged.select_set(True)
         bpy.context.view_layer.objects.active = merged
-        announce(role, size)
-        bpy.ops.object.bake(type="DIFFUSE", pass_filter=SEPARATED_PASSES[role])
+        bake_light(image, SEPARATED_PASSES[role], role, size, render)
         path = out_dir / (role + ".exr")
         image.save_render(filepath=str(path.resolve()), scene=render)
         if not path.is_file():
@@ -507,8 +545,7 @@ def bake_rnm(merged, out_dir, size, render):
             target = tree.nodes["BakeTarget"]
             target.image = image
             tree.nodes.active = target
-        announce("RNM basis %d" % index, size)
-        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"})
+        bake_light(image, {"DIRECT", "INDIRECT"}, "RNM basis %d" % index, size, render)
         path = out_dir / ("rnm%d.exr" % index)
         image.save_render(filepath=str(path.resolve()), scene=render)
         if not path.is_file():
@@ -584,6 +621,9 @@ def main():
                         help="directory for the separated layer EXRs (<role>.exr)")
     parser.add_argument("--seed", type=int, default=pbrt_blender.SEED,
                         help="Cycles seed for every bake pass (recorded in the receipt)")
+    parser.add_argument("--noise-pair-dir", type=Path,
+                        help="bake every light page as the mean of two half-sample halves "
+                             "and keep the total's halves here (lightmap_noise.py)")
     parser.add_argument("--layout", choices=("blender", "authored"), default="blender",
                         help="authored: use the stage's lightmap_st (lightmap_layout.py) "
                              "unchanged; blender: chart and pack in Blender")
@@ -706,6 +746,9 @@ def main():
     device = pbrt_blender.configure_cycles(args.samples, args.device)
     light_paths = pbrt_blender.configure_light_paths(args.light_paths)
     sampling = pbrt_blender.pin_sampling(seed=args.seed)
+    if args.noise_pair_dir:
+        args.noise_pair_dir.mkdir(parents=True, exist_ok=True)
+        NOISE_PAIR["dir"] = args.noise_pair_dir
     render = bpy.context.scene
     render.cycles.use_auto_tile = True
     render.cycles.tile_size = BAKE_TILE
@@ -747,8 +790,9 @@ def main():
         ", sun visibility" if scene.get("distant_lights") else "",
         ", RNM basis" if args.directional_dir else "",
         ", coverage" if args.out_coverage_exr else ""))
-    announce("total", args.size)
-    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"})
+    render.render.image_settings.file_format = "OPEN_EXR"
+    render.render.image_settings.color_depth = "32"
+    bake_light(atlas, {"DIRECT", "INDIRECT"}, "total", args.size, render, keep="total")
     args.out_exr.parent.mkdir(parents=True, exist_ok=True)
     # Image.save() applies the display transform to generated images even for
     # EXR; save_render() keeps scene-linear texels.
@@ -818,6 +862,9 @@ def main():
                 "environment_sha256": sha256(args.environment) if args.environment else None,
                 "size": args.size, "samples": args.samples, "device": device,
                 "sampling": sampling, "determinism": cycles_device.determinism(device, False),
+                "noise_pair": {"half_samples": max(1, (args.samples + 1) // 2),
+                               "seeds": [args.seed, args.seed + 1],
+                               "halves": NOISE_PAIR["halves"]} if args.noise_pair_dir else None,
                 "reserved_rows": args.reserve_rows,
                 "mesh_count": len(meshes), "baked_mesh_count": len(baked),
                 "projected_meshes": {name: {"parts": value["parts"]}

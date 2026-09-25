@@ -26,6 +26,7 @@
 #include "render.h"
 #include "lightcache.h"
 #include "materialsystem/imaterialsystem.h"
+#include "gl_lightmap.h"
 #include "gl_model_private.h"
 #include "icliententity.h"
 #include "icliententitylist.h"
@@ -401,6 +402,7 @@ struct Host
 	std::vector<Proxy> occluded;
 	std::vector<unsigned char> occludedTotal;
 	std::vector<Proxy> visibilityProxies;      // the proxies the consumed volume's visibility has
+	bool brushesLit = false;                   // brush entities lit from the consumed volume
 	std::vector<LightOverride> lightOverrides; // r_indirect_light_direction
 	ProbeFocus focus;                          // the traced producers' probes near the camera
 	uint64_t uploadedGeneration = 0;
@@ -552,8 +554,10 @@ void Consume( const FrameVolume &frame )
 			host.current = occluded;
 	}
 	host.view.emplace( host.current->bytes.data(), host.current->layout );
-	// Every model's ambient cube is re-evaluated from the new volume.
+	// Every model's ambient cube is re-evaluated from the new volume, and
+	// brush entities without baked light (doors) are lit from it.
 	R_StudioInitLightingCache();
+	host.brushesLit = R_RelightBrushEntitiesFromProbes( &*host.view );
 	world_mesh_gpu::IWorldMeshUpload *uploader = Uploader();
 	if ( host.deviceLost || !uploader || !uploader->IsResident() )
 		return;
@@ -780,6 +784,8 @@ void IndirectLight_EndMap()
 	if ( host.switcher )
 		host.switcher->EndMap();
 	host.switcher.reset();
+	R_RelightBrushEntitiesFromProbes( nullptr );
+	host.brushesLit = false;
 	host.view.reset();
 	host.current.reset();
 	host.change.clear();
@@ -830,6 +836,9 @@ void IndirectLight_Frame( const light_set::Snapshot &lights )
 		host.uploadedGeneration = 0;
 	const bool published = frame.volume && frame.generation != host.uploadedGeneration;
 	Consume( frame );
+	// The volume the map loaded with, once its brush lightmaps exist.
+	if ( !host.brushesLit && host.view )
+		host.brushesLit = R_RelightBrushEntitiesFromProbes( &*host.view );
 	if ( r_indirect_report.GetBool() && ( !work.jobs.empty() || published ) )
 		Msg( "indirect light: frame %llu %s update %.3f ms (%s), generation %llu, policy %d, "
 		     "indirect mean %.5f\n",

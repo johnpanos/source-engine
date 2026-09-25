@@ -48,9 +48,6 @@ COPLANAR_COS = math.cos(math.radians(2.0))
 # One flat region: a seam between such triangles of one mesh is a charting error.
 FLAT_COS = math.cos(math.radians(0.01))
 QUANTUM = 1e-5            # world position key (stage metres)
-# A pixel at Portal's near clip plane (~0.18 m, 90 degree field, 1920 wide) is
-# about 0.19 mm: a triangle thinner than this never covers one.
-SLIVER_METRES = 1e-4
 LINE_QUANTUM = 1e-4       # line direction and offset key
 MIN_UV_AREA = 1e-12       # triangles with no chart (excluded materials)
 SAMPLES_PER_TEXEL = 2
@@ -115,18 +112,6 @@ def stage_triangles(stage_path):
 def uv_area(uv):
     e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
     return 0.5 * np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0])
-
-
-def visible_triangles(positions):
-    """Triangles at least SLIVER_METRES wide: thinner ones (vbsp's T-junction
-    slivers, microns wide) cover no pixel even at the near clip plane, and
-    their float normals are noise, so the seam check leaves them out (they
-    still join the charts they are continuous with)."""
-    longest = np.max([np.linalg.norm(positions[:, (k + 1) % 3] - positions[:, k], axis=1)
-                      for k in range(3)], axis=0)
-    area2 = np.linalg.norm(np.cross(positions[:, 1] - positions[:, 0],
-                                    positions[:, 2] - positions[:, 0]), axis=1)
-    return area2 / np.maximum(longest, 1e-30) >= SLIVER_METRES
 
 
 def triangle_normals(positions):
@@ -199,7 +184,6 @@ def boundary_pairs(positions, uvs, size):
     """
     normals, solid = triangle_normals(positions)
     charted = (uv_area(uvs) > MIN_UV_AREA) & solid
-    visible = visible_triangles(positions)
     keys = np.round(positions / QUANTUM).astype(np.int64)
     uv_keys = np.round(uvs * size * 64).astype(np.int64)
 
@@ -214,25 +198,20 @@ def boundary_pairs(positions, uvs, size):
             uses.setdefault(edge_key(t, k, (k + 1) % 3), []).append(t)
     edges = [(t, k, (k + 1) % 3) for t in np.flatnonzero(charted) for k in range(3)
              if len(uses[edge_key(t, k, (k + 1) % 3)]) == 1]
-    boundary_edges = sum(np.linalg.norm(positions[t, b] - positions[t, a]) >= QUANTUM
-                         for t, a, b in edges)
+    boundary_edges = int(sum(np.linalg.norm(positions[t, b] - positions[t, a]) >= QUANTUM
+                             for t, a, b in edges))
     boundary_length = float(sum(np.linalg.norm(positions[t, b] - positions[t, a])
                                 for t, a, b in edges))
     pairs = []
     gap = CONTINUOUS_TEXELS / size
-    # Pieces whose UVs agree along a shared line are one chart whatever their
-    # normals (a vbsp sliver's float normal can be degrees off). A pair that
+    # Pieces whose UVs agree along a shared line are one chart. A pair that
     # disagrees is a seam only between coplanar triangles on opposite sides.
     for t, a, b, t2, a2, b2, direction, lo, hi in line_overlaps(positions, edges, normals,
                                                                 -2.0, opposite=False):
         continuous = all(np.abs(edge_uv(uvs, positions, t, a, b, direction, s) -
                                 edge_uv(uvs, positions, t2, a2, b2, direction, s)
                                 ).max() < gap for s in (lo, hi))
-        # Slivers join charts through continuous pairs, but their noisy
-        # normals cannot say whether a discontinuity is a seam or a crease;
-        # being thinner than a pixel, they cannot show one either.
-        if not continuous and (not (visible[t] and visible[t2]) or
-                               np.dot(normals[t], normals[t2]) < COPLANAR_COS or
+        if not continuous and (np.dot(normals[t], normals[t2]) < COPLANAR_COS or
                                not opposite_sides(positions, normals, t, a, t2, a2,
                                                   direction)):
             continue
@@ -444,16 +423,6 @@ def chart_invariants(positions, uvs, size, max_density_spread=1.5):
     usable = charted & (area_world > 1e-12)
     if usable.any():
         density = uv_area(uvs)[usable] * size * size / area_world[usable]
-        # A triangle thinner than a texel (a vbsp sliver whose corner float
-        # rounding lifted off its plane) covers no texel: its area ratio
-        # means nothing. Judge the rest, at the median texel size.
-        longest = np.max([np.linalg.norm(positions[:, (k + 1) % 3] - positions[:, k], axis=1)
-                          for k in range(3)], axis=0)
-        altitude = 2 * area_world / np.maximum(longest, 1e-30)
-        texel = 1.0 / math.sqrt(float(np.median(density)))
-        visible = altitude[usable] >= texel
-        result["subtexel_triangles"] = int((~visible).sum())
-        density = density[visible] if visible.any() else density
         result["density_spread"] = float(density.max() / density.min())
     else:
         result["density_spread"] = 1.0

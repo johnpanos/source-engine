@@ -51,6 +51,13 @@ MARGIN = 2
 # Below this area (square metres) a triangle covers no pixel at any distance.
 DEGENERATE_AREA = 1e-10
 FLAT_COS = lightmap_seams.FLAT_COS
+# A triangle this close to its BSP plane's orientation lies on it (texel
+# density changes by 1 - cos, 0.015%); farther, its own corners decide.
+ON_PLANE_COS = math.cos(math.radians(1.0))
+# vbsp gives neighbouring brushes' faces planes a hair apart (0.01 degrees on
+# testchmb_a_00); plane normals this close chart as one plane. Wider than
+# FLAT_COS, which (on triangle normals) joins what the seam check calls flat.
+PLANE_MERGE_COS = math.cos(math.radians(0.05))
 SEARCH_STEPS = 60
 
 
@@ -59,13 +66,18 @@ def parking_uv(size):
     return 1.0 - 0.5 / size
 
 
-def planar_charts(positions, charted, planes=None):
+def planar_charts(positions, charted, planes=None, plane_normals=None):
     """Chart id per triangle (-1: uncharted or zero-area).
 
-    Two triangles meeting along an edge join when they lie on one plane:
-    with plane ids (a BSP face's plane, `planes` >= 0 on both) when the ids
-    are equal - exact, whatever float32 rounding does to a sliver's normal -
-    and otherwise when their normals agree within FLAT_COS."""
+    Two triangles meeting along an edge join when they lie on one plane. A
+    triangle is on its BSP plane (`planes` >= 0, normal `plane_normals`) when
+    its own normal is within ON_PLANE_DEGREES of the plane's: vbsp snaps the
+    corners of a millimetres-wide face, which can leave it tilted far off its
+    nominal plane, and the renderer draws the corners. Two such triangles join
+    when they share a plane or their plane normals agree within
+    PLANE_MERGE_COS (vbsp gives neighbouring brushes planes a hair apart); any pair
+    joins when their own normals agree within FLAT_COS - the flatness the seam
+    check measures, so no seam it would call flat is ever left."""
     normals, _ = lightmap_seams.triangle_normals(positions)
     area = 0.5 * np.linalg.norm(np.cross(positions[:, 1] - positions[:, 0],
                                          positions[:, 2] - positions[:, 0]), axis=1)
@@ -80,12 +92,16 @@ def planar_charts(positions, charted, planes=None):
 
     edges = [(t, k, (k + 1) % 3) for t in np.flatnonzero(live) for k in range(3)]
     planes = np.full(len(positions), -1) if planes is None else np.asarray(planes)
+    on_plane = planes >= 0
+    if plane_normals is not None:
+        plane_normals = np.asarray(plane_normals, dtype=np.float64)
+        on_plane &= np.einsum("ij,ij->i", normals, plane_normals) > ON_PLANE_COS
     for t, _, _, t2, _, _, _, _, _ in lightmap_seams.line_overlaps(positions, edges, normals,
                                                                    -2.0):
-        if planes[t] >= 0 and planes[t2] >= 0:
-            if planes[t] != planes[t2]:
-                continue
-        elif np.dot(normals[t], normals[t2]) <= FLAT_COS:
+        same_plane = on_plane[t] and on_plane[t2] and (
+            planes[t] == planes[t2] or (plane_normals is not None and np.dot(
+                plane_normals[t], plane_normals[t2]) > PLANE_MERGE_COS))
+        if not same_plane and np.dot(normals[t], normals[t2]) <= FLAT_COS:
             continue
         first, second = root(t), root(t2)
         if first != second:
@@ -152,13 +168,15 @@ def shelf_pack(rects, size, y0, y1):
     return placed
 
 
-def planar_layout(positions, size, charted=None, margin=MARGIN, reserved_rows=0, planes=None):
+def planar_layout(positions, size, charted=None, margin=MARGIN, reserved_rows=0, planes=None,
+                  plane_normals=None):
     """Lightmap UVs (n, 3, 2) for world triangles (n, 3, 3), and a record;
-    `planes` (n,) optionally names each triangle's plane (-1: unknown)."""
+    `planes` (n,) optionally names each triangle's plane (-1: unknown) and
+    `plane_normals` (n, 3) its normal."""
     positions = np.asarray(positions, dtype=np.float64)
     count = len(positions)
     charted = np.ones(count, bool) if charted is None else np.asarray(charted, bool)
-    labels, normals = planar_charts(positions, charted, planes)
+    labels, normals = planar_charts(positions, charted, planes, plane_normals)
     uvs = np.full((count, 3, 2), parking_uv(size))
     record = {"schema": SCHEMA, "method": "planar", "size": size, "margin": margin,
               "reserved_rows": reserved_rows, "triangles": count,
@@ -257,7 +275,7 @@ def author(stage_path, out_path, size, margin, reserved_rows, excluded):
         raise RuntimeError("could not copy the stage to " + str(out_path))
     stage = Usd.Stage.Open(str(out_path))
     cache = UsdGeom.XformCache()
-    meshes, positions, charted, planes = [], [], [], []
+    meshes, positions, charted, planes, plane_normals = [], [], [], [], []
     for prim in stage.Traverse():
         if not prim.IsA(UsdGeom.Mesh):
             continue
@@ -278,8 +296,16 @@ def author(stage_path, out_path, size, margin, reserved_rows, excluded):
                 raise ValueError("%s: %s must be uniform, one per triangle" %
                                  (prim.GetPath(), PLANE_PRIMVAR))
             planes.append(values)
+            # The plane's normal, authored on every corner (legacy_bsp_scene).
+            normals = np.asarray(mesh.GetNormalsAttr().Get(), dtype=np.float64)
+            if mesh.GetNormalsInterpolation() != UsdGeom.Tokens.faceVarying or \
+                    len(normals) != 3 * len(corners):
+                raise ValueError("%s: plane meshes need faceVarying normals" % prim.GetPath())
+            normals = normals.reshape(-1, 3, 3)[:, 0] @ world[:3, :3]
+            plane_normals.append(normals / np.linalg.norm(normals, axis=1)[:, None])
         else:
             planes.append(np.full(len(corners), -1))
+            plane_normals.append(np.zeros((len(corners), 3)))
         meshes.append((prim, len(corners)))
         positions.append(corners)
         charted.append(np.full(len(corners), name not in excluded and
@@ -288,7 +314,7 @@ def author(stage_path, out_path, size, margin, reserved_rows, excluded):
         raise ValueError("stage has no meshes to lay out")
     planes = np.concatenate(planes)
     uvs, record = planar_layout(np.concatenate(positions), size, np.concatenate(charted),
-                                margin, reserved_rows, planes)
+                                margin, reserved_rows, planes, np.concatenate(plane_normals))
     record["plane_ids"] = "all" if (planes >= 0).all() else \
         "none" if (planes < 0).all() else "some"
     offset = 0

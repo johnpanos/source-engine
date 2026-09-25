@@ -84,6 +84,34 @@ MODEL_BYTES = 48
 HUGE = 65536.0
 
 
+# vbsp can store one corner as several vertices a float-rounding apart. On
+# testchmb_a_00 such twins are all under 0.01 units apart, no pair lies
+# between 0.01 and 0.1, and vbsp itself treats vertices within 0.1 units
+# (faces.cpp POINT_EPSILON) as one: merge below 0.01.
+MERGE_UNITS = 1e-2
+
+
+def canonical_vertices(vertices, merge=MERGE_UNITS):
+    """For each vertex, the lowest index of the vertices within `merge`
+    Source units of it (transitively): one corner, one vertex, so faces
+    meeting there share it and no face keeps a micrometre-long edge."""
+    from scipy.spatial import cKDTree
+    count = len(vertices)
+    parent = np.arange(count)
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a, b in cKDTree(np.asarray(vertices, dtype=np.float64)).query_pairs(merge):
+        first, second = root(a), root(b)
+        if first != second:
+            parent[max(first, second)] = min(first, second)
+    return np.array([root(i) for i in range(count)], dtype=np.int64)
+
+
 class LegacyBsp:
     """A legacy VBSP file's lumps, bounds-checked on access."""
 
@@ -191,8 +219,8 @@ class LegacyBsp:
 
     def world_faces(self):
         """Model 0's faces: [{index, points (N,3), vertices (N BSP vertex
-        indices, the lowest index at each exact position), plane (BSP plane
-        index), plane_normal, texinfo, dispinfo,
+        indices, merged by canonical_vertices), plane (BSP plane index),
+        plane_normal, texinfo, dispinfo,
         styles, area}]; windings are
         clockwise seen from the front. Faces share vertices by index, as vbsp
         wrote them."""
@@ -200,10 +228,7 @@ class LegacyBsp:
         edges = np.frombuffer(self.lump(LUMP_EDGES, 4), dtype="<u2").reshape(-1, 2)
         surfedges = np.frombuffer(self.lump(LUMP_SURFEDGES, 4), dtype="<i4")
         vertices = np.frombuffer(self.lump(LUMP_VERTEXES, 12), dtype="<f4").reshape(-1, 3)
-        # vbsp can store one position under several indices: name each vertex
-        # by the lowest index at its exact position, so faces meeting there share it.
-        _, first, canonical = np.unique(vertices, axis=0, return_index=True, return_inverse=True)
-        canonical = first[canonical.reshape(-1)]
+        canonical = canonical_vertices(vertices)
         normals, _ = self.planes()
         texinfo_count = len(self.lump(LUMP_TEXINFO, TEXINFO_BYTES)) // TEXINFO_BYTES
         world = self.models()[0]
@@ -228,7 +253,8 @@ class LegacyBsp:
             # vbsp stores each plane with its flip beside it (planenum ^ 1) and
             # gives a face its own oriented plane; `side` only records the flip.
             normal = normals[plane]
-            result.append({"index": index, "points": vertices[corner].astype(np.float64),
+            result.append({"index": index,
+                           "points": vertices[canonical[corner]].astype(np.float64),
                            "vertices": canonical[corner].astype(np.int64), "plane": int(plane),
                            "plane_normal": normal, "texinfo": texinfo,
                            "dispinfo": dispinfo, "styles": (s0, s1, s2, s3), "area": area})

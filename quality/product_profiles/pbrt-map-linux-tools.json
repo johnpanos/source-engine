@@ -9,7 +9,7 @@
     "ktx": "quality/product_profiles/ktx2-linux-tools.json"
   },
   "host_packages": {
-    "blender": {"executable": "blender", "version": "5.2.1",
+    "blender": {"executable": "blender", "version": "5.2.2",
                 "purpose": "USD import/export, Cycles reference render and lightmap bake"},
     "openimagedenoise": {"library": "libOpenImageDenoise.so.2", "version": "2.4.0",
                          "purpose": "RTLightmap atlas denoise"}

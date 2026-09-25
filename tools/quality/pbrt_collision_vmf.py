@@ -507,6 +507,16 @@ def main():
     lines.extend(["cameras", "{", '\t"activecamera" "-1"', "}", ""])
     args.out_dir.mkdir(parents=True)
     shutil.copytree(ROOT / "quality/fixtures/vbsp-host/game", args.out_dir / "game")
+    # A door's material must resolve at compile time, or vbsp compiles its
+    # faces unlit (SURF_NOLIGHT: no lightmap page, drawn fullbright). A stub
+    # lightmapped material is enough; the runtime lights doors from the probe
+    # volume, and the real material ships with the map's content.
+    for door in doors:
+        if door["material"] != DOOR_MATERIAL:
+            stub = args.out_dir / "game" / "materials" / (door["material"].lower() + ".vmt")
+            stub.parent.mkdir(parents=True, exist_ok=True)
+            stub.write_text('"LightmappedGeneric"\n{\n\t"$basetexture" "%s"\n}\n' %
+                            door["material"].lower())
     vmf = args.out_dir / (args.map_name + "_collision.vmf")
     vmf.write_text("\n".join(lines))
     receipt = {"status": "pass", "scope": "pbrt-usd-collision-vmf",

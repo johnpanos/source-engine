@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Denoise a baked irradiance atlas with OpenImageDenoise's RTLightmap filter.
 
-Path-traced bakes of sky-lit interiors are dominated by noisy indirect light.
-OIDN's lightmap filter removes that noise without a higher sample count. An
-undilated white-emission UV bake identifies real chart coverage: Cycles can mark
-black gutter texels alpha=1, so irradiance alpha is not a reliable mask. Empty
-atlas texels are filled from the nearest covered texel before filtering.
+A finishing step: the bake's sample count is chosen so its raw noise is
+modest, and the noise step (lightmap_noise.py) gates on what remains after
+this filter. Each chart is denoised alone at one fixed input scale
+(denoise_charts), so no chart's light reaches another however close they
+sit in the atlas. An undilated white-emission UV bake identifies real chart
+coverage: Cycles can mark black gutter texels alpha=1, so irradiance alpha is
+not a reliable mask. Empty atlas texels are filled from the nearest covered
+texel before filtering.
 
 The input receipt must be a passing bake receipt for the EXR. The output
 receipt copies its identity fields, records the source atlas hash and uses
@@ -26,6 +29,9 @@ from scipy import ndimage
 
 OIDN_DEVICE_TYPE_CPU = 1
 OIDN_FORMAT_FLOAT3 = 3
+# Border (texels) around each chart's crop in denoise_charts, filled from the
+# chart itself so the filter's edge handling never touches its texels.
+CHART_PAD = 16
 
 
 def sha256(path):
@@ -48,7 +54,76 @@ def load_oidn(path):
     library.oidnGetDeviceError.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_char_p)]
     library.oidnReleaseFilter.argtypes = [ctypes.c_void_p]
     library.oidnReleaseDevice.argtypes = [ctypes.c_void_p]
+    library.oidnSetFilterFloat.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float]
     return library
+
+
+class Denoiser:
+    """One OIDN CPU device for many filter runs (charts)."""
+
+    def __init__(self, library):
+        self.library = library
+        self.device = library.oidnNewDevice(OIDN_DEVICE_TYPE_CPU)
+        if not self.device:
+            raise RuntimeError("OIDN could not create a CPU device")
+        library.oidnCommitDevice(self.device)
+
+    def run(self, color, input_scale):
+        """RTLightmap over an (H, W, 3) image at a fixed input scale: the HDR
+        filter's automatic exposure would make each result depend on the whole
+        image it sees."""
+        library = self.library
+        height, width, _ = color.shape
+        source = np.ascontiguousarray(color, dtype=np.float32)
+        output = np.empty_like(source)
+        oidn_filter = library.oidnNewFilter(self.device, b"RTLightmap")
+        try:
+            for name, image in ((b"color", source), (b"output", output)):
+                library.oidnSetSharedFilterImage(oidn_filter, name, image.ctypes.data,
+                                                 OIDN_FORMAT_FLOAT3, width, height, 0, 0, 0)
+            library.oidnSetFilterFloat(oidn_filter, b"inputScale", float(input_scale))
+            library.oidnCommitFilter(oidn_filter)
+            library.oidnExecuteFilter(oidn_filter)
+            message = ctypes.c_char_p()
+            if library.oidnGetDeviceError(self.device, ctypes.byref(message)):
+                raise RuntimeError("OIDN failed: " + (message.value or b"").decode())
+        finally:
+            library.oidnReleaseFilter(oidn_filter)
+        return output
+
+    def close(self):
+        if self.device:
+            self.library.oidnReleaseDevice(self.device)
+            self.device = None
+
+
+def denoise_charts(color, covered, denoiser, pad=CHART_PAD, input_scale=None):
+    """Denoise each chart - a connected region of covered texels - alone.
+
+    A chart is cropped with `pad` texels of border, and every crop texel
+    outside the chart takes its nearest chart texel, so the filter sees only
+    the chart's own light: no neighbouring chart, however close in the atlas,
+    reaches it. One input scale (1 / the covered median unless given) serves
+    every chart. Covered texels get the result; others keep `color`.
+    Returns (image, record)."""
+    result = np.array(color, dtype=np.float32, copy=True)
+    values = color[covered]
+    if input_scale is None:
+        level = float(np.median(values.mean(axis=1))) if len(values) else 0.0
+        input_scale = 1.0 / level if level > 0 else 1.0
+    labels, count = ndimage.label(covered, structure=np.ones((3, 3)))
+    boxes = ndimage.find_objects(labels)
+    height, width = covered.shape
+    for index, box in enumerate(boxes, start=1):
+        y0, y1 = max(box[0].start - pad, 0), min(box[0].stop + pad, height)
+        x0, x1 = max(box[1].start - pad, 0), min(box[1].stop + pad, width)
+        own = labels[y0:y1, x0:x1] == index
+        _, (rows, columns) = ndimage.distance_transform_edt(~own, return_indices=True)
+        crop = color[y0:y1, x0:x1][rows, columns]
+        filtered = np.maximum(denoiser.run(crop, input_scale), 0.0)
+        region = result[y0:y1, x0:x1]
+        region[own] = filtered[own]
+    return result, {"charts": int(count), "pad": pad, "input_scale": float(input_scale)}
 
 
 def denoise(library, color):
@@ -160,8 +235,15 @@ def main():
     # map zero to zero; it passes through unfiltered.
     unlit = not pixels[covered][:, :3].any()
     skip = args.skip_denoise or unlit
-    filtered = (filled if skip else
-                np.maximum(denoise(load_oidn(args.oidn_library), filled), 0.0))
+    chart_record = None
+    if skip:
+        filtered = filled
+    else:
+        denoiser = Denoiser(load_oidn(args.oidn_library))
+        try:
+            filtered, chart_record = denoise_charts(filled, covered, denoiser)
+        finally:
+            denoiser.close()
     result[:, :, :3] = extend_gutters(filtered, covered, rows, columns)
     if not np.isfinite(result).all():
         raise ValueError("lightmap processing produced non-finite texels")
@@ -181,7 +263,8 @@ def main():
                     "source_atlas_exr_sha256": expected,
                     "layer": args.layer or "total",
                     "source_bake_evidence_sha256": sha256(args.bake_evidence),
-                    "denoiser": None if skip else "OpenImageDenoise RTLightmap (CPU)",
+                    "denoiser": None if skip else "OpenImageDenoise RTLightmap (CPU), per chart",
+                    "denoise_charts": chart_record,
                     "unlit_layer": unlit,
                     "covered_texels": int(covered.sum()),
                     "filled_gutter_texels": int((~covered).sum()),

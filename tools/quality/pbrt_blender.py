@@ -438,6 +438,15 @@ LIGHT_PATH_POLICIES = {
                      "transparent_max_bounces": 16, "sample_clamp_direct": 0.0,
                      "sample_clamp_indirect": 0.0, "blur_glossy": 0.0,
                      "caustics_reflective": True, "caustics_refractive": True},
+    # Diffuse lightmaps: light moves between surfaces by diffuse bounces only
+    # (as production lightmappers do; glossy and caustic paths only add rare,
+    # very bright samples to a diffuse irradiance bake), eight of them (the
+    # truncated series is under 1% at albedo 0.6), unclamped.
+    "lightmap": {"max_bounces": 16, "diffuse_bounces": 8, "glossy_bounces": 0,
+                 "transmission_bounces": 8, "volume_bounces": 0,
+                 "transparent_max_bounces": 16, "sample_clamp_direct": 0.0,
+                 "sample_clamp_indirect": 0.0, "blur_glossy": 1.0,
+                 "caustics_reflective": False, "caustics_refractive": False},
 }
 
 

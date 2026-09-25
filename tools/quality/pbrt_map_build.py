@@ -31,6 +31,9 @@ emitters stay invisible, and there is no sky dome or traversal gate. Steps:
                  geometry, written into a copy of the stage; the bake uses them unchanged
     bake         shared lightmap UVs (Blender charting unless laid out) + Cycles diffuse
                  irradiance atlas
+    noise        (lightmap.noise_target) lightmap_noise.py: the bake's measured Monte Carlo
+                 noise (every light page is the mean of two half-sample bakes) must be under
+                 the target, or the step reports the sample count that would meet it
     denoise      OpenImageDenoise RTLightmap filter (manifest lightmap.denoise, default on)
     seams        lightmap_seams.py extract --check: the lighting stage's chart seams, and a
                  gate on its chart invariants (no overlap, bleed, escaped UVs or split
@@ -102,12 +105,12 @@ import pbrt_traversal  # noqa: E402
 import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
 
-STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "layout", "bake", "denoise", "directional",
+STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "layout", "bake", "noise", "denoise", "directional",
          "seams", "probe", "probe-volume", "radiosity", "sdf", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
          "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
-GATES = ("reference-gate", "runtime-gate", "traversal", "audit")
+GATES = ("reference-gate", "noise", "runtime-gate", "traversal", "audit")
 PROFILES = ROOT / "quality" / "map_export_profiles"
 DEFAULT_QUALITY = "source2"
 LEGACY_QUALITY = "legacy-relight"
@@ -294,7 +297,9 @@ class Pipeline:
                          "seed": lightmap.get("seed", 0),
                          "exclude_materials": lightmap.get("exclude_materials", []),
                          # "planar": lightmap_layout.py; "blender": Blender charting.
-                         "layout": lightmap.get("layout", "blender")}
+                         "layout": lightmap.get("layout", "blender"),
+                         # Largest relative bake noise allowed (lightmap_noise.py), or None.
+                         "noise_target": lightmap.get("noise_target")}
         if self.lightmap["layout"] not in ("blender", "planar"):
             raise ValueError("unknown lightmap layout " + str(self.lightmap["layout"]))
         self.probe = with_defaults(manifest, self.profile, "reflection_probe")
@@ -324,6 +329,8 @@ class Pipeline:
             "stage_receipt": self.out / "stage.json",
             "layout_stage": self.out / "stage" / (self.map + "_layout.usdc"),
             "layout_receipt": self.out / "stage" / "layout.json",
+            "noise_pair": self.out / "lighting" / "noise-pair",
+            "noise_receipt": self.out / "lighting" / "noise.json",
             "reference": self.out / "reference" / "cycles.png",
             "lighting_stage": self.out / "lighting" / (self.map + "_lighting.usdc"),
             "atlas": self.out / "lighting" / "atlas.exr",
@@ -491,6 +498,7 @@ class Pipeline:
             shutil.rmtree(self.out / PREVIOUS / name, ignore_errors=True)
             print("[%s] FAILED, continuing (--keep-going): %s" % (name, failure), flush=True)
             self.failed_gates.append(name)
+            self.stop_after(name)
             return
         except BaseException:
             self.restore(name)
@@ -631,17 +639,34 @@ class Pipeline:
         layers = self.lightmap["layers"]
         if layers:
             bake_args += ["--layers", ",".join(layers), "--layers-dir", p["layers"]]
+        noise_target = self.lightmap["noise_target"]
+        if noise_target:
+            bake_args += ["--noise-pair-dir", p["noise_pair"]]
         self.step("bake", [bake_stage] + self.scene_sources() +
                   ([environment] if environment else []),
                   dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
                                                       "device", "directional", "light_paths",
-                                                      "layers", "seed", "layout")},
+                                                      "layers", "seed", "layout",
+                                                      "noise_target")},
                        reserve_rows=probe_width // 2),
                   SCENE_SCRIPTS + ["pbrt_blender.py", "pbrt_lightmap_bake.py"],
                   [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]] +
                   ([p["directional_bakes"]] if directional else []) +
-                  ([p["layers"]] if layers else []),
+                  ([p["layers"]] if layers else []) +
+                  ([p["noise_pair"]] if noise_target else []),
                   lambda: self.blender("bake", "pbrt_lightmap_bake.py", bake_args))
+        if noise_target:
+            halves = [p["noise_pair"] / "total-a.exr", p["noise_pair"] / "total-b.exr"]
+            mean_samples = 2 * max(1, (self.lightmap["samples"] + 1) // 2)
+            self.step("noise", halves + [p["coverage"]],
+                      {"target": noise_target, "samples": mean_samples}, ["lightmap_noise.py"],
+                      [p["noise_receipt"]],
+                      lambda: self.run("noise", [sys.executable, HERE / "lightmap_noise.py",
+                                                 "--first", halves[0], "--second", halves[1],
+                                                 "--coverage", p["coverage"],
+                                                 "--samples", str(mean_samples),
+                                                 "--target", str(noise_target),
+                                                 "--out", p["noise_receipt"]]))
         atlas, atlas_receipt, scope = p["atlas"], p["atlas_receipt"], BAKE_SCOPE
         denoised_layers = {role: p["layers"] / (role + "-denoised.exr") for role in layers}
 

@@ -202,6 +202,21 @@ def altitude(points, triangle, normal):
     return signed / max(np.linalg.norm(b - a), np.linalg.norm(c - b), np.linalg.norm(a - c))
 
 
+class CanonicalVerticesTest(unittest.TestCase):
+    def test_float_rounding_twins_merge_to_the_lowest_index(self):
+        vertices = np.array([[-513.5, -310.0000305, 0], [0, 0, 0],
+                             [-513.4999389, -309.99993896, 0], [1, 0, 0], [0, 0, 0]])
+        self.assertEqual(legacy_bsp.canonical_vertices(vertices).tolist(), [0, 1, 0, 3, 1])
+
+    def test_distinct_corners_stay_apart(self):
+        rng = np.random.default_rng(2)
+        grid = np.stack(np.meshgrid(*[np.arange(0, 64, 1.0)] * 2), -1).reshape(-1, 2)
+        vertices = np.concatenate([grid, np.zeros((len(grid), 1))], axis=1)
+        vertices = vertices[rng.permutation(len(vertices))]
+        self.assertEqual(legacy_bsp.canonical_vertices(vertices).tolist(),
+                         list(range(len(vertices))))
+
+
 class CleanWindingTest(unittest.TestCase):
     def test_repeats_and_spikes_go(self):
         self.assertEqual(scene.clean_winding([1, 2, 3, 4]), [0, 1, 2, 3])

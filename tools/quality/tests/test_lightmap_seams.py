@@ -240,7 +240,7 @@ class IndexedTrianglesTest(unittest.TestCase):
         b = a + [1, 0, 0]
         normal = np.array([0, 0, 1.0])
         uvs = [np.arange(8).reshape(4, 2) * 0.1, np.arange(8).reshape(4, 2) * 0.2]
-        points, counts, indices, normals, st = self.module.indexed_triangles(
+        points, counts, indices, normals, st, _ = self.module.indexed_triangles(
             [a, b], uvs, [normal, normal])
         self.assertEqual(len(points), 6)
         self.assertEqual(counts, [3, 3, 3, 3])
