@@ -383,7 +383,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 31 / R31 | Physics core compatibility; 0004 C | R19 | Required traces, filters, events, materials, constraints/ragdolls, controllers and persistence pass client/dedicated gameplay corpus | planned |
 | 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | active ([video options](RFC/0001-native-vulkan-video-options-progress.md)) |
 | 33 / R47 | PBR material family core; 0007 A/D | R02, R15 | BRDF analytic and white-furnace tests; `pbr` pixel family matches Cycles references; negative controls fail; capability and validated fallback on D3D9/DXVK | active ([0007 progress](RFC/0007-progress.md)) |
-| 34 / R48 | Compile tools on Waf and bake seam; 0007 B, vvis track | R01, R02, R03 | vbsp/vvis/vrad build on a declared profile; byte-identical legacy lumps and PVS vs legacy executables; shared baker suite passes the legacy provider and rejects bad providers | partial ([Linux compiler host smoke](RFC/0007-progress.md#r48-host-compiler-preparation-2026-09-23)) |
+| 34 / R48 | Compile tools on Waf and bake seam; 0007 B, vvis track | R01, R02, R03 | vbsp/vvis/vrad build on a declared profile; byte-identical legacy lumps and PVS vs legacy executables; shared baker suite passes the legacy provider and rejects bad providers | partial ([Linux compiler host smoke](RFC/0007-progress.md#r48-host-compiler-preparation-2026-09-23); [R48-BAKER](RFC/0007-progress.md#r48-baker-light-baker-seam-and-pipeline-consolidation) planned) |
 | 35 / R53 | BSP2 container and map-reader seam; 0008 F1 | R02, R04 | Legacy lumps carried byte-identically; client/server load both containers; independent reader, fuzzing and dedicated-server link evidence pass | active ([0008 progress](RFC/0008-progress.md)) |
 | 36 / R55 | KTX2 textures; 0008 F3 | R15, R53 | Container-neutral texture reader; UASTC encode and per-profile transcode; native Vulkan BC/ASTC/ETC2 formats; `ktx validate` and per-format pixel fixtures; missing required format fails composition | partial ([KTX2 host-tool feasibility](RFC/0008-progress.md#f3-ktx2-host-tool-feasibility-2026-09-23)) |
 | 37 / R54 | Compiled USD World Stage and lightmap charts; 0008 F2 | R48, R53 | vbsp2 emits the geometry layer with charts; `usdchecker` clean; stage renders in pinned Cycles; semantic comparator detects seeded loss; face-ID-free compiled fixture validates; native USD authoring remains R59–R60 | partial ([0008 progress](RFC/0008-progress.md#f2-compiled-world-geometry-slice-2026-09-23)) |
@@ -464,6 +464,20 @@ Keep the table concise and link details below or from the domain progress file.
     frame changes while executable and material hashes stay fixed.
     Canonical RNM/SH lighting and BSP2 render lumps remain open. R56–R58 remain
     planned.
+
+- R48-BAKER: `planned` (2026-09-24, user direction). This is one
+  `ILightBaker` seam with the legacy vrad and pinned standalone-Cycles
+  providers, one shared suite with the five bad providers, and one owner for the
+  RNM basis, SH L1 fit and KTX2 lighting encoding. The PBRT and World Stage
+  scripts become callers of the baker.
+  - Why: a 2026-09-24 audit found three Blender-driven bakers and duplicated
+    basis constants and L1 fits. It also found cache keys that miss scene files
+    and tool revisions, and steps that delete the previous package before
+    rerunning.
+  - Done also requires complete cache keys, atomic output replacement, and a
+    dirty-subset bake request for R52/R57.
+  - No baker code is installed. See the
+    [R48-BAKER record](RFC/0007-progress.md#r48-baker-light-baker-seam-and-pipeline-consolidation).
 
 - R59–R60 (RFC 0009): added 2026-09-23 as `planned` for USD-native map
   compilation and editing. R54's VMF-derived compiled World Stage remains a

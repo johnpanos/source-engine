@@ -1,6 +1,6 @@
 # RFC 0007 progress
 
-Updated: 2026-09-23. The full physically based lighting pipeline is not yet
+Updated: 2026-09-24. The full physically based lighting pipeline is not yet
 implemented. This record separates installed evidence from the RFC's planned
 interfaces and phases.
 
@@ -506,6 +506,114 @@ to sibling files. The reviewed manifest exception removes three old
 reports 49 new and three stale occurrences elsewhere, and the loader inventory
 reports 12 uninstrumented native sites in this shared worktree. Changed-line
 stylelint reports one failure in the unrelated shader pixel conformance source.
+
+## R48-BAKER: light-baker seam and pipeline consolidation
+
+State: `planned` (recorded 2026-09-24 at the user's direction). Child of R48
+(seam, legacy provider, shared suite); its Cycles provider feeds R49. Owner:
+unassigned. Nothing below is installed.
+
+### Observed starting point (read-only audit, 2026-09-24)
+
+- There is no baker contract. `public/lighting/` and `utils/lighting/` do not
+  exist; `ILightBaker`, `LightBakeScene` and `LightmapSampleLayout` appear only
+  in this RFC.
+- Every Cycles bake runs as a `blender -b` subprocess, contrary to the
+  [Cycles provider](0007-physically-based-lighting-pipeline.md#cycles-provider)
+  decision. Blender and OIDN are taken from `PATH` and checked by version string
+  only (`quality/product_profiles/pbrt-map-linux-tools.json`,
+  `tools/quality/pbrt_map_toolchain.py`).
+- Two bake pipelines share no light-transport code: `pbrt_map_build.py`
+  (PBRT/USD scene, Blender smart-project UVs, LMAP KTX2) and the
+  `worldstage_cycles_*` scripts (VMF, vbsp2 charts, injection into the legacy
+  lighting lump). `probe_volume_bake.py` is a third Cycles baker.
+- Rules that need a single owner are duplicated:
+  - The RNM basis is redefined in `pbrt_lightmap_bake.py`,
+    `worldstage_cycles_bake_preview.py`, `worldstage_cycles_basis_oracle.py`,
+    `worldstage_directional_bake_compare.py`, `worldstage_sh_l1_preview.py` and
+    `bumpvects.h`.
+  - Three 4-direction L1 fits exist: `public/render/pbr_sh_l1.h`,
+    `worldstage_sh_l1_preview.py` and `lightmap_directional.py`.
+  - There are two KTX2 lighting packers.
+- The PBRT path's directional term is a luminance gradient
+  (`lightmap_directional.py`), neither the canonical per-style SH L1 nor exact RNM.
+- Cache keys miss inputs:
+  - The `stage` step's inputs list the top-level scene file only
+    (`pbrt_map_build.py:324`; `pbrt_scene.py:180` hashes that file). Edited
+    PLY meshes or textures do not invalidate it.
+  - Tool revisions and the resolved device are not keyed. `device: auto` can
+    switch between CPU and GPU without a rebuild.
+- A step deletes its previous outputs before running (`pbrt_map_build.py:250-256`),
+  so a failed or interrupted bake leaves no usable package.
+- Lightmap and reflection-probe bakes set no Cycles seed.
+- Verification is incomplete:
+  - The basis oracle tests one basis direction.
+  - Both SH L1 analytic fits exceed the 0.15 bound (see
+    [R49 preparation](#r49-preparation-four-sample-sh-l1-feasibility)).
+  - The bake oracles are not in the conformance manifest.
+
+### Scope
+
+1. `utils/lighting/` (strict C++20):
+   - `LightmapSampleLayout` over stable charts keyed by authored surface ID, not
+     BSP face ID, so native USD maps (R59) qualify;
+   - a versioned `LightingPolicy`;
+   - an immutable `LightBakeScene`;
+   - `ILightBaker`, `BakeRequest`, `BakeResult` and `IBakeProgress` in
+     `public/lighting/light_baker.h`, using the project `Expected`.
+2. A shared suite enforcing the [obligations](0007-physically-based-lighting-pipeline.md#obligations-lsp).
+   It runs against a fake and the five deliberately bad providers the RFC names.
+3. `LegacyRadiosityBaker`: vrad behind the seam, with its legacy-lump output
+   unchanged.
+4. `CyclesBaker`: standalone Cycles and OIDN pinned by source revision in a
+   declared profile. CPU is `Exact` per profile, GPU `Statistical`. `Final`
+   bakes stay undenoised until OIDN determinism is measured.
+5. One owner each for the RNM basis, SH L1 fit, KTX2 lighting packing, PRBV and
+   reflection-probe encoding. The luminance-gradient format is retired, or kept
+   only under a versioned compatibility decision.
+6. Complete cache keys (all scene files, tool revisions, device class, seed) and
+   atomic output replacement, so a failed or cancelled step leaves the previous
+   package intact.
+7. `pbrt_map_build.py`, the `worldstage_cycles_*` scripts and
+   `probe_volume_bake.py` call the baker. Their Blender bake paths are deleted
+   once fixture outputs match within declared tolerances.
+8. Editor-facing requests (ahead of R52/R57):
+   - the baker can be called in-process and over the R40 structured process
+     protocol;
+   - a `BakeRequest` can name a dirty subset (charts, a probe region, a light
+     style) against a previous result;
+   - providers may report intermediate sample counts for progressive display.
+
+### Done looks like
+
+- The shared suite passes for the fake, legacy and Cycles providers, and all
+  five bad providers fail it. The suite is registered in
+  `quality/conformance.manifest.json`.
+- vrad legacy lumps are byte-identical before and after adaptation on the
+  54-map BSP2 corpus.
+- Cycles passes the RFC analytic oracles:
+  - a light along each basis vector;
+  - the white furnace;
+  - point-light calibration;
+  - SH L1 within its bound. The fit is fixed, or a reviewed bound is recorded.
+- Two CPU bakes with the same input, seed and profile are bit-identical.
+- The six RFC 0011 GI fixtures and the living-room PBRT map build through the
+  baker, with no Blender process in the product bake path.
+- No basis constant or L1 fit is defined outside its owner.
+- Tests show that a one-chart edit re-bakes only that chart, and that a
+  cancellation mid-bake leaves the package unchanged.
+
+Non-goals: RFC 0011 G2+ runtime features, IBL (R50), changes to the D3D9 legacy
+payload, GPU-exact determinism, and editor UI.
+
+Open decision: reference renders (`gi_reference_blender.py`) should stay on an
+independent scene-translation path (Blender or pbrt), declared as oracle
+tooling. A reference built by the baker's own translation would share its bugs.
+This needs to be recorded in the RFC before the Blender product paths are
+removed.
+
+Prerequisites: R03 (C++20 target profile), R48's Linux vrad build (installed),
+and R54 charts (partial).
 
 ## Portal 1 texture staging (supporting R47)
 
