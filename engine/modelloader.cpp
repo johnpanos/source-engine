@@ -4964,8 +4964,8 @@ void CModelLoader::Map_LoadProbeVolume()
 		return;
 	}
 	m_ProbeVolumeBytes.SetCount( (int)lump.storedSize );
-	if ( !s_MapByteSource.ReadAt( lump.offset, m_ProbeVolumeBytes.Base(),
-	         m_ProbeVolumeBytes.Count() ) ||
+	if ( !s_MapByteSource.ReadAt(
+	         lump.offset, m_ProbeVolumeBytes.Base(), m_ProbeVolumeBytes.Count() ) ||
 	     !s_pMapContainer
 	         ->VerifyContent( lump, m_ProbeVolumeBytes.Base(), m_ProbeVolumeBytes.Count() )
 	         .Ok() )
@@ -5001,8 +5001,7 @@ void CModelLoader::Map_LoadProbeVolume()
 		request.tableFloats = mapcontainer::kProbeGridTableFloats;
 		request.gridTable = table.Base();
 		if ( !uploader->UploadProbeVolume( request ) )
-			Warning( "Map %s: PRBV GPU upload failed; models use the ambient cube\n",
-			    s_szMapName );
+			Warning( "Map %s: PRBV GPU upload failed; models use the ambient cube\n", s_szMapName );
 	}
 	uint32_t probes = 0;
 	for ( uint32_t i = 0; i < layout.gridCount; ++i )

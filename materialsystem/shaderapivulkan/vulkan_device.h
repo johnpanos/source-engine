@@ -1387,8 +1387,8 @@ private:
 	// Variants 3..5 are those three with the map's PRBV probe volume sampled
 	// per pixel (sets 7 and 8, m_skinProbePipelineLayout).
 	std::map<uint64_t, VkPipeline> m_pbrModelPipelines[6];
-	VkPipeline PbrModelPipeline( const DynRasterState &state, bool envCube,
-	    bool srgbPass = false, int samples = 1, bool probeVolume = false );
+	VkPipeline PbrModelPipeline( const DynRasterState &state, bool envCube, bool srgbPass = false,
+	    int samples = 1, bool probeVolume = false );
 	VkShaderModule m_pbrModelFrag[6] = {};
 	// The skin layout plus the probe atlas (set 7) and grid table (set 8);
 	// created only on devices that bind nine descriptor sets.

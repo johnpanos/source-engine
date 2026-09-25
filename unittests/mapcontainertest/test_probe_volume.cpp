@@ -131,8 +131,8 @@ void SamplesMatchPython( const std::map<std::string, std::vector<char>> &files )
 
 int main()
 {
-	std::map<std::string, std::vector<char>> files = {
-	    { "leak.prbv", Load( "leak.prbv" ) }, { "analytic.prbv", Load( "analytic.prbv" ) } };
+	std::map<std::string, std::vector<char>> files = { { "leak.prbv", Load( "leak.prbv" ) },
+	    { "analytic.prbv", Load( "analytic.prbv" ) }, { "gpu.prbv", Load( "gpu.prbv" ) } };
 	for ( const auto &entry : files )
 	{
 		ProbeVolumeLayout layout{};

@@ -12,9 +12,11 @@
 //
 //===========================================================================//
 
+#include "mapcontainer/probe_volume.h"
 #include "render/pbr_brdf.h"
 #include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
+#include "../../materialsystem/shaderapivulkan/vulkan_world_lightmap.h"
 #include "testing/conformance_result.h"
 
 #include <SDL3/SDL.h>
@@ -25,6 +27,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -91,6 +95,11 @@ struct Scene
 	float coat = 0.0f;
 	float coatRoughness = 0.03f;
 	int flags = 0; // model_pbr.frag's
+	// The diffuse light the model uses instead of the ambient cube (a probe
+	// volume's irradiance at the pixel); the ambient cube still lights the
+	// specular fallback.
+	bool diffuseOverride = false;
+	float diffuseLight[3] = {};
 };
 
 // The quad faces the eye: normal and view are -Z (Source's model lighting sees
@@ -191,7 +200,10 @@ std::array<float, 3> Expected( const Scene &scene, Defect defect = kNone )
 	{
 		const float directionalAlbedo = std::min( 1.0f, f0Channel[c] * albedo.a + albedo.b );
 		const float diffuseColor = baseChannel[c] * ( 1.0f - metalness ) * ( 1.0f - directionalAlbedo );
-		float value = diffuseColor * AmbientCubeAt( scene.ambient, normal, c ).x * occlusion;
+		const float diffuseLight = scene.diffuseOverride
+		                               ? scene.diffuseLight[c]
+		                               : AmbientCubeAt( scene.ambient, normal, c ).x;
+		float value = diffuseColor * diffuseLight * occlusion;
 		float direct = 0.0f;
 		if ( scene.lights > 0 && normalDotLight > 0.0f )
 		{
@@ -239,8 +251,11 @@ struct Handles
 	int base, mrao, normal, emission, env;
 };
 
+// Draws the quad; returns its centre pixel and, when `frame` is given, the
+// whole capture (RGBA rows, top first).
 bool Draw( CVulkanContext &context, const Handles &handles, const Scene &scene,
-    std::array<uint8_t, 4> *pixel, std::string *error )
+    std::array<uint8_t, 4> *pixel, std::string *error, std::vector<uint8_t> *frame = nullptr,
+    int *frameWidth = nullptr, int *frameHeight = nullptr )
 {
 	context.ClearDynamicQueue();
 	context.SetClearColor( 0, 0, 0, 1 );
@@ -342,6 +357,12 @@ bool Draw( CVulkanContext &context, const Handles &handles, const Scene &scene,
 		return false;
 	}
 	std::memcpy( pixel->data(), &pixels[( size_t( height / 2 ) * width + width / 2 ) * 4], 4 );
+	if ( frame )
+	{
+		frame->assign( pixels.begin(), pixels.begin() + size_t( width ) * height * 4 );
+		*frameWidth = width;
+		*frameHeight = height;
+	}
 	Check( pixels[0] <= 2 && pixels[1] <= 2 && pixels[2] <= 2, "frame corner keeps the clear" );
 	return true;
 }
@@ -372,6 +393,178 @@ void Judge( const char *name, const std::array<uint8_t, 4> &pixel, const Scene &
 		    " is separated from the captured pixel";
 		Check( distance > separation, control.c_str() );
 	}
+}
+
+// RFC 0011 G1: model_pbr.frag -DPROBE_VOLUME samples the map's probe volume
+// per pixel exactly as the C++ reference sampler (mapcontainer::
+// ProbeVolumeView, itself checked against the Python reader) does, and falls
+// back to the ambient cube outside it. The fixture's grid covers the quad's
+// x <= 0.2; clip space equals world space, so a pixel's world position is its
+// clip-space position at z = 0.5.
+void ProbeVolumeCases( CVulkanContext &context, const Handles &handles )
+{
+	using mapcontainer::ProbeVolumeLayer;
+	std::string error;
+	std::ifstream file( "quality/fixtures/gi/prbv/gpu.prbv", std::ios::binary );
+	const std::vector<unsigned char> bytes(
+	    std::istreambuf_iterator<char>{ file }, std::istreambuf_iterator<char>{} );
+	mapcontainer::ProbeVolumeLayout layout{};
+	const bool valid = !bytes.empty() &&
+	                   mapcontainer::ValidateProbeVolume( bytes.data(), bytes.size(), &layout ) ==
+	                       mapcontainer::ProbeVolumeError::Ok;
+	Check( valid, "probe volume fixture gpu.prbv validates" );
+	if ( !valid )
+		return;
+	// The volume is map-scoped: it needs a resident world mesh.
+	const std::array<uint8_t, 3 * 40> vertices = {};
+	const std::array<uint32_t, 3> indices = { 0, 1, 2 };
+	Check( context.UploadWorldMesh(
+	           vertices.data(), vertices.size(), indices.data(), sizeof( indices ), &error ),
+	    "a world mesh is resident for the probe volume" );
+	std::vector<float> table( layout.gridCount * mapcontainer::kProbeGridTableFloats );
+	mapcontainer::WriteProbeGridTable( layout, table.data() );
+	world_mesh_gpu::ProbeVolumeUploadRequest request;
+	request.atlasWidth = layout.atlasWidth;
+	request.atlasHeight = layout.atlasHeight;
+	request.atlas = bytes.data() + layout.atlasOffset;
+	request.gridCount = layout.gridCount;
+	request.tableFloats = mapcontainer::kProbeGridTableFloats;
+	request.gridTable = table.data();
+	Check( render_vulkan::UploadWorldProbeVolume( context, request, &error ) &&
+	           context.ProbeVolumeResident(),
+	    "the probe volume uploads" );
+	Check( context.ProbeVolumeSamplingSupported(),
+	    "this device samples the probe volume per pixel (nine descriptor sets)" );
+	if ( !context.ProbeVolumeResident() || !context.ProbeVolumeSamplingSupported() )
+		return;
+	const mapcontainer::ProbeVolumeView view( bytes.data(), layout );
+
+	struct Run
+	{
+		const char *name;
+		int indirectView;
+		int sampling;
+		ProbeVolumeLayer layer;
+		bool visibility;
+		bool normalMap;
+	};
+	const Run runs[] = {
+	    { "indirect view, indirect layer", 1, 1, ProbeVolumeLayer::Indirect, true, false },
+	    { "indirect view, tilted normal", 1, 1, ProbeVolumeLayer::Indirect, true, true },
+	    { "shaded, total layer", 0, 1, ProbeVolumeLayer::Total, true, false },
+	    { "shaded, visibility off", 0, 2, ProbeVolumeLayer::Total, false, false },
+	};
+	const float kScale = 2.0f; // the indirect view's exposure
+	for ( const Run &run : runs )
+	{
+		Scene scene;
+		scene.base = { 190, 190, 190, 255 };
+		scene.mrao = { 0, 230, 255, 255 };
+		scene.normalTexel = { 170, 110, 230, 255 };
+		scene.flags = run.normalMap ? CVulkanContext::kPbrModelNormalMap : 0;
+		for ( int face = 0; face < 6; ++face )
+			for ( int c = 0; c < 3; ++c )
+				scene.ambient[face][c] = 0.3f; // the fallback, distinct from the volume
+		// The normal the shader shades with (Expected()'s tangent frame).
+		Vec3 normal = kNormal;
+		if ( run.normalMap )
+		{
+			const float x = scene.normalTexel[0] / 255.0f * 2.0f - 1.0f;
+			const float y = scene.normalTexel[1] / 255.0f * 2.0f - 1.0f;
+			const float z = std::sqrt( std::max( 0.0f, 1.0f - x * x - y * y ) );
+			normal = Normalize( { x, -y, -z } ); // S = +X, T = N x S = -Y, N = -Z
+		}
+		context.SetIndirectLightView( run.indirectView, kScale );
+		context.SetProbeVolumeSampling( run.sampling );
+		std::array<uint8_t, 4> centre = {};
+		std::vector<uint8_t> frame;
+		int width = 0, height = 0;
+		const bool drawn =
+		    Draw( context, handles, scene, &centre, &error, &frame, &width, &height );
+		Check( drawn, ( std::string( run.name ) + ": probe case renders" ).c_str() );
+		if ( !drawn )
+			continue;
+		int inside = 0, outside = 0, mismatches = 0, visibilityMatters = 0, layerMatters = 0;
+		std::string first;
+		for ( int py = 0; py < height; py += 3 )
+		{
+			for ( int px = 0; px < width; px += 3 )
+			{
+				// The backend keeps D3D9's clip space (+Y at the top) and pixel
+				// centres at integer coordinates (vulkan_device.cpp's draw viewport).
+				const float x = float( px ) / width * 2.0f - 1.0f;
+				const float y = 1.0f - float( py ) / height * 2.0f;
+				const float margin = 2.5f * 2.0f / std::min( width, height );
+				// Inside the quad, away from its edges and the grid's x = 0.2 face.
+				if ( std::fabs( x ) > 0.5f - margin || std::fabs( y ) > 0.5f - margin ||
+				     std::fabs( x - 0.2f ) < margin )
+					continue;
+				const float position[3] = { x, y, 0.5f };
+				const float n[3] = { normal.x, normal.y, normal.z };
+				float irradiance[3];
+				const bool covered =
+				    view.Sample( position, n, run.layer, run.visibility, irradiance );
+				covered ? ++inside : ++outside;
+				float other[3], otherLayer[3];
+				if ( covered && view.Sample( position, n, run.layer, !run.visibility, other ) &&
+				     view.Sample( position, n,
+				         run.layer == ProbeVolumeLayer::Total ? ProbeVolumeLayer::Indirect
+				                                              : ProbeVolumeLayer::Total,
+				         run.visibility, otherLayer ) )
+				{
+					visibilityMatters += std::fabs( other[0] - irradiance[0] ) > 0.01f;
+					layerMatters += std::fabs( otherLayer[0] - irradiance[0] ) > 0.01f;
+				}
+				std::array<float, 3> expected;
+				if ( run.indirectView )
+				{
+					for ( int c = 0; c < 3; ++c )
+						expected[c] = ( covered ? irradiance[c]
+						                        : AmbientCubeAt( scene.ambient, normal, c ).x ) *
+						              kScale;
+				}
+				else
+				{
+					Scene lit = scene;
+					lit.diffuseOverride = covered;
+					for ( int c = 0; c < 3; ++c )
+						lit.diffuseLight[c] = irradiance[c];
+					expected = Expected( lit );
+				}
+				const uint8_t *got = &frame[( size_t( py ) * width + px ) * 4];
+				bool match = true;
+				for ( int c = 0; c < 3; ++c )
+					match &= std::fabs( got[c] - EncodeSrgb( expected[c] ) * 255.0f ) <= 3.0f;
+				if ( !match && mismatches++ == 0 )
+				{
+					char text[256];
+					std::snprintf( text, sizeof( text ),
+					    " (first at %.3f %.3f: GPU %u %u %u, C++ %.1f %.1f %.1f)", x, y, got[0],
+					    got[1], got[2], EncodeSrgb( expected[0] ) * 255.0f,
+					    EncodeSrgb( expected[1] ) * 255.0f, EncodeSrgb( expected[2] ) * 255.0f );
+					first = text;
+				}
+			}
+		}
+		std::fprintf( stderr, "%s: %d inside, %d outside, %d mismatches%s\n", run.name, inside,
+		    outside, mismatches, first.c_str() );
+		Check( mismatches == 0 && inside >= 100 && outside >= 20,
+		    ( std::string( run.name ) +
+		        ": every pixel matches the C++ sampler inside the volume and the ambient cube "
+		        "outside it" )
+		        .c_str() );
+		// Controls: this fixture distinguishes visibility on/off and the layers.
+		Check( visibilityMatters >= 20,
+		    ( std::string( run.name ) + ": the visibility test changes the sampled light" )
+		        .c_str() );
+		Check( layerMatters >= 100,
+		    ( std::string( run.name ) + ": the other layer differs from the sampled one" )
+		        .c_str() );
+	}
+	context.SetIndirectLightView( 0, 1.0f );
+	context.SetProbeVolumeSampling( 1 );
+	context.ReleaseWorldMesh();
+	Check( !context.ProbeVolumeResident(), "releasing the world mesh releases the probe volume" );
 }
 
 } // namespace
@@ -552,6 +745,8 @@ int main()
 				coated.ambient[face][c] = 0.05f;
 		Check( Draw( context, handles, coated, &pixel, &error ), "clear coat case renders" );
 		Judge( "clear coat", pixel, coated, { kNoClearCoat } );
+
+		ProbeVolumeCases( context, handles );
 	}
 	if ( handles.base >= 0 )
 		context.DestroyManagedTexture( handles.base );

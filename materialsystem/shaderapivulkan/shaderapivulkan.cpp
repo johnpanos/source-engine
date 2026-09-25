@@ -1213,10 +1213,12 @@ public:
 		    mat_indirect_view.GetInt(), mat_indirect_view_scale.GetFloat() );
 		// The engine's RFC 0011 probe-volume switches (lightcache.cpp) also
 		// govern per-pixel sampling: 0 off, 1 with visibility, 2 without.
+		// r_probevolume 2 keeps the volume to the ambient cube (the path
+		// non-PBR model families take).
 		static ConVarRef r_probevolume( "r_probevolume" );
 		static ConVarRef r_probevolume_visibility( "r_probevolume_visibility" );
 		g_VulkanContext.SetProbeVolumeSampling(
-		    r_probevolume.IsValid() && !r_probevolume.GetBool()                         ? 0
+		    r_probevolume.IsValid() && r_probevolume.GetInt() != 1                      ? 0
 		    : r_probevolume_visibility.IsValid() && !r_probevolume_visibility.GetBool() ? 2
 		                                                                                : 1 );
 		std::string error;

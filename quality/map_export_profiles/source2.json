@@ -9,6 +9,10 @@
     "denoise": true,
     "directional": true
   },
+  "probe_volume": {
+    "spacing_m": 1.0,
+    "samples": 4096
+  },
   "reflection_probe": {
     "width": 512,
     "face_size": 256,

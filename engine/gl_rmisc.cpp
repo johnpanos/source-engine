@@ -251,7 +251,10 @@ void R_LevelInit( void )
 	// We've fully loaded the new level, unload any models that we don't care about any more
 	modelloader->UnloadUnreferencedModels();
 
-	if ( host_state.worldmodel->brush.pShared->numworldlights == 0 )
+	// A map whose baked light is carried by its probe volume (RFC 0011 PRBV)
+	// is lit without world lights.
+	if ( host_state.worldmodel->brush.pShared->numworldlights == 0 &&
+	     !host_state.worldmodel->brush.pShared->pProbeVolume )
 	{
 		ConDMsg( "Level unlit, setting 'mat_fullbright 1'\n" );
 		mat_fullbright.SetValue( 1 );

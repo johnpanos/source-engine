@@ -154,7 +154,9 @@ def build(bld):
 
 	# RFC 0007 R47: PBRMetalRough on dynamic meshes (models and props) through
 	# shaders/model_pbr.frag, judged against a CPU model built on pbr_brdf.h,
-	# with seeded-defect controls. Skips (exit 77) without a device/display.
+	# with seeded-defect controls; RFC 0011 per-pixel probe-volume sampling
+	# against mapcontainer's reference sampler. Skips (exit 77) without a
+	# device/display.
 	bld.program(
 		features='c cxx', env=test_env.derive(),
 		source=['test_model_pbr_pixels.cpp',
@@ -163,11 +165,12 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='model_pbr_native_pixel_conformance',
 		name='model_pbr_native_pixel_conformance',
 		includes=includes,
-		use=['VULKAN', 'SDL3', 'vulkan_texture_image'],
+		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'mapcontainer'],
 		install_path=None)
 
 	# Material-facing integration slice: drives the legacy IShaderAPI/IShaderDevice

@@ -50,6 +50,11 @@ SHADER_INIT_PARAMS()
 {
 	using render::pbr::MaterialParameter;
 	SET_FLAGS2( MATERIAL_VAR2_LIGHTING_LIGHTMAP );
+	// Vertex lit too: the engine sets up a studio model's lighting (ambient
+	// cube, local lights) only when one of its materials is vertex lit
+	// (modelloader.cpp MODELFLAG_VERTEXLIT); without it model_pbr.frag read a
+	// black cube and no lights. Only studio-model loading reads this flag.
+	SET_FLAGS2( MATERIAL_VAR2_LIGHTING_VERTEX_LIT );
 	SET_FLAGS2( MATERIAL_VAR2_NEEDS_TANGENT_SPACES );
 	if ( !params[TRANSMISSION]->IsDefined() )
 		params[TRANSMISSION]->SetFloatValue( SchemaDefault( MaterialParameter::kTransmission ) );

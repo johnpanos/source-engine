@@ -462,20 +462,59 @@ def fixture_analytic():
     return build([grid], 2)
 
 
+def fixture_gpu():
+    """The native GPU sampler's fixture (shaderapivulkantest's model PBR
+    probe cases): a 3 x 3 x 3 grid around the test quad (clip space equals
+    world space there, z = 0.5), covering x in [-1, 0.2] so part of the quad
+    lies outside it. Irradiance varies per probe and with the normal, layer 1
+    differs from layer 0, the visibility moments have variance so the
+    Chebyshev test weighs some probes, one probe is relocated and one inactive."""
+    dims = [3, 3, 3]
+    count = int(np.prod(dims))
+    directions = interior_directions(IRRADIANCE_TILE - 2)
+    irradiance = np.zeros((2, count, 6, 6, 3), np.float32)
+    for i in range(count):
+        base = 0.15 + 0.02 * i
+        tile = base + 0.1 * directions[..., 0] + 0.05 * directions[..., 2]
+        irradiance[0, i] = np.stack([tile, tile * 0.8, tile * 0.6], axis=-1)
+        irradiance[1, i] = np.stack([tile * 0.5, tile * 0.45, tile * 0.3 + 0.02], axis=-1)
+    visibility = np.zeros((count, VISIBILITY_TILE - 2, VISIBILITY_TILE - 2, 2), np.float32)
+    for i in range(count):
+        mean = 0.45 + 0.05 * (i % 5)
+        visibility[i, ..., 0] = mean
+        visibility[i, ..., 1] = mean * mean + 0.01
+    offsets = np.zeros((count, 3))
+    offsets[probe_index(dims, 1, 1, 1)] = (0.1, -0.05, 0.05)
+    active = np.ones(count)
+    active[probe_index(dims, 0, 2, 1)] = 0
+    grid = {"origin": [-1.0, -1.0, -0.5], "spacing": [0.6, 1.0, 1.0], "dims": dims,
+            "max_relocation": 0.25, "max_distance": 2.0, "irradiance": irradiance,
+            "visibility": visibility, "offsets": offsets, "active": active}
+    return build([grid], 2)
+
+
 def write_fixtures(out):
     """Checked-in PRBV conformance fixtures and the Python sampler's values."""
     out.mkdir(parents=True, exist_ok=True)
-    files = {"leak.prbv": fixture_leak(), "analytic.prbv": fixture_analytic()}
+    files = {"leak.prbv": fixture_leak(), "analytic.prbv": fixture_analytic(),
+             "gpu.prbv": fixture_gpu()}
     samples = []
     for name, data in files.items():
         (out / name).write_bytes(data)
         volume = Volume(data)
-        points = ([((56.0, 16.0, 16.0), (1.0, 0.0, 0.0)), ((40.0, 16.0, 16.0), (-1.0, 0.0, 0.0)),
-                   ((20.0, 10.0, 20.0), (0.0, 0.0, 1.0)), ((70.0, 20.0, 12.0), (0.0, 1.0, 0.0))]
-                  if name == "leak.prbv" else
-                  [((0.0, 0.0, 30.0), (0.0, 0.0, 1.0)), ((10.0, -20.0, 40.0), (0.0, 0.0, -1.0)),
-                   ((30.0, 30.0, 70.0), (0.6, 0.0, 0.8)), ((-50.0, 5.0, 10.0), (1.0, 0.0, 0.0)),
-                   ((60.0, 60.0, 90.0), (0.0, 0.0, 1.0))])
+        points = {
+            "leak.prbv": [((56.0, 16.0, 16.0), (1.0, 0.0, 0.0)),
+                          ((40.0, 16.0, 16.0), (-1.0, 0.0, 0.0)),
+                          ((20.0, 10.0, 20.0), (0.0, 0.0, 1.0)),
+                          ((70.0, 20.0, 12.0), (0.0, 1.0, 0.0))],
+            "analytic.prbv": [((0.0, 0.0, 30.0), (0.0, 0.0, 1.0)),
+                              ((10.0, -20.0, 40.0), (0.0, 0.0, -1.0)),
+                              ((30.0, 30.0, 70.0), (0.6, 0.0, 0.8)),
+                              ((-50.0, 5.0, 10.0), (1.0, 0.0, 0.0)),
+                              ((60.0, 60.0, 90.0), (0.0, 0.0, 1.0))],
+            "gpu.prbv": [((-0.3, 0.2, 0.5), (0.0, 0.0, -1.0)),
+                         ((0.1, -0.4, 0.5), (0.6, 0.0, -0.8)),
+                         ((0.4, 0.0, 0.5), (0.0, 0.0, -1.0))]}[name]
         for position, normal in points:
             for layer in range(volume.layers):
                 for visibility in (True, False):

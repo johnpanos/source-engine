@@ -5,6 +5,7 @@
     python3 tools/quality/gi_probes.py analytic --fixture probe-grid --state sky \\
         --prbv FILE --out FILE.json
     python3 tools/quality/gi_probes.py leak --fixture thin-wall --prbv FILE --out FILE.json
+    python3 tools/quality/gi_probes.py malformed --map-build DIR --out DIR
 
 `bake` extracts one fixture state's stage (as `gi_reference.py render` does)
 and bakes its probe volume with `probe_volume_bake.py`, the map pipeline's
@@ -23,6 +24,11 @@ square (see the fixture's analytic note), for both layers:
   - at 64 other normals, where the 6 x 6 octahedral tile's bilinear filtering
     adds its own error. Measured, not gated.
 
+`malformed` boots a built map with its PRBV lump replaced by a malformed,
+a truncated and an unverifiable payload (G1.2). Each must boot and play, and
+the engine must report the structured rejection and fall back to the leaf
+ambient instead of loading the volume.
+
 `leak` samples each room of the thin-wall fixture on a lattice of interior
 points, along the six axis normals (a model's ambient cube). The measure is
 the fixture's `leak_bound`: dark-room mean indirect light over lit-room mean
@@ -34,6 +40,8 @@ import argparse
 import json
 import math
 import shutil
+import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -42,6 +50,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+import bsp2_reader  # noqa: E402
 import gi_reference  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_map_build  # noqa: E402
@@ -290,6 +299,102 @@ def cmd_leak(args):
     return 0 if not failures else 1
 
 
+# ------------------------------------------------------------------ malformed
+
+def replace_lump(data, fourcc, payload, rehash=True):
+    """BSP2 bytes with lump `fourcc`'s payload replaced; with rehash False the
+    old content hash is kept, so only the lump's verification fails."""
+    container = bsp2_reader.Bsp2File(data, allow_unknown_required=True)
+    lumps = []
+    for entry in container.entries:
+        body = data[entry["offset"]:entry["offset"] + entry["size"]]
+        if entry["fourcc"] == fourcc:
+            body = payload
+        lumps.append((entry["fourcc"], entry["version"], entry["flags"], entry["alignment"],
+                      body))
+    out = bytearray(bsp2_reader.write_bsp2(container.revision, lumps))
+    if not rehash:
+        rebuilt = bsp2_reader.Bsp2File(bytes(out), verify=False, allow_unknown_required=True)
+        for index, entry in enumerate(rebuilt.entries):
+            if entry["fourcc"] == fourcc:
+                # Flip one payload byte after hashing: the directory still
+                # verifies, the lump's content hash does not.
+                out[entry["offset"] + len(payload) // 2] ^= 0x5A
+    return bytes(out)
+
+
+def cmd_malformed(args):
+    build = Path(args.map_build)
+    manifest = json.loads((build / "build.json").read_text()) \
+        if (build / "build.json").is_file() else {}
+    maps = sorted((build / "content" / "maps").glob("*.bsp"))
+    if len(maps) != 1:
+        raise SystemExit("%s: expected one built map" % build)
+    source = maps[0]
+    data = source.read_bytes()
+    container = bsp2_reader.Bsp2File(data, allow_unknown_required=True)
+    prbv = next((e for e in container.entries if e["fourcc"] == probe_volume.MAGIC), None)
+    if not prbv:
+        raise SystemExit("%s carries no PRBV lump" % source)
+    good = data[prbv["offset"]:prbv["offset"] + prbv["size"]]
+    bad_counts = bytearray(good)
+    struct.pack_into("<I", bad_counts, 12, 0)  # grid count 0
+    variants = {
+        # The control: the unmodified lump loads.
+        "intact": (good, True, None),
+        "invalid-counts": (bytes(bad_counts), True, r"PRBV rejected \(invalid-counts\)"),
+        "truncated": (good[:len(good) // 2], True, r"PRBV rejected \((truncated|invalid-atlas)\)"),
+        "hash": (good, False, r"PRBV read or hash failed"),
+    }
+    profile, _ = pbrt_map_toolchain_profiles()
+    out = Path(args.out)
+    results, failures = {}, []
+    for name, (payload, rehash, expected) in variants.items():
+        directory = out / name
+        if directory.exists():
+            shutil.rmtree(directory)
+        shutil.copytree(build / "content", directory / "content")
+        (directory / "content" / "maps" / source.name).write_bytes(
+            replace_lump(data, probe_volume.MAGIC, payload, rehash))
+        boot = directory / "boot"
+        result = subprocess.run(
+            [sys.executable, HERE / "portal_boot.py", "--runtime", profile["runtime"],
+             "--build", profile["client_build"], "--content-root", directory / "content",
+             "--renderer", "native-vulkan", "--headless", "--map", source.stem,
+             "--console-command", "r_drawvgui 0; r_worldmesh_draw 2", "--out", boot],
+            cwd=ROOT, capture_output=True, text=True)
+        evidence = json.loads((boot / "evidence.json").read_text()) \
+            if (boot / "evidence.json").is_file() else {}
+        log = "\n".join(p.read_text(errors="replace") for p in boot.rglob("*.log"))
+        import re
+        loaded = bool(re.search(r"PRBV v\d+, \d+ grid", log))
+        reported = bool(re.search(expected, log)) if expected else False
+        ok = evidence.get("status") == "pass" and (
+            loaded and not re.search(r"PRBV (rejected|read or hash|version)", log)
+            if expected is None else reported and not loaded)
+        results[name] = {"boot_status": evidence.get("status"), "reported": reported,
+                         "volume_loaded": loaded, "expected_diagnostic": expected,
+                         "status": "pass" if ok else "fail", "boot": str(boot)}
+        if not ok:
+            failures.append("%s: boot %s, diagnostic %s, volume loaded %s" % (
+                name, evidence.get("status"), reported, loaded))
+        print("  %-15s boot %-5s diagnostic %-5s loaded %s" % (
+            name, evidence.get("status"), reported, loaded))
+    record = {"schema": SCHEMA, "oracle": "malformed", "map": source.stem,
+              "variants": results, "failures": failures,
+              "status": "fail" if failures else "pass"}
+    write(out / "malformed.json", record)
+    print("GI probe malformed %s: %s" % (source.stem, record["status"]))
+    return 0 if not failures else 1
+
+
+def pbrt_map_toolchain_profiles():
+    import pbrt_map_toolchain
+    profile, _ = pbrt_map_toolchain.load_profiles()
+    toolchain = pbrt_map_toolchain.load(ROOT / profile["layout"]["toolchain_file"])
+    return toolchain, profile
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -308,8 +413,12 @@ def main():
     leak.add_argument("--fixture", required=True)
     leak.add_argument("--prbv", required=True)
     leak.add_argument("--out", required=True)
+    malformed = commands.add_parser("malformed")
+    malformed.add_argument("--map-build", required=True)
+    malformed.add_argument("--out", required=True)
     args = parser.parse_args()
-    return {"bake": cmd_bake, "analytic": cmd_analytic, "leak": cmd_leak}[args.command](args)
+    return {"bake": cmd_bake, "analytic": cmd_analytic, "leak": cmd_leak,
+            "malformed": cmd_malformed}[args.command](args)
 
 
 if __name__ == "__main__":

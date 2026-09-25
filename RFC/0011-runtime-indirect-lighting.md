@@ -573,6 +573,17 @@ Done when:
 8. No new device feature is required: the volume is a 2D atlas. Load cost and
    memory per corpus map are recorded.
 
+Implementation notes (2026-09-24, [progress](0011-progress.md#g1-probe-volume-baked-producer-and-consumer)):
+
+- The bake measures irradiance with a Cycles diffuse bake on receiver quads
+  (one per tile texel, invisible to light transport). It measures distance
+  moments with BVH rays rather than panoramic renders. This is exact per texel
+  for every light type, including suns and lamps a panorama cannot see.
+- Item 7's DXVK capture is deferred by the user's native-Vulkan scope
+  decision. The leaf ambient is still derived from the volume.
+- Per-pixel sampling needs nine bound descriptor sets. Devices that bind fewer
+  keep the ambient cube evaluated from the same volume.
+
 ### G2: Light set, separated bake, policy
 
 Depends on G1.

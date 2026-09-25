@@ -185,9 +185,20 @@ def linear_capture(path, film, scale):
     return linear.reshape(film["height"], 4, film["width"], 4, 3).mean(axis=(1, 3))
 
 
-def reference_level(fixture, state):
-    """The brightest region's reference indirect luminance over every camera
-    of a state: the scale a region that should be dark is judged against."""
+# Reference light a capture is judged against: Cycles DiffInd (the indirect
+# view), or DiffDir + DiffInd (all diffuse light: a model lit through the
+# ambient cube alone, which carries the volume's total layer).
+REFERENCE_LIGHT = {"indirect": ("indirect",), "diffuse": ("direct", "indirect")}
+
+
+def region_light(region, light):
+    return np.sum([np.asarray(region[key], dtype=np.float64)
+                   for key in REFERENCE_LIGHT[light]], axis=0)
+
+
+def reference_level(fixture, state, light="indirect"):
+    """The brightest region's reference luminance over every camera of a
+    state: the scale a region that should be dark is judged against."""
     record = json.loads((fixture["directory"] / "references" / "references.json").read_text())
     level = 0.0
     for key, view in record["views"].items():
@@ -195,11 +206,12 @@ def reference_level(fixture, state):
             continue
         for region in view["regions"].values():
             if region.get("indirect") and region["pixels"] >= 50:
-                level = max(level, gi_reference.luminance(region["indirect"]))
+                level = max(level, gi_reference.luminance(region_light(region, light)))
     return level
 
 
-def compare_view(fixture, state, camera, capture_path, scale, gate_models, tolerance, level):
+def compare_view(fixture, state, camera, capture_path, scale, gate_models, tolerance, level,
+                 light="indirect"):
     references = fixture["directory"] / "references"
     record = json.loads((references / "references.json").read_text())
     view = record["views"]["%s.%s" % (state, camera)]
@@ -219,7 +231,10 @@ def compare_view(fixture, state, camera, capture_path, scale, gate_models, toler
         if mask.sum() < 50:
             regions[region] = {"pixels": int(mask.sum()), "status": "too-small"}
             continue
-        expected = reference[mask].mean(axis=0)
+        # The indirect image's mean over the mask, or the recorded region
+        # means (the same masks) for the other light.
+        expected = reference[mask].mean(axis=0) if light == "indirect" else \
+            region_light(view["regions"][region], light)
         observed = measured[mask].mean(axis=0)
         lum_expected = gi_reference.luminance(expected)
         lum_observed = gi_reference.luminance(observed)
@@ -227,7 +242,9 @@ def compare_view(fixture, state, camera, capture_path, scale, gate_models, toler
         # The error in units of the allowance: <= 1 passes.
         error = abs(lum_observed - lum_expected) / max(allowance, 1e-9)
         kind = "model" if region in scene_props else "world"
-        gated = kind == "world" or gate_models
+        # The world view shows the LMAP indirect layer: gated only against
+        # indirect light.
+        gated = (kind == "world" and light == "indirect") or (kind == "model" and gate_models)
         regions[region] = {"kind": kind, "pixels": int(mask.sum()),
                            "reference_rgb": expected.tolist(), "measured_rgb": observed.tolist(),
                            "reference_luminance": lum_expected,
@@ -251,14 +268,15 @@ def compare(args):
     capture_record = json.loads((Path(args.capture) / "capture.json").read_text())
     views = {}
     failures = []
-    level = reference_level(fixture, args.state)
+    light = getattr(args, "reference_light", "indirect")
+    level = reference_level(fixture, args.state, light)
     for camera, shot in sorted(capture_record["cameras"].items()):
         if shot["status"] != "pass" or not shot["screenshot"]:
             failures.append("%s: capture did not pass (%s)" % (camera, shot["failures"]))
             continue
         regions = compare_view(fixture, args.state, camera, shot["screenshot"],
                                args.declared_scale or capture_record["scale"], args.gate_models,
-                               args.tolerance, level)
+                               args.tolerance, level, light)
         views[camera] = regions
         for region, result in regions.items():
             if result["status"] == "fail":
@@ -274,7 +292,9 @@ def compare(args):
               "declared_scale": args.declared_scale or capture_record["scale"],
               "tolerance": args.tolerance, "absolute_fraction": ABSOLUTE_FRACTION,
               "reference_level": level,
-              "reference": "Cycles DiffInd (indirect diffuse light, E / pi)",
+              "reference": "Cycles DiffInd (indirect diffuse light, E / pi)"
+              if light == "indirect" else "Cycles DiffDir + DiffInd (diffuse light, E / pi)",
+              "reference_light": light,
               "views": views, "failures": failures,
               "status": "fail" if failures else "pass"}
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
@@ -306,13 +326,14 @@ def indirect_view(args):
         capture(capture_args)
         compare_args = argparse.Namespace(fixture=args.fixture, state=args.state,
                                           capture=out / name, out=out / name / "gate.json",
-                                          declared_scale=1.0, gate_models=False,
+                                          declared_scale=1.0, gate_models=args.gate_models,
                                           tolerance=args.tolerance)
         runs[name] = compare(compare_args)
     passed = runs["view"]["status"] == "pass" and runs["seeded-double"]["status"] == "fail"
     summary = {"schema": "gi-indirect-view-oracle/v1", "fixture": args.fixture,
                "state": args.state, "view_status": runs["view"]["status"],
                "seeded_double_status": runs["seeded-double"]["status"],
+               "gate_models": args.gate_models,
                "status": "pass" if passed else "fail"}
     (out / "oracle.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print("indirect-view oracle: %s" % summary["status"])
@@ -345,11 +366,14 @@ def main():
     m.add_argument("--declared-scale", type=float,
                    help="exposure scale to divide out (default: the capture's)")
     m.add_argument("--gate-models", action="store_true")
+    m.add_argument("--reference-light", choices=sorted(REFERENCE_LIGHT), default="indirect")
     m.add_argument("--tolerance", type=float, default=WORLD_TOLERANCE)
     v = commands.add_parser("indirect-view")
     capture_options(v)
     v.add_argument("--state", default="default")
     v.add_argument("--tolerance", type=float, default=WORLD_TOLERANCE)
+    v.add_argument("--gate-models", action="store_true",
+                   help="judge dynamic-model regions too (RFC 0011 G1: the probe volume)")
     args = parser.parse_args()
     if args.command == "capture":
         record = capture(args)

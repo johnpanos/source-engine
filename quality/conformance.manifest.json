@@ -2130,7 +2130,7 @@
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
       "result_protocol": "checks-v1",
-      "description": "PBRMetalRough on dynamic meshes (model_pbr.frag) against the CPU model built on pbr_brdf.h, with seeded-defect controls",
+      "description": "PBRMetalRough on dynamic meshes (model_pbr.frag) against the CPU model built on pbr_brdf.h, with seeded-defect controls; RFC 0011 per-pixel probe-volume sampling against the C++ reference sampler (quality/fixtures/gi/prbv/gpu.prbv)",
       "sources": [
         "unittests/shaderapivulkantest/test_model_pbr_pixels.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
@@ -2139,7 +2139,9 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
-        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+        "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
+        "mapcontainer/probe_volume.cpp"
       ],
       "expect": "pass"
     },

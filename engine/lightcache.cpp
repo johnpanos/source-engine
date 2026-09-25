@@ -268,7 +268,8 @@ static ConVar r_maxsampledist		("r_maxsampledist", "128");
 static ConVar r_lightcachecenter	("r_lightcachecenter", "1", FCVAR_CHEAT );
 // RFC 0011 G1: model ambient from the map's PRBV probe volume.
 static ConVar r_probevolume( "r_probevolume", "1", FCVAR_CHEAT,
-    "Light models from the map's PRBV probe volume when it carries one (0: the leaf ambient)" );
+    "Light models from the map's PRBV probe volume when it carries one: 0 the leaf ambient, 1 the "
+    "volume (per pixel for native PBR models), 2 the volume through the ambient cube only" );
 static ConVar r_probevolume_visibility( "r_probevolume_visibility", "1", FCVAR_CHEAT,
     "Apply the probe volume's visibility test (0: the leak-control sensitivity setting)" );
 
@@ -287,6 +288,8 @@ static int cached_r_radiosity = -1;
 static int cached_r_avglight = -1;
 static int cached_mat_fullbright = -1;
 static int cached_r_lightcache_numambientsamples = -1;
+static int cached_r_probevolume = -1;
+static int cached_r_probevolume_visibility = -1;
 static PropLightcache_t* s_pAllStaticProps = NULL;
 
 
@@ -354,6 +357,8 @@ void R_StudioInitLightingCache( void )
 	cached_r_avglight = r_avglight.GetInt();
 	cached_mat_fullbright = g_pMaterialSystemConfig->nFullbright;
 	cached_r_lightcache_numambientsamples = r_lightcache_numambientsamples.GetInt();
+	cached_r_probevolume = r_probevolume.GetInt();
+	cached_r_probevolume_visibility = r_probevolume_visibility.GetInt();
 
 	// Recompute all static lighting
 	InvalidateStaticLightingCache();
@@ -369,11 +374,12 @@ void R_StudioCheckReinitLightingCache()
 	}
 
 	// Flush the lighting cache, if necessary
-	if (cached_r_worldlights != r_worldlights.GetInt() ||
-		cached_r_radiosity != r_radiosity.GetInt() ||
-		cached_r_avglight != r_avglight.GetInt() ||
-		cached_mat_fullbright != g_pMaterialSystemConfig->nFullbright ||
-		cached_r_lightcache_numambientsamples != r_lightcache_numambientsamples.GetInt() )
+	if ( cached_r_worldlights != r_worldlights.GetInt() ||
+	     cached_r_radiosity != r_radiosity.GetInt() || cached_r_avglight != r_avglight.GetInt() ||
+	     cached_mat_fullbright != g_pMaterialSystemConfig->nFullbright ||
+	     cached_r_lightcache_numambientsamples != r_lightcache_numambientsamples.GetInt() ||
+	     cached_r_probevolume != r_probevolume.GetInt() ||
+	     cached_r_probevolume_visibility != r_probevolume_visibility.GetInt() )
 	{
 		R_StudioInitLightingCache();
 	}
@@ -680,7 +686,6 @@ static void ComputeAmbientFromSphericalSamples( const Vector& start,
 		VectorMultiply( lightBoxColor[j], 1/t, lightBoxColor[j] );
 	}
 }
-
 
 // The map's probe volume's ambient cube at `start` (total light, the leaf
 // ambient's unit); false when the map has no volume, it is disabled, or the

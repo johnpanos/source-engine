@@ -80,9 +80,9 @@ bool UploadWorldProbeVolume( CVulkanContext &context,
 	std::string detail;
 	const int atlas = context.CreateManagedTexture( int( request.atlasWidth ),
 	    int( request.atlasHeight ), VK_FORMAT_R16G16B16A16_SFLOAT, &detail );
-	if ( atlas < 0 || !context.UploadManagedTexture( atlas,
-	                      static_cast<const uint8_t *>( request.atlas ),
-	                      size_t( request.atlasWidth ) * request.atlasHeight * 8, &detail ) )
+	if ( atlas < 0 ||
+	     !context.UploadManagedTexture( atlas, static_cast<const uint8_t *>( request.atlas ),
+	         size_t( request.atlasWidth ) * request.atlasHeight * 8, &detail ) )
 	{
 		if ( atlas >= 0 )
 			context.DestroyManagedTexture( atlas );
@@ -90,10 +90,9 @@ bool UploadWorldProbeVolume( CVulkanContext &context,
 	}
 	const int grids = context.CreateManagedTexture(
 	    int( kTableFloats / 4 ), int( request.gridCount ), VK_FORMAT_R32G32B32A32_SFLOAT, &detail );
-	if ( grids < 0 ||
-	     !context.UploadManagedTexture( grids,
-	         reinterpret_cast<const uint8_t *>( request.gridTable ),
-	         size_t( request.gridCount ) * kTableFloats * sizeof( float ), &detail ) )
+	if ( grids < 0 || !context.UploadManagedTexture( grids,
+	                      reinterpret_cast<const uint8_t *>( request.gridTable ),
+	                      size_t( request.gridCount ) * kTableFloats * sizeof( float ), &detail ) )
 	{
 		if ( grids >= 0 )
 			context.DestroyManagedTexture( grids );

@@ -21,6 +21,7 @@ sys.path.insert(0, str(HERE.parent))
 import gi_budgets  # noqa: E402
 import gi_reference  # noqa: E402
 import gi_runtime  # noqa: E402
+import lightmap_layers  # noqa: E402
 
 
 def exr_bytes(width, height, channels, compression=0, multipart=False):
@@ -139,6 +140,44 @@ class CaptureDecodeTest(unittest.TestCase):
             self.assertAlmostEqual(float(linear.mean()), 0.5029, places=3)
             halved = gi_runtime.linear_capture(path, film, 2.0)
             self.assertAlmostEqual(float(halved.mean()), 0.5029 / 2, places=3)
+
+
+
+class LightmapLayersTest(unittest.TestCase):
+    """The separated-bake oracle accepts consistent noisy layers and rejects
+    the seeded defects."""
+
+    def layers(self, seed=1):
+        rng = np.random.default_rng(seed)
+        shape = (64, 64, 3)
+        direct = np.full(shape, 0.3) + rng.normal(0, 0.01, shape)
+        indirect = np.full(shape, 0.45) + rng.normal(0, 0.01, shape)
+        # An independent bake of the same texels: its own noise.
+        total = np.full(shape, 0.75) + rng.normal(0, 0.014, shape)
+        covered = np.ones(shape[:2], dtype=bool)
+        return total, direct, indirect, covered
+
+    def test_consistent_noisy_layers_pass(self):
+        analytic = {"diffuse_light_direct": 0.3, "diffuse_light_indirect": 0.45}
+        failures, summary = lightmap_layers.judge(*self.layers(), analytic)
+        self.assertEqual(failures, [])
+        self.assertEqual(summary["blocks"], 16)
+
+    def test_doubled_indirect_fails_the_sum(self):
+        total, direct, indirect, covered = self.layers()
+        failures, _ = lightmap_layers.judge(total, direct, indirect * 2, covered)
+        self.assertTrue(any("noise band" in f for f in failures))
+
+    def test_swapped_layers_fail_the_analytic_check(self):
+        total, direct, indirect, covered = self.layers()
+        analytic = {"diffuse_light_direct": 0.3, "diffuse_light_indirect": 0.45}
+        failures, _ = lightmap_layers.judge(total, indirect, direct, covered, analytic)
+        self.assertEqual(len([f for f in failures if "analytic" in f]), 2)
+
+    def test_a_small_bias_is_detected(self):
+        total, direct, indirect, covered = self.layers()
+        failures, _ = lightmap_layers.judge(total + 0.01, direct, indirect, covered)
+        self.assertTrue(failures)
 
 
 if __name__ == "__main__":

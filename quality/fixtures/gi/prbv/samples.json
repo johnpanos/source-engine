@@ -561,6 +561,230 @@
         0.24426269531250006,
         0.24426269531250006
       ]
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        -0.3,
+        0.2,
+        0.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        0.36690500437813217,
+        0.2934703095657564,
+        0.22010881443923383
+      ]
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        -0.3,
+        0.2,
+        0.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.351981722828981,
+        0.2815500460545476,
+        0.21116861215252103
+      ]
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        -0.3,
+        0.2,
+        0.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 1,
+      "visibility": true,
+      "expected": [
+        0.18345250218906609,
+        0.16510609926915093,
+        0.1300739384695471
+      ]
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        -0.3,
+        0.2,
+        0.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 1,
+      "visibility": false,
+      "expected": [
+        0.1759908614144905,
+        0.1583953167814069,
+        0.12559654783706223
+      ]
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        0.1,
+        -0.4,
+        0.5
+      ],
+      "normal": [
+        0.6,
+        0.0,
+        -0.8
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        0.4655521867740207,
+        0.3724475415535839,
+        0.27933309861344824
+      ]
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        0.1,
+        -0.4,
+        0.5
+      ],
+      "normal": [
+        0.6,
+        0.0,
+        -0.8
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.42622881528791956,
+        0.3410329407963528,
+        0.2557800326276894
+      ]
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        0.1,
+        -0.4,
+        0.5
+      ],
+      "normal": [
+        0.6,
+        0.0,
+        -0.8
+      ],
+      "layer": 1,
+      "visibility": true,
+      "expected": [
+        0.23277609338701036,
+        0.20948572316350475,
+        0.15968673464793404
+      ]
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        0.1,
+        -0.4,
+        0.5
+      ],
+      "normal": [
+        0.6,
+        0.0,
+        -0.8
+      ],
+      "layer": 1,
+      "visibility": false,
+      "expected": [
+        0.21311440764395978,
+        0.1918076759912219,
+        0.14790049307046507
+      ]
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        0.4,
+        0.0,
+        0.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": null
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        0.4,
+        0.0,
+        0.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": null
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        0.4,
+        0.0,
+        0.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 1,
+      "visibility": true,
+      "expected": null
+    },
+    {
+      "file": "gpu.prbv",
+      "position": [
+        0.4,
+        0.0,
+        0.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 1,
+      "visibility": false,
+      "expected": null
     }
   ]
 }

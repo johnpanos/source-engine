@@ -17,7 +17,7 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | Gate | State | Summary |
 | --- | --- | --- |
 | G0 baseline, fixtures and runner | done (2026-09-24) | Six fixtures with Cycles total/indirect references; GPU runner; `mat_indirect_view` matches Cycles on five fixtures and rejects a seeded double; budgets per profile; models receive no baked indirect light today |
-| G1 probe volume, baked producer | planned | — |
+| G1 probe volume, baked producer | active | Bake, pack, engine load and fallback, per-pixel `model_pbr` sampling and the CPU ambient cube done; all native oracles pass; the DXVK check (G1.7) is deferred by user direction; corpus load and memory being recorded |
 | G2 light set, separated bake, policy | planned | — |
 | G3 producer contract and switching | planned | — |
 | G4 precomputed radiosity | planned | — |
@@ -283,3 +283,234 @@ Not covered by G0:
 - no Fold7 or Apple measurement of the new views;
 - the leak bound stays provisional until G1 measures a visibility-disabled
   build.
+
+## G1: Probe volume, baked producer and consumer
+
+Scope decision (user, 2026-09-24): "do not care about dxvk... we're focused on
+our vulkan native runtime." G1 is verified on native Vulkan only. The DXVK
+capture that item 7 asks for is deferred, not attempted. The leaf-ambient lumps
+are still derived from the volume (item 7's exporter half), because the native
+engine uses them for maps or settings without a volume.
+
+### G1.1 Bake and pack (done 2026-09-24)
+
+[`probe_volume_bake.py`](../tools/quality/probe_volume_bake.py) runs in
+Blender on the lightmap bake's normalized stage. It uses the same
+smooth-normal material policy and light paths as the bake and the references.
+
+**Method.** This departs from the RFC text's "panoramic Cycles radiance and
+depth renders":
+
+- **Irradiance.** Each probe owns one receiver quad per 6×6 tile texel,
+  facing that texel's direction. A Cycles DIFFUSE bake without colour gives
+  each texel the exact irradiance/π for that normal. The total layer uses
+  DIRECT+INDIRECT; the indirect layer uses INDIRECT, the lightmap layers'
+  split.
+  - The quads are invisible to diffuse, glossy, transmission and shadow rays.
+    Cycles skips baking an object with no ray visibility at all, so camera
+    visibility, which a bake never traces, keeps them bakeable.
+  - This handles every light type with its shadows, where a panorama misses
+    lamps and suns.
+- **Visibility and placement.** 4096 BVH rays per probe, against the world
+  meshes only (dynamic models are left out).
+  - Distance moments are cos⁵⁰-weighted per 14×14 visibility texel.
+  - A probe that sees more than 25% backfaces moves toward its nearest
+    backface; one within 5% of the spacing of a surface is pushed off it.
+    Offsets are limited to 0.45 of the spacing per axis. A probe still
+    inside after that is inactive.
+- **Grid.** The world meshes' bounds inset by 5% of the spacing, or declared
+  bounds (`probe_volume.bounds_m`) for an open scene, at `spacing_m` rounded
+  to span the bounds.
+
+Three defects were found and fixed by the analytic oracle:
+
+- Cycles' default adaptive sampling stopped texels at a 1% noise estimate;
+  the bake now takes every sample from a recorded seed.
+- 2 µm quads 5 m from the origin had their face normals tilted by float32
+  vertex precision; quads are now 5 mm across.
+- A quad covering only part of its texel wasted jittered samples; each quad
+  now covers its whole texel.
+
+**Pipeline.** A map export profile or manifest with `probe_volume` adds the
+`probe-volume` step (in the `gi-fixture` and `source2` profiles, at 1 m).
+Such a map then has:
+
+- no vrad fallback light;
+- leaf ambient derived from the volume by
+  [`leaf_ambient_from_prbv.py`](../tools/quality/leaf_ambient_from_prbv.py):
+  a sample at every active probe in each leaf, the HDR and LDR lumps
+  identical, the other lumps left in place;
+- the PRBV lump, packed by `bsp2tool pack-world-probed`, which validates it
+  first and rejects a malformed volume (exit 2, `PRBV <error>`).
+
+Without the fallback light the engine would have forced `mat_fullbright 1`
+("Level unlit", `gl_rmisc.cpp`). A map carrying a probe volume is now
+exempt from that rule.
+
+Costs of the fixture volumes at 1 m, 4096 samples:
+
+| Fixture | Probes (active, relocated) | PRBV | Bake |
+| --- | --- | --- | --- |
+| furnace | 64 (64, 0) | 257 KB | 5.3 s |
+| thin-wall | 128 (128, 2) | 530 KB | 7.5 s |
+| door | 200 (200, 1) | 842 KB | 12.7 s |
+| portal-view | 216 (216, 2) | 902 KB | 17.7 s |
+| room-states | 400 (400, 252) | 1605 KB | 21.1 s |
+
+Room-states' relocations come from the clearance rule: the room is full of
+furniture and the probes sit near it.
+
+### G1.2 Engine load and fallback (done 2026-09-24)
+
+`CModelLoader::Map_LoadProbeVolume` runs for BSP2 maps. It reads the PRBV
+lump, verifies its container hash, and validates it with
+`mapcontainer::ValidateProbeVolume`. It then owns the bytes and a
+`ProbeVolumeView`, which `worldbrushdata_t::pProbeVolume` borrows until
+unload. A rejected lump leaves the map playable. The engine logs:
+
+- `PRBV version, flags or size unsupported`;
+- `PRBV read or hash failed`;
+- `PRBV rejected (<structured error>)`;
+
+each followed by "models use the leaf ambient". A successful load logs its
+cost, e.g. room-states: `PRBV v1, 1 grid, 400 probes (400 active), 320x642
+atlas, 1605 KB, 4.07 ms`.
+
+`gi_probes.py malformed` boots room-states with its PRBV lump replaced by
+four variants:
+
+- intact (the control, which must load);
+- grid count 0 (correctly hashed);
+- truncated (correctly hashed);
+- one corrupted byte (hash mismatch).
+
+All four boot. The control loads the volume; each malformed variant reports
+its diagnostic and loads none. Evidence:
+`quality-results/rfc0011-g1/malformed/malformed.json`.
+
+### G1.3 Consumers (done 2026-09-24)
+
+**CPU (every model family).** `lightcache.cpp` evaluates the volume's
+ambient cube at a model's lighting origin before the leaf ambient
+(`r_radiosity 4`, static and dynamic props), from the total layer with
+visibility. The cheat ConVars:
+
+- `r_probevolume`: 0 the leaf ambient, 1 the volume, 2 the volume through
+  the ambient cube only;
+- `r_probevolume_visibility`: 0 disables the visibility test.
+
+Changing either flushes the light cache. Legacy maps carry no volume and are
+unchanged.
+
+**A finding.** Native `PBRMetalRough` never set
+`MATERIAL_VAR2_LIGHTING_VERTEX_LIT`. The engine sets up a studio model's
+lighting only when one of its materials is vertex-lit, so every PBR model
+had a black ambient cube and no local lights. That was the real cause of
+G0.5's zeros, not the leaf ambient. The shader now sets the flag; only
+studio-model loading reads it.
+
+**GPU (native `model_pbr`).**
+
+- Upload: `WorldMeshUpload005` adds `UploadProbeVolume`. The engine uploads
+  the atlas (RGBA16F) and the grid table (`mapcontainer::WriteProbeGridTable`,
+  RGBA32F).
+- Sampling: `shaders/probe_volume.glsl` is a line-for-line port of the C++
+  sampler. The `-DPROBE_VOLUME` variants of `model_pbr.frag` take their
+  diffuse light from it per pixel, with the total layer when shaded and the
+  indirect layer in `mat_indirect_view 1`. Outside the grid they fall back to
+  the ambient cube.
+- Device requirement: those variants use a separate 9-set layout, created
+  only when `maxBoundDescriptorSets >= 9`. Other devices keep the ambient
+  cube, and the log says so. Nothing else changes, and no new device feature
+  is needed.
+
+The `render.model-pbr.native-pixels` row adds four probe runs against the C++
+sampler, using the new fixture `quality/fixtures/gi/prbv/gpu.prbv`:
+
+- indirect view on the indirect layer;
+- the same with a tilted normal;
+- shaded on the total layer;
+- shaded with visibility off.
+
+Each run judges 260 pixels inside the volume and 100 on the ambient-cube
+fallback, with a 3-level bound; every pixel matches. Controls require that
+visibility and the other layer change the answer at those pixels. The
+captured frame follows the backend's D3D9 clip space (+Y at the top, integer
+pixel centres). The headless `world.probe-volume` suite adds the GPU fixture
+and grid-table checks.
+
+### G1.4–G1.6 Oracles (done 2026-09-24)
+
+| Oracle | Result | Bound |
+| --- | --- | --- |
+| probe-grid sky, at probe normals | total 0.58%, indirect 0.68% of floor radiance | 3% |
+| probe-grid sun, at probe normals | total 3.4%, indirect 0.62% | 5% |
+| thin-wall leak, dark/lit indirect | 0.026% | < 2% |
+| thin-wall, visibility disabled | 4.47% (exceeds the bound, as the control must) | > 2% |
+| room-states model, per pixel, indirect view vs Cycles DiffInd | 0.0369 vs 0.0390 (5.4%; G0: 0, 100%) | 10% + 1% of level |
+
+The analytic reference is integrated exactly over the finite floor. From
+1–2 m up, the sky below the horizon past the 40 m floor carries about 6% of
+a horizontal normal's cosine weight.
+
+Between texel normals the 6×6 tile's filtering is measured, not gated:
+
+- up to 6% for the sky;
+- up to 18% of peak for the sun. The tile cannot follow a sun's sharp cosine
+  edge. That is a policy input for G2: direct light from strong sources
+  belongs to the light set, not the total layer.
+
+Every model gated per pixel in the indirect view, with seeded doubles
+rejected:
+
+| Fixture/camera | Cycles | Engine |
+| --- | --- | --- |
+| furnace/inside | 0.4497 | 0.4507 |
+| thin-wall/lit, dark | 0.2249, 0 | 0.2227, 0 |
+| room-states/model | 0.0390 | 0.0369 |
+| door/far | 0.0158 | 0.0160 |
+| portal-view/direct, through | 0.3352, 0.2977 | 0.3383, 0.2997 |
+
+Through the ambient cube only (`r_probevolume 2`: the non-PBR families'
+path), models against Cycles' DiffDir + DiffInd are measured, not gated:
+
+| Fixture | Error |
+| --- | --- |
+| furnace | +0.5% |
+| thin-wall | +4.4% |
+| door | +15% |
+| portal-view | −16%, −18% |
+| room-states | +41% |
+
+Evaluated at the same point in Python, the six-axis cube and per-pixel
+sampling differ by factors of 0.7 to 1.65. That is the representation error
+of Source's ambient cube, not a sampling defect.
+
+Reproduce:
+
+```sh
+python3 tools/quality/probe_volume.py fixture          # PRBV conformance fixtures
+python3 tools/quality/gi_probes.py bake --fixture probe-grid --state sun \
+    --out quality-results/rfc0011-probes/probe-grid/sun
+python3 tools/quality/gi_probes.py analytic --fixture probe-grid --state sun \
+    --prbv quality-results/rfc0011-probes/probe-grid/sun/probes.prbv --out sun.json
+python3 tools/quality/gi_probes.py leak --fixture thin-wall \
+    --prbv quality-results/rfc0011-maps/thin-wall/lighting/probe_volume.prbv --out leak.json
+python3 tools/quality/gi_probes.py malformed --map-build quality-results/rfc0011-maps/room-states \
+    --out quality-results/rfc0011-g1/malformed
+python3 tools/quality/gi_runtime.py indirect-view --gate-models --fixture room-states \
+    --map-build quality-results/rfc0011-maps/room-states --out quality-results/rfc0011-g1/view/room-states
+python3 tools/quality/conformance.py check --suite render.model-pbr.native-pixels
+```
+
+### G1.7 Legacy leaf ambient and DXVK
+
+The exporter half is done: pipeline maps with a volume carry leaf ambient
+derived from it, and no fallback light. The DXVK capture is deferred by the
+user's native-Vulkan scope decision. An exploratory DXVK boot found two
+DXVK-only defects, recorded here and not pursued:
+
+- pipeline maps need the source-matched `sprite_ps20b` artifacts
+  (`--shader-artifacts`);
+- the leaf-ambient interpolation reads about 58% brighter than the volume at
+  the room-states model.
