@@ -1,0 +1,938 @@
+{
+  "schema": "physics-budget/v1",
+  "rfc": "0013",
+  "rows": [
+    "R09",
+    "R37",
+    "R67"
+  ],
+  "recorded": "2026-09-24",
+  "policy": "Physics acceptance gates per opt-in capability (RFC 0013) and for Box3D parity with IVP (RFC 0004 performance and determinism). Scenes run through public VPhysics interfaces only, one process per run, in interleaved rounds; statistics are medians across rounds. Quality and determinism rules are profile-independent. Timing and memory limits are per profile: about twice the worst median seen in calibration on the declared runner, so they catch regressions such as lost parallelism or an adapter going quadratic, not small drifts. A profile without its own measurements is unverified and cannot certify a gate. IVP is the reference: its runs must complete, and they set the RFC 0004 review ratio, but its scene quality is recorded, not gated.",
+  "reference": "vphysics",
+  "providers": [
+    "vphysics",
+    "vphysics_box3d"
+  ],
+  "workloads": {
+    "pile-256": {
+      "scene": "pile",
+      "count": 256,
+      "ticks": 300,
+      "seed": 1,
+      "authored_cube": true,
+      "workers": [
+        0
+      ]
+    },
+    "pile-1024": {
+      "scene": "pile",
+      "count": 1024,
+      "ticks": 300,
+      "seed": 1,
+      "authored_cube": true,
+      "workers": [
+        0,
+        1,
+        2,
+        4,
+        8
+      ]
+    },
+    "pile-4096": {
+      "scene": "pile",
+      "count": 4096,
+      "ticks": 300,
+      "seed": 1,
+      "authored_cube": true,
+      "workers": [
+        0,
+        1,
+        2,
+        4,
+        8
+      ],
+      "reference": false,
+      "note": "IVP is not run in the gate: one 300-tick IVP run takes about a minute (see profiles.linux-x86_64-desktop.captures)."
+    },
+    "stack-20": {
+      "scene": "stack",
+      "count": 20,
+      "ticks": 300,
+      "seed": 1,
+      "workers": [
+        0
+      ]
+    },
+    "ragdolls-32": {
+      "scene": "ragdolls",
+      "count": 32,
+      "ticks": 300,
+      "seed": 1,
+      "workers": [
+        0
+      ]
+    },
+    "ragdolls-128": {
+      "scene": "ragdolls",
+      "count": 128,
+      "ticks": 300,
+      "seed": 1,
+      "workers": [
+        0,
+        1,
+        2,
+        4,
+        8
+      ]
+    },
+    "projectiles-64": {
+      "scene": "projectiles",
+      "count": 64,
+      "ticks": 60,
+      "seed": 1,
+      "workers": [
+        0
+      ]
+    },
+    "shards-64": {
+      "scene": "shards",
+      "count": 64,
+      "ticks": 60,
+      "seed": 1,
+      "workers": [
+        0
+      ]
+    },
+    "panes-64": {
+      "scene": "panes",
+      "count": 64,
+      "ticks": 60,
+      "seed": 1,
+      "workers": [
+        0
+      ]
+    }
+  },
+  "gates": {
+    "box3d-parity": {
+      "state": "required",
+      "owner": "R37",
+      "description": "Box3D on the path the game uses today (IPhysics::CreateEnvironment, one worker) completes every scene, repeats bitwise, keeps scenes intact, and stays within the RFC 0004 p95 review ratio against IVP.",
+      "rules": [
+        {
+          "id": "parity.complete",
+          "kind": "complete"
+        },
+        {
+          "id": "parity.repeat-pile-256",
+          "kind": "digest_repeatable",
+          "workload": "pile-256",
+          "provider": "vphysics_box3d",
+          "workers": 0
+        },
+        {
+          "id": "parity.repeat-stack-20",
+          "kind": "digest_repeatable",
+          "workload": "stack-20",
+          "provider": "vphysics_box3d",
+          "workers": 0
+        },
+        {
+          "id": "parity.repeat-ragdolls-32",
+          "kind": "digest_repeatable",
+          "workload": "ragdolls-32",
+          "provider": "vphysics_box3d",
+          "workers": 0
+        },
+        {
+          "id": "parity.pile-256-lost",
+          "kind": "metric_max",
+          "workload": "pile-256",
+          "provider": "vphysics_box3d",
+          "metric": "lost",
+          "max": 0
+        },
+        {
+          "id": "parity.pile-1024-lost",
+          "kind": "metric_max",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "metric": "lost",
+          "max": 0
+        },
+        {
+          "id": "parity.pile-4096-lost",
+          "kind": "metric_max",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "metric": "lost",
+          "max": 0
+        },
+        {
+          "id": "parity.stack-collapse",
+          "kind": "metric_max",
+          "workload": "stack-20",
+          "provider": "vphysics_box3d",
+          "metric": "collapsed",
+          "max": 0
+        },
+        {
+          "id": "parity.ragdolls-32-joints",
+          "kind": "metric_max",
+          "workload": "ragdolls-32",
+          "provider": "vphysics_box3d",
+          "metric": "joint_error_max",
+          "max": 1.0
+        },
+        {
+          "id": "parity.ragdolls-128-joints",
+          "kind": "metric_max",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "metric": "joint_error_max",
+          "max": 1.0
+        },
+        {
+          "id": "parity.ragdolls-lost",
+          "kind": "metric_max",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "metric": "lost",
+          "max": 0
+        },
+        {
+          "id": "parity.projectiles-tunnel",
+          "kind": "metric_max",
+          "workload": "projectiles-64",
+          "provider": "vphysics_box3d",
+          "metric": "tunneled",
+          "max": 0
+        },
+        {
+          "id": "parity.shards-tunnel",
+          "kind": "metric_max",
+          "workload": "shards-64",
+          "provider": "vphysics_box3d",
+          "metric": "tunneled",
+          "max": 0
+        },
+        {
+          "id": "parity.ratio-pile-256",
+          "kind": "relative",
+          "workload": "pile-256",
+          "stat": "p95",
+          "candidate": {
+            "provider": "vphysics_box3d",
+            "workers": 0
+          },
+          "reference": {
+            "provider": "vphysics",
+            "workers": 0
+          },
+          "max_ratio": 1.1
+        },
+        {
+          "id": "parity.ratio-pile-1024",
+          "kind": "relative",
+          "workload": "pile-1024",
+          "stat": "p95",
+          "candidate": {
+            "provider": "vphysics_box3d",
+            "workers": 0
+          },
+          "reference": {
+            "provider": "vphysics",
+            "workers": 0
+          },
+          "max_ratio": 1.1
+        },
+        {
+          "id": "parity.ratio-stack-20",
+          "kind": "relative",
+          "workload": "stack-20",
+          "stat": "total",
+          "candidate": {
+            "provider": "vphysics_box3d",
+            "workers": 0
+          },
+          "reference": {
+            "provider": "vphysics",
+            "workers": 0
+          },
+          "max_ratio": 1.1,
+          "note": "Total, not p95: Box3D's stack sleeps within a few ticks, so its p95 is the settling burst while IVP's is its steady state."
+        },
+        {
+          "id": "parity.ratio-ragdolls-32",
+          "kind": "relative",
+          "workload": "ragdolls-32",
+          "stat": "p95",
+          "candidate": {
+            "provider": "vphysics_box3d",
+            "workers": 0
+          },
+          "reference": {
+            "provider": "vphysics",
+            "workers": 0
+          },
+          "max_ratio": 1.1
+        },
+        {
+          "id": "parity.ratio-ragdolls-128",
+          "kind": "relative",
+          "workload": "ragdolls-128",
+          "stat": "p95",
+          "candidate": {
+            "provider": "vphysics_box3d",
+            "workers": 0
+          },
+          "reference": {
+            "provider": "vphysics",
+            "workers": 0
+          },
+          "max_ratio": 1.1
+        }
+      ]
+    },
+    "parallel-step": {
+      "state": "required",
+      "owner": "R67",
+      "description": "vphysics.parallel-step.v1: the capability contract passes, worker tasks run on the host's pool (no provider threads, no forbidden nested waits or starvation), results are bitwise identical for every worker count and across rounds, and extra workers pay off on large scenes.",
+      "rules": [
+        {
+          "id": "parallel.contract",
+          "kind": "contract",
+          "provider": "vphysics_box3d"
+        },
+        {
+          "id": "parallel.invariant-pile-1024",
+          "kind": "digest_invariant",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d"
+        },
+        {
+          "id": "parallel.invariant-pile-4096",
+          "kind": "digest_invariant",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d"
+        },
+        {
+          "id": "parallel.invariant-ragdolls-128",
+          "kind": "digest_invariant",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d"
+        },
+        {
+          "id": "parallel.repeat-pile-4096",
+          "kind": "digest_repeatable",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d"
+        },
+        {
+          "id": "parallel.repeat-ragdolls-128",
+          "kind": "digest_repeatable",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d"
+        },
+        {
+          "id": "parallel.speedup-pile-4096",
+          "kind": "speedup",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "stat": "p50",
+          "base_workers": 1,
+          "workers": 4,
+          "min_ratio": 1.5
+        },
+        {
+          "id": "parallel.speedup-pile-1024",
+          "kind": "speedup",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "stat": "p50",
+          "base_workers": 1,
+          "workers": 4,
+          "min_ratio": 1.2
+        },
+        {
+          "id": "parallel.speedup-ragdolls-128",
+          "kind": "speedup",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "stat": "p95",
+          "base_workers": 1,
+          "workers": 4,
+          "min_ratio": 1.2
+        },
+        {
+          "id": "parallel.no-threads-pile-1024",
+          "kind": "metric_max",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "metric": "threads_added",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-clean-pile-1024-w2",
+          "kind": "metric_max",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 2,
+          "metric": "pool_forbidden_nested_waits",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-starvation-pile-1024-w2",
+          "kind": "metric_max",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 2,
+          "metric": "pool_starvation_events",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-clean-pile-1024-w4",
+          "kind": "metric_max",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "metric": "pool_forbidden_nested_waits",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-starvation-pile-1024-w4",
+          "kind": "metric_max",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "metric": "pool_starvation_events",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-clean-pile-1024-w8",
+          "kind": "metric_max",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 8,
+          "metric": "pool_forbidden_nested_waits",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-starvation-pile-1024-w8",
+          "kind": "metric_max",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 8,
+          "metric": "pool_starvation_events",
+          "max": 0
+        },
+        {
+          "id": "parallel.no-threads-pile-4096",
+          "kind": "metric_max",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "metric": "threads_added",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-clean-pile-4096-w2",
+          "kind": "metric_max",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 2,
+          "metric": "pool_forbidden_nested_waits",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-starvation-pile-4096-w2",
+          "kind": "metric_max",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 2,
+          "metric": "pool_starvation_events",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-clean-pile-4096-w4",
+          "kind": "metric_max",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "metric": "pool_forbidden_nested_waits",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-starvation-pile-4096-w4",
+          "kind": "metric_max",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "metric": "pool_starvation_events",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-clean-pile-4096-w8",
+          "kind": "metric_max",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 8,
+          "metric": "pool_forbidden_nested_waits",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-starvation-pile-4096-w8",
+          "kind": "metric_max",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 8,
+          "metric": "pool_starvation_events",
+          "max": 0
+        },
+        {
+          "id": "parallel.no-threads-ragdolls-128",
+          "kind": "metric_max",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "metric": "threads_added",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-clean-ragdolls-128-w2",
+          "kind": "metric_max",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 2,
+          "metric": "pool_forbidden_nested_waits",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-starvation-ragdolls-128-w2",
+          "kind": "metric_max",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 2,
+          "metric": "pool_starvation_events",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-clean-ragdolls-128-w4",
+          "kind": "metric_max",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "metric": "pool_forbidden_nested_waits",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-starvation-ragdolls-128-w4",
+          "kind": "metric_max",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "metric": "pool_starvation_events",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-clean-ragdolls-128-w8",
+          "kind": "metric_max",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 8,
+          "metric": "pool_forbidden_nested_waits",
+          "max": 0
+        },
+        {
+          "id": "parallel.pool-starvation-ragdolls-128-w8",
+          "kind": "metric_max",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 8,
+          "metric": "pool_starvation_events",
+          "max": 0
+        }
+      ]
+    },
+    "ccd-bullets": {
+      "state": "planned",
+      "owner": "R67",
+      "description": "vphysics.continuous.v1 (not implemented): fast bodies marked as bullets do not pass through thin dynamic bodies. Box3D's default continuous collision covers static geometry only.",
+      "rules": [
+        {
+          "id": "ccd.panes-tunnel",
+          "kind": "metric_max",
+          "workload": "panes-64",
+          "provider": "vphysics_box3d",
+          "metric": "tunneled",
+          "max": 0
+        }
+      ]
+    }
+  },
+  "sensitivity": [
+    {
+      "fault": "bench-slow",
+      "workload": "pile-256",
+      "provider": "vphysics_box3d",
+      "rule": "timing.pile-256-p95"
+    },
+    {
+      "fault": "bench-collapse",
+      "workload": "stack-20",
+      "provider": "vphysics_box3d",
+      "rule": "parity.stack-collapse"
+    },
+    {
+      "fault": "bench-joint-break",
+      "workload": "ragdolls-32",
+      "provider": "vphysics_box3d",
+      "rule": "parity.ragdolls-32-joints"
+    },
+    {
+      "fault": "bench-tunnel",
+      "workload": "projectiles-64",
+      "provider": "vphysics_box3d",
+      "rule": "parity.projectiles-tunnel"
+    },
+    {
+      "fault": "parallel-nondeterministic",
+      "workload": "pile-1024",
+      "provider": "vphysics_box3d",
+      "workers": [
+        1,
+        4
+      ],
+      "rule": "parallel.invariant-pile-1024"
+    },
+    {
+      "fault": "parallel-accepts-invalid",
+      "workload": "contract",
+      "provider": "vphysics_box3d",
+      "rule": "parallel.contract"
+    },
+    {
+      "fault": "parallel-count-lies",
+      "workload": "contract",
+      "provider": "vphysics_box3d",
+      "rule": "parallel.contract"
+    },
+    {
+      "fault": "parallel-solver-concurrent",
+      "workload": "contract",
+      "provider": "vphysics_box3d",
+      "rule": "parallel.contract"
+    },
+    {
+      "fault": "parallel-private-threads",
+      "workload": "contract",
+      "provider": "vphysics_box3d",
+      "rule": "parallel.contract"
+    },
+    {
+      "fault": "parallel-nested-timeout",
+      "workload": "contract",
+      "provider": "vphysics_box3d",
+      "rule": "parallel.contract"
+    },
+    {
+      "fault": "profile-lies",
+      "workload": "contract",
+      "provider": "vphysics_box3d",
+      "rule": "parallel.contract"
+    }
+  ],
+  "profiles": {
+    "linux-x86_64-desktop": {
+      "status": "measured",
+      "owner": "R37",
+      "runner": "AMD RYZEN AI MAX+ PRO 395 (16 cores / 32 threads), Linux 7.2, g++ 16.2.1, release native tree (-T release), shared host",
+      "rules": [
+        {
+          "id": "timing.pile-256-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "pile-256",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 1200
+        },
+        {
+          "id": "timing.pile-1024-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 4500
+        },
+        {
+          "id": "timing.pile-4096-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 25000
+        },
+        {
+          "id": "timing.stack-20-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "stack-20",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 700
+        },
+        {
+          "id": "timing.ragdolls-32-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "ragdolls-32",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 1400
+        },
+        {
+          "id": "timing.ragdolls-128-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 5500
+        },
+        {
+          "id": "timing.projectiles-64-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "projectiles-64",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 250
+        },
+        {
+          "id": "timing.shards-64-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "shards-64",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 150
+        },
+        {
+          "id": "timing.pile-1024-w4-p50",
+          "gate": "parallel-step",
+          "kind": "timing",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "stat": "p50",
+          "limit_us": 2000
+        },
+        {
+          "id": "timing.pile-4096-w4-p50",
+          "gate": "parallel-step",
+          "kind": "timing",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "stat": "p50",
+          "limit_us": 4500
+        },
+        {
+          "id": "timing.pile-4096-w8-p50",
+          "gate": "parallel-step",
+          "kind": "timing",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 8,
+          "stat": "p50",
+          "limit_us": 3200
+        },
+        {
+          "id": "timing.ragdolls-128-w4-p95",
+          "gate": "parallel-step",
+          "kind": "timing",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "stat": "p95",
+          "limit_us": 2500
+        },
+        {
+          "id": "memory.pile-1024",
+          "gate": "box3d-parity",
+          "kind": "memory",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "limit_kb": 15000
+        },
+        {
+          "id": "memory.pile-4096",
+          "gate": "box3d-parity",
+          "kind": "memory",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "limit_kb": 52000
+        },
+        {
+          "id": "memory.ragdolls-128",
+          "gate": "box3d-parity",
+          "kind": "memory",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "limit_kb": 15000
+        },
+        {
+          "id": "memory.pile-4096-w4",
+          "gate": "parallel-step",
+          "kind": "memory",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "limit_kb": 54000
+        }
+      ],
+      "calibration": "2026-09-24, 3 interleaved rounds at source 3ef969ad + box3d-optin worktree; load average 7-15 from concurrent agents. Limits are about twice the median of the three rounds.",
+      "captures": {
+        "medians_us": {
+          "vphysics_box3d w0 p50/p95": {
+            "pile-256": [
+              291,
+              574
+            ],
+            "pile-1024": [
+              1286,
+              2214
+            ],
+            "pile-4096": [
+              6156,
+              12592
+            ],
+            "stack-20": [
+              5,
+              328
+            ],
+            "ragdolls-32": [
+              242,
+              674
+            ],
+            "ragdolls-128": [
+              637,
+              2688
+            ],
+            "projectiles-64": [
+              65,
+              113
+            ],
+            "shards-64": [
+              44,
+              66
+            ],
+            "panes-64": [
+              35,
+              70
+            ]
+          },
+          "vphysics w0 p50/p95": {
+            "pile-256": [
+              626,
+              1899
+            ],
+            "pile-1024": [
+              7047,
+              30142
+            ],
+            "stack-20": [
+              400,
+              498
+            ],
+            "ragdolls-32": [
+              2162,
+              2999
+            ],
+            "ragdolls-128": [
+              18756,
+              24355
+            ],
+            "projectiles-64": [
+              327,
+              982
+            ],
+            "shards-64": [
+              253,
+              590
+            ],
+            "panes-64": [
+              581,
+              1159
+            ]
+          },
+          "vphysics_box3d p50 by workers 1/2/4/8": {
+            "pile-1024": [
+              1263,
+              841,
+              942,
+              492
+            ],
+            "pile-4096": [
+              5630,
+              3328,
+              2183,
+              1580
+            ],
+            "ragdolls-128": [
+              635,
+              552,
+              471,
+              485
+            ]
+          }
+        },
+        "peak_growth_kb": {
+          "vphysics_box3d w0": {
+            "pile-256": 2188,
+            "pile-1024": 7448,
+            "pile-4096": 25448,
+            "ragdolls-128": 7044
+          },
+          "vphysics w0": {
+            "pile-256": 11400,
+            "pile-1024": 74484,
+            "ragdolls-128": 41612
+          }
+        },
+        "ivp_pile_4096": "Not in the gate. One 300-tick smoke run on 2026-09-24: 58.7 s total, p50 114.5 ms, p95 756 ms (Box3D w0: 1.23 s total).",
+        "multi_worker_noise": "Individual rounds at 2-8 workers showed p95 spikes of 40-70 ms under host load (Box3D's internal scheduler threads descheduled); medians across rounds absorb them. Mobile and loaded-server profiles need their own measurements before any default."
+      },
+      "max_load_per_cpu": 0.5,
+      "host_policy": "Timing, ratio and speedup rules are evaluated only when every 1-minute load sample (before each round and after the last) stays at or below 0.5 per logical CPU; otherwise they report not-run and the gates stay incomplete. Quality, determinism, memory and contract rules are evaluated regardless. 0.5 per CPU leaves 16 of 32 hardware threads free, enough for the 8-worker rows; calibration ran at up to 0.48."
+    },
+    "portal-android-native-vulkan": {
+      "status": "unverified",
+      "owner": "R29",
+      "note": "No device measurements; mobile power/thermal budgets need R29 device runs.",
+      "rules": []
+    },
+    "apple-arm64": {
+      "status": "unverified",
+      "owner": "R29",
+      "note": "No macOS/iOS runner.",
+      "rules": []
+    }
+  },
+  "worker_budget": {
+    "owner": "R20",
+    "policy": "Box3D worker tasks run on the pool the application root passes to CreateParallelEnvironment; in products that is the engine compute pool (CmpJob, g_pThreadPool). A parallel environment may use at most the pool's threads plus the calling thread, so physics adds no threads and the CmpJob capacity row in quality/budgets/scheduler-v1.json (3 on the Linux desktop unless -threads) is the physics worker budget: at most 4 workers by default. The benchmark host starts a private pool with workers - 1 threads, so its 8-worker rows model a -threads 8 configuration."
+  }
+}

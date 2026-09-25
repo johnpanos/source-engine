@@ -1,8 +1,12 @@
 #ifndef PHYSICS_ENVIRONMENT_H
 #define PHYSICS_ENVIRONMENT_H
 
+#include <mutex>
+
+#include "tier0/threadtools.h"
 #include "vphysics_interface.h"
 #include "vphysics/performance.h"
+#include "vphysics/step_profile.h"
 #include "vphysics/stats.h"
 #include "vphysics/constraints.h"
 #include "utlvector.h"
@@ -11,6 +15,7 @@
 #include "physics_controllers.h"
 
 class CVehicleControllerBox3D;
+class IThreadPool;
 
 class CPhysicsObjectBox3D;
 class CConstraintBox3D;
@@ -18,8 +23,11 @@ class CConstraintGroupBox3D;
 class CPhysicsFluidControllerBox3D;
 class CPhysicsSpringBox3D;
 
-// One VPhysics environment is one Box3D world, stepped on the caller's thread
-// with a single worker (RFC 0004 B: one-worker vertical slice). Simulate()
+// One VPhysics environment is one Box3D world, stepped on the caller's thread.
+// It uses one worker (RFC 0004 B: one-worker vertical slice) unless it was
+// created through the opt-in parallel-step capability (RFC 0013), which fixes
+// a larger worker count for the world's lifetime and runs Box3D's worker tasks
+// on the caller's thread pool. Simulate()
 // advances in fixed steps of the simulation timestep, as IVP does; each step
 // runs the controllers, springs, pulleys, fluids, damping and drag
 // (PreStep), the Box3D step, then dispatches constraint-break, contact,
@@ -31,7 +39,10 @@ class CPhysicsSpringBox3D;
 class CPhysicsEnvironmentBox3D : public IPhysicsEnvironment
 {
 public:
-	CPhysicsEnvironmentBox3D();
+	// workerCount > 1 steps the world with that many workers, running Box3D's
+	// worker tasks on pThreadPool (RFC 0013 vphysics.parallel-step.v1). The
+	// pool must outlive the environment.
+	explicit CPhysicsEnvironmentBox3D( int workerCount = 1, IThreadPool *pThreadPool = NULL );
 	virtual ~CPhysicsEnvironmentBox3D();
 
 	virtual void SetDebugOverlay( CreateInterfaceFn debugOverlayFactory ) override;
@@ -127,6 +138,9 @@ public:
 
 	// Provider internals.
 	b3WorldId GetWorld() const { return m_world; }
+	int GetWorkerCount() const { return m_workerCount; }
+	// RFC 0013 vphysics.step-profile.v1: the last Simulate call.
+	const physics_stepprofile_t &GetLastSimulateProfile() const { return m_lastProfile; }
 	float GetStepTime() const { return m_timestep; }
 	int GetStepCount() const { return m_stepCount; }
 	bool ShouldQuickDelete() const { return m_quickDelete; }
@@ -187,6 +201,22 @@ private:
 	};
 
 	b3WorldId m_world;
+	int m_workerCount;
+	IThreadPool *m_pThreadPool;
+	physics_stepprofile_t m_lastProfile;
+	// Game solver calls (step profile), counted under m_solverMutex when
+	// several workers can make them.
+	ThreadId_t m_simulateThread;
+	mutable int m_solverCalls;
+	mutable int m_solverCallsOffCaller;
+	// Accumulated by Step() during one Simulate call.
+	double m_stepSeconds;
+	double m_preStepSeconds;
+	double m_postStepSeconds;
+	// With several workers Box3D runs the custom filter, and so the game's
+	// collision solver, on worker threads. This serializes those calls so
+	// game code is never entered concurrently (RFC 0013).
+	mutable std::mutex m_solverMutex;
 	Vector m_gravity;
 	float m_airDensity;
 	float m_timestep;

@@ -18,6 +18,7 @@
 #include "physics_object.h"
 #include "physics_vehicle.h"
 #include "tier0/dbg.h"
+#include "vstdlib/jobthread.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -30,6 +31,32 @@ const int kMaxStepsPerSimulate = 8;
 const float kMetersPerInch = 0.0254f;
 // IVP forgets a pair's last impact after a second (CPhysicsListenerCollision).
 const float kImpactPairMemory = 1.0f;
+
+// Box3D's worker tasks on the caller's thread pool (RFC 0013 P2). Box3D tasks
+// are leaves: none enqueues or waits for another, and the thread that calls
+// b3World_Step orchestrates the solver itself, so a step completes even when
+// no pool thread is free. Finishing a task waits through the pool's
+// YieldWait, which runs that task on the waiting thread if no worker has
+// started it and never runs unrelated pool work.
+void *EnqueuePoolTask( b3TaskCallback *pTask, void *pTaskContext, void *pUserContext, const char * )
+{
+	IThreadPool *pPool = static_cast<IThreadPool *>( pUserContext );
+	CJob *pJob = pPool->QueueCall( pTask, pTaskContext );
+	if ( !pJob )
+	{
+		// NULL tells Box3D the task already ran here.
+		pTask( pTaskContext );
+		return NULL;
+	}
+	return pJob;
+}
+
+void FinishPoolTask( void *pUserTask, void *pUserContext )
+{
+	CJob *pJob = static_cast<CJob *>( pUserTask );
+	pJob->WaitForFinish( TT_INFINITE, static_cast<IThreadPool *>( pUserContext ) );
+	pJob->Release();
+}
 
 CPhysicsObjectBox3D *ObjectOf( b3ShapeId shape )
 {
@@ -110,21 +137,36 @@ bool ContactGeometry( const b3ContactData &data, Vector *pPoint, Vector *pNormal
 }
 }
 
-CPhysicsEnvironmentBox3D::CPhysicsEnvironmentBox3D()
-	: m_airDensity( 2.0f ), m_timestep( kDefaultTimestep ), m_timeAccumulator( 0.0f ), m_simulationTime( 0.0f ), m_stepCount( 0 ),
-	  m_inSimulation( false ), m_quickDelete( false ), m_queueDeleteObject( false ), m_enableConstraintNotify( false ),
-	  m_pSolver( NULL ), m_pCollisionEvents( NULL ), m_pObjectEvents( NULL ), m_pConstraintEvents( NULL ),
-	  m_pDebugOverlay( &s_defaultDebugOverlay )
+CPhysicsEnvironmentBox3D::CPhysicsEnvironmentBox3D( int workerCount, IThreadPool *pThreadPool )
+    : m_workerCount( workerCount > 1 && pThreadPool ? workerCount : 1 ),
+      m_pThreadPool( pThreadPool ), m_simulateThread( ThreadGetCurrentId() ), m_solverCalls( 0 ),
+      m_solverCallsOffCaller( 0 ), m_stepSeconds( 0.0 ), m_preStepSeconds( 0.0 ),
+      m_postStepSeconds( 0.0 ), m_airDensity( 2.0f ), m_timestep( kDefaultTimestep ),
+      m_timeAccumulator( 0.0f ), m_simulationTime( 0.0f ), m_stepCount( 0 ),
+      m_inSimulation( false ), m_quickDelete( false ), m_queueDeleteObject( false ),
+      m_enableConstraintNotify( false ), m_pSolver( NULL ), m_pCollisionEvents( NULL ),
+      m_pObjectEvents( NULL ), m_pConstraintEvents( NULL ),
+      m_pDebugOverlay( &s_defaultDebugOverlay )
 {
 	m_gravity.Init();
 	memset( &m_stats, 0, sizeof( m_stats ) );
+	memset( &m_lastProfile, 0, sizeof( m_lastProfile ) );
 	m_performance.Defaults();
 
 	b3WorldDef def = b3DefaultWorldDef();
 	def.gravity = b3Vec3_zero;
 	def.enableSleep = true;
 	def.enableContinuous = true;
-	def.workerCount = 1;
+	// The worker count is fixed here: Box3D sizes its per-worker state from
+	// it. Several workers run their tasks on the caller's pool; Box3D's own
+	// scheduler (which would start threads per world) is never used.
+	def.workerCount = m_workerCount;
+	if ( m_workerCount > 1 )
+	{
+		def.enqueueTask = EnqueuePoolTask;
+		def.finishTask = FinishPoolTask;
+		def.userTaskContext = m_pThreadPool;
+	}
 	def.maximumLinearSpeed = m_performance.maxVelocity;
 	def.frictionCallback = MixFriction;
 	def.restitutionCallback = MixRestitution;
@@ -635,9 +677,18 @@ bool CPhysicsEnvironmentBox3D::PairAllowed( CPhysicsObjectBox3D *pA, CPhysicsObj
 	if ( ( flagsB & CALLBACK_ENABLING_COLLISION ) && ( flagsA & CALLBACK_MARKED_FOR_DELETE ) )
 		return false;
 	// The game's collision rules (portal environments, player/prop filters).
-	if ( m_pSolver && !m_pSolver->ShouldCollide( pA, pB, pA->GetGameData(), pB->GetGameData() ) )
-		return false;
-	return true;
+	if ( !m_pSolver )
+		return true;
+	if ( m_workerCount > 1 )
+	{
+		std::lock_guard<std::mutex> lock( m_solverMutex );
+		m_solverCalls++;
+		if ( ThreadGetCurrentId() != m_simulateThread )
+			m_solverCallsOffCaller++;
+		return m_pSolver->ShouldCollide( pA, pB, pA->GetGameData(), pB->GetGameData() ) != 0;
+	}
+	m_solverCalls++;
+	return m_pSolver->ShouldCollide( pA, pB, pA->GetGameData(), pB->GetGameData() ) != 0;
 }
 
 // Box3D consults the collision rules when a pair's contact is created and
@@ -1312,16 +1363,26 @@ void CPhysicsEnvironmentBox3D::PostStep( float dt )
 void CPhysicsEnvironmentBox3D::Step( float dt )
 {
 	// Wakes from game calls made between steps are reported too.
+	double start = Plat_FloatTime();
 	DispatchSleepWakeEvents();
 	PreStep( dt );
+	double solverStart = Plat_FloatTime();
 	b3World_Step( m_world, dt, kSubSteps );
+	double solverEnd = Plat_FloatTime();
 	m_stepCount++;
 	m_simulationTime += dt;
 	PostStep( dt );
+	m_preStepSeconds += solverStart - start;
+	m_stepSeconds += solverEnd - solverStart;
+	m_postStepSeconds += Plat_FloatTime() - solverEnd;
 }
 
 void CPhysicsEnvironmentBox3D::Simulate( float deltaTime )
 {
+	double simulateStart = Plat_FloatTime();
+	int stepsBefore = m_stepCount;
+	m_simulateThread = ThreadGetCurrentId();
+	m_stepSeconds = m_preStepSeconds = m_postStepSeconds = 0.0;
 	ClearDeadObjects();
 	// As IVP: ignore clock jumps and sub-0.1 ms calls; cap at 100 ms.
 	if ( deltaTime <= 1.0f && deltaTime > 0.0001f )
@@ -1348,6 +1409,19 @@ void CPhysicsEnvironmentBox3D::Simulate( float deltaTime )
 	// Without a queue, deletions requested during the step happen now.
 	if ( !m_queueDeleteObject )
 		ClearDeadObjects();
+
+	b3Counters counters = b3World_GetCounters( m_world );
+	m_lastProfile.stepCount = m_stepCount - stepsBefore;
+	m_lastProfile.stepMs = (float)( m_stepSeconds * 1000.0 );
+	m_lastProfile.preStepMs = (float)( m_preStepSeconds * 1000.0 );
+	m_lastProfile.postStepMs = (float)( m_postStepSeconds * 1000.0 );
+	m_lastProfile.bodyCount = counters.bodyCount;
+	m_lastProfile.awakeBodyCount = b3World_GetAwakeBodyCount( m_world );
+	m_lastProfile.contactCount = counters.contactCount;
+	m_lastProfile.workerCount = m_workerCount;
+	m_lastProfile.solverCalls = m_solverCalls;
+	m_lastProfile.solverCallsOffCaller = m_solverCallsOffCaller;
+	m_lastProfile.simulateMs = (float)( ( Plat_FloatTime() - simulateStart ) * 1000.0 );
 }
 
 bool CPhysicsEnvironmentBox3D::IsInSimulation() const { return m_inSimulation; }

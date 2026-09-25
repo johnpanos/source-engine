@@ -53,6 +53,9 @@
 #include "bspflags.h"
 #include "mathlib/polyhedron.h"
 
+#include "vphysics/parallel_step.h"
+#include "vstdlib/jobthread.h"
+
 #include "vphysics_conformance.h"
 
 //-----------------------------------------------------------------------------
@@ -1279,10 +1282,57 @@ public:
 	int m_calls;
 };
 
+static int s_suiteWorkers = 0;
+static IThreadPool *s_pSuitePool = NULL;
+
+IPhysicsEnvironment *CreateSuiteEnvironment()
+{
+	if ( s_suiteWorkers <= 1 )
+		return s_pPhysics->CreateEnvironment();
+	IPhysicsParallelStep *pParallel = (IPhysicsParallelStep *)s_pPhysics->QueryInterface(
+	    VPHYSICS_PARALLEL_STEP_INTERFACE_VERSION );
+	if ( !pParallel )
+		return NULL;
+	physics_parallelparams_t params;
+	params.Defaults();
+	params.workerCount = s_suiteWorkers;
+	params.pThreadPool = s_pSuitePool;
+	return pParallel->CreateParallelEnvironment( params );
+}
+
+// --suite-workers N: start the host pool and prove a suite environment gets
+// N workers before any clause runs on it.
+static void StartSuiteWorkers()
+{
+	if ( s_suiteWorkers <= 1 )
+		return;
+	s_pSuitePool = CreateThreadPool();
+	ThreadPoolStartParams_t params;
+	params.nThreads = s_suiteWorkers - 1;
+	s_pSuitePool->Start( params, "PhysSuite" );
+	IPhysicsParallelStep *pParallel = (IPhysicsParallelStep *)s_pPhysics->QueryInterface(
+	    VPHYSICS_PARALLEL_STEP_INTERFACE_VERSION );
+	IPhysicsEnvironment *pEnv = CreateSuiteEnvironment();
+	int workers = pParallel && pEnv ? pParallel->GetWorkerCount( pEnv ) : 0;
+	Check( TIER_BOOT, "suite.workers", workers == s_suiteWorkers, "requested %d, got %d",
+	    s_suiteWorkers, workers );
+	if ( pEnv )
+		s_pPhysics->DestroyEnvironment( pEnv );
+}
+
+static void StopSuiteWorkers()
+{
+	if ( !s_pSuitePool )
+		return;
+	s_pSuitePool->Stop();
+	DestroyThreadPool( s_pSuitePool );
+	s_pSuitePool = NULL;
+}
+
 bool CreateWorld( World_t &world, IPhysicsCollisionSolver *pSolver )
 {
 	memset( &world, 0, sizeof( world ) );
-	world.pEnv = s_pPhysics->CreateEnvironment();
+	world.pEnv = CreateSuiteEnvironment();
 	if ( !world.pEnv )
 		return false;
 	physics_performanceparams_t perf;
@@ -1751,9 +1801,29 @@ int main( int argc, char **argv )
 	CUtlVector<PhyFixture_t> fixtures;
 	CUtlVector<VehicleFixture_t> vehicles;
 	const char *pBsp = NULL;
+	BenchOptions_t bench;
+	memset( &bench, 0, sizeof( bench ) );
+	bench.count = 256;
+	bench.ticks = 300;
+	bench.seed = 1;
+	bench.poolThreads = -1;
 	for ( int i = 1; i < argc; i++ )
 	{
-		if ( !V_strcmp( argv[i], "--provider" ) && i + 1 < argc )
+		if ( !V_strcmp( argv[i], "--bench" ) && i + 1 < argc )
+			bench.pScene = argv[++i];
+		else if ( !V_strcmp( argv[i], "--count" ) && i + 1 < argc )
+			bench.count = atoi( argv[++i] );
+		else if ( !V_strcmp( argv[i], "--ticks" ) && i + 1 < argc )
+			bench.ticks = atoi( argv[++i] );
+		else if ( !V_strcmp( argv[i], "--workers" ) && i + 1 < argc )
+			bench.workers = atoi( argv[++i] );
+		else if ( !V_strcmp( argv[i], "--suite-workers" ) && i + 1 < argc )
+			s_suiteWorkers = atoi( argv[++i] );
+		else if ( !V_strcmp( argv[i], "--pool-threads" ) && i + 1 < argc )
+			bench.poolThreads = atoi( argv[++i] );
+		else if ( !V_strcmp( argv[i], "--seed" ) && i + 1 < argc )
+			bench.seed = (unsigned int)strtoul( argv[++i], NULL, 10 );
+		else if ( !V_strcmp( argv[i], "--provider" ) && i + 1 < argc )
 			pProvider = argv[++i];
 		else if ( !V_strcmp( argv[i], "--surfaceprops" ) && i + 1 < argc )
 			surfaceFiles.AddToTail( argv[++i] );
@@ -1787,9 +1857,51 @@ int main( int argc, char **argv )
 			pCorpus = argv[++i];
 		else
 		{
-			fprintf( stderr, "usage: %s --provider <lib.so> --surfaceprops <file>... --phy <file>... [--vehicle <kind>=<script>,<phy>]... [--bsp <map>] [--corpus <list>] [--fault <name>]\n", argv[0] );
+			fprintf( stderr,
+			    "usage: %s --provider <lib.so> --surfaceprops <file>... --phy <file>... [--vehicle "
+			    "<kind>=<script>,<phy>]... [--bsp <map>] [--corpus <list>] [--suite-workers n] "
+			    "[--fault <name>]\n"
+			    "       %s --provider <lib.so> --surfaceprops <file>... --bench <scene> [--phy "
+			    "<cube.phy>] [--count n] [--ticks n] [--workers n] [--pool-threads n] [--seed n] "
+			    "[--fault <name>]\n",
+			    argv[0], argv[0] );
 			return 2;
 		}
+	}
+	// Benchmark mode: one scene (or the parallel-step contract) instead of
+	// the conformance clauses. The optional --phy is the pile's authored cube.
+	if ( bench.pScene )
+	{
+		if ( !pProvider || !surfaceFiles.Count() || bench.count < 1 || bench.ticks < 1 ||
+		     bench.workers < 0 )
+		{
+			fprintf( stderr,
+			    "--bench needs --provider, --surfaceprops, and positive --count/--ticks\n" );
+			return 2;
+		}
+		bench.pCubePath = fixtures.Count() ? fixtures[0].pPath : NULL;
+		MathLib_Init( 2.2f, 2.2f, 0.0f, 2.0f );
+		printf( "PROVIDER %s\nFAULT %s\n", pProvider, s_pFault[0] ? s_pFault : "none" );
+		int status = 0;
+		if ( TestModule( pProvider ) )
+		{
+			TestSurfaceProps( surfaceFiles );
+			status = RunBench( bench );
+			s_pPhysics->Shutdown();
+			s_pPhysics->Disconnect();
+		}
+		int checks = 0, failed = 0;
+		for ( int t = 0; t < TIER_COUNT; t++ )
+		{
+			printf( "TIER %s %d %d\n", s_tierNames[t], s_checks[t], s_failed[t] );
+			checks += s_checks[t];
+			failed += s_failed[t];
+		}
+		printf( "CONFORMANCE %d %d\n", checks, failed );
+		fflush( stdout );
+		if ( status )
+			return status;
+		return failed ? 1 : 0;
 	}
 	// Required inputs are not optional coverage: a run without content fails.
 	if ( !pProvider || !surfaceFiles.Count() || !fixtures.Count() )
@@ -1803,6 +1915,7 @@ int main( int argc, char **argv )
 
 	if ( TestModule( pProvider ) )
 	{
+		StartSuiteWorkers();
 		TestSurfaceProps( surfaceFiles );
 		TestPairHashAndSets();
 		TestBoxCollide();
@@ -1830,6 +1943,7 @@ int main( int argc, char **argv )
 				Check( TIER_BOOT, "vcollide.unload", fixtures[i].collide.solidCount == 0 && fixtures[i].collide.solids == NULL );
 			}
 		}
+		StopSuiteWorkers();
 		s_pPhysics->Shutdown();
 		s_pPhysics->Disconnect();
 	}

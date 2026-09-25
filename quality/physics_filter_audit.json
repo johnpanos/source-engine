@@ -1,0 +1,320 @@
+{
+  "schema": "physics-filter-audit/v1",
+  "rfc": "0013",
+  "row": "R67",
+  "reviewed": "2026-09-24",
+  "policy": "RFC 0013 P3 policy (a), serialized on a worker. With more than one worker, Box3D runs the provider's custom filter, and through it the game's IPhysicsCollisionSolver::ShouldCollide, on worker threads. The provider serializes those calls under its solver mutex, and the thread that called Simulate runs only Box3D code until the step returns. Game filter code is therefore never concurrent with itself or with other game code, and its reads of entity state happen after the main thread's last writes (the pool's enqueue orders them). This is acceptable only while every reachable filter site is free of the forbidden rule classes (thread identity, engine or sound calls, entity or physics mutation, random numbers, prediction state, console-variable writes) and every other finding has a reviewed reason. Provider calls reached from the filters (IPhysicsObject getters, IPhysicsObjectPairHash::IsObjectPairInHash, IPhysics::FindCollisionSet, IPhysicsCollisionSet::ShouldCollide) are plain reads of state the main thread does not change during Simulate. A frame graph that overlaps physics with other entity-mutating work must declare the filter's entity reads before it may run in parallel with them.",
+  "sites": {
+    "game/client/c_ai_basenpc.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "d5e230b6d3c34d45",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/client/c_baseentity.h::GetModelIndex#0": {
+      "digest": "139e17089a77d34a",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/client/c_baseentity.h::GetMoveParent#0": {
+      "digest": "522192a7e2d1f87a",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/client/c_baseentity.h::GetSolid#0": {
+      "digest": "348c283faaad079b",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/client/c_baseentity.h::GetSolidFlags#0": {
+      "digest": "99a42c0397ab353b",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/client/c_baseentity.h::VPhysicsGetObject#0": {
+      "digest": "cd2a1f9e5c625198",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/client/c_baseplayer.h::PhysicsSolidMaskForEntity#0": {
+      "digest": "76c7aa0deae3eeec",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/client/physics.cpp::CCollisionEvent::ShouldCollide#0": {
+      "digest": "303724aea8b1dd9f",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/client/physics.cpp::CCollisionEvent::ShouldCollide_2#0": {
+      "digest": "8963910f23c959c0",
+      "verdict": "accepted",
+      "accepted": {
+        "callback-context": "CallbackContext increments and decrements CCollisionEvent::m_inCallback, a plain int. Under vphysics.parallel-step.v1 the provider holds its solver mutex around every ShouldCollide call, and the thread that called Simulate runs no game code until the step returns, so no two threads touch the counter at once. The mutex and the step's join order the worker's writes before the main thread's later IsInCallback reads, and the counter is back to its entry value when each call returns."
+      },
+      "note": "Filter body: reads entity, collision-group, move-parent and solid state, the provider's pair hash and collision sets, and game rules. No writes except CallbackContext."
+    },
+    "game/server/ai_basenpc.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "e0ee439ed08e35c4",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/baseentity.h::ForceVPhysicsCollide#0": {
+      "digest": "6515cbe019508072",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/baseentity.h::GetModelIndex#0": {
+      "digest": "139e17089a77d34a",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/baseentity.h::GetMoveParent#0": {
+      "digest": "a0d604b02d9b1f2e",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/baseentity.h::GetSolid#0": {
+      "digest": "60b5bfb9e46affe8",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/baseentity.h::GetSolidFlags#0": {
+      "digest": "86ff7974c139cec8",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/baseentity.h::VPhysicsGetObject#0": {
+      "digest": "cd2a1f9e5c625198",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/baseentity.h::edict#0": {
+      "digest": "c98b5c0a26c03cc9",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/baseentity.h::edict#1": {
+      "digest": "c98b5c0a26c03cc9",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/bmodels.cpp::ForceVPhysicsCollide#0": {
+      "digest": "7c3b537437f01e3a",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/cstrike/hostage/cs_simple_hostage.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "76c7aa0deae3eeec",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/dod/dod_baserocket.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "a648e3c6b893975f",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/episodic/npc_hunter.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "6a50eee0ce2f3fd4",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/func_break.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "76c7aa0deae3eeec",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl1/hl1_basegrenade.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "50c98d314f0286fb",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl1/hl1_npc_headcrab.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "de88b77d42bc9142",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl1/hl1_npc_hornet.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "de88b77d42bc9142",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl1/hl1_npc_snark.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "de88b77d42bc9142",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl2/grenade_spit.h::PhysicsSolidMaskForEntity#0": {
+      "digest": "10fc0c88b36035ca",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl2/npc_manhack.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "82a4a1a8d015efc7",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl2/npc_rollermine.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "6f4e21c6173cb637",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl2/npc_turret_floor.h::PhysicsSolidMaskForEntity#0": {
+      "digest": "8d537d62815f6347",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl2/npc_vortigaunt_episodic.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "7309368061f26c7a",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl2/weapon_crossbow.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "6a50eee0ce2f3fd4",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl2/weapon_flaregun.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "e0ee439ed08e35c4",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/hl2/weapon_rpg.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "50c98d314f0286fb",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/item_world.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "9a1a0989ff5df4be",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/physics.cpp::CCollisionEvent::ShouldCollide#0": {
+      "digest": "303724aea8b1dd9f",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/server/physics.cpp::CCollisionEvent::ShouldCollide_2#0": {
+      "digest": "1a65362ee6ce5c70",
+      "verdict": "accepted",
+      "accepted": {
+        "callback-context": "CallbackContext increments and decrements CCollisionEvent::m_inCallback, a plain int. Under vphysics.parallel-step.v1 the provider holds its solver mutex around every ShouldCollide call, and the thread that called Simulate runs no game code until the step returns, so no two threads touch the counter at once. The mutex and the step's join order the worker's writes before the main thread's later IsInCallback reads, and the counter is back to its entry value when each call returns."
+      },
+      "note": "Filter body: reads entity, collision-group, move-parent and solid state, the provider's pair hash and collision sets, and game rules. No writes except CallbackContext."
+    },
+    "game/server/physics.cpp::WheelCollidesWith#0": {
+      "digest": "75b55c2807d89dcb",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/server/player.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "76c7aa0deae3eeec",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/baseentity_shared.cpp::GetRootMoveParent#0": {
+      "digest": "d2c45f6529866b00",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/baseentity_shared.h::GetCollisionGroup#0": {
+      "digest": "df1b63c622cfea6f",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/baseentity_shared.h::GetMoveType#0": {
+      "digest": "8c726c71e39a4b42",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/baseentity_shared.h::GetOwnerEntity#0": {
+      "digest": "340191c701966b28",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/collisionproperty.h::GetSolidFlags#0": {
+      "digest": "aadd7fd562f54143",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/cstrike/cs_gamerules.cpp::ShouldCollide#0": {
+      "digest": "b746b41979a052c3",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/shared/cstrike/weapon_c4.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "9a1a0989ff5df4be",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/dod/dod_gamerules.cpp::ShouldCollide#0": {
+      "digest": "00bc3536c8f939c2",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/shared/gamerules.cpp::ShouldCollide#0": {
+      "digest": "982eec63cbf39682",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/shared/hl1/hl1_gamerules.cpp::ShouldCollide#0": {
+      "digest": "8a0ea031bf899a04",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/shared/hl1/hl1mp_weapon_crossbow.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "6a50eee0ce2f3fd4",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/hl2/hl2_gamerules.cpp::ShouldCollide#0": {
+      "digest": "0d206a33405fad2d",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/shared/hl2mp/hl2mp_gamerules.cpp::ShouldCollide#0": {
+      "digest": "1237d31dc3f1907c",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/shared/hl2mp/weapon_crossbow.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "6a50eee0ce2f3fd4",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/hl2mp/weapon_rpg.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "50c98d314f0286fb",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/physics_main_shared.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "8d537d62815f6347",
+      "verdict": "safe",
+      "note": "Reads its arguments and entity or rules members only."
+    },
+    "game/shared/portal/portal_gamerules.cpp::ShouldCollide#0": {
+      "digest": "4d19959be322371c",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/shared/portal/portal_mp_gamerules.cpp::ShouldCollide#0": {
+      "digest": "401ffabd69785265",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/shared/portal2/portal_gamerules.cpp::ShouldCollide#0": {
+      "digest": "aeea6715e58ff2a2",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/shared/portal2/portal_mp_gamerules.cpp::ShouldCollide#0": {
+      "digest": "b226c2c52a9b5a47",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    },
+    "game/shared/sdk/sdk_gamerules.cpp::ShouldCollide#0": {
+      "digest": "c0c4578e4ce5b820",
+      "verdict": "safe",
+      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+    }
+  }
+}

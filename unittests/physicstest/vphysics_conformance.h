@@ -62,6 +62,11 @@ struct World_t
 	int material;
 };
 
+// Every suite environment comes from here: IPhysics::CreateEnvironment, or,
+// with --suite-workers N, the parallel-step capability on a host pool of
+// N - 1 threads, so the whole parity suite can run at N workers (RFC 0013 P3).
+IPhysicsEnvironment *CreateSuiteEnvironment();
+
 bool CreateWorld( World_t &world, IPhysicsCollisionSolver *pSolver );
 IPhysicsObject *CreateCube( World_t &world, const Vector &position, float mass = 50.0f, void *pGameData = NULL );
 void DestroyWorld( World_t &world );
@@ -95,5 +100,22 @@ void TestVehicles( const VehicleFixture_t *pFixtures, int count );
 void TestCollideModels( const struct vcollide_t *pFixture, const char *pBsp );
 // Gameplay dynamics scenes with the authored cube (pCubeFixture: metal_box.phy).
 void TestDynamics( const struct vcollide_t *pCubeFixture );
+
+// Benchmark scenes and the parallel-step capability contract (RFC 0013),
+// run instead of the conformance clauses when --bench is given. See
+// test_vphysics_bench.cpp for the scenes and output records.
+struct BenchOptions_t
+{
+	const char *pScene; // pile, stack, ragdolls, projectiles, shards, panes, or contract
+	int count;          // scene size (bodies, base row, or ragdolls)
+	int ticks;
+	int workers; // 0: IPhysics::CreateEnvironment; >= 1: parallel-step capability
+	unsigned int seed;
+	const char *pCubePath; // authored cube (metal_box.phy) for the pile; NULL for a box
+	int poolThreads;       // host pool threads; -1: workers - 1 (3 for the contract)
+};
+// Returns 0 when the scene ran (its checks decide the result) and 3 when the
+// provider lacks a requested capability.
+int RunBench( const BenchOptions_t &options );
 
 #endif // VPHYSICS_CONFORMANCE_H

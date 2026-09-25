@@ -180,7 +180,7 @@ struct FeelWorld_t
 
 bool CreateFeelWorld( FeelWorld_t &world )
 {
-	world.pEnv = s_pPhysics->CreateEnvironment();
+	world.pEnv = CreateSuiteEnvironment();
 	if ( !world.pEnv )
 		return false;
 	physics_performanceparams_t perf;

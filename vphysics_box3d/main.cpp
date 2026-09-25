@@ -1,4 +1,7 @@
 #include "vphysics_interface.h"
+#include "vphysics/parallel_step.h"
+#include "vphysics/step_profile.h"
+#include "vstdlib/jobthread.h"
 #include "tier0/dbg.h"
 #include "utlmap.h"
 
@@ -47,9 +50,7 @@ public:
 	}
 	virtual IPhysicsEnvironment *CreateEnvironment()
 	{
-		IPhysicsEnvironment *pEnvironment = new CPhysicsEnvironmentBox3D();
-		m_environments.AddToTail( pEnvironment );
-		return pEnvironment;
+		return CreateEnvironmentWithWorkers( 1, NULL );
 	}
 	virtual void DestroyEnvironment( IPhysicsEnvironment *pEnvironment )
 	{
@@ -84,6 +85,24 @@ public:
 		m_collisionSets.RemoveAll();
 	}
 
+	// Provider internals shared with the parallel-step capability.
+	IPhysicsEnvironment *CreateEnvironmentWithWorkers( int workerCount, IThreadPool *pThreadPool )
+	{
+		IPhysicsEnvironment *pEnvironment =
+		    new CPhysicsEnvironmentBox3D( workerCount, pThreadPool );
+		m_environments.AddToTail( pEnvironment );
+		return pEnvironment;
+	}
+	bool OwnsEnvironment( const IPhysicsEnvironment *pEnvironment ) const
+	{
+		for ( int i = 0; i < m_environments.Count(); i++ )
+		{
+			if ( m_environments[i] == pEnvironment )
+				return true;
+		}
+		return false;
+	}
+
 private:
 	CUtlMap<unsigned int, CCollisionSetBox3D *> m_collisionSets{ DefLessFunc( unsigned int ) };
 	CUtlVector<IPhysicsEnvironment *> m_environments;
@@ -91,6 +110,64 @@ private:
 
 static CPhysicsInterfaceBox3D g_MainDLLInterface;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CPhysicsInterfaceBox3D, IPhysics, VPHYSICS_INTERFACE_VERSION, g_MainDLLInterface );
+
+// RFC 0013 vphysics.parallel-step.v1: environments whose Box3D worker tasks
+// run on the caller's thread pool. The worker count is fixed at creation
+// because Box3D sizes its per-worker state then, and it may not exceed the
+// pool's threads plus the calling thread, so the pool is the worker budget.
+// Box3D's step is deterministic for any worker count (upstream docs/faq.md);
+// the shared benchmark gate checks that claim through the public object state
+// (tools/quality/physics_bench.py).
+class CPhysicsParallelStepBox3D : public IPhysicsParallelStep
+{
+public:
+	virtual int GetMaxWorkerCount() const
+	{
+		int logical = GetCPUInformation()->m_nLogicalProcessors;
+		return clamp( logical, 1, B3_MAX_WORKERS );
+	}
+	virtual IPhysicsEnvironment *CreateParallelEnvironment( const physics_parallelparams_t &params )
+	{
+		if ( params.workerCount < 1 || params.workerCount > GetMaxWorkerCount() )
+			return NULL;
+		if ( params.workerCount > 1 &&
+		     ( !params.pThreadPool || params.workerCount > params.pThreadPool->NumThreads() + 1 ) )
+			return NULL;
+		return g_MainDLLInterface.CreateEnvironmentWithWorkers(
+		    params.workerCount, params.pThreadPool );
+	}
+	virtual int GetWorkerCount( const IPhysicsEnvironment *pEnvironment ) const
+	{
+		if ( !pEnvironment || !g_MainDLLInterface.OwnsEnvironment( pEnvironment ) )
+			return 0;
+		return static_cast<const CPhysicsEnvironmentBox3D *>( pEnvironment )->GetWorkerCount();
+	}
+	virtual bool IsWorkerCountInvariant() const { return true; }
+};
+
+static CPhysicsParallelStepBox3D g_ParallelStep;
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CPhysicsParallelStepBox3D, IPhysicsParallelStep,
+    VPHYSICS_PARALLEL_STEP_INTERFACE_VERSION, g_ParallelStep );
+
+// RFC 0013 vphysics.step-profile.v1: solver time against the provider's own
+// serial work in the last Simulate call.
+class CPhysicsStepProfileBox3D : public IPhysicsStepProfile
+{
+public:
+	virtual bool GetLastSimulate(
+	    const IPhysicsEnvironment *pEnvironment, physics_stepprofile_t *pProfile ) const
+	{
+		if ( !pEnvironment || !pProfile || !g_MainDLLInterface.OwnsEnvironment( pEnvironment ) )
+			return false;
+		*pProfile =
+		    static_cast<const CPhysicsEnvironmentBox3D *>( pEnvironment )->GetLastSimulateProfile();
+		return true;
+	}
+};
+
+static CPhysicsStepProfileBox3D g_StepProfile;
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CPhysicsStepProfileBox3D, IPhysicsStepProfile,
+    VPHYSICS_STEP_PROFILE_INTERFACE_VERSION, g_StepProfile );
 
 #include "physics_collision.h"
 static CPhysicsCollisionBox3D g_PhysicsCollision;

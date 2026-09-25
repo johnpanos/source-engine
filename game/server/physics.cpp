@@ -36,6 +36,10 @@
 #include "particle_parse.h"
 #endif
 #include "vphysics/object_hash.h"
+#include "vphysics/parallel_step.h"
+#include "vphysics/step_profile.h"
+#include "vstdlib/jobthread.h"
+#include "tier0/icommandline.h"
 #include "vphysics/collision_set.h"
 #include "vphysics/friction.h"
 #include "fmtstr.h"
@@ -217,9 +221,76 @@ const char *PhysCheck( IPhysicsObject *pPhys )
 }
 #endif
 
+//-----------------------------------------------------------------------------
+// RFC 0013 P3: the server environment opts into parallel stepping when the
+// process starts with -physics_workers N (N > 1). The count is read when the
+// level's environment is created and fixed for its lifetime; worker tasks
+// run on the engine's compute pool, so N is clamped to its threads plus this
+// thread. Without the capability or a started pool the environment keeps one
+// worker, unless -physics_workers_required makes that an error. The game's
+// collision filters then run on pool threads, one call at a time; their
+// audit is tools/quality/physics_filter_audit.py.
+//-----------------------------------------------------------------------------
+static IPhysicsEnvironment *CreateServerPhysicsEnvironment()
+{
+	int requested = CommandLine()->ParmValue( "-physics_workers", 1 );
+	if ( requested <= 1 )
+		return physics->CreateEnvironment();
+
+	IPhysicsParallelStep *pParallel =
+	    (IPhysicsParallelStep *)physics->QueryInterface( VPHYSICS_PARALLEL_STEP_INTERFACE_VERSION );
+	int available = g_pThreadPool ? g_pThreadPool->NumThreads() + 1 : 1;
+	if ( pParallel && available > 1 )
+	{
+		physics_parallelparams_t params;
+		params.Defaults();
+		params.workerCount = MIN( MIN( requested, available ), pParallel->GetMaxWorkerCount() );
+		params.pThreadPool = g_pThreadPool;
+		IPhysicsEnvironment *pEnvironment = pParallel->CreateParallelEnvironment( params );
+		if ( pEnvironment )
+		{
+			Msg( "Physics: server environment steps on %d workers (requested %d, compute pool %d "
+			     "threads)\n",
+			    pParallel->GetWorkerCount( pEnvironment ), requested, available - 1 );
+			return pEnvironment;
+		}
+	}
+	if ( CommandLine()->FindParm( "-physics_workers_required" ) )
+	{
+		Error( "Physics: -physics_workers %d needs the %s capability and a started compute pool "
+		       "(provider %s, pool threads %d)\n",
+		    requested, VPHYSICS_PARALLEL_STEP_INTERFACE_VERSION, pParallel ? "has it" : "lacks it",
+		    available - 1 );
+	}
+	Warning( "Physics: -physics_workers %d unavailable (provider %s, pool threads %d); using one "
+	         "worker\n",
+	    requested, pParallel ? "has the capability" : "lacks the capability", available - 1 );
+	return physics->CreateEnvironment();
+}
+
+// Prints the server environment's last step profile (RFC 0013
+// vphysics.step-profile.v1) when the provider offers it.
+CON_COMMAND( physics_step_profile, "Print the server physics environment's last step profile" )
+{
+	IPhysicsStepProfile *pProfile =
+	    (IPhysicsStepProfile *)physics->QueryInterface( VPHYSICS_STEP_PROFILE_INTERFACE_VERSION );
+	physics_stepprofile_t profile;
+	if ( !pProfile || !physenv || !pProfile->GetLastSimulate( physenv, &profile ) )
+	{
+		Msg( "physics_step_profile: not available\n" );
+		return;
+	}
+	Msg(
+	    "physics_step_profile: workers %d steps %d simulate %.3f ms solver %.3f pre %.3f post %.3f "
+	    "bodies %d awake %d contacts %d solver-calls %d off-caller %d\n",
+	    profile.workerCount, profile.stepCount, profile.simulateMs, profile.stepMs,
+	    profile.preStepMs, profile.postStepMs, profile.bodyCount, profile.awakeBodyCount,
+	    profile.contactCount, profile.solverCalls, profile.solverCallsOffCaller );
+}
+
 void CPhysicsHook::LevelInitPreEntity() 
 {
-	physenv = physics->CreateEnvironment();
+	physenv = CreateServerPhysicsEnvironment();
 	physics_performanceparams_t params;
 	params.Defaults();
 	params.maxCollisionsPerObjectPerTimestep = 10;

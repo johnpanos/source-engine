@@ -112,6 +112,16 @@ Evidence:
   there once and up to 14 units off otherwise. The source of Box3D's endpoint
   variance was not found; the world uses one worker.
 
+Benchmark gate and Box3D source finding (2026-09-24,
+[RFC 0013 progress](0013-progress.md)):
+`tools/quality/physics_bench.py` compares IVP and Box3D on piles, stacks,
+ragdolls and projectile scenes with calibrated limits. It also found that the
+shared tree's `box3d/src/contact_solver.c` carries an uncommitted restitution
+patch that the pinned submodule commit does not record. With the pinned source,
+Box3D passes all 602 checks, and 1 observation diverges
+(`dynamics.tumble.audible-impacts`). With the patch, three gameplay checks fail.
+Those are the three failures earlier noted as pre-existing on main's build.
+
 | Work item | Phase | Status | Evidence |
 | --- | --- | --- | --- |
 | Interface & Consumer Inventory | A | Partial | Every VPhysics interface implemented and covered by the contract; no method-level consumer inventory |
@@ -126,8 +136,8 @@ Evidence:
 | Persistence & Materials | C | Done | `save.*`, `restore.*`, `vehicle.restore-*`, `surfaceprops.*` |
 | Fluids & Vehicles | D | Done (gaps recorded) | `fluid.*`, `vehicle.*`; the raycast car type and wheel side-friction are listed gaps |
 | Tool Workflows (`studiomdl`, `vbsp`) | D | Partial | `CollideWrite` emits the legacy format; tools not rebuilt against Box3D |
-| Parallel Scheduler Integration | E | Not started | One Box3D worker |
-| Performance Budgets & Packaging | E | Not started | — |
+| Parallel Scheduler Integration | E | Partial (opt-in) | [RFC 0013](0013-opt-in-physics-capabilities.md) P1: `vphysics.parallel-step.v1` on Box3D's built-in scheduler, unused by the game; engine-pool bridge is P2 |
+| Performance Budgets & Packaging | E | Partial | Synthetic-scene budgets and IVP comparison for Linux desktop in `quality/budgets/physics-v1.json` ([RFC 0013 progress](0013-progress.md)); no gameplay or mobile budgets |
 | Independent Collision Cooking | F | Not started | — |
 | IVP Simulation Retirement | F | Not started | — |
 

@@ -27,6 +27,12 @@ jobs:
       run: python3 -m unittest tools/quality/tests/test_bsp2_sparse_export.py -v
     - name: Portal runtime staging rules
       run: python3 -m unittest tools/quality/tests/test_portal_boot.py -v
+    - name: Physics benchmark gate rules (RFC 0013)
+      run: python3 -m unittest tools/quality/tests/test_physics_bench.py -v
+    - name: Game collision-filter audit negative fixtures (RFC 0013 P3)
+      run: python3 -m unittest tools/quality/tests/test_physics_filter_audit.py -v
+    - name: Game collision filters stay safe on physics worker threads (RFC 0013 P3)
+      run: python3 tools/quality/physics_filter_audit.py check
 
   headless-manifest:
     needs: runner-self-tests

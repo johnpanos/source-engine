@@ -177,8 +177,12 @@ def parse_output(text):
     return result
 
 
-def run_provider(binary, library, surfaces, phys, env, timeout, fault=None, corpus=None):
+def run_provider(binary, library, surfaces, phys, env, timeout, fault=None, corpus=None, workers=0):
     command = [binary, "--provider", library]
+    if workers > 1:
+        # RFC 0013 P3: every suite environment through the parallel-step
+        # capability on a host pool.
+        command += ["--suite-workers", str(workers)]
     for path in surfaces:
         command += ["--surfaceprops", path]
     for path in phys:
@@ -278,6 +282,9 @@ def main(argv=None):
                         help="tiers a candidate must pass (the reference must always pass all)")
     parser.add_argument("--out", default="quality-results/physics-conformance")
     parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--candidate-workers", type=int, default=0,
+                        help="run candidates (never the reference) with every environment on this many "
+                             "workers through vphysics.parallel-step.v1 (RFC 0013)")
     parser.add_argument("--skip-corpus", action="store_true",
                         help="diagnostic runs only; evidence records the skip and the gate fails")
     parser.add_argument("--skip-sensitivity", action="store_true",
@@ -308,7 +315,8 @@ def main(argv=None):
     results = {}
     for name in providers:
         results[name] = run_provider(binary, provider_library(build, name), surfaces, phys, env, args.timeout,
-                                     corpus=corpus)
+                                     corpus=corpus,
+                                     workers=0 if name == REFERENCE else args.candidate_workers)
 
     reference = results[REFERENCE]
     gate_failures = []
@@ -365,6 +373,7 @@ def main(argv=None):
         "build": build,
         "reference": REFERENCE,
         "require": args.require,
+        "candidate_workers": args.candidate_workers,
         "fixtures": provenance,
         "corpus_models": corpus_count,
         "corpus_packs": CORPUS_VPKS,

@@ -20,7 +20,7 @@ def build(bld):
 		features='cxx',
 		source=['test_vphysics_conformance.cpp', 'test_vphysics_constraints.cpp', 'test_vphysics_objects.cpp', 'test_vphysics_fluids.cpp', 'test_vphysics_saverestore.cpp',
 		'test_vphysics_collide.cpp', 'test_vphysics_player.cpp',
-		'test_vphysics_vehicle.cpp', 'test_vphysics_dynamics.cpp'],
+		'test_vphysics_vehicle.cpp', 'test_vphysics_dynamics.cpp', 'test_vphysics_bench.cpp'],
 		target='vphysics_conformance',
 		name='vphysics_conformance',
 		includes=['../../public', '../../public/tier0', '../../public/tier1'],
