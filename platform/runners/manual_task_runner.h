@@ -32,7 +32,8 @@ class VirtualClock final : public IMonotonicClock
 public:
 	MonotonicTimestamp Now() const override;
 	std::uint64_t ResolutionNanoseconds() const override { return 1; }
-	std::uint64_t ElapsedNanoseconds( MonotonicTimestamp begin, MonotonicTimestamp end ) const override
+	std::uint64_t ElapsedNanoseconds(
+	    MonotonicTimestamp begin, MonotonicTimestamp end ) const override
 	{
 		return end.ticks - begin.ticks;
 	}

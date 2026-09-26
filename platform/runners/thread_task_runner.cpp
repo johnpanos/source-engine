@@ -24,8 +24,12 @@ template <typename Entry> bool Later( const Entry &a, const Entry &b )
 
 ThreadTaskRunner::ThreadTaskRunner( std::string name ) : m_name( std::move( name ) )
 {
-	m_thread = std::thread( [this] { Run(); } );
-	m_threadId = m_thread.get_id();
+	m_thread = std::thread(
+	    [this]
+	    {
+		    Run();
+	    } );
+	m_threadId.store( m_thread.get_id(), std::memory_order_release );
 }
 
 ThreadTaskRunner::~ThreadTaskRunner()
@@ -66,7 +70,7 @@ bool ThreadTaskRunner::RunsTasksInCurrentSequence() const
 
 bool ThreadTaskRunner::BelongsToCurrentThread() const
 {
-	return std::this_thread::get_id() == m_threadId;
+	return std::this_thread::get_id() == m_threadId.load( std::memory_order_acquire );
 }
 
 void ThreadTaskRunner::Run()
@@ -108,7 +112,12 @@ void ThreadTaskRunner::Shutdown()
 	}
 	m_wake.notify_all();
 	// Concurrent callers all return only after the thread has exited.
-	std::call_once( m_joinOnce, [this] { m_thread.join(); } );
+	std::call_once( m_joinOnce,
+	    [this]
+	    {
+		    m_thread.join();
+		    m_threadId.store( std::thread::id(), std::memory_order_release );
+	    } );
 	// `dropped` is destroyed here, on the owner's thread, without running.
 }
 

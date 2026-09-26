@@ -318,6 +318,10 @@
       "dialect": "cxx20",
       "rfc": "0002"
     },
+    "platform_runners": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
     "hammer_cli": {
       "dialect": "cxx20",
       "rfc": "0002"

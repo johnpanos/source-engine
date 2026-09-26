@@ -25,8 +25,11 @@
 //			   without delay run in post order (posts from different threads are
 //			   ordered by when each post returned).
 //			5. RunsTasksInCurrentSequence() is true exactly while the calling
-//			   thread runs a task of that sequence; BelongsToCurrentThread() is
-//			   true exactly on the runner's thread.
+//			   thread runs a task of that sequence. For a single-thread runner,
+//			   BelongsToCurrentThread() is true exactly on the runner's thread
+//			   (which may be a main loop's thread, inside or outside its tasks),
+//			   and RunsTasksInCurrentSequence() equals it: code on that thread is
+//			   ordered with the runner's tasks.
 //
 //			Shutdown belongs to the owner, not to consumers: it is a provider
 //			operation that refuses later posts, destroys pending tasks without
@@ -56,7 +59,8 @@ public:
 
 	template <typename F>
 	    requires( std::invocable<F &> && !std::same_as<std::decay_t<F>, Task> )
-	Task( F &&function ) : m_impl( std::make_unique<Model<std::decay_t<F>>>( std::forward<F>( function ) ) )
+	Task( F &&function )
+	    : m_impl( std::make_unique<Model<std::decay_t<F>>>( std::forward<F>( function ) ) )
 	{
 	}
 
@@ -76,7 +80,10 @@ private:
 	};
 	template <typename F> struct Model final : Concept
 	{
-		template <typename G> explicit Model( G &&function ) : function( std::forward<G>( function ) ) {}
+		template <typename G>
+		explicit Model( G &&function ) : function( std::forward<G>( function ) )
+		{
+		}
 		void Run() override { function(); }
 		F function;
 	};
@@ -96,7 +103,8 @@ public:
 	virtual ~ITaskRunner() = default;
 
 	[[nodiscard]] virtual PostResult PostTask( Task task ) = 0;
-	[[nodiscard]] virtual PostResult PostDelayedTask( Task task, std::uint64_t delayNanoseconds ) = 0;
+	[[nodiscard]] virtual PostResult PostDelayedTask(
+	    Task task, std::uint64_t delayNanoseconds ) = 0;
 };
 
 class ISequencedTaskRunner : public ITaskRunner

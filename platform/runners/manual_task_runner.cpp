@@ -42,7 +42,9 @@ void VirtualClock::AdvanceTo( std::uint64_t ticks )
 	}
 }
 
-ManualTaskRunner::ManualTaskRunner( VirtualClock &clock ) : m_clock( clock ) {}
+ManualTaskRunner::ManualTaskRunner( VirtualClock &clock ) : m_clock( clock )
+{
+}
 
 ManualTaskRunner::~ManualTaskRunner()
 {
@@ -67,7 +69,8 @@ PostResult ManualTaskRunner::Post( Task task, std::uint64_t delayNanoseconds )
 		lock.unlock(); // the refused task is destroyed outside the lock
 		return PostResult::kShutDown;
 	}
-	m_pending.push_back( Entry{ m_clock.Now().ticks + delayNanoseconds, m_nextSequence++, std::move( task ) } );
+	m_pending.push_back(
+	    Entry{ m_clock.Now().ticks + delayNanoseconds, m_nextSequence++, std::move( task ) } );
 	std::push_heap( m_pending.begin(), m_pending.end(), Later<Entry> );
 	return PostResult::kAccepted;
 }

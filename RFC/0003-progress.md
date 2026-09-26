@@ -242,7 +242,7 @@ gameplay captures and frame budgets do not.
    manifest, so this convergence is becoming actionable; it is a deliberate
    follow-up, not part of this increment.
 
-## R10-RUNNERS: task runners, sequences and virtual time (slice, active 2026-09-26)
+## R10-RUNNERS: task runners, sequences and virtual time (slice done 2026-09-26)
 
 **Scope** (roadmap R10, `active`; RFC 0001 "Threads, sequences, and
 injectable scheduling", RFC 0003 "Sequences and physical affinity"). R10's
@@ -281,6 +281,131 @@ This slice adds:
   `ThreadTaskRunner` and returns to the GTK main loop.
 - **Out of scope:** a pool-backed `ITaskRunner` over the engine
   `CThreadPool`, and migrating engine queues to runners.
+
+**Delivered.**
+
+- **The contract** `public/platform/contracts/task_runner.h`, documented in
+  `unittests/platformtest/contracts/platform.task-runner.v1.md`. The owner
+  shuts a runner down; consumers cannot.
+- **`platform.runners`** (`platform/runners/`, Waf `platform_runners`,
+  strict C++20; its only edges are `foundation` and `platform.contracts`):
+  - `VirtualClock` and `ManualTaskRunner`. `AdvanceBy` stops at each due
+    time, so a task sees the clock at its own due time.
+  - `ThreadTaskRunner`. Its thread id is fixed at construction, and
+    concurrent `Shutdown` calls all return after one join.
+  - `SequencedTaskRunner`. Its state is shared with in-flight base tasks,
+    and it keeps delayed tasks itself, so `Shutdown` destroys them. A base
+    runner's refusal shuts the sequence down and refuses the post.
+- **Tests** in `unittests/platformtest/task_runner/` (module
+  `platform.runners.tests`), with a 4-thread `TestPool` that is test-only.
+- **Found and fixed by the suite:**
+  - the sequence adapter answered `kAccepted` for a task its refusing base
+    had just dropped;
+  - its delayed tasks survived `Shutdown` inside the base runner.
+
+**Evidence (2026-09-26).**
+
+| Check | Result |
+| --- | --- |
+| `platform.task_runner`, g++ and clang++, default and release | 110 checks, pass |
+| `platform.task_runner` `--repeat 20` | 20 of 20 |
+| `platform.task_runner.tsan` (clang++, TSan) | 110 checks, clean |
+| `platform.task_runner.sensitivity` | 8 checks: the control passes, and each of the 7 broken providers fails on its own clause |
+| Q-FOUNDATION + Q-EDITOR headless, g++ and clang++ | 104 of 105 each; the skip is the optional TSan lane |
+| `archlint check --all --compile-deps build-r03-tools`, `targets --verify --partial`, `hermetic` (g++ and clang++, 64 headers) | pass |
+| `baseline.py audit --group static` | 11 pass and 1 known fail (`roadmap.check`, R16/R14), 0 deviations |
+| stylelint on the slice's files | clean |
+
+`quality.selftest` took 36.8 s against its 20 s budget in that audit; the
+budget is advisory.
+
+**Still needed for R10 to be `done`:**
+
+1. **Runner bindings** (Phase B deliverable). Done in R10-BINDINGS below. The scheduler's affinity lanes
+   (main-thread pump, blocking I/O) and its external completion should bind
+   to `ISingleThreadTaskRunner` / `ISequencedTaskRunner`, rather than only
+   to the jobsystem's own lane types.
+2. **A reproducible baseline** (Phase A exit; `jobs.legacy-captures` is
+   `partial`, owned by R10). The legacy and graph host-frame captures match
+   live, but no versioned capture is recorded or checked.
+3. **A consumer:** Hammer's asynchronous F9 build is the first planned
+   consumer of the runners (RFC 0002 record).
+
+## R10-BINDINGS: the executor's affinity lanes bound to runners (slice done 2026-09-26)
+
+**Scope** (roadmap R10; RFC 0003 Phase B deliverable "runner bindings", and
+"Sequences and physical affinity": "An execution lane in a frame diagram is
+a binding to that contract").
+
+- **Options.** `RunOptions` gains `mainThreadRunner`
+  (`platform::ISingleThreadTaskRunner`) and `blockingRunner`
+  (`platform::ISequencedTaskRunner`). When set, `ParallelExecutor` posts
+  that lane's ready jobs to the runner instead of servicing them on the
+  pumping caller or on dedicated blocking workers.
+- **Completion** publishes through the scheduling mutex like any other job,
+  and a bound lane never stalls.
+- **A caller that already is the runner** (on its thread or in its sequence)
+  services that lane itself. It cannot wait for its own runner.
+- **A runner that refuses a job, or drops it at shutdown,** resolves that job
+  as unserviceable (the existing stall diagnostic). The run returns
+  `stalled` instead of hanging.
+- **Inline mode** (0 workers, the serial low-capacity mode) and the
+  deterministic executor keep servicing every lane on the caller, and ignore
+  bindings.
+- **Oracle:** a new Q-JOBS suite, `jobsystem.runner-bindings`, checks:
+  - thread and sequence identity of bound jobs;
+  - cross-lane dependencies and publication;
+  - no stall where the unbound configuration stalls;
+  - a caller that is its own runner;
+  - refusal and drop-at-shutdown as stalls, without hangs;
+  - cancellation;
+  - terminal-state equivalence with `DeterministicExecutor` on seeded
+    random graphs;
+  - a TSan lane.
+- **Negative controls:** the unbound configuration must stall, and seeded
+  executor mutants must fail.
+
+**Delivered.**
+
+- **`RunOptions::mainThreadRunner` and `blockingRunner`**
+  (`public/jobsystem/graph_executor.h`). `ParallelExecutor` posts each bound
+  job from `EnqueueLocked`. Inline mode, `DeterministicExecutor` and the
+  wave-based `PooledExecutor` ignore bindings, as documented.
+- **An ownership token** settles each posted job exactly once as ran,
+  accepted-then-dropped, or refused. The runner never runs a task inside the
+  post, so posting under the scheduling mutex cannot re-enter it.
+- **A caller that is the runner** (its thread, or its sequence) becomes the
+  pump for that lane.
+- **Found and fixed by the suite:** `ThreadTaskRunner::BelongsToCurrentThread`
+  compared against its exited thread's id. glibc reuses thread ids, so a new
+  thread "belonged" to a shut-down runner, and the executor then treated the
+  caller as the runner.
+  - The id is now cleared after the join.
+  - `thread.no-owner-after-shutdown` in `platform.task_runner` checks this.
+    All 64 of its probe threads reused the id here, and the pre-fix code
+    fails the clause 64 times.
+
+**Evidence (2026-09-26).**
+
+| Check | Result |
+| --- | --- |
+| `jobsystem.runner-bindings`, g++ and clang++ | 18 checks, pass; the unbound control stalls 16 jobs |
+| `jobsystem.runner-bindings.tsan`, `platform.task_runner.tsan` | clean |
+| `platform.task_runner` | 111 checks, pass |
+| Seeded executor mutants | 9 of 9 detected: bindings ignored (main, blocking), refusal or drop unresolved, caller-is-runner undetected, cancel ignored, no wake after completion, bound lanes still stall, bound jobs on the caller. Four are hangs, which the suite's own timeout also fails. |
+| Q-JOBS + Q-FOUNDATION headless, g++ and clang++ | 59 of 65 each; the 6 skips are the optional TSan lanes |
+| `waf build --targets=jobsystem` (`build-r03-tests`) | pass |
+| `archlint check --all` | pass |
+| stylelint on the changed lines | clean |
+
+`RunOptions` gained two pointers. Other trees rebuild `jobsystem`'s
+consumers on their next build; I rebuilt none of them here, to spare the
+host.
+
+**Still needed for R10 to be `done`:**
+
+- a versioned legacy host capture (`jobs.legacy-captures`, Phase A);
+- the first product consumer of the runners (Hammer's async F9).
 
 ## Module layout
 

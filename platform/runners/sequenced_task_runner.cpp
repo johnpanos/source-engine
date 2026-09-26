@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <thread>
 
@@ -24,6 +25,10 @@ struct SequencedTaskRunner::State
 	std::mutex mutex;
 	std::condition_variable idle;
 	std::deque<Task> ready;
+	// Delayed tasks stay here until due, so Shutdown destroys them; the base
+	// runner holds only their ids.
+	std::map<std::uint64_t, Task> delayed;
+	std::uint64_t nextDelayed = 0;
 	bool scheduled = false; // one base task is in flight
 	bool shutDown = false;
 	std::atomic<std::thread::id> running{};
@@ -36,18 +41,32 @@ using State = SequencedTaskRunner::State;
 
 void RunOne( const std::shared_ptr<State> &state );
 
-// Posts the sequence's base task. On refusal the sequence shuts down: its
-// pending tasks are destroyed without running (outside the lock).
-void Schedule( const std::shared_ptr<State> &state )
+// The base runner refused a post: the sequence shuts down, and its pending
+// tasks are destroyed without running (outside the lock).
+void ShutDownAfterRefusal( const std::shared_ptr<State> &state )
 {
-	if ( state->base.PostTask( [state] { RunOne( state ); } ) == PostResult::kAccepted )
-		return;
 	std::deque<Task> dropped;
+	std::map<std::uint64_t, Task> droppedDelayed;
 	std::lock_guard lock( state->mutex );
 	state->shutDown = true;
 	state->scheduled = false;
 	dropped.swap( state->ready );
+	droppedDelayed.swap( state->delayed );
 	state->idle.notify_all();
+}
+
+// Posts the sequence's base task; false when the base refused it (the
+// sequence is then shut down).
+bool Schedule( const std::shared_ptr<State> &state )
+{
+	if ( state->base.PostTask(
+	         [state]
+	         {
+		         RunOne( state );
+	         } ) == PostResult::kAccepted )
+		return true;
+	ShutDownAfterRefusal( state );
+	return false;
 }
 
 // Returns false (and destroys the task) when the sequence is shut down.
@@ -64,8 +83,7 @@ bool Enqueue( const std::shared_ptr<State> &state, Task task )
 		return true;
 	state->scheduled = true;
 	lock.unlock();
-	Schedule( state );
-	return true;
+	return Schedule( state );
 }
 
 void RunOne( const std::shared_ptr<State> &state )
@@ -96,12 +114,15 @@ void RunOne( const std::shared_ptr<State> &state )
 	// One sequence task per base task, so a long sequence cannot starve the
 	// base runner's other work.
 	if ( more )
-		Schedule( state );
+		(void)Schedule( state );
 }
 
 } // namespace
 
-SequencedTaskRunner::SequencedTaskRunner( ITaskRunner &base ) : m_state( std::make_shared<State>( base ) ) {}
+SequencedTaskRunner::SequencedTaskRunner( ITaskRunner &base )
+    : m_state( std::make_shared<State>( base ) )
+{
+}
 
 SequencedTaskRunner::~SequencedTaskRunner()
 {
@@ -117,16 +138,37 @@ PostResult SequencedTaskRunner::PostDelayedTask( Task task, std::uint64_t delayN
 {
 	if ( delayNanoseconds == 0 )
 		return PostTask( std::move( task ) );
+	std::uint64_t id = 0;
 	{
-		std::lock_guard lock( m_state->mutex );
+		std::unique_lock lock( m_state->mutex );
 		if ( m_state->shutDown )
+		{
+			lock.unlock();
 			return PostResult::kShutDown;
+		}
+		id = m_state->nextDelayed++;
+		m_state->delayed.emplace( id, std::move( task ) );
 	}
 	// The base runner keeps the delay; the task joins the sequence when due.
 	std::shared_ptr<State> state = m_state;
-	return m_state->base.PostDelayedTask(
-	    [state, task = std::move( task )]() mutable { Enqueue( state, std::move( task ) ); },
+	const PostResult posted = m_state->base.PostDelayedTask(
+	    [state, id]
+	    {
+		    Task due;
+		    {
+			    std::lock_guard lock( state->mutex );
+			    const auto it = state->delayed.find( id );
+			    if ( it == state->delayed.end() )
+				    return; // dropped by Shutdown
+			    due = std::move( it->second );
+			    state->delayed.erase( it );
+		    }
+		    Enqueue( state, std::move( due ) );
+	    },
 	    delayNanoseconds );
+	if ( posted == PostResult::kShutDown )
+		ShutDownAfterRefusal( m_state );
+	return posted;
 }
 
 bool SequencedTaskRunner::RunsTasksInCurrentSequence() const
@@ -139,10 +181,16 @@ void SequencedTaskRunner::Shutdown()
 	if ( RunsTasksInCurrentSequence() )
 		std::abort(); // a sequence cannot wait for its own running task
 	std::deque<Task> dropped;
+	std::map<std::uint64_t, Task> droppedDelayed;
 	std::unique_lock lock( m_state->mutex );
 	m_state->shutDown = true;
 	dropped.swap( m_state->ready );
-	m_state->idle.wait( lock, [this] { return m_state->running.load() == std::thread::id(); } );
+	droppedDelayed.swap( m_state->delayed );
+	m_state->idle.wait( lock,
+	    [this]
+	    {
+		    return m_state->running.load() == std::thread::id();
+	    } );
 	lock.unlock();
 	// `dropped` is destroyed here, on the owner's thread, without running.
 }

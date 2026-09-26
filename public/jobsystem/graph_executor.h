@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "jobsystem/job_graph.h"
+#include "platform/contracts/task_runner.h"
 
 namespace jobsystem
 {
@@ -92,6 +93,19 @@ struct RunOptions
 	// affinity (Deterministic) ignore this. Pooled runs affine/blocking work on
 	// the pumping caller, never on its compute backend.
 	bool pumpMainThread = true;
+
+	// Runner bindings (RFC 0003: an execution lane is a binding to a runner
+	// contract). When set, ParallelExecutor posts the lane's ready jobs to the
+	// runner instead of servicing them on the pumping caller or on dedicated
+	// blocking workers, and the lane never stalls. Completion publishes through
+	// the scheduling mutex like any job. A caller that already is the runner
+	// (its thread, or its sequence) services the lane itself. A job the runner
+	// refuses, or drops at shutdown, resolves as unserviceable (a stall), so the
+	// run returns instead of hanging. Runners must outlive Execute. Inline mode
+	// (no workers), DeterministicExecutor and the wave-based PooledExecutor
+	// service these lanes on the caller as before and ignore bindings.
+	platform::ISingleThreadTaskRunner *mainThreadRunner = nullptr;
+	platform::ISequencedTaskRunner *blockingRunner = nullptr;
 };
 
 // Result of one graph execution: the terminal state of every job by id.

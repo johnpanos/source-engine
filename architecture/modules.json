@@ -651,6 +651,30 @@
         ]
       },
       {
+        "id": "platform.runners.tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/platformtest/task_runner/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts",
+          "platform.runners",
+          "platform.tests",
+          "testing.contracts"
+        ]
+      },
+      {
+        "id": "platform.runners",
+        "paths": [
+          "platform/runners/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts"
+        ]
+      },
+      {
         "id": "platform.posix",
         "kind": "backend",
         "paths": [
@@ -747,6 +771,9 @@
         ]
       },
       "platform_posix": {
+        "allowedUse": []
+      },
+      "platform_runners": {
         "allowedUse": []
       },
       "platform_posix_legacyabi": {
@@ -1431,7 +1458,8 @@
           "world.map-geometry",
           "hammer.scene",
           "hammer.ports",
-          "foundation"
+          "foundation",
+          "platform.contracts"
         ]
       },
       {

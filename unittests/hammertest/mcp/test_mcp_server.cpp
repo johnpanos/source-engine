@@ -41,8 +41,8 @@ struct Fixture
 std::string Call( int id, const std::string &tool, const std::string &arguments = "{}" )
 {
 	return R"({"jsonrpc":"2.0","id":)" + std::to_string( id ) +
-	       R"(,"method":"tools/call","params":{"name":")" + tool +
-	       R"(","arguments":)" + arguments + "}}";
+	       R"(,"method":"tools/call","params":{"name":")" + tool + R"(","arguments":)" + arguments +
+	       "}}";
 }
 
 const char kInitialize[] = R"({"jsonrpc":"2.0","id":0,"method":"initialize","params":)"
@@ -70,7 +70,8 @@ int main()
 
 	// ---- JSON reader and writer -------------------------------------------------
 	{
-		auto doc = ParseJson( R"( {"a":[1,-2.5e3,true,false,null],"b":"x\"\\\/\n\u00e9\ud83d\ude00"} )" );
+		auto doc =
+		    ParseJson( R"( {"a":[1,-2.5e3,true,false,null],"b":"x\"\\\/\n\u00e9\ud83d\ude00"} )" );
 		checks.That( doc.HasValue(), "json.parse-document" );
 		if ( doc )
 		{
@@ -85,19 +86,19 @@ int main()
 		    std::string( "\"\\u0001\\t\"" ), "json.control-escaped" );
 
 		const std::vector<std::pair<const char *, const char *>> bad = {
-			{ "", "json.reject-empty" },
-			{ "{\"a\":1} x", "json.reject-trailing" },
-			{ "\"abc", "json.reject-unterminated" },
-			{ "\"\\x\"", "json.reject-bad-escape" },
-			{ "\"\\ud83d\"", "json.reject-lone-high" },
-			{ "\"\\ude00\"", "json.reject-lone-low" },
-			{ "\"a\nb\"", "json.reject-raw-control" },
-			{ "01", "json.reject-leading-zero" },
-			{ "1.", "json.reject-bad-fraction" },
-			{ "-", "json.reject-bare-minus" },
-			{ "{\"a\":1,\"a\":2}", "json.reject-duplicate" },
-			{ "[1,]", "json.reject-trailing-comma" },
-			{ "tru", "json.reject-literal" },
+		    { "", "json.reject-empty" },
+		    { "{\"a\":1} x", "json.reject-trailing" },
+		    { "\"abc", "json.reject-unterminated" },
+		    { "\"\\x\"", "json.reject-bad-escape" },
+		    { "\"\\ud83d\"", "json.reject-lone-high" },
+		    { "\"\\ude00\"", "json.reject-lone-low" },
+		    { "\"a\nb\"", "json.reject-raw-control" },
+		    { "01", "json.reject-leading-zero" },
+		    { "1.", "json.reject-bad-fraction" },
+		    { "-", "json.reject-bare-minus" },
+		    { "{\"a\":1,\"a\":2}", "json.reject-duplicate" },
+		    { "[1,]", "json.reject-trailing-comma" },
+		    { "tru", "json.reject-literal" },
 		};
 		for ( const auto &[text, name] : bad )
 			checks.That( !ParseJson( text ).HasValue(), name );
@@ -146,9 +147,12 @@ int main()
 
 	{
 		Fixture f;
-		const JsonValue early = response( f.server, R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})" );
-		checks.Equal( errorCode( early ), std::string( "-32600" ), "protocol.tools-before-initialize" );
-		const JsonValue ping = response( f.server, R"({"jsonrpc":"2.0","id":"p","method":"ping"})" );
+		const JsonValue early =
+		    response( f.server, R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})" );
+		checks.Equal(
+		    errorCode( early ), std::string( "-32600" ), "protocol.tools-before-initialize" );
+		const JsonValue ping =
+		    response( f.server, R"({"jsonrpc":"2.0","id":"p","method":"ping"})" );
 		checks.Equal( ping.Find( "result" ) ? ping.Find( "result" )->Write() : std::string(),
 		    std::string( "{}" ), "protocol.ping-before-initialize" );
 
@@ -174,7 +178,8 @@ int main()
 		                 older.Find( "result" )->Find( "protocolVersion" )->Text() == "2025-03-26",
 		    "protocol.initialize-supported-version-echoed" );
 
-		checks.That( !f.server.HandleLine( R"({"jsonrpc":"2.0","method":"notifications/initialized"})" ),
+		checks.That(
+		    !f.server.HandleLine( R"({"jsonrpc":"2.0","method":"notifications/initialized"})" ),
 		    "protocol.notification-no-response" );
 		checks.That( !f.server.HandleLine( R"({"jsonrpc":"2.0","id":7,"result":{}})" ),
 		    "protocol.client-response-ignored" );
@@ -184,7 +189,8 @@ int main()
 		checks.Equal( idText( parse ), std::string( "null" ), "protocol.parse-error-null-id" );
 		checks.Equal( errorCode( response( f.server, "[]" ) ), std::string( "-32600" ),
 		    "protocol.batch-rejected" );
-		checks.Equal( errorCode( response( f.server, R"({"jsonrpc":"2.0","id":{},"method":"ping"})" ) ),
+		checks.Equal(
+		    errorCode( response( f.server, R"({"jsonrpc":"2.0","id":{},"method":"ping"})" ) ),
 		    std::string( "-32600" ), "protocol.object-id-rejected" );
 		checks.Equal( errorCode( response( f.server, R"({"id":3,"method":"ping"})" ) ),
 		    std::string( "-32600" ), "protocol.missing-jsonrpc" );
@@ -194,15 +200,18 @@ int main()
 		    response( f.server, R"({"jsonrpc":"2.0","id":1.50e3,"method":"resources/list"})" );
 		checks.Equal( errorCode( unknown ), std::string( "-32601" ), "protocol.unknown-method" );
 		checks.Equal( idText( unknown ), std::string( "1.50e3" ), "protocol.id-echoed-verbatim" );
-		checks.Equal( idText( response( f.server, R"({"jsonrpc":"2.0","id":"abc","method":"x"})" ) ),
+		checks.Equal(
+		    idText( response( f.server, R"({"jsonrpc":"2.0","id":"abc","method":"x"})" ) ),
 		    std::string( "\"abc\"" ), "protocol.string-id-echoed" );
 		checks.Equal( errorCode( response( f.server,
 		                  R"({"jsonrpc":"2.0","id":4,"method":"tools/list","params":[]})" ) ),
 		    std::string( "-32602" ), "protocol.array-params-rejected" );
 
 		// Tool catalog: one tool per command, with the command's arguments.
-		const JsonValue list = response( f.server, R"({"jsonrpc":"2.0","id":5,"method":"tools/list"})" );
-		const JsonValue *tools = list.Find( "result" ) ? list.Find( "result" )->Find( "tools" ) : nullptr;
+		const JsonValue list =
+		    response( f.server, R"({"jsonrpc":"2.0","id":5,"method":"tools/list"})" );
+		const JsonValue *tools =
+		    list.Find( "result" ) ? list.Find( "result" )->Find( "tools" ) : nullptr;
 		const auto &catalog = EditorCommands::Catalog();
 		checks.That( tools && tools->Items().size() == catalog.size(), "tools.one-per-command" );
 		bool schemasMatch = tools != nullptr;
@@ -234,7 +243,8 @@ int main()
 		    std::string( "-32602" ), "call.missing-name" );
 
 		bool isError = false;
-		const std::string missing = toolResult( response( f.server, Call( 15, "create_block" ) ), isError );
+		const std::string missing =
+		    toolResult( response( f.server, Call( 15, "create_block" ) ), isError );
 		checks.That( isError && missing.find( "missing argument" ) != std::string::npos,
 		    "call.command-error-is-tool-result" );
 		const std::string ok = toolResult( response( f.server, Call( 16, "new_map" ) ), isError );
@@ -250,16 +260,16 @@ int main()
 
 		Fixture byMcp;
 		std::vector<std::string> calls = {
-			kInitialize,
-			Call( 1, "new_map" ),
-			Call( 2, "create_block", R"({"mins":[-144,-144,-16],"maxs":[144,144,0]})" ),
-			Call( 3, "create_block", R"({"mins":"-144 -144 128","maxs":"144 144 144"})" ),
-			Call( 4, "create_block", R"({"mins":[-144,-144,0],"maxs":[-128,144,128]})" ),
-			Call( 5, "create_block", R"({"mins":[128,-144,0],"maxs":[144,144,128]})" ),
-			Call( 6, "create_block", R"({"mins":[-128,-144,0],"maxs":[128,-128,128]})" ),
-			Call( 7, "create_block", R"({"mins":[-128,128,0],"maxs":[128,144,128]})" ),
-			Call( 8, "place_entity", R"({"classname":"info_player_start","origin":[0,0,1]})" ),
-			Call( 9, "place_entity", R"({"classname":"light","origin":"0 0 96"})" ),
+		    kInitialize,
+		    Call( 1, "new_map" ),
+		    Call( 2, "create_block", R"({"mins":[-144,-144,-16],"maxs":[144,144,0]})" ),
+		    Call( 3, "create_block", R"({"mins":"-144 -144 128","maxs":"144 144 144"})" ),
+		    Call( 4, "create_block", R"({"mins":[-144,-144,0],"maxs":[-128,144,128]})" ),
+		    Call( 5, "create_block", R"({"mins":[128,-144,0],"maxs":[144,144,128]})" ),
+		    Call( 6, "create_block", R"({"mins":[-128,-144,0],"maxs":[128,-128,128]})" ),
+		    Call( 7, "create_block", R"({"mins":[-128,128,0],"maxs":[128,144,128]})" ),
+		    Call( 8, "place_entity", R"({"classname":"info_player_start","origin":[0,0,1]})" ),
+		    Call( 9, "place_entity", R"({"classname":"light","origin":"0 0 96"})" ),
 		};
 		bool allOk = true;
 		for ( const std::string &call : calls )
@@ -273,12 +283,17 @@ int main()
 
 		// Protocol faults and failed commands change nothing.
 		bool isError = false;
-		const std::string before = toolResult( response( byMcp.server, Call( 20, "info" ) ), isError );
-		(void)byMcp.server.HandleLine( "{\"jsonrpc\":\"2.0\",\"id\":21,\"method\":\"tools/call\"," );
-		(void)byMcp.server.HandleLine( Call( 22, "create_block", R"({"mins":{},"maxs":[1,1,1]})" ) );
-		(void)byMcp.server.HandleLine( Call( 23, "create_block", R"({"mins":"0 0 0","maxs":"0 0 0"})" ) );
+		const std::string before =
+		    toolResult( response( byMcp.server, Call( 20, "info" ) ), isError );
+		(void)byMcp.server.HandleLine(
+		    "{\"jsonrpc\":\"2.0\",\"id\":21,\"method\":\"tools/call\"," );
+		(void)byMcp.server.HandleLine(
+		    Call( 22, "create_block", R"({"mins":{},"maxs":[1,1,1]})" ) );
+		(void)byMcp.server.HandleLine(
+		    Call( 23, "create_block", R"({"mins":"0 0 0","maxs":"0 0 0"})" ) );
 		(void)byMcp.server.HandleLine( Call( 24, "no_such_tool" ) );
-		const std::string after = toolResult( response( byMcp.server, Call( 25, "info" ) ), isError );
+		const std::string after =
+		    toolResult( response( byMcp.server, Call( 25, "info" ) ), isError );
 		checks.That( !before.empty() && before == after, "room.faults-change-nothing" );
 
 		const JsonValue saved =
@@ -293,7 +308,8 @@ int main()
 
 		// Undo is the same history: one undo removes the light.
 		toolResult( response( byMcp.server, Call( 31, "undo" ) ), isError );
-		const std::string undone = toolResult( response( byMcp.server, Call( 32, "info" ) ), isError );
+		const std::string undone =
+		    toolResult( response( byMcp.server, Call( 32, "info" ) ), isError );
 		checks.That( !isError && undone != after, "room.undo-through-mcp" );
 	}
 

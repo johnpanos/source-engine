@@ -74,6 +74,22 @@ def build(bld):
 			subsystem = bld.env.MSVC_SUBSYSTEM,
 			idx       = bld.get_taskgen_count()
 		)
+	# Task runners and virtual time (RFC 0001 rank 11, R10): portable providers
+	# of platform.task-runner.v1 over the standard library.
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'runners/manual_task_runner.cpp', 'runners/thread_task_runner.cpp',
+		              'runners/sequenced_task_runner.cpp' ],
+		target    = 'platform_runners',
+		name      = 'platform_runners',
+		arch_module = 'platform.runners',
+		features  = 'cxx capability_strict',
+		includes  = [ '../public' ],
+		defines   = [],
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
 		source    = [ 'tool_process_client.cpp' ],

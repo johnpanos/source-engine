@@ -639,6 +639,35 @@ unchanged.
 - The live GTK editor does not yet serve MCP. An agent edits a headless
   document, not the one on screen.
 
+### R08-ASYNC-BUILD: F9 builds off the UI thread (slice, active 2026-09-26)
+
+**Scope** (roadmap R08, and the first product consumer of R10's task
+runners). Today F9 compiles on the GTK main thread, so the editor freezes
+for the whole compile.
+
+- **`hammer::app::MapBuildQueue`** (`hammer.app`) owns "one build at a time,
+  off the editing thread". It borrows an `IMapBuilder`, a work runner and a
+  reply runner (`platform.task-runner.v1`). The builder's result is posted
+  back to the reply runner. Starting a build while one runs is refused.
+  Destroying the queue with a build in flight is safe: the reply is
+  dropped.
+- **Saving stays on the editing thread** through the `save` command. Only
+  the compile moves.
+- **`hammer::gtk::GlibTaskRunner`** is an `ISingleThreadTaskRunner` on a GLib
+  main context (idle and timeout sources), so replies land on the GTK
+  thread. It runs the same shared `platform.task_runner` suite.
+- **The GTK shell:** F9 saves, starts the queue on a `ThreadTaskRunner`, and
+  reports "Building ..." at once, then "Built" or the failure when the
+  reply arrives. Shift+F9 runs `./play` after a successful build.
+- **Oracles:**
+  - `hammer.app.map_build_queue` (headless, `ManualTaskRunner` on virtual
+    time): runner identity, refusal while busy, the reply order, and
+    destruction in flight;
+  - the GLib runner through the shared runner suite (a corpus command
+    suite, since it compiles with `pkg-config`);
+  - `corpus.hammer.ui` must still pass with the asynchronous F9.
+- **Out of scope:** cancelling a running compile, a streamed build log.
+
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 
 A research agent assembled this from the Valve Developer Community Source 2

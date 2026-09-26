@@ -19,7 +19,7 @@ def configure(conf):
 def build(bld):
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
-		source    = [ 'app/document_history.cpp', 'app/editor_commands.cpp',
+		source    = [ 'app/document_history.cpp', 'app/editor_commands.cpp', 'app/map_build_queue.cpp',
 		              'app/editor_controller.cpp', 'app/editor_document.cpp',
 		              'app/entity_selection.cpp', 'app/property_value.cpp',
 		              'app/save_orchestrator.cpp', 'app/update_hint.cpp' ],

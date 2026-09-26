@@ -43,6 +43,9 @@ public:
 	virtual std::uint64_t NowNanoseconds() = 0;
 	// The owner's shutdown (see the contract).
 	virtual void Shutdown() = 0;
+	// True when the driving thread is the runner's own thread (a main loop the
+	// test iterates); single-thread identity is then true outside tasks too.
+	virtual bool DriverIsRunnerThread() const { return false; }
 };
 
 // Counts how a task ended: run, or destroyed without running.
@@ -59,7 +62,10 @@ inline platform::Task ProbedTask( TaskProbe &probe, std::function<void()> body =
 		TaskProbe *probe;
 		bool ran = false;
 		explicit Guard( TaskProbe *p ) : probe( p ) {}
-		Guard( Guard &&other ) noexcept : probe( other.probe ), ran( other.ran ) { other.probe = nullptr; }
+		Guard( Guard &&other ) noexcept : probe( other.probe ), ran( other.ran )
+		{
+			other.probe = nullptr;
+		}
 		~Guard()
 		{
 			if ( probe && !ran )
@@ -81,7 +87,10 @@ inline void RunTaskRunnerConformance( testing::Checks &checks, const std::string
     RunnerDriver &driver, std::uint64_t delayNanoseconds )
 {
 	using platform::PostResult;
-	auto check = [&]( bool ok, const char *clause ) { checks.That( ok, name + "." + clause ); };
+	auto check = [&]( bool ok, const char *clause )
+	{
+		checks.That( ok, name + "." + clause );
+	};
 	platform::ITaskRunner &runner = driver.Runner();
 	platform::ISequencedTaskRunner *sequenced = driver.Sequenced();
 	platform::ISingleThreadTaskRunner *single = driver.SingleThread();
@@ -92,8 +101,11 @@ inline void RunTaskRunnerConformance( testing::Checks &checks, const std::string
 		std::vector<std::atomic<int>> counts( kTasks );
 		bool accepted = true;
 		for ( int i = 0; i < kTasks; ++i )
-			accepted = accepted && runner.PostTask( [&counts, i] { counts[i].fetch_add( 1 ); } ) ==
-			                           PostResult::kAccepted;
+			accepted = accepted && runner.PostTask(
+			                           [&counts, i]
+			                           {
+				                           counts[i].fetch_add( 1 );
+			                           } ) == PostResult::kAccepted;
 		driver.Drain();
 		bool once = true;
 		for ( auto &count : counts )
@@ -156,11 +168,17 @@ inline void RunTaskRunnerConformance( testing::Checks &checks, const std::string
 		driver.Elapse( delayNanoseconds );
 		driver.Drain();
 		check( posted == PostResult::kAccepted, "delayed-accepted" );
-		check( !early && ran.load() && ranAt.load() - postedAt >= delayNanoseconds, "delayed-not-early" );
+		check( !early && ran.load() && ranAt.load() - postedAt >= delayNanoseconds,
+		    "delayed-not-early" );
 
 		// A zero delay is a plain post.
 		std::atomic<bool> zero{ false };
-		(void)runner.PostDelayedTask( [&zero] { zero.store( true ); }, 0 );
+		(void)runner.PostDelayedTask(
+		    [&zero]
+		    {
+			    zero.store( true );
+		    },
+		    0 );
 		driver.Drain();
 		check( zero.load(), "zero-delay-runs" );
 	}
@@ -202,7 +220,8 @@ inline void RunTaskRunnerConformance( testing::Checks &checks, const std::string
 		check( overlaps.load() == 0, "sequence-no-overlap" );
 		check( plain == kTasks, "sequence-publishes" );
 		check( outsideSequence.load() == 0, "in-sequence-inside-task" );
-		check( !sequenced->RunsTasksInCurrentSequence(), "not-in-sequence-outside" );
+		check( sequenced->RunsTasksInCurrentSequence() == driver.DriverIsRunnerThread(),
+		    "in-sequence-outside-only-on-runner-thread" );
 	}
 
 	if ( single )
@@ -227,7 +246,8 @@ inline void RunTaskRunnerConformance( testing::Checks &checks, const std::string
 		for ( const auto &id : ids )
 			sameThread = sameThread && id == ids.front();
 		check( sameThread && notBelonging.load() == 0, "single-thread" );
-		check( !single->BelongsToCurrentThread(), "not-belonging-outside" );
+		check( single->BelongsToCurrentThread() == driver.DriverIsRunnerThread(),
+		    "belonging-outside-only-on-runner-thread" );
 	}
 
 	// 6. Shutdown: queued and delayed tasks are destroyed unrun; nothing runs
@@ -243,8 +263,10 @@ inline void RunTaskRunnerConformance( testing::Checks &checks, const std::string
 		const int ranAtShutdown = queued.ran.load();
 		driver.Elapse( delayNanoseconds );
 		check( queued.ran.load() == ranAtShutdown, "nothing-runs-after-shutdown" );
-		check( queued.ran.load() + queued.destroyedUnrun.load() == kQueued, "shutdown-accounts-every-task" );
-		check( delayed.ran.load() == 0 && delayed.destroyedUnrun.load() == 1, "shutdown-drops-delayed" );
+		check( queued.ran.load() + queued.destroyedUnrun.load() == kQueued,
+		    "shutdown-accounts-every-task" );
+		check( delayed.ran.load() == 0 && delayed.destroyedUnrun.load() == 1,
+		    "shutdown-drops-delayed" );
 
 		TaskProbe late;
 		const PostResult refused = runner.PostTask( ProbedTask( late ) );

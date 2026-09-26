@@ -29,7 +29,11 @@ public:
 	explicit TestPool( int threads )
 	{
 		for ( int i = 0; i < threads; ++i )
-			m_threads.emplace_back( [this] { Work(); } );
+			m_threads.emplace_back(
+			    [this]
+			    {
+				    Work();
+			    } );
 	}
 	~TestPool() override { Shutdown(); }
 

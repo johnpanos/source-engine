@@ -384,7 +384,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | done (2026-09-25: POSIX loader provider with a required load-site observer, scoped `LoadedLibrary`, provider events on the Tier 0 stream, fake and native suites, and legacy telemetry and frozen-ABI cases on gcc and clang; `Sys_*` stay the frozen instrumented bridge and retire with R39/R41 (RFC 0001 step-6 decision); Win32 and hosted CI not claimed; [closure](RFC/0001-phase-a-progress.md#r07-closure-done-2026-09-25)) |
 | 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active (map-building-loop slices done 2026-09-25/26: R08-CMD command layer, R08-LIBS layered format libraries, R08-LOOP Waf-built headless `hammer_cli` with the `corpus.hammer.loop` author → compile → boot suite, R08-UI-P1 Source 2 P1 commands and GTK wiring, R08-UI-TEST the `corpus.hammer.ui` suite that drives the real GTK editor in an isolated compositor, R08-MCP the command catalog as MCP tools (`hammer_cli --mcp`); open for `done`: exhaustive ownership/caller inventory (46 of 530 files classified), complete migration records, legacy build evidence; [record](RFC/0002-progress.md#map-building-loop-direction-and-r08-cmd-2026-09-25)) |
 | 9 / R09 | Physics A feasibility and IVP baseline; 0004, Q-PHYSICS | R01, R02, R05 | Method/profile inventory, units/assets and measurements; tested solution or explicit scope decision for impact state, contact mutation, ragdoll limits and hull/decoder blockers | partial ([0004 progress](RFC/0004-progress.md)) |
-| 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active ([0003 progress](RFC/0003-progress.md); [host graph](RFC/0003-scheduler-trust-progress.md); [render nodes](RFC/0003-scheduler-nodes-progress.md)) |
+| 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active (R10-RUNNERS 2026-09-26: `platform.task-runner.v1` contract, `platform.runners` providers (virtual time, thread, sequence) and a shared suite with seven bad providers; R10-BINDINGS 2026-09-26: `ParallelExecutor` MainThread/BlockingIO lanes bound to runners; open for `done`: a versioned legacy host capture and the first product consumer; [0003 progress](RFC/0003-progress.md); [host graph](RFC/0003-scheduler-trust-progress.md); [render nodes](RFC/0003-scheduler-nodes-progress.md)) |
 | 11 / R11 | Paths and module resolution; 0001 rank 5 | R05, R07 | Native/virtual paths distinct; resolution/verification separate from opening; encoding/search/failure corpus passes | planned |
 | 12 / R12 | Dedicated-server composition; 0001 rank 6 | R06, R07, R11 | Installed startup/shutdown and partial failure pass; link/runtime evidence shows render and desktop UI absent | partial ([composition migration slice](RFC/0001-dedicated-composition-progress.md)) |
 | 13 / R13 | Hammer geometry and scene seams; 0002 H1 | R05, R08 | Strict headless targets; geometry/reference/reparent tests and independent documents pass; selected legacy callers route through shared owner | partial ([0002 current state](RFC/0002-progress.md#current-state-2026-09-25)) |
@@ -1113,6 +1113,39 @@ Keep the table concise and link details below or from the domain progress file.
         effects) and the other cohorts;
       - mobile budgets;
       - full-product TSan.
+
+- R10-RUNNERS: done as a slice (2026-09-26); R10 stays `active`. RFC 0001's
+  execution vocabulary now exists:
+  - the contract `public/platform/contracts/task_runner.h`
+    (`platform.task-runner.v1`), covering independent, sequenced and
+    single-thread runners, delayed posting, and owner-only shutdown;
+  - providers in `platform.runners`: `VirtualClock` + `ManualTaskRunner`
+    (virtual time), `ThreadTaskRunner`, and `SequencedTaskRunner` over any
+    runner.
+  - Evidence:
+    - `platform.task_runner` (110 checks) runs one shared suite against six
+      configurations on g++ and clang++, in default and release, and under
+      TSan. It passes 20 of 20 repeats.
+    - `platform.task_runner.sensitivity`: seven broken providers are each
+      caught on their own clause.
+  - Open for R10 `done`:
+    - scheduler lane bindings to the runner contracts (RFC 0003 Phase B):
+      done in R10-BINDINGS;
+    - a versioned legacy host capture (`jobs.legacy-captures` is
+      `partial`);
+    - the first consumer, Hammer's async F9.
+  - See the [record](RFC/0003-progress.md#r10-runners-task-runners-sequences-and-virtual-time-slice-done-2026-09-26).
+- R10-BINDINGS: done as a slice (2026-09-26). `RunOptions::mainThreadRunner`
+  and `blockingRunner` bind `ParallelExecutor`'s affinity lanes to the
+  runner contracts.
+  - Bound jobs run on their runner. Refused or dropped jobs stall instead of
+    hanging, and a caller that is the runner services the lane itself.
+  - `jobsystem.runner-bindings` (18 checks, and a TSan lane): 60 seeded
+    random graphs match `DeterministicExecutor`, and 9 of 9 executor
+    mutants are detected.
+  - Fixed: a shut-down `ThreadTaskRunner` claimed new threads that reused its
+    thread's id.
+  - See the [record](RFC/0003-progress.md#r10-bindings-the-executors-affinity-lanes-bound-to-runners-slice-done-2026-09-26).
 
 - R32-DEBUG-CONTROLS: `planned` (2026-09-25, user direction). These are the
   `cl_vk_debug_*` and `cl_bsp2_*` controls of

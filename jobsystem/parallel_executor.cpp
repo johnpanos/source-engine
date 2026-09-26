@@ -10,12 +10,19 @@
 //          as a stall, with the affected jobs and their dependents left
 //          non-terminal, rather than hanging.
 //
+//          Runner bindings (RunOptions::mainThreadRunner/blockingRunner): a
+//          bound lane's ready jobs are posted to the runner, run there, and
+//          resolve under the scheduling mutex like any other job. A job the
+//          runner refuses or drops unrun resolves as stuck.
+//
 //=============================================================================//
 
 #include "jobsystem/parallel_executor.h"
 
+#include <atomic>
 #include <condition_variable>
 #include <exception>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -55,7 +62,8 @@ enum class Role : uint8_t
 	Blocking,
 	Main,
 	Inline,
-	Waiter // the caller without a pump: waits for completion only
+	Waiter,  // the caller without a pump: waits for completion only
+	External // a bound runner's task; takes no work from the ready queues
 };
 
 // Servicers sleep on the condition variable of their slot, so new work wakes
@@ -107,6 +115,9 @@ struct RunState
 
 	bool mainServicesBlocking = false; // main pumps BlockingIO (no blocking lane)
 	bool mainPumps = false;            // the caller services the Main role
+	// Runner bindings in effect for this run (null: the lane is serviced here).
+	platform::ITaskRunner *mainRunner = nullptr;
+	platform::ITaskRunner *blockingRunner = nullptr;
 
 	uint32_t total = 0;
 	uint32_t resolved = 0; // terminal OR stuck; the loop ends at resolved==total
@@ -130,6 +141,8 @@ struct RunState
 		states.assign( n, JobState::Admitted );
 		mainServicesBlocking = false;
 		mainPumps = false;
+		mainRunner = nullptr;
+		blockingRunner = nullptr;
 		total = n;
 		resolved = 0;
 		succeeded = failed = canceled = executed = unresolved = 0;
@@ -166,6 +179,20 @@ struct RunState
 			if ( stuck[p.producer] )
 				return true;
 		return false;
+	}
+
+	// The runner a job's lane is bound to, or null.
+	platform::ITaskRunner *BoundRunner( uint32_t id ) const
+	{
+		switch ( LaneOf( graph->GetJob( id ).executor.kind ) )
+		{
+		case Lane::Main:
+			return mainRunner;
+		case Lane::Blocking:
+			return blockingRunner;
+		default:
+			return nullptr;
+		}
 	}
 
 	void Enqueue( uint32_t id )
@@ -336,6 +363,9 @@ void Trace( RunState &rs, uint32_t id, JobState s )
 	}
 }
 
+void EnqueueLocked( RunState &rs, uint32_t id );
+void RunBoundJob( RunState &rs, uint32_t id );
+
 // Called with the lock held. Resolve a job (terminal or stuck) and activate
 // dependents whose last prerequisite just resolved. The caller dispatches
 // wakeups once the cascade is complete.
@@ -381,10 +411,109 @@ void ResolveLocked( RunState &rs, uint32_t id, JobState terminal, bool asStuck )
 			else
 			{
 				rs.willCancel[d] = rs.DecideCancel( d ) ? 1 : 0;
-				rs.Enqueue( d );
+				EnqueueLocked( rs, d );
 			}
 		}
 	}
+}
+
+// A bound job's task. Its ownership token settles, exactly once, whether the
+// job ran, was accepted and then dropped unrun (the guard resolves it as
+// stuck), or was refused or dropped during the post (the poster resolves it).
+struct BoundJob
+{
+	enum : int
+	{
+		kPosting,
+		kAccepted,
+		kRan,
+		kDroppedEarly
+	};
+
+	RunState *rs;
+	uint32_t id;
+	std::shared_ptr<std::atomic<int>> token;
+
+	BoundJob( RunState *state, uint32_t job, std::shared_ptr<std::atomic<int>> t )
+	    : rs( state ), id( job ), token( std::move( t ) )
+	{
+	}
+	BoundJob( BoundJob &&other ) noexcept
+	    : rs( other.rs ), id( other.id ), token( std::move( other.token ) )
+	{
+	}
+	BoundJob( const BoundJob & ) = delete;
+
+	~BoundJob()
+	{
+		if ( !token )
+			return; // moved from
+		int expected = kPosting;
+		if ( token->compare_exchange_strong( expected, kDroppedEarly ) )
+			return; // the poster sees this and resolves the job under its lock
+		if ( expected != kAccepted )
+			return; // it ran
+		// Accepted, then destroyed without running (runner shutdown).
+		std::lock_guard<std::mutex> lk( rs->mtx );
+		ResolveLocked( *rs, id, JobState::Admitted, /*asStuck=*/true );
+		rs->Dispatch( Role::External );
+	}
+
+	void operator()()
+	{
+		token->store( kRan );
+		RunBoundJob( *rs, id );
+	}
+};
+
+// Called with the lock held. The runner never runs the task inside the post
+// (platform.task-runner.v1), so posting under the scheduling mutex cannot
+// re-enter it; a task that starts on another thread waits for this lock.
+void PostBoundLocked( RunState &rs, uint32_t id, platform::ITaskRunner &runner )
+{
+	auto token = std::make_shared<std::atomic<int>>( BoundJob::kPosting );
+	const platform::PostResult posted = runner.PostTask( BoundJob( &rs, id, token ) );
+	int expected = BoundJob::kPosting;
+	if ( posted == platform::PostResult::kAccepted &&
+	     token->compare_exchange_strong( expected, BoundJob::kAccepted ) )
+		return;
+	if ( posted == platform::PostResult::kAccepted && expected == BoundJob::kRan )
+		return;
+	// Refused, or dropped unrun before the post returned.
+	ResolveLocked( rs, id, JobState::Admitted, /*asStuck=*/true );
+}
+
+void EnqueueLocked( RunState &rs, uint32_t id )
+{
+	if ( platform::ITaskRunner *runner = rs.BoundRunner( id ) )
+		PostBoundLocked( rs, id, *runner );
+	else
+		rs.Enqueue( id );
+}
+
+// Runs one bound job on its runner's thread, then resolves it like any job.
+void RunBoundJob( RunState &rs, uint32_t id )
+{
+	std::unique_lock<std::mutex> lk( rs.mtx );
+	JobState terminal = JobState::Canceled;
+	if ( !rs.willCancel[id] && !rs.GlobalCancel() )
+	{
+		const SealedGraph::Job &job = rs.graph->GetJob( id );
+		Trace( rs, id, JobState::Running );
+		lk.unlock();
+		JobRunContext ctx( rs.opts->frame, id );
+		if ( job.function )
+			job.function( ctx );
+		terminal = ctx.Failed() ? JobState::Failed : JobState::Succeeded;
+		lk.lock();
+		if ( job.function )
+			rs.executed++;
+	}
+	Trace( rs, id, terminal );
+	ResolveLocked( rs, id, terminal, /*asStuck=*/false );
+	rs.Dispatch( Role::External );
+	// The unlock is this task's last access to the run: the caller returns
+	// only after it observes every job resolved under this mutex.
 }
 
 // One servicer pass for a given role. Returns when the whole graph is resolved.
@@ -468,8 +597,22 @@ void Prepare( RunState &rs, const SealedGraph &graph, const RunOptions &opts, bo
 	const uint32_t n = graph.JobCount();
 	const bool pumpMain = opts.pumpMainThread;
 	rs.Reset( graph, opts );
-	rs.mainServicesBlocking = !haveBlocking; // main covers blocking when no lane
-	rs.mainPumps = !inlineMode && pumpMain;
+	if ( !inlineMode )
+	{
+		// A caller that already is the runner cannot wait for it: it services
+		// the lane itself, as a pump.
+		if ( opts.mainThreadRunner && !opts.mainThreadRunner->BelongsToCurrentThread() )
+			rs.mainRunner = opts.mainThreadRunner;
+		if ( opts.blockingRunner && !opts.blockingRunner->RunsTasksInCurrentSequence() )
+			rs.blockingRunner = opts.blockingRunner;
+	}
+	const bool callerIsMainRunner =
+	    opts.mainThreadRunner && opts.mainThreadRunner->BelongsToCurrentThread();
+	const bool callerIsBlockingRunner =
+	    opts.blockingRunner && opts.blockingRunner->RunsTasksInCurrentSequence();
+	rs.mainServicesBlocking =
+	    !haveBlocking || callerIsBlockingRunner; // main covers blocking when no lane
+	rs.mainPumps = !inlineMode && ( pumpMain || callerIsMainRunner || callerIsBlockingRunner );
 
 	// Precompute which lanes have no servicer under this configuration. In inline
 	// mode the single caller services every lane, so nothing stalls.
@@ -478,9 +621,10 @@ void Prepare( RunState &rs, const SealedGraph &graph, const RunOptions &opts, bo
 		for ( uint32_t i = 0; i < n; ++i )
 		{
 			const ExecutorKind k = graph.GetJob( i ).executor.kind;
-			const bool mainUnserviced = ( k == ExecutorKind::MainThread ) && !pumpMain;
-			const bool blockingUnserviced =
-			    ( k == ExecutorKind::BlockingIO ) && !haveBlocking && !pumpMain;
+			const bool mainUnserviced =
+			    ( k == ExecutorKind::MainThread ) && !rs.mainPumps && !rs.mainRunner;
+			const bool blockingUnserviced = ( k == ExecutorKind::BlockingIO ) && !haveBlocking &&
+			                                !rs.mainPumps && !rs.blockingRunner;
 			if ( mainUnserviced || blockingUnserviced )
 				rs.willStall[i] = 1;
 		}
@@ -505,7 +649,7 @@ void Prepare( RunState &rs, const SealedGraph &graph, const RunOptions &opts, bo
 		else
 		{
 			rs.willCancel[i] = rs.DecideCancel( i ) ? 1 : 0;
-			rs.Enqueue( i );
+			EnqueueLocked( rs, i );
 		}
 	}
 }
@@ -705,7 +849,7 @@ RunResult ParallelExecutor::Execute( const SealedGraph &graph, const RunOptions 
 		m_pool->Start( rs );
 		try
 		{
-			ServiceCaller( rs, opts.pumpMainThread );
+			ServiceCaller( rs, rs.mainPumps );
 		}
 		catch ( ... )
 		{
@@ -737,7 +881,7 @@ RunResult ParallelExecutor::Execute( const SealedGraph &graph, const RunOptions 
 		    {
 			    ServiceLoop( rs, Role::Blocking );
 		    } );
-	ServiceCaller( rs, opts.pumpMainThread );
+	ServiceCaller( rs, rs.mainPumps );
 	for ( auto &t : workers )
 		t.join();
 	return Collect( rs );

@@ -75,6 +75,34 @@
       "expect": "pass"
     },
     {
+      "id": "corpus.hammer.glib-runner",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R08",
+      "description": "The GTK shell's GlibTaskRunner (RFC/0002-progress.md, R08-ASYNC-BUILD) through the shared platform.task-runner.v1 suite on a private GLib main context the test thread iterates (a runner whose thread is the driver's), plus a post from another thread that runs on the context's thread. Compiled by hammer/gtk/tests/glib_task_runner.sh with pkg-config glib-2.0; no display.",
+      "command": [
+        "sh",
+        "hammer/gtk/tests/glib_task_runner.sh",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 20,
+      "timeout_seconds": 300,
+      "requires": [
+        "executable:pkg-config",
+        "executable:g++"
+      ],
+      "sources": [
+        "hammer/gtk/glib_task_runner.cpp",
+        "hammer/gtk/tests/test_glib_task_runner.cpp",
+        "hammer/gtk/tests/glib_task_runner.sh",
+        "unittests/platformtest/task_runner/task_runner_conformance.h"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "corpus.hammer.mcp",
       "domain": "Q-EDITOR",
       "rfc": "0002",
@@ -699,6 +727,77 @@
       "expect": "pass"
     },
     {
+      "id": "platform.task_runner",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R10",
+      "contract": "unittests/platformtest/contracts/platform.task-runner.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "platform.task-runner.v1 (RFC 0001 rank 11, RFC 0003 sequences; R10-RUNNERS): one shared suite (exactly once, never inline, delayed not early, sequence order, no overlap and publication, current sequence and thread, shutdown drops and refuses) against ManualTaskRunner on virtual time, ThreadTaskRunner, SequencedTaskRunner over a thread, a 4-thread test pool and a manual runner, and the test pool itself; plus virtual-time, sequence-lifetime and concurrent-shutdown clauses.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "platform/runners/manual_task_runner.cpp",
+        "platform/runners/thread_task_runner.cpp",
+        "platform/runners/sequenced_task_runner.cpp",
+        "unittests/platformtest/task_runner/test_task_runner.cpp"
+      ],
+      "extra_flags": [
+        "-pthread"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.task_runner.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R10",
+      "contract": "unittests/platformtest/contracts/platform.task-runner.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "The shared task-runner suite must catch seven broken providers on the clause each breaks (LIFO sequence, overlapping sequence, delays ignored, accepts after shutdown, runs after shutdown, runs inline, claims every thread) while a conforming control passes.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "platform/runners/manual_task_runner.cpp",
+        "platform/runners/thread_task_runner.cpp",
+        "platform/runners/sequenced_task_runner.cpp",
+        "unittests/platformtest/task_runner/test_task_runner_negative.cpp"
+      ],
+      "extra_flags": [
+        "-pthread"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.task_runner.tsan",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R10",
+      "contract": "unittests/platformtest/contracts/platform.task-runner.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "platform.task_runner under ThreadSanitizer. Needs a compiler with a TSan runtime: CONFORMANCE_TSAN=1 python3 tools/quality/conformance.py check --cxx clang++ --suite platform.task_runner.tsan",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "platform/runners/manual_task_runner.cpp",
+        "platform/runners/thread_task_runner.cpp",
+        "platform/runners/sequenced_task_runner.cpp",
+        "unittests/platformtest/task_runner/test_task_runner.cpp"
+      ],
+      "extra_flags": [
+        "-pthread",
+        "-fsanitize=thread",
+        "-O1",
+        "-g"
+      ],
+      "requires": [
+        "env:CONFORMANCE_TSAN"
+      ],
+      "optional": true,
+      "timeout_seconds": 600,
+      "expect": "pass"
+    },
+    {
       "id": "platform.paths",
       "domain": "Q-FOUNDATION",
       "rfc": "0001",
@@ -1029,6 +1128,62 @@
         "jobsystem/parallel_executor.cpp",
         "unittests/jobsystemtest/jobsystemtest.cpp"
       ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobsystem.runner-bindings",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "R10",
+      "contract": "RFC/0003-dependency-aware-job-system.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "ParallelExecutor's MainThread and BlockingIO lanes bound to platform.task-runner.v1 runners (RFC/0003-progress.md, R10-BINDINGS): runner identity of bound jobs, the unbound control stalls, cross-lane chains publish plain data, a caller that is the runner services the lane, refusal and drop-at-shutdown stall without hanging, cancellation, and 60 seeded random graphs whose terminal states equal DeterministicExecutor's.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "platform/runners/manual_task_runner.cpp",
+        "platform/runners/thread_task_runner.cpp",
+        "platform/runners/sequenced_task_runner.cpp",
+        "unittests/jobsystemtest/runnerbindingtest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobsystem.runner-bindings.tsan",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "R10",
+      "contract": "RFC/0003-dependency-aware-job-system.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "jobsystem.runner-bindings under ThreadSanitizer. Needs a compiler with a TSan runtime: CONFORMANCE_TSAN=1 python3 tools/quality/conformance.py check --cxx clang++ --suite jobsystem.runner-bindings.tsan",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread",
+        "-fsanitize=thread",
+        "-O1",
+        "-g"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "platform/runners/manual_task_runner.cpp",
+        "platform/runners/thread_task_runner.cpp",
+        "platform/runners/sequenced_task_runner.cpp",
+        "unittests/jobsystemtest/runnerbindingtest.cpp"
+      ],
+      "requires": [
+        "env:CONFORMANCE_TSAN"
+      ],
+      "optional": true,
+      "timeout_seconds": 600,
       "expect": "pass"
     },
     {
@@ -2081,6 +2236,27 @@
         "kvtext/keyvalues.cpp",
         "vmf/vmf_geometry.cpp",
         "unittests/hammertest/app/test_editor_commands.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.map_build_queue",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08",
+      "contract": "public/hammer/app/map_build_queue.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "One map build at a time off the editing thread (RFC/0002-progress.md, R08-ASYNC-BUILD; first product consumer of platform.task-runner.v1): builds run on the work runner and replies on the reply runner, a second start while busy is refused, a queue destroyed in flight drops its reply, a shut-down work runner makes builds unavailable, and with real threads Start returns while the compile runs.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "hammer/core/app/map_build_queue.cpp",
+        "platform/runners/manual_task_runner.cpp",
+        "platform/runners/thread_task_runner.cpp",
+        "unittests/hammertest/app/test_map_build_queue.cpp"
       ],
       "expect": "pass"
     },

@@ -18,6 +18,7 @@
 
 #include "platform/contracts/task_runner.h"
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -66,7 +67,9 @@ private:
 	bool m_shutDown = false;
 	std::once_flag m_joinOnce;
 	std::thread m_thread;
-	std::thread::id m_threadId; // fixed at construction; join() resets m_thread's id
+	// The running thread's id, cleared once it has exited: thread ids are
+	// reused, so a later thread must not appear to belong to this runner.
+	std::atomic<std::thread::id> m_threadId{};
 };
 
 } // namespace platform
