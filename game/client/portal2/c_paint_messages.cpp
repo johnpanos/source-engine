@@ -117,7 +117,6 @@ void __MsgFunc_RemoveAllPaint( bf_read &msg )
 	Portal2Engine::RemoveAllPaint();
 }
 
-
 void __MsgFunc_RemovePaint( bf_read &msg )
 {
 	C_BaseEntity *pEntity = Portal2Engine::EntityFromUserMessageEHandle( msg.ReadLong() );
@@ -128,7 +127,6 @@ void __MsgFunc_RemovePaint( bf_read &msg )
 
 	Portal2Engine::RemovePaint( pEntity->GetModel() );
 }
-
 
 void __MsgFunc_PaintAllSurfaces( bf_read &msg )
 {
@@ -142,12 +140,11 @@ void __MsgFunc_PaintAllSurfaces( bf_read &msg )
 	}
 }
 
-
 //-----------------------------------------------------------------------------
 // Purpose: A chunk of the engine's paint records sent to a joining client
 //			(total dwords, offset, count, dwords); loaded after the last one.
 //-----------------------------------------------------------------------------
-static CUtlVector< uint32 > s_PaintmapRecords;
+static CUtlVector<uint32> s_PaintmapRecords;
 
 void __MsgFunc_LoadPaintmapData( bf_read &msg )
 {
@@ -167,7 +164,7 @@ void __MsgFunc_LoadPaintmapData( bf_read &msg )
 	}
 	for ( int i = 0; i < nCount; ++i )
 	{
-		s_PaintmapRecords.AddToTail( ( uint32 )msg.ReadLong() );
+		s_PaintmapRecords.AddToTail( (uint32)msg.ReadLong() );
 	}
 
 	// The listen server shares its paint maps with its own client.

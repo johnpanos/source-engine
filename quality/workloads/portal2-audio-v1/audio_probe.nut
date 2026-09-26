@@ -30,7 +30,10 @@ IncludeScript( "qa/qa_driver" )
 	unprecached = "glados.botcoop_artifactone_hub01"
 	lineA = "glados.sp_a1_wakeup_incinerator01"
 	lineB = "glados.sp_a1_wakeup_incinerator02"
-	eye = Vector( 7760, -5400, 64 )
+	// Inside the radius of the chamber's env_soundscape (laser_chamber_med_02 at
+	// 7904 -5376, radius 128; "dsp" "1" selects automatic room DSP), so both
+	// builds run the same soundscape and room DSP whatever the start-up order.
+	eye = Vector( 7860, -5380, 64 )
 	emitter = null
 	direction = Vector( 1, 0, 0 )
 	clear = 0.0
@@ -87,6 +90,9 @@ QA_Do( "setup", function()
 	SendToConsole( "sv_cheats 1; snd_mute_losefocus 0; volume 1; con_drawnotify 0; cl_drawhud 0" )
 }, 0.5 )
 
+// Diagnostic console commands from portal2_audio.py --console (empty by default).
+QA_Do( "extra commands", function() { SendToConsole( "exec qa_audio_extra" ) }, 0.5 )
+
 // The mix settings in effect, for the evidence (unknown names print an error).
 QA_Do( "log settings", function()
 {
@@ -96,7 +102,8 @@ QA_Do( "log settings", function()
 }, 0.5 )
 
 // Stand in the entry hall facing east; the emitter line is the clearest of
-// four horizontal directions (the same on both builds: the map decides).
+// four horizontal directions (the same on both builds: the map decides). The
+// soundscape and its room DSP settle during the wait.
 QA_Do( "place the listener", function()
 {
 	QA_PlaceEye( ::AP.eye, 0.0, 0.0 )
@@ -157,12 +164,12 @@ QA_Do( "duck after", function() { AP_Mark( "duck_after" ) }, 3.0 )
 QA_Do( "stop duck", function() { AP_Mark( "duck_stop" ); SendToConsole( "stopsound" ) }, 1.5 )
 
 // Distance falloff: one v1 and one v2 entry from an entity at three distances.
-QA_Do( "near v1", function() { AP_EmitAt( "near_v1", "Portal.button_down", 128.0 ) }, 2.0 )
-QA_Do( "mid v1", function() { AP_EmitAt( "mid_v1", "Portal.button_down", 384.0 ) }, 2.0 )
-QA_Do( "far v1", function() { AP_EmitAt( "far_v1", "Portal.button_down", 768.0 ) }, 2.0 )
-QA_Do( "near v2", function() { AP_EmitAt( "near_v2", "World.RobotArmMotorDown", 128.0 ) }, 2.5 )
-QA_Do( "mid v2", function() { AP_EmitAt( "mid_v2", "World.RobotArmMotorDown", 384.0 ) }, 2.5 )
-QA_Do( "far v2", function() { AP_EmitAt( "far_v2", "World.RobotArmMotorDown", 768.0 ) }, 2.5 )
+QA_Do( "near v1", function() { AP_EmitAt( "near_v1", "Portal.button_down", 96.0 ) }, 2.0 )
+QA_Do( "mid v1", function() { AP_EmitAt( "mid_v1", "Portal.button_down", 256.0 ) }, 2.0 )
+QA_Do( "far v1", function() { AP_EmitAt( "far_v1", "Portal.button_down", 512.0 ) }, 2.0 )
+QA_Do( "near v2", function() { AP_EmitAt( "near_v2", "World.RobotArmMotorDown", 96.0 ) }, 2.5 )
+QA_Do( "mid v2", function() { AP_EmitAt( "mid_v2", "World.RobotArmMotorDown", 256.0 ) }, 2.5 )
+QA_Do( "far v2", function() { AP_EmitAt( "far_v2", "World.RobotArmMotorDown", 512.0 ) }, 2.5 )
 
 QA_Do( "end", function()
 {

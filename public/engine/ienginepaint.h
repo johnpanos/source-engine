@@ -46,15 +46,15 @@ public:
 	// sphere at vPosition (model space) touches. flPaintCoatPercent scales
 	// how much coverage one call adds. Returns true when the paint power of
 	// any luxel changed.
-	virtual bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color,
-									 float flSphereRadius, float flPaintCoatPercent ) = 0;
+	virtual bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition,
+	    unsigned char color, float flSphereRadius, float flPaintCoatPercent ) = 0;
 
 	// Appends the paint power of every well-covered luxel of the painted
 	// surfaces, facing vContactNormal, that a sphere at vPosition touches.
 	// surfColors is emptied first; it stays empty where there is no paint.
 	virtual void SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition,
-										  const Vector &vContactNormal, float flSphereRadius,
-										  CUtlVector<unsigned char> &surfColors ) = 0;
+	    const Vector &vContactNormal, float flSphereRadius,
+	    CUtlVector<unsigned char> &surfColors ) = 0;
 
 	virtual void RemoveAllPaint( void ) = 0;
 	virtual void PaintAllSurfaces( unsigned char color ) = 0;
@@ -63,7 +63,7 @@ public:
 	// The painted surfaces as run-length encoded records (surface index, run
 	// count, runs), for save games and joining clients; valid only for the
 	// map they were read from.
-	virtual void GetPaintmapDataRLE( CUtlVector<uint32> &data ) = 0;
+	virtual void GetPaintmapDataRLE( CUtlVector<uint32> & data ) = 0;
 	virtual void LoadPaintmapDataRLE( const CUtlVector<uint32> &data ) = 0;
 };
 

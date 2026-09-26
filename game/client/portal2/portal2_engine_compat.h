@@ -410,16 +410,6 @@ namespace Portal2Engine
 	// queued; pOutName receives the save file name, pOutComment is cleared.
 	bool SaveGame( const char *pSaveFilename, bool bIsXSave, char *pOutName, int nOutNameSize, char *pOutComment, int nOutCommentSize );
 
-	// Paint maps: forwarded to the engine's IEnginePaint (portal2_shared_compat.h).
-	bool HasPaintmap();
-	bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color, float flSphereRadius, float flPaintCoatPercent );
-	void SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColors );
-	void RemoveAllPaint();
-	void PaintAllSurfaces( unsigned char color );
-	void RemovePaint( const model_t *pModel );
-	// The engine's paint records for a joining client (GetPaintmapDataRLE on the server).
-	void LoadPaintmapDataRLE( const CUtlVector<uint32> &data );
-
 	//-------------------------------------------------------------------------
 	// Unsupported by this engine: documented result plus a one-time DevWarning.
 	//-------------------------------------------------------------------------
@@ -433,6 +423,23 @@ namespace Portal2Engine
 	int GetMixLayerIndex( const char *pszMixLayerName );	// -1: no mix layers
 	int GetMixGroupIndex( const char *pszMixGroupName );	// -1: no mix groups
 	void SetMixLayerTriggerFactor( int nMixLayerIndex, int nMixGroupIndex, float flFactor );	// no-op
+}
+
+//-----------------------------------------------------------------------------
+// Paint maps: forwarded to the engine's IEnginePaint (portal2_shared_compat.h).
+//-----------------------------------------------------------------------------
+namespace Portal2Engine
+{
+bool HasPaintmap();
+bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color,
+    float flSphereRadius, float flPaintCoatPercent );
+void SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition,
+    const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColors );
+void RemoveAllPaint();
+void PaintAllSurfaces( unsigned char color );
+void RemovePaint( const model_t *pModel );
+// The engine's paint records for a joining client (GetPaintmapDataRLE on the server).
+void LoadPaintmapDataRLE( const CUtlVector<uint32> &data );
 }
 
 //-----------------------------------------------------------------------------

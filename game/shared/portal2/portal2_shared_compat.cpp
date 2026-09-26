@@ -132,8 +132,9 @@ static IEngineGameTimescale *s_pEngineGameTimescale = NULL;
 static IEnginePaint *s_pEnginePaint = NULL;
 
 // The engine stores paint_enum.h powers; its bare value is NO_POWER.
-static_assert( NO_POWER == ENGINE_PAINT_NO_POWER && PAINT_POWER_TYPE_COUNT == ENGINE_PAINT_POWER_COUNT,
-			   "the engine paint map and paint_enum.h disagree on the paint powers" );
+static_assert(
+    NO_POWER == ENGINE_PAINT_NO_POWER && PAINT_POWER_TYPE_COUNT == ENGINE_PAINT_POWER_COUNT,
+    "the engine paint map and paint_enum.h disagree on the paint powers" );
 
 bool Portal2_ConnectEngineInterfaces( CreateInterfaceFn engineFactory )
 {
@@ -142,10 +143,12 @@ bool Portal2_ConnectEngineInterfaces( CreateInterfaceFn engineFactory )
 	s_pEnginePaint = (IEnginePaint *)engineFactory( VENGINE_PAINT_INTERFACE_VERSION, NULL );
 	if ( !s_pEnginePaint )
 	{
-		DevWarning( "Portal 2: the engine does not provide %s; maps cannot be painted\n", VENGINE_PAINT_INTERFACE_VERSION );
+		DevWarning( "Portal 2: the engine does not provide %s; maps cannot be painted\n",
+		    VENGINE_PAINT_INTERFACE_VERSION );
 	}
 
-	s_pSPSharedMemoryManager = (ISPSharedMemoryManager *)engineFactory( VENGINE_SPSHAREDMEMORY_INTERFACE_VERSION, NULL );
+	s_pSPSharedMemoryManager =
+	    (ISPSharedMemoryManager *)engineFactory( VENGINE_SPSHAREDMEMORY_INTERFACE_VERSION, NULL );
 	if ( !s_pSPSharedMemoryManager )
 	{
 		Warning( "Portal 2: the engine does not provide %s\n", VENGINE_SPSHAREDMEMORY_INTERFACE_VERSION );
@@ -197,16 +200,18 @@ bool Portal2_SpherePaintSurface( const model_t *pModel, const Vector &vPosition,
 		PORTAL2_SHARED_UNSUPPORTED( "painting map surfaces" );
 		return false;
 	}
-	return s_pEnginePaint->SpherePaintSurface( pModel, vPosition, color, flSphereRadius, flPaintCoatPercent );
+	return s_pEnginePaint->SpherePaintSurface(
+	    pModel, vPosition, color, flSphereRadius, flPaintCoatPercent );
 }
 
-void Portal2_SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal,
-									  float flSphereRadius, CUtlVector<unsigned char> &surfColor )
+void Portal2_SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition,
+    const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColor )
 {
 	surfColor.RemoveAll();
 	if ( s_pEnginePaint )
 	{
-		s_pEnginePaint->SphereTracePaintSurface( pModel, vPosition, vContactNormal, flSphereRadius, surfColor );
+		s_pEnginePaint->SphereTracePaintSurface(
+		    pModel, vPosition, vContactNormal, flSphereRadius, surfColor );
 	}
 }
 

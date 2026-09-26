@@ -21,6 +21,7 @@ void R_PaintUpdateTextures();
 // Releases the paint textures and materials.
 void R_PaintShutdown();
 // Draws the paint of these painted, opaque, non-displacement brush surfaces.
-void R_DrawPaintedSurfaces( IMatRenderContext *pRenderContext, const CUtlVector<SurfaceHandle_t> &surfaces );
+void R_DrawPaintedSurfaces(
+    IMatRenderContext *pRenderContext, const CUtlVector<SurfaceHandle_t> &surfaces );
 
 #endif // PAINT_RENDER_H

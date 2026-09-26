@@ -182,7 +182,8 @@ SHADER_DRAW
 		Vector4D vCameraRight( mView.m[0][0], mView.m[0][1], 0.0f, 0.0f );
 		vCameraRight.AsVector3D().NormalizeInPlace();
 		Vector4D vCameraForward( 0.0f, 0.0f, 0.0f, 0.0f );
-		CrossProduct( Vector( 0.0f, 0.0f, 1.0f ), vCameraRight.AsVector3D(), vCameraForward.AsVector3D() );
+		CrossProduct(
+		    Vector( 0.0f, 0.0f, 1.0f ), vCameraRight.AsVector3D(), vCameraForward.AsVector3D() );
 		pShaderAPI->SetPixelShaderConstant( 22, vCameraRight.Base() );
 		pShaderAPI->SetPixelShaderConstant( 23, vCameraForward.Base() );
 

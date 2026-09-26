@@ -255,7 +255,10 @@
           "rel": 0.03
         },
         "cube.rise": {
-          "rel": 0.08
+          "rel": 0.05
+        },
+        "cube.drift": {
+          "abs": 24
         }
       }
     },

@@ -690,8 +690,13 @@ def command_selftest(args, workload):
 
 # --- Captures: this build ------------------------------------------------------
 
-def install_probe(workload_path, workload, game_directory, steam_root, seed=None):
-    """Driver scripts under scripts/vscripts/qa and a mapspawn.nut hook."""
+def install_probe(workload_path, workload, game_directory, steam_root, seed=None, console=()):
+    """Driver scripts under scripts/vscripts/qa, a mapspawn.nut hook and the
+    diagnostic commands the driver executes after enabling cheats."""
+    config = Path(game_directory) / "cfg" / "qa_audio_extra.cfg"
+    if config.is_symlink():
+        config.unlink()
+    config.write_text("".join(command + "\n" for command in console))
     source = Path(workload_path).parent
     vscripts = Path(game_directory) / "scripts" / "vscripts"
     qa = vscripts / "qa"
@@ -768,7 +773,7 @@ def capture_ours(args, workload, out):
     runtime = Path(args.runtime).resolve()
     stage_portal2_runtime.stage_content(args.steam_root, runtime)
     portal_boot.install_build(args.build, runtime, game="portal2")
-    install_probe(args.workload, workload, runtime / "portal2", args.steam_root, args.seed)
+    install_probe(args.workload, workload, runtime / "portal2", args.steam_root, args.seed, args.console)
     write_fake_zenity(out / "tools")
     environment = dict(os.environ)
     for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
@@ -819,7 +824,7 @@ def retail_mirror(steam_root, mirror):
 
 def capture_retail(args, workload, out):
     mirror = retail_mirror(args.steam_root, args.retail_mirror)
-    install_probe(args.workload, workload, mirror / "portal2", args.steam_root, args.seed)
+    install_probe(args.workload, workload, mirror / "portal2", args.steam_root, args.seed, args.console)
     write_fake_zenity(out / "tools")
     for tool in ("mutter", "dbus-run-session"):
         if not shutil.which(tool):
@@ -942,6 +947,9 @@ def main(argv=None):
                         help="negative control: a defect in the driver")
     parser.add_argument("--seed-defect", choices=SEEDED_DEFECTS,
                         help="negative control: a defect applied to the capture")
+    parser.add_argument("--console", action="append", default=[],
+                        help="diagnostic console command the driver runs after sv_cheats 1 "
+                             "(repeatable), e.g. --console='snd_showstart 2'")
     parser.add_argument("--extra-arg", action="append", default=[],
                         help="extra engine argument before +map (repeatable)")
     args = parser.parse_args(argv)

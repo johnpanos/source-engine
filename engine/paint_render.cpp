@@ -31,10 +31,12 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-ConVar r_hidepaintedsurfaces( "r_hidepaintedsurfaces", "0", FCVAR_CHEAT, "If enabled, hides all surfaces which have been painted." );
+ConVar r_hidepaintedsurfaces( "r_hidepaintedsurfaces", "0", FCVAR_CHEAT,
+    "If enabled, hides all surfaces which have been painted." );
 ConVar r_redownloadallpaintmaps( "r_redownloadallpaintmaps", "0", FCVAR_DEVELOPMENTONLY );
 
-void Shader_DrawSurfaceDynamic( IMatRenderContext *pRenderContext, SurfaceHandle_t surfID, bool bShadowDepth );
+void Shader_DrawSurfaceDynamic(
+    IMatRenderContext *pRenderContext, SurfaceHandle_t surfID, bool bShadowDepth );
 
 //-----------------------------------------------------------------------------
 // Paint colors: the game's ConVars (paint_color_manager.cpp), as retail's
@@ -49,7 +51,7 @@ static void ReadColor( const char *pName, const unsigned char fallback[4], unsig
 	int rgba[4] = { fallback[0], fallback[1], fallback[2], fallback[3] };
 	int n = sscanf( var.GetString(), "%d %d %d %d", &rgba[0], &rgba[1], &rgba[2], &rgba[3] );
 	for ( int i = 0; i < MIN( n, 4 ); ++i )
-		out[i] = ( unsigned char )clamp( rgba[i], 0, 255 );
+		out[i] = (unsigned char)clamp( rgba[i], 0, 255 );
 }
 
 static void ReadPaintColors( unsigned char colors[ENGINE_PAINT_NO_POWER + 1][4] )
@@ -76,10 +78,12 @@ public:
 
 	void SetPage( int nPage ) { m_nPage = nPage; }
 
-	virtual void RegenerateTextureBits( ITexture *pTexture, IVTFTexture *pVTFTexture, Rect_t *pRect )
+	virtual void RegenerateTextureBits(
+	    ITexture *pTexture, IVTFTexture *pVTFTexture, Rect_t *pRect )
 	{
 		CPaintPage *pPage = g_PaintManager.Page( m_nPage );
-		if ( !pPage || !pPage->Data() || pVTFTexture->Width() != pPage->Width() || pVTFTexture->Height() != pPage->Height() )
+		if ( !pPage || !pPage->Data() || pVTFTexture->Width() != pPage->Width() ||
+		     pVTFTexture->Height() != pPage->Height() )
 			return;
 
 		unsigned char colors[ENGINE_PAINT_NO_POWER + 1][4];
@@ -98,7 +102,8 @@ public:
 		}
 
 		CPixelWriter writer;
-		writer.SetPixelMemory( pVTFTexture->Format(), pVTFTexture->ImageData( 0, 0, 0 ), pVTFTexture->RowSizeInBytes( 0 ) );
+		writer.SetPixelMemory( pVTFTexture->Format(), pVTFTexture->ImageData( 0, 0, 0 ),
+		    pVTFTexture->RowSizeInBytes( 0 ) );
 		for ( int y = rect.y; y < rect.y + rect.height; ++y )
 		{
 			writer.Seek( rect.x, y );
@@ -106,8 +111,9 @@ public:
 			for ( int x = rect.x; x < rect.x + rect.width; ++x )
 			{
 				const unsigned char b = pRow[x];
-				const unsigned char *c = colors[MIN( ( int )PaintByte::Power( b ), ENGINE_PAINT_NO_POWER )];
-				writer.WritePixel( c[0], c[1], c[2], ( int )( PaintByte::Alpha( b ) * 255.0f ) );
+				const unsigned char *c =
+				    colors[MIN( (int)PaintByte::Power( b ), ENGINE_PAINT_NO_POWER )];
+				writer.WritePixel( c[0], c[1], c[2], (int)( PaintByte::Alpha( b ) * 255.0f ) );
 			}
 		}
 	}
@@ -167,9 +173,9 @@ static void CreatePaintTextures()
 		V_snprintf( szTexture, sizeof( szTexture ), "_rt_paintmap%d", i );
 		pRes->m_Regenerator.SetPage( i );
 		pRes->m_pTexture = materials->CreateProceduralTexture( szTexture, TEXTURE_GROUP_LIGHTMAP,
-			pPage->Width(), pPage->Height(), IMAGE_FORMAT_RGBA8888,
-			TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_SINGLECOPY |
-			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT );
+		    pPage->Width(), pPage->Height(), IMAGE_FORMAT_RGBA8888,
+		    TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD |
+		        TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT );
 		if ( !pRes->m_pTexture )
 			continue;
 		pRes->m_pTexture->SetTextureRegenerator( &pRes->m_Regenerator );
@@ -224,10 +230,11 @@ void R_PaintShutdown()
 //-----------------------------------------------------------------------------
 // The paint pass
 //-----------------------------------------------------------------------------
-void R_DrawPaintedSurfaces( IMatRenderContext *pRenderContext, const CUtlVector<SurfaceHandle_t> &surfaces )
+void R_DrawPaintedSurfaces(
+    IMatRenderContext *pRenderContext, const CUtlVector<SurfaceHandle_t> &surfaces )
 {
 	if ( !surfaces.Count() || r_hidepaintedsurfaces.GetBool() || !g_PaintManager.HasPaintmap() ||
-		 g_pMaterialSystemConfig->nFullbright == 1 )
+	     g_pMaterialSystemConfig->nFullbright == 1 )
 		return;
 
 	for ( int i = 0; i < surfaces.Count(); ++i )
@@ -236,7 +243,7 @@ void R_DrawPaintedSurfaces( IMatRenderContext *pRenderContext, const CUtlVector<
 		int nPage;
 		Rect_t rect;
 		if ( !g_PaintManager.SurfaceRect( surfID, nPage, rect ) || nPage >= s_PaintPages.Count() ||
-			 !s_PaintPages[nPage]->m_pMaterial )
+		     !s_PaintPages[nPage]->m_pMaterial )
 			continue;
 
 		pRenderContext->Bind( s_PaintPages[nPage]->m_pMaterial );

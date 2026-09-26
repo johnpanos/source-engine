@@ -158,6 +158,23 @@ public:
 	// absent. 'classname'/'origin' are edited through their own owners, not here.
 	// Records one history unit iff the value actually changed. Returns whether it did.
 	bool SetEntityProperty( int entityId, const std::string &key, const std::string &value );
+
+	// --- Exact domain operations ----------------------------------------------
+	// The same authority the pointer gestures use, addressed by value so a
+	// command script, a UI-driven test or an MCP client can author a map without
+	// synthesizing gestures. Each successful call is one undo unit.
+	//
+	// Adds an axis-aligned world brush with the active material and selects it.
+	// Returns its id, or nothing for a degenerate box (any extent <= 0).
+	std::optional<int> CreateBlock( const geometry::Vec3d &mins, const geometry::Vec3d &maxs );
+	// Places a point entity of 'classname' at 'origin' and selects it.
+	std::optional<int> PlaceEntity( const std::string &classname, const geometry::Vec3d &origin );
+	bool SetEntityOrigin( int entityId, const geometry::Vec3d &origin );
+	// Worldspawn keyvalues other than classname/mapversion (e.g. "skyname"). A new
+	// map starts with skyname "sky_day01_01" so it compiles without a leak into
+	// an unset sky.
+	bool SetWorldProperty( const std::string &key, const std::string &value );
+	const std::vector<EntityProperty> &WorldProperties() const { return m_worldProperties; }
 	bool Undo();
 	bool Redo();
 	bool CanUndo() const { return m_history.CanUndo(); }
@@ -201,6 +218,7 @@ private:
 	{
 		std::vector<MapBrush> brushes;
 		std::vector<MapEntity> entities;
+		std::vector<EntityProperty> worldProperties;
 		int nextId = 1;
 	};
 
@@ -246,6 +264,8 @@ private:
 	double m_dragStartV = 0.0;
 	std::vector<MapBrush> m_dragOrigs; // originals of all brushes being drag-moved
 	bool m_dragMoved = false;
+
+	std::vector<EntityProperty> m_worldProperties;
 
 	DocumentHistory m_history;
 	std::vector<DocState> m_snapshots;

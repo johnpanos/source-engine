@@ -675,18 +675,60 @@ Keep the table concise and link details below or from the domain progress file.
   scalability, and direct USD development-runtime iteration. They extend the
   Source 2-like outcome without marking F1–F7 or the current preview complete.
 
-- Hammer scope (user direction, 2026-09-25): the goal is not a perfect or
-  legacy-complete Hammer. "We need hammer and a game, and they both need to
-  evolve together."
-  - Prefer thin vertical slices where an editor capability lands with the map
-    or gameplay that uses it: R17's renderer, a minimal R25 workflow, and
-    R59/R60 USD author → compile → play.
-  - Legacy-parity breadth (R08 inventory coverage, MFC parity, R33 feature
-    families, R43 retirement) proceeds only when a game feature needs it.
-  - Cheap enforcement (HAM002/HAM003, the module graph) stays. Row
-    definitions are unchanged; this sets priority among ready work.
+- Hammer scope (user direction, 2026-09-25, clarified): not a perfect or
+  legacy-complete Hammer, but one that can always build a map. "We need
+  hammer and a game, and they both need to evolve together."
+  - Every editor slice keeps a working, fast author → save → compile → play
+    loop. A conformance suite checks it by driving the real UI the way a user
+    does (scripted clicks and keys in an isolated compositor) and running the
+    same commands headlessly.
+  - Behavior lives in shared headless domain libraries (a document/command
+    layer). The GTK UI is a thin layer that turns input into commands and
+    presents state. An MCP server can sit on the same command layer.
+  - Legacy-parity breadth (MFC parity, R33 families, R43) is added as the
+    map-building workflow needs it, not for its own sake. Cheap enforcement
+    (HAM002/HAM003, the module graph) stays. Row definitions are unchanged.
+  - Layered libraries (user direction, 2026-09-25): format and domain code
+    (KeyValues, VMF, FGD, VPK, VTF, materials, BSP2, the USD stage) lives in
+    small libraries. Each is its own `architecture/modules.json` module and
+    its own Waf static library declaring `arch_module`, with edges pointing
+    only down, following composition.
+    - Editor, tools, engine and game compose these libraries; a library never
+      depends on an application.
+    - Enforced by the existing include, link, owner and cycle checks.
+    - `hammer.formats` is split incrementally into per-format libraries owned
+      outside Hammer, so the compile tools and the engine can adopt them.
+  - UI/UX (user direction, 2026-09-25): take inspiration from the Source 2
+    tools' ergonomics. Each GTK UI slice first records the documented Source
+    2 Hammer behavior it adopts, with sources, and expresses it through the
+    shared command layer.
+  - Play-in-editor (user direction, 2026-09-25): the editor embeds the native
+    renderer and a game preview with play/stop, as Unreal does. Planned
+    design:
+    - the engine runs as a child process through a new
+      `render.presentation.v1` pair that exports frames as dmabufs;
+    - the GTK host shows them zero-copy (`GdkDmabufTexture`) and forwards
+      input as normalized events;
+    - play/stop starts and stops the child on the freshly compiled map;
+    - the same bridge serves a native-renderer viewport (R17).
+
+    It is sequenced after the command layer and the author → compile → play
+    loop suite. Nothing is implemented yet.
 - R08: `active`. See the
   [RFC 0002 current state](RFC/0002-progress.md#current-state-2026-09-25).
+  - R08-CMD (2026-09-25, first slice of the map-building loop):
+    - a named, serializable command layer (`hammer::app::EditorCommands`,
+      one table for dispatch and catalog, file-store I/O, structured errors,
+      line scripts), shared by GTK, scripts, tests and MCP;
+    - exact domain operations and undoable world properties;
+    - the legacy texture-axis rule as a `hammer.geometry` owner;
+    - byte-stable VMF reload.
+
+    `hammer.app.editor_commands` (54 checks) and the controller suite (233)
+    pass, and 10 mutants are detected. All 61 Q-EDITOR suites pass on both
+    compilers. Next come layered format libraries with a Waf-built
+    `hammer_cli`, then the author → compile → boot loop suite. See the
+    [record](RFC/0002-progress.md#map-building-loop-direction-and-r08-cmd-2026-09-25).
   - The ledger has 28 migrations, 11 of them extracted format cores.
     Inventory coverage is 46 of 530 files. There are 60 Q-EDITOR suites.
   - `archlint hammer --verify` passes again (2026-09-25, user decision): the

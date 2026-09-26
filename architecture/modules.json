@@ -1388,7 +1388,8 @@
         "allowedEdges": [
           "hammer.geometry",
           "hammer.scene",
-          "hammer.ports"
+          "hammer.ports",
+          "foundation"
         ]
       },
       {

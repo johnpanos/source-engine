@@ -1902,6 +1902,7 @@
         "hammer/core/geometry/brush.cpp",
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/rounding.cpp",
+        "hammer/core/geometry/texture_axes.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "hammer/core/formats/vmf_geometry.cpp",
         "hammer/core/app/document_history.cpp",
@@ -1923,6 +1924,7 @@
         "hammer/core/geometry/brush.cpp",
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/rounding.cpp",
+        "hammer/core/geometry/texture_axes.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "hammer/core/formats/vmf_geometry.cpp",
         "hammer/core/app/document_history.cpp",
@@ -1944,10 +1946,36 @@
         "hammer/core/geometry/brush.cpp",
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/rounding.cpp",
+        "hammer/core/geometry/texture_axes.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "hammer/core/formats/vmf_geometry.cpp",
         "hammer/core/app/document_history.cpp",
         "unittests/hammertest/app/test_editor_controller_pick.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.editor_commands",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08",
+      "contract": "public/hammer/app/editor_commands.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Named command layer shared by the GTK host, scripts, UI-driven tests and an MCP server: authors a sealed room with a light and player start by script, saves through the file-store port, reopens it identically, and checks every structured error path and script syntax error.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "hammer/core/app/editor_commands.cpp",
+        "hammer/core/app/editor_controller.cpp",
+        "hammer/core/app/save_orchestrator.cpp",
+        "hammer/core/app/document_history.cpp",
+        "hammer/core/geometry/brush.cpp",
+        "hammer/core/geometry/displacement.cpp",
+        "hammer/core/geometry/rounding.cpp",
+        "hammer/core/geometry/texture_axes.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "hammer/core/formats/vmf_geometry.cpp",
+        "unittests/hammertest/app/test_editor_commands.cpp"
       ],
       "expect": "pass"
     },
@@ -5152,6 +5180,334 @@
         "unittests/platformtest/composition/test_units.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.video-retail",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "Portal 2 video retail conformance (game/shared/portal2/README.md, 'Portal 2 video retail conformance'). Shoots quality/workloads/portal2-materials-v1's fixed views (5 maps, 11 views) on build-p2 at 1024x768 through tools/quality/portal2_scenarios.py (SDL offscreen, native Vulkan) and judges each shot against the retail reference (reference.json: 16x12 tile means and per-feature region statistics recorded from retail portal2_linux; numbers only, no retail pixels): tiles, named regions that each pin one defect, unknown shaders and missing proxies against retail's console, and the native backend's per-screenshot dropped-draw census. Known failure while the defects it pins are open (the 2D sky sky_white not drawn, toxic goo Water not implemented natively, the laser emitter glow, the tractor beam column pale, dev/motion_blur dropped, rusty models and blown-out exteriors); the first is the bridge view's tiles against the missing white sky. Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT) and a built build-p2 (SOURCE_PORTAL2_BUILD selects another tree); about 6 minutes.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "suite",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 49,
+      "timeout_seconds": 1800,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-materials-v1/scenarios.json",
+        "quality/workloads/portal2-materials-v1/checks.json",
+        "quality/workloads/portal2-materials-v1/reference.json",
+        "quality/workloads/portal2-materials-v1/materials_views.nut",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a2_bridge_intro.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a2_fizzler_intro.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a2_laser_over_goo.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a2_triple_laser.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a4_tb_intro.nut"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL sp_a2_bridge_intro.projector.tiles"
+    },
+    {
+      "id": "corpus.portal2.video-retail.cables",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "The cable region of corpus.portal2.video-retail alone (sp_a2_fizzler_intro.cables.cable_loop): Portal 2's SplineRope cables drawn with Cable_DX9 (materialsystem/stdshaders/cable_dx9.cpp). Before that fallback every rope material used an unknown shader and drew as the error material; the pre-fix capture fails this check (dark pixels 9.8% against retail's 13.9%). Pairs with the seeded row below.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "suite",
+        "--out",
+        "{out}",
+        "--scenario",
+        "sp_a2_fizzler_intro",
+        "--only",
+        "cables\\.cable_loop"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 1,
+      "timeout_seconds": 600,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-materials-v1/scenarios.json",
+        "quality/workloads/portal2-materials-v1/checks.json",
+        "quality/workloads/portal2-materials-v1/reference.json",
+        "quality/workloads/portal2-materials-v1/materials_views.nut",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a2_fizzler_intro.nut"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.video-retail.seeded-no-ropes",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "Negative control for corpus.portal2.video-retail.cables: the same run with ropes switched off in game (+r_drawropes 0). The cable region must be rejected against the retail reference.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "suite",
+        "--out",
+        "{out}",
+        "--scenario",
+        "sp_a2_fizzler_intro",
+        "--only",
+        "cables\\.cable_loop",
+        "--extra-arg=+r_drawropes",
+        "--extra-arg=0"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 600,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-materials-v1/scenarios.json",
+        "quality/workloads/portal2-materials-v1/checks.json",
+        "quality/workloads/portal2-materials-v1/reference.json",
+        "quality/workloads/portal2-materials-v1/materials_views.nut",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a2_fizzler_intro.nut"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL sp_a2_fizzler_intro.cables.cable_loop"
+    },
+    {
+      "id": "corpus.portal2.video-retail.comparator",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "self-test",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "The Portal 2 video retail comparator on synthetic frames, no game or content: a build frame with per-pixel noise and a one-pixel shift must match the synthetic retail frame (tiles and a textured feature region), the per-screenshot census parser must attribute dropped draws to the right shot, and the console parser must find unknown shaders and missing proxies. Needs numpy and Pillow.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "self-test"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.video-retail.comparator.seeded-missing-feature",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "Negative control for corpus.portal2.video-retail.comparator: seeded fault 'missing-feature' (the feature region replaced by the wall above it) must be rejected.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "self-test",
+        "--seed-fault",
+        "missing-feature"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL selftest.feature"
+    },
+    {
+      "id": "corpus.portal2.video-retail.comparator.seeded-flat-feature",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "Negative control for corpus.portal2.video-retail.comparator: seeded fault 'flat-feature' (the feature's mean colour kept but its detail flattened, which only the contrast clause catches) must be rejected.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "self-test",
+        "--seed-fault",
+        "flat-feature"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL selftest.feature"
+    },
+    {
+      "id": "corpus.portal2.video-retail.comparator.seeded-dark-frame",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "Negative control for corpus.portal2.video-retail.comparator: seeded fault 'dark-frame' (the whole frame at 60% brightness) must be rejected.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "self-test",
+        "--seed-fault",
+        "dark-frame"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL selftest.tiles"
+    },
+    {
+      "id": "corpus.portal2.video-retail.comparator.seeded-census",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "Negative control for corpus.portal2.video-retail.comparator: seeded fault 'census' (a dropped draw attributed to the wrong screenshot) must be rejected.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "self-test",
+        "--seed-fault",
+        "census"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL selftest.census"
+    },
+    {
+      "id": "corpus.portal2.video-retail.ssbump-floor",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "The floor region of corpus.portal2.video-retail alone (sp_a2_triple_laser.entry_hall.floor): the chamber's ssbump floor tiles against retail. Portal 2's LightmappedGeneric scales ssbump basis weights by 1/sqrt(3), which native Vulkan now does for Portal 2 (mat_ssbump_normalize -1); before, the floor was 1.73x retail in linear light (mean 106 against retail's 72). Pairs with the seeded row below.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "suite",
+        "--out",
+        "{out}",
+        "--scenario",
+        "sp_a2_triple_laser",
+        "--only",
+        "entry_hall\\.floor"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 1,
+      "timeout_seconds": 600,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-materials-v1/scenarios.json",
+        "quality/workloads/portal2-materials-v1/checks.json",
+        "quality/workloads/portal2-materials-v1/reference.json",
+        "quality/workloads/portal2-materials-v1/materials_views.nut",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a2_triple_laser.nut"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.video-retail.seeded-ssbump-unscaled",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "Negative control for corpus.portal2.video-retail.ssbump-floor: the same run with the ssbump normalization off (+mat_ssbump_normalize 0, this SDK's shader). The floor region must be rejected against the retail reference.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "suite",
+        "--out",
+        "{out}",
+        "--scenario",
+        "sp_a2_triple_laser",
+        "--only",
+        "entry_hall\\.floor",
+        "--extra-arg=+mat_ssbump_normalize",
+        "--extra-arg=0"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 600,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-materials-v1/scenarios.json",
+        "quality/workloads/portal2-materials-v1/checks.json",
+        "quality/workloads/portal2-materials-v1/reference.json",
+        "quality/workloads/portal2-materials-v1/materials_views.nut",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a2_triple_laser.nut"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL sp_a2_triple_laser.entry_hall.floor"
     }
   ]
 }

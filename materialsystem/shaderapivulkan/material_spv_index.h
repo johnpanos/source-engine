@@ -72,7 +72,7 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
     { 0x812291b1a04701a2ull, "g_solidEnergyVertSpv", "solidenergy.vert" },
     { 0xc8fe3e07584fd149ull, "g_solidEnergyFragSpv", "solidenergy.frag" },
     { 0x4e785057198a28c5ull, "g_paintBlobFragSpv", "paintblob.frag" },
-    { 0x710bddd6c43213e8ull, "g_lightmappedPaintFragSpv", "lightmappedpaint.frag" },
+    { 0x71bd53ea70030837ull, "g_lightmappedPaintFragSpv", "lightmappedpaint.frag" },
     { 0xdf11cc5f1a1ebec9ull, "g_modelPbrFragSpv", "model_pbr.frag" },
     { 0x7d37989aef3562d1ull, "g_modelPbrEnvFragSpv", "model_pbr.frag -DENV_CUBE" },
     { 0xd135e65d37455cc8ull, "g_modelPbrIndirectFragSpv", "model_pbr.frag -DINDIRECT_VIEW" },

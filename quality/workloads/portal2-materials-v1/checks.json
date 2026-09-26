@@ -57,7 +57,7 @@
             ],
             "mean_tolerance": 20,
             "dark_tolerance": 0.1,
-            "pins": "observation window glass above the chamber: retail shows the blurred, lit room behind it; here the pane is dark"
+            "pins": "observation window glass above the chamber: its env_cubemap reflection (an RGBA16161616F map cubemap) sampled black until native Vulkan uploaded half-float textures"
           }
         }
       },
@@ -162,7 +162,7 @@
               768
             ],
             "mean_tolerance": 12,
-            "pins": "lightmapped floor brightness: about 2x retail's in linear light, also with the tone-mapping scale forced to 1"
+            "pins": "ssbump floor tiles (tile/white_floor_tile002a): Portal 2's LightmappedGeneric scales an ssbump's basis weights by 1/sqrt(3); without it (this SDK's shader) the floor is 1.73x retail in linear light (mat_ssbump_normalize)"
           }
         }
       },
@@ -180,7 +180,7 @@
             ],
             "mean_tolerance": 16,
             "dark_tolerance": 0.04,
-            "pins": "tractor beam column (C_Trigger_TractorBeam::DrawModel, effects/tractor_beam*): never drawn, only its particles"
+            "pins": "tractor beam column (C_Trigger_TractorBeam::DrawModel, SolidEnergy effects/tractor_beam*): drawn since the render-bounds fix, but pale and without retail's blue swirl, so dark background shows through"
           },
           "floor": {
             "rect": [
@@ -190,7 +190,7 @@
               768
             ],
             "mean_tolerance": 12,
-            "pins": "lightmapped floor brightness: about 2x retail's in linear light, also with the tone-mapping scale forced to 1"
+            "pins": "ssbump floor tiles under the tractor beam: 1.73x retail before the ssbump normalization; still about 10% brighter (exposure or the beam's light)"
           }
         }
       },

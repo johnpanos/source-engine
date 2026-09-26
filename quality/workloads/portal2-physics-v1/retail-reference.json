@@ -1,0 +1,448 @@
+{
+  "schema": "portal2-physics-reference/v1",
+  "recorded_utc": "2026-09-26T03:02:12.046165+00:00",
+  "steam_root": "/home/john/.local/share/Steam/steamapps/common/Portal 2",
+  "retail_build": {
+    "PatchVersion": "2.0.0.1",
+    "server_so_bytes": 19081676
+  },
+  "source": {
+    "source_revision": "73b28db39e0348fed6f243f4fa7532ab0fa6fae7",
+    "dirty": true,
+    "dirty_files": 75,
+    "dirty_digest": "ba014a901cb4895c83a169635b4acc473876cd76ea75ab74e0fd56943462b5f6"
+  },
+  "scenarios": {
+    "sp_a2_triple_laser_move": {
+      "map": "sp_a2_triple_laser",
+      "metrics": {
+        "walk.peak_speed": {
+          "min": 184.312,
+          "max": 184.312,
+          "runs": 3
+        },
+        "walk.distance": {
+          "min": 279.977,
+          "max": 279.977,
+          "runs": 3
+        },
+        "strafe.peak_speed": {
+          "min": 182.195,
+          "max": 182.195,
+          "runs": 3
+        },
+        "strafe.distance": {
+          "min": 288.182,
+          "max": 288.182,
+          "runs": 3
+        },
+        "jump.rise": {
+          "min": 43.039,
+          "max": 43.039,
+          "runs": 3
+        },
+        "jump.airtime": {
+          "min": 0.7,
+          "max": 0.7,
+          "runs": 3
+        },
+        "carry.player_crossed": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "carry.cube_same_side": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "carry.still_held": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "carry.cube_eye_distance": {
+          "min": 38.435,
+          "max": 38.435,
+          "runs": 3
+        }
+      },
+      "checks": [
+        "carry.cube_followed",
+        "carry.picked_up",
+        "carry.player_crossed",
+        "carry.portals",
+        "carry.still_held",
+        "jump.rose",
+        "strafe.moved",
+        "walk.moved"
+      ]
+    },
+    "sp_a2_triple_laser_fling": {
+      "map": "sp_a2_triple_laser",
+      "metrics": {
+        "engine.frame_time": {
+          "min": 0.033,
+          "max": 0.033,
+          "runs": 3
+        },
+        "fling.speed_in": {
+          "min": 500.0,
+          "max": 500.0,
+          "runs": 3
+        },
+        "fling.speed_out": {
+          "min": 511.126,
+          "max": 511.126,
+          "runs": 3
+        },
+        "fling.exit_along_normal": {
+          "min": 0.998,
+          "max": 0.998,
+          "runs": 3
+        },
+        "fling.exit_offset": {
+          "min": 19.46,
+          "max": 19.46,
+          "runs": 3
+        },
+        "fling.landing_x": {
+          "min": 8110.67,
+          "max": 8110.67,
+          "runs": 3
+        },
+        "fast.speed_in": {
+          "min": 1020.0,
+          "max": 1020.0,
+          "runs": 3
+        },
+        "fast.speed_out": {
+          "min": 1000.306,
+          "max": 1000.306,
+          "runs": 3
+        },
+        "fast.exit_along_normal": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "fast.landing_x": {
+          "min": 7905.613,
+          "max": 7905.613,
+          "runs": 3
+        },
+        "bounce.speed_in": {
+          "min": 400.0,
+          "max": 400.0,
+          "runs": 3
+        },
+        "bounce.speed_out": {
+          "min": 370.735,
+          "max": 370.735,
+          "runs": 3
+        },
+        "bounce.rise": {
+          "min": 99.898,
+          "max": 99.898,
+          "runs": 3
+        },
+        "cube.speed_in": {
+          "min": 438.732,
+          "max": 438.732,
+          "runs": 3
+        },
+        "cube.speed_out": {
+          "min": 450.718,
+          "max": 450.718,
+          "runs": 3
+        },
+        "cube.exit_along_normal": {
+          "min": 0.998,
+          "max": 0.998,
+          "runs": 3
+        },
+        "cube.landing_x": {
+          "min": 7952.731,
+          "max": 7952.731,
+          "runs": 3
+        }
+      },
+      "checks": [
+        "bounce.crossed",
+        "cube.crossed",
+        "cube.landing",
+        "engine.tick",
+        "fast.crossed",
+        "fast.landing",
+        "fling.crossed",
+        "fling.landing",
+        "portals.placed"
+      ]
+    },
+    "sp_a2_triple_laser_edges": {
+      "map": "sp_a2_triple_laser",
+      "metrics": {
+        "walk_0.crossed": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "walk_12.crossed": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "walk_20.crossed": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "walk_28.crossed": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "walk_40.crossed": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "drop_x0.crossed": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "drop_x20.crossed": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "drop_x30.crossed": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "drop_x44.crossed": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "drop_y20.crossed": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "drop_y44.crossed": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "drop_y64.crossed": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "funnel_24.crossed": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "funnel_48.crossed": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "funnel_72.crossed": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        }
+      },
+      "checks": [
+        "drop_x0.done",
+        "drop_x20.done",
+        "drop_x30.done",
+        "drop_x44.done",
+        "drop_y20.done",
+        "drop_y44.done",
+        "drop_y64.done",
+        "funnel_24.done",
+        "funnel_48.done",
+        "funnel_72.done",
+        "portals.placed",
+        "walk_0.done",
+        "walk_12.done",
+        "walk_20.done",
+        "walk_28.done",
+        "walk_40.done"
+      ]
+    },
+    "sp_a2_catapult_intro_arcs": {
+      "map": "sp_a2_catapult_intro",
+      "metrics": {
+        "plate2a.miss": {
+          "min": 13.988,
+          "max": 13.988,
+          "runs": 3
+        },
+        "plate2a.apex_above_target": {
+          "min": 568.528,
+          "max": 568.528,
+          "runs": 3
+        },
+        "plate2a.touchdown_x": {
+          "min": -64.0,
+          "max": -64.0,
+          "runs": 3
+        },
+        "plate2a.touchdown_y": {
+          "min": -914.012,
+          "max": -914.012,
+          "runs": 3
+        },
+        "plate2a.gravity": {
+          "min": 600.001,
+          "max": 600.001,
+          "runs": 3
+        },
+        "plate2a.launch_speed": {
+          "min": 969.171,
+          "max": 969.171,
+          "runs": 3
+        },
+        "plate2b.miss": {
+          "min": 14.014,
+          "max": 14.014,
+          "runs": 3
+        },
+        "plate2b.apex_above_target": {
+          "min": 592.422,
+          "max": 592.422,
+          "runs": 3
+        },
+        "plate2b.touchdown_x": {
+          "min": -64.0,
+          "max": -64.0,
+          "runs": 3
+        },
+        "plate2b.touchdown_y": {
+          "min": 721.986,
+          "max": 721.986,
+          "runs": 3
+        },
+        "plate2b.gravity": {
+          "min": 600.001,
+          "max": 600.001,
+          "runs": 3
+        },
+        "plate2b.launch_speed": {
+          "min": 988.134,
+          "max": 988.134,
+          "runs": 3
+        },
+        "cube.rise": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "cube.drift": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        }
+      },
+      "checks": [
+        "cube.launched_up",
+        "cube.measured",
+        "plate2a.gravity",
+        "plate2a.landed",
+        "plate2a.launched",
+        "plate2a.measured",
+        "plate2a.rest",
+        "plate2a.touchdown",
+        "plate2b.gravity",
+        "plate2b.landed",
+        "plate2b.launched",
+        "plate2b.measured",
+        "plate2b.rest",
+        "plate2b.touchdown"
+      ]
+    },
+    "sp_a2_bridge_intro_bridge": {
+      "map": "sp_a2_bridge_intro",
+      "metrics": {
+        "stuck.sink": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "player.rest_z": {
+          "min": 16.039,
+          "max": 16.039,
+          "runs": 3
+        },
+        "player.ok_on_bridge": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "walk.distance": {
+          "min": 194.928,
+          "max": 194.928,
+          "runs": 3
+        },
+        "walk.rest_z": {
+          "min": 16.039,
+          "max": 16.039,
+          "runs": 3
+        },
+        "cube.rest_z": {
+          "min": 34.288,
+          "max": 34.288,
+          "runs": 3
+        },
+        "cube.rest_speed": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "cube.ok_on_bridge": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "button.press_delay": {
+          "min": 0.3,
+          "max": 0.3,
+          "runs": 3
+        },
+        "button.ok_pressed": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "button.ok_released": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "button.presses": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        }
+      },
+      "checks": [
+        "bridge.exists",
+        "button.press_time",
+        "button.pressed",
+        "button.release_count",
+        "button.released",
+        "cube.rests",
+        "player.stands",
+        "player.walks",
+        "stuck.held"
+      ]
+    }
+  }
+}

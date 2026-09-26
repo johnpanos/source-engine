@@ -508,6 +508,14 @@ def main(argv=None):
             evidence = run_target(args, workload, target, output, args.physics, fault)
         if args.command == "record":
             reference = build_reference(workload, evidence)
+            if args.scenario and reference_path.is_file():
+                # A partial recording replaces only the scenarios it ran.
+                previous = json.loads(reference_path.read_text())
+                previous["scenarios"].update(reference["scenarios"])
+                previous.setdefault("partial_updates", []).append(
+                    {"scenarios": sorted(reference["scenarios"]),
+                     "recorded_utc": reference["recorded_utc"], "source": reference["source"]})
+                reference = previous
             reference_path.write_text(json.dumps(reference, indent=2) + "\n")
             print("reference: %s" % reference_path)
             return 0

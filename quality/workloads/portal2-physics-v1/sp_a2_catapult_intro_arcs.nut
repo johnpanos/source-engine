@@ -71,35 +71,56 @@ QA_Do( "watch 2b", function()
 ARC_Fling( "plate2b", "catapult2b", "launch_target2b", 90.0 )
 
 // The physics plate under the dropper throws the cube straight up at
-// physicsSpeed 850 (retail: about 850^2 / 2g = 602 units).
+// physicsSpeed 850 with drag and damping zeroed (850^2 / 2g = 602 units).
+// The cube is tracked every tick from the drop.
 QA_Do( "drop the cube", function()
 {
-	::QA.marks.cubeLaunchZ <- null
-	::QA.marks.cubeApex <- -100000.0
 	QA_Fire( "cube_dropper-proxy", "OnProxyRelay1" )
-}, 0.1 )
-QA_WaitFor( "cube.launched_up", function()
+}, 0.3 )
+QA_Do( "track the cube", function()
 {
 	local cube = Entities.FindByClassname( null, "prop_weighted_cube" )
 	if ( cube == null )
 		throw "no prop_weighted_cube"
+	PH_Track( "cube", cube, 6.0, true )
+}, 0.0 )
+QA_WaitFor( "cube.launched_up", function()
+{
 	local n = QA_Fired( "catapult2c", "OnCatapulted" )
-	local c = cube.GetCenter()
-	if ( n > 0 )
-	{
-		if ( ::QA.marks.cubeLaunchZ == null )
-			::QA.marks.cubeLaunchZ = c.z
-		if ( c.z > ::QA.marks.cubeApex )
-			::QA.marks.cubeApex = c.z
-	}
-	local rise = ::QA.marks.cubeLaunchZ == null ? 0.0 : ::QA.marks.cubeApex - ::QA.marks.cubeLaunchZ
-	QA_Detail( "catapult2c fired=" + n + format( " rise=%.1f", rise ) )
-	return n >= 1 && rise > 100.0 && c.z < ::QA.marks.cubeApex - 32.0
+	local s = PH_Samples( "cube" )
+	local c = s[s.len() - 1].pos
+	QA_Detail( "catapult2c fired=" + n + " cube " + QA_Vec( c ) )
+	if ( n < 1 )
+		return false
+	// Past the apex: the newest sample is well below the highest.
+	local apex = -100000.0
+	foreach ( sample in s )
+		apex = sample.pos.z > apex ? sample.pos.z : apex
+	return c.z < apex - 48.0
 }, 12.0 )
 QA_Expect( "cube.measured", function()
 {
-	PH_Metric( "cube.rise", ::QA.marks.cubeApex - ::QA.marks.cubeLaunchZ )
-	return true
+	// The largest climb above the lowest point before it: the cube falls
+	// out of the dropper onto the plate first, then is thrown up.
+	local s = PH_Samples( "cube" )
+	local low = s[0].pos.z, lowAt = s[0].pos, rise = 0.0, top = s[0].pos
+	foreach ( sample in s )
+	{
+		if ( sample.pos.z < low )
+		{
+			low = sample.pos.z
+			lowAt = sample.pos
+		}
+		if ( sample.pos.z - low > rise )
+		{
+			rise = sample.pos.z - low
+			top = sample.pos
+		}
+	}
+	PH_Metric( "cube.rise", rise )
+	PH_Metric( "cube.drift", PH_FlatDist( top, lowAt ) )
+	QA_Detail( format( "rise %.1f", rise ) )
+	return rise > 100.0
 } )
 
 QA_Start( "sp_a2_catapult_intro_arcs" )

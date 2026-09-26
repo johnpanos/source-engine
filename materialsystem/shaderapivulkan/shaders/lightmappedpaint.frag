@@ -151,8 +151,10 @@ void main()
 
 	const vec2 coords = paintCoord * vec2( textureSize( PaintSampler, 0 ) ) * ( 40.0 / 512.0 );
 
-	if ( paintColor.a - 0.01 < 0.0 )
-		discard;
+	// The fxc's clip( alpha - 0.01 ): the pixel is killed at the end, so the
+	// texture fetches below keep their quad's derivatives (after OpKill they
+	// are undefined, which picks random mips).
+	const bool bClipped = paintColor.a - 0.01 < 0.0;
 
 	// Paint splat guts.
 	vec3 fvNormalTs = vec3( 0.0, 0.0, 1.0 );
@@ -312,5 +314,7 @@ void main()
 	result = BlendPixelFog( result, PixelFogFactor() );
 	if ( ( flags & kSrgbOutput ) != 0 )
 		result = LinearToSrgb( result );
+	if ( bClipped )
+		discard;
 	outColor = vec4( result, clamp( alpha, 0.0, 1.0 ) );
 }

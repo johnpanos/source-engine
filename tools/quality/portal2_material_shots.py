@@ -281,7 +281,8 @@ def capture_build(args, workload_path, workload, scenarios):
     capture = {"schema": CAPTURE_SCHEMA, "side": "build", "status": "incomplete",
                "started_utc": now_iso(), "source": conformance.source_identity(str(ROOT)),
                "build": str(args.build),
-               "extra_args": CAPTURE_ENGINE_ARGS + PLAY_P2_ENGINE_ARGS + list(args.extra_arg), "scenarios": {}}
+               "extra_args": CAPTURE_ENGINE_ARGS + PLAY_P2_ENGINE_ARGS + list(args.extra_arg),
+               "selected": [s["name"] for s in scenarios], "scenarios": {}}
     stage_portal2_runtime.stage_content(args.steam_root, args.runtime)
     capture["installed"] = stage_portal2_runtime.portal_boot.install_build(
         args.build, args.runtime, game="portal2")
@@ -563,7 +564,10 @@ def judge(capture_dir, capture, checks, reference, report):
     grid = checks["tiles"]
     exempt_shaders = checks.get("exempt_unknown_shaders", {})
     exempt_drops = checks.get("exempt_native_drops", {})
+    selected = capture.get("selected")
     for scenario, shots in sorted(checks["shots"].items()):
+        if selected is not None and scenario not in selected:
+            continue
         record = capture["scenarios"].get(scenario)
         ref = reference["scenarios"].get(scenario)
         if record is None or ref is None:
@@ -629,18 +633,23 @@ def check(args, checks):
         reference = json.loads(Path(args.reference).read_text())
     if reference.get("schema") != REFERENCE_SCHEMA:
         raise ShotError("reference schema must be %s" % REFERENCE_SCHEMA)
-    results = Checks()
+    results = Checks(getattr(args, "only", None))
     judge(capture_dir, capture, checks, reference, results.report)
     (capture_dir / "checks.json").write_text(json.dumps(results.records, indent=2) + "\n")
     return results.finish()
 
 
 class Checks:
-    def __init__(self):
+    def __init__(self, only=None):
         self.counter = conformance_result.Checks()
         self.records = []
+        # A regular expression: only the checks it matches are counted and
+        # printed (a focused row, such as a seeded-defect control).
+        self.only = re.compile(only) if only else None
 
     def report(self, name, ok, detail):
+        if self.only and not self.only.search(name):
+            return
         print("%-4s %s: %s" % ("PASS" if ok else "FAIL", name, detail), flush=True)
         self.records.append({"check": name, "ok": bool(ok), "detail": detail})
         self.counter.checks += 1
@@ -726,8 +735,10 @@ def main(argv=None):
                        help="only this scenario (repeatable)")
 
     def build_args(p):
-        p.add_argument("--build", type=Path, default=ROOT / "build-p2",
-                       help="Waf output configured with --build-games=portal2")
+        p.add_argument("--build", type=Path,
+                       default=Path(os.environ.get("SOURCE_PORTAL2_BUILD") or ROOT / "build-p2"),
+                       help="Waf output configured with --build-games=portal2 "
+                            "(default: $SOURCE_PORTAL2_BUILD or build-p2)")
         p.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-material-shots",
                        help="private staged runtime (created on first use)")
         p.add_argument("--start-frames", type=int, default=300)
@@ -764,6 +775,7 @@ def main(argv=None):
     p.add_argument("--capture", type=Path, required=True)
     p.add_argument("--reference", type=Path, default=WORKLOAD / "reference.json")
     p.add_argument("--retail", type=Path, help="judge against this retail capture instead")
+    p.add_argument("--only", help="count only the checks this regular expression matches")
 
     p = sub.add_parser("suite", help="capture this build, then check (manifest row)")
     common(p)
@@ -772,6 +784,7 @@ def main(argv=None):
                                             "quality-results/portal2-material-shots-<time>)")
     p.add_argument("--steam-root", type=Path, default=steam)
     p.add_argument("--reference", type=Path, default=WORKLOAD / "reference.json")
+    p.add_argument("--only", help="count only the checks this regular expression matches")
 
     p = sub.add_parser("self-test", help="the comparator on synthetic frames")
     p.add_argument("--seed-fault", choices=("missing-feature", "flat-feature", "dark-frame",
@@ -804,7 +817,7 @@ def main(argv=None):
             args.out.mkdir(parents=True, exist_ok=True)
             capture_build(args, args.workload, workload, scenarios)
             return check(argparse.Namespace(capture=args.out, reference=args.reference,
-                                            retail=None), checks)
+                                            retail=None, only=args.only), checks)
         out = Path(args.out)
         if (out / "capture.json").exists():
             parser.error("%s already holds a capture; use a new directory" % out)

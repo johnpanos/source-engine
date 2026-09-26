@@ -31,14 +31,20 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-ConVar paint_max_surface_border_alpha( "paint_max_surface_border_alpha", "0.7f", FCVAR_DEVELOPMENTONLY | FCVAR_REPLICATED );
-ConVar paint_alpha_offset_enabled( "paint_alpha_offset_enabled", "1", FCVAR_DEVELOPMENTONLY | FCVAR_REPLICATED );
-ConVar paintsplat_bias( "paintsplat_bias", "0.1f", FCVAR_REPLICATED | FCVAR_CHEAT, "Change bias value for computing circle buffer" );
+ConVar paint_max_surface_border_alpha(
+    "paint_max_surface_border_alpha", "0.7f", FCVAR_DEVELOPMENTONLY | FCVAR_REPLICATED );
+ConVar paint_alpha_offset_enabled(
+    "paint_alpha_offset_enabled", "1", FCVAR_DEVELOPMENTONLY | FCVAR_REPLICATED );
+ConVar paintsplat_bias( "paintsplat_bias", "0.1f", FCVAR_REPLICATED | FCVAR_CHEAT,
+    "Change bias value for computing circle buffer" );
 ConVar paintsplat_noise_enabled( "paintsplat_noise_enabled", "1", FCVAR_REPLICATED | FCVAR_CHEAT );
-ConVar paintsplat_max_alpha_noise( "paintsplat_max_alpha_noise", "0.1f", FCVAR_REPLICATED | FCVAR_CHEAT, "Max noise value of circle alpha" );
-ConVar paint_min_valid_alpha_value( "paint_min_valid_alpha_value", "0.7f", FCVAR_REPLICATED | FCVAR_DEVELOPMENTONLY );
+ConVar paintsplat_max_alpha_noise( "paintsplat_max_alpha_noise", "0.1f",
+    FCVAR_REPLICATED | FCVAR_CHEAT, "Max noise value of circle alpha" );
+ConVar paint_min_valid_alpha_value(
+    "paint_min_valid_alpha_value", "0.7f", FCVAR_REPLICATED | FCVAR_DEVELOPMENTONLY );
 ConVar debug_paint_alpha( "debug_paint_alpha", "0", FCVAR_DEVELOPMENTONLY );
-ConVar paint_debug_trace( "paint_debug_trace", "0", FCVAR_CHEAT, "Print each paint map query: 1 traces, 2 traces and paint calls" );
+ConVar paint_debug_trace( "paint_debug_trace", "0", FCVAR_CHEAT,
+    "Print each paint map query: 1 traces, 2 traces and paint calls" );
 
 CPaintmapDataManager g_PaintManager;
 
@@ -158,22 +164,26 @@ enum PaintChangeFlags_t
 };
 
 static unsigned char BlendColor( unsigned char colorIndex, unsigned char nPrePixel, float flAlpha,
-								 float flPaintCoatPercent, float flMaxAlpha )
+    float flPaintCoatPercent, float flMaxAlpha )
 {
 	// Erasing stomps the luxel; its power stays so the edge blend keeps the color.
 	if ( colorIndex == ENGINE_PAINT_NO_POWER )
 	{
-		return PaintByte::Make( paint_alpha_offset_enabled.GetBool() ? PaintByte::Power( nPrePixel ) : colorIndex, 0.0f );
+		return PaintByte::Make(
+		    paint_alpha_offset_enabled.GetBool() ? PaintByte::Power( nPrePixel ) : colorIndex,
+		    0.0f );
 	}
 
-	float flNewAlpha = clamp( PaintByte::Alpha( nPrePixel ) + ( flPaintCoatPercent * flAlpha ), 0.0f, flMaxAlpha );
+	float flNewAlpha =
+	    clamp( PaintByte::Alpha( nPrePixel ) + ( flPaintCoatPercent * flAlpha ), 0.0f, flMaxAlpha );
 	return PaintByte::Make( colorIndex, flNewAlpha );
 }
 
 static float ComputeCircleAlpha( const PaintRect_t &paintRect, int x, int y )
 {
 	float flPixelDist = Vector2D( x - paintRect.uvCenter.x, y - paintRect.uvCenter.y ).Length();
-	float flRadiusRatio = clamp( paintRect.flCenterAlpha + flPixelDist / paintRect.flCircleRadius, 0.0f, 1.0f );
+	float flRadiusRatio =
+	    clamp( paintRect.flCenterAlpha + flPixelDist / paintRect.flCircleRadius, 0.0f, 1.0f );
 	float flAlpha = 1.0f - Bias( flRadiusRatio, paintsplat_bias.GetFloat() );
 
 	if ( paintsplat_noise_enabled.GetBool() )
@@ -186,11 +196,13 @@ static float ComputeCircleAlpha( const PaintRect_t &paintRect, int x, int y )
 	return flAlpha;
 }
 
-unsigned int CPaintPage::BlendLuxel( const PaintRect_t &paintRect, int x, int y, float flNewAlpha, float flMaxAlpha )
+unsigned int CPaintPage::BlendLuxel(
+    const PaintRect_t &paintRect, int x, int y, float flNewAlpha, float flMaxAlpha )
 {
 	unsigned int nChangeFlags = 0;
 	unsigned char nPrePixel = GetPixel( x, y );
-	unsigned char nPostPixel = BlendColor( paintRect.colorIndex, nPrePixel, flNewAlpha, paintRect.flPaintCoatPercent, flMaxAlpha );
+	unsigned char nPostPixel = BlendColor(
+	    paintRect.colorIndex, nPrePixel, flNewAlpha, paintRect.flPaintCoatPercent, flMaxAlpha );
 
 	if ( nPrePixel != nPostPixel )
 	{
@@ -250,21 +262,29 @@ unsigned int CPaintPage::DrawLine( const PaintRect_t &paintRect, int x1, int x2,
 	{
 		if ( x1 == span.sOffset )
 		{
-			float flAlpha = ( paintRect.colorIndex == ENGINE_PAINT_NO_POWER ) ? 1.0f : ComputeCircleAlpha( paintRect, x1, y );
-			nChangeFlags |= BlendLuxel( paintRect, x1, y, flAlpha, paint_max_surface_border_alpha.GetFloat() );
+			float flAlpha = ( paintRect.colorIndex == ENGINE_PAINT_NO_POWER )
+			                    ? 1.0f
+			                    : ComputeCircleAlpha( paintRect, x1, y );
+			nChangeFlags |=
+			    BlendLuxel( paintRect, x1, y, flAlpha, paint_max_surface_border_alpha.GetFloat() );
 			++start;
 		}
 		if ( x2 == span.sOffset + span.sMax )
 		{
-			float flAlpha = ( paintRect.colorIndex == ENGINE_PAINT_NO_POWER ) ? 1.0f : ComputeCircleAlpha( paintRect, x2, y );
-			nChangeFlags |= BlendLuxel( paintRect, x2, y, flAlpha, paint_max_surface_border_alpha.GetFloat() );
+			float flAlpha = ( paintRect.colorIndex == ENGINE_PAINT_NO_POWER )
+			                    ? 1.0f
+			                    : ComputeCircleAlpha( paintRect, x2, y );
+			nChangeFlags |=
+			    BlendLuxel( paintRect, x2, y, flAlpha, paint_max_surface_border_alpha.GetFloat() );
 			--end;
 		}
 	}
 
 	for ( int x = start; x <= end; ++x )
 	{
-		float flAlpha = ( paintRect.colorIndex == ENGINE_PAINT_NO_POWER ) ? 1.0f : ComputeCircleAlpha( paintRect, x, y );
+		float flAlpha = ( paintRect.colorIndex == ENGINE_PAINT_NO_POWER )
+		                    ? 1.0f
+		                    : ComputeCircleAlpha( paintRect, x, y );
 		nChangeFlags |= BlendLuxel( paintRect, x, y, flAlpha, flMaxAlpha );
 	}
 
@@ -291,10 +311,10 @@ unsigned int CPaintPage::Draw2Lines( const PaintRect_t &paintRect, float x, floa
 
 	const Vector2D &uvCenter = paintRect.uvCenter;
 
-	int x1 = MAX( ( int )( uvCenter.x - x - 0.5f ), minX );
-	int y1 = MAX( ( int )( uvCenter.y - y - 0.5f ), minY );
-	int x2 = MIN( ( int )( uvCenter.x + x + 0.5f ), maxX );
-	int y2 = MIN( ( int )( uvCenter.y + y + 0.5f ), maxY );
+	int x1 = MAX( (int)( uvCenter.x - x - 0.5f ), minX );
+	int y1 = MAX( (int)( uvCenter.y - y - 0.5f ), minY );
+	int x2 = MIN( (int)( uvCenter.x + x + 0.5f ), maxX );
+	int y2 = MIN( (int)( uvCenter.y + y + 0.5f ), maxY );
 
 	if ( x1 > maxX || x2 < minX )
 		return 0;
@@ -414,12 +434,13 @@ struct paintinfo_t
 	Vector m_vPosition;
 	VPlane m_plane; // the plane of the surface closest to the sphere's center
 	worldbrushdata_t *m_pBrush;
-	float m_flSize; // sphere radius
+	float m_flSize;            // sphere radius
 	float m_flCurrentDistance; // squared distance to the closest surface so far
 	CUtlVector<SurfaceHandle_t> m_aApplySurfs;
 };
 
-static Vector FindClosestPointToTriangle( const Vector &p, const Vector &a, const Vector &b, const Vector &c )
+static Vector FindClosestPointToTriangle(
+    const Vector &p, const Vector &a, const Vector &b, const Vector &c )
 {
 	Vector ab = b - a;
 	Vector ac = c - a;
@@ -460,8 +481,8 @@ static Vector FindClosestPointToTriangle( const Vector &p, const Vector &a, cons
 	return u * a + v * b + w * c;
 }
 
-static bool IsSphereIntersectForwardFacingTriangle( const Vector &vCenter, const VPlane &plane, float flRadius,
-													const Vector &a, const Vector &b, const Vector &c, Vector &vClosestPoint )
+static bool IsSphereIntersectForwardFacingTriangle( const Vector &vCenter, const VPlane &plane,
+    float flRadius, const Vector &a, const Vector &b, const Vector &c, Vector &vClosestPoint )
 {
 	vClosestPoint = FindClosestPointToTriangle( vCenter, a, b, c );
 	float flDistFromPlane = DotProduct( vClosestPoint, plane.m_Normal ) - plane.m_Dist;
@@ -482,7 +503,8 @@ static const Vector &SurfaceVertex( worldbrushdata_t *pBrush, SurfaceHandle_t su
 static void R_AddPaintToSurface( SurfaceHandle_t surfID, paintinfo_t *paintinfo )
 {
 	// SURF_NOPAINT is SURF_NODECALS in Portal 2's bspflags.h.
-	if ( ( MSurf_TexInfo( surfID )->flags & SURF_NODECALS ) || ( MSurf_Flags( surfID ) & SURFDRAW_TRANS ) )
+	if ( ( MSurf_TexInfo( surfID )->flags & SURF_NODECALS ) ||
+	     ( MSurf_Flags( surfID ) & SURFDRAW_TRANS ) )
 		return;
 
 	if ( SurfaceHasDispInfo( surfID ) )
@@ -512,9 +534,11 @@ static void R_AddPaintToSurface( SurfaceHandle_t surfID, paintinfo_t *paintinfo 
 		const Vector &v2 = SurfaceVertex( paintinfo->m_pBrush, surfID, v + 1 );
 
 		Vector vIntersectPoint;
-		if ( IsSphereIntersectForwardFacingTriangle( paintinfo->m_vPosition, plane, paintinfo->m_flSize, vOrigin, v1, v2, vIntersectPoint ) )
+		if ( IsSphereIntersectForwardFacingTriangle( paintinfo->m_vPosition, plane,
+		         paintinfo->m_flSize, vOrigin, v1, v2, vIntersectPoint ) )
 		{
-			if ( !bIntersect || ( vIntersectPoint - paintinfo->m_vPosition ).LengthSqr() < ( vClosestPoint - paintinfo->m_vPosition ).LengthSqr() )
+			if ( !bIntersect || ( vIntersectPoint - paintinfo->m_vPosition ).LengthSqr() <
+			                        ( vClosestPoint - paintinfo->m_vPosition ).LengthSqr() )
 			{
 				vClosestPoint = vIntersectPoint;
 			}
@@ -541,7 +565,7 @@ static void R_PaintNode( mnode_t *node, paintinfo_t *paintinfo )
 	{
 		if ( node->contents >= 0 )
 		{
-			mleaf_t *pLeaf = ( mleaf_t * )node;
+			mleaf_t *pLeaf = (mleaf_t *)node;
 			SurfaceHandle_t *pHandle = &paintinfo->m_pBrush->marksurfaces[pLeaf->firstmarksurface];
 			for ( int i = 0; i < pLeaf->nummarksurfaces; i++ )
 			{
@@ -569,11 +593,13 @@ static void R_PaintNode( mnode_t *node, paintinfo_t *paintinfo )
 	}
 }
 
-static bool IsSurfaceInFrontOfPlane( worldbrushdata_t *pBrush, SurfaceHandle_t surfID, const VPlane &plane )
+static bool IsSurfaceInFrontOfPlane(
+    worldbrushdata_t *pBrush, SurfaceHandle_t surfID, const VPlane &plane )
 {
 	// Coplanar with the main surface.
 	VPlane trianglePlane = MSurf_GetForwardFacingPlane( surfID );
-	if ( AlmostEqual( DotProduct( plane.m_Normal, trianglePlane.m_Normal ), 1.0f ) && AlmostEqual( plane.m_Dist, trianglePlane.m_Dist ) )
+	if ( AlmostEqual( DotProduct( plane.m_Normal, trianglePlane.m_Normal ), 1.0f ) &&
+	     AlmostEqual( plane.m_Dist, trianglePlane.m_Dist ) )
 		return true;
 
 	if ( MSurf_VertCount( surfID ) < 3 )
@@ -588,7 +614,8 @@ static bool IsSurfaceInFrontOfPlane( worldbrushdata_t *pBrush, SurfaceHandle_t s
 	return plane.DistTo( vCenter ) >= 0.0f;
 }
 
-static void CollectSurfaces( const model_t *pModel, const Vector &vPosition, float flSphereRadius, paintinfo_t &paintinfo )
+static void CollectSurfaces(
+    const model_t *pModel, const Vector &vPosition, float flSphereRadius, paintinfo_t &paintinfo )
 {
 	paintinfo.m_vPosition = vPosition;
 	paintinfo.m_flSize = flSphereRadius;
@@ -597,17 +624,18 @@ static void CollectSurfaces( const model_t *pModel, const Vector &vPosition, flo
 	R_PaintNode( paintinfo.m_pBrush->nodes + pModel->brush.firstnode, &paintinfo );
 }
 
-static void ProjectPointOntoSurfaceTexture( SurfaceHandle_t surfID, const Vector &vPoint, Vector2D &uv )
+static void ProjectPointOntoSurfaceTexture(
+    SurfaceHandle_t surfID, const Vector &vPoint, Vector2D &uv )
 {
 	mtexinfo_t *pTexInfo = MSurf_TexInfo( surfID );
 
 	uv.x = DotProduct( vPoint, pTexInfo->lightmapVecsLuxelsPerWorldUnits[0].AsVector3D() ) +
-		   pTexInfo->lightmapVecsLuxelsPerWorldUnits[0][3];
+	       pTexInfo->lightmapVecsLuxelsPerWorldUnits[0][3];
 	uv.x -= MSurf_LightmapMins( surfID )[0];
 	uv.x += 0.5f;
 
 	uv.y = DotProduct( vPoint, pTexInfo->lightmapVecsLuxelsPerWorldUnits[1].AsVector3D() ) +
-		   pTexInfo->lightmapVecsLuxelsPerWorldUnits[1][3];
+	       pTexInfo->lightmapVecsLuxelsPerWorldUnits[1][3];
 	uv.y -= MSurf_LightmapMins( surfID )[1];
 	uv.y += 0.5f;
 
@@ -616,14 +644,16 @@ static void ProjectPointOntoSurfaceTexture( SurfaceHandle_t surfID, const Vector
 	uv.y += MSurf_OffsetIntoLightmapPage( surfID )[1];
 }
 
-static bool ComputePaintRect( SurfaceHandle_t surfID, const Vector &vPosition, float flSphereRadius, PaintRect_t &paintRect )
+static bool ComputePaintRect(
+    SurfaceHandle_t surfID, const Vector &vPosition, float flSphereRadius, PaintRect_t &paintRect )
 {
 	VPlane forwardFacingPlane = MSurf_GetForwardFacingPlane( surfID );
 	float distFromPlane = forwardFacingPlane.DistTo( vPosition );
 	if ( distFromPlane >= flSphereRadius )
 		return false;
 
-	float circleRadius = FastSqrt( flSphereRadius * flSphereRadius - distFromPlane * distFromPlane );
+	float circleRadius =
+	    FastSqrt( flSphereRadius * flSphereRadius - distFromPlane * distFromPlane );
 
 	Vector2D uvCenter, uvExtents;
 	ProjectPointOntoSurfaceTexture( surfID, vPosition, uvCenter );
@@ -638,7 +668,7 @@ static bool ComputePaintRect( SurfaceHandle_t surfID, const Vector &vPosition, f
 
 	const PaintSurfaceSpan_t span = SurfaceSpan( surfID );
 	if ( !( span.sOffset <= uvMaxs.x && uvMins.x <= span.sOffset + span.sMax &&
-			span.tOffset <= uvMaxs.y && uvMins.y <= span.tOffset + span.tMax ) )
+	         span.tOffset <= uvMaxs.y && uvMins.y <= span.tOffset + span.tMax ) )
 		return false;
 
 	float flRoundedCircleRadius = floor( MAX( uvExtents.x, uvExtents.y ) + 0.5f );
@@ -650,10 +680,10 @@ static bool ComputePaintRect( SurfaceHandle_t surfID, const Vector &vPosition, f
 	paintRect.uvCenter = uvCenter;
 	paintRect.surfID = surfID;
 
-	int startX = MAX( ( int )( uvCenter.x - flRoundedCircleRadius - 0.5f ), span.sOffset );
-	int startY = MAX( ( int )( uvCenter.y - flRoundedCircleRadius - 0.5f ), span.tOffset );
-	int endX = MIN( ( int )( uvCenter.x + flRoundedCircleRadius + 0.5f ), span.sOffset + surfWidth );
-	int endY = MIN( ( int )( uvCenter.y + flRoundedCircleRadius + 0.5f ), span.tOffset + surfHeight );
+	int startX = MAX( (int)( uvCenter.x - flRoundedCircleRadius - 0.5f ), span.sOffset );
+	int startY = MAX( (int)( uvCenter.y - flRoundedCircleRadius - 0.5f ), span.tOffset );
+	int endX = MIN( (int)( uvCenter.x + flRoundedCircleRadius + 0.5f ), span.sOffset + surfWidth );
+	int endY = MIN( (int)( uvCenter.y + flRoundedCircleRadius + 0.5f ), span.tOffset + surfHeight );
 
 	paintRect.rect.x = startX;
 	paintRect.rect.y = startY;
@@ -745,13 +775,14 @@ bool CPaintmapDataManager::SurfaceRect( SurfaceHandle_t surfID, int &nPage, Rect
 	rect.height = span.tMax + 1;
 	const CPaintPage *pPage = m_Pages[nPage];
 	return rect.x >= 0 && rect.y >= 0 && rect.width > 0 && rect.height > 0 &&
-		   rect.x + rect.width <= pPage->Width() && rect.y + rect.height <= pPage->Height();
+	       rect.x + rect.width <= pPage->Width() && rect.y + rect.height <= pPage->Height();
 }
 
-bool CPaintmapDataManager::SpherePaint( const model_t *pModel, const Vector &vPosition, unsigned char colorIndex,
-										float flSphereRadius, float flPaintCoatPercent )
+bool CPaintmapDataManager::SpherePaint( const model_t *pModel, const Vector &vPosition,
+    unsigned char colorIndex, float flSphereRadius, float flPaintCoatPercent )
 {
-	if ( !HasPaintmap() || !pModel || pModel->brush.pShared != m_pWorld || colorIndex > ENGINE_PAINT_NO_POWER )
+	if ( !HasPaintmap() || !pModel || pModel->brush.pShared != m_pWorld ||
+	     colorIndex > ENGINE_PAINT_NO_POWER )
 		return false;
 
 	paintinfo_t paintinfo;
@@ -770,7 +801,8 @@ bool CPaintmapDataManager::SpherePaint( const model_t *pModel, const Vector &vPo
 		PaintRect_t paintRect;
 		paintRect.colorIndex = colorIndex;
 		paintRect.flPaintCoatPercent = flPaintCoatPercent;
-		if ( !SurfaceRect( surfID, nPage, surfRect ) || !ComputePaintRect( surfID, vPosition, flSphereRadius, paintRect ) )
+		if ( !SurfaceRect( surfID, nPage, surfRect ) ||
+		     !ComputePaintRect( surfID, vPosition, flSphereRadius, paintRect ) )
 			continue;
 
 		if ( m_Pages[nPage]->Paint( paintRect ) )
@@ -781,14 +813,15 @@ bool CPaintmapDataManager::SpherePaint( const model_t *pModel, const Vector &vPo
 	}
 	if ( paint_debug_trace.GetInt() >= 2 )
 	{
-		Msg( "paint (%.0f %.0f %.0f) power %d r%.0f: %d surfaces, %s\n", vPosition.x, vPosition.y, vPosition.z,
-			 colorIndex, flSphereRadius, paintinfo.m_aApplySurfs.Count(), bChangedPaint ? "changed" : "unchanged" );
+		Msg( "paint (%.0f %.0f %.0f) power %d r%.0f: %d surfaces, %s\n", vPosition.x, vPosition.y,
+		    vPosition.z, colorIndex, flSphereRadius, paintinfo.m_aApplySurfs.Count(),
+		    bChangedPaint ? "changed" : "unchanged" );
 	}
 	return bChangedPaint;
 }
 
-void CPaintmapDataManager::SphereTrace( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal,
-										float flSphereRadius, CUtlVector<unsigned char> &surfColors )
+void CPaintmapDataManager::SphereTrace( const model_t *pModel, const Vector &vPosition,
+    const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColors )
 {
 	surfColors.RemoveAll();
 	if ( !HasPaintmap() || !pModel || pModel->brush.pShared != m_pWorld )
@@ -810,7 +843,8 @@ void CPaintmapDataManager::SphereTrace( const model_t *pModel, const Vector &vPo
 		int nPage;
 		Rect_t surfRect;
 		PaintRect_t paintRect;
-		if ( SurfaceRect( surfID, nPage, surfRect ) && ComputePaintRect( surfID, vPosition, flSphereRadius, paintRect ) )
+		if ( SurfaceRect( surfID, nPage, surfRect ) &&
+		     ComputePaintRect( surfID, vPosition, flSphereRadius, paintRect ) )
 		{
 			m_Pages[nPage]->GetPixels( paintRect.rect, surfColors );
 		}
@@ -820,11 +854,12 @@ void CPaintmapDataManager::SphereTrace( const model_t *pModel, const Vector &vPo
 	{
 		int nCounts[ENGINE_PAINT_POWER_COUNT + 1] = {};
 		for ( int i = 0; i < surfColors.Count(); ++i )
-			++nCounts[MIN( ( int )surfColors[i], ENGINE_PAINT_POWER_COUNT )];
-		Msg( "paint trace (%.0f %.0f %.0f) n(%.2f %.2f %.2f) r%.0f: %d surfaces, luxels %d %d %d %d bare %d\n",
-			 vPosition.x, vPosition.y, vPosition.z, vContactNormal.x, vContactNormal.y, vContactNormal.z,
-			 flSphereRadius, paintinfo.m_aApplySurfs.Count(), nCounts[0], nCounts[1], nCounts[2], nCounts[3],
-			 nCounts[ENGINE_PAINT_POWER_COUNT] );
+			++nCounts[MIN( (int)surfColors[i], ENGINE_PAINT_POWER_COUNT )];
+		Msg( "paint trace (%.0f %.0f %.0f) n(%.2f %.2f %.2f) r%.0f: %d surfaces, luxels %d %d %d "
+		     "%d bare %d\n",
+		    vPosition.x, vPosition.y, vPosition.z, vContactNormal.x, vContactNormal.y,
+		    vContactNormal.z, flSphereRadius, paintinfo.m_aApplySurfs.Count(), nCounts[0],
+		    nCounts[1], nCounts[2], nCounts[3], nCounts[ENGINE_PAINT_POWER_COUNT] );
 	}
 }
 
@@ -851,7 +886,8 @@ void CPaintmapDataManager::RemovePaint( const model_t *pModel )
 
 	for ( int i = 0; i < pModel->brush.nummodelsurfaces; ++i )
 	{
-		SurfaceHandle_t surfID = SurfaceHandleFromIndex( pModel->brush.firstmodelsurface + i, m_pWorld );
+		SurfaceHandle_t surfID =
+		    SurfaceHandleFromIndex( pModel->brush.firstmodelsurface + i, m_pWorld );
 		int nPage;
 		Rect_t rect;
 		if ( !SurfaceRect( surfID, nPage, rect ) )
@@ -859,8 +895,9 @@ void CPaintmapDataManager::RemovePaint( const model_t *pModel )
 		CPaintPage *pPage = m_Pages[nPage];
 		for ( int y = 0; y < rect.height; ++y )
 		{
-			V_memset( const_cast<unsigned char *>( pPage->Data() ) + ( rect.y + y ) * pPage->Width() + rect.x,
-					  BARE_LUXEL, rect.width );
+			V_memset( const_cast<unsigned char *>( pPage->Data() ) +
+			              ( rect.y + y ) * pPage->Width() + rect.x,
+			    BARE_LUXEL, rect.width );
 		}
 		pPage->AddDirtyRect( rect );
 	}
@@ -955,7 +992,8 @@ static int PaddedByteCount( const Rect_t &rect )
 	return nBytes + ( ( 4 - ( nBytes % 4 ) ) % 4 );
 }
 
-void CPaintmapDataManager::GetSurfacePaintData( SurfaceHandle_t surfID, CUtlVector<unsigned char> &data )
+void CPaintmapDataManager::GetSurfacePaintData(
+    SurfaceHandle_t surfID, CUtlVector<unsigned char> &data )
 {
 	int nPage;
 	Rect_t rect;
@@ -967,11 +1005,13 @@ void CPaintmapDataManager::GetSurfacePaintData( SurfaceHandle_t surfID, CUtlVect
 	const CPaintPage *pPage = m_Pages[nPage];
 	for ( int y = 0; y < rect.height; ++y )
 	{
-		V_memcpy( data.Base() + y * rect.width, pPage->Data() + ( rect.y + y ) * pPage->Width() + rect.x, rect.width );
+		V_memcpy( data.Base() + y * rect.width,
+		    pPage->Data() + ( rect.y + y ) * pPage->Width() + rect.x, rect.width );
 	}
 }
 
-bool CPaintmapDataManager::SetSurfacePaintData( SurfaceHandle_t surfID, const unsigned char *pData, int nCount )
+bool CPaintmapDataManager::SetSurfacePaintData(
+    SurfaceHandle_t surfID, const unsigned char *pData, int nCount )
 {
 	int nPage;
 	Rect_t rect;
@@ -980,8 +1020,9 @@ bool CPaintmapDataManager::SetSurfacePaintData( SurfaceHandle_t surfID, const un
 	CPaintPage *pPage = m_Pages[nPage];
 	for ( int y = 0; y < rect.height; ++y )
 	{
-		V_memcpy( const_cast<unsigned char *>( pPage->Data() ) + ( rect.y + y ) * pPage->Width() + rect.x,
-				  pData + y * rect.width, rect.width );
+		V_memcpy(
+		    const_cast<unsigned char *>( pPage->Data() ) + ( rect.y + y ) * pPage->Width() + rect.x,
+		    pData + y * rect.width, rect.width );
 	}
 	pPage->AddDirtyRect( rect );
 	MSurf_Flags( surfID ) |= SURFDRAW_PAINTED;
@@ -1007,7 +1048,7 @@ void CPaintmapDataManager::GetPaintmapDataRLE( CUtlVector<uint32> &data )
 			continue;
 
 		rleData.RemoveAll();
-		EncodeDataRLE( ( const uint32 * )surfPaintData.Base(), surfPaintData.Count() / 4, rleData );
+		EncodeDataRLE( (const uint32 *)surfPaintData.Base(), surfPaintData.Count() / 4, rleData );
 		data.AddToTail( i );
 		data.AddToTail( rleData.Count() );
 		data.AddMultipleToTail( rleData.Count(), rleData.Base() );
@@ -1027,7 +1068,8 @@ bool CPaintmapDataManager::LoadPaintmapDataRLE( const CUtlVector<uint32> &data )
 			return false;
 		uint32 nSurface = data[nRead++];
 		uint32 nRLESize = data[nRead++];
-		if ( nSurface >= ( uint32 )m_pWorld->numsurfaces || nRLESize > uint32( data.Count() - nRead ) )
+		if ( nSurface >= (uint32)m_pWorld->numsurfaces ||
+		     nRLESize > uint32( data.Count() - nRead ) )
 		{
 			Warning( "Paint: save data does not fit this map (surface %u)\n", nSurface );
 			return false;
@@ -1042,7 +1084,8 @@ bool CPaintmapDataManager::LoadPaintmapDataRLE( const CUtlVector<uint32> &data )
 			return false;
 		}
 		rawPaintData.SetCount( PaddedByteCount( rect ) );
-		if ( !DecodeDataRLE( data.Base() + nRead, nRLESize, ( uint32 * )rawPaintData.Base(), rawPaintData.Count() / 4 ) )
+		if ( !DecodeDataRLE( data.Base() + nRead, nRLESize, (uint32 *)rawPaintData.Base(),
+		         rawPaintData.Count() / 4 ) )
 		{
 			Warning( "Paint: save data for surface %u is corrupt\n", nSurface );
 			return false;
@@ -1059,37 +1102,29 @@ bool CPaintmapDataManager::LoadPaintmapDataRLE( const CUtlVector<uint32> &data )
 class CEnginePaint : public IEnginePaint
 {
 public:
-	virtual bool HasPaintmap( void )
+	virtual bool HasPaintmap( void ) { return g_PaintManager.HasPaintmap(); }
+
+	virtual bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition,
+	    unsigned char color, float flSphereRadius, float flPaintCoatPercent )
 	{
-		return g_PaintManager.HasPaintmap();
+		return g_PaintManager.SpherePaint(
+		    pModel, vPosition, color, flSphereRadius, flPaintCoatPercent );
 	}
 
-	virtual bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color,
-									 float flSphereRadius, float flPaintCoatPercent )
-	{
-		return g_PaintManager.SpherePaint( pModel, vPosition, color, flSphereRadius, flPaintCoatPercent );
-	}
-
-	virtual void SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal,
-										  float flSphereRadius, CUtlVector<unsigned char> &surfColors )
+	virtual void SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition,
+	    const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColors )
 	{
 		g_PaintManager.SphereTrace( pModel, vPosition, vContactNormal, flSphereRadius, surfColors );
 	}
 
-	virtual void RemoveAllPaint( void )
-	{
-		g_PaintManager.RemoveAllPaint();
-	}
+	virtual void RemoveAllPaint( void ) { g_PaintManager.RemoveAllPaint(); }
 
 	virtual void PaintAllSurfaces( unsigned char color )
 	{
 		g_PaintManager.PaintAllSurfaces( color );
 	}
 
-	virtual void RemovePaint( const model_t *pModel )
-	{
-		g_PaintManager.RemovePaint( pModel );
-	}
+	virtual void RemovePaint( const model_t *pModel ) { g_PaintManager.RemovePaint( pModel ); }
 
 	virtual void GetPaintmapDataRLE( CUtlVector<uint32> &data )
 	{
@@ -1124,11 +1159,12 @@ CON_COMMAND_F( paintmap_stats, "Prints the paint map pages and the painted surfa
 		for ( int i = 0; i < pPage->Width() * pPage->Height(); ++i )
 		{
 			unsigned char b = pPage->Data()[i];
-			if ( PaintByte::Alpha( b ) > paint_min_valid_alpha_value.GetFloat() && PaintByte::Power( b ) < ENGINE_PAINT_POWER_COUNT )
+			if ( PaintByte::Alpha( b ) > paint_min_valid_alpha_value.GetFloat() &&
+			     PaintByte::Power( b ) < ENGINE_PAINT_POWER_COUNT )
 				++nCovered[PaintByte::Power( b )];
 		}
 	}
 	// Powers in paint_enum.h order: bounce, reflect (stick), speed, portal.
 	Msg( "Paint: %d page(s), %d painted surface(s); covered luxels per power %d %d %d %d\n",
-		 g_PaintManager.PageCount(), nPainted, nCovered[0], nCovered[1], nCovered[2], nCovered[3] );
+	    g_PaintManager.PageCount(), nPainted, nCovered[0], nCovered[1], nCovered[2], nCovered[3] );
 }

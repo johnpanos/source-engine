@@ -88,11 +88,15 @@ QA_Do( "forward again, player out", function()
 	local p = QA_Player()
 	p.SetOrigin( ::TB.emitter + Vector( 300, 0, 32 ) )
 	p.SetVelocity( Vector( 0, 0, 0 ) )
-	SendToConsole( "ent_create prop_weighted_cube targetname qa_cube CubeType 0 model models/props/metal_box.mdl" )
+	// Retail's ent_create makes a cube without a model (and deletes it);
+	// the Portal 2 cube command sets it up as a map cube.
+	SendToConsole( "ent_create_portal_weighted_cube" )
 }, 1.0 )
 QA_Do( "cube into the beam", function()
 {
-	local cube = QA_Ent( "qa_cube" )
+	local cube = Entities.FindByClassname( null, "prop_weighted_cube" )
+	if ( cube == null )
+		throw "ent_create_portal_weighted_cube made no cube"
 	cube.SetOrigin( ::TB.emitter + Vector( 40, 0, 96 ) )
 	EntFireByHandle( cube, "Wake", "", 0.0, null, null )
 	PH_Track( "cube", cube, 3.0, true )

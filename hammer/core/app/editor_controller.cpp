@@ -12,6 +12,7 @@
 
 #include "hammer/formats/vmf_geometry.h" // also the keyvalues codec
 #include "hammer/geometry/rounding.h"
+#include "hammer/geometry/texture_axes.h"
 
 #include <algorithm>
 #include <array>
@@ -68,9 +69,22 @@ std::string PlaneToText( const geometry::Plane &plane )
 	const Vec3d p0 = c;
 	const Vec3d p1( c.x + u.x * s, c.y + u.y * s, c.z + u.z * s );
 	const Vec3d p2( c.x + v.x * s, c.y + v.y * s, c.z + v.z * s );
+	// Negative zero (from a normal rebuilt out of loaded plane points) prints as
+	// "-0"; writing it as 0 keeps a reloaded map's save byte-identical.
+	auto z = []( double value ) { return value == 0.0 ? 0.0 : value; };
 	char buf[256];
-	std::snprintf( buf, sizeof( buf ), "(%g %g %g) (%g %g %g) (%g %g %g)", p0.x, p0.y, p0.z, p1.x,
-	    p1.y, p1.z, p2.x, p2.y, p2.z );
+	std::snprintf( buf, sizeof( buf ), "(%g %g %g) (%g %g %g) (%g %g %g)", z( p0.x ), z( p0.y ),
+	    z( p0.z ), z( p1.x ), z( p1.y ), z( p1.z ), z( p2.x ), z( p2.y ), z( p2.z ) );
+	return buf;
+}
+
+// A VMF texture axis at the default scale: "[x y z offset] scale".
+std::string AxisToText( const Vec3d &axis )
+{
+	char buf[128];
+	auto z = []( double value ) { return value == 0.0 ? 0.0 : value; };
+	std::snprintf(
+	    buf, sizeof( buf ), "[%g %g %g 0] 0.25", z( axis.x ), z( axis.y ), z( axis.z ) );
 	return buf;
 }
 
@@ -128,14 +142,14 @@ void EditorController::ResetHistory()
 {
 	m_history = DocumentHistory{};
 	m_snapshots.clear();
-	m_snapshots.push_back( DocState{ m_brushes, m_entities, m_nextId } );
+	m_snapshots.push_back( DocState{ m_brushes, m_entities, m_worldProperties, m_nextId } );
 }
 
 void EditorController::PushSnapshot()
 {
 	// Drop any redo tail, then record the current state as a new history unit.
 	m_snapshots.resize( m_history.Position() + 1 );
-	m_snapshots.push_back( DocState{ m_brushes, m_entities, m_nextId } );
+	m_snapshots.push_back( DocState{ m_brushes, m_entities, m_worldProperties, m_nextId } );
 	m_history.Commit( true );
 }
 
@@ -144,6 +158,7 @@ void EditorController::LoadSnapshotAtPosition()
 	const DocState &s = m_snapshots[m_history.Position()];
 	m_brushes = s.brushes;
 	m_entities = s.entities;
+	m_worldProperties = s.worldProperties;
 	m_nextId = s.nextId;
 }
 
@@ -284,6 +299,7 @@ void EditorController::NewMap()
 {
 	m_brushes.clear();
 	m_entities.clear();
+	m_worldProperties = { { "skyname", "sky_day01_01" } };
 	m_displacements.clear();
 	m_nextId = 1;
 	ClearBrushSelection();
@@ -392,14 +408,7 @@ void EditorController::PointerDown( ViewId view, double u, double v, bool additi
 		o[uAxis] = su;
 		o[vAxis] = sv;
 		o[freeAxis] = 0.0;
-		MapEntity e;
-		e.id = m_nextId++;
-		e.classname = m_entityClass;
-		e.origin = Vec3d( o[0], o[1], o[2] );
-		m_entities.push_back( e );
-		m_entitySelection = e.id;
-		ClearBrushSelection();
-		PushSnapshot();
+		PlaceEntity( m_entityClass, Vec3d( o[0], o[1], o[2] ) );
 		return;
 	}
 
@@ -761,12 +770,21 @@ bool EditorController::Commit()
 	Vec3d mins;
 	Vec3d maxs;
 	PendingToAabb( mins, maxs );
-	// Reject a degenerate (zero-area) rectangle.
-	if ( mins.x >= maxs.x || mins.y >= maxs.y || mins.z >= maxs.z )
+	// A degenerate (zero-area) rectangle creates nothing and stays pending.
+	if ( !CreateBlock( mins, maxs ) )
 	{
 		return false;
 	}
+	m_pending = Pending{};
+	return true;
+}
 
+std::optional<int> EditorController::CreateBlock( const Vec3d &mins, const Vec3d &maxs )
+{
+	if ( mins.x >= maxs.x || mins.y >= maxs.y || mins.z >= maxs.z )
+	{
+		return std::nullopt;
+	}
 	MapBrush brush;
 	brush.id = m_nextId++;
 	brush.planes = AabbToPlanes( mins, maxs );
@@ -774,8 +792,68 @@ bool EditorController::Commit()
 	brush.mins = mins;
 	brush.maxs = maxs;
 	m_brushes.push_back( brush );
+	ClearBrushSelection();
+	m_entitySelection.reset();
 	m_selection = brush.id;
-	m_pending = Pending{};
+	PushSnapshot();
+	return brush.id;
+}
+
+std::optional<int> EditorController::PlaceEntity(
+    const std::string &classname, const Vec3d &origin )
+{
+	if ( classname.empty() )
+	{
+		return std::nullopt;
+	}
+	MapEntity e;
+	e.id = m_nextId++;
+	e.classname = classname;
+	e.origin = origin;
+	m_entities.push_back( e );
+	m_entitySelection = e.id;
+	ClearBrushSelection();
+	PushSnapshot();
+	return e.id;
+}
+
+bool EditorController::SetEntityOrigin( int entityId, const Vec3d &origin )
+{
+	MapEntity *entity = FindEntity( entityId );
+	if ( !entity )
+	{
+		return false;
+	}
+	if ( entity->origin.x == origin.x && entity->origin.y == origin.y &&
+	     entity->origin.z == origin.z )
+	{
+		return false; // no-op edit records no history
+	}
+	entity->origin = origin;
+	PushSnapshot();
+	return true;
+}
+
+bool EditorController::SetWorldProperty( const std::string &key, const std::string &value )
+{
+	if ( key.empty() || key == "classname" || key == "mapversion" || key == "id" )
+	{
+		return false;
+	}
+	for ( EntityProperty &p : m_worldProperties )
+	{
+		if ( p.key == key )
+		{
+			if ( p.value == value )
+			{
+				return false;
+			}
+			p.value = value;
+			PushSnapshot();
+			return true;
+		}
+	}
+	m_worldProperties.push_back( { key, value } );
 	PushSnapshot();
 	return true;
 }
@@ -974,6 +1052,10 @@ std::string EditorController::ToVmf() const
 	AddPair( world, "id", std::to_string( id++ ) );
 	AddPair( world, "mapversion", "1" );
 	AddPair( world, "classname", "worldspawn" );
+	for ( const EntityProperty &p : m_worldProperties )
+	{
+		AddPair( world, p.key.c_str(), p.value );
+	}
 
 	for ( const MapBrush &b : m_brushes )
 	{
@@ -991,8 +1073,12 @@ std::string EditorController::ToVmf() const
 			AddPair( side, "material",
 			    f < b.materials.size() && !b.materials[f].empty() ? b.materials[f]
 			                                                      : m_defaultMaterial );
-			AddPair( side, "uaxis", "[1 0 0 0] 0.25" );
-			AddPair( side, "vaxis", "[0 -1 0 0] 0.25" );
+			// World-aligned axes from the face normal (legacy Hammer's rule), so
+			// walls are not smeared by the floor's projection.
+			const geometry::TextureAxes axes =
+			    geometry::WorldAlignedTextureAxes( b.planes[f].normal );
+			AddPair( side, "uaxis", AxisToText( axes.u ) );
+			AddPair( side, "vaxis", AxisToText( axes.v ) );
 			AddPair( side, "rotation", "0" );
 			AddPair( side, "lightmapscale", "16" );
 			AddPair( side, "smoothing_groups", "0" );
@@ -1044,6 +1130,24 @@ bool EditorController::LoadVmf( const std::string &vmfText, std::string &error )
 	// Carry displacement (dispinfo terrain) surfaces for display; they render but
 	// are not yet editable, and survive save via the original brush faces.
 	m_displacements = scene.displacements;
+
+	// Worldspawn keyvalues (skyname and the like) are document state.
+	m_worldProperties.clear();
+	for ( const formats::KeyValueNode &block : pr.root.children )
+	{
+		if ( block.name != "world" )
+		{
+			continue;
+		}
+		for ( const auto &pair : block.pairs )
+		{
+			if ( pair.key != "id" && pair.key != "mapversion" && pair.key != "classname" )
+			{
+				m_worldProperties.push_back( { pair.key, pair.value } );
+			}
+		}
+		break;
+	}
 
 	for ( const geometry::BrushSolid &solid : scene.solids )
 	{

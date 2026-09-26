@@ -4014,7 +4014,8 @@ void CVulkanContext::DestroyLightmappedPipeline()
 			vkDestroyPipeline( m_device, entry.second, nullptr );
 	}
 	m_lightmappedPaintPipelines.clear();
-	for ( VkShaderModule *module : { &m_lightmappedVert, &m_lightmappedFrag, &m_lightmappedPaintFrag } )
+	for ( VkShaderModule *module :
+	    { &m_lightmappedVert, &m_lightmappedFrag, &m_lightmappedPaintFrag } )
 	{
 		if ( *module != VK_NULL_HANDLE )
 			vkDestroyShaderModule( m_device, *module, nullptr );
@@ -6953,9 +6954,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			else if ( d.shaderIndex == kDynShaderLightmapped )
 			{
 				// The paint pass (kLightmappedPaint) has its own pixel stage.
-				const bool paintPass =
-				    d.skin >= 0 && static_cast<size_t>( d.skin ) < m_dynSkinConstants.size() &&
-				    ( m_dynSkinConstants[static_cast<size_t>( d.skin )].combos & kLightmappedPaint ) != 0;
+				const bool paintPass = d.skin >= 0 &&
+				                       static_cast<size_t>( d.skin ) < m_dynSkinConstants.size() &&
+				                       ( m_dynSkinConstants[static_cast<size_t>( d.skin )].combos &
+				                           kLightmappedPaint ) != 0;
 				selected = d.worldMesh ? VK_NULL_HANDLE
 				           : paintPass ? LightmappedPaintPipeline( d.raster, openSrgb, passSamples )
 				                       : LightmappedPipeline( d.raster, openSrgb, passSamples );

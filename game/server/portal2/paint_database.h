@@ -42,11 +42,9 @@ struct PaintEntityData_t
 
 typedef const PaintLocationData_t *PaintLocationConstIter;
 
-typedef CUtlVector< PaintLocationData_t > PaintLocationVector_t;
-typedef CUtlVector< PaintEntityData_t > PaintEntityVector_t;
-typedef CUtlVector< CProjectedWallEntity* > ProjectedWallVector_t;
-
-
+typedef CUtlVector<PaintLocationData_t> PaintLocationVector_t;
+typedef CUtlVector<PaintEntityData_t> PaintEntityVector_t;
+typedef CUtlVector<CProjectedWallEntity *> ProjectedWallVector_t;
 
 class CPaintDatabase : public CAutoGameSystemPerFrame, public CGameEventListener
 {
@@ -97,7 +95,7 @@ private:
 	bool m_bSentClientPaintData;
 
 	// Restored paint records, loaded into the engine once it has paint maps.
-	CUtlVector< uint32 > m_PendingPaintmapRLE;
+	CUtlVector<uint32> m_PendingPaintmapRLE;
 };
 
 extern CPaintDatabase PaintDatabase;

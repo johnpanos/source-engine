@@ -133,5 +133,149 @@ BEGIN/END` markers; the evaluator's fixtures cover it. On the log from before
 the fix, the three client checks fail (the beam ends at the far wall, x=8320)
 and the server checks pass.
 
+### Portal 2 video retail conformance (2026-09-25)
+
+This section covers materials, shaders, proxies, textures and particles as
+rendered on native Vulkan, compared with retail Portal 2 from matched
+screenshots.
+
+`quality/workloads/portal2-materials-v1` holds fixed views: an eye point with a
+pitch and yaw, noclip, no HUD or view model. There are 11 views on five maps:
+`sp_a2_bridge_intro`, `sp_a2_fizzler_intro`, `sp_a2_laser_over_goo`,
+`sp_a2_triple_laser` and `sp_a4_tb_intro`.
+
+[`tools/quality/portal2_material_shots.py`](../../../tools/quality/portal2_material_shots.py)
+shoots the views at 1024x768 on both sides.
+
+- On this build, the views run through `portal2_scenarios.py` (SDL offscreen).
+  The same engine arguments as `./play_p2` apply (`+mat_colorcorrection 1`),
+  plus `+sv_cheats 1`.
+- On retail, `portal2_linux` runs in a private symlink mirror of the install,
+  with its own `portal2/cfg` and `scripts`. A `mapspawn.nut` hook starts the
+  same scripts on the server VM. It runs under `mutter --headless` with SDL on
+  Xwayland.
+  - Retail needs a running Steam client ("Steam is not running" otherwise). The
+    session uses the user's Steam when one is running. Only when none is running
+    does it start one inside the compositor and shut it down afterwards.
+  - Retail's settings are its own saved ones: MSAA 4x, anisotropic 16x and
+    `mat_hdr_level 2`. The views set `mat_forceaniso 16` on both sides.
+
+`check` judges a build capture against `reference.json`, which is recorded from
+a retail capture and holds numbers only:
+
+- a 16x12 grid of tile means per shot;
+- statistics for each declared region.
+
+The checks, listed in `checks.json`, are:
+
+- `<map>.run`: the scenario ran and every view was placed.
+- `<map>.shaders`: no unknown shader beyond retail's own.
+- `<map>.proxies`: no missing material proxy.
+- `<map>.<view>.tiles`: at least 85% of tiles are within 24 levels of retail.
+  Two retail runs agree within 8 levels, except animated goo and beams.
+- `<map>.<view>.<region>`: each region pins one defect.
+- `<map>.<view>.native_drops`: the native backend's per-screenshot census names
+  no dropped material. The one exemption is `___error`, from the texture
+  manager's precache draws; gdb backtraces show that is its only source.
+
+Rows in `quality/conformance.manifest.json` (profile `linux-host-corpus`):
+
+| Suite | Kind | Now |
+| --- | --- | --- |
+| `corpus.portal2.video-retail` | 49 checks, known failure | 28 pass, 21 fail; first divergence `sp_a2_bridge_intro.projector.tiles` |
+| `...video-retail.cables` / `.seeded-no-ropes` (`+r_drawropes 0`) | region + negative control | pass / rejected |
+| `...video-retail.ssbump-floor` / `.seeded-ssbump-unscaled` (`+mat_ssbump_normalize 0`) | region + negative control | pass / rejected |
+| `...video-retail.comparator` and 4 `.comparator.seeded-*` rows | synthetic frames, no content | pass / all 4 rejected |
+
+The in-game rows are optional. They need `SOURCE_PORTAL2_STEAM_ROOT` (a Portal 2
+install), a GPU and a built `build-p2`; `SOURCE_PORTAL2_BUILD` selects another
+tree. Without them the rows are skipped and never certified.
+
+```sh
+python3 tools/quality/portal2_material_shots.py capture --side retail --out quality-results/p2mat-retail
+python3 tools/quality/portal2_material_shots.py record --retail quality-results/p2mat-retail
+python3 tools/quality/portal2_material_shots.py capture --side build --build build-p2 --out quality-results/p2mat-build
+python3 tools/quality/portal2_material_shots.py check --capture quality-results/p2mat-build
+SOURCE_PORTAL2_STEAM_ROOT=~/.local/share/Steam/steamapps/common/Portal\ 2 \
+  python3 tools/quality/conformance.py check --suite corpus.portal2.video-retail
+```
+
+`capture --renderdoc` runs the build under `renderdoccmd`; a view script sends
+`vk_renderdoc_capture`.
+
+Fixed, each confirmed against retail by the checks above (before -> after):
+
+- **SSBump lighting 1.73x too bright.** Portal 2's LightmappedGeneric, like
+  CS:GO's, always scales an ssbump's three basis weights by 1/sqrt(3).
+  - This SDK's shader never scales them. Its native port only did so for
+    `$ssbumpmathfix`, a parameter Portal 2's shaders do not have (retail
+    `stdshader_dx9.so` holds no such string).
+  - Portal 2's chamber floors and walls are ssbump, so frames were about 1.4x
+    retail in 8-bit sRGB. That held with the tone-mapping scale forced to 1 on
+    both sides, so it was not exposure.
+  - Native Vulkan now scales them when the game is Portal 2
+    (`mat_ssbump_normalize -1`; 0 and 1 force either way).
+  - Result: `sp_a2_triple_laser` floor mean 106 -> 77 (retail 72), and the
+    entry-hall and floor shots' tiles 30% / 0% -> 97% / 100%.
+- **Cables missing.** Every rope material (`cable/*.vmt`) names `SplineRope`,
+  which this shader library lacked, so ropes drew as the error material and
+  were dropped.
+  - `SplineRope` is now a fallback to `Cable_DX9` (`cable_dx9.cpp`). The pixel
+    shaders are the same, and this client builds rope geometry on the CPU in
+    Cable's vertex format.
+- **HDR cubemaps black.** RGBA16161616F textures (every map `c*.hdr`
+  env_cubemap, the authored HDR cubemaps) became 8-bit images and never
+  received texels.
+  - They are now `R16G16B16A16_SFLOAT` images with the half floats uploaded
+    as-is.
+  - Result: the observation glass in `sp_a2_fizzler_intro` has mean 31 -> 64
+    (retail 64).
+- **Observation windows and WorldVertexTransition dropped.**
+  - Native Vulkan compared shader names against `WorldVertexTransition`, but
+    the material system reports the fallback it chose, `WorldVertexTransition_DX9`.
+  - Screen-space Refract was dropped whenever `$envmapsaturation` was not 1.
+    Portal 2's observation glass uses 0.5, which this library's refract_ps2x
+    also applies.
+  - Both now draw, and the census lists neither.
+- **Tractor beam column never drawn.** A model-less trigger has empty render
+  bounds, so the leaf system never reached `C_Trigger_TractorBeam::DrawModel`.
+  - The trigger now bounds the beam from start to end.
+  - Its translucency is bridged onto `IsTransparent`, and it refreshes its
+    render bounds when the beam changes.
+- **`BloomAdd` proxy missing.** It is named by `dev/bloomadd`, and the material
+  system reported it missing on every map. CS:GO's proxy is now ported into
+  `viewpostprocess.cpp`.
+- **Light bridges crashed the client.** The paint agent fixed this in
+  `c_projectedwallentity.cpp`; the bridge view found it.
+
+Still different, ranked by visible impact:
+
+1. **Toxic goo.** Water with Portal 2's `$flowmap` is not implemented by the
+   native pipeline, and its draws are dropped.
+   - Above a pit the region shows a white slab (catcher view: mean 177 against
+     retail's 33).
+   - This SDK's water shader has no flowmap either.
+2. **The 2D sky is not drawn.** In `sp_a2_bridge_intro`, `sky_white` is black
+   (mean 0 against 255).
+   - `R_DrawSkyBox` binds and emits the sky faces in some frames.
+   - At the view, no sky draw is in the frame (the census and a RenderDoc
+     capture agree), even with `+r_novis 1` or `mat_queue_mode 0`.
+   - The map has only two `SURF_SKY` faces; why the view never marks the sky
+     visible is open.
+3. **The laser emitter glow is missing.** Retail draws a bright halo where the
+   beam leaves the emitter. The source of that halo is not identified.
+4. **The tractor beam column is pale.** It has no blue swirl (SolidEnergy
+   detail layers), and its base particles are green where retail's are blue.
+5. **Exteriors and rusty models.** Lit exteriors behind broken walls are blown
+   out, and rusty truss models are grey rather than brown
+   (`laser_over_goo.cable.rust_beams` contrast 3.1x retail).
+6. **Other native gaps.** `dev/motion_blur` (MotionBlur) is dropped in every
+   frame. Projected textures (flashlight passes) are unimplemented. The signed
+   texture `normalizesigned` (UVWQ8888) is sampled while empty.
+7. **The tractor-beam floor is about 10% brighter** than retail.
+
+The captures used for these numbers are under `quality-results/p2mat-*` and are
+not committed.
+
 The repository's provenance and distribution warning in the root README also
 applies to this import.

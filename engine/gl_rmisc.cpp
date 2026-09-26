@@ -173,7 +173,7 @@ void R_LoadWorldGeometry( bool bDXChange )
 {
 	// The paint maps go with the sort infos; a rebuild of the same map keeps
 	// the painted surfaces.
-	CUtlVector< uint32 > paintData;
+	CUtlVector<uint32> paintData;
 	g_PaintManager.GetPaintmapDataRLE( paintData );
 
 	// Recreate the sortinfo arrays ( ack, uses new/delete right now ) because doing it with Hunk_AllocName will
@@ -232,7 +232,6 @@ void R_LoadWorldGeometry( bool bDXChange )
 		g_PaintManager.LoadPaintmapDataRLE( paintData );
 	}
 }
-
 
 /*
 ===============

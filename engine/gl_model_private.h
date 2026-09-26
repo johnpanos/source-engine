@@ -532,7 +532,7 @@ inline class IDispInfo *MLeaf_Disaplcement( mleaf_t *pLeaf, int index, worldbrus
 #define SURFDRAW_ABOVEWATER		0x00040000
 #define SURFDRAW_HASDLIGHT		0x00080000	// Has some kind of dynamic light that must be checked
 #define SURFDRAW_DLIGHTPASS		0x00100000	// Must be drawn in the dlight pass
-#define SURFDRAW_PAINTED		0x00200000	// has paint (engine/paint.cpp)
+#define SURFDRAW_PAINTED 0x00200000         // has paint (engine/paint.cpp)
 #define SURFDRAW_VERTCOUNT_MASK	0xFF000000	// 8 bits of vertex count
 #define SURFDRAW_SORTGROUP_MASK	0x00C00000	// 2 bits of sortgroup
 

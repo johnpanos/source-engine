@@ -637,14 +637,18 @@ bool HasPaintmap()
 	return Portal2_HasPaintmap();
 }
 
-bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color, float flSphereRadius, float flPaintCoatPercent )
+bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color,
+    float flSphereRadius, float flPaintCoatPercent )
 {
-	return Portal2_SpherePaintSurface( pModel, vPosition, color, flSphereRadius, flPaintCoatPercent );
+	return Portal2_SpherePaintSurface(
+	    pModel, vPosition, color, flSphereRadius, flPaintCoatPercent );
 }
 
-void SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColors )
+void SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition,
+    const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColors )
 {
-	Portal2_SphereTracePaintSurface( pModel, vPosition, vContactNormal, flSphereRadius, surfColors );
+	Portal2_SphereTracePaintSurface(
+	    pModel, vPosition, vContactNormal, flSphereRadius, surfColors );
 }
 
 void RemoveAllPaint()

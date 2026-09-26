@@ -410,6 +410,38 @@ static uint64_t g_PrimitiveTypeCounts[16];
 // The cvar has the D3D9 backend's name, default and flags, so the engine's copy
 // and this one are the same setting.
 static ConVar mat_hdr_level( "mat_hdr_level", "2", FCVAR_ARCHIVE );
+
+// An ssbump's three basis weights are authored as dot( N, basis ), which sum
+// to 1.733 for a flat normal, while the bumped lightmaps are a weighted
+// average of the three directions. Portal 2's LightmappedGeneric, like its
+// successor CS:GO's (lightmappedgeneric_ps2_3_x.h), always scales the diffuse
+// sum by 1/sqrt(3); its shaders have no $ssbumpmathfix (the retail
+// stdshader_dx9 holds no such string), although 16 of its materials carry one.
+// This SDK's shader never scales, so Portal 2's ssbump floors and walls came
+// out 1.73x too bright. mat_ssbump_normalize -1 follows the running game
+// (Portal 2: always; others: only a material's $ssbumpmathfix), 0 and 1 force
+// either.
+static ConVar mat_ssbump_normalize( "mat_ssbump_normalize", "-1", FCVAR_CHEAT,
+    "ssbump basis weights x 1/sqrt(3): -1 as the game's shaders do (Portal 2 always), "
+    "0 only with $ssbumpmathfix, 1 always" );
+
+static bool SsbumpBasisNormalized()
+{
+	const int mode = mat_ssbump_normalize.GetInt();
+	if ( mode >= 0 )
+		return mode != 0;
+	// The game directory (-game), without its path.
+	static const bool s_bPortal2 = []
+	{
+		const char *game = CommandLine()->ParmValue( "-game", "hl2" );
+		const char *slash = strrchr( game, '/' );
+		const char *backslash = strrchr( game, '\\' );
+		if ( backslash && ( !slash || backslash > slash ) )
+			slash = backslash;
+		return !V_stricmp( slash ? slash + 1 : game, "portal2" );
+	}();
+	return s_bPortal2;
+}
 // RFC 0011 indirect-light debug view (CVulkanContext::SetIndirectLightView).
 // R50-PARALLAX: the map's RPRB reflection probes (shaders/reflection_probes.glsl).
 static ConVar mat_reflection_probes( "mat_reflection_probes", "1", FCVAR_CHEAT,
@@ -6997,15 +7029,15 @@ static void CommitLightmappedConstants( const CShaderAPIVulkan &api )
 	c.ps[23][1] = 1.0f;
 	c.ps[23][2] = c.ps[23][3] = 0.0f;
 	// Portal 2's LightmappedGeneric parameters, which this SDK's shader does not
-	// declare but the material keeps: $ssbumpmathfix scales ssbump basis
-	// weights by 1/sqrt(3) (c23.y); $envmaplightscale darkens the cubemap by
+	// declare but the material keeps: ssbump basis weights scaled by 1/sqrt(3)
+	// (c23.y; SsbumpBasisNormalized); $envmaplightscale darkens the cubemap by
 	// the lightmap (c23.z), mapped through $envmaplightscaleminmax (c21.xy, as
 	// the Portal 2/CS:GO helper packs c20.zw).
 	if ( g_pBoundMaterial )
 	{
 		bool found = false;
 		IMaterialVar *var = g_pBoundMaterial->FindVar( "$ssbumpmathfix", &found, false );
-		if ( found && var && var->GetIntValue() != 0 )
+		if ( SsbumpBasisNormalized() || ( found && var && var->GetIntValue() != 0 ) )
 			c.ps[23][1] = 0.57735025882720947f;
 		var = g_pBoundMaterial->FindVar( "$envmaplightscale", &found, false );
 		if ( found && var )
@@ -7905,7 +7937,8 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 			if ( ( psIndex / 24 ) % 3 )
 				g_CurrentLightmappedCombos |= render_vulkan::CVulkanContext::kLightmappedCubemap;
 			if ( ( psIndex / 72 ) % 2 )
-				NoteUnimplemented( "lightmappedpaint_ps20b: SEAMLESS (drawn with the lightmap coordinates)" );
+				NoteUnimplemented(
+				    "lightmappedpaint_ps20b: SEAMLESS (drawn with the lightmap coordinates)" );
 			g_CurrentLightmappedDetailMode = 0;
 			g_CurrentLightmappedVsCombos = vsIndex ? LightmappedVsCombos( atoi( vsIndex + 1 ) ) : 0;
 		}
@@ -9450,16 +9483,18 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 		return upload( src, blockRow * blocksY );
 	}
 
-	// 16-bit integer texels (integer-HDR lightmap pages) go only into the
-	// R16G16B16A16 image created for them; there is no 8-bit conversion.
-	if ( srcFormat == IMAGE_FORMAT_RGBA16161616 )
+	// 16-bit texels, integer (integer-HDR lightmap pages) or half float (HDR
+	// cubemaps), go only into the R16G16B16A16 image created for their format;
+	// there is no 8-bit conversion.
+	if ( srcFormat == IMAGE_FORMAT_RGBA16161616 || srcFormat == IMAGE_FORMAT_RGBA16161616F )
 	{
-		const bool image16 =
-		    static_cast<size_t>( handle ) < g_TextureRecords.size() &&
-		    g_TextureRecords[static_cast<size_t>( handle )].format == IMAGE_FORMAT_RGBA16161616;
+		const bool image16 = static_cast<size_t>( handle ) < g_TextureRecords.size() &&
+		                     g_TextureRecords[static_cast<size_t>( handle )].format == srcFormat;
 		if ( !image16 || ( srcStride > 0 && srcStride != width * 8 ) )
 		{
-			NoteUnimplemented( "upload: RGBA16161616 into another format or padded rows" );
+			NoteUnimplemented( srcFormat == IMAGE_FORMAT_RGBA16161616
+			                       ? "upload: RGBA16161616 into another format or padded rows"
+			                       : "upload: RGBA16161616F into another format or padded rows" );
 			return false;
 		}
 		return upload( src, pixels * 8 );
@@ -9875,6 +9910,12 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 	case IMAGE_FORMAT_RGBA16161616:
 		// Integer-HDR lightmap pages; the same memory order as D3DFMT_A16B16G16R16.
 		vkFormat = VK_FORMAT_R16G16B16A16_UNORM;
+		break;
+	case IMAGE_FORMAT_RGBA16161616F:
+		// HDR textures: every env_cubemap a map builds (maps/<map>/c*.hdr) and
+		// the authored HDR cubemaps. Half floats in D3DFMT_A16B16G16R16F order;
+		// the shaders scale them by ENV_MAP_SCALE as on D3D9.
+		vkFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 		break;
 	default:
 		vkFormat = VK_FORMAT_R8G8B8A8_UNORM; // RGBA8888 and RGBA-convertible sources

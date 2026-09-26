@@ -1366,7 +1366,7 @@ void CPropWeightedCube::SchrodingerThink( void )
 void CPropWeightedCube::DisabledThink( void )
 {
 	bool hasPaintPower = false;
-	if( Portal2_HasPaintmap() )
+	if ( Portal2_HasPaintmap() )
 	{
 		if( GetPaintedPower() != NO_POWER )
 		{

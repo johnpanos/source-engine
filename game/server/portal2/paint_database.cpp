@@ -577,21 +577,19 @@ void CC_PaintAt( const CCommand &args )
 
 static ConCommand paintat( "paintat", CC_PaintAt );
 
-
 // The engine's paint records (IEnginePaint::GetPaintmapDataRLE): already run
 // length encoded, and valid only for this map.
 void CPaintDatabase::SavePaintmapData( ISave *pSave )
 {
-	CUtlVector< uint32 > data;
+	CUtlVector<uint32> data;
 	Portal2_GetPaintmapDataRLE( data );
 	int count = data.Count();
 	pSave->WriteInt( &count );
 	if ( count > 0 )
 	{
-		pSave->WriteInt( reinterpret_cast< int* >( data.Base() ), count );
+		pSave->WriteInt( reinterpret_cast<int *>( data.Base() ), count );
 	}
 }
-
 
 void CPaintDatabase::RestorePaintmapData( IRestore *pRestore )
 {
@@ -609,7 +607,8 @@ void CPaintDatabase::RestorePaintmapData( IRestore *pRestore )
 		return;
 	}
 	m_PendingPaintmapRLE.SetCount( count );
-	if ( pRestore->ReadInt( reinterpret_cast< int* >( m_PendingPaintmapRLE.Base() ), count ) != count )
+	if ( pRestore->ReadInt( reinterpret_cast<int *>( m_PendingPaintmapRLE.Base() ), count ) !=
+	     count )
 	{
 		Warning( "Paint: saved paint is truncated\n" );
 		m_PendingPaintmapRLE.Purge();
@@ -617,7 +616,6 @@ void CPaintDatabase::RestorePaintmapData( IRestore *pRestore )
 	}
 	DevMsg( "Paint: restoring %d dwords of paint records\n", count );
 }
-
 
 // A client joining a paint map (co-op): the engine's records in chunks of
 // LoadPaintmapData (total dwords, offset, count, dwords); the client loads
@@ -627,7 +625,7 @@ void CPaintDatabase::SendPaintDataTo( CBasePlayer *pPlayer )
 	if ( !pPlayer->IsConnected() )
 		return;
 
-	CUtlVector< uint32 > data;
+	CUtlVector<uint32> data;
 	Portal2_GetPaintmapDataRLE( data );
 
 	CSingleUserRecipientFilter filter( pPlayer );
@@ -640,18 +638,17 @@ void CPaintDatabase::SendPaintDataTo( CBasePlayer *pPlayer )
 	{
 		int count = MIN( data.Count() - offset, MAX_DWORDS );
 		UserMessageBegin( filter, "LoadPaintmapData" );
-			WRITE_LONG( data.Count() );
-			WRITE_LONG( offset );
-			WRITE_BYTE( count );
-			for ( int i = 0; i < count; ++i )
-			{
-				WRITE_LONG( data[offset + i] );
-			}
+		WRITE_LONG( data.Count() );
+		WRITE_LONG( offset );
+		WRITE_BYTE( count );
+		for ( int i = 0; i < count; ++i )
+		{
+			WRITE_LONG( data[offset + i] );
+		}
 		MessageEnd();
 		offset += count;
 	} while ( offset < data.Count() );
 }
-
 
 void CPaintDatabase::SendPaintDataToEngine()
 {

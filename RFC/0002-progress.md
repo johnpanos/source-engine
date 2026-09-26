@@ -57,6 +57,99 @@ are history.
 - Work this record did not yet describe is summarized in
   [Additional work recorded 2026-09-25](#additional-work-recorded-2026-09-25).
 
+## Map-building loop direction and R08-CMD (2026-09-25)
+
+**User direction.** The new Hammer must always be able to build a real map.
+Every slice keeps a fast author → save → compile → play loop. A
+conformance suite checks it by driving the real UI the way a person does,
+and the same commands run headlessly.
+
+Behavior lives in shared headless domain and command libraries. The GTK UI is
+a thin layer, and an MCP server can use the same commands. Later the same day
+the user added more:
+
+- format libraries are small, layered and enforced, with arrows pointing
+  down;
+- UI/UX takes inspiration from the Source 2 tools' ergonomics;
+- the editor embeds the native renderer and a play/stop game preview.
+
+All of these are recorded in AGENTS.md. The plan runs in slices:
+
+1. **1a:** a command layer, VMF fixes and exact domain operations (below).
+2. **1b:** layered per-format libraries, plus Waf targets for them and a
+   headless `hammer_cli`.
+3. **2:** an author → compile → boot loop suite with negative controls.
+4. **3:** the GTK UI routed through the commands, with a UI-driven test in an
+   isolated compositor and Source 2-informed ergonomics.
+5. **4:** an MCP adapter.
+6. **5:** play-in-editor through a dmabuf-export presentation pair.
+
+A read-only survey found how far the loop is today:
+
+- The headless `EditorController` can author and save a VMF.
+- The GTK shell (`hammer/gtk`) can't place entities, set properties, or
+  compile and run.
+- There was no command layer.
+- Saved VMFs gave every face the floor's texture axes and no `skyname`.
+- No test went from input to a booted map.
+
+### R08-CMD: shared command layer and exact authoring (slice 1a, done)
+
+- **Command layer.** `public/hammer/app/editor_commands.h` and
+  `hammer/core/app/editor_commands.cpp` add named, serializable commands
+  over `EditorController`.
+  - One table owns each command's name, required and optional arguments,
+    summary and handler. `Catalog()` serves help text and tool listings from
+    that same table.
+  - Commands: `new_map`, `open`, `save` (through `SaveDocument`, atomic),
+    `create_block`, `place_entity`, `set_entity_origin`,
+    `set_entity_property`, `set_world_property`, `set_material`,
+    `apply_material`, `delete_selection`, `set_grid`, `undo`, `redo` and
+    `info`.
+  - I/O goes through the `hammer.ports` file-store port.
+  - Errors are structured `CommandError`s (status, command, detail, script
+    line) in `foundation::Expected`.
+  - Scripts have one command per line, `name key=value key="v w"`, with `#`
+    comments.
+  - `hammer.app` gains the `foundation` edge (HAM002).
+- **Exact domain operations.** `CreateBlock`, `PlaceEntity` and
+  `SetEntityOrigin` give each edit one undo unit.
+  - The Block-tool commit and the Entity-tool click now call them, so
+    gestures and commands share one authority.
+  - Worldspawn properties (`SetWorldProperty`, `WorldProperties`) are
+    undoable document state and round-trip through VMF.
+  - A new map starts with `skyname sky_day01_01`.
+- **Texture axes.** `hammer.geometry` gains a named owner,
+  `WorldAlignedTextureAxes`, ported from legacy `CMapFace`'s `baseaxis`
+  table with its tie order. The table matches vbsp's
+  `TextureAxisFromPlane`. `ToVmf` writes each face's own axes.
+- **Found and fixed.** Saving a reloaded map was not byte-identical: normals
+  rebuilt from plane points printed `-0`. Plane and axis text now write
+  zero as 0.
+- **Found, not fixed:** brush entities are folded into world brushes on
+  load, so saving turns a trigger into world geometry. This is R22 scope,
+  owned by the persistence slice.
+- **Oracles.**
+  - `hammer.app.editor_commands` (54 checks):
+    - a script builds a sealed room with a player start and a light, saves
+      it, and reopens it byte-identically;
+    - every error status is checked (unknown command, missing, invalid and
+      unknown arguments, rejected edits, I/O failure, failed save without a
+      partial file);
+    - a failing script line stops the run and reports its line;
+    - script syntax errors are caught.
+  - `hammer.app.editor_controller` grows from 182 to 233 checks: exact
+    operations and undo, world-property round-trip including byte-stable
+    reload, per-face axes, and the axis policy with legacy tie order.
+  - Ten mutants are each detected: the unknown-argument check, error line
+    numbers, `MarkSaved`, the tie order, a swapped table row, world
+    properties in snapshots, world-property loading, negative zero, and two
+    parser paths.
+- **Not claimed:**
+  - no Waf target or CLI host yet (1b);
+  - no compile or boot (2);
+  - the GTK UI does not use the commands yet (3).
+
 ## Decisions (answers to the RFC's open questions)
 
 These are recorded **Decisions** in the RFC's evidence vocabulary: intentional

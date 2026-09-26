@@ -20,6 +20,7 @@
 
 #include "hammer/app/editor_controller.h"
 #include "hammer/formats/keyvalues.h"
+#include "hammer/geometry/texture_axes.h"
 #include "testing/conformance_result.h"
 
 #include <cmath>
@@ -597,6 +598,125 @@ void TestLoadDisplacementCarries()
 	CHECK( c.BuildScene().displacements.empty() );
 }
 
+// Exact domain operations (the command layer's authority): value-addressed
+// block and entity authoring, one undo unit each, and the same selection the
+// gestures give.
+void TestExactDomainOperations()
+{
+	EditorController c;
+	c.NewMap();
+	CHECK( !c.CreateBlock( Vec3d( 0, 0, 0 ), Vec3d( 0, 64, 64 ) ) ); // degenerate
+	CHECK( !c.CanUndo() );
+	const auto block = c.CreateBlock( Vec3d( -64, -64, -16 ), Vec3d( 64, 64, 0 ) );
+	CHECK( block.has_value() && c.Brushes().size() == 1 );
+	CHECK( block && c.Selection() == *block && !c.SelectedEntity() );
+	const auto start = c.PlaceEntity( "info_player_start", Vec3d( 0, 0, 1 ) );
+	CHECK( start.has_value() && c.Entities().size() == 1 );
+	CHECK( start && c.SelectedEntity() == *start && !c.Selection() );
+	CHECK( !c.PlaceEntity( "", Vec3d( 0, 0, 0 ) ) );
+	CHECK( start && c.SetEntityOrigin( *start, Vec3d( 8, 8, 1 ) ) );
+	CHECK( start && !c.SetEntityOrigin( *start, Vec3d( 8, 8, 1 ) ) ); // no-op
+	CHECK( !c.SetEntityOrigin( 9999, Vec3d( 0, 0, 0 ) ) );
+	CHECK( c.Entities().size() == 1 && c.Entities()[0].origin.x == 8 );
+	CHECK( c.Undo() && c.Entities()[0].origin.x == 0 ); // origin edit undone
+	CHECK( c.Undo() && c.Entities().empty() );         // placement undone
+	CHECK( c.Undo() && c.Brushes().empty() );          // block undone
+	CHECK( !c.Undo() );
+	CHECK( c.Redo() && c.Redo() && c.Brushes().size() == 1 && c.Entities().size() == 1 );
+}
+
+// Worldspawn properties are undoable document state and round-trip through VMF.
+void TestWorldPropertiesRoundTrip()
+{
+	EditorController c;
+	c.NewMap();
+	CHECK( c.WorldProperties().size() == 1 && c.WorldProperties()[0].key == "skyname" );
+	CHECK( !c.SetWorldProperty( "classname", "func_detail" ) );
+	CHECK( !c.SetWorldProperty( "skyname", "sky_day01_01" ) ); // unchanged
+	CHECK( c.SetWorldProperty( "skyname", "sky_black" ) );
+	CHECK( c.SetWorldProperty( "detailvbsp", "detail.vbsp" ) );
+	CHECK( c.Undo() && c.WorldProperties().size() == 1 );
+	CHECK( c.Redo() && c.WorldProperties().size() == 2 );
+	// A brush makes the reload rebuild plane normals; the save must stay byte
+	// identical (no "-0" components).
+	CHECK( c.CreateBlock( Vec3d( 0, 0, 0 ), Vec3d( 8, 8, 8 ) ).has_value() );
+	const std::string vmf = c.ToVmf();
+	CHECK( vmf.find( "\"skyname\" \"sky_black\"" ) != std::string::npos );
+	EditorController reloaded;
+	std::string error;
+	CHECK( reloaded.LoadVmf( vmf, error ) );
+	CHECK( reloaded.WorldProperties().size() == 2 );
+	CHECK( reloaded.WorldProperties().size() == 2 &&
+	       reloaded.WorldProperties()[0].value == "sky_black" );
+	CHECK( reloaded.ToVmf() == vmf );
+}
+
+// The texture-axis owner reproduces legacy Hammer's table and tie order: a
+// tie keeps the earlier entry (floor before walls, x walls before y walls).
+void TestWorldAlignedTextureAxesPolicy()
+{
+	using hammer::geometry::WorldAlignedTextureAxes;
+	auto same = []( const Vec3d &a, double x, double y, double z )
+	{ return a.x == x && a.y == y && a.z == z; };
+	const double h = std::sqrt( 0.5 );
+	auto floor = WorldAlignedTextureAxes( Vec3d( 0, 0, 1 ) );
+	CHECK( same( floor.u, 1, 0, 0 ) && same( floor.v, 0, -1, 0 ) );
+	auto ceiling = WorldAlignedTextureAxes( Vec3d( 0, 0, -1 ) );
+	CHECK( same( ceiling.u, 1, 0, 0 ) && same( ceiling.v, 0, -1, 0 ) );
+	auto east = WorldAlignedTextureAxes( Vec3d( -1, 0, 0 ) );
+	CHECK( same( east.u, 0, 1, 0 ) && same( east.v, 0, 0, -1 ) );
+	auto north = WorldAlignedTextureAxes( Vec3d( 0, -1, 0 ) );
+	CHECK( same( north.u, 1, 0, 0 ) && same( north.v, 0, 0, -1 ) );
+	auto floorTie = WorldAlignedTextureAxes( Vec3d( h, 0, h ) );
+	CHECK( same( floorTie.u, 1, 0, 0 ) && same( floorTie.v, 0, -1, 0 ) );
+	auto wallTie = WorldAlignedTextureAxes( Vec3d( h, h, 0 ) );
+	CHECK( same( wallTie.u, 0, 1, 0 ) && same( wallTie.v, 0, 0, -1 ) );
+	auto none = WorldAlignedTextureAxes( Vec3d( 0, 0, 0 ) );
+	CHECK( same( none.u, 1, 0, 0 ) && same( none.v, 0, -1, 0 ) );
+}
+
+// Each saved side gets legacy Hammer's world-aligned axes for its own normal,
+// not the floor's projection on every face.
+void TestSavedTextureAxesFollowFaceNormal()
+{
+	EditorController c;
+	c.NewMap();
+	CHECK( c.CreateBlock( Vec3d( 0, 0, 0 ), Vec3d( 64, 64, 64 ) ).has_value() );
+	hammer::formats::ParseResult parsed = hammer::formats::ParseKeyValues( c.ToVmf() );
+	CHECK( parsed.ok );
+	int sides = 0;
+	int walls = 0;
+	for ( const auto &block : parsed.root.children )
+	{
+		if ( block.name != "world" )
+			continue;
+		for ( const auto &solid : block.children )
+		{
+			for ( const auto &side : solid.children )
+			{
+				const std::string *u = side.Find( "uaxis" );
+				const std::string *v = side.Find( "vaxis" );
+				CHECK( u != nullptr && v != nullptr );
+				if ( u == nullptr || v == nullptr )
+					continue;
+				++sides;
+				// Floors and ceilings use [1 0 0]/[0 -1 0]; walls project onto a
+				// vertical v axis [0 0 -1].
+				if ( *v == "[0 0 -1 0] 0.25" )
+				{
+					++walls;
+					CHECK( *u == "[0 1 0 0] 0.25" || *u == "[1 0 0 0] 0.25" );
+				}
+				else
+				{
+					CHECK( *u == "[1 0 0 0] 0.25" && *v == "[0 -1 0 0] 0.25" );
+				}
+			}
+		}
+	}
+	CHECK( sides == 6 && walls == 4 );
+}
+
 } // namespace
 
 int main()
@@ -611,6 +731,10 @@ int main()
 	TestBuildRoomFromScratch();
 	TestEntityPlaceDeleteUndo();
 	TestLoadDisplacementCarries();
+	TestExactDomainOperations();
+	TestWorldPropertiesRoundTrip();
+	TestSavedTextureAxesFollowFaceNormal();
+	TestWorldAlignedTextureAxesPolicy();
 
 	if ( g_failures != 0 )
 	{

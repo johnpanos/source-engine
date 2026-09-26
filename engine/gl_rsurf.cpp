@@ -890,10 +890,10 @@ public:
 	CUtlVector<ShadowDecalHandle_t> m_ShadowHandles[MAX_MAT_SORT_GROUPS];
 	
 	// list of surfaces with dynamic lightmaps
-	CUtlVector<SurfaceHandle_t>	m_DlightSurfaces[MAX_MAT_SORT_GROUPS];
+	CUtlVector<SurfaceHandle_t> m_DlightSurfaces[MAX_MAT_SORT_GROUPS];
 
 	// opaque surfaces with paint (engine/paint.cpp), drawn again by the paint pass
-	CUtlVector<SurfaceHandle_t>	m_PaintedSurfaces[MAX_MAT_SORT_GROUPS];
+	CUtlVector<SurfaceHandle_t> m_PaintedSurfaces[MAX_MAT_SORT_GROUPS];
 
 	//-------------------------------------------------------------------------
 	// Used to generate a list of the leaves visited, and in back-to-front order

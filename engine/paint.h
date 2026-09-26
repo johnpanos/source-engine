@@ -24,13 +24,19 @@ struct worldbrushdata_t;
 // A paint map byte: power in the top three bits, alpha (0..31) in the rest.
 namespace PaintByte
 {
-	const unsigned char NUM_ALPHA_BITS = 5;
-	const unsigned char COLOR_BITS = 7 << NUM_ALPHA_BITS;
-	const unsigned char ALPHA_BITS = COLOR_BITS ^ 0xFF;
+const unsigned char NUM_ALPHA_BITS = 5;
+const unsigned char COLOR_BITS = 7 << NUM_ALPHA_BITS;
+const unsigned char ALPHA_BITS = COLOR_BITS ^ 0xFF;
 
-	inline unsigned char Power( unsigned char b ) { return ( COLOR_BITS & b ) >> NUM_ALPHA_BITS; }
-	inline float Alpha( unsigned char b ) { return ( ALPHA_BITS & b ) / float( ALPHA_BITS ); }
-	unsigned char Make( unsigned char power, float alpha );
+inline unsigned char Power( unsigned char b )
+{
+	return ( COLOR_BITS & b ) >> NUM_ALPHA_BITS;
+}
+inline float Alpha( unsigned char b )
+{
+	return ( ALPHA_BITS & b ) / float( ALPHA_BITS );
+}
+unsigned char Make( unsigned char power, float alpha );
 }
 
 struct PaintRect_t
@@ -78,7 +84,8 @@ private:
 	CPaintPage( const CPaintPage & );
 	CPaintPage &operator=( const CPaintPage & );
 
-	unsigned int BlendLuxel( const PaintRect_t &paintRect, int x, int y, float flNewAlpha, float flMaxAlpha = 1.0f );
+	unsigned int BlendLuxel(
+	    const PaintRect_t &paintRect, int x, int y, float flNewAlpha, float flMaxAlpha = 1.0f );
 	unsigned int AddSurroundingAlpha( const PaintRect_t &paintRect, int x, int y );
 	unsigned int DrawLine( const PaintRect_t &paintRect, int x1, int x2, int y );
 	unsigned int Draw2Lines( const PaintRect_t &paintRect, float x, float y );
@@ -106,14 +113,17 @@ public:
 
 	bool HasPaintmap() const { return m_Pages.Count() > 0; }
 	int PageCount() const { return m_Pages.Count(); }
-	CPaintPage *Page( int nPage ) { return ( nPage >= 0 && nPage < m_Pages.Count() ) ? m_Pages[nPage] : NULL; }
+	CPaintPage *Page( int nPage )
+	{
+		return ( nPage >= 0 && nPage < m_Pages.Count() ) ? m_Pages[nPage] : NULL;
+	}
 	// Incremented whenever the pages are allocated or destroyed.
 	int Generation() const { return m_nGeneration; }
 
 	bool SpherePaint( const model_t *pModel, const Vector &vPosition, unsigned char colorIndex,
-					  float flSphereRadius, float flPaintCoatPercent );
+	    float flSphereRadius, float flPaintCoatPercent );
 	void SphereTrace( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal,
-					  float flSphereRadius, CUtlVector<unsigned char> &surfColors );
+	    float flSphereRadius, CUtlVector<unsigned char> &surfColors );
 	void RemoveAllPaint();
 	void RemovePaint( const model_t *pModel );
 	void PaintAllSurfaces( unsigned char colorIndex );

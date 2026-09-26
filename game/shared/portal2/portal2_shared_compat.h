@@ -51,10 +51,10 @@ inline unsigned short SurfNoPaintFlag() { return SURF_NOPAINT; }
 // RemovePaint(), RemoveAllPaint(), PaintAllSurfaces(), GetPaintmapDataRLE() and
 // LoadPaintmapDataRLE().
 bool Portal2_HasPaintmap();
-bool Portal2_SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color,
-								 float flSphereRadius, float flPaintCoatPercent );
-void Portal2_SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal,
-									  float flSphereRadius, CUtlVector<unsigned char> &surfColor );
+bool Portal2_SpherePaintSurface( const model_t *pModel, const Vector &vPosition,
+    unsigned char color, float flSphereRadius, float flPaintCoatPercent );
+void Portal2_SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition,
+    const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColor );
 void Portal2_RemovePaint( const model_t *pModel );
 void Portal2_RemoveAllPaint();
 void Portal2_PaintAllSurfaces( unsigned char color );
