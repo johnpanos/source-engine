@@ -562,6 +562,12 @@ public:
 		// fragment stage that may discard costs a tiled GPU its hidden-surface
 		// removal for every draw that uses it.
 		bool alphaTest = true;
+		// >= 0 builds the pipeline with the fragment stage's static combos
+		// compiled in (specialization constant kSpecCombos, constant_id 1), so
+		// the compiler drops the paths the material does not use; -1 leaves
+		// them to the push constants. Set for lightmapped and skinned draws,
+		// whose uber-shaders' register pressure dominated a tiled GPU's frame.
+		int specCombos = -1;
 		bool stencilEnable = false;
 		VkCompareOp stencilCompare = VK_COMPARE_OP_ALWAYS;
 		VkStencilOp stencilFail = VK_STENCIL_OP_KEEP;
@@ -2040,8 +2046,10 @@ private:
 	};
 	enum : size_t
 	{
-		// An upload up to this size is deferred; a bigger one runs at once.
-		kDeferredUploadMaxBytes = 256 * 1024,
+		// An upload up to this size is deferred; a bigger one runs at once,
+		// waiting for the GPU. 4 MB keeps a frame's lightmap-page update off
+		// that wait (13.5 ms on an Apple TV 4K at 1080p, a missed refresh).
+		kDeferredUploadMaxBytes = 4 * 1024 * 1024,
 		// Texels held back at most; beyond this the pending ones run at once.
 		kPendingUploadCapBytes = 8 * 1024 * 1024
 	};
@@ -2244,6 +2252,8 @@ private:
 	// The draw's raster state with alphaTest off when its alpha reference is
 	// (textured, skin and lightmapped pipelines).
 	static DynRasterState RasterWithAlphaTest( const DynDraw &d );
+	// Raster-key bits for DynRasterState::specCombos + 1 (bits 40-57).
+	static constexpr uint64_t kSpecCombosKeyMask = 0x3FFFF;
 	bool RecordViewAgnostic( const DynDraw &r ) const;
 	bool FirstPassWantsSrgb() const;
 

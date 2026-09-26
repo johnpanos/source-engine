@@ -211,6 +211,26 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(second[1]["mean_ms"], 0.5)
         self.assertEqual(second[1]["median_ms"], 0.0)
 
+    def test_missed_refreshes_count_the_refreshes_without_a_new_frame(self):
+        report = {"passes": [{"summary": {}}, {"summary": {}}]}
+        # Jitter that still shows a frame every refresh, then frames held for
+        # two and three refreshes.
+        pacing.count_missed_refreshes(report, [[20.0, 13.33, 16.67], [16.67, 33.33, 50.0]], 60)
+        self.assertEqual(report["passes"][0]["summary"]["missed_refreshes"], 0)
+        self.assertEqual(report["passes"][1]["summary"]["missed_refreshes"], 3)
+
+    def test_headroom_and_missed_refresh_budgets(self):
+        report = {"passes": [{"hitch_count": 0, "summary": {
+            "frames": 3, "p99_ms": 20.0, "max_ms": 20.0, "missed_refreshes": 2,
+            "gpu_render_p99_ms": 16.5, "cpu_p99_ms": 9.0}}]}
+        failures = pacing.check_budgets(report, {"max_missed_refreshes": 0, "max_gpu_render_p99_ms": 16.0,
+                                                 "max_cpu_p99_ms": 16.0})
+        self.assertEqual(len(failures), 2)
+        self.assertIn("missed 2 refreshes", failures[0])
+        self.assertIn("gpu_render_p99_ms", failures[1])
+        report["passes"][0]["summary"].pop("missed_refreshes")
+        self.assertIn("no missed-refresh count", pacing.check_budgets(report, {"max_missed_refreshes": 0})[0])
+
     def test_two_element_gpu_records_report_no_render_span(self):
         frames = stream([16.7] * 4)
         for position, frame in enumerate(frames):

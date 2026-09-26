@@ -194,10 +194,13 @@ vec3 BlendPixelFog( vec3 color, float factor )
 // for draws whose alpha reference is off: a fragment stage that may discard
 // costs a tiled GPU its hidden-surface removal.
 layout( constant_id = 0 ) const bool kAlphaTest = true;
+// The static combos compiled in (constant_id 1, DynRasterState::specCombos),
+// or -1 to read them from params.y: specialized pipelines drop unused paths.
+layout( constant_id = 1 ) const int kSpecCombos = -1;
 
 void main()
 {
-	const int combos = int( consts.params.y );
+	const int combos = kSpecCombos >= 0 ? kSpecCombos : int( consts.params.y );
 	const int flags = int( consts.params.z );
 	const bool bBaseTexture2 = ( combos & kBaseTexture2 ) != 0;
 	const bool bDetailTexture = ( combos & kDetailTexture ) != 0;

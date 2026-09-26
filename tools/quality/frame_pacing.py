@@ -164,6 +164,7 @@ def summarize(frames):
     }
     if all("cpu" in frame for frame in frames):
         summary["cpu_median_ms"] = round(percentile([f["cpu"] / 1000.0 for f in frames], 0.5), 3)
+        summary["cpu_p99_ms"] = round(percentile([f["cpu"] / 1000.0 for f in frames], 0.99), 3)
     # Where a frame's time went: engine (outside the backend: game, client,
     # material system) against backend (recording, submit, present), and the
     # GPU's own time for the frames whose timestamps resolved in this window.
@@ -352,7 +353,36 @@ def check_budgets(report, budgets):
         failures.append("warm pass p99 %.3f ms exceeds budget %.3f ms" % (warm["summary"]["p99_ms"], budgets["max_p99_ms"]))
     if budgets.get("max_frame_ms") is not None and warm["summary"]["max_ms"] > budgets["max_frame_ms"]:
         failures.append("warm pass max %.3f ms exceeds budget %.3f ms" % (warm["summary"]["max_ms"], budgets["max_frame_ms"]))
+    # Under vsync the frame-start intervals jitter around the refresh period
+    # while every refresh still shows a new frame; what a player sees is the
+    # refreshes that did not (count_missed_refreshes).
+    if budgets.get("max_missed_refreshes") is not None:
+        missed = warm["summary"].get("missed_refreshes")
+        if missed is None:
+            failures.append("warm pass has no missed-refresh count (budget needs refresh_hz)")
+        elif missed > budgets["max_missed_refreshes"]:
+            failures.append("warm pass missed %d refreshes (budget %d)" % (missed, budgets["max_missed_refreshes"]))
+    for key, label in (("max_gpu_render_p99_ms", "gpu_render_p99_ms"), ("max_cpu_p99_ms", "cpu_p99_ms")):
+        if budgets.get(key) is not None:
+            value = warm["summary"].get(label)
+            if value is None:
+                failures.append("warm pass has no %s" % label)
+            elif value > budgets[key]:
+                failures.append("warm pass %s %.3f ms exceeds budget %.3f ms" % (label, value, budgets[key]))
     return failures
+
+
+def count_missed_refreshes(report, frames_by_pass, refresh_hz):
+    """Adds each pass's missed refreshes to its summary: a frame whose interval
+    rounds to n > 1 refresh periods held the screen for n refreshes, n - 1 of
+    them without a new frame. Frame-start jitter (a 20 ms interval, then a
+    13 ms one) rounds to one period and counts nothing."""
+    period_ms = 1000.0 / refresh_hz
+    for entry, intervals in zip(report["passes"], frames_by_pass):
+        if intervals:
+            entry["summary"]["missed_refreshes"] = sum(
+                max(0, round(interval / period_ms) - 1) for interval in intervals)
+            entry["summary"]["refresh_hz"] = refresh_hz
 
 
 def compare(report, baseline):

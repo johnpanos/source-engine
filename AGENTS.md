@@ -917,7 +917,17 @@ Keep the table concise and link details below or from the domain progress file.
       within seconds.
     - An Xbox controller drives it.
     - Missing content triggers an alert.
-  - Not done: the locked-60 fps target, a simulator run, and remote-driven
+  - 60 fps on the Apple TV 4K (2026-09-26): the budget
+    `tvos-portal-frame-pacing-60` in `quality/budgets/render-v1.json` passes on
+    `portal-frame-pacing-v1`. GPU render is 10.4 ms median and 15.8 ms p99, with
+    0 missed refreshes in the warm passes.
+    - Changes: specialized uber-shader combos and alpha test, depth and
+      stencil liveness, and deferred large uploads.
+    - The tvOS defaults are now high textures and models, 16x anisotropic
+      filtering, medium shadows, no bloom and sound on.
+    - The margin is thin, and only one map was measured. See the
+      [record](RFC/0001-native-vulkan-frame-pacing-progress.md#apple-tv-4k-at-60-fps-tvos-profile-2026-09-26).
+  - Not done: other maps at 60 fps, a simulator run, and remote-driven
     menus (out of scope). See the
     [record](RFC/0001-static-composition-progress.md#first-tvos-build-2026-09-25).
 

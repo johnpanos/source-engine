@@ -80,14 +80,33 @@ def budget_limits(row_id, vsync):
     raise DeviceError("no budget row %s in %s" % (row_id, BUDGETS))
 
 
-def engine_arguments(scenario, first_cfg, vsync, extra):
+def pass_intervals(frames, passes):
+    """Each pass's frame intervals (ms), split by the pass marks as analyze() does."""
+    marks = {}
+    for position, frame in enumerate(frames):
+        for mark in filter(None, frame.get("mark", "").split(",")):
+            marks.setdefault(mark, position)
+    result = []
+    for index in range(1, passes + 1):
+        begin, end = marks.get("pass_%d_begin" % index), marks.get("pass_%d_end" % index)
+        window = frames[begin + 1:end + 1] if begin is not None and end is not None else []
+        result.append([frame["interval"] / 1000.0 for frame in window])
+    return result
+
+
+SETTINGS_CFG = "frame_pacing_settings.cfg"
+
+
+def engine_arguments(scenario, first_cfg, vsync, extra, settings=False):
     """The run's arguments, appended by the app root after its own (so after
     the tvOS render defaults). Same pinned presentation as frame_pacing.py,
     except that vsync is a choice: off measures headroom, on measures what a
-    player sees at the display's rate."""
+    player sees at the display's rate. Sound stays on, as a player has it (and
+    volume is archived: a muted run would mute the next ordinary launch)."""
     return (["-vkframestats", STATS_NAME, "-dev"] + list(extra) + [
         "+sv_cheats", "1", "+mat_vsync", "1" if vsync else "0", "+fps_max", "0" if vsync else "1000",
-        "+host_framerate", str(scenario["host_framerate"]), "+volume", "0",
+        "+host_framerate", str(scenario["host_framerate"])] + (
+        ["+exec", SETTINGS_CFG] if settings else []) + [
         "+map", scenario["map"], "+wait", "120", "+exec", first_cfg])
 
 
@@ -102,6 +121,9 @@ def main(argv=None):
     parser.add_argument("--passes", type=int, help="override the scenario's pass count")
     parser.add_argument("--vsync", action="store_true", help="present at the display's rate")
     parser.add_argument("--extra-arg", action="append", default=[], help="another engine argument")
+    parser.add_argument("--setting", action="append", default=[], metavar="CVAR=VALUE",
+                        help="console variable for the run (repeatable), set by a cfg exec'd before the "
+                             "map, which keeps them off the engine's 512-character command line")
     parser.add_argument("--env", action="append", default=[], metavar="KEY=VALUE",
                         help="environment variable for the app process (repeatable)")
     parser.add_argument("--budget-row", help="row id in quality/budgets/render-v1.json to gate the warm pass "
@@ -120,14 +142,19 @@ def main(argv=None):
         parser.error("evidence already exists in %s; use a new output directory" % output)
     content = CONTENT_ROOTS[args.platform]
     cfgs = frame_pacing.scenario_cfgs(frame_pacing.scenario_commands(scenario, passes))
-    arguments = engine_arguments(scenario, next(iter(cfgs)), args.vsync, args.extra_arg)
+    settings = [item.split("=", 1) for item in args.setting]
+    if settings:
+        cfgs = dict(cfgs)
+        cfgs[SETTINGS_CFG] = "".join("%s %s\n" % (key, value) for key, value in settings)
+    arguments = engine_arguments(scenario, next(iter(cfgs)), args.vsync, args.extra_arg, bool(settings))
     evidence = {"schema": frame_pacing.EVIDENCE_SCHEMA, "status": "fail",
                 "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "source": conformance.source_identity(conformance.repo_root()),
                 "transport": {"host": args.host, "device": args.device, "platform": args.platform,
                               "bundle_id": args.bundle_id, "content_root": content},
                 "scenario": {"path": str(args.scenario.resolve()), "id": scenario["id"], "passes": passes},
-                "vsync": args.vsync, "arguments": arguments, "environment": args.env}
+                "vsync": args.vsync, "arguments": arguments, "environment": args.env,
+                "settings": args.setting}
     failures = []
     staging = "/tmp/frame-pacing-device-%s" % output.name
     try:
@@ -175,10 +202,12 @@ def main(argv=None):
         header, frames, truncated = frame_pacing.read_stats(output / STATS_NAME)
         evidence.update(device=header, frames_recorded=len(frames), truncated_lines=truncated)
         report, analysis_failures = frame_pacing.analyze(frames, passes, args.hitch_ratio, args.hitch_floor_ms)
+        budgets = budget_limits(args.budget_row, args.vsync) if args.budget_row else {}
+        if budgets.get("refresh_hz"):
+            frame_pacing.count_missed_refreshes(report, pass_intervals(frames, passes), budgets["refresh_hz"])
         failures.extend(analysis_failures)
         evidence["analysis"] = report
-        evidence["budgets"] = (budget_limits(args.budget_row, args.vsync) if args.budget_row
-                               else scenario.get("budgets", {}))
+        evidence["budgets"] = budgets if args.budget_row else scenario.get("budgets", {})
         evidence["budget_failures"] = frame_pacing.check_budgets(report, evidence["budgets"])
         frame_pacing.print_report(report)
         passes = report["passes"][-1]["summary"].get("gpu_passes") if report["passes"] else None

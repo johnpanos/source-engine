@@ -408,3 +408,88 @@ vertex, still serial) is the largest remaining share of conversion (31 %).
   dropping the flag). The Android launcher is unchanged until Fold7
   measurements exist.
 
+
+## Apple TV 4K at 60 fps (TVOS-PROFILE, 2026-09-26)
+
+The user's target is a locked 60 fps at 1080p on an Apple TV 4K (3rd
+generation, A15, MoltenVK). The budget is the `tvos-portal-frame-pacing-60`
+row of [`quality/budgets/render-v1.json`](../quality/budgets/render-v1.json):
+- **With vsync:** no missed refresh, and no frame over 25 ms.
+- **Headroom:** GPU render p99 and CPU p99 of at most 16 ms.
+
+The row was revised once, with its reasons recorded in it. The Apple TV only
+presents in FIFO, and frame-start jitter is not a missed refresh.
+
+**Tools:**
+- `tools/quality/frame_pacing_device.py` runs `portal-frame-pacing-v1` on the
+  installed app through the Mac. It supports `--setting`, `--env` and
+  `--budget-row`.
+- `-vkgputimers` reports GPU time per pass, copy and capture
+  (`gpu_passes`), and one ordered frame in every 120 (`gpu_sequence`).
+- The frame's `gpu` record gains a render-only span, because the whole span
+  includes the present's wait for vsync.
+
+**Findings and changes, warm pass:**
+
+| Step | GPU render median / p99 (ms) | Frame median (ms) |
+|---|---|---|
+| Baseline (1080p, Low, no MSAA) | 16.3 / 19.5 | 18.4 |
+| Depth and stencil kept only while read (`8b46f5ac`) | 16.35 / 20 | 18.4 |
+| Alpha test compiled out where it cannot fire (`9f12b3c4`) | 15.6 / 19.6 | 17.6 |
+| Bloom off (user's call) | 14.3 / 18.6 | 16.7 |
+| Lightmapped static combos specialized | 11.7 / 16.9 | 16.6 |
+| Skin static combos specialized | 10.0 / 15.4 | 16.7 |
+| Uploads up to 4 MB deferred | 10.0 / 15.1 | 16.7, 0 missed |
+
+- **The bottleneck was fragment-shader cost on a tile-based GPU.** A
+  constant-color lightmapped shader cut GPU render from 14.3 to 7.9 ms.
+  Texture size (`mat_picmip 4`) and lighting (`mat_fullbright`) barely
+  mattered.
+- **Uber-shaders.** Both shaders take their combos and alpha test at run
+  time. That costs hidden-surface removal (a possible `discard`) and
+  occupancy (the widest path's registers). Specialization constants now fix
+  both per pipeline. The alpha-test bit is key bit 39; `specCombos + 1` is
+  bits 40–57.
+- **Missed refresh.** The one remaining missed refresh was a 13.5 ms
+  synchronous texture upload of a lightmap page, above the old 256 KB
+  deferral limit.
+
+**Settings sweep.** A greedy sweep on the device, run against the budget:
+- **Kept:** textures High, models High, 16x anisotropic filtering, shadows
+  Medium.
+- **Rejected:** shader detail High (GPU p99 16.4 ms), color correction (p99
+  18.4 ms), MSAA 2x (18.5 ms) and 4x (21.2 ms).
+- **Crashes:** shadows High ends the app, because flashlight shadow depth is
+  not implemented natively.
+- **Not measured:** water. The map has none.
+
+The kept set is the tvOS default (`launcher_main/ios_main.cpp`, written to
+`tvos_defaults.cfg`, with sound at volume 1).
+
+**Final result (both modes pass):**
+- Warm passes: median 16.7 ms, max 21.1 ms, 0 missed refreshes.
+- GPU render: 10.4 ms median, 15.8 ms p99.
+- CPU p99: 12.2 ms.
+
+**Correctness:** `material_pixel_conformance` covers all 14 families, with
+HDR none and integer, before and after each backend change.
+- **Byte-identical:** depth/stencil liveness, the alpha-test variants and the
+  lightmapped specialization.
+- **The skin specialization:** 1 byte of 196,608 differs by 1 LSB in
+  `modellight` `phong_selfillum` (integer HDR). That is compiler rounding once
+  the combos are constants, and the case still passes against its D3D9
+  reference.
+- **`sky` with integer HDR** fails identically before and after (known).
+
+**Limits:**
+- One scenario and one device. The GPU margin is thin: a vsync run read p99
+  16.05 ms.
+- The tree held another session's uncommitted legacy-shader work (opt-in via
+  `-vklegacyports`) during the later runs.
+- The iOS profile was not re-measured with these changes.
+- Next candidates:
+  - fewer back-buffer re-entries: five per frame, one after each refraction
+    or full-frame copy;
+  - specializing the textured shader and the lightmapped flags;
+  - ASTC textures (R55), since BC is unsupported and DXT is decompressed to
+    RGBA.

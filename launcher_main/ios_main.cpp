@@ -22,6 +22,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "apple_thermal.h"
 #include "mobile_app_root.h"
 #include "static_composition.h"
 #include "tier0/platform.h"
@@ -71,21 +72,26 @@ void ReportMissingContent( const char *contentDir )
 }
 
 #if defined( PLATFORM_TVOS )
-// Apple TV render settings (user direction, 2026-09-26): no MSAA, the Video
-// Advanced dialog's Low values (gameui/OptionsSubVideo.cpp) and no bloom; HDR
-// is left as configured. Exec'd after config.cfg, so a desktop config copied with the
-// content cannot raise them; commandline.txt comes later and can. A cfg
-// rather than '+' arguments keeps the engine's 512-character command line
-// free for commandline.txt.
-const char kTvRenderConfig[] = "tvos_render.cfg";
-const char *const kTvRenderSettings[][2] = {
+// Apple TV defaults (user direction, 2026-09-26): no MSAA, the Video Advanced
+// dialog's values (gameui/OptionsSubVideo.cpp) from Low up to what fits the
+// 60 fps budget, no bloom and sound on; HDR is left as configured. Exec'd
+// after config.cfg, so a desktop config copied with the content cannot
+// override them; commandline.txt comes later and can. A cfg rather than '+'
+// arguments keeps the engine's 512-character command line free for
+// commandline.txt.
+const char kTvDefaultsConfig[] = "tvos_defaults.cfg";
+const char *const kTvDefaults[][2] = {
     { "mat_antialias", "1" },
     { "mat_aaquality", "0" },
-    { "r_rootlod", "2" },
-    { "mat_picmip", "2" },
+    // Raised from the Low preset as far as the 60 fps budget allows (a greedy
+    // sweep on the Apple TV 4K, 2026-09-26): high textures and models, 16x
+    // anisotropic filtering, medium (render-to-texture) shadows. High shader
+    // detail, color correction and MSAA missed the budget.
+    { "r_rootlod", "0" },
+    { "mat_picmip", "0" },
     { "mat_trilinear", "0" },
-    { "mat_forceaniso", "1" },
-    { "r_shadowrendertotexture", "0" },
+    { "mat_forceaniso", "16" },
+    { "r_shadowrendertotexture", "1" },
     { "r_flashlightdepthtexture", "0" },
     { "mat_reducefillrate", "1" },
     { "r_waterforceexpensive", "0" },
@@ -95,22 +101,27 @@ const char *const kTvRenderSettings[][2] = {
     // Bloom's downsample, blur and full-screen composite cost 1.35 ms of the
     // A15's GPU per frame at 1080p (frame_pacing_device.py, 2026-09-26).
     { "mat_disable_bloom", "1" },
+    // Sound on at full game volume (user direction, 2026-09-26): the level is
+    // archived in config.cfg, and a saved 0 (content copied from a desktop,
+    // or a benchmark that muted it) must not silence the TV.
+    { "volume", "1" },
 };
 
 // Rewritten at every start into the game's cfg directory, so the settings
 // above stay their only source.
-bool WriteTvRenderConfig( const char *contentDir )
+bool WriteTvDefaultsConfig( const char *contentDir )
 {
 	char path[PATH_MAX];
-	snprintf( path, sizeof( path ), "%s/%s/cfg/%s", contentDir, IOS_DEFAULT_GAME, kTvRenderConfig );
+	snprintf(
+	    path, sizeof( path ), "%s/%s/cfg/%s", contentDir, IOS_DEFAULT_GAME, kTvDefaultsConfig );
 	FILE *file = fopen( path, "w" );
 	if ( !file )
 	{
-		SDL_Log( "Source: cannot write %s; the Apple TV render settings are not applied", path );
+		SDL_Log( "Source: cannot write %s; the Apple TV defaults are not applied", path );
 		return false;
 	}
 	fputs( "// Written by the app at startup (launcher_main/ios_main.cpp).\n", file );
-	for ( const auto &setting : kTvRenderSettings )
+	for ( const auto &setting : kTvDefaults )
 		fprintf( file, "%s %s\n", setting[0], setting[1] );
 	return fclose( file ) == 0;
 }
@@ -134,6 +145,8 @@ int main( int, char ** )
 	// button: Return (which submits a console or chat line) also hides it, and
 	// a text field hides it when it loses focus or a tap lands outside it.
 	SDL_SetHint( SDL_HINT_RETURN_KEY_HIDES_IME, "1" );
+	// The device's thermal state in the log, on the frame stream's clock.
+	AppleThermal_StartLogging();
 #if defined( PLATFORM_TVOS )
 	// The Siri Remote is not a gamepad here, so it never takes the engine's one
 	// active gamepad slot from a real controller (it sends keys instead).
@@ -217,14 +230,14 @@ int main( int, char ** )
 #if defined( PLATFORM_TVOS )
 	// Apple TV render defaults: 1080p scaled up to a 4K display by the system
 	// (-nohighdpi) and no MSAA at the first mode set, then the settings of
-	// WriteTvRenderConfig after config.cfg.
+	// WriteTvDefaultsConfig after config.cfg.
 	static const char *const kTvLaunchArgs[] = { "-nohighdpi", "-mat_antialias", "1" };
 	for ( const char *arg : kTvLaunchArgs )
 		argv[argc++] = const_cast<char *>( arg );
-	if ( WriteTvRenderConfig( contentDir ) )
+	if ( WriteTvDefaultsConfig( contentDir ) )
 	{
 		argv[argc++] = const_cast<char *>( "+exec" );
-		argv[argc++] = const_cast<char *>( kTvRenderConfig );
+		argv[argc++] = const_cast<char *>( kTvDefaultsConfig );
 	}
 #endif
 

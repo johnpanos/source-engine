@@ -3193,13 +3193,16 @@ uint64_t CVulkanContext::RasterStateKey( const DynRasterState &state )
 	                     ( static_cast<uint32_t>( state.stencilDepthFail ) & 7u ) << 26 |
 	                     ( static_cast<uint32_t>( state.stencilPass ) & 7u ) << 29
 	               : 0u ) |
-	       ( state.alphaWrite ? 1ull << 36 : 0ull ) | ( state.depthBiasEnable ? 1ull << 37 : 0ull ) |
-	       ( state.wireframe ? 1ull << 38 : 0ull ) | ( state.alphaTest ? 0ull : 1ull << 39 );
+	       ( state.alphaWrite ? 1ull << 36 : 0ull ) |
+	       ( state.depthBiasEnable ? 1ull << 37 : 0ull ) | ( state.wireframe ? 1ull << 38 : 0ull ) |
+	       ( state.alphaTest ? 0ull : 1ull << 39 ) |
+	       ( static_cast<uint64_t>( state.specCombos + 1 ) & kSpecCombosKeyMask ) << 40;
 }
 
 // The inverse of RasterStateKey. Bits 32-35 are PipelineKey's pass and sample
-// selection; bits 36-39 belong to the raster state (39 is set when the alpha
-// test is compiled out, so keys stored before it existed keep their meaning).
+// selection; bits 36-57 belong to the raster state (39 is set when the alpha
+// test is compiled out and 40-57 hold specCombos + 1, so keys stored before
+// either existed keep their meaning).
 CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key )
 {
 	const uint32_t k = static_cast<uint32_t>( key );
@@ -3215,6 +3218,7 @@ CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key 
 	state.depthBiasEnable = ( key & ( 1ull << 37 ) ) != 0;
 	state.wireframe = ( key & ( 1ull << 38 ) ) != 0;
 	state.alphaTest = ( key & ( 1ull << 39 ) ) == 0;
+	state.specCombos = static_cast<int>( ( key >> 40 ) & kSpecCombosKeyMask ) - 1;
 	state.cullMode = static_cast<VkCullModeFlags>( ( k >> 17 ) & 3u );
 	state.stencilEnable = ( ( k >> 19 ) & 1u ) != 0;
 	if ( state.stencilEnable )
@@ -3531,16 +3535,29 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	VkPipelineShaderStageCreateInfo stages[2] = { t.stages[0], t.stages[1] };
 	stages[0].module = vert;
 	stages[1].module = frag;
-	// kAlphaTest (constant_id 0) in the fragment stages that have an alpha
-	// test; a stage without that constant ignores the entry.
+	// kAlphaTest (constant_id 0) and kSpecCombos (constant_id 1) in the
+	// fragment stages that declare them; a stage without one ignores its entry.
 	const VkBool32 alphaTest = state.alphaTest ? VK_TRUE : VK_FALSE;
-	const VkSpecializationMapEntry alphaTestEntry = { 0, 0, sizeof( alphaTest ) };
-	VkSpecializationInfo specialization = {};
-	specialization.mapEntryCount = 1;
-	specialization.pMapEntries = &alphaTestEntry;
-	specialization.dataSize = sizeof( alphaTest );
-	specialization.pData = &alphaTest;
+	const int32_t specCombos = state.specCombos;
+	struct
+	{
+		VkBool32 alphaTest;
+		int32_t combos;
+	} specData = { alphaTest, specCombos };
+	VkSpecializationMapEntry specEntries[2] = {};
+	uint32_t specCount = 0;
 	if ( !state.alphaTest )
+		specEntries[specCount++] = {
+		    0, offsetof( decltype( specData ), alphaTest ), sizeof( VkBool32 ) };
+	if ( state.specCombos >= 0 )
+		specEntries[specCount++] = {
+		    1, offsetof( decltype( specData ), combos ), sizeof( int32_t ) };
+	VkSpecializationInfo specialization = {};
+	specialization.mapEntryCount = specCount;
+	specialization.pMapEntries = specEntries;
+	specialization.dataSize = sizeof( specData );
+	specialization.pData = &specData;
+	if ( specCount > 0 )
 		stages[1].pSpecializationInfo = &specialization;
 	VkGraphicsPipelineCreateInfo gp = {};
 	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -7079,7 +7096,11 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			else if ( d.shaderIndex == kDynShaderSkin )
 			{
-				selected = SkinPipeline( RasterWithAlphaTest( d ), openSrgb, passSamples );
+				// The draw's static combos compiled into its pipeline.
+				DynRasterState skinRaster = RasterWithAlphaTest( d );
+				if ( d.skin >= 0 && static_cast<size_t>( d.skin ) < m_dynSkinConstants.size() )
+					skinRaster.specCombos = m_dynSkinConstants[static_cast<size_t>( d.skin )].combos;
+				selected = SkinPipeline( skinRaster, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
 					continue;
@@ -7137,10 +7158,15 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				                       static_cast<size_t>( d.skin ) < m_dynSkinConstants.size() &&
 				                       ( m_dynSkinConstants[static_cast<size_t>( d.skin )].combos &
 				                           kLightmappedPaint ) != 0;
+				// The draw's static combos compiled into its pipeline.
+				DynRasterState lightmappedRaster = RasterWithAlphaTest( d );
+				if ( d.skin >= 0 && static_cast<size_t>( d.skin ) < m_dynSkinConstants.size() )
+					lightmappedRaster.specCombos =
+					    m_dynSkinConstants[static_cast<size_t>( d.skin )].combos;
 				selected = d.worldMesh ? VK_NULL_HANDLE
-				           : paintPass ? LightmappedPaintPipeline( d.raster, openSrgb, passSamples )
-				                       : LightmappedPipeline(
-				                             RasterWithAlphaTest( d ), openSrgb, passSamples );
+				           : paintPass
+				               ? LightmappedPaintPipeline( d.raster, openSrgb, passSamples )
+				               : LightmappedPipeline( lightmappedRaster, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
 					continue;
