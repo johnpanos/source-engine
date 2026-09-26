@@ -1,0 +1,50 @@
+{
+  "schema": "source-ios-product-profile/v1",
+  "id": "portal2-ios-native-vulkan-v1",
+  "extends": "portal-ios-native-vulkan.json",
+  "description": "iOS Portal 2 client: the Portal iOS profile's static composition, pins, SDL3 app shell and native Vulkan renderer over MoltenVK, with the portal2 game target. Built on Linux by build-ios-portal2-app.sh (build-ios-app.sh with this profile); signed and installed on a Mac.",
+  "target": {
+    "product": "portal2-client"
+  },
+  "intent": {
+    "support_scope": "iOS build slice for the separate Portal 2 target (user direction, 2026-09-26: 'build play_p2 but for iOS'). Not platform acceptance: nothing of the Portal iOS profile's device evidence carries over.",
+    "packaging": ".app assembled on Linux, signed and installed on the Mac by ios-deploy.sh --profile with this profile. Licensed retail Portal 2 content (VPKs, loose maps and materials, about 12 GB) is staged from a Steam installation by tools/quality/stage_portal2_runtime.py and copied into the app's Documents separately.",
+    "physics_provider": "vphysics_box3d (Box3D), as in ./play_p2 and the Portal iOS profile (launcher_main/ios_main.cpp)",
+    "video_provider": "none: the Bink provider needs FFmpeg, which no Apple profile pins; the menu uses the staged background image"
+  },
+  "ios": {
+    "bundle_id": "com.panos.sourceengine.portal2",
+    "bundle_id_reason": "A separate app beside Portal (com.panos.sourceengine), so both stay installed with their own Documents. Agent decision, 2026-09-26.",
+    "display_name": "Portal 2 (Source Engine)",
+    "build_directory": "build-ios-p2",
+    "app_bundle": "Portal2.app"
+  },
+  "configure_options": {
+    "build_games": "portal2"
+  },
+  "static_composition": {
+    "additional_required_modules": [
+      "vscript"
+    ],
+    "note": "Portal 2's game modules declare the script manager as a shared app system in static products; the composition root links vscript and binds it (launcher_main/static_composition.cpp)."
+  },
+  "content": {
+    "stage_directory": "build-ios-p2-content",
+    "staging": "tools/quality/stage_portal2_runtime.py --mount-custom: the retail search-path order spelled out in portal2/gameinfo.txt, plus <game>/custom/* for the app's touch icons",
+    "directories": [
+      "platform",
+      "retail_platform",
+      "update",
+      "portal2_dlc2",
+      "portal2_dlc1",
+      "portal2"
+    ]
+  },
+  "evidence": {
+    "status": "unverified",
+    "known_blockers": [
+      "Retail Portal 2 content is about 12 GB on the device"
+    ],
+    "observations": []
+  }
+}

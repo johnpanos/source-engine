@@ -460,6 +460,40 @@ uses the iOS static composition and points at the iOS pins through
   - the engine's joystick connect lines don't reach the `devicectl` console;
   - no frame-time measurement against the 60 fps target.
 
+## iOS Portal 2 build (2026-09-26)
+
+User direction: "let's build play_p2 but for iOS." This is extra product
+scope, like the tvOS profile; it closes no R29 criterion.
+
+- [`portal2-ios-native-vulkan.json`](../quality/product_profiles/portal2-ios-native-vulkan.json)
+  `extends` the Portal iOS profile. It changes the game (`portal2`), the app
+  (`com.panos.sourceengine.portal2`, `build-ios-p2/Portal2.app`) and the
+  content, and it requires the `vscript` module. The pins, SDK and app shell
+  stay in the Portal profile.
+  `tools/quality/profile_extends.py` now owns the `extends` rule for every
+  platform. `android_apk.py` re-exports it, and `build-ios-app.sh` and
+  `ios-deploy.sh --profile` resolve with it.
+- `./build-ios-portal2-app.sh` builds the app, then stages the retail content
+  with `stage_portal2_runtime.py --mount-custom` into `build-ios-p2-content/`.
+  `ios-deploy.sh --profile <it> --with-content` copies the profile's content
+  directories. The Mac now caches content per bundle id, because both games
+  have a `platform/`.
+- Script manager: Portal 2's game modules opened `vscript` by name, which a
+  static product refuses. In static products both game modules now declare it
+  as a shared app system (`SOURCE_STATIC_COMPOSITION` and `PORTAL2`). The
+  composition root binds `VScript_Create()` (`appframework/linked_systems.h`)
+  under `STATIC_COMPOSITION_VSCRIPT`, so the engine composes it. Desktop
+  products are unchanged.
+- Evidence (local): the engine and game compiled for iOS with no source
+  changes beyond the above (3 min 20 s on the warm host). The static check
+  passes with 25 module objects, 23 of them linked entries including
+  `vscript`. `test_apple_product_profiles.py` (3 tests) and the Android
+  profile tests (17) pass.
+- Not done: signing. Xcode on the Mac has no Apple account signed in, so it
+  cannot make a provisioning profile for the new bundle id. The content (about
+  12 GB) is synced to the Mac but not to the phone, and no device run exists.
+  No Bink video (no FFmpeg pin for Apple).
+
 ## Not done
 
 - Device evidence beyond the first boot: the AGENTS.md iOS obligations

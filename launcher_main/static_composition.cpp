@@ -16,6 +16,9 @@
 #include "scenefilecache/ISceneFileCache.h"
 #include "SoundEmitterSystem/isoundemittersystembase.h"
 #include "tier0/dbg.h"
+#if defined( STATIC_COMPOSITION_VSCRIPT )
+#include "vscript/ivscript.h"
+#endif
 
 extern "C"
 {
@@ -31,6 +34,10 @@ bool StaticComposition_BindGame()
 	static const LinkedGameAppSystem s_AppSystems[] = {
 	    { SOUNDEMITTERSYSTEM_INTERFACE_VERSION, SoundEmitterSystem_Create() },
 	    { SCENE_FILE_CACHE_INTERFACE_VERSION, SceneFileCache_Create() },
+#if defined( STATIC_COMPOSITION_VSCRIPT )
+	    // Portal 2's script manager (game/shared/portal2/portal2_vscript_module.h).
+	    { VSCRIPT_INTERFACE_VERSION, VScript_Create() },
+#endif
 	};
 
 	LinkedGameModules modules;

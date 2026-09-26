@@ -2,13 +2,18 @@
 # Sign an unsigned iOS .app built on Linux and install it on the iPhone that is
 # passed through to the macOS VM (see OpenCore-Boot.sh, `ssh macvm`).
 #
-# Copy of ~/src/mac/ios-deploy.sh with source-engine defaults: the app defaults
-# to build-ios/Portal.app (from ./build-ios-app.sh), --with-content sends the
-# game content, and BUNDLE_ID comes from the iOS product profile.
+# Copy of ~/src/mac/ios-deploy.sh with source-engine defaults: the app,
+# BUNDLE_ID and the game content come from the product profile (default the
+# Portal iOS profile: build-ios/Portal.app from ./build-ios-app.sh).
 #
-# usage: ./ios-deploy.sh [path/to/App.app] [--with-content] [--content DIR]... [--sign-only] [--no-launch] [--console]
+# usage: ./ios-deploy.sh [--profile FILE] [path/to/App.app] [--with-content] [--content DIR]... [--sign-only] [--no-launch] [--console]
 #
-#   --with-content  same as --content run/runtime/{platform,portal,hl2}
+#   --profile FILE  product profile ("extends" resolved by
+#                 tools/quality/profile_extends.py), e.g.
+#                 quality/product_profiles/portal2-ios-native-vulkan.json
+#   --with-content  the profile's content: --content for each of its
+#                 content.directories under content.stage_directory, or
+#                 run/runtime/{platform,portal,hl2} when it declares none
 #   --content DIR copy DIR (symlinks followed, bin/ skipped) to the app's
 #                 Documents/<basename DIR> (Library/Caches/<basename DIR> on
 #                 tvOS) before launching; repeatable.
@@ -32,32 +37,58 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")" && pwd)
 PROFILE_JSON=$ROOT/quality/product_profiles/portal-ios-native-vulkan.json
 HOST=${MACVM_HOST:-macvm}
-BUNDLE_ID=${BUNDLE_ID:-$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["ios"]["bundle_id"])' "$PROFILE_JSON")}
-# Entitlements the product asks for when its provisioning profile grants them
-# (the capability is enabled for the App ID in Xcode); signing never fails
-# for one the profile lacks.
-OPTIONAL_ENTITLEMENTS=$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["ios"].get("optional_entitlements", [])))' "$PROFILE_JSON")
 TEAM=${TEAM_ID:-25GCRLE3DX}
 KEYCHAIN_PW=${MACVM_KEYCHAIN_PW:-john}
 DEVICE=""
 
-APP="$ROOT/build-ios/Portal.app"
+APP=""
 MODE=launch
 CONTENT=()
+WITH_CONTENT=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --with-content) for g in platform portal hl2; do CONTENT+=("$ROOT/run/runtime/$g"); done ;;
+    --profile) PROFILE_JSON=$(realpath "${2:?--profile needs a file}"); shift ;;
+    --with-content) WITH_CONTENT=1 ;;
     --content) [ -d "${2:-}" ] || { echo "--content needs a directory" >&2; exit 2; }; CONTENT+=("${2%/}"); shift ;;
     --device) DEVICE=${2:?--device needs a value}; shift ;;
     --sign-only) MODE=sign ;;
     --no-launch) MODE=install ;;
     --console) MODE=console ;;
-    -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
     *) APP=${1%/} ;;
   esac
   shift
 done
-[ -n "$APP" ] && [ -f "$APP/Info.plist" ] || { echo "usage: $0 [path/to/App.app] [--with-content] [--content DIR]... [--sign-only|--no-launch|--console]" >&2; exit 2; }
+
+# profile_value PYTHON_EXPRESSION: a fact from the resolved profile `p`.
+profile_value() {
+  python3 - "$ROOT" "$PROFILE_JSON" "$1" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1] + "/tools/quality")
+from profile_extends import load_profile
+p = load_profile(sys.argv[2])
+os_keys = p[p["target"]["os"]]
+print(eval(sys.argv[3], {"p": p, "os_keys": os_keys}))
+PY
+}
+BUNDLE_ID=${BUNDLE_ID:-$(profile_value 'os_keys["bundle_id"]')}
+# Entitlements the product asks for when its provisioning profile grants them
+# (the capability is enabled for the App ID in Xcode); signing never fails
+# for one the profile lacks.
+OPTIONAL_ENTITLEMENTS=$(profile_value '" ".join(os_keys.get("optional_entitlements", []))')
+[ -n "$APP" ] || APP="$ROOT/$(profile_value 'os_keys["build_directory"] + "/" + os_keys["app_bundle"]')"
+if [ "$WITH_CONTENT" = 1 ]; then
+  STAGE=$(profile_value 'p.get("content", {}).get("stage_directory", "")')
+  if [ -n "$STAGE" ]; then
+    for g in $(profile_value '" ".join(p["content"]["directories"])'); do
+      [ -d "$ROOT/$STAGE/$g" ] || { echo "missing $ROOT/$STAGE/$g (stage the content first)" >&2; exit 2; }
+      CONTENT+=("$ROOT/$STAGE/$g")
+    done
+  else
+    for g in platform portal hl2; do CONTENT+=("$ROOT/run/runtime/$g"); done
+  fi
+fi
+[ -n "$APP" ] && [ -f "$APP/Info.plist" ] || { echo "usage: $0 [--profile FILE] [path/to/App.app] [--with-content] [--content DIR]... [--sign-only|--no-launch|--console]" >&2; exit 2; }
 
 NAME=$(basename "$APP")
 # iPhoneOS -> iOS, AppleTVOS -> tvOS (the names devicectl and provisioning profiles use).
@@ -73,14 +104,15 @@ if [ -n "$WANT" ] && [ "$WANT" != "$PLATFORM" ]; then
 fi
 echo "==> $NAME is built for $PLATFORM"
 echo "==> Copying $NAME to $HOST"
-ssh "$HOST" mkdir -p deploy/content
+# Content is cached per app on the Mac: Portal and Portal 2 both have platform/.
+ssh "$HOST" mkdir -p "deploy/content/$BUNDLE_ID"
 rsync -a --delete "$APP/" "$HOST:deploy/$NAME/"
 
 CONTENT_NAMES=""
 if [ "$MODE" != sign ]; then
   for dir in "${CONTENT[@]}"; do
     echo "==> Syncing content $(basename "$dir")/ to $HOST"
-    rsync -aL --delete --exclude=/bin/ "$dir/" "$HOST:deploy/content/$(basename "$dir")/"
+    rsync -aL --delete --exclude=/bin/ "$dir/" "$HOST:deploy/content/$BUNDLE_ID/$(basename "$dir")/"
     CONTENT_NAMES+="$(basename "$dir") "
   done
 fi
@@ -204,7 +236,7 @@ CONTENT_ROOT=Documents
 for c in $CONTENT_NAMES; do
   echo "==> Copying content $c/ to $CONTENT_ROOT/$c (unchanged files skipped)"
   xcrun devicectl device copy to --device "$DEVICE" --domain-type appDataContainer \
-    --domain-identifier "$BUNDLE_ID" --source "$HOME/deploy/content/$c" --destination "$CONTENT_ROOT/$c" --quiet
+    --domain-identifier "$BUNDLE_ID" --source "$HOME/deploy/content/$BUNDLE_ID/$c" --destination "$CONTENT_ROOT/$c" --quiet
 done
 
 case "$MODE" in

@@ -16,6 +16,14 @@ def configure(conf):
 	conf.env.GAMES = conf.options.GAMES
 
 def build(bld):
+	# Game-specific modules a static composition root links and binds:
+	# Portal 2's script manager (static_composition.cpp).
+	game_libs = []
+	game_defines = []
+	if bld.env.STATIC_COMPOSITION and bld.env.GAMES == 'portal2':
+		game_libs += ['vscript']
+		game_defines += ['STATIC_COMPOSITION_VSCRIPT']
+
 	if bld.env.ANDROID_SDL3:
 		# SDLActivity's native entry: libmain.so exporting SDL_main.
 		bld.shlib(
@@ -42,9 +50,9 @@ def build(bld):
 			name     = PROJECT_NAME,
 			features = 'c cxx cxxprogram',
 			includes = ['../public', '../public/tier0', '../public/tier1'],
-			defines  = ['IOS_DEFAULT_GAME="%s"' % bld.env.GAMES],
+			defines  = ['IOS_DEFAULT_GAME="%s"' % bld.env.GAMES] + game_defines,
 			use      = ['launcher', 'client', 'server', 'GameUI', 'scenefilecache',
-				'soundemittersystem', 'tier0', 'SDL3', 'FOUNDATION'],
+				'soundemittersystem', 'tier0', 'SDL3', 'FOUNDATION'] + game_libs,
 			install_path = bld.env.BINDIR,
 			idx      = bld.get_taskgen_count()
 		)
@@ -62,7 +70,8 @@ def build(bld):
 		source += ['static_composition.cpp']
 		includes += ['../public/tier0', '../public/tier1']
 		libs += ['launcher', 'client', 'server', 'GameUI', 'scenefilecache',
-			'soundemittersystem']
+			'soundemittersystem'] + game_libs
+		defines += game_defines
 
 	if bld.env.DEST_OS != 'win32':
 		libs += [ 'DL', 'LOG' ]

@@ -3470,6 +3470,10 @@ public:
 	{
 		AddAppSystem( "soundemittersystem" DLL_EXT_STRING, SOUNDEMITTERSYSTEM_INTERFACE_VERSION );
 		AddAppSystem( "scenefilecache" DLL_EXT_STRING, SCENE_FILE_CACHE_INTERFACE_VERSION );
+#if defined( PORTAL2 ) && defined( SOURCE_STATIC_COMPOSITION )
+		// Linked in and composed by the engine (portal2_vscript_module.h).
+		AddAppSystem( "vscript" DLL_EXT_STRING, VSCRIPT_INTERFACE_VERSION );
+#endif
 	}
 
 	virtual int	Count()

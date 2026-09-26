@@ -101,4 +101,9 @@ CScriptManager g_ScriptManager;
 
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CScriptManager, IScriptManager, VSCRIPT_INTERFACE_VERSION, g_ScriptManager );
 
-
+// Typed construction entry for statically composed products
+// (appframework/linked_systems.h), which cannot open this module by name.
+DLL_EXPORT IScriptManager *VScript_Create()
+{
+	return &g_ScriptManager;
+}

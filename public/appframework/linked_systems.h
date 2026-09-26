@@ -24,6 +24,7 @@ class IMDLCache;
 class IStudioDataCache;
 class IStudioRender;
 class IVideoServices;
+class IScriptManager;
 namespace vgui
 {
 class IVGui;
@@ -49,6 +50,7 @@ extern "C"
 	vgui::IVGui *VGui_Create();
 	vgui::ISurface *VGuiSurface_Create();
 	IVideoServices *VideoServices_Create();
+	IScriptManager *VScript_Create();
 }
 
 #endif // APPFRAMEWORK_LINKED_SYSTEMS_H

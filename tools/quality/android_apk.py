@@ -35,6 +35,9 @@ import sys
 import zipfile
 from pathlib import Path
 
+# The "extends" rule is shared by every platform's product profiles.
+from profile_extends import load_profile, merge_profile  # noqa: F401 (re-exported)
+
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / "quality/product_profiles/portal-android-native-vulkan.json"
 
@@ -63,31 +66,6 @@ VARIANTS = ("debug", "release")
 
 # public/vtf/vtf.h: IMAGE_FORMAT_RGBA8888 and its bytes per pixel.
 VTF_RGBA8888 = 0
-
-
-def merge_profile(base, derived):
-    """derived over base: objects merge key by key, any other value replaces."""
-    merged = dict(base)
-    for key, value in derived.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = merge_profile(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
-def load_profile(path):
-    """A product profile, with its "extends" chain (paths relative to it) resolved.
-
-    A derived product (another game in the same app shell) names the profile
-    that owns the shared pins instead of copying them.
-    """
-    path = Path(path).resolve()
-    profile = json.loads(path.read_text())
-    parent = profile.pop("extends", None)
-    if parent is None:
-        return profile
-    return merge_profile(load_profile(path.parent / parent), profile)
 
 
 class Failures:

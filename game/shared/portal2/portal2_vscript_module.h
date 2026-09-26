@@ -10,6 +10,11 @@
 //          Portal2_DisconnectScriptManager(). An engine-provided manager stays
 //          owned by the engine and is only borrowed.
 //
+//          A statically composed product (iOS) cannot open modules by name, so
+//          there both game modules declare vscript as a shared app system and
+//          the composition root links it (launcher_main/static_composition.cpp);
+//          the engine then provides the manager.
+//
 //          Client and server each own one reference to the shared library. The
 //          manager is stateless apart from its tier1 connection, so the first
 //          of them to disconnect leaves VMs created afterwards without the

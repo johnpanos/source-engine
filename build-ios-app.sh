@@ -84,6 +84,14 @@ for tool in jq curl sha256sum tar cmake ninja python3 pkg-config; do
 	need "$tool"
 done
 [ -f "$PROFILE" ] || die "missing profile $PROFILE"
+# The profile with its "extends" chain resolved (a derived product such as
+# Portal 2 names the profile that owns the shared pins); profile_extends.py
+# owns the rule.
+PROFILE_SOURCE="$PROFILE"
+PROFILE="$(mktemp --suffix=.json)"
+trap 'rm -f "$PROFILE"' EXIT
+python3 "$ROOT/tools/quality/profile_extends.py" resolve "$PROFILE_SOURCE" > "$PROFILE" ||
+	die "could not resolve $PROFILE_SOURCE"
 p() { jq -er "$1" "$PROFILE"; }
 
 # pin_profile JQ_PATH: the profile that owns a pin, following pin_source.
@@ -379,10 +387,12 @@ WAFLOCK="$LOCK" ./waf build -j "$JOBS" --targets=hl2_launcher 2>&1 | tee "$OUT/b
 EXECUTABLE="$WAF_OUT/launcher_main/hl2_launcher"
 
 # Every first-party module is linked in and isolated; no first-party dylib.
+# A game's own modules (Portal 2's vscript) come from its profile.
+required=(launcher engine client server GameUI filesystem_stdio materialsystem shaderapivulkan vphysics)
+mapfile -t -O "${#required[@]}" required < \
+	<(jq -r '.static_composition.additional_required_modules // [] | .[]' "$PROFILE")
 python3 "$ROOT/tools/quality/static_composition.py" check --tree "$WAF_OUT" \
-	--program launcher_main/hl2_launcher --require launcher --require engine \
-	--require client --require server --require GameUI --require filesystem_stdio \
-	--require materialsystem --require shaderapivulkan --require vphysics ||
+	--program launcher_main/hl2_launcher $(printf -- '--require %s ' "${required[@]}") ||
 	die "the static composition check failed"
 
 # ---------------------------------------------------------------------------
