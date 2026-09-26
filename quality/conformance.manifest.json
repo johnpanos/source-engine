@@ -490,6 +490,82 @@
       "expect": "pass"
     },
     {
+      "id": "platform.dynamic_library.posix",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R07",
+      "contract": "public/platform/contracts/dynamic_library.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Native POSIX loader provider against a real fixture shared library built by the runner: the shared loader, isolation and scoped-ownership oracles, plus the fixture function's real result, a non-library file (provider error) and a bare name that must not be searched for.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-DNDEBUG",
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread",
+        "-ldl"
+      ],
+      "units": [
+        {
+          "id": "fixture",
+          "dialect": "cxx20",
+          "link": "shared",
+          "sources": [
+            "unittests/platformtest/dynamic_library_posix/fixture_library.cpp"
+          ]
+        },
+        {
+          "id": "test",
+          "dialect": "cxx20",
+          "sources": [
+            "unittests/platformtest/dynamic_library_posix/test_dynamic_library_posix.cpp",
+            "platform/posix/dynamic_library_provider.cpp"
+          ]
+        }
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.dynamic_library.posix.live-at-destroy",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R07",
+      "contract": "public/platform/contracts/dynamic_library.h",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "Destroying the POSIX loader while it owns a library must abort.",
+      "expected_signal": 6,
+      "extra_flags": [
+        "-DNDEBUG",
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread",
+        "-ldl"
+      ],
+      "units": [
+        {
+          "id": "fixture",
+          "dialect": "cxx20",
+          "link": "shared",
+          "sources": [
+            "unittests/platformtest/dynamic_library_posix/fixture_library.cpp"
+          ]
+        },
+        {
+          "id": "test",
+          "dialect": "cxx20",
+          "sources": [
+            "unittests/platformtest/dynamic_library_posix/test_dynamic_library_posix_live.cpp",
+            "platform/posix/dynamic_library_provider.cpp"
+          ]
+        }
+      ],
+      "expect": "crash"
+    },
+    {
       "id": "platform.clock",
       "domain": "Q-FOUNDATION",
       "rfc": "0001",

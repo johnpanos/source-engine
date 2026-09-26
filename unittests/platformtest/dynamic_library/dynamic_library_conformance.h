@@ -12,6 +12,8 @@
 #include "platform/contracts/dynamic_library.h"
 
 #include <cstdio>
+#include <type_traits>
+#include <utility>
 
 namespace platformtest
 {
@@ -252,6 +254,98 @@ inline ConformanceReport RunDynamicLibraryIsolationConformance(
 		second.Unload( secondLibrary );
 	}
 	PT_CHECK( r, second.LiveLibraryCount() == 0 );
+	return r;
+}
+
+// Scoped ownership (platform::LoadedLibrary): each value releases exactly its
+// own library, on scope exit, reset, and move-assignment over a live value.
+static_assert( !std::is_copy_constructible_v<platform::LoadedLibrary> );
+static_assert( !std::is_copy_assignable_v<platform::LoadedLibrary> );
+static_assert( std::is_nothrow_move_constructible_v<platform::LoadedLibrary> );
+static_assert( std::is_nothrow_move_assignable_v<platform::LoadedLibrary> );
+
+inline ConformanceReport RunScopedLibraryConformance(
+    platform::IDynamicLibraryLoader &loader, const DynLibFixture &fx )
+{
+	using platform::DynamicLibraryOp;
+	using platform::DynamicLibraryStatus;
+	using platform::LoadedLibrary;
+	ConformanceReport r;
+	PT_CHECK( r, loader.LiveLibraryCount() == 0 );
+	{
+		auto loaded = platform::LoadScoped( loader, fx.validPath );
+		PT_CHECK( r, loaded.HasValue() );
+		PT_CHECK( r, loader.LiveLibraryCount() == 1 );
+		if ( loaded )
+		{
+			PT_CHECK( r, static_cast<bool>( loaded.Value() ) );
+			PT_CHECK( r, loaded.Value().FindSymbol( fx.validSymbol ) != nullptr );
+		}
+	}
+	PT_CHECK( r, loader.LiveLibraryCount() == 0 );
+
+	auto missing = platform::LoadScoped( loader, fx.missingPath );
+	PT_CHECK( r, !missing.HasValue() );
+	if ( !missing )
+	{
+		PT_CHECK( r, missing.Error().status == DynamicLibraryStatus::kNotFound );
+		PT_CHECK( r, missing.Error().operation == DynamicLibraryOp::kLoad );
+		PT_CHECK( r, missing.Error().requested == fx.missingPath );
+	}
+	PT_CHECK( r, loader.LiveLibraryCount() == 0 );
+
+	LoadedLibrary empty;
+	platform::DynamicLibraryError error = PreviousFailure();
+	PT_CHECK( r, !empty && empty.Get() == nullptr );
+	PT_CHECK( r, empty.FindSymbol( fx.validSymbol, &error ) == nullptr );
+	PT_CHECK( r, error.status == DynamicLibraryStatus::kInvalidArgument );
+	empty.Reset();
+
+	LoadedLibrary first( loader, loader.Load( fx.validPath, nullptr ) );
+	LoadedLibrary second( loader, loader.Load( fx.validPath, nullptr ) );
+	PT_CHECK( r, first && second && loader.LiveLibraryCount() == 2 );
+	// A provider that hands both requests one library is caught here; the
+	// release sequence below would then free a library still held, so it is
+	// only exercised on distinct ownership.
+	const bool distinct = first.Get() != second.Get();
+	PT_CHECK( r, distinct );
+	LoadedLibrary moved( std::move( first ) );
+	PT_CHECK( r, !first && moved && loader.LiveLibraryCount() == 2 );
+	if ( distinct )
+	{
+		moved = std::move( second ); // releases the library moved held
+		PT_CHECK( r, !second && moved && loader.LiveLibraryCount() == 1 );
+		LoadedLibrary &alias = moved;
+		moved = std::move( alias ); // self-move keeps ownership
+		PT_CHECK( r, moved && loader.LiveLibraryCount() == 1 );
+		if ( loader.LiveLibraryCount() == 1 )
+		{
+			PT_CHECK( r, moved.FindSymbol( fx.validSymbol ) != nullptr );
+		}
+		moved.Reset();
+		PT_CHECK( r, !moved && loader.LiveLibraryCount() == 0 );
+		moved.Reset();
+		PT_CHECK( r, loader.LiveLibraryCount() == 0 );
+	}
+	else
+	{
+		// Release the one aliased library once and drop the second reference.
+		moved.Reset();
+		static_cast<void>( second.Release() );
+	}
+
+	// Release hands ownership back to the caller without unloading.
+	LoadedLibrary held( loader, loader.Load( fx.validPath, nullptr ) );
+	platform::IDynamicLibrary *released = held.Release();
+	PT_CHECK( r, released != nullptr && !held && loader.LiveLibraryCount() == 1 );
+	held.Reset();
+	PT_CHECK( r, loader.LiveLibraryCount() == 1 );
+	loader.Unload( released );
+	PT_CHECK( r, loader.LiveLibraryCount() == 0 );
+
+	// A value built from a failed load is empty and releases nothing.
+	LoadedLibrary failed( loader, loader.Load( fx.missingPath, nullptr ) );
+	PT_CHECK( r, !failed && loader.LiveLibraryCount() == 0 );
 	return r;
 }
 

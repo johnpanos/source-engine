@@ -630,50 +630,46 @@ bool SaveGame( const char *pSaveFilename, bool bIsXSave, char *pOutName, int nOu
 }
 
 //-----------------------------------------------------------------------------
-// Unsupported engine features
+// Paint maps (the engine's IEnginePaint, through portal2_shared_compat)
 //-----------------------------------------------------------------------------
 bool HasPaintmap()
 {
-	PORTAL2_UNSUPPORTED( "paint maps" );
-	return false;
+	return Portal2_HasPaintmap();
 }
 
 bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color, float flSphereRadius, float flPaintCoatPercent )
 {
-	PORTAL2_UNSUPPORTED( "paint maps" );
-	return false;
+	return Portal2_SpherePaintSurface( pModel, vPosition, color, flSphereRadius, flPaintCoatPercent );
 }
 
 void SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColors )
 {
-	PORTAL2_UNSUPPORTED( "paint maps" );
-	surfColors.RemoveAll();
+	Portal2_SphereTracePaintSurface( pModel, vPosition, vContactNormal, flSphereRadius, surfColors );
 }
 
 void RemoveAllPaint()
 {
-	PORTAL2_UNSUPPORTED( "paint maps" );
+	Portal2_RemoveAllPaint();
 }
 
 void PaintAllSurfaces( unsigned char color )
 {
-	PORTAL2_UNSUPPORTED( "paint maps" );
+	Portal2_PaintAllSurfaces( color );
 }
 
 void RemovePaint( const model_t *pModel )
 {
-	PORTAL2_UNSUPPORTED( "paint maps" );
+	Portal2_RemovePaint( pModel );
 }
 
-void LoadPaintmapData( const CUtlVector<unsigned char> &data, int nPaintmapID, int nPaintmapOffset )
+void LoadPaintmapDataRLE( const CUtlVector<uint32> &data )
 {
-	PORTAL2_UNSUPPORTED( "paint maps" );
+	Portal2_LoadPaintmapDataRLE( data );
 }
 
-void LoadPaintSurfBits( const CVarBitVec &paintSurfBits )
-{
-	PORTAL2_UNSUPPORTED( "paint maps" );
-}
+//-----------------------------------------------------------------------------
+// Unsupported engine features
+//-----------------------------------------------------------------------------
 
 bool IsTransitioningToLoad()
 {

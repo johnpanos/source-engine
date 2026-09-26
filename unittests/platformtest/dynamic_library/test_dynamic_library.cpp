@@ -91,6 +91,14 @@ int main()
 		rc |= platformtest::ReportConformance( "test_dynamic_library[no-load supported]", r );
 	}
 	{
+		platformtest::CFakeDynamicLibraryLoader loader( MakeDefs(), /*supportsNoLoad=*/false );
+		const platformtest::ConformanceReport r =
+		    platformtest::RunScopedLibraryConformance( loader, fx );
+		checks += r.checks;
+		failures += r.failures;
+		rc |= platformtest::ReportConformance( "test_dynamic_library[scoped ownership]", r );
+	}
+	{
 		platformtest::CFakeDynamicLibraryLoader first( MakeDefs(), false );
 		platformtest::CFakeDynamicLibraryLoader second( MakeDefs(), true );
 		const platformtest::ConformanceReport r =

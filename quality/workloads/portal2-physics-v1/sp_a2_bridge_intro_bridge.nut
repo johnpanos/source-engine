@@ -25,7 +25,8 @@ QA_Do( "setup", function()
 	local bridge = Entities.FindByClassname( null, "projected_wall_entity" )
 	::BR.bridge <- bridge
 	if ( bridge != null )
-		QA_Log( "bridge at " + QA_Vec( bridge.GetOrigin() ) + " center " + QA_Vec( bridge.GetCenter() ) )
+		QA_Log( "bridge at " + QA_Vec( bridge.GetOrigin() ) + " center " + QA_Vec( bridge.GetCenter() ) +
+		        " mins " + QA_Vec( bridge.GetBoundingMins() ) + " maxs " + QA_Vec( bridge.GetBoundingMaxs() ) )
 	local under = PH_Ray( ::BR.projector + Vector( 200, 0, 64 ), Vector( 0, 0, -1 ), 4000.0 )
 	QA_Log( format( "trace down from above the bridge hits after %.1f", under ) )
 }, 1.0 )
@@ -37,11 +38,11 @@ QA_Expect( "bridge.exists", function()
 	return bridge != null
 } )
 
-// 1. The player dropped from 64 units above the bridge, 200 units out.
+// 1. The player dropped 40 units onto the bridge, 400 units out.
 QA_Do( "drop the player on the bridge", function()
 {
 	local p = QA_Player()
-	p.SetOrigin( ::BR.projector + Vector( 200, 0, 64 ) )
+	p.SetOrigin( ::BR.projector + Vector( 400, 0, 40 ) )
 	p.SetVelocity( Vector( 0, 0, 0 ) )
 	QA_SetView( 0.0, 0.0 )
 	PH_Track( "player", p, 2.0, false )
@@ -136,6 +137,25 @@ QA_Expect( "button.release_count", function()
 {
 	PH_Flag( "button.ok_released", QA_Fired( "button", "OnUnPressed" ) >= 1 )
 	PH_Metric( "button.presses", QA_Fired( "button", "OnPressed" ) )
+	return true
+} )
+
+// 5. Last, the player put 64 units above the bridge 200 units out overlaps a
+// solid that sits there (it also holds a dropped cube at z 144): retail
+// leaves a stuck player where it was put.
+QA_Do( "put the player into the solid", function()
+{
+	local p = QA_Player()
+	p.SetOrigin( ::BR.projector + Vector( 200, 0, 64 ) )
+	p.SetVelocity( Vector( 0, 0, 0 ) )
+	QA_SetView( 0.0, 0.0 )
+	PH_Track( "stuck", p, 1.5, false )
+}, 1.7 )
+QA_Expect( "stuck.held", function()
+{
+	local rest = BR_Rest( "stuck" )
+	PH_Metric( "stuck.sink", ::BR.projector.z + 64.0 - rest.pos.z )
+	QA_Detail( "rest " + QA_Vec( rest.pos ) )
 	return true
 } )
 

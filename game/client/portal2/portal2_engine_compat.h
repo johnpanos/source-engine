@@ -410,18 +410,19 @@ namespace Portal2Engine
 	// queued; pOutName receives the save file name, pOutComment is cleared.
 	bool SaveGame( const char *pSaveFilename, bool bIsXSave, char *pOutName, int nOutNameSize, char *pOutComment, int nOutCommentSize );
 
+	// Paint maps: forwarded to the engine's IEnginePaint (portal2_shared_compat.h).
+	bool HasPaintmap();
+	bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color, float flSphereRadius, float flPaintCoatPercent );
+	void SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColors );
+	void RemoveAllPaint();
+	void PaintAllSurfaces( unsigned char color );
+	void RemovePaint( const model_t *pModel );
+	// The engine's paint records for a joining client (GetPaintmapDataRLE on the server).
+	void LoadPaintmapDataRLE( const CUtlVector<uint32> &data );
+
 	//-------------------------------------------------------------------------
 	// Unsupported by this engine: documented result plus a one-time DevWarning.
 	//-------------------------------------------------------------------------
-	bool HasPaintmap();															// false: no paint maps
-	bool SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color, float flSphereRadius, float flPaintCoatPercent );	// false: nothing painted
-	void SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal, float flSphereRadius, CUtlVector<unsigned char> &surfColors );	// leaves surfColors empty
-	void RemoveAllPaint();														// no-op
-	void PaintAllSurfaces( unsigned char color );								// no-op
-	void RemovePaint( const model_t *pModel );									// no-op
-	void LoadPaintmapData( const CUtlVector<unsigned char> &data, int nPaintmapID, int nPaintmapOffset );	// no-op
-	void LoadPaintSurfBits( const CVarBitVec &paintSurfBits );					// no-op
-
 	bool IsTransitioningToLoad();							// false: the engine gives no transition state
 	void HideLoadingPlaque();								// no-op: the engine owns the loading plaque
 	void SetBlurFade( float flScale );						// no-op: no engine-side GameUI blur

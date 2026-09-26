@@ -474,7 +474,11 @@ public:
 		kLightmappedBaseTextureNoEnvmap = 2048,
 		kLightmappedBaseTexture2NoEnvmap = 4096,
 		kLightmappedBumpMask = 8192,
-		kLightmappedMaskedBlending = 16384
+		kLightmappedMaskedBlending = 16384,
+		// Portal 2's paint pass (LightmappedPaint, shaders/lightmappedpaint.frag)
+		// on the lightmapped layout, and its THICKPAINT combo.
+		kLightmappedPaint = 32768,
+		kLightmappedPaintThick = 65536
 	};
 	// screenspace_post.frag's passes (SkinConstants::combos).
 	enum
@@ -487,6 +491,10 @@ public:
 	// or the skin push block; LightmappedGeneric then keeps the textured
 	// pipeline's flat-lightmap approximation.
 	bool LightmappedPipelineSupported() const { return m_lightmappedVert != VK_NULL_HANDLE; }
+	bool LightmappedPaintPipelineSupported() const
+	{
+		return m_lightmappedVert != VK_NULL_HANDLE && m_lightmappedPaintFrag != VK_NULL_HANDLE;
+	}
 	// False without the skin layout or a volume texture fallback; the post
 	// passes are then declined.
 	bool PostPipelineSupported() const
@@ -1616,6 +1624,7 @@ private:
 		kPipelineLightmapped = 7,
 		kPipelinePost = 8,
 		kPipelinePaintBlob = 9,
+		kPipelineLightmappedPaint = 10,
 		kPipelineFamilies
 	};
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
@@ -1662,6 +1671,12 @@ private:
 	VkPipelineVertexInputStateCreateInfo m_lightmappedVin = {};
 	bool InitLightmappedPipeline( std::string *outError );
 	void DestroyLightmappedPipeline();
+	// Portal 2's paint on world surfaces: lightmappedpaint.frag on the
+	// lightmapped layout and vertex stage (kLightmappedPaint draws).
+	std::map<uint64_t, VkPipeline> m_lightmappedPaintPipelines;
+	VkPipeline LightmappedPaintPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
+	VkShaderModule m_lightmappedPaintFrag = VK_NULL_HANDLE;
 	// The bloom and color-correction passes on the skin layout (s0..s5 and the
 	// constants); samplers 2..5 are volumes, with a 1x1x1 white fallback.
 	std::map<uint64_t, VkPipeline> m_postPipelines;

@@ -92,6 +92,8 @@ SHADERS = (
     ("g_solidEnergyFragSpv", "solidenergy.frag", []),
     # Portal 2 paint blobs (paintblob_ps20b), after skin.vert.
     ("g_paintBlobFragSpv", "paintblob.frag", []),
+    # Portal 2 paint on world surfaces (lightmappedpaint_ps20b), after lightmapped.vert.
+    ("g_lightmappedPaintFragSpv", "lightmappedpaint.frag", []),
     ("g_modelPbrFragSpv", "model_pbr.frag", []),
     ("g_modelPbrEnvFragSpv", "model_pbr.frag", ["-DENV_CUBE"]),
     ("g_modelPbrIndirectFragSpv", "model_pbr.frag", ["-DINDIRECT_VIEW"]),
@@ -114,7 +116,8 @@ HEADER = """//========= Copyright Valve Corporation, All rights reserved. ======
 //          portal_refract_vs20.fxc / portal_refract_ps2x.fxc) and VertexLitGeneric's
 //          $phong path (skin_vs20.fxc / skin_ps20b.fxc), SolidEnergy
 //          (solidenergy_vs20.fxc / solidenergy_ps20b.fxc), paint blobs
-//          (paintblob_ps20b.fxc), PBRMetalRough on
+//          (paintblob_ps20b.fxc), paint on world surfaces
+//          (lightmappedpaint_ps2x.fxc), PBRMetalRough on
 //          models (model_pbr.frag, both probe sources), and the RFC 0007
 //          synthetic PBR direct-light pixel stage, the WMSH PBR and glass
 //          stages, and the present-time monitor gamma pass. GENERATED

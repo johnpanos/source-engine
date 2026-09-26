@@ -24,9 +24,11 @@ uncommitted, behavior-preserving refinements to the telemetry sources): all
 architecture-checker tests pass; `check --all`, `baseline --verify`, and
 `inventory --verify` all pass.
 
-Current state (2026-09-25): the freeze is still installed and in CI, but the
-tree no longer matches it. The Phase A work items remain complete; the ratchet
-now needs reviewed classification (owned by R04 and R07), never a blind rewrite.
+Current state (2026-09-25, morning; superseded the same day): the freeze was
+still installed and in CI, but the tree no longer matched it. R04-DRIFT and
+R07-INVENTORY below reconciled it by reviewed classification. `check --all`,
+`baseline --verify` and `inventory --verify` pass again. The bullets below
+record the drift as found.
 
 - `check --all` and `baseline --verify` fail with 64 new occurrences and 1
   stale one. They are 50 `ARCH105` and 14 `ARCH101`–`ARCH103`. Most are in the
@@ -591,6 +593,174 @@ Still open for R07: the telemetry cases for failed, duplicate and nested
 requests (the concurrent and nested tests now run to completion), the legacy
 bridge, and fake/native suites. No TSan run of tier0 was made; the logger
 race is fixed by construction and shown by the repeated runs.
+
+## R07-NATIVE: native POSIX loader provider, scoped ownership and load-site observer (slice done, 2026-09-25)
+
+RFC 0001 rank 4 asks for scoped native-library ownership, structured load
+errors, load-site telemetry, a private loader provider and `Sys_*`
+compatibility adapters. Before this slice, `platform.dynamic_library.v1` had
+only a deterministic test backend. This slice adds the provider, the scoped
+value and the telemetry seam. The `Sys_*` adapter is the next slice.
+
+- **Provider** (`platform/posix/dynamic_library_provider.{h,cpp}`, module
+  `platform.posix`). `CreatePosixDynamicLibraryLoader( observer )` covers
+  RFC reference-migration step 4 for a new, explicit provider.
+  - It opens exactly the given path. A bare name is opened in the working
+    directory, not searched for, because resolution belongs to the module
+    resolver.
+  - A file that exists but is not a loadable library is `kProviderError`. A
+    missing file is `kNotFound`, with `errno`.
+  - Resolve-without-load is reported as unsupported. `RTLD_NOLOAD` only
+    finds libraries that are already loaded, which is not that operation.
+  - The ownership list is serialized.
+  - Destroying the loader with live libraries aborts.
+- **Scoped ownership.** `platform::LoadedLibrary` is a move-only value that
+  returns its library to its loader. `Release()` transfers ownership
+  explicitly. `LoadScoped` returns
+  `foundation::Expected<LoadedLibrary, DynamicLibraryError>`, a new consumer
+  of R05's vocabulary.
+- **Load-site telemetry seam.** The factory requires a
+  `platform::IDynamicLibraryObserver`, with no default: a root that wants no
+  telemetry must pass a no-op observer explicitly.
+  - It receives every load request (success or failure), symbol lookup and
+    unload, synchronously.
+  - The inventory records the provider's native site as a new
+    `loader-provider` class, covered by `platform-loader-observer`; native
+    coverage is 93/93.
+  - R07-SYS will adapt the observer to the Tier 0 stream.
+- **Runner extension** (R02 infrastructure). A unit with `"link": "shared"`
+  is compiled position-independent into its own library. Every other unit
+  gets its path as `CONFORMANCE_SHARED_<ID>`, and the test program does not
+  link it.
+  - This gives native loader suites a real fixture module, built by the one
+    runner, with no new `dlopen` in test code.
+  - Two runner self-tests are added (72 in total): a built-apart library
+    with a linked-in negative control, and malformed unit declarations.
+- **Oracles.**
+  - `platform.dynamic_library.posix` (269 checks) runs the shared loader,
+    scoped and isolation oracles against the fixture. It also checks:
+    - the fixture function's real result (42);
+    - `/proc/self/cmdline` gives `kProviderError`;
+    - `libc.so.6` given as a bare name is not found, because it is not
+      searched for;
+    - a bare name that does exist in the working directory loads.
+  - Its telemetry clauses (17 checks) verify the observer's event sequence:
+    duplicate loads with distinct identities, failures, lookups, and unloads
+    in order.
+  - `platform.dynamic_library.posix.live-at-destroy` must die with
+    `SIGABRT` (signal pinned).
+  - `RunScopedLibraryConformance` also runs against the fake (436 checks).
+    The sensitivity suite (17) requires it to catch the leaky-unload,
+    missing-load and aliased-ownership providers.
+  - All four rows match on g++ and clang++.
+- **Mutants**, each detected:
+  - provider: searching bare names, no existence check, unload keeping the
+    handle, no abort;
+  - telemetry: dropping the load, symbol or unload events;
+  - runner: the shared library linked into the program.
+- **Finding: the `Sys_*` adapter needs its own ABI design (R07-SYS).**
+  - Tier 1 is a static library linked into every module, including
+    separately built extension modules, and `CSysModule*` handles cross
+    module boundaries. Another module's own Tier 1 then calls
+    `dlsym`/`dlclose` on them directly; `filesystem_steam.cpp` also casts
+    one to `HMODULE`.
+  - So `Sys_LoadModule` cannot return a provider object. The adapter must
+    keep the native handle as `CSysModule*`, reach it through a private
+    POSIX interop accessor, and pass foreign handles through unchanged.
+- **Evidence** (2026-09-25):
+  - `arch.check`, `arch.baseline` and `arch.inventory` (93/93) pass.
+  - `arch.hermetic` passes on both compilers (54 headers).
+  - 128 archlint tests and 72 runner self-tests pass.
+- **Not claimed:**
+  - the `Sys_*` adapter (R07-SYS);
+  - a Win32 provider (Windows runners are optional);
+  - the observer-to-Tier-0 adapter;
+  - hosted CI.
+
+## R07-SYS-A: provider load-site events on the Tier 0 telemetry stream (slice done, 2026-09-25)
+
+This is the first half of R07-SYS. A platform loader provider's observer
+events now reach the same telemetry stream, with the same records, as
+`Sys_LoadModule` and the native adapters. Part B routes `Sys_*` through the
+provider.
+
+- **Contract.** `IDynamicLibraryObserver::OnLoad` also carries
+  `resolvedPath`: the canonical native path the provider opened, or null on
+  failure. Phase A telemetry records a resolved path, and only the provider
+  knows it. The POSIX provider reports `realpath` of the file it opened. The
+  native suite checks both successes and failures (290 checks).
+- **Adapter.** `CModuleLoadTelemetryObserver` (`public/tier1/dynamic_library_telemetry.h`,
+  `tier1/dynamic_library_telemetry.cpp`) calls Tier 0's
+  `Sys_RecordModuleLoad`, `…EntryPoint` and `…Unload`.
+  - Each `IDynamicLibrary` is its own record, so duplicate loads keep
+    distinct load IDs.
+  - Failures carry the provider code (or -1) and the status as text.
+  - Records carry the caller's `CScopedModuleLoadRequest` context, as native
+    loads do.
+  - It is stateless and lives in Tier 1, beside the `Sys_*` bridge that will
+    use it.
+- **Build.** New strict static libraries build the provider on POSIX only.
+  Both declare `arch_module` `platform.posix` and are declared in
+  `policy.json` and `capabilityModules.targets`.
+  - `platform_posix` is for strict consumers.
+  - `platform_posix_legacyabi` is for legacy consumers and `tier1test`. It
+    is the same source with `_GLIBCXX_USE_CXX11_ABI=0`, following
+    `platform_composition_legacyabi`.
+  - Why: `toolchain.coverage` first failed with TOOLCHAIN007 when
+    `tier1test` linked the new-ABI library into its old-ABI closure. The
+    gate caught a real mix before it shipped.
+- **Oracle.** `ModuleLoadTelemetryPlatformProvider`, in the legacy
+  telemetry host, runs the real POSIX provider through the adapter under a
+  `CScopedModuleLoadRequest` and asserts the exact 6-event stream:
+  - requester and source line;
+  - a canonical resolved path;
+  - distinct IDs for two loads of the same fixture;
+  - the entry point on the first load's ID;
+  - a failed load with provider code and "not found";
+  - unloads in order on their own IDs.
+
+  gdb confirmed the case runs and records 6 events. A failed assertion sets
+  the host's result to 1 ("UnitTest Assert:"), and none appeared.
+  `unittest_legacy` passes on gcc and clang.
+- **Evidence** (2026-09-25, after re-recording all 12 trees):
+  - All ten Linux product builds pass (`build.*`), plus both test trees.
+  - `toolchain.boundary` passes (18/18 probes) and `toolchain.coverage`
+    passes.
+  - `arch.targets`, `arch.check` and `arch.inventory` pass, and so does
+    `arch.compile-deps`, run directly: 36 s wall at load average 18.
+  - `legacy.unittest-legacy` passes on gcc and clang.
+- **Not claimed:**
+  - routing `Sys_LoadModule`/`Sys_UnloadModule`/`Sys_GetFactory` through the
+    provider (R07-SYS-B);
+  - a Win32 provider;
+  - hosted CI.
+
+## R07 closure (done, 2026-09-25)
+
+R07 (RFC 0001 rank 4, dynamic-loader containment) is `done`. It was closed as
+an agent decision under the user's standing instruction. Its prerequisites,
+R04 and R06, are `done`.
+
+| Criterion | Evidence |
+| --- | --- |
+| Scoped ownership | `platform::LoadedLibrary` / `LoadScoped`; `RunScopedLibraryConformance` on the fake (436) and the POSIX provider (290); sensitivity catches three bad providers (R07-NATIVE) |
+| Structured errors | operation, status, provider code and borrowed request on every failure; native clauses (`kNotFound` with `errno`, `kProviderError`) |
+| Private loader provider | `CreatePosixDynamicLibraryLoader( observer )` in `platform.posix`; `SIGABRT` when destroyed with live libraries (R07-NATIVE) |
+| Load-site telemetry | the required observer; `CModuleLoadTelemetryObserver` onto the Tier 0 stream (R07-SYS-A); native coverage 93/93 |
+| Failed, duplicate and nested requests | the Phase A cases (`FailedLoad`, `DuplicateNativeHandle`, `NestedRequestContext`, `ConcurrentRequests`) and `PlatformProvider`, in `unittest_legacy` on gcc and clang |
+| Legacy bridge and frozen ABI | the `Sys_*` functions are the bridge (RFC 0001 step-6 decision above); `ModuleLoadTelemetryFrozenLegacyAbi` passes |
+| Fake and native suites | `platform.dynamic_library` (+ `.sensitivity`), `.posix` (+ `.live-at-destroy`), all on g++ and clang++ |
+| Ratchet and inventory current | `arch.check`, `arch.baseline`, `arch.inventory` |
+| Freeze on new loader and `CreateInterfaceFn` use | ARCH101–ARCH105 with the reviewed `loaderExceptions` |
+
+Not claimed:
+
+- a Win32 provider (Windows runners are optional);
+- hosted CI;
+- an Android or Apple run of the provider.
+
+The RFC 0001 acceptance "no OS branches outside backend targets" waits on
+`Sys_*` retirement (R39/R41), as recorded in RFC 0001.
 
 ## Next increment
 

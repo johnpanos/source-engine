@@ -226,6 +226,12 @@ void C_Trigger_TractorBeam::OnDataChanged( DataUpdateType_t updateType )
 {
 	BaseClass::OnDataChanged( updateType );
 
+	// The render bounds follow the endpoints (GetRenderBounds).
+	if ( RenderHandle() != INVALID_CLIENT_RENDER_HANDLE )
+	{
+		ClientLeafSystem()->RenderableChanged( RenderHandle() );
+	}
+
 	if ( updateType == DATA_UPDATE_CREATED )
 	{
 		// Projected entities should reflect in water because they are noticeable
@@ -461,6 +467,33 @@ void C_Trigger_TractorBeam::DrawColumn( IMaterial *pMaterial, const Vector &vecS
 bool C_Trigger_TractorBeam::ShouldDraw( void )
 {
 	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: The column DrawModel draws, start to end with the outer cylinder's
+//          radius, as a box around the render origin. Portal 2 port: CS:GO's
+//          leaf system bounded the trigger by its collision; this engine uses
+//          GetRenderBounds, which for a model-less trigger is empty, so the
+//          beam was never in a visible leaf and DrawModel never ran.
+//-----------------------------------------------------------------------------
+void C_Trigger_TractorBeam::GetRenderBounds( Vector &vecMins, Vector &vecMaxs )
+{
+	// DrawModel's outer cylinder radius.
+	const float flRadius = 58.0f;
+	Vector vecWorldMins, vecWorldMaxs;
+	VectorMin( m_vStart, m_vEnd, vecWorldMins );
+	VectorMax( m_vStart, m_vEnd, vecWorldMaxs );
+	const Vector vecExtent( flRadius, flRadius, flRadius );
+	vecMins = vecWorldMins - vecExtent - GetRenderOrigin();
+	vecMaxs = vecWorldMaxs + vecExtent - GetRenderOrigin();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: The render bounds are in world space
+//-----------------------------------------------------------------------------
+const QAngle &C_Trigger_TractorBeam::GetRenderAngles( void )
+{
+	return vec3_angle;
 }
 
 //-----------------------------------------------------------------------------

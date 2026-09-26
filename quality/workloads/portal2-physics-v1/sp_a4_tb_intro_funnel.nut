@@ -28,7 +28,7 @@ function TB_Measure( key, prefix, from, to )
 	vz.sort()
 	local median = vz[vz.len() / 2]
 	local last = s[s.len() - 1].pos
-	local off = QA_FlatDist( last, ::TB.emitter )
+	local off = PH_FlatDist( last, ::TB.emitter )
 	PH_Metric( prefix + ".axial_speed", median )
 	PH_Metric( prefix + ".axis_offset", off )
 	QA_Log( prefix + format( " axial %.1f offset %.1f", median, off ) + " at " + QA_Vec( last ) )
@@ -88,7 +88,7 @@ QA_Do( "forward again, player out", function()
 	local p = QA_Player()
 	p.SetOrigin( ::TB.emitter + Vector( 300, 0, 32 ) )
 	p.SetVelocity( Vector( 0, 0, 0 ) )
-	SendToConsole( "ent_create prop_weighted_cube targetname qa_cube" )
+	SendToConsole( "ent_create prop_weighted_cube targetname qa_cube CubeType 0 model models/props/metal_box.mdl" )
 }, 1.0 )
 QA_Do( "cube into the beam", function()
 {

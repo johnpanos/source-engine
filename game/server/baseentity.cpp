@@ -70,6 +70,7 @@
 #ifdef PORTAL2
 #include "vscript_server.h"
 #include "portal2/portal2_engine_compat.h"
+#include "portal2/portal2_shared_compat.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -7614,7 +7615,16 @@ void CBaseEntity::UpdateObjectCapsCache( void )
 //-----------------------------------------------------------------------------
 void CBaseEntity::InputRemovePaint( inputdata_t &inputdata )
 {
-	// This engine does not provide BSP paint maps.
+	if ( Portal2_HasPaintmap() && IsBSPModel() )
+	{
+		Portal2_RemovePaint( GetModel() );
+
+		CBroadcastRecipientFilter filter;
+		filter.MakeReliable();
+		UserMessageBegin( filter, "RemovePaint" );
+		WRITE_EHANDLE( this );
+		MessageEnd();
+	}
 }
 
 const char *CBaseEntity::GetPreTemplateName()

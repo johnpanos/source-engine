@@ -12,7 +12,12 @@
 #include "tier1/module_load_telemetry.h"
 #include "tier1/strtools.h"
 #include "../legacymoduleclientfixture/legacy_module_client_fixture.h"
+#include "tier1/dynamic_library_telemetry.h"
+#if defined( POSIX )
+#include "../../platform/posix/dynamic_library_provider.h"
+#endif
 
+#include <memory>
 #include <string.h>
 #if defined( POSIX )
 #include <unistd.h>
@@ -340,6 +345,58 @@ DEFINE_TESTCASE( ModuleLoadTelemetryNativeLoaderLifecycle, ModuleLoadTelemetryTe
 	Shipping_Assert( Event( 0 ).m_nLoadId == Event( 1 ).m_nLoadId );
 	Shipping_Assert( Event( 0 ).m_nLoadId == Event( 2 ).m_nLoadId );
 }
+
+#if defined( POSIX )
+// R07-SYS: a platform loader provider's events reach the same stream, with the
+// caller's request context, distinct IDs for duplicate loads, and correlated
+// entry-point and unload records.
+DEFINE_TESTCASE( ModuleLoadTelemetryPlatformProvider, ModuleLoadTelemetryTestSuite )
+{
+	ResetEvents();
+	CModuleLoadTelemetryObserver observer;
+	std::unique_ptr<platform::IDynamicLibraryLoader> loader =
+	    platform::CreatePosixDynamicLibraryLoader( observer );
+	char szFixture[256];
+	NativeFixturePath( "libmoduleloadfixture.so", szFixture, sizeof( szFixture ) );
+	Sys_SetModuleLoadTelemetrySink( CaptureModuleLoadEvent, NULL );
+	{
+		CScopedModuleLoadRequest request( "PlatformProviderTest", 4242 );
+		platform::IDynamicLibrary *pFirst = loader->Load( szFixture, NULL );
+		platform::IDynamicLibrary *pSecond = loader->Load( szFixture, NULL );
+		Shipping_Assert( pFirst != NULL && pSecond != NULL && pFirst != pSecond );
+		Shipping_Assert( pFirst->FindSymbol( "PhaseALoaderFixtureSymbol", NULL ) != NULL );
+		Shipping_Assert( loader->Load( "./phase_a_platform_missing_7F1C.so", NULL ) == NULL );
+		loader->Unload( pSecond );
+		loader->Unload( pFirst );
+	}
+	Sys_SetModuleLoadTelemetrySink( NULL, NULL );
+
+	Shipping_Assert( g_nEventCount == 6 );
+	Shipping_Assert( Event( 0 ).m_Operation == MODULE_LOAD_TELEMETRY_LOAD );
+	Shipping_Assert( Event( 0 ).m_bSuccess );
+	Shipping_Assert( !Q_strcmp( Event( 0 ).m_szRequestingSubsystem, "PlatformProviderTest" ) );
+	Shipping_Assert( Event( 0 ).m_nSourceLine == 4242 );
+	Shipping_Assert( Event( 0 ).m_szResolvedPath[0] == '/' );
+	Shipping_Assert( Q_stristr( Event( 0 ).m_szResolvedPath, "moduleloadfixture" ) != NULL );
+	Shipping_Assert( Event( 1 ).m_Operation == MODULE_LOAD_TELEMETRY_LOAD );
+	Shipping_Assert( Event( 1 ).m_bSuccess );
+	Shipping_Assert( Event( 1 ).m_nLoadId != Event( 0 ).m_nLoadId );
+	Shipping_Assert( Event( 2 ).m_Operation == MODULE_LOAD_TELEMETRY_ENTRY_POINT );
+	Shipping_Assert( Event( 2 ).m_bSuccess );
+	Shipping_Assert( Event( 2 ).m_nLoadId == Event( 0 ).m_nLoadId );
+	Shipping_Assert(
+	    !Q_strcmp( Event( 2 ).m_szRequestedEntryPoint, "PhaseALoaderFixtureSymbol" ) );
+	Shipping_Assert( Event( 3 ).m_Operation == MODULE_LOAD_TELEMETRY_LOAD );
+	Shipping_Assert( !Event( 3 ).m_bSuccess );
+	Shipping_Assert( Event( 3 ).m_nProviderResult != 0 );
+	Shipping_Assert( !Q_strcmp( Event( 3 ).m_szProviderError, "not found" ) );
+	Shipping_Assert( Event( 4 ).m_Operation == MODULE_LOAD_TELEMETRY_UNLOAD );
+	Shipping_Assert( Event( 4 ).m_nLoadId == Event( 1 ).m_nLoadId );
+	Shipping_Assert( Event( 5 ).m_Operation == MODULE_LOAD_TELEMETRY_UNLOAD );
+	Shipping_Assert( Event( 5 ).m_nLoadId == Event( 0 ).m_nLoadId );
+	Shipping_Assert( loader->LiveLibraryCount() == 0 );
+}
+#endif
 
 DEFINE_TESTCASE( ModuleLoadTelemetryFrozenLegacyAbi, ModuleLoadTelemetryTestSuite )
 {

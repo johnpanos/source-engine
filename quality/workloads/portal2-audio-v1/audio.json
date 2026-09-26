@@ -58,30 +58,28 @@
     },
     "music": {
       "wave": "music/sp_a1_intro1_b1.wav",
-      "stereo": true
-    },
-    "chain": {
-      "wave": "music/sp_a1_intro1_b2a.wav",
       "stereo": true,
-      "search_seconds": 3.0,
-      "track": false
+      "until": "music_stop"
     },
     "chain_started": {
       "mark": "chain",
       "wave": "music/sp_a1_intro1_b2b.wav",
       "stereo": true,
       "search_seconds": 3.0,
-      "track": false
+      "track": false,
+      "until": "chain_stop"
     },
     "line_a": {
-      "wave": "vo/glados/sp_a1_wakeup_incinerator01.wav"
+      "wave": "vo/glados/sp_a1_wakeup_incinerator01.wav",
+      "until": "line_b"
     },
     "line_b": {
       "wave": "vo/glados/sp_a1_wakeup_incinerator02.wav"
     },
     "duck_music": {
       "wave": "music/sp_a1_intro1_b2b.wav",
-      "stereo": true
+      "stereo": true,
+      "until": "duck_stop"
     },
     "duck_line": {
       "wave": "vo/glados/sp_a1_wakeup_incinerator02.wav",
@@ -119,7 +117,8 @@
   "windows": {
     "ambient": {
       "from": "ambient",
-      "to": "silence"
+      "to": "silence",
+      "render_noise": true
     },
     "silence": {
       "from": "silence",
@@ -143,7 +142,8 @@
     },
     "gun": {
       "from": "gun",
-      "to": "line_a"
+      "to": "line_a",
+      "render_noise": true
     }
   },
   "derived": {
@@ -203,6 +203,12 @@
       "event": "calib"
     },
     {
+      "name": "calib.fidelity",
+      "kind": "fidelity",
+      "event": "calib",
+      "tolerance": 0.05
+    },
+    {
       "name": "vo.present",
       "kind": "present",
       "event": "vo"
@@ -232,6 +238,12 @@
       "event": "music"
     },
     {
+      "name": "music.fidelity",
+      "kind": "fidelity",
+      "event": "music",
+      "tolerance": 0.05
+    },
+    {
       "name": "music.level",
       "kind": "level",
       "event": "music",
@@ -251,11 +263,6 @@
       "tolerance": 0.1
     },
     {
-      "name": "chain.own_wave",
-      "kind": "present",
-      "event": "chain"
-    },
-    {
       "name": "chain.starts_entry",
       "kind": "present",
       "event": "chain_started"
@@ -266,6 +273,13 @@
       "event": "chain_started",
       "relative_to": "calib",
       "tolerance_db": 1.5
+    },
+    {
+      "name": "chain.level",
+      "kind": "level",
+      "window": "chain",
+      "relative_to": "calib",
+      "tolerance_db": 2.0
     },
     {
       "name": "gun.level",
@@ -299,6 +313,12 @@
       "tolerance_db": 2.0
     },
     {
+      "name": "falloff.v1_near_fidelity",
+      "kind": "fidelity",
+      "event": "near_v1",
+      "tolerance": 0.05
+    },
+    {
       "name": "falloff.v1_mid",
       "kind": "derived",
       "metric": "falloff_v1_mid",
@@ -316,6 +336,12 @@
       "event": "near_v2",
       "relative_to": "calib",
       "tolerance_db": 2.0
+    },
+    {
+      "name": "falloff.v2_near_fidelity",
+      "kind": "fidelity",
+      "event": "near_v2",
+      "tolerance": 0.05
     },
     {
       "name": "falloff.v2_mid",

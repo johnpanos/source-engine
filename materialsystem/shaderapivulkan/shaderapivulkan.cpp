@@ -6972,6 +6972,18 @@ static void CommitLightmappedConstants( const CShaderAPIVulkan &api )
 	EnsureMatricesInit();
 	render_vulkan::CVulkanContext::SkinConstants c;
 	memcpy( c.ps, g_psConstants, sizeof( c.ps ) );
+	// The paint pass (shaders/lightmappedpaint.frag) reads its registers as
+	// LightmappedPaint wrote them, c22/c23 included.
+	if ( g_CurrentLightmappedCombos & render_vulkan::CVulkanContext::kLightmappedPaint )
+	{
+		MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), c.viewProj );
+		c.eyePos[3] = 0.0f;
+		api.GetWorldSpaceCameraPosition( c.eyePos );
+		c.combos = g_CurrentLightmappedCombos;
+		c.numLights = 0;
+		g_VulkanContext.SetDynamicSkinConstants( c );
+		return;
+	}
 	for ( int i = 0; i < 6; ++i )
 		memcpy( c.ps[13 + i], g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0 + i],
 		    sizeof( c.ps[0] ) );
@@ -7121,6 +7133,14 @@ static std::string SnapshotShaderRoute( const CShaderShadowVulkan &shadow )
 	     g_VulkanContext.LightmappedPipelineSupported() )
 	{
 		return "lightmapped#" + std::to_string( shadow.m_pixelShaderIndex ) + "#" +
+		       std::to_string( shadow.m_vertexShaderIndex );
+	}
+	// Portal 2's paint pass (LightmappedPaint) after the same vertex shader.
+	if ( !V_stricmp( shadow.m_pixelShaderName, "lightmappedpaint_ps20b" ) &&
+	     !V_stricmp( shadow.m_vertexShaderName, "lightmappedgeneric_vs20" ) &&
+	     g_VulkanContext.LightmappedPaintPipelineSupported() )
+	{
+		return "lightmappedpaint#" + std::to_string( shadow.m_pixelShaderIndex ) + "#" +
 		       std::to_string( shadow.m_vertexShaderIndex );
 	}
 	// The bloom and color-correction passes' ps20b builds.
@@ -7872,6 +7892,23 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 			    LightmappedCombos( atoi( indices ), &g_CurrentLightmappedDetailMode );
 			g_CurrentLightmappedVsCombos = vsIndex ? LightmappedVsCombos( atoi( vsIndex + 1 ) ) : 0;
 		}
+		if ( !name.compare( 0, 17, "lightmappedpaint#" ) )
+		{
+			// lightmappedpaint_ps20b's static index (fxctmp9/lightmappedpaint_ps20b.inc):
+			// 8 BUMPMAP + 24 CUBEMAP + 72 SEAMLESS + 144 THICKPAINT.
+			shader = render_vulkan::CVulkanContext::kDynShaderLightmapped;
+			const int psIndex = atoi( name.c_str() + 17 );
+			const char *vsIndex = strchr( name.c_str() + 17, '#' );
+			g_CurrentLightmappedCombos = render_vulkan::CVulkanContext::kLightmappedPaint;
+			if ( ( psIndex / 144 ) % 2 )
+				g_CurrentLightmappedCombos |= render_vulkan::CVulkanContext::kLightmappedPaintThick;
+			if ( ( psIndex / 24 ) % 3 )
+				g_CurrentLightmappedCombos |= render_vulkan::CVulkanContext::kLightmappedCubemap;
+			if ( ( psIndex / 72 ) % 2 )
+				NoteUnimplemented( "lightmappedpaint_ps20b: SEAMLESS (drawn with the lightmap coordinates)" );
+			g_CurrentLightmappedDetailMode = 0;
+			g_CurrentLightmappedVsCombos = vsIndex ? LightmappedVsCombos( atoi( vsIndex + 1 ) ) : 0;
+		}
 		g_CurrentPostMode = 0;
 		if ( !name.compare( 0, 5, "post#" ) )
 		{
@@ -8099,7 +8136,12 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	    "Sky_DX9",
 	    "MonitorScreen_DX9",
 	    "LightmappedGeneric",
+	    // The material system names a material's shader after the one its
+	    // fallback chain chose: WorldVertexTransition materials report
+	    // WorldVertexTransition_DX9. The lightmapped pipeline draws them
+	    // (BASETEXTURE2).
 	    "WorldVertexTransition",
+	    "WorldVertexTransition_DX9",
 	    "VertexLitGeneric",
 	    "UnlitGeneric",
 	    "UnlitTwoTexture_DX9",
@@ -8133,6 +8175,10 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	// pipeline's layout.
 	if ( !V_stricmp( shaderName, "paintblob_dx9" ) )
 		return g_VulkanContext.PaintBlobPipelineSupported();
+	// Portal 2's paint on world surfaces: lightmapped.vert and
+	// shaders/lightmappedpaint.frag on the lightmapped layout.
+	if ( !V_stricmp( shaderName, "LightmappedPaint" ) )
+		return g_VulkanContext.LightmappedPaintPipelineSupported();
 	// ShadowBuild_DX9 (shadowbuildtexture_ps2x) adds base alpha times the
 	// modulation alpha into the shadow texture; the textured pipeline's
 	// modulated base gives the same alpha. Its color, white on D3D9, is the base
@@ -8197,17 +8243,17 @@ static bool NativeRefractMaterialSupported( IMaterialInternal *material )
 	     enabled( "$vertexcolormodulate" ) || hasTexture( "$normalmap2" ) ||
 	     hasTexture( "$refracttinttexture" ) )
 		return false;
-	// The local variant applies $envmapsaturation (Portal 2's CUBEMAP term);
-	// the screen-space one follows the older refract_ps2x, which has none.
+	// Both variants apply $envmapsaturation (refract_ps2x's CUBEMAP term, c3)
+	// as one scalar in the output scale's slot, so a per-channel saturation
+	// is not drawn.
 	bool found = false;
 	IMaterialVar *saturation = material->FindVar( "$envmapsaturation", &found, false );
-	if ( found && saturation && !RefractMaterialIsLocal( material ) )
+	if ( found && saturation )
 	{
 		float rgb[3];
 		saturation->GetVecValue( rgb, 3 );
-		for ( float channel : rgb )
-			if ( fabsf( channel - 1.0f ) > 0.0001f )
-				return false;
+		if ( fabsf( rgb[1] - rgb[0] ) > 0.0001f || fabsf( rgb[2] - rgb[0] ) > 0.0001f )
+			return false;
 	}
 	return g_boundEnvmapHandle >= 0 && g_boundRefractNormalHandle >= 0 &&
 	       g_VulkanContext.ManagedTextureIsCube( g_boundRefractCubeHandle );
@@ -8339,17 +8385,15 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		{
 			float tintAndScale[4] = { g_psConstants[1][0], g_psConstants[1][1],
 			    g_psConstants[1][2], g_psConstants[5][0] };
+			// Refract does not tone-map its output (TONEMAP_SCALE_NONE), so the
+			// output scale's slot carries $envmapsaturation (c3).
+			g_VulkanContext.SetDynamicOutputScale(
+			    RefractMaterialFloat( g_pBoundMaterial, "$envmapsaturation", 1.0f ) );
+			// LOCALREFRACT does not warp screen coordinates, so the refract
+			// scale's slot carries $localrefractdepth (c7.z).
 			if ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentRefractLocal )
-			{
-				// LOCALREFRACT does not warp screen coordinates, so the refract
-				// scale's slot carries $localrefractdepth (c7.z). Refract does not
-				// tone-map its output (TONEMAP_SCALE_NONE), so the output scale's
-				// slot carries $envmapsaturation (c3).
 				tintAndScale[3] =
 				    RefractMaterialFloat( g_pBoundMaterial, "$localrefractdepth", 0.05f );
-				g_VulkanContext.SetDynamicOutputScale(
-				    RefractMaterialFloat( g_pBoundMaterial, "$envmapsaturation", 1.0f ) );
-			}
 			g_VulkanContext.SetDynamicModulation( tintAndScale );
 			g_VulkanContext.SelectDynamicAlphaTest( g_psConstants[2][0] );
 		}

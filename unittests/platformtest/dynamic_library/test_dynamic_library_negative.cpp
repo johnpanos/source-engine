@@ -327,6 +327,32 @@ int main()
 		}
 	}
 
+	// 3) The scoped-ownership oracle accepts the control and catches providers
+	//    whose release or failure reporting LoadedLibrary depends on.
+	{
+		CBrokenLoader control( Defect::kNone );
+		++checks;
+		failures += platformtest::ReportConformance( "sensitivity[scoped defects disabled]",
+		    platformtest::RunScopedLibraryConformance( control, fx ) );
+	}
+	const Case scopedCases[] = {
+	    { Defect::kUnloadDoesNotRelease, "scoped:unload-does-not-release" },
+	    { Defect::kLoadMissingSucceeds, "scoped:load-missing-succeeds" },
+	    { Defect::kDuplicateAliasesOwnership, "scoped:duplicate-aliases-ownership" },
+	};
+	for ( const Case &c : scopedCases )
+	{
+		CBrokenLoader bad( c.defect );
+		const auto report = platformtest::RunScopedLibraryConformance( bad, fx );
+		++checks;
+		if ( report.failures == 0 )
+		{
+			std::printf(
+			    "FAIL: broken provider '%s' was NOT caught by the scoped oracle\n", c.name );
+			++failures;
+		}
+	}
+
 	if ( failures == 0 )
 	{
 		std::printf( "ok test_dynamic_library_negative: suite accepts conforming "

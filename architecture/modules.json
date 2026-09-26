@@ -635,7 +635,25 @@
           "poll.h",
           "fcntl.h",
           "csignal",
-          "cerrno"
+          "cerrno",
+          "dlfcn.h"
+        ]
+      },
+      {
+        "id": "platform.posix.native-tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/platformtest/dynamic_library_posix/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts",
+          "platform.posix",
+          "platform.tests",
+          "testing.contracts"
+        ],
+        "externalHeaders": [
+          "unistd.h"
         ]
       }
     ],
@@ -645,6 +663,7 @@
       "atomic",
       "cassert",
       "chrono",
+      "climits",
       "cmath",
       "compare",
       "concepts",
@@ -693,6 +712,12 @@
         "allowedUse": [
           "platform_composition"
         ]
+      },
+      "platform_posix": {
+        "allowedUse": []
+      },
+      "platform_posix_legacyabi": {
+        "allowedUse": []
       }
     },
     "targetOwners": {
@@ -1215,6 +1240,13 @@
   },
   "loaderInventory": {
     "classifications": [
+      {
+        "name": "loader-provider",
+        "pathPrefixes": [
+          "platform/posix/dynamic_library_provider.cpp"
+        ],
+        "reason": "RFC 0001 rank 4 private native loader provider: the POSIX dlopen primitive behind IDynamicLibraryLoader, selected explicitly by composition roots and (R07-SYS) the Sys_* bridge; every native call is reported to its required observer."
+      },
       {
         "name": "retained-extension",
         "pathPrefixes": [

@@ -12,7 +12,6 @@
 #include "hud_macros.h"
 #include "usermessages.h"
 #include "igamesystem.h"
-#include "bitvec.h"
 #include "paint_color_manager.h"
 #include "paintable_entity.h"
 #include "portal_util_shared.h"
@@ -119,6 +118,18 @@ void __MsgFunc_RemoveAllPaint( bf_read &msg )
 }
 
 
+void __MsgFunc_RemovePaint( bf_read &msg )
+{
+	C_BaseEntity *pEntity = Portal2Engine::EntityFromUserMessageEHandle( msg.ReadLong() );
+
+	// the listen server already cleared the shared paintmaps
+	if ( Portal2Engine::IsClientLocalToActiveServer() || !pEntity || !pEntity->IsBSPModel() )
+		return;
+
+	Portal2Engine::RemovePaint( pEntity->GetModel() );
+}
+
+
 void __MsgFunc_PaintAllSurfaces( bf_read &msg )
 {
 	// the listen server already painted the shared paintmaps
@@ -133,47 +144,41 @@ void __MsgFunc_PaintAllSurfaces( bf_read &msg )
 
 
 //-----------------------------------------------------------------------------
-// Purpose: One run-length encoded chunk of a paintmap sent to a joining client
+// Purpose: A chunk of the engine's paint records sent to a joining client
+//			(total dwords, offset, count, dwords); loaded after the last one.
 //-----------------------------------------------------------------------------
+static CUtlVector< uint32 > s_PaintmapRecords;
+
 void __MsgFunc_LoadPaintmapData( bf_read &msg )
 {
-	int nPaintmapID = msg.ReadByte();
-	int nPaintmapOffset = msg.ReadFloat();
+	int nTotal = msg.ReadLong();
+	int nOffset = msg.ReadLong();
+	int nCount = msg.ReadByte();
 
-	int nNumRLE = msg.ReadFloat();
-	CUtlVector< unsigned char > data;
-	int offset = 0;
-
-	for ( int n = 0; n < nNumRLE; ++n )
+	if ( nOffset == 0 )
 	{
-		int nElements = msg.ReadFloat();
-		uint8 val = msg.ReadByte();
-
-		data.EnsureCount( offset + nElements );
-		V_memset( data.Base() + offset, val, nElements );
-		offset += nElements;
+		s_PaintmapRecords.RemoveAll();
+	}
+	if ( nTotal < 0 || nOffset != s_PaintmapRecords.Count() || nOffset + nCount > nTotal )
+	{
+		DevWarning( "Paint: out of order paint records ignored\n" );
+		s_PaintmapRecords.RemoveAll();
+		return;
+	}
+	for ( int i = 0; i < nCount; ++i )
+	{
+		s_PaintmapRecords.AddToTail( ( uint32 )msg.ReadLong() );
 	}
 
-	Portal2Engine::LoadPaintmapData( data, nPaintmapID, nPaintmapOffset );
-}
-
-
-//-----------------------------------------------------------------------------
-// Purpose: The painted-surface bits sent to a joining client
-//-----------------------------------------------------------------------------
-void __MsgFunc_LoadPaintmapBits( bf_read &msg )
-{
-	CVarBitVec paintSurfBits;
-
-	int numBits = msg.ReadFloat();
-	paintSurfBits.Resize( numBits );
-
-	for ( int i = 0; i < paintSurfBits.GetNumDWords(); ++i )
+	// The listen server shares its paint maps with its own client.
+	if ( s_PaintmapRecords.Count() == nTotal && !Portal2Engine::IsClientLocalToActiveServer() )
 	{
-		paintSurfBits.SetDWord( i, (uint32)msg.ReadFloat() );
+		Portal2Engine::LoadPaintmapDataRLE( s_PaintmapRecords );
 	}
-
-	Portal2Engine::LoadPaintSurfBits( paintSurfBits );
+	if ( s_PaintmapRecords.Count() == nTotal )
+	{
+		s_PaintmapRecords.Purge();
+	}
 }
 
 
@@ -192,9 +197,9 @@ class C_PaintInitHelper : public CAutoGameSystem
 			HOOK_MESSAGE( PaintEntity );
 			HOOK_MESSAGE( ChangePaintColor );
 			HOOK_MESSAGE( RemoveAllPaint );
+			HOOK_MESSAGE( RemovePaint );
 			HOOK_MESSAGE( PaintAllSurfaces );
 			HOOK_MESSAGE( LoadPaintmapData );
-			HOOK_MESSAGE( LoadPaintmapBits );
 		}
 
 		return true;

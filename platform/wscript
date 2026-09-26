@@ -43,6 +43,37 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)
+	# RFC 0001 rank 4 native loader provider (R07). POSIX hosts only; roots
+	# and the Tier 1 Sys_* bridge select it explicitly.
+	if bld.env.DEST_OS != 'win32':
+		bld.stlib(
+			env       = bld.strict_cpp20_env(),
+			source    = [ 'posix/dynamic_library_provider.cpp' ],
+			target    = 'platform_posix',
+			name      = 'platform_posix',
+			arch_module = 'platform.posix',
+			features  = 'cxx capability_strict',
+			includes  = [ '../public' ],
+			defines   = [],
+			use       = [],
+			subsystem = bld.env.MSVC_SUBSYSTEM,
+			idx       = bld.get_taskgen_count()
+		)
+		# The same provider for legacy (old libstdc++ dual ABI) consumers such as
+		# Tier 1 and its test hosts; see platform_composition_legacyabi.
+		bld.stlib(
+			env       = bld.strict_cpp20_env(),
+			source    = [ 'posix/dynamic_library_provider.cpp' ],
+			target    = 'platform_posix_legacyabi',
+			name      = 'platform_posix_legacyabi',
+			arch_module = 'platform.posix',
+			features  = 'cxx capability_strict',
+			includes  = [ '../public' ],
+			defines   = legacy_abi,
+			use       = [],
+			subsystem = bld.env.MSVC_SUBSYSTEM,
+			idx       = bld.get_taskgen_count()
+		)
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
 		source    = [ 'tool_process_client.cpp' ],

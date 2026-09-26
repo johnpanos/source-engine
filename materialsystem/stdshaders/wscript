@@ -69,6 +69,7 @@ def build(bld):
 		'introscreenspaceeffect.cpp',
 		'lightmappedgeneric_dx9.cpp',
 		'lightmappedgeneric_dx9_helper.cpp',
+		'lightmappedpaint_dx9.cpp',
 		'lightmappedreflective.cpp',
 		'modulate_dx9.cpp',
 		'MonitorScreen_dx9.cpp',

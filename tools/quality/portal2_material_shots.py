@@ -77,6 +77,9 @@ WIDTH, HEIGHT = 1024, 768
 # correction; this engine leaves it to the saved video config, which is off in
 # a runtime staged from a retail install.
 PLAY_P2_ENGINE_ARGS = ["+mat_colorcorrection", "1"]
+# Both sides: cheats on before the map loads, so the views' console state
+# needs no sv_cheats change, whose chat notice retail prints over the frame.
+CAPTURE_ENGINE_ARGS = ["+sv_cheats", "1"]
 # Region pixel classes: a thin dark cable over a lit wall, a blown-out slab.
 DARK_LUMA, BRIGHT_LUMA = 40.0, 230.0
 SHOT_LINE = re.compile(r"^QA_SHOT (\S+) (\S+)\s*$")
@@ -85,7 +88,7 @@ MISSING_PROXY = re.compile(r'Error: Material "?([^"]*?)"? ?: proxy "([^"]+)" not
 # The native backend's census, printed at each screenshot (ReadPixels):
 # cumulative dropped-draw counts per material.
 CENSUS_DROPPED = re.compile(r"^\[vulkan\]\s+dropped material draws=(\d+)\s+(\S+)")
-CENSUS_START = re.compile(r"^\[vulkan\] primitive ")
+CENSUS_START = re.compile(r"^\[vulkan\] draws textured=")
 # Retail runs through this hook; it replaces nothing but appends the driver.
 RETAIL_HOOK_MARK = "// portal2_material_shots hook"
 
@@ -278,7 +281,7 @@ def capture_build(args, workload_path, workload, scenarios):
     capture = {"schema": CAPTURE_SCHEMA, "side": "build", "status": "incomplete",
                "started_utc": now_iso(), "source": conformance.source_identity(str(ROOT)),
                "build": str(args.build),
-               "extra_args": PLAY_P2_ENGINE_ARGS + list(args.extra_arg), "scenarios": {}}
+               "extra_args": CAPTURE_ENGINE_ARGS + PLAY_P2_ENGINE_ARGS + list(args.extra_arg), "scenarios": {}}
     stage_portal2_runtime.stage_content(args.steam_root, args.runtime)
     capture["installed"] = stage_portal2_runtime.portal_boot.install_build(
         args.build, args.runtime, game="portal2")
@@ -292,7 +295,7 @@ def capture_build(args, workload_path, workload, scenarios):
         started = time.time()
         result = portal2_scenarios.run_scenario(
             scenario, args.runtime, out / name, args.start_frames, WIDTH, HEIGHT, tools,
-            extra_args=PLAY_P2_ENGINE_ARGS + list(args.extra_arg), wrapper=renderdoc_wrapper(
+            extra_args=CAPTURE_ENGINE_ARGS + PLAY_P2_ENGINE_ARGS + list(args.extra_arg), wrapper=renderdoc_wrapper(
                 args, out / name))
         record = finish_scenario(out / name, name, result, screenshots, started,
                                  (out / name / "stdout.log").read_text(errors="replace"))
@@ -346,7 +349,7 @@ def make_retail_mirror(steam_root, mirror):
     The executable is copied, not linked: the engine finds its base directory
     from the executable's resolved path.
     """
-    steam_root, mirror = Path(steam_root), Path(mirror)
+    steam_root, mirror = Path(steam_root), Path(mirror).resolve()
     mirror.mkdir(parents=True, exist_ok=True)
     for entry in steam_root.iterdir():
         target = mirror / entry.name
@@ -452,7 +455,7 @@ def steam_running():
 def retail_session(args):
     """Inside the compositor: Steam up, each scenario on retail, Steam down."""
     out = Path(args.out).resolve()
-    mirror = Path(args.mirror)
+    mirror = Path(args.mirror).resolve()
     workload = portal2_scenarios.load_workload(args.workload)
     scenarios = [s for s in workload["scenarios"] if s["name"] in args.scenario]
     capture = {"schema": CAPTURE_SCHEMA, "side": "retail", "status": "incomplete",
@@ -485,7 +488,7 @@ def retail_session(args):
             directory.mkdir(parents=True, exist_ok=True)
             command = ["./portal2_linux", "-game", "portal2", "-novid", "-windowed",
                        "-w", str(WIDTH), "-h", str(HEIGHT), "-condebug", "+volume", "0",
-                       "+map", scenario["map"]]
+                       *CAPTURE_ENGINE_ARGS, "+map", scenario["map"]]
             started = time.time()
             timed_out = False
             with (directory / "stdout.log").open("wb") as stream:
@@ -581,6 +584,10 @@ def judge(capture_dir, capture, checks, reference, report):
         report("%s.proxies" % scenario, not ours_proxies, ", ".join(
             "%s (%s)" % (p, ", ".join(record["missing_proxies"][p][:3])) for p in
             sorted(ours_proxies)) or "every proxy found")
+        # The census is re-read from the log so a parser fix applies to old captures.
+        stdout = Path(capture_dir) / scenario / "stdout.log"
+        censuses = census_by_shot(stdout.read_text(errors="replace"), list(record["shots"])) \
+            if stdout.is_file() else None
         for shot, spec in sorted(shots.items()):
             prefix = "%s.%s" % (scenario, shot)
             if shot not in record["shots"] or shot not in ref["shots"]:
@@ -598,7 +605,7 @@ def judge(capture_dir, capture, checks, reference, report):
                 ok, detail = compare_region(region_stats(image, region["rect"]),
                                             ref["shots"][shot]["regions"][name], region)
                 report("%s.%s" % (prefix, name), ok, detail + "; pins: " + region["pins"])
-            census = (record.get("census") or {}).get(shot)
+            census = (censuses or {}).get(shot)
             if census is None:
                 report(prefix + ".native_drops", False, "no native census for this shot")
             else:
@@ -683,8 +690,11 @@ def self_test(args):
                                 region)
     results.report("selftest.feature", ok, detail)
     census = census_by_shot("[vulkan] primitive TRIANGLES draws=1\n"
+                            "[vulkan] primitive TRIANGLE_STRIP draws=1\n"
+                            "[vulkan] draws textured=1 unuploaded=0 untextured=0\n"
                             "[vulkan]   dropped material draws=5 dev/motion_blur\n"
                             "[vulkan] primitive TRIANGLES draws=2\n"
+                            "[vulkan] draws textured=2 unuploaded=0 untextured=0\n"
                             "[vulkan]   dropped material draws=5 dev/motion_blur\n"
                             "[vulkan]   dropped material draws=3 cable/cable\n", ["a", "b"])
     expected = {"a": {"dev/motion_blur": 5}, "b": {"cable/cable": 3}}

@@ -1,0 +1,349 @@
+{
+  "schema": "portal2-audio-reference/v1",
+  "recorded_utc": "2026-09-26T02:21:29.193661+00:00",
+  "retail_version": [
+    "PatchVersion=2.0.0.1",
+    "ProductName=portal2",
+    "appID=620"
+  ],
+  "command": [
+    "dbus-run-session",
+    "--",
+    "mutter",
+    "--headless",
+    "--wayland",
+    "--virtual-monitor",
+    "1024x768@60",
+    "--wayland-display",
+    "p2audio-1103647",
+    "--",
+    "./portal2_linux",
+    "-game",
+    "portal2",
+    "-nobreakpad",
+    "-novid",
+    "-multirun",
+    "-condebug",
+    "-windowed",
+    "-w",
+    "1024",
+    "-h",
+    "768",
+    "+snd_mute_losefocus",
+    "0",
+    "+snd_surround_speakers",
+    "2",
+    "+map",
+    "sp_a2_triple_laser"
+  ],
+  "note": "Metrics of one retail Portal 2 capture of this workload (portal2_audio.py capture --side retail, then record). Numbers only.",
+  "metrics": {
+    "schema": "portal2-audio-metrics/v1",
+    "offset": 8.389,
+    "alignment_score": 0.711,
+    "marks": {
+      "ambient": 9.1,
+      "silence": 14.1,
+      "calib": 16.6,
+      "item": 19.1,
+      "vo": 21.6,
+      "vo_unprecached": 29.1,
+      "music": 35.1,
+      "music_stop": 43.1,
+      "chain": 44.6,
+      "chain_stop": 56.6,
+      "gun": 58.1,
+      "line_a": 60.6,
+      "line_b": 62.6,
+      "duck_music": 69.1,
+      "duck_line": 73.1,
+      "duck_after": 79.1,
+      "duck_stop": 82.1,
+      "near_v1": 83.6,
+      "mid_v1": 85.6,
+      "far_v1": 87.6,
+      "near_v2": 89.6,
+      "mid_v2": 92.1,
+      "far_v2": 94.6,
+      "end": 97.1
+    },
+    "track": [
+      [
+        16.6,
+        7.8047
+      ],
+      [
+        16.6,
+        7.8047
+      ],
+      [
+        19.1,
+        7.8125
+      ],
+      [
+        21.6,
+        7.8202
+      ],
+      [
+        29.1,
+        7.8899
+      ],
+      [
+        35.1,
+        7.9271
+      ],
+      [
+        60.6,
+        8.1084
+      ],
+      [
+        62.6,
+        8.1517
+      ],
+      [
+        69.1,
+        8.1998
+      ],
+      [
+        73.1,
+        8.1936
+      ],
+      [
+        83.6,
+        8.2819
+      ],
+      [
+        85.6,
+        8.2788
+      ],
+      [
+        87.6,
+        8.3222
+      ],
+      [
+        89.6,
+        8.3655
+      ],
+      [
+        92.1,
+        8.3268
+      ],
+      [
+        94.6,
+        8.381
+      ],
+      [
+        97.1,
+        8.3888
+      ]
+    ],
+    "events": {
+      "calib": {
+        "present": true,
+        "ncc": 1.0,
+        "gain": 0.9759,
+        "gain_left": 0.9757,
+        "gain_right": 0.9761,
+        "onset": 24.405,
+        "latency": 0.0
+      },
+      "item": {
+        "present": true,
+        "ncc": 1.0,
+        "gain": 0.2969,
+        "gain_left": 0.2969,
+        "gain_right": 0.2969,
+        "onset": 26.912,
+        "latency": 0.008
+      },
+      "vo": {
+        "present": true,
+        "ncc": 0.897,
+        "gain": 0.5244,
+        "gain_left": 0.5244,
+        "gain_right": 0.5244,
+        "onset": 29.42,
+        "latency": 0.008
+      },
+      "vo_unprecached": {
+        "present": true,
+        "ncc": 0.895,
+        "gain": 0.5144,
+        "gain_left": 0.5144,
+        "gain_right": 0.5144,
+        "onset": 36.99,
+        "latency": 0.07
+      },
+      "music": {
+        "present": true,
+        "ncc": 1.0,
+        "gain": 0.5977,
+        "gain_left": 0.5977,
+        "gain_right": 0.5977,
+        "onset": 43.027,
+        "latency": 0.037
+      },
+      "chain_started": {
+        "present": true,
+        "ncc": 0.999,
+        "gain": 0.5977,
+        "gain_left": 0.5977,
+        "gain_right": 0.5977,
+        "onset": 52.64,
+        "latency": 0.113
+      },
+      "line_a": {
+        "present": true,
+        "ncc": 0.646,
+        "gain": 0.3864,
+        "gain_left": 0.3864,
+        "gain_right": 0.3864,
+        "onset": 68.708,
+        "latency": 0.181
+      },
+      "line_b": {
+        "present": true,
+        "ncc": 0.885,
+        "gain": 0.521,
+        "gain_left": 0.521,
+        "gain_right": 0.521,
+        "onset": 70.752,
+        "latency": 0.043
+      },
+      "duck_music": {
+        "present": true,
+        "ncc": 0.766,
+        "gain": 0.3943,
+        "gain_left": 0.3862,
+        "gain_right": 0.4022,
+        "onset": 77.3,
+        "latency": 0.048
+      },
+      "duck_line": {
+        "present": true,
+        "ncc": 0.625,
+        "gain": 0.5067,
+        "gain_left": 0.4994,
+        "gain_right": 0.5139,
+        "onset": 81.294,
+        "latency": -0.006
+      },
+      "near_v1": {
+        "present": true,
+        "ncc": 0.999,
+        "gain": 0.4096,
+        "gain_left": 0.4094,
+        "gain_right": 0.4097,
+        "onset": 91.882,
+        "latency": 0.088
+      },
+      "mid_v1": {
+        "present": true,
+        "ncc": 0.999,
+        "gain": 0.3901,
+        "gain_left": 0.39,
+        "gain_right": 0.3902,
+        "onset": 93.879,
+        "latency": -0.003
+      },
+      "far_v1": {
+        "present": true,
+        "ncc": 0.999,
+        "gain": 0.242,
+        "gain_left": 0.2418,
+        "gain_right": 0.2422,
+        "onset": 95.922,
+        "latency": 0.043
+      },
+      "near_v2": {
+        "present": true,
+        "ncc": 0.999,
+        "gain": 0.437,
+        "gain_left": 0.4376,
+        "gain_right": 0.4364,
+        "onset": 97.966,
+        "latency": 0.043
+      },
+      "mid_v2": {
+        "present": true,
+        "ncc": 0.994,
+        "gain": 0.0664,
+        "gain_left": 0.0664,
+        "gain_right": 0.0664,
+        "onset": 100.427,
+        "latency": -0.039
+      },
+      "far_v2": {
+        "present": true,
+        "ncc": 0.969,
+        "gain": 0.0273,
+        "gain_left": 0.0273,
+        "gain_right": 0.0273,
+        "onset": 102.981,
+        "latency": 0.054
+      },
+      "end": {
+        "present": true,
+        "ncc": 1.0,
+        "gain": 0.9759,
+        "gain_left": 0.9758,
+        "gain_right": 0.9761,
+        "onset": 105.489,
+        "latency": 0.008
+      }
+    },
+    "windows": {
+      "ambient": {
+        "seconds": 5.0,
+        "rms_db": -23.33,
+        "left_db": -22.37,
+        "right_db": -24.57,
+        "lr_corr": 0.332
+      },
+      "silence": {
+        "seconds": 1.9,
+        "rms_db": -120.0,
+        "left_db": -120.0,
+        "right_db": -120.0,
+        "lr_corr": 0.0
+      },
+      "calib": {
+        "seconds": 2.5,
+        "rms_db": -23.94,
+        "left_db": -23.76,
+        "right_db": -24.13,
+        "lr_corr": 0.399
+      },
+      "music": {
+        "seconds": 7.5,
+        "rms_db": -17.38,
+        "left_db": -18.69,
+        "right_db": -16.37,
+        "lr_corr": 0.652
+      },
+      "chain": {
+        "seconds": 11.5,
+        "rms_db": -12.89,
+        "left_db": -13.96,
+        "right_db": -12.04,
+        "lr_corr": 0.623
+      },
+      "gun": {
+        "seconds": 2.5,
+        "rms_db": -36.2,
+        "left_db": -36.46,
+        "right_db": -35.95,
+        "lr_corr": 0.575
+      }
+    },
+    "derived": {
+      "line_cut": -45.09,
+      "duck": -5.23,
+      "falloff_v1_mid": -0.42,
+      "falloff_v1_far": -4.57,
+      "falloff_v2_mid": -16.37,
+      "falloff_v2_far": -24.09,
+      "tail_far_v1": -34.82
+    }
+  }
+}

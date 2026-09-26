@@ -58,6 +58,7 @@ RATE = 44100
 DECIMATE = 4
 LOW_RATE = RATE // DECIMATE
 SILENT_DB = -120.0
+QUIET_POWER = 1e-8
 MARK_LINE = re.compile(r"AUDIO_MARK (\S+) (-?[\d.]+)")
 CHANNELS_LINE = re.compile(r"channels=(\d+) freq=(\d+)")
 SEEDED_DEFECTS = ("mute-right", "drop-music")
@@ -258,6 +259,8 @@ def best_match(numpy, scipy_signal, haystack, needle, low, high):
     energy = numpy.concatenate([[0.0], numpy.cumsum(numpy.square(section))])
     windowed = numpy.maximum(energy[len(needle):] - energy[:-len(needle)], 0.0)
     normalized = correlation / (numpy.sqrt(windowed * numpy.sum(numpy.square(needle))) + 1e-9)
+    # Digital silence (below -80 dB RMS) matches nothing.
+    normalized[windowed < len(needle) * QUIET_POWER] = 0.0
     index = int(numpy.argmax(normalized))
     return low + index, float(normalized[index])
 
@@ -308,6 +311,7 @@ class Measurement:
         windowed = numpy.maximum(energy[len(reference):] - energy[:-len(reference)], 0.0)
         normalized = correlation / (numpy.sqrt(windowed * numpy.sum(numpy.square(reference)))
                                     + 1e-9)
+        normalized[windowed < len(reference) * QUIET_POWER] = 0.0
         candidates = numpy.argsort(normalized)[::-1][:2000]
         anchor = self.marks[alignment["marks"][0]]
         best = None
@@ -457,8 +461,13 @@ class Measurement:
             return round(to_db(rms(self.numpy, tail)) - to_db(rms(self.numpy, direct)), 2)
         raise AudioError("unknown derived metric kind %s" % kind)
 
-    def run(self):
+    def run(self, defect=None):
         self.align()
+        if defect:
+            # Defects are placed in capture time, so they follow the alignment.
+            at = {mark: time + self.offset for mark, time in self.marks.items()}
+            self.samples = apply_seeded_defect(self.samples, at, defect, self.workload)
+            self.low = decimate(self.signal, self.samples.mean(axis=1))
         events = self.workload["events"]
         order = sorted(events, key=lambda label: self.marks[events[label].get("mark", label)])
         for label in order:
@@ -468,15 +477,14 @@ class Measurement:
         derived = {label: self.derive(spec)
                    for label, spec in self.workload.get("derived", {}).items()}
         return {"schema": METRICS_SCHEMA, "offset": round(self.offset, 3),
-                "alignment_score": self.alignment_score, "events": self.events,
-                "windows": windows, "derived": derived}
+                "alignment_score": self.alignment_score, "marks": dict(self.marks),
+                "track": [[mark, round(offset, 4)] for mark, offset in sorted(self.track)],
+                "events": self.events, "windows": windows, "derived": derived}
 
 
 def measure_capture(workload, waves, directory, defect=None):
     samples, marks = load_capture(directory)
-    if defect:
-        samples = apply_seeded_defect(samples, marks, defect, workload)
-    return Measurement(workload, waves, samples, marks).run()
+    return Measurement(workload, waves, samples, marks).run(defect)
 
 
 # --- Checks --------------------------------------------------------------------
@@ -511,6 +519,12 @@ def evaluate_check(check, ours, retail):
             return False, "event absent (retail %+.1f dB)" % expected
         return abs(value - expected) <= check["tolerance_db"], "%+.1f dB, retail %+.1f dB" % (
             value, expected)
+    if kind == "fidelity":
+        # Retail plays these sounds sample-clean; a build that filters, remixes
+        # or resamples them correlates less with the wave.
+        event, expected = ours["events"][check["event"]], retail["events"][check["event"]]
+        return event.get("ncc", 0.0) >= expected["ncc"] - check["tolerance"], \
+            "ncc %.3f, retail %.3f" % (event.get("ncc", 0.0), expected["ncc"])
     if kind == "balance":
         window, expected = ours["windows"][check["window"]], retail["windows"][check["window"]]
         value = window["left_db"] - window["right_db"]
@@ -540,7 +554,7 @@ def evaluate_check(check, ours, retail):
     raise AudioError("unknown check kind %s" % kind)
 
 
-CHECK_KINDS = ("present", "level", "balance", "width", "silence", "derived")
+CHECK_KINDS = ("present", "level", "fidelity", "balance", "width", "silence", "derived")
 
 
 def run_checks(workload, ours, retail, stream=sys.stdout):
@@ -550,14 +564,133 @@ def run_checks(workload, ours, retail, stream=sys.stdout):
             ok, detail = evaluate_check(check, ours, retail)
         except KeyError as error:
             ok, detail = False, "metric missing: %s" % error
-        print("%s %s %s" % ("PASS" if ok else "FAIL", check["name"], detail), file=stream)
+        if ok:
+            print("PASS %s %s" % (check["name"], detail), file=stream)
         checks.check(ok, check["name"], detail)
     return checks
 
 
+# --- Comparator self-test --------------------------------------------------------
+
+# Each seeded defect of the rendered reference and the check that must reject it.
+RENDER_CONTROLS = {
+    "mute-right": "music.balance",
+    "drop-music": "music.present",
+    "swap-line": "vo.present",
+    "no-chain": "chain.starts_entry",
+    "no-duck": "duck.music_under_line",
+    "loud-dialog": "vo.level",
+}
+
+
+def render_reference(workload, waves, reference, seed=None):
+    """A capture rebuilt from the retail metrics: each retail wave at its retail
+    onset and gains, the dialog ducking, the reverb tail and the noise-like
+    windows (ambience, the randomized portal gun) as noise of the same level and
+    left/right correlation. Its metrics must pass every check."""
+    numpy, _ = numpy_modules()
+    marks, track = reference["marks"], reference["track"]
+    events = reference["events"]
+
+    def capture_time(mark):
+        earlier = [offset for when, offset in track if when <= marks[mark]]
+        return marks[mark] + (earlier[-1] if earlier else track[0][1])
+
+    length = int((capture_time(workload["marks"][-1]) + 8.0) * RATE)
+    samples = numpy.zeros((length, 2))
+    generator = numpy.random.default_rng(20260925)
+    duck = reference["derived"].get("duck")
+    duck_line = workload["derived"]["duck"]["line"] if duck is not None else None
+    for label, spec in workload["events"].items():
+        event = events[label]
+        if not event.get("present") or (seed == "no-chain" and label == "chain_started"):
+            continue
+        wave = spec["wave"]
+        if seed == "swap-line" and label == "vo":
+            wave = workload["events"]["line_b"]["wave"]
+        data = waves.decode(wave, stereo=bool(spec.get("stereo")))
+        if data.ndim == 1:
+            data = numpy.stack([data, data], axis=1)
+        start = int(event["onset"] * RATE)
+        end = min(start + len(data), length)
+        if "until" in spec:
+            end = min(end, int(capture_time(spec["until"]) * RATE))
+        piece = data[:end - start] * numpy.array([event["gain_left"], event["gain_right"]])
+        if seed == "loud-dialog" and label == "vo":
+            piece *= 10 ** (3.0 / 20.0)
+        if duck is not None and seed != "no-duck" and label == workload["derived"]["duck"]["music"]:
+            line = events[duck_line]
+            line_wave = waves.decode(workload["events"][duck_line]["wave"])
+            first = int((line["onset"] + 0.25) * RATE) - start
+            last = int((line["onset"] + len(line_wave) / RATE) * RATE) - start
+            piece[max(first, 0):max(last, 0)] *= 10 ** (duck / 20.0)
+        samples[start:end] += piece
+    for label, spec in workload.get("derived", {}).items():
+        value = reference["derived"].get(label)
+        if spec["kind"] != "tail" or value is None:
+            continue
+        event = events[spec["event"]]
+        wave = waves.decode(workload["events"][spec["event"]]["wave"])
+        begin, finish = int(event["onset"] * RATE), int((event["onset"] + len(wave) / RATE) * RATE)
+        level = rms(numpy, samples[begin:finish]) * 10 ** (value / 20.0)
+        span = int(0.6 * RATE)
+        samples[finish:finish + span] += generator.normal(0.0, level, (span, 2))
+    for label, spec in workload.get("windows", {}).items():
+        if not spec.get("render_noise"):
+            continue
+        window = reference["windows"][label]
+        begin = int((capture_time(spec["from"]) + spec.get("start", 0.0)) * RATE)
+        finish = int((capture_time(spec["to"]) + spec.get("end", 0.0)) * RATE)
+        common = generator.normal(0.0, 1.0, finish - begin)
+        correlation = max(min(window["lr_corr"], 0.999), 0.0)
+        for channel, key in ((0, "left_db"), (1, "right_db")):
+            own = generator.normal(0.0, 1.0, finish - begin)
+            noise = math.sqrt(correlation) * common + math.sqrt(1.0 - correlation) * own
+            samples[begin:finish, channel] += noise * 10 ** (window[key] / 20.0)
+    if seed == "mute-right":
+        samples[:, 1] = 0.0
+    elif seed == "drop-music":
+        samples = apply_seeded_defect(samples, marks_in_capture_time(workload, reference),
+                                      "drop-music", workload)
+    return numpy.clip(samples, -1.0, 1.0), dict(marks)
+
+
+def marks_in_capture_time(workload, reference):
+    marks, track = reference["marks"], reference["track"]
+    result = {}
+    for mark in workload["marks"]:
+        earlier = [offset for when, offset in track if when <= marks[mark]]
+        result[mark] = marks[mark] + (earlier[-1] if earlier else track[0][1])
+    return result
+
+
+def command_selftest(args, workload):
+    """The comparator against the rendered retail reference and its seeded defects."""
+    reference = json.loads(reference_path(args.workload, workload).read_text())["metrics"]
+    waves = Waves(args.steam_root, args.cache)
+    checks = conformance_result.Checks()
+    samples, marks = render_reference(workload, waves, reference)
+    rendered = Measurement(workload, waves, samples, marks).run()
+    for check in workload["checks"]:
+        ok, detail = evaluate_check(check, rendered, reference)
+        if ok:
+            print("PASS render.%s %s" % (check["name"], detail))
+        checks.check(ok, "render." + check["name"], detail)
+    for seed, target in sorted(RENDER_CONTROLS.items()):
+        samples, marks = render_reference(workload, waves, reference, seed)
+        seeded = Measurement(workload, waves, samples, marks).run()
+        check = next(item for item in workload["checks"] if item["name"] == target)
+        ok, detail = evaluate_check(check, seeded, reference)
+        name = "control.%s.rejected_by.%s" % (seed.replace("-", "_"), target)
+        if not ok:
+            print("PASS %s (%s)" % (name, detail))
+        checks.check(not ok, name, "the seeded defect passed: " + detail)
+    return checks.report()
+
+
 # --- Captures: this build ------------------------------------------------------
 
-def install_probe(workload_path, workload, game_directory, seed=None):
+def install_probe(workload_path, workload, game_directory, steam_root, seed=None):
     """Driver scripts under scripts/vscripts/qa and a mapspawn.nut hook."""
     source = Path(workload_path).parent
     vscripts = Path(game_directory) / "scripts" / "vscripts"
@@ -576,12 +709,11 @@ def install_probe(workload_path, workload, game_directory, seed=None):
         raise AudioError("unknown driver seed %s" % seed)
     stem = Path(workload["script"]).stem
     (qa / (stem + ".nut")).write_text(script)
+    # The hook is rebuilt from the installed game's own mapspawn.nut every run.
     hook = vscripts / "mapspawn.nut"
-    original = ""
-    if hook.is_file() and not hook.is_symlink():
-        original = hook.read_text(errors="replace")
-    original = original.split("// PORTAL2_AUDIO_HOOK")[0].rstrip() + "\n"
-    if hook.is_symlink():
+    pristine = Path(steam_root) / "portal2" / "scripts" / "vscripts" / "mapspawn.nut"
+    original = pristine.read_text(errors="replace").rstrip() + "\n" if pristine.is_file() else ""
+    if hook.is_symlink() or hook.is_file():
         hook.unlink()
     # Retail ignores +wait on the command line, so both builds start the
     # driver from mapspawn, one second after the map spawns.
@@ -636,7 +768,7 @@ def capture_ours(args, workload, out):
     runtime = Path(args.runtime).resolve()
     stage_portal2_runtime.stage_content(args.steam_root, runtime)
     portal_boot.install_build(args.build, runtime, game="portal2")
-    install_probe(args.workload, workload, runtime / "portal2", args.seed)
+    install_probe(args.workload, workload, runtime / "portal2", args.steam_root, args.seed)
     write_fake_zenity(out / "tools")
     environment = dict(os.environ)
     for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
@@ -687,7 +819,7 @@ def retail_mirror(steam_root, mirror):
 
 def capture_retail(args, workload, out):
     mirror = retail_mirror(args.steam_root, args.retail_mirror)
-    install_probe(args.workload, workload, mirror / "portal2", args.seed)
+    install_probe(args.workload, workload, mirror / "portal2", args.steam_root, args.seed)
     write_fake_zenity(out / "tools")
     for tool in ("mutter", "dbus-run-session"):
         if not shutil.which(tool):
@@ -788,7 +920,7 @@ def command_check(args, workload):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("capture", "measure", "record", "check"))
+    parser.add_argument("command", choices=("capture", "measure", "record", "check", "selftest"))
     parser.add_argument("--workload", type=Path, default=DEFAULT_WORKLOAD)
     parser.add_argument("--steam-root", type=Path, default=Path(os.environ.get(
         "P2_STEAM_ROOT", DEFAULT_STEAM_ROOT)))
@@ -822,9 +954,10 @@ def main(argv=None):
         if args.command == "check" and args.capture is None and args.out is None:
             parser.error("check needs --capture or --out")
         return {"capture": command_capture, "measure": command_measure,
-                "record": command_record, "check": command_check}[args.command](args, workload)
+                "record": command_record, "check": command_check,
+                "selftest": command_selftest}[args.command](args, workload)
     except AudioError as error:
-        if args.command == "check":
+        if args.command in ("check", "selftest"):
             print("FAIL setup: %s" % error)
             return conformance_result.report_conformance(1, 1)
         parser.exit(2, "portal2_audio: %s\n" % error)

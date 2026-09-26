@@ -263,6 +263,9 @@ void main()
 		vec3 envTint = vec3( fragLightmapUv, fragVertexColor.a );
 		vec3 reflection = texture( envmapTexture, reflectDirection ).rgb * normal.a * envTint;
 		reflection = mix( reflection, reflection * reflection, consts.alphaParams.x );
+		// $envmapsaturation (c3, in the output scale's slot).
+		const float luminance = dot( reflection, vec3( 0.299, 0.587, 0.114 ) );
+		reflection = mix( vec3( luminance ), reflection, consts.alphaParams.w );
 		color += reflection;
 		color = ApplyPixelFog( color );
 		if ( ( flags & 4 ) != 0 )

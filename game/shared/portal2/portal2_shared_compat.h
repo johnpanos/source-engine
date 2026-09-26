@@ -33,9 +33,11 @@ class CPhysCollide;
 struct virtualmeshlist_t;
 
 //-----------------------------------------------------------------------------
-// Paint maps. This engine's BSP loader and renderer have no paint map data, so
-// every map behaves as a map without a paint map: nothing can be painted and
-// every surface reports no paint.
+// Paint maps: the engine's IEnginePaint (public/engine/ienginepaint.h), which
+// replaces the CS:GO-era IVEngineClient/IVEngineServer paint members. When the
+// engine does not provide it (a dedicated server), every map behaves as a map
+// without a paint map: nothing can be painted and every surface reports no
+// paint.
 //-----------------------------------------------------------------------------
 
 // The surface flag Portal 2 tests for "no paint" (bspflags.h in the Portal 2
@@ -45,19 +47,19 @@ struct virtualmeshlist_t;
 #endif
 inline unsigned short SurfNoPaintFlag() { return SURF_NOPAINT; }
 
-// Replaces engine->HasPaintmap(). Always false.
+// Replace engine->HasPaintmap(), SpherePaintSurface(), SphereTracePaintSurface(),
+// RemovePaint(), RemoveAllPaint(), PaintAllSurfaces(), GetPaintmapDataRLE() and
+// LoadPaintmapDataRLE().
 bool Portal2_HasPaintmap();
-
-// Replaces engine->SpherePaintSurface(). Paints nothing and returns false.
 bool Portal2_SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color,
 								 float flSphereRadius, float flPaintCoatPercent );
-
-// Replaces engine->SphereTracePaintSurface(). Leaves surfColor empty (no paint found).
 void Portal2_SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal,
 									  float flSphereRadius, CUtlVector<unsigned char> &surfColor );
-
-// Replaces engine->RemovePaint( pModel ). No-op: there is no paint to remove.
 void Portal2_RemovePaint( const model_t *pModel );
+void Portal2_RemoveAllPaint();
+void Portal2_PaintAllSurfaces( unsigned char color );
+void Portal2_GetPaintmapDataRLE( CUtlVector<uint32> &data );
+void Portal2_LoadPaintmapDataRLE( const CUtlVector<uint32> &data );
 
 //-----------------------------------------------------------------------------
 // IEngineTrace brush queries (CS:GO IEngineTrace.h types).

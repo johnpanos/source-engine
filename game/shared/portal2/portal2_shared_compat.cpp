@@ -18,6 +18,8 @@
 #include "itempents.h"
 #include "ispsharedmemory.h"
 #include "engine/igametimescale.h"
+#include "engine/ienginepaint.h"
+#include "paint_enum.h"
 #include "engine/imatchframeworkhost.h"
 #include "matchmaking/imatchframework.h"
 
@@ -127,9 +129,22 @@ namespace Portal2Engine
 //-----------------------------------------------------------------------------
 static ISPSharedMemoryManager *s_pSPSharedMemoryManager = NULL;
 static IEngineGameTimescale *s_pEngineGameTimescale = NULL;
+static IEnginePaint *s_pEnginePaint = NULL;
+
+// The engine stores paint_enum.h powers; its bare value is NO_POWER.
+static_assert( NO_POWER == ENGINE_PAINT_NO_POWER && PAINT_POWER_TYPE_COUNT == ENGINE_PAINT_POWER_COUNT,
+			   "the engine paint map and paint_enum.h disagree on the paint powers" );
 
 bool Portal2_ConnectEngineInterfaces( CreateInterfaceFn engineFactory )
 {
+	// Optional: an engine without paint maps (a dedicated server) reports
+	// every map as unpaintable.
+	s_pEnginePaint = (IEnginePaint *)engineFactory( VENGINE_PAINT_INTERFACE_VERSION, NULL );
+	if ( !s_pEnginePaint )
+	{
+		DevWarning( "Portal 2: the engine does not provide %s; maps cannot be painted\n", VENGINE_PAINT_INTERFACE_VERSION );
+	}
+
 	s_pSPSharedMemoryManager = (ISPSharedMemoryManager *)engineFactory( VENGINE_SPSHAREDMEMORY_INTERFACE_VERSION, NULL );
 	if ( !s_pSPSharedMemoryManager )
 	{
@@ -171,24 +186,69 @@ ISPSharedMemory *Portal2_GetSinglePlayerSharedMemorySpace( const char *szName, i
 //-----------------------------------------------------------------------------
 bool Portal2_HasPaintmap()
 {
-	return false;
+	return s_pEnginePaint && s_pEnginePaint->HasPaintmap();
 }
 
 bool Portal2_SpherePaintSurface( const model_t *pModel, const Vector &vPosition, unsigned char color,
 								 float flSphereRadius, float flPaintCoatPercent )
 {
-	PORTAL2_SHARED_UNSUPPORTED( "painting map surfaces" );
-	return false;
+	if ( !s_pEnginePaint )
+	{
+		PORTAL2_SHARED_UNSUPPORTED( "painting map surfaces" );
+		return false;
+	}
+	return s_pEnginePaint->SpherePaintSurface( pModel, vPosition, color, flSphereRadius, flPaintCoatPercent );
 }
 
 void Portal2_SphereTracePaintSurface( const model_t *pModel, const Vector &vPosition, const Vector &vContactNormal,
 									  float flSphereRadius, CUtlVector<unsigned char> &surfColor )
 {
 	surfColor.RemoveAll();
+	if ( s_pEnginePaint )
+	{
+		s_pEnginePaint->SphereTracePaintSurface( pModel, vPosition, vContactNormal, flSphereRadius, surfColor );
+	}
 }
 
 void Portal2_RemovePaint( const model_t *pModel )
 {
+	if ( s_pEnginePaint )
+	{
+		s_pEnginePaint->RemovePaint( pModel );
+	}
+}
+
+void Portal2_RemoveAllPaint()
+{
+	if ( s_pEnginePaint )
+	{
+		s_pEnginePaint->RemoveAllPaint();
+	}
+}
+
+void Portal2_PaintAllSurfaces( unsigned char color )
+{
+	if ( s_pEnginePaint )
+	{
+		s_pEnginePaint->PaintAllSurfaces( color );
+	}
+}
+
+void Portal2_GetPaintmapDataRLE( CUtlVector<uint32> &data )
+{
+	data.RemoveAll();
+	if ( s_pEnginePaint )
+	{
+		s_pEnginePaint->GetPaintmapDataRLE( data );
+	}
+}
+
+void Portal2_LoadPaintmapDataRLE( const CUtlVector<uint32> &data )
+{
+	if ( s_pEnginePaint )
+	{
+		s_pEnginePaint->LoadPaintmapDataRLE( data );
+	}
 }
 
 //-----------------------------------------------------------------------------

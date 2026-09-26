@@ -27,6 +27,7 @@ def build(bld):
 		'convar.cpp',
 		'datamanager.cpp',
 		'diff.cpp',
+		'dynamic_library_telemetry.cpp',
 		'generichash.cpp',
 		'ilocalize.cpp',
 		'interface.cpp',

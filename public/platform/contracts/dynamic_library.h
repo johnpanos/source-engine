@@ -30,9 +30,14 @@
 #ifndef PLATFORM_CONTRACTS_DYNAMIC_LIBRARY_H
 #define PLATFORM_CONTRACTS_DYNAMIC_LIBRARY_H
 
-// Contract header: standard library only. No tier0/tier1, no native SDK, no
-// OS-selection macros. This header must compile under the linux-headless-core
-// conformance profile (include root "public", C++20, -Wall -Wextra -Werror).
+// Contract header: standard library and foundation vocabulary only. No
+// tier0/tier1, no native SDK, no OS-selection macros. This header must compile
+// under the linux-headless-core conformance profile (include root "public",
+// C++20, -Wall -Wextra -Werror).
+
+#include "foundation/expected.h"
+
+#include <utility>
 
 namespace platform
 {
@@ -127,6 +132,114 @@ public:
 	// kUnsupportedNoLoad -- an explicit report, not a silent success.
 	virtual bool TryResolveNoLoad( const char *path, DynamicLibraryError *error ) = 0;
 };
+
+// Load-site telemetry (RFC 0001 rank 4). A native provider reports every
+// load request, symbol lookup and unload to the observer its composition root
+// supplies; the legacy Sys_* bridge adapts it to the Tier 0 telemetry stream.
+// Callbacks run synchronously on the calling thread after the native call and
+// must not call back into the loader. `library` identifies one load from its
+// OnLoad until its OnUnload (null for a failed load). `resolvedPath` is the
+// canonical native path the provider opened, or null when the load failed or
+// the provider cannot name it. Strings are borrowed for the callback only.
+class IDynamicLibraryObserver
+{
+public:
+	virtual ~IDynamicLibraryObserver() = default;
+	virtual void OnLoad( const char *path, const char *resolvedPath, const IDynamicLibrary *library,
+	    const DynamicLibraryError &result ) = 0;
+	virtual void OnFindSymbol( const IDynamicLibrary *library, const char *name, const void *symbol,
+	    const DynamicLibraryError &result ) = 0;
+	virtual void OnUnload( const IDynamicLibrary *library ) = 0;
+};
+
+// Scoped ownership of one loaded library (RFC 0001 "Dynamic-library
+// ownership"): a move-only value that returns the library to the loader that
+// created it when it is destroyed, reset or assigned over. It is not reference
+// counted and allocates nothing. The loader must outlive it, and symbols
+// obtained through it are valid only while it owns the library.
+class LoadedLibrary
+{
+public:
+	LoadedLibrary() = default;
+	LoadedLibrary( IDynamicLibraryLoader &loader, IDynamicLibrary *library ) noexcept
+	    : m_Loader( library != nullptr ? &loader : nullptr ), m_Library( library )
+	{
+	}
+	LoadedLibrary( LoadedLibrary &&other ) noexcept
+	    : m_Loader( std::exchange( other.m_Loader, nullptr ) ),
+	      m_Library( std::exchange( other.m_Library, nullptr ) )
+	{
+	}
+	LoadedLibrary &operator=( LoadedLibrary &&other ) noexcept
+	{
+		if ( this != &other )
+		{
+			Reset();
+			m_Loader = std::exchange( other.m_Loader, nullptr );
+			m_Library = std::exchange( other.m_Library, nullptr );
+		}
+		return *this;
+	}
+	LoadedLibrary( const LoadedLibrary & ) = delete;
+	LoadedLibrary &operator=( const LoadedLibrary & ) = delete;
+	~LoadedLibrary() { Reset(); }
+
+	explicit operator bool() const noexcept { return m_Library != nullptr; }
+	IDynamicLibrary *Get() const noexcept { return m_Library; }
+
+	// As IDynamicLibrary::FindSymbol. An empty value finds nothing and reports
+	// kInvalidArgument.
+	void *FindSymbol( const char *name, DynamicLibraryError *error = nullptr ) const
+	{
+		if ( m_Library == nullptr )
+		{
+			if ( error != nullptr )
+			{
+				*error = { DynamicLibraryOp::kFindSymbol, DynamicLibraryStatus::kInvalidArgument, 0,
+				    name };
+			}
+			return nullptr;
+		}
+		return m_Library->FindSymbol( name, error );
+	}
+
+	// Transfers ownership to the caller, who must return the library through
+	// IDynamicLibraryLoader::Unload; the value becomes empty.
+	[[nodiscard]] IDynamicLibrary *Release() noexcept
+	{
+		m_Loader = nullptr;
+		return std::exchange( m_Library, nullptr );
+	}
+
+	// Returns the library to its loader now; the value becomes empty.
+	void Reset() noexcept
+	{
+		if ( m_Library != nullptr )
+		{
+			m_Loader->Unload( m_Library );
+		}
+		m_Loader = nullptr;
+		m_Library = nullptr;
+	}
+
+private:
+	IDynamicLibraryLoader *m_Loader = nullptr;
+	IDynamicLibrary *m_Library = nullptr;
+};
+
+// Loads `path` through `loader` into a scoped value, or returns the structured
+// load error.
+[[nodiscard]] inline foundation::Expected<LoadedLibrary, DynamicLibraryError> LoadScoped(
+    IDynamicLibraryLoader &loader, const char *path )
+{
+	DynamicLibraryError error;
+	IDynamicLibrary *library = loader.Load( path, &error );
+	if ( library == nullptr )
+	{
+		return foundation::MakeUnexpected( error );
+	}
+	return LoadedLibrary( loader, library );
+}
 
 } // namespace platform
 

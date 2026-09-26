@@ -3350,6 +3350,29 @@ VkPipeline CVulkanContext::LightmappedPipeline(
 	return pipeline;
 }
 
+VkPipeline CVulkanContext::LightmappedPaintPipeline(
+    const DynRasterState &state, bool srgbPass, int samples )
+{
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
+	const auto existing = m_lightmappedPaintPipelines.find( key );
+	if ( existing != m_lightmappedPaintPipelines.end() )
+		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
+	if ( !LightmappedPaintPipelineSupported() )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_lightmappedVert, m_lightmappedPaintFrag,
+	    m_lightmappedPipelineLayout, &m_lightmappedVin, pass, samples );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (LightmappedPaint, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_lightmappedPaintPipelines[key] = pipeline;
+	if ( pipeline != VK_NULL_HANDLE )
+		NotePipelineVariant( kPipelineLightmappedPaint, key );
+	return pipeline;
+}
+
 VkPipeline CVulkanContext::PostPipeline( const DynRasterState &state, bool srgbPass, int samples )
 {
 	const uint64_t key = PipelineKey( state, srgbPass, samples );
@@ -3962,6 +3985,11 @@ bool CVulkanContext::InitLightmappedPipeline( std::string *outError )
 	m_lightmappedVin.vertexAttributeDescriptionCount = 13;
 	m_lightmappedVin.pVertexAttributeDescriptions = m_lightmappedAttrs;
 	m_lightmappedVert = vert;
+	// Paint on world surfaces is optional: without it paint is not drawn.
+	std::string paintError;
+	if ( !CreateShaderModule( g_lightmappedPaintFragSpv, sizeof( g_lightmappedPaintFragSpv ),
+	         &m_lightmappedPaintFrag, &paintError ) )
+		Log( "LightmappedPaint pipeline unavailable: %s\n", paintError.c_str() );
 	if ( LightmappedPipeline( DynRasterState() ) == VK_NULL_HANDLE )
 	{
 		m_lightmappedVert = VK_NULL_HANDLE;
@@ -3980,7 +4008,13 @@ void CVulkanContext::DestroyLightmappedPipeline()
 			vkDestroyPipeline( m_device, entry.second, nullptr );
 	}
 	m_lightmappedPipelines.clear();
-	for ( VkShaderModule *module : { &m_lightmappedVert, &m_lightmappedFrag } )
+	for ( const auto &entry : m_lightmappedPaintPipelines )
+	{
+		if ( entry.second != VK_NULL_HANDLE )
+			vkDestroyPipeline( m_device, entry.second, nullptr );
+	}
+	m_lightmappedPaintPipelines.clear();
+	for ( VkShaderModule *module : { &m_lightmappedVert, &m_lightmappedFrag, &m_lightmappedPaintFrag } )
 	{
 		if ( *module != VK_NULL_HANDLE )
 			vkDestroyShaderModule( m_device, *module, nullptr );
@@ -6918,7 +6952,12 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			else if ( d.shaderIndex == kDynShaderLightmapped )
 			{
+				// The paint pass (kLightmappedPaint) has its own pixel stage.
+				const bool paintPass =
+				    d.skin >= 0 && static_cast<size_t>( d.skin ) < m_dynSkinConstants.size() &&
+				    ( m_dynSkinConstants[static_cast<size_t>( d.skin )].combos & kLightmappedPaint ) != 0;
 				selected = d.worldMesh ? VK_NULL_HANDLE
+				           : paintPass ? LightmappedPaintPipeline( d.raster, openSrgb, passSamples )
 				                       : LightmappedPipeline( d.raster, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
@@ -8531,6 +8570,8 @@ int CVulkanContext::PrewarmPipelines()
 			pipeline = PbrDirectPipeline( state, srgb, samples );
 		else if ( family == kPipelineLightmapped )
 			pipeline = LightmappedPipeline( state, srgb, samples );
+		else if ( family == kPipelineLightmappedPaint )
+			pipeline = LightmappedPaintPipeline( state, srgb, samples );
 		else if ( family == kPipelinePost )
 			pipeline = PostPipeline( state, srgb, samples );
 		if ( pipeline != VK_NULL_HANDLE )

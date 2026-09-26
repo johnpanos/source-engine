@@ -1,13 +1,200 @@
 {
   "schema": "portal2-material-checks/v1",
-  "tiles": {"columns": 16, "rows": 12, "tolerance": 24, "min_fraction": 0.85},
-  "exempt_unknown_shaders": {},
-  "exempt_native_drops": {},
+  "description": "What tools/quality/portal2_material_shots.py checks on each shot of portal2-materials-v1 against the retail reference (reference.json). Tiles: a 16x12 grid of mean colours; a tile matches when every channel is within the tolerance (8-bit sRGB) of retail's; two retail runs match on every tile at 8 except animated goo and tractor-beam tiles (up to 21.5). Regions: a rectangle [x0, y0, x1, y1] of the 1024x768 frame on one feature; mean colour within mean_tolerance, and optionally the contrast ratio (luminance standard deviation, +1 each) and the fraction of dark (luma < 40) or bright (luma > 230) pixels. Every region names the defect it pins. Exemptions name why a difference is not this build's defect.",
+  "tiles": {
+    "columns": 16,
+    "rows": 12,
+    "tolerance": 24,
+    "min_fraction": 0.85
+  },
+  "exempt_unknown_shaders": {
+    "DebugDepth": "retail lacks it too (dev material ___debugdepth)",
+    "DebugDrawEnvmapMask": "retail lacks it too",
+    "DebugLuxels": "retail lacks it too (debug/debugluxels)",
+    "DebugNormalMap": "retail lacks it too",
+    "FillRate": "retail lacks it too"
+  },
+  "exempt_native_drops": {
+    "___error": "CTextureManager::ForceAllTexturesIntoHardware's precache draws (ForceTextureIntoHardware binds each texture on the error material and draws a degenerate mesh); nothing a view shows. Every backtrace of these drops (gdb on NoteDroppedMaterial, sp_a2_triple_laser) ends in that path."
+  },
   "shots": {
-    "sp_a2_bridge_intro": {"projector": {}, "cables": {}, "core": {}},
-    "sp_a2_fizzler_intro": {"fizzler": {}, "cables": {}, "laser_emitter": {}},
-    "sp_a2_laser_over_goo": {"goo": {}, "cable": {}, "catcher": {}},
-    "sp_a2_triple_laser": {"entry_hall": {}, "floor": {}},
-    "sp_a4_tb_intro": {"emitter": {}, "shaft": {}}
+    "sp_a2_bridge_intro": {
+      "projector": {
+        "regions": {
+          "sky": {
+            "rect": [
+              120,
+              0,
+              1024,
+              110
+            ],
+            "mean_tolerance": 24,
+            "bright_tolerance": 0.1,
+            "pins": "2D skybox sky_white (UnlitGeneric skybox/sky_white*) not drawn on native Vulkan: R_DrawSkyBox binds and emits it every frame, but no draw reaches the frame"
+          },
+          "bridge": {
+            "rect": [
+              90,
+              400,
+              520,
+              500
+            ],
+            "mean_tolerance": 24,
+            "pins": "light bridge (projected_wall_entity, SolidEnergy) drawn; the client crashed drawing it before the paint agent's c_projectedwallentity.cpp fix"
+          }
+        }
+      }
+    },
+    "sp_a2_fizzler_intro": {
+      "fizzler": {
+        "regions": {
+          "observation_glass": {
+            "rect": [
+              280,
+              20,
+              500,
+              280
+            ],
+            "mean_tolerance": 20,
+            "dark_tolerance": 0.1,
+            "pins": "observation window glass above the chamber: retail shows the blurred, lit room behind it; here the pane is dark"
+          }
+        }
+      },
+      "cables": {
+        "regions": {
+          "cable_loop": {
+            "rect": [
+              320,
+              440,
+              520,
+              580
+            ],
+            "mean_tolerance": 24,
+            "dark_tolerance": 0.025,
+            "pins": "cables (SplineRope) drawn: every rope material used an unknown shader and drew as the error material"
+          }
+        }
+      },
+      "laser_emitter": {
+        "regions": {
+          "emitter_glow": {
+            "rect": [
+              500,
+              380,
+              600,
+              460
+            ],
+            "mean_tolerance": 20,
+            "bright_tolerance": 0.04,
+            "pins": "the laser's glow sprite at the emitter (retail: a bright halo where the beam starts)"
+          }
+        }
+      }
+    },
+    "sp_a2_laser_over_goo": {
+      "goo": {
+        "regions": {
+          "goo_surface": {
+            "rect": [
+              0,
+              420,
+              640,
+              768
+            ],
+            "mean_tolerance": 16,
+            "pins": "toxic goo (Water with Portal 2 $flowmap, nature/toxicslime_*): not implemented by the native pipeline, dropped"
+          }
+        }
+      },
+      "cable": {
+        "regions": {
+          "rust_beams": {
+            "rect": [
+              450,
+              60,
+              1000,
+              380
+            ],
+            "mean_tolerance": 16,
+            "std_ratio": [
+              0.6,
+              1.6
+            ],
+            "pins": "rusty truss models and the lit exterior behind them: retail dark brown, here brighter and higher contrast (the exterior is blown out)"
+          }
+        }
+      },
+      "catcher": {
+        "regions": {
+          "goo_surface": {
+            "rect": [
+              0,
+              580,
+              560,
+              768
+            ],
+            "mean_tolerance": 16,
+            "bright_tolerance": 0.05,
+            "pins": "toxic goo seen from above the pit: here a white slab where retail draws dark goo"
+          },
+          "observation_glass": {
+            "rect": [
+              0,
+              0,
+              380,
+              230
+            ],
+            "mean_tolerance": 24,
+            "pins": "observation window (models/props_lab/glasswindow_observation, Refract with $envmapsaturation) and the lit room behind it"
+          }
+        }
+      }
+    },
+    "sp_a2_triple_laser": {
+      "entry_hall": {
+        "regions": {
+          "floor": {
+            "rect": [
+              0,
+              500,
+              1024,
+              768
+            ],
+            "mean_tolerance": 12,
+            "pins": "lightmapped floor brightness: about 2x retail's in linear light, also with the tone-mapping scale forced to 1"
+          }
+        }
+      },
+      "floor": {}
+    },
+    "sp_a4_tb_intro": {
+      "emitter": {
+        "regions": {
+          "beam_column": {
+            "rect": [
+              360,
+              40,
+              660,
+              340
+            ],
+            "mean_tolerance": 16,
+            "dark_tolerance": 0.04,
+            "pins": "tractor beam column (C_Trigger_TractorBeam::DrawModel, effects/tractor_beam*): never drawn, only its particles"
+          },
+          "floor": {
+            "rect": [
+              0,
+              560,
+              1024,
+              768
+            ],
+            "mean_tolerance": 12,
+            "pins": "lightmapped floor brightness: about 2x retail's in linear light, also with the tone-mapping scale forced to 1"
+          }
+        }
+      },
+      "shaft": {}
+    }
   }
 }

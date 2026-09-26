@@ -46,7 +46,6 @@ typedef CUtlVector< PaintLocationData_t > PaintLocationVector_t;
 typedef CUtlVector< PaintEntityData_t > PaintEntityVector_t;
 typedef CUtlVector< CProjectedWallEntity* > ProjectedWallVector_t;
 
-typedef CUtlVector< CUtlVector< uint8 > > PaintmapDataVector_t;
 
 
 class CPaintDatabase : public CAutoGameSystemPerFrame, public CGameEventListener
@@ -97,7 +96,8 @@ private:
 	bool m_bCanPaint;
 	bool m_bSentClientPaintData;
 
-	PaintmapDataVector_t m_Paintmaps;
+	// Restored paint records, loaded into the engine once it has paint maps.
+	CUtlVector< uint32 > m_PendingPaintmapRLE;
 };
 
 extern CPaintDatabase PaintDatabase;

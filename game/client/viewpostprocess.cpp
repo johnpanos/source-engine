@@ -1353,6 +1353,43 @@ IMaterial * CEnginePostMaterialProxy::SetupEnginePostMaterial(	const Vector4D & 
 
 EXPOSE_INTERFACE( CEnginePostMaterialProxy, IMaterialProxy, "engine_post" IMATERIAL_PROXY_INTERFACE_VERSION );
 
+//-----------------------------------------------------------------------------
+// BloomAdd: Portal 2's dev/bloomadd names it. As in CS:GO's client, it writes
+// the bloom amount (always 1; the blur pass carries the bloom scale) into
+// $c0_x, which bloomadd_ps2x multiplies the bloom by. Without it the material
+// system reports the proxy missing whenever the material loads.
+//-----------------------------------------------------------------------------
+class CBloomAddMaterialProxy : public CEntityMaterialProxy
+{
+public:
+	CBloomAddMaterialProxy() : m_pMaterialParam_BloomAmount( NULL ) {}
+	virtual ~CBloomAddMaterialProxy() {}
+
+	virtual bool Init( IMaterial *pMaterial, KeyValues *pKeyValues )
+	{
+		bool bFoundVar = false;
+		m_pMaterialParam_BloomAmount = pMaterial->FindVar( "$c0_x", &bFoundVar, false );
+		return true;
+	}
+
+	virtual void OnBind( C_BaseEntity *pEntity )
+	{
+		if ( m_pMaterialParam_BloomAmount )
+			m_pMaterialParam_BloomAmount->SetFloatValue( 1.0f );
+	}
+
+	virtual IMaterial *GetMaterial()
+	{
+		return m_pMaterialParam_BloomAmount ? m_pMaterialParam_BloomAmount->GetOwningMaterial()
+		                                    : NULL;
+	}
+
+private:
+	IMaterialVar *m_pMaterialParam_BloomAmount;
+};
+
+EXPOSE_INTERFACE( CBloomAddMaterialProxy, IMaterialProxy, "BloomAdd" IMATERIAL_PROXY_INTERFACE_VERSION );
+
 
 static void DrawBloomDebugBoxes( IMatRenderContext *pRenderContext )
 {

@@ -1145,6 +1145,26 @@ The legacy bridge may hold the default loader required by existing `Sys_*`
 functions, but only bootstrap code may install it. New code must not access that
 default directly.
 
+**Implementation decision (2026-09-25, R07; an agent decision under the user's
+standing instruction).** Step 6 is not implemented as re-plumbing. The frozen
+`Sys_*` functions themselves are the narrowly scoped legacy bridge. They are
+instrumented through the Tier 0 telemetry adapters, and new callers are
+rejected (ARCH101–ARCH104).
+
+- Why: Tier 1 is a static library linked into every module, including
+  separately built extension modules. Native `CSysModule*` handles cross
+  module boundaries, and each module's own Tier 1 copy calls
+  `dlsym`/`dlclose` on handles another copy opened.
+- A routed `Sys_*` would therefore keep native fallbacks for foreign
+  handles. It would also reach only the copy that bootstrap installed.
+  Neither the OS code in Tier 1 nor the dependence on `Sys_*` would shrink.
+- The platform loader provider (`platform/posix`, with its required
+  load-site observer and a Tier 1 adapter onto the same telemetry stream)
+  serves typed composition roots and the approved extension hosts of R41.
+- `Sys_*` retire with their consumers (R39/R41), not by adaptation.
+- The acceptance criterion "no OS branches outside backend targets" is met
+  when that retirement empties `tier1/interface.cpp`'s loader code.
+
 ### Acceptance criteria
 
 The reference migration is complete when:

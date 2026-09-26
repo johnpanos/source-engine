@@ -344,7 +344,7 @@ template< typename BaseEntityType >
 void PaintPowerUser<BaseEntityType>::UpdatePaintPowers()
 {
 	// Only update if there's paint in the map
-	if( false )
+	if( Portal2_HasPaintmap() )
 	{
 		// Update which powers are active
 		PaintPowerInfoVector activePowers;

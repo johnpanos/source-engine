@@ -3,6 +3,7 @@
   "description": "Static dynamic-loader site inventory for RFC 0001 retirement Phase A.",
   "classificationCounts": {
     "first-party-composition": 113,
+    "loader-provider": 1,
     "native-symbol-probe": 23,
     "optional-provider": 17,
     "retained-extension": 33,
@@ -10,8 +11,8 @@
     "unbuilt-vendor": 11
   },
   "nativeTelemetryCoverage": {
-    "covered": 92,
-    "total": 92,
+    "covered": 93,
+    "total": 93,
     "status": "complete"
   },
   "sites": [
@@ -1731,6 +1732,16 @@
       "mechanism": "ARCH102",
       "classification": "retained-extension",
       "reason": "Private ShaderDLL004 mod-extension host; scoped filesystem acquisition, version negotiation and disconnect-before-unload preserve the retained ABI."
+    },
+    {
+      "fingerprint": "b3dd45676b243c4801ce",
+      "mechanism": "native-loader",
+      "path": "platform/posix/dynamic_library_provider.cpp",
+      "line": 167,
+      "excerpt": "void *handle = dlopen( opened.c_str(), RTLD_NOW | RTLD_LOCAL );",
+      "classification": "loader-provider",
+      "reason": "RFC 0001 rank 4 private native loader provider: the POSIX dlopen primitive behind IDynamicLibraryLoader, selected explicitly by composition roots and (R07-SYS) the Sys_* bridge; every native call is reported to its required observer.",
+      "telemetry": "platform-loader-observer"
     },
     {
       "fingerprint": "2d95166d02d0f3a2a045",

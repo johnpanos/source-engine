@@ -79,6 +79,8 @@ void RegisterUserMessages()
 	usermessages->Register( "RemoveAllPaint", 0 );
 	usermessages->Register( "PaintAllSurfaces", sizeof( BYTE ) );
 	usermessages->Register( "RemovePaint", sizeof( int32 ) );
+	// Paint records for a joining client (CPaintDatabase::SendPaintDataTo).
+	usermessages->Register( "LoadPaintmapData", -1 );
 
 	usermessages->Register( "StartSurvey", sizeof( int32 ) );
 	usermessages->Register( "ApplyHitBoxDamageEffect", sizeof( int32 ) + sizeof( uint8 ) + sizeof( uint8 ) );

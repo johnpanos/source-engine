@@ -51,6 +51,7 @@
 #include "Overlay.h"
 #include "render/world_mesh_upload.h"
 #include "worldmesh_cull.h"
+#include "paint_render.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -843,6 +844,7 @@ public:
 		{
 			m_ShadowHandles[i].Purge();
 			m_DlightSurfaces[i].Purge();
+			m_PaintedSurfaces[i].Purge();
 		}
 		m_SortList.Shutdown();
 		m_AlphaSortList.Shutdown();
@@ -865,6 +867,7 @@ public:
 			//Assert(pRenderList->m_ShadowHandles[j].Count() == 0 );
 			m_ShadowHandles[j].RemoveAll();
 			m_DlightSurfaces[j].RemoveAll();
+			m_PaintedSurfaces[j].RemoveAll();
 		}
 
 		// We haven't found any visible leafs this frame
@@ -888,6 +891,9 @@ public:
 	
 	// list of surfaces with dynamic lightmaps
 	CUtlVector<SurfaceHandle_t>	m_DlightSurfaces[MAX_MAT_SORT_GROUPS];
+
+	// opaque surfaces with paint (engine/paint.cpp), drawn again by the paint pass
+	CUtlVector<SurfaceHandle_t>	m_PaintedSurfaces[MAX_MAT_SORT_GROUPS];
 
 	//-------------------------------------------------------------------------
 	// Used to generate a list of the leaves visited, and in back-to-front order
@@ -1015,6 +1021,11 @@ inline void Shader_WorldSurface( CWorldRenderList *pRenderList, SurfaceHandle_t 
 	}
 
 	int nMaterialSortID = MSurf_MaterialSortID( surfID );
+
+	if ( MSurf_Flags( surfID ) & SURFDRAW_PAINTED )
+	{
+		pRenderList->m_PaintedSurfaces[nSortGroup].AddToTail( surfID );
+	}
 
 	if ( MSurf_Flags( surfID ) & (SURFDRAW_HASLIGHTSYTLES|SURFDRAW_HASDLIGHT) )
 	{
@@ -2108,6 +2119,8 @@ void Shader_DrawChains( const CWorldRenderList *pRenderList, int nSortGroup, boo
 
 	if ( bShadowDepth )	// Skip debug stuff in shadow depth map
 		return;
+
+	R_DrawPaintedSurfaces( pRenderContext, pRenderList->m_PaintedSurfaces[nSortGroup] );
 
 #ifdef USE_CONVARS
 	if ( g_ShaderDebug.anydebug )
@@ -3941,6 +3954,7 @@ void R_DrawWorldLists( IWorldRenderList *pRenderListIn, unsigned long flags, flo
 
 	VPROF("R_DrawWorldLists");
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__  );
+	R_PaintUpdateTextures();
 	Shader_WorldEnd( pRenderList, flags, waterZAdjust );
 
 #ifdef DEBUG_SURF

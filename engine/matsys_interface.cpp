@@ -55,6 +55,7 @@ extern IFileSystem *g_pFileSystem;
 
 #include "igame.h"
 #include "indirect_light_host.h"
+#include "paint.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -1657,6 +1658,8 @@ void MaterialSystem_DestroySortinfo( void )
 	{
 #ifndef SWDS
 		WorldStaticMeshDestroy();
+		// Paint pages index the sort infos' lightmap pages.
+		g_PaintManager.DestroyPaintmaps();
 #endif
 		delete[] materialSortInfoArray;
 		materialSortInfoArray = NULL;

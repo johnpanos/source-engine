@@ -181,6 +181,12 @@ def load_manifest(path, root=None):
             for unit in units:
                 if not unit.get("id") or not unit.get("dialect") or not unit.get("sources"):
                     raise ManifestError("suite %s has a unit without id, dialect or sources" % sid)
+                if unit.get("link") not in (None, "shared"):
+                    raise ManifestError("suite %s unit %s has invalid link %r (valid: shared)"
+                                        % (sid, unit["id"], unit.get("link")))
+            if all(unit.get("link") == "shared" for unit in units):
+                raise ManifestError("suite %s has only shared-library units; one unit must "
+                                    "build the test program" % sid)
         elif not s.get("sources"):
             raise ManifestError("suite %s declares no sources" % sid)
         expect = s.get("expect", OUTCOME_PASS)
@@ -519,16 +525,36 @@ def separate_build_commands(root, cxx, profile, suite, out_bin, config="default"
     return commands
 
 
+def shared_unit_path(out_bin, unit):
+    """Where a `"link": "shared"` unit's library is built."""
+    return "%s.%s.so" % (out_bin, unit["id"])
+
+
+def shared_unit_macro(unit):
+    """The define that tells the other units where a shared unit's library is:
+    CONFORMANCE_SHARED_<ID>, the id upper-cased with non-alphanumerics as _."""
+    return "CONFORMANCE_SHARED_" + re.sub(r"[^A-Za-z0-9]", "_", unit["id"]).upper()
+
+
 def unit_build_commands(root, cxx, profile, suite, out_bin, config="default"):
     """Mixed-dialect suites: each unit compiles its sources with its own policy
     dialect (plus the profile's warnings and the suite's shared flags) into
-    objects, and one link step joins them. Returns the command list."""
+    objects, and one link step joins them. Returns the command list.
+
+    A unit with `"link": "shared"` is instead compiled position-independent and
+    linked into its own shared library (a real fixture module for loader
+    suites). Every other unit is compiled with CONFORMANCE_SHARED_<ID> set to
+    that library's path, and the test program does not link it."""
     policy = toolchain_policy.load_policy(root)
     includes = []
     for inc in profile.get("include_roots", []):
         includes += ["-I", os.path.join(root, inc)]
-    commands, objects = [], []
+    shared_defines = ['-D%s="%s"' % (shared_unit_macro(unit), shared_unit_path(out_bin, unit))
+                      for unit in suite["units"] if unit.get("link") == "shared"]
+    commands, objects, libraries = [], [], []
     for unit in suite["units"]:
+        shared = unit.get("link") == "shared"
+        unit_objects = []
         try:
             dialect = toolchain_policy.dialect_flags(policy, unit["dialect"])
         except (KeyError, toolchain_policy.PolicyError) as e:
@@ -536,12 +562,19 @@ def unit_build_commands(root, cxx, profile, suite, out_bin, config="default"):
                                 % (suite["id"], unit["id"], unit["dialect"], e))
         for index, source in enumerate(unit["sources"]):
             obj = "%s.%s.%d.o" % (out_bin, unit["id"], index)
-            objects.append(obj)
+            unit_objects.append(obj)
             commands.append([cxx, *dialect, *profile.get("base_flags", []),
                              *rooted_flags(root, suite.get("extra_flags", [])),
                              *rooted_flags(root, unit.get("flags", [])),
                              *BUILD_CONFIGS[config], *includes,
+                             *(["-fPIC"] if shared else shared_defines),
                              "-c", os.path.join(root, source), "-o", obj])
+        if shared:
+            libraries.append([cxx, "-shared", *unit_objects, *profile.get("link_flags", []),
+                              "-o", shared_unit_path(out_bin, unit)])
+        else:
+            objects += unit_objects
+    commands += libraries
     commands.append([cxx, *objects, *rooted_flags(root, suite.get("link_flags", [])),
                      *profile.get("link_flags", []), "-o", out_bin])
     return commands

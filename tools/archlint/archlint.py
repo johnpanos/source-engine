@@ -595,6 +595,10 @@ NATIVE_TELEMETRY_PROVIDERS = {
     "public/tier0/bootstrap_module_load_telemetry.h": "bootstrap-provider-boundary",
     "public/tier0/native_module_load_telemetry.h": "tier0-provider-boundary",
     "tier0/module_load_telemetry.cpp": "tier0-provider-boundary",
+    # RFC 0001 rank 4 native loader provider: every dlopen/dlsym/dlclose is
+    # reported to the IDynamicLibraryObserver its factory requires; the Sys_*
+    # bridge adapts that observer to the Tier 0 stream.
+    "platform/posix/dynamic_library_provider.cpp": "platform-loader-observer",
     "external/vpc/public/tier0/native_module_load_telemetry.h": "vpc-provider-boundary",
 }
 

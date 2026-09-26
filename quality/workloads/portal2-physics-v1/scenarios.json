@@ -126,6 +126,77 @@
       }
     },
     {
+      "name": "sp_a2_triple_laser_edges",
+      "map": "sp_a2_triple_laser",
+      "script": "sp_a2_triple_laser_edges.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "portals.placed",
+        "walk_0.done",
+        "walk_12.done",
+        "walk_20.done",
+        "walk_28.done",
+        "walk_40.done",
+        "drop_x0.done",
+        "drop_x20.done",
+        "drop_x30.done",
+        "drop_x44.done",
+        "drop_y20.done",
+        "drop_y44.done",
+        "drop_y64.done",
+        "funnel_24.done",
+        "funnel_48.done",
+        "funnel_72.done"
+      ],
+      "metrics": {
+        "walk_0.crossed": {
+          "exact": true
+        },
+        "walk_12.crossed": {
+          "exact": true
+        },
+        "walk_20.crossed": {
+          "exact": true
+        },
+        "walk_28.crossed": {
+          "exact": true
+        },
+        "walk_40.crossed": {
+          "exact": true
+        },
+        "drop_x0.crossed": {
+          "exact": true
+        },
+        "drop_x20.crossed": {
+          "exact": true
+        },
+        "drop_x30.crossed": {
+          "exact": true
+        },
+        "drop_x44.crossed": {
+          "exact": true
+        },
+        "drop_y20.crossed": {
+          "exact": true
+        },
+        "drop_y44.crossed": {
+          "exact": true
+        },
+        "drop_y64.crossed": {
+          "exact": true
+        },
+        "funnel_24.crossed": {
+          "exact": true
+        },
+        "funnel_48.crossed": {
+          "exact": true
+        },
+        "funnel_72.crossed": {
+          "exact": true
+        }
+      }
+    },
+    {
       "name": "sp_a2_catapult_intro_arcs",
       "map": "sp_a2_catapult_intro",
       "script": "sp_a2_catapult_intro_arcs.nut",
@@ -247,9 +318,13 @@
         "button.pressed",
         "button.press_time",
         "button.released",
-        "button.release_count"
+        "button.release_count",
+        "stuck.held"
       ],
       "metrics": {
+        "stuck.sink": {
+          "abs": 2
+        },
         "player.rest_z": {
           "abs": 2
         },

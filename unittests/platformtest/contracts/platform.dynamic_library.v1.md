@@ -1,7 +1,9 @@
 # Contract: `platform.dynamic_library.v1`
 
 Module: `platform.contracts` · Types: `platform::IDynamicLibraryLoader`,
-`platform::IDynamicLibrary`, `platform::DynamicLibraryError`
+`platform::IDynamicLibrary`, `platform::DynamicLibraryError`,
+`platform::LoadedLibrary` (with `platform::LoadScoped`),
+`platform::IDynamicLibraryObserver`
 Header: `public/platform/contracts/dynamic_library.h`
 Shared suite: `unittests/platformtest/dynamic_library/dynamic_library_conformance.h`
 Conformance: `unittests/platformtest/dynamic_library/test_dynamic_library.cpp` (+ `_negative`)
@@ -77,7 +79,24 @@ operation, and provider error without parsing log text.
   backend asserts `LiveLibraryCount() == 0` in its destructor; native backends
   enforce the same rule.
 - The contract states no internal synchronization. Distinct loaders are
-  independent. (A provider that is thread-safe documents that separately.)
+  independent. (A provider that is thread-safe documents that separately; the
+  POSIX provider serializes its ownership list.)
+- `LoadedLibrary` is the scoped owner (RFC 0001 "Dynamic-library ownership").
+  - It is a move-only value, not reference counted, and allocates nothing.
+  - It returns its library to the loader that produced it on destruction,
+    `Reset`, or move-assignment over a live value. `Release` hands ownership
+    back to the caller, who must `Unload`.
+  - An empty value finds no symbols (`kInvalidArgument`).
+  - `LoadScoped` returns `Expected<LoadedLibrary, DynamicLibraryError>`.
+  - The loader must outlive every value.
+- Load-site telemetry: a native provider reports every load request (success
+  or failure), symbol lookup and unload to the `IDynamicLibraryObserver` its
+  composition root supplies.
+  - Callbacks are synchronous, after the native call, and must not re-enter
+    the loader.
+  - The library pointer identifies one load from `OnLoad` to `OnUnload`.
+    It is null for a failed load.
+  - Null and foreign unloads make no native call and are not reported.
 
 ## 5. Invariants and legal sequences
 
@@ -122,13 +141,36 @@ operation, and provider error without parsing log text.
   implementation also runs with all defects disabled, proving rejection is not
   caused by an unrelated defect in the test double.
 
-### Native providers (added as they land)
+- `RunScopedLibraryConformance` checks the scoped value against every
+  provider:
+  - release on scope exit;
+  - structured `LoadScoped` failure;
+  - the empty value;
+  - move construction and assignment, including self-move;
+  - `Reset` and `Release`;
+  - a value built from a failed load.
 
-When a real POSIX (`dlopen`/`dlsym`/`dlclose`) or Win32 (`LoadLibrary`/
-`GetProcAddress`/`FreeLibrary`) provider is implemented, it adds one manifest row
-whose sources are `dynamic_library_conformance.h` + the provider + a fixture
-shared library exporting `CreateInterface`. Fake-provider success is **not**
-evidence of OS behavior (RFC 0001 "Backend conformance tests"); the native rows
-supply that evidence. The real native loader today is `Sys_LoadModule` /
-`Sys_GetFactory` in `tier1/interface.{h,cpp}`; migrating it behind this contract
-is the RFC 0001 reference migration.
+  The sensitivity suite requires it to accept the conforming control and to
+  catch the leaky-unload, missing-load and aliased-ownership providers.
+
+### Native providers
+
+- POSIX: `platform/posix/dynamic_library_provider.{h,cpp}`
+  (`CreatePosixDynamicLibraryLoader( observer )`), module `platform.posix`.
+  - It opens exactly the given path; a bare name is opened in the working
+    directory, never searched for.
+  - Resolve-without-load is reported unsupported.
+  - Destroying it with live libraries aborts.
+  - Manifest rows:
+    - `platform.dynamic_library.posix` runs the shared loader, scoped and
+      isolation oracles against a real fixture library. The runner builds
+      that library from a `"link": "shared"` unit. The row also checks
+      native clauses (the fixture function's result, a non-library file as
+      `kProviderError`, bare-name behavior) and the observer event sequence.
+    - `platform.dynamic_library.posix.live-at-destroy` expects `SIGABRT`.
+- Win32: not implemented; MSVC and Windows runners are optional.
+- The legacy `Sys_LoadModule` / `Sys_GetFactory` in `tier1/interface.{h,cpp}`
+  still call `dlopen` themselves. Adapting them over this provider is
+  R07-SYS. Because tier1 is linked statically into every module,
+  `CSysModule*` must stay the native handle across module boundaries; see
+  the Phase A record.

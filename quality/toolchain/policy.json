@@ -202,6 +202,14 @@
       "dialect": "cxx20",
       "rfc": "0001"
     },
+    "platform_posix": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
+    "platform_posix_legacyabi": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
     "unittest": {
       "dialect": "cxx20",
       "rfc": "0001"

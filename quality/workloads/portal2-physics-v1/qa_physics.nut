@@ -109,6 +109,12 @@ function PH_Dump( key )
 		QA_Log( "track " + key + format( " t=%.3f", s.t ) + " pos " + QA_Vec( s.pos ) + " vel " + QA_Vec( s.vel ) )
 }
 
+function PH_FlatDist( a, b )
+{
+	local dx = a.x - b.x, dy = a.y - b.y
+	return sqrt( dx * dx + dy * dy )
+}
+
 function PH_Ray( from, dir, length )
 {
 	return length * TraceLine( from, from + QA_Scale( dir, length ), null )

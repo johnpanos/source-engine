@@ -22,6 +22,7 @@
 #include "isaverestore.h"
 #include "bitvec.h"
 #include "vprof.h"
+#include "portal2_shared_compat.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -199,8 +200,9 @@ void CPaintDatabase::RemoveAllPaint()
 	NOTE_UNUSED( nPaintedProjectedWallCount );
 
 	ClearPaintData();
+	m_PendingPaintmapRLE.Purge();
 
-	// This engine has no BSP paintmap service; entity paint is cleared above.
+	Portal2_RemoveAllPaint();
 
 	CBroadcastRecipientFilter filter;
 	filter.MakeReliable();
@@ -423,6 +425,10 @@ void CPaintDatabase::PreClientUpdate()
 {
 	VPROF_BUDGET( "CPaintDatabase::PreClientUpdate", "paint" );
 
+	// A restored game's paint waits until the client has laid out the map's
+	// lightmap pages, which happens after the server restored its entities.
+	SendPaintDataToEngine();
+
 	if ( !m_bCanPaint )
 		return;
 
@@ -572,212 +578,98 @@ void CC_PaintAt( const CCommand &args )
 static ConCommand paintat( "paintat", CC_PaintAt );
 
 
-template< typename T >
-void RLEEncodeSave( ISave *pSave, T *pArray, int count )
-{
-	int i = 0;
-	while ( i < count )
-	{
-		int length = 1;
-		T val = pArray[i];
-		++i;
-
-		while ( i < count && pArray[i] == val )
-		{
-			++length;
-			++i;
-		}
-
-		pSave->WriteInt( &length );
-		pSave->WriteData( reinterpret_cast< const char* >( &val ), sizeof( T ) );
-	}
-}
-
-
+// The engine's paint records (IEnginePaint::GetPaintmapDataRLE): already run
+// length encoded, and valid only for this map.
 void CPaintDatabase::SavePaintmapData( ISave *pSave )
 {
-	CUtlVector< CUtlVector< uint8 > > data;
-	// No BSP paintmap data is available from this engine.
-	int nPaintData = data.Count();
-	pSave->WriteInt( &nPaintData );
-
-	for ( int i = 0; i < nPaintData; ++i )
+	CUtlVector< uint32 > data;
+	Portal2_GetPaintmapDataRLE( data );
+	int count = data.Count();
+	pSave->WriteInt( &count );
+	if ( count > 0 )
 	{
-		pSave->StartBlock();
-
-		int count = data[i].Count();
-		pSave->WriteInt( &count );
-		RLEEncodeSave( pSave, data[i].Base(), count );
-
-		pSave->EndBlock();
-	}
-
-	CVarBitVec paintSurfBits;
-	// An empty bitset records that the engine has no painted BSP surfaces.
-
-	pSave->StartBlock();
-	int numBits = paintSurfBits.GetNumBits();
-	pSave->WriteInt( &numBits );
-	pSave->WriteInt( reinterpret_cast< int* >( paintSurfBits.Base() ), paintSurfBits.GetNumDWords() );
-	pSave->EndBlock();
-}
-
-
-template< typename T >
-void RLEDecodeRestore( IRestore *pRestore, T *pArray, int count )
-{
-	int total = 0;
-	while ( total < count )
-	{
-		int length = pRestore->ReadInt();
-
-		T val;
-		pRestore->ReadData( reinterpret_cast< char* >( &val ), sizeof( T ), 0 );
-
-		V_memset( pArray + total, val, length * sizeof( T ) );
-		total += length;
+		pSave->WriteInt( reinterpret_cast< int* >( data.Base() ), count );
 	}
 }
 
 
 void CPaintDatabase::RestorePaintmapData( IRestore *pRestore )
 {
-	int nPaintData = pRestore->ReadInt();
-	m_Paintmaps.SetCount( nPaintData );
-	DevMsg( "Restoring %d paintmaps\n", nPaintData );
+	// Far above any map's luxel count; the engine validates the records.
+	const int MAX_PAINT_RECORD_DWORDS = 16 * 1024 * 1024;
 
-	for ( int i = 0; i < nPaintData; ++i )
+	m_PendingPaintmapRLE.Purge();
+	int count = pRestore->ReadInt();
+	if ( count <= 0 || count > MAX_PAINT_RECORD_DWORDS )
 	{
-		pRestore->StartBlock();
-
-		int count = pRestore->ReadInt();
-		m_Paintmaps[i].SetSize( count );
-		RLEDecodeRestore( pRestore, m_Paintmaps[i].Base(), count );
-
-		pRestore->EndBlock();
-	}
-
-	CVarBitVec paintSurfBits;
-
-	pRestore->StartBlock();
-	{
-		int numBits = pRestore->ReadInt();
-		paintSurfBits.Resize( numBits );
-
-		int numIntsInStream = CalcNumIntsForBits( numBits );
-		int readSize = MIN( paintSurfBits.GetNumDWords(), numIntsInStream );
-		pRestore->ReadInt( reinterpret_cast< int* >( paintSurfBits.Base() ), numIntsInStream );
-
-		numIntsInStream -= readSize;
-		while ( numIntsInStream-- > 0 )
+		if ( count != 0 )
 		{
-			int ignored;
-			pRestore->ReadInt( &ignored, 1 );
+			Warning( "Paint: ignoring %d dwords of saved paint\n", count );
 		}
+		return;
 	}
-	pRestore->EndBlock();
-
-	// The engine has no BSP paintmap service to restore these bits into.
+	m_PendingPaintmapRLE.SetCount( count );
+	if ( pRestore->ReadInt( reinterpret_cast< int* >( m_PendingPaintmapRLE.Base() ), count ) != count )
+	{
+		Warning( "Paint: saved paint is truncated\n" );
+		m_PendingPaintmapRLE.Purge();
+		return;
+	}
+	DevMsg( "Paint: restoring %d dwords of paint records\n", count );
 }
 
 
+// A client joining a paint map (co-op): the engine's records in chunks of
+// LoadPaintmapData (total dwords, offset, count, dwords); the client loads
+// them once the last chunk arrives.
 void CPaintDatabase::SendPaintDataTo( CBasePlayer *pPlayer )
 {
-	if ( pPlayer->IsConnected() )
+	if ( !pPlayer->IsConnected() )
+		return;
+
+	CUtlVector< uint32 > data;
+	Portal2_GetPaintmapDataRLE( data );
+
+	CSingleUserRecipientFilter filter( pPlayer );
+	filter.MakeReliable();
+
+	const int HEADER_BYTES = 2 * sizeof( int32 ) + sizeof( uint8 );
+	const int MAX_DWORDS = ( MAX_USER_MSG_DATA - HEADER_BYTES ) / sizeof( int32 );
+	int offset = 0;
+	do
 	{
-		CUtlVector< CUtlVector< uint8 > > data;
-		// No BSP paintmap data is available to send to the client.
-
-		CSingleUserRecipientFilter filter( pPlayer );
-		filter.MakeReliable();
-
-		CUtlVector< float > msgLength;
-		CUtlVector< uint8 > msgVal;
-
-		// Each message holds a paintmap id and offset followed by as many RLE runs as fit
-		const int SIZEOF_PAINT_ID = sizeof( BYTE );
-		const int SIZEOF_PAINT_OFFSET = sizeof( float );
-		const int SIZEOF_RLE_DATA = sizeof( float ) + sizeof( uint8 );
-		int MAX_RLE = ( MAX_USER_MSG_DATA - SIZEOF_PAINT_ID - SIZEOF_PAINT_OFFSET ) / SIZEOF_RLE_DATA;
-
-		int nPaintmap = data.Count();
-		for ( int n = 0; n < nPaintmap; ++n )
-		{
-			int count = data[n].Count();
-			int total = 0;
-
-			int nRLE = 0;
-			int nOffset = 0;
-			for ( int i = 0; i < count; )
+		int count = MIN( data.Count() - offset, MAX_DWORDS );
+		UserMessageBegin( filter, "LoadPaintmapData" );
+			WRITE_LONG( data.Count() );
+			WRITE_LONG( offset );
+			WRITE_BYTE( count );
+			for ( int i = 0; i < count; ++i )
 			{
-				int length = 1;
-				uint8 val = data[n][i];
-				++i;
-
-				while ( i < count && data[n][i] == val )
-				{
-					++length;
-					++i;
-				}
-
-				msgLength.AddToTail( length );
-				msgVal.AddToTail( val );
-
-				total += length;
-				++nRLE;
-
-				if ( nRLE == MAX_RLE || total == count )
-				{
-					UserMessageBegin( filter, "LoadPaintmapData" );
-						WRITE_BYTE( n );
-						WRITE_FLOAT( nOffset );
-						WRITE_FLOAT( nRLE );
-						for ( int m = 0; m < nRLE; ++m )
-						{
-							WRITE_FLOAT( msgLength[m] );
-							WRITE_BYTE( msgVal[m] );
-						}
-					MessageEnd();
-
-					msgVal.RemoveAll();
-					msgLength.RemoveAll();
-					nRLE = 0;
-					nOffset = total;
-				}
-			}
-		}
-
-		CVarBitVec paintSurfBits;
-		// Send an empty surface bitset for this engine profile.
-		int numBits = paintSurfBits.GetNumBits();
-
-		UserMessageBegin( filter, "LoadPaintmapBits" );
-			WRITE_FLOAT( numBits );
-			for ( int i = 0; i < paintSurfBits.GetNumDWords(); ++i )
-			{
-				WRITE_FLOAT( paintSurfBits.Base()[i] );
+				WRITE_LONG( data[offset + i] );
 			}
 		MessageEnd();
-	}
+		offset += count;
+	} while ( offset < data.Count() );
 }
 
 
 void CPaintDatabase::SendPaintDataToEngine()
 {
-	for ( int i = 0; i < m_Paintmaps.Count(); ++i )
+	if ( m_PendingPaintmapRLE.Count() && Portal2_HasPaintmap() )
 	{
-		// BSP paintmap loading is unavailable in this engine profile.
+		Portal2_LoadPaintmapDataRLE( m_PendingPaintmapRLE );
+		m_PendingPaintmapRLE.Purge();
 	}
-
-	m_Paintmaps.Purge();
 }
 
 
 void CC_PaintAllSurfaces( const CCommand &args )
 {
 	PaintPowerType power = ( args.ArgC() == 2 ) ? static_cast< PaintPowerType >( atoi( args[1] ) ) : SPEED_POWER;
+	if ( power < 0 || power > NO_POWER )
+		return;
 
-	// BSP paintmaps are unavailable in this engine profile.
+	Portal2_PaintAllSurfaces( power );
 
 	CBroadcastRecipientFilter filter;
 	filter.MakeReliable();

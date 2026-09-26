@@ -87,6 +87,14 @@ QA_Do( "setup", function()
 	SendToConsole( "sv_cheats 1; snd_mute_losefocus 0; volume 1; con_drawnotify 0; cl_drawhud 0" )
 }, 0.5 )
 
+// The mix settings in effect, for the evidence (unknown names print an error).
+QA_Do( "log settings", function()
+{
+	SendToConsole( "volume; snd_musicvolume; snd_gain; snd_surround_speakers; snd_legacy_surround; " +
+	               "dsp_volume; dsp_off; dsp_enhance_stereo; dsp_slow_cpu; snd_pitchquality; " +
+	               "snd_ducking_off; snd_soundmixer; snd_mixer_master_level; snd_mixer_master_dsp" )
+}, 0.5 )
+
 // Stand in the entry hall facing east; the emitter line is the clearest of
 // four horizontal directions (the same on both builds: the map decides).
 QA_Do( "place the listener", function()
@@ -110,7 +118,12 @@ QA_Do( "place the listener", function()
 }, 6.0 )
 
 // The map's own soundscape at the listener, then silence after stopsound.
-QA_Do( "ambient", function() { AP_Mark( "ambient" ) }, 5.0 )
+QA_Do( "ambient", function()
+{
+	AP_Mark( "ambient" )
+	SendToConsole( "dsp_room; dsp_automatic; room_type; dsp_player; dsp_facingaway; dsp_spatial; " +
+	               "dsp_mix_min; dsp_mix_max; dsp_db_min; dsp_db_mixdrop" )
+}, 5.0 )
 QA_Do( "silence", function() { AP_Mark( "silence" ); SendToConsole( "stopsound" ) }, 2.5 )
 
 // A 2D wave through the console: the alignment reference for every run.

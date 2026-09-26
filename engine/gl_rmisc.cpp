@@ -36,6 +36,8 @@
 #include "../utils/common/bsplib.h"
 #include "ibsppack.h"
 #include "indirect_light_host.h"
+#include "paint.h"
+#include "paint_render.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -169,6 +171,11 @@ CON_COMMAND_F( r_cleardecals, "Usage r_cleardecals <permanent>.", FCVAR_CLIENTCM
 //-----------------------------------------------------------------------------
 void R_LoadWorldGeometry( bool bDXChange )
 {
+	// The paint maps go with the sort infos; a rebuild of the same map keeps
+	// the painted surfaces.
+	CUtlVector< uint32 > paintData;
+	g_PaintManager.GetPaintmapDataRLE( paintData );
+
 	// Recreate the sortinfo arrays ( ack, uses new/delete right now ) because doing it with Hunk_AllocName will
 	//  leak through every connect that doesn't wipe the hunk ( "reconnect" )
 	MaterialSystem_DestroySortinfo();
@@ -176,6 +183,8 @@ void R_LoadWorldGeometry( bool bDXChange )
 	MaterialSystem_RegisterLightmapSurfaces();
 
 	MaterialSystem_CreateSortinfo();
+
+	g_PaintManager.AllocatePaintmaps();
 
 	// UNDONE: This is a really crappy place to do this - shouldn't this stuff be in the modelloader?
 
@@ -216,6 +225,11 @@ void R_LoadWorldGeometry( bool bDXChange )
 		R_BrushBatchInit();
 		R_DecalReSortMaterials();
 		OverlayMgr()->ReSortMaterials();
+	}
+
+	if ( bDXChange )
+	{
+		g_PaintManager.LoadPaintmapDataRLE( paintData );
 	}
 }
 
@@ -293,6 +307,7 @@ void R_LevelInit( void )
 
 void R_LevelShutdown()
 {
+	R_PaintShutdown();
 	R_Surface_LevelShutdown();
 	R_Areaportal_LevelShutdown();
 	g_DispLightmapSamplePositions.Purge();

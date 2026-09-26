@@ -60,7 +60,7 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
         "sdf_probe_trace.comp --target-env=vulkan1.2 -DRAY_QUERY" },
     { 0x40b02fe6c2189a0dull, "g_worldGlassFragSpv", "world_pbr_glass.frag" },
     { 0x7c1afaefe9504203ull, "g_worldGlassClipFragSpv", "world_pbr_glass.frag -DCLIP_PLANES" },
-    { 0xaf4db10025824b57ull, "g_materialTexFragSpv", "demo_dyn_tex.frag" },
+    { 0x8e24c6fffe7fe02eull, "g_materialTexFragSpv", "demo_dyn_tex.frag" },
     { 0x338bd5846a70b2c3ull, "g_portalRefractVertSpv", "portal_refract.vert" },
     { 0xca94d06aa10f5fb2ull, "g_portalRefractFragSpv", "portal_refract.frag" },
     { 0x1c74736c36f6158full, "g_skinVertSpv", "skin.vert" },
@@ -72,6 +72,7 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
     { 0x812291b1a04701a2ull, "g_solidEnergyVertSpv", "solidenergy.vert" },
     { 0xc8fe3e07584fd149ull, "g_solidEnergyFragSpv", "solidenergy.frag" },
     { 0x4e785057198a28c5ull, "g_paintBlobFragSpv", "paintblob.frag" },
+    { 0x710bddd6c43213e8ull, "g_lightmappedPaintFragSpv", "lightmappedpaint.frag" },
     { 0xdf11cc5f1a1ebec9ull, "g_modelPbrFragSpv", "model_pbr.frag" },
     { 0x7d37989aef3562d1ull, "g_modelPbrEnvFragSpv", "model_pbr.frag -DENV_CUBE" },
     { 0xd135e65d37455cc8ull, "g_modelPbrIndirectFragSpv", "model_pbr.frag -DINDIRECT_VIEW" },
@@ -129,6 +130,7 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
 	X( g_solidEnergyVertSpv )                                                                      \
 	X( g_solidEnergyFragSpv )                                                                      \
 	X( g_paintBlobFragSpv )                                                                        \
+	X( g_lightmappedPaintFragSpv )                                                                 \
 	X( g_modelPbrFragSpv )                                                                         \
 	X( g_modelPbrEnvFragSpv )                                                                      \
 	X( g_modelPbrIndirectFragSpv )                                                                 \

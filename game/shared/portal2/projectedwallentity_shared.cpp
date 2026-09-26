@@ -56,12 +56,7 @@ void CProjectedWallEntity::Touch( CBaseEntity* pOther )
 {
 	//Check if the touched entity is a paint power user
 	IPaintPowerUser* pPowerUser = dynamic_cast< IPaintPowerUser* >( pOther );
-#if defined( CLIENT_DLL )
-	const bool bHasPaintmap = Portal2Engine::HasPaintmap();
-#else
-	const bool bHasPaintmap = false; // The SDK server has no paint map service.
-#endif
-	if ( bHasPaintmap && pPowerUser )
+	if ( Portal2_HasPaintmap() && pPowerUser )
 	{
 		//Get the up vector of the wall
 		Vector vecWallUp;

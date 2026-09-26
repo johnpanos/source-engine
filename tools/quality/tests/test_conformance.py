@@ -817,6 +817,47 @@ class CommandSuiteTest(unittest.TestCase):
         suite["expected_divergence"] = "FAIL arithmetic"
         self.assertFalse(self._run(suite)["matched"])
 
+    def test_shared_library_unit_is_built_apart_and_located_by_define(self):
+        def shared_suite(host_flags=None, link="shared"):
+            suite = make_suite("shared", ["pass.cpp"])
+            del suite["sources"]
+            host = {"id": "host", "dialect": "cxx20", "sources": [CPP + "/shared_unit_host.cpp"]}
+            if host_flags:
+                host["flags"] = host_flags
+            suite["units"] = [{"id": "fixture-lib", "dialect": "cxx20", "link": link,
+                               "sources": [CPP + "/shared_unit_lib.cpp"]}, host]
+            return suite
+        e2e = EndToEndTest()
+        self.assertEqual(e2e._check([shared_suite()]), 0)
+        commands = conformance.unit_build_commands(
+            REPO, CXX, {"cxx_std": "c++20"}, shared_suite(), "/out/bin")
+        library = [c for c in commands if "-shared" in c]
+        self.assertEqual(1, len(library))
+        self.assertEqual("/out/bin.fixture-lib.so", library[0][-1])
+        self.assertNotIn("/out/bin.fixture-lib.0.o", commands[-1])
+        self.assertTrue(any('-DCONFORMANCE_SHARED_FIXTURE_LIB="/out/bin.fixture-lib.so"' in c
+                            for c in commands if CPP + "/shared_unit_host.cpp" in " ".join(c)))
+        self.assertTrue(any("-fPIC" in c for c in commands if "shared_unit_lib.cpp" in " ".join(c)))
+        # Negative control: linked into the program, the library's symbol resolves.
+        linked = shared_suite(link=None)
+        linked["units"][1]["flags"] = ['-DCONFORMANCE_SHARED_FIXTURE_LIB="/nonexistent.so"']
+        self.assertEqual(e2e._check([linked]), 1)
+
+    def test_manifest_rejects_malformed_shared_units(self):
+        tmp = tempfile.mkdtemp(prefix="conf-manifest-")
+        good = make_suite("s", ["pass.cpp"])
+        del good["sources"]
+        unit = {"id": "u", "dialect": "cxx20", "sources": [CPP + "/pass.cpp"]}
+        bad = [dict(good, units=[dict(unit, link="static")]),
+               dict(good, units=[dict(unit, link="shared")])]
+        for suite in bad:
+            with self.subTest(suite=suite):
+                path = os.path.join(tmp, "m.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump({"schema": conformance.MANIFEST_SCHEMA, "suites": [suite]}, f)
+                with self.assertRaises(conformance.ManifestError):
+                    conformance.load_manifest(path)
+
     def test_manifest_rejects_malformed_command_suites(self):
         tmp = tempfile.mkdtemp(prefix="conf-manifest-")
         good = command_suite("c", "pass")

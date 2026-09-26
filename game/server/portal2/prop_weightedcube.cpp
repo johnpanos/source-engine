@@ -1366,7 +1366,7 @@ void CPropWeightedCube::SchrodingerThink( void )
 void CPropWeightedCube::DisabledThink( void )
 {
 	bool hasPaintPower = false;
-	if ( false ) // This engine does not provide a paint map service.
+	if( Portal2_HasPaintmap() )
 	{
 		if( GetPaintedPower() != NO_POWER )
 		{
