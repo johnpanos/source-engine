@@ -1121,7 +1121,9 @@ bool GrabSourceMutex()
 	CRC32_ProcessBuffer( &gameCRC, (void *)pchGameParam, Q_strlen( pchGameParam ) );
 	CRC32_Final( &gameCRC );
 
-#ifdef ANDROID
+#if defined( ANDROID ) || defined( PLATFORM_IOS )
+	// The system runs one instance of an app; an iOS app also cannot lock
+	// files in /tmp, which is outside its sandbox.
 	return true;
 #elif defined (LINUX) || defined(PLATFORM_BSD)
 	/*
