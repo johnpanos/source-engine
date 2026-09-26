@@ -242,6 +242,46 @@ gameplay captures and frame budgets do not.
    manifest, so this convergence is becoming actionable; it is a deliberate
    follow-up, not part of this increment.
 
+## R10-RUNNERS: task runners, sequences and virtual time (slice, active 2026-09-26)
+
+**Scope** (roadmap R10, `active`; RFC 0001 "Threads, sequences, and
+injectable scheduling", RFC 0003 "Sequences and physical affinity"). R10's
+row names "runner/clock/sequence contracts", but no task-runner contract
+exists yet: only `platform::IMonotonicClock` and a test-only virtual clock.
+This slice adds:
+
+- **The contract** `public/platform/contracts/task_runner.h`
+  (`platform.task-runner.v1`), with standard-library types only:
+  - a move-only `Task`;
+  - `ITaskRunner` for independent posting, with delayed posting measured
+    on the runner's clock;
+  - `ISequencedTaskRunner` for ordered, non-overlapping execution, with a
+    current-sequence query;
+  - `ISingleThreadTaskRunner` for physical-thread affinity, with a
+    current-thread query;
+  - a `[[nodiscard]]` post result that says whether a shut-down runner
+    refused the task.
+- **Providers** in a new capability module `platform.runners`, with a
+  strict C++20 Waf library:
+  - `VirtualClock`, an installed virtual-time `IMonotonicClock`;
+  - `ManualTaskRunner`, a deterministic sequenced runner on virtual time.
+    The owner runs it with `RunUntilIdle` and `AdvanceBy`, so consumers'
+    tests need no sleeps;
+  - `ThreadTaskRunner`, a native single-thread runner. Its owner shuts it
+    down with acknowledgment: queued tasks are destroyed without running,
+    and no task runs after `Shutdown` returns;
+  - `SequencedTaskRunner`, a sequence over any `ITaskRunner`, so ordered
+    work needs no dedicated thread.
+- **One shared suite** runs against every provider (`platform.task_runner`),
+  and a sensitivity suite runs it against bad providers. The bad providers
+  reorder a sequence, let a sequence overlap, run delayed work early,
+  accept and then drop tasks after shutdown, and run tasks after shutdown.
+  Each must be caught.
+- **Consumer:** the next Hammer slice, async F9, which builds on a
+  `ThreadTaskRunner` and returns to the GTK main loop.
+- **Out of scope:** a pool-backed `ITaskRunner` over the engine
+  `CThreadPool`, and migrating engine queues to runners.
+
 ## Module layout
 
 ```

@@ -1,0 +1,28 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# Model Context Protocol server over the Hammer command layer (RFC 0002
+# hammer.adapters.mcp). Transport-free; hammer_cli --mcp serves it on stdio.
+
+top = '.'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'json_value.cpp', 'mcp_server.cpp' ],
+		target    = 'hammer_mcp',
+		name      = 'hammer_mcp',
+		arch_module = 'hammer.adapters.mcp',
+		features  = 'cxx',
+		includes  = [ '../../../public', '../../..' ],
+		defines   = [],
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

@@ -18,7 +18,10 @@
 //=============================================================================//
 
 #include "hammer/adapters/platform/disk_byte_store.h"
+#include "../../platform/posix/tool_process_provider.h"
 #include "hammer/adapters/platform/disk_file_store.h"
+#include "hammer/adapters/platform/tool_process_map_builder.h"
+#include "hammer/app/editor_commands.h"
 #include "hammer/app/editor_controller.h"
 #include "hammer/app/save_orchestrator.h"
 #include "hammer/formats/material_catalog.h"
@@ -30,6 +33,7 @@
 
 #include "renderer.h"
 
+#include <optional>
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -97,10 +101,33 @@ struct Viewport
 
 struct AppState
 {
+	AppState( std::string builds, bool publish )
+	    : buildsRoot( std::move( builds ) ), publishBuilds( publish )
+	{
+	}
+
+	// Where F9 writes its build records, and whether it publishes the map for
+	// ./play. Fixed by the composition root (--builds, --no-publish).
+	const std::string buildsRoot;
+	const bool publishBuilds;
 	hammer::app::EditorController controller;
+	// Every document edit and file operation the shell issues goes through the
+	// shared command layer (the same one scripts, tests and an MCP client use).
+	hammer::adapters::platform::DiskFileStore store;
+	// F9 builds through the same command (build_map) over the platform
+	// tool-process provider; the editor runs from the repository root.
+	std::unique_ptr<platform::IToolProcessProvider> processes =
+	    platform::CreatePosixToolProcessProvider();
+	hammer::adapters::platform::ToolProcessMapBuilder builder{ *processes, ".", buildsRoot,
+	    []( const std::string &path )
+	    {
+		    return path;
+	    } };
+	hammer::app::EditorCommands commands{ controller, store, &builder };
 	std::array<Viewport, 4> viewports;
 	std::string currentPath;
 	std::string openOnStart;
+	bool startMaximized = false; // --maximized: window at the screen origin
 	std::string mountOnStart; // comma-separated _dir.vpk paths to mount at launch
 
 	// Mounted game assets and the material catalog resolved over them. The catalog
@@ -119,6 +146,7 @@ struct AppState
 	GtkLabel *objectsCount = nullptr;
 	GtkToggleButton *selectBtn = nullptr;
 	GtkToggleButton *blockBtn = nullptr;
+	GtkToggleButton *entityBtn = nullptr;
 	bool suppressToolSignal = false;
 	bool spaceHeld = false; // Space held: left-drag pans a 2D view (MFC nav idiom)
 
@@ -359,19 +387,24 @@ std::size_t MountAssets( AppState *st, const std::string &vpkList )
 // File operations (single save path via SaveDocument + DiskFileStore).
 // ---------------------------------------------------------------------------
 
+// Runs one named command; on failure the status bar shows why. Returns its
+// output, or nothing on failure.
+std::optional<std::string> RunCommand(
+    AppState *st, const char *name, const hammer::app::CommandArgs &args = {} )
+{
+	auto result = st->commands.Execute( name, args );
+	if ( !result )
+	{
+		SetHelp( st, std::string( name ) + ": " + result.Error().detail );
+		return std::nullopt;
+	}
+	return std::move( result.Value() );
+}
+
 void DoOpen( AppState *st, const std::string &path )
 {
-	hammer::adapters::platform::DiskFileStore store;
-	std::string text;
-	if ( !store.Read( path, text ) )
+	if ( !RunCommand( st, "open", { { "path", path } } ) )
 	{
-		SetHelp( st, "Failed to read: " + path );
-		return;
-	}
-	std::string error;
-	if ( !st->controller.LoadVmf( text, error ) )
-	{
-		SetHelp( st, "Failed to parse VMF: " + error );
 		return;
 	}
 	st->currentPath = path;
@@ -381,20 +414,13 @@ void DoOpen( AppState *st, const std::string &path )
 
 void DoSave( AppState *st, const std::string &path )
 {
-	hammer::adapters::platform::DiskFileStore store;
-	const std::string text = st->controller.ToVmf();
-	const hammer::app::SaveStatus status = hammer::app::SaveDocument( store, path, text );
-	if ( status == hammer::app::SaveStatus::kOk )
+	if ( !RunCommand( st, "save", { { "path", path } } ) )
 	{
-		st->controller.MarkSaved();
-		st->currentPath = path;
-		UpdateChrome( st );
-		SetHelp( st, "Saved " + path );
+		return;
 	}
-	else
-	{
-		SetHelp( st, "Save failed: " + path );
-	}
+	st->currentPath = path;
+	UpdateChrome( st );
+	SetHelp( st, "Saved " + path );
 }
 
 void OnOpenFinished( GObject *source, GAsyncResult *res, gpointer user_data )
@@ -562,10 +588,18 @@ void SetToolUi( AppState *st, hammer::app::Tool tool )
 	{
 		gtk_toggle_button_set_active( st->blockBtn, tool == hammer::app::Tool::Block );
 	}
+	if ( st->entityBtn )
+	{
+		gtk_toggle_button_set_active( st->entityBtn, tool == hammer::app::Tool::Entity );
+	}
 	st->suppressToolSignal = false;
 	RefreshScene( st, false );
-	SetHelp( st, tool == hammer::app::Tool::Block ? "Block tool: drag in a 2D view, Enter to create"
-	                                              : "Selection tool: click a brush, drag to move" );
+	SetHelp( st,
+	    tool == hammer::app::Tool::Block
+	        ? "Block tool (Shift+B): drag in a 2D view, Enter to create, F to hollow"
+	    : tool == hammer::app::Tool::Entity
+	        ? "Entity tool (Shift+E): click in a 2D view to place " + st->controller.EntityClass()
+	        : "Selection tool (Shift+S): click a brush, drag to move" );
 }
 
 void ActionToolSelect( GSimpleAction *, GVariant *, gpointer user_data )
@@ -913,9 +947,31 @@ void OnToolEnd( GtkGestureDrag *gesture, double offX, double offY, gpointer user
 			if ( vp->renderer.PixelToRay( static_cast<float>( vp->startX * scale ),
 			         static_cast<float>( vp->startY * scale ), w, h, o, d ) )
 			{
-				vp->app->controller.PickByRay( mapgeometry::Vec3d( o[0], o[1], o[2] ),
-				    mapgeometry::Vec3d( d[0], d[1], d[2] ), additive );
-				RefreshScene( vp->app, false );
+				AppState *st = vp->app;
+				if ( st->controller.CurrentTool() == hammer::app::Tool::Entity )
+				{
+					// Source 2's Entity tool: click a surface in the 3D view to place the
+					// active class on it, through the shared command layer.
+					auto vec = []( const float v[3] )
+					{
+						char buf[96];
+						std::snprintf( buf, sizeof( buf ), "%.6g %.6g %.6g", v[0], v[1], v[2] );
+						return std::string( buf );
+					};
+					if ( auto id = RunCommand( st, "place_on_surface",
+					         { { "classname", st->controller.EntityClass() },
+					             { "origin", vec( o ) }, { "dir", vec( d ) } } ) )
+					{
+						SetHelp(
+						    st, "Placed " + st->controller.EntityClass() + " (id " + *id + ")" );
+					}
+				}
+				else
+				{
+					st->controller.PickByRay( mapgeometry::Vec3d( o[0], o[1], o[2] ),
+					    mapgeometry::Vec3d( d[0], d[1], d[2] ), additive );
+				}
+				RefreshScene( st, false );
 			}
 		}
 		return;
@@ -1022,7 +1078,7 @@ void OnZoomChanged( GtkGestureZoom *zoom, double scaleRatio, gpointer user_data 
 void OpenTextureWindow( AppState *st );
 
 gboolean OnKeyPressed(
-    GtkEventControllerKey *, guint keyval, guint, GdkModifierType, gpointer user_data )
+    GtkEventControllerKey *, guint keyval, guint, GdkModifierType state, gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
 	switch ( keyval )
@@ -1050,13 +1106,80 @@ gboolean OnKeyPressed(
 	case GDK_KEY_Escape:
 		SetToolUi( st, st->controller.CurrentTool() ); // clears any pending box
 		return TRUE;
-	case GDK_KEY_b:
+	// Tool keys follow Source 2 (and classic) Hammer: Shift+B/E/S. Plain letters
+	// stay free for camera movement (WASD).
 	case GDK_KEY_B:
 		SetToolUi( st, hammer::app::Tool::Block );
 		return TRUE;
-	case GDK_KEY_s:
+	case GDK_KEY_E:
+		SetToolUi( st, hammer::app::Tool::Entity );
+		return TRUE;
 	case GDK_KEY_S:
 		SetToolUi( st, hammer::app::Tool::Select );
+		return TRUE;
+	// F9 builds the map and publishes it (./play <map>); Shift+F9 also runs it
+	// (Source 2's "load in engine after building").
+	case GDK_KEY_F9:
+	{
+		const bool run = ( state & GDK_SHIFT_MASK ) != 0;
+		const std::string path = st->currentPath.empty()
+		                             ? std::string( "quality-results/hammer-builds/untitled.vmf" )
+		                             : st->currentPath;
+		SetHelp( st, "Building " + path + " ..." );
+		if ( auto status = RunCommand( st, "build_map",
+		         { { "path", path }, { "publish", st->publishBuilds ? "1" : "0" } } ) )
+		{
+			std::string map = path.substr( path.find_last_of( '/' ) + 1 );
+			map = map.substr( 0, map.rfind( '.' ) );
+			for ( char &c : map )
+				c = static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
+			st->currentPath = path;
+			UpdateChrome( st );
+			if ( !st->publishBuilds )
+			{
+				SetHelp( st, "Built " + map + " (not published)" );
+			}
+			else
+			{
+				SetHelp( st,
+				    "Built " + map + ( run ? "; launching ./play " + map : "; ./play " + map ) );
+			}
+			if ( run && st->publishBuilds )
+			{
+				const gchar *argv[] = { "./play", map.c_str(), nullptr };
+				g_spawn_async( nullptr, const_cast<gchar **>( argv ), nullptr, G_SPAWN_DEFAULT,
+				    nullptr, nullptr, nullptr, nullptr );
+			}
+		}
+		return TRUE;
+	}
+	// [ and ] halve and double the grid (classic Hammer), between 1 and 512 units.
+	case GDK_KEY_bracketleft:
+	case GDK_KEY_bracketright:
+	{
+		const int grid = st->controller.GridSize();
+		const int next =
+		    keyval == GDK_KEY_bracketleft ? std::max( grid / 2, 1 ) : std::min( grid * 2, 512 );
+		if ( RunCommand( st, "set_grid", { { "size", std::to_string( next ) } } ) )
+		{
+			UpdateChrome( st );
+		}
+		return TRUE;
+	}
+	// F: turn the selected block into a room (Source 2's "flip faces"), with
+	// walls one grid unit thick.
+	case GDK_KEY_f:
+		if ( st->controller.SelectionCount() == 1 )
+		{
+			const std::string id = std::to_string( *st->controller.Selection() );
+			if ( auto walls = RunCommand( st, "hollow",
+			         { { "id", id },
+			             { "thickness", std::to_string( st->controller.GridSize() ) } } ) )
+			{
+				RefreshScene( st, false );
+				SetHelp( st, "Hollowed into a room (walls " + *walls + ")" );
+			}
+		}
 		return TRUE;
 	default:
 		break;
@@ -1381,8 +1504,14 @@ GtkWidget *MakeViewport(
 	vp.vid = vid;
 	vp.label = label;
 
-	GtkWidget *glarea = gtk_gl_area_new();
+	// An interactive region with its own pointer and key handling: the
+	// "application" role, named for assistive technology (and the UI-driven
+	// conformance test, which finds each view by this name).
+	GtkWidget *glarea = GTK_WIDGET( g_object_new(
+	    GTK_TYPE_GL_AREA, "accessible-role", GTK_ACCESSIBLE_ROLE_APPLICATION, nullptr ) );
 	vp.area = GTK_GL_AREA( glarea );
+	gtk_accessible_update_property(
+	    GTK_ACCESSIBLE( glarea ), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1 );
 	gtk_gl_area_set_allowed_apis( GTK_GL_AREA( glarea ), GDK_GL_API_GL );
 	gtk_gl_area_set_required_version( GTK_GL_AREA( glarea ), 3, 3 );
 	gtk_gl_area_set_has_depth_buffer( GTK_GL_AREA( glarea ), TRUE );
@@ -1481,6 +1610,39 @@ void OnBlockToggled( GtkToggleButton *btn, gpointer user_data )
 	}
 }
 
+void OnEntityToggled( GtkToggleButton *btn, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( !st->suppressToolSignal && gtk_toggle_button_get_active( btn ) )
+	{
+		SetToolUi( st, hammer::app::Tool::Entity );
+	}
+}
+
+// The Entity tool's class palette (Source 2's categories); P1 offers the two a
+// playable room needs.
+const char *const kEntityClasses[] = { "info_player_start", "light", nullptr };
+
+void OnEntityClassChanged( GObject *dropdown, GParamSpec *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	const guint index = gtk_drop_down_get_selected( GTK_DROP_DOWN( dropdown ) );
+	if ( index < G_N_ELEMENTS( kEntityClasses ) - 1 )
+	{
+		st->controller.SetEntityClass( kEntityClasses[index] );
+		if ( st->controller.CurrentTool() == hammer::app::Tool::Entity )
+		{
+			SetToolUi( st, hammer::app::Tool::Entity ); // refresh the help text
+		}
+	}
+}
+
+void Label( GtkWidget *widget, const char *label )
+{
+	gtk_accessible_update_property(
+	    GTK_ACCESSIBLE( widget ), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1 );
+}
+
 GtkWidget *MakeToolPalette( AppState *st )
 {
 	GtkWidget *palette = gtk_box_new( GTK_ORIENTATION_VERTICAL, 2 );
@@ -1491,7 +1653,8 @@ GtkWidget *MakeToolPalette( AppState *st )
 	GtkWidget *select = gtk_toggle_button_new();
 	gtk_button_set_child(
 	    GTK_BUTTON( select ), gtk_image_new_from_icon_name( "edit-select-all-symbolic" ) );
-	gtk_widget_set_tooltip_text( select, "Selection Tool (S)" );
+	gtk_widget_set_tooltip_text( select, "Selection Tool (Shift+S)" );
+	Label( select, "Selection Tool" );
 	gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( select ), TRUE );
 	st->selectBtn = GTK_TOGGLE_BUTTON( select );
 	g_signal_connect( select, "toggled", G_CALLBACK( OnSelectToggled ), st );
@@ -1500,11 +1663,28 @@ GtkWidget *MakeToolPalette( AppState *st )
 	GtkWidget *block = gtk_toggle_button_new();
 	gtk_button_set_child(
 	    GTK_BUTTON( block ), gtk_image_new_from_icon_name( "view-grid-symbolic" ) );
-	gtk_widget_set_tooltip_text( block, "Block Tool (B)" );
+	gtk_widget_set_tooltip_text( block, "Block Tool (Shift+B; F makes a room)" );
+	Label( block, "Block Tool" );
 	gtk_toggle_button_set_group( GTK_TOGGLE_BUTTON( block ), GTK_TOGGLE_BUTTON( select ) );
 	st->blockBtn = GTK_TOGGLE_BUTTON( block );
 	g_signal_connect( block, "toggled", G_CALLBACK( OnBlockToggled ), st );
 	gtk_box_append( GTK_BOX( palette ), block );
+
+	GtkWidget *entity = gtk_toggle_button_new();
+	gtk_button_set_child(
+	    GTK_BUTTON( entity ), gtk_image_new_from_icon_name( "insert-object-symbolic" ) );
+	gtk_widget_set_tooltip_text( entity, "Entity Tool (Shift+E): click a surface in the 3D view" );
+	Label( entity, "Entity Tool" );
+	gtk_toggle_button_set_group( GTK_TOGGLE_BUTTON( entity ), GTK_TOGGLE_BUTTON( select ) );
+	st->entityBtn = GTK_TOGGLE_BUTTON( entity );
+	g_signal_connect( entity, "toggled", G_CALLBACK( OnEntityToggled ), st );
+	gtk_box_append( GTK_BOX( palette ), entity );
+
+	GtkWidget *classes = gtk_drop_down_new_from_strings( kEntityClasses );
+	gtk_widget_set_tooltip_text( classes, "Entity class to place" );
+	Label( classes, "Entity class" );
+	g_signal_connect( classes, "notify::selected", G_CALLBACK( OnEntityClassChanged ), st );
+	gtk_box_append( GTK_BOX( palette ), classes );
 
 	// Remaining classic tools (laid out; not yet functional).
 	struct Tool
@@ -1515,7 +1695,6 @@ GtkWidget *MakeToolPalette( AppState *st )
 	const Tool rest[] = {
 	    { "zoom-in-symbolic", "Magnify" },
 	    { "camera-photo-symbolic", "Camera" },
-	    { "insert-object-symbolic", "Entity Tool" },
 	    { "edit-cut-symbolic", "Clipping Tool" },
 	    { "format-justify-fill-symbolic", "Vertex Tool" },
 	    { "applications-graphics-symbolic", "Apply Texture" },
@@ -1889,6 +2068,10 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 		DoOpen( st, st->openOnStart );
 	}
 
+	if ( st->startMaximized )
+	{
+		gtk_window_maximize( GTK_WINDOW( window ) );
+	}
 	gtk_window_present( GTK_WINDOW( window ) );
 }
 
@@ -2329,6 +2512,9 @@ int main( int argc, char **argv )
 	std::string texturedIn;
 	std::string texturedVpks;
 	std::string openPath;
+	bool maximized = false;
+	std::string buildsRoot = "quality-results/hammer-builds";
+	bool publishBuilds = true;
 	std::string mountVpks;
 	int width = 1024;
 	int height = 768;
@@ -2365,6 +2551,18 @@ int main( int argc, char **argv )
 		{
 			openPath = argv[++i];
 		}
+		else if ( a == "--maximized" )
+		{
+			maximized = true;
+		}
+		else if ( a == "--builds" && i + 1 < argc )
+		{
+			buildsRoot = argv[++i];
+		}
+		else if ( a == "--no-publish" )
+		{
+			publishBuilds = false;
+		}
 		else if ( a == "--mount" && i + 1 < argc )
 		{
 			mountVpks = argv[++i];
@@ -2379,7 +2577,8 @@ int main( int argc, char **argv )
 		}
 		else if ( a == "--help" || a == "-h" )
 		{
-			std::printf( "Usage: hammer_gtk [--open MAP.vmf]\n"
+			std::printf( "Usage: hammer_gtk [--open MAP.vmf] [--maximized] [--builds DIR] "
+			             "[--no-publish]\n"
 			             "       hammer_gtk --screenshot OUT.ppm MAP.vmf [--width W --height H]\n"
 			             "       hammer_gtk --quad OUT.ppm MAP.vmf [--width W --height H]\n" );
 			return 0;
@@ -2407,8 +2606,9 @@ int main( int argc, char **argv )
 		return RenderTexturedScreenshot( texturedIn, texturedOut, width, height, texturedVpks );
 	}
 
-	AppState st;
+	AppState st( buildsRoot, publishBuilds );
 	st.openOnStart = openPath;
+	st.startMaximized = maximized;
 	st.mountOnStart = mountVpks;
 	return RunApp( &st, argv );
 }

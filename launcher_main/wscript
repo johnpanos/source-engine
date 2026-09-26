@@ -36,14 +36,15 @@ def build(bld):
 		# The app executable: SDL3 owns main() (SDL_main.h) and starts UIKit;
 		# the root links and binds every module (static_composition.cpp).
 		bld(
-			source   = ['ios_main.cpp', 'mobile_app_root.cpp', 'static_composition.cpp'],
+			source   = ['ios_main.cpp', 'apple_thermal.mm', 'mobile_app_root.cpp',
+				'static_composition.cpp'],
 			target   = PROJECT_NAME,
 			name     = PROJECT_NAME,
 			features = 'c cxx cxxprogram',
 			includes = ['../public', '../public/tier0', '../public/tier1'],
 			defines  = ['IOS_DEFAULT_GAME="%s"' % bld.env.GAMES],
 			use      = ['launcher', 'client', 'server', 'GameUI', 'scenefilecache',
-				'soundemittersystem', 'tier0', 'SDL3'],
+				'soundemittersystem', 'tier0', 'SDL3', 'FOUNDATION'],
 			install_path = bld.env.BINDIR,
 			idx      = bld.get_taskgen_count()
 		)

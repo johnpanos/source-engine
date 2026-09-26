@@ -1,0 +1,4260 @@
+"controller_mappings"
+{
+	"version"		"3"
+	"revision"		"207"
+	"title"		"#Title_HL2_Gyro"
+	"description"		"#Description_HL2_Motion"
+	"creator"		""
+	"progenitor"		""
+	"url"		""
+	"export_type"		"personal_local"
+	"controller_type"		"controller_neptune"
+	"controller_caps"		"1096859647"
+	"major_revision"		"1"
+	"minor_revision"		"0"
+	"Timestamp"		"0"
+	"actions"
+	{
+		"GameControls"
+		{
+			"title"		"#Set_InGameControls"
+			"legacy_set"		"0"
+			"StickPadGyro"
+			{
+				"Move"
+				{
+					"title"		"#Action_Movement"
+					"input_mode"		"joystick_move"
+				}
+				"Camera"
+				{
+					"title"		"#Action_Camera"
+					"input_mode"		"absolute_mouse"
+				}
+				"JoystickCamera"
+				{
+					"title"		"#Action_JoystickCamera"
+					"input_mode"		"joystick_move"
+				}
+			}
+			"Button"
+			{
+				"attack"		"#Action_Game_Fire"
+				"attack2"		"#Action_Game_FireAlt"
+				"zoom"		"#Action_Game_Zoom"
+				"toggle_zoom"		"#Action_Game_ToggleZoom"
+				"reload"		"#Action_Game_Reload"
+				"jump"		"#Action_Game_Jump"
+				"duck"		"#Action_Game_Duck"
+				"toggle_duck"		"#Action_Game_ToggleDuck"
+				"use"		"#Action_Game_Use"
+				"invnext"		"#Action_Game_InvNext"
+				"invprev"		"#Action_Game_InvPrev"
+				"lastinv"		"#Action_Game_LastInv"
+				"walk"		"#Action_Game_Walk"
+				"smart_sprint" "#Action_Game_Sprint"
+				"speed"		"#Action_Game_SprintHold"
+				"pause_menu"		"#Action_Game_PauseGame"
+				"sc_flashlight"		"#Action_Game_Flashlight"
+				"sc_squad"		"#Action_Game_Squad"
+				"lookspin"		"#Action_Game_TurnAround"
+				"resetcamera"		"#Action_Game_ResetCamera"
+				"slot1"		"#Action_Game_WeaponBucketTop"
+				"slot2"		"#Action_Game_WeaponBucketRight"
+				"slot3"		"#Action_Game_WeaponBucketBottom"
+				"slot4"		"#Action_Game_WeaponBucketLeft"
+				"phys_swap"		"#Action_Game_SelectGravityGun"
+				"bug_swap"		"#Action_Game_SelectBugbait"
+				"sc_save_quick"		"#Action_Game_QuickSave"
+				"sc_load_quick"		"#Action_Game_QuickLoad"
+			}
+		}
+		"VehicleControls"
+		{
+			"title"		"#Set_VehicleControls"
+			"legacy_set"		"0"
+			"StickPadGyro"
+			{
+				"Move"
+				{
+					"title"		"#Action_SteeringAccelerate"
+					"input_mode"		"joystick_move"
+				}
+				"Steer"
+				{
+					"title"		"#Action_Steering"
+					"input_mode"		"joystick_move"
+				}
+				"Camera"
+				{
+					"title"		"#Action_Camera"
+					"input_mode"		"absolute_mouse"
+				}
+				"JoystickCamera"
+				{
+					"title"		"#Action_JoystickCamera"
+					"input_mode"		"joystick_move"
+				}
+			}
+			"AnalogTrigger"
+			{
+				"Accelerate"		"#Action_Vehicle_Accelerate"
+				"Brake"		"#Action_Vehicle_Brake"
+			}
+			"Button"
+			{
+				"attack"		"#Action_Vehicle_TauBeam"
+				"attack2"		"#Action_Vehicle_ChargedBlast"
+				"zoom"		"#Action_Game_Zoom"
+				"toggle_zoom"		"#Action_Game_ToggleZoom"
+				"jump"		"#Action_Vehicle_Handbrake"
+				"use"		"#Action_Vehicle_ExitVehicle"
+				"speed"		"#Action_Vehicle_Turbo"
+				"pause_menu"		"#Action_Game_PauseGame"
+				"lookspin"		"#Action_Game_TurnAround"
+				"resetcamera"		"#Action_Game_ResetCamera"
+				"sc_save_quick"		"#Action_Game_QuickSave"
+				"sc_load_quick"		"#Action_Game_QuickLoad"
+			}
+		}
+		"MenuControls"
+		{
+			"title"		"#Set_MenuControls"
+			"legacy_set"		"0"
+			"StickPadGyro"
+			{
+				"Mouse"
+				{
+					"title"		"#Mouse"
+					"input_mode"		"absolute_mouse"
+					"os_mouse"		"1"
+				}
+			}
+			"Button"
+			{
+				"menu_up"		"#Action_Menu_Up"
+				"menu_down"		"#Action_Menu_Down"
+				"menu_left"		"#Action_Menu_Left"
+				"menu_right"		"#Action_Menu_Right"
+				"menu_select"		"#Action_Menu_Select"
+				"menu_cancel"		"#Action_Menu_Cancel"
+				"menu_x"		"#Action_Menu_X"
+				"menu_y"		"#Action_Menu_Y"
+				"menu_lb"		"#Action_Menu_PreviousTab"
+				"menu_rb"		"#Action_Menu_NextTab"
+				"pause_menu"		"#Action_Menu_ReturnToGame"
+			}
+		}
+	}
+	"action_layers"
+	{
+	}
+	"localization"
+	{
+		"english"
+		{
+			"Set_InGameControls"		"In-Game Controls"
+			"Set_VehicleControls"		"Vehicle Controls"
+			"Set_MenuControls"		"Menu Controls"
+			"Action_Movement"		"Movement"
+			"Action_Camera"		"Camera"
+			"Action_Steering"		"Steering"
+			"Action_SteeringAccelerate"		"Steering / Accelerate"
+			"Action_Game_Fire"		"Primary Fire"
+			"Action_Game_FireAlt"		"Alternate Fire"
+			"Action_Game_Zoom"		"Suit Zoom"
+			"Action_Game_ToggleZoom"		"Toggle Suit Zoom"
+			"Action_Game_Reload"		"Reload"
+			"Action_Game_Jump"		"Jump"
+			"Action_Game_Duck"		"Crouch"
+			"Action_Game_ToggleDuck"		"Toggle Crouch"
+			"Action_Game_Use"		"Use"
+			"Action_Game_InvNext"		"Select Next Weapon"
+			"Action_Game_InvPrev"		"Select Previous Weapon"
+			"Action_Game_LastInv"		"Select Last Weapon"
+			"Action_Game_Walk"		"Walk"
+			"Action_Game_Sprint"  "Sprint"
+			"Action_Game_SprintHold"		"Hold Sprint"
+			"Action_Game_PauseGame"		"Pause Game"
+			"Action_Game_Flashlight"		"Flashlight"
+			"Action_Game_Squad"		"Send/Recall Squad"
+			"Action_Game_TurnAround"		"Turn Around"
+			"Action_Game_ResetCamera"		"Reset Camera"
+			"Action_Game_WeaponBucketTop"		"Top Weapon Bucket"
+			"Action_Game_WeaponBucketRight"		"Right Weapon Bucket"
+			"Action_Game_WeaponBucketBottom"		"Bottom Weapon Bucket"
+			"Action_Game_WeaponBucketLeft"		"Left Weapon Bucket"
+			"Action_Game_SelectGravityGun"		"Swap to Gravity Gun"
+			"Action_Game_SelectBugbait"		"Swap to Pheropod (Bugbait)"
+			"Action_Game_QuickSave"		"Quick Save"
+			"Action_Game_QuickLoad"		"Quick Load"
+			"Action_Vehicle_Handbrake"		"Handbrake"
+			"Action_Vehicle_ExitVehicle"		"Exit Vehicle"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Tau Beam / Pulse Cannon"
+			"Action_Vehicle_ChargedBlast"		"Charged Blast"
+			"Action_Vehicle_Accelerate"		"Accelerate"
+			"Action_Vehicle_Brake"		"Brake"
+			"Action_Menu_ReturnToGame"		"Return to Game"
+			"Action_Menu_Up"		"Up"
+			"Action_Menu_Down"		"Down"
+			"Action_Menu_Left"		"Left"
+			"Action_Menu_Right"		"Right"
+			"Action_Menu_Select"		"Select"
+			"Action_Menu_Cancel"		"Cancel"
+			"Action_Menu_X"		"Alt Select"
+			"Action_Menu_Y"		"Options"
+			"Action_Menu_PreviousTab"		"Previous Tab"
+			"Action_Menu_NextTab"		"Next Tab"
+			"Title_HL2_Gyro"		"Half-Life 2 Motion Controls for Steam Deck"
+			"Description_HL2_Gyro"		"Official Steam Deck configuration for Half-Life 2 + Episodes 1/2 + Lost Coast.
+A gyro-centric configuration using right pad/stick + gyro for camera.
+Uses separate acceleration/steering and always-on gyro for vehicle combat."
+			"Title_HL2_Motion"		"Half-Life 2 Motion Controls for Steam Controller"
+			"Description_HL2_Motion"		"Official Steam Controller configuration for Half-Life 2 + Episodes 1/2 + Lost Coast.
+A gyro-assisted configuration using right pad + gyro for camera.
+Uses combined steering/acceleration for vehicle combat."
+			"Title_HL2_Standard"		"Half-Life 2 Standard Controls"
+			"Description_HL2_Standard"		"Official Playstation/Xbox/Switch Pro configuration for Half-Life 2 + Episodes 1/2 + Lost Coast.
+No motion controls.
+Uses combined steering/acceleration for vehicle combat."
+		}
+		"brazilian"
+		{
+			"Set_InGameControls"		"A pé"
+			"Set_VehicleControls"		"Em veículos"
+			"Set_MenuControls"		"Menus"
+			"Action_Movement"		"Mover-se"
+			"Action_Camera"		"Câmera"
+			"Action_JoystickCamera"		"Alavanca (câmera)"
+			"Action_Steering"		"Dirigir"
+			"Action_SteeringAccelerate"		"Dirigir/acelerar"
+			"Action_Game_Fire"		"Disparo primário"
+			"Action_Game_FireAlt"		"Disparo alternativo"
+			"Action_Game_Zoom"		"Zoom do traje"
+			"Action_Game_ToggleZoom"		"(Des)ligar zoom do traje"
+			"Action_Game_Reload"		"Recarregar"
+			"Action_Game_Jump"		"Pular"
+			"Action_Game_Duck"		"Agachar-se"
+			"Action_Game_ToggleDuck"		"Agachar-se/ficar em pé"
+			"Action_Game_Use"		"Usar"
+			"Action_Game_InvNext"		"Próxima arma"
+			"Action_Game_InvPrev"		"Arma anterior"
+			"Action_Game_LastInv"		"Última arma usada"
+			"Action_Game_Walk"		"Andar"
+			"Action_Game_Sprint"		"Correr"
+			"Action_Game_PauseGame"		"Pausar"
+			"Action_Game_Flashlight"		"Alternar lanterna"
+			"Action_Game_Squad"		"Enviar/chamar equipe"
+			"Action_Game_TurnAround"		"Dar meia-volta"
+			"Action_Game_ResetCamera"		"Redefinir câmera"
+			"Action_Game_WeaponBucketTop"		"Grupo de armas (cima)"
+			"Action_Game_WeaponBucketRight"		"Grupo de armas (direita)"
+			"Action_Game_WeaponBucketBottom"		"Grupo de armas (baixo)"
+			"Action_Game_WeaponBucketLeft"		"Grupo de armas (esquerda)"
+			"Action_Game_SelectGravityGun"		"Selecionar Arma de Gravidade"
+			"Action_Game_SelectBugbait"		"Selecionar feromônio (isca)"
+			"Action_Game_QuickSave"		"Salvamento rápido"
+			"Action_Game_QuickLoad"		"Carregamento rápido"
+			"Action_Vehicle_Handbrake"		"Freio de mão"
+			"Action_Vehicle_ExitVehicle"		"Sair do veículo"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Raios Tau/canhão de pulsos"
+			"Action_Vehicle_ChargedBlast"		"Disparo carregado"
+			"Action_Vehicle_Accelerate"		"Acelerar"
+			"Action_Vehicle_Brake"		"Frear"
+			"Action_Menu_ReturnToGame"		"Voltar ao jogo"
+			"Action_Menu_Up"		"Cima"
+			"Action_Menu_Down"		"Baixo"
+			"Action_Menu_Left"		"Esquerda"
+			"Action_Menu_Right"		"Direita"
+			"Action_Menu_Select"		"Selecionar"
+			"Action_Menu_Cancel"		"Cancelar"
+			"Action_Menu_X"		"Seleção alternativa"
+			"Action_Menu_Y"		"Opções"
+			"Action_Menu_PreviousTab"		"Aba anterior"
+			"Action_Menu_NextTab"		"Próxima aba"
+			"Title_HL2_Gyro"		"Controles de movimento p/ Half-Life 2 (Steam Deck)"
+			"Description_HL2_Gyro"		"Configuração oficial de Half-Life 2 + Episode One/Two + Lost Coast para o Steam Deck.
+Uma configuração baseada no giroscópio que usa o trackpad/alavanca direita e o giroscópio para controlar a câmera.
+Usa controles separados para aceleração e direção, e o giroscópio está sempre ativado."
+			"Title_HL2_Motion"		"Controles de movimento p/ Half-Life 2 (Controle Steam)"
+			"Description_HL2_Motion"		"Configuração oficial de Half-Life 2 + Episode One/Two + Lost Coast para o Controle Steam.
+Uma configuração com assistência do giroscópio que usa o trackpad direito e o giroscópio para controlar a câmera.
+Usa a alavanca esquerda para aceleração e direção em veículos."
+			"Title_HL2_Standard"		"Controles padrão para Half-Life 2"
+			"Description_HL2_Standard"		"Configuração oficial de Half-Life 2 + Episode One/Two + Lost Coast para o controle Pro do Nintendo Switch e controles de PlayStation e Xbox.
+Sem controles de movimento.
+Usa a alavanca esquerda para aceleração e direção em veículos."
+		}
+		"bulgarian"
+		{
+			"Set_InGameControls"		"Контроли в игра"
+			"Set_VehicleControls"		"Контроли за превозни средства"
+			"Set_MenuControls"		"Контроли в менюто"
+			"Action_Movement"		"Движение"
+			"Action_Camera"		"Камера"
+			"Action_JoystickCamera"		"Камера с джойстика"
+			"Action_Steering"		"Управление"
+			"Action_SteeringAccelerate"		"Управление / Ускорение"
+			"Action_Game_Fire"		"Осн. стрелба"
+			"Action_Game_FireAlt"		"Алт. стрелба"
+			"Action_Game_Zoom"		"Оптика на костюма"
+			"Action_Game_ToggleZoom"		"Превключване за оптика на костюма"
+			"Action_Game_Reload"		"Презареждане"
+			"Action_Game_Jump"		"Скачане"
+			"Action_Game_Duck"		"Клякане"
+			"Action_Game_ToggleDuck"		"Превкл. на клякането"
+			"Action_Game_Use"		"Използване"
+			"Action_Game_InvNext"		"Избор на следващо оръжие"
+			"Action_Game_InvPrev"		"Избор на предишно оръжие"
+			"Action_Game_LastInv"		"Избор на последно използвано оръжие"
+			"Action_Game_Walk"		"Вървене"
+			"Action_Game_Sprint"		"Спринтиране"
+			"Action_Game_PauseGame"		"Пауза"
+			"Action_Game_Flashlight"		"Фенерче"
+			"Action_Game_Squad"		"Изпращане / привикване на отряд"
+			"Action_Game_TurnAround"		"Обръщане назад"
+			"Action_Game_ResetCamera"		"Нулиране на камера"
+			"Action_Game_WeaponBucketTop"		"Списък с оръжия – горе"
+			"Action_Game_WeaponBucketRight"		"Списък с оръжия – дясно"
+			"Action_Game_WeaponBucketBottom"		"Списък с оръжия – долу"
+			"Action_Game_WeaponBucketLeft"		"Списък с оръжия – ляво"
+			"Action_Game_SelectGravityGun"		"Смяна към гравитационно оръжие"
+			"Action_Game_SelectBugbait"		"Смяна към феропод (бубостръв)"
+			"Action_Game_QuickSave"		"Бързо запазване"
+			"Action_Game_QuickLoad"		"Бързо зареждане"
+			"Action_Vehicle_Handbrake"		"Ръчна спирачка"
+			"Action_Vehicle_ExitVehicle"		"Излизане от превозното средство"
+			"Action_Vehicle_Turbo"		"Турбо"
+			"Action_Vehicle_TauBeam"		"Тау / пулсово оръдие"
+			"Action_Vehicle_ChargedBlast"		"Зареден изстрел"
+			"Action_Vehicle_Accelerate"		"Ускоряване"
+			"Action_Vehicle_Brake"		"Спирачка"
+			"Action_Menu_ReturnToGame"		"Връщане към играта"
+			"Action_Menu_Up"		"Нагоре"
+			"Action_Menu_Down"		"Надолу"
+			"Action_Menu_Left"		"Наляво"
+			"Action_Menu_Right"		"Надясно"
+			"Action_Menu_Select"		"Избиране"
+			"Action_Menu_Cancel"		"Отказ"
+			"Action_Menu_X"		"Алт. избор"
+			"Action_Menu_Y"		"Опции"
+			"Action_Menu_PreviousTab"		"Предишен раздел"
+			"Action_Menu_NextTab"		"Следващ раздел"
+			"Title_HL2_Gyro"		"Half-Life 2 сензорни контроли за Steam Deck"
+			"Description_HL2_Gyro"		"Официална конфигурация на Steam Deck за Half-Life 2 + епизоди 1 и 2 + Lost Coast.
+Конфигурация, центрирана върху жироскопа, използваща десен пад/стик + жироскоп за управление на камерата.
+Използва отделно ускоряване/управление и винаги вкл. жироскоп за битки от превозни средства."
+			"Title_HL2_Motion"		"Half-Life 2 сензорни контроли за Steam контролер"
+			"Description_HL2_Motion"		"Официална конфигурация на Steam контролер за Half-Life 2 + епизоди 1 и 2 + Lost Coast.
+Конфигурация с асистиране от жироскопа, използваща десен пад + жироскоп за управление на камерата.
+Използва комбинирано управление/ускоряване за битки от превозни средства."
+			"Title_HL2_Standard"		"Half-Life 2 стандартни контроли"
+			"Description_HL2_Standard"		"Официална конфигурация на Playstation/Xbox/Switch Pro за Half-Life 2 + епизоди 1 и 2 + Lost Coast.
+Няма сензорни контроли.
+Използва комбинирано управление/ускоряване за битки от превозни средства."
+		}
+		"czech"
+		{
+			"Set_InGameControls"		"Ovládání postavy"
+			"Set_VehicleControls"		"Ovládání vozidel"
+			"Set_MenuControls"		"Ovládání nabídek"
+			"Action_Movement"		"Pohyb"
+			"Action_Camera"		"Pohled"
+			"Action_JoystickCamera"		"Kamerová páčka"
+			"Action_Steering"		"Řízení"
+			"Action_SteeringAccelerate"		"Řízení/plyn"
+			"Action_Game_Fire"		"Primární střelba"
+			"Action_Game_FireAlt"		"Alternativní střelba"
+			"Action_Game_Zoom"		"Přiblížení obleku"
+			"Action_Game_ToggleZoom"		"Přiblížení obleku (přepnutí)"
+			"Action_Game_Reload"		"Přebití"
+			"Action_Game_Jump"		"Skok"
+			"Action_Game_Duck"		"Přikrčení"
+			"Action_Game_ToggleDuck"		"Přikrčení (přepnutí)"
+			"Action_Game_Use"		"Použití"
+			"Action_Game_InvNext"		"Výběr další zbraně"
+			"Action_Game_InvPrev"		"Výběr předchozí zbraně"
+			"Action_Game_LastInv"		"Výběr poslední zbraně"
+			"Action_Game_Walk"		"Chůze"
+			"Action_Game_Sprint"		"Sprint"
+			"Action_Game_PauseGame"		"Pozastavení hry"
+			"Action_Game_Flashlight"		"Svítilna"
+			"Action_Game_Squad"		"Vyslání/přivolání jednotky"
+			"Action_Game_TurnAround"		"Otočení"
+			"Action_Game_ResetCamera"		"Reset kamery"
+			"Action_Game_WeaponBucketTop"		"Vrchní skupina zbraní"
+			"Action_Game_WeaponBucketRight"		"Pravá skupina zbraní"
+			"Action_Game_WeaponBucketBottom"		"Spodní skupina zbraní"
+			"Action_Game_WeaponBucketLeft"		"Levá skupina zbraní"
+			"Action_Game_SelectGravityGun"		"Výběr gravitační zbraně"
+			"Action_Game_SelectBugbait"		"Výběr feromonů (návnady na brouky)"
+			"Action_Game_QuickSave"		"Rychlé uložení"
+			"Action_Game_QuickLoad"		"Rychlé načtení"
+			"Action_Vehicle_Handbrake"		"Ruční brzda"
+			"Action_Vehicle_ExitVehicle"		"Vystoupení z vozidla"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Paprsek Tau / pulzní kanon"
+			"Action_Vehicle_ChargedBlast"		"Nabitá střela"
+			"Action_Vehicle_Accelerate"		"Plyn"
+			"Action_Vehicle_Brake"		"Brzda"
+			"Action_Menu_ReturnToGame"		"Návrat do hry"
+			"Action_Menu_Up"		"Nahoru"
+			"Action_Menu_Down"		"Dolů"
+			"Action_Menu_Left"		"Doleva"
+			"Action_Menu_Right"		"Doprava"
+			"Action_Menu_Select"		"Výběr"
+			"Action_Menu_Cancel"		"Zrušení"
+			"Action_Menu_X"		"Alternativní výběr"
+			"Action_Menu_Y"		"Možnosti"
+			"Action_Menu_PreviousTab"		"Předchozí záložka"
+			"Action_Menu_NextTab"		"Další záložka"
+			"Title_HL2_Gyro"		"Pohybové ovládání – Half-Life 2 (Steam Deck)"
+			"Description_HL2_Gyro"		"Oficiální nastavení ovladače Steam Deck pro hry Half-Life 2 + Episode One/Two + Lost Coast.
+Pro pohled je použit pravý trackpad/páčka ve spojení s gyroskopem.
+Pro vozidla je použito oddělené řízení/plyn a stále zapnutý gyroskop."
+			"Title_HL2_Motion"		"Pohybové ovládání – Half-Life 2 (Steam Controller)"
+			"Description_HL2_Motion"		"Oficiální nastavení ovladače Steam Controller pro hry Half-Life 2 + Episode One/Two + Lost Coast.
+Pro pohled je použit pravý trackpad ve spojení s gyroskopem.
+Pro vozidla je použito kombinované řízení/plyn."
+			"Title_HL2_Standard"		"Standardní ovládání – Half-Life 2"
+			"Description_HL2_Standard"		"Oficiální nastavení ovladače Playstation / Xbox / Nintendo Switch Pro pro hry Half-Life 2 + Episode One/Two + Lost Coast.
+Bez ovládání pohybem.
+Pro vozidla je použito kombinované řízení/plyn."
+		}
+		"danish"
+		{
+			"Set_InGameControls"		"Spilstyring"
+			"Set_VehicleControls"		"Køretøjsstyring"
+			"Set_MenuControls"		"Menustyring"
+			"Action_Movement"		"Bevægelse"
+			"Action_Camera"		"Kamera"
+			"Action_JoystickCamera"		"Joystickkamera"
+			"Action_Steering"		"Styring"
+			"Action_SteeringAccelerate"		"Styring/acceleration"
+			"Action_Game_Fire"		"Primær affyring"
+			"Action_Game_FireAlt"		"Alternativ affyring"
+			"Action_Game_Zoom"		"Dragtzoom"
+			"Action_Game_ToggleZoom"		"Slå dragtzoom til/fra"
+			"Action_Game_Reload"		"Genlad"
+			"Action_Game_Jump"		"Hop"
+			"Action_Game_Duck"		"Duk"
+			"Action_Game_ToggleDuck"		"Duk/stå op"
+			"Action_Game_Use"		"Brug"
+			"Action_Game_InvNext"		"Vælg næste våben"
+			"Action_Game_InvPrev"		"Vælg forrige våben"
+			"Action_Game_LastInv"		"Vælg sidste våben"
+			"Action_Game_Walk"		"Gå"
+			"Action_Game_Sprint"		"Sprint"
+			"Action_Game_PauseGame"		"Pause"
+			"Action_Game_Flashlight"		"Lommelygte"
+			"Action_Game_Squad"		"Send/tilbagekald gruppe"
+			"Action_Game_TurnAround"		"Vend om"
+			"Action_Game_ResetCamera"		"Nulstil kamera"
+			"Action_Game_WeaponBucketTop"		"Øvre våbendepot"
+			"Action_Game_WeaponBucketRight"		"Højre våbendepot"
+			"Action_Game_WeaponBucketBottom"		"Nedre våbendepot"
+			"Action_Game_WeaponBucketLeft"		"Venstre våbendepot"
+			"Action_Game_SelectGravityGun"		"Vælg tyngdekraftvåben"
+			"Action_Game_SelectBugbait"		"Skift til feropod (insektmadding)"
+			"Action_Game_QuickSave"		"Hurtiggem"
+			"Action_Game_QuickLoad"		"Hurtigindlæs"
+			"Action_Vehicle_Handbrake"		"Håndbremse"
+			"Action_Vehicle_ExitVehicle"		"Stig ud af køretøj"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Tau-/pulskanon"
+			"Action_Vehicle_ChargedBlast"		"Ladet salve"
+			"Action_Vehicle_Accelerate"		"Accelerer"
+			"Action_Vehicle_Brake"		"Brems"
+			"Action_Menu_ReturnToGame"		"Tilbage til spillet"
+			"Action_Menu_Up"		"Op"
+			"Action_Menu_Down"		"Ned"
+			"Action_Menu_Left"		"Venstre"
+			"Action_Menu_Right"		"Højre"
+			"Action_Menu_Select"		"Vælg"
+			"Action_Menu_Cancel"		"Annuller"
+			"Action_Menu_X"		"Vælg (alternativ)"
+			"Action_Menu_Y"		"Indstillinger"
+			"Action_Menu_PreviousTab"		"Forrige fane"
+			"Action_Menu_NextTab"		"Næste fane"
+			"Title_HL2_Gyro"		"Half-Life 2 – Bevægelsesstyring med Steam Deck"
+			"Description_HL2_Gyro"		"Officiel Steam Deck-konfiguration til Half-Life 2 + Episode 1/2 + Lost Coast.
+En gyroskopbaseret konfiguration, som bruger højre retningsknap/styrepind + gyroskopet til kameraføring.
+Bruger særskilt acceleration/styring og gyro, som altid er aktiveret, i køretøj."
+			"Title_HL2_Motion"		"Half-Life 2 – Bevægelsesstyring til Steam Controller"
+			"Description_HL2_Motion"		"Officiel Steam Controller-konfiguration til Half-Life 2 + Episode 1/2 + Lost Coast.
+En gyroskopassisteret konfiguration, som bruger højre retningsknap + gyroskopet til kameraføring.
+Bruger kombineret styring/acceleration i køretøj."
+			"Title_HL2_Standard"		"Half-Life 2 – Standardstyring"
+			"Description_HL2_Standard"		"Officiel PlayStation-/Xbox-/Switch Pro-konfiguration til Half-Life 2 + Episode 1/2 + Lost Coast.
+Ingen bevægelsesstyring.
+Bruger kombineret styring/acceleration i køretøj."
+		}
+		"dutch"
+		{
+			"Set_InGameControls"		"Besturing in het spel"
+			"Set_VehicleControls"		"Besturing voertuig"
+			"Set_MenuControls"		"Besturing menu"
+			"Action_Movement"		"Beweging"
+			"Action_Camera"		"Camera"
+			"Action_JoystickCamera"		"Joystickcamera"
+			"Action_Steering"		"Sturen"
+			"Action_SteeringAccelerate"		"Sturen / Versnellen"
+			"Action_Game_Fire"		"Hoofdactie"
+			"Action_Game_FireAlt"		"Alternatieve actie"
+			"Action_Game_Zoom"		"Inzoomen op uitrusting"
+			"Action_Game_ToggleZoom"		"In-/uitzoomen"
+			"Action_Game_Reload"		"Herladen"
+			"Action_Game_Jump"		"Springen"
+			"Action_Game_Duck"		"Wegduiken"
+			"Action_Game_ToggleDuck"		"Wegduiken aan/uit"
+			"Action_Game_Use"		"Gebruiken"
+			"Action_Game_InvNext"		"Volgende wapen selecteren"
+			"Action_Game_InvPrev"		"Vorige wapen selecteren"
+			"Action_Game_LastInv"		"Laatste wapen selecteren"
+			"Action_Game_Walk"		"Lopen"
+			"Action_Game_Sprint"		"Sprinten"
+			"Action_Game_PauseGame"		"Spel pauzeren"
+			"Action_Game_Flashlight"		"Zaklamp"
+			"Action_Game_Squad"		"Eenheid sturen / terugroepen"
+			"Action_Game_TurnAround"		"Omdraaien"
+			"Action_Game_ResetCamera"		"Camera opnieuw instellen"
+			"Action_Game_WeaponBucketTop"		"Bovenste wapendepot"
+			"Action_Game_WeaponBucketRight"		"Rechterwapendepot"
+			"Action_Game_WeaponBucketBottom"		"Onderste wapendepot"
+			"Action_Game_WeaponBucketLeft"		"Linkerwapendepot"
+			"Action_Game_SelectGravityGun"		"Gravity gun selecteren"
+			"Action_Game_SelectBugbait"		"Overschakelen naar pheropod (aas)"
+			"Action_Game_QuickSave"		"Snel opslaan"
+			"Action_Game_QuickLoad"		"Snel laden"
+			"Action_Vehicle_Handbrake"		"Handrem"
+			"Action_Vehicle_ExitVehicle"		"Voertuig verlaten"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Tauonstraal / Stroomstootkanon"
+			"Action_Vehicle_ChargedBlast"		"Schot met opgeladen tauonkanon"
+			"Action_Vehicle_Accelerate"		"Versnellen"
+			"Action_Vehicle_Brake"		"Remmen"
+			"Action_Menu_ReturnToGame"		"Terug naar het spel"
+			"Action_Menu_Up"		"Omhoog"
+			"Action_Menu_Down"		"Omlaag"
+			"Action_Menu_Left"		"Links"
+			"Action_Menu_Right"		"Rechts"
+			"Action_Menu_Select"		"Selecteren"
+			"Action_Menu_Cancel"		"Annuleren"
+			"Action_Menu_X"		"Alternatieve selectie"
+			"Action_Menu_Y"		"Opties"
+			"Action_Menu_PreviousTab"		"Vorig tabblad"
+			"Action_Menu_NextTab"		"Volgend tabblad"
+			"Title_HL2_Gyro"		"Bewegingsbesturing voor Half-Life 2 op Steam Deck"
+			"Description_HL2_Gyro"		"De officiële Steam Deck-configuratie voor Half-Life 2 + Episodes 1/2 + Lost Coast.
+Benadrukt gyroscoopgebruik, met een camera aangestuurd door rechterpad/-stick + gyroscoop.
+Bij gevechten met voertuigen gebeurt versnellen en sturen afzonderlijk en staat de gyroscoop altijd aan."
+			"Title_HL2_Motion"		"Bewegingsbesturing voor Half-Life 2 met Steam Controller"
+			"Description_HL2_Motion"		"De officiële Steam Controller-configuratie voor Half-Life 2 + Episodes 1/2 + Lost Coast.
+Deze configuratie met gyroscoopondersteuning gebruikt rechterpad + gyroscoop om de camera aan te sturen.
+Bij gevechten met voertuigen wordt versnellen en sturen gecombineerd."
+			"Title_HL2_Standard"		"Standaardbesturing voor Half-Life 2"
+			"Description_HL2_Standard"		"De officiële PlayStation-/Xbox-/Switch Pro-configuratie voor Half-Life 2 + Episodes 1/2 + Lost Coast.
+Geen bewegingsbesturing.
+Bij gevechten met voertuigen wordt versnellen en sturen gecombineerd."
+		}
+		"finnish"
+		{
+			"Set_InGameControls"		"Pelinsisäiset ohjaimet"
+			"Set_VehicleControls"		"Ajoneuvon ohjaimet"
+			"Set_MenuControls"		"Valikon ohjaimet"
+			"Action_Movement"		"Liikkuminen"
+			"Action_Camera"		"Kamera"
+			"Action_JoystickCamera"		"Ohjainsauvakamera"
+			"Action_Steering"		"Ohjaus"
+			"Action_SteeringAccelerate"		"Ohjaus/kiihdytys"
+			"Action_Game_Fire"		"Ensisijainen tulitus"
+			"Action_Game_FireAlt"		"Vaihtoehtoinen tulitus"
+			"Action_Game_Zoom"		"Puvun zoomi"
+			"Action_Game_ToggleZoom"		"Zoomaus päällä/pois"
+			"Action_Game_Reload"		"Lataa uudelleen"
+			"Action_Game_Jump"		"Hyppää"
+			"Action_Game_Duck"		"Kumarru"
+			"Action_Game_ToggleDuck"		"Kumarru – päälle/pois"
+			"Action_Game_Use"		"Käytä"
+			"Action_Game_InvNext"		"Valitse seuraava ase"
+			"Action_Game_InvPrev"		"Valitse edellinen ase"
+			"Action_Game_LastInv"		"Valitse viimeisin ase"
+			"Action_Game_Walk"		"Kävele"
+			"Action_Game_Sprint"		"Juokse nopeasti"
+			"Action_Game_PauseGame"		"Pysäytä peli"
+			"Action_Game_Flashlight"		"Taskulamppu"
+			"Action_Game_Squad"		"Lähetä ryhmä / kutsu takaisin"
+			"Action_Game_TurnAround"		"Käänny ympäri"
+			"Action_Game_ResetCamera"		"Nollaa kamera"
+			"Action_Game_WeaponBucketTop"		"Asekokoelma (ylä)"
+			"Action_Game_WeaponBucketRight"		"Asekokoelma (oikea)"
+			"Action_Game_WeaponBucketBottom"		"Asekokoelma (ala)"
+			"Action_Game_WeaponBucketLeft"		"Asekokoelma (vasen)"
+			"Action_Game_SelectGravityGun"		"Valitse painovoima-ase"
+			"Action_Game_SelectBugbait"		"Vaihda Pheropodiin (ötökkäsyötti)"
+			"Action_Game_QuickSave"		"Pikatallennus"
+			"Action_Game_QuickLoad"		"Pikalataus"
+			"Action_Vehicle_Handbrake"		"Käsijarru"
+			"Action_Vehicle_ExitVehicle"		"Poistu autosta"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Tautykin säde / pulssitykki"
+			"Action_Vehicle_ChargedBlast"		"Ladattu isku"
+			"Action_Vehicle_Accelerate"		"Kiihdytä"
+			"Action_Vehicle_Brake"		"Jarruta"
+			"Action_Menu_ReturnToGame"		"Palaa peliin"
+			"Action_Menu_Up"		"Ylös"
+			"Action_Menu_Down"		"Alas"
+			"Action_Menu_Left"		"Vasen"
+			"Action_Menu_Right"		"Oikea"
+			"Action_Menu_Select"		"Valitse"
+			"Action_Menu_Cancel"		"Peruuta"
+			"Action_Menu_X"		"Vaihtoehtoinen valinta"
+			"Action_Menu_Y"		"Asetukset"
+			"Action_Menu_PreviousTab"		"Edellinen välilehti"
+			"Action_Menu_NextTab"		"Seuraava välilehti"
+			"Title_HL2_Gyro"		"Half-Life 2 -pelin liikkeentunnistuksen ohjaimet Steam Deckille"
+			"Description_HL2_Gyro"		"Viralliset Steam Deck -ohjainmääritykset seuraaville: Half-Life 2 + Episode 1/2 + Lost Coast.
+Gyroon perustuva määritys, jossa oikeaa kosketuslevyä/ohjainsauvaa ja gyroa käytetään kameran ohjaukseen.
+Sisältää erillisen kiihdytyksen/ohjauksen ja jatkuvasti käytössä olevan gyron ajoneuvotaisteluissa."
+			"Title_HL2_Motion"		"Half-Life 2 -pelin liikkeentunnistuksen ohjaimet Steam Controllerille"
+			"Description_HL2_Motion"		"Viralliset Steam Controller -ohjainmääritykset seuraaville: Half-Life 2 + Episode 1/2 + Lost Coast.
+Gyroa hyödyntävä määritys, jossa oikeaa kosketuslevyä ja gyroa käytetään kameran ohjaukseen.
+Sisältää yhdistetyn kiihdytyksen/ohjauksen ajoneuvotaisteluissa."
+			"Title_HL2_Standard"		"Half-Life 2 -perusohjaimet"
+			"Description_HL2_Standard"		"Viralliset Playstation-, Xbox- ja Switch Pro -ohjainmääritykset seuraaville: Half-Life 2 + Episode 1/2 + Lost Coast.
+Ei sisällä liikkeentunnistusta.
+Sisältää yhdistetyn kiihdytyksen/ohjauksen ajoneuvotaisteluissa."
+		}
+		"french"
+		{
+			"Set_InGameControls"		"Commandes en jeu"
+			"Set_VehicleControls"		"Commandes dans un véhicule"
+			"Set_MenuControls"		"Commandes du menu"
+			"Action_Movement"		"Déplacements"
+			"Action_Camera"		"Caméra"
+			"Action_JoystickCamera"		"Caméra (joystick)"
+			"Action_Steering"		"Tourner"
+			"Action_SteeringAccelerate"		"Piloter/accélérer"
+			"Action_Game_Fire"		"Tir principal"
+			"Action_Game_FireAlt"		"Tir secondaire"
+			"Action_Game_Zoom"		"Zoom de la combinaison"
+			"Action_Game_ToggleZoom"		"Ajuster le zoom de la combinaison"
+			"Action_Game_Reload"		"Recharger"
+			"Action_Game_Jump"		"Sauter"
+			"Action_Game_Duck"		"S'accroupir"
+			"Action_Game_ToggleDuck"		"S'accroupir/se relever"
+			"Action_Game_Use"		"Utiliser"
+			"Action_Game_InvNext"		"Sélectionner l'arme suivante"
+			"Action_Game_InvPrev"		"Sélectionner l'arme précédente"
+			"Action_Game_LastInv"		"Sélectionner la dernière arme"
+			"Action_Game_Walk"		"Marcher"
+			"Action_Game_Sprint"		"Courir"
+			"Action_Game_PauseGame"		"Mettre en pause"
+			"Action_Game_Flashlight"		"Lampe torche"
+			"Action_Game_Squad"		"Envoyer/rappeler l'escadron"
+			"Action_Game_TurnAround"		"Faire demi-tour"
+			"Action_Game_ResetCamera"		"Réinitialiser la caméra"
+			"Action_Game_WeaponBucketTop"		"Groupe d'armes (haut)"
+			"Action_Game_WeaponBucketRight"		"Groupe d'armes (droite)"
+			"Action_Game_WeaponBucketBottom"		"Groupe d'armes (bas)"
+			"Action_Game_WeaponBucketLeft"		"Groupe d'armes (gauche)"
+			"Action_Game_SelectGravityGun"		"Sélectionner le pistolet antigravité"
+			"Action_Game_SelectBugbait"		"Passer au phéropode (appât)"
+			"Action_Game_QuickSave"		"Sauvegarde rapide"
+			"Action_Game_QuickLoad"		"Chargement rapide"
+			"Action_Vehicle_Handbrake"		"Frein à main"
+			"Action_Vehicle_ExitVehicle"		"Sortir du véhicule"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Rayon tau/canon à impulsions"
+			"Action_Vehicle_ChargedBlast"		"Tir à puissance maximale"
+			"Action_Vehicle_Accelerate"		"Accélérer"
+			"Action_Vehicle_Brake"		"Freiner"
+			"Action_Menu_ReturnToGame"		"Reprendre la partie"
+			"Action_Menu_Up"		"Haut"
+			"Action_Menu_Down"		"Bas"
+			"Action_Menu_Left"		"Gauche"
+			"Action_Menu_Right"		"Droite"
+			"Action_Menu_Select"		"Sélectionner"
+			"Action_Menu_Cancel"		"Annuler"
+			"Action_Menu_X"		"Sélection alternative"
+			"Action_Menu_Y"		"Options"
+			"Action_Menu_PreviousTab"		"Onglet précédent"
+			"Action_Menu_NextTab"		"Onglet suivant"
+			"Title_HL2_Gyro"		"Commandes de mouvement pour Half-Life 2 sur Steam Deck"
+			"Description_HL2_Gyro"		"Configuration officielle de Steam Deck pour Half-Life 2: Episode One, Half-Life 2: Episode Two et Half-Life 2: Lost Coast.
+Cette configuration axée sur le gyroscope combine l'utilisation du pad ou du stick droits avec le gyroscope pour contrôler la caméra.
+Elle utilise des commandes individuelles pour accélérer et tourner. De plus, la fonction gyroscopique est toujours activée lors des combats à bord de véhicules."
+			"Title_HL2_Motion"		"Commandes avec gyroscope pour Half-Life 2 avec le Steam Controller"
+			"Description_HL2_Motion"		"Configuration officielle du Steam Controller pour Half-Life 2: Episode One, Half-Life 2: Episode Two et Half-Life 2: Lost Coast.
+Cette configuration assistée par le gyroscope combine l'utilisation du pad droit et du gyroscope pour contrôler la caméra.
+Elle utilise des commandes individuelles pour accélérer et tourner lors des combats à bord de véhicules."
+			"Title_HL2_Standard"		"Commandes standard pour Half-Life 2"
+			"Description_HL2_Standard"		"Configuration officielle des manettes Playstation, Xbox et Switch Pro pour Half-Life 2: Episode One, Half-Life 2: Episode Two et Half-Life 2: Lost Coast.
+Le gyroscope n'est pas utilisé.
+Elle utilise la même commande pour tourner et accélérer lors de combats à bord de véhicules."
+		}
+		"german"
+		{
+			"Set_InGameControls"		"Steuerung im Spiel"
+			"Set_VehicleControls"		"Fahrzeugsteuerung"
+			"Set_MenuControls"		"Menüsteuerung"
+			"Action_Movement"		"Bewegung"
+			"Action_Camera"		"Kamera"
+			"Action_JoystickCamera"		"Stick-Kamera"
+			"Action_Steering"		"Steuern"
+			"Action_SteeringAccelerate"		"Lenken / Beschleunigen"
+			"Action_Game_Fire"		"Primärer Waffenmodus"
+			"Action_Game_FireAlt"		"Alternativer Waffenmodus"
+			"Action_Game_Zoom"		"Fernglas"
+			"Action_Game_ToggleZoom"		"Anzug-Zoom an/aus"
+			"Action_Game_Reload"		"Neu laden"
+			"Action_Game_Jump"		"Springen"
+			"Action_Game_Duck"		"Ducken"
+			"Action_Game_ToggleDuck"		"Ducken an/aus"
+			"Action_Game_Use"		"Benutzen"
+			"Action_Game_InvNext"		"Nächste Waffe auswählen"
+			"Action_Game_InvPrev"		"Vorige Waffe auswählen"
+			"Action_Game_LastInv"		"Zuletzt verwendete Waffe auswählen"
+			"Action_Game_Walk"		"Gehen"
+			"Action_Game_Sprint"		"Sprinten"
+			"Action_Game_PauseGame"		"Spiel pausieren"
+			"Action_Game_Flashlight"		"Taschenlampe"
+			"Action_Game_Squad"		"Einheit schicken/zurückrufen"
+			"Action_Game_TurnAround"		"Umdrehen"
+			"Action_Game_ResetCamera"		"Kamera zurücksetzen"
+			"Action_Game_WeaponBucketTop"		"Oberer Waffenslot"
+			"Action_Game_WeaponBucketRight"		"Rechter Waffenslot"
+			"Action_Game_WeaponBucketBottom"		"Unterer Waffenslot"
+			"Action_Game_WeaponBucketLeft"		"Linker Waffenslot"
+			"Action_Game_SelectGravityGun"		"Gravitron auswählen"
+			"Action_Game_SelectBugbait"		"Zu Pheropod (Köder) wechseln"
+			"Action_Game_QuickSave"		"Schnellspreichern"
+			"Action_Game_QuickLoad"		"Schnellladen"
+			"Action_Vehicle_Handbrake"		"Handbremse"
+			"Action_Vehicle_ExitVehicle"		"Fahrzeug verlassen"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Tau-Strahlen / Impulskanone"
+			"Action_Vehicle_ChargedBlast"		"Schockentladung"
+			"Action_Vehicle_Accelerate"		"Beschleunigen"
+			"Action_Vehicle_Brake"		"Bremsen"
+			"Action_Menu_ReturnToGame"		"Zurück zum Spiel"
+			"Action_Menu_Up"		"Oben"
+			"Action_Menu_Down"		"Unten"
+			"Action_Menu_Left"		"Links"
+			"Action_Menu_Right"		"Rechts"
+			"Action_Menu_Select"		"Auswählen"
+			"Action_Menu_Cancel"		"Abbrechen"
+			"Action_Menu_X"		"Alternative Auswahl"
+			"Action_Menu_Y"		"Optionen"
+			"Action_Menu_PreviousTab"		"Vorheriger Tab"
+			"Action_Menu_NextTab"		"Nächster Tab"
+			"Title_HL2_Gyro"		"Half-Life 2: Bewegungssteuerung auf dem Steam Deck"
+			"Description_HL2_Gyro"		"Offizielle Konfiguration für Half-Life 2 + Episoden 1/2 + Verlorene Küste auf dem Steam Deck.
+Die Gyroskop-fokussierte Konfiguration verwendet das rechte Pad/den rechten Stick + Gyroskop für die Kamera.
+Separate Steuerung für Beschleunigung/Steuern. Für Fahrzeugkämpfe ist das Gyroskop immer aktiviert."
+			"Title_HL2_Motion"		"Half-Life 2: Bewegungssteuerung mit dem Steam Controller"
+			"Description_HL2_Motion"		"Offizielle Konfiguration für Half-Life 2 + Episoden 1/2 + Verlorene Küste mit dem Steam Controller.
+Die Gyroskop-unterstützte Konfiguration verwendet das rechte Pad + Gyroskop für die Kamera.
+Verwendet kombinierte Steuerung für Beschleunigung/Steuern in Fahrzeugkämpfen."
+			"Title_HL2_Standard"		"Half-Life 2: Standardsteuerung"
+			"Description_HL2_Standard"		"Offizielle Playstation-/Xbox-/Switch-Pro-Konfiguration für Half-Life 2 + Episoden 1/2 + Verlorene Küste.
+Keine Bewegungssteuerung.
+Verwendet kombinierte Steuerung für Beschleunigung/Steuern in Fahrzeugkämpfen."
+		}
+		"greek"
+		{
+			"Set_InGameControls"		"Πλήκτρα εντός παιχνιδιού"
+			"Set_VehicleControls"		"Πλήκτρα οχήματος"
+			"Set_MenuControls"		"Πλήκτρα μενού"
+			"Action_Movement"		"Κίνηση"
+			"Action_Camera"		"Κάμερα"
+			"Action_JoystickCamera"		"Κάμερα μοχλού"
+			"Action_Steering"		"Στροφή"
+			"Action_SteeringAccelerate"		"Οδήγηση/Επιτάχυνση"
+			"Action_Game_Fire"		"Κύριο πυρ"
+			"Action_Game_FireAlt"		"Εναλλακτικό πυρ"
+			"Action_Game_Zoom"		"Εστίαση στολής"
+			"Action_Game_ToggleZoom"		"Εναλλαγή εστίασης στολής"
+			"Action_Game_Reload"		"Γέμισμα όπλου"
+			"Action_Game_Jump"		"Άλμα"
+			"Action_Game_Duck"		"Σκύψιμο"
+			"Action_Game_ToggleDuck"		"Εναλλαγή σκυψίματος"
+			"Action_Game_Use"		"Χρήση"
+			"Action_Game_InvNext"		"Επιλογή επόμενου όπλου"
+			"Action_Game_InvPrev"		"Επιλογή προηγούμενου όπλου"
+			"Action_Game_LastInv"		"Επιλογή τελευταίου όπλου"
+			"Action_Game_Walk"		"Περπάτημα"
+			"Action_Game_Sprint"		"Τρέξιμο"
+			"Action_Game_PauseGame"		"Παύση παιχνιδιού"
+			"Action_Game_Flashlight"		"Φακός"
+			"Action_Game_Squad"		"Αποστολή/Ανάκληση ομάδας"
+			"Action_Game_TurnAround"		"Μεταστροφή"
+			"Action_Game_ResetCamera"		"Επαναφορά κάμερας"
+			"Action_Game_WeaponBucketTop"		"Σύνολο όπλων (πάνω)"
+			"Action_Game_WeaponBucketRight"		"Σύνολο όπλων (δεξιά)"
+			"Action_Game_WeaponBucketBottom"		"Σύνολο όπλων (κάτω)"
+			"Action_Game_WeaponBucketLeft"		"Σύνολο όπλων (αριστερά)"
+			"Action_Game_SelectGravityGun"		"Επιλογή Όπλου Βαρύτητας"
+			"Action_Game_SelectBugbait"		"Εναλλαγή σε Φεροκύστη (Δόλωμα εντόμων)"
+			"Action_Game_QuickSave"		"Γρήγορη αποθήκευση"
+			"Action_Game_QuickLoad"		"Γρήγορη φόρτωση"
+			"Action_Vehicle_Handbrake"		"Χειρόφρενο"
+			"Action_Vehicle_ExitVehicle"		"Έξοδος από όχημα"
+			"Action_Vehicle_Turbo"		"Τούρμπο"
+			"Action_Vehicle_TauBeam"		"Ακτίνα Ταυ / Κανόνι παλμών"
+			"Action_Vehicle_ChargedBlast"		"Φορτισμένη βολή"
+			"Action_Vehicle_Accelerate"		"Επιτάχυνση"
+			"Action_Vehicle_Brake"		"Φρένο"
+			"Action_Menu_ReturnToGame"		"Επιστροφή στο παιχνίδι"
+			"Action_Menu_Up"		"Πάνω"
+			"Action_Menu_Down"		"Κάτω"
+			"Action_Menu_Left"		"Αριστερά"
+			"Action_Menu_Right"		"Δεξιά"
+			"Action_Menu_Select"		"Επιλογή"
+			"Action_Menu_Cancel"		"Ακύρωση"
+			"Action_Menu_X"		"Εναλλακτική επιλογή"
+			"Action_Menu_Y"		"Επιλογές"
+			"Action_Menu_PreviousTab"		"Προηγούμενη καρτέλα"
+			"Action_Menu_NextTab"		"Επόμενη καρτέλα"
+			"Title_HL2_Gyro"		"Έλεγχοι κίνησης Half-Life 2 για το Steam Deck"
+			"Description_HL2_Gyro"		"Επίσημη διαμόρφωση Steam Deck για το Half-Life 2, για τα Episode 1/2 και το Lost Coast.
+Μια διαμόρφωση επικεντρωμένη στο γυροσκόπιο που χρησιμοποιεί τη δεξιά επιφάνεια αφής / μοχλό και το γυροσκόπιο για κάμερα.
+Χρησιμοποιεί ξεχωριστή επιτάχυνση/στροφή και πάντα ενεργό γυροσκόπιο για μάχη με οχήματα."
+			"Title_HL2_Motion"		"Έλεγχοι κίνησης Half-Life 2 για το Χειριστήριο Steam"
+			"Description_HL2_Motion"		"Επίσημη διαμόρφωση Χειριστηρίου Steam για το Half-Life 2, για τα Episode 1/2 και το Lost Coast.
+Μια διαμόρφωση υποβοηθούμενη από το γυροσκόπιο που χρησιμοποιεί τη δεξιά επιφάνεια αφής / μοχλό και το γυροσκόπιο για κάμερα.
+Χρησιμοποιεί συνδυασμένη στροφή/επιτάχυνση για μάχη με οχήματα."
+			"Title_HL2_Standard"		"Τυπικοί έλεγχοι Half-Life 2"
+			"Description_HL2_Standard"		"Επίσημη διαμόρφωση Playstation/Xbox/Switch Pro για το Half-Life 2, για τα Episode 1/2 και το Lost Coast.
+Χωρίς ελέγχους κίνησης.
+Χρησιμοποιεί συνδυασμένη στροφή/επιτάχυνση για μάχη με οχήματα."
+		}
+		"hungarian"
+		{
+			"Set_InGameControls"		"Játékbeli vezérlés"
+			"Set_VehicleControls"		"Járművezérlés"
+			"Set_MenuControls"		"Menüvezérlés"
+			"Action_Movement"		"Mozgás"
+			"Action_Camera"		"Kamera"
+			"Action_JoystickCamera"		"Botkormányos kamera"
+			"Action_Steering"		"Kormányzás"
+			"Action_SteeringAccelerate"		"Kormányzás / Gyorsítás"
+			"Action_Game_Fire"		"Elsődleges tűz"
+			"Action_Game_FireAlt"		"Másodlagos tűz"
+			"Action_Game_Zoom"		"Ráközelítés"
+			"Action_Game_ToggleZoom"		"Ráközelítés váltása"
+			"Action_Game_Reload"		"Újratöltés"
+			"Action_Game_Jump"		"Ugrás"
+			"Action_Game_Duck"		"Guggolás"
+			"Action_Game_ToggleDuck"		"Guggolás be/ki"
+			"Action_Game_Use"		"Használ"
+			"Action_Game_InvNext"		"Következő fegyver kiválasztása"
+			"Action_Game_InvPrev"		"Előző fegyver kiválasztása"
+			"Action_Game_LastInv"		"Legutóbbi fegyver kiválasztása"
+			"Action_Game_Walk"		"Séta"
+			"Action_Game_Sprint"		"Futás"
+			"Action_Game_PauseGame"		"Játék szüneteltetése"
+			"Action_Game_Flashlight"		"Zseblámpa"
+			"Action_Game_Squad"		"Osztag küldés/visszahívás"
+			"Action_Game_TurnAround"		"Megfordulás"
+			"Action_Game_ResetCamera"		"Kamera alaphelyzetbe"
+			"Action_Game_WeaponBucketTop"		"Felső fegyverrekesz"
+			"Action_Game_WeaponBucketRight"		"Jobb fegyverrekesz"
+			"Action_Game_WeaponBucketBottom"		"Alsó fegyverrekesz"
+			"Action_Game_WeaponBucketLeft"		"Bal fegyverrekesz"
+			"Action_Game_SelectGravityGun"		"Gravitorpuska kiválasztása"
+			"Action_Game_SelectBugbait"		"Ferogubóra (bogárcsali) váltás"
+			"Action_Game_QuickSave"		"Gyorsmentés"
+			"Action_Game_QuickLoad"		"Gyorstöltés"
+			"Action_Vehicle_Handbrake"		"Kézifék"
+			"Action_Vehicle_ExitVehicle"		"Jármű elhagyása"
+			"Action_Vehicle_Turbo"		"Turbó"
+			"Action_Vehicle_TauBeam"		"Tau-nyaláb / Impulzuslöveg"
+			"Action_Vehicle_ChargedBlast"		"Túltöltött lövés"
+			"Action_Vehicle_Accelerate"		"Gyorsítás"
+			"Action_Vehicle_Brake"		"Fékezés"
+			"Action_Menu_ReturnToGame"		"Vissza a játékhoz"
+			"Action_Menu_Up"		"Fel"
+			"Action_Menu_Down"		"Le"
+			"Action_Menu_Left"		"Balra"
+			"Action_Menu_Right"		"Jobbra"
+			"Action_Menu_Select"		"Kiválaszt"
+			"Action_Menu_Cancel"		"Mégse"
+			"Action_Menu_X"		"Alternatív választás"
+			"Action_Menu_Y"		"Beállítások"
+			"Action_Menu_PreviousTab"		"Előző fül"
+			"Action_Menu_NextTab"		"Következő fül"
+			"Title_HL2_Gyro"		"Half-Life 2 mozgásirányítás a Steam Deckhez"
+			"Description_HL2_Gyro"		"A hivatalos Steam Deck konfiguráció a Half-Life 2, Episodes 1/2 és Lost Coast játékokhoz.
+Giroközpontú konfiguráció jobb felületet és kart, valamint a kameramozgatáshoz a girót használva.
+A járműves harchoz különálló gyorsítást és kormányzást, valamint mindig bekapcsolt girót használ."
+			"Title_HL2_Motion"		"Half-Life 2 mozgásirányítás a Steam Játékvezérlőhöz"
+			"Description_HL2_Motion"		"A hivatalos Steam Játékvezérlő konfiguráció a Half-Life 2, Episodes 1/2 és Lost Coast játékokhoz.
+Giróval kiegészített konfiguráció jobb felületet és girót használva a kameramozgatáshoz.
+A járműves harchoz kombinált gyorsítást és kormányzást használ."
+			"Title_HL2_Standard"		"Half-Life 2 hagyományos vezérlés"
+			"Description_HL2_Standard"		"A hivatalos Playstation/Xbox/Switch Pro konfiguráció a Half-Life 2, Episodes 1/2 és Lost Coast játékokhoz.
+Nincs mozgásirányítás.
+A járműves harchoz kombinált gyorsítást és kormányzást használ."
+		}
+		"italian"
+		{
+			"Set_InGameControls"		"Controlli in gioco"
+			"Set_VehicleControls"		"Controlli veicolo"
+			"Set_MenuControls"		"Controlli del menu"
+			"Action_Movement"		"Movimento"
+			"Action_Camera"		"Telecamera"
+			"Action_JoystickCamera"		"Telecamera (joystick)"
+			"Action_Steering"		"Sterza"
+			"Action_SteeringAccelerate"		"Sterza/accelera"
+			"Action_Game_Fire"		"Fuoco primario"
+			"Action_Game_FireAlt"		"Fuoco alternativo"
+			"Action_Game_Zoom"		"Zoom tuta"
+			"Action_Game_ToggleZoom"		"Attiva/disattiva zoom tuta"
+			"Action_Game_Reload"		"Ricarica"
+			"Action_Game_Jump"		"Salta"
+			"Action_Game_Duck"		"Abbassati"
+			"Action_Game_ToggleDuck"		"Abbassati sì/no"
+			"Action_Game_Use"		"Usa"
+			"Action_Game_InvNext"		"Seleziona arma successiva"
+			"Action_Game_InvPrev"		"Seleziona arma precedente"
+			"Action_Game_LastInv"		"Seleziona ultima arma"
+			"Action_Game_Walk"		"Cammina"
+			"Action_Game_Sprint"		"Corri"
+			"Action_Game_PauseGame"		"Pausa"
+			"Action_Game_Flashlight"		"Torcia"
+			"Action_Game_Squad"		"Invia/Richiama squadra"
+			"Action_Game_TurnAround"		"Girati"
+			"Action_Game_ResetCamera"		"Resetta telecamera"
+			"Action_Game_WeaponBucketTop"		"Slot armi superiore"
+			"Action_Game_WeaponBucketRight"		"Slot armi destro"
+			"Action_Game_WeaponBucketBottom"		"Slot armi inferiore"
+			"Action_Game_WeaponBucketLeft"		"Slot armi sinistro"
+			"Action_Game_SelectGravityGun"		"Seleziona Pistola gravitazionale"
+			"Action_Game_SelectBugbait"		"Passa al feropodo (esca)"
+			"Action_Game_QuickSave"		"Salvataggio rapido"
+			"Action_Game_QuickLoad"		"Caricamento rapido"
+			"Action_Vehicle_Handbrake"		"Freno a mano"
+			"Action_Vehicle_ExitVehicle"		"Scendi dal veicolo"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Raggio Tau/Cannone a impulsi"
+			"Action_Vehicle_ChargedBlast"		"Colpo caricato"
+			"Action_Vehicle_Accelerate"		"Accelera"
+			"Action_Vehicle_Brake"		"Frena"
+			"Action_Menu_ReturnToGame"		"Torna alla partita"
+			"Action_Menu_Up"		"Su"
+			"Action_Menu_Down"		"Giù"
+			"Action_Menu_Left"		"Sinistra"
+			"Action_Menu_Right"		"Destra"
+			"Action_Menu_Select"		"Seleziona"
+			"Action_Menu_Cancel"		"Annulla"
+			"Action_Menu_X"		"Selezione alternativa"
+			"Action_Menu_Y"		"Opzioni"
+			"Action_Menu_PreviousTab"		"Scheda precedente"
+			"Action_Menu_NextTab"		"Scheda successiva"
+			"Title_HL2_Gyro"		"Comandi di movimento di Half-Life 2 per Steam Deck"
+			"Description_HL2_Gyro"		"Configurazione ufficiale di Steam Deck per Half-Life 2 + Episode 1/2 + Lost Coast.
+Una configurazione girocentrica utilizzando il pad destro/levetta + giroscopio per la telecamera.
+Usa accelerazione/sterzo separati e il giroscopio sempre attivo per il combattimento su veicoli."
+			"Title_HL2_Motion"		"Comandi di movimento di Half-Life 2 per lo Steam Controller"
+			"Description_HL2_Motion"		"Configurazione ufficiale dello Steam Controller per Half-Life 2 + Episode 1/2 + Lost Coast.
+Una configurazione giro-assistita utilizzando il pad destro + giroscopio per la telecamera.
+Usa accelerazione/sterzo combinati per il combattimento su veicoli."
+			"Title_HL2_Standard"		"Controlli standard per Half-Life 2"
+			"Description_HL2_Standard"		"Configurazione ufficiale di Playstation/Xbox/Switch Pro per Half-Life 2 + Episode 1/2 + Lost Coast.
+Nessun controllo del movimento.
+Usa accelerazione/sterzo combinati per il combattimento su veicoli."
+		}
+		"japanese"
+		{
+			"Set_InGameControls"		"ゲーム内コントロール"
+			"Set_VehicleControls"		"車両コントロール"
+			"Set_MenuControls"		"メニューコントロール"
+			"Action_Movement"		"移動"
+			"Action_Camera"		"カメラ"
+			"Action_JoystickCamera"		"ジョイスティックカメラ"
+			"Action_Steering"		"ステアリング"
+			"Action_SteeringAccelerate"		"操縦／加速"
+			"Action_Game_Fire"		"メインウェポン"
+			"Action_Game_FireAlt"		"攻撃方法の切り替え"
+			"Action_Game_Zoom"		"スーツズーム"
+			"Action_Game_ToggleZoom"		"スーツズーム切り替え"
+			"Action_Game_Reload"		"リロード"
+			"Action_Game_Jump"		"ジャンプ"
+			"Action_Game_Duck"		"かがむ"
+			"Action_Game_ToggleDuck"		"かがむ動作の切り替え"
+			"Action_Game_Use"		"使う"
+			"Action_Game_InvNext"		"次の武器を選択"
+			"Action_Game_InvPrev"		"前の武器を選択"
+			"Action_Game_LastInv"		"最後の武器を選択"
+			"Action_Game_Walk"		"歩行"
+			"Action_Game_Sprint"		"スプリント"
+			"Action_Game_PauseGame"		"一時停止"
+			"Action_Game_Flashlight"		"フラッシュライト"
+			"Action_Game_Squad"		"部隊を送る／戻す"
+			"Action_Game_TurnAround"		"振り向く"
+			"Action_Game_ResetCamera"		"カメラをリセット"
+			"Action_Game_WeaponBucketTop"		"武器グループ（上）"
+			"Action_Game_WeaponBucketRight"		"武器グループ（右）"
+			"Action_Game_WeaponBucketBottom"		"武器グループ（下）"
+			"Action_Game_WeaponBucketLeft"		"武器グループ（左）"
+			"Action_Game_SelectGravityGun"		"重力銃を選択"
+			"Action_Game_SelectBugbait"		"フェロポッド（虫寄せ）に切り替え"
+			"Action_Game_QuickSave"		"クイックセーブ"
+			"Action_Game_QuickLoad"		"クイックロード"
+			"Action_Vehicle_Handbrake"		"ハンドブレーキ"
+			"Action_Vehicle_ExitVehicle"		"車両から出る"
+			"Action_Vehicle_Turbo"		"ターボ"
+			"Action_Vehicle_TauBeam"		"タウビーム／パルス粒子砲"
+			"Action_Vehicle_ChargedBlast"		"チャージ炸裂"
+			"Action_Vehicle_Accelerate"		"加速"
+			"Action_Vehicle_Brake"		"ブレーキ"
+			"Action_Menu_ReturnToGame"		"ゲームに戻る"
+			"Action_Menu_Up"		"上"
+			"Action_Menu_Down"		"下"
+			"Action_Menu_Left"		"左"
+			"Action_Menu_Right"		"右"
+			"Action_Menu_Select"		"選択"
+			"Action_Menu_Cancel"		"キャンセル"
+			"Action_Menu_X"		"Alt選択"
+			"Action_Menu_Y"		"オプション"
+			"Action_Menu_PreviousTab"		"前のタブ"
+			"Action_Menu_NextTab"		"次のタブ"
+			"Title_HL2_Gyro"		"Steam Deck用Half-Life 2モーションコントロール"
+			"Description_HL2_Gyro"		"Half-Life 2とエピソード1/2とLost Coast用のSteam Deck公式設定。
+カメラに右パッド／スティック＋ジャイロを使用したジャイロ中心の設定。
+別の加速／操縦を使用し、車両戦闘用にジャイロは常時オン。"
+			"Title_HL2_Motion"		"Steamコントローラ用Half-Life 2モーションコントロール"
+			"Description_HL2_Motion"		"Half-Life 2とエピソード1/2とLost Coast用のSteamコントローラ公式設定。
+カメラに右パッド＋ジャイロを使用したジャイロアシスト設定
+車両戦闘用に連結された操縦／加速を使用。"
+			"Title_HL2_Standard"		"Half-Life 2標準コントロール"
+			"Description_HL2_Standard"		"Half-Life 2とEpisodes 1/2とLost Coast用のPlaystation/Xbox/Switch用公式設定
+モーションコントロールなし。
+車両戦闘用に連結された操縦／加速を使用。"
+		}
+		"koreana"
+		{
+			"Set_InGameControls"		"게임 내 컨트롤"
+			"Set_VehicleControls"		"차량 컨트롤"
+			"Set_MenuControls"		"메뉴 컨트롤"
+			"Action_Movement"		"움직임"
+			"Action_Camera"		"카메라"
+			"Action_JoystickCamera"		"조이스틱 카메라"
+			"Action_Steering"		"운전"
+			"Action_SteeringAccelerate"		"조종/가속"
+			"Action_Game_Fire"		"기본 발사"
+			"Action_Game_FireAlt"		"보조 발사"
+			"Action_Game_Zoom"		"수트 줌"
+			"Action_Game_ToggleZoom"		"수트 줌 전환"
+			"Action_Game_Reload"		"재장전"
+			"Action_Game_Jump"		"점프"
+			"Action_Game_Duck"		"웅크리기"
+			"Action_Game_ToggleDuck"		"웅크리기 전환"
+			"Action_Game_Use"		"사용"
+			"Action_Game_InvNext"		"다음 무기 선택"
+			"Action_Game_InvPrev"		"이전 무기 선택"
+			"Action_Game_LastInv"		"직전 무기 선택"
+			"Action_Game_Walk"		"걷기"
+			"Action_Game_Sprint"		"전력 질주"
+			"Action_Game_PauseGame"		"일시 중지"
+			"Action_Game_Flashlight"		"손전등"
+			"Action_Game_Squad"		"팀 투입/철수"
+			"Action_Game_TurnAround"		"돌아서기"
+			"Action_Game_ResetCamera"		"카메라 재설정"
+			"Action_Game_WeaponBucketTop"		"위쪽 무기 버킷"
+			"Action_Game_WeaponBucketRight"		"오른쪽 무기 버킷"
+			"Action_Game_WeaponBucketBottom"		"아래쪽 무기 버킷"
+			"Action_Game_WeaponBucketLeft"		"왼쪽 무기 버킷"
+			"Action_Game_SelectGravityGun"		"중력건 선택"
+			"Action_Game_SelectBugbait"		"페로포드(벌레미끼)로 전환"
+			"Action_Game_QuickSave"		"빠른 저장"
+			"Action_Game_QuickLoad"		"빠른 불러오기"
+			"Action_Vehicle_Handbrake"		"핸드브레이크"
+			"Action_Vehicle_ExitVehicle"		"차량에서 내리기"
+			"Action_Vehicle_Turbo"		"터보"
+			"Action_Vehicle_TauBeam"		"타우 빔/펄스 캐논"
+			"Action_Vehicle_ChargedBlast"		"충전 에너지 발사"
+			"Action_Vehicle_Accelerate"		"가속"
+			"Action_Vehicle_Brake"		"브레이크"
+			"Action_Menu_ReturnToGame"		"게임으로 돌아가기"
+			"Action_Menu_Up"		"위로"
+			"Action_Menu_Down"		"아래로"
+			"Action_Menu_Left"		"왼쪽"
+			"Action_Menu_Right"		"오른쪽"
+			"Action_Menu_Select"		"선택"
+			"Action_Menu_Cancel"		"취소"
+			"Action_Menu_X"		"대체 선택"
+			"Action_Menu_Y"		"옵션"
+			"Action_Menu_PreviousTab"		"이전 탭"
+			"Action_Menu_NextTab"		"다음 탭"
+			"Title_HL2_Gyro"		"Steam Deck 용 Half-Life 2 동작 컨트롤"
+			"Description_HL2_Gyro"		"Half-Life 2와 Episodes 1, 2 및 Lost Coast의 공식 Steam Deck 구성입니다.
+자이로 중심 구성은 오른쪽 패드/스틱과 자이로 조합으로 카메라를 조작합니다.
+차량 전투에서는 항상 자이로를 사용하며 별도의 가속/운전을 구성으로 조작합니다."
+			"Title_HL2_Motion"		"Steam Controller 용 Half-Life 2 동작 컨트롤"
+			"Description_HL2_Motion"		"Half-Life 2와 Episodes 1, 2 및 Lost Coast의 공식 Steam Controller 구성입니다.
+자이로 보조 구성은 오른쪽 패드 자이로 조합으로 카메라를 조작합니다.
+차량 전투에서는 운전/가속을 조합한 구성을 사용합니다."
+			"Title_HL2_Standard"		"Half-Life 2 일반 컨트롤"
+			"Description_HL2_Standard"		"Half-Life 2와 Episodes 1, 2 및 Lost Coast의 공식 Playstation/Xbox/Switch Pro 구성입니다.
+동작 컨트롤은 없습니다.
+차량 전투에서는 운전/가속을 조합한 구성을 사용합니다."
+		}
+		"latam"
+		{
+			"Set_InGameControls"		"Controles en el juego"
+			"Set_VehicleControls"		"Controles de vehículos"
+			"Set_MenuControls"		"Controles del menú"
+			"Action_Movement"		"Movimiento"
+			"Action_Camera"		"Cámara"
+			"Action_JoystickCamera"		"Joystick (cámara)"
+			"Action_Steering"		"Dirigir"
+			"Action_SteeringAccelerate"		"Dirigir/acelerar"
+			"Action_Game_Fire"		"Disparo principal"
+			"Action_Game_FireAlt"		"Disparo alternativo"
+			"Action_Game_Zoom"		"Ajuste de zoom"
+			"Action_Game_ToggleZoom"		"Activar/desactivar ajuste de zoom"
+			"Action_Game_Reload"		"Recargar"
+			"Action_Game_Jump"		"Saltar"
+			"Action_Game_Duck"		"Agacharse"
+			"Action_Game_ToggleDuck"		"Alternar agacharse"
+			"Action_Game_Use"		"Usar"
+			"Action_Game_InvNext"		"Seleccionar arma siguiente"
+			"Action_Game_InvPrev"		"Seleccionar arma anterior"
+			"Action_Game_LastInv"		"Seleccionar última arma"
+			"Action_Game_Walk"		"Caminar"
+			"Action_Game_Sprint"		"Correr"
+			"Action_Game_PauseGame"		"Pausar partida"
+			"Action_Game_Flashlight"		"Linterna"
+			"Action_Game_Squad"		"Enviar/recuperar escuadrón"
+			"Action_Game_TurnAround"		"Dar la vuelta"
+			"Action_Game_ResetCamera"		"Restablecer cámara"
+			"Action_Game_WeaponBucketTop"		"Depósito de armas superior"
+			"Action_Game_WeaponBucketRight"		"Depósito de armas derecho"
+			"Action_Game_WeaponBucketBottom"		"Depósito de armas inferior"
+			"Action_Game_WeaponBucketLeft"		"Depósito de armas izquierdo"
+			"Action_Game_SelectGravityGun"		"Seleccionar arma antigravedad"
+			"Action_Game_SelectBugbait"		"Cambiar a Ferópodo (carnada)"
+			"Action_Game_QuickSave"		"Guardado rápido"
+			"Action_Game_QuickLoad"		"Carga rápida"
+			"Action_Vehicle_Handbrake"		"Freno de mano"
+			"Action_Vehicle_ExitVehicle"		"Salir del vehículo"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Cañón Tau de rayos/pulso"
+			"Action_Vehicle_ChargedBlast"		"Ráfaga de carga"
+			"Action_Vehicle_Accelerate"		"Acelerar"
+			"Action_Vehicle_Brake"		"Frenar"
+			"Action_Menu_ReturnToGame"		"Volver al juego"
+			"Action_Menu_Up"		"Arriba"
+			"Action_Menu_Down"		"Abajo"
+			"Action_Menu_Left"		"Izquierda"
+			"Action_Menu_Right"		"Derecha"
+			"Action_Menu_Select"		"Seleccionar"
+			"Action_Menu_Cancel"		"Cancelar"
+			"Action_Menu_X"		"Selección alternativa"
+			"Action_Menu_Y"		"Opciones"
+			"Action_Menu_PreviousTab"		"Pestaña anterior"
+			"Action_Menu_NextTab"		"Pestaña siguiente"
+			"Title_HL2_Gyro"		"Controles de movimento para Half-Life 2 en Steam Deck"
+			"Description_HL2_Gyro"		"Configuración oficial para Half-Life 2 + Episodios 1/2 + Lost Coast en Steam Deck.
+Una configuración girocéntrica que utiliza el pad/stick derecho + giroscopio para la cámara.
+Utiliza aceleración/dirección por separado y siempre en giroscopio para combate con vehículo."
+			"Title_HL2_Motion"		"Controles de movimento para Half-Life 2 en Steam Controller"
+			"Description_HL2_Motion"		"Configuración oficial para Half-Life 2 + Episodios 1/2 + Lost Coast en Steam Controller.
+Una configuración asistida por el giroscopio que utiliza el pad derecho + giroscopio para la cámara.
+Utiliza aceleración/dirección combinadas para combate con vehículo."
+			"Title_HL2_Standard"		"Controles estándar para Half Life 2"
+			"Description_HL2_Standard"		"Configuración oficial para Half-Life 2 + Episodios 1/2 + Lost Coast en Playstation/Xbox/Switch Pro.
+Sin controles de movimiento.
+Utiliza aceleración/dirección combinadas para combate con vehículo."
+		}
+		"norwegian"
+		{
+			"Set_InGameControls"		"I spillet"
+			"Set_VehicleControls"		"Kjøretøy"
+			"Set_MenuControls"		"Meny"
+			"Action_Movement"		"Bevegelse"
+			"Action_Camera"		"Kamera"
+			"Action_JoystickCamera"		"Styrespak (kamera)"
+			"Action_Steering"		"Styring"
+			"Action_SteeringAccelerate"		"Styring/akselerasjon"
+			"Action_Game_Fire"		"Skyt"
+			"Action_Game_FireAlt"		"Skyt – sekundær"
+			"Action_Game_Zoom"		"Draktzoom"
+			"Action_Game_ToggleZoom"		"Slå draktzoom av/på"
+			"Action_Game_Reload"		"Lad om"
+			"Action_Game_Jump"		"Hopp"
+			"Action_Game_Duck"		"Dukk"
+			"Action_Game_ToggleDuck"		"Dukk/stå opp"
+			"Action_Game_Use"		"Bruk"
+			"Action_Game_InvNext"		"Velg neste våpen"
+			"Action_Game_InvPrev"		"Velg forrige våpen"
+			"Action_Game_LastInv"		"Sist brukte våpen"
+			"Action_Game_Walk"		"Gå"
+			"Action_Game_Sprint"		"Spurt"
+			"Action_Game_PauseGame"		"Sett på pause"
+			"Action_Game_Flashlight"		"Lommelykt"
+			"Action_Game_Squad"		"Send/tilbakekall tropp"
+			"Action_Game_TurnAround"		"Vend om"
+			"Action_Game_ResetCamera"		"Tilbakestill kamera"
+			"Action_Game_WeaponBucketTop"		"Øvre våpengruppe"
+			"Action_Game_WeaponBucketRight"		"Høyre våpengruppe"
+			"Action_Game_WeaponBucketBottom"		"Nedre våpengruppe"
+			"Action_Game_WeaponBucketLeft"		"Venstre våpengruppe"
+			"Action_Game_SelectGravityGun"		"Velg gravitasjonsvåpen"
+			"Action_Game_SelectBugbait"		"Bytt til pheropod (åte)"
+			"Action_Game_QuickSave"		"Hurtiglagring"
+			"Action_Game_QuickLoad"		"Hurtiglasting"
+			"Action_Vehicle_Handbrake"		"Håndbrekk"
+			"Action_Vehicle_ExitVehicle"		"Forlat kjøretøy"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Tau-/pulskanon"
+			"Action_Vehicle_ChargedBlast"		"Ladet skudd"
+			"Action_Vehicle_Accelerate"		"Gi gass"
+			"Action_Vehicle_Brake"		"Brems"
+			"Action_Menu_ReturnToGame"		"Tilbake til spillet"
+			"Action_Menu_Up"		"Opp"
+			"Action_Menu_Down"		"Ned"
+			"Action_Menu_Left"		"Venstre"
+			"Action_Menu_Right"		"Høyre"
+			"Action_Menu_Select"		"Velg"
+			"Action_Menu_Cancel"		"Avbryt"
+			"Action_Menu_X"		"Velg (alternativ)"
+			"Action_Menu_Y"		"Innstillinger"
+			"Action_Menu_PreviousTab"		"Forrige fane"
+			"Action_Menu_NextTab"		"Neste fane"
+			"Title_HL2_Gyro"		"Half-Life 2 – bevegelseskontroller (Steam Deck)"
+			"Description_HL2_Gyro"		"Offisiell konfigurasjon til Steam Deck for Half-Life 2 + Episode 1/2 + Lost Coast.
+En konfigurasjon som baserer seg på gyroskopet og bruker høyre styreplate/-spak + gyroskopet for kameraføring.
+Bruker atskilt akselerasjon/styring og gyro som alltid er på i kjøretøy."
+			"Title_HL2_Motion"		"Half-Life 2 – bevegelseskontroller (Steam Controller)"
+			"Description_HL2_Motion"		"Offisiell konfigurasjon til Steam Controller for Half-Life 2 + Episode 1/2 + Lost Coast.
+En konfigurasjon som bruker høyre styreplate + gyroskopet for kameraføring.
+Bruker kombinert akselerasjon/styring i kjøretøy."
+			"Title_HL2_Standard"		"Half-Life 2 – standardkontroller"
+			"Description_HL2_Standard"		"Offisiell konfigurasjon til Playstation/Xbox/Switch Pro for Half-Life 2 + Episode 1/2 + Lost Coast.
+Ingen bevegelseskontroller.
+Bruker kombinert akselerasjon/styring i kjøretøy."
+		}
+		"polish"
+		{
+			"Set_InGameControls"		"Sterowanie w grze"
+			"Set_VehicleControls"		"Sterowanie pojazdem"
+			"Set_MenuControls"		"Sterowanie w menu"
+			"Action_Movement"		"Ruch"
+			"Action_Camera"		"Kamera"
+			"Action_JoystickCamera"		"Drążek – kamera"
+			"Action_Steering"		"Kierowanie"
+			"Action_SteeringAccelerate"		"Kierowanie/przyspieszanie"
+			"Action_Game_Fire"		"Główny strzał"
+			"Action_Game_FireAlt"		"Alternatywny strzał"
+			"Action_Game_Zoom"		"Przybliżenie kombinezonu"
+			"Action_Game_ToggleZoom"		"Przełącz przybliżenie kombinezonu"
+			"Action_Game_Reload"		"Przeładowanie"
+			"Action_Game_Jump"		"Skok"
+			"Action_Game_Duck"		"Kucanie"
+			"Action_Game_ToggleDuck"		"Przełączenie kucania"
+			"Action_Game_Use"		"Użycie"
+			"Action_Game_InvNext"		"Wybierz następną broń"
+			"Action_Game_InvPrev"		"Wybierz poprzednią broń"
+			"Action_Game_LastInv"		"Wybierz ostatnią broń"
+			"Action_Game_Walk"		"Chodzenie"
+			"Action_Game_Sprint"		"Sprint"
+			"Action_Game_PauseGame"		"Spauzowanie gry"
+			"Action_Game_Flashlight"		"Latarka"
+			"Action_Game_Squad"		"Wyślij/przywołaj oddział"
+			"Action_Game_TurnAround"		"Obrót"
+			"Action_Game_ResetCamera"		"Zresetuj kamerę"
+			"Action_Game_WeaponBucketTop"		"Górna kategoria broni"
+			"Action_Game_WeaponBucketRight"		"Prawa kategoria broni"
+			"Action_Game_WeaponBucketBottom"		"Dolna kategoria broni"
+			"Action_Game_WeaponBucketLeft"		"Lewa kategoria broni"
+			"Action_Game_SelectGravityGun"		"Wybierz działo grawitacyjne"
+			"Action_Game_SelectBugbait"		"Wybierz feroworek (przynętę)"
+			"Action_Game_QuickSave"		"Szybki zapis"
+			"Action_Game_QuickLoad"		"Szybkie wczytanie"
+			"Action_Vehicle_Handbrake"		"Hamulec ręczny"
+			"Action_Vehicle_ExitVehicle"		"Opuszczenie pojazdu"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Działo tau/Karabin pulsacyjny"
+			"Action_Vehicle_ChargedBlast"		"Naładowana wiązka"
+			"Action_Vehicle_Accelerate"		"Przyspiesz"
+			"Action_Vehicle_Brake"		"Hamulec"
+			"Action_Menu_ReturnToGame"		"Powrót do gry"
+			"Action_Menu_Up"		"Góra"
+			"Action_Menu_Down"		"Dół"
+			"Action_Menu_Left"		"Lewo"
+			"Action_Menu_Right"		"Prawo"
+			"Action_Menu_Select"		"Wybierz"
+			"Action_Menu_Cancel"		"Anuluj"
+			"Action_Menu_X"		"Alternatywny wybór"
+			"Action_Menu_Y"		"Opcje"
+			"Action_Menu_PreviousTab"		"Poprzednia zakładka"
+			"Action_Menu_NextTab"		"Następna zakładka"
+			"Title_HL2_Gyro"		"Sterowanie ruchem w Half-Life 2 dla Steam Decka"
+			"Description_HL2_Gyro"		"Oficjalna konfiguracja Steam Decka dla Half-Life 2, Episode 1/2 i Lost Coast.
+Skupiająca się na żyroskopie konfiguracja korzystająca z prawego panelu dotykowego/drążka wraz z żyroskopem do sterowania kamerą.
+Używa oddzielnego przyspieszania/kierowania i zawsze włączonego żyroskopu do walki podczas prowadzenia pojazdu."
+			"Title_HL2_Motion"		"Sterowanie ruchem w Half-Life 2 dla Steam Controllera"
+			"Description_HL2_Motion"		"Oficjalna konfiguracja Steam Controllera dla Half-Life 2, Episode 1/2 i Lost Coast.
+Konfiguracja wspomagana żyroskopem, która korzysta z prawego panelu dotykowego wraz z żyroskopem do sterowania kamerą.
+Używa połączonego przyspieszania/kierowania do walki podczas prowadzenia pojazdu."
+			"Title_HL2_Standard"		"Standardowe sterowanie dla Half-Life 2"
+			"Description_HL2_Standard"		"Oficjalna konfiguracja Playstation/Xbox/Switch Pro dla Half-Life 2, Episode 1/2 i Lost Coast.
+Brak sterowania ruchem.
+Używa połączonego przyspieszania/kierowania do walki podczas prowadzenia pojazdu."
+		}
+		"portuguese"
+		{
+			"Set_InGameControls"		"Controlos durante o jogo"
+			"Set_VehicleControls"		"Controlos de veículos"
+			"Set_MenuControls"		"Controlos de menus"
+			"Action_Movement"		"Movimento"
+			"Action_Camera"		"Câmara"
+			"Action_JoystickCamera"		"Joystick - câmara"
+			"Action_Steering"		"Guiar"
+			"Action_SteeringAccelerate"		"Guiar / Acelerar"
+			"Action_Game_Fire"		"Disparo principal"
+			"Action_Game_FireAlt"		"Disparo alternativo"
+			"Action_Game_Zoom"		"Zoom do fato"
+			"Action_Game_ToggleZoom"		"Zoom do fato on/off"
+			"Action_Game_Reload"		"Recarregar"
+			"Action_Game_Jump"		"Saltar"
+			"Action_Game_Duck"		"Agachar"
+			"Action_Game_ToggleDuck"		"Agachar/Levantar"
+			"Action_Game_Use"		"Usar"
+			"Action_Game_InvNext"		"Selecionar arma seguinte"
+			"Action_Game_InvPrev"		"Selecionar arma anterior"
+			"Action_Game_LastInv"		"Selecionar última arma"
+			"Action_Game_Walk"		"Andar"
+			"Action_Game_Sprint"		"Correr"
+			"Action_Game_PauseGame"		"Pausar"
+			"Action_Game_Flashlight"		"Lanterna"
+			"Action_Game_Squad"		"Enviar/Chamar equipa"
+			"Action_Game_TurnAround"		"Dar meia-volta"
+			"Action_Game_ResetCamera"		"Repor câmara"
+			"Action_Game_WeaponBucketTop"		"Grupo de armas (cima)"
+			"Action_Game_WeaponBucketRight"		"Grupo de armas (direita)"
+			"Action_Game_WeaponBucketBottom"		"Grupo de armas (baixo)"
+			"Action_Game_WeaponBucketLeft"		"Grupo de armas (esquerda)"
+			"Action_Game_SelectGravityGun"		"Selecionar Arma Antigravidade"
+			"Action_Game_SelectBugbait"		"Mudar p/ ferogénio (isco)"
+			"Action_Game_QuickSave"		"Gravação rápida"
+			"Action_Game_QuickLoad"		"Carregamento rápido"
+			"Action_Vehicle_Handbrake"		"Travão de mão"
+			"Action_Vehicle_ExitVehicle"		"Sair de veículo"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Canhão de Impulsos / Raios Tau"
+			"Action_Vehicle_ChargedBlast"		"Disparo carregado"
+			"Action_Vehicle_Accelerate"		"Acelerar"
+			"Action_Vehicle_Brake"		"Travar"
+			"Action_Menu_ReturnToGame"		"Regressar ao jogo"
+			"Action_Menu_Up"		"Cima"
+			"Action_Menu_Down"		"Baixo"
+			"Action_Menu_Left"		"Esquerda"
+			"Action_Menu_Right"		"Direita"
+			"Action_Menu_Select"		"Selecionar"
+			"Action_Menu_Cancel"		"Cancelar"
+			"Action_Menu_X"		"Seleção alternativa"
+			"Action_Menu_Y"		"Opções"
+			"Action_Menu_PreviousTab"		"Separador anterior"
+			"Action_Menu_NextTab"		"Separador seguinte"
+			"Title_HL2_Gyro"		"Controlos de movimento p/ Half-Life 2 (Steam Deck)"
+			"Description_HL2_Gyro"		"Configuração oficial do Half-Life 2 + Episode 1/2 + Lost Coast para o Steam Deck.
+Uma configuração baseada no giroscópio que usa o trackpad/stick direito + giroscópio para controlar a câmara.
+O combate em veículos usa controlos separados para acelerar/guiar e o giroscópio está sempre ligado."
+			"Title_HL2_Motion"		"Controlos de movimento p/ Half-Life 2 (Comando Steam)"
+			"Description_HL2_Motion"		"Configuração oficial do Half-Life 2 + Episode 1/2 + Lost Coast para Comandos Steam.
+Uma configuração com assistência do giroscópio que usa o trackpad/stick direito + giroscópio para controlar a câmara.
+O combate em veículos usa controlos combinados para acelerar/guiar."
+			"Title_HL2_Standard"		"Controlos padrão p/ Half-Life 2"
+			"Description_HL2_Standard"		"Configuração oficial do Half-Life 2 + Episode 1/2 + Lost Coast para comandos Pro da Switch e comandos da Playstation e Xbox.
+Sem controlos de movimento.
+O combate em veículos usa controlos combinados para acelerar/guiar."
+		}
+		"romanian"
+		{
+			"Set_InGameControls"		"Comenzi în joc"
+			"Set_VehicleControls"		"Comenzi pentru vehicul"
+			"Set_MenuControls"		"Comenzi pentru meniu"
+			"Action_Movement"		"Deplasare"
+			"Action_Camera"		"Cameră"
+			"Action_JoystickCamera"		"Joystick – Cameră"
+			"Action_Steering"		"Direcție (vehicule)"
+			"Action_SteeringAccelerate"		"Direcție/accelerare"
+			"Action_Game_Fire"		"Foc principal"
+			"Action_Game_FireAlt"		"Foc alternativ"
+			"Action_Game_Zoom"		"Zoom costum"
+			"Action_Game_ToggleZoom"		"Comută zoomul costumului"
+			"Action_Game_Reload"		"Reîncarcă"
+			"Action_Game_Jump"		"Săritură"
+			"Action_Game_Duck"		"Ghemuire"
+			"Action_Game_ToggleDuck"		"Comută ghemuirea"
+			"Action_Game_Use"		"Folosește"
+			"Action_Game_InvNext"		"Selectează arma următoare"
+			"Action_Game_InvPrev"		"Selectează arma precedentă"
+			"Action_Game_LastInv"		"Selectează ultima armă"
+			"Action_Game_Walk"		"Mers"
+			"Action_Game_Sprint"		"Fugă"
+			"Action_Game_PauseGame"		"Întrerupe jocul"
+			"Action_Game_Flashlight"		"Lanternă"
+			"Action_Game_Squad"		"Trimite/retrage echipa"
+			"Action_Game_TurnAround"		"Întoarcere"
+			"Action_Game_ResetCamera"		"Resetează camera"
+			"Action_Game_WeaponBucketTop"		"Grup de arme (sus)"
+			"Action_Game_WeaponBucketRight"		"Grup de arme (dreapta)"
+			"Action_Game_WeaponBucketBottom"		"Grup de arme (jos)"
+			"Action_Game_WeaponBucketLeft"		"Grup de arme (stânga)"
+			"Action_Game_SelectGravityGun"		"Selectează arma gravitațională"
+			"Action_Game_SelectBugbait"		"Schimbă la pheropod (momeală cu insecte)"
+			"Action_Game_QuickSave"		"Salvare rapidă"
+			"Action_Game_QuickLoad"		"Încărcare rapidă"
+			"Action_Vehicle_Handbrake"		"Frână de mână"
+			"Action_Vehicle_ExitVehicle"		"Ieși din mașină"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Fascicul Tau/Tun cu impulsuri"
+			"Action_Vehicle_ChargedBlast"		"Explozie încărcată"
+			"Action_Vehicle_Accelerate"		"Accelerație"
+			"Action_Vehicle_Brake"		"Frână"
+			"Action_Menu_ReturnToGame"		"Înapoi la joc"
+			"Action_Menu_Up"		"Sus"
+			"Action_Menu_Down"		"Jos"
+			"Action_Menu_Left"		"Stânga"
+			"Action_Menu_Right"		"Dreapta"
+			"Action_Menu_Select"		"Selectează"
+			"Action_Menu_Cancel"		"Anulează"
+			"Action_Menu_X"		"Selecție alternativă"
+			"Action_Menu_Y"		"Opțiuni"
+			"Action_Menu_PreviousTab"		"Fila anterioară"
+			"Action_Menu_NextTab"		"Fila următoare"
+			"Title_HL2_Gyro"		"Half-Life 2 – comenzi de mișcare pentru Steam Deck"
+			"Description_HL2_Gyro"		"Configurația oficială pentru Half-Life 2 + Episode One/Two + Lost Coast (Steam Deck).
+O configurație bazată pe giroscop care utilizează padul/stickul drept + giroscopul pentru cameră.
+Folosește comenzi combinate de direcție/accelerare pentru confruntările cu vehicule."
+			"Title_HL2_Motion"		"Half-Life 2 – comenzi de mișcare pentru Steam Controller"
+			"Description_HL2_Motion"		"Configurația oficială pentru Half-Life 2 + Episode One/Two + Lost Coast (Steam Controller).
+O configurație asistată de giroscop care utilizează padul drept + giroscopul pentru cameră.
+Folosește comenzi combinate de direcție/accelerare pentru confruntările cu vehicule."
+			"Title_HL2_Standard"		"Comenzi standard pentru Half-Life 2"
+			"Description_HL2_Standard"		"Configurația oficială pentru Half-Life 2 + Episode One/Two + Lost Coast (PlayStation/Xbox/Switch Pro).
+Fără comenzi de mișcare (giroscop).
+Folosește comenzi combinate de direcție/accelerare pentru confruntările cu vehicule."
+		}
+		"russian"
+		{
+			"Set_InGameControls"		"Управление в игре"
+			"Set_VehicleControls"		"Управление транспортом"
+			"Set_MenuControls"		"Управление в меню"
+			"Action_Movement"		"Движение"
+			"Action_Camera"		"Камера"
+			"Action_JoystickCamera"		"Джойстик-камера"
+			"Action_Steering"		"Поворот руля"
+			"Action_SteeringAccelerate"		"Поворот руля / газ"
+			"Action_Game_Fire"		"Осн. режим оружия"
+			"Action_Game_FireAlt"		"Альт. режим оружия"
+			"Action_Game_Zoom"		"Приблизить (в костюме)"
+			"Action_Game_ToggleZoom"		"Включить/выключить приближение (в костюме)"
+			"Action_Game_Reload"		"Перезарядить оружие"
+			"Action_Game_Jump"		"Прыжок"
+			"Action_Game_Duck"		"Присесть"
+			"Action_Game_ToggleDuck"		"Присесть/встать"
+			"Action_Game_Use"		"Использовать"
+			"Action_Game_InvNext"		"Следующее оружие"
+			"Action_Game_InvPrev"		"Предыдущее оружие"
+			"Action_Game_LastInv"		"Последнее оружие"
+			"Action_Game_Walk"		"Медленный шаг"
+			"Action_Game_Sprint"		"Бег"
+			"Action_Game_PauseGame"		"Пауза"
+			"Action_Game_Flashlight"		"Фонарик"
+			"Action_Game_Squad"		"Управлять отрядом"
+			"Action_Game_TurnAround"		"Обернуться"
+			"Action_Game_ResetCamera"		"Сбросить камеру"
+			"Action_Game_WeaponBucketTop"		"Верхний список оружия"
+			"Action_Game_WeaponBucketRight"		"Правый список оружия"
+			"Action_Game_WeaponBucketBottom"		"Нижний список оружия"
+			"Action_Game_WeaponBucketLeft"		"Левый список оружия"
+			"Action_Game_SelectGravityGun"		"Грави-пушка"
+			"Action_Game_SelectBugbait"		"Сменить на феропод (приманку)"
+			"Action_Game_QuickSave"		"Быстрое сохранение"
+			"Action_Game_QuickLoad"		"Быстрая загрузка"
+			"Action_Vehicle_Handbrake"		"Ручной тормоз"
+			"Action_Vehicle_ExitVehicle"		"Покинуть транспорт"
+			"Action_Vehicle_Turbo"		"Турбо"
+			"Action_Vehicle_TauBeam"		"Тау-пушка / Пульсовая винтовка"
+			"Action_Vehicle_ChargedBlast"		"Заряженный выстрел"
+			"Action_Vehicle_Accelerate"		"Ускориться"
+			"Action_Vehicle_Brake"		"Затормозить"
+			"Action_Menu_ReturnToGame"		"Вернуться в игру"
+			"Action_Menu_Up"		"Вверх"
+			"Action_Menu_Down"		"Вниз"
+			"Action_Menu_Left"		"Влево"
+			"Action_Menu_Right"		"Вправо"
+			"Action_Menu_Select"		"Выбрать"
+			"Action_Menu_Cancel"		"Отмена"
+			"Action_Menu_X"		"Альт. выбор"
+			"Action_Menu_Y"		"Настройки"
+			"Action_Menu_PreviousTab"		"Пред. вкладка"
+			"Action_Menu_NextTab"		"След. вкладка"
+			"Title_HL2_Gyro"		"Управление движением для Half-Life 2 на Steam Deck"
+			"Description_HL2_Gyro"		"Официальная раскладка Steam Deck для Half-Life 2 + Episode 1 и 2 + Lost Coast.
+Раскладка на базе гироскопа с использованием правого трекпада/стика + гироскопа для камеры.
+Используется отдельное ускорение/поворот руля и всегда включённый гироскоп для сражений с применением средств передвижения."
+			"Title_HL2_Motion"		"Управление движением для Half-Life 2 для контроллера Steam"
+			"Description_HL2_Motion"		"Официальная раскладка Steam Deck для Half-Life 2 + Episode 1 и 2 + Lost Coast.
+Раскладка, действующая с помощью гироскопа, с использованием правого трекпада + гироскопа для камеры.
+Используется комбинация поворота руля и ускорения для сражений с применением средств передвижения."
+			"Title_HL2_Standard"		"Стандартное управление для Half-Life 2"
+			"Description_HL2_Standard"		"Официальная раскладка Playstation/Xbox/Switch Pro для Half-Life 2 + Episode 1 и 2 + Lost Coast.
+Управление движением отсутствует.
+Используется комбинация поворота руля и ускорения для сражений с применением средств передвижения."
+		}
+		"schinese"
+		{
+			"Set_InGameControls"		"游戏内控制"
+			"Set_VehicleControls"		"车辆控制"
+			"Set_MenuControls"		"菜单控制"
+			"Action_Movement"		"动作"
+			"Action_Camera"		"视角"
+			"Action_JoystickCamera"		"摇杆视角"
+			"Action_Steering"		"转向"
+			"Action_SteeringAccelerate"		"转向/加速"
+			"Action_Game_Fire"		"主要攻击"
+			"Action_Game_FireAlt"		"次要攻击"
+			"Action_Game_Zoom"		"防护衣缩放"
+			"Action_Game_ToggleZoom"		"切换防护衣缩放"
+			"Action_Game_Reload"		"装弹药"
+			"Action_Game_Jump"		"跳"
+			"Action_Game_Duck"		"蹲下"
+			"Action_Game_ToggleDuck"		"切换蹲下"
+			"Action_Game_Use"		"使用物品（按钮、机器…）"
+			"Action_Game_InvNext"		"选择后一武器"
+			"Action_Game_InvPrev"		"选择前一武器"
+			"Action_Game_LastInv"		"选择上次使用的武器"
+			"Action_Game_Walk"		"走"
+			"Action_Game_Sprint"		"快跑"
+			"Action_Game_PauseGame"		"暂停游戏"
+			"Action_Game_Flashlight"		"手电筒"
+			"Action_Game_Squad"		"传送/召回小队"
+			"Action_Game_TurnAround"		"转身"
+			"Action_Game_ResetCamera"		"重置视角"
+			"Action_Game_WeaponBucketTop"		"上武器组"
+			"Action_Game_WeaponBucketRight"		"右武器组"
+			"Action_Game_WeaponBucketBottom"		"下武器组"
+			"Action_Game_WeaponBucketLeft"		"左武器组"
+			"Action_Game_SelectGravityGun"		"切换至重力枪"
+			"Action_Game_SelectBugbait"		"切换至信息素弹（虫饵）"
+			"Action_Game_QuickSave"		"快速保存"
+			"Action_Game_QuickLoad"		"快速加载"
+			"Action_Vehicle_Handbrake"		"手闸"
+			"Action_Vehicle_ExitVehicle"		"下车"
+			"Action_Vehicle_Turbo"		"高速"
+			"Action_Vehicle_TauBeam"		"T 形电子束/脉冲粒子炮"
+			"Action_Vehicle_ChargedBlast"		"蓄力射击"
+			"Action_Vehicle_Accelerate"		"加速"
+			"Action_Vehicle_Brake"		"刹车"
+			"Action_Menu_ReturnToGame"		"返回游戏"
+			"Action_Menu_Up"		"上"
+			"Action_Menu_Down"		"下"
+			"Action_Menu_Left"		"左"
+			"Action_Menu_Right"		"右"
+			"Action_Menu_Select"		"选择"
+			"Action_Menu_Cancel"		"取消"
+			"Action_Menu_X"		"次要选择"
+			"Action_Menu_Y"		"选项"
+			"Action_Menu_PreviousTab"		"上一个选项卡"
+			"Action_Menu_NextTab"		"下一个选项卡"
+			"Title_HL2_Gyro"		"《半衰期 2》运动控制（Steam Deck）"
+			"Description_HL2_Gyro"		"《半衰期 2》 + 《第一章》/《第二章 》+ 《失落的海岸线》的官方 Steam Deck 配置。
+以陀螺仪为中心的配置使用右触摸板/摇杆 + 陀螺仪来控制视角
+使用单独的加速/转向和始终开启的陀螺仪来控制驾驶时的战斗。"
+			"Title_HL2_Motion"		"《半衰期2》运动控制（Steam 控制器）"
+			"Description_HL2_Motion"		"《半衰期 2》 + 《第一章》/《第二章 》+ 《失落的海岸线》的官方 Steam Deck 配置。
+以陀螺仪为中心的配置使用右触摸板/摇杆 + 陀螺仪来控制视角
+使用合并的转向/加速来控制驾驶时的战斗。"
+			"Title_HL2_Standard"		"《半衰期 2》标准控制"
+			"Description_HL2_Standard"		"《半衰期 2》 + 《第一章》/《第二章 》+ 《失落的海岸线》的官方 Playstation/Xbox/Switch Pro 配置。
+无运动控制。
+使用合并的转向/加速来控制驾驶时的战斗。"
+		}
+		"spanish"
+		{
+			"Set_InGameControls"		"Controles del juego"
+			"Set_VehicleControls"		"Controles de vehículos"
+			"Set_MenuControls"		"Controles de menú"
+			"Action_Movement"		"Movimiento"
+			"Action_Camera"		"Cámara"
+			"Action_JoystickCamera"		"Joystick (cámara)"
+			"Action_Steering"		"Pilotar"
+			"Action_SteeringAccelerate"		"Pilotar/Acelerar"
+			"Action_Game_Fire"		"Disparo principal"
+			"Action_Game_FireAlt"		"Disparo alternativo"
+			"Action_Game_Zoom"		"Ajustar zoom"
+			"Action_Game_ToggleZoom"		"Activar/desactivar ajuste de zoom"
+			"Action_Game_Reload"		"Recargar"
+			"Action_Game_Jump"		"Saltar"
+			"Action_Game_Duck"		"Agacharse"
+			"Action_Game_ToggleDuck"		"Alternar agacharse"
+			"Action_Game_Use"		"Usar"
+			"Action_Game_InvNext"		"Arma siguiente"
+			"Action_Game_InvPrev"		"Arma anterior"
+			"Action_Game_LastInv"		"Última arma"
+			"Action_Game_Walk"		"Caminar"
+			"Action_Game_Sprint"		"Correr"
+			"Action_Game_PauseGame"		"Pausar partida"
+			"Action_Game_Flashlight"		"Linterna"
+			"Action_Game_Squad"		"Enviar/recuperar escuadrón"
+			"Action_Game_TurnAround"		"Dar la vuelta"
+			"Action_Game_ResetCamera"		"Restablecer cámara"
+			"Action_Game_WeaponBucketTop"		"Depósito de armas superior"
+			"Action_Game_WeaponBucketRight"		"Depósito de armas derecho"
+			"Action_Game_WeaponBucketBottom"		"Depósito de armas inferior"
+			"Action_Game_WeaponBucketLeft"		"Depósito de armas izquierdo"
+			"Action_Game_SelectGravityGun"		"Seleccionar arma gravitatoria"
+			"Action_Game_SelectBugbait"		"Cambiar a ferópodo (carnada)"
+			"Action_Game_QuickSave"		"Guardado rápido"
+			"Action_Game_QuickLoad"		"Carga rápida"
+			"Action_Vehicle_Handbrake"		"Freno de mano"
+			"Action_Vehicle_ExitVehicle"		"Salir del vehículo"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Cañón Tau de rayos/pulso"
+			"Action_Vehicle_ChargedBlast"		"Ráfaga cargada"
+			"Action_Vehicle_Accelerate"		"Acelerar"
+			"Action_Vehicle_Brake"		"Frenar"
+			"Action_Menu_ReturnToGame"		"Volver al juego"
+			"Action_Menu_Up"		"Arriba"
+			"Action_Menu_Down"		"Abajo"
+			"Action_Menu_Left"		"Izquierda"
+			"Action_Menu_Right"		"Derecha"
+			"Action_Menu_Select"		"Seleccionar"
+			"Action_Menu_Cancel"		"Cancelar"
+			"Action_Menu_X"		"Selección alternativa"
+			"Action_Menu_Y"		"Opciones"
+			"Action_Menu_PreviousTab"		"Pestaña anterior"
+			"Action_Menu_NextTab"		"Pestaña siguiente"
+			"Title_HL2_Gyro"		"Controles de movimiento de Half-Life 2 para Steam Deck"
+			"Description_HL2_Gyro"		"Configuración oficial de Steam Deck para Half-Life 2 + Episodios 1 y 2 + Lost Coast.
+Configuración centrada en el giroscopio en la que se usa el stick/pad derecho y el giroscopio para la cámara.
+Utiliza aceleración y pilotaje independientes, y el giroscopio siempre está activo para el combate de vehículos."
+			"Title_HL2_Motion"		"Controles de movimiento de Half-Life 2 para Steam Controller"
+			"Description_HL2_Motion"		"Configuración oficial de Steam Controller para Half-Life 2 + Episodios 1 y 2 + Lost Coast.
+Configuración asistida por el giroscopio en la que se usa el pad derecho y el giroscopio para la cámara.
+Utiliza aceleración y pilotaje combinados para el combate de vehículos."
+			"Title_HL2_Standard"		"Controles estándar de Half-Life 2"
+			"Description_HL2_Standard"		"Configuración oficial de Playstation/Xbox/Switch Pro para Half-Life 2 + Episodios 1 y 2 + Lost Coast.
+Sin controles de movimiento.
+Utiliza aceleración y pilotaje combinados para el combate de vehículos."
+		}
+		"swedish"
+		{
+			"Set_InGameControls"		"Kontroller i spelet"
+			"Set_VehicleControls"		"Fordonskontroller"
+			"Set_MenuControls"		"Menykontroller"
+			"Action_Movement"		"Rörelse"
+			"Action_Camera"		"Kamera"
+			"Action_JoystickCamera"		"Styrspak – Kamera"
+			"Action_Steering"		"Styrning"
+			"Action_SteeringAccelerate"		"Styr/accelerera"
+			"Action_Game_Fire"		"Primär avfyrning"
+			"Action_Game_FireAlt"		"Alternativ avfyrning"
+			"Action_Game_Zoom"		"Dräkt-zoom"
+			"Action_Game_ToggleZoom"		"Dräktzoom av/på"
+			"Action_Game_Reload"		"Ladda om"
+			"Action_Game_Jump"		"Hoppa"
+			"Action_Game_Duck"		"Huka"
+			"Action_Game_ToggleDuck"		"Huka/stå"
+			"Action_Game_Use"		"Använd"
+			"Action_Game_InvNext"		"Välj nästa vapen"
+			"Action_Game_InvPrev"		"Välj föregående vapen"
+			"Action_Game_LastInv"		"Välj det senast använda vapnet"
+			"Action_Game_Walk"		"Gå"
+			"Action_Game_Sprint"		"Sprinta"
+			"Action_Game_PauseGame"		"Pausa spelet"
+			"Action_Game_Flashlight"		"Ficklampa"
+			"Action_Game_Squad"		"Skicka ut/återkalla trupp"
+			"Action_Game_TurnAround"		"Vänd dig om"
+			"Action_Game_ResetCamera"		"Återställ kamera"
+			"Action_Game_WeaponBucketTop"		"Övre vapendepå"
+			"Action_Game_WeaponBucketRight"		"Höger vapendepå"
+			"Action_Game_WeaponBucketBottom"		"Nedre vapendepå"
+			"Action_Game_WeaponBucketLeft"		"Vänster vapendepå"
+			"Action_Game_SelectGravityGun"		"Välj gravitationsvapen"
+			"Action_Game_SelectBugbait"		"Växla till pheropod (insektsbete)"
+			"Action_Game_QuickSave"		"Snabbsparning"
+			"Action_Game_QuickLoad"		"Snabbinläsning"
+			"Action_Vehicle_Handbrake"		"Handbroms"
+			"Action_Vehicle_ExitVehicle"		"Stig ur fordon"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Tau-kanon/pulskanon"
+			"Action_Vehicle_ChargedBlast"		"Laddat skott"
+			"Action_Vehicle_Accelerate"		"Accelerera"
+			"Action_Vehicle_Brake"		"Bromsa"
+			"Action_Menu_ReturnToGame"		"Återgå till spelet"
+			"Action_Menu_Up"		"Upp"
+			"Action_Menu_Down"		"Ner"
+			"Action_Menu_Left"		"Vänster"
+			"Action_Menu_Right"		"Höger"
+			"Action_Menu_Select"		"Välj"
+			"Action_Menu_Cancel"		"Avbryt"
+			"Action_Menu_X"		"Välj (alternativt)"
+			"Action_Menu_Y"		"Alternativ"
+			"Action_Menu_PreviousTab"		"Föregående flik"
+			"Action_Menu_NextTab"		"Nästa flik"
+			"Title_HL2_Gyro"		"Rörelsekontroller för Half-Life 2 på Steam Deck"
+			"Description_HL2_Gyro"		"Officiell Steam Deck-konfiguration för Half-Life 2 + Episode 1/2 + Lost Coast.
+En gyrofokuserad konfiguration som använder höger platta/spak plus gyroskop för kamera.
+Använder separat acceleration/styrning och gyro (alltid aktiverat) för fordonsstrid."
+			"Title_HL2_Motion"		"Rörelsekontroller för Half-Life 2 för Steam Controller"
+			"Description_HL2_Motion"		"Officiell Steam Deck-konfiguration för Half-Life 2 + Episode 1/2 + Lost Coast.
+En gyroassisterad konfiguration som använder höger platta plus gyroskop för kamera.
+Använder kombinerad acceleration/styrning för fordonsstrid."
+			"Title_HL2_Standard"		"Standardkontroller för Half-Life 2"
+			"Description_HL2_Standard"		"Officiell PlayStation-/Xbox-/Switch Pro-konfiguration för Half-Life 2 + Episode 1/2 + Lost Coast.
+Inga rörelsekontroller.
+Använder kombinerad acceleration/styrning för fordonsstrid."
+		}
+		"tchinese"
+		{
+			"Set_InGameControls"		"遊戲內控制選項"
+			"Set_VehicleControls"		"載具控制選項"
+			"Set_MenuControls"		"選單控制選項"
+			"Action_Movement"		"動作"
+			"Action_Camera"		"視角"
+			"Action_JoystickCamera"		"搖桿視角"
+			"Action_Steering"		"駕駛"
+			"Action_SteeringAccelerate"		"駕駛 / 加速"
+			"Action_Game_Fire"		"主要武器"
+			"Action_Game_FireAlt"		"次要武器"
+			"Action_Game_Zoom"		"防護衣縮放"
+			"Action_Game_ToggleZoom"		"切換防護衣縮放"
+			"Action_Game_Reload"		"裝填彈藥"
+			"Action_Game_Jump"		"跳躍"
+			"Action_Game_Duck"		"蹲下"
+			"Action_Game_ToggleDuck"		"切換蹲下"
+			"Action_Game_Use"		"使用"
+			"Action_Game_InvNext"		"選擇下一項武器"
+			"Action_Game_InvPrev"		"選擇前一項武器"
+			"Action_Game_LastInv"		"選擇上次使用的武器"
+			"Action_Game_Walk"		"行走"
+			"Action_Game_Sprint"		"衝刺"
+			"Action_Game_PauseGame"		"暫停遊戲"
+			"Action_Game_Flashlight"		"手電筒"
+			"Action_Game_Squad"		"傳送 / 招回小隊"
+			"Action_Game_TurnAround"		"轉身"
+			"Action_Game_ResetCamera"		"重設視角"
+			"Action_Game_WeaponBucketTop"		"上武器組"
+			"Action_Game_WeaponBucketRight"		"右武器組"
+			"Action_Game_WeaponBucketBottom"		"下武器組"
+			"Action_Game_WeaponBucketLeft"		"左武器組"
+			"Action_Game_SelectGravityGun"		"選擇重力槍"
+			"Action_Game_SelectBugbait"		"切換為費洛帕（蟲餌）"
+			"Action_Game_QuickSave"		"快速儲存"
+			"Action_Game_QuickLoad"		"快速載入"
+			"Action_Vehicle_Handbrake"		"手煞車"
+			"Action_Vehicle_ExitVehicle"		"離開載具"
+			"Action_Vehicle_Turbo"		"加速"
+			"Action_Vehicle_TauBeam"		"Τ 粒子射線 / 脈衝砲"
+			"Action_Vehicle_ChargedBlast"		"填充發射"
+			"Action_Vehicle_Accelerate"		"加速"
+			"Action_Vehicle_Brake"		"煞車"
+			"Action_Menu_ReturnToGame"		"返回遊戲"
+			"Action_Menu_Up"		"上"
+			"Action_Menu_Down"		"下"
+			"Action_Menu_Left"		"左"
+			"Action_Menu_Right"		"右"
+			"Action_Menu_Select"		"選擇"
+			"Action_Menu_Cancel"		"取消"
+			"Action_Menu_X"		"替代選擇"
+			"Action_Menu_Y"		"選項"
+			"Action_Menu_PreviousTab"		"前一分頁"
+			"Action_Menu_NextTab"		"後一分頁"
+			"Title_HL2_Gyro"		"《戰慄時空 2》Steam Deck 動態控制選項"
+			"Description_HL2_Gyro"		"官方《戰慄時空 2》+ 第 1/2 部 + Lost Coast 的 Steam Deck 配置。
+以陀螺儀為中心的配置，使用右觸控板 / 搖桿 + 陀螺儀控制視角。
+進行載具對戰時使用不同加速 / 駕駛控制，且永遠開啟陀螺儀。"
+			"Title_HL2_Motion"		"《戰慄時空 2》Steam 控制器動態控制選項"
+			"Description_HL2_Motion"		"官方《戰慄時空 2》+ 第 1/2 部 + Lost Coast 的 Steam 控制器官方配置。
+以陀螺儀為輔助的配置，使用右觸控板 + 陀螺儀控制視角。
+進行載具對戰時使用結合的駕駛 / 加速控制。"
+			"Title_HL2_Standard"		"《戰慄時空 2》標準控制選項"
+			"Description_HL2_Standard"		"官方《戰慄時空 2》+ 第 1/2 部 + Lost Coast 的 Playstation/Xbox/Switch Pro 配置。
+沒有動態控制選項。
+進行載具對戰時使用結合的駕駛 / 加速。"
+		}
+		"thai"
+		{
+			"Set_InGameControls"		"การควบคุมในเกม"
+			"Set_VehicleControls"		"การควบคุมยานพาหนะ"
+			"Set_MenuControls"		"การควบคุมเมนู"
+			"Action_Movement"		"การเคลื่อนไหว"
+			"Action_Camera"		"กล้อง"
+			"Action_JoystickCamera"		"มุมกล้องจอยสติก"
+			"Action_Steering"		"การบังคับเลี้ยว"
+			"Action_SteeringAccelerate"		"การบังคับเลี้ยว/เร่งความเร็ว"
+			"Action_Game_Fire"		"การยิงหลัก"
+			"Action_Game_FireAlt"		"การยิงรอง"
+			"Action_Game_Zoom"		"ซูมด้วยชุด"
+			"Action_Game_ToggleZoom"		"สลับการซูมของชุด"
+			"Action_Game_Reload"		"บรรจุกระสุน"
+			"Action_Game_Jump"		"กระโดด"
+			"Action_Game_Duck"		"ย่อตัว"
+			"Action_Game_ToggleDuck"		"สลับย่อตัว"
+			"Action_Game_Use"		"ใช้"
+			"Action_Game_InvNext"		"เลือกอาวุธถัดไป"
+			"Action_Game_InvPrev"		"เลือกอาวุธก่อนหน้า"
+			"Action_Game_LastInv"		"เลือกอาวุธล่าสุด"
+			"Action_Game_Walk"		"เดิน"
+			"Action_Game_Sprint"		"วิ่ง"
+			"Action_Game_PauseGame"		"หยุดเกม"
+			"Action_Game_Flashlight"		"ไฟฉาย"
+			"Action_Game_Squad"		"ส่ง/เรียกหน่วยกลับมา"
+			"Action_Game_TurnAround"		"หันหลังกลับ"
+			"Action_Game_ResetCamera"		"รีเซ็ตกล้อง"
+			"Action_Game_WeaponBucketTop"		"ชุดเซตอาวุธบน"
+			"Action_Game_WeaponBucketRight"		"ชุดเซตอาวุธขวา"
+			"Action_Game_WeaponBucketBottom"		"ชุดเซตอาวุธล่าง"
+			"Action_Game_WeaponBucketLeft"		"ชุดเซตอาวุธซ้าย"
+			"Action_Game_SelectGravityGun"		"สลับเป็นปืนแรงโน้มถ่วง"
+			"Action_Game_SelectBugbait"		"สลับเป็นฟีโรพอด (บักเบต)"
+			"Action_Game_QuickSave"		"บันทึกด่วน"
+			"Action_Game_QuickLoad"		"โหลดด่วน"
+			"Action_Vehicle_Handbrake"		"เบรกมือ"
+			"Action_Vehicle_ExitVehicle"		"ออกจากยานพาหนะ"
+			"Action_Vehicle_Turbo"		"เทอร์โบ"
+			"Action_Vehicle_TauBeam"		"เทาบีม/พัลซ์แคนนอน"
+			"Action_Vehicle_ChargedBlast"		"บลาสต์ชาร์จ"
+			"Action_Vehicle_Accelerate"		"เร่งความเร็ว"
+			"Action_Vehicle_Brake"		"เบรก"
+			"Action_Menu_ReturnToGame"		"กลับเข้าสู่เกม"
+			"Action_Menu_Up"		"ขึ้น"
+			"Action_Menu_Down"		"ลง"
+			"Action_Menu_Left"		"ซ้าย"
+			"Action_Menu_Right"		"ขวา"
+			"Action_Menu_Select"		"เลือก"
+			"Action_Menu_Cancel"		"ยกเลิก"
+			"Action_Menu_X"		"เลือกอีกแบบ"
+			"Action_Menu_Y"		"ตัวเลือก"
+			"Action_Menu_PreviousTab"		"แท็บก่อนหน้า"
+			"Action_Menu_NextTab"		"แท็บถัดไป"
+			"Title_HL2_Gyro"		"การควบคุมการเคลื่อนไหว Half-Life 2 สำหรับ Steam Deck"
+			"Description_HL2_Gyro"		"การกำหนดค่า Steam Deck อย่างเป็นทางการสำหรับ Half-Life 2 + Episodes 1/2 + Lost Coast
+การกำหนดค่าศูนย์กลางของไจโรโดยใช้แพด/สติกขวา + ไจโรสำหรับมุมกล้อง
+ใช้การเร่งความเร็ว/การบังคับเลี้ยวแยกต่างหาก และไจโรจะถูกเปิดใช้งานเสมอสำหรับยานพาหนะต่อสู้"
+			"Title_HL2_Motion"		"การควบคุมการเคลื่อนไหว Half-Life 2 สำหรับ Steam Controller"
+			"Description_HL2_Motion"		"การกำหนดค่า Steam Controller อย่างเป็นทางการสำหรับ Half-Life 2 + Episodes 1/2 + Lost Coast
+การกำหนดค่าไจโรเสริมโดยใช้แพดขวา + ไจโรสำหรับมุมกล้อง
+ใช้การบังคับเลี้ยว/การเร่งความเร็วรวมกันสำหรับยานพาหนะต่อสู้"
+			"Title_HL2_Standard"		"การควบคุมมาตรฐานสำหรับ Half-Life 2"
+			"Description_HL2_Standard"		"การกำหนดค่า Playstation/Xbox/Switch Pro อย่างเป็นทางการสำหรับ Half-Life 2 + Episodes 1/2 + Lost Coast
+ไม่มีการควบคุมการเคลื่อนไหว
+ใช้การบังคับเลี้ยว/การเร่งความเร็วรวมกันสำหรับยานพาหนะต่อสู้"
+		}
+		"turkish"
+		{
+			"Set_InGameControls"		"Oyun İçi Kontroller"
+			"Set_VehicleControls"		"Araç Kontrolleri"
+			"Set_MenuControls"		"Menü Kontrolleri"
+			"Action_Movement"		"Hareket"
+			"Action_Camera"		"Kamera"
+			"Action_JoystickCamera"		"Analog Kamera"
+			"Action_Steering"		"Direksiyon"
+			"Action_SteeringAccelerate"		"Direksiyon/Hızlanma"
+			"Action_Game_Fire"		"Birincil Atış"
+			"Action_Game_FireAlt"		"Alternatif Atış"
+			"Action_Game_Zoom"		"Yakınlaştırmayı Ayarla"
+			"Action_Game_ToggleZoom"		"Yakınlaştırmayı Ayarlamayı Aç/Kapat"
+			"Action_Game_Reload"		"Şarjör Değiştir"
+			"Action_Game_Jump"		"Zıplama"
+			"Action_Game_Duck"		"Eğil"
+			"Action_Game_ToggleDuck"		"Eğil/Ayağa Kalk"
+			"Action_Game_Use"		"Kullan"
+			"Action_Game_InvNext"		"Sonraki Silahı Seç"
+			"Action_Game_InvPrev"		"Önceki Silahı Seç"
+			"Action_Game_LastInv"		"Son Silahı Seç"
+			"Action_Game_Walk"		"Yürü"
+			"Action_Game_Sprint"		"Depar"
+			"Action_Game_PauseGame"		"Oyunu Durdur"
+			"Action_Game_Flashlight"		"Fener"
+			"Action_Game_Squad"		"Takımı Çağır/Gönder"
+			"Action_Game_TurnAround"		"Geri Dön"
+			"Action_Game_ResetCamera"		"Kamerayı Sıfırla"
+			"Action_Game_WeaponBucketTop"		"Silah Grubu (Üst)"
+			"Action_Game_WeaponBucketRight"		"Silah Grubu (Sağ)"
+			"Action_Game_WeaponBucketBottom"		"Silah Grubu (Alt)"
+			"Action_Game_WeaponBucketLeft"		"Silah Grubu (Sol)"
+			"Action_Game_SelectGravityGun"		"Yer Çekimi Silahını Seç"
+			"Action_Game_SelectBugbait"		"Feropoda Geç (Böcek Yemi)"
+			"Action_Game_QuickSave"		"Hızlı Kayıt"
+			"Action_Game_QuickLoad"		"Hızlı Yükleme"
+			"Action_Vehicle_Handbrake"		"El Freni"
+			"Action_Vehicle_ExitVehicle"		"Araçtan Çık"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Tau Işını/Darbe Topu"
+			"Action_Vehicle_ChargedBlast"		"Güçlendirilmiş Patlama"
+			"Action_Vehicle_Accelerate"		"Hızlanma"
+			"Action_Vehicle_Brake"		"Fren"
+			"Action_Menu_ReturnToGame"		"Oyuna Geri Dön"
+			"Action_Menu_Up"		"Yukarı"
+			"Action_Menu_Down"		"Aşağı"
+			"Action_Menu_Left"		"Sol"
+			"Action_Menu_Right"		"Sağ"
+			"Action_Menu_Select"		"Seç"
+			"Action_Menu_Cancel"		"İptal Et"
+			"Action_Menu_X"		"Alternatif Seçim"
+			"Action_Menu_Y"		"Seçenekler"
+			"Action_Menu_PreviousTab"		"Önceki Sekme"
+			"Action_Menu_NextTab"		"Sonraki Sekme"
+			"Title_HL2_Gyro"		"Steam Deck için Half-Life 2 Hareket Kontrolleri"
+			"Description_HL2_Gyro"		"Half-Life 2 + Episodes 1/2 + Lost Coast için resmî Steam Deck yapılandırması.
+Sağ pad/çubuk + kamera için jiroskobun kullanıldığı jiroskop odaklı bir yapılandırma.
+Araçlı savaş için direksiyon/hızlanma ve sürekli açık jiroskobu birbirinden ayrı olarak kullanır."
+			"Title_HL2_Motion"		"Steam Kontrolcüsü için Half-Life 2 Hareket Kontrolleri"
+			"Description_HL2_Motion"		"Half-Life 2 + Episodes 1/2 + Lost Coast için resmî Steam Kontrolcüsü yapılandırması.
+Kamera için sağ pad + jiroskobun kullanıldığı jiroskop destekli bir yapılandırma.
+Araçlı savaş için direksiyon ve hızlanmayı birlikte kullanır."
+			"Title_HL2_Standard"		"Standart Half-Life 2 Kontrolleri"
+			"Description_HL2_Standard"		"Half-Life 2 + Episodes 1/2 + Lost Coast için resmî Playstation/Xbox/Switch Pro yapılandırması.
+Hareket kontrolü yoktur.
+Araçlı savaş için direksiyon ve hızlanmayı birlikte kullanır."
+		}
+		"ukrainian"
+		{
+			"Set_InGameControls"		"Керування в грі"
+			"Set_VehicleControls"		"Керування транспортом"
+			"Set_MenuControls"		"Керування в меню"
+			"Action_Movement"		"Рух"
+			"Action_Camera"		"Камера"
+			"Action_JoystickCamera"		"Джойстик-камера"
+			"Action_Steering"		"Кермування"
+			"Action_SteeringAccelerate"		"Кермування / пришвидшення"
+			"Action_Game_Fire"		"Основна атака"
+			"Action_Game_FireAlt"		"Додаткова атака"
+			"Action_Game_Zoom"		"Наближення костюма"
+			"Action_Game_ToggleZoom"		"Перемикання наближення костюма"
+			"Action_Game_Reload"		"Перезарядка"
+			"Action_Game_Jump"		"Стрибок"
+			"Action_Game_Duck"		"Присідання"
+			"Action_Game_ToggleDuck"		"Перемикання присідання"
+			"Action_Game_Use"		"Взаємодія"
+			"Action_Game_InvNext"		"Вибір наступної зброї"
+			"Action_Game_InvPrev"		"Вибір попередньої зброї"
+			"Action_Game_LastInv"		"Вибір останньої зброї"
+			"Action_Game_Walk"		"Рух"
+			"Action_Game_Sprint"		"Біг"
+			"Action_Game_PauseGame"		"Призупинення гри"
+			"Action_Game_Flashlight"		"Ліхтарик"
+			"Action_Game_Squad"		"Надсилання/викликання загону"
+			"Action_Game_TurnAround"		"Розвертання"
+			"Action_Game_ResetCamera"		"Скидання камери"
+			"Action_Game_WeaponBucketTop"		"Перелік зброї угорі"
+			"Action_Game_WeaponBucketRight"		"Перелік зброї праворуч"
+			"Action_Game_WeaponBucketBottom"		"Перелік зброї унизу"
+			"Action_Game_WeaponBucketLeft"		"Перелік зброї ліворуч"
+			"Action_Game_SelectGravityGun"		"Вибір гравітаційної гармати"
+			"Action_Game_SelectBugbait"		"Вибір феропода (приманки)"
+			"Action_Game_QuickSave"		"Швидке збереження"
+			"Action_Game_QuickLoad"		"Швидке завантаження"
+			"Action_Vehicle_Handbrake"		"Ручне гальмо"
+			"Action_Vehicle_ExitVehicle"		"Вихід із транспорту"
+			"Action_Vehicle_Turbo"		"Турбо"
+			"Action_Vehicle_TauBeam"		"Тау-гармата / імпульсна гармата"
+			"Action_Vehicle_ChargedBlast"		"Акумульований постріл"
+			"Action_Vehicle_Accelerate"		"Пришвидшення"
+			"Action_Vehicle_Brake"		"Гальмування"
+			"Action_Menu_ReturnToGame"		"Повернення до гри"
+			"Action_Menu_Up"		"Угору"
+			"Action_Menu_Down"		"Униз"
+			"Action_Menu_Left"		"Ліворуч"
+			"Action_Menu_Right"		"Праворуч"
+			"Action_Menu_Select"		"Вибір"
+			"Action_Menu_Cancel"		"Скасування"
+			"Action_Menu_X"		"Альтернативний вибір"
+			"Action_Menu_Y"		"Параметри"
+			"Action_Menu_PreviousTab"		"Попередня вкладка"
+			"Action_Menu_NextTab"		"Наступна вкладка"
+			"Title_HL2_Gyro"		"Керування рухом у Half-Life 2 для Steam Deck"
+			"Description_HL2_Gyro"		"Офіційна конфігурація Steam Deck для Half-Life 2 + Episodes 1/2 + Lost Coast.
+Гіроцентрична конфігурація, що використовує праву сенсорну панель або стік, а також гіроскоп для камери.
+Послуговується окремим пришвидшенням/кермуванням і гіроскопом для боїв на транспорті."
+			"Title_HL2_Motion"		"Керування рухом у Half-Life 2 для контролера Steam"
+			"Description_HL2_Motion"		"Офіційна конфігурація контролера Steam для Half-Life 2 + Episodes 1/2 + Lost Coast.
+Конфігурація з допомогою гіроскопа, що використовує праву сенсорну панель, а також гіроскоп для камери.
+Послуговується комбінованим пришвидшенням/кермуванням для боїв на транспорті."
+			"Title_HL2_Standard"		"Стандартне керування Half-Life 2"
+			"Description_HL2_Standard"		"Офіційна конфігурація PlayStation/Xbox для Half-Life 2 + Episodes 1/2 + Lost Coast.
+Без керування рухом.
+Послуговується комбінованим пришвидшенням/кермуванням для боїв на транспорті."
+		}
+		"vietnamese"
+		{
+			"Set_InGameControls"		"Điều khiển trong trò chơi"
+			"Set_VehicleControls"		"Điều khiển phương tiện"
+			"Set_MenuControls"		"Điều khiển menu"
+			"Action_Movement"		"Di chuyển"
+			"Action_Camera"		"Camera"
+			"Action_JoystickCamera"		"Camera (Cần trỏ)"
+			"Action_Steering"		"Bẻ lái"
+			"Action_SteeringAccelerate"		"Bẻ lái / Tăng tốc"
+			"Action_Game_Fire"		"Bắn chính"
+			"Action_Game_FireAlt"		"Bắn phụ"
+			"Action_Game_Zoom"		"Ngắm (Giáp)"
+			"Action_Game_ToggleZoom"		"Bật/tắt ngắm giáp"
+			"Action_Game_Reload"		"Nạp đạn"
+			"Action_Game_Jump"		"Nhảy"
+			"Action_Game_Duck"		"Ngồi"
+			"Action_Game_ToggleDuck"		"Bật/tắt ngồi"
+			"Action_Game_Use"		"Dùng"
+			"Action_Game_InvNext"		"Chọn vũ khí kế"
+			"Action_Game_InvPrev"		"Chọn vũ khí trước"
+			"Action_Game_LastInv"		"Chọn vũ khí cuối"
+			"Action_Game_Walk"		"Đi bộ"
+			"Action_Game_Sprint"		"Chạy nhanh"
+			"Action_Game_PauseGame"		"Tạm dừng trò chơi"
+			"Action_Game_Flashlight"		"Đèn pin"
+			"Action_Game_Squad"		"Gửi/rút tiểu đội"
+			"Action_Game_TurnAround"		"Quay lại"
+			"Action_Game_ResetCamera"		"Đặt lại camera"
+			"Action_Game_WeaponBucketTop"		"Khoang vũ khí trên cùng"
+			"Action_Game_WeaponBucketRight"		"Khoang vũ khí bên phải"
+			"Action_Game_WeaponBucketBottom"		"Khoang vũ khí dưới cùng"
+			"Action_Game_WeaponBucketLeft"		"Khoang vũ khí bên trái"
+			"Action_Game_SelectGravityGun"		"Chọn súng trọng lực"
+			"Action_Game_SelectBugbait"		"Đổi qua Pheropod (Mồi bọ)"
+			"Action_Game_QuickSave"		"Lưu nhanh"
+			"Action_Game_QuickLoad"		"Nạp nhanh"
+			"Action_Vehicle_Handbrake"		"Thắng tay"
+			"Action_Vehicle_ExitVehicle"		"Rời phương tiện"
+			"Action_Vehicle_Turbo"		"Turbo"
+			"Action_Vehicle_TauBeam"		"Tia Tau / Xung đại bác"
+			"Action_Vehicle_ChargedBlast"		"Dồn hỏa lực"
+			"Action_Vehicle_Accelerate"		"Tăng tốc"
+			"Action_Vehicle_Brake"		"Thắng"
+			"Action_Menu_ReturnToGame"		"Trở về trò chơi"
+			"Action_Menu_Up"		"Lên"
+			"Action_Menu_Down"		"Xuống"
+			"Action_Menu_Left"		"Trái"
+			"Action_Menu_Right"		"Phải"
+			"Action_Menu_Select"		"Chọn"
+			"Action_Menu_Cancel"		"Hủy"
+			"Action_Menu_X"		"Chọn phụ"
+			"Action_Menu_Y"		"Tùy chọn"
+			"Action_Menu_PreviousTab"		"Thẻ trước"
+			"Action_Menu_NextTab"		"Thẻ kế"
+			"Title_HL2_Gyro"		"Half-Life 2 - Điều khiển chuyển động cho Steam Deck"
+			"Description_HL2_Gyro"		"Thiết lập Steam Deck chính thức cho Half-Life 2 + Episode 1/2 + Lost Coast.
+Một thiết lập dựa trên gyro, dùng bàn cảm ứng/cần trỏ phải + gyro cho camera.
+Sử dụng tăng tốc/bẻ lái riêng biệt và gyro luôn bật trong khi giao chiến bằng xe."
+			"Title_HL2_Motion"		"Half-Life 2 - Điều khiển chuyển động cho Steam Controller"
+			"Description_HL2_Motion"		"Thiết lập Steam Controller chính thức cho Half-Life 2 + Episode 1/2 + Lost Coast.
+Một thiết lập có hỗ trợ gyro, dùng bàn cảm ứng phải + gyro cho camera.
+Sử dụng kết hợp tăng tốc/bẻ lái trong khi giao chiến bằng xe."
+			"Title_HL2_Standard"		"Half-Life 2 - Điều khiển tiêu chuẩn"
+			"Description_HL2_Standard"		"Thiết lập PlayStation/XBox/Switch Pro cho Half-Life 2 + Episodes 1/2 + Lost Coast.
+Không có điều khiển chuyển động.
+Sử dụng kết hợp tăng tốc/bẻ lái trong khi giao chiến bằng xe."
+		}
+	}
+	"group"
+	{
+		"id"		"0"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button A, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button B, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button X, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button Y, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"1"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button dpad_up, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button dpad_down, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button dpad_right, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button dpad_left, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"2"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button JOYSTICK_RIGHT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"3"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button JOYSTICK_LEFT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"4"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button TRIGGER_LEFT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"output_trigger"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"5"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button TRIGGER_RIGHT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"output_trigger"		"2"
+		}
+	}
+	"group"
+	{
+		"id"		"6"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button JOYSTICK_RIGHT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"8"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button JOYSTICK_RIGHT, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"9"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button DPAD_UP, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button DPAD_DOWN, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button DPAD_RIGHT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button DPAD_LEFT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"10"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button START, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"11"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button SELECT, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"13"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls jump, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls toggle_duck, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls use, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls reload, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"14"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"edge"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls attack2, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"15"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"edge"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls attack, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"17"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls jump, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls use, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"18"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls attack2, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"19"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls attack, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"21"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_select, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_cancel, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_x, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_y, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"22"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mouse_button RIGHT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"23"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mouse_button LEFT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"24"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_up, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_down, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_right, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_left, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"25"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_up, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_down, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_right, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_left, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"deadzone"		"20488"
+		}
+	}
+	"group"
+	{
+		"id"		"26"
+		"mode"		"joystick_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"output_joystick"		"2"
+		}
+		"gameactions"
+		{
+			"MenuControls"		"Mouse"
+		}
+	}
+	"group"
+	{
+		"id"		"27"
+		"mode"		"joystick_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls sc_flashlight, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"output_joystick"		"2"
+			"sensitivity"		"606"
+		}
+		"gameactions"
+		{
+			"GameControls"		"Camera"
+		}
+	}
+	"group"
+	{
+		"id"		"28"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls smart_sprint, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"GameControls"		"Move"
+		}
+	}
+	"group"
+	{
+		"id"		"29"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls slot1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls slot3, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls slot2, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls slot4, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"30"
+		"mode"		"joystick_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls resetcamera, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"output_joystick"		"2"
+			"sensitivity"		"606"
+		}
+		"gameactions"
+		{
+			"VehicleControls"		"Camera"
+		}
+	}
+	"group"
+	{
+		"id"		"31"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls speed, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"curve_exponent"		"2"
+			"deadzone_inner_radius"		"3134"
+			"deadzone_outer_radius"		"25640"
+			"deadzone_shape"		"2"
+			"deadzone_enable_type"		"2"
+		}
+		"gameactions"
+		{
+			"VehicleControls"		"Move"
+		}
+	}
+	"group"
+	{
+		"id"		"32"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"33"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"VehicleControls"		"Accelerate"
+		}
+	}
+	"group"
+	{
+		"id"		"34"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"VehicleControls"		"Brake"
+		}
+	}
+	"group"
+	{
+		"id"		"35"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls speed, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"VehicleControls"		"Steer"
+		}
+	}	
+	"group"
+	{
+		"id"		"36"
+		"mode"		"gyro_to_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"gyro_natural_sensitivity"		"370"
+		}
+		"gameactions"
+		{
+			"GameControls"		"Camera"
+		}
+	}
+	"group"
+	{
+		"id"		"37"
+		"mode"		"gyro_to_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"gyro_natural_sensitivity"		"370"
+		}
+		"gameactions"
+		{
+			"VehicleControls"		"Camera"
+		}
+	}
+	"group"
+	{
+		"id"		"40"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls use, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"sensitivity"		"774"
+		}
+		"gameactions"
+		{
+			"GameControls"		"Camera"
+		}
+	}
+	"group"
+	{
+		"id"		"41"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"VehicleControls"		"Move"
+		}
+	}
+	"group"
+	{
+		"id"		"42"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls sc_flashlight, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"43"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"sensitivity"		"606"
+		}
+		"gameactions"
+		{
+			"VehicleControls"		"Camera"
+		}
+	}
+	"group"
+	{
+		"id"		"44"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"45"
+		"mode"		"touch_menu"
+		"name"		"System Commands"
+		"description"		""
+		"inputs"
+		{
+			"touch_menu_button_0"
+			{
+				"activators"
+				{		
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls sc_save_quick, , ghost_075_utility_020.png, "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"touch_menu_button_1"
+			{
+				"activators"
+				{
+					"Long_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls sc_load_quick, , ghost_075_utility_010.png, "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+							"long_press_time"		"500"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"gyro_button"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"46"
+		"mode"		"reference"
+		"description"		""
+		"settings"
+		{
+			"referenced_mode"		"45"
+		}
+	}
+	"group"
+	{
+		"id"		"47"
+		"mode"		"reference"
+		"description"		""
+		"settings"
+		{
+			"referenced_mode"		"45"
+		}
+	}
+	"group"
+	{
+		"id"		"48"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"edge"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls attack, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"49"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"edge"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls attack2, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"7"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_escape"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button start, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_menu"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button select, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"left_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button shoulder_left, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"right_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button shoulder_right, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_left"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button a, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_right"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"xinput_button x, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"12"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_escape"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls pause_menu, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_menu"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls sc_squad, , "
+						}
+					}
+					"Long_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls zoom, , "
+						}
+						"settings"
+						{
+							"long_press_time"		"200"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"left_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls smart_sprint, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"right_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls lastinv, , "
+						}
+					}
+					"Long_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls phys_swap, , "
+						}
+						"settings"
+						{
+							"long_press_time"		"200"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_left"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls duck, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_right"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls reload, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_left_upper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls jump, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_right_upper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls use, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_capture"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action system_key_1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"16"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_escape"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls pause_menu, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_menu"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls zoom, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"left_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls speed, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"right_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action VehicleControls jump, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_capture"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action system_key_1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"20"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_escape"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls pause_menu, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"left_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_lb, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"right_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_rb, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_left"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_x, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_right"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_select, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_left_upper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_y, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_right_upper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls menu_cancel, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_capture"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action system_key_1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"preset"
+	{
+		"id"		"0"
+		"name"		"GameControls"
+		"group_source_bindings"
+		{
+			"12"		"switch active"
+			"13"		"button_diamond active"
+			"28"		"joystick active"
+			"45"		"joystick inactive"
+			"14"		"left_trigger active"
+			"15"		"right_trigger active"
+			"27"		"right_joystick active"
+			"29"		"dpad active"
+			"36"		"gyro active"
+			"42"		"left_trackpad inactive"
+			"44"		"left_trackpad inactive"
+			"46"		"left_trackpad active"
+			"40"		"right_trackpad active"
+		}
+	}
+	"preset"
+	{
+		"id"		"1"
+		"name"		"VehicleControls"
+		"group_source_bindings"
+		{
+			"16"		"switch active"
+			"17"		"button_diamond active"
+			"31"		"joystick active"
+			"35"		"joystick inactive"
+			"18"		"left_trigger inactive"
+			"34"		"left_trigger inactive"
+			"49"		"left_trigger active"
+			"19"		"right_trigger inactive"
+			"33"		"right_trigger inactive"
+			"48"		"right_trigger active"
+			"30"		"right_joystick active"
+			"32"		"dpad inactive"
+			"41"		"dpad active"
+			"37"		"gyro active"
+			"47"		"left_trackpad active"
+			"43"		"right_trackpad active"
+		}
+	}
+	"preset"
+	{
+		"id"		"2"
+		"name"		"MenuControls"
+		"group_source_bindings"
+		{
+			"20"		"switch active"
+			"21"		"button_diamond active"
+			"25"		"joystick active"
+			"22"		"left_trigger active"
+			"23"		"right_trigger active"
+			"26"		"right_joystick active"
+			"24"		"dpad active"
+		}
+	}
+	"settings"
+	{
+		"left_trackpad_mode"		"0"
+		"right_trackpad_mode"		"0"
+	}
+}

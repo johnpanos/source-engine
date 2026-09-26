@@ -15,7 +15,7 @@ def configure(conf):
 def build(bld):
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
-		source    = [ 'disk_file_store.cpp', 'disk_byte_store.cpp' ],
+		source    = [ 'disk_file_store.cpp', 'disk_byte_store.cpp', 'tool_process_map_builder.cpp' ],
 		target    = 'hammer_platform',
 		name      = 'hammer_platform',
 		arch_module = 'hammer.adapters.platform',

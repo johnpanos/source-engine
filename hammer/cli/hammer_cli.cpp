@@ -6,6 +6,7 @@
 //			editor, UI-driven tests and an MCP server drive the same commands.
 //
 //			hammer_cli --script room.hcmd --root <dir>   run a script
+//			hammer_cli --mcp --root <dir>                 serve MCP on stdin/stdout
 //			hammer_cli --commands                         list the command catalog
 //
 //			Script paths are relative to --root (default: the working
@@ -13,11 +14,16 @@
 //
 //=============================================================================//
 
+#include "../../platform/posix/tool_process_provider.h"
 #include "hammer/adapters/platform/disk_file_store.h"
+#include "hammer/adapters/mcp/mcp_server.h"
+#include "hammer/adapters/platform/tool_process_map_builder.h"
 #include "hammer/app/editor_commands.h"
 
 #include <cstdio>
 #include <fstream>
+#include <iostream>
+#include <memory>
 #include <iterator>
 #include <sstream>
 #include <string>
@@ -80,30 +86,11 @@ private:
 	hammer::adapters::platform::DiskFileStore m_Disk;
 };
 
-const char *StatusName( hammer::app::CommandStatus status )
-{
-	using hammer::app::CommandStatus;
-	switch ( status )
-	{
-	case CommandStatus::UnknownCommand:
-		return "unknown command";
-	case CommandStatus::MissingArgument:
-		return "missing argument";
-	case CommandStatus::InvalidArgument:
-		return "invalid argument";
-	case CommandStatus::Rejected:
-		return "rejected";
-	case CommandStatus::IoFailure:
-		return "i/o failure";
-	case CommandStatus::SyntaxError:
-		return "syntax error";
-	}
-	return "error";
-}
-
 int Usage()
 {
-	std::fprintf( stderr, "usage: hammer_cli --script FILE [--root DIR] | --commands\n" );
+	std::fprintf( stderr,
+	    "usage: hammer_cli (--script FILE | --mcp) [--root DIR] [--repo DIR] [--builds DIR] | "
+	    "--commands\n" );
 	return 2;
 }
 
@@ -127,6 +114,9 @@ int main( int argc, char **argv )
 {
 	std::string script;
 	std::string root;
+	std::string repo = ".";
+	std::string builds;
+	bool mcp = false;
 	for ( int i = 1; i < argc; ++i )
 	{
 		const std::string_view arg = argv[i];
@@ -134,13 +124,55 @@ int main( int argc, char **argv )
 			return ListCommands();
 		if ( arg == "--script" && i + 1 < argc )
 			script = argv[++i];
+		else if ( arg == "--mcp" )
+			mcp = true;
 		else if ( arg == "--root" && i + 1 < argc )
 			root = argv[++i];
+		else if ( arg == "--repo" && i + 1 < argc )
+			repo = argv[++i];
+		else if ( arg == "--builds" && i + 1 < argc )
+			builds = argv[++i];
 		else
 			return Usage();
 	}
-	if ( script.empty() )
+	if ( script.empty() == !mcp )
 		return Usage();
+
+	hammer::app::EditorController controller;
+	RootedFileStore store( root );
+	// build_map runs tools/quality/vmf_map_build.py through the platform
+	// tool-process provider, with file-store paths resolved under --root.
+	const std::unique_ptr<platform::IToolProcessProvider> processes =
+	    platform::CreatePosixToolProcessProvider();
+	hammer::adapters::platform::ToolProcessMapBuilder builder( *processes, repo,
+	    builds.empty() ? repo + "/quality-results/hammer-builds" : builds,
+	    [&root]( const std::string &path )
+	    {
+		    return root.empty() ? path : root + "/" + path;
+	    } );
+	hammer::app::EditorCommands commands( controller, store, &builder );
+
+	if ( mcp )
+	{
+		// MCP stdio transport: one JSON-RPC message per line in and out. Nothing
+		// else may reach stdout; diagnostics go to stderr.
+		hammer::adapters::mcp::McpServer server( commands );
+		std::string line;
+		while ( std::getline( std::cin, line ) )
+		{
+			if ( !line.empty() && line.back() == '\r' )
+				line.pop_back();
+			if ( line.empty() )
+				continue;
+			if ( const auto response = server.HandleLine( line ) )
+			{
+				std::fwrite( response->data(), 1, response->size(), stdout );
+				std::fputc( '\n', stdout );
+				std::fflush( stdout );
+			}
+		}
+		return 0;
+	}
 
 	std::ifstream stream( script, std::ios::binary );
 	if ( !stream )
@@ -155,19 +187,18 @@ int main( int argc, char **argv )
 	if ( !parsed )
 	{
 		std::fprintf( stderr, "%s:%d: %s: %s\n", script.c_str(), parsed.Error().line,
-		    StatusName( parsed.Error().status ), parsed.Error().detail.c_str() );
+		    hammer::app::CommandStatusName( parsed.Error().status ),
+		    parsed.Error().detail.c_str() );
 		return 1;
 	}
 
-	hammer::app::EditorController controller;
-	RootedFileStore store( root );
-	hammer::app::EditorCommands commands( controller, store );
 	auto outputs = commands.Run( parsed.Value() );
 	if ( !outputs )
 	{
 		const hammer::app::CommandError &error = outputs.Error();
 		std::fprintf( stderr, "%s:%d: %s: %s: %s\n", script.c_str(), error.line,
-		    error.command.c_str(), StatusName( error.status ), error.detail.c_str() );
+		    error.command.c_str(), hammer::app::CommandStatusName( error.status ),
+		    error.detail.c_str() );
 		return 1;
 	}
 	for ( const std::string &output : outputs.Value() )

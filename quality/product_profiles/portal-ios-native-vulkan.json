@@ -22,6 +22,11 @@
   "ios": {
     "bundle_id": "com.panos.sourceengine",
     "display_name": "Portal (Source Engine)",
+    "app_category": "public.app-category.puzzle-games",
+    "game_mode": true,
+    "optional_entitlements": [
+      "com.apple.developer.kernel.increased-memory-limit"
+    ],
     "version": "0.1.0",
     "build_number": 1,
     "build_directory": "build-ios",

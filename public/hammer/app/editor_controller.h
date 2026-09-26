@@ -139,6 +139,23 @@ public:
 	bool PickByRay(
 	    const mapgeometry::Vec3d &origin, const mapgeometry::Vec3d &dir, bool additive = false );
 
+	// The nearest brush a world-space ray enters ahead of its origin: the brush,
+	// the ray parameter, the hit point and the outward normal of the face it
+	// entered (zero when the origin is already inside that brush). Read-only.
+	struct RayHit
+	{
+		int brushId = 0;
+		double t = 0.0;
+		mapgeometry::Vec3d point;
+		mapgeometry::Vec3d normal;
+	};
+	std::optional<RayHit> Raycast(
+	    const mapgeometry::Vec3d &origin, const mapgeometry::Vec3d &dir ) const;
+	// Source 2's Entity tool: places `classname` one unit off the surface the ray
+	// hits (a click in the 3D view). One undo unit; nothing if the ray misses.
+	std::optional<int> PlaceEntityOnSurface( const std::string &classname,
+	    const mapgeometry::Vec3d &origin, const mapgeometry::Vec3d &dir );
+
 	// Translates the selected brush rigidly by a world delta (every face plane and
 	// the cached bound shift together), recording one undo unit -- the keyboard
 	// "nudge" of the selection (arrow keys in a 2D view). Returns true if a brush
@@ -176,6 +193,27 @@ public:
 	// map starts with skyname "sky_day01_01" so it compiles without a leak into
 	// an unset sky.
 	bool SetWorldProperty( const std::string &key, const std::string &value );
+
+	// Selection by id (brushes and point entities). Replace makes exactly these
+	// objects selected, Add adds them, Toggle flips each. A selection is either
+	// brushes or one entity (as clicks make it). Returns false, and changes
+	// nothing, if an id is unknown or the result would break that rule.
+	// Selection is not document state: no undo unit.
+	enum class SelectMode
+	{
+		Replace,
+		Add,
+		Toggle,
+	};
+	bool SelectObjects( const std::vector<int> &ids, SelectMode mode );
+	void SelectNone();
+
+	// Replaces an axis-aligned box brush with six walls of the given thickness
+	// inside its bounds, a sealed room (Source 2's "flip faces" on a block; VMF's
+	// convex brushes cannot face inward). The walls keep the brush's material and
+	// are selected; one undo unit. Returns their ids, or nothing if the brush is
+	// unknown, not a box, or too thin for the thickness.
+	std::optional<std::vector<int>> Hollow( int brushId, double thickness );
 	const std::vector<EntityProperty> &WorldProperties() const { return m_worldProperties; }
 	bool Undo();
 	bool Redo();

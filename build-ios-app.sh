@@ -421,6 +421,9 @@ plist = {
     'MinimumOSVersion': target['deployment_target'],
     'UIDeviceFamily': ios['device_family'],
     'UIRequiredDeviceCapabilities': ios['required_device_capabilities'],
+    # A game category: App Store placement, and on iOS what makes the system
+    # consider the app for Game Mode.
+    'LSApplicationCategoryType': ios['app_category'],
 }
 if target['os'] == 'ios':
     plist.update({
@@ -432,9 +435,15 @@ if target['os'] == 'ios':
         'UIStatusBarHidden': True,
         # SDL3 takes pointer (trackpad, mouse) input as UIKit indirect events.
         'UIApplicationSupportsIndirectInputEvents': True,
-    # ProMotion: without it iOS caps an iPhone app at 60 Hz; the game's
-    # fps_max and vsync then choose the rate.
-    'CADisableMinimumFrameDurationOnPhone': True,
+        # ProMotion: without it iOS caps an iPhone app at 60 Hz; the game's
+        # fps_max and vsync then choose the rate.
+        'CADisableMinimumFrameDurationOnPhone': True,
+        # Game Mode (iOS 18+): while the game is in front the system gives it
+        # the highest CPU and GPU priority, lowers background work and doubles
+        # the Bluetooth controller and AirPods sampling rate. The system still
+        # decides whether to enter it.
+        'GCSupportsGameMode': ios.get('game_mode', False),
+        'LSSupportsGameMode': ios.get('game_mode', False),
         # Content goes into Documents with the Files app or xcrun devicectl.
         'UIFileSharingEnabled': True,
         'LSSupportsOpeningDocumentsInPlace': True,

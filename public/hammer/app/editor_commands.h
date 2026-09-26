@@ -19,6 +19,7 @@
 #include "foundation/expected.h"
 #include "hammer/app/editor_controller.h"
 #include "hammer/ports/file_store.h"
+#include "hammer/ports/map_builder.h"
 
 #include <map>
 #include <string>
@@ -39,6 +40,9 @@ enum class CommandStatus
 	IoFailure,       // the file store could not read or write
 	SyntaxError,     // a script line could not be parsed
 };
+
+// A short lowercase name for reports ("unknown command", "i/o failure", ...).
+const char *CommandStatusName( CommandStatus status );
 
 // Readable context is part of the error because commands are the application
 // boundary: `command` and `detail` name the request that failed.
@@ -68,8 +72,10 @@ struct ScriptCommand
 class EditorCommands
 {
 public:
-	// Borrows both; they must outlive this object.
-	EditorCommands( EditorController &controller, ports::IFileStore &store );
+	// Borrows all three; they must outlive this object. Without a map builder,
+	// build_map is rejected (a composition that cannot compile maps).
+	EditorCommands( EditorController &controller, ports::IFileStore &store,
+	    ports::IMapBuilder *builder = nullptr );
 
 	// Runs one command. On success returns its output: the new object's id for
 	// creating commands, a short summary for "info", otherwise empty.
@@ -86,6 +92,7 @@ public:
 private:
 	EditorController &m_controller;
 	ports::IFileStore &m_store;
+	ports::IMapBuilder *m_builder;
 };
 
 [[nodiscard]] foundation::Expected<std::vector<ScriptCommand>, CommandError> ParseCommandScript(

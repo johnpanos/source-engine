@@ -343,6 +343,302 @@ keeps it that way.
   - Brush entities are still folded into world geometry on load (R22).
   - The loop runs on native Vulkan desktop only.
 
+### R08-UI-P1a: P1 domain commands (slice 3, part a, done 2026-09-26)
+
+The headless side of the brief's P1 rows. GTK wiring and the UI-driven test
+come next.
+
+- **Controller.**
+  - `SelectObjects(ids, Replace|Add|Toggle)` and `SelectNone()`. A
+    selection is brushes or one entity, as clicks make it. An unknown id, or
+    a result that breaks that rule, changes nothing. Selection is not an undo
+    step.
+  - `Hollow(id, thickness)`: an axis-aligned box brush becomes six
+    non-overlapping walls inside its bounds, keeping its material. That is
+    Source 2's "flip faces" on a block, made VMF-safe. It is one undo step,
+    and the walls are selected.
+  - `MoveSelectionBy` also moves a selected point entity.
+- **Commands.**
+  - `select ids="1,2" mode=replace|add|toggle`, `select_none`;
+  - `move_selection delta="x y z"`;
+  - `hollow id= thickness=`, which outputs the wall ids;
+  - `describe id=`: brush bounds and material, or entity classname,
+    origin and keyvalues.
+- **Evidence.**
+  - `hammer.app.editor_commands` grows from 54 to 77 checks, and the
+    controller suite is 248. Both pass on g++ and clang++.
+  - A hollowed block with a player start and a light, authored by
+    `hammer_cli`, compiles leak-free through `vmf_map_build.py`.
+
+### R08-UI-P1b: GTK shell on the command layer, step 1 (2026-09-26)
+
+- `hammer/gtk/app.cpp`: `AppState` owns an `EditorCommands` over a
+  `DiskFileStore`. Open and Save now run the `open`/`save` commands, so the
+  shell no longer holds its own read/parse/save orchestration. A
+  `RunCommand` helper shows a failure's detail in the status bar.
+- Keys follow Source 2 and classic Hammer:
+  - Shift+B is the Block tool, Shift+E the Entity tool and Shift+S the
+    Selection tool. Plain letters are left to WASD camera movement; plain
+    B/S used to switch tools.
+  - **F** hollows the single selected block into a room through the `hollow`
+    command, with walls one grid unit thick.
+  - The tool help text names the keys.
+- Evidence: `hammer/gtk/build.sh` builds, and `hammer.gtk-viewport-smoke`
+  and `camera_nav_test.sh` pass.
+- **Entity placement (step 2).**
+  - The controller gains `Raycast`: the nearest brush, hit point, and the
+    outward normal of the face entered (zero from inside a brush).
+    `PickByRay` reuses it, and the pick suite (66) is unchanged.
+  - `PlaceEntityOnSurface` places an entity one unit off the hit surface, as
+    one undo step.
+  - Commands `raycast` and `place_on_surface`; the command suite has 83
+    checks.
+  - In GTK, the palette's Entity Tool (Shift+E) is live, and a class
+    dropdown offers `info_player_start` and `light`. In the Entity tool, a
+    3D-view click runs `place_on_surface` with the camera ray: Source 2's
+    "click the floor to place".
+  - The tool buttons and dropdown carry accessible labels for AT-SPI.
+- Evidence: the GTK shell builds, and `hammer.gtk-viewport-smoke` passes.
+- **Build and Run (step 3).**
+  - A new port, `hammer::ports::IMapBuilder` (`public/hammer/ports/map_builder.h`).
+    `EditorCommands` takes it as an optional dependency.
+  - `build_map path= [quality=fast|full] [publish=0|1]` saves atomically,
+    then builds. Without a builder the command is rejected; a failed save is
+    never built.
+  - The adapter, `hammer::adapters::platform::ToolProcessMapBuilder`, runs
+    `vmf_map_build.py` through the platform tool-process contract. It is that
+    contract's first product consumer (R40), and the POSIX tool-process
+    provider is now built in `platform_posix`.
+  - `hammer_cli` wires it up with `--repo` and `--builds`. In GTK, **F9**
+    builds and publishes (`./play <map>`), and **Shift+F9** also launches the
+    game (Source 2's "load in engine after building").
+  - New module edges: `hammer.adapters.platform` → `platform.contracts`, and
+    `hammer.composition` → `platform.posix`.
+  - `platform` is added to the `tools` subproject list.
+- Evidence:
+  - The command suite has 94 checks, with a fake builder: save-then-build,
+    rejection before saving, failure detail, and no build after a failed
+    save.
+  - A `hammer_cli` script (block → `hollow` → `place_on_surface` ×2 →
+    `build_map`) produces `bm_room.bsp`.
+  - Q-EDITOR 62/62 on both compilers; `arch.check`, `arch.hammer` and the
+    GTK smoke pass.
+- Not yet:
+  - F9 blocks the UI while it builds (seconds in fast mode); an async build
+    with a streamed log is P2.
+  - The UI-driven test is next: headless sway, vendored wlroots virtual
+    pointer and keyboard protocol XML, and AT-SPI for widgets.
+
+### R08-UI-TEST: UI-driven editor conformance (slice done 2026-09-26)
+
+**Scope** (roadmap R08, `active`; RFC 0002 H0 "headless target" and the user's
+direction for a conformance suite that drives the real UI):
+
+- Run the real `hammer_gtk` in an isolated headless compositor, never the
+  user's session.
+- Drive it the way a person does: find widgets by accessible name, use the
+  pointer and keyboard, and read what the editor shows.
+- Author a room with a player start and a light, and build it with F9.
+- The oracle judges the files the UI produced, not the UI's internal state:
+  the saved VMF and the build record.
+- Negative controls: the same run with the F step skipped, and with the light
+  left out, must each fail their own check.
+- Out of scope: the game boot (the loop suite owns it), async build, gizmos,
+  and 3D-view placement (the camera starts outside the room).
+
+**Delivered.**
+
+- `tools/quality/hammer_ui_test.py` builds `hammer_gtk` from source into its
+  output directory. Each case runs in its own session: `dbus-run-session --
+  mutter --headless --virtual-monitor 1280x800 --wayland-display <unique>`.
+- Inside the session it starts the AT-SPI bus launcher and registry
+  explicitly (D-Bus activation of both is denied here). It then runs the
+  editor with `GDK_BACKEND=x11 GTK_CSD=1 --maximized`, so window
+  coordinates are screen coordinates.
+- Widgets are found by accessible name over AT-SPI: the tool buttons, the
+  entity class dropdown (a `combo box`) and the four views. The views are
+  `GtkGLArea`s created with the `application` role and labelled with their
+  view names.
+- **Input goes through the compositor,** via an `org.gnome.Mutter.RemoteDesktop`
+  session on the private session bus. Xwayland drops AT-SPI's XTest events.
+  - Pointer moves are relative: home against the top-left corner, then move
+    by the offset (there is no absolute stream without a screencast).
+  - Keys are evdev keycodes; keysyms are not delivered.
+  - The first key from the new virtual keyboard carries the keymap and is
+    lost, so the driver sends a lone Shift first.
+- **Positions come from the status bar.** The driver hovers two points in a
+  view, reads the coordinates the editor shows, and derives the
+  pixel-to-world map. It checks that map at a third point.
+- **The steps:**
+  1. `[` twice (grid 64 → 16, confirmed on the status bar) and the Block Tool
+     button;
+  2. drag a 384x384 block in the top view, then Return (the brush count
+     reads 1);
+  3. F (the count reads 6);
+  4. the Entity Tool button, then a player start clicked into the front
+     view;
+  5. the dropdown opened and stepped to "light" (Down, Return), and a light
+     clicked in;
+  6. F9 (save and compile; the help line reports the result).
+- **The oracle** reads the saved VMF: exactly six world solids, and exactly
+  one `info_player_start` and one `light`, each inside the room's interior.
+  It also reads the build record: compiled, and `leaked` false.
+- **Controls:**
+  - `no-hollow` must fail `walls`. It also leaks, since its entities sit
+    inside solid.
+  - `no-light` must fail `light`.
+  - Both must still be driven to the end.
+- **Oracle self-tests:** 7 cases in `tools/quality/tests/test_hammer_ui_test.py`,
+  including an entity outside the room, two lights, brush-entity solids,
+  and missing files. Five seeded oracle mutants are all detected.
+- **Editor changes** (`hammer/gtk/app.cpp`):
+  - viewport accessible role and names;
+  - the `--maximized`, `--builds DIR` and `--no-publish` flags (a test build
+    does not publish into `./play`);
+  - classic `[`/`]` grid keys through `set_grid`. The shell had no grid
+    control, and hollowing needs walls thinner than the default 64-unit
+    grid.
+- **Registered:** manifest `corpus.hammer.ui` (required, `min_checks` 12)
+  and baseline check `hammer.ui` (runtime, serial, budget 60 s), with a new
+  `at-spi` tool probe.
+
+**Evidence (2026-09-26, this host).**
+
+| Check | Result |
+| --- | --- |
+| `conformance.py check --runner corpus --suite corpus.hammer.ui` | pass, 12 checks, 52.9 s |
+| Direct repeats with a prebuilt shell | 3 of 3 pass (11 checks each) |
+| Room case, UI start to built map | 11.2 s |
+| `baseline.py audit --check hammer.ui --check hammer.loop --check arch.check --check arch.hammer --strict` | 4 pass, 0 deviations |
+| Q-EDITOR headless suites | 61 of 61 |
+| `corpus.hammer.loop` | pass |
+| `test_hammer_ui_test.py`, `test_vmf_map_build.py` | pass |
+| `archlint check --all`, `archlint hammer --verify` | pass |
+
+`hammer.loop` took 60 s against its 40 s budget in that audit. It ran
+beside other checks on a loaded host; the budget is not strict.
+
+**Unverified.**
+
+- No hosted CI lane runs this suite; it needs mutter, AT-SPI and a GPU-less
+  GL context.
+- Only the X11 backend is driven: the Wayland backend has no global
+  coordinates for placement.
+- Placement in the 3D view is not tested.
+- Hammer's own GTK style debt outside the edited lines is not addressed.
+
+### R08-MCP: an MCP server over the command layer (slice done 2026-09-26)
+
+**Scope** (roadmap R08, `active`; the user's direction: "I can imagine an
+MCP on top as well"):
+
+- A `hammer.adapters.mcp` adapter maps the `EditorCommands` catalog to Model
+  Context Protocol tools, over newline-delimited JSON-RPC 2.0 (MCP
+  2025-06-18). It handles `initialize`, `notifications/initialized`, `ping`,
+  `tools/list` and `tools/call`. It is a protocol handler with no I/O: one
+  line in, at most one line out.
+- There is one authority: each tool call is one `EditorCommands::Execute`, so
+  an agent edits the same document, with the same undo history and errors,
+  as the GTK host and scripts.
+- Command failures are tool results with `isError`. Protocol faults are
+  JSON-RPC errors: -32700 parse, -32600 invalid request (including batches),
+  -32601 unknown method, and -32602 unknown tool or a bad argument type.
+- `hammer_cli --mcp [--root DIR]` is the composition root, on stdin/stdout,
+  with the same rooted file store and map builder.
+- Oracles:
+  - a headless C++ suite, `hammer.adapters.mcp`, over the handler, covering
+    every error class, string escapes, and a room authored through tool
+    calls, then saved and read back;
+  - a Python end-to-end check that parses every line with an independent
+    JSON reader, through the real `hammer_cli --mcp` process;
+  - negative controls: malformed, truncated and deeply nested input, and
+    unknown tools must each produce their own error without state change.
+- Out of scope: a live-editor MCP endpoint (the GTK host serving a socket),
+  resources and prompts, and streaming build logs.
+
+**Delivered.**
+
+- **`hammer/adapters/mcp`** (Waf `hammer_mcp`, owner `hammer.adapters.mcp`,
+  strict C++20). Its only edges are `hammer.app`, `hammer.ports` and
+  `foundation`; the composition may use it.
+  - `McpServer::HandleLine` maps each catalog command to one tool. Every
+    argument is declared as a string. Numbers, booleans (1/0) and arrays of
+    scalars (vectors) are also accepted, so `"mins": [-64, -64, 0]` works.
+  - A tool call runs one `EditorCommands::Execute`. Tool results read `ok`,
+    the command's output, or `<command>: <status>: <detail>` with `isError`.
+  - `tools/*` before `initialize` is refused. Notifications, and client
+    replies to server requests, get no response.
+  - The server offers the client's protocol version when it is 2025-06-18,
+    2025-03-26 or 2024-11-05, and 2025-06-18 otherwise.
+- **`json_value.{h,cpp}`**, private to the adapter:
+  - numbers keep their source text, so ids echo verbatim, and objects keep
+    member order;
+  - it rejects duplicate members, trailing text, invalid escapes, unpaired
+    surrogates and more than 64 nested containers;
+  - the writer escapes control characters, so a reply is always one line.
+- **One status-name owner.** `hammer::app::CommandStatusName` now serves
+  both `hammer_cli`'s messages and MCP tool errors; it was a private helper
+  in the CLI.
+- **`hammer_cli --mcp [--root DIR] [--repo DIR] [--builds DIR]`** serves MCP
+  on stdin/stdout with the same rooted file store and map builder. Stdout
+  holds only replies. A client entry looks like
+  `{"command": "build-r03-tools/hammer/cli/hammer_cli", "args": ["--mcp",
+  "--root", "<map source dir>"]}`. No client configuration is checked in.
+
+**Oracles.**
+
+- **`hammer.adapters.mcp`** (headless, 90 checks, g++ and clang++):
+  - the JSON reader and writer, 13 malformed inputs, and the depth bound at
+    64, 65 and 100,000;
+  - every JSON-RPC error class, with number and string ids echoed verbatim;
+  - version negotiation, and a catalog-to-schema match;
+  - a room authored through tool calls that saves byte-identically to the
+    same room authored by command script;
+  - four faults (malformed, bad argument, degenerate block, unknown tool)
+    that leave `info` unchanged, and undo through the shared history.
+- **`corpus.hammer.mcp`** / baseline **`hammer.mcp`** (21 checks, 0.2 s):
+  - it drives the real `hammer_cli --mcp` process and parses every reply
+    line with Python's `json`;
+  - it authors the UI suite's room and `build_map`s it, and
+    `hammer_ui_test.judge` judges the VMF and the leak-free build (one oracle
+    for "the authored room" across UI and MCP);
+  - the same controls run on the live stream.
+- **Self-tests** (`tools/quality/tests/test_hammer_mcp_check.py`): a fake
+  server with a stdout banner, and one with an unsolicited trailing line,
+  must each fail the check.
+- **Seeded faults:** 13 of 14 adapter mutants are detected. They covered
+  version echo, unknown tool, null and empty-vector arguments, the
+  initialize gate, the `ok` text, a response to a notification, surrogate
+  decoding, control escapes, duplicates, trailing text, the depth
+  off-by-one, and verbatim numbers. The survivor removes the top-level
+  object check. That mutant is equivalent: a batch then fails as a request
+  without a method, with the same -32600.
+- **Found and fixed:** the reader first allowed 65 nested containers.
+
+**Evidence (2026-09-26).**
+
+| Check | Result |
+| --- | --- |
+| Q-EDITOR headless suites, g++ and clang++ | 62 of 62 each |
+| `corpus.hammer.mcp`, `corpus.hammer.loop` | pass (21 and 14 checks) |
+| `baseline.py audit --check hammer.mcp --check hammer.loop --check arch.check --check arch.hammer --strict` | 4 pass, 0 deviations |
+| `archlint check --all --compile-deps build-r03-tools` | pass (27 strict units) |
+| `archlint targets --verify --partial build-r03-tools` | pass (13 targets judged) |
+| `archlint hammer --verify` | pass |
+| stylelint on the changed files | clean |
+| Python self-tests (MCP check, UI oracle, `vmf_map_build`) | pass |
+
+`hammer.loop` ran over its 40 s advisory budget (53 s). Each room boot took
+26 s at load average 9 from other sessions; compile and authoring are
+unchanged.
+
+**Unverified.**
+
+- No MCP client product (such as Claude Code) has been run against the
+  server.
+- The live GTK editor does not yet serve MCP. An agent edits a headless
+  document, not the one on screen.
+
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 
 A research agent assembled this from the Valve Developer Community Source 2

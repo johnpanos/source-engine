@@ -646,8 +646,9 @@ bool RayHitsAabb(
 // the precise face pick: a ray through a non-box brush's AABB corner correctly
 // misses the solid. Falls back to false for a brush with no planes.
 bool RayHitsConvex( const double o[3], const double d[3],
-    const std::vector<mapgeometry::Plane> &planes, double &outEnter )
+    const std::vector<mapgeometry::Plane> &planes, double &outEnter, int *outPlane = nullptr )
 {
+	int enterPlane = -1;
 	if ( planes.empty() )
 	{
 		return false;
@@ -671,7 +672,11 @@ bool RayHitsConvex( const double o[3], const double d[3],
 		const double t = -distO / denom;
 		if ( denom < 0.0 )
 		{
-			tEnter = t > tEnter ? t : tEnter; // crossing inward
+			if ( t > tEnter )
+			{
+				tEnter = t; // crossing inward
+				enterPlane = static_cast<int>( &p - planes.data() );
+			}
 		}
 		else
 		{
@@ -683,13 +688,17 @@ bool RayHitsConvex( const double o[3], const double d[3],
 		}
 	}
 	outEnter = tEnter;
+	if ( outPlane )
+	{
+		*outPlane = enterPlane; // -1 when the origin is already inside
+	}
 	return tExit >= 0.0;
 }
 
 } // namespace
 
-bool EditorController::PickByRay(
-    const mapgeometry::Vec3d &origin, const mapgeometry::Vec3d &dir, bool additive )
+std::optional<EditorController::RayHit> EditorController::Raycast(
+    const mapgeometry::Vec3d &origin, const mapgeometry::Vec3d &dir ) const
 {
 	// Broad phase against the cached AABB, then a precise ray/convex-polytope test
 	// against the brush's real face planes; keep the nearest brush the ray enters
@@ -698,29 +707,51 @@ bool EditorController::PickByRay(
 	// arbitrary convex brushes, not just their bounding box.
 	const double o[3] = { origin.x, origin.y, origin.z };
 	const double d[3] = { dir.x, dir.y, dir.z };
-
-	bool haveHit = false;
-	double bestT = HUGE_VAL;
-	int hitId = 0;
+	std::optional<RayHit> best;
 	for ( const MapBrush &b : m_brushes )
 	{
 		double aabbT = 0.0;
-		if ( !RayHitsAabb( o, d, b.mins, b.maxs, aabbT ) || aabbT >= bestT )
+		if ( !RayHitsAabb( o, d, b.mins, b.maxs, aabbT ) || ( best && aabbT >= best->t ) )
 		{
 			continue;
 		}
 		double solidT = 0.0;
-		if ( !RayHitsConvex( o, d, b.planes, solidT ) )
+		int plane = -1;
+		if ( !RayHitsConvex( o, d, b.planes, solidT, &plane ) || ( best && solidT >= best->t ) )
 		{
 			continue;
 		}
-		if ( solidT < bestT )
-		{
-			bestT = solidT;
-			hitId = b.id;
-			haveHit = true;
-		}
+		RayHit hit;
+		hit.brushId = b.id;
+		hit.t = solidT;
+		hit.point = Vec3d( o[0] + d[0] * solidT, o[1] + d[1] * solidT, o[2] + d[2] * solidT );
+		hit.normal = plane >= 0 ? b.planes[plane].normal : Vec3d( 0, 0, 0 );
+		best = hit;
 	}
+	return best;
+}
+
+std::optional<int> EditorController::PlaceEntityOnSurface(
+    const std::string &classname, const mapgeometry::Vec3d &origin, const mapgeometry::Vec3d &dir )
+{
+	const std::optional<RayHit> hit = Raycast( origin, dir );
+	if ( !hit || ( hit->normal.x == 0.0 && hit->normal.y == 0.0 && hit->normal.z == 0.0 ) )
+	{
+		return std::nullopt; // nothing hit, or the ray starts inside a brush
+	}
+	// One unit off the surface, so a player start stands on the floor it was
+	// dropped on instead of starting inside it.
+	const Vec3d n = hit->normal;
+	return PlaceEntity(
+	    classname, Vec3d( hit->point.x + n.x, hit->point.y + n.y, hit->point.z + n.z ) );
+}
+
+bool EditorController::PickByRay(
+    const mapgeometry::Vec3d &origin, const mapgeometry::Vec3d &dir, bool additive )
+{
+	const std::optional<RayHit> hit = Raycast( origin, dir );
+	const bool haveHit = hit.has_value();
+	const int hitId = hit ? hit->brushId : 0;
 
 	// Selection-only mutation, exactly like a 2D click: no history push.
 	m_dragging = false;
@@ -741,7 +772,16 @@ bool EditorController::MoveSelectionBy( double dx, double dy, double dz )
 	const std::vector<int> ids = Selections();
 	if ( ids.empty() )
 	{
-		return false;
+		// A selected point entity moves by the same delta.
+		MapEntity *entity = m_entitySelection ? FindEntity( *m_entitySelection ) : nullptr;
+		if ( !entity || ( dx == 0.0 && dy == 0.0 && dz == 0.0 ) )
+		{
+			return false;
+		}
+		entity->origin =
+		    Vec3d( entity->origin.x + dx, entity->origin.y + dy, entity->origin.z + dz );
+		PushSnapshot();
+		return true;
 	}
 	// Shift every selected brush rigidly (every face plane and the cached bound by
 	// the same delta), so a non-box brush and the whole multi-selection move as one.
@@ -839,6 +879,123 @@ bool EditorController::SetEntityOrigin( int entityId, const Vec3d &origin )
 	entity->origin = origin;
 	PushSnapshot();
 	return true;
+}
+
+bool EditorController::SelectObjects( const std::vector<int> &ids, SelectMode mode )
+{
+	for ( int id : ids )
+	{
+		if ( !FindBrush( id ) && !FindEntity( id ) )
+		{
+			return false;
+		}
+	}
+	std::vector<int> brushes = mode == SelectMode::Replace ? std::vector<int>{} : Selections();
+	std::optional<int> entity = mode == SelectMode::Replace ? std::nullopt : m_entitySelection;
+	for ( int id : ids )
+	{
+		if ( FindEntity( id ) )
+		{
+			const bool selected = entity == id;
+			if ( mode == SelectMode::Toggle && selected )
+			{
+				entity.reset();
+			}
+			else if ( entity && !selected )
+			{
+				return false; // one selected entity at a time
+			}
+			else
+			{
+				entity = id;
+			}
+			continue;
+		}
+		const auto it = std::find( brushes.begin(), brushes.end(), id );
+		if ( it == brushes.end() )
+		{
+			brushes.push_back( id );
+		}
+		else if ( mode == SelectMode::Toggle )
+		{
+			brushes.erase( it );
+		}
+	}
+	if ( entity && !brushes.empty() )
+	{
+		return false; // a selection is brushes or one entity, as clicks make it
+	}
+	ClearBrushSelection();
+	for ( int id : brushes )
+	{
+		ApplyBrushPick( id, true );
+	}
+	m_entitySelection = entity;
+	return true;
+}
+
+void EditorController::SelectNone()
+{
+	ClearBrushSelection();
+	m_entitySelection.reset();
+}
+
+std::optional<std::vector<int>> EditorController::Hollow( int brushId, double thickness )
+{
+	const MapBrush *brush = FindBrush( brushId );
+	if ( !brush || brush->planes.size() != 6 || thickness <= 0.0 )
+	{
+		return std::nullopt;
+	}
+	for ( const mapgeometry::Plane &p : brush->planes )
+	{
+		const int axes = ( p.normal.x != 0.0 ) + ( p.normal.y != 0.0 ) + ( p.normal.z != 0.0 );
+		if ( axes != 1 )
+		{
+			return std::nullopt; // not an axis-aligned box
+		}
+	}
+	const Vec3d lo = brush->mins;
+	const Vec3d hi = brush->maxs;
+	const double t = thickness;
+	if ( hi.x - lo.x <= 2 * t || hi.y - lo.y <= 2 * t || hi.z - lo.z <= 2 * t )
+	{
+		return std::nullopt;
+	}
+	const std::string material = brush->materials.empty() ? m_defaultMaterial : brush->materials[0];
+	// Floor and ceiling span the whole footprint; the x walls span y; the y walls
+	// fit between the x walls, so no two walls overlap.
+	const std::array<std::pair<Vec3d, Vec3d>, 6> walls = { {
+	    { Vec3d( lo.x, lo.y, lo.z ), Vec3d( hi.x, hi.y, lo.z + t ) },
+	    { Vec3d( lo.x, lo.y, hi.z - t ), Vec3d( hi.x, hi.y, hi.z ) },
+	    { Vec3d( lo.x, lo.y, lo.z + t ), Vec3d( lo.x + t, hi.y, hi.z - t ) },
+	    { Vec3d( hi.x - t, lo.y, lo.z + t ), Vec3d( hi.x, hi.y, hi.z - t ) },
+	    { Vec3d( lo.x + t, lo.y, lo.z + t ), Vec3d( hi.x - t, lo.y + t, hi.z - t ) },
+	    { Vec3d( lo.x + t, hi.y - t, lo.z + t ), Vec3d( hi.x - t, hi.y, hi.z - t ) },
+	} };
+	m_brushes.erase( std::remove_if( m_brushes.begin(), m_brushes.end(),
+	                     [brushId]( const MapBrush &b )
+	                     {
+		                     return b.id == brushId;
+	                     } ),
+	    m_brushes.end() );
+	ClearBrushSelection();
+	m_entitySelection.reset();
+	std::vector<int> ids;
+	for ( const auto &[mins, maxs] : walls )
+	{
+		MapBrush wall;
+		wall.id = m_nextId++;
+		wall.planes = AabbToPlanes( mins, maxs );
+		wall.materials.assign( wall.planes.size(), material );
+		wall.mins = mins;
+		wall.maxs = maxs;
+		m_brushes.push_back( wall );
+		ApplyBrushPick( wall.id, true );
+		ids.push_back( wall.id );
+	}
+	PushSnapshot();
+	return ids;
 }
 
 bool EditorController::SetWorldProperty( const std::string &key, const std::string &value )

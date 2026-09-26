@@ -143,6 +143,114 @@ int main()
 		}
 	}
 
+	// The Source 2 way: one block, hollowed into a sealed room; select, move,
+	// describe; the selection rule is brushes or one entity.
+	{
+		EditorController controller;
+		InMemoryFileStore store;
+		EditorCommands commands( controller, store );
+		auto run = [&]( const char *name, hammer::app::CommandArgs args )
+		{
+			return commands.Execute( name, args );
+		};
+		check( run( "new_map", {} ).HasValue() );
+		auto block =
+		    run( "create_block", { { "mins", "-144 -144 -16" }, { "maxs", "144 144 144" } } );
+		check( block.HasValue() && block.Value() == "1" );
+		auto walls = run( "hollow", { { "id", "1" }, { "thickness", "16" } } );
+		check( walls.HasValue() && walls.Value() == "2,3,4,5,6,7" );
+		check( controller.Brushes().size() == 6 && controller.SelectionCount() == 6 );
+		check(
+		    run( "describe", { { "id", "2" } } ).Value() ==
+		    "brush mins=\"-144 -144 -16\" maxs=\"144 144 0\" material=DEV/DEV_MEASUREGENERIC01B" );
+		check( !run( "hollow", { { "id", "2" }, { "thickness", "16" } } ).HasValue() ); // too thin
+		check( !run( "hollow", { { "id", "99" }, { "thickness", "16" } } ).HasValue() );
+		check( run( "undo", {} ).HasValue() && controller.Brushes().size() == 1 ); // one unit
+		check( run( "redo", {} ).HasValue() && controller.Brushes().size() == 6 );
+
+		auto start =
+		    run( "place_entity", { { "classname", "info_player_start" }, { "origin", "0 0 1" } } );
+		check( start.HasValue() && start.Value() == "8" );
+		check( !run( "select", { { "ids", "2,8" } } ).HasValue() ); // brushes + entity
+		check( !run( "select", { { "ids", "2,x" } } ).HasValue() );
+		check( !run( "select", { { "ids", "2" }, { "mode", "sideways" } } ).HasValue() );
+		check(
+		    run( "select", { { "ids", "2,3" } } ).HasValue() && controller.SelectionCount() == 2 );
+		check( run( "select", { { "ids", "3" }, { "mode", "toggle" } } ).HasValue() &&
+		       controller.SelectionCount() == 1 );
+		check( run( "select", { { "ids", "4" }, { "mode", "add" } } ).HasValue() &&
+		       controller.SelectionCount() == 2 );
+		check( run( "select", { { "ids", "8" } } ).HasValue() && controller.SelectedEntity() == 8 &&
+		       controller.SelectionCount() == 0 );
+		check( run( "move_selection", { { "delta", "16 0 0" } } ).HasValue() );
+		check( run( "describe", { { "id", "8" } } ).Value() ==
+		       "entity classname=info_player_start origin=\"16 0 1\"" );
+		check( !run( "move_selection", { { "delta", "0 0 0" } } ).HasValue() );
+		check( run( "select_none", {} ).HasValue() && !controller.SelectedEntity() );
+		check( !run( "move_selection", { { "delta", "1 0 0" } } ).HasValue() );
+		check( !run( "describe", { { "id", "99" } } ).HasValue() );
+		// Source 2's Entity tool: click the floor in 3D (a downward ray from
+		// inside the hollowed room) and the entity stands one unit above it.
+		auto hit = run( "raycast", { { "origin", "0 0 100" }, { "dir", "0 0 -1" } } );
+		check( hit.HasValue() && hit.Value() == "id=2 point=\"0 0 0\" normal=\"0 0 1\"" );
+		auto light = run( "place_on_surface",
+		    { { "classname", "light" }, { "origin", "0 0 100" }, { "dir", "0 0 -1" } } );
+		check( light.HasValue() && light.Value() == "9" );
+		check( run( "describe", { { "id", "9" } } ).Value() ==
+		       "entity classname=light origin=\"0 0 1\"" );
+		check( !run( "place_on_surface",
+		    { { "classname", "light" }, { "origin", "0 0 500" }, { "dir", "0 0 1" } } )
+		        .HasValue() );
+		// A ray starting inside the floor brush hits it with a zero normal, and
+		// nothing can be placed on it.
+		auto inside = run( "raycast", { { "origin", "0 0 -8" }, { "dir", "0 0 -1" } } );
+		check(
+		    inside.HasValue() && inside.Value().find( "normal=\"0 0 0\"" ) != std::string::npos );
+		check( !run( "place_on_surface",
+		    { { "classname", "light" }, { "origin", "0 0 -8" }, { "dir", "0 0 -1" } } )
+		        .HasValue() );
+	}
+
+	// build_map saves exactly the document, then asks the injected builder.
+	{
+		struct FakeBuilder final : hammer::ports::IMapBuilder
+		{
+			std::vector<hammer::ports::MapBuildRequest> requests;
+			hammer::ports::MapBuildResult next{ true, "pass", "" };
+			hammer::ports::MapBuildResult Build( const hammer::ports::MapBuildRequest &r ) override
+			{
+				requests.push_back( r );
+				return next;
+			}
+		};
+		EditorController controller;
+		InMemoryFileStore store;
+		FakeBuilder builder;
+		EditorCommands none( controller, store );
+		EditorCommands commands( controller, store, &builder );
+		controller.NewMap();
+		check( commands.Execute( "create_block", { { "mins", "0 0 0" }, { "maxs", "64 64 64" } } )
+		        .HasValue() );
+		auto missing = none.Execute( "build_map", { { "path", "a.vmf" } } );
+		check( !missing && missing.Error().status == CommandStatus::Rejected );
+		auto built =
+		    commands.Execute( "build_map", { { "path", "maps/a.vmf" }, { "publish", "1" } } );
+		check( built.HasValue() && built.Value() == "pass" && !controller.IsModified() );
+		check( builder.requests.size() == 1 && builder.requests[0].vmfPath == "maps/a.vmf" &&
+		       builder.requests[0].publish && !builder.requests[0].fullQuality );
+		check( store.files["maps/a.vmf"] == controller.ToVmf() );
+		check( !commands.Execute( "build_map", { { "path", "a.vmf" }, { "quality", "slow" } } )
+		        .HasValue() );
+		check( builder.requests.size() == 1 ); // rejected before saving or building
+		builder.next = { false, "leak", "map leaks near 0 0 0" };
+		auto leak = commands.Execute( "build_map", { { "path", "a.vmf" }, { "quality", "full" } } );
+		check( !leak && leak.Error().detail == "leak: map leaks near 0 0 0" );
+		check( builder.requests.size() == 2 && builder.requests[1].fullQuality );
+		store.failAllWrites = true;
+		check( !commands.Execute( "build_map", { { "path", "b.vmf" } } ).HasValue() );
+		check( builder.requests.size() == 2 ); // an unsaved map is not built
+	}
+
 	// Script syntax errors carry their line.
 	{
 		auto unterminated = hammer::app::ParseCommandScript( "new_map\nsave path=\"a.vmf\n" );

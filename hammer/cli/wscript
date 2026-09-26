@@ -23,7 +23,7 @@ def build(bld):
 		features  = 'cxx cxxprogram',
 		includes  = [ '../../public', '../..' ],
 		defines   = [],
-		use       = [ 'hammer_app', 'hammer_platform', 'vmf', 'kvtext', 'mapgeometry' ],
+		use       = [ 'hammer_mcp', 'hammer_app', 'hammer_platform', 'platform_posix', 'vmf', 'kvtext', 'mapgeometry' ],
 		install_path = None,
 		subsystem = 'CONSOLE',
 		idx       = bld.get_taskgen_count()

@@ -54,6 +54,7 @@ private:
 	void PlaceUIScaleControls();
 	void SelectUIScaleItem( float flScale );
 	float GetSelectedUIScale();
+	void PlaceFrameRateControls();
 
 	bool		BUseHDContent();
 	void		SetUseHDContent( bool bUse );
@@ -68,6 +69,10 @@ private:
 	vgui::ComboBox		*m_pVRMode;
 	vgui::ComboBox *m_pUIScale;
 	vgui::Label *m_pUIScaleLabel;
+	// Displays above 60 Hz (ProMotion): the full rate or half of it
+	// (mat_powersavingsmode). Hidden elsewhere.
+	vgui::ComboBox *m_pFrameRate;
+	vgui::Label *m_pFrameRateLabel;
 	vgui::Button		*m_pGammaButton;
 	vgui::Button		*m_pAdvanced;
 	vgui::Button		*m_pBenchmark;

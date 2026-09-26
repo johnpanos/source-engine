@@ -33,6 +33,10 @@ ROOT=$(cd "$(dirname "$0")" && pwd)
 PROFILE_JSON=$ROOT/quality/product_profiles/portal-ios-native-vulkan.json
 HOST=${MACVM_HOST:-macvm}
 BUNDLE_ID=${BUNDLE_ID:-$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["ios"]["bundle_id"])' "$PROFILE_JSON")}
+# Entitlements the product asks for when its provisioning profile grants them
+# (the capability is enabled for the App ID in Xcode); signing never fails
+# for one the profile lacks.
+OPTIONAL_ENTITLEMENTS=$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["ios"].get("optional_entitlements", [])))' "$PROFILE_JSON")
 TEAM=${TEAM_ID:-25GCRLE3DX}
 KEYCHAIN_PW=${MACVM_KEYCHAIN_PW:-john}
 DEVICE=""
@@ -82,9 +86,9 @@ if [ "$MODE" != sign ]; then
 fi
 
 # ssh joins its arguments into one command string, so quote them (keeps an empty DEVICE).
-ssh "$HOST" "bash -s -- $(printf '%q ' "$NAME" "$BUNDLE_ID" "$TEAM" "$KEYCHAIN_PW" "$MODE" "$DEVICE" "$CONTENT_NAMES" "$PLATFORM")" <<'REMOTE'
+ssh "$HOST" "bash -s -- $(printf '%q ' "$NAME" "$BUNDLE_ID" "$TEAM" "$KEYCHAIN_PW" "$MODE" "$DEVICE" "$CONTENT_NAMES" "$PLATFORM" "$OPTIONAL_ENTITLEMENTS")" <<'REMOTE'
 set -euo pipefail
-NAME=$1 BUNDLE_ID=$2 TEAM=$3 KEYCHAIN_PW=$4 MODE=$5 DEVICE=$6 CONTENT_NAMES=$7 PLATFORM=$8
+NAME=$1 BUNDLE_ID=$2 TEAM=$3 KEYCHAIN_PW=$4 MODE=$5 DEVICE=$6 CONTENT_NAMES=$7 PLATFORM=$8 OPTIONAL_ENTITLEMENTS=${9:-}
 APP=$HOME/deploy/$NAME
 PROFDIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
@@ -141,6 +145,14 @@ cat > "$TMP/ent.plist" <<EOF
   <key>keychain-access-groups</key><array><string>$TEAM.$BUNDLE_ID</string></array>
 </dict></plist>
 EOF
+for key in $OPTIONAL_ENTITLEMENTS; do
+  if plutil -extract "Entitlements.$key" raw -o - "$TMP/p.plist" >/dev/null 2>&1; then
+    plutil -insert "$key" -bool YES "$TMP/ent.plist"
+    echo "    entitlement $key (granted by the profile)"
+  else
+    echo "    entitlement $key not in the profile: enable the capability for $BUNDLE_ID in Xcode to get it"
+  fi
+done
 
 echo "==> Signing $NAME as $BUNDLE_ID"
 plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$APP/Info.plist"

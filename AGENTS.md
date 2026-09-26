@@ -382,7 +382,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | done (2026-09-25: `Expected`, compact errors (`foundation::Error`), `StrongId`, `ScopedResource`, `testing::Checks` and `units`, each with a suite, sensitivity rows and a real consumer; CAP010 keeps them out of preserved ABI headers; hosted CI not run; [closure](RFC/0006-progress.md#r05-closure-done-2026-09-25)) |
 | 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | done (2026-09-25: typed-descriptor unit runner, required/optional validation, rollback at every stage, repeat instances, ordering, legacy bridges and negative providers; fresh Q-FOUNDATION run on g++ and clang++; native providers and hosted CI not claimed; [conformance record](RFC/0001-conformance-progress.md)) |
 | 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | done (2026-09-25: POSIX loader provider with a required load-site observer, scoped `LoadedLibrary`, provider events on the Tier 0 stream, fake and native suites, and legacy telemetry and frozen-ABI cases on gcc and clang; `Sys_*` stay the frozen instrumented bridge and retire with R39/R41 (RFC 0001 step-6 decision); Win32 and hosted CI not claimed; [closure](RFC/0001-phase-a-progress.md#r07-closure-done-2026-09-25)) |
-| 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active (map-building-loop slices done 2026-09-25/26: R08-CMD command layer, R08-LIBS layered format libraries, R08-LOOP Waf-built headless `hammer_cli` with the `corpus.hammer.loop` author → compile → boot suite, R08-UI-P1 Source 2 P1 commands and GTK wiring, R08-UI-TEST the `corpus.hammer.ui` suite that drives the real GTK editor in an isolated compositor; open for `done`: exhaustive ownership/caller inventory (46 of 530 files classified), complete migration records, legacy build evidence; [record](RFC/0002-progress.md#map-building-loop-direction-and-r08-cmd-2026-09-25)) |
+| 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active (map-building-loop slices done 2026-09-25/26: R08-CMD command layer, R08-LIBS layered format libraries, R08-LOOP Waf-built headless `hammer_cli` with the `corpus.hammer.loop` author → compile → boot suite, R08-UI-P1 Source 2 P1 commands and GTK wiring, R08-UI-TEST the `corpus.hammer.ui` suite that drives the real GTK editor in an isolated compositor, R08-MCP the command catalog as MCP tools (`hammer_cli --mcp`); open for `done`: exhaustive ownership/caller inventory (46 of 530 files classified), complete migration records, legacy build evidence; [record](RFC/0002-progress.md#map-building-loop-direction-and-r08-cmd-2026-09-25)) |
 | 9 / R09 | Physics A feasibility and IVP baseline; 0004, Q-PHYSICS | R01, R02, R05 | Method/profile inventory, units/assets and measurements; tested solution or explicit scope decision for impact state, contact mutation, ragdoll limits and hull/decoder blockers | partial ([0004 progress](RFC/0004-progress.md)) |
 | 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active ([0003 progress](RFC/0003-progress.md); [host graph](RFC/0003-scheduler-trust-progress.md); [render nodes](RFC/0003-scheduler-nodes-progress.md)) |
 | 11 / R11 | Paths and module resolution; 0001 rank 5 | R05, R07 | Native/virtual paths distinct; resolution/verification separate from opening; encoding/search/failure corpus passes | planned |
@@ -746,10 +746,42 @@ Keep the table concise and link details below or from the domain progress file.
       - no map had HDR lighting;
       - the compile tools failed on uppercase paths;
       - the GTK sample room leaked.
-    - Next: the GTK UI routed through the commands, with a UI-driven test
-      and Source 2-informed ergonomics.
+  - R08-UI-P1 (2026-09-26):
+    - Source 2 P1 commands: `select`, `move_selection`, `hollow`, `describe`,
+      `raycast`, `place_on_surface`, `build_map`, the last over a
+      `hammer.ports` map-builder port and the platform tool-process
+      provider.
+    - The GTK shell runs Open, Save, hollow and build through the commands,
+      with Shift+B/E/S tools, F for a room, a 3D surface-click Entity tool
+      with a class palette, F9 build and Shift+F9 build and run.
+  - R08-UI-TEST (2026-09-26): `corpus.hammer.ui` / `hammer.ui` builds
+    `hammer_gtk` and drives it in a private headless mutter session.
+    - Widgets are found by accessible name over AT-SPI. Pointer and keys go
+      through the compositor's RemoteDesktop input, and view positions come
+      from the status-bar coordinates.
+    - The user steps: grid `[ [`, a block dragged in the top view, Return,
+      F, then a player start and a light clicked into the front view, then
+      F9.
+    - The oracle judges the saved VMF (six walls, both entities inside) and
+      a leak-free build record. The `no-hollow` and `no-light` controls are
+      rejected.
+    - Evidence: 12 checks in 53 s, and 3 of 3 repeats pass.
+    - Not covered: a CI lane, the Wayland backend and 3D-view placement.
+  - R08-MCP (2026-09-26): `hammer.adapters.mcp` serves the command catalog
+    as MCP tools over newline JSON-RPC (`hammer_cli --mcp`). Each tool call
+    is one `EditorCommands::Execute`, so agents share the one document
+    authority and undo history.
+    - `hammer.adapters.mcp` (90 checks on both compilers): a room authored
+      by tool calls saves byte-identically to the scripted room.
+    - `corpus.hammer.mcp` / `hammer.mcp` (21 checks): drives the real
+      process, parses replies with Python's `json`, and builds the room,
+      judged by the UI suite's oracle.
+    - 13 of 14 seeded faults are detected; the survivor is equivalent.
+    - Not done: the live GTK editor serving MCP, and a run with a real MCP
+      client.
   - The ledger has 28 migrations, 11 of them extracted format cores.
-    Inventory coverage is 46 of 530 files. There are 60 Q-EDITOR suites.
+    Inventory coverage is 46 of 530 files. There are 65 Q-EDITOR suites
+    (62 headless and three corpus suites).
   - `archlint hammer --verify` passes again (2026-09-25, user decision): the
     validator accepts Hammer edges to registered capability modules, such as
     the R47 schema's `hammer.formats` → `render.contracts`.

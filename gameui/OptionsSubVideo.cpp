@@ -1146,6 +1146,28 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 	    "Size of menus, the console and HUD icons. Automatic follows the display's scaling." );
 	for ( int i = 0; i < ARRAYSIZE( s_UIScaleChoices ); ++i )
 		AddUIScaleItem( m_pUIScale, s_UIScaleChoices[i] );
+	m_pFrameRate = new ComboBox( this, "FrameRate", 2, false );
+	m_pFrameRateLabel = new Label( this, "FrameRateLabel", "Frame rate" );
+	m_pFrameRateLabel->SetAssociatedControl( m_pFrameRate );
+	{
+		// The display's refresh rate: 120 Hz on a ProMotion iPhone or iPad.
+		MaterialVideoMode_t mode;
+		materials->GetDisplayMode( mode );
+		const int nRefresh = mode.m_RefreshRate;
+		const bool bHighRefresh = nRefresh > 60;
+		if ( bHighRefresh )
+		{
+			char szText[64];
+			Q_snprintf( szText, sizeof( szText ), "%d Hz", nRefresh );
+			m_pFrameRate->AddItem( szText, NULL );
+			Q_snprintf( szText, sizeof( szText ), "%d Hz (saves battery)", MAX( 30, ( nRefresh + 1 ) >> 1 ) );
+			m_pFrameRate->AddItem( szText, NULL );
+			m_pFrameRate->GetTooltip()->SetText(
+			    "The display's full refresh rate, or half of it to use less power and heat." );
+		}
+		m_pFrameRate->SetVisible( bHighRefresh );
+		m_pFrameRateLabel->SetVisible( bHighRefresh );
+	}
 	m_pAdvanced = new Button( this, "AdvancedButton", "#GameUI_AdvancedEllipsis" );
 	m_pAdvanced->SetCommand(new KeyValues("OpenAdvanced"));
 	m_pBenchmark = new Button( this, "BenchmarkButton", "#GameUI_LaunchBenchmark" );
@@ -1245,6 +1267,7 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 
 	LoadControlSettings("Resource\\OptionsSubVideo.res");
 	PlaceUIScaleControls();
+	PlaceFrameRateControls();
 
 	// Moved down here so we can set the Drop down's
 	// menu state after the default (disabled) value is loaded
@@ -1539,6 +1562,11 @@ void COptionsSubVideo::OnResetData()
 
 	static ConVarRef ui_scale( "ui_scale" );
 	SelectUIScaleItem( ui_scale.IsValid() ? ui_scale.GetFloat() : 0.0f );
+
+	static ConVarRef mat_powersavingsmode( "mat_powersavingsmode" );
+	if ( m_pFrameRate->GetItemCount() == 2 )
+		m_pFrameRate->SilentActivateItemByRow(
+		    mat_powersavingsmode.IsValid() && mat_powersavingsmode.GetBool() ? 1 : 0 );
 }
 
 //-----------------------------------------------------------------------------
@@ -1572,6 +1600,24 @@ void COptionsSubVideo::PlaceUIScaleControls()
 	m_pUIScaleLabel->SetPinCorner( PIN_TOPLEFT, nColumnX, nBottom + 20 );
 	m_pUIScale->SetBounds( nColumnX, nBottom + 46, nColumnWide, nColumnTall );
 	m_pUIScale->SetPinCorner( PIN_TOPLEFT, nColumnX, nBottom + 46 );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Unless the layout places it, the frame rate goes below the UI scale.
+//-----------------------------------------------------------------------------
+void COptionsSubVideo::PlaceFrameRateControls()
+{
+	int x, y;
+	m_pFrameRate->GetPos( x, y );
+	if ( x != 0 || y != 0 )
+		return;
+	int nScaleX, nScaleY, nScaleWide, nScaleTall;
+	m_pUIScale->GetBounds( nScaleX, nScaleY, nScaleWide, nScaleTall );
+	const int nLabelY = nScaleY + nScaleTall + 20;
+	m_pFrameRateLabel->SetBounds( nScaleX, nLabelY, nScaleWide, nScaleTall );
+	m_pFrameRateLabel->SetPinCorner( PIN_TOPLEFT, nScaleX, nLabelY );
+	m_pFrameRate->SetBounds( nScaleX, nLabelY + 26, nScaleWide, nScaleTall );
+	m_pFrameRate->SetPinCorner( PIN_TOPLEFT, nScaleX, nLabelY + 26 );
 }
 
 //-----------------------------------------------------------------------------
@@ -1783,6 +1829,15 @@ void COptionsSubVideo::OnApplyChanges()
 	const float flUIScale = GetSelectedUIScale();
 	if ( ui_scale.IsValid() && ui_scale.GetFloat() != flUIScale )
 		ui_scale.SetValue( flUIScale );
+
+	// Half the display's rate caps fps_max there (engine/sys_engine.cpp).
+	static ConVarRef mat_powersavingsmode( "mat_powersavingsmode" );
+	if ( m_pFrameRate->GetItemCount() == 2 && mat_powersavingsmode.IsValid() )
+	{
+		const bool bPowerSaving = m_pFrameRate->GetActiveItem() == 1;
+		if ( mat_powersavingsmode.GetBool() != bPowerSaving )
+			mat_powersavingsmode.SetValue( bPowerSaving ? 1 : 0 );
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -1832,7 +1887,7 @@ void COptionsSubVideo::OnTextChanged(Panel *pPanel, const char *pszText)
 		PrepareResolutionList();
 		OnDataChanged();
 	}
-	else if ( pPanel == m_pUIScale )
+	else if ( pPanel == m_pUIScale || pPanel == m_pFrameRate )
 	{
 		OnDataChanged();
 	}

@@ -1484,7 +1484,18 @@
         "strict": false,
         "owns": "Files, settings, processes, clocks, watchers, scheduling",
         "allowedEdges": [
-          "hammer.ports"
+          "hammer.ports",
+          "platform.contracts"
+        ]
+      },
+      {
+        "id": "hammer.adapters.mcp",
+        "strict": false,
+        "owns": "Model Context Protocol server: the command catalog as MCP tools over JSON-RPC",
+        "allowedEdges": [
+          "hammer.app",
+          "hammer.ports",
+          "foundation"
         ]
       },
       {
@@ -1545,12 +1556,14 @@
           "hammer.presenters",
           "hammer.adapters.source",
           "hammer.adapters.platform",
+          "hammer.adapters.mcp",
           "hammer.adapters.mfc",
           "hammer.adapters.gtk",
           "hammer.interop.gtk_source",
           "content.keyvalues-text",
           "content.vmf",
-          "content.hammer-ktx2-preview"
+          "content.hammer-ktx2-preview",
+          "platform.posix"
         ]
       }
     ],
