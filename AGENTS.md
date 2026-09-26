@@ -426,7 +426,7 @@ marks no implementation gate done.
 | 47 / R59 | USD-native map schema and compiler; 0009 U0–U2 | R05, R48, R53, R54 | A hand-authored USD room compiles without VMF or prior BSP and runs in client/server; world, static, dynamic and physics roles validate distinctly; collision/visibility and negative fixtures pass | active (U0 authoring profile, fixture room and validator; U1 first slice: the U0 room compiles to BSP2 without VMF or a prior BSP and boots in dedicated, client and headless native Vulkan; U2 slice: static, dynamic and physics props, a trigger with I/O and a `func_movelinear` compile to their own contracts and behave at runtime headless, 2026-09-25; [RFC 0009 progress](RFC/0009-progress.md#u2-prop-role-cohorts-and-geometric-entities-slice-done-2026-09-25)) |
 | 48 / R60 | USD-native editor workflow and VMF migration; 0009 U3–U4 | R13, R25, R57, R59 | USD owns save/reopen/history and compile; role-aware block/mesh/prop editing, material/light viewport, object-linked diagnostics, edit-to-preview budgets, two-document workflow, external edit, import loss reports and installed product gates pass | planned ([RFC 0009](RFC/0009-usd-native-map-authoring.md)) |
 | 49 / R83 | Runtime asset index and resolver; 0015 C5 | R81 | Packages mount their index; `CTexture` selects VTF/KTX2 variants through it; missing references name their referrer; closure prefetch matches serial load; dedicated server links no render dependency | planned ([RFC 0015](RFC/0015-asset-identity-content-build-graph.md)) |
-| 50 / R82 | Legacy compiler adoption; 0015 C3 | R03, R81 | `studiomdl`, `captioncompiler` and the scenes-image builder build under Waf; nav generation and `sound.cache` are graph nodes; each kind's output matches its legacy corpus and loads in client and dedicated products | planned ([RFC 0015](RFC/0015-asset-identity-content-build-graph.md)) |
+| 50 / R82 | Legacy compiler adoption; 0015 C3 | R03, R81 | `studiomdl` and `captioncompiler` build under Waf; a `scene.image` compiler drives the `scenes.image` writer extracted into `content.scene-image`; nav generation and `sound.cache` are graph nodes; each kind's output matches its legacy corpus and loads in client and dedicated products | planned ([RFC 0015](RFC/0015-asset-identity-content-build-graph.md)) |
 | 51 / R61 | Modern map spatial/gameplay data; 0008 F8 | R31, R53, R59 | Versioned USD-native geometry/collision/visibility payload passes client/server semantic and malformed-input suites; legacy BSP bytes and behavior remain compatible | planned ([RFC 0008](RFC/0008-canonical-world-data-and-runtime-formats.md)) |
 | 52 / R62 | Modern model asset path; 0008 F9 | R47, R55, R59, R81 | Authored/compiled model assets serve static, dynamic and physics roles with materials, LOD, collision and required animation; MDL corpus and lifecycle gates pass | planned ([RFC 0008](RFC/0008-canonical-world-data-and-runtime-formats.md)) |
 | 53 / R63 | Modern visual parity and geometry scalability; 0008 F10 | R47, R50, R56, R61, R62 | Representative USD maps pass registered material, reflection, transparency, shadow, lighting and dense-geometry oracles; real-time GI and geometry-scaling methods meet per-profile image, frame-time and memory budgets | planned ([RFC 0008](RFC/0008-canonical-world-data-and-runtime-formats.md)) |
@@ -701,8 +701,8 @@ Keep the table concise and link details below or from the domain progress file.
 - R81–R85 (RFC 0015): added 2026-09-26 as `planned`. The user asked for the
   RFC after a review of the gap to a Source 2 content pipeline.
   - Why: RFC 0008's ledger was map-only. No asset kind had an identity, a
-    reference record, a package or live reload. `studiomdl`,
-    `captioncompiler` and the scenes-image builder don't build, and
+    reference record, a package or live reload. `studiomdl` and
+    `captioncompiler` don't build, `scenes.image` has no driver, and
     `CTexture` can't select KTX2.
   - Scope: one `AssetRef` and one content build graph for every kind.
     Legacy formats pass through byte-identically. Packages carry an asset
@@ -718,6 +718,13 @@ Keep the table concise and link details below or from the domain progress file.
   - Added prerequisites: R58 → R84, R60 → R57, R62 → R81, R64 → R85.
   - Nothing is implemented, and no other row changes state. R81 is
     dependency-ready.
+  - The RFC's six open decisions were answered on 2026-09-26 at the user's
+    direction ("what will pay off in the long term"): block-container
+    archives for packages, with VPK read-only for base content;
+    ASCII-lowercase identity plus a portable set for new names;
+    garbage collection from kept versions and leases; a dedicated reload
+    endpoint; eager hashing of base archives; and a `content.scene-image`
+    library.
 - R61–R64 (RFC 0008 F8–F11): added 2026-09-23 as `planned` for versioned native
   map spatial data, a modern model asset path, visual parity and geometry
   scalability, and direct USD development-runtime iteration. They extend the

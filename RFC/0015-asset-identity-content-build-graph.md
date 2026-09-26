@@ -1,6 +1,8 @@
 # RFC 0015: Asset Identity, Content Build Graph, Packages and Live Reload
 
-- Status: Proposed (2026-09-26); no implementation gate complete
+- Status: Proposed (2026-09-26); no implementation gate complete. Open
+  decisions 1–6 were answered on 2026-09-26 at the user's direction (see
+  [Decisions](#decisions-2026-09-26))
 - Date: 2026-09-26
 - Scope: How every kind of game content is named, compiled, recorded,
   packaged, resolved at runtime and reloaded during development. This
@@ -135,7 +137,9 @@ here was measured for this RFC.
   `vbsp2`, `bsp2tool` and `rtrntool`.
   - `utils/studiomdl`, `utils/captioncompiler`, `pcffix`, `dmxconvert` and
     `utils/scenemanager` have no wscript.
-  - The scenes-image builder lives inside `utils/itemtest_lib`.
+  - The `scenes.image` writer (`game/shared/sceneimage.cpp`) builds inside
+    `choreoobjects`. Its `makescenesimage` driver, which
+    `utils/itemtest_lib` launches, isn't in the tree.
   - Nav meshes are generated only in-game (`nav_generate`).
   - No new model can be compiled on Linux.
 - **No job system in content tools.** None of them uses `public/jobsystem`.
@@ -223,7 +227,9 @@ string game code and content already use:
 - **Normalization.** Names are UTF-8 with `/` separators and no `.`, `..`,
   empty or absolute components. They are lowercased with ASCII rules. Two
   sources that normalize to the same `AssetRef` are a build error; neither
-  wins by search order. Material-relative references in a VMT, such as
+  wins by search order. Names compiled from new sources must also use the
+  portable character set in [decision 2](#2-names-ascii-lowercase-identity-and-a-portable-set-for-new-content).
+  Material-relative references in a VMT, such as
   `$basetexture brick/wall`, gain their `materials/` prefix in the
   material compiler, not in each consumer.
 - **Hash.** `AssetNameHash` is 64 bits of BLAKE2b over the kind and the
@@ -389,7 +395,7 @@ graph at the cheapest level that gives closure and references:
 | `texture` | Legacy VTF through `vtex`; KTX2 variants through the RFC 0008 encoder and transcoder, chosen by the profile's texture pipeline | `texture.vtex`, `texture.ktx2` (wraps `ktx2_pack.py`), `texture.passthrough` |
 | `particle-file` | Passthrough with reference extraction (materials, child systems, models) | `particle.passthrough` (binary DMX read through `dmxloader`) |
 | `soundscript`, `sound` | Passthrough; the soundscript compiler records wave references. A package-time `sound.cache` node replaces the runtime rebuild in C4 | `soundscript.passthrough`, `sound.passthrough` |
-| `scene` | Build `scenes.image` as an aggregate node from VCDs, with the builder moved out of `itemtest_lib` into its own tool | `scene.image` |
+| `scene` | Build `scenes.image` as an aggregate node from VCDs, using the writer extracted into `content.scene-image` (decision 6) | `scene.image` |
 | `caption` | Port `captioncompiler` to Waf | `caption.compile` |
 | `nav` | An optional node per game that runs the headless dedicated server's `nav_generate` against the compiled map; shipped `.nav` files pass through | `nav.generate`, `nav.passthrough` |
 | `map` | Existing compilers become node sequences (see above); shipped BSPs pass through | per the RFC 0008 ledger |
@@ -428,8 +434,10 @@ closure checks, so no gate that requires closure can pass with it.
   replaces `adb push` and `ios-deploy --with-content` as the release path.
   Those commands remain development shortcuts.
 
-Open decision 1 records the package's on-disk form (directory plus VPK
-versus a block-container archive).
+[Decision 1](#1-package-form-block-container-archives-vpk-stays-read-only)
+fixes the on-disk forms: an archive for published packages and a loose
+directory for development overlays. [Decision 3](#3-retention-the-store-is-a-cache-roots-one-rollback-and-leases)
+fixes retention and garbage collection.
 
 ## Runtime resolution (`content.asset-resolver.v1`)
 
@@ -464,9 +472,9 @@ versus a block-container archive).
   2. Changed outputs publish to an overlay package mounted above the
      base.
   3. A change notice `{revision, [(AssetRef, old hash, new hash)]}` goes
-     to the running game over a local channel owned by the development
-     composition. Hammer's play-in-editor child process uses the same
-     channel.
+     to each subscribed game over the watcher's endpoint
+     ([decision 4](#4-reload-channel-a-dedicated-endpoint-owned-by-the-watcher)).
+     Hammer's play-in-editor child subscribes like any other game.
 - **Reloaders.** The owning subsystem registers a reloader per kind: the
   material system for materials and textures, `mdlcache` for models, the
   particle manager, and the sound emitter. A reloader runs at a frame
@@ -512,9 +520,12 @@ reproduction commands) and the AGENTS.md reporting rules.
   block container extracted from `mapcontainer/` (BSP2 bytes unchanged),
   the index writer and reader, and the independent Python reader.
 - Add passthrough reference extraction for MDL, VMT, PCF and soundscripts.
+- Build the eagerly hashed base-package indexes (decision 5) and run the
+  case-fold scan (decision 2).
 - Gate:
-  - An index of the Portal and HL2 base VPKs, plus a closure report for
-    each Portal map.
+  - Base-package indexes of the Portal and HL2 VPKs, with their one-time
+    hashing cost recorded, plus a closure report for each Portal map.
+  - Every case-fold collision found by the scan has a reviewed redirect.
   - The BSP2 corpus stays byte-identical after the container extraction.
   - Negative fixtures: a dangling reference, a case-fold collision, a
     hash collision (forced by a test hash), an unknown kind, a truncated
@@ -558,8 +569,8 @@ reproduction commands) and the AGENTS.md reporting rules.
 ### C3: Legacy compiler adoption
 
 - One child per kind: `studiomdl` on Waf; `captioncompiler` on Waf; the
-  scenes-image builder as its own tool; the `nav.generate` node; the
-  `sound.cache` package node.
+  `content.scene-image` library and the `scene.image` compiler; the
+  `nav.generate` node; the `sound.cache` package node.
 - Gate, per kind:
   - The tool's outputs are byte-identical to the shipped or legacy-built
     file for a versioned source corpus, or the difference is explained
@@ -637,7 +648,8 @@ instruction, 2026-09-26: rows are added as `planned`.
 | Statistical compilers break the incremental-equals-clean oracle | Determinism is declared per compiler; statistical outputs use their domain tolerance, and seeded exact modes are preferred |
 | Name normalization changes behavior for mixed-case legacy content | The C0 corpus scan lists every case-fold collision before normalization is enforced; collisions are resolved as reviewed decisions |
 | Live reload leaves stale state | The reload-equals-cold-start oracle, kinds that aren't safe declare `restart-required`, and no reload channel in installed products |
-| The package format is chosen too early | Directory plus VPK first (existing mount and reader); a block-container archive only after load-cost evidence (open decision 1) |
+| The archive reader is slower than `CPackedStore` | C4 measures load time and memory against VPK on desktop and the Fold7, and a regression blocks the gate until the reader is fixed (decision 1) |
+| The store grows without bound, or GC deletes live data | Mark and sweep from kept versions, leases for running sessions, and a size budget (decision 3) |
 
 ## Alternatives considered
 
@@ -678,22 +690,187 @@ A wrapper would change bytes that legacy loaders, tools and old engines
 read, and it adds nothing the index can't record beside the file.
 Rejected.
 
-## Open decisions and required evidence
+## Decisions (2026-09-26)
 
-1. The package's on-disk form: directory plus VPK v2 (mounted by the
-   existing `CPackedStore`) or a block-container archive with aligned,
-   memory-mappable entries. The evidence is load cost and memory on the
-   corpus, plus mobile platform-container limits.
-2. The name case rule, confirmed by C0's case-fold collision scan of the
-   base VPKs and the fixtures.
-3. Store retention and garbage collection: how many package versions are
-   kept, and when store entries are removed.
-4. The live-reload channel transport: a Unix socket owned by the
-   development composition, or the play-in-editor bridge's channel. Decide
-   with the RFC 0002 play-in-editor slice.
-5. Whether base-archive entry hashes are computed eagerly at index time.
-   Measure on the Portal and HL2 VPKs in C0.
-6. The owner of the scenes-image builder once it leaves `itemtest_lib`.
+The six open decisions were answered at the user's direction ("answer the
+open questions given what will pay off in the long term"). Each answer
+favors one owner, one reader and no later format migration over the
+cheapest first slice. The evidence each one names is a gate check on the
+phase that installs it. A failing measurement is fixed in the
+implementation; it doesn't reopen the decision.
+
+### 1. Package form: block-container archives; VPK stays read-only
+
+Three forms, by use:
+
+- **Published packages** are a block-container archive: the
+  `content.block-container` layout under its own magic, which the first
+  fixture spells.
+  - The index is one block, and each file is one entry.
+  - Entries of GPU-bulk kinds (KTX2 variants, mesh payloads) are aligned
+    to 4096 bytes; others to 16.
+  - Every entry has a BLAKE2b-128 hash and a compression flag.
+  - Entries stay uncompressed until zstd is pinned (RFC 0008 open decision
+    2). Bulk GPU data stays uncompressed even then, so it can be mapped and
+    uploaded directly.
+- **Development overlays**, the live-reload output, are a loose directory
+  with the same index file. An edit then writes one file, not a new
+  archive.
+- **Shipped base content**, meaning Valve's VPKs, stays VPK. It is mounted
+  read-only by the existing `CPackedStore` and never written by the graph.
+
+The filesystem mounts an archive as a pack backend next to `CPackedStore`,
+so a legacy loader opens an entry by its legacy path without changing.
+
+On Android, the archive is stored uncompressed in the APK (`noCompress`),
+so it can be mapped at its asset offset. Content over the base APK size
+limit goes in install-time Play Asset Delivery packs holding the same
+archive. On iOS the archive goes in the app bundle.
+
+Why this pays off:
+
+- Maps and packages share one container library, one independent reader
+  and one fuzz corpus.
+- VPK entries carry only a CRC32, with no alignment and no per-entry
+  compression. Direct upload on mobile needs both alignment and strong
+  hashes.
+- Writing packages doesn't depend on Valve's VPK tools.
+
+Gate evidence (C4): load time and memory of a package compared with the
+same content in VPK, on desktop and on the Fold7. A regression blocks C4
+until the reader is fixed.
+
+### 2. Names: ASCII-lowercase identity and a portable set for new content
+
+- **Identity** is the name lowercased with ASCII rules. Matching is
+  case-insensitive, and the original spelling is kept only for
+  diagnostics.
+  - There is no Unicode case folding. It depends on locale and differs
+    between platforms.
+  - Backslashes become `/`.
+- **Legacy names** are accepted as they are after normalization.
+- **New names** must use the portable set. This covers every name the
+  graph compiles from a source in a content root, including USD maps and
+  new kinds.
+  - Each component uses `[a-z0-9_.-]`.
+  - No component is empty, `.` or `..`, or ends in `.`.
+  - No component is a Windows reserved device name (`con`, `nul`, `com1`
+    and so on).
+  - The compiler rejects a name outside the set, so content stays valid
+    on case-sensitive filesystems (ext4, Android storage) and
+    case-insensitive ones (APFS, NTFS).
+
+Why this pays off:
+
+- The engine already treats names case-insensitively: `CMDLCache`'s
+  dictionary and the filesystem.
+- The compile tools' failures on uppercase paths show that mixed case keeps
+  costing time.
+- Restricting new names costs nothing now and would be impossible once
+  content exists.
+
+Gate evidence (C0): a scan of the base VPKs and fixtures lists every
+case-fold collision. Each collision needs a reviewed redirect before the
+rule is enforced.
+
+### 3. Retention: the store is a cache; roots, one rollback and leases
+
+- **The store is never an authority.** Deleting it costs only rebuild
+  time.
+- **Kept per package:** `current`, the one previous version (the rollback
+  target), and any version with a live lease. A running game or editor
+  session writes a lease holding its process id and removes it on exit. A
+  lease whose process is gone is ignored.
+- **Garbage collection** is mark and sweep:
+  - It marks from the kept versions and from action records used in the
+    last 14 days. Last use is recorded in the action record, not taken
+    from file access times.
+  - It then evicts least-recently-used entries until the store is under
+    the workspace's size budget. The default is 64 GiB, set in the
+    workspace configuration.
+  - It runs after a publish that exceeds the budget, and on
+    `content_build gc`.
+- **Concurrency.** Store writes are a temporary file plus a rename. GC
+  holds the store lock and never deletes an object written after its mark
+  began.
+
+Why this pays off:
+
+- With content-addressed data, sweeping from roots is the only correct way
+  to collect garbage.
+- One previous version gives the rollback that RFC 0005 requires without
+  unbounded growth.
+- Leases stop GC from deleting files that a running game has mapped.
+
+### 4. Reload channel: a dedicated endpoint owned by the watcher
+
+- **Endpoint.** `content_build watch` owns the `content.live-reload.v1`
+  endpoint. The play-in-editor bridge doesn't.
+- **Transport.** A Unix domain socket in the per-user runtime directory
+  (`$XDG_RUNTIME_DIR` on Linux, the per-user temporary directory on
+  macOS). The name is short and derived from the workspace, so it stays
+  under the socket path limit.
+- **Messages** are newline-delimited JSON-RPC 2.0 notifications, the same
+  framing as `hammer_cli --mcp`. They carry identities and the overlay
+  version, never file bytes. The game reads data from the mounted overlay.
+- **Clients.** Games and the editor connect as clients and subscribe, and
+  any number can subscribe. Hammer's play-in-editor child gets the
+  endpoint path in its environment.
+- **Failure handling.** The protocol is versioned, and unknown messages
+  are ignored. A disconnect means no reloads, never a crash.
+- **Products.** Installed and mobile products don't compile the endpoint
+  in. The optional Windows profile uses a named pipe with the same framing
+  if it ever needs reload.
+- **JSON library.** The MCP adapter's private JSON value becomes a small
+  shared library when this second consumer arrives.
+
+Why this pays off:
+
+- Reload works the same for `./play` and for editor-launched games.
+- Asset notices stay separate from frames and input, which have their own
+  lifecycle.
+- MCP and reload share one message framing.
+
+### 5. Base archives: hash eagerly, once per archive
+
+- **One full hash per archive.** A base archive is hashed in full the
+  first time it is seen.
+- **The result is a base-package index**, an ordinary package-index file.
+  It is keyed by the hash of the archive's directory file, plus each
+  chunk's hash memoized by size and mtime. It is rebuilt only when an
+  archive changes.
+- **It is a cached graph output.** Products may ship it so the runtime
+  resolver treats base content as indexed.
+
+Why this pays off:
+
+- Cache keys and closures need a content hash for every legacy input.
+- Lazy hashing would make first-build keys depend on which entries a
+  build happened to read, and would make build time unpredictable.
+- CRC32 isn't strong enough to address content.
+
+Gate evidence (C0): record the one-time cost for the Portal and HL2 VPKs
+as a budget row.
+
+### 6. Scene images: a format library, with the compiler as its driver
+
+Correction to the starting point: the writer already builds.
+`CSceneImage::CreateSceneImageFile` (`game/shared/sceneimage.cpp`) is
+compiled into the Waf `choreoobjects` library. What is missing is the
+`makescenesimage` driver that `utils/itemtest_lib` launches.
+
+- **A new `content.scene-image` library** takes that writer and the format
+  in `public/scenefilecache/SceneImageFile.h`. It has no game dependency.
+  Its `scriplib`/`cmdlib` file enumeration is replaced by `IBuildInputs`.
+- **The `scene.image` compiler is the driver.** `makescenesimage` isn't
+  ported.
+- **Readers.** `CSceneFileCache` keeps reading as it does now. Moving it
+  onto the library's reader is a later cohort.
+- **`choreoobjects`** keeps the choreography objects and calls the library.
+
+Why this pays off: one owner for the format's writer and reader, following
+the layered-library rule. The graph can also record each VCD as a build
+dependency of the image.
 
 ## Source references
 
