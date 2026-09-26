@@ -7,10 +7,11 @@
 //			reply runner (the editor's thread), so a front end never blocks on a
 //			compile.
 //
-//			Threading: Start, Busy and destruction happen on the reply runner's
-//			sequence. IMapBuilder::Build runs on the work runner, one build at a
-//			time. Destroying the queue with a build in flight is safe: the build
-//			finishes on the work runner and its reply is dropped.
+//			Threading: Start and Busy happen on the reply runner's sequence
+//			(checked with a platform::SequenceChecker in diagnostic builds).
+//			IMapBuilder::Build runs on the work runner, one build at a time. The
+//			queue may be destroyed on the owner's thread with a build in flight:
+//			the build finishes on the work runner and its reply is dropped.
 //
 //=============================================================================//
 

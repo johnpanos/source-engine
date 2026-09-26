@@ -525,12 +525,13 @@ bool VScriptServerInit()
 
 				g_pScriptVM->RegisterAllClasses();
 				
+#ifdef PORTAL2
+				// Single-player or co-op rules (neither derives from the other).
 				if ( GameRules() )
 				{
-#ifdef PORTAL2
-					PortalGameRules()->RegisterScriptFunctions();
-#endif
+					GameRules()->RegisterScriptFunctions();
 				}
+#endif
 
 				g_pScriptVM->RegisterInstance( &g_ScriptEntityIterator, "Entities" );
 

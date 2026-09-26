@@ -4904,7 +4904,11 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 	const uint32_t levelHeight = std::max( 1u, t.height >> level );
 	if ( x >= levelWidth || y >= levelHeight || width > levelWidth - x || height > levelHeight - y )
 	{
-		SetError( outError, "UploadManagedTexture region outside the level" );
+		char message[160];
+		std::snprintf( message, sizeof( message ),
+		    "UploadManagedTexture region %ux%u at (%u,%u) outside level %u (%ux%u) of texture %d",
+		    width, height, x, y, level, levelWidth, levelHeight, handle );
+		SetError( outError, message );
 		return false;
 	}
 	const bool whole = x == 0 && y == 0 && width == levelWidth && height == levelHeight;

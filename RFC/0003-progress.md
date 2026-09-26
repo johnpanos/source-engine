@@ -71,7 +71,7 @@ migration needs the game build and captured workloads (see gaps).
 | Work item | Phase | Status | Evidence |
 | --- | --- | --- | --- |
 | Catalog job/thread facilities, config defaults, seams, hazards | A | Complete (static) | Inventory sections below; each seam verified to a current `file:line` |
-| Reproducible **runtime** baseline (captures, budgets) | A | **Partial (2026-09-25)** | Portal now runs here: host-frame trace captures and frame-pacing measurements are in the linked records. `jobs.legacy-captures` is `partial` in `quality/baseline.json`; no versioned frame capture or frame budget |
+| Reproducible **runtime** baseline (captures, budgets) | A | **Captures recorded (2026-09-26); frame budgets open (R21)** | The versioned legacy host-frame capture `quality/fixtures/host-frame/testchmb_a_00-v1.json` is rechecked in both modes by `jobs.host-frame-capture` (R10-CAPTURE). `jobs.legacy-captures` is `recorded`. Cohort gameplay captures (`jobs.cohort-captures`) and frame budgets (`jobs.frame-budgets`) are owned by R21 |
 | First particle workload selection | A | Decision D-A1 | `CParticleMgr::UpdateNewEffects` |
 | `Expected<T,E>` | B | Delivered; aliases `foundation::Expected` | `public/jobsystem/expected.h` (includes `foundation/expected.h`); used throughout |
 | Graph builder + validator (names, handles, cycles incl. sequence-induced, resource conflicts) | B | Delivered + tested | `jobsystem/job_graph.cpp`; `jobsystemtest` |
@@ -405,7 +405,210 @@ host.
 **Still needed for R10 to be `done`:**
 
 - a versioned legacy host capture (`jobs.legacy-captures`, Phase A);
-- the first product consumer of the runners (Hammer's async F9).
+- the first product consumer of the runners: delivered by Hammer's
+  asynchronous F9 (RFC 0002 R08-ASYNC-BUILD, 2026-09-26). It uses
+  `MapBuildQueue` over a `ThreadTaskRunner`, and a `GlibTaskRunner` that
+  passes the shared suite. It also refined contract clause 5 for main-loop
+  runners.
+
+## R10-CAPTURE: a versioned legacy host-frame capture (slice done 2026-09-26)
+
+**Scope** (roadmap R10; RFC 0003 Phase A exit "reproducible baseline", and
+R10's "ordered serial host graph matches legacy captures").
+`jobs.legacy-captures` is `partial`: live legacy-versus-graph captures match,
+but nothing is versioned or rechecked.
+
+- **The fixture:** a gzip-compressed legacy capture in
+  `quality/fixtures/host-frame/`, with a JSON manifest. The manifest holds
+  the map, the startup commands, the frame and event counts, the declared
+  `ia` tolerance, the recording revision and the rule for updating it. The
+  capture is `-hostframetrace` on `testchmb_a_00`, native Vulkan, headless,
+  `host_framerate 0.015`, `cl_clock_correction 0`.
+- **`tools/quality/host_frame_baseline.py`:**
+  - `record` writes a reviewed update;
+  - `check` boots the installed product in both modes (`host_frame_graph`
+    0 and 1) and compares each run to the fixture with
+    `host_frame_capture.compare`, reporting checks-v1.
+- **Self-tests:** the fixture must be complete and match its manifest. A
+  mutated capture (a dropped event, swapped order, a changed tick field) must
+  fail against it, and a tolerated `ia` change must pass.
+- **Registration:** a baseline check, `jobs.host-frame-capture` (GPU, the
+  Portal native tree). `jobs.legacy-captures` then records host-frame
+  captures, and semantic gameplay captures of the cohorts go to a separate
+  entry owned by R21.
+- **Known limit:** the first host frame runs before any command executes, in
+  either mode, so frame 0 of every capture takes the default (graph) path.
+  Both paths produce the same trace.
+
+**Delivered.**
+
+- **The fixture:** `quality/fixtures/host-frame/testchmb_a_00-v1.json` and
+  `.trace.gz` (35 KB). It holds 395 frames and 8,312 host calls, recorded at
+  `73e37bd9+dirty` from the rebuilt `build-r03-portal-native` install.
+- **`tools/quality/host_frame_baseline.py`** (`check`, `record`). Baseline
+  check `jobs.host-frame-capture` (runtime, serial, 60 s budget).
+- **Baseline entries:** `jobs.legacy-captures` is now `recorded`. The
+  cohorts' semantic gameplay captures moved to a new
+  `jobs.cohort-captures` (`partial`, R21).
+
+**Evidence (2026-09-26).**
+
+- **Before recording:** two legacy and two graph runs. Both graph runs
+  matched the first legacy run exactly (395 frames, 8,312 events). The
+  second legacy run matched it with 6,735 `ia` differences, all within the
+  declared 1e-4.
+- **`check`:** both modes match the fixture (5 checks, about 18 s, two
+  boots).
+- **`baseline.py audit --check jobs.host-frame-capture`:** pass, 0
+  deviations.
+- **Self-tests** (`test_host_frame_baseline.py`, 8 cases):
+  - a copy of the fixture matches;
+  - a dropped event, two swapped events, a changed `ht`, and an `ia` change
+    beyond tolerance each fail;
+  - an `ia` change inside the tolerance passes and is counted;
+  - a manifest whose counts disagree is rejected.
+
+**Still needed for R10 to be `done`** (RFC 0001 rank 11 exit):
+
+1. **Diagnostic sequence checks.** RFC 0001: "Thread-affinity and
+   sequence-affinity checks are enabled in diagnostic builds."
+2. **Adapting an existing queue to the runner contracts** ("Adapt existing
+   queues; do not replace the job system wholesale"): a runner over the
+   engine's `vstdlib` thread pool.
+
+## R10-SEQCHECK: diagnostic sequence-affinity checks (slice done 2026-09-26)
+
+**Scope** (roadmap R10; RFC 0001 rank 11 "diagnostic sequence checks", and
+"Thread-affinity and sequence-affinity checks are enabled in diagnostic
+builds").
+
+- **Current sequence.** `platform::CurrentSequence()` (in
+  `task_runner.h`) names the sequence whose task the calling thread is
+  running. `ManualTaskRunner` and `SequencedTaskRunner` set it around each
+  task with `ScopedCurrentSequence`. Single-thread runners leave it unset:
+  their sequence is their thread.
+- **`platform::SequenceChecker`** (`sequence_checker.h`, contract module,
+  header only) binds on first use to the current sequence, or to the thread
+  when no sequence is running. `CalledOnValidSequence()` then holds only on
+  that sequence, from whichever thread runs it; `Detach()` rebinds.
+  `PLATFORM_CHECK_SEQUENCE(checker)` aborts on a violation in diagnostic
+  builds (on unless `NDEBUG`, overridable with `PLATFORM_SEQUENCE_CHECKS`).
+- **Consumer:** `hammer::app::MapBuildQueue` checks that its reply-sequence
+  state is used only on that sequence.
+- **Oracle:** `platform.sequence_checker` checks that one sequence over a
+  4-thread pool stays valid across threads, another sequence or a plain
+  thread is invalid, thread binding works outside tasks and inside
+  single-thread runners, nested sequences use the innermost, `Detach`
+  rebinds, and the diagnostic macro aborts in a child process. A
+  thread-only checker must fail the cross-thread sequence clause, which is
+  the negative control.
+- **Limit:** the current-sequence identity is per module image, so checkers
+  and the runners they observe must be linked into the same image. This
+  holds for the static composition that iOS requires and that the tests and
+  Hammer use.
+
+**Delivered and evidenced (2026-09-26).**
+
+- **`public/platform/contracts/sequence_checker.h`** and the
+  current-sequence identity in `task_runner.h`. `ManualTaskRunner` and
+  `SequencedTaskRunner` set the identity.
+- **`MapBuildQueue`** states its reply-sequence rule with the checker. Its
+  suite builds with checks on and queries `Busy()` on the reply sequence.
+- **`platform.sequence_checker`:** 16 checks on g++ and clang++, in default
+  and release. It checks that one sequence stays valid across the threads
+  of a 4-thread pool; the thread-only checker fails that clause, as the
+  negative control requires. The macro aborts a child process that breaks
+  the rule.
+
+## R10-POOLRUNNER: the engine thread pool as a runner (slice done 2026-09-26)
+
+**Scope and delivery** (RFC 0001 rank 11 "Adapt existing queues; do not
+replace the job system wholesale").
+
+- **The factory:** `public/vstdlib/task_runner_pool_bridge.h`
+  (`CreateThreadPoolTaskRunner(IThreadPool *, platform::ITaskRunner *timer)`,
+  `ShutdownThreadPoolTaskRunner`, `DestroyThreadPoolTaskRunner`), in
+  `vstdlib/task_runner_pool_bridge.cpp`.
+  - It posts each task to the borrowed `CThreadPool` as a `JF_QUEUE` job.
+    Without that flag, `AddJob` runs a job inside the post when no worker
+    is idle.
+  - Delays wait on a timer runner that the composition root injects, so
+    `vstdlib` needs only the header-only contract and no new link
+    dependency in any product.
+  - Queued and delayed tasks live in shared state, which shutdown drops.
+  - A pool without threads, a null pool, or a missing timer is refused.
+- **`platform_runners_legacyabi`** twin (old libstdc++ ABI) for legacy
+  consumers such as the test.
+- **Test:** `unittests/jobsystemtest/poolrunnertest.cpp`, Waf program
+  `jobsystempoolrunnertest` in the `--tests` tree (`scheduler-tests` owner
+  group). It runs the shared runner suite against the pool runner and
+  against a `SequencedTaskRunner` over it, on a real 4-thread pool.
+- **The shared suite was strengthened** after two seeded pool mutants
+  survived it:
+  - `never-inline-under-load` holds the workers with blocking tasks until
+    they have settled, then posts;
+  - shutdown now happens while work is queued behind busy workers.
+  - The blocking tasks give up after 250 ms, so a broken provider fails
+    instead of hanging.
+- **Registered:** manifest `corpus.jobs.pool-runner` (`min_checks` 36) and
+  baseline check `jobs.pool-runner`.
+
+**Evidence (2026-09-26).**
+
+| Check | Result |
+| --- | --- |
+| `jobsystempoolrunnertest` | 36 checks, pass; 10 of 10 repeats |
+| Seeded pool mutants (compiled into a scratch executable, where they override the library's symbols) | 3 of 3 detected: without `JF_QUEUE` (`never-inline-under-load`), without dropping queued work at shutdown (`nothing-runs-after-shutdown`), timer ignored (`delayed-not-early`) |
+| `platform.task_runner` with the stronger suite | 117 checks, and under TSan |
+| `platform.task_runner.sensitivity` | still catches all seven broken providers |
+| `corpus.hammer.glib-runner` | 21 checks |
+| Every runner suite, `--repeat 5`, g++ and clang++ | pass |
+
+## R10 closure (done 2026-09-26)
+
+R10's done condition, and the exits it covers from RFC 0001 rank 11 and
+RFC 0003 phases A and B:
+
+| Requirement | Evidence |
+| --- | --- |
+| Virtual time | `VirtualClock` and `ManualTaskRunner`, judged by `platform.task_runner` (R10-RUNNERS) |
+| Independent graph model | `jobsystem.qjobs` (independent model, adversarial schedules, negative executors) |
+| Validation, publication, affinity and failure tests | `jobsystem.scheduler`, `jobsystem.qjobs`, `jobsystem.dynamicscope`, `jobsystem.runner-bindings`, with TSan lanes |
+| Ordered serial host graph matches legacy captures | The versioned capture, rechecked in both modes by `jobs.host-frame-capture` (R10-CAPTURE) |
+| RFC 0001 rank 11: clock, task runner, sequenced runner, delayed scheduling, virtual-time provider | `platform.task-runner.v1` and `platform.runners` (R10-RUNNERS) |
+| RFC 0001 rank 11: diagnostic sequence checks | `SequenceChecker` and `PLATFORM_CHECK_SEQUENCE` (R10-SEQCHECK) |
+| RFC 0001 rank 11: adapt existing queues | The engine `CThreadPool` runner (R10-POOLRUNNER) |
+| RFC 0003 Phase A: reviewed ownership map, reproducible baseline, first particle workload | The Phase A inventory (above), `jobs.legacy-captures` recorded, D-A1 |
+| RFC 0003 Phase B: conformance tests; the ordered host graph preserves baseline behavior; runner bindings | The rows above, and R10-BINDINGS |
+| A consumer at the new boundary | Hammer's asynchronous F9 (`MapBuildQueue`, `GlibTaskRunner`) |
+| Hard-gate prerequisites | R05 and R06 are `done` |
+
+**Closing checks (2026-09-26).**
+
+- Q-EDITOR + Q-FOUNDATION + Q-JOBS headless, g++ and clang++: 123 of 129
+  each. The 6 skips are optional TSan lanes; the R10 lanes pass under
+  `CONFORMANCE_TSAN=1`.
+- `baseline.py audit` of the nine related checks (`jobs.pool-runner`,
+  `hammer.ui`, `hammer.mcp`, the viewport smoke, `arch.check`,
+  `arch.hermetic`, `arch.hammer`, `quality.selftest` and
+  `baseline.validate`): 0 deviations. `jobs.host-frame-capture` passed in
+  its own audit.
+- `archlint check --all`, `targets --verify --partial build-r03-tools
+  build-r03-tests`, `hermetic` (65 headers, both compilers) and
+  `hammer --verify`: pass.
+- stylelint on the slices' files: clean.
+
+**Not claimed by this closure** (owned elsewhere):
+
+- frame, p95/p99, low-core and mobile budgets (`jobs.frame-budgets`, R21);
+- cohort gameplay captures (`jobs.cohort-captures`, R21);
+- a native `IMonotonicClock` provider and the other foundation providers
+  (R26);
+- Android and Apple runtime evidence for the scheduler (R20/R21/R29);
+- hosted CI runs.
+
+The `portal-native` tree was rebuilt for the capture. The other product
+trees rebuild the changed `jobsystem` and `vstdlib` on their next build.
 
 ## Module layout
 

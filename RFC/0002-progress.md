@@ -639,7 +639,7 @@ unchanged.
 - The live GTK editor does not yet serve MCP. An agent edits a headless
   document, not the one on screen.
 
-### R08-ASYNC-BUILD: F9 builds off the UI thread (slice, active 2026-09-26)
+### R08-ASYNC-BUILD: F9 builds off the UI thread (slice done 2026-09-26)
 
 **Scope** (roadmap R08, and the first product consumer of R10's task
 runners). Today F9 compiles on the GTK main thread, so the editor freezes
@@ -667,6 +667,53 @@ for the whole compile.
     suite, since it compiles with `pkg-config`);
   - `corpus.hammer.ui` must still pass with the asynchronous F9.
 - **Out of scope:** cancelling a running compile, a streamed build log.
+
+**Delivered.**
+
+- **`public/hammer/app/map_build_queue.h` and `hammer/core/app/map_build_queue.cpp`**
+  (Waf `hammer_app`; `hammer.app` gains the `platform.contracts` edge).
+  - State is shared with in-flight tasks, so destroying the queue drops the
+    reply.
+  - `Start` from outside the reply sequence aborts.
+- **`hammer/gtk/glib_task_runner.{h,cpp}`**. Its owner thread is cleared at
+  shutdown.
+- **The GTK shell.** `AppState` declares `uiRunner`, `buildThread` and
+  `builds` in teardown order: the queue goes, then a running compile
+  finishes, then its reply is dropped, then the builder goes.
+  - F9 saves through `save`, starts the queue, and shows "Building <map>
+    ..." at once.
+  - The reply shows "Built <map>" or `build_map: <status>: <detail>`.
+    Shift+F9 then runs `./play`.
+  - `build.sh` compiles the queue, the GLib runner and
+    `ThreadTaskRunner`.
+- **The runner contract** (`platform.task-runner.v1`, clause 5) is refined:
+  - The GLib runner exposed an ambiguity. A main-loop runner's thread is
+    the owner's own thread, so a single-thread runner belongs to its thread
+    inside and outside tasks.
+  - The shared suite now asks each driver whether it is the runner's
+    thread. The negative provider that claims every thread is still
+    caught.
+
+**Evidence (2026-09-26).**
+
+| Check | Result |
+| --- | --- |
+| `hammer.app.map_build_queue`, g++ and clang++ | 15 checks, pass. Start does not build inline, one build at a time, build on the work runner, reply on the reply runner, destroyed in flight, work runner shut down, and with real threads Start returns in under 100 ms while a 200 ms build runs |
+| `corpus.hammer.glib-runner` | 20 checks, pass: the shared suite on a private GLib context, and a post from another thread runs on the owner |
+| `corpus.hammer.ui` / `hammer.ui` with the asynchronous F9 | pass (12 checks) |
+| `hammer.gtk-viewport-smoke`, `hammer.mcp` | pass |
+| Q-EDITOR + Q-FOUNDATION + Q-JOBS headless, g++ and clang++ | 122 of 128 each; the 6 skips are the optional TSan lanes |
+| `baseline.py audit` of 7 related checks | 0 deviations; `arch.check`, the viewport smoke and `quality.selftest` ran over their advisory budgets on a loaded host |
+| `archlint check --all`, `hammer --verify`, `hermetic` | pass |
+| stylelint on the slice's files and changed lines | clean |
+
+**Unverified.**
+
+- Quitting during a full-quality compile waits for it to finish, since
+  there is no cancellation.
+- No UI check observes the editor answering while it builds: the room
+  compiles in about 0.1 s, too fast to see. The queue suite covers the
+  non-blocking start.
 
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 

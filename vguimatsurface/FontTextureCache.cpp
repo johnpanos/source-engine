@@ -39,6 +39,9 @@ static int g_FontRenderBoundingBoxes = -1;
 
 #define TEXTURE_PAGE_WIDTH	256
 #define TEXTURE_PAGE_HEIGHT	256
+// A glyph wider than TEXTURE_PAGE_WIDTH (HL2's weapon icons at 1080p and above)
+// gets a page widened in powers of two up to this limit.
+#define TEXTURE_PAGE_MAX_WIDTH 4096
 
 // row size
 int CFontTextureCache::s_pFontPageSize[FONT_PAGE_SIZE_COUNT] = 
@@ -394,14 +397,20 @@ bool CFontTextureCache::AllocatePageForChar(int charWide, int charTall, int &pag
 	if ( nPageType < 0 )
 	{
 		Assert( !"Font is too tall for texture cache of glyphs\n" );
-		return false; 
+		return false;
 	}
-	
+	if ( charWide > TEXTURE_PAGE_MAX_WIDTH )
+	{
+		Assert( !"Font is too wide for texture cache of glyphs\n" );
+		return false;
+	}
+
 	pageIndex = m_pCurrPage[nPageType];
 
 	int nNextX = 0;
 	bool bNeedsNewPage = true;
-	if ( pageIndex > -1 )
+	// A glyph wider than the current page cannot go on any of its lines.
+	if ( pageIndex > -1 && charWide <= m_PageList[pageIndex].wide )
 	{
 		Page_t &page = m_PageList[ pageIndex ];
 
@@ -433,8 +442,14 @@ bool CFontTextureCache::AllocatePageForChar(int charWide, int charTall, int &pag
 			newPage.textureID[i] = g_MatSystemSurface.CreateNewTextureID( true );
 		}
 
+		int nPageWide = TEXTURE_PAGE_WIDTH;
+		while ( nPageWide < charWide )
+		{
+			nPageWide <<= 1;
+		}
+
 		newPage.maxFontHeight = s_pFontPageSize[nPageType];
-		newPage.wide = TEXTURE_PAGE_WIDTH;
+		newPage.wide = nPageWide;
 		newPage.tall = TEXTURE_PAGE_HEIGHT;
 		newPage.nextX = 0;
 		newPage.nextY = 0;
@@ -465,12 +480,14 @@ bool CFontTextureCache::AllocatePageForChar(int charWide, int charTall, int &pag
 		{
 			// clear the texture from the inital checkerboard to black
 			// allocate for 32bpp format
-			int nByteCount = TEXTURE_PAGE_WIDTH * TEXTURE_PAGE_HEIGHT * 4;
-			unsigned char *pRGBA = (unsigned char *)_alloca( nByteCount );
-			Q_memset( pRGBA, 0, nByteCount );
+			// A widened page is too large for the stack.
+			CUtlMemory<unsigned char> clearBits;
+			clearBits.EnsureCapacity( newPage.wide * newPage.tall * 4 );
+			Q_memset( clearBits.Base(), 0, clearBits.NumAllocated() );
 
 			int typePageNonAdditive = (int)(vgui::FONT_DRAW_NONADDITIVE)-1;
-			g_MatSystemSurface.DrawSetTextureRGBA( newPage.textureID[typePageNonAdditive], pRGBA, newPage.wide, newPage.tall, false, false );
+			g_MatSystemSurface.DrawSetTextureRGBA( newPage.textureID[typePageNonAdditive],
+			    clearBits.Base(), newPage.wide, newPage.tall, false, false );
 		}
 	}
 

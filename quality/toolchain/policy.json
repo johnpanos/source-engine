@@ -274,6 +274,10 @@
       "dialect": "cxx20",
       "rfc": "0003"
     },
+    "jobsystempoolrunnertest": {
+      "dialect": "cxx20",
+      "rfc": "0003"
+    },
     "render_backend_vulkan_conformance": {
       "dialect": "cxx20",
       "rfc": "0001"
@@ -319,6 +323,10 @@
       "rfc": "0002"
     },
     "platform_runners": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
+    "platform_runners_legacyabi": {
       "dialect": "cxx20",
       "rfc": "0001"
     },

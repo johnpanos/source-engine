@@ -46,8 +46,10 @@ fi
 # and the shared services it composes, plus the DiskFileStore adapter for file I/O.
 CORE="\
 $ROOT/hammer/core/app/editor_commands.cpp \
+$ROOT/hammer/core/app/map_build_queue.cpp \
 $ROOT/hammer/adapters/platform/tool_process_map_builder.cpp \
 $ROOT/platform/posix/tool_process_provider.cpp \
+$ROOT/platform/runners/thread_task_runner.cpp \
 $ROOT/hammer/core/app/editor_controller.cpp \
 $ROOT/mapgeometry/brush.cpp \
 $ROOT/mapgeometry/displacement.cpp \
@@ -67,6 +69,7 @@ $ROOT/hammer/adapters/platform/disk_byte_store.cpp"
 
 HOST="\
 $ROOT/hammer/gtk/app.cpp \
+$ROOT/hammer/gtk/glib_task_runner.cpp \
 $ROOT/hammer/gtk/offscreen.cpp \
 $ROOT/hammer/gtk/renderer.cpp"
 

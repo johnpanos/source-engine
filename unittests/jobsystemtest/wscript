@@ -52,6 +52,8 @@ def build(bld):
 		# Microbenchmarks: validated smoke run by default, --full for numbers.
 		( 'jobsystembench',       'jobsystembench.cpp',      ['jobsystem'] ),
 		( 'jobsystembridgetest',  'enginebridgetest.cpp', ['jobsystem', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
+		# The engine pool as a platform.task-runner.v1 runner (R10-POOLRUNNER).
+		( 'jobsystempoolrunnertest', 'poolrunnertest.cpp', ['vstdlib', 'platform_runners_legacyabi', 'tier1', 'tier0'] + dl_log ),
 		# Portal carving: real mathlib clipping through the C++11 game-facing facade.
 		( 'jobsystemportalcarvetest', 'portalcarvetest.cpp', ['mathlib', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
 	]
@@ -65,7 +67,7 @@ def build(bld):
 			target       = target,
 			name         = target,
 			features     = 'c cxx cxxprogram',
-			includes     = includes + (['../../public/tier0'] if target in cxx11 else []) +
+			includes     = includes + (['../../public/tier0'] if target in cxx11 + [ 'jobsystempoolrunnertest' ] else []) +
 				(['../..'] if target == 'jobsystemportalcarvetest' else []),
 			defines      = [],
 			linkflags    = linkflags,

@@ -275,7 +275,8 @@ int main()
 	}
 	{
 		EveryThreadDriver driver;
-		checks.That( FailuresOf( driver, 20000000 ).find( "under-test.belonging-outside-only-on-runner-thread" ) !=
+		checks.That( FailuresOf( driver, 20000000 )
+		                     .find( "under-test.belonging-outside-only-on-runner-thread" ) !=
 		                 std::string::npos,
 		    "detects under-test.belonging-outside-only-on-runner-thread" );
 	}

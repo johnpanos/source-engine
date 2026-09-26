@@ -90,6 +90,22 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)
+	# The same runners for legacy (old libstdc++ dual ABI) consumers such as
+	# vstdlib's engine-pool runner; see platform_composition_legacyabi.
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'runners/manual_task_runner.cpp', 'runners/thread_task_runner.cpp',
+		              'runners/sequenced_task_runner.cpp' ],
+		target    = 'platform_runners_legacyabi',
+		name      = 'platform_runners_legacyabi',
+		arch_module = 'platform.runners',
+		features  = 'cxx capability_strict',
+		includes  = [ '../public' ],
+		defines   = legacy_abi,
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
 		source    = [ 'tool_process_client.cpp' ],

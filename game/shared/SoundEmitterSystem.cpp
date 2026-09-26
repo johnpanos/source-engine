@@ -96,7 +96,9 @@ void WaveTrace( char const *wavname, char const *funcname )
 // Purpose: 
 // Input  : &src - 
 //-----------------------------------------------------------------------------
-EmitSound_t::EmitSound_t( const CSoundParameters &src )
+EmitSound_t::EmitSound_t( const CSoundParameters &src ) :
+	m_hSoundScriptHandle( -1 ),
+	m_pSoundEntryName( NULL )
 {
 	m_nChannel = src.channel;
 	m_pSoundName = src.soundname;

@@ -81,6 +81,49 @@ inline platform::Task ProbedTask( TaskProbe &probe, std::function<void()> body =
 	};
 }
 
+// Tasks that hold a runner's workers until released (or for at most 250 ms,
+// so a broken provider fails a clause instead of hanging the suite; a
+// correct runner is judged the same either way).
+struct Blockers
+{
+	static constexpr int kCount = 16; // more than the workers of any runner here
+	std::atomic<bool> release{ false };
+	std::atomic<int> started{ 0 };
+
+	// Waits until the blockers that start have started (the count is unchanged
+	// for 20 ms, at most 500 ms), so the workers really are busy.
+	void WaitSettled()
+	{
+		const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds( 500 );
+		int seen = -1;
+		auto stableSince = std::chrono::steady_clock::now();
+		while ( std::chrono::steady_clock::now() < until )
+		{
+			const int now = started.load();
+			if ( now != seen )
+			{
+				seen = now;
+				stableSince = std::chrono::steady_clock::now();
+			}
+			else if ( std::chrono::steady_clock::now() - stableSince >
+			          std::chrono::milliseconds( 20 ) )
+				return;
+			std::this_thread::sleep_for( std::chrono::milliseconds( 2 ) );
+		}
+	}
+
+	platform::Task Make()
+	{
+		return [this]
+		{
+			started.fetch_add( 1 );
+			const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds( 250 );
+			while ( !release.load() && std::chrono::steady_clock::now() < until )
+				std::this_thread::yield();
+		};
+	}
+};
+
 // `name` prefixes every check. `delayNanoseconds` is the delay used by the
 // timing clauses (real providers need one large enough to measure).
 inline void RunTaskRunnerConformance( testing::Checks &checks, const std::string &name,
@@ -149,6 +192,28 @@ inline void RunTaskRunnerConformance( testing::Checks &checks, const std::string
 		driver.Drain();
 		check( posted == PostResult::kAccepted && ran.load() == 2, "posted-tasks-run" );
 		check( inlineRuns.load() == 0, "never-inline" );
+	}
+
+	// 2b. Never inside the post while the runner's workers are all busy: a
+	// runner that runs work inline when it has no idle worker fails here.
+	{
+		Blockers blockers;
+		for ( int i = 0; i < Blockers::kCount; ++i )
+			(void)runner.PostTask( blockers.Make() );
+		blockers.WaitSettled();
+		std::atomic<bool> inPost{ true };
+		std::atomic<int> inlineRuns{ 0 };
+		const std::thread::id poster = std::this_thread::get_id();
+		(void)runner.PostTask(
+		    [&]
+		    {
+			    if ( inPost.load() && std::this_thread::get_id() == poster )
+				    inlineRuns.fetch_add( 1 );
+		    } );
+		inPost.store( false );
+		blockers.release.store( true );
+		driver.Drain();
+		check( inlineRuns.load() == 0, "never-inline-under-load" );
 	}
 
 	// 3. Delayed tasks: not early, and they do run.
@@ -252,15 +317,27 @@ inline void RunTaskRunnerConformance( testing::Checks &checks, const std::string
 
 	// 6. Shutdown: queued and delayed tasks are destroyed unrun; nothing runs
 	// afterwards; later posts are refused and destroyed.
+	// Blockers hold the workers while shutdown starts, so work is still queued
+	// behind them; they are released while Shutdown waits for them.
 	{
+		Blockers blockers;
+		for ( int i = 0; i < Blockers::kCount; ++i )
+			(void)runner.PostTask( blockers.Make() );
 		TaskProbe queued;
 		TaskProbe delayed;
 		constexpr int kQueued = 500;
 		for ( int i = 0; i < kQueued; ++i )
 			(void)runner.PostTask( ProbedTask( queued ) );
 		(void)runner.PostDelayedTask( ProbedTask( delayed ), 3600ull * 1000000000ull );
+		std::thread releaser(
+		    [&blockers]
+		    {
+			    std::this_thread::sleep_for( std::chrono::milliseconds( 20 ) );
+			    blockers.release.store( true );
+		    } );
 		driver.Shutdown();
 		const int ranAtShutdown = queued.ran.load();
+		releaser.join();
 		driver.Elapse( delayNanoseconds );
 		check( queued.ran.load() == ranAtShutdown, "nothing-runs-after-shutdown" );
 		check( queued.ran.load() + queued.destroyedUnrun.load() == kQueued,

@@ -100,7 +100,10 @@ void RunOne( const std::shared_ptr<State> &state )
 		state->ready.pop_front();
 		state->running.store( std::this_thread::get_id(), std::memory_order_release );
 	}
-	task();
+	{
+		ScopedCurrentSequence inSequence( state.get() );
+		task();
+	}
 	task = Task();
 	bool more = false;
 	{

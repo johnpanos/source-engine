@@ -19,10 +19,12 @@
 
 #include "hammer/adapters/platform/disk_byte_store.h"
 #include "../../platform/posix/tool_process_provider.h"
+#include "../../platform/runners/thread_task_runner.h"
 #include "hammer/adapters/platform/disk_file_store.h"
 #include "hammer/adapters/platform/tool_process_map_builder.h"
 #include "hammer/app/editor_commands.h"
 #include "hammer/app/editor_controller.h"
+#include "hammer/app/map_build_queue.h"
 #include "hammer/app/save_orchestrator.h"
 #include "hammer/formats/material_catalog.h"
 #include "hammer/formats/search_path_assets.h"
@@ -31,6 +33,7 @@
 #include "hammer/adapters/source/ktx2_preview.h"
 #endif
 
+#include "glib_task_runner.h"
 #include "renderer.h"
 
 #include <optional>
@@ -124,6 +127,14 @@ struct AppState
 		    return path;
 	    } };
 	hammer::app::EditorCommands commands{ controller, store, &builder };
+	// F9 compiles off the UI thread: the queue runs the builder on its own
+	// thread and replies on the GTK main loop. Declaration order is teardown
+	// order in reverse: the queue goes first, then the build thread joins (a
+	// running compile finishes and may still post its reply), then the UI
+	// runner drops that reply, and only then the builder.
+	hammer::gtk::GlibTaskRunner uiRunner;
+	platform::ThreadTaskRunner buildThread{ "hammer-build" };
+	hammer::app::MapBuildQueue builds{ builder, buildThread, uiRunner };
 	std::array<Viewport, 4> viewports;
 	std::string currentPath;
 	std::string openOnStart;
@@ -1117,40 +1128,54 @@ gboolean OnKeyPressed(
 	case GDK_KEY_S:
 		SetToolUi( st, hammer::app::Tool::Select );
 		return TRUE;
-	// F9 builds the map and publishes it (./play <map>); Shift+F9 also runs it
-	// (Source 2's "load in engine after building").
+	// F9 saves on this thread, then builds off it and publishes the map
+	// (./play <map>); Shift+F9 also runs it (Source 2's "load in engine after
+	// building"). The editor stays usable while the map compiles.
 	case GDK_KEY_F9:
 	{
 		const bool run = ( state & GDK_SHIFT_MASK ) != 0;
+		if ( st->builds.Busy() )
+		{
+			SetHelp( st, "A build is already running" );
+			return TRUE;
+		}
 		const std::string path = st->currentPath.empty()
 		                             ? std::string( "quality-results/hammer-builds/untitled.vmf" )
 		                             : st->currentPath;
-		SetHelp( st, "Building " + path + " ..." );
-		if ( auto status = RunCommand( st, "build_map",
-		         { { "path", path }, { "publish", st->publishBuilds ? "1" : "0" } } ) )
-		{
-			std::string map = path.substr( path.find_last_of( '/' ) + 1 );
-			map = map.substr( 0, map.rfind( '.' ) );
-			for ( char &c : map )
-				c = static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
-			st->currentPath = path;
-			UpdateChrome( st );
-			if ( !st->publishBuilds )
-			{
-				SetHelp( st, "Built " + map + " (not published)" );
-			}
-			else
-			{
-				SetHelp( st,
-				    "Built " + map + ( run ? "; launching ./play " + map : "; ./play " + map ) );
-			}
-			if ( run && st->publishBuilds )
-			{
-				const gchar *argv[] = { "./play", map.c_str(), nullptr };
-				g_spawn_async( nullptr, const_cast<gchar **>( argv ), nullptr, G_SPAWN_DEFAULT,
-				    nullptr, nullptr, nullptr, nullptr );
-			}
-		}
+		if ( !RunCommand( st, "save", { { "path", path } } ) )
+			return TRUE;
+		st->currentPath = path;
+		UpdateChrome( st );
+		std::string map = path.substr( path.find_last_of( '/' ) + 1 );
+		map = map.substr( 0, map.rfind( '.' ) );
+		for ( char &c : map )
+			c = static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
+		const hammer::app::BuildStart started =
+		    st->builds.Start( hammer::ports::MapBuildRequest{ path, false, st->publishBuilds },
+		        [st, map, run]( const hammer::ports::MapBuildResult &result )
+		        {
+			        if ( !result.ok )
+			        {
+				        SetHelp( st, "build_map: " + result.status + ": " + result.detail );
+				        return;
+			        }
+			        if ( !st->publishBuilds )
+			        {
+				        SetHelp( st, "Built " + map + " (not published)" );
+				        return;
+			        }
+			        SetHelp( st, "Built " + map +
+			                         ( run ? "; launching ./play " + map : "; ./play " + map ) );
+			        if ( run )
+			        {
+				        const gchar *argv[] = { "./play", map.c_str(), nullptr };
+				        g_spawn_async( nullptr, const_cast<gchar **>( argv ), nullptr,
+				            G_SPAWN_DEFAULT, nullptr, nullptr, nullptr, nullptr );
+			        }
+		        } );
+		SetHelp( st, started == hammer::app::BuildStart::kStarted
+		                 ? "Building " + map + " ..."
+		                 : std::string( "Build unavailable" ) );
 		return TRUE;
 	}
 	// [ and ] halve and double the grid (classic Hammer), between 1 and 512 units.

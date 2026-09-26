@@ -169,6 +169,12 @@ public:
 // Functions to verify the single/multiplayer status of a game
 	virtual bool IsMultiplayer( void ) = 0;// is this a multiplayer game? (either coop or deathmatch)
 
+#ifdef PORTAL2
+	// Game-specific script functions, registered when the server VM starts.
+	// Portal 2's single-player and co-op rules do not share a base below this.
+	virtual void RegisterScriptFunctions( void ) {}
+#endif
+
 	virtual const unsigned char *GetEncryptionKey() { return NULL; }
 
 	virtual bool InRoundRestart( void ) { return false; }

@@ -24,7 +24,8 @@ struct GlibTaskRunner::Pending
 };
 
 GlibTaskRunner::GlibTaskRunner( GMainContext *context )
-    : m_context( context ? g_main_context_ref( context ) : g_main_context_ref( g_main_context_default() ) ),
+    : m_context( context ? g_main_context_ref( context )
+                         : g_main_context_ref( g_main_context_default() ) ),
       m_owner( std::this_thread::get_id() )
 {
 }
@@ -40,7 +41,8 @@ platform::PostResult GlibTaskRunner::PostTask( platform::Task task )
 	return PostDelayedTask( std::move( task ), 0 );
 }
 
-platform::PostResult GlibTaskRunner::PostDelayedTask( platform::Task task, std::uint64_t delayNanoseconds )
+platform::PostResult GlibTaskRunner::PostDelayedTask(
+    platform::Task task, std::uint64_t delayNanoseconds )
 {
 	std::unique_lock lock( m_mutex );
 	if ( m_shutDown )
@@ -53,8 +55,8 @@ platform::PostResult GlibTaskRunner::PostDelayedTask( platform::Task task, std::
 	auto *pending = new Pending{ this, std::move( task ) };
 	pending->source = delayNanoseconds == 0 ? g_idle_source_new() : g_timeout_source_new( delayMs );
 	g_source_set_priority( pending->source, G_PRIORITY_DEFAULT );
-	g_source_set_callback( pending->source, reinterpret_cast<GSourceFunc>( &GlibTaskRunner::Dispatch ),
-	    pending, nullptr );
+	g_source_set_callback( pending->source,
+	    reinterpret_cast<GSourceFunc>( &GlibTaskRunner::Dispatch ), pending, nullptr );
 	m_pending.insert( pending );
 	// Attaching wakes the context's thread. Dispatch takes m_mutex before
 	// touching the entry, so attaching under the lock is safe.
@@ -94,7 +96,7 @@ void GlibTaskRunner::Shutdown()
 	{
 		std::lock_guard lock( m_mutex );
 		if ( m_shutDown )
-			return; // already shut down
+			return;   // already shut down
 		std::abort(); // the owner shuts down on the context's thread
 	}
 	std::vector<Pending *> dropped;

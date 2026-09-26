@@ -1,0 +1,17 @@
+{
+  "schema": "host-frame-baseline/v1",
+  "map": "testchmb_a_00",
+  "renderer": "native-vulkan",
+  "startup_commands": [
+    "host_framerate 0.015",
+    "cl_clock_correction 0"
+  ],
+  "tolerances": {
+    "ia": 0.0001
+  },
+  "trace": "testchmb_a_00-v1.trace.gz",
+  "frames": 395,
+  "events": 8312,
+  "recorded_revision": "73e37bd9+dirty",
+  "note": "Legacy host frame (host_frame_graph 0) from frame 1; frame 0 precedes command execution in either mode. Update only after reviewing a behavior change; the ia tolerance absorbs the wall-clock tick remainder of frames run before host_framerate applies."
+}

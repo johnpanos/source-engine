@@ -102,7 +102,10 @@ int ManualTaskRunner::RunUntilIdle()
 	while ( PopDue( m_clock.Now().ticks, task ) )
 	{
 		m_running.store( std::this_thread::get_id(), std::memory_order_release );
-		task();
+		{
+			ScopedCurrentSequence inSequence( this );
+			task();
+		}
 		task = Task();
 		m_running.store( std::thread::id(), std::memory_order_release );
 		++ran;

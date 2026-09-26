@@ -119,6 +119,36 @@ public:
 	virtual bool BelongsToCurrentThread() const = 0;
 };
 
+// The sequence whose task the calling thread is running, or null (outside
+// tasks, and inside single-thread runners, whose sequence is their thread).
+// Sequenced providers set it around each task with ScopedCurrentSequence;
+// SequenceChecker (sequence_checker.h) reads it. The identity is per module
+// image: checkers and the runners they observe are linked into one image.
+namespace detail
+{
+inline thread_local const void *g_currentSequence = nullptr;
+}
+
+inline const void *CurrentSequence()
+{
+	return detail::g_currentSequence;
+}
+
+class ScopedCurrentSequence
+{
+public:
+	explicit ScopedCurrentSequence( const void *sequence ) : m_previous( detail::g_currentSequence )
+	{
+		detail::g_currentSequence = sequence;
+	}
+	~ScopedCurrentSequence() { detail::g_currentSequence = m_previous; }
+	ScopedCurrentSequence( const ScopedCurrentSequence & ) = delete;
+	ScopedCurrentSequence &operator=( const ScopedCurrentSequence & ) = delete;
+
+private:
+	const void *m_previous;
+};
+
 } // namespace platform
 
 #endif // PLATFORM_CONTRACTS_TASK_RUNNER_H

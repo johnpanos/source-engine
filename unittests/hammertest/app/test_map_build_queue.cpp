@@ -57,6 +57,18 @@ template <typename F> void OnReply( platform::ManualTaskRunner &reply, F body )
 	reply.RunUntilIdle();
 }
 
+// Busy() belongs to the reply sequence, so the test asks there.
+bool BusyOnReply( platform::ManualTaskRunner &reply, const MapBuildQueue &queue )
+{
+	bool busy = false;
+	OnReply( reply,
+	    [&]
+	    {
+		    busy = queue.Busy();
+	    } );
+	return busy;
+}
+
 } // namespace
 
 int main()
@@ -89,22 +101,29 @@ int main()
 		    } );
 		checks.That( first == BuildStart::kStarted, "queue.starts" );
 		checks.That( second == BuildStart::kBusy, "queue.one-at-a-time" );
-		checks.That( queue.Busy(), "queue.busy-while-building" );
+		checks.That( BusyOnReply( reply, queue ), "queue.busy-while-building" );
 		checks.That( builder.requests.empty(), "queue.start-does-not-build-inline" );
 
 		work.RunUntilIdle();
 		checks.Equal( builder.requests, std::vector<std::string>{ "maps/a.vmf fast publish" },
 		    "queue.builds-the-request" );
 		checks.Equal( builder.onWorkRunner, 1, "queue.builds-on-work-runner" );
-		checks.That( results.empty() && queue.Busy(), "queue.reply-waits-for-reply-runner" );
+		// The reply is queued on the reply runner, not delivered.
+		checks.That(
+		    results.empty() && reply.PendingCount() == 1, "queue.reply-waits-for-reply-runner" );
 
 		reply.RunUntilIdle();
-		checks.Equal( results, std::vector<std::string>{ "pass: built maps/a.vmf" }, "queue.reply-delivers" );
+		checks.Equal(
+		    results, std::vector<std::string>{ "pass: built maps/a.vmf" }, "queue.reply-delivers" );
 		checks.Equal( doneOnReply, 1, "queue.reply-on-reply-runner" );
-		checks.That( !queue.Busy(), "queue.idle-after-reply" );
+		checks.That( !BusyOnReply( reply, queue ), "queue.idle-after-reply" );
 
 		BuildStart again = BuildStart::kUnavailable;
-		OnReply( reply, [&] { again = queue.Start( MapBuildRequest{ "maps/c.vmf", true, false }, done ); } );
+		OnReply( reply,
+		    [&]
+		    {
+			    again = queue.Start( MapBuildRequest{ "maps/c.vmf", true, false }, done );
+		    } );
 		work.RunUntilIdle();
 		reply.RunUntilIdle();
 		checks.That( again == BuildStart::kStarted && results.size() == 2 &&
@@ -122,11 +141,19 @@ int main()
 		{
 			MapBuildQueue queue( builder, work, reply );
 			OnReply( reply,
-			    [&] { (void)queue.Start( MapBuildRequest{ "maps/a.vmf" }, [&]( const MapBuildResult & ) { ++called; } ); } );
+			    [&]
+			    {
+				    (void)queue.Start( MapBuildRequest{ "maps/a.vmf" },
+				        [&]( const MapBuildResult & )
+				        {
+					        ++called;
+				        } );
+			    } );
 		}
 		work.RunUntilIdle();
 		reply.RunUntilIdle();
-		checks.That( builder.requests.size() == 1 && called == 0, "queue.destroyed-in-flight-drops-reply" );
+		checks.That(
+		    builder.requests.size() == 1 && called == 0, "queue.destroyed-in-flight-drops-reply" );
 	}
 
 	// A shut-down work runner: the build is unavailable and the queue idle.
@@ -138,8 +165,13 @@ int main()
 		MapBuildQueue queue( builder, work, reply );
 		work.Shutdown();
 		BuildStart start = BuildStart::kStarted;
-		OnReply( reply, [&] { start = queue.Start( MapBuildRequest{ "maps/a.vmf" }, {} ); } );
-		checks.That( start == BuildStart::kUnavailable && !queue.Busy(), "queue.unavailable-when-work-shut-down" );
+		OnReply( reply,
+		    [&]
+		    {
+			    start = queue.Start( MapBuildRequest{ "maps/a.vmf" }, {} );
+		    } );
+		checks.That( start == BuildStart::kUnavailable && !BusyOnReply( reply, queue ),
+		    "queue.unavailable-when-work-shut-down" );
 	}
 
 	// Real threads: Start returns while the compile is still running.
@@ -157,7 +189,11 @@ int main()
 		    [&]
 		    {
 			    const auto before = std::chrono::steady_clock::now();
-			    (void)queue.Start( MapBuildRequest{ "maps/a.vmf" }, [&]( const MapBuildResult & ) { ++done; } );
+			    (void)queue.Start( MapBuildRequest{ "maps/a.vmf" },
+			        [&]( const MapBuildResult & )
+			        {
+				        ++done;
+			        } );
 			    startTook = std::chrono::steady_clock::now() - before;
 		    } );
 		checks.That( startTook < std::chrono::milliseconds( 100 ), "threads.start-does-not-wait" );
@@ -167,7 +203,8 @@ int main()
 			reply.RunUntilIdle();
 			std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
 		}
-		checks.That( done.load() == 1 && builder.onWorkRunner == 1 && !queue.Busy(), "threads.reply-arrives" );
+		checks.That( done.load() == 1 && builder.onWorkRunner == 1 && !BusyOnReply( reply, queue ),
+		    "threads.reply-arrives" );
 		work.Shutdown();
 	}
 

@@ -656,6 +656,11 @@
         "paths": [
           "unittests/platformtest/task_runner/"
         ],
+        "externalHeaders": [
+          "unistd.h",
+          "sys/wait.h",
+          "csignal"
+        ],
         "allowedEdges": [
           "foundation",
           "platform.contracts",
@@ -774,6 +779,9 @@
         "allowedUse": []
       },
       "platform_runners": {
+        "allowedUse": []
+      },
+      "platform_runners_legacyabi": {
         "allowedUse": []
       },
       "platform_posix_legacyabi": {
@@ -968,6 +976,7 @@
             "jobsystemhostframetest",
             "jobsystemlegacybatchtest",
             "jobsystempooledtest",
+            "jobsystempoolrunnertest",
             "jobsystemportalcarvetest",
             "jobsystemqjobstest",
             "jobsystemrenderstarttest",

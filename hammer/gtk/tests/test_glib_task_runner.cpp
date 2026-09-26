@@ -28,7 +28,7 @@ std::uint64_t SteadyNanoseconds()
 {
 	return static_cast<std::uint64_t>( std::chrono::duration_cast<std::chrono::nanoseconds>(
 	    std::chrono::steady_clock::now().time_since_epoch() )
-	                                       .count() );
+	        .count() );
 }
 
 class GlibDriver final : public platformtest::RunnerDriver
@@ -47,7 +47,11 @@ public:
 	void Drain() override
 	{
 		auto done = std::make_shared<bool>( false );
-		if ( runner.PostTask( [done] { *done = true; } ) != platform::PostResult::kAccepted )
+		if ( runner.PostTask(
+		         [done]
+		         {
+			         *done = true;
+		         } ) != platform::PostResult::kAccepted )
 			return;
 		while ( !*done )
 			g_main_context_iteration( context, TRUE );

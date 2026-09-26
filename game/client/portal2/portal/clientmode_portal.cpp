@@ -225,6 +225,13 @@ static void __MsgFunc_TransitionFade( bf_read &msg )
 	GetClientModePortalNormal()->StartTransitionFade( flFadeTime );
 }
 
+// The server sends the HL2 armor value (CBasePlayer::UpdateClientData). Portal 2
+// has no armor HUD; without a hook the client rejects the message and drops
+// the rest of its packet.
+static void __MsgFunc_Battery( bf_read &msg )
+{
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -246,6 +253,7 @@ void ClientModePortalNormal::Init()
 	BaseClass::Init();
 
 	HOOK_MESSAGE( TransitionFade );
+	HOOK_MESSAGE( Battery );
 
 	InitRadialMenuHudElement();
 }

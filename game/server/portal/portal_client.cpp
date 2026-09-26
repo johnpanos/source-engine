@@ -154,6 +154,17 @@ void GameStartFrame( void )
 //=========================================================
 void InstallGameRules()
 {
+#ifdef PORTAL2
+	// Portal 2 co-op: a server with room for more than one player runs the
+	// co-op rules (partner spawns, co-op level lists, team portals). Agent
+	// decision; retail's selection is not in the decompile.
+	if ( gpGlobals->maxClients > 1 )
+	{
+		CreateGameRulesObject( "CPortalMPGameRules" );
+		return;
+	}
+#endif
+
 	if ( !gpGlobals->deathmatch )
 	{
 		CreateGameRulesObject( "CPortalGameRules" );
