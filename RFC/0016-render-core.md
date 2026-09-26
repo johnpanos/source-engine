@@ -1,20 +1,25 @@
 # RFC 0016: Render Core: Device, Render Graph, GPU Scene and Materials Beneath the Legacy Material System
 
-- Status: Proposed (2026-09-26); no implementation gate complete. The
-  decisions in [Decisions](#decisions-2026-09-26) were taken by the agent
-  under the user's standing instruction and can be revisited before K1
+- Status: Proposed (2026-09-26); no implementation gate complete. Revised
+  the same day at the user's direction: the device contract serves several
+  backends (Vulkan first, OpenGL second), ToGL stays for mods, and the RFC
+  now fixes the directory layout, the ports and the layer contract, and
+  states each gate as objective tests. The decisions in
+  [Decisions](#decisions-2026-09-26) can be revisited before K1
 - Date: 2026-09-26
 - Scope: The engine's renderer beneath the frozen material-system API: an
-  explicit GPU device contract (RHI), a per-frame render graph, a persistent
-  GPU scene with views and draw lists, a material and shader-family model,
-  engine-owned frame and view orchestration, clustered lights and a shadow
-  atlas, and one legacy frontend that runs today's `IMatRenderContext`,
-  `IShaderAPI` and shader-DLL stream as passes inside that graph
+  explicit, backend-neutral GPU device port with Vulkan, OpenGL and null
+  adapters; a per-frame render graph; a persistent GPU scene with views and
+  draw lists; material families; engine-owned frame and view orchestration;
+  clustered lights and a shadow atlas; and one legacy frontend that runs
+  today's `IMatRenderContext`, `IShaderAPI` and shader-DLL stream as passes
+  inside that graph
 - Platform: [RFC 0001](0001-capability-based-platform-architecture.md) owns
   render providers, presentation bridges, capabilities, profiles and quirks
   (R15, R16), and composition. Its render migration step 9 keeps "the
   existing shader API command model until a separate renderer RFC replaces
-  it". This is that RFC
+  it". This is that RFC. Its step 10 ("validate a genuinely different
+  backend through the same provider and conformance contracts") is K10
 - Execution: [RFC 0003](0003-dependency-aware-job-system.md) owns CPU job
   graphs and executors. It lists "introducing a GPU render graph" as a
   non-goal; this RFC owns the GPU graph and runs its CPU work on RFC 0003
@@ -24,9 +29,9 @@
   completion tokens, bounded queues and publication rules. This RFC applies
   them; it does not restate them
 - Materials and lighting: [RFC 0007](0007-physically-based-lighting-pipeline.md)
-  owns the PBR family, `pbr_brdf.h`/`pbr_brdf.glsl` and the light baker.
-  [RFC 0011](0011-runtime-indirect-lighting.md) owns the probe volume, the
-  runtime light set and indirect producers.
+  owns the PBR family's semantics, `pbr_brdf.h`/`pbr_brdf.glsl` and the
+  light baker. [RFC 0011](0011-runtime-indirect-lighting.md) owns the probe
+  volume, the runtime light set and indirect producers.
   [RFC 0012](0012-antialiasing-msaa-specular-alpha-coverage.md) owns MSAA
   policy, alpha to coverage and specular AA
 - Formats: [RFC 0008](0008-canonical-world-data-and-runtime-formats.md) owns
@@ -39,7 +44,7 @@
   [RFC 0002](0002-hammer-responsibility-factorization.md) owns the Hammer
   viewport host (R17)
 - Verification: [RFC 0005](0005-quality-and-correctness-harnesses.md)
-  (Q-PRESENTATION, Q-FOUNDATION, Q-JOBS, Q-PRODUCT)
+  (Q-ARCH, Q-PRESENTATION, Q-FOUNDATION, Q-JOBS, Q-PRODUCT)
 
 ## Decision and boundary
 
@@ -51,51 +56,62 @@ probe volumes, SDF shadows, reflection probes, compute) reaches the device
 through a string-named `QueryInterface` side channel and runs as more
 methods on the same translation object. That design got native Vulkan
 running on four device families, but it cannot express passes, transient
-targets, GPU skinning, shadow maps, parallel recording or a second scene,
-and every feature added to it makes the translation layer larger.
+targets, GPU skinning, shadow maps, parallel recording, a second scene or a
+second graphics API, and every feature added to it makes the translation
+layer larger.
 
-This RFC inverts the relationship:
+This RFC inverts the relationship and builds the renderer as ports and
+adapters:
 
 1. **A render core owns the frame.** A family of strict, portable C++20
-   libraries under `render/core/` and `public/render/core/` records each
-   frame as a render graph over an explicit device contract. The engine,
-   not the client DLL, owns frame and view orchestration.
-2. **The legacy API becomes one frontend.** `IMaterialSystem`,
+   libraries under `render/` and `public/render/` records each frame as a
+   render graph over a device port. The engine, not the client DLL, owns
+   frame and view orchestration.
+2. **Ports are narrow, backend-neutral contracts; adapters implement them.**
+   The device port (`render.device.v2`) knows no graphics API. Vulkan,
+   OpenGL and null adapters implement it. Other ports (the frame and
+   feature port, visibility providers, the scene service) follow the same
+   rule. Only application roots name an adapter.
+3. **The legacy API becomes one adapter.** `IMaterialSystem`,
    `IMatRenderContext`, `IMaterial`, `IMesh`, `IShaderAPI`, the shader-DLL
    ABI and material proxies keep their vtables and behavior. Their stream is
    recorded into *legacy stream passes* at the view stage where it happens
    today. At the inversion gate (K3) every pixel family is byte-identical
    to the current backend.
-3. **An explicit device contract (`render.device.v2`).** Buffers, textures,
-   samplers, shader artifacts, immutable pipelines, bind-group layouts,
-   command encoders and queue submission with typed completion tokens. It
-   has a Vulkan provider (desktop, Android, and Apple through MoltenVK) and
-   a null/recording provider. The D3D9 path is not ported; it stays the
-   legacy compatibility profile on the old stack.
-4. **A render graph (`render.graph.v1`).** Passes declare the resources
-   they read and write. The graph orders passes, places barriers and layout
-   transitions, allocates and aliases transient resources, merges passes
-   for tile-based GPUs where measured, and records passes in parallel. A
-   serial executor in declaration order is its oracle.
-5. **A persistent GPU scene (`render.scene.v1`).** Render objects (world
-   mesh groups, props, skinned models, particles, decals, lights, probes,
-   view generators) are owned by one scene authority and updated by change
-   sets committed at a frame boundary. Views are extracted, culled and
-   turned into draw lists by jobs.
-6. **Materials are data (`render.material.v2`).** A material is a shader
-   family, a typed parameter block and a static permutation key. VMT files
-   are imported per family. The 86 GLSL ports of `stdshader_dx9` become the
+4. **Vulkan is the first device adapter; OpenGL is the second.** The OpenGL
+   adapter (K10) proves the port is backend-neutral, as RFC 0001 step 10
+   requires. Apple runs through MoltenVK. The D3D9 path is not ported.
+   ToGL stays on the legacy D3D9 profiles, where it runs mod shader DLLs'
+   D3D bytecode (user decision, 2026-09-26).
+5. **A render graph (`render.graph.v1`).** Passes declare the resources
+   they read and write. The graph orders passes, derives abstract resource
+   transitions, allocates transient resources (aliasing them where the
+   adapter can), merges passes where measured, and records passes in
+   parallel where the adapter can. A serial executor in declaration order is
+   its oracle.
+6. **A persistent GPU scene (`render.scene.v1`).** Render objects are owned
+   by one scene authority and updated by change sets committed at a frame
+   boundary. Views are extracted, culled and turned into draw lists by jobs.
+7. **Materials are data (`render.material.v2`).** A material is a family, a
+   typed parameter block and a static permutation key. VMT files are
+   imported per family. The 86 GLSL ports of `stdshader_dx9` become the
    `legacy` family, the catch-all for content no native family claims.
-7. **Features are graph passes with one owner each.** Lights and shadows are
+8. **Arrows point down, and a checker says so.** Every render module has a
+   declared layer. A new archlint rule (CAP011) rejects upward and sibling
+   edges and any portable dependency on an adapter, on top of the existing
+   include, link and owner checks.
+9. **Features are graph passes with one owner each.** Lights and shadows are
    owned here (K7). GI (RFC 0011), antialiasing (RFC 0012), UI (RFC 0010)
-   and debug views (RFC 0014) plug in as passes and keep their owners.
+   and debug views (RFC 0014) plug in as feature adapters and keep their
+   owners.
 
 Mods, unported code and the legacy D3D9 profiles keep calling the legacy
 API indefinitely. First-party Portal and Portal 2 rendering moves to native
 passes one cohort at a time, each against an oracle, until its use of the
 legacy stream reaches zero.
 
-This RFC defines contracts, owners and gates. Nothing here is installed.
+This RFC defines contracts, owners, layout and gates. Nothing here is
+installed.
 
 ## Observed starting point (2026-09-26)
 
@@ -162,6 +178,18 @@ measured for this RFC; measured numbers are quoted from their records.
   Apple TV 4K holds 60 fps with a thin margin, on the one map measured
   (`tvos-portal-frame-pacing-60` in `quality/budgets/render-v1.json`).
 
+### Other graphics paths
+
+- **ToGL** (`togl/linuxwin/`, about 27.6k lines, and `togles/`) emulates
+  D3D9 on OpenGL and translates D3D9 shader assembly to GLSL at run time
+  (`dx9asmtogl2.cpp`). `--use-togl` defaults on outside Windows
+  (`wscript:482`), and Vulkan builds turn it off (`wscript:288`). The SDL2
+  legacy-renderer profiles use it: `linux-i386-legacy` and
+  `freebsd-legacy` through ToGL, `android-armv7a-legacy` through ToGLES
+  (`scripts/build-android-armv7a.sh`).
+- **DXVK Native** runs `shaderapidx9` on Vulkan for the legacy D3D9
+  profile.
+
 ### Contracts and side channels
 
 - `render.backend.v1` (`public/render/render_backend.h`) covers adapters,
@@ -218,6 +246,12 @@ measured for this RFC; measured numbers are quoted from their records.
 
 ### Architecture state
 
+- **Dependency direction is whitelisted, not layered.** Each capability
+  module in `architecture/modules.json` lists `allowedEdges`; CAP002/CAP005
+  check includes against them, CAP006 checks links, and CAP004 rejects
+  permission cycles. Nothing declares which module is above which, so a
+  lower module can be granted an edge to a higher one as long as no cycle
+  forms, and sibling adapters can depend on each other.
 - `render.vulkan.core` is a `backend` module; `shaderapivulkan.cpp`,
   `vulkan_compute.cpp`, `vulkan_shader_library.cpp`, `vulkan_mesh_layout.*`
   and `shaders/` have no module owner, and the `shaderapivulkan` target sits
@@ -225,27 +259,33 @@ measured for this RFC; measured numbers are quoted from their records.
 - **The job system has no capability module.** `public/jobsystem/` and
   `jobsystem/` are unowned and the target is in the `engine-and-tiers`
   group. A strict module cannot include it without failing CAP002/CAP005.
-- **Shader compiler is not pinned.** `quality/baseline.json` records
+- **The shader compiler is not pinned.** `quality/baseline.json` records
   `glslc --version` without an expected value; the SPIR-V is committed as
   generated headers (`material_spv.h`, `legacy_spv.h`).
+- **Layout convention.** Existing portable libraries put public headers in
+  `public/<lib>/` and sources in `<lib>/` (`mapgeometry`, `kvtext`, `vmf`),
+  with the owning module found by longest path prefix. Contract documents
+  live beside their suites (`unittests/rendertest/contracts/*.v1.md`).
 
 ## Goals
 
 - One owner of the frame, in the engine, with views, passes and resources
   declared rather than inferred.
-- A device contract whose shared suite runs against every provider,
-  including bad ones, and whose resources are released only by completion
-  tokens (RFC 0006).
-- No device-wide or queue-wide idle wait on a frame path.
-- A four-bind-group ceiling, so every material family runs on every Vulkan
-  device the profiles declare, including MoltenVK and Android.
+- Ports that name no graphics API, with at least two real device adapters
+  (Vulkan and OpenGL) passing one shared suite, and bad adapters failing it.
+- GPU resources released only by completion tokens (RFC 0006), and no
+  device-wide or queue-wide idle wait on a frame path.
+- A four-bind-group ceiling, so every material family runs on every device
+  the profiles declare.
 - Byte-identical pixels at the inversion gate; afterwards, every behavior
   change is a versioned decision with its own oracle.
 - GPU skinning, shadow maps for the sun, spot lights and flashlights,
   clustered dynamic lights, float and MRT targets, and parallel command
-  recording.
+  recording where the adapter supports it.
 - A second scene in the same process (Hammer's viewport, material previews,
   thumbnails) without globals.
+- A layer contract that a checker enforces, with seeded violations
+  rejected.
 - Main-thread draw-submission cost reduced against its recorded budget, and
   no regression of the Apple TV 60 fps budget.
 - The legacy API, content and mod shader DLLs keep working on the profiles
@@ -254,13 +294,13 @@ measured for this RFC; measured numbers are quoted from their records.
 ## Non-goals
 
 - Changing any frozen interface, content format or gameplay behavior.
-- A native D3D9, D3D12 or Metal provider. Apple runs through MoltenVK. The
-  device contract does not preclude another provider later; adding one
+- A native D3D9, D3D12, Metal or WebGPU adapter. The port admits them; each
   needs its own decision and evidence.
-- Porting `shaderapidx9`. The D3D9/DXVK and togl profiles stay on the old
-  stack.
-- Running D3D bytecode from mod shader DLLs on the native core. Those mods
-  keep the legacy D3D9 profile (see [Mod shaders](#mod-shader-dlls)).
+- Porting `shaderapidx9`, or retiring ToGL. ToGL stays for mod shader DLLs
+  on the legacy D3D9 profiles (user decision, 2026-09-26). The OpenGL
+  adapter runs the core, not D3D bytecode.
+- Running D3D bytecode from mod shader DLLs on the core
+  ([Mod shader DLLs](#mod-shader-dlls)).
 - Temporal antialiasing or upscalers (RFC 0012 keeps these out of scope).
 - Mesh shaders, bindless descriptors or GPU-driven culling, until measured
   need ([Later work](#later-work)).
@@ -268,53 +308,153 @@ measured for this RFC; measured numbers are quoted from their records.
   moves; their simulation does not.
 - Rewriting `viewrender.cpp` in one change.
 
-## Layers and owners
+## Ports and adapters
 
-| Layer | Module (proposed) | Owns | Depends on |
-| --- | --- | --- | --- |
-| Math | `render.math` | Float value types (`float3`, `float4`, `float4x4`, `Frustum`, `Aabb`) used by the core; no SIMD claims | foundation |
-| Device contract | `render.device` | `render.device.v2`: handles, descriptors, `IRenderDevice2`, encoders, queues, completion tokens, capability and limit facts, errors | foundation, `render.contracts` (profile and quirk types) |
-| Null provider | `render.device.null` | Recording provider for tests and headless tools | `render.device` |
-| Vulkan provider | `render.device.vulkan` (kind `backend`) | Instance, device, queues, allocator, upload rings, pipelines and cache, bind groups, timeline completion, loss; extracted from `CVulkanContext` | `render.device`, Vulkan SDK, pinned allocator |
-| Render graph | `render.graph` | `render.graph.v1`: builder, compiler (barriers, lifetimes, aliasing, merging), executors, traces | `render.device`, `jobs.graph` |
-| Shader library | `render.shader-library` | Shader artifacts, permutation keys, reflected layouts, pipeline recipes | `render.device` |
-| Materials | `render.material` | `render.material.v2`: families, schemas, parameter blocks, instances, VMT import | `render.shader-library`, `content.keyvalues-text`, `content.texture-contract` |
-| Scene | `render.scene` | `render.scene.v1`: render objects, change sets, views, visibility providers, draw lists | `render.material`, `render.graph`, `render.math`, `jobs.graph` |
-| Feature passes | `render.pass.*` (for example `render.pass.shadows`, `.lights`, `.skinning`, `.world`, `.post`, `.ui`) | One feature's passes and GPU resources | `render.scene`, `render.graph`, `render.material`; each feature's own contract module (RFC 0011, 0012, 0010) |
-| Renderer | `render.renderer` | `render.view.v1`: `IRenderer`, frame and view descriptions, stage hooks, composition of feature passes | the layers above |
-| Legacy frontend | `render.legacy-frontend` (kind `legacy-interop`) | `IShaderAPI`/`IShaderShadow`/`IShaderDevice` over the core, legacy stream passes, the named render-target registry, frame-buffer copy semantics | `render.renderer`, legacy material and shader headers |
-| Applications | engine and client roots, Hammer, tools | Selecting providers and profiles, composing the renderer | the layers above |
+A *port* is a contract module: interfaces, value types and numbered
+obligations, with no implementation that depends on a backend. An *adapter*
+implements one port for one technology. Portable code depends on ports.
+Only application roots and test fixtures name adapters, and they compose
+them through typed descriptors (RFC 0001 composition).
 
-- **Arrows point down.** No core module includes a legacy header, the
-  engine, the client or an application. The legacy frontend is the only
-  module that sees both worlds, and it is `legacy-interop`.
-- **Strict on both axes.** Every portable core module is a `cxx20` target
-  in `quality/toolchain/policy.json` *and* builds with
-  `features='cxx capability_strict'` and `env=bld.strict_cpp20_env()`,
-  declares `arch_module`, and passes CAP002, CAP005, CAP006, CAP007 and
-  CAP008. `mapcontainer` has the dialect without the hygiene; the core must
-  have both.
-- **Static libraries.** Each module is a Waf static library (CAP009). The
-  Vulkan provider links into the existing `shaderapivulkan` product until
-  K9, then into the renderer's product library.
-- **Vocabulary.** Core APIs use `foundation::Expected`, `foundation::Error`,
-  `StrongId` and `ScopedResource`. `render.contracts` stays C++11 and
-  ABI-facing; the core does not add vocabulary types to it, and CAP010 keeps
-  foundation types out of preserved-ABI headers.
-- **Dedicated servers** link no core module (R12 link evidence).
-- **Prerequisite:** `public/jobsystem/` and `jobsystem/` get a capability
-  module (`jobs.graph`) with strict hygiene before `render.graph` depends on
-  it (K0).
-- **Math.** `render.math` is private to the render core. Hammer's
-  `mapgeometry` types keep their editor tolerances and double precision
-  (AGENTS.md DRY rule). The legacy frontend converts from `Vector` and
-  `VMatrix`. A shared foundation math module is a later decision once a
-  second strict consumer needs the same float types.
+| Port (module, contract id) | Consumers | Adapters |
+| --- | --- | --- |
+| Device: `render.device`, `render.device.v2` | graph, shader library, materials, scene, feature passes, legacy frontend | `render.device.vulkan` (K1), `render.device.gl` (K10), `render.device.null` (K1); later ones need their own decision |
+| Presentation: `render.contracts`, `render.presentation.v1` (R16) | application roots, renderer | `render.bridge.sdl3-vulkan` (exists), `render.bridge.sdl3-gl` (K10), headless |
+| Shader artifacts: `render.shader-library`, `render.shader-artifacts.v1` | materials, feature passes | the build-time artifact store; a development reload source (RFC 0014) |
+| Visibility: `render.scene`, `render.visibility.v1` | scene | BSP leaf and area-portal visibility (engine), WMSH cluster and occlusion culling, later RFC 0008 F8 visibility |
+| Frame and features: `render.frame`, `render.frame.v1` | engine and client roots, Hammer | renderers: `render.renderer` (full), later a wireframe or reference renderer with declared narrower fidelity; features: `render.pass.*`, `render.legacy-frontend` |
+| Scene service: `render.scene`, `render.scene.v1` | engine, game, Hammer, previews | one implementation; fakes for tests |
 
-## Device contract (`render.device.v2`)
+Each port has a contract document with numbered clauses, one shared suite
+that runs against every claiming adapter and fake, and deliberately bad
+adapters that must each fail a named clause, as `platform.task-runner.v1`
+does (`public/platform/contracts/task_runner.h`,
+`unittests/platformtest/task_runner/`).
+
+## Directory layout and modules
+
+New code follows the house layout (`public/<lib>/` for public headers,
+`<lib>/` for sources), nested under one `render/` root so the family is
+visible in the tree. Ownership is by longest path prefix, so
+`public/render/device/vulkan/` belongs to the Vulkan adapter, not the port.
+The existing flat headers in `public/render/` stay in `render.contracts`
+(C++11, ABI-facing) and are not moved.
+
+```text
+public/render/                    render.contracts (existing flat headers; unchanged)
+public/render/math/               render.math
+public/render/device/             render.device                 port
+public/render/device/vulkan/      render.device.vulkan          adapter: factory header only, no Vulkan types
+public/render/device/gl/          render.device.gl              adapter: factory header only, no GL types
+public/render/device/null/        render.device.null            adapter: factory header only
+public/render/graph/              render.graph
+public/render/shaderlib/          render.shader-library
+public/render/material/           render.material
+public/render/scene/              render.scene
+public/render/frame/              render.frame                  port: IRenderer, IRenderFeature, FrameDesc
+public/render/renderer/           render.renderer               adapter of render.frame
+public/render/pass/<feature>/     render.pass.<feature>         adapter of IRenderFeature
+public/render/legacy/             render.legacy-frontend        adapter of IRenderFeature; legacy-interop
+
+render/math/                      sources, private headers of each module above
+render/device/                    port helpers (validation, descriptor hashing)
+render/device/vulkan/             Vulkan adapter (VMA lives here)
+render/device/gl/                 OpenGL adapter
+render/device/null/               recording adapter
+render/graph/
+render/shaderlib/
+render/material/
+render/material/families/<name>/  native family definitions and their GLSL
+render/shaders/common/            shared GLSL (pbr_brdf.glsl moves here), owned by render.material
+render/scene/
+render/frame/
+render/renderer/
+render/pass/<feature>/            each feature's sources and its own GLSL
+render/legacy/                    frontend; render/legacy/family/ holds the 86 legacy ports
+render/bridge/sdl3-gl/            presentation bridge (backend kind)
+
+unittests/rendertest/core/<module>/   suites, fakes and bad adapters per module
+unittests/rendertest/contracts/       render.device.v2.md, render.graph.v1.md, …
+tools/render/                         shader artifact builder, independent graph model (Python)
+```
+
+- **Shaders live with their owner.** A family's GLSL sits in its family
+  directory; a feature pass's GLSL sits in its pass directory; the legacy
+  ports move with the frontend. `materialsystem/shaderapivulkan/shaders/`
+  empties as its files move and is deleted at K9.
+- **Adapter public headers are factories.** `public/render/device/vulkan/`
+  declares one typed provider descriptor and its options. It includes no
+  Vulkan or SDL header, which CAP007 (standalone compile) and CAP005
+  (transitive includes) check.
+- **Existing Vulkan code moves by extraction.** `render.vulkan.core` files
+  move into `render/device/vulkan/` as the K1 adapter takes them over; what
+  remains in `materialsystem/shaderapivulkan/` is the legacy
+  `IShaderDevice` shell until K3 moves it into `render/legacy/`.
+- **One Waf static library per module**, each declaring `arch_module`,
+  built with `features='cxx capability_strict'` and
+  `env=bld.strict_cpp20_env()`, and listed as `cxx20` in
+  `quality/toolchain/policy.json`. The legacy frontend is the exception: it
+  is `legacy-interop` and may use `cxx20-permissive` because it includes
+  legacy headers.
+- **Vocabulary.** Portable modules use `foundation::Expected`,
+  `foundation::Error`, `StrongId` and `ScopedResource`. `render.contracts`
+  stays C++11 and ABI-facing; the core adds no vocabulary types to it, and
+  CAP010 keeps foundation types out of preserved-ABI headers.
+- **Math.** `render.math` is private to the render family. Hammer's
+  `mapgeometry` keeps its editor tolerances and double precision (AGENTS.md
+  DRY rule). The legacy frontend converts from `Vector` and `VMatrix`.
+
+## Layer contract and import rules
+
+Dependencies point down. The render family declares its layers, and every
+edge is checked three ways: the declared `allowedEdges` must respect the
+layers (new rule CAP011), the code's includes must stay inside the declared
+edges (CAP002 direct, CAP005 transitive), and the links must too (CAP006).
+
+| Layer | Modules | May depend on |
+| --- | --- | --- |
+| 7 Applications | engine and client roots, Hammer, tools, test fixtures | anything below, including adapters |
+| 6 Features and renderers | `render.renderer`, `render.pass.*`, `render.legacy-frontend` | layers 0–5; legacy headers only for the frontend |
+| 5 Frame port | `render.frame` | layers 0–4 |
+| 4 Scene | `render.scene` | layers 0–3 |
+| 3 Materials | `render.material` | layers 0–2, `content.keyvalues-text`, `content.texture-contract` |
+| 2 Core services | `render.graph`, `render.shader-library` | layers 0–1 |
+| 1 Device port | `render.device` | layer 0 |
+| 0 Vocabulary | `foundation`, `render.math`, `render.contracts`, `jobs.graph` | nothing in the render family |
+| Adapters (column) | `render.device.vulkan`, `render.device.gl`, `render.device.null`, `render.bridge.*` | `render.device`, layer 0, and their native SDK grants |
+
+Rules CAP011 enforces over `architecture/modules.json`:
+
+1. **Down only.** An edge from a layer-*n* module may target only modules in
+   layers below *n*, or declared external bases (`foundation`, content
+   format libraries). An edge to the same or a higher layer fails.
+2. **Siblings are independent.** Modules in one independence group have no
+   edges among them. The groups are the features and renderers of layer 6
+   (so a pass never depends on the renderer or another pass) and the
+   adapters (so the GL adapter never depends on the Vulkan adapter).
+3. **Nothing portable depends on an adapter.** Only layer 7 may name an
+   adapter module. An adapter may depend only on the port it implements,
+   layer 0 and its native grants.
+4. **Every render module has a layer.** A module whose id starts with
+   `render.` and appears in no layer or adapter column fails.
+5. **No backend identity in portable code.** Portable modules may not
+   compare the device's diagnostic backend identifier. Behavior follows
+   capabilities; the identifier exists for logs and evidence only.
+
+The layers live in one new `layerContracts` section of
+`architecture/modules.json`, next to the module rows, so the manifest stays
+the single owner of dependency permissions (AGENTS.md). CAP011 ships with
+self-test fixtures, one per rule, each a seeded violation that must fail
+with its rule number: an upward edge (scene → frame), a sibling edge
+(`render.pass.shadows` → `render.renderer`), a portable edge to an adapter
+(`render.graph` → `render.device.vulkan`), an adapter-to-adapter edge, an
+unlayered `render.*` module, and a backend-identity comparison in a pass.
+
+## Device port (`render.device.v2`)
 
 `render.backend.v1` stays as the lifetime subset; its suite becomes part of
-the v2 suite. v2 adds everything a renderer needs to record work.
+the v2 suite. v2 adds what a renderer needs to record work, in terms no
+graphics API owns.
 
 ```cpp
 // Proposed; spellings are fixed by the first implementation.
@@ -328,7 +468,7 @@ using BindGroupLayoutId = foundation::StrongId<struct BindGroupLayoutTag, uint64
 class IRenderDevice2
 {
 public:
-	virtual const DeviceFacts &Facts() const = 0;                 // caps and limits; immutable
+	virtual const DeviceFacts &Facts() const = 0;                 // capabilities, limits, artifact format
 	virtual Expected<BufferId, DeviceError> CreateBuffer( const BufferDesc & ) = 0;
 	virtual Expected<TextureId, DeviceError> CreateTexture( const TextureDesc & ) = 0;
 	virtual Expected<PipelineId, DeviceError> CreatePipeline( const PipelineDesc & ) = 0;
@@ -344,63 +484,127 @@ public:
 }
 ```
 
-- **Descriptors are values and are immutable.** A pipeline is created from
-  shader artifacts, a bind-group layout list, vertex input, raster, depth,
-  stencil and blend state, attachment formats and sample count. Nothing is
-  mutable after creation; there is no D3D9-style state machine at this
-  boundary.
+### Semantics every adapter provides
+
+- **Immutable descriptions.** A pipeline is created from shader artifacts,
+  a bind-group layout list, vertex input, raster, depth, stencil and blend
+  state, attachment formats and sample count. Nothing is mutable after
+  creation. An adapter whose API has no pipeline objects (OpenGL) caches
+  programs and applies state differences itself; that is invisible above
+  the port.
 - **Four bind groups at most**, in a fixed role order: frame, view,
-  material, draw. That fits Vulkan's guaranteed minimum
-  (`maxBoundDescriptorSets` ≥ 4) and therefore every declared profile. A
-  family that needs more fails its build-time validation, not a device.
-- **Completion tokens** carry a queue, a timeline value and the device
+  material, draw. Vulkan guarantees four bound sets. OpenGL maps each group
+  to a fixed range of its flat binding slots, and later APIs map them to
+  their own tables.
+- **Completion tokens** carry a queue, a monotonic value and the device
   epoch (RFC 0006). `Release` never frees before its token completes. After
-  device loss, tokens from the old epoch are invalid and cannot release
-  new-epoch resources.
-- **Upload rings** are provider-owned. Each occupied range records the
-  token that allows its reuse. Exhaustion defers the upload to the next
-  submission and counts it; it never overwrites and never waits for the
-  device to go idle. Large uploads use a transfer queue when the device has
-  one, and the graphics queue otherwise, with the same token rule.
-- **Memory** is suballocated by the provider from typed heaps, and each
-  heap reports its budget and use. The allocator also serves the graph's
-  transient aliasing.
-- **Encoders.** One encoder is recorded by one thread at a time. Encoders
-  may be recorded in parallel and are submitted in the order given to
-  `Submit`. Diagnostic builds check sequence ownership with
-  `platform::SequenceChecker`.
-- **Queues.** Graphics is required. Compute and transfer are optional
-  capabilities; the graph falls back to the graphics queue when they are
-  absent.
-- **Facts, profiles and quirks** follow RFC 0001: facts are immutable,
-  profiles are policy chosen by the composition root, quirks are data with
-  a reason and a provider range. `Present` no longer reads ConVars; policy
-  arrives through the renderer's frame description.
-- **Required Vulkan features** for the core: timeline semaphores,
-  synchronization2 and dynamic rendering (each core in Vulkan 1.3 and
-  available as an extension earlier). K1 records each declared profile's
-  support, including MoltenVK on the iPhone and Apple TV and the Fold7. A
-  profile that lacks one fails composition with a structured error. It
-  does not fall back to the old stack silently.
-- **Presentation** stays `render.presentation.v1` (R16). The swapchain
-  image is an imported graph resource; the bridge keeps native handles.
+  device loss, tokens from the old epoch are invalid. How an adapter
+  implements tokens (timeline semaphores, fence objects) is private.
+- **Abstract resource states.** Encoders and the graph speak in usages
+  (sampled, storage read, storage write, color attachment, depth read,
+  depth write, resolve, copy source, copy destination, present, vertex,
+  index, indirect, uniform). The adapter turns a usage change into its
+  API's barriers, layout transitions or nothing. No stage mask, access
+  mask or image layout appears in the port.
+- **Conventions.** Clip-space depth is 0 to 1, clip-space Y points up,
+  framebuffer and texture origins are top-left, and texel centers are at
+  half-integers. An adapter whose API differs corrects it privately
+  (OpenGL uses `glClipControl`). Shaders never branch on the backend.
+- **Upload rings** are adapter-owned. Each occupied range records the token
+  that allows its reuse. Exhaustion defers the upload to the next
+  submission and counts it; it never overwrites and never idles the device.
+- **Memory.** Adapters suballocate and report per-heap budget and use.
+  Aliasing of transient resources is a capability.
+- **Encoders.** One encoder is recorded by one thread at a time; diagnostic
+  builds check this with `platform::SequenceChecker`. Encoders are
+  submitted in the order given to `Submit`.
+- **Queues.** Graphics is required. Compute and transfer queues are
+  optional capabilities; the graph falls back to the graphics queue.
+- **Facts, profiles and quirks** follow RFC 0001. Facts are immutable.
+  Profiles are policy chosen by the composition root. Quirks are data with
+  a reason and an adapter range. `Present` no longer reads ConVars; policy
+  arrives through the frame description.
+- **Presentation** stays `render.presentation.v1` (R16). The swapchain or
+  default framebuffer is an imported graph resource; the bridge keeps
+  native handles.
 
-### Shared suite and bad providers
+### Capabilities
 
-One suite runs against the Vulkan provider, the null provider and fakes. It
-includes the `render.backend.v1` cases. Each deliberately bad provider must
-fail a named clause:
+`DeviceFacts` reports what the adapter can do. Families and features
+declare what they require. The composition root either selects a declared
+fallback or fails composition with a structured error that names the
+missing capability. Nothing falls back silently or after partial setup.
+
+| Capability | Vulkan adapter | OpenGL 4.5 adapter | If absent |
+| --- | --- | --- | --- |
+| Compute shaders and storage buffers | yes | yes | features that require them fail composition, or use a declared fallback (CPU skinning is the skinning fallback) |
+| Transient memory aliasing | yes | no | transient resources are pooled by description |
+| Parallel native recording | yes | no | encoders record CPU command lists that replay on the submitting sequence |
+| Async compute and transfer queues | per device | no | work runs on the graphics queue |
+| Ray query | per device | no | RFC 0011 producers that need it are unavailable |
+| Sample counts, formats, limits | per device | per device | per feature rule |
+
+### Shader artifacts
+
+- **One source language, one artifact per target.** GLSL stays the source.
+  The pinned compiler builds SPIR-V, and pinned SPIRV-Cross produces other
+  targets from it (GLSL 4.50 for the OpenGL adapter; later ESSL or MSL if a
+  profile needs them). `DeviceFacts` names the artifact format an adapter
+  accepts.
+- Artifacts are keyed by source, compiler identity, target format and
+  permutation. Reflection checks each one against its family's or pass's
+  declared layout at build time. Shipping products never compile shaders;
+  development compositions may reload them (RFC 0014).
+- Artifacts are build outputs produced by a Waf task with the pinned tools.
+  The committed generated headers (`material_spv.h`, `legacy_spv.h`) are
+  deleted at K4, once the pinned build reproduces them byte for byte.
+
+### Vulkan adapter
+
+- **Required features:** timeline semaphores, synchronization2 and dynamic
+  rendering (each core in Vulkan 1.3 and available as an extension
+  earlier). K1 records each declared profile's support. A profile without
+  one fails composition with a structured error, not a silent fallback.
+- **Memory:** Vulkan Memory Allocator, pinned, private to the adapter.
+- **Source:** extracted from `CVulkanContext` and the test-only
+  `vulkan_render_backend.cpp`, so the shipping path and the contract become
+  one stack.
+
+### OpenGL adapter
+
+- **Target:** OpenGL 4.5 core on Linux desktop, which gives compute,
+  `glClipControl`, direct state access and fence sync objects. macOS
+  OpenGL (4.1) is out of scope. ESSL targets for GLES are a later
+  capability-narrowed profile, needing their own decision.
+- **Tokens** are fence sync objects behind the same monotonic token
+  semantics.
+- **Threading:** one GL context is owned by the render sequence. Encoders
+  from other jobs record CPU command lists that the render sequence
+  replays in submission order.
+- **Profile:** an optional desktop product profile (proposed
+  `portal-linux-gl`), registered in `quality/baseline.json` like the other
+  optional rows. It does not replace ToGL.
+
+### Shared suite and bad adapters
+
+One suite runs against the Vulkan, OpenGL and null adapters and fakes. It
+includes the `render.backend.v1` cases, plus a conventions section that
+renders known geometry and checks where it lands (depth range, Y
+direction, origin, texel centers). Each deliberately bad adapter must fail
+a named clause:
 
 - recycles an upload range or releases a resource before its token
   completes;
 - reports different facts after creation;
 - completes submissions out of order on one queue;
 - accepts a token from a previous device epoch;
-- creates a pipeline whose layout does not match its shader artifact's
-  reflected bindings;
+- creates a pipeline whose layout does not match its artifact's reflected
+  bindings;
 - leaks a partially created resource when creation fails;
 - accepts a fifth bind group;
-- allows two threads to record one encoder without a diagnostic.
+- allows two threads to record one encoder without a diagnostic;
+- claims a capability it does not implement (aliasing that corrupts);
+- flips the Y convention or uses a −1 to 1 depth range.
 
 ## Render graph (`render.graph.v1`)
 
@@ -414,10 +618,8 @@ A graph is built each frame on the render sequence:
 - **Resources** are *imported* (the swapchain image, persistent textures and
   buffers, history targets, named legacy render targets) or *transient*
   (created from a description for this frame only).
-- **Accesses** declare read or write, the usage (sampled, storage, uniform,
-  vertex, index, indirect, color attachment, depth read, depth write,
-  resolve, copy source, copy destination, present) and a subresource range.
-  A write creates a new version of the resource.
+- **Accesses** declare read or write, the port's abstract usage and a
+  subresource range. A write creates a new version of the resource.
 - **Side effects.** A pass that writes an imported resource, presents or
   reads back is never culled.
 
@@ -427,49 +629,34 @@ A graph is built each frame on the render sequence:
   undefined version; there is no cycle; accesses match the resource's
   declared usages. A violation is an error value that names the pass.
 - **Order.** Passes execute in declaration order. The compiler may move a
-  pass earlier only onto another queue, and only when the graph proves it
-  independent. Declaration order is therefore also the serial oracle.
-- **Barriers and layouts** are computed from consecutive accesses per
-  subresource with synchronization2 stages and access masks.
-- **Transient lifetimes and aliasing.** Transient resources get memory from
-  aliased heaps by lifetime interval, with the barrier that aliasing
-  requires.
+  pass only onto another queue, and only when it proves the pass
+  independent. Declaration order is also the serial oracle.
+- **Transitions** are computed per subresource as abstract usage changes.
+  The adapter turns them into its API's synchronization.
+- **Transient lifetimes.** Transients get memory by lifetime interval,
+  aliased where the adapter reports aliasing and pooled otherwise.
 - **Culling** removes passes whose outputs nothing reads, unless they have
   side effects.
-- **Pass merging.** Adjacent graphics passes with compatible attachments
-  may be merged into one rendering scope, the job the current sRGB/UNORM
-  merge does by inference. On the Fold7 the existing merge cut passes from
-  31 to 5 without changing GPU time
+- **Pass merging.** Adjacent graphics passes with compatible attachments may
+  merge into one rendering scope, the job the current sRGB/UNORM merge does
+  by inference. On the Fold7 the existing merge cut passes from 31 to 5
+  without changing GPU time
   ([frame pacing record](0001-native-vulkan-frame-pacing-progress.md#mobile-gpu-cost-render-pass-breaks-2026-09-23)),
-  so merging is a measured, per-profile option, not an assumed win.
-- **Caching.** A compiled graph is reused while the frame's shape (passes,
-  resources, descriptions) is unchanged, the way `DeclaredFrameGraph`
-  reuses its sealed graph.
+  so merging is a measured, per-profile option.
+- **Caching.** A compiled graph is reused while the frame's shape is
+  unchanged, the way `DeclaredFrameGraph` reuses its sealed graph.
 
 ### Executing
 
-- **Recording** runs passes as jobs on the RFC 0003 executors: each pass or
-  group of passes records its own encoder. Submission order is
-  declaration order. The serial executor records everything on the render
-  sequence and is the oracle and the low-capacity mode.
-- **Views are subgraphs.** A view (the main view, the 3D skybox, a water
-  reflection, a monitor, a portal) contributes a subgraph with declared
-  inputs and outputs. Recursive views (portals, mirrors) are nested
-  subgraphs with a declared depth limit.
+- **Recording** runs passes as jobs on the RFC 0003 executors when the
+  adapter records natively in parallel, and as CPU command lists otherwise.
+  Submission order is declaration order. The serial executor is the oracle
+  and the low-capacity mode.
+- **Views are subgraphs** with declared inputs and outputs. Recursive views
+  (portals, mirrors) are nested subgraphs with a declared depth limit.
 - **Traces.** Every compile can emit a trace (passes, resources, versions,
-  barriers, aliasing, merges, timings) that RFC 0014's debug controls and
-  RenderDoc labels consume.
-
-### Oracle
-
-- An independent model computes barriers, lifetimes and alias safety from
-  the same declarations and must agree with the compiler over seeded random
-  graphs, as RFC 0003's graph model does for jobs.
-- The Vulkan validation layer's synchronization checks report zero
-  messages on the pixel families and Portal boots.
-- Bad graphs must be caught: a missing barrier, overlapping live aliases,
-  a culled side-effect pass, a reordered dependent pass, a read of an
-  undefined version.
+  transitions, aliasing, merges, timings) for RFC 0014's debug controls and
+  RenderDoc labels.
 
 ## GPU scene (`render.scene.v1`)
 
@@ -496,14 +683,13 @@ A graph is built each frame on the render sequence:
 
 ### Visibility and draw lists
 
-- **Visibility providers** are injected: BSP leaf and area-portal
-  visibility (the engine), WMSH cluster and occlusion culling (moved from
-  `gl_rsurf.cpp`'s `worldmesh_cull`), and later RFC 0008 F8's USD-native
+- **Visibility adapters** implement `render.visibility.v1`: BSP leaf and
+  area-portal visibility (the engine), WMSH cluster and occlusion culling
+  (moved from `gl_rsurf.cpp`'s `worldmesh_cull`), and later RFC 0008 F8's
   visibility. The scene does not own BSP.
 - **Per view**, jobs run visibility, frustum and occlusion culling, then
   build draw lists per pass kind (depth, opaque, translucent, shadow,
-  capture) with sort keys. The serial path is the oracle; culled sets must
-  match the legacy path's sets on captured views.
+  capture) with sort keys. The serial path is the oracle.
 - **Translucency** keeps the legacy leaf order for content that depends on
   it: world translucency and renderables interleave per leaf, back to front.
   A native sort key replaces it only per cohort, as a recorded behavior
@@ -516,15 +702,15 @@ A graph is built each frame on the render sequence:
 - Compute skinning writes per-frame skinned vertex buffers from bone
   palettes; flex and morph targets run as compute before skinning.
 - The CPU path (`R_StudioSoftwareProcessMesh*`, today's emit skinning)
-  stays as the oracle and for materials that need software skinning.
-  Equivalence is judged per vertex with a declared tolerance.
+  stays as the oracle, as the fallback where compute is unavailable, and
+  for materials that need software skinning.
 
 ## Materials (`render.material.v2`)
 
 - **A family** declares a parameter schema (names, kinds, color encodings,
   defaults; RFC 0007's `pbr_material_schema.h` is the model), the pass
   kinds it supports, its static permutation axes, its material bind-group
-  layout and its render-state rules.
+  layout, its render-state rules and the device capabilities it requires.
 - **A material instance** is a family, a parameter block and a static
   permutation key. It has a revision. Dynamic parameters are written into a
   per-frame block, never into shared state.
@@ -537,17 +723,12 @@ A graph is built each frame on the render sequence:
   WorldVertexTransition), `vertexlit` (VertexLitGeneric, including skin),
   `unlit` (UnlitGeneric, Sprite), `refract` (Refract, PortalRefract, glass),
   `water`, `sky`, `eyes` (Eyes, EyeRefract, Teeth), `spritecard`, `post`,
-  and `legacy`. The `legacy` family runs the 86 ports keyed by program; it
-  exists so every shipped material renders while native families arrive.
+  and `legacy`. The `legacy` family runs the 86 ports keyed by program and
+  is defined in the frontend module.
 - **Material proxies.** `IMaterialProxy::OnBind` keeps its timing: the
   legacy frontend calls proxies when a renderable's draw is extracted, which
   is when the legacy path binds the material. `IMaterialVar` writes land in
   the renderable's parameter block for that draw.
-- **Shader artifacts.** GLSL stays the source language. A pinned compiler
-  builds SPIR-V artifacts offline, reflection checks each artifact against
-  its family's declared layout, and artifacts are keyed by source, compiler
-  identity and permutation. Shipping products never compile shaders.
-  Development compositions may reload them (RFC 0014 D-phase).
 - **Missing shaders.** A material whose shader no family or legacy port
   implements is reported when the material loads, with the material name,
   and is drawn with the error family. Today such draws are dropped and
@@ -556,19 +737,24 @@ A graph is built each frame on the render sequence:
 
 ### Mod shader DLLs
 
-Mod shader DLLs (`ShaderDLL004`) ship D3D shader bytecode. The core cannot
-run it, and translating DXBC is out of scope. On native profiles a mod
-shader DLL loads through the existing extension host, its shaders register
-as `unsupported-on-profile`, and their materials follow the missing-shader
-rule. The D3D9/DXVK profile keeps running them. This is recorded as a
-profile limitation, not hidden.
+Mod shader DLLs (`ShaderDLL004`) ship D3D shader bytecode, which the core
+does not run. On core profiles a mod shader DLL still loads through the
+existing extension host; its shaders register as `unsupported-on-profile`
+and their materials follow the missing-shader rule. The legacy D3D9
+profiles keep running them: native D3D9 on Windows, DXVK on Linux, and
+ToGL or ToGLES on the SDL2 legacy-renderer profiles. ToGL stays for exactly this reason (user decision,
+2026-09-26). Retiring it would be a separate decision about those profiles.
 
-## Frame and views (`render.view.v1`)
+## Frame and views (`render.frame.v1`)
 
 - The engine owns `IRenderer::RenderFrame(const FrameDesc &)`. A frame
   description lists views, their stages and the frame's policy (indirect
   view, probe sampling, debug view, sample count), replacing the ConVar
   reads in `Present`.
+- **Features** implement `IRenderFeature`: they declare their required
+  capabilities and stages, and add passes to a view's subgraph. The
+  renderer never depends on a concrete feature; the application root
+  composes the renderer with the features it selects.
 - **Stages** name the legacy order: monitors, 3D skybox, shadow depth,
   water reflection, water refraction, world opaque, renderables opaque,
   translucent, portals, view models, post, screen effects, HUD.
@@ -578,18 +764,21 @@ profile limitation, not hidden.
   native passes one cohort at a time, and `CViewRender` stops drawing what
   the scene now draws.
 - **Stage hooks.** Game code adds passes through `IRenderStageHooks` with
-  declared accesses (Portal's portal views, Portal 2 paint). A hook cannot
-  reach the device except through the graph.
+  declared accesses (Portal's portal views, Portal 2 paint). A hook reaches
+  the device only through the graph.
 - **Portals.** Until the portal cohort (K8) moves, portal views run through
   the legacy stencil path inside the translucent stage, bit-exact. The
   native path makes portals and mirrors view generators whose subgraphs
-  render to per-level targets or stencil. It keeps the recursion limit and
+  render to per-level targets or stencil, keeping the recursion limit and
   the texture fallback's behavior.
 - **Frame-buffer copies become explicit.** When a legacy material needs
   `_rt_FullFrameFB` or `_rt_PowerOfTwoFB`, the frontend ends the pass and
-  declares a copy pass at the same point in the stream. The graph trace
-  shows each copy, and a native family that needs the scene reads the
-  graph's scene-color resource instead.
+  declares a copy pass at the same point in the stream. A native family
+  that needs the scene reads the graph's scene-color resource instead.
+- **Other renderers.** A wireframe renderer for Hammer or a reference
+  renderer is another `IRenderer` adapter. It declares its narrower
+  fidelity (AGENTS.md: a wireframe renderer cannot claim material
+  fidelity) and passes the frame port's shared suite for what it claims.
 
 ## Lights and shadows (`render.lights.v1`, `render.shadows.v1`)
 
@@ -614,14 +803,13 @@ profile limitation, not hidden.
 | Sequence | Work |
 | --- | --- |
 | Game/main | Scene change sets, `FrameDesc`, legacy calls into `IMatRenderContext` (queued or immediate as today) |
-| Render | Scene snapshot acquire, graph build and compile, legacy frontend replay, submission (the `MatQueue` thread in `mat_queue_mode 2`, the main thread in mode 0) |
+| Render | Scene snapshot acquire, graph build and compile, legacy frontend replay, submission; the OpenGL context (the `MatQueue` thread in `mat_queue_mode 2`, the main thread in mode 0) |
 | Compute pool | Culling, draw-list builds, pass recording, parallel emit conversion |
 | GPU | Queues; completion observed only through tokens |
 
 - `CMatQueuedRenderContext` is unchanged. The frontend runs on the render
-  sequence, where the device work runs today, so queued ordering is kept.
-- Nothing recycles by frame index; per-slot fences are replaced by
-  timeline tokens.
+  sequence, where device work runs today, so queued ordering is kept.
+- Nothing recycles by frame index; per-slot fences are replaced by tokens.
 - The serial configuration (one thread, serial executors) remains a
   supported low-capacity mode and the oracle for every parallel path.
 
@@ -659,157 +847,170 @@ compatibility obligations. The API stays for them until each cohort moves.
 
 ## Delivery plan and gates
 
-Each gate needs negative controls, recorded evidence (revision, profile,
-inputs, counts, first divergence, reproduction commands) and the AGENTS.md
-reporting rules. Pixel comparisons are exact where the gate says
-byte-identical and use versioned per-case tolerances elsewhere.
+Every gate is a list of objective checks. Each check names the suite or
+command that runs it (proposed ids; the conformance manifest records the
+real ones when they are installed) and a pass condition a machine decides.
+A gate passes only when every check passes on its required profiles, with
+negative controls detected and evidence recorded (revision, profile,
+inputs, counts, first divergence, reproduction commands). Missing required
+hardware leaves the gate unverified, never passed.
+
+**Required profiles** for every gate: Linux desktop native Vulkan on
+Wayland and X11 (`linux-native-vulkan-gpu` runner) and the headless core
+runner. The Fold7 is required where a gate names it. Apple rows are
+optional (AGENTS.md): run and record them when the runner is available.
+
+**Common definitions.**
+
+- *Pixel families*: every family in `tools/quality/material_pixel_conformance.py`,
+  in both HDR modes.
+- *K0 views*: the view oracle set captured in K0.
+- *Byte-identical*: every pixel of every compared image equal.
+- *Within tolerance*: inside the per-case tolerance recorded, versioned,
+  in the fixture before the comparison runs.
+- *Frame allowance*: `portal-frame-pacing-v1` warm median at most 1.05× and
+  p99 at most 1.10× the K0 record for the same profile, unless
+  `quality/budgets/render-v1.json` records a tighter row.
 
 ### K0: Prerequisites and frozen oracles
 
-- Give `public/jobsystem/` and `jobsystem/` a `jobs.graph` capability module
-  with strict hygiene.
-- Pin the GLSL compiler (shaderc) in the dependency pins, record its
-  identity in `quality/baseline.json` with an expected value, and
-  regenerate the committed SPIR-V to prove the pin reproduces it.
-- Add the frozen material, shader-API and studio headers above to
-  `legacyAbi.paths` (CAP010), and add vtable-slot fixtures for
-  `IMaterialSystem`, `IMatRenderContext`, `IMaterial`, `IMaterialVar`,
-  `ITexture`, `IMesh`, `IMaterialProxy` and `IStudioRender` built in the
-  `legacy-cxx11` dialect.
-- Capture the view oracles the later gates need: Portal recursion at each
-  depth, water reflection and refraction, a monitor, glass (the existing
-  glass oracle), the legacy-ports view set, and per-draw state fixtures on
-  `testchmb_a_00`, `testchmb_a_08` and one Portal 2 map.
-- Record R32-RENDER-BUDGETS rows for desktop Wayland and the Fold7,
-  including main-thread submission time.
-- Gate: the fixtures reject a seeded vtable reorder; the pin reproduces the
-  committed SPIR-V byte for byte; each view oracle detects a seeded
-  single-draw defect.
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Layer contract rule exists | `archlint` CAP011 and its fixtures (`python3 -m unittest discover -s tools/archlint/tests`) | the six seeded violations each fail with their rule; `archlint check --all` passes on the tree |
+| Job system has a module | `archlint check --all`; `archlint targets --verify` | no unowned file under `public/jobsystem/` or `jobsystem/`; the `jobsystem` target declares `arch_module = jobs.graph` and has left `engine-and-tiers` |
+| Shader compiler pinned | `shader.toolchain-pin` | the pinned compiler rebuilds every committed SPIR-V module byte-identically; a different compiler version fails the check |
+| Frozen headers listed | CAP010 over `legacyAbi.paths` | the material, shader-API and studio headers above are listed and CAP010 passes |
+| vtable fixtures | `legacy.render-abi` (legacy-cxx11 dialect) | slot offsets for `IMaterialSystem`, `IMatRenderContext`, `IMaterial`, `IMaterialVar`, `ITexture`, `IMesh`, `IMaterialProxy`, `IStudioRender` match their recorded tables; one seeded slot reorder per interface is detected (8 of 8) |
+| View oracles captured | `render.view-oracles` | captures exist for portal recursion at every depth up to the limit, water reflection and refraction, a monitor, glass, the legacy-ports view set, on `testchmb_a_00`, `testchmb_a_08` and one Portal 2 map; removing any single draw from any view is detected |
+| Per-draw fixtures captured | `render.draw-state` | per-draw state is recorded for the same maps; a seeded state change in one draw is detected |
+| Budgets recorded | budget script over `quality/budgets/render-v1.json` | desktop Wayland and Fold7 rows exist with p50, p95, p99, GPU time and main-thread submission time, and the script passes |
 
-### K1: Device contract and Vulkan provider
+### K1: Device port and the Vulkan and null adapters
 
-- Deliver `render.device.v2`, the null provider, the shared suite and the
-  bad providers.
-- Extract `render.device.vulkan` from `CVulkanContext` and the test-only
-  `vulkan_render_backend.cpp`: one allocator, token-gated upload rings,
-  pipelines and cache, bind-group layouts with the four-group ceiling,
-  timeline completion and loss. `CVulkanContext` then allocates, uploads
-  and retires through it, so the shipping path and the contract are one
-  stack.
-- Remove `vkQueueWaitIdle` and `vkDeviceWaitIdle` from frame paths (world
-  mesh replacement and large uploads use tokens); idle waits remain only in
-  teardown, mode changes and loss recovery, each listed.
-- Gate:
-  - The shared suite passes on Vulkan and null; every bad provider is
-    caught.
-  - All material pixel families are byte-identical to K0.
-  - `portal_boot` passes in both queued modes, and `--resize-stress`
-    passes on Wayland and X11.
-  - The idle-wait inventory matches its reviewed list.
-  - Feature support (timeline, synchronization2, dynamic rendering) is
-    recorded for every declared Vulkan profile, with a device run on the
-    Fold7 and, where the runner is available, the iPhone and Apple TV.
-  - The Apple TV 60 fps budget still passes when its runner is available.
-- K1 supplies the resource, upload and synchronization contract evidence
-  R32's done condition names.
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Port suite | `render.device.v2` on the Vulkan (GPU runner) and null (headless) adapters | all clauses pass; the check count is at least the manifest's `min_checks` |
+| Bad adapters | `render.device.v2.sensitivity` | each of the ten bad adapters fails its named clause (10 of 10) |
+| Port is backend-neutral | CAP007 and CAP005 with `--compile-deps`; CAP011 | no header under `public/render/device/` reaches a Vulkan, GL or SDL header; adapter public headers compile alone |
+| One Vulkan stack | static scan `render.vulkan.allocation-sites` | `vkAllocateMemory`, `vkCreateBuffer` and `vkCreateImage` appear only under `render/device/vulkan/` |
+| No idle waits on frame paths | static scan `render.vulkan.idle-waits` | every `vkDeviceWaitIdle` and `vkQueueWaitIdle` call site is in the reviewed list (teardown, mode change, loss recovery); a seeded call site elsewhere fails |
+| Pixels unchanged | `material_pixel_conformance.py` | pixel families byte-identical to K0 |
+| Boots and resize | `portal_boot.py` on `testchmb_a_01`, `testchmb_a_08`, `escape_00`, `escape_02` in `mat_queue_mode` 0 and 2; `--resize-stress` on Wayland and X11 | every run passes |
+| Feature support recorded | `render.device.vulkan-features` evidence | timeline, synchronization2 and dynamic rendering support recorded for Linux desktop and the Fold7 (required) and for the iPhone and Apple TV when their runners exist |
+| Frame time | `frame_pacing.py` | within the frame allowance on desktop and the Fold7; `tvos-portal-frame-pacing-60` still passes when its runner exists |
+
+K1 also supplies the resource, upload and synchronization contract evidence
+R32's done condition names.
 
 ### K2: Render graph
 
-- Deliver `render.graph.v1`, its compiler, serial and pooled executors,
-  traces, the independent model and the bad graphs.
-- Move the passes the current backend runs outside the record stream onto
-  the graph: present blit and gamma, MSAA resolve, scene capture, and
-  queued compute.
-- Gate: the model agrees on seeded graphs; every bad graph is caught; the
-  validation layer's synchronization checks are silent on the pixel
-  families; pixels are byte-identical; serial and pooled recording give
-  identical command streams.
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Graph suite | `render.graph.v1` | all clauses pass on the null adapter and the Vulkan adapter |
+| Independent model agrees | `render.graph.model` (the Python model in `tools/render/`) | transitions, lifetimes and alias sets agree with the compiler on 1,000 seeded random graphs |
+| Bad graphs caught | `render.graph.v1.sensitivity` | a missing transition, overlapping live aliases, a culled side-effect pass, a reordered dependent pass and a read of an undefined version are each detected (5 of 5) |
+| Synchronization validated | Vulkan validation layer with synchronization validation during the pixel families and one `portal_boot` run | zero validation messages |
+| Serial equals pooled | `render.graph.recording` on the null adapter | serial and pooled recording produce identical command streams (hash equal) on the 1,000 seeded graphs |
+| Pixels unchanged | pixel families | byte-identical to K0 |
+
+The present blit and gamma, MSAA resolve, scene capture and queued compute
+move onto the graph in K2.
 
 ### K3: Inversion
 
-- Deliver `render.legacy-frontend`: `IShaderAPI`, `IShaderShadow` and
-  `IShaderDevice` over the core; the D3D9 state translation moved out of
-  the device; legacy stream passes per stage; the named render-target
-  registry (float targets and MRT now supported); explicit frame-buffer
-  copy passes.
-- Deliver `render.renderer` and `IRenderer` with stage markers, and wire
-  `CViewRender` stages to them.
-- Replace the three `QueryInterface` side channels with typed services the
-  composition root injects. Delete `render_capability_queue`'s adapters
-  when their consumers use scene change sets or the injected services.
-- Gate:
-  - All pixel families and K0 view oracles are byte-identical.
-  - Per-draw state fixtures match K0.
-  - Portal and Portal 2 boot in both queued modes; resize-stress passes.
-  - No `materials->QueryInterface` render side channel remains.
-  - `CVulkanContext`'s record replay has no caller.
-  - Frame time is within the K0 budget allowance.
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Pixels and views unchanged | pixel families; `render.view-oracles`; `render.draw-state` | all byte-identical to K0, in both queued modes |
+| Side channels gone | static scan | no `"WorldMeshUpload007"`, `"RenderLightSetConsumer001"` or `"RenderGpuCompute001"` lookup remains, and `render_capability_queue.cpp` is deleted |
+| Record replay gone | static scan | `CVulkanContext::BeginFrame`'s record replay has no caller |
+| Products boot | `portal_boot.py` (K1 set) and a Portal 2 boot, both queued modes; `--resize-stress` | every run passes |
+| Threading | the queued TSan lane | no signature outside the K0 triage list |
+| Frame time | `frame_pacing.py` | within the frame allowance on desktop and the Fold7 |
 
 ### K4: Shader library and materials
 
-- Deliver `render.shader-library` and `render.material.v2`; move the
-  `legacy` and `pbr` families onto them; add `lightmapped`, `vertexlit` and
-  `unlit` with VMT importers.
-- Gate: each family matches its legacy port's pixels within its recorded
-  tolerance; the proxy corpus (every proxy registered in Portal and Portal 2
-  exercised on a fixture material) matches; a seeded wrong schema mapping
-  and a stale-revision parameter block are detected; the four-group
-  validation rejects a five-group family.
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Material suite | `render.material.v2` | schema, parameter-block and revision clauses pass; a seeded wrong key mapping and a stale-revision block are detected |
+| VMT corpus | `render.material.vmt-corpus` over the Portal and Portal 2 VPKs | every VMT imports or is reported with its reason; zero crashes; the per-family count and the `unsupported` count are recorded |
+| Families match ports | pixel families per family | `lightmapped`, `vertexlit`, `unlit` and `pbr` within tolerance of their legacy ports; `legacy` byte-identical to K3 |
+| Proxy corpus | `render.material.proxies` | every proxy registered in Portal and Portal 2 runs on a fixture material and its output equals the legacy `IMaterialVar` value |
+| Bind-group ceiling | family build validation | every shipped family uses at most four groups; a five-group fixture family fails the build |
+| Artifacts per target | `render.shader-artifacts` | SPIR-V and GLSL 4.50 artifacts build for every family; reflection matches every declared layout; a seeded layout mismatch fails; the committed `*_spv.h` headers are deleted and the build reproduces them |
 
 ### K5: Scene, views, world and static props
 
-- Deliver `render.scene.v1` and `render.view.v1` change sets and snapshots;
-  move the WMSH world, brush models and static props onto scene passes;
-  move WMSH culling into a visibility provider.
-- Gate: culled sets match the legacy path on captured views; world and prop
-  pixels match within tolerance on the K0 views; serial and pooled culling
-  agree; main-thread submission time improves against its K0 budget;
-  Hammer creates a second scene in the same process in a test.
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Scene suite | `render.scene.v1` | change-set, snapshot and revision clauses pass; a seeded publication without release ordering is caught by the TSan stress lane |
+| Culling matches | `render.scene.culling` on the K0 views | visible world groups and props equal the legacy sets exactly |
+| Serial equals pooled | same suite | serial and pooled culling give identical draw lists |
+| Pixels | K0 views, world and prop draws | within tolerance |
+| Two scenes | `render.scene.multi` | two scenes with different content render independently in one process, and destroying one leaves the other's handles valid |
+| Submission cost | `frame_pacing.py` main-thread submission time | at least 30 % below K0 on desktop (target set here, before optimizing), and within the frame allowance on the Fold7 |
 
 ### K6: Skinned models
 
-- Move studio models to `SkinnedInstance`; deliver compute skinning, flex
-  and morph; add the `eyes` family.
-- Gate: skinned vertices match the CPU oracle within tolerance; the
-  skinning and model-light pixel families pass; seeded bone-palette and
-  flex-weight defects are detected; the skinning cost is recorded against
-  the quoted 90 ns per vertex.
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| GPU equals CPU skinning | `render.skinning` over every model in the K0 views and the Portal 2 character set | maximum position error at most 1e-3 units and normal error at most 1e-3 per component against the CPU oracle |
+| Defects caught | same suite | a seeded bone-index error and a seeded flex-weight error are detected |
+| Pixels | skinning and model-light pixel families | within tolerance |
+| CPU skinning retired where possible | runtime census on the K0 views | zero CPU-skinned draws on native profiles except materials that set `NeedsSoftwareSkinning` |
+| Cost recorded | `frame_pacing.py` with `-vkframestats` | per-vertex skinning cost recorded next to the quoted 90 ns |
 
 ### K7: Lights and shadows
 
-- Deliver clustered lights over the light set, the shadow atlas (spot,
-  flashlight, sun cascades, optional point), and the dlight behavior
-  decision.
-- Gate: analytic light-count and froxel tests; shadow oracles (a caster
-  occludes, a non-caster does not, cascade seams bounded); flashlight
-  scenes in Portal render with shadows on native; per-profile atlas budgets
-  pass on desktop and the Fold7.
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Light assignment | `render.lights.clusters` | over 1,000 seeded scenes, no light that reaches a froxel is missing from it (zero false negatives), and the false-positive rate is recorded |
+| Shadow oracles | `render.shadows` | a caster darkens its receiver, a non-caster does not, and cascade transitions stay within tolerance of a single-cascade reference render |
+| Flashlight | Portal flashlight scene on native | shadowed pixels match the reference within tolerance; the `SetFlashlightState` census is zero |
+| Behavior decision | the dlight switch | the per-pixel and legacy dlight modes each match their own reference, and the decision is recorded |
+| Budgets | `render-v1.json` atlas rows | pass on desktop and the Fold7 |
 
 ### K8: Remaining cohorts
 
-- Particles (`spritecard`), decals and overlays, sprites, beams and ropes,
-  post and screen effects, the UI draw list as a graph pass (RFC 0010 V6's
-  native consumer), water, sky, and portals, mirrors and monitors as view
-  generators.
-- Gate, per cohort: its pixel families and K0 views pass; its legacy stream
-  use on Portal and Portal 2 is zero in the inventory; portal recursion
-  matches at every depth.
+For each cohort (particles, decals and overlays, sprites, beams and ropes,
+post and screen effects, UI as a graph pass, water, sky, and portals,
+mirrors and monitors as view generators):
+
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Pixels | the cohort's pixel families and K0 views | within tolerance |
+| Legacy stream use | runtime census over the K0 views and `portal-frame-pacing-v1` | zero legacy-stream draws from the cohort on native Portal and Portal 2 |
+| Portal recursion (portal cohort) | K0 recursion views | every depth up to the limit within tolerance |
 
 ### K9: Retirement
 
-- First-party legacy-stream use reaches zero on the native Portal and Portal
-  2 profiles, enforced by an inventory ratchet.
-- Delete the D3D9-shaped code in `CVulkanContext` and `shaderapivulkan.cpp`
-  that has no remaining caller. The legacy frontend stays for mods and the
-  shader-DLL ABI.
-- Gate: the ratchet holds; the frozen ABI fixtures pass; a mod-style fixture
-  (a legacy client DLL drawing through `IMatRenderContext`) renders on the
-  native profile.
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| First-party use is zero | runtime census plus a static ratchet | zero first-party legacy-stream draws on native Portal and Portal 2 over the K0 views and the frame-pacing workload; the ratchet rejects a new first-party caller |
+| Frozen ABI holds | `legacy.render-abi` | all vtable fixtures pass |
+| Mods still render | `render.legacy.mod-fixture` | a mod-style client DLL that draws through `IMatRenderContext` renders its reference image on the native profile |
+| Dead code removed | static scan | the D3D9 translation code left in `materialsystem/shaderapivulkan/` has no caller, and `materialsystem/shaderapivulkan/shaders/` is empty and deleted |
 
-**Dependencies.** K0 is ready now (R02, R05, R10 and R16 are done). K1 needs
-K0. K2 needs K1 and `jobs.graph`. K3 needs K2. K4 needs K3. K5 needs K4.
-K6 and K7 need K5 and are independent of each other. K8 needs K5, and its UI
-cohort needs RFC 0010's draw list. K9 needs K6, K7 and K8.
+### K10: OpenGL adapter
+
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Port suite | `render.device.v2` on the OpenGL 4.5 adapter | every clause the adapter claims passes, including the conventions section; unclaimed capabilities are reported, not failed |
+| No portable changes needed | CAP011; the backend-identity scan | CAP011 passes, and no portable module compares the backend identifier |
+| Capability negotiation | `render.composition.capabilities` | with compute masked off, composition selects CPU skinning and reports each disabled feature by name; with a required feature missing, composition fails with a structured error |
+| Pixels | pixel families on `portal-linux-gl` | within the cross-backend tolerance recorded per case against the Vulkan result (not byte-identical, per AGENTS.md) |
+| Product boot | `portal_boot.py` on the GL profile | `testchmb_a_01` boots and renders in both queued modes |
+| ToGL untouched | legacy renderer profile build | the ToGL legacy profile still builds and its existing checks pass |
+
+**Dependencies.** K0 is ready now (R02, R05, R10 and R16 are done). K1
+needs K0. K2 needs K1. K3 needs K2. K4 needs K3. K10 needs K4, because the
+OpenGL adapter needs per-target artifacts and runs the legacy frontend. K5
+needs K4. K6 and K7 need K5 and are independent of each other. K8 needs
+K5, and its UI cohort needs RFC 0010's draw list. K9 needs K6, K7 and K8.
+
+**The RFC is done** when K0–K10 have passed on their required profiles,
+CAP011 and every suite above are required rows in the conformance manifest
+and `quality/baseline.json`, rows R86–R92 are `done` with linked evidence,
+and the optional Apple rows are recorded as passing or unavailable.
 
 ## Roadmap
 
@@ -817,13 +1018,17 @@ AGENTS.md owns ranks and states. Agent decision under the user's standing
 instruction, 2026-09-26: rows are added as `planned` and ranked directly
 after R47, because the user asked for a real graphics system and every
 later render row (R65, R56, R50, R63, R36) would otherwise be built twice,
-once on the translation layer and again on the core.
+once on the translation layer and again on the core. R92 (OpenGL) is
+ranked directly after R88: it needs R88's artifacts, and proving the port
+with a second backend before the scene and lights build on it is cheaper
+than finding Vulkan assumptions later.
 
 | Phases | Row |
 | --- | --- |
 | K0–K1 | R86 |
 | K2–K3 | R87 |
 | K4 | R88 |
+| K10 | R92 |
 | K5–K6 | R89 |
 | K7 | R90; R56 depends on it for clustered dynamic lights |
 | K8–K9 | R91 |
@@ -836,8 +1041,11 @@ once on the translation layer and again on the core.
 | Material proxy timing changes | Proxies run at draw extraction, the legacy bind point; the proxy corpus is a K4 gate |
 | Portal recursion breaks | Portals stay on the legacy stencil path until K8; K0 captures every recursion depth |
 | Queued-mode ordering breaks | `CMatQueuedRenderContext` is unchanged; the frontend runs where device work runs today; both modes are in every gate |
-| The core grows a second D3D9 state machine | The device contract has immutable pipelines only; the D3D9 translation lives in the frontend and shrinks as cohorts move |
-| Mobile GPUs regress | Pass merging is per-profile and measured; the Fold7 is in K1, K5 and K7 gates; the Apple TV budget is kept |
+| Vulkan assumptions leak into the port | Abstract usages and conventions in the port; CAP005/CAP007 on port headers; the OpenGL adapter at K10 |
+| The port sinks to the lowest common denominator | Capabilities, not a minimum API: Vulkan-only features stay available where declared, and features negotiate fallbacks |
+| The core grows a second D3D9 state machine | The device port has immutable pipelines only; the D3D9 translation lives in the frontend and shrinks as cohorts move |
+| Layers erode over time | CAP011 on declared edges plus CAP002/CAP005/CAP006 on real includes and links, all with seeded fixtures |
+| Mobile GPUs regress | Pass merging is per-profile and measured; the Fold7 is in K1, K3, K5 and K7 gates; the Apple TV budget is kept |
 | Required Vulkan features are missing on a profile | K1 records support per profile; a missing feature fails composition with a structured error |
 | Parallel recording or culling races | Serial oracles for every parallel path; TSan lanes for the pooled executors |
 | Two authorities during migration | Each cohort switches its stage from the legacy stream to the scene in one change; no object is drawn by both |
@@ -849,17 +1057,24 @@ once on the translation layer and again on the core.
 
 This is what got native Vulkan running. Every new feature adds a record
 kind, a descriptor pool or a side channel, and nothing can express transient
-targets, parallel recording, a second scene or explicit pass order. The
-D3D9 state machine stays at the center. Rejected as the long-term owner;
-kept as the source of the provider's extracted code.
+targets, parallel recording, a second scene or a second API. The D3D9 state
+machine stays at the center. Rejected as the long-term owner; kept as the
+source of the Vulkan adapter's extracted code.
+
+### A Vulkan-shaped port
+
+The first draft of this RFC required timeline semaphores, synchronization2
+stages and SPIR-V at the port. That is simpler for one backend and would
+have made OpenGL, and any later API, a rewrite of the graph. Rejected at
+the user's direction (2026-09-26); those are now Vulkan adapter details.
 
 ### SDL_GPU as the device layer
 
 SDL3 is already the platform stack and SDL_GPU covers Vulkan, Metal and
-D3D12. It does not expose timeline tokens, memory aliasing or ray query,
+D3D12. It does not expose completion tokens, memory aliasing or ray query,
 which RFC 0006 and RFC 0011 need, and its resource model would sit between
-the graph and Vulkan. Rejected for the core; a future portability provider
-could implement `render.device.v2` over it if a profile needs one.
+the graph and the API. Rejected for the core; a future adapter could
+implement `render.device.v2` over it if a profile needs one.
 
 ### An existing RHI library (NVRHI, Diligent, bgfx)
 
@@ -867,62 +1082,76 @@ Each would add a large dependency with its own lifetime and threading
 model beneath contracts this repository already defines, and none owns the
 legacy frontend problem, which is most of the work. Rejected.
 
+### Replace ToGL with the OpenGL adapter
+
+The OpenGL adapter could carry the legacy frontend on GL, but only for the
+GLSL ports. ToGL is what runs mod shader DLLs' D3D bytecode on GL.
+Rejected for now (user decision, 2026-09-26); ToGL stays for mods.
+
 ### Replace the material system outright
 
 Breaks mods, content and the frozen interfaces AGENTS.md preserves.
 Rejected.
 
-### Keep translating D3D9 state, as DXVK does
-
-This is today's design, and DXVK itself remains the legacy profile. A
-translation layer cannot add shadows, GPU skinning or a scene without
-inventing hidden passes. Rejected as the native path.
-
 ## Decisions (2026-09-26)
 
-Taken by the agent under the user's standing instruction ("do what you deem
-as recommended for long-term improvements"). Each favors one owner and no
+Decisions 1 and 2 are the user's (2026-09-26). The rest were taken by the
+agent under the user's standing instruction ("do what you deem as
+recommended for long-term improvements"). Each favors one owner and no
 later migration over the cheapest first slice.
 
-### 1. Vulkan-only core
+### 1. A backend-neutral port with Vulkan first and OpenGL second
 
-The core has one real provider. MoltenVK covers Apple, and D3D9 stays on
-the old stack as the legacy profile. The device contract is written so that
-another provider could implement it, but none is planned. Rationale: the
-user directed native Vulkan focus (2026-09-24), and every north-star target
-runs Vulkan.
+The port names no graphics API; adapters implement it. Vulkan is the first
+adapter because every north-star target runs it. OpenGL 4.5 is the second,
+to prove the port (K10). Later adapters need their own decision.
 
-### 2. Four bind groups
+### 2. ToGL stays for mods
 
-Frame, view, material, draw. It is the Vulkan guaranteed minimum, it fits
-MoltenVK and Android without per-profile layouts, and the existing grouped
-PBR stages already fit in three. The seven-set `$phong` layout moves to the
-`vertexlit` family's four-group layout in K4.
+The legacy D3D9 profiles keep ToGL, because it runs mod shader DLLs' D3D
+bytecode. The OpenGL adapter serves the core only.
 
-### 3. Allocator: Vulkan Memory Allocator, pinned
+### 3. Four bind groups
 
-VMA is the standard Vulkan suballocator (MIT), supports aliasing and budget
-queries, and runs on MoltenVK and Android. It is pinned in the dependency
-list and private to `render.device.vulkan`. Writing one is not justified.
+Frame, view, material, draw. It is the Vulkan guaranteed minimum, it maps
+to OpenGL's flat bindings, and the existing grouped PBR stages already fit
+in three. The seven-set `$phong` layout moves to the `vertexlit` family's
+four-group layout in K4.
 
-### 4. Dynamic rendering, synchronization2 and timeline semaphores are required
+### 4. Vulkan adapter: VMA, timeline semaphores, synchronization2, dynamic rendering
 
-They remove render-pass object management, give the graph one barrier
-model and give tokens one mechanism. Support is recorded per profile at K1
-before any code relies on it.
+VMA is the standard suballocator (MIT), supports aliasing and budget
+queries, and runs on MoltenVK and Android. The three features remove
+render-pass object management and give the adapter one barrier model and
+one token mechanism. All four stay private to the adapter; support is
+recorded per profile at K1.
 
-### 5. GLSL stays the shader language
+### 5. GLSL source, per-target artifacts
 
 There are 47 core shaders and 86 ports in GLSL, and `pbr_brdf.glsl` is
-checked against `pbr_brdf.h`. Slang or HLSL would add a second language and
-a second compiler pin for no current need.
+checked against `pbr_brdf.h`. The pinned compiler plus pinned SPIRV-Cross
+produce each adapter's format. A second source language would add a second
+compiler pin for no current need.
 
-### 6. The legacy frontend runs on the render sequence
+### 6. Fixed conventions at the port
+
+Depth 0 to 1, Y up in clip space, top-left origins, half-integer texel
+centers. Adapters correct their APIs privately, so shaders and passes never
+branch on the backend.
+
+### 7. A layer contract checked by archlint (CAP011)
+
+Layers are declared in `architecture/modules.json` and checked against the
+declared edges, while the existing rules check the code against those
+edges. A layer list in a README would drift; a manifest rule with seeded
+fixtures does not.
+
+### 8. The legacy frontend runs on the render sequence
 
 That is where device work runs in both queued modes today, so ordering and
-the thread-ownership census stay valid.
+the thread-ownership census stay valid. The OpenGL context lives there too.
 
-### 7. Portals move last
+### 9. Portals move last
 
 Portal recursion is the highest-risk legacy behavior and the most visible.
 It stays on the bit-exact legacy path until the scene, materials and
@@ -933,6 +1162,8 @@ lights are proven (K8).
 - GPU-driven culling, indirect draws and bindless material tables, after
   K5's measurements show submission still dominates.
 - Mesh shading where profiles support it, after GPU-driven culling.
+- ESSL artifacts and a GLES profile for the OpenGL adapter.
+- A native Metal or D3D12 adapter, each with its own decision.
 - A shared foundation math module, when a second strict consumer needs
   `render.math`'s types.
 - Asynchronous compute scheduling beyond the optional queue fallback, per
@@ -941,8 +1172,8 @@ lights are proven (K8).
 ## Amendments to other RFCs
 
 - **RFC 0001**: render migration step 9's "separate renderer RFC" is this
-  RFC. The legacy render-services adapter (step 7) is the legacy frontend's
-  input side.
+  RFC, and step 10's "genuinely different backend" is K10. The legacy
+  render-services adapter (step 7) is the legacy frontend's input side.
 - **RFC 0003**: the GPU render graph it excludes is owned here; its
   executors run the graph's CPU work.
 - **RFC 0008**: F5's clustered dynamic lights are delivered by K7; F4's
@@ -962,18 +1193,24 @@ lights are proven (K8).
 - Hans-Kristian Arntzen, "Render graphs and Vulkan — a deep dive" (Granite
   blog, 2017).
 - Unreal Engine documentation, "Render Dependency Graph".
+- Alistair Cockburn, "Hexagonal Architecture" (ports and adapters), 2005.
 - Ola Olsson, Markus Billeter and Ulf Assarsson, "Clustered Deferred and
   Forward Shading", HPG 2012.
 - Rouslan Dimitrov, "Cascaded Shadow Maps", NVIDIA, 2007.
 - Khronos, Vulkan specification, "Required Limits" (`maxBoundDescriptorSets`
   minimum 4), `VK_KHR_dynamic_rendering`, `VK_KHR_synchronization2`,
   timeline semaphores.
+- Khronos, OpenGL 4.5 core specification (`glClipControl`, direct state
+  access, sync objects).
+- KhronosGroup/SPIRV-Cross.
 - GPUOpen, Vulkan Memory Allocator.
 - KhronosGroup/MoltenVK, portability subset documentation.
 
 ## Proposed decision
 
-Adopt the render core as the owner of the frame beneath the frozen material
-API. Deliver it through K0–K9 with the inversion at K3 held to byte-identical
-pixels. Keep the legacy frontend permanently for mods and the legacy
-profiles. Add rows R86–R91 as `planned`, ranked after R47.
+Adopt the render core as ports and adapters beneath the frozen material
+API, with the layers enforced by CAP011. Deliver it through K0–K10 with the
+inversion at K3 held to byte-identical pixels and the OpenGL adapter at K10
+proving the port. Keep the legacy frontend permanently for mods, and ToGL on
+the legacy profiles. Add rows R86–R92 as `planned`, ranked after R47, with
+R92 after R88.
