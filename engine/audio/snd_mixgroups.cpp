@@ -528,7 +528,7 @@ void MXR_GetMixGroupFromSoundsource( channel_t *pchan, SoundSource soundsource, 
 						MXR_GetVolFromMixGroup( pchan, &mValues, &lastMixGroup );
 						if ( prule->szmixgroup[0] )
 						{
-							DevMsg(" : %s : vol: %4.2f, sndlvl: %4.2f \n", prule->szmixgroup, mValues.volume, soundlevel);
+							DevMsg(" : %s : vol: %4.2f, sndlvl: %4.2f \n", prule->szmixgroup, mValues.volume, (float)soundlevel);
 						}
 					}
 				}

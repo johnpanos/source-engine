@@ -18,6 +18,7 @@
 #include "paint_render.h"
 #include "gl_model_private.h"
 #include "gl_matsysiface.h"
+#include "gl_rsurf.h"
 #include "materialsystem/imaterialsystem.h"
 #include "materialsystem/imaterial.h"
 #include "materialsystem/itexture.h"
@@ -34,9 +35,6 @@
 ConVar r_hidepaintedsurfaces( "r_hidepaintedsurfaces", "0", FCVAR_CHEAT,
     "If enabled, hides all surfaces which have been painted." );
 ConVar r_redownloadallpaintmaps( "r_redownloadallpaintmaps", "0", FCVAR_DEVELOPMENTONLY );
-
-void Shader_DrawSurfaceDynamic(
-    IMatRenderContext *pRenderContext, SurfaceHandle_t surfID, bool bShadowDepth );
 
 //-----------------------------------------------------------------------------
 // Paint colors: the game's ConVars (paint_color_manager.cpp), as retail's
@@ -230,6 +228,117 @@ void R_PaintShutdown()
 //-----------------------------------------------------------------------------
 // The paint pass
 //-----------------------------------------------------------------------------
+
+// The world's dynamic surface vertices (BuildMSurfaceVertexArrays) carry a
+// tangent frame only for materials that asked for one and the bumped
+// lightmap offset only on bumped lightmaps, leaving the dynamic buffer's old
+// bytes otherwise. LightmappedPaint reads both on every surface, so the pass
+// writes its own: the surface's tangent frame always, and a zero offset (the
+// three bumped lightmap reads land on the flat one) without bumped lightmaps.
+struct PaintVertexContext_t
+{
+	SurfaceCtx_t m_Surface;
+	Vector m_TangentVect;
+	bool m_bNegate;
+	float m_flBumpOffset;
+};
+
+static void SetupPaintVertices( SurfaceHandle_t surfID, PaintVertexContext_t &ctx )
+{
+	SurfSetupSurfaceContext( ctx.m_Surface, surfID );
+	ctx.m_bNegate = TangentSpaceSurfaceSetup( surfID, ctx.m_TangentVect );
+	ctx.m_flBumpOffset =
+	    ( MSurf_Flags( surfID ) & SURFDRAW_BUMPLIGHT ) ? ctx.m_Surface.m_BumpSTexCoordOffset : 0.0f;
+}
+
+static void WritePaintVertex( CMeshBuilder &builder, const PaintVertexContext_t &ctx,
+    const Vector &position, const Vector &normal, const Vector2D &uv, const Vector2D &lightmapUV )
+{
+	Vector tangentS, tangentT;
+	TangentSpaceComputeBasis( tangentS, tangentT, normal, ctx.m_TangentVect, ctx.m_bNegate );
+	builder.Position3fv( position.Base() );
+	builder.Normal3fv( normal.Base() );
+	builder.TexCoord2fv( 0, uv.Base() );
+	builder.TexCoord2fv( 1, lightmapUV.Base() );
+	builder.TexCoord2f( 2, ctx.m_flBumpOffset, 0.0f );
+	builder.TangentS3fv( tangentS.Base() );
+	builder.TangentT3fv( tangentT.Base() );
+	builder.Color4ub( 255, 255, 255, 255 );
+	builder.AdvanceVertex();
+}
+
+static void WritePaintSurfaceVertices( CMeshBuilder &builder, worldbrushdata_t *pBrush,
+    SurfaceHandle_t surfID, const PaintVertexContext_t &ctx )
+{
+	for ( int i = 0; i < MSurf_VertCount( surfID ); i++ )
+	{
+		const Vector &position =
+		    pBrush->vertexes[pBrush->vertindices[MSurf_FirstVertIndex( surfID ) + i]].position;
+		const Vector &normal =
+		    pBrush->vertnormals[pBrush->vertnormalindices[MSurf_FirstVertNormal( surfID ) + i]];
+		Vector2D uv, lightmapUV;
+		SurfComputeTextureCoordinate( ctx.m_Surface, surfID, position, uv );
+		SurfComputeLightmapCoordinate( ctx.m_Surface, surfID, position, lightmapUV );
+		WritePaintVertex( builder, ctx, position, normal, uv, lightmapUV );
+	}
+}
+
+// Shader_DrawSurfaceDynamic's cases: a polygon, primitive lists, or the
+// surface's vertices with a tessellation's indices.
+static void DrawPaintedSurface( IMatRenderContext *pRenderContext, SurfaceHandle_t surfID )
+{
+	worldbrushdata_t *pBrush = host_state.worldbrush;
+	PaintVertexContext_t ctx;
+	SetupPaintVertices( surfID, ctx );
+	CMeshBuilder builder;
+
+	if ( !SurfaceHasPrims( surfID ) )
+	{
+		IMesh *pMesh = pRenderContext->GetDynamicMesh();
+		builder.Begin( pMesh, MATERIAL_POLYGON, MSurf_VertCount( surfID ) );
+		WritePaintSurfaceVertices( builder, pBrush, surfID, ctx );
+		builder.End();
+		pMesh->Draw();
+		return;
+	}
+
+	mprimitive_t *pPrim = &pBrush->primitives[MSurf_FirstPrimID( surfID )];
+	if ( pPrim->vertCount )
+	{
+		IMesh *pMesh = pRenderContext->GetDynamicMesh( false );
+		const Vector &normal = MSurf_Plane( surfID ).normal;
+		for ( int i = 0; i < MSurf_NumPrims( surfID ); i++, pPrim++ )
+		{
+			if ( pPrim->type != PRIM_TRILIST && pPrim->type != PRIM_TRISTRIP )
+				return;
+			builder.Begin( pMesh,
+			    pPrim->type == PRIM_TRILIST ? MATERIAL_TRIANGLES : MATERIAL_TRIANGLE_STRIP,
+			    pPrim->vertCount, pPrim->indexCount );
+			for ( int v = 0; v < pPrim->vertCount; v++ )
+			{
+				const mprimvert_t &primVert = pBrush->primverts[pPrim->firstVert + v];
+				WritePaintVertex( builder, ctx, primVert.pos, normal,
+				    Vector2D( primVert.texCoord[0], primVert.texCoord[1] ),
+				    Vector2D( primVert.lightCoord[0], primVert.lightCoord[1] ) );
+			}
+			BuildMSurfacePrimIndices( pBrush, pPrim, builder );
+			builder.End();
+			pMesh->Draw();
+		}
+		return;
+	}
+
+	IMesh *pMesh = pRenderContext->GetDynamicMesh();
+	builder.Begin( pMesh, MATERIAL_TRIANGLES, MSurf_VertCount( surfID ), pPrim->indexCount );
+	WritePaintSurfaceVertices( builder, pBrush, surfID, ctx );
+	for ( int primIndex = 0; primIndex < pPrim->indexCount; primIndex++ )
+	{
+		builder.FastIndex( pBrush->primindices[pPrim->firstIndex + primIndex] );
+	}
+	builder.End();
+	pMesh->Draw();
+}
+
 void R_DrawPaintedSurfaces(
     IMatRenderContext *pRenderContext, const CUtlVector<SurfaceHandle_t> &surfaces )
 {
@@ -248,6 +357,6 @@ void R_DrawPaintedSurfaces(
 
 		pRenderContext->Bind( s_PaintPages[nPage]->m_pMaterial );
 		pRenderContext->BindLightmapPage( nPage );
-		Shader_DrawSurfaceDynamic( pRenderContext, surfID, false );
+		DrawPaintedSurface( pRenderContext, surfID );
 	}
 }

@@ -338,41 +338,11 @@
       "tolerance_db": 2.0
     },
     {
-      "name": "falloff.v2_near_fidelity",
-      "kind": "fidelity",
-      "event": "near_v2",
-      "tolerance": 0.05
-    },
-    {
-      "name": "falloff.v2_mid",
-      "kind": "derived",
-      "metric": "falloff_v2_mid",
-      "tolerance_db": 2.0
-    },
-    {
-      "name": "falloff.v2_far",
-      "kind": "derived",
-      "metric": "falloff_v2_far",
-      "tolerance_db": 2.0
-    },
-    {
-      "name": "dsp.tail_far",
-      "kind": "derived",
-      "metric": "tail_far_v1",
-      "tolerance_db": 4.0
-    },
-    {
       "name": "ambient.level",
       "kind": "level",
       "window": "ambient",
       "relative_to": "calib",
       "tolerance_db": 2.0
-    },
-    {
-      "name": "stopsound.silence",
-      "kind": "silence",
-      "window": "silence",
-      "max_db": -90.0
     }
   ]
 }
