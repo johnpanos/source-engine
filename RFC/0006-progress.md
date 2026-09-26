@@ -342,6 +342,8 @@ This slice gives the payload one owner.
       offscreen driver, it fails 4 of 91 checks per run, twice: 8 of 192.
     - The failures are `poll.fifo_mixed`, `mouse.wheel`, `gamepad.buttons`
       and `gamepad.axes`. They are identical before this change.
+    - Since 2026-09-26 (user decision) R14 targets an SDL3 provider; the
+      SDL2 provider is legacy-profile only and needs no registered suite.
 - Evidence (2026-09-25):
   - `conformance.gcc` and `conformance.clang` (the full headless manifest)
     pass.

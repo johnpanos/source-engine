@@ -95,6 +95,12 @@ in [AGENTS.md](../AGENTS.md).
   and `public/platform/composition.h` pass their Q-FOUNDATION suites with test
   providers. The window and input contracts in `public/platform/window/` are
   not built or run by any target. R05, R06 and R14 remain `planned`.
+- **Window/input target (ranks 7 and 10; 2026-09-26).** By user decision
+  the window/input providers target SDL3, which every north-star client
+  profile already uses. Rank 7 now closes on an SDL3 provider passing the
+  shared suite, and rank 10 on SDL3 completion with the SDL2 legacy profiles
+  still building. "Full SDL2/SDL3 parity" in the snapshot above is no longer
+  required; SDL2 is kept only as the legacy profiles' provider.
 - **Tools (rank 19).** No first-party launchable-DLL wrapper remains. The
   structured process contract passes against its test backend. R40 is
   `active`; see the [Phase E record](0001-phase-e-progress.md).
@@ -1434,10 +1440,10 @@ indicators, not one-to-one migration tasks.
 | 4 | Dynamic-loader containment | Add scoped native-library ownership, structured load errors, load-site telemetry, a private loader provider, and `Sys_*` compatibility adapters. Freeze new loader and `CreateInterfaceFn` use. | 1–3 | M, 4–7 |
 | 5 | Paths and module resolution | Introduce `NativePath` and `VirtualPath`; separate path search, depot/local-copy behavior, validation, and signature policy from opening a library. Convert the extension resolver and loader bridge. | 2, 4 | M–L, 5–9 |
 | 6 | Dedicated-server composition | Construct the dedicated server from explicit providers, omit render and desktop UI capabilities, and keep old globals only in scoped compatibility bridges. Add startup/shutdown integration tests. | 3–5 | M, 4–7 |
-| 7 | Window/input contracts with SDL2 adapter | Define window, event source, cursor, clipboard, message-box, gamepad, touch, and opaque render-surface contracts. Move current SDL2 calls behind a provider without changing behavior. | 1–3 | L, 8–14 |
+| 7 | Window/input contracts with SDL3 provider | Define window, event source, cursor, clipboard, message-box, gamepad, touch, and opaque render-surface contracts. Implement them with an SDL3 provider that passes the shared suite, and move the current product's SDL calls behind it without changing behavior. SDL2 remains only as the legacy profiles' provider (2026-09-26 decision). | 1–3 | L, 8–14 |
 | 8 | Render provider seam | Add render provider/device/capability/profile contracts, structured creation errors, the `LegacyRenderBackendProvider` around `IShaderDeviceMgr`, a scoped `LegacyRenderServices` bundle, and a conforming null backend. | 1–3 | L, 10–16 |
 | 9 | Presentation bridge seam | Remove native window interpretation from the new device contract. Implement pair-specific bridge factories for the current supported window/render pairs and headless-null; add repeated runtime resize, orientation/aspect-ratio change, minimize/zero-size recovery, multi-window, and destruction-order tests. | 7–8 | L, 6–10 |
-| 10 | SDL3 provider | Implement SDL3 window/input providers, translate SDL3 events into portable events, add current-renderer presentation bridges, remove SDL from generic include paths, and reach behavior parity with the SDL2 provider. | 7, 9 | L, 8–14 |
+| 10 | SDL3 provider completion | Complete the SDL3 window/input providers on every declared SDL3 profile, translate SDL3 events into portable events, add current-renderer presentation bridges, remove SDL from generic include paths by migrating the legacy SDL2-API adapter's callers, and keep the SDL2 legacy profiles building. SDL2 behavior parity is not required. | 7, 9 | L, 8–14 |
 | 11 | Sequences, clocks, and deterministic scheduling | Add monotonic clock, task runner, sequenced runner, delayed scheduling, virtual-time test provider, and diagnostic sequence checks. Adapt existing queues; do not replace the job system wholesale. | 2–3 | L, 6–12 |
 | 12 | Remaining platform foundation | Extract virtual memory, physical-thread infrastructure, process launch, environment, executable/user/temp paths, and diagnostics behind platform providers with shared conformance tests. | 2, 5, 11 | L–XL, 10–18 |
 | 13 | Vulkan compatibility waypoint | Validate Vulkan deployment, adapter/profile selection, shader artifact flow, and SDL3 presentation using the smallest viable compatibility route, such as DXVK Native where suitable. This is an architectural proof, not the native backend. | 8–11 | M, 4–8 |
@@ -1478,8 +1484,9 @@ Each checkpoint produces a usable architectural outcome:
    application composes explicit providers, and native loading is contained.
 2. **Headless product proven — ranks 5–6.** Dedicated startup has no renderer or
    desktop UI dependency and path/loading policy is separated.
-3. **Replaceable desktop platform — ranks 7–10.** SDL2 and SDL3 implement the
-   same window/input contracts and render interop is pair-specific.
+3. **Replaceable desktop platform — ranks 7–10.** SDL3 implements the
+   window/input contracts, render interop is pair-specific, and the SDL2
+   legacy profiles still build.
 4. **Portability and Vulkan feasibility proven — ranks 11–15.** Foundation
    capabilities pass conformance tests, an SDL3 Vulkan surface presents,
    validation is clean, and a second OS uses the same portable code.

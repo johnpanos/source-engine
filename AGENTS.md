@@ -390,11 +390,11 @@ marks no implementation gate done.
 | 11 / R11 | Paths and module resolution; 0001 rank 5 | R05, R07 | Native/virtual paths distinct; resolution/verification separate from opening; encoding/search/failure corpus passes | partial (`paths.h` contract passes on the test backend, `platform.paths`; no native provider or corpus) |
 | 12 / R12 | Dedicated-server composition; 0001 rank 6 | R06, R07, R11 | Installed startup/shutdown and partial failure pass; link/runtime evidence shows render and desktop UI absent | partial ([composition migration slice](RFC/0001-dedicated-composition-progress.md)) |
 | 13 / R13 | Hammer geometry and scene seams; 0002 H1 | R05, R08 | Strict headless targets; geometry/reference/reparent tests and independent documents pass; selected legacy callers route through shared owner | partial ([0002 current state](RFC/0002-progress.md#current-state-2026-09-25)) |
-| 14 / R14 | Window/input contracts and SDL2 adapter; 0001 rank 7 | R06 | Existing behavior captured and preserved; normalized events, optional behavior, surface ownership and input lifecycle conformance pass | partial (window/input contracts with a fake-backend suite, `platform.window` + sensitivity; an SDL2 adapter exists but no suite runs it; R16 delivered the surface slice) |
+| 14 / R14 | Window/input contracts and SDL3 provider; 0001 rank 7 | R06 | The shared window/input suite passes against the SDL3 provider and the fake backend; current product behavior captured and preserved; normalized events, optional behavior, surface ownership and input lifecycle conformance pass | partial (window/input contracts with a fake-backend suite, `platform.window` + sensitivity; no SDL3 window/input provider yet, and SDL3 products reach SDL through the `platform/sdl3/legacy_include` adapter; the SDL2 adapter is legacy-profile only (user decision, 2026-09-26); R16 delivered the surface slice) |
 | 15 / R15 | Render seam, scoped legacy services and null provider; 0001 rank 8 | R06 | Explicit provider/caps/profile selection; null and legacy contract suites; material consumer tested without new shader globals | done ([render seam](RFC/0001-render-seam-progress.md)) |
 | 16 / R16 | Pair-specific presentation bridges; 0001 rank 9, 0006 M3 | R14, R15 | Native handles confined; multi-surface resize/zero-size/loss/shutdown pass; delayed GPU completion prevents early reuse | done ([presentation bridges](RFC/0001-presentation-bridge-progress.md); R14 surface slice only) |
 | 17 / R17 | Hammer real renderer feasibility; 0002 R1 | R08, R15, R16 | Source-material viewport on declared GTK X11/Wayland profiles; state/target restoration, scale, capture, sharing and teardown measured | planned |
-| 18 / R18 | SDL3 provider parity; 0001 rank 10 | R14, R16 | Same window/input suites and representative behavior pass for SDL2/SDL3; SDK dependency is private; supported interop pairs tested | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
+| 18 / R18 | SDL3 provider completion; 0001 rank 10 | R14, R16 | The SDL3 window/input suites and representative behavior pass on every declared SDL3 profile; SDK dependency is private and SDL is off generic include paths; supported interop pairs tested; the SDL2 legacy profiles still build | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 19 / R19 | Box3D one-worker vertical slice; 0004 B | R05, R09 | Pinned coherent provider loads existing BSP/PHY, compound prop, inside trace, verified impact, ragdoll and matching-schema restore | partial ([0004 progress](RFC/0004-progress.md)) |
 | 20 / R20 | Parallel scheduler and controlled legacy bridge; 0003 C, 0006 M2 | R10 | Bounded queue/worker contracts, publication/wake/overflow and native stress pass; no forbidden helping/nested wait; total capacity and overhead measured | partial ([batch migration](RFC/0003-batch-migration-progress.md); [pool trust](RFC/0003-scheduler-trust-progress.md); [bounds, budgets](RFC/0003-scheduler-nodes-progress.md)) |
 | 21 / R21 | Particle reference migration; 0003 D | R20 | Legacy/serial/parallel captured outputs agree; attachment/lifetime tests, improvement and small-workload budgets pass; quiescent rollback works | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
@@ -856,6 +856,26 @@ Keep the table concise and link details below or from the domain progress file.
     exception owned by R22 until a `hammer.ports` persistence contract
     exists.
 
+- R14/R18 SDL3 retarget (user decision, 2026-09-26): the window/input
+  providers target SDL3, not SDL2.
+  - Why: every north-star client profile (Linux DXVK and native Vulkan,
+    macOS, iOS/tvOS, Android) already runs on SDL3. SDL2 was the reference
+    only because it was the running provider when RFC 0001 was written.
+  - R14 is done when the shared window/input suite passes against an SDL3
+    provider (and the fake backend). R18 is done when the SDL3 suites pass on
+    every declared SDL3 profile, SDL is off generic include paths (the
+    `platform/sdl3/legacy_include` adapter's callers are migrated), and the
+    SDL2 legacy profiles still build. SDL2 behavior parity is not required.
+  - SDL2 stays only as the provider for the legacy compatibility profiles
+    (the Windows client, `linux-i386-legacy`, `android-armv7a-legacy`,
+    `freebsd-legacy`). It gets no further work, and
+    `platform/sdl2/window_system` needs no suite. Retiring those profiles, or
+    SDL2 itself, is a separate user decision.
+  - Still open: Waf's `--platform-provider` defaults to `sdl2`; changing the
+    default is a separate change.
+  - Changes no row's state: R14 and R18 stay `partial`, and R16's hard-gate
+    violation stays until R14 closes.
+
 - R16: `done` (2026-09-22) for the rank 9 scope:
   - Contract: `public/render/render_presentation.h` (`render.presentation.v1`).
     Devices no longer present; pair-specific bridges do, with structured
@@ -870,8 +890,8 @@ Keep the table concise and link details below or from the domain progress file.
     legacy host. `architecture/modules.json` enforces this (seeded violations
     rejected). Portal native-Vulkan boot passes through the new host.
   - Prerequisite note: R16 uses only R14's surface-ownership slice, delivered
-    here. R14 is now `partial`: its window/input contracts and an SDL2
-    adapter exist, but no suite runs the adapter.
+    here. R14 is now `partial`: its window/input contracts exist, but no
+    SDL3 window/input provider does (see the R14/R18 SDL3 retarget below).
   - Open: the D3D9/DXVK pair stays on the legacy `SetMode` membrane (no D3D9
     new-contract device); Android, macOS and iOS surfaces are unverified; no CI
     lane. The four Vulkan helper headers that archlint reported as `CAP002`

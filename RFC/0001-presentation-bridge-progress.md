@@ -103,8 +103,9 @@ unset; the X11 profile used that compositor's own Xwayland display and auth file
 - **R14 prerequisite.** R16 consumes R14's surface-ownership slice
   (`IRenderSurface` and the SDL3 window system's `Sdl3RenderSurfaces`), which is
   delivered here. The rest of R14 is not: event, input, cursor, clipboard and
-  gamepad contracts, the SDL2 adapter, and normalized events. R14 stays
-  `planned`.
+  gamepad contracts, an SDL3 window/input provider (the SDL2 adapter before
+  the 2026-09-26 retarget), and normalized events. R14 stays `planned`
+  (`partial` since the fake-backend suite).
 - **D3D9/DXVK pair.** It still presents through the preserved legacy `SetMode`
   ABI. Its SDL window interpretation stays confined to
   `shaderapidx9/winutils.cpp`. A new-contract bridge for it needs a D3D9 device
