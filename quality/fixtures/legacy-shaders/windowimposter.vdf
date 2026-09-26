@@ -1,0 +1,59 @@
+// WindowImposter_DX90 (windowimposter_ps20b / windowimposter_vs20): the cube
+// map along the eye-to-vertex vector (the camera at the origin looks at a quad
+// whose corners reach into the +x, -x, +y, -y and +z faces), times the
+// modulation color, alpha blended with $alpha; with and without range fog.
+// In HDR LoadCubeMap loads the ".hdr" name, which holds the same texels.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/windowimposter_cube"
+		"width" "2"
+		"height" "2"
+		"cube" "1"
+		"point" "1"
+		"texels" "165 77 202 255   24 37 48 255   187 29 109 255   19 44 222 255   214 35 123 255   46 217 30 255   63 114 31 255   203 25 113 255   23 68 148 255   214 73 60 255   157 92 52 255   96 190 49 255   32 30 105 255   254 218 160 255   238 232 185 255   153 127 92 255   124 41 153 255   253 175 229 255   147 37 60 255   214 84 175 255   77 250 215 255   20 39 160 255   174 179 254 255   233 35 47 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/windowimposter_cube.hdr"
+		"width" "2"
+		"height" "2"
+		"cube" "1"
+		"point" "1"
+		"texels" "165 77 202 255   24 37 48 255   187 29 109 255   19 44 222 255   214 35 123 255   46 217 30 255   63 114 31 255   203 25 113 255   23 68 148 255   214 73 60 255   157 92 52 255   96 190 49 255   32 30 105 255   254 218 160 255   238 232 185 255   153 127 92 255   124 41 153 255   253 175 229 255   147 37 60 255   214 84 175 255   77 250 215 255   20 39 160 255   174 179 254 255   233 35 47 255"
+	}
+	"case"
+	{
+		"name" "windowimposter"
+		"shader" "WindowImposter"
+		"clear" "30 60 120 255"
+		"material"
+		{
+			"$envmap" "conformance/legacy/windowimposter_cube"
+			"$color" "[0.9 0.8 1.0]"
+			"$alpha" "0.7"
+		}
+		"vertex" { "pos" "-1 1 0.3" }
+		"vertex" { "pos" "1 1 0.3" }
+		"vertex" { "pos" "1 -1 0.3" }
+		"vertex" { "pos" "-1 -1 0.3" }
+		"points" "0.05 0.5 0.95 0.5 0.5 0.05 0.5 0.95 0.5 0.5 0.4 0.45 0.6 0.55 0.45 0.6 0.55 0.4"
+	}
+	"case"
+	{
+		"name" "windowimposter_fog"
+		"shader" "WindowImposter"
+		"clear" "30 60 120 255"
+		"material"
+		{
+			"$envmap" "conformance/legacy/windowimposter_cube"
+		}
+		"fog" { "mode" "linear" "start" "0" "end" "0.6" "color" "250 200 40" }
+		"vertex" { "pos" "-1 1 0.1" }
+		"vertex" { "pos" "1 1 0.3" }
+		"vertex" { "pos" "1 -1 0.5" }
+		"vertex" { "pos" "-1 -1 0.3" }
+		"points" "0.05 0.5 0.95 0.5 0.5 0.05 0.5 0.95 0.5 0.5 0.4 0.45 0.6 0.55"
+	}
+}

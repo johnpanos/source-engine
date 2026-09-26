@@ -1,0 +1,271 @@
+// Water_DX90 (Water_DX9_HDR in HDR). The expensive pass (water_ps20b /
+// water_vs20): the bump-perturbed reflection and refraction textures blended by
+// the Fresnel term of the tangent-space eye vector (brush tangents), the
+// refraction fogged above water by its depth alpha or below water by the
+// projected depth, the 5x5 blurred refraction, the scrolled multitexture
+// normals, and the base texture times the bumped lightmaps (uv1 stepped by
+// uv2). The cheap pass (watercheap_ps20b / watercheap_vs20) blends the cube
+// map reflection by the Fresnel and distance factor, faded by the refraction's
+// depth alpha. The opaque cheap pass ($forcecheap) normalizes through the
+// material system's signed normalization cube map. In HDR LoadCubeMap loads
+// the cube map's ".hdr" name.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/water_reflect"
+		"width" "4"
+		"height" "4"
+		"texels" "130 183 14 219   127 26 80 179   190 240 126 88   52 127 6 157   110 208 143 247   199 81 36 106   227 64 67 95   2 107 110 60   85 148 160 102   104 93 100 110   152 11 184 158   84 74 135 166   169 154 1 76   173 33 158 212   156 246 161 150   246 241 90 107"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/water_refract"
+		"width" "4"
+		"height" "4"
+		"texels" "131 11 183 74   9 214 187 163   4 231 23 156   92 100 60 241   125 236 176 253   181 128 236 191   188 151 18 87   46 106 174 170   185 75 174 191   47 159 162 130   90 40 76 138   158 247 82 244   24 41 207 244   121 176 128 68   215 74 28 176   16 252 171 223"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/water_normal"
+		"width" "2"
+		"height" "2"
+		"texels" "66 67 211 113   86 222 190 87   30 215 150 98   232 86 232 96"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/water_base"
+		"width" "2"
+		"height" "2"
+		"texels" "162 245 140 184   240 206 75 134   193 91 255 88   92 45 251 146"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/water_cube"
+		"width" "2"
+		"height" "2"
+		"cube" "1"
+		"point" "1"
+		"texels" "184 32 182 129   17 156 186 237   143 248 135 203   150 174 91 236   5 242 128 208   140 237 147 143   182 178 140 188   176 209 179 224   230 186 171 104   72 85 101 192   244 144 40 152   213 87 215 244   138 14 100 137   225 92 112 100   92 21 241 254   84 27 68 117   162 92 247 88   18 212 238 109   194 36 104 149   191 0 179 120   142 209 58 163   191 18 154 236   151 173 150 84   66 214 209 150"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/water_cube.hdr"
+		"width" "2"
+		"height" "2"
+		"cube" "1"
+		"point" "1"
+		"texels" "184 32 182 129   17 156 186 237   143 248 135 203   150 174 91 236   5 242 128 208   140 237 147 143   182 178 140 188   176 209 179 224   230 186 171 104   72 85 101 192   244 144 40 152   213 87 215 244   138 14 100 137   225 92 112 100   92 21 241 254   84 27 68 117   162 92 247 88   18 212 238 109   194 36 104 149   191 0 179 120   142 209 58 163   191 18 154 236   151 173 150 84   66 214 209 150"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/water_lightmap"
+		"width" "4"
+		"height" "2"
+		"point" "1"
+		"clamp" "1"
+		"texels" "128 64 32 255   40 200 120 255   90 90 90 255   250 180 60 255   30 60 200 255   160 160 30 255   200 40 100 255   70 140 210 255"
+	}
+	"case"
+	{
+		"name" "water_above"
+		"shader" "Water"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/water_lightmap"
+		"material"
+		{
+			"$normalmap" "conformance/legacy/water_normal"
+			"$fogcolor" "[0.2 0.4 0.3]"
+			"$fogstart" "0.1"
+			"$fogend" "2"
+			"$reflectamount" "0.1"
+			"$refractamount" "0.07"
+			"$reflecttint" "[1 0.9 0.8]"
+			"$refracttint" "[0.8 1 0.9]"
+			"$waterdepth" "10"
+			"$reflecttexture" "conformance/legacy/water_reflect"
+			"$refracttexture" "conformance/legacy/water_refract"
+			"$abovewater" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5"
+	}
+	"case"
+	{
+		"name" "water_below"
+		"shader" "Water"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/water_lightmap"
+		"material"
+		{
+			"$normalmap" "conformance/legacy/water_normal"
+			"$fogcolor" "[0.2 0.4 0.3]"
+			"$fogstart" "0.1"
+			"$fogend" "2"
+			"$reflectamount" "0.1"
+			"$refractamount" "0.07"
+			"$reflecttint" "[1 0.9 0.8]"
+			"$refracttint" "[0.8 1 0.9]"
+			"$waterdepth" "10"
+			"$reflecttexture" "conformance/legacy/water_reflect"
+			"$refracttexture" "conformance/legacy/water_refract"
+			"$abovewater" "0"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5"
+	}
+	"case"
+	{
+		"name" "water_blur_multitexture"
+		"shader" "Water"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/water_lightmap"
+		"material"
+		{
+			"$normalmap" "conformance/legacy/water_normal"
+			"$fogcolor" "[0.2 0.4 0.3]"
+			"$fogstart" "0.1"
+			"$fogend" "2"
+			"$reflectamount" "0.1"
+			"$refractamount" "0.07"
+			"$reflecttint" "[1 0.9 0.8]"
+			"$refracttint" "[0.8 1 0.9]"
+			"$waterdepth" "10"
+			"$reflecttexture" "conformance/legacy/water_reflect"
+			"$refracttexture" "conformance/legacy/water_refract"
+			"$abovewater" "1"
+			"$blurrefract" "1"
+			"$scroll1" "[0.1 0.2 0]"
+			"$scroll2" "[-0.1 0.05 0]"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5"
+	}
+	"case"
+	{
+		"name" "water_base_reflect"
+		"shader" "Water"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/water_lightmap"
+		"material"
+		{
+			"$normalmap" "conformance/legacy/water_normal"
+			"$fogcolor" "[0.2 0.4 0.3]"
+			"$fogstart" "0.1"
+			"$fogend" "2"
+			"$reflectamount" "0.1"
+			"$refractamount" "0.07"
+			"$reflecttint" "[1 0.9 0.8]"
+			"$refracttint" "[0.8 1 0.9]"
+			"$waterdepth" "10"
+			"$reflecttexture" "conformance/legacy/water_reflect"
+			"$basetexture" "conformance/legacy/water_base"
+			"$abovewater" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5"
+	}
+	"case"
+	{
+		"name" "water_refract_cheap_blend"
+		"shader" "Water"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/water_lightmap"
+		"material"
+		{
+			"$normalmap" "conformance/legacy/water_normal"
+			"$fogcolor" "[0.2 0.4 0.3]"
+			"$fogstart" "0.1"
+			"$fogend" "2"
+			"$reflectamount" "0.1"
+			"$refractamount" "0.07"
+			"$reflecttint" "[1 0.9 0.8]"
+			"$refracttint" "[0.8 1 0.9]"
+			"$waterdepth" "10"
+			"$refracttexture" "conformance/legacy/water_refract"
+			"$envmap" "conformance/legacy/water_cube"
+			"$abovewater" "1"
+			"$cheapwaterstartdistance" "0.2"
+			"$cheapwaterenddistance" "1.5"
+			"$reflectblendfactor" "0.4"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5"
+	}
+	"case"
+	{
+		"name" "water_cheap_nofresnel_multitexture"
+		"shader" "Water"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/water_lightmap"
+		"material"
+		{
+			"$normalmap" "conformance/legacy/water_normal"
+			"$fogcolor" "[0.2 0.4 0.3]"
+			"$fogstart" "0.1"
+			"$fogend" "2"
+			"$reflectamount" "0.1"
+			"$refractamount" "0.07"
+			"$reflecttint" "[1 0.9 0.8]"
+			"$refracttint" "[0.8 1 0.9]"
+			"$waterdepth" "10"
+			"$refracttexture" "conformance/legacy/water_refract"
+			"$envmap" "conformance/legacy/water_cube"
+			"$abovewater" "1"
+			"$nofresnel" "1"
+			"$scroll1" "[0.1 0.2 0]"
+			"$reflectblendfactor" "0.6"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5"
+	}
+	"case"
+	{
+		"name" "water_forcecheap_opaque"
+		"shader" "Water"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/water_lightmap"
+		"material"
+		{
+			"$normalmap" "conformance/legacy/water_normal"
+			"$fogcolor" "[0.2 0.4 0.3]"
+			"$fogstart" "0.1"
+			"$fogend" "2"
+			"$reflectamount" "0.1"
+			"$refractamount" "0.07"
+			"$reflecttint" "[1 0.9 0.8]"
+			"$refracttint" "[0.8 1 0.9]"
+			"$waterdepth" "10"
+			"$refracttexture" "conformance/legacy/water_refract"
+			"$envmap" "conformance/legacy/water_cube"
+			"$abovewater" "1"
+			"$cheapwaterstartdistance" "0.2"
+			"$cheapwaterenddistance" "1.5"
+			"$reflectblendfactor" "0.4"
+			"$forcecheap" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5"
+	}
+}

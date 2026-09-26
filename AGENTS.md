@@ -1049,6 +1049,35 @@ Keep the table concise and link details below or from the domain progress file.
     No device-loss or mobile evidence. See the
     [queued rendering record](RFC/0001-native-vulkan-queued-rendering-progress.md).
 
+- R32-LEGACY-SHADERS: `partial` (2026-09-25, user direction: "implement all
+  missing shader types in vulkan native"). 84 GLSL ports of stdshader_dx9 pairs
+  run on one generic native pipeline family. Every material shader the backend
+  can reach at DX level 95 / SM3 draws: the screen-space and post shaders,
+  water, refract, portal, eyes/teeth, cloak/core, skin and VertexLitGeneric
+  bump/env-map/detail, the LightmappedGeneric combos the native family lacks,
+  and PBR. Native families keep the combos they draw faithfully
+  (`-vklegacyvertexlit`, `-vklegacyskin`, `-vklegacylightmapped` send every
+  combo to the port). Refract, bloomadd and `sky_ps20b` stay on their native
+  paths (`-vklegacyrefract`, `-vklegacybloomadd`, `-vklegacysky`): the
+  branch's refract draws Portal 2's `$localrefract`, and the sky port fails
+  in integer HDR.
+  - Oracle: each pass is replayed on bytecode compiled from this tree's `.fxc`
+    with the pinned FXC. On the merged tree, 267 default cases pass in both
+    HDR modes, and every `forced/` file passes with its switch.
+  - Merged into `subsystem-refactor` (2026-09-25). The GI and PBR maps boot
+    pixel-identical to the pre-merge branch; Portal chambers change where
+    env-map combos the native families skipped now draw (auto-exposure
+    follows), and dropped material draws fall to zero except SpriteCard
+    DEPTHBLEND on testchmb_a_15.
+  - Derived vertex registers follow D3D9's commit and change flags.
+  - Unverified or open:
+    - the flashlight passes (no flashlight mode);
+    - DEPTHBLEND, which needs a scene-depth resolve;
+    - wrinkle weights;
+    - pbr_ps30 parallax, which the pinned FXC miscompiles.
+  - No gate closes. See the
+    [legacy shader record](RFC/0001-native-vulkan-legacy-shaders-progress.md).
+
 - R32-VIDEO-OPTIONS: `partial` (2026-09-23). The Video options take effect on
   native Vulkan: real display modes and mode-change callbacks, vsync through
   `render.present-policy.v1`, brightness applied at present, DirectX 95 caps,
@@ -1110,17 +1139,16 @@ Current RFC 0001 evidence (updated 2026-09-25):
   - Implemented: render targets, world texture residency, flat and bumped
     lightmaps, model lighting, integer HDR, PortalRefract, VGUI, fog,
     bloom/color correction and model shadows.
-  - Declined by name: motion blur, water, eyes, teeth and flashlight. Line and
-    point draws are dropped, alpha to coverage is a stub, and skinning runs on
-    the CPU.
+  - Motion blur, water, eyes and teeth draw through the legacy shader ports;
+    flashlight passes are declined. Line and point draws are dropped, alpha to
+    coverage is a stub, and skinning runs on the CPU.
   - Oracles: `material_pixel_conformance.py` has 14 families, most judged
     against D3D9 references. Waf GPU suites: bring-up 98, material-facing 25,
     equivalence 64 checks. The 15 suites of the manifest's
     `linux-native-vulkan-gpu` profile pass. A `-vkvalidate` boot logs no
     messages.
-  - The 84 legacy stdshader ports (R32-LEGACY-SHADERS) are not in this tree;
-    they exist only as uncommitted changes in the `source-engine-vkshaders`
-    worktree.
+  - The 84 legacy stdshader ports (R32-LEGACY-SHADERS) are merged
+    (2026-09-25); refract, bloomadd and `sky_ps20b` keep their native paths.
   - The 2026-09-22 false-positive correction is history. No hosted CI lane;
     Android and Apple are unverified.
 - [Portal SDL3/Wayland/Vulkan progress](RFC/0001-portal-vulkan-progress.md) records

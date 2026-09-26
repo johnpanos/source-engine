@@ -1,0 +1,37 @@
+// ShadowModel_DX9 (shadowmodel_ps20 / shadowmodel_vs20): the projected shadow's
+// texkill clipping (texture-space x, y and z outside 0..1, beyond the falloff
+// distance, or facing away) and its multiplicative (DST_COLOR, ZERO) blend.
+// The pixel shader lerps from white by TEXCOORD0.w, which the vertex shader
+// never writes and which the oracle reads as 0, so the drawn color is white and
+// the frame keeps its clear color wherever the pass draws; the cases check the
+// pass is drawn and leaves the frame so.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/shadowmodel_base"
+		"width" "1"
+		"height" "1"
+		"color" "255 255 255 255"
+	}
+	"case"
+	{
+		"name" "shadowmodel_clipped"
+		"shader" "ShadowModel"
+		"clear" "150 120 90 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/shadowmodel_base"
+			"$basetexturetransform" "center 0 0 scale 0.8 0.6 rotate 20 translate 0 0"
+			"$color" "[0.3 0.4 0.5]"
+			"$falloffoffset" "0.1"
+			"$falloffdistance" "2"
+			"$falloffamount" "0.9"
+		}
+		"vertex" { "pos" "-1 1 0.5" "normal" "0 0 -1" }
+		"vertex" { "pos" "1 1 0.5" "normal" "0 0 -1" }
+		"vertex" { "pos" "1 -1 0.5" "normal" "0 0 -1" }
+		"vertex" { "pos" "-1 -1 0.5" "normal" "0 0 -1" }
+		"points" "0.1 0.1 0.35 0.15 0.6 0.1 0.9 0.35 0.15 0.4 0.4 0.6 0.65 0.65 0.85 0.9"
+	}
+}

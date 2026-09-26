@@ -1,0 +1,67 @@
+// DepthWrite (depthwrite_ps20b / depthwrite_vs20): the pixel shader passes
+// that write color. $color_depth 1 writes the projected w over the far plane
+// (c1.y, 4000) into red; $alphatest discards texels whose alpha is below
+// $alphatestreference (0.7 by default). Without $color_depth the pass writes
+// no color (EnableColorWrites off), which the last case checks. The depth the
+// passes write, their shadow depth bias and the vertex-only pass (color writes
+// off) are not observable here. A projection with w = z + 1 gives the quad a
+// varied w (positions scaled by it to stay on screen).
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/depthwrite_alpha"
+		"width" "2"
+		"height" "2"
+		"point" "1"
+		"clamp" "1"
+		"texels" "10 20 30 255   40 50 60 100   70 80 90 190   100 110 120 170"
+	}
+	"case"
+	{
+		"name" "depthwrite_color_depth"
+		"shader" "DepthWrite"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$color_depth" "1"
+		}
+		"projection" "1 0 0 0  0 1 0 0  0 0 0.5 0  0 0 1 1"
+		"vertex" { "pos" "-401 401 400" "uv0" "0 0" }
+		"vertex" { "pos" "901 901 900" "uv0" "1 0" }
+		"vertex" { "pos" "1501 -1501 1500" "uv0" "1 1" }
+		"vertex" { "pos" "-2501 -2501 2500" "uv0" "0 1" }
+		"points" "0.2 0.2 0.8 0.2 0.8 0.8 0.2 0.8 0.5 0.5 0.4 0.6"
+	}
+	"case"
+	{
+		"name" "depthwrite_alphaclip"
+		"shader" "DepthWrite"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/depthwrite_alpha"
+			"$alphatest" "1"
+			"$alphatestreference" "0.6"
+			"$color_depth" "1"
+		}
+		"projection" "1 0 0 0  0 1 0 0  0 0 0.5 0  0 0 1 1"
+		"vertex" { "pos" "-401 401 400" "uv0" "0 0" }
+		"vertex" { "pos" "901 901 900" "uv0" "1 0" }
+		"vertex" { "pos" "1501 -1501 1500" "uv0" "1 1" }
+		"vertex" { "pos" "-2501 -2501 2500" "uv0" "0 1" }
+		"points" "0.25 0.25 0.75 0.25 0.25 0.75 0.75 0.75"
+	}
+	"case"
+	{
+		"name" "depthwrite_alphaclip_default_reference"
+		"shader" "DepthWrite"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/depthwrite_alpha"
+			"$alphatest" "1"
+		}
+		"points" "0.25 0.25 0.75 0.25 0.25 0.75 0.75 0.75"
+	}
+}

@@ -1,0 +1,138 @@
+// Cloak_DX90 (cloak_ps20b / cloak_vs20): the uncloaked model lit per pixel
+// (half-Lambert diffuse from the ambient cube and the local lights, optionally
+// through $lightwarptexture; Phong specular with fresnel ranges and rim light),
+// blending into the refracted frame copy (_rt_FullFrameFB, a solid color here,
+// blurred by Poisson taps and tinted by the albedo) as $cloakfactor rises. The
+// camera is at the origin and the quad at z 0.5 faces it (normals -z); the
+// model cases take TANGENT from the user data, the brush case from the tangent
+// S stream. Every case sets $rimlight: without it the rim exponent is 0 and
+// pow( L.R, 0 ) at L.R = 0 is the D3D9 bytecode's log( 0 ) * 0, a NaN.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/cloak_base"
+		"width" "2"
+		"height" "2"
+		"point" "1"
+		"clamp" "1"
+		"texels" "200 60 40 255   40 180 90 255   70 90 220 255   230 220 90 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/cloak_normal"
+		"width" "2"
+		"height" "2"
+		"point" "1"
+		"clamp" "1"
+		"texels" "128 128 255 255   170 110 235 128   90 150 230 40   150 150 220 200"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/cloak_warp"
+		"width" "4"
+		"height" "4"
+		"clamp" "1"
+		"texels" "30 10 60 255  90 40 60 255  180 120 90 255  250 230 200 255   30 10 60 255  90 40 60 255  180 120 90 255  250 230 200 255   30 10 60 255  90 40 60 255  180 120 90 255  250 230 200 255   30 10 60 255  90 40 60 255  180 120 90 255  250 230 200 255"
+	}
+	"case"
+	{
+		"name" "cloak_uncloaked_rim"
+		"shader" "Cloak"
+		"clear" "20 40 60 255"
+		"framebuffer" "90 140 60 255"
+		"material"
+		{
+			"$model" "1"
+			"$basetexture" "conformance/legacy/cloak_base"
+			"$normalmap" "conformance/legacy/cloak_normal"
+			"$cloakfactor" "0"
+			"$phongexponent" "8"
+			"$phongboost" "2"
+			"$phongfresnelranges" "[0.2 0.6 1]"
+			"$rimlight" "1"
+			"$rimlightexponent" "3"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "-0.3 0.3 -0.905539" "userdata" "0.953463 0 -0.301511 1" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "normal" "0.3 0.3 -0.905539" "userdata" "0.953463 0 0.301511 1" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "normal" "0.4 -0.2 -0.894427" "userdata" "0.912871 0 0.408248 -1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0 -0.6 -0.8" "userdata" "1 0 0 -1" }
+		"ambient" "0.10 0.08 0.06  0.02 0.03 0.04  0.05 0.05 0.05  0.01 0.02 0.01  0.03 0.03 0.03  0.20 0.15 0.10"
+		"light" { "type" "point" "color" "0.9 0.8 0.7" "position" "0.5 0.6 -1" "attenuation" "0.5 0.2 0.1" }
+		"light" { "type" "spot" "color" "0.8 0.6 0.4" "position" "-0.5 0.5 -1.5" "direction" "0.3 -0.3 0.9" "attenuation" "1 0 0.05" "theta" "0.6" "phi" "1.4" "falloff" "2" }
+		"light" { "type" "directional" "color" "0.4 0.5 0.6" "direction" "0.2 -0.3 0.9" }
+		"points" "0.2 0.2 0.3 0.7 0.7 0.3 0.8 0.8 0.45 0.55 0.6 0.6"
+	}
+	"case"
+	{
+		"name" "cloak_lightwarp_partial"
+		"shader" "Cloak"
+		"clear" "20 40 60 255"
+		"framebuffer" "90 140 60 255"
+		"material"
+		{
+			"$model" "1"
+			"$basetexture" "conformance/legacy/cloak_base"
+			"$normalmap" "conformance/legacy/cloak_normal"
+			"$lightwarptexture" "conformance/legacy/cloak_warp"
+			"$cloakfactor" "0.3"
+			"$phongboost" "1.5"
+			"$refractamount" "0.3"
+			"$phongexponent" "0"
+			"$rimlight" "1"
+			"$rimlightexponent" "2"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "-0.6 0.3 -0.741620" "userdata" "0.777 0 -0.629 1" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "normal" "0.6 0.3 -0.741620" "userdata" "0.777 0 0.629 1" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "normal" "0.4 -0.5 -0.768115" "userdata" "0.887 0 0.462 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "-0.5 -0.6 -0.624500" "userdata" "0.781 0 -0.625 1" }
+		"ambient" "0.10 0.08 0.06  0.02 0.03 0.04  0.05 0.05 0.05  0.01 0.02 0.01  0.03 0.03 0.03  0.20 0.15 0.10"
+		"light" { "type" "point" "color" "0.9 0.8 0.7" "position" "0.5 0.6 -1" "attenuation" "0.5 0.2 0.1" }
+		"light" { "type" "directional" "color" "0.4 0.5 0.6" "direction" "0.2 -0.3 0.9" }
+		"points" "0.2 0.2 0.3 0.7 0.7 0.3 0.8 0.8 0.45 0.55 0.6 0.6 0.1 0.5 0.5 0.1"
+	}
+	"case"
+	{
+		"name" "cloak_full_brush"
+		"shader" "Cloak"
+		"clear" "20 40 60 255"
+		"framebuffer" "160 70 200 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/cloak_base"
+			"$normalmap" "conformance/legacy/cloak_normal"
+			"$cloakfactor" "1"
+			"$rimlight" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"ambient" "0.10 0.08 0.06  0.02 0.03 0.04  0.05 0.05 0.05  0.01 0.02 0.01  0.03 0.03 0.03  0.20 0.15 0.10"
+		"light" { "type" "point" "color" "0.9 0.8 0.7" "position" "0.5 0.6 -1" "attenuation" "0.5 0.2 0.1" }
+		"points" "0.2 0.2 0.3 0.7 0.7 0.3 0.8 0.8 0.45 0.55"
+	}
+	"case"
+	{
+		"name" "cloak_tinted_refraction"
+		"shader" "Cloak"
+		"clear" "20 40 60 255"
+		"framebuffer" "200 180 120 255"
+		"material"
+		{
+			"$model" "1"
+			"$basetexture" "conformance/legacy/cloak_base"
+			"$normalmap" "conformance/legacy/cloak_normal"
+			"$cloakfactor" "0.35"
+			"$phongboost" "1"
+			"$rimlight" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "-0.9 0.1 -0.424264" "userdata" "0.426 0 -0.905 1" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "normal" "0.1 0.1 -0.989949" "userdata" "0.995 0 0.1 1" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "normal" "0.5 -0.5 -0.707107" "userdata" "0.816 0 0.577 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "-0.7 -0.6 -0.387298" "userdata" "0.484 0 -0.875 1" }
+		"ambient" "0.10 0.08 0.06  0.02 0.03 0.04  0.05 0.05 0.05  0.01 0.02 0.01  0.03 0.03 0.03  0.20 0.15 0.10"
+		"light" { "type" "point" "color" "0.9 0.8 0.7" "position" "0.5 0.6 -1" "attenuation" "0.5 0.2 0.1" }
+		"points" "0.1 0.1 0.2 0.3 0.3 0.2 0.15 0.8 0.5 0.5 0.8 0.2 0.8 0.8 0.35 0.6 0.6 0.35 0.05 0.5"
+	}
+}

@@ -1,0 +1,546 @@
+// VertexLitGeneric and UnlitGeneric with $bumpmap or $lightwarptexture and no
+// $phong (vertexlit_and_unlit_generic_bump_ps20b /
+// vertexlit_and_unlit_generic_bump_vs20): per-pixel lighting of the bumped
+// normal (ambient cube, point, spot and directional lights, four lights with
+// the fourth packed in the w components, half-Lambert, the light warp),
+// cube env maps (tint, contrast, saturation, the normal map alpha mask),
+// detail textures and blend modes, self-illumination (by base alpha and by
+// the vertex-normal Fresnel), the base-alpha tint blend, translucency and
+// range fog, over a varied tangent frame (TANGENT user data, both binormal
+// signs). No native family draws this pair. Quads are in clip space (identity
+// transforms), so the eye is at the origin.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/vlgbump_base"
+		"width" "4"
+		"height" "4"
+		"clamp" "1"
+		"texels" "53 216 150 124  130 164 209 70  189 177 80 243  144 120 41 185  87 249 22 172  234 22 107 115  176 172 193 100  77 137 169 217  21 48 243 245  148 85 213 88  126 103 71 187  230 79 197 99  129 214 147 253  27 39 253 154  220 93 137 62  92 67 190 79"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/vlgbump_base_opaque"
+		"width" "4"
+		"height" "4"
+		"clamp" "1"
+		"texels" "137 128 112 255  54 240 244 255  131 231 229 255  206 122 160 255  113 249 145 255  218 156 159 255  32 229 29 255  151 173 240 255  152 51 240 255  164 62 30 255  236 50 198 255  110 238 99 255  74 201 132 255  195 93 149 255  41 94 39 255  132 241 79 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/vlgbump_normal"
+		"width" "4"
+		"height" "4"
+		"clamp" "1"
+		"texels" "159 94 250 249  134 214 210 225  181 82 255 98  112 128 176 78  131 197 225 26  68 97 221 121  91 171 186 215  194 167 237 57  143 215 195 62  124 128 176 56  147 74 253 168  69 204 191 100  205 95 255 116  144 191 173 114  100 79 180 253  59 69 213 16"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/vlgbump_detail"
+		"width" "4"
+		"height" "4"
+		"texels" "184 187 141 216  234 244 91 73  48 163 206 55  54 215 195 42  45 218 241 179  134 149 82 4  136 26 93 14  195 208 165 182  24 107 70 233  253 202 36 58  209 249 39 100  40 167 65 254  240 50 160 204  212 18 252 205  126 18 135 150  19 162 81 164"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/vlgbump_warp"
+		"width" "8"
+		"height" "4"
+		"clamp" "1"
+		"texels" "20 200 60 255  50 180 60 255  80 160 60 255  110 140 60 255  140 120 60 255  170 100 60 255  200 80 60 255  230 60 60 255  25 212 105 255  55 192 105 255  85 172 105 255  115 152 105 255  145 132 105 255  175 112 105 255  205 92 105 255  235 72 105 255  30 224 150 255  60 204 150 255  90 184 150 255  120 164 150 255  150 144 150 255  180 124 150 255  210 104 150 255  240 84 150 255  35 236 195 255  65 216 195 255  95 196 195 255  125 176 195 255  155 156 195 255  185 136 195 255  215 116 195 255  245 96 195 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/vlgbump_cube"
+		"width" "2"
+		"height" "2"
+		"cube" "1"
+		// Point-sampled: Vulkan filters cube maps seamlessly across faces, D3D9
+		// within one face.
+		"point" "1"
+		"texels" "209 82 42 255  251 33 41 255  199 72 27 255  254 45 19 255   35 167 51 255  57 219 43 255  39 204 70 255  4 180 76 255   64 76 195 255  40 51 226 255  27 43 190 255  22 88 222 255   222 189 44 255  191 243 78 255  228 207 44 255  191 194 58 255   45 232 192 255  27 210 223 255  25 186 194 255  64 174 233 255   177 43 183 255  214 35 182 255  229 43 216 255  220 32 165 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/vlgbump_cube.hdr"
+		"width" "2"
+		"height" "2"
+		"cube" "1"
+		// The same cube under the name integer HDR loads. Point-sampled: Vulkan filters cube maps seamlessly across faces, D3D9
+		// within one face.
+		"point" "1"
+		"texels" "209 82 42 255  251 33 41 255  199 72 27 255  254 45 19 255   35 167 51 255  57 219 43 255  39 204 70 255  4 180 76 255   64 76 195 255  40 51 226 255  27 43 190 255  22 88 222 255   222 189 44 255  191 243 78 255  228 207 44 255  191 194 58 255   45 232 192 255  27 210 223 255  25 186 194 255  64 174 233 255   177 43 183 255  214 35 182 255  229 43 216 255  220 32 165 255"
+	}
+	"case"
+	{
+		"name" "vlgbump_lit"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_lit_4lights_flip"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"light" { "type" "spot" "color" "0.6 0.45 0.7" "position" "-0.3 -0.2 -1" "direction" "0.2 0.1 0.97" "attenuation" "0.6 0.2 0" "theta" "0.4" "phi" "1.2" "falloff" "1.5" }
+		"light" { "type" "point" "color" "0.3 0.65 0.45" "position" "-0.5 0.6 -0.2" "attenuation" "0.2 0.5 0.3" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 -1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 -1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_lit_halflambert"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$halflambert" "1"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"light" { "type" "spot" "color" "0.6 0.45 0.7" "position" "-0.3 -0.2 -1" "direction" "0.2 0.1 0.97" "attenuation" "0.6 0.2 0" "theta" "0.4" "phi" "1.2" "falloff" "1.5" }
+		"light" { "type" "point" "color" "0.3 0.65 0.45" "position" "-0.5 0.6 -0.2" "attenuation" "0.2 0.5 0.3" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_lit_noambient"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+		}
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_lightwarp"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$lightwarptexture" "conformance/legacy/vlgbump_warp"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"light" { "type" "spot" "color" "0.6 0.45 0.7" "position" "-0.3 -0.2 -1" "direction" "0.2 0.1 0.97" "attenuation" "0.6 0.2 0" "theta" "0.4" "phi" "1.2" "falloff" "1.5" }
+		"light" { "type" "point" "color" "0.3 0.65 0.45" "position" "-0.5 0.6 -0.2" "attenuation" "0.2 0.5 0.3" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_lightwarp_nobump"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$lightwarptexture" "conformance/legacy/vlgbump_warp"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_envmap"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$envmap" "conformance/legacy/vlgbump_cube"
+			"$envmaptint" "[0.8 0.6 1.2]"
+			"$envmapcontrast" "0.4"
+			"$envmapsaturation" "0.6"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_envmap_normalalpha"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$envmap" "conformance/legacy/vlgbump_cube"
+			"$normalmapalphaenvmapmask" "1"
+			"$envmaptint" "[1 0.9 0.7]"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_selfillum"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$selfillum" "1"
+			"$selfillumtint" "[1.2 0.8 0.5]"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_selfillum_fresnel"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$selfillum" "1"
+			"$selfillumfresnel" "1"
+			"$selfillumfresnelminmaxexp" "[0.2 1.5 2]"
+			"$selfillumtint" "[0.9 1.1 0.6]"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_detail_mode0"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$detail" "conformance/legacy/vlgbump_detail"
+			"$detailscale" "1.5"
+			"$detailblendmode" "0"
+			"$detailblendfactor" "0.7"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_detail_mode1"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$detail" "conformance/legacy/vlgbump_detail"
+			"$detailscale" "1.5"
+			"$detailblendmode" "1"
+			"$detailblendfactor" "0.7"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_detail_mode2"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$detail" "conformance/legacy/vlgbump_detail"
+			"$detailscale" "1.5"
+			"$detailblendmode" "2"
+			"$detailblendfactor" "0.7"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_detail_mode3"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$detail" "conformance/legacy/vlgbump_detail"
+			"$detailscale" "1.5"
+			"$detailblendmode" "3"
+			"$detailblendfactor" "0.7"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_detail_mode4"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$detail" "conformance/legacy/vlgbump_detail"
+			"$detailscale" "1.5"
+			"$detailblendmode" "4"
+			"$detailblendfactor" "0.7"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_detail_mode5"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$detail" "conformance/legacy/vlgbump_detail"
+			"$detailscale" "1.5"
+			"$detailblendmode" "5"
+			"$detailblendfactor" "0.7"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_detail_mode6"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$detail" "conformance/legacy/vlgbump_detail"
+			"$detailscale" "1.5"
+			"$detailblendmode" "6"
+			"$detailblendfactor" "0.7"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_blendtint"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$blendtintbybasealpha" "1"
+			"$blendtintcoloroverbase" "0.3"
+			"$color2" "[0.9 0.4 0.2]"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_translucent"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+			"$translucent" "1"
+			"$alpha" "0.8"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_fog"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"fog" { "mode" "linear" "start" "0.2" "end" "0.9" "color" "180 160 140" "maxdensity" "0.8" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_fog_below"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"light" { "type" "point" "color" "0.7 0.55 0.35" "position" "0.4 0.3 -0.6" "attenuation" "0.4 0.3 0.2" }
+		"light" { "type" "directional" "color" "0.15 0.25 0.45" "direction" "-0.5 0.4 0.77" }
+		"fog" { "mode" "below" "start" "0" "end" "0.8" "z" "0.2" "color" "40 150 120" "maxdensity" "1" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "vlgbump_ambient_only"
+		"shader" "VertexLitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlgbump_base_opaque"
+			"$bumpmap" "conformance/legacy/vlgbump_normal"
+		}
+		"ambient" "0.25 0.15 0.1  0.05 0.1 0.2  0.15 0.25 0.15  0.2 0.05 0.1  0.18 0.18 0.1  0.08 0.15 0.18"
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "userdata" "1 0.1 0.2 1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "userdata" "0.9 -0.2 -0.3 1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "userdata" "1 0.3 0.1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "userdata" "0.8 0.2 0.4 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+}

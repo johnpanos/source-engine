@@ -1,0 +1,203 @@
+// EyeRefract_dx9 (eye_refract_ps20b / eye_refract_vs20): the cornea normal and
+// parallax offset, the iris (sphere and parallax coordinates, dilation, cornea
+// noise), the ambient occlusion map and color, the cube map reflection, vertex
+// lighting from the bent normal and the per-pixel iris highlights and glints of
+// each local light (the fourth packed in the w components). The quad is in
+// clip space with identity transforms (the camera at the origin); the eyeball
+// center sits behind it so its normals face the camera. Further cases add the
+// light warp ramp ($lightwarptexture) and the eyeball sphere ray cast
+// ($raytracesphere, $eyeballradius) with and without its texkill.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/eye_refract_cornea"
+		"width" "4"
+		"height" "4"
+		"point" "1"
+		"clamp" "1"
+		"texels" "128 128 40 0  150 110 90 30  110 150 140 60  128 128 20 0   160 140 200 120  100 90 250 255  170 160 230 255  140 100 180 90   90 170 180 100  120 120 255 255  135 125 240 255  150 150 170 110   128 128 30 0  100 140 100 40  140 100 60 20  128 128 10 0"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/eye_refract_iris"
+		"width" "4"
+		"height" "4"
+		"point" "1"
+		"clamp" "1"
+		"texels" "230 225 220 20  220 215 210 200  225 220 215 90  235 230 225 160   200 180 150 60  60 120 40 255  70 110 50 10  210 190 160 180   190 170 140 130  50 90 160 30  20 20 20 220  200 180 150 70   225 220 215 240  215 210 200 50  220 215 205 140  230 225 220 0"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/eye_refract_ao"
+		"width" "2"
+		"height" "2"
+		"point" "1"
+		"clamp" "1"
+		"texels" "255 255 255 255   180 160 140 255   90 100 110 255   230 200 170 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/eye_refract_env"
+		"width" "1"
+		"height" "1"
+		"point" "1"
+		"cube" "1"
+		"texels" "200 60 60 255  60 200 60 255  60 60 200 255  200 200 60 255  60 200 200 255  200 60 200 255"
+	}
+	// LoadCubeMap reads "<name>.hdr" with HDR enabled: the same cube under that name.
+	"texture"
+	{
+		"name" "conformance/legacy/eye_refract_env.hdr"
+		"width" "1"
+		"height" "1"
+		"point" "1"
+		"cube" "1"
+		"texels" "200 60 60 255  60 200 60 255  60 60 200 255  200 200 60 255  60 200 200 255  200 60 200 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/eye_refract_warp"
+		"width" "4"
+		"height" "4"
+		"clamp" "1"
+		"texels" "20 10 40 255  90 40 60 255  180 120 90 255  250 230 200 255   20 10 40 255  90 40 60 255  180 120 90 255  250 230 200 255   20 10 40 255  90 40 60 255  180 120 90 255  250 230 200 255   20 10 40 255  90 40 60 255  180 120 90 255  250 230 200 255"
+	}
+	"case"
+	{
+		"name" "eye_refract_two_lights"
+		"shader" "EyeRefract"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$iris" "conformance/legacy/eye_refract_iris"
+			"$corneatexture" "conformance/legacy/eye_refract_cornea"
+			"$ambientoccltexture" "conformance/legacy/eye_refract_ao"
+			"$envmap" "conformance/legacy/eye_refract_env"
+			"$eyeorigin" "[0.1 -0.1 1.4]"
+			"$irisu" "[0.5 0 0 0.5]"
+			"$irisv" "[0 -0.5 0 0.5]"
+			"$dilation" "0.8"
+			"$glossiness" "0.7"
+			"$parallaxstrength" "0.5"
+			"$corneabumpstrength" "1.3"
+			"$ambientocclcolor" "[0.4 0.3 0.25]"
+		}
+		"ambient" "0.10 0.08 0.06  0.02 0.03 0.04  0.05 0.05 0.05  0.01 0.02 0.01  0.20 0.15 0.10  0.12 0.10 0.08"
+		"light" { "type" "point" "color" "0.9 0.8 0.7" "position" "0.5 0.6 -1" "attenuation" "0.5 0.2 0.1" }
+		"light" { "type" "directional" "color" "0.4 0.5 0.6" "direction" "0.2 -0.3 0.9" }
+		"points" "0.2 0.2 0.3 0.45 0.45 0.3 0.6 0.4 0.4 0.6 0.55 0.55 0.8 0.7 0.3 0.8 0.7 0.2 0.52 0.47"
+	}
+	"case"
+	{
+		"name" "eye_refract_four_lights_halflambert"
+		"shader" "EyeRefract"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$iris" "conformance/legacy/eye_refract_iris"
+			"$corneatexture" "conformance/legacy/eye_refract_cornea"
+			"$ambientoccltexture" "conformance/legacy/eye_refract_ao"
+			"$envmap" "conformance/legacy/eye_refract_env"
+			"$eyeorigin" "[0 0 1.2]"
+			"$irisu" "[0.45 0.1 0 0.5]"
+			"$irisv" "[0.05 -0.5 0 0.5]"
+			"$dilation" "0.2"
+			"$glossiness" "1"
+			"$halflambert" "1"
+		}
+		"ambient" "0.05 0.05 0.05  0.05 0.05 0.05  0.05 0.05 0.05  0.05 0.05 0.05  0.05 0.05 0.05  0.05 0.05 0.05"
+		"light" { "type" "spot" "color" "0.8 0.6 0.4" "position" "-0.5 0.5 -1.5" "direction" "0.3 -0.3 0.9" "attenuation" "1 0 0.05" "theta" "0.6" "phi" "1.4" "falloff" "2" }
+		"light" { "type" "point" "color" "0.5 0.7 0.9" "position" "0.8 -0.4 -0.8" "attenuation" "0.3 0.3 0.1" }
+		"light" { "type" "point" "color" "0.6 0.3 0.8" "position" "-0.8 -0.8 -0.5" "attenuation" "0.4 0.1 0.2" }
+		"light" { "type" "directional" "color" "0.3 0.4 0.2" "direction" "-0.1 0.4 0.9" }
+		"points" "0.2 0.2 0.3 0.45 0.45 0.3 0.6 0.4 0.4 0.6 0.55 0.55 0.8 0.7 0.3 0.8 0.7 0.2 0.52 0.47"
+	}
+	"case"
+	{
+		"name" "eye_refract_ambient_only"
+		"shader" "EyeRefract"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$iris" "conformance/legacy/eye_refract_iris"
+			"$corneatexture" "conformance/legacy/eye_refract_cornea"
+			"$ambientoccltexture" "conformance/legacy/eye_refract_ao"
+			"$envmap" "conformance/legacy/eye_refract_env"
+			"$eyeorigin" "[0 0.1 1.5]"
+			"$irisu" "[0.5 0 0 0.5]"
+			"$irisv" "[0 -0.5 0 0.5]"
+		}
+		"ambient" "0.40 0.30 0.20  0.10 0.20 0.30  0.30 0.30 0.30  0.20 0.10 0.10  0.50 0.40 0.30  0.30 0.35 0.40"
+		"points" "0.2 0.2 0.3 0.45 0.45 0.3 0.6 0.4 0.4 0.6 0.55 0.55 0.8 0.7"
+	}
+	"case"
+	{
+		"name" "eye_refract_lightwarp"
+		"shader" "EyeRefract"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$iris" "conformance/legacy/eye_refract_iris"
+			"$corneatexture" "conformance/legacy/eye_refract_cornea"
+			"$ambientoccltexture" "conformance/legacy/eye_refract_ao"
+			"$envmap" "conformance/legacy/eye_refract_env"
+			"$irisu" "[0.5 0 0 0.5]"
+			"$irisv" "[0 -0.5 0 0.5]"
+			"$eyeorigin" "[0.1 -0.1 1.4]"
+			"$lightwarptexture" "conformance/legacy/eye_refract_warp"
+		}
+		"ambient" "0.10 0.08 0.06  0.02 0.03 0.04  0.05 0.05 0.05  0.01 0.02 0.01  0.20 0.15 0.10  0.12 0.10 0.08"
+		"light" { "type" "point" "color" "0.9 0.8 0.7" "position" "0.5 0.6 -1" "attenuation" "0.5 0.2 0.1" }
+		"light" { "type" "directional" "color" "0.4 0.5 0.6" "direction" "0.2 -0.3 0.9" }
+		"light" { "type" "point" "color" "0.5 0.7 0.9" "position" "0.8 -0.4 -0.8" "attenuation" "0.3 0.3 0.1" }
+		"points" "0.2 0.2 0.3 0.45 0.45 0.3 0.6 0.4 0.4 0.6 0.55 0.55 0.8 0.7 0.3 0.8 0.7 0.2 0.52 0.47"
+	}
+	"case"
+	{
+		"name" "eye_refract_raytrace"
+		"shader" "EyeRefract"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$iris" "conformance/legacy/eye_refract_iris"
+			"$corneatexture" "conformance/legacy/eye_refract_cornea"
+			"$ambientoccltexture" "conformance/legacy/eye_refract_ao"
+			"$envmap" "conformance/legacy/eye_refract_env"
+			"$irisu" "[0.5 0 0 0.5]"
+			"$irisv" "[0 -0.5 0 0.5]"
+			"$eyeorigin" "[0.1 -0.1 1.4]"
+			"$raytracesphere" "1"
+			"$eyeballradius" "0.9"
+		}
+		"ambient" "0.10 0.08 0.06  0.02 0.03 0.04  0.05 0.05 0.05  0.01 0.02 0.01  0.20 0.15 0.10  0.12 0.10 0.08"
+		"light" { "type" "point" "color" "0.9 0.8 0.7" "position" "0.5 0.6 -1" "attenuation" "0.5 0.2 0.1" }
+		"light" { "type" "directional" "color" "0.4 0.5 0.6" "direction" "0.2 -0.3 0.9" }
+		"light" { "type" "point" "color" "0.5 0.7 0.9" "position" "0.8 -0.4 -0.8" "attenuation" "0.3 0.3 0.1" }
+		"points" "0.2 0.2 0.3 0.45 0.45 0.3 0.6 0.4 0.4 0.6 0.55 0.55 0.8 0.7 0.3 0.8 0.7 0.2 0.52 0.47"
+	}
+	"case"
+	{
+		"name" "eye_refract_raytrace_texkill"
+		"shader" "EyeRefract"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$iris" "conformance/legacy/eye_refract_iris"
+			"$corneatexture" "conformance/legacy/eye_refract_cornea"
+			"$ambientoccltexture" "conformance/legacy/eye_refract_ao"
+			"$envmap" "conformance/legacy/eye_refract_env"
+			"$irisu" "[0.5 0 0 0.5]"
+			"$irisv" "[0 -0.5 0 0.5]"
+			"$eyeorigin" "[0 0 1.4]"
+			"$raytracesphere" "1"
+			"$spheretexkillcombo" "1"
+			"$eyeballradius" "0.5"
+		}
+		"ambient" "0.10 0.08 0.06  0.02 0.03 0.04  0.05 0.05 0.05  0.01 0.02 0.01  0.20 0.15 0.10  0.12 0.10 0.08"
+		"light" { "type" "point" "color" "0.9 0.8 0.7" "position" "0.5 0.6 -1" "attenuation" "0.5 0.2 0.1" }
+		"light" { "type" "directional" "color" "0.4 0.5 0.6" "direction" "0.2 -0.3 0.9" }
+		"light" { "type" "point" "color" "0.5 0.7 0.9" "position" "0.8 -0.4 -0.8" "attenuation" "0.3 0.3 0.1" }
+		"points" "0.2 0.2 0.3 0.45 0.45 0.3 0.6 0.4 0.4 0.6 0.55 0.55 0.8 0.7 0.3 0.8 0.7 0.2 0.52 0.47"
+	}
+}

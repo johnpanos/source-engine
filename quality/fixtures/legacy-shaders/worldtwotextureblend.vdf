@@ -1,0 +1,130 @@
+// WorldTwoTextureBlend (worldtwotextureblend_ps20b / lightmappedgeneric_vs20):
+// base texture blended with (or masked by) a detail texture, times the
+// lightmap (sampler 1 on uv1) and 2x overbright, with self-illumination, vertex
+// color, bumped lightmaps (uv2 steps the three bumped pages) and seamless
+// mapping. Varied texels make every term visible. The SELFILLUM,
+// DETAIL_ALPHA_MASK_BASE_TEXTURE and BUMPMAP combos are in
+// retail/worldtwotextureblend_skipped_combos.vdf: this tree's .fxc skips them.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/worldtwotextureblend_base"
+		"width" "4"
+		"height" "4"
+		"texels" "200 100 50 255   40 160 220 200   120 120 120 128   255 255 255 60   30 90 150 255   250 20 90 180   10 240 60 220   90 90 200 100   180 180 30 255   60 20 120 140   220 140 80 240   20 20 20 255   100 200 250 90   255 128 0 255   0 128 255 200   128 64 32 170"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/worldtwotextureblend_detail"
+		"width" "2"
+		"height" "2"
+		"texels" "255 40 40 255   40 255 90 128   60 60 255 30   240 240 60 190"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/worldtwotextureblend_lightmap"
+		"width" "4"
+		"height" "2"
+		"point" "1"
+		"clamp" "1"
+		"texels" "128 64 32 255   40 200 120 255   90 90 90 255   250 180 60 255   30 60 200 255   160 160 30 255   200 40 100 255   70 140 210 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/worldtwotextureblend_bump"
+		"width" "2"
+		"height" "2"
+		"texels" "128 128 255 255   200 100 200 255   60 170 220 255   150 40 210 255"
+	}
+	"case"
+	{
+		"name" "worldtwotextureblend_base"
+		"shader" "WorldTwoTextureBlend"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/worldtwotextureblend_lightmap"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/worldtwotextureblend_base"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" }
+		"points" "0.125 0.25 0.375 0.25 0.625 0.25 0.875 0.25 0.125 0.75 0.625 0.75"
+	}
+	"case"
+	{
+		"name" "worldtwotextureblend_detail_transform"
+		"shader" "WorldTwoTextureBlend"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/worldtwotextureblend_lightmap"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/worldtwotextureblend_base"
+			"$detail" "conformance/legacy/worldtwotextureblend_detail"
+			"$detailscale" "1.5"
+			"$basetexturetransform" "center .5 .5 scale 1 1 rotate 30 translate 0.1 0"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" }
+		"points" "0.125 0.25 0.375 0.25 0.625 0.25 0.875 0.25 0.125 0.75 0.625 0.75 0.4 0.6"
+	}
+	"case"
+	{
+		"name" "worldtwotextureblend_seamless_alphatest"
+		"shader" "WorldTwoTextureBlend"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/worldtwotextureblend_lightmap"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/worldtwotextureblend_base"
+			"$seamless_scale" "0.5"
+			"$alphatest" "1"
+			"$alphatestreference" "0.5"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "normal" "0.3 0.4 0.8" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "1 0" "normal" "0.3 0.4 0.8" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "1 1" "normal" "0.3 0.4 0.8" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "normal" "0.3 0.4 0.8" }
+		"points" "0.125 0.25 0.375 0.25 0.625 0.25 0.875 0.25 0.125 0.75 0.625 0.75 0.3 0.9"
+	}
+	"case"
+	{
+		"name" "worldtwotextureblend_range_fog"
+		"shader" "WorldTwoTextureBlend"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/worldtwotextureblend_lightmap"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/worldtwotextureblend_base"
+			"$detail" "conformance/legacy/worldtwotextureblend_detail"
+		}
+		"fog" { "mode" "linear" "start" "0.1" "end" "1.2" "color" "200 40 250" "maxdensity" "0.8" }
+		"vertex" { "pos" "-1 1 0.1" "uv0" "0 0" "uv1" "0 0" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "uv1" "1 0" }
+		"vertex" { "pos" "1 -1 0.9" "uv0" "1 1" "uv1" "1 1" }
+		"vertex" { "pos" "-1 -1 0.6" "uv0" "0 1" "uv1" "0 1" }
+		"points" "0.125 0.25 0.375 0.25 0.625 0.25 0.875 0.25 0.125 0.75 0.625 0.75 0.875 0.875"
+	}
+	"case"
+	{
+		"name" "worldtwotextureblend_height_fog_dest_alpha"
+		"shader" "WorldTwoTextureBlend"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/worldtwotextureblend_lightmap"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/worldtwotextureblend_base"
+			"$detail" "conformance/legacy/worldtwotextureblend_detail"
+		}
+		"fog" { "mode" "below" "start" "0" "end" "0.5" "z" "0.05" "color" "40 220 90" }
+		"vertex" { "pos" "-1 1 0.1" "uv0" "0 0" "uv1" "0 0" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "uv1" "1 0" }
+		"vertex" { "pos" "1 -1 0.9" "uv0" "1 1" "uv1" "1 1" }
+		"vertex" { "pos" "-1 -1 0.6" "uv0" "0 1" "uv1" "0 1" }
+		"points" "0.125 0.25 0.375 0.25 0.625 0.25 0.875 0.25 0.125 0.75 0.625 0.75 0.875 0.875"
+	}
+}

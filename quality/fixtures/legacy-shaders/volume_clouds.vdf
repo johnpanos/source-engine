@@ -1,0 +1,49 @@
+// VolumeClouds_dx9 (volume_clouds_ps20b / volume_clouds_vs20): three cloud
+// layers rotated by $time about the texture center, parallax-offset along the
+// tangent-space view vector (model normal and TANGENT with its sign) over ten
+// layers, alpha blended.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/volume_clouds_1"
+		"width" "4"
+		"height" "4"
+		"clamp" "1"
+		"texels" "33 16 8 255   6 26 36 200   20 20 20 128   42 42 42 60   5 15 25 255   41 3 15 180   1 40 10 220   15 15 33 100   30 30 5 255   10 3 20 140   36 23 13 240   3 3 3 255   16 33 41 90   42 21 0 255   0 21 42 200   21 10 5 170"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/volume_clouds_2"
+		"width" "2"
+		"height" "2"
+		"clamp" "1"
+		"texels" "42 6 6 60   6 42 15 128   10 10 42 30   40 40 10 190"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/volume_clouds_3"
+		"width" "2"
+		"height" "2"
+		"clamp" "1"
+		"texels" "3 3 3 10   33 33 33 90   15 30 5 40   41 20 33 150"
+	}
+	"case"
+	{
+		"name" "volume_clouds"
+		"shader" "VolumeClouds"
+		"clear" "30 60 120 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/volume_clouds_1"
+			"$basetexture2" "conformance/legacy/volume_clouds_2"
+			"$basetexture3" "conformance/legacy/volume_clouds_3"
+			"$time" "3.7"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.1 -1" "userdata" "1 0.2 0 1" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "normal" "0.2 0.1 -1" "userdata" "1 0.2 0 1" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "normal" "0.2 0.1 -1" "userdata" "1 0.2 0 -1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.2 0.1 -1" "userdata" "1 0.2 0 -1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.8 0.9"
+	}
+}

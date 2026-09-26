@@ -1,0 +1,103 @@
+// color_projection (color_projection_ps20 / color_projection_vs20): the color
+// blindness projections mat_color_projection 1..8 selects (blindMK,
+// monochrome and anomylize combinations), over a varied frame texture.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/color_projection_frame"
+		"width" "4"
+		"height" "4"
+		"texels" "165 77 202 24  37 48 187 29  109 19 44 222  214 35 123 46  217 30 63 114  31 203 25 113  23 68 148 214  73 60 157 92  52 96 190 49  32 30 105 254  218 160 238 232  185 153 127 92  124 41 153 253  175 229 147 37  60 214 84 175  77 250 215 20"
+	}
+	"case"
+	{
+		"name" "color_projection_1"
+		"shader" "color_projection"
+		"clear" "180 90 200 255"
+		"material"
+		{
+			"$frame_texture" "conformance/legacy/color_projection_frame"
+		}
+		"convars"
+		{
+			"mat_color_projection" "1"
+		}
+		"points" "0.125 0.125 0.625 0.375 0.375 0.875 0.875 0.625 0.875 0.125 0.125 0.625 0.375 0.125 0.625 0.625 0.875 0.875 0.125 0.375"
+	}
+	"case"
+	{
+		"name" "color_projection_2"
+		"shader" "color_projection"
+		"clear" "180 90 200 255"
+		"material"
+		{
+			"$frame_texture" "conformance/legacy/color_projection_frame"
+		}
+		"convars"
+		{
+			"mat_color_projection" "2"
+		}
+		"points" "0.125 0.125 0.625 0.375 0.375 0.875 0.875 0.625 0.875 0.125 0.125 0.625 0.375 0.125 0.625 0.625 0.875 0.875 0.125 0.375"
+	}
+	"case"
+	{
+		"name" "color_projection_3"
+		"shader" "color_projection"
+		"clear" "180 90 200 255"
+		"material"
+		{
+			"$frame_texture" "conformance/legacy/color_projection_frame"
+		}
+		"convars"
+		{
+			"mat_color_projection" "3"
+		}
+		"points" "0.125 0.125 0.625 0.375 0.375 0.875 0.875 0.625 0.875 0.125 0.125 0.625 0.375 0.125 0.625 0.625 0.875 0.875 0.125 0.375"
+	}
+	"case"
+	{
+		"name" "color_projection_4"
+		"shader" "color_projection"
+		"clear" "180 90 200 255"
+		"material"
+		{
+			"$frame_texture" "conformance/legacy/color_projection_frame"
+		}
+		"convars"
+		{
+			"mat_color_projection" "4"
+		}
+		"points" "0.125 0.125 0.625 0.375 0.375 0.875 0.875 0.625 0.875 0.125 0.125 0.625 0.375 0.125 0.625 0.625 0.875 0.875 0.125 0.375"
+	}
+	"case"
+	{
+		"name" "color_projection_5"
+		"shader" "color_projection"
+		"clear" "180 90 200 255"
+		"material"
+		{
+			"$frame_texture" "conformance/legacy/color_projection_frame"
+		}
+		"convars"
+		{
+			"mat_color_projection" "5"
+		}
+		"points" "0.125 0.125 0.625 0.375 0.375 0.875 0.875 0.625 0.875 0.125 0.125 0.625 0.375 0.125 0.625 0.625 0.875 0.875 0.125 0.375"
+	}
+	"case"
+	{
+		"name" "color_projection_8"
+		"shader" "color_projection"
+		"clear" "180 90 200 255"
+		"material"
+		{
+			"$frame_texture" "conformance/legacy/color_projection_frame"
+		}
+		"convars"
+		{
+			"mat_color_projection" "8"
+		}
+		"points" "0.125 0.125 0.625 0.375 0.375 0.875 0.875 0.625 0.875 0.125 0.125 0.625 0.375 0.125 0.625 0.625 0.875 0.875 0.125 0.375"
+	}
+}

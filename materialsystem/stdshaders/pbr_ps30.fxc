@@ -157,7 +157,7 @@ float4 main(PS_INPUT i) : COLOR
     // Start direct
     float3 directLighting = 0.0;
     if (!FLASHLIGHT) {
-        for (uint n = 0; n < NUM_LIGHTS; ++n)
+        for (int n = 0; n < NUM_LIGHTS; ++n)
         {
             float3 LightIn = normalize(PixelShaderGetLightVector(i.worldPos, cLightInfo, n));
             float3 LightColor = PixelShaderGetLightColor(cLightInfo, n) * GetAttenForLight(i.lightAtten, n); // Li

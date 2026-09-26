@@ -1,0 +1,55 @@
+// ParticleSphere_DX9 (particlesphere_ps20b / particlesphere_vs20): the sphere
+// normal map lit by the directional light ($light_position, $light_color,
+// scaled back where intensity over distance exceeds 1) in a tangent space
+// turned toward the viewer, plus the vertex color as ambient, alpha from the
+// map times the vertex alpha, blended over the frame. The quad is the view-space
+// POSITION stream through identity transforms. $depthblend stays 0: the soft
+// particle combo reads the frame's depth copy, which the harness cannot define.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/particlesphere_bump"
+		"width" "4"
+		"height" "4"
+		"point" "1"
+		"clamp" "1"
+		"texels" "128 128 255 0  170 110 235 90  90 150 230 180  150 150 220 255   110 170 240 180  128 128 255 255  200 60 200 255  60 190 210 150   140 100 235 30  80 128 220 220  128 128 255 255  170 170 200 100   100 100 230 160  150 110 240 60  120 160 235 240  128 128 255 10"
+	}
+	"case"
+	{
+		"name" "particlesphere_near_light"
+		"shader" "ParticleSphere"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$bumpmap" "conformance/legacy/particlesphere_bump"
+			"$depthblend" "0"
+			"$light_position" "[0.4 0.6 -0.2]"
+			"$light_color" "[0.9 0.6 0.3]"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "color" "30 20 10 255" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "color" "10 30 20 200" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "color" "40 10 30 128" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "color" "20 20 20 255" }
+		"points" "0.1 0.1 0.35 0.15 0.6 0.1 0.9 0.35 0.15 0.4 0.4 0.6 0.65 0.65 0.85 0.9 0.1 0.9 0.6 0.4"
+	}
+	"case"
+	{
+		"name" "particlesphere_far_bright_light"
+		"shader" "ParticleSphere"
+		"clear" "20 40 60 255"
+		"material"
+		{
+			"$bumpmap" "conformance/legacy/particlesphere_bump"
+			"$depthblend" "0"
+			"$light_position" "[-3 2 -4]"
+			"$light_color" "[40 25 10]"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "color" "0 0 0 255" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "color" "0 0 0 255" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "color" "60 60 60 255" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "color" "60 60 60 255" }
+		"points" "0.1 0.1 0.35 0.15 0.6 0.1 0.9 0.35 0.15 0.4 0.4 0.6 0.65 0.65 0.85 0.9 0.1 0.9 0.6 0.4"
+	}
+}

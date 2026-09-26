@@ -1,0 +1,112 @@
+// ShatteredGlass (shatteredglass_ps20b / shatteredglass_vs20): base times
+// detail (uv2 through the detail scale) lit partly by the lightmap
+// ($unlitfactor), with vertex color, and the Fresnel-weighted cube map
+// reflection masked by the envmap mask and the base alpha; CUBEMAP normalizes
+// through the material system's signed normalization cube map
+// ("normalizesigned", s6). Cube maps are point-sampled (Vulkan filters cube
+// maps seamlessly across faces, D3D9 within a face).
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/shatteredglass_base"
+		"width" "4"
+		"height" "4"
+		"texels" "200 100 50 255   40 160 220 200   120 120 120 128   255 255 255 60   30 90 150 255   250 20 90 180   10 240 60 220   90 90 200 100   180 180 30 255   60 20 120 140   220 140 80 240   20 20 20 255   100 200 250 90   255 128 0 255   0 128 255 200   128 64 32 170"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/shatteredglass_detail"
+		"width" "2"
+		"height" "2"
+		"texels" "255 200 160 255   160 255 190 128   190 190 255 230   240 240 160 190"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/shatteredglass_lightmap"
+		"width" "4"
+		"height" "2"
+		"point" "1"
+		"clamp" "1"
+		"texels" "128 64 32 255   40 200 120 255   90 90 90 255   250 180 60 255   30 60 200 255   160 160 30 255   200 40 100 255   70 140 210 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/shatteredglass_cube"
+		"width" "2"
+		"height" "2"
+		"cube" "1"
+		"point" "1"
+		"texels" "255 40 40 255 240 80 60 255 200 60 60 255 255 100 100 255 40 255 40 255 60 240 80 255 90 200 60 255 100 255 100 255 40 40 255 255 80 60 240 255 60 90 200 255 100 100 255 255 255 255 40 255 240 240 80 255 200 200 60 255 255 255 120 255 40 255 255 255 80 240 240 255 60 200 200 255 120 255 255 255 255 40 255 255 240 80 240 255 200 60 200 255 255 120 255 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/shatteredglass_cube.hdr"
+		"width" "2"
+		"height" "2"
+		"cube" "1"
+		"point" "1"
+		"texels" "255 40 40 255 240 80 60 255 200 60 60 255 255 100 100 255 40 255 40 255 60 240 80 255 90 200 60 255 100 255 100 255 40 40 255 255 80 60 240 255 60 90 200 255 100 100 255 255 255 255 40 255 240 240 80 255 200 200 60 255 255 255 120 255 40 255 255 255 80 240 240 255 60 200 200 255 120 255 255 255 255 40 255 255 240 80 240 255 200 60 200 255 255 120 255 255"
+	}
+	"case"
+	{
+		"name" "shatteredglass_vertexcolor"
+		"shader" "ShatteredGlass"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/shatteredglass_lightmap"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/shatteredglass_base"
+			"$detail" "conformance/legacy/shatteredglass_detail"
+			"$detailscale" "1.5"
+			"$unlitfactor" "0.3"
+			"$vertexcolor" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.2 0.1" "normal" "0.1 0.2 -1" "color" "255 128 64 255" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "1 0" "uv2" "1.1 0" "normal" "0.1 0.2 -1" "color" "255 255 255 200" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "1 1" "uv2" "0.9 1.2" "normal" "-0.3 0.1 -1" "color" "64 255 128 255" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0 0.8" "normal" "-0.3 0.1 -1" "color" "128 128 255 150" }
+		"points" "0.125 0.25 0.375 0.25 0.625 0.25 0.875 0.25 0.125 0.75 0.625 0.75"
+	}
+	"case"
+	{
+		"name" "shatteredglass_basealpha_fog"
+		"shader" "ShatteredGlass"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/shatteredglass_lightmap"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/shatteredglass_base"
+			"$detail" "conformance/legacy/shatteredglass_detail"
+			"$basealphaenvmapmask" "1"
+			"$unlitfactor" "0.9"
+		}
+		"fog" { "mode" "linear" "start" "0" "end" "1" "color" "250 40 200" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.2 0.1" "normal" "0.1 0.2 -1" "color" "255 128 64 255" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "1 0" "uv2" "1.1 0" "normal" "0.1 0.2 -1" "color" "255 255 255 200" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "1 1" "uv2" "0.9 1.2" "normal" "-0.3 0.1 -1" "color" "64 255 128 255" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0 0.8" "normal" "-0.3 0.1 -1" "color" "128 128 255 150" }
+		"points" "0.125 0.25 0.375 0.25 0.625 0.25 0.875 0.25 0.125 0.75 0.625 0.75"
+	}
+	"case"
+	{
+		"name" "shatteredglass_envmap"
+		"shader" "ShatteredGlass"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/shatteredglass_lightmap"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/shatteredglass_base"
+			"$detail" "conformance/legacy/shatteredglass_detail"
+			"$detailscale" "1.5"
+			"$unlitfactor" "0.3"
+			"$envmap" "conformance/legacy/shatteredglass_cube"
+			"$envmaptint" "[0.6 0.7 0.8]"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.2 0.1" "normal" "0.1 0.2 -1" "color" "255 128 64 255" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "1 0" "uv2" "1.1 0" "normal" "0.1 0.2 -1" "color" "255 255 255 200" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "1 1" "uv2" "0.9 1.2" "normal" "-0.3 0.1 -1" "color" "64 255 128 255" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0 0.8" "normal" "-0.3 0.1 -1" "color" "128 128 255 150" }
+		"points" "0.125 0.25 0.375 0.25 0.625 0.25 0.875 0.25 0.125 0.75 0.625 0.75"
+	}
+}
