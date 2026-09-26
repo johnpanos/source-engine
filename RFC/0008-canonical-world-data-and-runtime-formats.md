@@ -11,6 +11,14 @@
   built) and `RPRB` v2 relight bands (R50-RELIGHT) in the render lump table;
   [installed encodings](#installed-encodings-2026-09-25) records what the
   readers accept today
+- Amended: 2026-09-26 by [RFC 0015](0015-asset-identity-content-build-graph.md)
+  (proposed). RFC 0015 now owns the incremental build graph, the way cache
+  keys are computed, the output store, publication, package indexes and
+  live reload. It also owns asset identity (`AssetRef`), which `MTBL` and
+  the asset table lump use. This RFC keeps the ledger rows, their
+  cache-key contents and every encoding. F6 is RFC 0015 C2; F7, F9 and F11
+  build on its packages, compiler contract and reload loop. The amended
+  passages say so inline
 - Date: 2026-09-22
 - Scope: The compiled-world interchange stage, runtime map and model resources,
   world render data (mesh, lightmaps, probes, reflection probes), the texture
@@ -179,8 +187,11 @@ Every arrow above is one row. No other code performs these transformations.
 | BSP2 lumps → GPU resources | native Vulkan world path | None (direct upload) |
 | Authored USD → live development world | F11 provider using the same validator/compiler contracts | Source revision, dependency hashes, compiler/profile versions |
 
-Build steps are nodes in a dependency graph that uses the RFC 0003 job system
-inside tools. The input producer is part of each graph's cache key. Changing
+Build steps are nodes in RFC 0015's content build graph, which runs on the
+RFC 0003 job system inside tools *(amended by RFC 0015)*. Each row's owner is
+that node kind's compiler. This table fixes what each key covers; RFC 0015
+fixes how keys are computed, how outputs are stored and how a package is
+published. The input producer is part of each graph's cache key. Changing
 only a light re-runs the bake and pack steps. Changing
 only a material parameter re-runs pack (and bake if albedo or emission changed).
 Changing only a texture re-runs encode, transcode, and pack. Geometry changes
@@ -205,6 +216,11 @@ for legacy content. Static, dynamic, and physics placements in RFC 0009 select
 the appropriate model capabilities through a validated reference, not filename
 or mesh inspection. A separate contract record is needed before implementation
 to pin animation, networking, persistence, and `studio.h` compatibility.
+*(Amended by RFC 0015.)* That validated reference is an RFC 0015 `AssetRef`
+of the model kind. The model compiler is an RFC 0015 compiler
+(`content.asset-compiler.v1`) and reports the model's runtime references
+(materials, textures). Legacy MDL compilation (`studiomdl` on Waf) is RFC
+0015 C3, not F9.
 
 F10 measures visual results on authored scenes that expose material response,
 glass/transmission, reflections, shadows, indirect light, and dense geometry.
@@ -227,7 +243,9 @@ fork gameplay semantics. The production package path remains the oracle.
 Desktop implementation is required. A mobile build is separately selected
 only after native memory, startup, lifecycle, static composition, and package
 checks; inability to fit OpenUSD on a declared mobile profile does not block
-its compiled-package support.
+its compiled-package support. *(Amended by RFC 0015.)* F11 uses RFC 0015's
+live-reload loop (watcher, build graph, overlay package, change notice); it
+adds the map reloader, not a separate loader pipeline.
 
 ## World Stage (OpenUSD)
 
@@ -333,7 +351,11 @@ not become required authored fields. Fixtures use `.usda`; build caches use
 - Lump override files (`public/lumpfiles.cpp`) keep working, keyed by 4CC.
 - The embedded zip pak lump remains for legacy overrides and loose assets. New
   binary assets (KTX2) go into an **asset table lump**: aligned, hashed, and
-  addressable without zip decompression.
+  addressable without zip decompression. *(Amended by RFC 0015.)* Its
+  entries are keyed by RFC 0015 `AssetRef` and use the package-index entry
+  encoding, so an asset embedded in a map resolves the same way as one in a
+  package. The container's block layout moves into RFC 0015's
+  `content.block-container` library; BSP2 bytes and its magic don't change.
 
 ### Engine access seam
 
@@ -357,8 +379,8 @@ dependencies (checked by R12's link evidence).
 | `RTRN` | Radiance transfer *(RFC 0011 G4, optional)*: surface patches mapped to lightmap charts, sparse visibility-weighted form factors, probe gather weights, per-patch visibility of each baked light | — (new capability: runtime radiosity) |
 | `SDFV` | Signed distance volume *(RFC 0011 G6, optional)*: a uniform voxel grid over the static world (signed distance, reflectance, emission and its light source per voxel), the analytic lights the traced producers shadow-test, and (v2) per-cell light lists | — (new capability: SDF-traced indirect light and unbaked-light shadows) |
 | `RPRB` | Reflection probes: position, influence and parallax boxes, blend priority, KTX2 prefiltered HDR cube (GGX roughness mips); optionally *(R50-RELIGHT)* relight bands (albedo, distance, normal of what each capture saw) | `env_cubemap` VTFs from `buildcubemaps` |
-| `MTBL` | Material table: canonical material asset identity, optional legacy VMT path, family, shader capability requirement, hashes | `texdata` string table lookups for render batching |
-| `PKMF` | Package manifest: profile, formats chosen, source stage hashes, tool versions, derived-legacy flag | — |
+| `MTBL` | Material table: canonical material asset identity (an RFC 0015 `AssetRef`), optional legacy VMT path, family, shader capability requirement, hashes | `texdata` string table lookups for render batching |
+| `PKMF` | Package manifest: profile, formats chosen, source stage hashes, tool versions, derived-legacy flag, and *(RFC 0015)* the build request hash and the map's runtime references for the package index | — |
 
 #### Installed encodings (2026-09-25)
 
@@ -446,7 +468,9 @@ recorded from device queries on R29 runners, not assumed here.
 
 - The material system gets a container-neutral texture reader: VTF (existing)
   and KTX2 (new) both produce the same in-memory texture description. Legacy
-  VTF content is never converted.
+  VTF content is never converted. *(Amended by RFC 0015.)* `CTexture`
+  chooses among a texture's variants through RFC 0015's runtime resolver
+  (C5), not by probing file extensions.
 - The native Vulkan provider adds the BC4/5/6H/7, ASTC, and ETC2 format mappings
   it lacks today (as of 2026-09-22 it maps only DXT1/DXT3/DXT5 to BC1–BC3).
 - The Hammer core texture reader (`hammer/core/formats/vtf_image.cpp`) gains
@@ -525,7 +549,7 @@ by a global switch.
   not called for BSP2 maps on the new path).
 - **Incremental builds:** a light-only change re-runs only bake and pack, and a
   texture-only change re-runs only encode, transcode, and pack. This is proven
-  by build-graph traces with cache hit counts.
+  by build-graph traces with cache hit counts, which RFC 0015 C1 installs.
 - **Negative fixtures:** wrong alignment, a stale hash, an unknown required lump,
   sRGB/linear mismatch, a wrong style layer mapping, a lightmap UV off by half a
   texel, and a missing legacy payload on a legacy-only provider must each fail.
@@ -542,8 +566,8 @@ by a global switch.
 | F3 | KTX2: container-neutral texture reader, UASTC encode/transcode in the packer, native Vulkan BC/ASTC/ETC2 formats, Hammer reader | `ktx validate`; per-format pixel fixtures; profile format negotiation fails correctly when a format is missing |
 | F4 | `WMSH` + native Vulkan world path using legacy-equivalent lighting data | Legacy feature cohorts (decals, overlays, displacements, water, areaportals, fog, sky, props) each pass; load cost measured |
 | F5 | `LMAP`/`LSTY`/`PRBV`/`RPRB` from RFC 0007 bakes, legacy exporter, light-style blending, clustered dynamic lights | Pixel oracles vs Cycles; legacy payload renders on D3D9/DXVK; style switching and dynamic light tests; `PRBV` passes RFC 0011 G1 |
-| F6 | Incremental build graph and cache; Hammer compile and preview use it | Cache-hit traces per change class; cancellation leaves the previous package intact |
-| F7 | Mobile packaging: per-profile transcoding and packages for iOS/Android | Device format queries recorded; installed-package smoke tests on R29 runners |
+| F6 | Map pipelines on RFC 0015's content build graph (RFC 0015 C2); Hammer compile and preview use it | Cache-hit traces per change class; cancellation leaves the previous package intact |
+| F7 | Mobile packaging: per-profile transcoding and packages for iOS/Android, built as RFC 0015 C4 profile packages | Device format queries recorded; installed-package smoke tests on R29 runners |
 | F8 | Versioned native map spatial/gameplay data for USD geometry | Closed-world, collision, traces, portals/PVS, areaportals, entities and server behavior pass independent semantic and negative fixtures; legacy BSP carriage remains byte-identical |
 | F9 | Modern model asset compiler and runtime reader | Static/dynamic/physics roles use validated modern assets with materials, collision, LOD and required animation; MDL compatibility and client/server lifetime tests pass |
 | F10 | Modern visual parity and geometry scalability | Representative maps pass registered image and interaction oracles for material response, reflections, transparent surfaces, shadows and lighting; real-time GI (RFC 0011 G4 plus G6 or G7) and dense-geometry methods pass measured quality, memory, frame-time and fallback gates on declared profiles |
@@ -555,7 +579,10 @@ F1 and F3 are independent of the lighting work and can start first.
 
 Tracked in the AGENTS.md ranked roadmap (added 2026-09-22): F1 → R53, F2 → R54,
 F3 → R55, F4–F5 → R56, F6 → R57, F7 → R58, F8 → R61, F9 → R62,
-F10 → R63, F11 → R64. AGENTS.md owns their ranks and states.
+F10 → R63, F11 → R64. AGENTS.md owns their ranks and states. Since
+2026-09-26, R57 also carries RFC 0015 C2 and depends on R81 (the RFC 0015
+graph core). R58 depends on R84 (profile packages), R62 on R81, and R64 on
+R85 (the live-reload loop).
 
 ## Risks and mitigations
 

@@ -6,6 +6,9 @@
 - Related: [RFC 0001: Capability-Based Platform Architecture](0001-capability-based-platform-architecture.md)
 - Future source format: [RFC 0009: USD-Native Map Authoring](0009-usd-native-map-authoring.md)
   owns the editable USD map schema and native compile workflow
+- Assets and builds: [RFC 0015](0015-asset-identity-content-build-graph.md)
+  (proposed) owns asset identity, the asset index the catalog reads, and the
+  content build graph that editor builds submit to
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
 - Source inspection reference: `b5eb9915bdebf5af1045c5821d4ac3d9af15dbb2`
@@ -492,6 +495,19 @@ environment values. Legacy command presets are migrated with fixture tests;
 their quoting and special copy/delete/rename behavior is not reinterpreted by
 ad hoc shell concatenation. The job controller captures output and exit status,
 reports cancellation, and invalidates stale results after subsequent edits.
+
+*(Amended by RFC 0015.)*
+
+- **Asset catalog.** The catalog's identity and metadata revision are RFC
+  0015 `AssetRef` values and content hashes. They are read from the asset
+  index of the workspace's packages; the editor doesn't scan search paths
+  separately.
+- **Builds.** Build and preview requests go to RFC 0015's content build
+  graph through the `IMapBuilder` port. The graph owns cache hits,
+  hermetic inputs and atomic publication. The job controller presents the
+  graph's progress, diagnostics and traces.
+- **Legacy presets.** Presets that run legacy tools directly stay under
+  the rules above until their pipelines run on the graph.
 
 ### Rendering and host contracts
 

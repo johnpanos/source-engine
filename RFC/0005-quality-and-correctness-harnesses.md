@@ -258,6 +258,21 @@ recovery. Reject incompatible save schemas before partially restored state is
 published. Verify cold/warm cache behavior and recooking from authoritative data.
 Tool invocations preserve argv, working directory, environment, and exit status.
 
+For the content build graph ([RFC 0015](0015-asset-identity-content-build-graph.md)):
+
+- **Clean and incremental builds agree.** An incremental build is
+  byte-identical to a clean build for exact compilers.
+- **Serial and pooled runs agree.** They publish identical packages.
+- **Change-class traces** show that each change rebuilds exactly its
+  dependent nodes.
+- **Negative compilers** must each be caught: one that reads undeclared
+  inputs, one that omits references, one that is nondeterministic, and
+  one that ignores its tool identity.
+- **Closure checks.** Each package holds exactly its index's reference
+  closure.
+- **Live reload** leaves the same state as a cold start with the same
+  package.
+
 ### Q-PRESENTATION: rendering and native UI
 
 Keep command/lifetime conformance, image correctness, and native-host integration

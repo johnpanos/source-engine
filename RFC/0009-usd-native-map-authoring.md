@@ -9,6 +9,10 @@
 - Editor: [RFC 0002](0002-hammer-responsibility-factorization.md) owns document
   operations, history, persistence orchestration, and GTK presentation
 - Tools and baker: [RFC 0007](0007-physically-based-lighting-pipeline.md)
+- Assets and builds: [RFC 0015](0015-asset-identity-content-build-graph.md)
+  (proposed) owns asset identity and references (`AssetRef`), the content
+  build graph, publication and live reload. The map compiler and validator
+  are RFC 0015 compilers
 - Verification: [RFC 0005](0005-quality-and-correctness-harnesses.md)
 
 ## Decision and boundary
@@ -79,7 +83,11 @@ gameplay behavior. The versioned Source authoring schema owns the role.
 vertical slice need not implement every role, but unsupported required roles
 must fail validation before publication. Model references initially may point
 to existing MDL assets; RFC 0008 F9 adds a modern model asset path without
-blocking the first playable USD map.
+blocking the first playable USD map. *(Amended by RFC 0015.)* A model
+reference is an RFC 0015 `AssetRef` of the model kind. The validator
+resolves it through the asset index of the map's declared base packages,
+not a hard-coded search-path list. The compiled map records it as a
+runtime reference, so the map's package carries the model's closure.
 
 The editor can offer a block tool for a world solid while persisting it in USD.
 Whether a given solid stores parametric planes/CSG operations or editable mesh
@@ -170,7 +178,10 @@ stable unique IDs, referenced assets, model-role compatibility, material
 bindings, geometry topology, entity targets/I/O, collision and visibility
 inputs, and unsupported required roles. Failure leaves the previous installed
 package intact. USD's `usdchecker` is necessary, but it cannot validate these
-Source-specific obligations.
+Source-specific obligations. *(Amended by RFC 0015.)* Referenced assets
+resolve through RFC 0015's asset index. The composed USD layers and every
+resolved asset are recorded as build dependencies of the map's nodes.
+Publication is RFC 0015's atomic package swap.
 
 Shared Q-EDITOR/Q-CONTENT/Q-PRODUCT evidence includes:
 
@@ -194,6 +205,7 @@ Shared Q-EDITOR/Q-CONTENT/Q-PRODUCT evidence includes:
    profile, first divergence, and reproduction commands. Light-only and
    model-placement-only changes avoid rebuilding unaffected world geometry;
    geometry changes invalidate the dependent spatial and bake products.
+   These are RFC 0015 build-graph traces (C2).
 6. A representative authoring task covers block/mesh editing, separate prop
    placement, material and light changes, object-linked diagnostics, viewport
    preview, and playtesting. Capture interaction traces and edit-to-preview
@@ -212,7 +224,7 @@ profiles. Missing platform/native evidence remains unverified under AGENTS.md.
 | U1 | Native USD compiler for one room, no VMF/BSP input | Client and dedicated-server installed BSP2 smoke, independent collision/visibility/entity/render checks, clean failure recovery |
 | U2 | Static, dynamic, physics and geometric-entity cohorts | Each role's distinct lifecycle, model, collision, bake and gameplay contract passes; unsupported classes fail explicitly |
 | U3 | Headless editor persistence and GTK workflow | USD is the saved authority; two-document edit/history/save/reopen/build, role-aware tools, object-linked diagnostics, viewport parity and edit-to-preview budgets pass without a VMF shadow |
-| U4 | VMF import, feature families and incremental build | Versioned semantic corpus, loss reports, cache traces, cancellation/recovery and supported product gates pass |
+| U4 | VMF import, feature families and incremental build on RFC 0015's content build graph | Versioned semantic corpus, loss reports, cache traces, cancellation/recovery and supported product gates pass |
 
 U0–U2 are RFC 0009's compiler/content work (portfolio R59); U3–U4 are the
 editor workflow (R60). They depend on RFC 0008's compiled-stage/container

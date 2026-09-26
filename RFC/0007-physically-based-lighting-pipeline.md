@@ -14,6 +14,9 @@
   owns the World Stage, BSP2, KTX2, and lighting data encodings this RFC produces
 - Native authoring: [RFC 0009: USD-Native Map Authoring](0009-usd-native-map-authoring.md)
   owns the editable USD source; this RFC's baker consumes the compiled stage
+- Builds: [RFC 0015](0015-asset-identity-content-build-graph.md) (proposed)
+  owns the content build graph the compile steps and bakes run in: cache
+  keys, staging, atomic publication and traces
 - Related: [RFC 0001: Capability-Based Platform Architecture](0001-capability-based-platform-architecture.md)
   (render seam, native Vulkan, tool/process cleanup),
   [RFC 0002: Hammer Responsibility Factorization](0002-hammer-responsibility-factorization.md)
@@ -701,11 +704,19 @@ Blender is a manual, non-gating check.
 ## Hammer integration
 
 - **Compile/run:** the GTK host's compile workflow (RFC 0002 H5) runs the RFC
-  0008 build graph (`PrepareForCompile` → vbsp2 → vvis → bake → pack) as
-  separate tool processes with structured argv and cancellation (RFC 0001
-  retirement E / R40). Unchanged steps are cache hits. The bake provider and
-  mode come from the map's compile profile and are recorded in the lighting
-  layer and the BSP2 package manifest.
+  0008 map pipeline (`PrepareForCompile` → vbsp2 → vvis → bake → pack) on RFC
+  0015's content build graph. Steps run as separate tool processes with
+  structured argv and cancellation (RFC 0001 retirement E / R40). Unchanged
+  steps are cache hits. The bake provider and mode come from the map's
+  compile profile and are recorded in the lighting layer and the BSP2
+  package manifest.
+- **Baker as a node (amended by RFC 0015):** each `ILightBaker` provider is
+  wrapped as an RFC 0015 compiler. R48-BAKER's requirements for complete
+  cache keys and atomic output replacement are met by that node contract:
+  hermetic inputs, key rules and publication. They are not met by per-script
+  caches. A `Statistical` provider declares so; its outputs use this RFC's
+  tolerances, not byte identity. The dirty-subset request for R52/R57 is a
+  graph request over the changed charts.
 - **Lighting preview:** a progressive, cancellable bake of the current document
   replaces `IVRadDLL::DoIncrementalLight` for the new host. The legacy
   `IVRadDLL` ABI stays for legacy Hammer until its retirement gate (R43).
