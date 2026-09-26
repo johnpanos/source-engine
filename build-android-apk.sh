@@ -543,9 +543,11 @@ push_content()
 	rm -rf "$plan"
 	mkdir -p "$plan"
 
-	# What the device has: "<bytes> <mtime> <path>" relative to $dest.
+	# What the device has: "<bytes> <mtime> <path>" relative to $dest. The
+	# directories the game creates itself (sound caches, platform/config) are
+	# not searchable by the shell; they hold no pushed content, so skip them.
 	adb_cmd shell mkdir -p "$dest"
-	adb_cmd shell "cd '$dest' && find . -type f -exec stat -c '%s %Y %n' {} +" |
+	adb_cmd shell "cd '$dest' && find . -type d ! -executable -prune -o -type f -exec stat -c '%s %Y %n' {} +" |
 		tr -d '\r' | sed 's| \./| |' | sort -k3 > "$plan/device.txt" ||
 		die "cannot list $dest on the device"
 
@@ -591,8 +593,10 @@ push_content()
 		[ -d "$source/$top" ] || continue
 		# adb creates these as shell:ext_data_rw 0770, which the app's own uid
 		# cannot enter; the game also writes configs, saves and stats here.
-		# Android/data/<package> is visible to this app only.
-		adb_cmd shell "[ ! -d '$dest/$top' ] || chmod -R a+rwX '$dest/$top'"
+		# Android/data/<package> is visible to this app only. Only adb's own
+		# files: the shell cannot chmod what the app wrote (its configs, the
+		# touch icons it installs), and the app can already use those.
+		adb_cmd shell "[ ! -d '$dest/$top' ] || find '$dest/$top' -type d ! -executable -prune -o -user \$(id -u) -exec chmod a+rwX {} +"
 	done
 	echo "  content in sync"
 }

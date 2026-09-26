@@ -51,6 +51,9 @@
 //          the shadow texture's alpha, the vertex alpha fade and the five
 //          jittered taps decide the coverage.
 //
+//          glass: window and model glass must show the scene behind it; real
+//          Portal glass drawn over two walls (material_pixel_glass.cpp).
+//
 //          post: the engine's post-processing passes: Engine_Post's bloom add
 //          and color correction (identity and inverting volume lookups, and
 //          their weights), Downsample_nohdr's luminance shaping and
@@ -67,7 +70,7 @@
 //            material_pixel_conformance -game portal -renderer <id>
 //                -hdr <none|integer> [-family <lightmap|exposure|skinning|portal|
 //                                         modellight|cable|pbr-fallback|pbr-model|
-//                                         bump|shadow|post>]
+//                                         bump|shadow|post|glass>]
 //                -out <file.json>
 //
 //=============================================================================//
@@ -85,6 +88,7 @@
 #include "materialsystem/imesh.h"
 #include "materialsystem/itexture.h"
 #include "materialsystem/materialsystem_config.h"
+#include "material_pixel_glass.h"
 #include "material_pixel_legacy.h"
 #include "material_pixel_modellight.h"
 #include "material_pixel_portal.h"
@@ -376,17 +380,19 @@ int CMaterialPixelApp::Main()
 	const bool bump = !Q_stricmp( family, "bump" );
 	const bool shadow = !Q_stricmp( family, "shadow" );
 	const bool post = !Q_stricmp( family, "post" );
+	const bool glass = !Q_stricmp( family, "glass" );
 	const bool legacy = !Q_stricmp( family, "legacy" );
 	const char *casesPath = CommandLine()->ParmValue( "-cases", "" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
 	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !monitor &&
-	         !sprite && !pbrFallback && !pbrModel && !bump && !shadow && !post && !legacy &&
+	         !sprite && !pbrFallback && !pbrModel && !bump && !shadow && !post && !glass &&
+	         !legacy &&
 	         Q_stricmp( family, "lightmap" ) ) ||
 	     ( legacy && !casesPath[0] ) )
 	{
 		Warning( "material pixel conformance: need -out <file>, -hdr <none|integer> and "
 		         "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|monitor|sprite|"
-		         "pbr-fallback|pbr-model|bump|shadow|post|legacy> (legacy: -cases <file>)\n" );
+		         "pbr-fallback|pbr-model|bump|shadow|post|glass|legacy> (legacy: -cases <file>)\n" );
 		return 2;
 	}
 
@@ -425,7 +431,7 @@ int CMaterialPixelApp::Main()
 	// dxsupport level's defaults (4x MSAA and mat_trilinear 1 on D3D9 here; the
 	// native backend reads no dxsupport.cfg), so the sample count and the texture
 	// filter are pinned after it.
-	if ( portal || modelLight || pbrModel || legacy )
+	if ( portal || modelLight || pbrModel || legacy || glass )
 	{
 		MaterialSystem_Config_t pinned = g_pMaterialSystem->GetCurrentConfigForVideoCard();
 		pinned.m_nAASamples = 0;
@@ -465,6 +471,7 @@ int CMaterialPixelApp::Main()
 	                : bump        ? RunBumpCases( out )
 	                : shadow      ? RunShadowCases( out )
 	                : post        ? RunPostCases( out )
+	                : glass       ? RunGlassCases( out, WriteClearProbeThunk )
 	                : legacy      ? RunLegacyCases( out, casesPath, WriteClearProbeThunk )
 	                : pbrModel    ? RunPbrModelCases( out, outPath, WriteClearProbeThunk,
 	                                    integerHdr ? kModelLightToneScale : 1.0f )
