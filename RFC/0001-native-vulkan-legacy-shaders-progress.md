@@ -280,12 +280,21 @@ Other checks:
   selected, because the backend reports no flashlight mode (the P7 track in the
   video-options record). The eyes and teeth flashlight pairs are ported but
   unverified.
-- **DEPTHBLEND (depth feathering)** needs the frame's depth in destination alpha
-  (WRITE_DEPTH_TO_DESTALPHA). Native does not write it
-  (`ShouldWriteDepthToDestAlpha` is false), so feathering reads full depth. This
-  affects the SpriteCard native family (still reported), VertexLitGeneric and
-  ParticleSphere. It needs a scene-depth resolve, a render-target feature to
-  build next on the existing scene capture.
+- **DEPTHBLEND (depth feathering)**, done 2026-09-26. Native passes still do not
+  write depth into destination alpha (`ShouldWriteDepthToDestAlpha` stays
+  false); instead every frame copy (`CopyRenderTargetToTextureEx`) gets the
+  source's projected z over the dest-alpha range written into its alpha from
+  the copied depth (`RecordDepthToAlpha`, `shaders/depth_to_alpha.frag`, the
+  draw projection's z column), which is what D3D9 PC's copies hold. The native
+  SpriteCard stage now feathers the vertex alpha as `spritecard_ps2x` does
+  (`kFragmentSpriteDepthBlend`, sampler 2 in set 3, c2.x in the modulation's
+  alpha, the screen position divided per pixel); the VertexLitGeneric and
+  ParticleSphere ports read the same alpha. `-novkdepthalpha` rolls back to a
+  plain color copy. Evidence: the `softparticle` pixel family (cards 5, 25 and
+  80 units in front of a wall and in front of a far wall, after the engine's
+  `_rt_FullFrameDepth` copy) matches DepthFeathering with the copy's 8-bit
+  alpha within 0.04 in both HDR modes, and fails with `-novkdepthalpha`; every
+  other family passes as before (integer `sky` still fails, as it did).
 - **SpriteCard ANIMBLEND on spline cards** is still reported. A concurrent
   session implemented it for sprite cards in the main tree.
 - **Alpha to coverage** is render state, planned under R65.

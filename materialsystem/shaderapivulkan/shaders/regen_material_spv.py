@@ -107,6 +107,8 @@ SHADERS = (
     ("g_pbrBrdfCheckSpv", "pbr_brdf_check.comp", []),
     ("g_presentGammaVertSpv", "present_gamma.vert", []),
     ("g_presentGammaFragSpv", "present_gamma.frag", []),
+    # Soft particles: the frame copy's alpha from the copied depth (D3D9 dest alpha).
+    ("g_depthToAlphaFragSpv", "depth_to_alpha.frag", []),
 )
 
 HEADER = """//========= Copyright Valve Corporation, All rights reserved. ============//

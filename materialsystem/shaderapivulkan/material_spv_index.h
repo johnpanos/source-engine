@@ -21,8 +21,8 @@ struct MaterialSpvIndexEntry
 };
 
 static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
-    { 0x6be9899c229c6183ull, "g_materialTexVertSpv", "demo_dyn_tex.vert" },
-    { 0x6c148c800879213eull, "g_materialTexClipVertSpv", "demo_dyn_tex.vert -DCLIP_PLANES" },
+    { 0xd42bf18d8d010374ull, "g_materialTexVertSpv", "demo_dyn_tex.vert" },
+    { 0x70233bfa039e7a77ull, "g_materialTexClipVertSpv", "demo_dyn_tex.vert -DCLIP_PLANES" },
     { 0xf6f4ee6383b11fe7ull, "g_worldMeshVertSpv", "world_mesh.vert" },
     { 0x2bf7ebc87e534f58ull, "g_worldMeshClipVertSpv", "world_mesh.vert -DCLIP_PLANES" },
     { 0xc98ef2abdbb342f6ull, "g_worldPbrVertSpv", "world_pbr.vert" },
@@ -60,7 +60,7 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
         "sdf_probe_trace.comp --target-env=vulkan1.2 -DRAY_QUERY" },
     { 0x40b02fe6c2189a0dull, "g_worldGlassFragSpv", "world_pbr_glass.frag" },
     { 0x7c1afaefe9504203ull, "g_worldGlassClipFragSpv", "world_pbr_glass.frag -DCLIP_PLANES" },
-    { 0x4c2f183f27d92967ull, "g_materialTexFragSpv", "demo_dyn_tex.frag" },
+    { 0xb3b251fea0a40f13ull, "g_materialTexFragSpv", "demo_dyn_tex.frag" },
     { 0x338bd5846a70b2c3ull, "g_portalRefractVertSpv", "portal_refract.vert" },
     { 0xca94d06aa10f5fb2ull, "g_portalRefractFragSpv", "portal_refract.frag" },
     { 0x1c74736c36f6158full, "g_skinVertSpv", "skin.vert" },
@@ -86,6 +86,7 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
     { 0xe2b8e6ce9f238241ull, "g_pbrBrdfCheckSpv", "pbr_brdf_check.comp" },
     { 0xc0c5d25866bef879ull, "g_presentGammaVertSpv", "present_gamma.vert" },
     { 0x577895e15ac25eb0ull, "g_presentGammaFragSpv", "present_gamma.frag" },
+    { 0x5d550b09ce71ab8bull, "g_depthToAlphaFragSpv", "depth_to_alpha.frag" },
 };
 
 // X( array ) for every array, for suites that include material_spv.h.
@@ -141,6 +142,7 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
 	X( g_pbrDirectClipFragSpv )                                                                    \
 	X( g_pbrBrdfCheckSpv )                                                                         \
 	X( g_presentGammaVertSpv )                                                                     \
-	X( g_presentGammaFragSpv )
+	X( g_presentGammaFragSpv )                                                                     \
+	X( g_depthToAlphaFragSpv )
 
 #endif // SHADERAPIVULKAN_MATERIAL_SPV_INDEX_H

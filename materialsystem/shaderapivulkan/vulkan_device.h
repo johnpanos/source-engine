@@ -968,6 +968,10 @@ public:
 		kFragmentRefractBlur = 524288,
 		kFragmentBaseAlphaEnvmapMask = 1048576,
 		kFragmentNormalAlphaEnvmapMask = 2097152,
+		// spritecard_ps2x's DEPTHBLEND: the vertex alpha feathered against the
+		// frame copy's depth alpha bound at sampler 2 (set 3); the modulation's
+		// alpha carries c2.x.
+		kFragmentSpriteDepthBlend = 4194304,
 		// With kFragmentRefract only: Portal 2's LOCALREFRACT, which refracts the
 		// base texture in texture space. It shares the bit of the envmap mask that
 		// only the other (LightmappedGeneric envmap) branch reads; every bit a
@@ -1036,9 +1040,24 @@ public:
 	// Clear the current viewport of the current target to the clear color
 	// (SetClearColor) and/or to depth 1.
 	void QueueClear( bool color, bool depth, bool stencil = false );
+	// A frame copy's alpha as D3D9 PC holds it (WRITE_DEPTH_TO_DESTALPHA): the
+	// source's projected z over the dest-alpha depth range, from its depth.
+	struct DepthToAlpha
+	{
+		// The draw projection's z column (row-vector matrices): projected z =
+		// view z * zScale + zOffset, w = view z * wScale + wOffset.
+		float projection[4]; // zScale, zOffset, wScale, wOffset
+		float invRange;      // 1 / the dest-alpha depth range
+	};
 	// Copy the current target into a render-target texture, scaling between the
-	// rectangles ({x, y, width, height}; null = the whole image).
-	bool QueueCopyToTexture( int dstHandle, const int *srcRect, const int *dstRect );
+	// rectangles ({x, y, width, height}; null = the whole image). With
+	// `depthToAlpha` the copy's alpha then holds the source's depth.
+	bool QueueCopyToTexture( int dstHandle, const int *srcRect, const int *dstRect,
+	    const DepthToAlpha *depthToAlpha = nullptr );
+	// Frame copies whose alpha took depth last frame, and those that could not
+	// (no single-sampled depth, or the pass was unavailable).
+	uint32_t LastFrameDepthToAlphaCopies() const { return m_lastFrameDepthToAlpha; }
+	uint32_t LastFrameDepthToAlphaSkipped() const { return m_lastFrameDepthToAlphaSkipped; }
 	// Occlusion queries (IShaderAPI CreateOcclusionQueryObject and friends). Begin
 	// and end are stream records like draws, so a query counts exactly the
 	// samples the draws between them pass, in engine order. A result exists once
@@ -1465,6 +1484,15 @@ private:
 	VkDescriptorSetLayout m_gammaSetLayout = VK_NULL_HANDLE;
 	VkPipelineLayout m_gammaPipelineLayout = VK_NULL_HANDLE;
 	VkPipeline m_gammaPipeline = VK_NULL_HANDLE;
+	// Depth into a frame copy's alpha (DepthToAlpha): a fullscreen pass in a
+	// render-target texture's pass writing alpha only.
+	bool EnsureDepthToAlpha( std::string *outError );
+	void DestroyDepthToAlpha();
+	VkPipelineLayout m_depthToAlphaLayout = VK_NULL_HANDLE;
+	VkPipeline m_depthToAlphaPipeline = VK_NULL_HANDLE;
+	bool m_depthToAlphaUnavailable = false; // the pass failed to build
+	uint32_t m_lastFrameDepthToAlpha = 0;
+	uint32_t m_lastFrameDepthToAlphaSkipped = 0;
 	VkSampler m_gammaSamplerNearest = VK_NULL_HANDLE;
 	VkSampler m_gammaSamplerLinear = VK_NULL_HANDLE;
 	VkDescriptorPool m_gammaDescriptorPool = VK_NULL_HANDLE;
@@ -1687,6 +1715,9 @@ private:
 	void NoteSceneChanged() { m_sceneCaptureCurrent = false; }
 	// Records the copy into the capture images; returns whether depth was copied.
 	bool RecordSceneCapture( VkCommandBuffer cmd, int target );
+	// Copies `target`'s depth (width x height from the origin) into the capture's
+	// depth image; false when there is no single-sampled depth to copy.
+	bool RecordSceneDepthCopy( VkCommandBuffer cmd, int target, uint32_t width, uint32_t height );
 	VkPipelineVertexInputStateCreateInfo m_worldVin = {};
 	// The pipeline store (OpenPipelineStore): the cache every material pipeline
 	// is built through, the variants built this session, and the files.
@@ -2117,6 +2148,9 @@ private:
 		uint64_t querySerial = 0;
 		int copySrcRect[4] = { 0, 0, 0, 0 }; // width <= 0 means the whole image
 		int copyDstRect[4] = { 0, 0, 0, 0 };
+		// A copy whose alpha then takes the source's depth (DepthToAlpha).
+		bool copyDepthToAlpha = false;
+		DepthToAlpha copyDepth = {};
 		uint32_t firstVertex = 0;
 		uint32_t vertexCount = 0;
 		// Indexed draws only (indexCount > 0): the range of m_dynIndices drawn.
@@ -2256,6 +2290,7 @@ private:
 	void BeginTargetPass(
 	    VkCommandBuffer cmd, int target, bool srgb = false, int keep = kKeepDepthStencil );
 	void RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy );
+	void RecordDepthToAlpha( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy );
 	bool RecordWantsSrgb( const DynDraw &r ) const;
 	// Which of the back buffer's depth and stencil a record may read
 	// (kKeepDepth | kKeepStencil). Unknown kinds count as reading both.

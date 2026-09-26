@@ -5174,14 +5174,22 @@ void CVulkanContext::QueueClear( bool color, bool depth, bool stencil )
 		d.clearValue[i] = m_clearColor.float32[i];
 }
 
-bool CVulkanContext::QueueCopyToTexture( int dstHandle, const int *srcRect, const int *dstRect )
+bool CVulkanContext::QueueCopyToTexture(
+    int dstHandle, const int *srcRect, const int *dstRect, const DepthToAlpha *depthToAlpha )
 {
 	if ( !IsRenderTargetTexture( dstHandle ) || dstHandle == m_dynTarget )
 		return false;
+	// The depth image the alpha pass reads is the scene capture's: make sure it
+	// exists, and have glass capture again after this copy has reused it.
+	std::string error;
+	const bool depthAlpha = depthToAlpha && EnsureSceneCapture( &error );
 	DynDraw &d = AppendRecord( kRecordCopy );
-	if ( dstHandle == m_sceneCaptureTarget )
+	if ( dstHandle == m_sceneCaptureTarget || depthAlpha )
 		NoteSceneChanged();
 	d.copyDst = dstHandle;
+	d.copyDepthToAlpha = depthAlpha;
+	if ( depthAlpha )
+		d.copyDepth = *depthToAlpha;
 	if ( srcRect )
 		std::memcpy( d.copySrcRect, srcRect, sizeof( d.copySrcRect ) );
 	if ( dstRect )
@@ -5858,6 +5866,197 @@ void CVulkanContext::RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const
 	    0, 0, nullptr, 0, nullptr, 2, back );
 }
 
+bool CVulkanContext::EnsureDepthToAlpha( std::string *outError )
+{
+	if ( m_depthToAlphaPipeline != VK_NULL_HANDLE )
+		return true;
+	if ( m_depthToAlphaUnavailable || m_renderPassTarget == VK_NULL_HANDLE ||
+	     m_dynTexDescLayout == VK_NULL_HANDLE )
+	{
+		SetError( outError, "the depth-to-alpha pass is unavailable" );
+		return false;
+	}
+	m_depthToAlphaUnavailable = true; // until it is built
+	VkPushConstantRange range = {};
+	range.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	range.size = sizeof( float ) * 9;
+	VkPipelineLayoutCreateInfo li = {};
+	li.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	li.setLayoutCount = 1;
+	li.pSetLayouts = &m_dynTexDescLayout;
+	li.pushConstantRangeCount = 1;
+	li.pPushConstantRanges = &range;
+	if ( vkCreatePipelineLayout( m_device, &li, nullptr, &m_depthToAlphaLayout ) != VK_SUCCESS )
+	{
+		SetError( outError, "depth-to-alpha pipeline layout failed" );
+		return false;
+	}
+	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE;
+	if ( !CreateShaderModule(
+	         g_presentGammaVertSpv, sizeof( g_presentGammaVertSpv ), &vert, outError ) ||
+	     !CreateShaderModule(
+	         g_depthToAlphaFragSpv, sizeof( g_depthToAlphaFragSpv ), &frag, outError ) )
+	{
+		if ( vert != VK_NULL_HANDLE )
+			vkDestroyShaderModule( m_device, vert, nullptr );
+		DestroyDepthToAlpha();
+		return false;
+	}
+	VkPipelineShaderStageCreateInfo stages[2] = {};
+	for ( VkPipelineShaderStageCreateInfo &stage : stages )
+	{
+		stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		stage.pName = "main";
+	}
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].module = vert;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].module = frag;
+	VkPipelineVertexInputStateCreateInfo vin = {};
+	vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	VkPipelineInputAssemblyStateCreateInfo ia = {};
+	ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	VkPipelineViewportStateCreateInfo vp = {};
+	vp.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	vp.viewportCount = 1;
+	vp.scissorCount = 1;
+	VkPipelineRasterizationStateCreateInfo rs = {};
+	rs.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rs.polygonMode = VK_POLYGON_MODE_FILL;
+	rs.cullMode = VK_CULL_MODE_NONE;
+	rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rs.lineWidth = 1.0f;
+	VkPipelineMultisampleStateCreateInfo ms = {};
+	ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	// The target pass carries the target's depth; this pass neither tests nor
+	// writes it.
+	VkPipelineDepthStencilStateCreateInfo ds = {};
+	ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	VkPipelineColorBlendAttachmentState blendAttachment = {};
+	blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_A_BIT;
+	VkPipelineColorBlendStateCreateInfo blend = {};
+	blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blend.attachmentCount = 1;
+	blend.pAttachments = &blendAttachment;
+	const VkDynamicState dynamicStates[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dyn = {};
+	dyn.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dyn.dynamicStateCount = 2;
+	dyn.pDynamicStates = dynamicStates;
+	VkGraphicsPipelineCreateInfo gp = {};
+	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	gp.stageCount = 2;
+	gp.pStages = stages;
+	ConsumedVertexInput consumedInput;
+	gp.pVertexInputState = FilterVertexInput( &vin, stages[0].module, &consumedInput );
+	gp.pInputAssemblyState = &ia;
+	gp.pViewportState = &vp;
+	gp.pRasterizationState = &rs;
+	gp.pMultisampleState = &ms;
+	gp.pDepthStencilState = &ds;
+	gp.pColorBlendState = &blend;
+	gp.pDynamicState = &dyn;
+	gp.layout = m_depthToAlphaLayout;
+	gp.renderPass = m_renderPassTarget;
+	const VkResult r = vkCreateGraphicsPipelines(
+	    m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &m_depthToAlphaPipeline );
+	m_debugUtils.Name( VK_OBJECT_TYPE_PIPELINE, m_depthToAlphaPipeline, "depth to alpha" );
+	vkDestroyShaderModule( m_device, vert, nullptr );
+	vkDestroyShaderModule( m_device, frag, nullptr );
+	if ( r != VK_SUCCESS )
+	{
+		SetError( outError, std::string( "depth-to-alpha pipeline failed: " ) + ResultString( r ) );
+		DestroyDepthToAlpha();
+		return false;
+	}
+	m_depthToAlphaUnavailable = false;
+	return true;
+}
+
+void CVulkanContext::DestroyDepthToAlpha()
+{
+	if ( m_depthToAlphaPipeline != VK_NULL_HANDLE )
+		vkDestroyPipeline( m_device, m_depthToAlphaPipeline, nullptr );
+	if ( m_depthToAlphaLayout != VK_NULL_HANDLE )
+		vkDestroyPipelineLayout( m_device, m_depthToAlphaLayout, nullptr );
+	m_depthToAlphaPipeline = VK_NULL_HANDLE;
+	m_depthToAlphaLayout = VK_NULL_HANDLE;
+}
+
+// After RecordTargetCopy, outside any render pass: the source's depth into the
+// scene capture's depth image, then the copy's alpha from it in the
+// destination's own pass (it rests in SHADER_READ_ONLY either side).
+void CVulkanContext::RecordDepthToAlpha( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy )
+{
+	uint32_t srcW = 0, srcH = 0;
+	GetTargetExtent( srcTarget, &srcW, &srcH );
+	std::string error;
+	if ( !EnsureDepthToAlpha( &error ) || m_sceneDepthHandle < 0 ||
+	     !RecordSceneDepthCopy( cmd, srcTarget, srcW, srcH ) )
+	{
+		static bool s_reported = false;
+		if ( !s_reported )
+			Log( "frame copy without depth in alpha: %s\n",
+			    error.empty() ? "no single-sampled depth to copy" : error.c_str() );
+		s_reported = true;
+		++m_lastFrameDepthToAlphaSkipped;
+		return;
+	}
+	ScopedDebugLabel label( m_debugUtils, "depth to alpha" );
+	const ManagedTexture &depth = m_managedTextures[static_cast<size_t>( m_sceneDepthHandle )];
+	const ManagedTexture &dst = m_managedTextures[static_cast<size_t>( copy.copyDst )];
+	// The rectangles as RecordTargetCopy clamps them.
+	const auto rect = []( const int *r, uint32_t w, uint32_t h, float *out )
+	{
+		float x0 = 0.0f, y0 = 0.0f, x1 = static_cast<float>( w ), y1 = static_cast<float>( h );
+		if ( r[2] > 0 && r[3] > 0 )
+		{
+			x0 = static_cast<float>( std::max( 0, r[0] ) );
+			y0 = static_cast<float>( std::max( 0, r[1] ) );
+			x1 = static_cast<float>( std::min( static_cast<int>( w ), r[0] + r[2] ) );
+			y1 = static_cast<float>( std::min( static_cast<int>( h ), r[1] + r[3] ) );
+		}
+		out[0] = x0;
+		out[1] = y0;
+		out[2] = x1 - x0;
+		out[3] = y1 - y0;
+		return out[2] > 0.0f && out[3] > 0.0f;
+	};
+	float src[4], dstRect[4];
+	if ( !rect( copy.copySrcRect, srcW, srcH, src ) ||
+	     !rect( copy.copyDstRect, dst.width, dst.height, dstRect ) )
+		return;
+	struct
+	{
+		float projection[4];
+		float source[4];
+		float invRange;
+	} constants;
+	std::memcpy( constants.projection, copy.copyDepth.projection, sizeof( constants.projection ) );
+	constants.source[0] = src[0] / depth.width;
+	constants.source[1] = src[1] / depth.height;
+	constants.source[2] = src[2] / depth.width;
+	constants.source[3] = src[3] / depth.height;
+	constants.invRange = copy.copyDepth.invRange;
+
+	BeginTargetPass( cmd, copy.copyDst, false, kKeepDepthStencil );
+	VkViewport viewport = { dstRect[0], dstRect[1], dstRect[2], dstRect[3], 0.0f, 1.0f };
+	VkRect2D scissor = { { static_cast<int32_t>( dstRect[0] ), static_cast<int32_t>( dstRect[1] ) },
+		{ static_cast<uint32_t>( dstRect[2] ), static_cast<uint32_t>( dstRect[3] ) } };
+	vkCmdSetViewport( cmd, 0, 1, &viewport );
+	vkCmdSetScissor( cmd, 0, 1, &scissor );
+	vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthToAlphaPipeline );
+	vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_depthToAlphaLayout, 0, 1,
+	    &depth.descSet, 0, nullptr );
+	vkCmdPushConstants( cmd, m_depthToAlphaLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+	    sizeof( constants ), &constants );
+	vkCmdDraw( cmd, 3, 1, 0, 0 );
+	vkCmdEndRenderPass( cmd );
+	++m_lastFrameDepthToAlpha;
+}
+
 void CVulkanContext::DestroyDynamicMesh()
 {
 	if ( m_dynPipeline != VK_NULL_HANDLE )
@@ -5895,6 +6094,7 @@ void CVulkanContext::DestroyDynamicMesh()
 	DestroyLightmappedPipeline();
 	DestroyLegacyPipeline();
 	DestroyPostPipeline();
+	DestroyDepthToAlpha();
 	DestroySkinPipeline();
 	DestroyPbrDirectPipeline();
 	m_groupedDescriptors.Shutdown();
@@ -6580,6 +6780,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	m_replayedQueries.clear();
 	m_lastFrameSceneCaptures = 0;
 	m_lastFrameSceneDepthCaptures = 0;
+	m_lastFrameDepthToAlpha = 0;
+	m_lastFrameDepthToAlphaSkipped = 0;
 	if ( m_queryPool != VK_NULL_HANDLE && m_dynPipeline != VK_NULL_HANDLE )
 	{
 		for ( const DynDraw &d : m_dynDrawRecords )
@@ -6848,6 +7050,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					if ( openTarget == -1 && m_activeSamples > 1 )
 						ResolveBackBuffer( cmd, m_acquiredImage );
 					RecordTargetCopy( cmd, openTarget, d );
+					if ( d.copyDepthToAlpha )
+						RecordDepthToAlpha( cmd, openTarget, d );
 				}
 				lastCopy = &d;
 				if ( !m_passMerging )
@@ -7531,6 +7735,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					        : m_whiteCubeHandle;
 					const int normalMaskTexture =
 					    ( d.colorFlags & kFragmentNormalAlphaEnvmapMask ) != 0 ? d.samplerHandles[4]
+					    : ( d.colorFlags & kFragmentSpriteDepthBlend ) != 0    ? d.samplerHandles[2]
 					                                                           : -1;
 					const VkDescriptorSet sets[4] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( secondTexture, kColorSrgbReadLightmap ),

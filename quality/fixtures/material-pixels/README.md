@@ -24,6 +24,8 @@ real material system. The backend is identified by each filename and report.
 | `post-native-vulkan-none.json` | post | `HDR_TYPE_NONE` | Engine_Post bloom add and color correction (identity and inverting lookups, full and half weight), Downsample_nohdr and BlurFilterX over a uniform source; native Vulkan capture matching the closed forms |
 | `glass-native-vulkan-none.json` | glass | `HDR_TYPE_NONE` | testchmb_a_01's window and model glass (glasswindow_frosted, glasswindow_refract01, box_dropper_tube) and an opaque control, each over two walls through a perspective camera; transmission 1 in linear light for additive glass, `$refracttint` for Refract, 0 for the control; native Vulkan capture with the legacy shader ports on (the default) |
 | `glass-native-vulkan-integer.json` | glass | `HDR_TYPE_INTEGER` | as above in integer HDR |
+| `softparticle-native-vulkan-none.json` | softparticle | `HDR_TYPE_NONE` | SpriteCard DEPTHBLEND: one card 5, 25 and 80 units in front of a wall and in front of a far wall, after the engine's `_rt_FullFrameDepth` copy, plus a card without DEPTHBLEND; alphas held to D3D9's DepthFeathering with the copy's 8-bit depth alpha; native Vulkan capture |
+| `softparticle-native-vulkan-integer.json` | softparticle | `HDR_TYPE_INTEGER` | as above in integer HDR |
 
 `pbr-fallback-primary.vmt` and `pbr-fallback-legacy.vmt` are authored inputs
 for the `pbr-fallback` family. The driver copies them into a private runtime

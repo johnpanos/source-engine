@@ -39,6 +39,9 @@ layout( location = 8 ) flat out vec4 fragFogParams;
 layout( location = 9 ) flat out vec4 fragFogMisc;
 // The vertex's projected z (worldPos_projPosZ.w / projPos.z) and world z.
 layout( location = 10 ) out vec2 fragFogDepth;
+// The clip position's x, y and w, divided per pixel for screen lookups
+// (spritecard_vsxx's vScreenPos).
+layout( location = 11 ) out vec3 fragClipPos;
 layout( push_constant ) uniform Constants
 {
 	mat4 mvp;        // cModelViewProj
@@ -86,6 +89,7 @@ void main()
 	{
 		gl_Position = vec4( inPos, 1.0 );
 		fragScreenUv = ( gl_Position.xy / gl_Position.w * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
+		fragClipPos = gl_Position.xyw;
 		fragUv = inUv;
 		ApplyClipPlanes();
 		PassFog();
@@ -93,6 +97,7 @@ void main()
 	}
 	gl_Position = consts.mvp * vec4( inPos, 1.0 );
 	fragScreenUv = ( gl_Position.xy / gl_Position.w * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
+	fragClipPos = gl_Position.xyw;
 	ApplyClipPlanes();
 	PassFog();
 	// D3D9 fills a 2D texcoord to (u, v, 0, 1); the base-texture transform is a

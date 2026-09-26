@@ -1097,3 +1097,54 @@ class GlassTest(unittest.TestCase):
             path.write_text(json.dumps(report))
             with self.assertRaises(oracle.PixelsError):
                 oracle.read_pixels(path)
+
+
+class SoftParticleTest(unittest.TestCase):
+    def failures(self, report, hdr="none"):
+        return oracle.evaluate(report, hdr, None)
+
+    def test_native_captures_satisfy_the_oracle(self):
+        for hdr in ("none", "integer"):
+            report = native("softparticle", hdr)
+            self.assertEqual(oracle.evaluate(report, hdr, report), [], hdr)
+
+    def test_hard_edges_are_detected(self):
+        # No depth in the copy's alpha (the backend before depth-to-alpha): the
+        # card stays opaque at every gap.
+        report = native("softparticle")
+        card = next(c for c in report["cases"] if c["name"] == "control")["pixel"]
+        for name in ("gap_5", "gap_25"):
+            broken = with_case_pixel(report, name, card)
+            self.assertTrue(any(f.startswith(name) for f in self.failures(broken)))
+
+    def test_far_wall_feathering_is_detected(self):
+        # DepthFeathering turns feathering off beyond 0.75 of the depth range.
+        report = native("softparticle")
+        feathered = next(c for c in report["cases"] if c["name"] == "gap_5")["pixel"]
+        broken = with_case_pixel(report, "far_wall", feathered)
+        self.assertTrue(any(f.startswith("far_wall") for f in self.failures(broken)))
+
+    def test_ignored_blend_scale_is_detected(self):
+        # A 5-unit gap feathered as if the scale were 5 (fully opaque).
+        report = copy.deepcopy(native("softparticle"))
+        report["depth_blend_scale"] = 5.0
+        self.assertTrue(any(f.startswith("gap_5") for f in self.failures(report)))
+
+    def test_undrawn_card_is_detected(self):
+        report = native("softparticle")
+        broken = with_case_pixel(report, "control", report["wall"])
+        self.assertTrue(any(f.startswith("control") for f in self.failures(broken)))
+
+    def test_missing_wall_is_detected(self):
+        report = copy.deepcopy(native("softparticle"))
+        report["cases"][0]["beside"] = [255, 0, 255]
+        self.assertTrue(any(f.startswith("gap_5") for f in self.failures(report)))
+
+    def test_missing_case_is_rejected(self):
+        report = copy.deepcopy(native("softparticle"))
+        report["cases"] = report["cases"][:-1]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "softparticle.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)

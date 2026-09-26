@@ -31,6 +31,7 @@ layout( location = 7 ) flat in vec4 fragFogColor;
 layout( location = 8 ) flat in vec4 fragFogParams;
 layout( location = 9 ) flat in vec4 fragFogMisc;
 layout( location = 10 ) in vec2 fragFogDepth;
+layout( location = 11 ) in vec3 fragClipPos;
 layout( location = 0 ) out vec4 outColor;
 layout( set = 0, binding = 0 ) uniform sampler2D baseTexture;
 layout( set = 1, binding = 0 ) uniform sampler2D lightmapTexture;
@@ -194,6 +195,21 @@ vec4 LocalRefract( int flags, vec4 normal )
 // ANIMBLEND, times fOverbrightFactor (the modulation), then either times the
 // vertex color or, with ADDSELF (fragReflection.y = 1 + weight), premultiplied
 // by alpha and brightened by weight times itself before the vertex color.
+// common_ps_fxc.h's DepthFeathering (ps_2_b) for spritecard_ps2x's DEPTHBLEND:
+// the frame copy's alpha holds the opaque scene's projected z over the
+// dest-alpha depth range (the native backend's 192, g_Fog.destAlphaDepthRange),
+// read at the pixel's screen position (vScreenPos.xy / w); c2.x is in the
+// modulation's alpha.
+const float kOoDestAlphaDepthRange = 1.0 / 192.0;
+float SpriteDepthFeathering()
+{
+	const vec2 screen = ( fragClipPos.xy / fragClipPos.z * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
+	const float sceneDepth = texture( normalMaskTexture, screen ).a;
+	const float spriteDepth = fragFogDepth.x * kOoDestAlphaDepthRange;
+	float feathered = abs( sceneDepth - spriteDepth ) * fragModulation.a;
+	feathered = max( smoothstep( 0.75, 1.0, sceneDepth ), feathered );
+	return clamp( feathered, 0.0, 1.0 );
+}
 vec4 SpriteCardColor( int flags )
 {
 	vec4 frame0 = texture( baseTexture, fragUv );
@@ -205,16 +221,20 @@ vec4 SpriteCardColor( int flags )
 	}
 	vec4 blended = mix( frame0, frame1, fragReflection.x );
 	blended.rgb *= fragModulation.rgb;
+	// DEPTHBLEND feathers the vertex alpha before it weights anything.
+	float vertexAlpha = fragVertexColor.a;
+	if ( ( flags & 4194304 ) != 0 )
+		vertexAlpha *= SpriteDepthFeathering();
 	if ( fragReflection.y > 0.5 )
 	{
 		const float addSelf = fragReflection.y - 1.0;
-		blended.a *= fragVertexColor.a;
+		blended.a *= vertexAlpha;
 		blended.rgb *= blended.a;
-		blended.rgb += fragModulation.r * addSelf * fragVertexColor.a * blended.rgb;
+		blended.rgb += fragModulation.r * addSelf * vertexAlpha * blended.rgb;
 		blended.rgb *= fragVertexColor.rgb;
 		return blended;
 	}
-	return blended * fragVertexColor;
+	return blended * vec4( fragVertexColor.rgb, vertexAlpha );
 }
 // Specialized to false (constant_id 0, CVulkanContext::BuildMaterialPipeline)
 // for draws whose alpha reference is off: a fragment stage that may discard

@@ -327,17 +327,26 @@ bool CVulkanContext::RecordSceneCapture( VkCommandBuffer cmd, int target )
 	    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 2 - firstSampled,
 	    sampled + firstSampled );
 
+	m_sceneDepthCaptured = RecordSceneDepthCopy( cmd, target, width, height );
+	return m_sceneDepthCaptured;
+}
+
+bool CVulkanContext::RecordSceneDepthCopy(
+    VkCommandBuffer cmd, int target, uint32_t width, uint32_t height )
+{
 	// Depth, when this target's depth is single-sampled. A multisampled back
 	// buffer's depth cannot be copied into a single-sampled image.
-	m_sceneDepthCaptured = false;
 	if ( m_sceneDepthHandle < 0 || !m_sceneDepthEnabled || ( target == -1 && m_activeSamples > 1 ) )
 		return false;
+	const bool srcIsTexture = IsRenderTargetTexture( target );
 	const VkImage depthSrc = srcIsTexture
 	                             ? m_managedTextures[static_cast<size_t>( target )].depthImage
 	                             : m_depthImages[m_acquiredImage];
 	const ManagedTexture &depth = m_managedTextures[static_cast<size_t>( m_sceneDepthHandle )];
 	if ( depthSrc == VK_NULL_HANDLE )
 		return false;
+	width = std::min( width, depth.width );
+	height = std::min( height, depth.height );
 	VkImageMemoryBarrier depthIn[2] = {
 	    ImageBarrier( depthSrc, m_depthAspects, 0, 1,
 	        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -368,7 +377,6 @@ bool CVulkanContext::RecordSceneCapture( VkCommandBuffer cmd, int target )
 	        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
 	    0, 0, nullptr, 0, nullptr, 2, depthOut );
 	++m_lastFrameSceneDepthCaptures;
-	m_sceneDepthCaptured = true;
 	return true;
 }
 

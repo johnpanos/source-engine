@@ -100,7 +100,7 @@ LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channe
                   "base_gray", "base_color")
 FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight", "cable",
             "sky", "monitor", "sprite", "pbr-fallback", "pbr-model", "bump", "shadow", "post",
-            "glass")
+            "glass", "softparticle")
 # Families whose harness writes whole frames, and the oracle module of each
 # (validate, evaluate).
 FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight,
@@ -146,6 +146,15 @@ GLASS_ADDED_LIGHT = 6
 # The walls differ by at least this much in every channel, so a transmission is
 # measured to about 2% from 8-bit pixels.
 GLASS_WALL_SEPARATION = 150
+# The softparticle cases (SpriteCard DEPTHBLEND over the engine's depth copy).
+SOFTPARTICLE_CASES = ("gap_5", "gap_25", "gap_80", "far_wall", "control")
+# D3D9 PC's dest-alpha depth range (CShaderAPIDx8 m_DestAlphaDepthRange).
+DEST_ALPHA_DEPTH_RANGE = 192.0
+# A recovered alpha is judged only on channels where the card and the wall differ
+# by at least this many levels, and must match within the tolerance (the copy's
+# 8-bit alpha moves the feathering by under 0.01).
+SOFTPARTICLE_CHANNEL_SEPARATION = 100
+SOFTPARTICLE_TOLERANCE = 0.04
 # Downsample_nohdr's fixed tint ($bloomtintenable 0) and BlurFilter_ps2x's weights.
 DOWNSAMPLE_TINT = 0.333
 BLUR_WEIGHT_SUM = 0.2013 + 2 * (0.2185 + 0.0821 + 0.0461 + 0.0262 + 0.0162 + 0.0102)
@@ -264,6 +273,20 @@ def read_pixels(path):
                 any(not isinstance(v, int) or not 0 <= v <= 255 for v in case["pixel"])
                 for case in report.get("cases", [])):
             raise PixelsError("%s has incomplete %s cases %s" % (path, family, names))
+        return report
+    if family == "softparticle":
+        names = [case.get("name") for case in report.get("cases", [])]
+        numbers = ("z_near", "z_far", "depth_blend_scale")
+        if names != list(SOFTPARTICLE_CASES) or any(
+                not isinstance(report.get(key), (int, float)) for key in numbers) or any(
+                not isinstance(case.get(key), (int, float)) for case in report["cases"]
+                for key in ("wall_distance", "gap")) or any(
+                not isinstance(case.get("depth_blend"), bool) or
+                any(not isinstance(case.get(key), list) or len(case[key]) != 3 or
+                    any(not isinstance(v, int) or not 0 <= v <= 255 for v in case[key])
+                    for key in ("pixel", "beside"))
+                for case in report["cases"]):
+            raise PixelsError("%s has incomplete softparticle cases %s" % (path, names))
         return report
     if family == "glass":
         names = [case.get("name") for case in report.get("cases", [])]
@@ -787,6 +810,62 @@ def check_glass(report):
     return failures
 
 
+def _smoothstep(edge0, edge1, x):
+    t = min(max((x - edge0) / (edge1 - edge0), 0.0), 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def softparticle_expected(report, case):
+    """common_ps_fxc.h DepthFeathering on D3D9 PC: the scene's projected z over
+    the dest-alpha depth range, stored in the frame copy's 8-bit alpha, against
+    the card's; x = the range over $depthblendscale."""
+    if not case["depth_blend"]:
+        return 1.0
+    near, far = report["z_near"], report["z_far"]
+
+    def projected_z(distance):  # D3D projection, [0, 1] depth: z_clip at this distance
+        return far * (distance - near) / (far - near)
+    scene = round(min(max(projected_z(case["wall_distance"]) / DEST_ALPHA_DEPTH_RANGE, 0.0),
+                      1.0) * 255.0) / 255.0
+    sprite = projected_z(case["wall_distance"] - case["gap"]) / DEST_ALPHA_DEPTH_RANGE
+    feathered = abs(scene - sprite) * DEST_ALPHA_DEPTH_RANGE / report["depth_blend_scale"]
+    feathered = max(_smoothstep(0.75, 1.0, scene), feathered)
+    return min(max(feathered, 0.0), 1.0)
+
+
+def softparticle_alpha(wall, card, pixel):
+    """The card's alpha over the wall, in linear light, per separated channel."""
+    alphas = []
+    for w, c, p in zip(wall, card, pixel):
+        if abs(c - w) >= SOFTPARTICLE_CHANNEL_SEPARATION:
+            lw, lc, lp = _srgb_to_linear(w), _srgb_to_linear(c), _srgb_to_linear(p)
+            alphas.append((lp - lw) / (lc - lw))
+    return alphas
+
+
+def check_softparticle(report):
+    failures = []
+    wall = report["wall"]
+    control = next(c for c in report["cases"] if c["name"] == "control")
+    for case in report["cases"]:
+        if not _close(case["beside"], wall, PIXEL_TOLERANCE):
+            failures.append("%s: the wall beside the card is %s, drawn as %s"
+                            % (case["name"], case["beside"], wall))
+    card = control["pixel"]
+    if max(abs(c - w) for c, w in zip(card, wall)) < SOFTPARTICLE_CHANNEL_SEPARATION:
+        return failures + ["control: the card was not drawn (%s over wall %s)" % (card, wall)]
+    for case in report["cases"]:
+        if case["name"] == "control":
+            continue
+        expected = softparticle_expected(report, case)
+        alphas = softparticle_alpha(wall, card, case["pixel"])
+        if not alphas or any(abs(a - expected) > SOFTPARTICLE_TOLERANCE for a in alphas):
+            failures.append("%s: card alpha %s, expected %.3f (pixel %s, card %s, wall %s)"
+                            % (case["name"], ["%.3f" % a for a in alphas], expected,
+                               case["pixel"], card, wall))
+    return failures
+
+
 def compare_glass(report, reference):
     return ["%s: pane %s, reference %s" % (c["name"], c["pane"], r["pane"])
             for c, r in zip(report["cases"], reference["cases"])
@@ -948,6 +1027,13 @@ def evaluate(report, hdr, reference=None):
         failures = check_bump(report)
         if reference is not None and [c["pixel"] for c in report["cases"]] != \
                 [c["pixel"] for c in reference["cases"]]:
+            failures += ["%s: %s, reference %s" % (c["name"], c["pixel"], r["pixel"])
+                         for c, r in zip(report["cases"], reference["cases"])
+                         if not _close(c["pixel"], r["pixel"], PIXEL_TOLERANCE)]
+        return failures
+    if report["family"] == "softparticle":
+        failures = check_softparticle(report)
+        if reference is not None:
             failures += ["%s: %s, reference %s" % (c["name"], c["pixel"], r["pixel"])
                          for c, r in zip(report["cases"], reference["cases"])
                          if not _close(c["pixel"], r["pixel"], PIXEL_TOLERANCE)]

@@ -1482,8 +1482,17 @@ Keep the table concise and link details below or from the domain progress file.
     the noise measure. Every view is within 0.12 % of pixels (> 16/255); a
     mismatched-view negative control differs by 65 %. With this the
     default-on gate is met.
-  - Unverified or open: flashlight passes, DEPTHBLEND, wrinkle weights,
-    pbr_ps30 parallax (the pinned FXC miscompiles it).
+  - Depth feathering (2026-09-26): every native frame copy now carries the
+    scene's projected z over the dest-alpha range in its alpha, as D3D9 PC's
+    destination alpha does (`depth_to_alpha.frag`, `-novkdepthalpha` rolls
+    back), and the native SpriteCard stage applies DEPTHBLEND (58 of
+    Portal's 59 depth-blended materials). The `softparticle` pixel family
+    matches D3D9's DepthFeathering in both HDR modes and fails with the copy
+    unchanged; the other families are unchanged (integer `sky` still fails
+    as before).
+  - pbr_ps30 parallax (2026-09-26, `4070b214`): the HLSL loop the pinned FXC
+    miscompiled is restructured; the case is in the default run (268/268).
+  - Unverified or open: flashlight passes and wrinkle weights.
   - No gate closes. See the
     [legacy shader record](RFC/0001-native-vulkan-legacy-shaders-progress.md).
 

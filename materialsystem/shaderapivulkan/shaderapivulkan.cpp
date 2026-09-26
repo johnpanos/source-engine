@@ -2377,11 +2377,10 @@ public:
 
 	virtual void SetPSNearAndFarZ( int pshReg ) {}
 
-	// As CShaderAPIDx8: x the dest-alpha depth range over the blend scale.
+	// As CShaderAPIDx8: x the dest-alpha depth range over the blend scale. Read
+	// by the legacy ports and by the native SpriteCard stage.
 	virtual void SetDepthFeatheringPixelShaderConstant( int iConstant, float fDepthBlendScale )
 	{
-		if ( !LegacyPortsEnabled() )
-			return;
 		const float values[4] = { g_Fog.destAlphaDepthRange / fDepthBlendScale, 0.0f, 0.0f, 0.0f };
 		SetPixelShaderConstant( iConstant, values, 1 );
 	}
@@ -8663,6 +8662,13 @@ static void CommitPassPixelConstants()
 	if ( ( colorFlags & render_vulkan::CVulkanContext::kFragmentModulateVertexAlpha ) &&
 	     g_psConstants[12][3] < 0.5f )
 		colorFlags &= ~render_vulkan::CVulkanContext::kFragmentModulateVertexAlpha;
+	// spritecard_ps2x's DEPTHBLEND reads the frame copy the material binds at
+	// sampler 2 (TEXTURE_FRAME_BUFFER_FULL_DEPTH), whose alpha holds depth.
+	const bool spriteDepthBlend = g_CurrentSpriteCard >= 0 &&
+	                              ( g_CurrentSpriteCard & kSpriteCardDepthBlend ) &&
+	                              g_boundEnvmapHandle >= 0;
+	if ( spriteDepthBlend )
+		colorFlags |= render_vulkan::CVulkanContext::kFragmentSpriteDepthBlend;
 	g_VulkanContext.SelectDynamicColorSpace( colorFlags );
 	if ( colorFlags & render_vulkan::CVulkanContext::kFragmentSky )
 	{
@@ -8675,7 +8681,10 @@ static void CommitPassPixelConstants()
 		// spritecard_ps2x.fxc: the frame's RGB times fOverbrightFactor (c0.y),
 		// then times the vertex color. The other combos are reported.
 		const float overbright = g_psConstants[0][1];
-		const float modulation[4] = { overbright, overbright, overbright, 1.0f };
+		// DEPTHBLEND's c2.x (the dest-alpha depth range over $depthblendscale)
+		// rides in the modulation's alpha, which the SpriteCard stage never reads.
+		const float modulation[4] = { overbright, overbright, overbright,
+			spriteDepthBlend ? g_psConstants[2][0] : 1.0f };
 		if ( ( g_CurrentSpriteCard & kSpriteCardAnimBlend ) &&
 		     ( g_CurrentSpriteCard & kSpriteCardSpline ) )
 			NoteUnimplemented( "SpriteCard: ANIMBLEND on a spline card (drawn with one frame)" );
@@ -8689,8 +8698,8 @@ static void CommitPassPixelConstants()
 			NoteUnimplemented( "SpriteCard: DUALSEQUENCE" );
 		if ( g_CurrentSpriteCard & kSpriteCardColorRamp )
 			NoteUnimplemented( "SpriteCard: COLORRAMP" );
-		if ( g_CurrentSpriteCard & kSpriteCardDepthBlend )
-			NoteUnimplemented( "SpriteCard: DEPTHBLEND" );
+		if ( ( g_CurrentSpriteCard & kSpriteCardDepthBlend ) && !spriteDepthBlend )
+			NoteUnimplemented( "SpriteCard: DEPTHBLEND without a depth texture at sampler 2" );
 		g_VulkanContext.SetDynamicModulation( modulation );
 		return;
 	}
@@ -9850,7 +9859,21 @@ void CShaderAPIVulkan::CopyRenderTargetToTextureEx(
 		dst[2] = pDstRect->width;
 		dst[3] = pDstRect->height;
 	}
-	if ( g_VulkanContext.QueueCopyToTexture( static_cast<int>( texID ) - 1, src, dst ) )
+	// D3D9 PC keeps the opaque scene's depth in destination alpha
+	// (WRITE_DEPTH_TO_DESTALPHA), so every frame copy carries it there: soft
+	// particles read it from _rt_FullFrameDepth (DepthFeathering). Native passes
+	// do not write it, so the copy takes it from the depth the scene drew with.
+	// -novkdepthalpha rolls back to the plain color copy.
+	static const bool s_depthAlpha = CommandLine()->FindParm( "-novkdepthalpha" ) == 0;
+	render_vulkan::CVulkanContext::DepthToAlpha depthToAlpha = {};
+	const float *projection = DrawProjection();
+	depthToAlpha.projection[0] = projection[2 * 4 + 2];
+	depthToAlpha.projection[1] = projection[3 * 4 + 2];
+	depthToAlpha.projection[2] = projection[2 * 4 + 3];
+	depthToAlpha.projection[3] = projection[3 * 4 + 3];
+	depthToAlpha.invRange = 1.0f / g_Fog.destAlphaDepthRange;
+	if ( g_VulkanContext.QueueCopyToTexture(
+	         static_cast<int>( texID ) - 1, src, dst, s_depthAlpha ? &depthToAlpha : nullptr ) )
 		++g_TargetCopies;
 	else
 		++g_TargetCopiesDropped;
