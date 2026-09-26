@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Build the iOS Portal client on Linux from the pinned iOS profile.
+# Build the iOS or tvOS Portal client on Linux from a pinned Apple profile.
 #
-#   ./build-ios-app.sh [options]
+#   ./build-ios-app.sh [--profile FILE] [options]
 #
-# The product profile (quality/product_profiles/portal-ios-native-vulkan.json)
-# owns every pin: the host toolchain, SDL3, KTX, MoltenVK, the deployment
-# target, the bundle id and the build directory. This script orchestrates:
+# The product profile (default quality/product_profiles/portal-ios-native-vulkan.json;
+# build-tvos-app.sh passes portal-tvos-native-vulkan.json) owns every pin:
+# the host toolchain, SDL3, KTX, MoltenVK, the deployment target, the bundle
+# id and the build directory, directly or through a pin_source. Its
+# target.os (ios or tvos) selects the SDK, triple and Info.plist keys. This
+# script orchestrates:
 #
 #   1. the host toolchain (tools/ios/build_toolchain.py: clang, ld64.lld and
 #      Apple's ld64 for module objects)
-#   2. the iPhoneOS SDK: --sdk DIR, or copied once from a Mac with
+#   2. the iPhoneOS or AppleTVOS SDK: --sdk DIR, or copied once from a Mac with
 #      --fetch-sdk-from HOST (ssh; read-only on the Mac)
 #   3. fetch + verify the pinned SDL3, KTX-Software and MoltenVK archives
 #   4. cross-build the native dependencies with CMake into a prefix (SDL3,
@@ -19,14 +22,13 @@
 #      under a private lock and out directory
 #
 # Signing and installing happen on the Mac. Everything is written under the
-# profile's build directory (build-ios/, gitignored) and dependencies/ios/.
+# profile's build directory (build-ios/ or build-tvos/, gitignored) and
+# dependencies/<os>/; the shared host toolchain is in dependencies/ios/.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="$ROOT/quality/product_profiles/portal-ios-native-vulkan.json"
-BASE="$(realpath "$ROOT/dependencies")/ios"
-CACHE="$BASE/archives"
 # Bump when a dependency recipe below changes, to force those rebuilds.
 DEPS_RECIPE=2
 
@@ -42,8 +44,10 @@ usage()
 	cat <<EOF
 Usage: $0 [options]
 
-  --sdk DIR               iPhoneOS.sdk to build against
-                          (default: dependencies/ios/sdk/iPhoneOS.sdk)
+  --profile FILE          Apple product profile
+                          (default: quality/product_profiles/portal-ios-native-vulkan.json)
+  --sdk DIR               iPhoneOS.sdk or AppleTVOS.sdk to build against
+                          (default: dependencies/<os>/sdk/<SDK>)
   --fetch-sdk-from HOST   copy the SDK from Xcode on HOST over ssh first
   --fetch-only            only fetch and verify pinned archives
   --deps-only             stop after the native dependencies
@@ -51,13 +55,14 @@ Usage: $0 [options]
   -j N                    parallel jobs (default: $JOBS)
   -h, --help              this help
 
-The SDK comes from Xcode on the user's Mac (xcrun --sdk iphoneos
+The SDK comes from Xcode on the user's Mac (xcrun --sdk iphoneos|appletvos
 --show-sdk-path); it is never downloaded from elsewhere.
 EOF
 }
 
 while [ $# -gt 0 ]; do
 	case "$1" in
+	--profile) PROFILE="$(realpath "$2")"; shift ;;
 	--sdk) SDK="$(realpath "$2")"; shift ;;
 	--fetch-sdk-from) FETCH_SDK_FROM="$2"; shift ;;
 	--fetch-only) FETCH_ONLY=1 ;;
@@ -81,10 +86,31 @@ done
 [ -f "$PROFILE" ] || die "missing profile $PROFILE"
 p() { jq -er "$1" "$PROFILE"; }
 
+# pin_profile JQ_PATH: the profile that owns a pin, following pin_source.
+pin_profile()
+{
+	local source
+	source="$(jq -r "$1.pin_source // empty" "$PROFILE")"
+	echo "${source:+$ROOT/}${source:-$PROFILE}"
+}
+
+OS="$(p .target.os)"
+case "$OS" in
+	ios) SDK_PLATFORM=iphoneos; SDK_FILE=iPhoneOS.sdk; PLIST_PLATFORM=iPhoneOS ;;
+	tvos) SDK_PLATFORM=appletvos; SDK_FILE=AppleTVOS.sdk; PLIST_PLATFORM=AppleTVOS ;;
+	*) die "$PROFILE targets $OS, not ios or tvos" ;;
+esac
+BASE="$(realpath "$ROOT/dependencies")/$OS"
+CACHE="$BASE/archives"
 DEPLOYMENT_TARGET="$(p .target.deployment_target)"
-BUILD_DIRECTORY="$(p .ios.build_directory)"
+BUILD_DIRECTORY="$(p ".$OS.build_directory")"
 OUT="$ROOT/$BUILD_DIRECTORY"
 TOOLCHAIN="$ROOT/$(p .host_toolchain.directory)"
+TOOLCHAIN_PROFILE="$(pin_profile .host_toolchain)"
+tp() { jq -er "$1" "$TOOLCHAIN_PROFILE"; }
+SDL3_PROFILE="$(pin_profile .dependencies.sdl3)"
+[ "$(jq -er .dependencies.sdl3.version "$SDL3_PROFILE")" = "$(p .dependencies.sdl3.version)" ] ||
+	die "the SDL3 version differs from its pin source $SDL3_PROFILE"
 KTX_PROFILE="$ROOT/$(p .dependencies.ktx_software.pin_source)"
 [ "$(jq -er .dependencies.ktx_software.revision "$KTX_PROFILE")" = \
   "$(p .dependencies.ktx_software.revision)" ] ||
@@ -96,21 +122,21 @@ mkdir -p "$OUT" "$CACHE"
 # 1. Host toolchain
 # ---------------------------------------------------------------------------
 if [ "$FETCH_ONLY" = 1 ]; then
-	python3 "$ROOT/tools/ios/build_toolchain.py" --fetch-only
+	python3 "$ROOT/tools/ios/build_toolchain.py" --profile "$TOOLCHAIN_PROFILE" --fetch-only
 else
-	python3 "$ROOT/tools/ios/build_toolchain.py" --jobs "$JOBS" ||
+	python3 "$ROOT/tools/ios/build_toolchain.py" --profile "$TOOLCHAIN_PROFILE" --jobs "$JOBS" ||
 		die "the iOS host toolchain did not build"
 fi
 
 # ---------------------------------------------------------------------------
-# 2. iPhoneOS SDK
+# 2. iPhoneOS or AppleTVOS SDK
 # ---------------------------------------------------------------------------
-[ -n "$SDK" ] || SDK="$BASE/sdk/iPhoneOS.sdk"
+[ -n "$SDK" ] || SDK="$BASE/sdk/$SDK_FILE"
 if [ -n "$FETCH_SDK_FROM" ]; then
-	log "Copying the iPhoneOS SDK from $FETCH_SDK_FROM"
+	log "Copying the $SDK_FILE from $FETCH_SDK_FROM"
 	remote="$(ssh -o BatchMode=yes "$FETCH_SDK_FROM" \
-		'cd "$(xcrun --sdk iphoneos --show-sdk-path)" && pwd -P')" ||
-		die "no iPhoneOS SDK on $FETCH_SDK_FROM (is Xcode installed?)"
+		"cd \"\$(xcrun --sdk $SDK_PLATFORM --show-sdk-path)\" && pwd -P")" ||
+		die "no $SDK_FILE on $FETCH_SDK_FROM (is Xcode installed?)"
 	rm -rf "$SDK.partial"
 	mkdir -p "$SDK.partial"
 	ssh -o BatchMode=yes "$FETCH_SDK_FROM" "tar -C '$remote' -czf - ." |
@@ -120,42 +146,42 @@ if [ -n "$FETCH_SDK_FROM" ]; then
 	mv "$SDK.partial" "$SDK"
 fi
 [ -f "$SDK/SDKSettings.json" ] ||
-	die "no iPhoneOS SDK at $SDK; pass --sdk DIR or --fetch-sdk-from HOST"
+	die "no $SDK_FILE at $SDK; pass --sdk DIR or --fetch-sdk-from HOST"
 SDK_NAME="$(jq -er .CanonicalName "$SDK/SDKSettings.json")"
 case "$SDK_NAME" in
-	iphoneos*) ;;
-	*) die "$SDK is $SDK_NAME, not an iPhoneOS SDK" ;;
+	"$SDK_PLATFORM"[0-9]*) ;;
+	*) die "$SDK is $SDK_NAME, not a $SDK_FILE" ;;
 esac
 SDK_VERSION="$(jq -er .Version "$SDK/SDKSettings.json")"
 SDK_MIN="$(p .sdk.minimum_version)"
 [ "$(printf '%s\n%s\n' "$SDK_MIN" "$SDK_VERSION" | sort -V | head -1)" = "$SDK_MIN" ] ||
-	die "iPhoneOS SDK $SDK_VERSION is older than the profile's minimum $SDK_MIN"
-log "iPhoneOS SDK $SDK_VERSION at $SDK"
+	die "$SDK_FILE $SDK_VERSION is older than the profile's minimum $SDK_MIN"
+log "$SDK_FILE $SDK_VERSION at $SDK"
 
 # ---------------------------------------------------------------------------
 # 2b. Compiler runtime for the target
 # ---------------------------------------------------------------------------
 # Objective-C @available checks (SDL3) call __isPlatformVersionAtLeast from
 # compiler-rt's os_version_check.c; libSystem supplies the other builtins.
-# Xcode ships it as the resource directory's darwin/libclang_rt.ios.a, which
-# clang links for every iOS target when present. Built from the pinned LLVM
-# source against this SDK.
+# Xcode ships it as the resource directory's darwin/libclang_rt.<os>.a, which
+# clang links for every iOS or tvOS target when present. Built from the
+# pinned LLVM source against this SDK.
 build_compiler_runtime()
 {
 	local resource runtime stamp key source
 	resource="$("$TOOLCHAIN/bin/clang" -print-resource-dir)"
-	runtime="$resource/lib/darwin/libclang_rt.ios.a"
+	runtime="$resource/lib/darwin/libclang_rt.$OS.a"
 	stamp="$runtime.stamp"
-	source="$BASE/src/$(p .host_toolchain.llvm.extracted_directory)/compiler-rt/lib/builtins/os_version_check.c"
-	key="sdk=$SDK_VERSION target=$DEPLOYMENT_TARGET llvm=$(p .host_toolchain.llvm.sha256)"
+	source="$(dirname "$TOOLCHAIN")/src/$(tp .host_toolchain.llvm.extracted_directory)/compiler-rt/lib/builtins/os_version_check.c"
+	key="sdk=$SDK_VERSION target=$DEPLOYMENT_TARGET llvm=$(tp .host_toolchain.llvm.sha256)"
 	if [ -f "$runtime" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$key" ]; then
 		return
 	fi
 	[ -f "$source" ] || die "missing $source (run tools/ios/build_toolchain.py)"
-	log "Building the iOS compiler runtime (os_version_check)"
+	log "Building the $OS compiler runtime (os_version_check)"
 	mkdir -p "$(dirname "$runtime")"
 	local object="$runtime.os_version_check.o"
-	"$TOOLCHAIN/bin/clang" -target "arm64-apple-ios$DEPLOYMENT_TARGET" -isysroot "$SDK" \
+	"$TOOLCHAIN/bin/clang" -target "arm64-apple-$OS$DEPLOYMENT_TARGET" -isysroot "$SDK" \
 		-O2 -fPIC -c "$source" -o "$object" || die "compiling $source failed"
 	rm -f "$runtime"
 	"$TOOLCHAIN/bin/llvm-ar" rcs "$runtime" "$object" && rm -f "$object"
@@ -167,7 +193,7 @@ build_compiler_runtime()
 # 3. Pinned archives
 # ---------------------------------------------------------------------------
 # fetch_pin PROFILE JQ_PATH: download (if missing) and verify one pinned
-# archive, then extract it under dependencies/ios/src; prints the source dir.
+# archive, then extract it under dependencies/<os>/src; prints the source dir.
 fetch_pin()
 {
 	local profile="$1" path="$2"
@@ -193,7 +219,7 @@ fetch_pin()
 	echo "$BASE/src/$dir"
 }
 
-SDL3_SRC="$(fetch_pin "$PROFILE" .dependencies.sdl3)"
+SDL3_SRC="$(fetch_pin "$SDL3_PROFILE" .dependencies.sdl3)"
 KTX_SRC="$(fetch_pin "$KTX_PROFILE" .dependencies.ktx_software)"
 MOLTENVK_DIR="$(fetch_pin "$PROFILE" .dependencies.moltenvk)"
 MOLTENVK_LIB="$MOLTENVK_DIR/$(p .dependencies.moltenvk.static_library)"
@@ -222,7 +248,7 @@ cmake_dependency()
 	cmake -S "$source" -B "$build" -G Ninja \
 		-DCMAKE_TOOLCHAIN_FILE="$ROOT/tools/ios/ios-toolchain.cmake" \
 		-DIOS_SDK="$SDK" -DIOS_TOOLCHAIN="$TOOLCHAIN" \
-		-DIOS_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
+		-DIOS_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" -DAPPLE_TARGET_OS="$OS" \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX="$PREFIX" \
 		-DCMAKE_PREFIX_PATH="$PREFIX" \
@@ -241,7 +267,7 @@ build_dependencies()
 	local stamp="$DEPS/stamp" key
 	key="recipe=$DEPS_RECIPE sdk=$SDK_VERSION target=$DEPLOYMENT_TARGET \
 toolchain=$(sha256sum "$TOOLCHAIN/manifest.json" | cut -d' ' -f1) \
-sdl3=$(p .dependencies.sdl3.sha256) ktx=$(jq -er .dependencies.ktx_software.sha256 "$KTX_PROFILE") \
+sdl3=$(jq -er .dependencies.sdl3.sha256 "$SDL3_PROFILE") ktx=$(jq -er .dependencies.ktx_software.sha256 "$KTX_PROFILE") \
 moltenvk=$(p .dependencies.moltenvk.sha256) thirdparty=$(git -C "$ROOT/thirdparty" rev-parse HEAD)"
 	if [ "$(cat "$stamp" 2>/dev/null)" = "$key" ]; then
 		log "Native dependencies up to date"
@@ -267,7 +293,11 @@ moltenvk=$(p .dependencies.moltenvk.sha256) thirdparty=$(git -C "$ROOT/thirdpart
 		-DFT_DISABLE_PNG=ON -DFT_DISABLE_HARFBUZZ=ON -DFT_DISABLE_BROTLI=ON
 	# libpng 1.6.38 reads a predefined TARGET_OS_MAC as classic Mac OS (fixed
 	# upstream in 1.6.40); clang predefines the TARGET_OS_* macros, as Xcode does.
-	cmake_dependency libpng "$ROOT/thirdparty/libpng" \
+	# It also takes its prebuilt pnglibconf.h only when CMake's IOS is set; on
+	# tvOS its host-side generator would preprocess without the target.
+	local png_platform=()
+	[ "$OS" = tvos ] && png_platform=(-DIOS=ON)
+	cmake_dependency libpng "$ROOT/thirdparty/libpng" "${png_platform[@]}" \
 		-DCMAKE_C_FLAGS=-fno-define-target-os-macros \
 		-DPNG_SHARED=OFF -DPNG_STATIC=ON -DPNG_EXECUTABLES=OFF -DPNG_TESTS=OFF \
 		-DPNG_ARM_NEON=off -DPNG_FRAMEWORK=OFF
@@ -298,12 +328,12 @@ EOF
 	zlib_version="$(sed -n 's/^#define ZLIB_VERSION "\(.*\)"/\1/p' "$SDK/usr/include/zlib.h")"
 	cat > "$PREFIX/lib/pkgconfig/zlib.pc" <<EOF
 Name: zlib
-Description: iPhoneOS SDK system zlib
+Description: $SDK_FILE system zlib
 Version: $zlib_version
 Libs: -lz
 Cflags:
 EOF
-	# MoltenVK: Khronos's static iOS release, linked into the app.
+	# MoltenVK: Khronos's static release for the target, linked into the app.
 	mkdir -p "$PREFIX/include"
 	cp -R "$MOLTENVK_INCLUDE/." "$PREFIX/include/"
 	cp "$MOLTENVK_LIB" "$PREFIX/lib/libMoltenVK.a"
@@ -358,20 +388,21 @@ python3 "$ROOT/tools/quality/static_composition.py" check --tree "$WAF_OUT" \
 # ---------------------------------------------------------------------------
 # 6. App bundle (unsigned; signing and installing happen on the Mac)
 # ---------------------------------------------------------------------------
-APP="$OUT/$(p .ios.app_bundle)"
+APP="$OUT/$(p ".$OS.app_bundle")"
 log "Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP"
-cp "$EXECUTABLE" "$APP/$(p .ios.executable)"
+cp "$EXECUTABLE" "$APP/$(p ".$OS.executable")"
 # The app's own UI art (the touch-control icons, as in the Android APK);
 # ios_main.cpp installs it into <game>/custom/ at startup.
 python3 "$ROOT/tools/android/touch_icons.py" "$APP/touch" >/dev/null
 printf 'APPL????' > "$APP/PkgInfo"
-python3 - "$PROFILE" "$APP/Info.plist" "$SDK_NAME" "$SDK_VERSION" <<'PLIST'
+python3 - "$PROFILE" "$APP/Info.plist" "$SDK_NAME" "$SDK_VERSION" "$PLIST_PLATFORM" <<'PLIST'
 import json, plistlib, sys
-profile, out, sdk_name, sdk_version = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+profile, out, sdk_name, sdk_version, platform = sys.argv[1:6]
 data = json.load(open(profile))
-ios, target = data['ios'], data['target']
+target = data['target']
+ios = data[target['os']]
 plist = {
     'CFBundleDevelopmentRegion': 'en',
     'CFBundleDisplayName': ios['display_name'],
@@ -382,26 +413,31 @@ plist = {
     'CFBundlePackageType': 'APPL',
     'CFBundleShortVersionString': ios['version'],
     'CFBundleVersion': str(ios['build_number']),
-    'CFBundleSupportedPlatforms': ['iPhoneOS'],
-    'DTPlatformName': 'iphoneos',
+    'CFBundleSupportedPlatforms': [platform],
+    'DTPlatformName': platform.lower(),
     'DTPlatformVersion': sdk_version,
     'DTSDKName': sdk_name,
     'LSRequiresIPhoneOS': True,
     'MinimumOSVersion': target['deployment_target'],
     'UIDeviceFamily': ios['device_family'],
     'UIRequiredDeviceCapabilities': ios['required_device_capabilities'],
-    'UISupportedInterfaceOrientations': ios['orientations'],
-    'UISupportedInterfaceOrientations~ipad': ios['orientations'],
-    # A launch screen makes iOS run the app at the device's native size.
-    'UILaunchScreen': {},
-    'UIRequiresFullScreen': True,
-    'UIStatusBarHidden': True,
-    # SDL3 takes pointer (trackpad, mouse) input as UIKit indirect events.
-    'UIApplicationSupportsIndirectInputEvents': True,
-    # Content goes into Documents with the Files app or xcrun devicectl.
-    'UIFileSharingEnabled': True,
-    'LSSupportsOpeningDocumentsInPlace': True,
 }
+if target['os'] == 'ios':
+    plist.update({
+        'UISupportedInterfaceOrientations': ios['orientations'],
+        'UISupportedInterfaceOrientations~ipad': ios['orientations'],
+        # A launch screen makes iOS run the app at the device's native size.
+        'UILaunchScreen': {},
+        'UIRequiresFullScreen': True,
+        'UIStatusBarHidden': True,
+        # SDL3 takes pointer (trackpad, mouse) input as UIKit indirect events.
+        'UIApplicationSupportsIndirectInputEvents': True,
+        # Content goes into Documents with the Files app or xcrun devicectl.
+        'UIFileSharingEnabled': True,
+        'LSSupportsOpeningDocumentsInPlace': True,
+    })
+# tvOS: always landscape and full screen; no Documents sharing (the content
+# is in Library/Caches, see ios_main.cpp).
 with open(out, 'wb') as stream:
     plistlib.dump(plist, stream)
 PLIST

@@ -48,10 +48,10 @@ def build(bld):
 	libs = ['tier0','tier1','tier2','vstdlib','SDL2','steam_api']
 
 	# The gyroscope reads the NDK sensor queue (gyro_sensor.cpp) on Android
-	# and Core Motion (gyro_sensor_ios.mm) on iOS.
+	# and Core Motion (gyro_sensor_ios.mm) on iOS. tvOS has no Core Motion.
 	if bld.env.ANDROID_SDL3:
 		libs += ['ANDROID']
-	if bld.env.DEST_OS == 'ios':
+	if bld.env.DEST_OS == 'ios' and bld.env.APPLE_PLATFORM != 'tvos':
 		source += ['gyro_sensor_ios.mm']
 		libs += ['FOUNDATION', 'COREMOTION']
 

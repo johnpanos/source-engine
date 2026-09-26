@@ -387,6 +387,55 @@ Fixes needed for iOS (each is guarded, so desktop builds are unchanged):
 - **Unverified:** the device run (MoltenVK argument buffers). `$phong` (seven
   sets) and the post passes are within eight and unchanged.
 
+## First tvOS build (2026-09-25)
+
+The user asked for a tvOS product profile, a background build, and content in
+the caches folder. tvOS is extra product scope, not a north-star target.
+[`portal-tvos-native-vulkan.json`](../quality/product_profiles/portal-tvos-native-vulkan.json)
+uses the iOS static composition and points at the iOS pins through
+`pin_source`.
+
+- **Waf:** tvOS is part of the `ios` (UIKit) family. The SDK selects it:
+  - `--ios-sdk` accepts an AppleTVOS SDK, which selects `arm64-apple-tvos`
+    and sets `APPLE_PLATFORM` to `tvos`;
+  - clang's `__ENVIRONMENT_TV_OS_VERSION_MIN_REQUIRED__` maps to DEST_OS
+    `ios`;
+  - `PLATFORM_TVOS` is defined next to `PLATFORM_IOS`.
+
+  Agent decision: nearly every `PLATFORM_IOS` and DEST_OS `ios` use means
+  "UIKit, not macOS", which is also true of tvOS. Only phone and tablet
+  assumptions check `PLATFORM_TVOS`:
+  - the Core Motion gyro (not in the tvOS SDK);
+  - the touch controls' default (tvOS has no touch screen);
+  - the content directory.
+- **Content:** `$HOME/Library/Caches` (user decision). tvOS gives apps no
+  persistent storage outside the bundle, and the system may purge the
+  caches, so the content is recopied after a purge.
+- **Script:** `build-ios-app.sh --profile` reads `target.os` and uses the
+  profile's SDK, compiler runtime (`libclang_rt.tvos.a`), CMake system
+  (`APPLE_TARGET_OS`) and Info.plist keys. `build-tvos-app.sh` wraps it.
+- **tvOS-only fixes:**
+  - `fork` and `execlp` are unavailable on tvOS, so vgui2's `ShellExecute`
+    no longer compiles its process branch on the UIKit family.
+  - libpng 1.6.38 uses its prebuilt `pnglibconf.h` only when CMake's `IOS`
+    is set, so the tvOS build passes `IOS=ON` for libpng.
+  - freetype rejects a variable named `IOS_PLATFORM`, hence the name
+    `APPLE_TARGET_OS`.
+- **Evidence:**
+  - `./build-tvos-app.sh` builds an unsigned `build-tvos/Portal.app`.
+    `hl2_launcher` is a tvOS Mach-O (platform 3, minos 17.0, sdk 26.5).
+  - The static-composition check passes (24 module objects, 22 linked
+    entries).
+  - Only system frameworks and libraries are loaded, with no Core Motion.
+  - On the macOS VM: `plutil -lint` passes, an ad-hoc signature verifies,
+    and `vtool` reports `TVOS`.
+  - `./build-ios-app.sh` still builds, and its static check still passes.
+- **Not done:**
+  - signing with a provisioning profile, installing, and any run on an
+    Apple TV or the simulator;
+  - input: the remote and controllers in menus and play;
+  - detecting a purged cache.
+
 ## Not done
 
 - Device evidence beyond the first boot: the AGENTS.md iOS obligations

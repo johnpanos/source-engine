@@ -1,9 +1,20 @@
-# CMake toolchain for cross-building iOS dependencies on Linux with the pinned
-# host toolchain (tools/ios/build_toolchain.py). IOS_SDK and IOS_TOOLCHAIN
-# are passed with -D by build-ios-app.sh.
+# CMake toolchain for cross-building iOS and tvOS dependencies on Linux with
+# the pinned host toolchain (tools/ios/build_toolchain.py). IOS_SDK,
+# IOS_TOOLCHAIN, IOS_DEPLOYMENT_TARGET and APPLE_TARGET_OS (ios or tvos) are
+# passed with -D by build-ios-app.sh.
 # try_compile projects see these too.
-list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES IOS_SDK IOS_TOOLCHAIN IOS_DEPLOYMENT_TARGET)
-set(CMAKE_SYSTEM_NAME iOS)
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES
+	IOS_SDK IOS_TOOLCHAIN IOS_DEPLOYMENT_TARGET APPLE_TARGET_OS)
+if(NOT APPLE_TARGET_OS)
+	set(APPLE_TARGET_OS ios)
+endif()
+if(APPLE_TARGET_OS STREQUAL "tvos")
+	set(CMAKE_SYSTEM_NAME tvOS)
+elseif(APPLE_TARGET_OS STREQUAL "ios")
+	set(CMAKE_SYSTEM_NAME iOS)
+else()
+	message(FATAL_ERROR "APPLE_TARGET_OS must be ios or tvos, not ${APPLE_TARGET_OS}")
+endif()
 set(CMAKE_SYSTEM_PROCESSOR arm64)
 set(CMAKE_OSX_ARCHITECTURES arm64)
 set(CMAKE_OSX_SYSROOT "${IOS_SDK}")
@@ -12,9 +23,9 @@ set(CMAKE_C_COMPILER "${IOS_TOOLCHAIN}/bin/clang")
 set(CMAKE_CXX_COMPILER "${IOS_TOOLCHAIN}/bin/clang++")
 set(CMAKE_OBJC_COMPILER "${IOS_TOOLCHAIN}/bin/clang")
 set(CMAKE_ASM_COMPILER "${IOS_TOOLCHAIN}/bin/clang")
-set(CMAKE_C_COMPILER_TARGET "arm64-apple-ios${IOS_DEPLOYMENT_TARGET}")
-set(CMAKE_CXX_COMPILER_TARGET "arm64-apple-ios${IOS_DEPLOYMENT_TARGET}")
-set(CMAKE_OBJC_COMPILER_TARGET "arm64-apple-ios${IOS_DEPLOYMENT_TARGET}")
+set(CMAKE_C_COMPILER_TARGET "arm64-apple-${APPLE_TARGET_OS}${IOS_DEPLOYMENT_TARGET}")
+set(CMAKE_CXX_COMPILER_TARGET "arm64-apple-${APPLE_TARGET_OS}${IOS_DEPLOYMENT_TARGET}")
+set(CMAKE_OBJC_COMPILER_TARGET "arm64-apple-${APPLE_TARGET_OS}${IOS_DEPLOYMENT_TARGET}")
 set(CMAKE_AR "${IOS_TOOLCHAIN}/bin/llvm-ar" CACHE FILEPATH "")
 set(CMAKE_RANLIB "${IOS_TOOLCHAIN}/bin/llvm-ranlib" CACHE FILEPATH "")
 set(CMAKE_INSTALL_NAME_TOOL "${IOS_TOOLCHAIN}/bin/llvm-install-name-tool" CACHE FILEPATH "")

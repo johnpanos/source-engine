@@ -7,7 +7,9 @@
 // Content (platform/, portal/, hl2/ and an optional commandline.txt) lives in
 // the app's Documents container, which the Mac copies it into
 // (xcrun devicectl ... --domain-type appDataContainer) and which the Files app
-// can reach (UIFileSharingEnabled).
+// can reach (UIFileSharingEnabled). tvOS gives apps no persistent storage
+// outside the bundle, so there the content lives in Library/Caches, which the
+// system may purge when storage runs low (the tvOS profile's content policy).
 //
 //=============================================================================//
 
@@ -59,15 +61,24 @@ int main( int, char ** )
 	SDL_SetHint( SDL_HINT_RETURN_KEY_HIDES_IME, "1" );
 
 	const char *bundle = SDL_GetBasePath();
-	const char *documents = SDL_GetUserFolder( SDL_FOLDER_DOCUMENTS );
-	if ( !bundle || !documents )
+#if defined( PLATFORM_TVOS )
+	// HOME is the app's data container.
+	static char caches[PATH_MAX];
+	const char *home = getenv( "HOME" );
+	if ( home )
+		snprintf( caches, sizeof( caches ), "%s/Library/Caches", home );
+	const char *content = home ? caches : NULL;
+#else
+	const char *content = SDL_GetUserFolder( SDL_FOLDER_DOCUMENTS );
+#endif
+	if ( !bundle || !content )
 	{
 		SDL_Log( "Source: app storage is unavailable: %s", SDL_GetError() );
 		return 1;
 	}
 	static char bundleDir[PATH_MAX], contentDir[PATH_MAX];
 	CopyDirectory( bundleDir, sizeof( bundleDir ), bundle );
-	CopyDirectory( contentDir, sizeof( contentDir ), documents );
+	CopyDirectory( contentDir, sizeof( contentDir ), content );
 
 	// The filesystem and launcher read these on the app-container platforms
 	// (public/filesystem_init.cpp, launcher/launcher.cpp,

@@ -249,11 +249,14 @@ mkdir -p dependencies/tvos/sdk/AppleTVOS.sdk
 ssh macvm "tar -C '$remote' -czf - ." | tar -xzf - -C dependencies/tvos/sdk/AppleTVOS.sdk
 ```
 
-Nothing builds the engine for tvOS yet. Waf has no tvOS target, and
-`build-ios-app.sh` builds iOS only. The recorded evidence is one link probe
-with the shared toolchain. Where the content is stored is an open decision:
-tvOS apps have no persistent local storage outside the app bundle. tvOS is
-product scope the user added; it is not an AGENTS.md north-star target.
+`./build-tvos-app.sh` runs `build-ios-app.sh --profile` with this profile
+and produces an unsigned `build-tvos/Portal.app`. Waf builds tvOS as part of
+the `ios` (UIKit) family, with `PLATFORM_TVOS`; the SDK passed to `--ios-sdk`
+selects it. The content goes into the app's `Library/Caches` (user decision).
+tvOS has no persistent app storage outside the bundle, and the system may
+purge the caches, so the content must be recopied after a purge. Signing,
+installing and every device check are still to do. tvOS is product scope the
+user added; it is not an AGENTS.md north-star target.
 
 ## Gyro aiming
 

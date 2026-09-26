@@ -287,12 +287,12 @@ void CSystem::ShellExecute(const char *command, const char *file)
 	}
 
 #if defined( PLATFORM_IOS )
-	// No processes on iOS: hand the URL or path to the system.
+	// No processes on iOS or tvOS (where fork and exec are not even declared
+	// available): hand the URL or path to the system.
 	if ( !SDL_OpenURL( file ) )
 		Msg( "SDL_OpenURL failed: %s\n", SDL_GetError() );
-	return;
-#endif
-#if defined( OSX ) && !defined( PLATFORM_IOS )
+#else
+#if defined( OSX )
 	const char *szCommand = "open";
 #else
 	const char *szCommand = "xdg-open";
@@ -324,6 +324,7 @@ void CSystem::ShellExecute(const char *command, const char *file)
 		execlp( szCommand, szCommand, file, (char *)0 );
 		Assert( !"execlp failed" );
 	}
+#endif // PLATFORM_IOS
 }
 
 void CSystem::ShellExecuteEx( const char *command, const char *file, const char *pParams )

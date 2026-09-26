@@ -27,7 +27,8 @@ extern ConVar default_fov;
 
 extern IMatSystemSurface *g_pMatSystemSurface;
 
-#if defined( ANDROID ) || defined( PLATFORM_IOS )
+// tvOS has no touch screen: the remote and game controllers drive it.
+#if defined( ANDROID ) || ( defined( PLATFORM_IOS ) && !defined( PLATFORM_TVOS ) )
 #define TOUCH_DEFAULT "1"
 #else
 #define TOUCH_DEFAULT "0"

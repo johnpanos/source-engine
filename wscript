@@ -249,7 +249,7 @@ def define_platform(conf):
 		if conf.env.DEST_OS == 'android' and not conf.env.NATIVE_VULKAN:
 			conf.fatal('The Android client requires --render-backend=native-vulkan')
 		if conf.env.DEST_OS == 'ios' and not (conf.env.NATIVE_VULKAN and conf.env.SDL3):
-			conf.fatal('The iOS client requires --platform-provider=sdl3 --render-backend=native-vulkan')
+			conf.fatal('The iOS and tvOS clients require --platform-provider=sdl3 --render-backend=native-vulkan')
 		if not (conf.env.SDL3 and (conf.env.DXVK or conf.env.NATIVE_VULKAN)):
 			conf.fatal('Select both --platform-provider=sdl3 and --render-backend=vulkan')
 		conf.options.SDL = 1
@@ -364,6 +364,10 @@ def define_platform(conf):
 			'NO_HOOK_MALLOC',
 			'_DLL_EXT=.dylib'
 		])
+		if conf.env.APPLE_PLATFORM == 'tvos':
+			# tvOS: PLATFORM_IOS code that assumes a phone or tablet (touch,
+			# Core Motion, Documents) checks this too.
+			conf.env.append_unique('DEFINES', ['PLATFORM_TVOS=1'])
 	elif conf.env.DEST_OS in ['freebsd', 'openbsd', 'netbsd', 'dragonflybsd']: # Tested only in freebsd
 		conf.env.append_unique('DEFINES', [
 			'POSIX=1', '_POSIX=1', 'PLATFORM_POSIX=1',
@@ -520,9 +524,11 @@ def check_deps(conf):
 	elif conf.env.DEST_OS == 'ios':
 		# No AppKit, Carbon, IOKit, OpenGL or ApplicationServices on iOS.
 		conf.check(lib='iconv', uselib_store='ICONV')
-		for framework in ('Foundation', 'CoreFoundation', 'CoreGraphics', 'CoreAudio',
-				'AudioToolbox', 'SystemConfiguration', 'UIKit', 'CoreServices', 'CFNetwork',
-				'CoreMotion'):
+		frameworks = ['Foundation', 'CoreFoundation', 'CoreGraphics', 'CoreAudio',
+			'AudioToolbox', 'SystemConfiguration', 'UIKit', 'CoreServices', 'CFNetwork']
+		if conf.env.APPLE_PLATFORM != 'tvos':
+			frameworks += ['CoreMotion'] # not in the tvOS SDK
+		for framework in frameworks:
 			conf.env['FRAMEWORK_' + framework.upper()] = framework
 
 	if conf.options.TESTS:

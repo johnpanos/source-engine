@@ -333,25 +333,29 @@ class Android:
 		return ldflags
 
 def configure_ios(conf):
-	"""--ios-sdk: cross-compile for iOS with the pinned host toolchain
-	(tools/ios/build_toolchain.py) and the user's iPhoneOS SDK. The SDK is
-	never downloaded: it comes from Xcode on the user's Mac."""
+	"""--ios-sdk: cross-compile for a UIKit platform with the pinned host
+	toolchain (tools/ios/build_toolchain.py) and the user's SDK: iPhoneOS for
+	iOS or AppleTVOS for tvOS. The SDK is never downloaded: it comes from Xcode
+	on the user's Mac. Both platforms are DEST_OS ios (the UIKit family, with
+	PLATFORM_IOS); the SDK selects the triple, and tvOS adds PLATFORM_TVOS."""
 	sdk = os.path.abspath(conf.options.IOS_SDK)
 	settings = os.path.join(sdk, 'SDKSettings.json')
 	if not os.path.isfile(settings):
-		conf.fatal('--ios-sdk=%s is not an iPhoneOS SDK (no SDKSettings.json); copy it from the '
-			'Mac: xcrun --sdk iphoneos --show-sdk-path' % sdk)
+		conf.fatal('--ios-sdk=%s is not an iPhoneOS or AppleTVOS SDK (no SDKSettings.json); copy '
+			'it from the Mac: xcrun --sdk iphoneos|appletvos --show-sdk-path' % sdk)
 	import json
 	with open(settings) as stream:
 		sdk_info = json.load(stream)
-	if sdk_info.get('CanonicalName', '').rstrip('0123456789.') != 'iphoneos':
-		conf.fatal('%s is %s, not an iPhoneOS SDK' % (sdk, sdk_info.get('CanonicalName')))
+	platforms = { 'iphoneos' : 'ios', 'appletvos' : 'tvos' }
+	platform = platforms.get(sdk_info.get('CanonicalName', '').rstrip('0123456789.'))
+	if not platform:
+		conf.fatal('%s is %s, not an iPhoneOS or AppleTVOS SDK' % (sdk, sdk_info.get('CanonicalName')))
 	toolchain = os.path.abspath(conf.options.IOS_TOOLCHAIN)
 	bindir = os.path.join(toolchain, 'bin')
 	for tool in ('clang', 'clang++', 'ld64.lld', 'ld64', 'llvm-ar'):
 		if not os.path.isfile(os.path.join(bindir, tool)):
 			conf.fatal('%s has no %s; run python3 tools/ios/build_toolchain.py' % (toolchain, tool))
-	triple = 'arm64-apple-ios%s' % conf.options.IOS_DEPLOYMENT_TARGET
+	triple = 'arm64-apple-%s%s' % (platform, conf.options.IOS_DEPLOYMENT_TARGET)
 	target = ['-target', triple, '-isysroot', sdk]
 	conf.environ['PATH'] = bindir + os.pathsep + conf.environ.get('PATH', '')
 	# The target is part of the compiler command, so Waf's compiler probe
@@ -364,18 +368,19 @@ def configure_ios(conf):
 	conf.env.IOS_SDK_VERSION = sdk_info.get('Version', '')
 	conf.env.IOS_DEPLOYMENT_TARGET = conf.options.IOS_DEPLOYMENT_TARGET
 	conf.env.IOS_TRIPLE = triple
-	conf.msg('Selected iOS SDK', '%s (%s)' % (sdk, conf.env.IOS_SDK_VERSION))
+	conf.env.APPLE_PLATFORM = platform
+	conf.msg('Selected %s SDK' % { 'ios' : 'iOS', 'tvos' : 'tvOS' }[platform], '%s (%s)' % (sdk, conf.env.IOS_SDK_VERSION))
 	conf.msg('... target', triple)
 
 def options(opt):
 	ios = opt.add_option_group('iOS options')
 	ios.add_option('--ios-sdk', action='store', dest='IOS_SDK', default=None,
-		help='cross-compile for iOS with this iPhoneOS.sdk (copied from Xcode on a Mac)')
+		help='cross-compile for iOS or tvOS with this iPhoneOS.sdk or AppleTVOS.sdk (copied from Xcode on a Mac)')
 	ios.add_option('--ios-toolchain', action='store', dest='IOS_TOOLCHAIN',
 		default=os.path.join('dependencies', 'ios', 'toolchain'),
 		help='host toolchain built by tools/ios/build_toolchain.py [default: %default]')
 	ios.add_option('--ios-deployment-target', action='store', dest='IOS_DEPLOYMENT_TARGET',
-		default='17.0', help='minimum iOS version [default: %default]')
+		default='17.0', help='minimum iOS or tvOS version [default: %default]')
 	android = opt.add_option_group('Android options')
 	android.add_option('--android', action='store', dest='ANDROID_OPTS', default=None,
 		help='enable building for android, format: --android=<arch>,<toolchain>,<api>, example: --android=armeabi-v7a-hard,4.9,21')
@@ -434,10 +439,12 @@ def configure(conf):
 		# conf.env.ANDROID_OPTS = android
 		conf.env.DEST_OS2 = 'android'
 
-	# iOS before the generic __APPLE__ (darwin) mapping; clang defines this
-	# macro for iOS device and simulator targets only.
+	# iOS and tvOS before the generic __APPLE__ (darwin) mapping; clang defines
+	# these macros for their device and simulator targets only. tvOS is part
+	# of the ios (UIKit) family; APPLE_PLATFORM tells the two apart.
 	MACRO_TO_DESTOS = OrderedDict({ '__ANDROID__' : 'android',
-		'__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__' : 'ios' })
+		'__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__' : 'ios',
+		'__ENVIRONMENT_TV_OS_VERSION_MIN_REQUIRED__' : 'ios' })
 	for k in c_config.MACRO_TO_DESTOS:
 		# ordering is important; Waf's own table maps the iOS macro to darwin
 		MACRO_TO_DESTOS.setdefault(k, c_config.MACRO_TO_DESTOS[k])
