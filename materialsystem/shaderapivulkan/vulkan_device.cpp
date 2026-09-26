@@ -544,9 +544,6 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	features.occlusionQueryPrecise = supported.occlusionQueryPrecise;
 	features.samplerAnisotropy = supported.samplerAnisotropy;
 	m_preciseOcclusion = supported.occlusionQueryPrecise == VK_TRUE;
-	// D3D9's wireframe fill mode (materials with $wireframe, Wireframe_DX9).
-	m_fillModeNonSolid = supported.fillModeNonSolid == VK_TRUE;
-	features.fillModeNonSolid = supported.fillModeNonSolid;
 	// D3D9 user clip planes are clip distances. The planes travel in the push
 	// constants, so a device must also hold the widest block that carries them
 	// (PortalRefract's, kPortalPushBytes); without either, no clip planes are
@@ -3106,13 +3103,6 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		Log( "post-processing pipeline unavailable: %s\n", postError.c_str() );
 		DestroyPostPipeline();
 	}
-	// Optional: without it the legacy shader ports' passes are declined.
-	std::string legacyError;
-	if ( !InitLegacyPipeline( &legacyError ) )
-	{
-		Log( "legacy shader ports unavailable: %s\n", legacyError.c_str() );
-		DestroyLegacyPipeline();
-	}
 	// The PBR and GI stages bind their textures in frame and material sets
 	// (vulkan_descriptor_groups.h); without them those stages are declined.
 	std::string pbrError;
@@ -3167,12 +3157,11 @@ uint64_t CVulkanContext::RasterStateKey( const DynRasterState &state )
 	                     ( static_cast<uint32_t>( state.stencilDepthFail ) & 7u ) << 26 |
 	                     ( static_cast<uint32_t>( state.stencilPass ) & 7u ) << 29
 	               : 0u ) |
-	       ( state.alphaWrite ? 1ull << 36 : 0ull ) |
-	       ( state.depthBiasEnable ? 1ull << 37 : 0ull ) | ( state.wireframe ? 1ull << 38 : 0ull );
+	       ( state.alphaWrite ? 1ull << 36 : 0ull ) | ( state.depthBiasEnable ? 1ull << 37 : 0ull );
 }
 
 // The inverse of RasterStateKey. Bits 32-35 are PipelineKey's pass and sample
-// selection; bits 36-38 belong to the raster state.
+// selection; bits 36-37 belong to the raster state.
 CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key )
 {
 	const uint32_t k = static_cast<uint32_t>( key );
@@ -3186,7 +3175,6 @@ CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key 
 	state.colorWrite = ( ( k >> 16 ) & 1u ) != 0;
 	state.alphaWrite = ( key & ( 1ull << 36 ) ) != 0;
 	state.depthBiasEnable = ( key & ( 1ull << 37 ) ) != 0;
-	state.wireframe = ( key & ( 1ull << 38 ) ) != 0;
 	state.cullMode = static_cast<VkCullModeFlags>( ( k >> 17 ) & 3u );
 	state.stencilEnable = ( ( k >> 19 ) & 1u ) != 0;
 	if ( state.stencilEnable )
@@ -3504,8 +3492,6 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	VkPipelineRasterizationStateCreateInfo rs = t.rs;
 	rs.cullMode = state.cullMode;
 	rs.depthBiasEnable = state.depthBiasEnable ? VK_TRUE : VK_FALSE;
-	if ( state.wireframe && m_fillModeNonSolid )
-		rs.polygonMode = VK_POLYGON_MODE_LINE;
 	rs.frontFace = vertexInput == &m_worldVin || vertexInput == &m_worldPbrVin
 	                   ? VK_FRONT_FACE_COUNTER_CLOCKWISE
 	                   : VK_FRONT_FACE_CLOCKWISE;
@@ -3833,50 +3819,6 @@ void CVulkanContext::SetDirectLights( const DirectLight *lights, uint32_t count 
 		m_directLights[i] = lights[i];
 }
 
-bool CVulkanContext::EnsureUniformRingSlot( SkinUniformBuffer &slot, VkDeviceSize needed,
-    VkDeviceSize stride, VkDeviceSize range, const char *what )
-{
-	if ( needed <= slot.capacity )
-		return true;
-	CFrameCostScope cost( m_frameCost, kCostBufferGrow );
-	if ( slot.mapped )
-		vkUnmapMemory( m_device, slot.memory );
-	if ( slot.buffer != VK_NULL_HANDLE )
-		vkDestroyBuffer( m_device, slot.buffer, nullptr );
-	if ( slot.memory != VK_NULL_HANDLE )
-		vkFreeMemory( m_device, slot.memory, nullptr );
-	slot.mapped = nullptr;
-	slot.buffer = VK_NULL_HANDLE;
-	slot.memory = VK_NULL_HANDLE;
-	slot.capacity = 0;
-	const VkDeviceSize capacity = needed + needed / 2 + stride * 16;
-	std::string error;
-	if ( !CreateBuffer( capacity, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-	         &slot.buffer, &slot.memory, &error ) ||
-	     vkMapMemory( m_device, slot.memory, 0, capacity, 0, &slot.mapped ) != VK_SUCCESS )
-	{
-		Log( "%s buffer (%llu bytes) unavailable: %s\n", what,
-		    static_cast<unsigned long long>( capacity ), error.c_str() );
-		slot.mapped = nullptr;
-		return false;
-	}
-	slot.capacity = capacity;
-	VkDescriptorBufferInfo bi = {};
-	bi.buffer = slot.buffer;
-	bi.offset = 0;
-	bi.range = range;
-	VkWriteDescriptorSet wds = {};
-	wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	wds.dstSet = slot.set;
-	wds.dstBinding = 0;
-	wds.descriptorCount = 1;
-	wds.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-	wds.pBufferInfo = &bi;
-	vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
-	return true;
-}
-
 bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 {
 	offsets->clear();
@@ -3898,8 +3840,45 @@ bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 	// This frame's slot: its fence was waited on when the frame began, so the
 	// GPU no longer reads it.
 	SkinUniformBuffer &slot = m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()];
-	if ( !EnsureUniformRingSlot( slot, needed, stride, block, "skin constants" ) )
-		return false;
+	if ( needed > slot.capacity )
+	{
+		CFrameCostScope cost( m_frameCost, kCostBufferGrow );
+		if ( slot.mapped )
+			vkUnmapMemory( m_device, slot.memory );
+		if ( slot.buffer != VK_NULL_HANDLE )
+			vkDestroyBuffer( m_device, slot.buffer, nullptr );
+		if ( slot.memory != VK_NULL_HANDLE )
+			vkFreeMemory( m_device, slot.memory, nullptr );
+		slot.mapped = nullptr;
+		slot.buffer = VK_NULL_HANDLE;
+		slot.memory = VK_NULL_HANDLE;
+		slot.capacity = 0;
+		const VkDeviceSize capacity = needed + needed / 2 + stride * 16;
+		std::string error;
+		if ( !CreateBuffer( capacity, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		         &slot.buffer, &slot.memory, &error ) ||
+		     vkMapMemory( m_device, slot.memory, 0, capacity, 0, &slot.mapped ) != VK_SUCCESS )
+		{
+			Log( "skin constants buffer (%llu bytes) unavailable: %s\n",
+			    static_cast<unsigned long long>( capacity ), error.c_str() );
+			slot.mapped = nullptr;
+			return false;
+		}
+		slot.capacity = capacity;
+		VkDescriptorBufferInfo bi = {};
+		bi.buffer = slot.buffer;
+		bi.offset = 0;
+		bi.range = block;
+		VkWriteDescriptorSet wds = {};
+		wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		wds.dstSet = slot.set;
+		wds.dstBinding = 0;
+		wds.descriptorCount = 1;
+		wds.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		wds.pBufferInfo = &bi;
+		vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
+	}
 	for ( size_t i = 0; i < m_dynSkinConstants.size(); ++i )
 	{
 		std::memcpy( static_cast<unsigned char *>( slot.mapped ) + stride * i,
@@ -4761,7 +4740,8 @@ bool CVulkanContext::UploadManagedTexture(
 	    std::max( 1u, t.height >> level ), data, dataSize, outError, level, face );
 }
 
-bool IsSrgbFormat( VkFormat format )
+// Formats whose samples the hardware decodes from sRGB on every view.
+static bool IsSrgbFormat( VkFormat format )
 {
 	switch ( format )
 	{
@@ -5269,12 +5249,6 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 		d.skin = static_cast<int>( m_dynSkinConstants.size() );
 		m_dynSkinConstants.push_back( m_dynSkin );
 	}
-	if ( d.shaderIndex == kDynShaderLegacy )
-	{
-		d.legacyProgram = m_dynLegacyProgram;
-		d.legacy = static_cast<int>( m_dynLegacyConstants.size() );
-		m_dynLegacyConstants.push_back( m_dynLegacy );
-	}
 	return d;
 }
 
@@ -5318,8 +5292,6 @@ void CVulkanContext::EndDynamicDraw( uint32_t vertexCount, uint32_t indexCount )
 		m_dynIndices.resize( d.firstIndex );
 		if ( d.skin >= 0 )
 			m_dynSkinConstants.pop_back();
-		if ( d.legacy >= 0 )
-			m_dynLegacyConstants.pop_back();
 		m_dynDrawRecords.pop_back();
 		return;
 	}
@@ -5610,8 +5582,7 @@ static bool SrgbCapableShader( int shaderIndex )
 	       shaderIndex == CVulkanContext::kDynShaderPbrModel ||
 	       shaderIndex == CVulkanContext::kDynShaderLightmapped ||
 	       shaderIndex == CVulkanContext::kDynShaderPost ||
-	       shaderIndex == CVulkanContext::kDynShaderPaintBlob ||
-	       shaderIndex == CVulkanContext::kDynShaderLegacy;
+	       shaderIndex == CVulkanContext::kDynShaderPaintBlob;
 }
 
 bool CVulkanContext::RecordWantsSrgb( const DynDraw &r ) const
@@ -5771,7 +5742,6 @@ void CVulkanContext::DestroyDynamicMesh()
 	m_portalPipelines.clear();
 	DestroyPbrModelPipeline();
 	DestroyLightmappedPipeline();
-	DestroyLegacyPipeline();
 	DestroyPostPipeline();
 	DestroySkinPipeline();
 	DestroyPbrDirectPipeline();
@@ -6614,9 +6584,6 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		// The skin draws' pixel shader constants, in this frame's uniform buffer.
 		std::vector<uint32_t> skinOffsets;
 		const bool skinConstantsOk = UploadSkinConstants( &skinOffsets );
-		// The legacy ports' constants, in their own ring.
-		std::vector<uint32_t> legacyOffsets;
-		const bool legacyConstantsOk = UploadLegacyConstants( &legacyOffsets );
 		int openTarget = -1; // the swapchain pass opened above
 		bool openSrgb = firstPassSrgb; // entered through the target's sRGB view
 		VkPipeline boundPipeline = VK_NULL_HANDLE;
@@ -6869,7 +6836,6 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool pbrModelProbe = false;
 			bool lightmapped = false; // on skin's push block and constants
 			bool post = false;        // on the skin layout
-			bool legacy = false;      // the skin push block, its own layout
 			bool pbrWorldLights = false;
 			bool pbrWorldRuntime = false;
 			bool pbrWorldDelta = false;
@@ -7031,17 +6997,6 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				skin = true;
 				post = true;
 			}
-			else if ( d.shaderIndex == kDynShaderLegacy )
-			{
-				selected = d.worldMesh
-				               ? VK_NULL_HANDLE
-				               : LegacyPipeline( d.legacyProgram, d.raster, openSrgb, passSamples );
-				if ( selected == VK_NULL_HANDLE || d.legacy < 0 || !legacyConstantsOk ||
-				     static_cast<size_t>( d.legacy ) >= legacyOffsets.size() )
-					continue;
-				selectedLayout = m_legacyPipelineLayout;
-				legacy = true;
-			}
 			if ( selected == VK_NULL_HANDLE )
 				continue;
 			if ( selected != boundPipeline )
@@ -7049,16 +7004,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, selected );
 				boundPipeline = selected;
 			}
-			// The legacy port's samplers the shader decodes from sRGB itself.
-			int legacyManualDecode = 0;
-			if ( legacy )
-			{
-				legacyManualDecode = BindLegacySets(
-				    cmd, d, openTarget, legacyOffsets[static_cast<size_t>( d.legacy )] );
-				if ( legacyManualDecode < 0 )
-					continue;
-			}
-			if ( textured || pbrDirect || pbrWorld || portal || skin || legacy )
+			if ( textured || pbrDirect || pbrWorld || portal || skin )
 			{
 				vkCmdSetDepthBias( cmd, d.depthBiasConstant, 0.0f, d.depthBiasSlope );
 				vkCmdSetStencilCompareMask(
@@ -7366,23 +7312,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			float pushData[std::max( kPortalPushBytes, kSkinPushBytes ) / sizeof( float )];
 			std::memcpy( pushData, d.transform, sizeof( d.transform ) );
 			uint32_t pushFloats;
-			if ( legacy )
-			{
-				// shaders/legacy/legacy_common.glsl's block: cViewProj (the
-				// positions are in world space), the alpha test, the sRGB
-				// conversions the shader does itself, and the clip planes.
-				std::fill( pushData + 16, pushData + 28, 0.0f );
-				pushData[28] = d.alphaRef;
-				pushData[29] = ( d.colorFlags & kFragmentAlphaGreater ) ? 1.0f : 0.0f;
-				const bool encodeOutput =
-				    ( d.colorFlags & kColorSrgbWrite ) && !( decodedFlags & kColorSrgbWrite );
-				pushData[30] =
-				    static_cast<float>( legacyManualDecode | ( encodeOutput ? 65536 : 0 ) );
-				std::fill( pushData + 31, pushData + 36, 0.0f );
-				appendClipPlanes( pushData + 36 );
-				pushFloats = kSkinPushBytes / sizeof( float );
-			}
-			else if ( portal )
+			if ( portal )
 			{
 				// shaders/portal_refract.vert's block.
 				const PortalConstants &c = d.portal;
@@ -8663,8 +8593,6 @@ int CVulkanContext::PrewarmPipelines()
 			pipeline = LightmappedPaintPipeline( state, srgb, samples );
 		else if ( family == kPipelinePost )
 			pipeline = PostPipeline( state, srgb, samples );
-		else if ( family >= kPipelineLegacyFirst )
-			pipeline = LegacyPipeline( family - kPipelineLegacyFirst, state, srgb, samples );
 		if ( pipeline != VK_NULL_HANDLE )
 			++built;
 	}

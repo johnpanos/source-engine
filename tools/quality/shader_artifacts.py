@@ -137,13 +137,9 @@ def resolve_source(source_dir, name):
     # These aliases are declared by valve_perl_helpers.pl (ReadShaderList).
     alias = re.sub(r"_ps(?:20b|20|30)$", "_ps2x", name, flags=re.I)
     alias = re.sub(r"_vs(?:11|20|30)$", "_vsxx", alias, flags=re.I)
-    if alias.lower() + ".fxc" in files:
-        return files[alias.lower() + ".fxc"]
-    # A vs30 target built from a _vs20 source (ReadShaderList's s/_vs20/_vs30/).
-    vs20 = re.sub(r"_vs30$", "_vs20", name, flags=re.I)
-    if vs20 != name and vs20.lower() + ".fxc" in files:
-        return files[vs20.lower() + ".fxc"]
-    raise ValueError(f"no repository FXC source for demanded shader {name}")
+    if alias.lower() + ".fxc" not in files:
+        raise ValueError(f"no repository FXC source for demanded shader {name}")
+    return files[alias.lower() + ".fxc"]
 
 
 def parse_plan(text):
@@ -226,10 +222,6 @@ def flatten_source(source, source_dir, sources, active=()):
         match = re.search(rb'#include\s+"([^"]+)"', line, flags=re.I)
         if match:
             included = source_dir / match[1].decode().replace("\\", "/")
-            if not included.exists():
-                # FXC resolves includes case-insensitively (e.g. "common_ps_Fxc.h").
-                folded = {p.name.lower(): p for p in included.parent.iterdir()}
-                included = folded.get(included.name.lower(), included)
             output.append(flatten_source(included, source_dir, sources, (*active, source)))
         else:
             output.append(line)
@@ -325,8 +317,8 @@ def compile_shader(compiler, source, arguments, values, output, timeout):
     return bytecode
 
 
-def generate_plan(name, source_dir, profile):
-    """(source, plan text, parsed plan) of one shader, from fxc_prep.pl."""
+def build_one(name, bases, source_dir, output, compiler, jobs, timeout, profile_path, profile,
+              cache_root=None, expected_selector=None):
     source = resolve_source(source_dir, name)
     with tempfile.TemporaryDirectory(prefix="source-shader-plan-") as temp:
         work = Path(temp)
@@ -337,12 +329,7 @@ def generate_plan(name, source_dir, profile):
                                  source.name + "-----" + name], cwd=work, capture_output=True,
                                 text=True, timeout=30, check=True)
         plan_text = (work / "filelistgen.txt").read_text()
-    return source, plan_text, parse_plan(plan_text)
-
-
-def plan_identity(name, source, plan, source_dir, profile_path, profile, expected_selector=None):
-    """(identity, expanded source, input hashes) keying a shader's compiled output:
-    the compiler, the plan, and every source, selector and tool it depends on."""
+    plan = parse_plan(plan_text)
     selectors = {p.name.lower(): p for p in (ROOT / profile["selector_directory"]).glob("*.inc")}
     selector = selectors[name.lower() + ".inc"]
     if expected_selector is not None and digest(selector.read_bytes()) != expected_selector:
@@ -355,14 +342,6 @@ def plan_identity(name, source, plan, source_dir, profile_path, profile, expecte
         sources[str(path.relative_to(ROOT))] = digest(path.read_bytes())
     identity = digest(json.dumps({"compiler": profile["compiler"]["sha256"], "plan": plan,
                                   "sources": sources}, sort_keys=True).encode())
-    return identity, expanded, sources
-
-
-def build_one(name, bases, source_dir, output, compiler, jobs, timeout, profile_path, profile,
-              cache_root=None, expected_selector=None):
-    source, plan_text, plan = generate_plan(name, source_dir, profile)
-    identity, expanded, sources = plan_identity(name, source, plan, source_dir, profile_path,
-                                                profile, expected_selector)
     combos = valid_combos(plan, bases)
     cache = (cache_root or output / "bytecode") / identity / name
     shaders = {}
