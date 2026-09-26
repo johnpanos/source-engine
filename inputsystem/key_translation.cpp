@@ -711,13 +711,17 @@ ButtonCode_t ButtonCode_StringToButtonCode( const char *pString, bool bXControll
 			return (ButtonCode_t)i;
 	}
 
-	if ( bXController )
+	// The controller names are accepted whether or not a controller is
+	// attached yet: bindings are written with them while one is
+	// (ButtonCode_ButtonCodeToString), and config.cfg is read at startup,
+	// before a controller connects. Gating them on bXController dropped every
+	// controller binding on the next launch on platforms whose main table
+	// uses the JOY names. The main table wins on any name both hold.
+	NOTE_UNUSED( bXController );
+	for ( int i = 0; i < ARRAYSIZE( s_pXControllerButtonCodeNames ); ++i )
 	{
-		for ( int i = 0; i < ARRAYSIZE(s_pXControllerButtonCodeNames); ++i )
-		{
-			if ( !Q_stricmp( s_pXControllerButtonCodeNames[i], pString ) )
-				return (ButtonCode_t)(JOYSTICK_FIRST_BUTTON + i);
-		}
+		if ( !Q_stricmp( s_pXControllerButtonCodeNames[i], pString ) )
+			return (ButtonCode_t)( JOYSTICK_FIRST_BUTTON + i );
 	}
 
 	return BUTTON_CODE_INVALID;
