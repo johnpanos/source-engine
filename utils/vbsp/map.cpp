@@ -2954,6 +2954,16 @@ ChunkFileResult_t LoadConnectionsKeyCallback(const char *szKey, const char *szVa
 
 ChunkFileResult_t CMapFile::LoadConnectionsKeyCallback(const char *szKey, const char *szValue, LoadEntity_t *pLoadEntity)
 {
+	AddConnection( pLoadEntity->pEntity, szKey, szValue );
+	return ( ChunkFile_Ok );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Appends one connection to an entity's key/value pairs (the VMF
+//          loader's connections chunk and the authored input share it).
+//-----------------------------------------------------------------------------
+void CMapFile::AddConnection( entity_t *pEntity, const char *szKey, const char *szValue )
+{
 	//
 	// Create new input and fill it out.
 	//
@@ -2972,20 +2982,18 @@ ChunkFileResult_t CMapFile::LoadConnectionsKeyCallback(const char *szKey, const 
 	//
 	pOutput->next = NULL;
 
-	if (!pLoadEntity->pEntity->epairs)
+	if ( !pEntity->epairs )
 	{
-		pLoadEntity->pEntity->epairs = pOutput;
+		pEntity->epairs = pOutput;
 	}
 	else
 	{
 		epair_t *ep;
-		for ( ep = pLoadEntity->pEntity->epairs; ep->next != NULL; ep = ep->next )
+		for ( ep = pEntity->epairs; ep->next != NULL; ep = ep->next )
 		{
 		}
 		ep->next = pOutput;
 	}
-
-	return(ChunkFile_Ok);
 }
 
 

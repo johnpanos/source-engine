@@ -1,7 +1,8 @@
 # RFC 0009 progress: USD-native map authoring
 
 Updated: 2026-09-25
-Portfolio row: R59 (U0–U2), active. R60 (U3–U4) is planned.
+Portfolio row: R59 (U0–U2), active: the U0, U1 and U2 slices are done on
+Linux desktop, and its prerequisites are open. R60 (U3–U4) is planned.
 
 Direction (user, 2026-09-25): Hammer and the game evolve together. The target
 is a working author → compile → play loop, not legacy-editor parity. Each
@@ -321,7 +322,7 @@ exactly one `corpus.usd-authoring.validator` row. Verified here:
   deviations.
 
 
-## U2: prop role cohorts and geometric entities (active, 2026-09-25)
+## U2: prop role cohorts and geometric entities (slice done, 2026-09-25)
 
 Scope, bounded:
 
@@ -339,4 +340,225 @@ Scope, bounded:
 - Runtime evidence headless only (dedicated server or windowless client).
 - Stages keep U1's job-ready shape.
 
-Implemented in an isolated worktree; results are recorded here when merged.
+It closes no R59 criterion by itself: R59's prerequisites (R05, R48, R53,
+R54) are open, and the evidence is Linux desktop only.
+
+### Decisions
+
+- **Profile version 2** (`source_authoring_v1.json`, one file). New roles,
+  classes, properties and class values carry `"since": 2`. A stage that
+  declares version 1 validates exactly as before, and v2 features in it fail
+  as unsupported. The room fixture stays v1; the new role fixture declares v2.
+- **Supported keys.**
+  - `prop_dynamic`: `id`, `model`, `collision` (`vphysics` or `none`, required;
+    `bbox` reserved), optional `skin` and `defaultAnimation`. `parent` is
+    declared reserved, so parenting fails `property.unsupported`.
+  - Triggers: optional `touchFilter` (`clients`, `physics`) and
+    `connections`.
+  - `func_movelinear` (the moving brush; it fits the brush-entity profile):
+    authored surfaces like a world solid, `moveDelta` (a displacement in the
+    prim's space) and `moveSeconds` (travel time, so the speed needs no unit
+    conversion). `func_door` and other classes fail
+    `entity.class-unsupported`.
+  - A key that another role or class declares fails `property.misplaced` and
+    names its owners (for example `massScale` on a `prop_dynamic`). Keys no
+    one declares still fail `property.unknown`.
+- **Connections.** `string[] sourcemap:connections`, one
+  `"Output target-id Input [parameter]"` per entry. The target is an id, never
+  a name, so renames and regroups keep it. The profile's `io` table declares
+  each trigger class's outputs and each target's inputs (`prop_dynamic`
+  `SetAnimation`/`SetDefaultAnimation` with a sequence, `func_movelinear`
+  `Open`/`Close`). New codes: `io.invalid`, `io.target-missing`,
+  `io.input-unsupported`.
+- **Compile policy version 2** (`source_compile_v1.json`):
+  - `targetname` = the id for `prop_dynamic`, `prop_physics` and brush
+    entities; lights and the player start stay unnamed.
+  - `prop_dynamic` `solid` from its collision (6 or 0), `DefaultAnim` from its
+    default animation.
+  - Trigger `spawnflags` from the touch filter (clients 1, physics 8;
+    unauthored = clients, as in v1).
+  - Connections travel as typed brush-set records (never key strings); `vbsp
+    -authored` appends them with `CMapFile::AddConnection`, which the VMF
+    loader's connections chunk now shares. Delay 0, fire every time.
+  - `func_movelinear`: `movedir` is the QAngle of the move, `movedistance` its
+    length, `speed` = distance / seconds; its faces keep their materials.
+  - Bake policy `prop-static-casts-baked-shadows/v1`: every `prop_static`
+    casts lightmap shadows (`disableshadows 0`; vrad traces its `.phy`, or a
+    hull without one). `collision = none` changes game collision only.
+    Dynamic and physics props move, so the bake ignores them.
+  - Model roles (content stage): a `prop_static` model must be `$staticprop`
+    (vbsp's rule) → `compile.model-role-mismatch`; a `prop_dynamic` must have
+    its default animation and every sequence a `SetAnimation` names →
+    `compile.model-sequence-missing`. `.phy` is required for `prop_physics`
+    and for any prop with `collision = vphysics`. The MDL header reader is
+    `source_model.read_model` (flags, hull, sequence labels).
+  - This changes the U1 room's output: its trigger and cube now carry
+    targetnames. The `run/maps/usd_room` package predates it.
+- **Stages.** Still U1's nine stages, each with declared inputs, outputs and
+  hashes, one ordered publish, serial (`vvis`/`vrad` `-threads 1`), no private
+  pools. The role checks live in the validate, content, brushset and check
+  stages.
+- **Runtime probes** (`game/server/entitylist.cpp`, read-only, server admin
+  only): `map_entity_probe <name>` (origin, movetype, solid, vphysics motion,
+  gravity and shadow, asleep, sequence, cycle, game time),
+  `map_entity_probe_schedule <seconds> <count> <then> <names…>` (samples at
+  game-time intervals from a per-frame game system, then hands `<then>` to the
+  server console), and `map_trace_probe` (a `MASK_SOLID` ray or hull through
+  world, static props and entities; reports a static-prop hit and its index).
+
+### Findings
+
+- A dedicated server never simulates without players (engine `SV_Frame` only
+  runs `SV_Think(true)` with a player), so falling, animation, triggers and
+  movers are observed in the windowless client. The dedicated server checks
+  the spawn state and the static-prop traces.
+- Console `wait`s do not measure game time: a config's 1,200 frames of waits
+  ran within one game tick. The client therefore holds the physics clock
+  (`+phys_timescale 0`) until its config runs after U1's wait, releases it,
+  and samples with the game-time schedule.
+- A one-shot `SetAnimation` returns to the default animation when it ends
+  (`CDynamicProp`), so the oracle checks that the set sequence plays (its
+  cycle advances), not that it is still playing at the end.
+- A `prop_physics` whose model has no physics prop data is removed at spawn.
+- `archlint inventory --verify` reports the loader inventory stale at the
+  base commit (line shifts in `unittests/tier1test/moduleloadtelemetrytest.cpp`);
+  this slice adds no loader site. The shared tree has an uncommitted fix.
+
+### Evidence
+
+Worktree `agent-aa92ffab396e8aea9`, Linux desktop, 2026-09-25; local
+evidence in its ignored `quality-results/rfc0009-u2-20260925/`. The evidence
+below was produced on base `002d968e`. After rebasing onto `2b98a129`, the
+tools, `test_usd_authoring` and `test_usd_map_compile` (175 tests) and the
+quality self-tests were rerun and pass; the client and dedicated builds were
+not rebuilt (that commit changes the native Vulkan backend, physics
+tests and build scripts, not the server game code or the probes).
+Builds from this tree: `build-u2-tools` (`--tools`), `build-u2-dedicated`
+(`--dedicated … --build-games=portal`) and `build-u2-client`
+(`--platform-provider=sdl3 --render-backend=native-vulkan
+--build-games=portal`), gcc release.
+
+- **Fixture** `quality/fixtures/usd-authoring/roles/`: reuses the room's
+  world and prefab layers. It has a `prop_static` desk (`vphysics`), a
+  `prop_static` desk with `collision = none`, the `prop_physics` cube 160 units
+  up over a trigger (clients and physics), a floating `prop_dynamic` switch
+  (`models/props/switch001.mdl`, default `idle`), a `func_movelinear` lift
+  (64 units up in 1 s) and the light. The trigger's connections set the
+  switch's animation to `down` and open the lift.
+- **Validator:** 814 checks, 0 failures on the role fixture (the room: 661;
+  the per-property version gate adds one check per authored property).
+  `test_usd_authoring`: 119 tests (was 90): 21 role-fixture bad variants plus
+  a `func_door` room variant, each with exactly its code; the role records;
+  the move under a transform; a v1-only copy that is clean; a flattened USDC
+  save and reopen with identical objects and no id diff; and a swap of two
+  props' roles, which fails twice (`property.misplaced` on the switch, and
+  `io.input-unsupported` for the trigger's `SetAnimation` on what is now a
+  `prop_static`).
+- **Compiler:** the role fixture compiles and publishes with 6,684
+  independent output checks. New checks: targetnames; dynamic `solid` and
+  `DefaultAnim`; physics props never animated; trigger `spawnflags`; every
+  connection against its target's name and the policy; the lift's move
+  recomputed from `movedir`/`movedistance`/`speed` against the authored
+  displacement and duration; its faces' materials and st; `STATIC_PROP_NO_SHADOW`
+  clear; and a baked-shadow oracle: the floor luxel where the light's line
+  through each desk's top lands is 0.24 (collision desk) and 0.16 (none) of
+  its mirror point's, limit 0.6. `test_usd_map_compile`: 56 tests (was 31).
+- **Negative fixtures** (the published store stays byte-identical):
+  - roles swapped against the published package: `id.role-changed`, twice;
+  - roles and their keys swapped in a fresh document:
+    `compile.model-role-mismatch` (`switch001.mdl` is not `$staticprop`);
+  - a `prop_physics` without `.phy` (the cake): `compile.model-collision-missing`;
+  - `massScale` on the dynamic prop: `property.misplaced`;
+  - parenting: `property.unsupported`; an unknown key: `property.unknown`;
+  - `SetAnimation dance` and a default animation `wave`:
+    `compile.model-sequence-missing`; a missing target: `io.target-missing`.
+- **Runtime** (`usd_map_runtime.py --roles`, published map
+  `run/maps/usd_roles`, BSP2 sha256 `d14fddaa…`):
+  - Client (null renderer, SDL offscreen, no window, IVP), 120 checks, 0
+    failures. 40 samples 0.1 s apart from t = 2.355 s to 6.24 s:
+    - the cube is a gravity body (movetype 6, no shadow); z 159.6 → 20.48
+      (its hull rests at 20.25), after one bounce, then asleep;
+    - the trigger fires both connections at t = 2.52 s (the engine's
+      `developer 2` I/O trace), with no unhandled input;
+    - the lift is a pusher (movetype 7) and rises 0 → 64 with 12 samples in
+      between;
+    - the switch keeps its placement (96, 0, 96) in every sample, is never a
+      simulated body (movetype 7, no gravity), starts in `idle`, plays
+      `down` (cycle 0 → 0.56 → 1) and returns to `idle`;
+    - a ray and a player hull dropped on the collision desk stop at z 37.707
+      (model top 37.93) as static prop 1; on the `none` desk both reach the
+      floor (z 0.031).
+  - Dedicated server, 111 checks, 0 failures: the spawn state (physics body,
+    non-physics switch at its placement in `idle`, closed pusher lift) and the
+    same traces. U1's room still passes its U1 runtime smoke on these builds
+    (dedicated 62, client 63).
+  - `test_usd_map_runtime`: 5 tests.
+- **Mutants**, all caught by the intended check:
+  - 13 in `test_usd_map_compile`: dynamic prop emitted as `prop_physics`;
+    cube and switch classes swapped in the brush set; `.phy` requirement
+    dropped (cake); touch filter ignored; a connection dropped; lift speed and
+    direction; lift faces given another material; desk without baked shadow
+    (both the lump flag and the luxel oracle fail); desk not solid; default
+    animation dropped; switch unnamed.
+  - 3 runtime mutants compiled past the output checks: the switch as a
+    `prop_physics` (removed at spawn, never sampled); a clients-only trigger
+    (no connection fires, the lift stays shut, the switch does not animate,
+    the cube still falls); the collision desk made non-solid (traces reach
+    the floor).
+  - 12/12 validator mutants (version gates, misplaced keys, class merge,
+    class-value gate, io output/target/input, brush-entity surfaces, move
+    transform, non-zero move, sequence names) and 8/8 compiler/checker
+    mutants (model-role and sequence checks, targetnames, touch filter,
+    connection comparison, shadow oracle, move recomputation, default
+    animation), each against a clean baseline run.
+- **Conformance:** `corpus.usd-authoring.validator` 127 checks,
+  `corpus.usd-map.compiler` 64, new `product.usd-map.roles-runtime` 13; all
+  optional, all pass.
+- **Repository checks:** quality self-tests (fast tier, 1,030) pass; archlint
+  check and baseline pass; stylelint clean on the changed C/C++ lines.
+
+### Not done or unverified
+
+- Parenting, `bbox` collision, other moving brushes (`func_door`, …), NPC and
+  pushable touch filters, outputs of props and movers, delays and fire counts
+  other than the policy's.
+- Behaviour on the dedicated server (no player, no simulation) and under
+  Box3D: the client runs `-physics vphysics` (IVP).
+- No native Vulkan frame of the role map; no Android or Apple run; no hosted
+  CI lane.
+- The shadow oracle assumes a scene symmetric about the light's y plane, as
+  the fixtures are; props it cannot measure are listed, not failed. There is
+  no per-vertex static-prop lighting or Cycles bake of props.
+- "Save and reopen" is a USD flatten and export, not an editor session (U3).
+- The model-role check reads the MDL header only (flag, hull, sequences); a
+  `.phy` is checked for existence, not for a match to its model.
+
+Reproduce, with the tools, builds and content above:
+
+```sh
+PYTHONPATH=build/toolchains/openusd-25.11/lib/python /usr/bin/python3.12 \
+  tools/quality/usd_map_compile.py compile quality/fixtures/usd-authoring/roles/roles.usda \
+  --map usd_roles --tools build-u2-tools/install --runtime run/runtime
+python3 tools/quality/usd_map_runtime.py --map-file run/maps/usd_roles/maps/usd_roles.bsp \
+  --map usd_roles --report <build>/stages/validate/authoring-report.json \
+  --provenance run/maps/usd_roles/provenance.json --roles --runtime run/runtime \
+  --build build-u2-client --product client --out <dir>
+SOURCE_USD_TOOLCHAIN=build/toolchains/pbrt-map-toolchain.json \
+SOURCE_USD_MAP_TOOLS=$PWD/build-u2-tools/install \
+SOURCE_USD_MAP_CLIENT_BUILD=$PWD/build-u2-client \
+SOURCE_USD_MAP_DEDICATED_BUILD=$PWD/build-u2-dedicated \
+  python3 tools/quality/conformance.py check --rfc 0009 --out <dir>
+```
+
+**U2 merged into the shared tree (2026-09-25).** Commit `08e9d4d2` was
+applied without a commit and verified here:
+
+- `build.tools`, `build.portal-native`, `build.dedicated` and `build.hl2`
+  pass (`libserver.so` carries the new probe commands).
+- `corpus.usd-authoring.validator`: 127 checks.
+- `corpus.usd-map.compiler`: 64 checks.
+- `product.usd-map.roles-runtime`: 13 checks, run against the rebuilt
+  `build-r03-portal-native` client and `build-r03-dedicated` server.
+- `usd_room` was republished with the version 2 compiler (6,598 output
+  checks), so `./play usd_room` matches the current tools.
+

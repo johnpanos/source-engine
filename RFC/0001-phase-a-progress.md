@@ -434,6 +434,14 @@ legacy test host recorded as crashing on both compilers, now passes.
     `-clang` are recorded as `pass` (agent decision under the user's
     standing instruction), with a 25 s budget for a complete run.
 
+**Line-only drift (2026-09-25).** Site fingerprints already exclude line
+numbers, yet `inventory --verify` failed whenever an edit above a loader
+site moved it. That happened three times in one day, and each time forced a
+rewrite that reviewed nothing. `--verify` now compares sites without their
+line numbers and reports how many only moved; any added, removed or changed
+site still fails. `--write` still records current lines. There are 2 new
+tests (112 archlint tests).
+
 Still open for R07: the telemetry cases for failed, duplicate and nested
 requests (the concurrent and nested tests now run to completion), the legacy
 bridge, and fake/native suites. No TSan run of tier0 was made; the logger

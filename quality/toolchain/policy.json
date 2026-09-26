@@ -35,7 +35,9 @@
       },
       "msvc": {
         "std": "/std:c++20",
-        "required": ["/Zc:__cplusplus"],
+        "required": [
+          "/Zc:__cplusplus"
+        ],
         "forbidden": []
       },
       "probe": "quality/toolchain/probes/cxx20.cpp"
@@ -53,7 +55,10 @@
       },
       "msvc": {
         "std": "/std:c++20",
-        "required": ["/permissive-", "/Zc:__cplusplus"],
+        "required": [
+          "/permissive-",
+          "/Zc:__cplusplus"
+        ],
         "forbidden": []
       },
       "probe": "quality/toolchain/probes/cxx20.cpp"
@@ -72,7 +77,9 @@
       },
       "msvc": {
         "std": "/std:c++20",
-        "required": ["/Zc:__cplusplus"],
+        "required": [
+          "/Zc:__cplusplus"
+        ],
         "forbidden": []
       },
       "probe": "quality/toolchain/probes/cxx20.cpp"
@@ -340,12 +347,35 @@
           "clang++"
         ],
         "verified_by": "toolchain_boundary.py verify (link-closure ABI check)"
+      },
+      {
+        "id": "declared-abi-island",
+        "description": "A linked product may contain a declared island of targets built with the other dual-ABI value, only as listed in abi.islands, and only while its edge carries ABI-neutral symbols and shares no first-party inline definitions.",
+        "compilers": [
+          "g++",
+          "clang++"
+        ],
+        "verified_by": "toolchain_boundary.py TOOLCHAIN011 (object-level symbol check)"
       }
     ],
     "unsupported_combinations": [
       "Different compilers or standard libraries within one product binary or loaded module set",
       "Different _GLIBCXX_USE_CXX11_ABI values on either side of any linked boundary",
       "Standard-library containers, smart pointers, Expected or exceptions across a legacy facade (RFC 0006)"
+    ],
+    "islands": [
+      {
+        "id": "vbsp2-openusd",
+        "host": "vbsp2",
+        "members": [
+          "vbspworldstage",
+          "sourceWorld"
+        ],
+        "value": "1",
+        "owner": "R54",
+        "reason": "OpenUSD requires the current libstdc++ string ABI; vbsp2's legacy translation units use ABI 0. The World Stage writer (utils/vbsp/worldstage.cpp) and the generated schema library are the ABI 1 island, called through the C-compatible WriteWorldStageGeometry.",
+        "verified_by": "toolchain_boundary.py TOOLCHAIN011: no symbol with a dual-ABI type crosses the island edge, and no first-party inline symbol is defined on both sides (object-level nm check)"
+      }
     ]
   }
 }

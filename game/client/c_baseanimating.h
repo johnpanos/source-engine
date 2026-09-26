@@ -96,6 +96,10 @@ public:
 	DECLARE_PREDICTABLE();
 	DECLARE_INTERPOLATION();
 
+	// Capture and restore bone-setup state (bone_setup_shadow_verify.cpp).
+	friend class CBoneSetupShadowCohort;
+	friend class CBoneSetupShadowVerifier;
+
 	enum
 	{
 		NUM_POSEPAREMETERS = 24,

@@ -386,8 +386,8 @@ class LegacyBsp:
         index = LUMP_WORLDLIGHTS_HDR if hdr and self.lumps[LUMP_WORLDLIGHTS_HDR][1] else \
             LUMP_WORLDLIGHTS
         raw = self.lump(index)
-        # The compile tools write version-1 records under lump version 0; the
-        # length decides (as bsp_worldlights.py does).
+        # The compile tools wrote version-1 records under lump version 0 until
+        # 2026-09-25; the length decides (as bsp_worldlights.py does).
         record = WORLDLIGHT_V1 if self.lump_version(index) >= 1 or \
             len(raw) % WORLDLIGHT_V0.size else WORLDLIGHT_V0
         if len(raw) % record.size:

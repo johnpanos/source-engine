@@ -13,6 +13,10 @@ they are tied to the MDL by its checksum, which is unchanged.
 Only studiohdr_t fields are edited; the new strings are appended after the
 original data and `length` grows to cover them, so every existing offset in
 the file stays valid.
+
+`read_model()` reads the header facts a map compiler checks a prop role
+against (RFC 0009 U2): the $staticprop flag, the movement hull and the
+sequence names.
 """
 
 import struct
@@ -26,6 +30,11 @@ LENGTH_OFFSET = 76
 TEXTURES_OFFSET = 204      # numtextures, textureindex
 CD_TEXTURES_OFFSET = 212   # numcdtextures, cdtextureindex
 TEXTURE_RECORD_BYTES = 64  # mstudiotexture_t
+HULL_OFFSET = 104          # hull_min, hull_max
+FLAGS_OFFSET = 152
+SEQUENCES_OFFSET = 188     # numlocalseq, localseqindex
+SEQDESC_BYTES = 212        # mstudioseqdesc_t
+STUDIOHDR_FLAGS_STATIC_PROP = 0x10
 
 
 class ModelError(ValueError):
@@ -130,3 +139,31 @@ def retarget(resolver, source_model, out_root, model_path, material_directory):
             "source_material_directories": material_directories(data),
             "material_directory": material_directory,
             "textures": textures(data)}
+
+
+def read_model(data):
+    """{version, static_prop, hull: ((min), (max)), sequences: [label]} of a
+    studio model, or ModelError."""
+    version = header(data)
+    flags = struct.unpack_from("<i", data, FLAGS_OFFSET)[0]
+    count, index = struct.unpack_from("<ii", data, SEQUENCES_OFFSET)
+    if count < 0 or index < 0 or index + count * SEQDESC_BYTES > len(data):
+        raise ModelError("sequence table is outside the file")
+    sequences = []
+    for i in range(count):
+        record = index + i * SEQDESC_BYTES
+        label = struct.unpack_from("<i", data, record + 4)[0]
+        try:
+            sequences.append(c_string(data, record + label))
+        except (ValueError, UnicodeDecodeError) as error:
+            raise ModelError("sequence %d has no readable label: %s" % (i, error))
+    return {"version": version, "static_prop": bool(flags & STUDIOHDR_FLAGS_STATIC_PROP),
+            "hull": (struct.unpack_from("<3f", data, HULL_OFFSET),
+                     struct.unpack_from("<3f", data, HULL_OFFSET + 12)),
+            "sequences": sequences}
+
+
+def find_sequence(model, name):
+    """The index of sequence `name`: Source looks labels up without case."""
+    return next((i for i, label in enumerate(model["sequences"])
+                 if label.lower() == name.lower()), None)

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 #
-# Native USD map compiler (RFC 0009 U1, roadmap R59): an authored USD stage
-# (source-authoring v1) -> a playable BSP2, with no VMF and no prior BSP.
+# Native USD map compiler (RFC 0009 U1-U2, roadmap R59): an authored USD
+# stage (source-authoring v1 or v2) -> a playable BSP2, with no VMF and no
+# prior BSP.
 #
 #   PYTHONPATH=build/toolchains/openusd-25.11/lib/python /usr/bin/python3.12 \
 #       tools/quality/usd_map_compile.py compile \
@@ -23,12 +24,16 @@
 #             the published package's provenance) an id whose role changed
 #             fails (id.role-changed). The layers it resolved join its inputs.
 #   content   every model (and the collision its role needs) and material is in
-#             the game content; records the hash of each file it resolved;
+#             the game content, each model can serve its role (a prop_static
+#             model is $staticprop; a prop_dynamic has the sequences its
+#             default animation and incoming SetAnimation connections name);
+#             records the hash of each file it resolved;
 #   game      the private compile game (gameinfo.txt, lights.rad) over the
 #             runtime's content;
 #   brushset  the typed intermediate source-authored-brushset/v1 (JSON):
 #             entities in output order, each world or brush-entity solid as its
-#             authored planes, polygons, materials and affine st;
+#             authored planes, polygons, materials and affine st, and entity
+#             connections as typed records (never key strings);
 #   vbsp      `vbsp -authored` builds its brushes and entities from the brush
 #             set in memory (utils/vbsp/authoredmap.cpp) and runs its normal
 #             CSG, BSP, portals, leak detection and writer; a leak fails;
@@ -65,7 +70,8 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
 COMPILE_PROFILE = ROOT / "quality" / "usd_authoring" / "source_compile_v1.json"
-ROLE_ORDER = ("entity_point", "entity_brush", "prop_static", "prop_physics", "light")
+ROLE_ORDER = ("entity_point", "entity_brush", "prop_static", "prop_dynamic", "prop_physics",
+              "light")
 # No texture lights: authored maps light with light entities. vrad's parser
 # has no comment syntax, so the file is empty.
 EMPTY_LIGHTS_RAD = ""
@@ -138,6 +144,44 @@ def number(value):
     return "0" if text in ("-0", "") else text
 
 
+def authored_surfaces(record):
+    """The solid's faces carry authored materials (world solids and brush
+    entities of a class with authored surfaces), not a compiler tool material."""
+    return bool(record.get("surfaces")) and all("material" in s for s in record["surfaces"])
+
+
+def direction_angles(vector):
+    """The QAngle (pitch yaw roll) whose forward vector is `vector`: Source's
+    AngleVectors inverted (roll is free, so 0)."""
+    horizontal = math.hypot(vector[0], vector[1])
+    pitch = math.degrees(math.atan2(-vector[2], horizontal))
+    yaw = math.degrees(math.atan2(vector[1], vector[0])) if horizontal > 1e-9 else 0.0
+    return [pitch, yaw, 0.0]
+
+
+def movelinear_keys(record):
+    """func_movelinear keys for a validated move (source_compile_v1.json
+    "movelinear")."""
+    distance = math.sqrt(sum(x * x for x in record["move"]))
+    return {"movedir": " ".join(number(a) for a in direction_angles(record["move"])),
+            "movedistance": number(distance),
+            "speed": number(distance / record["move_seconds"])}
+
+
+def trigger_spawnflags(record, profile):
+    policy = profile["trigger_touch_filter"]
+    return str(sum(policy["flags"][name] for name in
+                   sorted(set(record.get("touch_filter", policy["default"])))))
+
+
+def connection_records(record, profile):
+    """Typed entity I/O for the brush set: the target's targetname is its id."""
+    policy = profile["connections"]
+    return [{"output": c["output"], "target": c["target"], "input": c["input"],
+             "parameter": c["parameter"], "delay": policy["delay"], "times": policy["times"]}
+            for c in record.get("connections", [])]
+
+
 def projected_st(face, units):
     """World-aligned st on the face's dominant axis, `units` per repeat: the
     mapping of a brush entity's tool faces, which the profile leaves unauthored."""
@@ -163,6 +207,8 @@ def build_brushset(report, profile, name):
     provenance = []
 
     def solid(record, material=None):
+        """A brush from an authored solid; `material` replaces the authored
+        surfaces' materials (a tool material)."""
         counters["brush"] += 1
         sides, keys = [], []
         surfaces = record.get("surfaces") or [{} for _ in record["faces"]]
@@ -197,14 +243,26 @@ def build_brushset(report, profile, name):
         output = {"entity_class": classname}
         if "origin" in record and role != "entity_brush":
             entity["origin"] = record["origin"]
-        if role in ("entity_point", "prop_static", "prop_physics"):
+        if role in ("entity_point", "prop_static", "prop_dynamic", "prop_physics"):
             entity["angles"] = record["angles"]
-        if role in ("prop_static", "prop_physics"):
+        if role in ("prop_static", "prop_dynamic", "prop_physics"):
             entity["keys"]["model"] = record["model"]
+        if role in profile["targetname"]["roles"]:
+            entity["keys"]["targetname"] = record["id"]
         if role == "prop_static":
             entity["keys"]["solid"] = profile["static_prop_solid"][record["collision"]]
             output = {"static_prop": counters["static_prop"]}
             counters["static_prop"] += 1
+        if role == "prop_dynamic":
+            entity["keys"]["solid"] = profile["dynamic_prop_solid"][record["collision"]]
+            if "default_animation" in record:
+                entity["keys"]["DefaultAnim"] = record["default_animation"]
+        if classname.startswith("trigger_"):
+            entity["keys"]["spawnflags"] = trigger_spawnflags(record, profile)
+        if classname == "func_movelinear":
+            entity["keys"].update(movelinear_keys(record))
+        if record.get("connections"):
+            entity["connections"] = connection_records(record, profile)
         if "skin" in record:
             entity["keys"]["skin"] = str(record["skin"])
         if "mass_scale" in record:
@@ -212,7 +270,8 @@ def build_brushset(report, profile, name):
         if role == "light":
             entity["keys"].update(light_keys(record, profile))
         if role == "entity_brush":
-            brush, brush_output = solid(record, profile["brush_entity_material"])
+            brush, brush_output = solid(record, None if authored_surfaces(record) else
+                                        profile["brush_entity_material"])
             entity["solids"] = [brush]
             output.update(brush_output)
         entities.append(entity)
@@ -226,11 +285,14 @@ def build_brushset(report, profile, name):
 
 
 def check_content(report, profile, resolver):
-    """Models, the collision each role needs, and materials exist. Returns the
-    resolved files with their hashes."""
+    """Models, the collision each role needs, and materials exist, and each
+    model can serve its role. Returns the resolved files with their hashes."""
+    import source_model
     missing = {"compile.model-missing": [], "compile.model-collision-missing": [],
-               "compile.material-missing": []}
+               "compile.material-missing": [], "compile.model-role-mismatch": [],
+               "compile.model-sequence-missing": []}
     resolved = {}
+    models = {}
 
     def need(relative, code, label):
         data, where = resolver.read(relative)
@@ -238,6 +300,7 @@ def check_content(report, profile, resolver):
             missing[code].append("%s: %s" % (label, relative))
         else:
             resolved[relative] = {"from": where, "sha256": hashlib.sha256(data).hexdigest()}
+        return data
 
     for record in report["objects"]:
         rule = profile["model_files"].get(record["role"])
@@ -246,15 +309,46 @@ def check_content(report, profile, resolver):
             required = list(rule["always"])
             required += rule.get("collision:%s" % record.get("collision"), [])
             for suffix in required:
-                need(base + suffix, "compile.model-missing" if suffix == ".mdl" else
-                     "compile.model-collision-missing", record["id"])
-        if record["role"] == "world_solid":
+                data = need(base + suffix, "compile.model-missing" if suffix == ".mdl" else
+                            "compile.model-collision-missing", record["id"])
+                if suffix == ".mdl" and data is not None:
+                    try:
+                        models[record["id"]] = source_model.read_model(data)
+                    except source_model.ModelError as error:
+                        missing["compile.model-role-mismatch"].append(
+                            "%s: %s: %s" % (record["id"], record["model"], error))
+        if authored_surfaces(record):
             for surface in record["surfaces"]:
                 need("materials/%s.vmt" % surface["material"], "compile.material-missing",
                      "%s surface %d" % (record["id"], surface["surface"]))
-    if any(r["role"] == "entity_brush" for r in report["objects"]):
+    if any(r["role"] == "entity_brush" and not authored_surfaces(r) for r in report["objects"]):
         need("materials/%s.vmt" % profile["brush_entity_material"],
              "compile.material-missing", "brush entities")
+
+    # Model capabilities per role (source_compile_v1.json "model_roles").
+    by_id = {r["id"]: r for r in report["objects"]}
+    wants = {}
+    for record in report["objects"]:
+        if record["role"] == "prop_dynamic" and "default_animation" in record:
+            wants.setdefault(record["id"], []).append(
+                (record["default_animation"], "%s default animation" % record["id"]))
+        for connection in record.get("connections", []):
+            if connection["parameter"] and by_id[connection["target"]]["role"] == "prop_dynamic":
+                wants.setdefault(connection["target"], []).append(
+                    (connection["parameter"], "%s %s %s" % (record["id"], connection["output"],
+                                                            connection["input"])))
+    for ident, model in sorted(models.items()):
+        record = by_id[ident]
+        rule = profile["model_roles"].get(record["role"], {})
+        if rule.get("static_prop_flag") and not model["static_prop"]:
+            missing["compile.model-role-mismatch"].append(
+                "%s: %s is not compiled with $staticprop, so it cannot be a %s"
+                % (ident, record["model"], record["role"]))
+        for sequence, label in wants.get(ident, []):
+            if source_model.find_sequence(model, sequence) is None:
+                missing["compile.model-sequence-missing"].append(
+                    "%s: %s has no sequence %r (it has %s)"
+                    % (label, record["model"], sequence, ", ".join(model["sequences"])))
     for code, messages in missing.items():
         if messages:
             fail(profile, code, messages)

@@ -99,10 +99,14 @@ def client_player_active(log):
     return bool(ACTIVE_PLAYER.search(Path(log).read_text(errors="replace")))
 
 
-def run_server(stage, name, log, timeout, port):
+def run_server(stage, name, log, timeout, port, pre_wait=120, extra=(),
+               config="rfc0008_probes.cfg", quit_after=True):
+    """quit_after=False leaves quitting to the config: its own waits delay
+    only its later commands, so a command-line +quit would run first."""
     command = [str(stage / "dedicated_launcher"), "-game", "portal", "-defaultgamedir", "portal",
                "-console", "-consolelog", str(log), "-insecure", "-port", str(port),
-               "+map", name, "+wait", "120", "+exec", "rfc0008_probes.cfg", "+quit"]
+               *extra, "+map", name, "+wait", str(pre_wait), "+exec", config] + \
+        (["+quit"] if quit_after else [])
     environment = dict(os.environ)
     environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
     try:
@@ -121,12 +125,14 @@ def run_server(stage, name, log, timeout, port):
     return result
 
 
-def run_client(stage, name, log, timeout, _port):
+def run_client(stage, name, log, timeout, _port, pre_wait=180, extra=(),
+               config="rfc0008_probes.cfg", quit_after=True):
     command = [str(stage / "hl2_launcher"), "-renderer", "null", "-game", "portal",
                "-windowed", "-w", "640", "-h", "480", "-multirun", "-novid", "-insecure",
                "-console", "-condebug", "-dev", "-physics", "vphysics", "+sv_cheats", "1",
-               "+mat_queue_mode", "0", "+fps_max", "60", "+map", name, "+wait", "180",
-               "+exec", "rfc0008_probes.cfg", "+wait", "10", "+quit"]
+               "+mat_queue_mode", "0", "+fps_max", "60", *extra, "+map", name,
+               "+wait", str(pre_wait), "+exec", config] + \
+        (["+wait", "10", "+quit"] if quit_after else [])
     environment = dict(os.environ)
     environment.update({"LD_LIBRARY_PATH": str(stage / "bin") + ":" +
                         environment.get("LD_LIBRARY_PATH", ""),

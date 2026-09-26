@@ -100,6 +100,27 @@ observation diverges, and all 19 faults are detected; the three known Box3D
 gameplay failures and three divergences are unchanged. Runner self-tests:
 `python3 -m unittest tools/quality/tests/test_physics_conformance.py` (18).
 
+Dzhanibekov T-handle (2026-09-25, user direction): `gyro.t-handle-*` ports
+Box3D's "Gyroscopic Torque" sample (`samples/sample_bodies.cpp`, shown in Erin
+Catto's Box3D walkthrough video at 6:06) at its own size. It is a 2 x 0.1 x
+0.2 m bar with a 32-sided 0.15 m by 0.6 m handle standing on it, spun at 10
+rad/s about the handle with a 0.01 rad/s nudge, in zero gravity. The oracle
+integrates Euler's torque-free equations (RK4, 50 substeps per tick) with the
+provider's principal inertia from its first measured state, and counts flips
+of the handle component with hysteresis over 25 s.
+- IVP: flips and period match (interval 5.15 s), and |L| grows 15%, now a
+  third reference deficiency.
+- Box3D: everything passes (interval 4.90 s).
+- Under the shape inertia model: flips every 2.04 s, matching its own oracle,
+  but |L| falls to 0.76 of its start over about 12 flips (the same
+  backward-Euler dissipation as the gyroscope sink, RFC 0013 progress). This
+  shows in the `--candidate-shape-inertia` diagnostic, not the parity gate.
+- The playable map `dzhanibekov` (same script, `./play dzhanibekov`) floats
+  three T-handles in front of the spawn, spun about the handle (flips), the bar
+  (steady) and the broad axis (steady). In a headless shape-model boot the
+  middle one's handle component went +515 to -507 deg/s and its roll from -2
+  to 174 degrees while the others held 548 deg/s about their axes.
+
 The playable map `gyro_lab` (`tools/quality/gyro_lab_map.py`, published to
 `run/maps`; `./play gyro_lab`, `PHYSICS=vphysics ./play gyro_lab`) stages the
 same scenes: four boxes in a zero-gravity `trigger_vphysics_motion` spun by

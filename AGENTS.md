@@ -370,7 +370,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | --- | --- | --- | --- | --- |
 | 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | done (re-audited 2026-09-25; [Q0 baseline](RFC/0005-progress.md#re-audit-2026-09-25)) |
 | 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | done ([Q1 runner](RFC/0005-progress.md#q1--r02-runner-shared-conformance-runner)) |
-| 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | partial (Apple/MSVC runners optional since 2026-09-25; the Linux and Android slices R03-A/B are done; the gate waits on the R54 `vbsp2` dual-ABI island that `toolchain.coverage` reports; [0006 progress](RFC/0006-progress.md#r03-wording-reconciliation-2026-09-25)) |
+| 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | done (2026-09-25 for the required Linux and Android profiles; Apple/MSVC optional by user decision; [R03 closure](RFC/0006-progress.md#r03-closure-2026-09-25)) |
 | 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | active (`archlint check --all` passes since R04-DRIFT and R04-CAP; `--compile-deps` transitive include and portable link-graph checks installed and declared as `arch.compile-deps` (R04-DEPS) 2026-09-25; hermetic contract-header compiles (R04-HERMETIC), the Hammer include graph (R04-HAMGRAPH) and link-graph/`uselib` grants for all strict targets (R04-TARGETS) installed; open: per-target `arch_module` ownership for mixed legacy targets; [Phase A record](RFC/0001-phase-a-progress.md#r04-deps-compiler-grounded-transitive-include-check-slice-done-2026-09-25)) |
 | 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | partial (all vocabulary delivered with consumers 2026-09-25: `Expected`, `StrongId`, `ScopedResource`, `testing::Checks`, `units`; waits on hard gates R03/R04; [record](RFC/0006-progress.md#r05-strongid-strong-identifier-vocabulary-2026-09-25)) |
 | 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | partial (all implementation clauses evidenced, reviewed 2026-09-25; waits on R05; [conformance record](RFC/0001-conformance-progress.md)) |
@@ -413,7 +413,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 43 / R51 | Stage reference rendering; 0007 G | R49, R54 | Versioned Cycles reference fixtures rendered from stages; seeded material-mapping error detected | planned |
 | 44 / R52 | Hammer compile/preview and vvis job graph; 0007 H | R20, R25, R49 | GTK compile/run and progressive preview with cancellation/recovery; serial/parallel/legacy PVS byte equivalence | planned |
 | 45 / R57 | Incremental map build graph; 0008 F6 | R52, R54 | Cache-hit traces per change class and source-producer identity; cancellation leaves the previous package intact; native USD inputs extend the graph under R59 | planned |
-| 46 / R59 | USD-native map schema and compiler; 0009 U0–U2 | R05, R48, R53, R54 | A hand-authored USD room compiles without VMF or prior BSP and runs in client/server; world, static, dynamic and physics roles validate distinctly; collision/visibility and negative fixtures pass | active (U0 authoring profile, fixture room and validator; U1 first slice: the U0 room compiles to BSP2 without VMF or a prior BSP and boots in dedicated, client and headless native Vulkan, 2026-09-25; [RFC 0009 progress](RFC/0009-progress.md#u1-native-usd-map-compiler-first-slice-slice-done-2026-09-25)) |
+| 46 / R59 | USD-native map schema and compiler; 0009 U0–U2 | R05, R48, R53, R54 | A hand-authored USD room compiles without VMF or prior BSP and runs in client/server; world, static, dynamic and physics roles validate distinctly; collision/visibility and negative fixtures pass | active (U0 authoring profile, fixture room and validator; U1 first slice: the U0 room compiles to BSP2 without VMF or a prior BSP and boots in dedicated, client and headless native Vulkan; U2 slice: static, dynamic and physics props, a trigger with I/O and a `func_movelinear` compile to their own contracts and behave at runtime headless, 2026-09-25; [RFC 0009 progress](RFC/0009-progress.md#u2-prop-role-cohorts-and-geometric-entities-slice-done-2026-09-25)) |
 | 47 / R60 | USD-native editor workflow and VMF migration; 0009 U3–U4 | R13, R25, R59 | USD owns save/reopen/history and compile; role-aware block/mesh/prop editing, material/light viewport, object-linked diagnostics, edit-to-preview budgets, two-document workflow, external edit, import loss reports and installed product gates pass | planned ([RFC 0009](RFC/0009-usd-native-map-authoring.md)) |
 | 48 / R61 | Modern map spatial/gameplay data; 0008 F8 | R31, R53, R59 | Versioned USD-native geometry/collision/visibility payload passes client/server semantic and malformed-input suites; legacy BSP bytes and behavior remain compatible | planned ([RFC 0008](RFC/0008-canonical-world-data-and-runtime-formats.md)) |
 | 49 / R62 | Modern model asset path; 0008 F9 | R47, R55, R59 | Authored/compiled model assets serve static, dynamic and physics roles with materials, LOD, collision and required animation; MDL corpus and lifecycle gates pass | planned ([RFC 0008](RFC/0008-canonical-world-data-and-runtime-formats.md)) |
@@ -661,8 +661,12 @@ Keep the table concise and link details below or from the domain progress file.
   USD scenes but compiles them through a generated VMF, which is not R59's
   compiler. R59's compiler is `usd_map_compile.py` (U1 first slice,
   2026-09-25): staged, with `vbsp -authored` building brushes in memory.
-  The U2 role cohorts remain, and so do the compiled World Stage and render
-  payload for USD maps.
+  U2 (2026-09-25, profile and compile policy version 2): `prop_dynamic`,
+  per-role model and collision checks, a static-prop bake policy, trigger
+  touch filters, entity I/O by id and `func_movelinear`, each with its own
+  compile-time and headless runtime oracle (`usd_map_runtime.py --roles`) and
+  seeded mutants. The compiled World Stage and render payload for USD maps
+  remain, as do R59's prerequisites.
 - R61–R64 (RFC 0008 F8–F11): added 2026-09-23 as `planned` for versioned native
   map spatial data, a modern model asset path, visual parity and geometry
   scalability, and direct USD development-runtime iteration. They extend the
@@ -898,9 +902,23 @@ Keep the table concise and link details below or from the domain progress file.
       gather/batch/commit) runs on it under `cl_render_start_graph` (default
       0); its legacy order leaves no pair to overlap, which the oracle
       asserts.
-    - Open: an executor that overlaps across several host nodes, audited
-      declarations for legacy blocks, TickServer split, a semantic live
-      oracle for the client region, mobile budgets, full-product TSan.
+    - Live shadow verifier (2026-09-25):
+      - `cl_bone_setup_verify 1` (default off) reruns each pooled
+        previous-frame bone batch serially from captured state and
+        byte-compares the result. The frame keeps the pooled outputs.
+      - In every dispatch mode, 3958 items were verified with 0
+        mismatches. Seeded faults are caught in every batch. The cost is
+        under 0.05 ms per frame.
+      - It closes no gate. See
+        [section 7](RFC/0003-scheduler-nodes-progress.md#7-live-shadow-verifier-previous-frame-bones-2026-09-25).
+    - Open:
+      - an executor that overlaps across several host nodes;
+      - audited declarations for legacy blocks;
+      - a TickServer split;
+      - live oracles for the particle batch (proposed: fixed-seed twin
+        effects) and the other cohorts;
+      - mobile budgets;
+      - full-product TSan.
 
 - R32-DEBUG-CONTROLS: `planned` (2026-09-25, user direction). These are the
   `cl_vk_debug_*` and `cl_bsp2_*` controls of

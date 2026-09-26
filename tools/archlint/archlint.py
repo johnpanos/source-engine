@@ -748,6 +748,30 @@ def inventory_document(root: Path, manifest: dict) -> dict:
     }
 
 
+def without_lines(document: dict) -> dict:
+    """The inventory without per-site line numbers. Sites are identified by
+    fingerprints that already exclude the line, so an edit that only moves a
+    site is not a reviewable inventory change."""
+    stripped = dict(document)
+    stripped["sites"] = [{k: v for k, v in site.items() if k != "line"}
+                         for site in document.get("sites", [])]
+    return stripped
+
+
+def verify_inventory(path: Path, expected: dict) -> int:
+    try:
+        actual = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        actual = None
+    if actual is None or without_lines(actual) != without_lines(expected):
+        print("archlint: loader inventory is stale; review changes and run the matching --write command")
+        return 1
+    moved = sum(1 for a, e in zip(actual["sites"], expected["sites"]) if a.get("line") != e.get("line"))
+    suffix = f" ({moved} site(s) only moved lines; --write refreshes them)" if moved else ""
+    print(f"archlint: loader inventory is current{suffix}")
+    return 0
+
+
 def verify_or_write(
     path: Path, expected: dict, write: bool, label: str
 ) -> int:
@@ -1758,6 +1782,8 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
             f"{len(missing_native_telemetry)} native site(s) are uninstrumented"
         )
         return 1
+    if not args.write:
+        return verify_inventory(root / "architecture/loader_inventory.json", inventory_expected)
     return verify_or_write(
         root / "architecture/loader_inventory.json",
         inventory_expected,

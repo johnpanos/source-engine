@@ -1,0 +1,134 @@
+#usda 1.0
+(
+    """Entities, props and the light of the U2 role fixture. Sublayer of
+    roles.usda. Each object's role is explicit; the physics cube references
+    the U0 prefab, which carries its role and model.
+
+    Runtime scene: the cube starts above the trigger and falls into it; the
+    trigger (touched by clients and physics objects) sets the switch's
+    animation and opens the lift. The switch floats: it is dynamic, not a
+    physics body, so it must not fall."""
+    metersPerUnit = 0.0254
+    upAxis = "Z"
+)
+
+over "Map"
+{
+    def Scope "Entities"
+    {
+        def Xform "info_player_start"
+        {
+            uniform token sourcemap:role = "entity_point"
+            uniform string sourcemap:id = "entity.player-start"
+            uniform token sourcemap:classname = "info_player_start"
+            double3 xformOp:translate = (-192, -128, 8)
+            float xformOp:rotateZ = 90
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+        }
+
+        def Mesh "DropTrigger"
+        {
+            uniform token sourcemap:role = "entity_brush"
+            uniform string sourcemap:id = "entity.drop-trigger"
+            uniform token sourcemap:classname = "trigger_multiple"
+            uniform token[] sourcemap:touchFilter = ["clients", "physics"]
+            uniform string[] sourcemap:connections = [
+                "OnStartTouch prop.lever-switch SetAnimation down",
+                "OnStartTouch entity.lift Open"
+            ]
+            uniform token subdivisionScheme = "none"
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4, 2, 3, 7, 6, 1, 2, 6, 5, 3, 0, 4, 7]
+            point3f[] points = [(-64, 64, 0), (64, 64, 0), (64, 160, 0), (-64, 160, 0), (-64, 64, 128), (64, 64, 128), (64, 160, 128), (-64, 160, 128)]
+        }
+
+        def Mesh "Lift" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token sourcemap:role = "entity_brush"
+            uniform string sourcemap:id = "entity.lift"
+            uniform token sourcemap:classname = "func_movelinear"
+            uniform int[] sourcemap:surfaceIds = [0, 1, 2, 3, 4, 5]
+            # Rises 64 units in one second when opened.
+            uniform float3 sourcemap:moveDelta = (0, 0, 64)
+            uniform float sourcemap:moveSeconds = 1
+            rel material:binding = </Map/Looks/Wall>
+            uniform token subdivisionScheme = "none"
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4, 2, 3, 7, 6, 1, 2, 6, 5, 3, 0, 4, 7]
+            point3f[] points = [(-240, 32, 16), (-176, 32, 16), (-176, 96, 16), (-240, 96, 16), (-240, 32, 32), (-176, 32, 32), (-176, 96, 32), (-240, 96, 32)]
+            texCoord2f[] primvars:st = [
+                (-1.875, 0.25), (-1.875, 0.75), (-1.375, 0.75), (-1.375, 0.25),
+                (-1.875, 0.25), (-1.375, 0.25), (-1.375, 0.75), (-1.875, 0.75),
+                (-1.875, 0.125), (-1.375, 0.125), (-1.375, 0.25), (-1.875, 0.25),
+                (-1.375, 0.125), (-1.875, 0.125), (-1.875, 0.25), (-1.375, 0.25),
+                (0.25, 0.125), (0.75, 0.125), (0.75, 0.25), (0.25, 0.25),
+                (0.75, 0.125), (0.25, 0.125), (0.25, 0.25), (0.75, 0.25)
+            ] (
+                interpolation = "faceVarying"
+            )
+        }
+    }
+
+    def Scope "Props"
+    {
+        def Xform "LabDesk"
+        {
+            uniform token sourcemap:role = "prop_static"
+            uniform string sourcemap:id = "prop.lab-desk"
+            uniform string sourcemap:model = "models/props/lab_desk01/lab_desk01.mdl"
+            uniform token sourcemap:collision = "vphysics"
+            # lab_desk01's model origin is its top: this stands it on the floor.
+            double3 xformOp:translate = (160, -128, 37.7)
+            float xformOp:rotateZ = 180
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+        }
+
+        def Xform "GhostDesk"
+        {
+            uniform token sourcemap:role = "prop_static"
+            uniform string sourcemap:id = "prop.ghost-desk"
+            uniform string sourcemap:model = "models/props/lab_desk01/lab_desk01.mdl"
+            uniform token sourcemap:collision = "none"
+            double3 xformOp:translate = (-96, -128, 37.7)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "DropBox" (
+            prepend references = @../room/prefabs/metal_box.usda@
+        )
+        {
+            uniform string sourcemap:id = "prop.drop-box"
+            double3 xformOp:translate = (0, 112, 160)
+            float xformOp:rotateZ = 30
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+        }
+
+        def Xform "LeverSwitch"
+        {
+            uniform token sourcemap:role = "prop_dynamic"
+            uniform string sourcemap:id = "prop.lever-switch"
+            uniform string sourcemap:model = "models/props/switch001.mdl"
+            uniform token sourcemap:collision = "vphysics"
+            uniform string sourcemap:defaultAnimation = "idle"
+            double3 xformOp:translate = (96, 0, 96)
+            float xformOp:rotateZ = 180
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+        }
+    }
+
+    def Scope "Lights"
+    {
+        def SphereLight "CeilingLamp"
+        {
+            uniform token sourcemap:role = "light"
+            uniform string sourcemap:id = "light.ceiling-lamp"
+            color3f inputs:color = (1, 0.93, 0.82)
+            float inputs:intensity = 2000
+            float inputs:radius = 4
+            double3 xformOp:translate = (0, 0, 176)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}

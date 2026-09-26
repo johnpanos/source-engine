@@ -360,3 +360,35 @@ class UnbuiltVendorTests(unittest.TestCase):
     def test_without_the_exclusion_the_site_is_missing_telemetry(self) -> None:
         sites = archlint.supplemental_inventory_occurrences(self.root, MANIFEST)
         self.assertEqual(["missing"], [s["telemetry"] for s in sites])
+
+
+class InventoryLineDriftTests(unittest.TestCase):
+    """A site that only moved lines is not a reviewable inventory change."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.path = Path(self.temporary.name) / "inventory.json"
+        self.document = {"version": 1, "sites": [
+            {"fingerprint": "a", "path": "x.cpp", "line": 10, "excerpt": "dlopen(p)", "classification": "c"}]}
+
+    def verify(self, expected: dict) -> int:
+        return archlint.verify_inventory(self.path, expected)
+
+    def test_line_only_drift_passes_but_content_changes_fail(self) -> None:
+        self.path.write_text(json.dumps(self.document))
+        moved = json.loads(json.dumps(self.document))
+        moved["sites"][0]["line"] = 12
+        self.assertEqual(0, self.verify(moved))
+        changed = json.loads(json.dumps(self.document))
+        changed["sites"][0]["excerpt"] = "dlopen(q)"
+        self.assertEqual(1, self.verify(changed))
+        added = json.loads(json.dumps(self.document))
+        added["sites"].append({"fingerprint": "b", "path": "y.cpp", "line": 1, "excerpt": "e", "classification": "c"})
+        self.assertEqual(1, self.verify(added))
+
+    def test_missing_or_unreadable_inventory_fails(self) -> None:
+        self.assertEqual(1, self.verify(self.document))
+        self.path.write_text("{not json")
+        self.assertEqual(1, self.verify(self.document))
+

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 #
-# Validator for USD-native map authoring stages (RFC 0009 U0, roadmap R59).
+# Validator for USD-native map authoring stages (RFC 0009 U0-U2, roadmap R59).
 #
 # Checks a composed authoring stage against the source-authoring profile
 # (quality/usd_authoring/source_authoring_v1.json, described by
 # source_authoring_v1.md): stage metadata and composition, explicit object
-# roles, per-role properties, stable ids, transforms, closed convex solids,
-# surface ids, texture coordinates, material bindings and model paths. It is
+# roles, per-role and per-class properties, stable ids, transforms, closed
+# convex solids, surface ids, texture coordinates, material bindings, model
+# paths and entity connections (targets by id, declared outputs and inputs).
+# A stage declares its profile version; features newer than it fail. It is
 # the gate before the native USD map compiler (U1) reads a stage, and its
 # `objects` table is the compiler's authored-id input.
 #
@@ -167,6 +169,7 @@ class StageValidator:
         self.tol = profile["tolerances"]
         self.objects = []
         self.conversion = None
+        self.version = profile["version"]
 
     # ---------------------------------------------------------- stage level
 
@@ -177,11 +180,13 @@ class StageValidator:
         if v.check(isinstance(data, dict) and "profile" in data and "version" in data,
                    "stage.profile-missing", "/",
                    "customLayerData.%s needs profile and version" % prof["layer_data_key"]):
-            v.check(data["profile"] == self.profile["profile"]
-                    and data["version"] == self.profile["version"], "stage.profile-version", "/",
-                    "declares %s v%s; this validator implements %s v%d"
-                    % (data["profile"], data["version"], self.profile["profile"],
-                       self.profile["version"]))
+            accepted = self.profile["accepted_versions"]
+            if v.check(data["profile"] == self.profile["profile"]
+                       and data["version"] in accepted, "stage.profile-version", "/",
+                       "declares %s v%s; this validator implements %s v%s"
+                       % (data["profile"], data["version"], self.profile["profile"],
+                          ", v".join(str(n) for n in accepted))):
+                self.version = data["version"]
         default = stage.GetDefaultPrim()
         v.check(bool(default) and default.IsDefined(), "stage.default-prim-missing", "/",
                 "the root layer's defaultPrim is unset or undefined")
@@ -286,9 +291,10 @@ class StageValidator:
         spec = self.profile["roles"].get(role)
         if not v.check(spec is not None, "role.unknown", path, "unknown role %r" % role):
             return
-        if not v.check(spec["support"] == "supported", "role.unsupported", path,
+        if not v.check(spec["support"] == "supported" and self.available(spec),
+                       "role.unsupported", path,
                        "role %s is reserved for %s, not profile version %d"
-                       % (role, spec.get("phase", "a later profile"), self.profile["version"])):
+                       % (role, spec.get("phase", "a later profile"), self.version)):
             return
         if not v.check(prim.GetTypeName() in spec["prim_types"],
                        spec.get("prim_type_code", "role.prim-type"), path,
@@ -309,9 +315,15 @@ class StageValidator:
         if "sourcemap:model" in values:
             record["model"] = values["sourcemap:model"]
         for name, key in (("sourcemap:collision", "collision"), ("sourcemap:skin", "skin"),
-                          ("sourcemap:massScale", "mass_scale")):
+                          ("sourcemap:massScale", "mass_scale"),
+                          ("sourcemap:defaultAnimation", "default_animation"),
+                          ("sourcemap:touchFilter", "touch_filter"),
+                          ("sourcemap:connections", "connections"),
+                          ("sourcemap:moveSeconds", "move_seconds")):
             if name in values:
                 record[key] = values[name]
+        if "sourcemap:moveDelta" in values:
+            record["move"] = self.displacement(rows, values["sourcemap:moveDelta"])
         if spec["transform"] == "rigid":
             self.placement(rows, record)
         if spec.get("geometry") == "convex_solid":
@@ -333,9 +345,33 @@ class StageValidator:
         return self.v.check(not bad, "role.children-unsupported", prim.GetPath(),
                             "only %s face subsets may be nested: %s" % (family, ", ".join(bad)))
 
+    def available(self, spec):
+        """A role, class or property is part of the stage's declared version."""
+        return spec.get("since", 1) <= self.version
+
+    def declared_properties(self, prim, spec):
+        """The role's properties, with its entity class's merged over them."""
+        declared = dict(spec["properties"])
+        attr = prim.GetAttribute("sourcemap:classname")
+        classname = attr.Get() if attr and attr.HasAuthoredValue() else None
+        rule = spec.get("classes", {}).get(classname)
+        if isinstance(classname, str) and rule and self.available(rule):
+            declared.update(rule.get("properties", {}))
+        return declared
+
+    def misplaced(self, name):
+        """The other roles or entity classes that declare property `name`."""
+        owners = []
+        for role, spec in sorted(self.profile["roles"].items()):
+            if name in spec.get("properties", {}):
+                owners.append(role)
+            owners += sorted(c for c, rule in spec.get("classes", {}).items()
+                             if name in rule.get("properties", {}))
+        return owners
+
     def properties(self, prim, role, spec):
         v, path, values = self.v, prim.GetPath(), {}
-        declared = spec["properties"]
+        declared = self.declared_properties(prim, spec)
         for name, rule in declared.items():
             attr = prim.GetAttribute(name)
             present = bool(attr) and attr.HasAuthoredValue()
@@ -344,17 +380,35 @@ class StageValidator:
                     v.check(False, rule.get("missing_code", "property.missing"), path,
                             "role %s requires %s" % (role, name))
                 continue
+            if not v.check(rule.get("support", "supported") == "supported" and
+                           self.available(rule), "property.unsupported", path,
+                           "%s is reserved for %s, not profile version %d"
+                           % (name, rule.get("phase", "profile version %d" % rule.get("since", 1)),
+                              self.version)):
+                continue
             if not v.check(str(attr.GetTypeName()) == rule["type"], "property.type", path,
                            "%s must be %s, not %s" % (name, rule["type"], attr.GetTypeName())):
                 continue
             value = attr.Get()
+            if rule["type"].endswith("[]"):
+                value = list(value)
+            elif rule["type"] == "float3":
+                value = [float(x) for x in value]
             if "values" in rule:
-                reserved = value in rule.get("reserved", [])
-                if not v.check(value in rule["values"],
+                items = value if isinstance(value, list) else [value]
+                since = rule.get("value_since", {})
+                bad = [x for x in items
+                       if x not in rule["values"] or since.get(x, 1) > self.version]
+                reserved = any(x in rule.get("reserved", []) for x in bad)
+                newer = any(x in rule["values"] for x in bad)
+                supported = [x for x in rule["values"] if since.get(x, 1) <= self.version]
+                if not v.check(not bad,
                                rule.get("unsupported_code", "property.value-unsupported"), path,
                                "%s = %s is %s; profile v%d supports %s"
-                               % (name, value, "reserved" if reserved else "unknown",
-                                  self.profile["version"], ", ".join(rule["values"]))):
+                               % (name, ", ".join(map(str, bad)),
+                                  "reserved" if reserved else
+                                  "newer than the stage's version" if newer else "unknown",
+                                  self.version, ", ".join(supported))):
                     continue
             if rule.get("model") and not v.check(
                     re.match(self.profile["model_pattern"], value) is not None,
@@ -368,11 +422,29 @@ class StageValidator:
                     math.isfinite(value) and value > 0, "property.value-unsupported", path,
                     "%s = %s is not positive" % (name, value)):
                 continue
-            values[name] = list(value) if rule["type"].endswith("[]") else value
-        allowed = set(declared) | {ROLE}
+            if rule.get("nonzero") and not v.check(
+                    all(math.isfinite(x) for x in value) and any(x != 0 for x in value),
+                    "property.value-unsupported", path,
+                    "%s = %s is not a finite non-zero vector" % (name, value)):
+                continue
+            if rule.get("sequence") and not v.check(
+                    re.match(self.profile["sequence_pattern"], value) is not None,
+                    "property.value-unsupported", path,
+                    "%s %r is not a model sequence name" % (name, value)):
+                continue
+            values[name] = value
+        # A class newer than the stage fails on its classname; its own
+        # properties are not reported again.
+        attr = prim.GetAttribute("sourcemap:classname")
+        own_class = spec.get("classes", {}).get(attr.Get() if attr and attr.HasAuthoredValue()
+                                                else None, {})
+        allowed = set(declared) | set(own_class.get("properties", {})) | {ROLE}
         for prop in self.sourcemap_properties(prim):
-            v.check(prop.GetName() in allowed, "property.unknown", path,
-                    "role %s does not declare %s" % (role, prop.GetName()))
+            name = prop.GetName()
+            owners = [] if name in allowed else self.misplaced(name)
+            v.check(name in allowed, "property.misplaced" if owners else "property.unknown", path,
+                    "role %s does not declare %s%s" % (
+                        role, name, "; it belongs to %s" % ", ".join(owners) if owners else ""))
         ident = values.get("sourcemap:id")
         if ident is not None and not v.check(
                 re.match(self.profile["id_pattern"], ident) is not None, "id.invalid", path,
@@ -426,6 +498,12 @@ class StageValidator:
         record["origin"] = [round(x, 6) + 0.0 for x in c.point(tuple(rows[3][:3]))]
         record["angles"] = source_angles(*frame)
 
+    def displacement(self, rows, local):
+        """A vector in the prim's space, in Source units: transformed by the
+        local-to-world matrix's linear part, then converted."""
+        world = tuple(sum(local[i] * rows[i][c] for i in range(3)) for c in range(3))
+        return [round(x, 6) + 0.0 for x in self.conversion.point(world)]
+
     # ------------------------------------------------------------- solids
 
     def solid(self, prim, spec, rows, record):
@@ -446,10 +524,17 @@ class StageValidator:
                                 [round(max(p[a] for p in points), 6) + 0.0 for a in range(3)]]
             record["faces"] = [source_face(points, polygon, plane)
                                for polygon, plane in zip(polygons, planes)]
-        if record["role"] == "world_solid":
+        if self.authored_surfaces(spec, record):
             self.materials(prim, mesh, len(counts), faces, record)
             if points is not None:  # texture checks need planar, well-formed faces
                 self.texture_coordinates(prim, mesh, counts, indices, local, rows, record)
+
+    @staticmethod
+    def authored_surfaces(spec, record):
+        """World solids and brush-entity classes whose faces render with their
+        own materials and texture mapping (not a compiler tool material)."""
+        rule = spec.get("classes", {}).get(record.get("classname"), {})
+        return record["role"] == "world_solid" or rule.get("surfaces") == "authored"
 
     def solid_geometry(self, prim, mesh, counts, indices, local, rows):
         """Ordered topology and shape checks; the first failure ends the chain.
@@ -743,6 +828,45 @@ class StageValidator:
         starts = [r for r in self.objects if r.get("classname") == "info_player_start"]
         self.v.check(starts, "map.player-start-missing", "/",
                      "the map needs at least one info_player_start")
+        for record in self.objects:
+            if "connections" in record:
+                record["connections"] = self.connections(record, seen)
+
+    def connections(self, record, ids):
+        """Parsed entity I/O. Targets are ids, resolved on the composed stage;
+        outputs and inputs are the profile's declared ones."""
+        io, v, path = self.profile["io"], self.v, record["path"]
+        by_id = {r["id"]: r for r in self.objects if r["id"] is not None}
+        outputs = io["outputs"].get(record.get("classname"), [])
+        parsed = []
+        for text in record["connections"]:
+            fields = text.split(" ")
+            if not v.check(len(fields) in (3, 4) and all(fields) and fields[0] in outputs,
+                           "io.invalid", path,
+                           "%r is not 'Output target-id Input [parameter]' with an output of "
+                           "%s (%s)" % (text, record.get("classname"), ", ".join(outputs))):
+                continue
+            output, target, input_name = fields[:3]
+            parameter = fields[3] if len(fields) == 4 else ""
+            if not v.check(target in ids, "io.target-missing", path,
+                           "%r targets id %r, which no object has" % (text, target)):
+                continue
+            other = by_id[target]
+            kind = other.get("classname") or other["role"]
+            accepted = io["inputs"].get(kind, {})
+            argument = accepted.get(input_name)
+            fits = (argument == "none" and not parameter) or (
+                argument == "sequence" and
+                re.match(self.profile["sequence_pattern"], parameter) is not None)
+            if not v.check(fits, "io.input-unsupported", path,
+                           "%r: %s %s accepts %s" % (
+                               text, kind, target,
+                               ", ".join("%s(%s)" % item for item in sorted(accepted.items()))
+                               or "no inputs")):
+                continue
+            parsed.append({"output": output, "target": target, "input": input_name,
+                           "parameter": parameter})
+        return parsed
 
 
 def open_stage(path):

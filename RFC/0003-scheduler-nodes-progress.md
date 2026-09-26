@@ -1,6 +1,6 @@
 # RFC 0003 progress: opening the host frame's nodes (R10, R20, R21/R30)
 
-Updated: 2026-09-25 (section 6). Branch `scheduler-nodes` in worktree
+Updated: 2026-09-25 (sections 6 and 7). Branch `scheduler-nodes` in worktree
 `source-engine-scheduler`, rebased onto `subsystem-refactor` at `d59bcda5`
 and since merged into it (tip `568a8d02`, 2026-09-24)
 (parent increment: [scheduler trust](0003-scheduler-trust-progress.md)).
@@ -17,7 +17,11 @@ The increment:
    budgets;
 5. made the client's render-start region (with the particle and
    previous-frame bone cohorts) a declared frame graph, and made the pooled
-   executor overlap host work with pool work where declarations allow.
+   executor overlap host work with pool work where declarations allow;
+6. tried the threaded listen server in the launchers and withdrew it;
+7. added a live shadow verifier that checks the pooled previous-frame bone
+   batch against a serial rerun in the same process, and recorded why the
+   particle batch needs a different invariant.
 
 ## 1. Profile before splitting
 
@@ -311,6 +315,259 @@ is recorded in the
 
 Rollback of the job args: `JOB_ARGS= ./play` or `JOB_ARGS= ./play_p2`.
 
+## 7. Live shadow verifier: previous-frame bones (2026-09-25)
+
+Problem: the pooled render-start cohorts were shown equal to legacy only
+offline (`jobsystem.renderstart` and the cohort suites) and by identical
+host traces. Two runs of the same scenario are not deterministic, so
+pooled and serial outputs can't be compared across runs. The verifier
+compares them inside one run.
+
+### Protocol
+
+`public/jobsystem/batch_shadow_verify.h` (header-only, C++11 and later)
+owns the protocol. When verification is on, the cohort's gather captures
+every item's state. After the batch joins, the commit:
+
+1. asks the cohort which items it can verify;
+2. captures each verifiable item's pooled state;
+3. restores every verifiable item to its captured pre-state;
+4. reruns those items serially, in item order, on the host thread;
+5. byte-compares each serial state with its pooled state;
+6. restores the pooled state and captures it again. A restore that is not
+   byte-exact is reported as a restore mismatch.
+
+The frame therefore continues with the pooled outputs. Restoring every item
+before rerunning any gives serial-loop semantics when one item reads
+another's state (IK attachments and bone-merge followers can). Items that
+can't be verified are neither restored nor rerun; they are counted by
+reason. The protocol starts no threads.
+
+### Bones: what an item writes
+
+One item is `SetupBones( NULL, -1, -1, t )` on an unparented entity with
+the threaded-setup flag set. It writes the following, and the snapshot in
+`game/client/bone_setup_shadow_verify.cpp` covers each one:
+
+- the bone cache, the accessor's readable and writable masks, the
+  previous and accumulated masks, the last setup time and the model bone
+  counter;
+- `m_nSequence` (reset when it is out of range), the sequence
+  transitioner's queue, and the new-sequence parity;
+- attachments (`PutAttachment` also reads the previous value, for the
+  origin velocity);
+- `m_pRagdollInfo->m_bActive` (`UnragdollBlend`);
+- jiggle-bone state (`BuildTransformations`);
+- overlay layers, their event cycles and their interpolation history
+  (`CheckForLayerChanges`, `BlendWeight`). History is restored through
+  private `CInterpolatedVar::Copy` copies. `SetNumAnimOverlays` can leave
+  fewer histories than layers, so the two are counted separately;
+- flex weights (`C_BaseFlex::BuildTransformations`).
+
+Records pack `C_AnimationLayer` member by member, because its trailing
+padding would otherwise make equal layers compare unequal.
+
+Skipped, by reason:
+
+| Reason | Why the item isn't rerun |
+| --- | --- |
+| `parented` | The item does no work. |
+| `ik` | The entity has an IK context, or the pooled item created one. `CIKTarget` has private members and padding that can't be captured byte-exactly from outside `CIKContext`. |
+| `jiggle-alloc`, `bone-merge-alloc` | The pooled item created or released the object. When the object already existed, the rerun is exact: the bone-merge cache is a memo keyed on the followed entity and both model headers. |
+| `renderfx` | `kRenderFxDistort` and `kRenderFxHologram` draw from the global random stream in `ApplyBoneMatrixTransform`. A rerun would advance that stream. |
+| `mouth` | `ControlMouth` writes a pose parameter and its interpolation history. |
+| `layout` | A bone, attachment, layer or history count changed. |
+
+These effects fall outside the snapshot:
+
+- the model-cache lock, which the rerun brackets like a runner;
+- `EFL_SETTING_UP_BONES`, which is set and cleared inside the call (it is
+  compared but not restored);
+- `CalculateIKLocks`' partition and abs-recompute state (IK items are
+  skipped);
+- caches that the pooled item already filled (studio headers, abs
+  transforms);
+- `UpdateVisibility` from `CheckForLayerChanges`, which is idempotent;
+- nested `SetupBones` on other entities, whose caches are already valid for
+  the frame.
+
+The pose debugger (`ent_posedebug`) keeps per-model state and is not
+supported while verifying.
+
+### Controls
+
+- `cl_bone_setup_verify` 0/1, default 0;
+- `cl_bone_setup_verify_fault` (negative control, only while verifying):
+  1 moves the first unparented item's bone 0 translation by one ulp inside
+  the pooled item; 2 drops that item's work;
+- `cl_bone_setup_verify_report`, also printed at client shutdown. It gives
+  batches, items, verified and skipped counts (by reason), mismatches,
+  restore mismatches, batches whose items ran on two or more threads, items
+  that ran off the host thread, and gather and verify time. The first 16
+  mismatches are printed with the entity, field and byte, and bone values
+  where a bone differs.
+
+When off, each item pays one static `bool` test and each batch one ConVar
+read. All three dispatch paths route their items through the same function:
+the render-start graph (`ThreadedBoneSetupItem`), the cohort's job graph and
+legacy `ParallelProcess`.
+
+### Evidence
+
+All runs used the frame-pacing workload: `testchmb_a_02`, three passes,
+headless offscreen native Vulkan. The player model is drawn through the
+portals, so a batch has two or more items. `build-bonever` is a Waf
+release tree at `002d968e` plus this change.
+
+| Run | Batches | Items verified / skipped | Mismatches | Restore mismatches | Multi-thread batches |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `cl_render_start_graph 2` (launcher config) | 1934 | 3958 / 0 | 0 | 0 | 1618 |
+| `cl_render_start_graph 1` (serial graph) | 1934 | 3958 / 0 | 0 | 0 | 0 |
+| `cl_render_start_graph 0` (cohort graph, pooled) | 1934 | 3958 / 0 | 0 | 0 | 1596 |
+| `cl_render_start_graph 0`, `cl_bone_job_graph 0` (legacy `ParallelProcess`) | 1934 | 3958 / 0 | 0 | 0 | 70 |
+| graph 2, fault 1 (one ulp) | 1934 | 3958 / 0 | 1934 | 0 | 1585 |
+| graph 2, fault 2 (drop) | 1934 | 3958 / 0 | 1927 | 0 | 93 |
+| legacy, fault 1 | 1934 | 3958 / 0 | 1934 | 0 | 86 |
+
+- The verified items are the view model (`v_portalgun.mdl`, 45 bones), the
+  player (`chell.mdl`, 68 bones, an overlay and flex entity) and
+  `box_dropper_cover.mdl`. Only models with 16 or more bones join the
+  cohort. The floor turret (9 bones), security camera (4) and GLaDOS's
+  body (12) don't.
+- Fault 1 is reported in every batch, at `bones` byte 12 (bone 0,
+  translation x). For example, pooled -905.468689 against serial
+  -905.46875.
+- Fault 2 is reported in 1927 of 1934 batches. In the other 7 the dropped
+  item was already a no-op (its bones were current for the frame), so
+  dropping it changes nothing.
+- Skip path, checked live: with `renderfx 15` on the player (third person,
+  `testchmb_a_02`), 193 player items were skipped as `renderfx`, 1000
+  items were verified, and there were 0 mismatches.
+- IK, jiggle, mouth, bone-merge and layout skips never occurred in Portal
+  content.
+
+Off means no behaviour change. Host frame captures (`-hostframetrace`,
+`cl_clock_correction 0`, one pass of the same workload) were identical in
+731 frames and 15611 events in all these comparisons:
+
+- the base build (`002d968e`) against this build with the verifier off;
+- verifier off against verifier on;
+- two runs with the verifier on.
+
+The comparison uses `host_frame_capture.py --tolerance ia=0.0001`. The `ia`
+differences are wall-clock noise: two identical verifier-on runs differ in
+1309 of them. In a static `testchmb_a_01` boot, where no batch forms, the
+captures were byte-identical (395 frames). The zero restore mismatches in
+every run above show that the frame keeps the pooled state when the
+verifier is on.
+
+Overhead, from the verifier's own timers over 1934 batches per run:
+
+- verify, 29 to 40 µs per batch (56 to 77 ms per run);
+- gather, 3 to 4 µs per batch;
+- together, under 0.05 ms per frame.
+
+Six interleaved off/on rounds of the warm pass (`cl_render_start_graph 2`,
+host load 2.5 to 7) could not resolve that:
+
+- off medians: 8.87, 5.78, 5.28, 8.02, 6.06 and 5.41 ms (median 5.92);
+- on medians: 5.80, 5.80, 5.84, 5.93, 6.17 and 6.07 ms (median 5.89).
+
+The spread is the bimodal clustering described in section 6.
+
+Standalone fixture, `jobsystem.shadowverify`, 2179 checks. It runs the
+protocol against a stand-in cohort on three real threads:
+
+- a correct batch: 0 mismatches, each item rerun once, and the state after
+  comparison byte-identical to the pooled state;
+- skipped items are neither restored nor rerun;
+- seeded faults are reported at the right item, field and byte range:
+  epsilon, drop, and two items swapped;
+- cross-item reads: a forward loop matches, a reverse-order pooled run is
+  reported;
+- negative cohorts: a snapshot that doesn't restore state the item reads
+  gives a mismatch on every item, and a lossy restore gives a restore
+  mismatch on every item;
+- record comparison: layout and byte divergences, -0 against +0, NaN
+  payloads, `Read`.
+
+It passes under g++ in the default and release configurations, under
+clang++ with ASan/UBSan, and under TSan with 0 warnings. The Q-JOBS domain
+has 17 suites: 15 match and 2 optional TSan suites are skipped.
+
+### Particles: why not the same protocol
+
+`CParticleMgr::SimulateBatchItem` simulates one `CNewParticleEffect` and
+its whole child tree:
+
+- the bounding-box update;
+- `SetDrawn`;
+- `Simulate(dt)`: operators, emitters, initializers, kill lists and
+  children;
+- `GatherLight`;
+- the remove flag.
+
+The random stream is per collection and deterministic (`m_nRandomSeed`
+plus sample ids and `m_nRandomQueryCount`), so randomness alone would not
+prevent a rerun. Three things do:
+
+- There is no way to copy a collection's state. The particle attribute
+  memory, the per-operator context blocks (which may hold lazily allocated
+  heap state, such as collision caches), the control points and the child
+  collections would all need deep copies, and `CParticleCollection` has no
+  copy or restore interface. Kill lists come from the manager's global
+  pool.
+- Operators and initializers query the world through
+  `IParticleSystemQuery`: traces, lighting, and hitboxes on the controlling
+  entity.
+- The seed of a collection created with seed 0 (the common case) is
+  `this + Plat_MSTime()`. That is why runs can't be compared: each run
+  seeds differently.
+
+Proposed smallest sound invariant (not implemented):
+
+- a test-only fixed-seed mode, so each new collection is seeded from its
+  definition and creation order;
+- a per-effect state hash: current time, active count, the bytes of the
+  active particles' attributes, the bounding box and the random query
+  count;
+- **twin effects**: pairs of identical fixed-seed effects on identical
+  control points in a static test map, dispatched in the same pooled
+  batch. Each frame their hashes must be equal. That holds whatever the
+  run-to-run noise is, and it catches cross-item interference (shared
+  operator-instance state, kill lists).
+
+A serial-versus-pooled comparison of the same hashes then needs only a
+static scene at a fixed `host_framerate`.
+
+### Not verified
+
+- The renderable bone batches (`r_renderable_job_graph`).
+- Particles, entity packing, query cache and portal carving.
+- IK, jiggle and mouth entities; none occur in Portal's cohort.
+- Portal 2 (`./play_p2`): the client target compiles in a private
+  `--build-games=portal2` tree, but it has not been run. Android and Apple
+  have not been run either.
+- A TSan run of the product with the verifier on.
+- Pixels. In-game screenshots aren't deterministic across runs, so the
+  frame's use of the pooled state rests on the restore check.
+
+### Reproduction
+
+```sh
+# Fixture:
+python3 tools/quality/conformance.py check --suite jobsystem.shadowverify
+# Live (short --out: the engine command line is limited to 512 characters):
+python3 tools/quality/frame_pacing.py --runtime run/runtime --build <waf tree> \
+  --out /tmp/<short>/g2 --extra-arg=+cl_render_start_graph --extra-arg=2 \
+  --extra-arg=+cl_bone_setup_verify --extra-arg=1 \
+  [--extra-arg=+cl_bone_setup_verify_fault --extra-arg=1]
+grep -a bone_setup_verify /tmp/<short>/g2/runtime/portal/console.log
+# Off/on host captures: add --passes 1 --extra-arg=-hostframetrace --extra-arg=<file>
+#   --extra-arg=+cl_clock_correction --extra-arg=0, then
+python3 tools/quality/host_frame_capture.py a.t b.t --tolerance ia=0.0001
+```
+
 ## Gates run
 
 - gcc release `--tests` tree: all 15 job-system programs pass after the rebase
@@ -342,9 +599,11 @@ Rollback of the job args: `JOB_ARGS= ./play` or `JOB_ARGS= ./play_p2`.
   block narrows its declarations; only then can a batch move past it.
 - TickServer was profiled but not split; server think, AI and VPhysics stay in
   legacy order until audited.
-- No semantic live oracle for the client region (bone/particle outputs); the
-  equivalence rests on the oracle and on the cohorts running the same parts in
-  every mode.
+- A live semantic oracle exists for the previous-frame bone batch only
+  (section 7: 3958 items verified in each mode, 0 mismatches). The particle
+  batch has a proposed invariant (fixed-seed twin effects) and no check yet.
+  The renderable bone batches, entity packing, query cache and portal
+  carving still rest on their offline oracles.
 - Android/Apple budgets and census, and a full-product TSan run, remain open.
 
 ## Reproduction
@@ -364,18 +623,3 @@ python3 tools/quality/portal_boot.py ... --engine-arg=-hostframetrace --engine-a
   --startup-command="host_frame_graph 1"   # then 0
 python3 tools/quality/host_frame_capture.py legacy.trace graph.trace --tolerance ia=0.0001
 ```
-
-## 7. Live shadow verifier for the pooled render-start cohorts (active, 2026-09-25)
-
-Scope: close the open item "no semantic live oracle for the client region".
-The approach is an in-process verifier, off by default:
-
-- after each pooled batch, recompute its items serially into private copies
-  and byte-compare, bones first;
-- particles get either an exact check or, if their random streams or state
-  make an exact recompute unsound, a documented weaker invariant;
-- a seeded-fault negative control;
-- the overhead measured;
-- no behaviour change when off.
-
-Implemented in an isolated worktree; results are recorded here when merged.

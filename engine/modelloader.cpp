@@ -1163,7 +1163,18 @@ void Mod_LoadWorldlights( CMapLoadHelper &lh, bool bIsHDR )
 		return;
 	}
 
-	switch ( lh.LumpVersion() )
+	// A version 0 tag over dworldlight_t records (this tree's compile tools
+	// before 2026-09-25) is read by its records' layout; see
+	// WorldlightLumpLayout. Clusters never outnumber the visible leafs.
+	int layout = WorldlightLumpLayout(
+	    lh.LumpBase(), lh.LumpSize(), lh.LumpVersion(), lh.GetMap()->numleafs + 1 );
+	if ( layout != lh.LumpVersion() )
+	{
+		Warning( "%s: worldlight lump tagged version %d holds version %d records; reading them as "
+		         "version %d (recompile the map to fix the tag)\n",
+		    lh.GetLoadName(), lh.LumpVersion(), layout, layout );
+	}
+	switch ( layout )
 	{
 		case LUMP_WORLDLIGHTS_VERSION:
 		{

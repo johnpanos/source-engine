@@ -1706,7 +1706,7 @@
       "fingerprint": "03265437a764ee72d274",
       "mechanism": "native-loader",
       "path": "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-      "line": 207,
+      "line": 252,
       "excerpt": "void *pModule = dlopen( \"librenderdoc.so\", RTLD_NOW | RTLD_NOLOAD );",
       "classification": "optional-provider",
       "reason": "Optional product, renderer, input, video, or vendor provider.",

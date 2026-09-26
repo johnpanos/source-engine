@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 #
-# Independent checks of a USD-compiled BSP2 map (RFC 0009 U1, roadmap R59).
+# Independent checks of a USD-compiled BSP2 map (RFC 0009 U1-U2, roadmap R59).
 #
 #   python3 tools/quality/usd_map_check.py check MAP.bsp \
 #       --report authoring-report.json --provenance provenance.json \
@@ -15,8 +15,16 @@
 #
 #   container   the BSP2 directory, hashes and legacy structures validate;
 #   entities    every authored entity record (class, origin, angles, model,
-#               keys, authored id) and nothing else; the light's _light is
-#               recomputed from the profile's light policy;
+#               keys, authored id, targetname) and nothing else; the light's
+#               _light is recomputed from the profile's light policy;
+#   roles       each placement role keeps its own contract: prop_static only in
+#               the static-prop lump (solid per its collision, shadows baked);
+#               prop_dynamic a named, non-physics entity with its solid and
+#               default animation; prop_physics an entity with .phy collision;
+#               a trigger's touch filter and every authored connection (to the
+#               target's name, with a declared input); a func_movelinear's move
+#               recomputed from its authored displacement and duration, and its
+#               faces with their authored materials;
 #   props       the static-prop game lump holds exactly the authored
 #               prop_static placements; models exist with the collision their
 #               role needs;
@@ -33,7 +41,9 @@
 #               cluster, solid points none; clusters with a clear line of
 #               sight see each other, and regions sealed from each other do
 #               not;
-#   lighting    vrad lit the world faces and compiled the authored light.
+#   lighting    vrad lit the world faces and compiled the authored light;
+#               the floor where a prop_static's top casts its shadow is darker
+#               than the unoccluded point mirrored across the light.
 #
 # Exit status 0 only when every check passes; the command prints the checks-v1
 # record. Python 3 standard library plus numpy (legacy_bsp.py).
@@ -58,6 +68,7 @@ sys.path.insert(0, str(HERE))
 
 import bsp2_reader  # noqa: E402
 import legacy_bsp  # noqa: E402
+import source_model  # noqa: E402
 from conformance_result import Checks  # noqa: E402
 
 CHECK_SCHEMA = "source-usd-map-check/v1"
@@ -69,6 +80,11 @@ LUMP_LIGHTING = 8
 CONTENTS_SOLID = 0x1
 MASK_SOLID = 0x1 | 0x2 | 0x8 | 0x4000 | 0x2000000 | 0x10000
 SPRP = struct.unpack(">i", b"sprp")[0]
+STATIC_PROP_NO_SHADOW = 0x10
+SURF_BUMPLIGHT = 0x800
+# The floor in a prop's baked shadow keeps at most this fraction of the light
+# at its unoccluded mirror point (direct light is gone; bounce light remains).
+SHADOW_RATIO = 0.6
 # Static prop record sizes CStaticPropMgr::UnserializeModels reads, by (BSP
 # version, lump version): StaticPropLumpV10_21_t and StaticPropLumpV10_t.
 ENGINE_STATIC_PROP_RECORD = {(21, 10): 76, (20, 10): 72, (19, 10): 72}
@@ -332,16 +348,33 @@ def check_map(bsp2_path, report, provenance, profile, runtime, checks=None):
             check(close(numbers(entity.get("origin", "")), record["origin"]),
                   "entities.origin", "%s %r vs %r" % (ident, entity.get("origin"),
                                                       record["origin"]))
-        if role in ("entity_point", "prop_physics"):
+        if role in ("entity_point", "prop_physics", "prop_dynamic"):
             check(angle_close(numbers(entity.get("angles", "0 0 0")), record["angles"]),
                   "entities.angles", "%s %r vs %r" % (ident, entity.get("angles"),
                                                       record["angles"]))
-        if role == "prop_physics":
+        if role in profile["targetname"]["roles"]:
+            check(entity.get("targetname") == ident, "entities.targetname",
+                  "%s is named %r" % (ident, entity.get("targetname")))
+        if role in ("prop_physics", "prop_dynamic"):
             check(entity.get("model") == record["model"], "entities.model", ident)
-            for suffix in (".mdl", ".phy"):
+            suffixes = [".mdl"] + ([".phy"] if role == "prop_physics" or
+                                   record.get("collision") == "vphysics" else [])
+            for suffix in suffixes:
                 check(resolver.read(record["model"][:-4] + suffix)[0] is not None,
                       "content.model-file", record["model"][:-4] + suffix)
             check(entity.get("skin", "0") == str(record.get("skin", 0)), "entities.skin", ident)
+        if role == "prop_physics":
+            # Physics-only keys never reach another role, and a physics prop
+            # never carries a dynamic prop's animation.
+            check("DefaultAnim" not in entity, "roles.physics-not-animated", ident)
+        if role == "prop_dynamic":
+            check(entity.get("solid") == profile["dynamic_prop_solid"][record["collision"]],
+                  "roles.dynamic-solid", "%s solid %r" % (ident, entity.get("solid")))
+            check(entity.get("DefaultAnim") == record.get("default_animation"),
+                  "roles.dynamic-default-animation", "%s %r vs %r" % (
+                      ident, entity.get("DefaultAnim"), record.get("default_animation")))
+            check("massScale" not in entity and "inertiaScale" not in entity,
+                  "roles.dynamic-not-physics", ident)
         if role == "entity_brush":
             check(entity.get("model", "").startswith("*"), "entities.brush-model", ident)
             index = int(entity.get("model", "*0")[1:] or 0)
@@ -352,6 +385,8 @@ def check_map(bsp2_path, report, provenance, profile, runtime, checks=None):
                       "%s model %r..%r vs %r" % (ident, models[index]["mins"],
                                                  models[index]["maxs"], bounds))
             for key, value in profile["classes"][cls]["keys"].items():
+                if cls.startswith("trigger_") and key == "spawnflags":
+                    continue  # the touch filter's, checked under roles
                 check(entity.get(key) == value, "entities.class-default",
                       "%s %s=%r" % (ident, key, entity.get(key)))
         if role == "light":
@@ -363,6 +398,7 @@ def check_map(bsp2_path, report, provenance, profile, runtime, checks=None):
             for key, value in profile["classes"]["light"]["keys"].items():
                 check(entity.get(key) == value, "entities.light-key", "%s %s" % (ident, key))
     observations["entities"] = len(entities)
+    check_roles(check, m, objects, by_id, profile, observations)
 
     # ----------------------------------------------------- static props
     try:
@@ -388,6 +424,8 @@ def check_map(bsp2_path, report, provenance, profile, runtime, checks=None):
         check(prop["solid"] == int(profile["static_prop_solid"][record["collision"]]),
               "props.solid", "%s solid %d" % (record["id"], prop["solid"]))
         check(prop["skin"] == record.get("skin", 0), "props.skin", record["id"])
+        check(not prop["flags"] & STATIC_PROP_NO_SHADOW, "props.casts-baked-shadow",
+              "%s flags %#x" % (record["id"], prop["flags"]))
         check(prop["leaf_count"] > 0, "props.in-leaves", record["id"])
         suffixes = [".mdl"] + ([".phy"] if record["collision"] == "vphysics" else [])
         for suffix in suffixes:
@@ -419,7 +457,7 @@ def check_map(bsp2_path, report, provenance, profile, runtime, checks=None):
                          "%s face %d plane %r" % (record["id"], face_index, face["plane"])):
                 continue
             expected = (record["surfaces"][face_index]["material"]
-                        if record["role"] == "world_solid" else profile["brush_entity_material"])
+                        if authored_surfaces(record) else profile["brush_entity_material"])
             side_materials[(record["id"], face_index)] = (m.material(match[0]["texinfo"]),
                                                           expected)
         if record["role"] == "world_solid":
@@ -609,9 +647,193 @@ def check_map(bsp2_path, report, provenance, profile, runtime, checks=None):
                     close(w["origin"], record["origin"])]
         check(len(compiled) == 1, "lighting.point-light-compiled", record["id"])
     observations["world_lights"] = len(world_lights)
+    lights = [o for o in objects.values() if o["role"] == "light"]
+    unmeasured = observations.setdefault("static_prop_shadows_unmeasured", [])
+    for record in sorted((o for o in objects.values() if o["role"] == "prop_static"),
+                         key=lambda o: o["id"]):
+        # The mirror construction needs a single light.
+        shadow = static_prop_shadow(m, record, lights[0]["origin"], resolver,
+                                    world_solids) if len(lights) == 1 else None
+        if shadow is None:
+            unmeasured.append(record["id"])
+            continue
+        observations.setdefault("static_prop_shadows", {})[record["id"]] = shadow
+        check(shadow["ratio"] <= SHADOW_RATIO, "lighting.static-prop-shadow",
+              "%s: floor %.3f at %r vs %.3f at its mirror %r" % (
+                  record["id"], shadow["shadowed"], shadow["point"], shadow["open"],
+                  shadow["mirror"]))
 
     return {"schema": CHECK_SCHEMA, "checks": c.checks, "failures": failures,
             "observations": observations}
+
+
+def authored_surfaces(record):
+    """World solids and brush entities whose faces carry authored materials."""
+    return bool(record.get("surfaces")) and all("material" in s for s in record["surfaces"])
+
+
+def angle_vectors(angles):
+    """Source's AngleVectors forward vector (mathlib), for pitch yaw roll."""
+    pitch, yaw = math.radians(angles[0]), math.radians(angles[1])
+    return (math.cos(pitch) * math.cos(yaw), math.cos(pitch) * math.sin(yaw), -math.sin(pitch))
+
+
+def outputs_of(entity):
+    """Entity outputs as (output, [target, input, parameter, delay, times])."""
+    result = []
+    for key, value in entity.items():
+        if key.startswith("On"):
+            for item in value if isinstance(value, list) else [value]:
+                result.append((key, item.split(",")))
+    return sorted(result)
+
+
+def check_roles(check, m, objects, by_id, profile, observations):
+    """Each role's compiled contract, from the authored records and the policy."""
+    names = {e.get("targetname"): e for e in by_id.values() if e.get("targetname")}
+    models = m.models()
+    for ident, record in sorted(objects.items()):
+        entity = by_id.get(ident)
+        cls = record.get("classname")
+        if entity is None or record["role"] != "entity_brush":
+            continue
+        if cls.startswith("trigger_"):
+            policy = profile["trigger_touch_filter"]
+            wanted = sum(policy["flags"][f] for f in set(record.get("touch_filter",
+                                                                   policy["default"])))
+            check(entity.get("spawnflags") == str(wanted), "roles.trigger-touch-filter",
+                  "%s spawnflags %r, filter %r" % (ident, entity.get("spawnflags"),
+                                                   record.get("touch_filter")))
+        authored = sorted((c["output"], [c["target"], c["input"], c["parameter"]])
+                          for c in record.get("connections", []))
+        compiled = outputs_of(entity)
+        check([(o, v[:3]) for o, v in compiled] == authored, "roles.connections",
+              "%s compiled %r, authored %r" % (ident, compiled, authored))
+        for output, fields in compiled:
+            target = names.get(fields[0]) if fields else None
+            check(len(fields) == 5 and target is not None, "roles.connection-target",
+                  "%s %s -> %r" % (ident, output, fields))
+            if len(fields) == 5:
+                check(float(fields[3]) == profile["connections"]["delay"] and
+                      int(fields[4]) == profile["connections"]["times"],
+                      "roles.connection-policy", "%s %s %r" % (ident, output, fields))
+        if cls == "func_movelinear":
+            forward = angle_vectors(numbers(entity.get("movedir", "0 0 0")))
+            distance = float(entity.get("movedistance", "0"))
+            moved = [forward[a] * distance for a in range(3)]
+            check(close(moved, record["move"], 0.01), "roles.movelinear-displacement",
+                  "%s moves %r, authored %r" % (ident, moved, record["move"]))
+            speed = float(entity.get("speed", "0"))
+            check(speed > 0 and abs(distance / speed - record["move_seconds"]) <= 1e-3,
+                  "roles.movelinear-duration", "%s speed %r" % (ident, speed))
+            index = int(entity.get("model", "*0")[1:] or 0)
+            if 0 < index < len(models):
+                check_brush_entity_faces(check, m, models[index], record)
+    observations["targetnames"] = sorted(n for n in names if n)
+
+
+def check_brush_entity_faces(check, m, model, record):
+    """Every face of an authored-surface brush entity's model lies on one of
+    its authored faces, with that face's material and texture mapping."""
+    faces = m.lump(legacy_bsp.LUMP_FACES, legacy_bsp.FACE.size)
+    first, count = model["firstface"], model["numfaces"]
+    check(count > 0, "roles.brush-entity-faces", record["id"])
+    for index in range(first, first + count):
+        values = legacy_bsp.FACE.unpack_from(faces, index * legacy_bsp.FACE.size)
+        texinfo = values[5]
+        normal = tuple(m.normals[values[0]])
+        points = face_points(m, values)
+        centroid = tuple(sum(p[a] for p in points) / len(points) for a in range(3))
+        owner = [i for i, face in enumerate(record["faces"])
+                 if close(normal, face["plane"][:3], 1e-4) and
+                 abs(dot(centroid, face["plane"][:3]) - face["plane"][3]) <= PLANE_TOLERANCE]
+        if not check(len(owner) == 1, "roles.brush-entity-face-on-authored",
+                     "%s face %d" % (record["id"], index)):
+            continue
+        face = record["faces"][owner[0]]
+        check(m.material(texinfo) == record["surfaces"][owner[0]]["material"],
+              "roles.brush-entity-material", "%s face %d %r" % (record["id"], index,
+                                                                m.material(texinfo)))
+        texdata = m.texdata[m.texinfo[texinfo]["texdata"]]
+        vectors = m.texinfo[texinfo]["vectors"]
+        s_value = (dot(vectors[0][:3], centroid) + vectors[0][3]) / texdata["width"]
+        t_value = 1.0 - (dot(vectors[1][:3], centroid) + vectors[1][3]) / texdata["height"]
+        want_s = dot(face["st"]["s"][:3], centroid) + face["st"]["s"][3]
+        want_t = dot(face["st"]["t"][:3], centroid) + face["st"]["t"][3]
+        check(abs(s_value - want_s) <= ST_TOLERANCE and abs(t_value - want_t) <= ST_TOLERANCE,
+              "roles.brush-entity-texture-mapping", "%s face %d" % (record["id"], index))
+
+
+def face_points(m, values):
+    """The corner points of a raw dface_t (FACE fields)."""
+    first_edge, edge_count = values[3], values[4]
+    edges = np.frombuffer(m.lump(legacy_bsp.LUMP_EDGES, 4), dtype="<u2").reshape(-1, 2)
+    surfedges = np.frombuffer(m.lump(legacy_bsp.LUMP_SURFEDGES, 4), dtype="<i4")
+    vertices = np.frombuffer(m.lump(legacy_bsp.LUMP_VERTEXES, 12), dtype="<f4").reshape(-1, 3)
+    ids = surfedges[first_edge:first_edge + edge_count]
+    corners = np.where(ids >= 0, edges[np.abs(ids), 0], edges[np.abs(ids), 1])
+    return [tuple(float(x) for x in vertices[c]) for c in corners]
+
+
+def luxel_luminance(m, point):
+    """The baked style-0 lightmap luminance of the world floor face (+z) under
+    `point`, from the luxel nearest the point; None when no face covers it."""
+    faces = m.lump(legacy_bsp.LUMP_FACES, legacy_bsp.FACE.size)
+    texinfo = m.lump(legacy_bsp.LUMP_TEXINFO, legacy_bsp.TEXINFO_BYTES)
+    lighting = m.lump(LUMP_LIGHTING)
+    for face in m.bsp.world_faces():
+        normal = tuple(face["plane_normal"])
+        polygon = list(reversed([tuple(p) for p in face["points"]]))
+        if not close(normal, (0.0, 0.0, 1.0), 1e-4) or \
+                abs(polygon[0][2] - point[2]) > PLANE_TOLERANCE or \
+                not inside_polygon(point, normal, polygon, margin=0.0):
+            continue
+        values = legacy_bsp.FACE.unpack_from(faces, face["index"] * legacy_bsp.FACE.size)
+        styles, offset = values[8:12], values[12]
+        mins, size = values[14:16], values[16:18]
+        if styles[0] == 255 or offset < 0:
+            return None
+        lightmap = struct.unpack_from("<8f", texinfo, face["texinfo"] *
+                                      legacy_bsp.TEXINFO_BYTES + 32)
+        s = dot(lightmap[0:3], point) + lightmap[3] - mins[0]
+        t = dot(lightmap[4:7], point) + lightmap[7] - mins[1]
+        s = min(max(int(round(s)), 0), size[0])
+        t = min(max(int(round(t)), 0), size[1])
+        r, g, b, e = struct.unpack_from("<BBBb", lighting, offset + 4 * (t * (size[0] + 1) + s))
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) * 2.0 ** e
+    return None
+
+
+def static_prop_shadow(m, record, light, resolver, world_solids):
+    """Baked-shadow evidence for a prop_static: the floor point where the line
+    from the light through the top of the prop's model (at its origin) lands,
+    and that point mirrored across the vertical plane y = light y. The oracle
+    assumes a scene symmetric about that plane apart from the prop, as the
+    fixtures are. None when the construction does not apply (the light below
+    the prop's top, no floor under the prop, or a point on no lit floor face);
+    the caller records such props as unmeasured."""
+    data, _ = resolver.read(record["model"])
+    if data is None:
+        return None
+    hull = source_model.read_model(data)["hull"]
+    top = record["origin"][2] + hull[1][2]
+    if light[2] <= top + 1.0:
+        return None
+    floor = max((o["bounds"][1][2] for o in world_solids
+                 if o["bounds"][0][0] <= record["origin"][0] <= o["bounds"][1][0] and
+                 o["bounds"][0][1] <= record["origin"][1] <= o["bounds"][1][1] and
+                 o["bounds"][1][2] <= record["origin"][2]), default=None)
+    if floor is None:
+        return None
+    scale_to_floor = (light[2] - floor) / (light[2] - top)
+    point = (light[0] + (record["origin"][0] - light[0]) * scale_to_floor,
+             light[1] + (record["origin"][1] - light[1]) * scale_to_floor, floor)
+    mirror = (point[0], 2.0 * light[1] - point[1], floor)
+    shadowed, open_value = luxel_luminance(m, point), luxel_luminance(m, mirror)
+    if shadowed is None or not open_value:
+        return None
+    return {"point": [round(x, 3) for x in point], "mirror": [round(x, 3) for x in mirror],
+            "shadowed": shadowed, "open": open_value, "ratio": shadowed / open_value}
 
 
 def face_samples(polygon, normal, spacing=SAMPLE_SPACING):

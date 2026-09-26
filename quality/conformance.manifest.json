@@ -1018,6 +1018,26 @@
       "expect": "pass"
     },
     {
+      "id": "jobsystem.shadowverify",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-RENDERSTART-001",
+      "contract": "public/jobsystem/batch_shadow_verify.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "unittests/jobsystemtest/shadowverifytest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.bench.smoke",
       "domain": "Q-JOBS",
       "rfc": "0003",
@@ -4656,9 +4676,9 @@
       "rfc": "0009",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0009 U0 authoring validator (tools/quality/usd_authoring_validate.py) against the source-authoring v1 profile (quality/usd_authoring/source_authoring_v1.json) under the pinned OpenUSD Python: the layered hand-authored room (quality/fixtures/usd-authoring/room) validates clean with its objects table (roles, prefab-composed model, Source-space origins/angles/bounds, surface materials, and for U1 each solid's outward face planes, corners and affine st rows and each light's UsdLux inputs); flattening, a Y-up centimetre re-authoring and a mirrored solid give the same result; ids survive rename, regrouping and a USDC round trip; and 66 bad variants generated from private copies of the fixture (plus a missing and an unparsable file) each produce exactly their one intended error code at their prim, covering every code the profile declares (role, property, id, transform, convex-solid topology, surface/st/material, composition and unsupported-feature checks). Source angles are checked against mathlib AngleVectors. Mutation evidence (disabling each code or check in a scratch copy fails a test, 74/74) is recorded by the owner's progress note, not by this row. Setup as corpus.usd.scene-module; skipped (never certified) when SOURCE_USD_TOOLCHAIN is unset.",
+      "description": "RFC 0009 U0 authoring validator (tools/quality/usd_authoring_validate.py) against the source-authoring v1 profile (quality/usd_authoring/source_authoring_v1.json) under the pinned OpenUSD Python: the layered hand-authored room (quality/fixtures/usd-authoring/room) validates clean with its objects table (roles, prefab-composed model, Source-space origins/angles/bounds, surface materials, and for U1 each solid's outward face planes, corners and affine st rows and each light's UsdLux inputs); flattening, a Y-up centimetre re-authoring and a mirrored solid give the same result; ids survive rename, regrouping and a USDC round trip; and 66 bad variants generated from private copies of the fixture (plus a missing and an unparsable file) each produce exactly their one intended error code at their prim, covering every code the profile declares (role, property, id, transform, convex-solid topology, surface/st/material, composition and unsupported-feature checks). Source angles are checked against mathlib AngleVectors. Mutation evidence (disabling each code or check in a scratch copy fails a test, 74/74) is recorded by the owner's progress note, not by this row. U2 (profile version 2, one file with per-feature `since` markers; v1 stages keep v1 behaviour): the role fixture (quality/fixtures/usd-authoring/roles, reusing the room's world and prefab layers) validates clean with a prop_dynamic (model, collision, default animation), two prop_static props (vphysics and none), a func_movelinear lift with authored surfaces and a displacement in its prim's space, and a trigger with a touch filter and two connections resolved by id; it survives a flattened USDC save and reopen with identical objects; 21 bad variants of it each produce exactly their code, a v1 trigger renamed func_door fails entity.class-unsupported (physics-only keys on a dynamic prop, misplaced class keys, reserved parenting, unknown keys, bad sequences and touch filters, connection syntax, targets and inputs, a role changed against the previous revision, v2 features in a v1 stage), and swapping two props' roles fails twice (a misplaced key and an input the new prop_static lacks). U2 mutation evidence (12/12 new checks) is in RFC/0009-progress.md. Setup as corpus.usd.scene-module; skipped (never certified) when SOURCE_USD_TOOLCHAIN is unset.",
       "result_protocol": "checks-v1",
-      "min_checks": 98,
+      "min_checks": 127,
       "command": [
         "{python}",
         "tools/quality/corpus/usd_runner.py",
@@ -4677,7 +4697,9 @@
         "quality/fixtures/usd-authoring/room/room.usda",
         "quality/fixtures/usd-authoring/room/world.usda",
         "quality/fixtures/usd-authoring/room/entities.usda",
-        "quality/fixtures/usd-authoring/room/prefabs/metal_box.usda"
+        "quality/fixtures/usd-authoring/room/prefabs/metal_box.usda",
+        "quality/fixtures/usd-authoring/roles/roles.usda",
+        "quality/fixtures/usd-authoring/roles/entities.usda"
       ],
       "requires": [
         "env:SOURCE_USD_TOOLCHAIN"
@@ -4692,9 +4714,9 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R59",
-      "description": "RFC 0009 U1 native USD map compiler (tools/quality/usd_map_compile.py; policy quality/usd_authoring/source_compile_v1.json): the U0 room compiles through validate -> content -> game -> brushset (source-authored-brushset/v1) -> vbsp -authored (utils/vbsp/authoredmap.cpp builds brushes and entities in memory; no VMF, no prior BSP) -> vvis -> vrad -> BSP2 assemble -> independent output checks (usd_map_check.py: container, entity records with authored ids, light policy, static-prop lump in the engine's layout, brushes per authored solid, open-surface coverage with material/st/provenance, point and box traces, vphysics models, clusters, line-of-sight and sealed-region visibility, lightmaps) -> one-rename publish into a private store with provenance.json and build.json. Also: two builds are byte-identical stage for stage; a divided room hides its two halves from each other; a 7-sided chamfered solid compiles. Negative fixtures each fail with their code and leave the store unchanged: a bad seal (compile.leak), a missing model, a physics model without collision, a missing material, a reserved role, a role changed against the published package, an unresolved prefab reference, a stale surface id after a clip, an unsupported light input. Seeded mutants of the compiler (swapped st axes, dropped face, shuffled provenance, doubled light, moved entity, skipped vvis, skipped driver leak test) are caught. Setup: SOURCE_USD_TOOLCHAIN as corpus.usd.scene-module; SOURCE_USD_MAP_TOOLS names an install of `./waf configure --tools` from this tree (vbsp with -authored, vvis, vrad, bsp2tool); Portal content in run/runtime ($SOURCE_USD_MAP_RUNTIME overrides). Skipped (never certified) without them.",
+      "description": "RFC 0009 U1-U2 native USD map compiler (tools/quality/usd_map_compile.py; policy quality/usd_authoring/source_compile_v1.json): the U0 room compiles through validate -> content -> game -> brushset (source-authored-brushset/v1) -> vbsp -authored (utils/vbsp/authoredmap.cpp builds brushes and entities in memory; no VMF, no prior BSP) -> vvis -> vrad -> BSP2 assemble -> independent output checks (usd_map_check.py: container, entity records with authored ids, light policy, static-prop lump in the engine's layout, brushes per authored solid, open-surface coverage with material/st/provenance, point and box traces, vphysics models, clusters, line-of-sight and sealed-region visibility, lightmaps) -> one-rename publish into a private store with provenance.json and build.json. Also: two builds are byte-identical stage for stage; a divided room hides its two halves from each other; a 7-sided chamfered solid compiles. Negative fixtures each fail with their code and leave the store unchanged: a bad seal (compile.leak), a missing model, a physics model without collision, a missing material, a reserved role, a role changed against the published package, an unresolved prefab reference, a stale surface id after a clip, an unsupported light input. Seeded mutants of the compiler (swapped st axes, dropped face, shuffled provenance, doubled light, moved entity, skipped vvis, skipped driver leak test) are caught. U2 (compile policy version 2): the role fixture compiles and publishes with each role's own contract checked independently (prop_static in the static-prop lump with its collision's solid and a baked shadow measured on the floor against the mirrored open luxel; prop_dynamic a named non-physics entity with its solid and default animation; prop_physics with .phy; the trigger's touch-filter spawnflags and every typed connection to its target's name; the func_movelinear's move recomputed from movedir, movedistance and speed, and its faces with their authored materials and st). Negative fixtures: roles swapped against the published package (id.role-changed, twice), roles and keys swapped in a fresh document (compile.model-role-mismatch: not $staticprop), a physics prop without .phy, physics-only and unknown keys and parenting on a dynamic prop, a sequence the model lacks (connection and default animation), a missing connection target; none publishes. 13 U2 mutants (dynamic prop emitted as physics, box and switch roles swapped in the brush set, dropped .phy requirement, ignored touch filter, dropped connection, lift speed and direction, lift tool material, static prop without baked shadow, static prop not solid, dropped default animation, unnamed dynamic prop) are caught by the intended check. Setup: SOURCE_USD_TOOLCHAIN as corpus.usd.scene-module; SOURCE_USD_MAP_TOOLS names an install of `./waf configure --tools` from this tree (vbsp with -authored, vvis, vrad, bsp2tool); Portal content in run/runtime ($SOURCE_USD_MAP_RUNTIME overrides). Skipped (never certified) without them.",
       "result_protocol": "checks-v1",
-      "min_checks": 39,
+      "min_checks": 64,
       "timeout_seconds": 900,
       "command": [
         "{python}",
@@ -4722,14 +4744,61 @@
         "quality/fixtures/usd-authoring/room/world.usda",
         "quality/fixtures/usd-authoring/room/entities.usda",
         "quality/fixtures/usd-authoring/room/prefabs/metal_box.usda",
+        "quality/fixtures/usd-authoring/roles/roles.usda",
+        "quality/fixtures/usd-authoring/roles/entities.usda",
+        "tools/quality/source_model.py",
         "utils/vbsp/authoredmap.cpp",
         "utils/vbsp/authoredmap.h",
+        "utils/vbsp/map.cpp",
         "utils/vbsp/staticprop.cpp",
         "utils/vrad/vradstaticprops.cpp"
       ],
       "requires": [
         "env:SOURCE_USD_TOOLCHAIN",
         "env:SOURCE_USD_MAP_TOOLS",
+        "path:run/runtime/portal/portal_pak_dir.vpk"
+      ],
+      "optional": true,
+      "expect": "pass"
+    },
+    {
+      "id": "product.usd-map.roles-runtime",
+      "domain": "Q-PRODUCT",
+      "rfc": "0009",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R59",
+      "description": "RFC 0009 U2 role behaviour at runtime (tools/quality/usd_map_runtime.py --roles; probes map_entity_probe, map_entity_probe_schedule and map_trace_probe in game/server/entitylist.cpp). The role fixture compiles with SOURCE_USD_MAP_TOOLS and runs headless. The windowless client (null renderer, SDL offscreen, no window) holds the physics clock until its config runs, then samples 40 times 0.1 s of game time apart: the prop_physics is a gravity body that falls from its authored height into the trigger and rests with its hull on the floor; the trigger fires both authored connections (the engine's developer 2 I/O trace) and no input goes unhandled; the prop_dynamic is a non-simulated entity that keeps its placement, starts in its default animation and plays the animation the trigger sets; the func_movelinear is a pusher that moves from closed through intermediate samples to its authored displacement. A ray and a player hull dropped on the vphysics prop_static stop on its model's top as a static-prop hit while the world alone reaches the floor, and pass through the collision-none prop_static. The dedicated server, which never simulates without players (engine SV_Frame), checks the spawn state and the traces only. Runtime mutants compiled past the output checks fail here: the dynamic prop emitted as a prop_physics (removed at spawn, never sampled), the trigger touched by clients only (no connection fires, the lift stays shut, the switch does not animate, the box still falls), and the vphysics desk made non-solid (traces reach the floor). Setup: SOURCE_USD_TOOLCHAIN as corpus.usd.scene-module; SOURCE_USD_MAP_TOOLS as corpus.usd-map.compiler; SOURCE_USD_MAP_CLIENT_BUILD and SOURCE_USD_MAP_DEDICATED_BUILD name Portal client and dedicated Waf outputs from this tree; Portal content in run/runtime ($SOURCE_USD_MAP_RUNTIME overrides). Skipped (never certified) without them.",
+      "result_protocol": "checks-v1",
+      "min_checks": 13,
+      "timeout_seconds": 900,
+      "command": [
+        "{python}",
+        "tools/quality/corpus/usd_runner.py",
+        "tools.quality.tests.test_usd_map_runtime"
+      ],
+      "sources": [
+        "tools/quality/corpus/usd_runner.py",
+        "tools/quality/conformance_result.py",
+        "tools/quality/corpus/provenance.py",
+        "quality/product_profiles/pbrt-map-linux-tools.json",
+        "tools/quality/usd_map_runtime.py",
+        "tools/quality/usd_map_compile.py",
+        "tools/quality/usd_map_check.py",
+        "tools/quality/bsp2_dedicated.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/source_model.py",
+        "tools/quality/tests/test_usd_map_runtime.py",
+        "quality/usd_authoring/source_compile_v1.json",
+        "quality/fixtures/usd-authoring/roles/roles.usda",
+        "quality/fixtures/usd-authoring/roles/entities.usda",
+        "game/server/entitylist.cpp"
+      ],
+      "requires": [
+        "env:SOURCE_USD_TOOLCHAIN",
+        "env:SOURCE_USD_MAP_TOOLS",
+        "env:SOURCE_USD_MAP_CLIENT_BUILD",
+        "env:SOURCE_USD_MAP_DEDICATED_BUILD",
         "path:run/runtime/portal/portal_pak_dir.vpk"
       ],
       "optional": true,

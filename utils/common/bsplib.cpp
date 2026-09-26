@@ -2210,6 +2210,55 @@ void CloseBSPFile( void )
 //-----------------------------------------------------------------------------
 //	LoadBSPFile
 //-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+// Worldlight lumps: dworldlight_version0_t records in a version 0 lump (the
+// shipped maps), dworldlight_t records in a LUMP_WORLDLIGHTS_VERSION lump, and
+// dworldlight_t records under a version 0 tag in maps these tools wrote
+// before 2026-09-25 (see WorldlightLumpLayout). Every layout loads as
+// dworldlight_t.
+//-----------------------------------------------------------------------------
+static int CopyWorldlightLump( int lump, dworldlight_t *pDest )
+{
+	g_Lumps.bLumpParsed[lump] = true;
+	int length = g_pBSPHeader->lumps[lump].filelen;
+	const byte *pData = (const byte *)g_pBSPHeader + g_pBSPHeader->lumps[lump].fileofs;
+	int layout =
+	    WorldlightLumpLayout( pData, length, g_pBSPHeader->lumps[lump].version, numleafs + 1 );
+	if ( layout == LUMP_WORLDLIGHTS_VERSION || g_bSwapOnLoad )
+	{
+		// The byte-swapping path handles dworldlight_t records only.
+		return CopyLump( lump, pDest );
+	}
+	if ( layout != 0 )
+		Error( "Unknown worldlight lump version %d\n", layout );
+	int count = length / (int)sizeof( dworldlight_version0_t );
+	if ( count > MAX_MAP_WORLDLIGHTS )
+		Error( "Too many worldlights (%d, max %d)\n", count, MAX_MAP_WORLDLIGHTS );
+	const dworldlight_version0_t *pOld = (const dworldlight_version0_t *)pData;
+	for ( int i = 0; i < count; i++ )
+	{
+		dworldlight_t &light = pDest[i];
+		light.origin = pOld[i].origin;
+		light.intensity = pOld[i].intensity;
+		light.normal = pOld[i].normal;
+		light.shadow_cast_offset.Init( 0.0f, 0.0f, 0.0f );
+		light.cluster = pOld[i].cluster;
+		light.type = pOld[i].type;
+		light.style = pOld[i].style;
+		light.stopdot = pOld[i].stopdot;
+		light.stopdot2 = pOld[i].stopdot2;
+		light.exponent = pOld[i].exponent;
+		light.radius = pOld[i].radius;
+		light.constant_attn = pOld[i].constant_attn;
+		light.linear_attn = pOld[i].linear_attn;
+		light.quadratic_attn = pOld[i].quadratic_attn;
+		light.flags = pOld[i].flags;
+		light.texinfo = pOld[i].texinfo;
+		light.owner = pOld[i].owner;
+	}
+	return count;
+}
+
 void LoadBSPFile( const char *filename )
 {
 	OpenBSPFile( filename );
@@ -2256,9 +2305,9 @@ void LoadBSPFile( const char *filename )
 	LoadLeafAmbientLighting( numleafs );
 
 	CopyLump( FIELD_CHARACTER, LUMP_ENTITIES, dentdata );
-	numworldlightsLDR = CopyLump( LUMP_WORLDLIGHTS, dworldlightsLDR );
-	numworldlightsHDR = CopyLump( LUMP_WORLDLIGHTS_HDR, dworldlightsHDR );
-	
+	numworldlightsLDR = CopyWorldlightLump( LUMP_WORLDLIGHTS, dworldlightsLDR );
+	numworldlightsHDR = CopyWorldlightLump( LUMP_WORLDLIGHTS_HDR, dworldlightsHDR );
+
 	numleafwaterdata = CopyLump( LUMP_LEAFWATERDATA, dleafwaterdata );
 	g_PhysCollideSize = CopyVariableLump<byte>( FIELD_CHARACTER, LUMP_PHYSCOLLIDE, (void**)&g_pPhysCollide );
 	g_PhysDispSize = CopyVariableLump<byte>( FIELD_CHARACTER, LUMP_PHYSDISP, (void**)&g_pPhysDisp );
@@ -2680,8 +2729,10 @@ void WriteBSPFile( const char *filename, char *pUnused )
 	AddLump( LUMP_LIGHTING_HDR, dlightdataHDR, LUMP_LIGHTING_VERSION );
 	AddLump( LUMP_VISIBILITY, dvisdata, visdatasize );
 	AddLump( LUMP_ENTITIES, dentdata );
-	AddLump( LUMP_WORLDLIGHTS, dworldlightsLDR, numworldlightsLDR );
-	AddLump( LUMP_WORLDLIGHTS_HDR, dworldlightsHDR, numworldlightsHDR );
+	// The records are dworldlight_t, so the lumps say so; a version 0 tag
+	// makes the engine read them as dworldlight_version0_t.
+	AddLump( LUMP_WORLDLIGHTS, dworldlightsLDR, numworldlightsLDR, LUMP_WORLDLIGHTS_VERSION );
+	AddLump( LUMP_WORLDLIGHTS_HDR, dworldlightsHDR, numworldlightsHDR, LUMP_WORLDLIGHTS_VERSION );
 	AddLump( LUMP_LEAFWATERDATA, dleafwaterdata, numleafwaterdata );
 
 	AddOcclusionLump();

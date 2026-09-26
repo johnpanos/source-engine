@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -80,6 +81,15 @@ def check(vbsp, vvis, vrad, bsp2tool):
             lighting_layout = audit_lighting_lumps(lump(data, 7), lump(data, 6), lighting)
             if not lump(data, 15) or not lump(data, 52) or not lump(data, 56):
                 raise RuntimeError("VRAD omitted world or ambient lighting")
+            # The world lights are dworldlight_t records (100 bytes), so the
+            # lump must say version 1: under version 0 the engine reads them
+            # as 88-byte dworldlight_version0_t and crashed on the garbage
+            # cluster (fixed 2026-09-25).
+            worldlights_version = struct.unpack_from("<i", data, 8 + 16 * 15 + 8)[0]
+            if worldlights_version != 1 or len(lump(data, 15)) % 100:
+                raise RuntimeError("VRAD wrote world lights as version %d with %d bytes; expected "
+                                   "whole 100-byte version 1 records"
+                                   % (worldlights_version, len(lump(data, 15))))
             baked.append((case_bsp, data, {index: lump(data, index) for index in LIGHT_LUMPS}))
 
         for index in LIGHT_LUMPS:
@@ -118,6 +128,7 @@ def check(vbsp, vvis, vrad, bsp2tool):
             "lighting_sha256": digest(first_lumps[8]),
             "lighting_layout": lighting_layout,
             "worldlights_bytes": len(first_lumps[15]),
+            "worldlights_version": 1,
             "visibility_sha256": digest(lump(pre_bake, 4)),
             "bsp_sha256": digest(first_data),
             "byte_exact_export": True,

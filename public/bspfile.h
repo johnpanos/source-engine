@@ -1011,6 +1011,50 @@ struct dworldlight_t
 	int			owner;			// entity that this light it relative to
 };
 
+// The record layout of a worldlight lump: 0 for dworldlight_version0_t,
+// LUMP_WORLDLIGHTS_VERSION for dworldlight_t. The lump header's version says
+// which, except that this tree's compile tools wrote dworldlight_t records
+// under a version 0 tag until 2026-09-25 (utils/common/bsplib.cpp), and the
+// engine then read their fields 12 bytes off and crashed on the garbage
+// cluster. A version 0 lump whose records are only plausible as dworldlight_t
+// is therefore read as dworldlight_t. A record is plausible when its type is
+// an emittype_t and its cluster lies in [-1, clusterLimit).
+inline bool WorldlightRecordsPlausible( const unsigned char *pData, int size, int stride,
+    int typeOffset, int clusterOffset, int clusterLimit )
+{
+	if ( size % stride != 0 )
+		return false;
+	for ( int i = 0; i < size / stride; i++ )
+	{
+		int type = *reinterpret_cast<const int *>( pData + i * stride + typeOffset );
+		int cluster = *reinterpret_cast<const int *>( pData + i * stride + clusterOffset );
+		if ( type < emit_surface || type > emit_skyambient || cluster < -1 ||
+		     cluster >= clusterLimit )
+			return false;
+	}
+	return true;
+}
+
+inline int WorldlightLumpLayout( const void *pData, int size, int taggedVersion, int clusterLimit )
+{
+	if ( taggedVersion != 0 || size <= 0 )
+		return taggedVersion;
+	const unsigned char *pBytes = static_cast<const unsigned char *>( pData );
+	dworldlight_version0_t v0;
+	dworldlight_t v1;
+	const unsigned char *p0 = reinterpret_cast<const unsigned char *>( &v0 );
+	const unsigned char *p1 = reinterpret_cast<const unsigned char *>( &v1 );
+	if ( WorldlightRecordsPlausible( pBytes, size, sizeof( v0 ),
+	         reinterpret_cast<const unsigned char *>( &v0.type ) - p0,
+	         reinterpret_cast<const unsigned char *>( &v0.cluster ) - p0, clusterLimit ) )
+		return 0;
+	if ( WorldlightRecordsPlausible( pBytes, size, sizeof( v1 ),
+	         reinterpret_cast<const unsigned char *>( &v1.type ) - p1,
+	         reinterpret_cast<const unsigned char *>( &v1.cluster ) - p1, clusterLimit ) )
+		return LUMP_WORLDLIGHTS_VERSION;
+	return 0;
+}
+
 struct dcubemapsample_t
 {
 	DECLARE_BYTESWAP_DATADESC();

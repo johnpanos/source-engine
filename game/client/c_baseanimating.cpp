@@ -49,6 +49,7 @@
 #include "vstdlib/jobthread.h"
 #include "vstdlib/jobgraph_parallel.h"
 #include "bonetoworldarray.h"
+#include "bone_setup_shadow_verify.h"
 #include "posedebugger.h"
 #include "tier0/icommandline.h"
 #include "prediction.h"
@@ -2667,9 +2668,22 @@ static void SetupBonesOnBaseAnimatingAtTime( C_BaseAnimating *pBaseAnimating, fl
 		pBaseAnimating->SetupBones( NULL, -1, -1, flTime );
 }
 
+// One item of the previous-frame batch, in every dispatch mode. The shadow
+// verifier (cl_bone_setup_verify, off by default) observes items it verifies.
+static void RunThreadedBoneSetupItem( C_BaseAnimating *pBaseAnimating, float flTime )
+{
+	if ( CBoneSetupShadowVerifier::ObservesItems() )
+	{
+		CBoneSetupShadowVerifier::RunObservedItem(
+		    pBaseAnimating, flTime, &SetupBonesOnBaseAnimatingAtTime );
+		return;
+	}
+	SetupBonesOnBaseAnimatingAtTime( pBaseAnimating, flTime );
+}
+
 static void SetupBonesOnBaseAnimating( C_BaseAnimating *&pBaseAnimating )
 {
-	SetupBonesOnBaseAnimatingAtTime( pBaseAnimating, gpGlobals->curtime );
+	RunThreadedBoneSetupItem( pBaseAnimating, gpGlobals->curtime );
 }
 
 static void PreThreadedBoneSetup()
@@ -2689,7 +2703,7 @@ struct ThreadedBoneSetupContext_t
 	void Begin() { PreThreadedBoneSetup(); }
 	void Process( C_BaseAnimating *&pBaseAnimating )
 	{
-		SetupBonesOnBaseAnimatingAtTime( pBaseAnimating, m_flTime );
+		RunThreadedBoneSetupItem( pBaseAnimating, m_flTime );
 	}
 	void End() { PostThreadedBoneSetup(); }
 };
@@ -2703,6 +2717,7 @@ void C_BaseAnimating::InitBoneSetupThreadPool()
 
 void C_BaseAnimating::ShutdownBoneSetupThreadPool()
 {
+	CBoneSetupShadowVerifier::ReportIfUsed();
 }
 
 // ThreadedBoneSetup in three parts, for frame graphs: Begin decides whether the
@@ -2725,6 +2740,8 @@ void C_BaseAnimating::ThreadedBoneSetupBegin()
 			g_bInThreadedBoneSetup = true;
 			s_nThreadedBoneSetupItems = nCount;
 			s_flThreadedBoneSetupTime = gpGlobals->curtime;
+			// Off by default; when on, captures the items' pre-state.
+			CBoneSetupShadowVerifier::BeginBatch( g_PreviousBoneSetups.Base(), nCount );
 		}
 	}
 }
@@ -2736,7 +2753,7 @@ unsigned C_BaseAnimating::ThreadedBoneSetupCount()
 
 void C_BaseAnimating::ThreadedBoneSetupItem( unsigned iItem )
 {
-	SetupBonesOnBaseAnimatingAtTime( g_PreviousBoneSetups[iItem], s_flThreadedBoneSetupTime );
+	RunThreadedBoneSetupItem( g_PreviousBoneSetups[iItem], s_flThreadedBoneSetupTime );
 }
 
 void C_BaseAnimating::ThreadedBoneSetupRunnerBegin()
@@ -2753,6 +2770,10 @@ void C_BaseAnimating::ThreadedBoneSetupEnd()
 {
 	if ( s_nThreadedBoneSetupItems )
 	{
+		// Reruns a verified batch's items serially (still marked as threaded
+		// setup, so they are set up exactly as the batch's items were).
+		CBoneSetupShadowVerifier::EndBatch( &SetupBonesOnBaseAnimatingAtTime,
+		    s_flThreadedBoneSetupTime, &PreThreadedBoneSetup, &PostThreadedBoneSetup );
 		g_bInThreadedBoneSetup = false;
 		s_nThreadedBoneSetupItems = 0;
 	}

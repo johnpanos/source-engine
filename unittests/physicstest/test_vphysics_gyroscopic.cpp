@@ -575,7 +575,8 @@ CPhysCollide *THandleCollide()
 	for ( int i = 0; i < kSides; i++ )
 	{
 		float alpha = 2.0f * M_PI_F * i / kSides;
-		float x = 0.15f * cosf( alpha ) * kInchesPerMeter, z = 0.15f * sinf( alpha ) * kInchesPerMeter;
+		float x = 0.15f * cosf( alpha ) * kInchesPerMeter,
+		      z = 0.15f * sinf( alpha ) * kInchesPerMeter;
 		cylinder[2 * i].Init( x, 0.0f, z );
 		cylinder[2 * i + 1].Init( x, 0.6f * kInchesPerMeter, z );
 		pCylinder[2 * i] = &cylinder[2 * i];
@@ -591,7 +592,7 @@ CPhysCollide *THandleCollide()
 		pBar[i] = &bar[i];
 	}
 	CPhysConvex *pConvexes[2] = { s_pCollision->ConvexFromVerts( pCylinder, 2 * kSides ),
-		s_pCollision->ConvexFromVerts( pBar, 8 ) };
+	    s_pCollision->ConvexFromVerts( pBar, 8 ) };
 	if ( !pConvexes[0] || !pConvexes[1] )
 		return NULL;
 	return s_pCollision->ConvertConvexToCollide( pConvexes, 2 );
@@ -612,7 +613,8 @@ void TestDzhanibekov()
 		params.damping = 0.0f;
 		params.rotdamping = 0.0f;
 		params.dragCoefficient = 0.0f;
-		pBody = world.pEnv->CreatePolyObject( pCollide, world.material, vec3_origin, vec3_angle, &params );
+		pBody = world.pEnv->CreatePolyObject(
+		    pCollide, world.material, vec3_origin, vec3_angle, &params );
 	}
 	if ( !Check( TIER_GAMEPLAY, "gyro.t-handle-body", pBody != NULL ) )
 	{
@@ -625,9 +627,10 @@ void TestDzhanibekov()
 	pBody->EnableDrag( false );
 	pBody->Wake();
 	Vector inertia = pBody->GetInertia();
-	bool intermediate = ( inertia.y > MIN( inertia.x, inertia.z ) && inertia.y < MAX( inertia.x, inertia.z ) );
-	Check( TIER_GAMEPLAY, "gyro.t-handle-intermediate", intermediate, "inertia (%g %g %g)", inertia.x, inertia.y,
-	    inertia.z );
+	bool intermediate =
+	    ( inertia.y > MIN( inertia.x, inertia.z ) && inertia.y < MAX( inertia.x, inertia.z ) );
+	Check( TIER_GAMEPLAY, "gyro.t-handle-intermediate", intermediate, "inertia (%g %g %g)",
+	    inertia.x, inertia.y, inertia.z );
 
 	// The sample's world (0.01, 0.01, 10) rad/s on a body turned -90 degrees
 	// about x: (0.01, -10, 0.01) in the body frame.
@@ -672,21 +675,23 @@ void TestDzhanibekov()
 		}
 		if ( getenv( "GYRO_TRACE" ) )
 		{
-			printf( "GYRO thandle %d w %.3f %.3f %.3f ref %.3f %.3f %.3f |L| %.5f\n", i, body.x, body.y,
-			    body.z, referenceW.x, referenceW.y, referenceW.z, momentum.Length() );
+			printf( "GYRO thandle %d w %.3f %.3f %.3f ref %.3f %.3f %.3f |L| %.5f\n", i, body.x,
+			    body.y, body.z, referenceW.x, referenceW.y, referenceW.z, momentum.Length() );
 		}
 		previous = current;
 	}
 	float period = measured.MeanInterval(), expected = reference.MeanInterval();
 	Check( TIER_GAMEPLAY, "gyro.t-handle-flips",
 	    measured.times.Count() >= 4 && abs( measured.times.Count() - reference.times.Count() ) <= 1,
-	    "%d flips in %.0f s, Euler's equations %d (first %.2f s, reference %.2f s)", measured.times.Count(),
-	    kSeconds, reference.times.Count(), measured.times.Count() ? measured.times[0] : -1.0f,
+	    "%d flips in %.0f s, Euler's equations %d (first %.2f s, reference %.2f s)",
+	    measured.times.Count(), kSeconds, reference.times.Count(),
+	    measured.times.Count() ? measured.times[0] : -1.0f,
 	    reference.times.Count() ? reference.times[0] : -1.0f );
 	Check( TIER_GAMEPLAY, "gyro.t-handle-period",
 	    period > 0.0f && expected > 0.0f && fabsf( period - expected ) < 0.15f * expected,
 	    "flip interval %.3f s, Euler's equations %.3f s", period, expected );
-	Check( TIER_GAMEPLAY, "gyro.t-handle-momentum", maxMomentumAngle < 5.0f && minRatio > 0.8f && maxRatio < 1.03f,
+	Check( TIER_GAMEPLAY, "gyro.t-handle-momentum",
+	    maxMomentumAngle < 5.0f && minRatio > 0.8f && maxRatio < 1.03f,
 	    "max angle %.3f deg |L|/|L0| %.4f..%.4f", maxMomentumAngle, minRatio, maxRatio );
 	Obs1( "gyro.t-handle.flip-interval", "r0.15", period );
 	world.pEnv->DestroyObject( pBody );

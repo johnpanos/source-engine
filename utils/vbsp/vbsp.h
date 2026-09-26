@@ -273,6 +273,8 @@ public:
 	void				ForceFuncAreaPortalWindowContents();
 	ChunkFileResult_t	LoadSideCallback(CChunkFile *pFile, LoadSide_t *pSideInfo);
 	ChunkFileResult_t	LoadConnectionsKeyCallback(const char *szKey, const char *szValue, LoadEntity_t *pLoadEntity);
+	// Appends one entity I/O connection (output name, "target,input,parameter,delay,times").
+	void AddConnection( entity_t *pEntity, const char *szKey, const char *szValue );
 	ChunkFileResult_t	LoadSolidCallback(CChunkFile *pFile, LoadEntity_t *pLoadEntity);
 	void				TestExpandBrushes(void);
 

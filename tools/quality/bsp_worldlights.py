@@ -52,9 +52,11 @@ def filter_lights(data, drop):
         offset, length, version, _ = lumps[lump]
         if not length:
             continue
-        # The compile tools write version-1 records under lump version 0 (the
-        # engine then misreads every record after the first); the length
-        # decides which records these are.
+        # The compile tools wrote version-1 records under lump version 0 until
+        # 2026-09-25 (the engine misread every field after the normal); the
+        # length decides which records these are, and a rewritten lump of
+        # version-1 records is tagged version 1 (public/bspfile.h
+        # WorldlightLumpLayout reads the old tag the same way).
         record = RECORD if version == 1 or length % RECORD_V0.size else RECORD_V0
         if length % record.size:
             raise ValueError("world light lump %d is not whole %d-byte records" %
@@ -71,7 +73,7 @@ def filter_lights(data, drop):
             kept += raw
         removed[lump] = dropped
         if dropped:
-            replacements[lump] = (version, kept)
+            replacements[lump] = (1 if record is RECORD else version, kept)
     return (leaf_ambient_from_prbv.rewrite(data, replacements) if replacements else data), removed
 
 

@@ -115,3 +115,69 @@ class ToolchainBoundaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(__import__("shutil").which("g++") and __import__("shutil").which("nm"), "needs g++ and nm")
+class AbiIslandTests(unittest.TestCase):
+    """TOOLCHAIN011 on real objects built with each dual-ABI value."""
+
+    ISLAND = {"id": "fixture", "host": "tool", "members": ["island"], "value": "1"}
+
+    def setUp(self):
+        self.directory = __import__("tempfile").TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+
+    def compile(self, name, abi, source):
+        import subprocess
+        src = os.path.join(self.directory.name, name + ".cpp")
+        obj = os.path.join(self.directory.name, name + ".o")
+        with open(src, "w") as stream:
+            stream.write(source)
+        subprocess.run(["g++", "-std=c++20", "-O1", "-c", "-D_GLIBCXX_USE_CXX11_ABI=%d" % abi, src, "-o", obj],
+                       check=True)
+        return obj
+
+    def errors(self, island_source, host_source):
+        island = self.compile("island", 1, island_source)
+        host = self.compile("host", 0, host_source)
+        return boundary.island_symbol_errors("fixture", self.ISLAND, [island], [host])
+
+    def test_c_compatible_edge_passes(self):
+        island = 'extern "C" int island_write(const char *path, char *error, unsigned long size) { return path != 0; }\n'
+        host = 'extern "C" int island_write(const char *, char *, unsigned long);\nint main() { return island_write("x", 0, 0); }\n'
+        self.assertEqual([], self.errors(island, host))
+
+    def test_dual_abi_type_crossing_the_edge_fails(self):
+        island = '#include <string>\nstd::string Describe(int value) { return std::to_string(value); }\n'
+        # An ABI 0 caller would ask for the old-ABI symbol, which the island does not
+        # define; a caller built with the island's ABI shows the tagged crossing.
+        host_new_abi = '#include <string>\nstd::string Describe(int);\nint Use() { return (int)Describe(3).size(); }\n'
+        island_obj = self.compile("island", 1, island)
+        host_obj = self.compile("hostnew", 1, host_new_abi)
+        errors = boundary.island_symbol_errors("fixture", self.ISLAND, [island_obj], [host_obj])
+        self.assertTrue(any("dual-ABI type" in e and "Describe" in e for e in errors), errors)
+
+    def test_shared_first_party_inline_code_fails(self):
+        shared = ('#include <string>\nstruct Sink { std::string path; int count = 0;\n'
+                  '  __attribute__((noinline)) int Size() const { return count + (int)path.size(); } };\n')
+        island = shared + 'int IslandUse() { Sink s; return s.Size(); }\n'
+        host = shared + 'int HostUse() { Sink s; return s.Size(); }\n'
+        errors = self.errors(island, host)
+        self.assertTrue(any("defined on both sides" in e and "Sink" in e for e in errors), errors)
+
+    def test_typeinfo_of_a_shared_interface_is_abi_neutral(self):
+        shared = ('struct Source { virtual ~Source(); virtual int Read() = 0; };\n'
+                  'struct Impl : Source { int Read() override { return 1; } };\n')
+        island = shared + 'int IslandMake() { Impl i; return i.Read(); }\n'
+        host = shared + 'int HostMake() { Impl i; return i.Read(); }\n'
+        self.assertFalse(any("_ZTI" in e or "_ZTS" in e for e in self.errors(island, host)))
+
+
+class DeclaredIslandTests(unittest.TestCase):
+    def test_only_an_exact_declared_split_is_sanctioned(self):
+        policy = {"abi": {"islands": [{"id": "i", "host": "tool", "members": ["a", "b"], "value": "1"}]}}
+        self.assertIsNotNone(boundary.declared_island(policy, "tool", {"1": ["a", "b"], "0": ["tool", "x"]}))
+        self.assertIsNone(boundary.declared_island(policy, "tool", {"1": ["a", "b", "extra"], "0": ["tool"]}))
+        self.assertIsNone(boundary.declared_island(policy, "tool", {"1": ["a"], "0": ["tool", "b"]}))
+        self.assertIsNone(boundary.declared_island(policy, "other", {"1": ["a", "b"], "0": ["other"]}))
+

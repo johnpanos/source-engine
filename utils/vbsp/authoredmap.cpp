@@ -348,6 +348,56 @@ static void LoadAuthoredSolid( CMapFile *pMap, entity_t *pEntity, KeyValues *pSo
 //-----------------------------------------------------------------------------
 // Entities: typed origin and angles, string keys, and optional solids.
 //-----------------------------------------------------------------------------
+// One entity I/O field: non-empty unless bAllowEmpty, and free of the
+// separators of the compiled "target,input,parameter,delay,times" value.
+static const char *ConnectionField(
+    KeyValues *pConnection, const char *pszKey, bool bAllowEmpty, const char *pszContext )
+{
+	KeyValues *pValue = pConnection->FindKey( pszKey );
+	if ( !pValue || pValue->GetDataType() != KeyValues::TYPE_STRING ||
+	     ( !bAllowEmpty && !pValue->GetString()[0] ) )
+	{
+		AuthoredError( pszContext, "connection \"%s\" must be a %sstring", pszKey,
+		    bAllowEmpty ? "" : "non-empty " );
+	}
+	if ( strpbrk( pValue->GetString(), ",\x1b\"" ) )
+		AuthoredError( pszContext, "connection \"%s\" contains a separator", pszKey );
+	return pValue->GetString();
+}
+
+// Typed entity I/O: [{output, target, input, parameter, delay, times}], in
+// authored order, appended as the VMF loader appends its connections chunk.
+static void LoadAuthoredConnections(
+    CMapFile *pMap, entity_t *pEntity, KeyValues *pConnections, const char *pszObject )
+{
+	if ( pConnections->GetDataType() != KeyValues::TYPE_NONE )
+		AuthoredError( pszObject, "\"connections\" must be an array" );
+	for ( KeyValues *pConnection = pConnections->GetFirstSubKey(); pConnection;
+	    pConnection = pConnection->GetNextKey() )
+	{
+		if ( pConnection->GetDataType() != KeyValues::TYPE_NONE )
+			AuthoredError( pszObject, "a connection must be an object" );
+		const char *pszOutput = ConnectionField( pConnection, "output", false, pszObject );
+		const char *pszTarget = ConnectionField( pConnection, "target", false, pszObject );
+		const char *pszInput = ConnectionField( pConnection, "input", false, pszObject );
+		const char *pszParameter = ConnectionField( pConnection, "parameter", true, pszObject );
+		KeyValues *pDelay = pConnection->FindKey( "delay" );
+		double delay = 0.0;
+		if ( !pDelay || !ReadNumber( pDelay, delay ) || !isfinite( delay ) || delay < 0.0 )
+			AuthoredError( pszObject, "connection \"delay\" must be a finite number >= 0" );
+		KeyValues *pTimes = pConnection->FindKey( "times" );
+		if ( !pTimes || pTimes->GetDataType() != KeyValues::TYPE_INT ||
+		     ( pTimes->GetInt() != -1 && pTimes->GetInt() <= 0 ) )
+		{
+			AuthoredError( pszObject, "connection \"times\" must be -1 or a positive integer" );
+		}
+		char action[1024];
+		V_snprintf( action, sizeof( action ), "%s,%s,%s,%g,%d", pszTarget, pszInput, pszParameter,
+		    delay, pTimes->GetInt() );
+		pMap->AddConnection( pEntity, pszOutput, action );
+	}
+}
+
 static void LoadAuthoredEntity( CMapFile *pMap, KeyValues *pRecord )
 {
 	const int nIndex = pMap->num_entities;
@@ -406,6 +456,14 @@ static void LoadAuthoredEntity( CMapFile *pMap, KeyValues *pRecord )
 			AuthoredError( pszObject, "key \"%s\" is owned by a typed field or by vbsp", pszKey );
 		}
 		SetKeyValue( pEntity, pszKey, pKey->GetString() );
+	}
+
+	KeyValues *pConnections = pRecord->FindKey( "connections" );
+	if ( pConnections )
+	{
+		if ( nIndex == 0 )
+			AuthoredError( pszObject, "worldspawn has no connections" );
+		LoadAuthoredConnections( pMap, pEntity, pConnections, pszObject );
 	}
 
 	if ( pSolids )

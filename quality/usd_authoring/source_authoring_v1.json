@@ -1,9 +1,11 @@
 {
   "schema": "source-authoring-profile/v1",
   "profile": "source-authoring",
-  "version": 1,
+  "version": 2,
+  "accepted_versions": [1, 2],
   "rfc": "0009",
-  "phase": "U0",
+  "phase": "U2",
+  "versioning": "One file holds every profile version. A stage declares the version it was authored for; a role, property or class value marked \"since\": N is supported only in stages that declare version N or later, and fails as unsupported in older ones.",
   "document": "quality/usd_authoring/source_authoring_v1.md",
   "namespace": "sourcemap:",
   "stage": {
@@ -19,6 +21,7 @@
     "rigid": 0.00001
   },
   "id_pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+  "sequence_pattern": "^[A-Za-z0-9_.-]{1,64}$",
   "model_pattern": "^models/([a-z0-9_-]+/)*[a-z0-9_-]+\\.mdl$",
   "structural_prim_types": ["", "Xform", "Scope", "Material", "Shader", "NodeGraph", "Camera"],
   "name_hints": [
@@ -67,9 +70,23 @@
       }
     },
     "prop_dynamic": {
-      "support": "reserved",
+      "support": "supported",
+      "since": 2,
       "phase": "U2",
-      "summary": "Movable or animated model entity; not part of profile version 1"
+      "summary": "Movable or animated model entity; never a physics body",
+      "prim_types": ["Xform"],
+      "transform": "rigid",
+      "properties": {
+        "sourcemap:id": {"type": "string", "required": true, "missing_code": "id.missing"},
+        "sourcemap:model": {"type": "string", "required": true, "model": true,
+                            "missing_code": "prop.model-missing"},
+        "sourcemap:collision": {"type": "token", "required": true,
+                                "values": ["vphysics", "none"], "reserved": ["bbox"]},
+        "sourcemap:skin": {"type": "int", "required": false, "min": 0},
+        "sourcemap:defaultAnimation": {"type": "string", "required": false, "sequence": true},
+        "sourcemap:parent": {"type": "string", "required": false, "support": "reserved",
+                             "phase": "a later profile"}
+      }
     },
     "prop_physics": {
       "support": "supported",
@@ -108,10 +125,41 @@
       "properties": {
         "sourcemap:id": {"type": "string", "required": true, "missing_code": "id.missing"},
         "sourcemap:classname": {"type": "token", "required": true,
-                                "values": ["trigger_multiple", "trigger_once"],
+                                "values": ["trigger_multiple", "trigger_once", "func_movelinear"],
+                                "value_since": {"func_movelinear": 2},
                                 "missing_code": "entity.class-missing",
                                 "unsupported_code": "entity.class-unsupported"},
         "sourcemap:surfaceIds": {"type": "int[]", "required": false}
+      },
+      "classes": {
+        "trigger_multiple": {
+          "surfaces": "tool",
+          "properties": {
+            "sourcemap:touchFilter": {"type": "token[]", "required": false, "since": 2,
+                                      "values": ["clients", "physics"]},
+            "sourcemap:connections": {"type": "string[]", "required": false, "since": 2,
+                                      "connections": true}
+          }
+        },
+        "trigger_once": {
+          "surfaces": "tool",
+          "properties": {
+            "sourcemap:touchFilter": {"type": "token[]", "required": false, "since": 2,
+                                      "values": ["clients", "physics"]},
+            "sourcemap:connections": {"type": "string[]", "required": false, "since": 2,
+                                      "connections": true}
+          }
+        },
+        "func_movelinear": {
+          "since": 2,
+          "surfaces": "authored",
+          "properties": {
+            "sourcemap:surfaceIds": {"type": "int[]", "required": true,
+                                     "missing_code": "surface.ids-missing"},
+            "sourcemap:moveDelta": {"type": "float3", "required": true, "nonzero": true},
+            "sourcemap:moveSeconds": {"type": "float", "required": true, "positive": true}
+          }
+        }
       }
     },
     "light": {
@@ -125,6 +173,17 @@
       "properties": {
         "sourcemap:id": {"type": "string", "required": true, "missing_code": "id.missing"}
       }
+    }
+  },
+  "io": {
+    "syntax": "Each sourcemap:connections entry is \"Output target-id Input\" or \"Output target-id Input parameter\", separated by single spaces; the target is a sourcemap:id on the composed stage, never a name.",
+    "outputs": {
+      "trigger_multiple": ["OnStartTouch", "OnEndTouch", "OnTrigger"],
+      "trigger_once": ["OnStartTouch", "OnTrigger"]
+    },
+    "inputs": {
+      "prop_dynamic": {"SetAnimation": "sequence", "SetDefaultAnimation": "sequence"},
+      "func_movelinear": {"Open": "none", "Close": "none"}
     }
   },
   "errors": {
@@ -148,6 +207,8 @@
     "property.type": "A sourcemap: property has the wrong value type",
     "property.value-unsupported": "A token value is outside the role's supported values",
     "property.unknown": "A sourcemap: property the role does not declare",
+    "property.misplaced": "A sourcemap: property the profile declares only for another role or entity class, such as physics mass on a prop_dynamic",
+    "property.unsupported": "A declared property that is reserved for a later profile, or newer than the stage's declared version",
     "id.missing": "A role prim has no sourcemap:id",
     "id.invalid": "The id does not match the profile's id pattern",
     "id.duplicate": "Two role prims on the composed stage share an id",
@@ -177,6 +238,9 @@
     "prop.model-invalid": "sourcemap:model is not a relative models/...mdl game path",
     "entity.class-missing": "An entity role has no sourcemap:classname",
     "entity.class-unsupported": "The classname is not supported for the entity role",
+    "io.invalid": "A connection is not 'Output target-id Input [parameter]', or its entity class has no such output",
+    "io.target-missing": "A connection's target id names no object on the composed stage",
+    "io.input-unsupported": "The target's role or class does not accept the input, or the parameter does not fit it",
     "light.type-unsupported": "The light is not an unshaped SphereLight",
     "light.inputs": "intensity or color is not authored, or intensity is not positive",
     "map.player-start-missing": "The composed stage has no info_player_start"

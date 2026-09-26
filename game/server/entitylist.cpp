@@ -17,6 +17,7 @@
 #include "ai_initutils.h"
 #include "globalstate.h"
 #include "datacache/imdlcache.h"
+#include <cstdlib>
 
 #ifdef HL2_DLL
 #include "npc_playercompanion.h"
@@ -1634,3 +1635,196 @@ CON_COMMAND(report_simthinklist, "Lists all simulating/thinking entities")
 	list.ReportEntityList();
 }
 
+//-----------------------------------------------------------------------------
+// Read-only observations for map runtime harnesses (RFC 0009 U2,
+// tools/quality/usd_map_runtime.py). Each prints one line per result and
+// changes no state.
+//-----------------------------------------------------------------------------
+static void MapEntityProbe( const char *pszName )
+{
+	int nFound = 0;
+	for ( CBaseEntity *pEntity = gEntList.FindEntityGeneric( NULL, pszName ); pEntity;
+	    pEntity = gEntList.FindEntityGeneric( pEntity, pszName ) )
+	{
+		++nFound;
+		const Vector &origin = pEntity->GetAbsOrigin();
+		IPhysicsObject *pPhysics = pEntity->VPhysicsGetObject();
+		CBaseAnimating *pAnimating = pEntity->GetBaseAnimating();
+		const char *pszSequence = "-";
+		float flCycle = -1.0f;
+		if ( pAnimating && pAnimating->GetModelPtr() )
+		{
+			pszSequence = pAnimating->GetSequenceName( pAnimating->GetSequence() );
+			flCycle = pAnimating->GetCycle();
+		}
+		// A simulated body has motion and gravity and no shadow controller;
+		// pushers and animated props drive a shadow object instead.
+		Msg( "map_entity_probe: name=%s class=%s time=%.3f origin=%.3f %.3f %.3f movetype=%d "
+		     "solid=%d vphysics=%d motion=%d gravity=%d shadow=%d asleep=%d sequence=%s "
+		     "cycle=%.4f\n",
+		    STRING( pEntity->GetEntityName() ), pEntity->GetClassname(), gpGlobals->curtime,
+		    origin.x, origin.y, origin.z, (int)pEntity->GetMoveType(), (int)pEntity->GetSolid(),
+		    pPhysics ? 1 : 0, ( pPhysics && pPhysics->IsMotionEnabled() ) ? 1 : 0,
+		    ( pPhysics && pPhysics->IsGravityEnabled() ) ? 1 : 0,
+		    ( pPhysics && pPhysics->GetShadowController() ) ? 1 : 0,
+		    ( pPhysics && pPhysics->IsAsleep() ) ? 1 : 0, pszSequence, flCycle );
+	}
+	if ( !nFound )
+		Msg( "map_entity_probe: name=%s not-found\n", pszName );
+}
+
+CON_COMMAND(
+    map_entity_probe, "Report placement, motion and animation state: entity name or class" )
+{
+	if ( !UTIL_IsCommandIssuedByServerAdmin() )
+		return;
+
+	if ( args.ArgC() != 2 )
+	{
+		Msg( "map_entity_probe: give one entity name or class name\n" );
+		return;
+	}
+	MapEntityProbe( args[1] );
+}
+
+// Samples entities at game-time intervals. Console waits count command-buffer
+// executions, not game time, so a harness cannot time samples with them. The
+// schedule runs after each frame's entity thinks, stops at level shutdown,
+// and hands a follow-up command to the server console when it completes.
+class CMapProbeSchedule : public CAutoGameSystemPerFrame
+{
+public:
+	CMapProbeSchedule() : CAutoGameSystemPerFrame( "CMapProbeSchedule" ), m_nRemaining( 0 ) {}
+
+	void Start(
+	    float flInterval, int nCount, const char *pszThen, const CCommand &args, int nFirstName )
+	{
+		m_Names.RemoveAll();
+		for ( int i = nFirstName; i < args.ArgC(); ++i )
+			m_Names.AddToTail( CUtlString( args[i] ) );
+		m_flInterval = flInterval;
+		m_flNext = gpGlobals->curtime;
+		m_nRemaining = nCount;
+		m_Then = pszThen;
+	}
+
+	virtual void FrameUpdatePostEntityThink()
+	{
+		if ( m_nRemaining <= 0 || gpGlobals->curtime < m_flNext )
+			return;
+		for ( int i = 0; i < m_Names.Count(); ++i )
+			MapEntityProbe( m_Names[i].Get() );
+		m_flNext += m_flInterval;
+		if ( --m_nRemaining == 0 )
+		{
+			Msg( "map_entity_probe: schedule done\n" );
+			if ( !m_Then.IsEmpty() )
+			{
+				char command[512];
+				V_snprintf( command, sizeof( command ), "%s\n", m_Then.Get() );
+				engine->ServerCommand( command );
+			}
+		}
+	}
+
+	virtual void LevelShutdownPostEntity() { m_nRemaining = 0; }
+
+private:
+	CUtlVector<CUtlString> m_Names;
+	CUtlString m_Then;
+	float m_flInterval;
+	float m_flNext;
+	int m_nRemaining;
+};
+
+static CMapProbeSchedule s_MapProbeSchedule;
+
+CON_COMMAND( map_entity_probe_schedule,
+    "Probe entities every <seconds> of game time, <count> times, then run <command>: "
+    "seconds count command name [name ...]" )
+{
+	if ( !UTIL_IsCommandIssuedByServerAdmin() )
+		return;
+
+	const float flInterval = args.ArgC() > 1 ? V_atof( args[1] ) : 0.0f;
+	const int nCount = args.ArgC() > 2 ? V_atoi( args[2] ) : 0;
+	if ( args.ArgC() < 5 || !( flInterval > 0.0f ) || nCount <= 0 || nCount > 10000 )
+	{
+		Msg( "map_entity_probe_schedule: give seconds > 0, a count, a command and names\n" );
+		return;
+	}
+	s_MapProbeSchedule.Start( flInterval, nCount, args[3], args, 4 );
+}
+
+// Hits what a MASK_SOLID game trace hits: world brushes, static props and
+// solid entities.
+class CMapProbeTraceFilter : public CTraceFilter
+{
+public:
+	virtual bool ShouldHitEntity( IHandleEntity *pHandleEntity, int contentsMask ) { return true; }
+};
+
+CON_COMMAND( map_trace_probe, "MASK_SOLID game trace: x y z end_x end_y end_z [mins_xyz maxs_xyz]" )
+{
+	if ( !UTIL_IsCommandIssuedByServerAdmin() )
+		return;
+
+	if ( args.ArgC() != 7 && args.ArgC() != 13 )
+	{
+		Msg( "map_trace_probe: give six coordinates, or twelve with a hull\n" );
+		return;
+	}
+
+	float values[12];
+	const int nValues = args.ArgC() - 1;
+	for ( int i = 0; i < nValues; ++i )
+	{
+		char *pEnd = NULL;
+		values[i] = std::strtof( args[i + 1], &pEnd );
+		if ( pEnd == args[i + 1] || *pEnd || !IsFinite( values[i] ) || values[i] < -1000000.0f ||
+		     values[i] > 1000000.0f )
+		{
+			Msg( "map_trace_probe: invalid number %d\n", i + 1 );
+			return;
+		}
+	}
+
+	const Vector start( values[0], values[1], values[2] );
+	const Vector end( values[3], values[4], values[5] );
+	Ray_t ray;
+	if ( nValues == 12 )
+		ray.Init( start, end, Vector( values[6], values[7], values[8] ),
+		    Vector( values[9], values[10], values[11] ) );
+	else
+		ray.Init( start, end );
+
+	trace_t trace;
+	CMapProbeTraceFilter filter;
+	enginetrace->TraceRay( ray, MASK_SOLID, &filter, &trace );
+
+	// A static prop hit reports the world entity and the prop's index + 1.
+	const char *pszHit = "none";
+	const char *pszEntity = "-";
+	int nStaticProp = -1;
+	if ( trace.DidHit() && trace.m_pEnt )
+	{
+		if ( trace.m_pEnt->IsWorld() && trace.hitbox > 0 )
+		{
+			pszHit = "static_prop";
+			nStaticProp = trace.hitbox - 1;
+		}
+		else if ( trace.m_pEnt->IsWorld() )
+		{
+			pszHit = "world";
+		}
+		else
+		{
+			pszHit = "entity";
+			pszEntity = STRING( trace.m_pEnt->GetEntityName() );
+		}
+	}
+	Msg( "map_trace_probe: fraction=%.9g startsolid=%d allsolid=%d hit=%s static_prop=%d "
+	     "entity=%s end=%.3f %.3f %.3f\n",
+	    trace.fraction, trace.startsolid ? 1 : 0, trace.allsolid ? 1 : 0, pszHit, nStaticProp,
+	    pszEntity[0] ? pszEntity : "-", trace.endpos.x, trace.endpos.y, trace.endpos.z );
+}

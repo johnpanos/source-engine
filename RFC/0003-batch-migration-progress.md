@@ -145,6 +145,14 @@ particle/bone/network state equivalence, frame latency, arbitrary game content,
 parented-animation/model-eviction behavior, or a clean engine-wide race gate.
 Screenshots and startup duration are not substituted for those oracles.
 
+(2026-09-25) The previous-frame bone cohort now has a live check.
+`cl_bone_setup_verify 1` reruns each pooled batch serially inside the same
+process and byte-compares the result. Across the legacy, cohort-graph,
+serial-graph and render-start-graph modes it verified 3958 items per run
+with 0 mismatches, and it detected the seeded faults. Particle, renderable
+and packing state equivalence remain unproven live. See the
+[scheduler nodes record, section 7](0003-scheduler-nodes-progress.md#7-live-shadow-verifier-previous-frame-bones-2026-09-25).
+
 ## Query-cache maintenance and portal placement carving (2026-09-22)
 
 Two further cohorts now share one kernel between production and conformance,

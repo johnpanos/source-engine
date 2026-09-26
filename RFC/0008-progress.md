@@ -84,9 +84,11 @@ follows; the linked records hold the evidence. No F-phase gate is complete.
   - The ABI=1 object also emits inline `FileByteSink` COMDATs. `FileByteSink`
     holds a `std::string`, so any future ABI=0 use of `map_file_io.h` in
     `vbsp2` would collide with them silently.
-  - Recorded as a known fail owned by R54 (user decision). The fixes on the
-    table are a declared private-ABI island with a symbol-level check, or
-    moving the World Stage writer behind the `sourceWorld` shared library.
+  - Enforced since 2026-09-25 as the declared island `vbsp2-openusd`
+    (`policy.json` `abi.islands`), with TOOLCHAIN011's object-level symbol
+    check; `toolchain.coverage` passes. Moving the writer behind the
+    `sourceWorld` shared library would not separate the ABIs, because the
+    writer calls `mapcontainer` and the BSP globals, which are ABI 0.
     See the [R03-B record](0006-progress.md#r03-b-complete-linux-target-coverage-and-android-x86_64-slice-done-2026-09-25).
 
 - **WMSH draw.** `r_worldmesh_draw` defaults to 2 and is no longer a cheat

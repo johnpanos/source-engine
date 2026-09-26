@@ -1,0 +1,26 @@
+#usda 1.0
+(
+    """RFC 0009 U2 role fixture: the U0 room's world solids (reused, not copied)
+    with one object of each placement role and two geometric entities.
+    Profile source-authoring v2 (quality/usd_authoring/source_authoring_v1.md):
+    a prop_static that collides and one that does not, a prop_physics above a
+    trigger, a prop_dynamic floating in the air, and a func_movelinear lift
+    that the trigger opens."""
+    customLayerData = {
+        dictionary sourcemap = {
+            string profile = "source-authoring"
+            int version = 2
+        }
+    }
+    defaultPrim = "Map"
+    metersPerUnit = 0.0254
+    subLayers = [
+        @./entities.usda@,
+        @../room/world.usda@
+    ]
+    upAxis = "Z"
+)
+
+def Xform "Map"
+{
+}

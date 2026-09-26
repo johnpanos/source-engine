@@ -52,7 +52,7 @@ proves a map loads; it does not prove the game plays.
 | `player.` | The player controller tracks its target within per-axis speed budgets (which exclude velocity the game set since the last step), teleports past the 24-unit error bound (unless the handler refuses), clamps push velocity at over-limit contacts, reports ground-relative velocity, survives ground deletion, steps up, and attaches/detaches like IVP (flag, damping, drag) | `CBasePlayer` physics shadow |
 | `vehicle.` | HL2's jeep and airboat scripts on their real bodies: the controller creates wheels, settles, drives (gearbox, speed), steers, brakes, boosts, reports wheel contacts and debug rays; the airboat floats and drives on water and land; body deletion shuts the car system down; the vehicle saves and restores with its wheels | `CFourWheelVehiclePhysics` (jeep, buggy, airboat) |
 | `polysoup.` / `virtualmesh.` / `bboxcache.` / `cone.` / `collide.write-*` | Triangle collides from polysoups and displacement-style virtual meshes support objects and (polysoups) traces; identical boxes share one cached collide that survives `DestroyCollide`; box/cone queries; `CollideWrite` emits the legacy compact-surface format (checked by an independent reader against IVP's own writer) and reads back unchanged | static props, displacements, `vbsp`/`studiomdl`, memory reports |
-| `gyro.` | Rotation obeys the gyroscopic torque `-w x (I w)`: a box's principal inertia lies along its local axes; a torque-free tumbling body keeps its world angular momentum (direction within 5 degrees, magnitude 0.8 to 1.03 times) and never gains rotational energy while its angular velocity wanders; spin about the intermediate axis flips over, spin about the major axis does not; a spinning plate on a ballsocket precesses about the vertical at `m g r / (I3 s)` (within 25%) with its axle within 10 degrees of level. Judged from the reported orientation, not the reported velocity | spinning props, thrown and knocked-over slender objects, `phys_torque`, gyroscope-like contraptions |
+| `gyro.` | Rotation obeys the gyroscopic torque `-w x (I w)`: a box's principal inertia lies along its local axes; a torque-free tumbling body keeps its world angular momentum (direction within 5 degrees, magnitude 0.8 to 1.03 times) and never gains rotational energy while its angular velocity wanders; spin about the intermediate axis flips over, spin about the major axis does not; a spinning plate on a ballsocket precesses about the vertical at `m g r / (I3 s)` (within 25%) with its axle within 10 degrees of level; Box3D's "Gyroscopic Torque" sample (a T-handle spun about its handle in zero gravity) flips over and back as often as Euler's equations, integrated from the same state, predict (within one flip in 25 s) with the same period (within 15%). Judged from the reported orientation, not the reported velocity | spinning props, thrown and knocked-over slender objects, `phys_torque`, gyroscope-like contraptions |
 | `bsp.` | A shipped map's world collision (the BSP physics lump) decodes and traces identically | map load (`CM` world physics) |
 | `stats.` | Simulation counters accumulate and clear | `physics_report`-style diagnostics |
 
@@ -103,13 +103,16 @@ Checks the oracle provider must fail, named in the runner's
 deficiency no longer reproduces and must be reviewed); every candidate must
 pass it like any other check, and it never counts as fault evidence.
 
-- `gyro.free-energy-not-gained`, `gyro.free-momentum-magnitude`: IVP
+- `gyro.free-energy-not-gained`, `gyro.free-momentum-magnitude`,
+  `gyro.t-handle-momentum`: IVP
   integrates the gyroscopic term with explicit Euler substeps
   (`ivp_calc_next_psi_solver.cxx`, `calc_rotation_matrix`). A torque-free
   48x24x8 box spun at 1 rev/s about each axis gains 40% rotational energy and
   20% angular momentum in 3 s. Box3D solves the term implicitly
   (`b3IntegrateVelocitiesTask`), which loses a little instead (energy -19%,
-  momentum -11% in the same scene).
+  momentum -11% in the same scene). The T-handle's angular momentum grows
+  15% in 25 s on IVP; IVP's flips and their period still match Euler's
+  equations.
 
 ## 6. Legacy behaviors the suite pins down
 

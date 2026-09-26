@@ -1,7 +1,7 @@
 # RFC 0006 progress: per-target toolchain boundary
 
 Updated: 2026-09-25
-Portfolio row: R03 (M0), active.
+Portfolio row: R03 (M0), done (2026-09-25; see R03 closure).
 
 ## Bounded scope
 
@@ -326,4 +326,47 @@ Only `tier0/dbg.cpp` reads it (the engine log header).
   compiles carry the define, all in tier0, and `unittest_legacy` passes.
 - Every tree reconfigures once and rebuilds once. `./play` and `./play_p2` do
   it through `ensure_configured.py`.
+
+## R03 closure (2026-09-25)
+
+R03 is `done` for the required profiles, Linux x86_64 (gcc and clang) and
+Android (arm64 and x86_64). Apple and MSVC runners are optional by user
+decision (`runner_requirement: optional`), so no gate waits on them.
+
+| Done clause | Evidence |
+| --- | --- |
+| Compile/link/run proof | `toolchain.boundary`: 18/18 dialect probes compile, link and run on the native host |
+| Final flags verified | `toolchain.boundary` over 11 trees and `toolchain.coverage` over 12 trees with `--require-all-targets`: every policy target is covered, 0 errors. Every C/C++ task records its dialect, including C sources in cxx-only targets. |
+| Legacy/C17 settings preserved | `box3d-c17` is verified on Box3D's target. `legacy-cxx11` is used only by the frozen-consumer fixtures. |
+| Frozen-consumer ABI combinations | `toolchain.abi.*` (35 and 58 checks, with two sensitivity rows failing as required) on g++ and clang++, plus 2/2 frozen consumers linked against the Waf-built archives |
+| Android final commands | `package.android-arm64` and `package.android-x86_64` run `toolchain_boundary` on each ABI's commands and pass |
+
+**The last blocker: the `vbsp2` dual-ABI island.** It is now an enforced
+policy exception, not a recorded gap.
+
+- `quality/toolchain/policy.json` declares `abi.islands[vbsp2-openusd]`: host
+  `vbsp2`, members `vbspworldstage` and `sourceWorld`, value 1, owner R54.
+  A new supported combination, `declared-abi-island`, accepts only that
+  exact split.
+- `toolchain_boundary.py` TOOLCHAIN011 checks the island's edge with `nm` on
+  the built objects:
+  - no symbol that crosses it may carry a dual-ABI type (`St7__cxx11` or
+    `B5cxx11` mangling);
+  - no first-party inline (weak) symbol may be defined on both sides.
+    Typeinfo objects and names (`_ZTI`/`_ZTS`) are ABI-neutral and exempt;
+    vtables are not.
+  - Missing objects fail.
+- Today the edge is clean. The first run flagged only the two pure
+  interfaces' typeinfo, which led to the typeinfo exemption above.
+- Tests: 5 new fixtures, 16 toolchain tests in total. Four fixtures compile
+  real objects at each ABI value: a C edge passes, a `std::string` crossing
+  fails, shared inline code fails, and shared-interface typeinfo passes. The
+  fifth checks that only the exact declared split is sanctioned. Three
+  mutants (dual-ABI, weak, typeinfo) are each detected.
+- `toolchain.coverage` is recorded as `pass` (agent decision under the
+  user's standing instruction). This replaces the earlier "record as R54
+  gap" choice with an enforced check.
+
+Not covered: Apple and MSVC toolchains (optional), and hosted CI runs of the
+toolchain lanes.
 

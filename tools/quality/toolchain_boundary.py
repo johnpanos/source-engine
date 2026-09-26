@@ -69,6 +69,73 @@ def abi_value(policy, arguments):
     return value if value is not None else policy["abi"]["libstdcxx_dual_abi_default"]
 
 
+# A mangled name that carries a libstdc++ dual-ABI type (std::__cxx11::string,
+# list, ...) or an [abi:cxx11] tag differs by ABI; it must not cross an island.
+DUAL_ABI_MANGLING = ("St7__cxx11", "B5cxx11")
+STD_MANGLING = ("_ZNSt", "_ZSt", "_ZNKSt", "_ZN9__gnu_cxx", "_ZNK9__gnu_cxx", "_ZTVNSt", "_ZTSNSt",
+                "_ZTINSt", "_ZTVSt", "_ZTSSt", "_ZTISt", "_ZGVNSt")
+
+
+def object_symbols(path, nm="nm"):
+    """(defined, weak, undefined) mangled symbol sets of one object file."""
+    result = subprocess.run([nm, "--defined-only", path], capture_output=True, text=True)
+    undefined = subprocess.run([nm, "--undefined-only", path], capture_output=True, text=True)
+    if result.returncode or undefined.returncode:
+        raise OSError("nm failed on %s: %s" % (path, (result.stderr or undefined.stderr).strip()))
+    defined, weak = set(), set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 3:
+            kind, name = parts[-2], parts[-1]
+            (weak if kind in ("W", "V", "u") else defined).add(name)
+    return defined, weak, {line.split()[-1] for line in undefined.stdout.splitlines() if line.split()}
+
+
+def island_symbol_errors(label, island, island_objects, host_objects, nm="nm"):
+    """The declared island's edge: ABI-neutral crossings only, and no first-party
+    inline (weak) symbol defined on both sides, whose layout could silently
+    differ between the two dual-ABI values."""
+    errors = []
+    sides = []
+    for objects in (island_objects, host_objects):
+        defined, weak, undefined = set(), set(), set()
+        for path in objects:
+            d, w, u = object_symbols(path, nm)
+            defined |= d
+            weak |= w
+            undefined |= u
+        sides.append((defined, weak, undefined))
+    (i_def, i_weak, i_undef), (h_def, h_weak, h_undef) = sides
+    crossing = (i_undef & (h_def | h_weak)) | (h_undef & (i_def | i_weak))
+    for name in sorted(crossing):
+        if any(tag in name for tag in DUAL_ABI_MANGLING):
+            errors.append("%s: TOOLCHAIN011 island %s: symbol %s crosses the ABI edge with a dual-ABI type"
+                          % (label, island["id"], name))
+    for name in sorted(i_weak & h_weak):
+        # Type identity (_ZTI typeinfo objects, _ZTS mangled-name strings) is the
+        # same under both ABI values. Vtables (_ZTV) are not exempt: their slots
+        # can point at functions whose ABI differs on each side.
+        if name.startswith(("_ZTI", "_ZTS")):
+            continue
+        if not name.startswith(STD_MANGLING) and any(ch.isalpha() for ch in name) and name.startswith("_Z"):
+            errors.append("%s: TOOLCHAIN011 island %s: inline symbol %s is defined on both sides of the ABI edge"
+                          % (label, island["id"], name))
+    return errors
+
+
+def declared_island(policy, target, values):
+    """The policy island that sanctions `target`'s mixed closure, or None."""
+    for island in policy["abi"].get("islands", []):
+        if island["host"] != target:
+            continue
+        members = set(island["members"])
+        inside = set(values.get(island["value"], []))
+        outside = set(n for v, names in values.items() if v != island["value"] for n in names)
+        if inside == members and not (outside & members):
+            return island
+    return None
+
+
 def verify_invocations(root, policy, data, label):
     """Returns (errors, summary) for one toolchain-invocations record."""
     errors = []
@@ -129,6 +196,24 @@ def verify_invocations(root, policy, data, label):
             for value in by_target[name]["abi"]:
                 values.setdefault(value, []).append(name)
         if len(values) > 1:
+            island = declared_island(policy, target, values)
+            if island is not None:
+                members = set(island["members"])
+                objects = {True: [], False: []}
+                for entry in entries:
+                    if entry["target"] in closure and entry.get("output") and entry.get("language") == "c++":
+                        objects[entry["target"] in members].append(
+                            os.path.join(entry.get("directory", ""), entry["output"]))
+                missing = [p for p in objects[True] + objects[False] if not os.path.isfile(p)]
+                if missing:
+                    errors.append("%s: TOOLCHAIN011 island %s: %d object file(s) missing; the edge is unverifiable"
+                                  % (label, island["id"], len(missing)))
+                else:
+                    try:
+                        errors += island_symbol_errors(label, island, objects[True], objects[False])
+                    except OSError as error:
+                        errors.append("%s: TOOLCHAIN011 island %s: %s" % (label, island["id"], error))
+                continue
             detail = "; ".join("%s=%s: %s" % (policy["abi"]["libstdcxx_dual_abi_define"],
                                                value, ", ".join(sorted(names)))
                                for value, names in sorted(values.items()))

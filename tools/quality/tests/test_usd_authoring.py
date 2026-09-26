@@ -1,12 +1,13 @@
 """Oracles for the USD map authoring validator (`usd_authoring_validate.py`,
-RFC 0009 U0); needs OpenUSD's `pxr`.
+RFC 0009 U0-U2); needs OpenUSD's `pxr`.
 
     PYTHONPATH=build/toolchains/openusd-25.11/lib/python \\
         /usr/bin/python3.12 -m unittest tools.quality.tests.test_usd_authoring -v
 
-Every bad variant is generated from a private copy of the good fixture
-(quality/fixtures/usd-authoring/room) by editing the layer that owns the data,
-and must produce exactly its intended error code at its intended prim.
+Every bad variant is generated from a private copy of a good fixture
+(quality/fixtures/usd-authoring/room, profile v1, or .../roles, profile v2) by
+editing the layer that owns the data, and must produce exactly its intended
+error code at its intended prim.
 """
 
 import json
@@ -30,6 +31,7 @@ sys.path.insert(0, str(ROOT / "tools/quality"))
 import usd_authoring_validate as validator  # noqa: E402
 
 FIXTURE = ROOT / "quality/fixtures/usd-authoring/room"
+ROLES = ROOT / "quality/fixtures/usd-authoring/roles"
 VALIDATOR = ROOT / "tools/quality/usd_authoring_validate.py"
 PROFILE = validator.load_profile()
 LAYERS = {"room": "room.usda", "world": "world.usda", "entities": "entities.usda",
@@ -40,6 +42,10 @@ BOX = "/Map/Props/MetalBox"
 TRIGGER = "/Map/Entities/Trigger"
 LAMP = "/Map/Lights/CeilingLamp"
 START = "/Map/Entities/info_player_start"
+SWITCH = "/Map/Props/LeverSwitch"
+LIFT = "/Map/Entities/Lift"
+DROP_TRIGGER = "/Map/Entities/DropTrigger"
+GHOST = "/Map/Props/GhostDesk"
 
 
 # ------------------------------------------------------------- fixture edits
@@ -86,6 +92,27 @@ class Room:
                 layer.Save()
         self.layers, self.stage = None, None
         return str(self.root)
+
+
+class Roles(Room):
+    """A private copy of the U2 role fixture, which shares the room's world
+    and prefab layers by relative path, so both fixture directories are
+    copied."""
+
+    LAYERS = {"room": "roles/roles.usda", "entities": "roles/entities.usda",
+              "world": "room/world.usda", "prefab": "room/prefabs/metal_box.usda"}
+
+    def __init__(self, parent):
+        self.directory = Path(parent) / ("roles%d" % Room.serial)
+        Room.serial += 1
+        shutil.copytree(FIXTURE.parent, self.directory)
+        self.layers = {k: Sdf.Layer.FindOrOpen(str(self.directory / v))
+                       for k, v in self.LAYERS.items()}
+        self.stage = Usd.Stage.Open(str(self.root))
+
+    @property
+    def root(self):
+        return self.directory / "roles/roles.usda"
 
 
 def st_for(points, polygon):
@@ -180,7 +207,7 @@ CASES = [
      "stage.profile-missing", "/"),
     ("profile version", lambda r: setattr(r.layers["room"], "customLayerData",
                                           {"sourcemap": {"profile": "source-authoring",
-                                                         "version": 2}}),
+                                                         "version": 3}}),
      "stage.profile-version", "/"),
     ("default prim missing", lambda r: r.layers["room"].ClearDefaultPrim(),
      "stage.default-prim-missing", "/"),
@@ -221,7 +248,8 @@ CASES = [
      "role.name-only", "/Map/Props/prop_physics_crate"),
     ("unknown role", lambda r: r.set("entities", DESK, "sourcemap:role", "prop_ragdoll"),
      "role.unknown", DESK),
-    ("reserved role", lambda r: r.set("entities", DESK, "sourcemap:role", "prop_dynamic"),
+    ("role newer than the stage", lambda r: r.set("entities", DESK, "sourcemap:role",
+                                                  "prop_dynamic"),
      "role.unsupported", DESK),
     ("role on the wrong prim type",
      lambda r: setattr(r.spec("entities", DESK), "typeName", "Mesh"), "role.prim-type", DESK),
@@ -336,6 +364,9 @@ CASES = [
     ("point class on a trigger",
      lambda r: r.set("entities", TRIGGER, "sourcemap:classname", "info_player_start"),
      "entity.class-unsupported", TRIGGER),
+    ("unsupported moving brush class",
+     lambda r: r.set("entities", TRIGGER, "sourcemap:classname", "func_door"),
+     "entity.class-unsupported", TRIGGER),
     ("rect light", lambda r: setattr(r.spec("entities", LAMP), "typeName", "RectLight"),
      "light.type-unsupported", LAMP),
     ("spot light", lambda r: apply_schema(r, "entities", LAMP, "ShapingAPI"),
@@ -346,6 +377,93 @@ CASES = [
      "light.inputs", LAMP),
     ("no player start", lambda r: setattr(r.spec("entities", START), "active", False),
      "map.player-start-missing", "/"),
+]
+
+
+# Bad variants of the U2 role fixture (profile v2): (name, edit, code, path).
+ROLE_CASES = [
+    ("physics mass on a dynamic prop",
+     lambda r: r.set("entities", SWITCH, "sourcemap:massScale", 2.0, S.Float),
+     "property.misplaced", SWITCH),
+    ("default animation on a static prop",
+     lambda r: r.set("entities", DESK, "sourcemap:defaultAnimation", "idle", S.String),
+     "property.misplaced", DESK),
+    ("dynamic prop parenting",
+     lambda r: r.set("entities", SWITCH, "sourcemap:parent", "prop.lab-desk", S.String),
+     "property.unsupported", SWITCH),
+    ("unknown key on a dynamic prop",
+     lambda r: r.set("entities", SWITCH, "sourcemap:renderColor", "255 0 0", S.String),
+     "property.unknown", SWITCH),
+    ("dynamic prop without collision", lambda r: r.remove("entities", SWITCH,
+                                                          "sourcemap:collision"),
+     "property.missing", SWITCH),
+    ("bad animation name",
+     lambda r: r.set("entities", SWITCH, "sourcemap:defaultAnimation", "wave hand", S.String),
+     "property.value-unsupported", SWITCH),
+    ("unknown touch filter",
+     lambda r: r.set("entities", DROP_TRIGGER, "sourcemap:touchFilter", ["npcs"],
+                     S.TokenArray),
+     "property.value-unsupported", DROP_TRIGGER),
+    ("lift without a move", lambda r: r.remove("entities", LIFT, "sourcemap:moveDelta"),
+     "property.missing", LIFT),
+    ("lift with a zero move",
+     lambda r: r.set("entities", LIFT, "sourcemap:moveDelta", Gf.Vec3f(0, 0, 0), S.Float3),
+     "property.value-unsupported", LIFT),
+    ("lift without materials", lambda r: r.remove("entities", LIFT, "material:binding"),
+     "material.missing", LIFT),
+    ("move key on a trigger",
+     lambda r: r.set("entities", DROP_TRIGGER, "sourcemap:moveSeconds", 1.0, S.Float),
+     "property.misplaced", DROP_TRIGGER),
+    ("connection with an unknown output",
+     lambda r: r.set("entities", DROP_TRIGGER, "sourcemap:connections",
+                     ["OnPressed entity.lift Open"], S.StringArray),
+     "io.invalid", DROP_TRIGGER),
+    ("connection without an input",
+     lambda r: r.set("entities", DROP_TRIGGER, "sourcemap:connections",
+                     ["OnStartTouch entity.lift"], S.StringArray),
+     "io.invalid", DROP_TRIGGER),
+    ("connection to a missing id",
+     lambda r: r.set("entities", DROP_TRIGGER, "sourcemap:connections",
+                     ["OnStartTouch entity.no-such-lift Open"], S.StringArray),
+     "io.target-missing", DROP_TRIGGER),
+    ("connection input the target lacks",
+     lambda r: r.set("entities", DROP_TRIGGER, "sourcemap:connections",
+                     ["OnStartTouch prop.lever-switch Open"], S.StringArray),
+     "io.input-unsupported", DROP_TRIGGER),
+    ("connection to a static prop",
+     lambda r: r.set("entities", DROP_TRIGGER, "sourcemap:connections",
+                     ["OnStartTouch prop.lab-desk SetAnimation down"], S.StringArray),
+     "io.input-unsupported", DROP_TRIGGER),
+    ("SetAnimation without a sequence",
+     lambda r: r.set("entities", DROP_TRIGGER, "sourcemap:connections",
+                     ["OnStartTouch prop.lever-switch SetAnimation"], S.StringArray),
+     "io.input-unsupported", DROP_TRIGGER),
+    ("roles swapped against the previous revision",
+     lambda r: (r.set("entities", GHOST, "sourcemap:role", "prop_dynamic"),
+                {"previous": str(ROLES / "roles.usda")}),
+     "id.role-changed", GHOST),
+    # v2 features in a stage that declares v1
+    ("dynamic prop in a v1 stage",
+     lambda r: (r.remove("entities", DROP_TRIGGER, "sourcemap:connections"),
+                r.remove("entities", DROP_TRIGGER, "sourcemap:touchFilter"),
+                setattr(r.spec("entities", LIFT), "active", False),
+                setattr(r.layers["room"], "customLayerData",
+                        {"sourcemap": {"profile": "source-authoring", "version": 1}})),
+     "role.unsupported", SWITCH),
+    ("func_movelinear in a v1 stage",
+     lambda r: (r.remove("entities", DROP_TRIGGER, "sourcemap:connections"),
+                r.remove("entities", DROP_TRIGGER, "sourcemap:touchFilter"),
+                setattr(r.spec("entities", SWITCH), "active", False),
+                setattr(r.layers["room"], "customLayerData",
+                        {"sourcemap": {"profile": "source-authoring", "version": 1}})),
+     "entity.class-unsupported", LIFT),
+    ("touch filter in a v1 stage",
+     lambda r: (r.remove("entities", DROP_TRIGGER, "sourcemap:connections"),
+                setattr(r.spec("entities", SWITCH), "active", False),
+                setattr(r.spec("entities", LIFT), "active", False),
+                setattr(r.layers["room"], "customLayerData",
+                        {"sourcemap": {"profile": "source-authoring", "version": 1}})),
+     "property.unsupported", DROP_TRIGGER),
 ]
 
 
@@ -380,8 +498,8 @@ class Scratch(unittest.TestCase):
     def tearDownClass(cls):
         cls.temporary.cleanup()
 
-    def variant(self, edit):
-        room = Room(self.scratch)
+    def variant(self, edit, fixture=Room):
+        room = fixture(self.scratch)
         kwargs = edit(room)
         kwargs = kwargs[-1] if isinstance(kwargs, tuple) and isinstance(kwargs[-1], dict) \
             else kwargs if isinstance(kwargs, dict) else {}
@@ -526,6 +644,90 @@ class GoodFixtureTest(Scratch):
                                  "map.player-start-missing"})
 
 
+class RoleFixtureTest(Scratch):
+    """The U2 fixture: every placement role, two geometric entities, I/O."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.roles = validator.validate(str(ROLES / "roles.usda"))
+
+    def test_roles_fixture_is_clean(self):
+        self.assertEqual(errors_of(self.roles), [])
+        counts = {}
+        for record in self.roles["objects"]:
+            counts[record["role"]] = counts.get(record["role"], 0) + 1
+        self.assertEqual(counts, {"world_solid": 6, "entity_point": 1, "entity_brush": 2,
+                                  "prop_static": 2, "prop_dynamic": 1, "prop_physics": 1,
+                                  "light": 1})
+        # The world is the room's layer, reused rather than copied.
+        self.assertIn(str(FIXTURE / "world.usda"), self.roles["layers"])
+
+    def test_role_records(self):
+        objects = self.objects(self.roles)
+        switch = objects["prop.lever-switch"]
+        self.assertEqual((switch["role"], switch["model"], switch["collision"],
+                          switch["default_animation"]),
+                         ("prop_dynamic", "models/props/switch001.mdl", "vphysics", "idle"))
+        self.assertNotIn("mass_scale", switch)
+        self.assertEqual(objects["prop.ghost-desk"]["collision"], "none")
+        lift = objects["entity.lift"]
+        self.assertEqual((lift["classname"], lift["move"], lift["move_seconds"]),
+                         ("func_movelinear", [0.0, 0.0, 64.0], 1.0))
+        self.assertEqual({s["material"] for s in lift["surfaces"]}, {"metal/metalwall048b"})
+        self.assertTrue(all("st" in face for face in lift["faces"]))
+        trigger = objects["entity.drop-trigger"]
+        self.assertEqual(trigger["touch_filter"], ["clients", "physics"])
+        self.assertEqual(trigger["connections"], [
+            {"output": "OnStartTouch", "target": "prop.lever-switch", "input": "SetAnimation",
+             "parameter": "down"},
+            {"output": "OnStartTouch", "target": "entity.lift", "input": "Open",
+             "parameter": ""}])
+
+    def test_roles_swapped_between_two_props(self):
+        # The static desk and the dynamic switch trade roles: the switch keeps
+        # a dynamic-only key, and the trigger's SetAnimation now aims at a
+        # prop_static. The compiler's published-package check adds
+        # id.role-changed (test_usd_map_compile).
+        report, _ = self.variant(lambda r: (
+            r.set("entities", DESK, "sourcemap:role", "prop_dynamic"),
+            r.set("entities", SWITCH, "sourcemap:role", "prop_static")), Roles)
+        self.assertEqual(sorted(errors_of(report)),
+                         [("io.input-unsupported", DROP_TRIGGER),
+                          ("property.misplaced", SWITCH)])
+
+    def test_move_follows_the_prim_transform(self):
+        # A displacement is in the prim's space: a quarter turn about z turns it.
+        report, _ = self.variant(lambda r: (
+            r.set("entities", LIFT, "sourcemap:moveDelta", Gf.Vec3f(64, 0, 0), S.Float3),
+            UsdGeom.Xformable(r.prim("entities", LIFT)).AddRotateZOp().Set(90.0)), Roles)
+        self.assertEqual(errors_of(report), [])
+        move = self.objects(report)["entity.lift"]["move"]
+        for got, want in zip(move, (0.0, 64.0, 0.0)):
+            self.assertAlmostEqual(got, want, places=4)
+
+    def test_roles_survive_save_and_reopen(self):
+        # Save as one flattened binary layer, reopen and revalidate: every id
+        # keeps its role, placement, keys and connections.
+        stage = Usd.Stage.Open(str(ROLES / "roles.usda"))
+        crate = self.scratch / "roles.usdc"
+        stage.Flatten().Export(str(crate))
+        report = validator.validate(str(crate), previous=self.roles)
+        self.assertEqual(errors_of(report), [])
+        self.assertEqual(report["objects"], self.roles["objects"])
+        self.assertEqual(report["diff"], {"added": [], "removed": [], "moved": []})
+
+    def test_v1_stage_with_no_v2_features_is_clean(self):
+        report, _ = self.variant(lambda r: (
+            r.remove("entities", DROP_TRIGGER, "sourcemap:connections"),
+            r.remove("entities", DROP_TRIGGER, "sourcemap:touchFilter"),
+            setattr(r.spec("entities", SWITCH), "active", False),
+            setattr(r.spec("entities", LIFT), "active", False),
+            setattr(r.layers["room"], "customLayerData",
+                    {"sourcemap": {"profile": "source-authoring", "version": 1}})), Roles)
+        self.assertEqual(errors_of(report), [])
+
+
 class IdStabilityTest(Scratch):
     def rename_desk(self, room):
         layer = room.layers["entities"]
@@ -576,10 +778,10 @@ class IdStabilityTest(Scratch):
 
 
 class BadFixtureTest(Scratch):
-    """One test per bad variant (added below from CASES)."""
+    """One test per bad variant (added below from CASES and ROLE_CASES)."""
 
-    def expect_only(self, edit, code, path):
-        report, room = self.variant(edit)
+    def expect_only(self, edit, code, path, fixture=Room):
+        report, room = self.variant(edit, fixture)
         expected_path = path if path.startswith("/") else str(room.directory / path)
         self.assertEqual(errors_of(report), [(code, expected_path)])
 
@@ -592,20 +794,21 @@ class BadFixtureTest(Scratch):
         self.assertEqual([c for c, _ in errors_of(report)], ["stage.open-failed"])
 
 
-def bad_variant_test(edit, code, path):
-    return lambda self: self.expect_only(edit, code, path)
+def bad_variant_test(edit, code, path, fixture):
+    return lambda self: self.expect_only(edit, code, path, fixture)
 
 
-for _name, _edit, _code, _path in CASES:
-    _method = "test_" + re.sub(r"[^a-z0-9]+", "_", _name.lower()).strip("_")
-    if hasattr(BadFixtureTest, _method):
-        raise RuntimeError("duplicate bad-variant name %r" % _name)
-    setattr(BadFixtureTest, _method, bad_variant_test(_edit, _code, _path))
+for _cases, _fixture in ((CASES, Room), (ROLE_CASES, Roles)):
+    for _name, _edit, _code, _path in _cases:
+        _method = "test_" + re.sub(r"[^a-z0-9]+", "_", _name.lower()).strip("_")
+        if hasattr(BadFixtureTest, _method):
+            raise RuntimeError("duplicate bad-variant name %r" % _name)
+        setattr(BadFixtureTest, _method, bad_variant_test(_edit, _code, _path, _fixture))
 
 
 class ProfileTest(unittest.TestCase):
     def test_every_declared_code_has_a_bad_variant(self):
-        exercised = {case[2] for case in CASES} | {"stage.open-failed"}
+        exercised = {case[2] for case in CASES + ROLE_CASES} | {"stage.open-failed"}
         self.assertEqual(sorted(set(PROFILE["errors"]) - exercised), [])
         self.assertEqual(sorted(exercised - set(PROFILE["errors"])), [])
 
@@ -615,11 +818,14 @@ class ProfileTest(unittest.TestCase):
         literal = {c for c in literal if c.split(".")[0] in
                    {"stage", "composition", "schema", "feature", "role", "property", "id",
                     "transform", "geometry", "surface", "uv", "material", "prop", "entity",
-                    "light", "map"}}
+                    "light", "map", "io"}}
         referenced = set()
         for role in PROFILE["roles"].values():
             referenced.add(role.get("prim_type_code", "role.prim-type"))
-            for rule in role.get("properties", {}).values():
+            rules = list(role.get("properties", {}).values())
+            for cls in role.get("classes", {}).values():
+                rules += list(cls.get("properties", {}).values())
+            for rule in rules:
                 referenced.update(rule[k] for k in ("missing_code", "unsupported_code")
                                   if k in rule)
         self.assertEqual(sorted((literal | referenced) - set(PROFILE["errors"])), [])
@@ -636,8 +842,19 @@ class ProfileTest(unittest.TestCase):
                 self.assertTrue(role["prim_types"], name)
             else:
                 self.assertEqual(role["support"], "reserved", name)
+            self.assertIn(role.get("since", 1), PROFILE["accepted_versions"], name)
             if name != "light":
                 self.assertIn(name, PROFILE["name_hints"])
+
+    def test_io_declarations_are_consistent(self):
+        brush = PROFILE["roles"]["entity_brush"]
+        classes = brush["properties"]["sourcemap:classname"]["values"]
+        for cls in PROFILE["io"]["outputs"]:
+            self.assertIn(cls, classes)
+            self.assertIn("sourcemap:connections", brush["classes"][cls]["properties"])
+        for kind, inputs in PROFILE["io"]["inputs"].items():
+            self.assertTrue(kind in PROFILE["roles"] or kind in classes, kind)
+            self.assertTrue(set(inputs.values()) <= {"none", "sequence"}, kind)
 
     def test_source_angles(self):
         self.assertEqual(validator.source_angles((0, 1, 0), (-1, 0, 0), (0, 0, 1)),

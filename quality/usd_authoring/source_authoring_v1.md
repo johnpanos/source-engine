@@ -1,7 +1,8 @@
-# Source authoring profile v1 (USD-native maps, RFC 0009 U0)
+# Source authoring profile (USD-native maps, RFC 0009 U0-U2)
 
-Status: U0 profile for roadmap R59. It defines the editable USD map source that
-the first native compiler (U1) will read. It is **not** RFC 0008's compiled
+Status: profile versions 1 (U0) and 2 (U2) for roadmap R59, in one file. It
+defines the editable USD map source that the native compiler (U1) reads;
+[Profile version 2](#profile-version-2-u2) lists what U2 added. It is **not** RFC 0008's compiled
 World Stage schema (`utils/worldstage/schema.usda`, `SourceWorldAPI` and the
 `source:` properties). Those carry derived compiler output, and an authoring
 stage that contains them fails validation (`schema.compiled-data`).
@@ -11,7 +12,8 @@ stage that contains them fails validation (`schema.compiled-data`).
 | [`source_authoring_v1.json`](source_authoring_v1.json) | Machine-readable facts: roles, per-role properties and allowed values, the id, model and material patterns, tolerances, name hints and the error-code catalog |
 | This document | Meaning and reasons: the decisions behind those facts |
 | [`tools/quality/usd_authoring_validate.py`](../../tools/quality/usd_authoring_validate.py) | The validator; it reads the JSON and emits only codes declared there |
-| [`quality/fixtures/usd-authoring/room/`](../fixtures/usd-authoring/room/) | The hand-authored positive fixture |
+| [`quality/fixtures/usd-authoring/room/`](../fixtures/usd-authoring/room/) | The hand-authored positive fixture (declares v1) |
+| [`quality/fixtures/usd-authoring/roles/`](../fixtures/usd-authoring/roles/) | The U2 role fixture (declares v2; reuses the room's world and prefab layers) |
 | [`tools/quality/tests/test_usd_authoring.py`](../../tools/quality/tests/test_usd_authoring.py) | The oracles, which generate every bad variant from the fixture |
 
 The scope is deliberately small. It covers what the first playable USD room
@@ -35,8 +37,11 @@ validation by name. No feature is half-supported.
   so authored and derived data can never be confused.
 - **Stage record.** The root layer carries
   `customLayerData = { dictionary sourcemap = { string profile = "source-authoring"; int version = 1 } }`.
-  A different profile or version fails (`stage.profile-*`). A version bump is
-  required for any change that alters the meaning of existing data.
+  A different profile or an unknown version fails (`stage.profile-*`). A
+  version bump is required for any change that alters the meaning of existing
+  data, and for a new feature, so that a tool that knows only the older
+  version rejects a newer stage by its version instead of misreading it.
+  Versions 1 and 2 are accepted; see [Profile version 2](#profile-version-2-u2).
 - The root layer must declare a `defaultPrim`, so a map can be referenced
   whole.
 
@@ -90,7 +95,7 @@ never infers a role from a prim name, a path, a material or the geometry alone:
 | `entity_point` | supported | `Xform` | `id`, `classname` = `info_player_start` | — | Point entity at the prim's origin and angles |
 | `entity_brush` | supported | `Mesh` | `id`, `classname` = `trigger_multiple` or `trigger_once`, one convex solid | `surfaceIds` | Brush entity; the compiler assigns `tools/toolstrigger`, and any bound Material is only an editor preview |
 | `light` | supported | `SphereLight`, no `ShapingAPI` | `id`, authored `inputs:intensity` > 0 and `inputs:color` | UsdLux inputs | Baked point light; the intensity-to-`_light` conversion is a U1 policy |
-| `prop_dynamic` | **reserved (U2)** | — | — | — | Fails `role.unsupported` |
+| `prop_dynamic` | supported since v2 | `Xform` | `id`, `model`, `collision` = `vphysics` or `none` | `skin`, `defaultAnimation`; `parent` is reserved | `prop_dynamic` entity: movable and animated, never a physics body; in a v1 stage it fails `role.unsupported` |
 
 The property names in the table are shortened; each is `sourcemap:<name>`.
 
@@ -192,9 +197,11 @@ U0 checks the syntax only. The fixture's models,
 exist in Portal's `portal_pak_dir.vpk` in the local runtime, but the validator
 does not open game content. The U1 compiler checks existence and collision
 files per role (`source_compile_v1.json` "model_files"): a `prop_physics`
-model needs its `.phy`, and so does a `prop_static` with `collision =
-vphysics`. U2 adds the remaining per-role model capabilities (RFC 0009 open
-question 3).
+model needs its `.phy`, and so does a `prop_static` or `prop_dynamic` with
+`collision = vphysics`. U2 adds the per-role model capabilities (RFC 0009 open
+question 3, policy `model_roles`): a `prop_static` model must be compiled with
+`$staticprop`, as vbsp requires, and a `prop_dynamic` must have its default
+animation and every sequence a `SetAnimation` connection names.
 
 ## Authored-id policy
 
@@ -293,6 +300,51 @@ sublayers two layers:
   `prefabs/metal_box.usda`, and a `SphereLight`. The desk stands at z 37.7:
   `lab_desk01`'s model origin is its top, and U1 found the U0 placement (z 0)
   under the floor.
+
+## Profile version 2 (U2)
+
+Version 2 adds the prop and geometric-entity cohorts. The JSON marks each new
+role, class, property and class value with `"since": 2`; in a stage that
+declares version 1 they fail as unsupported (`role.unsupported`,
+`entity.class-unsupported`, `property.unsupported`), so v1 stages validate
+exactly as before.
+
+- **`prop_dynamic`.** A placement of an existing model with a rigid transform.
+  - `collision` is required and becomes the entity's `solid`
+    (`vphysics` 6, `none` 0; `bbox` is reserved).
+  - `defaultAnimation` is optional and must be a sequence name; the compiler
+    checks that the model has it.
+  - `parent` is declared but reserved (`property.unsupported`): parenting is
+    not simple enough for this slice, so it fails explicitly rather than being
+    ignored.
+- **Keys that belong to another role or class** fail `property.misplaced`,
+  which names their owners (for example `massScale` on a `prop_dynamic`
+  belongs to `prop_physics`). Keys no role declares still fail
+  `property.unknown`.
+- **Per-class properties of `entity_brush`** (`classes` in the JSON) are
+  merged over the role's properties:
+  - `trigger_multiple` and `trigger_once`: optional `touchFilter`
+    (`token[]` of `clients` and `physics`; unauthored means clients, as in v1)
+    and optional `connections`.
+  - `func_movelinear` (since v2): a moving brush with authored surfaces. Its
+    faces need surface ids, a bound Material and affine st like a world solid
+    (the compiler keeps its materials instead of the trigger tool material).
+    `moveDelta` (`float3`, non-zero) is the displacement in the prim's space,
+    transformed with it and converted to Source units; `moveSeconds` (> 0) is
+    the travel time. A duration keeps the speed free of unit conversion.
+- **Connections.** `uniform string[] sourcemap:connections` holds one entry per
+  entity output, `"Output target-id Input"` or
+  `"Output target-id Input parameter"`, separated by single spaces. The target
+  is a `sourcemap:id`, so a rename or regroup never breaks it; the compiler
+  gives every connection target its id as its targetname. The JSON's `io`
+  table declares the outputs of each trigger class and the inputs each target
+  accepts: `prop_dynamic` `SetAnimation` and `SetDefaultAnimation` (a sequence
+  parameter), `func_movelinear` `Open` and `Close` (no parameter). Failures:
+  `io.invalid` (syntax or an output the class lacks), `io.target-missing` and
+  `io.input-unsupported` (including a parameter that does not fit).
+- **Roles in reports.** The validator's objects carry `default_animation`,
+  `touch_filter`, parsed `connections`, `move` and `move_seconds` beside the
+  v1 fields.
 
 ## Open items for U1
 

@@ -1,4 +1,4 @@
-"""Oracles for the native USD map compiler (usd_map_compile.py, RFC 0009 U1).
+"""Oracles for the native USD map compiler (usd_map_compile.py, RFC 0009 U1-U2).
 
     SOURCE_USD_MAP_TOOLS=<installed tools with vbsp -authored> \\
     PYTHONPATH=build/toolchains/openusd-25.11/lib/python \\
@@ -7,9 +7,10 @@
 Needs OpenUSD's `pxr`, installed compile tools (vbsp built with the
 -authored input, vvis, vrad, bsp2tool) named by $SOURCE_USD_MAP_TOOLS, and
 Portal content ($SOURCE_USD_MAP_RUNTIME, default run/runtime). Every variant
-is generated from a private copy of the U0 fixture; every build publishes into
-a private store, which a failed build must leave byte-for-byte unchanged.
-Seeded mutants replace one compiler step and must be caught.
+is generated from a private copy of the U0 room or the U2 role fixture; every
+build publishes into a private store, which a failed build must leave
+byte-for-byte unchanged. Seeded mutants replace one compiler step and must be
+caught.
 """
 
 import hashlib
@@ -34,8 +35,8 @@ import playable_maps  # noqa: E402
 import usd_authoring_validate as validator  # noqa: E402
 import usd_map_check  # noqa: E402
 import usd_map_compile as compiler  # noqa: E402
-from test_usd_authoring import (BOX_FACES, FIXTURE, Room, box_points,  # noqa: E402
-                                new_prim, st_for)
+from test_usd_authoring import (BOX_FACES, DROP_TRIGGER, FIXTURE, GHOST, LIFT,  # noqa: E402
+                                ROLES, SWITCH, Roles, Room, box_points, new_prim, st_for)
 
 TOOLS = os.environ.get("SOURCE_USD_MAP_TOOLS")
 RUNTIME = Path(os.environ.get("SOURCE_USD_MAP_RUNTIME", ROOT / "run/runtime"))
@@ -140,14 +141,17 @@ class CompilerTest(unittest.TestCase):
         CompilerTest.serial += 1
         return self.scratch / ("work%d" % CompilerTest.serial)
 
+    fixture = Room
+    map_name = MAP
+
     def room(self, edit):
-        room = Room(self.scratch)
+        room = self.fixture(self.scratch)
         edit(room)
         return room.save()
 
     def build(self, stage, previous=None, checker=None):
-        return compiler.compile_stage(stage, MAP, TOOLS, RUNTIME, self.work(), previous,
-                                      checker=checker)
+        return compiler.compile_stage(stage, self.map_name, TOOLS, RUNTIME, self.work(),
+                                      previous, checker=checker)
 
     def expect_failure(self, stage, code, detail=None, previous=None, checker=None):
         """The build fails with `code` (and a message containing `detail`) and
@@ -155,7 +159,7 @@ class CompilerTest(unittest.TestCase):
         before = snapshot(self.store)
         with self.assertRaises(compiler.CompileError) as caught:
             result = self.build(stage, previous, checker)
-            compiler.publish(result, MAP, self.store)
+            compiler.publish(result, self.map_name, self.store)
         self.assertEqual(caught.exception.code, code, caught.exception.messages)
         if detail:
             self.assertTrue(any(detail in m for m in caught.exception.messages),
@@ -275,7 +279,8 @@ class CompilerTest(unittest.TestCase):
                                           "metal/no_such_floor", S.String))
         self.expect_failure(stage, "compile.material-missing", "no_such_floor")
 
-    def test_wrong_role_reserved(self):
+    def test_wrong_role_newer_than_the_stage(self):
+        # The room declares profile v1; prop_dynamic arrived in v2.
         stage = self.room(lambda r: set_prefab(r, "sourcemap:role", "prop_dynamic"))
         self.expect_failure(stage, "compile.authoring-invalid", "role.unsupported")
 
@@ -421,6 +426,220 @@ class CompilerTest(unittest.TestCase):
         self.assertIn("surfaces.face-on-authored-surface", names)
 
 
+ROLES_MAP = "usd_roles"
+
+
+def entity_of(brushset, ident):
+    return next(e for e in brushset["entities"] if e.get("id") == ident)
+
+
+@unittest.skipUnless(TOOLS, "set SOURCE_USD_MAP_TOOLS to installed tools with vbsp -authored")
+class RolesCompilerTest(CompilerTest):
+    """U2: the role fixture's static, dynamic and physics props and its
+    geometric entities compile to their own contracts."""
+
+    fixture = Roles
+    map_name = ROLES_MAP
+
+    @classmethod
+    def setUpClass(cls):
+        if not (RUNTIME / "portal/portal_pak_dir.vpk").is_file():
+            raise unittest.SkipTest("Portal content missing at %s" % RUNTIME)
+        cls.temporary = tempfile.TemporaryDirectory(prefix="usd-map-roles-test-")
+        cls.scratch = Path(cls.temporary.name)
+        cls.store = cls.scratch / "store"
+        cls.good = compiler.compile_stage(ROLES / "roles.usda", ROLES_MAP, TOOLS, RUNTIME,
+                                          cls.scratch / "good")
+        compiler.publish(cls.good, ROLES_MAP, cls.store)
+        cls.serial = 0
+
+    def work(self):
+        RolesCompilerTest.serial += 1
+        return self.scratch / ("work%d" % RolesCompilerTest.serial)
+
+    # Inherited U1 tests that are specific to the room fixture do not apply.
+    for _name in [n for n in dir(CompilerTest) if n.startswith("test_")]:
+        locals()[_name] = None
+    del _name
+
+    # ---------------------------------------------------------- positive
+
+    def test_roles_fixture_compiles_and_publishes(self):
+        self.assertEqual(self.good["check"]["failures"], [])
+        self.assertGreater(self.good["check"]["checks"], 1000)
+        self.assertEqual(sorted(playable_maps.published(self.store)), [ROLES_MAP])
+        observations = self.good["check"]["observations"]
+        self.assertEqual(observations["targetnames"],
+                         ["entity.drop-trigger", "entity.lift", "prop.drop-box",
+                          "prop.lever-switch"])
+        self.assertEqual(observations["static_props"], 2)
+        shadows = observations["static_prop_shadows"]
+        self.assertEqual(sorted(shadows), ["prop.ghost-desk", "prop.lab-desk"])
+        self.assertEqual(observations["static_prop_shadows_unmeasured"], [])
+        for shadow in shadows.values():
+            self.assertLess(shadow["ratio"], usd_map_check.SHADOW_RATIO)
+
+    def test_role_outputs_in_provenance(self):
+        outputs = {o["id"]: o["output"] for o in self.good["provenance"]["objects"]}
+        self.assertEqual(outputs["prop.ghost-desk"], {"static_prop": 0})
+        self.assertEqual(outputs["prop.lab-desk"], {"static_prop": 1})
+        self.assertEqual(outputs["prop.lever-switch"], {"entity_class": "prop_dynamic"})
+        self.assertEqual(outputs["prop.drop-box"], {"entity_class": "prop_physics"})
+        self.assertEqual(outputs["entity.lift"]["entity_class"], "func_movelinear")
+
+    # ---------------------------------------------------------- negative
+
+    def test_roles_swapped_against_the_published_package(self):
+        def edit(room):
+            room.set("entities", "/Map/Props/LabDesk", "sourcemap:role", "prop_dynamic")
+            room.set("entities", SWITCH, "sourcemap:role", "prop_static")
+            room.remove("entities", SWITCH, "sourcemap:defaultAnimation")
+            room.set("entities", DROP_TRIGGER, "sourcemap:connections",
+                     ["OnStartTouch entity.lift Open"], S.StringArray)
+        stage = self.room(edit)
+        previous = compiler.published_previous(self.store, ROLES_MAP)
+        self.assertIsNotNone(previous)
+        error = self.expect_failure(stage, "compile.authoring-invalid", "id.role-changed",
+                                    previous)
+        self.assertEqual(sum("id.role-changed" in m for m in error.messages), 2)
+
+    def test_roles_swapped_in_a_fresh_document(self):
+        # Without a previous revision the stage is well formed, but the
+        # switch's model is not a $staticprop, so it cannot be a prop_static.
+        def edit(room):
+            room.set("entities", "/Map/Props/LabDesk", "sourcemap:role", "prop_dynamic")
+            room.set("entities", SWITCH, "sourcemap:role", "prop_static")
+            room.remove("entities", SWITCH, "sourcemap:defaultAnimation")
+            room.set("entities", DROP_TRIGGER, "sourcemap:connections",
+                     ["OnStartTouch entity.lift Open"], S.StringArray)
+        self.expect_failure(self.room(edit), "compile.model-role-mismatch", "$staticprop")
+
+    def test_physics_prop_without_collision(self):
+        stage = self.room(lambda r: set_prefab(r, "sourcemap:model",
+                                               "models/props/cake/cake.mdl"))
+        self.expect_failure(stage, "compile.model-collision-missing", "cake.phy")
+
+    def test_dynamic_prop_with_physics_keys(self):
+        stage = self.room(lambda r: r.set("entities", SWITCH, "sourcemap:massScale", 2.0,
+                                          S.Float))
+        self.expect_failure(stage, "compile.authoring-invalid", "property.misplaced")
+
+    def test_unsupported_parenting(self):
+        stage = self.room(lambda r: r.set("entities", SWITCH, "sourcemap:parent",
+                                          "prop.lab-desk", S.String))
+        self.expect_failure(stage, "compile.authoring-invalid", "property.unsupported")
+
+    def test_unknown_key(self):
+        stage = self.room(lambda r: r.set("entities", SWITCH, "sourcemap:renderColor",
+                                          "255 0 0", S.String))
+        self.expect_failure(stage, "compile.authoring-invalid", "property.unknown")
+
+    def test_animation_the_model_lacks(self):
+        stage = self.room(lambda r: r.set("entities", DROP_TRIGGER, "sourcemap:connections",
+                                          ["OnStartTouch prop.lever-switch SetAnimation dance"],
+                                          S.StringArray))
+        self.expect_failure(stage, "compile.model-sequence-missing", "'dance'")
+
+    def test_default_animation_the_model_lacks(self):
+        stage = self.room(lambda r: r.set("entities", SWITCH, "sourcemap:defaultAnimation",
+                                          "wave", S.String))
+        self.expect_failure(stage, "compile.model-sequence-missing", "default animation")
+
+    def test_connection_to_a_missing_target(self):
+        stage = self.room(lambda r: r.set("entities", DROP_TRIGGER, "sourcemap:connections",
+                                          ["OnStartTouch entity.gone Open"], S.StringArray))
+        self.expect_failure(stage, "compile.authoring-invalid", "io.target-missing")
+
+    # ----------------------------------------------------------- mutants
+
+    def brushset_mutant(self, change, code, detail, stage=None):
+        def patch(original):
+            def build(report, profile, name):
+                brushset, objects = original(report, profile, name)
+                change(brushset)
+                return brushset, objects
+            return build
+        return self.mutant(("build_brushset", patch), code, detail,
+                           stage or ROLES / "roles.usda")
+
+    def test_mutant_dynamic_prop_emitted_as_physics(self):
+        def change(brushset):
+            switch = entity_of(brushset, "prop.lever-switch")
+            switch["classname"] = "prop_physics"
+            for key in ("DefaultAnim", "solid"):
+                switch["keys"].pop(key)
+        self.brushset_mutant(change, "compile.output-check", "entities.class")
+
+    def test_mutant_roles_swapped_in_the_brushset(self):
+        def change(brushset):
+            box = entity_of(brushset, "prop.drop-box")
+            switch = entity_of(brushset, "prop.lever-switch")
+            box["classname"], switch["classname"] = switch["classname"], box["classname"]
+        self.brushset_mutant(change, "compile.output-check", "entities.class")
+
+    def test_mutant_dropped_collision_requirement(self):
+        def lenient(original):
+            def check(report, profile, resolver):
+                relaxed = json.loads(json.dumps(profile))
+                for rule in relaxed["model_files"].values():
+                    rule["always"] = [".mdl"]
+                    rule.pop("collision:vphysics", None)
+                return original(report, relaxed, resolver)
+            return check
+        stage = self.room(lambda r: set_prefab(r, "sourcemap:model",
+                                               "models/props/cake/cake.mdl"))
+        self.mutant(("check_content", lenient), "compile.output-check", "cake.phy", stage)
+
+    def test_mutant_trigger_touch_filter_ignored(self):
+        def change(brushset):
+            entity_of(brushset, "entity.drop-trigger")["keys"]["spawnflags"] = "1"
+        self.brushset_mutant(change, "compile.output-check", "roles.trigger-touch-filter")
+
+    def test_mutant_connections_dropped(self):
+        def change(brushset):
+            entity_of(brushset, "entity.drop-trigger")["connections"].pop()
+        self.brushset_mutant(change, "compile.output-check", "roles.connections")
+
+    def test_mutant_lift_speed(self):
+        def change(brushset):
+            keys = entity_of(brushset, "entity.lift")["keys"]
+            keys["speed"] = compiler.number(float(keys["speed"]) * 2)
+        self.brushset_mutant(change, "compile.output-check", "roles.movelinear-duration")
+
+    def test_mutant_lift_direction(self):
+        def change(brushset):
+            entity_of(brushset, "entity.lift")["keys"]["movedir"] = "90 0 0"
+        self.brushset_mutant(change, "compile.output-check", "roles.movelinear-displacement")
+
+    def test_mutant_lift_tool_material(self):
+        def change(brushset):
+            for side in entity_of(brushset, "entity.lift")["solids"][0]["sides"]:
+                side["material"] = "metal/metal_modular_floor001"
+        self.brushset_mutant(change, "compile.output-check", "roles.brush-entity-material")
+
+    def test_mutant_static_prop_without_baked_shadow(self):
+        def change(brushset):
+            entity_of(brushset, "prop.lab-desk")["keys"]["disableshadows"] = "1"
+        error = self.brushset_mutant(change, "compile.output-check", "props.casts-baked-shadow")
+        self.assertTrue(any("lighting.static-prop-shadow" in m for m in error.messages),
+                        error.messages)
+
+    def test_mutant_static_prop_collision(self):
+        def change(brushset):
+            entity_of(brushset, "prop.lab-desk")["keys"]["solid"] = "0"
+        self.brushset_mutant(change, "compile.output-check", "props.solid")
+
+    def test_mutant_default_animation_dropped(self):
+        def change(brushset):
+            entity_of(brushset, "prop.lever-switch")["keys"].pop("DefaultAnim")
+        self.brushset_mutant(change, "compile.output-check", "roles.dynamic-default-animation")
+
+    def test_mutant_unnamed_dynamic_prop(self):
+        def change(brushset):
+            entity_of(brushset, "prop.lever-switch")["keys"].pop("targetname")
+        self.brushset_mutant(change, "compile.output-check", "entities.targetname")
+
+
 class PolicyTest(unittest.TestCase):
     """Compiler policy that needs no tools."""
 
@@ -476,6 +695,44 @@ class PolicyTest(unittest.TestCase):
         trigger = entities[2]["solids"][0]
         self.assertEqual({s["material"] for s in trigger["sides"]}, {"tools/toolstrigger"})
         self.assertEqual(len(objects), len(self.report["objects"]))
+
+    def test_role_brushset_keys(self):
+        report = validator.validate(str(ROLES / "roles.usda"))
+        self.assertEqual(report["errors"], [])
+        brushset, _ = compiler.build_brushset(report, PROFILE, ROLES_MAP)
+        self.assertEqual([e["classname"] for e in brushset["entities"][1:]],
+                         ["info_player_start", "trigger_multiple", "func_movelinear",
+                          "prop_static", "prop_static", "prop_dynamic", "prop_physics",
+                          "light"])
+        switch = entity_of(brushset, "prop.lever-switch")
+        self.assertEqual(switch["keys"], {"model": "models/props/switch001.mdl",
+                                          "targetname": "prop.lever-switch", "solid": "6",
+                                          "DefaultAnim": "idle"})
+        self.assertEqual(entity_of(brushset, "prop.drop-box")["keys"],
+                         {"model": "models/props/metal_box.mdl",
+                          "targetname": "prop.drop-box"})
+        self.assertEqual(entity_of(brushset, "prop.ghost-desk")["keys"]["solid"], "0")
+        self.assertEqual(entity_of(brushset, "prop.lab-desk")["keys"]["disableshadows"], "0")
+        trigger = entity_of(brushset, "entity.drop-trigger")
+        self.assertEqual(trigger["keys"]["spawnflags"], "9")
+        self.assertEqual(trigger["connections"], [
+            {"output": "OnStartTouch", "target": "prop.lever-switch", "input": "SetAnimation",
+             "parameter": "down", "delay": 0, "times": -1},
+            {"output": "OnStartTouch", "target": "entity.lift", "input": "Open",
+             "parameter": "", "delay": 0, "times": -1}])
+        lift = entity_of(brushset, "entity.lift")
+        self.assertEqual({k: lift["keys"][k] for k in ("movedir", "movedistance", "speed")},
+                         {"movedir": "-90 0 0", "movedistance": "64", "speed": "64"})
+        self.assertEqual({side["material"] for side in lift["solids"][0]["sides"]},
+                         {"metal/metalwall048b"})
+        self.assertNotIn("connections", entity_of(brushset, "prop.lever-switch"))
+
+    def test_direction_angles_invert_angle_vectors(self):
+        for vector in ((0, 0, 64), (0, 0, -3), (1, 0, 0), (0, -2, 0), (3, 4, 5), (-1, 2, -7)):
+            forward = usd_map_check.angle_vectors(compiler.direction_angles(vector))
+            length = math.sqrt(sum(x * x for x in vector))
+            for got, want in zip(forward, vector):
+                self.assertAlmostEqual(got, want / length, places=9, msg=str(vector))
 
     def test_every_error_code_is_declared_and_exercised(self):
         source = (ROOT / "tools/quality/usd_map_compile.py").read_text()

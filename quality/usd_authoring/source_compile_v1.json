@@ -1,11 +1,11 @@
 {
   "schema": "source-usd-compile-profile/v1",
   "profile": "source-usd-compile",
-  "version": 1,
+  "version": 2,
   "rfc": "0009",
-  "phase": "U1",
-  "description": "Policy of the first native USD map compiler (tools/quality/usd_map_compile.py): how a stage that passes source-authoring v1 becomes a BSP2 map. Decisions and their reasons are in RFC/0009-progress.md (U1).",
-  "authoring_profile": {"profile": "source-authoring", "version": 1},
+  "phase": "U2",
+  "description": "Policy of the native USD map compiler (tools/quality/usd_map_compile.py): how a stage that passes source-authoring v1 or v2 becomes a BSP2 map. Decisions and their reasons are in RFC/0009-progress.md (U1, U2). Version 2 adds prop_dynamic, func_movelinear, trigger touch filters, entity I/O, targetnames, model-role checks and the static-prop bake policy.",
+  "authoring_profile": {"profile": "source-authoring", "versions": [1, 2]},
   "brushset_schema": "source-authored-brushset/v1",
   "provenance_schema": "source-usd-map-provenance/v1",
   "check_schema": "source-usd-map-check/v1",
@@ -22,14 +22,43 @@
     "info_player_start": {"keys": {}},
     "trigger_multiple": {"keys": {"spawnflags": "1", "wait": "1", "StartDisabled": "0"}},
     "trigger_once": {"keys": {"spawnflags": "1", "StartDisabled": "0"}},
-    "prop_static": {"keys": {}},
+    "func_movelinear": {"keys": {"spawnflags": "0", "startposition": "0"}},
+    "prop_static": {"keys": {"disableshadows": "0"}},
+    "prop_dynamic": {"keys": {}},
     "prop_physics": {"keys": {}},
     "light": {"keys": {"_lightHDR": "-1 -1 -1 1", "_lightscaleHDR": "1", "_constant_attn": "0", "_linear_attn": "0", "_quadratic_attn": "1"}}
   },
   "class_defaults_source": "Valve base.fgd defaults Hammer writes for these classes (Trigger: spawnflags 1 = clients, StartDisabled 0; trigger_multiple wait 1); vrad's physical inverse-square falloff for lights. No FGD is in this tree.",
   "static_prop_solid": {"vphysics": "6", "none": "0"},
+  "dynamic_prop_solid": {"vphysics": "6", "none": "0"},
+  "targetname": {
+    "roles": ["prop_dynamic", "prop_physics", "entity_brush"],
+    "description": "Runtime entities that can be connection targets or probed get targetname = their sourcemap:id: one identity, no second authored name that could drift. Point entities and lights stay unnamed (an unnamed light is baked and removed at spawn)."
+  },
+  "trigger_touch_filter": {
+    "flags": {"clients": 1, "physics": 8},
+    "default": ["clients"],
+    "description": "sourcemap:touchFilter becomes the trigger's spawnflags (SF_TRIGGER_ALLOW_CLIENTS 0x01, SF_TRIGGER_ALLOW_PHYSICS 0x08); unauthored means clients only, as in v1."
+  },
+  "connections": {
+    "delay": 0,
+    "times": -1,
+    "description": "Each validated connection is an entity output 'target,input,parameter,delay,times' with the target's targetname (its id), no delay, and firing every time."
+  },
+  "movelinear": {
+    "description": "sourcemap:moveDelta (Source units, from the validator) becomes movedir (the QAngle of its direction) and movedistance (its length); speed is movedistance / sourcemap:moveSeconds."
+  },
+  "static_prop_bake": {
+    "policy": "prop-static-casts-baked-shadows/v1",
+    "description": "Every prop_static casts shadows into the lightmap bake: disableshadows 0, so the compiled STATIC_PROP_NO_SHADOW flag is clear, and vrad traces the prop's collision model (or its model's convex hull when it has no .phy). Collision none changes game collision only. prop_dynamic and prop_physics move, so the bake ignores them."
+  },
+  "model_roles": {
+    "prop_static": {"static_prop_flag": true},
+    "description": "A prop_static model must be compiled with $staticprop (studiohdr_t flag 0x10), which vbsp requires; a prop_dynamic's default animation and every SetAnimation parameter aimed at it must be sequences of its model."
+  },
   "model_files": {
     "prop_static": {"always": [".mdl"], "collision:vphysics": [".phy"]},
+    "prop_dynamic": {"always": [".mdl"], "collision:vphysics": [".phy"]},
     "prop_physics": {"always": [".mdl", ".phy"]}
   },
   "light": {
@@ -52,6 +81,8 @@
     "compile.authoring-invalid": "The stage fails the source-authoring v1 validator; its codes are reported and nothing is compiled",
     "compile.model-missing": "A prop's model file is not in the game content",
     "compile.model-collision-missing": "A prop role that needs collision has no .phy next to its model",
+    "compile.model-role-mismatch": "The model cannot serve its prop role (a prop_static model without $staticprop)",
+    "compile.model-sequence-missing": "A prop_dynamic's default animation, or a SetAnimation parameter aimed at it, is not a sequence of its model",
     "compile.material-missing": "A face's material has no VMT in the game content",
     "compile.light-unsupported": "A light uses an input the v1 light policy does not convert, or converts to no light",
     "compile.leak": "The world solids do not seal the entities from the void",
