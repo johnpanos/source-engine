@@ -244,10 +244,12 @@ def define_platform(conf):
 	conf.env.DXVK = conf.options.RENDER_BACKEND == 'vulkan'
 	conf.env.NATIVE_VULKAN = conf.options.RENDER_BACKEND == 'native-vulkan'
 	if conf.env.SDL3 or conf.env.DXVK or conf.env.NATIVE_VULKAN:
-		if conf.env.DEST_OS not in ['linux', 'android'] or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
-			conf.fatal('The SDL3/Vulkan profiles currently target the Linux and Android clients')
+		if conf.env.DEST_OS not in ['linux', 'android', 'ios'] or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
+			conf.fatal('The SDL3/Vulkan profiles currently target the Linux, Android and iOS clients')
 		if conf.env.DEST_OS == 'android' and not conf.env.NATIVE_VULKAN:
 			conf.fatal('The Android client requires --render-backend=native-vulkan')
+		if conf.env.DEST_OS == 'ios' and not (conf.env.NATIVE_VULKAN and conf.env.SDL3):
+			conf.fatal('The iOS client requires --platform-provider=sdl3 --render-backend=native-vulkan')
 		if not (conf.env.SDL3 and (conf.env.DXVK or conf.env.NATIVE_VULKAN)):
 			conf.fatal('Select both --platform-provider=sdl3 and --render-backend=vulkan')
 		conf.options.SDL = 1
@@ -351,6 +353,17 @@ def define_platform(conf):
 			'_DLL_EXT=.dylib'
 		])
 
+	elif conf.env.DEST_OS == 'ios':
+		# Apple POSIX semantics (mach, sysctl, BSD qsort_r) come with OSX;
+		# PLATFORM_IOS excludes the macOS-only APIs (AppKit, Carbon, IOKit,
+		# CoreAudio HAL, FSEvents, process spawning).
+		conf.env.append_unique('DEFINES', [
+			'OSX=1', '_OSX=1', 'PLATFORM_IOS=1',
+			'POSIX=1', '_POSIX=1', 'PLATFORM_POSIX=1',
+			'GNUC',
+			'NO_HOOK_MALLOC',
+			'_DLL_EXT=.dylib'
+		])
 	elif conf.env.DEST_OS in ['freebsd', 'openbsd', 'netbsd', 'dragonflybsd']: # Tested only in freebsd
 		conf.env.append_unique('DEFINES', [
 			'POSIX=1', '_POSIX=1', 'PLATFORM_POSIX=1',

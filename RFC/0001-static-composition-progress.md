@@ -197,6 +197,26 @@ this host yet, so nothing has been compiled for iOS.
   - Linux (RADV, whose loader offers the instance extension): the static
     product still boots `testchmb_a_00` on native Vulkan with 0 loader events.
   - The device-side path has not run: no Linux driver exposes the subset.
+- **Waf iOS target (up to the SDK).**
+  - `./waf configure --ios-sdk=<iPhoneOS.sdk> --static-composition
+    --platform-provider sdl3 --render-backend native-vulkan` selects the
+    pinned toolchain (`--ios-toolchain`, default `dependencies/ios/toolchain`)
+    and `arm64-apple-ios<--ios-deployment-target, 17.0>`.
+  - The target is part of the compiler command, and xcompile maps
+    `__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__` to `DEST_OS` `ios`. Waf's
+    own table maps it to darwin, and the old merge overwrote the new entry.
+  - iOS requires `--static-composition`, SDL3 and native Vulkan.
+  - Defines: `OSX` for Apple POSIX semantics, plus `PLATFORM_IOS` to exclude
+    the macOS-only APIs (agent decision under the user's standing
+    instruction). Why: the tree's 366 `OSX` conditionals select mach timing,
+    sysctl, `malloc/malloc.h` and BSD `qsort_r` argument order, which iOS
+    shares.
+  - Checked with a directory that only claims to be an iPhoneOS SDK (a
+    settings file, no headers):
+    - configure reports ios / aarch64 / mac-o, passes the product gate, and
+      stops at the first compile-and-link probe;
+    - a missing or macOS SDK is rejected with a message;
+    - the Linux configure is unchanged.
 - **Apple audit.** A read-only audit of the product modules for iOS is the
   punch list for the SDK phase.
   - No `ios` target exists: Waf would call an iOS compiler `darwin` and apply

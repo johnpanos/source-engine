@@ -53,6 +53,8 @@ def options(opt):
 
 def configure(conf):
 	conf.env.STATIC_COMPOSITION = bool(getattr(conf.options, 'STATIC_COMPOSITION', False))
+	if conf.env.DEST_OS == 'ios' and not conf.env.STATIC_COMPOSITION:
+		conf.fatal('iOS products are statically composed; configure with --static-composition')
 	if not conf.env.STATIC_COMPOSITION:
 		return
 	if conf.env.DEST_OS == 'win32' or conf.env.COMPILER_CXX == 'msvc':

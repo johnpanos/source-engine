@@ -332,12 +332,59 @@ class Android:
 				ldflags += ['-march=armv5te']
 		return ldflags
 
+def configure_ios(conf):
+	"""--ios-sdk: cross-compile for iOS with the pinned host toolchain
+	(tools/ios/build_toolchain.py) and the user's iPhoneOS SDK. The SDK is
+	never downloaded: it comes from Xcode on the user's Mac."""
+	sdk = os.path.abspath(conf.options.IOS_SDK)
+	settings = os.path.join(sdk, 'SDKSettings.json')
+	if not os.path.isfile(settings):
+		conf.fatal('--ios-sdk=%s is not an iPhoneOS SDK (no SDKSettings.json); copy it from the '
+			'Mac: xcrun --sdk iphoneos --show-sdk-path' % sdk)
+	import json
+	with open(settings) as stream:
+		sdk_info = json.load(stream)
+	if sdk_info.get('CanonicalName', '').rstrip('0123456789.') != 'iphoneos':
+		conf.fatal('%s is %s, not an iPhoneOS SDK' % (sdk, sdk_info.get('CanonicalName')))
+	toolchain = os.path.abspath(conf.options.IOS_TOOLCHAIN)
+	bindir = os.path.join(toolchain, 'bin')
+	for tool in ('clang', 'clang++', 'ld64.lld', 'ld64', 'llvm-ar'):
+		if not os.path.isfile(os.path.join(bindir, tool)):
+			conf.fatal('%s has no %s; run python3 tools/ios/build_toolchain.py' % (toolchain, tool))
+	triple = 'arm64-apple-ios%s' % conf.options.IOS_DEPLOYMENT_TARGET
+	target = ['-target', triple, '-isysroot', sdk]
+	conf.environ['PATH'] = bindir + os.pathsep + conf.environ.get('PATH', '')
+	# The target is part of the compiler command, so Waf's compiler probe
+	# (clang -dM -E) sees the iOS macros and sets DEST_OS to ios.
+	conf.environ['CC'] = ' '.join([os.path.join(bindir, 'clang')] + target)
+	conf.environ['CXX'] = ' '.join([os.path.join(bindir, 'clang++')] + target)
+	conf.environ['AR'] = os.path.join(bindir, 'llvm-ar')
+	conf.env.LINKFLAGS += ['-fuse-ld=lld']
+	conf.env.IOS_SDK = sdk
+	conf.env.IOS_SDK_VERSION = sdk_info.get('Version', '')
+	conf.env.IOS_DEPLOYMENT_TARGET = conf.options.IOS_DEPLOYMENT_TARGET
+	conf.env.IOS_TRIPLE = triple
+	conf.msg('Selected iOS SDK', '%s (%s)' % (sdk, conf.env.IOS_SDK_VERSION))
+	conf.msg('... target', triple)
+
 def options(opt):
+	ios = opt.add_option_group('iOS options')
+	ios.add_option('--ios-sdk', action='store', dest='IOS_SDK', default=None,
+		help='cross-compile for iOS with this iPhoneOS.sdk (copied from Xcode on a Mac)')
+	ios.add_option('--ios-toolchain', action='store', dest='IOS_TOOLCHAIN',
+		default=os.path.join('dependencies', 'ios', 'toolchain'),
+		help='host toolchain built by tools/ios/build_toolchain.py [default: %default]')
+	ios.add_option('--ios-deployment-target', action='store', dest='IOS_DEPLOYMENT_TARGET',
+		default='17.0', help='minimum iOS version [default: %default]')
 	android = opt.add_option_group('Android options')
 	android.add_option('--android', action='store', dest='ANDROID_OPTS', default=None,
 		help='enable building for android, format: --android=<arch>,<toolchain>,<api>, example: --android=armeabi-v7a-hard,4.9,21')
 
 def configure(conf):
+	if getattr(conf.options, 'IOS_SDK', None):
+		if conf.options.ANDROID_OPTS:
+			conf.fatal('--ios-sdk and --android select different targets')
+		configure_ios(conf)
 	if conf.options.ANDROID_OPTS:
 		values = conf.options.ANDROID_OPTS.split(',')
 		if len(values) != 3:
@@ -387,9 +434,13 @@ def configure(conf):
 		# conf.env.ANDROID_OPTS = android
 		conf.env.DEST_OS2 = 'android'
 
-	MACRO_TO_DESTOS = OrderedDict({ '__ANDROID__' : 'android' })
+	# iOS before the generic __APPLE__ (darwin) mapping; clang defines this
+	# macro for iOS device and simulator targets only.
+	MACRO_TO_DESTOS = OrderedDict({ '__ANDROID__' : 'android',
+		'__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__' : 'ios' })
 	for k in c_config.MACRO_TO_DESTOS:
-		MACRO_TO_DESTOS[k] = c_config.MACRO_TO_DESTOS[k] # ordering is important
+		# ordering is important; Waf's own table maps the iOS macro to darwin
+		MACRO_TO_DESTOS.setdefault(k, c_config.MACRO_TO_DESTOS[k])
 	c_config.MACRO_TO_DESTOS  = MACRO_TO_DESTOS
 
 def post_compiler_cxx_configure(conf):
