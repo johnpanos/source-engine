@@ -347,6 +347,17 @@ Fixes needed for iOS (each is guarded, so desktop builds are unchanged):
   GameUI changes.
 - **Unverified:** the touch layout, gyro aiming, rotation and keyboard
   behavior on the device. They need a user run.
+- **Device config (2026-09-25, user direction):** the first launch had
+  archived `touch_enable "0"` and `touch_gyro "0"` into the phone's
+  `config.cfg` (the defaults then), and the synced content held an older
+  generic HL2 `touch.cfg`. Archived values override the new defaults.
+  - The phone's `config.cfg` now has both set to 1, and its `touch.cfg` is a
+    `touch_loaddefaults` stub, so the game writes the Portal layout for this
+    screen on the next launch. Written with `xcrun devicectl` from the Mac
+    and read back.
+  - The Mac's content copy no longer ships a `touch.cfg`; it was renamed
+    `touch.cfg.hl2-layout-2026-09-21`.
+  - Backups: `~/deploy/phone-cfg-backup-2026-09-25` on the Mac.
 
 ## LightmappedGeneric within MoltenVK's descriptor-set limit (2026-09-25)
 
