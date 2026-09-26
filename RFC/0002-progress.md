@@ -150,6 +150,105 @@ A read-only survey found how far the loop is today:
   - no compile or boot (2);
   - the GTK UI does not use the commands yet (3).
 
+### R08-LIBS: layered format libraries, cohort 1 (slice 1b, done 2026-09-25)
+
+User direction: format and domain code lives in small libraries that the
+editor, compile tools and engine all compose, with enforced imports and
+arrows pointing down. A library never depends on an application such as
+Hammer. This cohort moves the geometry and VMF codec cores out of `hammer/`.
+
+- **What moved.** 18 files, moved (not copied); the old paths no longer exist,
+  and there are no forwarding headers or namespace aliases:
+  - all of `hammer.geometry` (`aabb`, `angle`, `brush`, `displacement`,
+    `rounding`, `texture_axes`) to `public/mapgeometry/` and `mapgeometry/`,
+    namespace `mapgeometry`;
+  - the keyvalues text codec (`keyvalues.h/.cpp`) to `public/kvtext/` and
+    `kvtext/`, namespace `kvtext`;
+  - the VMF decoders and the shared placement transform
+    (`vmf_geometry`, `vmf_transform`) to `public/vmf/` and `vmf/`,
+    namespace `vmf`.
+- **Modules and edges** (`architecture/modules.json`, bottom to top):
+  - `world.map-geometry`: no edges (standard library only);
+  - `content.keyvalues-text`: no edges;
+  - `content.vmf`: `content.keyvalues-text`, `world.map-geometry`.
+
+  The `hammer.geometry` module is gone. Every Hammer edge to it now points
+  to `world.map-geometry`. `hammer.formats` gains `content.keyvalues-text`
+  and `content.vmf`, and so do the GTK adapter and composition;
+  `hammer.adapters.mfc` gains `content.keyvalues-text`.
+  `content.hammer-ktx2-preview` gains `content.keyvalues-text`, because its
+  Waf target compiles the codec. `hammer.app` gains no codec edge. Its two
+  R22 include exceptions are retargeted with the same removal condition
+  (a `hammer.ports` persistence contract):
+  - `editor_document.h` → `content.keyvalues-text`;
+  - `editor_controller.cpp` → `content.vmf`.
+
+  `cctype` joins the portable standard headers.
+- **Upward dependencies.** None found: every moved file includes only the
+  standard library and its own or allowed lower libraries. A seeded
+  `hammer/app` and `kvtext` include in `mapgeometry/aabb.cpp` is rejected
+  (CAP002).
+- **Waf targets.** The static libraries `mapgeometry`, `kvtext` and `vmf`
+  (`vmf` uses the other two) are built:
+  - with the strict C++20 environment and `capability_strict`;
+  - each declaring `arch_module`, with a cxx20 entry in
+    `quality/toolchain/policy.json` and a `capabilityModules.targets` entry;
+  - registered in the root wscript's `tests` and `tools` subproject lists
+    beside `mapcontainer`.
+
+  No product links them yet. Build scripts outside Waf compile the moved
+  sources by their new paths: the GTK shell, `camera_nav_test.sh`, the
+  adapter shell scripts, `tools/portal_pbr/workflow.py`, the
+  texture-container test wscript and the conformance manifest.
+- **Records.** The inventory, migration ledger and parity records name the
+  new paths and owners, and migration IDs and history are unchanged:
+  - `HAM-GEOMETRY-001` and `HAM-DISP-001` now point to
+    `world.map-geometry`;
+  - the four affected migrations carry a `relocation` note;
+  - the moved files' inventory records keep their provenance.
+
+  `archlint hammer` now accepts registered capability modules as inventory
+  owners and migration destinations, in the same way it already accepted
+  them as module edges. Coverage reports extracted records separately
+  instead of warning about them. Three new `test_hammer.py` cases cover this.
+  Suite IDs (`hammer.geometry.*`, `hammer.formats.keyvalues*`) are stable
+  and unchanged.
+- **Evidence** (this tree, 2026-09-25):
+  - `conformance.py check --domain Q-EDITOR`: 61 suites and 1,675 checks
+    pass with g++ and with clang++;
+  - `parity_wine.py check --rfc 0002 --domain Q-EDITOR` with MinGW
+    `x86_64-w64-mingw32-g++` under Wine: 61/61 match;
+  - `hammer_ktx2_preview_conformance`, Waf-built in
+    `build-rfc0008-ktx-reader`: 10 checks, 0 failures;
+  - `hammer/gtk/build.sh` builds; `camera_nav_test.sh` passes;
+    `baseline.py audit --check hammer.gtk-viewport-smoke` passes;
+  - archlint: `check --all` (also with `--compile-deps` on both test trees),
+    `hammer --verify`, `hermetic --cxx g++ --cxx clang++` (63 portable
+    headers), `inventory --verify` and `baseline --verify` all pass, as do
+    the 131 archlint unit tests;
+  - the Waf trees `build-r03-{tests,tests-clang,tools,tools-clang,tools-worldstage}`
+    were reconfigured with their declared setup lines, because each new
+    subproject needs an env cache, and they build the three libraries.
+    `archlint targets --verify` over the 12 declared `build-r03-*` trees
+    passes.
+- **Left in `hammer.formats`, for later cohorts,** with their named callers:
+  - the VPK/VTF/VMT asset readers: `vpk_archive`, `vtf_image` and
+    `material` (callers: `hammer/gtk/app.cpp`, `offscreen.cpp`,
+    `tools/portal_pbr/portal_assets.cpp`, `material_catalog`);
+  - `material_catalog` and `search_path_assets` (the GTK shell,
+    `hammer/adapters/source/ktx2_preview`);
+  - the FGD parser `fgd` (`entity_property_sheet`);
+  - VMF document features: `cordon` (`map_export`), `instancing`
+    (`map_export`), `visgroups` (`map_export`), `groups`, `overlay` and
+    `prefab` (tests only today);
+  - `map_export` and `entity_property_sheet` (tests only today).
+
+  The VPK/VTF/VMT readers and `fgd` are the next candidates for engine- and
+  tool-shared libraries. The VMF document features may join `content.vmf`
+  once a second consumer, such as the compile tools, needs them.
+- **Not claimed:** no engine, compile-tool or editor product links the
+  libraries yet. The legacy MFC `hammer/` tree and vbsp are unchanged.
+
 ## Decisions (answers to the RFC's open questions)
 
 These are recorded **Decisions** in the RFC's evidence vocabulary: intentional
