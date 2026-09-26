@@ -17,9 +17,11 @@
 
 #include "mathlib/math_pfns.h"
 
-#if defined(__i386__) || defined(_M_IX86)
-// For MMX intrinsics
+#if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
+// For MMX and SSE conversion intrinsics
 #include <xmmintrin.h>
+#elif defined(__aarch64__)
+#include <arm_neon.h>
 #endif
 
 // XXX remove me
@@ -1080,14 +1082,11 @@ void VectorYawRotate( const Vector& in, float flYaw, Vector &out);
 // With a biasAmt of 0.5, Bias returns X.
 inline float Bias( float x, float biasAmt )
 {
-	// WARNING: not thread safe
-	static float lastAmt = -1;
-	static float lastExponent = 0;
-	if( lastAmt != biasAmt )
-	{
-		lastExponent = log( biasAmt ) * -1.4427f; // (-1.4427 = 1 / log(0.5))
-	}
-	float fRet = pow( x, lastExponent );
+	// No cached exponent: the old function-static cache never stored its key,
+	// so it recomputed every call anyway, and it raced between the threads
+	// that run particle operators.
+	float exponent = log( biasAmt ) * -1.4427f; // (-1.4427 = 1 / log(0.5))
+	float fRet = pow( x, exponent );
 	Assert ( !IS_NAN( fRet ) );
 	return fRet;
 }
@@ -1216,12 +1215,16 @@ inline float SimpleSplineRemapValClamped( float val, float A, float B, float C, 
 	return C + (D - C) * SimpleSpline( cVal );
 }
 
+// Nearest integer, ties to even: the one conversion instruction on each ISA
+// (CVTSS2SI under the default MXCSR, FCVTNS), so every platform agrees.
 FORCEINLINE int RoundFloatToInt(float f)
 {
 #if defined(__i386__) || defined(_M_IX86) || defined( PLATFORM_WINDOWS_PC64 ) || defined(__x86_64__)
 	return _mm_cvtss_si32(_mm_load_ss(&f));
-#elif defined (__arm__) ||  defined (__aarch64__)
-        return (int)(f + 0.5f);
+#elif defined (__aarch64__)
+	return vcvtns_s32_f32(f);
+#elif defined (__arm__)
+	return (int)lrintf(f);
 #else
 #error Unknown architecture
 #endif
@@ -1236,10 +1239,17 @@ FORCEINLINE unsigned char RoundFloatToByte(float f)
 	return (unsigned char) nResult;
 }
 
+// Nearest integer, ties to even, for 0 <= f < 2^32.
 FORCEINLINE unsigned long RoundFloatToUnsignedLong(float f)
 {
-#if defined(__arm__) || defined(__aarch64__)
-        return (unsigned long)(f + 0.5f);
+#if defined(__aarch64__)
+	return (unsigned long)vcvtns_u32_f32( f );
+#elif defined(__arm__)
+	return (unsigned long)llrintf(f);
+#elif defined(__x86_64__) && !defined( PLATFORM_WINDOWS_PC64 )
+	// 64-bit conversion: the x87 fistpl below stores only 32 of the 64 bits
+	// it returns.
+	return (unsigned long)_mm_cvtss_si64(_mm_set_ss(f));
 #elif defined( PLATFORM_WINDOWS_PC64 )
 	uint nRet = ( uint ) f;
 	if ( nRet & 1 )

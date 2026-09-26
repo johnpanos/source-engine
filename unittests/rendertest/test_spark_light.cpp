@@ -1,11 +1,13 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.spark-light.v1 - the light a burst of trail sparks emits
+// Purpose: render.spark-light.v2 - the light a burst of sparks emits
 //          (render/spark_light.h, RFC 0011 light set): the drawn ramp
 //          against the original CTrailParticles expressions, the emission-
-//          weighted centroid, the fade against the burst's peak, batching
-//          and the burst budget. The sensitivity builds substitute defective
-//          policies the oracle must reject.
+//          weighted centroid over every live spark, the radius that grows
+//          with their spread, the fade against the burst's peak, batching
+//          and the per-frame selection of the lit bursts at the viewer. The
+//          sensitivity builds substitute defective policies the oracle must
+//          reject.
 //
 //===========================================================================//
 
@@ -23,7 +25,8 @@ using namespace SparkLight;
 unsigned long g_checks = 0;
 unsigned long g_failures = 0;
 #if defined( SPARK_LIGHT_SEEDED_UNWEIGHTED ) || defined( SPARK_LIGHT_SEEDED_NO_FADE ) ||           \
-    defined( SPARK_LIGHT_SEEDED_BUDGET_LEAK ) || defined( SPARK_LIGHT_SEEDED_NO_REACH )
+    defined( SPARK_LIGHT_SEEDED_SOURCE_REACH ) || defined( SPARK_LIGHT_SEEDED_FIXED_RADIUS ) ||      \
+    defined( SPARK_LIGHT_SEEDED_FIRST_COME ) || defined( SPARK_LIGHT_SEEDED_NO_KEEP )
 constexpr bool kSeeded = true;
 #else
 constexpr bool kSeeded = false;
@@ -57,16 +60,16 @@ class BurstUnderTest
 {
 public:
 	explicit BurstUnderTest( float fullEmission = 0.0f ) : m_burst( fullEmission ) {}
-	void BeginFrame() { m_burst.BeginFrame(); }
-	void SetReach( const float anchor[3], float reach )
+	// The burst's source and base radius. The real policy has no use for
+	// them; the source-reach defect (the first policy) counts only the sparks
+	// within the base radius of the source.
+	void SetSource( const float source[3], float radius )
 	{
-#ifndef SPARK_LIGHT_SEEDED_NO_REACH
-		m_burst.SetReach( anchor, reach );
-#else
-		(void)anchor;
-		(void)reach;
-#endif
+		for ( int k = 0; k < 3; ++k )
+			m_source[k] = source[k];
+		m_reach = radius;
 	}
+	void BeginFrame() { m_burst.BeginFrame(); }
 	void Add( const float pos[3], float emission )
 	{
 		static const float kWhite[3] = { 1.0f, 1.0f, 1.0f };
@@ -74,6 +77,16 @@ public:
 	}
 	void Add( const float pos[3], float emission, const float color[3] )
 	{
+#ifdef SPARK_LIGHT_SEEDED_SOURCE_REACH
+		if ( m_reach > 0.0f )
+		{
+			float distSq = 0.0f;
+			for ( int k = 0; k < 3; ++k )
+				distSq += ( pos[k] - m_source[k] ) * ( pos[k] - m_source[k] );
+			if ( distSq > m_reach * m_reach )
+				return;
+		}
+#endif
 #ifdef SPARK_LIGHT_SEEDED_UNWEIGHTED
 		// Every live spark counts the same, however much of it is drawn.
 		m_burst.Add( pos, emission > 0.0f ? 1.0f : 0.0f, color );
@@ -93,23 +106,53 @@ public:
 
 private:
 	CBurst m_burst;
+	float m_source[3] = { 0.0f, 0.0f, 0.0f };
+	float m_reach = 0.0f;
 };
 
-class BudgetUnderTest
+float RadiusUnderTest( float base, float spread )
 {
-public:
-	bool Acquire( int max ) { return m_budget.Acquire( max ); }
-	void Release()
-	{
-#ifndef SPARK_LIGHT_SEEDED_BUDGET_LEAK
-		m_budget.Release();
+#ifdef SPARK_LIGHT_SEEDED_FIXED_RADIUS
+	(void)spread;
+	return base;
+#else
+	return LightRadius( base, spread );
 #endif
-	}
-	int Held() const { return m_budget.Held(); }
+}
 
-private:
-	CBudget m_budget;
-};
+int SelectUnderTest(
+    std::vector<Candidate_t> candidates, int maxLit, const float view[3], std::vector<bool> *lit )
+{
+	const int n = int( candidates.size() );
+	bool verdicts[64] = {};
+#if defined( SPARK_LIGHT_SEEDED_FIRST_COME )
+	// The first policy: the first bursts to ask hold the light.
+	(void)view;
+	int count = 0;
+	for ( int i = 0; i < n && count < maxLit; ++i )
+	{
+		if ( candidates[i].m_flStrength > 0.0f )
+		{
+			verdicts[i] = true;
+			++count;
+		}
+	}
+#else
+#if defined( SPARK_LIGHT_SEEDED_NO_KEEP )
+	for ( Candidate_t &candidate : candidates )
+		candidate.m_bWasLit = false;
+#endif
+	const int count = SelectLit( candidates.data(), n, maxLit, view, verdicts );
+#endif
+	lit->assign( verdicts, verdicts + n );
+	return count;
+}
+
+Candidate_t MakeCandidate( float x, float strength, bool wasLit = false )
+{
+	Candidate_t candidate = { { x, 0.0f, 0.0f }, 160.0f, strength, wasLit };
+	return candidate;
+}
 
 // CTrailParticles::RenderParticles' ramp before it moved to spark_light.h.
 float OriginalRamp( float lifetime, float dieTime, bool fadeIn, bool fade )
@@ -276,43 +319,65 @@ int main()
 		Check( Near( burst.Current().m_flScale, 0.5f ), "and then fades against its own peak" );
 	}
 
-	// Reach: a spark far from the burst's source (flown off, or fallen out of
-	// the world) neither moves nor lights the burst.
+	// Spread: the emission-weighted RMS distance of the sparks from the light,
+	// kept precise far from the world origin.
 	{
 		BurstUnderTest burst;
-		const float source[3] = { 0, 0, 0 }, near[3] = { 20, 0, 0 }, gone[3] = { 0, 0, -3000 };
-		burst.SetReach( source, 160.0f );
+		const float a[3] = { -30, 0, 0 }, b[3] = { 30, 0, 0 };
 		burst.BeginFrame();
-		burst.Add( near, 1.0f );
+		burst.Add( a, 1.0f );
+		burst.Add( b, 1.0f );
+		Check( Near( burst.Current().m_flSpread, 30.0f, 1e-3f ), "two sparks 60 apart spread 30" );
+		const float far0[3] = { 12000 - 30, -9000, 3000 }, far1[3] = { 12000 + 30, -9000, 3000 };
 		burst.BeginFrame();
-		burst.Add( near, 1.0f );
-		burst.Add( gone, 1.0f );
+		burst.Add( far0, 1.0f );
+		burst.Add( far1, 1.0f );
 		const Light_t light = burst.Current();
-		Check( light.m_bLit && Near( light.m_Origin[2], 0.0f ) && Near( light.m_Origin[0], 20.0f ),
-		    "a spark beyond the reach does not move the light" );
-		Check( light.m_flScale == 1.0f, "a spark beyond the reach does not add to its strength" );
+		Check( Near( light.m_flSpread, 30.0f, 0.05f ) && Near( light.m_Origin[0], 12000.0f, 0.01f ),
+		    "the spread and centroid stay precise far from the world origin" );
 		burst.BeginFrame();
-		burst.Add( gone, 1.0f );
-		Check( !burst.Current().m_bLit, "a burst whose sparks are all beyond its reach is dark" );
+		burst.Add( a, 1.0f );
+		Check( burst.Current().m_bLit && burst.Current().m_flSpread == 0.0f,
+		    "one spark has no spread" );
+		const float c[3] = { 0, 0, 90 };
+		burst.BeginFrame();
+		burst.Add( a, 3.0f );
+		burst.Add( c, 1.0f );
+		// Centroid (-22.5, 0, 22.5): E|p - c|^2 = ( 3 (7.5^2 + 22.5^2) + (22.5^2 + 67.5^2) ) / 4.
+		Check( Near( burst.Current().m_flSpread, std::sqrt( 1687.5f ), 1e-3f ),
+		    "the spread weighs each spark by its emission" );
 	}
+
+	// Radius: the base radius, growing 1.5 times the spread, at most 2.5
+	// times the base.
+	Check( LightRadius( 160.0f, 0.0f ) == 160.0f && Near( LightRadius( 160.0f, 40.0f ), 220.0f ) &&
+	           LightRadius( 160.0f, 1000.0f ) == 400.0f && LightRadius( 160.0f, -5.0f ) == 160.0f,
+	    "the light's radius grows with its sparks' spread, up to 2.5 times the base" );
 
 	// A scripted burst of falling sparks: the light fades monotonically,
 	// stays among the live sparks, and goes dark when the last spark dies.
 	{
+		// Thrown from 384 units up, they land on a floor at z = 0 and slide
+		// outward: most of their life is spent beyond the base radius of the
+		// source.
 		std::vector<Spark> sparks;
+		const float source[3] = { 0, 0, 384 };
+		const float baseRadius = 192.0f;
 		for ( int i = 0; i < 24; ++i )
 		{
 			const float angle = 0.2618f * float( i );
-			Spark spark = { { 0, 0, 64 },
-			    { 150.0f * std::cos( angle ), 150.0f * std::sin( angle ),
+			Spark spark = { { source[0], source[1], source[2] },
+			    { 250.0f * std::cos( angle ), 250.0f * std::sin( angle ),
 			        100.0f + 5.0f * float( i ) },
 			    0.0f, 0.4f + 0.05f * float( i ) };
 			sparks.push_back( spark );
 		}
 		BurstUnderTest burst;
+		burst.SetSource( source, baseRadius );
 		const float dt = 1.0f / 60.0f;
 		float lastScale = 2.0f;
 		bool monotone = true, contained = true, darkAtEnd = false, litWhileAlive = true;
+		bool covered = true, landed = false;
 		for ( int frame = 0; frame < 120; ++frame )
 		{
 			burst.BeginFrame();
@@ -325,8 +390,15 @@ int main()
 					continue;
 				spark.velocity[2] -= 800.0f * dt;
 				for ( int k = 0; k < 3; ++k )
-				{
 					spark.pos[k] += spark.velocity[k] * dt;
+				if ( spark.pos[2] <= 0.0f )
+				{
+					spark.pos[2] = 0.0f;
+					spark.velocity[2] = 0.0f;
+					landed = true;
+				}
+				for ( int k = 0; k < 3; ++k )
+				{
 					lo[k] = std::fmin( lo[k], spark.pos[k] );
 					hi[k] = std::fmax( hi[k], spark.pos[k] );
 				}
@@ -340,6 +412,24 @@ int main()
 				darkAtEnd = !light.m_bLit;
 				break;
 			}
+			// Coverage: most of the frame's emission lies within the light's
+			// reach, wherever the sparks have gone.
+			const float radius = RadiusUnderTest( baseRadius, light.m_flSpread );
+			float total = 0.0f, inside = 0.0f;
+			for ( const Spark &spark : sparks )
+			{
+				if ( spark.lifetime >= spark.dieTime )
+					continue;
+				const float emission = TrailEmission( spark.lifetime, spark.dieTime, false, false );
+				float distSq = 0.0f;
+				for ( int k = 0; k < 3; ++k )
+					distSq +=
+					    ( spark.pos[k] - light.m_Origin[k] ) * ( spark.pos[k] - light.m_Origin[k] );
+				total += emission;
+				if ( distSq <= radius * radius )
+					inside += emission;
+			}
+			covered &= light.m_bLit && inside >= 0.9f * total;
 			litWhileAlive &= light.m_bLit;
 			monotone &= light.m_flScale <= lastScale;
 			lastScale = light.m_flScale;
@@ -352,29 +442,54 @@ int main()
 		Check( lastScale < 0.05f, "a burst fades to near nothing before its last spark dies" );
 		Check( contained, "the light stays within the live sparks' bounds" );
 		Check( darkAtEnd, "a burst goes dark when its last spark dies" );
+		Check( landed, "the scripted sparks reach the floor" );
+		Check( covered, "the light's reach covers 90% of the sparks' emission in every frame" );
 	}
 
-	// The budget: at most nMax bursts hold a light; a release frees one.
+	// Selection: the most important bursts at the viewer are lit, at most
+	// the budget, whatever order they asked in.
 	{
-		BudgetUnderTest budget;
-		Check( !budget.Acquire( 0 ), "a budget of 0 lights no burst" );
-		Check( budget.Acquire( 2 ) && budget.Acquire( 2 ) && !budget.Acquire( 2 ),
-		    "no more bursts than the budget hold a light" );
-		budget.Release();
-		Check( budget.Held() == 1 && budget.Acquire( 2 ), "a released light frees its place" );
-		budget.Release();
-		budget.Release();
-		Check( budget.Held() == 0, "every released light is returned" );
-		budget.Release();
-		Check( budget.Held() == 0 && budget.Acquire( 1 ) && !budget.Acquire( 1 ),
-		    "an extra release does not raise the budget" );
-		budget.Release();
-		// A lowered budget lights no new burst until enough are released.
-		Check( budget.Acquire( 3 ) && budget.Acquire( 3 ) && !budget.Acquire( 1 ),
-		    "a lowered budget takes effect for new bursts" );
-		budget.Release();
-		budget.Release();
-		Check( budget.Acquire( 1 ), "a lowered budget lights a burst once enough are released" );
+		const float view[3] = { 0, 0, 0 };
+		std::vector<Candidate_t> candidates;
+		// Equal bursts, the farthest asking first.
+		for ( int i = 0; i < 6; ++i )
+			candidates.push_back( MakeCandidate( 600.0f - 100.0f * float( i ), 1.0f ) );
+		std::vector<bool> lit;
+		const int count = SelectUnderTest( candidates, 4, view, &lit );
+		Check( count == 4 && !lit[0] && !lit[1] && lit[2] && lit[3] && lit[4] && lit[5],
+		    "the bursts nearest the viewer hold the light, not the first to ask" );
+		const std::vector<Candidate_t> strong = {
+		    MakeCandidate( 300.0f, 1.0f ), MakeCandidate( 300.0f, 4.0f ) };
+		SelectUnderTest( strong, 1, view, &lit );
+		Check( !lit[0] && lit[1], "a stronger burst at the same distance is more important" );
+		SelectUnderTest( candidates, 0, view, &lit );
+		bool none = true;
+		for ( bool verdict : lit )
+			none &= !verdict;
+		Check( none, "a budget of 0 lights no burst" );
+		const std::vector<Candidate_t> dark = {
+		    MakeCandidate( 10.0f, 0.0f ), MakeCandidate( 500.0f, 1.0f ) };
+		Check( SelectUnderTest( dark, 2, view, &lit ) == 1 && !lit[0] && lit[1],
+		    "a burst of no strength is never lit" );
+		const std::vector<Candidate_t> tie = {
+		    MakeCandidate( 200.0f, 1.0f ), MakeCandidate( -200.0f, 1.0f ) };
+		SelectUnderTest( tie, 1, view, &lit );
+		Check( lit[0] && !lit[1], "ties go to the burst that asked first" );
+	}
+
+	// Hysteresis: a lit burst keeps the light against a newcomer only a
+	// little more important, not against a clearly stronger one.
+	{
+		const float view[3] = { 0, 0, 0 };
+		std::vector<bool> lit;
+		const std::vector<Candidate_t> close = {
+		    MakeCandidate( 300.0f, 1.0f, true ), MakeCandidate( 300.0f, 1.1f ) };
+		SelectUnderTest( close, 1, view, &lit );
+		Check( lit[0] && !lit[1], "a lit burst keeps its light against a slightly stronger newcomer" );
+		const std::vector<Candidate_t> clear = {
+		    MakeCandidate( 300.0f, 1.0f, true ), MakeCandidate( 300.0f, 1.5f ) };
+		SelectUnderTest( clear, 1, view, &lit );
+		Check( !lit[0] && lit[1], "a clearly more important burst takes the light" );
 	}
 
 	if ( kSeeded )

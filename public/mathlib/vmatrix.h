@@ -959,7 +959,7 @@ inline void MatrixInverseTranspose( const matrix3x4_t& src, matrix3x4_t& dst )
 	VMatrix tmp, out;
 	tmp.CopyFrom3x4( src );
 	::MatrixInverseTranspose( tmp, out );
-	out.Set3x4( dst );
+	dst = out.As3x4();
 }
 
 

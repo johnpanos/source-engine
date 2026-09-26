@@ -399,9 +399,11 @@ public:
 	DECLARE_DATADESC();
 	virtual void			FallInit( void );						// prepare to fall to the ground
 	virtual void			FallThink( void );						// make the weapon fall to the ground after spawning
+	virtual void SetParent( CBaseEntity *pNewParent, int iAttachment = -1 );
 
 	// Weapon spawning
 	bool					IsConstrained() { return m_pConstraint != NULL; }
+	void ConstrainInPlace( void ); // fix the physics object to the world where it is now
 	bool					IsInBadPosition ( void );				// Is weapon in bad position to pickup?
 	bool					RepositionWeapon ( void );				// Attempts to reposition the weapon in a location where it can be
 	virtual void			Materialize( void );					// make a weapon visible and tangible

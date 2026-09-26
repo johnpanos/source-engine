@@ -886,6 +886,23 @@ int __cdecl BoxOnPlaneSide (const float *emins, const float *emaxs, const cplane
 }
 
 //-----------------------------------------------------------------------------
+// Sines and cosines of the three Euler angles (radians) in one four-lane
+// SinCosSIMD instead of three scalar libm calls.
+//-----------------------------------------------------------------------------
+static FORCEINLINE void SinCosEuler( float yaw, float pitch, float roll, float &sy, float &cy, float &sp, float &cp, float &sr, float &cr )
+{
+	ALIGN16 float in[4] ALIGN16_POST = { yaw, pitch, roll, 0.0f };
+	ALIGN16 float sine[4] ALIGN16_POST;
+	ALIGN16 float cosine[4] ALIGN16_POST;
+	fltx4 s4, c4;
+	SinCosSIMD( s4, c4, LoadAlignedSIMD( in ) );
+	StoreAlignedSIMD( sine, s4 );
+	StoreAlignedSIMD( cosine, c4 );
+	sy = sine[0]; sp = sine[1]; sr = sine[2];
+	cy = cosine[0]; cp = cosine[1]; cr = cosine[2];
+}
+
+//-----------------------------------------------------------------------------
 // Euler QAngle -> Basis Vectors
 //-----------------------------------------------------------------------------
 
@@ -913,9 +930,7 @@ void AngleVectors( const QAngle &angles, Vector *forward, Vector *right, Vector 
 	
 	float sr, sp, sy, cr, cp, cy;
 
-	SinCos( DEG2RAD( angles[YAW] ), &sy, &cy );
-	SinCos( DEG2RAD( angles[PITCH] ), &sp, &cp );
-	SinCos( DEG2RAD( angles[ROLL] ), &sr, &cr );
+	SinCosEuler( DEG2RAD( angles[YAW] ), DEG2RAD( angles[PITCH] ), DEG2RAD( angles[ROLL] ), sy, cy, sp, cp, sr, cr );
 
 	if (forward)
 	{
@@ -948,9 +963,7 @@ void AngleVectorsTranspose (const QAngle &angles, Vector *forward, Vector *right
 	Assert( s_bMathlibInitialized );
 	float sr, sp, sy, cr, cp, cy;
 	
-	SinCos( DEG2RAD( angles[YAW] ), &sy, &cy );
-	SinCos( DEG2RAD( angles[PITCH] ), &sp, &cp );
-	SinCos( DEG2RAD( angles[ROLL] ), &sr, &cr );
+	SinCosEuler( DEG2RAD( angles[YAW] ), DEG2RAD( angles[PITCH] ), DEG2RAD( angles[ROLL] ), sy, cy, sp, cp, sr, cr );
 
 	if (forward)
 	{
@@ -1130,9 +1143,7 @@ void AngleMatrix( const QAngle &angles, matrix3x4_t& matrix )
 
 	float sr, sp, sy, cr, cp, cy;
 
-	SinCos( DEG2RAD( angles[YAW] ), &sy, &cy );
-	SinCos( DEG2RAD( angles[PITCH] ), &sp, &cp );
-	SinCos( DEG2RAD( angles[ROLL] ), &sr, &cr );
+	SinCosEuler( DEG2RAD( angles[YAW] ), DEG2RAD( angles[PITCH] ), DEG2RAD( angles[ROLL] ), sy, cy, sp, cp, sr, cr );
 
 	// matrix = (YAW * PITCH) * ROLL
 	matrix[0][0] = cp*cy;
@@ -1168,9 +1179,7 @@ void AngleIMatrix (const QAngle& angles, matrix3x4_t& matrix )
 	Assert( s_bMathlibInitialized );
 	float		sr, sp, sy, cr, cp, cy;
 	
-	SinCos( DEG2RAD( angles[YAW] ), &sy, &cy );
-	SinCos( DEG2RAD( angles[PITCH] ), &sp, &cp );
-	SinCos( DEG2RAD( angles[ROLL] ), &sr, &cr );
+	SinCosEuler( DEG2RAD( angles[YAW] ), DEG2RAD( angles[PITCH] ), DEG2RAD( angles[ROLL] ), sy, cy, sp, cp, sr, cr );
 
 	// matrix = (YAW * PITCH) * ROLL
 	matrix[0][0] = cp*cy;
@@ -1413,19 +1422,12 @@ void QuaternionAlign( const Quaternion &p, const Quaternion &q, Quaternion &qt )
 		a += (p[i]-q[i])*(p[i]-q[i]);
 		b += (p[i]+q[i])*(p[i]+q[i]);
 	}
-	if (a > b) 
+	// Multiply by +-1 (exact) instead of branching: the branch is
+	// unpredictable when blending unrelated poses.
+	float flSign = ( a > b ) ? -1.0f : 1.0f;
+	for (i = 0; i < 4; i++) 
 	{
-		for (i = 0; i < 4; i++) 
-		{
-			qt[i] = -q[i];
-		}
-	}
-	else if (&qt != &q)
-	{
-		for (i = 0; i < 4; i++) 
-		{
-			qt[i] = q[i];
-		}
+		qt[i] = flSign * q[i];
 	}
 }
 
@@ -1916,9 +1918,7 @@ void AngleQuaternion( const RadianEuler &angles, Quaternion &outQuat )
 
 	float sr, sp, sy, cr, cp, cy;
 
-	SinCos( angles.z * 0.5f, &sy, &cy );
-	SinCos( angles.y * 0.5f, &sp, &cp );
-	SinCos( angles.x * 0.5f, &sr, &cr );
+	SinCosEuler( angles.z * 0.5f, angles.y * 0.5f, angles.x * 0.5f, sy, cy, sp, cp, sr, cr );
 
 	// NJS: for some reason VC6 wasn't recognizing the common subexpressions:
 	float srXcp = sr * cp, crXsp = cr * sp;
@@ -1947,9 +1947,7 @@ void AngleQuaternion( const QAngle &angles, Quaternion &outQuat )
 
 	float sr, sp, sy, cr, cp, cy;
 
-	SinCos( DEG2RAD( angles.y ) * 0.5f, &sy, &cy );
-	SinCos( DEG2RAD( angles.x ) * 0.5f, &sp, &cp );
-	SinCos( DEG2RAD( angles.z ) * 0.5f, &sr, &cr );
+	SinCosEuler( DEG2RAD( angles.y ) * 0.5f, DEG2RAD( angles.x ) * 0.5f, DEG2RAD( angles.z ) * 0.5f, sy, cy, sp, cp, sr, cr );
 
 	// NJS: for some reason VC6 wasn't recognizing the common subexpressions:
 	float srXcp = sr * cp, crXsp = cr * sp;

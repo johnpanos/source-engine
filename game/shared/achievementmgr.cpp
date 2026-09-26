@@ -35,6 +35,9 @@
 #include "vgui/ILocalize.h"
 #include "engine/imatchmaking.h"
 #include "tier0/vprof.h"
+#include "game/game_platform_services.h"
+#include "platform/contracts/achievement_service.h"
+#include "platform/records/file_record_store.h"
 
 #if defined(TF_DLL) || defined(TF_CLIENT_DLL)
 #include "tf_gamerules.h"
@@ -75,26 +78,30 @@ ISteamUserStats *SteamUserStats()
 // [dwenger] Steam Cloud Support
 //=============================================================================
 
-static void WriteAchievementGlobalState( KeyValues *pKV, bool bPersistToSteamCloud = false )
+// The record that holds the achievement state, and its file name on desktop.
+static const char *const kGameStateRecord = "GameState.txt";
+
+static void WriteAchievementGlobalState( platform::IRecordStore *pStore, KeyValues *pKV, bool bPersistToSteamCloud = false )
 
 //=============================================================================
 // HPE_END
 //=============================================================================
 
 {
-
-	char szFilename[_MAX_PATH];
-
-	{
-		Q_snprintf( szFilename, sizeof( szFilename ), "GameState.txt" );
-	}
-
 	// Never call pKV->SaveToFile!!!!
 	// Save to a buffer instead.
 	CUtlBuffer buf( 0, 0, CUtlBuffer::TEXT_BUFFER );
 	pKV->RecursiveSaveToFile( buf, 0 );
-	filesystem->WriteFile( szFilename, NULL, buf );
 	pKV->deleteThis();
+
+	const std::span<const std::byte> bytes( static_cast<const std::byte *>( buf.Base() ), buf.TellPut() );
+	if ( pStore )
+	{
+		const foundation::Expected<void, platform::RecordStoreError> result = pStore->Commit( kGameStateRecord, bytes );
+		if ( !result )
+			Warning( "Failed to save achievement state (%s, error %d/%d)\n", kGameStateRecord,
+				static_cast<int>( result.Error().code ), result.Error().providerCode );
+	}
 
     //=============================================================================
     // HPE_BEGIN
@@ -104,10 +111,6 @@ static void WriteAchievementGlobalState( KeyValues *pKV, bool bPersistToSteamClo
     if ( bPersistToSteamCloud )
     {
 #ifndef NO_STEAM
-		{
-            Q_snprintf( szFilename, sizeof( szFilename ), "GameState.txt" );
-        }
-
         ISteamRemoteStorage *pRemoteStorage = SteamClient()?(ISteamRemoteStorage *)SteamClient()->GetISteamGenericInterface(
             SteamAPI_GetHSteamUser(), SteamAPI_GetHSteamPipe(), STEAMREMOTESTORAGE_INTERFACE_VERSION ):NULL;
 
@@ -117,36 +120,10 @@ static void WriteAchievementGlobalState( KeyValues *pKV, bool bPersistToSteamClo
             int32 totalBytes = 0;
             if ( pRemoteStorage->GetQuota( &totalBytes, &availableBytes ) )
             {
-                if ( totalBytes > 0 )
+                if ( totalBytes > 0 && buf.TellPut() > 0 )
                 {
-                    int32   filesize = (int32)filesystem->Size(szFilename);
-
-                    if (filesize > 0)
-                    {
-                        char*   pData = new char[filesize];
-
-                        if (pData)
-                        {
-                            // Read in the data from the file system GameState.txt file
-                            FileHandle_t    handle = filesystem->Open(szFilename, "r");
-
-                            if (handle)
-                            {
-                                int32 nRead = filesystem->Read(pData, filesize, handle);
-
-                                filesystem->Close(handle);
-
-                                if (nRead == filesize)
-                                {
-                                    // Write out the data to steam cloud
-                                    pRemoteStorage->FileWrite(szFilename, pData, filesize);
-                                }
-                            }
-
-                            // Delete the data array
-                            delete []pData;
-                        }
-                    }
+                    // Write out the data to steam cloud
+                    pRemoteStorage->FileWrite( kGameStateRecord, buf.Base(), buf.TellPut() );
                 }
             }
         }
@@ -166,6 +143,7 @@ class CAchievementSaveThread : public CWorkerThread
 {
 public:
 	CAchievementSaveThread() :
+	  m_pStore( NULL ),
 	  m_pKV( NULL )
 	  {
 		  SetName( "AchievementSaveThread" );	
@@ -181,9 +159,10 @@ public:
 		  EXIT,
 	  };
 
-	  void WriteAchievementGlobalState( KeyValues *pKV )
+	  void WriteAchievementGlobalState( platform::IRecordStore *pStore, KeyValues *pKV )
 	  {
 		  Assert( !m_pKV );
+		  m_pStore = pStore;
 		  m_pKV = pKV;
 		  CallWorker( CALL_FUNC );
 		  Assert( !m_pKV );
@@ -200,19 +179,47 @@ public:
 				  break;
 			  }
 
+			  platform::IRecordStore *pStore = m_pStore;
 			  KeyValues *pKV = m_pKV;
+			  m_pStore = NULL;
 			  m_pKV = NULL;
 			  Reply( 1 );
-			  ::WriteAchievementGlobalState( pKV );
+			  ::WriteAchievementGlobalState( pStore, pKV );
 		  }
 		  return 0;
 	  }
 
 private:
+	platform::IRecordStore *m_pStore;
 	KeyValues *m_pKV;
 };
 
 static CAchievementSaveThread g_AchievementSaveThread;
+
+//-----------------------------------------------------------------------------
+// Purpose: The directory the file system writes GameState.txt to when given
+//			no path ID: the first DEFAULT_WRITE_PATH directory, else the first
+//			MOD directory.
+//-----------------------------------------------------------------------------
+static bool GetGameStateDirectory( char *pDirectory, int nSize )
+{
+	char szPaths[MAX_PATH * 8];
+	const char *const pPathIDs[] = { "DEFAULT_WRITE_PATH", "MOD" };
+	for ( int i = 0; i < ARRAYSIZE( pPathIDs ); ++i )
+	{
+		szPaths[0] = '\0';
+		filesystem->GetSearchPath( pPathIDs[i], false, szPaths, sizeof( szPaths ) );
+		char *pEnd = strchr( szPaths, ';' );
+		if ( pEnd )
+			*pEnd = '\0';
+		if ( szPaths[0] )
+		{
+			Q_strncpy( pDirectory, szPaths, nSize );
+			return true;
+		}
+	}
+	return false;
+}
 
 
 //-----------------------------------------------------------------------------
@@ -245,6 +252,10 @@ m_CallbackUserStatsStored( this, &CAchievementMgr::Steam_OnUserStatsStored )
 	m_bGlobalStateLoaded = false;
 	m_bCheatsEverOn = false;
 	m_flTimeLastSaved = 0;
+	m_pRecordStore = NULL;
+	m_pOwnedRecordStore = NULL;
+	m_pAchievementService = NULL;
+	m_bGlobalStateReadFailed = false;
 
     //=============================================================================
     // HPE_BEGIN
@@ -357,6 +368,24 @@ void CAchievementMgr::PostInit()
 		m_vecAchievement.AddToTail( m_mapAchievement[iter] );
 	}
 
+	// The store that keeps GameState.txt: the root's, or a file in the game's
+	// write directory, where the file system wrote it before.
+	m_pAchievementService = GamePlatformServices_Achievements();
+	m_pRecordStore = GamePlatformServices_PlayerRecords();
+	if ( !m_pRecordStore )
+	{
+		char szDirectory[MAX_PATH];
+		if ( GetGameStateDirectory( szDirectory, sizeof( szDirectory ) ) )
+		{
+			m_pOwnedRecordStore = new platform::FileRecordStore( szDirectory );
+			m_pRecordStore = m_pOwnedRecordStore;
+		}
+		else
+		{
+			Warning( "Achievements: no writable game directory; achievement state is not kept\n" );
+		}
+	}
+
 	// load global state from file
 	LoadGlobalState();
 
@@ -373,6 +402,11 @@ void CAchievementMgr::Shutdown()
 	g_AchievementSaveThread.CallWorker( CAchievementSaveThread::EXIT );
 
 	SaveGlobalState( false ); // we just told the thread to shutdown so don't try an async save here
+
+	// The save thread has exited, so nothing else holds the store.
+	delete m_pOwnedRecordStore;
+	m_pOwnedRecordStore = NULL;
+	m_pRecordStore = NULL;
 
 	FOR_EACH_MAP( m_mapAchievement, iter )
 	{
@@ -649,20 +683,12 @@ void CAchievementMgr::UploadUserData()
 //-----------------------------------------------------------------------------
 void CAchievementMgr::LoadGlobalState()
 {
-	
-
-	char	szFilename[_MAX_PATH];
-
-	{
-		Q_snprintf( szFilename, sizeof( szFilename ), "GameState.txt" );
-	}
-
     //=============================================================================
     // HPE_BEGIN
     // [dwenger] Steam Cloud Support
     //=============================================================================
 
-    if ( m_bPersistToSteamCloud )
+    if ( m_bPersistToSteamCloud && m_pRecordStore )
     {
 #ifndef NO_STEAM
         ISteamRemoteStorage *pRemoteStorage = SteamClient()?(ISteamRemoteStorage *)SteamClient()->GetISteamGenericInterface(
@@ -670,34 +696,20 @@ void CAchievementMgr::LoadGlobalState()
 
         if (pRemoteStorage)
         {
-            if (pRemoteStorage->FileExists(szFilename))
+            if (pRemoteStorage->FileExists(kGameStateRecord))
             {
-                int32   fileSize = pRemoteStorage->GetFileSize(szFilename);
+                int32   fileSize = pRemoteStorage->GetFileSize(kGameStateRecord);
 
                 if (fileSize > 0)
                 {
-                    // Allocate space for the file data
-                    char*   pData = new char[fileSize];
+                    CUtlBuffer data( 0, fileSize );
+                    int32   sizeRead = pRemoteStorage->FileRead(kGameStateRecord, data.Base(), fileSize);
 
-                    if (pData)
+                    if (sizeRead == fileSize)
                     {
-                        int32   sizeRead = pRemoteStorage->FileRead(szFilename, pData, fileSize);
-
-                        if (sizeRead == fileSize)
-                        {
-                            // Write out data to a filesystem GameState file that can be read by the original code below
-                            FileHandle_t    handle = filesystem->Open(szFilename, "w");
-
-                            if (handle)
-                            {
-                                filesystem->Write(pData, fileSize, handle);
-
-                                filesystem->Close(handle);
-                            }
-                        }
-
-                        // Delete the data array
-                        delete []pData;
+                        // The cloud copy replaces the local record, which the code below reads
+                        const std::span<const std::byte> bytes( static_cast<const std::byte *>( data.Base() ), fileSize );
+                        (void)m_pRecordStore->Commit( kGameStateRecord, bytes );
                     }
                 }
             }
@@ -709,8 +721,35 @@ void CAchievementMgr::LoadGlobalState()
     // HPE_END
     //=============================================================================
 
+	if ( !m_pRecordStore )
+		return;
+
+	foundation::Expected<std::vector<std::byte>, platform::RecordStoreError> record = m_pRecordStore->Load( kGameStateRecord );
+	if ( !record )
+	{
+		// A missing record is a new player. Any other failure keeps the record
+		// from being overwritten until a later load succeeds.
+		if ( record.Error().code != platform::RecordStoreErrorCode::kNotFound )
+		{
+			Warning( "Failed to read achievement state (%s, error %d/%d); not saving over it\n", kGameStateRecord,
+				static_cast<int>( record.Error().code ), record.Error().providerCode );
+			m_bGlobalStateReadFailed = true;
+		}
+		return;
+	}
+	m_bGlobalStateReadFailed = false;
+
+	// KeyValues parses a double-NUL-terminated buffer, as LoadFromFile gives it.
+	const std::vector<std::byte> &bytes = record.Value();
+	CUtlVector<char> text;
+	text.SetCount( bytes.size() + 2 );
+	if ( !bytes.empty() )
+		memcpy( text.Base(), bytes.data(), bytes.size() );
+	text[bytes.size()] = 0;
+	text[bytes.size() + 1] = 0;
+
 	KeyValues *pKV = new KeyValues("GameState" );
-	if ( pKV->LoadFromFile( filesystem, szFilename, "MOD" ) )
+	if ( pKV->LoadFromBuffer( kGameStateRecord, text.Base(), filesystem ) )
 	{
 		KeyValues *pNode = pKV->GetFirstSubKey();
 		while ( pNode )
@@ -730,6 +769,24 @@ void CAchievementMgr::LoadGlobalState()
 		}
 
 		m_bGlobalStateLoaded = true;
+		ReportAchievedToPlatform();
+	}
+	pKV->deleteThis();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: reports every achieved achievement to the platform's service; the
+//			service ignores those it has delivered, so this is safe to repeat
+//-----------------------------------------------------------------------------
+void CAchievementMgr::ReportAchievedToPlatform()
+{
+	if ( !m_pAchievementService )
+		return;
+	FOR_EACH_MAP( m_mapAchievement, i )
+	{
+		CBaseAchievement *pAchievement = m_mapAchievement[i];
+		if ( pAchievement->IsAchieved() )
+			m_pAchievementService->ReportCompleted( pAchievement->GetName() );
 	}
 }
 
@@ -754,13 +811,18 @@ void CAchievementMgr::SaveGlobalState( bool bAsync )
         }
 	}
 
-	if ( !bAsync )
+	if ( m_bGlobalStateReadFailed )
 	{
-		WriteAchievementGlobalState( pKV, m_bPersistToSteamCloud );
+		// Keep the record we could not read; see LoadGlobalState.
+		pKV->deleteThis();
+	}
+	else if ( !bAsync )
+	{
+		WriteAchievementGlobalState( m_pRecordStore, pKV, m_bPersistToSteamCloud );
 	}
 	else
 	{
-		g_AchievementSaveThread.WriteAchievementGlobalState( pKV );
+		g_AchievementSaveThread.WriteAchievementGlobalState( m_pRecordStore, pKV );
 	}
 
 	m_flTimeLastSaved = Plat_FloatTime();
@@ -848,6 +910,11 @@ void CAchievementMgr::AwardAchievement( int iAchievementID )
 
 	// save state at next good opportunity.  (Don't do it immediately, may hitch at bad time.)
 	SetDirty( true );
+
+	if ( m_pAchievementService )
+	{
+		m_pAchievementService->ReportCompleted( pAchievement->GetName() );
+	}
 
 	if ( IsPC() )
 	{

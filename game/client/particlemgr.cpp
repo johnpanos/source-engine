@@ -1974,8 +1974,8 @@ void CParticleMgr::UpdateNewEffectsEnd()
 		particlesToSimulate[i]->DetectChanges();
 	}
 
-	// Light the bursts the batch gathered, in effect order; an effect that did
-	// not simulate this frame releases its light.
+	// Commit the lights of the bursts the batch gathered, in effect order; an
+	// effect that did not simulate this frame releases its light.
 	for ( CNewParticleEffect *pNewEffect = m_NewEffects.m_pHead; pNewEffect;
 	    pNewEffect = pNewEffect->m_pNext )
 	{
@@ -2095,6 +2095,9 @@ void CParticleMgr::UpdateAllEffectsEnd()
 		m_bSimulateNewEffectsPending = false;
 		UpdateNewEffectsEnd();
 	}
+
+	// Every burst of sparks, old-style and system, has committed its light.
+	SparkLights_Resolve();
 
 	m_bUpdatingEffects = false;
 

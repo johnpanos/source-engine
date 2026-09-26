@@ -20,6 +20,12 @@
 
 #define THINK_CLEAR		-1
 
+namespace platform
+{
+class IAchievementService;
+class IRecordStore;
+}
+
 class CAchievementMgr : public CAutoGameSystemPerFrame, public CGameEventListener, public IAchievementMgr
 {
 public:
@@ -161,6 +167,14 @@ private:
     //=============================================================================
 
     CUtlVector<int> m_AchievementsAwarded;
+
+	// Reports every achieved achievement to the platform service, if any.
+	void ReportAchievedToPlatform();
+
+	platform::IRecordStore *m_pRecordStore;					// keeps GameState.txt; set by Init
+	platform::IRecordStore *m_pOwnedRecordStore;			// the file store, when the root bound none
+	platform::IAchievementService *m_pAchievementService;	// null when the product has none
+	bool  m_bGlobalStateReadFailed;		// the store failed to read GameState.txt; don't overwrite it
 };
 
 // helper functions

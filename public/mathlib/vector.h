@@ -2236,6 +2236,16 @@ FORCEINLINE float VectorNormalize( Vector& vec )
 	vec.y *= invlen;
 	vec.z *= invlen;
 	return sqrlen * invlen;
+#elif defined( __x86_64__ ) || defined( _M_X64 ) || defined( __aarch64__ ) || defined( __arm__ )
+	// On these targets every MathLib_Init selection is _VectorNormalize, so
+	// inline its body instead of calling through pfVectorNormalize.
+	float radius = sqrtf( vec.x * vec.x + vec.y * vec.y + vec.z * vec.z );
+	// FLT_EPSILON avoids a divide by zero.
+	float iradius = 1.f / ( radius + FLT_EPSILON );
+	vec.x *= iradius;
+	vec.y *= iradius;
+	vec.z *= iradius;
+	return radius;
 #else
 	extern float (FASTCALL *pfVectorNormalize)(Vector& v);
 	return (*pfVectorNormalize)(vec);

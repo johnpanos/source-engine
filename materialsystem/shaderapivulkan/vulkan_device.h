@@ -1425,6 +1425,10 @@ private:
 	VkImageView m_msColorView = VK_NULL_HANDLE;
 	VkImageView m_msColorViewSrgb = VK_NULL_HANDLE;
 	VkImageView m_msDepthView = VK_NULL_HANDLE;
+	// The multisampled depth read by the depth-to-alpha pass (depth aspect only),
+	// when the depth format can be sampled.
+	VkImageView m_msDepthSampleView = VK_NULL_HANDLE;
+	VkDescriptorSet m_msDepthSampleSet = VK_NULL_HANDLE;
 	VkFramebuffer m_msFramebuffer = VK_NULL_HANDLE;
 	VkFramebuffer m_msFramebufferSrgb = VK_NULL_HANDLE;
 	VkRenderPass m_msPassClear = VK_NULL_HANDLE;
@@ -1487,9 +1491,11 @@ private:
 	// Depth into a frame copy's alpha (DepthToAlpha): a fullscreen pass in a
 	// render-target texture's pass writing alpha only.
 	bool EnsureDepthToAlpha( std::string *outError );
+	bool EnsureMsDepthSampleSet();
 	void DestroyDepthToAlpha();
 	VkPipelineLayout m_depthToAlphaLayout = VK_NULL_HANDLE;
 	VkPipeline m_depthToAlphaPipeline = VK_NULL_HANDLE;
+	VkPipeline m_depthToAlphaMsPipeline = VK_NULL_HANDLE; // reads multisampled depth
 	bool m_depthToAlphaUnavailable = false; // the pass failed to build
 	uint32_t m_lastFrameDepthToAlpha = 0;
 	uint32_t m_lastFrameDepthToAlphaSkipped = 0;

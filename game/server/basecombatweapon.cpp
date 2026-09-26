@@ -493,25 +493,7 @@ void CBaseCombatWeapon::FallInit( void )
 		// Constrained start?
 		if ( HasSpawnFlags( SF_WEAPON_START_CONSTRAINED ) )
 		{
-			//Constrain the weapon in place
-			IPhysicsObject *pReferenceObject, *pAttachedObject;
-			
-			pReferenceObject = g_PhysWorldObject;
-			pAttachedObject = VPhysicsGetObject();
-
-			if ( pReferenceObject && pAttachedObject )
-			{
-				constraint_fixedparams_t fixed;
-				fixed.Defaults();
-				fixed.InitWithCurrentObjectState( pReferenceObject, pAttachedObject );
-				
-				fixed.constraint.forceLimit	= lbs2kg( 10000 );
-				fixed.constraint.torqueLimit = lbs2kg( 10000 );
-
-				m_pConstraint = physenv->CreateFixedConstraint( pReferenceObject, pAttachedObject, NULL, fixed );
-
-				m_pConstraint->SetGameData( (void *) this );
-			}
+			ConstrainInPlace();
 		}
 #endif //CLIENT_DLL
 	}	
@@ -521,6 +503,50 @@ void CBaseCombatWeapon::FallInit( void )
 	SetThink( &CBaseCombatWeapon::FallThink );
 
 	SetNextThink( gpGlobals->curtime + 0.1f );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Fixes the weapon's physics object to the world at its current pose.
+//-----------------------------------------------------------------------------
+void CBaseCombatWeapon::ConstrainInPlace( void )
+{
+	IPhysicsObject *pReferenceObject = g_PhysWorldObject;
+	IPhysicsObject *pAttachedObject = VPhysicsGetObject();
+	if ( !pReferenceObject || !pAttachedObject )
+		return;
+
+	constraint_fixedparams_t fixed;
+	fixed.Defaults();
+	fixed.InitWithCurrentObjectState( pReferenceObject, pAttachedObject );
+
+	fixed.constraint.forceLimit = lbs2kg( 10000 );
+	fixed.constraint.torqueLimit = lbs2kg( 10000 );
+
+	m_pConstraint =
+	    physenv->CreateFixedConstraint( pReferenceObject, pAttachedObject, NULL, fixed );
+
+	m_pConstraint->SetGameData( (void *)this );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: A constrained weapon that leaves a hierarchy stays where the
+//			hierarchy left it. CBaseEntity::SetParent moves the physics object
+//			there, but the constraint still holds the pose the weapon spawned
+//			at, and would pull it back. Portal's testchmb_a_01 turns its
+//			pedestal portal gun a quarter turn per cycle this way.
+//-----------------------------------------------------------------------------
+void CBaseCombatWeapon::SetParent( CBaseEntity *pNewParent, int iAttachment )
+{
+	bool bLeavingHierarchy = ( GetMoveParent() != NULL ) && ( pNewParent == NULL );
+
+	BaseClass::SetParent( pNewParent, iAttachment );
+
+	if ( bLeavingHierarchy && m_pConstraint != NULL )
+	{
+		physenv->DestroyConstraint( m_pConstraint );
+		m_pConstraint = NULL;
+		ConstrainInPlace();
+	}
 }
 
 //-----------------------------------------------------------------------------

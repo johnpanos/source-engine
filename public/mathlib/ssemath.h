@@ -10,6 +10,10 @@
 #include "sse2neon.h"
 #else
 #include <xmmintrin.h>
+#include <emmintrin.h>
+#if defined( __SSE4_1__ )
+#include <smmintrin.h>
+#endif
 #endif
 
 #include <mathlib/vector.h>
@@ -370,14 +374,35 @@ FORCEINLINE fltx4 ArcCosSIMD( const fltx4 &cs )
 }
 
 // tan^1(a/b) .. ie, pass sin in as a and cos in as b
+// Four lanes after Cephes atanf: atan of min(|a|,|b|) / max(|a|,|b|) in
+// [0, 1], reduced once more above tan(pi/8), then the octant and quadrant
+// are restored from the operands' magnitudes and signs. atan2(0, 0) = 0.
 FORCEINLINE fltx4 ArcTan2SIMD( const fltx4 &a, const fltx4 &b )
 {
-	fltx4 result;
-	SubFloat( result, 0 ) = atan2( SubFloat( a, 0 ), SubFloat( b, 0 ) );
-	SubFloat( result, 1 ) = atan2( SubFloat( a, 1 ), SubFloat( b, 1 ) );
-	SubFloat( result, 2 ) = atan2( SubFloat( a, 2 ), SubFloat( b, 2 ) );
-	SubFloat( result, 3 ) = atan2( SubFloat( a, 3 ), SubFloat( b, 3 ) );
-	return result;
+	const __m128 signMask = _mm_castsi128_ps( _mm_set1_epi32( (int)0x80000000 ) );
+	__m128 ax = _mm_andnot_ps( signMask, a ), bx = _mm_andnot_ps( signMask, b );
+	__m128 hi = _mm_max_ps( ax, bx ), lo = _mm_min_ps( ax, bx );
+	__m128 zero = _mm_cmpeq_ps( hi, _mm_setzero_ps() );
+	__m128 t = _mm_div_ps( lo, _mm_or_ps( hi, _mm_and_ps( zero, _mm_set1_ps( 1.0f ) ) ) );
+
+	// Above tan(pi/8): atan(t) = pi/4 + atan((t - 1) / (t + 1)).
+	__m128 big = _mm_cmpgt_ps( t, _mm_set1_ps( 0.4142135623730950f ) );
+	__m128 tr = _mm_div_ps( _mm_sub_ps( t, _mm_set1_ps( 1.0f ) ), _mm_add_ps( t, _mm_set1_ps( 1.0f ) ) );
+	t = _mm_or_ps( _mm_and_ps( big, tr ), _mm_andnot_ps( big, t ) );
+	__m128 y0 = _mm_and_ps( big, _mm_set1_ps( 0.78539816339744830962f ) );
+
+	__m128 z = _mm_mul_ps( t, t );
+	__m128 p = _mm_add_ps( _mm_mul_ps( _mm_set1_ps( 8.05374449538e-2f ), z ), _mm_set1_ps( -1.38776856032e-1f ) );
+	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( 1.99777106478e-1f ) );
+	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( -3.33329491539e-1f ) );
+	__m128 r = _mm_add_ps( y0, _mm_add_ps( _mm_mul_ps( _mm_mul_ps( p, z ), t ), t ) );
+
+	// |a| > |b|: pi/2 - r. b < 0: pi - r. Then the sign of a.
+	__m128 steep = _mm_cmpgt_ps( ax, bx );
+	r = _mm_or_ps( _mm_and_ps( steep, _mm_sub_ps( _mm_set1_ps( 1.57079632679489661923f ), r ) ), _mm_andnot_ps( steep, r ) );
+	__m128 back = _mm_cmplt_ps( b, _mm_setzero_ps() );
+	r = _mm_or_ps( _mm_and_ps( back, _mm_sub_ps( _mm_set1_ps( 3.14159265358979323846f ), r ) ), _mm_andnot_ps( back, r ) );
+	return _mm_xor_ps( r, _mm_and_ps( a, signMask ) );
 }
 
 FORCEINLINE fltx4 MaxSIMD( const fltx4 & a, const fltx4 & b )				// max(a,b)
@@ -875,10 +900,10 @@ FORCEINLINE fltx4 UnsignedIntConvertToFltSIMD( const u32x4 &vSrcA )
 {
 	Assert(0);			/* pc has no such operation */
 	fltx4 retval;
-	SubFloat( retval, 0 ) = ( (float) SubInt( retval, 0 ) );
-	SubFloat( retval, 1 ) = ( (float) SubInt( retval, 1 ) );
-	SubFloat( retval, 2 ) = ( (float) SubInt( retval, 2 ) );
-	SubFloat( retval, 3 ) = ( (float) SubInt( retval, 3 ) );
+	SubFloat( retval, 0 ) = ( (float) SubInt( vSrcA, 0 ) );
+	SubFloat( retval, 1 ) = ( (float) SubInt( vSrcA, 1 ) );
+	SubFloat( retval, 2 ) = ( (float) SubInt( vSrcA, 2 ) );
+	SubFloat( retval, 3 ) = ( (float) SubInt( vSrcA, 3 ) );
 	return retval;
 }
 
@@ -1161,7 +1186,7 @@ FORCEINLINE fltx4 RotateLeft2( const fltx4 & a )
 // a b c d -> d a b c
 FORCEINLINE fltx4 RotateRight( const fltx4 & a )
 {
-	return _mm_shuffle_ps( a, a, _MM_SHUFFLE( 0, 3, 2, 1) );
+	return _mm_shuffle_ps( a, a, MM_SHUFFLE_REV( 3, 0, 1, 2 ) );
 }
 
 // a b c d -> c d a b
@@ -1215,32 +1240,87 @@ FORCEINLINE fltx4 Dot4SIMD( const fltx4 &a, const fltx4 &b )
 	return ReplicateX4( flDot );
 }
 
-//TODO: implement as four-way Taylor series (see xbox implementation)
+// Keeps an exact operation sequence from being refolded by -ffast-math
+// (products build with it), by making a value opaque to the optimizer.
+#if defined( SSEMATH_OPAQUE )
+// supplied by the build (the conformance sensitivity row defines it empty)
+#elif defined( __GNUC__ ) && ( defined( __i386__ ) || defined( __x86_64__ ) )
+#define SSEMATH_OPAQUE( v ) __asm__( "" : "+x"( v ) )
+#elif defined( __GNUC__ ) && ( defined( __aarch64__ ) || defined( __arm__ ) )
+#define SSEMATH_OPAQUE( v ) __asm__( "" : "+w"( v ) )
+#else
+#define SSEMATH_OPAQUE( v ) ( (void)0 )
+#endif
+
+// Four-lane sine and cosine after Cephes sinf/cosf (as in J. Pommier's
+// sse_mathfun): |x| is reduced by a multiple of pi/4 subtracted in three
+// exact parts (Cody-Waite), then minimax polynomials on [-pi/4, pi/4] give
+// both results. Error is a few ulps for |x| <= 8192 radians; lanes beyond
+// that take the scalar SinCos. Replaces four scalar libm calls per call.
+FORCEINLINE void _SinCosPolySIMD( fltx4 &sine, fltx4 &cosine, const fltx4 &radians )
+{
+	const __m128 signMask = _mm_castsi128_ps( _mm_set1_epi32( (int)0x80000000 ) );
+	__m128 x = _mm_andnot_ps( signMask, radians );
+	__m128 sinSign = _mm_and_ps( radians, signMask );
+
+	// j = the even integer nearest above |x| * 4/pi; y = j as float.
+	__m128i j = _mm_cvttps_epi32( _mm_mul_ps( x, _mm_set1_ps( 1.27323954473516f ) ) );
+	j = _mm_and_si128( _mm_add_epi32( j, _mm_set1_epi32( 1 ) ), _mm_set1_epi32( ~1 ) );
+	__m128 y = _mm_cvtepi32_ps( j );
+
+	__m128 sinSwap = _mm_castsi128_ps( _mm_slli_epi32( _mm_and_si128( j, _mm_set1_epi32( 4 ) ), 29 ) );
+	__m128 cosSign = _mm_castsi128_ps( _mm_slli_epi32( _mm_andnot_si128( _mm_sub_epi32( j, _mm_set1_epi32( 2 ) ), _mm_set1_epi32( 4 ) ), 29 ) );
+	__m128 sinPolyMask = _mm_castsi128_ps( _mm_cmpeq_epi32( _mm_and_si128( j, _mm_set1_epi32( 2 ) ), _mm_setzero_si128() ) );
+	sinSign = _mm_xor_ps( sinSign, sinSwap );
+
+	// x - y * pi/4, with pi/4 split so each product is exact.
+	x = _mm_sub_ps( x, _mm_mul_ps( y, _mm_set1_ps( 0.78515625f ) ) );
+	SSEMATH_OPAQUE( x );
+	x = _mm_sub_ps( x, _mm_mul_ps( y, _mm_set1_ps( 2.4187564849853515625e-4f ) ) );
+	SSEMATH_OPAQUE( x );
+	x = _mm_sub_ps( x, _mm_mul_ps( y, _mm_set1_ps( 3.77489497744594108e-8f ) ) );
+
+	__m128 z = _mm_mul_ps( x, x );
+	__m128 c = _mm_add_ps( _mm_mul_ps( _mm_set1_ps( 2.443315711809948e-5f ), z ), _mm_set1_ps( -1.388731625493765e-3f ) );
+	c = _mm_add_ps( _mm_mul_ps( c, z ), _mm_set1_ps( 4.166664568298827e-2f ) );
+	c = _mm_mul_ps( _mm_mul_ps( c, z ), z );
+	c = _mm_add_ps( _mm_sub_ps( c, _mm_mul_ps( z, _mm_set1_ps( 0.5f ) ) ), _mm_set1_ps( 1.0f ) );
+	__m128 s = _mm_add_ps( _mm_mul_ps( _mm_set1_ps( -1.9515295891e-4f ), z ), _mm_set1_ps( 8.3321608736e-3f ) );
+	s = _mm_add_ps( _mm_mul_ps( s, z ), _mm_set1_ps( -1.6666654611e-1f ) );
+	s = _mm_add_ps( _mm_mul_ps( _mm_mul_ps( s, z ), x ), x );
+
+	__m128 sinVal = _mm_or_ps( _mm_and_ps( sinPolyMask, s ), _mm_andnot_ps( sinPolyMask, c ) );
+	__m128 cosVal = _mm_or_ps( _mm_and_ps( sinPolyMask, c ), _mm_andnot_ps( sinPolyMask, s ) );
+	sine = _mm_xor_ps( sinVal, sinSign );
+	cosine = _mm_xor_ps( cosVal, cosSign );
+}
+
+FORCEINLINE void SinCosSIMD( fltx4 &sine, fltx4 &cosine, const fltx4 &radians )
+{
+	_SinCosPolySIMD( sine, cosine, radians );
+	const __m128 absMask = _mm_castsi128_ps( _mm_set1_epi32( 0x7fffffff ) );
+	int nLarge = _mm_movemask_ps( _mm_cmpgt_ps( _mm_and_ps( radians, absMask ), _mm_set1_ps( 8192.0f ) ) );
+	if ( nLarge )
+	{
+		for ( int i = 0; i < 4; ++i )
+		{
+			if ( nLarge & ( 1 << i ) )
+				SinCos( SubFloat( radians, i ), &SubFloat( sine, i ), &SubFloat( cosine, i ) );
+		}
+	}
+}
+
 FORCEINLINE fltx4 SinSIMD( const fltx4 &radians )
 {
-	fltx4 result;
-	SubFloat( result, 0 ) = sin( SubFloat( radians, 0 ) );
-	SubFloat( result, 1 ) = sin( SubFloat( radians, 1 ) );
-	SubFloat( result, 2 ) = sin( SubFloat( radians, 2 ) );
-	SubFloat( result, 3 ) = sin( SubFloat( radians, 3 ) );
-	return result;
+	fltx4 sine, cosine;
+	SinCosSIMD( sine, cosine, radians );
+	return sine;
 }
 
+// sine and cosine of the first three lanes (the fourth is also computed)
 FORCEINLINE void SinCos3SIMD( fltx4 &sine, fltx4 &cosine, const fltx4 &radians )
 {
-	// FIXME: Make a fast SSE version
-	SinCos( SubFloat( radians, 0 ), &SubFloat( sine, 0 ), &SubFloat( cosine, 0 ) );
-	SinCos( SubFloat( radians, 1 ), &SubFloat( sine, 1 ), &SubFloat( cosine, 1 ) );
-	SinCos( SubFloat( radians, 2 ), &SubFloat( sine, 2 ), &SubFloat( cosine, 2 ) );
-}
-
-FORCEINLINE void SinCosSIMD( fltx4 &sine, fltx4 &cosine, const fltx4 &radians )				// a*b + c
-{
-	// FIXME: Make a fast SSE version
-	SinCos( SubFloat( radians, 0 ), &SubFloat( sine, 0 ), &SubFloat( cosine, 0 ) );
-	SinCos( SubFloat( radians, 1 ), &SubFloat( sine, 1 ), &SubFloat( cosine, 1 ) );
-	SinCos( SubFloat( radians, 2 ), &SubFloat( sine, 2 ), &SubFloat( cosine, 2 ) );
-	SinCos( SubFloat( radians, 3 ), &SubFloat( sine, 3 ), &SubFloat( cosine, 3 ) );
+	SinCosSIMD( sine, cosine, radians );
 }
 
 //TODO: implement as four-way Taylor series (see xbox implementation)
@@ -1266,14 +1346,35 @@ FORCEINLINE fltx4 ArcCosSIMD( const fltx4 &cs )
 }
 
 // tan^1(a/b) .. ie, pass sin in as a and cos in as b
+// Four lanes after Cephes atanf: atan of min(|a|,|b|) / max(|a|,|b|) in
+// [0, 1], reduced once more above tan(pi/8), then the octant and quadrant
+// are restored from the operands' magnitudes and signs. atan2(0, 0) = 0.
 FORCEINLINE fltx4 ArcTan2SIMD( const fltx4 &a, const fltx4 &b )
 {
-	fltx4 result;
-	SubFloat( result, 0 ) = atan2( SubFloat( a, 0 ), SubFloat( b, 0 ) );
-	SubFloat( result, 1 ) = atan2( SubFloat( a, 1 ), SubFloat( b, 1 ) );
-	SubFloat( result, 2 ) = atan2( SubFloat( a, 2 ), SubFloat( b, 2 ) );
-	SubFloat( result, 3 ) = atan2( SubFloat( a, 3 ), SubFloat( b, 3 ) );
-	return result;
+	const __m128 signMask = _mm_castsi128_ps( _mm_set1_epi32( (int)0x80000000 ) );
+	__m128 ax = _mm_andnot_ps( signMask, a ), bx = _mm_andnot_ps( signMask, b );
+	__m128 hi = _mm_max_ps( ax, bx ), lo = _mm_min_ps( ax, bx );
+	__m128 zero = _mm_cmpeq_ps( hi, _mm_setzero_ps() );
+	__m128 t = _mm_div_ps( lo, _mm_or_ps( hi, _mm_and_ps( zero, _mm_set1_ps( 1.0f ) ) ) );
+
+	// Above tan(pi/8): atan(t) = pi/4 + atan((t - 1) / (t + 1)).
+	__m128 big = _mm_cmpgt_ps( t, _mm_set1_ps( 0.4142135623730950f ) );
+	__m128 tr = _mm_div_ps( _mm_sub_ps( t, _mm_set1_ps( 1.0f ) ), _mm_add_ps( t, _mm_set1_ps( 1.0f ) ) );
+	t = _mm_or_ps( _mm_and_ps( big, tr ), _mm_andnot_ps( big, t ) );
+	__m128 y0 = _mm_and_ps( big, _mm_set1_ps( 0.78539816339744830962f ) );
+
+	__m128 z = _mm_mul_ps( t, t );
+	__m128 p = _mm_add_ps( _mm_mul_ps( _mm_set1_ps( 8.05374449538e-2f ), z ), _mm_set1_ps( -1.38776856032e-1f ) );
+	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( 1.99777106478e-1f ) );
+	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( -3.33329491539e-1f ) );
+	__m128 r = _mm_add_ps( y0, _mm_add_ps( _mm_mul_ps( _mm_mul_ps( p, z ), t ), t ) );
+
+	// |a| > |b|: pi/2 - r. b < 0: pi - r. Then the sign of a.
+	__m128 steep = _mm_cmpgt_ps( ax, bx );
+	r = _mm_or_ps( _mm_and_ps( steep, _mm_sub_ps( _mm_set1_ps( 1.57079632679489661923f ), r ) ), _mm_andnot_ps( steep, r ) );
+	__m128 back = _mm_cmplt_ps( b, _mm_setzero_ps() );
+	r = _mm_or_ps( _mm_and_ps( back, _mm_sub_ps( _mm_set1_ps( 3.14159265358979323846f ), r ) ), _mm_andnot_ps( back, r ) );
+	return _mm_xor_ps( r, _mm_and_ps( a, signMask ) );
 }
 
 FORCEINLINE fltx4 NegSIMD(const fltx4 &a) // negate: -a
@@ -1351,37 +1452,43 @@ FORCEINLINE fltx4 MaxSIMD( const fltx4 & a, const fltx4 & b )				// max(a,b)
 
 
 
-// SSE lacks rounding operations. 
-// Really.
-// You can emulate them by setting the rounding mode for the 
-// whole processor and then converting to int, and then back again.
-// But every time you set the rounding mode, you clear out the
-// entire pipeline. So, I can't do them per operation. You
-// have to do it once, before the loop that would call these.
-// Round towards positive infinity
-FORCEINLINE fltx4 CeilSIMD( const fltx4 &a )
-{
-	fltx4 retVal;
-	SubFloat( retVal, 0 ) = ceil( SubFloat( a, 0 ) );
-	SubFloat( retVal, 1 ) = ceil( SubFloat( a, 1 ) );
-	SubFloat( retVal, 2 ) = ceil( SubFloat( a, 2 ) );
-	SubFloat( retVal, 3 ) = ceil( SubFloat( a, 3 ) );
-	return retVal;
+fltx4 fabs( const fltx4 & x );
 
+// Rounding. SSE4.1 (ROUNDPS) and AArch64 (FRINTM/FRINTP through sse2neon) round
+// natively. Otherwise truncate through int32 (CVTTPS2DQ) and step toward the
+// wanted direction; |x| >= 2^23 is already integral and NaN passes through.
+// (The old 2^23 add/subtract trick was folded away by -ffast-math, which every
+// product builds with, so FloorSIMD returned its input.)
+FORCEINLINE fltx4 TruncSIMD( const fltx4 &val )
+{
+#if defined( __SSE4_1__ )
+	return _mm_round_ps( val, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC );
+#else
+	fltx4 t = _mm_cvtepi32_ps( _mm_cvttps_epi32( val ) );
+	return MaskedAssign( CmpLtSIMD( fabs( val ), Four_2ToThe23s ), t, val );
+#endif
 }
 
-fltx4 fabs( const fltx4 & x );
 // Round towards negative infinity
-// This is the implementation that was here before; it assumes
-// you are in round-to-floor mode, which I guess is usually the
-// case for us vis-a-vis SSE. It's totally unnecessary on 
-// VMX, which has a native floor op.
 FORCEINLINE fltx4 FloorSIMD( const fltx4 &val )
 {
-	fltx4 fl4Abs = fabs( val );
-	fltx4 ival = SubSIMD( AddSIMD( fl4Abs, Four_2ToThe23s ), Four_2ToThe23s );
-	ival = MaskedAssign( CmpGtSIMD( ival, fl4Abs ), SubSIMD( ival, Four_Ones ), ival );
-	return XorSIMD( ival, XorSIMD( val, fl4Abs ) );			// restore sign bits
+#if defined( __SSE4_1__ ) || defined( __aarch64__ )
+	return _mm_floor_ps( val );
+#else
+	fltx4 t = TruncSIMD( val );
+	return SubSIMD( t, AndSIMD( CmpGtSIMD( t, val ), Four_Ones ) );
+#endif
+}
+
+// Round towards positive infinity
+FORCEINLINE fltx4 CeilSIMD( const fltx4 &val )
+{
+#if defined( __SSE4_1__ ) || defined( __aarch64__ )
+	return _mm_ceil_ps( val );
+#else
+	fltx4 t = TruncSIMD( val );
+	return AddSIMD( t, AndSIMD( CmpLtSIMD( t, val ), Four_Ones ) );
+#endif
 }
 
 
@@ -1403,7 +1510,17 @@ FORCEINLINE fltx4 SqrtSIMD( const fltx4 & a )						// sqrt(a)
 
 FORCEINLINE fltx4 ReciprocalSqrtEstSIMD( const fltx4 & a )			// 1/sqrt(a), more or less
 {
+#if defined( __aarch64__ )
+	// FRSQRTE alone is an 8-bit estimate; one FRSQRTS step meets the x86
+	// RSQRTPS bound (1.5 * 2^-12) callers are tuned for, and FRSQRTS keeps
+	// 1/sqrt(0) = +inf.
+	float32x4_t x = vreinterpretq_f32_m128( a );
+	float32x4_t e = vrsqrteq_f32( x );
+	e = vmulq_f32( e, vrsqrtsq_f32( vmulq_f32( x, e ), e ) );
+	return vreinterpretq_m128_f32( e );
+#else
 	return _mm_rsqrt_ps( a );
+#endif
 }
 
 FORCEINLINE fltx4 ReciprocalSqrtEstSaturateSIMD( const fltx4 & a )
@@ -1417,6 +1534,15 @@ FORCEINLINE fltx4 ReciprocalSqrtEstSaturateSIMD( const fltx4 & a )
 /// uses newton iteration for higher precision results than ReciprocalSqrtEstSIMD
 FORCEINLINE fltx4 ReciprocalSqrtSIMD( const fltx4 & a )				// 1/sqrt(a)
 {
+#if defined( __aarch64__ )
+	// Two FRSQRTS steps from the 8-bit FRSQRTE: the precision x86 reaches with
+	// one step from its 12-bit RSQRTPS.
+	float32x4_t x = vreinterpretq_f32_m128( a );
+	float32x4_t e = vrsqrteq_f32( x );
+	e = vmulq_f32( e, vrsqrtsq_f32( vmulq_f32( x, e ), e ) );
+	e = vmulq_f32( e, vrsqrtsq_f32( vmulq_f32( x, e ), e ) );
+	return vreinterpretq_m128_f32( e );
+#endif
 	fltx4 guess = ReciprocalSqrtEstSIMD( a );
 	// newton iteration for 1/sqrt(a) : y(n+1) = 1/2 (y(n)*(3-a*y(n)^2));
 	guess = MulSIMD( guess, SubSIMD( Four_Threes, MulSIMD( a, MulSIMD( guess, guess ))));
@@ -1574,10 +1700,10 @@ FORCEINLINE void StoreUnalignedIntSIMD( int32 * RESTRICT pSIMD, const fltx4 & a 
 FORCEINLINE fltx4 UnsignedIntConvertToFltSIMD( const u32x4 &vSrcA )
 {
 	fltx4 retval;
-	SubFloat( retval, 0 ) = ( (float) SubInt( retval, 0 ) );
-	SubFloat( retval, 1 ) = ( (float) SubInt( retval, 1 ) );
-	SubFloat( retval, 2 ) = ( (float) SubInt( retval, 2 ) );
-	SubFloat( retval, 3 ) = ( (float) SubInt( retval, 3 ) );
+	SubFloat( retval, 0 ) = ( (float) SubInt( vSrcA, 0 ) );
+	SubFloat( retval, 1 ) = ( (float) SubInt( vSrcA, 1 ) );
+	SubFloat( retval, 2 ) = ( (float) SubInt( vSrcA, 2 ) );
+	SubFloat( retval, 3 ) = ( (float) SubInt( vSrcA, 3 ) );
 	return retval;
 }
 
@@ -2188,12 +2314,10 @@ inline fltx4 SimpleSplineRemapValWithDeltasClamped( const fltx4 & val,
 	return AddSIMD( C, MulSIMD( DMinusC, SimpleSpline( cVal ) ) );
 }
 
+// val - trunc( val ): the fractional part, with val's sign.
 FORCEINLINE fltx4 FracSIMD( const fltx4 &val )
 {
-	fltx4 fl4Abs = fabs( val );
-	fltx4 ival = SubSIMD( AddSIMD( fl4Abs, Four_2ToThe23s ), Four_2ToThe23s );
-	ival = MaskedAssign( CmpGtSIMD( ival, fl4Abs ), SubSIMD( ival, Four_Ones ), ival );
-	return XorSIMD( SubSIMD( fl4Abs, ival ), XorSIMD( val, fl4Abs ) );			// restore sign bits
+	return SubSIMD( val, TruncSIMD( val ) );
 }
 
 FORCEINLINE fltx4 Mod2SIMD( const fltx4 &val )

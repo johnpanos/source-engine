@@ -9,21 +9,27 @@
 //
 //          A burst is one light, not one per spark: the renderer takes at most
 //          a few unbaked lights per frame. The light sits at the emission-
-//          weighted centroid of the live sparks near its source (within its
-//          reach), in their emission-weighted color. Its strength is the frame's total emission over the burst's
-//          peak (or over a full burst's emission, when the burst has one), so
-//          it starts at full strength and fades as the sparks fade and die.
-//          A trail spark's emission is its drawn ramp times the share of its
-//          trail still drawn; a system particle's is its alpha times its
-//          tint's brightest channel.
+//          weighted centroid of every live spark of the burst, in their
+//          emission-weighted color, and its radius grows with how far the
+//          sparks have spread, so its reach covers them wherever they have
+//          flown or fallen. Its strength is the frame's total emission over
+//          the burst's peak (or over a full burst's emission, when the burst
+//          has one), so it starts at full strength and fades as the sparks
+//          fade and die. A trail spark's emission is its drawn ramp times the
+//          share of its trail still drawn; a system particle's is its alpha
+//          times its tint's brightest channel.
 //
 //          The client carries the light as a dlight, which the engine
-//          publishes in the frame's light set. A budget caps how many bursts
-//          hold a light at once.
+//          publishes in the frame's light set. Each frame the client lights
+//          the bursts most important at the viewer, at most a budget of them
+//          (SelectLit), and keeps a lit burst lit against a slightly stronger
+//          newcomer, so two close bursts do not trade the light every frame.
 //
 //=============================================================================//
 #ifndef SPARK_LIGHT_H
 #define SPARK_LIGHT_H
+
+#include <cmath>
 
 namespace SparkLight
 {
@@ -96,7 +102,21 @@ struct Light_t
 	float m_Origin[3];
 	float m_Color[3]; // emission-weighted, brightest channel 1
 	float m_flScale;  // 0..1 of the burst's full light
+	float m_flSpread; // emission-weighted RMS distance of the sparks from m_Origin
 };
+
+// How far a burst's light reaches: its base radius plus 1.5 times its sparks'
+// spread (beyond the spread lie a few sparks, not most), at most 2.5 times the
+// base radius. A burst gathered at its source lights its base radius.
+const float kSpreadReach = 1.5f;
+const float kMaxRadiusScale = 2.5f;
+
+inline float LightRadius( float flBaseRadius, float flSpread )
+{
+	const float flRadius = flBaseRadius + kSpreadReach * ( flSpread > 0.0f ? flSpread : 0.0f );
+	const float flMax = kMaxRadiusScale * flBaseRadius;
+	return flRadius < flMax ? flRadius : flMax;
+}
 
 // One burst's light. Each frame: BeginFrame, then Add every live spark (in one
 // or more batches), then Current. Current may be read after each batch; it
@@ -107,26 +127,13 @@ public:
 	// flFullEmission > 0: a burst's full strength needs at least this much
 	// emission (a system of a few faint glints lights less than a shower);
 	// 0: every burst's peak is its full strength.
-	explicit CBurst( float flFullEmission = 0.0f ) : m_flPeak( flFullEmission ), m_flReach( 0.0f )
-	{
-		m_Anchor[0] = m_Anchor[1] = m_Anchor[2] = 0.0f;
-		BeginFrame();
-	}
-
-	// Only sparks within flReach of the anchor (the burst's source) light it; 0
-	// takes every spark. A spark that has flown far off, or fallen out of the
-	// world, lights nothing near the burst and must not drag its light away.
-	void SetReach( const float anchor[3], float flReach )
-	{
-		for ( int k = 0; k < 3; ++k )
-			m_Anchor[k] = anchor[k];
-		m_flReach = flReach;
-	}
+	explicit CBurst( float flFullEmission = 0.0f ) : m_flPeak( flFullEmission ) { BeginFrame(); }
 
 	void BeginFrame()
 	{
 		for ( int k = 0; k < 3; ++k )
-			m_Sum[k] = m_ColorSum[k] = 0.0f;
+			m_Ref[k] = m_Sum[k] = m_ColorSum[k] = 0.0f;
+		m_flSquareSum = 0.0f;
 		m_flTotal = 0.0f;
 	}
 
@@ -140,17 +147,18 @@ public:
 	{
 		if ( !( flEmission > 0.0f ) )
 			return;
-		if ( m_flReach > 0.0f )
+		// Positions are summed relative to the frame's first spark, so the
+		// spread keeps its precision far from the world origin.
+		if ( m_flTotal == 0.0f )
 		{
-			float flDistSq = 0.0f;
 			for ( int k = 0; k < 3; ++k )
-				flDistSq += ( pos[k] - m_Anchor[k] ) * ( pos[k] - m_Anchor[k] );
-			if ( !( flDistSq <= m_flReach * m_flReach ) )
-				return;
+				m_Ref[k] = pos[k];
 		}
 		for ( int k = 0; k < 3; ++k )
 		{
-			m_Sum[k] += pos[k] * flEmission;
+			const float d = pos[k] - m_Ref[k];
+			m_Sum[k] += d * flEmission;
+			m_flSquareSum += d * d * flEmission;
 			m_ColorSum[k] += color[k] * flEmission;
 		}
 		m_flTotal += flEmission;
@@ -165,51 +173,93 @@ public:
 		float flBrightest = 0.0f;
 		for ( int k = 0; k < 3; ++k )
 			flBrightest = m_ColorSum[k] > flBrightest ? m_ColorSum[k] : flBrightest;
+		float flMeanSquare = 0.0f;
 		for ( int k = 0; k < 3; ++k )
 		{
-			light.m_Origin[k] = light.m_bLit ? m_Sum[k] / m_flTotal : 0.0f;
+			const float flMean = light.m_bLit ? m_Sum[k] / m_flTotal : 0.0f;
+			light.m_Origin[k] = light.m_bLit ? m_Ref[k] + flMean : 0.0f;
 			light.m_Color[k] = flBrightest > 0.0f ? m_ColorSum[k] / flBrightest : 0.0f;
+			flMeanSquare += flMean * flMean;
 		}
+		// E|p - c|^2 = E|p|^2 - |E p|^2, both relative to the reference.
+		const float flVariance = light.m_bLit ? m_flSquareSum / m_flTotal - flMeanSquare : 0.0f;
+		light.m_flSpread = flVariance > 0.0f ? std::sqrt( flVariance ) : 0.0f;
 		light.m_flScale = light.m_bLit ? m_flTotal / m_flPeak : 0.0f;
 		return light;
 	}
 
 private:
+	float m_Ref[3];
 	float m_Sum[3];
 	float m_ColorSum[3];
+	float m_flSquareSum;
 	float m_flTotal;
 	float m_flPeak;
-	float m_Anchor[3];
-	float m_flReach;
 };
 
-// How many bursts hold a light at once. The owner acquires before it first
-// lights a burst and releases once when the burst goes dark or is destroyed.
-class CBudget
+// A burst that asks for light this frame.
+struct Candidate_t
 {
-public:
-	CBudget() : m_nHeld( 0 ) {}
-
-	// nMax <= 0 lights no burst.
-	bool Acquire( int nMax )
-	{
-		if ( m_nHeld >= nMax )
-			return false;
-		++m_nHeld;
-		return true;
-	}
-
-	void Release()
-	{
-		if ( m_nHeld > 0 )
-			--m_nHeld;
-	}
-
-	int Held() const { return m_nHeld; }
-
-private:
-	int m_nHeld;
+	float m_Origin[3];
+	float m_flRadius;   // LightRadius
+	float m_flStrength; // the light's brightest linear channel (scale included)
+	bool m_bWasLit;     // it held a light last frame
 };
+
+// A lit burst keeps its light against a newcomer less than this much more
+// important, so two bursts of about the same importance do not trade it.
+const float kKeepLitBias = 1.25f;
+
+// A burst's importance at the viewer: its strength times how much of the view
+// its reach covers, r^2 / ( r^2 + d^2 ), d the distance from the view.
+inline float Importance( const Candidate_t &candidate, const float view[3] )
+{
+	if ( !( candidate.m_flStrength > 0.0f ) || !( candidate.m_flRadius > 0.0f ) )
+		return 0.0f;
+	float flDistSq = 0.0f;
+	for ( int k = 0; k < 3; ++k )
+	{
+		const float d = candidate.m_Origin[k] - view[k];
+		flDistSq += d * d;
+	}
+	const float flReachSq = candidate.m_flRadius * candidate.m_flRadius;
+	return candidate.m_flStrength * flReachSq / ( flReachSq + flDistSq );
+}
+
+// Which of nCandidates bursts are lit this frame: the nMaxLit most important
+// at the viewer (a lit burst counted kKeepLitBias times), never one of no
+// importance. Ties go to the lower index. pLit[i] receives each verdict;
+// returns how many are lit. nMaxLit <= 0 lights none.
+inline int SelectLit(
+    const Candidate_t *pCandidates, int nCandidates, int nMaxLit, const float view[3], bool *pLit )
+{
+	for ( int i = 0; i < nCandidates; ++i )
+		pLit[i] = false;
+	int nLit = 0;
+	while ( nLit < nMaxLit )
+	{
+		int iBest = -1;
+		float flBest = 0.0f;
+		for ( int i = 0; i < nCandidates; ++i )
+		{
+			if ( pLit[i] )
+				continue;
+			float flRank = Importance( pCandidates[i], view );
+			if ( pCandidates[i].m_bWasLit )
+				flRank *= kKeepLitBias;
+			if ( flRank > flBest )
+			{
+				flBest = flRank;
+				iBest = i;
+			}
+		}
+		if ( iBest < 0 )
+			break;
+		pLit[iBest] = true;
+		++nLit;
+	}
+	return nLit;
+}
 
 } // namespace SparkLight
 

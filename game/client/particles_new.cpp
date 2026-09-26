@@ -138,8 +138,8 @@ void CNewParticleEffect::Release()
 //-----------------------------------------------------------------------------
 // Spark light (render/spark_light.h)
 //-----------------------------------------------------------------------------
-// A spark system's light: exponent 2, this radius, reaching its sparks this far
-// from control point 0.
+// A spark system's light: exponent 2, this base radius (it reaches further as
+// its sparks spread).
 static const float kSparkSystemLightRadius = 160.0f;
 
 static bool DrawsSparks( CParticleCollection *pCollection )
@@ -161,8 +161,10 @@ static bool TreeDrawsSparks( CParticleCollection *pCollection )
 	return false;
 }
 
-// Adds the live particles of every spark-drawing collection in the tree.
-static void AddSparkEmission( CParticleCollection *pCollection, SparkLight::CBurst *pBurst )
+// Calls visit( pos, emission, tint ) for each live particle of every
+// spark-drawing collection in the tree.
+template <typename Visit>
+static void ForEachSpark( CParticleCollection *pCollection, Visit &visit )
 {
 	if ( DrawsSparks( pCollection ) )
 	{
@@ -175,15 +177,33 @@ static void AddSparkEmission( CParticleCollection *pCollection, SparkLight::CBur
 			const float flAlpha = *pCollection->GetFloatAttributePtr( PARTICLE_ATTRIBUTE_ALPHA, i );
 			const float pos[3] = { pXYZ[0], pXYZ[4], pXYZ[8] };
 			const float tint[3] = { pTint[0], pTint[4], pTint[8] };
-			pBurst->Add( pos, SparkLight::SystemEmission( flAlpha, tint ), tint );
+			visit( pos, SparkLight::SystemEmission( flAlpha, tint ), tint );
 		}
 	}
 	for ( CParticleCollection *pChild = pCollection->m_Children.m_pHead; pChild;
 	    pChild = pChild->m_pNext )
 	{
-		AddSparkEmission( pChild, pBurst );
+		ForEachSpark( pChild, visit );
 	}
 }
+
+struct AddSpark_t
+{
+	SparkLight::CBurst *m_pBurst;
+	void operator()( const float pos[3], float flEmission, const float tint[3] )
+	{
+		m_pBurst->Add( pos, flEmission, tint );
+	}
+};
+
+struct LogSpark_t
+{
+	int m_nKey;
+	void operator()( const float pos[3], float flEmission, const float * )
+	{
+		SparkLights_LogSpark( m_nKey, pos, flEmission );
+	}
+};
 
 void CNewParticleEffect::GatherLight()
 {
@@ -192,12 +212,10 @@ void CNewParticleEffect::GatherLight()
 		m_nLightClass = TreeDrawsSparks( this ) ? 1 : 0;
 	if ( !m_nLightClass )
 		return;
-	// The system's source moves with its control point.
-	const Vector &vecSource = m_ControlPoints[0].m_Position;
-	const float anchor[3] = { vecSource.x, vecSource.y, vecSource.z };
-	m_LightBurst.SetReach( anchor, kSparkSystemLightRadius );
+	// Every live spark, wherever it has flown: the light follows them all.
 	m_LightBurst.BeginFrame();
-	AddSparkEmission( this, &m_LightBurst );
+	AddSpark_t add = { &m_LightBurst };
+	ForEachSpark( this, add );
 	m_bLightGathered = true;
 }
 
@@ -212,6 +230,12 @@ void CNewParticleEffect::CommitLight()
 	if ( !m_Light.IsConfigured() )
 		m_Light.Configure( SparkLightParams( 2, kSparkSystemLightRadius ) );
 	m_Light.Commit( m_LightBurst.Current() );
+	if ( SparkLights_LogSparks() )
+	{
+		// The host reads the sparks the gather saw: nothing simulates between.
+		LogSpark_t log = { m_Light.Key() };
+		ForEachSpark( this, log );
+	}
 }
 
 void CNewParticleEffect::NotifyRemove()

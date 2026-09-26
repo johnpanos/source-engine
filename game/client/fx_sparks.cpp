@@ -165,6 +165,13 @@ CTrailParticles::CTrailParticles( const char *pDebugName ) : CSimpleEmitter( pDe
 {
 	m_fFlags			= 0;
 	m_flVelocityDampen	= 0.0f;
+	m_pLight			= NULL;
+}
+
+CTrailParticles::~CTrailParticles()
+{
+	if ( m_pLight )
+		m_pLight->Release();
 }
 
 //-----------------------------------------------------------------------------
@@ -172,19 +179,21 @@ CTrailParticles::CTrailParticles( const char *pDebugName ) : CSimpleEmitter( pDe
 //-----------------------------------------------------------------------------
 void CTrailParticles::EmitLight( const Vector &origin, const SparkLightParams_t &params )
 {
-	m_Light.Configure( params );
-	const float anchor[3] = { origin.x, origin.y, origin.z };
-	m_LightBurst.SetReach( anchor, params.m_flRadius );
-
-	// The first simulate is a frame away; light the burst where it starts.
-	const SparkLight::Light_t light = { true, { origin.x, origin.y, origin.z }, { 1, 1, 1 }, 1.0f };
-	m_Light.Commit( light );
+	if ( m_pLight )
+		m_pLight->Release();
+	m_pLight = new CSparkBurstLight( params );
+	const float start[3] = { origin.x, origin.y, origin.z };
+	m_pLight->Start( start );
 }
 
-void CTrailParticles::Update( float flTimeDelta )
+void CTrailParticles::ShareLight( CTrailParticles *pOwner )
 {
-	BaseClass::Update( flTimeDelta );
-	m_LightBurst.BeginFrame();
+	if ( !pOwner || !pOwner->m_pLight || pOwner->m_pLight == m_pLight )
+		return;
+	if ( m_pLight )
+		m_pLight->Release();
+	m_pLight = pOwner->m_pLight;
+	m_pLight->AddRef();
 }
 
 //-----------------------------------------------------------------------------
@@ -265,6 +274,7 @@ void CTrailParticles::SimulateParticles( CParticleSimulateIterator *pIterator )
 		m_ParticleCollision.ClearActivePlanes();
 	}
 
+	const bool bLogSparks = SparkLights_LogSparks();
 	TrailParticle *pParticle = (TrailParticle*)pIterator->GetFirst();
 	while ( pParticle )
 	{
@@ -295,20 +305,23 @@ void CTrailParticles::SimulateParticles( CParticleSimulateIterator *pIterator )
 		{
 			pIterator->RemoveParticle( pParticle );
 		}
-		else if ( m_Light.IsConfigured() )
+		else if ( m_pLight || bLogSparks )
 		{
-			m_LightBurst.Add( pParticle->m_Pos.Base(),
-			    SparkLight::TrailEmission( pParticle->m_flLifetime, pParticle->m_flDieTime,
-			        ( m_fFlags & bitsPARTICLE_TRAIL_FADE_IN ) != 0,
-			        ( m_fFlags & bitsPARTICLE_TRAIL_FADE ) != 0 ) );
+			const float flEmission = SparkLight::TrailEmission( pParticle->m_flLifetime,
+			    pParticle->m_flDieTime, ( m_fFlags & bitsPARTICLE_TRAIL_FADE_IN ) != 0,
+			    ( m_fFlags & bitsPARTICLE_TRAIL_FADE ) != 0 );
+			if ( m_pLight )
+				m_pLight->Add( pParticle->m_Pos.Base(), flEmission );
+			if ( bLogSparks )
+				SparkLights_LogSpark( m_pLight ? m_pLight->Key() : 0, pParticle->m_Pos.Base(), flEmission );
 		}
 
 		pParticle = (TrailParticle*)pIterator->GetNext();
 	}
 
-	// Every batch this frame so far (one per material).
-	if ( m_Light.IsConfigured() )
-		m_Light.Commit( m_LightBurst.Current() );
+	// Every batch of the burst this frame so far (one per material and emitter).
+	if ( m_pLight )
+		m_pLight->Commit();
 }
 
 
@@ -433,6 +446,8 @@ void FX_ElectricSpark( const Vector &pos, int nMagnitude, int nTrailLength, cons
 	// the planes these sparks fell through the surface they started on.
 	pSparkEmitter2->Setup( pos, NULL, SPARK_ELECTRIC_SPREAD, 128.0f, 256.0f, 400.0f,
 	    SPARK_ELECTRIC_DAMPEN, bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
+	// The little sparks are part of the burst the big sparks light.
+	pSparkEmitter2->ShareLight( pSparkEmitter );
 
 	numSparks = nMagnitude * random->RandomInt( 16, 32 );
 
@@ -851,6 +866,8 @@ void FX_Sparks( const Vector &pos, int nMagnitude, int nTrailLength, const Vecto
 	// Collide with the surfaces around the spark, as the big sparks do.
 	pSparkEmitter2->Setup( pos, NULL, SPARK_SPREAD, flMinSpeed, flMaxSpeed, 400.0f, SPARK_DAMPEN,
 	    bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
+	// The little sparks are part of the burst the big sparks light.
+	pSparkEmitter2->ShareLight( pSparkEmitter );
 
 	numSparks = nMagnitude * random->RandomInt( 4, 8 );
 

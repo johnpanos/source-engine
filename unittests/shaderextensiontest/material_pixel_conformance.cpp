@@ -445,6 +445,14 @@ int CMaterialPixelApp::Main()
 		pinned.SetFlag( MATSYS_VIDCFG_FLAGS_FORCE_TRILINEAR, true );
 		g_pMaterialSystem->OverrideConfig( pinned, false );
 	}
+	// -msaa N: run the family with N samples per pixel instead (the soft particle
+	// cases under the MSAA the game's settings select).
+	if ( const int msaa = CommandLine()->ParmValue( "-msaa", 0 ) )
+	{
+		MaterialSystem_Config_t multisampled = g_pMaterialSystem->GetCurrentConfigForVideoCard();
+		multisampled.m_nAASamples = msaa;
+		g_pMaterialSystem->OverrideConfig( multisampled, false );
+	}
 
 	// The HDR mode decides the lightmap page format and the lightmap scale, so it
 	// is chosen before lightmaps are allocated, the way map load orders it.

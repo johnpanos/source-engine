@@ -1464,7 +1464,15 @@ CON_COMMAND( host_writeconfig_ss,
 //			need to be read before any games systems are initialized
 //			assumes only cvars and filesystem are initialized
 //-----------------------------------------------------------------------------
-void Host_ReadPreStartupConfiguration()
+static const char *s_PreStartupConfigConVars[] =
+{
+	"sv_unlockedchapters",		// needed to display the startup graphic while loading
+	"snd_legacy_surround",		// needed to init the sound system
+	"gameui_xbox",				// needed to initialize the correct UI
+	"save_in_memory"			// needed to preread data from the correct location in UI
+};
+
+static void Host_ApplyPreStartupConfigFile()
 {
 	FileHandle_t f = NULL;
 	{
@@ -1482,14 +1490,6 @@ void Host_ReadPreStartupConfiguration()
 	g_pFileSystem->Close( f );
 
 	// parse out file
-	static const char *s_PreStartupConfigConVars[] =
-	{
-		"sv_unlockedchapters",		// needed to display the startup graphic while loading
-		"snd_legacy_surround",		// needed to init the sound system
-		"gameui_xbox",				// needed to initialize the correct UI
-		"save_in_memory"			// needed to preread data from the correct location in UI
-	};
-
 	// loop through looking for all the cvars to apply
 	for (int i = 0; i < ARRAYSIZE(s_PreStartupConfigConVars); i++)
 	{
@@ -1513,6 +1513,30 @@ void Host_ReadPreStartupConfiguration()
 
 	// free
 	delete [] configBuffer;
+}
+
+void Host_ReadPreStartupConfiguration()
+{
+	Host_ApplyPreStartupConfigFile();
+
+	// '+name value' on the command line wins over config.cfg, as it does for
+	// every other cvar. The command buffer runs those arguments only after the
+	// systems these cvars configure have started, so apply them here too. The
+	// Apple launcher selects the console GameUI this way (+gameui_xbox 1).
+	for ( int i = 0; i < ARRAYSIZE( s_PreStartupConfigConVars ); i++ )
+	{
+		char parm[64];
+		Q_snprintf( parm, sizeof( parm ), "+%s", s_PreStartupConfigConVars[i] );
+		const char *pValue = CommandLine()->ParmValue( parm );
+		if ( !pValue )
+			continue;
+
+		ConVar *var = (ConVar *)g_pCVar->FindVar( s_PreStartupConfigConVars[i] );
+		if ( var )
+		{
+			var->SetValue( pValue );
+		}
+	}
 }
 
 void Host_RecomputeSpeed_f( void )

@@ -47,6 +47,9 @@ CCallQueue *GetPortalCallQueue();
 ConVar sv_portal_debug_touch("sv_portal_debug_touch", "0", FCVAR_REPLICATED );
 ConVar sv_portal_placement_never_fail("sv_portal_placement_never_fail", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar sv_portal_new_velocity_check("sv_portal_new_velocity_check", "1", FCVAR_CHEAT );
+ConVar sv_portal_placement_log( "sv_portal_placement_log", "0", 0,
+    "Print a line for every portal placement (origin, angles, linkage), for headless gameplay "
+    "tests" );
 
 static CUtlVector<CProp_Portal *> s_PortalLinkageGroups[256];
 
@@ -2072,6 +2075,14 @@ void CProp_Portal::NewLocation( const Vector &vOrigin, const QAngle &qAngles )
 	WakeNearbyEntities();
 
 	Teleport( &vOrigin, &qAngles, 0 );
+
+	if ( sv_portal_placement_log.GetBool() )
+	{
+		Msg( "portal_placed t=%.2f name=%s linkage=%d portal2=%d origin=%.1f %.1f %.1f angles=%.1f "
+		     "%.1f %.1f\n",
+		    gpGlobals->curtime, GetDebugName(), m_iLinkageGroupID, m_bIsPortal2 ? 1 : 0, vOrigin.x,
+		    vOrigin.y, vOrigin.z, qAngles.x, qAngles.y, qAngles.z );
+	}
 
 	if ( m_hMicrophone )
 	{

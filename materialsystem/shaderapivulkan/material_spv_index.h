@@ -86,7 +86,8 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
     { 0xe2b8e6ce9f238241ull, "g_pbrBrdfCheckSpv", "pbr_brdf_check.comp" },
     { 0xc0c5d25866bef879ull, "g_presentGammaVertSpv", "present_gamma.vert" },
     { 0x577895e15ac25eb0ull, "g_presentGammaFragSpv", "present_gamma.frag" },
-    { 0x5d550b09ce71ab8bull, "g_depthToAlphaFragSpv", "depth_to_alpha.frag" },
+    { 0x6379c7888795e021ull, "g_depthToAlphaFragSpv", "depth_to_alpha.frag" },
+    { 0xcacf224af850a282ull, "g_depthToAlphaMsFragSpv", "depth_to_alpha.frag -DMULTISAMPLE" },
 };
 
 // X( array ) for every array, for suites that include material_spv.h.
@@ -143,6 +144,7 @@ static const MaterialSpvIndexEntry g_materialSpvIndex[] = {
 	X( g_pbrBrdfCheckSpv )                                                                         \
 	X( g_presentGammaVertSpv )                                                                     \
 	X( g_presentGammaFragSpv )                                                                     \
-	X( g_depthToAlphaFragSpv )
+	X( g_depthToAlphaFragSpv )                                                                     \
+	X( g_depthToAlphaMsFragSpv )
 
 #endif // SHADERAPIVULKAN_MATERIAL_SPV_INDEX_H

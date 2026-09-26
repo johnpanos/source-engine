@@ -34,7 +34,8 @@ public:
 
 	inline float NextValue(void)
 	{
-		return GetElement(seed++);
+		// Element seed+1, the sequence the samplers have always drawn.
+		return GetElement(++seed);
 	}
 
 };

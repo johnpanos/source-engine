@@ -77,16 +77,19 @@ class CTrailParticles : public CSimpleEmitter
 	DECLARE_CLASS( CTrailParticles, CSimpleEmitter );
 public:
 	CTrailParticles( const char *pDebugName );
+	virtual ~CTrailParticles();
 
 	static CTrailParticles	*Create( const char *pDebugName )	{	return new CTrailParticles( pDebugName );	}
 
-	virtual void Update( float flTimeDelta );
 	virtual void RenderParticles( CParticleRenderIterator *pIterator );
 	virtual void SimulateParticles( CParticleSimulateIterator *pIterator );
 
 	// Lights the surroundings from this emitter's live sparks, starting now at
 	// origin at full strength (fx_spark_lights caps how many bursts do).
 	void EmitLight( const Vector &origin, const SparkLightParams_t &params );
+	// Adds this emitter's sparks to pOwner's burst light: one light for every
+	// emitter of the burst.
+	void ShareLight( CTrailParticles *pOwner );
 
 	//Setup for point emission
 	virtual void	Setup( const Vector &origin, const Vector *direction, float angularSpread, float minSpeed, float maxSpeed, float gravity, float dampen, int flags, bool bNotCollideable = false );
@@ -105,8 +108,7 @@ protected:
 	float				m_flVelocityDampen;
 
 private:
-	SparkLight::CBurst m_LightBurst;
-	CParticleDynamicLight m_Light; // configured when the emitter emits light
+	CSparkBurstLight *m_pLight; // a reference to its burst's light, when it emits light
 
 	CTrailParticles( const CTrailParticles & ); // not defined, not accessible
 };

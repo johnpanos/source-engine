@@ -130,8 +130,8 @@ public:
 	// simulate item, on a pool worker, after it simulates; it reads only this
 	// effect's collections and writes only its burst. CommitLight runs on the
 	// host in the ordered pass after the batch (CParticleMgr::UpdateNewEffectsEnd)
-	// and lights or releases the dlight; an effect not gathered this frame
-	// (asleep or not simulated) releases its light.
+	// and commits the light for the frame's resolve (SparkLights_Resolve); an
+	// effect not gathered this frame (asleep or not simulated) releases it.
 	void GatherLight();
 	void CommitLight();
 	CNewParticleEffect( CBaseEntity *pOwner, const char *pEffectName );
