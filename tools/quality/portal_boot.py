@@ -143,9 +143,11 @@ def install_build(build, stage, game="portal", launcher_name="hl2_launcher", too
     # Some workflows keep independent Waf profiles below the primary output
     # tree (for example build/pbr-native), and host-tool profiles may install
     # below it (build/toolchains). Neither holds products of this build, so
-    # neither may participate in its staging plan.
+    # neither may participate in its staging plan. Nor may the conformance
+    # runner's output (suite fixtures and runtimes staged by command suites).
     excluded = {cache.parent for cache in build.rglob("c4che")
                 if cache.is_dir() and cache.parent != build}
+    excluded.add(Path(conformance.default_build_dir()).resolve())
     excluded |= {Path(root).resolve() for root in
                  (host_tool_roots() if tool_roots is None else tool_roots)}
 

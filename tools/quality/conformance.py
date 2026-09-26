@@ -115,6 +115,15 @@ def repo_root():
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def default_build_dir():
+    """Default --build-dir: suite binaries, fixtures and command-suite output.
+
+    It sits inside the primary Waf tree but holds no Waf products, so staging
+    must skip it (portal_boot.install_build).
+    """
+    return os.path.join(repo_root(), "build", "quality")
+
+
 # ---------------------------------------------------------------------------
 # Loading and validation
 # ---------------------------------------------------------------------------
@@ -1307,7 +1316,7 @@ def build_parser():
     chk.add_argument("--launcher", default=os.environ.get("CONFORMANCE_LAUNCHER") or None,
                      help="Compiler launcher prefixed to every build command, e.g. ccache "
                           "(default: $CONFORMANCE_LAUNCHER).")
-    chk.add_argument("--build-dir", default=os.path.join(repo_root(), "build", "quality"),
+    chk.add_argument("--build-dir", default=default_build_dir(),
                      help="Directory for compiled suite binaries.")
     chk.add_argument("--out", default=None,
                      help="Evidence JSON path (default: quality-results/conformance.<timestamp>.json, "

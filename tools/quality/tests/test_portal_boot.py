@@ -387,6 +387,31 @@ class StagingTests(unittest.TestCase):
             self.assertFalse(any("toolchains" in item["source"] for item in installed.values()))
             self.assertFalse((stage / "bin/libtbb.so").exists())
 
+    def test_conformance_output_below_build_is_not_staged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build, stage = self.make_build(Path(directory))
+            quality = build / "quality"
+            # A command suite's staged runtime and a suite's fixture library.
+            runtime = quality / "corpus_hammer_loop.out/room/map/boot/runtime"
+            (runtime / "bin").mkdir(parents=True)
+            (runtime / "hl2_launcher").write_text("staged launcher")
+            (runtime / "bin/libengine.so").write_text("staged engine")
+            (quality / "loader.default.fixture.so").write_text("fixture")
+            original = boot.conformance.default_build_dir
+            try:
+                boot.conformance.default_build_dir = lambda: str(build / "elsewhere")
+                with self.assertRaisesRegex(ValueError, "exactly one hl2_launcher"):
+                    boot.install_build(build, stage, tool_roots=set())
+
+                boot.conformance.default_build_dir = lambda: str(quality)
+                installed = boot.install_build(build, stage, tool_roots=set())
+            finally:
+                boot.conformance.default_build_dir = original
+
+            self.assertEqual("engine/libengine.so", (stage / "bin/libengine.so").read_text())
+            self.assertFalse(any("quality" in item["source"] for item in installed.values()))
+            self.assertFalse((stage / "bin/loader.default.fixture.so").exists())
+
     def test_declared_host_tool_roots_come_from_host_tool_profiles(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
