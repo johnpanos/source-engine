@@ -1408,12 +1408,11 @@ Keep the table concise and link details below or from the domain progress file.
   - Oracle: each pass is replayed on bytecode compiled from this tree's `.fxc`
     with the pinned FXC (`legacy_shader_conformance.py` passes
     `-vklegacyports`); 267 default cases passed in both HDR modes at the merge.
-  - Default-on gate (still open; the default was switched ahead of it by
-    user decision): the testchmb_a_01 view set (the map `./play` boots,
-    run.conf settings, pause menu) identical to ports-off except where a
-    reviewed port improvement is expected, plus a glass oracle (translucent
-    env-mapped, refract and window glass must show the scene behind them), on
-    the user's Wayland session as well as headless.
+  - Default-on gate: the user played `./play` on their Wayland session with
+    the new default and approved it ("glass works", 2026-09-26). Still open:
+    an automated glass oracle (translucent env-mapped, refract and window
+    glass must show the scene behind them) and a view-set comparison against
+    ports-off at the new default.
   - Unverified or open: flashlight passes, DEPTHBLEND, wrinkle weights,
     pbr_ps30 parallax (the pinned FXC miscompiles it).
   - No gate closes. See the

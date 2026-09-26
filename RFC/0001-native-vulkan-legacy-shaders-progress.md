@@ -85,8 +85,11 @@ Evidence (`build`, the shared native tree, default switch):
 | Material pixel families, both HDR modes | 27 / 28; integer `sky` fails with magenta, identically with `-novklegacyports` (the existing failure) |
 | `portal_boot.py` testchmb_a_01, headless, `mat_queue_mode 2`, Box3D | pass; window glass shows the room behind it |
 
-Still open: the user's `./play` on Wayland with the new default, a glass oracle,
-the `forced/` files, and frame time with the ports.
+The user then played `./play` on their Wayland session with the new default and
+approved it: "glass works! approved" (2026-09-26).
+
+Still open: an automated glass oracle, the `forced/` files, and frame time with
+the ports.
 
 ## How it works
 
