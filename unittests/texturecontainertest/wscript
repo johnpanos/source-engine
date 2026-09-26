@@ -15,6 +15,7 @@ def build(bld):
 		source=['test_ktx2_reader.cpp'],
 		target='ktx2_reader_conformance',
 		name='ktx2_reader_conformance',
+		arch_module='content.ktx2-native-tests',
 		includes=['../../public'],
 		use=['texturecontainer', 'KTXREAD'],
 		install_path=None)
@@ -23,6 +24,7 @@ def build(bld):
 		source=['test_vtf_reader.cpp'],
 		target='vtf_texture_reader_conformance',
 		name='vtf_texture_reader_conformance',
+		arch_module='content.ktx2-native-tests',
 		includes=['../../public', '../../public/tier0', '../../public/tier1'],
 		use=['vtf_texture_reader', 'texturecontainer', 'KTXREAD', 'vtf',
 			'bitmap', 'mathlib', 'tier0', 'tier1', 'tier2'],
@@ -39,6 +41,7 @@ def build(bld):
 		],
 		target='hammer_ktx2_preview_conformance',
 		name='hammer_ktx2_preview_conformance',
+		arch_module='content.hammer-ktx2-preview',
 		includes=['../..', '../../public', '../hammertest'],
 		use=['texturecontainer', 'KTXREAD'],
 		install_path=None)

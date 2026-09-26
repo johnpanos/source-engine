@@ -200,7 +200,7 @@ class CompileDependencyTest(unittest.TestCase):
 
 
 class LinkGraphTest(unittest.TestCase):
-    """CAP006: the recorded Waf use graph of portable strict targets."""
+    """CAP006/CAP008: target ownership and the recorded Waf use graph."""
 
     block = {'modules': [
         {'id': 'base', 'paths': ['public/base/'], 'allowedEdges': []},
@@ -249,12 +249,160 @@ class LinkGraphTest(unittest.TestCase):
         self.assertEqual(1, len(errors))
         self.assertIn('native library SDL3', errors[0])
 
-    def test_mixed_native_and_legacy_targets_are_not_judged(self):
-        errors, judged, skipped = capabilities.link_graph_errors(self.block, self.record(
+    def test_targets_that_are_not_wholly_strict_need_an_owner(self):
+        errors, judged, legacy = capabilities.link_graph_errors(self.block, self.record(
             ('mixed_lib', 'backend/n.cpp', ['SDL3']),
             ('mixed_lib', 'engine/legacy.cpp', ['SDL3']),
             ('legacy', 'engine/x.cpp', ['SDL3'])))
-        self.assertEqual(([], 0, 2), (errors, judged, skipped))
+        self.assertEqual((0, 0), (judged, legacy))
+        self.assertEqual(2, len(errors))
+        self.assertTrue(all(e.startswith('CAP008') and 'no architectural owner' in e for e in errors))
+
+    def owned(self, modules=None, legacy=None):
+        block = copy.deepcopy(self.block)
+        block['targetOwners'] = {'modules': modules or {}, 'legacy': legacy or []}
+        return block
+
+    def test_legacy_group_owns_targets_without_judging_them(self):
+        block = self.owned(legacy=[{'id': 'old', 'owner': 'R46', 'reason': 'legacy',
+                                    'targets': ['legacy', 'mixed_lib']}])
+        self.assertEqual([], capabilities.target_owners(block)[1])
+        errors, judged, legacy = capabilities.link_graph_errors(block, self.record(
+            ('mixed_lib', 'backend/n.cpp', ['SDL3']),
+            ('mixed_lib', 'engine/legacy.cpp', ['SDL3']),
+            ('legacy', 'engine/x.cpp', ['SDL3'])))
+        self.assertEqual(([], 0, 2), (errors, judged, legacy))
+
+    def test_wholly_strict_target_must_leave_its_legacy_group(self):
+        block = self.owned(legacy=[{'id': 'old', 'owner': 'R46', 'reason': 'legacy', 'targets': ['feature_lib']}])
+        errors, _, _ = capabilities.link_graph_errors(block, self.record(('feature_lib', 'feature/a.cpp', [])))
+        self.assertEqual(1, len(errors))
+        self.assertIn('CAP008 feature_lib: every source is strict', errors[0])
+
+    def test_module_owner_bounds_a_mixed_target(self):
+        block = self.owned(modules={'mixed_lib': 'backend'})
+        block['modules'][3]['uselib'] = ['VULKAN']
+        record = self.record(('mixed_lib', 'backend/n.cpp', ['VULKAN', 'base_lib']),
+                             ('mixed_lib', 'engine/legacy.cpp', ['tier0']),
+                             ('base_lib', 'public/base/b.cpp', []))
+        errors, judged, legacy = capabilities.link_graph_errors(block, record)
+        self.assertEqual(([], 2, 0), (errors, judged, legacy))
+        # The owner's grants and closure, not the legacy sources, decide.
+        record['entries'].append({'target': 'mixed_lib', 'source': 'engine/more.cpp', 'use': ['SDL3', 'other_lib']})
+        record['entries'].append({'target': 'other_lib', 'source': 'other/o.cpp', 'use': []})
+        errors, _, _ = capabilities.link_graph_errors(block, record)
+        self.assertEqual(2, len(errors))
+        self.assertTrue(any('native library SDL3' in e for e in errors))
+        self.assertTrue(any('links other_lib whose other' in e for e in errors))
+
+    def test_module_owner_must_cover_every_strict_module_it_compiles(self):
+        block = self.owned(modules={'mixed_lib': 'feature'})
+        errors, _, _ = capabilities.link_graph_errors(block, self.record(
+            ('mixed_lib', 'feature/a.cpp', []),
+            ('mixed_lib', 'backend/n.cpp', []),
+            ('mixed_lib', 'engine/legacy.cpp', [])))
+        self.assertEqual(1, len(errors))
+        self.assertIn("compiles backend, which is outside its owner's closure", errors[0])
+
+    def test_recorded_arch_module_declaration_owns_the_target(self):
+        def declared(module, *extra):
+            entries = [dict(e, arch_module=module) for e in self.record(
+                ('mixed_lib', 'backend/n.cpp', ['VULKAN']), ('mixed_lib', 'engine/legacy.cpp', []))['entries']]
+            return {'entries': entries + list(extra)}
+        block = copy.deepcopy(self.block)
+        block['modules'][3]['uselib'] = ['VULKAN']
+        self.assertEqual(([], 1, 0), capabilities.link_graph_errors(block, declared('backend')))
+        errors, _, _ = capabilities.link_graph_errors(block, declared('feature'))
+        self.assertTrue(any("compiles backend, which is outside its owner's closure" in e for e in errors))
+        errors, _, _ = capabilities.link_graph_errors(block, declared('nope'))
+        self.assertEqual(['CAP008 mixed_lib: arch_module nope is not a capability module'], errors)
+        errors, _, _ = capabilities.link_graph_errors(block, declared(
+            'backend', {'target': 'mixed_lib', 'source': 'engine/x.cpp', 'use': [], 'arch_module': 'feature'}))
+        self.assertEqual(['CAP008 mixed_lib: conflicting arch_module declarations backend, feature'], errors)
+        block['targetOwners'] = {'modules': {'mixed_lib': 'backend'}, 'legacy': []}
+        errors, _, _ = capabilities.link_graph_errors(block, declared('backend'))
+        self.assertEqual(['CAP008 mixed_lib: declares arch_module; remove its targetOwners entry'], errors)
+
+    def test_sidecar_declarations_are_validated(self):
+        cases = [
+            (self.owned(modules={'a': 'missing'}), 'unknown owner module missing'),
+            (self.owned(modules={'a': 'base'}, legacy=[{'id': 'g', 'owner': 'R46', 'reason': 'r', 'targets': ['a']}]),
+             'more than one owner'),
+            (self.owned(legacy=[{'id': 'g', 'owner': 'later', 'reason': 'r', 'targets': ['a']}]), 'roadmap row'),
+            (self.owned(legacy=[{'id': 'g', 'owner': 'R46', 'reason': '', 'targets': ['a']}]), 'needs a reason'),
+            (self.owned(legacy=[{'id': 'g', 'owner': 'R46', 'reason': 'r', 'targets': []}]), 'lists no targets'),
+            (self.owned(legacy=[{'id': 'g', 'owner': 'R46', 'reason': 'r', 'targets': ['b', 'a']}]), 'sorted'),
+        ]
+        for block, message in cases:
+            with self.subTest(message=message):
+                errors = capabilities.target_owners(block)[1]
+                self.assertEqual(1, len(errors), errors)
+                self.assertIn(message, errors[0])
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__('shutil').rmtree(root))
+        errors = capabilities.check(root, cases[0][0], archlint.strip_comments_and_literals)
+        self.assertTrue(any('CAP008' in e for e in errors))
+
+    def test_owner_recorded_in_no_declared_tree_is_stale(self):
+        block = self.owned(modules={'gone': 'base'},
+                           legacy=[{'id': 'g', 'owner': 'R46', 'reason': 'r', 'targets': ['legacy']}])
+        records = [self.record(('legacy', 'engine/x.cpp', []))]
+        self.assertEqual(['CAP008 stale target owner: gone is recorded in no declared build tree'],
+                         capabilities.stale_target_owners(block, records))
+
+    def test_targets_command_needs_every_declared_tree(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__('shutil').rmtree(root))
+        block = self.owned(legacy=[{'id': 'g', 'owner': 'R46', 'reason': 'r', 'targets': ['legacy']}])
+        (root / 'tree').mkdir()
+        (root / 'tree/toolchain-invocations.json').write_text(
+            __import__('json').dumps(self.record(('legacy', 'engine/x.cpp', []))))
+        manifest = {'capabilityModules': block}
+        self.assertEqual(0, archlint.targets_command(root, manifest, ['tree']))
+        self.assertEqual(1, archlint.targets_command(root, manifest, ['tree', 'unbuilt']))
+        (root / 'tree/toolchain-invocations.json').write_text(
+            __import__('json').dumps(self.record(('legacy', 'engine/x.cpp', []), ('new_lib', 'engine/y.cpp', []))))
+        self.assertEqual(1, archlint.targets_command(root, manifest, ['tree']))
+
+    def compile(self, target, source, arguments, use=()):
+        return {'target': target, 'source': source, 'use': list(use), 'arguments': arguments,
+                'directory': '/repo/build-x'}
+
+    def test_include_roots_parse_every_flag_form(self):
+        entry = self.compile('t', 'a.cpp', ['g++', '-I../public', '-I', 'gen', '-isystem', '/usr/include/SDL3',
+                                            '-isystem/opt/x', '-iquote', 'q', '-idirafter', '../late', '-c'])
+        self.assertEqual({'/repo/public', '/repo/build-x/gen', '/usr/include/SDL3', '/opt/x',
+                          '/repo/build-x/q', '/repo/late'}, capabilities.include_roots(entry))
+
+    def test_portable_target_may_not_attach_foreign_include_directories(self):
+        clean = ['-I../public', '-Ipublic', '-I../common']
+        errors, judged, _ = capabilities.link_graph_errors(self.block, {'entries': [
+            self.compile('feature_lib', 'feature/a.cpp', clean)]}, '/repo')
+        self.assertEqual(([], 1), (errors, judged))
+        for flag, reason in (('-I/usr/include/SDL3', 'native SDK'), ('-I../thirdparty/x', 'vendored'),
+                             ('-Ithirdparty/x', 'vendored'), ('-I/opt/sdk', 'external'),
+                             ('-I../box3d/include', 'vendored')):
+            with self.subTest(flag=flag):
+                errors, _, _ = capabilities.link_graph_errors(self.block, {'entries': [
+                    self.compile('feature_lib', 'feature/a.cpp', clean + [flag])]}, '/repo')
+                self.assertEqual(1, len(errors), errors)
+                self.assertIn(f'portable target attaches {reason} include directory', errors[0])
+
+    def test_native_owner_may_attach_its_sdk_include_directories(self):
+        block = copy.deepcopy(self.block)
+        block['modules'][3]['uselib'] = ['VULKAN']
+        errors, _, _ = capabilities.link_graph_errors(block, {'entries': [
+            self.compile('backend_lib', 'backend/n.cpp', ['-I/usr/include/vulkan', '-I../thirdparty/x'],
+                         ['VULKAN'])]}, '/repo')
+        self.assertEqual([], errors)
+
+    def test_target_use_cycles_fail(self):
+        block = self.owned(legacy=[{'id': 'g', 'owner': 'R46', 'reason': 'r', 'targets': ['a', 'b', 'c', 'd']}])
+        errors, _, _ = capabilities.link_graph_errors(block, self.record(
+            ('a', 'engine/a.cpp', ['b', 'tier0']), ('b', 'engine/b.cpp', ['c']),
+            ('c', 'engine/c.cpp', ['a']), ('d', 'engine/d.cpp', ['d'])))
+        self.assertEqual(['CAP006 target use cycle: a -> b -> c', 'CAP006 target use cycle: d'], errors)
+        self.assertEqual([], capabilities.use_cycles({'a': {'b'}, 'b': {'c', 'SDL3'}, 'c': set()}))
 
     def test_portable_module_cannot_grant_uselib(self):
         root = Path(tempfile.mkdtemp())

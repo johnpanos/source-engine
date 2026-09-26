@@ -40,6 +40,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='native_vulkan_bringup_conformance',
 		name='native_vulkan_bringup_conformance',
+		arch_module='render.bridge.sdl3-vulkan.native-tests',
 		includes=includes, use=['VULKAN', 'SDL3', 'vulkan_debug'],
 		install_path=None)
 
@@ -55,6 +56,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp'],
 		target='render_backend_vulkan_conformance',
 		name='render_backend_vulkan_conformance',
+		arch_module='render.vulkan.native-tests',
 		includes=['../rendertest', '../../materialsystem/shaderapivulkan', '../../public',
 			'../../public/tier0', '../../public/tier1'] + bld.env.INCLUDES_VULKAN,
 		# The render.contracts headers and shared suite need C++14+ aggregate
@@ -80,6 +82,7 @@ def build(bld):
 			'../../platform/sdl3/render_surface/sdl3_render_surfaces.cpp'],
 		target='render_presentation_sdl3_vulkan_conformance',
 		name='render_presentation_sdl3_vulkan_conformance',
+		arch_module='render.bridge.sdl3-vulkan.native-tests',
 		includes=['../rendertest', '../../materialsystem/shaderapivulkan', '../../public']
 			+ bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
 		use=['VULKAN', 'SDL3', 'vulkan_debug'],
@@ -101,6 +104,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='pbr_native_pixel_conformance',
 		name='pbr_native_pixel_conformance',
+		arch_module='render.bridge.sdl3-vulkan.native-tests',
 		includes=includes, use=['VULKAN', 'SDL3', 'vulkan_debug'],
 		install_path=None)
 
@@ -119,6 +123,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='ktx2_native_pixel_conformance',
 		name='ktx2_native_pixel_conformance',
+		arch_module='render.bridge.sdl3-vulkan.native-tests',
 		includes=includes,
 		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'vulkan_debug']
 			+ (['texturecontainer', 'KTXREAD'] if bld.env.KTX_READ_ENABLED else []),
@@ -141,6 +146,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='world_pbr_native_pixel_conformance',
 		name='world_pbr_native_pixel_conformance',
+		arch_module='render.bridge.sdl3-vulkan.native-tests',
 		includes=includes,
 		use=['VULKAN', 'SDL3', 'mapcontainer', 'vulkan_debug'],
 		install_path=None)
@@ -160,6 +166,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='world_glass_native_pixel_conformance',
 		name='world_glass_native_pixel_conformance',
+		arch_module='render.bridge.sdl3-vulkan.native-tests',
 		includes=includes,
 		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'vulkan_debug'],
 		install_path=None)
@@ -183,6 +190,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='model_pbr_native_pixel_conformance',
 		name='model_pbr_native_pixel_conformance',
+		arch_module='render.bridge.sdl3-vulkan.native-tests',
 		includes=includes,
 		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'mapcontainer', 'vulkan_debug'],
 		install_path=None)
@@ -229,6 +237,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='indirect_switching_native_conformance',
 		name='indirect_switching_native_conformance',
+		arch_module='render.bridge.sdl3-vulkan.native-tests',
 		includes=includes,
 		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'mapcontainer', 'vulkan_debug'],
 		install_path=None)

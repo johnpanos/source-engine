@@ -156,7 +156,7 @@ def _write_invocations(bld, tasks):
 			continue
 		tg = task.generator
 		language = 'c++' if task.__class__.__name__ == 'cxx' else 'c'
-		entries.append({
+		entry = {
 			'target': _target_name(tg),
 			'source': task.inputs[0].path_from(bld.srcnode),
 			'output': task.outputs[0].path_from(bld.bldnode) if task.outputs else None,
@@ -166,7 +166,11 @@ def _write_invocations(bld, tasks):
 			'use': Utils.to_list(getattr(tg, 'use', [])),
 			'directory': task.get_cwd().abspath(),
 			'arguments': [str(arg) for arg in cmd],
-		})
+		}
+		if getattr(tg, 'arch_module', None):
+			# RFC 0001 target owner, judged by tools/archlint (arch_owner).
+			entry['arch_module'] = tg.arch_module
+		entries.append(entry)
 	env = bld.env
 	record = {
 		'schema': INVOCATIONS_SCHEMA,
@@ -207,3 +211,15 @@ def _install_invocation_recorder():
 
 
 _install_invocation_recorder()
+
+
+def _load_arch_owner():
+	# Registers the arch_module check for every configured tree; importing it
+	# here needs no reconfigure, because this tool is loaded on every build.
+	directory = os.path.dirname(os.path.abspath(__file__))
+	if directory not in sys.path:
+		sys.path.insert(0, directory)
+	import arch_owner  # noqa: F401
+
+
+_load_arch_owner()

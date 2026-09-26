@@ -18,6 +18,7 @@ def build(bld):
 		source=['ktx2_reader.cpp'],
 		target='texturecontainer',
 		name='texturecontainer',
+		arch_module='content.ktx2-reader',
 		includes=['../public'] + bld.env.INCLUDES_KTXREAD + bld.env.INCLUDES_VULKAN,
 		use=['KTXREAD', 'VULKAN'],
 		install_path=None)
@@ -26,6 +27,7 @@ def build(bld):
 		source=['vtf_reader.cpp'],
 		target='vtf_texture_reader',
 		name='vtf_texture_reader',
+		arch_module='content.vtf-reader',
 		includes=['../public', '../public/tier0', '../public/tier1'],
 		use=['vtf', 'bitmap', 'tier0', 'tier1'],
 		install_path=None)

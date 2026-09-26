@@ -23,6 +23,7 @@ def build(bld):
 		source=['test_shaderextension_host.cpp',
 			'../../materialsystem/shaderextension_compatibility_host.cpp'],
 		target='shader_extension_conformance', name='shader_extension_conformance',
+		arch_module='render.shader-extension-abi-test',
 		includes=includes, install_path=None)
 	# The catalog check must see exactly the backends this product linked, so it
 	# mirrors the composition root's own link conditions and defines.

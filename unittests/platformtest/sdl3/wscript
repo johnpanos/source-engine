@@ -16,6 +16,7 @@ def build(bld):
 		source=['test_sdl3_launcher.cpp'],
 		target='sdl3_launcher_conformance',
 		name='sdl3_launcher_conformance',
+		arch_module='platform.sdl3.native-tests',
 		features='cxx',
 		includes=['../../../public'],
 		use=['appframework', 'tier1', 'vstdlib', 'tier0', 'SDL3'],

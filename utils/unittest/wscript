@@ -25,6 +25,7 @@ def build(bld):
 		source=[bld.srcnode.find_node(p) for p in suite['sources'] if p != 'platform/composition.cpp'],
 		target=PROJECT_NAME,
 		name=PROJECT_NAME,
+		arch_module='testing.unittest-program',
 		includes=[bld.srcnode.find_dir('public').abspath()],
 		defines=['SOURCE_CONFORMANCE_LINKED', 'NDEBUG'],
 		use=['platform_composition'],

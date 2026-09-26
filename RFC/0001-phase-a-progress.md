@@ -359,12 +359,93 @@ allowlisted" rule has an owner: a per-module `uselib` list.
   - 110 archlint tests pass. Three mutants (dropping the grant check,
     judging mixed targets, allowing portable grants) are each detected.
 
+Still open for R04 when this slice closed: per-target ownership for the
+mixed targets, now installed by R04-OWNERS below, and the Waf-time checker.
+
+## R04-OWNERS: one architectural owner per recorded target (slice done, 2026-09-25)
+
+Every Waf target in the 12 declared build trees now has exactly one
+architectural owner. A new target without one fails. This is the
+migration sidecar from RFC 0001's "Waf target checks": existing targets are
+mapped in the manifest until their wscripts declare `arch_module`.
+
+- **Sidecar.** `capabilityModules.targetOwners` in
+  `architecture/modules.json` has two parts:
+  - `modules` maps a target to one capability module, whose closure and
+    `uselib` grants then bound the whole target, legacy sources included.
+    This covers 10 test targets:
+    - eight SDL3–Vulkan native pixel and presentation hosts →
+      `render.bridge.sdl3-vulkan.native-tests`;
+    - `render_backend_vulkan_conformance` → `render.vulkan.native-tests`;
+    - `hammer_ktx2_preview_conformance` → `content.hammer-ktx2-preview`.
+  - `legacy` has 15 groups covering 117 targets. Each group names the
+    roadmap row that retires it and a reason. For example: `engine-and-tiers`
+    and `render-legacy` (R46), `physics-ivp` (R44), `physics-box3d` (R19),
+    `compile-tools` (R48), `world-stage-tools` (R54), `scheduler-tests` (R20)
+    and `provider-catalog-tests` (R39). Their targets are counted, not
+    judged.
+  - Targets whose sources are all strict (12) need no entry; their modules
+    own them as before.
+- **Rules** (`tools/archlint/capabilities.py`):
+  - CAP008: every recorded target that is not wholly strict needs an entry.
+  - A wholly strict target must leave its legacy group, so the groups only
+    shrink.
+  - Each target has one owner. Groups need a row, a reason and a sorted
+    target list, and module owners must exist; the static `check --all`
+    validates this.
+  - An entry recorded in no declared tree is stale.
+  - CAP006: a module-owned target is judged by its owner alone. Every strict
+    module it compiles must lie in the owner's closure, its native libraries
+    need the owner's `uselib`, and first-party targets it links must stay in
+    the closure.
+- **Command.** `archlint targets --verify TREE...` takes the complete declared
+  tree set and is declared as `arch.targets`: the 12 `build-r03-*` trees,
+  0.3 s. The link graph moved here from `check --compile-deps`, which now
+  checks only transitive includes (CAP005). Judged targets rose from 21 to
+  40 in the four trees `arch.compile-deps` used; 1 to 18 per tree across all
+  12.
+- **Permission change.** `render.bridge.sdl3-vulkan.native-tests` gains an
+  edge to `content.ktx2-reader`. `test_ktx2_pixels.cpp` calls
+  `texturecontainer::ReadKtx2Image`, which the reader implements, so the
+  test's link to `texturecontainer` is real. This was an agent decision under
+  the user's standing instruction.
+- **Found by the check.**
+  - That KTX2 edge.
+  - `debugapi_core`, the feature-gated debug API, had no owner. It is in
+    its own `debug-api` group (R32).
+- **Tests.** Nine new or rewritten archlint tests (119 in total). Five
+  mutants are each detected: dropping the unowned error, dropping the
+  owner-closure check, letting strict targets stay in legacy groups,
+  dropping stale detection, and letting source modules add grants to a
+  module owner.
+
 Still open for R04:
 
-- per-target `arch_module` ownership for the mixed targets (80 in the Portal
-  trees, mostly legacy);
-- the Waf-time checker the RFC describes, beyond reading recorded
-  invocations.
+- the Waf-time checker. It needs `arch_module` declared in wscripts and
+  recorded in the invocations, with the sidecar entry removed. New targets
+  would then declare it directly.
+
+**Remaining target rules (same day).** RFC 0001's target list is now fully
+checked from the recorded invocations:
+
+- *Native include directories on portable targets.* A judged target whose
+  owners are all portable may attach no native SDK, vendored
+  (`thirdparty/`, `box3d/`, …) or out-of-repository include directory.
+  - Build-tree mirrors such as `<tree>/public` count as their source
+    directory.
+  - All `-I`, `-isystem`, `-iquote` and `-idirafter` forms are read.
+  - Twelve portable compiles in `portal-features` pass. The check was
+    seeded on the real record with an SDL3, a vendored and an external root
+    on `mapcontainer`, and all three were reported.
+- *Target `use` cycles.* Any strongly connected group in the first-party
+  `use` graph fails, and so does a self edge. None exist in the 12 trees.
+- *Public headers from provider-private directories* was already enforced
+  more precisely by CAP005. It checks the headers each strict unit actually
+  resolved against its module's closure, rather than the include directories
+  it could reach. No include-directory approximation was added.
+- Tests: 4 more (123). Six mutants are each detected: dropping the native,
+  external or build-mirror handling, checking native owners, and dropping
+  cycle or self-edge detection.
 
 ## R07-INVENTORY: loader inventory reconciled (slice done, 2026-09-25)
 

@@ -1,4 +1,5 @@
 """Strict, baseline-free checks for the bounded RFC 0001 composition modules."""
+import os
 import re
 from pathlib import Path
 
@@ -56,6 +57,7 @@ def check(root, block, strip):
 
     for mid in modules:
         visit(mid)
+    errors += target_owners(block)[1]
     paths = set()
     for module in modules.values():
         for prefix in module['paths']:
@@ -233,51 +235,231 @@ def compile_dep_errors(root, block, depfiles, strip=None):
 NATIVE_USELIB = re.compile(r'^(SDL[0-9]*|VULKAN|X11|XCB|WAYLAND.*|EGL|GL|GLES.*|GTK.*|GDK.*|ADW.*|EPOXY|D3D.*|DXVK.*|METAL.*|MOLTENVK)$')
 
 
-def link_graph_errors(block, record):
-    """CAP006 over a tree's toolchain-invocations.json (target, sources, use).
+ROADMAP_ROW = re.compile(r'^R[0-9]{2}$')
 
-    A target owns the strict modules of its sources. Every first-party target
-    it uses must carry strict code only inside the union of those modules'
-    allowed closures, and every native SDK library it uses must be granted by
-    the `uselib` allowlist of one of those modules. Only native modules may
-    grant `uselib`, so a target whose strict code is all portable may use none.
-    Targets without strict sources, and mixed native targets (strict plus
-    legacy sources, which need an explicit owner first), are counted but not
-    judged. Returns (errors, judged, skipped).
+
+def target_owners(block):
+    """The RFC 0001 migration sidecar: every recorded Waf target that is not
+    wholly strict names one architectural owner until its wscript declares
+    `arch_module`. Returns ({target: ('module', id) | ('legacy', row)}, errors).
+
+    `modules` maps a target to the capability module whose closure and
+    `uselib` grants bound the whole target. `legacy` groups name targets whose
+    legacy sources still decide their links; each group has a roadmap row that
+    retires it and a reason, and the groups only shrink.
+    """
+    sidecar = block.get('targetOwners')
+    if not sidecar:
+        return {}, []
+    modules = {m['id'] for m in block['modules']}
+    owners, errors = {}, []
+
+    def claim(target, owner):
+        if target in owners:
+            errors.append(f'CAP008 target {target} has more than one owner')
+        owners[target] = owner
+
+    for target, mid in sorted(sidecar.get('modules', {}).items()):
+        if mid not in modules:
+            errors.append(f'CAP008 target {target}: unknown owner module {mid}')
+        claim(target, ('module', mid))
+    for group in sidecar.get('legacy', []):
+        label = group.get('id', '?')
+        if not ROADMAP_ROW.match(group.get('owner', '')):
+            errors.append(f'CAP008 legacy target group {label}: owner must be a roadmap row')
+        if not group.get('reason'):
+            errors.append(f'CAP008 legacy target group {label}: needs a reason')
+        if not group.get('targets'):
+            errors.append(f'CAP008 legacy target group {label}: lists no targets')
+        if group.get('targets') != sorted(set(group.get('targets', []))):
+            errors.append(f'CAP008 legacy target group {label}: targets must be sorted and unique')
+        for target in group.get('targets', []):
+            claim(target, ('legacy', group.get('owner')))
+    return owners, errors
+
+
+INCLUDE_FLAGS = ('-isystem', '-iquote', '-idirafter', '-I')
+
+
+def include_roots(entry):
+    """Normalized absolute include directories of one recorded compile."""
+    arguments, roots = entry.get('arguments', []), []
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        for flag in INCLUDE_FLAGS:
+            if argument == flag and index + 1 < len(arguments):
+                roots.append(arguments[index + 1])
+                index += 1
+                break
+            if argument.startswith(flag) and argument != flag:
+                roots.append(argument[len(flag):])
+                break
+        index += 1
+    directory = entry.get('directory', '.')
+    return {os.path.normpath(os.path.join(directory, root)) for root in roots}
+
+
+def foreign_include_root(path, directory, root):
+    """Why a portable target may not have this include root, or None.
+
+    Build-tree mirrors (`<tree>/public`) count as their source directory.
+    Native SDK directories, vendored trees and anything outside the
+    repository are foreign: portable code reaches only first-party headers.
+    """
+    if NATIVE_PATH.search(path.rstrip('/') + '/'):
+        return 'native SDK'
+    if root is None:
+        return None
+    root = os.path.normpath(root)
+    if os.path.commonpath([root, path]) != root:
+        return 'external'
+    relative = os.path.relpath(path, root)
+    tree = os.path.relpath(os.path.normpath(directory), root)
+    if tree != '.' and (relative == tree or relative.startswith(tree + '/')):
+        relative = os.path.relpath(relative, tree)
+    if (relative + '/').startswith(VENDORED_PREFIXES):
+        return 'vendored'
+    return None
+
+
+def use_cycles(uses):
+    """Strongly connected groups (size > 1, or a self edge) of the recorded
+    first-party target `use` graph."""
+    graph = {target: sorted(dep for dep in deps if dep in uses) for target, deps in uses.items()}
+    index, low, stack, on_stack, cycles = {}, {}, [], set(), []
+    for start in sorted(graph):
+        if start in index:
+            continue
+        # Iterative Tarjan: each frame is (node, next edge position).
+        work = [(start, 0)]
+        index[start] = low[start] = len(index)
+        stack.append(start)
+        on_stack.add(start)
+        while work:
+            node, position = work[-1]
+            if position < len(graph[node]):
+                work[-1] = (node, position + 1)
+                dep = graph[node][position]
+                if dep not in index:
+                    index[dep] = low[dep] = len(index)
+                    stack.append(dep)
+                    on_stack.add(dep)
+                    work.append((dep, 0))
+                elif dep in on_stack:
+                    low[node] = min(low[node], index[dep])
+                continue
+            work.pop()
+            if work:
+                low[work[-1][0]] = min(low[work[-1][0]], low[node])
+            if low[node] == index[node]:
+                group = []
+                while True:
+                    member = stack.pop()
+                    on_stack.discard(member)
+                    group.append(member)
+                    if member == node:
+                        break
+                if len(group) > 1 or node in graph[node]:
+                    cycles.append(sorted(group))
+    return sorted(cycles)
+
+
+def link_graph_errors(block, record, root=None):
+    """CAP006/CAP008 over a tree's toolchain-invocations.json (target, sources, use).
+
+    Every recorded target needs one architectural owner (CAP008). A target
+    whose sources are all strict is owned by those sources' modules. Any
+    other target needs a `targetOwners` entry: a capability module, which then
+    bounds the whole target, or a legacy group, whose targets are counted but
+    not judged. A wholly strict target must leave its legacy group. A target
+    whose wscript declares `arch_module` (recorded in its entries) is owned by
+    that module and must have no sidecar entry.
+
+    A judged target's allowed modules are the union of its owners' closures
+    (every strict module it compiles must lie inside), and every native SDK
+    library it uses must be granted by an owner's `uselib`. Only native
+    modules may grant `uselib`, so a portable owner permits none. Every
+    first-party target it uses may carry strict code only inside those
+    closures. A target whose owners are all portable may attach no native SDK,
+    vendored or external include directory. The first-party `use` graph has
+    no cycle. `root` is the repository root that include directories are
+    judged against. Returns (errors, judged, legacy_owned).
     """
     modules = {m['id']: m for m in block['modules']}
     closure = allowed_closure(modules)
-    owned, uses, unowned = {}, {}, set()
+    owners, _ = target_owners(block)
+    owned, uses, unowned, roots, declared = {}, {}, set(), {}, {}
     for entry in record.get('entries', []):
         target = entry['target']
         uses.setdefault(target, set()).update(entry.get('use', []))
+        for path in include_roots(entry):
+            roots.setdefault(target, {})[path] = entry.get('directory', '.')
+        if entry.get('arch_module'):
+            declared.setdefault(target, set()).add(entry['arch_module'])
         mid = owner(entry['source'], block)
         if mid is None:
             unowned.add(target)
         else:
             owned.setdefault(target, set()).add(mid)
-    errors, judged = set(), 0
-    skipped = len(set(uses) - set(owned))
-    for target, mids in sorted(owned.items()):
-        # A mixed target (strict plus legacy sources) needs an explicit owner
-        # before its edges can be judged, unless all its strict code is portable.
-        if target in unowned and any(modules[m].get('kind') in NATIVE_KINDS for m in mids):
-            skipped += 1
+    errors, judged, legacy_owned = set(), 0, 0
+    for target in sorted(uses):
+        mids = owned.get(target, set())
+        strict = bool(mids) and target not in unowned
+        kind, value = owners.get(target, (None, None))
+        if target in declared:
+            # A wscript `arch_module` declaration replaces the sidecar entry.
+            if kind is not None:
+                errors.add(f'CAP008 {target}: declares arch_module; remove its targetOwners entry')
+            if len(declared[target]) != 1:
+                errors.add(f'CAP008 {target}: conflicting arch_module declarations '
+                           f'{", ".join(sorted(declared[target]))}')
+                continue
+            kind, value = 'module', next(iter(declared[target]))
+            if value not in modules:
+                errors.add(f'CAP008 {target}: arch_module {value} is not a capability module')
+                continue
+        if kind is None and not strict:
+            errors.add(f'CAP008 {target}: no architectural owner; make every source strict or add it '
+                       f'to capabilityModules.targetOwners')
+            continue
+        if kind == 'legacy':
+            if strict:
+                errors.add(f'CAP008 {target}: every source is strict; remove it from its legacy owner group')
+            legacy_owned += 1
             continue
         judged += 1
-        label = f'{target} ({", ".join(sorted(mids))})'
-        allowed = set().union(*(closure[m] for m in mids))
+        owner_ids = {value} if kind == 'module' else mids
+        label = f'{target} ({", ".join(sorted(owner_ids))})'
+        allowed = set().union(*(closure[m] for m in owner_ids))
+        for mid in sorted(mids - allowed):
+            errors.add(f'CAP006 {label}: compiles {mid}, which is outside its owner\'s closure')
         granted = set()
-        for mid in mids:
+        for mid in owner_ids:
             if modules[mid].get('kind') in NATIVE_KINDS:
                 granted.update(modules[mid].get('uselib', []))
-        for dep in sorted(uses.get(target, ())):
+        if not any(modules[mid].get('kind') in NATIVE_KINDS for mid in owner_ids):
+            for path, directory in sorted(roots.get(target, {}).items()):
+                reason = foreign_include_root(path, directory, root)
+                if reason:
+                    errors.add(f'CAP006 {label}: portable target attaches {reason} include directory {path}')
+        for dep in sorted(uses[target]):
             if NATIVE_USELIB.match(dep) and dep not in granted:
                 errors.add(f'CAP006 {label}: uses native library {dep}, which none of its modules grants')
             for dep_mid in sorted(owned.get(dep, ())):
                 if dep_mid not in allowed:
                     errors.add(f'CAP006 {label}: links {dep} whose {dep_mid} is outside the allowed closure')
-    return sorted(errors), judged, skipped
+    for group in use_cycles(uses):
+        errors.add(f'CAP006 target use cycle: {" -> ".join(group)}')
+    return sorted(errors), judged, legacy_owned
+
+
+def stale_target_owners(block, records):
+    """CAP008: sidecar entries naming a target that no declared tree records."""
+    owners, _ = target_owners(block)
+    recorded = {entry['target'] for record in records for entry in record.get('entries', [])}
+    return [f'CAP008 stale target owner: {target} is recorded in no declared build tree'
+            for target in sorted(set(owners) - recorded)]
 
 
 # --- Hermetic contract-header compiles (RFC 0001 "Source dependency checks") --

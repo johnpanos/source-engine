@@ -189,6 +189,19 @@ Still unverified: the non-Linux profiles recorded as unavailable (macOS, iOS,
 Windows MSVC, linux-i386, FreeBSD), native window/GPU product boots, and any
 performance budget. R01 certifies no domain gate.
 
+### Agent-decided outcomes confirmed (2026-09-25)
+
+The user confirmed these declared-outcome changes, which were made under
+their standing "decide and report" instruction:
+
+- `arch.inventory` fail → pass;
+- `legacy.unittest-legacy` and `-clang` crash → pass;
+- `toolchain.coverage` fail → pass.
+
+They also confirmed the desktop `-vkemitparallel 1` launcher default. For
+the rest of the goal, baseline outcome changes and product defaults are
+agent decisions, each stated in the slice report.
+
 ### Host availability
 
 Available: g++ 16.2.1, clang++ 22.1.8, clang ASan/UBSan and TSan, MinGW g++

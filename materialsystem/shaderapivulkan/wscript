@@ -23,6 +23,7 @@ def build(bld):
 		source = [ 'vulkan_texture_image.cpp' ],
 		target = 'vulkan_texture_image',
 		name = 'vulkan_texture_image',
+		arch_module = 'render.bridge.texture-image-vulkan',
 		includes = [ '.', '../../public' ] + bld.env.INCLUDES_VULKAN,
 		use = [ 'VULKAN' ],
 		install_path = None)

@@ -522,14 +522,6 @@ def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
             dep_errors.append(f"CAP005 {tree}: no strict translation units found in the dependency files")
         print(f"archlint: compile-deps {tree}: {len(depfiles)} dependency files, {checked} strict units")
         strict_errors.extend(dep_errors)
-        invocations = tree_path / "toolchain-invocations.json"
-        if invocations.is_file():
-            link_errors, judged, skipped = capabilities.link_graph_errors(
-                manifest.get("capabilityModules"), json.loads(invocations.read_text(encoding="utf-8"))
-            )
-            print(f"archlint: link-graph {tree}: {judged} strict targets judged, "
-                  f"{skipped} legacy or mixed targets not judged")
-            strict_errors.extend(link_errors)
     for error in strict_errors:
         print(error)
     for error in tool_errors:
@@ -1658,6 +1650,38 @@ def hammer_command(root: Path, manifest: dict) -> int:
     return 0
 
 
+def targets_command(root: Path, manifest: dict, trees: Sequence[str]) -> int:
+    """CAP006/CAP008 over the declared build trees' recorded Waf graphs.
+
+    The trees given are the complete declared set (quality/baseline.json's
+    `arch.targets`), so an owner entry recorded in none of them is stale.
+    """
+    block = manifest["capabilityModules"]
+    errors = list(capabilities.target_owners(block)[1])
+    records = []
+    for tree in trees:
+        invocations = (root / tree).resolve() / "toolchain-invocations.json"
+        if not invocations.is_file():
+            errors.append(f"CAP008 {tree}: no toolchain-invocations.json; configure and build the tree first")
+            continue
+        record = json.loads(invocations.read_text(encoding="utf-8"))
+        records.append(record)
+        link_errors, judged, legacy_owned = capabilities.link_graph_errors(block, record, root)
+        print(f"archlint: targets {tree}: {judged} targets judged, {legacy_owned} legacy-owned")
+        errors.extend(link_errors)
+    if not records:
+        errors.append("CAP008 no build trees given")
+    else:
+        errors.extend(capabilities.stale_target_owners(block, records))
+    for error in dict.fromkeys(errors):
+        print(error)
+    if errors:
+        print(f"archlint: targets failed with {len(set(errors))} error(s)")
+        return 1
+    print(f"archlint: every target in {len(records)} build tree(s) has one architectural owner")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1683,6 +1707,11 @@ def build_parser() -> argparse.ArgumentParser:
         "tools", help="verify the RFC 0001 Phase E tool cohort ledger and wrapper ratchet"
     )
     tools.add_argument("--verify", action="store_true", help="validate the authored ledger")
+    targets = subparsers.add_parser(
+        "targets", help="check target ownership and the recorded Waf link graph of declared build trees"
+    )
+    targets.add_argument("--verify", action="store_true", required=True)
+    targets.add_argument("trees", nargs="+", metavar="TREE", help="the complete declared set of build trees")
     hermetic = subparsers.add_parser(
         "hermetic", help="compile each portable contract header alone and check its full include closure"
     )
@@ -1714,6 +1743,8 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     manifest = load_manifest(root)
     if args.command == "check":
         return check_command(args, root, manifest)
+    if args.command == "targets":
+        return targets_command(root, manifest, args.trees)
     if args.command == "tools":
         return tool_migrations_command(root)
     if args.command == "hermetic":

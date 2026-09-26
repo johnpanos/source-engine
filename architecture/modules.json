@@ -416,6 +416,7 @@
           "unittests/shaderapivulkantest/test_indirect_switching.cpp"
         ],
         "allowedEdges": [
+          "content.ktx2-reader",
           "content.texture-contract",
           "platform.sdl3.render-surface",
           "render.bridge.sdl3-vulkan",
@@ -485,7 +486,8 @@
           "unittests/shaderextensiontest/test_shaderextension_host.cpp"
         ],
         "allowedEdges": [
-          "render.shader-extension-contract"
+          "render.shader-extension-contract",
+          "render.shader-extension-host"
         ],
         "legacyIncludes": [
           "filesystem_passthru.h",
@@ -579,13 +581,25 @@
       {
         "id": "testing.runner",
         "paths": [
-          "utils/unittest/capability_runner.cpp",
-          "utils/unittest/capability_unittest.cpp"
+          "utils/unittest/capability_runner.cpp"
         ],
         "allowedEdges": [
           "foundation",
           "platform.composition",
           "testing.contracts"
+        ]
+      },
+      {
+        "id": "testing.unittest-program",
+        "paths": [
+          "utils/unittest/capability_unittest.cpp"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.composition",
+          "platform.tests",
+          "testing.contracts",
+          "testing.runner"
         ]
       },
       {
@@ -680,6 +694,234 @@
           "platform_composition"
         ]
       }
+    },
+    "targetOwners": {
+      "description": "RFC 0001 'Waf target checks' migration sidecar. Every recorded target whose sources are not all strict and whose wscript declares no arch_module names one owner here: a capability module that bounds the whole target (judged by archlint targets), or a legacy group with the roadmap row that retires it (counted, not judged). A target that declares arch_module must have no entry. New targets declare arch_module; groups only shrink.",
+      "modules": {},
+      "legacy": [
+        {
+          "id": "engine-and-tiers",
+          "owner": "R46",
+          "reason": "Legacy engine, tier and domain libraries and their launch roots; RFC 0001 rank 21 decomposes them into owned domain targets.",
+          "targets": [
+            "appframework",
+            "bitmap",
+            "choreoobjects",
+            "client",
+            "datacache",
+            "datamodel",
+            "dedicated",
+            "dedicated_launcher",
+            "dmxloader",
+            "engine",
+            "filesystem_stdio",
+            "hl2_launcher",
+            "inputsystem",
+            "jobsystem",
+            "launcher",
+            "mathlib",
+            "particles",
+            "scenefilecache",
+            "server",
+            "soundemittersystem",
+            "steam_api",
+            "tier0",
+            "tier1",
+            "tier2",
+            "tier3",
+            "unitlib",
+            "vaudio_minimp3",
+            "video_services",
+            "vpklib",
+            "vstdlib",
+            "vtf"
+          ]
+        },
+        {
+          "id": "ui",
+          "owner": "R46",
+          "reason": "Legacy VGUI and game UI libraries; RFC 0010 keeps their API frozen while their internals move behind owned seams.",
+          "targets": [
+            "GameUI",
+            "ServerBrowser",
+            "matsys_controls",
+            "vgui2",
+            "vgui_controls",
+            "vgui_surfacelib",
+            "vguimatsurface"
+          ]
+        },
+        {
+          "id": "render-legacy",
+          "owner": "R46",
+          "reason": "Legacy material system and shader API modules. materialsystem, shaderapivulkan and shaderapidx9 compile strict modules beside legacy code (the provider catalog links shaderapivulkan; R39), so no single module bounds them.",
+          "targets": [
+            "materialsystem",
+            "shaderapidx9",
+            "shaderapiempty",
+            "shaderapivulkan",
+            "shaderlib",
+            "stdshader_dx9",
+            "studiorender",
+            "togl",
+            "vulkan_debug"
+          ]
+        },
+        {
+          "id": "render-legacy-tests",
+          "owner": "R32",
+          "reason": "Render test hosts that link the legacy shader API modules or legacy-dialect fixtures; each moves to a native-test module when its fixture code is strict.",
+          "targets": [
+            "builtin_shader_conformance",
+            "compute_native_conformance",
+            "dxvk_math_conformance",
+            "dxvk_presentation_conformance",
+            "indirect_sdf_native_conformance",
+            "legacy_render_provider_conformance",
+            "material_binding_conformance",
+            "material_equivalence_vulkan_conformance",
+            "material_facing_vulkan_conformance",
+            "material_pixel_conformance",
+            "queued_mesh_contract_vulkan_conformance"
+          ]
+        },
+        {
+          "id": "physics-ivp",
+          "owner": "R44",
+          "reason": "IVP simulation and the legacy VPhysics module; retired after the Box3D default gate.",
+          "targets": [
+            "havana_constraints",
+            "hk_base",
+            "hk_math",
+            "ivp_compactbuilder",
+            "ivp_physics",
+            "vphysics"
+          ]
+        },
+        {
+          "id": "physics-box3d",
+          "owner": "R19",
+          "reason": "The Box3D VPhysics provider, its pinned C17 library and its conformance host, still in the legacy dialect behind the frozen VPhysics ABI.",
+          "targets": [
+            "box3d_private",
+            "vphysics_box3d",
+            "vphysics_conformance"
+          ]
+        },
+        {
+          "id": "compile-tools",
+          "owner": "R48",
+          "reason": "Map compile tools and their shared libraries (vbsp, vvis, vrad), built on Waf but still legacy code.",
+          "targets": [
+            "fgdlib",
+            "raytrace",
+            "vbsp",
+            "vrad",
+            "vvis"
+          ]
+        },
+        {
+          "id": "texture-tools",
+          "owner": "R40",
+          "reason": "Texture tools and the vtex launchable-module remnant; the tool process contract replaces their wrappers.",
+          "targets": [
+            "vtex",
+            "vtex_dll",
+            "vtexconv"
+          ]
+        },
+        {
+          "id": "map-format-tools",
+          "owner": "R53",
+          "reason": "BSP2 and runtime-lump inspection tools.",
+          "targets": [
+            "bsp2tool",
+            "rtrntool"
+          ]
+        },
+        {
+          "id": "world-stage-tools",
+          "owner": "R54",
+          "reason": "The vbsp2 World Stage compiler and its OpenUSD ABI island (quality/toolchain/policy.json).",
+          "targets": [
+            "sourceWorld",
+            "vbsp2",
+            "vbspworldstage"
+          ]
+        },
+        {
+          "id": "dedicated-composition",
+          "owner": "R12",
+          "reason": "Dedicated-server composition bridge and its test host.",
+          "targets": [
+            "dedicated_composition_bridge",
+            "dedicatedcompositiontest"
+          ]
+        },
+        {
+          "id": "scheduler-tests",
+          "owner": "R20",
+          "reason": "Job-system test and benchmark hosts in the legacy dialect.",
+          "targets": [
+            "jobsystembatchtest",
+            "jobsystembench",
+            "jobsystembridgetest",
+            "jobsystemdeclaredframetest",
+            "jobsystemdynamictest",
+            "jobsystemframetest",
+            "jobsystemhostframetest",
+            "jobsystemlegacybatchtest",
+            "jobsystempooledtest",
+            "jobsystemportalcarvetest",
+            "jobsystemqjobstest",
+            "jobsystemrenderstarttest",
+            "jobsystemsealeqtest",
+            "jobsystemstresstest",
+            "jobsystemtest",
+            "jobsystemthreadpoolbench",
+            "jobsystemthreadpooltest"
+          ]
+        },
+        {
+          "id": "provider-catalog-tests",
+          "owner": "R39",
+          "reason": "Audio, voice and video provider-catalog test hosts for the launcher's typed descriptors.",
+          "targets": [
+            "audio_binding_conformance",
+            "audio_media_conformance",
+            "audio_provider_conformance",
+            "mp3_provider_conformance",
+            "sdl3_voice_record_test",
+            "video_provider_catalog_test",
+            "video_service_catalog_test"
+          ]
+        },
+        {
+          "id": "legacy-unit-hosts",
+          "owner": "R46",
+          "reason": "Legacy tier unit tests and the unittest_legacy host with its loader fixtures (R07 owns the loader telemetry they exercise).",
+          "targets": [
+            "appsystemgrouptest",
+            "legacymoduleclientfixture",
+            "mathlibtest",
+            "moduleloadfixture",
+            "moduleloadshutdownfixture",
+            "tier0test",
+            "tier1test",
+            "tier2test",
+            "tier3test",
+            "unittest_legacy"
+          ]
+        },
+        {
+          "id": "debug-api",
+          "owner": "R32",
+          "reason": "Feature-gated (--debug-api) debug API core; it compiles native Vulkan capture sources beside its legacy-dialect server.",
+          "targets": [
+            "debugapi_core"
+          ]
+        }
+      ]
     }
   },
   "description": "RFC 0001 architectural manifest. Phase A currently freezes legacy dynamic-loader boundaries.",

@@ -23,6 +23,7 @@ def build(bld):
 		              'world_mesh.cpp' ],
 		target    = PROJECT_NAME,
 		name      = PROJECT_NAME,
+		arch_module = 'world.map-container',
 		features  = 'c cxx',
 		includes  = [ '../public' ],
 		defines   = [],
