@@ -1487,9 +1487,12 @@ Keep the table concise and link details below or from the domain progress file.
     destination alpha does (`depth_to_alpha.frag`, `-novkdepthalpha` rolls
     back), and the native SpriteCard stage applies DEPTHBLEND (58 of
     Portal's 59 depth-blended materials). The `softparticle` pixel family
-    matches D3D9's DepthFeathering in both HDR modes and fails with the copy
-    unchanged; the other families are unchanged (integer `sky` still fails
-    as before).
+    matches D3D9's DepthFeathering in both HDR modes, also under 4x MSAA
+    (the multisampled depth is read in place and its samples averaged, as
+    D3D9's resolve averages dest alpha), and fails with the copy unchanged;
+    the other families are unchanged (integer `sky` still fails as before).
+    A queued testchmb_a_01 boot at the runtime's 4x MSAA with `-vkvalidate`
+    logs no validation messages.
   - pbr_ps30 parallax (2026-09-26, `4070b214`): the HLSL loop the pinned FXC
     miscompiled is restructured; the case is in the default run (268/268).
   - Unverified or open: flashlight passes and wrinkle weights.
