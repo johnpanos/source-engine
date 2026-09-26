@@ -277,5 +277,99 @@ Still different, ranked by visible impact:
 The captures used for these numbers are under `quality-results/p2mat-*` and are
 not committed.
 
+### Portal 2 audio retail conformance (2026-09-25)
+
+`quality/workloads/portal2-audio-v1` plays a fixed sequence of soundscript
+entries on `sp_a2_triple_laser`: a console `play` for alignment, a v1 entry on
+the player, a GLaDOS line (precached and not), music, a music entry whose start
+stack starts a second entry, the portal gun, a line cut by the next, music under
+a line, and a v1 and a v2 world sound at 96, 256 and 512 units. Each event
+prints `AUDIO_MARK <label> <server time>`. The listener stands inside the
+chamber's `laser_chamber_med_02` soundscape (`"dsp" "1"`, automatic room DSP);
+outside every soundscape radius, retail's room-DSP mix parameters depend on a
+start-up race (next paragraph).
+
+`tools/quality/portal2_audio.py` records the mixer output through SDL's disk
+audio driver, on this build (SDL offscreen video) and on the 32-bit retail
+binary (headless `mutter` with Xwayland; the retail binary crashes on SDL's
+Wayland backend). Both run the driver from a `mapspawn.nut` hook, because
+retail ignores `+wait` on the command line, and both run with
+`+snd_surround_speakers 2`: retail otherwise opens a 5.1 device. Each event is
+found by normalized cross-correlation with the retail wave, decoded with
+ffmpeg from the installed VPKs. The metrics are per-channel least-squares
+gains, window levels, left/right balance and correlation, falloff ratios,
+ducking and the cut of a replaced line. `retail-reference.json` holds the
+metrics of one retail capture (numbers only). A second retail capture passes
+all 24 checks; retail is sample-repeatable (most events correlate at 0.99-1.00
+between runs).
+
+Reproduce (retail needs Steam running and 32-bit `libbz2.so.1.0` and
+`libpng12.so.0` in `--retail-libs`):
+
+    python3 tools/quality/portal2_audio.py capture --side retail --out <dir> --retail-libs <dir>
+    python3 tools/quality/portal2_audio.py record --capture <dir>
+    python3 tools/quality/portal2_audio.py check --build build-p2 --out <dir>
+    python3 tools/quality/portal2_audio.py selftest
+
+`selftest` renders a capture from the reference metrics (each retail wave at
+its retail onset and gains, plus the ducking and noise-like windows). The
+render passes all 24 checks, and six seeded defects each fail their target
+check: a muted right channel, dropped music, a swapped line, a missing chained
+entry, no ducking and +3 dB dialog. `--console` passes diagnostic console
+commands to the driver (for example `developer 1` and `snd_showstart 2`, which
+print each sound's mix group, `dspmix` and speaker volumes on both builds).
+
+Findings, most important first:
+
+1. **No sound operator system.** About 3,500 retail entries are
+   `soundentry_version 2` with `operator_stacks` (retail `engine.so` has the
+   CS:GO-era `CSosOperator*` classes). This build plays their `wave` through the
+   legacy path. Measured: the start stack's `sys_start_entry` never runs, so
+   `music.sp_intro_01.02_restasis` does not start `music.sp_a1_intro1_b2b`
+   (chain window -6 dB against retail's +12 dB relative to the calibration);
+   dialog is 5.7 dB and music 3.5 dB louder than retail (retail's
+   `update_dialog` and `update_music_stereo` stacks set volume, speakers and a
+   zero DSP send); the v2 world sound falls off differently. v2 entries that
+   were never precached are silent (`SV_StartSound: ... not precached`), while
+   retail sends them as script handles and plays them.
+2. **Portal 2's `soundmixers.txt` was misread** (fixed). The Half-Life 2 mixer
+   parser took the `SoundMixers` section name for a mixer, looked up
+   `Default_Mix` as a mix group (a write at index -1) and read every other
+   number as a group name, so no group volume, level, DSP send, mix layer or
+   layer trigger applied. The mixer now lives in `engine/audio/snd_mixgroups.cpp`
+   (the CS:GO-era mixer Portal 2 ships with, adapted from a previous session's
+   worktree port). It reads both layouts: Portal 2's
+   `MixGroups`/`SoundMixers`/`MixLayers`/`LayerTriggers` and Half-Life 2's
+   `GROUPRULES` with one volume per group, so Portal and Half-Life 2 keep
+   their mix. `SND_Spatialize` applies the group volume, soundlevel scale and
+   DSP send scale, as CS:GO does. `snd_list /` with `developer 1` assigns the
+   same group and volume as retail to every sound in the probe. Before, this
+   build failed 12 of the 24 checks; after, 9. Fixed: the v1 item level,
+   the portal gun level, dialog ducking of music (-5.5 dB, retail -5.5 dB) and
+   the near v1 world level. The new failure, the v2 world sound's level, is an
+   operator-stack entry that the mixer now also attenuates.
+3. **`dsp_room` defaults to 0; retail Portal 2's is 1** (automatic room DSP;
+   CS:GO's `snd_dsp.cpp` has `#ifdef PORTAL2`). Retail builds an automatic
+   preset at start-up (`dsp_automatic` 60), and whichever of the room and
+   automatic presets is applied last sets the global DSP mix parameters. In
+   normal retail runs that is the automatic one (mix 0.22-0.6, sounds under
+   95 dB send 10%: near sounds are almost dry). With `developer 1` from
+   start-up it is room preset 104 (0.63-0.8), as on this build. With the
+   listener outside every soundscape, this build sends 0.32-0.72 of every
+   sound to the room DSP, which adds an echo at 132 ms and -5 dB (seen with
+   `dsp_off 1`, which removes it). Not fixed: the engine is built without
+   `PORTAL2`.
+4. **Soundscape ambience** is 4.6 dB louder than retail at the same place.
+   Not yet diagnosed.
+5. `dsp_off 1` once segfaulted about 5 s into a run; not reproduced under gdb.
+6. The manifest warns about the `new_sound_scripts_must_go_below_here`
+   marker (cosmetic; retail uses it for the PS3 hash table).
+
+Open: the operator system and script-handle transmission (finding 1); the
+room-DSP default (finding 3); five checks removed because two retail runs
+disagreed at this listener position (stopsound silence, the far reverb tail,
+v2 near fidelity and v2 falloff at 256 and 512 units); the suite is not yet
+registered in the conformance manifest.
+
 The repository's provenance and distribution warning in the root README also
 applies to this import.
