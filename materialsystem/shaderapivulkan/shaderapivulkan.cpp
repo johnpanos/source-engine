@@ -32,6 +32,7 @@
 #include "vulkan_device.h"
 #include "vulkan_emit_convert.h"
 #include "vulkan_mesh_layout.h"
+#include "shaderapivulkan_legacy.h"
 #include "vulkan_world_mesh_upload.h"
 #include "render/light_set.h"
 #include "render/direct_light_selection.h"
@@ -787,6 +788,40 @@ static int g_CurrentPostStatic = 0;
 // Whether the pass is the Shadow shader's projected render-to-texture shadow
 // (shadow_ps2x), drawn by the textured pipeline's shadow stage.
 static bool g_CurrentShadowProjection = false;
+// -vklegacyports: route passes to the legacy shader ports (R32-LEGACY-SHADERS)
+// and apply the D3D9 state they read (math constants, depth feathering, the
+// ambient cube luminance, PolyMode, the passes only the ports draw). Off by
+// default: the backend then routes and draws exactly as before the ports.
+static bool LegacyPortsEnabled()
+{
+	static const bool s_enabled = CommandLine()->FindParm( "-vklegacyports" ) != 0;
+	return s_enabled;
+}
+// Stores SetStandardVertexShaderConstants' registers (defined with g_vsConstants).
+static void StoreStandardVertexShaderConstants( float fOverbright );
+// The pass's legacy shader port (vulkan_legacy_programs.h), -1 for none, with
+// its pixel and vertex shaders' static combo indices and the samplers it
+// reads as sRGB.
+static int g_CurrentLegacyProgram = -1;
+static int g_CurrentLegacyPsStatic = 0;
+static int g_CurrentLegacyVsStatic = 0;
+static unsigned int g_CurrentSrgbSamplers = 0;
+static render_vulkan::LegacyConstants g_CurrentLegacyConstants;
+// The census of drawn passes by route: the snapshot's route with its pixel and
+// vertex shader and static combo indices, the draws emitted through it, and a
+// material that drew it (ReportUnimplementedEntries prints the busiest).
+struct RouteCensus
+{
+	uint64_t draws = 0;
+	std::string material;
+};
+static std::map<std::string, RouteCensus> g_RouteCensus;
+static std::string g_CurrentRouteKey;
+// The pass's vertex format (the shadow state's VertexShaderVertexFormat).
+static VertexFormat_t g_CurrentVertexUsage = 0;
+// The texture bound to each sampler this pass (-1 none), lightmap pages included.
+static int g_boundSamplerHandles[16] = {
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 // IShaderAPI::CullMode, D3D9's default CCW.
 static MaterialCullMode_t g_DesiredCullMode = MATERIAL_CULLMODE_CCW;
 
@@ -945,6 +980,19 @@ static void ReportUnimplementedEntries()
 	    static_cast<unsigned long long>( g_DrawsUntextured ) );
 
 	fprintf( stderr, "[vulkan] snapshots=%zu of %zu\n", SnapshotCount(), SnapshotCapacity() );
+	std::vector<std::pair<uint64_t, const std::pair<const std::string, RouteCensus> *>> routes;
+	for ( const auto &route : g_RouteCensus )
+		routes.push_back( std::make_pair( route.second.draws, &route ) );
+	std::sort( routes.begin(), routes.end(),
+	    []( const auto &a, const auto &b )
+	    {
+		    return a.first > b.first;
+	    } );
+	fprintf( stderr, "[vulkan] %zu drawn pass routes\n", routes.size() );
+	for ( size_t i = 0; i < routes.size() && i < 60; ++i )
+		fprintf( stderr, "[vulkan]   route draws=%-7llu %s (%s)\n",
+		    static_cast<unsigned long long>( routes[i].first ), routes[i].second->first.c_str(),
+		    routes[i].second->second.material.c_str() );
 	fprintf( stderr, "[vulkan] fog: scene mode=%d color=%d,%d,%d start=%.1f end=%.1f z=%.1f max=%.2f\n",
 	    static_cast<int>( g_Fog.sceneMode ), g_Fog.sceneColor[0], g_Fog.sceneColor[1],
 	    g_Fog.sceneColor[2], g_Fog.start, g_Fog.end, g_Fog.fogZ, g_Fog.maxDensity );
@@ -1111,6 +1159,10 @@ public:
 	// selected. Called from CShaderAPIVulkan::RenderPass, i.e. AFTER the material's
 	// shader has run BeginPass and set its constants/textures.
 	void EmitToNativeQueue();
+	// The geometry the next EmitToNativeQueue draws, for -vklegacycapture: a
+	// JSON fragment with the primitive type, the drawn indices (into the listed
+	// vertices) and each vertex's attributes as the mesh builder wrote them.
+	std::string LegacyCaptureGeometry() const;
 
 	// Copy verts and/or indices to a mesh builder. This only works for temp meshes!
 	virtual void CopyToMeshBuilder( int iStartVert, // Which vertices to copy.
@@ -1453,6 +1505,8 @@ public:
 	// IShaderShadow::EnableAlphaWrites; D3D9's default is off.
 	bool m_alphaWrites = false;
 	PolygonOffsetMode_t m_polyOffset = SHADER_POLYOFFSET_DISABLE;
+	// IShaderShadow::PolyMode's SHADER_POLYMODE_LINE (D3DFILL_WIREFRAME).
+	bool m_wireframe = false;
 	// IShaderShadow::EnableCulling ($nocull turns it off); on by default, as in
 	// CShaderShadowDX8::SetDefaultState.
 	bool m_cullEnable = true;
@@ -1474,6 +1528,8 @@ public:
 	// Samplers the pass enabled (EnableTexture), one bit each. D3D9 sets no
 	// texture on a sampler its pass did not enable.
 	unsigned int m_enabledSamplers = 0;
+	// The samplers EnableSRGBRead enabled (bit per sampler).
+	unsigned int m_srgbReadSamplers = 0;
 	// Fixed-function state, recorded as CShaderShadowDX8 records it. It applies
 	// only to a pass with no vertex and pixel shader, which the native
 	// pipelines do not draw (RenderPass reports such passes).
@@ -1909,7 +1965,18 @@ public:
 	void SetVertexShaderStateAmbientLightCube();
 	void SetPixelShaderStateAmbientLightCube( int pshReg, bool bForceToBlack = false );
 
-	float GetAmbientLightCubeLuminance( void ) { return 0.0f; }
+	// As CShaderAPIDx8::GetAmbientLightCubeLuminance: the cube faces' mean
+	// luminance (0.3, 0.59, 0.11), which the eyes' glint damping reads.
+	float GetAmbientLightCubeLuminance( void )
+	{
+		if ( !LegacyPortsEnabled() )
+			return 0.0f;
+		float luminance = 0.0f;
+		for ( int face = 0; face < 6; ++face )
+			luminance += 0.3f * g_AmbientCube[face][0] + 0.59f * g_AmbientCube[face][1] +
+			             0.11f * g_AmbientCube[face][2];
+		return luminance / 6.0f;
+	}
 
 	void SetSkinningMatrices();
 
@@ -2221,7 +2288,13 @@ public:
 
 	// Setup standard vertex shader constants (that don't change)
 	// This needs to be called anytime that overbright changes.
-	virtual void SetStandardVertexShaderConstants( float fOverbright ) {}
+	// As CShaderAPIDx8::SetStandardVertexShaderConstants: c0 the math constants,
+	// c1 [ 1 / 2.2, overbright, 1 / 3, 1 / overbright ], c3 cFlexScale off.
+	virtual void SetStandardVertexShaderConstants( float fOverbright )
+	{
+		if ( LegacyPortsEnabled() )
+			StoreStandardVertexShaderConstants( fOverbright );
+	}
 
 	// Level of anisotropic filtering
 	virtual void SetAnisotropicLevel( int nAnisotropyLevel );
@@ -2302,7 +2375,14 @@ public:
 
 	virtual void SetPSNearAndFarZ( int pshReg ) {}
 
-	virtual void SetDepthFeatheringPixelShaderConstant( int iConstant, float fDepthBlendScale ) {}
+	// As CShaderAPIDx8: x the dest-alpha depth range over the blend scale.
+	virtual void SetDepthFeatheringPixelShaderConstant( int iConstant, float fDepthBlendScale )
+	{
+		if ( !LegacyPortsEnabled() )
+			return;
+		const float values[4] = { g_Fog.destAlphaDepthRange / fDepthBlendScale, 0.0f, 0.0f, 0.0f };
+		SetPixelShaderConstant( iConstant, values, 1 );
+	}
 
 	// As CShaderAPIDx8: the pass's fog parameters into pixel constant reg
 	// (cFogEndOverFogRange, water height, max density, 1 / range), remembered so
@@ -2346,6 +2426,8 @@ public:
 			g_boundTextureHandle = -1;
 			g_VulkanContext.BindManagedTexture( -1 );
 		}
+		if ( stage >= 0 && stage < 16 )
+			g_boundSamplerHandles[stage] = -1;
 		const bool lightmap =
 		    stage == SHADER_SAMPLER1 &&
 		    ( id == TEXTURE_LIGHTMAP || id == TEXTURE_LIGHTMAP_FULLBRIGHT ||
@@ -2678,6 +2760,12 @@ public:
 	void PrintfVA( char *fmt, va_list vargs ) {}
 	void Printf( const char *fmt, ... ) {}
 	float Knob( char *knobname, float *setvalue = NULL ) { return 0.0f; };
+
+	// The boolean constant banks (b0..b15), which the legacy shader ports read.
+	const BOOL *VertexShaderBoolConstants() const { return m_vsBoolConstants; }
+	const BOOL *PixelShaderBoolConstants() const { return m_psBoolConstants; }
+	const int ( *VertexShaderIntConstants() const )[4] { return m_vsIntConstants; }
+	const int ( *PixelShaderIntConstants() const )[4] { return m_psIntConstants; }
 
 private:
 	enum
@@ -4522,11 +4610,21 @@ static void ExpandSplineCardVertex( const SpriteCardFrame &f, const float *parms
 void CEmptyMesh::EmitToNativeQueue()
 {
 	render_vulkan::CFrameCostScope cost( g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostEmit );
+	// A WMSH batch of a PBR material takes the WMSH pipeline, which the legacy
+	// PBR shader's port (pbr_ps30) does not replace; other legacy ports cannot
+	// draw a WMSH batch.
+	const bool worldMeshPbr =
+	    m_worldMeshBatch && g_pBoundMaterial &&
+	    ( render::pbr::IsMetalRoughShader( g_pBoundMaterial->GetShaderName() ) ||
+	        !V_stricmp( g_pBoundMaterial->GetShaderName(), "PBR" ) );
+	if ( m_worldMeshBatch && g_CurrentLegacyProgram >= 0 && !worldMeshPbr )
+	{
+		DropDraw( "draw dropped: legacy shader port on a WMSH batch" );
+		return;
+	}
 	if ( m_worldMeshBatch )
 	{
-		if ( g_pBoundMaterial &&
-		     ( render::pbr::IsMetalRoughShader( g_pBoundMaterial->GetShaderName() ) ||
-		         !V_stricmp( g_pBoundMaterial->GetShaderName(), "PBR" ) ) )
+		if ( worldMeshPbr )
 		{
 			// The material's dynamic pass bound its base, MRAO (sampler 10)
 			// and normal (sampler 1). The WMSH pipeline uses those same images at
@@ -4690,8 +4788,25 @@ void CEmptyMesh::EmitToNativeQueue()
 	// SHADER_SPECIFIC_CONST_2, in the vertex color it does not otherwise read.
 	const bool shadowProjection = g_CurrentShadowProjection;
 	const float *shadowJitter = ShadowJitter();
-	const bool wantsTangents =
-	    g_CurrentPortalStage >= 0 || skin || envmap || refract || solidEnergy || lightmappedFamily;
+	// A legacy shader port: the world-space record vulkan_legacy_programs.h
+	// documents, with the brush tangent streams when the port asks for them.
+	const bool legacy = g_CurrentLegacyProgram >= 0;
+	const uint32_t legacyVertexFlags =
+	    legacy ? render_vulkan::GetLegacyProgram( g_CurrentLegacyProgram ).vertexFlags : 0u;
+	// D3D9's declaration binds TANGENT to the TANGENTS stream when the format has
+	// it (brushes), else to the user data (vertexdecl.cpp).
+	const bool legacyBrushTangents = legacy && ( g_CurrentVertexUsage & VERTEX_TANGENT_S ) != 0;
+	const bool legacyObjectPosition =
+	    ( legacyVertexFlags & render_vulkan::kLegacyObjectPosition ) != 0;
+	const bool legacyObjectPositionExtra =
+	    ( legacyVertexFlags & render_vulkan::kLegacyObjectPositionExtra ) != 0;
+	// A static prop's baked lighting (its color mesh) is COLOR1 in D3D9's
+	// declaration; a legacy port reads it in the color slot when the pass has
+	// no COLOR0 stream.
+	const bool legacyStaticColor =
+	    legacy && !( g_CurrentVertexUsage & VERTEX_COLOR ) && HasColorMesh();
+	const bool wantsTangents = g_CurrentPortalStage >= 0 || skin || envmap || refract ||
+	                           solidEnergy || lightmappedFamily || legacy;
 	float envContrast = 0.0f, envSaturation = 1.0f, fresnelReflection = 1.0f;
 	if ( envmap && g_pBoundMaterial )
 	{
@@ -4782,7 +4897,37 @@ void CEmptyMesh::EmitToNativeQueue()
 			float *nt = out + 10;
 			memcpy( nt, base + kMeshNormalOffset, sizeof( float ) * 3 );
 			memcpy( nt + 3, base + kMeshUserDataOffset, sizeof( float ) * 4 );
-			if ( solidEnergy )
+			if ( legacy )
+			{
+				// The normal and tangent S (TANGENT, or the brush's TANGENTS with T
+				// from TANGENTT) through the skinning or MODEL rotation, not
+				// normalized, as SkinPositionNormalAndTangentSpace leaves them.
+				const float normal[3] = { nt[0], nt[1], nt[2] };
+				float tangentS[3] = { nt[3], nt[4], nt[5] };
+				float texCoord2[2];
+				memcpy( texCoord2, base + kMeshTexCoord2Offset, sizeof( texCoord2 ) );
+				if ( legacyBrushTangents )
+				{
+					// TANGENTT in 18..20; TEXCOORD2 (the bumped lightmap offset) in
+					// the slots a brush's tangents leave free.
+					float objectT[3];
+					memcpy( tangentS, base + kMeshTangentSOffset, sizeof( tangentS ) );
+					memcpy( objectT, base + kMeshTangentTOffset, sizeof( objectT ) );
+					WorldNormal( base, objectT, out + 18 );
+					nt[6] = texCoord2[0];
+					out[21] = texCoord2[1];
+				}
+				else
+				{
+					memcpy( out + 18, texCoord2, sizeof( texCoord2 ) );
+					// A three-component TEXCOORD2 (EyeGlint's glint color) keeps z.
+					if ( vertices.HasWideTexCoords() && vertices.WideTexCoordSize( 2 ) >= 3 )
+						out[20] = vertices.WideTexCoords( v )[10];
+				}
+				WorldNormal( base, normal, nt );
+				WorldNormal( base, tangentS, nt + 3 );
+			}
+			else if ( solidEnergy )
 			{
 				// solidenergy_vs20's frame: a brush's tangent S and T streams, or a
 				// model's normal and TANGENT (T, with S = cross( N, T ) * w). The
@@ -4905,7 +5050,23 @@ void CEmptyMesh::EmitToNativeQueue()
 		// OPENGL_SWAP_COLORS): bytes B, G, R, A.
 		const unsigned char *col = base + 12;
 		out[17] = col[3] / 255.0f;
-		if ( solidEnergy )
+		if ( legacy )
+		{
+			// World-space position (the push block holds cViewProj), or the
+			// POSITION stream as it is, and the raw vertex color (or COLOR1).
+			if ( legacyObjectPosition )
+				memcpy( pos, base, sizeof( pos ) );
+			else if ( g_NumBoneWeights <= 0 )
+				ModelToWorld( pos );
+			if ( legacyObjectPositionExtra )
+				memcpy( out + 18, base, 3 * sizeof( float ) );
+			out[3] = col[2] / 255.0f;
+			out[4] = col[1] / 255.0f;
+			out[5] = col[0] / 255.0f;
+			if ( legacyStaticColor )
+				StaticColor( v, out + 3 );
+		}
+		else if ( solidEnergy )
 		{
 			// World-space position (the push block holds only cViewProj) and the
 			// vertex color ($vertexcolor / $vertexalpha).
@@ -5101,8 +5262,9 @@ void CEmptyMesh::EmitToNativeQueue()
 		return;
 	}
 	// Skinned positions are already in world space: draw them with view and
-	// projection only, as the skinned vertex shaders apply cViewProj.
-	if ( g_NumBoneWeights > 0 )
+	// projection only, as the skinned vertex shaders apply cViewProj. So are a
+	// legacy port's.
+	if ( g_NumBoneWeights > 0 || legacy )
 		CommitViewProj();
 	// The draw is indexed: each mesh vertex it uses is converted once, straight
 	// into the frame's stream, in first-use order, and the triangles index those
@@ -5229,7 +5391,8 @@ void CEmptyMesh::EmitToNativeQueue()
 		key.vertexRevision = vertices.m_revision;
 		key.indexMesh = &indices;
 		key.indexRevision = indices.m_revision;
-		key.colorMesh = vertexLighting && staticLight ? m_pColorMesh : nullptr;
+		key.colorMesh =
+		    ( vertexLighting && staticLight ) || legacyStaticColor ? m_pColorMesh : nullptr;
 		key.colorRevision = key.colorMesh ? m_pColorMesh->m_revision : 0;
 		key.colorOffset = key.colorMesh ? m_colorMeshOffset : 0;
 		key.first = first;
@@ -5242,12 +5405,14 @@ void CEmptyMesh::EmitToNativeQueue()
 		    ( g_CurrentVertexLit.halfLambert ? 64u : 0u ) | ( g_NumBoneWeights > 0 ? 128u : 0u ) |
 		    ( monitor ? 256u : 0u ) | ( monitorTexture2 ? 512u : 0u ) |
 		    ( solidEnergy ? 1024u : 0u ) | ( solidEnergyModel ? 2048u : 0u ) |
-		    ( lightmappedFamily ? 4096u : 0u ) | ( shadowProjection ? 8192u : 0u );
+		    ( lightmappedFamily ? 4096u : 0u ) | ( shadowProjection ? 8192u : 0u ) |
+		    ( legacy ? 16384u : 0u ) | ( legacyBrushTangents ? 32768u : 0u ) |
+		    ( legacyObjectPosition ? 65536u : 0u ) | ( legacyObjectPositionExtra ? 131072u : 0u );
 		key.skinLightCount = skinLightCount;
 		key.lightCount = lightCount;
 		// The constants the conversion reads, beyond the bones.
 		if ( g_NumBoneWeights <= 0 &&
-		     ( skin || vertexLighting || solidEnergy || lightmappedFamily ) )
+		     ( skin || vertexLighting || solidEnergy || lightmappedFamily || legacy ) )
 			inputs.insert( inputs.end(), ModelMatrix(), ModelMatrix() + 16 );
 		if ( shadowProjection )
 			inputs.insert( inputs.end(), shadowJitter, shadowJitter + 2 );
@@ -5299,7 +5464,7 @@ void CEmptyMesh::EmitToNativeQueue()
 			}
 			g_VulkanContext.ReuseDynamicDraw( entry.range );
 			g_VulkanContext.CurrentFrameCost().Add( render_vulkan::kCostEmitReuse, 0 );
-			if ( g_NumBoneWeights > 0 )
+			if ( g_NumBoneWeights > 0 || legacy )
 				CommitModelViewProj();
 			return;
 		}
@@ -5323,8 +5488,66 @@ void CEmptyMesh::EmitToNativeQueue()
 		s_emitReuseIndex.emplace( key.Hash(), s_emitReuse.size() );
 		s_emitReuse.push_back( std::move( entry ) );
 	}
-	if ( g_NumBoneWeights > 0 )
+	if ( g_NumBoneWeights > 0 || legacy )
 		CommitModelViewProj();
+}
+
+std::string CEmptyMesh::LegacyCaptureGeometry() const
+{
+	const CEmptyMesh &vertices = m_pVertexSource ? *m_pVertexSource : *this;
+	const CEmptyMesh &indices = m_pIndexSource ? *m_pIndexSource : *this;
+	const int count = m_drawCount > 0 ? std::min( m_drawCount, indices.m_numIndices - m_drawFirst )
+	                                  : vertices.m_numVerts;
+	std::vector<int> drawn;
+	std::unordered_map<int, int> slot;
+	std::string json =
+	    "\"primitive\":" + std::to_string( static_cast<int>( m_primitiveType ) ) + ",\"indices\":[";
+	for ( int i = 0; i < count; ++i )
+	{
+		const int v =
+		    m_drawCount > 0
+		        ? static_cast<int>( indices.m_indexData[static_cast<size_t>( m_drawFirst + i )] )
+		        : i;
+		auto found = slot.find( v );
+		if ( found == slot.end() )
+		{
+			found = slot.emplace( v, static_cast<int>( drawn.size() ) ).first;
+			drawn.push_back( v );
+		}
+		json += ( i ? "," : "" ) + std::to_string( found->second );
+	}
+	json += "],\"vertices\":[";
+	char buffer[768];
+	for ( size_t i = 0; i < drawn.size(); ++i )
+	{
+		if ( drawn[i] < 0 || drawn[i] >= vertices.m_numVerts )
+			continue;
+		const unsigned char *base = vertices.m_vertexData.data() +
+		                            static_cast<size_t>( drawn[i] ) * vertices.RecordStride();
+		float f[26];
+		memcpy( f, base, 12 );                             // position
+		memcpy( f + 3, base + 16, 16 );                    // TEXCOORD0, TEXCOORD1
+		memcpy( f + 7, base + kMeshTexCoord2Offset, 8 );   // TEXCOORD2
+		memcpy( f + 9, base + kMeshNormalOffset, 12 );     // normal
+		memcpy( f + 12, base + kMeshUserDataOffset, 16 );  // user data (TANGENT)
+		memcpy( f + 16, base + kMeshTangentSOffset, 12 );  // tangent S
+		memcpy( f + 19, base + kMeshTangentTOffset, 12 );  // tangent T
+		memcpy( f + 22, base + kMeshBoneWeightOffset, 8 ); // bone weights
+		const unsigned char *color = base + 12;            // D3DCOLOR: B, G, R, A
+		const unsigned char *bones = base + kMeshBoneIndexOffset;
+		V_snprintf( buffer, sizeof( buffer ),
+		    "%s{\"pos\":[%.9g,%.9g,%.9g],\"color\":[%d,%d,%d,%d],"
+		    "\"uv\":[[%.9g,%.9g],[%.9g,%.9g],[%.9g,%.9g]],\"normal\":[%.9g,%.9g,%.9g],"
+		    "\"user_data\":[%.9g,%.9g,%.9g,%.9g],\"tangent_s\":[%.9g,%.9g,%.9g],"
+		    "\"tangent_t\":[%.9g,%.9g,%.9g],\"bone_weights\":[%.9g,%.9g],"
+		    "\"bone_indices\":[%d,%d,%d]}",
+		    i ? "," : "", f[0], f[1], f[2], color[2], color[1], color[0], color[3], f[3], f[4],
+		    f[5], f[6], f[7], f[8], f[9], f[10], f[11], f[12], f[13], f[14], f[15], f[16], f[17],
+		    f[18], f[19], f[20], f[21], f[22], f[23], bones[0], bones[1], bones[2] );
+		json += buffer;
+	}
+	json += "],\"num_bones\":" + std::to_string( g_NumBoneWeights );
+	return json;
 }
 
 void CEmptyMesh::Draw( CPrimList *pPrims, int nPrims )
@@ -5416,6 +5639,7 @@ void CShaderShadowVulkan::SetDefaultState()
 	m_colorWrites = true;
 	m_alphaWrites = false;
 	m_polyOffset = SHADER_POLYOFFSET_DISABLE;
+	m_wireframe = false;
 	m_cullEnable = true;
 	m_vertexUsage = 0;
 	m_colorFlags = 0;
@@ -5428,6 +5652,7 @@ void CShaderShadowVulkan::SetDefaultState()
 	m_fogMode = SHADER_FOGMODE_DISABLED;
 	m_disableFogGammaCorrection = false;
 	m_enabledSamplers = 0;
+	m_srgbReadSamplers = 0;
 	m_alphaPipe = false;
 	m_constantAlpha = false;
 	m_vertexAlpha = false;
@@ -5465,6 +5690,9 @@ void CShaderShadowVulkan::EnableSRGBRead( Sampler_t stage, bool bEnable )
 	else if ( stage == SHADER_SAMPLER12 )
 		flag = render_vulkan::CVulkanContext::kColorSrgbReadSampler12;
 	m_colorFlags = bEnable ? ( m_colorFlags | flag ) : ( m_colorFlags & ~flag );
+	if ( stage >= 0 && stage < 32 )
+		m_srgbReadSamplers = bEnable ? ( m_srgbReadSamplers | 1u << stage )
+		                             : ( m_srgbReadSamplers & ~( 1u << stage ) );
 }
 
 void CShaderShadowVulkan::EnableSRGBWrite( bool bEnable )
@@ -5563,10 +5791,20 @@ void CShaderShadowVulkan::AlphaFunc( ShaderAlphaFunc_t alphaFunc, float alphaRef
 	m_alphaRef = alphaRef;
 }
 
-// Wireframe/filled polygons
+// Wireframe/filled polygons. As CShaderShadowDX8::PolyMode: one fill mode for
+// both faces (a back-face request is ignored); points are not drawn here.
 void CShaderShadowVulkan::PolyMode( ShaderPolyModeFace_t face, ShaderPolyMode_t polyMode )
 {
-	VK_UNIMPLEMENTED();
+	if ( !LegacyPortsEnabled() )
+	{
+		VK_UNIMPLEMENTED();
+		return;
+	}
+	if ( face == SHADER_POLYMODEFACE_BACK )
+		return;
+	if ( polyMode == SHADER_POLYMODE_POINT )
+		NoteUnimplemented( "PolyMode(SHADER_POLYMODE_POINT): drawn filled" );
+	m_wireframe = polyMode == SHADER_POLYMODE_LINE;
 }
 
 // Back face culling
@@ -6117,6 +6355,9 @@ struct SnapshotFogState
 };
 static std::vector<SnapshotFogState> g_snapshotFog;
 static std::vector<unsigned int> g_snapshotEnabledSamplers;
+static std::vector<unsigned int> g_snapshotSrgbSamplers;
+// Each snapshot's census key: its route, pixel and vertex shader, static combos.
+static std::vector<std::string> g_snapshotRouteKeys;
 // Parallel to g_snapshotShaders: SnapshotToneMapType of each snapshot's pass.
 static std::vector<int> g_snapshotToneMap;
 // Snapshots whose pixel shader is bloomadd_ps2x (screenspace_general's
@@ -6199,6 +6440,8 @@ static void ClearSnapshotTables()
 	g_snapshotVertexLit.clear();
 	g_snapshotFog.clear();
 	g_snapshotEnabledSamplers.clear();
+	g_snapshotSrgbSamplers.clear();
+	g_snapshotRouteKeys.clear();
 	g_snapshotToneMap.clear();
 	g_snapshotBloomAdd.clear();
 	g_snapshotSpriteCombos.clear();
@@ -6228,12 +6471,18 @@ enum
 	kVsRegModelViewProjLegacy = 0,                     // legacy c0-c3 alias
 	kVsRegModulationColor = VERTEX_SHADER_MODULATION_COLOR,
 	kVsRegBaseTexTransform = VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, // [0..1]
-	kVsRegCount = 64
+	// Every vs_2_0 register: the legacy shader ports also read c217..c224.
+	kVsRegCount = 256
 };
 struct VsConstantFile
 {
 	float regs[kVsRegCount][4] = {};
 	bool written[kVsRegCount] = {};
+	// When each register was last written (0 never), from `lastSerial`: the
+	// legacy ports keep a material's write over a derived register as D3D9 does
+	// (render_vulkan::LegacyTransformCommit).
+	uint64_t serial[kVsRegCount] = {};
+	uint64_t lastSerial = 0;
 
 	VsConstantFile()
 	{
@@ -6251,6 +6500,16 @@ struct VsConstantFile
 		regs[kVsRegModulationColor][3] = 1.0f;
 		regs[kVsRegBaseTexTransform][0] = 1.0f;
 		regs[kVsRegBaseTexTransform + 1][1] = 1.0f;
+		// The math constants CShaderAPIDx8 writes when its device is created
+		// (SetStandardVertexShaderConstants( OVERBRIGHT )): the compiled vertex
+		// shaders the legacy ports translate read c0 ( 0, 1, 2, 0.5 ) as their
+		// literals and c1 as ( 1 / 2.2, overbright, 1 / 3, 1 / overbright ).
+		// Not marked written: a written c0 is the native legacy MVP alias
+		// (CommitDynamicVsConstants).
+		const float math0[4] = { 0.0f, 1.0f, 2.0f, 0.5f };
+		const float math1[4] = { 1.0f / 2.2f, 2.0f, 1.0f / 3.0f, 0.5f };
+		memcpy( regs[VERTEX_SHADER_MATH_CONSTANTS0], math0, sizeof( math0 ) );
+		memcpy( regs[VERTEX_SHADER_MATH_CONSTANTS1], math1, sizeof( math1 ) );
 	}
 };
 VsConstantFile g_vsConstants;
@@ -6383,10 +6642,31 @@ render_vulkan::CVulkanContext::DynRasterState SnapshotRasterState(
 	state.alphaWrite = shadow.m_alphaWrites;
 	// Culling on; the dynamic CullMode picks the face when the pass is drawn.
 	state.cullMode = shadow.m_cullEnable ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
+	state.wireframe = shadow.m_wireframe;
 	return state;
 }
 
 } // namespace
+
+// SetStandardVertexShaderConstants: c0 the math constants, c1 [ 1 / 2.2,
+// overbright, 1 / 3, 1 / overbright ], c3 cFlexScale off, for the legacy ports.
+// They are stored without marking the registers written: CommitDynamicVsConstants
+// reads a written c0..c3 as a model-view-projection (the legacy c0 alias), and
+// these values drawn as a transform put native draws across the screen (the
+// black bands of the first merge).
+static void StoreStandardVertexShaderConstants( float fOverbright )
+{
+	const float values[3][4] = { { 0.0f, 1.0f, 2.0f, 0.5f },
+	    { 1.0f / 2.2f, fOverbright, 1.0f / 3.0f, 1.0f / fOverbright }, { 0.0f, 0.0f, 0.0f, 0.0f } };
+	const int regs[3] = {
+	    VERTEX_SHADER_MATH_CONSTANTS0, VERTEX_SHADER_MATH_CONSTANTS1, VERTEX_SHADER_FLEXSCALE };
+	++g_vsConstants.lastSerial;
+	for ( int i = 0; i < 3; ++i )
+	{
+		memcpy( g_vsConstants.regs[regs[i]], values[i], sizeof( values[i] ) );
+		g_vsConstants.serial[regs[i]] = g_vsConstants.lastSerial;
+	}
+}
 
 // D3D9 applies the configured slope and normalized constant bias at the draw,
 // not when the shadow snapshot is made. Convert the constant term to Vulkan's
@@ -6555,6 +6835,22 @@ struct MatrixStackState
 	bool initialized = false;
 };
 MatrixStackState g_matrices;
+
+// D3D9's transform change flags (CShaderAPIDx8::MatrixIsChanging and
+// UpdateMatrixTransform): every load or product of a matrix changes it, except
+// LoadIdentity on a matrix that is already the identity. The legacy ports'
+// derived registers follow them (render_vulkan::LegacyTransformCommit).
+static uint64_t g_transformGeneration[NUM_MATRIX_MODES];
+static bool g_transformIsIdentity[NUM_MATRIX_MODES];
+
+static void NoteTransformChanged( bool identity )
+{
+	const int mode = g_matrices.mode;
+	if ( mode < 0 || mode >= NUM_MATRIX_MODES || ( identity && g_transformIsIdentity[mode] ) )
+		return;
+	++g_transformGeneration[mode];
+	g_transformIsIdentity[mode] = identity;
+}
 
 void MatSetIdentity( float *m )
 {
@@ -7100,6 +7396,123 @@ static void CommitPostConstants()
 	g_VulkanContext.SetDynamicSkinConstants( c );
 }
 
+// The pass's legacy shader port: its constants block (shaderapivulkan_legacy.h)
+// and, as its positions arrive in world space, cViewProj as the transform.
+static void CommitLegacyConstants( const CShaderAPIVulkan &api )
+{
+	EnsureMatricesInit();
+	render_vulkan::LegacyPassInputs in;
+	in.ps = g_psConstants;
+	in.vs = g_vsConstants.regs;
+	in.psBools = api.PixelShaderBoolConstants();
+	in.vsBools = api.VertexShaderBoolConstants();
+	in.psStatic = g_CurrentLegacyPsStatic;
+	in.psDynamic = g_PixelShaderDynamicIndex;
+	in.vsStatic = g_CurrentLegacyVsStatic;
+	in.vsDynamic = g_VertexShaderDynamicIndex;
+	in.srgbSamplers = g_CurrentSrgbSamplers;
+	in.model = g_matrices.mat[MATERIAL_MODEL];
+	in.view = g_matrices.mat[MATERIAL_VIEW];
+	in.projection = g_matrices.mat[MATERIAL_PROJECTION];
+	in.drawProjection = DrawProjection();
+	in.vsWriteSerial = g_vsConstants.serial;
+	in.writeSerial = g_vsConstants.lastSerial;
+	in.modelGeneration = g_transformGeneration[MATERIAL_MODEL];
+	in.viewGeneration = g_transformGeneration[MATERIAL_VIEW];
+	in.projectionGeneration = g_transformGeneration[MATERIAL_PROJECTION];
+	static render_vulkan::LegacyTransformCommit s_commit;
+	render_vulkan::BuildLegacyConstants( in, &g_CurrentLegacyConstants, &s_commit );
+	g_CurrentLegacyConstants.bools[3] = static_cast<int32_t>( g_CurrentVertexUsage & 0x7FFFFFFF );
+	// The samplers the pass enabled; BindLegacySets gives the others D3D9's
+	// no-texture read.
+	g_CurrentLegacyConstants.bools[2] |=
+	    static_cast<int32_t>( static_cast<uint32_t>( g_CurrentEnabledSamplers & 0xFFFFu ) << 16 );
+	// The lighting registers, as CShaderAPIDx8 commits them: the ambient cube
+	// (c21..c26), cLightInfo for the enabled lights in SortLights order
+	// (c27..c46), i0 the light count loop and b0..b3 the enabled lights.
+	render_vulkan::LegacyConstants &c = g_CurrentLegacyConstants;
+	memcpy( c.vs[VERTEX_SHADER_AMBIENT_LIGHT], g_AmbientCube, sizeof( g_AmbientCube ) );
+	VertexLightConstants lights[kMaxLocalLights];
+	const int lightCount = BuildVertexLightConstants( lights );
+	for ( int i = 0; i < lightCount && i < 4; ++i )
+	{
+		float ( *info )[4] = &c.vs[VERTEX_SHADER_LIGHTS + i * 5];
+		memcpy( info[0], lights[i].color, sizeof( info[0] ) );
+		memcpy( info[1], lights[i].dir, sizeof( info[1] ) );
+		const float position[4] = { lights[i].pos[0], lights[i].pos[1], lights[i].pos[2], 1.0f };
+		memcpy( info[2], position, sizeof( info[2] ) );
+		memcpy( info[3], lights[i].spot, sizeof( info[3] ) );
+		const float atten[4] = { lights[i].atten[0], lights[i].atten[1], lights[i].atten[2], 0.0f };
+		memcpy( info[4], atten, sizeof( info[4] ) );
+		c.bools[1] |= 1 << i;
+	}
+	for ( int i = lightCount; i < 4; ++i )
+		c.bools[1] &= ~( 1 << i );
+	c.vsLoop[0] = lightCount;
+	c.vsLoop[1] = 0;
+	c.vsLoop[2] = 1;
+	c.vsLoop[3] = 0;
+	g_VulkanContext.SetDynamicLegacy( g_CurrentLegacyProgram, g_CurrentLegacyConstants );
+	CommitViewProj();
+}
+
+// -vklegacycapture <file>: every legacy port's pass, for the bytecode oracle.
+static void CaptureLegacyPass( const CShaderAPIVulkan &api,
+    const render_vulkan::CVulkanContext::DynRasterState &raster, const CEmptyMesh *mesh )
+{
+	static FILE *s_capture = nullptr;
+	static bool s_opened = false;
+	if ( !s_opened )
+	{
+		s_opened = true;
+		const char *path = CommandLine()->ParmValue( "-vklegacycapture", "" );
+		if ( path[0] )
+			s_capture = fopen( path, "w" );
+	}
+	if ( !s_capture )
+		return;
+	const render_vulkan::LegacyProgram &program =
+	    render_vulkan::GetLegacyProgram( g_CurrentLegacyProgram );
+	render_vulkan::LegacyCaptureRecord record;
+	record.material = g_pBoundMaterial ? g_pBoundMaterial->GetName() : "";
+	record.pixelShader = program.pixelShader;
+	record.vertexShader = program.vertexShader;
+	record.constants = &g_CurrentLegacyConstants;
+	record.vs = g_vsConstants.regs;
+	record.vsInts = api.VertexShaderIntConstants();
+	record.psInts = api.PixelShaderIntConstants();
+	record.vertexFormat = static_cast<unsigned long long>( g_CurrentVertexUsage );
+	for ( int i = 0; i < 16; ++i )
+	{
+		// A sampler the pass did not enable has no texture on D3D9
+		// (CShaderAPIDx8::ApplyTextureEnable).
+		if ( !( g_CurrentEnabledSamplers & ( 1u << i ) ) )
+			continue;
+		const int handle =
+		    i == 1 && g_boundLightmapHandle >= 0 ? g_boundLightmapHandle : g_boundSamplerHandles[i];
+		if ( handle >= 0 && static_cast<size_t>( handle ) < g_TextureRecords.size() )
+			record.textures[i] = g_TextureRecords[static_cast<size_t>( handle )].name.c_str();
+	}
+	record.alphaRef = g_CurrentAlphaRef;
+	record.alphaGreater =
+	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentAlphaGreater ) != 0;
+	record.srgbWrite =
+	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kColorSrgbWrite ) != 0;
+	record.blend = raster.blend;
+	record.srcBlend = static_cast<int>( raster.srcFactor );
+	record.dstBlend = static_cast<int>( raster.dstFactor );
+	record.colorWrite = raster.colorWrite;
+	record.alphaWrite = raster.alphaWrite;
+	record.cullMode = static_cast<int>( raster.cullMode );
+	record.model = g_matrices.mat[MATERIAL_MODEL];
+	record.view = g_matrices.mat[MATERIAL_VIEW];
+	record.projection = g_matrices.mat[MATERIAL_PROJECTION];
+	record.drawProjection = DrawProjection();
+	const std::string geometry = mesh ? mesh->LegacyCaptureGeometry() : std::string();
+	record.geometry = geometry.c_str();
+	render_vulkan::WriteLegacyCapture( s_capture, record );
+}
+
 // shadow_vs20's cTextureJitter[0]: ( 1 / width, 1 / height ) of the shadow texture.
 static const float *ShadowJitter()
 {
@@ -7142,6 +7555,99 @@ static int SnapshotSkinCombos( const CShaderShadowVulkan &shadow )
 	return flags;
 }
 
+// vertexlit_and_unlit_generic_ps20b/vs20 (UnlitGeneric, VertexLitGeneric) pairs
+// whose static combos the textured family draws as the shaders do
+// (demo_dyn_tex.frag, EmitToNativeQueue's vertex lighting): the base texture
+// with at most one of the pixel shader's DIFFUSELIGHTING (stride 24) and
+// VERTEXCOLOR (384), or SELFILLUM (192) without VERTEXCOLOR; the vertex shader's
+// VERTEXCOLOR (192), CUBEMAP (384), HALFLAMBERT (768), USE_STATIC_CONTROL_FLOW
+// (24576) and DONT_GAMMA_CONVERT_VERTEX_COLOR (49152). Every other combo
+// (env maps, detail, distance alpha, seamless, ...) takes the legacy port, as
+// every combo does with -vklegacyvertexlit.
+static bool VertexLitDrawsTextured( const CShaderShadowVulkan &shadow )
+{
+	static const bool s_legacyOnly = CommandLine()->FindParm( "-vklegacyvertexlit" ) != 0;
+	if ( s_legacyOnly )
+		return false;
+	const auto bit = []( int index, int stride )
+	{
+		return ( index / stride ) % 2;
+	};
+	const int ps = shadow.m_pixelShaderIndex;
+	const int diffuseLighting = bit( ps, 24 ), selfIllum = bit( ps, 192 ),
+	          vertexColor = bit( ps, 384 );
+	if ( ps != 24 * diffuseLighting + 192 * selfIllum + 384 * vertexColor ||
+	     ( vertexColor && ( diffuseLighting || selfIllum ) ) )
+		return false;
+	const int vs = shadow.m_vertexShaderIndex;
+	int textured = 0;
+	for ( const int stride : { 192, 384, 768, 24576, 49152 } )
+		textured += stride * bit( vs, stride );
+	return vs == textured;
+}
+
+// skin_ps20b/skin_vs20 (VertexLitGeneric with $phong) combos the native skin
+// family (shaders/skin.*) draws as the shaders do: every static combo but
+// CUBEMAP (stride 80), WRINKLEMAP (5120), DETAILTEXTURE (71680, with its
+// DETAIL_BLEND_MODE) and LIGHTWARPTEXTURE (1280), whose tex1D the native family
+// reads at ( x, 0.5 ) where D3D9 reads ( x, x ). Those take the legacy port
+// (shaders/legacy/skin_ps20b.frag), as every combo does with -vklegacyskin,
+// except FLASHLIGHT (640): neither draws the flashlight pass, and the native
+// family reports it.
+static bool SkinDrawsNative( const CShaderShadowVulkan &shadow )
+{
+	static const bool s_legacyOnly = CommandLine()->FindParm( "-vklegacyskin" ) != 0;
+	const auto bit = []( int index, int stride )
+	{
+		return ( index / stride ) % 2 != 0;
+	};
+	const int ps = shadow.m_pixelShaderIndex;
+	if ( bit( ps, 640 ) )
+		return true;
+	if ( s_legacyOnly )
+		return false;
+	return !bit( ps, 80 ) && !bit( ps, 5120 ) && !bit( ps, 71680 ) && !bit( ps, 1280 );
+}
+
+// lightmappedgeneric_ps20b/vs20 (LightmappedGeneric, WorldVertexTransition) pairs
+// whose static combos the native lightmapped family (shaders/lightmapped.frag)
+// draws as the shader does: every combo but the pixel shader's WARPLIGHTING
+// (stride 1179648), FANCY_BLENDING (2359296), SEAMLESS (4718592), OUTLINE
+// (9437184) and SOFTEDGES (18874368), which take the legacy port, as every
+// combo does with -vklegacylightmapped.
+static bool LightmappedDrawsNatively( const CShaderShadowVulkan &shadow )
+{
+	static const bool s_legacyOnly = CommandLine()->FindParm( "-vklegacylightmapped" ) != 0;
+	if ( s_legacyOnly )
+		return false;
+	const int ps = shadow.m_pixelShaderIndex;
+	for ( const int stride : { 1179648, 2359296, 4718592, 9437184, 18874368 } )
+	{
+		if ( ( ps / stride ) % 2 )
+			return false;
+	}
+	return true;
+}
+
+// Pairs a native family draws although a legacy port exists: refract_ps20b
+// (Refract_DX90 on the textured family, with $localrefract and
+// $envmapsaturation), bloomadd_ps20b (screenspace_general's bloom add) and
+// sky_ps20b (Sky_DX9, whose port does not match D3D9 in integer HDR).
+// -vklegacyrefract, -vklegacybloomadd and -vklegacysky send them to their ports.
+static bool NativeKeepsLegacyPair( const CShaderShadowVulkan &shadow )
+{
+	static const bool s_legacyRefract = CommandLine()->FindParm( "-vklegacyrefract" ) != 0;
+	static const bool s_legacyBloomAdd = CommandLine()->FindParm( "-vklegacybloomadd" ) != 0;
+	static const bool s_legacySky = CommandLine()->FindParm( "-vklegacysky" ) != 0;
+	if ( !V_stricmp( shadow.m_pixelShaderName, "refract_ps20b" ) )
+		return !s_legacyRefract;
+	if ( !V_stricmp( shadow.m_pixelShaderName, "bloomadd_ps20b" ) )
+		return !s_legacyBloomAdd;
+	if ( !V_stricmp( shadow.m_pixelShaderName, "sky_ps20b" ) )
+		return !s_legacySky;
+	return false;
+}
+
 // Returns the snapshot id for the shader state
 // The name BeginPass routes a snapshot by: its pixel shader, with the static
 // combo where the combo changes what the native pipeline computes
@@ -7149,9 +7655,19 @@ static int SnapshotSkinCombos( const CShaderShadowVulkan &shadow )
 // (WriteZ, a depth- or stencil-only BufferClearObeyStencil).
 static std::string SnapshotShaderRoute( const CShaderShadowVulkan &shadow )
 {
-	const int skinCombos = SnapshotSkinCombos( shadow );
-	if ( skinCombos >= 0 )
-		return "skin#" + std::to_string( skinCombos );
+	if ( !LegacyPortsEnabled() )
+	{
+		const int skinCombos = SnapshotSkinCombos( shadow );
+		if ( skinCombos >= 0 )
+			return "skin#" + std::to_string( skinCombos );
+	}
+	const int legacy =
+	    render_vulkan::FindLegacyProgram( shadow.m_pixelShaderName, shadow.m_vertexShaderName );
+	const bool legacySupported =
+	    LegacyPortsEnabled() && legacy >= 0 && g_VulkanContext.LegacyPipelineSupported();
+	if ( LegacyPortsEnabled() && !V_stricmp( shadow.m_pixelShaderName, "skin_ps20b" ) &&
+	     ( !legacySupported || SkinDrawsNative( shadow ) ) )
+		return "skin#" + std::to_string( SnapshotSkinCombos( shadow ) );
 	if ( !V_stricmp( shadow.m_pixelShaderName, "solidenergy_ps20b" ) )
 		return "solidenergy";
 	if ( !V_stricmp( shadow.m_pixelShaderName, "paintblob_ps20b" ) &&
@@ -7164,10 +7680,13 @@ static std::string SnapshotShaderRoute( const CShaderShadowVulkan &shadow )
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "portal_refract_ps20", 19 ) )
 		return "portal_refract#" + std::to_string( shadow.m_pixelShaderIndex % 3 );
 	// LightmappedGeneric and WorldVertexTransition's ps20b build: its static combo
-	// indices, decoded when the pass begins (LightmappedCombos).
+	// indices, decoded when the pass begins (LightmappedCombos). The combos that
+	// family cannot draw take the lightmappedgeneric_ps20b port when there is
+	// one (LightmappedDrawsNatively).
 	if ( !V_stricmp( shadow.m_pixelShaderName, "lightmappedgeneric_ps20b" ) &&
 	     !V_stricmp( shadow.m_vertexShaderName, "lightmappedgeneric_vs20" ) &&
-	     g_VulkanContext.LightmappedPipelineSupported() )
+	     g_VulkanContext.LightmappedPipelineSupported() &&
+	     ( !legacySupported || LightmappedDrawsNatively( shadow ) ) )
 	{
 		return "lightmapped#" + std::to_string( shadow.m_pixelShaderIndex ) + "#" +
 		       std::to_string( shadow.m_vertexShaderIndex );
@@ -7194,6 +7713,15 @@ static std::string SnapshotShaderRoute( const CShaderShadowVulkan &shadow )
 			return "post#" + std::to_string( mode ) + "#" +
 			       std::to_string( shadow.m_pixelShaderIndex );
 	}
+	// A legacy shader port: the shader pair's GLSL port, by its exact names.
+	const bool vertexLit =
+	    !V_stricmp( shadow.m_pixelShaderName, "vertexlit_and_unlit_generic_ps20b" ) &&
+	    !V_stricmp( shadow.m_vertexShaderName, "vertexlit_and_unlit_generic_vs20" );
+	if ( legacySupported && !( vertexLit && VertexLitDrawsTextured( shadow ) ) &&
+	     !NativeKeepsLegacyPair( shadow ) )
+		return "legacy#" + std::to_string( legacy ) + "#" +
+		       std::to_string( shadow.m_pixelShaderIndex ) + "#" +
+		       std::to_string( shadow.m_vertexShaderIndex );
 	if ( !shadow.m_pixelShaderName[0] )
 		return std::string( "vs:" ) + shadow.m_vertexShaderName;
 	return shadow.m_pixelShaderName;
@@ -7422,7 +7950,9 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	    g_ShaderShadow.m_vertexShaderIndex, static_cast<int>( g_ShaderShadow.m_fogMode ),
 	    g_ShaderShadow.m_disableFogGammaCorrection ? 1 : 0, g_ShaderShadow.m_enabledSamplers,
 	    toneMap, spriteCombos, spriteCard );
-	const std::string stateKey = SnapshotShaderRoute( g_ShaderShadow ) + key;
+	// The route once: it reports the combos it cannot draw to the census.
+	const std::string route = SnapshotShaderRoute( g_ShaderShadow );
+	const std::string stateKey = route + key;
 	const auto existing = g_snapshotIds.find( stateKey );
 	if ( existing != g_snapshotIds.end() )
 		return existing->second;
@@ -7435,7 +7965,7 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 		Error( "shaderapivulkan: more than %d distinct shadow states\n",
 		    static_cast<int>( kMaxSnapshots ) );
 	}
-	g_snapshotShaders.push_back( SnapshotShaderRoute( g_ShaderShadow ) );
+	g_snapshotShaders.push_back( route );
 	g_snapshotRaster.push_back( raster );
 	g_snapshotPolyOffset.push_back( g_ShaderShadow.m_polyOffset );
 	g_snapshotAlphaRef.push_back( alphaRef );
@@ -7448,6 +7978,15 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	g_snapshotFog.push_back(
 	    { g_ShaderShadow.m_fogMode, g_ShaderShadow.m_disableFogGammaCorrection } );
 	g_snapshotEnabledSamplers.push_back( g_ShaderShadow.m_enabledSamplers );
+	g_snapshotSrgbSamplers.push_back( g_ShaderShadow.m_srgbReadSamplers );
+	{
+		char routeKey[256];
+		V_snprintf( routeKey, sizeof( routeKey ), "%s ps=%s#%d vs=%s#%d",
+		    route.substr( 0, 7 ) == "legacy#" ? "legacy" : route.c_str(),
+		    g_ShaderShadow.m_pixelShaderName, g_ShaderShadow.m_pixelShaderIndex,
+		    g_ShaderShadow.m_vertexShaderName, g_ShaderShadow.m_vertexShaderIndex );
+		g_snapshotRouteKeys.push_back( routeKey );
+	}
 	g_snapshotToneMap.push_back( toneMap );
 	g_snapshotBloomAdd.push_back( bloomAdd );
 	g_snapshotSpriteCombos.push_back( spriteCombos );
@@ -7882,6 +8421,7 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	// pixel-shader name and route the dynamic-mesh draw to the matching native
 	// Vulkan pipeline. This is how a material's chosen shader reaches the GPU.
 	const size_t index = static_cast<size_t>( ( snapshot >> 4 ) & 0x7FF );
+	g_CurrentRouteKey = index < g_snapshotRouteKeys.size() ? g_snapshotRouteKeys[index] : "";
 	if ( index < g_snapshotShaders.size() )
 	{
 		const std::string &name = g_snapshotShaders[index];
@@ -7956,6 +8496,15 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 			g_CurrentPostStatic = staticIndex ? atoi( staticIndex + 1 ) : 0;
 		}
 		g_CurrentShadowProjection = !name.compare( 0, 11, "shadow_ps20" );
+		g_CurrentLegacyProgram = -1;
+		if ( !name.compare( 0, 7, "legacy#" ) )
+		{
+			shader = render_vulkan::CVulkanContext::kDynShaderLegacy;
+			int program = -1;
+			if ( sscanf( name.c_str() + 7, "%d#%d#%d", &program, &g_CurrentLegacyPsStatic,
+			         &g_CurrentLegacyVsStatic ) == 3 )
+				g_CurrentLegacyProgram = program;
+		}
 		g_SamplesBaseTexture = ( shader == render_vulkan::CVulkanContext::kDynShaderTextured ||
 		                         shader == render_vulkan::CVulkanContext::kDynShaderSkin ||
 		                         shader == render_vulkan::CVulkanContext::kDynShaderSolidEnergy ||
@@ -7966,11 +8515,20 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		// Shaders that sample nothing on sampler 0: WriteZ and the quad clears draw
 		// depth, stencil or their vertex color; PortalRefract samples the frame
 		// copy only in stage 0.
-		if ( name == "vs:writez_vs20" || name == "vs:bufferclearobeystencil_vs20" ||
+		if ( name == "vs:writez_vs20" || name == "vs:depthwrite_vs20" ||
+		     name == "vs:bufferclearobeystencil_vs20" ||
 		     !name.compare( 0, 24, "bufferclearobeystencil_p" ) || g_CurrentPortalStage > 0 )
 			g_SamplesBaseTexture = false;
 		else if ( g_CurrentPortalStage == 0 )
 			g_SamplesBaseTexture = true;
+		// A legacy port needs a base texture only when its pass enabled sampler
+		// 0; D3D9 reads a sampler the pass did not enable with no texture set.
+		if ( g_CurrentLegacyProgram >= 0 )
+			g_SamplesBaseTexture =
+			    render_vulkan::LegacyProgramReadsSampler(
+			        render_vulkan::GetLegacyProgram( g_CurrentLegacyProgram ), 0 ) &&
+			    ( index >= g_snapshotEnabledSamplers.size() ||
+			        ( g_snapshotEnabledSamplers[index] & 1u ) );
 		g_VulkanContext.SelectDynamicShader( shader );
 		g_VulkanContext.SelectDynamicTexturedMode(
 		    g_CurrentShadowProjection ? render_vulkan::CVulkanContext::kTexturedModeShadow
@@ -7987,6 +8545,14 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		g_VulkanContext.SelectDynamicRasterState( raster );
 	}
 	g_CurrentColorFlags = index < g_snapshotColorFlags.size() ? g_snapshotColorFlags[index] : 0;
+	// A legacy port reads only the output encoding and the alpha test's
+	// comparison from the flags; its shader does everything else itself.
+	if ( g_CurrentLegacyProgram >= 0 )
+		g_CurrentColorFlags &= render_vulkan::CVulkanContext::kColorSrgbWrite |
+		                       render_vulkan::CVulkanContext::kFragmentAlphaGreater;
+	g_CurrentSrgbSamplers =
+	    index < g_snapshotSrgbSamplers.size() ? g_snapshotSrgbSamplers[index] : 0u;
+	g_CurrentVertexUsage = index < g_snapshotVertexUsage.size() ? g_snapshotVertexUsage[index] : 0;
 	g_CurrentModulationInPixelC1 =
 	    index < g_snapshotModulationInPixelC1.size() && g_snapshotModulationInPixelC1[index];
 	g_CurrentVertexLit =
@@ -8006,6 +8572,8 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	g_VulkanContext.BindManagedLightmap( -1 );
 	for ( int sampler = 1; sampler < render_vulkan::CVulkanContext::kMaxSamplers; ++sampler )
 		g_VulkanContext.BindManagedSampler( sampler, -1 );
+	for ( int sampler = 1; sampler < 16; ++sampler )
+		g_boundSamplerHandles[sampler] = -1;
 	// Apply the $alphatest reference this snapshot recorded (< 0 = disabled).
 	if ( index < g_snapshotAlphaRef.size() )
 	{
@@ -8170,6 +8738,9 @@ static void CommitPassPixelConstants()
 
 static bool NativePipelineImplementsShader( const char *shaderName )
 {
+	// The names are the material's final shader after its fallbacks
+	// (CMaterial::InitializeShader keeps the fallback, e.g. DecalModulate ->
+	// DecalModulate_dx9), which is what GetShaderName returns.
 	static const char *const kImplemented[] = {
 	    "Sky_DX9",
 	    "MonitorScreen_DX9",
@@ -8188,6 +8759,8 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	    "Cable_DX9",
 	    "Shadow",
 	    "DecalModulate",
+	    // Drawn natively when NativeRefractMaterialSupported; with -vklegacyports
+	    // and -vklegacyrefract the refract_ps20b port draws every pass instead.
 	    "Refract_DX90",
 	    // Depth-only, and the stencil-obeying clears (ClearBuffersObeyStencil).
 	    "WriteZ_DX9",
@@ -8199,6 +8772,25 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	for ( const char *name : kImplemented )
 	{
 		if ( V_stricmp( name, shaderName ) == 0 )
+			return true;
+	}
+	// Drawn only with -vklegacyports, which supplies the state they need.
+	static const char *const kImplementedWithPorts[] = {
+	    // UnlitGeneric's pair (DrawVertexLitGeneric_DX9 unlit) drawn with the
+	    // wireframe fill mode its MATERIAL_VAR_WIREFRAME flag selects.
+	    "Wireframe_DX9",
+	    "DecalModulate_dx9",
+	    // WriteZ's vertex-only pass (writez_vs20, no pixel shader) with color,
+	    // alpha and depth writes off: only the stencil the caller set is written.
+	    "WriteStencil_DX9",
+	    // DepthWrite's vertex-only pass (depthwrite_vs20, color writes off)
+	    // writes shadow-map depth; its alpha-tested and color-depth passes draw
+	    // through the depthwrite_ps20b legacy port.
+	    "DepthWrite",
+	};
+	for ( const char *name : kImplementedWithPorts )
+	{
+		if ( LegacyPortsEnabled() && V_stricmp( name, shaderName ) == 0 )
 			return true;
 	}
 	// PortalRefract has its own pipeline (shaders/portal_refract.*), which a
@@ -8311,7 +8903,7 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 	    g_CurrentSkinCombos >= 0 && !g_VulkanContext.SkinPipelineSupported();
 	const bool implemented =
 	    !skinUnavailable &&
-	    ( !g_pBoundMaterial ||
+	    ( !g_pBoundMaterial || g_CurrentLegacyProgram >= 0 ||
 	        NativePipelineImplementsShader( g_pBoundMaterial->GetShaderName() ) ||
 	        ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLuminanceCompare ) ||
 	        g_CurrentBloomAdd );
@@ -8320,7 +8912,12 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		DropDraw( "draw dropped: material shader not implemented by the native pipeline" );
 		NoteDroppedMaterial();
 	}
-	else if ( !NativeRefractMaterialSupported( g_pBoundMaterial ) )
+	else if ( g_CurrentRaster.wireframe && !g_VulkanContext.WireframeSupported() )
+	{
+		DropDraw( "draw dropped: wireframe fill mode without fillModeNonSolid" );
+		NoteDroppedMaterial();
+	}
+	else if ( g_CurrentLegacyProgram < 0 && !NativeRefractMaterialSupported( g_pBoundMaterial ) )
 	{
 		DropDraw( "draw dropped: Refract_DX90 material needs an unsupported feature or texture" );
 		NoteDroppedMaterial();
@@ -8356,9 +8953,16 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 			CommitLightmappedConstants( *this );
 		if ( g_CurrentPostMode > 0 )
 			CommitPostConstants();
+		if ( g_CurrentLegacyProgram >= 0 )
+		{
+			CommitLegacyConstants( *this );
+			CaptureLegacyPass( *this, raster, g_pRenderMesh );
+		}
 		const bool lightmapped = g_boundLightmapHandle >= 0;
-		const bool refract =
-		    g_pBoundMaterial && !V_stricmp( g_pBoundMaterial->GetShaderName(), "Refract_DX90" );
+		// Refract_DX90 on the native textured family (the refract_ps20b port
+		// draws it instead with -vklegacyrefract).
+		const bool refract = g_CurrentLegacyProgram < 0 && g_pBoundMaterial &&
+		                     !V_stricmp( g_pBoundMaterial->GetShaderName(), "Refract_DX90" );
 		if ( refract )
 		{
 			g_CurrentColorFlags |= render_vulkan::CVulkanContext::kFragmentRefract |
@@ -8415,8 +9019,8 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		if ( g_CurrentSolidEnergy )
 			g_VulkanContext.SetDynamicOutputScale( clamp( g_ToneMappingScale.x, 0.0f, 1.0f ) );
 		if ( !linearToneScale && g_CurrentToneMap == kToneMapUnknown &&
-		     CurrentHDRType() == HDR_TYPE_INTEGER && g_ToneMappingScale.x != 1.0f &&
-		     ( raster.colorWrite || raster.alphaWrite ) )
+		     g_CurrentLegacyProgram < 0 && CurrentHDRType() == HDR_TYPE_INTEGER &&
+		     g_ToneMappingScale.x != 1.0f && ( raster.colorWrite || raster.alphaWrite ) )
 			NoteUnimplemented( "integer HDR: tone-mapping scale of an unclassified pixel shader" );
 		CommitPassPixelConstants();
 		if ( refract )
@@ -8445,6 +9049,10 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		// place; the vertex color carries the jitter (EmitToNativeQueue).
 		if ( g_CurrentShadowProjection )
 			g_VulkanContext.SetDynamicModulation( g_psConstants[1] );
+		RouteCensus &census = g_RouteCensus[g_CurrentRouteKey];
+		++census.draws;
+		if ( census.material.empty() && g_pBoundMaterial )
+			census.material = g_pBoundMaterial->GetName();
 		g_pRenderMesh->EmitToNativeQueue();
 	}
 	if ( drawstatefixture::Instance().Enabled() )
@@ -8600,6 +9208,7 @@ void CShaderAPIVulkan::PopMatrix()
 		for ( int i = 0; i < 16; ++i )
 			cur[i] = top[i];
 		st.pop_back();
+		NoteTransformChanged( false );
 		CommitModelViewProj();
 	}
 }
@@ -8611,6 +9220,7 @@ void CShaderAPIVulkan::LoadMatrix( float *m )
 	float *cur = CurrentMatrix();
 	for ( int i = 0; i < 16; ++i )
 		cur[i] = m[i];
+	NoteTransformChanged( false );
 	CommitModelViewProj();
 }
 
@@ -8620,6 +9230,7 @@ void CShaderAPIVulkan::MultMatrix( float *m )
 		return;
 	float *cur = CurrentMatrix();
 	MatMul( cur, m, cur ); // top = top * m
+	NoteTransformChanged( false );
 	CommitModelViewProj();
 }
 
@@ -8629,6 +9240,7 @@ void CShaderAPIVulkan::MultMatrixLocal( float *m )
 		return;
 	float *cur = CurrentMatrix();
 	MatMul( m, cur, cur ); // top = m * top
+	NoteTransformChanged( false );
 	CommitModelViewProj();
 }
 
@@ -8644,6 +9256,7 @@ void CShaderAPIVulkan::GetMatrix( MaterialMatrixMode_t matrixMode, float *dst )
 void CShaderAPIVulkan::LoadIdentity( void )
 {
 	MatSetIdentity( CurrentMatrix() );
+	NoteTransformChanged( true );
 	CommitModelViewProj();
 }
 
@@ -9081,9 +9694,21 @@ void CShaderAPIVulkan::ExecuteCommandBuffer( uint8 *pCmdBuf )
 			break;
 
 		case CBCMD_SET_DEPTH_FEATHERING_CONST:
-			NoteUnimplemented( "ExecuteCommandBuffer(depth feathering)" );
+		{
+			if ( !LegacyPortsEnabled() )
+			{
+				NoteUnimplemented( "ExecuteCommandBuffer(depth feathering)" );
+				pCmdBuf += 2 * sizeof( int ) + sizeof( float );
+				break;
+			}
+			int nReg = 0;
+			float fDepthBlendScale = 0.0f;
+			ReadCommandField( pCmdBuf, sizeof( int ), &nReg );
+			ReadCommandField( pCmdBuf, 2 * sizeof( int ), &fDepthBlendScale );
+			SetDepthFeatheringPixelShaderConstant( nReg, fDepthBlendScale );
 			pCmdBuf += 2 * sizeof( int ) + sizeof( float );
 			break;
+		}
 
 		case CBCMD_BIND_STANDARD_TEXTURE:
 		{
@@ -9251,6 +9876,7 @@ void CShaderAPIVulkan::SetVertexShaderConstant(
 	// backend honor the D3D9 constant contract rather than a bespoke convention.
 	if ( !pVec || numConst <= 0 )
 		return;
+	++g_vsConstants.lastSerial;
 	for ( int i = 0; i < numConst; ++i )
 	{
 		const int reg = var + i;
@@ -9261,6 +9887,7 @@ void CShaderAPIVulkan::SetVertexShaderConstant(
 		g_vsConstants.regs[reg][2] = pVec[i * 4 + 2];
 		g_vsConstants.regs[reg][3] = pVec[i * 4 + 3];
 		g_vsConstants.written[reg] = true;
+		g_vsConstants.serial[reg] = g_vsConstants.lastSerial;
 	}
 	CommitDynamicVsConstants();
 }
@@ -9371,6 +9998,8 @@ void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t te
 	if ( native >= 0 && WouldBeOverTextureLimit( native ) )
 		native = -1;
 	NoteTextureBound( native );
+	if ( stage >= 0 && stage < 16 )
+		g_boundSamplerHandles[stage] = native;
 	// D3D9 sets no texture on a sampler the current pass did not enable
 	// (ApplyTextureEnable); measured here before this backend follows it.
 	if ( native >= 0 && stage >= 0 && stage < 32 && !( g_CurrentEnabledSamplers & ( 1u << stage ) ) )
@@ -9503,6 +10132,20 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 			return false;
 		}
 		return upload( src, pixels * 8 );
+	}
+
+	// Signed texels go to the signed image as they are (CreateTexture).
+	if ( srcFormat == IMAGE_FORMAT_UVWQ8888 )
+	{
+		const bool imageSigned =
+		    static_cast<size_t>( handle ) < g_TextureRecords.size() &&
+		    g_TextureRecords[static_cast<size_t>( handle )].format == IMAGE_FORMAT_UVWQ8888;
+		if ( !imageSigned || ( srcStride > 0 && srcStride != width * 4 ) )
+		{
+			NoteUnimplemented( "upload: UVWQ8888 into another format or padded rows" );
+			return false;
+		}
+		return upload( src, pixels * 4 );
 	}
 
 	int srcBpp = 0;
@@ -9922,6 +10565,11 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 		// the shaders scale them by ENV_MAP_SCALE as on D3D9.
 		vkFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 		break;
+	case IMAGE_FORMAT_UVWQ8888:
+		// D3DFMT_Q8W8V8U8: four signed bytes, U first in memory (the material
+		// system's signed normalization cube map).
+		vkFormat = LegacyPortsEnabled() ? VK_FORMAT_R8G8B8A8_SNORM : VK_FORMAT_R8G8B8A8_UNORM;
+		break;
 	default:
 		vkFormat = VK_FORMAT_R8G8B8A8_UNORM; // RGBA8888 and RGBA-convertible sources
 		break;
@@ -10288,6 +10936,8 @@ void CShaderAPIVulkan::ResetRenderState( bool bFullReset )
 	g_VulkanContext.BindManagedLightmap( -1 );
 	for ( int sampler = 1; sampler < render_vulkan::CVulkanContext::kMaxSamplers; ++sampler )
 		g_VulkanContext.BindManagedSampler( sampler, -1 );
+	for ( int sampler = 1; sampler < 16; ++sampler )
+		g_boundSamplerHandles[sampler] = -1;
 	DisableAllLocalLights();
 	// Overrides, stencil, scissor, fast and user clipping.
 	m_bOverrideDepthEnable = false;

@@ -33,6 +33,7 @@
 #include "vulkan_descriptor_groups.h"
 #include "vulkan_frame_stats.h"
 #include "vulkan_shader_library.h"
+#include "vulkan_legacy_programs.h"
 #include "vulkan_surface_host.h"
 
 #include <vulkan/vulkan.h>
@@ -395,6 +396,7 @@ public:
 		m_dynDrawRecords.clear();
 		m_frameLabels.clear();
 		m_dynSkinConstants.clear();
+		m_dynLegacyConstants.clear();
 		m_dynFramePresented = false;
 		m_sceneCaptureCurrent = false;
 		m_sceneCapturesQueued = 0;
@@ -441,7 +443,10 @@ public:
 		// blobulator's isosurface, on the skin pipeline's layout and vertex
 		// stage (its constants arrive through SetDynamicSkinConstants); see
 		// shaders/paintblob.frag.
-		kDynShaderPaintBlob = 14
+		kDynShaderPaintBlob = 14,
+		// A legacy shader port (vulkan_legacy_programs.h): its program and
+		// constants arrive through SetDynamicLegacy.
+		kDynShaderLegacy = 15
 	};
 	// paintblob.frag's combo flags (SkinConstants::combos, c27.x of
 	// paintblob_helper.cpp); the draw clears kPaintBlobEnvMap when the bound
@@ -502,6 +507,15 @@ public:
 	{
 		return m_postVert != VK_NULL_HANDLE && m_whiteVolumeHandle >= 0;
 	}
+	// False when the device cannot bind the legacy ports' nine descriptor sets or
+	// the skin push block; their passes are then declined.
+	bool LegacyPipelineSupported() const { return m_legacyPipelineLayout != VK_NULL_HANDLE; }
+	// The legacy port and constants of the draws queued next (kDynShaderLegacy).
+	void SetDynamicLegacy( int program, const LegacyConstants &constants )
+	{
+		m_dynLegacyProgram = program;
+		m_dynLegacy = constants;
+	}
 	// The textured pipeline's alternative pixel stages (alphaParams.y), per draw:
 	// 0 the material shader the flags describe, 2 shadow_ps2x's projected
 	// render-to-texture shadow, 3 spritecard_ps2x (its second animation frame,
@@ -553,8 +567,14 @@ public:
 		VkStencilOp stencilFail = VK_STENCIL_OP_KEEP;
 		VkStencilOp stencilDepthFail = VK_STENCIL_OP_KEEP;
 		VkStencilOp stencilPass = VK_STENCIL_OP_KEEP;
+		// D3D9's D3DFILL_WIREFRAME (IShaderShadow::PolyMode with
+		// SHADER_POLYMODE_LINE): polygons rasterize as their edges. Drawn only on
+		// devices with fillModeNonSolid (WireframeSupported).
+		bool wireframe = false;
 	};
 	void SelectDynamicRasterState( const DynRasterState &state ) { m_dynRaster = state; }
+	// Whether the device rasterizes polygons as lines (fillModeNonSolid).
+	bool WireframeSupported() const { return m_fillModeNonSolid; }
 	void SetDynamicDepthBias( float constantFactor, float slopeFactor )
 	{
 		m_dynDepthBiasConstant = constantFactor;
@@ -1666,7 +1686,9 @@ private:
 		kPipelinePost = 8,
 		kPipelinePaintBlob = 9,
 		kPipelineLightmappedPaint = 10,
-		kPipelineFamilies
+		kPipelineFamilies,
+		// A legacy port's pipelines: this plus its program index.
+		kPipelineLegacyFirst = 100
 	};
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
 	std::vector<std::pair<int, uint64_t>> m_pipelineVariants;
@@ -1770,6 +1792,11 @@ private:
 	std::vector<SkinUniformBuffer> m_skinUbos; // one per frame in flight
 	VkDeviceSize m_uboAlignment = 256;
 	bool InitSkinPipeline( std::string *outError );
+	// Grows a frame slot's uniform ring to hold `needed` bytes of `stride`-spaced
+	// blocks, each bound `range` bytes through the slot's dynamic set; false when
+	// the buffer cannot be provided.
+	bool EnsureUniformRingSlot( SkinUniformBuffer &slot, VkDeviceSize needed, VkDeviceSize stride,
+	    VkDeviceSize range, const char *what );
 	// Copies this frame's skin constants into the frame's uniform buffer (grown
 	// as needed) and returns each draw's offset in `offsets`; false when the
 	// buffer cannot be provided.
@@ -1967,6 +1994,10 @@ private:
 	int m_dynTexturedMode = kTexturedModeDefault;
 	// The skin constants of this frame's skin draws (DynDraw::skin indexes them).
 	std::vector<SkinConstants> m_dynSkinConstants;
+	int m_dynLegacyProgram = -1;
+	LegacyConstants m_dynLegacy = {};
+	// The legacy constants of this frame's legacy draws (DynDraw::legacy).
+	std::vector<LegacyConstants> m_dynLegacyConstants;
 	// Column-major model->projection matrix; identity by default.
 	float m_dynTransform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	// A persistently mapped host-visible buffer the frame's stream is copied
@@ -2103,6 +2134,8 @@ private:
 		    -1, -1 }; // samplers 1..15 ([0] unused)
 		PortalConstants portal;
 		int skin = -1; // index into m_dynSkinConstants
+		int legacy = -1;        // index into m_dynLegacyConstants
+		int legacyProgram = -1; // the legacy port (vulkan_legacy_programs.h)
 		DrawFog fog;
 		int texturedMode = kTexturedModeDefault; // the textured pipeline's alphaParams.y
 	};
@@ -2119,6 +2152,50 @@ private:
 	};
 	std::vector<FrameLabel> m_frameLabels;
 	void ReplayFrameLabels( size_t *cursor, size_t throughRecord );
+	// The legacy shader ports (vulkan_legacy_pipeline.cpp): one layout for all
+	// of them (a set of up to eight samplers, then the constants), their stages
+	// created on first use, and pipelines per port and raster state.
+	VkPipelineLayout m_legacyPipelineLayout = VK_NULL_HANDLE;
+	VkDescriptorSetLayout m_legacySamplerLayout = VK_NULL_HANDLE;
+	VkDescriptorSetLayout m_legacyUboLayout = VK_NULL_HANDLE;
+	VkDescriptorPool m_legacyUboPool = VK_NULL_HANDLE;
+	// The sampler sets of a frame in flight: a pool reset when the frame slot
+	// is reused, and the sets already written this frame by their images.
+	struct LegacySamplerPool
+	{
+		VkDescriptorPool pool = VK_NULL_HANDLE;
+		uint32_t capacity = 0;
+		std::map<std::vector<uint64_t>, VkDescriptorSet> written;
+	};
+	std::vector<LegacySamplerPool> m_legacySamplerPools;
+	VkVertexInputAttributeDescription m_legacyAttrs[8] = {};
+	VkPipelineVertexInputStateCreateInfo m_legacyVin = {};
+	std::vector<SkinUniformBuffer> m_legacyUbos; // one per frame in flight
+	struct LegacyStages
+	{
+		VkShaderModule vert = VK_NULL_HANDLE;
+		VkShaderModule frag = VK_NULL_HANDLE;
+		bool failed = false;
+		std::map<uint64_t, VkPipeline> pipelines;
+	};
+	std::vector<LegacyStages> m_legacyStages; // one per registered port
+	// What D3D9 reads from a sampler with no texture set, ( 0, 0, 0, 1 ): the
+	// legacy ports' samplers their pass did not enable (2D and cube).
+	int m_legacyNoTextureHandle = -1;
+	int m_legacyNoTextureCubeHandle = -1;
+	VkPipeline LegacyPipeline(
+	    int program, const DynRasterState &state, bool srgbPass = false, int samples = 1 );
+	bool InitLegacyPipeline( std::string *outError );
+	void DestroyLegacyPipeline();
+	// Copies this frame's legacy constants into the frame's uniform buffer and
+	// returns each draw's offset, and readies the frame's sampler-set pool;
+	// false when either cannot be provided.
+	bool UploadLegacyConstants( std::vector<uint32_t> *offsets );
+	// Binds a legacy draw's sampler sets and constants; returns the sets the
+	// shader must decode from sRGB itself (params.z bits 0..15), or -1 when a
+	// cube or volume sampler has neither a texture nor a white fallback.
+	int BindLegacySets(
+	    VkCommandBuffer cmd, const DynDraw &d, int openTarget, uint32_t constantsOffset );
 	// Target/viewport/scissor state captured by each record.
 	int m_dynTarget = -1;
 	int m_dynTag = -1;
@@ -2142,6 +2219,7 @@ private:
 	VkQueryPool m_queryPool = VK_NULL_HANDLE;
 	std::vector<OcclusionQuerySlot> m_querySlots;
 	bool m_preciseOcclusion = false;
+	bool m_fillModeNonSolid = false;
 	// Issues replayed into the frame being recorded; marked submitted by EndFrame.
 	std::vector<std::pair<int, uint64_t>> m_replayedQueries;
 	void FailUnsubmittedQueries();
@@ -2201,6 +2279,9 @@ private:
 	friend VkBool32 VulkanDebugCallbackTrampoline( VkDebugUtilsMessageSeverityFlagBitsEXT,
 	    VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT *, void * );
 };
+
+// Formats whose samples the hardware decodes from sRGB on every view.
+bool IsSrgbFormat( VkFormat format );
 
 } // namespace render_vulkan
 

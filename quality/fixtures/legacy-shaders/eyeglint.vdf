@@ -1,0 +1,30 @@
+// EyeGlint_dx9 (eyeglint_ps20b / eyeglint_vs20): studiorender's procedural
+// glint, five gaussian spots around the glint center (TEXCOORD1) tinted by the
+// glint color (TEXCOORD2), added (ONE, ONE) over the frame. The vertex shader
+// passes the clip-space position through. The harness's mesh gives TEXCOORD2
+// two components, so the color's blue (TEXCOORD2.z) is 0 in these cases.
+"LegacyShaderCases"
+{
+	"case"
+	{
+		"name" "eyeglint_centered"
+		"shader" "EyeGlint"
+		"clear" "30 60 90 255"
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0.5 0.5" "uv2" "0.3 0.18" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.5 0.5" "uv2" "0.3 0.18" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.5 0.5" "uv2" "0.3 0.18" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0.5 0.5" "uv2" "0.3 0.18" }
+		"points" "0.5 0.5 0.25 0.25 0.75 0.25 0.3 0.6 0.6 0.4 0.1 0.9 0.45 0.55 0.8 0.8"
+	}
+	"case"
+	{
+		"name" "eyeglint_offset"
+		"shader" "EyeGlint"
+		"clear" "10 10 10 255"
+		"vertex" { "pos" "-1 1 0.5" "uv0" "-0.5 -0.5" "uv1" "0.2 0.35" "uv2" "0.12 0.4" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1.5 -0.5" "uv1" "0.2 0.35" "uv2" "0.12 0.4" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1.5 1.5" "uv1" "0.2 0.35" "uv2" "0.12 0.4" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "-0.5 1.5" "uv1" "0.2 0.35" "uv2" "0.12 0.4" }
+		"points" "0.5 0.5 0.35 0.42 0.3 0.4 0.25 0.35 0.4 0.5 0.2 0.3 0.6 0.6"
+	}
+}

@@ -1,0 +1,76 @@
+// PortalStaticOverlay (portalstaticoverlay_ps20b / portalstaticoverlay_vs20):
+// the static texture (or gray) blended with $staticamount as alpha, never above
+// the alpha mask's alpha (alpha tested GREATER 0), on a brush with a
+// translated MODEL matrix (the brush position ignores the translation).
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/portalstaticoverlay_static"
+		"width" "4"
+		"height" "4"
+		"texels" "200 100 50 255   40 160 220 200   120 120 120 128   255 255 255 60   30 90 150 255   250 20 90 180   10 240 60 220   90 90 200 100   180 180 30 255   60 20 120 140   220 140 80 240   20 20 20 255   100 200 250 90   255 128 0 255   0 128 255 200   128 64 32 170"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/portalstaticoverlay_mask"
+		"width" "2"
+		"height" "2"
+		"point" "1"
+		"texels" "255 255 255 255   255 255 255 160   255 255 255 0   255 255 255 90"
+	}
+	"case"
+	{
+		"name" "portalstaticoverlay_static_mask"
+		"shader" "PortalStaticOverlay"
+		"clear" "30 60 120 255"
+		"material"
+		{
+			"$staticblendtexture" "conformance/legacy/portalstaticoverlay_static"
+			"$alphamasktexture" "conformance/legacy/portalstaticoverlay_mask"
+			"$staticamount" "0.5"
+		}
+		"model" "1 0 0 0  0 1 0 0  0 0 1 0  0.3 -0.2 0.1 1"
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.8 0.8"
+	}
+	"case"
+	{
+		"name" "portalstaticoverlay_mask"
+		"shader" "PortalStaticOverlay"
+		"clear" "30 60 120 255"
+		"material"
+		{
+			"$alphamasktexture" "conformance/legacy/portalstaticoverlay_mask"
+			"$staticamount" "0.8"
+		}
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.8 0.8"
+	}
+	"case"
+	{
+		"name" "portalstaticoverlay_static_fog"
+		"shader" "PortalStaticOverlay"
+		"clear" "30 60 120 255"
+		"material"
+		{
+			"$staticblendtexture" "conformance/legacy/portalstaticoverlay_static"
+			"$staticamount" "0.7"
+		}
+		"fog" { "mode" "linear" "start" "0" "end" "1" "color" "40 200 90" }
+		"vertex" { "pos" "-1 1 0.1" "uv0" "0 0" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" }
+		"vertex" { "pos" "1 -1 0.9" "uv0" "1 1" }
+		"vertex" { "pos" "-1 -1 0.6" "uv0" "0 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8"
+	}
+	"case"
+	{
+		"name" "portalstaticoverlay_gray"
+		"shader" "PortalStaticOverlay"
+		"clear" "30 60 120 255"
+		"material"
+		{
+			"$staticamount" "0.35"
+		}
+		"points" "0.25 0.25 0.75 0.75"
+	}
+}

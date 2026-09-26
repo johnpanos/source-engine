@@ -382,7 +382,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | done (2026-09-25: `Expected`, compact errors (`foundation::Error`), `StrongId`, `ScopedResource`, `testing::Checks` and `units`, each with a suite, sensitivity rows and a real consumer; CAP010 keeps them out of preserved ABI headers; hosted CI not run; [closure](RFC/0006-progress.md#r05-closure-done-2026-09-25)) |
 | 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | done (2026-09-25: typed-descriptor unit runner, required/optional validation, rollback at every stage, repeat instances, ordering, legacy bridges and negative providers; fresh Q-FOUNDATION run on g++ and clang++; native providers and hosted CI not claimed; [conformance record](RFC/0001-conformance-progress.md)) |
 | 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | done (2026-09-25: POSIX loader provider with a required load-site observer, scoped `LoadedLibrary`, provider events on the Tier 0 stream, fake and native suites, and legacy telemetry and frozen-ABI cases on gcc and clang; `Sys_*` stay the frozen instrumented bridge and retire with R39/R41 (RFC 0001 step-6 decision); Win32 and hosted CI not claimed; [closure](RFC/0001-phase-a-progress.md#r07-closure-done-2026-09-25)) |
-| 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active |
+| 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active (map-building-loop slices done 2026-09-25/26: R08-CMD command layer, R08-LIBS layered format libraries, R08-LOOP Waf-built headless `hammer_cli` with the `corpus.hammer.loop` author → compile → boot suite, R08-UI-P1 Source 2 P1 commands and GTK wiring, R08-UI-TEST the `corpus.hammer.ui` suite that drives the real GTK editor in an isolated compositor; open for `done`: exhaustive ownership/caller inventory (46 of 530 files classified), complete migration records, legacy build evidence; [record](RFC/0002-progress.md#map-building-loop-direction-and-r08-cmd-2026-09-25)) |
 | 9 / R09 | Physics A feasibility and IVP baseline; 0004, Q-PHYSICS | R01, R02, R05 | Method/profile inventory, units/assets and measurements; tested solution or explicit scope decision for impact state, contact mutation, ragdoll limits and hull/decoder blockers | partial ([0004 progress](RFC/0004-progress.md)) |
 | 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active ([0003 progress](RFC/0003-progress.md); [host graph](RFC/0003-scheduler-trust-progress.md); [render nodes](RFC/0003-scheduler-nodes-progress.md)) |
 | 11 / R11 | Paths and module resolution; 0001 rank 5 | R05, R07 | Native/virtual paths distinct; resolution/verification separate from opening; encoding/search/failure corpus passes | planned |
@@ -1130,6 +1130,37 @@ Keep the table concise and link details below or from the domain progress file.
     No device-loss or mobile evidence. See the
     [queued rendering record](RFC/0001-native-vulkan-queued-rendering-progress.md).
 
+- R32-LEGACY-SHADERS: `partial` (2026-09-25, user direction: "implement all
+  missing shader types in vulkan native"). 84 GLSL ports of stdshader_dx9 pairs
+  on one generic native pipeline family, **off by default** behind
+  `-vklegacyports`. Off, the backend routes and draws as it did before the
+  ports (no port routes, no port-only native passes, no D3D9 state they add).
+  - History: merged as `b5652908` and reverted as `0559a463` the same night.
+    With the ports on, the user's `./play` (testchmb_a_01, run.conf,
+    `mat_queue_mode 2`) showed opaque black diagonal bands, a missing chamber
+    sign, broken monitors and no pause-menu UI. Headless spawn-view boots had
+    not caught any of it. Cause: the D3D9 math constants written into c0/c1
+    were read as the native backend's legacy c0 MVP alias, so native draws
+    (a desk model among them) took them as a transform. Fixed; re-landed gated.
+    Switch on and off now match on the testchmb_a_01 view set and the pause
+    menu, and the oracle passes 267/267.
+  - With `-vklegacyports`: native families keep the combos they draw
+    (`-vklegacyvertexlit`, `-vklegacyskin`, `-vklegacylightmapped` send every
+    combo to the port); refract, bloomadd and `sky_ps20b` stay native unless
+    `-vklegacyrefract`, `-vklegacybloomadd`, `-vklegacysky`.
+  - Oracle: each pass is replayed on bytecode compiled from this tree's `.fxc`
+    with the pinned FXC (`legacy_shader_conformance.py` passes
+    `-vklegacyports`); 267 default cases passed in both HDR modes at the merge.
+  - Default-on gate (open): the testchmb_a_01 view set (the map `./play`
+    boots, run.conf settings, pause menu) identical to ports-off except where
+    a reviewed port improvement is expected, plus a glass oracle
+    (translucent env-mapped, refract and window glass must show the scene
+    behind them), on the user's Wayland session as well as headless.
+  - Unverified or open: flashlight passes, DEPTHBLEND, wrinkle weights,
+    pbr_ps30 parallax (the pinned FXC miscompiles it).
+  - No gate closes. See the
+    [legacy shader record](RFC/0001-native-vulkan-legacy-shaders-progress.md).
+
 - R32-VIDEO-OPTIONS: `partial` (2026-09-23). The Video options take effect on
   native Vulkan: real display modes and mode-change callbacks, vsync through
   `render.present-policy.v1`, brightness applied at present, DirectX 95 caps,
@@ -1191,7 +1222,8 @@ Current RFC 0001 evidence (updated 2026-09-25):
   - Implemented: render targets, world texture residency, flat and bumped
     lightmaps, model lighting, integer HDR, PortalRefract, VGUI, fog,
     bloom/color correction and model shadows.
-  - Declined by name: motion blur, water, eyes, teeth and flashlight. Line and
+  - Declined by name: motion blur, water, eyes, teeth and flashlight (the
+    legacy shader ports draw the first four with `-vklegacyports`). Line and
     point draws are dropped, alpha to coverage is a stub, and skinning runs on
     the CPU.
   - Oracles: `material_pixel_conformance.py` has 14 families, most judged
@@ -1199,9 +1231,8 @@ Current RFC 0001 evidence (updated 2026-09-25):
     equivalence 64 checks. The 15 suites of the manifest's
     `linux-native-vulkan-gpu` profile pass. A `-vkvalidate` boot logs no
     messages.
-  - The 84 legacy stdshader ports (R32-LEGACY-SHADERS) are not in this tree;
-    they exist only as uncommitted changes in the `source-engine-vkshaders`
-    worktree.
+  - The 84 legacy stdshader ports (R32-LEGACY-SHADERS) are in the tree,
+    off by default (`-vklegacyports`).
   - The 2026-09-22 false-positive correction is history. No hosted CI lane;
     Android and Apple are unverified.
 - [Portal SDL3/Wayland/Vulkan progress](RFC/0001-portal-vulkan-progress.md) records

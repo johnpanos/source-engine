@@ -1,0 +1,97 @@
+// warp (warp_ps30 / warp_vs30): the HMD lens warp of a side-by-side frame with
+// each INT_RENDERPARM_DISTORTION_TYPE (0 none, 1 and 2 polynomial) and the HMD
+// warp vector rendering parameters (0..8: centres, coefficients and channel
+// offsets, growth, aspect), over a smooth texture read through sRGB. Sampled
+// in both eyes, inside and outside the warped bounds.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/warp_frame"
+		"width" "4"
+		"height" "4"
+		"clamp" "1"
+		"texels" "40 60 200 255  80 70 180 230  120 80 160 200  160 90 140 170  60 100 180 255  100 110 160 230  140 120 140 200  180 130 120 170  80 140 160 255  120 150 140 230  160 160 120 200  200 170 100 170  100 180 140 255  140 190 120 230  180 200 100 200  220 210 80 170"
+	}
+	"case"
+	{
+		"name" "warp_distort_type_0"
+		"shader" "warp"
+		"clear" "180 90 200 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/warp_frame"
+		}
+		"vectorparms"
+		{
+			"0" "0.1 -0.05 0"
+			"1" "0.2 0.05 0.01"
+			"2" "0 0 0.03"
+			"3" "-0.1 0.05 0"
+			"4" "0.15 0.04 0.02"
+			"5" "0 0 -0.02"
+			"6" "0.9 0.05 0"
+			"7" "0.95 -0.03 0"
+			"8" "1.2 0 0"
+		}
+		"intparms"
+		{
+			"9" "0"
+		}
+		"points" "0.1 0.2 0.2 0.5 0.3 0.8 0.4 0.45 0.02 0.5 0.6 0.3 0.7 0.6 0.8 0.9 0.9 0.4 0.99 0.02"
+	}
+	"case"
+	{
+		"name" "warp_distort_type_1"
+		"shader" "warp"
+		"clear" "180 90 200 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/warp_frame"
+		}
+		"vectorparms"
+		{
+			"0" "0.1 -0.05 0"
+			"1" "0.2 0.05 0.01"
+			"2" "0 0 0.03"
+			"3" "-0.1 0.05 0"
+			"4" "0.15 0.04 0.02"
+			"5" "0 0 -0.02"
+			"6" "0.9 0.05 0"
+			"7" "0.95 -0.03 0"
+			"8" "1.2 0 0"
+		}
+		"intparms"
+		{
+			"9" "1"
+		}
+		"points" "0.1 0.2 0.2 0.5 0.3 0.8 0.4 0.45 0.02 0.5 0.6 0.3 0.7 0.6 0.8 0.9 0.9 0.4 0.99 0.02"
+	}
+	"case"
+	{
+		"name" "warp_distort_type_2"
+		"shader" "warp"
+		"clear" "180 90 200 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/warp_frame"
+		}
+		"vectorparms"
+		{
+			"0" "0.1 -0.05 0"
+			"1" "0.2 0.05 0.01"
+			"2" "0 0 0.03"
+			"3" "-0.1 0.05 0"
+			"4" "0.15 0.04 0.02"
+			"5" "0 0 -0.02"
+			"6" "0.9 0.05 0"
+			"7" "0.95 -0.03 0"
+			"8" "1.2 0 0"
+		}
+		"intparms"
+		{
+			"9" "2"
+		}
+		"points" "0.1 0.2 0.2 0.5 0.3 0.8 0.4 0.45 0.02 0.5 0.6 0.3 0.7 0.6 0.8 0.9 0.9 0.4 0.99 0.02"
+	}
+}

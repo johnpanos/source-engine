@@ -3000,6 +3000,8 @@
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "mapcontainer/world_lightmap.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
@@ -3029,6 +3031,8 @@
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "mapcontainer/world_lightmap.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
@@ -3053,6 +3057,8 @@
       "sources": [
         "unittests/shaderapivulkantest/test_model_pbr_pixels.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
@@ -3088,6 +3094,8 @@
         "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
@@ -3146,6 +3154,8 @@
       "sources": [
         "unittests/shaderapivulkantest/test_indirect_switching.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
@@ -3178,6 +3188,8 @@
       "sources": [
         "unittests/shaderapivulkantest/test_indirect_switching.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
@@ -3212,6 +3224,8 @@
         "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
         "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
         "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
@@ -3283,6 +3297,8 @@
       "sources": [
         "unittests/shaderapivulkantest/test_world_glass_pixels.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
@@ -3316,6 +3332,8 @@
         "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
         "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
         "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
@@ -3333,6 +3351,8 @@
       "sources": [
         "unittests/shaderapivulkantest/test_gpu_zero_checks.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
@@ -3365,6 +3385,21 @@
         "-lvulkan"
       ],
       "min_checks": 180,
+      "expect": "pass"
+    },
+    {
+      "id": "render.vulkan.legacy-constants",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "description": "Native Vulkan legacy shader ports without a device: the constants block the shader API builds for a port's pass (pixel c0..c31, vertex c0..c63 and c217..c224, combos, boolean masks) and the matrix registers D3D9's shader API derives (cModelViewProj, cViewProj, their non-fast-clip z rows, cModel[0]) checked by their mul( p, M ) contract at sample points, with rows-for-columns, fast-clip-z and missing-row blocks rejected; D3D9's commit of those registers (a group derived again only when its transforms change, a material's later write kept until then); the generated program registry (exact, case-insensitive pairs; SPIR-V stages; D3D9 sampler slots)",
+      "sources": [
+        "unittests/shaderapivulkantest/test_legacy_constants.cpp",
+        "materialsystem/shaderapivulkan/shaderapivulkan_legacy.cpp",
+        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp"
+      ],
       "expect": "pass"
     },
     {

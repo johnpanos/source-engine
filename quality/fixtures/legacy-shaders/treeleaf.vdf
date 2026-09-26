@@ -1,0 +1,35 @@
+// TreeLeaf (treeleaf_ps20b / treeleaf_vs20): each vertex is a leaf cluster
+// point expanded along the view's x and y axes by uv0; the texture coordinate
+// is the normal's xy; the half-Lambert vertex lighting (ambient cube and local
+// lights) uses the direction from $leafcenter to the point. Alpha tested
+// GREATER 0.5.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/treeleaf_base"
+		"width" "4"
+		"height" "4"
+		"clamp" "1"
+		"texels" "200 100 50 255   40 160 220 200   120 120 120 128   255 255 255 60   30 90 150 255   250 20 90 180   10 240 60 220   90 90 200 100   180 180 30 255   60 20 120 140   220 140 80 240   20 20 20 255   100 200 250 90   255 128 0 255   0 128 255 200   128 64 32 170"
+	}
+	"case"
+	{
+		"name" "treeleaf_lit"
+		"shader" "TreeLeaf"
+		"clear" "30 60 120 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/treeleaf_base"
+			"$leafcenter" "[0.2 -0.3 1.5]"
+		}
+		"ambient" "0.6 0.3 0.15  0.15 0.3 0.6  0.3 0.6 0.3  0.6 0.15 0.3  0.45 0.45 0.15  0.15 0.45 0.45"
+		"light" { "type" "point" "color" "1.6 1.2 0.8" "position" "0.5 0.5 -0.5" "attenuation" "0.5 0.3 0.1" }
+		"light" { "type" "directional" "color" "0.4 0.6 1.0" "direction" "-0.6 0.3 0.74" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 1" "normal" "0 0 1" }
+		"vertex" { "pos" "-0.9 1 0.4" "uv0" "1.9 1" "normal" "1 0 1" }
+		"vertex" { "pos" "-1 0.9 0.6" "uv0" "2 2.9" "normal" "1 1 1" }
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 3" "normal" "0 1 1" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6"
+	}
+}

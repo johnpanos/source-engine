@@ -1,0 +1,135 @@
+// LightmappedReflective_DX90 (lightmappedreflective_ps20b /
+// lightmappedreflective_vs20): the reflection and refraction textures
+// perturbed by the normal map, blended by the Fresnel term of the tangent-space
+// eye vector (brush tangents), with the base texture times the bumped
+// lightmaps (uv1 stepped by uv2) and the envmap mask.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/lightmappedreflective_reflect"
+		"width" "4"
+		"height" "4"
+		"texels" "200 100 50 255   40 160 220 200   120 120 120 128   255 255 255 60   30 90 150 255   250 20 90 180   10 240 60 220   90 90 200 100   180 180 30 255   60 20 120 140   220 140 80 240   20 20 20 255   100 200 250 90   255 128 0 255   0 128 255 200   128 64 32 170"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/lightmappedreflective_refract"
+		"width" "4"
+		"height" "4"
+		"texels" "20 200 150 255   140 60 20 200   220 20 220 128   55 155 255 60   130 190 50 255   50 120 190 180   210 40 160 220   190 190 20 100   80 80 230 255   160 220 20 140   20 40 180 240   220 220 220 255   200 100 50 90   55 228 100 255   100 28 155 200   28 164 232 170"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/lightmappedreflective_normal"
+		"width" "2"
+		"height" "2"
+		"texels" "128 128 255 255   200 100 200 180   60 170 220 90   150 40 210 230"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/lightmappedreflective_base"
+		"width" "2"
+		"height" "2"
+		"texels" "220 120 60 255   60 200 140 160   150 150 250 90   250 250 250 200"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/lightmappedreflective_mask"
+		"width" "2"
+		"height" "2"
+		"point" "1"
+		"texels" "255 128 64 255   64 255 128 255   128 64 255 255   30 30 30 255"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/lightmappedreflective_lightmap"
+		"width" "4"
+		"height" "2"
+		"point" "1"
+		"clamp" "1"
+		"texels" "128 64 32 255   40 200 120 255   90 90 90 255   250 180 60 255   30 60 200 255   160 160 30 255   200 40 100 255   70 140 210 255"
+	}
+	"case"
+	{
+		"name" "lightmappedreflective_reflect_refract"
+		"shader" "LightmappedReflective"
+		"clear" "30 60 120 255"
+		"material"
+		{
+			"$reflecttexture" "conformance/legacy/lightmappedreflective_reflect"
+			"$refracttexture" "conformance/legacy/lightmappedreflective_refract"
+			"$normalmap" "conformance/legacy/lightmappedreflective_normal"
+			"$reflectamount" "0.1"
+			"$refractamount" "0.05"
+			"$reflecttint" "[1 0.8 0.6]"
+			"$refracttint" "[0.7 0.9 1]"
+			"$fresnelpower" "3"
+			"$minreflectivity" "0.1"
+			"$maxreflectivity" "0.9"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"points" "0.25 0.25 0.75 0.25 0.25 0.75 0.75 0.75 0.5 0.5 0.1 0.6 0.9 0.1"
+	}
+	"case"
+	{
+		"name" "lightmappedreflective_base_envmapmask"
+		"shader" "LightmappedReflective"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/lightmappedreflective_lightmap"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/lightmappedreflective_base"
+			"$envmapmask" "conformance/legacy/lightmappedreflective_mask"
+			"$reflecttexture" "conformance/legacy/lightmappedreflective_reflect"
+			"$refracttexture" "conformance/legacy/lightmappedreflective_refract"
+			"$normalmap" "conformance/legacy/lightmappedreflective_normal"
+			"$reflectamount" "0.08"
+			"$refractamount" "0.12"
+			"$fresnelpower" "5"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "0.8 0.6 0" "tangentt" "-0.6 0.8 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "0.8 0.6 0" "tangentt" "-0.6 0.8 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "0.8 0.6 0" "tangentt" "-0.6 0.8 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "0.8 0.6 0" "tangentt" "-0.6 0.8 0" }
+		"points" "0.25 0.25 0.75 0.25 0.25 0.75 0.75 0.75 0.5 0.5 0.1 0.6"
+	}
+	"case"
+	{
+		"name" "lightmappedreflective_reflect_base_translucent"
+		"shader" "LightmappedReflective"
+		"clear" "30 60 120 255"
+		"lightmap" "conformance/legacy/lightmappedreflective_lightmap"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/lightmappedreflective_base"
+			"$reflecttexture" "conformance/legacy/lightmappedreflective_reflect"
+			"$normalmap" "conformance/legacy/lightmappedreflective_normal"
+			"$reflectamount" "0.1"
+			"$translucent" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "uv1" "0 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" "uv1" "0.25 0" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "1 -1 0.5" "uv0" "1 1" "uv1" "0.25 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "uv1" "0 1" "uv2" "0.25 0" "normal" "0 0 -1" "tangents" "1 0 0" "tangentt" "0 1 0" }
+		"points" "0.25 0.25 0.75 0.25 0.25 0.75 0.75 0.75 0.5 0.5"
+	}
+	"case"
+	{
+		"name" "lightmappedreflective_refract_only"
+		"shader" "LightmappedReflective"
+		"clear" "30 60 120 255"
+		"material"
+		{
+			"$refracttexture" "conformance/legacy/lightmappedreflective_refract"
+			"$normalmap" "conformance/legacy/lightmappedreflective_normal"
+			"$refractamount" "0.2"
+			"$refracttint" "[0.5 1 0.8]"
+		}
+		"fog" { "mode" "linear" "start" "0.1" "end" "0.9" "color" "250 200 40" }
+		"points" "0.25 0.25 0.75 0.25 0.25 0.75 0.75 0.75 0.5 0.5"
+	}
+}
