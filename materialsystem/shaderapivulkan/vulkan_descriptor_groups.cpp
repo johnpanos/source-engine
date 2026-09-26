@@ -37,6 +37,21 @@ size_t CGroupedDescriptors::KeyHash::operator()( const Key &key ) const
 	return hash;
 }
 
+uint32_t CGroupedDescriptors::BindingCount( Group group )
+{
+	switch ( group )
+	{
+	case kFrameGroup:
+		return kFrameBindings;
+	case kMaterialGroup:
+		return kMaterialBindings;
+	case kLightmappedGroup:
+		return kLightmappedBindings;
+	default:
+		return 0;
+	}
+}
+
 bool CGroupedDescriptors::Init( VkDevice device, uint32_t slots, std::string *outError )
 {
 	Shutdown();
@@ -46,11 +61,11 @@ bool CGroupedDescriptors::Init( VkDevice device, uint32_t slots, std::string *ou
 		return false;
 	}
 	m_device = device;
-	const uint32_t counts[kGroupCount] = { kFrameBindings, kMaterialBindings };
 	for ( int group = 0; group < kGroupCount; ++group )
 	{
+		const uint32_t count = BindingCount( static_cast<Group>( group ) );
 		VkDescriptorSetLayoutBinding bindings[kMaxBindings] = {};
-		for ( uint32_t i = 0; i < counts[group]; ++i )
+		for ( uint32_t i = 0; i < count; ++i )
 		{
 			bindings[i].binding = i;
 			bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -59,7 +74,7 @@ bool CGroupedDescriptors::Init( VkDevice device, uint32_t slots, std::string *ou
 		}
 		VkDescriptorSetLayoutCreateInfo info = {};
 		info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		info.bindingCount = counts[group];
+		info.bindingCount = count;
 		info.pBindings = bindings;
 		if ( vkCreateDescriptorSetLayout( m_device, &info, nullptr, &m_layouts[group] ) !=
 		     VK_SUCCESS )
@@ -167,7 +182,7 @@ VkDescriptorSet CGroupedDescriptors::Acquire( Group group, const Image *images )
 	if ( m_device == VK_NULL_HANDLE || m_slots.empty() || group < 0 || group >= kGroupCount ||
 	     !images )
 		return VK_NULL_HANDLE;
-	const uint32_t count = group == kFrameGroup ? kFrameBindings : kMaterialBindings;
+	const uint32_t count = BindingCount( group );
 	Key key;
 	key.group = static_cast<uint32_t>( group );
 	for ( uint32_t i = 0; i < count; ++i )

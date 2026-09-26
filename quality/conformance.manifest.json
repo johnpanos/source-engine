@@ -2988,7 +2988,7 @@
         "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4"
       ],
       "result_protocol": "checks-v1",
-      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven- and nine-set stages are declined. Base: Scene-derived WMSH PBR (world_pbr.frag) on a real device: packed tangents, material masks, the LMAP atlas, directional and probe paths, with seeded controls",
+      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven-set stages are declined, and LightmappedGeneric binds its grouped texture set and constants (two sets). Base: Scene-derived WMSH PBR (world_pbr.frag) on a real device: packed tangents, material masks, the LMAP atlas, directional and probe paths, with seeded controls",
       "sources": [
         "unittests/shaderapivulkantest/test_world_pbr_pixels.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
@@ -3043,7 +3043,7 @@
         "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4"
       ],
       "result_protocol": "checks-v1",
-      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven- and nine-set stages are declined. Base: PBRMetalRough on dynamic meshes (model_pbr.frag) against the CPU model built on pbr_brdf.h, with seeded-defect controls; RFC 0011 per-pixel probe-volume sampling against the C++ reference sampler (quality/fixtures/gi/prbv/gpu.prbv)",
+      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven-set stages are declined, and LightmappedGeneric binds its grouped texture set and constants (two sets). Base: PBRMetalRough on dynamic meshes (model_pbr.frag) against the CPU model built on pbr_brdf.h, with seeded-defect controls; RFC 0011 per-pixel probe-volume sampling against the C++ reference sampler (quality/fixtures/gi/prbv/gpu.prbv)",
       "sources": [
         "unittests/shaderapivulkantest/test_model_pbr_pixels.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
@@ -3139,7 +3139,7 @@
         "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4"
       ],
       "result_protocol": "checks-v1",
-      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven- and nine-set stages are declined. Base: RFC 0011 render.indirect-switching on native Vulkan: Baked <-> scripted fake with real frames and completion serials, a failed Begin, a simulated device loss mid-fade; no black frame, fade residency within budget, validation-clean when the layer is present",
+      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven-set stages are declined, and LightmappedGeneric binds its grouped texture set and constants (two sets). Base: RFC 0011 render.indirect-switching on native Vulkan: Baked <-> scripted fake with real frames and completion serials, a failed Begin, a simulated device loss mid-fade; no black frame, fade residency within budget, validation-clean when the layer is present",
       "sources": [
         "unittests/shaderapivulkantest/test_indirect_switching.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
@@ -3271,7 +3271,7 @@
         "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4"
       ],
       "result_protocol": "checks-v1",
-      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven- and nine-set stages are declined. Base: Transmissive WMSH batches over an opaque scene with readable depth and negative controls",
+      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven-set stages are declined, and LightmappedGeneric binds its grouped texture set and constants (two sets). Base: Transmissive WMSH batches over an opaque scene with readable depth and negative controls",
       "sources": [
         "unittests/shaderapivulkantest/test_world_glass_pixels.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",

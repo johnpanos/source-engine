@@ -487,9 +487,10 @@ public:
 		kPostBlur = 2,
 		kPostEnginePost = 3
 	};
-	// False when the device cannot bind lightmapped.frag's nine descriptor sets
-	// or the skin push block; LightmappedGeneric then keeps the textured
-	// pipeline's flat-lightmap approximation.
+	// False when the device cannot bind lightmapped.frag's two descriptor sets
+	// (the grouped texture set and the constants) or the skin push block;
+	// LightmappedGeneric then keeps the textured pipeline's flat-lightmap
+	// approximation.
 	bool LightmappedPipelineSupported() const { return m_lightmappedVert != VK_NULL_HANDLE; }
 	bool LightmappedPaintPipelineSupported() const
 	{

@@ -348,6 +348,34 @@ Fixes needed for iOS (each is guarded, so desktop builds are unchanged):
 - **Unverified:** the touch layout, gyro aiming, rotation and keyboard
   behavior on the device. They need a user run.
 
+## LightmappedGeneric within MoltenVK's descriptor-set limit (2026-09-25)
+
+- **Finding (first device log):** "LightmappedGeneric pipeline unavailable:
+  needs the skin constants, nine descriptor sets and 13 attributes". MoltenVK
+  reports `maxBoundDescriptorSets` 8. The stage gave each of its eight
+  sampler registers its own one-texture set, plus the constants: nine. So
+  every world surface fell back to the textured pipeline's flat lightmap.
+- **Fix (user direction):** `lightmapped.frag` and `lightmappedpaint.frag`
+  now read one grouped texture set (`CGroupedDescriptors::kLightmappedGroup`:
+  s0, s1, s2 cube, s4, s5, s7, s8, s12 as bindings 0–7) and then the
+  constants: two sets. The group reuses the PBR stages' per-frame-slot pools,
+  reuse table and invalidation (`vulkan_descriptor_groups.h`). Each image
+  resolves through `GroupedImage` to the same view, sRGB view and sampler as
+  the per-texture sets did. The grouped descriptors are now created before
+  the lightmapped pipeline. The stage also fits Vulkan's minimum of four
+  sets, so the `.four-sets` suites no longer decline it.
+- **Evidence (Linux, RADV):**
+  - `material_pixel_conformance.py` `lightmap` and `bump` families on native
+    Vulkan, integer HDR: pass, and `pixels.json` is byte-identical before and
+    after (`quality-results/lmgroup-{A,B}-*`);
+  - the `linux-native-vulkan-gpu` conformance profile: 15 of 15 suites match
+    (`render.grouped-descriptors` included);
+  - `portal_boot.py` on `testchmb_a_01` with `-vkvalidate`: pass, with no
+    validation messages and LightmappedGeneric available;
+  - `./build-ios-app.sh` builds.
+- **Unverified:** the device run (MoltenVK argument buffers). `$phong` (seven
+  sets) and the post passes are within eight and unchanged.
+
 ## Not done
 
 - Device evidence beyond the first boot: the AGENTS.md iOS obligations

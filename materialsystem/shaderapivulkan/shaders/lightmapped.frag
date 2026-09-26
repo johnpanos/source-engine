@@ -41,19 +41,21 @@ layout( location = 9 ) flat in vec4 fragFogParams;
 layout( location = 10 ) flat in vec4 fragFogMisc;
 layout( location = 11 ) in vec2 fragFogDepth;
 layout( location = 0 ) out vec4 outColor;
+// One grouped texture set (CGroupedDescriptors::kLightmappedGroup) and the
+// constants: two sets, within MoltenVK's eight and Vulkan's minimum of four.
 layout( set = 0, binding = 0 ) uniform sampler2D BaseTextureSampler;    // s0
-layout( set = 1, binding = 0 ) uniform sampler2D LightmapSampler;       // s1
-layout( set = 2, binding = 0 ) uniform samplerCube EnvmapSampler;       // s2
-layout( set = 3, binding = 0 ) uniform sampler2D BumpmapSampler;        // s4
-layout( set = 4, binding = 0 ) uniform sampler2D Bumpmap2OrMaskSampler; // s5
-layout( set = 5, binding = 0 ) uniform sampler2D BaseTextureSampler2;   // s7
-layout( set = 6, binding = 0 ) uniform PixelShaderConstants
+layout( set = 0, binding = 1 ) uniform sampler2D LightmapSampler;       // s1
+layout( set = 0, binding = 2 ) uniform samplerCube EnvmapSampler;       // s2
+layout( set = 0, binding = 3 ) uniform sampler2D BumpmapSampler;        // s4
+layout( set = 0, binding = 4 ) uniform sampler2D Bumpmap2OrMaskSampler; // s5
+layout( set = 0, binding = 5 ) uniform sampler2D BaseTextureSampler2;   // s7
+layout( set = 0, binding = 6 ) uniform sampler2D BumpMaskSampler;       // s8
+layout( set = 0, binding = 7 ) uniform sampler2D DetailSampler;         // s12
+layout( set = 1, binding = 0 ) uniform PixelShaderConstants
 {
 	vec4 c[32];
 }
 ps;
-layout( set = 7, binding = 0 ) uniform sampler2D BumpMaskSampler; // s8
-layout( set = 8, binding = 0 ) uniform sampler2D DetailSampler;   // s12
 layout( push_constant ) uniform Constants
 {
 	mat4 viewProj;

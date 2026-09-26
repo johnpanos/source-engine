@@ -3089,6 +3089,12 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		return false;
 	if ( !InitSkinPipeline( outError ) )
 		return false;
+	// LightmappedGeneric and the PBR and GI stages bind their textures in
+	// grouped sets (vulkan_descriptor_groups.h); without them those stages are
+	// declined.
+	std::string pbrError;
+	if ( !m_groupedDescriptors.Init( m_device, m_framesInFlight, &pbrError ) )
+		Log( "grouped descriptor sets unavailable: %s\n", pbrError.c_str() );
 	// Optional: without them LightmappedGeneric keeps the textured pipeline's
 	// flat lightmap, and the bloom and color-correction passes are declined.
 	std::string lightmappedError;
@@ -3103,11 +3109,6 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		Log( "post-processing pipeline unavailable: %s\n", postError.c_str() );
 		DestroyPostPipeline();
 	}
-	// The PBR and GI stages bind their textures in frame and material sets
-	// (vulkan_descriptor_groups.h); without them those stages are declined.
-	std::string pbrError;
-	if ( !m_groupedDescriptors.Init( m_device, m_framesInFlight, &pbrError ) )
-		Log( "grouped descriptor sets unavailable: %s\n", pbrError.c_str() );
 	if ( !InitPbrDirectPipeline( &pbrError ) )
 	{
 		Log( "PBR direct pipeline unavailable: %s\n", pbrError.c_str() );
@@ -3948,24 +3949,25 @@ bool CVulkanContext::InitLightmappedPipeline( std::string *outError )
 {
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
-	if ( m_skinPipelineLayout == VK_NULL_HANDLE || DescriptorSetLimit() < 9 ||
-	     properties.limits.maxVertexInputAttributes < 13 )
+	if ( m_skinPipelineLayout == VK_NULL_HANDLE || !m_groupedDescriptors.Ready() ||
+	     DescriptorSetLimit() < 2 || properties.limits.maxVertexInputAttributes < 13 )
 	{
-		SetError( outError, "needs the skin constants, nine descriptor sets and 13 attributes" );
+		SetError( outError,
+		    "needs the skin constants, grouped descriptor sets, two descriptor sets and 13 "
+		    "attributes" );
 		return false;
 	}
 	VkPushConstantRange pc = {};
 	pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pc.size = kSkinPushBytes;
-	// lightmapped.frag: s0 base, s1 lightmap, s2 envmap, s4 bump map, s5 second
-	// bump map or envmap mask, s7 second base texture, the constants, s8 bump
-	// mask, s12 detail.
-	const VkDescriptorSetLayout sets[9] = { m_dynTexDescLayout, m_dynTexDescLayout,
-	    m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout,
-	    m_skinUboLayout, m_dynTexDescLayout, m_dynTexDescLayout };
+	// lightmapped.frag: the grouped texture set (s0 base, s1 lightmap, s2
+	// envmap, s4 bump map, s5 second bump map or envmap mask, s7 second base
+	// texture, s8 bump mask, s12 detail), then the constants.
+	const VkDescriptorSetLayout sets[2] = {
+	    m_groupedDescriptors.Layout( CGroupedDescriptors::kLightmappedGroup ), m_skinUboLayout };
 	VkPipelineLayoutCreateInfo pl = {};
 	pl.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pl.setLayoutCount = 9;
+	pl.setLayoutCount = 2;
 	pl.pSetLayouts = sets;
 	pl.pushConstantRangeCount = 1;
 	pl.pPushConstantRanges = &pc;
@@ -7135,24 +7137,44 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				}
 				else if ( lightmapped )
 				{
-					// shaders/lightmapped.frag: s0 base, s1 lightmap, s2 envmap
-					// (a cube, the white cube without one), s4 bump map, s5 second
-					// bump map or envmap mask, s7 second base, the constants, s8
-					// bump mask, s12 detail.
+					// shaders/lightmapped.frag: the grouped texture set (s0 base,
+					// s1 lightmap, s2 envmap (a cube, the white cube without
+					// one), s4 bump map, s5 second bump map or envmap mask, s7
+					// second base, s8 bump mask, s12 detail), then the constants.
+					// Each image resolves as the per-texture sets did: the
+					// texture's sRGB view where the material reads it as sRGB,
+					// the built-in white texture without one.
+					const auto image = [&]( int handle, int fallback, int srgbFlag )
+					{
+						bool srgb = false;
+						const CGroupedDescriptors::Image result = GroupedImage(
+						    handle, fallback, openTarget, ( d.colorFlags & srgbFlag ) != 0, &srgb );
+						if ( srgb )
+							decodedFlags |= srgbFlag;
+						return result;
+					};
 					const int envmap = ManagedTextureIsCube( d.samplerHandles[2] )
 					                       ? d.samplerHandles[2]
 					                       : m_whiteCubeHandle;
-					const VkDescriptorSet sets[9] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
-					    sampledSet( d.lightmapHandle, kColorSrgbReadLightmap ),
-					    sampledSet( envmap, kColorSrgbReadSampler2 ),
-					    sampledSet( d.samplerHandles[4], 0 ), sampledSet( d.samplerHandles[5], 0 ),
-					    sampledSet( d.samplerHandles[7], kColorSrgbReadSampler7 ),
-					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set,
-					    sampledSet( d.samplerHandles[8], 0 ),
-					    sampledSet( d.samplerHandles[12], kColorSrgbReadSampler12 ) };
+					const CGroupedDescriptors::Image
+					    textures[CGroupedDescriptors::kLightmappedBindings] = {
+					        image( d.texHandle, -1, kColorSrgbReadBase ),
+					        image( d.lightmapHandle, -1, kColorSrgbReadLightmap ),
+					        image( envmap, m_whiteCubeHandle, kColorSrgbReadSampler2 ),
+					        image( d.samplerHandles[4], -1, 0 ),
+					        image( d.samplerHandles[5], -1, 0 ),
+					        image( d.samplerHandles[7], -1, kColorSrgbReadSampler7 ),
+					        image( d.samplerHandles[8], -1, 0 ),
+					        image( d.samplerHandles[12], -1, kColorSrgbReadSampler12 ) };
+					const VkDescriptorSet sets[2] = {
+					    m_groupedDescriptors.Acquire(
+					        CGroupedDescriptors::kLightmappedGroup, textures ),
+					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
+					if ( sets[0] == VK_NULL_HANDLE )
+						continue;
 					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					    m_lightmappedPipelineLayout, 0, 9, sets, 1, &offset );
+					    m_lightmappedPipelineLayout, 0, 2, sets, 1, &offset );
 				}
 				else if ( post )
 				{

@@ -20,6 +20,11 @@
 //                             lights, or a model draw's pixel constants),
 //                             owned by the caller.
 //
+//          The legacy LightmappedGeneric stages (lightmapped.frag,
+//          lightmappedpaint.frag) bind one lightmapped group of their eight
+//          sampler registers and then their constants: two sets, where one
+//          set per texture needed nine and MoltenVK allows eight.
+//
 //          Sets 0 and 1 are written on demand into per-frame-slot pools. A
 //          slot's pools are reset only when that slot's previous submission
 //          has completed (BeginFrame after the slot's fence), so a set is
@@ -56,6 +61,7 @@ public:
 	{
 		kFrameGroup = 0,
 		kMaterialGroup = 1,
+		kLightmappedGroup = 2,
 		kGroupCount
 	};
 	// Combined image samplers per group; every binding is written.
@@ -63,7 +69,8 @@ public:
 	{
 		kFrameBindings = 6,
 		kMaterialBindings = 6,
-		kMaxBindings = 6
+		kLightmappedBindings = 8,
+		kMaxBindings = 8
 	};
 	// Frame set bindings.
 	enum
@@ -85,6 +92,21 @@ public:
 		kMaterialEnvironment = 4, // a cube
 		kMaterialSceneDepth = 5,
 	};
+	// Lightmapped set bindings: the D3D9 sampler registers s0, s1, s2 (a cube),
+	// s4, s5, s7, s8 and s12, in that order.
+	enum
+	{
+		kLightmappedBase = 0,
+		kLightmappedLightmap = 1,
+		kLightmappedEnvmap = 2,
+		kLightmappedBump = 3,
+		kLightmappedBump2OrMask = 4,
+		kLightmappedBase2 = 5,
+		kLightmappedBumpMask = 6,
+		kLightmappedDetail = 7,
+	};
+	static uint32_t BindingCount( Group group );
+
 	struct Image
 	{
 		VkImageView view = VK_NULL_HANDLE;

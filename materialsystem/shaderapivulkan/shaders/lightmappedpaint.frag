@@ -31,19 +31,19 @@ layout( location = 9 ) flat in vec4 fragFogParams;
 layout( location = 10 ) flat in vec4 fragFogMisc;
 layout( location = 11 ) in vec2 fragFogDepth;
 layout( location = 0 ) out vec4 outColor;
+// lightmapped.frag's grouped texture set (bindings 6 and 7 unused) and the
+// constants.
 layout( set = 0, binding = 0 ) uniform sampler2D PaintSampler;        // s0
-layout( set = 1, binding = 0 ) uniform sampler2D LightmapSampler;     // s1
-layout( set = 2, binding = 0 ) uniform samplerCube EnvmapSampler;     // s2
-layout( set = 3, binding = 0 ) uniform sampler2D BubbleLayoutSampler; // s4
-layout( set = 4, binding = 0 ) uniform sampler2D BubbleSampler;       // s5
-layout( set = 5, binding = 0 ) uniform sampler2D SplatNormalSampler;  // s7
-layout( set = 6, binding = 0 ) uniform PixelShaderConstants
+layout( set = 0, binding = 1 ) uniform sampler2D LightmapSampler;     // s1
+layout( set = 0, binding = 2 ) uniform samplerCube EnvmapSampler;     // s2
+layout( set = 0, binding = 3 ) uniform sampler2D BubbleLayoutSampler; // s4
+layout( set = 0, binding = 4 ) uniform sampler2D BubbleSampler;       // s5
+layout( set = 0, binding = 5 ) uniform sampler2D SplatNormalSampler;  // s7
+layout( set = 1, binding = 0 ) uniform PixelShaderConstants
 {
 	vec4 c[32];
 }
 ps;
-layout( set = 7, binding = 0 ) uniform sampler2D UnusedSampler8;  // s8
-layout( set = 8, binding = 0 ) uniform sampler2D UnusedSampler12; // s12
 layout( push_constant ) uniform Constants
 {
 	mat4 viewProj;

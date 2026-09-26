@@ -599,7 +599,8 @@ Keep the table concise and link details below or from the domain progress file.
   - The PBR and GI stages bind three sets (frame, material, constants)
     instead of up to eleven. They pass their pixel suites as a four-set
     device (`.four-sets`).
-  - Legacy LightmappedGeneric and `$phong` still need nine and seven sets.
+  - Legacy LightmappedGeneric binds two sets (a grouped texture set and its
+    constants; 2026-09-25, for MoltenVK's eight). `$phong` still needs seven.
   - Clear coat is on world and model PBR (`cd29e77a`); model glass is still
     dropped.
   - No Apple, Mali or Fold7 run. This closes no R29 criterion. See the
