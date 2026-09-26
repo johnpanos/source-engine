@@ -11,15 +11,14 @@
 #include "materialproxyfactory.h"
 #include "toolframework/itoolframework.h"
 #include "toolframework/itoolsystem.h"
+#include "cdll_engine_int.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
-extern CSysModule		*g_ClientDLLModule;
-
 IMaterialProxy *CMaterialProxyFactory::CreateProxy( const char *proxyName )
 {
 #if !defined(SWDS)
-	IMaterialProxy *materialProxy = LookupProxy( proxyName, Sys_GetFactory( g_ClientDLLModule ) );
+	IMaterialProxy *materialProxy = LookupProxy( proxyName, ClientDLL_GetFactory() );
 
 	// If the client didn't have it and we're in tool mode, ask the tools...
 	if ( toolframework->InToolMode() && !materialProxy )

@@ -67,6 +67,7 @@
 #include <io.h>
 #endif
 #include "toolframework/itoolframework.h"
+#include "linked_game_modules_internal.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -1107,26 +1108,34 @@ static bool LoadThisDll( char *szDllFilename, bool bIsServerOnly )
 {
 	CSysModule *pDLL = NULL;
 
-	// check signature, don't let users with modified binaries connect to secure servers, they will get VAC banned
-	if ( !Host_AllowLoadModule( szDllFilename, "GAMEBIN", true, bIsServerOnly ) )
+	// A statically composed product linked its server; see linked_game_modules.h.
+	const LinkedGameModules *pLinked = Engine_GetLinkedGameModules();
+	if ( !pLinked )
 	{
-		// not supposed to load this but we will anyway
-		Host_DisallowSecureServers();
-		Host_AllowLoadModule( szDllFilename, "GAMEBIN", true, bIsServerOnly );
-	}
-	// Load DLL, ignore if cannot
-	// ensures that the game.dll is running under Steam
-	// this will have to be undone when we want mods to be able to run
-	if ((pDLL = Sys_LoadModuleFromFileSystem(
-		g_pFileSystem, szDllFilename, "GAMEBIN", false )) == NULL)
-	{
-		ConMsg("Failed to load %s\n", szDllFilename);
-		goto IgnoreThisDLL;
+		// check signature, don't let users with modified binaries connect to secure servers, they will get VAC banned
+		if ( !Host_AllowLoadModule( szDllFilename, "GAMEBIN", true, bIsServerOnly ) )
+		{
+			// not supposed to load this but we will anyway
+			Host_DisallowSecureServers();
+			Host_AllowLoadModule( szDllFilename, "GAMEBIN", true, bIsServerOnly );
+		}
+		// Load DLL, ignore if cannot
+		// ensures that the game.dll is running under Steam
+		// this will have to be undone when we want mods to be able to run
+		if ( ( pDLL = Sys_LoadModuleFromFileSystem(
+		           g_pFileSystem, szDllFilename, "GAMEBIN", false ) ) == NULL )
+		{
+			ConMsg( "Failed to load %s\n", szDllFilename );
+			goto IgnoreThisDLL;
+		}
 	}
 
 	// Load interface factory and any interfaces exported by the game .dll
 	g_iServerGameDLLVersion = 0;
-	g_ServerFactory = Sys_GetFactory( pDLL );
+	if ( pLinked )
+		g_ServerFactory = pLinked->server;
+	else
+		g_ServerFactory = Sys_GetFactory( pDLL );
 	if ( g_ServerFactory )
 	{
 		// Figure out latest version we understand
@@ -1546,7 +1555,7 @@ void Sys_OutputDebugString(const char *msg)
 //-----------------------------------------------------------------------------
 void UnloadEntityDLLs( void )
 {
-	if ( !g_GameDLL )
+	if ( !g_GameDLL && !Engine_GetLinkedGameModules() )
 		return;
 
 	// Unlink the cvars associated with game DLL

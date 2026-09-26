@@ -231,6 +231,13 @@ DLL_EXPORT IQueuedLoader *Dedicated_CreateQueuedLoader()
 {
 	return &g_QueuedLoader;
 }
+#else
+// The client composition root links the file system module; see
+// appframework/linked_systems.h.
+DLL_EXPORT IQueuedLoader *FileSystemStdio_CreateQueuedLoader()
+{
+	return &g_QueuedLoader;
+}
 #endif
 
 

@@ -451,6 +451,7 @@ def options(opt):
 	if sys.platform == 'win32':
 		opt.load('msvc msdev msvs')
 	opt.load('reconfigure')
+	opt.load('static_composition')
 
 def check_deps(conf):
 	if conf.env.DEST_OS != 'win32':
@@ -776,6 +777,9 @@ def configure(conf):
 	# Per-target dialects (RFC 0006 M0): probes each declared dialect with the
 	# flags above; targets select theirs in quality/toolchain/policy.json.
 	conf.load('toolchain_dialect')
+	# --static-composition: module objects linked into the product programs
+	# (the iOS composition policy; scripts/waifulib/static_composition.py).
+	conf.load('static_composition')
 
 	check_deps( conf )
 
@@ -955,8 +959,14 @@ def configure(conf):
 	else:
 		# Desktop conformance harnesses; the Android product packages only runtime modules.
 		if conf.env.SDL3 and not conf.env.ANDROID_SDL3:
-			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest',
-				'unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
+			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest']
+			# Loader fixtures are shared libraries by definition.
+			if not conf.env.STATIC_COMPOSITION:
+				projects['game'] += ['unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
+		if conf.env.STATIC_COMPOSITION:
+			# A launchable desktop tool module, and the server browser, which
+			# only a desktop platform menu loads; neither is in the product.
+			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
 		if conf.env.DXVK:
 			projects['game'] += ['materialsystem/shaderapidx9']
 		if conf.env.NATIVE_VULKAN:
@@ -1014,8 +1024,14 @@ def build(bld):
 	else:
 		# Desktop conformance harnesses; the Android product packages only runtime modules.
 		if bld.env.SDL3 and not bld.env.ANDROID_SDL3:
-			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest',
-				'unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
+			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest']
+			# Loader fixtures are shared libraries by definition.
+			if not bld.env.STATIC_COMPOSITION:
+				projects['game'] += ['unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
+		if bld.env.STATIC_COMPOSITION:
+			# A launchable desktop tool module, and the server browser, which
+			# only a desktop platform menu loads; neither is in the product.
+			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
 		if bld.env.DXVK:
 			projects['game'] += ['materialsystem/shaderapidx9']
 		if bld.env.NATIVE_VULKAN:

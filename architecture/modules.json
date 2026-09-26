@@ -1076,7 +1076,7 @@
   },
   "description": "RFC 0001 architectural manifest. Phase A currently freezes legacy dynamic-loader boundaries.",
   "legacyAbi": {
-    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog. The Linux VBSP host tool keeps its material and physics factories in its private legacy compile-tool adapters. Reviewed 2026-09-25 (R04-DRIFT, user decision): the imported matchmaking framework's IAppSystem::Connect, the Portal 2 GameUI's IGameUI::Initialize/Connect, the Box3D provider's IPhysics::QueryInterface and the VPhysics conformance test host, which loads each provider through its CreateInterface export.",
+    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog. The Linux VBSP host tool keeps its material and physics factories in its private legacy compile-tool adapters. Reviewed 2026-09-25 (R04-DRIFT, user decision): the imported matchmaking framework's IAppSystem::Connect, the Portal 2 GameUI's IGameUI::Initialize/Connect, the Box3D provider's IPhysics::QueryInterface and the VPhysics conformance test host, which loads each provider through its CreateInterface export. Reviewed 2026-09-25 (static composition, agent decision under the user's standing instruction): public/engine/linked_game_modules.h binds a statically composed product's client, server and GameUI modules to the engine; the game module contract is the CreateInterface ABI.",
     "paths": [
       "video/provider_catalog_runtime.h",
       "video/provider_catalog_runtime.cpp",
@@ -1089,6 +1089,7 @@
       "unittests/appframeworktest/dedicatedcompositiontest.cpp",
       "public/appframework/dedicated_composition_bridge.h",
       "dedicated/composition_bridge.cpp",
+      "public/engine/linked_game_modules.h",
       "unittests/legacymoduleclientfixture/legacy_loader_abi_2013.h",
       "unittests/legacymoduleclientfixture/legacymoduleclientfixture.cpp",
       "unittests/shaderextensiontest/test_shaderextension_host.cpp",

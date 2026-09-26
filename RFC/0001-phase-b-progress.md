@@ -75,10 +75,11 @@ Source state on 2026-09-25 (not a gate claim):
 - Phase C: the client launcher adds linked instances for input, the material
   system, data and model caches, studio render, video services, VGUI and the engine.
   The dedicated root uses the same pattern through its
-  [composition bridge](0001-dedicated-composition-progress.md). Both roots
-  still load the physics provider by filename (`-physics`, default
-  `vphysics`). The launcher still loads the filesystem, `sourcevr`, `p4lib`,
-  `vstdlib` and `hammer_dll` by filename.
+  [composition bridge](0001-dedicated-composition-progress.md). The launcher
+  links the file system and both physics providers and selects one with
+  `-physics`; the dedicated root still loads its physics provider by filename.
+  The launcher still loads `p4lib`, `vstdlib` and `hammer_dll` by filename in
+  tool modes ([static composition](0001-static-composition-progress.md)).
 - Phase D: the launcher selects window, input, video and audio providers from
   typed linked descriptors (`-window-provider`, `-input-provider`,
   `-video-provider`, `-audio-provider`). The standard shader library is linked

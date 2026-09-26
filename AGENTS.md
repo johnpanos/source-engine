@@ -814,6 +814,32 @@ Keep the table concise and link details below or from the domain progress file.
     open.
   - See the [render seam record](RFC/0001-render-seam-progress.md).
 
+- R29-IOS-STATIC / R39: `partial` (2026-09-25, user goal: "build the iOS
+  version, but before we can do that you need to get static composition
+  compiling").
+  - `./waf configure --static-composition` builds each first-party shared
+    library as a module object. The module is partially linked with `-r` and
+    its unexported symbols are localized, so the shared-library boundary is
+    kept. `scripts/waifulib/static_composition.py` does this; each module
+    exports `StaticModule_<target>_CreateInterface`.
+  - The Portal client links into one program with no first-party shared
+    library. `tools/quality/static_composition.py check` passes (22 linked
+    modules); its 8 self-tests detect 7 seeded defects.
+  - With every first-party `.so` removed, the static product boots
+    `testchmb_a_00` and exits 0 with the null and native Vulkan renderers, IVP
+    and Box3D. Loader telemetry shows 0 events; the desktop control shows 219.
+  - Typed linked factories now cover physics (`-physics` catalog), the file
+    system and queued loader, and the tool framework. `Engine_BindLinkedGameModules`
+    binds the client, server, GameUI and the game-declared app systems for
+    static products. The desktop product uses the first three too; the
+    dedicated root still loads physics by filename.
+  - Agent decisions: localization over renaming; `linked_game_modules.h` joins
+    the legacy ABI package; no server browser or platform-menu loader in
+    static products.
+  - Not done: Mach-O module objects, the iOS profile, SDK and toolchain, a CI
+    lane, compiling the desktop loader out of static products, and a sanitizer
+    run. See the [record](RFC/0001-static-composition-progress.md).
+
 - R01/R29-ANDROID-BUILD: `partial` (2026-09-22).
   - [`build-android-apk.sh`](build-android-apk.sh) builds the SDL3/native
     Vulkan Portal APK. Every input comes from pinned archives in the
@@ -1108,8 +1134,9 @@ Current RFC 0001 evidence (updated 2026-09-25):
   typed first-party composition has migrated caller cohorts. The standard
   shader library is now linked and bound by a typed descriptor, and the
   launcher picks window, input, video and audio providers from typed
-  descriptors (2026-09-25). Physics and the filesystem are still loaded by
-  filename, which prevents global Phase D closure. R40: the launchable-DLL
+  descriptors (2026-09-25). The launcher links the file system and a physics
+  catalog; the dedicated root still loads physics by filename, which prevents
+  global Phase D closure. R40: the launchable-DLL
   wrappers and `ilaunchabledll.h` are deleted (`66e2a40c`) and the tool process
   contract is installed; its POSIX provider is not built or tested
   ([Phase E](RFC/0001-phase-e-progress.md)).

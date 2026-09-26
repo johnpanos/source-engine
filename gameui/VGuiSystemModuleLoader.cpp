@@ -121,7 +121,12 @@ bool CVGuiSystemModuleLoader::InitializeAllModules(CreateInterfaceFn *factorylis
 //-----------------------------------------------------------------------------
 bool CVGuiSystemModuleLoader::LoadPlatformModules(CreateInterfaceFn *factorylist, int factorycount, bool useSteamModules)
 {
-	
+#if defined( SOURCE_STATIC_COMPOSITION )
+	// A statically composed product (iOS) loads no native module a content file
+	// names. The platform menu modules (server browser, friends) are Steam
+	// desktop features and are not part of that product.
+	return false;
+#endif
 
 	bool bSuccess = true;
 

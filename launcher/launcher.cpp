@@ -54,6 +54,7 @@
 #include "inputsystem/iinputsystem.h"
 #include "filesystem/IQueuedLoader.h"
 #include "appframework/linked_systems.h"
+#include "vphysics/provider_catalog.h"
 #include "appframework/window_provider.h"
 #include "inputsystem/provider_catalog.h"
 #include "video/provider_catalog.h"
@@ -783,13 +784,24 @@ bool CSourceAppSystemGroup::Create()
 	     !BindAudioMediaProviders( Engine_CreateClientAPI() ) )
 		return false;
 
-	const char *pPhysicsModule = CommandLine()->ParmValue( "-physics", "vphysics" );
-	char physicsDLLName[MAX_PATH];
-	Q_snprintf( physicsDLLName, sizeof( physicsDLLName ), "%s" DLL_EXT_STRING, pPhysicsModule );
-	AppModule_t physicsAppModule = LoadModule( physicsDLLName );
-	if ( physicsAppModule == APP_MODULE_INVALID )
+	// Every physics provider this product links, each through its own entry.
+	const PhysicsProviderDescriptor *physicsCatalog[] = {
+	    PhysicsIVP_Describe(),
+#if defined( LINKED_BOX3D_PHYSICS )
+	    PhysicsBox3D_Describe(),
+#endif
+	};
+	const char *pPhysicsModule = CommandLine()->ParmValue( "-physics", physicsCatalog[0]->name );
+	const PhysicsProviderDescriptor *physics = NULL;
+	for ( unsigned int i = 0; i < ARRAYSIZE( physicsCatalog ); ++i )
 	{
-		Warning( "Failed to load physics provider '%s'.\n", physicsDLLName );
+		if ( !Q_stricmp( pPhysicsModule, physicsCatalog[i]->name ) )
+			physics = physicsCatalog[i];
+	}
+	if ( !physics )
+	{
+		Warning(
+		    "Required physics provider '%s' is not available in this product.\n", pPhysicsModule );
 		return false;
 	}
 
@@ -800,7 +812,7 @@ bool CSourceAppSystemGroup::Create()
 	     !AddSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
 	     !AddSystem( StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
 	     !AddSystem( StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
-	     !AddSystem( physicsAppModule, VPHYSICS_INTERFACE_VERSION ) ||
+	     !AddSystem( physics->create(), VPHYSICS_INTERFACE_VERSION ) ||
 	     !AddSystem(
 	         VideoServices_CreateWithProviders( &video ), VIDEO_SERVICES_INTERFACE_VERSION ) ||
 	     !AddSystem( VGuiSurface_Create(), VGUI_SURFACE_INTERFACE_VERSION ) ||
@@ -810,22 +822,11 @@ bool CSourceAppSystemGroup::Create()
 		return false;
 	}
 
-	// This will be NULL for games that don't support VR. That's ok. Just don't load the DLL
-	AppModule_t sourceVRModule = LoadModule( "sourcevr" DLL_EXT_STRING );
-	if( sourceVRModule != APP_MODULE_INVALID )
-	{
-		AddSystem( sourceVRModule, SOURCE_VIRTUAL_REALITY_INTERFACE_VERSION );
-	}
+	// No product builds the sourcevr module, so no VR system is composed.
 
-	// pull in our filesystem dll to pull the queued loader from it, we need to do it this way due to the 
-	// steam/stdio split for our steam filesystem
-	char pFileSystemDLL[MAX_PATH];
-	bool bSteam;
-	if ( FileSystem_GetFileSystemDLLName( pFileSystemDLL, MAX_PATH, bSteam ) != FS_OK )
+	// The queued loader comes from the linked file system module.
+	if ( !AddSystem( FileSystemStdio_CreateQueuedLoader(), QUEUEDLOADER_INTERFACE_VERSION ) )
 		return false;
-
-	AppModule_t fileSystemModule = LoadModule( pFileSystemDLL );
-	AddSystem( fileSystemModule, QUEUEDLOADER_INTERFACE_VERSION );
 
 	// Hook in datamodel and p4 control if we're running with -tools
 	if ( IsPC() && ( ( CommandLine()->FindParm( "-tools" ) && !CommandLine()->FindParm( "-nop4" ) ) || CommandLine()->FindParm( "-p4" ) ) )
@@ -928,9 +929,7 @@ bool CSourceAppSystemGroup::Create()
 #if defined( USE_SDL )
 	    { "window", window->name },
 #endif
-	    { "input", input->name },
-	    { "physics", pPhysicsModule },
-	    { "render", selected->id },
+	    { "input", input->name }, { "physics", physics->name }, { "render", selected->id },
 	    { "shaders", standardShaders->id } };
 	if ( !DebugApi_BindFromCommandLine( composed, ARRAYSIZE( composed ) ) )
 		return false;
@@ -1608,7 +1607,7 @@ DLL_EXPORT int LauncherMain( int argc, char **argv )
 		bRestart = false;
 
 		CSourceAppSystemGroup sourceSystems;
-		CSteamApplication steamApplication( &sourceSystems );
+		CSteamApplication steamApplication( &sourceSystems, FileSystemStdio_Create() );
 		int nRetval = steamApplication.Run();
 		if ( steamApplication.GetErrorStage() == CSourceAppSystemGroup::INITIALIZATION )
 		{

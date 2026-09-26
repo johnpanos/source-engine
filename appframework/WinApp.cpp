@@ -124,8 +124,10 @@ void AppShutdown( CAppSystemGroup *pAppSystemGroup )
 //-----------------------------------------------------------------------------
 // Constructor
 //-----------------------------------------------------------------------------
-CSteamApplication::CSteamApplication( CSteamAppSystemGroup *pAppSystemGroup )
+CSteamApplication::CSteamApplication(
+    CSteamAppSystemGroup *pAppSystemGroup, IFileSystem *pLinkedFileSystem )
 {
+	m_pLinkedFileSystem = pLinkedFileSystem;
 	m_pChildAppSystemGroup = pAppSystemGroup;
 	m_pFileSystem = NULL;
 	m_bSteam = false;
@@ -145,8 +147,16 @@ bool CSteamApplication::Create()
 	// Add the linked cvar system explicitly.
 	AddSystem( VStdLib_GetICVar(), CVAR_INTERFACE_VERSION );
 
-	AppModule_t fileSystemModule = LoadModule( pFileSystemDLL );
-	m_pFileSystem = (IFileSystem*)AddSystem( fileSystemModule, FILESYSTEM_INTERFACE_VERSION );
+	if ( m_pLinkedFileSystem )
+	{
+		m_pFileSystem =
+		    (IFileSystem *)AddSystem( m_pLinkedFileSystem, FILESYSTEM_INTERFACE_VERSION );
+	}
+	else
+	{
+		AppModule_t fileSystemModule = LoadModule( pFileSystemDLL );
+		m_pFileSystem = (IFileSystem *)AddSystem( fileSystemModule, FILESYSTEM_INTERFACE_VERSION );
+	}
 	if ( !m_pFileSystem )
 	{
 		Error( "Unable to load %s", pFileSystemDLL );

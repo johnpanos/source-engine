@@ -359,3 +359,9 @@ bool CSceneFileCache::GetSceneDataFromImage( const char *pFileName, int iScene, 
 
 static CSceneFileCache g_SceneFileCache;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CSceneFileCache, ISceneFileCache, SCENE_FILE_CACHE_INTERFACE_VERSION, g_SceneFileCache );
+
+// A composition root that links this module; see appframework/linked_systems.h.
+DLL_EXPORT ISceneFileCache *SceneFileCache_Create()
+{
+	return &g_SceneFileCache;
+}

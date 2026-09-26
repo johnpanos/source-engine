@@ -39,7 +39,6 @@
 #endif
 
 // External variables and APIs needed
-extern CSysModule *g_GameDLL;
 extern ConVar host_timescale;
 extern	CGlobalVars g_ServerGlobalVariables;
 void SV_ForceSend();
@@ -349,7 +348,7 @@ int CEngineTool::GetLightingConditions( const Vector &vecLightingOrigin, Vector 
 
 void CEngineTool::GetServerFactory( CreateInterfaceFn& factory )
 {
-	factory = Sys_GetFactory( g_GameDLL );
+	factory = g_ServerFactory;
 }
 
 void CEngineTool::GetClientFactory( CreateInterfaceFn& factory )

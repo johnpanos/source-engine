@@ -1,0 +1,168 @@
+# RFC 0001 static composition (iOS prerequisite)
+
+Updated: 2026-09-25
+
+## Scope
+
+iOS links every first-party module into the app (AGENTS.md "Platform-compliant
+composition"). This slice makes that composition build and run on Linux, where
+it can be tested, before any Apple toolchain exists here. It serves R29 (the
+iOS static-composition proof) and R39 (typed linked factories instead of
+filename discovery). It closes neither row.
+
+Owner: the iOS port session (source-engine-38), at the user's direction:
+"build the iOS version, but before we can do that you need to get static
+composition compiling."
+
+## Mechanism
+
+`./waf configure --static-composition` (`scripts/waifulib/static_composition.py`)
+builds every first-party shared library of the product as a **module object**:
+
+1. The module's own objects and the first-party static libraries it links
+   privately (tier1, mathlib, ...) are partially linked with `-r`.
+   `--force-group-allocation` dissolves COMDAT groups, so the final link cannot
+   fold one module's inline functions into another's.
+2. `objcopy --localize-hidden` makes every symbol the module did not export
+   local. Each module keeps its own tier1 copy, globals, interface registry and
+   inline-function statics, as it did as a shared library. GCC builds use
+   `-fno-gnu-unique`, since `STB_GNU_UNIQUE` statics would stay global.
+3. Only exported (default visibility) symbols stay global. `CreateInterface` is
+   hidden in this configuration (`public/tier1/interface.h`); each module with
+   an interface registry exports one generated adapter,
+   `StaticModule_<target>_CreateInterface`, instead.
+4. Programs link the closure of module objects they use, foundation first, plus
+   the system libraries those modules use. A module object never links another
+   module object.
+
+The global symbols of the 22 linked module objects equal the shared build's
+dynamic exports, apart from the renamed `CreateInterface` and the physics
+entries below. The static composition therefore keeps the shared-library
+symbol boundary.
+
+Mach-O is not implemented yet: `ld64 -r` localizes hidden symbols itself,
+and the tool fails configure for Apple targets until that step exists.
+
+## Composition changes
+
+Typed linked factories replace the runtime loads that a static product
+hit, so the product needs no module search path. Desktop products share the
+first three.
+
+| Load | Before | Now |
+| --- | --- | --- |
+| Physics (launcher) | `LoadModule( "<-physics>.so" )` | `PhysicsIVP_Describe()` / `PhysicsBox3D_Describe()` catalog (`public/vphysics/provider_catalog.h`); `-physics` selects by name; `Physics_Create` (no callers, duplicated by both providers) deleted |
+| File system and queued loader (launcher) | `LoadModule( filesystem_stdio )` twice | `FileSystemStdio_Create()` passed to `CSteamApplication`; `FileSystemStdio_CreateQueuedLoader()` |
+| `sourcevr` (launcher) | `LoadModule`, always failing | removed: no product builds it |
+| Engine tool framework | the engine loading `engine.so` to reach itself | `AddSystem( toolframework, ... )` |
+| Client, server, GameUI (engine) | loaded by name from `GAMEBIN` / `EXECUTABLE_PATH` | static products bind them with `Engine_BindLinkedGameModules` (`public/engine/linked_game_modules.h`); desktop products bind nothing and keep the game-extension loading |
+| Game-declared app systems (soundemittersystem, scenefilecache) | loaded by module name | static products bind them by interface version; a declared system that was not linked fails composition |
+| Server factory users (`sv_plugin`, `enginetool`, material proxies) | `Sys_GetFactory( module )` | the engine's stored factories, valid for both kinds of product |
+| Steam platform menu (server browser) | loaded by the DLL name a content file gives | not in static products |
+
+The static root is `launcher_main/static_composition.cpp`. It binds the linked
+client, server and GameUI entries and the two app systems before
+`LauncherMain`.
+
+A lifetime bug surfaced: the client's static `CRopeManager` released material
+references in its destructor. In a static image that runs at process exit,
+after the material system has shut down (on desktop, `dlclose` of the client
+ran it earlier). `IRopeManager::Shutdown()` now releases them from
+`CHLClient::Shutdown`, which also releases the depth-write material that was
+never released before.
+
+## Decisions (agent decisions under the user's standing instruction, 2026-09-25)
+
+- Module objects with symbol localization, not a single merged link or
+  per-symbol renaming. Why: it keeps each module's tier1 state, registry and
+  ConVar list separate, exactly as shared libraries do; renaming needs the
+  whole symbol table and misses inline statics.
+- The launcher links both physics providers and the file system on desktop
+  too. Why: it removes two filename loads from the client root (R39), and
+  Android already packages both physics modules.
+- `public/engine/linked_game_modules.h` joins the legacy ABI package
+  (`architecture/modules.json` `legacyAbi`), like the dedicated composition
+  bridge. Why: the game module contract is the versioned `CreateInterface` ABI;
+  the table passes those factories and nothing else.
+- Static products leave out the server browser and the platform-menu loader.
+  Why: those modules are Steam desktop features, found by the DLL name a
+  content file gives, which the iOS policy excludes.
+- `utils/vtex` and the loader test fixtures are not built in static trees: a
+  desktop tool module and shared libraries by definition.
+
+## Evidence
+
+Revision `12310bba` plus this change, applied alone in a detached worktree,
+because the shared tree's engine did not compile (another session's
+unfinished audio work).
+
+Build and check:
+
+```sh
+WAFLOCK=.lock-waf-static ./waf configure -o build-static --build-games portal \
+  --platform-provider sdl3 --render-backend native-vulkan --disable-warns -T release \
+  --static-composition --ktx-source-root dependencies/pbrt-map/ktx-software \
+  --ktx-build-root dependencies/pbrt-map/ktx-reader-build
+WAFLOCK=.lock-waf-static ./waf build --targets=hl2_launcher
+python3 tools/quality/static_composition.py check --tree build-static \
+  --program launcher_main/hl2_launcher --require client --require server \
+  --require GameUI --require engine --require launcher --require vphysics \
+  --require vphysics_box3d --require filesystem_stdio --require scenefilecache \
+  --require soundemittersystem
+python3 -m unittest tools/quality/tests/test_static_composition.py
+```
+
+- `hl2_launcher` is one 56.6 MB program. Its `DT_NEEDED` entries are system
+  libraries only: SDL3, Vulkan, OpenAL, curl, freetype, fontconfig, png, jpeg,
+  z, zstd, bz2, libstdc++ and libc. The tree builds no `.so`.
+- Checker: PASS, 24 module objects, 22 linked entries, 0 errors. Before the
+  physics catalog it failed on `Physics_Create` defined by both providers and
+  an unlinked `vtex_dll`.
+- Checker self-tests: 8 pass. Seven seeded defects are each reported: a hidden
+  symbol left global, a GNU-unique symbol, a strong symbol in two modules, a
+  first-party `DT_NEEDED`, a shared library in the tree, an unlinked module and
+  a missing required module.
+- Runtime, from a runtime copy with every first-party `.so` removed, with
+  `SDL_VIDEO_DRIVER=offscreen`: `+map testchmb_a_00 +wait 300 +quit` exits 0
+  with `-renderer null` (IVP and Box3D) and with `-renderer native-vulkan`
+  (RADV device up, 4x MSAA back buffer).
+  - `-moduleloadtelemetry` reports 0 loader events.
+  - `LD_DEBUG=files` shows only system libraries: SDL video drivers, the
+    Vulkan loader and ICDs, and their dependencies.
+  - Control: the desktop product under the same flag reports 219 events for
+    14 module names.
+- Desktop shared build of the same source: `testchmb_a_00` exits 0 with
+  `-physics vphysics` and `-physics vphysics_box3d`.
+  - Breakpoints confirm `CreateIVPPhysics` and `CreateBox3DPhysics`
+    respectively.
+  - `-physics bogus` is refused with "Required physics provider 'bogus' is not
+    available in this product."
+  - The filesystem, physics, `engine` and `sourcevr` loads are gone. The client
+    still loads launcher, client, server, GameUI, ServerBrowser,
+    soundemittersystem and scenefilecache by name.
+- Dedicated build of the same source: `testchmb_a_00` runs (`status` shows the
+  map) and exits 0.
+- `archlint check --all`, `baseline --verify` and `inventory --verify` pass.
+  - Reviewed ratchet changes: 6 loader occurrences removed (2 `sv_plugin`, 1
+    `enginetool`, 1 material-proxy `Sys_GetFactory`, and the pair of
+    `CreateInterfaceFn` + `Sys_GetFactory` in each `sv_plugin` line).
+  - Relocated excerpts: 2 `sv_plugin` `CreateInterfaceFn gameServerFactory`
+    lines, and the client and server `Sys_LoadModuleFromFileSystem` lines,
+    which were re-indented under the desktop branch.
+  - Inventory: 318 → 314 sites.
+- Style check on the changed lines: 0 failures. Archlint tests: 131 pass.
+
+## Not done
+
+- Mach-O module objects and any Apple build: they need the iOS SDK and an
+  `ld64`-compatible `-r` link. No iOS product profile exists yet (R29).
+- The static root's list of modules lives in `launcher_main/wscript`. An iOS
+  product profile should own it.
+- Static products still contain the desktop loader code: `Sys_LoadModule`,
+  the `-tools` path, server plugin discovery and optional providers
+  (haptics, p4lib). This run never reached them, but they are not compiled
+  out, and the iOS link-map check (no first-party loader) is still to come.
+- Module static destructors run at process exit in a static image. Only the
+  rope manager was fixed; this run found no other exit-time faults, and no
+  sanitizer run of the static product exists.
+- No CI lane builds `--static-composition`, and hosted CI has not run.

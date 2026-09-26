@@ -9,6 +9,7 @@
 #include "interface.h"
 #include "vphysics/object_hash.h"
 #include "vphysics/collision_set.h"
+#include "vphysics/provider_catalog.h"
 #include "tier1/tier1.h"
 #include "ivu_vhash.hxx"
 
@@ -126,9 +127,15 @@ static CPhysicsInterface g_MainDLLInterface;
 IPhysics *g_PhysicsInternal = &g_MainDLLInterface;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CPhysicsInterface, IPhysics, VPHYSICS_INTERFACE_VERSION, g_MainDLLInterface );
 
-DLL_EXPORT IPhysics *Physics_Create()
+static IPhysics *CreateIVPPhysics()
 {
 	return &g_MainDLLInterface;
+}
+
+DLL_EXPORT const PhysicsProviderDescriptor *PhysicsIVP_Describe()
+{
+	static const PhysicsProviderDescriptor s_Descriptor = { "vphysics", CreateIVPPhysics };
+	return &s_Descriptor;
 }
 
 //-----------------------------------------------------------------------------

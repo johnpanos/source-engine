@@ -254,6 +254,9 @@ public:
 	virtual void				SetHolidayLightMode( bool bHoliday ) = 0;
 	virtual bool				IsHolidayLightMode( void ) = 0;
 	virtual int					GetHolidayLightStyle( void ) = 0;
+	// Releases the manager's material references; called while the material
+	// system is still up (the client module may outlive it in a static image).
+	virtual void Shutdown( void ) = 0;
 };
 
 IRopeManager *RopeManager();

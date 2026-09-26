@@ -60,6 +60,13 @@ def build(bld):
 		libs += ['vaudio_opus']
 	libs += ['engine', 'inputsystem', 'materialsystem', 'datacache', 'studiorender',
 	         'video_services', 'vguimatsurface', 'vgui2']
+	# The file system and the physics providers are linked; -physics selects
+	# one. Box3D is built unless the IVP-only profile is configured
+	# (vphysics_box3d/wscript).
+	libs += ['vphysics', 'filesystem_stdio']
+	if bld.env.PHYSICS_BACKEND != 'ivp':
+		libs += ['vphysics_box3d']
+		defines += ['LINKED_BOX3D_PHYSICS']
 
 	if bld.env.DEST_OS == 'win32':
 		libs += ['USER32', 'OLE32', 'SHELL32']

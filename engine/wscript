@@ -210,6 +210,7 @@ def build(bld):
 		'../public/studio.cpp',
 		'sys_dll.cpp',
 		'sys_dll2.cpp',
+		'linked_game_modules.cpp',
 		'sys_engine.cpp',
 		'testscriptmgr.cpp',
 		'traceinit.cpp',
@@ -338,6 +339,8 @@ def build(bld):
 			'audio/snd_dsp.cpp',
 			'audio/snd_mix.cpp',
 			'audio/snd_mixgroups.cpp',
+			# Sound operator system: runs the "operator_stacks" of version 2
+			# sound entries (Portal 2 and later content).
 			'audio/snd_sentence_mixer.cpp',
 			'audio/snd_wave_data.cpp',
 			'audio/snd_wave_mixer.cpp',

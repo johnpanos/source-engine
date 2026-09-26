@@ -93,6 +93,7 @@
 
 
 #include "vgui_askconnectpanel.h"
+#include "linked_game_modules_internal.h"
 
 #if defined( REPLAY_ENABLED )
 #include "replay_internal.h"
@@ -626,6 +627,15 @@ void CEngineVGui::Init()
 		szDllName = "client";
 		m_hStaticGameUIModule = NULL;
 		m_GameUIFactory = g_ClientFactory;
+	}
+	else if ( const LinkedGameModules *pLinked = Engine_GetLinkedGameModules() )
+	{
+		// A statically composed product linked its GameUI module.
+		COM_TimestampedLog( "Using the linked GameUI" );
+		m_hStaticGameUIModule = NULL;
+		m_GameUIFactory = pLinked->gameUI;
+		if ( !m_GameUIFactory )
+			Error( "This product linked no GameUI module.\n" );
 	}
 	else
 	{

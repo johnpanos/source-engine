@@ -98,6 +98,7 @@
 #endif
 
 #include "xbox/xboxstubs.h"
+#include "linked_game_modules_internal.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -230,6 +231,8 @@ private:
 	bool ModuleAlreadyInList( CUtlVector< AppSystemInfo_t >& list, const char *moduleName, const char *interfaceName );
 
 	bool AddLegacySystems();
+	bool AddDeclaredSystems( AppSystemInfo_t *pSystems );
+	bool AddToolFramework();
 	bool	m_bServerOnly;
 };
 
@@ -2030,19 +2033,45 @@ bool CModAppSystemGroup::AddLegacySystems()
 		{ "", "" }					// Required to terminate the list
 	};
 
-	if ( !AddSystems( appSystems ) ) 
+	if ( !AddDeclaredSystems( appSystems ) )
 		return false;
 
-#if !defined( DEDICATED )
-//	if ( CommandLine()->FindParm( "-tools" ) )
-	{
-		AppModule_t toolFrameworkModule = LoadModule( "engine" DLL_EXT_STRING );
+	return AddToolFramework();
+}
 
-		if ( !AddSystem( toolFrameworkModule, VTOOLFRAMEWORK_INTERFACE_VERSION ) )
+//-----------------------------------------------------------------------------
+// Adds the app systems the game modules declare. A statically composed product
+// linked them (linked_game_modules.h); otherwise they are loaded by name.
+//-----------------------------------------------------------------------------
+bool CModAppSystemGroup::AddDeclaredSystems( AppSystemInfo_t *pSystems )
+{
+	if ( !Engine_GetLinkedGameModules() )
+		return AddSystems( pSystems );
+
+	for ( ; pSystems->m_pModuleName[0]; ++pSystems )
+	{
+		IAppSystem *pSystem = Engine_FindLinkedGameAppSystem( pSystems->m_pInterfaceName );
+		if ( !pSystem )
+		{
+			Warning( "The game declares app system %s (%s), which this product did not link.\n",
+			    pSystems->m_pInterfaceName, pSystems->m_pModuleName );
+			return false;
+		}
+		if ( !AddSystem( pSystem, pSystems->m_pInterfaceName ) )
 			return false;
 	}
-#endif
+	return true;
+}
 
+//-----------------------------------------------------------------------------
+// The engine's own tool framework joins the mod systems.
+//-----------------------------------------------------------------------------
+bool CModAppSystemGroup::AddToolFramework()
+{
+#if !defined( DEDICATED )
+	if ( !AddSystem( toolframework, VTOOLFRAMEWORK_INTERFACE_VERSION ) )
+		return false;
+#endif
 	return true;
 }
 
@@ -2121,20 +2150,10 @@ bool CModAppSystemGroup::Create()
 	info.m_pInterfaceName = "";
 	systems.AddToTail( info );
 
-	if ( !AddSystems( systems.Base() ) ) 
+	if ( !AddDeclaredSystems( systems.Base() ) )
 		return false;
 
-#if !defined( DEDICATED )
-//	if ( CommandLine()->FindParm( "-tools" ) )
-	{
-		AppModule_t toolFrameworkModule = LoadModule( "engine" DLL_EXT_STRING );
-
-		if ( !AddSystem( toolFrameworkModule, VTOOLFRAMEWORK_INTERFACE_VERSION ) )
-			return false;
-	}
-#endif
-
-	return true;
+	return AddToolFramework();
 }
 
 //-----------------------------------------------------------------------------

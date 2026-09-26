@@ -95,8 +95,7 @@
 #include "replay_internal.h"
 #include "replay/replaylib.h"
 #endif
-
-
+#include "linked_game_modules_internal.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -1655,6 +1654,7 @@ void CEngineClient::DisconnectInternal( void )
 //-----------------------------------------------------------------------------
 IBaseClientDLL *g_ClientDLL = NULL;
 IClientVirtualReality *g_pClientVR = NULL;
+// Optional; NULL when the client adds no game-specific sound origins.
 IPrediction	*g_pClientSidePrediction = NULL;
 IClientRenderTargets *g_pClientRenderTargets = NULL;
 IClientEntityList *entitylist = NULL;
@@ -1710,20 +1710,31 @@ bool ClientDLL_Load()
 {
 	Assert ( !g_ClientDLLModule );
 
-	// Check the signature on the client dll.  If this fails we load it anyway but put this client
-	// into insecure mode so it won't connect to secure servers and get VAC banned
-	if ( !Host_AllowLoadModule( "client.dll", "GAMEBIN", true ) )
-	{
-		// not supposed to load this but we will anyway
-		Host_DisallowSecureServers();
-		Host_AllowLoadModule( "client.dll","GAMEBIN", true );
-	}
+	// A statically composed product linked its client; see linked_game_modules.h.
+	const LinkedGameModules *pLinked = Engine_GetLinkedGameModules();
+	if ( pLinked && !pLinked->client )
+		Sys_Error( "This product linked no client module." );
 
-	g_ClientDLLModule = Sys_LoadModuleFromFileSystem(
-		g_pFileSystem, "client", "GAMEBIN", false );
-	if ( g_ClientDLLModule )
+	if ( !pLinked )
 	{
-		g_ClientFactory = Sys_GetFactory( g_ClientDLLModule );
+		// Check the signature on the client dll.  If this fails we load it anyway but put this client
+		// into insecure mode so it won't connect to secure servers and get VAC banned
+		if ( !Host_AllowLoadModule( "client.dll", "GAMEBIN", true ) )
+		{
+			// not supposed to load this but we will anyway
+			Host_DisallowSecureServers();
+			Host_AllowLoadModule( "client.dll", "GAMEBIN", true );
+		}
+
+		g_ClientDLLModule =
+		    Sys_LoadModuleFromFileSystem( g_pFileSystem, "client", "GAMEBIN", false );
+	}
+	if ( pLinked || g_ClientDLLModule )
+	{
+		if ( pLinked )
+			g_ClientFactory = pLinked->client;
+		else
+			g_ClientFactory = Sys_GetFactory( g_ClientDLLModule );
 		if ( g_ClientFactory )
 		{
 			g_ClientDLL = (IBaseClientDLL *)g_ClientFactory( CLIENT_DLL_INTERFACE_VERSION, NULL );

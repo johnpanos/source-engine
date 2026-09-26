@@ -202,9 +202,26 @@ static void WaitForDebuggerConnect( int argc, char *argv[], int time )
 
 #endif // !LINUX
 
+#if defined( SOURCE_STATIC_COMPOSITION )
+// Every first-party module, the launcher included, is linked into this program
+// (scripts/waifulib/static_composition.py): there is no module search path to
+// set and no launcher library to open.
+#include "static_composition.h"
+extern "C" int LauncherMain( int argc, char **argv );
+#endif
+
 int main( int argc, char *argv[] )
 {
 	BootstrapModuleLoadTelemetry_Init( argc, argv );
+#if defined( SOURCE_STATIC_COMPOSITION )
+	if ( !StaticComposition_BindGame() )
+	{
+		fprintf( stderr, "Failed to bind the linked game modules\n" );
+		return 1;
+	}
+	WaitForDebuggerConnect( argc, argv, 30 );
+	return LauncherMain( argc, argv );
+#else
 	char ld_path[4196];
 	char *path = "bin/";
 	char *ld_env;
@@ -284,6 +301,7 @@ int main( int argc, char *argv[] )
 	WaitForDebuggerConnect( argc, argv, 30 );
 
 	return main( argc, argv );
+#endif // SOURCE_STATIC_COMPOSITION
 }
 
 #else

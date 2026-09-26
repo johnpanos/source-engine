@@ -221,6 +221,12 @@ IBaseFileSystem *g_pBaseFileSystem = &g_FileSystem_Stdio;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CFileSystem_Stdio, IFileSystem, FILESYSTEM_INTERFACE_VERSION, g_FileSystem_Stdio );
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CFileSystem_Stdio, IBaseFileSystem, BASEFILESYSTEM_INTERFACE_VERSION, g_FileSystem_Stdio );
 
+// The client composition root links this module; see appframework/linked_systems.h.
+DLL_EXPORT IFileSystem *FileSystemStdio_Create()
+{
+	return &g_FileSystem_Stdio;
+}
+
 #endif
 
 //-----------------------------------------------------------------------------

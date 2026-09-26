@@ -14,14 +14,15 @@ class ICvarQuery;
 class IEngineAPI;
 class IDedicatedServerAPI;
 class ISoundEmitterSystemBase;
+class ISceneFileCache;
 class IQueuedLoader;
+class IFileSystem;
 class IInputSystem;
 class IMaterialSystem;
 class IDataCache;
 class IMDLCache;
 class IStudioDataCache;
 class IStudioRender;
-class IPhysics;
 class IVideoServices;
 namespace vgui
 {
@@ -35,14 +36,16 @@ extern "C"
 	IEngineAPI *Engine_CreateClientAPI();
 	IDedicatedServerAPI *Engine_CreateDedicatedAPI();
 	ISoundEmitterSystemBase *SoundEmitterSystem_Create();
+	ISceneFileCache *SceneFileCache_Create();
 	IQueuedLoader *Dedicated_CreateQueuedLoader();
+	IFileSystem *FileSystemStdio_Create();
+	IQueuedLoader *FileSystemStdio_CreateQueuedLoader();
 	IInputSystem *InputSystem_Create();
 	IMaterialSystem *MaterialSystem_Create();
 	IDataCache *DataCache_Create();
 	IMDLCache *MDLCache_Create();
 	IStudioDataCache *StudioDataCache_Create();
 	IStudioRender *StudioRender_Create();
-	IPhysics *Physics_Create();
 	vgui::IVGui *VGui_Create();
 	vgui::ISurface *VGuiSurface_Create();
 	IVideoServices *VideoServices_Create();

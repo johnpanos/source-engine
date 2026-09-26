@@ -237,7 +237,8 @@ public:
 	void SetHolidayLightMode( bool bHoliday ) { m_bDrawHolidayLights = bHoliday; }
 	bool IsHolidayLightMode( void );
 	int GetHolidayLightStyle( void );
-	
+	void Shutdown( void );
+
 private:
 	struct RopeRenderData_t;
 public:
@@ -323,6 +324,16 @@ CRopeManager::CRopeManager()
 //-----------------------------------------------------------------------------
 CRopeManager::~CRopeManager()
 {
+	Assert( !m_aRenderCache.Count() && !m_pDepthWriteMaterial );
+	m_aRenderCache.Purge();
+	m_aSegmentCache.Purge();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Releases material references before the material system shuts down.
+//-----------------------------------------------------------------------------
+void CRopeManager::Shutdown()
+{
 	int nRenderCacheCount = m_aRenderCache.Count();
 	for ( int iRenderCache = 0; iRenderCache < nRenderCacheCount; ++iRenderCache )
 	{
@@ -334,6 +345,11 @@ CRopeManager::~CRopeManager()
 		{
 			m_aRenderCache[iRenderCache].m_pBackMaterial->DecrementReferenceCount();
 		}
+	}
+	if ( m_pDepthWriteMaterial )
+	{
+		m_pDepthWriteMaterial->DecrementReferenceCount();
+		m_pDepthWriteMaterial = NULL;
 	}
 
 	m_aRenderCache.Purge();

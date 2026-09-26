@@ -1235,7 +1235,8 @@ void CHLClient::Shutdown( void )
 	gTouch.Shutdown();
 
 	ParticleMgr()->Term();
-	
+	RopeManager()->Shutdown();
+
 	ClearKeyValuesCache();
 
 #ifndef NO_STEAM

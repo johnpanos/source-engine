@@ -160,8 +160,16 @@ enum
 // if pReturnCode is set, it will return one of the following values (IFACE_OK, IFACE_FAILED)
 // extend this for other error conditions/code
 //-----------------------------------------------------------------------------
+#if defined( SOURCE_STATIC_COMPOSITION )
+// A statically composed product (iOS) links every module into one image. Each
+// module keeps its own registry and its CreateInterface stays private to it;
+// composition roots reach a module through its named entry,
+// StaticModule_<target>_CreateInterface (scripts/waifulib/static_composition.py).
+extern "C" __attribute__( ( visibility( "hidden" ) ) ) void *CreateInterface(
+    const char *pName, int *pReturnCode );
+#else
 DLL_EXPORT void* CreateInterface(const char *pName, int *pReturnCode);
-
+#endif
 
 //-----------------------------------------------------------------------------
 // UNDONE: This is obsolete, use the module load/unload/get instead!!!

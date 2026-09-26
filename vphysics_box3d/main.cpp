@@ -1,5 +1,6 @@
 #include "vphysics_interface.h"
 #include "vphysics/parallel_step.h"
+#include "vphysics/provider_catalog.h"
 #include "vphysics/shape_inertia.h"
 #include "vphysics/step_profile.h"
 #include "vstdlib/jobthread.h"
@@ -223,6 +224,13 @@ EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CPhysicsCollisionBox3D, IPhysicsCollision, VP
 CPhysicsSurfacePropsBox3D g_SurfaceDatabase;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CPhysicsSurfacePropsBox3D, IPhysicsSurfaceProps, VPHYSICS_SURFACEPROPS_INTERFACE_VERSION, g_SurfaceDatabase );
 
-DLL_EXPORT IPhysics *Physics_Create() {
+static IPhysics *CreateBox3DPhysics()
+{
 	return &g_MainDLLInterface;
+}
+
+DLL_EXPORT const PhysicsProviderDescriptor *PhysicsBox3D_Describe()
+{
+	static const PhysicsProviderDescriptor s_Descriptor = { "vphysics_box3d", CreateBox3DPhysics };
+	return &s_Descriptor;
 }

@@ -97,7 +97,10 @@ class CSteamApplication : public CAppSystemGroup
 	typedef CAppSystemGroup BaseClass;
 
 public:
-	CSteamApplication( CSteamAppSystemGroup *pAppSystemGroup );
+	// A product that links its file system passes it here; otherwise the file
+	// system module is loaded by name.
+	CSteamApplication(
+	    CSteamAppSystemGroup *pAppSystemGroup, IFileSystem *pLinkedFileSystem = NULL );
 
 	// Implementation of IAppSystemGroup
 	virtual bool Create( );
@@ -115,6 +118,7 @@ protected:
 	IFileSystem *m_pFileSystem;
 	CSteamAppSystemGroup *m_pChildAppSystemGroup;
 	bool m_bSteam;
+	IFileSystem *m_pLinkedFileSystem;
 };
 
 

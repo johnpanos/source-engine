@@ -82,8 +82,11 @@ in [AGENTS.md](../AGENTS.md).
   client and tools products and bound through a typed `BuiltinShaderProvider`.
   Filename shader loading remains only for mod shaders, in the
   shader-extension compatibility host. The launcher also selects window, input,
-  video and audio providers from typed linked descriptors. Physics and the
-  filesystem are still loaded by filename in the launcher and dedicated roots.
+  video and audio providers from typed linked descriptors. The launcher also
+  links the file system and a physics provider catalog; the dedicated root
+  still loads physics by filename. A `--static-composition` build links every
+  first-party module into one program and binds the game modules to the engine
+  ([static composition](0001-static-composition-progress.md)).
   See the [Phase B record](0001-phase-b-progress.md#later-work-not-claimed-here).
 - **Dedicated server (rank 6).** A dedicated composition bridge is in place,
   but the product still links material and studio render support. R12 is
