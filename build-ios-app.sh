@@ -461,6 +461,9 @@ plist = {
     # A game category: App Store placement, and on iOS what makes the system
     # consider the app for Game Mode.
     'LSApplicationCategoryType': ios['app_category'],
+    # The game plays with an extended (Xbox, PlayStation, MFi) controller;
+    # the launcher then selects the console UI (ios_main.cpp).
+    'GCSupportedGameControllers': [{'ProfileName': 'ExtendedGamepad'}],
 }
 if target['os'] == 'ios':
     plist.update({

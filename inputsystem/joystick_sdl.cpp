@@ -403,23 +403,41 @@ void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 		return;
 	}
 
-	// XXX: This will fail if this is a *real* hotplug event (and not coming from the initial InitializeJoysticks call).
-	// That's because the SDL haptic subsystem currently doesn't do hotplugging. Everything but haptics will work fine.
-	SDL_Haptic *haptic = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(controller));
 #if defined( USE_SDL3 )
-	if ( haptic == NULL || !SDL_InitHapticRumble( haptic ) )
+	const bool bGamepadRumble = SDL_GetBooleanProperty(
+	    SDL_GetGamepadProperties( controller ), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false );
 #else
-	if ( haptic == NULL || SDL_HapticRumbleInit(haptic) != 0 )
+	const bool bGamepadRumble = false;
 #endif
+
+	SDL_Haptic *haptic = NULL;
+	if ( bGamepadRumble )
 	{
-		Warning("Unable to initialize rumble for joystick #%i: %s\n", joystickId, SDL_GetError());
-		if ( haptic )
-			SDL_HapticClose( haptic );
-		haptic = NULL;
+		Msg( "Joystick #%i rumbles through the gamepad API.\n", joystickId );
+	}
+	else
+	{
+		// XXX: This will fail if this is a *real* hotplug event (and not coming from the initial InitializeJoysticks call).
+		// That's because the SDL haptic subsystem currently doesn't do hotplugging. Everything but haptics will work fine.
+		haptic = SDL_HapticOpenFromJoystick( SDL_GameControllerGetJoystick( controller ) );
+#if defined( USE_SDL3 )
+		if ( haptic == NULL || !SDL_InitHapticRumble( haptic ) )
+#else
+		if ( haptic == NULL || SDL_HapticRumbleInit( haptic ) != 0 )
+#endif
+		{
+			Warning(
+			    "Unable to initialize rumble for joystick #%i: %s\n", joystickId, SDL_GetError() );
+			if ( haptic )
+				SDL_HapticClose( haptic );
+			haptic = NULL;
+		}
 	}
 
 	info.m_pDevice = controller;
 	info.m_pHaptic = haptic;
+	info.m_bGamepadRumble = bGamepadRumble;
+	m_GamepadRumble.Reset();
 	info.m_nDeviceId = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller));
 	info.m_nButtonCount = SDL_CONTROLLER_BUTTON_MAX;
 	info.m_bRumbleEnabled = false;
@@ -463,6 +481,8 @@ void CInputSystem::JoystickHotplugRemoved( int joystickId )
 	info.m_nButtonCount = 0;
 	info.m_nDeviceId = -1;
 	info.m_bRumbleEnabled = false;
+	info.m_bGamepadRumble = false;
+	m_GamepadRumble.Reset();
 
 	Msg("Joystick %i removed.\n", joystickId);
 }
@@ -605,7 +625,7 @@ void CInputSystem::PollJoystick( void )
 void CInputSystem::SetXDeviceRumble( float fLeftMotor, float fRightMotor, int userId )
 {
 	JoystickInfo_t& info = m_pJoystickInfo[ 0 ];
-	if ( info.m_nDeviceId < 0  || info.m_pHaptic == NULL )
+	if ( info.m_nDeviceId < 0 || ( info.m_pHaptic == NULL && !info.m_bGamepadRumble ) )
 	{
 		return;
 	}
@@ -616,10 +636,38 @@ void CInputSystem::SetXDeviceRumble( float fLeftMotor, float fRightMotor, int us
 	// 0f means "stop".
 	bool shouldStop = ( strength < 0.01f );
 	// If they've disabled the gamecontroller in settings, never rumble.
-	if ( !joystickVar.IsValid() || !joystickVar.GetBool() )
+	const bool bDisabled = !joystickVar.IsValid() || !joystickVar.GetBool();
+	if ( bDisabled )
 	{
 		shouldStop = true;
 	}
+
+#if defined( USE_SDL3 )
+	if ( info.m_bGamepadRumble )
+	{
+		// Left is the low-frequency (heavy) motor, right the high-frequency
+		// one, as on the Xbox controller the game's effects were written for.
+		const int64_t nNowMs = static_cast<int64_t>( Plat_FloatTime() * 1000.0 );
+		const gamepadrumble::Command command =
+		    bDisabled ? m_GamepadRumble.Update( 0.f, 0.f, nNowMs )
+		              : m_GamepadRumble.Update( fLeftMotor, fRightMotor, nNowMs );
+		SDL_Gamepad *pGamepad = static_cast<SDL_Gamepad *>( info.m_pDevice );
+		if ( command.m_Kind == gamepadrumble::Command::STOP )
+		{
+			SDL_RumbleGamepad( pGamepad, 0, 0, 0 );
+		}
+		else if ( command.m_Kind == gamepadrumble::Command::PLAY &&
+		          !SDL_RumbleGamepad( pGamepad, static_cast<Uint16>( command.m_nLow ),
+		              static_cast<Uint16>( command.m_nHigh ), command.m_nDurationMs ) )
+		{
+			// Reported once: the gamepad said it rumbles but refused.
+			Warning( "Couldn't rumble the gamepad: %s\n", SDL_GetError() );
+			info.m_bGamepadRumble = false;
+			m_GamepadRumble.Reset();
+		}
+		return;
+	}
+#endif
 
 	if ( shouldStop )
 	{

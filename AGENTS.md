@@ -1129,6 +1129,14 @@ Keep the table concise and link details below or from the domain progress file.
   - Device testing (`ios_frame_pacing.py --profile`, the budget's meaning on
     a FIFO-only display, shader experiments and device traps) is in the
     [device record](RFC/0005-ios-device-progress.md#apple-tv-4k-tvos-profile-2026-09-26).
+  - Console UI and controller rumble (2026-09-26, user direction): tvOS, and
+    iOS with a gamepad at launch, start with the Xbox 360 GameUI
+    (`+gameui_xbox 1`, now applied before GameUI starts). Its dialogs no
+    longer crash, and it has a built-in option list. Gamepads rumble through
+    `SDL_RumbleGamepad` (`input.gamepad-rumble`, 33 checks; 12 of 12 bad
+    policies rejected). Desktop headless evidence only; no device run. See
+    the
+    [record](RFC/0001-static-composition-progress.md#console-ui-and-controller-rumble-on-tvos-and-ios-2026-09-26).
   - Not done: other maps at 60 fps, a simulator run, and remote-driven
     menus (out of scope). See the
     [record](RFC/0001-static-composition-progress.md#first-tvos-build-2026-09-25).

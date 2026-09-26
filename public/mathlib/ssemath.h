@@ -374,35 +374,14 @@ FORCEINLINE fltx4 ArcCosSIMD( const fltx4 &cs )
 }
 
 // tan^1(a/b) .. ie, pass sin in as a and cos in as b
-// Four lanes after Cephes atanf: atan of min(|a|,|b|) / max(|a|,|b|) in
-// [0, 1], reduced once more above tan(pi/8), then the octant and quadrant
-// are restored from the operands' magnitudes and signs. atan2(0, 0) = 0.
 FORCEINLINE fltx4 ArcTan2SIMD( const fltx4 &a, const fltx4 &b )
 {
-	const __m128 signMask = _mm_castsi128_ps( _mm_set1_epi32( (int)0x80000000 ) );
-	__m128 ax = _mm_andnot_ps( signMask, a ), bx = _mm_andnot_ps( signMask, b );
-	__m128 hi = _mm_max_ps( ax, bx ), lo = _mm_min_ps( ax, bx );
-	__m128 zero = _mm_cmpeq_ps( hi, _mm_setzero_ps() );
-	__m128 t = _mm_div_ps( lo, _mm_or_ps( hi, _mm_and_ps( zero, _mm_set1_ps( 1.0f ) ) ) );
-
-	// Above tan(pi/8): atan(t) = pi/4 + atan((t - 1) / (t + 1)).
-	__m128 big = _mm_cmpgt_ps( t, _mm_set1_ps( 0.4142135623730950f ) );
-	__m128 tr = _mm_div_ps( _mm_sub_ps( t, _mm_set1_ps( 1.0f ) ), _mm_add_ps( t, _mm_set1_ps( 1.0f ) ) );
-	t = _mm_or_ps( _mm_and_ps( big, tr ), _mm_andnot_ps( big, t ) );
-	__m128 y0 = _mm_and_ps( big, _mm_set1_ps( 0.78539816339744830962f ) );
-
-	__m128 z = _mm_mul_ps( t, t );
-	__m128 p = _mm_add_ps( _mm_mul_ps( _mm_set1_ps( 8.05374449538e-2f ), z ), _mm_set1_ps( -1.38776856032e-1f ) );
-	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( 1.99777106478e-1f ) );
-	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( -3.33329491539e-1f ) );
-	__m128 r = _mm_add_ps( y0, _mm_add_ps( _mm_mul_ps( _mm_mul_ps( p, z ), t ), t ) );
-
-	// |a| > |b|: pi/2 - r. b < 0: pi - r. Then the sign of a.
-	__m128 steep = _mm_cmpgt_ps( ax, bx );
-	r = _mm_or_ps( _mm_and_ps( steep, _mm_sub_ps( _mm_set1_ps( 1.57079632679489661923f ), r ) ), _mm_andnot_ps( steep, r ) );
-	__m128 back = _mm_cmplt_ps( b, _mm_setzero_ps() );
-	r = _mm_or_ps( _mm_and_ps( back, _mm_sub_ps( _mm_set1_ps( 3.14159265358979323846f ), r ) ), _mm_andnot_ps( back, r ) );
-	return _mm_xor_ps( r, _mm_and_ps( a, signMask ) );
+	fltx4 result;
+	SubFloat( result, 0 ) = atan2( SubFloat( a, 0 ), SubFloat( b, 0 ) );
+	SubFloat( result, 1 ) = atan2( SubFloat( a, 1 ), SubFloat( b, 1 ) );
+	SubFloat( result, 2 ) = atan2( SubFloat( a, 2 ), SubFloat( b, 2 ) );
+	SubFloat( result, 3 ) = atan2( SubFloat( a, 3 ), SubFloat( b, 3 ) );
+	return result;
 }
 
 FORCEINLINE fltx4 MaxSIMD( const fltx4 & a, const fltx4 & b )				// max(a,b)
@@ -1039,6 +1018,14 @@ FORCEINLINE fltx4 LoadUnaligned3SIMD( const void *pSIMD )
 }
 #endif
 
+// x, y, z from exactly three floats (w = 0), without LoadUnaligned3SIMD's
+// 16-byte read.
+FORCEINLINE fltx4 LoadExact3SIMD( const float *p )
+{
+	__m128 xy = _mm_loadl_pi( _mm_setzero_ps(), reinterpret_cast< const __m64 * >( p ) );
+	return _mm_movelh_ps( xy, _mm_load_ss( p + 2 ) );
+}
+
 /// replicate a single 32 bit integer value to all 4 components of an m128
 FORCEINLINE fltx4 ReplicateIX4( int i )
 {
@@ -1346,28 +1333,37 @@ FORCEINLINE fltx4 ArcCosSIMD( const fltx4 &cs )
 }
 
 // tan^1(a/b) .. ie, pass sin in as a and cos in as b
-// Four lanes after Cephes atanf: atan of min(|a|,|b|) / max(|a|,|b|) in
-// [0, 1], reduced once more above tan(pi/8), then the octant and quadrant
-// are restored from the operands' magnitudes and signs. atan2(0, 0) = 0.
+// Four lanes: atan of t = min(|a|,|b|) / max(|a|,|b|) in [0, 1] by one
+// minimax polynomial in t^2 (the SLEEF atanf coefficients), then the octant
+// and quadrant are restored from the operands' magnitudes and signs. One
+// division; atan2(0, 0) = 0. Without FMA on x86 the scalar libm atan2f is
+// faster (mathlib_bench: 0.75x on -march=core2, 1.09x with FMA, 14x on arm64),
+// so SSE2-only x86 builds keep it.
 FORCEINLINE fltx4 ArcTan2SIMD( const fltx4 &a, const fltx4 &b )
 {
+#if ( defined( __i386__ ) || defined( __x86_64__ ) || defined( _M_IX86 ) || defined( _M_X64 ) ) && !defined( __FMA__ )
+	fltx4 result;
+	SubFloat( result, 0 ) = atan2( SubFloat( a, 0 ), SubFloat( b, 0 ) );
+	SubFloat( result, 1 ) = atan2( SubFloat( a, 1 ), SubFloat( b, 1 ) );
+	SubFloat( result, 2 ) = atan2( SubFloat( a, 2 ), SubFloat( b, 2 ) );
+	SubFloat( result, 3 ) = atan2( SubFloat( a, 3 ), SubFloat( b, 3 ) );
+	return result;
+#else
 	const __m128 signMask = _mm_castsi128_ps( _mm_set1_epi32( (int)0x80000000 ) );
 	__m128 ax = _mm_andnot_ps( signMask, a ), bx = _mm_andnot_ps( signMask, b );
 	__m128 hi = _mm_max_ps( ax, bx ), lo = _mm_min_ps( ax, bx );
 	__m128 zero = _mm_cmpeq_ps( hi, _mm_setzero_ps() );
 	__m128 t = _mm_div_ps( lo, _mm_or_ps( hi, _mm_and_ps( zero, _mm_set1_ps( 1.0f ) ) ) );
 
-	// Above tan(pi/8): atan(t) = pi/4 + atan((t - 1) / (t + 1)).
-	__m128 big = _mm_cmpgt_ps( t, _mm_set1_ps( 0.4142135623730950f ) );
-	__m128 tr = _mm_div_ps( _mm_sub_ps( t, _mm_set1_ps( 1.0f ) ), _mm_add_ps( t, _mm_set1_ps( 1.0f ) ) );
-	t = _mm_or_ps( _mm_and_ps( big, tr ), _mm_andnot_ps( big, t ) );
-	__m128 y0 = _mm_and_ps( big, _mm_set1_ps( 0.78539816339744830962f ) );
-
 	__m128 z = _mm_mul_ps( t, t );
-	__m128 p = _mm_add_ps( _mm_mul_ps( _mm_set1_ps( 8.05374449538e-2f ), z ), _mm_set1_ps( -1.38776856032e-1f ) );
-	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( 1.99777106478e-1f ) );
-	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( -3.33329491539e-1f ) );
-	__m128 r = _mm_add_ps( y0, _mm_add_ps( _mm_mul_ps( _mm_mul_ps( p, z ), t ), t ) );
+	__m128 p = _mm_add_ps( _mm_mul_ps( _mm_set1_ps( 0.00282363896258175373077393f ), z ), _mm_set1_ps( -0.0159569028764963150024414f ) );
+	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( 0.0425049886107444763183594f ) );
+	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( -0.0748900920152664184570312f ) );
+	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( 0.106347933411598205566406f ) );
+	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( -0.142027363181114196777344f ) );
+	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( 0.199926957488059997558594f ) );
+	p = _mm_add_ps( _mm_mul_ps( p, z ), _mm_set1_ps( -0.333331018686294555664062f ) );
+	__m128 r = _mm_add_ps( t, _mm_mul_ps( t, _mm_mul_ps( z, p ) ) );
 
 	// |a| > |b|: pi/2 - r. b < 0: pi - r. Then the sign of a.
 	__m128 steep = _mm_cmpgt_ps( ax, bx );
@@ -1375,6 +1371,7 @@ FORCEINLINE fltx4 ArcTan2SIMD( const fltx4 &a, const fltx4 &b )
 	__m128 back = _mm_cmplt_ps( b, _mm_setzero_ps() );
 	r = _mm_or_ps( _mm_and_ps( back, _mm_sub_ps( _mm_set1_ps( 3.14159265358979323846f ), r ) ), _mm_andnot_ps( back, r ) );
 	return _mm_xor_ps( r, _mm_and_ps( a, signMask ) );
+#endif
 }
 
 FORCEINLINE fltx4 NegSIMD(const fltx4 &a) // negate: -a
@@ -1962,10 +1959,12 @@ public:
 	{
 		// TransposeSIMD has large sub-expressions that the compiler can't eliminate on x360
 		// use an unfolded implementation here
-		x		= LoadUnalignedSIMD( &( a.x ));
-		y		= LoadUnalignedSIMD( &( b.x ));
-		z		= LoadUnalignedSIMD( &( c.x ));
-		fltx4 w = LoadUnalignedSIMD( &( d.x ));
+		// Load exactly 12 bytes each: a 16-byte load reads past a Vector at the
+		// end of its allocation.
+		x		= LoadExact3SIMD( &( a.x ));
+		y		= LoadExact3SIMD( &( b.x ));
+		z		= LoadExact3SIMD( &( c.x ));
+		fltx4 w = LoadExact3SIMD( &( d.x ));
 		// now, matrix is:
 		// x y z ?
 		// x y z ?

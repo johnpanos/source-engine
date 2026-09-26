@@ -2,7 +2,7 @@
 //
 // Purpose: Capability contract for small durable player records
 //			(platform.record-store.v1): named byte records that a product keeps
-//			across runs, such as the achievement state in GameState.txt.
+//			across runs, such as the achievement state in gamestate.txt.
 //
 //			A record is an opaque byte string; its format belongs to the
 //			caller. The store owns only where and how the bytes are kept: a

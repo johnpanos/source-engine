@@ -87,7 +87,8 @@ void CInputSystem::SetDeviceVibratorRumble( float fLeftMotor, float fRightMotor 
 
 	// SetXDeviceRumble drives a gamepad that has rumble; the player holds that.
 	const JoystickInfo_t &gamepad = m_pJoystickInfo[0];
-	bool bGamepadRumbles = gamepad.m_nDeviceId >= 0 && gamepad.m_pHaptic != NULL;
+	bool bGamepadRumbles =
+	    gamepad.m_nDeviceId >= 0 && ( gamepad.m_pHaptic != NULL || gamepad.m_bGamepadRumble );
 	if ( bGamepadRumbles || !in_device_rumble.GetBool() )
 		fLeftMotor = fRightMotor = 0.f;
 

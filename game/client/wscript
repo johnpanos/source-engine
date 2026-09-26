@@ -85,7 +85,11 @@ def build(bld):
 	if bld.env.DEST_OS == 'win32':
 		libs += ['USER32']
 
-	source += game["sources"] + ['../../public/tier0/memoverride.cpp']
+	source += game["sources"] + ['../../public/tier0/memoverride.cpp',
+		'../shared/game_platform_services.cpp']
+	# The achievement manager keeps GameState.txt in a platform.record-store.v1
+	# store; the file store is its default (the old dual ABI on Linux).
+	libs += ['platform_records_legacyabi' if bld.env.DEST_OS == 'linux' else 'platform_records']
 	includes += game["includes"]
 	cxxflags = []
 	if bld.env.GAMES == 'portal2':

@@ -107,9 +107,9 @@ void CLoadGameDialogXbox::UpdateFooterOptions( void )
 		}
 	}
 
-	// Always allow storage devices changes and cancelling
+	// Always allow cancelling. No storage-device change: only the Xbox 360
+	// had a device selector.
 	pFooter->AddNewButtonLabel( "#GameUI_Close", "#GameUI_Icons_B_BUTTON" );
-	pFooter->AddNewButtonLabel( "#GameUI_Console_StorageChange", "#GameUI_Icons_Y_BUTTON" );
 }
 
 //-----------------------------------------------------------------------------

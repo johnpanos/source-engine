@@ -42,6 +42,11 @@ public:
 
 #define GAME_PLATFORM_SERVICES_BINDING_VERSION "GamePlatformServicesBinding001"
 
+// The player record that holds the achievement manager's state. Lowercase:
+// the engine's POSIX file system has always written it as gamestate.txt in
+// the game's write directory, so the file store finds existing state.
+#define GAME_STATE_RECORD_KEY "gamestate.txt"
+
 // Inside a game module: the services it was bound to (null where unbound).
 // The first call to either fixes them.
 platform::IRecordStore *GamePlatformServices_PlayerRecords();

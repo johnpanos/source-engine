@@ -13,6 +13,7 @@
 #include "appframework/IAppSystem.h"
 #include "appframework/linked_systems.h"
 #include "engine/linked_game_modules.h"
+#include "game/game_platform_services.h"
 #include "scenefilecache/ISceneFileCache.h"
 #include "SoundEmitterSystem/isoundemittersystembase.h"
 #include "tier0/dbg.h"
@@ -47,4 +48,17 @@ bool StaticComposition_BindGame()
 	modules.appSystems = s_AppSystems;
 	modules.appSystemCount = sizeof( s_AppSystems ) / sizeof( s_AppSystems[0] );
 	return Engine_BindLinkedGameModules( &modules );
+}
+
+static bool BindModule( void *pBinding, const GamePlatformServices &services )
+{
+	return pBinding && static_cast<IGamePlatformServicesBinding *>( pBinding )->Bind( services );
+}
+
+bool StaticComposition_BindPlatformServices( const GamePlatformServices &services )
+{
+	const char *pVersion = GAME_PLATFORM_SERVICES_BINDING_VERSION;
+	return BindModule( StaticModule_client_CreateInterface( pVersion, NULL ), services ) &&
+	       BindModule( StaticModule_server_CreateInterface( pVersion, NULL ), services ) &&
+	       BindModule( StaticModule_GameUI_CreateInterface( pVersion, NULL ), services );
 }

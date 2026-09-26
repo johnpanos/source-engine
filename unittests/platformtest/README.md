@@ -22,6 +22,8 @@ only, `-Wall -Wextra -Werror`, no tier0/tier1, no GPU, no display.
 | Dynamic library | `public/platform/contracts/dynamic_library.h` | `dynamic_library/dynamic_library_conformance.h` | `dynamic_library/fake_dynamic_library.h` | `platform.dynamic_library`, `.sensitivity` |
 | Monotonic clock | `public/platform/contracts/clock.h` | `clock/clock_conformance.h` | `clock/fake_clock.h` | `platform.clock`, `.sensitivity` |
 | Platform paths | `public/platform/contracts/paths.h` | `paths/paths_conformance.h` | `paths/fake_paths.h` | `platform.paths`, `.sensitivity` |
+| Player record store | `public/platform/contracts/record_store.h` | `record_store/record_store_conformance.h` | `record_store/fake_record_store.h` | `platform.record_store`, `.sensitivity`, `.user_defaults` (Apple devices) |
+| Achievement service | `public/platform/contracts/achievement_service.h` | `achievement_service/achievement_service_conformance.h` | `achievement_service/fake_achievement_platform.h` | `platform.achievement_service`, `.sensitivity`, `.game_center` (Apple devices) |
 
 Contract docs: `unittests/platformtest/contracts/platform.<cap>.v1.md`.
 
@@ -42,6 +44,23 @@ Contract docs: `unittests/platformtest/contracts/platform.<cap>.v1.md`.
    while the conforming backend passes. Proves the suite is not vacuous.
 6. **Contract doc** + two **manifest rows** (`positive`, `sensitivity`) in
    `quality/conformance.manifest.json`, `domain: Q-FOUNDATION`, `rfc: 0001`.
+
+## Apple device suites
+
+Rows with profile `apple-uikit-device` (runner class `apple-device`) exercise
+Apple-only providers (`platform/apple/`, Objective-C++). The Linux runner
+reports them unavailable; the device harness builds them with the headless
+rows and runs them on the phone or the Apple TV:
+
+```sh
+python3 tools/quality/ios_conformance.py check --suite platform.record_store.user_defaults
+python3 tools/quality/ios_conformance.py check --device-profile tvos-arm64-device \
+    --suite platform.record_store --suite platform.record_store.user_defaults \
+    --suite platform.achievement_service --suite platform.achievement_service.game_center
+```
+
+The tvOS profile builds against `build-tvos` (configure it with
+`./build-tvos-app.sh` first).
 
 ## Native providers
 

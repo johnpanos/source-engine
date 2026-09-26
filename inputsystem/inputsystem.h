@@ -37,6 +37,7 @@
 #include "gyro_sensor.h"
 #include "vibrator_device.h"
 #include "vibrator_policy.h"
+#include "gamepad_rumble.h"
 
 #include "steam/steam_api.h"
 
@@ -147,6 +148,10 @@ public:
 		void *m_pHaptic;  // Really an SDL_Haptic*
 		float m_fCurrentRumble;
 		bool m_bRumbleEnabled;
+		// SDL3 gamepad rumble (SDL_RumbleGamepad, m_GamepadRumble), used
+		// instead of m_pHaptic when the gamepad reports it: the only rumble on
+		// iOS, tvOS and Android, where SDL gives gamepads no SDL_Haptic.
+		bool m_bGamepadRumble;
 		int m_nButtonCount;
 		int m_nAxisFlags;
 		int m_nDeviceId;
@@ -432,6 +437,8 @@ public:
 	bool m_bVibratorWatchInstalled;
 	CDeviceVibrator m_DeviceVibrator;
 	vibrator::CRumbleStream m_VibratorStream;
+	// The active gamepad's rumble lease (slot 0 only).
+	gamepadrumble::CRumbleLease m_GamepadRumble;
 	bool m_bXController;
 	JoystickInfo_t m_pJoystickInfo[ MAX_JOYSTICKS ];
 

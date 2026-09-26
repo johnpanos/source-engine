@@ -95,9 +95,9 @@ void CSaveGameDialogXbox::UpdateFooterOptions( void )
 		}
 	}
 
-	// Always available
+	// Always available. No storage-device change: only the Xbox 360 had a
+	// device selector.
 	pFooter->AddNewButtonLabel( "#GameUI_Close", "#GameUI_Icons_B_BUTTON" );
-	pFooter->AddNewButtonLabel( "#GameUI_Console_StorageChange", "#GameUI_Icons_Y_BUTTON" );
 }
 
 //-----------------------------------------------------------------------------

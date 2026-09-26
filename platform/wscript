@@ -106,6 +106,55 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)
+	# Player record stores (platform.record-store.v1): the file store every
+	# product can use. The game modules (legacy Linux dual ABI) take the
+	# _legacyabi build; see platform_composition_legacyabi.
+	for target, defines in ( ( 'platform_records', [] ),
+	                         ( 'platform_records_legacyabi', legacy_abi ) ):
+		bld.stlib(
+			env       = bld.strict_cpp20_env(),
+			source    = [ 'records/file_record_store.cpp' ],
+			target    = target,
+			name      = target,
+			arch_module = 'platform.records',
+			features  = 'cxx capability_strict',
+			includes  = [ '../public' ],
+			defines   = defines,
+			use       = [],
+			subsystem = bld.env.MSVC_SUBSYSTEM,
+			idx       = bld.get_taskgen_count()
+		)
+	# The portable achievement service (platform.achievement-service.v1)
+	# that native bridges complete.
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'achievements/queued_achievement_service.cpp' ],
+		target    = 'platform_achievements',
+		name      = 'platform_achievements',
+		arch_module = 'platform.achievements',
+		features  = 'cxx capability_strict',
+		includes  = [ '../public' ],
+		defines   = [],
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)
+	# Apple providers (iOS and tvOS roots): the user-defaults record store and
+	# the Game Center achievement platform.
+	if bld.env.DEST_OS == 'ios':
+		bld.stlib(
+			env       = bld.strict_cpp20_env(),
+			source    = [ 'apple/user_defaults_record_store.mm', 'apple/game_center_achievements.mm' ],
+			target    = 'platform_apple',
+			name      = 'platform_apple',
+			arch_module = 'platform.apple',
+			features  = 'cxx capability_strict',
+			includes  = [ '../public' ],
+			defines   = [],
+			use       = [ 'platform_achievements', 'FOUNDATION', 'UIKIT', 'GAMEKIT' ],
+			subsystem = bld.env.MSVC_SUBSYSTEM,
+			idx       = bld.get_taskgen_count()
+		)
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
 		source    = [ 'tool_process_client.cpp' ],

@@ -2,7 +2,7 @@
 //
 // Purpose: File provider of platform.record-store.v1 (platform.records): each
 //			record is the file <directory>/<key>, so a product keeps its
-//			existing files (the achievement manager's GameState.txt).
+//			existing files (the achievement manager's gamestate.txt).
 //
 //			Commit writes <key>~ ('~' is never in a key) and renames it over
 //			the record, so where rename replaces its target (POSIX), a crash

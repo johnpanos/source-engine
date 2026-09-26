@@ -12,6 +12,8 @@
 #include "mathlib/vmatrix.h"
 #include "mathlib/vplane.h"
 
+#include <cfloat>
+
 namespace mathconf
 {
 namespace
@@ -19,7 +21,7 @@ namespace
 
 struct D4
 {
-	double m[ 4 ][ 4 ];
+	double m[4][4];
 };
 
 D4 D4From( const VMatrix &v )
@@ -27,7 +29,7 @@ D4 D4From( const VMatrix &v )
 	D4 r;
 	for ( int i = 0; i < 4; ++i )
 		for ( int j = 0; j < 4; ++j )
-			r.m[ i ][ j ] = v.m[ i ][ j ];
+			r.m[i][j] = v.m[i][j];
 	return r;
 }
 
@@ -39,8 +41,8 @@ D4 D4Mul( const D4 &a, const D4 &b )
 		{
 			double s = 0;
 			for ( int k = 0; k < 4; ++k )
-				s += a.m[ i ][ k ] * b.m[ k ][ j ];
-			r.m[ i ][ j ] = s;
+				s += a.m[i][k] * b.m[k][j];
+			r.m[i][j] = s;
 		}
 	return r;
 }
@@ -50,7 +52,8 @@ double D4MaxDiff( const D4 &a, const VMatrix &b )
 	double d = 0;
 	for ( int i = 0; i < 4; ++i )
 		for ( int j = 0; j < 4; ++j )
-			d = std::fmax( d, std::isnan( b.m[ i ][ j ] ) ? HUGE_VAL : std::fabs( a.m[ i ][ j ] - b.m[ i ][ j ] ) );
+			d = std::fmax(
+			    d, IsFiniteValue( b.m[i][j] ) ? std::fabs( a.m[i][j] - b.m[i][j] ) : DBL_MAX );
 	return d;
 }
 
@@ -60,7 +63,7 @@ VMatrix RandomGeneral( Rng &rng )
 	VMatrix m;
 	for ( int i = 0; i < 4; ++i )
 		for ( int j = 0; j < 4; ++j )
-			m.m[ i ][ j ] = rng.Float( -1, 1 ) + ( i == j ? 4.0f : 0.0f );
+			m.m[i][j] = rng.Float( -1, 1 ) + ( i == j ? 4.0f : 0.0f );
 	return m;
 }
 
@@ -85,7 +88,8 @@ void CheckMultiply( Checks &c, MulFn fn )
 	{
 		VMatrix a = RandomGeneral( rng ), b = RandomGeneral( rng ), out;
 		fn( a, b, out );
-		c.Sample( "vmatrix.multiply", D4MaxDiff( D4Mul( D4From( a ), D4From( b ) ), out ), 4e-6, "" );
+		c.Sample(
+		    "vmatrix.multiply", D4MaxDiff( D4Mul( D4From( a ), D4From( b ) ), out ), 4e-6, "" );
 	}
 }
 
@@ -103,7 +107,7 @@ void RunVMatrixSection( Checks &c )
 		double e = 0;
 		for ( int r = 0; r < 4; ++r )
 			for ( int k = 0; k < 4; ++k )
-				e = std::fmax( e, std::fabs( prod.m[ r ][ k ] - ( r == k ? 1.0 : 0.0 ) ) );
+				e = std::fmax( e, std::fabs( prod.m[r][k] - ( r == k ? 1.0 : 0.0 ) ) );
 		c.Check( ok, "vmatrix.inverse-general.invertible" );
 		c.Sample( "vmatrix.inverse-general", e, 2e-6, "" );
 
@@ -113,26 +117,29 @@ void RunVMatrixSection( Checks &c )
 		double e2 = 0;
 		for ( int r = 0; r < 4; ++r )
 			for ( int k = 0; k < 4; ++k )
-				e2 = std::fmax( e2, std::fabs( p2.m[ r ][ k ] - ( r == k ? 1.0 : 0.0 ) ) / ( k == 3 ? 4096.0 : 1.0 ) );
+				e2 = std::fmax( e2,
+				    std::fabs( p2.m[r][k] - ( r == k ? 1.0 : 0.0 ) ) / ( k == 3 ? 4096.0 : 1.0 ) );
 		c.Sample( "vmatrix.inverse-tr", e2, 2e-6, "" );
 
 		// Vector transforms.
 		Vector v = rng.Vec( -1000, 1000 ), out;
 		D4 da = D4From( a );
 		Vector3DMultiplyPosition( a, v, out );
-		DVec want = { da.m[ 0 ][ 0 ] * v.x + da.m[ 0 ][ 1 ] * v.y + da.m[ 0 ][ 2 ] * v.z + da.m[ 0 ][ 3 ], da.m[ 1 ][ 0 ] * v.x + da.m[ 1 ][ 1 ] * v.y + da.m[ 1 ][ 2 ] * v.z + da.m[ 1 ][ 3 ],
-			da.m[ 2 ][ 0 ] * v.x + da.m[ 2 ][ 1 ] * v.y + da.m[ 2 ][ 2 ] * v.z + da.m[ 2 ][ 3 ] };
+		DVec want = { da.m[0][0] * v.x + da.m[0][1] * v.y + da.m[0][2] * v.z + da.m[0][3],
+		    da.m[1][0] * v.x + da.m[1][1] * v.y + da.m[1][2] * v.z + da.m[1][3],
+		    da.m[2][0] * v.x + da.m[2][1] * v.y + da.m[2][2] * v.z + da.m[2][3] };
 		c.Sample( "vmatrix.vector3d-multiply-position", DMaxDiff( want, out ) / 5000.0, 4e-7, "" );
 		Vector3DMultiply( a, v, out );
-		DVec want3 = { want.x - da.m[ 0 ][ 3 ], want.y - da.m[ 1 ][ 3 ], want.z - da.m[ 2 ][ 3 ] };
+		DVec want3 = { want.x - da.m[0][3], want.y - da.m[1][3], want.z - da.m[2][3] };
 		c.Sample( "vmatrix.vector3d-multiply", DMaxDiff( want3, out ) / 5000.0, 4e-7, "" );
 		Vector4D v4( v.x, v.y, v.z, rng.Float( -2, 2 ) ), o4;
 		Vector4DMultiply( a, v4, o4 );
 		double e4 = 0;
 		for ( int r = 0; r < 4; ++r )
 		{
-			double s = da.m[ r ][ 0 ] * v4.x + da.m[ r ][ 1 ] * v4.y + da.m[ r ][ 2 ] * v4.z + da.m[ r ][ 3 ] * v4.w;
-			e4 = std::fmax( e4, std::fabs( s - o4[ r ] ) );
+			double s =
+			    da.m[r][0] * v4.x + da.m[r][1] * v4.y + da.m[r][2] * v4.z + da.m[r][3] * v4.w;
+			e4 = std::fmax( e4, std::fabs( s - o4[r] ) );
 		}
 		c.Sample( "vmatrix.vector4d-multiply", e4 / 5000.0, 4e-7, "" );
 
@@ -150,7 +157,7 @@ void RunVMatrixSection( Checks &c )
 		matrix3x4_t rot;
 		MatrixBuildRotationAboutAxis( axis, deg, rot );
 		double th = deg * M_PI / 180.0, cs = std::cos( th ), sn = std::sin( th );
-		double ax[ 3 ] = { axis.x, axis.y, axis.z };
+		double ax[3] = { axis.x, axis.y, axis.z };
 		DMat rd;
 		for ( int r = 0; r < 3; ++r )
 		{
@@ -161,11 +168,11 @@ void RunVMatrixSection( Checks &c )
 				{
 					int o = 3 - r - k;
 					double sgn = ( ( r + 1 ) % 3 == k ) ? -1 : 1;
-					cross = sgn * ax[ o ];
+					cross = sgn * ax[o];
 				}
-				rd.m[ r ][ k ] = ( r == k ? cs : 0.0 ) + ( 1 - cs ) * ax[ r ] * ax[ k ] + sn * cross;
+				rd.m[r][k] = ( r == k ? cs : 0.0 ) + ( 1 - cs ) * ax[r] * ax[k] + sn * cross;
 			}
-			rd.m[ r ][ 3 ] = 0;
+			rd.m[r][3] = 0;
 		}
 		c.Sample( "vmatrix.rotation-about-axis", DMatMaxDiff( rd, rot ), 4e-6, "" );
 
@@ -179,7 +186,7 @@ void RunVMatrixSection( Checks &c )
 		double ae = 0;
 		for ( int r = 0; r < 3; ++r )
 			for ( int k = 0; k < 3; ++k )
-				ae = std::fmax( ae, std::fabs( m1[ r ][ k ] - m2[ r ][ k ] ) );
+				ae = std::fmax( ae, std::fabs( m1[r][k] - m2[r][k] ) );
 		c.Sample( "vmatrix.matrix-to-angles.round-trip", ae, 2e-5, "" );
 
 		matrix3x4_t t3;
@@ -190,7 +197,7 @@ void RunVMatrixSection( Checks &c )
 		double ie = 0;
 		for ( int r = 0; r < 3; ++r )
 			for ( int k = 0; k < 4; ++k )
-				ie = std::fmax( ie, std::fabs( it[ r ][ k ] - ( k < 3 ? t3[ r ][ k ] : 0.0f ) ) );
+				ie = std::fmax( ie, std::fabs( it[r][k] - ( k < 3 ? t3[r][k] : 0.0f ) ) );
 		c.Sample( "vmatrix.inverse-transpose-rigid", ie, 1e-5, "" );
 	}
 
@@ -198,18 +205,24 @@ void RunVMatrixSection( Checks &c )
 	// horizontal field-of-view edge to x = 1.
 	for ( int i = 0; i < 500; ++i )
 	{
-		double fov = rng.Double( 40, 120 ), aspect = rng.Double( 1, 2.4 ), zn = rng.Double( 1, 10 ), zf = rng.Double( 100, 30000 );
+		double fov = rng.Double( 40, 120 ), aspect = rng.Double( 1, 2.4 ), zn = rng.Double( 1, 10 ),
+		       zf = rng.Double( 100, 30000 );
 		VMatrix proj;
 		MatrixBuildPerspectiveX( proj, fov, aspect, zn, zf );
 		double tx = std::tan( fov * M_PI / 360.0 );
 		Vector nearEdge( (float)( tx * zn ), 0.0f, (float)-zn ), far( 0.0f, 0.0f, (float)-zf ), out;
 		Vector3DMultiplyPositionProjective( proj, nearEdge, out );
-		c.Sample( "vmatrix.perspective.near", std::fmax( std::fabs( out.z ), std::fabs( out.x - 1.0 ) ), 1e-5, "" );
+		c.Sample( "vmatrix.perspective.near",
+		    std::fmax( std::fabs( out.z ), std::fabs( out.x - 1.0 ) ), 1e-5, "" );
 		Vector3DMultiplyPositionProjective( proj, far, out );
 		c.Sample( "vmatrix.perspective.far", std::fabs( out.z - 1.0 ), 1e-5, "" );
 	}
 
-	ExpectRejected( c, "vmatrix.multiply.rejects-transposed", []( Checks &s ) { CheckMultiply( s, BadMulTransposed ); } );
+	ExpectRejected( c, "vmatrix.multiply.rejects-transposed",
+	    []( Checks &s )
+	    {
+		    CheckMultiply( s, BadMulTransposed );
+	    } );
 }
 
 } // namespace mathconf

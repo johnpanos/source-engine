@@ -1,0 +1,48 @@
+{
+  "schema": "conformance-profile/v1",
+  "id": "tvos-arm64-device",
+  "description": "The manifest's compiled headless suites and the Apple-only suites (apple-uikit-device) on a physical Apple TV (arm64, the tvOS product profile's toolchain, SDK and deployment target). tools/quality/ios_conformance.py --device-profile tvos-arm64-device builds them against build-tvos (./build-tvos-app.sh configures it) exactly as the iOS profile does against build-ios, installs the host app with ios-deploy.sh --device tv and launches it once per suite through devicectl. The GPU suites are not hosted: they present through a window the Apple TV host has not been validated with. The benchmark programs (physics_bench.py, scheduler_budgets.py) stay iOS-only.",
+  "os": "tvos",
+  "arch": "arm64",
+  "runner": "ios-device",
+  "hosts": [
+    "linux-headless-core",
+    "apple-uikit-device"
+  ],
+  "frameworks": [
+    "GameKit"
+  ],
+  "product_profile": "quality/product_profiles/portal-tvos-native-vulkan.json",
+  "build_root": "build-tvos",
+  "deploy_device": "tv",
+  "bundle_id": "com.panos.sourceengine.conformance",
+  "app_bundle": "Conformance.app",
+  "executable": "conformance_host",
+  "extra_flags": [
+    "-Wno-deprecated-declarations"
+  ],
+  "unsupported": {
+    "shared-unit": "builds a first-party shared library at run time; the iOS profile links first-party code statically and loads no first-party module",
+    "sanitizer": "needs a sanitizer runtime the iOS profile does not ship (TSan runs on the Linux lanes)",
+    "libstdcxx-dual-abi": "seeds a libstdc++ dual-ABI mismatch (_GLIBCXX_USE_CXX11_ABI); the iOS toolchain's libc++ has one ABI, so the seeded defect cannot exist there"
+  },
+  "launch_overhead_seconds": 60,
+  "platform_defines": {
+    "_comment": "Suite rows that declare Linux platform defines compile with the tvOS product's instead (wscript's iOS-family defines with PLATFORM_TVOS): the code the app ships.",
+    "-DLINUX": [
+      "-DOSX=1",
+      "-D_OSX=1",
+      "-DPLATFORM_IOS=1",
+      "-DPLATFORM_TVOS=1"
+    ],
+    "-D_LINUX": []
+  },
+  "include_after": [
+    "common"
+  ],
+  "include_after_comment": "ARM targets find sse2neon.h (public/mathlib/ssemath.h) in common/, as the product's targets include it; searched last so it shadows nothing.",
+  "unsupported_suites": {
+    "_comment": "Suites whose sources call an API the tvOS SDK marks unavailable.",
+    "platform.sequence_checker": "forks a child to prove PLATFORM_CHECK_SEQUENCE aborts; fork is unavailable on tvOS (the iOS profile runs it)"
+  }
+}

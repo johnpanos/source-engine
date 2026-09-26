@@ -116,7 +116,9 @@ private:
 	vgui::Label			*m_pChapterTitleLabels[2];
 	vgui::Label			*m_pBonusSelection;
 	vgui::ImagePanel	*m_pBonusSelectionBorder;
-	CFooterPanel		*m_pFooter;
+	// A child of the dialog's parent, so the parent may delete it first (at
+	// shutdown); the handle then reads NULL.
+	vgui::DHANDLE<CFooterPanel> m_pFooter;
 	bool				m_bCommentaryMode;
 	vgui::Label			*m_pCommentaryLabel;
 

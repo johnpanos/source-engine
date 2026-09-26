@@ -78,6 +78,9 @@ projects={
 		'materialsystem/stdshaders',
 		'mathlib',
 		'particles',
+		# Platform providers the game modules and app roots link (the player
+		# record store, the achievement service and the Apple bridges).
+		'platform',
 		'scenefilecache',
 		'serverbrowser',
 		'soundemittersystem',
@@ -564,7 +567,8 @@ def check_deps(conf):
 		# No AppKit, Carbon, IOKit, OpenGL or ApplicationServices on iOS.
 		conf.check(lib='iconv', uselib_store='ICONV')
 		frameworks = ['Foundation', 'CoreFoundation', 'CoreGraphics', 'CoreAudio',
-			'AudioToolbox', 'SystemConfiguration', 'UIKit', 'CoreServices', 'CFNetwork']
+			'AudioToolbox', 'SystemConfiguration', 'UIKit', 'CoreServices', 'CFNetwork',
+			'GameKit']
 		if conf.env.APPLE_PLATFORM != 'tvos':
 			frameworks += ['CoreMotion'] # not in the tvOS SDK
 		for framework in frameworks:

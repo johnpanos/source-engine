@@ -7,7 +7,11 @@
   "runner": "ios-device",
   "hosts": [
     "linux-headless-core",
-    "linux-native-vulkan-gpu"
+    "linux-native-vulkan-gpu",
+    "apple-uikit-device"
+  ],
+  "frameworks": [
+    "GameKit"
   ],
   "product_profile": "quality/product_profiles/portal-ios-native-vulkan.json",
   "bundle_id": "com.panos.sourceengine.conformance",

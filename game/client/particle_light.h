@@ -19,7 +19,7 @@
 #endif
 
 #include "render/spark_light.h"
-#include "refcount.h"
+#include "tier1/refcount.h"
 
 // A burst's light at full strength and white color.
 struct SparkLightParams_t

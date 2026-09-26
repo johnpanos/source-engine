@@ -82,6 +82,8 @@ using namespace vgui;
 #include "../engine/imatchmaking.h"
 #include "tier1/utlstring.h"
 #include "steam/steam_api.h"
+#include "game/game_platform_services.h"
+#include "platform/contracts/achievement_service.h"
 
 #ifdef ANDROID
 #include <SDL_misc.h>
@@ -1893,6 +1895,11 @@ void CBasePanel::RunMenuCommand(const char *command)
 	}
 	else if ( !Q_stricmp( command, "OpenAchievementsDialog" ) )
 	{
+		// The platform's achievements screen (Game Center) when it can show it.
+		platform::IAchievementService *pService = GamePlatformServices_Achievements();
+		if ( pService && pService->ShowAchievements() )
+			return;
+
 		if ( IsPC() )
 		{
 #ifndef NO_STEAM

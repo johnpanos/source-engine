@@ -891,11 +891,12 @@ int __cdecl BoxOnPlaneSide (const float *emins, const float *emaxs, const cplane
 //-----------------------------------------------------------------------------
 static FORCEINLINE void SinCosEuler( float yaw, float pitch, float roll, float &sy, float &cy, float &sp, float &cp, float &sr, float &cr )
 {
-	ALIGN16 float in[4] ALIGN16_POST = { yaw, pitch, roll, 0.0f };
+	// Built in registers: three scalar stores read back as one vector would
+	// stall store forwarding.
 	ALIGN16 float sine[4] ALIGN16_POST;
 	ALIGN16 float cosine[4] ALIGN16_POST;
 	fltx4 s4, c4;
-	SinCosSIMD( s4, c4, LoadAlignedSIMD( in ) );
+	SinCosSIMD( s4, c4, _mm_setr_ps( yaw, pitch, roll, 0.0f ) );
 	StoreAlignedSIMD( sine, s4 );
 	StoreAlignedSIMD( cosine, c4 );
 	sy = sine[0]; sp = sine[1]; sr = sine[2];
@@ -1422,12 +1423,19 @@ void QuaternionAlign( const Quaternion &p, const Quaternion &q, Quaternion &qt )
 		a += (p[i]-q[i])*(p[i]-q[i]);
 		b += (p[i]+q[i])*(p[i]+q[i]);
 	}
-	// Multiply by +-1 (exact) instead of branching: the branch is
-	// unpredictable when blending unrelated poses.
-	float flSign = ( a > b ) ? -1.0f : 1.0f;
-	for (i = 0; i < 4; i++) 
+	if ( a > b )
 	{
-		qt[i] = flSign * q[i];
+		for ( i = 0; i < 4; i++ )
+		{
+			qt[i] = -q[i];
+		}
+	}
+	else if ( &qt != &q )
+	{
+		for ( i = 0; i < 4; i++ )
+		{
+			qt[i] = q[i];
+		}
 	}
 }
 

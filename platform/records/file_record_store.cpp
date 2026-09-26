@@ -5,7 +5,7 @@
 //
 //=============================================================================//
 
-#include "platform/records/file_record_store.h"
+#include "file_record_store.h"
 
 #include <cerrno>
 #include <cstdio>

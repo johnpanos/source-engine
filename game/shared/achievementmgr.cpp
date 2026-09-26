@@ -37,7 +37,7 @@
 #include "tier0/vprof.h"
 #include "game/game_platform_services.h"
 #include "platform/contracts/achievement_service.h"
-#include "platform/records/file_record_store.h"
+#include "../../platform/records/file_record_store.h"
 
 #if defined(TF_DLL) || defined(TF_CLIENT_DLL)
 #include "tf_gamerules.h"
@@ -78,8 +78,9 @@ ISteamUserStats *SteamUserStats()
 // [dwenger] Steam Cloud Support
 //=============================================================================
 
-// The record that holds the achievement state, and its file name on desktop.
-static const char *const kGameStateRecord = "GameState.txt";
+// The record that holds the achievement state, and its Steam Cloud file.
+static const char *const kGameStateRecord = GAME_STATE_RECORD_KEY;
+static const char *const kGameStateCloudFile = "GameState.txt";
 
 static void WriteAchievementGlobalState( platform::IRecordStore *pStore, KeyValues *pKV, bool bPersistToSteamCloud = false )
 
@@ -108,27 +109,23 @@ static void WriteAchievementGlobalState( platform::IRecordStore *pStore, KeyValu
     // [dwenger] Steam Cloud Support
     //=============================================================================
 
-    if ( bPersistToSteamCloud )
-    {
+	if ( bPersistToSteamCloud )
+	{
 #ifndef NO_STEAM
-        ISteamRemoteStorage *pRemoteStorage = SteamClient()?(ISteamRemoteStorage *)SteamClient()->GetISteamGenericInterface(
-            SteamAPI_GetHSteamUser(), SteamAPI_GetHSteamPipe(), STEAMREMOTESTORAGE_INTERFACE_VERSION ):NULL;
-
-        if (pRemoteStorage)
-        {
-            int32 availableBytes = 0;
-            int32 totalBytes = 0;
-            if ( pRemoteStorage->GetQuota( &totalBytes, &availableBytes ) )
-            {
-                if ( totalBytes > 0 && buf.TellPut() > 0 )
-                {
-                    // Write out the data to steam cloud
-                    pRemoteStorage->FileWrite( kGameStateRecord, buf.Base(), buf.TellPut() );
-                }
-            }
-        }
+		ISteamRemoteStorage *pRemoteStorage = SteamClient() ?
+		    (ISteamRemoteStorage *)SteamClient()->GetISteamGenericInterface( SteamAPI_GetHSteamUser(),
+		        SteamAPI_GetHSteamPipe(), STEAMREMOTESTORAGE_INTERFACE_VERSION ) :
+		    NULL;
+		int32 availableBytes = 0;
+		int32 totalBytes = 0;
+		if ( pRemoteStorage && pRemoteStorage->GetQuota( &totalBytes, &availableBytes ) &&
+		     totalBytes > 0 && buf.TellPut() > 0 )
+		{
+			// Write out the data to steam cloud
+			pRemoteStorage->FileWrite( kGameStateCloudFile, buf.Base(), buf.TellPut() );
+		}
 #endif
-    }
+	}
 
     //=============================================================================
     // HPE_END
@@ -688,34 +685,28 @@ void CAchievementMgr::LoadGlobalState()
     // [dwenger] Steam Cloud Support
     //=============================================================================
 
-    if ( m_bPersistToSteamCloud && m_pRecordStore )
-    {
+	if ( m_bPersistToSteamCloud && m_pRecordStore )
+	{
 #ifndef NO_STEAM
-        ISteamRemoteStorage *pRemoteStorage = SteamClient()?(ISteamRemoteStorage *)SteamClient()->GetISteamGenericInterface(
-            SteamAPI_GetHSteamUser(), SteamAPI_GetHSteamPipe(), STEAMREMOTESTORAGE_INTERFACE_VERSION ):NULL;
-
-        if (pRemoteStorage)
-        {
-            if (pRemoteStorage->FileExists(kGameStateRecord))
-            {
-                int32   fileSize = pRemoteStorage->GetFileSize(kGameStateRecord);
-
-                if (fileSize > 0)
-                {
-                    CUtlBuffer data( 0, fileSize );
-                    int32   sizeRead = pRemoteStorage->FileRead(kGameStateRecord, data.Base(), fileSize);
-
-                    if (sizeRead == fileSize)
-                    {
-                        // The cloud copy replaces the local record, which the code below reads
-                        const std::span<const std::byte> bytes( static_cast<const std::byte *>( data.Base() ), fileSize );
-                        (void)m_pRecordStore->Commit( kGameStateRecord, bytes );
-                    }
-                }
-            }
-        }
+		ISteamRemoteStorage *pRemoteStorage = SteamClient() ?
+		    (ISteamRemoteStorage *)SteamClient()->GetISteamGenericInterface( SteamAPI_GetHSteamUser(),
+		        SteamAPI_GetHSteamPipe(), STEAMREMOTESTORAGE_INTERFACE_VERSION ) :
+		    NULL;
+		const int32 fileSize = ( pRemoteStorage && pRemoteStorage->FileExists( kGameStateCloudFile ) ) ?
+		    pRemoteStorage->GetFileSize( kGameStateCloudFile ) :
+		    0;
+		if ( fileSize > 0 )
+		{
+			CUtlBuffer data( 0, fileSize );
+			if ( pRemoteStorage->FileRead( kGameStateCloudFile, data.Base(), fileSize ) == fileSize )
+			{
+				// The cloud copy replaces the local record, which the code below reads
+				const std::span<const std::byte> bytes( static_cast<const std::byte *>( data.Base() ), fileSize );
+				(void)m_pRecordStore->Commit( kGameStateRecord, bytes );
+			}
+		}
 #endif
-    }
+	}
 
     //=============================================================================
     // HPE_END

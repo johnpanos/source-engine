@@ -817,6 +817,122 @@
       "expect": "pass"
     },
     {
+      "id": "platform.record_store",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-RECORDS-001",
+      "contract": "unittests/platformtest/contracts/platform.record-store.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "platform.record-store.v1 (player records such as gamestate.txt): the shared suite (invalid keys, not found vs failure, exact round trip of every byte and of an empty record, whole replacement, independent keys, an exact size limit whose refusal keeps the record, a restart sees the last commits, concurrent commits and loads never tear) against the in-memory fake and the file store (platform/records), plus the file store's clauses: <directory>/<key> keeps gamestate.txt where the file system wrote it, a leftover staging file changes nothing, a missing directory fails cleanly, an oversized file is refused.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "platform/records/file_record_store.cpp",
+        "unittests/platformtest/record_store/test_record_store.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.record_store.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-RECORDS-001",
+      "contract": "unittests/platformtest/contracts/platform.record-store.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "The platform.record-store.v1 suite rejects ten broken stores (accepts invalid keys, reports a missing record as a failure, treats an empty record as missing, stops at a NUL byte, appends, clobbers on an oversized commit, ignores its limit, truncates keys, publishes torn records, forgets on restart) while the conforming fake passes.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "unittests/platformtest/record_store/test_record_store_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.record_store.user_defaults",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-RECORDS-001",
+      "contract": "unittests/platformtest/contracts/platform.record-store.v1.md",
+      "kind": "positive",
+      "profile": "apple-uikit-device",
+      "description": "The shared platform.record-store.v1 suite against the user-defaults store (platform/apple; the tvOS product's gamestate.txt store) in the device's real standard user defaults, plus its layout (NSData under source.records.<key>) and foreign-value clauses. Runs on iOS and tvOS devices through tools/quality/ios_conformance.py; unavailable on hosts.",
+      "result_protocol": "checks-v1",
+      "optional": true,
+      "requires": [
+        "env:CONFORMANCE_APPLE_DEVICE"
+      ],
+      "sources": [
+        "platform/apple/user_defaults_record_store.mm",
+        "unittests/platformtest/record_store/test_record_store_user_defaults.mm"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.achievement_service",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-RECORDS-001",
+      "contract": "unittests/platformtest/contracts/platform.achievement-service.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "platform.achievement-service.v1 (Game Center on iOS/tvOS): the shared suite (invalid IDs, signed-out reports wait and are delivered once at sign-in, accepted IDs are not resubmitted, refused deliveries retry at the next report or sign-in, in-flight IDs are not resubmitted, late completions after the service is gone are harmless, the achievements screen and completion banner follow sign-in and the platform, concurrent reports each delivered once with the platform completing inside Submit) against QueuedAchievementService over a scripted platform.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "platform/achievements/queued_achievement_service.cpp",
+        "unittests/platformtest/achievement_service/test_achievement_service.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.achievement_service.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-RECORDS-001",
+      "contract": "unittests/platformtest/contracts/platform.achievement-service.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "The platform.achievement-service.v1 suite rejects nine broken services (accepts invalid IDs, submits while signed out, drops reports made while signed out, never retries, resubmits accepted or in-flight IDs, shows the screen or claims the banner while signed out, ignores the platform's banner) while the defect-free build of the same service passes.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "platform/achievements/queued_achievement_service.cpp",
+        "unittests/platformtest/achievement_service/test_achievement_service_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.achievement_service.game_center",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-RECORDS-001",
+      "contract": "unittests/platformtest/contracts/platform.achievement-service.v1.md",
+      "kind": "positive",
+      "profile": "apple-uikit-device",
+      "description": "The Game Center bridge (platform/apple) under QueuedAchievementService on a real device: authentication resolves with GKLocalPlayer's state, Submit completes exactly once and never accepts while signed out, the signed-out service shows no screen and claims no banner, the bridge claims Game Center's banner. The conformance app has no Game Center entitlement, so it covers the signed-out path. Runs through tools/quality/ios_conformance.py; unavailable on hosts.",
+      "result_protocol": "checks-v1",
+      "optional": true,
+      "requires": [
+        "env:CONFORMANCE_APPLE_DEVICE"
+      ],
+      "sources": [
+        "platform/achievements/queued_achievement_service.cpp",
+        "platform/apple/game_center_achievements.mm",
+        "unittests/platformtest/achievement_service/test_achievement_service_game_center.mm"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "platform.task_runner.tsan",
       "domain": "Q-FOUNDATION",
       "rfc": "0001",
@@ -1799,10 +1915,10 @@
       "id": "render.spark-light",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
-      "contract": "unittests/rendertest/contracts/render.spark-light.v1.md",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v2.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "RFC 0011 spark-burst light: the original trail ramp, emission-weighted centroid, fade against the burst's peak, batching and the burst budget",
+      "description": "RFC 0011 spark-burst light: the original trail ramp, emission-weighted centroid over every live spark, spread-sized radius and coverage, fade against the burst's peak, batching and per-frame selection at the viewer",
       "result_protocol": "checks-v1",
       "sources": [
         "unittests/rendertest/test_spark_light.cpp"
@@ -1813,7 +1929,7 @@
       "id": "render.spark-light.unweighted",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
-      "contract": "unittests/rendertest/contracts/render.spark-light.v1.md",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v2.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
       "description": "seeded: a centroid and strength that ignore each spark's emission must be rejected",
@@ -1830,7 +1946,7 @@
       "id": "render.spark-light.no-fade",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
-      "contract": "unittests/rendertest/contracts/render.spark-light.v1.md",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v2.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
       "description": "seeded: a burst light that never fades must be rejected",
@@ -1844,15 +1960,15 @@
       "expect": "pass"
     },
     {
-      "id": "render.spark-light.budget-leak",
+      "id": "render.spark-light.source-reach",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
-      "contract": "unittests/rendertest/contracts/render.spark-light.v1.md",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v2.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
-      "description": "seeded: a budget that keeps released places must be rejected",
+      "description": "seeded: the first policy, a light that counts only the sparks within its base radius of the burst's source, must be rejected (sparks that fly or fall further go unlit)",
       "extra_flags": [
-        "-DSPARK_LIGHT_SEEDED_BUDGET_LEAK"
+        "-DSPARK_LIGHT_SEEDED_SOURCE_REACH"
       ],
       "result_protocol": "checks-v1",
       "sources": [
@@ -1861,15 +1977,49 @@
       "expect": "pass"
     },
     {
-      "id": "render.spark-light.no-reach",
+      "id": "render.spark-light.fixed-radius",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
-      "contract": "unittests/rendertest/contracts/render.spark-light.v1.md",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v2.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
-      "description": "seeded: a burst whose light follows sparks beyond its reach (fallen out of the world) must be rejected",
+      "description": "seeded: a light whose radius ignores its sparks' spread must be rejected",
       "extra_flags": [
-        "-DSPARK_LIGHT_SEEDED_NO_REACH"
+        "-DSPARK_LIGHT_SEEDED_FIXED_RADIUS"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_spark_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.spark-light.first-come",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v2.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: the first policy, a budget held by the first bursts to ask instead of the most important at the viewer, must be rejected",
+      "extra_flags": [
+        "-DSPARK_LIGHT_SEEDED_FIRST_COME"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_spark_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.spark-light.no-keep",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v2.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a selection without hysteresis, where a lit burst loses its light to a slightly stronger newcomer, must be rejected",
+      "extra_flags": [
+        "-DSPARK_LIGHT_SEEDED_NO_KEEP"
       ],
       "result_protocol": "checks-v1",
       "sources": [
@@ -3009,6 +3159,364 @@
       "expected_divergence": "FAIL lone.retail.s1.origin closed-oriented-manifold"
     },
     {
+      "id": "mathlib.core",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0005",
+      "contract": "unittests/mathlibtest/mathlib_conformance.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "mathlib conformance (unittests/mathlibtest, RFC/0005-mathlib-progress.md) with the products' floating-point flags (-O2 -ffast-math): vectors, normalization, the MathLib_Init function pointers, angle helpers and exact float-to-integer rounding contracts; Euler angles, matrix3x4_t and quaternions against double-precision constructions (Rz Ry Rx, the textbook quaternion matrix) with conditioning-scaled budgets near gimbal lock; box/plane classification, frustum culling, polygon clipping, closest points, quadratic roots and splines; the float16 codec exhaustively, compressed animation quaternions, sRGB/gamma, RGBE, Halton and ICE; fltx4 lane operations, rounding, the x86 rcpps/rsqrtps estimate and refined reciprocal contracts, transcendentals and FourVectors; VMatrix products, inverses, transforms and projections. Every checker also runs against bad providers that must be rejected. mathlib's objects and a tier0 link surface (unittests/mathlibtest/tier0_link_surface.cpp) link without engine libraries; tools/quality/mathlib_bench.py runs the same suite with each product tree's own flags, including on an Android device.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-DLINUX",
+        "-D_LINUX",
+        "-DPOSIX",
+        "-D_POSIX",
+        "-DPLATFORM_POSIX",
+        "-DGNUC",
+        "-DNO_MALLOC_OVERRIDE",
+        "-DPLATFORM_64BITS",
+        "-isystem",
+        "public",
+        "-isystem",
+        "public/tier0",
+        "-isystem",
+        "public/mathlib",
+        "-O2",
+        "-ffast-math",
+        "-fno-strict-aliasing"
+      ],
+      "units": [
+        {
+          "id": "mathlib",
+          "dialect": "cxx20-permissive",
+          "flags": [
+            "-w"
+          ],
+          "sources": [
+            "mathlib/color_conversion.cpp",
+            "mathlib/halton.cpp",
+            "mathlib/lightdesc.cpp",
+            "mathlib/mathlib_base.cpp",
+            "mathlib/powsse.cpp",
+            "mathlib/sparse_convolution_noise.cpp",
+            "mathlib/sseconst.cpp",
+            "mathlib/sse.cpp",
+            "mathlib/ssenoise.cpp",
+            "mathlib/3dnow.cpp",
+            "mathlib/anorms.cpp",
+            "mathlib/bumpvects.cpp",
+            "mathlib/IceKey.cpp",
+            "mathlib/imagequant.cpp",
+            "mathlib/polyhedron.cpp",
+            "mathlib/quantize.cpp",
+            "mathlib/randsse.cpp",
+            "mathlib/spherical.cpp",
+            "mathlib/simdvectormatrix.cpp",
+            "mathlib/vector.cpp",
+            "mathlib/vmatrix.cpp",
+            "mathlib/almostequal.cpp"
+          ]
+        },
+        {
+          "id": "harness",
+          "dialect": "cxx20",
+          "flags": [
+            "-fno-finite-math-only"
+          ],
+          "sources": [
+            "unittests/mathlibtest/mathlib_conformance.cpp"
+          ]
+        },
+        {
+          "id": "suite",
+          "dialect": "cxx20",
+          "flags": [],
+          "sources": [
+            "unittests/mathlibtest/mathlib_conformance_scalar.cpp",
+            "unittests/mathlibtest/mathlib_conformance_transform.cpp",
+            "unittests/mathlibtest/mathlib_conformance_geometry.cpp",
+            "unittests/mathlibtest/mathlib_conformance_conversion.cpp",
+            "unittests/mathlibtest/mathlib_conformance_simd.cpp",
+            "unittests/mathlibtest/mathlib_conformance_vmatrix.cpp",
+            "unittests/mathlibtest/tier0_link_surface.cpp"
+          ]
+        }
+      ],
+      "min_checks": 1500000,
+      "timeout_seconds": 300,
+      "expect": "pass"
+    },
+    {
+      "id": "mathlib.core.ieee",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0005",
+      "contract": "unittests/mathlibtest/mathlib_conformance.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "mathlib.core without -ffast-math: the same contracts under IEEE semantics, plus AlmostEqual's NaN and infinity handling, which -ffinite-math-only builds exclude.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-DLINUX",
+        "-D_LINUX",
+        "-DPOSIX",
+        "-D_POSIX",
+        "-DPLATFORM_POSIX",
+        "-DGNUC",
+        "-DNO_MALLOC_OVERRIDE",
+        "-DPLATFORM_64BITS",
+        "-isystem",
+        "public",
+        "-isystem",
+        "public/tier0",
+        "-isystem",
+        "public/mathlib"
+      ],
+      "units": [
+        {
+          "id": "mathlib",
+          "dialect": "cxx20-permissive",
+          "flags": [
+            "-w"
+          ],
+          "sources": [
+            "mathlib/color_conversion.cpp",
+            "mathlib/halton.cpp",
+            "mathlib/lightdesc.cpp",
+            "mathlib/mathlib_base.cpp",
+            "mathlib/powsse.cpp",
+            "mathlib/sparse_convolution_noise.cpp",
+            "mathlib/sseconst.cpp",
+            "mathlib/sse.cpp",
+            "mathlib/ssenoise.cpp",
+            "mathlib/3dnow.cpp",
+            "mathlib/anorms.cpp",
+            "mathlib/bumpvects.cpp",
+            "mathlib/IceKey.cpp",
+            "mathlib/imagequant.cpp",
+            "mathlib/polyhedron.cpp",
+            "mathlib/quantize.cpp",
+            "mathlib/randsse.cpp",
+            "mathlib/spherical.cpp",
+            "mathlib/simdvectormatrix.cpp",
+            "mathlib/vector.cpp",
+            "mathlib/vmatrix.cpp",
+            "mathlib/almostequal.cpp"
+          ]
+        },
+        {
+          "id": "harness",
+          "dialect": "cxx20",
+          "flags": [
+            "-fno-finite-math-only"
+          ],
+          "sources": [
+            "unittests/mathlibtest/mathlib_conformance.cpp"
+          ]
+        },
+        {
+          "id": "suite",
+          "dialect": "cxx20",
+          "flags": [],
+          "sources": [
+            "unittests/mathlibtest/mathlib_conformance_scalar.cpp",
+            "unittests/mathlibtest/mathlib_conformance_transform.cpp",
+            "unittests/mathlibtest/mathlib_conformance_geometry.cpp",
+            "unittests/mathlibtest/mathlib_conformance_conversion.cpp",
+            "unittests/mathlibtest/mathlib_conformance_simd.cpp",
+            "unittests/mathlibtest/mathlib_conformance_vmatrix.cpp",
+            "unittests/mathlibtest/tier0_link_surface.cpp"
+          ]
+        }
+      ],
+      "min_checks": 1500000,
+      "timeout_seconds": 300,
+      "expect": "pass"
+    },
+    {
+      "id": "mathlib.core.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0005",
+      "contract": "unittests/mathlibtest/mathlib_conformance.h",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "mathlib.core with -DMATHLIB_CONFORMANCE_SEED_DEFECT, which binds ConcatTransforms to a provider with its operands swapped: the matrix checks must fail the run.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-DLINUX",
+        "-D_LINUX",
+        "-DPOSIX",
+        "-D_POSIX",
+        "-DPLATFORM_POSIX",
+        "-DGNUC",
+        "-DNO_MALLOC_OVERRIDE",
+        "-DPLATFORM_64BITS",
+        "-isystem",
+        "public",
+        "-isystem",
+        "public/tier0",
+        "-isystem",
+        "public/mathlib",
+        "-O2",
+        "-ffast-math",
+        "-fno-strict-aliasing"
+      ],
+      "units": [
+        {
+          "id": "mathlib",
+          "dialect": "cxx20-permissive",
+          "flags": [
+            "-w"
+          ],
+          "sources": [
+            "mathlib/color_conversion.cpp",
+            "mathlib/halton.cpp",
+            "mathlib/lightdesc.cpp",
+            "mathlib/mathlib_base.cpp",
+            "mathlib/powsse.cpp",
+            "mathlib/sparse_convolution_noise.cpp",
+            "mathlib/sseconst.cpp",
+            "mathlib/sse.cpp",
+            "mathlib/ssenoise.cpp",
+            "mathlib/3dnow.cpp",
+            "mathlib/anorms.cpp",
+            "mathlib/bumpvects.cpp",
+            "mathlib/IceKey.cpp",
+            "mathlib/imagequant.cpp",
+            "mathlib/polyhedron.cpp",
+            "mathlib/quantize.cpp",
+            "mathlib/randsse.cpp",
+            "mathlib/spherical.cpp",
+            "mathlib/simdvectormatrix.cpp",
+            "mathlib/vector.cpp",
+            "mathlib/vmatrix.cpp",
+            "mathlib/almostequal.cpp"
+          ]
+        },
+        {
+          "id": "harness",
+          "dialect": "cxx20",
+          "flags": [
+            "-fno-finite-math-only"
+          ],
+          "sources": [
+            "unittests/mathlibtest/mathlib_conformance.cpp"
+          ]
+        },
+        {
+          "id": "suite",
+          "dialect": "cxx20",
+          "flags": [
+            "-DMATHLIB_CONFORMANCE_SEED_DEFECT"
+          ],
+          "sources": [
+            "unittests/mathlibtest/mathlib_conformance_scalar.cpp",
+            "unittests/mathlibtest/mathlib_conformance_transform.cpp",
+            "unittests/mathlibtest/mathlib_conformance_geometry.cpp",
+            "unittests/mathlibtest/mathlib_conformance_conversion.cpp",
+            "unittests/mathlibtest/mathlib_conformance_simd.cpp",
+            "unittests/mathlibtest/mathlib_conformance_vmatrix.cpp",
+            "unittests/mathlibtest/tier0_link_surface.cpp"
+          ]
+        }
+      ],
+      "timeout_seconds": 300,
+      "expect": "fail",
+      "expected_divergence": "FAIL matrix.concat.rotation"
+    },
+    {
+      "id": "mathlib.core.sensitivity-refold",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0005",
+      "contract": "unittests/mathlibtest/mathlib_conformance.h",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "mathlib.core with SSEMATH_OPAQUE defined empty, so -ffast-math may refold SinCosSIMD's three-part pi/4 reduction into one inexact subtraction: the sin/cos budgets must fail. Shows the barrier in public/mathlib/ssemath.h is load-bearing under the products' flags.",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-DLINUX",
+        "-D_LINUX",
+        "-DPOSIX",
+        "-D_POSIX",
+        "-DPLATFORM_POSIX",
+        "-DGNUC",
+        "-DNO_MALLOC_OVERRIDE",
+        "-DPLATFORM_64BITS",
+        "-isystem",
+        "public",
+        "-isystem",
+        "public/tier0",
+        "-isystem",
+        "public/mathlib",
+        "-O2",
+        "-ffast-math",
+        "-fno-strict-aliasing"
+      ],
+      "units": [
+        {
+          "id": "mathlib",
+          "dialect": "cxx20-permissive",
+          "flags": [
+            "-w",
+            "-DSSEMATH_OPAQUE(v)=((void)0)"
+          ],
+          "sources": [
+            "mathlib/color_conversion.cpp",
+            "mathlib/halton.cpp",
+            "mathlib/lightdesc.cpp",
+            "mathlib/mathlib_base.cpp",
+            "mathlib/powsse.cpp",
+            "mathlib/sparse_convolution_noise.cpp",
+            "mathlib/sseconst.cpp",
+            "mathlib/sse.cpp",
+            "mathlib/ssenoise.cpp",
+            "mathlib/3dnow.cpp",
+            "mathlib/anorms.cpp",
+            "mathlib/bumpvects.cpp",
+            "mathlib/IceKey.cpp",
+            "mathlib/imagequant.cpp",
+            "mathlib/polyhedron.cpp",
+            "mathlib/quantize.cpp",
+            "mathlib/randsse.cpp",
+            "mathlib/spherical.cpp",
+            "mathlib/simdvectormatrix.cpp",
+            "mathlib/vector.cpp",
+            "mathlib/vmatrix.cpp",
+            "mathlib/almostequal.cpp"
+          ]
+        },
+        {
+          "id": "harness",
+          "dialect": "cxx20",
+          "flags": [
+            "-fno-finite-math-only"
+          ],
+          "sources": [
+            "unittests/mathlibtest/mathlib_conformance.cpp"
+          ]
+        },
+        {
+          "id": "suite",
+          "dialect": "cxx20",
+          "flags": [
+            "-DSSEMATH_OPAQUE(v)=((void)0)"
+          ],
+          "sources": [
+            "unittests/mathlibtest/mathlib_conformance_scalar.cpp",
+            "unittests/mathlibtest/mathlib_conformance_transform.cpp",
+            "unittests/mathlibtest/mathlib_conformance_geometry.cpp",
+            "unittests/mathlibtest/mathlib_conformance_conversion.cpp",
+            "unittests/mathlibtest/mathlib_conformance_simd.cpp",
+            "unittests/mathlibtest/mathlib_conformance_vmatrix.cpp",
+            "unittests/mathlibtest/tier0_link_surface.cpp"
+          ]
+        }
+      ],
+      "timeout_seconds": 300,
+      "expect": "fail",
+      "expected_divergence": "FAIL simd.sincos.sin"
+    },
+    {
       "id": "toolchain.abi.jobsystem-batch",
       "domain": "Q-FOUNDATION",
       "rfc": "0006",
@@ -3306,6 +3814,32 @@
       "sources": [
         "inputsystem/vibrator_policy.cpp",
         "unittests/inputtest/test_vibrator_policy_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "input.gamepad-rumble",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "inputsystem/gamepad_rumble.cpp",
+        "unittests/inputtest/test_gamepad_rumble.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "input.gamepad-rumble.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "inputsystem/gamepad_rumble.cpp",
+        "unittests/inputtest/test_gamepad_rumble_negative.cpp"
       ],
       "expect": "pass"
     },

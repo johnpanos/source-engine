@@ -25,7 +25,8 @@
     "app_category": "public.app-category.puzzle-games",
     "game_mode": true,
     "optional_entitlements": [
-      "com.apple.developer.kernel.increased-memory-limit"
+      "com.apple.developer.kernel.increased-memory-limit",
+      "com.apple.developer.game-center"
     ],
     "version": "0.1.0",
     "build_number": 1,
@@ -42,6 +43,7 @@
       "CoreAudio",
       "CoreMotion",
       "GameController",
+      "GameKit",
       "CoreHaptics",
       "OpenAL"
     ],

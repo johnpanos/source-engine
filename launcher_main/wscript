@@ -52,7 +52,9 @@ def build(bld):
 			includes = ['../public', '../public/tier0', '../public/tier1'],
 			defines  = ['IOS_DEFAULT_GAME="%s"' % bld.env.GAMES] + game_defines,
 			use      = ['launcher', 'client', 'server', 'GameUI', 'scenefilecache',
-				'soundemittersystem', 'tier0', 'SDL3', 'FOUNDATION'] + game_libs,
+				'soundemittersystem', 'tier0', 'SDL3', 'FOUNDATION',
+				'platform_apple', 'platform_achievements', 'platform_records',
+				'GAMEKIT'] + game_libs,
 			install_path = bld.env.BINDIR,
 			idx      = bld.get_taskgen_count()
 		)

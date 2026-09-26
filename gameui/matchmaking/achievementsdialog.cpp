@@ -180,7 +180,7 @@ CAchievementsDialog_XBox::~CAchievementsDialog_XBox()
 	delete m_pUpArrow;
 	delete m_pDownArrow;
 
-	delete m_pFooter;
+	delete m_pFooter.Get();
 }
 
 //----------------------------------------------------------

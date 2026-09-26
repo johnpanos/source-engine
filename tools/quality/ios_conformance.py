@@ -46,7 +46,9 @@ import ios_device
 import toolchain_policy
 
 ROOT = Path(conformance.repo_root())
-PROFILE_PATH = ROOT / "quality/profiles/ios-arm64-device.json"
+DEFAULT_DEVICE_PROFILE = "ios-arm64-device"
+# The device profile's product build (its `build_root`, which the product's
+# build script configures): set by use_profile().
 BUILD_DIR = ROOT / "build-ios/conformance"
 WAF_CACHE = ROOT / "build-ios/waf/c4che/_cache.py"
 DEPS_PREFIX = ROOT / "build-ios/deps/prefix"
@@ -60,8 +62,24 @@ MAX_BUNDLED_BYTES = 64 << 20
 CAPTURE_ATTEMPTS = 3
 
 
-def load_profile():
-    return json.loads(PROFILE_PATH.read_text())
+def load_profile(profile_id=DEFAULT_DEVICE_PROFILE):
+    return json.loads((ROOT / "quality/profiles" / (profile_id + ".json")).read_text())
+
+
+def use_profile(profile):
+    """Points the build at the profile's product build: build-ios for the
+    iOS profile, build-tvos for the tvOS one."""
+    global BUILD_DIR, WAF_CACHE, DEPS_PREFIX
+    build_root = ROOT / profile.get("build_root", "build-ios")
+    BUILD_DIR = build_root / "conformance"
+    WAF_CACHE = build_root / "waf/c4che/_cache.py"
+    DEPS_PREFIX = build_root / "deps/prefix"
+
+
+def target_os(profile):
+    """The product profile's target OS: "ios" or "tvos"."""
+    product = json.loads((ROOT / profile["product_profile"]).read_text())
+    return product["target"]["os"]
 
 
 def waf_env():
@@ -77,6 +95,11 @@ def waf_env():
 # ---------------------------------------------------------------------------
 
 def unsupported_reason(profile, suite):
+    # Suites the profile's OS cannot host at all (a tvOS API that does not
+    # exist), each with its reason.
+    reason = profile.get("unsupported_suites", {}).get(suite["id"])
+    if reason:
+        return reason
     if any(unit.get("link") == "shared" for unit in suite.get("units", [])):
         return profile["unsupported"]["shared-unit"]
     flags = suite.get("extra_flags", []) + [f for unit in suite.get("units", [])
@@ -161,7 +184,7 @@ def compile_commands(host_profile, suite, wrapper, out_bin, config):
 
 def main_takes_arguments(suite):
     for relative in conformance.suite_sources(suite):
-        if not relative.endswith((".cpp", ".cc", ".cxx")):
+        if not relative.endswith((".cpp", ".cc", ".cxx", ".mm")):
             continue
         text = (ROOT / relative).read_text(errors="replace")
         match = MAIN_DEFINITION.search(text)
@@ -504,7 +527,7 @@ def link_app(env, profile, built, suites, link_flags, programs=(), product_modul
     frameworks = []
     for flag in env.get("LINKFLAGS_SDL3", []):
         frameworks.append(flag)
-    for name in env.get("FRAMEWORK_VULKAN", []):
+    for name in env.get("FRAMEWORK_VULKAN", []) + profile.get("frameworks", []):
         frameworks.append("-Wl,-framework," + name)
     # tier1 (in the benchmark programs) converts text with iconv (wscript's ICONV).
     libs = ["-L" + str(DEPS_PREFIX / "lib"), "-lSDL3", "-lMoltenVK", "-lc++", "-lm", "-liconv"]
@@ -517,6 +540,9 @@ def link_app(env, profile, built, suites, link_flags, programs=(), product_modul
     if not ok:
         raise SystemExit("app link failed (%s):\n%s" % (log, output[-3000:]))
     product = json.loads((ROOT / profile["product_profile"]).read_text())
+    os_name = product["target"]["os"]
+    os_keys = product[os_name]
+    platform = {"ios": "iPhoneOS", "tvos": "AppleTVOS"}[os_name]
     sdk = Path(env["CXX"][env["CXX"].index("-isysroot") + 1])
     sdk_settings = json.loads((sdk / "SDKSettings.json").read_text())
     plist = {
@@ -529,19 +555,22 @@ def link_app(env, profile, built, suites, link_flags, programs=(), product_modul
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": "1.0",
         "CFBundleVersion": "1",
-        "CFBundleSupportedPlatforms": ["iPhoneOS"],
-        "DTPlatformName": "iphoneos",
+        "CFBundleSupportedPlatforms": [platform],
+        "DTPlatformName": platform.lower(),
         "DTPlatformVersion": sdk_settings.get("Version"),
-        "DTSDKName": "iphoneos" + sdk_settings.get("Version", ""),
+        "DTSDKName": platform.lower() + sdk_settings.get("Version", ""),
         "LSRequiresIPhoneOS": True,
         "MinimumOSVersion": product["target"]["deployment_target"],
-        "UIDeviceFamily": product["ios"]["device_family"],
-        "UIRequiredDeviceCapabilities": product["ios"]["required_device_capabilities"],
-        "UILaunchScreen": {},
-        "UIRequiresFullScreen": True,
-        "UIStatusBarHidden": True,
-        "CADisableMinimumFrameDurationOnPhone": True,
+        "UIDeviceFamily": os_keys["device_family"],
+        "UIRequiredDeviceCapabilities": os_keys["required_device_capabilities"],
     }
+    if os_name == "ios":
+        plist.update({
+            "UILaunchScreen": {},
+            "UIRequiresFullScreen": True,
+            "UIStatusBarHidden": True,
+            "CADisableMinimumFrameDurationOnPhone": True,
+        })
     with open(app / "Info.plist", "wb") as stream:
         plistlib.dump(plist, stream)
     (app / "PkgInfo").write_text("APPL????")
@@ -613,7 +642,11 @@ def cmd_build(args, manifest, profile, suites):
 
 def deploy(profile, app):
     env = dict(os.environ, BUNDLE_ID=profile["bundle_id"])
-    proc = subprocess.run([str(ROOT / "ios-deploy.sh"), str(app), "--no-launch"], env=env,
+    command = [str(ROOT / "ios-deploy.sh"), "--profile", str(ROOT / profile["product_profile"]),
+               str(app), "--no-launch"]
+    if profile.get("deploy_device"):
+        command += ["--device", profile["deploy_device"]]
+    proc = subprocess.run(command, env=env,
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if proc.returncode != 0:
         raise SystemExit("ios-deploy.sh failed:\n" + proc.stdout[-3000:])
@@ -704,7 +737,8 @@ def cmd_check(args, manifest, profile, suites):
     status = json.loads((BUILD_DIR / "build.json").read_text())["status"]
     if not args.no_deploy:
         deploy(profile, app)
-    device = ios_device.Device(profile["bundle_id"], host=args.host)
+    device = ios_device.Device(profile["bundle_id"], host=args.host,
+                               platform={"ios": "iOS", "tvos": "tvOS"}[target_os(profile)])
     stamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
     out = Path(args.out) if args.out else ROOT / ("quality-results/ios-conformance.%s.json" % stamp)
     log_dir = out.with_suffix(".logs")
@@ -760,6 +794,9 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("build", "check"):
         p = sub.add_parser(name)
+        p.add_argument("--device-profile", default=DEFAULT_DEVICE_PROFILE,
+                       help="quality/profiles/<id>.json: ios-arm64-device (default) or "
+                            "tvos-arm64-device")
         p.add_argument("--suite", action="append")
         p.add_argument("--domain", action="append")
         p.add_argument("--rfc", action="append")
@@ -777,7 +814,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     manifest = conformance.load_manifest(str(ROOT / "quality/conformance.manifest.json"),
                                          root=str(ROOT))
-    profile = load_profile()
+    profile = load_profile(args.device_profile)
+    use_profile(profile)
     suites = select(manifest, profile, args)
     if not suites:
         raise SystemExit("no suites selected")

@@ -21,6 +21,8 @@
 #include "steam/steam_api.h"
 #include "iachievementmgr.h"
 #include "fmtstr.h"
+#include "game/game_platform_services.h"
+#include "platform/contracts/achievement_service.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -134,6 +136,10 @@ void CAchievementNotificationPanel::FireGameEvent( IGameEvent * event )
 
 			if( iCur >= iMax )
 			{
+				// The platform's own notice (Game Center's banner) replaces ours.
+				platform::IAchievementService *pService = GamePlatformServices_Achievements();
+				if ( pService && pService->AnnouncesCompletions() )
+					return;
 				AddNotification( pchName, g_pVGuiLocalize->Find( "#GameUI_Achievement_Awarded" ), szLocalizedName );
 				return;
 			}

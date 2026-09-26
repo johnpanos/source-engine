@@ -235,7 +235,7 @@ CSaveGameBrowserDialog::~CSaveGameBrowserDialog( void )
 	// Kill the footer
 	if ( m_pFooter )
 	{
-		delete m_pFooter;
+		delete m_pFooter.Get();
 		m_pFooter = NULL;
 	}
 
@@ -1134,11 +1134,6 @@ void CSaveGameBrowserDialog::OnKeyCodePressed( vgui::KeyCode code )
 	case KEY_XBUTTON_X:
 	case STEAMCONTROLLER_X:
 		PerformDeletion();
-		break;
-
-	case KEY_XBUTTON_Y:
-	case STEAMCONTROLLER_Y:
-		BasePanel()->OnChangeStorageDevice();
 		break;
 
 		// Move the selection up and down

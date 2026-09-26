@@ -447,7 +447,7 @@ void FX_ElectricSpark( const Vector &pos, int nMagnitude, int nTrailLength, cons
 	pSparkEmitter2->Setup( pos, NULL, SPARK_ELECTRIC_SPREAD, 128.0f, 256.0f, 400.0f,
 	    SPARK_ELECTRIC_DAMPEN, bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
 	// The little sparks are part of the burst the big sparks light.
-	pSparkEmitter2->ShareLight( pSparkEmitter );
+	pSparkEmitter2->ShareLight( pSparkEmitter.GetObject() );
 
 	numSparks = nMagnitude * random->RandomInt( 16, 32 );
 
@@ -867,7 +867,7 @@ void FX_Sparks( const Vector &pos, int nMagnitude, int nTrailLength, const Vecto
 	pSparkEmitter2->Setup( pos, NULL, SPARK_SPREAD, flMinSpeed, flMaxSpeed, 400.0f, SPARK_DAMPEN,
 	    bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
 	// The little sparks are part of the burst the big sparks light.
-	pSparkEmitter2->ShareLight( pSparkEmitter );
+	pSparkEmitter2->ShareLight( pSparkEmitter.GetObject() );
 
 	numSparks = nMagnitude * random->RandomInt( 4, 8 );
 

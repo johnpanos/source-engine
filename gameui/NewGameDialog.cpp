@@ -538,7 +538,7 @@ CNewGameDialog::CNewGameDialog(vgui::Panel *parent, bool bCommentaryMode) : Base
 
 CNewGameDialog::~CNewGameDialog()
 {
-	delete m_pFooter;
+	delete m_pFooter.Get();
 	m_pFooter = NULL;
 }
 

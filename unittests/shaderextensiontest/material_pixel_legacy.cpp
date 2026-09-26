@@ -36,6 +36,13 @@
 //                                      "color" "r g b" "position" "x y z"
 //                                      "direction" "x y z" "attenuation" "c l q"
 //                                      "theta" "rad" "phi" "rad" "falloff" "f" } ]
+//                          [ "flashlight" { "origin" "x y z" "color" "r g b a"
+//                                           "attenuation" "c l q" "near" "n"
+//                                           "far" "f" "fov" "h v"
+//                                           "worldtotexture" "16 floats"
+//                                           "texture" "<texture name>" } ]
+//                            (drawn in flashlight mode, SetFlashlightStateEx:
+//                            the materials' flashlight passes)
 //                          [ "tonescale" "s" ] (SetToneMappingScaleLinear)
 //                          [ "fog" { "mode" "linear|below" "start" "s" "end" "e"
 //                                    "color" "r g b" "z" "water z"
@@ -69,6 +76,7 @@
 #include "materialsystem/itexture.h"
 #include "materialsystem/IColorCorrection.h"
 #include "mathlib/vector4d.h"
+#include "mathlib/vmatrix.h"
 #include "renderparm.h"
 #include "tier1/convar.h"
 #include "pixelwriter.h"
@@ -522,6 +530,51 @@ void ApplyCaseFog( IMatRenderContext *pContext, KeyValues *pCase )
 
 } // namespace
 
+// The case's flashlight, as the engine's flashlight pass sets it (the render
+// context's flashlight mode and state); false without the key.
+bool ApplyCaseFlashlight(
+    IMatRenderContext *pContext, KeyValues *pCase, const std::vector<LegacyTexture> &textures )
+{
+	KeyValues *pLight = pCase->FindKey( "flashlight" );
+	if ( !pLight )
+		return false;
+	FlashlightState_t state;
+	float v[4] = { 0, 0, 0, 1 };
+	ParseFloats( pLight->GetString( "origin", "0 0 0" ), v, 3 );
+	state.m_vecLightOrigin.Init( v[0], v[1], v[2] );
+	state.m_quatOrientation.Init( 0.0f, 0.0f, 0.0f, 1.0f );
+	float atten[3] = { 1, 0, 0 };
+	ParseFloats( pLight->GetString( "attenuation", "1 0 0" ), atten, 3 );
+	state.m_fConstantAtten = atten[0];
+	state.m_fLinearAtten = atten[1];
+	state.m_fQuadraticAtten = atten[2];
+	state.m_NearZ = pLight->GetFloat( "near", 4.0f );
+	state.m_FarZ = pLight->GetFloat( "far", 750.0f );
+	float fov[2] = { 45, 45 };
+	ParseFloats( pLight->GetString( "fov", "45 45" ), fov, 2 );
+	state.m_fHorizontalFOVDegrees = fov[0];
+	state.m_fVerticalFOVDegrees = fov[1];
+	float color[4] = { 1, 1, 1, 0 };
+	ParseFloats( pLight->GetString( "color", "1 1 1 0" ), color, 4 );
+	for ( int k = 0; k < 4; ++k )
+		state.m_Color[k] = color[k];
+	state.m_pSpotlightTexture = NULL;
+	const char *texture = pLight->GetString( "texture", "" );
+	for ( const LegacyTexture &t : textures )
+	{
+		if ( t.name == texture )
+			state.m_pSpotlightTexture = t.texture;
+	}
+	state.m_nSpotlightTextureFrame = 0;
+	float m[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	ParseFloats( pLight->GetString( "worldtotexture", "" ), m, 16 );
+	const VMatrix worldToTexture( m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9],
+	    m[10], m[11], m[12], m[13], m[14], m[15] );
+	pContext->SetFlashlightMode( true );
+	pContext->SetFlashlightStateEx( state, worldToTexture, NULL );
+	return true;
+}
+
 bool RunLegacyCases( FILE *out, const char *casesPath, void ( *writeClearProbe )( FILE * ) )
 {
 	KeyValues *pCases = new KeyValues( "LegacyShaderCases" );
@@ -689,6 +742,7 @@ bool RunLegacyCases( FILE *out, const char *casesPath, void ( *writeClearProbe )
 			ApplyCaseLighting( pContext, pCase );
 			ApplyCaseFog( pContext, pCase );
 			ApplyCaseParameters( pContext, pCase, false );
+			const bool flashlight = ApplyCaseFlashlight( pContext, pCase, textures );
 			const char *lightmap = pCase->GetString( "lightmap", "" );
 			if ( lightmap[0] )
 			{
@@ -735,6 +789,8 @@ bool RunLegacyCases( FILE *out, const char *casesPath, void ( *writeClearProbe )
 				fprintf( out, "%s{\"x\":%d,\"y\":%d,\"rgba\":[%d,%d,%d,%d]}", p ? "," : "", x, y,
 				    rgba[0], rgba[1], rgba[2], rgba[3] );
 			}
+			if ( flashlight )
+				pContext->SetFlashlightMode( false );
 			pContext->MatrixMode( MATERIAL_MODEL );
 			pContext->LoadIdentity();
 			ApplyCaseParameters( pContext, pCase, true );

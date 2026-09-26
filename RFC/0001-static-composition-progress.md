@@ -501,6 +501,78 @@ scope, like the tvOS profile; it closes no R29 criterion.
   12 GB) is synced to the Mac but not to the phone, and no device run exists.
   No Bink video (no FFmpeg pin for Apple).
 
+## Console UI and controller rumble on tvOS and iOS (2026-09-26)
+
+User direction: "load Xbox VGUI on portal by default for compatibility ... for
+tvOS only, or on iOS with a controller attached", and "make sure controllers
+on iOS/tvOS show up as gamepads ... rumble and everything works".
+
+- **Console GameUI.** The Xbox 360 menus survived the console-code strip as
+  a runtime mode, `gameui_xbox`, which GameUI reads once at startup. The
+  engine applied it only from `config.cfg`. Now `Host_ReadPreStartupConfiguration`
+  (`engine/host.cpp`) also applies a `+name value` command-line argument for
+  its pre-startup cvars, and that value wins, as it does for other cvars.
+  `ios_main.cpp` passes `+gameui_xbox 1` on tvOS. It passes it on iOS when
+  `SDL_HasGamepad()` reports a gamepad at launch. It adds the argument after
+  `commandline.txt`, so a `+gameui_xbox 0` there keeps the touch UI. A
+  controller connected later takes effect at the next launch.
+- **Console dialogs fixed.**
+  - Options crashed (`COptionsDialogXbox::UpdateFooter` on an empty list):
+    the PC content has no `scripts/options.360.txt`. GameUI now carries a
+    built-in list, used when that file is missing:
+    - the general page: captioning, brightness, volumes and portal funnel;
+    - the controller page: look type, sticks, duck mode, sensitivities and
+      vibration (`cl_rumblescale`), plus binds.
+
+    "Vibration" is the one literal label, because PC content has no string
+    for it. The controller page's "Default controls" falls back to
+    `cfg/360controller.cfg`.
+  - New Game and Load Game crashed at shutdown. Each deleted a footer that
+    its parent had already deleted. Options and Achievements used the same
+    pattern. All four footers are now `vgui::DHANDLE`s.
+  - The "Change Storage Device" hint and its Y handler were removed. Only the
+    Xbox 360 had a device selector; here Y did nothing.
+- **Gamepads.** SDL3 already opens iOS and tvOS controllers as gamepads
+  (`SDL_GetGamepads`, `KEY_XBUTTON_*`). Connecting one runs
+  `360controller.cfg`. Info.plist now declares
+  `GCSupportedGameControllers` (ExtendedGamepad) on both platforms.
+- **Rumble.** SDL3 builds no haptic backend for iOS or tvOS, and gives
+  Android gamepads no `SDL_Haptic`, so controllers never rumbled there.
+  `joystick_sdl.cpp` now uses `SDL_RumbleGamepad` for any gamepad that
+  reports `SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN`, with both motors driven
+  separately. `SDL_Haptic` remains as the fallback. The timing is a pure
+  policy, `inputsystem/gamepad_rumble.h`:
+  - 1 s leases renewed with 250 ms left, so a stalled or backgrounded game
+    stops within a second;
+  - changes sent at most every 20 ms, and a 1% step;
+  - an immediate stop.
+
+  The phone vibrator stays quiet while such a gamepad is connected.
+
+Evidence:
+
+- Desktop, headless Portal with `+gameui_xbox 1` (`portal_boot.py`): the
+  console menu, Options, Controller, New Game and Load Game (with a PC save
+  listed) render and exit 0. Before the fixes, Options crashed while opening,
+  and New Game and Load Game crashed at shutdown. With `gameui_xbox 0` the desktop UI is
+  unchanged, and its New Game and Options also exit 0.
+- `input.gamepad-rumble`: 33 checks on a model two-motor gamepad.
+  `input.gamepad-rumble.sensitivity`: 12 of 12 wrong policies are rejected
+  (swapped or averaged motors, unbounded, infinite or late-renewed leases,
+  no rate limit, slow updates, no stop, stops while idle, ignored reset, a
+  truncated level). Both pass on g++ and on clang++ in release.
+- iOS and tvOS: the changed files compile with each tree's recorded
+  commands.
+
+Not done:
+
+- A device run: the console UI on the Apple TV and on an iPhone with a
+  controller, and rumble felt on a controller (including Android).
+- Button glyphs: the console footers show text hints without controller
+  icons, because PC content has no `GameUIButtons` font.
+- Switching UI when a controller connects or disconnects mid-session.
+- Siri Remote navigation of the console menus.
+
 ## Not done
 
 - Device evidence beyond the first boot: the AGENTS.md iOS obligations

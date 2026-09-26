@@ -92,7 +92,9 @@ private:
 	void	FillInDefaultBindings( void );
 
 	bool	ShouldSkipOption( KeyValues *pKey );
-	void	ReadOptionsFromFile( const char *pchFileName );
+	// False when the file is missing.
+	bool ReadOptionsFromFile( const char *pchFileName );
+	void ReadOptions( KeyValues *pOptionKeys );
 	void	SortOptions( void );
 
 	void	InitializeSliderDefaults( void );
@@ -102,7 +104,9 @@ private:
 	bool	m_bOptionsChanged;
 	bool	m_bOldForceEnglishAudio;
 
-	CFooterPanel		*m_pFooter;
+	// A child of the dialog's parent, so the parent may delete it first (at
+	// shutdown); the handle then reads NULL.
+	vgui::DHANDLE<CFooterPanel> m_pFooter;
 
 	CUtlVector<OptionData_t*>	*m_pOptions;
 

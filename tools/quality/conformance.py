@@ -79,8 +79,11 @@ PROVIDER_KINDS = ("executable", "env", "path", "vulkan-device")
 # selected with --runner gpu (or any explicit selector). Every class is a
 # required gate on its own runner; none is folded into another's evidence.
 # The corpus class holds command suites that drive built products, legacy
-# executables, content and pinned host toolchains (--runner corpus).
-RUNNER_CLASSES = ("headless", "gpu", "corpus")
+# executables, content and pinned host toolchains (--runner corpus). The
+# apple-device class holds suites of Apple-only providers (Objective-C++ over
+# system frameworks); tools/quality/ios_conformance.py runs them on iOS and
+# tvOS devices, and this runner reports them unavailable.
+RUNNER_CLASSES = ("headless", "gpu", "corpus", "apple-device")
 DEFAULT_RUNNER = "headless"
 # `vulkan-device:<type>` accepts these device classes from `vulkaninfo`.
 VULKAN_DEVICE_TYPES = {

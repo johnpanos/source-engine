@@ -26,6 +26,9 @@
     "bundle_id_reason": "The iOS profile's bundle id (the user's choice there): one app record can then carry both platforms (universal purchase). Agent decision, 2026-09-25.",
     "display_name": "Portal (Source Engine)",
     "app_category": "public.app-category.puzzle-games",
+    "optional_entitlements": [
+      "com.apple.developer.game-center"
+    ],
     "version": "0.1.0",
     "build_number": 1,
     "build_directory": "build-tvos",
@@ -40,6 +43,7 @@
       "AVFoundation",
       "CoreAudio",
       "GameController",
+      "GameKit",
       "CoreHaptics",
       "OpenAL"
     ],

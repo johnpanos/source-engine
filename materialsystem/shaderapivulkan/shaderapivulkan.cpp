@@ -2435,7 +2435,9 @@ public:
 	MaterialFogMode_t GetPixelFogMode() const;
 	void UpdateVertexShaderFogParams();
 
-	virtual bool InFlashlightMode() const { return false; }
+	// As CShaderAPIDx8: the render context's mode, which selects the materials'
+	// flashlight snapshots (SHADER_USING_FLASHLIGHT).
+	virtual bool InFlashlightMode() const { return ShaderUtil()->InFlashlightMode(); }
 
 	virtual bool InEditorMode() const { return false; }
 
@@ -2493,28 +2495,36 @@ public:
 		*pWidth = *pHeight = 0;
 	}
 
+	// As CShaderAPIDx8: the flashlight the shaders' flashlight passes read
+	// (GetFlashlightStateEx). This backend has no shadow depth textures
+	// (SupportsShadowDepthTextures), so shadows are off, as D3D9 turns them off
+	// without ps_2_b: the passes light unshadowed.
 	virtual void SetFlashlightState( const FlashlightState_t &state, const VMatrix &worldToTexture )
 	{
-		VK_UNIMPLEMENTED();
+		SetFlashlightStateEx( state, worldToTexture, nullptr );
 	}
 
 	virtual void SetFlashlightStateEx( const FlashlightState_t &state,
 	    const VMatrix &worldToTexture, ITexture *pFlashlightDepthTexture )
 	{
-		VK_UNIMPLEMENTED();
+		m_FlashlightState = state;
+		m_FlashlightWorldToTexture = worldToTexture;
+		m_FlashlightState.m_bEnableShadows = false;
+		m_pFlashlightDepthTexture = nullptr;
 	}
 
 	virtual const FlashlightState_t &GetFlashlightState( VMatrix &worldToTexture ) const
 	{
-		static FlashlightState_t blah;
-		return blah;
+		worldToTexture = m_FlashlightWorldToTexture;
+		return m_FlashlightState;
 	}
 
 	virtual const FlashlightState_t &GetFlashlightStateEx(
 	    VMatrix &worldToTexture, ITexture **pFlashlightDepthTexture ) const
 	{
-		static FlashlightState_t blah;
-		return blah;
+		worldToTexture = m_FlashlightWorldToTexture;
+		*pFlashlightDepthTexture = m_pFlashlightDepthTexture;
+		return m_FlashlightState;
 	}
 
 	virtual void ClearVertexAndPixelShaderRefCounts() {}
@@ -2817,6 +2827,9 @@ private:
 
 	CEmptyMesh m_Mesh;
 	CEmptyMesh m_FlexMesh{ true };
+	FlashlightState_t m_FlashlightState;
+	VMatrix m_FlashlightWorldToTexture;
+	ITexture *m_pFlashlightDepthTexture = nullptr;
 	static VertexFormat_t DynamicMeshFormat(
 	    IMaterial *pMaterial, VertexFormat_t fmt, int nHWSkinBoneCount );
 	float m_shadowSlopeScaleDepthBias = 0.0f;

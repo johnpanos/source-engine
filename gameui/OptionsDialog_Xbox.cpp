@@ -144,6 +144,198 @@ static OptionsDataContainer s_OptionsDataContainer;
 
 static CUtlVector<OptionChoiceData_t> s_DisabledOptions;
 
+// The option list when the game content has no scripts/options.360.txt. Only
+// the Xbox 360 content shipped one; the PC content the console UI runs on
+// (gameui_xbox 1, the Apple TV and iOS with a controller) has only the
+// localized strings. Same format and flags as the file; a game's
+// scripts/mod_options.360.txt still adds to it and overrides it by name.
+static const char s_szDefaultOptions[] = R"(
+"options_x360"
+{
+	"Difficulty"
+	{
+		"difficulty"	"1"
+		"name"		"#GameUI_Difficulty"
+		"convar"	"skill"
+		"priority"	"100"
+		"type"		"choice"
+		"choices"
+		{
+			"#GameUI_Easy"		"1"
+			"#GameUI_Medium"	"2"
+			"#GameUI_Hard"		"3"
+		}
+	}
+	"Captioning"
+	{
+		"name"		"#GameUI_Captioning"
+		"convar"	"closecaption"
+		"convar2"	"cc_subtitles"
+		"priority"	"200"
+		"type"		"choice"
+		"choices"
+		{
+			"#GameUI_NoClosedCaptions"		"0;0"
+			"#GameUI_Subtitles"			"1;1"
+			"#GameUI_SubtitlesAndSoundEffects"	"1;0"
+		}
+	}
+	"Brightness"
+	{
+		"name"		"#GameUI_Brightness"
+		"convar"	"mat_monitorgamma"
+		"priority"	"300"
+		"type"		"slider"
+		"minvalue"	"1.6"
+		"maxvalue"	"2.6"
+		"incvalue"	"-1"
+		"sliderhome"	"prev"
+	}
+	"Game Volume"
+	{
+		"name"		"#GameUI_SoundEffectVolume"
+		"convar"	"volume"
+		"priority"	"400"
+		"type"		"slider"
+		"minvalue"	"0"
+		"maxvalue"	"1"
+		"sliderhome"	"prev"
+	}
+	"Music Volume"
+	{
+		"name"		"#GameUI_MusicVolume"
+		"convar"	"snd_musicvolume"
+		"priority"	"500"
+		"type"		"slider"
+		"minvalue"	"0"
+		"maxvalue"	"1"
+		"sliderhome"	"prev"
+	}
+	"Portal Funnel"
+	{
+		"portals"	"1"
+		"name"		"#GameUI_PortalFunnel"
+		"convar"	"sv_player_funnel_into_portals"
+		"priority"	"750"
+		"type"		"binary"
+	}
+
+	"Look Type"
+	{
+		"control"	"1"
+		"name"		"#GameUI_JoystickLookType"
+		"convar"	"joy_inverty"
+		"convar_def"	"joy_inverty_default"
+		"priority"	"100"
+		"type"		"choice"
+		"choices"
+		{
+			"#GameUI_JoystickNormal"	"0"
+			"#GameUI_JoystickInverted"	"1"
+		}
+	}
+	"Thumbsticks"
+	{
+		"control"	"1"
+		"name"		"#GameUI_JoystickMoveLookSticks"
+		"convar"	"joy_movement_stick"
+		"convar_def"	"joy_movement_stick_default"
+		"priority"	"200"
+		"type"		"choice"
+		"choices"
+		{
+			"#GameUI_JoystickNormal"	"0"
+			"#GameUI_JoystickSouthpaw"	"1"
+		}
+	}
+	"Duck Mode"
+	{
+		"control"	"1"
+		"name"		"#GameUI_JoystickDuckMode"
+		"convar"	"option_duck_method"
+		"convar_def"	"option_duck_method_default"
+		"priority"	"300"
+		"type"		"choice"
+		"choices"
+		{
+			"#GameUI_Hold"		"0"
+			"#GameUI_Toggle"	"1"
+		}
+	}
+	"Horizontal Sensitivity"
+	{
+		"control"	"1"
+		"name"		"#GameUI_JoystickLookSpeedYaw"
+		"convar"	"joy_yawsensitivity"
+		"convar_def"	"joy_yawsensitivity_default"
+		"priority"	"400"
+		"type"		"slider"
+		"minvalue"	"-2.5"
+		"maxvalue"	"-0.5"
+		"incvalue"	"-1"
+		"sliderhome"	"prev"
+	}
+	"Vertical Sensitivity"
+	{
+		"control"	"1"
+		"name"		"#GameUI_JoystickLookSpeedPitch"
+		"convar"	"joy_pitchsensitivity"
+		"priority"	"500"
+		"type"		"slider"
+		"minvalue"	"0.5"
+		"maxvalue"	"2.5"
+		"sliderhome"	"prev"
+	}
+	"Vibration"
+	{
+		"control"	"1"
+		"name"		"Vibration"
+		"convar"	"cl_rumblescale"
+		"priority"	"600"
+		"type"		"binary"
+	}
+	"Bind Primary Attack"
+	{
+		"control"	"1"
+		"name"		"#Valve_Primary_Attack"
+		"command"	"+attack"
+		"priority"	"1000"
+		"type"		"bind"
+	}
+	"Bind Secondary Attack"
+	{
+		"control"	"1"
+		"name"		"#Valve_Secondary_Attack"
+		"command"	"+attack2"
+		"priority"	"1010"
+		"type"		"bind"
+	}
+	"Bind Jump"
+	{
+		"control"	"1"
+		"name"		"#Valve_Jump"
+		"command"	"+jump"
+		"priority"	"1020"
+		"type"		"bind"
+	}
+	"Bind Duck"
+	{
+		"control"	"1"
+		"name"		"#Valve_Duck"
+		"command"	"+duck"
+		"priority"	"1030"
+		"type"		"bind"
+	}
+	"Bind Use"
+	{
+		"control"	"1"
+		"name"		"#Valve_Use_Items"
+		"command"	"+use"
+		"priority"	"1040"
+		"type"		"bind"
+	}
+}
+)";
 
 const char *UTIL_Parse( const char *data, char *token, int sizeofToken );
 
@@ -220,9 +412,16 @@ COptionsDialogXbox::COptionsDialogXbox( vgui::Panel *parent, bool bControllerOpt
 	{
 		// Populate it if it's hasn't been filled
 		ReadOptionsFromFile( "scripts/mod_options.360.txt" );
-		ReadOptionsFromFile( "scripts/options.360.txt" );
+		if ( !ReadOptionsFromFile( "scripts/options.360.txt" ) )
+		{
+			KeyValues *pOptionKeys = new KeyValues( "options_x360" );
+			if ( pOptionKeys->LoadFromBuffer( "options.360 (built in)", s_szDefaultOptions ) )
+				ReadOptions( pOptionKeys );
+			pOptionKeys->deleteThis();
+		}
 		SortOptions();
 	}
+	Assert( m_pOptions->Count() > 0 );
 
 	m_pSelectedOption = NULL;
 
@@ -291,7 +490,7 @@ COptionsDialogXbox::~COptionsDialogXbox()
 		PostMessage( BasePanel()->GetVPanel(), new KeyValues( "command", "command", "QuitRestartNoConfirm" ), 0.0f );
 	}
 
-	delete m_pFooter;
+	delete m_pFooter.Get();
 	m_pFooter = NULL;
 }
 
@@ -674,10 +873,6 @@ void COptionsDialogXbox::HandleInactiveKeyCodePressed( vgui::KeyCode code )
 				vgui::surface()->PlaySound( "UI/buttonclickrelease.wav" );
 				BasePanel()->ShowMessageDialog( MD_DEFAULT_CONTROLS_CONFIRM, this );
 			}
-			else
-			{
-				BasePanel()->OnChangeStorageDevice();
-			}
 			break;
 
 		default:
@@ -817,10 +1012,10 @@ void COptionsDialogXbox::UpdateFooter( void )
 			}
 		}
 
+		// No storage-device change on the general page: only the Xbox 360
+		// had a device selector.
 		if ( m_bControllerOptions )
 			m_pFooter->AddNewButtonLabel( "#GameUI_DefaultButtons", "#GameUI_Icons_Y_BUTTON" );
-		else
-			m_pFooter->AddNewButtonLabel( "#GameUI_Console_StorageChange", "#GameUI_Icons_Y_BUTTON" );
 
 		m_pFooter->AddNewButtonLabel( "#GameUI_Close", "#GameUI_Icons_B_BUTTON" );
 	}
@@ -1348,8 +1543,11 @@ void COptionsDialogXbox::UpdateAllBinds( ButtonCode_t code )
 //-----------------------------------------------------------------------------
 void COptionsDialogXbox::FillInDefaultBindings( void )
 {
+	// The PC content has no config.360.cfg; its controller defaults are the
+	// binds the client executes when a controller connects (in_joystick.cpp).
 	CUtlBuffer buf( 0, 0, CUtlBuffer::TEXT_BUFFER );
-	if ( !g_pFullFileSystem->ReadFile( "cfg/config.360.cfg", NULL, buf ) )
+	if ( !g_pFullFileSystem->ReadFile( "cfg/config.360.cfg", NULL, buf ) &&
+	     !g_pFullFileSystem->ReadFile( "cfg/360controller.cfg", NULL, buf ) )
 		return;
 
 	// Clear out all current bindings
@@ -1501,11 +1699,18 @@ bool COptionsDialogXbox::ShouldSkipOption( KeyValues *pKey )
 	return false;
 }
 
-void COptionsDialogXbox::ReadOptionsFromFile( const char *pchFileName )
+bool COptionsDialogXbox::ReadOptionsFromFile( const char *pchFileName )
 {
 	KeyValues *pOptionKeys = new KeyValues( "options_x360" );
-	pOptionKeys->LoadFromFile( g_pFullFileSystem, pchFileName, NULL );
+	const bool bLoaded = pOptionKeys->LoadFromFile( g_pFullFileSystem, pchFileName, NULL );
+	if ( bLoaded )
+		ReadOptions( pOptionKeys );
+	pOptionKeys->deleteThis();
+	return bLoaded;
+}
 
+void COptionsDialogXbox::ReadOptions( KeyValues *pOptionKeys )
+{
 	KeyValues *pKey = NULL;
 	for ( pKey = pOptionKeys->GetFirstTrueSubKey(); pKey; pKey = pKey->GetNextTrueSubKey() )
 	{

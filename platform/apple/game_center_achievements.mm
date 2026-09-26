@@ -4,7 +4,7 @@
 //
 //=============================================================================//
 
-#include "platform/apple/game_center_achievements.h"
+#include "game_center_achievements.h"
 
 #import <GameKit/GameKit.h>
 #import <UIKit/UIKit.h>

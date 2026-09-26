@@ -191,7 +191,8 @@ void SparkLights_Resolve()
 
 	const int nDebug = fx_spark_lights_debug.GetInt();
 	if ( nDebug >= 2 )
-		Msg( "sparkdbg view %d %.2f %.2f %.2f\n", gpGlobals->framecount, view[0], view[1], view[2] );
+		Msg( "sparkdbg view %d %.2f %.2f %.2f %d\n", gpGlobals->framecount, view[0], view[1], view[2],
+		    fx_spark_lights.GetInt() );
 	for ( int i = 0; i < nCandidates; ++i )
 	{
 		CParticleDynamicLight *pLight = pLights[i];

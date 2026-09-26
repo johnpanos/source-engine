@@ -94,6 +94,8 @@ def build(bld):
 		'OptionsSubVideo.cpp',
 		'OptionsSubVoice.cpp',
 		'../public/tier0/memoverride.cpp',
+		# The platform's achievements screen (public/game/game_platform_services.h).
+		'../game/shared/game_platform_services.cpp',
 	]
 
 	if bld.env.DEST_OS == 'win32':

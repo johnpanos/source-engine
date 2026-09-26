@@ -39,7 +39,7 @@ public:
 	explicit Checks( bool bQuiet = false ) : m_bQuiet( bQuiet ) {}
 
 	bool Check( bool bOk, const char *pszName, const char *pszFmt = nullptr, ... )
-		__attribute__( ( format( printf, 4, 5 ) ) );
+	    __attribute__( ( format( printf, 4, 5 ) ) );
 
 	// |got - want| <= tol.
 	bool Near( const char *pszName, double got, double want, double tol );
@@ -70,7 +70,7 @@ private:
 
 	bool m_bQuiet;
 	std::string m_lastFailedName;
-	Stat m_stats[ 128 ];
+	Stat m_stats[128];
 	int m_nStats = 0;
 };
 
@@ -90,10 +90,19 @@ public:
 		return z ^ ( z >> 31 );
 	}
 	// Uniform in [lo, hi).
-	float Float( float lo, float hi ) { return lo + ( hi - lo ) * (float)( ( Next() >> 40 ) * ( 1.0 / 16777216.0 ) ); }
-	double Double( double lo, double hi ) { return lo + ( hi - lo ) * ( ( Next() >> 11 ) * ( 1.0 / 9007199254740992.0 ) ); }
+	float Float( float lo, float hi )
+	{
+		return lo + ( hi - lo ) * (float)( ( Next() >> 40 ) * ( 1.0 / 16777216.0 ) );
+	}
+	double Double( double lo, double hi )
+	{
+		return lo + ( hi - lo ) * ( ( Next() >> 11 ) * ( 1.0 / 9007199254740992.0 ) );
+	}
 	int Int( int lo, int hi ) { return lo + (int)( Next() % (uint64_t)( hi - lo + 1 ) ); }
-	Vector Vec( float lo, float hi ) { return Vector( Float( lo, hi ), Float( lo, hi ), Float( lo, hi ) ); }
+	Vector Vec( float lo, float hi )
+	{
+		return Vector( Float( lo, hi ), Float( lo, hi ), Float( lo, hi ) );
+	}
 	Vector UnitVec();
 	QAngle Angles( float pitchLimit = 89.0f );
 	Quaternion UnitQuat();
@@ -111,7 +120,7 @@ struct DVec
 };
 struct DMat // 3x4: rotation columns + translation, like matrix3x4_t
 {
-	double m[ 3 ][ 4 ];
+	double m[3][4];
 };
 
 DMat DMatFrom( const matrix3x4_t &m );
@@ -120,17 +129,27 @@ DVec DMatApply( const DMat &a, const DVec &v ); // rotation and translation
 DMat DRotationFromAngles( double pitchDeg, double yawDeg, double rollDeg );
 DMat DRotationFromQuat( double x, double y, double z, double w ); // normalizes first
 double DMatMaxDiff( const DMat &a, const matrix3x4_t &b );
-inline DVec DV( const Vector &v ) { return DVec{ v.x, v.y, v.z }; }
+inline DVec DV( const Vector &v )
+{
+	return DVec{ v.x, v.y, v.z };
+}
 inline double DMaxDiff( const DVec &a, const Vector &b )
 {
-	return std::fmax( std::fabs( a.x - b.x ), std::fmax( std::fabs( a.y - b.y ), std::fabs( a.z - b.z ) ) );
+	return std::fmax(
+	    std::fabs( a.x - b.x ), std::fmax( std::fabs( a.y - b.y ), std::fabs( a.z - b.z ) ) );
 }
 
 std::string Fmt( const char *pszFmt, ... ) __attribute__( ( format( printf, 1, 2 ) ) );
 
+// Finite test for results computed under -ffast-math. Defined in the harness
+// unit, which builds with -fno-finite-math-only: across the call the value is
+// plain bits, so a NaN or infinite result cannot be optimized into a pass.
+bool IsFiniteValue( double d );
+
 // Runs a checker against a bad provider in a quiet scratch Checks and counts
 // one check that it was rejected.
-void ExpectRejected( Checks &c, const char *pszName, const std::function< void( Checks & ) > &checker );
+void ExpectRejected(
+    Checks &c, const char *pszName, const std::function<void( Checks & )> &checker );
 
 // Sections. Each adds checks to c; bad-provider controls are in each section.
 void RunScalarSection( Checks &c );

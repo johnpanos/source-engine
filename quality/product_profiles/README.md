@@ -402,5 +402,17 @@ The Galaxy Z Fold7 (API 37) reports `AMPLITUDE_CONTROL` and `COMPOSE_EFFECTS`
 (primitives CLICK, THUD, SPIN, QUICK_RISE, SLOW_RISE, QUICK_FALL, TICK and
 LOW_TICK), with no frequency or envelope control. Only amplitude control is
 used. Feel, latency and the cost of each JNI call are `unverified` until they
-are measured on a device. Gamepads on Android get no rumble yet. SDL3 gives
-them no `SDL_Haptic`, and `joystick_sdl.cpp` does not use `SDL_RumbleGamepad`.
+are measured on a device.
+
+Gamepads (2026-09-26): SDL3 gives them no `SDL_Haptic` on Android, iOS or tvOS,
+so `joystick_sdl.cpp` now rumbles any gamepad that reports
+`SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN` through `SDL_RumbleGamepad`, both motors
+separately, on 1 s leases (`inputsystem/gamepad_rumble.h`). The phone vibrator
+stays quiet while such a gamepad is connected. The policy's suites:
+
+```sh
+python3 tools/quality/conformance.py check --suite input.gamepad-rumble --suite input.gamepad-rumble.sensitivity
+```
+
+Rumble on a real controller is `unverified` on every device until it is felt
+there.

@@ -5,7 +5,7 @@
 //
 //=============================================================================//
 
-#include "platform/apple/user_defaults_record_store.h"
+#include "user_defaults_record_store.h"
 
 #import <Foundation/Foundation.h>
 

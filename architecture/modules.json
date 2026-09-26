@@ -680,6 +680,84 @@
         ]
       },
       {
+        "id": "platform.records",
+        "kind": "backend",
+        "paths": [
+          "platform/records/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts"
+        ],
+        "externalHeaders": [
+          "cerrno"
+        ]
+      },
+      {
+        "id": "platform.achievements",
+        "paths": [
+          "platform/achievements/"
+        ],
+        "allowedEdges": [
+          "platform.contracts"
+        ]
+      },
+      {
+        "id": "platform.apple",
+        "kind": "backend",
+        "paths": [
+          "platform/apple/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts",
+          "platform.achievements"
+        ],
+        "externalHeaders": [
+          "Foundation/Foundation.h",
+          "GameKit/GameKit.h",
+          "UIKit/UIKit.h"
+        ]
+      },
+      {
+        "id": "platform.records.tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/platformtest/record_store/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts",
+          "platform.records",
+          "platform.apple",
+          "platform.tests",
+          "testing.contracts"
+        ],
+        "externalHeaders": [
+          "Foundation/Foundation.h",
+          "filesystem"
+        ]
+      },
+      {
+        "id": "platform.achievements.tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/platformtest/achievement_service/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts",
+          "platform.achievements",
+          "platform.apple",
+          "platform.tests",
+          "testing.contracts"
+        ],
+        "externalHeaders": [
+          "Foundation/Foundation.h",
+          "GameKit/GameKit.h"
+        ]
+      },
+      {
         "id": "platform.posix",
         "kind": "backend",
         "paths": [
@@ -783,6 +861,23 @@
       },
       "platform_runners_legacyabi": {
         "allowedUse": []
+      },
+      "platform_records": {
+        "allowedUse": []
+      },
+      "platform_records_legacyabi": {
+        "allowedUse": []
+      },
+      "platform_achievements": {
+        "allowedUse": []
+      },
+      "platform_apple": {
+        "allowedUse": [
+          "platform_achievements",
+          "FOUNDATION",
+          "UIKIT",
+          "GAMEKIT"
+        ]
       },
       "platform_posix_legacyabi": {
         "allowedUse": []

@@ -154,7 +154,9 @@ private:
 	uint							m_nUsedStorageSpace;	// Amount of disk space used by save games 
 	
 	vgui::Panel			*m_pCenterBg;
-	CFooterPanel		*m_pFooter;
+	// A child of the dialog's parent, so the parent may delete it first (at
+	// shutdown); the handle then reads NULL.
+	vgui::DHANDLE<CFooterPanel> m_pFooter;
 
 	// Xbox
 	void	ScrollSelectionPanels( EScrollDirection dir );

@@ -1,0 +1,18 @@
+{
+  "schema": "conformance-profile/v1",
+  "id": "apple-uikit-device",
+  "description": "Suites of Apple-only providers (platform/apple: Objective-C++ over Foundation, UIKit and GameKit) that exist only on iOS and tvOS devices. tools/quality/ios_conformance.py builds and runs them on the device profiles that list this profile in `hosts` (ios-arm64-device, tvos-arm64-device), with the same checks-v1 protocol as the headless suites. The Linux runner cannot build them: it selects them only with --runner apple-device or an explicit selector and reports them unavailable, because each of its rows requires CONFORMANCE_APPLE_DEVICE, which no host sets.",
+  "os": "ios",
+  "arch": "arm64",
+  "runner": "apple-device",
+  "dialect": "cxx20",
+  "include_roots": [
+    "public"
+  ],
+  "base_flags": [
+    "-Wall",
+    "-Wextra",
+    "-Werror"
+  ],
+  "timeout_seconds": 120
+}

@@ -59,6 +59,7 @@ SUITE_SOURCES = [
     "unittests/mathlibtest/mathlib_conformance_vmatrix.cpp",
 ]
 BENCH_SOURCES = ["unittests/mathlibtest/mathlib_bench.cpp"]
+HARNESS_SOURCE = "unittests/mathlibtest/mathlib_conformance.cpp"
 LINK_SURFACE = "unittests/mathlibtest/tier0_link_surface.cpp"
 # Flags that belong to Waf's dependency tracking or to shared libraries.
 DROP_FLAGS = {"-MMD", "-llog", "-pipe"}
@@ -176,7 +177,11 @@ def cmd_build(args):
     programs = {}
     for prog, sources in (("mathlibconformance", SUITE_SOURCES), ("mathlibbench", BENCH_SOURCES)):
         jobs = [(os.path.join(ROOT, s), os.path.join(obj_dir, prog + "-" + os.path.basename(s)[:-4] + ".o")) for s in sources + [LINK_SURFACE]]
-        err = compile_all(cxx, prog_flags, jobs)
+        # The harness unit tests results for NaN and infinity, so it keeps
+        # IEEE semantics under the products' -ffast-math.
+        harness = [j for j in jobs if j[0].endswith(HARNESS_SOURCE)]
+        err = compile_all(cxx, prog_flags, [j for j in jobs if j not in harness]) or \
+            compile_all(cxx, prog_flags + ["-fno-finite-math-only"], harness)
         if err:
             fail("%s compile failed:\n%s" % (prog, err))
         exe = os.path.join(out, prog)
