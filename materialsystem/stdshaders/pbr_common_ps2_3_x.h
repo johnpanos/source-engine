@@ -199,9 +199,6 @@ float2 parallaxCorrect(float2 texCoord, float3 viewRelativeDir, sampler depthMap
     float fPrevHeight = 1.0;
     float fNextHeight = 0.0;
 
-    int    nStepIndex = 0;
-    bool   bCondition = true;
-
     float2 vTexOffsetPerStep = fStepSize * vParallaxOffsetTS;
     float2 vTexCurrentOffset = texCoord;
     float  fCurrentBound     = 1.0;
@@ -210,9 +207,12 @@ float2 parallaxCorrect(float2 texCoord, float3 viewRelativeDir, sampler depthMap
     float2 pt1 = 0;
     float2 pt2 = 0;
 
-    float2 texOffset2 = 0;
-
-    while ( nStepIndex < nNumSteps ) 
+    // A fixed trip count and a found flag, not an early exit that writes the
+    // step counter: the pinned FXC (D3DX9 5.04.00.2904) miscompiled that form,
+    // swapping the counter into the texture coordinate. The result is the same:
+    // the first step whose height rises above the ray.
+    bool bFound = false;
+    for ( int nStepIndex = 0; nStepIndex < nNumSteps; nStepIndex++ )
     {
         vTexCurrentOffset -= vTexOffsetPerStep;
 
@@ -221,21 +221,20 @@ float2 parallaxCorrect(float2 texCoord, float3 viewRelativeDir, sampler depthMap
 
         fCurrentBound -= fStepSize;
 
-        if ( fCurrHeight > fCurrentBound ) 
-        {     
-            pt1 = float2( fCurrentBound, fCurrHeight );
-            pt2 = float2( fCurrentBound + fStepSize, fPrevHeight );
-
-            texOffset2 = vTexCurrentOffset - vTexOffsetPerStep;
-
-            nStepIndex = nNumSteps + 1;
-        }
-        else
+        if ( !bFound )
         {
-            nStepIndex++;
-            fPrevHeight = fCurrHeight;
+            if ( fCurrHeight > fCurrentBound )
+            {
+                pt1 = float2( fCurrentBound, fCurrHeight );
+                pt2 = float2( fCurrentBound + fStepSize, fPrevHeight );
+                bFound = true;
+            }
+            else
+            {
+                fPrevHeight = fCurrHeight;
+            }
         }
-    }   // End of while ( nStepIndex < nNumSteps )
+    }
 
     float fDelta2 = pt2.x - pt2.y;
     float fDelta1 = pt1.x - pt1.y;

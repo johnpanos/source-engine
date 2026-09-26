@@ -1,11 +1,9 @@
-// The PBR shader's PARALLAXOCCLUSION combo (pbr_ps30), which the pinned FXC
-// (D3DX9 5.04.00.2904) miscompiles: its own listing (/Fc) of the parallax loop
-// ends each iteration with "mov r1.y, r1.x / mov r1.x, r2.z", swapping the
-// step counter into the texture coordinate's x, so the reference bytecode
-// samples heights at x = 1, 1.6, 2, ... The port follows the HLSL
-// (pbr_common_ps2_3_x.h parallaxCorrect). Kept out of the default run until a
-// correct reference compiler is pinned; run it with --cases to see the
-// divergence at the parallax-displaced pixels.
+// The PBR shader's PARALLAXOCCLUSION combo (pbr_ps30). The pinned FXC
+// (D3DX9 5.04.00.2904) miscompiled its parallax loop while the loop exited by
+// writing its step counter: the listing (/Fc) swapped the counter into the
+// texture coordinate's x. pbr_common_ps2_3_x.h's parallaxCorrect now runs a
+// fixed trip count with a found flag, which that compiler compiles correctly
+// (2026-09-26), so this case is part of the default run.
 "LegacyShaderCases"
 {
 	"texture"

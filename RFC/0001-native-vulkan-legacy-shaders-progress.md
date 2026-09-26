@@ -296,12 +296,15 @@ Other checks:
 - **Wrinkle maps** work at weight zero only. The flex stream's wrinkle weight
   has no slot in the record, and `SetFlexMesh` is a no-op.
 - **Oracle limits:**
-  - The pinned FXC (D3DX9 5.04.00.2904) miscompiles two shaders. One is
-    pbr_ps30's parallax loop: its own `/Fc` listing swaps the step counter into
-    the texture coordinate. That case is in
-    `quality/fixtures/legacy-shaders/unverified/pbr_parallax.vdf`. The other is
-    one skin RIMLIGHT combo with two lights, whose case keeps both lights facing
-    the normals.
+  - The pinned FXC (D3DX9 5.04.00.2904) miscompiled two shaders. One was
+    pbr_ps30's parallax loop: its own `/Fc` listing swapped the step counter
+    into the texture coordinate, so the shipped D3D9 bytecode was wrong too.
+    Fixed 2026-09-26 in the HLSL (`parallaxCorrect` runs a fixed trip count
+    with a found flag instead of exiting by writing the counter); the case,
+    `quality/fixtures/legacy-shaders/pbr_parallax.vdf`, fails on the old loop
+    (one displaced pixel 4 levels off) and passes on the new one in both HDR
+    modes, and is in the default run. The other is one skin RIMLIGHT combo
+    with two lights, whose case keeps both lights facing the normals.
   - pbr_ps30 used `uint` for its light loop, which that compiler rejects, so
     PBR had no compiled shader at all. It is now `int`.
   - The oracle has no z clip and no depth test, so the case files avoid both.
