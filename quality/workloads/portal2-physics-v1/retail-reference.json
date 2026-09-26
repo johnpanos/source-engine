@@ -341,13 +341,13 @@
           "runs": 3
         },
         "cube.rise": {
-          "min": 0.0,
-          "max": 0.0,
+          "min": 106.0,
+          "max": 106.001,
           "runs": 3
         },
         "cube.drift": {
           "min": 0.0,
-          "max": 0.0,
+          "max": 0.001,
           "runs": 3
         }
       },
@@ -443,6 +443,81 @@
         "player.walks",
         "stuck.held"
       ]
+    },
+    "sp_a4_tb_intro_funnel": {
+      "map": "sp_a4_tb_intro",
+      "metrics": {
+        "beam.column": {
+          "min": 1023.969,
+          "max": 1023.969,
+          "runs": 3
+        },
+        "ride.axial_speed": {
+          "min": 122.814,
+          "max": 122.814,
+          "runs": 3
+        },
+        "ride.axis_offset": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "ride.ok_carried": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "down.axial_speed": {
+          "min": -122.814,
+          "max": -122.814,
+          "runs": 3
+        },
+        "down.axis_offset": {
+          "min": 0.0,
+          "max": 0.0,
+          "runs": 3
+        },
+        "down.ok_carried": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "cube.axial_speed": {
+          "min": 133.119,
+          "max": 133.119,
+          "runs": 3
+        },
+        "cube.axis_offset": {
+          "min": 0.004,
+          "max": 0.004,
+          "runs": 3
+        },
+        "cube.ok_carried": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        }
+      },
+      "checks": [
+        "cube.carried",
+        "down.carried",
+        "ride.carried"
+      ]
     }
-  }
+  },
+  "partial_updates": [
+    {
+      "scenarios": [
+        "sp_a2_catapult_intro_arcs",
+        "sp_a4_tb_intro_funnel"
+      ],
+      "recorded_utc": "2026-09-26T03:11:12.853933+00:00",
+      "source": {
+        "source_revision": "fa123fc20b8eb00d6d4919520294d9c509ac88ce",
+        "dirty": true,
+        "dirty_files": 45,
+        "dirty_digest": "cbaefd7d8cfce4f398ce7e2104c56f095918db675d4d25fab6f6f862bbdb9022"
+      }
+    }
+  ]
 }
