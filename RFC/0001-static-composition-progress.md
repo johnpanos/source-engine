@@ -152,16 +152,77 @@ python3 -m unittest tools/quality/tests/test_static_composition.py
   - Inventory: 318 → 314 sites.
 - Style check on the changed lines: 0 failures. Archlint tests: 131 pass.
 
+## iOS host toolchain and Mach-O module objects (2026-09-25)
+
+The user asked to do as much as possible without a Mac. There is no iOS SDK on
+this host yet, so nothing has been compiled for iOS.
+
+- **Toolchain.** `python3 tools/ios/build_toolchain.py` builds a Linux-hosted
+  iOS cross toolchain into `dependencies/ios/toolchain`, from pins in
+  `quality/product_profiles/portal-ios-native-vulkan.json`:
+  - LLVM 22.1.8: clang and ld64.lld. The OpenPGP signature was verified once
+    against the LLVM release keys; the sha256 is the pin.
+  - swift-corelibs-libdispatch swift-6.4.0-RELEASE.
+  - cctools-port `904de2a7`, which provides Apple's ld64-956.6.
+  - Stages rebuild only when their inputs change: a rerun reports all three
+    up to date.
+  - The script ends with an SDK-free smoke test. `ld64 -r` must localize the
+    hidden symbols of an arm64-apple-ios module object, and ld64.lld must link
+    a program from it. It passes.
+- **Why Apple's ld64.** LLVM's ld64.lld rejects `-r` ("not yet implemented").
+  Apple's `ld64 -r` localizes hidden symbols itself, including inline-function
+  statics, and pulls members from private archives.
+  `scripts/waifulib/static_composition.py` uses it for Mach-O targets
+  (`DEST_BINFMT` `mac-o`) in place of `-r` plus objcopy.
+- **Checker.** `tools/quality/static_composition.py` now reads Mach-O files:
+  `llvm-nm -m` visibility and the load-command dylibs.
+  - Its tests run the same seeded defects for ELF and for Mach-O (built with
+    the pinned toolchain): 16 tests, with the GNU-unique case skipped on
+    Mach-O.
+  - The Mach-O tests skip when the toolchain is absent (hosted CI).
+- **MoltenVK.** The pinned Khronos release v1.4.2 `MoltenVK-ios.tar` matches
+  the published digest. Its static `libMoltenVK.a` targets iOS (minos 15.0,
+  SDK 26.5); building MoltenVK itself would need Xcode.
+- **No loading in static products.** In a static product, `Sys_LoadLibraryWithError`
+  refuses every first-party module load, and the refusal is recorded like any
+  other failed load.
+  - Evidence: with a loadable `vstdlib.so` placed where `-tools` resolves it,
+    telemetry reports `success=0 error=static composition: modules are
+    linked, not loaded`.
+  - System-library probes are unaffected.
+- **Portability.** The native Vulkan backend now opts into portability
+  enumeration when the instance offers it (`VK_KHR_portability_enumeration`
+  and `VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR`). It enables
+  `VK_KHR_portability_subset` when the device exposes it, as MoltenVK does.
+  - Linux (RADV, whose loader offers the instance extension): the static
+    product still boots `testchmb_a_00` on native Vulkan with 0 loader events.
+  - The device-side path has not run: no Linux driver exposes the subset.
+- **Apple audit.** A read-only audit of the product modules for iOS is the
+  punch list for the SDK phase.
+  - No `ios` target exists: Waf would call an iOS compiler `darwin` and apply
+    the macOS defines, frameworks and audio/voice sources.
+  - macOS-only APIs are compiled into the product: Carbon (sys_dll, the voice
+    and OpenAL code, MatSystemSurface, videoservices), the Pasteboard
+    (vgui2 system_posix), FSEvents (tier1 fileio), SCDynamicStore
+    (downloadthread) and the CoreAudio HAL.
+  - Process spawning: `fork`/`system("open …")` in vgui2, the launcher and
+    FileOpenDialog; `/tmp` lock and relaunch files.
+  - Dependencies: fontconfig is linked unconditionally by vguimatsurface, and
+    Vulkan and KTX are configured only for linux/android.
+  - Model: the Android SDL3 prefix wiring (`ANDROID_SDL3`: pkg-config into a
+    cross-built prefix; in-tree bzip2; no fontconfig or OpenAL).
+
 ## Not done
 
-- Mach-O module objects and any Apple build: they need the iOS SDK and an
-  `ld64`-compatible `-r` link. No iOS product profile exists yet (R29).
+- Any iOS compile: it needs the iOS SDK from the Mac. Also still to write: the
+  Waf `ios` target, the macOS-API guards from the audit, and the iOS builds of
+  SDL3, freetype, png, jpeg, curl and KTX (R29).
 - The static root's list of modules lives in `launcher_main/wscript`. An iOS
   product profile should own it.
-- Static products still contain the desktop loader code: `Sys_LoadModule`,
-  the `-tools` path, server plugin discovery and optional providers
-  (haptics, p4lib). This run never reached them, but they are not compiled
-  out, and the iOS link-map check (no first-party loader) is still to come.
+- Static products still contain the loader's callers: the `-tools` path,
+  server plugin discovery and optional providers such as haptics and p4lib.
+  Their loads are now refused rather than compiled out. The link-map check of
+  the iOS package is still to come.
 - Module static destructors run at process exit in a static image. Only the
   rope manager was fixed; this run found no other exit-time faults, and no
   sanitizer run of the static product exists.

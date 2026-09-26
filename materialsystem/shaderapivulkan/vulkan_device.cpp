@@ -221,6 +221,12 @@ bool CVulkanContext::CreateInstance( std::string *outError )
 		                                             name, VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) == 0;
 	                                  } ) )
 		extensions.push_back( VK_EXT_DEBUG_UTILS_EXTENSION_NAME );
+	// Portability implementations (MoltenVK on Apple platforms) are listed
+	// only to an instance that enumerates them.
+	const bool portabilityEnumeration =
+	    InstanceHasExtension( VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME );
+	if ( portabilityEnumeration )
+		extensions.push_back( VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME );
 
 	VkApplicationInfo appInfo = {};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -240,6 +246,8 @@ bool CVulkanContext::CreateInstance( std::string *outError )
 	VkInstanceCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	createInfo.pApplicationInfo = &appInfo;
+	if ( portabilityEnumeration )
+		createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 	createInfo.enabledExtensionCount = static_cast<uint32_t>( extensions.size() );
 	createInfo.ppEnabledExtensionNames = extensions.data();
 	const char *enabledLayers[] = { kValidationLayer };
@@ -517,6 +525,15 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 			deviceExts.push_back( VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME );
 		// A capture tool announces itself through VK_EXT_tooling_info.
 		toolingInfo = has( VK_EXT_TOOLING_INFO_EXTENSION_NAME );
+		// A portability implementation (MoltenVK) that exposes
+		// VK_KHR_portability_subset requires the application to enable it.
+		// (The extension's name macro is in the beta header.)
+		static const char *const kPortabilitySubset = "VK_KHR_portability_subset";
+		if ( has( kPortabilitySubset ) )
+		{
+			deviceExts.push_back( kPortabilitySubset );
+			Log( "device is a Vulkan portability implementation (VK_KHR_portability_subset)\n" );
+		}
 	}
 
 	// Exact occlusion counts, which auto-exposure's luminance histogram needs

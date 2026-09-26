@@ -836,8 +836,20 @@ Keep the table concise and link details below or from the domain progress file.
   - Agent decisions: localization over renaming; `linked_game_modules.h` joins
     the legacy ABI package; no server browser or platform-menu loader in
     static products.
-  - Not done: Mach-O module objects, the iOS profile, SDK and toolchain, a CI
-    lane, compiling the desktop loader out of static products, and a sanitizer
+  - iOS host toolchain (no Mac needed): `tools/ios/build_toolchain.py` builds
+    pinned LLVM 22.1.8 (clang, ld64.lld), libdispatch and cctools-port ld64
+    from `quality/product_profiles/portal-ios-native-vulkan.json`.
+    - Mach-O module objects use `ld64 -r`, which localizes hidden symbols;
+      ld64.lld has no `-r`.
+    - The checker reads Mach-O, and its seeded defects pass for both formats.
+    - MoltenVK v1.4.2 (iOS static) is pinned.
+    - Static products refuse first-party module loads, and the refusal is
+      recorded.
+    - The native Vulkan backend enables portability enumeration and
+      `VK_KHR_portability_subset`.
+  - Not done: the iOS SDK (it must come from the user's Mac), so no iOS
+    compile yet. Also: the Waf `ios` target, the macOS-API guards the audit
+    found, iOS dependency builds, `.app` packaging, a CI lane, and a sanitizer
     run. See the [record](RFC/0001-static-composition-progress.md).
 
 - R01/R29-ANDROID-BUILD: `partial` (2026-09-22).

@@ -1,0 +1,134 @@
+{
+  "schema": "source-ios-product-profile/v1",
+  "id": "portal-ios-native-vulkan-v1",
+  "description": "iOS Portal client: every first-party module statically linked into the app (Waf --static-composition), SDL3 and the native Vulkan renderer over MoltenVK. Built on a Linux host with the pinned host toolchain below; signed and installed on a Mac.",
+  "target": {
+    "product": "portal-client",
+    "os": "ios",
+    "arch": "arm64",
+    "llvm_triple": "arm64-apple-ios17.0",
+    "deployment_target": "17.0"
+  },
+  "intent": {
+    "composition": "static: no first-party shared library or module search path (AGENTS.md 'Platform-compliant composition')",
+    "window_provider": "sdl3",
+    "render_provider": "native-vulkan",
+    "vulkan_implementation": "MoltenVK (Vulkan portability subset over Metal), statically linked",
+    "physics_provider": "vphysics (IVP) by default, as on Android; vphysics_box3d is linked too",
+    "support_scope": "R29 groundwork. Not platform acceptance: no device, simulator or packaging evidence yet.",
+    "packaging": ".app assembled on Linux; codesign, provisioning and install (xcrun devicectl) on the Mac. Licensed Portal content is copied into the app's data container separately.",
+    "deployment_target_reason": "17.0: devicectl installs, current SDL3 and MoltenVK (libMoltenVK.a minos 15.0) all support it; revisit before a store build."
+  },
+  "ios": {
+    "bundle_id": "org.sourceengine.portal",
+    "display_name": "Portal (Source Engine)",
+    "version": "0.1.0",
+    "build_number": 1,
+    "build_directory": "build-ios",
+    "system_frameworks": ["Foundation", "UIKit", "Metal", "QuartzCore", "IOSurface", "CoreGraphics", "AudioToolbox", "AVFoundation", "CoreAudio", "CoreMotion", "GameController", "CoreHaptics", "OpenAL"],
+    "system_libraries": ["c++", "z", "bz2", "iconv"]
+  },
+  "sdk": {
+    "name": "iPhoneOS.sdk",
+    "source": "provided by the user, copied from Xcode on their Mac (xcrun --sdk iphoneos --show-sdk-path); never downloaded by the build",
+    "minimum_version": "26.0",
+    "licence_note": "Apple's Xcode licence covers use of the SDK on Apple-branded computers; placing it on the Linux build host is the user's decision (2026-09-25: 'building on the linux machine, and the signing + deploy on a mac')."
+  },
+  "host_toolchain": {
+    "directory": "dependencies/ios/toolchain",
+    "llvm": {
+      "version": "22.1.8",
+      "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/llvm-project-22.1.8.src.tar.xz",
+      "sha256": "922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888",
+      "archive_bytes": 167061596,
+      "cache_archive": "llvm-project-22.1.8.src.tar.xz",
+      "extracted_directory": "llvm-project-22.1.8.src",
+      "signature_note": "2026-09-25: the release's OpenPGP signature verified against https://releases.llvm.org/release-keys.asc (EdDSA key FFB3368980F3E6BB5737145A316C56D064CACBA5); the sha256 is the pin.",
+      "projects": ["clang", "lld"],
+      "targets": ["AArch64", "X86"],
+      "distribution_components": ["clang", "clang-resource-headers", "lld", "llvm-ar", "llvm-ranlib", "llvm-nm", "llvm-objcopy", "llvm-lipo", "llvm-otool", "llvm-readobj", "llvm-strip", "llvm-install-name-tool", "dsymutil"],
+      "note": "clang compiles for arm64-apple-ios; ld64.lld performs the final app link. It does not implement -r, so module objects use Apple's ld64 below."
+    },
+    "cctools_port": {
+      "revision": "904de2a71d4da6a9b30d2efaf912a10ddc7d9ddb",
+      "version": "cctools 1030.6.3 / ld64-956.6",
+      "url": "https://github.com/tpoechtrager/cctools-port/archive/904de2a71d4da6a9b30d2efaf912a10ddc7d9ddb.tar.gz",
+      "sha256": "6809ba18b6b4f4646b17b1baba48f9a0cb94425cc334272918ba944fd7399b32",
+      "archive_bytes": 2214489,
+      "cache_archive": "cctools-port-904de2a7.tar.gz",
+      "extracted_directory": "cctools-port-904de2a71d4da6a9b30d2efaf912a10ddc7d9ddb",
+      "configure_options": ["--target=aarch64-apple-darwin", "--disable-tapi-support", "--disable-xar-support", "--disable-lto-support"],
+      "note": "Apple's ld64 for 'ld64 -r' module objects, which turns hidden symbols local. Built without libtapi: it never reads the SDK's .tbd stubs."
+    },
+    "libdispatch": {
+      "version": "swift-6.4.0-RELEASE",
+      "revision": "024805abec6daa9cdda569fd736b9c7686dfd735",
+      "url": "https://github.com/swiftlang/swift-corelibs-libdispatch/archive/refs/tags/swift-6.4.0-RELEASE.tar.gz",
+      "sha256": "af15fcc3da4514def6454ed672b82daa9ac1d40cb1d08fb69a6611cb8fc104c6",
+      "cache_archive": "libdispatch-swift-6.4.0-RELEASE.tar.gz",
+      "extracted_directory": "swift-corelibs-libdispatch-swift-6.4.0-RELEASE",
+      "note": "libdispatch and BlocksRuntime, which ld64 requires."
+    }
+  },
+  "dependencies": {
+    "moltenvk": {
+      "version": "v1.4.2",
+      "url": "https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-ios.tar",
+      "sha256": "b5d947b1660e6e9fed40b9cd2387e160aaab9e80b775c0cef7e14059405178c1",
+      "archive_bytes": 34535424,
+      "cache_archive": "MoltenVK-ios-v1.4.2.tar",
+      "extracted_directory": "moltenvk-1.4.2",
+      "static_library": "MoltenVK/MoltenVK/static/MoltenVK.xcframework/ios-arm64/libMoltenVK.a",
+      "include_directory": "MoltenVK/MoltenVK/include",
+      "note": "Khronos's prebuilt release (sha256 equals the GitHub release asset digest). Building MoltenVK needs Xcode; libMoltenVK.a is built for iOS minos 15.0, SDK 26.5."
+    },
+    "sdl3": {
+      "version": "3.4.16",
+      "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz",
+      "sha256": "7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68",
+      "archive_bytes": 15640667,
+      "cache_archive": "SDL3-3.4.16.tar.gz",
+      "extracted_directory": "SDL3-3.4.16",
+      "note": "Same pin as the Linux and Android profiles; built as a static library for iOS."
+    },
+    "ktx_software": {
+      "revision": "90967979cbb7e9401ee2401ff997f30b4b7507d6",
+      "note": "Same revision as quality/product_profiles/portal-android-native-vulkan.json; the static reader only."
+    },
+    "vendored": {
+      "source": "thirdparty submodule (revision pinned by the superproject)",
+      "libraries": ["freetype", "libpng", "libjpeg", "curl (HTTP only)"],
+      "note": "Cross-built as static libraries like the Android profile; zlib, bzip2 and iconv come from the SDK."
+    }
+  },
+  "configure_options": {
+    "static_composition": true,
+    "platform_provider": "sdl3",
+    "render_backend": "native-vulkan",
+    "build_games": "portal"
+  },
+  "content": {
+    "location": "the app's data container (Documents), copied with xcrun devicectl on the Mac",
+    "directories": ["platform", "portal", "hl2"]
+  },
+  "required_checks": [
+    "tools/ios/build_toolchain.py: pinned host toolchain and its ld64 -r / ld64.lld smoke test",
+    "tools/quality/static_composition.py check on the iOS tree: Mach-O module isolation, no first-party dylib, every module linked",
+    "startup on a device with no first-party dylib or module search path",
+    "foreground/background and surface recreation, touch and orientation, memory pressure (AGENTS.md iOS obligations)",
+    "separate simulator runs (additional, not a substitute for the device)"
+  ],
+  "evidence": {
+    "status": "unverified",
+    "known_blockers": [
+      "No iOS SDK on the build host yet: nothing has been compiled for iOS.",
+      "No Waf iOS target (DEST_OS ios), SDL3/freetype/png/jpeg/KTX iOS builds or .app assembly yet.",
+      "Legacy LightmappedGeneric and $phong need nine and seven descriptor sets; MoltenVK's limit must be queried (RFC 0007 grouped sets cover PBR only).",
+      "Phone GPUs lack BC textures: the material system decompresses DXT in software (memory cost unmeasured)."
+    ],
+    "observations": [
+      "2026-09-25: the Linux static composition (same mechanism, ELF) boots testchmb_a_00 with no first-party shared library; see RFC/0001-static-composition-progress.md.",
+      "2026-09-25: ld64-956.6 -r on arm64-apple-ios objects turns hidden symbols local, including inline-function statics, and pulls private archive members; ld64.lld 22.1.8 rejects -r."
+    ]
+  }
+}

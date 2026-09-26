@@ -221,6 +221,18 @@ static HMODULE Sys_LoadLibraryWithError(
 	if ( pResolvedPath && nResolvedPathSize > 0 )
 		Q_strncpy( pResolvedPath, str, nResolvedPathSize );
 
+#if defined( SOURCE_STATIC_COMPOSITION )
+	// A statically composed product (iOS) links every first-party module into
+	// the program and loads none at run time. A request is a composition
+	// defect: it fails, and Sys_LoadModule records it like any failed load.
+	if ( pProviderResult )
+		*pProviderResult = -1;
+	if ( pProviderError && nProviderErrorSize > 0 )
+		Q_strncpy( pProviderError, "static composition: modules are linked, not loaded",
+		    nProviderErrorSize );
+	return NULL;
+#endif
+
 #ifdef _WIN32
 	ThreadedLoadLibraryFunc_t threadFunc = GetThreadedLoadLibraryFunc();
 	if ( !threadFunc )

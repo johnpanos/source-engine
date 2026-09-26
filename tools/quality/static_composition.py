@@ -14,7 +14,8 @@ tree independently of the Waf tool:
 - the program defines the named entry of every module object that has one,
   and every module the caller requires is linked.
 
-ELF only for now; Mach-O module objects come with the Apple profile.
+ELF files are read with readelf and Mach-O files (the iOS profile) with
+llvm-nm and llvm-objdump; the format is taken from each file's magic.
 
     python3 tools/quality/static_composition.py check \\
         --tree build-static --program launcher_main/hl2_launcher \\
@@ -22,6 +23,7 @@ ELF only for now; Mach-O module objects come with the Apple profile.
 """
 
 import argparse
+import os
 import json
 import pathlib
 import re
@@ -53,8 +55,40 @@ def run(argv):
     return subprocess.run(argv, check=True, capture_output=True, text=True).stdout
 
 
+MACHO_MAGICS = (b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe')
+
+
+def is_macho(path):
+    with open(path, 'rb') as handle:
+        return handle.read(4) in MACHO_MAGICS
+
+
+def macho_symbols(path):
+    """Symbol table of a Mach-O file (llvm-nm -m), in the ELF vocabulary: a
+    private external is a global HIDDEN symbol; non-external is LOCAL. The
+    leading underscore of C names is dropped."""
+    found = []
+    pattern = re.compile(r'^(?:[0-9a-f]+ )?\(([^)]*)\) (.*?)(external) (\S+)$')
+    for line in run(['llvm-nm', '-m', str(path)]).splitlines():
+        match = pattern.match(line.strip())
+        if not match:
+            continue
+        where, qualifiers, _, name = match.groups()
+        name = name[1:] if name.startswith('_') else name
+        section = 'UND' if where == 'undefined' else ('COM' if where == 'common' else where)
+        if 'non-' in qualifiers:
+            bind, visibility = 'LOCAL', 'DEFAULT'
+        else:
+            bind = 'WEAK' if 'weak' in qualifiers else 'GLOBAL'
+            visibility = 'HIDDEN' if 'private' in qualifiers else 'DEFAULT'
+        found.append(Symbol(name, bind, visibility, section))
+    return found
+
+
 def symbols(path):
-    """Symbol table entries of an ELF file (readelf -sW)."""
+    """Symbol table entries of an ELF (readelf -sW) or Mach-O file."""
+    if is_macho(path):
+        return macho_symbols(path)
     found = []
     table = None
     for line in run(['readelf', '-sW', str(path)]).splitlines():
@@ -70,6 +104,10 @@ def symbols(path):
 
 
 def needed(path):
+    """Shared libraries a program loads: DT_NEEDED, or Mach-O LC_LOAD_DYLIB."""
+    if is_macho(path):
+        out = run(['llvm-objdump', '--macho', '--dylibs-used', str(path)])
+        return [line.split()[0] for line in out.splitlines()[1:] if line.strip()]
     out = run(['readelf', '-dW', str(path)])
     return re.findall(r'\(NEEDED\)\s+Shared library: \[([^\]]+)\]', out)
 
@@ -125,10 +163,11 @@ def check(tree, program, required, modules_json):
     errors = []
     first_party = first_party_libraries(modules_json)
     for library in needed(program):
-        stem = re.sub(r'^lib|\.so(\.\d+)*$', '', library)
+        stem = re.sub(r'^lib|\.so(\.\d+)*$|\.dylib$', '', os.path.basename(library))
         if stem in first_party:
             errors.append('%s needs first-party shared library %s' % (program, library))
-    shared = sorted(p for p in tree.rglob('*.so') if 'toolchains' not in p.parts)
+    shared = sorted(p for pattern in ('*.so', '*.dylib') for p in tree.rglob(pattern)
+                    if 'toolchains' not in p.parts)
     errors += ['%s: first-party shared library built in a static tree' % p for p in shared]
 
     objects = module_objects(tree)

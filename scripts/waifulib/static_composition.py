@@ -57,10 +57,15 @@ def configure(conf):
 		return
 	if conf.env.DEST_OS == 'win32' or conf.env.COMPILER_CXX == 'msvc':
 		conf.fatal('--static-composition needs an ELF or Mach-O toolchain')
-	if conf.env.DEST_OS == 'darwin' or conf.env.DEST_OS == 'ios':
-		conf.fatal('--static-composition for Mach-O is not implemented yet: '
-			'ld64 -r localizes hidden symbols itself; see scripts/waifulib/static_composition.py')
-	conf.find_program('objcopy', var='OBJCOPY')
+	if conf.env.DEST_BINFMT == 'mac-o':
+		# ld64 -r turns hidden (private extern) symbols into local ones itself;
+		# LLVM's ld64.lld does not implement -r. The iOS toolchain provides
+		# Apple's ld64 (cctools-port); see tools/ios/build_toolchain.py.
+		conf.find_program(['ld64', 'aarch64-apple-darwin-ld'], var='LD64')
+		conf.env.LD64_ARCH = {'aarch64': 'arm64', 'arm64': 'arm64',
+			'x86_64': 'x86_64', 'amd64': 'x86_64'}.get(conf.env.DEST_CPU, conf.env.DEST_CPU)
+	else:
+		conf.find_program('objcopy', var='OBJCOPY')
 	conf.env.append_unique('DEFINES', ['SOURCE_STATIC_COMPOSITION=1'])
 	if conf.env.COMPILER_CC == 'gcc':
 		# GCC gives static locals of inline functions STB_GNU_UNIQUE binding,
@@ -87,6 +92,8 @@ class cxxmodule(ccroot.link_task):
 
 	def run(self):
 		env = self.env
+		if env.DEST_BINFMT == 'mac-o':
+			return self.run_macho()
 		output = self.outputs[0].abspath()
 		partial = output + '.partial'
 		cmd = Utils.to_list(env.LINK_CXX) + ['-r', '-nostdlib', '-Wl,--force-group-allocation']
@@ -105,6 +112,19 @@ class cxxmodule(ccroot.link_task):
 		except OSError:
 			pass
 		return ret
+
+	def run_macho(self):
+		# ld64 searches archives until no undefined symbol can be resolved, so
+		# no group is needed; hidden symbols come out local ("was a private
+		# external").
+		env = self.env
+		cmd = Utils.to_list(env.LD64) + ['-r', '-arch', env.LD64_ARCH]
+		cmd += [node.abspath() for node in self.inputs]
+		for path in self.private_stlib_paths:
+			cmd += ['-L' + path]
+		cmd += ['-l' + name for name in self.private_stlibs]
+		cmd += ['-o', self.outputs[0].abspath()]
+		return self.exec_command(cmd)
 
 
 def _is_module(tg):
