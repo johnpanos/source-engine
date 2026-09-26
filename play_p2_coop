@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""Boot Portal 2 co-op on two machines and connect them.
+
+    ./play_p2_coop [--host PEER] [--client PEER] [--map MAP] [--no-wait]
+
+PEER is `android` (the adb device), `ios` (the iPhone behind `ssh macvm`) or
+`desktop` (./play_p2 on this machine). The default is the Android phone
+hosting and the iPhone joining, on the co-op calibration course
+(mp_coop_start).
+
+The host runs a listen server for two players (`+maxplayers 2` selects the
+co-op game rules, game/server/portal/portal_client.cpp). Once it answers a
+server query on the LAN, the client starts with `+connect`. The phones take
+their arguments from commandline.txt in their content directory
+(launcher_main/android_main.cpp, ios_main.cpp); the previous file is put back
+once the game has read it. The apps are not built or installed here: use
+./build-android-portal2-apk.sh --install and ./build-ios-portal2-app.sh with
+./ios-deploy.sh, from the same source revision on both peers.
+
+All peers must be on one LAN. The first co-op run on the iPhone asks for
+Local Network access; allow it, or the iPhone cannot reach its partner.
+"""
+
+import argparse
+import ipaddress
+import os
+import shlex
+import socket
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "tools/quality"))
+
+import ios_device  # noqa: E402
+import profile_extends  # noqa: E402
+
+PORT = 27015
+ANDROID_PROFILE = ROOT / "quality/product_profiles/portal2-android-native-vulkan.json"
+IOS_PROFILE = ROOT / "quality/product_profiles/portal2-ios-native-vulkan.json"
+# The game reads commandline.txt at startup; restore the previous file after this.
+ARGUMENTS_READ_SECONDS = 15
+
+
+def log(message):
+    print("\033[1;36m==> %s\033[0m" % message, flush=True)
+
+
+# -- server query (A2S_INFO) ----------------------------------------------------
+def query_server(address, timeout=2.0):
+    """(map, players, max players) of the Source server at address, or None."""
+    request = b"\xff\xff\xff\xffTSource Engine Query\x00"
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(timeout)
+        try:
+            sock.sendto(request, address)
+            reply, _ = sock.recvfrom(4096)
+            if reply[4:5] == b"A":  # challenge: repeat the query with it
+                sock.sendto(request + reply[5:9], address)
+                reply, _ = sock.recvfrom(4096)
+        except OSError:
+            return None
+    if reply[4:5] != b"I":
+        return None
+    fields = reply[6:].split(b"\x00", 4)  # name, map, folder, game, rest
+    if len(fields) < 5 or len(fields[4]) < 4:
+        return None
+    players, max_players = fields[4][2], fields[4][3]
+    return fields[1].decode(errors="replace"), players, max_players
+
+
+def wait_for_server(address, timeout, players=1):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        info = query_server(address)
+        if info and info[1] >= players:
+            return info
+        time.sleep(2)
+    return None
+
+
+# -- peers ----------------------------------------------------------------------
+class Android:
+    name = "Android"
+
+    def __init__(self, serial):
+        app = profile_extends.load_profile(ANDROID_PROFILE)["android"]
+        self.package = app["application_id"]
+        self.content = "/sdcard/Android/data/%s/files" % self.package
+        self.serial = serial or os.environ.get("ANDROID_SERIAL") or self._only_device()
+        self.saved = None
+
+    def adb(self, *args, check=True):
+        return subprocess.run(["adb", "-s", self.serial, *args], check=check, text=True,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout
+
+    @staticmethod
+    def _only_device():
+        out = subprocess.run(["adb", "devices"], check=True, text=True,
+                             stdout=subprocess.PIPE).stdout
+        devices = [line.split()[0] for line in out.splitlines()[1:]
+                   if line.strip().endswith("device")]
+        if len(devices) != 1:
+            raise SystemExit("play_p2_coop: %d adb devices; pass --serial" % len(devices))
+        return devices[0]
+
+    def address(self):
+        out = self.adb("shell", "ip -4 -o addr show wlan0")
+        for word in out.split():
+            if "/" in word and word[0].isdigit():
+                return word.split("/")[0]
+        raise SystemExit("play_p2_coop: the Android device has no wlan0 address:\n" + out)
+
+    def start(self, arguments):
+        path = self.content + "/commandline.txt"
+        self.saved = self.adb("shell", "cat %s 2>/dev/null" % shlex.quote(path), check=False)
+        self._write(arguments)
+        self.adb("shell", "am", "force-stop", self.package)
+        activity = self.adb("shell", "cmd", "package", "resolve-activity", "--brief",
+                            self.package).split()[-1]
+        self.adb("shell", "am", "start", "-n", activity)
+
+    def restore(self):
+        if self.saved is not None:
+            self._write(self.saved)
+            self.saved = None
+
+    def _write(self, text):
+        path = self.content + "/commandline.txt"
+        with tempfile.NamedTemporaryFile("w", suffix="_commandline.txt", delete=False) as f:
+            f.write(text)
+        try:
+            self.adb("push", f.name, path)
+        finally:
+            os.unlink(f.name)
+        # The app runs as its own user; adb's file must be readable to it.
+        self.adb("shell", "chmod", "666", path)
+
+
+class Ios:
+    name = "iPhone"
+
+    def __init__(self, macvm):
+        self.app = profile_extends.load_profile(IOS_PROFILE)["ios"]
+        self.device = ios_device.Device(self.app["bundle_id"], host=macvm)
+        self.saved = None
+
+    def address(self):
+        hostname = self.device.hostname()
+        if not hostname:
+            raise SystemExit("play_p2_coop: no network name for the iPhone; pass --host-ip")
+        try:
+            return socket.gethostbyname(hostname)
+        except OSError:
+            raise SystemExit("play_p2_coop: cannot resolve %s; pass --host-ip" % hostname)
+
+    def start(self, arguments):
+        with tempfile.TemporaryDirectory() as directory:
+            previous = Path(directory) / "commandline.txt"
+            self.saved = previous.read_text() if self.device.get(
+                "Documents/commandline.txt", previous) else ""
+        self.device.put_text(arguments, "Documents/commandline.txt")
+        self.device.start()
+
+    def restore(self):
+        if self.saved is not None:
+            self.device.put_text(self.saved, "Documents/commandline.txt")
+            self.saved = None
+
+
+class Desktop:
+    name = "desktop"
+
+    def __init__(self):
+        self.process = None
+
+    def address(self):
+        out = subprocess.run(["ip", "-4", "route", "get", "1.1.1.1"], check=True, text=True,
+                             stdout=subprocess.PIPE).stdout.split()
+        return out[out.index("src") + 1]
+
+    def start(self, arguments, client=False):
+        # A second copy on this machine (desktop with desktop) needs its own
+        # server port; -multirun skips the single-instance lock.
+        ports = ["-port", str(PORT + 10)] if client else ["-port", str(PORT)]
+        self.process = subprocess.Popen([str(ROOT / "play_p2"), "-multirun", *ports,
+                                         *shlex.split(arguments)], cwd=ROOT)
+
+    def restore(self):
+        pass
+
+
+def make_peer(kind, args):
+    if kind == "android":
+        return Android(args.serial)
+    if kind == "ios":
+        return Ios(args.macvm)
+    return Desktop()
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="\n".join(__doc__.splitlines()[2:]))
+    peers = ["android", "ios", "desktop"]
+    parser.add_argument("--host", choices=peers, default="android",
+                        help="peer that runs the listen server (default: android)")
+    parser.add_argument("--client", choices=peers, default="ios",
+                        help="peer that joins (default: ios)")
+    parser.add_argument("--map", default="mp_coop_start", help="co-op map (default: mp_coop_start)")
+    parser.add_argument("--host-ip", help="host address to connect to (default: discovered)")
+    parser.add_argument("--serial", help="adb device (default: $ANDROID_SERIAL or the only one)")
+    parser.add_argument("--macvm", default=ios_device.DEFAULT_HOST,
+                        help="Mac that reaches the iPhone (default: macvm)")
+    parser.add_argument("--timeout", type=float, default=300,
+                        help="seconds to wait for the host, then the client (default: 300)")
+    parser.add_argument("--extra", default="", help="further engine arguments for both peers")
+    parser.add_argument("--no-wait", action="store_true",
+                        help="return once the client is started")
+    args = parser.parse_args(argv)
+    if args.host == args.client and args.host != "desktop":
+        parser.error("the host and the client must be different devices")
+
+    host = make_peer(args.host, args)
+    client = make_peer(args.client, args)
+    address = args.host_ip or host.address()
+    ipaddress.IPv4Address(address)
+    server = (address, PORT)
+    if query_server(server, timeout=1):
+        raise SystemExit("play_p2_coop: a server already answers at %s:%d; stop it first"
+                         % server)
+
+    common = "+sv_cheats 1 " + args.extra
+    started = []
+    try:
+        log("%s hosts %s at %s:%d" % (host.name, args.map, address, PORT))
+        host.start("+sv_lan 1 +maxplayers 2 %s +map %s\n" % (common, args.map))
+        started.append(host)
+        info = wait_for_server(server, args.timeout)
+        if not info:
+            raise SystemExit("play_p2_coop: the %s host did not answer at %s:%d within %d s"
+                             % (host.name, address, PORT, args.timeout))
+        host.restore()
+        log("host up: %s, %d/%d players" % info)
+
+        log("%s joins %s:%d" % (client.name, address, PORT))
+        arguments = "%s +connect %s:%d\n" % (common, address, PORT)
+        if isinstance(client, Desktop):
+            client.start(arguments, client=args.host == "desktop")
+        else:
+            client.start(arguments)
+        started.append(client)
+        time.sleep(ARGUMENTS_READ_SECONDS)
+        client.restore()
+        if args.no_wait:
+            return 0
+        info = wait_for_server(server, args.timeout, players=2)
+        if not info:
+            raise SystemExit("play_p2_coop: the %s client did not join within %d s"
+                             % (client.name, args.timeout))
+        log("connected: %s, %d/%d players" % info)
+    finally:
+        for peer in started:
+            peer.restore()
+    for peer in (host, client):
+        if isinstance(peer, Desktop) and peer.process:
+            return peer.process.wait()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

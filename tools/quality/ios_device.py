@@ -33,11 +33,13 @@ class DeviceError(RuntimeError):
 
 
 class Device:
-    """One connected iOS device and one app on it (by bundle identifier)."""
+    """One connected device of a UIKit platform ("iOS" or "tvOS", as devicectl
+    names them) and one app on it (by bundle identifier)."""
 
-    def __init__(self, bundle_id, host=DEFAULT_HOST, identifier=None):
+    def __init__(self, bundle_id, host=DEFAULT_HOST, identifier=None, platform="iOS"):
         self.host = host
         self.bundle_id = bundle_id
+        self.platform = platform
         self.identifier = identifier or self._resolve()
 
     # -- plumbing ---------------------------------------------------------
@@ -65,12 +67,12 @@ class Device:
         start = output.find("{")
         devices = json.loads(output[start:])["result"]["devices"]
         for device in devices:
-            if device.get("hardwareProperties", {}).get("platform") != "iOS":
+            if device.get("hardwareProperties", {}).get("platform") != self.platform:
                 continue
             if device.get("connectionProperties", {}).get("tunnelState") == "unavailable":
                 continue
             return device["identifier"]
-        raise DeviceError("no connected iOS device (xcrun devicectl list devices)")
+        raise DeviceError("no connected %s device (xcrun devicectl list devices)" % self.platform)
 
     def _devicectl(self, *args):
         return "xcrun devicectl " + " ".join(shlex.quote(a) for a in args)
@@ -144,6 +146,34 @@ class Device:
         if result["timed_out"]:
             self.terminate(executable)
         return result
+
+    def start(self, args=(), environment=None):
+        """Launches the app detached (terminating a running instance first)
+        and returns once the device reports it running; the app keeps
+        running after this returns (./play_p2_coop)."""
+        options = ["--environment-variables", json.dumps(environment)] if environment else []
+        output = ""
+        for attempt in range(LAUNCH_ATTEMPTS):
+            code, output = self._ssh(self._devicectl(
+                "device", "process", "launch", "--device", self.identifier,
+                "--terminate-existing", *options, self.bundle_id, *args) + "\n",
+                timeout=120, check=False)
+            if code == 0 and "Launched application with" in output:
+                return
+        raise DeviceError("launching %s failed: %s" % (self.bundle_id, output.strip()[-2000:]))
+
+    def hostname(self):
+        """The device's Bonjour name on the local network (Johns-iPhone.local),
+        from CoreDevice's tunnel name (Johns-iPhone.coredevice.local)."""
+        _, output = self._ssh(
+            'T=$(mktemp -d); xcrun devicectl list devices --json-output "$T/d.json" >/dev/null; '
+            'cat "$T/d.json"; rm -rf "$T"\n', timeout=120)
+        devices = json.loads(output[output.find("{"):])["result"]["devices"]
+        for device in devices:
+            if device["identifier"] == self.identifier:
+                names = device.get("connectionProperties", {}).get("potentialHostnames") or []
+                return names[0].replace(".coredevice.local", ".local") if names else None
+        return None
 
     def terminate(self, executable):
         """Stops the app if it is running (after a timed-out launch).

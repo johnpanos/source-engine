@@ -181,6 +181,7 @@
   },
   "content": {
     "location": "the app's data container (Documents), copied with xcrun devicectl on the Mac",
+    "container_directory": "Documents",
     "directories": [
       "platform",
       "portal",
