@@ -15,10 +15,11 @@
     "render_provider": "native-vulkan",
     "vulkan_implementation": "MoltenVK (Vulkan portability subset over Metal), statically linked",
     "physics_provider": "vphysics (IVP) by default, as on iOS and Android; vphysics_box3d is linked too",
-    "input": "Siri Remote and game controllers through SDL3 (GameController framework). There is no touch screen, on-screen touch controls or Core Motion; a remote's motion, if used for aiming, comes from GameController, not the iOS gyro provider.",
+    "input": "Game controllers through SDL3's gamepad API. The Siri Remote is not a gamepad (SDL_HINT_TV_REMOTE_AS_JOYSTICK=0), so it cannot take the engine's single active gamepad slot; remote-driven menus are out of scope (user direction, 2026-09-26).",
     "support_scope": "Product scope added by the user (2026-09-25). tvOS is not one of the four AGENTS.md north-star targets; R29 neither requires nor is closed by it. An unsigned app builds on Linux; no device, simulator or install evidence yet.",
     "packaging": ".app assembled on Linux by build-tvos-app.sh (build-ios-app.sh with this profile); codesign, provisioning and install on the Mac, as for iOS. Licensed Portal content is copied into the app's Library/Caches separately.",
-    "deployment_target_reason": "17.0 matches the iOS profile; the SDK accepts 12.0 and later, and MoltenVK's tvOS slice is built for minos 15.0. Revisit before a store build."
+    "deployment_target_reason": "17.0 matches the iOS profile; the SDK accepts 12.0 and later, and MoltenVK's tvOS slice is built for minos 15.0. Revisit before a store build.",
+    "render_defaults": "User direction (2026-09-26): 1080p scaled to 4K by the system (-nohighdpi), no MSAA and the Video Advanced dialog's Low values, passed by launcher_main/ios_main.cpp after config.cfg so copied desktop settings cannot raise them; HDR unchanged. Target: a locked 60 fps at 1080p."
   },
   "tvos": {
     "bundle_id": "com.panos.sourceengine",
@@ -129,16 +130,17 @@
   "evidence": {
     "status": "unverified",
     "known_blockers": [
-      "Not run: no signing with a provisioning profile, no install or startup on an Apple TV, no simulator run.",
-      "Content in Library/Caches can be purged by the system; there is no detection or re-copy flow yet.",
-      "Input: the iOS touch controls, gyro aiming and on-screen keyboard paths do not apply; menus and play need a remote/controller mapping.",
+      "No frame-time budget or measurement yet for the 60 fps target.",
+      "Purged content is detected at startup (an alert says how to recopy it); there is no in-app re-download.",
       "The iOS profile's open items carry over: legacy $phong descriptor-set count against MoltenVK's limit, and software DXT decompression on GPUs without BC textures (memory unmeasured)."
     ],
     "observations": [
       "2026-09-25: AppleTVOS 26.5 SDK (Xcode 26.6, 17F113) copied from the macOS VM to dependencies/tvos/sdk; SDKSettings allows deployment targets 12.0 to 26.5.99.",
       "2026-09-25: link probe with the iOS profile's host toolchain (clang 22.1.8, ld64-956.6, ld64.lld): C++20/libc++ compiles for arm64-apple-tvos17.0; ld64 -r turns hidden symbols local; ld64.lld links an Objective-C++ main against UIKit, Metal, QuartzCore, IOSurface and the MoltenVK tvOS static library into a Mach-O with LC_BUILD_VERSION platform 3 (tvOS), minos 17.0, sdk 26.5, depending only on system frameworks and libraries. Never run.",
       "2026-09-25: ./build-tvos-app.sh builds an unsigned build-tvos/Portal.app on Linux. The engine is Waf's ios (UIKit) family with PLATFORM_TVOS, selected by the AppleTVOS SDK passed as --ios-sdk. hl2_launcher is a tvOS Mach-O (platform 3, minos 17.0, sdk 26.5), 54.6 MB. tools/quality/static_composition.py passes: 24 module objects, 22 linked entries. The app loads only system frameworks and libraries, with no CoreMotion. On the macOS VM, plutil -lint passes, an ad-hoc signature verifies and vtool reports platform TVOS.",
-      "2026-09-25: tvOS-only build fixes. fork and execlp are unavailable on tvOS, where iOS only discourages them, so vgui2's ShellExecute no longer compiles its process branch on the UIKit family. libpng 1.6.38 takes its prebuilt pnglibconf.h only for CMake's IOS, so the tvOS build sets IOS=ON for libpng. freetype rejects a CMake variable named IOS_PLATFORM, so the toolchain file's platform variable is APPLE_TARGET_OS."
+      "2026-09-25: tvOS-only build fixes. fork and execlp are unavailable on tvOS, where iOS only discourages them, so vgui2's ShellExecute no longer compiles its process branch on the UIKit family. libpng 1.6.38 takes its prebuilt pnglibconf.h only for CMake's IOS, so the tvOS build sets IOS=ON for libpng. freetype rejects a CMake variable named IOS_PLATFORM, so the toolchain file's platform variable is APPLE_TARGET_OS.",
+      "2026-09-26: signed with a development profile and installed on an Apple TV 4K (3rd generation, A15, tvOS 27) by ios-deploy.sh; content copied to Library/Caches. At the 3840x2160 drawable with a desktop config.cfg's 4x MSAA, the app was killed with signal 9 about 5 s after start and left no crash or jetsam report. With the 1080p/no-MSAA/Low defaults the swapchain is 1920x1080 at contents scale 1.0 and the app ran for 4+ minutes, reached the menus, and quit normally.",
+      "2026-09-26: an Xbox Wireless Controller over Bluetooth drives the game once the remote is not a gamepad (run 6: 108 gamepad button presses; the user confirmed it works). Before that, the remote was added first and held the engine's only gamepad slot. The engine's joystick connect lines do not appear in the devicectl console, which is still unexplained."
     ]
   }
 }

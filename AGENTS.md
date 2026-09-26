@@ -879,8 +879,14 @@ Keep the table concise and link details below or from the domain progress file.
     - The app loads no Core Motion.
     - On the Mac, the plist lints and an ad-hoc signature verifies.
     - The iOS build still passes.
-  - Not done: signed install, any Apple TV or simulator run, remote and
-    controller input, and detecting a purged cache. See the
+  - On an Apple TV 4K (2026-09-26):
+    - It installs signed and runs, at 1080p scaled to 4K, with no MSAA and
+      Low settings (user direction). At 4K with 4x MSAA it was killed
+      within seconds.
+    - An Xbox controller drives it.
+    - Missing content triggers an alert.
+  - Not done: the locked-60 fps target, a simulator run, and remote-driven
+    menus (out of scope). See the
     [record](RFC/0001-static-composition-progress.md#first-tvos-build-2026-09-25).
 
 - R01/R29-ANDROID-BUILD: `partial` (2026-09-22).

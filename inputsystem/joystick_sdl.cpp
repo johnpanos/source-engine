@@ -329,9 +329,14 @@ void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 #if defined( USE_SDL3 )
 	// SDL3 hotplug events and enumeration both supply stable IDs, never indices.
 	if ( joystickIndex <= 0 || !SDL_IsGamepad( joystickIndex ) )
+	{
+		Msg( "Joystick #%i '%s' has no gamepad mapping; ignored.\n", joystickIndex,
+		    joystickIndex > 0 ? SDL_GetJoystickNameForID( joystickIndex ) : "" );
 		return;
+	}
 	const int joystickId = joystickIndex;
 	const char *pJoystickName = SDL_GetGamepadNameForID( joystickIndex );
+	Msg( "Gamepad #%i '%s' connected.\n", joystickId, pJoystickName ? pJoystickName : "" );
 #else
 	// SDL_IsGameController doesn't bounds check its inputs.
 	if ( joystickIndex < 0 || joystickIndex >= SDL_NumJoysticks() )

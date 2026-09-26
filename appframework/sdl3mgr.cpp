@@ -188,9 +188,12 @@ InitReturnVal_t CSDL3Mgr::Init()
 	m_bVideoInitialized = true;
 	m_bForbidMouseGrab =
 	    CommandLine()->FindParm( "-nomousegrab" ) || !CommandLine()->FindParm( "-mousegrab" );
+	// -nohighdpi renders at the display's size in points and lets the system
+	// scale the frame up (the tvOS root: 1080p on a 4K television).
+	const SDL_WindowFlags pixelDensity =
+	    CommandLine()->FindParm( "-nohighdpi" ) ? 0 : SDL_WINDOW_HIGH_PIXEL_DENSITY;
 	m_Window = SDL_CreateWindow( "", 1280, 720,
-	    SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY |
-	        SDL_WINDOW_RESIZABLE );
+	    SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN | pixelDensity | SDL_WINDOW_RESIZABLE );
 	if ( m_Window == NULL )
 	{
 		Warning( "SDL3 Vulkan window creation failed: %s\n", SDL_GetError() );

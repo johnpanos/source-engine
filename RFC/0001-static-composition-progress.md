@@ -430,11 +430,35 @@ uses the iOS static composition and points at the iOS pins through
   - On the macOS VM: `plutil -lint` passes, an ad-hoc signature verifies,
     and `vtool` reports `TVOS`.
   - `./build-ios-app.sh` still builds, and its static check still passes.
-- **Not done:**
-  - signing with a provisioning profile, installing, and any run on an
-    Apple TV or the simulator;
-  - input: the remote and controllers in menus and play;
-  - detecting a purged cache.
+- **Not done at first build:** signing, installing, any Apple TV run,
+  input and purge detection (see below).
+
+### On an Apple TV 4K (2026-09-26)
+
+- **Deploy:** `ios-deploy.sh --device tv --with-content` signs, installs and
+  copies content to `Library/Caches` on tvOS. `ios-deploy.sh` is the Mac
+  session's script and remains uncommitted.
+- **Crash at 4K:** the first runs used a 3840×2160 drawable, and the copied
+  desktop `config.cfg` turned on 4x MSAA. The app was killed (signal 9)
+  about 5 s after start, with no crash or jetsam report.
+- **Render defaults** (user direction), set by `ios_main.cpp` on tvOS:
+  - `-nohighdpi`, a new `sdl3mgr` switch: the window has no high pixel
+    density, so the drawable is 1920×1080 and tvOS scales it to 4K;
+  - no MSAA;
+  - the Video Advanced dialog's Low values.
+
+  They are `+` settings, so they run after `config.cfg`. With them the app
+  ran for 4+ minutes and quit normally.
+- **Missing content:** at startup the app checks for the game's
+  `gameinfo.txt`. If it is missing, an alert says how to recopy the content.
+- **Controller:** SDL3 made the Siri Remote a gamepad, added first, so it
+  held the engine's single gamepad slot. `SDL_HINT_TV_REMOTE_AS_JOYSTICK=0`
+  frees the slot, and an Xbox Wireless Controller then drives the game (the
+  user confirmed; 108 button presses logged). Remote-driven menus are out of
+  scope (user direction).
+- **Open:**
+  - the engine's joystick connect lines don't reach the `devicectl` console;
+  - no frame-time measurement against the 60 fps target.
 
 ## Not done
 
