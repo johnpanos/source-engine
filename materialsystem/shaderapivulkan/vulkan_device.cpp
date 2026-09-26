@@ -5502,6 +5502,7 @@ void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb
 	// explicit records, exactly where the engine issued them. `srgb` enters it
 	// through its sRGB view.
 	srgb = srgb && m_srgbAttachments;
+	int kept = kKeepDepthStencil; // what the chosen pass loads and stores
 	VkRenderPassBeginInfo rp = {};
 	rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	if ( IsRenderTargetTexture( target ) )
@@ -5522,7 +5523,10 @@ void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb
 		if ( keep == kKeepDepthStencil || m_renderPassLoadKeep[srgb][keep] == VK_NULL_HANDLE )
 			rp.renderPass = srgb ? m_renderPassLoadSrgb : m_renderPassLoad;
 		else
+		{
 			rp.renderPass = m_renderPassLoadKeep[srgb][keep];
+			kept = keep;
+		}
 		rp.framebuffer =
 		    srgb ? m_framebuffersSrgb[m_acquiredImage] : m_framebuffers[m_acquiredImage];
 	}
@@ -5544,9 +5548,7 @@ void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb
 	{
 		static const char *const kKinds[] = { "pass (no depth, no stencil)", "pass (no stencil)",
 			"pass (no depth)", "pass" };
-		const bool reduced = rp.renderPass != m_renderPassLoad && rp.renderPass != m_renderPassLoadSrgb &&
-		                     target < 0 && m_activeSamples <= 1;
-		GpuTimerMark( cmd, GpuTimerTargetLabel( kKinds[reduced ? keep : kKeepDepthStencil], target, srgb ) );
+		GpuTimerMark( cmd, GpuTimerTargetLabel( kKinds[kept], target, srgb ) );
 	}
 	vkCmdBeginRenderPass( cmd, &rp, VK_SUBPASS_CONTENTS_INLINE );
 	m_frameCost.Add( kCostRenderPass, 0 );
@@ -5627,29 +5629,24 @@ static bool SrgbCapableShader( int shaderIndex )
 	       shaderIndex == CVulkanContext::kDynShaderPaintBlob;
 }
 
-int CVulkanContext::RecordBackBufferDepthUse( const DynDraw &r )
+int CVulkanContext::RecordBackBufferDepthReads( const DynDraw &r )
 {
+	// Only reads keep a plane: a write nothing later reads is dead, since the
+	// next frame's first pass clears depth and stencil.
 	if ( r.target != -1 )
 		return kKeepNone;
 	switch ( r.kind )
 	{
 	case kRecordDraw:
 	{
-		// A test that always passes and writes nothing reads nothing either.
 		const DynRasterState &s = r.raster;
-		const bool depth =
-		    s.depthWrite || ( s.depthTest && s.depthCompare != VK_COMPARE_OP_ALWAYS );
-		const bool stencilOps = s.stencilPass != VK_STENCIL_OP_KEEP ||
-		                        s.stencilFail != VK_STENCIL_OP_KEEP ||
-		                        s.stencilDepthFail != VK_STENCIL_OP_KEEP;
-		const bool stencil =
-		    s.stencilEnable && ( s.stencilCompare != VK_COMPARE_OP_ALWAYS || stencilOps );
+		const bool depth = s.depthTest && s.depthCompare != VK_COMPARE_OP_ALWAYS;
+		const bool stencil = s.stencilEnable && s.stencilCompare != VK_COMPARE_OP_ALWAYS;
 		return ( depth ? kKeepDepth : 0 ) | ( stencil ? kKeepStencil : 0 );
 	}
 	case kRecordClear:
-		return ( r.clearDepth ? kKeepDepth : 0 ) | ( r.clearStencil ? kKeepStencil : 0 );
-	case kRecordCopy:
-		return kKeepNone; // color only (RecordTargetCopy)
+	case kRecordCopy: // color only (RecordTargetCopy)
+		return kKeepNone;
 	case kRecordQueryBegin:
 	case kRecordQueryEnd:
 		// A query counts the samples of the draws inside it, which are judged
@@ -6717,18 +6714,21 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		// merging the pass reopens at once and every copy is made.
 		bool passOpen = true;
 		const DynDraw *lastCopy = nullptr;
-		// Records before these indices may use the back buffer's depth or its
+		// Records before these indices may read the back buffer's depth or its
 		// stencil; a back-buffer pass that begins at or after one neither loads
 		// nor stores that plane (BeginTargetPass keep).
 		size_t depthEnd = 0, stencilEnd = 0;
 		for ( size_t i = 0; i < m_dynDrawRecords.size(); ++i )
 		{
-			const int use = RecordBackBufferDepthUse( m_dynDrawRecords[i] );
+			const int use = RecordBackBufferDepthReads( m_dynDrawRecords[i] );
 			if ( use & kKeepDepth )
 				depthEnd = i + 1;
 			if ( use & kKeepStencil )
 				stencilEnd = i + 1;
 		}
+		m_statsDepthEnd[0] = depthEnd;
+		m_statsDepthEnd[1] = stencilEnd;
+		m_statsDepthEnd[2] = m_dynDrawRecords.size();
 		const auto keepFrom = [&]( size_t record )
 		{
 			return ( record < depthEnd ? kKeepDepth : 0 ) |
@@ -9002,6 +9002,9 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 			    static_cast<unsigned long long>( m_gpuResultFrame ),
 			    static_cast<unsigned long long>( m_gpuResultUs ),
 			    static_cast<unsigned long long>( m_gpuRenderUs ) );
+		if ( m_gpuTimerPool != VK_NULL_HANDLE )
+			std::fprintf( m_frameStatsFile, ",\"depth_end\":[%zu,%zu,%zu]", m_statsDepthEnd[0],
+			    m_statsDepthEnd[1], m_statsDepthEnd[2] );
 		if ( m_gpuResultFrame && !m_gpuTimerResult.empty() )
 		{
 			// Labels hold only JSON-safe characters (GpuTimerMark).

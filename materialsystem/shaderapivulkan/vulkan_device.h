@@ -1227,6 +1227,9 @@ private:
 		uint64_t us;
 	};
 	std::vector<GpuTimerTotal> m_gpuTimerResult;
+	// With the timers: where the frame's back-buffer depth and stencil reads
+	// end, of how many records ("depth_end" in the stats).
+	size_t m_statsDepthEnd[3] = {};
 	void GpuTimerMark( VkCommandBuffer cmd, std::string label );
 	std::string GpuTimerTargetLabel( const char *kind, int target, bool srgb ) const;
 	void CreateTimestampPool();
@@ -2148,9 +2151,9 @@ private:
 	    VkCommandBuffer cmd, int target, bool srgb = false, int keep = kKeepDepthStencil );
 	void RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy );
 	bool RecordWantsSrgb( const DynDraw &r ) const;
-	// Which of the back buffer's depth and stencil a record may read or write
-	// (kKeepDepth | kKeepStencil). Unknown kinds count as using both.
-	static int RecordBackBufferDepthUse( const DynDraw &r );
+	// Which of the back buffer's depth and stencil a record may read
+	// (kKeepDepth | kKeepStencil). Unknown kinds count as reading both.
+	static int RecordBackBufferDepthReads( const DynDraw &r );
 	bool RecordViewAgnostic( const DynDraw &r ) const;
 	bool FirstPassWantsSrgb() const;
 
