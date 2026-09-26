@@ -6,6 +6,7 @@
 //=============================================================================//
 
 #include "engine/IEngineSound.h"
+#include "engine/ienginesoundentry.h"
 #include "tier0/dbg.h"
 #include "sound.h"
 #include "client.h"
@@ -27,7 +28,7 @@ void DSP_FastReset(int dsp);
 // Client-side implementation of the engine sound interface
 //
 //-----------------------------------------------------------------------------
-class CEngineSoundClient : public IEngineSound
+class CEngineSoundClient : public IEngineSound, public IEngineSoundEntry
 {
 public:
 	// constructor, destructor
@@ -78,10 +79,15 @@ public:
 	virtual void	NotifyBeginMoviePlayback();
 	virtual void	NotifyEndMoviePlayback();
 
-private:
-	void EmitSoundInternal( IRecipientFilter& filter, int iEntIndex, int iChannel, const char *pSample, 
+	virtual void EmitSoundEntry( IRecipientFilter& filter, int iEntIndex, int iChannel, unsigned int nSoundEntryHash, const char *pSample,
 		float flVolume, soundlevel_t iSoundLevel, int iFlags, int iPitch, int iSpecialDSP,
 		const Vector *pOrigin, const Vector *pDirection, CUtlVector< Vector >* pUtlVecOrigins, bool bUpdatePositions, float soundtime = 0.0f, int speakerentity = -1 );
+
+private:
+	void EmitSoundInternal( IRecipientFilter& filter, int iEntIndex, int iChannel, const char *pSample,
+		float flVolume, soundlevel_t iSoundLevel, int iFlags, int iPitch, int iSpecialDSP,
+		const Vector *pOrigin, const Vector *pDirection, CUtlVector< Vector >* pUtlVecOrigins, bool bUpdatePositions, float soundtime = 0.0f, int speakerentity = -1,
+		unsigned int nSoundEntryHash = 0xffffffff );
 
 };
 
@@ -92,6 +98,14 @@ private:
 static CEngineSoundClient s_EngineSoundClient;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CEngineSoundClient, IEngineSound, 
 	IENGINESOUND_CLIENT_INTERFACE_VERSION, s_EngineSoundClient );
+
+// Version 2 sound entries: a separate interface of the same object, so
+// IEngineSoundClient003 keeps its vtable.
+static void *CreateCEngineSoundClientEntry()
+{
+	return static_cast< IEngineSoundEntry * >( &s_EngineSoundClient );
+}
+static InterfaceReg s_CEngineSoundClientEntryReg( CreateCEngineSoundClientEntry, IENGINESOUNDENTRY_CLIENT_INTERFACE_VERSION );
 
 IEngineSound *EngineSoundClient()
 {
@@ -159,9 +173,10 @@ bool CEngineSoundClient::IsSoundPrecached( const char *pSample )
 //-----------------------------------------------------------------------------
 // Actually does the work of emitting a sound
 //-----------------------------------------------------------------------------
-void CEngineSoundClient::EmitSoundInternal( IRecipientFilter& filter, int iEntIndex, int iChannel, const char *pSample, 
-	float flVolume, soundlevel_t iSoundLevel, int iFlags, int iPitch, int iSpecialDSP,  
-	const Vector *pOrigin, const Vector *pDirection, CUtlVector< Vector >* pUtlVecOrigins, bool bUpdatePositions, float soundtime /*= 0.0f*/, int speakerentity /*= -1*/ )
+void CEngineSoundClient::EmitSoundInternal( IRecipientFilter& filter, int iEntIndex, int iChannel, const char *pSample,
+	float flVolume, soundlevel_t iSoundLevel, int iFlags, int iPitch, int iSpecialDSP,
+	const Vector *pOrigin, const Vector *pDirection, CUtlVector< Vector >* pUtlVecOrigins, bool bUpdatePositions, float soundtime /*= 0.0f*/, int speakerentity /*= -1*/,
+	unsigned int nSoundEntryHash /*= 0xffffffff*/ )
 {
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__ );
 	if (flVolume < 0 || flVolume > 1)
@@ -295,8 +310,33 @@ void CEngineSoundClient::EmitSoundInternal( IRecipientFilter& filter, int iEntIn
 	params.fromserver = false;
 	params.delay = delay;
 	params.speakerentity = speakerentity;
+	if ( nSoundEntryHash != 0xffffffff )
+	{
+		params.m_bIsScriptHandle = true;
+		params.m_nSoundScriptHash = nSoundEntryHash;
+	}
 
 	S_StartSound( params );
+}
+
+//-----------------------------------------------------------------------------
+// Emits a version 2 sound entry (its operator stacks run on the new channel)
+//-----------------------------------------------------------------------------
+void CEngineSoundClient::EmitSoundEntry( IRecipientFilter& filter, int iEntIndex, int iChannel, unsigned int nSoundEntryHash, const char *pSample,
+	float flVolume, soundlevel_t iSoundLevel, int iFlags, int iPitch, int iSpecialDSP,
+	const Vector *pOrigin, const Vector *pDirection, CUtlVector< Vector >* pUtlVecOrigins, bool bUpdatePositions, float soundtime /*= 0.0f*/, int speakerentity /*= -1*/ )
+{
+	VPROF( "CEngineSoundClient::EmitSoundEntry" );
+	if ( pSample && TestSoundChar( pSample, CHAR_SENTENCE ) )
+	{
+		// sentences have no sound entry operators
+		EmitSound( filter, iEntIndex, iChannel, pSample, flVolume, iSoundLevel, iFlags, iPitch, iSpecialDSP,
+			pOrigin, pDirection, pUtlVecOrigins, bUpdatePositions, soundtime, speakerentity );
+		return;
+	}
+	EmitSoundInternal( filter, iEntIndex, iChannel, pSample, flVolume, iSoundLevel,
+		iFlags, iPitch, iSpecialDSP, pOrigin, pDirection, pUtlVecOrigins, bUpdatePositions, soundtime, speakerentity,
+		nSoundEntryHash );
 }
 
 

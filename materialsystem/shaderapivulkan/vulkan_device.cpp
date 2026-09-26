@@ -624,6 +624,10 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	    m_computeCaps.compute ? "on" : "off", m_computeCaps.storageImages ? "on" : "off",
 	    m_computeCaps.rayQuery ? "on" : "off", VK_API_VERSION_MAJOR( m_computeCaps.deviceApiVersion ),
 	    VK_API_VERSION_MINOR( m_computeCaps.deviceApiVersion ) );
+	// Without BC the material system decompresses every DXT texture to RGBA,
+	// four to eight times the memory and sampling bandwidth.
+	std::fprintf( stderr, "[NativeVulkan] BC (DXT) textures %s\n",
+	    m_blockCompression ? "sampled compressed" : "unsupported: decompressed to RGBA" );
 	return true;
 }
 
@@ -1001,7 +1005,7 @@ bool CVulkanContext::CreateDepthResources( std::string *outError )
 
 bool CVulkanContext::CreateAttachmentPass( VkAttachmentLoadOp loadOp, VkImageLayout colorInitial,
     VkImageLayout colorFinal, VkImageLayout depthInitial, VkRenderPass *outPass,
-    VkFormat colorFormat, VkSampleCountFlagBits samples, std::string *outError )
+    VkFormat colorFormat, VkSampleCountFlagBits samples, std::string *outError, int keep )
 {
 	VkAttachmentDescription color = {};
 	color.format = colorFormat;
@@ -1018,15 +1022,21 @@ bool CVulkanContext::CreateAttachmentPass( VkAttachmentLoadOp loadOp, VkImageLay
 	colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	// Depth is stored, not discarded: a frame leaves the swapchain image for
-	// a render-target pass and comes back to it with its depth intact.
+	// a render-target pass and comes back to it with its depth intact. A plane
+	// not in `keep` (a pass after the frame's last use of it) is neither loaded
+	// nor stored, which on a tiled GPU saves two full-screen memory transfers.
+	const auto loadFor = [&]( int plane )
+	{ return ( keep & plane ) ? loadOp : VK_ATTACHMENT_LOAD_OP_DONT_CARE; };
+	const auto storeFor = [&]( int plane )
+	{ return ( keep & plane ) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE; };
 	VkAttachmentDescription depth = {};
 	depth.format = m_depthFormat;
 	depth.samples = samples;
-	depth.loadOp = loadOp;
-	depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	depth.loadOp = loadFor( kKeepDepth );
+	depth.storeOp = storeFor( kKeepDepth );
 	// Stencil persists like depth: portal recursion spans render passes.
-	depth.stencilLoadOp = loadOp;
-	depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+	depth.stencilLoadOp = loadFor( kKeepStencil );
+	depth.stencilStoreOp = storeFor( kKeepStencil );
 	depth.initialLayout = depthInitial;
 	depth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
@@ -1103,10 +1113,23 @@ bool CVulkanContext::CreateRenderPass( std::string *outError )
 	// dependencies must stay identical between them.
 	auto makePass = [&]( VkAttachmentLoadOp loadOp, VkImageLayout colorInitial,
 	                    VkImageLayout colorFinal, VkImageLayout depthInitial, VkRenderPass *outPass,
-	                    VkFormat colorFormat ) -> bool
+	                    VkFormat colorFormat, int keep = kKeepDepthStencil ) -> bool
 	{
 		return CreateAttachmentPass( loadOp, colorInitial, colorFinal, depthInitial, outPass,
-		    colorFormat, VK_SAMPLE_COUNT_1_BIT, outError );
+		    colorFormat, VK_SAMPLE_COUNT_1_BIT, outError, keep );
+	};
+	// The back buffer's load passes that keep less than depth and stencil.
+	auto makeKeepPasses = [&]( bool srgb, VkFormat colorFormat ) -> bool
+	{
+		for ( int keep = kKeepNone; keep < kKeepDepthStencil; ++keep )
+		{
+			if ( !makePass( VK_ATTACHMENT_LOAD_OP_LOAD, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+			         &m_renderPassLoadKeep[srgb][keep], colorFormat, keep ) )
+				return false;
+		}
+		return true;
 	};
 
 	// The frame's first pass clears the swapchain image and leaves it in a
@@ -1120,6 +1143,7 @@ bool CVulkanContext::CreateRenderPass( std::string *outError )
 	           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 	           VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassLoad,
 	           m_swapFormat ) &&
+	       makeKeepPasses( false, m_swapFormat ) &&
 	       makePass( VK_ATTACHMENT_LOAD_OP_LOAD, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	           VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassTarget,
@@ -1129,6 +1153,7 @@ bool CVulkanContext::CreateRenderPass( std::string *outError )
 	                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 	                 VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassLoadSrgb,
 	                 m_swapFormatSrgb ) &&
+	               makeKeepPasses( true, m_swapFormatSrgb ) &&
 	               makePass( VK_ATTACHMENT_LOAD_OP_LOAD, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassTargetSrgb,
@@ -5471,7 +5496,7 @@ void CVulkanContext::GetTargetExtent( int target, uint32_t *outW, uint32_t *outH
 	*outH = m_swapExtent.height;
 }
 
-void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb )
+void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb, int keep )
 {
 	// Re-entering a target loads what it already holds; clears arrive as
 	// explicit records, exactly where the engine issued them. `srgb` enters it
@@ -5492,7 +5517,12 @@ void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb
 	}
 	else
 	{
-		rp.renderPass = srgb ? m_renderPassLoadSrgb : m_renderPassLoad;
+		// Load/store ops are outside render-pass compatibility, so the passes
+		// that keep less use the same framebuffers and pipelines.
+		if ( keep == kKeepDepthStencil || m_renderPassLoadKeep[srgb][keep] == VK_NULL_HANDLE )
+			rp.renderPass = srgb ? m_renderPassLoadSrgb : m_renderPassLoad;
+		else
+			rp.renderPass = m_renderPassLoadKeep[srgb][keep];
 		rp.framebuffer =
 		    srgb ? m_framebuffersSrgb[m_acquiredImage] : m_framebuffers[m_acquiredImage];
 	}
@@ -5510,17 +5540,27 @@ void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb
 		    srgb ? " (sRGB)" : "" );
 		m_debugUtils.InsertLabel( label );
 	}
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+	{
+		static const char *const kKinds[] = { "pass (no depth, no stencil)", "pass (no stencil)",
+			"pass (no depth)", "pass" };
+		const bool reduced = rp.renderPass != m_renderPassLoad && rp.renderPass != m_renderPassLoadSrgb &&
+		                     target < 0 && m_activeSamples <= 1;
+		GpuTimerMark( cmd, GpuTimerTargetLabel( kKinds[reduced ? keep : kKeepDepthStencil], target, srgb ) );
+	}
 	vkCmdBeginRenderPass( cmd, &rp, VK_SUBPASS_CONTENTS_INLINE );
 	m_frameCost.Add( kCostRenderPass, 0 );
 }
 
 void CVulkanContext::NameManagedTexture( int handle, const char *name )
 {
-	if ( !m_debugUtils.Active() || !name || handle < 0 ||
-	     handle >= static_cast<int>( m_managedTextures.size() ) )
+	if ( !name || handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) )
 		return;
 	ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
+	// Kept without debug utils too: the GPU timers label passes by target.
 	t.debugName = name;
+	if ( !m_debugUtils.Active() )
+		return;
 	m_debugUtils.Name( VK_OBJECT_TYPE_IMAGE, t.image, name );
 	m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE_VIEW, t.view, "%s view", name );
 	m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE_VIEW, t.srgbView, "%s sRGB view", name );
@@ -5587,6 +5627,40 @@ static bool SrgbCapableShader( int shaderIndex )
 	       shaderIndex == CVulkanContext::kDynShaderPaintBlob;
 }
 
+int CVulkanContext::RecordBackBufferDepthUse( const DynDraw &r )
+{
+	if ( r.target != -1 )
+		return kKeepNone;
+	switch ( r.kind )
+	{
+	case kRecordDraw:
+	{
+		// A test that always passes and writes nothing reads nothing either.
+		const DynRasterState &s = r.raster;
+		const bool depth =
+		    s.depthWrite || ( s.depthTest && s.depthCompare != VK_COMPARE_OP_ALWAYS );
+		const bool stencilOps = s.stencilPass != VK_STENCIL_OP_KEEP ||
+		                        s.stencilFail != VK_STENCIL_OP_KEEP ||
+		                        s.stencilDepthFail != VK_STENCIL_OP_KEEP;
+		const bool stencil =
+		    s.stencilEnable && ( s.stencilCompare != VK_COMPARE_OP_ALWAYS || stencilOps );
+		return ( depth ? kKeepDepth : 0 ) | ( stencil ? kKeepStencil : 0 );
+	}
+	case kRecordClear:
+		return ( r.clearDepth ? kKeepDepth : 0 ) | ( r.clearStencil ? kKeepStencil : 0 );
+	case kRecordCopy:
+		return kKeepNone; // color only (RecordTargetCopy)
+	case kRecordQueryBegin:
+	case kRecordQueryEnd:
+		// A query counts the samples of the draws inside it, which are judged
+		// by their own state (the auto-exposure histogram draws at the end of
+		// every HDR frame test no depth).
+		return kKeepNone;
+	default:
+		return kKeepDepthStencil; // scene captures (they copy depth) and anything new
+	}
+}
+
 bool CVulkanContext::RecordWantsSrgb( const DynDraw &r ) const
 {
 	return m_srgbAttachments && r.kind == kRecordDraw && SrgbCapableShader( r.shaderIndex ) &&
@@ -5635,6 +5709,8 @@ bool CVulkanContext::FirstPassWantsSrgb() const
 void CVulkanContext::RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy )
 {
 	ScopedDebugLabel label( m_debugUtils, "copy to render target" );
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+		GpuTimerMark( cmd, GpuTimerTargetLabel( "copy to", copy.copyDst, false ) );
 	// Called outside any render pass. The source is the swapchain image (resting
 	// in COLOR_ATTACHMENT_OPTIMAL between passes) or a render-target texture
 	// (resting in SHADER_READ_ONLY); the destination is always a render target.
@@ -6389,9 +6465,16 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	m_recordBeginUs = FrameClockMicros();
 	if ( m_timestampPool != VK_NULL_HANDLE )
 	{
-		const uint32_t first = m_currentFrame * 2;
-		vkCmdResetQueryPool( cmd, m_timestampPool, first, 2 );
+		const uint32_t first = m_currentFrame * kTimestampsPerFrame;
+		vkCmdResetQueryPool( cmd, m_timestampPool, first, kTimestampsPerFrame );
 		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_timestampPool, first );
+	}
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+	{
+		m_gpuTimerLabels[m_currentFrame].clear();
+		vkCmdResetQueryPool(
+		    cmd, m_gpuTimerPool, m_currentFrame * kMaxGpuTimerMarks, kMaxGpuTimerMarks );
+		GpuTimerMark( cmd, "frame start: compute, uploads" );
 	}
 	// Compute work queued since the last frame (RFC 0011 G5), ahead of every
 	// render pass; its barriers make the writes visible to this frame's draws.
@@ -6450,6 +6533,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	rp.pClearValues = clears;
 	m_debugUtils.InsertLabel(
 	    firstPassSrgb ? "pass: back buffer, cleared (sRGB)" : "pass: back buffer, cleared" );
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+		GpuTimerMark( cmd, GpuTimerTargetLabel( "pass (cleared)", -1, firstPassSrgb ) );
 	vkCmdBeginRenderPass( cmd, &rp, VK_SUBPASS_CONTENTS_INLINE );
 	m_frameCost.Add( kCostRenderPass, 0 );
 
@@ -6632,6 +6717,23 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		// merging the pass reopens at once and every copy is made.
 		bool passOpen = true;
 		const DynDraw *lastCopy = nullptr;
+		// Records before these indices may use the back buffer's depth or its
+		// stencil; a back-buffer pass that begins at or after one neither loads
+		// nor stores that plane (BeginTargetPass keep).
+		size_t depthEnd = 0, stencilEnd = 0;
+		for ( size_t i = 0; i < m_dynDrawRecords.size(); ++i )
+		{
+			const int use = RecordBackBufferDepthUse( m_dynDrawRecords[i] );
+			if ( use & kKeepDepth )
+				depthEnd = i + 1;
+			if ( use & kKeepStencil )
+				stencilEnd = i + 1;
+		}
+		const auto keepFrom = [&]( size_t record )
+		{
+			return ( record < depthEnd ? kKeepDepth : 0 ) |
+			       ( record < stencilEnd ? kKeepStencil : 0 );
+		};
 		// Whether the latest scene capture holds this view's depth (glass reads it).
 		bool sceneDepthValid = false;
 		size_t labelCursor = 0;
@@ -6664,7 +6766,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				lastCopy = &d;
 				if ( !m_passMerging )
 				{
-					BeginTargetPass( cmd, openTarget, openSrgb );
+					BeginTargetPass( cmd, openTarget, openSrgb, keepFrom( recordIndex + 1 ) );
 					passOpen = true;
 				}
 				continue;
@@ -6695,7 +6797,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					vkCmdEndRenderPass( cmd );
 				openTarget = d.target;
 				openSrgb = wantSrgb;
-				BeginTargetPass( cmd, openTarget, openSrgb );
+				BeginTargetPass( cmd, openTarget, openSrgb, keepFrom( recordIndex ) );
 				passOpen = true;
 				boundPipeline = VK_NULL_HANDLE;
 			}
@@ -7517,7 +7619,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		{
 			if ( passOpen )
 				vkCmdEndRenderPass( cmd );
-			BeginTargetPass( cmd, -1 );
+			// Only the present follows: no depth or stencil use remains.
+			BeginTargetPass( cmd, -1, false, kKeepNone );
 		}
 	}
 	// NOTE: the queue is NOT cleared here. It is cleared at frame start
@@ -7886,6 +7989,8 @@ void CVulkanContext::DestroyMsaaPasses()
 void CVulkanContext::ResolveBackBuffer( VkCommandBuffer cmd, uint32_t imageIndex )
 {
 	ScopedDebugLabel label( m_debugUtils, "MSAA resolve" );
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+		GpuTimerMark( cmd, "MSAA resolve" );
 	VkImageMemoryBarrier in[2] = {};
 	for ( VkImageMemoryBarrier &b : in )
 	{
@@ -8385,6 +8490,11 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	const VkImageLayout backBufferLayout = captureBackBuffer
 	                                           ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
 	                                           : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	if ( m_timestampPool != VK_NULL_HANDLE )
+		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool,
+		    m_currentFrame * kTimestampsPerFrame + 1 );
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+		GpuTimerMark( cmd, "present (waits for the swapchain image)" );
 	ApplyPublishedGammaRamp();
 	if ( !m_gammaActive ||
 	     !RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
@@ -8395,7 +8505,9 @@ bool CVulkanContext::EndFrame( std::string *outError )
 		m_computeFlush( cmd, m_submitSerial + 1 );
 	if ( m_timestampPool != VK_NULL_HANDLE )
 		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool,
-		    m_currentFrame * 2 + 1 );
+		    m_currentFrame * kTimestampsPerFrame + 2 );
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+		GpuTimerMark( cmd, "end" );
 	m_debugUtils.EndFrameCommands();
 	VkResult r = vkEndCommandBuffer( cmd );
 	m_frameCost.Add( kCostRecord, FrameClockMicros() - m_recordBeginUs );
@@ -8677,7 +8789,7 @@ void CVulkanContext::CreateTimestampPool()
 	VkQueryPoolCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
 	info.queryType = VK_QUERY_TYPE_TIMESTAMP;
-	info.queryCount = kMaxFramesInFlight * 2;
+	info.queryCount = kMaxFramesInFlight * kTimestampsPerFrame;
 	if ( vkCreateQueryPool( m_device, &info, nullptr, &m_timestampPool ) != VK_SUCCESS )
 	{
 		m_timestampPool = VK_NULL_HANDLE;
@@ -8693,15 +8805,99 @@ void CVulkanContext::ReadSlotGpuTime( uint32_t slot )
 	// Called once the slot's fence has signalled: its timestamps are final.
 	if ( m_timestampPool == VK_NULL_HANDLE || m_slotStatsFrame[slot] == 0 )
 		return;
-	uint64_t stamps[2] = { 0, 0 };
-	if ( vkGetQueryPoolResults( m_device, m_timestampPool, slot * 2, 2, sizeof( stamps ), stamps,
+	const auto micros = [this]( uint64_t from, uint64_t to )
+	{
+		return static_cast<uint64_t>(
+		    double( ( to - from ) & m_timestampMask ) * m_timestampPeriodNs / 1000.0 );
+	};
+	uint64_t stamps[kTimestampsPerFrame] = {};
+	if ( vkGetQueryPoolResults( m_device, m_timestampPool, slot * kTimestampsPerFrame,
+	         kTimestampsPerFrame, sizeof( stamps ), stamps, sizeof( uint64_t ),
+	         VK_QUERY_RESULT_64_BIT ) == VK_SUCCESS )
+	{
+		m_gpuResultFrame = m_slotStatsFrame[slot];
+		m_gpuRenderUs = micros( stamps[0], stamps[1] );
+		m_gpuResultUs = micros( stamps[0], stamps[2] );
+	}
+	m_gpuTimerResult.clear();
+	const std::vector<std::string> &labels = m_gpuTimerLabels[slot];
+	std::vector<uint64_t> marks( labels.size() );
+	if ( m_gpuTimerPool != VK_NULL_HANDLE && marks.size() > 1 &&
+	     vkGetQueryPoolResults( m_device, m_gpuTimerPool, slot * kMaxGpuTimerMarks,
+	         static_cast<uint32_t>( marks.size() ), marks.size() * sizeof( uint64_t ), marks.data(),
 	         sizeof( uint64_t ), VK_QUERY_RESULT_64_BIT ) == VK_SUCCESS )
 	{
-		const uint64_t ticks = ( stamps[1] - stamps[0] ) & m_timestampMask;
-		m_gpuResultFrame = m_slotStatsFrame[slot];
-		m_gpuResultUs = static_cast<uint64_t>( double( ticks ) * m_timestampPeriodNs / 1000.0 );
+		// Each segment runs from its mark to the next; totals per label, in
+		// the order the labels first appear.
+		for ( size_t i = 0; i + 1 < marks.size(); ++i )
+		{
+			const uint64_t us = micros( marks[i], marks[i + 1] );
+			size_t at = 0;
+			while ( at < m_gpuTimerResult.size() && m_gpuTimerResult[at].label != labels[i] )
+				++at;
+			if ( at == m_gpuTimerResult.size() )
+				m_gpuTimerResult.push_back( { labels[i], 0, 0 } );
+			++m_gpuTimerResult[at].count;
+			m_gpuTimerResult[at].us += us;
+		}
 	}
+	m_gpuTimerLabels[slot].clear();
 	m_slotStatsFrame[slot] = 0;
+}
+
+bool CVulkanContext::EnableGpuTimers( std::string *outError )
+{
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+		return true;
+	// The frame timestamps' pool exists only where the queue has timestamps.
+	if ( m_timestampPool == VK_NULL_HANDLE )
+	{
+		SetError( outError, "the graphics queue has no timestamps" );
+		return false;
+	}
+	VkQueryPoolCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+	info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+	info.queryCount = kMaxFramesInFlight * kMaxGpuTimerMarks;
+	if ( vkCreateQueryPool( m_device, &info, nullptr, &m_gpuTimerPool ) != VK_SUCCESS )
+	{
+		m_gpuTimerPool = VK_NULL_HANDLE;
+		SetError( outError, "vkCreateQueryPool (GPU timers) failed" );
+		return false;
+	}
+	return true;
+}
+
+void CVulkanContext::GpuTimerMark( VkCommandBuffer cmd, std::string label )
+{
+	// A frame with more boundaries than marks times its tail as one segment.
+	std::vector<std::string> &labels = m_gpuTimerLabels[m_currentFrame];
+	if ( labels.size() >= kMaxGpuTimerMarks )
+		return;
+	for ( char &c : label )
+	{
+		if ( c == '"' || c == '\\' || static_cast<unsigned char>( c ) < 0x20 )
+			c = '_';
+	}
+	vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_gpuTimerPool,
+	    m_currentFrame * kMaxGpuTimerMarks + static_cast<uint32_t>( labels.size() ) );
+	labels.push_back( std::move( label ) );
+}
+
+std::string CVulkanContext::GpuTimerTargetLabel( const char *kind, int target, bool srgb ) const
+{
+	uint32_t width = 0, height = 0;
+	GetTargetExtent( target, &width, &height );
+	const std::string *name = IsRenderTargetTexture( target )
+	                              ? &m_managedTextures[static_cast<size_t>( target )].debugName
+	                              : nullptr;
+	char label[192];
+	std::snprintf( label, sizeof( label ), "%s %s %ux%u%s", kind,
+	    !name           ? "back buffer"
+	    : name->empty() ? "render target"
+	                    : name->c_str(),
+	    width, height, srgb ? " sRGB" : "" );
+	return label;
 }
 
 bool CVulkanContext::OpenFrameStats( const char *path, std::string *outError )
@@ -8802,9 +8998,20 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 			std::fputs( "]}", m_frameStatsFile );
 		}
 		if ( m_gpuResultFrame )
-			std::fprintf( m_frameStatsFile, ",\"gpu\":[%llu,%llu]",
+			std::fprintf( m_frameStatsFile, ",\"gpu\":[%llu,%llu,%llu]",
 			    static_cast<unsigned long long>( m_gpuResultFrame ),
-			    static_cast<unsigned long long>( m_gpuResultUs ) );
+			    static_cast<unsigned long long>( m_gpuResultUs ),
+			    static_cast<unsigned long long>( m_gpuRenderUs ) );
+		if ( m_gpuResultFrame && !m_gpuTimerResult.empty() )
+		{
+			// Labels hold only JSON-safe characters (GpuTimerMark).
+			std::fputs( ",\"gpu_passes\":[", m_frameStatsFile );
+			for ( size_t i = 0; i < m_gpuTimerResult.size(); ++i )
+				std::fprintf( m_frameStatsFile, "%s[\"%s\",%u,%llu]", i ? "," : "",
+				    m_gpuTimerResult[i].label.c_str(), m_gpuTimerResult[i].count,
+				    static_cast<unsigned long long>( m_gpuTimerResult[i].us ) );
+			std::fputc( ']', m_frameStatsFile );
+		}
 		// The present mode, whenever it differs from the last one recorded.
 		if ( static_cast<int>( m_presentMode ) != m_statsPresentMode )
 		{
@@ -9042,6 +9249,11 @@ void CVulkanContext::Shutdown()
 			vkDestroyQueryPool( m_device, m_timestampPool, nullptr );
 			m_timestampPool = VK_NULL_HANDLE;
 		}
+		if ( m_gpuTimerPool != VK_NULL_HANDLE )
+		{
+			vkDestroyQueryPool( m_device, m_gpuTimerPool, nullptr );
+			m_gpuTimerPool = VK_NULL_HANDLE;
+		}
 		if ( m_pipelineCache != VK_NULL_HANDLE )
 		{
 			vkDestroyPipelineCache( m_device, m_pipelineCache, nullptr );
@@ -9079,6 +9291,15 @@ void CVulkanContext::Shutdown()
 			{
 				vkDestroyRenderPass( m_device, *pass, nullptr );
 				*pass = VK_NULL_HANDLE;
+			}
+		}
+		for ( auto &byView : m_renderPassLoadKeep )
+		{
+			for ( VkRenderPass &pass : byView )
+			{
+				if ( pass != VK_NULL_HANDLE )
+					vkDestroyRenderPass( m_device, pass, nullptr );
+				pass = VK_NULL_HANDLE;
 			}
 		}
 

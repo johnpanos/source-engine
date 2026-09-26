@@ -5,6 +5,11 @@
 //===========================================================================//
 
 #include "audio_pch.h"
+#include "snd_dma.h"
+#include "sys_dll.h"
+#include "SoundEmitterSystem/isoundemittersystembase.h"
+#include "snd_op_sys/sos_compat.h"
+#include "snd_op_sys/sos_system.h"
 #include "const.h"
 #include "cdll_int.h"
 #include "client_class.h"
@@ -38,7 +43,6 @@
 #include "pure_server.h"
 #include "filesystem/IQueuedLoader.h"
 #include "voice.h"
-#include "snd_mixgroups.h"
 
 #include "replay/iclientreplaycontext.h"
 #include "replay/ireplaymovierenderer.h"
@@ -64,8 +68,7 @@ extern IVideoServices *g_pVideo;
 //
 //#define DEBUG_CHANNELS
 
-#define SNDLVL_TO_DIST_MULT( sndlvl ) ( sndlvl ? ((pow( 10.0f, snd_refdb.GetFloat() / 20 ) / pow( 10.0f, (float)sndlvl / 20 )) / snd_refdist.GetFloat()) : 0 )
-#define DIST_MULT_TO_SNDLVL( dist_mult ) (soundlevel_t)(int)( dist_mult ? ( 20 * log10( pow( 10.0f, snd_refdb.GetFloat() / 20 ) / (dist_mult * snd_refdist.GetFloat()) ) ) : 0 )
+// SNDLVL_TO_DIST_MULT and DIST_MULT_TO_SNDLVL are in snd_dma.h.
 
 extern ConVar dsp_spatial;
 extern IPhysicsSurfaceProps	*physprop;
@@ -86,10 +89,10 @@ float SND_GetGainObscured( channel_t *ch, bool fplayersound, bool flooping, bool
 void DSP_ChangePresetValue( int idsp, int channel, int iproc, float value );
 bool DSP_CheckDspAutoEnabled( void );
 void DSP_SetDspAuto( int dsp_preset );
-float dB_To_Radius ( float db );
 int dsp_room_GetInt ( void );
 
-// Sound mixers (mix group rules, mixers, mix layers): snd_mixgroups.cpp.
+// Sound mixers (mix groups, mixers, mix layers) live in snd_mixgroups.cpp.
+#include "snd_mixgroups.h"
 
 void ChannelSetVolTargets( channel_t *pch, int *pvolumes, int ivol_offset, int cvol );
 void ChannelUpdateVolXfade( channel_t *pch );
@@ -121,6 +124,7 @@ static float g_DashboardMusicMixValue = 1.0f;
 static float g_DashboardMusicMixTarget = 1.0f;
 const float g_DashboardMusicFadeRate = 0.5f;	// Fades one half full-scale volume per second (two seconds for complete fadeout)
 
+
 // this is used to enable/disable music playback on x360 when the user selects his own soundtrack to play
 void S_EnableMusic( bool bEnable )
 {
@@ -142,11 +146,19 @@ bool IsSoundSourceLocalPlayer( int soundsource )
 	return ( soundsource == g_pSoundServices->GetViewEntity() );
 }
 
+// Scratch state the sound operator system reads while it runs a stack.
+CScratchPad g_scratchpad;
+
+// The sound operator system's name for the view entity test (one listener here).
+bool IsSoundSourceViewEntity( int soundsource )
+{
+	return ( soundsource == g_pSoundServices->GetViewEntity() );
+}
+
 CThreadMutex g_SndMutex;
 
 #define THREAD_LOCK_SOUND() AUTO_LOCK( g_SndMutex )
 
-const int MASK_BLOCK_AUDIO = CONTENTS_SOLID|CONTENTS_MOVEABLE|CONTENTS_WINDOW;
 
 void CActiveChannels::Add( channel_t *pChannel )
 {
@@ -667,6 +679,9 @@ void S_Init( void )
 
 	MXR_LoadAllSoundMixers();
 
+	// Operator stacks for version 2 sound entries (scripts/sound_operator_stacks.txt).
+	g_pSoundOperatorSystem->Init();
+
 	S_StopAllSounds( true );
 
 	TRACEINIT( audiosourcecache->Init( host_parms.memsize >> 2 ), audiosourcecache->Shutdown() );
@@ -712,6 +727,7 @@ void S_Shutdown(void)
 	FreeDsps( true );
 
 	MXR_ReleaseMemory();
+	g_pSoundOperatorSystem->Shutdown();
 
 	// release sentences resources
 	TRACESHUTDOWN( VOX_Shutdown() );
@@ -1521,7 +1537,19 @@ extern ConVar dsp_off;
 // This ramp changes with db level of sound source,  and is set in the dsp room presets by room size
 // empirical data: 0.78 is nominal mix for sound 100% at far end of room, 0.24 is mix for sound 25% into room
 
-float SND_GetDspMix( channel_t *pchannel, int idist)
+float SND_GetDspMix( channel_t *pchannel, int idist )
+{
+	// doppler wavs are mixed dry
+
+	if ( pchannel->wavtype == CHAR_DOPPLER )
+		return 0.0;
+
+	return SND_GetDspMix( pchannel, idist, SND_GetSndlvl( pchannel ) );
+}
+
+// With an explicit sound level (the sound operator system's calc_distant_dsp
+// passes the mixer adjusted level).
+float SND_GetDspMix( channel_t *pchannel, int idist, float flSndlvl )
 {
 	float mix;
 	float dist = (float)idist;
@@ -1541,10 +1569,9 @@ float SND_GetDspMix( channel_t *pchannel, int idist)
 		// sounds below dsp_db_min decrease dsp_mix_min & dsp_mix_max by N%
 		// ie: quiet sounds get less dsp mix than loud sounds
 
-		soundlevel_t sndlvl = SND_GetSndlvl( pchannel ); 
 		soundlevel_t sndlvl_min = (soundlevel_t)(dsp_db_min.GetInt());
-		
-		if (sndlvl <= sndlvl_min)
+
+		if ( (int)flSndlvl <= sndlvl_min )
 		{
 			mix_min *= dsp_db_mixdrop.GetFloat();
 			mix_max *= dsp_db_mixdrop.GetFloat();
@@ -1562,11 +1589,6 @@ float SND_GetDspMix( channel_t *pchannel, int idist)
 	// dspmix is 0 (100% mix to facing buffer) if dsp_off
 
 	if ( dsp_off.GetInt() )
-		return 0.0;
-
-	// doppler wavs are mixed dry
-
-	if ( pchannel->wavtype == CHAR_DOPPLER )
 		return 0.0;
 
 	// linear ramp - get dry mix %
@@ -1788,10 +1810,6 @@ ConVar snd_showstart( "snd_showstart", "0", FCVAR_CHEAT );	// showstart always s
 												// 5 - show dB loss due to obscured sound
 												// 6 - reserved
 												// 7 - show 2 and total gain & dist in ft. to sound source
-
-#define SND_DB_MAX				140.0	// max db of any sound source
-#define SND_DB_MED				90.0	// db at which compression curve changes
-#define SND_DB_MIN				60.0	// min db of any sound source
 
 #define SND_GAIN_PLAYER_WEAPON_DB 2.0	// increase player weapon gain by N dB
 
@@ -2191,15 +2209,7 @@ float SND_GetGainObscured( channel_t *ch, bool fplayersound, bool flooping, bool
 // convert sound db level to approximate sound source radius,
 // used only for determining how much of sound is obscured by world
 
-#define SND_RADIUS_MAX		(20.0 * 12.0)	// max sound source radius
-#define SND_RADIUS_MIN		(2.0 * 12.0)	// min sound source radius
-
-inline float dB_To_Radius ( float db )
-{
-	float radius = SND_RADIUS_MIN + (SND_RADIUS_MAX - SND_RADIUS_MIN) * (db - SND_DB_MIN) / (SND_DB_MAX - SND_DB_MIN);
-
-	return radius;
-}
+// SND_RADIUS_MAX/MIN and dB_To_Radius are in snd_dma.h.
 
 struct snd_spatial_t
 {
@@ -4145,6 +4155,191 @@ void SND_ActivateChannel( channel_t *pChannel )
 	Q_memset( pChannel, 0, sizeof(*pChannel) );
 	g_ActiveChannels.Add( pChannel );
 	pChannel->guid = ++s_nSoundGuid;
+	pChannel->m_nSoundScriptHash = SOUNDEMITTER_INVALID_HASH;
+}
+
+//-----------------------------------------------------------------------------
+// Sound operator system (version 2 sound entries)
+//-----------------------------------------------------------------------------
+ConVar snd_sos_exec_when_paused( "snd_sos_exec_when_paused", "1" );
+ConVar snd_sos_show_client_rcv( "snd_sos_show_client_rcv", "0", FCVAR_CHEAT, "Show sound entries received with their operator stacks." );
+ConVar snd_sos_show_block_debug( "snd_sos_show_block_debug", "0", FCVAR_CHEAT, "Spew data about the list of block entries." );
+
+// Records the sound entry that started a channel and builds the channel's
+// operator stacks (update and stop) from the entry's operator_stacks block.
+static void S_InitChannelSoundEntry( channel_t *ch, const StartSoundParams_t &params )
+{
+	ch->m_pStackList = NULL;
+	ch->m_nSoundScriptHash = params.m_bIsScriptHandle ? params.m_nSoundScriptHash : SOUNDEMITTER_INVALID_HASH;
+	if ( !params.m_bIsScriptHandle || !params.m_pOperatorsKV )
+		return;
+
+	stack_data_t stackData;
+	stackData.m_pOperatorsKV = params.m_pOperatorsKV;
+	stackData.m_nSoundScriptHash = params.m_nSoundScriptHash;
+	stackData.m_nGuid = ch->guid;
+	stackData.m_flStartTime = g_pSoundServices->GetHostTime() - params.opStackElapsedTime;
+
+	ch->m_pStackList = S_InitChannelOperators( stackData );
+	if ( ch->m_pStackList && params.opStackElapsedStopTime > 0.0f )
+	{
+		ch->m_pStackList->SetStopTime( g_pSoundServices->GetHostTime() - params.opStackElapsedStopTime );
+	}
+}
+
+// Runs a channel's update stack in place of the legacy spatialization.
+void SND_ExecuteUpdateOperators( channel_t *ch )
+{
+	// don't execute operators if game is paused
+	if ( g_pSoundServices->IsGamePaused() && !snd_sos_exec_when_paused.GetInt() )
+		return;
+
+	if ( !ch->m_pStackList || !ch->m_pStackList->HasStack( CSosOperatorStack::SOS_UPDATE ) )
+		return;
+
+	VPROF( "SND_ExecuteUpdateOperators" );
+
+	g_scratchpad.SetPerExecution( ch, NULL );
+	ch->m_pStackList->Execute( CSosOperatorStack::SOS_UPDATE, ch, &g_scratchpad );
+
+	// prevent left/right/front/rear/center volumes from changing too quickly & producing pops
+	ChannelUpdateVolXfade( ch );
+
+	// end of first time spatializing sound
+	if ( SND_IsInGame() || toolframework->InToolMode() )
+	{
+		ch->flags.bfirstpass = false;
+	}
+}
+
+bool S_GetParametersForSoundHash( HSOUNDSCRIPTHASH hash, CSoundParameters &params, gender_t gender )
+{
+	ISoundEmitterSystemBase *pEmitter = S_GetSoundEmitterSystem();
+	ISoundEmitterSystemEntries *pEntries = S_GetSoundEmitterEntries();
+	if ( !pEmitter || !pEntries )
+		return false;
+	const char *pName = pEntries->GetSoundNameForHash( hash );
+	if ( !pName )
+		return false;
+	return pEmitter->GetParametersForSound( pName, params, gender, true );
+}
+
+//-----------------------------------------------------------------------------
+// Starts a sound entry: checks the entry block list, runs the entry's cue
+// ("prestart") and start stacks, then starts the channel whose update and stop
+// stacks run for its lifetime. params.pSfx may be NULL when an operator
+// started the entry; the entry's wave is used then.
+//-----------------------------------------------------------------------------
+int S_StartSoundEntry( StartSoundParams_t &pStartParams, int nSeed, bool bFromPrestart )
+{
+	ISoundEmitterSystemEntries *pEmitter = S_GetSoundEmitterEntries();
+	const char *pEntryName = pEmitter ? pEmitter->GetSoundNameForHash( pStartParams.m_nSoundScriptHash ) : NULL;
+	if ( !pEntryName )
+	{
+		DevMsg( "Error: unknown sound entry hash %u; playing its wave without operators\n", pStartParams.m_nSoundScriptHash );
+		pStartParams.m_bIsScriptHandle = false;
+		return pStartParams.pSfx ? S_StartSound( pStartParams ) : 0;
+	}
+
+	pStartParams.m_pSoundEntryName = pEntryName;
+	pStartParams.m_pOperatorsKV = pEmitter->GetOperatorKVByHandle( pStartParams.m_nSoundScriptHash );
+
+	if ( snd_sos_show_client_rcv.GetInt() )
+	{
+		Msg( "Client: Received SoundEntry: %u : %s : %s : operators: %s\n", pStartParams.m_nSoundScriptHash, pEntryName,
+			pStartParams.pSfx ? pStartParams.pSfx->getname() : "(entry wave)", pStartParams.m_pOperatorsKV ? "true" : "false" );
+	}
+
+	// only an actual start (not a volume/pitch change) is blockable and runs
+	// the cue and start stacks
+	bool bIsStart = !( pStartParams.flags & ( SND_STOP | SND_CHANGE_VOL | SND_CHANGE_PITCH ) );
+	if ( pStartParams.m_pOperatorsKV && bIsStart )
+	{
+		// check for a blocked entry
+		CSosEntryMatch sosEntryMatch;
+		V_strncpy( sosEntryMatch.m_nMatchString1, pEntryName, sizeof( sosEntryMatch.m_nMatchString1 ) );
+		sosEntryMatch.m_nMatchInt1 = pStartParams.entchannel;
+		sosEntryMatch.m_nMatchInt2 = pStartParams.soundsource;
+		if ( g_pSoundOperatorSystem->m_sosEntryBlockList.HasAMatch( &sosEntryMatch ) )
+		{
+			if ( snd_sos_show_block_debug.GetInt() )
+			{
+				Msg( "Entry Blocked: %s\n", pEntryName );
+			}
+			return 0;
+		}
+
+		stack_data_t stackData;
+		stackData.m_nSoundScriptHash = pStartParams.m_nSoundScriptHash;
+		stackData.m_pOperatorsKV = pStartParams.m_pOperatorsKV;
+
+		if ( !bFromPrestart )
+		{
+			g_scratchpad.SetPerExecution( NULL, &pStartParams );
+			CSosOperatorStack *pCueStack = S_GetStack( CSosOperatorStack::SOS_CUE, stackData );
+			if ( pCueStack )
+			{
+				pCueStack->Execute( NULL, &g_scratchpad );
+				if ( snd_sos_show_operator_prestart.GetInt() )
+				{
+					pCueStack->Print( 0 );
+				}
+				pCueStack->Shutdown();
+				delete pCueStack;
+
+				if ( g_scratchpad.m_bBlockStart )
+				{
+					return 0;
+				}
+				if ( g_scratchpad.m_flDelayToQueue > 0.0 )
+				{
+					g_pSoundOperatorSystem->QueueStartEntry( pStartParams, g_scratchpad.m_flDelayToQueue, true );
+					return 0;
+				}
+			}
+		}
+
+		g_scratchpad.SetPerExecution( NULL, &pStartParams );
+		// A start stack's "delay" output replaces the requested delay; keep the
+		// requested (network scheduled) delay when the stack sets none.
+		g_scratchpad.m_flDelay = pStartParams.delay;
+		CSosOperatorStack *pStartStack = S_GetStack( CSosOperatorStack::SOS_START, stackData );
+		if ( pStartStack )
+		{
+			pStartStack->SetScriptHash( pStartParams.m_nSoundScriptHash );
+			pStartStack->Execute( NULL, &g_scratchpad );
+			if ( snd_sos_show_operator_start.GetInt() )
+			{
+				const char *pFilterString = snd_sos_show_operator_entry_filter.GetString();
+				if ( !pFilterString || !pFilterString[0] || V_stristr( pEntryName, pFilterString ) )
+				{
+					pStartStack->Print( 0 );
+				}
+			}
+			pStartStack->Shutdown();
+			delete pStartStack;
+
+			pStartParams.delay = g_scratchpad.m_flDelay;
+
+			if ( g_scratchpad.m_bBlockStart )
+			{
+				return 0;
+			}
+		}
+	}
+
+	if ( !pStartParams.pSfx )
+	{
+		CSoundParameters scriptParams;
+		if ( !S_GetSoundEmitterSystem()->GetParametersForSound( pEntryName, scriptParams, GENDER_NONE, true ) || !scriptParams.soundname[0] )
+			return 0;
+		pStartParams.pSfx = S_PrecacheSound( scriptParams.soundname );
+		if ( !pStartParams.pSfx )
+			return 0;
+	}
+
+	// operators are resolved; S_StartSound now takes the regular start path
+	return S_StartSound( pStartParams );
 }
 
 /*
@@ -4155,6 +4350,13 @@ SND_Spatialize
 void SND_Spatialize(channel_t *ch)
 {
 	VPROF("SND_Spatialize");
+
+	// Version 2 sound entries: the entry's update stack does all spatialization.
+	if ( ch->m_pStackList && ch->m_pStackList->HasStack( CSosOperatorStack::SOS_UPDATE ) )
+	{
+		SND_ExecuteUpdateOperators( ch );
+		return;
+	}
 
     vec_t dist;
     Vector source_vec;
@@ -4177,19 +4379,6 @@ void SND_Spatialize(channel_t *ch)
 	ch->dspmix = 0;					// default mix 0% dsp_room fx
 	ch->distmix = 0;				// default 100% left (near) wav
 
-	// The current sound mixer and its mix layers give this channel's mix group
-	// a volume, a soundlevel scale and a DSP send scale. The soundlevel scale
-	// applies to the channel's dist_mult until the end of this function.
-	int last_mixgroupid;
-	mixervalues_t mixValues;
-	MXR_GetVolFromMixGroup( ch, &mixValues, &last_mixgroupid );
-	const float saveChannelDistMult = ch->dist_mult;
-	if ( mixValues.level != 1.0f && ch->dist_mult > 0 )
-	{
-		float soundlevel = (float)DIST_MULT_TO_SNDLVL( ch->dist_mult ) * mixValues.level;
-		ch->dist_mult = SNDLVL_TO_DIST_MULT( (int)soundlevel );
-	}
-
 	if ( ch->sfx && 
 		ch->sfx->pSource && 
 		ch->sfx->pSource->GetType() == CAudioSource::AUDIO_SOURCE_VOICE )
@@ -4210,6 +4399,26 @@ void SND_Spatialize(channel_t *ch)
 	{
 		fmusicsound = true;
 		fplayersound = false;
+	}
+
+	// map gain, sound level and dsp through the current mixer by mix group
+	int last_mixgroupid;
+	mixervalues_t mixValues;
+	MXR_GetVolFromMixGroup( ch, &mixValues, &last_mixgroupid );
+
+	// The mixer's level scales the sound level for this spatialization only.
+	// Mixers without per group levels (1.0) leave dist_mult untouched.
+	struct CRestoreDistMult
+	{
+		CRestoreDistMult( channel_t *pChannel ) : m_pChannel( pChannel ), m_flDistMult( pChannel->dist_mult ) {}
+		~CRestoreDistMult() { m_pChannel->dist_mult = m_flDistMult; }
+		channel_t *m_pChannel;
+		float m_flDistMult;
+	} restoreDistMult( ch );
+	if ( mixValues.level != 1.0f && ch->dist_mult > 0 )
+	{
+		float soundlevel = (float)DIST_MULT_TO_SNDLVL( ch->dist_mult ) * mixValues.level;
+		ch->dist_mult = SNDLVL_TO_DIST_MULT( (int)soundlevel );
 	}
 
 	// update channel's position in case ent that made the sound is moving.
@@ -4349,7 +4558,7 @@ void SND_Spatialize(channel_t *ch)
 	
 	// calculate dsp mix based on distance to listener & sound level (linear approximation)
 
-	ch->dspmix = mixValues.dsp * SND_GetDspMix( ch, dist );
+	ch->dspmix = SND_GetDspMix( ch, dist ) * mixValues.dsp;
 
 	// calculate sound source facing direction for CHAR_DIRECTIONAL wavs
 
@@ -4402,6 +4611,7 @@ void SND_Spatialize(channel_t *ch)
 
 	// map gain through global mixer by soundtype
 
+	// (mixValues was looked up at the top of this function)
 	gain *= mixValues.volume;
 
 	// if playing a word, get volume scale of word - scale gain
@@ -4468,7 +4678,6 @@ void SND_Spatialize(channel_t *ch)
 	// calculate total volume for display later
 	ch->last_vol = gain * (ch->master_vol/255.0);
 
-	ch->dist_mult = saveChannelDistMult;
 	return;
 
 ClearAllVolumes:
@@ -4481,7 +4690,6 @@ ClearAllVolumes:
 	// end of first time spatializing sound
 
 	ch->flags.bfirstpass = false;
-	ch->dist_mult = saveChannelDistMult;
 }           
 
 ConVar snd_defer_trace("snd_defer_trace","1");
@@ -4522,6 +4730,21 @@ void SND_SpatializeFirstFrameNoTrace( channel_t *pChannel)
 // sfx contains a sentence name, shut off the sentence.
 // returns TRUE if sound was altered,
 // returns FALSE if sound was not found (sound is not playing)
+
+// A channel playing a version 2 sound entry stops through the entry's stop
+// stack; the stack may hold the channel (fade out, "stop_hold") and S_Update
+// frees it once the stack list reports stopped. Other channels stop at once.
+static void S_StopChannelForEntryOrFree( channel_t *pChannel )
+{
+	if ( pChannel->m_pStackList )
+	{
+		pChannel->m_pStackList->StopStacks( SOS_STOP_NORM );
+	}
+	else
+	{
+		S_FreeChannel( pChannel );
+	}
+}
 
 int S_AlterChannel( int soundsource, int entchannel, CSfxTable *sfx, int vol, int pitch, int flags )
 {
@@ -4587,9 +4810,9 @@ int S_AlterChannel( int soundsource, int entchannel, CSfxTable *sfx, int vol, in
 			
 			if (flags & SND_STOP)
 			{
-				S_FreeChannel(&channels[ch_idx]);
+				S_StopChannelForEntryOrFree( &channels[ch_idx] );
 			}
-		
+
 			if ( ( flags & SND_IGNORE_NAME ) == 0 )
 				return TRUE;
 			else
@@ -4841,6 +5064,18 @@ void ChannelSetVolTargets( channel_t *pch, int *pvolumes, int ivol_offset, int c
 	}
 }
 
+// Float targets (0.0-255.0), as the sound operator system's "speakers" output
+// produces them.
+void ChannelSetVolTargets( channel_t *pch, float *pvolumes, int ivol_offset, int cvol )
+{
+	Assert(ivol_offset + cvol <= CCHANVOLUMES);
+
+	for (int i = 0; i < cvol; i++)
+	{
+		ChannelSetVolTarget( pch, ivol_offset + i, (int)clamp( pvolumes[i], 0.0f, 255.0f ) );
+	}
+}
+
 
 // Call once per frame, per channel:
 // update all volume crossfades, from fvolume -> fvolume_target
@@ -4958,6 +5193,7 @@ int S_StartDynamicSound( StartSoundParams_t& params )
 
 	SND_ActivateChannel( target_chan );
 	ChannelClearVolumes( target_chan );
+	S_InitChannelSoundEntry( target_chan, params );
 
 	target_chan->userdata = params.userdata;
 	target_chan->initialStreamPosition = params.initialStreamPosition;
@@ -5265,6 +5501,7 @@ int S_StartStaticSound( StartSoundParams_t& params )
 
 	SND_ActivateChannel( ch );
 	ChannelClearVolumes( ch );
+	S_InitChannelSoundEntry( ch, params );
 
 	ch->userdata = params.userdata;
 	ch->initialStreamPosition = params.initialStreamPosition;
@@ -5495,6 +5732,13 @@ static ConVar snd_filter( "snd_filter", "", FCVAR_CHEAT );
 
 int S_StartSound( StartSoundParams_t& params )
 {
+	// Version 2 sound entries run their cue and start stacks first (blocking,
+	// polyphony limits, delays), then start through the path below.
+	// (m_pSoundEntryName is set once the entry has been resolved.)
+	if ( params.m_bIsScriptHandle && !params.m_pSoundEntryName && !( params.flags & SND_STOP ) )
+	{
+		return S_StartSoundEntry( params, -1, false );
+	}
 
 	if( ! params.pSfx )
 	{
@@ -5686,6 +5930,112 @@ float S_GetElapsedTimeByGuid( int guid )
 }
 
 //-----------------------------------------------------------------------------
+// Helpers for the sound operator system (snd_op_sys). Their scaling matches
+// the Portal 2-era engine the operator scripts were tuned against: elapsed
+// times are 100x seconds (callers multiply by 0.01).
+//-----------------------------------------------------------------------------
+float S_GetElapsedTime( const channel_t *pChannel )
+{
+	if ( !pChannel )
+		return 0.0f;
+
+	CAudioMixer *mixer = pChannel->pMixer;
+	if ( !mixer )
+		return 0.0f;
+
+	CAudioSource *pSource = mixer->GetSource();
+	if ( !pSource )
+		return 0.0f;
+
+	float divisor = ( pSource->SampleRate() * pChannel->pitch * 0.01f );
+	if ( divisor <= 0.0f )
+		return 0.0f;
+
+	return mixer->GetSamplePosition() / divisor;
+}
+
+float S_SoundDuration( channel_t *pChannel )
+{
+	if ( !pChannel || !pChannel->sfx || pChannel->basePitch <= 0 )
+		return 0.0f;
+
+	// NOTE: Looping sounds will return the length of a single loop
+	return AudioSource_GetSoundDuration( pChannel->sfx ) / ( pChannel->basePitch * 0.01f );
+}
+
+channel_t *S_FindChannelByScriptHash( unsigned int nHandle )
+{
+	CChannelList list;
+	g_ActiveChannels.GetActiveChannels( list );
+	for ( int i = 0; i < list.Count(); i++ )
+	{
+		channel_t *pChannel = list.GetChannel(i);
+		if ( pChannel->m_nSoundScriptHash == nHandle )
+		{
+			return pChannel;
+		}
+	}
+	return NULL;
+}
+
+void S_StopChannel( channel_t *pChannel )
+{
+	THREAD_LOCK_SOUND();
+	S_FreeChannel( pChannel );
+}
+
+float S_GetDashboarMusicMixValue()
+{
+	return g_DashboardMusicMixValue;
+}
+
+const char *S_GetLevelNameShort()
+{
+#ifndef DEDICATED
+	return cl.m_szLevelBaseName;
+#else
+	return "";
+#endif
+}
+
+ISoundEmitterSystemBase *S_GetSoundEmitterSystem()
+{
+	static ISoundEmitterSystemBase *s_pSoundEmitterSystem = NULL;
+	if ( !s_pSoundEmitterSystem && g_AppSystemFactory )
+	{
+		s_pSoundEmitterSystem = (ISoundEmitterSystemBase *)g_AppSystemFactory( SOUNDEMITTERSYSTEM_INTERFACE_VERSION, NULL );
+	}
+	return s_pSoundEmitterSystem;
+}
+
+ISoundEmitterSystemEntries *S_GetSoundEmitterEntries()
+{
+	static ISoundEmitterSystemEntries *s_pEntries = NULL;
+	if ( !s_pEntries )
+	{
+		ISoundEmitterSystemBase *pEmitter = S_GetSoundEmitterSystem();
+		if ( pEmitter )
+		{
+			s_pEntries = (ISoundEmitterSystemEntries *)pEmitter->QueryInterface(
+				SOUNDEMITTERSYSTEM_ENTRIES_INTERFACE_VERSION );
+		}
+	}
+	return s_pEntries;
+}
+
+// Pan a sound through the output device at full volume; the operators apply
+// volume themselves ("speakers_apply_volume").
+void Device_SpatializeChannel( int nSlot, float volumes[], const Vector &sourceDir, float mono, float flRearToStereoScale )
+{
+	int ivolumes[CCHANVOLUMES/2] = { 0 };
+	g_AudioDevice->SpatializeChannel( ivolumes, 255, sourceDir, 1.0f, mono );
+	for ( int i = 0; i < CCHANVOLUMES/2; i++ )
+	{
+		volumes[i] = ivolumes[i] / 255.0f;
+	}
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: 
 // Input  : sndlist - 
 //-----------------------------------------------------------------------------
@@ -5755,6 +6105,9 @@ void S_StopAllSounds( bool bClear )
 		}
 		S_FreeChannel( pChannel );
 	}
+
+	// sound operator system: tracks and queued starts/stops refer to channels
+	g_pSoundOperatorSystem->ClearSubSystems();
 
 	Q_memset( channels, 0, MAX_CHANNELS * sizeof(channel_t) );
 
@@ -5948,6 +6301,9 @@ void S_Update( const AudioState_t *pAudioState )
 	if ( !g_AudioDevice->IsActive() )
 		return;
 
+	// update the sound operator system before anything uses it
+	g_pSoundOperatorSystem->Update();
+
 	g_SndMutex.Lock();
 
 	// Update any client side sound fade
@@ -5969,7 +6325,14 @@ void S_Update( const AudioState_t *pAudioState )
 	}
 
 	g_AudioDevice->UpdateListener( listener_origin, listener_forward, listener_right, listener_up );
- 
+
+	// the listener as the operator system sees it (one listener)
+	VectorCopy( listener_origin, g_scratchpad.m_vPlayerOrigin[0] );
+	VectorCopy( listener_forward, g_scratchpad.m_vPlayerForward[0] );
+	VectorCopy( listener_right, g_scratchpad.m_vPlayerRight[0] );
+	VectorCopy( listener_up, g_scratchpad.m_vPlayerUp[0] );
+	VectorCopy( listener_origin, g_scratchpad.m_vBlendedListenerOrigin );
+
 	combine = NULL;
 
 	int voiceChannelCount = 0;
@@ -6040,6 +6403,23 @@ void S_Update( const AudioState_t *pAudioState )
 
 
 	SND_ChannelTraceReset();
+
+	// free channels whose operator stacks finished stopping (after any
+	// "stop_hold" fade), then start and stop what operators queued
+	{
+		CChannelList stopList;
+		g_ActiveChannels.GetActiveChannels( stopList );
+		for ( int i = 0; i < stopList.Count(); i++ )
+		{
+			ch = stopList.GetChannel(i);
+			if ( ch->m_pStackList && ch->m_pStackList->IsStopped() )
+			{
+				S_FreeChannel( ch );
+			}
+		}
+	}
+	g_pSoundOperatorSystem->StartQueuedEntries();
+	g_pSoundOperatorSystem->StopQueuedChannels();
 
 	// set new target for voice ducking
 	float frametime = g_pSoundServices->GetHostFrametime();
@@ -6879,6 +7259,9 @@ static void S_Say( const CCommand &args )
 	}
 }
 
+
+// The sound mixer implementation moved to snd_mixgroups.cpp (Portal 2-era
+// mixer: per group volume, level, dsp, solo and mute, plus mix layers).
 
 float S_GetMono16Samples( const char *pszName, CUtlVector< short >& sampleList )
 {

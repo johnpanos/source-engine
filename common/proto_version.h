@@ -12,9 +12,13 @@
 #endif
 
 // The current network protocol version.  Changing this makes clients and servers incompatible
-#define PROTOCOL_VERSION    25
+#define PROTOCOL_VERSION    26
 
 #define DEMO_BACKWARDCOMPATABILITY
+
+// For backward compatibility of demo files (sounds carry no sound entry hash;
+// version 26 adds it for version 2 sound entries / operator stacks)
+#define PROTOCOL_VERSION_25		25
 
 // For backward compatibility of demo files (NET_MAX_PAYLOAD_BITS went away)
 #define PROTOCOL_VERSION_23		23

@@ -1171,6 +1171,12 @@ public:
 	int PrewarmPipelines();
 	bool SavePipelineStore( std::string *outError );
 	bool OpenFrameStats( const char *path, std::string *outError );
+	// -vkgputimers: GPU time per render pass, target copy, scene capture and
+	// present in the frame-stats stream ("gpu_passes"). Timestamps are taken
+	// at pass boundaries, outside any render pass, so no pass (or Metal render
+	// encoder under MoltenVK) is split to time it. False when the queue has no
+	// timestamps.
+	bool EnableGpuTimers( std::string *outError );
 	void CloseFrameStats();
 	void MarkFrame( const char *label );
 	FrameCost &CurrentFrameCost() { return m_frameCost; }
@@ -1202,6 +1208,27 @@ private:
 	uint64_t m_slotStatsFrame[kMaxFramesInFlight] = {};
 	uint64_t m_gpuResultFrame = 0;
 	uint64_t m_gpuResultUs = 0;
+	// Begin to the end of rendering, before the present blit or gamma pass
+	// that waits for the acquired swapchain image: on a display that only
+	// presents in FIFO (iOS, tvOS), m_gpuResultUs includes that vsync wait.
+	uint64_t m_gpuRenderUs = 0;
+	// Per frame slot: begin, end of rendering, end of the frame's commands.
+	static constexpr uint32_t kTimestampsPerFrame = 3;
+	// -vkgputimers: one timestamp per boundary; the segment after a mark is
+	// labeled by the mark (EnableGpuTimers).
+	static constexpr uint32_t kMaxGpuTimerMarks = 128;
+	VkQueryPool m_gpuTimerPool = VK_NULL_HANDLE;
+	std::vector<std::string> m_gpuTimerLabels[kMaxFramesInFlight];
+	// The latest resolved frame's time per label: label, segments, microseconds.
+	struct GpuTimerTotal
+	{
+		std::string label;
+		uint32_t count;
+		uint64_t us;
+	};
+	std::vector<GpuTimerTotal> m_gpuTimerResult;
+	void GpuTimerMark( VkCommandBuffer cmd, std::string label );
+	std::string GpuTimerTargetLabel( const char *kind, int target, bool srgb ) const;
 	void CreateTimestampPool();
 	void ReadSlotGpuTime( uint32_t slot );
 	void WriteFrameStats( uint64_t endUs );
@@ -1218,7 +1245,8 @@ private:
 	bool CreateRenderPass( std::string *outError );
 	bool CreateAttachmentPass( VkAttachmentLoadOp loadOp, VkImageLayout colorInitial,
 	    VkImageLayout colorFinal, VkImageLayout depthInitial, VkRenderPass *outPass,
-	    VkFormat colorFormat, VkSampleCountFlagBits samples, std::string *outError );
+	    VkFormat colorFormat, VkSampleCountFlagBits samples, std::string *outError,
+	    int keep = kKeepDepthStencil );
 	// Multisampled back buffer (mat_antialias): one color and one depth/stencil
 	// image of m_activeSamples samples at the back buffer's size, drawn through
 	// their own passes and resolved into the frame's back buffer (m_swapImages)
@@ -1762,6 +1790,11 @@ private:
 	std::vector<VkImageView> m_swapImageViewsSrgb;
 	std::vector<VkFramebuffer> m_framebuffersSrgb;
 	VkRenderPass m_renderPassLoadSrgb = VK_NULL_HANDLE;
+	// Back-buffer load passes by view (sRGB or not) and by which of depth and
+	// stencil they load and store (kKeepDepth | kKeepStencil). The entry for
+	// both is m_renderPassLoad or m_renderPassLoadSrgb; the others serve the
+	// back buffer after the frame's last depth or stencil use.
+	VkRenderPass m_renderPassLoadKeep[2][4] = {};
 	VkRenderPass m_renderPassTargetSrgb = VK_NULL_HANDLE;
 	// The frame's clearing pass over the sRGB view (m_passMerging).
 	VkRenderPass m_renderPassClearSrgb = VK_NULL_HANDLE;
@@ -2101,9 +2134,23 @@ private:
 	std::vector<std::pair<int, uint64_t>> m_replayedQueries;
 	void FailUnsubmittedQueries();
 	void GetTargetExtent( int target, uint32_t *outW, uint32_t *outH ) const;
-	void BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb = false );
+	// Which of the back buffer's depth and stencil a pass loads and stores.
+	// Fewer (single-sampled back buffer only) for passes after the frame's last
+	// use: on a tiled GPU each kept plane is a full-screen load and store.
+	enum
+	{
+		kKeepNone = 0,
+		kKeepDepth = 1,
+		kKeepStencil = 2,
+		kKeepDepthStencil = kKeepDepth | kKeepStencil
+	};
+	void BeginTargetPass(
+	    VkCommandBuffer cmd, int target, bool srgb = false, int keep = kKeepDepthStencil );
 	void RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy );
 	bool RecordWantsSrgb( const DynDraw &r ) const;
+	// Which of the back buffer's depth and stencil a record may read or write
+	// (kKeepDepth | kKeepStencil). Unknown kinds count as using both.
+	static int RecordBackBufferDepthUse( const DynDraw &r );
 	bool RecordViewAgnostic( const DynDraw &r ) const;
 	bool FirstPassWantsSrgb() const;
 

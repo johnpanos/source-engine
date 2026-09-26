@@ -14,7 +14,7 @@
     "window_provider": "sdl3",
     "render_provider": "native-vulkan",
     "vulkan_implementation": "MoltenVK (Vulkan portability subset over Metal), statically linked",
-    "physics_provider": "vphysics (IVP) by default, as on iOS and Android; vphysics_box3d is linked too",
+    "physics_provider": "vphysics_box3d (Box3D) by default, as on iOS (user decision 2026-09-26; launcher_main/ios_main.cpp); vphysics (IVP) is linked too",
     "input": "Game controllers through SDL3's gamepad API. The Siri Remote is not a gamepad (SDL_HINT_TV_REMOTE_AS_JOYSTICK=0), so it cannot take the engine's single active gamepad slot; remote-driven menus are out of scope (user direction, 2026-09-26).",
     "support_scope": "Product scope added by the user (2026-09-25). tvOS is not one of the four AGENTS.md north-star targets; R29 neither requires nor is closed by it. An unsigned app builds on Linux; no device, simulator or install evidence yet.",
     "packaging": ".app assembled on Linux by build-tvos-app.sh (build-ios-app.sh with this profile); codesign, provisioning and install on the Mac, as for iOS. Licensed Portal content is copied into the app's Library/Caches separately.",

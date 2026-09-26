@@ -1545,7 +1545,8 @@
           "hammer.adapters.gtk",
           "hammer.interop.gtk_source",
           "content.keyvalues-text",
-          "content.vmf"
+          "content.vmf",
+          "content.hammer-ktx2-preview"
         ]
       }
     ],

@@ -257,6 +257,12 @@ public:
 	float	GetVolume( void );
 	string_t GetName() { return m_iszSoundName; };
 	string_t GetScriptName() { return m_iszSoundScriptName; }
+	// the sound entry the wave came from, or NULL for a raw wave
+	const char *GetSoundEntryName() const
+	{
+		const char *pScript = STRING( m_iszSoundScriptName );
+		return ( pScript && pScript[0] && m_iszSoundScriptName != m_iszSoundName ) ? pScript : NULL;
+	}
 	// UNDONE: Don't call this, use the controller to shut down
 	void	Shutdown( void );
 	bool	Update( float time, float deltaTime );
@@ -542,6 +548,7 @@ bool CSoundPatch::Update( float time, float deltaTime )
 		EmitSound_t ep;
 		ep.m_nChannel = m_entityChannel;
 		ep.m_pSoundName = STRING(m_iszSoundName);
+		ep.m_pSoundEntryName = GetSoundEntryName();
 		ep.m_flVolume = GetVolumeForEngine();
 		ep.m_SoundLevel = m_soundlevel;
 		ep.m_nFlags = m_flags;
@@ -575,9 +582,20 @@ void CSoundPatch::StartSound( float flStartTime )
 		EmitSound_t ep;
 		ep.m_nChannel = m_entityChannel;
 		ep.m_pSoundName = STRING(m_iszSoundName);
+		ep.m_pSoundEntryName = GetSoundEntryName();
 		ep.m_flVolume = GetVolumeForEngine();
 		ep.m_SoundLevel = m_soundlevel;
-		ep.m_nFlags = (SND_CHANGE_VOL | m_baseFlags);
+		// Music entries start as a real start (not a volume change) so their
+		// start stacks run (tempo quantize, sync to other layers), as in the
+		// Portal 2-era sound patch.
+		if ( ep.m_pSoundEntryName && V_stristr( STRING(m_iszSoundName), "music" ) )
+		{
+			ep.m_nFlags = m_baseFlags;
+		}
+		else
+		{
+			ep.m_nFlags = (SND_CHANGE_VOL | m_baseFlags);
+		}
 		ep.m_nPitch = (int)m_pitch.Value();
 		ep.m_bEmitCloseCaption = false;
 
@@ -605,6 +623,7 @@ void CSoundPatch::ResumeSound( void )
 			EmitSound_t ep;
 			ep.m_nChannel = m_entityChannel;
 			ep.m_pSoundName = STRING(m_iszSoundName);
+			ep.m_pSoundEntryName = GetSoundEntryName();
 			ep.m_flVolume = GetVolumeForEngine();
 			ep.m_SoundLevel = m_soundlevel;
 			ep.m_nFlags = (SND_CHANGE_VOL | SND_CHANGE_PITCH | m_baseFlags);
@@ -637,6 +656,7 @@ void CSoundPatch::AddPlayerPost( CBasePlayer *pPlayer )
 		EmitSound_t ep;
 		ep.m_nChannel = m_entityChannel;
 		ep.m_pSoundName = STRING(m_iszSoundName);
+		ep.m_pSoundEntryName = GetSoundEntryName();
 		ep.m_flVolume = GetVolumeForEngine();
 		ep.m_SoundLevel = m_soundlevel;
 		ep.m_nFlags = (SND_CHANGE_VOL | m_baseFlags);

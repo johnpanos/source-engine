@@ -9,6 +9,8 @@
 #include <KeyValues.h>
 #include "engine/IEngineSound.h"
 #include "SoundEmitterSystem/isoundemittersystembase.h"
+#include "SoundEmitterSystem/isoundemittersystementries.h"
+#include "engine/ienginesoundentry.h"
 #include "igamesystem.h"
 #include "soundchars.h"
 #include "filesystem.h"
@@ -36,6 +38,24 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+extern ISoundEmitterSystemEntries *soundemitterentries;
+extern IEngineSoundEntry *enginesoundentry;
+
+//-----------------------------------------------------------------------------
+// The version 2 entry (one with operator stacks) to emit for pEntryName, or
+// SOUNDEMITTER_INVALID_HASH to emit the plain wave (no such entry, a stop, or
+// an engine or sound emitter without version 2 entries).
+//-----------------------------------------------------------------------------
+static HSOUNDSCRIPTHASH SoundEntryHashForEmit( const char *pEntryName, int nFlags )
+{
+	if ( !pEntryName || ( nFlags & SND_STOP ) || !soundemitterentries || !enginesoundentry )
+		return SOUNDEMITTER_INVALID_HASH;
+	HSOUNDSCRIPTHASH hHash = soundemitterentries->HashSoundName( pEntryName );
+	if ( !soundemitterentries->GetOperatorKVByHandle( hHash ) )
+		return SOUNDEMITTER_INVALID_HASH;
+	return hHash;
+}
 
 static ConVar sv_soundemitter_trace( "sv_soundemitter_trace", "0", FCVAR_REPLICATED, "Show all EmitSound calls including their symbolic name and the actual wave file they resolved to\n" );
 #ifdef STAGING_ONLY
@@ -514,22 +534,24 @@ public:
 			st = gpGlobals->curtime + (float)params.delay_msec / 1000.f;
 		}
 
-		enginesound->EmitSound( 
-			filter, 
-			entindex, 
-			params.channel, 
-			params.soundname,
-			params.volume,
-			(soundlevel_t)params.soundlevel,
-			ep.m_nFlags,
-			params.pitch,
-			ep.m_nSpecialDSP,
-			ep.m_pOrigin,
-			NULL,
-			&ep.m_UtlVecSoundOrigin,
-			true,
-			st,
-			ep.m_nSpeakerEntity );
+		// Version 2 sound entries (Portal 2 soundscripts) carry operator stacks
+		// the engine runs per channel; send the entry so the client can.
+		HSOUNDSCRIPTHASH hSoundEntry = SoundEntryHashForEmit( ep.m_pSoundName, ep.m_nFlags );
+
+		if ( hSoundEntry != SOUNDEMITTER_INVALID_HASH )
+		{
+			enginesoundentry->EmitSoundEntry( filter, entindex, params.channel, hSoundEntry,
+			    params.soundname, params.volume, (soundlevel_t)params.soundlevel, ep.m_nFlags,
+			    params.pitch, ep.m_nSpecialDSP, ep.m_pOrigin, NULL, &ep.m_UtlVecSoundOrigin, true,
+			    st, ep.m_nSpeakerEntity );
+		}
+		else
+		{
+			enginesound->EmitSound( filter, entindex, params.channel, params.soundname,
+			    params.volume, (soundlevel_t)params.soundlevel, ep.m_nFlags, params.pitch,
+			    ep.m_nSpecialDSP, ep.m_pOrigin, NULL, &ep.m_UtlVecSoundOrigin, true, st,
+			    ep.m_nSpeakerEntity );
+		}
 		if ( ep.m_pflSoundDuration )
 		{
 			*ep.m_pflSoundDuration = enginesound->GetSoundDuration( params.soundname );
@@ -593,22 +615,25 @@ public:
 				Msg( "Sound %s was not precached\n", ep.m_pSoundName );
 			}
 #endif
-			enginesound->EmitSound( 
-				filter, 
-				entindex, 
-				ep.m_nChannel, 
-				ep.m_pSoundName, 
-				ep.m_flVolume, 
-				ep.m_SoundLevel, 
-				ep.m_nFlags, 
-				ep.m_nPitch, 
-				ep.m_nSpecialDSP,
-				ep.m_pOrigin,
-				NULL, 
-				&ep.m_UtlVecSoundOrigin,
-				true, 
-				ep.m_flSoundTime,
-				ep.m_nSpeakerEntity );
+			// a wave picked from a version 2 sound entry (sound patches): let
+			// the engine run the entry's operator stacks
+			HSOUNDSCRIPTHASH hSoundEntry =
+			    SoundEntryHashForEmit( ep.m_pSoundEntryName, ep.m_nFlags );
+
+			if ( hSoundEntry != SOUNDEMITTER_INVALID_HASH )
+			{
+				enginesoundentry->EmitSoundEntry( filter, entindex, ep.m_nChannel, hSoundEntry,
+				    ep.m_pSoundName, ep.m_flVolume, ep.m_SoundLevel, ep.m_nFlags, ep.m_nPitch,
+				    ep.m_nSpecialDSP, ep.m_pOrigin, NULL, &ep.m_UtlVecSoundOrigin, true,
+				    ep.m_flSoundTime, ep.m_nSpeakerEntity );
+			}
+			else
+			{
+				enginesound->EmitSound( filter, entindex, ep.m_nChannel, ep.m_pSoundName,
+				    ep.m_flVolume, ep.m_SoundLevel, ep.m_nFlags, ep.m_nPitch, ep.m_nSpecialDSP,
+				    ep.m_pOrigin, NULL, &ep.m_UtlVecSoundOrigin, true, ep.m_flSoundTime,
+				    ep.m_nSpeakerEntity );
+			}
 			if ( ep.m_pflSoundDuration )
 			{
 				*ep.m_pflSoundDuration = enginesound->GetSoundDuration( ep.m_pSoundName );

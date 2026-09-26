@@ -190,6 +190,35 @@ class AnalysisTests(unittest.TestCase):
         report, _ = pacing.analyze(frames, 1)
         self.assertEqual(report["passes"][0]["hitches"][0]["gpu_ms"], 7.5)
 
+    def test_render_span_is_summarized_apart_from_the_present_wait(self):
+        frames = stream([16.7] * 4)
+        for position, frame in enumerate(frames):
+            frame["gpu"] = [position, 16000, 9000 + position * 1000]
+        summary = pacing.summarize(frames)
+        self.assertEqual(summary["gpu_median_ms"], 16.0)
+        self.assertEqual(summary["gpu_render_median_ms"], 10.0)
+        self.assertEqual(summary["gpu_render_p99_ms"], 12.0)
+
+    def test_gpu_passes_total_per_label_and_count_absent_frames_as_zero(self):
+        frames = stream([16.7] * 2)
+        frames[0]["gpu_passes"] = [["pass back buffer 1920x1080", 2, 6000], ["copy to _rt_x 64x64", 1, 1000]]
+        frames[1]["gpu_passes"] = [["pass back buffer 1920x1080", 1, 4000]]
+        passes = pacing.summarize(frames)["gpu_passes"]
+        self.assertEqual(passes["frames"], 2)
+        first, second = passes["segments"].items()
+        self.assertEqual(first[0], "pass back buffer 1920x1080")
+        self.assertEqual(first[1], {"mean_ms": 5.0, "median_ms": 4.0, "per_frame": 1.5, "share": 0.909})
+        self.assertEqual(second[1]["mean_ms"], 0.5)
+        self.assertEqual(second[1]["median_ms"], 0.0)
+
+    def test_two_element_gpu_records_report_no_render_span(self):
+        frames = stream([16.7] * 4)
+        for position, frame in enumerate(frames):
+            frame["gpu"] = [position, 16000]
+        summary = pacing.summarize(frames)
+        self.assertIn("gpu_median_ms", summary)
+        self.assertNotIn("gpu_render_median_ms", summary)
+
 
 class ConvertTests(unittest.TestCase):
     """The backend's emit_convert cost and its per-draw-size buckets."""

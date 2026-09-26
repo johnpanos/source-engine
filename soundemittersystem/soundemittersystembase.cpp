@@ -17,6 +17,7 @@
 #include "checksum_crc.h"
 #include "SoundEmitterSystem/isoundemittersystembase.h"
 #include "ifilelist.h"
+#include "tier1/generichash.h"
 
 #include <time.h>
 
@@ -33,8 +34,38 @@ static IFileSystem* filesystem = 0;
 //-----------------------------------------------------------------------------
 CSoundEmitterSystemBase::CSoundEmitterSystemBase() : 
 	m_nInitCount( 0 ),
-	m_uManifestPlusScriptChecksum( 0 )
+	m_uManifestPlusScriptChecksum( 0 ),
+	m_bHashMapStale( true )
 {
+}
+
+CSoundEntry::~CSoundEntry()
+{
+	if ( m_pOperatorsKV )
+	{
+		m_pOperatorsKV->deleteThis();
+		m_pOperatorsKV = NULL;
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Keep the version 2 parts of a script entry that CSoundParametersInternal
+//  does not hold: "soundentry_version" and the "operator_stacks" block, which
+//  the engine's sound operator system runs for every channel playing the entry.
+//-----------------------------------------------------------------------------
+void CSoundEntry::SetEntryVersionData( KeyValues *pEntryKV )
+{
+	if ( m_pOperatorsKV )
+	{
+		m_pOperatorsKV->deleteThis();
+		m_pOperatorsKV = NULL;
+	}
+	m_nSoundEntryVersion = pEntryKV->GetInt( "soundentry_version", 1 );
+	KeyValues *pOperators = pEntryKV->FindKey( "operator_stacks" );
+	if ( pOperators && pOperators->GetFirstSubKey() )
+	{
+		m_pOperatorsKV = pOperators->MakeCopy();
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -281,6 +312,8 @@ void CSoundEmitterSystemBase::InternalModShutdown()
 	m_SavedOverrides.Purge();
 	m_Waves.RemoveAll();
 	m_ActorGenders.Purge();
+	m_HashToSound.Purge();
+	InvalidateHashMap();
 }
 
 
@@ -888,6 +921,7 @@ void CSoundEmitterSystemBase::AddSoundsFromFile( const char *filename, bool bPre
 						}
 
 						InitSoundInternalParameters( pKeys->GetName(), pKeys, pEntry->m_SoundParams );
+						pEntry->SetEntryVersionData( pKeys );
 						pEntry->m_SoundParams.SetShouldPreload( bPreload ); // this gets handled by game code after initting.
 
 						m_Sounds.ReplaceKey( lookup, pEntry );
@@ -897,6 +931,7 @@ void CSoundEmitterSystemBase::AddSoundsFromFile( const char *filename, bool bPre
 					else if ( bRefresh )
 					{
 						InitSoundInternalParameters( pKeys->GetName(), pKeys, m_Sounds[ lookup ]->m_SoundParams );
+						m_Sounds[ lookup ]->SetEntryVersionData( pKeys );
 					}
 #if 0
 					else
@@ -910,6 +945,7 @@ void CSoundEmitterSystemBase::AddSoundsFromFile( const char *filename, bool bPre
 					MEM_ALLOC_CREDIT();
 
 					InitSoundInternalParameters( pKeys->GetName(), pKeys, pEntry->m_SoundParams );
+					pEntry->SetEntryVersionData( pKeys );
 					pEntry->m_SoundParams.SetShouldPreload( bPreload ); // this gets handled by game code after initting.
 				}
 			}
@@ -917,6 +953,7 @@ void CSoundEmitterSystemBase::AddSoundsFromFile( const char *filename, bool bPre
 		}
 
 		kv->deleteThis();
+		InvalidateHashMap();
 	}
 	else
 	{
@@ -1181,6 +1218,7 @@ bool CSoundEmitterSystemBase::AddSound( const char *soundname, const char *scrip
 	pEntry->m_SoundParams.CopyFrom( params );
 
 	m_Sounds.Insert( pEntry );
+	InvalidateHashMap();
 
 	m_SoundKeyValues[ i ].dirty = true;
 
@@ -1466,6 +1504,7 @@ void CSoundEmitterSystemBase::RenameSound( const char *soundname, const char *ne
 	pEntry->m_Name = newname;
 	// Re-insert in new spot
 	m_Sounds.Insert( pEntry );
+	InvalidateHashMap();
 
 	// Mark associated script as dirty
 	m_SoundKeyValues[ pEntry->m_nScriptFileIndex ].dirty = true;
@@ -1653,6 +1692,77 @@ void CSoundEmitterSystemBase::ClearSoundOverrides()
 
 	m_SavedOverrides.Purge();
 	m_OverrideFiles.Purge();
+	InvalidateHashMap();
+}
+
+//-----------------------------------------------------------------------------
+// Sound entry hashes (see HSOUNDSCRIPTHASH)
+//-----------------------------------------------------------------------------
+#define SOUNDEMITTER_MURMURHASH_SEED ( ( 'D' << 24 ) | ( 'O' << 16 ) | ( 'T' << 8 ) | 'A' )
+
+HSOUNDSCRIPTHASH CSoundEmitterSystemBase::HashSoundName( char const *pchSndName ) const
+{
+	if ( !pchSndName || !pchSndName[0] )
+		return SOUNDEMITTER_INVALID_HASH;
+	return MurmurHash2LowerCase( pchSndName, SOUNDEMITTER_MURMURHASH_SEED );
+}
+
+void CSoundEmitterSystemBase::RebuildHashMap() const
+{
+	m_HashToSound.RemoveAll();
+	for ( UtlHashHandle_t i = m_Sounds.FirstHandle(); i != m_Sounds.InvalidHandle(); i = m_Sounds.NextHandle( i ) )
+	{
+		HSOUNDSCRIPTHASH hash = HashSoundName( m_Sounds[ i ]->m_Name.Get() );
+		UtlHashHandle_t existing = m_HashToSound.Find( hash );
+		if ( existing != m_HashToSound.InvalidHandle() )
+		{
+			Warning( "SoundEmitter:  sound entry %s has the same hash as %s; the later entry cannot be sent to clients\n",
+				m_Sounds[ i ]->m_Name.Get(), m_Sounds[ m_HashToSound[ existing ] ]->m_Name.Get() );
+			continue;
+		}
+		m_HashToSound.Insert( hash, i );
+	}
+	m_bHashMapStale = false;
+}
+
+int CSoundEmitterSystemBase::GetSoundIndexForHash( HSOUNDSCRIPTHASH hash ) const
+{
+	if ( hash == SOUNDEMITTER_INVALID_HASH )
+		return -1;
+	if ( m_bHashMapStale )
+		RebuildHashMap();
+	UtlHashHandle_t slot = m_HashToSound.Find( hash );
+	if ( slot == m_HashToSound.InvalidHandle() )
+		return -1;
+	return m_HashToSound[ slot ];
+}
+
+char const *CSoundEmitterSystemBase::GetSoundNameForHash( HSOUNDSCRIPTHASH hash ) const
+{
+	int index = GetSoundIndexForHash( hash );
+	if ( index < 0 || !m_Sounds.IsValidHandle( index ) )
+		return NULL;
+	return m_Sounds[ index ]->m_Name.Get();
+}
+
+bool CSoundEmitterSystemBase::IsValidHash( HSOUNDSCRIPTHASH hash ) const
+{
+	return GetSoundIndexForHash( hash ) >= 0;
+}
+
+KeyValues *CSoundEmitterSystemBase::GetOperatorKVByHandle( HSOUNDSCRIPTHASH &handle )
+{
+	int index = GetSoundIndexForHash( handle );
+	if ( index < 0 || !m_Sounds.IsValidHandle( index ) )
+		return NULL;
+	return m_Sounds[ index ]->m_pOperatorsKV;
+}
+
+int CSoundEmitterSystemBase::GetSoundEntryVersion( int index ) const
+{
+	if ( index < 0 || !m_Sounds.IsValidHandle( index ) )
+		return 0;
+	return m_Sounds[ index ]->m_nSoundEntryVersion;
 }
 
 CSoundEmitterSystemBase g_SoundEmitterSystemBase;
@@ -1661,5 +1771,14 @@ DLL_EXPORT ISoundEmitterSystemBase *SoundEmitterSystem_Create()
 	return &g_SoundEmitterSystemBase;
 }
 
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CSoundEmitterSystemBase, ISoundEmitterSystemBase, 
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CSoundEmitterSystemBase, ISoundEmitterSystemBase,
 						SOUNDEMITTERSYSTEM_INTERFACE_VERSION, g_SoundEmitterSystemBase );
+
+// Version 2 sound entries: a separate interface of the same object, so
+// VSoundEmitter002 keeps its vtable (QueryInterface finds it here).
+static void *CreateSoundEmitterSystemEntries()
+{
+	return static_cast< ISoundEmitterSystemEntries * >( &g_SoundEmitterSystemBase );
+}
+static InterfaceReg s_SoundEmitterSystemEntriesReg( CreateSoundEmitterSystemEntries,
+    SOUNDEMITTERSYSTEM_ENTRIES_INTERFACE_VERSION );

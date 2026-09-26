@@ -82,7 +82,7 @@ QA_Do( "track the cube", function()
 	local cube = Entities.FindByClassname( null, "prop_weighted_cube" )
 	if ( cube == null )
 		throw "no prop_weighted_cube"
-	PH_Track( "cube", cube, 6.0, true )
+	PH_Track( "cube", cube, 14.0, true )
 }, 0.0 )
 QA_WaitFor( "cube.launched_up", function()
 {
@@ -92,11 +92,19 @@ QA_WaitFor( "cube.launched_up", function()
 	QA_Detail( "catapult2c fired=" + n + " cube " + QA_Vec( c ) )
 	if ( n < 1 )
 		return false
-	// Past the apex: the newest sample is well below the highest.
-	local apex = -100000.0
+	// Past the apex of the throw: the newest sample is well below the
+	// highest one since the lowest point (the plate).
+	local low = 100000.0, apex = -100000.0
 	foreach ( sample in s )
+	{
+		if ( sample.pos.z < low )
+		{
+			low = sample.pos.z
+			apex = low
+		}
 		apex = sample.pos.z > apex ? sample.pos.z : apex
-	return c.z < apex - 48.0
+	}
+	return apex > low + 100.0 && c.z < apex - 48.0
 }, 12.0 )
 QA_Expect( "cube.measured", function()
 {

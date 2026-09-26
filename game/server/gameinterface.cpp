@@ -62,6 +62,8 @@
 #include "replay/iserverreplaycontext.h"
 #endif
 #include "SoundEmitterSystem/isoundemittersystembase.h"
+#include "SoundEmitterSystem/isoundemittersystementries.h"
+#include "engine/ienginesoundentry.h"
 #include "AI_ResponseSystem.h"
 #include "saverestore_stringtable.h"
 #include "util.h"
@@ -185,6 +187,10 @@ IGameEventManager2 *gameeventmanager = NULL;
 IDataCache *datacache = NULL;
 IVDebugOverlay * debugoverlay = NULL;
 ISoundEmitterSystemBase *soundemitterbase = NULL;
+// Optional (version 2 sound entries); NULL when the engine or sound emitter
+// has none, and entries then play their wave without operator stacks.
+ISoundEmitterSystemEntries *soundemitterentries = NULL;
+IEngineSoundEntry *enginesoundentry = NULL;
 IServerPluginHelpers *serverpluginhelpers = NULL;
 IServerEngineTools *serverenginetools = NULL;
 ISceneFileCache *scenefilecache = NULL;
@@ -633,6 +639,10 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 		return false;
 	if ( (soundemitterbase = (ISoundEmitterSystemBase *)appSystemFactory(SOUNDEMITTERSYSTEM_INTERFACE_VERSION, NULL)) == NULL )
 		return false;
+	soundemitterentries = (ISoundEmitterSystemEntries *)soundemitterbase->QueryInterface(
+	    SOUNDEMITTERSYSTEM_ENTRIES_INTERFACE_VERSION );
+	enginesoundentry =
+	    (IEngineSoundEntry *)appSystemFactory( IENGINESOUNDENTRY_SERVER_INTERFACE_VERSION, NULL );
 #ifndef _XBOX
 	if ( (gamestatsuploader = (IUploadGameStats *)appSystemFactory( INTERFACEVERSION_UPLOADGAMESTATS, NULL )) == NULL )
 		return false;

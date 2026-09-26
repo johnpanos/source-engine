@@ -1,0 +1,30 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# hammer_cli: the headless Hammer host (RFC 0002 map-building loop). A
+# composition root that runs command scripts through hammer::app::EditorCommands
+# against the disk; tools/quality/hammer_loop.py drives it.
+
+top = '.'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.program(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'hammer_cli.cpp' ],
+		target    = 'hammer_cli',
+		name      = 'hammer_cli',
+		arch_module = 'hammer.composition',
+		features  = 'cxx cxxprogram',
+		includes  = [ '../../public', '../..' ],
+		defines   = [],
+		use       = [ 'hammer_app', 'hammer_platform', 'vmf', 'kvtext', 'mapgeometry' ],
+		install_path = None,
+		subsystem = 'CONSOLE',
+		idx       = bld.get_taskgen_count()
+	)

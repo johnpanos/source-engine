@@ -55,9 +55,11 @@ Vec3d Normalized( const Vec3d &a )
 	return Vec3d( a.x / len, a.y / len, a.z / len );
 }
 
-// A VMF "plane" value (three points) for an arbitrary plane, wound so that
-// (p1-p0) x (p2-p0) points along the plane normal (outward preserved). Works for
-// any brush face, not just axis-aligned boxes.
+// A VMF "plane" value (three points) for an arbitrary plane, in the winding the
+// compile tools read: vbsp's PlaneFromPoints takes (p0-p1) x (p2-p1) as the
+// outward normal, so (p1-p0) x (p2-p0) points inward here. Legacy Hammer writes
+// the same winding (e.g. hammer/gtk/samples/room.vmf). Works for any brush
+// face, not just axis-aligned boxes.
 std::string PlaneToText( const mapgeometry::Plane &plane )
 {
 	const Vec3d n = plane.normal;
@@ -67,11 +69,14 @@ std::string PlaneToText( const mapgeometry::Plane &plane )
 	const double s = 64.0;
 	const Vec3d c( n.x * plane.dist, n.y * plane.dist, n.z * plane.dist );
 	const Vec3d p0 = c;
-	const Vec3d p1( c.x + u.x * s, c.y + u.y * s, c.z + u.z * s );
-	const Vec3d p2( c.x + v.x * s, c.y + v.y * s, c.z + v.z * s );
+	const Vec3d p1( c.x + v.x * s, c.y + v.y * s, c.z + v.z * s );
+	const Vec3d p2( c.x + u.x * s, c.y + u.y * s, c.z + u.z * s );
 	// Negative zero (from a normal rebuilt out of loaded plane points) prints as
 	// "-0"; writing it as 0 keeps a reloaded map's save byte-identical.
-	auto z = []( double value ) { return value == 0.0 ? 0.0 : value; };
+	auto z = []( double value )
+	{
+		return value == 0.0 ? 0.0 : value;
+	};
 	char buf[256];
 	std::snprintf( buf, sizeof( buf ), "(%g %g %g) (%g %g %g) (%g %g %g)", z( p0.x ), z( p0.y ),
 	    z( p0.z ), z( p1.x ), z( p1.y ), z( p1.z ), z( p2.x ), z( p2.y ), z( p2.z ) );
@@ -82,9 +87,11 @@ std::string PlaneToText( const mapgeometry::Plane &plane )
 std::string AxisToText( const Vec3d &axis )
 {
 	char buf[128];
-	auto z = []( double value ) { return value == 0.0 ? 0.0 : value; };
-	std::snprintf(
-	    buf, sizeof( buf ), "[%g %g %g 0] 0.25", z( axis.x ), z( axis.y ), z( axis.z ) );
+	auto z = []( double value )
+	{
+		return value == 0.0 ? 0.0 : value;
+	};
+	std::snprintf( buf, sizeof( buf ), "[%g %g %g 0] 0.25", z( axis.x ), z( axis.y ), z( axis.z ) );
 	return buf;
 }
 

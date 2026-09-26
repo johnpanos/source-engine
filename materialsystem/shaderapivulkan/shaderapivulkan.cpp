@@ -206,6 +206,11 @@ static bool InitVulkanContext(
 	std::string statsError;
 	if ( statsPath && !g_VulkanContext.OpenFrameStats( statsPath, &statsError ) )
 		Warning( "[NativeVulkan] frame stats unavailable: %s\n", statsError.c_str() );
+	// -vkgputimers adds GPU time per pass, copy and capture to those stats.
+	std::string timerError;
+	if ( statsPath && CommandLine()->FindParm( "-vkgputimers" ) &&
+	     !g_VulkanContext.EnableGpuTimers( &timerError ) )
+		Warning( "[NativeVulkan] GPU timers unavailable: %s\n", timerError.c_str() );
 	// -vkpassmerge 0 restores one render pass per view change (A/B, rollback).
 	g_VulkanContext.SetPassMerging( CommandLine()->ParmValue( "-vkpassmerge", 1 ) != 0 );
 	// The pipeline store lives in the mod directory (the launcher runs from the

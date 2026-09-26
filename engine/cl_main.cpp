@@ -733,6 +733,12 @@ void CL_DispatchSound( const SoundInfo_t &sound )
 		}
 	}
 	params.speakerentity = sound.nSpeakerEntity;
+	if ( sound.nSoundEntryHash != 0xffffffff )
+	{
+		// version 2 sound entry: the client runs its operator stacks
+		params.m_bIsScriptHandle = true;
+		params.m_nSoundScriptHash = sound.nSoundEntryHash;
+	}
 
 	// Give the client DLL a chance to run arbitrary code to affect the sound parameters before we
 	// play.

@@ -34,10 +34,12 @@ def _capabilities(root):
 	return capabilities
 
 
-def _block(root):
+def _blocks(root):
+	"""(capabilityModules, hammerModules) of architecture/modules.json."""
 	if root not in _BLOCKS:
 		with open(os.path.join(root, 'architecture', 'modules.json')) as stream:
-			_BLOCKS[root] = json.load(stream)['capabilityModules']
+			manifest = json.load(stream)
+		_BLOCKS[root] = ( manifest['capabilityModules'], manifest.get('hammerModules') )
 	return _BLOCKS[root]
 
 
@@ -80,7 +82,9 @@ def check_arch_module(self):
 			# A uselib variable (SDL3, VULKAN), judged by the owner's grants.
 			continue
 		entries.extend(_entries(other))
-	errors, _, _ = _capabilities(root).link_graph_errors(_block(root), {'entries': entries})
+	block, hammer_block = _blocks(root)
+	errors, _, _ = _capabilities(root).link_graph_errors(
+		block, {'entries': entries}, None, hammer_block)
 	own = [error for error in errors
 		if error.startswith(('CAP006 %s (' % name, 'CAP008 %s:' % name))]
 	if own:

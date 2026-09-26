@@ -16,6 +16,7 @@
 #include "soundflags.h"
 #include "coordsize.h"
 #include "mathlib/vector.h"
+#include "tier1/utlvector.h"
 
 
 #define WRITE_DELTA_UINT( name, length )	\
@@ -89,7 +90,10 @@ struct SoundInfo_t
 	bool			bIsSentence;
 	bool			bIsAmbient;
 	int				nSpeakerEntity;
-	
+	// Sound entry (HSOUNDSCRIPTHASH) whose operator stacks run on the client;
+	// 0xffffffff for none (only version 2 entries set it). Protocol 26+.
+	unsigned int	nSoundEntryHash;
+		
 	//---------------------------------
 	
 	SoundInfo_t()
@@ -129,7 +133,8 @@ struct SoundInfo_t
 		nSequenceNumber = 0;
 
 		pszName = NULL;
-	
+		nSoundEntryHash = 0xffffffff;
+
 		bLooping = false;
 		bIsSentence = false;
 		bIsAmbient = false;
@@ -151,6 +156,7 @@ struct SoundInfo_t
 
 		vOrigin.Init();
 		nSpeakerEntity = -1;
+		nSoundEntryHash = 0xffffffff;
 	}
 
 	// this cries for Send/RecvTables:
@@ -252,6 +258,8 @@ struct SoundInfo_t
 			WRITE_DELTA_SINT_SCALE( vOrigin.z, 8.0f, COORD_INTEGER_BITS - 2 );
 
 			WRITE_DELTA_SINT( nSpeakerEntity, MAX_EDICT_BITS + 1 );
+
+			WRITE_DELTA_UINT( nSoundEntryHash, 32 );
 		}
 		else
 		{
@@ -364,6 +372,15 @@ struct SoundInfo_t
 			READ_DELTA_SINT_SCALE( vOrigin.z, 8.0f, COORD_INTEGER_BITS - 2 );
 
 			READ_DELTA_SINT( nSpeakerEntity, MAX_EDICT_BITS + 1 );
+
+			if ( nProtoVersion > 25 )
+			{
+				READ_DELTA_UINT( nSoundEntryHash, 32 );
+			}
+			else
+			{
+				nSoundEntryHash = 0xffffffff;
+			}
 		}
 		else
 		{
@@ -389,6 +406,16 @@ struct SpatializationInfo_t
 	Vector				*pOrigin;
 	QAngle				*pAngles;
 	float				*pflRadius;
+
+	// Appended: extra positions the sound is also heard from (Portal 2 adds
+	// the origin as seen through each portal pair). NULL when not requested;
+	// filled by IBaseClientDLL::GetSoundSpatialization.
+	CUtlVector< Vector > *m_pUtlVecMultiOrigins;
+
+	SpatializationInfo_t() : type( SI_INCREATION ), pOrigin( NULL ), pAngles( NULL ), pflRadius( NULL ),
+		m_pUtlVecMultiOrigins( NULL )
+	{
+	}
 };
 #pragma pack()
 

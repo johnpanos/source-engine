@@ -305,6 +305,18 @@
     "hk_math": {
       "dialect": "cxx20-vendored-ivp",
       "rfc": "0004"
+    },
+    "hammer_app": {
+      "dialect": "cxx20",
+      "rfc": "0002"
+    },
+    "hammer_platform": {
+      "dialect": "cxx20",
+      "rfc": "0002"
+    },
+    "hammer_cli": {
+      "dialect": "cxx20",
+      "rfc": "0002"
     }
   },
   "cxx20_header_sets": [

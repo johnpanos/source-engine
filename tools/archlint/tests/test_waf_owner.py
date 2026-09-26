@@ -86,7 +86,7 @@ class WafOwnerProjectTest(unittest.TestCase):
             ('feature', ['VULKAN'], None, "compiles backend, which is outside its owner's closure"),
             ('backend', ['SDL3'], None, 'uses native library SDL3'),
             ('backend', ['other_lib'], None, 'links other_lib whose other is outside the allowed closure'),
-            ('missing', [], None, 'arch_module missing is not a capability module'),
+            ('missing', [], None, 'arch_module missing is not a capability or Hammer module'),
             ('backend', [], dict(BLOCK, targetOwners={'legacy': [
                 {'id': 'old', 'owner': 'R46', 'reason': 'legacy', 'targets': ['backend_lib']}]}),
              'declares arch_module; remove it from its legacy group'),

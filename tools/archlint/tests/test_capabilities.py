@@ -315,12 +315,40 @@ class LinkGraphTest(unittest.TestCase):
         def declared(*modules):
             return self.record(*[('mixed_lib', f'engine/{i}.cpp', [], m) for i, m in enumerate(modules)])
         errors, _, _ = capabilities.link_graph_errors(self.block, declared('nope'))
-        self.assertEqual(['CAP008 mixed_lib: arch_module nope is not a capability module'], errors)
+        self.assertEqual(['CAP008 mixed_lib: arch_module nope is not a capability or Hammer module'], errors)
         errors, _, _ = capabilities.link_graph_errors(self.block, declared('backend', 'feature'))
         self.assertEqual(['CAP008 mixed_lib: conflicting arch_module declarations backend, feature'], errors)
         block = self.owned([{'id': 'old', 'owner': 'R46', 'reason': 'r', 'targets': ['mixed_lib']}])
         errors, _, _ = capabilities.link_graph_errors(block, declared('backend'))
         self.assertEqual(['CAP008 mixed_lib: declares arch_module; remove it from its legacy group'], errors)
+
+    def test_hammer_module_owners_are_judged_by_the_combined_graph(self):
+        hammer = {'strictIncludeRoots': ['public/hammer/', 'hammer/core/'],
+                  'modules': [{'id': 'hammer.app', 'allowedEdges': ['base']},
+                              {'id': 'hammer.composition', 'allowedEdges': ['hammer.app', 'feature']}],
+                  'includeExceptions': [{'path': 'hammer/core/app/controller.cpp',
+                                         'dependency': 'other', 'owner': 'R22'}]}
+        record = self.record(('app_lib', 'hammer/core/app/controller.cpp', ['base_lib', 'other_lib'],
+                              'hammer.app'),
+                             ('base_lib', 'public/base/b.cpp', [], 'base'),
+                             ('other_lib', 'other/o.cpp', [], 'other'),
+                             ('cli', 'hammer/cli/main.cpp', ['app_lib', 'feature_lib'], 'hammer.composition'),
+                             ('feature_lib', 'feature/a.cpp', [], 'feature'))
+        errors, judged, _ = capabilities.link_graph_errors(self.block, record, None, hammer)
+        self.assertEqual(([], 5), (errors, judged))
+        # Without the recorded exception, the app may not link other_lib.
+        hammer['includeExceptions'] = []
+        errors, _, _ = capabilities.link_graph_errors(self.block, record, None, hammer)
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn('app_lib (hammer.app): links other_lib whose other', errors[0])
+        # A Hammer owner compiling a module outside its closure fails too.
+        record['entries'] += self.record(('app_lib', 'backend/n.cpp', [], 'hammer.app'))['entries']
+        errors, _, _ = capabilities.link_graph_errors(self.block, record, None, hammer)
+        self.assertTrue(any("compiles backend, which is outside its owner's closure" in e for e in errors))
+        # Without the Hammer block, a Hammer owner is unknown.
+        errors, _, _ = capabilities.link_graph_errors(self.block, record)
+        self.assertTrue(any('arch_module hammer.app is not a capability or Hammer module' in e
+                            for e in errors))
 
     def test_sidecar_declarations_are_validated(self):
         group = {'id': 'g', 'owner': 'R46', 'reason': 'r', 'targets': ['a']}

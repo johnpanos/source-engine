@@ -200,6 +200,11 @@ int main( int, char ** )
 	argv[argc++] = const_cast<char *>( "-nosteam" );
 	argv[argc++] = const_cast<char *>( "-insecure" );
 	argv[argc++] = const_cast<char *>( "-nouserclip" );
+	// Box3D (RFC 0004) is the Apple products' physics provider (user decision,
+	// 2026-09-26), as in the desktop ./play; its parallel step runs on the
+	// engine compute pool. IVP stays linked for comparison runs.
+	argv[argc++] = const_cast<char *>( "-physics" );
+	argv[argc++] = const_cast<char *>( "vphysics_box3d" );
 	// The material system renders on the main thread, as on Android, until
 	// its render thread is measured on the mobile profiles; commandline.txt
 	// may ask for +mat_queue_mode 2.

@@ -254,6 +254,8 @@ bool CVulkanContext::RecordSceneCapture( VkCommandBuffer cmd, int target )
 	ScopedDebugLabel label( m_debugUtils, "scene capture (glass)" );
 	if ( m_sceneColorHandle < 0 )
 		return false;
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+		GpuTimerMark( cmd, "scene capture (glass)" );
 	ManagedTexture &color = m_managedTextures[static_cast<size_t>( m_sceneColorHandle )];
 	uint32_t targetW = 0, targetH = 0;
 	GetTargetExtent( target, &targetW, &targetH );

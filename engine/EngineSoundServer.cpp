@@ -6,6 +6,7 @@
 //=============================================================================//
 
 #include "engine/IEngineSound.h"
+#include "engine/ienginesoundentry.h"
 #include "tier0/dbg.h"
 #include "quakedef.h"
 #include "vox.h"
@@ -28,7 +29,7 @@
 // Server-side implementation of the engine sound interface
 //
 //-----------------------------------------------------------------------------
-class CEngineSoundServer : public IEngineSound
+class CEngineSoundServer : public IEngineSound, public IEngineSoundEntry
 {
 public:
 	// constructor, destructor
@@ -112,10 +113,15 @@ public:
 	}
 
 
-private:
-	void EmitSoundInternal( IRecipientFilter& filter, int iEntIndex, int iChannel, const char *pSample, 
-		float flVolume, soundlevel_t iSoundLevel, int iFlags, int iPitch, int iSpecialDSP, 
+	virtual void EmitSoundEntry( IRecipientFilter& filter, int iEntIndex, int iChannel, unsigned int nSoundEntryHash, const char *pSample,
+		float flVolume, soundlevel_t iSoundLevel, int iFlags, int iPitch, int iSpecialDSP,
 		const Vector *pOrigin, const Vector *pDirection, CUtlVector< Vector >* pUtlVecOrigins, bool bUpdatePositions, float soundtime = 0.0f, int speakerentity = -1 );
+
+private:
+	void EmitSoundInternal( IRecipientFilter& filter, int iEntIndex, int iChannel, const char *pSample,
+		float flVolume, soundlevel_t iSoundLevel, int iFlags, int iPitch, int iSpecialDSP,
+		const Vector *pOrigin, const Vector *pDirection, CUtlVector< Vector >* pUtlVecOrigins, bool bUpdatePositions, float soundtime = 0.0f, int speakerentity = -1,
+		unsigned int nSoundEntryHash = 0xffffffff );
 };
 
 
@@ -125,6 +131,14 @@ private:
 static CEngineSoundServer s_EngineSoundServer;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CEngineSoundServer, IEngineSound, 
 	IENGINESOUND_SERVER_INTERFACE_VERSION, s_EngineSoundServer );
+
+// Version 2 sound entries: a separate interface of the same object, so
+// IEngineSoundServer003 keeps its vtable.
+static void *CreateCEngineSoundServerEntry()
+{
+	return static_cast< IEngineSoundEntry * >( &s_EngineSoundServer );
+}
+static InterfaceReg s_CEngineSoundServerEntryReg( CreateCEngineSoundServerEntry, IENGINESOUNDENTRY_SERVER_INTERFACE_VERSION );
 
 IEngineSound *EngineSoundServer()
 {
@@ -219,7 +233,8 @@ void CEngineSoundServer::PrefetchSound( const char *pSample )
 //-----------------------------------------------------------------------------
 void CEngineSoundServer::EmitSoundInternal( IRecipientFilter& filter, int iEntIndex, int iChannel, const char *pSample, 
 	float flVolume, soundlevel_t iSoundLevel, int iFlags, int iPitch, int iSpecialDSP, 
-	const Vector *pOrigin, const Vector *pDirection, CUtlVector< Vector >* pUtlVecOrigins, bool bUpdatePositions, float soundtime /*= 0.0f*/, int speakerentity /*=-1*/ )
+	const Vector *pOrigin, const Vector *pDirection, CUtlVector< Vector >* pUtlVecOrigins, bool bUpdatePositions, float soundtime /*= 0.0f*/, int speakerentity /*=-1*/,
+	unsigned int nSoundEntryHash /*= 0xffffffff*/ )
 {
 	AssertMsg( pDirection == NULL, "Direction specification not currently supported on server sounds" );
 	AssertMsg( bUpdatePositions, "Non-updated positions not currently supported on server sounds" );
@@ -243,8 +258,28 @@ void CEngineSoundServer::EmitSoundInternal( IRecipientFilter& filter, int iEntIn
 	}
 
 	edict_t *pEdict = (iEntIndex >= 0) ? &sv.edicts[iEntIndex] : NULL; 
-	SV_StartSound( filter, pEdict, iChannel, pSample, flVolume, iSoundLevel, 
-		iFlags, iPitch, iSpecialDSP, pOrigin, soundtime, speakerentity, pUtlVecOrigins );
+	SV_StartSound( filter, pEdict, iChannel, pSample, flVolume, iSoundLevel,
+		iFlags, iPitch, iSpecialDSP, pOrigin, soundtime, speakerentity, pUtlVecOrigins, nSoundEntryHash );
+}
+
+//-----------------------------------------------------------------------------
+// Emits a version 2 sound entry; clients run its operator stacks
+//-----------------------------------------------------------------------------
+void CEngineSoundServer::EmitSoundEntry( IRecipientFilter& filter, int iEntIndex, int iChannel, unsigned int nSoundEntryHash, const char *pSample,
+	float flVolume, soundlevel_t iSoundLevel, int iFlags, int iPitch, int iSpecialDSP,
+	const Vector *pOrigin, const Vector *pDirection, CUtlVector< Vector >* pUtlVecOrigins, bool bUpdatePositions, float soundtime /*= 0.0f*/, int speakerentity /*= -1*/ )
+{
+	VPROF( "CEngineSoundServer::EmitSoundEntry" );
+	if ( pSample && TestSoundChar( pSample, CHAR_SENTENCE ) )
+	{
+		// sentences have no sound entry operators
+		EmitSound( filter, iEntIndex, iChannel, pSample, flVolume, iSoundLevel, iFlags, iPitch, iSpecialDSP,
+			pOrigin, pDirection, pUtlVecOrigins, bUpdatePositions, soundtime, speakerentity );
+		return;
+	}
+	EmitSoundInternal( filter, iEntIndex, iChannel, pSample, flVolume, iSoundLevel,
+		iFlags, iPitch, iSpecialDSP, pOrigin, pDirection, pUtlVecOrigins, bUpdatePositions, soundtime, speakerentity,
+		nSoundEntryHash );
 }
 
 

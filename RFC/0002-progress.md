@@ -249,6 +249,161 @@ Hammer. This cohort moves the geometry and VMF codec cores out of `hammer/`.
 - **Not claimed:** no engine, compile-tool or editor product links the
   libraries yet. The legacy MFC `hammer/` tree and vbsp are unchanged.
 
+### R08-LOOP: headless author → compile → play loop (slices 1b and 2, done 2026-09-25)
+
+The new Hammer now builds a playable map end to end, and a conformance suite
+keeps it that way.
+
+- **Build targets.** Three new Waf targets are built in the `tools`
+  configuration. Each declares its Hammer owner:
+  - `hammer_app` (`hammer/core/wscript`): the whole `hammer.app` module;
+  - `hammer_platform` (`hammer/adapters/platform/wscript`): the disk store
+    adapters;
+  - `hammer_cli` (`hammer/cli`), owned by `hammer.composition`: a composition
+    root that runs command scripts over `EditorCommands` against a rooted file
+    store (relative paths only, no `..`). `--commands` prints the catalog.
+
+  They use the strict C++20 environment but not the `capability_strict`
+  public-only include rule, because a composition root includes its
+  adapters.
+- **Hammer owners in the link check.** Waf `arch_module` and `archlint targets`
+  now accept Hammer module owners.
+  - One combined graph judges them: capability modules plus
+    `hammerModules`.
+  - Strict Hammer sources map to their module by directory. That rule has one
+    owner, `capabilities.hammer_strict_module`, and archlint's HAM checks use
+    it.
+  - A Hammer module's recorded `includeExceptions` also grant the linked
+    dependency. So `hammer.app` may link `vmf` and `kvtext` only through its
+    R22 exceptions, and the exception list stays the single record.
+  - This exposed `hammer_ktx2_preview_conformance`: it compiles
+    `hammer.formats`, so it is a Hammer test composition. It is now owned by
+    `hammer.composition`, which gains the `content.hammer-ktx2-preview` edge.
+    Another session (iOS static composition) reported the build break before
+    the fix.
+- **Compile tool** (`tools/quality/vmf_map_build.py`). One owner of "VMF →
+  published, bootable map", for the loop suite, `gyro_lab_map.py` (now a
+  caller) and later the editor's Run Map and MCP.
+  - It stages exactly the materials that side blocks name. Entity `material`
+    keys are skipped: a physbox's `"2"` is not a texture.
+  - It runs vbsp, then vvis `-fast`, then vrad as two passes, `-ldr` and
+    `-hdr`.
+  - A leak, in the log or as a pointfile, is a hard failure.
+  - It packages the map, and can publish it (`./play`) and boot it headless
+    (`portal_boot.py`: map active, player spawned, scene captured).
+  - It has 12 self-tests with stub compilers, and 4 seeded mutants are
+    detected.
+- **Loop suite.** `tools/quality/hammer_loop.py` with
+  `quality/workloads/hammer-loop-v1`: manifest `corpus.hammer.loop` (14
+  checks, required when run) and baseline check `hammer.loop`.
+  - `room` authors a sealed room with a light and a player start by command
+    script, saves it, compiles it leak-free, and boots it.
+  - `leak` (north wall missing) must stop at the leak gate.
+  - `dark` (no light) must boot with a capture the lit room is at least 1.3x
+    brighter than. Measured: 169.7 vs 93.1 mean.
+  - Author to playable takes about 9 s. It passes through `conformance.py
+    --runner corpus` and `baseline.py audit`.
+- **Defects the loop found.** Each would have kept a new-Hammer map from
+  compiling or looking right:
+  1. **Every saved plane was inside-out for the compile tools.**
+     - `ToVmf` wound points so that (p1-p0)×(p2-p0) was the outward normal,
+       but vbsp's `PlaneFromPoints` uses (p0-p1)×(p2-p1). vbsp crashed with
+       "no visible sides" on every brush.
+     - Reading and writing agreed with each other, so round-trip tests could
+       not see it. Re-saving `hammer/gtk/samples/room.vmf` turned a good map
+       into one that would not compile.
+     - Fixed in `PlaneToText`. `TestSavedPlanesUseCompilerWinding` applies
+       vbsp's formula headlessly (248 checks), and the old winding fails 6 of
+       them.
+  2. **No map had HDR lighting.** Portal renders HDR, so without HDR lumps
+     auto-exposure evened out the lighting, and the lit and unlit rooms
+     rendered almost alike (96 vs 93). The pinned vrad cannot run `-both` in
+     one process, so the tool now runs `-ldr` and `-hdr` passes. This
+     applies to `gyro_lab_map.py`'s maps too.
+  3. **The pinned compile tools fail when any directory on the path has an
+     uppercase letter,** because the Source filesystem folds case on Linux.
+     The baseline audit's timestamped results folder hit this. The tool now
+     compiles in a lower-case temporary directory, copies the work back to
+     `<out>/compile` (failures included), and lower-cases map names.
+  4. **`hammer/gtk/samples/room.vmf` leaked:** both entities were inside the
+     solid centre pillar, and the earlier smoke test never checked for leaks.
+     The entities moved to open space, and the sample now compiles
+     leak-free.
+- **Evidence** (2026-09-25):
+  - Q-EDITOR: 62 suites and 62 matched on g++ and clang++.
+  - `corpus.hammer.loop` 14/14; `baseline.py audit --check hammer.loop`
+    passes (17 s).
+  - archlint: 132 tests; `check --all` and `hammer --verify` pass.
+  - The GTK viewport smoke passes.
+  - The CLI builds in `build-r03-tools`, with its build-time owner check.
+- **Not claimed:**
+  - The GTK UI does not route through the commands yet, and there is no
+    UI-driven test (slice 3).
+  - No MCP adapter (4) and no play-in-editor (5).
+  - Brush entities are still folded into world geometry on load (R22).
+  - The loop runs on native Vulkan desktop only.
+
+### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
+
+A research agent assembled this from the Valve Developer Community Source 2
+Hammer pages. The wiki blocks automated fetching, so every claim comes from
+search excerpts of the cited page, and anything unconfirmed is marked
+unverified. The principle: adopt Source 2's interaction model now, and its
+free-form mesh data model only once USD owns persistence (R60).
+
+The interaction model is:
+
+- a 3D-first viewport;
+- a Tool Properties panel;
+- a searchable entity and asset palette;
+- one-key Build+Run;
+- repeatable command history.
+
+**P1: click together a room with a light and player start, save, run.**
+
+| Source 2 behavior | Command layer | GTK |
+| --- | --- | --- |
+| Block tool (Shift+B): drag on the 3D workplane, set height with a handle, Enter | `create_block`; the controller gains a workplane and 3D pending input | Cast the drag onto the workplane; draw the box and height handle |
+| Block → room (F flips faces inward) | NEW `hollow id= thickness=`: six wall brushes, one undo step (VMF cannot hold inward faces) | F key / Tool Properties "Make room" |
+| Entity tool (Shift+E): search box and categories (Player Start, Point Light), click the floor in 3D | `place_entity`; NEW `raycast origin= dir=` returning hit point, normal and id | Searchable class list; offset along the hit normal |
+| Selection | NEW `select ids= mode=replace\|add\|toggle`, `select_none` (also for entities) | Clicks through `PointerDown`/`PickByRay` |
+| Move | NEW `move_selection delta=` | Arrow-key nudge (T gizmo in P2) |
+| Object Properties | `set_entity_property`; NEW `describe id=` | Property grid, one command per edit |
+| Grid [ / ] | `set_grid` | Keys and status bar |
+| Build Map F9, "load after build" | NEW `build_map profile=fast\|full run=`, through a `hammer.ports` compile/launch port over `vmf_map_build.py` | Build dialog with streamed log and cancel |
+| Camera: RMB+WASD, Z fly | — | 3D view editable; one-pane / four-pane layout switch |
+
+Tool keys follow Source 2: Shift+B, Shift+E and Shift+S; T translate; R
+rotate; Space cycles selection modes; F9 builds; Ctrl+S saves.
+
+**P2:**
+
+- per-face material (right-click, Faces mode);
+- `place_model` from the Asset Browser;
+- T/R/scale gizmos with a pivot tool (Insert);
+- face extrude (Shift+drag);
+- clip (Shift+X);
+- duplicate;
+- a filterable Outliner;
+- hide / hide unselected / unhide;
+- Command History with Shift+G `repeat_last` and a script export (our commands are already serializable);
+- undo-history jump;
+- build stage toggles.
+
+**P3:** these need the USD mesh document (R60) or later work:
+
+- vertex/edge modes, bevel, bridge, face cut and the polygon tool;
+- hotspot texturing (Ctrl+G), tile meshes and selection sets;
+- prefab Collapse;
+- play-in-editor and a ray-traced light preview.
+
+Sources: Valve Developer Community pages cited in the research brief:
+
+- Half-Life: Alyx *Creating Your First Room*;
+- the Source 2 Hammer Overview;
+- Dota 2 Workshop Tools pages: Navigation, Mesh Editing 1–3, Mesh Texturing, Asset Browser, Compile and Run, Command History, and Prefabs and Instances;
+- Half-Life: Alyx *Hotspot Texturing* and *Creating an Addon*.
+
 ## Decisions (answers to the RFC's open questions)
 
 These are recorded **Decisions** in the RFC's evidence vocabulary: intentional

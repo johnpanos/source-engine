@@ -27,6 +27,7 @@ enum soundlevel_t;
 struct SoundInfo_t;
 struct AudioState_t;
 class IFileList;
+class KeyValues;
 
 void S_Init (void);
 void S_Shutdown (void);
@@ -62,10 +63,22 @@ struct StartSoundParams_t
 		delay( 0.0f ),
 		speakerentity( -1 ),
 		suppressrecording( false ),
-		initialStreamPosition( 0 )
+		initialStreamPosition( 0 ),
+		m_nSoundScriptHash( (unsigned int)-1 ),
+		m_pSoundEntryName( NULL ),
+		m_pOperatorsKV( NULL ),
+		opStackElapsedTime( 0.0f ),
+		opStackElapsedStopTime( 0.0f ),
+		m_bIsScriptHandle( false )
 	{
 		origin.Init();
 		direction.Init();
+	}
+
+	// Copies every field (the sound operator system queues delayed starts).
+	void Copy( StartSoundParams_t &destParams ) const
+	{
+		destParams = *this;
 	}
 
 	bool			staticsound;
@@ -86,6 +99,16 @@ struct StartSoundParams_t
 	int				speakerentity;
 	bool			suppressrecording;
 	int				initialStreamPosition;
+
+	// Version 2 sound entries (appended; earlier members keep their offsets).
+	// When m_bIsScriptHandle is set, m_nSoundScriptHash names the sound entry
+	// (see HSOUNDSCRIPTHASH) whose operator stacks run on the new channel.
+	unsigned int	m_nSoundScriptHash;
+	const char		*m_pSoundEntryName;
+	KeyValues		*m_pOperatorsKV;
+	float			opStackElapsedTime;
+	float			opStackElapsedStopTime;
+	bool			m_bIsScriptHandle;
 };
 
 int S_StartSound( StartSoundParams_t& params );

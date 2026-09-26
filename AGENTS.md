@@ -348,6 +348,10 @@ proposed until implementation records working commands. Check the current Waf co
 someone's build profile just to run unrelated tests. Configure/build actual
 products as well as the limited `--tests` composition when their gate requires it.
 
+Keep command output bounded. Pipe noisy build, test and log commands through
+`head`, `tail` or `grep`, and read large files with `offset`/`limit` ranges
+instead of `cat`. Save full logs to a file when later inspection may need them.
+
 ## Unified ranked roadmap
 
 This is portfolio priority, not a promise of calendar duration or a requirement
@@ -727,9 +731,23 @@ Keep the table concise and link details below or from the domain progress file.
 
     `hammer.app.editor_commands` (54 checks) and the controller suite (233)
     pass, and 10 mutants are detected. All 61 Q-EDITOR suites pass on both
-    compilers. Next come layered format libraries with a Waf-built
-    `hammer_cli`, then the author → compile → boot loop suite. See the
+    compilers. See the
     [record](RFC/0002-progress.md#map-building-loop-direction-and-r08-cmd-2026-09-25).
+  - R08-LIBS (2026-09-25): the first layered format libraries, `mapgeometry`,
+    `kvtext` and `vmf`, moved out of Hammer as capability modules and Waf
+    libraries with enforced downward edges.
+  - R08-LOOP (2026-09-25): the Waf-built `hammer_cli` runs command scripts.
+    `vmf_map_build.py` is the one VMF → bootable-map tool. The
+    `corpus.hammer.loop` / `hammer.loop` suite checks author → save →
+    leak-free compile → headless boot in about 9 s, with leak and unlit
+    negative controls.
+    - Fixed along the way:
+      - every saved plane was inside-out for vbsp;
+      - no map had HDR lighting;
+      - the compile tools failed on uppercase paths;
+      - the GTK sample room leaked.
+    - Next: the GTK UI routed through the commands, with a UI-driven test
+      and Source 2-informed ergonomics.
   - The ledger has 28 migrations, 11 of them extracted format cores.
     Inventory coverage is 46 of 530 files. There are 60 Q-EDITOR suites.
   - `archlint hammer --verify` passes again (2026-09-25, user decision): the

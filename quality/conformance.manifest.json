@@ -4,6 +4,41 @@
   "profiles_dir": "quality/profiles",
   "suites": [
     {
+      "id": "corpus.hammer.loop",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R08",
+      "description": "Hammer map-building loop (RFC/0002-progress.md, R08-LOOP): hammer_cli runs quality/workloads/hammer-loop-v1 command scripts through the shared command layer, tools/quality/vmf_map_build.py compiles each saved VMF (vbsp, fast vvis, LDR and HDR vrad) and boots it headless on native Vulkan (portal_boot.py: map active, player spawned, scene captured). room must save, compile sealed and boot; leak (north wall missing) must stop at the leak gate; dark (no light) must boot with a capture the lit room is at least 1.3x brighter than. Reports the author-to-playable time; about 30 s.",
+      "command": [
+        "{python}",
+        "tools/quality/hammer_loop.py",
+        "--cli",
+        "build-r03-tools/hammer/cli/hammer_cli",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 14,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:build/toolchains/pbrt-map-toolchain.json",
+        "path:run/runtime-native",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/quality/hammer_loop.py",
+        "tools/quality/vmf_map_build.py",
+        "tools/quality/portal_boot.py",
+        "quality/workloads/hammer-loop-v1/room.hcmd",
+        "quality/workloads/hammer-loop-v1/leak.hcmd",
+        "quality/workloads/hammer-loop-v1/dark.hcmd"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "foundation.expected.bad-access",
       "expected_signal": 6,
       "domain": "Q-FOUNDATION",

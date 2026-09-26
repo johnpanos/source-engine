@@ -26,6 +26,7 @@ Commands:
   check    run this build (--physics box3d|ivp, default box3d, as ./play_p2)
            and judge it against the reference; prints one checks-v1 record.
            --seed-fault injects a known defect as a negative control.
+           --target retail judges retail itself: the reference is current.
   compare  judge an existing evidence directory against the reference.
 
 Retail needs the Steam client running (it refuses to start otherwise, and
@@ -264,12 +265,13 @@ def run_target(args, workload, target, output, physics="box3d", fault=None):
     scenarios = select_scenarios(workload, args.scenario)
     tools = output / "tools"
     portal2_scenarios.write_fake_zenity(tools)
-    extra = list((SEED_FAULTS.get(fault) or {}).get("args", []))
+    extra = list((SEED_FAULTS.get(fault) or {}).get("args", [])) + list(args.extra_arg)
     evidence = {
         "schema": EVIDENCE_SCHEMA,
         "target": target,
         "physics": physics if target == "ours" else "retail",
         "seed_fault": fault,
+        "extra_args": list(args.extra_arg),
         "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "source": conformance.source_identity(str(ROOT)),
         "workload": str(args.workload),
@@ -480,6 +482,8 @@ def main(argv=None):
     parser.add_argument("--seed-fault", choices=sorted(SEED_FAULTS),
                         help="negative control: inject a known defect")
     parser.add_argument("--scenario", action="append", default=[])
+    parser.add_argument("--extra-arg", action="append", default=[],
+                        help="extra engine argument before +map (repeatable; diagnosis)")
     parser.add_argument("--runs", type=int, default=1, help="runs per scenario")
     parser.add_argument("--start-frames", type=int, default=300)
     parser.add_argument("--evidence", type=Path, help="compare: an existing evidence directory")
@@ -502,8 +506,7 @@ def main(argv=None):
             if not (args.steam_root / "portal2/pak01_dir.vpk").is_file():
                 raise PhysicsError("no retail Portal 2 at %s (set --steam-root or P2_STEAM_ROOT)"
                                    % args.steam_root)
-            target = "retail" if args.command == "record" else (
-                "ours" if args.command == "check" else args.target)
+            target = "retail" if args.command == "record" else args.target
             fault = args.seed_fault if args.command == "check" else None
             evidence = run_target(args, workload, target, output, args.physics, fault)
         if args.command == "record":

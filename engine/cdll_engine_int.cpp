@@ -96,6 +96,7 @@
 #include "replay/replaylib.h"
 #endif
 #include "linked_game_modules_internal.h"
+#include "iclientsoundspatialization.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -1655,6 +1656,7 @@ void CEngineClient::DisconnectInternal( void )
 IBaseClientDLL *g_ClientDLL = NULL;
 IClientVirtualReality *g_pClientVR = NULL;
 // Optional; NULL when the client adds no game-specific sound origins.
+IClientSoundSpatialization *g_pClientSoundSpatialization = NULL;
 IPrediction	*g_pClientSidePrediction = NULL;
 IClientRenderTargets *g_pClientRenderTargets = NULL;
 IClientEntityList *entitylist = NULL;
@@ -1745,6 +1747,9 @@ bool ClientDLL_Load()
 			{
 				Sys_Error( "Could not get client.dll interface from library client" );
 			}
+
+			g_pClientSoundSpatialization = (IClientSoundSpatialization *)g_ClientFactory(
+			    CLIENTSOUNDSPATIALIZATION_INTERFACE_VERSION, NULL );
 
 			if( g_pSourceVR )
 			{
@@ -1966,6 +1971,7 @@ void ClientDLL_Shutdown( void )
 
 	entitylist = NULL;
 	g_pClientSidePrediction = NULL;
+	g_pClientSoundSpatialization = NULL;
 	g_ClientFactory = NULL;
 	centerprint = NULL;
 

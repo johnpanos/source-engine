@@ -619,8 +619,8 @@ void TestExactDomainOperations()
 	CHECK( !c.SetEntityOrigin( 9999, Vec3d( 0, 0, 0 ) ) );
 	CHECK( c.Entities().size() == 1 && c.Entities()[0].origin.x == 8 );
 	CHECK( c.Undo() && c.Entities()[0].origin.x == 0 ); // origin edit undone
-	CHECK( c.Undo() && c.Entities().empty() );         // placement undone
-	CHECK( c.Undo() && c.Brushes().empty() );          // block undone
+	CHECK( c.Undo() && c.Entities().empty() );          // placement undone
+	CHECK( c.Undo() && c.Brushes().empty() );           // block undone
 	CHECK( !c.Undo() );
 	CHECK( c.Redo() && c.Redo() && c.Brushes().size() == 1 && c.Entities().size() == 1 );
 }
@@ -651,13 +651,55 @@ void TestWorldPropertiesRoundTrip()
 	CHECK( reloaded.ToVmf() == vmf );
 }
 
+// Saved planes use the winding the compile tools read: vbsp's PlaneFromPoints
+// takes (p0-p1) x (p2-p1) as the outward normal, so every side must put the
+// brush's centre on its inner side. (Read and write agreed with each other
+// while both were inverted relative to vbsp, which only a compile exposed.)
+void TestSavedPlanesUseCompilerWinding()
+{
+	EditorController c;
+	c.NewMap();
+	CHECK( c.CreateBlock( Vec3d( -32, 16, 0 ), Vec3d( 96, 80, 48 ) ).has_value() );
+	const Vec3d centre( 32, 48, 24 );
+	kvtext::ParseResult parsed = kvtext::ParseKeyValues( c.ToVmf() );
+	CHECK( parsed.ok );
+	int sides = 0;
+	for ( const auto &block : parsed.root.children )
+	{
+		if ( block.name != "world" )
+			continue;
+		for ( const auto &solid : block.children )
+		{
+			for ( const auto &side : solid.children )
+			{
+				const std::string *plane = side.Find( "plane" );
+				double p[9] = {};
+				CHECK( plane != nullptr &&
+				       std::sscanf( plane->c_str(), "(%lf %lf %lf) (%lf %lf %lf) (%lf %lf %lf)",
+				           &p[0], &p[1], &p[2], &p[3], &p[4], &p[5], &p[6], &p[7], &p[8] ) == 9 );
+				const double t1[3] = { p[0] - p[3], p[1] - p[4], p[2] - p[5] };
+				const double t2[3] = { p[6] - p[3], p[7] - p[4], p[8] - p[5] };
+				const double n[3] = { t1[1] * t2[2] - t1[2] * t2[1], t1[2] * t2[0] - t1[0] * t2[2],
+				    t1[0] * t2[1] - t1[1] * t2[0] };
+				const double dist = n[0] * p[0] + n[1] * p[1] + n[2] * p[2];
+				const double centreSide = n[0] * centre.x + n[1] * centre.y + n[2] * centre.z;
+				CHECK( centreSide < dist ); // centre is inside every outward-facing plane
+				++sides;
+			}
+		}
+	}
+	CHECK( sides == 6 );
+}
+
 // The texture-axis owner reproduces legacy Hammer's table and tie order: a
 // tie keeps the earlier entry (floor before walls, x walls before y walls).
 void TestWorldAlignedTextureAxesPolicy()
 {
 	using mapgeometry::WorldAlignedTextureAxes;
 	auto same = []( const Vec3d &a, double x, double y, double z )
-	{ return a.x == x && a.y == y && a.z == z; };
+	{
+		return a.x == x && a.y == y && a.z == z;
+	};
 	const double h = std::sqrt( 0.5 );
 	auto floor = WorldAlignedTextureAxes( Vec3d( 0, 0, 1 ) );
 	CHECK( same( floor.u, 1, 0, 0 ) && same( floor.v, 0, -1, 0 ) );
@@ -735,6 +777,7 @@ int main()
 	TestWorldPropertiesRoundTrip();
 	TestSavedTextureAxesFollowFaceNormal();
 	TestWorldAlignedTextureAxesPolicy();
+	TestSavedPlanesUseCompilerWinding();
 
 	if ( g_failures != 0 )
 	{

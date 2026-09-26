@@ -164,6 +164,28 @@ def summarize(frames):
     }
     if all("cpu" in frame for frame in frames):
         summary["cpu_median_ms"] = round(percentile([f["cpu"] / 1000.0 for f in frames], 0.5), 3)
+    # Where a frame's time went: engine (outside the backend: game, client,
+    # material system) against backend (recording, submit, present), and the
+    # GPU's own time for the frames whose timestamps resolved in this window.
+    for key in ("engine", "backend"):
+        values = [frame[key] / 1000.0 for frame in frames if key in frame]
+        if values:
+            summary[key + "_median_ms"] = round(percentile(values, 0.5), 3)
+            summary[key + "_p99_ms"] = round(percentile(values, 0.99), 3)
+    gpu = [frame["gpu"][1] / 1000.0 for frame in frames if "gpu" in frame]
+    if gpu:
+        summary["gpu_median_ms"] = round(percentile(gpu, 0.5), 3)
+        summary["gpu_p99_ms"] = round(percentile(gpu, 0.99), 3)
+    # The rendering part alone (third element, when recorded): the whole-frame
+    # GPU span also holds the present's wait for a swapchain image, which a
+    # FIFO-only display (iOS, tvOS) turns into waiting for vsync.
+    render = [frame["gpu"][2] / 1000.0 for frame in frames if len(frame.get("gpu", ())) > 2]
+    if render:
+        summary["gpu_render_median_ms"] = round(percentile(render, 0.5), 3)
+        summary["gpu_render_p99_ms"] = round(percentile(render, 0.99), 3)
+    passes = summarize_gpu_passes(frames)
+    if passes:
+        summary["gpu_passes"] = passes
     for kind in ("emit", "emit_convert", "record"):
         summary[kind + "_median_ms"] = round(percentile(
             [frame.get("cost", {}).get(kind, [0, 0])[1] / 1000.0 for frame in frames], 0.5), 3)
@@ -177,6 +199,32 @@ def summarize(frames):
         values = [frame.get("cost", {}).get(kind, [0, 0]) for frame in frames]
         summary[kind] = {"count": sum(v[0] for v in values), "ms": round(sum(v[1] for v in values) / 1000.0, 3)}
     return summary
+
+
+def summarize_gpu_passes(frames):
+    """-vkgputimers: GPU time per labeled segment (a pass on a target, a copy,
+    a capture, the present), per frame that reported it: mean and median ms,
+    segments per frame, and share of the summed segment time. Most expensive
+    first."""
+    per_label, total_us = {}, 0
+    reporting = [frame for frame in frames if frame.get("gpu_passes")]
+    for frame in reporting:
+        for label, count, micros in frame["gpu_passes"]:
+            entry = per_label.setdefault(label, {"us": [], "count": 0})
+            entry["us"].append(micros)
+            entry["count"] += count
+            total_us += micros
+    if not reporting:
+        return None
+    rows = {}
+    for label, entry in sorted(per_label.items(), key=lambda item: -sum(item[1]["us"])):
+        # A label missing from a frame spent nothing there.
+        values = entry["us"] + [0] * (len(reporting) - len(entry["us"]))
+        rows[label] = {"mean_ms": round(sum(values) / len(values) / 1000.0, 3),
+                       "median_ms": round(percentile(values, 0.5) / 1000.0, 3),
+                       "per_frame": round(entry["count"] / len(reporting), 2),
+                       "share": round(sum(entry["us"]) / total_us, 3) if total_us else 0.0}
+    return {"frames": len(reporting), "segments": rows}
 
 
 # The backend's convert buckets (vulkan_frame_stats.h kEmitConvertBucketMin):

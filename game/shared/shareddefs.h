@@ -800,7 +800,8 @@ struct EmitSound_t
 		m_bWarnOnDirectWaveReference( false ),
 		m_nSpeakerEntity( -1 ),
 		m_UtlVecSoundOrigin(),
-		m_hSoundScriptHandle( -1 )
+		m_hSoundScriptHandle( -1 ),
+		m_pSoundEntryName( NULL )
 	{
 	}
 
@@ -822,6 +823,9 @@ struct EmitSound_t
 	int							m_nSpeakerEntity;
 	mutable CUtlVector< Vector >	m_UtlVecSoundOrigin;  ///< Actual sound origin(s) (can be multiple if sound routed through speaker entity(ies) )
 	mutable HSOUNDSCRIPTHANDLE		m_hSoundScriptHandle;
+	// When m_pSoundName is a raw wave picked from a sound entry (sound
+	// patches), the entry's name, so the engine can run its operator stacks.
+	const char					*m_pSoundEntryName;
 };
 
 #define MAX_ACTORS_IN_SCENE 16

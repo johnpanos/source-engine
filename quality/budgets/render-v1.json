@@ -1,0 +1,28 @@
+{
+  "schema": "source-render-budgets/v1",
+  "description": "Per-profile render frame budgets (R32-RENDER-BUDGETS, RFC 0005 'Performance and promotion'). Each row gates one workload on one product profile. Measured by tools/quality/frame_pacing.py (desktop) or tools/quality/frame_pacing_device.py (iOS/tvOS); the budgets apply to the scenario's last (warm) pass. Feature budgets stay with their owners (indirect-light-v1.json, RFC 0012 A0, RFC 0008 F10).",
+  "rows": [
+    {
+      "id": "tvos-portal-frame-pacing-60",
+      "profile": "quality/product_profiles/portal-tvos-native-vulkan.json",
+      "workload": "quality/workloads/portal-frame-pacing-v1.json",
+      "hardware": "Apple TV 4K (3rd generation), A15",
+      "target": "a locked 60 fps at 1920x1080 (user direction, 2026-09-26), with the profile's render defaults",
+      "set": "2026-09-26, before any optimization for this target",
+      "modes": {
+        "vsync": {
+          "meaning": "what a player sees: presented at the display's 60 Hz",
+          "max_hitches": 0,
+          "max_p99_ms": 17.5,
+          "max_frame_ms": 25.0
+        },
+        "headroom": {
+          "meaning": "vsync off: the frame's own cost, which must leave room under 16.7 ms",
+          "max_p99_ms": 16.0
+        }
+      },
+      "status": "unmeasured"
+    }
+  ],
+  "pending_rows": "The desktop Wayland and Android (Fold7) rows of R32-RENDER-BUDGETS are not set yet."
+}

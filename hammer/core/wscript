@@ -1,0 +1,35 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# Headless editor authority (RFC 0002 hammer.app): the map document, undo
+# history, save orchestration and the named command layer that the GTK host,
+# scripts, UI-driven tests and an MCP server share. A strict C++20 static
+# library with no UI dependency; it composes the layered format libraries.
+# Its link to the VMF and KeyValues codecs is the recorded R22 include
+# exception in architecture/modules.json.
+
+top = '.'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'app/document_history.cpp', 'app/editor_commands.cpp',
+		              'app/editor_controller.cpp', 'app/editor_document.cpp',
+		              'app/entity_selection.cpp', 'app/property_value.cpp',
+		              'app/save_orchestrator.cpp', 'app/update_hint.cpp' ],
+		target    = 'hammer_app',
+		name      = 'hammer_app',
+		arch_module = 'hammer.app',
+		features  = 'cxx',
+		includes  = [ '../../public' ],
+		defines   = [],
+		use       = [ 'vmf', 'kvtext', 'mapgeometry' ],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

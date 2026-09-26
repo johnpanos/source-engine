@@ -13,6 +13,7 @@
 #include "sys_dll.h"
 #include "video/ivideoservices.h"
 #include "engine/IEngineSound.h"
+#include "snd_op_sys/sos_system.h"
 
 #if defined( REPLAY_ENABLED )
 #include "demo.h"
@@ -429,6 +430,14 @@ void S_FreeChannel(channel_t *ch)
 	ch->pMixer = NULL;
 	ch->sfx = NULL;
 
+	// the channel's operator stacks (version 2 sound entries)
+	ch->m_nSoundScriptHash = SOUNDEMITTER_INVALID_HASH;
+	if ( ch->m_pStackList )
+	{
+		delete ch->m_pStackList;
+		ch->m_pStackList = NULL;
+	}
+
 	// zero all data in channel
 	g_ActiveChannels.Remove( ch );
 	Q_memset(ch, 0, sizeof(channel_t));
@@ -570,6 +579,14 @@ void MIX_MixChannelsToPaintbuffer( CChannelList &list, int endtime, int flags, i
 
 		if ( !ch->pMixer->ShouldContinueMixing() )
 		{
+			// stopping because the wave finished: run the entry's stop stack
+			// (e.g. "stop_and_play" starts a follow-up entry)
+			if ( ch->m_pStackList )
+			{
+				extern CScratchPad g_scratchpad;
+				ch->m_pStackList->Execute( CSosOperatorStack::SOS_STOP, ch, &g_scratchpad );
+			}
+
 			S_FreeChannel( ch );
 			list.RemoveChannelFromList(i);
 		}

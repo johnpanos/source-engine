@@ -8,7 +8,9 @@ IncludeScript( "qa/qa_driver" )
 IncludeScript( "qa/qa_physics" )
 
 ::MV <- {
-	start = Vector( 7520, -5900, 1 )
+	// Clear of the room's cube (7687 -5863): its side is 3 units from a
+	// player walking along y -5900.
+	start = Vector( 7520, -5960, 1 )
 	// A on the laser room's north wall, B on the entry hall's north wall;
 	// both face south (the positions sp_a2_triple_laser_traverse fires at).
 	a = Vector( 8000, -5505, 56 )

@@ -44,20 +44,15 @@ runtime, and publishes to run/maps/<map> (tools/quality/playable_maps.py).
 """
 
 import argparse
-import datetime
-import hashlib
 import json
 import math
-import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import playable_maps  # noqa: E402
-from source_content import ContentResolver  # noqa: E402
+import vmf_map_build  # noqa: E402
 
 ROOT = HERE.parents[1]
 TOOLCHAIN = ROOT / "build/toolchains/pbrt-map-toolchain.json"
@@ -70,8 +65,6 @@ BODY = "DEV/DEV_MEASUREGENERIC01"
 PLATE = "DEV/DEV_MEASUREWALL01D"
 BUTTON = "DEV/DEV_MEASURESWITCH01"
 TRIGGER = "TOOLS/TOOLSTRIGGER"
-MATERIALS = (WALL, FLOOR, CEILING, PEDESTAL, BODY, PLATE, BUTTON, TRIGGER)
-SURFACE_MANIFEST = "scripts/surfaceproperties_manifest.txt"
 
 # Room interior and wall thickness (inches).
 ROOM = (-640, -448, 0, 640, 448, 448)
@@ -392,50 +385,6 @@ def build_dzhanibekov():
 MAPS = {"gyro_lab": build_gyro_lab, "dzhanibekov": build_dzhanibekov}
 
 
-def stage_compile_game(game, runtime):
-    """A game root for the compilers: the vbsp fixture's gameinfo and lights,
-    and the map's materials (with base textures, for vrad's reflectivity) and
-    surface properties extracted from the staged runtime's packs."""
-    shutil.rmtree(game, ignore_errors=True)
-    fixture = ROOT / "quality/fixtures/vbsp-host/game"
-    game.mkdir(parents=True)
-    for name in ("gameinfo.txt", "lights.rad"):
-        shutil.copy2(fixture / name, game / name)
-    resolver = ContentResolver(runtime)
-
-    def extract(relative, required=True):
-        data, _ = resolver.read(relative)
-        if data is None:
-            if required:
-                raise FileNotFoundError("missing from the runtime: " + relative)
-            return None
-        target = game / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
-        return data
-
-    manifest = extract(SURFACE_MANIFEST).decode("utf-8", "replace")
-    for name in re.findall(r'"file"\s+"([^"]+)"', manifest):
-        extract(name)
-    for material in MATERIALS:
-        vmt = extract("materials/%s.vmt" % material.lower()).decode("utf-8", "replace")
-        texture = re.search(r'"?\$basetexture"?\s+"?([^"\s]+)', vmt, re.IGNORECASE)
-        if texture:
-            extract("materials/%s.vtf" % texture.group(1).lower().replace("\\", "/"), required=False)
-
-
-def sha256(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-
-
-def run(command, log):
-    print("+ " + " ".join(str(c) for c in command), flush=True)
-    with open(log, "a") as stream:
-        stream.write("+ " + " ".join(str(c) for c in command) + "\n")
-        stream.flush()
-        subprocess.run([str(c) for c in command], check=True, stdout=stream, stderr=subprocess.STDOUT)
-
-
 def build_map(name, out, tools, runtime):
     work = out / "compile"
     work.mkdir(parents=True, exist_ok=True)
@@ -444,24 +393,12 @@ def build_map(name, out, tools, runtime):
     print("wrote " + str(vmf))
     if tools is None:
         return
-    game = work / "game"
-    stage_compile_game(game, runtime)
-    log = out / "compile.log"
-    log.write_text("")
-    bsp = work / (name + ".bsp")
-    run([tools / "vbsp", "-game", game, vmf], log)
-    run([tools / "vvis", "-threads", "4", "-game", game, bsp], log)
-    run([tools / "vrad", "-bounce", "2", "-threads", "4", "-game", game, bsp], log)
-
-    content = out / "content"
-    (content / "maps").mkdir(parents=True, exist_ok=True)
-    target = content / "maps" / (name + ".bsp")
-    target.write_bytes(bsp.read_bytes())
-    summary = {"map": name, "status": "pass", "failed_gates": [], "bsp2_sha256": sha256(target),
-               "content_root": str(content), "vmf_sha256": sha256(vmf),
-               "built": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
-    (out / "build.json").write_text(json.dumps(summary, indent=2) + "\n")
-    print("published " + playable_maps.describe(playable_maps.publish(summary)))
+    # The shared VMF compile owns staging, vbsp/vvis/vrad, leak detection and
+    # packaging (tools/quality/vmf_map_build.py); these maps use full lighting.
+    record = vmf_map_build.build(vmf, out, tools, runtime, quality="full", name=name)
+    if record["status"] != "pass":
+        raise RuntimeError("%s: %s (%s)" % (name, record["status"], out / "build.json"))
+    print("published " + playable_maps.describe(playable_maps.publish(record)))
 
 
 def main():

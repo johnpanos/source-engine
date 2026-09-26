@@ -1,0 +1,14 @@
+# hammer-loop-v1: a sealed 256x256x128 room with a player start and a light.
+# Driven through the Hammer command layer (hammer::app::EditorCommands).
+new_map
+set_material material=DEV/DEV_MEASUREGENERIC01B
+create_block mins="-144 -144 -16" maxs="144 144 0"
+create_block mins="-144 -144 128" maxs="144 144 144"
+create_block mins="-144 -144 0" maxs="-128 144 128"
+create_block mins="128 -144 0" maxs="144 144 128"
+create_block mins="-128 -144 0" maxs="128 -128 128"
+create_block mins="-128 128 0" maxs="128 144 128"
+place_entity classname=info_player_start origin="0 0 1"
+place_entity classname=light origin="0 0 96"
+set_entity_property id=8 key=_light value="255 255 255 400"
+save path=room.vmf

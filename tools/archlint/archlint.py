@@ -1548,13 +1548,7 @@ HAMMER_INCLUDE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*"([^"]+)"', re.M)
 HAMMER_EXCEPTION_FIELDS = ("path", "dependency", "count", "reason", "owner", "tracking", "removal")
 
 
-def hammer_strict_module(path: str, module_block: dict) -> str | None:
-    """hammer/core/<area>/... and public/hammer/<area>/... belong to hammer.<area>."""
-    for root in module_block.get("strictIncludeRoots", []):
-        if path.startswith(root):
-            area = path[len(root):].split("/", 1)[0]
-            return f"hammer.{area}" if "/" in path[len(root):] else None
-    return None
+hammer_strict_module = capabilities.hammer_strict_module
 
 
 def hammer_include_graph(root: Path, module_block: dict, capability_block: dict | None) -> list[str]:
@@ -1696,7 +1690,9 @@ def targets_command(root: Path, manifest: dict, trees: Sequence[str], partial: b
             continue
         record = json.loads(invocations.read_text(encoding="utf-8"))
         records.append(record)
-        link_errors, judged, legacy_owned = capabilities.link_graph_errors(block, record, root)
+        link_errors, judged, legacy_owned = capabilities.link_graph_errors(
+            block, record, root, manifest.get("hammerModules")
+        )
         print(f"archlint: targets {tree}: {judged} targets judged, {legacy_owned} legacy-owned")
         errors.extend(link_errors)
     if not records:

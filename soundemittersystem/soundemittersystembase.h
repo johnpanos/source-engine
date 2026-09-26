@@ -12,6 +12,7 @@
 #endif
 
 #include "SoundEmitterSystem/isoundemittersystembase.h"
+#include "SoundEmitterSystem/isoundemittersystementries.h"
 #include "soundflags.h"
 #include "interval.h"
 #include "UtlSortVector.h"
@@ -22,11 +23,23 @@ soundlevel_t TextToSoundLevel( const char *key );
 
 struct CSoundEntry
 {
+	CSoundEntry() : m_nScriptFileIndex( 0 ), m_bRemoved( false ), m_bIsOverride( false ),
+		m_pOperatorsKV( NULL ), m_nSoundEntryVersion( 1 )
+	{
+	}
+	~CSoundEntry();
+
 	CUtlConstString				m_Name;
 	CSoundParametersInternal	m_SoundParams;
 	uint16						m_nScriptFileIndex;
 	bool						m_bRemoved : 1;
 	bool						m_bIsOverride : 1;
+	// Owned copy of the entry's "operator_stacks" block (NULL for none).
+	KeyValues					*m_pOperatorsKV;
+	int							m_nSoundEntryVersion;
+
+	// Replaces the operator stacks and entry version from a script entry.
+	void						SetEntryVersionData( KeyValues *pEntryKV );
 
 	bool						IsOverride() const
 	{
@@ -61,7 +74,7 @@ struct CSoundEntryEqualFunctor : CaselessStringEqualFunctor
 //-----------------------------------------------------------------------------
 // Purpose: Base class for sound emitter system handling (can be used by tools)
 //-----------------------------------------------------------------------------
-class CSoundEmitterSystemBase : public ISoundEmitterSystemBase
+class CSoundEmitterSystemBase : public ISoundEmitterSystemBase, public ISoundEmitterSystemEntries
 {
 public:
 	CSoundEmitterSystemBase();
@@ -142,7 +155,19 @@ public:
 	// Called by either client or server to force ModShutdown and ModInit
 	virtual void			Flush();
 
+	// ISoundEmitterSystemEntries (VSoundEmitterEntries001): version 2 entries.
+	virtual KeyValues		*GetOperatorKVByHandle( HSOUNDSCRIPTHASH &handle );
+	virtual char const		*GetSoundNameForHash( HSOUNDSCRIPTHASH hash ) const;
+	virtual int				GetSoundIndexForHash( HSOUNDSCRIPTHASH hash ) const;
+	virtual HSOUNDSCRIPTHASH HashSoundName( char const *pchSndName ) const;
+	virtual bool			IsValidHash( HSOUNDSCRIPTHASH hash ) const;
+	virtual int				GetSoundEntryVersion( int index ) const;
+
 private:
+	// The hash map is derived from m_Sounds; every change to the set of
+	// entries (or their names) marks it stale and the next lookup rebuilds it.
+	void	InvalidateHashMap() { m_bHashMapStale = true; }
+	void	RebuildHashMap() const;
 
 	bool InternalModInit();
 	void InternalModShutdown();
@@ -178,6 +203,9 @@ private:
 	unsigned int		m_uManifestPlusScriptChecksum;
 
 	CUtlSymbolTable		m_Waves;
+
+	mutable CUtlHashtable< HSOUNDSCRIPTHASH, UtlHashHandle_t > m_HashToSound;
+	mutable bool		m_bHashMapStale;
 };
 
 #endif // SOUNDEMITTERSYSTEMBASE_H

@@ -1097,11 +1097,14 @@ shift pitch higher, values lower than 100 lower the pitch.
 */
 void SV_StartSound ( IRecipientFilter& filter, edict_t *pSoundEmittingEntity, int iChannel, 
 	const char *pSample, float flVolume, soundlevel_t iSoundLevel, int iFlags, 
-	int iPitch, int iSpecialDSP, const Vector *pOrigin, float soundtime, int speakerentity, CUtlVector< Vector >* pUtlVecOrigins )
+	int iPitch, int iSpecialDSP, const Vector *pOrigin, float soundtime, int speakerentity, CUtlVector< Vector >* pUtlVecOrigins,
+	unsigned int nSoundEntryHash )
 {
 
-	SoundInfo_t sound; 
+	SoundInfo_t sound;
 	sound.SetDefault();
+	// version 2 sound entry (operator stacks); stops carry none
+	sound.nSoundEntryHash = ( iFlags & SND_STOP ) ? 0xffffffff : nSoundEntryHash;
 
 	sound.nEntityIndex = pSoundEmittingEntity ? NUM_FOR_EDICT( pSoundEmittingEntity ) : 0;
 	sound.nChannel = iChannel;
@@ -1171,7 +1174,15 @@ void SV_StartSound ( IRecipientFilter& filter, edict_t *pSoundEmittingEntity, in
 	{
 		sound.bIsSentence = false;
 		sound.nSoundNum = sv.LookupSoundIndex( pSample );
-		if ( !sound.nSoundNum || !sv.GetSound( sound.nSoundNum ) )
+		if ( ( !sound.nSoundNum || !sv.GetSound( sound.nSoundNum ) ) &&
+			 sound.nSoundEntryHash != 0xffffffff )
+		{
+			// A version 2 sound entry travels as its script handle, as in the
+			// Portal 2 engine: with no precached wave the client resolves and
+			// loads the entry's wave itself (sound 0 = none).
+			sound.nSoundNum = 0;
+		}
+		else if ( !sound.nSoundNum || !sv.GetSound( sound.nSoundNum ) )
 		{
 			ConMsg ("SV_StartSound: %s not precached (%d)\n", pSample, sound.nSoundNum );
 			return;

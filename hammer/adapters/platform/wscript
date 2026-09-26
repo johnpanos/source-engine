@@ -1,0 +1,28 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# Disk adapters for the Hammer file and byte store ports (RFC 0002
+# hammer.adapters.platform). Composition roots select them explicitly.
+
+top = '.'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'disk_file_store.cpp', 'disk_byte_store.cpp' ],
+		target    = 'hammer_platform',
+		name      = 'hammer_platform',
+		arch_module = 'hammer.adapters.platform',
+		features  = 'cxx',
+		includes  = [ '../../../public', '../../..' ],
+		defines   = [],
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

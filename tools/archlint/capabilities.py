@@ -337,6 +337,39 @@ def shared_library_errors(block, records):
     return errors, len(built)
 
 
+def hammer_strict_module(path, hammer_block):
+    """RFC 0002: hammer/core/<area>/... and public/hammer/<area>/... belong to
+    hammer.<area> (the one owner of that rule; archlint's HAM checks use it)."""
+    for root in ( hammer_block or {} ).get('strictIncludeRoots', []):
+        if path.startswith(root):
+            rest = path[len(root):]
+            return f'hammer.{rest.split("/", 1)[0]}' if '/' in rest else None
+    return None
+
+
+def combined_modules(block, hammer_block=None):
+    """Capability modules plus the Hammer modules, which own no paths of their
+    own here (their files map by directory, hammer_strict_module)."""
+    modules = {m['id']: m for m in block['modules']}
+    for module in ( hammer_block or {} ).get('modules', []):
+        modules.setdefault(module['id'], {'id': module['id'], 'paths': [],
+                                          'allowedEdges': module.get('allowedEdges', [])})
+    return modules
+
+
+def exception_grants(hammer_block, owner_closure, closure):
+    """Modules a Hammer owner may also reach through its recorded
+    includeExceptions: an exception lets a file of a module in the owner's
+    closure depend on another module, so the target may link it."""
+    granted = set()
+    for entry in ( hammer_block or {} ).get('includeExceptions', []):
+        module = hammer_strict_module(entry.get('path', ''), hammer_block)
+        dependency = entry.get('dependency')
+        if module in owner_closure and dependency in closure:
+            granted |= closure[dependency]
+    return granted
+
+
 INCLUDE_FLAGS = ('-isystem', '-iquote', '-idirafter', '-I')
 
 
@@ -424,7 +457,7 @@ def use_cycles(uses):
     return sorted(cycles)
 
 
-def link_graph_errors(block, record, root=None):
+def link_graph_errors(block, record, root=None, hammer_block=None):
     """CAP006/CAP008 over a tree's toolchain-invocations.json (target, sources, use).
 
     Every recorded target has one architectural owner (CAP008): the module
@@ -439,9 +472,14 @@ def link_graph_errors(block, record, root=None):
     A portable owner's target attaches no native SDK, vendored or external
     include directory. The first-party `use` graph has no cycle. `root` is
     the repository root that include directories are judged against.
+
+    With `hammer_block` (architecture/modules.json hammerModules), a target may
+    also declare a Hammer module. Strict Hammer sources map to their module by
+    directory, the closure spans both graphs, and the module's recorded
+    includeExceptions also permit the dependency they name.
     Returns (errors, judged, legacy_owned).
     """
-    modules = {m['id']: m for m in block['modules']}
+    modules = combined_modules(block, hammer_block)
     closure = allowed_closure(modules)
     owners, _ = target_owners(block)
     owned, uses, unowned, roots, declared = {}, {}, set(), {}, {}
@@ -452,7 +490,7 @@ def link_graph_errors(block, record, root=None):
             roots.setdefault(target, {})[path] = entry.get('directory', '.')
         if entry.get('arch_module'):
             declared.setdefault(target, set()).add(entry['arch_module'])
-        mid = owner(entry['source'], block)
+        mid = owner(entry['source'], block) or hammer_strict_module(entry['source'], hammer_block)
         if mid is None:
             unowned.add(target)
         else:
@@ -479,12 +517,12 @@ def link_graph_errors(block, record, root=None):
             continue
         value = next(iter(declared[target]))
         if value not in modules:
-            errors.add(f'CAP008 {target}: arch_module {value} is not a capability module')
+            errors.add(f'CAP008 {target}: arch_module {value} is not a capability or Hammer module')
             continue
         judged += 1
         owner_ids = {value}
         label = f'{target} ({value})'
-        allowed = closure[value]
+        allowed = closure[value] | exception_grants(hammer_block, closure[value], closure)
         for mid in sorted(mids - allowed):
             errors.add(f'CAP006 {label}: compiles {mid}, which is outside its owner\'s closure')
         granted = set()

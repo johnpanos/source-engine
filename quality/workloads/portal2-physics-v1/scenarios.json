@@ -362,6 +362,66 @@
           "exact": true
         }
       }
+    },
+    {
+      "name": "sp_a4_tb_intro_funnel_portal",
+      "map": "sp_a4_tb_intro",
+      "script": "sp_a4_tb_intro_funnel_portal.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "portals.placed",
+        "beam.through_b",
+        "ride.through"
+      ],
+      "metrics": {
+        "b.clearance": {
+          "abs": 2
+        },
+        "beam.segments": {
+          "exact": true
+        },
+        "ride.ok_teleported": {
+          "exact": true
+        },
+        "ride.along_b": {
+          "abs": 48
+        },
+        "ride.speed_along_b": {
+          "rel": 0.1,
+          "abs": 10
+        },
+        "ride.drop_below_b": {
+          "abs": 16
+        }
+      }
+    },
+    {
+      "name": "sp_a2_bridge_intro_bridge_portal",
+      "map": "sp_a2_bridge_intro",
+      "script": "sp_a2_bridge_intro_bridge_portal.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "portals.placed",
+        "bridge.through_b",
+        "player.on_second_bridge"
+      ],
+      "metrics": {
+        "b.clearance": {
+          "abs": 2
+        },
+        "bridge.segments": {
+          "exact": true
+        },
+        "bridge.ok_from_b": {
+          "exact": true
+        },
+        "stand.below_b": {
+          "abs": 2
+        },
+        "stand.ok_held": {
+          "exact": true
+        }
+      }
     }
   ]
 }

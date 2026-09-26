@@ -41,7 +41,7 @@ def build(bld):
 		],
 		target='hammer_ktx2_preview_conformance',
 		name='hammer_ktx2_preview_conformance',
-		arch_module='content.hammer-ktx2-preview',
+		arch_module='hammer.composition',
 		includes=['../..', '../../public', '../hammertest'],
 		use=['texturecontainer', 'KTXREAD'],
 		install_path=None)

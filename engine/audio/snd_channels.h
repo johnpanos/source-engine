@@ -15,6 +15,7 @@
 
 class CSfxTable;
 class CAudioMixer;
+class CSosOperatorStackList;
 typedef int SoundSource;
 
 // DO NOT REORDER: indices to fvolume arrays in channel_t 
@@ -47,7 +48,12 @@ struct channel_t
 
 	CSfxTable	*sfx;			// the actual sound
 	CAudioMixer	*pMixer;		// The sound's instance data for this channel
-	
+
+	// Version 2 sound entries: the operator stacks run for this channel, and
+	// the entry that started it (SOUNDEMITTER_INVALID_HASH for none).
+	CSosOperatorStackList *m_pStackList;
+	unsigned int	m_nSoundScriptHash;
+
 	// speaker channel volumes, indexed using IFRONT_LEFT to IFRONT_CENTER.
 	// NOTE: never access these fvolume[] elements directly! Use channel helpers in snd_dma.cpp.
 

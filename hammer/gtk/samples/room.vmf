@@ -516,14 +516,14 @@ entity
 {
 	"id" "51"
 	"classname" "info_player_start"
-	"origin" "0 0 16"
+	"origin" "128 128 16"
 }
 entity
 {
 	"id" "52"
 	"classname" "light"
 	"targetname" "roomlight"
-	"origin" "0 0 224"
+	"origin" "128 128 224"
 	"_light" "255 255 220 400"
 }
 cameras

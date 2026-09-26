@@ -67,6 +67,8 @@
 #include "c_world.h"
 #include "perfvisualbenchmark.h"	
 #include "SoundEmitterSystem/isoundemittersystembase.h"
+#include "SoundEmitterSystem/isoundemittersystementries.h"
+#include "engine/ienginesoundentry.h"
 #include "hud_closecaption.h"
 #include "colorcorrectionmgr.h"
 #include "physpropclientside.h"
@@ -174,6 +176,8 @@ extern vgui::IInputInternal *g_InputInternal;
 
 #ifdef PORTAL2
 #include "portal2/portal2_vscript_module.h"
+#include "portal_util_shared.h"
+#include "soundinfo.h"
 
 // Client VScript manager (vscript_client.cpp); NULL when scripting is unavailable.
 IScriptManager *scriptmanager = NULL;
@@ -185,6 +189,7 @@ extern void ProcessPortalTeleportations( void );
 
 #include "vstdlib/jobgraph_frame.h"
 #include "vstdlib/jobthread.h"
+#include "iclientsoundspatialization.h"
 
 // OnRenderStart's blocks (client_render_start_steps.h) call these, defined below.
 void ProcessOnDataChangedEvents();
@@ -222,6 +227,10 @@ IEngineTrace *enginetrace = NULL;
 IGameUIFuncs *gameuifuncs = NULL;
 IGameEventManager2 *gameeventmanager = NULL;
 ISoundEmitterSystemBase *soundemitterbase = NULL;
+// Optional (version 2 sound entries); NULL when the engine or sound emitter
+// has none, and entries then play their wave without operator stacks.
+ISoundEmitterSystemEntries *soundemitterentries = NULL;
+IEngineSoundEntry *enginesoundentry = NULL;
 IInputSystem *inputsystem = NULL;
 ISceneFileCache *scenefilecache = NULL;
 IXboxSystem *xboxsystem = NULL;	// Xbox 360 only
@@ -949,6 +958,10 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 		return false;
 	if ( (soundemitterbase = (ISoundEmitterSystemBase *)appSystemFactory(SOUNDEMITTERSYSTEM_INTERFACE_VERSION, NULL)) == NULL )
 		return false;
+	soundemitterentries = (ISoundEmitterSystemEntries *)soundemitterbase->QueryInterface(
+	    SOUNDEMITTERSYSTEM_ENTRIES_INTERFACE_VERSION );
+	enginesoundentry =
+	    (IEngineSoundEntry *)appSystemFactory( IENGINESOUNDENTRY_CLIENT_INTERFACE_VERSION, NULL );
 	if ( (inputsystem = (IInputSystem *)appSystemFactory(INPUTSYSTEM_INTERFACE_VERSION, NULL)) == NULL )
 		return false;
 	if ( (scenefilecache = (ISceneFileCache *)appSystemFactory( SCENE_FILE_CACHE_INTERFACE_VERSION, NULL )) == NULL )
@@ -2611,7 +2624,44 @@ CSteamID GetSteamIDForPlayerIndex( int iPlayerIndex )
 
 #endif
 
- 
+//-----------------------------------------------------------------------------
+// Process any extra client specific, non-entity based sound positioning
+// (the sound operator system's source_info with "game_multi_origin").
+// Portal 2 hears a sound through every portal pair, as the retail client does.
+// A separate interface so IBaseClientDLL (VClient017) keeps its vtable.
+//-----------------------------------------------------------------------------
+class CClientSoundSpatialization : public IClientSoundSpatialization
+{
+public:
+	virtual bool GetSoundSpatialization( SpatializationInfo_t &info );
+};
+
+static CClientSoundSpatialization g_ClientSoundSpatialization;
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CClientSoundSpatialization, IClientSoundSpatialization,
+    CLIENTSOUNDSPATIALIZATION_INTERFACE_VERSION, g_ClientSoundSpatialization );
+
+bool CClientSoundSpatialization::GetSoundSpatialization( SpatializationInfo_t &info )
+{
+#ifdef PORTAL2
+	if ( !info.m_pUtlVecMultiOrigins )
+		return false;
+
+	Vector vSoundOrigin;
+	if ( info.pOrigin )
+	{
+		VectorCopy( *info.pOrigin, vSoundOrigin );
+	}
+	else
+	{
+		VectorCopy( info.info.vOrigin, vSoundOrigin );
+	}
+	UTIL_Portal_VectorToGlobalTransforms( vSoundOrigin, info.m_pUtlVecMultiOrigins );
+	return true;
+#else
+	return false;
+#endif
+}
+
 void CHLClient::IN_TouchEvent( int type, int fingerId, int x, int y )
 {
 	if( enginevgui->IsGameUIVisible() )
