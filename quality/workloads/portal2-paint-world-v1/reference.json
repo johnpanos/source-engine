@@ -1,12 +1,12 @@
 {
   "schema": "portal2-paint-reference/v1",
-  "recorded_utc": "2026-09-26T02:09:33.920094+00:00",
-  "retail_capture_started_utc": "2026-09-26T02:04:53.703164+00:00",
+  "recorded_utc": "2026-09-26T03:17:07.235377+00:00",
+  "retail_capture_started_utc": "2026-09-26T03:15:15.312492+00:00",
   "scenarios": {
     "sp_a3_jump_intro_powers": {
       "measures": {
-        "bounce.rise": 199.319,
-        "bounce.floor": -168.503,
+        "bounce.rise": 253.271,
+        "bounce.floor": -171.0,
         "speed.blue_top": 175.0,
         "speed.orange_top": 800.0,
         "bounce_erased.rise": 0.0,
@@ -16,23 +16,23 @@
       "regions": {
         "floor_blue:0,500,700,768": {
           "fractions": {
-            "blue": 0.9992,
+            "blue": 0.9995,
             "orange": 0.0,
             "white": 0.0,
-            "gel": 0.9992
+            "gel": 0.9995
           },
           "mean": [
-            52.2,
-            121.3,
-            181.2
+            52.5,
+            122.0,
+            182.3
           ]
         },
         "floor_orange:0,500,700,768": {
           "fractions": {
-            "blue": 0.0422,
+            "blue": 0.0425,
             "orange": 0.9471,
             "white": 0.0019,
-            "gel": 0.9893
+            "gel": 0.9896
           },
           "mean": [
             192.6,
@@ -43,40 +43,40 @@
         "floor_erased:330,360,560,445": {
           "fractions": {
             "blue": 0.0,
-            "orange": 0.0,
+            "orange": 0.0002,
             "white": 0.0,
-            "gel": 0.0
+            "gel": 0.0002
           },
           "mean": [
-            53.6,
-            45.6,
-            38.3
+            53.8,
+            45.7,
+            38.4
           ]
         },
         "floor_orange:330,360,560,445": {
           "fractions": {
-            "blue": 0.225,
-            "orange": 0.734,
-            "white": 0.0056,
-            "gel": 0.9589
+            "blue": 0.2316,
+            "orange": 0.7001,
+            "white": 0.0063,
+            "gel": 0.9317
           },
           "mean": [
-            190.7,
-            111.0,
-            96.3
+            185.6,
+            111.4,
+            98.9
           ]
         },
         "wall_white:380,40,860,500": {
           "fractions": {
             "blue": 0.0,
             "orange": 0.0,
-            "white": 0.8637,
+            "white": 0.8532,
             "gel": 0.0
           },
           "mean": [
-            108.6,
             107.8,
-            101.8
+            107.0,
+            100.8
           ]
         }
       }

@@ -60,9 +60,9 @@ QA_Do( "shot floor_blue", function() { PW_Shot( "floor_blue" ) }, 1.0 )
 QA_Do( "drop on blue", function()
 {
 	PW_PlaceFeet( ::JI.blueDrop, 0.0 )
-	PW_StartSampling()
+	PW_StartSampling( 3.0 )
 }, 0.05 )
-QA_WaitFor( "bounce.sampled", function() { return PW_Sample( 3.0 ) }, 4.0 )
+QA_WaitFor( "bounce.sampled", PW_Sampled, 4.0 )
 QA_Do( "measure bounce", function()
 {
 	local r = PW_Rebound()
@@ -75,9 +75,9 @@ QA_Do( "run on blue", function()
 {
 	PW_PlaceFeet( Vector( -420, 720, -182 ), 0.0 )
 	QA_Press( "forward", 1.6 )
-	PW_StartSampling()
+	PW_StartSampling( 1.6 )
 }, 0.05 )
-QA_WaitFor( "speed.control_sampled", function() { return PW_Sample( 1.6 ) }, 3.0 )
+QA_WaitFor( "speed.control_sampled", PW_Sampled, 3.0 )
 QA_Do( "measure control speed", function() { PW_Measure( "speed.blue_top", PW_TopSpeed() ) }, 0.5 )
 
 // Propulsion: sweep an orange strip along y=560 and run along it.
@@ -93,9 +93,9 @@ QA_Do( "run on orange", function()
 {
 	PW_PlaceFeet( ::JI.runStart, 0.0 )
 	QA_Press( "forward", 1.6 )
-	PW_StartSampling()
+	PW_StartSampling( 1.6 )
 }, 0.05 )
-QA_WaitFor( "speed.sampled", function() { return PW_Sample( 1.6 ) }, 3.0 )
+QA_WaitFor( "speed.sampled", PW_Sampled, 3.0 )
 QA_Do( "measure speed", function() { PW_Measure( "speed.orange_top", PW_TopSpeed() ) }, 0.5 )
 
 // Water: erase a patch of the blue floor near x=0, then drop onto it.
@@ -110,9 +110,9 @@ QA_Do( "shot floor_erased", function() { PW_Shot( "floor_erased" ) }, 1.0 )
 QA_Do( "drop on erased", function()
 {
 	PW_PlaceFeet( Vector( ::JI.erased.x, ::JI.erased.y, ::JI.blueDrop.z ), 0.0 )
-	PW_StartSampling()
+	PW_StartSampling( 3.0 )
 }, 0.05 )
-QA_WaitFor( "bounce_erased.sampled", function() { return PW_Sample( 3.0 ) }, 4.0 )
+QA_WaitFor( "bounce_erased.sampled", PW_Sampled, 4.0 )
 QA_Do( "measure erased bounce", function()
 {
 	local r = PW_Rebound()

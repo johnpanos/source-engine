@@ -105,19 +105,31 @@ function PW_PlaceFeet( feet, yaw )
 	QA_SetView( 0.0, yaw )
 }
 
-function PW_StartSampling()
+// Records the player's origin and velocity every server tick for <seconds>
+// (rescheduled through the driver's entity I/O, one tick apart); the driver's
+// own 0.1 s poll would miss the low point and the apex of a bounce.
+function PW_StartSampling( seconds )
 {
 	::PW.samples = []
 	::PW.t0 = Time()
+	::PW.sampleSeconds <- seconds
+	PW_SampleTick()
 }
 
-// Records the player's origin and velocity; true once <seconds> have passed.
-function PW_Sample( seconds )
+function PW_SampleTick()
 {
-	local player = QA_Player()
-	::PW.samples.append( { t = Time() - ::PW.t0, o = player.GetOrigin(), v = player.GetVelocity() } )
+	local player = GetPlayer()
+	if ( player != null )
+		::PW.samples.append( { t = Time() - ::PW.t0, o = player.GetOrigin(), v = player.GetVelocity() } )
+	if ( Time() - ::PW.t0 < ::PW.sampleSeconds )
+		EntFireByHandle( ::QA.driver, "RunScriptCode", "PW_SampleTick()", 0.01, null, null )
+}
+
+// True once the sampling window has passed.
+function PW_Sampled()
+{
 	QA_Detail( ::PW.samples.len() + " samples" )
-	return Time() - ::PW.t0 >= seconds
+	return Time() - ::PW.t0 >= ::PW.sampleSeconds + 0.05
 }
 
 // Highest rise of the feet above the lowest point reached, after that point.

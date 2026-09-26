@@ -371,5 +371,115 @@ disagreed at this listener position (stopsound silence, the far reverb tail,
 v2 near fidelity and v2 falloff at 256 and 512 units); the suite is not yet
 registered in the conformance manifest.
 
+### Portal 2 paint retail conformance (2026-09-25)
+
+`quality/workloads/portal2-paint-world-v1` runs one scenario,
+`sp_a3_jump_intro_powers`, on this build and on retail `portal2_linux` at
+1024x768. It uses the chamber's floor trench (x -448..256, y 448..768,
+floor z -184), which the map paints blue. The scenario moves the map's
+`info_paint_sprayer`s and sweeps them with `ChangePaintType`: an orange
+strip, water over part of the blue, and white gel up the x=256 end wall.
+
+It measures on the server, each tick:
+- the rebound of a 160-unit drop on blue;
+- the top walking speed on blue, then on orange;
+- the rebound on the erased patch;
+- portal placement on the bare wall, then on the white patch.
+
+It also takes a shot of each coat. `tools/quality/portal2_paint.py`
+compares both against `reference.json`, which holds numbers from a retail
+run and no retail pixels. The retail side reuses
+`portal2_material_shots.py capture`. Rules and tolerances are in
+`checks.json`.
+
+The suite had 14 checks, and 11 failed before this work. All 14 now pass on
+`build-p2-paint`. Retail and this build now agree:
+- rebound 253.3 on both;
+- speed on orange 800, speed on blue 175;
+- rebound on the erased patch 0;
+- a portal on white gel (0.03 units away), none on the bare wall;
+- painted-area fractions within 0.15 of retail.
+
+Defects found, most severe first:
+
+1. **No paint map in the engine.** The CS:GO-era `IVEngineClient` and
+   `IVEngineServer` paint members were stubs, so gel never coated a
+   surface. The fix is `engine/paint.cpp`, ported from the CS:GO engine
+   that retail ships (its ConVars and `svc_PaintmapData` are in the retail
+   `engine.so`). It is exposed as the new interface `VEnginePaint001`
+   (`public/engine/ienginepaint.h`), and the game connects to it in
+   `portal2_shared_compat.cpp`. Pages follow the lightmap pages, are
+   allocated after the sort infos and dropped with them. Indices and save
+   data are bounds checked.
+2. **Player powers switched off.** `PaintPowerUser::UpdatePaintPowers` was
+   `if( false )`, so no power ever activated. The server's
+   `projectedwallentity_shared.cpp` and the cube's `DisabledThink` also
+   hard-coded no paint, and `CBaseEntity::InputRemovePaint` was empty.
+3. **Painted surfaces were not drawn.** The engine now draws each painted
+   opaque world surface again, with its page's `LightmappedPaint` material
+   (`engine/paint_render.cpp`). That shader is a stdshader
+   (`materialsystem/stdshaders/lightmappedpaint_*`), and native Vulkan runs
+   `shaders/lightmappedpaint.frag`, a port of retail's thick paint (splats,
+   bubbles, reflection). Retail binds the paint map at s9; here it is s0, so
+   the pass reuses LightmappedGeneric's layout.
+   Found on the way:
+   - The shader's texture defaults were missing.
+   - An early `discard` broke texture derivatives.
+   - `BuildMSurfaceVertexArrays` leaves the tangent frame and bump offset
+     unwritten on most surfaces, so the paint pass writes its own vertices.
+4. **Save/restore and co-op join had no paint.** Saves now hold the engine's
+   run-length encoded paint records, loaded once the client has laid out
+   the map's lightmap pages. A joining co-op client gets them through the
+   now-registered `LoadPaintmapData` message; before, the reconstructed
+   code sent unregistered messages. Neither path is tested yet.
+5. **Light bridges crashed on draw.** The bridge's `$color` vars pointed into
+   unreferenced materials, which get uncached after the first frame.
+   `C_ProjectedWallEntity` now holds references to them.
+6. **HDR cubemaps were empty on native** (fixed by the video agent). Gel had
+   no reflection until RGBA16F cubemaps uploaded.
+
+Negative controls:
+- `r_hidepaintedsurfaces 1` fails exactly the 7 coverage and colour checks.
+- `sv_paint_detection_sphere_radius 0` fails exactly the 4 power checks.
+- The comparator self-test seeds 11 defects, each of which must fail the
+  checks it pins (23 checks).
+- Rules whose prerequisite failed report "unverifiable": water cannot be
+  shown to erase gel that was never there.
+
+Manifest rows: `corpus.portal2.paint-retail` (optional; needs
+`SOURCE_PORTAL2_STEAM_ROOT`, a GPU and `build-p2`), its two seeded rows, and
+`corpus.portal2.paint-retail.comparator`.
+
+```sh
+python3 tools/quality/portal2_paint.py capture --side retail --out <dir>
+python3 tools/quality/portal2_paint.py record --retail <dir>
+python3 tools/quality/portal2_paint.py suite --build build-p2-paint --runtime run/runtime-p2-paint --out <dir>
+python3 tools/quality/portal2_paint.py self-test
+```
+
+Other differences found:
+- Retail's single-player server simulates in 1/30 s steps
+  (`sv_alternateticks 1`). This engine ticks every 0.015 s. Handed to the
+  physics work.
+- An unpainted wall is about 12% brighter here in linear light than retail,
+  which is global exposure. Painted floor is 1.3–1.5x brighter. That is
+  within the colour tolerance (40 per channel) but not diagnosed. The
+  suspect is the lightmap's sRGB decode in the paint pass: it follows the HDR
+  mode, as retail's does.
+- `sp_a3_speed_ramp`: retail's gel streams show larger merged blobs than
+  this build's clean-room blobulator. Not measured yet.
+
+Open:
+- Paint on brush entities (moving panels) is not drawn; world surfaces
+  only.
+- D3D9: retail's `.vcs` has one more static combo than this port, so its
+  indices do not match.
+- Save/restore, co-op join, and paint on cubes and props are not measured.
+- The blobulator is not compared statistically with retail.
+- The in-game manifest rows need `build-p2` rebuilt with this code.
+- Stylelint flags `portal2_engine_compat.h:414`: legacy lines next to a
+  deletion, in a namespace the formatter would reindent with spaces. They
+  are left as they are.
+
 The repository's provenance and distribution warning in the root README also
 applies to this import.

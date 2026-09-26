@@ -42,7 +42,7 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | G01 | `portal_stats_controller` (`CPortalStatsController`) is absent, so `OnLevelEnd` from the transition scripts never changes level | `sp_transition_list.nut`, `mp_coop_transition_list.nut` | done (see log) |
 | G01a | `point_changelevel` transitions have no level connection, so the engine disconnects the arriving player ("Can't find connection") | every SP transition | done (see log) |
 | G01b | 64-bit user-message sizes: `sizeof( long )` registrations (8 bytes) against 4-byte `WRITE_LONG`/`WRITE_EHANDLE`, so the engine refuses `PaintEntity`, `ChangePaintColor`, `StartSurvey`, `ScoreboardTempUpdate` (and Portal 1 `EntityPortalled`) | paint on props, surveys, portal teleport fix-up | done; runtime check pending |
-| G02 | Engine paint-map API is stubbed (`HasPaintmap`, `SpherePaintSurface`, `SphereTracePaintSurface`, paint-map save/restore), so gel cannot coat world surfaces | 30 maps set `paintinmap` | todo |
+| G02 | Engine paint-map API is stubbed (`HasPaintmap`, `SpherePaintSurface`, `SphereTracePaintSurface`, paint-map save/restore), so gel cannot coat world surfaces | 30 maps set `paintinmap` | done on native Vulkan (see log); brush entities, save/restore and co-op join unverified |
 | G03 | `func_portal_detector` is the Portal 1 version: no `OnStartTouchPortal`/`OnEndTouchPortal`/`OnEndTouchLinkedPortal`/`OnEndTouchBothLinkedPortals`, no `CheckAllIDs` | 10+ maps | done (see log) |
 | G04 | `npc_portal_turret_floor` is the Portal 1 version: no `TurretRange`, `OnExplode`, `ShootAtMovingObjects`, `AllowShootThroughPortals`, `LoadAlternativeModels`, `CollisionType`, `UseSuperDamageScale` | 27 maps | partial: built; model variants verified, combat unverified |
 | G05 | `npc_security_camera` is the Portal 1 version: no `LookAtBlue`/`LookAtOrange`, `TeamPlayerToLookAt`, `OnTaunted*` | co-op paint maps | done: built; co-op run unverified |
@@ -206,3 +206,14 @@ Newest last. Each entry names the build and the check that passed.
     untextured run (both streams pale).
   - `r_paintblob_wireframe` draws nothing on native Vulkan (no wireframe
     shader there).
+- 2026-09-25, G02 (build-p2-paint, native Vulkan): world paint.
+  - `engine/paint.cpp` is the paint map, `VEnginePaint001` its interface
+    for the game, and `engine/paint_render.cpp` with the `LightmappedPaint`
+    shader (`shaders/lightmappedpaint.frag`) draws it.
+  - Player powers were also gated off: `PaintPowerUser::UpdatePaintPowers`
+    was `if( false )`.
+  - Oracle: `tools/quality/portal2_paint.py suite`
+    (`quality/workloads/portal2-paint-world-v1`, sp_a3_jump_intro against
+    retail portal2_linux) passes 14/14. It failed 11 of 14 before, and its
+    in-game negative controls fail as required. See the README's "Portal 2
+    paint retail conformance".

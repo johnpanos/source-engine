@@ -4,7 +4,7 @@
   "scenarios": {
     "sp_a3_jump_intro_powers": {
       "measures": [
-        {"check": "power.bounce", "measure": "bounce.rise", "rule": "relative", "tolerance": 0.25,
+        {"check": "power.bounce", "measure": "bounce.rise", "rule": "relative", "tolerance": 0.10,
          "defect": "repulsion gel does not bounce the player: the engine paint map is missing, so SphereTracePaintSurface finds no paint"},
         {"check": "power.speed", "measure": "speed.orange_top", "rule": "relative", "tolerance": 0.15,
          "defect": "propulsion gel does not speed the player up"},

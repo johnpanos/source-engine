@@ -478,7 +478,8 @@ def main(argv=None):
     def common(p):
         p.add_argument("--workload", type=Path, default=WORKLOAD)
         p.add_argument("--steam-root", type=Path, default=steam)
-        p.add_argument("--build", type=Path, default=ROOT / "build-p2")
+        p.add_argument("--build", type=Path,
+                       default=Path(os.environ.get("SOURCE_PORTAL2_BUILD") or ROOT / "build-p2"))
         p.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-paint-suite")
         p.add_argument("--mirror", type=Path, default=ROOT / "run/retail-p2-paint")
         p.add_argument("--extra-arg", action="append", default=[],
