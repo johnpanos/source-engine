@@ -7,11 +7,10 @@
 // LIGHTING_PREVIEW and DOWATERFOG change only the fixed-function FOG output,
 // which the ps20b pixel stage replaces with its own fog.
 //
-// The record carries no POSITION1/NORMAL1 flex stream, so ApplyMorph adds deltas
-// of zero and the wrinkle weight it outputs (vPosFlex.w * cFlexScale.y, the
-// flex stream's w) is zero, as D3D9 computes it without a flex mesh. Wrinkle
-// maps need that stream's w per vertex in the record, and cFlexScale (c3) set
-// as D3D9's mesh sets it when a flex mesh is bound.
+// ApplyMorph: the backend adds a bound flex stream's position and normal
+// deltas to the record before skinning, and carries the wrinkle weight
+// (vPosFlex.w * cFlexScale.y, with cFlexScale.y 1 under ps_2_b) in a model
+// record's slot 21 (inExtra.w); it is zero without a flex mesh, as on D3D9.
 #include "legacy_vs.glsl"
 #include "legacy_vs_lighting.glsl"
 #include "legacy_vs_bumped_model.glsl"
@@ -39,9 +38,8 @@ void main()
 	const bool USE_STATIC_CONTROL_FLOW = STATIC_VS_COMBO( 48, 2 ) != 0;
 	const int NUM_LIGHTS = DYNAMIC_VS_COMBO( 16, 3 );
 
-	// ApplyMorph: the flex stream (POSITION1) is absent, read as zero.
-	const vec4 vPosFlex = vec4( 0.0 );
-	projPos_fWrinkleWeight.w = vPosFlex.w * cFlexScale.y;
+	// ApplyMorph's wrinkle weight (the deltas are already in the record).
+	projPos_fWrinkleWeight.w = LegacyBrushTangents() ? 0.0 : inExtra.w;
 
 	// Perform skinning (the record's), then the tangent frame.
 	vec3 worldNormal, worldTangentS, worldTangentT;

@@ -52,6 +52,13 @@ enum MeshRecordOffset
 	kMeshWideStride = kMeshBaseStride + kMeshWideTexCoordFloats * 4,
 	// A static-prop color stream: one tightly packed D3DCOLOR per vertex.
 	kMeshColorStreamStride = 4,
+	// A flex stream (studiorender's delta-flexed faces, SetFlexMesh), laid out
+	// as D3D9's stream 2: the position delta, the wrinkle weight (its w), and
+	// the normal delta.
+	kMeshFlexPositionOffset = 0, // float3
+	kMeshFlexWrinkleOffset = 12, // float
+	kMeshFlexNormalOffset = 16,  // float3
+	kMeshFlexStride = 28,
 	// Bone weights a record holds; the mesh builder writes N-1 of N weights.
 	kMeshRecordBoneWeights = 2,
 	// Bytes of scratch a caller supplies for components a format lacks. A whole
@@ -61,6 +68,11 @@ enum MeshRecordOffset
 
 // A static-prop color mesh (CColorMeshData): exactly VERTEX_SPECULAR.
 bool MeshFormatIsColorStream( VertexFormat_t format );
+
+// A flex mesh (IShaderAPI GetFlexMesh, CMatQueuedMesh): position and normal
+// deltas, and on ps_2_b hardware the wrinkle weight, with
+// VERTEX_FORMAT_USE_EXACT_FORMAT, which no other mesh uses.
+bool MeshFormatIsFlexStream( VertexFormat_t format );
 
 // Texture coordinates wider than two floats, or any set beyond the three the
 // base record carries.

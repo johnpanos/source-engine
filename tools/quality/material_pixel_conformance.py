@@ -100,7 +100,7 @@ LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channe
                   "base_gray", "base_color")
 FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight", "cable",
             "sky", "monitor", "sprite", "pbr-fallback", "pbr-model", "bump", "shadow", "post",
-            "glass", "softparticle")
+            "glass", "softparticle", "flex")
 # Families whose harness writes whole frames, and the oracle module of each
 # (validate, evaluate).
 FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight,
@@ -146,6 +146,16 @@ GLASS_ADDED_LIGHT = 6
 # The walls differ by at least this much in every channel, so a transmission is
 # measured to about 2% from 8-bit pixels.
 GLASS_WALL_SEPARATION = 150
+# The flex cases (delta-flexed faces: SetFlexMesh position deltas and wrinkle
+# maps), with each case's wrinkle weight as the oracle's own copy.
+FLEX_CASES = {"rest": 0.0, "stretch": 1.0, "compress": -1.0, "half_stretch": 0.5,
+              "quarter_compress": -0.25, "moved": 0.0, "unbound": 0.0}
+# skin_ps20b blends in linear light before lighting, which is the same in every
+# case: pixels are affine in the blend. Mixes are held to within this fraction of
+# the endpoints' separation, and the lit stretch/compress ratios to the textures'
+# within the ratio tolerance.
+FLEX_MIX_TOLERANCE = 0.05
+FLEX_RATIO_TOLERANCE = 0.1
 # The softparticle cases (SpriteCard DEPTHBLEND over the engine's depth copy).
 SOFTPARTICLE_CASES = ("gap_5", "gap_25", "gap_80", "far_wall", "control")
 # D3D9 PC's dest-alpha depth range (CShaderAPIDx8 m_DestAlphaDepthRange).
@@ -273,6 +283,18 @@ def read_pixels(path):
                 any(not isinstance(v, int) or not 0 <= v <= 255 for v in case["pixel"])
                 for case in report.get("cases", [])):
             raise PixelsError("%s has incomplete %s cases %s" % (path, family, names))
+        return report
+    if family == "flex":
+        names = [case.get("name") for case in report.get("cases", [])]
+        if names != list(FLEX_CASES) or any(
+                not isinstance(report.get(key), list) or len(report[key]) != 3
+                for key in ("base", "compress", "stretch")) or any(
+                not isinstance(case.get("bound"), bool) or
+                any(not isinstance(case.get(key), list) or len(case[key]) != 3 or
+                    any(not isinstance(v, int) or not 0 <= v <= 255 for v in case[key])
+                    for key in ("center", "moved"))
+                for case in report["cases"]):
+            raise PixelsError("%s has incomplete flex cases %s" % (path, names))
         return report
     if family == "softparticle":
         names = [case.get("name") for case in report.get("cases", [])]
@@ -866,6 +888,54 @@ def check_softparticle(report):
     return failures
 
 
+def check_flex(report):
+    cases = {case["name"]: case for case in report["cases"]}
+    failures = []
+    for name, weight in FLEX_CASES.items():
+        if abs(cases[name]["wrinkle"] - weight) > 1e-6:
+            failures.append("%s: drawn with wrinkle weight %s, expected %s"
+                            % (name, cases[name]["wrinkle"], weight))
+    rest = cases["rest"]["center"]
+    if _close(rest, CLEAR, PIXEL_TOLERANCE):
+        return failures + ["rest: the face was not drawn (%s)" % rest]
+    if not _close(cases["unbound"]["center"], rest, PIXEL_TOLERANCE):
+        failures.append("unbound: %s without a flex stream, rest %s (an unbound stream must "
+                        "leave the face as it is)" % (cases["unbound"]["center"], rest))
+    # The position delta moves the face: its old center shows the clear color.
+    moved = cases["moved"]
+    if not _close(moved["center"], CLEAR, PIXEL_TOLERANCE) or \
+            not _close(moved["moved"], rest, PIXEL_TOLERANCE):
+        failures.append("moved: center %s and moved point %s; the flex position delta should "
+                        "move the face (rest %s over clear %s)"
+                        % (moved["center"], moved["moved"], rest, CLEAR))
+    lin = lambda pixel: [_srgb_to_linear(v) for v in pixel]  # noqa: E731
+    p0 = lin(rest)
+    for end, texture, half, weight in (("stretch", "stretch", "half_stretch", 0.5),
+                                       ("compress", "compress", "quarter_compress", 0.25)):
+        p1 = lin(cases[end]["center"])
+        separation = max(abs(a - b) for a, b in zip(p0, p1))
+        if separation * 255.0 < 20:
+            failures.append("%s: %s, rest %s; the wrinkle weight did not blend toward $%s"
+                            % (end, cases[end]["center"], rest, texture))
+            continue
+        # The lit endpoints keep the textures' ratios (lighting multiplies both).
+        base = lin(report["base"])
+        target = lin(report[texture])
+        for k in range(3):
+            expected = target[k] / base[k]
+            measured = p1[k] / p0[k] if p0[k] > 0 else float("inf")
+            if abs(measured - expected) > FLEX_RATIO_TOLERANCE * expected:
+                failures.append("%s: channel %d is %.3f of rest, $%s/$basetexture is %.3f"
+                                % (end, k, measured, texture, expected))
+        mixed = lin(cases[half]["center"])
+        for k in range(3):
+            expected = p0[k] + weight * (p1[k] - p0[k])
+            if abs(mixed[k] - expected) > FLEX_MIX_TOLERANCE * separation:
+                failures.append("%s: channel %d is %.4f linear, the blend predicts %.4f"
+                                % (half, k, mixed[k], expected))
+    return failures
+
+
 def compare_glass(report, reference):
     return ["%s: pane %s, reference %s" % (c["name"], c["pane"], r["pane"])
             for c, r in zip(report["cases"], reference["cases"])
@@ -1030,6 +1100,13 @@ def evaluate(report, hdr, reference=None):
             failures += ["%s: %s, reference %s" % (c["name"], c["pixel"], r["pixel"])
                          for c, r in zip(report["cases"], reference["cases"])
                          if not _close(c["pixel"], r["pixel"], PIXEL_TOLERANCE)]
+        return failures
+    if report["family"] == "flex":
+        failures = check_flex(report)
+        if reference is not None:
+            failures += ["%s: %s, reference %s" % (c["name"], c["center"], r["center"])
+                         for c, r in zip(report["cases"], reference["cases"])
+                         if not _close(c["center"], r["center"], PIXEL_TOLERANCE)]
         return failures
     if report["family"] == "softparticle":
         failures = check_softparticle(report)

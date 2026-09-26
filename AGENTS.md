@@ -1495,7 +1495,16 @@ Keep the table concise and link details below or from the domain progress file.
     logs no validation messages.
   - pbr_ps30 parallax (2026-09-26, `4070b214`): the HLSL loop the pinned FXC
     miscompiled is restructured; the case is in the default run (268/268).
-  - Unverified or open: flashlight passes and wrinkle weights.
+  - Wrinkle maps and hardware-flexed faces (2026-09-26): native reports
+    stream offsets, and `SetFlexMesh` binds studiorender's flex stream (D3D9's
+    stream 2 layout in `vulkan_mesh_layout`); its position and normal deltas
+    are added to the record before skinning and the wrinkle weight reaches
+    the `skin_vs20` port. The `flex` pixel family matches skin_ps20b's
+    WRINKLEMAP blend and the moved face in both HDR modes; the queued mesh
+    contract (158 checks) covers the flex layout; a testchmb_a_01 frame is
+    within 6 levels of the pre-change frame (static-prop color pooling now
+    on) with no validation messages.
+  - Unverified or open: flashlight passes.
   - No gate closes. See the
     [legacy shader record](RFC/0001-native-vulkan-legacy-shaders-progress.md).
 

@@ -302,8 +302,19 @@ Other checks:
   - WorldVertexAlpha's fallback targets an unbuilt DX8 shader.
   - ParticleLitGeneric is dead code (no `.fxc`).
   - LIGHTING_PREVIEW 2 writes only its first render target.
-- **Wrinkle maps** work at weight zero only. The flex stream's wrinkle weight
-  has no slot in the record, and `SetFlexMesh` is a no-op.
+- **Wrinkle maps**, done 2026-09-26. `SupportsStreamOffset()` is true, so
+  studiorender draws delta-flexed groups statically and binds their flex stream
+  (`CEmptyMesh::SetFlexMesh`, routed through `OnSetFlexMesh` for the queued
+  material system). The stream has D3D9's stream-2 layout
+  (`MeshFormatIsFlexStream`: position delta, wrinkle, normal delta); emit adds
+  the deltas to the record before skinning (the normal delta to the tangent
+  too, as `ApplyMorph` does), keeps SEAMLESS's object position raw, puts the
+  wrinkle weight in a model record's slot 21 for `skin_vs20`, and keys the
+  geometry-reuse cache on the flex stream. Evidence: the `flex` pixel family
+  (wrinkle weights 0, ±1, 0.5, -0.25, a position delta and an unbound draw)
+  matches skin_ps20b's blend and the moved face in both HDR modes, with 8
+  seeded-defect self-tests; the queued mesh contract passes 158 checks;
+  every other family and the oracle pass as before.
 - **Oracle limits:**
   - The pinned FXC (D3DX9 5.04.00.2904) miscompiled two shaders. One was
     pbr_ps30's parallax loop: its own `/Fc` listing swapped the step counter

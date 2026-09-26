@@ -1217,9 +1217,16 @@ public:
 
 	virtual int IndexCount() const { return m_numIndices; }
 
-	virtual void SetFlexMesh( IMesh *pMesh, int nVertexOffset ) {}
+	// studiorender's delta-flexed faces (R_StudioFlexMeshGroup): a flex stream
+	// (vulkan_mesh_layout.h) whose record k holds vertex k's position and normal
+	// deltas and wrinkle weight, from nVertexOffset bytes on, as D3D9 binds
+	// stream 2. The deltas are applied where this mesh's vertices are converted.
+	virtual void SetFlexMesh( IMesh *pMesh, int nVertexOffset );
 
-	virtual void DisableFlexMesh() {}
+	virtual void DisableFlexMesh() { SetFlexMesh( nullptr, 0 ); }
+	// Vertex v's flex record, or null when no flex stream covers it.
+	const unsigned char *FlexRecord( int v ) const;
+	bool IsFlexStream() const { return render_vulkan::MeshFormatIsFlexStream( m_format ); }
 
 	virtual void MarkAsDrawn() {}
 
@@ -1288,6 +1295,8 @@ private:
 	VertexFormat_t m_format = 0;
 	CEmptyMesh *m_pColorMesh = nullptr;
 	int m_colorMeshOffset = 0;
+	CEmptyMesh *m_pFlexMesh = nullptr;
+	int m_flexMeshOffset = 0;
 
 public:
 	// The record's component offsets (vulkan_mesh_layout.h owns them).
@@ -1346,6 +1355,32 @@ void CEmptyMesh::SetColorMesh( IMesh *pColorMesh, int nVertexOffset )
 		NoteUnimplemented( "SetColorMesh: color mesh other than a VERTEX_SPECULAR stream" );
 		m_pColorMesh = nullptr;
 	}
+}
+
+void CEmptyMesh::SetFlexMesh( IMesh *pMesh, int nVertexOffset )
+{
+	// Queued like a draw (CMatQueuedRenderContext::OnSetFlexMesh queues the
+	// flex build and this binding), so it takes effect in frame order.
+	if ( g_pShaderUtil && !g_pShaderUtil->OnSetFlexMesh( this, pMesh, nVertexOffset ) )
+		return;
+	m_pFlexMesh = pMesh ? AsOwnMesh( pMesh ) : nullptr;
+	m_flexMeshOffset = nVertexOffset;
+	if ( pMesh && ( !m_pFlexMesh || !m_pFlexMesh->IsFlexStream() ) )
+	{
+		NoteUnimplemented( "SetFlexMesh: flex mesh other than a flex stream" );
+		m_pFlexMesh = nullptr;
+	}
+}
+
+const unsigned char *CEmptyMesh::FlexRecord( int v ) const
+{
+	if ( !m_pFlexMesh || v < 0 )
+		return nullptr;
+	const size_t at = static_cast<size_t>( m_flexMeshOffset ) +
+	                  static_cast<size_t>( v ) * render_vulkan::kMeshFlexStride;
+	if ( at + render_vulkan::kMeshFlexStride > m_pFlexMesh->m_vertexData.size() )
+		return nullptr;
+	return m_pFlexMesh->m_vertexData.data() + at;
 }
 
 bool CEmptyMesh::StaticColor( int v, float rgb[3] ) const
@@ -2307,7 +2342,10 @@ public:
 	virtual bool NeedsATICentroidHack() const { return false; }
 	virtual bool SupportsColorOnSecondStream() const { return false; }
 	virtual bool SupportsStaticPlusDynamicLighting() const { return false; }
-	virtual bool SupportsStreamOffset() const { return false; }
+	// Stream offsets are how studiorender binds a delta-flexed face's flex
+	// stream (SetFlexMesh) and pools static-prop color meshes (SetColorMesh);
+	// both carry byte offsets this backend reads.
+	virtual bool SupportsStreamOffset() const { return true; }
 	void SetDefaultDynamicState() {}
 	virtual void CommitPixelShaderLighting( int pshReg );
 
@@ -4207,6 +4245,9 @@ struct EmitReuseKey
 	const void *colorMesh;
 	uint64_t colorRevision;
 	int colorOffset;
+	const void *flexMesh;
+	uint64_t flexRevision;
+	int flexOffset;
 	int first;
 	int count;
 	int numVerts;
@@ -4220,7 +4261,9 @@ struct EmitReuseKey
 		return vertexMesh == other.vertexMesh && vertexRevision == other.vertexRevision &&
 		       indexMesh == other.indexMesh && indexRevision == other.indexRevision &&
 		       colorMesh == other.colorMesh && colorRevision == other.colorRevision &&
-		       colorOffset == other.colorOffset && first == other.first && count == other.count &&
+		       colorOffset == other.colorOffset && flexMesh == other.flexMesh &&
+		       flexRevision == other.flexRevision && flexOffset == other.flexOffset &&
+		       first == other.first && count == other.count &&
 		       numVerts == other.numVerts && primitive == other.primitive && flags == other.flags &&
 		       skinLightCount == other.skinLightCount && lightCount == other.lightCount;
 	}
@@ -4867,8 +4910,36 @@ void CEmptyMesh::EmitToNativeQueue()
 	int maxBone = -1;
 	auto convertVertex = [&]( int v, float *out, int &maxBoneOut )
 	{
-		const unsigned char *base =
+		const unsigned char *raw =
 		    vertices.m_vertexData.data() + static_cast<size_t>( v ) * vertices.RecordStride();
+		// A bound flex stream: the vertex shaders' ApplyMorph (common_vs_fxc.h)
+		// adds the position delta, the normal delta to the normal and the
+		// tangent, before skinning; every consumer below reads the flexed
+		// record. The wrinkle weight (cFlexScale.y is 1 with ps_2_b) goes to the
+		// legacy ports; SEAMLESS's object position stays the raw one.
+		unsigned char flexed[render_vulkan::kMeshBaseStride];
+		float wrinkle = 0.0f;
+		const unsigned char *base = raw;
+		if ( const unsigned char *flex = FlexRecord( v ) )
+		{
+			memcpy( flexed, raw, sizeof( flexed ) );
+			float delta[3], value[3];
+			memcpy( delta, flex + render_vulkan::kMeshFlexPositionOffset, sizeof( delta ) );
+			memcpy( value, flexed, sizeof( value ) );
+			for ( int k = 0; k < 3; ++k )
+				value[k] += delta[k];
+			memcpy( flexed, value, sizeof( value ) );
+			memcpy( delta, flex + render_vulkan::kMeshFlexNormalOffset, sizeof( delta ) );
+			for ( int offset : { int( kMeshNormalOffset ), int( kMeshUserDataOffset ) } )
+			{
+				memcpy( value, flexed + offset, sizeof( value ) );
+				for ( int k = 0; k < 3; ++k )
+					value[k] += delta[k];
+				memcpy( flexed + offset, value, sizeof( value ) );
+			}
+			memcpy( &wrinkle, flex + render_vulkan::kMeshFlexWrinkleOffset, sizeof( wrinkle ) );
+			base = flexed;
+		}
 		if ( g_NumBoneWeights > 0 )
 		{
 			// The bones SkinPosition and WorldNormal read for this vertex.
@@ -5060,7 +5131,10 @@ void CEmptyMesh::EmitToNativeQueue()
 			else if ( g_NumBoneWeights <= 0 )
 				ModelToWorld( pos );
 			if ( legacyObjectPositionExtra )
-				memcpy( out + 18, base, 3 * sizeof( float ) );
+				memcpy( out + 18, raw, 3 * sizeof( float ) );
+			// A model's free slot 21 (legacy_vs.glsl) carries the wrinkle weight.
+			if ( !legacyBrushTangents )
+				out[21] = wrinkle;
 			out[3] = col[2] / 255.0f;
 			out[4] = col[1] / 255.0f;
 			out[5] = col[0] / 255.0f;
@@ -5396,6 +5470,11 @@ void CEmptyMesh::EmitToNativeQueue()
 		    ( vertexLighting && staticLight ) || legacyStaticColor ? m_pColorMesh : nullptr;
 		key.colorRevision = key.colorMesh ? m_pColorMesh->m_revision : 0;
 		key.colorOffset = key.colorMesh ? m_colorMeshOffset : 0;
+		// Each flex build locks the flex mesh again (a new revision), so a
+		// flexed draw is reused only within one flex state.
+		key.flexMesh = m_pFlexMesh;
+		key.flexRevision = m_pFlexMesh ? m_pFlexMesh->m_revision : 0;
+		key.flexOffset = m_pFlexMesh ? m_flexMeshOffset : 0;
 		key.first = first;
 		key.count = count;
 		key.numVerts = numVerts;
@@ -8404,11 +8483,16 @@ VertexFormat_t CShaderAPIVulkan::DynamicMeshFormat(
 }
 
 // The flex stream (morph deltas) has its own mesh, as in D3D9, so a flex build
-// never overwrites the dynamic mesh's records. This backend does not apply
-// flex streams (SetFlexMesh), so nothing draws it.
+// never overwrites the dynamic mesh's records. The mesh it is bound to
+// (SetFlexMesh) applies it when its vertices are converted.
 IMesh *CShaderAPIVulkan::GetFlexMesh()
 {
-	m_FlexMesh.SetVertexFormat( VERTEX_POSITION | VERTEX_NORMAL );
+	// CMeshMgr::GetFlexMesh's format, which the queued side (CMatQueuedMesh)
+	// describes too: the wrinkle weight with ps_2_b (every level without a
+	// material system's config, as SupportsPixelShaders_2_b reads level 0).
+	const bool ps2b = !g_pShaderUtil || SupportsPixelShaders_2_b();
+	m_FlexMesh.SetVertexFormat( VERTEX_POSITION | VERTEX_NORMAL | VERTEX_FORMAT_USE_EXACT_FORMAT |
+	                            ( ps2b ? VERTEX_WRINKLE : 0 ) );
 	return &m_FlexMesh;
 }
 

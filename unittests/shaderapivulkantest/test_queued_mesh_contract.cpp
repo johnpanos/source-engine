@@ -262,7 +262,8 @@ void CheckFormat( IShaderAPI *api, const Case &c, IMesh *direct, IMesh *replayed
 	bytes.resize( size_t( kVertices ) * queued.m_ActualVertexSize );
 	WriteVertices( queued, c.format, kVertices, true );
 	if ( !packedControl && !( c.format & VERTEX_COLOR ) &&
-	     !render_vulkan::MeshFormatIsColorStream( c.format ) )
+	     !render_vulkan::MeshFormatIsColorStream( c.format ) &&
+	     !render_vulkan::MeshFormatIsFlexStream( c.format ) )
 	{
 		// The stray color went to scratch: the replayed bytes there are the
 		// allocation's garbage, so a white record below comes from the unlock.
@@ -288,6 +289,25 @@ void CheckFormat( IShaderAPI *api, const Case &c, IMesh *direct, IMesh *replayed
 
 	if ( render_vulkan::MeshFormatIsColorStream( c.format ) || expected.empty() )
 		return;
+	if ( render_vulkan::MeshFormatIsFlexStream( c.format ) )
+	{
+		// D3D9's stream 2: the position delta, the wrinkle weight, the normal delta.
+		Check( directStride == render_vulkan::kMeshFlexStride,
+		    name + ": a flex record is D3D9's 28 bytes" );
+		for ( int v = 0; v < kVertices; ++v )
+		{
+			const unsigned char *record = expected.data() + size_t( v ) * directStride;
+			float position[3], normal[3], wrinkle;
+			memcpy( position, record + render_vulkan::kMeshFlexPositionOffset, sizeof( position ) );
+			memcpy( normal, record + render_vulkan::kMeshFlexNormalOffset, sizeof( normal ) );
+			memcpy( &wrinkle, record + render_vulkan::kMeshFlexWrinkleOffset, sizeof( wrinkle ) );
+			bool placed = wrinkle == Value( v, 13, 0 );
+			for ( int k = 0; k < 3; ++k )
+				placed = placed && position[k] == Value( v, 0, k ) && normal[k] == Value( v, 1, k );
+			Check( placed, name + ": deltas and wrinkle weight sit at the flex offsets" );
+		}
+		return;
+	}
 	// The identities of absent components hold in both builds, although the
 	// builder wrote stray values and the replayed memory held garbage.
 	for ( int v = 0; v < kVertices; ++v )

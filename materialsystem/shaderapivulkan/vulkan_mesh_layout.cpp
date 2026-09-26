@@ -28,6 +28,13 @@ bool MeshFormatIsColorStream( VertexFormat_t format )
 	return format == VERTEX_SPECULAR;
 }
 
+bool MeshFormatIsFlexStream( VertexFormat_t format )
+{
+	return ( format & VERTEX_FORMAT_USE_EXACT_FORMAT ) != 0 &&
+	       ( format & ~( VERTEX_FORMAT_USE_EXACT_FORMAT | VERTEX_WRINKLE ) ) ==
+	           ( VERTEX_POSITION | VERTEX_NORMAL );
+}
+
 bool MeshFormatIsWide( VertexFormat_t format )
 {
 	for ( int i = 0; i < VERTEX_MAX_TEXTURE_COORDINATES; ++i )
@@ -43,6 +50,8 @@ int MeshRecordStride( VertexFormat_t format )
 {
 	if ( MeshFormatIsColorStream( format ) )
 		return kMeshColorStreamStride;
+	if ( MeshFormatIsFlexStream( format ) )
+		return kMeshFlexStride;
 	return MeshFormatIsWide( format ) ? kMeshWideStride : kMeshBaseStride;
 }
 
@@ -64,6 +73,31 @@ void DescribeMeshRecords(
 	desc.m_pWrinkle = reinterpret_cast<float *>( scratch );
 	desc.m_VertexSize_Wrinkle = 0;
 
+	if ( MeshFormatIsFlexStream( format ) )
+	{
+		// The deltas and the wrinkle weight; everything else goes to the scratch.
+		desc.m_pPosition = reinterpret_cast<float *>(
+		    place( true, kMeshFlexPositionOffset, desc.m_VertexSize_Position ) );
+		desc.m_pNormal = reinterpret_cast<float *>(
+		    place( true, kMeshFlexNormalOffset, desc.m_VertexSize_Normal ) );
+		desc.m_pWrinkle = reinterpret_cast<float *>( place(
+		    ( format & VERTEX_WRINKLE ) != 0, kMeshFlexWrinkleOffset, desc.m_VertexSize_Wrinkle ) );
+		desc.m_pBoneWeight =
+		    reinterpret_cast<float *>( place( false, 0, desc.m_VertexSize_BoneWeight ) );
+		desc.m_pBoneMatrixIndex = place( false, 0, desc.m_VertexSize_BoneMatrixIndex );
+		desc.m_pColor = place( false, 0, desc.m_VertexSize_Color );
+		desc.m_pSpecular = place( false, 0, desc.m_VertexSize_Specular );
+		for ( int i = 0; i < VERTEX_MAX_TEXTURE_COORDINATES; ++i )
+			desc.m_pTexCoord[i] =
+			    reinterpret_cast<float *>( place( false, 0, desc.m_VertexSize_TexCoord[i] ) );
+		desc.m_pTangentS =
+		    reinterpret_cast<float *>( place( false, 0, desc.m_VertexSize_TangentS ) );
+		desc.m_pTangentT =
+		    reinterpret_cast<float *>( place( false, 0, desc.m_VertexSize_TangentT ) );
+		desc.m_pUserData =
+		    reinterpret_cast<float *>( place( false, 0, desc.m_VertexSize_UserData ) );
+		return;
+	}
 	if ( MeshFormatIsColorStream( format ) )
 	{
 		// Only the specular color; everything else goes to the scratch.
@@ -146,6 +180,16 @@ void FillAbsentMeshComponents( unsigned char *records, int count, VertexFormat_t
 {
 	if ( !format || MeshFormatIsColorStream( format ) )
 		return;
+	if ( MeshFormatIsFlexStream( format ) )
+	{
+		// No wrinkle weight on hardware without ps_2_b: zero, as D3D9's float3
+		// POSITION1 leaves the shader's w.
+		if ( !( format & VERTEX_WRINKLE ) )
+			for ( int v = 0; v < count; ++v )
+				ZeroBytes( records + static_cast<size_t>( v ) * kMeshFlexStride,
+				    kMeshFlexWrinkleOffset, 4 );
+		return;
+	}
 	const int stride = MeshRecordStride( format );
 	const bool wide = stride == kMeshWideStride;
 	const int boneWeights = NumBoneWeights( format );

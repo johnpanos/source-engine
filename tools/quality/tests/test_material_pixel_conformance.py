@@ -1148,3 +1148,67 @@ class SoftParticleTest(unittest.TestCase):
             path.write_text(json.dumps(report))
             with self.assertRaises(oracle.PixelsError):
                 oracle.read_pixels(path)
+
+
+def with_flex(report, name, **fields):
+    changed = copy.deepcopy(report)
+    for case in changed["cases"]:
+        if case["name"] == name:
+            case.update(copy.deepcopy(fields))
+    return changed
+
+
+class FlexTest(unittest.TestCase):
+    def failures(self, report, hdr="none"):
+        return oracle.evaluate(report, hdr, None)
+
+    def assertDetected(self, report, name):
+        failures = self.failures(report)
+        self.assertTrue(any(f.startswith(name) for f in failures), failures)
+
+    def test_native_captures_satisfy_the_oracle(self):
+        for hdr in ("none", "integer"):
+            report = native("flex", hdr)
+            self.assertEqual(oracle.evaluate(report, hdr, report), [], hdr)
+
+    def test_ignored_wrinkle_is_detected(self):
+        # The backend before SetFlexMesh: every weight draws the rest face.
+        report = native("flex")
+        rest = next(c for c in report["cases"] if c["name"] == "rest")["center"]
+        for name in ("stretch", "compress"):
+            self.assertDetected(with_flex(report, name, center=rest), name)
+
+    def test_ignored_position_delta_is_detected(self):
+        report = native("flex")
+        rest = next(c for c in report["cases"] if c["name"] == "rest")
+        broken = with_flex(report, "moved", center=rest["center"], moved=rest["moved"])
+        self.assertDetected(broken, "moved")
+
+    def test_swapped_compress_and_stretch_are_detected(self):
+        report = native("flex")
+        cases = {c["name"]: c for c in report["cases"]}
+        broken = with_flex(report, "stretch", center=cases["compress"]["center"])
+        self.assertDetected(broken, "stretch")
+
+    def test_nonlinear_blend_is_detected(self):
+        # Half weight drawn as the full stretch (a step instead of a blend).
+        report = native("flex")
+        stretch = next(c for c in report["cases"] if c["name"] == "stretch")["center"]
+        self.assertDetected(with_flex(report, "half_stretch", center=stretch), "half_stretch")
+
+    def test_stale_stream_after_unbind_is_detected(self):
+        report = native("flex")
+        stretch = next(c for c in report["cases"] if c["name"] == "stretch")["center"]
+        self.assertDetected(with_flex(report, "unbound", center=stretch), "unbound")
+
+    def test_undrawn_face_is_detected(self):
+        self.assertDetected(with_flex(native("flex"), "rest", center=[255, 0, 255]), "rest")
+
+    def test_missing_case_is_rejected(self):
+        report = copy.deepcopy(native("flex"))
+        report["cases"] = report["cases"][:-1]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "flex.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)

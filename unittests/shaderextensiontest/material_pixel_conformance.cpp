@@ -57,6 +57,9 @@
 //          softparticle: SpriteCard's DEPTHBLEND against the engine's
 //          full-frame depth copy (material_pixel_softparticle.cpp).
 //
+//          flex: delta-flexed faces, the flex stream's position deltas and
+//          wrinkle maps through SetFlexMesh (material_pixel_flex.cpp).
+//
 //          post: the engine's post-processing passes: Engine_Post's bloom add
 //          and color correction (identity and inverting volume lookups, and
 //          their weights), Downsample_nohdr's luminance shaping and
@@ -73,7 +76,7 @@
 //            material_pixel_conformance -game portal -renderer <id>
 //                -hdr <none|integer> [-family <lightmap|exposure|skinning|portal|
 //                                         modellight|cable|pbr-fallback|pbr-model|
-//                                         bump|shadow|post|glass|softparticle>]
+//                                         bump|shadow|post|glass|softparticle|flex>]
 //                -out <file.json>
 //
 //=============================================================================//
@@ -91,6 +94,7 @@
 #include "materialsystem/imesh.h"
 #include "materialsystem/itexture.h"
 #include "materialsystem/materialsystem_config.h"
+#include "material_pixel_flex.h"
 #include "material_pixel_glass.h"
 #include "material_pixel_legacy.h"
 #include "material_pixel_modellight.h"
@@ -386,18 +390,19 @@ int CMaterialPixelApp::Main()
 	const bool post = !Q_stricmp( family, "post" );
 	const bool glass = !Q_stricmp( family, "glass" );
 	const bool softParticle = !Q_stricmp( family, "softparticle" );
+	const bool flex = !Q_stricmp( family, "flex" );
 	const bool legacy = !Q_stricmp( family, "legacy" );
 	const char *casesPath = CommandLine()->ParmValue( "-cases", "" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
 	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !monitor &&
 	         !sprite && !pbrFallback && !pbrModel && !bump && !shadow && !post && !glass &&
-	         !softParticle && !legacy &&
+	         !softParticle && !flex && !legacy &&
 	         Q_stricmp( family, "lightmap" ) ) ||
 	     ( legacy && !casesPath[0] ) )
 	{
 		Warning( "material pixel conformance: need -out <file>, -hdr <none|integer> and "
 		         "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|monitor|sprite|"
-		         "pbr-fallback|pbr-model|bump|shadow|post|glass|softparticle|legacy> "
+		         "pbr-fallback|pbr-model|bump|shadow|post|glass|softparticle|flex|legacy> "
 		         "(legacy: -cases <file>)\n" );
 		return 2;
 	}
@@ -437,7 +442,7 @@ int CMaterialPixelApp::Main()
 	// dxsupport level's defaults (4x MSAA and mat_trilinear 1 on D3D9 here; the
 	// native backend reads no dxsupport.cfg), so the sample count and the texture
 	// filter are pinned after it.
-	if ( portal || modelLight || pbrModel || legacy || glass || softParticle )
+	if ( portal || modelLight || pbrModel || legacy || glass || softParticle || flex )
 	{
 		MaterialSystem_Config_t pinned = g_pMaterialSystem->GetCurrentConfigForVideoCard();
 		pinned.m_nAASamples = 0;
@@ -487,6 +492,7 @@ int CMaterialPixelApp::Main()
 	                : post        ? RunPostCases( out )
 	                : glass       ? RunGlassCases( out, WriteClearProbeThunk )
 	                : softParticle ? RunSoftParticleCases( out, WriteClearProbeThunk )
+	                : flex        ? RunFlexCases( out, WriteClearProbeThunk )
 	                : legacy      ? RunLegacyCases( out, casesPath, WriteClearProbeThunk )
 	                : pbrModel    ? RunPbrModelCases( out, outPath, WriteClearProbeThunk,
 	                                    integerHdr ? kModelLightToneScale : 1.0f )

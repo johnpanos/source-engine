@@ -26,6 +26,8 @@ real material system. The backend is identified by each filename and report.
 | `glass-native-vulkan-integer.json` | glass | `HDR_TYPE_INTEGER` | as above in integer HDR |
 | `softparticle-native-vulkan-none.json` | softparticle | `HDR_TYPE_NONE` | SpriteCard DEPTHBLEND: one card 5, 25 and 80 units in front of a wall and in front of a far wall, after the engine's `_rt_FullFrameDepth` copy, plus a card without DEPTHBLEND; alphas held to D3D9's DepthFeathering with the copy's 8-bit depth alpha; native Vulkan capture |
 | `softparticle-native-vulkan-integer.json` | softparticle | `HDR_TYPE_INTEGER` | as above in integer HDR |
+| `flex-native-vulkan-none.json` | flex | `HDR_TYPE_NONE` | A delta-flexed face: a VertexLitGeneric `$phong` quad with `$compress`/`$stretch` drawn from a static model mesh with a flex stream bound (`SetFlexMesh`) at wrinkle weights 0, ±1, 0.5 and -0.25, a position delta, and no stream; held to skin_ps20b's WRINKLEMAP blend (linear mixes, texture ratios) and the moved face; native Vulkan capture |
+| `flex-native-vulkan-integer.json` | flex | `HDR_TYPE_INTEGER` | as above in integer HDR |
 
 `pbr-fallback-primary.vmt` and `pbr-fallback-legacy.vmt` are authored inputs
 for the `pbr-fallback` family. The driver copies them into a private runtime
