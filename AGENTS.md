@@ -883,8 +883,10 @@ Keep the table concise and link details below or from the domain progress file.
     - 196 suites: 186 matched, 6 skipped by declaration; the other 4 were
       harness or test defects, since fixed;
     - scheduler budgets pass (new iOS rows);
-    - the physics bench passes box3d-parity and shape-inertia. parallel-step
-      fails on speedup (1.00-1.18x from 1 to 4 workers under sustained load).
+    - the physics bench passes box3d-parity and shape-inertia. Box3D is the
+      iOS/tvOS provider (user decision 2026-09-26); the pool step scheduler
+      raised its 1->4 worker speedup from 1.00-1.18x to 1.32-1.49x (two
+      performance cores bound it; pile-4096 sits at its 1.50x rule).
 
     See the [device record](RFC/0005-ios-device-progress.md).
   - Not done: the AGENTS.md iOS lifecycle, memory-pressure and simulator

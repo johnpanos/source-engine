@@ -442,6 +442,59 @@ Evidence (Linux desktop, `build`):
   345.6) unchanged. The gyroscope precesses more slowly with the true tensor
   and sinks faster (5.2 degrees against 1.5 by the last sample).
 
+## Pool step scheduler: parallel stepping on Apple silicon (2026-09-26)
+
+- **User direction:** "we must use Box3D", on iOS and tvOS as well. The
+  Apple app root now passes `-physics vphysics_box3d`, so parallel
+  stepping is on there, as in the other Box3D products.
+- **Finding on the iPhone 16 Pro:** the parallel step did not scale. From 1
+  to 4 workers it gave 1.00-1.18x, and 2 workers were no faster than 1.
+  Same-build interleaved A/B on `pile-4096`:
+  - the old bridge on the engine pool: 1.0x;
+  - Box3D's own scheduler: 1.49x at 4 workers.
+
+  So Box3D scales on the chip, and the bridge was the bottleneck. It queued
+  every Box3D task as its own pool job, and the stepping thread waited for
+  them one by one, sleeping and waking in between. That is cheap enough on
+  Linux (2.0x), and not on the phone.
+- **Fix:** `vphysics_box3d/pool_step_scheduler.{h,cpp}`
+  (`CPoolStepScheduler`) replaces the bridge. It follows Box3D's own
+  scheduler, but on borrowed pool threads, so P2's contract still holds (no
+  provider thread; only the pool the application passes):
+  - for each parallel step, workerCount - 1 helper jobs drain a
+    provider-owned task array; an idle helper spins briefly, then waits on a
+    counting semaphore;
+  - the stepping thread helps with any pending task while it waits, and
+    never sleeps mid-step;
+  - at the step's end the helpers are released and joined. A helper the pool
+    never started, or ran on the stepping thread (a pool without an idle
+    thread runs a queued job at once), returns immediately, so a step
+    completes on a busy or empty pool.
+- **Evidence:**
+  - Linux (`quality-results/linux-physics-bridge`, not contended): all
+    required gates pass. Speedups from 1 to 4 workers: pile-4096 2.69x (was
+    2.0x), pile-1024 2.03x, ragdolls-128 2.08x. Worker-count invariance and
+    round repeats are bitwise; 15 of 15 faults detected.
+  - iPhone (`quality-results/ios-physics-bridge`): box3d-parity and
+    shape-inertia pass; 15 of 15 faults detected. pile-1024 speeds up 1.36x
+    and ragdolls-128 1.32x (both rules pass). pile-4096 gives 1.49x against
+    its 1.50x rule (1.57x in an interleaved A/B the same session).
+  - On pile-4096, 2 workers are as fast as 4 on the phone. The A18 Pro's two
+    performance cores bound the gain, since the solver synchronizes every
+    stage. The rule is unchanged.
+- **Rejected by measurement (not kept):**
+  - Pool threads inheriting the creating thread's user-interactive QoS
+    (tier0): 4.70 ms against 2.70 ms with the default class. Engine threads
+    keep the default.
+  - Replacing Box3D's `sched_yield` with a non-depressing yield, and
+    spin-then-wait on `os_sync_wait_on_address` in its solver: about 4%,
+    within noise; the Box3D pin is unchanged.
+- **Open:**
+  - the iOS product's worker count (4 by the compute-pool rule; 2 would
+    serve as well on this phone);
+  - finer solver blocks for efficiency cores (a Box3D change);
+  - Game Mode (`GCSupportsGameMode`) and a device thermal budget.
+
 ## Unverified and open
 
 - The server default is on only where Box3D is selected (2026-09-25):

@@ -53,16 +53,8 @@
 
 #include <map>
 
-#if defined( __APPLE__ )
-#include <pthread/qos.h>
-#endif
-
 // Must be last header...
 #include "tier0/memdbgon.h"
-
-#if defined( __APPLE__ )
-static void ThreadAttrSetQualityOfService( pthread_attr_t *pAttr, int nPriority );
-#endif
 
 
 #define THREADS_DEBUG 1
@@ -372,13 +364,7 @@ ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, unsigne
 	return th;
 #elif POSIX
 	pthread_t tid;
-	pthread_attr_t attr;
-	pthread_attr_init( &attr );
-#if defined( __APPLE__ )
-	ThreadAttrSetQualityOfService( &attr, TP_PRIORITY_DEFAULT );
-#endif
-	pthread_create( &tid, &attr, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ) );
-	pthread_attr_destroy( &attr );
+	pthread_create( &tid, NULL, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ) );
 	return ( ThreadHandle_t ) tid;
 #else
 	Assert( 0 );
@@ -398,13 +384,7 @@ ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, ThreadI
 	return (ThreadHandle_t)hThread;
 #elif POSIX
 	pthread_t tid;
-	pthread_attr_t attr;
-	pthread_attr_init( &attr );
-#if defined( __APPLE__ )
-	ThreadAttrSetQualityOfService( &attr, TP_PRIORITY_DEFAULT );
-#endif
-	pthread_create( &tid, &attr, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ) );
-	pthread_attr_destroy( &attr );
+	pthread_create( &tid, NULL, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ) );
 	if( pID )
 		*pID = (ThreadId_t)tid;
 	return ( ThreadHandle_t ) tid;
@@ -2200,31 +2180,6 @@ void CThreadSpinRWLock::UnlockWrite()
 
 // The CThread implementation needs to be inlined for performance on the PS3 - It makes a difference of more than 1ms/frame
 // for other platforms, we include the .inl in the .cpp file where it existed before
-#if defined( __APPLE__ )
-// Darwin schedules threads by quality-of-service class: it decides both
-// priority and, on chips with performance and efficiency cores, where a
-// thread may run. A thread without one gets the default class, below the
-// main thread's user-interactive class, so engine workers (the compute pool
-// Box3D's parallel step runs on) drift to efficiency cores under load while
-// the main thread waits on them. A new thread takes its creator's class, as a
-// Windows thread keeps its creator's priority by default (the POSIX
-// ThreadSetPriority is a no-op); an explicitly lowered priority maps to the
-// utility or background class, a raised one to user-interactive.
-static void ThreadAttrSetQualityOfService( pthread_attr_t *pAttr, int nPriority )
-{
-	qos_class_t qos = qos_class_self();
-	if ( nPriority >= TP_PRIORITY_LOWEST )
-		qos = QOS_CLASS_BACKGROUND;
-	else if ( nPriority >= TP_PRIORITY_LOW )
-		qos = QOS_CLASS_UTILITY;
-	else if ( nPriority < TP_PRIORITY_NORMAL )
-		qos = QOS_CLASS_USER_INTERACTIVE;
-	if ( qos == QOS_CLASS_UNSPECIFIED )
-		qos = QOS_CLASS_DEFAULT;
-	pthread_attr_set_qos_class_np( pAttr, qos, 0 );
-}
-#endif
-
 #include "../public/tier0/threadtools.inl"
 
 //-----------------------------------------------------------------------------

@@ -53,6 +53,7 @@ def build(bld):
 		'physics_constraint.cpp',
 		'physics_controllers.cpp',
 		'physics_environment.cpp',
+		'pool_step_scheduler.cpp',
 		'physics_fluid.cpp',
 		'physics_material.cpp',
 		'physics_object.cpp',

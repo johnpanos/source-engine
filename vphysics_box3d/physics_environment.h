@@ -1,6 +1,7 @@
 #ifndef PHYSICS_ENVIRONMENT_H
 #define PHYSICS_ENVIRONMENT_H
 
+#include <memory>
 #include <mutex>
 
 #include "tier0/threadtools.h"
@@ -15,6 +16,7 @@
 #include "box3d/math_functions.h"
 #include "physics_controllers.h"
 
+class CPoolStepScheduler;
 class CVehicleControllerBox3D;
 class IThreadPool;
 
@@ -219,6 +221,8 @@ private:
 	int m_workerCount;
 	physics_inertia_model_t m_inertiaModel;
 	IThreadPool *m_pThreadPool;
+	// Runs Box3D's worker tasks on m_pThreadPool when m_workerCount > 1.
+	std::unique_ptr<CPoolStepScheduler> m_pStepScheduler;
 	physics_stepprofile_t m_lastProfile;
 	// Game solver calls (step profile), counted under m_solverMutex when
 	// several workers can make them.

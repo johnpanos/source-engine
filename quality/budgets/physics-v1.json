@@ -1172,7 +1172,7 @@
           ]
         }
       },
-      "verification": "2026-09-26 (quality-results/ios-physics-verify2, 3 rounds after about 90 minutes of continuous benchmarking): box3d-parity and shape-inertia pass with these limits; all 15 sensitivity faults are detected. parallel-step fails on its profile-independent speedup rules only: 1->4 workers gave 1.00x (pile-4096 p50, calibration 1.49x), 1.18x (pile-1024) and 1.06x (ragdolls-128). Timings rose across the session (pile-4096 one worker p50 3.96 -> 5.72 ms), consistent with thermal throttling; the 4 extra workers share 2 performance and 4 efficiency cores. Worker-count invariance holds (one digest at 0, 1, 2 and 4 workers). ccd-bullets (planned) fails as on Linux (56 of 64 tunnel)."
+      "verification": "2026-09-26, with the pool step scheduler (vphysics_box3d/pool_step_scheduler.cpp; quality-results/ios-physics-bridge): box3d-parity and shape-inertia pass; all 15 sensitivity faults detected; parallel-step: speedup-pile-1024 1.36x and speedup-ragdolls-128 1.32x pass, speedup-pile-4096 1.49x against 1.50x (1.57x in a same-session interleaved A/B); 2 workers are as fast as 4 here (two performance cores). Before it (the per-task pool bridge, quality-results/ios-physics-verify2) the speedups were 1.00-1.18x. ccd-bullets (planned) fails as on Linux (56 of 64 tunnel)."
     }
   },
   "worker_budget": {

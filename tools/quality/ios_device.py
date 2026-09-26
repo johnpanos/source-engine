@@ -116,7 +116,7 @@ class Device:
         return True
 
     # -- processes --------------------------------------------------------
-    def launch(self, executable, args=(), timeout=600):
+    def launch(self, executable, args=(), timeout=600, environment=None):
         """Launches the app attached to its console (terminating a running
         instance first) and waits for it to exit.
 
@@ -126,9 +126,10 @@ class Device:
         # A launch the device never started (its connection dropped) is
         # retried: the app never ran, so there is no result to report.
         for attempt in range(LAUNCH_ATTEMPTS):
+            options = ["--environment-variables", json.dumps(environment)] if environment else []
             code, output = self._ssh(self._devicectl(
                 "device", "process", "launch", "--device", self.identifier,
-                "--terminate-existing", "--console", self.bundle_id, *args) + "\n",
+                "--terminate-existing", "--console", *options, self.bundle_id, *args) + "\n",
                 timeout=timeout, check=False)
             if code is None or "Launched application with" in output:
                 break
@@ -202,11 +203,11 @@ class ConformanceHost:
             self.pushed[path] = remote
         return self.pushed[path]
 
-    def run(self, program, args=(), timeout=600):
+    def run(self, program, args=(), timeout=600, environment=None):
         """Runs `program` with `args`; the launch result plus `returncode`
         (the exit code, or minus the signal)."""
         run = self.device.launch(self.profile["executable"], ["program:" + program, *args],
-                                 timeout=timeout)
+                                 timeout=timeout, environment=environment)
         run["returncode"] = run["exit_code"]
         if run["returncode"] is None and run["signal"]:
             run["returncode"] = -run["signal"]

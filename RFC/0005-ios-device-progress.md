@@ -169,9 +169,18 @@ the typed provider catalog, in the product's release build.
     session (pile-4096 at one worker, p50 3.96 -> 5.72 ms), consistent
     with thermal throttling, and 4 workers share 2 performance and 4
     efficiency cores. Worker-count invariance holds: one digest at 0, 1, 2
-    and 4 workers in every round. This is an R37 finding: parallel stepping
-    shows no dependable gain on this phone under sustained load. The iOS
-    product defaults to IVP.
+    and 4 workers in every round.
+- **Update (2026-09-26): Box3D is the Apple products' provider (user
+  decision), and the pool step scheduler fixes the scaling.** An A/B showed
+  the per-task pool bridge, not the phone, was the bottleneck: Box3D's own
+  scheduler scaled on the same build. With `CPoolStepScheduler`
+  (`quality-results/ios-physics-bridge`):
+  - box3d-parity and shape-inertia pass;
+  - pile-1024 1.36x and ragdolls-128 1.32x pass;
+  - pile-4096 is 1.49x against its 1.50x rule (1.57x in an interleaved A/B).
+    Two workers are as fast as four, bound by the two performance cores.
+
+  See the [RFC 0013 record](0013-progress.md#pool-step-scheduler-parallel-stepping-on-apple-silicon-2026-09-26).
 - **Harness fixes found by these runs:**
   - a launch the device never started (its connection dropped) was recorded
     as an incomplete run; `ios_device` now retries it;

@@ -17,6 +17,7 @@
 #include "physics_fluid.h"
 #include "physics_object.h"
 #include "physics_vehicle.h"
+#include "pool_step_scheduler.h"
 #include "tier0/dbg.h"
 #include "vstdlib/jobthread.h"
 
@@ -31,32 +32,6 @@ const int kMaxStepsPerSimulate = 8;
 const float kMetersPerInch = 0.0254f;
 // IVP forgets a pair's last impact after a second (CPhysicsListenerCollision).
 const float kImpactPairMemory = 1.0f;
-
-// Box3D's worker tasks on the caller's thread pool (RFC 0013 P2). Box3D tasks
-// are leaves: none enqueues or waits for another, and the thread that calls
-// b3World_Step orchestrates the solver itself, so a step completes even when
-// no pool thread is free. Finishing a task waits through the pool's
-// YieldWait, which runs that task on the waiting thread if no worker has
-// started it and never runs unrelated pool work.
-void *EnqueuePoolTask( b3TaskCallback *pTask, void *pTaskContext, void *pUserContext, const char * )
-{
-	IThreadPool *pPool = static_cast<IThreadPool *>( pUserContext );
-	CJob *pJob = pPool->QueueCall( pTask, pTaskContext );
-	if ( !pJob )
-	{
-		// NULL tells Box3D the task already ran here.
-		pTask( pTaskContext );
-		return NULL;
-	}
-	return pJob;
-}
-
-void FinishPoolTask( void *pUserTask, void *pUserContext )
-{
-	CJob *pJob = static_cast<CJob *>( pUserTask );
-	pJob->WaitForFinish( TT_INFINITE, static_cast<IThreadPool *>( pUserContext ) );
-	pJob->Release();
-}
 
 CPhysicsObjectBox3D *ObjectOf( b3ShapeId shape )
 {
@@ -164,9 +139,11 @@ CPhysicsEnvironmentBox3D::CPhysicsEnvironmentBox3D( int workerCount, IThreadPool
 	def.workerCount = m_workerCount;
 	if ( m_workerCount > 1 )
 	{
-		def.enqueueTask = EnqueuePoolTask;
-		def.finishTask = FinishPoolTask;
-		def.userTaskContext = m_pThreadPool;
+		// Box3D's worker tasks run on the caller's pool (RFC 0013 P2).
+		m_pStepScheduler = std::make_unique<CPoolStepScheduler>( m_pThreadPool, m_workerCount );
+		def.enqueueTask = &CPoolStepScheduler::Enqueue;
+		def.finishTask = &CPoolStepScheduler::Finish;
+		def.userTaskContext = m_pStepScheduler.get();
 	}
 	def.maximumLinearSpeed = m_performance.maxVelocity;
 	def.frictionCallback = MixFriction;
@@ -1368,7 +1345,11 @@ void CPhysicsEnvironmentBox3D::Step( float dt )
 	DispatchSleepWakeEvents();
 	PreStep( dt );
 	double solverStart = Plat_FloatTime();
+	if ( m_pStepScheduler )
+		m_pStepScheduler->BeginStep();
 	b3World_Step( m_world, dt, kSubSteps );
+	if ( m_pStepScheduler )
+		m_pStepScheduler->EndStep();
 	double solverEnd = Plat_FloatTime();
 	m_stepCount++;
 	m_simulationTime += dt;
