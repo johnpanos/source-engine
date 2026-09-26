@@ -25,6 +25,10 @@ jobs:
       if: always()
       run: |
         python3 -m unittest discover -s tools/archlint/tests -v
+    - name: Compile each portable contract header alone (RFC 0001 hermetic headers)
+      if: always()
+      run: |
+        python3 tools/archlint/archlint.py hermetic --cxx g++
 
   hammer-windows-parity:
     runs-on: ubuntu-latest
@@ -64,6 +68,10 @@ jobs:
     - name: Run tests linux-amd64
       run: |
         scripts/tests-ubuntu-amd64.sh
+    - name: Check the built tree's include closure, target owners and link graph (RFC 0001)
+      run: |
+        python3 tools/archlint/archlint.py check --all --compile-deps build
+        python3 tools/archlint/archlint.py targets --verify --partial build
 
   tests-macos-amd64:
     runs-on: macos-latest

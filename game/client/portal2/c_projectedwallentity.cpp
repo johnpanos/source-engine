@@ -100,6 +100,29 @@ C_ProjectedWallEntity::C_ProjectedWallEntity()
 	m_flPrevParticleUpdateTime = 0.0f;
 }
 
+// The paint layers keep IMaterialVar pointers into their materials. An
+// unreferenced material is uncached when the level finishes loading, which
+// destroys its vars, so every material found here is held by a reference
+// until the entity is removed.
+static IMaterial *FindReferencedMaterial( const char *pMaterialName )
+{
+	IMaterial *pMaterial = materials->FindMaterial( pMaterialName, NULL, false );
+	if ( pMaterial )
+	{
+		pMaterial->IncrementReferenceCount();
+	}
+	return pMaterial;
+}
+
+static void ReleaseReferencedMaterial( IMaterial *&pMaterial )
+{
+	if ( pMaterial )
+	{
+		pMaterial->DecrementReferenceCount();
+		pMaterial = NULL;
+	}
+}
+
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
@@ -112,6 +135,17 @@ void C_ProjectedWallEntity::UpdateOnRemove( void )
 		physcollision->DestroyCollide( m_WallCollideables[i].pCollideable );
 	}
 	m_WallCollideables.RemoveAll();
+
+	m_pPaintColorMid = NULL;
+	m_pPaintColorEnd1 = NULL;
+	m_pPaintColorEnd2 = NULL;
+	m_pPaintColorSing = NULL;
+	ReleaseReferencedMaterial( m_pBodyMaterial );
+	ReleaseReferencedMaterial( m_pPaintMaterialMid );
+	ReleaseReferencedMaterial( m_pPaintMaterialEnd1 );
+	ReleaseReferencedMaterial( m_pPaintMaterialEnd2 );
+	ReleaseReferencedMaterial( m_pPaintMaterialSing );
+	ReleaseReferencedMaterial( m_pSideRailMaterial );
 
 	BaseClass::UpdateOnRemove();
 }
@@ -292,7 +326,7 @@ void C_ProjectedWallEntity::PaintWallWithPaint( IMesh *pMesh, CMeshBuilder meshB
 			{
 				// Painted segment with no painted neighbours
 				if ( ( nPrevSeg == -1 || m_PaintPowers[nPrevSeg] == NO_POWER ) &&
-					 ( m_PaintPowers[nNextSeg] == NO_POWER || nNextSeg >= m_nNumSegments ) )
+					 ( nNextSeg >= m_nNumSegments || m_PaintPowers[nNextSeg] == NO_POWER ) )
 				{
 					PaintWallWithPaintSegment( pMesh, meshBuilder, PAINT_SINGLE_SEGMENT, vecOrigin, vecUp, vecForward, vecRight );
 				}
@@ -420,42 +454,42 @@ bool C_ProjectedWallEntity::InitMaterials( void )
 {
 	if ( m_pBodyMaterial == NULL )
 	{
-		m_pBodyMaterial = materials->FindMaterial( "effects/projected_wall", NULL, false );
+		m_pBodyMaterial = FindReferencedMaterial( "effects/projected_wall" );
 		if ( m_pBodyMaterial == NULL )
 			return false;
 	}
 
 	if ( m_pPaintMaterialMid == NULL )
 	{
-		m_pPaintMaterialMid = materials->FindMaterial( "paint/bridge_paint_tile", NULL, false );
+		m_pPaintMaterialMid = FindReferencedMaterial( "paint/bridge_paint_tile" );
 		if ( m_pPaintMaterialMid == NULL )
 			return false;
 	}
 
 	if ( m_pPaintMaterialEnd1 == NULL )
 	{
-		m_pPaintMaterialEnd1 = materials->FindMaterial( "paint/bridge_paint_end_right", NULL, false );
+		m_pPaintMaterialEnd1 = FindReferencedMaterial( "paint/bridge_paint_end_right" );
 		if ( m_pPaintMaterialEnd1 == NULL )
 			return false;
 	}
 
 	if ( m_pPaintMaterialEnd2 == NULL )
 	{
-		m_pPaintMaterialEnd2 = materials->FindMaterial( "paint/bridge_paint_end_left", NULL, false );
+		m_pPaintMaterialEnd2 = FindReferencedMaterial( "paint/bridge_paint_end_left" );
 		if ( m_pPaintMaterialEnd2 == NULL )
 			return false;
 	}
 
 	if ( m_pPaintMaterialSing == NULL )
 	{
-		m_pPaintMaterialSing = materials->FindMaterial( "paint/bridge_paint_single", NULL, false );
+		m_pPaintMaterialSing = FindReferencedMaterial( "paint/bridge_paint_single" );
 		if ( m_pPaintMaterialSing == NULL )
 			return false;
 	}
 
 	if ( m_pSideRailMaterial == NULL )
 	{
-		m_pSideRailMaterial = materials->FindMaterial( "effects/projected_wall_rail", NULL, false );
+		m_pSideRailMaterial = FindReferencedMaterial( "effects/projected_wall_rail" );
 		if ( m_pSideRailMaterial == NULL )
 			return false;
 	}

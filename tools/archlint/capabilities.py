@@ -58,6 +58,7 @@ def check(root, block, strip):
     for mid in modules:
         visit(mid)
     errors += target_owners(block)[1]
+    errors += shared_library_groups(block)[1]
     paths = set()
     for module in modules.values():
         for prefix in module['paths']:
@@ -238,44 +239,74 @@ NATIVE_USELIB = re.compile(r'^(SDL[0-9]*|VULKAN|X11|XCB|WAYLAND.*|EGL|GL|GLES.*|
 ROADMAP_ROW = re.compile(r'^R[0-9]{2}$')
 
 
-def target_owners(block):
-    """The RFC 0001 migration sidecar: every recorded Waf target that is not
-    wholly strict names one architectural owner until its wscript declares
-    `arch_module`. Returns ({target: ('module', id) | ('legacy', row)}, errors).
+def row_groups(groups, label, code):
+    """Validate row-owned target groups: ({target: group}, errors).
 
-    `modules` maps a target to the capability module whose closure and
-    `uselib` grants bound the whole target. `legacy` groups name targets whose
-    legacy sources still decide their links; each group has a roadmap row that
+    Each group has an id, the roadmap row that owns it, a reason and a
+    sorted, unique, non-empty target list; a target is in one group only.
+    """
+    members, errors = {}, []
+    for group in groups:
+        name = group.get('id', '?')
+        if not ROADMAP_ROW.match(group.get('owner', '')):
+            errors.append(f'{code} {label} group {name}: owner must be a roadmap row')
+        if not group.get('reason'):
+            errors.append(f'{code} {label} group {name}: needs a reason')
+        if not group.get('targets'):
+            errors.append(f'{code} {label} group {name}: lists no targets')
+        if group.get('targets') != sorted(set(group.get('targets', []))):
+            errors.append(f'{code} {label} group {name}: targets must be sorted and unique')
+        for target in group.get('targets', []):
+            if target in members:
+                errors.append(f'{code} target {target} is in more than one {label} group')
+            members[target] = group
+    return members, errors
+
+
+def target_owners(block):
+    """The RFC 0001 migration sidecar for targets that cannot declare an owner
+    module yet. Returns ({target: owning roadmap row}, errors).
+
+    Every recorded Waf target declares `arch_module` in its wscript, or is
+    listed in exactly one `targetOwners.legacy` group: targets whose legacy
+    sources still decide their links. Each group names the roadmap row that
     retires it and a reason, and the groups only shrink.
     """
     sidecar = block.get('targetOwners')
     if not sidecar:
         return {}, []
-    modules = {m['id'] for m in block['modules']}
-    owners, errors = {}, []
+    errors = [f'CAP008 targetOwners.{key}: unknown section; owner modules are declared '
+              f'with arch_module in the wscript'
+              for key in sorted(set(sidecar) - {'description', 'legacy'})]
+    members, group_errors = row_groups(sidecar.get('legacy', []), 'legacy target', 'CAP008')
+    return {target: group.get('owner') for target, group in members.items()}, errors + group_errors
 
-    def claim(target, owner):
-        if target in owners:
-            errors.append(f'CAP008 target {target} has more than one owner')
-        owners[target] = owner
 
-    for target, mid in sorted(sidecar.get('modules', {}).items()):
-        if mid not in modules:
-            errors.append(f'CAP008 target {target}: unknown owner module {mid}')
-        claim(target, ('module', mid))
-    for group in sidecar.get('legacy', []):
-        label = group.get('id', '?')
-        if not ROADMAP_ROW.match(group.get('owner', '')):
-            errors.append(f'CAP008 legacy target group {label}: owner must be a roadmap row')
-        if not group.get('reason'):
-            errors.append(f'CAP008 legacy target group {label}: needs a reason')
-        if not group.get('targets'):
-            errors.append(f'CAP008 legacy target group {label}: lists no targets')
-        if group.get('targets') != sorted(set(group.get('targets', []))):
-            errors.append(f'CAP008 legacy target group {label}: targets must be sorted and unique')
-        for target in group.get('targets', []):
-            claim(target, ('legacy', group.get('owner')))
-    return owners, errors
+SHARED_FEATURES = {'cshlib', 'cxxshlib'}
+
+
+def shared_library_groups(block):
+    """The reviewed first-party shared libraries: ({target: group}, errors)."""
+    section = block.get('sharedLibraries')
+    if not section:
+        return {}, []
+    return row_groups(section.get('groups', []), 'shared library', 'CAP009')
+
+
+def shared_library_errors(block, records):
+    """CAP009: iOS links every first-party module statically (AGENTS.md), so
+    each first-party shared library the declared trees build is reviewed debt
+    or a declared desktop-only module. A new one fails; a group entry that no
+    declared tree builds is stale. Returns (errors, built count)."""
+    groups, _ = shared_library_groups(block)
+    built = {entry['target'] for record in records for entry in record.get('entries', [])
+             if SHARED_FEATURES & set(entry.get('features', []))}
+    errors = [f'CAP009 {target}: new first-party shared library; link it statically (iOS composes '
+              f'first-party modules statically) or record it in capabilityModules.sharedLibraries'
+              for target in sorted(built - set(groups))]
+    errors += [f'CAP009 stale shared library: {target} is built as a shared library by no declared tree'
+               for target in sorted(set(groups) - built)]
+    return errors, len(built)
 
 
 INCLUDE_FLAGS = ('-isystem', '-iquote', '-idirafter', '-I')
@@ -368,23 +399,19 @@ def use_cycles(uses):
 def link_graph_errors(block, record, root=None):
     """CAP006/CAP008 over a tree's toolchain-invocations.json (target, sources, use).
 
-    Every recorded target needs one architectural owner (CAP008). A target
-    whose sources are all strict is owned by those sources' modules. Any
-    other target needs a `targetOwners` entry: a capability module, which then
-    bounds the whole target, or a legacy group, whose targets are counted but
-    not judged. A wholly strict target must leave its legacy group. A target
-    whose wscript declares `arch_module` (recorded in its entries) is owned by
-    that module and must have no sidecar entry.
+    Every recorded target has one architectural owner (CAP008): the module
+    its wscript declares with `arch_module` (recorded in its entries), or a
+    `targetOwners.legacy` group, whose targets are counted but not judged. A
+    target cannot have both, and a wholly strict target must declare.
 
-    A judged target's allowed modules are the union of its owners' closures
-    (every strict module it compiles must lie inside), and every native SDK
-    library it uses must be granted by an owner's `uselib`. Only native
-    modules may grant `uselib`, so a portable owner permits none. Every
-    first-party target it uses may carry strict code only inside those
-    closures. A target whose owners are all portable may attach no native SDK,
-    vendored or external include directory. The first-party `use` graph has
-    no cycle. `root` is the repository root that include directories are
-    judged against. Returns (errors, judged, legacy_owned).
+    A judged target's owner bounds the whole target: every strict module it
+    compiles lies in the owner's closure, every native SDK library it uses is
+    granted by the owner's `uselib` (only native modules grant any), and every
+    first-party target it uses carries strict code only inside that closure.
+    A portable owner's target attaches no native SDK, vendored or external
+    include directory. The first-party `use` graph has no cycle. `root` is
+    the repository root that include directories are judged against.
+    Returns (errors, judged, legacy_owned).
     """
     modules = {m['id']: m for m in block['modules']}
     closure = allowed_closure(modules)
@@ -406,32 +433,30 @@ def link_graph_errors(block, record, root=None):
     for target in sorted(uses):
         mids = owned.get(target, set())
         strict = bool(mids) and target not in unowned
-        kind, value = owners.get(target, (None, None))
-        if target in declared:
-            # A wscript `arch_module` declaration replaces the sidecar entry.
-            if kind is not None:
-                errors.add(f'CAP008 {target}: declares arch_module; remove its targetOwners entry')
-            if len(declared[target]) != 1:
-                errors.add(f'CAP008 {target}: conflicting arch_module declarations '
-                           f'{", ".join(sorted(declared[target]))}')
-                continue
-            kind, value = 'module', next(iter(declared[target]))
-            if value not in modules:
-                errors.add(f'CAP008 {target}: arch_module {value} is not a capability module')
-                continue
-        if kind is None and not strict:
-            errors.add(f'CAP008 {target}: no architectural owner; make every source strict or add it '
-                       f'to capabilityModules.targetOwners')
-            continue
-        if kind == 'legacy':
-            if strict:
-                errors.add(f'CAP008 {target}: every source is strict; remove it from its legacy owner group')
+        if target in owners:
+            if target in declared:
+                errors.add(f'CAP008 {target}: declares arch_module; remove it from its legacy group')
+            elif strict:
+                errors.add(f'CAP008 {target}: every source is strict; declare arch_module and remove it '
+                           f'from its legacy group')
             legacy_owned += 1
             continue
+        if target not in declared:
+            errors.add(f'CAP008 {target}: no architectural owner; declare arch_module in its wscript '
+                       f'(or, for unmigrated legacy code, list it in a targetOwners.legacy group)')
+            continue
+        if len(declared[target]) != 1:
+            errors.add(f'CAP008 {target}: conflicting arch_module declarations '
+                       f'{", ".join(sorted(declared[target]))}')
+            continue
+        value = next(iter(declared[target]))
+        if value not in modules:
+            errors.add(f'CAP008 {target}: arch_module {value} is not a capability module')
+            continue
         judged += 1
-        owner_ids = {value} if kind == 'module' else mids
-        label = f'{target} ({", ".join(sorted(owner_ids))})'
-        allowed = set().union(*(closure[m] for m in owner_ids))
+        owner_ids = {value}
+        label = f'{target} ({value})'
+        allowed = closure[value]
         for mid in sorted(mids - allowed):
             errors.add(f'CAP006 {label}: compiles {mid}, which is outside its owner\'s closure')
         granted = set()

@@ -1,0 +1,13 @@
+{
+  "schema": "portal2-material-checks/v1",
+  "tiles": {"columns": 16, "rows": 12, "tolerance": 24, "min_fraction": 0.85},
+  "exempt_unknown_shaders": {},
+  "exempt_native_drops": {},
+  "shots": {
+    "sp_a2_bridge_intro": {"projector": {}, "cables": {}, "core": {}},
+    "sp_a2_fizzler_intro": {"fizzler": {}, "cables": {}, "laser_emitter": {}},
+    "sp_a2_laser_over_goo": {"goo": {}, "cable": {}, "catcher": {}},
+    "sp_a2_triple_laser": {"entry_hall": {}, "floor": {}},
+    "sp_a4_tb_intro": {"emitter": {}, "shaft": {}}
+  }
+}

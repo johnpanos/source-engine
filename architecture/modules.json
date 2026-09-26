@@ -696,8 +696,7 @@
       }
     },
     "targetOwners": {
-      "description": "RFC 0001 'Waf target checks' migration sidecar. Every recorded target whose sources are not all strict and whose wscript declares no arch_module names one owner here: a capability module that bounds the whole target (judged by archlint targets), or a legacy group with the roadmap row that retires it (counted, not judged). A target that declares arch_module must have no entry. New targets declare arch_module; groups only shrink.",
-      "modules": {},
+      "description": "RFC 0001 'Waf target checks' migration sidecar. Every recorded Waf target declares its owner capability module with arch_module in its wscript (checked when the target is posted, and by archlint targets), or is listed in exactly one legacy group here: legacy code whose links no module bounds yet, counted but not judged. Each group names the roadmap row that retires it. New targets declare arch_module; groups only shrink.",
       "legacy": [
         {
           "id": "engine-and-tiers",
@@ -919,6 +918,91 @@
           "reason": "Feature-gated (--debug-api) debug API core; it compiles native Vulkan capture sources beside its legacy-dialect server.",
           "targets": [
             "debugapi_core"
+          ]
+        }
+      ]
+    },
+    "sharedLibraries": {
+      "description": "First-party shared libraries the declared build trees build (archlint targets, CAP009). iOS links every first-party module statically (AGENTS.md 'Platform-compliant composition'), so each one is reviewed here: debt the iOS client must link statically, a module no iOS profile selects, or a desktop loader-test fixture. A new shared library fails until it is linked statically or reviewed into a group; entries that no tree builds are stale.",
+      "groups": [
+        {
+          "id": "ios-static-debt",
+          "owner": "R39",
+          "reason": "Client product modules the iOS profile must link statically through typed factories; each leaves this list when its target becomes a static library.",
+          "targets": [
+            "GameUI",
+            "ServerBrowser",
+            "client",
+            "datacache",
+            "engine",
+            "filesystem_stdio",
+            "inputsystem",
+            "launcher",
+            "materialsystem",
+            "scenefilecache",
+            "server",
+            "shaderapiempty",
+            "shaderapivulkan",
+            "soundemittersystem",
+            "stdshader_dx9",
+            "steam_api",
+            "studiorender",
+            "tier0",
+            "vaudio_minimp3",
+            "vgui2",
+            "vguimatsurface",
+            "video_services",
+            "vphysics",
+            "vphysics_box3d",
+            "vstdlib"
+          ]
+        },
+        {
+          "id": "dedicated-server",
+          "owner": "R12",
+          "reason": "The dedicated server module; no iOS profile ships the dedicated product.",
+          "targets": [
+            "dedicated"
+          ]
+        },
+        {
+          "id": "desktop-render-backends",
+          "owner": "R46",
+          "reason": "D3D9 and togl render backends; no iOS profile selects them (iOS renders through native Vulkan on MoltenVK).",
+          "targets": [
+            "shaderapidx9",
+            "togl"
+          ]
+        },
+        {
+          "id": "desktop-tools",
+          "owner": "R40",
+          "reason": "Tool-only libraries (vtex launchable remnant); no iOS product builds tools.",
+          "targets": [
+            "vtex_dll"
+          ]
+        },
+        {
+          "id": "world-stage-tool",
+          "owner": "R54",
+          "reason": "The vbsp2 OpenUSD island library, a host tool.",
+          "targets": [
+            "sourceWorld"
+          ]
+        },
+        {
+          "id": "loader-test-fixtures",
+          "owner": "R07",
+          "reason": "Desktop test hosts and fixtures that exist to exercise dynamic module loading; iOS test profiles exclude first-party shared-module loading.",
+          "targets": [
+            "legacymoduleclientfixture",
+            "mathlibtest",
+            "moduleloadfixture",
+            "tier0test",
+            "tier1test",
+            "tier2test",
+            "tier3test",
+            "unitlib"
           ]
         }
       ]

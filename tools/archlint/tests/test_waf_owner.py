@@ -87,8 +87,9 @@ class WafOwnerProjectTest(unittest.TestCase):
             ('backend', ['SDL3'], None, 'uses native library SDL3'),
             ('backend', ['other_lib'], None, 'links other_lib whose other is outside the allowed closure'),
             ('missing', [], None, 'arch_module missing is not a capability module'),
-            ('backend', [], dict(BLOCK, targetOwners={'modules': {'backend_lib': 'backend'}}),
-             'declares arch_module; remove its targetOwners entry'),
+            ('backend', [], dict(BLOCK, targetOwners={'legacy': [
+                {'id': 'old', 'owner': 'R46', 'reason': 'legacy', 'targets': ['backend_lib']}]}),
+             'declares arch_module; remove it from its legacy group'),
         ]
         for owner, use, block, message in cases:
             with self.subTest(message=message):

@@ -1,0 +1,63 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Portal 2 video retail conformance: fixed views of materials, shaders and proxies, shot on this build and on retail Portal 2 at 1024x768. Run and judged by tools/quality/portal2_material_shots.py.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "includes": [
+    "materials_views.nut"
+  ],
+  "scenarios": [
+    {
+      "name": "sp_a2_bridge_intro",
+      "map": "sp_a2_bridge_intro",
+      "script": "mat_sp_a2_bridge_intro.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "view.projector",
+        "view.cables",
+        "view.core"
+      ]
+    },
+    {
+      "name": "sp_a2_fizzler_intro",
+      "map": "sp_a2_fizzler_intro",
+      "script": "mat_sp_a2_fizzler_intro.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "view.fizzler",
+        "view.cables",
+        "view.laser_emitter"
+      ]
+    },
+    {
+      "name": "sp_a2_laser_over_goo",
+      "map": "sp_a2_laser_over_goo",
+      "script": "mat_sp_a2_laser_over_goo.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "view.goo",
+        "view.cable",
+        "view.catcher"
+      ]
+    },
+    {
+      "name": "sp_a2_triple_laser",
+      "map": "sp_a2_triple_laser",
+      "script": "mat_sp_a2_triple_laser.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "view.entry_hall",
+        "view.floor"
+      ]
+    },
+    {
+      "name": "sp_a4_tb_intro",
+      "map": "sp_a4_tb_intro",
+      "script": "mat_sp_a4_tb_intro.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "view.emitter",
+        "view.shaft"
+      ]
+    }
+  ]
+}

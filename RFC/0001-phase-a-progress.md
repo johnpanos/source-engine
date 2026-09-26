@@ -364,88 +364,152 @@ mixed targets, now installed by R04-OWNERS below, and the Waf-time checker.
 
 ## R04-OWNERS: one architectural owner per recorded target (slice done, 2026-09-25)
 
-Every Waf target in the 12 declared build trees now has exactly one
-architectural owner. A new target without one fails. This is the
-migration sidecar from RFC 0001's "Waf target checks": existing targets are
-mapped in the manifest until their wscripts declare `arch_module`.
+Every Waf target in the 12 declared build trees has exactly one
+architectural owner, and a new target without one fails. This implements RFC
+0001's "Waf target checks": targets declare `arch_module`; unmigrated
+legacy targets are mapped in the manifest sidecar until they migrate.
 
-- **Sidecar.** `capabilityModules.targetOwners` in
-  `architecture/modules.json` has two parts:
-  - `modules` maps a target to one capability module, whose closure and
-    `uselib` grants then bound the whole target, legacy sources included.
-    This covers 10 test targets:
-    - eight SDL3–Vulkan native pixel and presentation hosts →
-      `render.bridge.sdl3-vulkan.native-tests`;
-    - `render_backend_vulkan_conformance` → `render.vulkan.native-tests`;
-    - `hammer_ktx2_preview_conformance` → `content.hammer-ktx2-preview`.
-  - `legacy` has 15 groups covering 117 targets. Each group names the
-    roadmap row that retires it and a reason. For example: `engine-and-tiers`
-    and `render-legacy` (R46), `physics-ivp` (R44), `physics-box3d` (R19),
-    `compile-tools` (R48), `world-stage-tools` (R54), `scheduler-tests` (R20)
-    and `provider-catalog-tests` (R39). Their targets are counted, not
-    judged.
-  - Targets whose sources are all strict (12) need no entry; their modules
-    own them as before.
-- **Rules** (`tools/archlint/capabilities.py`):
-  - CAP008: every recorded target that is not wholly strict needs an entry.
-  - A wholly strict target must leave its legacy group, so the groups only
-    shrink.
-  - Each target has one owner. Groups need a row, a reason and a sorted
-    target list, and module owners must exist; the static `check --all`
-    validates this.
-  - An entry recorded in no declared tree is stale.
-  - CAP006: a module-owned target is judged by its owner alone. Every strict
-    module it compiles must lie in the owner's closure, its native libraries
-    need the owner's `uselib`, and first-party targets it links must stay in
-    the closure.
-- **Command.** `archlint targets --verify TREE...` takes the complete declared
-  tree set and is declared as `arch.targets`: the 12 `build-r03-*` trees,
-  0.3 s. The link graph moved here from `check --compile-deps`, which now
-  checks only transitive includes (CAP005). Judged targets rose from 21 to
-  40 in the four trees `arch.compile-deps` used; 1 to 18 per tree across all
-  12.
-- **Permission change.** `render.bridge.sdl3-vulkan.native-tests` gains an
-  edge to `content.ktx2-reader`. `test_ktx2_pixels.cpp` calls
-  `texturecontainer::ReadKtx2Image`, which the reader implements, so the
-  test's link to `texturecontainer` is real. This was an agent decision under
-  the user's standing instruction.
-- **Found by the check.**
-  - That KTX2 edge.
-  - `debugapi_core`, the feature-gated debug API, had no owner. It is in
-    its own `debug-api` group (R32).
-- **Tests.** Nine new or rewritten archlint tests (119 in total). Five
-  mutants are each detected: dropping the unowned error, dropping the
-  owner-closure check, letting strict targets stay in legacy groups,
-  dropping stale detection, and letting source modules add grants to a
-  module owner.
+- **Declared owners.** 22 targets declare `arch_module` in their wscripts:
+  - the 12 wholly strict targets: platform, map and texture containers, the
+    KTX2/VTF readers and tests, the SDL3 launcher test, the shader-extension
+    test and `unittest`;
+  - 10 SDL3–Vulkan, render-backend and Hammer KTX2 test hosts. These first
+    went through a transitional sidecar `modules` map, now deleted.
 
-Still open for R04:
+  `toolchain_dialect` records the declaration in each invocation entry.
+- **Build-time check** (`scripts/waifulib/arch_owner.py`, imported by
+  `toolchain_dialect`, so no reconfigure is needed).
+  - When a declaring target is posted, its sources, its owner and the
+    targets it uses are judged with the same `capabilities.py` rules. A
+    violation fails the build.
+  - It never fails a build for an undeclared target; that is the gate's
+    job, so `./play` and `./play_p2` cannot break on it.
+  - The first real run caught the transitional duplicates. All 12 declared
+    trees then rebuilt cleanly with the check live.
+- **Legacy sidecar.** `capabilityModules.targetOwners.legacy` has 15 groups
+  covering 117 targets. Each names the roadmap row that retires it and a
+  reason: `engine-and-tiers`, `ui` and `render-legacy` (R46), `physics-ivp`
+  (R44), `physics-box3d` (R19), `compile-tools` (R48), `world-stage-tools`
+  (R54), `scheduler-tests` (R20), `provider-catalog-tests` (R39) and others.
+  Their targets are counted, not judged.
+- **Rules** (`tools/archlint/capabilities.py`). CAP008 checks ownership:
+  - every recorded target declares, or is in exactly one legacy group;
+  - a wholly strict target must declare and leave its group, so the groups
+    only shrink;
+  - declaring and staying in a group fails, as do conflicting or unknown
+    declarations;
+  - a group entry recorded in no declared tree is stale;
+  - groups need a row, a reason and a sorted list; `check --all` validates
+    the sidecar.
 
-- the Waf-time checker. It needs `arch_module` declared in wscripts and
-  recorded in the invocations, with the sidecar entry removed. New targets
-  would then declare it directly.
+  CAP006 judges each declaring target by its owner:
+  - every strict module it compiles lies in the owner's closure;
+  - native libraries need the owner's `uselib`;
+  - linked first-party targets stay inside the closure;
+  - a portable owner's target attaches no native SDK, vendored or external
+    include directory (all `-I`/`-isystem`/`-iquote`/`-idirafter` forms;
+    build-tree mirrors count as source directories);
+  - the first-party `use` graph has no cycle or self edge (none exist).
 
-**Remaining target rules (same day).** RFC 0001's target list is now fully
-checked from the recorded invocations:
+  RFC 0001's "public headers from provider-private directories" is enforced
+  more precisely by CAP005, which checks the headers each strict unit
+  actually resolved, so no include-directory approximation was added.
+- **iOS static-composition ratchet (CAP009).** AGENTS.md asks R04/R06 to
+  enforce iOS static first-party composition early. No static-link build
+  exists yet, so the enforceable part is a ratchet.
+  - All 38 first-party shared libraries the declared trees build are
+    reviewed in `capabilityModules.sharedLibraries`:
+    - `ios-static-debt` (26 client product modules, R39);
+    - `dedicated-server` (R12);
+    - `desktop-render-backends` (`shaderapidx9`, `togl`, R46);
+    - `desktop-tools` (`vtex_dll`, R40);
+    - `world-stage-tool` (`sourceWorld`, R54);
+    - `loader-test-fixtures` (8, R07).
+  - A new shared library fails until it is linked statically or reviewed
+    in. An entry that no tree builds is stale.
+  - First-party loader sites already have the exact Phase A ratchet.
+  - This is not iOS evidence; the static link and the empty
+    module-search-path startup are R29/R39.
+- **Module changes** (agent decisions under the user's standing instruction):
+  - `render.bridge.sdl3-vulkan.native-tests` → `content.ktx2-reader`.
+    `test_ktx2_pixels.cpp` calls `ReadKtx2Image`, which the reader
+    implements.
+  - `render.shader-extension-abi-test` → `render.shader-extension-host`:
+    the ABI test compiles and drives the host.
+  - New `testing.unittest-program` module
+    (`utils/unittest/capability_unittest.cpp`, the runner's `main`). It is
+    the composition root that may link both `testing.runner` and
+    `platform.tests`, so `unittest` has one owner without the runner
+    depending on its suites.
+  - `debugapi_core` gets its own `debug-api` legacy group (R32).
+- **Commands and CI.**
+  - `archlint targets --verify TREE...` takes the complete declared tree
+    set and is declared as `arch.targets` (12 `build-r03-*` trees, 0.3 s
+    unloaded). The link graph moved there from `check --compile-deps`.
+  - `--partial` skips only the stale checks, for a single CI tree.
+  - `.github/workflows/tests.yml` now also runs `archlint hermetic` in
+    `architecture`, and, in `tests-linux-amd64`, `check --compile-deps build`
+    and `targets --verify --partial build` on the tree it built. Hosted CI
+    has not run these.
+- **Tests.**
+  - 127 archlint tests pass. They include `test_waf_owner.py`, a real Waf
+    project built with the repository's `./waf` and `arch_owner`: a correct
+    owner builds, and five wrong ones fail their build (closure, SDL3 grant,
+    foreign link, unknown module, declared plus legacy group).
+  - 21 seeded mutants across the four rounds are each detected: CAP008
+    (unowned, strict-in-group, declared-in-group, unknown section, stale),
+    CAP006 (owner closure, grants, include roots, cycles), CAP009 (new,
+    stale, programs counted, static validation), and the Waf tool (no
+    fatal, CAP006-only filter).
+- **Evidence** (2026-09-25):
+  - `arch.check`, `arch.baseline`, `arch.inventory`, `arch.hammer`,
+    `arch.hermetic`, `arch.selftest`, `arch.targets`, `toolchain.boundary`
+    and `toolchain.coverage` all match their recorded `pass`.
+  - `arch.compile-deps` passes when run directly: 36 s of CPU, 111 s of
+    wall time at load average 71. Four Portal 2 agents were building, so the
+    audit's timeout was host contention, not a regression.
+  - Budgets were exceeded under the same load and were not changed.
+- **Limits.**
+  - Only the Linux trees are recorded for the gate. Android APK builds run
+    the build-time check for declaring targets, but their records are not in
+    `arch.targets`.
+  - No Apple build exists.
 
-- *Native include directories on portable targets.* A judged target whose
-  owners are all portable may attach no native SDK, vendored
-  (`thirdparty/`, `box3d/`, …) or out-of-repository include directory.
-  - Build-tree mirrors such as `<tree>/public` count as their source
-    directory.
-  - All `-I`, `-isystem`, `-iquote` and `-idirafter` forms are read.
-  - Twelve portable compiles in `portal-features` pass. The check was
-    seeded on the real record with an SDL3, a vendored and an external root
-    on `mapcontainer`, and all three were reported.
-- *Target `use` cycles.* Any strongly connected group in the first-party
-  `use` graph fails, and so does a self edge. None exist in the 12 trees.
-- *Public headers from provider-private directories* was already enforced
-  more precisely by CAP005. It checks the headers each strict unit actually
-  resolved against its module's closure, rather than the include directories
-  it could reach. No include-directory approximation was added.
-- Tests: 4 more (123). Six mutants are each detected: dropping the native,
-  external or build-mirror handling, checking native owners, and dropping
-  cycle or self-edge detection.
+## R04 closure (done, 2026-09-25)
+
+R04 is `done` for its declared scope: RFC 0001 rank 1, RFC 0002 H0
+enforcement, and Q-ARCH. It was closed as an agent decision under the user's
+standing instruction. Each criterion and its evidence:
+
+| Criterion | Enforcement | Evidence |
+| --- | --- | --- |
+| Ownership | CAP001 (files to one module), CAP008 (every recorded target declares `arch_module` or is in a row-owned legacy group), HAM001 (Hammer) | R04-CAP, R04-OWNERS; `arch.check`, `arch.targets`, `arch.hammer` |
+| Direct includes | CAP002 (strict modules), ARCH101–105 exact lexical ratchet (legacy) | R04-DRIFT, R04-CAP; `arch.check`, `arch.baseline` |
+| Transitive includes | CAP005 over compiler `.d` files, with the native-family scan | R04-DEPS; `arch.compile-deps` (4 trees) |
+| Hermetic headers | CAP007: each portable public header compiles alone and its closure stays in `public/` | R04-HERMETIC; `arch.hermetic` |
+| Waf/link graph | CAP006 over recorded invocations (closure, `uselib` grants, portable include roots, `use` cycles), and at build time for declaring targets | R04-TARGETS, R04-OWNERS; `arch.targets` (12 trees) |
+| Hammer include graph | HAM002 with cycle detection and owned `includeExceptions` | R04-HAMGRAPH; `arch.hammer` |
+| Exact debt | Loader ratchet and inventory, `loaderExceptions`, legacy target groups, `sharedLibraries`, Hammer baseline; each fails when stale | `arch.baseline`, `arch.inventory`, `arch.targets` |
+| Evidence schemas | `conformance-evidence/v2` and baseline evidence (R02/R01); `toolchain-invocations/v1` records the owner | R02 closure; `baseline.py validate` |
+| Negative projects fail | 127 archlint tests with seeded fixtures, a real negative Waf project (`test_waf_owner.py`), and mutants detected for every rule added this day | this record |
+| iOS static composition, early slice | CAP009 shared-library ratchet, plus the Phase A loader ratchet | R04-OWNERS |
+| CI | `tests.yml`: static checks, fixtures, hermetic headers, and the built tree's compile-deps and targets; `composition.yml`; `style.yml` | installed; hosted runs not executed here |
+
+Prerequisites R01 and R02 are `done`.
+
+Not claimed:
+
+- Hosted CI has not run the new steps. Making them required is
+  repository-administrator policy.
+- Only Linux trees are recorded for the target gate. There are no Apple
+  or Windows records, and Android records are not declared.
+- The legacy code's own include DAG is ratcheted lexically, not
+  decomposed. That is R46.
+- CAP009 is a ratchet, not iOS evidence. The static link and the startup
+  with empty module-search locations belong to R29/R39.
+
+Reopen R04 if a declared architecture check deviates from its recorded
+outcome, or if a rule loses its negative fixture.
 
 ## R07-INVENTORY: loader inventory reconciled (slice done, 2026-09-25)
 

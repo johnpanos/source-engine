@@ -9,10 +9,11 @@ A task generator names its architectural owner beside `name` and `use`:
 When the target is posted, its sources, its declared owner and the targets it
 uses are judged by the link-graph rules of tools/archlint/capabilities.py
 (CAP006/CAP008), and a violation fails the build. The declaration is also
-recorded in toolchain-invocations.json (toolchain_dialect), where it replaces
-the target's architecture/modules.json `targetOwners` entry. Undeclared
-targets are judged by the `arch.targets` gate over recorded invocations, so
-this check never fails an ordinary product build for them.
+recorded in toolchain-invocations.json (toolchain_dialect) for the
+`arch.targets` gate, which also requires every undeclared target to be in a
+legacy group of architecture/modules.json `targetOwners`. That requirement is
+the gate's alone, so this check never fails a product build for an
+undeclared target.
 """
 
 import json

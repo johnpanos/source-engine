@@ -20,6 +20,15 @@ extern ConVar mat_fullbright;
 
 DEFINE_FALLBACK_SHADER( Cable, Cable_DX9 )
 
+// Portal 2's cables (materials/cable/*.vmt) name SplineRope, whose vertex
+// shader expands a Catmull-Rom spline from four control points per vertex.
+// This client's C_RopeKeyframe builds camera-facing rope geometry on the CPU
+// in Cable's vertex format, and SplineRope's pixel shader is Cable's: a
+// half-Lambert normal-map term times base texture and vertex color. So the
+// SplineRope name draws with Cable; without it every rope material is the
+// error material and no cable is drawn.
+DEFINE_FALLBACK_SHADER( SplineRope, Cable_DX9 )
+
 BEGIN_VS_SHADER( Cable_DX9, 
 			  "Help for Cable shader" )
 	BEGIN_SHADER_PARAMS

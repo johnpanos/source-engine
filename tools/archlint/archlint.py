@@ -1650,11 +1650,12 @@ def hammer_command(root: Path, manifest: dict) -> int:
     return 0
 
 
-def targets_command(root: Path, manifest: dict, trees: Sequence[str]) -> int:
-    """CAP006/CAP008 over the declared build trees' recorded Waf graphs.
+def targets_command(root: Path, manifest: dict, trees: Sequence[str], partial: bool = False) -> int:
+    """CAP006/CAP008/CAP009 over the declared build trees' recorded Waf graphs.
 
     The trees given are the complete declared set (quality/baseline.json's
     `arch.targets`), so an owner entry recorded in none of them is stale.
+    `partial` (a CI job's single tree) skips only those stale checks.
     """
     block = manifest["capabilityModules"]
     errors = list(capabilities.target_owners(block)[1])
@@ -1672,7 +1673,14 @@ def targets_command(root: Path, manifest: dict, trees: Sequence[str]) -> int:
     if not records:
         errors.append("CAP008 no build trees given")
     else:
-        errors.extend(capabilities.stale_target_owners(block, records))
+        if not partial:
+            errors.extend(capabilities.stale_target_owners(block, records))
+        shared_errors, shared = capabilities.shared_library_errors(block, records)
+        if partial:
+            shared_errors = [error for error in shared_errors if "stale" not in error]
+        print(f"archlint: targets: {shared} first-party shared libraries, each reviewed "
+              f"(capabilityModules.sharedLibraries)")
+        errors.extend(shared_errors)
     for error in dict.fromkeys(errors):
         print(error)
     if errors:
@@ -1711,6 +1719,9 @@ def build_parser() -> argparse.ArgumentParser:
         "targets", help="check target ownership and the recorded Waf link graph of declared build trees"
     )
     targets.add_argument("--verify", action="store_true", required=True)
+    targets.add_argument(
+        "--partial", action="store_true", help="the trees are a subset (CI); skip stale-entry checks"
+    )
     targets.add_argument("trees", nargs="+", metavar="TREE", help="the complete declared set of build trees")
     hermetic = subparsers.add_parser(
         "hermetic", help="compile each portable contract header alone and check its full include closure"
@@ -1744,7 +1755,7 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     if args.command == "check":
         return check_command(args, root, manifest)
     if args.command == "targets":
-        return targets_command(root, manifest, args.trees)
+        return targets_command(root, manifest, args.trees, args.partial)
     if args.command == "tools":
         return tool_migrations_command(root)
     if args.command == "hermetic":
