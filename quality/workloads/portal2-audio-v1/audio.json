@@ -1,0 +1,352 @@
+{
+  "schema": "portal2-audio/v1",
+  "description": "Portal 2 audio against retail: the probe driver plays soundscript entries on sp_a2_triple_laser (dialog, music, a music entry whose start stack starts a second entry, the portal gun, a line cut by the next, music under dialog, a v1 and a v2 world sound at three distances) and prints AUDIO_MARK lines. tools/quality/portal2_audio.py locates each event in the stereo mixer output by normalized cross-correlation with the retail wave and compares levels, stereo image, falloff, ducking, the cut, the reverb tail and silence with retail-reference.json.",
+  "map": "sp_a2_triple_laser",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "script": "audio_probe.nut",
+  "reference": "retail-reference.json",
+  "timeout_seconds": 240,
+  "present_ncc": 0.5,
+  "marks": [
+    "ambient",
+    "silence",
+    "calib",
+    "item",
+    "vo",
+    "vo_unprecached",
+    "music",
+    "music_stop",
+    "chain",
+    "chain_stop",
+    "gun",
+    "line_a",
+    "line_b",
+    "duck_music",
+    "duck_line",
+    "duck_after",
+    "duck_stop",
+    "near_v1",
+    "mid_v1",
+    "far_v1",
+    "near_v2",
+    "mid_v2",
+    "far_v2",
+    "end"
+  ],
+  "alignment": {
+    "wave": "buttons/button_synth_positive_01.wav",
+    "marks": [
+      "calib",
+      "item",
+      "end"
+    ]
+  },
+  "events": {
+    "calib": {
+      "wave": "buttons/button_synth_positive_01.wav",
+      "stereo": true
+    },
+    "item": {
+      "wave": "buttons/button_synth_positive_01.wav",
+      "stereo": true
+    },
+    "vo": {
+      "wave": "vo/glados/sp_a1_wakeup_incinerator01.wav"
+    },
+    "vo_unprecached": {
+      "wave": "vo/glados/botcoop_artifactone_hub01.wav"
+    },
+    "music": {
+      "wave": "music/sp_a1_intro1_b1.wav",
+      "stereo": true
+    },
+    "chain": {
+      "wave": "music/sp_a1_intro1_b2a.wav",
+      "stereo": true,
+      "search_seconds": 3.0,
+      "track": false
+    },
+    "chain_started": {
+      "mark": "chain",
+      "wave": "music/sp_a1_intro1_b2b.wav",
+      "stereo": true,
+      "search_seconds": 3.0,
+      "track": false
+    },
+    "line_a": {
+      "wave": "vo/glados/sp_a1_wakeup_incinerator01.wav"
+    },
+    "line_b": {
+      "wave": "vo/glados/sp_a1_wakeup_incinerator02.wav"
+    },
+    "duck_music": {
+      "wave": "music/sp_a1_intro1_b2b.wav",
+      "stereo": true
+    },
+    "duck_line": {
+      "wave": "vo/glados/sp_a1_wakeup_incinerator02.wav",
+      "present_ncc": 0.3
+    },
+    "near_v1": {
+      "wave": "buttons/button_synth_positive_01.wav",
+      "stereo": true
+    },
+    "mid_v1": {
+      "wave": "buttons/button_synth_positive_01.wav",
+      "stereo": true
+    },
+    "far_v1": {
+      "wave": "buttons/button_synth_positive_01.wav",
+      "stereo": true
+    },
+    "near_v2": {
+      "wave": "world/robot_parts/robot_arm_motor_down_01.wav",
+      "stereo": true
+    },
+    "mid_v2": {
+      "wave": "world/robot_parts/robot_arm_motor_down_01.wav",
+      "stereo": true
+    },
+    "far_v2": {
+      "wave": "world/robot_parts/robot_arm_motor_down_01.wav",
+      "stereo": true
+    },
+    "end": {
+      "wave": "buttons/button_synth_positive_01.wav",
+      "stereo": true
+    }
+  },
+  "windows": {
+    "ambient": {
+      "from": "ambient",
+      "to": "silence"
+    },
+    "silence": {
+      "from": "silence",
+      "to": "calib",
+      "start": 0.5,
+      "end": -0.1
+    },
+    "calib": {
+      "from": "calib",
+      "to": "item"
+    },
+    "music": {
+      "from": "music",
+      "to": "music_stop",
+      "start": 0.5
+    },
+    "chain": {
+      "from": "chain",
+      "to": "chain_stop",
+      "start": 0.5
+    },
+    "gun": {
+      "from": "gun",
+      "to": "line_a"
+    }
+  },
+  "derived": {
+    "line_cut": {
+      "kind": "cut",
+      "first": "line_a",
+      "second": "line_b"
+    },
+    "duck": {
+      "kind": "duck",
+      "music": "duck_music",
+      "line": "duck_line"
+    },
+    "falloff_v1_mid": {
+      "kind": "ratio",
+      "reference": "near_v1",
+      "event": "mid_v1"
+    },
+    "falloff_v1_far": {
+      "kind": "ratio",
+      "reference": "near_v1",
+      "event": "far_v1"
+    },
+    "falloff_v2_mid": {
+      "kind": "ratio",
+      "reference": "near_v2",
+      "event": "mid_v2"
+    },
+    "falloff_v2_far": {
+      "kind": "ratio",
+      "reference": "near_v2",
+      "event": "far_v2"
+    },
+    "tail_far_v1": {
+      "kind": "tail",
+      "event": "far_v1"
+    }
+  },
+  "seed_music_spans": [
+    [
+      "music",
+      "music_stop"
+    ],
+    [
+      "chain",
+      "chain_stop"
+    ],
+    [
+      "duck_music",
+      "duck_stop"
+    ]
+  ],
+  "checks": [
+    {
+      "name": "calib.present",
+      "kind": "present",
+      "event": "calib"
+    },
+    {
+      "name": "vo.present",
+      "kind": "present",
+      "event": "vo"
+    },
+    {
+      "name": "vo.level",
+      "kind": "level",
+      "event": "vo",
+      "relative_to": "calib",
+      "tolerance_db": 1.5
+    },
+    {
+      "name": "vo.unprecached_plays",
+      "kind": "present",
+      "event": "vo_unprecached"
+    },
+    {
+      "name": "item.level",
+      "kind": "level",
+      "event": "item",
+      "relative_to": "calib",
+      "tolerance_db": 1.5
+    },
+    {
+      "name": "music.present",
+      "kind": "present",
+      "event": "music"
+    },
+    {
+      "name": "music.level",
+      "kind": "level",
+      "event": "music",
+      "relative_to": "calib",
+      "tolerance_db": 1.5
+    },
+    {
+      "name": "music.balance",
+      "kind": "balance",
+      "window": "music",
+      "tolerance_db": 1.5
+    },
+    {
+      "name": "music.width",
+      "kind": "width",
+      "window": "music",
+      "tolerance": 0.1
+    },
+    {
+      "name": "chain.own_wave",
+      "kind": "present",
+      "event": "chain"
+    },
+    {
+      "name": "chain.starts_entry",
+      "kind": "present",
+      "event": "chain_started"
+    },
+    {
+      "name": "chain.started_level",
+      "kind": "level",
+      "event": "chain_started",
+      "relative_to": "calib",
+      "tolerance_db": 1.5
+    },
+    {
+      "name": "gun.level",
+      "kind": "level",
+      "window": "gun",
+      "relative_to": "calib",
+      "tolerance_db": 2.0
+    },
+    {
+      "name": "line.second_plays",
+      "kind": "present",
+      "event": "line_b"
+    },
+    {
+      "name": "line.cut",
+      "kind": "derived",
+      "metric": "line_cut",
+      "at_most_db": -20.0
+    },
+    {
+      "name": "duck.music_under_line",
+      "kind": "derived",
+      "metric": "duck",
+      "tolerance_db": 2.0
+    },
+    {
+      "name": "falloff.v1_near_level",
+      "kind": "level",
+      "event": "near_v1",
+      "relative_to": "calib",
+      "tolerance_db": 2.0
+    },
+    {
+      "name": "falloff.v1_mid",
+      "kind": "derived",
+      "metric": "falloff_v1_mid",
+      "tolerance_db": 2.0
+    },
+    {
+      "name": "falloff.v1_far",
+      "kind": "derived",
+      "metric": "falloff_v1_far",
+      "tolerance_db": 2.0
+    },
+    {
+      "name": "falloff.v2_near_level",
+      "kind": "level",
+      "event": "near_v2",
+      "relative_to": "calib",
+      "tolerance_db": 2.0
+    },
+    {
+      "name": "falloff.v2_mid",
+      "kind": "derived",
+      "metric": "falloff_v2_mid",
+      "tolerance_db": 2.0
+    },
+    {
+      "name": "falloff.v2_far",
+      "kind": "derived",
+      "metric": "falloff_v2_far",
+      "tolerance_db": 2.0
+    },
+    {
+      "name": "dsp.tail_far",
+      "kind": "derived",
+      "metric": "tail_far_v1",
+      "tolerance_db": 4.0
+    },
+    {
+      "name": "ambient.level",
+      "kind": "level",
+      "window": "ambient",
+      "relative_to": "calib",
+      "tolerance_db": 2.0
+    },
+    {
+      "name": "stopsound.silence",
+      "kind": "silence",
+      "window": "silence",
+      "max_db": -90.0
+    }
+  ]
+}

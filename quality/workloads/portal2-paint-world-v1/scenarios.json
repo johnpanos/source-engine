@@ -1,0 +1,25 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Paint gel on world surfaces and its powers: sp_a3_jump_intro's floor trench painted by the map and by moved info_paint_sprayers (propulsion strip, water, conversion gel on the end wall), with the rebound on repulsion gel, the speed on propulsion gel, the rebound on erased floor and portal placement on conversion gel measured (QA_MEASURE) and shots of each coat (QA_SHOT). Run on this build and on retail Portal 2 by tools/quality/portal2_paint.py, which compares them.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "includes": [ "paint_lib.nut" ],
+  "scenarios": [
+    {
+      "name": "sp_a3_jump_intro_powers",
+      "map": "sp_a3_jump_intro",
+      "script": "sp_a3_jump_intro_powers.nut",
+      "timeout_seconds": 240,
+      "required_checks": [
+        "sprayers.found",
+        "bounce.sampled",
+        "orange.swept",
+        "speed.sampled",
+        "speed.control_sampled",
+        "water.swept",
+        "bounce_erased.sampled",
+        "white.swept_high",
+        "white.swept_low"
+      ]
+    }
+  ]
+}

@@ -37,10 +37,37 @@ R06 row has evidence in `platform.composition` (`test_composition.cpp`) or
 | Repeat-instance tests | `RetryAndIsolation`: retry after a failed start, a second independent composition with separate authority, a teardown that leaves the first running, and idempotent stop |
 | Negative providers | The same oracle rejects `Borrow`, `Task`, `Subscription` and `Bridge` faults |
 
-R06 stays `partial` only because its hard-gate prerequisite R05 is open
-(quantity/conversion vocabulary and matchers). When R05 closes, R06 can close
-on this evidence plus a fresh run. That also clears `roadmap.check`'s
-"R15 done while R06 partial" error.
+**R06 closure (done, 2026-09-25).** R05 closed the same day, so R06 is
+`done` on the clause map above plus a fresh run. It was closed as an agent
+decision under the user's standing instruction. RFC 0001 rank 3's other
+named items are also covered:
+
+- *Deterministic start/stop ordering:* the ordered lifecycle oracle, and the
+  stable registration-order tie break between independent roots.
+- *Domain-scoped legacy bridges:* `legacy_binding.h`, bound per composition
+  and cleared on stop; the `Bridge` fault is caught.
+- *Rollback with subscription and task drain, and destruction after the last
+  borrower:* the `Borrow`, `Task` and `Subscription` faults.
+- *Startup with genuinely absent optional services:* the optional-absent
+  case.
+
+Fresh evidence (2026-09-25): `--domain Q-FOUNDATION` on g++ and clang++.
+Each run matched 57 of 60 suites, including
+`platform.composition` (252) and `platform.test-runner` (273), with 0
+mismatched, 2,272 checks on each compiler. The 3 skips are optional `corpus.clang64.*` rows whose build
+trees do not exist here.
+
+The AGENTS.md note on R04/R06 asks for early "explicit factories" for iOS.
+They are the kernel's typed `ProviderDescriptor::Define<…>` factories, with
+no string or `CreateInterface` lookup. R04's CAP009 ratchet stops new shared
+modules.
+
+Closing R06 clears `roadmap.check`'s "R15 done while R06 partial" error.
+
+Not claimed:
+
+- Native providers, and the dedicated product's composition (R12).
+- Hosted CI runs.
 
 The last four rows were added after the first three (2026-09-22 to
 2026-09-24). The composition and tool-process rows follow the contract pattern

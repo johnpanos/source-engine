@@ -508,6 +508,9 @@ def print_violation(prefix: str, item: Occurrence | dict) -> None:
 
 def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
     strict_errors = capabilities.check(root, manifest.get("capabilityModules"), strip_comments_and_literals)
+    strict_errors += capabilities.abi_vocabulary_errors(
+        root, manifest.get("legacyAbi", {}).get("paths", []), strip_comments_and_literals
+    )
     tool_errors = validate_tool_migrations(root, read_tool_migrations(root))
     for tree in getattr(args, "compile_deps", []):
         tree_path = (root / tree).resolve()

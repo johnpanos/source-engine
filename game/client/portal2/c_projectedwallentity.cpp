@@ -326,7 +326,7 @@ void C_ProjectedWallEntity::PaintWallWithPaint( IMesh *pMesh, CMeshBuilder meshB
 			{
 				// Painted segment with no painted neighbours
 				if ( ( nPrevSeg == -1 || m_PaintPowers[nPrevSeg] == NO_POWER ) &&
-					 ( nNextSeg >= m_nNumSegments || m_PaintPowers[nNextSeg] == NO_POWER ) )
+				     ( nNextSeg >= m_nNumSegments || m_PaintPowers[nNextSeg] == NO_POWER ) )
 				{
 					PaintWallWithPaintSegment( pMesh, meshBuilder, PAINT_SINGLE_SEGMENT, vecOrigin, vecUp, vecForward, vecRight );
 				}

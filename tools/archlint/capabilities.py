@@ -108,6 +108,34 @@ def check(root, block, strip):
     return errors
 
 
+# --- Preserved ABI declarations stay free of the C++20 vocabulary ------------
+
+VOCABULARY_PREFIXES = ('foundation/', 'testing/')
+
+
+def abi_vocabulary_errors(root, abi_paths, strip):
+    """CAP010: RFC 0006 vocabulary types (Expected, StrongId, Error,
+    ScopedResource, test matchers) never cross a preserved binary ABI. Every
+    header listed in `legacyAbi.paths` is a preserved declaration, and none
+    may include a vocabulary header. Adapters and tests on that list may
+    convert at the boundary, so only headers are checked."""
+    root = Path(root).resolve()
+    errors = []
+    for relative in sorted(abi_paths):
+        path = root / relative
+        if path.suffix not in {'.h', '.hpp'} or not path.is_file():
+            continue
+        text = path.read_text(encoding='utf-8', errors='replace')
+        lines = strip(text).splitlines()
+        for match in INCLUDE.finditer(text):
+            if not re.search(r'#\s*include\b', lines[text.count('\n', 0, match.start())]):
+                continue
+            if match.group(2).startswith(VOCABULARY_PREFIXES):
+                errors.append(f'CAP010 {relative}: preserved ABI header includes {match.group(2)}; '
+                              f'convert to the ABI types at the boundary')
+    return errors
+
+
 # --- Compiler-grounded transitive include check (RFC 0001 "full mode") -------
 
 NATIVE_KINDS = {'backend', 'native-test', 'legacy-interop'}

@@ -1,0 +1,46 @@
+{
+  "schema": "portal2-paint-checks/v1",
+  "description": "Checks tools/quality/portal2_paint.py applies to a build capture of this workload, each against the retail reference (reference.json). A measure rule compares one QA_MEASURE number; a region rule compares one shot region's pixel class fraction or mean colour. Regions are [x0, y0, x1, y1] in the 1024x768 frame. Classes: blue, orange (repulsion/propulsion gel as lit on screen), white (conversion gel: neutral grey, chroma < 14, luma > 80), gel (blue or orange).",
+  "scenarios": {
+    "sp_a3_jump_intro_powers": {
+      "measures": [
+        {"check": "power.bounce", "measure": "bounce.rise", "rule": "relative", "tolerance": 0.25,
+         "defect": "repulsion gel does not bounce the player: the engine paint map is missing, so SphereTracePaintSurface finds no paint"},
+        {"check": "power.speed", "measure": "speed.orange_top", "rule": "relative", "tolerance": 0.15,
+         "defect": "propulsion gel does not speed the player up"},
+        {"check": "control.speed", "measure": "speed.blue_top", "rule": "relative", "tolerance": 0.10,
+         "defect": "walking speed off propulsion gel differs from retail (control)"},
+        {"check": "power.erase", "measure": "bounce_erased.rise", "rule": "absolute", "tolerance": 16.0,
+         "requires": ["power.bounce"],
+         "defect": "water does not remove repulsion gel"},
+        {"check": "control.portal", "measure": "portal.control_distance", "rule": "at_least", "value": 64.0,
+         "defect": "a portal was placed on the unpainted, non-portal wall (control)"},
+        {"check": "power.portal", "measure": "portal.white_distance", "rule": "at_most", "value": 32.0,
+         "defect": "conversion gel does not accept a portal"}
+      ],
+      "regions": [
+        {"check": "coverage.blue_floor", "shot": "floor_blue", "region": [0, 500, 700, 768], "class": "blue",
+         "rule": "fraction", "min_ratio": 0.8,
+         "defect": "the map's repulsion gel is not drawn on the trench floor"},
+        {"check": "look.blue_floor", "shot": "floor_blue", "region": [0, 500, 700, 768],
+         "rule": "mean", "tolerance": 40.0,
+         "defect": "painted floor colour differs from retail's (paint shader, lighting)"},
+        {"check": "coverage.orange_strip", "shot": "floor_orange", "region": [0, 500, 700, 768], "class": "orange",
+         "rule": "fraction", "min_ratio": 0.8,
+         "defect": "propulsion gel from a sprayer is not drawn on the floor"},
+        {"check": "look.orange_strip", "shot": "floor_orange", "region": [0, 500, 700, 768],
+         "rule": "mean", "tolerance": 40.0,
+         "defect": "propulsion gel colour differs from retail's"},
+        {"check": "coverage.erased_patch", "shot": "floor_erased", "region": [330, 360, 560, 445], "class": "gel",
+         "rule": "fraction_near", "tolerance": 0.2, "requires": ["coverage.painted_before_erase"],
+         "defect": "water does not erase drawn gel (or gel is missing around the patch)"},
+        {"check": "coverage.painted_before_erase", "shot": "floor_orange", "region": [330, 360, 560, 445], "class": "gel",
+         "rule": "fraction", "min_ratio": 0.8,
+         "defect": "the patch water later erases was not painted"},
+        {"check": "coverage.white_wall", "shot": "wall_white", "region": [380, 40, 860, 500], "class": "white",
+         "rule": "fraction", "min_ratio": 0.7,
+         "defect": "conversion gel is not drawn on the end wall"}
+      ]
+    }
+  }
+}

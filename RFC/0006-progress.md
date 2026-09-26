@@ -1,7 +1,7 @@
 # RFC 0006 progress: per-target toolchain boundary
 
 Updated: 2026-09-25
-Portfolio row: R03 (M0), done (2026-09-25; see R03 closure).
+Portfolio rows: R03 (M0), done (2026-09-25; see R03 closure); R05 (M1), done (2026-09-25; see R05 closure).
 
 ## Bounded scope
 
@@ -274,10 +274,108 @@ It is header-only, `constexpr` and dialect-neutral (it compiles as C++11).
   copy remains in first-party code. Python tools keep their own constants,
   which is out of scope here.
 
-R05 is `partial`. Every vocabulary item named in the row and in RFC 0001
-rank 2 is installed with a real consumer and its own suite: results, strong
-IDs, scoped ownership, matchers and quantities. The row cannot close while
-its hard-gate prerequisites R03 (Apple/MSVC/CI) and R04 are open.
+At this point R05 was `partial`: every vocabulary item was installed with a
+real consumer, but its hard-gate prerequisites R03 and R04 were open. Both
+are now `done`; see the closure below.
+
+## R05-ERRORS: shared compact error payload (slice done, 2026-09-25)
+
+RFC 0001 "Results and errors" says each domain owns a compact error enum. It
+also says a shared payload carries the domain code, an optional
+provider-native integer code and a stable operation identifier. The enums
+existed, but the payload was re-invented per domain with different field
+names:
+
+| Error | Fields |
+| --- | --- |
+| `WindowError` | `status`, `operation`, `nativeCode` |
+| `DynamicLibraryError` | `operation`, `status`, `providerCode`, `requested` |
+| `ToolProcessError` | `code`, `providerCode`, and two strings |
+| the render errors | `status` and a `char[128]` message |
+
+This slice gives the payload one owner.
+
+- `public/foundation/error.h`: `foundation::Error<Status, Operation>`.
+  - Both parameters must be scoped enums. `std::is_scoped_enum` is C++23,
+    so a small `ScopedEnum` concept stands in.
+  - Fields are `status`, `operation` and `nativeCode` (0 = none, with
+    `HasNativeCode()`), plus defaulted `==`.
+  - It is an aggregate, trivially copyable and standard-layout. It has no
+    strings and does no allocation or logging.
+  - The field names follow the majority of the existing errors, so
+    aggregate initializers keep compiling.
+- Consumer: `platform::window::WindowError` is now an alias. Nothing
+  default-constructed it, so the old field defaults are unobservable.
+  - The headless window suites give the same counts against the old and new
+    header on g++ and clang++: 421 checks, and 23 in the sensitivity suite.
+  - The SDL2 provider compiles unchanged.
+- Oracle:
+  - `foundation.error`: 10 checks and 6 static assertions.
+  - `foundation.error.unscoped` must fail to compile with a constraint
+    diagnostic.
+  - `foundation.error.mixed-domains` must fail to compile: errors of
+    different domains do not compare.
+  - All three match on g++ and clang++.
+- No ABI leakage, now enforced. `archlint check --all` has a new rule,
+  CAP010: a header listed in `legacyAbi.paths` may not include a
+  `foundation/` or `testing/` header. Adapters and tests on that list may
+  still convert at the boundary. The six listed headers are clean. There is
+  a fixture test for leaking, commented and adapter cases (128 archlint
+  tests).
+- Remaining cohort, with a deletion condition: each of these moves to
+  `foundation::Error` (with any request context kept outside the shared
+  payload) when next edited:
+  - `DynamicLibraryError` and `ToolProcessError`;
+  - `CompositionError` and `ProviderError`, which carry strings at the
+    composition boundary;
+  - `RenderCreateError` and `RenderProfileError`, whose `char[128]`
+    messages RFC 0001 says belong at the application boundary.
+- Findings (R14 scope, not fixed here):
+  - The headless window suites (`platform.window`, 421 checks;
+    `platform.window.sensitivity`, 23) had never been registered in any
+    manifest, wscript or CI. Their comments named suites that did not exist.
+    They are now manifest rows, `migration: R14`, and pass on both
+    compilers.
+  - The SDL2 provider's native suite (`test_sdl2_window.cpp`) is still
+    unregistered, and no Waf target builds the provider.
+    - Built by hand against the host's SDL2 2.32.72 (sdl2-compat) with the
+      offscreen driver, it fails 4 of 91 checks per run, twice: 8 of 192.
+    - The failures are `poll.fifo_mixed`, `mouse.wheel`, `gamepad.buttons`
+      and `gamepad.axes`. They are identical before this change.
+- Evidence (2026-09-25):
+  - `conformance.gcc` and `conformance.clang` (the full headless manifest)
+    pass.
+  - `build.tests` and `build.portal-native` pass.
+  - `arch.check` passes, and so does `arch.hermetic` with 54 headers on
+    both compilers.
+  - stylelint is clean on the six changed C++ files.
+
+## R05 closure (done, 2026-09-25)
+
+R05 is `done` for RFC 0001 rank 2 and RFC 0006 M1. It was closed as an agent
+decision under the user's standing instruction. Its prerequisites, R03 and
+R04, closed the same day.
+
+| Criterion | Vocabulary | Value and lifetime tests | ABI | Real consumers |
+| --- | --- | --- | --- | --- |
+| Results | `foundation::Expected` (`[[nodiscard]]`, no allocation, wrong-state access terminates) | `foundation.expected` (12: move-only payload, destruction counts, `void`); `.bad-access` (crash); `.ignored` (compile error) | not in any preserved ABI header (CAP010) | composition kernel, map and texture containers, debug API, indirect light, window system |
+| Compact domain errors | per-domain scoped enums plus `foundation::Error` | `foundation.error` (10), `.unscoped`, `.mixed-domains` | plain aggregate; CAP010 | `WindowError`; the rest migrate when edited (R05-ERRORS) |
+| Strong IDs | `foundation::StrongId` | `foundation.strong-id` (9 and 10 static assertions), `.mixed-tags`, `.implicit` | layout equals `Rep` (static assertions) | `WindowId`, `ConnectionId` |
+| Scoped ownership and borrows | `foundation::ScopedResource`; borrows use references, spans and IDs with documented validity (RFC 0006 "Ownership and scope") | `foundation.scoped-resource` (15), `.copy`, `.release-ignored` | layout equals the handle | debug API `ScopedFd`; contract borrow notes in `dynamic_library.h` and `tool_process.h` |
+| Quantities | `foundation::units` | `foundation.units` (9, bit-identical) | `static_assert` ties the frozen `METERS_PER_INCH` | Box3D conversion, World Stage |
+| Test matchers | `testing::Checks` | `testing.checks` (11), `.failing` | test-only | the foundation suites; 11 files migrate when edited |
+
+"No service or provider is introduced here" holds: every item is a
+header-only value type or a test helper.
+
+Frozen-consumer ABI combinations are covered by R03-A's `toolchain.abi.*`
+fixtures.
+
+Not claimed:
+
+- Hosted CI has not run these rows.
+- Apple and MSVC are optional and not run.
+- The migration cohorts above remain open, each with a deletion condition.
 
 ## R03 wording reconciliation (2026-09-25)
 

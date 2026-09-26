@@ -1,0 +1,289 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Portal 2 physics against retail (tools/quality/portal2_physics.py): momentum through portals, cubes through portals, carried cubes, faith plates, funnels, light bridges and floor buttons on retail maps. Each scenario prints QA_METRIC measurements that the checker compares with a recorded retail run (retail-reference.json) under the tolerances below.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "includes": [
+    "qa_physics.nut",
+    "../portal2-catapult-v1/qa_catapult.nut"
+  ],
+  "scenarios": [
+    {
+      "name": "sp_a2_triple_laser_move",
+      "map": "sp_a2_triple_laser",
+      "script": "sp_a2_triple_laser_move.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "walk.moved",
+        "strafe.moved",
+        "jump.rose",
+        "carry.portals",
+        "carry.picked_up",
+        "carry.player_crossed",
+        "carry.cube_followed",
+        "carry.still_held"
+      ],
+      "metrics": {
+        "walk.peak_speed": {
+          "rel": 0.05
+        },
+        "walk.distance": {
+          "rel": 0.1
+        },
+        "strafe.peak_speed": {
+          "rel": 0.05
+        },
+        "strafe.distance": {
+          "rel": 0.1
+        },
+        "jump.rise": {
+          "abs": 3
+        },
+        "jump.airtime": {
+          "abs": 0.07
+        },
+        "carry.player_crossed": {
+          "exact": true
+        },
+        "carry.cube_same_side": {
+          "exact": true
+        },
+        "carry.still_held": {
+          "exact": true
+        },
+        "carry.cube_eye_distance": {
+          "abs": 24
+        }
+      }
+    },
+    {
+      "name": "sp_a2_triple_laser_fling",
+      "map": "sp_a2_triple_laser",
+      "script": "sp_a2_triple_laser_fling.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "portals.placed",
+        "fling.crossed",
+        "engine.tick",
+        "fling.landing",
+        "fast.crossed",
+        "fast.landing",
+        "bounce.crossed",
+        "cube.crossed",
+        "cube.landing"
+      ],
+      "metrics": {
+        "engine.frame_time": {
+          "abs": 0.0005
+        },
+        "fling.speed_in": {
+          "rel": 0.05
+        },
+        "fling.speed_out": {
+          "rel": 0.08
+        },
+        "fling.exit_along_normal": {
+          "abs": 0.05
+        },
+        "fling.exit_offset": {
+          "abs": 24
+        },
+        "fling.landing_x": {
+          "abs": 48
+        },
+        "fast.speed_in": {
+          "rel": 0.05
+        },
+        "fast.speed_out": {
+          "rel": 0.08
+        },
+        "fast.exit_along_normal": {
+          "abs": 0.05
+        },
+        "fast.landing_x": {
+          "abs": 64
+        },
+        "bounce.speed_in": {
+          "rel": 0.05
+        },
+        "bounce.speed_out": {
+          "rel": 0.08
+        },
+        "bounce.rise": {
+          "abs": 16
+        },
+        "cube.speed_in": {
+          "rel": 0.08
+        },
+        "cube.speed_out": {
+          "rel": 0.15
+        },
+        "cube.exit_along_normal": {
+          "abs": 0.1
+        },
+        "cube.landing_x": {
+          "abs": 64
+        }
+      }
+    },
+    {
+      "name": "sp_a2_catapult_intro_arcs",
+      "map": "sp_a2_catapult_intro",
+      "script": "sp_a2_catapult_intro_arcs.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "plate2a.launched",
+        "plate2a.landed",
+        "plate2a.gravity",
+        "plate2a.touchdown",
+        "plate2a.rest",
+        "plate2a.measured",
+        "plate2b.launched",
+        "plate2b.landed",
+        "plate2b.gravity",
+        "plate2b.touchdown",
+        "plate2b.rest",
+        "plate2b.measured",
+        "cube.launched_up",
+        "cube.measured"
+      ],
+      "metrics": {
+        "plate2a.miss": {
+          "abs": 16
+        },
+        "plate2a.apex_above_target": {
+          "abs": 16
+        },
+        "plate2a.touchdown_x": {
+          "abs": 24
+        },
+        "plate2a.touchdown_y": {
+          "abs": 24
+        },
+        "plate2a.gravity": {
+          "abs": 15
+        },
+        "plate2a.launch_speed": {
+          "rel": 0.03
+        },
+        "plate2b.miss": {
+          "abs": 16
+        },
+        "plate2b.apex_above_target": {
+          "abs": 16
+        },
+        "plate2b.touchdown_x": {
+          "abs": 24
+        },
+        "plate2b.touchdown_y": {
+          "abs": 24
+        },
+        "plate2b.gravity": {
+          "abs": 15
+        },
+        "plate2b.launch_speed": {
+          "rel": 0.03
+        },
+        "cube.rise": {
+          "rel": 0.08
+        }
+      }
+    },
+    {
+      "name": "sp_a4_tb_intro_funnel",
+      "map": "sp_a4_tb_intro",
+      "script": "sp_a4_tb_intro_funnel.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "ride.carried",
+        "down.carried",
+        "cube.carried"
+      ],
+      "metrics": {
+        "beam.column": {
+          "abs": 2
+        },
+        "ride.axial_speed": {
+          "rel": 0.1,
+          "abs": 10
+        },
+        "ride.axis_offset": {
+          "abs": 12
+        },
+        "ride.ok_carried": {
+          "exact": true
+        },
+        "down.axial_speed": {
+          "rel": 0.1,
+          "abs": 10
+        },
+        "down.axis_offset": {
+          "abs": 12
+        },
+        "down.ok_carried": {
+          "exact": true
+        },
+        "cube.axial_speed": {
+          "rel": 0.15,
+          "abs": 10
+        },
+        "cube.axis_offset": {
+          "abs": 16
+        },
+        "cube.ok_carried": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "name": "sp_a2_bridge_intro_bridge",
+      "map": "sp_a2_bridge_intro",
+      "script": "sp_a2_bridge_intro_bridge.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "bridge.exists",
+        "player.stands",
+        "player.walks",
+        "cube.rests",
+        "button.pressed",
+        "button.press_time",
+        "button.released",
+        "button.release_count"
+      ],
+      "metrics": {
+        "player.rest_z": {
+          "abs": 2
+        },
+        "player.ok_on_bridge": {
+          "exact": true
+        },
+        "walk.distance": {
+          "rel": 0.1
+        },
+        "walk.rest_z": {
+          "abs": 2
+        },
+        "cube.rest_z": {
+          "abs": 4
+        },
+        "cube.rest_speed": {
+          "abs": 5
+        },
+        "cube.ok_on_bridge": {
+          "exact": true
+        },
+        "button.press_delay": {
+          "abs": 0.35
+        },
+        "button.ok_pressed": {
+          "exact": true
+        },
+        "button.ok_released": {
+          "exact": true
+        },
+        "button.presses": {
+          "exact": true
+        }
+      }
+    }
+  ]
+}

@@ -442,6 +442,24 @@ class LinkGraphTest(unittest.TestCase):
         self.assertTrue(any('CAP004 feature' in e for e in errors))
 
 
+class AbiVocabularyTest(unittest.TestCase):
+    """CAP010: preserved ABI headers never include the C++20 vocabulary."""
+
+    def test_preserved_abi_headers_exclude_vocabulary(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__('shutil').rmtree(root))
+        (root / 'abi').mkdir()
+        (root / 'abi/clean.h').write_text('#include "tier0/platform.h"\n// #include "foundation/expected.h"\n')
+        (root / 'abi/leak.h').write_text('#include <cstdint>\n#include "foundation/expected.h"\n')
+        (root / 'abi/checks.h').write_text('#  include "testing/checks.h"\n')
+        (root / 'abi/adapter.cpp').write_text('#include "foundation/expected.h"\n')
+        paths = ['abi/clean.h', 'abi/leak.h', 'abi/checks.h', 'abi/adapter.cpp', 'abi/missing.h']
+        errors = capabilities.abi_vocabulary_errors(root, paths, archlint.strip_comments_and_literals)
+        self.assertEqual(2, len(errors), errors)
+        self.assertTrue(errors[0].startswith('CAP010 abi/checks.h') and 'testing/checks.h' in errors[0])
+        self.assertTrue(errors[1].startswith('CAP010 abi/leak.h') and 'foundation/expected.h' in errors[1])
+
+
 class HermeticHeaderTest(unittest.TestCase):
     """CAP007: portable public headers compile alone with a clean full closure."""
 

@@ -276,7 +276,7 @@ def write_fake_zenity(directory):
 
 
 def run_scenario(scenario, runtime, output, start_frames, width, height, tool_directory,
-                 gdb_script=None, extra_args=()):
+                 gdb_script=None, extra_args=(), wrapper=()):
     runtime = Path(runtime).resolve()
     console = runtime / "portal2/console.log"
     console.unlink(missing_ok=True)
@@ -297,6 +297,8 @@ def run_scenario(scenario, runtime, output, start_frames, width, height, tool_di
         # Diagnosis only: gdb's own exit status replaces the game's.
         command = ["gdb", "-q", "-batch", "-x", str(Path(gdb_script).resolve()), "-ex", "run",
                    "-ex", "bt", "--args"] + command
+    # Diagnosis only, e.g. renderdoccmd capture: a launcher for the command.
+    command = list(wrapper) + command
     output.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     timed_out = False

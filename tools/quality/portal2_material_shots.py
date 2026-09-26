@@ -73,6 +73,12 @@ ROOT = Path(conformance.repo_root())
 WORKLOAD = ROOT / "quality/workloads/portal2-materials-v1"
 DEFAULT_STEAM_ROOT = Path.home() / ".local/share/Steam/steamapps/common/Portal 2"
 WIDTH, HEIGHT = 1024, 768
+# ./play_p2's MAT_ARGS: retail Portal 2 always applies the maps' color
+# correction; this engine leaves it to the saved video config, which is off in
+# a runtime staged from a retail install.
+PLAY_P2_ENGINE_ARGS = ["+mat_colorcorrection", "1"]
+# Region pixel classes: a thin dark cable over a lit wall, a blown-out slab.
+DARK_LUMA, BRIGHT_LUMA = 40.0, 230.0
 SHOT_LINE = re.compile(r"^QA_SHOT (\S+) (\S+)\s*$")
 UNKNOWN_SHADER = re.compile(r'Material "([^"]+)" uses unknown shader "([^"]+)"')
 MISSING_PROXY = re.compile(r'Error: Material "?([^"]*?)"? ?: proxy "([^"]+)" not found')
@@ -122,7 +128,9 @@ def region_stats(image, rect):
     patch = image[y0:y1, x0:x1].reshape(-1, 3).astype(float)
     luma = patch @ [0.2126, 0.7152, 0.0722]
     return {"mean": [round(float(v), 2) for v in patch.mean(axis=0)],
-            "std": round(float(luma.std()), 2)}
+            "std": round(float(luma.std()), 2),
+            "dark": round(float((luma < DARK_LUMA).mean()), 4),
+            "bright": round(float((luma > BRIGHT_LUMA).mean()), 4)}
 
 
 def compare_tiles(ours, reference, tolerance):
@@ -153,6 +161,13 @@ def compare_region(ours, reference, spec):
         ok = ok and low <= ratio <= high
         detail += "; contrast %.1f vs retail %.1f (ratio %.2f, allowed %.2f-%.2f)" % (
             ours["std"], reference["std"], ratio, low, high)
+    for key in ("dark", "bright"):
+        if key + "_tolerance" in spec:
+            allowed = spec[key + "_tolerance"]
+            delta = abs(ours[key] - reference[key])
+            ok = ok and delta <= allowed
+            detail += "; %s pixels %.1f%% vs retail %.1f%% (allowed +-%.1f)" % (
+                key, 100 * ours[key], 100 * reference[key], 100 * allowed)
     return ok, detail
 
 
@@ -262,7 +277,8 @@ def capture_build(args, workload_path, workload, scenarios):
     out = Path(args.out).resolve()
     capture = {"schema": CAPTURE_SCHEMA, "side": "build", "status": "incomplete",
                "started_utc": now_iso(), "source": conformance.source_identity(str(ROOT)),
-               "build": str(args.build), "extra_args": list(args.extra_arg), "scenarios": {}}
+               "build": str(args.build),
+               "extra_args": PLAY_P2_ENGINE_ARGS + list(args.extra_arg), "scenarios": {}}
     stage_portal2_runtime.stage_content(args.steam_root, args.runtime)
     capture["installed"] = stage_portal2_runtime.portal_boot.install_build(
         args.build, args.runtime, game="portal2")
@@ -276,7 +292,8 @@ def capture_build(args, workload_path, workload, scenarios):
         started = time.time()
         result = portal2_scenarios.run_scenario(
             scenario, args.runtime, out / name, args.start_frames, WIDTH, HEIGHT, tools,
-            extra_args=args.extra_arg)
+            extra_args=PLAY_P2_ENGINE_ARGS + list(args.extra_arg), wrapper=renderdoc_wrapper(
+                args, out / name))
         record = finish_scenario(out / name, name, result, screenshots, started,
                                  (out / name / "stdout.log").read_text(errors="replace"))
         capture["scenarios"][name] = record
@@ -288,6 +305,20 @@ def capture_build(args, workload_path, workload, scenarios):
     capture["finished_utc"] = now_iso()
     write_capture(out, capture)
     return capture
+
+
+def renderdoc_wrapper(args, directory):
+    """Diagnosis: run under renderdoccmd; a view script's `vk_renderdoc_capture`
+    records the next frame into <scenario>/renderdoc/ (tools/renderdoc/rdc.py
+    inspects it)."""
+    if not getattr(args, "renderdoc", False):
+        return ()
+    renderdoccmd = shutil.which("renderdoccmd")
+    if not renderdoccmd:
+        raise ShotError("--renderdoc needs renderdoccmd on PATH")
+    (directory / "renderdoc").mkdir(parents=True, exist_ok=True)
+    return (renderdoccmd, "capture", "--opt-hook-children", "-w", "-c",
+            str(directory / "renderdoc" / "frame"))
 
 
 def finish_scenario(directory, name, result, screenshots, started, stdout):
@@ -396,18 +427,11 @@ def capture_retail(args, workload_path, workload, scenarios):
     command = ["dbus-run-session", "--", "mutter", "--headless", "--wayland",
                "--virtual-monitor", "1920x1080@60",
                "--wayland-display", "p2-material-shots-%d" % os.getpid(), "--"] + inner
-    helpers_before = steam_helpers()
-    try:
-        with (out / "compositor.log").open("wb") as log:
-            process = subprocess.run(command, env=environment, stdout=log,
-                                     stderr=subprocess.STDOUT, timeout=args.session_timeout)
-    finally:
-        # `steam -shutdown` leaves the runtime's launcher service behind.
-        for pid in steam_helpers() - helpers_before:
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except OSError:
-                pass
+    # The session starts (and afterwards shuts down) a Steam client only when
+    # none is running; a user's own Steam is never restarted or stopped.
+    with (out / "compositor.log").open("wb") as log:
+        process = subprocess.run(command, env=environment, stdout=log,
+                                 stderr=subprocess.STDOUT, timeout=args.session_timeout)
     capture_path = out / "capture.json"
     if not capture_path.is_file():
         raise ShotError("the retail session wrote no capture (exit %d); see %s"
@@ -434,6 +458,7 @@ def retail_session(args):
     capture = {"schema": CAPTURE_SCHEMA, "side": "retail", "status": "incomplete",
                "started_utc": now_iso(), "mirror": str(mirror), "scenarios": {}}
     started_steam = False
+    helpers_before = steam_helpers()
     if not steam_running():
         # Retail refuses to start without a Steam client ("Steam is not running").
         with (out / "steam.log").open("wb") as log:
@@ -484,6 +509,13 @@ def retail_session(args):
         if started_steam:
             subprocess.run(["steam", "-shutdown"], capture_output=True, timeout=60)
             time.sleep(8)
+            # `steam -shutdown` leaves the runtime's launcher service of the
+            # Steam this session started behind.
+            for pid in steam_helpers() - helpers_before:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except OSError:
+                    pass
     capture["status"] = "complete"
     capture["finished_utc"] = now_iso()
     write_capture(out, capture)
@@ -704,6 +736,9 @@ def main(argv=None):
     p.add_argument("--mirror", type=Path, default=ROOT / "run/retail-p2-material-shots",
                    help="retail symlink mirror (created on first use)")
     p.add_argument("--session-timeout", type=int, default=3600)
+    p.add_argument("--renderdoc", action="store_true",
+                   help="build side, diagnosis: run under renderdoccmd (a view script sends "
+                        "vk_renderdoc_capture)")
 
     p = sub.add_parser("_retail-session", help=argparse.SUPPRESS)
     common(p)

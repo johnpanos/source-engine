@@ -4845,6 +4845,94 @@
       "expect": "compile-error"
     },
     {
+      "id": "foundation.error",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "contract": "RFC/0006-modern-cpp-ownership-and-synchronization.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/composition/test_error.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "foundation.error.unscoped",
+      "expected_diagnostic": "constraint",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/composition/test_error_unscoped.cpp"
+      ],
+      "expect": "compile-error"
+    },
+    {
+      "id": "foundation.error.mixed-domains",
+      "expected_diagnostic": "Error<NetStatus",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/composition/test_error_mixed_domains.cpp"
+      ],
+      "expect": "compile-error"
+    },
+    {
+      "id": "platform.window",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R14",
+      "contract": "RFC/0001-capability-based-platform-architecture.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG",
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/window/test_window.cpp",
+        "platform/composition.cpp",
+        "platform/window/input_normalizer.cpp",
+        "platform/window/window_surfaces.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.window.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R14",
+      "contract": "RFC/0001-capability-based-platform-architecture.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG",
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/window/test_window_negative.cpp",
+        "platform/composition.cpp",
+        "platform/window/input_normalizer.cpp",
+        "platform/window/window_surfaces.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "foundation.scoped-resource",
       "domain": "Q-FOUNDATION",
       "rfc": "0006",

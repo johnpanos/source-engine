@@ -32,7 +32,8 @@ function MV_Shot( name )
 QA_Do( "setup", function()
 {
 	// Notify text off before sv_cheats, whose change retail prints on screen.
-	SendToConsole( "con_drawnotify 0; con_notifytime 0; cl_drawhud 0; developer 0" )
+	SendToConsole( "con_drawnotify 0; con_notifytime 0; cl_drawhud 0; developer 0; " +
+	               "closecaption 0; cc_subtitles 0; mat_forceaniso 16" )
 	SendToConsole( "sv_cheats 1; r_drawviewmodel 0; god; notarget; noclip" )
 	SendToConsole( "mat_picmip; mat_antialias; mat_forceaniso; mat_hdr_level; " +
 	               "mat_colorcorrection; mat_motion_blur_enabled; r_flashlightdepthtexture; " +

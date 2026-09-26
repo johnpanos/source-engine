@@ -27,6 +27,7 @@
 #ifndef PLATFORM_WINDOW_WINDOW_SYSTEM_H
 #define PLATFORM_WINDOW_WINDOW_SYSTEM_H
 
+#include "foundation/error.h"
 #include "foundation/expected.h"
 #include "platform/window/window_events.h"
 #include "render/render_presentation.h"
@@ -68,14 +69,10 @@ enum class WindowOperation : std::uint32_t
 	Rumble,
 };
 
-// Compact, allocation-free error. 'nativeCode' is provider-defined and zero
-// when the provider has none; readable context is added by the caller.
-struct WindowError
-{
-	WindowStatus status = WindowStatus::NativeFailure;
-	WindowOperation operation = WindowOperation::Create;
-	std::int32_t nativeCode = 0;
-};
+// Compact, allocation-free error (the shared foundation payload). 'nativeCode'
+// is provider-defined and zero when the provider has none; readable context is
+// added by the caller.
+using WindowError = foundation::Error<WindowStatus, WindowOperation>;
 
 struct WindowDesc
 {
