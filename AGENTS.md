@@ -861,6 +861,23 @@ Keep the table concise and link details below or from the domain progress file.
     a CI lane and a sanitizer run. See the
     [record](RFC/0001-static-composition-progress.md).
 
+- TVOS-PROFILE: `planned` (2026-09-25, user direction: "add a tvos product
+  profile"). This is extra product scope. It adds no north-star target and
+  no R29 criterion.
+  - [`portal-tvos-native-vulkan.json`](quality/product_profiles/portal-tvos-native-vulkan.json)
+    is registered as the optional `tvos-arm64-device` row in
+    `quality/baseline.json`. It reuses the iOS profile's static composition,
+    toolchain and SDL3 pins. MoltenVK's tvOS slice comes from the v1.4.2
+    all-platforms archive.
+  - The AppleTVOS 26.5 SDK is copied from the macOS VM into
+    `dependencies/tvos/sdk`.
+  - One probe passes: clang compiles for `arm64-apple-tvos17.0`, `ld64 -r`
+    localizes hidden symbols, and ld64.lld links UIKit, Metal and MoltenVK
+    into a tvOS Mach-O.
+  - Not done: a Waf tvOS target, dependency builds, `.app` assembly, input
+    without touch or Core Motion, any device run, and the content-storage
+    policy (tvOS has no persistent app storage; a user decision).
+
 - R01/R29-ANDROID-BUILD: `partial` (2026-09-22).
   - [`build-android-apk.sh`](build-android-apk.sh) builds the SDL3/native
     Vulkan Portal APK. Every input comes from pinned archives in the

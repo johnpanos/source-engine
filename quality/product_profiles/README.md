@@ -226,6 +226,35 @@ device or whose size or modification time differs. The first sync is about
 The profile's device evidence is `unverified`. The Portal profile's
 observations do not carry over.
 
+## tvOS Portal profile
+
+`portal-tvos-native-vulkan.json` declares the Apple TV client. It uses the
+iOS profile's composition: every first-party module is statically linked,
+with SDL3 and native Vulkan over MoltenVK. It does not copy shared pins. The
+host toolchain and SDL3 point at the iOS profile (`pin_source`), and KTX
+points at the Android profile. It pins only what differs:
+- MoltenVK v1.4.2 comes from the all-platforms archive, since the release
+  has no tvOS-only one.
+- Device family 3.
+- The frameworks, without Core Motion, which the tvOS SDK lacks.
+- The `build-tvos/` out directory.
+
+The bundle id is the iOS one, so one app record can carry both platforms.
+
+The AppleTVOS SDK comes from Xcode on the Mac, like the iOS SDK:
+
+```sh
+remote="$(ssh macvm 'cd "$(xcrun --sdk appletvos --show-sdk-path)" && pwd -P')"
+mkdir -p dependencies/tvos/sdk/AppleTVOS.sdk
+ssh macvm "tar -C '$remote' -czf - ." | tar -xzf - -C dependencies/tvos/sdk/AppleTVOS.sdk
+```
+
+Nothing builds the engine for tvOS yet. Waf has no tvOS target, and
+`build-ios-app.sh` builds iOS only. The recorded evidence is one link probe
+with the shared toolchain. Where the content is stored is an open decision:
+tvOS apps have no persistent local storage outside the app bundle. tvOS is
+product scope the user added; it is not an AGENTS.md north-star target.
+
 ## Gyro aiming
 
 The client aims with the device gyroscope. It is meant to behave like Steam

@@ -1,0 +1,142 @@
+{
+  "schema": "source-tvos-product-profile/v1",
+  "id": "portal-tvos-native-vulkan-v1",
+  "description": "tvOS Portal client: the iOS profile's static composition (every first-party module linked into the app), SDL3 and the native Vulkan renderer over MoltenVK, on Apple TV. Built on a Linux host with the iOS profile's pinned host toolchain; signed and installed on a Mac.",
+  "target": {
+    "product": "portal-client",
+    "os": "tvos",
+    "arch": "arm64",
+    "llvm_triple": "arm64-apple-tvos17.0",
+    "deployment_target": "17.0"
+  },
+  "intent": {
+    "composition": "static: no first-party shared library or module search path, as on iOS (AGENTS.md 'Platform-compliant composition')",
+    "window_provider": "sdl3",
+    "render_provider": "native-vulkan",
+    "vulkan_implementation": "MoltenVK (Vulkan portability subset over Metal), statically linked",
+    "physics_provider": "vphysics (IVP) by default, as on iOS and Android; vphysics_box3d is linked too",
+    "input": "Siri Remote and game controllers through SDL3 (GameController framework). There is no touch screen, on-screen touch controls or Core Motion; a remote's motion, if used for aiming, comes from GameController, not the iOS gyro provider.",
+    "support_scope": "Product scope added by the user (2026-09-25). tvOS is not one of the four AGENTS.md north-star targets; R29 neither requires nor is closed by it. No device, simulator or packaging evidence yet.",
+    "packaging": ".app assembled on Linux; codesign, provisioning and install on the Mac, as for iOS. The content location is an open decision (see evidence.known_blockers).",
+    "deployment_target_reason": "17.0 matches the iOS profile; the SDK accepts 12.0 and later, and MoltenVK's tvOS slice is built for minos 15.0. Revisit before a store build."
+  },
+  "tvos": {
+    "bundle_id": "com.panos.sourceengine",
+    "bundle_id_reason": "The iOS profile's bundle id (the user's choice there): one app record can then carry both platforms (universal purchase). Agent decision, 2026-09-25.",
+    "display_name": "Portal (Source Engine)",
+    "version": "0.1.0",
+    "build_number": 1,
+    "build_directory": "build-tvos",
+    "system_frameworks": [
+      "Foundation",
+      "UIKit",
+      "Metal",
+      "QuartzCore",
+      "IOSurface",
+      "CoreGraphics",
+      "AudioToolbox",
+      "AVFoundation",
+      "CoreAudio",
+      "GameController",
+      "CoreHaptics",
+      "OpenAL"
+    ],
+    "system_libraries": [
+      "c++",
+      "z",
+      "bz2",
+      "iconv"
+    ],
+    "app_bundle": "Portal.app",
+    "executable": "hl2_launcher",
+    "device_family": [
+      3
+    ],
+    "required_device_capabilities": [
+      "arm64",
+      "metal"
+    ],
+    "note": "The iOS profile's frameworks without CoreMotion, which the tvOS SDK does not have (checked in AppleTVOS 26.5). No orientation keys: the display is landscape. A store build also needs the tvOS layered app icon and top-shelf image in an asset catalog; a development install does not."
+  },
+  "sdk": {
+    "name": "AppleTVOS.sdk",
+    "directory": "dependencies/tvos/sdk/AppleTVOS.sdk",
+    "source": "copied from Xcode on the user's Mac (xcrun --sdk appletvos --show-sdk-path); never downloaded by the build",
+    "minimum_version": "26.0",
+    "licence_note": "Apple's Xcode licence covers use of the SDK on Apple-branded computers; placing it on the Linux build host is the user's decision (2026-09-25, 'feel free to pull the tvos SDK from macvm')."
+  },
+  "host_toolchain": {
+    "pin_source": "quality/product_profiles/portal-ios-native-vulkan.json",
+    "directory": "dependencies/ios/toolchain",
+    "note": "One pin for both Apple mobile targets: the iOS profile's LLVM (AArch64), ld64.lld and cctools-port ld64 target tvOS with the arm64-apple-tvos triple and -platform_version tvos. tools/ios/build_toolchain.py builds it."
+  },
+  "dependencies": {
+    "moltenvk": {
+      "version": "v1.4.2",
+      "url": "https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-all.tar",
+      "sha256": "562a15a29bc358446a56a4091c5f7e08f604184187c1d34f712148b61ef17276",
+      "archive_bytes": 180474368,
+      "cache_archive": "MoltenVK-all-v1.4.2.tar",
+      "extracted_directory": "moltenvk-1.4.2",
+      "static_library": "MoltenVK/MoltenVK/static/MoltenVK.xcframework/tvos-arm64_arm64e/libMoltenVK.a",
+      "include_directory": "MoltenVK/MoltenVK/include",
+      "note": "Same MoltenVK version as the iOS profile. The v1.4.2 release has no tvOS-only archive, so this pins the all-platforms release (sha256 equals the GitHub release asset digest). The tvOS static slice is arm64 and arm64e, built for tvOS minos 15.0 with SDK 26.5."
+    },
+    "sdl3": {
+      "pin_source": "quality/product_profiles/portal-ios-native-vulkan.json",
+      "version": "3.4.16",
+      "note": "The iOS profile's archive and sha256; built as a static library for tvOS."
+    },
+    "ktx_software": {
+      "pin_source": "quality/product_profiles/portal-android-native-vulkan.json",
+      "revision": "90967979cbb7e9401ee2401ff997f30b4b7507d6",
+      "note": "The Android profile's archive, sha256 and CMake options, as on iOS."
+    },
+    "vendored": {
+      "source": "thirdparty submodule (revision pinned by the superproject)",
+      "libraries": [
+        "freetype",
+        "libpng",
+        "libjpeg",
+        "curl (HTTP only)"
+      ],
+      "note": "Cross-built as static libraries like the iOS profile; zlib, bzip2 and iconv come from the SDK."
+    }
+  },
+  "configure_options": {
+    "static_composition": true,
+    "platform_provider": "sdl3",
+    "render_backend": "native-vulkan",
+    "build_games": "portal"
+  },
+  "content": {
+    "location": "undecided: tvOS gives apps no persistent local storage outside the app bundle; the caches directory can be purged by the system",
+    "directories": [
+      "platform",
+      "portal",
+      "hl2"
+    ]
+  },
+  "required_checks": [
+    "tools/ios/build_toolchain.py: the shared pinned host toolchain and its smoke test",
+    "tools/quality/static_composition.py check on the tvOS tree: Mach-O module isolation, no first-party dylib, every module linked",
+    "startup on an Apple TV with no first-party dylib or module search path",
+    "foreground/background and surface recreation, Siri Remote and game-controller input, memory pressure",
+    "content survives relaunch under the chosen storage policy",
+    "separate simulator runs (additional, not a substitute for the device)"
+  ],
+  "evidence": {
+    "status": "unverified",
+    "known_blockers": [
+      "No Waf tvOS target yet (DEST_OS tvos, --tvos-sdk): the xcompile, static-composition and PLATFORM_IOS paths know only iOS.",
+      "No tvOS builds of SDL3, freetype, libpng, libjpeg, curl or the KTX reader, and no .app assembly (build-ios-app.sh is iOS-only).",
+      "Content storage: Portal's content does not fit a policy yet. Options are bundling it in the app (4 GB app-size limit for tvOS, per Apple's App Store documentation; to be rechecked), on-demand resources, or the purgeable caches directory for development only. A user decision.",
+      "Input: the iOS touch controls, gyro aiming and on-screen keyboard paths do not apply; menus and play need a remote/controller mapping.",
+      "The iOS profile's open items carry over: legacy $phong descriptor-set count against MoltenVK's limit, and software DXT decompression on GPUs without BC textures (memory unmeasured)."
+    ],
+    "observations": [
+      "2026-09-25: AppleTVOS 26.5 SDK (Xcode 26.6, 17F113) copied from the macOS VM to dependencies/tvos/sdk; SDKSettings allows deployment targets 12.0 to 26.5.99.",
+      "2026-09-25: link probe with the iOS profile's host toolchain (clang 22.1.8, ld64-956.6, ld64.lld): C++20/libc++ compiles for arm64-apple-tvos17.0; ld64 -r turns hidden symbols local; ld64.lld links an Objective-C++ main against UIKit, Metal, QuartzCore, IOSurface and the MoltenVK tvOS static library into a Mach-O with LC_BUILD_VERSION platform 3 (tvOS), minos 17.0, sdk 26.5, depending only on system frameworks and libraries. Never run."
+    ]
+  }
+}
