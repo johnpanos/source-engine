@@ -1409,10 +1409,21 @@ Keep the table concise and link details below or from the domain progress file.
     with the pinned FXC (`legacy_shader_conformance.py` passes
     `-vklegacyports`); 267 default cases passed in both HDR modes at the merge.
   - Default-on gate: the user played `./play` on their Wayland session with
-    the new default and approved it ("glass works", 2026-09-26). Still open:
-    an automated glass oracle (translucent env-mapped, refract and window
-    glass must show the scene behind them) and a view-set comparison against
-    ports-off at the new default.
+    the new default and approved it ("glass works", 2026-09-26).
+  - Glass oracle (2026-09-26): the `glass` material-pixel family draws
+    testchmb_a_01's frosted window, refract window and box-dropper tube
+    glass, plus an opaque control, over two walls through a perspective
+    camera. It measures transmission: 1 in linear light for additive glass,
+    `$refracttint` for Refract, 0 for the control. It passes in both HDR
+    modes with the ports on and off, and 12 seeded defects are detected
+    (black or opaque panes, undrawn panes, ignored tint, normal blending, a
+    clear control, a missing wall, a fallback shader).
+  - `forced/` cases pass in both HDR modes (64 cases each, with their
+    `-vklegacy*` switches), `sky` integer included.
+  - Frame time (`frame_pacing.py`, 6 interleaved rounds, `mat_queue_mode 2`,
+    Box3D): ports on 4.04 ms warm median, off 4.42 ms (p99 6.39 vs 6.66
+    ms); two ports-on rounds landed in the host's slow mode (5.7 ms).
+  - Still open: a view-set comparison against ports-off at the new default.
   - Unverified or open: flashlight passes, DEPTHBLEND, wrinkle weights,
     pbr_ps30 parallax (the pinned FXC miscompiles it).
   - No gate closes. See the

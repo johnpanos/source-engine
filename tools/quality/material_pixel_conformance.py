@@ -99,7 +99,8 @@ DARK = 2  # a channel at or below this reads as zero
 LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channels",
                   "base_gray", "base_color")
 FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight", "cable",
-            "sky", "monitor", "sprite", "pbr-fallback", "pbr-model", "bump", "shadow", "post")
+            "sky", "monitor", "sprite", "pbr-fallback", "pbr-model", "bump", "shadow", "post",
+            "glass")
 # Families whose harness writes whole frames, and the oracle module of each
 # (validate, evaluate).
 FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight,
@@ -120,6 +121,31 @@ BUMP_CASES = ("normal_up", "normal_basis0", "normal_basis1", "normal_basis2", "s
 SHADOW_CASES = ("opaque_black", "opaque_green", "half_alpha", "faded", "jittered_column")
 POST_CASES = ("bloom_add", "no_bloom", "cc_invert", "cc_half_invert", "cc_identity",
               "bloom_then_cc_invert", "downsample", "blur_x")
+# The glass cases: material, the shader it must draw with (no fallback), and how
+# it passes the wall behind it. The oracle's own copy; the harness reports its
+# expectation too, but a harness that expected wrongly must not pass itself.
+GLASS_CASES = {
+    "frosted_window": ("glass/glasswindow_frosted", "LightmappedGeneric", "additive"),
+    "refract_window": ("glass/glasswindow_refract01", "Refract", "tinted"),
+    "model_tube": ("models/props/box_dropper_tube", "VertexLitGeneric", "additive"),
+    "opaque_control": ("conformance/glass_opaque", "LightmappedGeneric", "opaque"),
+}
+# Transmission per channel, (pane A - pane B) / (wall A - wall B). Additive
+# glass blends into the sRGB frame in linear light (SRC_ALPHA, ONE with
+# $translucent, BaseShader.cpp SetAdditiveBlendingShadowState): measured on
+# decoded values it passes the wall unchanged. Refract multiplies the copied
+# frame by $refracttint in the shader, on encoded values: glasswindow_refract01's
+# {183 204 218}. The control must pass nothing.
+GLASS_REFRACT_TINT = (183 / 255.0, 204 / 255.0, 218 / 255.0)
+# 8-bit walls at least GLASS_WALL_SEPARATION apart resolve about 0.007.
+GLASS_TRANSMISSION_TOLERANCE = {"additive": 0.03, "tinted": 0.03, "opaque": 0.03}
+# Additive glass adds its own light (base texture, environment map) over at
+# least one wall by this many levels; a pane that was not drawn adds nothing
+# and would otherwise pass as clear glass.
+GLASS_ADDED_LIGHT = 6
+# The walls differ by at least this much in every channel, so a transmission is
+# measured to about 2% from 8-bit pixels.
+GLASS_WALL_SEPARATION = 150
 # Downsample_nohdr's fixed tint ($bloomtintenable 0) and BlurFilter_ps2x's weights.
 DOWNSAMPLE_TINT = 0.333
 BLUR_WEIGHT_SUM = 0.2013 + 2 * (0.2185 + 0.0821 + 0.0461 + 0.0262 + 0.0162 + 0.0102)
@@ -238,6 +264,19 @@ def read_pixels(path):
                 any(not isinstance(v, int) or not 0 <= v <= 255 for v in case["pixel"])
                 for case in report.get("cases", [])):
             raise PixelsError("%s has incomplete %s cases %s" % (path, family, names))
+        return report
+    if family == "glass":
+        names = [case.get("name") for case in report.get("cases", [])]
+
+        def pixel_pair(value):
+            return isinstance(value, list) and len(value) == 2 and all(
+                isinstance(pixel, list) and len(pixel) == 3 and
+                all(isinstance(v, int) and 0 <= v <= 255 for v in pixel) for pixel in value)
+        if names != list(GLASS_CASES) or not pixel_pair(report.get("walls")) or any(
+                not isinstance(case.get("shader"), str) or
+                not pixel_pair(case.get("pane")) or not pixel_pair(case.get("beside"))
+                for case in report.get("cases", [])):
+            raise PixelsError("%s has incomplete glass cases %s" % (path, names))
         return report
     if family == "sprite":
         names = [case.get("name") for case in report.get("cases", [])]
@@ -697,6 +736,63 @@ def check_post(report):
     return failures
 
 
+def glass_transmission(walls, pane, linear):
+    """Per channel, the fraction of the wall behind the pane that it passes, on
+    decoded (linear) or encoded values."""
+    decode = _srgb_to_linear if linear else (lambda v: v / 255.0)
+    return [(decode(pane[0][k]) - decode(pane[1][k])) / (decode(walls[0][k]) - decode(walls[1][k]))
+            for k in range(3)]
+
+
+def glass_expected_transmission(kind):
+    return {"additive": (1.0, 1.0, 1.0), "tinted": GLASS_REFRACT_TINT,
+            "opaque": (0.0, 0.0, 0.0)}[kind]
+
+
+def check_glass(report):
+    walls = report["walls"]
+    if any(abs(a - b) < GLASS_WALL_SEPARATION for a, b in zip(*walls)):
+        return ["walls %s are too close to measure a transmission" % walls]
+    failures = []
+    for case in report["cases"]:
+        material, shader, kind = GLASS_CASES[case["name"]]
+        if case.get("material") != material:
+            failures.append("%s: drew %s, expected %s" % (case["name"], case.get("material"),
+                                                           material))
+        if not case["shader"].lower().startswith(shader.lower()):
+            failures.append("%s: drew with shader %s, expected %s (a fallback?)"
+                            % (case["name"], case["shader"], shader))
+        for wall, beside in zip(walls, case["beside"]):
+            if not _close(beside, wall, PIXEL_TOLERANCE):
+                failures.append("%s: the wall beside the pane is %s, drawn as %s; the scene "
+                                "behind the glass is not what the case measures"
+                                % (case["name"], beside, wall))
+        transmission = glass_transmission(walls, case["pane"], linear=kind != "tinted")
+        expected = glass_expected_transmission(kind)
+        tolerance = GLASS_TRANSMISSION_TOLERANCE[kind]
+        if any(abs(t - e) > tolerance for t, e in zip(transmission, expected)):
+            failures.append("%s: transmission %s, expected %s within %g for %s glass (pane %s "
+                            "over walls %s)" % (case["name"], ["%.3f" % t for t in transmission],
+                                                ["%.3f" % e for e in expected], tolerance, kind,
+                                                case["pane"], walls))
+        if kind == "additive" and any(p < w - PIXEL_TOLERANCE
+                                      for pane, wall in zip(case["pane"], walls)
+                                      for p, w in zip(pane, wall)):
+            failures.append("%s: additive glass darkened the wall: pane %s over walls %s"
+                            % (case["name"], case["pane"], walls))
+        if kind == "additive" and max(p - w for pane, wall in zip(case["pane"], walls)
+                                      for p, w in zip(pane, wall)) < GLASS_ADDED_LIGHT:
+            failures.append("%s: the pane adds no light of its own (pane %s over walls %s); "
+                            "was it drawn?" % (case["name"], case["pane"], walls))
+    return failures
+
+
+def compare_glass(report, reference):
+    return ["%s: pane %s, reference %s" % (c["name"], c["pane"], r["pane"])
+            for c, r in zip(report["cases"], reference["cases"])
+            if any(not _close(p, q, PIXEL_TOLERANCE) for p, q in zip(c["pane"], r["pane"]))]
+
+
 def check_pbr_fallback(report):
     """The runtime must select and draw the referenced legacy VMT; a native PBR
     renderer must keep the primary shader instead. Either way, every invalid
@@ -855,6 +951,11 @@ def evaluate(report, hdr, reference=None):
             failures += ["%s: %s, reference %s" % (c["name"], c["pixel"], r["pixel"])
                          for c, r in zip(report["cases"], reference["cases"])
                          if not _close(c["pixel"], r["pixel"], PIXEL_TOLERANCE)]
+        return failures
+    if report["family"] == "glass":
+        failures = check_glass(report)
+        if reference is not None:
+            failures += compare_glass(report, reference)
         return failures
     if report["family"] == "sprite":
         failures = check_sprite(report)

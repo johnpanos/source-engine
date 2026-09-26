@@ -22,9 +22,11 @@
 //          the frosted base texture as an opaque LightmappedGeneric material,
 //          must transmit nothing, so the measurement can tell opaque from clear.
 //
-//          World panes bind the white lightmap page (as mat_fullbright does);
-//          every case binds engine/defaultcubemap as the local cubemap, as the
-//          engine binds a leaf's cubemap for env_cubemap.
+//          World panes carry a lightmap of a dim uniform value, allocated,
+//          packed and bound as map load and brush drawing do (the white page
+//          saturates the frosted pane in integer HDR); every case binds
+//          engine/defaultcubemap as the local cubemap, as the engine binds a
+//          leaf's cubemap for env_cubemap.
 //
 //=============================================================================//
 
@@ -58,6 +60,10 @@ const float kZFar = 2000.0f;
 // center, and a point on the wall well outside the pane.
 const float kPaneProbe[2] = { 0.5f, 0.5f };
 const float kWallProbe[2] = { 0.1f, 0.1f };
+
+// World panes' lightmaps: this size, one linear value in every texel.
+const int kLightmapSize = 4;
+const float kLightmapValue = 0.25f;
 
 // The two walls (sRGB-encoded), at least 150 apart in every channel.
 const unsigned char kWalls[2][3] = { { 210, 40, 200 }, { 30, 200, 20 } };
@@ -134,7 +140,8 @@ public:
 
 private:
 	void SetView();
-	void DrawQuad( IMaterial *pMaterial, float z, float halfSize );
+	bool AllocateLightmaps();
+	void DrawQuad( IMaterial *pMaterial, float z, float halfSize, const float lightmapUv[2] );
 	void UpdateFrontBufferTexture( IMaterial *pMaterial );
 
 	CSolidRegenerator m_WallRegenerator;
@@ -142,6 +149,10 @@ private:
 	IMaterial *m_pWall = nullptr;
 	ITexture *m_pPowerOfTwoFB = nullptr;
 	ITexture *m_pCubemap = nullptr;
+	// Per case: the lightmap page and the lightmap center's coordinates
+	// (world panes only).
+	int m_LightmapPage[kGlassCaseCount] = {};
+	float m_LightmapUv[kGlassCaseCount][2] = {};
 };
 
 bool CGlassScene::Init()
@@ -204,7 +215,54 @@ bool CGlassScene::Init()
 		}
 		m_pPanes[i]->IncrementReferenceCount();
 	}
+	// Precache as map load does, which builds the render state lightmap
+	// allocation sorts by.
 	g_pMaterialSystem->CacheUsedMaterials();
+	return AllocateLightmaps();
+}
+
+// One lightmap per world pane, allocated, packed and filled as map load does
+// (Begin/EndLightmapAllocation, UpdateLightmap with linear float texels).
+bool CGlassScene::AllocateLightmaps()
+{
+	int sortIds[kGlassCaseCount] = {};
+	int offsets[kGlassCaseCount][2] = {};
+	g_pMaterialSystem->BeginLightmapAllocation();
+	for ( int i = 0; i < kGlassCaseCount; ++i )
+	{
+		if ( kGlassCases[i].draw == kWorld )
+			sortIds[i] = g_pMaterialSystem->AllocateLightmap(
+			    kLightmapSize, kLightmapSize, offsets[i], m_pPanes[i] );
+	}
+	g_pMaterialSystem->EndLightmapAllocation();
+
+	std::vector<MaterialSystem_SortInfo_t> sortInfo( g_pMaterialSystem->GetNumSortIDs() );
+	g_pMaterialSystem->GetSortInfo( sortInfo.data() );
+	float texels[kLightmapSize * kLightmapSize * 4];
+	for ( int t = 0; t < kLightmapSize * kLightmapSize; ++t )
+	{
+		for ( int k = 0; k < 3; ++k )
+			texels[t * 4 + k] = kLightmapValue;
+		texels[t * 4 + 3] = 1.0f;
+	}
+	for ( int i = 0; i < kGlassCaseCount; ++i )
+	{
+		if ( kGlassCases[i].draw != kWorld )
+			continue;
+		const int page = sortInfo[sortIds[i]].lightmapPageID;
+		int size[2] = { kLightmapSize, kLightmapSize };
+		g_pMaterialSystem->UpdateLightmap( page, size, offsets[i], texels, NULL, NULL, NULL );
+		int pageWidth = 0, pageHeight = 0;
+		g_pMaterialSystem->GetLightmapPageSize( page, &pageWidth, &pageHeight );
+		if ( pageWidth <= 0 || pageHeight <= 0 )
+		{
+			Warning( "glass conformance: lightmap page %d has no size\n", page );
+			return false;
+		}
+		m_LightmapPage[i] = page;
+		m_LightmapUv[i][0] = ( offsets[i][0] + 0.5f * kLightmapSize ) / pageWidth;
+		m_LightmapUv[i][1] = ( offsets[i][1] + 0.5f * kLightmapSize ) / pageHeight;
+	}
 	return true;
 }
 
@@ -240,7 +298,8 @@ void CGlassScene::SetView()
 // A camera-facing quad with every attribute the panes' shaders read: the
 // normal toward the camera, the tangent along +x, base and lightmap
 // coordinates. Components the bound material's format lacks are not stored.
-void CGlassScene::DrawQuad( IMaterial *pMaterial, float z, float halfSize )
+void CGlassScene::DrawQuad(
+    IMaterial *pMaterial, float z, float halfSize, const float lightmapUv[2] )
 {
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 	pRenderContext->Bind( pMaterial );
@@ -256,7 +315,7 @@ void CGlassScene::DrawQuad( IMaterial *pMaterial, float z, float halfSize )
 		meshBuilder.Normal3f( 0.0f, 0.0f, 1.0f );
 		meshBuilder.Color4ub( 255, 255, 255, 255 );
 		meshBuilder.TexCoord2f( 0, uv[i][0], uv[i][1] );
-		meshBuilder.TexCoord2f( 1, 0.5f, 0.5f );
+		meshBuilder.TexCoord2f( 1, lightmapUv[0], lightmapUv[1] );
 		meshBuilder.TangentS3f( 1.0f, 0.0f, 0.0f );
 		meshBuilder.TangentT3f( 0.0f, 1.0f, 0.0f );
 		meshBuilder.UserData( tangent );
@@ -297,10 +356,11 @@ bool CGlassScene::RenderCase(
 		pRenderContext->ClearBuffers( true, true );
 		SetView();
 		pRenderContext->BindLocalCubemap( m_pCubemap );
-		DrawQuad( m_pWall, kWallZ, kWallHalfSize );
+		const float noLightmap[2] = { 0.0f, 0.0f };
+		DrawQuad( m_pWall, kWallZ, kWallHalfSize, noLightmap );
 		if ( c.draw == kWorld )
 		{
-			pRenderContext->BindLightmapPage( MATERIAL_SYSTEM_LIGHTMAP_PAGE_WHITE );
+			pRenderContext->BindLightmapPage( m_LightmapPage[index] );
 		}
 		else
 		{
@@ -313,7 +373,7 @@ bool CGlassScene::RenderCase(
 			pRenderContext->SetNumBoneWeights( 0 );
 		}
 		UpdateFrontBufferTexture( m_pPanes[index] );
-		DrawQuad( m_pPanes[index], kPaneZ, kPaneHalfSize );
+		DrawQuad( m_pPanes[index], kPaneZ, kPaneHalfSize, m_LightmapUv[index] );
 		pRenderContext->ReadPixels( 0, 0, m_Width, m_Height, rgba.data(), IMAGE_FORMAT_RGBA8888 );
 	}
 	g_pMaterialSystem->EndFrame();

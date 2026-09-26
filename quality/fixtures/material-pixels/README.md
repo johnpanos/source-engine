@@ -22,6 +22,8 @@ real material system. The backend is identified by each filename and report.
 | `bump-native-vulkan-none.json` | bump | `HDR_TYPE_NONE` | as above in 8-bit lightmaps; held to the lit and dark channels, not the closed form |
 | `shadow-native-vulkan-none.json` | shadow | `HDR_TYPE_NONE` | Shadow (shadow_ps2x) over a cleared frame: opaque, half-alpha, faded and a lone column read through its jittered taps; native Vulkan capture matching the closed form |
 | `post-native-vulkan-none.json` | post | `HDR_TYPE_NONE` | Engine_Post bloom add and color correction (identity and inverting lookups, full and half weight), Downsample_nohdr and BlurFilterX over a uniform source; native Vulkan capture matching the closed forms |
+| `glass-native-vulkan-none.json` | glass | `HDR_TYPE_NONE` | testchmb_a_01's window and model glass (glasswindow_frosted, glasswindow_refract01, box_dropper_tube) and an opaque control, each over two walls through a perspective camera; transmission 1 in linear light for additive glass, `$refracttint` for Refract, 0 for the control; native Vulkan capture with the legacy shader ports on (the default) |
+| `glass-native-vulkan-integer.json` | glass | `HDR_TYPE_INTEGER` | as above in integer HDR |
 
 `pbr-fallback-primary.vmt` and `pbr-fallback-legacy.vmt` are authored inputs
 for the `pbr-fallback` family. The driver copies them into a private runtime

@@ -1004,3 +1004,96 @@ class PbrModelTest(unittest.TestCase):
             path.write_text(json.dumps(changed))
             with self.assertRaises(ValueError):
                 oracle.read_pixels(path)
+
+
+def with_glass(report, name, **fields):
+    changed = copy.deepcopy(report)
+    for case in changed["cases"]:
+        if case["name"] == name:
+            case.update(copy.deepcopy(fields))
+    return changed
+
+
+class GlassTest(unittest.TestCase):
+    def glass_failures(self, report, hdr="none"):
+        return oracle.evaluate(report, hdr, None)
+
+    def assertDetected(self, report, name, hdr="none"):
+        failures = self.glass_failures(report, hdr)
+        self.assertTrue(any(failure.startswith(name) for failure in failures), failures)
+
+    def test_native_captures_satisfy_the_oracle(self):
+        for hdr in ("none", "integer"):
+            report = native("glass", hdr)
+            self.assertEqual(oracle.evaluate(report, hdr, report), [], hdr)
+
+    def test_black_bands_are_detected(self):
+        # The first ports merge drew glass as opaque black.
+        report = with_glass(native("glass"), "frosted_window", pane=[[0, 0, 0], [0, 0, 0]])
+        self.assertDetected(report, "frosted_window")
+
+    def test_opaque_pane_is_detected(self):
+        report = with_glass(native("glass"), "refract_window",
+                            pane=[[120, 120, 120], [120, 120, 120]])
+        self.assertDetected(report, "refract_window")
+
+    def test_undrawn_additive_pane_is_detected(self):
+        # A pane that was not drawn leaves the wall: clear, but it adds nothing.
+        walls = native("glass")["walls"]
+        report = with_glass(native("glass"), "model_tube", pane=walls)
+        self.assertDetected(report, "model_tube")
+
+    def test_ignored_refract_tint_is_detected(self):
+        # Refract that passes the copied frame untinted (plus its reflection).
+        walls = native("glass")["walls"]
+        pane = [[min(v + 10, 255) for v in wall] for wall in walls]
+        report = with_glass(native("glass"), "refract_window", pane=pane)
+        self.assertDetected(report, "refract_window")
+
+    def test_normal_blending_for_additive_glass_is_detected(self):
+        # (SRC_ALPHA, ONE_MINUS_SRC_ALPHA) at half alpha instead of (SRC_ALPHA, ONE).
+        walls = native("glass")["walls"]
+        pane = [[(v + 128) // 2 for v in wall] for wall in walls]
+        report = with_glass(native("glass"), "frosted_window", pane=pane)
+        self.assertDetected(report, "frosted_window")
+
+    def test_translucent_control_is_detected(self):
+        # The measurement must tell an opaque pane from a clear one.
+        walls = native("glass")["walls"]
+        report = with_glass(native("glass"), "opaque_control", pane=walls)
+        self.assertDetected(report, "opaque_control")
+
+    def test_missing_wall_is_detected(self):
+        report = with_glass(native("glass"), "frosted_window",
+                            beside=[[255, 0, 255], [255, 0, 255]])
+        self.assertDetected(report, "frosted_window")
+
+    def test_fallback_shader_is_detected(self):
+        report = with_glass(native("glass"), "refract_window", shader="UnlitGeneric")
+        self.assertDetected(report, "refract_window")
+
+    def test_additive_measured_in_encoded_values_would_fail(self):
+        # Linear blending is the contract: the same capture measured on encoded
+        # values reads far from 1, so the oracle's color space is load-bearing.
+        report = native("glass")
+        case = next(c for c in report["cases"] if c["name"] == "frosted_window")
+        encoded = oracle.glass_transmission(report["walls"], case["pane"], linear=False)
+        self.assertTrue(any(abs(t - 1.0) > oracle.GLASS_TRANSMISSION_TOLERANCE["additive"]
+                            for t in encoded), encoded)
+
+    def test_harness_expectation_is_not_trusted(self):
+        # A harness that labelled the refract pane additive still fails.
+        report = with_glass(native("glass"), "refract_window", expect="additive")
+        self.assertEqual(self.glass_failures(report), [])
+        walls = native("glass")["walls"]
+        report = with_glass(report, "refract_window", pane=walls)
+        self.assertDetected(report, "refract_window")
+
+    def test_missing_case_is_rejected(self):
+        report = copy.deepcopy(native("glass"))
+        report["cases"] = report["cases"][:-1]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "glass.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)

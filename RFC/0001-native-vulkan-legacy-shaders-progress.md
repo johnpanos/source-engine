@@ -88,8 +88,34 @@ Evidence (`build`, the shared native tree, default switch):
 The user then played `./play` on their Wayland session with the new default and
 approved it: "glass works! approved" (2026-09-26).
 
-Still open: an automated glass oracle, the `forced/` files, and frame time with
-the ports.
+### Glass oracle, `forced/` files and frame time (2026-09-26)
+
+The `glass` family of `material_pixel_conformance`
+(`unittests/shaderextensiontest/material_pixel_glass.cpp`) draws the glass
+testchmb_a_01 uses over two walls through a perspective camera:
+`glass/glasswindow_frosted` (LightmappedGeneric, translucent additive, env
+mapped, on a real lightmap), `glass/glasswindow_refract01` (Refract, after the
+engine's frame copy) and `models/props/box_dropper_tube` (VertexLitGeneric,
+translucent additive, env mapped), plus an opaque control. The oracle
+(`check_glass` in `tools/quality/material_pixel_conformance.py`) takes each
+pane's transmission per channel from the two frames. Additive glass blends
+into the sRGB frame in linear light, so it is measured on decoded values and
+must be 1; Refract multiplies the copied frame by `$refracttint` on encoded
+values; the control must pass nothing. Additive panes must also add light of
+their own, so an undrawn pane does not pass as clear glass.
+
+| Check | Result |
+| --- | --- |
+| `glass`, both HDR modes, ports on and `-novklegacyports` | pass; frosted 1.00, tube 1.00, refract (0.73, 0.81, 0.86) against the tint (0.72, 0.80, 0.85), control 0.00 |
+| Oracle self-tests (`GlassTest`) | 12 / 12, including black, opaque and undrawn panes, an ignored tint, normal blending, a clear control, a missing wall and a fallback shader |
+| `forced/` files with their switches, both HDR modes | 64 / 64 each; `sky` passes in integer HDR |
+| `frame_pacing.py`, 6 interleaved rounds, `mat_queue_mode 2`, Box3D | warm median 4.04 ms on, 4.42 ms off (B/A 1.095); p99 6.39 vs 6.66 ms; rounds 1 and 4 on ran 5.7 ms (the host's slow mode) |
+
+The first oracle draft measured additive glass on encoded values and failed
+the frosted pane at 0.56; decoded, the same pixels give 1.00. A self-test keeps
+that color-space choice load-bearing.
+
+Still open: a view-set comparison against ports-off at the new default.
 
 ## How it works
 
