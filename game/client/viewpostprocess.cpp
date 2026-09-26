@@ -1388,8 +1388,8 @@ private:
 	IMaterialVar *m_pMaterialParam_BloomAmount;
 };
 
-EXPOSE_INTERFACE( CBloomAddMaterialProxy, IMaterialProxy, "BloomAdd" IMATERIAL_PROXY_INTERFACE_VERSION );
-
+EXPOSE_INTERFACE(
+    CBloomAddMaterialProxy, IMaterialProxy, "BloomAdd" IMATERIAL_PROXY_INTERFACE_VERSION );
 
 static void DrawBloomDebugBoxes( IMatRenderContext *pRenderContext )
 {

@@ -76,8 +76,8 @@ public:
 
 	// The beam column's world-space box (the trigger has no model to bound it),
 	// so the leaf system puts the renderable where DrawModel draws.
-	virtual void			GetRenderBounds( Vector &vecMins, Vector &vecMaxs );
-	virtual const QAngle&	GetRenderAngles( void );
+	virtual void GetRenderBounds( Vector &vecMins, Vector &vecMaxs );
+	virtual const QAngle &GetRenderAngles( void );
 
 	float					GetSpeed( void ) { return m_linearForce; }
 	float					GetLinearForce( void ) const { return m_linearForce; }
