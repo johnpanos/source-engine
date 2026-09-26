@@ -47,6 +47,9 @@
 #include "vstdlib/jobthread.h"
 
 #include <dirent.h>
+#if defined( __APPLE__ )
+#include <mach/mach.h>
+#endif
 
 namespace
 {
@@ -163,9 +166,20 @@ IPhysicsEnvironment *CreateParallel(
 	return pParallel->CreateParallelEnvironment( params );
 }
 
-// Threads in this process (Linux /proc census).
+// Threads in this process: the Linux /proc census, or on Apple platforms the
+// task's thread list (task_threads on the process's own task).
 int ThreadCount()
 {
+#if defined( __APPLE__ )
+	thread_act_array_t threads = NULL;
+	mach_msg_type_number_t threadCount = 0;
+	if ( task_threads( mach_task_self(), &threads, &threadCount ) != KERN_SUCCESS )
+		return -1;
+	for ( mach_msg_type_number_t i = 0; i < threadCount; ++i )
+		mach_port_deallocate( mach_task_self(), threads[i] );
+	vm_deallocate( mach_task_self(), (vm_address_t)threads, threadCount * sizeof( threads[0] ) );
+	return int( threadCount );
+#else
 	DIR *pDir = opendir( "/proc/self/task" );
 	if ( !pDir )
 		return -1;
@@ -177,6 +191,7 @@ int ThreadCount()
 	}
 	closedir( pDir );
 	return count;
+#endif
 }
 
 // A census that has settled: a joined thread's /proc entry can outlive

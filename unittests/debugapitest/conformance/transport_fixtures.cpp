@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <utility>
+#include <vector>
 
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -132,9 +133,19 @@ std::unique_ptr<ITestPeer> MemoryFixture::Connect( debugapi::ITransport &transpo
 
 UnixSocketFixture::UnixSocketFixture()
 {
-	char pattern[] = "/tmp/debugapi-test-XXXXXX";
-	if ( ::mkdtemp( pattern ) != nullptr )
-		m_Directory = pattern;
+	// The platform's temporary directory (an app sandbox has no /tmp). The
+	// name stays short: a socket path is limited to 104 bytes on Apple
+	// platforms, and an iOS container's TMPDIR alone takes about 90, which
+	// leaves room for "dXXXXXX/s12".
+	const char *tmp = ::getenv( "TMPDIR" );
+	std::string pattern = std::string( tmp && *tmp ? tmp : "/tmp" );
+	if ( pattern.back() != '/' )
+		pattern += '/';
+	pattern += "dXXXXXX";
+	std::vector<char> buffer( pattern.begin(), pattern.end() );
+	buffer.push_back( '\0' );
+	if ( ::mkdtemp( buffer.data() ) != nullptr )
+		m_Directory = buffer.data();
 }
 
 UnixSocketFixture::~UnixSocketFixture()

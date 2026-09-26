@@ -31,6 +31,7 @@
 # ============================================================================
 
 import argparse
+import copy
 import datetime
 import json
 import os
@@ -133,6 +134,34 @@ def gate_rules(budget, gate_name, profile):
     return rules
 
 
+def apply_profile(budget, profile):
+    """The budget as a profile runs it: worker counts the profile declares
+    unsupported (`unsupported_workers`, e.g. more workers than the device has
+    CPUs, which the provider refuses) are removed from every workload, and
+    the gate rules and sensitivity cases that name them are dropped. Returns
+    the copy and the dropped rule ids, which are not applicable there: never
+    passed."""
+    unsupported = set(profile.get("unsupported_workers", []))
+    if not unsupported:
+        return budget, []
+    pruned = copy.deepcopy(budget)
+    for workload in pruned["workloads"].values():
+        workload["workers"] = [n for n in workload.get("workers", [0]) if n not in unsupported]
+    dropped = []
+    for gate in pruned["gates"].values():
+        kept = []
+        for rule in gate.get("rules", []):
+            named = {rule.get("workers"), rule.get("candidate", {}).get("workers")}
+            if named & unsupported:
+                dropped.append(rule["id"])
+            else:
+                kept.append(rule)
+        gate["rules"] = kept
+    pruned["sensitivity"] = [case for case in pruned.get("sensitivity", [])
+                             if not unsupported & set(case.get("workers") or [])]
+    return pruned, dropped
+
+
 def planned_runs(budget, providers):
     """Every (provider, workload, workers) the declaration asks for."""
     runs = []
@@ -233,7 +262,7 @@ def classify(parsed, returncode, timed_out, expect_samples):
     return "pass"
 
 
-def run_bench(binary, library, surfaces, cube, workload, workers, env, timeout, fault=None):
+def run_bench(binary, library, surfaces, cube, workload, workers, env, timeout, fault=None, execute=None):
     command = [binary, "--provider", library]
     for path in surfaces:
         command += ["--surfaceprops", path]
@@ -244,12 +273,16 @@ def run_bench(binary, library, surfaces, cube, workload, workers, env, timeout, 
     if fault:
         command += ["--fault", fault]
     timed_out = False
-    try:
-        run = subprocess.run(command, capture_output=True, text=True, env=env, timeout=timeout)
-        stdout, stderr, returncode = run.stdout, run.stderr, run.returncode
-    except subprocess.TimeoutExpired as exc:
-        stdout, stderr = conformance._as_text(exc.stdout), conformance._as_text(exc.stderr)
-        returncode, timed_out = None, True
+    if execute is not None:
+        # Another host runs the command (the iOS device: DeviceExecutor).
+        stdout, stderr, returncode, timed_out = execute(command, timeout)
+    else:
+        try:
+            run = subprocess.run(command, capture_output=True, text=True, env=env, timeout=timeout)
+            stdout, stderr, returncode = run.stdout, run.stderr, run.returncode
+        except subprocess.TimeoutExpired as exc:
+            stdout, stderr = conformance._as_text(exc.stdout), conformance._as_text(exc.stderr)
+            returncode, timed_out = None, True
     parsed = parse_bench(stdout)
     expect = None if workload["scene"] == "contract" else workload["ticks"]
     outcome = classify(parsed, returncode, timed_out, expect)
@@ -267,6 +300,24 @@ def run_bench(binary, library, surfaces, cube, workload, workers, env, timeout, 
         result["stdout_tail"] = conformance.tail(stdout, 20)
         result["stderr_tail"] = conformance.tail(stderr, 20)
     return result
+
+
+class DeviceExecutor:
+    """Runs the bench host on the connected iOS device: the conformance host
+    app carries it as a program, with both providers linked and selected
+    through their catalog (`linked:<name>`)."""
+
+    def __init__(self):
+        import ios_device
+        self.host = ios_device.ConformanceHost()
+
+    def push(self, path):
+        return self.host.push(path, "physics-bench")
+
+    def __call__(self, command, timeout):
+        # command[0] is "program:vphysics_conformance".
+        run = self.host.run(command[0].split(":", 1)[1], command[1:], timeout=timeout + 60)
+        return run["console"], "", run["returncode"], run["timed_out"]
 
 
 def key_of(provider, workload, workers):
@@ -530,6 +581,9 @@ def main(argv=None):
     parser.add_argument("--sensitivity", action="store_true", help="also prove each declared fault fails its rule")
     parser.add_argument("--out", default="quality-results/physics-bench")
     parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--ios", action="store_true",
+                        help="run on the connected iOS device (the conformance host app's "
+                             "vphysics_conformance program, installed by ios_conformance.py)")
     parser.add_argument("--wait-quiet", type=int, default=0, metavar="SECONDS",
                         help="before each round, wait up to SECONDS for the host load to fall under the profile's limit")
     args = parser.parse_args(argv)
@@ -540,13 +594,20 @@ def main(argv=None):
     if profile is None:
         print("physics bench: unknown profile %s" % args.profile)
         return 2
+    budget, not_applicable = apply_profile(budget, profile)
     build = os.path.abspath(args.build)
     out_dir = os.path.abspath(args.out)
     os.makedirs(out_dir, exist_ok=True)
-    binary = os.path.join(build, "unittests", "physicstest", "vphysics_conformance")
     providers = budget["providers"]
-    libraries = {p: physics_conformance.provider_library(build, p) for p in providers}
-    missing = [p for p in [binary] + list(libraries.values()) if not os.path.isfile(p)]
+    execute = DeviceExecutor() if args.ios else None
+    if execute:
+        binary = "program:vphysics_conformance"
+        libraries = {p: "linked:" + p for p in providers}
+        missing = []
+    else:
+        binary = os.path.join(build, "unittests", "physicstest", "vphysics_conformance")
+        libraries = {p: physics_conformance.provider_library(build, p) for p in providers}
+        missing = [p for p in [binary] + list(libraries.values()) if not os.path.isfile(p)]
     if missing:
         print("physics bench: missing build outputs: %s" % ", ".join(missing))
         return 2
@@ -556,6 +617,9 @@ def main(argv=None):
 
     surfaces, phys, provenance = physics_conformance.extract_fixtures(os.path.abspath(args.runtime), out_dir)
     cube = next(p for p in phys if isinstance(p, str) and p.endswith("metal_box.phy"))
+    if execute:
+        surfaces = [execute.push(path) for path in surfaces]
+        cube = execute.push(cube)
     env = dict(os.environ)
     env["LD_LIBRARY_PATH"] = os.pathsep.join([os.path.join(build, d) for d in ("tier0", "vstdlib")] + [env.get("LD_LIBRARY_PATH", "")])
 
@@ -586,7 +650,7 @@ def main(argv=None):
         order = runs[round_index % len(runs):] + runs[:round_index % len(runs)] if runs else []
         for provider, workload, workers in order:
             result = run_bench(binary, libraries[provider], surfaces, cube, budget["workloads"][workload], workers,
-                               env, args.timeout)
+                               env, args.timeout, execute=execute)
             rounds[key_of(provider, workload, workers)].append(result)
             stats = result["stats"]
             print("round %d %-38s %-11s %s" % (round_index + 1, key_of(provider, workload, workers), result["outcome"],
@@ -598,7 +662,8 @@ def main(argv=None):
     contract = {}
     contract_workload = {"scene": "contract", "count": 1, "ticks": 1, "seed": 1, "authored_cube": True}
     for provider in providers:
-        contract[provider] = run_bench(binary, libraries[provider], surfaces, cube, contract_workload, 0, env, args.timeout)
+        contract[provider] = run_bench(binary, libraries[provider], surfaces, cube, contract_workload, 0, env, args.timeout,
+                                       execute=execute)
 
     verdicts = evaluate_gates(budget, profile, results, contract, contended)
     failures = run_status(verdicts, profile.get("status", "unverified"))
@@ -610,18 +675,26 @@ def main(argv=None):
     sensitivity = {}
     if args.sensitivity:
         for case in sensitivity_cases(budget):
-            rule = rule_by_id(budget, profile, case["rule"])
+            try:
+                rule = rule_by_id(budget, profile, case["rule"])
+            except BudgetError as error:
+                # A profile may leave a rule undeclared (an unsupported
+                # configuration); its fault proves nothing there.
+                sensitivity[case["fault"]] = {"rule": case["rule"], "detected": None,
+                                              "detail": str(error)}
+                failures.append("fault %s not run: %s" % (case["fault"], error))
+                continue
             provider = case["provider"]
             if case["workload"] == "contract":
                 faulted = run_bench(binary, libraries[provider], surfaces, cube, contract_workload, 0, env,
-                                    args.timeout, fault=case["fault"])
+                                    args.timeout, fault=case["fault"], execute=execute)
                 ok, detail = evaluate_rule(rule, results, {provider: faulted})
             else:
                 workload = budget["workloads"][case["workload"]]
                 faulted_results = dict(results)
                 for workers in case.get("workers", [0]):
                     faulted = run_bench(binary, libraries[provider], surfaces, cube, workload, workers, env,
-                                        args.timeout, fault=case["fault"])
+                                        args.timeout, fault=case["fault"], execute=execute)
                     # Two identical faulted rounds so repeat checks stay meaningful.
                     faulted_results[key_of(provider, case["workload"], workers)] = aggregate([faulted, faulted])
                 # Proves the rule can fail, so host contention does not exempt it.
@@ -649,6 +722,9 @@ def main(argv=None):
         "results": results,
         "contract": contract,
         "gates": verdicts,
+        "not_applicable": {"workers": profile.get("unsupported_workers", []),
+                           "reason": profile.get("unsupported_workers_reason"),
+                           "rules": not_applicable},
         "sensitivity": sensitivity,
         "failures": failures,
         "status": "pass" if not failures else "fail",

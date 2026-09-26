@@ -856,9 +856,21 @@ Keep the table concise and link details below or from the domain progress file.
     - The static-composition check passes on Mach-O (22 modules).
     - On the Mac: the plist lints and an ad-hoc signature verifies.
     - Bundle id `com.panos.sourceengine`.
-  - Not done: provisioning-profile signing and installing (the user's
-    `~/src/mac` tooling), any run on the device, the AGENTS.md iOS obligations,
-    a CI lane and a sanitizer run. See the
+  - Device runs (2026-09-26, iPhone 16 Pro, iOS 27.0): the app runs, with
+    touch controls, gyro aiming and portrait (untested on the device) and
+    LightmappedGeneric within MoltenVK's eight descriptor sets.
+    `tools/quality/ios_conformance.py` runs the manifest's compiled suites on
+    the phone (profile `quality/profiles/ios-arm64-device.json`):
+    - Portal frame pacing passes (warm pass: 9.16 ms median, 0 hitches);
+    - 196 suites: 186 matched, 6 skipped by declaration; the other 4 were
+      harness or test defects, since fixed;
+    - scheduler budgets pass (new iOS rows);
+    - the physics bench passes box3d-parity and shape-inertia. parallel-step
+      fails on speedup (1.00-1.18x from 1 to 4 workers under sustained load).
+
+    See the [device record](RFC/0005-ios-device-progress.md).
+  - Not done: the AGENTS.md iOS lifecycle, memory-pressure and simulator
+    obligations, a CI lane and a sanitizer run. See the
     [record](RFC/0001-static-composition-progress.md).
 
 - TVOS-PROFILE: `partial` (2026-09-25, user direction: "add a tvos product

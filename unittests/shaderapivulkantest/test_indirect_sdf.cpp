@@ -748,9 +748,11 @@ float ProbeMeanAt( const Volume &volume, uint32_t layer, uint32_t probe )
 // is its own reference field's (a producer publishes the change from its
 // reference, which there already holds the leak): `erasedDark`, the mean
 // ReferenceSides measures. The wall's run must stay black and the open
-// pair's must match it.
+// pair's must match it. Without ray query the reference is the SDF's erased
+// slab, which also removes floor and ceiling and so is darker (`exact`
+// false): the pair must then carry at least half of it, with no upper bound.
 std::string PortalTransport(
-    Frames &frames, TraceMode mode, const IndirectScene &walled, float erasedDark )
+    Frames &frames, TraceMode mode, const IndirectScene &walled, float erasedDark, bool exact )
 {
 	const auto run = [&]( const IndirectScene &base, bool portals, float *darkIndirect,
 	                      float *darkTotal )
@@ -822,7 +824,7 @@ std::string PortalTransport(
 	// The erased wall leaves a 2-unit slot open to the outside around the
 	// rooms' junction, which the pair does not: the two are alike, not equal
 	// (the Cycles portal-light fixture is the accurate oracle).
-	if ( !( openTotal > 0.5f * erasedDark && openTotal < 1.5f * erasedDark ) )
+	if ( !( openTotal > 0.5f * erasedDark && ( !exact || openTotal < 1.5f * erasedDark ) ) )
 		return "the open pair does not carry the light the erased wall lets through";
 	if ( std::fabs( ( openTotal - openIndirect ) - ( closedTotal - closedIndirect ) ) > 0.01f )
 		return "light through the pair landed outside the indirect layer";
@@ -1099,7 +1101,7 @@ int main( int argc, char **argv )
 		          : ReferenceSides( frames, mode, seed, WithoutTheWall( *sdf ), geometry,
 		                &erasedLit, &erasedDark );
 		const std::string failed = erasedTraced
-		                               ? PortalTransport( frames, mode, walled, erasedDark )
+		                               ? PortalTransport( frames, mode, walled, erasedDark, exact )
 		                               : std::string( "the erased-wall reference did not run" );
 		if ( !failed.empty() )
 			std::fprintf( stderr, "  %s: %s\n", name.c_str(), failed.c_str() );

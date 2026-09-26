@@ -168,13 +168,33 @@ def run_program(build, relative, args):
     return result.stdout
 
 
+_IOS_HOST = None
+
+
+def run_program_ios(_build, relative, args):
+    """run_program on the connected iOS device: the program of the same name
+    in the conformance host app (ios_device.ConformanceHost)."""
+    global _IOS_HOST
+    if _IOS_HOST is None:
+        import ios_device
+        _IOS_HOST = ios_device.ConformanceHost()
+    run = _IOS_HOST.run(Path(relative).name, args, timeout=1260)
+    if run["returncode"] != 0:
+        raise RuntimeError("%s failed on the device (%s):\n%s" % (
+            relative, run["returncode"], run["console"][-2000:]))
+    return run["console"]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("check")
     run = commands.add_parser("run")
-    run.add_argument("--build", required=True, help="waf --tests output tree")
+    run.add_argument("--build", help="waf --tests output tree (not with --ios)")
+    run.add_argument("--ios", action="store_true",
+                     help="run the benchmarks on the connected iOS device (the conformance "
+                          "host app's programs, installed by ios_conformance.py)")
     run.add_argument("--profile", required=True)
     run.add_argument("--samples", type=int, default=15)
     run.add_argument("--census", help="thread census JSON from `census` for the capacity row")
@@ -200,17 +220,21 @@ def main(argv=None):
         print("scheduler budgets: %s" % ("FAIL" if problems else "pass"))
         return 1 if problems else 0
 
+    if bool(args.build) == bool(args.ios):
+        parser.error("run needs exactly one of --build and --ios")
     entry = resolve(budgets, args.profile)
     rows = entry["overhead"]
+    program = run_program_ios if args.ios else run_program
+    where = None if args.ios else args.build
     bench = {}
     for workers in sorted({row["workers"] for row in rows.values() if row["kind"] == "pool_bench"}):
-        bench.update(parse_bench(run_program(
-            args.build, "unittests/jobsystemtest/jobsystemthreadpoolbench",
+        bench.update(parse_bench(program(
+            where, "unittests/jobsystemtest/jobsystemthreadpoolbench",
             ["--samples", str(args.samples), "--workers", str(workers)])))
-    graph = parse_graph_overhead(run_program(
-        args.build, "unittests/jobsystemtest/jobsystemhostframetest", ["--scenarios", "50"]))
+    graph = parse_graph_overhead(program(
+        where, "unittests/jobsystemtest/jobsystemhostframetest", ["--scenarios", "50"]))
     report = {"profile": args.profile, "overhead": evaluate(rows, bench, graph),
-              "host_load": list(os.getloadavg())}
+              "host_load": None if args.ios else list(os.getloadavg())}
     if args.census:
         report["capacity"] = evaluate_census(entry["capacity"],
                                              json.loads(Path(args.census).read_text()))

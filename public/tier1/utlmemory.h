@@ -269,7 +269,9 @@ private:
 	char m_Memory[ SIZE*sizeof(T) + nAlignment ];
 };
 
-#ifdef _LINUX
+// Without the malloc override there is no g_pMemAlloc to ask for a block's
+// size (tier0/memalloc.h), so the size is remembered as on Linux.
+#if defined( _LINUX ) || defined( NO_MALLOC_OVERRIDE )
 #define REMEMBER_ALLOC_SIZE_FOR_VALGRIND 1
 #endif
 

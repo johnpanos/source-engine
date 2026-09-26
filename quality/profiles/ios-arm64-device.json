@@ -1,0 +1,70 @@
+{
+  "schema": "conformance-profile/v1",
+  "id": "ios-arm64-device",
+  "description": "The manifest's compiled headless and native Vulkan suites on a physical iOS device (arm64, the iOS product profile's toolchain, SDK and deployment target). tools/quality/ios_conformance.py cross-compiles each suite on Linux into its own Mach-O module object (ld64 -r, one exported entry, everything else localized, as static composition does), links them into one test-host app with SDL3 and MoltenVK, installs it with ios-deploy.sh and launches it once per suite through devicectl, so every suite runs in its own process. Results use the shared checks-v1 classification (conformance.classify_run). GPU suites present through UIKit and MoltenVK rather than SDL's offscreen driver. Not loaded by conformance.py: no manifest suite names this profile; the host profiles are listed in `hosts`.",
+  "os": "ios",
+  "arch": "arm64",
+  "runner": "ios-device",
+  "hosts": [
+    "linux-headless-core",
+    "linux-native-vulkan-gpu"
+  ],
+  "product_profile": "quality/product_profiles/portal-ios-native-vulkan.json",
+  "bundle_id": "com.panos.sourceengine.conformance",
+  "app_bundle": "Conformance.app",
+  "executable": "conformance_host",
+  "extra_flags": [
+    "-Wno-deprecated-declarations"
+  ],
+  "unsupported": {
+    "shared-unit": "builds a first-party shared library at run time; the iOS profile links first-party code statically and loads no first-party module",
+    "sanitizer": "needs a sanitizer runtime the iOS profile does not ship (TSan runs on the Linux lanes)",
+    "libstdcxx-dual-abi": "seeds a libstdc++ dual-ABI mismatch (_GLIBCXX_USE_CXX11_ABI); the iOS toolchain's libc++ has one ABI, so the seeded defect cannot exist there"
+  },
+  "launch_overhead_seconds": 60,
+  "platform_defines": {
+    "_comment": "Suite rows that declare Linux platform defines compile with the iOS product's instead (wscript's iOS defines): the code the app ships.",
+    "-DLINUX": [
+      "-DOSX=1",
+      "-D_OSX=1",
+      "-DPLATFORM_IOS=1"
+    ],
+    "-D_LINUX": []
+  },
+  "include_after": [
+    "common"
+  ],
+  "include_after_comment": "ARM targets find sse2neon.h (public/mathlib/ssemath.h) in common/, as the product's targets include it; searched last so it shadows nothing.",
+  "programs": {
+    "_comment": "Benchmark hosts the budget tools drive (physics_bench.py, scheduler_budgets.py --ios). Sources, includes, defines and uses come from the named Waf target (its wscript is the owner); they compile with the iOS product's release flags and link the iOS build's own libraries and module objects (program_uses).",
+    "vphysics_conformance": {
+      "wscript": "unittests/physicstest/wscript",
+      "target": "vphysics_conformance",
+      "defines": [
+        "VPHYSICS_CONFORMANCE_LINKED_PROVIDERS"
+      ],
+      "extra_uses": [
+        "vphysics",
+        "vphysics_box3d"
+      ]
+    },
+    "jobsystemthreadpoolbench": {
+      "wscript": "unittests/jobsystemtest/wscript",
+      "target": "jobsystemthreadpoolbench"
+    },
+    "jobsystemhostframetest": {
+      "wscript": "unittests/jobsystemtest/wscript",
+      "target": "jobsystemhostframetest"
+    }
+  },
+  "program_uses": {
+    "_comment": "Waf uselib -> the iOS build's output a program links (build-ios-app.sh builds them). Uselibs not listed (DL, LOG) are system facilities on iOS.",
+    "tier0": "build-ios/waf/tier0/libtier0.o",
+    "vstdlib": "build-ios/waf/vstdlib/libvstdlib.o",
+    "tier1": "build-ios/waf/tier1/libtier1.a",
+    "mathlib": "build-ios/waf/mathlib/libmathlib.a",
+    "jobsystem": "build-ios/waf/jobsystem/libjobsystem.a",
+    "vphysics": "build-ios/waf/vphysics/libvphysics.o",
+    "vphysics_box3d": "build-ios/waf/vphysics_box3d/libvphysics_box3d.o"
+  }
+}

@@ -432,6 +432,9 @@ if target['os'] == 'ios':
         'UIStatusBarHidden': True,
         # SDL3 takes pointer (trackpad, mouse) input as UIKit indirect events.
         'UIApplicationSupportsIndirectInputEvents': True,
+    # ProMotion: without it iOS caps an iPhone app at 60 Hz; the game's
+    # fps_max and vsync then choose the rate.
+    'CADisableMinimumFrameDurationOnPhone': True,
         # Content goes into Documents with the Files app or xcrun devicectl.
         'UIFileSharingEnabled': True,
         'LSSupportsOpeningDocumentsInPlace': True,

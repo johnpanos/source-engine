@@ -70,6 +70,49 @@ void ReportMissingContent( const char *contentDir )
 	SDL_ShowSimpleMessageBox( SDL_MESSAGEBOX_ERROR, "Game content missing", reason, NULL );
 }
 
+#if defined( PLATFORM_TVOS )
+// Apple TV render settings (user direction, 2026-09-26): no MSAA and the Video
+// Advanced dialog's Low values (gameui/OptionsSubVideo.cpp); HDR is left as
+// configured. Exec'd after config.cfg, so a desktop config copied with the
+// content cannot raise them; commandline.txt comes later and can. A cfg
+// rather than '+' arguments keeps the engine's 512-character command line
+// free for commandline.txt.
+const char kTvRenderConfig[] = "tvos_render.cfg";
+const char *const kTvRenderSettings[][2] = {
+    { "mat_antialias", "1" },
+    { "mat_aaquality", "0" },
+    { "r_rootlod", "2" },
+    { "mat_picmip", "2" },
+    { "mat_trilinear", "0" },
+    { "mat_forceaniso", "1" },
+    { "r_shadowrendertotexture", "0" },
+    { "r_flashlightdepthtexture", "0" },
+    { "mat_reducefillrate", "1" },
+    { "r_waterforceexpensive", "0" },
+    { "r_waterforcereflectentities", "0" },
+    { "mat_colorcorrection", "0" },
+    { "mat_motion_blur_enabled", "0" },
+};
+
+// Rewritten at every start into the game's cfg directory, so the settings
+// above stay their only source.
+bool WriteTvRenderConfig( const char *contentDir )
+{
+	char path[PATH_MAX];
+	snprintf( path, sizeof( path ), "%s/%s/cfg/%s", contentDir, IOS_DEFAULT_GAME, kTvRenderConfig );
+	FILE *file = fopen( path, "w" );
+	if ( !file )
+	{
+		SDL_Log( "Source: cannot write %s; the Apple TV render settings are not applied", path );
+		return false;
+	}
+	fputs( "// Written by the app at startup (launcher_main/ios_main.cpp).\n", file );
+	for ( const auto &setting : kTvRenderSettings )
+		fprintf( file, "%s %s\n", setting[0], setting[1] );
+	return fclose( file ) == 0;
+}
+#endif
+
 } // namespace
 
 int main( int, char ** )
@@ -164,33 +207,16 @@ int main( int, char ** )
 	argv[argc++] = const_cast<char *>( "0" );
 
 #if defined( PLATFORM_TVOS )
-	// Apple TV render defaults (user direction, 2026-09-26): 1080p scaled up to
-	// a 4K display by the system, no MSAA, and the Video Advanced dialog's Low
-	// values (gameui/OptionsSubVideo.cpp); HDR is left as configured. The '+'
-	// settings run after config.cfg, so a desktop config copied with the
-	// content cannot raise them; commandline.txt comes later and can.
+	// Apple TV render defaults: 1080p scaled up to a 4K display by the system
+	// (-nohighdpi) and no MSAA at the first mode set, then the settings of
+	// WriteTvRenderConfig after config.cfg.
 	static const char *const kTvLaunchArgs[] = { "-nohighdpi", "-mat_antialias", "1" };
-	static const char *const kTvSettings[][2] = {
-	    { "+mat_antialias", "1" },
-	    { "+mat_aaquality", "0" },
-	    { "+r_rootlod", "2" },
-	    { "+mat_picmip", "2" },
-	    { "+mat_trilinear", "0" },
-	    { "+mat_forceaniso", "1" },
-	    { "+r_shadowrendertotexture", "0" },
-	    { "+r_flashlightdepthtexture", "0" },
-	    { "+mat_reducefillrate", "1" },
-	    { "+r_waterforceexpensive", "0" },
-	    { "+r_waterforcereflectentities", "0" },
-	    { "+mat_colorcorrection", "0" },
-	    { "+mat_motion_blur_enabled", "0" },
-	};
 	for ( const char *arg : kTvLaunchArgs )
 		argv[argc++] = const_cast<char *>( arg );
-	for ( const auto &setting : kTvSettings )
+	if ( WriteTvRenderConfig( contentDir ) )
 	{
-		argv[argc++] = const_cast<char *>( setting[0] );
-		argv[argc++] = const_cast<char *>( setting[1] );
+		argv[argc++] = const_cast<char *>( "+exec" );
+		argv[argc++] = const_cast<char *>( kTvRenderConfig );
 	}
 #endif
 

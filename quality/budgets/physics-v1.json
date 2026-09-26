@@ -969,6 +969,210 @@
       "owner": "R29",
       "note": "No macOS/iOS runner.",
       "rules": []
+    },
+    "ios-arm64-iphone16pro": {
+      "status": "measured",
+      "owner": "R29",
+      "runner": "iPhone 16 Pro (A18 Pro: 2 performance + 4 efficiency cores), iOS 27.0, the iOS product's release flags (clang 22.1.8, -O2) through the conformance host app (physics_bench.py --ios)",
+      "rules": [
+        {
+          "id": "timing.pile-256-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "pile-256",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 1100
+        },
+        {
+          "id": "timing.pile-1024-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 4000
+        },
+        {
+          "id": "timing.pile-4096-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 19000
+        },
+        {
+          "id": "timing.stack-20-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "stack-20",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 740
+        },
+        {
+          "id": "timing.ragdolls-32-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "ragdolls-32",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 1400
+        },
+        {
+          "id": "timing.ragdolls-128-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 5200
+        },
+        {
+          "id": "timing.projectiles-64-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "projectiles-64",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 230
+        },
+        {
+          "id": "timing.shards-64-p95",
+          "gate": "box3d-parity",
+          "kind": "timing",
+          "workload": "shards-64",
+          "provider": "vphysics_box3d",
+          "workers": 0,
+          "stat": "p95",
+          "limit_us": 140
+        },
+        {
+          "id": "timing.pile-1024-w4-p50",
+          "gate": "parallel-step",
+          "kind": "timing",
+          "workload": "pile-1024",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "stat": "p50",
+          "limit_us": 68
+        },
+        {
+          "id": "timing.pile-4096-w4-p50",
+          "gate": "parallel-step",
+          "kind": "timing",
+          "workload": "pile-4096",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "stat": "p50",
+          "limit_us": 6400
+        },
+        {
+          "id": "timing.ragdolls-128-w4-p95",
+          "gate": "parallel-step",
+          "kind": "timing",
+          "workload": "ragdolls-128",
+          "provider": "vphysics_box3d",
+          "workers": 4,
+          "stat": "p95",
+          "limit_us": 4200
+        }
+      ],
+      "unsupported_workers": [
+        8
+      ],
+      "unsupported_workers_reason": "The A18 Pro has 6 logical CPUs; Box3D's GetMaxWorkerCount clamps to the logical processor count, so CreateParallelEnvironment refuses 8 workers (reported unsupported). The workloads run at 0, 1, 2 and 4 workers here.",
+      "calibration": "2026-09-26, 3 interleaved rounds on the phone (quality-results/ios-physics-calibration, console log) at source 3eae0487 plus the iOS harness: limits are about twice the worst round's value, rounded up. Not declared here: timing.pile-4096-w8-p50 (8 workers is unsupported on this device, see unsupported_workers) and the memory rules (the calibration run's per-run memory growth was not kept; pending a calibration run that records it).",
+      "max_load_per_cpu": null,
+      "host_policy": "The phone runs one benchmark process at a time and nothing else of ours; the Linux load-average contention rule does not apply (no load samples are taken on the device).",
+      "captures": {
+        "vphysics_box3d/pile-256/w0": {
+          "p95": [
+            372,
+            501,
+            507
+          ]
+        },
+        "vphysics_box3d/pile-1024/w0": {
+          "p95": [
+            1607,
+            1733,
+            1985
+          ]
+        },
+        "vphysics_box3d/pile-4096/w0": {
+          "p95": [
+            7310,
+            9092,
+            9369
+          ]
+        },
+        "vphysics_box3d/stack-20/w0": {
+          "p95": [
+            328,
+            353,
+            367
+          ]
+        },
+        "vphysics_box3d/ragdolls-32/w0": {
+          "p95": [
+            572,
+            616,
+            653
+          ]
+        },
+        "vphysics_box3d/ragdolls-128/w0": {
+          "p95": [
+            2255,
+            2448,
+            2562
+          ]
+        },
+        "vphysics_box3d/projectiles-64/w0": {
+          "p95": [
+            91,
+            89,
+            115
+          ]
+        },
+        "vphysics_box3d/shards-64/w0": {
+          "p95": [
+            52,
+            55,
+            68
+          ]
+        },
+        "vphysics_box3d/pile-1024/w4": {
+          "p50": [
+            26,
+            34,
+            32
+          ]
+        },
+        "vphysics_box3d/pile-4096/w4": {
+          "p50": [
+            2670,
+            3086,
+            3194
+          ]
+        },
+        "vphysics_box3d/ragdolls-128/w4": {
+          "p95": [
+            1905,
+            2071,
+            2062
+          ]
+        }
+      },
+      "verification": "2026-09-26 (quality-results/ios-physics-verify2, 3 rounds after about 90 minutes of continuous benchmarking): box3d-parity and shape-inertia pass with these limits; all 15 sensitivity faults are detected. parallel-step fails on its profile-independent speedup rules only: 1->4 workers gave 1.00x (pile-4096 p50, calibration 1.49x), 1.18x (pile-1024) and 1.06x (ragdolls-128). Timings rose across the session (pile-4096 one worker p50 3.96 -> 5.72 ms), consistent with thermal throttling; the 4 extra workers share 2 performance and 4 efficiency cores. Worker-count invariance holds (one digest at 0, 1, 2 and 4 workers). ccd-bullets (planned) fails as on Linux (56 of 64 tunnel)."
     }
   },
   "worker_budget": {

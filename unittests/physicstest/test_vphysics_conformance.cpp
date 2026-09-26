@@ -63,6 +63,9 @@
 #include "vstdlib/jobthread.h"
 
 #include "vphysics_conformance.h"
+#if defined( VPHYSICS_CONFORMANCE_LINKED_PROVIDERS )
+#include "vphysics/provider_catalog.h"
+#endif
 
 //-----------------------------------------------------------------------------
 // Result reporting
@@ -394,14 +397,63 @@ static void ResetTrace( trace_t *pTrace )
 //-----------------------------------------------------------------------------
 // Module / interfaces
 //-----------------------------------------------------------------------------
+#if defined( VPHYSICS_CONFORMANCE_LINKED_PROVIDERS )
+// A statically composed host (the iOS device profile) links the providers and
+// selects one by name through their catalog entries (vphysics/provider_catalog.h),
+// as a static product's root does; `--provider linked:<name>`. Sibling
+// interfaces come from IPhysics::QueryInterface, the app framework's route.
+static IPhysics *s_pLinkedPhysics;
+
+static void *LinkedProviderFactory( const char *pName, int *pReturnCode )
+{
+	void *pResult = NULL;
+	if ( s_pLinkedPhysics )
+		pResult = !V_strcmp( pName, VPHYSICS_INTERFACE_VERSION )
+		              ? static_cast<void *>( s_pLinkedPhysics )
+		              : s_pLinkedPhysics->QueryInterface( pName );
+	if ( pReturnCode )
+		*pReturnCode = pResult ? IFACE_OK : IFACE_FAILED;
+	return pResult;
+}
+
+static const PhysicsProviderDescriptor *FindLinkedProvider( const char *pName )
+{
+	const PhysicsProviderDescriptor *catalog[] = { PhysicsIVP_Describe(), PhysicsBox3D_Describe() };
+	for ( const PhysicsProviderDescriptor *pDescriptor : catalog )
+	{
+		if ( pDescriptor && !V_strcmp( pDescriptor->name, pName ) )
+			return pDescriptor;
+	}
+	return NULL;
+}
+#endif
+
 static bool TestModule( const char *pProviderPath )
 {
-	void *pModule = dlopen( pProviderPath, RTLD_NOW | RTLD_LOCAL );
-	if ( !Check( TIER_BOOT, "module.load", pModule != NULL, "%s", dlerror() ) )
-		return false;
-	s_providerFactory = (CreateInterfaceFn)dlsym( pModule, CREATEINTERFACE_PROCNAME );
-	if ( !Check( TIER_BOOT, "module.create-interface-export", s_providerFactory != NULL ) )
-		return false;
+#if defined( VPHYSICS_CONFORMANCE_LINKED_PROVIDERS )
+	const char kLinkedPrefix[] = "linked:";
+	if ( !V_strncmp( pProviderPath, kLinkedPrefix, sizeof( kLinkedPrefix ) - 1 ) )
+	{
+		const PhysicsProviderDescriptor *pDescriptor =
+		    FindLinkedProvider( pProviderPath + sizeof( kLinkedPrefix ) - 1 );
+		if ( !Check( TIER_BOOT, "module.load", pDescriptor != NULL, "no linked provider %s",
+		         pProviderPath ) )
+			return false;
+		s_pLinkedPhysics = pDescriptor->create();
+		s_providerFactory = LinkedProviderFactory;
+		if ( !Check( TIER_BOOT, "module.create-interface-export", s_pLinkedPhysics != NULL ) )
+			return false;
+	}
+	else
+#endif
+	{
+		void *pModule = dlopen( pProviderPath, RTLD_NOW | RTLD_LOCAL );
+		if ( !Check( TIER_BOOT, "module.load", pModule != NULL, "%s", dlerror() ) )
+			return false;
+		s_providerFactory = (CreateInterfaceFn)dlsym( pModule, CREATEINTERFACE_PROCNAME );
+		if ( !Check( TIER_BOOT, "module.create-interface-export", s_providerFactory != NULL ) )
+			return false;
+	}
 
 	s_pPhysics = (IPhysics *)s_providerFactory( VPHYSICS_INTERFACE_VERSION, NULL );
 	IPhysicsCollision *pCollision = (IPhysicsCollision *)s_providerFactory( VPHYSICS_COLLISION_INTERFACE_VERSION, NULL );

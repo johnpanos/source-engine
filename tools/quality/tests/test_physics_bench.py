@@ -334,5 +334,35 @@ class DeclarationTests(unittest.TestCase):
             self.load(bad)
 
 
+
+class ProfileUnsupportedWorkersTests(unittest.TestCase):
+    def budget(self):
+        return {
+            "workloads": {"pile": {"workers": [0, 1, 4, 8]}},
+            "gates": {"g": {"rules": [
+                {"id": "keep", "kind": "digest_invariant", "workload": "pile"},
+                {"id": "w8", "kind": "metric_max", "workload": "pile", "workers": 8},
+                {"id": "ratio8", "kind": "relative", "candidate": {"workers": 8}},
+            ]}},
+            "sensitivity": [{"rule": "keep", "workers": [1, 8]}, {"rule": "keep", "workers": [1]}],
+        }
+
+    def test_declared_workers_are_pruned_and_their_rules_reported(self):
+        budget = self.budget()
+        pruned, dropped = bench.apply_profile(budget, {"unsupported_workers": [8]})
+        self.assertEqual(pruned["workloads"]["pile"]["workers"], [0, 1, 4])
+        self.assertEqual([r["id"] for r in pruned["gates"]["g"]["rules"]], ["keep"])
+        self.assertEqual(sorted(dropped), ["ratio8", "w8"])
+        self.assertEqual(pruned["sensitivity"], [{"rule": "keep", "workers": [1]}])
+        # The declaration itself is untouched.
+        self.assertEqual(budget["workloads"]["pile"]["workers"], [0, 1, 4, 8])
+
+    def test_profile_without_declaration_keeps_everything(self):
+        budget = self.budget()
+        pruned, dropped = bench.apply_profile(budget, {})
+        self.assertIs(pruned, budget)
+        self.assertEqual(dropped, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -46,6 +46,46 @@
       "owner": "R29",
       "note": "Same pool policy applies (CmpJob physical-1 capped at 3, IOJob logical capped at 4); no device census or benchmark yet. Mobile power/thermal budgets need R29 device runs."
     },
+    "ios-arm64-iphone16pro": {
+      "runner": "iPhone 16 Pro (A18 Pro: 2 performance + 4 efficiency cores), iOS 27.0, the iOS product's release flags through the conformance host app (scheduler_budgets.py run --ios)",
+      "capacity": {
+        "owner": "R20",
+        "pools":            {"CmpJob": 3, "IOJob": 4, "SaveJob": 1, "MatQueue": 1},
+        "total_pool_workers": 9,
+        "note": "Same pool policy as the other profiles: CmpJob is physical cores - 1 capped at 3 (the A18 Pro has 6 cores), IOJob logical CPUs capped at 4, SaveJob 1, MatQueue 1. Unverified on the device: scheduler_budgets.py census reads Linux /proc thread names, and no iOS census of a running product exists yet."
+      },
+      "overhead": {
+        "fanout_3w":        {"owner": "R20", "kind": "pool_bench", "workload": "shared_fanout_4096", "workers": 3, "limit": 7500},
+        "fanout_1w":        {"owner": "R20", "kind": "pool_bench", "workload": "shared_fanout_4096", "workers": 1, "limit": 6800},
+        "nested_spawn_3w":  {"owner": "R20", "kind": "pool_bench", "workload": "nested_spawn_8x256", "workers": 3, "limit": 2300},
+        "nested_spawn_1w":  {"owner": "R20", "kind": "pool_bench", "workload": "nested_spawn_8x256", "workers": 1, "limit": 3000},
+        "waits_3w":         {"owner": "R20", "kind": "pool_bench", "workload": "recursive_waits_1365", "workers": 3, "limit": 2200},
+        "waits_1w":         {"owner": "R20", "kind": "pool_bench", "workload": "recursive_waits_1365", "workers": 1, "limit": 1700},
+        "parallel_3w":      {"owner": "R20", "kind": "pool_bench", "workload": "parallel_process_8192", "workers": 3, "limit": 3600},
+        "parallel_1w":      {"owner": "R20", "kind": "pool_bench", "workload": "parallel_process_8192", "workers": 1, "limit": 8700},
+        "wake_3w":          {"owner": "R20", "kind": "pool_bench", "workload": "wake_latency", "workers": 3, "limit": 61},
+        "wake_1w":          {"owner": "R20", "kind": "pool_bench", "workload": "wake_latency", "workers": 1, "limit": 51},
+        "tsqueue_1p1c":     {"owner": "R20", "kind": "pool_bench", "workload": "ctsqueue_1p1c_200k", "workers": 3, "limit": 35000},
+        "tsqueue_4p4c":     {"owner": "R20", "kind": "pool_bench", "workload": "ctsqueue_4p4c_800k", "workers": 3, "limit": 300000},
+        "graph_node":       {"owner": "R10", "kind": "graph_node_ns", "phases": 31, "limit": 13}
+      },
+      "calibration": "2026-09-26: three runs on the phone (quality-results/ios-scheduler-cal-{1,2,3}.json, the desktop rows' workloads and worker counts); limits are about twice the worst run, as for the desktop rows.",
+      "baseline": {
+        "fanout_3w":        [3745.6, 3239.1, 3740.8],
+        "fanout_1w":        [2931.0, 3357.2, 3009.3],
+        "nested_spawn_3w":  [1129.8, 1024.4, 1053.6],
+        "nested_spawn_1w":  [1480.7, 1497.3, 1489.1],
+        "waits_3w":         [866.4, 1068.8, 896.9],
+        "waits_1w":         [803.5, 804.7, 773.7],
+        "parallel_3w":      [1791.3, 1778.8, 1785.9],
+        "parallel_1w":      [4347.0, 4153.5, 4172.9],
+        "wake_3w":          [25.9, 23.2, 30.4],
+        "wake_1w":          [25.1, 17.5, 19.2],
+        "tsqueue_1p1c":     [17037.5, 16127.9, 16611.6],
+        "tsqueue_4p4c":     [134858.1, 147773.3, 147676.7],
+        "graph_node":       [5.58, 6.13, 6.13]
+      }
+    },
     "apple-arm64": {
       "status": "unverified",
       "owner": "R29",
