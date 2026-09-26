@@ -132,6 +132,11 @@ float Fresnel4( vec3 vNormal, vec3 vEyeDir )
 	return fresnel * fresnel;
 }
 
+// Specialized to false (constant_id 0, CVulkanContext::BuildMaterialPipeline)
+// for draws whose alpha reference is off: a fragment stage that may discard
+// costs a tiled GPU its hidden-surface removal.
+layout( constant_id = 0 ) const bool kAlphaTest = true;
+
 void main()
 {
 	const int combos = int( consts.params.y );
@@ -284,7 +289,7 @@ void main()
 		alpha = mix( baseColor.a * alpha, alpha, g_fBaseMapAlphaPhongMask );
 
 	// The D3D9 fixed-function alpha test (GREATEREQUAL, or GREATER with flag 8).
-	if ( consts.params.x >= 0.0 &&
+	if ( kAlphaTest && consts.params.x >= 0.0 &&
 	     ( ( flags & 8 ) != 0 ? alpha <= consts.params.x : alpha < consts.params.x ) )
 		discard;
 	// FinalOutput( ..., TONEMAP_SCALE_LINEAR ).

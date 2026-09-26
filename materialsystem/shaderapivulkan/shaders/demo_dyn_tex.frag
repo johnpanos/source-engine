@@ -216,6 +216,11 @@ vec4 SpriteCardColor( int flags )
 	}
 	return blended * fragVertexColor;
 }
+// Specialized to false (constant_id 0, CVulkanContext::BuildMaterialPipeline)
+// for draws whose alpha reference is off: a fragment stage that may discard
+// costs a tiled GPU its hidden-surface removal.
+layout( constant_id = 0 ) const bool kAlphaTest = true;
+
 void main()
 {
 	const int flags = int( consts.alphaParams.z );
@@ -367,7 +372,7 @@ void main()
 	}
 	// The D3D9 fixed-function alpha test: GREATEREQUAL ($alphatest) or GREATER
 	// (screenspace_general), against the reference. Disabled when < 0.
-	if ( ( flags & 16384 ) == 0 && consts.alphaParams.x >= 0.0 &&
+	if ( kAlphaTest && ( flags & 16384 ) == 0 && consts.alphaParams.x >= 0.0 &&
 	     ( ( flags & 8 ) != 0 ? result.a <= consts.alphaParams.x
 	                          : result.a < consts.alphaParams.x ) )
 		discard;

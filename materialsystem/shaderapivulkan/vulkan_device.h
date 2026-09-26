@@ -542,6 +542,12 @@ public:
 		// test and the three operations, applied to front and back faces alike
 		// (D3D9 without two-sided stencil). The reference and the masks are
 		// per-draw values (SetDynamicStencilValues), not pipeline state.
+		// False builds the pipeline with its fragment stage's alpha test
+		// compiled out (specialization constant kAlphaTest, a Metal function
+		// constant under MoltenVK), for draws whose alpha reference is off. A
+		// fragment stage that may discard costs a tiled GPU its hidden-surface
+		// removal for every draw that uses it.
+		bool alphaTest = true;
 		bool stencilEnable = false;
 		VkCompareOp stencilCompare = VK_COMPARE_OP_ALWAYS;
 		VkStencilOp stencilFail = VK_STENCIL_OP_KEEP;
@@ -1227,6 +1233,9 @@ private:
 		uint64_t us;
 	};
 	std::vector<GpuTimerTotal> m_gpuTimerResult;
+	// Every 120th resolved frame: its segments in order, "label",us pairs
+	// ("gpu_sequence" in the stats), which the per-label totals cannot show.
+	std::string m_gpuTimerSequence;
 	// With the timers: where the frame's back-buffer depth and stencil reads
 	// end, of how many records ("depth_end" in the stats).
 	size_t m_statsDepthEnd[3] = {};
@@ -2154,6 +2163,9 @@ private:
 	// Which of the back buffer's depth and stencil a record may read
 	// (kKeepDepth | kKeepStencil). Unknown kinds count as reading both.
 	static int RecordBackBufferDepthReads( const DynDraw &r );
+	// The draw's raster state with alphaTest off when its alpha reference is
+	// (textured, skin and lightmapped pipelines).
+	static DynRasterState RasterWithAlphaTest( const DynDraw &d );
 	bool RecordViewAgnostic( const DynDraw &r ) const;
 	bool FirstPassWantsSrgb() const;
 

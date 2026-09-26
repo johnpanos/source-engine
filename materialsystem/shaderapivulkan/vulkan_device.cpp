@@ -3183,11 +3183,13 @@ uint64_t CVulkanContext::RasterStateKey( const DynRasterState &state )
 	                     ( static_cast<uint32_t>( state.stencilDepthFail ) & 7u ) << 26 |
 	                     ( static_cast<uint32_t>( state.stencilPass ) & 7u ) << 29
 	               : 0u ) |
-	       ( state.alphaWrite ? 1ull << 36 : 0ull ) | ( state.depthBiasEnable ? 1ull << 37 : 0ull );
+	       ( state.alphaWrite ? 1ull << 36 : 0ull ) | ( state.depthBiasEnable ? 1ull << 37 : 0ull ) |
+	       ( state.alphaTest ? 0ull : 1ull << 39 );
 }
 
 // The inverse of RasterStateKey. Bits 32-35 are PipelineKey's pass and sample
-// selection; bits 36-37 belong to the raster state.
+// selection; bits 36-39 belong to the raster state (39 is set when the alpha
+// test is compiled out, so keys stored before it existed keep their meaning).
 CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key )
 {
 	const uint32_t k = static_cast<uint32_t>( key );
@@ -3201,6 +3203,7 @@ CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key 
 	state.colorWrite = ( ( k >> 16 ) & 1u ) != 0;
 	state.alphaWrite = ( key & ( 1ull << 36 ) ) != 0;
 	state.depthBiasEnable = ( key & ( 1ull << 37 ) ) != 0;
+	state.alphaTest = ( key & ( 1ull << 39 ) ) == 0;
 	state.cullMode = static_cast<VkCullModeFlags>( ( k >> 17 ) & 3u );
 	state.stencilEnable = ( ( k >> 19 ) & 1u ) != 0;
 	if ( state.stencilEnable )
@@ -3210,6 +3213,16 @@ CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key 
 		state.stencilDepthFail = static_cast<VkStencilOp>( ( k >> 26 ) & 7u );
 		state.stencilPass = static_cast<VkStencilOp>( ( k >> 29 ) & 7u );
 	}
+	return state;
+}
+
+CVulkanContext::DynRasterState CVulkanContext::RasterWithAlphaTest( const DynDraw &d )
+{
+	// textured, skin.frag and lightmapped.frag test against the draw's alpha
+	// reference (their alphaParams.x / params.x); a negative one never
+	// discards, so those draws take the variant without the test.
+	DynRasterState state = d.raster;
+	state.alphaTest = d.alphaRef >= 0.0f;
 	return state;
 }
 
@@ -3507,6 +3520,17 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	VkPipelineShaderStageCreateInfo stages[2] = { t.stages[0], t.stages[1] };
 	stages[0].module = vert;
 	stages[1].module = frag;
+	// kAlphaTest (constant_id 0) in the fragment stages that have an alpha
+	// test; a stage without that constant ignores the entry.
+	const VkBool32 alphaTest = state.alphaTest ? VK_TRUE : VK_FALSE;
+	const VkSpecializationMapEntry alphaTestEntry = { 0, 0, sizeof( alphaTest ) };
+	VkSpecializationInfo specialization = {};
+	specialization.mapEntryCount = 1;
+	specialization.pMapEntries = &alphaTestEntry;
+	specialization.dataSize = sizeof( alphaTest );
+	specialization.pData = &alphaTest;
+	if ( !state.alphaTest )
+		stages[1].pSpecializationInfo = &specialization;
 	VkGraphicsPipelineCreateInfo gp = {};
 	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	gp.stageCount = 2;
@@ -6956,8 +6980,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			else if ( d.shaderIndex == kDynShaderTextured )
 			{
 				// The textured pipeline built for this draw's blend/depth state.
-				selected = d.worldMesh ? WorldTexturedPipeline( d.raster, openSrgb, passSamples )
-				                       : TexturedPipeline( d.raster, openSrgb, passSamples );
+				const DynRasterState raster = RasterWithAlphaTest( d );
+				selected = d.worldMesh ? WorldTexturedPipeline( raster, openSrgb, passSamples )
+				                       : TexturedPipeline( raster, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE )
 					continue;
 				selectedLayout = m_dynTexPipelineLayout;
@@ -7021,7 +7046,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			else if ( d.shaderIndex == kDynShaderSkin )
 			{
-				selected = SkinPipeline( d.raster, openSrgb, passSamples );
+				selected = SkinPipeline( RasterWithAlphaTest( d ), openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
 					continue;
@@ -7081,7 +7106,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				                           kLightmappedPaint ) != 0;
 				selected = d.worldMesh ? VK_NULL_HANDLE
 				           : paintPass ? LightmappedPaintPipeline( d.raster, openSrgb, passSamples )
-				                       : LightmappedPipeline( d.raster, openSrgb, passSamples );
+				                       : LightmappedPipeline(
+				                             RasterWithAlphaTest( d ), openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
 					continue;
@@ -8820,6 +8846,7 @@ void CVulkanContext::ReadSlotGpuTime( uint32_t slot )
 		m_gpuResultUs = micros( stamps[0], stamps[2] );
 	}
 	m_gpuTimerResult.clear();
+	m_gpuTimerSequence.clear();
 	const std::vector<std::string> &labels = m_gpuTimerLabels[slot];
 	std::vector<uint64_t> marks( labels.size() );
 	if ( m_gpuTimerPool != VK_NULL_HANDLE && marks.size() > 1 &&
@@ -8832,6 +8859,14 @@ void CVulkanContext::ReadSlotGpuTime( uint32_t slot )
 		for ( size_t i = 0; i + 1 < marks.size(); ++i )
 		{
 			const uint64_t us = micros( marks[i], marks[i + 1] );
+			if ( m_slotStatsFrame[slot] % 120 == 0 )
+			{
+				char entry[16];
+				std::snprintf(
+				    entry, sizeof( entry ), ",%llu]", static_cast<unsigned long long>( us ) );
+				m_gpuTimerSequence +=
+				    ( m_gpuTimerSequence.empty() ? "[\"" : ",[\"" ) + labels[i] + "\"" + entry;
+			}
 			size_t at = 0;
 			while ( at < m_gpuTimerResult.size() && m_gpuTimerResult[at].label != labels[i] )
 				++at;
@@ -9015,6 +9050,8 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 				    static_cast<unsigned long long>( m_gpuTimerResult[i].us ) );
 			std::fputc( ']', m_frameStatsFile );
 		}
+		if ( m_gpuResultFrame && !m_gpuTimerSequence.empty() )
+			std::fprintf( m_frameStatsFile, ",\"gpu_sequence\":[%s]", m_gpuTimerSequence.c_str() );
 		// The present mode, whenever it differs from the last one recorded.
 		if ( static_cast<int>( m_presentMode ) != m_statsPresentMode )
 		{

@@ -71,9 +71,9 @@ void ReportMissingContent( const char *contentDir )
 }
 
 #if defined( PLATFORM_TVOS )
-// Apple TV render settings (user direction, 2026-09-26): no MSAA and the Video
-// Advanced dialog's Low values (gameui/OptionsSubVideo.cpp); HDR is left as
-// configured. Exec'd after config.cfg, so a desktop config copied with the
+// Apple TV render settings (user direction, 2026-09-26): no MSAA, the Video
+// Advanced dialog's Low values (gameui/OptionsSubVideo.cpp) and no bloom; HDR
+// is left as configured. Exec'd after config.cfg, so a desktop config copied with the
 // content cannot raise them; commandline.txt comes later and can. A cfg
 // rather than '+' arguments keeps the engine's 512-character command line
 // free for commandline.txt.
@@ -92,6 +92,9 @@ const char *const kTvRenderSettings[][2] = {
     { "r_waterforcereflectentities", "0" },
     { "mat_colorcorrection", "0" },
     { "mat_motion_blur_enabled", "0" },
+    // Bloom's downsample, blur and full-screen composite cost 1.35 ms of the
+    // A15's GPU per frame at 1080p (frame_pacing_device.py, 2026-09-26).
+    { "mat_disable_bloom", "1" },
 };
 
 // Rewritten at every start into the game's cfg directory, so the settings

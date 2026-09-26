@@ -190,6 +190,11 @@ vec3 BlendPixelFog( vec3 color, float factor )
 	return mix( color, fragFogColor.rgb, factor );
 }
 
+// Specialized to false (constant_id 0, CVulkanContext::BuildMaterialPipeline)
+// for draws whose alpha reference is off: a fragment stage that may discard
+// costs a tiled GPU its hidden-surface removal.
+layout( constant_id = 0 ) const bool kAlphaTest = true;
+
 void main()
 {
 	const int combos = int( consts.params.y );
@@ -439,8 +444,9 @@ void main()
 	result *= consts.params.w;
 	const float outAlpha = writeDepthToAlpha ? fragFogDepth.x * ps.c[29].w : alpha;
 	// The D3D9 fixed-function alpha test on the output: GREATEREQUAL, or GREATER.
-	if ( consts.params.x >= 0.0 && ( ( flags & kAlphaGreater ) != 0 ? outAlpha <= consts.params.x
-	                                                                 : outAlpha < consts.params.x ) )
+	if ( kAlphaTest && consts.params.x >= 0.0 &&
+	     ( ( flags & kAlphaGreater ) != 0 ? outAlpha <= consts.params.x
+	                                      : outAlpha < consts.params.x ) )
 		discard;
 	result = BlendPixelFog( result, fogFactor );
 	if ( ( flags & kSrgbOutput ) != 0 )

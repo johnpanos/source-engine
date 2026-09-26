@@ -102,6 +102,8 @@ def main(argv=None):
     parser.add_argument("--passes", type=int, help="override the scenario's pass count")
     parser.add_argument("--vsync", action="store_true", help="present at the display's rate")
     parser.add_argument("--extra-arg", action="append", default=[], help="another engine argument")
+    parser.add_argument("--env", action="append", default=[], metavar="KEY=VALUE",
+                        help="environment variable for the app process (repeatable)")
     parser.add_argument("--budget-row", help="row id in quality/budgets/render-v1.json to gate the warm pass "
                         "(its vsync limits with --vsync, else its headroom limits)")
     parser.add_argument("--timeout", type=float, default=600)
@@ -125,7 +127,7 @@ def main(argv=None):
                 "transport": {"host": args.host, "device": args.device, "platform": args.platform,
                               "bundle_id": args.bundle_id, "content_root": content},
                 "scenario": {"path": str(args.scenario.resolve()), "id": scenario["id"], "passes": passes},
-                "vsync": args.vsync, "arguments": arguments}
+                "vsync": args.vsync, "arguments": arguments, "environment": args.env}
     failures = []
     staging = "/tmp/frame-pacing-device-%s" % output.name
     try:
@@ -143,18 +145,28 @@ def main(argv=None):
         copy_to = lambda source, destination: devicectl(
             "copy to --source %s --destination %s --quiet" % (source, shlex.quote(destination)),
             args.device, args.bundle_id)
+        # An empty stats file first: a run that fails to start must not leave
+        # the previous run's stream to be read as its own.
         remote(args.host, " && ".join([
             copy_to("%s/cfg" % staging, "%s/%s" % (content, CFG_DIRECTORY)),
+            copy_to("%s/empty.txt" % staging, "%s/%s" % (content, STATS_NAME)),
             copy_to("%s/commandline.txt" % staging, "%s/commandline.txt" % content)]), 300)
+        launched = True
         try:
+            environment = dict(item.split("=", 1) for item in args.env)
             remote(args.host, "xcrun devicectl device process launch --device %s --terminate-existing "
-                   "--console %s" % (shlex.quote(args.device), shlex.quote(args.bundle_id)),
+                   "--console %s%s" % (shlex.quote(args.device),
+                                      "--environment-variables %s " % shlex.quote(json.dumps(environment))
+                                      if environment else "", shlex.quote(args.bundle_id)),
                    args.timeout, output / "stdout.log")
         except DeviceError as error:
             failures.append("app run: %s" % error)
+            launched = False
         finally:
             # The next ordinary launch must not rerun the scenario.
             remote(args.host, copy_to("%s/empty.txt" % staging, "%s/commandline.txt" % content), 120)
+        if not launched:
+            raise DeviceError("the app run failed; its stats are not analyzed")
         remote(args.host, devicectl("copy from --source %s/%s --destination %s/%s --quiet"
                                     % (content, STATS_NAME, staging, STATS_NAME),
                                     args.device, args.bundle_id), 300)
