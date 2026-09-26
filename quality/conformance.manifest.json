@@ -97,7 +97,7 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/geometry/rounding.cpp",
+        "mapgeometry/rounding.cpp",
         "unittests/hammertest/geometry/test_rounding.cpp"
       ],
       "expect": "pass"
@@ -112,8 +112,8 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/geometry/aabb.cpp",
-        "hammer/core/geometry/rounding.cpp",
+        "mapgeometry/aabb.cpp",
+        "mapgeometry/rounding.cpp",
         "unittests/hammertest/geometry/test_aabb.cpp"
       ],
       "expect": "pass"
@@ -128,8 +128,8 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/geometry/aabb.cpp",
-        "hammer/core/geometry/rounding.cpp",
+        "mapgeometry/aabb.cpp",
+        "mapgeometry/rounding.cpp",
         "unittests/hammertest/geometry/test_aabb_negative.cpp"
       ],
       "expect": "pass"
@@ -144,7 +144,7 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/geometry/angle.cpp",
+        "mapgeometry/angle.cpp",
         "unittests/hammertest/geometry/test_angle.cpp"
       ],
       "expect": "pass"
@@ -159,7 +159,7 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/geometry/angle.cpp",
+        "mapgeometry/angle.cpp",
         "unittests/hammertest/geometry/test_angle_negative.cpp"
       ],
       "expect": "pass"
@@ -174,10 +174,10 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/geometry/brush.cpp",
-        "hammer/core/geometry/displacement.cpp",
-        "hammer/core/formats/keyvalues.cpp",
-        "hammer/core/formats/vmf_geometry.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/displacement.cpp",
+        "kvtext/keyvalues.cpp",
+        "vmf/vmf_geometry.cpp",
         "unittests/hammertest/geometry/test_brush.cpp"
       ],
       "expect": "pass"
@@ -192,9 +192,9 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/geometry/brush.cpp",
-        "hammer/core/geometry/displacement.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/displacement.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/geometry/test_brush_negative.cpp"
       ],
       "expect": "pass"
@@ -336,7 +336,7 @@
         "hammer/core/app/document_history.cpp",
         "hammer/core/app/save_orchestrator.cpp",
         "hammer/core/app/property_value.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/app/test_entity_editor.cpp"
       ],
       "expect": "pass"
@@ -356,7 +356,7 @@
         "hammer/core/app/document_history.cpp",
         "hammer/core/app/save_orchestrator.cpp",
         "hammer/core/app/property_value.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/app/test_entity_editor_negative.cpp"
       ],
       "expect": "pass"
@@ -371,7 +371,7 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_keyvalues.cpp"
       ],
       "expect": "pass"
@@ -386,7 +386,7 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_keyvalues_negative.cpp"
       ],
       "expect": "pass"
@@ -436,7 +436,7 @@
         "hammer/core/app/editor_document.cpp",
         "hammer/core/app/document_history.cpp",
         "hammer/core/app/save_orchestrator.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/app/test_editor_document.cpp"
       ],
       "expect": "pass"
@@ -456,7 +456,7 @@
         "hammer/core/app/editor_document.cpp",
         "hammer/core/app/document_history.cpp",
         "hammer/core/app/save_orchestrator.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/app/test_editor_document_negative.cpp"
       ],
       "expect": "pass"
@@ -1217,7 +1217,7 @@
         "hammer/core/formats/material_catalog.cpp",
         "hammer/core/formats/material.cpp",
         "hammer/core/formats/vtf_image.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_pbr_material_schema.cpp"
       ],
       "expect": "pass"
@@ -1865,8 +1865,8 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/update_hint.cpp",
-        "hammer/core/geometry/aabb.cpp",
-        "hammer/core/geometry/rounding.cpp",
+        "mapgeometry/aabb.cpp",
+        "mapgeometry/rounding.cpp",
         "unittests/hammertest/app/test_update_hint.cpp"
       ],
       "expect": "pass"
@@ -1882,8 +1882,8 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/update_hint.cpp",
-        "hammer/core/geometry/aabb.cpp",
-        "hammer/core/geometry/rounding.cpp",
+        "mapgeometry/aabb.cpp",
+        "mapgeometry/rounding.cpp",
         "unittests/hammertest/app/test_update_hint_negative.cpp"
       ],
       "expect": "pass"
@@ -1899,12 +1899,12 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/editor_controller.cpp",
-        "hammer/core/geometry/brush.cpp",
-        "hammer/core/geometry/displacement.cpp",
-        "hammer/core/geometry/rounding.cpp",
-        "hammer/core/geometry/texture_axes.cpp",
-        "hammer/core/formats/keyvalues.cpp",
-        "hammer/core/formats/vmf_geometry.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/displacement.cpp",
+        "mapgeometry/rounding.cpp",
+        "mapgeometry/texture_axes.cpp",
+        "kvtext/keyvalues.cpp",
+        "vmf/vmf_geometry.cpp",
         "hammer/core/app/document_history.cpp",
         "unittests/hammertest/app/test_editor_controller.cpp"
       ],
@@ -1921,12 +1921,12 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/editor_controller.cpp",
-        "hammer/core/geometry/brush.cpp",
-        "hammer/core/geometry/displacement.cpp",
-        "hammer/core/geometry/rounding.cpp",
-        "hammer/core/geometry/texture_axes.cpp",
-        "hammer/core/formats/keyvalues.cpp",
-        "hammer/core/formats/vmf_geometry.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/displacement.cpp",
+        "mapgeometry/rounding.cpp",
+        "mapgeometry/texture_axes.cpp",
+        "kvtext/keyvalues.cpp",
+        "vmf/vmf_geometry.cpp",
         "hammer/core/app/document_history.cpp",
         "unittests/hammertest/app/test_editor_controller_negative.cpp"
       ],
@@ -1943,12 +1943,12 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/editor_controller.cpp",
-        "hammer/core/geometry/brush.cpp",
-        "hammer/core/geometry/displacement.cpp",
-        "hammer/core/geometry/rounding.cpp",
-        "hammer/core/geometry/texture_axes.cpp",
-        "hammer/core/formats/keyvalues.cpp",
-        "hammer/core/formats/vmf_geometry.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/displacement.cpp",
+        "mapgeometry/rounding.cpp",
+        "mapgeometry/texture_axes.cpp",
+        "kvtext/keyvalues.cpp",
+        "vmf/vmf_geometry.cpp",
         "hammer/core/app/document_history.cpp",
         "unittests/hammertest/app/test_editor_controller_pick.cpp"
       ],
@@ -1969,12 +1969,12 @@
         "hammer/core/app/editor_controller.cpp",
         "hammer/core/app/save_orchestrator.cpp",
         "hammer/core/app/document_history.cpp",
-        "hammer/core/geometry/brush.cpp",
-        "hammer/core/geometry/displacement.cpp",
-        "hammer/core/geometry/rounding.cpp",
-        "hammer/core/geometry/texture_axes.cpp",
-        "hammer/core/formats/keyvalues.cpp",
-        "hammer/core/formats/vmf_geometry.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/displacement.cpp",
+        "mapgeometry/rounding.cpp",
+        "mapgeometry/texture_axes.cpp",
+        "kvtext/keyvalues.cpp",
+        "vmf/vmf_geometry.cpp",
         "unittests/hammertest/app/test_editor_commands.cpp"
       ],
       "expect": "pass"
@@ -2024,7 +2024,7 @@
         "hammer/core/app/document_history.cpp",
         "hammer/core/app/save_orchestrator.cpp",
         "hammer/core/app/property_value.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/adapters/test_shell_workflow.cpp"
       ],
       "expect": "pass"
@@ -2039,10 +2039,10 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/geometry/displacement.cpp",
-        "hammer/core/geometry/brush.cpp",
-        "hammer/core/formats/keyvalues.cpp",
-        "hammer/core/formats/vmf_geometry.cpp",
+        "mapgeometry/displacement.cpp",
+        "mapgeometry/brush.cpp",
+        "kvtext/keyvalues.cpp",
+        "vmf/vmf_geometry.cpp",
         "unittests/hammertest/geometry/test_displacement.cpp"
       ],
       "expect": "pass"
@@ -2057,10 +2057,10 @@
       "profile": "linux-headless-core",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/core/geometry/displacement.cpp",
-        "hammer/core/geometry/brush.cpp",
-        "hammer/core/formats/keyvalues.cpp",
-        "hammer/core/formats/vmf_geometry.cpp",
+        "mapgeometry/displacement.cpp",
+        "mapgeometry/brush.cpp",
+        "kvtext/keyvalues.cpp",
+        "vmf/vmf_geometry.cpp",
         "unittests/hammertest/geometry/test_displacement_negative.cpp"
       ],
       "expect": "pass"
@@ -2079,8 +2079,8 @@
       ],
       "sources": [
         "hammer/core/formats/instancing.cpp",
-        "hammer/core/formats/vmf_transform.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "vmf/vmf_transform.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_instancing.cpp"
       ],
       "expect": "pass"
@@ -2099,8 +2099,8 @@
       ],
       "sources": [
         "hammer/core/formats/instancing.cpp",
-        "hammer/core/formats/vmf_transform.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "vmf/vmf_transform.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_instancing_negative.cpp"
       ],
       "expect": "pass"
@@ -2206,7 +2206,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/material.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_material.cpp"
       ],
       "expect": "pass"
@@ -2222,7 +2222,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/material.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_material_negative.cpp"
       ],
       "expect": "pass"
@@ -2253,7 +2253,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/cordon.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_cordon.cpp"
       ],
       "expect": "pass"
@@ -2269,7 +2269,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/cordon.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_cordon_negative.cpp"
       ],
       "expect": "pass"
@@ -2285,7 +2285,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/overlay.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_overlay.cpp"
       ],
       "expect": "pass"
@@ -2301,7 +2301,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/overlay.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_overlay_negative.cpp"
       ],
       "expect": "pass"
@@ -2317,7 +2317,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/visgroups.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_visgroups.cpp"
       ],
       "expect": "pass"
@@ -2333,7 +2333,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/visgroups.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_visgroups_negative.cpp"
       ],
       "expect": "pass"
@@ -2351,7 +2351,7 @@
         "hammer/core/formats/material_catalog.cpp",
         "hammer/core/formats/material.cpp",
         "hammer/core/formats/vtf_image.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_material_catalog.cpp"
       ],
       "expect": "pass"
@@ -2369,7 +2369,7 @@
         "hammer/core/formats/material_catalog.cpp",
         "hammer/core/formats/material.cpp",
         "hammer/core/formats/vtf_image.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_material_catalog_negative.cpp"
       ],
       "expect": "pass"
@@ -2385,7 +2385,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/groups.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_groups.cpp"
       ],
       "expect": "pass"
@@ -2401,7 +2401,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/groups.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_groups_negative.cpp"
       ],
       "expect": "pass"
@@ -2417,8 +2417,8 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/prefab.cpp",
-        "hammer/core/formats/vmf_transform.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "vmf/vmf_transform.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_prefab.cpp"
       ],
       "expect": "pass"
@@ -2434,8 +2434,8 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/prefab.cpp",
-        "hammer/core/formats/vmf_transform.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "vmf/vmf_transform.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_prefab_negative.cpp"
       ],
       "expect": "pass"
@@ -2455,10 +2455,10 @@
       "sources": [
         "hammer/core/formats/map_export.cpp",
         "hammer/core/formats/instancing.cpp",
-        "hammer/core/formats/vmf_transform.cpp",
+        "vmf/vmf_transform.cpp",
         "hammer/core/formats/visgroups.cpp",
         "hammer/core/formats/cordon.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_map_export.cpp"
       ],
       "expect": "pass"
@@ -2478,10 +2478,10 @@
       "sources": [
         "hammer/core/formats/map_export.cpp",
         "hammer/core/formats/instancing.cpp",
-        "hammer/core/formats/vmf_transform.cpp",
+        "vmf/vmf_transform.cpp",
         "hammer/core/formats/visgroups.cpp",
         "hammer/core/formats/cordon.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_map_export_negative.cpp"
       ],
       "expect": "pass"
@@ -2498,7 +2498,7 @@
       "sources": [
         "hammer/core/formats/entity_property_sheet.cpp",
         "hammer/core/formats/fgd.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_entity_property_sheet.cpp"
       ],
       "expect": "pass"
@@ -2515,7 +2515,7 @@
       "sources": [
         "hammer/core/formats/entity_property_sheet.cpp",
         "hammer/core/formats/fgd.cpp",
-        "hammer/core/formats/keyvalues.cpp",
+        "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_entity_property_sheet_negative.cpp"
       ],
       "expect": "pass"
@@ -5508,6 +5508,199 @@
       ],
       "expect": "fail",
       "expected_divergence": "FAIL sp_a2_triple_laser.entry_hall.floor"
+    },
+    {
+      "id": "corpus.portal2.audio-retail",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R01",
+      "description": "Portal 2 audio retail conformance (game/shared/portal2/README.md, 'Portal 2 audio retail conformance'). Runs quality/workloads/portal2-audio-v1's probe on sp_a2_triple_laser with build-p2 (SDL offscreen video, SDL disk audio, stereo) and compares the mixer output with retail-reference.json (metrics of a retail portal2_linux capture; numbers only): each event is located by normalized cross-correlation with its retail wave (ffmpeg-decoded from the installed VPKs) and judged on presence, level against the calibration, fidelity, stereo balance and width, ducking, the cut of a replaced line and v1 falloff. Known failure while the operator-stack defects are open (v2 dialog and music levels, sys_start_entry chains, unprecached v2 entries as script handles, the v2 world level, soundscape ambience, v1 near fidelity); the first is vo.level. Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT), ffmpeg, numpy and scipy, and a built build-p2 (SOURCE_PORTAL2_BUILD selects another tree); about 2 minutes.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_audio.py",
+        "check",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 24,
+      "timeout_seconds": 600,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "executable:ffmpeg",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_audio.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/source_content.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-audio-v1/audio.json",
+        "quality/workloads/portal2-audio-v1/audio_probe.nut",
+        "quality/workloads/portal2-audio-v1/retail-reference.json",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL vo.level"
+    },
+    {
+      "id": "corpus.portal2.audio-retail.mixer",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R01",
+      "description": "The mixer checks of corpus.portal2.audio-retail alone: the v1 item and near world levels, the portal gun level and music ducked under a GLaDOS line (mix layer gladosVOLayer, triggered by the gladosVO group). They pass since engine/audio/snd_mixgroups.cpp reads Portal 2's soundmixers.txt (MixGroups, SoundMixers with vol/level/dsp/solo/mute, MixLayers, LayerTriggers); the Half-Life 2 parser before it misread the file and applied no group volume, and the pre-fix build fails all four. Pairs with the seeded row below.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_audio.py",
+        "check",
+        "--out",
+        "{out}",
+        "--only",
+        "^(item\\.level|gun\\.level|duck\\.music_under_line|falloff\\.v1_near_level)$"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "timeout_seconds": 600,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "executable:ffmpeg",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_audio.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/source_content.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-audio-v1/audio.json",
+        "quality/workloads/portal2-audio-v1/audio_probe.nut",
+        "quality/workloads/portal2-audio-v1/retail-reference.json",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.audio-retail.seeded-swap-line",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R01",
+      "description": "Negative control for corpus.portal2.audio-retail: the same game run with the probe's two GLaDOS lines swapped in the driver (--seed swap-line). The dialog event must be rejected: the wave that plays is not the line the reference expects.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_audio.py",
+        "check",
+        "--out",
+        "{out}",
+        "--seed",
+        "swap-line",
+        "--only",
+        "^vo\\.present$"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 600,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "executable:ffmpeg",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_audio.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/source_content.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-audio-v1/audio.json",
+        "quality/workloads/portal2-audio-v1/audio_probe.nut",
+        "quality/workloads/portal2-audio-v1/retail-reference.json",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL vo.present"
+    },
+    {
+      "id": "corpus.portal2.audio-retail.comparator",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "self-test",
+      "profile": "linux-host-corpus",
+      "migration": "R01",
+      "description": "The Portal 2 audio comparator without a game run: a capture rendered from retail-reference.json (each retail wave at its retail onset and per-channel gains, the measured ducking, the reverb tail and the noise-like windows at their retail level and left/right correlation) must pass all 24 checks, and six seeded defects of the render must each fail their target check (right channel muted: music.balance; music dropped: music.present; lines swapped: vo.present; the chained entry missing: chain.starts_entry; no ducking: duck.music_under_line; dialog +3 dB: vo.level). Needs the installed retail waves (SOURCE_PORTAL2_STEAM_ROOT), ffmpeg, numpy and scipy; about 2 minutes.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_audio.py",
+        "selftest"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 30,
+      "timeout_seconds": 900,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "executable:ffmpeg"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_audio.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/source_content.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-audio-v1/audio.json",
+        "quality/workloads/portal2-audio-v1/audio_probe.nut",
+        "quality/workloads/portal2-audio-v1/retail-reference.json",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.audio-retail.comparator.seeded-mute-right",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "migration": "R01",
+      "description": "Negative control for corpus.portal2.audio-retail.comparator: the rendered reference with its right channel muted (--seed-render mute-right) must fail the music stereo balance check.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_audio.py",
+        "selftest",
+        "--seed-render",
+        "mute-right",
+        "--only",
+        "^music\\.balance$"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 900,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "executable:ffmpeg"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_audio.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/source_content.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-audio-v1/audio.json",
+        "quality/workloads/portal2-audio-v1/audio_probe.nut",
+        "quality/workloads/portal2-audio-v1/retail-reference.json",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL render.music.balance"
     }
   ]
 }

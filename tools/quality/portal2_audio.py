@@ -557,9 +557,15 @@ def evaluate_check(check, ours, retail):
 CHECK_KINDS = ("present", "level", "fidelity", "balance", "width", "silence", "derived")
 
 
-def run_checks(workload, ours, retail, stream=sys.stdout):
+def selected_checks(workload, only=None):
+    pattern = re.compile(only) if only else None
+    return [check for check in workload["checks"]
+            if pattern is None or pattern.search(check["name"])]
+
+
+def run_checks(workload, ours, retail, stream=sys.stdout, only=None):
     checks = conformance_result.Checks(stream)
-    for check in workload["checks"]:
+    for check in selected_checks(workload, only):
         try:
             ok, detail = evaluate_check(check, ours, retail)
         except KeyError as error:
@@ -669,13 +675,17 @@ def command_selftest(args, workload):
     reference = json.loads(reference_path(args.workload, workload).read_text())["metrics"]
     waves = Waves(args.steam_root, args.cache)
     checks = conformance_result.Checks()
-    samples, marks = render_reference(workload, waves, reference)
+    # --seed-render makes the rendered reference itself defective: the
+    # manifest's sensitivity row expects its target check to fail.
+    samples, marks = render_reference(workload, waves, reference, args.seed_render)
     rendered = Measurement(workload, waves, samples, marks).run()
-    for check in workload["checks"]:
+    for check in selected_checks(workload, args.only):
         ok, detail = evaluate_check(check, rendered, reference)
         if ok:
             print("PASS render.%s %s" % (check["name"], detail))
         checks.check(ok, "render." + check["name"], detail)
+    if args.seed_render or args.only:
+        return checks.report()
     for seed, target in sorted(RENDER_CONTROLS.items()):
         samples, marks = render_reference(workload, waves, reference, seed)
         seeded = Measurement(workload, waves, samples, marks).run()
@@ -773,7 +783,8 @@ def capture_ours(args, workload, out):
     runtime = Path(args.runtime).resolve()
     stage_portal2_runtime.stage_content(args.steam_root, runtime)
     portal_boot.install_build(args.build, runtime, game="portal2")
-    install_probe(args.workload, workload, runtime / "portal2", args.steam_root, args.seed, args.console)
+    install_probe(args.workload, workload, runtime / "portal2", args.steam_root, args.seed,
+                  args.console)
     write_fake_zenity(out / "tools")
     environment = dict(os.environ)
     for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
@@ -824,7 +835,8 @@ def retail_mirror(steam_root, mirror):
 
 def capture_retail(args, workload, out):
     mirror = retail_mirror(args.steam_root, args.retail_mirror)
-    install_probe(args.workload, workload, mirror / "portal2", args.steam_root, args.seed, args.console)
+    install_probe(args.workload, workload, mirror / "portal2", args.steam_root, args.seed,
+                  args.console)
     write_fake_zenity(out / "tools")
     for tool in ("mutter", "dbus-run-session"):
         if not shutil.which(tool):
@@ -918,7 +930,7 @@ def command_check(args, workload):
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
         (args.out / "metrics.json").write_text(json.dumps(ours, indent=2) + "\n")
-    checks = run_checks(workload, ours, reference["metrics"])
+    checks = run_checks(workload, ours, reference["metrics"], only=args.only)
     return checks.report()
 
 
@@ -927,10 +939,11 @@ def main(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("capture", "measure", "record", "check", "selftest"))
     parser.add_argument("--workload", type=Path, default=DEFAULT_WORKLOAD)
-    parser.add_argument("--steam-root", type=Path, default=Path(os.environ.get(
-        "P2_STEAM_ROOT", DEFAULT_STEAM_ROOT)))
+    parser.add_argument("--steam-root", type=Path, default=Path(
+        os.environ.get("SOURCE_PORTAL2_STEAM_ROOT")
+        or os.environ.get("P2_STEAM_ROOT") or DEFAULT_STEAM_ROOT))
     parser.add_argument("--build", type=Path, default=Path(os.environ.get(
-        "SOURCE_PORTAL2_AUDIO_BUILD", ROOT / "build-p2")),
+        "SOURCE_PORTAL2_BUILD", ROOT / "build-p2")),
         help="Waf output configured with --build-games=portal2")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-audio",
                         help="private staged runtime for this build")
@@ -947,6 +960,9 @@ def main(argv=None):
                         help="negative control: a defect in the driver")
     parser.add_argument("--seed-defect", choices=SEEDED_DEFECTS,
                         help="negative control: a defect applied to the capture")
+    parser.add_argument("--seed-render", choices=sorted(RENDER_CONTROLS),
+                        help="selftest: seed this defect into the rendered reference")
+    parser.add_argument("--only", help="check and selftest: only checks whose name matches")
     parser.add_argument("--console", action="append", default=[],
                         help="diagnostic console command the driver runs after sv_cheats 1 "
                              "(repeatable), e.g. --console='snd_showstart 2'")
