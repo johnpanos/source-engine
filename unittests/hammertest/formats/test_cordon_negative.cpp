@@ -9,7 +9,7 @@
 //=============================================================================//
 
 #include "hammer/formats/cordon.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
@@ -18,8 +18,8 @@
 using hammer::formats::ApplyCordon;
 using hammer::formats::CordonBox;
 using hammer::formats::CordonResult;
-using hammer::formats::ParseKeyValues;
-using hammer::geometry::Vec3d;
+using kvtext::ParseKeyValues;
+using mapgeometry::Vec3d;
 
 namespace
 {
@@ -48,7 +48,7 @@ std::string SolidAABB( int id, double x0, double y0, double z0, double x1, doubl
 
 CordonResult Run( const std::string &vmf, const CordonBox &box )
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( vmf );
+	kvtext::ParseResult pr = ParseKeyValues( vmf );
 	CordonResult empty;
 	++g_checks;
 	if ( !pr.ok )

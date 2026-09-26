@@ -17,7 +17,7 @@
 #ifndef HAMMER_FORMATS_VISGROUPS_H
 #define HAMMER_FORMATS_VISGROUPS_H
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 
 #include <cstddef>
 #include <vector>
@@ -34,11 +34,11 @@ struct VisGroup
 };
 
 // Parses the top-level "visgroups" block into the group tree (empty if absent).
-std::vector<VisGroup> ParseVisGroups( const KeyValueNode &root );
+std::vector<VisGroup> ParseVisGroups( const kvtext::KeyValueNode &root );
 
 struct VisGroupFilterResult
 {
-	KeyValueNode document;          // the document with hidden objects removed
+	kvtext::KeyValueNode document;  // the document with hidden objects removed
 	std::size_t visibleObjects = 0; // world solids + entities kept
 	std::size_t hiddenObjects = 0;  // world solids + entities removed
 };
@@ -47,7 +47,7 @@ struct VisGroupFilterResult
 // in 'hiddenGroupIds' (expanded to include descendant groups per the tree) removed.
 // Objects with no membership are kept. Non-world/entity blocks are preserved.
 VisGroupFilterResult ApplyVisGroupFilter(
-    const KeyValueNode &root, const std::vector<int> &hiddenGroupIds );
+    const kvtext::KeyValueNode &root, const std::vector<int> &hiddenGroupIds );
 
 } // namespace hammer::formats
 

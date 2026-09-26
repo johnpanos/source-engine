@@ -19,8 +19,8 @@
 //=============================================================================//
 
 #include "hammer/app/editor_controller.h"
-#include "hammer/formats/keyvalues.h"
-#include "hammer/geometry/texture_axes.h"
+#include "kvtext/keyvalues.h"
+#include "mapgeometry/texture_axes.h"
 #include "testing/conformance_result.h"
 
 #include <cmath>
@@ -30,7 +30,7 @@ using hammer::app::EditorController;
 using hammer::app::MapBrush;
 using hammer::app::Tool;
 using hammer::app::ViewId;
-using hammer::geometry::Vec3d;
+using mapgeometry::Vec3d;
 
 namespace
 {
@@ -277,7 +277,7 @@ void TestBuildSimpleMapAndSave()
 	const std::string vmf = c.ToVmf();
 
 	// The serialised document is a well-formed VMF: world + two solids of 6 sides.
-	hammer::formats::ParseResult pr = hammer::formats::ParseKeyValues( vmf );
+	kvtext::ParseResult pr = kvtext::ParseKeyValues( vmf );
 	CHECK( pr.ok );
 	int worldSolids = 0;
 	int totalSides = 0;
@@ -325,7 +325,7 @@ void TestBuildSimpleMapAndSave()
 }
 
 // Counts the top-level VMF blocks named 'name' in a parsed document.
-int CountBlocks( const hammer::formats::KeyValueNode &root, const char *name )
+int CountBlocks( const kvtext::KeyValueNode &root, const char *name )
 {
 	int n = 0;
 	for ( const auto &block : root.children )
@@ -415,7 +415,7 @@ void TestBuildRoomFromScratch()
 
 	// --- Save to VMF and validate structure directly. ---
 	const std::string vmf = c.ToVmf();
-	hammer::formats::ParseResult pr = hammer::formats::ParseKeyValues( vmf );
+	kvtext::ParseResult pr = kvtext::ParseKeyValues( vmf );
 	CHECK( pr.ok );
 	CHECK( CountBlocks( pr.root, "world" ) == 1 );
 	CHECK( CountBlocks( pr.root, "entity" ) == 2 );
@@ -655,7 +655,7 @@ void TestWorldPropertiesRoundTrip()
 // tie keeps the earlier entry (floor before walls, x walls before y walls).
 void TestWorldAlignedTextureAxesPolicy()
 {
-	using hammer::geometry::WorldAlignedTextureAxes;
+	using mapgeometry::WorldAlignedTextureAxes;
 	auto same = []( const Vec3d &a, double x, double y, double z )
 	{ return a.x == x && a.y == y && a.z == z; };
 	const double h = std::sqrt( 0.5 );
@@ -682,7 +682,7 @@ void TestSavedTextureAxesFollowFaceNormal()
 	EditorController c;
 	c.NewMap();
 	CHECK( c.CreateBlock( Vec3d( 0, 0, 0 ), Vec3d( 64, 64, 64 ) ).has_value() );
-	hammer::formats::ParseResult parsed = hammer::formats::ParseKeyValues( c.ToVmf() );
+	kvtext::ParseResult parsed = kvtext::ParseKeyValues( c.ToVmf() );
 	CHECK( parsed.ok );
 	int sides = 0;
 	int walls = 0;

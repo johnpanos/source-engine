@@ -3,14 +3,14 @@
 // Purpose: Implementation of hammer::formats func_instance expansion. See
 //			public/hammer/formats/instancing.h. The geometry transform (QAngle
 //			rotation matrix + plane/origin placement) is owned by
-//			hammer/formats/vmf_transform; this file adds the instance-specific
+//			vmf/vmf_transform; this file adds the instance-specific
 //			load-recurse-merge logic on top of it.
 //
 //=============================================================================//
 
 #include "hammer/formats/instancing.h"
 
-#include "hammer/formats/vmf_transform.h" // shared Mat3 + Transform* (DRY)
+#include "vmf/vmf_transform.h" // shared Mat3 + Transform* (DRY)
 
 #include <sstream>
 #include <string>
@@ -22,7 +22,7 @@ namespace hammer::formats
 namespace
 {
 
-using geometry::Vec3d;
+using mapgeometry::Vec3d;
 
 // Local placement-vector parse (reads a func_instance's "origin"/"angles"). The
 // heavy transform math lives in vmf_transform; this is just tokenizing 3 numbers.
@@ -48,7 +48,7 @@ bool ParseVec3( const std::string &text, Vec3d &out )
 	return true;
 }
 
-const std::string *FindPair( const KeyValueNode &node, const std::string &key )
+const std::string *FindPair( const kvtext::KeyValueNode &node, const std::string &key )
 {
 	return node.Find( key );
 }
@@ -60,14 +60,14 @@ struct Flattener
 {
 	ports::IFileStore &store;
 	int maxDepth = 16;
-	std::vector<KeyValueNode> solids;
-	std::vector<KeyValueNode> entities;
+	std::vector<kvtext::KeyValueNode> solids;
+	std::vector<kvtext::KeyValueNode> entities;
 	int expanded = 0;
 	bool ok = true;
 	std::string error;
 
-	void Flatten(
-	    const KeyValueNode &doc, const Mat3 &r, const Vec3d &origin, bool identity, int depth )
+	void Flatten( const kvtext::KeyValueNode &doc, const vmf::Mat3 &r, const Vec3d &origin,
+	    bool identity, int depth )
 	{
 		if ( !ok )
 		{
@@ -80,7 +80,7 @@ struct Flattener
 			return;
 		}
 
-		for ( const KeyValueNode &block : doc.children )
+		for ( const kvtext::KeyValueNode &block : doc.children )
 		{
 			if ( !ok )
 			{
@@ -88,11 +88,12 @@ struct Flattener
 			}
 			if ( block.name == "world" )
 			{
-				for ( const KeyValueNode &child : block.children )
+				for ( const kvtext::KeyValueNode &child : block.children )
 				{
 					if ( child.name == "solid" )
 					{
-						solids.push_back( identity ? child : TransformSolid( child, r, origin ) );
+						solids.push_back(
+						    identity ? child : vmf::TransformSolid( child, r, origin ) );
 					}
 				}
 			}
@@ -105,13 +106,15 @@ struct Flattener
 				}
 				else
 				{
-					entities.push_back( identity ? block : TransformEntity( block, r, origin ) );
+					entities.push_back(
+					    identity ? block : vmf::TransformEntity( block, r, origin ) );
 				}
 			}
 		}
 	}
 
-	void ExpandInstance( const KeyValueNode &inst, const Mat3 &r, const Vec3d &origin, int depth )
+	void ExpandInstance(
+	    const kvtext::KeyValueNode &inst, const vmf::Mat3 &r, const Vec3d &origin, int depth )
 	{
 		const std::string *file = FindPair( inst, "file" );
 		if ( file == nullptr || file->empty() )
@@ -155,7 +158,7 @@ struct Flattener
 			error = "cannot read func_instance file: " + *file;
 			return;
 		}
-		ParseResult pr = ParseKeyValues( text );
+		kvtext::ParseResult pr = kvtext::ParseKeyValues( text );
 		if ( !pr.ok )
 		{
 			ok = false;
@@ -166,9 +169,9 @@ struct Flattener
 		// Compose: a child point p is first placed by the instance's own
 		// (angles, origin), then by the enclosing placement (r, origin):
 		//   outer( Ri*p + instOrigin ) = (r*Ri)*p + (r*instOrigin + origin).
-		const Mat3 ri = AngleMatrix( pitch, yaw, roll );
-		const Mat3 composed = Multiply( r, ri );
-		const Vec3d composedOrigin = Place( r, origin, instOrigin );
+		const vmf::Mat3 ri = vmf::AngleMatrix( pitch, yaw, roll );
+		const vmf::Mat3 composed = vmf::Multiply( r, ri );
+		const Vec3d composedOrigin = vmf::Place( r, origin, instOrigin );
 
 		++expanded;
 		Flatten( pr.root, composed, composedOrigin, false, depth + 1 );
@@ -178,12 +181,12 @@ struct Flattener
 } // namespace
 
 InstanceExpandResult ExpandInstances(
-    const KeyValueNode &root, ports::IFileStore &store, int maxDepth )
+    const kvtext::KeyValueNode &root, ports::IFileStore &store, int maxDepth )
 {
 	InstanceExpandResult result;
 
 	Flattener flat{ store, maxDepth, {}, {}, 0, true, {} };
-	flat.Flatten( root, Mat3(), Vec3d(), true, 0 );
+	flat.Flatten( root, vmf::Mat3(), Vec3d(), true, 0 );
 	if ( !flat.ok )
 	{
 		result.ok = false;
@@ -194,14 +197,14 @@ InstanceExpandResult ExpandInstances(
 	// Rebuild the flattened document: copy the root's non-world/non-instance
 	// top-level blocks (versioninfo, etc.), then one world with all merged solids,
 	// then all collected entities.
-	KeyValueNode out;
+	kvtext::KeyValueNode out;
 	out.name = root.name;
 
-	KeyValueNode worldOut;
+	kvtext::KeyValueNode worldOut;
 	worldOut.name = "world";
 	bool haveWorld = false;
 
-	for ( const KeyValueNode &block : root.children )
+	for ( const kvtext::KeyValueNode &block : root.children )
 	{
 		if ( block.name == "world" )
 		{
@@ -209,7 +212,7 @@ InstanceExpandResult ExpandInstances(
 			{
 				worldOut = block;
 				worldOut.children.clear();
-				for ( const KeyValueNode &child : block.children )
+				for ( const kvtext::KeyValueNode &child : block.children )
 				{
 					if ( child.name != "solid" )
 					{
@@ -230,15 +233,15 @@ InstanceExpandResult ExpandInstances(
 		}
 	}
 
-	for ( const KeyValueNode &solid : flat.solids )
+	for ( const kvtext::KeyValueNode &solid : flat.solids )
 	{
 		worldOut.children.push_back( solid );
 	}
 	out.children.push_back( worldOut );
 
-	for ( const KeyValueNode &entity : flat.entities )
+	for ( const kvtext::KeyValueNode &entity : flat.entities )
 	{
-		KeyValueNode e = entity;
+		kvtext::KeyValueNode e = entity;
 		e.name = "entity";
 		out.children.push_back( e );
 	}

@@ -135,11 +135,12 @@
         "formats/keyvalues_negative_provider"
       ],
       "owner": "unassigned",
-      "blocked": "The versioned semantic comparator now exists (hammer::formats::CompareKeyValues over the VMF/keyvalues parser+writer) with a passing negative corpus (a permissive always-equal comparator is caught). Remaining: broaden fixtures toward the RFC minimum corpus (convex/invalid brushes, transforms, texture axes, displacements, overlays, instances, malformed/encoding cases) and add provenance records under unittests/hammertest/fixtures.",
+      "blocked": "The versioned semantic comparator now exists (kvtext::CompareKeyValues over the VMF/keyvalues parser+writer) with a passing negative corpus (a permissive always-equal comparator is caught). Remaining: broaden fixtures toward the RFC minimum corpus (convex/invalid brushes, transforms, texture axes, displacements, overlays, instances, malformed/encoding cases) and add provenance records under unittests/hammertest/fixtures.",
       "retireWhen": [
         "versioned comparator exists with a passing negative corpus",
         "the RFC minimum characterization fixtures load in a headless test"
-      ]
+      ],
+      "relocation": "R08-LIBS (2026-09-25): moved out of hammer/ into the content.keyvalues-text library (the comparator in public/kvtext/keyvalues.h, namespace kvtext). Migration ID, status and history unchanged."
     },
     {
       "id": "HAM-GEOMETRY-001",
@@ -155,7 +156,7 @@
           "path": "hammer/boundbox.cpp"
         }
       ],
-      "destinationModule": "hammer.geometry",
+      "destinationModule": "world.map-geometry",
       "contractIds": [
         "geometry.aabb.v1"
       ],
@@ -174,18 +175,19 @@
       "contractRecord": "unittests/hammertest/contracts/geometry.aabb.v1.md",
       "owner": "unassigned",
       "intentionalDifferences": [
-        "SnapToGrid rejects a non-positive grid size (degenerate input) instead of dividing by it, as the legacy Snap() did. Documented in public/hammer/geometry/aabb.h and covered by test_aabb.cpp."
+        "SnapToGrid rejects a non-positive grid size (degenerate input) instead of dividing by it, as the legacy Snap() did. Documented in public/mapgeometry/aabb.h and covered by test_aabb.cpp."
       ],
       "fidelityNotes": [
-        "Characterization caught that legacy hammer_mathlib V_rint rounds halves AWAY from zero, not to even. SnapToGrid now routes through hammer::geometry::RoundHalfAwayFromZero (public/hammer/geometry/rounding.h + hammer/core/geometry/rounding.cpp), the single owner of that rule (DRY), instead of std::rint. test_rounding.cpp and the .5-boundary case in test_aabb.cpp pin the difference; a std::rint variant fails the suite (verified).",
+        "Characterization caught that legacy hammer_mathlib V_rint rounds halves AWAY from zero, not to even. SnapToGrid now routes through mapgeometry::RoundHalfAwayFromZero (public/mapgeometry/rounding.h + mapgeometry/rounding.cpp), the single owner of that rule (DRY), instead of std::rint. test_rounding.cpp and the .5-boundary case in test_aabb.cpp pin the difference; a std::rint variant fails the suite (verified).",
         "Confirmed against the REAL MSVC toolchain: the unmodified legacy hammer/boundbox.cpp compiled by cl 19.29 (VS2019 v142 with atlmfc) under Wine, linked with AxisAlignedBox, is byte-identical across UpdateBounds/center/size/ContainsPoint/IsIntersectingBox/IsInsideBox/IsValidBox/SnapToGrid(.5-boundary)/Rotate90; a mutant round-half-to-even provider is caught (exit 1). Evidence: architecture/hammer_legacy_parity.json."
       ],
-      "note": "Strict shared owner hammer::geometry::AxisAlignedBox is implemented in public/hammer/geometry/aabb.h + hammer/core/geometry/aabb.cpp, compiles headlessly without MFC/tier0/PCH under gcc and clang (-Werror), and passes the conformance oracle unittests/hammertest/geometry/test_aabb.cpp. The contract record geometry.aabb.v1 is recorded, and test_aabb_negative.cpp proves the oracle detects a deliberately-broken (closed-face) provider. Legacy hammer/BoundBox remains the sole LIVE authority; no dual mutable model exists. Advancing to 'extracted' requires routing BoundBox callers through the shared owner via a named Vector<->Vec3 boundary adapter (hammer.adapters.source/mfc).",
+      "note": "Strict shared owner mapgeometry::AxisAlignedBox is implemented in public/mapgeometry/aabb.h + mapgeometry/aabb.cpp, compiles headlessly without MFC/tier0/PCH under gcc and clang (-Werror), and passes the conformance oracle unittests/hammertest/geometry/test_aabb.cpp. The contract record geometry.aabb.v1 is recorded, and test_aabb_negative.cpp proves the oracle detects a deliberately-broken (closed-face) provider. Legacy hammer/BoundBox remains the sole LIVE authority; no dual mutable model exists. Advancing to 'extracted' requires routing BoundBox callers through the shared owner via a named Vector<->Vec3 boundary adapter (hammer.adapters.source/mfc).",
       "retireWhen": [
-        "BoundBox operations own their behavior in hammer.geometry",
+        "BoundBox operations own their behavior in world.map-geometry",
         "legacy callers route through the shared owner via the Vector<->Vec3 adapter",
         "extracted target builds without UI/PCH/GPU dependencies"
-      ]
+      ],
+      "relocation": "R08-LIBS (2026-09-25): moved out of hammer/ into the world.map-geometry library (public/mapgeometry, mapgeometry; namespace mapgeometry). Migration ID, status and history unchanged."
     },
     {
       "id": "HAM-SCENE-001",
@@ -501,7 +503,7 @@
       "fidelityNotes": [
         "Substitution guarantee proven under the REAL MSVC toolchain (cl 19.29 under Wine): for the unmodified legacy BoundBox, running a reusable geometry op directly equals ToAABB->op->FromAABB for SnapToGrid(16 .5-boundary), SnapToGrid(8), and Rotate90 on all axes, plus exact Vector<->Vec3 round-trip. A y/z-swap BuggyAdapter is caught by 9 clauses (oracle sound). Evidence: architecture/hammer_legacy_parity.json (adapters section); driver scratchpad legacy-parity/run_adapter_parity.sh."
       ],
-      "note2": "This seam is the enabling dependency for advancing HAM-GEOMETRY-001 from 'characterized' to 'cutover': live BoundBox callers can now delegate geometry to hammer::geometry through this adapter. The adapter is permanent sibling infrastructure and is not itself retired."
+      "note2": "This seam is the enabling dependency for advancing HAM-GEOMETRY-001 from 'characterized' to 'cutover': live BoundBox callers can now delegate geometry to mapgeometry through this adapter. The adapter is permanent sibling infrastructure and is not itself retired."
     },
     {
       "id": "HAM-UPDATEHINT-001",
@@ -535,7 +537,7 @@
       ],
       "contractRecord": "unittests/hammertest/contracts/app.update_hint.v1.md",
       "owner": "unassigned",
-      "note": "hammer::app::UpdateHint (public/hammer/app/update_hint.h + hammer/core/app/update_hint.cpp) is the reusable aggregation model both UI siblings need: notify-code-bucketed changed nodes (hammer::scene::NodeHandle) + a unioned affected region (hammer::geometry::AxisAlignedBox), with the legacy kMaxNotifyCodes=16 capacity preserved. It composes the two already-extracted strict libraries and builds headlessly (no MFC/tier0/PCH). Verified on 4 lanes: gcc, clang, and MinGW-w64 PE under both Wine (architecture/hammer_windows_parity.json, 23/23).",
+      "note": "hammer::app::UpdateHint (public/hammer/app/update_hint.h + hammer/core/app/update_hint.cpp) is the reusable aggregation model both UI siblings need: notify-code-bucketed changed nodes (hammer::scene::NodeHandle) + a unioned affected region (mapgeometry::AxisAlignedBox), with the legacy kMaxNotifyCodes=16 capacity preserved. It composes the two already-extracted strict libraries and builds headlessly (no MFC/tier0/PCH). Verified on 4 lanes: gcc, clang, and MinGW-w64 PE under both Wine (architecture/hammer_windows_parity.json, 23/23).",
       "fidelityNotes": [
         "The legacy hammer/updatehint.cpp is ORPHANED DEAD CODE: it is in no .vpc build project and does not compile (unbalanced parens at line 128; references to non-members m_Objects/nIndex). There is no live behavior to byte-match, so this is a faithful reconstruction of the intent in hammer/updatehint.h (NotifyList_t[MAX_NOTIFY_CODES] buckets, m_nListEntries, m_UpdateRegion), rebuilt on the strict libraries. Classified evidenceKind=decision, not observed. The negative suite proves the oracle pins the capacity clause the legacy MAX_NOTIFY_CODES guarded."
       ],
@@ -657,13 +659,13 @@
       "evidenceKind": "decision",
       "sources": [
         {
-          "path": "public/hammer/geometry/displacement.h"
+          "path": "public/mapgeometry/displacement.h"
         },
         {
-          "path": "hammer/core/geometry/displacement.cpp"
+          "path": "mapgeometry/displacement.cpp"
         }
       ],
-      "destinationModule": "hammer.geometry",
+      "destinationModule": "world.map-geometry",
       "contractIds": [
         "geometry.displacement.v1"
       ],
@@ -680,11 +682,12 @@
       ],
       "contractRecord": "unittests/hammertest/contracts/geometry.displacement.v1.md",
       "owner": "unassigned",
-      "note": "The brush contract (geometry.brush.v1) deliberately excludes displacements as a later migration; this is that migration's core. New strict headless geometry (no legacy source, authority=new): hammer::formats::ParseDispInfo (public/hammer/formats/vmf_geometry.h, hammer/core/formats/vmf_geometry.cpp; moved out of hammer.geometry on 2026-09-25 so geometry has no formats dependency) decodes a VMF dispinfo block into a geometry::DispInfo, and hammer::geometry::BuildDisplacementSurface produces the (2^power+1)^2 vertex grid + 2*(side-1)^2 triangles, with base = bilinear interpolation of the face's four corners (grid origin = the corner nearest startposition, matching VBSP/Hammer), then per-vertex offset + normal*distance + faceNormal*elevation. Compiles headlessly under g++ and clang (-Werror); conformance unittests/hammertest/geometry/test_displacement.cpp checks grid sizes (powers 2-4), flat bilinear identity, uniform push, and startposition orientation; test_displacement_negative.cpp proves ParseDispInfo rejects a bad power, a wrong-length row, a missing row, and an absent normals grid. Also parses alphas (per-vertex blend, surfaced as DisplacementSurface.vertexAlphas), subdiv, and triangle_tags (validated grids). Not yet consumed by the scene/render bridge (that wiring is source-engine-3c's scene/render seam), and offset_normals/allowed_verts plus subdiv smoothing / alpha+tag rendering are later increments.",
+      "note": "The brush contract (geometry.brush.v1) deliberately excludes displacements as a later migration; this is that migration's core. New strict headless geometry (no legacy source, authority=new): vmf::ParseDispInfo (public/vmf/vmf_geometry.h, vmf/vmf_geometry.cpp; moved out of hammer.geometry on 2026-09-25 so geometry has no formats dependency) decodes a VMF dispinfo block into a mapgeometry::DispInfo, and mapgeometry::BuildDisplacementSurface produces the (2^power+1)^2 vertex grid + 2*(side-1)^2 triangles, with base = bilinear interpolation of the face's four corners (grid origin = the corner nearest startposition, matching VBSP/Hammer), then per-vertex offset + normal*distance + faceNormal*elevation. Compiles headlessly under g++ and clang (-Werror); conformance unittests/hammertest/geometry/test_displacement.cpp checks grid sizes (powers 2-4), flat bilinear identity, uniform push, and startposition orientation; test_displacement_negative.cpp proves ParseDispInfo rejects a bad power, a wrong-length row, a missing row, and an absent normals grid. Also parses alphas (per-vertex blend, surfaced as DisplacementSurface.vertexAlphas), subdiv, and triangle_tags (validated grids). Not yet consumed by the scene/render bridge (that wiring is source-engine-3c's scene/render seam), and offset_normals/allowed_verts plus subdiv smoothing / alpha+tag rendering are later increments.",
       "retireWhen": [
         "a later displacement increment supersedes it with alphas/triangle_tags/subdiv/allowed_verts support",
         "displaced faces render through this surface in the scene/render bridge"
-      ]
+      ],
+      "relocation": "R08-LIBS (2026-09-25): moved out of hammer/ into the world.map-geometry library (displacement) and the content.vmf library (ParseDispInfo in public/vmf/vmf_geometry.h). Migration ID, status and history unchanged."
     },
     {
       "id": "HAM-INSTANCE-001",
@@ -956,10 +959,10 @@
           "path": "hammer/core/formats/prefab.cpp"
         },
         {
-          "path": "public/hammer/formats/vmf_transform.h"
+          "path": "public/vmf/vmf_transform.h"
         },
         {
-          "path": "hammer/core/formats/vmf_transform.cpp"
+          "path": "vmf/vmf_transform.cpp"
         }
       ],
       "destinationModule": "hammer.formats",
@@ -979,11 +982,12 @@
       ],
       "contractRecord": "unittests/hammertest/contracts/formats.prefab.v1.md",
       "owner": "unassigned",
-      "note": "New strict headless module (authority=new). hammer::formats::InstantiatePrefab places a parsed VMF fragment at a Placement (origin + Source QAngle), returning transformed world solids + entities. It builds on the NEW shared transform owner hammer/formats/vmf_transform (Mat3/AngleMatrix/Multiply/Rotate/Place/TransformSolid/TransformEntity), which was EXTRACTED from instancing.cpp so func_instance and prefab share ONE QAngle placement implementation (DRY) instead of duplicating the rotation matrix + plane/origin math; instancing.cpp was refactored to use it and its suites still pass (its manifest sources now include vmf_transform.cpp). Compiles headlessly under g++ and clang (-Werror); conformance test_prefab.cpp checks translate/yaw placement + count preservation, test_prefab_negative.cpp pins placement-applied, identity-preserved, and count preservation. Declared limits: entity-angle composition + texture-axis rotation are shared vmf_transform limits; no on-disk prefab library or id-remap on merge.",
+      "note": "New strict headless module (authority=new). hammer::formats::InstantiatePrefab places a parsed VMF fragment at a Placement (origin + Source QAngle), returning transformed world solids + entities. It builds on the NEW shared transform owner vmf/vmf_transform (Mat3/AngleMatrix/Multiply/Rotate/Place/TransformSolid/TransformEntity), which was EXTRACTED from instancing.cpp so func_instance and prefab share ONE QAngle placement implementation (DRY) instead of duplicating the rotation matrix + plane/origin math; instancing.cpp was refactored to use it and its suites still pass (its manifest sources now include vmf_transform.cpp). Compiles headlessly under g++ and clang (-Werror); conformance test_prefab.cpp checks translate/yaw placement + count preservation, test_prefab_negative.cpp pins placement-applied, identity-preserved, and count preservation. Declared limits: entity-angle composition + texture-axis rotation are shared vmf_transform limits; no on-disk prefab library or id-remap on merge.",
       "retireWhen": [
         "a later increment adds entity-angle composition, texture-axis rotation, and id-remap on merge",
         "the prefab library/insert tool consumes this instantiation"
-      ]
+      ],
+      "relocation": "R08-LIBS (2026-09-25): moved out of hammer/ into the content.vmf library (the shared transform in public/vmf/vmf_transform.h, namespace vmf); prefab itself stays in hammer.formats. Migration ID, status and history unchanged."
     },
     {
       "id": "HAM-EXPORT-001",

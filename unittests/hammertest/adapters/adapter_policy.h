@@ -18,19 +18,19 @@
 // The real boundary policy under test: forwards to the named owner verbatim.
 struct RealSourceAdapter
 {
-	static hammer::geometry::Vec3 ToVec3( const Vector &v )
+	static mapgeometry::Vec3 ToVec3( const Vector &v )
 	{
 		return hammer::adapters::source::ToVec3( v );
 	}
-	static Vector ToVector( const hammer::geometry::Vec3 &v )
+	static Vector ToVector( const mapgeometry::Vec3 &v )
 	{
 		return hammer::adapters::source::ToVector( v );
 	}
-	static hammer::geometry::AxisAlignedBox ToAABB( const BoundBox &b )
+	static mapgeometry::AxisAlignedBox ToAABB( const BoundBox &b )
 	{
 		return hammer::adapters::source::ToAABB( b );
 	}
-	static void FromAABB( const hammer::geometry::AxisAlignedBox &a, BoundBox &b )
+	static void FromAABB( const mapgeometry::AxisAlignedBox &a, BoundBox &b )
 	{
 		hammer::adapters::source::FromAABB( a, b );
 	}

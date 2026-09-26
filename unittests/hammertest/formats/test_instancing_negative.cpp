@@ -10,7 +10,7 @@
 //=============================================================================//
 
 #include "hammer/formats/instancing.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include "app/fake_file_store.h"
@@ -20,7 +20,7 @@
 
 using hammer::formats::ExpandInstances;
 using hammer::formats::InstanceExpandResult;
-using hammer::formats::ParseKeyValues;
+using kvtext::ParseKeyValues;
 
 namespace
 {
@@ -43,7 +43,7 @@ std::string Instance( const char *file, bool withFile )
 InstanceExpandResult Expand(
     const std::string &parentText, hammertest::InMemoryFileStore &store, int maxDepth )
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( parentText );
+	kvtext::ParseResult pr = ParseKeyValues( parentText );
 	InstanceExpandResult r;
 	if ( !pr.ok )
 	{

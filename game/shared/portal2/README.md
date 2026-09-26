@@ -140,7 +140,7 @@ rendered on native Vulkan, compared with retail Portal 2 from matched
 screenshots.
 
 `quality/workloads/portal2-materials-v1` holds fixed views: an eye point with a
-pitch and yaw, noclip, no HUD or view model. There are 11 views on five maps:
+pitch and yaw, noclip, no HUD or view model. There are 13 views on five maps:
 `sp_a2_bridge_intro`, `sp_a2_fizzler_intro`, `sp_a2_laser_over_goo`,
 `sp_a2_triple_laser` and `sp_a4_tb_intro`.
 
@@ -171,6 +171,8 @@ The checks, listed in `checks.json`, are:
 - `<map>.run`: the scenario ran and every view was placed.
 - `<map>.shaders`: no unknown shader beyond retail's own.
 - `<map>.proxies`: no missing material proxy.
+- `<map>.conditionals`: the material system understood every VMT conditional
+  that retail's did.
 - `<map>.<view>.tiles`: at least 85% of tiles are within 24 levels of retail.
   Two retail runs agree within 8 levels, except animated goo and beams.
 - `<map>.<view>.<region>`: each region pins one defect.
@@ -182,7 +184,7 @@ Rows in `quality/conformance.manifest.json` (profile `linux-host-corpus`):
 
 | Suite | Kind | Now |
 | --- | --- | --- |
-| `corpus.portal2.video-retail` | 49 checks, known failure | 28 pass, 21 fail; first divergence `sp_a2_bridge_intro.projector.tiles` |
+| `corpus.portal2.video-retail` | 60 checks, known failure | 34 pass, 26 fail; first divergence `sp_a2_bridge_intro.projector.tiles` (the white void, item 2 below) |
 | `...video-retail.cables` / `.seeded-no-ropes` (`+r_drawropes 0`) | region + negative control | pass / rejected |
 | `...video-retail.ssbump-floor` / `.seeded-ssbump-unscaled` (`+mat_ssbump_normalize 0`) | region + negative control | pass / rejected |
 | `...video-retail.comparator` and 4 `.comparator.seeded-*` rows | synthetic frames, no content | pass / all 4 rejected |
@@ -242,6 +244,14 @@ Fixed, each confirmed against retail by the checks above (before -> after):
   - The trigger now bounds the beam from start to end.
   - Its translucency is bridged onto `IsTransparent`, and it refreshes its
     render bounds when the beam changes.
+- **Portal 2's GPU-level VMT conditionals ignored.** Portal 2 materials pick
+  variables (`"GPU>=1?$reflecttexture"`) and whole blocks (`"GPU>=1" { ... }`,
+  which carry the WorldVertexTransition blends' bump maps and blend modulation)
+  by `gpu_level`. This SDK's material system knew neither: it warned for every
+  `GPU<n?` variable and dropped every `GPU>=n` block.
+  - `cmaterial.cpp` now evaluates both as CS:GO does, against the game's
+    `gpu_level` (3, high, when no game registers one).
+  - The warnings are gone, and `<map>.conditionals` checks for them.
 - **`BloomAdd` proxy missing.** It is named by `dev/bloomadd`, and the material
   system reported it missing on every map. CS:GO's proxy is now ported into
   `viewpostprocess.cpp`.
@@ -255,24 +265,36 @@ Still different, ranked by visible impact:
    - Above a pit the region shows a white slab (catcher view: mean 177 against
      retail's 33).
    - This SDK's water shader has no flowmap either.
-2. **The 2D sky is not drawn.** In `sp_a2_bridge_intro`, `sky_white` is black
-   (mean 0 against 255).
-   - `R_DrawSkyBox` binds and emits the sky faces in some frames.
-   - At the view, no sky draw is in the frame (the census and a RenderDoc
-     capture agree), even with `+r_novis 1` or `mat_queue_mode 0`.
-   - The map has only two `SURF_SKY` faces; why the view never marks the sky
-     visible is open.
+2. **No projected-texture shadow depth.** It shows as the void above the
+   `sp_a2_bridge_intro` chamber: white on retail, black here.
+   - It is not the sky. Retail stays white with `r_drawskybox 0`, and the
+     map's only two `SURF_SKY` faces are out of view.
+   - Retail turns it black with `r_flashlightdepthtexture 0; r_shadows 0`.
+     The shadow depth views (`CShadowDepthView`) set a white clear colour,
+     which the main view's colour clear then uses.
+   - Native Vulkan has no flashlight depth textures
+     (`r_flashlightdepthtexture 0`), so the frame keeps its black clear.
+     Projected textures themselves are also unimplemented (flashlight passes).
 3. **The laser emitter glow is missing.** Retail draws a bright halo where the
-   beam leaves the emitter. The source of that halo is not identified.
-4. **The tractor beam column is pale.** It has no blue swirl (SolidEnergy
+   beam leaves the emitter.
+   - It is the particle system `laser_start_glow` (particles/laser_relay_effects.pcf,
+     material `particle/particle_glow_05_add_15ob`, `$overbrightfactor 15`).
+     The server dispatches it (`CPortalLaser::TurnOnGlow`).
+   - No draw of it is in the frame here.
+4. **Portal rims.** In `sp_a2_triple_laser`'s portal views, retail draws a
+   thick, soft glow around each rim. Here it is a thin, bright outline with
+   flame bites, and yellow rather than orange on the orange portal.
+   - `PortalStaticOverlay` (`models/portals/portalstaticoverlay_*_noz`, Portal
+     2's through-wall portal ghosting, `$ghostoverlay`) is dropped natively.
+5. **The tractor beam column is pale.** It has no blue swirl (SolidEnergy
    detail layers), and its base particles are green where retail's are blue.
-5. **Exteriors and rusty models.** Lit exteriors behind broken walls are blown
+6. **Exteriors and rusty models.** Lit exteriors behind broken walls are blown
    out, and rusty truss models are grey rather than brown
    (`laser_over_goo.cable.rust_beams` contrast 3.1x retail).
-6. **Other native gaps.** `dev/motion_blur` (MotionBlur) is dropped in every
+7. **Other native gaps.** `dev/motion_blur` (MotionBlur) is dropped in every
    frame. Projected textures (flashlight passes) are unimplemented. The signed
    texture `normalizesigned` (UVWQ8888) is sampled while empty.
-7. **The tractor-beam floor is about 10% brighter** than retail.
+8. **The tractor-beam floor is about 10% brighter** than retail.
 
 The captures used for these numbers are under `quality-results/p2mat-*` and are
 not committed.

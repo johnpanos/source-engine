@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Axis-aligned bounding box value type for the strict Hammer geometry
-//			module (RFC 0002, hammer.geometry). This is a dependency-free
+// Purpose: Axis-aligned bounding box value type for the map geometry
+//			library (RFC 0002, world.map-geometry). This is a dependency-free
 //			extraction of hammer/BoundBox: no MFC, no tier0/platform.h, no PCH,
 //			no GPU. It owns its own geometric value type so it can compile and
 //			test on the Linux headless core profile.
@@ -13,12 +13,12 @@
 //
 //=============================================================================//
 
-#ifndef HAMMER_GEOMETRY_AABB_H
-#define HAMMER_GEOMETRY_AABB_H
+#ifndef MAPGEOMETRY_AABB_H
+#define MAPGEOMETRY_AABB_H
 
 #include <cstddef>
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 // Axis indices, preserving hammer_mathlib.h's AXIS_X/AXIS_Y/AXIS_Z ordering.
@@ -109,6 +109,6 @@ public:
 	Vec3 maxs;
 };
 
-} // namespace hammer::geometry
+} // namespace mapgeometry
 
-#endif // HAMMER_GEOMETRY_AABB_H
+#endif // MAPGEOMETRY_AABB_H

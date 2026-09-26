@@ -21,7 +21,7 @@
 #include "hammer/app/entity_selection.h"
 #include "hammer/app/property_value.h"
 #include "hammer/app/save_orchestrator.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/ports/file_store.h"
 
 #include <cstddef>
@@ -105,14 +105,14 @@ public:
 
 	bool IsModified() const { return m_history.IsModified(); }
 
-	const formats::KeyValueNode &Content() const { return m_content; }
+	const kvtext::KeyValueNode &Content() const { return m_content; }
 
 private:
-	void ResetTo( formats::KeyValueNode content );
-	void CommitSnapshot( formats::KeyValueNode next );
+	void ResetTo( kvtext::KeyValueNode content );
+	void CommitSnapshot( kvtext::KeyValueNode next );
 
-	formats::KeyValueNode m_content;                // published authored content
-	std::vector<formats::KeyValueNode> m_snapshots; // snapshots[pos] == content at history position
+	kvtext::KeyValueNode m_content;                // published authored content
+	std::vector<kvtext::KeyValueNode> m_snapshots; // snapshots[pos] == content at history position
 	DocumentHistory m_history;
 };
 

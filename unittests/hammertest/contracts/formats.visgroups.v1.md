@@ -4,7 +4,7 @@ Module: `hammer.formats`
 Header: `public/hammer/formats/visgroups.h` · Impl: `hammer/core/formats/visgroups.cpp`
 Conformance: `unittests/hammertest/formats/test_visgroups.cpp` (+ `_negative`)
 Migration: `HAM-VISGROUP-001`
-Depends on: `hammer.formats` (keyvalues codec)
+Depends on: `content.keyvalues-text` (keyvalues codec)
 
 Parses a VMF's VisGroup tree and computes object visibility given a set of hidden
 groups — the "functional VisGroups" feature (the checkbox list that shows/hides

@@ -3,16 +3,16 @@
 // Purpose: Implementation of the headless editor interaction authority declared
 //			in public/hammer/app/editor_controller.h (RFC 0002, hammer.app). See
 //			that header for the contract. Grid snapping routes through the shared
-//			hammer::geometry::RoundHalfAwayFromZero owner; brush geometry and VMF
-//			import reuse the hammer.geometry brush bridge and hammer.formats codec.
+//			mapgeometry::RoundHalfAwayFromZero owner; brush geometry and VMF
+//			import reuse the world.map-geometry brush bridge and the content.vmf codec.
 //
 //=============================================================================//
 
 #include "hammer/app/editor_controller.h"
 
-#include "hammer/formats/vmf_geometry.h" // also the keyvalues codec
-#include "hammer/geometry/rounding.h"
-#include "hammer/geometry/texture_axes.h"
+#include "vmf/vmf_geometry.h" // also the keyvalues codec
+#include "mapgeometry/rounding.h"
+#include "mapgeometry/texture_axes.h"
 
 #include <algorithm>
 #include <array>
@@ -25,10 +25,10 @@ namespace hammer::app
 namespace
 {
 
-using geometry::Vec3d;
+using mapgeometry::Vec3d;
 
 // The six outward face planes of an axis-aligned box.
-std::vector<geometry::Plane> AabbToPlanes( const Vec3d &mins, const Vec3d &maxs )
+std::vector<mapgeometry::Plane> AabbToPlanes( const Vec3d &mins, const Vec3d &maxs )
 {
 	return {
 	    { { 1, 0, 0 }, maxs.x },
@@ -58,7 +58,7 @@ Vec3d Normalized( const Vec3d &a )
 // A VMF "plane" value (three points) for an arbitrary plane, wound so that
 // (p1-p0) x (p2-p0) points along the plane normal (outward preserved). Works for
 // any brush face, not just axis-aligned boxes.
-std::string PlaneToText( const geometry::Plane &plane )
+std::string PlaneToText( const mapgeometry::Plane &plane )
 {
 	const Vec3d n = plane.normal;
 	const Vec3d up = ( std::fabs( n.z ) < 0.9 ) ? Vec3d( 0, 0, 1 ) : Vec3d( 1, 0, 0 );
@@ -88,7 +88,7 @@ std::string AxisToText( const Vec3d &axis )
 	return buf;
 }
 
-void AddPair( formats::KeyValueNode &node, const char *key, const std::string &value )
+void AddPair( kvtext::KeyValueNode &node, const char *key, const std::string &value )
 {
 	node.pairs.push_back( { key, value } );
 }
@@ -134,7 +134,7 @@ double EditorController::Snap( double value ) const
 		return value;
 	}
 	const float snappedUnits =
-	    geometry::RoundHalfAwayFromZero( static_cast<float>( value / m_grid ) );
+	    mapgeometry::RoundHalfAwayFromZero( static_cast<float>( value / m_grid ) );
 	return static_cast<double>( snappedUnits ) * m_grid;
 }
 
@@ -553,7 +553,7 @@ void EditorController::PointerDrag( ViewId view, double u, double v )
 				continue;
 			}
 			brush->planes = orig.planes;
-			for ( geometry::Plane &p : brush->planes )
+			for ( mapgeometry::Plane &p : brush->planes )
 			{
 				// dot(n, x') = dist + dot(n, delta) keeps the plane through x+delta.
 				p.dist += p.normal.x * delta.x + p.normal.y * delta.y + p.normal.z * delta.z;
@@ -639,7 +639,7 @@ bool RayHitsAabb(
 // the precise face pick: a ray through a non-box brush's AABB corner correctly
 // misses the solid. Falls back to false for a brush with no planes.
 bool RayHitsConvex( const double o[3], const double d[3],
-    const std::vector<geometry::Plane> &planes, double &outEnter )
+    const std::vector<mapgeometry::Plane> &planes, double &outEnter )
 {
 	if ( planes.empty() )
 	{
@@ -647,7 +647,7 @@ bool RayHitsConvex( const double o[3], const double d[3],
 	}
 	double tEnter = 0.0; // clamp at the origin: ignore the solid behind the eye
 	double tExit = HUGE_VAL;
-	for ( const geometry::Plane &p : planes )
+	for ( const mapgeometry::Plane &p : planes )
 	{
 		const double n[3] = { p.normal.x, p.normal.y, p.normal.z };
 		const double denom = n[0] * d[0] + n[1] * d[1] + n[2] * d[2];
@@ -682,7 +682,7 @@ bool RayHitsConvex( const double o[3], const double d[3],
 } // namespace
 
 bool EditorController::PickByRay(
-    const geometry::Vec3d &origin, const geometry::Vec3d &dir, bool additive )
+    const mapgeometry::Vec3d &origin, const mapgeometry::Vec3d &dir, bool additive )
 {
 	// Broad phase against the cached AABB, then a precise ray/convex-polytope test
 	// against the brush's real face planes; keep the nearest brush the ray enters
@@ -746,7 +746,7 @@ bool EditorController::MoveSelectionBy( double dx, double dy, double dz )
 		{
 			continue;
 		}
-		for ( geometry::Plane &p : brush->planes )
+		for ( mapgeometry::Plane &p : brush->planes )
 		{
 			p.dist += p.normal.x * dx + p.normal.y * dy + p.normal.z * dz;
 		}
@@ -974,14 +974,14 @@ bool EditorController::Redo()
 	return true;
 }
 
-geometry::WorldScene EditorController::BuildScene() const
+mapgeometry::WorldScene EditorController::BuildScene() const
 {
-	geometry::WorldScene scene;
+	mapgeometry::WorldScene scene;
 
-	auto addSolid = [&]( const std::vector<geometry::Plane> &planes,
+	auto addSolid = [&]( const std::vector<mapgeometry::Plane> &planes,
 	                    const std::vector<std::string> &materials, int id )
 	{
-		geometry::BrushSolid solid = geometry::BuildSolidFromPlanes( planes, materials, id );
+		mapgeometry::BrushSolid solid = mapgeometry::BuildSolidFromPlanes( planes, materials, id );
 		if ( solid.faces.empty() )
 		{
 			return;
@@ -1009,7 +1009,7 @@ geometry::WorldScene EditorController::BuildScene() const
 	// identification only; point entities contribute no solids.
 	for ( const MapEntity &e : m_entities )
 	{
-		geometry::SceneEntity se;
+		mapgeometry::SceneEntity se;
 		se.classname = e.classname;
 		se.origin = e.origin;
 		for ( const EntityProperty &p : e.properties )
@@ -1026,7 +1026,7 @@ geometry::WorldScene EditorController::BuildScene() const
 	// Carry any loaded displacement (dispinfo terrain) surfaces so the interactive
 	// viewport renders them alongside the brushes. They are display-only in this
 	// slice (not editable), and their vertices extend the scene bounds.
-	for ( const geometry::DisplacementMesh &d : m_displacements )
+	for ( const mapgeometry::DisplacementMesh &d : m_displacements )
 	{
 		scene.AddDisplacement( d );
 	}
@@ -1035,9 +1035,9 @@ geometry::WorldScene EditorController::BuildScene() const
 
 std::string EditorController::ToVmf() const
 {
-	formats::KeyValueNode root;
+	kvtext::KeyValueNode root;
 
-	formats::KeyValueNode version;
+	kvtext::KeyValueNode version;
 	version.name = "versioninfo";
 	AddPair( version, "editorversion", "400" );
 	AddPair( version, "editorbuild", "8000" );
@@ -1047,7 +1047,7 @@ std::string EditorController::ToVmf() const
 	root.children.push_back( version );
 
 	int id = 1;
-	formats::KeyValueNode world;
+	kvtext::KeyValueNode world;
 	world.name = "world";
 	AddPair( world, "id", std::to_string( id++ ) );
 	AddPair( world, "mapversion", "1" );
@@ -1059,14 +1059,14 @@ std::string EditorController::ToVmf() const
 
 	for ( const MapBrush &b : m_brushes )
 	{
-		formats::KeyValueNode solid;
+		kvtext::KeyValueNode solid;
 		solid.name = "solid";
 		AddPair( solid, "id", std::to_string( id++ ) );
 		// One side per real plane, preserving the brush's actual shape and (when
 		// known) each face's material -- not a six-sided box approximation.
 		for ( std::size_t f = 0; f < b.planes.size(); ++f )
 		{
-			formats::KeyValueNode side;
+			kvtext::KeyValueNode side;
 			side.name = "side";
 			AddPair( side, "id", std::to_string( id++ ) );
 			AddPair( side, "plane", PlaneToText( b.planes[f] ) );
@@ -1075,8 +1075,8 @@ std::string EditorController::ToVmf() const
 			                                                      : m_defaultMaterial );
 			// World-aligned axes from the face normal (legacy Hammer's rule), so
 			// walls are not smeared by the floor's projection.
-			const geometry::TextureAxes axes =
-			    geometry::WorldAlignedTextureAxes( b.planes[f].normal );
+			const mapgeometry::TextureAxes axes =
+			    mapgeometry::WorldAlignedTextureAxes( b.planes[f].normal );
 			AddPair( side, "uaxis", AxisToText( axes.u ) );
 			AddPair( side, "vaxis", AxisToText( axes.v ) );
 			AddPair( side, "rotation", "0" );
@@ -1091,7 +1091,7 @@ std::string EditorController::ToVmf() const
 	// Each placed point entity is a top-level "entity" block (sibling of "world").
 	for ( const MapEntity &e : m_entities )
 	{
-		formats::KeyValueNode entity;
+		kvtext::KeyValueNode entity;
 		entity.name = "entity";
 		AddPair( entity, "id", std::to_string( id++ ) );
 		AddPair( entity, "classname", e.classname );
@@ -1105,19 +1105,19 @@ std::string EditorController::ToVmf() const
 		root.children.push_back( std::move( entity ) );
 	}
 
-	return formats::WriteKeyValues( root );
+	return kvtext::WriteKeyValues( root );
 }
 
 bool EditorController::LoadVmf( const std::string &vmfText, std::string &error )
 {
-	formats::ParseResult pr = formats::ParseKeyValues( vmfText );
+	kvtext::ParseResult pr = kvtext::ParseKeyValues( vmfText );
 	if ( !pr.ok )
 	{
 		error = pr.error;
 		return false;
 	}
 
-	const geometry::WorldScene scene = formats::BuildSceneFromDocument( pr.root );
+	const mapgeometry::WorldScene scene = vmf::BuildSceneFromDocument( pr.root );
 
 	m_brushes.clear();
 	m_entities.clear();
@@ -1133,7 +1133,7 @@ bool EditorController::LoadVmf( const std::string &vmfText, std::string &error )
 
 	// Worldspawn keyvalues (skyname and the like) are document state.
 	m_worldProperties.clear();
-	for ( const formats::KeyValueNode &block : pr.root.children )
+	for ( const kvtext::KeyValueNode &block : pr.root.children )
 	{
 		if ( block.name != "world" )
 		{
@@ -1149,7 +1149,7 @@ bool EditorController::LoadVmf( const std::string &vmfText, std::string &error )
 		break;
 	}
 
-	for ( const geometry::BrushSolid &solid : scene.solids )
+	for ( const mapgeometry::BrushSolid &solid : scene.solids )
 	{
 		if ( !solid.bounded )
 		{
@@ -1161,7 +1161,7 @@ bool EditorController::LoadVmf( const std::string &vmfText, std::string &error )
 		b.id = m_nextId++;
 		b.mins = solid.mins;
 		b.maxs = solid.maxs;
-		for ( const geometry::BrushFace &face : solid.faces )
+		for ( const mapgeometry::BrushFace &face : solid.faces )
 		{
 			b.planes.push_back( face.plane );
 			b.materials.push_back( face.material.empty() ? m_defaultMaterial : face.material );
@@ -1172,14 +1172,14 @@ bool EditorController::LoadVmf( const std::string &vmfText, std::string &error )
 	// Reconstruct placed point entities from the top-level "entity" blocks. Brush
 	// entities (blocks with a "solid" child) already contributed their geometry to
 	// the brush list above and are a later migration, so they are skipped here.
-	for ( const formats::KeyValueNode &block : pr.root.children )
+	for ( const kvtext::KeyValueNode &block : pr.root.children )
 	{
 		if ( block.name != "entity" )
 		{
 			continue;
 		}
 		bool hasSolid = false;
-		for ( const formats::KeyValueNode &child : block.children )
+		for ( const kvtext::KeyValueNode &child : block.children )
 		{
 			if ( child.name == "solid" )
 			{
@@ -1207,7 +1207,7 @@ bool EditorController::LoadVmf( const std::string &vmfText, std::string &error )
 			e.origin = Vec3d( x, y, z );
 		}
 		// Preserve every other authored key verbatim so the entity round-trips.
-		for ( const formats::KeyValue &kv : block.pairs )
+		for ( const kvtext::KeyValue &kv : block.pairs )
 		{
 			if ( kv.key == "id" || kv.key == "classname" || kv.key == "origin" )
 			{

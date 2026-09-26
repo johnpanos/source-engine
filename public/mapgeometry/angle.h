@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Angle numeric policies for the strict Hammer geometry module
-//			(RFC 0002, hammer.geometry owns "numeric policies"). Extracted from
+// Purpose: Angle numeric policies for the map geometry library
+//			(RFC 0002, world.map-geometry owns "numeric policies"). Extracted from
 //			hammer_mathlib fixang/lineangle. These preserve the legacy semantics
 //			EXACTLY, including their quirks, so that when rotation gizmos and 2D
 //			tools are later extracted they share one definition of the rule rather
@@ -9,10 +9,10 @@
 //
 //=============================================================================//
 
-#ifndef HAMMER_GEOMETRY_ANGLE_H
-#define HAMMER_GEOMETRY_ANGLE_H
+#ifndef MAPGEOMETRY_ANGLE_H
+#define MAPGEOMETRY_ANGLE_H
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 // Single-step degree normalization, preserving hammer_mathlib fixang EXACTLY:
@@ -30,6 +30,6 @@ float NormalizeAngleDegrees( float degrees );
 // segment returns 0.
 float LineAngleDegrees( float x1, float y1, float x2, float y2 );
 
-} // namespace hammer::geometry
+} // namespace mapgeometry
 
-#endif // HAMMER_GEOMETRY_ANGLE_H
+#endif // MAPGEOMETRY_ANGLE_H

@@ -21,17 +21,6 @@
     "sp_a2_bridge_intro": {
       "projector": {
         "regions": {
-          "sky": {
-            "rect": [
-              120,
-              0,
-              1024,
-              110
-            ],
-            "mean_tolerance": 24,
-            "bright_tolerance": 0.1,
-            "pins": "2D skybox sky_white (UnlitGeneric skybox/sky_white*) not drawn on native Vulkan: R_DrawSkyBox binds and emits it every frame, but no draw reaches the frame"
-          },
           "bridge": {
             "rect": [
               90,
@@ -41,6 +30,17 @@
             ],
             "mean_tolerance": 24,
             "pins": "light bridge (projected_wall_entity, SolidEnergy) drawn; the client crashed drawing it before the paint agent's c_projectedwallentity.cpp fix"
+          },
+          "void": {
+            "rect": [
+              120,
+              0,
+              1024,
+              110
+            ],
+            "mean_tolerance": 24,
+            "bright_tolerance": 0.1,
+            "pins": "the void above the chamber (no world, no sky face in view): retail shows white because its projected-texture shadow depth views (r_flashlightdepthtexture 1, CShadowDepthView) leave the clear colour white, so the main view clears to white; retail's r_drawskybox 0 keeps it white. Native Vulkan has no flashlight depth textures (r_flashlightdepthtexture 0), so the view keeps its black clear"
           }
         }
       }
@@ -166,7 +166,43 @@
           }
         }
       },
-      "floor": {}
+      "floor": {},
+      "portal_a": {
+        "regions": {
+          "portal_rim": {
+            "rect": [
+              410,
+              240,
+              610,
+              570
+            ],
+            "mean_tolerance": 20,
+            "std_ratio": [
+              0.6,
+              1.6
+            ],
+            "pins": "blue portal A 4 s after it opened: retail draws a thick soft blue glow around the rim; here a thin bright outline with flame bites (PortalRefract stage 2 flames, P2's edge effects)"
+          }
+        }
+      },
+      "portal_b": {
+        "regions": {
+          "portal_rim": {
+            "rect": [
+              420,
+              230,
+              650,
+              570
+            ],
+            "mean_tolerance": 20,
+            "std_ratio": [
+              0.6,
+              1.6
+            ],
+            "pins": "orange portal B: retail a dim soft orange ring; here a bright yellow flame rim, and the laser seen through the portal as a horizontal line (known view-through-portal laser defect)"
+          }
+        }
+      }
     },
     "sp_a4_tb_intro": {
       "emitter": {

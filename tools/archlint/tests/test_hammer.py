@@ -134,6 +134,35 @@ class InventoryTests(unittest.TestCase):
         errors = archlint.validate_inventory(self.root, MODULE_BLOCK, inventory)
         self.assertTrue(any("hammer.nowhere" in message for message in errors))
 
+    def test_capability_owner_is_accepted_when_registered(self) -> None:
+        inventory = good_inventory(self.root)
+        (self.root / "mapgeometry").mkdir()
+        (self.root / "mapgeometry/aabb.cpp").write_text("int aabb;\n")
+        record = copy.deepcopy(inventory["files"][0])
+        record.update(path="mapgeometry/aabb.cpp", currentOwner="world.map-geometry",
+                      destinationModule="world.map-geometry")
+        inventory["files"].append(record)
+        inventory["coverage"]["filesClassified"] = 2
+        self.assertEqual([], archlint.validate_inventory(
+            self.root, MODULE_BLOCK, inventory, frozenset({"world.map-geometry"})))
+        errors = archlint.validate_inventory(self.root, MODULE_BLOCK, inventory)
+        self.assertTrue(any("world.map-geometry" in message for message in errors))
+
+    def test_extracted_record_is_not_an_outside_universe_warning(self) -> None:
+        inventory = good_inventory(self.root)
+        (self.root / "mapgeometry").mkdir()
+        (self.root / "mapgeometry/aabb.cpp").write_text("int aabb;\n")
+        (self.root / "public/hammer/scene").mkdir(parents=True)
+        (self.root / "public/hammer/scene/stray.h").write_text("int stray;\n")
+        extracted = copy.deepcopy(inventory["files"][0])
+        extracted.update(path="mapgeometry/aabb.cpp", currentOwner="world.map-geometry")
+        stray = copy.deepcopy(inventory["files"][0])
+        stray.update(path="elsewhere/stray.h", currentOwner="hammer.scene")
+        inventory["files"] += [extracted, stray]
+        coverage = archlint.hammer_coverage(self.root, MODULE_BLOCK, inventory)
+        self.assertEqual(["mapgeometry/aabb.cpp"], coverage["extractedToLibraries"])
+        self.assertEqual(["elsewhere/stray.h"], coverage["classifiedOutsideUniverse"])
+
     def test_duplicate_file_is_rejected(self) -> None:
         inventory = good_inventory(self.root)
         inventory["files"].append(copy.deepcopy(inventory["files"][0]))
@@ -195,6 +224,14 @@ class MigrationTests(unittest.TestCase):
         ledger["migrations"][0]["status"] = "almost-done"
         errors = archlint.validate_migrations(self.root, MODULE_BLOCK, ledger)
         self.assertTrue(any("invalid status" in message for message in errors))
+
+    def test_capability_destination_is_accepted_when_registered(self) -> None:
+        ledger = good_migrations()
+        ledger["migrations"][1]["destinationModule"] = "world.map-geometry"
+        self.assertEqual([], archlint.validate_migrations(
+            self.root, MODULE_BLOCK, ledger, frozenset({"world.map-geometry"})))
+        errors = archlint.validate_migrations(self.root, MODULE_BLOCK, ledger)
+        self.assertTrue(any("world.map-geometry" in message for message in errors))
 
     def test_unknown_destination_module_is_rejected(self) -> None:
         ledger = good_migrations()

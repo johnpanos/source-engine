@@ -9,15 +9,15 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/displacement.h"
-#include "hammer/formats/keyvalues.h"
-#include "hammer/formats/vmf_geometry.h"
+#include "mapgeometry/displacement.h"
+#include "kvtext/keyvalues.h"
+#include "vmf/vmf_geometry.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
 
-using hammer::formats::ParseDispInfo;
+using vmf::ParseDispInfo;
 
 namespace
 {
@@ -27,7 +27,7 @@ int g_checks = 0;
 // Returns true iff 'text' (one dispinfo block) PARSES.
 bool Parses( const std::string &text )
 {
-	hammer::formats::ParseResult pr = hammer::formats::ParseKeyValues( text );
+	kvtext::ParseResult pr = kvtext::ParseKeyValues( text );
 	if ( !pr.ok || pr.root.children.empty() )
 	{
 		return false;

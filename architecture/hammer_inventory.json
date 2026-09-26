@@ -9,7 +9,7 @@
     "totalHammerCppFiles": 221,
     "totalHammerHeaderFiles": 231,
     "filesClassified": 46,
-    "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (public/hammer/geometry, hammer/core/geometry). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
+    "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
   },
   "files": [
     {
@@ -221,7 +221,7 @@
     {
       "path": "hammer/boundbox.h",
       "currentOwner": "hammer.adapters.mfc",
-      "destinationModule": "hammer.geometry",
+      "destinationModule": "world.map-geometry",
       "responsibility": "geometry",
       "effects": [
         "pure-computation"
@@ -234,7 +234,7 @@
     {
       "path": "hammer/boundbox.cpp",
       "currentOwner": "hammer.adapters.mfc",
-      "destinationModule": "hammer.geometry",
+      "destinationModule": "world.map-geometry",
       "responsibility": "geometry",
       "effects": [
         "pure-computation"
@@ -245,9 +245,9 @@
       "note": "Implements BoundBox update/intersection/snap; extract with explicit grid/tolerance policy and preserve existing precision (HAM-GEOMETRY-001)."
     },
     {
-      "path": "public/hammer/geometry/aabb.h",
-      "currentOwner": "hammer.geometry",
-      "destinationModule": "hammer.geometry",
+      "path": "public/mapgeometry/aabb.h",
+      "currentOwner": "world.map-geometry",
+      "destinationModule": "world.map-geometry",
       "responsibility": "geometry",
       "effects": [
         "pure-computation"
@@ -255,12 +255,12 @@
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
-      "note": "New strict public header: hammer::geometry::AxisAlignedBox + Vec3, extracted from BoundBox. Dependency-free (only <cstddef>); no MFC/tier0/PCH. Owns its geometric value type per the hammer.geometry contract (HAM-GEOMETRY-001)."
+      "note": "New strict public header: mapgeometry::AxisAlignedBox + Vec3, extracted from BoundBox. Dependency-free (only <cstddef>); no MFC/tier0/PCH. Owns its geometric value type per the hammer.geometry contract (HAM-GEOMETRY-001). R08-LIBS (2026-09-25): moved from hammer.geometry into the world.map-geometry library (mapgeometry/, namespace mapgeometry); record kept for provenance."
     },
     {
-      "path": "hammer/core/geometry/aabb.cpp",
-      "currentOwner": "hammer.geometry",
-      "destinationModule": "hammer.geometry",
+      "path": "mapgeometry/aabb.cpp",
+      "currentOwner": "world.map-geometry",
+      "destinationModule": "world.map-geometry",
       "responsibility": "geometry",
       "effects": [
         "pure-computation"
@@ -268,12 +268,12 @@
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
-      "note": "New strict implementation of AxisAlignedBox. Compiles headlessly under gcc and clang (-std=c++20 -Wall -Wextra -Werror); verified by unittests/hammertest/geometry/test_aabb.cpp via unittests/hammertest/run_headless.sh. SnapToGrid routes through hammer::geometry::RoundHalfAwayFromZero (rounding.h) for legacy V_rint fidelity."
+      "note": "New strict implementation of AxisAlignedBox. Compiles headlessly under gcc and clang (-std=c++20 -Wall -Wextra -Werror); verified by unittests/hammertest/geometry/test_aabb.cpp via unittests/hammertest/run_headless.sh. SnapToGrid routes through mapgeometry::RoundHalfAwayFromZero (rounding.h) for legacy V_rint fidelity. R08-LIBS (2026-09-25): moved from hammer.geometry into the world.map-geometry library (mapgeometry/, namespace mapgeometry); record kept for provenance."
     },
     {
-      "path": "public/hammer/geometry/rounding.h",
-      "currentOwner": "hammer.geometry",
-      "destinationModule": "hammer.geometry",
+      "path": "public/mapgeometry/rounding.h",
+      "currentOwner": "world.map-geometry",
+      "destinationModule": "world.map-geometry",
       "responsibility": "geometry",
       "effects": [
         "pure-computation"
@@ -281,12 +281,12 @@
       "state": "authoritative-document-data",
       "factorization": "extract",
       "evidence": "decision",
-      "note": "Named owner of the grid-rounding policy (round half away from zero), extracted from hammer_mathlib V_rint. Consumed by AxisAlignedBox::SnapToGrid; the single authoritative definition of the snap rounding rule (DRY)."
+      "note": "Named owner of the grid-rounding policy (round half away from zero), extracted from hammer_mathlib V_rint. Consumed by AxisAlignedBox::SnapToGrid; the single authoritative definition of the snap rounding rule (DRY). R08-LIBS (2026-09-25): moved from hammer.geometry into the world.map-geometry library (mapgeometry/, namespace mapgeometry); record kept for provenance."
     },
     {
-      "path": "hammer/core/geometry/rounding.cpp",
-      "currentOwner": "hammer.geometry",
-      "destinationModule": "hammer.geometry",
+      "path": "mapgeometry/rounding.cpp",
+      "currentOwner": "world.map-geometry",
+      "destinationModule": "world.map-geometry",
       "responsibility": "geometry",
       "effects": [
         "pure-computation"
@@ -294,12 +294,12 @@
       "state": "authoritative-document-data",
       "factorization": "extract",
       "evidence": "decision",
-      "note": "Verbatim port of hammer_mathlib.cpp V_rint (floor(f+0.5)/ceil(f-0.5)). Verified by unittests/hammertest/geometry/test_rounding.cpp, which pins the .5 boundaries where this differs from std::rint."
+      "note": "Verbatim port of hammer_mathlib.cpp V_rint (floor(f+0.5)/ceil(f-0.5)). Verified by unittests/hammertest/geometry/test_rounding.cpp, which pins the .5 boundaries where this differs from std::rint. R08-LIBS (2026-09-25): moved from hammer.geometry into the world.map-geometry library (mapgeometry/, namespace mapgeometry); record kept for provenance."
     },
     {
-      "path": "public/hammer/geometry/angle.h",
-      "currentOwner": "hammer.geometry",
-      "destinationModule": "hammer.geometry",
+      "path": "public/mapgeometry/angle.h",
+      "currentOwner": "world.map-geometry",
+      "destinationModule": "world.map-geometry",
       "responsibility": "geometry",
       "effects": [
         "pure-computation"
@@ -307,12 +307,12 @@
       "state": "authoritative-document-data",
       "factorization": "extract",
       "evidence": "decision",
-      "note": "Angle numeric policies (NormalizeAngleDegrees, LineAngleDegrees) extracted from hammer_mathlib fixang/lineangle. Preserves the legacy single-step wrap quirk and RAD2DEG expansion exactly; future rotation/2D tools will share this owner."
+      "note": "Angle numeric policies (NormalizeAngleDegrees, LineAngleDegrees) extracted from hammer_mathlib fixang/lineangle. Preserves the legacy single-step wrap quirk and RAD2DEG expansion exactly; future rotation/2D tools will share this owner. R08-LIBS (2026-09-25): moved from hammer.geometry into the world.map-geometry library (mapgeometry/, namespace mapgeometry); record kept for provenance."
     },
     {
-      "path": "hammer/core/geometry/angle.cpp",
-      "currentOwner": "hammer.geometry",
-      "destinationModule": "hammer.geometry",
+      "path": "mapgeometry/angle.cpp",
+      "currentOwner": "world.map-geometry",
+      "destinationModule": "world.map-geometry",
       "responsibility": "geometry",
       "effects": [
         "pure-computation"
@@ -320,7 +320,7 @@
       "state": "authoritative-document-data",
       "factorization": "extract",
       "evidence": "decision",
-      "note": "Verbatim port of fixang/lineangle. Verified by test_angle.cpp (incl. the 720->360 legacy quirk) plus a full-modulo sensitivity provider that the oracle catches."
+      "note": "Verbatim port of fixang/lineangle. Verified by test_angle.cpp (incl. the 720->360 legacy quirk) plus a full-modulo sensitivity provider that the oracle catches. R08-LIBS (2026-09-25): moved from hammer.geometry into the world.map-geometry library (mapgeometry/, namespace mapgeometry); record kept for provenance."
     },
     {
       "path": "public/hammer/scene/handle.h",
@@ -440,9 +440,9 @@
       "note": "PropertyValue implementation. Headless under gcc and clang (-Werror); verified by test_property_value.cpp plus an empty-as-unset negative provider that the oracle catches."
     },
     {
-      "path": "public/hammer/formats/keyvalues.h",
-      "currentOwner": "hammer.formats",
-      "destinationModule": "hammer.formats",
+      "path": "public/kvtext/keyvalues.h",
+      "currentOwner": "content.keyvalues-text",
+      "destinationModule": "content.keyvalues-text",
       "responsibility": "persistence",
       "effects": [
         "pure-computation"
@@ -450,12 +450,12 @@
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
-      "note": "VMF/keyvalues document model, parser, writer, and versioned semantic comparator API. Foundation for the H2 persistence slice and the HAM-CORPUS-001 comparator; preserves unknown chunks."
+      "note": "VMF/keyvalues document model, parser, writer, and versioned semantic comparator API. Foundation for the H2 persistence slice and the HAM-CORPUS-001 comparator; preserves unknown chunks. R08-LIBS (2026-09-25): moved from hammer.formats into the content.keyvalues-text library (kvtext/, namespace kvtext); record kept for provenance."
     },
     {
-      "path": "hammer/core/formats/keyvalues.cpp",
-      "currentOwner": "hammer.formats",
-      "destinationModule": "hammer.formats",
+      "path": "kvtext/keyvalues.cpp",
+      "currentOwner": "content.keyvalues-text",
+      "destinationModule": "content.keyvalues-text",
       "responsibility": "persistence",
       "effects": [
         "pure-computation"
@@ -463,7 +463,7 @@
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
-      "note": "VMF/keyvalues parser/writer/comparator. Headless under gcc and clang (-Werror); verified by test_keyvalues.cpp (parse, round-trip + unknown preservation, malformed diagnostics, comparator normalization) plus a permissive-comparator negative provider that the data-loss oracle catches."
+      "note": "VMF/keyvalues parser/writer/comparator. Headless under gcc and clang (-Werror); verified by test_keyvalues.cpp (parse, round-trip + unknown preservation, malformed diagnostics, comparator normalization) plus a permissive-comparator negative provider that the data-loss oracle catches. R08-LIBS (2026-09-25): moved from hammer.formats into the content.keyvalues-text library (kvtext/, namespace kvtext); record kept for provenance."
     },
     {
       "path": "public/hammer/ports/file_store.h",
@@ -556,7 +556,7 @@
       "state": "per-document-session-state",
       "factorization": "extract",
       "evidence": "decision",
-      "note": "Strict reusable core of MFC CUpdateHint: notify-code buckets + unioned AABB region on hammer.scene/hammer.geometry. HAM-UPDATEHINT-001, contract app.update_hint.v1."
+      "note": "Strict reusable core of MFC CUpdateHint: notify-code buckets + unioned AABB region on hammer.scene/world.map-geometry. HAM-UPDATEHINT-001, contract app.update_hint.v1."
     },
     {
       "path": "hammer/core/app/update_hint.cpp",

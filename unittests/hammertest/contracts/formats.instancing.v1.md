@@ -4,8 +4,8 @@ Module: `hammer.formats`
 Header: `public/hammer/formats/instancing.h` · Impl: `hammer/core/formats/instancing.cpp`
 Conformance: `unittests/hammertest/formats/test_instancing.cpp` (+ `_negative`)
 Migration: `HAM-INSTANCE-001`
-Depends on: `hammer.formats` (keyvalues codec), `hammer.ports` (`IFileStore`),
-`hammer.geometry` (`Vec3d`)
+Depends on: `content.keyvalues-text` (keyvalues codec), `hammer.ports` (`IFileStore`),
+`world.map-geometry` (`Vec3d`)
 
 Expands VMF `func_instance` entities: each references another VMF (`file`) placed
 at an `origin`/`angles`, and expansion loads that child through the file-store

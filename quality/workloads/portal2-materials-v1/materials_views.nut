@@ -59,6 +59,26 @@ function MV_View( name, eye, pitch, yaw, settle = 1.5 )
 	::MV.views++
 }
 
+// A view computed when it is placed: <place> returns { eye, target }.
+function MV_ViewLater( name, place, settle = 1.5 )
+{
+	QA_Do( "place " + name, function() : ( place )
+	{
+		local view = place()
+		::MV.eye <- view.eye
+		local angles = QA_AnglesTo( view.eye, view.target )
+		QA_PlaceEye( view.eye, angles.pitch, angles.yaw )
+	}, settle )
+	QA_Do( "shot " + name, function() : ( name )
+	{
+		local error = QA_Dist( QA_Player().EyePosition(), ::MV.eye )
+		QA_Check( "view." + name, error < 2.0, "eye " + QA_Vec( QA_Player().EyePosition() ) +
+		          " is " + format( "%.2f", error ) + " from " + QA_Vec( ::MV.eye ) )
+		MV_Shot( name )
+	}, 1.0 )
+	::MV.views++
+}
+
 // A view from <eye> toward the point <target>.
 function MV_ViewAt( name, eye, target, settle = 1.5 )
 {

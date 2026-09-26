@@ -1,6 +1,6 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Headless conformance test for hammer::geometry::AxisAlignedBox
+// Purpose: Headless conformance test for mapgeometry::AxisAlignedBox
 //			(RFC 0002, HAM-GEOMETRY-001). Runs on the Linux headless core profile
 //			with no MFC, tier0, GPU, or display. This is the first executable
 //			oracle for the geometry seam; it encodes the characterized BoundBox
@@ -10,16 +10,16 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/aabb.h"
+#include "mapgeometry/aabb.h"
 #include "testing/conformance_result.h"
 
 #include <cmath>
 #include <cstdio>
 
-using hammer::geometry::AxisAlignedBox;
-using hammer::geometry::kAxisZ;
-using hammer::geometry::kUninitialized;
-using hammer::geometry::Vec3;
+using mapgeometry::AxisAlignedBox;
+using mapgeometry::kAxisZ;
+using mapgeometry::kUninitialized;
+using mapgeometry::Vec3;
 
 namespace
 {

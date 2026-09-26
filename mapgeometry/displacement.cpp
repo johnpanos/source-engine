@@ -1,16 +1,16 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Implementation of hammer::geometry displacement surface construction.
-//			See public/hammer/geometry/displacement.h.
+// Purpose: Implementation of mapgeometry displacement surface construction.
+//			See public/mapgeometry/displacement.h.
 //
 //=============================================================================//
 
-#include "hammer/geometry/displacement.h"
+#include "mapgeometry/displacement.h"
 
 #include <cmath>
 #include <cstddef>
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 namespace
@@ -151,4 +151,4 @@ DisplacementSurface BuildDisplacementSurface(
 	return surface;
 }
 
-} // namespace hammer::geometry
+} // namespace mapgeometry

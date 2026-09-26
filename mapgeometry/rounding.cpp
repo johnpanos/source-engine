@@ -6,11 +6,11 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/rounding.h"
+#include "mapgeometry/rounding.h"
 
 #include <cmath>
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 float RoundHalfAwayFromZero( float value )
@@ -26,4 +26,4 @@ float RoundHalfAwayFromZero( float value )
 	return 0.0f;
 }
 
-} // namespace hammer::geometry
+} // namespace mapgeometry

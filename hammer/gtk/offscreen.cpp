@@ -10,7 +10,7 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/brush.h"
+#include "mapgeometry/brush.h"
 
 #include "renderer.h"
 
@@ -31,10 +31,10 @@
 #include "hammer/adapters/platform/disk_byte_store.h"
 #include "hammer/adapters/platform/disk_file_store.h"
 #include "hammer/app/editor_controller.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/formats/material_catalog.h"
 #include "hammer/formats/search_path_assets.h"
-#include "hammer/formats/vmf_geometry.h"
+#include "vmf/vmf_geometry.h"
 #ifdef HAMMER_KTX_PREVIEW
 #include "hammer/adapters/source/ktx2_preview.h"
 #endif
@@ -46,7 +46,7 @@ namespace
 {
 
 bool LoadSceneForScreenshot(
-    const std::string &path, hammer::geometry::WorldScene &scene, std::string &error )
+    const std::string &path, mapgeometry::WorldScene &scene, std::string &error )
 {
 	hammer::adapters::platform::DiskFileStore store;
 	std::string text;
@@ -55,13 +55,13 @@ bool LoadSceneForScreenshot(
 		error = "could not read " + path;
 		return false;
 	}
-	hammer::formats::ParseResult pr = hammer::formats::ParseKeyValues( text );
+	kvtext::ParseResult pr = kvtext::ParseKeyValues( text );
 	if ( !pr.ok )
 	{
 		error = pr.error;
 		return false;
 	}
-	scene = hammer::formats::BuildSceneFromDocument( pr.root );
+	scene = vmf::BuildSceneFromDocument( pr.root );
 	return true;
 }
 
@@ -234,7 +234,7 @@ int RenderScreenshot( const std::string &vmfPath, const std::string &outPpm, int
 		std::fprintf( stderr, "screenshot: invalid size %dx%d\n", width, height );
 		return 2;
 	}
-	hammer::geometry::WorldScene scene;
+	mapgeometry::WorldScene scene;
 	std::string error;
 	if ( !LoadSceneForScreenshot( vmfPath, scene, error ) )
 	{
@@ -308,7 +308,7 @@ int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &out
 		std::fprintf( stderr, "textured: invalid size %dx%d\n", width, height );
 		return 2;
 	}
-	hammer::geometry::WorldScene scene;
+	mapgeometry::WorldScene scene;
 	std::string error;
 	if ( !LoadSceneForScreenshot( vmfPath, scene, error ) )
 	{
@@ -412,8 +412,8 @@ namespace
 
 // Renders a prebuilt scene as the classic 2x2 quad (camera / top / front / side)
 // to a PPM. 'highlightId' tints one solid (a selected brush) like the live UI.
-int RenderQuadScene( const hammer::geometry::WorldScene &scene, const std::string &outPpm,
-    int tileW, int tileH, int highlightId, const char *tag )
+int RenderQuadScene( const mapgeometry::WorldScene &scene, const std::string &outPpm, int tileW,
+    int tileH, int highlightId, const char *tag )
 {
 	if ( tileW <= 0 || tileH <= 0 )
 	{
@@ -504,7 +504,7 @@ int RenderQuadScene( const hammer::geometry::WorldScene &scene, const std::strin
 
 int RenderQuad( const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH )
 {
-	hammer::geometry::WorldScene scene;
+	mapgeometry::WorldScene scene;
 	std::string error;
 	if ( !LoadSceneForScreenshot( vmfPath, scene, error ) )
 	{

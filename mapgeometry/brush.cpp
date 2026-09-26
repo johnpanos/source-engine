@@ -1,19 +1,19 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Implementation of the convex brush and scene geometry declared in
-//			public/hammer/geometry/brush.h (RFC 0002, hammer.geometry). See that
+//			public/mapgeometry/brush.h (RFC 0002, world.map-geometry). See that
 //			header for the contract and the outward-orientation robustness policy.
 //
 //=============================================================================//
 
-#include "hammer/geometry/brush.h"
+#include "mapgeometry/brush.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 namespace
@@ -544,4 +544,4 @@ const BrushFace *FindFaceOnPlane( const BrushSolid &solid, const Plane &plane )
 	return best;
 }
 
-} // namespace hammer::geometry
+} // namespace mapgeometry

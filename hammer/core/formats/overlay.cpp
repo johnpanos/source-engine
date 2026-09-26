@@ -17,7 +17,7 @@ namespace hammer::formats
 namespace
 {
 
-using geometry::Vec3d;
+using mapgeometry::Vec3d;
 
 bool ParseDoubles( const std::string &text, std::vector<double> &out )
 {
@@ -83,7 +83,7 @@ Vec3d Scale( const Vec3d &a, double s )
 
 } // namespace
 
-std::array<geometry::Vec3d, 4> Overlay::WorldCorners() const
+std::array<mapgeometry::Vec3d, 4> Overlay::WorldCorners() const
 {
 	std::array<Vec3d, 4> corners;
 	for ( int i = 0; i < 4; ++i )
@@ -97,7 +97,7 @@ std::array<geometry::Vec3d, 4> Overlay::WorldCorners() const
 	return corners;
 }
 
-std::optional<Overlay> ParseOverlay( const KeyValueNode &entity )
+std::optional<Overlay> ParseOverlay( const kvtext::KeyValueNode &entity )
 {
 	const std::string *cls = entity.Find( "classname" );
 	if ( cls == nullptr || *cls != "info_overlay" )
@@ -159,10 +159,10 @@ std::optional<Overlay> ParseOverlay( const KeyValueNode &entity )
 	return overlay;
 }
 
-std::vector<Overlay> ExtractOverlays( const KeyValueNode &root )
+std::vector<Overlay> ExtractOverlays( const kvtext::KeyValueNode &root )
 {
 	std::vector<Overlay> overlays;
-	for ( const KeyValueNode &block : root.children )
+	for ( const kvtext::KeyValueNode &block : root.children )
 	{
 		if ( block.name != "entity" )
 		{

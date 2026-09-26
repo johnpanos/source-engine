@@ -17,7 +17,7 @@ namespace hammer::formats
 namespace
 {
 
-using geometry::Vec3d;
+using mapgeometry::Vec3d;
 
 struct Bounds
 {
@@ -77,10 +77,10 @@ void AddPlaneBounds( const std::string &planeValue, Bounds &bounds )
 }
 
 // Bounds of a "solid" block: the union of all its side planes' points.
-Bounds SolidBounds( const KeyValueNode &solid )
+Bounds SolidBounds( const kvtext::KeyValueNode &solid )
 {
 	Bounds bounds;
-	for ( const KeyValueNode &side : solid.children )
+	for ( const kvtext::KeyValueNode &side : solid.children )
 	{
 		if ( side.name != "side" )
 		{
@@ -100,7 +100,7 @@ bool BoxesIntersect( const Vec3d &aMin, const Vec3d &aMax, const Vec3d &bMin, co
 	       aMin.z <= bMax.z && aMax.z >= bMin.z;
 }
 
-bool SolidInBox( const KeyValueNode &solid, const CordonBox &box )
+bool SolidInBox( const kvtext::KeyValueNode &solid, const CordonBox &box )
 {
 	const Bounds b = SolidBounds( solid );
 	if ( !b.valid )
@@ -130,20 +130,20 @@ bool ParseVec3( const std::string &text, Vec3d &out )
 
 } // namespace
 
-CordonResult ApplyCordon( const KeyValueNode &root, const CordonBox &box )
+CordonResult ApplyCordon( const kvtext::KeyValueNode &root, const CordonBox &box )
 {
 	CordonResult result;
 	result.document.name = root.name;
 
-	for ( const KeyValueNode &block : root.children )
+	for ( const kvtext::KeyValueNode &block : root.children )
 	{
 		if ( block.name == "world" )
 		{
 			// Keep the world's pairs and non-solid children; filter solids.
-			KeyValueNode worldOut;
+			kvtext::KeyValueNode worldOut;
 			worldOut.name = block.name;
 			worldOut.pairs = block.pairs;
-			for ( const KeyValueNode &child : block.children )
+			for ( const kvtext::KeyValueNode &child : block.children )
 			{
 				if ( child.name != "solid" )
 				{
@@ -167,7 +167,7 @@ CordonResult ApplyCordon( const KeyValueNode &root, const CordonBox &box )
 			bool keep = true;
 			Vec3d origin;
 			bool hasSolids = false;
-			for ( const KeyValueNode &child : block.children )
+			for ( const kvtext::KeyValueNode &child : block.children )
 			{
 				if ( child.name == "solid" )
 				{
@@ -183,7 +183,7 @@ CordonResult ApplyCordon( const KeyValueNode &root, const CordonBox &box )
 			else if ( hasSolids )
 			{
 				keep = false;
-				for ( const KeyValueNode &child : block.children )
+				for ( const kvtext::KeyValueNode &child : block.children )
 				{
 					if ( child.name == "solid" && SolidInBox( child, box ) )
 					{

@@ -10,7 +10,7 @@ the aggregate collected while mutating a document that records which nodes chang
 under which notify code, and the world-space region affected, for the view-update
 step. Any substitute implementation must satisfy every clause here and pass the
 shared suite. This model composes two already-extracted strict libraries
-(`hammer::geometry::AxisAlignedBox`, `hammer::scene::NodeHandle`) and has no MFC,
+(`mapgeometry::AxisAlignedBox`, `hammer::scene::NodeHandle`) and has no MFC,
 tier0, PCH, or GPU dependency.
 
 ## 1. Purpose, consumers, required vs optional
@@ -25,7 +25,7 @@ notify code, the bounded number of codes, the affected-region union, and reset.
   never resolves them. Duplicate handles are permitted (the caller's concern).
 - Notify codes are arbitrary `int`s. At most `kMaxNotifyCodes` (= 16, preserved
   from legacy `MAX_NOTIFY_CODES`) **distinct** codes may be held at once.
-- Regions are `hammer::geometry::AxisAlignedBox` in the document's world units. No
+- Regions are `mapgeometry::AxisAlignedBox` in the document's world units. No
   unit conversion is performed.
 
 ## 3. Results, error taxonomy, guarantees (success / failure / cancel)

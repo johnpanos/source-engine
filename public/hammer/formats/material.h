@@ -15,7 +15,7 @@
 #ifndef HAMMER_FORMATS_MATERIAL_H
 #define HAMMER_FORMATS_MATERIAL_H
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 
 #include <optional>
 #include <string>
@@ -28,10 +28,10 @@ namespace hammer::formats
 struct Material
 {
 	std::string shader;                 // the top-level shader block name (e.g. LightmappedGeneric)
-	std::vector<KeyValue> parameters;   // top-level $-parameters
+	std::vector<kvtext::KeyValue> parameters; // top-level $-parameters
 	bool hasProxies = false;            // a "Proxies" sub-block is present
-	std::vector<KeyValue> patchReplace; // a patch's "replace" block params (else empty)
-	std::vector<KeyValue> patchInsert;  // a patch's "insert" block params (else empty)
+	std::vector<kvtext::KeyValue> patchReplace; // a patch's "replace" block params (else empty)
+	std::vector<kvtext::KeyValue> patchInsert;  // a patch's "insert" block params (else empty)
 
 	// Case-insensitive lookup of a TOP-LEVEL parameter (VMT names ignore case).
 	const std::string *Param( const std::string &name ) const;

@@ -9,7 +9,7 @@
 //=============================================================================//
 
 #include "hammer/formats/groups.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include <algorithm>
@@ -18,7 +18,7 @@
 #include <vector>
 
 using hammer::formats::ExpandGroupSelection;
-using hammer::formats::ParseKeyValues;
+using kvtext::ParseKeyValues;
 
 namespace
 {
@@ -63,7 +63,7 @@ const char *kCyclic =
 
 int main()
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( kNested );
+	kvtext::ParseResult pr = ParseKeyValues( kNested );
 	Check( pr.ok, "nested map parses" );
 
 	// NESTED top-level resolution: selecting 10 (direct group 2) must pull in 11
@@ -83,7 +83,7 @@ int main()
 
 	// Cyclic parent chain must terminate (no infinite loop) and stay consistent.
 	{
-		hammer::formats::ParseResult pc = ParseKeyValues( kCyclic );
+		kvtext::ParseResult pc = ParseKeyValues( kCyclic );
 		Check( pc.ok, "cyclic map parses" );
 		std::vector<int> r = ExpandGroupSelection( pc.root, { 20 } );
 		Check( Has( r, 20 ), "cyclic group chain terminates and keeps the selection" );

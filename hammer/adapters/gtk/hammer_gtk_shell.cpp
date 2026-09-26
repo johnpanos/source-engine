@@ -39,7 +39,7 @@
 #include "hammer/app/entity_selection.h"
 #include "hammer/app/property_value.h"
 #include "hammer/adapters/platform/disk_file_store.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 
 #include <adwaita.h>
 #include <gtk/gtk.h>
@@ -167,7 +167,7 @@ void RebuildEntityList( HammerShell *shell )
 // core, and it reads only public accessors.
 void Refresh( HammerShell *shell )
 {
-	const std::string text = hammer::formats::WriteKeyValues( shell->document.Content() );
+	const std::string text = kvtext::WriteKeyValues( shell->document.Content() );
 	GtkTextBuffer *buffer = gtk_text_view_get_buffer( shell->content );
 	gtk_text_buffer_set_text( buffer, text.c_str(), -1 );
 

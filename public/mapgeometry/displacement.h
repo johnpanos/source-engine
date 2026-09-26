@@ -1,14 +1,14 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Headless displacement (VMF "dispinfo") geometry for the Hammer editor
-//			(RFC 0002, hammer.geometry). A displacement turns one quadrilateral
+// Purpose: Headless displacement (VMF "dispinfo") geometry for the map geometry library
+//			(RFC 0002, world.map-geometry). A displacement turns one quadrilateral
 //			brush face into a subdivided, per-vertex-offset surface -- the terrain
 //			primitive Source maps rely on. This module is the strict, MFC-free,
 //			GPU-free core: from a parsed dispinfo record it builds the displaced
 //			vertex grid + triangle list that a renderer or the scene bridge later
 //			consumes. It owns none of the presentation, and it does not read VMF:
-//			hammer.formats decodes a "dispinfo" keyvalues block into a DispInfo
-//			(public/hammer/formats/vmf_geometry.h).
+//			content.vmf decodes a "dispinfo" keyvalues block into a DispInfo
+//			(public/vmf/vmf_geometry.h).
 //
 //			The brush contract (geometry.brush.v1) deliberately excludes
 //			displacements as "a later migration"; this is that migration's core.
@@ -27,16 +27,16 @@
 //
 //=============================================================================//
 
-#ifndef HAMMER_GEOMETRY_DISPLACEMENT_H
-#define HAMMER_GEOMETRY_DISPLACEMENT_H
+#ifndef MAPGEOMETRY_DISPLACEMENT_H
+#define MAPGEOMETRY_DISPLACEMENT_H
 
-#include "hammer/geometry/brush.h" // Vec3d
+#include "mapgeometry/brush.h" // Vec3d
 
 #include <array>
 #include <optional>
 #include <vector>
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 // The parsed, validated contents of a VMF "dispinfo" block. Grids are row-major
@@ -77,6 +77,6 @@ struct DisplacementSurface
 DisplacementSurface BuildDisplacementSurface(
     const std::array<Vec3d, 4> &corners, const Vec3d &faceNormal, const DispInfo &disp );
 
-} // namespace hammer::geometry
+} // namespace mapgeometry
 
-#endif // HAMMER_GEOMETRY_DISPLACEMENT_H
+#endif // MAPGEOMETRY_DISPLACEMENT_H

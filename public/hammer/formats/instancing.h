@@ -6,8 +6,8 @@
 //			and translates its world solids and entities into the parent, and
 //			replaces the func_instance with the merged result -- the nested-prefab
 //			mechanism Source maps rely on. Strict, MFC-free, GPU-free core over the
-//			keyvalues codec (hammer.formats), the IFileStore port (hammer.ports),
-//			and the geometry Vec3d (hammer.geometry).
+//			keyvalues codec (content.keyvalues-text), the IFileStore port (hammer.ports),
+//			and the geometry Vec3d (world.map-geometry).
 //
 //			Rotation is the Source QAngle convention (pitch=Y, yaw=Z, roll=X).
 //			World solids are transformed by rotating each side plane's three points
@@ -21,7 +21,7 @@
 #ifndef HAMMER_FORMATS_INSTANCING_H
 #define HAMMER_FORMATS_INSTANCING_H
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/ports/file_store.h"
 
 #include <string>
@@ -32,9 +32,10 @@ namespace hammer::formats
 struct InstanceExpandResult
 {
 	bool ok = false;
-	KeyValueNode document; // flattened: func_instance entities replaced by transformed contents
-	std::string error;     // human-readable diagnostic when !ok
-	int expanded = 0;      // number of func_instance entities expanded (all levels)
+	// Flattened: func_instance entities replaced by their transformed contents.
+	kvtext::KeyValueNode document;
+	std::string error; // human-readable diagnostic when !ok
+	int expanded = 0;  // number of func_instance entities expanded (all levels)
 };
 
 // Expands every `func_instance` entity in 'root' (a parsed VMF document) by
@@ -45,7 +46,7 @@ struct InstanceExpandResult
 // missing/unreadable/ malformed child file is an error. On success, `document`
 // is the flattened VMF with no `func_instance` entities remaining.
 InstanceExpandResult ExpandInstances(
-    const KeyValueNode &root, ports::IFileStore &store, int maxDepth = 16 );
+    const kvtext::KeyValueNode &root, ports::IFileStore &store, int maxDepth = 16 );
 
 } // namespace hammer::formats
 

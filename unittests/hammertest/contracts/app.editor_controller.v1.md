@@ -10,7 +10,7 @@ authority** — the single owner of the core Hammer UX flows (H3/H4's "one
 selection/mutation/history owner"). The GTK desktop shell is a thin presenter that
 translates gestures/keys into these calls; the conformance UI test drives the same
 calls with simulated input, so the tested logic is the shipped logic. It depends
-only on `hammer.geometry` (brush bridge + rounding owner), `hammer.formats` (VMF
+only on `world.map-geometry` (brush bridge + rounding owner), `content.vmf` (VMF
 codec), and `hammer.app` (`DocumentHistory`): no MFC, tier0, platform.h, or GPU.
 
 ## 1. Purpose, consumers, required vs optional
@@ -42,7 +42,7 @@ entity wrapper is not yet reconstructed.
 ## 3. Tools and flows (required behavior)
 
 - **Grid snapping:** every pointer coordinate is snapped through the shared
-  `hammer::geometry::RoundHalfAwayFromZero` owner (round half away from zero) before
+  `mapgeometry::RoundHalfAwayFromZero` owner (round half away from zero) before
   use, so created/moved brush bounds land on the grid. (The `.sensitivity` suite
   proves this by catching a no-snap provider.)
 - **Block tool:** `PointerDown`→`Drag`→`Up` defines a pending rectangle in the

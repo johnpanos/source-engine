@@ -4,7 +4,7 @@ Module: `hammer.formats`
 Header: `public/hammer/formats/groups.h` · Impl: `hammer/core/formats/groups.cpp`
 Conformance: `unittests/hammertest/formats/test_groups.cpp` (+ `_negative`)
 Migration: `HAM-GROUP-001`
-Depends on: `hammer.formats` (keyvalues codec)
+Depends on: `content.keyvalues-text` (keyvalues codec)
 
 Resolves Hammer object groups: `group` blocks (with nesting via `editor.groupid`)
 and each solid's `editor.groupid` membership, so selecting one member selects its

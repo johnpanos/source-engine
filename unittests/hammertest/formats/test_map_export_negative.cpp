@@ -8,7 +8,7 @@
 //
 //=============================================================================//
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/formats/map_export.h"
 #include "testing/conformance_result.h"
 
@@ -19,7 +19,7 @@
 
 using hammer::formats::CompileOptions;
 using hammer::formats::CompilePrepResult;
-using hammer::formats::ParseKeyValues;
+using kvtext::ParseKeyValues;
 using hammer::formats::PrepareForCompile;
 
 namespace
@@ -48,7 +48,7 @@ int main()
 		const char *map = "world\n{\n\t\"classname\" \"worldspawn\"\n}\n"
 		                  "entity\n{\n\t\"classname\" \"func_instance\"\n\t\"file\" \"missing.vmf\""
 		                  "\n\t\"origin\" \"0 0 0\"\n}\n";
-		hammer::formats::ParseResult pr = ParseKeyValues( map );
+		kvtext::ParseResult pr = ParseKeyValues( map );
 		Check( pr.ok, "map parses" );
 		CompilePrepResult r = PrepareForCompile( pr.root, store, CompileOptions{} );
 		Check( !r.ok, "missing instance file fails the prepare" );
@@ -61,7 +61,7 @@ int main()
 		const char *map = "world\n{\n\t\"classname\" \"worldspawn\"\n\tsolid\n\t{\n\t\t\"id\" "
 		                  "\"1\"\n\t\tside\n\t\t{\n\t\t\t\"plane\" \"(0 0 0) (16 0 0) (16 16 0)\""
 		                  "\n\t\t}\n\t}\n}\n";
-		hammer::formats::ParseResult pr = ParseKeyValues( map );
+		kvtext::ParseResult pr = ParseKeyValues( map );
 		CompilePrepResult r = PrepareForCompile( pr.root, store, CompileOptions{} );
 		Check( r.ok, "clean map prepares ok" );
 	}

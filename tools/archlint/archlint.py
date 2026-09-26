@@ -1146,9 +1146,13 @@ def validate_module_graph(module_block: dict, external: frozenset[str] = frozens
     return errors
 
 
-def validate_inventory(root: Path, module_block: dict, inventory: dict) -> list[str]:
+def validate_inventory(
+    root: Path, module_block: dict, inventory: dict, external: frozenset[str] = frozenset()
+) -> list[str]:
+    """`external` names registered capability modules: a file extracted from the
+    editor into a lower library keeps its record (provenance) with that owner."""
     errors: list[str] = []
-    known = {module["id"] for module in module_block.get("modules", [])}
+    known = {module["id"] for module in module_block.get("modules", [])} | set(external)
     files = inventory.get("files", [])
     seen: set[str] = set()
 
@@ -1199,9 +1203,11 @@ def validate_inventory(root: Path, module_block: dict, inventory: dict) -> list[
     return errors
 
 
-def validate_migrations(root: Path, module_block: dict, migrations: dict) -> list[str]:
+def validate_migrations(
+    root: Path, module_block: dict, migrations: dict, external: frozenset[str] = frozenset()
+) -> list[str]:
     errors: list[str] = []
-    known_modules = {module["id"] for module in module_block.get("modules", [])}
+    known_modules = {module["id"] for module in module_block.get("modules", [])} | set(external)
     records = migrations.get("migrations", [])
     if migrations.get("statuses") != HAM_STATUSES:
         errors.append("migration ledger statuses do not match the canonical state machine")
@@ -1447,12 +1453,19 @@ def hammer_coverage(root: Path, module_block: dict, inventory: dict) -> dict:
     classified = [record.get("path", "") for record in inventory.get("files", [])]
     classified_set = set(classified)
     unclassified = [path for path in universe if path not in classified_set]
-    classified_outside = sorted(classified_set - universe_set)
+    hammer_ids = {module["id"] for module in module_block.get("modules", [])}
+    extracted = {
+        record.get("path", "")
+        for record in inventory.get("files", [])
+        if record.get("currentOwner") not in hammer_ids
+    }
+    classified_outside = sorted(classified_set - universe_set - extracted)
     return {
         "universeCount": len(universe),
         "classifiedCount": len(classified_set & universe_set),
         "unclassified": unclassified,
         "classifiedOutsideUniverse": classified_outside,
+        "extractedToLibraries": sorted(extracted),
         "authoredTotal": inventory.get("coverage", {}).get("totalHammerSourceFiles"),
     }
 
@@ -1487,6 +1500,9 @@ def hammer_coverage_command(root: Path, manifest: dict, args: argparse.Namespace
         )
     for path in coverage["classifiedOutsideUniverse"]:
         print(f"  warning: classified file is outside the hammer source universe: {path}")
+    if coverage["extractedToLibraries"]:
+        print(f"  {len(coverage['extractedToLibraries'])} classified file(s) were extracted into "
+              "capability libraries; their records keep provenance")
 
     groups: Counter[str] = Counter(
         _first_hint(path, RESPONSIBILITY_HINTS) or DEFAULT_RESPONSIBILITY for path in unclassified
@@ -1625,10 +1641,16 @@ def hammer_command(root: Path, manifest: dict) -> int:
     )
 
     inventory = _load_json(root, "architecture/hammer_inventory.json")
-    errors.extend(f"[inventory] {message}" for message in validate_inventory(root, module_block, inventory))
+    errors.extend(
+        f"[inventory] {message}"
+        for message in validate_inventory(root, module_block, inventory, capabilities)
+    )
 
     migrations = _load_json(root, "architecture/hammer_migrations.json")
-    errors.extend(f"[migrations] {message}" for message in validate_migrations(root, module_block, migrations))
+    errors.extend(
+        f"[migrations] {message}"
+        for message in validate_migrations(root, module_block, migrations, capabilities)
+    )
 
     compatibility = _load_json(root, "architecture/hammer_compatibility.json")
     errors.extend(f"[compatibility] {message}" for message in validate_compatibility(compatibility))

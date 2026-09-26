@@ -4,7 +4,7 @@ Module: `hammer.formats`
 Header: `public/hammer/formats/material.h` · Impl: `hammer/core/formats/material.cpp`
 Conformance: `unittests/hammertest/formats/test_material.cpp` (+ `_negative`)
 Migration: `HAM-MATERIAL-001`
-Depends on: `hammer.formats` (keyvalues codec)
+Depends on: `content.keyvalues-text` (keyvalues codec)
 
 Parses a VMT material *definition* — the shader name, its parameters, and whether
 it carries proxies or is a patch — the material metadata the editor and renderer

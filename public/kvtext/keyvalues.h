@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: VMF/keyvalues document model, parser, writer, and semantic comparator
-//			(RFC 0002, hammer.formats). Source's VMF is a nested keyvalues text
+//			(RFC 0002, content.keyvalues-text). Source's VMF is a nested keyvalues text
 //			format: named blocks containing quoted "key" "value" pairs and child
 //			blocks. This is the dependency-free foundation for the H2 persistence
 //			slice and the HAM-CORPUS-001 versioned semantic comparator: no MFC,
@@ -13,14 +13,14 @@
 //
 //=============================================================================//
 
-#ifndef HAMMER_FORMATS_KEYVALUES_H
-#define HAMMER_FORMATS_KEYVALUES_H
+#ifndef KVTEXT_KEYVALUES_H
+#define KVTEXT_KEYVALUES_H
 
 #include <cstddef>
 #include <string>
 #include <vector>
 
-namespace hammer::formats
+namespace kvtext
 {
 
 struct KeyValue
@@ -74,6 +74,6 @@ struct CompareResult
 // discards a field to force a match.
 CompareResult CompareKeyValues( const KeyValueNode &a, const KeyValueNode &b );
 
-} // namespace hammer::formats
+} // namespace kvtext
 
-#endif // HAMMER_FORMATS_KEYVALUES_H
+#endif // KVTEXT_KEYVALUES_H

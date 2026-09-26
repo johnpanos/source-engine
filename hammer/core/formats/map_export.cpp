@@ -15,7 +15,7 @@ namespace hammer::formats
 {
 
 CompilePrepResult PrepareForCompile(
-    const KeyValueNode &root, ports::IFileStore &store, const CompileOptions &options )
+    const kvtext::KeyValueNode &root, ports::IFileStore &store, const CompileOptions &options )
 {
 	CompilePrepResult result;
 

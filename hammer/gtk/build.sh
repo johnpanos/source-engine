@@ -46,12 +46,12 @@ fi
 # and the shared services it composes, plus the DiskFileStore adapter for file I/O.
 CORE="\
 $ROOT/hammer/core/app/editor_controller.cpp \
-$ROOT/hammer/core/geometry/brush.cpp \
-$ROOT/hammer/core/geometry/displacement.cpp \
-$ROOT/hammer/core/geometry/rounding.cpp \
-$ROOT/hammer/core/geometry/texture_axes.cpp \
-$ROOT/hammer/core/formats/keyvalues.cpp \
-$ROOT/hammer/core/formats/vmf_geometry.cpp \
+$ROOT/mapgeometry/brush.cpp \
+$ROOT/mapgeometry/displacement.cpp \
+$ROOT/mapgeometry/rounding.cpp \
+$ROOT/mapgeometry/texture_axes.cpp \
+$ROOT/kvtext/keyvalues.cpp \
+$ROOT/vmf/vmf_geometry.cpp \
 $ROOT/hammer/core/formats/vpk_archive.cpp \
 $ROOT/hammer/core/formats/vtf_image.cpp \
 $ROOT/hammer/core/formats/material.cpp \

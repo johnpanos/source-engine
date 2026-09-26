@@ -26,9 +26,9 @@ std::string Lower( std::string s )
 }
 
 // Case-insensitive lookup of a key's value among an entity's top-level pairs.
-const std::string *FindKeyCI( const KeyValueNode &entity, const std::string &loweredKey )
+const std::string *FindKeyCI( const kvtext::KeyValueNode &entity, const std::string &loweredKey )
 {
-	for ( const KeyValue &kv : entity.pairs )
+	for ( const kvtext::KeyValue &kv : entity.pairs )
 	{
 		if ( Lower( kv.key ) == loweredKey )
 		{
@@ -41,7 +41,7 @@ const std::string *FindKeyCI( const KeyValueNode &entity, const std::string &low
 } // namespace
 
 EntityPropertySheet BuildPropertySheet(
-    const KeyValueNode &entity, const std::vector<EntityClass> &fgdClasses )
+    const kvtext::KeyValueNode &entity, const std::vector<EntityClass> &fgdClasses )
 {
 	EntityPropertySheet sheet;
 	if ( const std::string *cls = entity.Find( "classname" ) )
@@ -74,7 +74,7 @@ EntityPropertySheet BuildPropertySheet(
 
 	// Extra keys the entity carries that the schema does not declare. Meta keys
 	// ("classname", "id") are not shown; the "editor" block is a child, not a pair.
-	for ( const KeyValue &kv : entity.pairs )
+	for ( const kvtext::KeyValue &kv : entity.pairs )
 	{
 		const std::string lkey = Lower( kv.key );
 		if ( lkey == "classname" || lkey == "id" )

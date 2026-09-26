@@ -15,7 +15,7 @@
 #define HAMMER_FORMATS_ENTITY_PROPERTY_SHEET_H
 
 #include "hammer/formats/fgd.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 
 #include <string>
 #include <vector>
@@ -49,7 +49,7 @@ struct EntityPropertySheet
 // extra keys the entity has that the schema does not declare (isSet, !inSchema).
 // The meta keys "classname", "id", and the "editor" block are not rows.
 EntityPropertySheet BuildPropertySheet(
-    const KeyValueNode &entity, const std::vector<EntityClass> &fgdClasses );
+    const kvtext::KeyValueNode &entity, const std::vector<EntityClass> &fgdClasses );
 
 } // namespace hammer::formats
 

@@ -9,7 +9,7 @@
 //=============================================================================//
 
 #include "hammer/formats/cordon.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
@@ -18,9 +18,9 @@
 using hammer::formats::ApplyCordon;
 using hammer::formats::CordonBox;
 using hammer::formats::CordonResult;
-using hammer::formats::KeyValueNode;
-using hammer::formats::ParseKeyValues;
-using hammer::geometry::Vec3d;
+using kvtext::KeyValueNode;
+using kvtext::ParseKeyValues;
+using mapgeometry::Vec3d;
 
 namespace
 {
@@ -60,7 +60,7 @@ std::string PointEntity( const char *classname, const char *origin )
 
 CordonResult Run( const std::string &vmf, const CordonBox &box )
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( vmf );
+	kvtext::ParseResult pr = ParseKeyValues( vmf );
 	++g_checks;
 	if ( !pr.ok )
 	{

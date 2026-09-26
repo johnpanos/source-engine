@@ -37,7 +37,7 @@ def build(bld):
 			'../../hammer/core/formats/material_catalog.cpp',
 			'../../hammer/core/formats/material.cpp',
 			'../../hammer/core/formats/vtf_image.cpp',
-			'../../hammer/core/formats/keyvalues.cpp'
+			'../../kvtext/keyvalues.cpp'
 		],
 		target='hammer_ktx2_preview_conformance',
 		name='hammer_ktx2_preview_conformance',

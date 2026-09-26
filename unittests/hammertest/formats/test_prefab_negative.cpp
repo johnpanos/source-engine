@@ -8,7 +8,7 @@
 //
 //=============================================================================//
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/formats/prefab.h"
 #include "testing/conformance_result.h"
 
@@ -17,8 +17,8 @@
 #include <string>
 
 using hammer::formats::InstantiatePrefab;
-using hammer::formats::KeyValueNode;
-using hammer::formats::ParseKeyValues;
+using kvtext::KeyValueNode;
+using kvtext::ParseKeyValues;
 using hammer::formats::Placement;
 using hammer::formats::PrefabInstance;
 
@@ -85,7 +85,7 @@ const char *kPrefab =
 
 PrefabInstance Instantiate( const Placement &at )
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( kPrefab );
+	kvtext::ParseResult pr = ParseKeyValues( kPrefab );
 	Check( pr.ok, "prefab fixture parses" );
 	return InstantiatePrefab( pr.root, at );
 }

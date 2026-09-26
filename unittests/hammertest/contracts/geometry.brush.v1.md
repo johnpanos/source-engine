@@ -1,17 +1,17 @@
 # Contract: `geometry.brush.v1`
 
-Module: `hammer.geometry` · Types: `hammer::geometry::Plane`, `BrushFace`, `BrushSolid`, `WorldScene`
-Header: `public/hammer/geometry/brush.h` · Impl: `hammer/core/geometry/brush.cpp`
-VMF decoder (`hammer.formats`): `hammer::formats::BuildSolidFromBlock`,
-`BuildSceneFromDocument` in `public/hammer/formats/vmf_geometry.h` ·
-`hammer/core/formats/vmf_geometry.cpp`
+Module: `world.map-geometry` · Types: `mapgeometry::Plane`, `BrushFace`, `BrushSolid`, `WorldScene`
+Header: `public/mapgeometry/brush.h` · Impl: `mapgeometry/brush.cpp`
+VMF decoder (`content.vmf`): `vmf::BuildSolidFromBlock`,
+`BuildSceneFromDocument` in `public/vmf/vmf_geometry.h` ·
+`vmf/vmf_geometry.cpp`
 Conformance suite: `unittests/hammertest/geometry/test_brush.cpp`
 Migration: `HAM-GEOMETRY-001`
 
 This is the RFC 0002 required contract record for the headless VMF → convex brush
 geometry bridge — the renderable form of a Source brush that the GTK desktop shell
 and any viewport consume. The geometry module depends only on the C++ standard
-library; the keyvalues decoding lives in `hammer.formats`, which depends on
+library; the keyvalues decoding lives in `content.vmf`, which depends on
 geometry and not the reverse. Neither uses MFC, tier0, platform.h, PCH, or GPU.
 Any substitute implementation must satisfy every clause here and pass the shared
 suite.
@@ -98,4 +98,4 @@ summary). All capabilities below are **required**; there are no optional ones in
 
 `v1` covers brush (plane) geometry only. Displacements, texture UV/lightmap axes,
 and non-planar side data are preserved verbatim in the keyvalues tree by
-`hammer.formats` but are **not** part of this contract; they are later migrations.
+`content.keyvalues-text` but are **not** part of this contract; they are later migrations.

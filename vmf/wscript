@@ -1,0 +1,34 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# VMF codec (content.vmf): decodes VMF solids, sides and displacements into
+# map geometry and owns the shared QAngle placement transform, over the
+# kvtext codec and the mapgeometry library. A strict, portable
+# C++20 static library (R08-LIBS, layered format libraries): no tier0/tier1,
+# no application header. The editor, compile tools and engine compose it;
+# it never depends on them. Its dialect is declared in
+# quality/toolchain/policy.json and its permissions in architecture/modules.json.
+
+top = '.'
+PROJECT_NAME = 'vmf'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'vmf_geometry.cpp', 'vmf_transform.cpp' ],
+		target    = PROJECT_NAME,
+		name      = PROJECT_NAME,
+		arch_module = 'content.vmf',
+		features  = 'cxx capability_strict',
+		includes  = [ '../public' ],
+		defines   = [],
+		use       = [ 'kvtext', 'mapgeometry' ],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

@@ -1,6 +1,6 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Conformance oracle for hammer::geometry displacement parsing + surface
+// Purpose: Conformance oracle for mapgeometry displacement parsing + surface
 //			construction (geometry.displacement.v1). Drives ParseDispInfo through
 //			the real hammer::formats keyvalues codec and checks BuildDisplacementSurface
 //			against analytical expectations: grid sizes, flat-surface bilinear
@@ -10,9 +10,9 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/displacement.h"
-#include "hammer/formats/keyvalues.h"
-#include "hammer/formats/vmf_geometry.h"
+#include "mapgeometry/displacement.h"
+#include "kvtext/keyvalues.h"
+#include "vmf/vmf_geometry.h"
 #include "testing/conformance_result.h"
 
 #include <array>
@@ -20,11 +20,11 @@
 #include <cstdio>
 #include <string>
 
-using hammer::formats::ParseDispInfo;
-using hammer::geometry::BuildDisplacementSurface;
-using hammer::geometry::DispInfo;
-using hammer::geometry::DisplacementSurface;
-using hammer::geometry::Vec3d;
+using vmf::ParseDispInfo;
+using mapgeometry::BuildDisplacementSurface;
+using mapgeometry::DispInfo;
+using mapgeometry::DisplacementSurface;
+using mapgeometry::Vec3d;
 
 namespace
 {
@@ -92,7 +92,7 @@ std::string MakeDispInfo( int power, const char *start, double nz, double dist )
 // Parses text holding one dispinfo block and returns the parsed DispInfo.
 bool ParseText( const std::string &text, DispInfo &out )
 {
-	hammer::formats::ParseResult pr = hammer::formats::ParseKeyValues( text );
+	kvtext::ParseResult pr = kvtext::ParseKeyValues( text );
 	if ( !pr.ok || pr.root.children.empty() )
 	{
 		return false;

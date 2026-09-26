@@ -30,6 +30,33 @@
         ]
       },
       {
+        "id": "world.map-geometry",
+        "paths": [
+          "public/mapgeometry/",
+          "mapgeometry/"
+        ],
+        "allowedEdges": []
+      },
+      {
+        "id": "content.keyvalues-text",
+        "paths": [
+          "public/kvtext/",
+          "kvtext/"
+        ],
+        "allowedEdges": []
+      },
+      {
+        "id": "content.vmf",
+        "paths": [
+          "public/vmf/",
+          "vmf/"
+        ],
+        "allowedEdges": [
+          "content.keyvalues-text",
+          "world.map-geometry"
+        ]
+      },
+      {
         "id": "content.texture-contract",
         "paths": [
           "public/texturecontainer/"
@@ -78,7 +105,8 @@
         ],
         "allowedEdges": [
           "content.texture-contract",
-          "content.ktx2-reader"
+          "content.ktx2-reader",
+          "content.keyvalues-text"
         ],
         "legacyIncludes": [
           "hammer/formats/material_catalog.h"
@@ -662,6 +690,7 @@
       "array",
       "atomic",
       "cassert",
+      "cctype",
       "chrono",
       "climits",
       "cmath",
@@ -718,6 +747,18 @@
       },
       "platform_posix_legacyabi": {
         "allowedUse": []
+      },
+      "mapgeometry": {
+        "allowedUse": []
+      },
+      "kvtext": {
+        "allowedUse": []
+      },
+      "vmf": {
+        "allowedUse": [
+          "kvtext",
+          "mapgeometry"
+        ]
       }
     },
     "targetOwners": {
@@ -1348,17 +1389,11 @@
     "legacyHost": "hammer.adapters.mfc",
     "modules": [
       {
-        "id": "hammer.geometry",
-        "strict": true,
-        "owns": "Geometric values, algorithms, numeric policies",
-        "allowedEdges": []
-      },
-      {
         "id": "hammer.scene",
         "strict": true,
         "owns": "Content graph, typed IDs, document metadata, invariants",
         "allowedEdges": [
-          "hammer.geometry"
+          "world.map-geometry"
         ]
       },
       {
@@ -1366,19 +1401,21 @@
         "strict": true,
         "owns": "Asset, persistence, job, and external-service contracts",
         "allowedEdges": [
-          "hammer.geometry",
+          "world.map-geometry",
           "hammer.scene"
         ]
       },
       {
         "id": "hammer.formats",
         "strict": true,
-        "owns": "VMF/MAP/RMF codecs and format validation",
+        "owns": "Editor format features (FGD, VPK/VTF/VMT, cordon, instancing, prefab, overlay, visgroups, export) over the content.keyvalues-text and content.vmf codecs",
         "allowedEdges": [
-          "hammer.geometry",
+          "world.map-geometry",
           "hammer.scene",
           "hammer.ports",
-          "render.contracts"
+          "render.contracts",
+          "content.keyvalues-text",
+          "content.vmf"
         ]
       },
       {
@@ -1386,7 +1423,7 @@
         "strict": true,
         "owns": "Sessions, queries, edit transactions, history, save/build orchestration",
         "allowedEdges": [
-          "hammer.geometry",
+          "world.map-geometry",
           "hammer.scene",
           "hammer.ports",
           "foundation"
@@ -1397,7 +1434,7 @@
         "strict": true,
         "owns": "Projection, picking queries, presentation extraction, render contracts",
         "allowedEdges": [
-          "hammer.geometry",
+          "world.map-geometry",
           "hammer.scene",
           "hammer.ports"
         ]
@@ -1407,7 +1444,7 @@
         "strict": true,
         "owns": "Gesture state machines and edit/overlay production",
         "allowedEdges": [
-          "hammer.geometry",
+          "world.map-geometry",
           "hammer.scene",
           "hammer.ports",
           "hammer.app",
@@ -1434,7 +1471,7 @@
           "hammer.ports",
           "hammer.viewport",
           "hammer.scene",
-          "hammer.geometry"
+          "world.map-geometry"
         ]
       },
       {
@@ -1456,8 +1493,9 @@
           "hammer.viewport",
           "hammer.ports",
           "hammer.scene",
-          "hammer.geometry",
-          "hammer.formats"
+          "world.map-geometry",
+          "hammer.formats",
+          "content.keyvalues-text"
         ]
       },
       {
@@ -1471,8 +1509,10 @@
           "hammer.viewport",
           "hammer.ports",
           "hammer.scene",
-          "hammer.geometry",
-          "hammer.adapters.platform"
+          "world.map-geometry",
+          "hammer.adapters.platform",
+          "content.keyvalues-text",
+          "content.vmf"
         ]
       },
       {
@@ -1490,7 +1530,7 @@
         "strict": false,
         "owns": "Provider selection, wiring, startup/shutdown",
         "allowedEdges": [
-          "hammer.geometry",
+          "world.map-geometry",
           "hammer.scene",
           "hammer.ports",
           "hammer.formats",
@@ -1502,7 +1542,9 @@
           "hammer.adapters.platform",
           "hammer.adapters.mfc",
           "hammer.adapters.gtk",
-          "hammer.interop.gtk_source"
+          "hammer.interop.gtk_source",
+          "content.keyvalues-text",
+          "content.vmf"
         ]
       }
     ],
@@ -1537,21 +1579,21 @@
     "includeExceptions": [
       {
         "path": "public/hammer/app/editor_document.h",
-        "dependency": "hammer.formats",
+        "dependency": "content.keyvalues-text",
         "count": 1,
-        "reason": "EditorDocument stores formats::KeyValueNode snapshots and the controller parses and writes VMF directly.",
+        "reason": "EditorDocument stores kvtext::KeyValueNode snapshots, so the app selects the keyvalues text codec directly.",
         "owner": "R22",
         "tracking": "RFC/0002-progress.md#current-state-2026-09-25",
-        "removal": "EditorDocument's content and the controller's VMF read/write go through a hammer.ports persistence contract that hammer.formats implements (RFC 0002: app consumes persistence ports and does not select codecs)."
+        "removal": "EditorDocument's content and the controller's VMF read/write go through a hammer.ports persistence contract that hammer.formats implements over content.vmf and content.keyvalues-text (RFC 0002: app consumes persistence ports and does not select codecs)."
       },
       {
         "path": "hammer/core/app/editor_controller.cpp",
-        "dependency": "hammer.formats",
+        "dependency": "content.vmf",
         "count": 1,
-        "reason": "EditorDocument stores formats::KeyValueNode snapshots and the controller parses and writes VMF directly.",
+        "reason": "The controller parses VMF and builds its scene with vmf::BuildSceneFromDocument directly.",
         "owner": "R22",
         "tracking": "RFC/0002-progress.md#current-state-2026-09-25",
-        "removal": "EditorDocument's content and the controller's VMF read/write go through a hammer.ports persistence contract that hammer.formats implements (RFC 0002: app consumes persistence ports and does not select codecs)."
+        "removal": "EditorDocument's content and the controller's VMF read/write go through a hammer.ports persistence contract that hammer.formats implements over content.vmf and content.keyvalues-text (RFC 0002: app consumes persistence ports and does not select codecs)."
       }
     ]
   }

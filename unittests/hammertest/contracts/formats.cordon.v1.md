@@ -4,7 +4,7 @@ Module: `hammer.formats`
 Header: `public/hammer/formats/cordon.h` · Impl: `hammer/core/formats/cordon.cpp`
 Conformance: `unittests/hammertest/formats/test_cordon.cpp` (+ `_negative`)
 Migration: `HAM-CORDON-001`
-Depends on: `hammer.formats` (keyvalues codec), `hammer.geometry` (`Vec3d`)
+Depends on: `content.keyvalues-text` (keyvalues codec), `world.map-geometry` (`Vec3d`)
 
 Filters a VMF document to a cordon box — the world-space bounds that restrict
 which geometry a partial compile/export includes (Hammer's "cordon tools").

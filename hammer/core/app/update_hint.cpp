@@ -23,7 +23,7 @@ void UpdateHint::Reset()
 	m_updateRegion.ResetBounds();
 }
 
-void UpdateHint::PreUpdate( const geometry::AxisAlignedBox &affectedBounds )
+void UpdateHint::PreUpdate( const mapgeometry::AxisAlignedBox &affectedBounds )
 {
 	m_updateRegion.UpdateBounds( affectedBounds );
 }
@@ -48,8 +48,8 @@ UpdateHint::NotifyBucket *UpdateHint::BucketFor( int code )
 	return &m_buckets.back();
 }
 
-bool UpdateHint::PostUpdate( scene::NodeHandle node, int notifyCode,
-							 const geometry::AxisAlignedBox &affectedBounds )
+bool UpdateHint::PostUpdate(
+    scene::NodeHandle node, int notifyCode, const mapgeometry::AxisAlignedBox &affectedBounds )
 {
 	NotifyBucket *bucket = BucketFor( notifyCode );
 	if ( bucket == nullptr )

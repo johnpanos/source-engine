@@ -25,7 +25,7 @@ SOURCES = [
     ROOT / "hammer/core/formats/vpk_archive.cpp",
     ROOT / "hammer/core/formats/vtf_image.cpp",
     ROOT / "hammer/core/formats/material.cpp",
-    ROOT / "hammer/core/formats/keyvalues.cpp",
+    ROOT / "kvtext/keyvalues.cpp",
     ROOT / "public/render/pbr_material_schema.h",
 ]
 SUPPORTED_SHADERS = {"lightmappedgeneric", "vertexlitgeneric"}

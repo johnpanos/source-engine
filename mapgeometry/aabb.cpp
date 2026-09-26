@@ -1,17 +1,17 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Implementation of the strict Hammer geometry AABB (RFC 0002). Ported
+// Purpose: Implementation of the map geometry AABB (RFC 0002). Ported
 //			from hammer/BoundBox.cpp with identical float arithmetic and operation
 //			order. No PCH, no tier0, no MFC: this translation unit compiles on the
 //			Linux headless core profile with only the C++ standard library.
 //
 //=============================================================================//
 
-#include "hammer/geometry/aabb.h"
+#include "mapgeometry/aabb.h"
 
-#include "hammer/geometry/rounding.h"
+#include "mapgeometry/rounding.h"
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 namespace
@@ -221,4 +221,4 @@ void AxisAlignedBox::Rotate90( int axis )
 	maxs[e2] = tmp2;
 }
 
-} // namespace hammer::geometry
+} // namespace mapgeometry

@@ -20,7 +20,7 @@
 
 #include "hammer/adapters/platform/disk_file_store.h"
 #include "hammer/app/editor_document.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 
 #include <cstdio>
 #include <filesystem>

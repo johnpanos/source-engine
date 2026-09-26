@@ -30,7 +30,7 @@ $CXX -std=c++20 -Wall -Wextra $(pkg-config --cflags gtk4 libadwaita-1) -I public
   hammer/core/app/property_value.cpp \
   hammer/core/app/document_history.cpp \
   hammer/core/app/save_orchestrator.cpp \
-  hammer/core/formats/keyvalues.cpp \
+  kvtext/keyvalues.cpp \
   $(pkg-config --libs gtk4 libadwaita-1) -o "$OUT"
 
 echo "built thin GTK sibling: $OUT"

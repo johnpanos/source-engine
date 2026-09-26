@@ -5,11 +5,11 @@
 //
 //=============================================================================//
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 
 #include <algorithm>
 
-namespace hammer::formats
+namespace kvtext
 {
 
 const std::string *KeyValueNode::Find( const std::string &key ) const
@@ -343,4 +343,4 @@ CompareResult CompareKeyValues( const KeyValueNode &a, const KeyValueNode &b )
 	return result;
 }
 
-} // namespace hammer::formats
+} // namespace kvtext

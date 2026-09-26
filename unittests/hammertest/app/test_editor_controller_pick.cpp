@@ -23,7 +23,7 @@
 #include <string>
 
 using hammer::app::EditorController;
-using hammer::geometry::Vec3d;
+using mapgeometry::Vec3d;
 
 namespace
 {

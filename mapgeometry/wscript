@@ -1,0 +1,35 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# Map geometry (world.map-geometry): brush planes and solids, displacement
+# surfaces, bounding boxes, texture axes and the grid-rounding and angle
+# policies, with no format dependency. A strict, portable
+# C++20 static library (R08-LIBS, layered format libraries): no tier0/tier1,
+# no application header. The editor, compile tools and engine compose it;
+# it never depends on them. Its dialect is declared in
+# quality/toolchain/policy.json and its permissions in architecture/modules.json.
+
+top = '.'
+PROJECT_NAME = 'mapgeometry'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'aabb.cpp', 'angle.cpp', 'brush.cpp', 'displacement.cpp', 'rounding.cpp',
+		              'texture_axes.cpp' ],
+		target    = PROJECT_NAME,
+		name      = PROJECT_NAME,
+		arch_module = 'world.map-geometry',
+		features  = 'cxx capability_strict',
+		includes  = [ '../public' ],
+		defines   = [],
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

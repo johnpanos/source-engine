@@ -37,9 +37,9 @@ bool ParseInt( const std::string &text, int &out )
 }
 
 // Reads "groupid" from an object's "editor" sub-block (0 when absent/malformed).
-int EditorGroupId( const KeyValueNode &object )
+int EditorGroupId( const kvtext::KeyValueNode &object )
 {
-	for ( const KeyValueNode &child : object.children )
+	for ( const kvtext::KeyValueNode &child : object.children )
 	{
 		if ( child.name != "editor" )
 		{
@@ -57,7 +57,7 @@ int EditorGroupId( const KeyValueNode &object )
 	return 0;
 }
 
-int ObjectId( const KeyValueNode &object )
+int ObjectId( const kvtext::KeyValueNode &object )
 {
 	if ( const std::string *id = object.Find( "id" ) )
 	{
@@ -106,16 +106,16 @@ int GroupTable::TopLevelGroupOfSolid( int solidId ) const
 	return TopLevelGroup( it->second );
 }
 
-GroupTable ParseGroups( const KeyValueNode &root )
+GroupTable ParseGroups( const kvtext::KeyValueNode &root )
 {
 	GroupTable table;
-	for ( const KeyValueNode &block : root.children )
+	for ( const kvtext::KeyValueNode &block : root.children )
 	{
 		if ( block.name != "world" )
 		{
 			continue;
 		}
-		for ( const KeyValueNode &child : block.children )
+		for ( const kvtext::KeyValueNode &child : block.children )
 		{
 			if ( child.name == "group" )
 			{
@@ -139,7 +139,7 @@ GroupTable ParseGroups( const KeyValueNode &root )
 }
 
 std::vector<int> ExpandGroupSelection(
-    const KeyValueNode &root, const std::vector<int> &selectedSolidIds )
+    const kvtext::KeyValueNode &root, const std::vector<int> &selectedSolidIds )
 {
 	const GroupTable table = ParseGroups( root );
 

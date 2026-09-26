@@ -48,7 +48,7 @@
       "runtime": [
         "Wine (WINEDEBUG=-all)"
       ],
-      "note": "Legacy-vs-extracted parity with the REAL Microsoft compiler: the unmodified legacy hammer/boundbox.cpp is compiled against the real mathlib/vector.h and linked with the extracted hammer::geometry::AxisAlignedBox; every observable operation is byte-identical, including the SnapToGrid .5-boundary that pins V_rint's round-half-away-from-zero. A mutant re-introducing std::rint round-half-to-even is caught (exit 1), proving the oracle sound. This proves the extracted library reproduces the actual legacy code compiled by the actual MSVC toolchain, one step beyond the MinGW self-parity of windows-pe-core. Evidence: architecture/hammer_legacy_parity.json; run via scratchpad legacy-parity/run_legacy_parity.sh."
+      "note": "Legacy-vs-extracted parity with the REAL Microsoft compiler: the unmodified legacy hammer/boundbox.cpp is compiled against the real mathlib/vector.h and linked with the extracted mapgeometry::AxisAlignedBox; every observable operation is byte-identical, including the SnapToGrid .5-boundary that pins V_rint's round-half-away-from-zero. A mutant re-introducing std::rint round-half-to-even is caught (exit 1), proving the oracle sound. This proves the extracted library reproduces the actual legacy code compiled by the actual MSVC toolchain, one step beyond the MinGW self-parity of windows-pe-core. Evidence: architecture/hammer_legacy_parity.json; run via scratchpad legacy-parity/run_legacy_parity.sh."
     },
     {
       "id": "windows-mfc-sibling",

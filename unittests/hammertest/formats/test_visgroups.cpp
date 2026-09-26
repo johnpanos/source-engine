@@ -8,7 +8,7 @@
 //
 //=============================================================================//
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/formats/visgroups.h"
 #include "testing/conformance_result.h"
 
@@ -17,7 +17,7 @@
 #include <vector>
 
 using hammer::formats::ApplyVisGroupFilter;
-using hammer::formats::ParseKeyValues;
+using kvtext::ParseKeyValues;
 using hammer::formats::ParseVisGroups;
 using hammer::formats::VisGroup;
 using hammer::formats::VisGroupFilterResult;
@@ -61,7 +61,7 @@ const char *kMap =
 
 void TestParseTree()
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( kMap );
+	kvtext::ParseResult pr = ParseKeyValues( kMap );
 	Check( pr.ok, "map parses" );
 	std::vector<VisGroup> tree = ParseVisGroups( pr.root );
 	Check( tree.size() == 2, "two top-level visgroups (Detail, Lights)" );
@@ -77,7 +77,7 @@ void TestParseTree()
 
 void TestHideParentHidesChildMembers()
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( kMap );
+	kvtext::ParseResult pr = ParseKeyValues( kMap );
 	// Hide "Detail" (1); its child "Trees" (2) is expanded in, so solid A (in 2) hides.
 	VisGroupFilterResult r = ApplyVisGroupFilter( pr.root, { 1 } );
 	Check( r.hiddenObjects == 1, "hiding Detail hides the one Trees member (descendant expand)" );
@@ -86,7 +86,7 @@ void TestHideParentHidesChildMembers()
 
 void TestHideLeaf()
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( kMap );
+	kvtext::ParseResult pr = ParseKeyValues( kMap );
 	// Hide "Lights" (3): solid B and the light entity hide.
 	VisGroupFilterResult r = ApplyVisGroupFilter( pr.root, { 3 } );
 	Check( r.hiddenObjects == 2, "hiding Lights hides solid B and the light entity" );
@@ -95,7 +95,7 @@ void TestHideLeaf()
 
 void TestEmptyKeepsAll()
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( kMap );
+	kvtext::ParseResult pr = ParseKeyValues( kMap );
 	VisGroupFilterResult r = ApplyVisGroupFilter( pr.root, {} );
 	Check( r.hiddenObjects == 0, "no hidden groups -> nothing hidden" );
 	Check( r.visibleObjects == 4, "all four objects visible" );

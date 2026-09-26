@@ -20,8 +20,8 @@
 #ifndef HAMMER_FORMATS_CORDON_H
 #define HAMMER_FORMATS_CORDON_H
 
-#include "hammer/formats/keyvalues.h"
-#include "hammer/geometry/brush.h" // geometry::Vec3d
+#include "kvtext/keyvalues.h"
+#include "mapgeometry/brush.h" // mapgeometry::Vec3d
 
 #include <cstddef>
 
@@ -30,13 +30,13 @@ namespace hammer::formats
 
 struct CordonBox
 {
-	geometry::Vec3d mins;
-	geometry::Vec3d maxs;
+	mapgeometry::Vec3d mins;
+	mapgeometry::Vec3d maxs;
 };
 
 struct CordonResult
 {
-	KeyValueNode document; // the filtered VMF
+	kvtext::KeyValueNode document; // the filtered VMF
 	std::size_t solidsKept = 0;
 	std::size_t solidsRemoved = 0;
 	std::size_t entitiesKept = 0;
@@ -47,7 +47,7 @@ struct CordonResult
 // keep rules). A box with mins > maxs on any axis intersects nothing, so all
 // positional geometry is removed. Non-world/non-entity blocks (versioninfo, etc.)
 // are preserved verbatim.
-CordonResult ApplyCordon( const KeyValueNode &root, const CordonBox &box );
+CordonResult ApplyCordon( const kvtext::KeyValueNode &root, const CordonBox &box );
 
 } // namespace hammer::formats
 

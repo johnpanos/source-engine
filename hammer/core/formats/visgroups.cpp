@@ -37,7 +37,7 @@ bool ParseInt( const std::string &text, int &out )
 }
 
 // Parses a single "visgroup" block (recursively) into a VisGroup.
-VisGroup ParseOneVisGroup( const KeyValueNode &block )
+VisGroup ParseOneVisGroup( const kvtext::KeyValueNode &block )
 {
 	VisGroup group;
 	if ( const std::string *id = block.Find( "visgroupid" ) )
@@ -48,7 +48,7 @@ VisGroup ParseOneVisGroup( const KeyValueNode &block )
 	{
 		group.name = *name;
 	}
-	for ( const KeyValueNode &child : block.children )
+	for ( const kvtext::KeyValueNode &child : block.children )
 	{
 		if ( child.name == "visgroup" )
 		{
@@ -60,15 +60,15 @@ VisGroup ParseOneVisGroup( const KeyValueNode &block )
 
 // Collects an object's visgroup memberships from its "editor" sub-block (an object
 // may belong to several groups: multiple "visgroupid" pairs).
-void CollectMemberships( const KeyValueNode &object, std::vector<int> &out )
+void CollectMemberships( const kvtext::KeyValueNode &object, std::vector<int> &out )
 {
-	for ( const KeyValueNode &child : object.children )
+	for ( const kvtext::KeyValueNode &child : object.children )
 	{
 		if ( child.name != "editor" )
 		{
 			continue;
 		}
-		for ( const KeyValue &kv : child.pairs )
+		for ( const kvtext::KeyValue &kv : child.pairs )
 		{
 			if ( kv.key == "visgroupid" )
 			{
@@ -105,7 +105,7 @@ void ExpandHidden( const VisGroup &group, const std::set<int> &seeds, std::set<i
 	}
 }
 
-bool ObjectHidden( const KeyValueNode &object, const std::set<int> &hidden )
+bool ObjectHidden( const kvtext::KeyValueNode &object, const std::set<int> &hidden )
 {
 	std::vector<int> memberships;
 	CollectMemberships( object, memberships );
@@ -121,16 +121,16 @@ bool ObjectHidden( const KeyValueNode &object, const std::set<int> &hidden )
 
 } // namespace
 
-std::vector<VisGroup> ParseVisGroups( const KeyValueNode &root )
+std::vector<VisGroup> ParseVisGroups( const kvtext::KeyValueNode &root )
 {
 	std::vector<VisGroup> groups;
-	for ( const KeyValueNode &block : root.children )
+	for ( const kvtext::KeyValueNode &block : root.children )
 	{
 		if ( block.name != "visgroups" )
 		{
 			continue;
 		}
-		for ( const KeyValueNode &child : block.children )
+		for ( const kvtext::KeyValueNode &child : block.children )
 		{
 			if ( child.name == "visgroup" )
 			{
@@ -142,7 +142,7 @@ std::vector<VisGroup> ParseVisGroups( const KeyValueNode &root )
 }
 
 VisGroupFilterResult ApplyVisGroupFilter(
-    const KeyValueNode &root, const std::vector<int> &hiddenGroupIds )
+    const kvtext::KeyValueNode &root, const std::vector<int> &hiddenGroupIds )
 {
 	// Expand the seed ids to include descendants (hiding a parent hides children).
 	const std::vector<VisGroup> tree = ParseVisGroups( root );
@@ -161,14 +161,14 @@ VisGroupFilterResult ApplyVisGroupFilter(
 	VisGroupFilterResult result;
 	result.document.name = root.name;
 
-	for ( const KeyValueNode &block : root.children )
+	for ( const kvtext::KeyValueNode &block : root.children )
 	{
 		if ( block.name == "world" )
 		{
-			KeyValueNode worldOut;
+			kvtext::KeyValueNode worldOut;
 			worldOut.name = block.name;
 			worldOut.pairs = block.pairs;
-			for ( const KeyValueNode &child : block.children )
+			for ( const kvtext::KeyValueNode &child : block.children )
 			{
 				if ( child.name == "solid" )
 				{

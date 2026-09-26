@@ -12,10 +12,10 @@ namespace hammer::app
 
 EditorDocument::EditorDocument()
 {
-	ResetTo( formats::KeyValueNode{} );
+	ResetTo( kvtext::KeyValueNode{} );
 }
 
-void EditorDocument::ResetTo( formats::KeyValueNode content )
+void EditorDocument::ResetTo( kvtext::KeyValueNode content )
 {
 	m_content = std::move( content );
 	m_history = DocumentHistory();
@@ -24,7 +24,7 @@ void EditorDocument::ResetTo( formats::KeyValueNode content )
 	m_history.MarkSaved(); // a freshly loaded/created document is unmodified
 }
 
-void EditorDocument::CommitSnapshot( formats::KeyValueNode next )
+void EditorDocument::CommitSnapshot( kvtext::KeyValueNode next )
 {
 	// Advance history by one unit, then align the snapshot list so snapshots[pos]
 	// holds the content at each reachable history position (dropping any redo tail).
@@ -38,7 +38,7 @@ void EditorDocument::CommitSnapshot( formats::KeyValueNode next )
 bool EditorDocument::LoadFromText( const std::string &vmf, std::string &error )
 {
 	// Build a detached candidate; publish only on success.
-	const formats::ParseResult parsed = formats::ParseKeyValues( vmf );
+	const kvtext::ParseResult parsed = kvtext::ParseKeyValues( vmf );
 	if ( !parsed.ok )
 	{
 		error = parsed.error;
@@ -61,7 +61,7 @@ bool EditorDocument::Load( ports::IFileStore &store, const std::string &path, st
 
 SaveStatus EditorDocument::Save( ports::IFileStore &store, const std::string &path )
 {
-	const std::string text = formats::WriteKeyValues( m_content );
+	const std::string text = kvtext::WriteKeyValues( m_content );
 	const SaveStatus status = SaveDocument( store, path, text );
 	if ( status == SaveStatus::kOk )
 	{
@@ -77,11 +77,11 @@ bool EditorDocument::SetFirstBlockKey( const std::string &key, const std::string
 		return false; // nothing to edit -> no-op
 	}
 
-	formats::KeyValueNode candidate = m_content;
-	formats::KeyValueNode &block = candidate.children[0];
+	kvtext::KeyValueNode candidate = m_content;
+	kvtext::KeyValueNode &block = candidate.children[0];
 
 	bool replaced = false;
-	for ( formats::KeyValue &pair : block.pairs )
+	for ( kvtext::KeyValue &pair : block.pairs )
 	{
 		if ( pair.key == key )
 		{
@@ -96,7 +96,7 @@ bool EditorDocument::SetFirstBlockKey( const std::string &key, const std::string
 	}
 
 	// A no-op edit (value unchanged) adds no history and does not mark modified.
-	if ( formats::CompareKeyValues( m_content, candidate ).equal )
+	if ( kvtext::CompareKeyValues( m_content, candidate ).equal )
 	{
 		return false;
 	}
@@ -154,17 +154,17 @@ bool EditorDocument::SetPropertyOnSelection(
 		return false; // nothing selected -> no-op
 	}
 
-	formats::KeyValueNode candidate = m_content;
+	kvtext::KeyValueNode candidate = m_content;
 	for ( const std::size_t index : selection.Indices() )
 	{
 		if ( index >= candidate.children.size() )
 		{
 			continue; // ignore stale/out-of-range indices
 		}
-		formats::KeyValueNode &block = candidate.children[index];
+		kvtext::KeyValueNode &block = candidate.children[index];
 
 		bool replaced = false;
-		for ( formats::KeyValue &pair : block.pairs )
+		for ( kvtext::KeyValue &pair : block.pairs )
 		{
 			if ( pair.key == key )
 			{
@@ -180,7 +180,7 @@ bool EditorDocument::SetPropertyOnSelection(
 	}
 
 	// One history unit for the whole multi-entity edit; a no-op records nothing.
-	if ( formats::CompareKeyValues( m_content, candidate ).equal )
+	if ( kvtext::CompareKeyValues( m_content, candidate ).equal )
 	{
 		return false;
 	}

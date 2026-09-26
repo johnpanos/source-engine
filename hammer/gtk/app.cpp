@@ -187,7 +187,7 @@ void UpdateChrome( AppState *st )
 // (used on load/new/reset); live edits pass false so the view stays put.
 void RefreshScene( AppState *st, bool frame )
 {
-	const hammer::geometry::WorldScene scene = st->controller.BuildScene();
+	const mapgeometry::WorldScene scene = st->controller.BuildScene();
 	const std::vector<int> selectedIds = st->controller.Selections();
 	for ( Viewport &vp : st->viewports )
 	{
@@ -913,8 +913,8 @@ void OnToolEnd( GtkGestureDrag *gesture, double offX, double offY, gpointer user
 			if ( vp->renderer.PixelToRay( static_cast<float>( vp->startX * scale ),
 			         static_cast<float>( vp->startY * scale ), w, h, o, d ) )
 			{
-				vp->app->controller.PickByRay( hammer::geometry::Vec3d( o[0], o[1], o[2] ),
-				    hammer::geometry::Vec3d( d[0], d[1], d[2] ), additive );
+				vp->app->controller.PickByRay( mapgeometry::Vec3d( o[0], o[1], o[2] ),
+				    mapgeometry::Vec3d( d[0], d[1], d[2] ), additive );
 				RefreshScene( vp->app, false );
 			}
 		}

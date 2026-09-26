@@ -26,9 +26,10 @@ std::string Lower( std::string s )
 }
 
 // Case-insensitive lookup within one parameter list.
-const std::string *FindCI( const std::vector<KeyValue> &params, const std::string &loweredName )
+const std::string *FindCI(
+    const std::vector<kvtext::KeyValue> &params, const std::string &loweredName )
 {
-	for ( const KeyValue &kv : params )
+	for ( const kvtext::KeyValue &kv : params )
 	{
 		if ( Lower( kv.key ) == loweredName )
 		{
@@ -83,18 +84,18 @@ bool Material::IsPatch() const
 
 std::optional<Material> ParseMaterial( const std::string &vmtText )
 {
-	ParseResult pr = ParseKeyValues( vmtText );
+	kvtext::ParseResult pr = kvtext::ParseKeyValues( vmtText );
 	if ( !pr.ok || pr.root.children.empty() )
 	{
 		return std::nullopt;
 	}
 
 	// The first top-level block is the shader; its pairs are the parameters.
-	const KeyValueNode &shaderBlock = pr.root.children.front();
+	const kvtext::KeyValueNode &shaderBlock = pr.root.children.front();
 	Material material;
 	material.shader = shaderBlock.name;
 	material.parameters = shaderBlock.pairs;
-	for ( const KeyValueNode &child : shaderBlock.children )
+	for ( const kvtext::KeyValueNode &child : shaderBlock.children )
 	{
 		const std::string lname = Lower( child.name );
 		if ( lname == "proxies" )

@@ -23,7 +23,7 @@ namespace hammer::app
 namespace
 {
 
-using geometry::Vec3d;
+using mapgeometry::Vec3d;
 using Result = foundation::Expected<std::string, CommandError>;
 
 foundation::Unexpected<CommandError> Fail(

@@ -12,13 +12,13 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/aabb.h"
+#include "mapgeometry/aabb.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
 
-using hammer::geometry::AxisAlignedBox;
-using hammer::geometry::Vec3;
+using mapgeometry::AxisAlignedBox;
+using mapgeometry::Vec3;
 
 namespace
 {

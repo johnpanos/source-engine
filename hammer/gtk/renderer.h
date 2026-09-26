@@ -6,7 +6,7 @@
 //			orthographic wireframe-with-grid view (top X/Y, front X/Z, side Y/Z).
 //
 //			It is deliberately free of any GTK/GDK dependency: it draws a
-//			hammer::geometry::WorldScene into the currently-bound framebuffer and
+//			mapgeometry::WorldScene into the currently-bound framebuffer and
 //			viewport, so the same code serves each interactive GtkGLArea and the
 //			offscreen EGL screenshot path used for automated verification. GL native
 //			detail stays confined here; portable editor code deals only in the
@@ -18,7 +18,7 @@
 #define HAMMER_GTK_RENDERER_H
 
 #include "hammer/formats/material_catalog.h"
-#include "hammer/geometry/brush.h"
+#include "mapgeometry/brush.h"
 
 #include <map>
 #include <string>
@@ -80,7 +80,7 @@ public:
 	// Uploads a scene's brush geometry to GL buffers, replacing any previous
 	// scene. Does NOT move the camera (so live edits keep the current view); call
 	// FrameScene() explicitly after a load/new/reset. A GL context must be current.
-	void SetScene( const hammer::geometry::WorldScene &scene );
+	void SetScene( const mapgeometry::WorldScene &scene );
 
 	// The solid id to draw highlighted (a selected brush). Solids with a negative
 	// id are drawn as the in-progress "pending" box. Takes effect at the next

@@ -1,7 +1,7 @@
 # Contract: `formats.keyvalues.v1`
 
-Module: `hammer.formats` · Header: `public/hammer/formats/keyvalues.h`
-Impl: `hammer/core/formats/keyvalues.cpp`
+Module: `content.keyvalues-text` · Header: `public/kvtext/keyvalues.h`
+Impl: `kvtext/keyvalues.cpp`
 Conformance: `unittests/hammertest/formats/test_keyvalues.cpp` (+ `_negative`)
 Migration: `HAM-CORPUS-001` (and the H2 persistence slice)
 

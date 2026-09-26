@@ -11,27 +11,27 @@
 //
 //=============================================================================//
 
-#include "hammer/formats/keyvalues.h"
-#include "hammer/formats/vmf_geometry.h"
-#include "hammer/geometry/brush.h"
+#include "kvtext/keyvalues.h"
+#include "vmf/vmf_geometry.h"
+#include "mapgeometry/brush.h"
 #include "testing/conformance_result.h"
 
 #include <cmath>
 #include <cstdio>
 #include <string>
 
-using hammer::formats::BuildSceneFromDocument;
-using hammer::formats::BuildSolidFromBlock;
-using hammer::formats::ParseKeyValues;
-using hammer::formats::ParseResult;
-using hammer::geometry::BrushFace;
-using hammer::geometry::BrushSolid;
-using hammer::geometry::BuildSolidFromPlanes;
-using hammer::geometry::ParsePlanePoints;
-using hammer::geometry::Plane;
-using hammer::geometry::PlaneFromPoints;
-using hammer::geometry::Vec3d;
-using hammer::geometry::WorldScene;
+using vmf::BuildSceneFromDocument;
+using vmf::BuildSolidFromBlock;
+using kvtext::ParseKeyValues;
+using kvtext::ParseResult;
+using mapgeometry::BrushFace;
+using mapgeometry::BrushSolid;
+using mapgeometry::BuildSolidFromPlanes;
+using mapgeometry::ParsePlanePoints;
+using mapgeometry::Plane;
+using mapgeometry::PlaneFromPoints;
+using mapgeometry::Vec3d;
+using mapgeometry::WorldScene;
 
 namespace
 {
@@ -310,26 +310,26 @@ void TestDisplacementImport()
 	    "\t\tside { \"plane\" \"(0 0 0) (0 0 64) (64 0 64)\" \"material\" \"DEV/F\" }\n"
 	    "\t}\n}\n";
 
-	hammer::formats::ParseResult pr = hammer::formats::ParseKeyValues( kVmf );
+	kvtext::ParseResult pr = kvtext::ParseKeyValues( kVmf );
 	CHECK( pr.ok );
 	if ( !pr.ok )
 	{
 		return;
 	}
-	const hammer::geometry::WorldScene scene = hammer::formats::BuildSceneFromDocument( pr.root );
+	const mapgeometry::WorldScene scene = vmf::BuildSceneFromDocument( pr.root );
 
 	CHECK( scene.solids.size() == 1 ); // the box brush still imports
 	CHECK( scene.displacements.size() == 1 );
 	if ( scene.displacements.size() == 1 )
 	{
-		const hammer::geometry::DisplacementMesh &d = scene.displacements[0];
+		const mapgeometry::DisplacementMesh &d = scene.displacements[0];
 		CHECK( d.vertices.size() == 9 );  // (2^1 + 1)^2
 		CHECK( d.triangles.size() == 8 ); // 2 * (2^1)^2
 		CHECK( d.alphas.size() == 9 );
 
 		// The surface really rises above the flat z=64 face: the peak is ~96.
 		double maxZ = 0.0;
-		for ( const hammer::geometry::Vec3d &v : d.vertices )
+		for ( const mapgeometry::Vec3d &v : d.vertices )
 		{
 			maxZ = std::max( maxZ, v.z );
 		}

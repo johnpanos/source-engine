@@ -11,7 +11,7 @@
 
 #include "hammer/formats/entity_property_sheet.h"
 #include "hammer/formats/fgd.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
@@ -20,7 +20,7 @@
 using hammer::formats::BuildPropertySheet;
 using hammer::formats::EntityPropertySheet;
 using hammer::formats::ParseFgd;
-using hammer::formats::ParseKeyValues;
+using kvtext::ParseKeyValues;
 using hammer::formats::PropertyRow;
 
 namespace

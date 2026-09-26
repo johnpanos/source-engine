@@ -14,7 +14,7 @@
 
 #include "fake_file_store.h"
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
@@ -22,7 +22,7 @@
 
 using hammer::app::EditorDocument;
 using hammer::app::SaveStatus;
-using hammer::formats::CompareKeyValues;
+using kvtext::CompareKeyValues;
 using hammertest::InMemoryFileStore;
 
 namespace

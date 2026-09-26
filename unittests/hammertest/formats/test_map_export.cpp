@@ -8,7 +8,7 @@
 //
 //=============================================================================//
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/formats/map_export.h"
 #include "testing/conformance_result.h"
 
@@ -20,10 +20,10 @@
 using hammer::formats::CompileOptions;
 using hammer::formats::CompilePrepResult;
 using hammer::formats::CordonBox;
-using hammer::formats::KeyValueNode;
-using hammer::formats::ParseKeyValues;
+using kvtext::KeyValueNode;
+using kvtext::ParseKeyValues;
 using hammer::formats::PrepareForCompile;
-using hammer::geometry::Vec3d;
+using mapgeometry::Vec3d;
 
 namespace
 {
@@ -119,7 +119,7 @@ void TestFullPipeline()
 {
 	hammertest::InMemoryFileStore store;
 	store.Write( "child.vmf", kChild );
-	hammer::formats::ParseResult pr = ParseKeyValues( ParentMap() );
+	kvtext::ParseResult pr = ParseKeyValues( ParentMap() );
 	Check( pr.ok, "parent map parses" );
 
 	CompileOptions opt;
@@ -141,7 +141,7 @@ void TestNoCordon()
 {
 	hammertest::InMemoryFileStore store;
 	store.Write( "child.vmf", kChild );
-	hammer::formats::ParseResult pr = ParseKeyValues( ParentMap() );
+	kvtext::ParseResult pr = ParseKeyValues( ParentMap() );
 
 	CompileOptions opt;
 	opt.hiddenVisGroups = { 5 };

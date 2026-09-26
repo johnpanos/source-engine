@@ -15,18 +15,18 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/brush.h"
+#include "mapgeometry/brush.h"
 #include "testing/conformance_result.h"
 
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
-using hammer::geometry::BrushFace;
-using hammer::geometry::BrushSolid;
-using hammer::geometry::BuildSolidFromPlanes;
-using hammer::geometry::Plane;
-using hammer::geometry::Vec3d;
+using mapgeometry::BrushFace;
+using mapgeometry::BrushSolid;
+using mapgeometry::BuildSolidFromPlanes;
+using mapgeometry::Plane;
+using mapgeometry::Vec3d;
 
 namespace
 {

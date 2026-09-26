@@ -9,7 +9,7 @@
 //
 //=============================================================================//
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/formats/visgroups.h"
 #include "testing/conformance_result.h"
 
@@ -17,7 +17,7 @@
 #include <string>
 
 using hammer::formats::ApplyVisGroupFilter;
-using hammer::formats::ParseKeyValues;
+using kvtext::ParseKeyValues;
 using hammer::formats::VisGroupFilterResult;
 
 namespace
@@ -56,7 +56,7 @@ const char *kMap =
 
 int main()
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( kMap );
+	kvtext::ParseResult pr = ParseKeyValues( kMap );
 	Check( pr.ok, "map parses" );
 
 	// Hiding the PARENT (1) must hide the child(2)-member solid via descendant

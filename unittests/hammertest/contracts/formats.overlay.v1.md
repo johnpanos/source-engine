@@ -4,7 +4,7 @@ Module: `hammer.formats`
 Header: `public/hammer/formats/overlay.h` · Impl: `hammer/core/formats/overlay.cpp`
 Conformance: `unittests/hammertest/formats/test_overlay.cpp` (+ `_negative`)
 Migration: `HAM-OVERLAY-001`
-Depends on: `hammer.formats` (keyvalues codec), `hammer.geometry` (`Vec3d`)
+Depends on: `content.keyvalues-text` (keyvalues codec), `world.map-geometry` (`Vec3d`)
 
 Parses `info_overlay` entities (a material projected onto brush faces via a stored
 basis) into a structured `Overlay` and computes the world-space quad a renderer

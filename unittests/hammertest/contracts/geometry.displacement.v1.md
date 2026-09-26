@@ -1,13 +1,13 @@
 # Contract: `geometry.displacement.v1`
 
-Module: `hammer.geometry`
-Header: `public/hammer/geometry/displacement.h` · Impl: `hammer/core/geometry/displacement.cpp`
-VMF decoder (`hammer.formats`): `hammer::formats::ParseDispInfo` in
-`public/hammer/formats/vmf_geometry.h` · `hammer/core/formats/vmf_geometry.cpp`
+Module: `world.map-geometry`
+Header: `public/mapgeometry/displacement.h` · Impl: `mapgeometry/displacement.cpp`
+VMF decoder (`content.vmf`): `vmf::ParseDispInfo` in
+`public/vmf/vmf_geometry.h` · `vmf/vmf_geometry.cpp`
 Conformance: `unittests/hammertest/geometry/test_displacement.cpp` (+ `_negative`)
 Migration: `HAM-DISP-001`
-Depends on: `hammer.geometry` brush `Vec3d` (the geometry core); the decoder
-depends on the `hammer.formats` keyvalues codec
+Depends on: `world.map-geometry` brush `Vec3d` (the geometry core); the decoder
+depends on the `content.keyvalues-text` codec
 
 Turns a VMF `dispinfo` block plus its host quad face into the subdivided,
 per-vertex-displaced surface Source uses for terrain. This is the "later
@@ -84,7 +84,7 @@ Required for any map using displacements.
   preserved on `DispInfo`), and `triangle_tags` (optional; validated as a
   `(side-1)` × `(side-1)*2` grid and flattened parallel to the triangle list).
 - Does not yet interpret `offset_normals` or `allowed_verts` (preserved verbatim
-  in the keyvalues tree by `hammer.formats`), does not apply `subdiv` smoothing to
+  in the keyvalues tree by `content.keyvalues-text`), does not apply `subdiv` smoothing to
   the mesh, and does not consume `alphas`/`triangle_tags` for rendering — those
   are carried for the eventual scene/render consumer; those uses are later
   increments.

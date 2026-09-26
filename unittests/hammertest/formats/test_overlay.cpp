@@ -8,7 +8,7 @@
 //
 //=============================================================================//
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/formats/overlay.h"
 #include "testing/conformance_result.h"
 
@@ -19,8 +19,8 @@
 
 using hammer::formats::ExtractOverlays;
 using hammer::formats::Overlay;
-using hammer::formats::ParseKeyValues;
-using hammer::geometry::Vec3d;
+using kvtext::ParseKeyValues;
+using mapgeometry::Vec3d;
 
 namespace
 {
@@ -68,7 +68,7 @@ const char *kMap = "versioninfo\n{\n\t\"editorversion\" \"400\"\n}\n"
 
 void TestParse()
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( kMap );
+	kvtext::ParseResult pr = ParseKeyValues( kMap );
 	Check( pr.ok, "map parses" );
 
 	std::vector<Overlay> overlays = ExtractOverlays( pr.root );

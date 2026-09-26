@@ -21,19 +21,16 @@
 // forwarded to the real owner so the failure is isolated to the injected bug.
 struct BuggyAdapter
 {
-	static hammer::geometry::Vec3 ToVec3( const Vector &v )
+	static mapgeometry::Vec3 ToVec3( const Vector &v )
 	{
-		return hammer::geometry::Vec3( v.x, v.z, v.y ); // BUG: y/z swapped
+		return mapgeometry::Vec3( v.x, v.z, v.y ); // BUG: y/z swapped
 	}
-	static Vector ToVector( const hammer::geometry::Vec3 &v )
+	static Vector ToVector( const mapgeometry::Vec3 &v ) { return Vector( v.x, v.y, v.z ); }
+	static mapgeometry::AxisAlignedBox ToAABB( const BoundBox &b )
 	{
-		return Vector( v.x, v.y, v.z );
+		return mapgeometry::AxisAlignedBox( ToVec3( b.bmins ), ToVec3( b.bmaxs ) );
 	}
-	static hammer::geometry::AxisAlignedBox ToAABB( const BoundBox &b )
-	{
-		return hammer::geometry::AxisAlignedBox( ToVec3( b.bmins ), ToVec3( b.bmaxs ) );
-	}
-	static void FromAABB( const hammer::geometry::AxisAlignedBox &a, BoundBox &b )
+	static void FromAABB( const mapgeometry::AxisAlignedBox &a, BoundBox &b )
 	{
 		b.bmins = ToVector( a.mins );
 		b.bmaxs = ToVector( a.maxs );

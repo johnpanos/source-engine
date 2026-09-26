@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Named owner of the editor's grid-rounding policy (RFC 0002,
-//			hammer.geometry). This is the single authoritative definition of the
+//			world.map-geometry). This is the single authoritative definition of the
 //			rounding rule that legacy hammer used through hammer_mathlib's
 //			V_rint: round half AWAY from zero (not the round-half-to-even that
 //			std::rint / std::nearbyint produce under the default rounding mode).
@@ -12,10 +12,10 @@
 //
 //=============================================================================//
 
-#ifndef HAMMER_GEOMETRY_ROUNDING_H
-#define HAMMER_GEOMETRY_ROUNDING_H
+#ifndef MAPGEOMETRY_ROUNDING_H
+#define MAPGEOMETRY_ROUNDING_H
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 // Rounds to the nearest integral value, with halves rounded away from zero.
@@ -25,6 +25,6 @@ namespace hammer::geometry
 // (e.g. RoundHalfAwayFromZero( 0.5f ) == 1.0f, std::rint( 0.5f ) == 0.0f).
 float RoundHalfAwayFromZero( float value );
 
-} // namespace hammer::geometry
+} // namespace mapgeometry
 
-#endif // HAMMER_GEOMETRY_ROUNDING_H
+#endif // MAPGEOMETRY_ROUNDING_H

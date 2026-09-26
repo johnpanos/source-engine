@@ -7,11 +7,11 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/angle.h"
+#include "mapgeometry/angle.h"
 
 #include <cmath>
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 namespace
@@ -52,4 +52,4 @@ float LineAngleDegrees( float x1, float y1, float x2, float y2 )
 	return static_cast<float>( radians ) * radiansToDegrees;
 }
 
-} // namespace hammer::geometry
+} // namespace mapgeometry

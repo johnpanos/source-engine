@@ -16,7 +16,7 @@
 #define HAMMER_FORMATS_MAP_EXPORT_H
 
 #include "hammer/formats/cordon.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/ports/file_store.h"
 
 #include <cstddef>
@@ -37,7 +37,7 @@ struct CompileOptions
 struct CompilePrepResult
 {
 	bool ok = false;
-	KeyValueNode document; // the compile-ready VMF
+	kvtext::KeyValueNode document; // the compile-ready VMF
 	std::string error;     // diagnostic when !ok (e.g. a bad func_instance)
 	int instancesExpanded = 0;
 	std::size_t solidsRemovedByVisGroup = 0;
@@ -49,7 +49,7 @@ struct CompilePrepResult
 // Returns the flattened/filtered document, or ok == false with a diagnostic if
 // instance expansion fails.
 CompilePrepResult PrepareForCompile(
-    const KeyValueNode &root, ports::IFileStore &store, const CompileOptions &options );
+    const kvtext::KeyValueNode &root, ports::IFileStore &store, const CompileOptions &options );
 
 } // namespace hammer::formats
 

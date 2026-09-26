@@ -12,16 +12,16 @@
 
 #include "hammer/app/editor_document.h"
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
 
 using hammer::app::EditorDocument;
-using hammer::formats::CompareKeyValues;
-using hammer::formats::KeyValueNode;
-using hammer::formats::ParseKeyValues;
+using kvtext::CompareKeyValues;
+using kvtext::KeyValueNode;
+using kvtext::ParseKeyValues;
 
 namespace
 {

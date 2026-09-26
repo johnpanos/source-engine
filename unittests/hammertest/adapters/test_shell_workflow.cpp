@@ -19,7 +19,7 @@
 #include "hammer/app/editor_document.h"
 #include "hammer/app/entity_selection.h"
 #include "hammer/app/property_value.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include <cstddef>

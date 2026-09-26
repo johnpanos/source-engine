@@ -1,7 +1,7 @@
 # Contract: `geometry.aabb.v1`
 
-Module: `hammer.geometry` · Type: `hammer::geometry::AxisAlignedBox`
-Header: `public/hammer/geometry/aabb.h` · Impl: `hammer/core/geometry/aabb.cpp`
+Module: `world.map-geometry` · Type: `mapgeometry::AxisAlignedBox`
+Header: `public/mapgeometry/aabb.h` · Impl: `mapgeometry/aabb.cpp`
 Conformance suite: `unittests/hammertest/geometry/test_aabb.cpp`
 Migration: `HAM-GEOMETRY-001`
 

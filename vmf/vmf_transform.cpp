@@ -1,11 +1,11 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Implementation of the shared VMF geometry transform. See
-//			public/hammer/formats/vmf_transform.h.
+//			public/vmf/vmf_transform.h.
 //
 //=============================================================================//
 
-#include "hammer/formats/vmf_transform.h"
+#include "vmf/vmf_transform.h"
 
 #include <array>
 #include <cmath>
@@ -15,13 +15,13 @@
 #include <string>
 #include <vector>
 
-namespace hammer::formats
+namespace vmf
 {
 
 namespace
 {
 
-using geometry::Vec3d;
+using mapgeometry::Vec3d;
 
 constexpr double kPi = 3.14159265358979323846;
 
@@ -106,9 +106,9 @@ std::string FormatPlanePoints( const std::array<Vec3d, 3> &pts )
 	       FormatVec3( pts[2] ) + ")";
 }
 
-void SetPair( KeyValueNode &node, const std::string &key, const std::string &value )
+void SetPair( kvtext::KeyValueNode &node, const std::string &key, const std::string &value )
 {
-	for ( KeyValue &kv : node.pairs )
+	for ( kvtext::KeyValue &kv : node.pairs )
 	{
 		if ( kv.key == key )
 		{
@@ -168,16 +168,17 @@ Vec3d Place( const Mat3 &r, const Vec3d &origin, const Vec3d &p )
 	return Vec3d( rot.x + origin.x, rot.y + origin.y, rot.z + origin.z );
 }
 
-KeyValueNode TransformSolid( const KeyValueNode &solid, const Mat3 &r, const Vec3d &origin )
+kvtext::KeyValueNode TransformSolid(
+    const kvtext::KeyValueNode &solid, const Mat3 &r, const Vec3d &origin )
 {
-	KeyValueNode out = solid;
-	for ( KeyValueNode &side : out.children )
+	kvtext::KeyValueNode out = solid;
+	for ( kvtext::KeyValueNode &side : out.children )
 	{
 		if ( side.name != "side" )
 		{
 			continue;
 		}
-		for ( KeyValue &kv : side.pairs )
+		for ( kvtext::KeyValue &kv : side.pairs )
 		{
 			if ( kv.key != "plane" )
 			{
@@ -194,9 +195,10 @@ KeyValueNode TransformSolid( const KeyValueNode &solid, const Mat3 &r, const Vec
 	return out;
 }
 
-KeyValueNode TransformEntity( const KeyValueNode &entity, const Mat3 &r, const Vec3d &origin )
+kvtext::KeyValueNode TransformEntity(
+    const kvtext::KeyValueNode &entity, const Mat3 &r, const Vec3d &origin )
 {
-	KeyValueNode out = entity;
+	kvtext::KeyValueNode out = entity;
 	if ( const std::string *o = out.Find( "origin" ) )
 	{
 		Vec3d p;
@@ -208,4 +210,4 @@ KeyValueNode TransformEntity( const KeyValueNode &entity, const Mat3 &r, const V
 	return out;
 }
 
-} // namespace hammer::formats
+} // namespace vmf

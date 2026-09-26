@@ -1,11 +1,11 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Implementation of the hammer::formats VMF -> geometry decoders. See
-//			public/hammer/formats/vmf_geometry.h.
+// Purpose: Implementation of the vmf VMF -> geometry decoders. See
+//			public/vmf/vmf_geometry.h.
 //
 //=============================================================================//
 
-#include "hammer/formats/vmf_geometry.h"
+#include "vmf/vmf_geometry.h"
 
 #include <array>
 #include <cstddef>
@@ -14,21 +14,21 @@
 #include <string>
 #include <vector>
 
-namespace hammer::formats
+namespace vmf
 {
 
 namespace
 {
 
-using geometry::BrushFace;
-using geometry::BrushSolid;
-using geometry::DispInfo;
-using geometry::DisplacementMesh;
-using geometry::DisplacementSurface;
-using geometry::Plane;
-using geometry::SceneEntity;
-using geometry::Vec3d;
-using geometry::WorldScene;
+using mapgeometry::BrushFace;
+using mapgeometry::BrushSolid;
+using mapgeometry::DispInfo;
+using mapgeometry::DisplacementMesh;
+using mapgeometry::DisplacementSurface;
+using mapgeometry::Plane;
+using mapgeometry::SceneEntity;
+using mapgeometry::Vec3d;
+using mapgeometry::WorldScene;
 
 // Parses a whitespace-separated list of doubles. Returns false if any token is
 // not a number; a well-formed empty string yields an empty vector.
@@ -54,9 +54,9 @@ bool ParseDoubles( const std::string &text, std::vector<double> &out )
 }
 
 // Finds a child block by name (first match), or nullptr.
-const KeyValueNode *FindChild( const KeyValueNode &node, const char *name )
+const kvtext::KeyValueNode *FindChild( const kvtext::KeyValueNode &node, const char *name )
 {
-	for ( const KeyValueNode &child : node.children )
+	for ( const kvtext::KeyValueNode &child : node.children )
 	{
 		if ( child.name == name )
 		{
@@ -69,7 +69,7 @@ const KeyValueNode *FindChild( const KeyValueNode &node, const char *name )
 // Reads a "row0".."row{side-1}" grid of scalars into a flat row-major vector of
 // length side*side. Returns false on a missing row, a wrong row count, or a row
 // whose length != side.
-bool ReadScalarGrid( const KeyValueNode &block, int side, std::vector<double> &out )
+bool ReadScalarGrid( const kvtext::KeyValueNode &block, int side, std::vector<double> &out )
 {
 	out.assign( static_cast<std::size_t>( side ) * side, 0.0 );
 	int rowsSeen = 0;
@@ -101,7 +101,7 @@ bool ReadScalarGrid( const KeyValueNode &block, int side, std::vector<double> &o
 }
 
 // Reads a "row0".. grid of Vec3d (three scalars per entry) into row-major order.
-bool ReadVectorGrid( const KeyValueNode &block, int side, std::vector<Vec3d> &out )
+bool ReadVectorGrid( const kvtext::KeyValueNode &block, int side, std::vector<Vec3d> &out )
 {
 	out.assign( static_cast<std::size_t>( side ) * side, Vec3d() );
 	for ( int r = 0; r < side; ++r )
@@ -135,7 +135,7 @@ bool ReadVectorGrid( const KeyValueNode &block, int side, std::vector<Vec3d> &ou
 // holding (side-1)*2 integer tags (two triangles per grid cell). Flattened
 // row-major into 2*(side-1)^2 entries. Returns false on a missing/extra row or a
 // wrong-length row.
-bool ReadTagRows( const KeyValueNode &block, int side, std::vector<int> &out )
+bool ReadTagRows( const kvtext::KeyValueNode &block, int side, std::vector<int> &out )
 {
 	const int rows = side - 1;
 	const int perRow = ( side - 1 ) * 2;
@@ -166,7 +166,7 @@ bool ReadTagRows( const KeyValueNode &block, int side, std::vector<int> &out )
 }
 
 // Parses a dispinfo "x y z" value (VMF sometimes wraps it in brackets). Returns
-// false when not three numbers. Unlike geometry::ParseVec3 it tolerates bracket
+// false when not three numbers. Unlike mapgeometry::ParseVec3 it tolerates bracket
 // characters.
 bool ParseBracketedVec3( const std::string &text, Vec3d &out )
 {
@@ -187,9 +187,10 @@ bool ParseBracketedVec3( const std::string &text, Vec3d &out )
 	return true;
 }
 
-void ImportSolids( const KeyValueNode &container, WorldScene &scene, std::size_t &solidCount )
+void ImportSolids(
+    const kvtext::KeyValueNode &container, WorldScene &scene, std::size_t &solidCount )
 {
-	for ( const KeyValueNode &child : container.children )
+	for ( const kvtext::KeyValueNode &child : container.children )
 	{
 		if ( child.name != "solid" )
 		{
@@ -206,11 +207,11 @@ void ImportSolids( const KeyValueNode &container, WorldScene &scene, std::size_t
 }
 
 // Imports any displaced (dispinfo) faces of the container's solids into the scene
-// as renderable DisplacementMesh surfaces, via the hammer.geometry.displacement
+// as renderable DisplacementMesh surfaces, via the world.map-geometry displacement
 // core. A displacement side's face must be a quad; malformed dispinfo is skipped.
-void ImportDisplacements( const KeyValueNode &container, WorldScene &scene )
+void ImportDisplacements( const kvtext::KeyValueNode &container, WorldScene &scene )
 {
-	for ( const KeyValueNode &solidBlock : container.children )
+	for ( const kvtext::KeyValueNode &solidBlock : container.children )
 	{
 		if ( solidBlock.name != "solid" )
 		{
@@ -218,13 +219,13 @@ void ImportDisplacements( const KeyValueNode &container, WorldScene &scene )
 		}
 		// Cheap pre-check: does any side carry a dispinfo child block?
 		bool anyDisp = false;
-		for ( const KeyValueNode &side : solidBlock.children )
+		for ( const kvtext::KeyValueNode &side : solidBlock.children )
 		{
 			if ( side.name != "side" )
 			{
 				continue;
 			}
-			for ( const KeyValueNode &sc : side.children )
+			for ( const kvtext::KeyValueNode &sc : side.children )
 			{
 				if ( sc.name == "dispinfo" )
 				{
@@ -248,14 +249,14 @@ void ImportDisplacements( const KeyValueNode &container, WorldScene &scene )
 			continue;
 		}
 
-		for ( const KeyValueNode &side : solidBlock.children )
+		for ( const kvtext::KeyValueNode &side : solidBlock.children )
 		{
 			if ( side.name != "side" )
 			{
 				continue;
 			}
-			const KeyValueNode *dispBlock = nullptr;
-			for ( const KeyValueNode &sc : side.children )
+			const kvtext::KeyValueNode *dispBlock = nullptr;
+			for ( const kvtext::KeyValueNode &sc : side.children )
 			{
 				if ( sc.name == "dispinfo" )
 				{
@@ -272,18 +273,19 @@ void ImportDisplacements( const KeyValueNode &container, WorldScene &scene )
 			{
 				continue;
 			}
-			const std::optional<std::array<Vec3d, 3>> pts = geometry::ParsePlanePoints( *planeStr );
+			const std::optional<std::array<Vec3d, 3>> pts =
+			    mapgeometry::ParsePlanePoints( *planeStr );
 			if ( !pts )
 			{
 				continue;
 			}
 			const std::optional<Plane> sidePlane =
-			    geometry::PlaneFromPoints( ( *pts )[0], ( *pts )[1], ( *pts )[2] );
+			    mapgeometry::PlaneFromPoints( ( *pts )[0], ( *pts )[1], ( *pts )[2] );
 			if ( !sidePlane )
 			{
 				continue;
 			}
-			const BrushFace *face = geometry::FindFaceOnPlane( solid, *sidePlane );
+			const BrushFace *face = mapgeometry::FindFaceOnPlane( solid, *sidePlane );
 			if ( !face || face->vertices.size() != 4 )
 			{
 				continue; // a displacement side must resolve to a quad face
@@ -296,7 +298,7 @@ void ImportDisplacements( const KeyValueNode &container, WorldScene &scene )
 			const std::array<Vec3d, 4> corners = {
 			    face->vertices[0], face->vertices[1], face->vertices[2], face->vertices[3] };
 			const DisplacementSurface surf =
-			    geometry::BuildDisplacementSurface( corners, face->plane.normal, *disp );
+			    mapgeometry::BuildDisplacementSurface( corners, face->plane.normal, *disp );
 
 			DisplacementMesh mesh;
 			mesh.vertices = surf.vertices;
@@ -309,7 +311,7 @@ void ImportDisplacements( const KeyValueNode &container, WorldScene &scene )
 
 } // namespace
 
-BrushSolid BuildSolidFromBlock( const KeyValueNode &solidBlock )
+BrushSolid BuildSolidFromBlock( const kvtext::KeyValueNode &solidBlock )
 {
 	std::vector<Plane> planes;
 	std::vector<std::string> materials;
@@ -320,7 +322,7 @@ BrushSolid BuildSolidFromBlock( const KeyValueNode &solidBlock )
 		id = std::atoi( idStr->c_str() );
 	}
 
-	for ( const KeyValueNode &child : solidBlock.children )
+	for ( const kvtext::KeyValueNode &child : solidBlock.children )
 	{
 		if ( child.name != "side" )
 		{
@@ -331,13 +333,13 @@ BrushSolid BuildSolidFromBlock( const KeyValueNode &solidBlock )
 		{
 			continue;
 		}
-		const std::optional<std::array<Vec3d, 3>> pts = geometry::ParsePlanePoints( *planeStr );
+		const std::optional<std::array<Vec3d, 3>> pts = mapgeometry::ParsePlanePoints( *planeStr );
 		if ( !pts )
 		{
 			continue;
 		}
 		const std::optional<Plane> plane =
-		    geometry::PlaneFromPoints( ( *pts )[0], ( *pts )[1], ( *pts )[2] );
+		    mapgeometry::PlaneFromPoints( ( *pts )[0], ( *pts )[1], ( *pts )[2] );
 		if ( !plane )
 		{
 			continue;
@@ -347,14 +349,14 @@ BrushSolid BuildSolidFromBlock( const KeyValueNode &solidBlock )
 		materials.push_back( mat ? *mat : std::string() );
 	}
 
-	return geometry::BuildSolidFromPlanes( planes, materials, id );
+	return mapgeometry::BuildSolidFromPlanes( planes, materials, id );
 }
 
-WorldScene BuildSceneFromDocument( const KeyValueNode &root )
+WorldScene BuildSceneFromDocument( const kvtext::KeyValueNode &root )
 {
 	WorldScene scene;
 
-	for ( const KeyValueNode &block : root.children )
+	for ( const kvtext::KeyValueNode &block : root.children )
 	{
 		if ( block.name == "world" )
 		{
@@ -375,7 +377,7 @@ WorldScene BuildSceneFromDocument( const KeyValueNode &root )
 			}
 			if ( const std::string *origin = block.Find( "origin" ) )
 			{
-				entity.origin = geometry::ParseVec3( *origin );
+				entity.origin = mapgeometry::ParseVec3( *origin );
 			}
 			std::size_t solidCount = 0;
 			ImportSolids( block, scene, solidCount );
@@ -388,7 +390,7 @@ WorldScene BuildSceneFromDocument( const KeyValueNode &root )
 	return scene;
 }
 
-std::optional<DispInfo> ParseDispInfo( const KeyValueNode &dispBlock )
+std::optional<DispInfo> ParseDispInfo( const kvtext::KeyValueNode &dispBlock )
 {
 	DispInfo info;
 
@@ -428,8 +430,8 @@ std::optional<DispInfo> ParseDispInfo( const KeyValueNode &dispBlock )
 		info.elevation = vals[0];
 	}
 
-	const KeyValueNode *normals = FindChild( dispBlock, "normals" );
-	const KeyValueNode *distances = FindChild( dispBlock, "distances" );
+	const kvtext::KeyValueNode *normals = FindChild( dispBlock, "normals" );
+	const kvtext::KeyValueNode *distances = FindChild( dispBlock, "distances" );
 	if ( normals == nullptr || distances == nullptr )
 	{
 		return std::nullopt;
@@ -444,7 +446,7 @@ std::optional<DispInfo> ParseDispInfo( const KeyValueNode &dispBlock )
 	}
 
 	// Offsets are optional; absent means all-zero.
-	if ( const KeyValueNode *offsets = FindChild( dispBlock, "offsets" ) )
+	if ( const kvtext::KeyValueNode *offsets = FindChild( dispBlock, "offsets" ) )
 	{
 		if ( !ReadVectorGrid( *offsets, side, info.offsets ) )
 		{
@@ -457,7 +459,7 @@ std::optional<DispInfo> ParseDispInfo( const KeyValueNode &dispBlock )
 	}
 
 	// Alphas are optional (per-vertex blend weight 0..255); absent means all-zero.
-	if ( const KeyValueNode *alphas = FindChild( dispBlock, "alphas" ) )
+	if ( const kvtext::KeyValueNode *alphas = FindChild( dispBlock, "alphas" ) )
 	{
 		if ( !ReadScalarGrid( *alphas, side, info.alphas ) )
 		{
@@ -481,7 +483,7 @@ std::optional<DispInfo> ParseDispInfo( const KeyValueNode &dispBlock )
 	}
 
 	// triangle_tags is optional; when present it must be a full (side-1) x (side-1)*2 grid.
-	if ( const KeyValueNode *tags = FindChild( dispBlock, "triangle_tags" ) )
+	if ( const kvtext::KeyValueNode *tags = FindChild( dispBlock, "triangle_tags" ) )
 	{
 		if ( !ReadTagRows( *tags, side, info.triangleTags ) )
 		{
@@ -492,4 +494,4 @@ std::optional<DispInfo> ParseDispInfo( const KeyValueNode &dispBlock )
 	return info;
 }
 
-} // namespace hammer::formats
+} // namespace vmf

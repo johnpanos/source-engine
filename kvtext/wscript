@@ -1,0 +1,34 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# KeyValues text codec (content.keyvalues-text): the nested "key" "value"
+# block document model shared by VMF, VMT and other Source text formats,
+# with its parser, writer and semantic comparator. A strict, portable
+# C++20 static library (R08-LIBS, layered format libraries): no tier0/tier1,
+# no application header. The editor, compile tools and engine compose it;
+# it never depends on them. Its dialect is declared in
+# quality/toolchain/policy.json and its permissions in architecture/modules.json.
+
+top = '.'
+PROJECT_NAME = 'kvtext'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'keyvalues.cpp' ],
+		target    = PROJECT_NAME,
+		name      = PROJECT_NAME,
+		arch_module = 'content.keyvalues-text',
+		features  = 'cxx capability_strict',
+		includes  = [ '../public' ],
+		defines   = [],
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

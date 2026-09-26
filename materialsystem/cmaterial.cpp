@@ -1149,6 +1149,38 @@ bool CMaterial::ParseMaterialFlag( KeyValues* pParseValue, IMaterialVar* pFlagVa
 
 ConVar mat_reduceparticles( "mat_reduceparticles",  "0", FCVAR_ALLOWED_IN_COMPETITIVE );
 
+//-----------------------------------------------------------------------------
+// Portal 2's materials choose variables and whole fallback blocks by GPU
+// level ("GPU>=1?$reflecttexture", a "GPU>=1" { ... } block), as CS:GO's
+// material system does. The level is the game's gpu_level (Portal 2's client
+// registers it with its system levels); without one, high (3), CS:GO's
+// default. A ConVarRef made per call: materials also load before the client.
+//-----------------------------------------------------------------------------
+static int MaterialGPULevel()
+{
+	ConVarRef gpu_level( "gpu_level", true );
+	return gpu_level.IsValid() ? gpu_level.GetInt() : 3;
+}
+
+// Whether a "GPU>=n" or "GPU<n" condition holds; false for any other text.
+static bool EvaluateGPULevelCondition( const char *pCond, bool *pbHolds )
+{
+	int nLevel = 0;
+	if ( !V_strnicmp( pCond, "GPU>=", 5 ) && V_isdigit( pCond[5] ) && !pCond[6] )
+	{
+		nLevel = pCond[5] - '0';
+		*pbHolds = MaterialGPULevel() >= nLevel;
+		return true;
+	}
+	if ( !V_strnicmp( pCond, "GPU<", 4 ) && V_isdigit( pCond[4] ) && !pCond[5] )
+	{
+		nLevel = pCond[4] - '0';
+		*pbHolds = MaterialGPULevel() < nLevel;
+		return true;
+	}
+	return false;
+}
+
 bool CMaterial::ShouldSkipVar( KeyValues *pVar, bool *pWasConditional )
 {
 	char const *pVarName = pVar->GetName();
@@ -1205,6 +1237,10 @@ bool CMaterial::ShouldSkipVar( KeyValues *pVar, bool *pWasConditional )
 		else if ( ! stricmp( pCond, "gameconsole" ) )
 		{
 			bShouldSkip = !false;
+		}
+		else if ( bool bHolds = false; EvaluateGPULevelCondition( pCond, &bHolds ) )
+		{
+			bShouldSkip = !bHolds;
 		}
 		else
 		{
@@ -1373,6 +1409,18 @@ static KeyValues *CheckConditionalFakeShaderName( char const *pShaderName, char 
 static KeyValues *FindBuiltinFallbackBlock( char const *pShaderName, KeyValues *pKeyValues )
 {
 	// handle "fake" shader fallbacks which are conditional upon mode. like _hdr_dx9, etc
+	// Portal 2's GPU-level blocks first, in CS:GO's order.
+	static const char *const s_GPUBlocks[] = { "GPU<1", "GPU<2", "GPU>=1", "GPU>=2" };
+	for ( const char *pBlock : s_GPUBlocks )
+	{
+		bool bHolds = false;
+		if ( EvaluateGPULevelCondition( pBlock, &bHolds ) && bHolds )
+		{
+			KeyValues *pRet = CheckConditionalFakeShaderName( pShaderName, pBlock, pKeyValues );
+			if ( pRet )
+				return pRet;
+		}
+	}
 	if ( HardwareConfig()->GetDXSupportLevel() < 90 )
 	{
 		KeyValues *pRet = CheckConditionalFakeShaderName( pShaderName,"<DX90", pKeyValues );

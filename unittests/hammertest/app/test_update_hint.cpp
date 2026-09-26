@@ -13,8 +13,8 @@
 #include <cstdio>
 
 using hammer::app::UpdateHint;
-using hammer::geometry::AxisAlignedBox;
-using hammer::geometry::Vec3;
+using mapgeometry::AxisAlignedBox;
+using mapgeometry::Vec3;
 using hammer::scene::NodeHandle;
 
 namespace

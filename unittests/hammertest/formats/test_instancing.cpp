@@ -10,7 +10,7 @@
 //=============================================================================//
 
 #include "hammer/formats/instancing.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include "app/fake_file_store.h"
@@ -22,8 +22,8 @@
 
 using hammer::formats::ExpandInstances;
 using hammer::formats::InstanceExpandResult;
-using hammer::formats::KeyValueNode;
-using hammer::formats::ParseKeyValues;
+using kvtext::KeyValueNode;
+using kvtext::ParseKeyValues;
 
 namespace
 {
@@ -154,7 +154,7 @@ bool HasPoint( const std::vector<P3> &pts, double x, double y, double z )
 
 InstanceExpandResult Expand( const std::string &parentText, hammertest::InMemoryFileStore &store )
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( parentText );
+	kvtext::ParseResult pr = ParseKeyValues( parentText );
 	if ( !pr.ok )
 	{
 		InstanceExpandResult bad;

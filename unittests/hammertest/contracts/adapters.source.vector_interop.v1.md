@@ -14,8 +14,8 @@ open-coding component copies.
 
 ## 1. Purpose, consumers, required vs optional
 
-Marshals `Vector` and legacy `BoundBox` to/from `hammer::geometry::Vec3` and
-`hammer::geometry::AxisAlignedBox`. Consumers: any UI-sibling or Source-facing
+Marshals `Vector` and legacy `BoundBox` to/from `mapgeometry::Vec3` and
+`mapgeometry::AxisAlignedBox`. Consumers: any UI-sibling or Source-facing
 caller that wants to run a reusable geometry operation on data that currently
 lives in a Source/MFC-era object. All four conversions are **required**:
 `ToVec3`, `ToVector`, `ToAABB`, `FromAABB`.

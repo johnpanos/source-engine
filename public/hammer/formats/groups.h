@@ -14,7 +14,7 @@
 #ifndef HAMMER_FORMATS_GROUPS_H
 #define HAMMER_FORMATS_GROUPS_H
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 
 #include <map>
 #include <vector>
@@ -36,13 +36,13 @@ struct GroupTable
 };
 
 // Builds the group table from a parsed VMF document.
-GroupTable ParseGroups( const KeyValueNode &root );
+GroupTable ParseGroups( const kvtext::KeyValueNode &root );
 
 // Expands 'selectedSolidIds' to include every world solid sharing a top-level
 // group with any selected solid. Ungrouped selected solids bring in only
 // themselves. The result is sorted and de-duplicated.
 std::vector<int> ExpandGroupSelection(
-    const KeyValueNode &root, const std::vector<int> &selectedSolidIds );
+    const kvtext::KeyValueNode &root, const std::vector<int> &selectedSolidIds );
 
 } // namespace hammer::formats
 

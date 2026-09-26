@@ -270,15 +270,15 @@ PbrMaterialCheck MaterialCatalog::ValidatePbrMaterial(
 	// patches accumulate outer to inner, with inner values winning; inserts
 	// overwrite, then replaces affect only keys that exist after insertion.
 	std::map<std::string, std::string> values;
-	for ( const KeyValue &parameter : definitions.back().parameters )
+	for ( const kvtext::KeyValue &parameter : definitions.back().parameters )
 		values[ToLower( parameter.key )] = parameter.value;
 	std::map<std::string, std::string> inserts;
 	std::map<std::string, std::string> replaces;
 	for ( std::size_t i = 0; i + 1 < definitions.size(); ++i )
 	{
-		for ( const KeyValue &parameter : definitions[i].patchInsert )
+		for ( const kvtext::KeyValue &parameter : definitions[i].patchInsert )
 			inserts[ToLower( parameter.key )] = parameter.value;
-		for ( const KeyValue &parameter : definitions[i].patchReplace )
+		for ( const kvtext::KeyValue &parameter : definitions[i].patchReplace )
 			replaces[ToLower( parameter.key )] = parameter.value;
 	}
 	for ( const auto &entry : inserts )

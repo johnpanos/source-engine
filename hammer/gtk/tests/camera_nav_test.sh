@@ -30,9 +30,9 @@ echo "camera_nav_test: building with $CXX..."
 	"$ROOT/hammer/core/formats/vtf_image.cpp" \
 	"$ROOT/hammer/core/formats/vpk_archive.cpp" \
 	"$ROOT/hammer/core/formats/search_path_assets.cpp" \
-	"$ROOT/hammer/core/geometry/brush.cpp" \
-	"$ROOT/hammer/core/geometry/displacement.cpp" \
-	"$ROOT/hammer/core/formats/keyvalues.cpp" \
+	"$ROOT/mapgeometry/brush.cpp" \
+	"$ROOT/mapgeometry/displacement.cpp" \
+	"$ROOT/kvtext/keyvalues.cpp" \
 	$(pkg-config --libs epoxy) \
 	-o "$BIN"
 

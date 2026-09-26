@@ -39,6 +39,8 @@ Checks (quality/workloads/portal2-materials-v1/checks.json):
   <scenario>.shaders             no material uses a shader this build lacks,
                                  beyond the declared exemptions
   <scenario>.proxies             no material names a proxy this build lacks
+  <scenario>.conditionals        the material system understood every VMT
+                                 conditional ("GPU>=1?$var", "GPU>=1" blocks)
   <scenario>.<shot>.native_drops the native Vulkan backend dropped no draw of
                                  a non-exempt material while the view showed
 
@@ -84,6 +86,7 @@ CAPTURE_ENGINE_ARGS = ["+sv_cheats", "1"]
 DARK_LUMA, BRIGHT_LUMA = 40.0, 230.0
 SHOT_LINE = re.compile(r"^QA_SHOT (\S+) (\S+)\s*$")
 UNKNOWN_SHADER = re.compile(r'Material "([^"]+)" uses unknown shader "([^"]+)"')
+UNRECOGNIZED_CONDITIONAL = re.compile(r"unrecognized conditional test (\S+) in (\S+)")
 MISSING_PROXY = re.compile(r'Error: Material "?([^"]*?)"? ?: proxy "([^"]+)" not found')
 # The native backend's census, printed at each screenshot (ReadPixels):
 # cumulative dropped-draw counts per material.
@@ -243,6 +246,13 @@ def console_issues(log):
         proxies.setdefault(match.group(2), set()).add(match.group(1))
     return ({k: sorted(v) for k, v in sorted(shaders.items())},
             {k: sorted(v) for k, v in sorted(proxies.items())})
+
+
+def unrecognized_conditionals(directory):
+    """VMT conditional tests the material system did not understand, from a scenario's log."""
+    path = Path(directory) / "console.log"
+    log = path.read_text(errors="replace") if path.is_file() else ""
+    return sorted({"%s in %s" % m.groups() for m in UNRECOGNIZED_CONDITIONAL.finditer(log)})
 
 
 def census_by_shot(stdout, names):
@@ -545,7 +555,9 @@ def record_reference(args, checks):
         if not record or record["status"] != "pass":
             raise ShotError("retail scenario %s did not pass" % scenario)
         entry = {"unknown_shaders": record["unknown_shaders"],
-                 "missing_proxies": record["missing_proxies"], "shots": {}}
+                 "missing_proxies": record["missing_proxies"],
+                 "unrecognized_conditionals": unrecognized_conditionals(retail / scenario),
+                 "shots": {}}
         for shot, spec in shots.items():
             image = load_rgb(retail / scenario / "shots" / (shot + ".png"))
             entry["shots"][shot] = {
@@ -588,6 +600,12 @@ def judge(capture_dir, capture, checks, reference, report):
         report("%s.proxies" % scenario, not ours_proxies, ", ".join(
             "%s (%s)" % (p, ", ".join(record["missing_proxies"][p][:3])) for p in
             sorted(ours_proxies)) or "every proxy found")
+        ours_conditionals = set(unrecognized_conditionals(Path(capture_dir) / scenario)) - \
+            set(ref.get("unrecognized_conditionals", []))
+        report("%s.conditionals" % scenario, not ours_conditionals, ", ".join(
+            sorted(ours_conditionals)[:4]) + (" and %d more" % (len(ours_conditionals) - 4)
+                                              if len(ours_conditionals) > 4 else "")
+               or "every VMT conditional understood")
         # The census is re-read from the log so a parser fix applies to old captures.
         stdout = Path(capture_dir) / scenario / "stdout.log"
         censuses = census_by_shot(stdout.read_text(errors="replace"), list(record["shots"])) \

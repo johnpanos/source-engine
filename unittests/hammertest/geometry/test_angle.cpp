@@ -9,14 +9,14 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/angle.h"
+#include "mapgeometry/angle.h"
 #include "testing/conformance_result.h"
 
 #include <cmath>
 #include <cstdio>
 
-using hammer::geometry::LineAngleDegrees;
-using hammer::geometry::NormalizeAngleDegrees;
+using mapgeometry::LineAngleDegrees;
+using mapgeometry::NormalizeAngleDegrees;
 
 namespace
 {

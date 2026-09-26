@@ -8,14 +8,14 @@
 //
 //=============================================================================//
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/formats/overlay.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
 
-using hammer::formats::ParseKeyValues;
+using kvtext::ParseKeyValues;
 using hammer::formats::ParseOverlay;
 
 namespace
@@ -26,7 +26,7 @@ int g_failures = 0;
 // Parses a single-entity document and runs ParseOverlay on that entity.
 bool Parses( const std::string &entityText )
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( entityText );
+	kvtext::ParseResult pr = ParseKeyValues( entityText );
 	if ( !pr.ok || pr.root.children.empty() )
 	{
 		return false;

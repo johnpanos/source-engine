@@ -16,8 +16,8 @@
 #ifndef HAMMER_FORMATS_OVERLAY_H
 #define HAMMER_FORMATS_OVERLAY_H
 
-#include "hammer/formats/keyvalues.h"
-#include "hammer/geometry/brush.h" // geometry::Vec3d
+#include "kvtext/keyvalues.h"
+#include "mapgeometry/brush.h" // mapgeometry::Vec3d
 
 #include <array>
 #include <optional>
@@ -31,27 +31,27 @@ struct Overlay
 {
 	std::string material;              // the projected material
 	std::vector<int> sides;            // target brush-face ids the overlay applies to
-	geometry::Vec3d basisOrigin;       // projection origin in world space
-	geometry::Vec3d basisU;            // U axis
-	geometry::Vec3d basisV;            // V axis
-	geometry::Vec3d basisNormal;       // face normal
-	std::array<geometry::Vec3d, 4> uv; // corner positions in overlay (U/V/normal) space
+	mapgeometry::Vec3d basisOrigin;    // projection origin in world space
+	mapgeometry::Vec3d basisU;         // U axis
+	mapgeometry::Vec3d basisV;         // V axis
+	mapgeometry::Vec3d basisNormal;    // face normal
+	std::array<mapgeometry::Vec3d, 4> uv; // corner positions in overlay (U/V/normal) space
 	double startU = 0.0;
 	double endU = 1.0;
 	double startV = 0.0;
 	double endV = 1.0;
 
 	// The overlay's four corners transformed into world space.
-	std::array<geometry::Vec3d, 4> WorldCorners() const;
+	std::array<mapgeometry::Vec3d, 4> WorldCorners() const;
 };
 
 // Parses one info_overlay entity block. Returns nullopt when the block is not an
 // info_overlay or a required field (material, non-empty sides, BasisOrigin/U/V/
 // Normal, uv0..uv3) is missing or malformed. StartU/EndU/StartV/EndV are optional.
-std::optional<Overlay> ParseOverlay( const KeyValueNode &entity );
+std::optional<Overlay> ParseOverlay( const kvtext::KeyValueNode &entity );
 
 // Extracts every valid info_overlay entity from a parsed VMF document.
-std::vector<Overlay> ExtractOverlays( const KeyValueNode &root );
+std::vector<Overlay> ExtractOverlays( const kvtext::KeyValueNode &root );
 
 } // namespace hammer::formats
 

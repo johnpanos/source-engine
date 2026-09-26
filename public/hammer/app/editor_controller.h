@@ -22,7 +22,7 @@
 #define HAMMER_APP_EDITOR_CONTROLLER_H
 
 #include "hammer/app/document_history.h"
-#include "hammer/geometry/brush.h"
+#include "mapgeometry/brush.h"
 
 #include <optional>
 #include <string>
@@ -57,10 +57,10 @@ enum class ViewId
 struct MapBrush
 {
 	int id = 0;
-	std::vector<geometry::Plane> planes;
+	std::vector<mapgeometry::Plane> planes;
 	std::vector<std::string> materials;
-	geometry::Vec3d mins;
-	geometry::Vec3d maxs;
+	mapgeometry::Vec3d mins;
+	mapgeometry::Vec3d maxs;
 };
 
 // One authored key/value on a placed entity beyond its classname and origin
@@ -80,7 +80,7 @@ struct MapEntity
 {
 	int id = 0;
 	std::string classname;
-	geometry::Vec3d origin;
+	mapgeometry::Vec3d origin;
 	std::vector<EntityProperty> properties;
 };
 
@@ -137,7 +137,7 @@ public:
 	// click. Mutates only the selection (no document change, so no undo step).
 	// Returns true if a brush was hit. 'dir' need not be normalized.
 	bool PickByRay(
-	    const geometry::Vec3d &origin, const geometry::Vec3d &dir, bool additive = false );
+	    const mapgeometry::Vec3d &origin, const mapgeometry::Vec3d &dir, bool additive = false );
 
 	// Translates the selected brush rigidly by a world delta (every face plane and
 	// the cached bound shift together), recording one undo unit -- the keyboard
@@ -166,10 +166,12 @@ public:
 	//
 	// Adds an axis-aligned world brush with the active material and selects it.
 	// Returns its id, or nothing for a degenerate box (any extent <= 0).
-	std::optional<int> CreateBlock( const geometry::Vec3d &mins, const geometry::Vec3d &maxs );
+	std::optional<int> CreateBlock(
+	    const mapgeometry::Vec3d &mins, const mapgeometry::Vec3d &maxs );
 	// Places a point entity of 'classname' at 'origin' and selects it.
-	std::optional<int> PlaceEntity( const std::string &classname, const geometry::Vec3d &origin );
-	bool SetEntityOrigin( int entityId, const geometry::Vec3d &origin );
+	std::optional<int> PlaceEntity(
+	    const std::string &classname, const mapgeometry::Vec3d &origin );
+	bool SetEntityOrigin( int entityId, const mapgeometry::Vec3d &origin );
 	// Worldspawn keyvalues other than classname/mapversion (e.g. "skyname"). A new
 	// map starts with skyname "sky_day01_01" so it compiles without a leak into
 	// an unset sky.
@@ -194,11 +196,11 @@ public:
 	std::optional<int> SelectedEntity() const { return m_entitySelection; }
 	bool HasPending() const { return m_pending.active; }
 	// The pending box as a full 3D AABB (with the free-axis extrusion), if any.
-	bool PendingBox( geometry::Vec3d &mins, geometry::Vec3d &maxs ) const;
+	bool PendingBox( mapgeometry::Vec3d &mins, mapgeometry::Vec3d &maxs ) const;
 
 	// The renderable scene: every brush plus the pending box (id kPendingSolidId),
 	// built through the shared geometry bridge so rendering reuses one path.
-	geometry::WorldScene BuildScene() const;
+	mapgeometry::WorldScene BuildScene() const;
 
 	// Grid-snaps a single world coordinate through the shared rounding owner.
 	double Snap( double value ) const;
@@ -239,13 +241,13 @@ private:
 	// the brush existed and any face material changed (caller records the history).
 	bool RetextureBrush( int id );
 	// Assembles a box AABB from a pending rectangle in its view.
-	void PendingToAabb( geometry::Vec3d &mins, geometry::Vec3d &maxs ) const;
+	void PendingToAabb( mapgeometry::Vec3d &mins, mapgeometry::Vec3d &maxs ) const;
 
 	std::vector<MapBrush> m_brushes;
 	std::vector<MapEntity> m_entities;
 	// Loaded displacement (dispinfo terrain) surfaces, carried for display only
 	// (not editable in this slice); BuildScene() emits them for the viewport.
-	std::vector<geometry::DisplacementMesh> m_displacements;
+	std::vector<mapgeometry::DisplacementMesh> m_displacements;
 	int m_nextId = 1;
 	std::optional<int> m_selection;       // primary (last-picked) selected brush id
 	std::vector<int> m_extraSelected;     // additional selected brushes (Ctrl-click)

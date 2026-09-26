@@ -11,16 +11,16 @@
 //
 //=============================================================================//
 
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
 
-using hammer::formats::CompareKeyValues;
-using hammer::formats::CompareResult;
-using hammer::formats::KeyValueNode;
-using hammer::formats::ParseKeyValues;
+using kvtext::CompareKeyValues;
+using kvtext::CompareResult;
+using kvtext::KeyValueNode;
+using kvtext::ParseKeyValues;
 
 namespace
 {

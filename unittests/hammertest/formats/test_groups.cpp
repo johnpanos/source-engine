@@ -9,7 +9,7 @@
 //=============================================================================//
 
 #include "hammer/formats/groups.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "testing/conformance_result.h"
 
 #include <algorithm>
@@ -20,7 +20,7 @@
 using hammer::formats::ExpandGroupSelection;
 using hammer::formats::GroupTable;
 using hammer::formats::ParseGroups;
-using hammer::formats::ParseKeyValues;
+using kvtext::ParseKeyValues;
 
 namespace
 {
@@ -57,7 +57,7 @@ const char *kMap =
 
 void TestTable()
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( kMap );
+	kvtext::ParseResult pr = ParseKeyValues( kMap );
 	Check( pr.ok, "map parses" );
 	GroupTable t = ParseGroups( pr.root );
 	// Nested: solid 10 is in group 2, whose top-level ancestor is group 1.
@@ -69,7 +69,7 @@ void TestTable()
 
 void TestExpand()
 {
-	hammer::formats::ParseResult pr = ParseKeyValues( kMap );
+	kvtext::ParseResult pr = ParseKeyValues( kMap );
 
 	// Selecting 10 (nested group 2) pulls in 11 (group 1) via the shared top-level.
 	std::vector<int> a = ExpandGroupSelection( pr.root, { 10 } );

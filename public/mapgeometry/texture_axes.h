@@ -1,19 +1,19 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Named owner of the world-aligned texture-axis policy (RFC 0002,
-//			hammer.geometry): the u/v axes a face gets from its plane normal
+//			world.map-geometry): the u/v axes a face gets from its plane normal
 //			when no authored axes exist. Ported from legacy Hammer's
 //			CMapFace::InitializeQuakeStyleTextureAxes (hammer/mapface.cpp), the
 //			same table vbsp's TextureAxisFromPlane uses.
 //
 //=============================================================================//
 
-#ifndef HAMMER_GEOMETRY_TEXTURE_AXES_H
-#define HAMMER_GEOMETRY_TEXTURE_AXES_H
+#ifndef MAPGEOMETRY_TEXTURE_AXES_H
+#define MAPGEOMETRY_TEXTURE_AXES_H
 
-#include "hammer/geometry/brush.h"
+#include "mapgeometry/brush.h"
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 struct TextureAxes
@@ -28,6 +28,6 @@ struct TextureAxes
 // with no positive dot product (the zero vector) gets the floor axes.
 TextureAxes WorldAlignedTextureAxes( const Vec3d &normal );
 
-} // namespace hammer::geometry
+} // namespace mapgeometry
 
-#endif // HAMMER_GEOMETRY_TEXTURE_AXES_H
+#endif // MAPGEOMETRY_TEXTURE_AXES_H

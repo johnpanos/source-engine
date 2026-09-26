@@ -19,7 +19,7 @@
 
 #include "adapter_policy.h"
 #include "boundbox.h"
-#include "hammer/geometry/aabb.h"
+#include "mapgeometry/aabb.h"
 
 #include <cstdio>
 #include <cmath>
@@ -58,7 +58,7 @@ bool SubstitutionHolds( const Vector *pts, int n, LegacyOp legacyOp, AabbOp aabb
 
 	BoundBox viaLibrary;
 	Seed( viaLibrary, pts, n );
-	hammer::geometry::AxisAlignedBox box = Adapter::ToAABB( viaLibrary );
+	mapgeometry::AxisAlignedBox box = Adapter::ToAABB( viaLibrary );
 	aabbOp( box );
 	Adapter::FromAABB( box, viaLibrary );
 
@@ -91,7 +91,7 @@ int RunAdapterChecks()
 	const Vector pts[] = { Vector( 3, 11, -7 ), Vector( 19, -4, 9 ), Vector( -2, 27, 4 ) };
 	BoundBox seeded;
 	Seed( seeded, pts, 3 );
-	hammer::geometry::AxisAlignedBox a = Adapter::ToAABB( seeded );
+	mapgeometry::AxisAlignedBox a = Adapter::ToAABB( seeded );
 	check( Eq( a.mins[0], seeded.bmins.x ) && Eq( a.mins[1], seeded.bmins.y ) &&
 			   Eq( a.mins[2], seeded.bmins.z ) && Eq( a.maxs[0], seeded.bmaxs.x ) &&
 			   Eq( a.maxs[1], seeded.bmaxs.y ) && Eq( a.maxs[2], seeded.bmaxs.z ),
@@ -107,19 +107,40 @@ int RunAdapterChecks()
 	//     .5-boundary SnapToGrid(16) case pins V_rint round-half-away-from-zero.
 	const Vector halfPts[] = { Vector( 8, -8, 0 ), Vector( 24, 8, 16 ) };
 	check( SubstitutionHolds<Adapter>(
-			   halfPts, 2, []( BoundBox &b ) { b.SnapToGrid( 16 ); },
-			   []( hammer::geometry::AxisAlignedBox &b ) { b.SnapToGrid( 16 ); } ),
-		   "substitution: SnapToGrid(16) .5-boundary" );
+	           halfPts, 2,
+	           []( BoundBox &b )
+	           {
+		           b.SnapToGrid( 16 );
+	           },
+	           []( mapgeometry::AxisAlignedBox &b )
+	           {
+		           b.SnapToGrid( 16 );
+	           } ),
+	    "substitution: SnapToGrid(16) .5-boundary" );
 	check( SubstitutionHolds<Adapter>(
-			   pts, 3, []( BoundBox &b ) { b.SnapToGrid( 8 ); },
-			   []( hammer::geometry::AxisAlignedBox &b ) { b.SnapToGrid( 8 ); } ),
-		   "substitution: SnapToGrid(8)" );
+	           pts, 3,
+	           []( BoundBox &b )
+	           {
+		           b.SnapToGrid( 8 );
+	           },
+	           []( mapgeometry::AxisAlignedBox &b )
+	           {
+		           b.SnapToGrid( 8 );
+	           } ),
+	    "substitution: SnapToGrid(8)" );
 	for ( int axis = 0; axis < 3; ++axis )
 	{
 		check( SubstitutionHolds<Adapter>(
-				   pts, 3, [axis]( BoundBox &b ) { b.Rotate90( axis ); },
-				   [axis]( hammer::geometry::AxisAlignedBox &b ) { b.Rotate90( axis ); } ),
-			   "substitution: Rotate90" );
+		           pts, 3,
+		           [axis]( BoundBox &b )
+		           {
+			           b.Rotate90( axis );
+		           },
+		           [axis]( mapgeometry::AxisAlignedBox &b )
+		           {
+			           b.Rotate90( axis );
+		           } ),
+		    "substitution: Rotate90" );
 	}
 
 	return failures;

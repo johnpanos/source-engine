@@ -11,7 +11,7 @@
 //
 //			It composes the two already-extracted strict libraries: it references
 //			nodes by `hammer::scene::NodeHandle` (not `CMapClass *`) and
-//			accumulates the affected region as a `hammer::geometry::AxisAlignedBox`
+//			accumulates the affected region as a `mapgeometry::AxisAlignedBox`
 //			(not `BoundBox`). No MFC, tier0, PCH, or GPU dependency. The
 //			`CMapClass`/`BoundBox` marshalling stays in the MFC adapter shell.
 //
@@ -20,7 +20,7 @@
 #ifndef HAMMER_APP_UPDATE_HINT_H
 #define HAMMER_APP_UPDATE_HINT_H
 
-#include "hammer/geometry/aabb.h"
+#include "mapgeometry/aabb.h"
 #include "hammer/scene/handle.h"
 
 #include <vector>
@@ -59,19 +59,19 @@ public:
 	// Accumulates a pre-change region without recording a node or code. Used to
 	// capture the extent an object occupied BEFORE it was modified/moved, so the
 	// affected region covers both the old and new positions.
-	void PreUpdate( const geometry::AxisAlignedBox &affectedBounds );
+	void PreUpdate( const mapgeometry::AxisAlignedBox &affectedBounds );
 
 	// Records that `node` changed with notification `notifyCode`, and unions
 	// `affectedBounds` into the region. Nodes reported with the same code share a
 	// bucket. Returns false and records nothing if `notifyCode` is a new code and
 	// all kMaxNotifyCodes buckets are already in use (capacity limit); an existing
 	// code always succeeds.
-	bool PostUpdate( scene::NodeHandle node, int notifyCode,
-					 const geometry::AxisAlignedBox &affectedBounds );
+	bool PostUpdate(
+	    scene::NodeHandle node, int notifyCode, const mapgeometry::AxisAlignedBox &affectedBounds );
 
 	// The union of every region passed to PreUpdate/PostUpdate since the last
 	// Reset. Invalid (IsValidBox() == false) when nothing has been reported.
-	const geometry::AxisAlignedBox &UpdateRegion() const { return m_updateRegion; }
+	const mapgeometry::AxisAlignedBox &UpdateRegion() const { return m_updateRegion; }
 
 	// Number of distinct notify codes currently held (0..kMaxNotifyCodes).
 	int NotifyCodeCount() const { return static_cast<int>( m_buckets.size() ); }
@@ -89,7 +89,7 @@ private:
 	NotifyBucket *BucketFor( int code );
 
 	std::vector<NotifyBucket> m_buckets;
-	geometry::AxisAlignedBox m_updateRegion;
+	mapgeometry::AxisAlignedBox m_updateRegion;
 };
 
 } // namespace hammer::app

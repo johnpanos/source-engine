@@ -28,7 +28,7 @@
 
 #include "hammer/app/editor_document.h"
 #include "hammer/adapters/platform/disk_file_store.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 
 #include <string>
 
@@ -140,7 +140,7 @@ private:
 	// the core, through public accessors.
 	void Refresh()
 	{
-		const std::string text = hammer::formats::WriteKeyValues( m_document.Content() );
+		const std::string text = kvtext::WriteKeyValues( m_document.Content() );
 		std::string title = kDocumentPath;
 		title += m_document.IsModified() ? " * - Hammer (MFC sibling)" : " - Hammer (MFC sibling)";
 		::SetWindowTextA( GetSafeHwnd(), title.c_str() );

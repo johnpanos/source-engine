@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Convex brush geometry for the strict Hammer geometry module (RFC 0002,
-//			hammer.geometry). A Source VMF stores each brush "solid" as a set of
+// Purpose: Convex brush geometry for the map geometry library (RFC 0002,
+//			world.map-geometry). A Source VMF stores each brush "solid" as a set of
 //			"side" planes, each plane written as three points. The renderable form
 //			of a brush is the convex polyhedron that is the intersection of the
 //			half-spaces behind those planes; this module derives that polyhedron
@@ -10,8 +10,8 @@
 //			This is the headless scene geometry the GTK desktop shell and any
 //			viewport consume. It depends only on the C++ standard library: no
 //			editor module, MFC, tier0, platform.h, PCH, or GPU. Decoding VMF
-//			keyvalues blocks into these types is hammer.formats' job
-//			(public/hammer/formats/vmf_geometry.h). Geometry is computed in double
+//			keyvalues blocks into these types is content.vmf's job
+//			(public/vmf/vmf_geometry.h). Geometry is computed in double
 //			precision for clip robustness and exposed as float for GPU upload.
 //
 //			Robustness policy: the outward orientation of each side plane is derived
@@ -22,8 +22,8 @@
 //
 //=============================================================================//
 
-#ifndef HAMMER_GEOMETRY_BRUSH_H
-#define HAMMER_GEOMETRY_BRUSH_H
+#ifndef MAPGEOMETRY_BRUSH_H
+#define MAPGEOMETRY_BRUSH_H
 
 #include <array>
 #include <cstddef>
@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 // Double-precision 3-vector used for brush construction. Kept distinct from the
@@ -92,8 +92,8 @@ struct SceneEntity
 // A displaced (dispinfo) surface reduced to a renderable triangle mesh: a
 // row-major grid of world-space vertices, a per-vertex blend weight (0..255), and
 // a triangle index list. This is the presentation form the scene carries; the
-// subdivision math lives in hammer.geometry.displacement, and the VMF decoder
-// (hammer.formats) fills this from it (kept here so WorldScene needs no dependency
+// subdivision math lives in world.map-geometry displacement, and the VMF decoder
+// (content.vmf) fills this from it (kept here so WorldScene needs no dependency
 // on that module's header).
 struct DisplacementMesh
 {
@@ -157,6 +157,6 @@ BrushSolid BuildSolidFromPlanes(
 // most parallel wins (a later face wins a tie). Returns nullptr when none matches.
 const BrushFace *FindFaceOnPlane( const BrushSolid &solid, const Plane &plane );
 
-} // namespace hammer::geometry
+} // namespace mapgeometry
 
-#endif // HAMMER_GEOMETRY_BRUSH_H
+#endif // MAPGEOMETRY_BRUSH_H

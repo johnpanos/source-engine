@@ -6,9 +6,9 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/texture_axes.h"
+#include "mapgeometry/texture_axes.h"
 
-namespace hammer::geometry
+namespace mapgeometry
 {
 
 namespace
@@ -50,4 +50,4 @@ TextureAxes WorldAlignedTextureAxes( const Vec3d &normal )
 	return { kBaseAxes[bestAxis].u, kBaseAxes[bestAxis].v };
 }
 
-} // namespace hammer::geometry
+} // namespace mapgeometry

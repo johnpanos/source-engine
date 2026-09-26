@@ -6,7 +6,7 @@
 //=============================================================================//
 
 #include "hammer/adapters/platform/disk_byte_store.h"
-#include "hammer/formats/keyvalues.h"
+#include "kvtext/keyvalues.h"
 #include "hammer/formats/material.h"
 #include "hammer/formats/vpk_archive.h"
 #include "hammer/formats/vtf_image.h"
@@ -136,7 +136,7 @@ bool WriteBytes( const std::filesystem::path &path, const std::string &bytes )
 	return output.good();
 }
 
-void PrintParameters( const std::vector<hammer::formats::KeyValue> &parameters )
+void PrintParameters( const std::vector<kvtext::KeyValue> &parameters )
 {
 	std::cout << '[';
 	bool first = true;
@@ -161,12 +161,12 @@ bool EqualsIgnoreCase( const std::string &a, const std::string &b )
 // The DirectX 9 shader-fallback block ("<Shader>_HDR_DX9", else "<Shader>_DX9")
 // overrides top-level parameters on the hardware the PBR family replaces. Its
 // $bumpmap/$ssbump are otherwise invisible to the top-level material model.
-std::optional<hammer::formats::KeyValueNode> FindDx9Block( const std::string &vmtText )
+std::optional<kvtext::KeyValueNode> FindDx9Block( const std::string &vmtText )
 {
-	const hammer::formats::ParseResult parsed = hammer::formats::ParseKeyValues( vmtText );
+	const kvtext::ParseResult parsed = kvtext::ParseKeyValues( vmtText );
 	if ( !parsed.ok || parsed.root.children.empty() )
 		return std::nullopt;
-	const hammer::formats::KeyValueNode &shader = parsed.root.children.front();
+	const kvtext::KeyValueNode &shader = parsed.root.children.front();
 	for ( const char *suffix : { "_HDR_DX9", "_DX9" } )
 	{
 		for ( const auto &child : shader.children )
@@ -198,7 +198,7 @@ void PrintMaterialRecord( const std::string &path, const std::string &bytes )
 	const auto dx9 = FindDx9Block( bytes );
 	std::cout << ",\"dx9_block\":" << ( dx9 ? JsonQuote( dx9->name ) : std::string( "null" ) )
 	          << ",\"dx9_parameters\":";
-	PrintParameters( dx9 ? dx9->pairs : std::vector<hammer::formats::KeyValue>() );
+	PrintParameters( dx9 ? dx9->pairs : std::vector<kvtext::KeyValue>() );
 	std::cout << "}\n";
 }
 

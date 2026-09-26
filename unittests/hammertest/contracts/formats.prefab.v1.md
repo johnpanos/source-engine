@@ -4,8 +4,8 @@ Module: `hammer.formats`
 Header: `public/hammer/formats/prefab.h` · Impl: `hammer/core/formats/prefab.cpp`
 Conformance: `unittests/hammertest/formats/test_prefab.cpp` (+ `_negative`)
 Migration: `HAM-PREFAB-001`
-Depends on: `hammer.formats` (keyvalues codec) and the shared VMF transform
-`hammer/formats/vmf_transform` (the ONE owner of the QAngle placement math, also
+Depends on: `content.keyvalues-text` (keyvalues codec) and the shared VMF transform
+`public/vmf/vmf_transform.h` in `content.vmf` (the ONE owner of the QAngle placement math, also
 used by `func_instance` — DRY).
 
 Instantiates a prefab: a stored VMF fragment placed into a map at an origin/angles,

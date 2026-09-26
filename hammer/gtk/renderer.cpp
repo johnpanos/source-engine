@@ -326,7 +326,7 @@ bool Renderer::Init( std::string &error )
 	return true;
 }
 
-void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
+void Renderer::SetScene( const mapgeometry::WorldScene &scene )
 {
 	if ( !m_initialized )
 	{
@@ -357,7 +357,7 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 	};
 
 	int solidIndex = 0;
-	for ( const hammer::geometry::BrushSolid &solid : scene.solids )
+	for ( const mapgeometry::BrushSolid &solid : scene.solids )
 	{
 		// A negative id is the in-progress "pending" box; an id matching the
 		// highlight is the selected brush. Both get a distinct fill/edge colour.
@@ -394,7 +394,7 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 			edge[2] = 0.15f;
 		}
 
-		for ( const hammer::geometry::BrushFace &face : solid.faces )
+		for ( const mapgeometry::BrushFace &face : solid.faces )
 		{
 			if ( face.vertices.size() < 3 )
 			{
@@ -442,24 +442,23 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 					worldV = ( img->height > 0 ? img->height : 512 ) * 0.25f;
 				}
 			}
-			auto uAt = [&]( const hammer::geometry::Vec3d &p )
+			auto uAt = [&]( const mapgeometry::Vec3d &p )
 			{
 				const double c[3] = { p.x, p.y, p.z };
 				return static_cast<float>( c[aU] ) / worldU;
 			};
-			auto vAt = [&]( const hammer::geometry::Vec3d &p )
+			auto vAt = [&]( const mapgeometry::Vec3d &p )
 			{
 				const double c[3] = { p.x, p.y, p.z };
 				return static_cast<float>( c[aV] ) / worldV;
 			};
 
 			const int faceFirstVertex = static_cast<int>( mesh.size() / kVertexFloats );
-			const hammer::geometry::Vec3d &v0 = face.vertices[0];
+			const mapgeometry::Vec3d &v0 = face.vertices[0];
 			for ( std::size_t i = 1; i + 1 < face.vertices.size(); ++i )
 			{
-				const hammer::geometry::Vec3d tri[3] = {
-				    v0, face.vertices[i], face.vertices[i + 1] };
-				for ( const hammer::geometry::Vec3d &p : tri )
+				const mapgeometry::Vec3d tri[3] = { v0, face.vertices[i], face.vertices[i + 1] };
+				for ( const mapgeometry::Vec3d &p : tri )
 				{
 					PushVertex( mesh, static_cast<float>( p.x ), static_cast<float>( p.y ),
 					    static_cast<float>( p.z ), n[0], n[1], n[2], color[0], color[1], color[2],
@@ -473,8 +472,8 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 
 			for ( std::size_t i = 0; i < face.vertices.size(); ++i )
 			{
-				const hammer::geometry::Vec3d &a = face.vertices[i];
-				const hammer::geometry::Vec3d &b = face.vertices[( i + 1 ) % face.vertices.size()];
+				const mapgeometry::Vec3d &a = face.vertices[i];
+				const mapgeometry::Vec3d &b = face.vertices[( i + 1 ) % face.vertices.size()];
 				PushVertex( lines, static_cast<float>( a.x ), static_cast<float>( a.y ),
 				    static_cast<float>( a.z ), 0, 0, 1, edge[0], edge[1], edge[2] );
 				PushVertex( lines, static_cast<float>( b.x ), static_cast<float>( b.y ),
@@ -488,7 +487,7 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 	// terrain draws in the 3D view and the 2D wireframe alongside the brushes.
 	// Per-triangle flat normals give relief without stored per-vertex normals; the
 	// per-vertex alpha blends a grass/dirt colour so 2-material blends read.
-	for ( const hammer::geometry::DisplacementMesh &disp : scene.displacements )
+	for ( const mapgeometry::DisplacementMesh &disp : scene.displacements )
 	{
 		const int dispFirst = static_cast<int>( mesh.size() / kVertexFloats );
 		for ( const std::array<int, 3> &tri : disp.triangles )
@@ -499,9 +498,9 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 			{
 				continue;
 			}
-			const hammer::geometry::Vec3d &a = disp.vertices[i0];
-			const hammer::geometry::Vec3d &b = disp.vertices[i1];
-			const hammer::geometry::Vec3d &c = disp.vertices[i2];
+			const mapgeometry::Vec3d &a = disp.vertices[i0];
+			const mapgeometry::Vec3d &b = disp.vertices[i1];
+			const mapgeometry::Vec3d &c = disp.vertices[i2];
 			float nx =
 			    static_cast<float>( ( b.y - a.y ) * ( c.z - a.z ) - ( b.z - a.z ) * ( c.y - a.y ) );
 			float ny =
@@ -516,7 +515,7 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 				nz /= nlen;
 			}
 			const int idx[3] = { i0, i1, i2 };
-			const hammer::geometry::Vec3d *pv[3] = { &a, &b, &c };
+			const mapgeometry::Vec3d *pv[3] = { &a, &b, &c };
 			for ( int k = 0; k < 3; ++k )
 			{
 				const double al =
@@ -531,11 +530,11 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 			}
 			++m_triCount;
 
-			const hammer::geometry::Vec3d *edgePts[3] = { &a, &b, &c };
+			const mapgeometry::Vec3d *edgePts[3] = { &a, &b, &c };
 			for ( int e = 0; e < 3; ++e )
 			{
-				const hammer::geometry::Vec3d &p0 = *edgePts[e];
-				const hammer::geometry::Vec3d &p1 = *edgePts[( e + 1 ) % 3];
+				const mapgeometry::Vec3d &p0 = *edgePts[e];
+				const mapgeometry::Vec3d &p1 = *edgePts[( e + 1 ) % 3];
 				PushVertex( lines, static_cast<float>( p0.x ), static_cast<float>( p0.y ),
 				    static_cast<float>( p0.z ), 0, 0, 1, 0.35f, 0.55f, 0.40f );
 				PushVertex( lines, static_cast<float>( p1.x ), static_cast<float>( p1.y ),

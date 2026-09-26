@@ -1,6 +1,6 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Conformance oracle for hammer::geometry::RoundHalfAwayFromZero
+// Purpose: Conformance oracle for mapgeometry::RoundHalfAwayFromZero
 //			(RFC 0002). Pins the legacy V_rint rounding rule, especially the exact
 //			.5 boundaries where round-half-away-from-zero differs from the
 //			round-half-to-even that std::rint would give. A substitution that used
@@ -10,12 +10,12 @@
 //
 //=============================================================================//
 
-#include "hammer/geometry/rounding.h"
+#include "mapgeometry/rounding.h"
 #include "testing/conformance_result.h"
 
 #include <cstdio>
 
-using hammer::geometry::RoundHalfAwayFromZero;
+using mapgeometry::RoundHalfAwayFromZero;
 
 namespace
 {
