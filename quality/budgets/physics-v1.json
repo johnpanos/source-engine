@@ -352,7 +352,10 @@
           "stat": "p50",
           "base_workers": 1,
           "workers": 4,
-          "min_ratio": 1.2
+          "min_ratio": 1.2,
+          "awake_min": 512,
+          "min_awake_ticks": 60,
+          "note": "Judged over the ticks with at least 512 of 1024 bodies awake (2026-09-25). Since the restitution pin (box3d 78c90a0), the pile stays fully awake for 142 of 300 ticks and then sleeps as one island. The whole-run p50 (about 23 us at every worker count) timed sleeping steps, so the gate failed at 0.82x although the step still scales. Over the awake ticks, 1 -> 4 workers went 1323 -> 633 us (2.09x) on a quiet host. The threshold is unchanged. Fewer than 60 awake ticks fails as thin evidence."
         },
         {
           "id": "parallel.speedup-ragdolls-128",

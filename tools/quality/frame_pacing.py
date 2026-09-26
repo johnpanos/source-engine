@@ -164,9 +164,12 @@ def summarize(frames):
     }
     if all("cpu" in frame for frame in frames):
         summary["cpu_median_ms"] = round(percentile([f["cpu"] / 1000.0 for f in frames], 0.5), 3)
-    for kind in ("emit", "record"):
+    for kind in ("emit", "emit_convert", "record"):
         summary[kind + "_median_ms"] = round(percentile(
             [frame.get("cost", {}).get(kind, [0, 0])[1] / 1000.0 for frame in frames], 0.5), 3)
+    convert = summarize_convert(frames)
+    if convert:
+        summary["convert"] = convert
     summary["vertex_mb_median"] = round(percentile([f["vertex_bytes"] / 1e6 for f in frames], 0.5), 3)
     # Blocking one-off work inside the measured frames (each is a stall a
     # slower driver or device magnifies): totals, not medians.
@@ -174,6 +177,46 @@ def summarize(frames):
         values = [frame.get("cost", {}).get(kind, [0, 0]) for frame in frames]
         summary[kind] = {"count": sum(v[0] for v in values), "ms": round(sum(v[1] for v in values) / 1000.0, 3)}
     return summary
+
+
+# The backend's convert buckets (vulkan_frame_stats.h kEmitConvertBucketMin):
+# draws by their number of unique vertices.
+CONVERT_BUCKETS = ("1-63", "64-255", "256-1023", "1024-2047", "2048-4095", "4096-8191", "8192+")
+
+
+def summarize_convert(frames):
+    """Emit's vertex conversion over the frames, by draw size: totals of draws,
+    unique vertices and time per bucket, and each bucket's share of the
+    conversion time (the part a per-draw split across workers could reach)."""
+    buckets = [[0, 0, 0] for _ in CONVERT_BUCKETS]
+    skinned = pooled = measured = 0
+    for frame in frames:
+        record = frame.get("convert")
+        if not record:
+            continue
+        measured += 1
+        skinned += record.get("skinned", 0)
+        pooled += record.get("pooled", 0)
+        for total, values in zip(buckets, record.get("buckets", [])):
+            for position in range(3):
+                total[position] += values[position]
+    if not measured:
+        return None
+    vertices = sum(bucket[1] for bucket in buckets)
+    micros = sum(bucket[2] for bucket in buckets)
+    return {
+        "frames": measured,
+        "draws": sum(bucket[0] for bucket in buckets),
+        "vertices": vertices,
+        "ms": round(micros / 1000.0, 3),
+        "skinned_share": round(skinned / vertices, 3) if vertices else 0.0,
+        "pooled_draws": pooled,
+        "ns_per_vertex": round(1000.0 * micros / vertices, 1) if vertices else 0.0,
+        "buckets": {name: {"draws": bucket[0], "vertices": bucket[1],
+                           "ms": round(bucket[2] / 1000.0, 3),
+                           "time_share": round(bucket[2] / micros, 3) if micros else 0.0}
+                    for name, bucket in zip(CONVERT_BUCKETS, buckets)},
+    }
 
 
 def frame_costs(frame):
@@ -302,8 +345,9 @@ def print_report(report):
                      costs or "no named backend cost"))
 
 
-def run_once(args, scenario, passes, build, output):
-    """One launch of the product on `build`; returns its evidence."""
+def run_once(args, scenario, passes, build, output, extra_args=()):
+    """One launch of the product on `build`; returns its evidence. `extra_args`
+    are engine arguments for this launch only (an A/B round's B switch)."""
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if (output / "evidence.json").exists():
@@ -340,7 +384,8 @@ def run_once(args, scenario, passes, build, output):
                    "-windowed", "-w", str(args.width), "-h", str(args.height), "-multirun",
                    "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", args.physics,
                    "-vkframestats", str(stats_path)] + (
-                   ["-vkpipelinecache", str(store)] if args.pipeline_store else []) + args.extra_arg + [
+                   ["-vkpipelinecache", str(store)] if args.pipeline_store else []) + args.extra_arg + list(
+                   extra_args) + [
                    # Presentation pinned: no vsync wait (a real mat_vsync would cap the
                    # measured intervals) and no MSAA (a recommended configuration can
                    # enable it), so runs stay comparable with earlier baselines.
@@ -411,7 +456,8 @@ def run_once(args, scenario, passes, build, output):
     return evidence
 
 
-AB_KEYS = ("median_ms", "cpu_median_ms", "emit_median_ms", "p99_ms", "max_ms")
+AB_KEYS = ("median_ms", "cpu_median_ms", "emit_median_ms", "emit_convert_median_ms", "p99_ms",
+           "max_ms")
 
 
 def ab_summary(runs):
@@ -442,6 +488,9 @@ def main(argv=None):
     parser.add_argument("--build", type=Path, required=True, help="Waf output tree to overlay")
     parser.add_argument("--ab-build", type=Path,
                         help="second build tree (B) to compare with --build (A) in alternating rounds")
+    parser.add_argument("--ab-extra-arg", action="append", default=[],
+                        help="engine argument for the B runs only (repeatable); with --ab-build equal "
+                             "to --build this compares one build with and without a switch")
     parser.add_argument("--rounds", type=int, default=3, help="A/B rounds (each runs A then B)")
     parser.add_argument("--scenario", type=Path,
                         default=Path(conformance.repo_root()) / "quality/workloads/portal-frame-pacing-v1.json")
@@ -485,16 +534,20 @@ def main(argv=None):
     if args.ab_build:
         runs = {"a": [], "b": []}
         for index in range(1, args.rounds + 1):
-            for label, build in (("a", args.build), ("b", args.ab_build)):
-                evidence = run_once(args, scenario, passes, build, output / ("%s-%d" % (label, index)))
+            for label, build, extra in (("a", args.build, ()), ("b", args.ab_build, args.ab_extra_arg)):
+                evidence = run_once(args, scenario, passes, build, output / ("%s-%d" % (label, index)),
+                                    extra)
                 runs[label].append(evidence)
                 warm = evidence.get("analysis", {}).get("passes", [{}])[-1].get("summary", {})
-                print("round %d %s: %s, warm median %s ms, cpu %s ms, emit %s ms, p99 %s ms, load %.1f"
+                print("round %d %s: %s, warm median %s ms, cpu %s ms, emit %s ms, convert %s ms, "
+                      "p99 %s ms, load %.1f"
                       % (index, label.upper(), evidence["status"], warm.get("median_ms"),
-                         warm.get("cpu_median_ms"), warm.get("emit_median_ms"), warm.get("p99_ms"),
+                         warm.get("cpu_median_ms"), warm.get("emit_median_ms"),
+                         warm.get("emit_convert_median_ms"), warm.get("p99_ms"),
                          evidence.get("host_load_after", [0])[0]))
         summary = {"schema": EVIDENCE_SCHEMA + "+ab", "a": str(args.build.resolve()),
-                   "b": str(args.ab_build.resolve()), "rounds": args.rounds,
+                   "b": str(args.ab_build.resolve()), "b_extra_args": args.ab_extra_arg,
+                   "rounds": args.rounds,
                    "failures": [failure for label in runs for run in runs[label] for failure in run["failures"]],
                    "summary": ab_summary(runs)}
         (output / "ab.json").write_text(json.dumps(summary, indent=2) + "\n")

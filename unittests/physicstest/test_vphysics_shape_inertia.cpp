@@ -112,7 +112,8 @@ IPhysicsObject *CreateBody( IPhysicsEnvironment *pEnv, const CPhysCollide *pColl
 	pObject->EnableGravity( false );
 	pObject->EnableDrag( false );
 	pObject->Wake();
-	if ( FaultIs( "inertia-clamped" ) && s_pInertia->GetInertiaModel( pEnv ) == PHYSICS_INERTIA_SHAPE )
+	if ( FaultIs( "inertia-clamped" ) &&
+	     s_pInertia->GetInertiaModel( pEnv ) == PHYSICS_INERTIA_SHAPE )
 	{
 		Vector inertia = pObject->GetInertia();
 		float minimum = inertia.Length() * rotInertiaLimit;
@@ -132,7 +133,8 @@ CPhysCollide *RotatedBoxCollide( const Vector &size, const QAngle &angles, matri
 	Vector *pCorners[8];
 	for ( int i = 0; i < 8; i++ )
 	{
-		Vector local( ( i & 1 ) ? size.x : -size.x, ( i & 2 ) ? size.y : -size.y, ( i & 4 ) ? size.z : -size.z );
+		Vector local( ( i & 1 ) ? size.x : -size.x, ( i & 2 ) ? size.y : -size.y,
+		    ( i & 4 ) ? size.z : -size.z );
 		VectorRotate( local * 0.5f, *pRotation, corners[i] );
 		pCorners[i] = &corners[i];
 	}
@@ -144,8 +146,8 @@ CPhysCollide *RotatedBoxCollide( const Vector &size, const QAngle &angles, matri
 Vector BoxInertia( const Vector &size, float mass )
 {
 	Vector m = size * kMetersPerInch;
-	return Vector( mass * ( m.y * m.y + m.z * m.z ) / 12.0f, mass * ( m.x * m.x + m.z * m.z ) / 12.0f,
-	    mass * ( m.x * m.x + m.y * m.y ) / 12.0f );
+	return Vector( mass * ( m.y * m.y + m.z * m.z ) / 12.0f,
+	    mass * ( m.x * m.x + m.z * m.z ) / 12.0f, mass * ( m.x * m.x + m.y * m.y ) / 12.0f );
 }
 
 // R diag(d) R^T.
@@ -227,9 +229,10 @@ void CheckInterface()
 		for ( int j = 0; j < 3; j++ )
 			sentinel[i][j] = 7.0f;
 	}
-	bool untouched = !s_pInertia->GetInertiaTensor( NULL, sentinel ) &&
-	                 !s_pInertia->GetInertiaTensor( reinterpret_cast<IPhysicsObject *>( &dummy ), sentinel ) &&
-	                 sentinel[1][2] == 7.0f;
+	bool untouched =
+	    !s_pInertia->GetInertiaTensor( NULL, sentinel ) &&
+	    !s_pInertia->GetInertiaTensor( reinterpret_cast<IPhysicsObject *>( &dummy ), sentinel ) &&
+	    sentinel[1][2] == 7.0f;
 	Check( TIER_GAMEPLAY, "inertia.rejects-foreign",
 	    !s_pInertia->SetInertiaModel( NULL, PHYSICS_INERTIA_SHAPE ) &&
 	        !s_pInertia->SetInertiaModel( pForeign, PHYSICS_INERTIA_SHAPE ) &&
@@ -240,7 +243,8 @@ void CheckInterface()
 	IPhysicsEnvironment *pEnv = s_pPhysics->CreateEnvironment();
 	bool unknown = !s_pInertia->SetInertiaModel( pEnv, (physics_inertia_model_t)7 );
 	physics_inertia_model_t initial = s_pInertia->GetInertiaModel( pEnv );
-	Check( TIER_GAMEPLAY, "inertia.rejects-unknown-model", unknown && initial == PHYSICS_INERTIA_LEGACY );
+	Check( TIER_GAMEPLAY, "inertia.rejects-unknown-model",
+	    unknown && initial == PHYSICS_INERTIA_LEGACY );
 
 	CPhysCollide *pBox = s_pCollision->BBoxToCollide( Vector( -24, -12, -4 ), Vector( 24, 12, 4 ) );
 	IPhysicsObject *pObject = CreateBody( pEnv, pBox, 20.0f );
@@ -302,8 +306,8 @@ void CheckTensorValues()
 	Tensor( pRotatedObject, tensor );
 	Check( TIER_GAMEPLAY, "inertia.rotated-products",
 	    pRotatedObject && TensorError( tensor, expected ) < 0.01f,
-	    "error %.4f off (%g %g %g) expected (%g %g %g)", TensorError( tensor, expected ), tensor[0][1],
-	    tensor[0][2], tensor[1][2], expected[0][1], expected[0][2], expected[1][2] );
+	    "error %.4f off (%g %g %g) expected (%g %g %g)", TensorError( tensor, expected ),
+	    tensor[0][1], tensor[0][2], tensor[1][2], expected[0][1], expected[0][2], expected[1][2] );
 
 	// Mass center moved 10 in along x: the parallel-axis shift.
 	Vector center( 10, 0, 0 );
@@ -324,8 +328,9 @@ void CheckTensorValues()
 	Vector rodSolid = BoxInertia( rodSize, kMass );
 	Vector shapeRod = pRodShape->GetInertia();
 	Vector legacyRod = pRodLegacy->GetInertia();
-	Check( TIER_GAMEPLAY, "inertia.no-rot-limit", fabsf( shapeRod.x - rodSolid.x ) < 0.01f * rodSolid.x,
-	    "thin axis %g solid %g (legacy %g)", shapeRod.x, rodSolid.x, legacyRod.x );
+	Check( TIER_GAMEPLAY, "inertia.no-rot-limit",
+	    fabsf( shapeRod.x - rodSolid.x ) < 0.01f * rodSolid.x, "thin axis %g solid %g (legacy %g)",
+	    shapeRod.x, rodSolid.x, legacyRod.x );
 	Check( TIER_GAMEPLAY, "inertia.legacy-rot-limit",
 	    legacyRod.x >= 0.05f * legacyRod.Length() * 0.99f && legacyRod.x > 2.0f * rodSolid.x,
 	    "legacy thin axis %g, |I| %g", legacyRod.x, legacyRod.Length() );
@@ -367,17 +372,18 @@ void CheckTensorValues()
 	float invError = 0.0f;
 	for ( int i = 0; i < 3; i++ )
 		invError = MAX( invError, fabsf( invInertia[i] - inverse[i][i] ) / inverse[i][i] );
-	Check( TIER_GAMEPLAY, "inertia.inverse-diagonal", inverted && invError < 1e-3f,
-	    "error %g", invError );
+	Check( TIER_GAMEPLAY, "inertia.inverse-diagonal", inverted && invError < 1e-3f, "error %g",
+	    invError );
 
 	Vector force( 0, 0, 1000 ), at( 20, 10, 0 ), linear;
 	AngularImpulse torque, angular;
 	pRotatedObject->CalculateForceOffset( force, at, &linear, &torque );
 	pRotatedObject->CalculateVelocityOffset( force, at, &linear, &angular );
 	Vector wanted = Multiply( inverse, torque );
-	Check( TIER_GAMEPLAY, "inertia.velocity-offset", ( angular - wanted ).Length() < 1e-3f * wanted.Length(),
-	    "angular (%g %g %g) expected (%g %g %g)", angular.x, angular.y, angular.z, wanted.x, wanted.y,
-	    wanted.z );
+	Check( TIER_GAMEPLAY, "inertia.velocity-offset",
+	    ( angular - wanted ).Length() < 1e-3f * wanted.Length(),
+	    "angular (%g %g %g) expected (%g %g %g)", angular.x, angular.y, angular.z, wanted.x,
+	    wanted.y, wanted.z );
 
 	AngularImpulse spin( 90, 45, 30 );
 	pRotatedObject->SetVelocity( &vec3_origin, &spin );
@@ -414,7 +420,8 @@ void CheckDynamics()
 		return;
 	pShape->SetSimulationTimestep( kTick );
 	matrix3x4_t rotation;
-	CPhysCollide *pRotated = RotatedBoxCollide( Vector( 48, 24, 8 ), QAngle( 30, 40, 20 ), &rotation );
+	CPhysCollide *pRotated =
+	    RotatedBoxCollide( Vector( 48, 24, 8 ), QAngle( 30, 40, 20 ), &rotation );
 	IPhysicsObject *pObject = pRotated ? CreateBody( pShape, pRotated, 20.0f ) : NULL;
 	if ( !Check( TIER_GAMEPLAY, "inertia.dynamics-body", pObject != NULL ) )
 	{
@@ -442,8 +449,10 @@ void CheckDynamics()
 		}
 		else
 		{
-			float cosine = DotProduct( momentum, momentum0 ) / ( momentum.Length() * momentum0.Length() );
-			maxMomentumAngle = MAX( maxMomentumAngle, RAD2DEG( acosf( clamp( cosine, -1.0f, 1.0f ) ) ) );
+			float cosine =
+			    DotProduct( momentum, momentum0 ) / ( momentum.Length() * momentum0.Length() );
+			maxMomentumAngle =
+			    MAX( maxMomentumAngle, RAD2DEG( acosf( clamp( cosine, -1.0f, 1.0f ) ) ) );
 			float ratio = momentum.Length() / momentum0.Length();
 			minRatio = MIN( minRatio, ratio );
 			maxRatio = MAX( maxRatio, ratio );
@@ -464,8 +473,8 @@ void CheckDynamics()
 
 int RunShapeInertiaContract()
 {
-	IPhysicsShapeInertia *pInner =
-	    (IPhysicsShapeInertia *)s_pPhysics->QueryInterface( VPHYSICS_SHAPE_INERTIA_INTERFACE_VERSION );
+	IPhysicsShapeInertia *pInner = (IPhysicsShapeInertia *)s_pPhysics->QueryInterface(
+	    VPHYSICS_SHAPE_INERTIA_INTERFACE_VERSION );
 	if ( !pInner )
 	{
 		printf( "UNSUPPORTED %s\n", VPHYSICS_SHAPE_INERTIA_INTERFACE_VERSION );

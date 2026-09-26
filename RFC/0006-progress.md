@@ -269,8 +269,10 @@ It is header-only, `constexpr` and dialect-neutral (it compiles as C++11).
   - The recompiled Box3D object was byte-identical, so Waf did not relink
     the module.
   - `physics.conformance` observations are unchanged.
-- Remaining literal: `utils/vbsp/worldstage.cpp`, after the R59 U1 merge.
-  Python tools keep their own constants; that is out of scope here.
+- `utils/vbsp/worldstage.cpp` (World Stage `metersPerUnit`) also uses it
+  since the R59 U1 merge; `build.tools-worldstage` passes. No C++ literal
+  copy remains in first-party code. Python tools keep their own constants,
+  which is out of scope here.
 
 R05 is `partial`. Every vocabulary item named in the row and in RFC 0001
 rank 2 is installed with a real consumer and its own suite: results, strong
@@ -298,4 +300,30 @@ changed.
 R03 stays `active`. The locally doable slices (A: the ABI contract; B: full
 target coverage and Android x86_64) are done. What remains needs resources
 this host lacks: Apple and MSVC toolchains, and hosted CI runs.
+
+**Apple and MSVC runners optional (user decision, 2026-09-25).** The macOS,
+iOS device, iOS simulator and both MSVC Windows profiles now carry
+`runner_requirement: optional` in `quality/baseline.json`. It is validated by
+`baseline.py`, with a new test (39 baseline tests). They stay declared and
+reported when unavailable, but no gate waits on them.
+
+R03's remaining blocker is the recorded R54 dual-ABI island in `vbsp2`
+(TOOLCHAIN007 in `toolchain.coverage`), a declared-unsupported combination in
+a built tool. The recommended fix moves the World Stage writer behind the
+`sourceWorld` shared library so that only a C function crosses. It is not
+started, because the R59 U2 work is editing `utils/vbsp` in a worktree.
+
+**`GIT_COMMIT_HASH` is tier0-only (user request, 2026-09-25).** It was a
+global `conf.define`, so a per-commit value sat on every compile command, and
+ccache's direct-mode keys differed across trees and after every reconfigure.
+Only `tier0/dbg.cpp` reads it (the engine log header).
+
+- `tier0/wscript` now defines it for tier0 alone from `env.GIT_VERSION`; the
+  root `wscript` no longer defines it.
+- The corpus tool `compile_equivalence.py` falls back to `GIT_VERSION` when
+  it records a tree's identity.
+- Verified on `build-r03-tests` after replaying its configure line: 30 of 209
+  compiles carry the define, all in tier0, and `unittest_legacy` passes.
+- Every tree reconfigures once and rebuilds once. `./play` and `./play_p2` do
+  it through `ensure_configured.py`.
 

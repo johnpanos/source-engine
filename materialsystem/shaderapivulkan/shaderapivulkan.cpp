@@ -30,6 +30,7 @@
 #include "filesystem.h"
 #include "tier1/KeyValues.h"
 #include "vulkan_device.h"
+#include "vulkan_emit_convert.h"
 #include "vulkan_mesh_layout.h"
 #include "vulkan_world_mesh_upload.h"
 #include "render/light_set.h"
@@ -42,6 +43,7 @@
 #include "renderparm.h"
 #if defined( USE_SDL )
 #include "appframework/ilaunchermgr.h"
+#include "vstdlib/jobgraph_parallel.h"
 #endif
 
 #include <algorithm>
@@ -127,6 +129,49 @@ static const render_vulkan::VulkanAdapterCaps &CurrentAdapterCaps()
 static ConVar mat_pix_events( "mat_pix_events", "-1", 0,
     "Engine PIX events gathered as capture labels: -1 auto (1 while labels are on), 0 none, "
     "1 view events, 2 also per-object events" );
+
+// Emit's per-vertex conversion on the engine's compute pool (R32; RFC 0003's
+// synchronous batch). A draw with at least mat_vk_emit_parallel_min_vertices
+// unique vertices converts its slots in chunks (vulkan_emit_convert.h) through
+// RunThreadPoolJobBatch on g_pThreadPool: the calling thread converts chunks
+// too, joins only its own runners and never runs unrelated pool work, so the
+// batch is legal from the main thread (mat_queue_mode 0) and from the material
+// system's render thread (mode 2), which is not a worker of that pool. 0
+// converts every draw serially: the oracle and the rollback.
+static ConVar mat_vk_emit_parallel( "mat_vk_emit_parallel", "0", 0,
+    "Native Vulkan: convert large draws' vertices on the engine job pool (0 serial, 1 pooled)" );
+static ConVar mat_vk_emit_parallel_min_vertices( "mat_vk_emit_parallel_min_vertices", "1024", 0,
+    "Native Vulkan: fewest unique vertices a draw needs for mat_vk_emit_parallel's pooled "
+    "conversion" );
+
+// -vkemitparallel <0|1> and -vkemitparallelmin <n> override the two ConVars
+// for the whole run, from its first frame, and where no console applies the
+// material system's queued ConVar sets (the pixel harness).
+static int EmitParallelMode()
+{
+	static const int s_forced = CommandLine()->FindParm( "-vkemitparallel" )
+	                                ? CommandLine()->ParmValue( "-vkemitparallel", 1 )
+	                                : -1;
+	return s_forced >= 0 ? s_forced : mat_vk_emit_parallel.GetInt();
+}
+
+// -vkemitparallelchunk <n>: n slots per chunk instead of kEmitConvertChunk, so
+// the pixel harness's small draws split across workers too.
+static uint32_t EmitParallelChunkSize()
+{
+	static const uint32_t s_chunk = static_cast<uint32_t>(
+	    std::max( 0, CommandLine()->ParmValue( "-vkemitparallelchunk", 0 ) ) );
+	return s_chunk;
+}
+
+static uint32_t EmitParallelMinVertices()
+{
+	static const int s_forced = CommandLine()->FindParm( "-vkemitparallelmin" )
+	                                ? CommandLine()->ParmValue( "-vkemitparallelmin", 1024 )
+	                                : -1;
+	const int value = s_forced >= 0 ? s_forced : mat_vk_emit_parallel_min_vertices.GetInt();
+	return static_cast<uint32_t>( std::max( 1, value ) );
+}
 
 // Brings the context up against the engine's window. The window reference is
 // handed to the pair-specific bridge untouched; nothing here interprets it.
@@ -4102,6 +4147,47 @@ static void NoteEmitReuseCheck( bool equal )
 		    static_cast<unsigned long long>( s_mismatched ) );
 }
 
+// -vkemitparallelverify: every pooled conversion is also converted serially,
+// privately, and compared byte for byte (records and bone maximum).
+static bool VerifyEmitParallel()
+{
+	static const bool s_verify = CommandLine()->FindParm( "-vkemitparallelverify" ) != 0;
+	return s_verify;
+}
+
+// -vkemitparallelfault offset|sharedbone: a seeded defect in the pooled
+// conversion, for the negative controls of the verify mode and TSan.
+static render_vulkan::EmitConvertFault EmitParallelFault()
+{
+	static const render_vulkan::EmitConvertFault s_fault = []
+	{
+		const char *fault = CommandLine()->ParmValue( "-vkemitparallelfault", "" );
+		if ( !V_stricmp( fault, "offset" ) )
+			return render_vulkan::EmitConvertFault::ChunkOffset;
+		if ( !V_stricmp( fault, "sharedbone" ) )
+			return render_vulkan::EmitConvertFault::SharedMaxBone;
+		return render_vulkan::EmitConvertFault::None;
+	}();
+	return s_fault;
+}
+
+static void NoteEmitParallelCheck( bool equal, unsigned chunks )
+{
+	static uint64_t s_checked = 0, s_multiChunk = 0, s_mismatched = 0;
+	++s_checked;
+	if ( chunks > 1 )
+		++s_multiChunk;
+	if ( !equal )
+		++s_mismatched;
+	if ( !equal || s_checked % 1000 == 0 || s_checked < 1000 )
+		fprintf( stderr,
+		    "[vulkan] emit parallel verify: %llu checked (%llu of several chunks), %llu "
+		    "mismatched\n",
+		    static_cast<unsigned long long>( s_checked ),
+		    static_cast<unsigned long long>( s_multiChunk ),
+		    static_cast<unsigned long long>( s_mismatched ) );
+}
+
 static const float *MonitorTexture2Rows();
 static const float *ShadowJitter();
 
@@ -4623,8 +4709,10 @@ void CEmptyMesh::EmitToNativeQueue()
 	{
 		kRecordFloats = render_vulkan::CVulkanContext::kDynVertexFloats
 	};
+	// The highest bone matrix the draw's vertices read (-1 without skinning).
+	// convertVertex's only effect beyond its record is raising `maxBoneOut`.
 	int maxBone = -1;
-	auto convertVertex = [&]( int v, float *out )
+	auto convertVertex = [&]( int v, float *out, int &maxBoneOut )
 	{
 		const unsigned char *base =
 		    vertices.m_vertexData.data() + static_cast<size_t>( v ) * vertices.RecordStride();
@@ -4633,8 +4721,8 @@ void CEmptyMesh::EmitToNativeQueue()
 			// The bones SkinPosition and WorldNormal read for this vertex.
 			const unsigned char *boneIndices = base + kMeshBoneIndexOffset;
 			for ( int b = 0; b < 3; ++b )
-				maxBone = std::max(
-				    maxBone, boneIndices[b] < kMaxBoneMatrices ? int( boneIndices[b] ) : 0 );
+				maxBoneOut = std::max(
+				    maxBoneOut, boneIndices[b] < kMaxBoneMatrices ? int( boneIndices[b] ) : 0 );
 		}
 		float pos[3], uv[2];
 		memcpy( pos, base, sizeof( pos ) );
@@ -4981,18 +5069,21 @@ void CEmptyMesh::EmitToNativeQueue()
 		CommitViewProj();
 	// The draw is indexed: each mesh vertex it uses is converted once, straight
 	// into the frame's stream, in first-use order, and the triangles index those
-	// records. A per-draw generation stamp marks the vertices already written (and
-	// where), so the bookkeeping never needs clearing; it persists across draws.
+	// records. A serial pass gives each vertex its slot and writes the indices; a
+	// per-draw generation stamp marks the vertices already given a slot (and
+	// which), so the bookkeeping never needs clearing; it persists across draws.
+	// The conversion then fills each slot's record from its vertex alone.
 	static std::vector<uint32_t> s_vertexStamp;
 	static std::vector<uint32_t> s_vertexSlot;
+	static std::vector<int> s_slotVertex; // slot -> mesh vertex, in first-use order
 	static uint32_t s_generation = 0;
 	if ( s_vertexStamp.size() < static_cast<size_t>( numVerts ) )
 	{
 		s_vertexStamp.resize( static_cast<size_t>( numVerts ), 0 );
 		s_vertexSlot.resize( static_cast<size_t>( numVerts ) );
+		s_slotVertex.resize( static_cast<size_t>( numVerts ) );
 	}
-	auto convertDraw =
-	    [&]( float *vertexOut, uint32_t *indexOut, uint32_t &written, uint32_t &indexCount )
+	auto assignSlots = [&]( uint32_t *indexOut, uint32_t &written, uint32_t &indexCount )
 	{
 		if ( ++s_generation == 0 )
 		{
@@ -5004,9 +5095,9 @@ void CEmptyMesh::EmitToNativeQueue()
 		{
 			if ( s_vertexStamp[static_cast<size_t>( v )] != s_generation )
 			{
-				convertVertex( v, vertexOut + static_cast<size_t>( written ) * kRecordFloats );
 				s_vertexStamp[static_cast<size_t>( v )] = s_generation;
-				s_vertexSlot[static_cast<size_t>( v )] = written++;
+				s_vertexSlot[static_cast<size_t>( v )] = written;
+				s_slotVertex[written++] = v;
 			}
 			indexOut[indexCount++] = s_vertexSlot[static_cast<size_t>( v )];
 		};
@@ -5017,6 +5108,69 @@ void CEmptyMesh::EmitToNativeQueue()
 			    put( b );
 			    put( c );
 		    } );
+	};
+	// Slots [begin, end) into their records. Each record depends only on its
+	// vertex and this draw's state.
+	auto convertSlots = [&]( float *vertexOut, uint32_t begin, uint32_t end, int &maxBoneOut )
+	{
+		for ( uint32_t slot = begin; slot < end; ++slot )
+			convertVertex( s_slotVertex[slot],
+			    vertexOut + static_cast<size_t>( slot ) * kRecordFloats, maxBoneOut );
+	};
+	// All slots in chunks on the engine pool (see mat_vk_emit_parallel). False
+	// when the batch was rejected before any chunk ran.
+	auto convertPooled = [&]( float *vertexOut, uint32_t written ) -> bool
+	{
+		auto range = [&]( uint32_t begin, uint32_t end, int &maxBoneOut )
+		{
+			convertSlots( vertexOut, begin, end, maxBoneOut );
+		};
+		typedef render_vulkan::CEmitConvertBatch<decltype( range )> Batch;
+		static std::vector<int> s_chunkMaxBone;
+		s_chunkMaxBone.resize( Batch::ChunkCount( written, EmitParallelChunkSize() ) );
+		// Lazily initialized state the conversion reads is initialized here,
+		// before the batch publishes its inputs to the workers.
+		ModelMatrix();
+		Batch batch(
+		    range, written, s_chunkMaxBone.data(), EmitParallelChunkSize(), EmitParallelFault() );
+		jobsystem::BatchDesc desc;
+		desc.name = "vulkan.emit_convert";
+		desc.context = &batch;
+		desc.count = batch.Chunks();
+		desc.process = &Batch::Process;
+		desc.maxParticipants = static_cast<unsigned>( g_pThreadPool->NumThreads() ) + 1u;
+		if ( !RunThreadPoolJobBatch( g_pThreadPool, desc, jobsystem::BatchMode::Parallel ) )
+			return false;
+		const int pooledMaxBone = batch.ReduceMaxBone();
+		if ( VerifyEmitParallel() )
+		{
+			std::vector<float> check( static_cast<size_t>( written ) * kRecordFloats );
+			int checkMaxBone = -1;
+			convertSlots( check.data(), 0, written, checkMaxBone );
+			NoteEmitParallelCheck(
+			    checkMaxBone == pooledMaxBone &&
+			        !memcmp( check.data(), vertexOut, check.size() * sizeof( float ) ),
+			    batch.Chunks() );
+		}
+		maxBone = std::max( maxBone, pooledMaxBone );
+		return true;
+	};
+	// `stream` marks a conversion into the frame's stream: only those may be
+	// pooled and only those count in the frame's emit_convert cost (not the
+	// private shadow conversions of the verify modes).
+	auto convertDraw = [&]( float *vertexOut, uint32_t *indexOut, uint32_t &written,
+	                       uint32_t &indexCount, bool stream )
+	{
+		assignSlots( indexOut, written, indexCount );
+		const uint64_t start = stream ? render_vulkan::FrameClockNanos() : 0;
+		const bool pooled =
+		    stream && EmitParallelMode() == 1 && g_pThreadPool && g_pThreadPool->NumThreads() > 0 &&
+		    written >= EmitParallelMinVertices() && convertPooled( vertexOut, written );
+		if ( !pooled )
+			convertSlots( vertexOut, 0, written, maxBone );
+		if ( stream )
+			g_VulkanContext.CurrentFrameCost().AddConvert(
+			    written, render_vulkan::FrameClockNanos() - start, g_NumBoneWeights > 0, pooled );
 	};
 
 	// A repeat of a draw this stream already converted reuses its geometry.
@@ -5101,7 +5255,8 @@ void CEmptyMesh::EmitToNativeQueue()
 				    kRecordFloats );
 				std::vector<uint32_t> indexCheck( maxIndices );
 				uint32_t checkVertices = 0, checkIndices = 0;
-				convertDraw( vertexCheck.data(), indexCheck.data(), checkVertices, checkIndices );
+				convertDraw(
+				    vertexCheck.data(), indexCheck.data(), checkVertices, checkIndices, false );
 				NoteEmitReuseCheck( g_VulkanContext.StreamRangeEquals( entry.range,
 				    vertexCheck.data(), checkVertices, indexCheck.data(), checkIndices ) );
 			}
@@ -5117,7 +5272,7 @@ void CEmptyMesh::EmitToNativeQueue()
 	float *const vertexOut = g_VulkanContext.BeginDynamicDraw(
 	    std::min( static_cast<uint32_t>( numVerts ), maxIndices ), maxIndices, &indexOut );
 	uint32_t written = 0, indexCount = 0;
-	convertDraw( vertexOut, indexOut, written, indexCount );
+	convertDraw( vertexOut, indexOut, written, indexCount, true );
 	g_VulkanContext.EndDynamicDraw( written, indexCount );
 	if ( reusable && written > 0 )
 	{

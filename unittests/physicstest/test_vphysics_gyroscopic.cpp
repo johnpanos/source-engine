@@ -20,7 +20,12 @@
 //                       stays put;
 //            gyroscope  a spinning square plate on a ballsocket pivot, axle
 //                       level, precesses about the vertical at m g r / (I3 s)
-//                       instead of falling.
+//                       instead of falling;
+//            t-handle   Box3D's "Gyroscopic Torque" sample (Dzhanibekov's
+//                       wing nut: a bar with a cylindrical handle, spun about
+//                       the handle in zero gravity) flips over and back with
+//                       the period of Euler's equations, integrated
+//                       independently from the same state.
 //
 //          The "gyro-off" fault holds each body's world angular velocity fixed
 //          across every tick, as an integrator without the gyroscopic term
@@ -36,6 +41,7 @@
 
 #include "vphysics/constraints.h"
 #include "vphysics/performance.h"
+#include "tier1/utlvector.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -476,6 +482,12 @@ void TestGyroscope()
 		Vector pivotWorld;
 		pPlate->LocalToWorld( &pivotWorld, ballsocket.constraintPosition[1] );
 		maxPivotError = MAX( maxPivotError, ( pivotWorld - kPivot ).Length() );
+		if ( getenv( "GYRO_TRACE" ) )
+		{
+			AngularImpulse w = AngularVelocityOf( pPlate );
+			printf( "GYRO scope %d dip %.3f azimuth %.3f pivot %.3f w %.1f %.1f %.1f\n", i, dip,
+			    RAD2DEG( azimuth ), ( pivotWorld - kPivot ).Length(), w.x, w.y, w.z );
+		}
 	}
 	float measuredRate = azimuth / kSeconds;
 	Check( TIER_GAMEPLAY, "gyro.gyroscope-stays-level", maxDip < 10.0f, "max axle dip %.3f deg",
@@ -492,6 +504,195 @@ void TestGyroscope()
 	DestroyGyroBody( world, body );
 	DestroyGyroWorld( world );
 }
+
+//-----------------------------------------------------------------------------
+// The Dzhanibekov effect as Box3D's samples app shows it (samples/
+// sample_bodies.cpp, GyroscopicTorque): a 2 x 0.1 x 0.2 m bar with a
+// 32-sided cylinder handle (radius 0.15 m, 0.6 m tall) standing on it, in
+// zero gravity, spun at 10 rad/s about the handle with a 0.01 rad/s nudge on
+// the other axes. The handle is the intermediate principal axis, so the
+// body flips over and back periodically. The oracle integrates Euler's
+// torque-free equations (RK4, 50 substeps per tick) with the provider's own
+// principal inertia from the provider's first measured body-frame angular
+// velocity, and compares the flips (sign changes of the handle component of
+// the angular velocity, with hysteresis) and their period.
+//-----------------------------------------------------------------------------
+struct FlipTrack_t
+{
+	float threshold;
+	int sign;
+	CUtlVector<float> times;
+
+	void Init( float first )
+	{
+		threshold = 0.5f * fabsf( first );
+		sign = first >= 0.0f ? 1 : -1;
+		times.RemoveAll();
+	}
+	void Sample( float value, float time )
+	{
+		if ( fabsf( value ) < threshold )
+			return;
+		int current = value >= 0.0f ? 1 : -1;
+		if ( current != sign )
+		{
+			times.AddToTail( time );
+			sign = current;
+		}
+	}
+	// Mean time between flips after the first (the first depends on the
+	// nudge; the rest are the orbit's half period).
+	float MeanInterval() const
+	{
+		if ( times.Count() < 2 )
+			return -1.0f;
+		return ( times[times.Count() - 1] - times[0] ) / ( times.Count() - 1 );
+	}
+};
+
+Vector EulerRate( const Vector &inertia, const Vector &w )
+{
+	return Vector( ( inertia.y - inertia.z ) * w.y * w.z / inertia.x,
+	    ( inertia.z - inertia.x ) * w.z * w.x / inertia.y,
+	    ( inertia.x - inertia.y ) * w.x * w.y / inertia.z );
+}
+
+Vector EulerStep( const Vector &inertia, const Vector &w, float h )
+{
+	Vector k1 = EulerRate( inertia, w );
+	Vector k2 = EulerRate( inertia, w + k1 * ( 0.5f * h ) );
+	Vector k3 = EulerRate( inertia, w + k2 * ( 0.5f * h ) );
+	Vector k4 = EulerRate( inertia, w + k3 * h );
+	return w + ( k1 + k2 * 2.0f + k3 * 2.0f + k4 ) * ( h / 6.0f );
+}
+
+CPhysCollide *THandleCollide()
+{
+	const float kInchesPerMeter = 1.0f / kMetersPerInch;
+	const int kSides = 32;
+	Vector cylinder[2 * kSides];
+	Vector *pCylinder[2 * kSides];
+	for ( int i = 0; i < kSides; i++ )
+	{
+		float alpha = 2.0f * M_PI_F * i / kSides;
+		float x = 0.15f * cosf( alpha ) * kInchesPerMeter, z = 0.15f * sinf( alpha ) * kInchesPerMeter;
+		cylinder[2 * i].Init( x, 0.0f, z );
+		cylinder[2 * i + 1].Init( x, 0.6f * kInchesPerMeter, z );
+		pCylinder[2 * i] = &cylinder[2 * i];
+		pCylinder[2 * i + 1] = &cylinder[2 * i + 1];
+	}
+	Vector half = Vector( 1.0f, 0.05f, 0.1f ) * kInchesPerMeter;
+	Vector bar[8];
+	Vector *pBar[8];
+	for ( int i = 0; i < 8; i++ )
+	{
+		bar[i].Init( ( i & 1 ) ? half.x : -half.x, ( i & 2 ) ? half.y : -half.y,
+		    ( i & 4 ) ? half.z : -half.z );
+		pBar[i] = &bar[i];
+	}
+	CPhysConvex *pConvexes[2] = { s_pCollision->ConvexFromVerts( pCylinder, 2 * kSides ),
+		s_pCollision->ConvexFromVerts( pBar, 8 ) };
+	if ( !pConvexes[0] || !pConvexes[1] )
+		return NULL;
+	return s_pCollision->ConvertConvexToCollide( pConvexes, 2 );
+}
+
+void TestDzhanibekov()
+{
+	// Long enough for four flips at the legacy model's 5 s interval.
+	const float kSeconds = 25.0f;
+	GyroWorld_t world;
+	if ( !CreateGyroWorld( world, 0.0f ) )
+		return;
+	CPhysCollide *pCollide = THandleCollide();
+	IPhysicsObject *pBody = NULL;
+	if ( pCollide )
+	{
+		objectparams_t params = DefaultParams( 5.0f, NULL );
+		params.damping = 0.0f;
+		params.rotdamping = 0.0f;
+		params.dragCoefficient = 0.0f;
+		pBody = world.pEnv->CreatePolyObject( pCollide, world.material, vec3_origin, vec3_angle, &params );
+	}
+	if ( !Check( TIER_GAMEPLAY, "gyro.t-handle-body", pBody != NULL ) )
+	{
+		if ( pCollide )
+			s_pCollision->DestroyCollide( pCollide );
+		DestroyGyroWorld( world );
+		return;
+	}
+	pBody->EnableMotion( true );
+	pBody->EnableDrag( false );
+	pBody->Wake();
+	Vector inertia = pBody->GetInertia();
+	bool intermediate = ( inertia.y > MIN( inertia.x, inertia.z ) && inertia.y < MAX( inertia.x, inertia.z ) );
+	Check( TIER_GAMEPLAY, "gyro.t-handle-intermediate", intermediate, "inertia (%g %g %g)", inertia.x, inertia.y,
+	    inertia.z );
+
+	// The sample's world (0.01, 0.01, 10) rad/s on a body turned -90 degrees
+	// about x: (0.01, -10, 0.01) in the body frame.
+	AngularImpulse spin = AngularImpulse( 0.01f, -10.0f, 0.01f ) * ( 180.0f / M_PI_F );
+	pBody->SetVelocity( NULL, &spin );
+	GyroTick( world.pEnv, pBody ); // see TestFreeTumble: IVP's first step after SetVelocity
+
+	int ticks = (int)( kSeconds / kTick + 0.5f );
+	Rotation_t previous = RotationOf( pBody );
+	FlipTrack_t measured, reference;
+	Vector referenceW( 0, 0, 0 ), momentum0( 0, 0, 0 );
+	float maxMomentumAngle = 0.0f, minRatio = 1.0f, maxRatio = 1.0f;
+	for ( int i = 0; i < ticks; i++ )
+	{
+		GyroTick( world.pEnv, pBody );
+		Rotation_t current = RotationOf( pBody );
+		Vector omega = AngularVelocityBetween( previous, current, kTick );
+		Rotation_t mid = MidRotation( previous, omega, kTick );
+		Vector body( DotProduct( mid.axis[0], omega ), DotProduct( mid.axis[1], omega ),
+		    DotProduct( mid.axis[2], omega ) );
+		Vector momentum = MomentumOf( mid, inertia, omega );
+		float time = ( i + 0.5f ) * kTick;
+		if ( i == 0 )
+		{
+			// The oracle starts from the provider's first measured state.
+			referenceW = body;
+			momentum0 = momentum;
+			measured.Init( body.y );
+			reference.Init( body.y );
+		}
+		else
+		{
+			const int kSubsteps = 50;
+			for ( int k = 0; k < kSubsteps; k++ )
+				referenceW = EulerStep( inertia, referenceW, kTick / kSubsteps );
+			measured.Sample( body.y, time );
+			reference.Sample( referenceW.y, time );
+			maxMomentumAngle = MAX( maxMomentumAngle, AngleBetweenDegrees( momentum, momentum0 ) );
+			float ratio = momentum.Length() / MAX( momentum0.Length(), 1e-9f );
+			minRatio = MIN( minRatio, ratio );
+			maxRatio = MAX( maxRatio, ratio );
+		}
+		if ( getenv( "GYRO_TRACE" ) )
+		{
+			printf( "GYRO thandle %d w %.3f %.3f %.3f ref %.3f %.3f %.3f |L| %.5f\n", i, body.x, body.y,
+			    body.z, referenceW.x, referenceW.y, referenceW.z, momentum.Length() );
+		}
+		previous = current;
+	}
+	float period = measured.MeanInterval(), expected = reference.MeanInterval();
+	Check( TIER_GAMEPLAY, "gyro.t-handle-flips",
+	    measured.times.Count() >= 4 && abs( measured.times.Count() - reference.times.Count() ) <= 1,
+	    "%d flips in %.0f s, Euler's equations %d (first %.2f s, reference %.2f s)", measured.times.Count(),
+	    kSeconds, reference.times.Count(), measured.times.Count() ? measured.times[0] : -1.0f,
+	    reference.times.Count() ? reference.times[0] : -1.0f );
+	Check( TIER_GAMEPLAY, "gyro.t-handle-period",
+	    period > 0.0f && expected > 0.0f && fabsf( period - expected ) < 0.15f * expected,
+	    "flip interval %.3f s, Euler's equations %.3f s", period, expected );
+	Check( TIER_GAMEPLAY, "gyro.t-handle-momentum", maxMomentumAngle < 5.0f && minRatio > 0.8f && maxRatio < 1.03f,
+	    "max angle %.3f deg |L|/|L0| %.4f..%.4f", maxMomentumAngle, minRatio, maxRatio );
+	Obs1( "gyro.t-handle.flip-interval", "r0.15", period );
+	world.pEnv->DestroyObject( pBody );
+	s_pCollision->DestroyCollide( pCollide );
+	DestroyGyroWorld( world );
+}
 }
 
 void TestGyroscopic()
@@ -500,4 +701,5 @@ void TestGyroscopic()
 	TestFreeTumble();
 	TestIntermediateAxis();
 	TestGyroscope();
+	TestDzhanibekov();
 }

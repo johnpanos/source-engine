@@ -348,6 +348,100 @@ contended host or on any mobile profile.
 
 Certifying the pool bridge's timing needs a run on a quiet host.
 
+## Shape inertia (2026-09-25, user decision)
+
+`vphysics.shape-inertia.v1` (`IPhysicsShapeInertia`,
+`public/vphysics/shape_inertia.h`; contract
+[`vphysics.shape-inertia.v1`](../unittests/physicstest/contracts/vphysics.shape-inertia.v1.md)).
+The user asked for it after the gyroscopic-torque work (RFC 0004 progress).
+
+- **Why:** Box3D's gyroscopic solve is exact for the tensor it is given, but
+  the IVP-parity inertia model gives it a simplified one. IVP keeps one value
+  per object axis with no products of inertia, computed as IVP's own
+  approximation (sqrt(b^2 + c^2), not the solid's b + c). It also raises every
+  axis to at least `rotInertiaLimit` (0.05 for every game prop) times the
+  inertia vector's length.
+- **What:** an environment's objects can take the full tensor of their
+  collision solid, about Source's mass center, with no clip. A convex that is
+  one Box3D hull uses Box3D's hull mass data (`b3ComputeHullMass`). A convex
+  covered by overlapping patch hulls integrates its source triangles. Both are
+  shifted with `b3Steiner`, as `b3Body_ApplyMassFromShapes` does.
+- **API meaning kept:** `GetInertia`/`SetInertia` keep per-axis meaning (the
+  diagonal; the coupling is kept), so the shadow controller's lock/restore and
+  Portal's shadow clones work unchanged.
+- **Default:** the legacy model stays every environment's default, bit for
+  bit (the parity gate is unchanged).
+- **Game opt-in:** `-physics_shape_inertia` selects the model for the server
+  and client environments (`PhysApplyInertiaModel`), and
+  `-physics_shape_inertia_required` makes a missing capability an error.
+  `./play` (`run.conf` `PHYSICS_ARGS`) and `./play_p2` pass it by default
+  (user decision). `PHYSICS_ARGS=` rolls back. The launcher, the dedicated
+  server and the Android APKs do not pass it.
+
+Evidence (Linux desktop, `build`):
+
+- Contract: 20 `inertia.*` checks in `--bench contract` pass on Box3D; IVP
+  reports `UNSUPPORTED`. Each of the four host faults (`inertia-model-ignored`,
+  `inertia-accepts-populated`, `inertia-tensor-diagonal`, `inertia-clamped`)
+  fails the contract. The `shape-inertia` gate (`contract_checks` rule,
+  `physics_bench.py`) is required.
+- `physics_bench.py --rounds 2 --sensitivity` (quiet host, load 1.9 of 32
+  CPUs): `shape-inertia` passes, and all 15 faults are detected, including
+  the four `inertia-*` ones. `box3d-parity` passes. `parallel-step` fails one
+  timing rule: `parallel.speedup-pile-1024` measured 0.82x against the 1.20x
+  minimum on p50. This is not shape inertia, which bench environments do not
+  use. The pile now settles sooner (end digest `b0e58ebe` against
+  `e4768bb2`; solver 193 ms against 505), so its p50 of about 23 us times
+  asleep steps at every worker count. The p95 still scales, 1968 to 854 us
+  from 1 to 4 workers. The earlier run predates the restitution pin
+  (`78c90a0`, pinned 2026-09-25 13:48). The rule needs a workload that stays
+  awake, or a p95 statistic; that is R67's decision, not changed here.
+  **Resolved the same day (user direction):**
+  - The bench now prints a per-tick `AWAKE` line (active objects after each
+    `Simulate`, read outside the timed region). `physics_bench.py` judges a
+    speedup rule with `awake_min`/`min_awake_ticks` over only the ticks with
+    at least that many bodies awake, and requires identical per-tick awake
+    counts in the base and wide runs. Fewer selected ticks than
+    `min_awake_ticks`, or missing `AWAKE` data, fails.
+  - `parallel.speedup-pile-1024` uses `awake_min` 512 and `min_awake_ticks`
+    60, with the 1.2x threshold unchanged. The pile stays fully awake for
+    142 of 300 ticks, then sleeps as one island.
+  - Full run (`--rounds 3 --sensitivity`, quiet host): every required gate
+    passes, including `parallel-step`.
+    - `pile-1024`: 2.02x over 142 awake ticks.
+    - `pile-4096`: 2.51x.
+    - `ragdolls-128`: 1.28x.
+    - All 15 faults are detected; `ccd-bullets` stays planned.
+  - Tests: 4 new, 34 bench tests in total. They cover awake-only
+    selection, where the whole-run p50 would fail; mismatched awake
+    sequences; thin evidence; missing `AWAKE`; a partial `AWAKE` line; and
+    field validation.
+  - Evidence: `quality-results/physics-bench-awake-2026-09-25/`.
+- Parity gate with the default (legacy) model: unchanged. IVP fails only its
+  two recorded gyroscopic deficiencies. Box3D shows the same three known
+  gameplay failures and three divergences, and all 19 faults are detected.
+- Whole suite under the shape model (`physics_conformance.py
+  --candidate-shape-inertia`, a diagnostic, not a parity pass): 35
+  observations diverge, all inertia-driven. Cube inertia is 1.41x (the solid's,
+  not IVP's approximation), so spins, tumbles and drag differ.
+  `gyro.gyroscope-precesses` now matches m g r / (I3 s): 0.449 against 0.448
+  rad/s, where the legacy model gave 0.654 against 0.633. One further check
+  fails: `gyro.gyroscope-stays-level` (axle dip 10.6 degrees against the
+  10-degree bound).
+- That dip is numerical, and it scales with the step. At the suite's 15 ms
+  tick the axle sinks steadily, 2.6 degrees/s under the shape model against
+  1.3 under the legacy one (IVP 0.7). Halving and quartering the environment
+  step gives 5.6 and 3.1 degrees at 4 s, with the precession rate unchanged;
+  the analytic nutation dip is 1.1 degrees. Box3D's gyroscopic integration is
+  backward Euler (one Newton iteration, 4 substeps), which dissipates, and the
+  true tensor's larger gyroscopic term dissipates more. The check is not
+  loosened.
+- In game (`gyro_lab`, headless, Box3D): the server and client both log the
+  shape model. The box turned inside its brush tumbles (angular velocity
+  wanders over all axes), while under the legacy model it spins at (0, 0,
+  345.6) unchanged. The gyroscope precesses more slowly with the true tensor
+  and sinks faster (5.2 degrees against 1.5 by the last sample).
+
 ## Unverified and open
 
 - The server default is on only where Box3D is selected (2026-09-25):
@@ -359,6 +453,12 @@ Certifying the pool bridge's timing needs a run on a quiet host.
   has no profile row in `physics-v1.json`.
 - The pool bridge's timing rules are not certified: the merged-code
   acceptance run was contended (see above).
+- Shape inertia (above): the game opt-in is on in `./play` and `./play_p2`
+  without a gameplay corpus or soak under the model. Box3D's gyroscopic
+  dissipation makes a fast top sink at the game tick
+  (`gyro.gyroscope-stays-level` fails under `--candidate-shape-inertia`); a
+  smaller step or a less dissipative gyroscopic scheme is open. No Android or
+  Apple run.
 - The parity runner as a whole still fails on the pre-existing
   `dynamics.tumble.audible-impacts` divergence (RFC 0004 progress). P1's
   "`physics.conformance` still passes" holds for every check on the pinned

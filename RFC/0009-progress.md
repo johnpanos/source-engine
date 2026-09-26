@@ -302,3 +302,41 @@ python3 tools/quality/portal_boot.py --runtime run/runtime --build build-r03-por
 python3 tools/quality/usd_map_pixels.py check <dir>/runtime/portal/screenshots/usd_room0000.tga \
   --report <report> --origin -192 -128 0 --angles 10 20 0 --fov 90
 ```
+
+**Merged into the shared tree (2026-09-25).** The U1 diff (`e6544eb3..145a9748`
+on branch `worktree-agent-a4abfc363969fbb6b`) was applied to the main working
+tree without a commit. AGENTS.md and the manifest were merged by hand, keeping
+exactly one `corpus.usd-authoring.validator` row. Verified here:
+
+- `corpus.usd-map.compiler`: 39 checks. The U0 room compiles through
+  `vbsp -authored`, vvis and vrad to a published BSP2, checked
+  independently. It needs `SOURCE_USD_MAP_TOOLS=build-r03-tools/install`.
+- `corpus.usd-authoring.validator`: 98 checks.
+- Build group: `tools`, `dedicated` (gcc and clang), `portal-features`,
+  `portal-dxvk` and `portal-native-clang` pass.
+- The `portal-native` (gcc) and `hl2` trees fail only to link
+  `vphysics_conformance`, on `RunShapeInertiaContract()`. That comes from a
+  concurrent session's in-progress RFC 0013 shape-inertia work, not from U1.
+- Static audit, `conformance.gcc`/`.clang` and `arch.compile-deps`: 0
+  deviations.
+
+
+## U2: prop role cohorts and geometric entities (active, 2026-09-25)
+
+Scope, bounded:
+
+- `prop_dynamic` becomes supported, with a declared key set;
+  unsupported keys and parenting fail explicitly.
+- Each role's contract gets its own oracle:
+  - `prop_static`: the static-prop lump, collision per its declared property,
+    and a declared bake policy;
+  - `prop_dynamic`: a movable, non-physics entity;
+  - `prop_physics`: validated collision, and it falls and rests at runtime.
+- The trigger fires at runtime; one moving brush entity is supported if it
+  fits the profile.
+- Negative fixtures: swapped role metadata, `prop_physics` without collision,
+  physics-only keys on a dynamic prop, and unsupported keys. None publishes.
+- Runtime evidence headless only (dedicated server or windowless client).
+- Stages keep U1's job-ready shape.
+
+Implemented in an isolated worktree; results are recorded here when merged.

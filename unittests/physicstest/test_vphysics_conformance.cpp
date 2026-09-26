@@ -59,6 +59,7 @@
 #include "mathlib/polyhedron.h"
 
 #include "vphysics/parallel_step.h"
+#include "vphysics/shape_inertia.h"
 #include "vstdlib/jobthread.h"
 
 #include "vphysics_conformance.h"
@@ -1350,7 +1351,12 @@ public:
 static int s_suiteWorkers = 0;
 static IThreadPool *s_pSuitePool = NULL;
 
-IPhysicsEnvironment *CreateSuiteEnvironment()
+// --suite-shape-inertia: every suite environment takes the shape inertia
+// model (RFC 0013 vphysics.shape-inertia.v1), so the whole parity suite shows
+// what the game's opt-in changes.
+static bool s_suiteShapeInertia = false;
+
+static IPhysicsEnvironment *CreateSuiteEnvironmentWorkers()
 {
 	if ( s_suiteWorkers <= 1 )
 		return s_pPhysics->CreateEnvironment();
@@ -1363,6 +1369,22 @@ IPhysicsEnvironment *CreateSuiteEnvironment()
 	params.workerCount = s_suiteWorkers;
 	params.pThreadPool = s_pSuitePool;
 	return pParallel->CreateParallelEnvironment( params );
+}
+
+IPhysicsEnvironment *CreateSuiteEnvironment()
+{
+	IPhysicsEnvironment *pEnv = CreateSuiteEnvironmentWorkers();
+	if ( pEnv && s_suiteShapeInertia )
+	{
+		IPhysicsShapeInertia *pInertia = (IPhysicsShapeInertia *)s_pPhysics->QueryInterface(
+		    VPHYSICS_SHAPE_INERTIA_INTERFACE_VERSION );
+		if ( !pInertia || !pInertia->SetInertiaModel( pEnv, PHYSICS_INERTIA_SHAPE ) )
+		{
+			s_pPhysics->DestroyEnvironment( pEnv );
+			return NULL;
+		}
+	}
+	return pEnv;
 }
 
 // --suite-workers N: start the host pool and prove a suite environment gets
@@ -1884,6 +1906,8 @@ int main( int argc, char **argv )
 			bench.workers = atoi( argv[++i] );
 		else if ( !V_strcmp( argv[i], "--suite-workers" ) && i + 1 < argc )
 			s_suiteWorkers = atoi( argv[++i] );
+		else if ( !V_strcmp( argv[i], "--suite-shape-inertia" ) )
+			s_suiteShapeInertia = true;
 		else if ( !V_strcmp( argv[i], "--pool-threads" ) && i + 1 < argc )
 			bench.poolThreads = atoi( argv[++i] );
 		else if ( !V_strcmp( argv[i], "--seed" ) && i + 1 < argc )
@@ -1925,7 +1949,7 @@ int main( int argc, char **argv )
 			fprintf( stderr,
 			    "usage: %s --provider <lib.so> --surfaceprops <file>... --phy <file>... [--vehicle "
 			    "<kind>=<script>,<phy>]... [--bsp <map>] [--corpus <list>] [--suite-workers n] "
-			    "[--fault <name>]\n"
+			    "[--suite-shape-inertia] [--fault <name>]\n"
 			    "       %s --provider <lib.so> --surfaceprops <file>... --bench <scene> [--phy "
 			    "<cube.phy>] [--count n] [--ticks n] [--workers n] [--pool-threads n] [--seed n] "
 			    "[--fault <name>]\n",
@@ -1981,6 +2005,17 @@ int main( int argc, char **argv )
 	if ( TestModule( pProvider ) )
 	{
 		StartSuiteWorkers();
+		if ( s_suiteShapeInertia )
+		{
+			// Prove the suite's environments take the model before any clause.
+			IPhysicsShapeInertia *pInertia = (IPhysicsShapeInertia *)s_pPhysics->QueryInterface(
+			    VPHYSICS_SHAPE_INERTIA_INTERFACE_VERSION );
+			IPhysicsEnvironment *pEnv = CreateSuiteEnvironment();
+			Check( TIER_BOOT, "suite.shape-inertia",
+			    pEnv && pInertia && pInertia->GetInertiaModel( pEnv ) == PHYSICS_INERTIA_SHAPE );
+			if ( pEnv )
+				s_pPhysics->DestroyEnvironment( pEnv );
+		}
 		TestSurfaceProps( surfaceFiles );
 		TestPairHashAndSets();
 		TestBoxCollide();

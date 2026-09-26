@@ -93,6 +93,7 @@
 #include "tier0/icommandline.h"
 #include "tier1/tier1.h"
 #include "tier2/tier2.h"
+#include "vstdlib/jobthread.h"
 #include "vtf/vtf.h"
 
 #include <SDL3/SDL.h>
@@ -326,9 +327,37 @@ static void WriteClearProbeThunk( FILE *out )
 	s_pApp->WriteClearProbe( out );
 }
 
+// -threadpool N: the engine's compute pool (g_pThreadPool) runs N workers for
+// the run, as the engine host starts it, so backend work that uses the pool
+// (native Vulkan's pooled vertex conversion, -vkemitparallel) takes its pooled
+// path. Without it the pool has no workers and such work runs on the caller.
+class CComputePoolScope
+{
+public:
+	explicit CComputePoolScope( int threads ) : m_started( false )
+	{
+		if ( threads <= 0 || !g_pThreadPool )
+			return;
+		ThreadPoolStartParams_t params;
+		params.nThreads = threads;
+		m_started = g_pThreadPool->Start( params, "CmpJob" );
+		if ( !m_started )
+			Warning( "material pixel conformance: the compute pool did not start\n" );
+	}
+	~CComputePoolScope()
+	{
+		if ( m_started )
+			g_pThreadPool->Stop();
+	}
+
+private:
+	bool m_started;
+};
+
 int CMaterialPixelApp::Main()
 {
 	s_pApp = this;
+	CComputePoolScope computePool( CommandLine()->ParmValue( "-threadpool", 0 ) );
 	const char *outPath = CommandLine()->ParmValue( "-out", "" );
 	const char *hdr = CommandLine()->ParmValue( "-hdr", "none" );
 	const bool integerHdr = !Q_stricmp( hdr, "integer" );

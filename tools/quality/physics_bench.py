@@ -114,6 +114,12 @@ def check_rule(budget, gate_name, rule):
         raise BudgetError("gate %s: rule names unknown workload %s" % (gate_name, workload))
     if rule.get("stat") is not None and rule["stat"] not in STATS:
         raise BudgetError("gate %s: unknown stat %s" % (gate_name, rule["stat"]))
+    for field in ("awake_min", "min_awake_ticks"):
+        value = rule.get(field)
+        if value is not None and (kind != "speedup" or not isinstance(value, int) or value < 1):
+            raise BudgetError("gate %s: %s must be a positive integer on a speedup rule" % (gate_name, field))
+    if (rule.get("awake_min") is None) != (rule.get("min_awake_ticks") is None):
+        raise BudgetError("gate %s: awake_min and min_awake_ticks go together" % gate_name)
     gap = rule.get("known_gap")
     if gap is not None and not (isinstance(gap, dict) and gap.get("owner") and gap.get("note")):
         raise BudgetError("gate %s: a known gap needs an owner and a note" % gate_name)
@@ -148,8 +154,8 @@ def planned_runs(budget, providers):
 
 def parse_bench(text):
     parsed = physics_conformance.parse_output(text)
-    parsed.update({"samples": None, "metrics": {}, "digest": None, "memory": None, "unsupported": None,
-                   "bench": None, "build_us": None})
+    parsed.update({"samples": None, "awake": None, "metrics": {}, "digest": None, "memory": None,
+                   "unsupported": None, "bench": None, "build_us": None})
     for line in text.splitlines():
         parts = line.split()
         if not parts:
@@ -162,6 +168,14 @@ def parse_bench(text):
                     parsed["samples"] = [float(v) for v in parts[1:]]
                 except ValueError:
                     parsed["samples"] = "malformed"
+        elif parts[0] == "AWAKE":
+            if parsed["awake"] is not None:
+                parsed["awake"] = "duplicate"
+            else:
+                try:
+                    parsed["awake"] = [int(v) for v in parts[1:]]
+                except ValueError:
+                    parsed["awake"] = "malformed"
         elif parts[0] == "METRIC" and len(parts) == 3:
             parsed["metrics"][parts[1]] = float(parts[2])
         elif parts[0] == "DIGEST" and len(parts) == 2:
@@ -211,6 +225,9 @@ def classify(parsed, returncode, timed_out, expect_samples):
         samples = parsed["samples"]
         if not isinstance(samples, list) or len(samples) != expect_samples or parsed["digest"] is None:
             return "incomplete"
+        awake = parsed.get("awake")
+        if awake is not None and (not isinstance(awake, list) or len(awake) != len(samples)):
+            return "incomplete"
     if summary["failed"] or returncode != 0:
         return "fail"
     return "pass"
@@ -244,6 +261,8 @@ def run_bench(binary, library, surfaces, cube, workload, workers, env, timeout, 
         "unsupported": parsed["unsupported"], "bench": parsed["bench"], "build_us": parsed["build_us"],
         "stats": sample_stats(parsed["samples"]) if isinstance(parsed["samples"], list) and parsed["samples"] else None,
     }
+    if isinstance(parsed["samples"], list) and isinstance(parsed.get("awake"), list):
+        result["series"] = {"samples": parsed["samples"], "awake": parsed["awake"]}
     if outcome in ("crash", "timeout", "incomplete"):
         result["stdout_tail"] = conformance.tail(stdout, 20)
         result["stderr_tail"] = conformance.tail(stderr, 20)
@@ -271,6 +290,7 @@ def aggregate(rounds):
         "metrics": rounds[-1].get("metrics", {}) if rounds else {},
         "failed_checks": sorted(set(f for r in rounds for f in r.get("failed_checks", []))),
         "bench": rounds[-1].get("bench") if rounds else None,
+        "series": [r["series"] for r in rounds if r.get("series")],
     }
 
 
@@ -288,6 +308,40 @@ def matching(results, provider, workload, workers="all"):
 
 
 TIMING_KINDS = ("relative", "speedup", "timing")
+
+
+def awake_stat(series, awake_min, stat):
+    """(value, selected ticks) of `stat` over the ticks with >= awake_min awake."""
+    chosen = [t for t, n in zip(series["samples"], series["awake"]) if n >= awake_min]
+    return (sample_stats(chosen)[stat] if chosen else None), len(chosen)
+
+
+def awake_speedup(rule, base, wide):
+    """Speedup over the steps that still have work to split.
+
+    A pile that falls asleep leaves most ticks with nothing to parallelize, so a
+    whole-run percentile times sleeping steps. Worker-count determinism is gated
+    separately, and the per-tick awake counts must match here, so both sides
+    select the same ticks.
+    """
+    stat, awake_min = rule["stat"], rule["awake_min"]
+    if not base.get("series") or not wide.get("series"):
+        return False, "no per-tick awake counts (AWAKE) from the bench"
+    reference = base["series"][0]["awake"]
+    if any(s["awake"] != reference for s in base["series"] + wide["series"]):
+        return False, "per-tick awake counts differ between runs; the steps are not comparable"
+    base_values, wide_values, counts = [], [], set()
+    for series_list, values in ((base["series"], base_values), (wide["series"], wide_values)):
+        for series in series_list:
+            value, count = awake_stat(series, awake_min, stat)
+            counts.add(count)
+            values.append(value)
+    selected = counts.pop() if len(counts) == 1 else min(counts)
+    if selected < rule["min_awake_ticks"] or None in base_values + wide_values:
+        return False, "only %d ticks with >= %d awake (need %d)" % (selected, awake_min, rule["min_awake_ticks"])
+    speedup = statistics.median(base_values) / max(statistics.median(wide_values), 1e-9)
+    return speedup >= rule["min_ratio"], "%s over %d ticks with >= %d awake: speedup %d->%d workers %.2fx >= %.2fx" % (
+        stat, selected, awake_min, rule["base_workers"], rule["workers"], speedup, rule["min_ratio"])
 
 
 def evaluate_rule(rule, results, contract, contended=None):
@@ -364,6 +418,8 @@ def evaluate_rule(rule, results, contract, contended=None):
         wide = results.get(key_of(rule["provider"], rule["workload"], rule["workers"]))
         if not base or not wide or not base["stats"] or not wide["stats"]:
             return None, "not run"
+        if rule.get("awake_min") is not None:
+            return awake_speedup(rule, base, wide)
         speedup = base["stats"][stat] / max(wide["stats"][stat], 1e-9)
         return speedup >= rule["min_ratio"], "%s speedup %d->%d workers %.2fx >= %.2fx" % (
             stat, rule["base_workers"], rule["workers"], speedup, rule["min_ratio"])

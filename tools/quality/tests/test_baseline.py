@@ -106,6 +106,14 @@ class ValidationTests(BaselineTestCase):
         profile = {"id": "p", "tier": "north-star", "product": "x", "os": "linux", "arch": "x86_64", "profile": None}
         self.assertRejected(declaration(profiles=[profile]), "gap")
 
+    def test_runner_requirement_must_be_required_or_optional(self):
+        profile = {"id": "p", "tier": "north-star", "product": "x", "os": "macos", "arch": "arm64",
+            "profile": None, "gap": "no runner", "runner_requirement": "optional"}
+        code, text = self.run_main(declaration(profiles=[profile]), "validate")
+        self.assertEqual(0, code, text)
+        profile["runner_requirement"] = "sometimes"
+        self.assertRejected(declaration(profiles=[profile]), "runner_requirement")
+
     def test_missing_profile_file_is_rejected(self):
         profile = {"id": "p", "tier": "north-star", "product": "x", "os": "linux", "arch": "x86_64",
             "profile": "quality/profiles/missing.json"}

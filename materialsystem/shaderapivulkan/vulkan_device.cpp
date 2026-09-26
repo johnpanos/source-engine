@@ -8704,6 +8704,21 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 			first = false;
 		}
 		std::fputc( '}', m_frameStatsFile );
+		// Emit's conversion by draw size (vulkan_frame_stats.h buckets): per
+		// bucket [draws, unique vertices, microseconds].
+		const EmitConvertStats &convert = m_frameCost.convert;
+		if ( m_frameCost.count[kCostEmitConvert] )
+		{
+			std::fprintf( m_frameStatsFile,
+			    ",\"convert\":{\"skinned\":%llu,\"pooled\":%u,\"buckets\":[",
+			    static_cast<unsigned long long>( convert.skinnedVertices ), convert.pooledDraws );
+			for ( int bucket = 0; bucket < kEmitConvertBuckets; ++bucket )
+				std::fprintf( m_frameStatsFile, "%s[%u,%llu,%llu]", bucket ? "," : "",
+				    convert.draws[bucket],
+				    static_cast<unsigned long long>( convert.vertices[bucket] ),
+				    static_cast<unsigned long long>( convert.ns[bucket] / 1000u ) );
+			std::fputs( "]}", m_frameStatsFile );
+		}
 		if ( m_gpuResultFrame )
 			std::fprintf( m_frameStatsFile, ",\"gpu\":[%llu,%llu]",
 			    static_cast<unsigned long long>( m_gpuResultFrame ),

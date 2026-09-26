@@ -17,8 +17,9 @@
 //
 //          Kinds nest where the operations do: a texture creation that submits
 //          a layout transition counts under both texture_create and
-//          single_submit. Sums across kinds are therefore not meaningful; each
-//          kind answers "how much of this frame did X take".
+//          single_submit, and emit_convert (the per-vertex conversion) is part
+//          of emit. Sums across kinds are therefore not meaningful; each kind
+//          answers "how much of this frame did X take".
 //
 //===========================================================================//
 
@@ -57,6 +58,8 @@ enum FrameCostKind
 	kCostRenderPass,     // a scene render pass begun; a tiled GPU stores and reloads
 	                     // the target at each one (count only)
 	kCostTargetCopy,     // a render-target copy recorded (count only)
+	kCostEmitConvert,    // emit's per-vertex conversion of a draw's unique vertices
+	                     // (count: draws; time from EmitConvertStats' nanoseconds)
 	kFrameCostKinds
 };
 
@@ -66,7 +69,7 @@ inline const char *FrameCostName( int kind )
 	static const char *const kNames[kFrameCostKinds] = { "pipeline_create", "single_submit",
 	    "device_wait_idle", "texture_create", "texture_upload", "buffer_grow", "query_wait",
 	    "fence_wait", "acquire", "record", "submit", "present", "mesh_draw", "emit", "emit_reuse",
-	    "render_pass", "target_copy" };
+	    "render_pass", "target_copy", "emit_convert" };
 	return kind >= 0 && kind < kFrameCostKinds ? kNames[kind] : "unknown";
 }
 
@@ -94,11 +97,50 @@ inline uint64_t ThreadCpuMicros()
 #endif
 }
 
+inline uint64_t FrameClockNanos()
+{
+	return static_cast<uint64_t>( std::chrono::duration_cast<std::chrono::nanoseconds>(
+	    std::chrono::steady_clock::now().time_since_epoch() )
+	        .count() );
+}
+
+// Emit's vertex conversion by draw size: how many unique vertices each
+// converted draw had, and what converting them cost. The buckets answer how
+// much of the conversion is in draws large enough to split across workers.
+// Bucket b holds draws of [kEmitConvertBucketMin[b], kEmitConvertBucketMin[b + 1])
+// unique vertices; the last is open.
+enum
+{
+	kEmitConvertBuckets = 7
+};
+static const uint32_t kEmitConvertBucketMin[kEmitConvertBuckets] = {
+    1, 64, 256, 1024, 2048, 4096, 8192 };
+
+struct EmitConvertStats
+{
+	uint32_t draws[kEmitConvertBuckets];
+	uint64_t vertices[kEmitConvertBuckets];
+	uint64_t ns[kEmitConvertBuckets];
+	uint64_t skinnedVertices; // vertices of draws with bone weights (CPU skinning)
+	uint32_t pooledDraws;     // draws converted by a pooled batch (the rest, serially)
+	uint64_t totalNs;
+
+	static int Bucket( uint32_t vertexCount )
+	{
+		int bucket = 0;
+		while (
+		    bucket + 1 < kEmitConvertBuckets && vertexCount >= kEmitConvertBucketMin[bucket + 1] )
+			++bucket;
+		return bucket;
+	}
+};
+
 struct FrameCost
 {
 	uint32_t count[kFrameCostKinds];
 	uint64_t us[kFrameCostKinds];
 	uint64_t uploadBytes;
+	EmitConvertStats convert;
 
 	FrameCost() { Reset(); }
 	void Reset()
@@ -106,11 +148,31 @@ struct FrameCost
 		std::memset( count, 0, sizeof( count ) );
 		std::memset( us, 0, sizeof( us ) );
 		uploadBytes = 0;
+		std::memset( &convert, 0, sizeof( convert ) );
 	}
 	void Add( FrameCostKind kind, uint64_t micros )
 	{
 		++count[kind];
 		us[kind] += micros;
+	}
+	// One draw's conversion. Kept in nanoseconds (a small draw converts in a
+	// few microseconds); the emit_convert kind reports the total in
+	// microseconds.
+	void AddConvert( uint32_t vertexCount, uint64_t nanos, bool skinned, bool pooled )
+	{
+		if ( vertexCount == 0 )
+			return;
+		const int bucket = EmitConvertStats::Bucket( vertexCount );
+		++convert.draws[bucket];
+		convert.vertices[bucket] += vertexCount;
+		convert.ns[bucket] += nanos;
+		if ( skinned )
+			convert.skinnedVertices += vertexCount;
+		if ( pooled )
+			++convert.pooledDraws;
+		convert.totalNs += nanos;
+		++count[kCostEmitConvert];
+		us[kCostEmitConvert] = convert.totalNs / 1000u;
 	}
 };
 

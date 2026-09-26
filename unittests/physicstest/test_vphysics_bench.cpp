@@ -12,6 +12,7 @@
 //   BENCH <scene> <workers> <bodies> <constraints>
 //   BUILD_US <microseconds to build the scene>
 //   SAMPLES <microseconds per Simulate(tick)>...
+//   AWAKE <active objects after each tick>...   (same length as SAMPLES)
 //   METRIC <name> <value>
 //   DIGEST <16 hex digits>       bitwise object state after the run
 //   MEMORY <rss-start-kb> <rss-built-kb> <rss-end-kb> <peak-kb>
@@ -770,6 +771,10 @@ int RunScene( const BenchOptions_t &options, CPhysCollide *pAuthoredCube )
 
 	CUtlVector<double> samples;
 	samples.EnsureCapacity( options.ticks );
+	// Active objects after each tick, read outside the timed region: speedup
+	// rules can then judge only the steps that still have work to split.
+	CUtlVector<int> awake;
+	awake.EnsureCapacity( options.ticks );
 	IPhysicsStepProfile *pProfile = StepProfile();
 	double stepMs = 0.0, preMs = 0.0, postMs = 0.0, simulateMs = 0.0;
 	for ( int tick = 0; tick < options.ticks; tick++ )
@@ -781,6 +786,7 @@ int RunScene( const BenchOptions_t &options, CPhysCollide *pAuthoredCube )
 		if ( FaultIs( "bench-slow" ) )
 			usleep( 2000 );
 		samples.AddToTail( NowUs() - start );
+		awake.AddToTail( scene.pEnv->GetActiveObjectCount() );
 		physics_stepprofile_t profile;
 		if ( pProfile && ReadProfile( pProfile, scene.pEnv, &profile ) )
 		{
@@ -794,6 +800,10 @@ int RunScene( const BenchOptions_t &options, CPhysCollide *pAuthoredCube )
 	printf( "SAMPLES" );
 	for ( int i = 0; i < samples.Count(); i++ )
 		printf( " %.1f", samples[i] );
+	printf( "\n" );
+	printf( "AWAKE" );
+	for ( int i = 0; i < awake.Count(); i++ )
+		printf( " %d", awake[i] );
 	printf( "\n" );
 
 	bool finite;

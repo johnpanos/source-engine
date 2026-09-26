@@ -136,6 +136,55 @@ class RuleTests(unittest.TestCase):
         self.assertTrue(bench.evaluate_rule(rule, {"p/w/w1": run_result(p50=300), "p/w/w4": run_result(p50=100)}, {})[0])
         self.assertFalse(bench.evaluate_rule(rule, {"p/w/w1": run_result(p50=120), "p/w/w4": run_result(p50=100)}, {})[0])
 
+    def awake_run(self, awake_us, sleep_us, awake=(900,) * 30 + (0,) * 270, rounds=2):
+        """A pile run: ticks with bodies awake cost awake_us, sleeping ticks sleep_us."""
+        samples = [awake_us if n else sleep_us for n in awake]
+        run = run_result(p50=sleep_us, digests=("a",) * rounds)
+        run["series"] = [{"samples": list(samples), "awake": list(awake)} for _ in range(rounds)]
+        return run
+
+    def awake_rule(self, **extra):
+        rule = {"kind": "speedup", "workload": "w", "provider": "p", "stat": "p50", "base_workers": 1,
+                "workers": 4, "min_ratio": 1.2, "awake_min": 256, "min_awake_ticks": 20}
+        rule.update(extra)
+        return rule
+
+    def test_awake_speedup_judges_only_steps_with_work(self):
+        # Whole-run p50 times sleeping steps (23 us both ways: 1.0x), but the
+        # awake steps scale 2000 -> 850 us.
+        results = {"p/w/w1": self.awake_run(2000, 23), "p/w/w4": self.awake_run(850, 23)}
+        whole = self.awake_rule()
+        del whole["awake_min"], whole["min_awake_ticks"]
+        self.assertFalse(bench.evaluate_rule(whole, results, {})[0])
+        ok, detail = bench.evaluate_rule(self.awake_rule(), results, {})
+        self.assertTrue(ok, detail)
+        self.assertIn("over 30 ticks", detail)
+        results["p/w/w4"] = self.awake_run(1900, 23)
+        self.assertFalse(bench.evaluate_rule(self.awake_rule(), results, {})[0])
+
+    def test_awake_speedup_rejects_incomparable_or_thin_evidence(self):
+        base = self.awake_run(2000, 23)
+        shifted = self.awake_run(850, 23, awake=(900,) * 31 + (0,) * 269)
+        ok, detail = bench.evaluate_rule(self.awake_rule(), {"p/w/w1": base, "p/w/w4": shifted}, {})
+        self.assertFalse(ok)
+        self.assertIn("differ", detail)
+        few = {"p/w/w1": self.awake_run(2000, 23, awake=(900,) * 5 + (0,) * 295),
+               "p/w/w4": self.awake_run(850, 23, awake=(900,) * 5 + (0,) * 295)}
+        ok, detail = bench.evaluate_rule(self.awake_rule(), few, {})
+        self.assertFalse(ok)
+        self.assertIn("only 5 ticks", detail)
+        bare = {"p/w/w1": run_result(p50=300), "p/w/w4": run_result(p50=100)}
+        ok, detail = bench.evaluate_rule(self.awake_rule(), bare, {})
+        self.assertFalse(ok)
+        self.assertIn("AWAKE", detail)
+
+    def test_awake_line_must_pair_with_samples(self):
+        parsed = bench.parse_bench(output(samples=3, extra="AWAKE 5 4 3"))
+        self.assertEqual([5, 4, 3], parsed["awake"])
+        self.assertEqual("pass", bench.classify(parsed, 0, False, 3))
+        parsed = bench.parse_bench(output(samples=3, extra="AWAKE 5 4"))
+        self.assertEqual("incomplete", bench.classify(parsed, 0, False, 3))
+
     def test_timing_and_memory(self):
         timing = {"kind": "timing", "workload": "w", "provider": "p", "workers": 0, "stat": "p95", "limit_us": 150}
         memory = {"kind": "memory", "workload": "w", "provider": "p", "workers": 0, "limit_kb": 500}
@@ -250,6 +299,20 @@ class DeclarationTests(unittest.TestCase):
             for case in budget["sensitivity"]:
                 if profile.get("status") == "measured":
                     bench.rule_by_id(budget, profile, case["rule"])
+
+    def test_awake_fields_are_validated(self):
+        base = bench.load_budget(str(ROOT / bench.DEFAULT_BUDGET))
+        rules = base["gates"]["parallel-step"]["rules"]
+        speedup = next(r for r in rules if r["kind"] == "speedup")
+        for fields in ({"awake_min": 0, "min_awake_ticks": 10}, {"awake_min": 256},
+                       {"awake_min": "many", "min_awake_ticks": 10}):
+            bad = copy.deepcopy(base)
+            rule = next(r for r in bad["gates"]["parallel-step"]["rules"] if r.get("id") == speedup["id"])
+            rule.pop("awake_min", None)
+            rule.pop("min_awake_ticks", None)
+            rule.update(fields)
+            with self.subTest(fields=fields), self.assertRaises(bench.BudgetError):
+                self.load(bad)
 
     def test_rejects_unknown_rule_kind_workload_and_state(self):
         base = bench.load_budget(str(ROOT / bench.DEFAULT_BUDGET))

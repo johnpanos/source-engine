@@ -708,6 +708,87 @@
       "expected_divergence": "exit status 66"
     },
     {
+      "id": "render.vulkan.emit-convert-batch",
+      "description": "R32: native Vulkan emit's chunked vertex conversion (materialsystem/shaderapivulkan/vulkan_emit_convert.h) on the job system's batch executor, serially and with 1, 2 and N real worker threads, equals the serial conversion's records and bone maximum byte for byte across chunk boundaries; the comparison catches a chunk-offset defect and a wrong bone maximum",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "contract": "materialsystem/shaderapivulkan/vulkan_emit_convert.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "unittests/shaderapivulkantest/test_emit_convert_batch.cpp"
+      ],
+      "extra_flags": [
+        "-pthread"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.vulkan.emit-convert-batch.tsan",
+      "description": "render.vulkan.emit-convert-batch under ThreadSanitizer. Needs a compiler with a TSan runtime: CONFORMANCE_TSAN=1 python3 tools/quality/conformance.py check --cxx clang++ --suite render.vulkan.emit-convert-batch.tsan",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "contract": "materialsystem/shaderapivulkan/vulkan_emit_convert.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "unittests/shaderapivulkantest/test_emit_convert_batch.cpp"
+      ],
+      "extra_flags": [
+        "-pthread",
+        "-fsanitize=thread",
+        "-O1",
+        "-g"
+      ],
+      "requires": [
+        "env:CONFORMANCE_TSAN"
+      ],
+      "optional": true,
+      "timeout_seconds": 900,
+      "expect": "pass"
+    },
+    {
+      "id": "render.vulkan.emit-convert-batch.tsan.sensitivity",
+      "description": "The TSan lane's negative control: render.vulkan.emit-convert-batch with chunks raising one shared, unsynchronized bone maximum (-DEMIT_CONVERT_SEED_RACE, EmitConvertFault::SharedMaxBone) must fail under ThreadSanitizer",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "contract": "materialsystem/shaderapivulkan/vulkan_emit_convert.h",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "unittests/shaderapivulkantest/test_emit_convert_batch.cpp"
+      ],
+      "extra_flags": [
+        "-pthread",
+        "-fsanitize=thread",
+        "-O1",
+        "-g",
+        "-DEMIT_CONVERT_SEED_RACE"
+      ],
+      "requires": [
+        "env:CONFORMANCE_TSAN"
+      ],
+      "optional": true,
+      "timeout_seconds": 900,
+      "expect": "fail",
+      "expected_divergence": "exit status 66"
+    },
+    {
       "id": "jobsystem.querycache",
       "domain": "Q-JOBS",
       "rfc": "0003",

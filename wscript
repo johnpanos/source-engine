@@ -366,7 +366,9 @@ def define_platform(conf):
 			'NDEBUG'
 		])
 
-	conf.define('GIT_COMMIT_HASH', conf.env.GIT_VERSION)
+	# The commit hash is defined only where it is read (tier0's log header, see
+	# tier0/wscript). A global define would put a per-commit value on every compile
+	# command, defeating ccache's direct lookup across trees and after reconfigure.
 
 
 def options(opt):

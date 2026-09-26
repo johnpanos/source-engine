@@ -104,6 +104,9 @@ REFERENCE_DEFICIENCIES = {
     "gyro.free-momentum-magnitude":
         "the same explicit gyroscopic integration grows the angular momentum "
         "of a torque-free tumbling body",
+    "gyro.t-handle-momentum":
+        "the same explicit gyroscopic integration grows the angular momentum "
+        "of Box3D's Dzhanibekov T-handle sample (15% in 25 s)",
 }
 
 LINE_RE = re.compile(r"^(PASS|FAIL) (\S+) (\S+?)(?:: (.*))?$")
@@ -196,8 +199,13 @@ def parse_output(text):
     return result
 
 
-def run_provider(binary, library, surfaces, phys, env, timeout, fault=None, corpus=None, workers=0):
+def run_provider(binary, library, surfaces, phys, env, timeout, fault=None, corpus=None, workers=0,
+                 shape_inertia=False):
     command = [binary, "--provider", library]
+    if shape_inertia:
+        # RFC 0013 vphysics.shape-inertia.v1: every suite environment takes
+        # the collision solid's full inertia tensor.
+        command += ["--suite-shape-inertia"]
     if workers > 1:
         # RFC 0013 P3: every suite environment through the parallel-step
         # capability on a host pool.
@@ -327,6 +335,10 @@ def main(argv=None):
     parser.add_argument("--candidate-workers", type=int, default=0,
                         help="run candidates (never the reference) with every environment on this many "
                              "workers through vphysics.parallel-step.v1 (RFC 0013)")
+    parser.add_argument("--candidate-shape-inertia", action="store_true",
+                        help="run candidates (never the reference) with every environment on the shape "
+                             "inertia model through vphysics.shape-inertia.v1 (RFC 0013); a diagnostic "
+                             "of what the game's opt-in changes, not a parity pass")
     parser.add_argument("--skip-corpus", action="store_true",
                         help="diagnostic runs only; evidence records the skip and the gate fails")
     parser.add_argument("--skip-sensitivity", action="store_true",
@@ -358,7 +370,8 @@ def main(argv=None):
     for name in providers:
         results[name] = run_provider(binary, provider_library(build, name), surfaces, phys, env, args.timeout,
                                      corpus=corpus,
-                                     workers=0 if name == REFERENCE else args.candidate_workers)
+                                     workers=0 if name == REFERENCE else args.candidate_workers,
+                                     shape_inertia=name != REFERENCE and args.candidate_shape_inertia)
 
     reference = results[REFERENCE]
     gate_failures = judge_reference(reference)
@@ -420,6 +433,7 @@ def main(argv=None):
             for name, reason in sorted(REFERENCE_DEFICIENCIES.items())},
         "require": args.require,
         "candidate_workers": args.candidate_workers,
+        "candidate_shape_inertia": args.candidate_shape_inertia,
         "fixtures": provenance,
         "corpus_models": corpus_count,
         "corpus_packs": CORPUS_VPKS,

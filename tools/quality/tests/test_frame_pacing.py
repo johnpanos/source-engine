@@ -191,6 +191,32 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(report["passes"][0]["hitches"][0]["gpu_ms"], 7.5)
 
 
+class ConvertTests(unittest.TestCase):
+    """The backend's emit_convert cost and its per-draw-size buckets."""
+
+    def test_buckets_sum_over_frames_with_shares(self):
+        frames = stream([5.0, 5.0, 5.0, 5.0])
+        for position, frame in enumerate(frames):
+            frame["cost"] = {"emit": [10, 3000], "emit_convert": [4, 2000 + position]}
+            frame["convert"] = {"skinned": 3000, "pooled": 1, "buckets": [
+                [2, 100, 100], [0, 0, 0], [0, 0, 0], [1, 1500, 300], [0, 0, 0], [1, 4400, 1600],
+                [0, 0, 0]]}
+        summary = pacing.summarize(frames)
+        convert = summary["convert"]
+        self.assertEqual(convert["frames"], 4)
+        self.assertEqual(convert["draws"], 16)
+        self.assertEqual(convert["vertices"], 4 * 6000)
+        self.assertEqual(convert["pooled_draws"], 4)
+        self.assertEqual(convert["skinned_share"], 0.5)
+        self.assertEqual(convert["buckets"]["4096-8191"]["time_share"], 0.8)
+        self.assertEqual(convert["buckets"]["1024-2047"]["vertices"], 6000)
+        self.assertEqual(summary["emit_convert_median_ms"], 2.001)
+
+    def test_streams_without_convert_records_have_none(self):
+        self.assertNotIn("convert", pacing.summarize(stream([5.0, 5.0, 5.0])))
+        self.assertEqual(pacing.summarize(stream([5.0, 5.0, 5.0]))["emit_convert_median_ms"], 0.0)
+
+
 class BudgetTests(unittest.TestCase):
     def report(self, intervals):
         return pacing.analyze(stream(intervals), 1)[0]

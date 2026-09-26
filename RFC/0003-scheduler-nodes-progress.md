@@ -364,3 +364,18 @@ python3 tools/quality/portal_boot.py ... --engine-arg=-hostframetrace --engine-a
   --startup-command="host_frame_graph 1"   # then 0
 python3 tools/quality/host_frame_capture.py legacy.trace graph.trace --tolerance ia=0.0001
 ```
+
+## 7. Live shadow verifier for the pooled render-start cohorts (active, 2026-09-25)
+
+Scope: close the open item "no semantic live oracle for the client region".
+The approach is an in-process verifier, off by default:
+
+- after each pooled batch, recompute its items serially into private copies
+  and byte-compare, bones first;
+- particles get either an exact check or, if their random streams or state
+  make an exact recompute unsound, a documented weaker invariant;
+- a seeded-fault negative control;
+- the overhead measured;
+- no behaviour change when off.
+
+Implemented in an isolated worktree; results are recorded here when merged.

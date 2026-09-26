@@ -97,10 +97,15 @@ Build infrastructure MUST provide:
   artifacts, and recorded toolchain/build settings. No reliance on sibling
   checkouts or unpinned network downloads. Use the platform's normal package
   tooling; do not build custom signing/provenance infrastructure for its own sake.
-- Native Apple runners, Android cross-build and device infrastructure, and Linux
-  native/GPU runners. Cross-build checks run early; real device/native tests are
-  required for lifecycle, graphics, permissions, and release claims. Simulators
-  and software rendering are additional profiles, not replacements for hardware.
+- Android cross-build and device infrastructure, and Linux native/GPU runners.
+  Cross-build checks run early; real device/native tests are required for
+  lifecycle, graphics, permissions, and release claims. Simulators and software
+  rendering are additional profiles, not replacements for hardware.
+- macOS/iOS (Apple) and MSVC runners are **optional** (user decision,
+  2026-09-25). Their profiles stay declared, with `runner_requirement:
+  optional` in `quality/baseline.json`, and are reported as unavailable when
+  their runner is missing. No roadmap gate waits on them. An Apple or MSVC
+  support claim still needs that platform's own evidence.
 - Shared conformance plus profile-specific integration, sanitizer/fuzz coverage
   where supported, performance/power/memory budgets, installed-package smoke
   tests, symbolized crash diagnostics, and documented rebuild/reproduction steps.
@@ -365,7 +370,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | --- | --- | --- | --- | --- |
 | 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | done (re-audited 2026-09-25; [Q0 baseline](RFC/0005-progress.md#re-audit-2026-09-25)) |
 | 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | done ([Q1 runner](RFC/0005-progress.md#q1--r02-runner-shared-conformance-runner)) |
-| 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | partial (gate needs an Apple arm64 runner, the MSVC toolchain and hosted CI, all unavailable here; Linux and Android slices R03-A/B done and C++20 wording reconciled 2026-09-25; [0006 progress](RFC/0006-progress.md#r03-wording-reconciliation-2026-09-25)) |
+| 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | partial (Apple/MSVC runners optional since 2026-09-25; the Linux and Android slices R03-A/B are done; the gate waits on the R54 `vbsp2` dual-ABI island that `toolchain.coverage` reports; [0006 progress](RFC/0006-progress.md#r03-wording-reconciliation-2026-09-25)) |
 | 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | active (`archlint check --all` passes since R04-DRIFT and R04-CAP; `--compile-deps` transitive include and portable link-graph checks installed and declared as `arch.compile-deps` (R04-DEPS) 2026-09-25; hermetic contract-header compiles (R04-HERMETIC), the Hammer include graph (R04-HAMGRAPH) and link-graph/`uselib` grants for all strict targets (R04-TARGETS) installed; open: per-target `arch_module` ownership for mixed legacy targets; [Phase A record](RFC/0001-phase-a-progress.md#r04-deps-compiler-grounded-transitive-include-check-slice-done-2026-09-25)) |
 | 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | partial (all vocabulary delivered with consumers 2026-09-25: `Expected`, `StrongId`, `ScopedResource`, `testing::Checks`, `units`; waits on hard gates R03/R04; [record](RFC/0006-progress.md#r05-strongid-strong-identifier-vocabulary-2026-09-25)) |
 | 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | partial (all implementation clauses evidenced, reviewed 2026-09-25; waits on R05; [conformance record](RFC/0001-conformance-progress.md)) |
@@ -495,6 +500,22 @@ Keep the table concise and link details below or from the domain progress file.
     Unmeasured on the Fold7 and Apple profiles. It applies only where Box3D is
     selected (`./play`, `./play_p2`, `run.sh`). The launcher, the dedicated
     server, Waf and the Android APKs default to IVP.
+  - `vphysics.shape-inertia.v1` (user decision, 2026-09-25): objects take
+    their collision solid's full inertia tensor (Box3D hull mass data,
+    products of inertia, no `rotInertiaLimit`) instead of IVP's per-axis
+    approximation. The legacy model stays the default and is unchanged.
+    - 20 `inertia.*` contract checks pass, and 4 injected faults are
+      detected; the `shape-inertia` gate is required.
+    - Game opt-in: `-physics_shape_inertia`, on by default in `./play` and
+      `./play_p2` (user decision; `PHYSICS_ARGS=` rolls back).
+    - Open: no gameplay corpus under the model. Box3D's backward-Euler
+      gyroscopic step makes a fast top sink at the game tick, so
+      `gyro.gyroscope-stays-level` fails under `--candidate-shape-inertia`.
+  - The `parallel-step` gate passes again (2026-09-25).
+    `parallel.speedup-pile-1024` is judged over awake steps (per-tick
+    `AWAKE` from the bench, `awake_min` 512): 2.02x. The whole-run p50 had
+    timed sleeping steps after the restitution pin. All 15 faults are
+    detected.
   - Not done:
     - the parity runner's verdict fails: 602/602 checks pass but
       `dynamics.tumble.audible-impacts` diverges (2026-09-25);
@@ -953,6 +974,27 @@ Keep the table concise and link details below or from the domain progress file.
   - Native now honors the saved `mat_vsync 0` (no longer always FIFO), and
     re-autoconfigures once because the saved adapter IDs were 0.
   - See the [video options record](RFC/0001-native-vulkan-video-options-progress.md).
+
+- R32-EMIT-PARALLEL: `partial` (2026-09-25). Emit's per-vertex conversion is
+  81-82 % of `emit`, and draws of 1024+ unique vertices hold 83 % of it
+  (`emit_convert` and per-size buckets in `-vkframestats`).
+  `mat_vk_emit_parallel 1` converts those draws in chunks on the engine pool
+  (`RunThreadPoolJobBatch`; legal from the main and `MatQueue` threads).
+  - Default 0 (serial: oracle and rollback). On desktop it cuts the warm
+    median to 0.70-0.78x and emit to 0.57-0.63x in modes 0 and 2, every
+    round faster.
+  - Oracles: in-game verify 0 of 21,000+ pooled draws mismatched; 14 pixel
+    families byte-identical with one-vertex chunks; CPU fixture
+    `render.vulkan.emit-convert-batch` (269 checks) with a TSan lane; seeded
+    chunk-offset and shared-maximum defects detected.
+  - Desktop launchers enable it: `run.conf`'s `JOB_ARGS` and `play_p2` pass
+    `-vkemitparallel 1` (agent decision under the user's standing
+    instruction, 2026-09-25). The engine default stays 0, and Android stays
+    off until measured on the Fold7. Apple is unmeasured, and no full-product
+    TSan run with it on exists. Merged into the shared tree from the worktree
+    branch (`30068dd2`). The CPU suite (269 checks, g++ and clang++), the
+    TSan lane and its race control pass there. See the
+    [record](RFC/0001-native-vulkan-frame-pacing-progress.md#emit-conversion-on-the-engine-pool-r32-emit-parallel-2026-09-25).
 
 - R32-FRAME-PACING: `partial` (2026-09-22). The Android portal stutter is
   reproduced on Linux by [`frame_pacing.py`](tools/quality/frame_pacing.py) with

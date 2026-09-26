@@ -416,7 +416,8 @@ def build_identity(tools_dir):
             return m.group(1) if m else None
 
         cxx = value("CXX")
-        commit = re.search(r"GIT_COMMIT_HASH=\\?\"([^\"\\]*)", text)
+        commit = re.search(r"GIT_COMMIT_HASH=\\?\"([^\"\\]*)", text) \
+            or re.search(r"^GIT_VERSION = '([^']*)'", text, re.MULTILINE)
         identity["build_dir"] = build_dir
         identity["cxx"] = cxx
         identity["cxxflags"] = value("CXXFLAGS")

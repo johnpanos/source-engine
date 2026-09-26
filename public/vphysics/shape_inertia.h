@@ -75,8 +75,8 @@ public:
 	    IPhysicsEnvironment * pEnvironment, physics_inertia_model_t model ) = 0;
 
 	// PHYSICS_INERTIA_LEGACY for a NULL or foreign environment.
-	virtual physics_inertia_model_t GetInertiaModel(
-	    const IPhysicsEnvironment *pEnvironment ) const = 0;
+	virtual physics_inertia_model_t GetInertiaModel( const IPhysicsEnvironment *pEnvironment )
+	    const = 0;
 
 	// The object's inertia tensor about its mass center in object axes, in
 	// the units of IPhysicsObject::GetInertia (kg*m^2); tensor[row][column].

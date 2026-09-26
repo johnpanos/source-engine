@@ -264,26 +264,147 @@ Consequences:
 - The working tree at the time started the game at 640x480 and then about
   931x703, not the panel size. `-w 2448 -h 1848` was passed for these runs.
 
-## R32-PARALLEL-EMIT: CPU vertex conversion on the engine pool (active, 2026-09-25)
+## Emit conversion on the engine pool (R32-EMIT-PARALLEL, 2026-09-25)
 
-Scope: the job-based follow-up to this record's profile. "Emit"
-(`kCostEmit`) is converting each pass's mesh into the frame vertex stream,
-mostly CPU skinning. It is several times the command-recording cost, so it
-is the main-thread (or MatQueue) cost worth splitting. Slices:
+Question: how much of `emit` is the per-vertex conversion, how much of that
+sits in draws large enough to split, and does splitting them across the
+engine's compute pool (RFC 0003's synchronous batch) pay.
 
-- **(A) Measure.** Add an `emit_convert` sub-scope and a unique-vertex count,
-  and stop if conversion is a minor share.
-- **(B) Parallelize.** Convert large draws' vertices as a synchronous batch on
-  the engine pool (`RunThreadPoolJobBatch`). Slot assignment, the reuse
-  cache, the stream reserve and submission order stay serial. It is off by
-  default, and the serial path remains the oracle and the rollback.
+### Measurement
 
-Oracle:
+`-vkframestats` now has an `emit_convert` cost kind (inside `emit`: the
+conversion of a draw's unique vertices, timed in nanoseconds) and a
+`convert` record per frame: skinned vertices, pooled draws, and per
+draw-size bucket `[draws, unique vertices, us]` (`vulkan_frame_stats.h`
+`kEmitConvertBucketMin`). `frame_pacing.py` summarizes them
+(`emit_convert_median_ms`, `summary.convert`), and `--ab-extra-arg` gives
+the B runs of an A/B an engine argument, so one build can be compared with
+and without a switch.
 
-- a byte-comparing `-vkemitparallelverify` mode;
-- the 14 material pixel families byte-identical between serial and parallel;
-- TSan on the split conversion;
-- seeded chunk-offset and shared-`maxBone` negative controls;
-- an interleaved `frame_pacing.py` A/B in queue modes 0 and 2.
+To time the conversion alone, `EmitToNativeQueue`'s `convertDraw` is split:
+a serial pass assigns each unique vertex its slot in first-use order and
+writes the indices (as before); a second pass converts the slots. A record
+depends only on its vertex and the draw's state, so this changes no output:
+all 14 `material_pixel_conformance` families (hdr none) give byte-identical
+captures with the HEAD backend and the split one, and an interleaved A/B
+(4 rounds, mode 0) puts the split build at 0.97x HEAD's median (noise).
 
-Implemented in an isolated worktree; results are recorded here when merged.
+Portal scenario, warm pass, RADV Strix Halo, load 5 to 9:
+
+| | mode 0 | mode 2 |
+| --- | --- | --- |
+| emit median | 3.05 ms | 3.61 ms |
+| emit_convert median | 2.47 ms (81 % of emit) | 2.96 ms (82 %) |
+| converted draws / unique vertices per frame | 161 / 54,400 | 168 / 62,400 |
+| skinned share of vertices | 56 % | 57 % |
+
+Conversion time by unique vertices per draw (mode 0; mode 2 within 3
+points):
+
+| Unique vertices | Draws/frame | Vertices/frame | Share of convert time | ns/vertex |
+| --- | --- | --- | --- | --- |
+| 1-63 | 122.5 | 1,207 | 1.0 % | 18 |
+| 64-255 | 15.3 | 1,985 | 1.6 % | 18 |
+| 256-1023 | 7.3 | 5,671 | 14.8 % | 58 |
+| 1024-2047 | 11.3 | 15,118 | 15.8 % | 23 |
+| 2048-4095 | 1.7 | 3,847 | 7.5 % | 43 |
+| 4096-8191 | 2.5 | 14,779 | 31.9 % | 48 |
+| 8192+ | 0.75 | 11,789 | 27.4 % | 51 |
+
+Draws of 2048+ unique vertices are 5 per frame but 67 % of the conversion
+time (69 % in mode 2); 1024+ is 83 %.
+
+### Design
+
+- `vulkan_emit_convert.h` (`CEmitConvertBatch`): the slots split into chunks
+  of 128; chunk c converts only its slots' records and writes only its own
+  bone maximum; the caller reduces the maxima after the batch returns. The
+  batch's fork publishes the inputs and its join the records
+  (`parallel_batch.h`); no chunk reads another's output.
+- `convertPooled` runs it through `RunThreadPoolJobBatch` on `g_pThreadPool`
+  (no new threads) for stream draws with at least
+  `mat_vk_emit_parallel_min_vertices` (1024) unique vertices, when
+  `mat_vk_emit_parallel` is 1. Default 0: the serial pass is the oracle and
+  the rollback. Slot assignment, indices, the reuse cache and the stream
+  reserve stay serial, in their old order.
+- Legality under R20's wait rules: the bridge queues only this call's
+  runners, the caller claims chunks itself, and the join cancels unstarted
+  runners and waits only for running ones; it never runs unrelated pool work
+  and never `YieldWait`s. The caller is the main thread (mode 0) or
+  `MatQueue` (mode 2), neither a `CmpJob` worker, so no nested pool wait
+  arises; from inside a batch the call runs serially (`BatchDepth`). No
+  forbidden-wait or starvation warning appeared in any run.
+- `-vkemitparallel`, `-vkemitparallelmin` override the ConVars from the
+  first frame (the material system applies console sets queued, which the
+  pixel harness never does); `-vkemitparallelchunk n` shrinks chunks for
+  oracles; `-vkemitparallelfault offset|sharedbone` seeds defects;
+  `material_pixel_conformance -threadpool N` starts the pool in the harness.
+
+### Oracles
+
+| Check | Result |
+| --- | --- |
+| `-vkemitparallelverify` (every pooled draw also converted serially and privately; records and bone maximum byte-compared), portal scenario, 3 passes | mode 0: 11,000+ checked, 0 mismatched; mode 2: 10,000+ checked, 0 mismatched, 0 cross-thread calls, 1,933 render-thread presents |
+| same with `-vkemitparallelfault offset` | mode 0: 3,311 of 3,311 mismatched; mode 2: 3,372 of 3,372 |
+| 14 pixel families, hdr none: pooled (`-threadpool 3 -vkemitparallel 1 -vkemitparallelmin 1 -vkemitparallelchunk 1`, so every draw is split into one-vertex chunks) vs serial | all 14 captures byte-identical (75 listed cases; exposure and pbr-fallback compared whole, less `poll_frames`); every pooled draw verified, 0 mismatched |
+| same with the offset fault (lightmap, skinning, modellight, portal) | all 4 captures differ, the oracle fails all 4, verify mismatches every draw |
+| `render.vulkan.emit-convert-batch` (new, CPU only): chunked vs serial conversion over 13 draw sizes, 5 chunk sizes, serial and 1/2/32 real worker threads | 269 checks pass on g++ and clang++, default and `-O2 -DNDEBUG`; the comparison catches a chunk offset (5 chunk sizes) and a wrong bone maximum |
+| `.tsan` (clang, `-fsanitize=thread`) | pass, no report |
+| `.tsan.sensitivity` (`-DEMIT_CONVERT_SEED_RACE`: every chunk read-modify-writes one shared bone maximum) | fails as required (exit 66, race reported at the header's shared write). A first version that wrote the shared value only when raising it was not reported in 8 runs: once the palette maximum is reached every chunk only reads |
+
+The engine-pool bridge itself is not run under TSan here; its fixtures
+(`jobsystemthreadpooltest`, the engine-bridge tests) are the existing
+evidence. The product has not run under TSan with the switch on.
+
+### Performance
+
+Interleaved A/B on one build, B with `-vkemitparallel 1`, warm pass medians
+per round (ms):
+
+| Run | A median | B median | B/A median, emit, emit_convert, p99 |
+| --- | --- | --- | --- |
+| mode 0, min 2048, 5 rounds | 5.54 6.59 5.23 6.30 6.49 | 4.18 4.14 4.52 4.45 5.47 | 0.71, 0.57, 0.48, 0.66 |
+| mode 2, min 2048, 5 rounds | 5.04 4.40 4.57 4.58 4.80 | 3.08 3.22 3.22 3.30 3.20 | 0.70, 0.63, 0.55, 0.68 |
+| mode 0, min 1024 (default), 4 rounds | 7.76 7.88 8.29 8.29 | 5.94 6.12 6.53 6.23 | 0.78, 0.59, 0.49, 0.81 |
+| mode 2, min 1024, 4 rounds | 5.35 4.98 4.97 4.55 | 4.43 3.47 3.49 3.12 | 0.70, 0.60, 0.51, 0.73 |
+
+B is faster in every round of every run; per-round emit falls from 3.3-4.0
+to 2.0-3.0 ms. The host's speed drifted between runs (A at 5.5 then 7.8 ms
+in mode 0), so compare within a run. Threshold (mode 2, both pooled): 1024
+against 2048 is 0.93x median and 0.88x emit, better in all 4 rounds; 512
+against 1024 is 0.97x, better in 2 of 4 (not adopted).
+
+With pooling on, the 256-1023 bucket (skinned models at about 100 ns a
+vertex, still serial) is the largest remaining share of conversion (31 %).
+
+### Not done
+
+- Default stays 0. The gain is clear on this desktop; making it the default
+  is the user's decision.
+- Android (Fold7) and Apple are unmeasured: pool size, big/little cores,
+  power and thermal cost of three more busy workers, and whether the
+  compute pool is contended there (the Android main pins
+  `mat_queue_mode 0`). Both paths call the same `convertSlots`, but the
+  compiler may inline it at each call site; on AArch64 (FMA) a run with
+  `-vkemitparallelverify` is the check that floating-point contraction does
+  not differ between the copies. x86-64 here has no FMA in these builds.
+- Total CPU (all workers) was not measured; only the presenting thread's.
+- No low-core profile run (the pool had 3 `CmpJob` workers).
+- The 256-1023 skinned draws: GPU skinning (`skin.vert`) remains the
+  structural fix for skinned conversion cost, and would shrink what the pool
+  has to do.
+
+**Desktop default and merge (2026-09-25).**
+
+- The worktree branch (`30068dd2`) was merged into the shared tree without a
+  commit. There, `render.vulkan.emit-convert-batch` passes (269 checks, g++
+  and clang++), the TSan lane is clean, its race control fails as required,
+  and `build.portal-native`/`-clang`, `arch.check` and `arch.compile-deps`
+  pass.
+- Taking the recommended option under the user's standing instruction, the
+  desktop launchers now pass `-vkemitparallel 1`: `run.conf`'s `JOB_ARGS`,
+  and `play_p2`. That is the exact switch the in-game A/B measured. The
+  engine ConVar default stays 0, which is the rollback (`JOB_ARGS=` or
+  dropping the flag). The Android launcher is unchanged until Fold7
+  measurements exist.
+

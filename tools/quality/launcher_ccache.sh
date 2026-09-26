@@ -16,10 +16,12 @@
 # there wins), so every tree using the directory keeps it, not only launcher
 # builds. LAUNCHER_CCACHE_MAX_SIZE picks the size.
 #
-# The two trees' command lines differ (Portal 2's global STUDIO_MAX_BONES_256
-# and HAVE_AV* defines, and each tree's GIT_COMMIT_HASH), so their direct-mode
-# keys never match. A translation unit whose preprocessed output is the same in
-# both trees still hits through ccache's preprocessor mode. Waf passes paths
+# The two trees' command lines differ by Portal 2's global STUDIO_MAX_BONES_256
+# and HAVE_AV* defines, so their direct-mode keys match only where those are
+# absent. A translation unit whose preprocessed output is the same in both
+# trees still hits through ccache's preprocessor mode. GIT_COMMIT_HASH is
+# defined for tier0 only (2026-09-25), so a new commit or reconfigure no longer
+# changes every other compile command. Waf passes paths
 # relative to the output tree, and both trees sit one level below the
 # repository, so no CCACHE_BASEDIR rewriting is needed.
 

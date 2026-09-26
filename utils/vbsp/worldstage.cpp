@@ -6,6 +6,8 @@
 
 #include "worldstage.h"
 
+#include "foundation/units.h"
+
 #include "utils/worldstage/sourceEntityAPI.h"
 #include "utils/worldstage/sourceLightAPI.h"
 #include "utils/worldstage/sourceMeshAPI.h"
@@ -624,7 +626,7 @@ bool WriteWorldStageGeometryImpl( const char *bspPath, std::string &error )
 		error = "OpenUSD could not create an in-memory stage";
 		return false;
 	}
-	pxr::UsdGeomSetStageMetersPerUnit( stage, 0.0254 );
+	pxr::UsdGeomSetStageMetersPerUnit( stage, foundation::units::kMetersPerSourceUnit );
 	pxr::UsdGeomSetStageUpAxis( stage, pxr::UsdGeomTokens->z );
 	const pxr::UsdGeomXform world = pxr::UsdGeomXform::Define( stage, pxr::SdfPath( "/World" ) );
 	const pxr::SourceWorldAPI source = pxr::SourceWorldAPI::Apply( world.GetPrim() );

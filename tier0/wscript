@@ -77,7 +77,8 @@ def build(bld):
 		'../public/tier0',
 	] + bld.env.INCLUDES_SDL2
 
-	defines = []
+	# tier0/dbg.cpp stamps the engine log with the commit; only tier0 sees it.
+	defines = [ 'GIT_COMMIT_HASH="%s"' % bld.env.GIT_VERSION ] if bld.env.GIT_VERSION else []
 
 	if bld.env.DEST_OS == 'win32':
 		libs = ['ADVAPI32', 'WS2_32']

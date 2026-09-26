@@ -58,6 +58,10 @@ OUTCOMES = ("pass", "fail", "crash", "timeout")
 UNAVAILABLE = "unavailable"
 TOOL_KINDS = ("command", "pkg-config", "path", "env", "compile")
 TIERS = ("north-star", "preserved", "product-scope")
+# Whether a profile's native runner must exist before a gate that names the
+# profile can close. "optional" profiles (Apple and MSVC, user decision
+# 2026-09-25) stay declared and are reported when unavailable, but never block.
+RUNNER_REQUIREMENTS = ("required", "optional")
 BASELINE_KINDS = ("capture", "budget")
 BASELINE_STATES = ("recorded", "partial", "missing")
 ROW_PATTERN = re.compile(r"^R\d+$")
@@ -187,6 +191,9 @@ def validate(root, declaration):
         elif not os.path.isfile(os.path.join(root, profile["profile"])):
             raise BaselineError("profile %s: profile file %s does not exist" % (profile["id"], profile["profile"]))
         check_requires("profile %s" % profile["id"], profile.get("requires", []))
+        if profile.get("runner_requirement", "required") not in RUNNER_REQUIREMENTS:
+            raise BaselineError("profile %s: runner_requirement %r is not one of %s"
+                % (profile["id"], profile["runner_requirement"], ", ".join(RUNNER_REQUIREMENTS)))
         for ident in profile.get("checks", []):
             if ident not in check_ids:
                 raise BaselineError("profile %s: unknown check %r" % (profile["id"], ident))
