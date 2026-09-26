@@ -244,6 +244,19 @@ def run_test(self, fragment, msg):
 	result = self.check_cxx(fragment=fragment, msg=msg, mandatory = False)
 	return False if result == None else True
 
+def resolve_render_backend(conf):
+	# Native Vulkan is the default client renderer (user decision, 2026-09-26)
+	# where the SDL3/Vulkan profiles build: 64-bit Linux, Android and iOS/tvOS
+	# clients. Server, test and tool products, 32-bit and GLES builds, other
+	# OSes, and an explicit --platform-provider=sdl2 keep the legacy renderer.
+	if conf.options.RENDER_BACKEND == 'auto':
+		client = not (conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS)
+		native = (client and conf.env.DEST_OS in ('linux', 'android', 'ios')
+			and not conf.options.TARGET32 and not conf.options.TOGLES
+			and conf.options.PLATFORM_PROVIDER != 'sdl2')
+		conf.options.RENDER_BACKEND = 'native-vulkan' if native else 'legacy'
+	conf.msg('Render backend', conf.options.RENDER_BACKEND)
+
 def resolve_platform_provider(conf):
 	# SDL3 is the window/input provider wherever the product can use it: every
 	# Vulkan client, and the iOS/tvOS client. SDL2 remains only for the
@@ -256,6 +269,7 @@ def resolve_platform_provider(conf):
 	conf.msg('Window/input provider', conf.options.PLATFORM_PROVIDER)
 
 def define_platform(conf):
+	resolve_render_backend(conf)
 	resolve_platform_provider(conf)
 	conf.env.SDL3 = conf.options.PLATFORM_PROVIDER == 'sdl3'
 	conf.env.DXVK = conf.options.RENDER_BACKEND == 'vulkan'
@@ -436,10 +450,15 @@ def options(opt):
 		dest='PLATFORM_PROVIDER',
 		help='linked window/input provider; auto selects sdl3 for Vulkan and iOS clients, '
 			'sdl2 for legacy-renderer products [default: %default]')
-	grp.add_option('--render-backend', choices=['legacy', 'vulkan', 'native-vulkan'], default='legacy',
-		dest='RENDER_BACKEND', help='linked renderer; vulkan uses the DXVK compatibility provider')
-	grp.add_option('--physics-backend', choices=['ivp', 'box3d', 'both'], default='ivp',
-		dest='PHYSICS_BACKEND', help='production physics provider, or both for tests')
+	grp.add_option('--render-backend', choices=['auto', 'legacy', 'vulkan', 'native-vulkan'], default='auto',
+		dest='RENDER_BACKEND',
+		help='linked renderer; auto selects native-vulkan for 64-bit Linux, Android and iOS clients '
+			'and legacy otherwise; vulkan uses the DXVK compatibility provider [default: %default]')
+	# Not read by the build: both providers are linked, and -physics selects one
+	# at run time (Box3D by default). Existing trees stored the old 'ivp' default,
+	# so giving the option an effect would drop Box3D from them on reconfigure.
+	grp.add_option('--physics-backend', choices=['ivp', 'box3d', 'both'], default='box3d',
+		dest='PHYSICS_BACKEND', help='recorded physics provider; the run-time default is Box3D')
 	grp.add_option('--video-provider', choices=['none', 'bink'], default='none',
 		dest='VIDEO_PROVIDER', help='linked video decoder (bink requires FFmpeg development libraries)')
 	grp.add_option('--debug-api', choices=['enabled', 'disabled'], default='disabled',

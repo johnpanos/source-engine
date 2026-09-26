@@ -512,9 +512,12 @@ Keep the table concise and link details below or from the domain progress file.
     - the parity suite at 4 workers matches its serial observations bitwise.
   - Parallel stepping is the server default (user decision, 2026-09-25):
     auto workers from the compute pool, with `-physics_workers 1` to opt out.
-    Unmeasured on the Fold7. It applies only where Box3D is selected
-    (`./play`, `./play_p2`, `run.sh`, and the iOS and tvOS apps). The
-    launcher, the dedicated server, Waf and the Android APKs default to IVP.
+    Unmeasured on the Fold7. It applies only where Box3D is selected. Box3D
+    is the default provider since 2026-09-26 (user decision): the launcher
+    (and so the Android APKs), the Linux dedicated server, `./play`,
+    `./play_p2`, `run.sh` and the iOS and tvOS apps; `-physics vphysics`
+    selects IVP. The Windows dedicated server (a legacy profile) still
+    defaults to IVP, and the conformance harnesses pin `-physics vphysics`.
   - `vphysics.shape-inertia.v1` (user decision, 2026-09-25): objects take
     their collision solid's full inertia tensor (Box3D hull mass data,
     products of inertia, no `rotInertiaLimit`) instead of IVP's per-axis
@@ -871,11 +874,18 @@ Keep the table concise and link details below or from the domain progress file.
     `freebsd-legacy`). It gets no further work, and
     `platform/sdl2/window_system` needs no suite. Retiring those profiles, or
     SDL2 itself, is a separate user decision.
-  - Waf's `--platform-provider` defaults to `auto` (2026-09-26, user
-    direction): `sdl3` for every Vulkan client and iOS/tvOS, `sdl2` only for
-    legacy-renderer products (tests, tools, dedicated and the legacy client
-    scripts), whose configure is unchanged. Vulkan builds no longer need the
-    flag; an explicit `sdl2` with a Vulkan backend fails configure.
+  - Waf defaults (2026-09-26, user direction): `--render-backend` is `auto`,
+    selecting `native-vulkan` for 64-bit Linux, Android and iOS/tvOS clients
+    and `legacy` for dedicated, test and tool products, 32-bit, GLES, other
+    OSes and an explicit `--platform-provider=sdl2`.
+    `scripts/build-ubuntu-amd64.sh` pins `--render-backend=legacy` for the
+    legacy client lane. `--physics-backend` defaults to `box3d` but is not
+    read by the build (both providers are always linked; existing trees
+    stored the old `ivp`, so wiring it would drop Box3D from them).
+  - `--platform-provider` defaults to `auto`: `sdl3` for every Vulkan
+    client and iOS/tvOS, `sdl2` only for legacy-renderer products. Vulkan
+    builds no longer need the flag; an explicit `sdl2` with a Vulkan backend
+    fails configure.
   - Changes no row's state: R14 and R18 stay `partial`, and R16's hard-gate
     violation stays until R14 closes.
 
@@ -1373,9 +1383,15 @@ Keep the table concise and link details below or from the domain progress file.
 
 - R32-LEGACY-SHADERS: `partial` (2026-09-25, user direction: "implement all
   missing shader types in vulkan native"). 84 GLSL ports of stdshader_dx9 pairs
-  on one generic native pipeline family, **off by default** behind
-  `-vklegacyports`. Off, the backend routes and draws as it did before the
-  ports (no port routes, no port-only native passes, no D3D9 state they add).
+  on one generic native pipeline family, **on by default** since 2026-09-26
+  (user decision; `-vklegacyports` is still accepted). `-novklegacyports`
+  rolls back: the backend then routes and draws as it did before the ports
+  (no port routes, no port-only native passes, no D3D9 state they add).
+  - Default-on evidence (2026-09-26): the oracle passes 267/267 in both HDR
+    modes; 27 of 28 material pixel families pass with the ports on, and
+    integer `sky` fails identically with `-novklegacyports` (existing
+    failure); a headless queued (`mat_queue_mode 2`) testchmb_a_01 boot
+    passes with window glass showing the room behind it.
   - History: merged as `b5652908` and reverted as `0559a463` the same night.
     With the ports on, the user's `./play` (testchmb_a_01, run.conf,
     `mat_queue_mode 2`) showed opaque black diagonal bands, a missing chamber
@@ -1392,11 +1408,12 @@ Keep the table concise and link details below or from the domain progress file.
   - Oracle: each pass is replayed on bytecode compiled from this tree's `.fxc`
     with the pinned FXC (`legacy_shader_conformance.py` passes
     `-vklegacyports`); 267 default cases passed in both HDR modes at the merge.
-  - Default-on gate (open): the testchmb_a_01 view set (the map `./play`
-    boots, run.conf settings, pause menu) identical to ports-off except where
-    a reviewed port improvement is expected, plus a glass oracle
-    (translucent env-mapped, refract and window glass must show the scene
-    behind them), on the user's Wayland session as well as headless.
+  - Default-on gate (still open; the default was switched ahead of it by
+    user decision): the testchmb_a_01 view set (the map `./play` boots,
+    run.conf settings, pause menu) identical to ports-off except where a
+    reviewed port improvement is expected, plus a glass oracle (translucent
+    env-mapped, refract and window glass must show the scene behind them), on
+    the user's Wayland session as well as headless.
   - Unverified or open: flashlight passes, DEPTHBLEND, wrinkle weights,
     pbr_ps30 parallax (the pinned FXC miscompiles it).
   - No gate closes. See the
@@ -1468,7 +1485,7 @@ Current RFC 0001 evidence (updated 2026-09-26):
     lightmaps, model lighting, integer HDR, PortalRefract, VGUI, fog,
     bloom/color correction and model shadows.
   - Declined by name: motion blur, water, eyes, teeth and flashlight (the
-    legacy shader ports draw the first four with `-vklegacyports`). Line and
+    legacy shader ports, on by default, draw the first four). Line and
     point draws are dropped, alpha to coverage is a stub, and skinning runs on
     the CPU.
   - Oracles: `material_pixel_conformance.py` has 14 families, most judged
@@ -1476,8 +1493,8 @@ Current RFC 0001 evidence (updated 2026-09-26):
     equivalence 64 checks. The 15 suites of the manifest's
     `linux-native-vulkan-gpu` profile pass. A `-vkvalidate` boot logs no
     messages.
-  - The 84 legacy stdshader ports (R32-LEGACY-SHADERS) are in the tree,
-    off by default (`-vklegacyports`).
+  - The 84 legacy stdshader ports (R32-LEGACY-SHADERS) are on by default
+    since 2026-09-26 (`-novklegacyports` rolls back).
   - Devices: native Vulkan runs on the Fold7 (Adreno 840), the iPhone 16 Pro
     and the Apple TV 4K (MoltenVK). The Apple TV reaches a measured 60 fps
     through specialized uber-shader combos, compiled-out alpha test and

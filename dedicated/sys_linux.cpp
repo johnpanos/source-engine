@@ -272,7 +272,9 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 	// filesystem owns the queued loader; modules outlive all borrowed services.
 	IMaterialSystem *material = MaterialSystem_Create();
 	IDedicatedServerAPI *server = Engine_CreateDedicatedAPI();
-	const char *pPhysicsModule = CommandLine()->ParmValue( "-physics", "vphysics" );
+	// Box3D is the default provider (user decision, 2026-09-26); -physics
+	// vphysics selects IVP.
+	const char *pPhysicsModule = CommandLine()->ParmValue( "-physics", "vphysics_box3d" );
 	char physicsDLLName[MAX_PATH];
 	Q_snprintf( physicsDLLName, sizeof( physicsDLLName ), "%s" DLL_EXT_STRING, pPhysicsModule );
 	AppModule_t physicsAppModule = pAppSystemGroup->LoadPhysicsModule( physicsDLLName );

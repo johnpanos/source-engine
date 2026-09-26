@@ -788,13 +788,14 @@ static int g_CurrentPostStatic = 0;
 // Whether the pass is the Shadow shader's projected render-to-texture shadow
 // (shadow_ps2x), drawn by the textured pipeline's shadow stage.
 static bool g_CurrentShadowProjection = false;
-// -vklegacyports: route passes to the legacy shader ports (R32-LEGACY-SHADERS)
-// and apply the D3D9 state they read (math constants, depth feathering, the
-// ambient cube luminance, PolyMode, the passes only the ports draw). Off by
-// default: the backend then routes and draws exactly as before the ports.
+// Route passes to the legacy shader ports (R32-LEGACY-SHADERS) and apply the
+// D3D9 state they read (math constants, depth feathering, the ambient cube
+// luminance, PolyMode, the passes only the ports draw). On by default (user
+// decision, 2026-09-26); -vklegacyports is still accepted. -novklegacyports
+// rolls back: the backend then routes and draws exactly as before the ports.
 static bool LegacyPortsEnabled()
 {
-	static const bool s_enabled = CommandLine()->FindParm( "-vklegacyports" ) != 0;
+	static const bool s_enabled = CommandLine()->FindParm( "-novklegacyports" ) == 0;
 	return s_enabled;
 }
 // Stores SetStandardVertexShaderConstants' registers (defined with g_vsConstants).

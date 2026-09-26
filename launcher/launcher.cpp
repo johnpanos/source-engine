@@ -785,11 +785,13 @@ bool CSourceAppSystemGroup::Create()
 		return false;
 
 	// Every physics provider this product links, each through its own entry.
+	// The first entry is the default when -physics is absent: Box3D wherever it
+	// is linked (user decision, 2026-09-26); -physics vphysics selects IVP.
 	const PhysicsProviderDescriptor *physicsCatalog[] = {
-	    PhysicsIVP_Describe(),
 #if defined( LINKED_BOX3D_PHYSICS )
 	    PhysicsBox3D_Describe(),
 #endif
+	    PhysicsIVP_Describe(),
 	};
 	const char *pPhysicsModule = CommandLine()->ParmValue( "-physics", physicsCatalog[0]->name );
 	const PhysicsProviderDescriptor *physics = NULL;
@@ -879,8 +881,8 @@ bool CSourceAppSystemGroup::Create()
 	    Dx9ShaderBackend_Describe(),
 #endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
-	    // Opt-in only (RFC 0001 R32); the compatibility path stays the default
-	    // wherever it is linked, so it is listed first above.
+	    // Waf's default client renderer (RFC 0001 R32). A DXVK build links the
+	    // compatibility backend instead, listed first above.
 	    NativeVulkanShaderBackend_Describe(),
 #endif
 	    NullShaderBackend_Describe() };

@@ -69,6 +69,25 @@ Wayland; a glass oracle (translucent env-mapped, refract and window glass must
 show the scene behind them); the integer-HDR oracle run and the `forced/` files
 after the fix; frame time with the ports.
 
+## Default on (2026-09-26)
+
+The ports are **on by default** by user decision, ahead of the open items above.
+`LegacyPortsEnabled` now returns true unless `-novklegacyports` is passed, which
+restores the switch-off behavior described above. `-vklegacyports` is still
+accepted, so existing command lines and the oracle harness are unchanged.
+
+Evidence (`build`, the shared native tree, default switch):
+
+| Check | Result |
+| --- | --- |
+| Oracle, default cases, `--hdr none` | 267 / 267 |
+| Oracle, default cases, `--hdr integer` | 267 / 267 (the open integer-HDR run) |
+| Material pixel families, both HDR modes | 27 / 28; integer `sky` fails with magenta, identically with `-novklegacyports` (the existing failure) |
+| `portal_boot.py` testchmb_a_01, headless, `mat_queue_mode 2`, Box3D | pass; window glass shows the room behind it |
+
+Still open: the user's `./play` on Wayland with the new default, a glass oracle,
+the `forced/` files, and frame time with the ports.
+
 ## How it works
 
 The porting guide is `materialsystem/shaderapivulkan/shaders/legacy/README.md`.
