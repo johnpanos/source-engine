@@ -2495,6 +2495,7 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 
 	uint drawableWidth = 0, drawableHeight = 0;
 	g_pLauncherMgr->DisplayedSize( drawableWidth, drawableHeight );
+	if ( CommandLine()->FindParm( "-resizetelemetry" ) ) { static double s_last = 0; const double now = Plat_FloatTime(); if ( m_nPendingDrawableWidth || drawableWidth != static_cast<uint>( GetModeWidth() ) || now - m_flPendingDrawableSince < 1.5 ) Msg( "RZDBG t=%.4f dt=%.1fms drawable=%ux%u mode=%dx%d pending=%ux%u\n", now, ( now - s_last ) * 1000.0, drawableWidth, drawableHeight, GetModeWidth(), GetModeHeight(), m_nPendingDrawableWidth, m_nPendingDrawableHeight ); s_last = now; } // RZDBG
 	if ( !drawableWidth || !drawableHeight )
 		return true;
 	if ( drawableWidth == static_cast<uint>( GetModeWidth() ) &&
@@ -2547,6 +2548,7 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 		return true;
 	}
 	m_bResizeQueueWarning = false;
+	const double rzA = Plat_FloatTime(); // RZDBG
 
 	const int oldUIWidth = GetModeUIWidth(), oldUIHeight = GetModeUIHeight();
 	// The drawable is taken as-is (the requested window size), not snapped to a
@@ -2554,8 +2556,10 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 	RequestedWindowVideoMode().width = drawableWidth;
 	RequestedWindowVideoMode().height = drawableHeight;
 	ResetCurrentModeForNewResolution( drawableWidth, drawableHeight, true );
+	const double rzB = Plat_FloatTime(); // RZDBG
 	m_bWindowed = bWindowed;
 	game->SetWindowSize( drawableWidth, drawableHeight );
+	const double rzC = Plat_FloatTime(); // RZDBG
 	// The view covers the drawable the renderer is switching to. Recomputing it
 	// from the back buffer (MarkClientViewRectDirty) would read the old extent:
 	// a D3D9 device only resets on a later frame, so the stale view would stay
@@ -2574,6 +2578,7 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 	// (proportional fonts, panel layout) is main-thread UI work, reported
 	// separately as ui_us rather than hidden inside the request.
 	const double uiStarted = Plat_FloatTime();
+	Msg( "RZDBG request=%.2fms reset=%.2fms setwindow=%.2fms view=%.2fms\n", ( rzA - requestStarted ) * 1000.0, ( rzB - rzA ) * 1000.0, ( rzC - rzB ) * 1000.0, ( uiStarted - rzC ) * 1000.0 ); // RZDBG
 	vgui::surface()->OnScreenSizeChanged( oldUIWidth, oldUIHeight );
 	const double uiFinished = Plat_FloatTime();
 	m_nPendingDrawableWidth = m_nPendingDrawableHeight = 0;

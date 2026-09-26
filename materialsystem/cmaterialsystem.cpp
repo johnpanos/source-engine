@@ -9,6 +9,7 @@
 #define MATSYS_INTERNAL
 
 #include "cmaterialsystem.h"
+#include <execinfo.h> // RZDBG
 
 #include "colorspace.h"
 #include "materialsystem/materialsystem_config.h"
@@ -909,7 +910,9 @@ bool CMaterialSystem::RequestWindowResize( const MaterialWindowResizeRequest_t &
 	if ( m_ThreadMode != MATERIAL_QUEUED_THREADED )
 		return ExecuteWindowResizeNow( request );
 
+	const double rzQ = Plat_FloatTime(); // RZDBG
 	CMatCallQueue *queue = GetRenderCallQueue();
+	Msg( "RZDBG getqueue=%.2fms\n", ( Plat_FloatTime() - rzQ ) * 1000.0 ); // RZDBG
 	if ( !queue )
 		return false;
 
@@ -987,6 +990,24 @@ void CMaterialSystem::ExecuteWindowResizeRequest()
 	ApplyWindowResize( config );
 }
 
+// Publishes the resize a drained render queue executed, once the whole queue
+// has run at the new size. The render worker drains its context every frame; the
+// main thread drains the queues when rendering leaves queued mode (a forced
+// switch such as a screenshot or a config change, or a requested one). Every
+// drain must publish, or a resize queued just before the switch would stay
+// requested forever and the engine would stop rendering while it waits.
+void CMaterialSystem::PublishExecutedWindowResize()
+{
+	const uint64 serial = m_nWindowResizeExecutingSerial.exchange( 0, std::memory_order_acq_rel );
+	if ( serial == 0 )
+		return;
+	m_nWindowResizeCompletedWidth.store(
+	    m_nWindowResizeWidth.load( std::memory_order_relaxed ), std::memory_order_relaxed );
+	m_nWindowResizeCompletedHeight.store(
+	    m_nWindowResizeHeight.load( std::memory_order_relaxed ), std::memory_order_relaxed );
+	m_nWindowResizeCompletedSerial.store( serial, std::memory_order_release );
+}
+
 // Applies a drawable extent on the thread that owns the device: the main
 // thread without a render worker, the worker otherwise. Both paths need the
 // same work. Render targets sized from the frame buffer follow the new back
@@ -999,11 +1020,14 @@ void CMaterialSystem::ApplyWindowResize( const MaterialSystem_Config_t &config )
 	g_pShaderAPI->GetBackBufferDimensions( oldWidth, oldHeight );
 	ShaderDeviceInfo_t info;
 	ConvertModeStruct( &info, config );
+	const double rzA = Plat_FloatTime(); // RZDBG
 	g_pShaderAPI->ChangeVideoMode( info );
+	const double rzB = Plat_FloatTime(); // RZDBG
 	int newWidth = 0, newHeight = 0;
 	g_pShaderAPI->GetBackBufferDimensions( newWidth, newHeight );
 	if ( newWidth != oldWidth || newHeight != oldHeight )
 		TextureManager()->ReallocateRenderTargets();
+	Msg( "RZDBG apply t=%.4f main=%d change=%.2fms realloc=%.2fms %dx%d\n", rzB, (int)ThreadInMainThread(), ( rzB - rzA ) * 1000.0, ( Plat_FloatTime() - rzB ) * 1000.0, newWidth, newHeight ); // RZDBG
 #if defined( USE_SDL )
 	uint renderedWidth = static_cast<uint>( config.m_VideoMode.m_Width );
 	uint renderedHeight = static_cast<uint>( config.m_VideoMode.m_Height );
@@ -1551,9 +1575,11 @@ void CMaterialSystem::ForceSingleThreaded()
 			Assert( m_QueuedRenderContexts[i].IsInitialized() );
 			m_QueuedRenderContexts[i].EndQueue(true);
 		}
+		PublishExecutedWindowResize();
 		if( mat_debugalttab.GetBool() )
 		{
 			Warning("Forcing queued mode off!\n");
+			{ void *rzFrames[16]; int rzN = backtrace( rzFrames, 16 ); backtrace_symbols_fd( rzFrames, rzN, 2 ); } // RZDBG
 		}
 
 		// NOTE: Must happen after EndQueue or proxies get bound again, which is bad.
@@ -3779,16 +3805,7 @@ void CMaterialSystem::ThreadExecuteQueuedContext( CMatQueuedRenderContext *pCont
 	IMatRenderContextInternal* pSavedRenderContext = m_pRenderContext.Get();
 	m_pRenderContext.Set( &m_HardwareRenderContext );
 	pContext->EndQueue( true );
-	const uint64 resizeSerial =
-	    m_nWindowResizeExecutingSerial.exchange( 0, std::memory_order_acq_rel );
-	if ( resizeSerial != 0 )
-	{
-		m_nWindowResizeCompletedWidth.store(
-		    m_nWindowResizeWidth.load( std::memory_order_relaxed ), std::memory_order_relaxed );
-		m_nWindowResizeCompletedHeight.store(
-		    m_nWindowResizeHeight.load( std::memory_order_relaxed ), std::memory_order_relaxed );
-		m_nWindowResizeCompletedSerial.store( resizeSerial, std::memory_order_release );
-	}
+	PublishExecutedWindowResize();
 	m_pRenderContext.Set( pSavedRenderContext );
 	m_nRenderThreadID = (uintp)-1;
 }
@@ -4037,6 +4054,7 @@ void CMaterialSystem::EndFrame( void )
 				m_pRenderContext.Set( &m_HardwareRenderContext );
 
 				m_QueuedRenderContexts[m_iCurQueuedContext].EndQueue( true );
+				PublishExecutedWindowResize();
 				ThreadRelease();
 			}
 			break;
@@ -4068,6 +4086,7 @@ void CMaterialSystem::EndFrame( void )
 				Assert( m_QueuedRenderContexts[i].IsInitialized() );
 				m_QueuedRenderContexts[i].EndQueue( true );
 			}
+			PublishExecutedWindowResize();
 			break;
 
 #ifdef MAT_QUEUE_MODE_PROFILE

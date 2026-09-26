@@ -607,6 +607,7 @@ private:
 	void ExecuteWindowResizeRequest();
 	bool ExecuteWindowResizeNow( const MaterialWindowResizeRequest_t &request );
 	void ApplyWindowResize( const MaterialSystem_Config_t &config );
+	void PublishExecutedWindowResize();
 
 	IThreadPool * CreateMatQueueThreadPool();
 	void DestroyMatQueueThreadPool();
