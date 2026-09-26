@@ -8,6 +8,8 @@
 
 #include "game/game_platform_services.h"
 
+#include "platform/contracts/achievement_service.h"
+
 #include "tier1/interface.h"
 
 // NOTE: This has to be the last file included!
@@ -52,4 +54,10 @@ platform::IAchievementService *GamePlatformServices_Achievements()
 {
 	g_bUsed = true;
 	return g_Services.achievements;
+}
+
+bool GamePlatformServices_ShowAchievements()
+{
+	platform::IAchievementService *pService = GamePlatformServices_Achievements();
+	return pService && pService->ShowAchievements();
 }

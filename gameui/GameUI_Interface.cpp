@@ -1017,7 +1017,9 @@ void CGameUI::StopProgressBar(bool bError, const char *failureReason, const char
 	if (!g_hLoadingDialog.Get())
 		return;
 
-	if ( bError )
+	// The console UI's loading dialog has no error display; it closes, and the
+	// main menu reports the failure.
+	if ( bError && !GameUI().IsConsoleUI() )
 	{
 		// turn the dialog to error display mode
 		g_hLoadingDialog->DisplayGenericError(failureReason, extendedReason);

@@ -179,7 +179,7 @@ void CSaveGameDialogXbox::InitiateSaving()
 #endif
 		Q_snprintf( szCmd, sizeof( szCmd ), "xsave %s", szFilename );
 		engine->ExecuteClientCmd( szCmd );
-		Q_strncat( szFilename, ".360.sav", maxFilenameLen );
+		Q_strncat( szFilename, ".sav", maxFilenameLen );
 	}
 	else
 	{
@@ -200,9 +200,10 @@ void CSaveGameDialogXbox::SaveCompleted( CAsyncCtxSaveGame *pCtx )
 {
 	char const *szFilename = pCtx->m_szFilename;
 
-	// We should now be saved so get the new desciption back from the file
+	// We should now be saved so get the new desciption back from the file,
+	// where xsave writes it (the game's save/ directory)
 	char szDirectory[MAX_PATH];
-	Q_snprintf( szDirectory, sizeof( szDirectory ), "%s:/%s", COM_GetModDirectory(), szFilename );
+	Q_snprintf( szDirectory, sizeof( szDirectory ), "save/%s", szFilename );
 
 	ParseSaveData( szDirectory, szFilename, &m_NewSaveDesc );
 
@@ -273,7 +274,12 @@ void CSaveGameDialogXbox::OnCommand( const char *command )
 //-----------------------------------------------------------------------------
 void CSaveGameDialogXbox::OnDoneScanningSaveGames( void )
 {
-	ConVarRef save_history_count("save_history_count" );
-
-	m_bNewSaveAvailable = false;
+	// The "new save" slot. The Xbox 360 also required a storage device and
+	// capped the count by its storage size; there are no such limits here.
+	m_bNewSaveAvailable = true;
+	SaveGameDescription_t bogusDesc = { "#GameUI_SaveGame_NewSavedGame", "#GameUI_SaveGame_NewSave",
+	    "#GameUI_SaveGame_NewSave", "#GameUI_SaveGame_NewSave", "#GameUI_SaveGame_NewSave",
+	    "#GameUI_SaveGame_NewSave", "#GameUI_SaveGame_NewSave", 0, 0 };
+	CGameSavePanel *newSavePanel = SETUP_PANEL( new CGameSavePanel( this, &bogusDesc, true ) );
+	AddPanel( newSavePanel );
 }

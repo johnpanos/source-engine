@@ -178,8 +178,10 @@ cat > "$TMP/ent.plist" <<EOF
 </dict></plist>
 EOF
 for key in $OPTIONAL_ENTITLEMENTS; do
-  if plutil -extract "Entitlements.$key" raw -o - "$TMP/p.plist" >/dev/null 2>&1; then
-    plutil -insert "$key" -bool YES "$TMP/ent.plist"
+  # plutil reads '.' as a key-path separator; entitlement names are dotted.
+  path=$(printf '%s' "$key" | sed 's/\./\\./g')
+  if plutil -extract "Entitlements.$path" raw -o - "$TMP/p.plist" >/dev/null 2>&1; then
+    plutil -insert "$path" -bool YES "$TMP/ent.plist"
     echo "    entitlement $key (granted by the profile)"
   else
     echo "    entitlement $key not in the profile: enable the capability for $BUNDLE_ID in Xcode to get it"

@@ -45,6 +45,13 @@ public:
 	bool AnnouncesCompletions() const override;
 };
 
+// Diagnostics for tools/quality/game_center_e2e.py, independent of the
+// reporting path: waits up to `timeoutSeconds` for a signed-in player, then
+// logs what Game Center itself holds for this app (its achievement
+// descriptions, and the player's achievements with percentComplete) as
+// "Source: game-center-audit:" lines. Main thread; pumps the run loop.
+void AuditGameCenter( double timeoutSeconds );
+
 } // namespace platform
 
 #endif // PLATFORM_APPLE_GAME_CENTER_ACHIEVEMENTS_H

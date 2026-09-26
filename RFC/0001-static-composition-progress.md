@@ -549,6 +549,31 @@ on iOS/tvOS show up as gamepads ... rumble and everything works".
 
   The phone vibrator stays quiet while such a gamepad is connected.
 
+- **Console flows the Xbox 360 strip had broken** (found in a follow-up
+  audit, 2026-09-26). Each fix runs only in console mode: it checks
+  `GameUI().IsConsoleUI()` (`gameui_xbox`) or sits in a console-only dialog.
+  No Xbox graphics, gameplay, storage or sign-in behavior was restored.
+  - New Game: Play did nothing. The `#ifdef _X360` handlers for
+    `StartNewGame` and the commentary-explanation commands had been
+    stripped, along with `StartGame`'s console branch. They are restored
+    without the Xbox storage-device autosave notice. From the main menu,
+    Play now reaches `StartGame` and loads chapter 1 (checked through gdb,
+    headless).
+  - Save Game: the "New Save" slot was never added, so a new save could not
+    be made. The slot is restored without the Xbox storage limits. A new
+    save now gets a `.sav` name instead of `.360.sav`, and the dialog reads
+    it back from `save/`, not `portal:/`. Checked headless through gdb: the
+    `.sav` and its thumbnail are written and `SaveCompleted` runs.
+  - A load error now closes the console loading dialog. It has no error
+    display, so it used to stay up (`GameUI_Interface.cpp`).
+  - The console main menu no longer waits for a Steam platform menu that
+    never initializes (`BasePanel::RunFrame`), so it comes back after a
+    disconnect or a failed load.
+  - B resumes from the pause menu, and the menu ignores keys while it fades.
+  - Left alone: Achievements in console mode belongs to the Game Center
+    work; the Xbox's menu and background drawing, loading-screen rules,
+    rich presence and layout keys.
+
 Evidence:
 
 - Desktop, headless Portal with `+gameui_xbox 1` (`portal_boot.py`): the

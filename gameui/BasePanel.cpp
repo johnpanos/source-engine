@@ -83,7 +83,6 @@ using namespace vgui;
 #include "tier1/utlstring.h"
 #include "steam/steam_api.h"
 #include "game/game_platform_services.h"
-#include "platform/contracts/achievement_service.h"
 
 #ifdef ANDROID
 #include <SDL_misc.h>
@@ -462,7 +461,28 @@ public:
 
 	virtual void OnKeyCodePressed( KeyCode code )
 	{
-		
+		if ( GameUI().IsConsoleUI() )
+		{
+			if ( GetAlpha() != 255 )
+			{
+				SetEnabled( false );
+				// inhibit key activity during transitions
+				return;
+			}
+
+			SetEnabled( true );
+
+			// B on the pause menu resumes the game. START toggles the menu in
+			// the engine (vgui_baseui_interface.cpp).
+			if ( code == KEY_XBUTTON_B || code == STEAMCONTROLLER_B )
+			{
+				if ( GameUI().IsInLevel() )
+				{
+					GetParent()->OnCommand( "ResumeGame" );
+				}
+				return;
+			}
+		}
 
 		m_KeyRepeat.KeyDown( code );
 
@@ -1540,7 +1560,8 @@ void CBasePanel::RunFrame()
 	if ( !m_bPlatformMenuInitialized )
 	{
 		// check to see if the platform is ready to load yet
-		if ( g_VModuleLoader.IsPlatformReady() )
+		// The console UI has no platform (Steam) menu to wait for.
+		if ( GameUI().IsConsoleUI() || g_VModuleLoader.IsPlatformReady() )
 		{
 			m_bPlatformMenuInitialized = true;
 		}
@@ -1896,8 +1917,7 @@ void CBasePanel::RunMenuCommand(const char *command)
 	else if ( !Q_stricmp( command, "OpenAchievementsDialog" ) )
 	{
 		// The platform's achievements screen (Game Center) when it can show it.
-		platform::IAchievementService *pService = GamePlatformServices_Achievements();
-		if ( pService && pService->ShowAchievements() )
+		if ( GamePlatformServices_ShowAchievements() )
 			return;
 
 		if ( IsPC() )

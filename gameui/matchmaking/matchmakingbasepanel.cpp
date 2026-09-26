@@ -22,6 +22,7 @@
 #include "KeyValues.h"
 #include "vstdlib/jobthread.h"
 #include "BasePanel.h"
+#include "game/game_platform_services.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -158,10 +159,12 @@ void CMatchmakingBasePanel::OnCommand( const char *pCommand )
 	{
 		OnOpenRankedMatchDialog();
 	}
-    else if ( !Q_stricmp( "OpenAchievementsDialog", pCommand ) )
-    {
-        OnOpenAchievementsDialog();
-    }
+	else if ( !Q_stricmp( "OpenAchievementsDialog", pCommand ) )
+	{
+		// The platform's achievements screen (Game Center) when it can show it.
+		if ( !GamePlatformServices_ShowAchievements() )
+			OnOpenAchievementsDialog();
+	}
 
     //=============================================================================
     // HPE_BEGIN:

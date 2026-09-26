@@ -52,4 +52,9 @@ public:
 platform::IRecordStore *GamePlatformServices_PlayerRecords();
 platform::IAchievementService *GamePlatformServices_Achievements();
 
+// Inside a game module: shows the platform's achievements screen (Game
+// Center) when the module has a service that can show it now. False means
+// the caller shows its own screen. Every menu entry point uses this.
+bool GamePlatformServices_ShowAchievements();
+
 #endif // GAME_PLATFORM_SERVICES_H

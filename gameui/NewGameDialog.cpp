@@ -1350,7 +1350,7 @@ void CNewGameDialog::StartGame( void )
 		ConVarRef sv_cheats( "sv_cheats" );
 		sv_cheats.SetValue( m_bCommentaryMode );
 
-		if ( IsPC() )
+		if ( !GameUI().IsConsoleUI() )
 		{
 			// If commentary is on, we go to the explanation dialog (but not for teaser trailers)
 			if ( m_bCommentaryMode && !m_ChapterPanels[m_iSelectedChapter]->IsTeaserChapter() )
@@ -1376,7 +1376,45 @@ void CNewGameDialog::StartGame( void )
 				BasePanel()->FadeToBlackAndRunEngineCommand( mapcommand );
 			}
 		}
-		
+		else
+		{
+			// The console UI explained commentary in its own message dialog.
+			if ( m_ChapterPanels[m_iSelectedChapter]->HasBonus() && m_iBonusSelection > 0 )
+			{
+				if ( m_iBonusSelection == 1 )
+				{
+					// Run the advanced chamber instead of the config file
+					char *pLastSpace = Q_strrchr( mapcommand, '\n' );
+					pLastSpace[0] = '\0';
+					pLastSpace = Q_strrchr( mapcommand, '\n' );
+
+					Q_snprintf( pLastSpace, sizeof( mapcommand ) - Q_strlen( mapcommand ),
+					    "\nmap %s_advanced\n", m_pBonusMapDescription->szMapFileName );
+				}
+				else
+				{
+					char sz[256];
+
+					int iChallenge = m_iBonusSelection - 1;
+
+					// Set up the challenge mode
+					Q_snprintf( sz, sizeof( sz ), "sv_bonus_challenge %i\n", iChallenge );
+					engine->ClientCmd_Unrestricted( sz );
+
+					ChallengeDescription_t *pChallengeDescription =
+					    &( ( *m_pBonusMapDescription->m_pChallenges )[iChallenge - 1] );
+
+					// Set up medal goals
+					BonusMapsDatabase()->SetCurrentChallengeObjectives( pChallengeDescription->iBronze,
+					    pChallengeDescription->iSilver, pChallengeDescription->iGold );
+					BonusMapsDatabase()->SetCurrentChallengeNames( m_pBonusMapDescription->szFileName,
+					    m_pBonusMapDescription->szMapName, pChallengeDescription->szName );
+				}
+			}
+
+			m_bMapStarting = true;
+			BasePanel()->FadeToBlackAndRunEngineCommand( mapcommand );
+		}
 
 		OnClose();
 	}
@@ -1437,7 +1475,41 @@ void CNewGameDialog::OnCommand( const char *command )
 			StartGame();
 		}
 	}
+	// The console UI's path from Play (and from its message dialogs) to
+	// StartGame. The Xbox 360 first explained autosaves when a storage device
+	// was selected; there is no storage device here, so it starts at once.
+	else if ( !stricmp( command, "StartNewGame" ) )
+	{
+		ConVarRef commentary( "commentary" );
 
+		if ( m_bCommentaryMode && !commentary.GetBool() )
+		{
+			// Using the commentary menu, but not already in commentary mode, explain the rules
+			PostMessage( (vgui::Panel *)this,
+			    new KeyValues( "command", "command", "StartNewGameWithCommentaryExplanation" ), 0.2f );
+		}
+		else
+		{
+			// Don't allow other inputs
+			m_bMapStarting = true;
+			OnCommand( "StartNewGameNoCommentaryExplanation" );
+		}
+	}
+	else if ( !stricmp( command, "StartNewGameWithCommentaryExplanation" ) )
+	{
+		// Don't allow other inputs
+		m_bMapStarting = true;
+		BasePanel()->ShowMessageDialog( ModInfo().IsSinglePlayerOnly()
+		                                    ? MD_COMMENTARY_EXPLANATION
+		                                    : MD_COMMENTARY_EXPLANATION_MULTI,
+		    this );
+	}
+	else if ( !stricmp( command, "StartNewGameNoCommentaryExplanation" ) )
+	{
+		vgui::surface()->PlaySound( "UI/buttonclickrelease.wav" );
+		BasePanel()->RunAnimationWithCallback(
+		    this, "CloseNewGameDialog", new KeyValues( "StartGame" ) );
+	}
 
 	else if ( !stricmp( command, "Next" ) )
 	{
