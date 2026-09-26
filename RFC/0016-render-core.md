@@ -349,34 +349,35 @@ public/render/device/gl/          render.device.gl              adapter: factory
 public/render/device/null/        render.device.null            adapter: factory header only
 public/render/graph/              render.graph
 public/render/shaderlib/          render.shader-library
+public/render/resources/          render.resources              texture and mesh residency
 public/render/material/           render.material
 public/render/scene/              render.scene
 public/render/frame/              render.frame                  port: IRenderer, IRenderFeature, FrameDesc
 public/render/renderer/           render.renderer               adapter of render.frame
 public/render/pass/<feature>/     render.pass.<feature>         adapter of IRenderFeature
 public/render/legacy/             render.legacy-frontend        adapter of IRenderFeature; legacy-interop
+public/render/composition/        render.composition            assembles a core for application roots
 
-render/math/                      sources, private headers of each module above
-render/device/                    port helpers (validation, descriptor hashing)
+render/<module>/                  sources and private headers of each module above
 render/device/vulkan/             Vulkan adapter (VMA lives here)
 render/device/gl/                 OpenGL adapter
 render/device/null/               recording adapter
-render/graph/
-render/shaderlib/
-render/material/
 render/material/families/<name>/  native family definitions and their GLSL
 render/shaders/common/            shared GLSL (pbr_brdf.glsl moves here), owned by render.material
-render/scene/
-render/frame/
-render/renderer/
 render/pass/<feature>/            each feature's sources and its own GLSL
-render/legacy/                    frontend; render/legacy/family/ holds the 86 legacy ports
-render/bridge/sdl3-gl/            presentation bridge (backend kind)
+render/legacy/family/             the 86 legacy ports
+render/bridge/sdl3-vulkan/        presentation bridge (moved from materialsystem/shaderapivulkan/sdl3/)
+render/bridge/sdl3-gl/            presentation bridge (K10)
 
 unittests/rendertest/core/<module>/   suites, fakes and bad adapters per module
 unittests/rendertest/contracts/       render.device.v2.md, render.graph.v1.md, …
 tools/render/                         shader artifact builder, independent graph model (Python)
 ```
+
+[Appendix A](#appendix-a-file-level-layout-and-wiring) lists every proposed
+header and source file, and shows how the family hooks into Waf, the
+module manifest, the launcher, the engine, the client DLL, the material
+system, Hammer and the test runner.
 
 - **Shaders live with their owner.** A family's GLSL sits in its family
   directory; a feature pass's GLSL sits in its pass directory; the legacy
@@ -413,12 +414,12 @@ edges (CAP002 direct, CAP005 transitive), and the links must too (CAP006).
 
 | Layer | Modules | May depend on |
 | --- | --- | --- |
-| 7 Applications | engine and client roots, Hammer, tools, test fixtures | anything below, including adapters |
+| 7 Applications | `render.composition`; engine and client roots, Hammer, tools, test fixtures | anything below, including adapters |
 | 6 Features and renderers | `render.renderer`, `render.pass.*`, `render.legacy-frontend` | layers 0–5; legacy headers only for the frontend |
 | 5 Frame port | `render.frame` | layers 0–4 |
 | 4 Scene | `render.scene` | layers 0–3 |
-| 3 Materials | `render.material` | layers 0–2, `content.keyvalues-text`, `content.texture-contract` |
-| 2 Core services | `render.graph`, `render.shader-library` | layers 0–1 |
+| 3 Materials | `render.material` | layers 0–2, `content.keyvalues-text` |
+| 2 Core services | `render.graph`, `render.shader-library`, `render.resources` | layers 0–1; `render.resources` also `content.texture-contract` and the texture readers |
 | 1 Device port | `render.device` | layer 0 |
 | 0 Vocabulary | `foundation`, `render.math`, `render.contracts`, `jobs.graph` | nothing in the render family |
 | Adapters (column) | `render.device.vulkan`, `render.device.gl`, `render.device.null`, `render.bridge.*` | `render.device`, layer 0, and their native SDK grants |
@@ -1185,6 +1186,350 @@ lights are proven (K8).
   `EnableAlphaToCoverage` stub is closed there, not in the old device.
 - **RFC 0014**: debug views read graph traces and scene handles; draw
   bisection works on draw lists.
+
+## Appendix A: File-level layout and wiring
+
+Every name below is proposed; the first implementation of each module fixes
+its spellings. The phase in brackets is the gate that creates the file.
+Nothing listed here exists yet unless it is marked *existing*.
+
+### A.1 Public headers
+
+Public headers are the only way into a module. Ports hold interfaces and
+value types; adapter headers hold one factory each.
+
+```text
+public/render/
+├── render_backend.h … (existing, render.contracts; C++11, ABI-facing, unchanged)
+├── math/                                   render.math                [K1]
+│   ├── vector.h          float2, float3, float4
+│   ├── matrix.h          float3x4, float4x4, composition and inverse
+│   ├── bounds.h          Aabb, Sphere
+│   └── frustum.h         Frustum, plane and bounds tests
+├── device/                                 render.device (port)       [K1]
+│   ├── device.h          IRenderDevice2, DeviceState
+│   ├── provider.h        IRenderDeviceProvider2, DeviceRequest, DeviceProviderDescriptor
+│   ├── facts.h           DeviceFacts, Capability, Limits, ArtifactFormat, diagnostic backend id
+│   ├── resources.h       BufferDesc, TextureDesc, SamplerDesc, BufferId, TextureId, SamplerId
+│   ├── pipeline.h        PipelineDesc, VertexLayout, RasterState, DepthStencilState, BlendState
+│   ├── bind_group.h      BindGroupRole (frame, view, material, draw), BindGroupLayoutDesc, BindGroup
+│   ├── encoder.h         CommandEncoder, RenderingScope, draw, dispatch, copy, clear
+│   ├── usage.h           ResourceUsage (abstract states), SubresourceRange
+│   ├── completion.h      CompletionToken, QueueKind, SubmitWaits
+│   ├── conventions.h     the fixed conventions, as named constants
+│   ├── errors.h          DeviceStatus, DeviceOperation, DeviceError
+│   ├── vulkan/provider.h render::device::vulkan::Describe(), VulkanAdapterOptions   render.device.vulkan
+│   ├── gl/provider.h     render::device::gl::Describe(), GlAdapterOptions           render.device.gl     [K10]
+│   └── null/provider.h   render::device::null::Describe(), RecordedStream access    render.device.null
+├── graph/                                  render.graph               [K2]
+│   ├── graph_builder.h   GraphBuilder, PassDesc, PassKind, ResourceRef, Access
+│   ├── compiled_graph.h  CompiledGraph, GraphError
+│   ├── executor.h        SerialGraphExecutor, PooledGraphExecutor, RecordContext
+│   └── trace.h           GraphTrace (passes, versions, transitions, aliasing, merges)
+├── shaderlib/                              render.shader-library      [K4]
+│   ├── artifact.h        ShaderArtifactRef, ArtifactKey (source, compiler, format, permutation)
+│   ├── artifact_source.h IShaderArtifactSource (port: build store, development reload)
+│   ├── permutation.h     PermutationAxis, PermutationKey
+│   └── pipeline_recipe.h PipelineRecipe → device::PipelineDesc for a given artifact format
+├── resources/                              render.resources           [K4]
+│   ├── texture_cache.h   ITextureCache: residency, formats, revision, release by token
+│   └── mesh_cache.h      IMeshCache: vertex and index residency, streaming uploads
+├── material/                               render.material            [K4]
+│   ├── family.h          FamilyDesc, ParameterSchema, PassKindSet, CapabilityRequirements
+│   ├── material.h        MaterialId, MaterialInstance, revision
+│   ├── parameter_block.h ParameterBlock, typed setters, dynamic block
+│   ├── registry.h        FamilyRegistry (families register at composition)
+│   └── vmt_import.h      ImportVmt(): Expected<MaterialDesc, ImportError>
+├── scene/                                  render.scene               [K5]
+│   ├── scene.h           IRenderScene, SceneFactory
+│   ├── objects.h         MeshInstanceDesc, SkinnedInstanceDesc, LightDesc, ProbeVolumeDesc,
+│   │                     ViewGeneratorDesc, typed handles
+│   ├── change_set.h      ChangeSet
+│   ├── snapshot.h        SceneSnapshot (immutable per frame)
+│   ├── view.h            ViewDesc, SceneView
+│   ├── visibility.h      IVisibilityProvider (port), VisibilityResult
+│   └── draw_list.h       DrawList, SortKey, DrawPassKind
+├── frame/                                  render.frame (port)        [K3]
+│   ├── renderer.h        IRenderer, FrameDesc, FramePolicy
+│   ├── feature.h         IRenderFeature, FeatureRequirements, FeatureContext
+│   ├── stages.h          Stage (the legacy order)
+│   └── stage_hooks.h     IRenderStageHooks
+├── renderer/                               render.renderer            [K3]
+│   └── renderer_factory.h CreateRenderer(RendererDeps): Expected<unique_ptr<IRenderer>, …>
+├── pass/                                   render.pass.<feature>, one module each
+│   ├── present/feature.h    present blit and gamma                    [K2 graph pass, K3 feature]
+│   ├── post/feature.h       bloom, tone mapping, resolve              [K2 graph pass, K3 feature]
+│   ├── world/feature.h      WMSH world, lightmaps, probes, reflection  [K5]
+│   ├── props/feature.h      static props and brush models             [K5]
+│   ├── skinning/feature.h   compute skinning, flex and morph          [K6]
+│   ├── lights/feature.h     clustered light lists                     [K7]
+│   ├── shadows/feature.h    shadow atlas                              [K7]
+│   ├── indirect/feature.h   RFC 0011 producers' GPU work              [K3]
+│   ├── particles/feature.h, decals/, sprites/, water/, sky/, ui/, portals/   [K8]
+│   └── (each feature.h declares Create<Name>Feature(options) and its requirements)
+├── legacy/                                 render.legacy-frontend     [K3]
+│   ├── core_backend.h    RenderCore legacy shader provider (the LegacyShaderProvider pattern)
+│   └── stage_markers.h   IRenderStageMarkers, "RenderStageMarkers001"
+│                         (C++11, no foundation types, listed in legacyAbi.paths)
+└── composition/                            render.composition         [K3]
+    └── render_core.h     RenderCoreConfig, RenderCore, RenderCoreBinding,
+                          RenderCore_Create/Destroy (C entry points for roots)
+```
+
+### A.2 Sources
+
+```text
+render/
+├── wscript                         recurses into each module; client, tool and test builds only
+├── math/            wscript, *.cpp
+├── device/          wscript, validation.cpp, descriptor_hash.cpp       (port helpers)
+│   ├── vulkan/      wscript, instance.cpp, adapter_select.cpp, device.cpp, queues.cpp,
+│   │                allocator.cpp (VMA), upload_ring.cpp, pipeline_cache.cpp, bind_groups.cpp,
+│   │                encoder.cpp, transitions.cpp, completion.cpp, loss.cpp, facts.cpp
+│   ├── gl/          wscript, context.cpp, program_cache.cpp, state_cache.cpp, command_list.cpp,
+│   │                bindings.cpp, fences.cpp, conventions.cpp, facts.cpp                  [K10]
+│   └── null/        wscript, recording_device.cpp
+├── graph/           wscript, builder.cpp, validate.cpp, transitions.cpp, lifetimes.cpp,
+│                    merge.cpp, executor_serial.cpp, executor_pooled.cpp, trace.cpp
+├── shaderlib/       wscript, artifact_store.cpp, permutation.cpp, recipe.cpp
+├── resources/       wscript, texture_cache.cpp, mesh_cache.cpp
+├── material/        wscript, registry.cpp, parameter_block.cpp, vmt_import.cpp
+│   └── families/<name>/   family.cpp, *.vert, *.frag, *.comp
+├── shaders/common/  pbr_brdf.glsl, …                                   (owned by render.material)
+├── scene/           wscript, scene.cpp, change_set.cpp, snapshot.cpp, visibility.cpp,
+│                    cull.cpp, draw_list.cpp
+├── frame/           wscript, stages.cpp
+├── renderer/        wscript, renderer.cpp, view_graph.cpp
+├── pass/<feature>/  wscript, feature.cpp, *.glsl
+├── legacy/          wscript, shader_device.cpp, shader_api.cpp, shader_shadow.cpp,
+│   │                dynamic_state.cpp, legacy_stream_pass.cpp, named_targets.cpp,
+│   │                framebuffer_copies.cpp, mesh.cpp, emit.cpp, emit_convert.h,
+│   │                mesh_layout.cpp, stage_markers.cpp, core_backend.cpp
+│   └── family/      legacy_programs.cpp, legacy_constants.cpp, *.vert, *.frag, *.glsl  (86 ports)
+├── bridge/
+│   ├── sdl3-vulkan/ wscript, presentation.cpp, surface_host.cpp          (moved)
+│   └── sdl3-gl/     wscript, presentation.cpp, context_host.cpp          [K10]
+└── composition/     wscript, render_core.cpp, feature_catalog.cpp, product.cpp
+```
+
+### A.3 Where today's files go
+
+| Today | Destination | Phase |
+| --- | --- | --- |
+| `vulkan_device.cpp`: instance, device, queues, memory, uploads, pipelines, completion | `render/device/vulkan/` | K1 |
+| `vulkan_render_backend.{h,cpp}` (test-only timeline provider) | `render/device/vulkan/completion.cpp`; the file is deleted | K1 |
+| `vulkan_descriptor_groups.{h,cpp}` | `render/device/vulkan/bind_groups.cpp` | K1 |
+| `vulkan_debug_utils.*`, `vulkan_frame_stats.h`, `vulkan_adapter.*` | `render/device/vulkan/` | K1 |
+| `vulkan_device.cpp`: present blit, gamma pass, MSAA resolve | graph passes at K2; `render/pass/present/` and `render/pass/post/` features at K3 | K2–K3 |
+| `vulkan_scene_capture.cpp` | `render/legacy/framebuffer_copies.cpp` (explicit copy passes) | K2–K3 |
+| `vulkan_compute.cpp` | device dispatch in `render/device/vulkan/encoder.cpp`; producer work in `render/pass/indirect/` | K1–K3 |
+| `shaderapivulkan.cpp` (`IShaderAPI`, `IShaderShadow`, `IShaderDevice`, emit, CPU skinning) | `render/legacy/` | K3 |
+| `vulkan_mesh_layout.*`, `vulkan_emit_convert.h` | `render/legacy/` | K3 |
+| `vulkan_legacy_pipeline.cpp`, `vulkan_legacy_programs.*`, `shaderapivulkan_legacy.*`, `shaders/legacy/` | `render/legacy/family/` | K3–K4 |
+| `vulkan_texture_image.*` | `render/resources/texture_cache.cpp` | K4 |
+| `vulkan_world_pbr.cpp`, `vulkan_model_pbr.cpp`, the PBR GLSL | `render/material/families/pbr/` | K4 |
+| `shaders/pbr_brdf.glsl` | `render/shaders/common/` | K4 |
+| `material_spv.h`, `material_spv_index.h`, `legacy_spv.h`, `regen_*_spv.py` | deleted; build-time artifacts from `tools/render/shader_artifacts.py` | K4 |
+| `vulkan_world_mesh_upload.cpp`, `vulkan_world_lightmap.cpp`, `vulkan_world_reflection_probes.cpp` | `render/resources/mesh_cache.cpp` and `render/pass/world/` | K5 |
+| `sdl3/` presentation bridge | `render/bridge/sdl3-vulkan/` | K1 |
+| `materialsystem/render_capability_queue.{h,cpp}` | deleted | K3 |
+| `public/render/world_mesh_upload.h`, `gpu_compute.h`, the side-channel parts of `light_set.h` | deleted once no caller remains; the light-set types stay in `render.contracts` | K3–K7 |
+| `demo_*` shaders and bring-up code in `vulkan_device.cpp` | deleted (the bring-up suite moves to the port suite) | K1 |
+| everything left in `materialsystem/shaderapivulkan/` | deleted | K9 |
+
+### A.4 Tests, tools and quality records
+
+```text
+unittests/rendertest/
+├── contracts/            render.device.v2.md, render.graph.v1.md, render.scene.v1.md,
+│                         render.frame.v1.md, render.material.v2.md, render.visibility.v1.md,
+│                         render.shader-artifacts.v1.md
+└── core/
+    ├── device/           device_conformance.h (shared suite, driver-parameterized),
+    │                     test_device_null.cpp, test_device_vulkan.cpp, test_device_gl.cpp,
+    │                     test_device_negative.cpp (the ten bad adapters)
+    ├── graph/            graph_conformance.h, test_graph.cpp, test_graph_negative.cpp,
+    │                     test_graph_recording.cpp
+    ├── material/, resources/, scene/, frame/, legacy/, pass/<feature>/
+    └── fakes/            fake scene, fake visibility provider, fake features
+tools/render/
+├── shader_artifacts.py   pinned compiler + SPIRV-Cross driver, reflection check
+├── graph_model.py        independent transition, lifetime and alias model
+└── tests/
+tools/archlint/           CAP011 in capabilities.py; fixtures under tools/archlint/tests/
+quality/
+├── conformance.manifest.json   one row per suite (render.device.v2, ….sensitivity, …)
+├── profiles/linux-native-gl-gpu.json                                   [K10]
+├── product_profiles/portal-linux-gl.json                               [K10]
+└── budgets/render-v1.json      desktop and Fold7 rows                  [K0]
+```
+
+Suites follow the `platform.task-runner.v1` pattern: `testing::Checks`,
+clause-prefixed check ids, a driver interface per adapter, and one
+`checks-v1` record per run.
+
+### A.5 Build wiring
+
+- **Root `wscript`** adds `render` to the projects of client, tool and test
+  builds. Dedicated builds do not add it, so a dedicated product cannot link
+  it by construction.
+- **`render/wscript`** recurses into each module directory. Adapter
+  directories are conditional: `device/vulkan` and `bridge/sdl3-vulkan` when
+  the Vulkan backend is configured, `device/gl` and `bridge/sdl3-gl` when
+  the OpenGL device is configured, `device/null` always.
+- **Each module's `wscript`** is a static library in the house form:
+
+```python
+def build(bld):
+	bld.stlib(
+		env=bld.strict_cpp20_env(),
+		features='cxx capability_strict',
+		arch_module='render.graph',
+		target='render_graph',
+		source=bld.path.ant_glob('*.cpp'),
+		includes=['../../public'],
+		use=['render_device', 'render_math', 'jobsystem'],
+	)
+```
+
+- **Dialects.** Every module target is `cxx20` in
+  `quality/toolchain/policy.json`; `render_legacy` is `cxx20-permissive`.
+- **Pinned dependencies.** VMA and SPIRV-Cross are pinned archives in the
+  product profiles, unpacked under `dependencies/` like DXVK Native. VMA is
+  a `uselib` grant of `render.device.vulkan` only. SPIRV-Cross is a host
+  tool used by the artifact task, never linked into a product.
+- **Shader artifacts** are a Waf task per family and pass: GLSL in, one
+  artifact per target format out, keyed by `ArtifactKey`, with the reflection
+  check as part of the task.
+- **The product library.** The existing `shaderapivulkan` product target
+  links the core's static libraries from K1. At K3 it is renamed
+  `rendercore` and declares `arch_module='render.composition'`, leaving the
+  `render-legacy` group. The rename is reviewed in `sharedLibraries` (it
+  stays in `ios-static-debt` until it is a static library everywhere).
+  Under `--static-composition` it is a module object like today's backend,
+  and `tools/quality/static_composition.py` lists it.
+
+### A.6 Manifest wiring (`architecture/modules.json`)
+
+Module rows follow the existing form. A portable module, an adapter and the
+frontend:
+
+```json
+{ "id": "render.graph",
+  "paths": ["public/render/graph/", "render/graph/"],
+  "allowedEdges": ["foundation", "render.math", "render.device", "jobs.graph"] }
+
+{ "id": "render.device.vulkan", "kind": "backend",
+  "paths": ["public/render/device/vulkan/", "render/device/vulkan/"],
+  "allowedEdges": ["foundation", "render.math", "render.contracts", "render.device"],
+  "externalHeaders": ["vulkan/vulkan.h", "vk_mem_alloc.h"],
+  "uselib": ["VULKAN", "VMA"] }
+
+{ "id": "render.legacy-frontend", "kind": "legacy-interop",
+  "paths": ["public/render/legacy/", "render/legacy/"],
+  "allowedEdges": ["foundation", "render.math", "render.contracts", "render.device",
+                   "render.graph", "render.shader-library", "render.resources",
+                   "render.material", "render.scene", "render.frame"],
+  "legacyIncludes": ["materialsystem/", "shaderapi/", "tier0/", "tier1/", "mathlib/"] }
+```
+
+The layer contract is one new section, read by CAP011:
+
+```json
+"layerContracts": [ {
+  "id": "render",
+  "layers": [
+    ["foundation", "render.math", "render.contracts", "jobs.graph"],
+    ["render.device"],
+    ["render.graph", "render.shader-library", "render.resources"],
+    ["render.material"],
+    ["render.scene"],
+    ["render.frame"],
+    ["render.renderer", "render.pass.*", "render.legacy-frontend"],
+    ["render.composition"] ],
+  "externalBases": ["content.keyvalues-text", "content.texture-contract",
+                    "content.ktx2-reader", "content.vtf-reader"],
+  "independent": [ ["render.renderer", "render.pass.*", "render.legacy-frontend"],
+                   ["render.device.vulkan", "render.device.gl", "render.device.null"] ],
+  "adapters": { "render.device": ["render.device.vulkan", "render.device.gl",
+                                  "render.device.null", "render.bridge.*"] },
+  "adapterConsumers": ["render.composition"] } ]
+```
+
+Application code outside the manifest's modules (the launcher, Hammer's
+roots, test fixtures) reaches adapters only through `render.composition`,
+or directly in a test fixture. CAP011 checks the declared edges; CAP002 and
+CAP005 check each file's includes against them, and CAP006 checks each
+target's links.
+
+### A.7 Runtime wiring
+
+```text
+launcher (composition root)
+  │
+  ├─ RenderCore_Create(config)                          render.composition
+  │     config.device    ← -render-device vulkan | gl | null (default from the product profile)
+  │     config.bridge    ← the presentation pair for that device and the window provider
+  │     config.features  ← the product profile's feature list
+  │     builds: device adapter → graph, shader library, resources → material registry and
+  │             families → renderer and features → legacy frontend
+  │
+  ├─ MaterialSystem_BindShaderProvider(materialsystem, core legacy provider)
+  │     existing call; -renderer core selects it; the material system keeps its API
+  │
+  ├─ Engine_BindRenderCore(RenderCoreBinding)            new, like Engine_BindLinkedGameModules
+  │     IRenderer, SceneFactory, IRenderStageMarkers
+  │
+  └─ AddSystem(stage markers, "RenderStageMarkers001")   the client finds it through its
+                                                         existing appSystemFactory lookup
+```
+
+Engine hooks (engine code includes port headers only; it links no render
+module, so every implementation arrives through the binding):
+
+| Engine file | Today | After |
+| --- | --- | --- |
+| new `engine/render_core_host.{h,cpp}` | — | Owns the world's `IRenderScene`, the BSP visibility adapter and the per-view `FrameDesc` [K3–K5] |
+| new `engine/render_visibility_bsp.cpp` | WMSH culling inside `gl_rsurf.cpp` | `IVisibilityProvider` for BSP leaves, area portals and WMSH clusters [K5] |
+| `engine/modelloader.cpp` | WMSH, lightmap, probe and RPRB uploads through `"WorldMeshUpload007"` | Scene objects and `render.resources` uploads [K3 typed, K5 scene] |
+| `engine/gl_rsurf.cpp` | Draws world batches through the side channel | World drawn by `render.pass.world` from the scene [K5] |
+| `engine/staticpropmgr.cpp` | Draws props through `IMatRenderContext` | `MeshInstance` objects [K5] |
+| `engine/l_studio.cpp` | `IStudioRender` draws | `SkinnedInstance` objects [K6] |
+| `engine/indirect_light_host.cpp` | Probe volume through the side channel, compute through `"RenderGpuCompute001"` | `ProbeVolume` object and `render.pass.indirect` [K3] |
+| `engine/light_set_publisher.cpp` | `"RenderLightSetConsumer001"` | Publishes into the scene's light set, consumed by `render.pass.lights` [K3, K7] |
+| `engine/host_frame_graph.cpp` | Host phases | Adds a render-extract node that commits change sets [K5] |
+| `engine/view.cpp`, `engine/gl_rmain.cpp` | View setup for the material system | Builds `FrameDesc` and views [K3] |
+
+Client, material system and other products:
+
+| Place | Change |
+| --- | --- |
+| `game/client/cdll_client_int.cpp` | Looks up `"RenderStageMarkers001"` at init [K3] |
+| `game/client/viewrender.cpp` | Marks each stage [K3]; stops drawing each cohort the scene takes over [K5–K8] |
+| `game/client/portal/PortalRender.cpp`, `game/client/portal2/portal/portalrender.cpp` | Portal views as `IRenderStageHooks`, then view generators [K8] |
+| `materialsystem/cmaterialsystem.cpp` | Side-channel `QueryInterface` branches and the side-channel fields of `LegacyShaderServices` removed [K3]; the public API is unchanged |
+| `materialsystem/cmatrendercontext.cpp`, `cmatqueuedrendercontext.cpp` | Unchanged |
+| Hammer GTK viewport (R17) | Links `render.composition` with its own scene; OpenGL in a `GtkGLArea` or the dmabuf bridge is R17's decision |
+| Dedicated server | Links no render module and never calls `Engine_BindRenderCore`; its link map is the evidence |
+| iOS and tvOS | `rendercore` is a module object; the static composition check lists it; nothing is loaded by name |
+
+### A.8 Recipes
+
+**Adding a feature pass.** Create `public/render/pass/<name>/feature.h` and
+`render/pass/<name>/`, add a module row with edges to layers 0–5 only, add
+the target to `policy.json` as `cxx20`, declare the feature's capability
+requirements, add its suite under `unittests/rendertest/core/pass/<name>/`
+and a manifest row, and add it to the feature catalog in
+`render/composition/feature_catalog.cpp`. No other module changes.
+
+**Adding a device adapter.** Create `public/render/device/<api>/provider.h`
+(a factory with no native types) and `render/device/<api>/`, add a `backend`
+module row with edges to `render.device` and layer 0 plus its native
+grants, add it to the adapter list of the layer contract, run
+`render.device.v2` and its sensitivity suite against it, add a
+presentation bridge under `render/bridge/`, and register the adapter in
+`render/composition/`. No portable module changes; if one has to, the port
+is missing a capability, and the port changes first.
 
 ## Source references
 
