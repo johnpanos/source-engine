@@ -412,6 +412,8 @@ def build(bld):
 		libs += ['USER32', 'WINMM', 'WININET', 'DSOUND', 'DXGUID', 'GDI32', 'bzip2']
 	elif bld.env.DEST_OS == 'darwin' and not bld.env.DEDICATED:
 		libs += ['APPKIT', 'COREAUDIO', 'AUDIOTOOLBOX', 'SYSTEMCONFIGURATION']
+	elif bld.env.DEST_OS == 'ios':
+		libs += ['COREFOUNDATION', 'CFNETWORK'] # download proxies (downloadthread.cpp)
 		
 	if bld.env.DEBUGAPI:
 		source += ['debugapi_host.cpp']

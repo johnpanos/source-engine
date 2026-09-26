@@ -36,11 +36,14 @@
 #include <sys/vfs.h>
 #endif
 #ifdef OSX
+#if !defined( PLATFORM_IOS )
 #include <Carbon/Carbon.h>
+#endif
 #endif
 
 #ifdef USE_SDL
 #include "SDL_clipboard.h"
+#include "SDL_misc.h"
 #include "SDL_error.h"
 #endif
 
@@ -141,7 +144,7 @@ private:
 	bool m_bRegistryDirty;
 	
 	char m_szRegistryPath[ MAX_PATH ];
-#ifdef OSX
+#if defined( OSX ) && !defined( PLATFORM_IOS )
 	PasteboardRef m_PasteBoardRef;
 #endif
 	
@@ -169,7 +172,7 @@ CSystem::CSystem()
 	m_flRegistrySaveTime = 0.0;
 	m_bRegistryDirty = false;
 	m_pUserConfigData = NULL;
-#ifdef OSX
+#if defined( OSX ) && !defined( PLATFORM_IOS )
 	PasteboardCreate( kPasteboardClipboard, &m_PasteBoardRef );
 #endif
 	
@@ -184,7 +187,7 @@ CSystem::CSystem()
 CSystem::~CSystem()
 {
 	SaveRegistryToFile( true );
-#ifdef OSX
+#if defined( OSX ) && !defined( PLATFORM_IOS )
 	CFRelease( m_PasteBoardRef );
 #endif
 }
@@ -283,7 +286,13 @@ void CSystem::ShellExecute(const char *command, const char *file)
 		return;
 	}
 
-#ifdef OSX
+#if defined( PLATFORM_IOS )
+	// No processes on iOS: hand the URL or path to the system.
+	if ( !SDL_OpenURL( file ) )
+		Msg( "SDL_OpenURL failed: %s\n", SDL_GetError() );
+	return;
+#endif
+#if defined( OSX ) && !defined( PLATFORM_IOS )
 	const char *szCommand = "open";
 #else
 	const char *szCommand = "xdg-open";
@@ -325,7 +334,7 @@ void CSystem::ShellExecuteEx( const char *command, const char *file, const char 
 
 void CSystem::SetClipboardText(const char *text, int textLen)
 {
-#ifdef OSX
+#if defined( OSX ) && !defined( PLATFORM_IOS )
 	PasteboardSynchronize( m_PasteBoardRef );
 	PasteboardClear( m_PasteBoardRef );
 	CFDataRef theData = CFDataCreate( kCFAllocatorDefault, (const UInt8*)text, textLen );
@@ -381,7 +390,7 @@ void CSystem::SetClipboardText(const wchar_t *text, int textLen)
 
 	Q_UnicodeToUTF8( text, charStr, textLen*4 );
 
-#ifdef OSX
+#if defined( OSX ) && !defined( PLATFORM_IOS )
 	PasteboardSynchronize( m_PasteBoardRef );
 	PasteboardClear( m_PasteBoardRef );
 
@@ -397,7 +406,7 @@ void CSystem::SetClipboardText(const wchar_t *text, int textLen)
 
 int CSystem::GetClipboardTextCount()
 {
-#ifdef OSX
+#if defined( OSX ) && !defined( PLATFORM_IOS )
 	ItemCount count;
 	PasteboardSynchronize( m_PasteBoardRef );
 	
@@ -445,7 +454,7 @@ int CSystem::GetClipboardText(int offset, char *buf, int bufLen)
 {
 	Assert( !offset );
 
-#ifdef OSX
+#if defined( OSX ) && !defined( PLATFORM_IOS )
 	ItemCount count;
 	PasteboardSynchronize( m_PasteBoardRef );
 	

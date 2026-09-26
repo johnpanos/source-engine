@@ -857,6 +857,8 @@ void FileOpenDialog::OnOpenInExplorer()
 	GetCurrentDirectory( pCurrentDirectory, sizeof(pCurrentDirectory) );
 #if defined( WIN32 )
 	ShellExecute( NULL, NULL, pCurrentDirectory, NULL, NULL, SW_SHOWNORMAL );
+#elif defined( PLATFORM_IOS )
+	// iOS apps cannot open a folder in another app.
 #elif defined( OSX )
 	char szCmd[ MAX_PATH * 2];
 	Q_snprintf( szCmd, sizeof(szCmd), "/usr/bin/open \"%s\"", pCurrentDirectory );

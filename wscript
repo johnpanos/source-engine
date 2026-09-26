@@ -517,6 +517,12 @@ def check_deps(conf):
 		conf.env.FRAMEWORK_COREAUDIO = "CoreAudio"
 		conf.env.FRAMEWORK_AUDIOTOOLBOX = "AudioToolbox"
 		conf.env.FRAMEWORK_SYSTEMCONFIGURATION = "SystemConfiguration"
+	elif conf.env.DEST_OS == 'ios':
+		# No AppKit, Carbon, IOKit, OpenGL or ApplicationServices on iOS.
+		conf.check(lib='iconv', uselib_store='ICONV')
+		for framework in ('Foundation', 'CoreFoundation', 'CoreGraphics', 'CoreAudio',
+				'AudioToolbox', 'SystemConfiguration', 'UIKit', 'CoreServices', 'CFNetwork'):
+			conf.env['FRAMEWORK_' + framework.upper()] = framework
 
 	if conf.options.TESTS:
 		return
@@ -534,7 +540,21 @@ def check_deps(conf):
 			conf.check(lib='libpng', uselib_store='PNG', define_name='HAVE_PNG')
 		return
 
-	if conf.env.DEST_OS != 'android':
+	if conf.env.DEST_OS == 'ios':
+		# As on Android: PKG_CONFIG_LIBDIR names only build-ios-app.sh's
+		# cross-built prefix. No fontconfig (fonts ship with the content) and
+		# no OpenAL: audio uses SDL3. zlib is the SDK's system library.
+		conf.check_cfg(package='sdl3', uselib_store='SDL2', args=['--cflags', '--libs', '--static'])
+		conf.check_cfg(package='sdl3', uselib_store='SDL3', args=['--cflags', '--libs', '--static'])
+		conf.env.INCLUDES_SDL2 += [os.path.abspath('platform/sdl3/legacy_include')]
+		# Static archives: --static adds their private dependencies (zlib).
+		conf.check_cfg(package='freetype2', uselib_store='FT2', args=['--cflags', '--libs', '--static'])
+		conf.check_cxx(fragment=FT2_CHECK, use='FT2', msg='Checking for \'freetype2\' sanity')
+		conf.check_cfg(package='libjpeg', uselib_store='JPEG', args=['--cflags', '--libs'])
+		conf.check_cfg(package='libpng', uselib_store='PNG', args=['--cflags', '--libs', '--static'])
+		conf.check_cfg(package='libcurl', uselib_store='CURL', args=['--cflags', '--libs', '--static'])
+		conf.check_cc(lib='z', uselib_store='ZLIB')
+	elif conf.env.DEST_OS != 'android':
 		if conf.env.DEST_OS != 'win32':
 			if conf.options.SDL:
 				conf.check_cfg(package='sdl3' if conf.env.SDL3 else 'sdl2',
@@ -804,9 +824,10 @@ def configure(conf):
 	if conf.options.KTX_SOURCE_ROOT or conf.options.KTX_BUILD_ROOT:
 		if not (conf.options.KTX_SOURCE_ROOT and conf.options.KTX_BUILD_ROOT):
 			conf.fatal('KTX reader tests require both --ktx-source-root and --ktx-build-root')
-		ktx_android = conf.env.DEST_OS == 'android'
-		if not (conf.env.NATIVE_VULKAN and conf.env.DEST_OS in ('linux', 'android')):
-			conf.fatal('KTX reader profile requires a Linux or Android native Vulkan client')
+		# The mobile products build the Android profile's pinned archive.
+		ktx_android = conf.env.DEST_OS in ('android', 'ios')
+		if not (conf.env.NATIVE_VULKAN and conf.env.DEST_OS in ('linux', 'android', 'ios')):
+			conf.fatal('KTX reader profile requires a Linux, Android or iOS native Vulkan client')
 		with open('quality/product_profiles/ktx2-linux-tools.json') as profile_file:
 			ktx_profile = json.load(profile_file)
 		ktx_pinned = ktx_profile['dependencies']['ktx_software']['revision']

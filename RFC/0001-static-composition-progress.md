@@ -232,11 +232,80 @@ this host yet, so nothing has been compiled for iOS.
   - Model: the Android SDL3 prefix wiring (`ANDROID_SDL3`: pkg-config into a
     cross-built prefix; in-tree bzip2; no fontconfig or OpenAL).
 
+## First iOS build (2026-09-25)
+
+The iPhoneOS 26.5 SDK came from Xcode 26.6 on the user's macOS VM (`ssh
+macvm`). It is copied into `dependencies/ios/sdk` (gitignored) and never
+downloaded. The pinned toolchain links a C++20 program against it.
+
+`./build-ios-app.sh` builds the iOS client end to end on Linux:
+
+1. It runs the toolchain script.
+2. It checks the SDK (`--sdk`, or `--fetch-sdk-from HOST` over ssh).
+3. It builds `libclang_rt.ios.a` from the pinned LLVM `os_version_check.c`,
+   for `@available`. Xcode ships this file; libSystem has the other builtins.
+4. It cross-builds with CMake (`tools/ios/ios-toolchain.cmake`): SDL3 (static;
+   Metal, Vulkan, UIKit), the static KTX reader, freetype (on the SDK's zlib),
+   libpng, libjpeg and curl. MoltenVK v1.4.2 comes from its pinned static
+   release.
+5. It configures and builds the engine with `--ios-sdk --static-composition`.
+6. It runs the static-composition check as a required step.
+7. It assembles an unsigned `Portal.app` whose Info.plist is generated from the
+   profile: bundle id `com.panos.sourceengine` (user choice), iOS 17.0,
+   arm64 + Metal, landscape, launch screen, and Files-app access to Documents.
+
+The result:
+
+- `hl2_launcher` is a 54 MB arm64 Mach-O: platform iOS, minos 17.0, SDK 26.5.
+- It loads only system frameworks and libraries: UIKit, Metal, QuartzCore,
+  IOSurface, CFNetwork, GameController, AVFoundation, libc++, libSystem, libz,
+  libbz2 and libiconv.
+- Static-composition check: PASS, 24 module objects, 22 linked entries, 0
+  errors.
+- On the Mac VM: `plutil -lint` OK, `lipo`/`vtool` show arm64 and platform IOS
+  17.0, and an ad-hoc `codesign` passes `--verify`.
+
+Fixes needed for iOS (each is guarded, so desktop builds are unchanged):
+
+- **Waf:** Waf's darwin link settings for `ios` (no ELF `-Bstatic` markers);
+  `pkg-config --static` for the static dependencies; an iOS dependency branch
+  like Android's, with no fontconfig or OpenAL and SDL3 audio.
+- **KTX:** it builds a static framework on Apple, so its archive is copied to
+  where the pin names it.
+- **Vendored libraries:** freetype's bundled zlib and libpng 1.6.38 misread
+  clang's predefined `TARGET_OS_MAC` (libpng fixed this in 1.6.40). freetype
+  uses the SDK's zlib; libpng builds with `-fno-define-target-os-macros`.
+- **IVP:** it reached `alloca` only through transitive macOS headers. The
+  ivp submodule is upstream, so the IVP targets get `-include alloca.h` on
+  iOS from the superproject.
+- **macOS-only APIs guarded with `PLATFORM_IOS`:**
+  - five Carbon includes;
+  - the vgui2 clipboard, which now uses SDL3's, and ShellExecute, which now
+    uses `SDL_OpenURL` (iOS has no `fork`);
+  - `system()` in FileOpenDialog and the launcher relaunch file;
+  - download proxies: `CFNetworkCopySystemProxySettings` replaces
+    SCDynamicStore, and the engine links CFNetwork;
+  - the video skip keys, which now come from SDL
+    (`PeekAndRemoveKeyboardEvents`);
+  - the voice mixer, which uses the portable stub.
+- **Static-composition tool (a real gap, fixed):** the system libraries of a
+  module's private static libraries (tier1's iconv) now reach the program link.
+  Linux hid the gap because iconv is part of libc.
+- **Entry point:** `launcher_main/ios_main.cpp`. SDL3 owns `main` (UIKit
+  start). The content root is the app's Documents container and the library
+  path is the bundle (the app-container paths shared with Android). It then
+  binds the linked game modules and runs `LauncherMain` with the mobile
+  arguments.
+- **Signing and installing:** these belong to the user's Mac tooling
+  (`~/src/mac/ios-deploy.sh`, set up in another session: free Personal Team,
+  the connected iPhone 16 Pro on iOS 27). Linux produces the unsigned bundle.
+
 ## Not done
 
-- Any iOS compile: it needs the iOS SDK from the Mac. Also still to write: the
-  Waf `ios` target, the macOS-API guards from the audit, and the iOS builds of
-  SDL3, freetype, png, jpeg, curl and KTX (R29).
+- Device evidence: the app has not been signed with a provisioning profile,
+  installed or started. It needs Developer Mode on the phone, content in
+  Documents, and the iOS obligations in AGENTS.md (lifecycle, touch, memory
+  pressure).
 - The static root's list of modules lives in `launcher_main/wscript`. An iOS
   product profile should own it.
 - Static products still contain the loader's callers: the `-tools` path,

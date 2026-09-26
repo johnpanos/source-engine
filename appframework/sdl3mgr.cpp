@@ -100,7 +100,7 @@ public:
 	}
 	void DecWindowRefCount() override;
 	int GetEvents( CCocoaEvent *events, int maximum, bool debugEvents = false ) override;
-#if defined( LINUX ) || defined( PLATFORM_BSD )
+#if defined( LINUX ) || defined( PLATFORM_BSD ) || defined( PLATFORM_IOS )
 	int PeekAndRemoveKeyboardEvents(
 	    bool *escape, bool *enter, bool *space, bool debugEvents = false ) override;
 #endif
@@ -290,7 +290,7 @@ int CSDL3Mgr::GetEvents( CCocoaEvent *events, int maximum, bool debugEvents )
 	return count;
 }
 
-#if defined( LINUX ) || defined( PLATFORM_BSD )
+#if defined( LINUX ) || defined( PLATFORM_BSD ) || defined( PLATFORM_IOS )
 int CSDL3Mgr::PeekAndRemoveKeyboardEvents(
     bool *escape, bool *enter, bool *space, bool debugEvents )
 {

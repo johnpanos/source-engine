@@ -444,6 +444,10 @@ def configure(conf):
 	c_config.MACRO_TO_DESTOS  = MACRO_TO_DESTOS
 
 def post_compiler_cxx_configure(conf):
+	if conf.env.DEST_OS == 'ios':
+		# Waf applies its Apple settings (no -Bstatic markers, frameworks,
+		# .dylib patterns) only for DEST_OS darwin.
+		conf.gxx_modifier_darwin()
 	conf.msg('Target OS', conf.env.DEST_OS)
 	conf.msg('Target CPU', conf.env.DEST_CPU)
 	conf.msg('Target binfmt', conf.env.DEST_BINFMT)
@@ -455,6 +459,8 @@ def post_compiler_cxx_configure(conf):
 	return
 
 def post_compiler_c_configure(conf):
+	if conf.env.DEST_OS == 'ios':
+		conf.gcc_modifier_darwin()
 	conf.msg('Target OS', conf.env.DEST_OS)
 	conf.msg('Target CPU', conf.env.DEST_CPU)
 	conf.msg('Target binfmt', conf.env.DEST_BINFMT)
@@ -493,3 +499,15 @@ def apply_android_soname(self):
 	libname = node.name
 	v = self.env.SONAME_ST % libname
 	self.env.append_value('LINKFLAGS', v.split())
+
+@TaskGen.feature('c', 'cxx')
+@TaskGen.before_method('process_source')
+def apply_ios_ivp_alloca(self):
+	"""IVP (the ivp submodule, upstream source-physics) includes <alloca.h>
+	only for LINUX/SUN; on macOS a system header supplied alloca transitively,
+	on iOS none does. Give only the IVP targets the header."""
+	if self.env.DEST_OS != 'ios':
+		return
+	ivp = self.bld.srcnode.find_node('ivp')
+	if ivp and self.path.is_child_of(ivp):
+		self.env.append_value('CXXFLAGS', ['-include', 'alloca.h'])

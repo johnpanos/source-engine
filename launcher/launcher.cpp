@@ -253,7 +253,7 @@ bool GetExecutableName( char *out, int outSize )
 //-----------------------------------------------------------------------------
 char *GetBaseDirectory( void )
 {
-#ifdef ANDROID
+#if defined( ANDROID ) || defined( PLATFORM_IOS )
 	return getenv("VALVE_GAME_PATH");
 #else
 	return g_szBasedir;
@@ -1678,6 +1678,9 @@ DLL_EXPORT int LauncherMain( int argc, char **argv )
 		RegCloseKey(hKey);
 	}
 
+#elif defined( PLATFORM_IOS )
+	// No relaunch URL on iOS: nothing writes the desktop relaunch file, and an
+	// app cannot run a shell command.
 #elif defined( OSX ) || defined( LINUX ) || defined(PLATFORM_BSD)
 	struct stat st;
 	if ( stat( RELAUNCH_FILE, &st ) == 0 ) 

@@ -847,10 +847,18 @@ Keep the table concise and link details below or from the domain progress file.
       recorded.
     - The native Vulkan backend enables portability enumeration and
       `VK_KHR_portability_subset`.
-  - Not done: the iOS SDK (it must come from the user's Mac), so no iOS
-    compile yet. Also: the Waf `ios` target, the macOS-API guards the audit
-    found, iOS dependency builds, `.app` packaging, a CI lane, and a sanitizer
-    run. See the [record](RFC/0001-static-composition-progress.md).
+  - First iOS build (2026-09-25): `./build-ios-app.sh` builds an unsigned
+    `Portal.app` on Linux, using the iPhoneOS 26.5 SDK from the user's macOS
+    VM.
+    - The binary is arm64 for iOS 17.0 and loads only system
+      frameworks/libraries.
+    - The static-composition check passes on Mach-O (22 modules).
+    - On the Mac: the plist lints and an ad-hoc signature verifies.
+    - Bundle id `com.panos.sourceengine`.
+  - Not done: provisioning-profile signing and installing (the user's
+    `~/src/mac` tooling), any run on the device, the AGENTS.md iOS obligations,
+    a CI lane and a sanitizer run. See the
+    [record](RFC/0001-static-composition-progress.md).
 
 - R01/R29-ANDROID-BUILD: `partial` (2026-09-22).
   - [`build-android-apk.sh`](build-android-apk.sh) builds the SDL3/native

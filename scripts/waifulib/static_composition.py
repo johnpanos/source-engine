@@ -260,10 +260,17 @@ def static_composition_program(self):
 	objects = [tg.link_task.outputs[0] for tg in modules]
 	self.link_task.inputs.extend(objects)
 	uselib = self.to_list(getattr(self, 'uselib', []))
+	# The system libraries of the modules and of the static libraries linked
+	# into them (tier1's iconv, for example): a shared library resolved those
+	# itself, a module object leaves them to the program.
 	for tg in modules:
-		for name in tg.to_list(getattr(tg, 'uselib', [])):
-			if name not in uselib:
-				uselib.append(name)
+		for owner in [tg] + _private_closure(tg):
+			names = owner.to_list(getattr(owner, 'uselib', []))
+			names += [x for x in owner.to_list(getattr(owner, 'use', []))
+				if _tgen(self.bld, x) is None]
+			for name in names:
+				if name not in uselib:
+					uselib.append(name)
 	self.uselib = uselib
 	Logs.debug('static_composition: %s links %s', self.name,
 		' '.join(os.path.basename(tg.target) for tg in modules))

@@ -5,8 +5,7 @@
 // $NoKeywords: $
 //=============================================================================//
 
-
-#ifdef OSX
+#if defined( OSX ) && !defined( PLATFORM_IOS )
 #include <Carbon/Carbon.h>
 #include <CoreAudio/CoreAudio.h>
 #endif
@@ -18,10 +17,8 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-
-
-#ifndef OSX
-
+// iOS has no hardware input mixer (SDL records the microphone): the stub.
+#if !defined( OSX ) || defined( PLATFORM_IOS )
 
 class CMixerControls : public IMixerControls
 {

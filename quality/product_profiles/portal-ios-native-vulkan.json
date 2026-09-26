@@ -20,13 +20,47 @@
     "deployment_target_reason": "17.0: devicectl installs, current SDL3 and MoltenVK (libMoltenVK.a minos 15.0) all support it; revisit before a store build."
   },
   "ios": {
-    "bundle_id": "org.sourceengine.portal",
+    "bundle_id": "com.panos.sourceengine",
     "display_name": "Portal (Source Engine)",
     "version": "0.1.0",
     "build_number": 1,
     "build_directory": "build-ios",
-    "system_frameworks": ["Foundation", "UIKit", "Metal", "QuartzCore", "IOSurface", "CoreGraphics", "AudioToolbox", "AVFoundation", "CoreAudio", "CoreMotion", "GameController", "CoreHaptics", "OpenAL"],
-    "system_libraries": ["c++", "z", "bz2", "iconv"]
+    "system_frameworks": [
+      "Foundation",
+      "UIKit",
+      "Metal",
+      "QuartzCore",
+      "IOSurface",
+      "CoreGraphics",
+      "AudioToolbox",
+      "AVFoundation",
+      "CoreAudio",
+      "CoreMotion",
+      "GameController",
+      "CoreHaptics",
+      "OpenAL"
+    ],
+    "system_libraries": [
+      "c++",
+      "z",
+      "bz2",
+      "iconv"
+    ],
+    "app_bundle": "Portal.app",
+    "executable": "hl2_launcher",
+    "device_family": [
+      1,
+      2
+    ],
+    "required_device_capabilities": [
+      "arm64",
+      "metal"
+    ],
+    "orientations": [
+      "UIInterfaceOrientationLandscapeLeft",
+      "UIInterfaceOrientationLandscapeRight"
+    ],
+    "note": "Info.plist is generated from these keys by build-ios-app.sh. UIFileSharingEnabled lets the Files app and devicectl place content in Documents. No privacy usage keys: the product requests no protected resource yet (microphone voice capture is unverified on device)."
   },
   "sdk": {
     "name": "iPhoneOS.sdk",
@@ -44,9 +78,29 @@
       "cache_archive": "llvm-project-22.1.8.src.tar.xz",
       "extracted_directory": "llvm-project-22.1.8.src",
       "signature_note": "2026-09-25: the release's OpenPGP signature verified against https://releases.llvm.org/release-keys.asc (EdDSA key FFB3368980F3E6BB5737145A316C56D064CACBA5); the sha256 is the pin.",
-      "projects": ["clang", "lld"],
-      "targets": ["AArch64", "X86"],
-      "distribution_components": ["clang", "clang-resource-headers", "lld", "llvm-ar", "llvm-ranlib", "llvm-nm", "llvm-objcopy", "llvm-lipo", "llvm-otool", "llvm-readobj", "llvm-strip", "llvm-install-name-tool", "dsymutil"],
+      "projects": [
+        "clang",
+        "lld"
+      ],
+      "targets": [
+        "AArch64",
+        "X86"
+      ],
+      "distribution_components": [
+        "clang",
+        "clang-resource-headers",
+        "lld",
+        "llvm-ar",
+        "llvm-ranlib",
+        "llvm-nm",
+        "llvm-objcopy",
+        "llvm-lipo",
+        "llvm-otool",
+        "llvm-readobj",
+        "llvm-strip",
+        "llvm-install-name-tool",
+        "dsymutil"
+      ],
       "note": "clang compiles for arm64-apple-ios; ld64.lld performs the final app link. It does not implement -r, so module objects use Apple's ld64 below."
     },
     "cctools_port": {
@@ -57,7 +111,12 @@
       "archive_bytes": 2214489,
       "cache_archive": "cctools-port-904de2a7.tar.gz",
       "extracted_directory": "cctools-port-904de2a71d4da6a9b30d2efaf912a10ddc7d9ddb",
-      "configure_options": ["--target=aarch64-apple-darwin", "--disable-tapi-support", "--disable-xar-support", "--disable-lto-support"],
+      "configure_options": [
+        "--target=aarch64-apple-darwin",
+        "--disable-tapi-support",
+        "--disable-xar-support",
+        "--disable-lto-support"
+      ],
       "note": "Apple's ld64 for 'ld64 -r' module objects, which turns hidden symbols local. Built without libtapi: it never reads the SDK's .tbd stubs."
     },
     "libdispatch": {
@@ -92,12 +151,18 @@
       "note": "Same pin as the Linux and Android profiles; built as a static library for iOS."
     },
     "ktx_software": {
+      "pin_source": "quality/product_profiles/portal-android-native-vulkan.json",
       "revision": "90967979cbb7e9401ee2401ff997f30b4b7507d6",
-      "note": "Same revision as quality/product_profiles/portal-android-native-vulkan.json; the static reader only."
+      "note": "The archive, sha256 and CMake options are the Android profile's (one pin for the static KTX reader on both mobile targets)."
     },
     "vendored": {
       "source": "thirdparty submodule (revision pinned by the superproject)",
-      "libraries": ["freetype", "libpng", "libjpeg", "curl (HTTP only)"],
+      "libraries": [
+        "freetype",
+        "libpng",
+        "libjpeg",
+        "curl (HTTP only)"
+      ],
       "note": "Cross-built as static libraries like the Android profile; zlib, bzip2 and iconv come from the SDK."
     }
   },
@@ -109,7 +174,11 @@
   },
   "content": {
     "location": "the app's data container (Documents), copied with xcrun devicectl on the Mac",
-    "directories": ["platform", "portal", "hl2"]
+    "directories": [
+      "platform",
+      "portal",
+      "hl2"
+    ]
   },
   "required_checks": [
     "tools/ios/build_toolchain.py: pinned host toolchain and its ld64 -r / ld64.lld smoke test",
