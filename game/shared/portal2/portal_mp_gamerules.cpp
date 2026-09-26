@@ -1376,7 +1376,6 @@ void CPortalMPGameRules::ClientCommandKeyValues( edict_t *pEntity, KeyValues *pK
 	if ( FStrEq( szCommand, "read_stats" ) )
 	{
 		int nPlayer = pPlayer->GetTeamNumber() == TEAM_BLUE ? 0 : 1;
-		m_bDataReceived[ nPlayer ] = true;
 
 		int nStrLen = V_strlen( "MP.complete." );
 		for ( KeyValues *kvValue = pKeyValues->GetFirstValue(); kvValue; kvValue = kvValue->GetNextValue() )
@@ -1399,12 +1398,7 @@ void CPortalMPGameRules::ClientCommandKeyValues( edict_t *pEntity, KeyValues *pK
 			}
 		}
 
-		if ( ( m_bDataReceived[ 0 ] && m_bDataReceived[ 1 ] ) || (!mp_dev_wait_for_other_player.GetBool() || (IsLocalSplitScreen() && IsCreditsMap()) ) || IsCommunityCoopHub() )
-		{
-			SendAllMapCompleteData();
-
-			StartPlayerTransitionThinks();
-		}
+		OnPlayerDataReceived( nPlayer );
 	}
 	else if ( FStrEq( szCommand, "read_awards" ) )
 	{
@@ -1547,21 +1541,29 @@ void CPortalMPGameRules::SetMapCompleteData( int nPlayer )
 	if ( !pPlayer )
 		return;
 
-	// Request key values for all the levels
-	KeyValues *kvClientRequest = new KeyValues( "read_stats" );
+	// Retail asks the client for its completed levels ("read_stats", answered
+	// from the player's title data by the client's matchmaking). This engine's
+	// client drops server KeyValues commands (CBaseClientState::
+	// ProcessCmdKeyValues), so the request would never be answered and both
+	// players would wait in the start room forever: take the client's
+	// level_complete_data as its data arriving, with no levels completed.
+	OnPlayerDataReceived( nPlayer );
+}
 
-	for ( int nBranch = 0; nBranch < MAX_PORTAL2_COOP_BRANCHES; ++nBranch )
+//-----------------------------------------------------------------------------
+// Purpose: A player's completion data has arrived; once both have (or the
+//			map does not wait for a partner), start the level for everyone
+//-----------------------------------------------------------------------------
+void CPortalMPGameRules::OnPlayerDataReceived( int nPlayer )
+{
+	m_bDataReceived[ nPlayer ] = true;
+
+	if ( ( m_bDataReceived[ 0 ] && m_bDataReceived[ 1 ] ) || (!mp_dev_wait_for_other_player.GetBool() || (IsLocalSplitScreen() && IsCreditsMap()) ) || IsCommunityCoopHub() )
 	{
-		for ( int nLevel = 0; nLevel < MAX_PORTAL2_COOP_LEVELS_PER_BRANCH; ++nLevel )
-		{
-			if ( m_szLevelNames[ nBranch ][ nLevel ][ 0 ] == '\0' )
-				continue;
+		SendAllMapCompleteData();
 
-			kvClientRequest->SetInt( CFmtStr( "MP.complete.%s", m_szLevelNames[ nBranch ][ nLevel ] ), 0 );
-		}
+		StartPlayerTransitionThinks();
 	}
-
-	engine->ClientCommandKeyValues( pPlayer->edict(), kvClientRequest );
 }
 
 void CPortalMPGameRules::StartPlayerTransitionThinks( void )

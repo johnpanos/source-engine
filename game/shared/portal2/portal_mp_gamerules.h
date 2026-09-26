@@ -183,6 +183,7 @@ public:
 	virtual void RegisterScriptFunctions();
 
 	void	SetMapCompleteData( int nPlayer );
+	void	OnPlayerDataReceived( int nPlayer );
 	bool	IsPlayerDataReceived( int nPlayer ) const { return m_bDataReceived[ nPlayer ]; }
 	void	StartPlayerTransitionThinks( void );
 

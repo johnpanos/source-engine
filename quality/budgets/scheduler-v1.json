@@ -89,7 +89,7 @@
     "apple-arm64": {
       "status": "unverified",
       "owner": "R29",
-      "note": "No macOS/iOS runner."
+      "note": "No macOS runner. The iPhone has its own row, ios-arm64-iphone16pro."
     }
   }
 }

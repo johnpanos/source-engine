@@ -504,6 +504,9 @@ Evidence (Linux desktop, `build`):
   selects Box3D. The client environment keeps one worker. No gameplay soak
   or gameplay timing capture at N workers exists, and the dedicated server
   has no profile row in `physics-v1.json`.
+- Superseded 2026-09-26: the pool step scheduler replaced the bridge, and its
+  uncontended Linux run passes every required gate (see "Pool step
+  scheduler" above). The original note follows.
 - The pool bridge's timing rules are not certified: the merged-code
   acceptance run was contended (see above).
 - Shape inertia (above): the game opt-in is on in `./play` and `./play_p2`

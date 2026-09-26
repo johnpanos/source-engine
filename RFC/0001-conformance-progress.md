@@ -141,5 +141,7 @@ sensitivity row, plus `render.profile` (R15 and R16; see the
 
 Window and input contracts (`public/platform/window/`, `platform/window/`, and
 an SDL2 window system under `platform/sdl2/window_system/`) have fake and SDL2
-tests in `unittests/platformtest/window*`. No Waf target or manifest row builds
-or runs them yet, so they are not evidence for R14.
+tests in `unittests/platformtest/window*`. Since `73b28db3` the manifest runs
+the fake-backend suite as `platform.window` and `platform.window.sensitivity`
+(migration R14), so R14 is `partial`. No row runs the SDL2 window tests
+(`unittests/platformtest/window_sdl2`) yet.

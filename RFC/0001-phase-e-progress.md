@@ -60,6 +60,13 @@ against the test backend in the 2026-09-23 Q-FOUNDATION run. A POSIX provider,
 `platform/posix/tool_process_provider.cpp`, is in the tree, but no Waf target
 builds it and no suite runs it. No tool caller uses the client yet.
 
+Update (2026-09-26): the POSIX provider is built into `platform_posix` and
+`platform_posix_legacyabi` (`platform/wscript`). Hammer's `build_map` is the
+contract's first product caller: `hammer_cli` and the GTK editor create it
+with `CreatePosixToolProcessProvider()` behind `ToolProcessMapBuilder`
+([RFC 0002 R08-UI-P1](0002-progress.md)). The Hammer build suites exercise it
+end to end, but no contract suite runs the POSIX provider.
+
 ### VTEX direct entry
 
 `vtex_dll` retains `IVTex` only for current compatibility callers. The command

@@ -967,7 +967,7 @@
     "apple-arm64": {
       "status": "unverified",
       "owner": "R29",
-      "note": "No macOS/iOS runner.",
+      "note": "No macOS runner. The iPhone is measured under ios-arm64-iphone16pro.",
       "rules": []
     },
     "ios-arm64-iphone16pro": {

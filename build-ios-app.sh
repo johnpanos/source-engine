@@ -470,6 +470,10 @@ if target['os'] == 'ios':
         'UILaunchScreen': {},
         'UIRequiresFullScreen': True,
         'UIStatusBarHidden': True,
+        # Co-op (./play_p2_coop) and LAN games reach other devices on the
+        # local network; iOS asks the player first and shows this reason.
+        'NSLocalNetworkUsageDescription':
+            'Multiplayer connects to games on your local network.',
         # SDL3 takes pointer (trackpad, mouse) input as UIKit indirect events.
         'UIApplicationSupportsIndirectInputEvents': True,
         # ProMotion: without it iOS caps an iPhone app at 60 Hz; the game's

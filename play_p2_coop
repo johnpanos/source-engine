@@ -9,8 +9,10 @@ hosting and the iPhone joining, on the co-op calibration course
 (mp_coop_start).
 
 The host runs a listen server for two players (`+maxplayers 2` selects the
-co-op game rules, game/server/portal/portal_client.cpp). Once it answers a
-server query on the LAN, the client starts with `+connect`. The phones take
+co-op game rules, game/server/portal/portal_client.cpp). Once its server
+answers a challenge request on the LAN, the client starts with `+connect`, and
+the join is read from the host's engine.log (launcher/launcher.cpp writes the
+console there on every peer). The phones take
 their arguments from commandline.txt in their content directory
 (launcher_main/android_main.cpp, ios_main.cpp); the previous file is put back
 once the game has read it. The apps are not built or installed here: use
@@ -25,8 +27,8 @@ import argparse
 import ipaddress
 import os
 import shlex
+import re
 import socket
-import struct
 import subprocess
 import sys
 import tempfile
@@ -50,37 +52,40 @@ def log(message):
     print("\033[1;36m==> %s\033[0m" % message, flush=True)
 
 
-# -- server query (A2S_INFO) ----------------------------------------------------
-def query_server(address, timeout=2.0):
-    """(map, players, max players) of the Source server at address, or None."""
-    request = b"\xff\xff\xff\xffTSource Engine Query\x00"
+# -- server probe -----------------------------------------------------------------
+def server_answers(address, timeout=2.0):
+    """True when a Source server answers at address. Without Steam the engine
+    does not answer A2S_INFO (the Steam game-server API does), so this asks
+    for a server challenge ('W' -> 'A', engine/baseserver.cpp), which the
+    engine answers itself once the server is running."""
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.settimeout(timeout)
         try:
-            sock.sendto(request, address)
-            reply, _ = sock.recvfrom(4096)
-            if reply[4:5] == b"A":  # challenge: repeat the query with it
-                sock.sendto(request + reply[5:9], address)
-                reply, _ = sock.recvfrom(4096)
+            sock.sendto(b"\xff\xff\xff\xffW", address)
+            reply, _ = sock.recvfrom(64)
         except OSError:
-            return None
-    if reply[4:5] != b"I":
-        return None
-    fields = reply[6:].split(b"\x00", 4)  # name, map, folder, game, rest
-    if len(fields) < 5 or len(fields[4]) < 4:
-        return None
-    players, max_players = fields[4][2], fields[4][3]
-    return fields[1].decode(errors="replace"), players, max_players
+            return False
+    return reply[:5] == b"\xff\xff\xff\xffA"
 
 
-def wait_for_server(address, timeout, players=1):
+def wait_until(predicate, timeout, interval=2.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        info = query_server(address)
-        if info and info[1] >= players:
-            return info
-        time.sleep(2)
+        result = predicate()
+        if result:
+            return result
+        time.sleep(interval)
     return None
+
+
+# A remote player's connect on the host (engine/baseserver.cpp); the host's
+# own player connects over the loopback.
+CONNECTED = re.compile(r'Client "([^"]*)" connected \((?!loopback)([^)]*)\)')
+
+
+def remote_join(log_text):
+    match = CONNECTED.search(log_text or "")
+    return match and (match.group(1), match.group(2))
 
 
 # -- peers ----------------------------------------------------------------------
@@ -129,6 +134,9 @@ class Android:
             self._write(self.saved)
             self.saved = None
 
+    def engine_log(self):
+        return self.adb("shell", "cat %s/engine.log 2>/dev/null" % self.content, check=False)
+
     def _write(self, text):
         path = self.content + "/commandline.txt"
         with tempfile.NamedTemporaryFile("w", suffix="_commandline.txt", delete=False) as f:
@@ -171,6 +179,12 @@ class Ios:
             self.device.put_text(self.saved, "Documents/commandline.txt")
             self.saved = None
 
+    def engine_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "engine.log"
+            return path.read_text(errors="replace") if self.device.get(
+                "Documents/engine.log", path) else ""
+
 
 class Desktop:
     name = "desktop"
@@ -186,12 +200,17 @@ class Desktop:
     def start(self, arguments, client=False):
         # A second copy on this machine (desktop with desktop) needs its own
         # server port; -multirun skips the single-instance lock.
-        ports = ["-port", str(PORT + 10)] if client else ["-port", str(PORT)]
+        # The client also skips engine.log, which the host's join check reads.
+        ports = ["-port", str(PORT + 10), "-nolog"] if client else ["-port", str(PORT)]
         self.process = subprocess.Popen([str(ROOT / "play_p2"), "-multirun", *ports,
                                          *shlex.split(arguments)], cwd=ROOT)
 
     def restore(self):
         pass
+
+    def engine_log(self):
+        path = ROOT / "run/runtime-p2/engine.log"
+        return path.read_text(errors="replace") if path.exists() else ""
 
 
 def make_peer(kind, args):
@@ -231,7 +250,7 @@ def main(argv=None):
     address = args.host_ip or host.address()
     ipaddress.IPv4Address(address)
     server = (address, PORT)
-    if query_server(server, timeout=1):
+    if server_answers(server, timeout=1):
         raise SystemExit("play_p2_coop: a server already answers at %s:%d; stop it first"
                          % server)
 
@@ -241,12 +260,11 @@ def main(argv=None):
         log("%s hosts %s at %s:%d" % (host.name, args.map, address, PORT))
         host.start("+sv_lan 1 +maxplayers 2 %s +map %s\n" % (common, args.map))
         started.append(host)
-        info = wait_for_server(server, args.timeout)
-        if not info:
+        if not wait_until(lambda: server_answers(server), args.timeout):
             raise SystemExit("play_p2_coop: the %s host did not answer at %s:%d within %d s"
                              % (host.name, address, PORT, args.timeout))
         host.restore()
-        log("host up: %s, %d/%d players" % info)
+        log("host up")
 
         log("%s joins %s:%d" % (client.name, address, PORT))
         arguments = "%s +connect %s:%d\n" % (common, address, PORT)
@@ -259,11 +277,11 @@ def main(argv=None):
         client.restore()
         if args.no_wait:
             return 0
-        info = wait_for_server(server, args.timeout, players=2)
-        if not info:
+        joined = wait_until(lambda: remote_join(host.engine_log()), args.timeout, interval=5)
+        if not joined:
             raise SystemExit("play_p2_coop: the %s client did not join within %d s"
                              % (client.name, args.timeout))
-        log("connected: %s, %d/%d players" % info)
+        log('connected: "%s" joined from %s' % joined)
     finally:
         for peer in started:
             peer.restore()
