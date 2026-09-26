@@ -254,9 +254,18 @@ and produces an unsigned `build-tvos/Portal.app`. Waf builds tvOS as part of
 the `ios` (UIKit) family, with `PLATFORM_TVOS`; the SDK passed to `--ios-sdk`
 selects it. The content goes into the app's `Library/Caches` (user decision).
 tvOS has no persistent app storage outside the bundle, and the system may
-purge the caches, so the content must be recopied after a purge. Signing,
-installing and every device check are still to do. tvOS is product scope the
-user added; it is not an AGENTS.md north-star target.
+purge the caches, so the content must be recopied after a purge. tvOS is
+product scope the user added; it is not an AGENTS.md north-star target.
+
+On the device (Apple TV 4K, 2026-09-26):
+- `./ios-deploy.sh --profile quality/product_profiles/portal-tvos-native-vulkan.json --with-content`
+  signs, installs and copies the content.
+- `tools/quality/ios_frame_pacing.py --profile` with this profile runs the
+  frame-pacing workload against the `tvos-portal-frame-pacing-60` budget
+  row, which passes.
+- The commands, the budget's meaning on a FIFO-only display and the device
+  traps are in the
+  [device testing record](../../RFC/0005-ios-device-progress.md#apple-tv-4k-tvos-profile-2026-09-26).
 
 ## Gyro aiming
 

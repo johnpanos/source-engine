@@ -421,9 +421,11 @@ The row was revised once, with its reasons recorded in it. The Apple TV only
 presents in FIFO, and frame-start jitter is not a missed refresh.
 
 **Tools:**
-- `tools/quality/frame_pacing_device.py` runs `portal-frame-pacing-v1` on the
-  installed app through the Mac. It supports `--setting`, `--env` and
-  `--budget-row`.
+- `tools/quality/frame_pacing_device.py` ran `portal-frame-pacing-v1` on the
+  installed app through the Mac, with `--setting`, `--env` and
+  `--budget-row`. `ios_frame_pacing.py --profile` now does the same for iOS
+  and tvOS. The commands, methods and device traps are in the
+  [device record](0005-ios-device-progress.md#apple-tv-4k-tvos-profile-2026-09-26).
 - `-vkgputimers` reports GPU time per pass, copy and capture
   (`gpu_passes`), and one ordered frame in every 120 (`gpu_sequence`).
 - The frame's `gpu` record gains a render-only span, because the whole span

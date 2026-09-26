@@ -436,8 +436,8 @@ uses the iOS static composition and points at the iOS pins through
 ### On an Apple TV 4K (2026-09-26)
 
 - **Deploy:** `ios-deploy.sh --device tv --with-content` signs, installs and
-  copies content to `Library/Caches` on tvOS. `ios-deploy.sh` is the Mac
-  session's script and remains uncommitted.
+  copies content to `Library/Caches` on tvOS. `ios-deploy.sh` is now in the
+  tree and reads the product profile (`--profile`).
 - **Crash at 4K:** the first runs used a 3840×2160 drawable, and the copied
   desktop `config.cfg` turned on 4x MSAA. The app was killed (signal 9)
   about 5 s after start, with no crash or jetsam report.
@@ -456,9 +456,16 @@ uses the iOS static composition and points at the iOS pins through
   frees the slot, and an Xbox Wireless Controller then drives the game (the
   user confirmed; 108 button presses logged). Remote-driven menus are out of
   scope (user direction).
-- **Open:**
-  - the engine's joystick connect lines don't reach the `devicectl` console;
-  - no frame-time measurement against the 60 fps target.
+- **Controller buttons (`341a2bed`):** the sticks worked, but the buttons
+  did nothing after a relaunch. With a controller attached, bindings are
+  saved under controller names (`A_BUTTON`). `config.cfg` is read before the
+  controller connects, and those names were rejected then. They are now
+  always accepted. Found in the device's `console.log` (`-condebug`).
+- **60 fps:** measured and passing since; see the
+  [frame pacing record](0001-native-vulkan-frame-pacing-progress.md#apple-tv-4k-at-60-fps-tvos-profile-2026-09-26)
+  and the [device testing record](0005-ios-device-progress.md#apple-tv-4k-tvos-profile-2026-09-26).
+- **Open:** the engine's joystick connect lines don't reach the `devicectl`
+  console (they are in the device's `console.log`).
 
 ## iOS Portal 2 build (2026-09-26)
 

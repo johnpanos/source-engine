@@ -6,23 +6,44 @@ built for that, what ran on the phone, what failed and why, and what remains
 unverified. It certifies no R29 or R36 gate. The platform record for the iOS
 product is [static composition](0001-static-composition-progress.md).
 
-Device: iPhone 16 Pro (A18 Pro: 2 performance and 4 efficiency cores),
-iOS 27.0 (24A435), reached through the user's macOS VM (`ssh macvm`,
-`xcrun devicectl`). Toolchain: the iOS product profile's LLVM 22.1.8 and the
-iPhoneOS 26.5 SDK, built on Linux.
+Devices, both reached through the user's macOS VM (`ssh macvm`,
+`xcrun devicectl`):
+- iPhone 16 Pro (A18 Pro: 2 performance and 4 efficiency cores), iOS 27.0
+  (24A435);
+- Apple TV 4K, 3rd generation (A15), for the tvOS product profile (2026-09-26;
+  [below](#apple-tv-4k-tvos-profile-2026-09-26)). tvOS is extra product scope,
+  not a north-star target.
+
+Toolchain: the product profiles' LLVM 22.1.8 with the iPhoneOS and
+AppleTVOS 26.5 SDKs, built on Linux.
 
 ## Harness (installed)
 
 - `tools/quality/ios_device.py` is the one owner of the device plumbing. It
-  resolves the connected device, copies files into and out of an app's data
+  resolves the connected device of a platform (`iOS` or `tvOS`, as
+  `devicectl` names them), copies files into and out of an app's data
   container, launches an app attached to its console with arguments, and
   terminates it after a timeout. `ConformanceHost` runs the test host's
   programs. Signing and installing stay with `ios-deploy.sh`.
 - `tools/quality/ios_frame_pacing.py` is the device form of
   `frame_pacing.py`. It uses the same scenario, cfg chain, `-vkframestats`
-  stream, analysis and budget checks. The scenario reaches the installed
-  Portal app through `Documents/commandline.txt`, and the frame stream is
-  copied back.
+  stream, analysis and budget checks.
+  - `--profile` names the product profile. The profile gives the platform,
+    the app and the content directory in the app's container
+    (`content.container_directory`: `Documents` on iOS, `Library/Caches` on
+    tvOS).
+  - The scenario reaches the installed app through that directory's
+    `commandline.txt`, which the app appends to its arguments
+    (`launcher_main/ios_main.cpp`). The frame stream is copied back, and
+    `commandline.txt` is emptied again.
+  - `--budget-row` judges a `render-v1.json` row: its vsync limits with
+    `--vsync`, its headroom limits without.
+  - `--setting CVAR=VALUE` goes into a cfg exec'd before the map, off the
+    engine's 512-character command line. `--env` sets the app's environment,
+    and `--extra-arg` adds engine arguments.
+  - `tools/quality/frame_pacing_device.py` is the earlier standalone runner
+    that the Apple TV optimization used. `ios_frame_pacing.py --profile` now
+    covers it, and it can be deleted once nothing refers to it.
 - `tools/quality/ios_conformance.py` covers the manifest's compiled suites
   on the phone, declared by the profile `quality/profiles/ios-arm64-device.json`
   (hosts: the Linux headless-core and native Vulkan GPU profiles).
@@ -200,6 +221,139 @@ frame graph's overhead probe on the phone.
   SaveJob 1, MatQueue 1) and unverified on the device. The census reads
   Linux `/proc` thread names; no iOS census of a running product exists.
 
+## Apple TV 4K (tvOS profile, 2026-09-26)
+
+The user's target: a locked 60 fps at 1080p on the Apple TV 4K. The product
+record is [static composition](0001-static-composition-progress.md#on-an-apple-tv-4k-2026-09-26),
+and the optimization record is
+[frame pacing](0001-native-vulkan-frame-pacing-progress.md#apple-tv-4k-at-60-fps-tvos-profile-2026-09-26).
+This section covers how the device was tested.
+
+### Budget for a display that only presents in FIFO
+
+The budget row is `tvos-portal-frame-pacing-60` in
+`quality/budgets/render-v1.json`. It was set before any optimization, then
+revised once, and the reasons are recorded in the row.
+- **Vsync off measures nothing.** The Apple TV presents only in FIFO, so
+  "vsync off" measured the same paced frames. It is not headroom.
+- **Frame-start jitter is not a missed frame.** Under vsync, a 20 ms interval
+  followed by a 13 ms one still shows a new image at every refresh, so a p99
+  on frame intervals flagged frames the player never saw drop.
+- **With vsync (what the player sees):** the row counts missed refreshes
+  (`frame_pacing.count_missed_refreshes`). Each frame counts
+  max(0, round(interval / period) − 1). Its limits are 0 missed refreshes, 0
+  hitches and no frame over 25 ms.
+- **Headroom (the frame's cost):** GPU render p99 and CPU p99 of the
+  presenting thread, each at most 16.0 ms.
+- **GPU render time needs `-vkgputimers`.** The frame's whole GPU span
+  includes the present's wait for vsync. The `gpu` record's render-only span
+  excludes that wait. `-vkgputimers` also reports GPU time per pass, copy
+  and capture (`gpu_passes`, printed by the runner for the warm pass) and
+  one ordered frame in every 120 (`gpu_sequence`).
+
+### Methods
+
+- **Deploy:** `./build-tvos-app.sh`, then
+  `./ios-deploy.sh --profile quality/product_profiles/portal-tvos-native-vulkan.json --with-content`.
+  The app's platform picks the Apple TV (`--device tv` names it). Content goes
+  to `Library/Caches`, and unchanged files are skipped on later runs.
+- **Measure:** run `ios_frame_pacing.py` twice per candidate, once with
+  `--vsync` and once without, both with `-vkgputimers`. Frame intervals and
+  missed refreshes come from the vsync run; GPU render and CPU p99 come from
+  the other.
+  ```sh
+  P=quality/product_profiles/portal-tvos-native-vulkan.json
+  python3 tools/quality/ios_frame_pacing.py --profile $P --vsync \
+      --budget-row tvos-portal-frame-pacing-60 --extra-arg -vkgputimers --out <dir>/vsync
+  python3 tools/quality/ios_frame_pacing.py --profile $P \
+      --budget-row tvos-portal-frame-pacing-60 --extra-arg -vkgputimers --out <dir>/headroom
+  ```
+- **Judge on the warm pass.** Earlier passes include first-use costs. One
+  run is noisy near the limit: a vsync run of the final build read GPU p99
+  16.05 ms. Repeat a candidate before keeping or rejecting it.
+- **Disposable shader experiments** found the bottleneck without a rebuild or
+  reinstall:
+  - Write a modified SPIR-V module as `<array>.<embedded hash>.spv`, the name
+    the backend's debug-variant lookup uses
+    (`materialsystem/shaderapivulkan/vulkan_shader_library.cpp`; real
+    variants come from `shaders/regen_material_spv.py --debug-out`, see
+    `tools/renderdoc/README.md`).
+  - Push it into `Library/Caches/<dir>` and run with
+    `--env SOURCE_VK_SHADER_DIR=<dir>`. The app's working directory is its
+    content directory, so a relative path works.
+  - A constant-color lightmapped shader cut GPU render from 14.3 to 7.9 ms.
+    That showed fragment-shader cost on the tile-based GPU was the
+    bottleneck, before any engine change.
+  - Experiments that barely moved it: smaller textures (`mat_picmip 4`) and
+    no lighting (`mat_fullbright 1`), set with `--setting`.
+- **Identity oracle for each backend change:** `material_pixel_conformance.py`,
+  run on Linux on all 14 families with HDR none and integer, before and after.
+  The device run shows the speed, and the pixel oracle shows nothing else
+  changed.
+- **Settings sweep:** raise one setting at a time with `--setting`. Keep it
+  only if both budget modes still pass. The kept set became the tvOS
+  defaults.
+
+### Results
+
+Final build, warm passes: median 16.7 ms, max 21.1 ms and 0 missed
+refreshes with vsync. GPU render is 10.4 ms median and 15.8 ms p99; CPU p99
+is 12.2 ms. Both modes of the row pass. The baseline was a GPU render median
+of 16.3 ms and an 18.4 ms frame median.
+
+- Sweep:
+  - **Kept:** textures High, models High, 16x anisotropic filtering, shadows
+    Medium.
+  - **Rejected:** shader detail High (GPU p99 16.4 ms), color correction (p99
+    18.4 ms), MSAA 2x (18.5 ms) and 4x (21.2 ms).
+  - **Crashes:** shadows High ends the app, because flashlight shadow depth
+    is not implemented on native Vulkan.
+- **Controller:** an Xbox Wireless Controller over Bluetooth drives the game.
+  Its buttons survive a relaunch since `341a2bed`.
+- **Evidence retention:** the runs' output directories were scratch and are
+  not kept. The numbers are recorded in the budget row and the frame-pacing
+  record. Reproduce them with the commands above at `1255e01b` or later.
+
+## Lessons for device runs
+
+These are traps that cost time on the Apple TV and the phone. Each has a fix
+in the tools or a rule for future runs.
+
+- **Read the device's console.log, not only devicectl's console.** Engine
+  output that happens before the console attaches, and some later lines
+  (joystick connects), never reach the `devicectl` stream. Run with
+  `-condebug`, then copy `<content>/<game>/console.log` back with
+  `ios_device.Device.get`. The controller bug was found this way: the log
+  listed 16 `"A_BUTTON" isn't a valid key` errors from `config.cfg`.
+- **The 512-character command line.** The engine rejects a longer command
+  line, and harness arguments come close. Put settings in a cfg
+  (`--setting`; on tvOS, product defaults go in `tvos_defaults.cfg`) and
+  tool paths in the environment (`--env`).
+- **Archived settings leak between runs.** `config.cfg` archives cvars such
+  as `volume`. A benchmark that ran with `+volume 0` muted the user's next
+  ordinary launch. Runs no longer mute sound. A run that changes an archived
+  setting must restore it.
+- **Stale output.** A failed launch left the previous run's frame stream in
+  the container, and it was analyzed as the new run. The runner now empties
+  the stream before launching and doesn't analyze a failed run.
+- **Launches the device never started.** When the device connection drops,
+  `devicectl` reports no launch. `ios_device` retries up to three times, and
+  it never repeats a launch that produced output.
+- **The macOS VM reboots under heavy load.** Long device sessions lose it.
+  Check `ssh macvm true` before blaming the device, and don't run large
+  builds on the Mac during a measurement.
+- **Wait loops.** `pgrep -f NAME` in a shell loop matches the loop's own
+  command line, so the loop never ends. Use `pgrep -x` or match on a
+  process's own output file.
+- **Asleep devices.** A sleeping Apple TV fails launches until someone
+  wakes it. The user had to wake it once in this session.
+- **Thermals.** Long phone sessions slowed the physics timings (pile-4096 at
+  one worker, p50 3.96 -> 5.72 ms). Interleave A/B runs rather than running
+  one side after the other.
+- **Purged content on tvOS.** The system may purge `Library/Caches` while
+  the app is not running. The app then shows an alert, and
+  `ios-deploy.sh --with-content` recopies the content.
+
 ## Not done
 
 - A thread census of the running iOS product (the scheduler capacity row) and
@@ -213,3 +367,9 @@ frame graph's overhead probe on the phone.
   and an iOS simulator profile.
 - R36 (release readiness): per-platform material images, loss and recovery,
   power and thermal budgets, and App Store checks.
+- Apple TV:
+  - one map and one device are measured, and the GPU margin is thin;
+  - the iOS profile was not re-measured after the Apple TV changes;
+  - no conformance, physics or scheduler runs on the Apple TV;
+  - no tvOS simulator profile;
+  - `quality/budgets/render-v1.json` has no iPhone row.

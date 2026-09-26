@@ -968,6 +968,9 @@ Keep the table concise and link details below or from the domain progress file.
       filtering, medium shadows, no bloom and sound on.
     - The margin is thin, and only one map was measured. See the
       [record](RFC/0001-native-vulkan-frame-pacing-progress.md#apple-tv-4k-at-60-fps-tvos-profile-2026-09-26).
+  - Device testing (`ios_frame_pacing.py --profile`, the budget's meaning on
+    a FIFO-only display, shader experiments and device traps) is in the
+    [device record](RFC/0005-ios-device-progress.md#apple-tv-4k-tvos-profile-2026-09-26).
   - Not done: other maps at 60 fps, a simulator run, and remote-driven
     menus (out of scope). See the
     [record](RFC/0001-static-composition-progress.md#first-tvos-build-2026-09-25).
