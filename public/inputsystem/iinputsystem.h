@@ -173,6 +173,11 @@ public:
 	virtual bool EnableGyro( bool bEnable ) = 0;
 	virtual bool GetGyroAccumulators( float &pitch, float &yaw, float &roll ) = 0;
 	virtual bool GetGyroUp( float &right, float &up, float &out ) = 0;
+
+	// Hides the on-screen keyboard that StartTextInput raised, where text input
+	// shows one (Android, iOS). Elsewhere text input stays on for the window's
+	// life and this does nothing.
+	virtual void StopTextInput() = 0;
 };
 
 

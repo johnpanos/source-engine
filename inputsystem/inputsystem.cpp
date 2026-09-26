@@ -1562,3 +1562,17 @@ void CInputSystem::StartTextInput()
 	SDL_StartTextInput();
 #endif
 }
+
+void CInputSystem::StopTextInput()
+{
+#if defined( USE_SDL3 )
+	// Desktop windows keep text input on from creation (sdl3mgr.cpp); only an
+	// on-screen keyboard is dismissed.
+	if ( m_pLauncherMgr && SDL_HasScreenKeyboardSupport() )
+	{
+		SDL_Window *window = static_cast<SDL_Window *>( m_pLauncherMgr->GetWindowRef() );
+		if ( window )
+			SDL_StopTextInput( window );
+	}
+#endif
+}

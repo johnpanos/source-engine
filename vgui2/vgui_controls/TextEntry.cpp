@@ -214,6 +214,10 @@ void TextEntry::OnKillFocus()
 
 	PostActionSignal( new KeyValues( "TextKillFocus" ) );
 
+	// The field that raised an on-screen keyboard hides it (no-op on desktop).
+	if ( g_pInputSystem )
+		g_pInputSystem->StopTextInput();
+
 	// chain
 	BaseClass::OnKillFocus();
 }

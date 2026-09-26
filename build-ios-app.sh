@@ -363,6 +363,9 @@ log "Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP"
 cp "$EXECUTABLE" "$APP/$(p .ios.executable)"
+# The app's own UI art (the touch-control icons, as in the Android APK);
+# ios_main.cpp installs it into <game>/custom/ at startup.
+python3 "$ROOT/tools/android/touch_icons.py" "$APP/touch" >/dev/null
 printf 'APPL????' > "$APP/PkgInfo"
 python3 - "$PROFILE" "$APP/Info.plist" "$SDK_NAME" "$SDK_VERSION" <<'PLIST'
 import json, plistlib, sys
@@ -393,6 +396,8 @@ plist = {
     'UILaunchScreen': {},
     'UIRequiresFullScreen': True,
     'UIStatusBarHidden': True,
+    # SDL3 takes pointer (trackpad, mouse) input as UIKit indirect events.
+    'UIApplicationSupportsIndirectInputEvents': True,
     # Content goes into Documents with the Files app or xcrun devicectl.
     'UIFileSharingEnabled': True,
     'LSSupportsOpeningDocumentsInPlace': True,

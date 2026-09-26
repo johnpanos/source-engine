@@ -47,9 +47,13 @@ def build(bld):
 
 	libs = ['tier0','tier1','tier2','vstdlib','SDL2','steam_api']
 
-	# The gyroscope reads the NDK sensor queue (gyro_sensor.cpp).
+	# The gyroscope reads the NDK sensor queue (gyro_sensor.cpp) on Android
+	# and Core Motion (gyro_sensor_ios.mm) on iOS.
 	if bld.env.ANDROID_SDL3:
 		libs += ['ANDROID']
+	if bld.env.DEST_OS == 'ios':
+		source += ['gyro_sensor_ios.mm']
+		libs += ['FOUNDATION', 'COREMOTION']
 
 	if bld.env.DEST_OS == 'win32':
 		libs += ['USER32']

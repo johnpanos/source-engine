@@ -344,7 +344,7 @@ uint32_t CGyroSensor::SampleCount() const
 	return m_pState ? m_pState->m_nSamples.load( std::memory_order_relaxed ) : 0;
 }
 
-#else // !( ANDROID && USE_SDL3 )
+#elif !defined( PLATFORM_IOS ) // iOS: gyro_sensor_ios.mm
 
 // No gyroscope backend on this platform.
 struct CGyroSensor::State
@@ -397,4 +397,4 @@ uint32_t CGyroSensor::SampleCount() const
 	return 0;
 }
 
-#endif // ANDROID && USE_SDL3
+#endif // ANDROID && USE_SDL3, !PLATFORM_IOS

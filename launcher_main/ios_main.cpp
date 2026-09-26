@@ -20,6 +20,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "mobile_app_root.h"
 #include "static_composition.h"
 #include "tier0/platform.h"
 #include "tier0/threadtools.h"
@@ -28,24 +29,6 @@ extern "C" int LauncherMain( int argc, char **argv );
 
 namespace
 {
-
-const int kMaxArgs = 128;
-
-int AppendArgumentsFile( const char *path, char **argv, int argc, char *storage, size_t size )
-{
-	FILE *file = fopen( path, "rb" );
-	if ( !file )
-		return argc;
-	const size_t length = fread( storage, 1, size - 1, file );
-	fclose( file );
-	storage[length] = '\0';
-	for ( char *token = strtok( storage, " \t\r\n" ); token && argc < kMaxArgs - 1;
-	    token = strtok( NULL, " \t\r\n" ) )
-	{
-		argv[argc++] = token;
-	}
-	return argc;
-}
 
 // A directory path without its trailing separator.
 void CopyDirectory( char *out, size_t size, const char *path )
@@ -62,10 +45,18 @@ int main( int, char ** )
 {
 	DeclareCurrentThreadIsMainThread();
 
-	// Landscape, like the desktop game; touch reaches the game as touch events
-	// (the client's touch controls), not as synthesized mouse clicks.
-	SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" );
+	// Every orientation the device and the user's rotation lock allow, as on
+	// Android; Info.plist declares the same set. The back buffer follows the
+	// drawable (mat_windowed_fullscreen, engine/sys_getmodes.cpp).
+	SDL_SetHint(
+	    SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait PortraitUpsideDown" );
+	// Fingers reach the game only as touch events: the client's touch controls
+	// (game/client/touch.cpp) and VGUI's finger handling, not synthesized clicks.
 	SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "0" );
+	// The on-screen keyboard has no hide key on iPhone and there is no back
+	// button: Return (which submits a console or chat line) also hides it, and
+	// a text field hides it when it loses focus or a tap lands outside it.
+	SDL_SetHint( SDL_HINT_RETURN_KEY_HIDES_IME, "1" );
 
 	const char *bundle = SDL_GetBasePath();
 	const char *documents = SDL_GetUserFolder( SDL_FOLDER_DOCUMENTS );
@@ -91,6 +82,11 @@ int main( int, char ** )
 		return 1;
 	}
 
+	// The app's own UI art ships in the bundle's touch/ directory.
+	static char assetRoot[PATH_MAX];
+	snprintf( assetRoot, sizeof( assetRoot ), "%s/", bundleDir );
+	mobileapp::InstallTouchIcons( assetRoot, IOS_DEFAULT_GAME );
+
 	if ( !StaticComposition_BindGame() )
 	{
 		SDL_Log( "Source: failed to bind the linked game modules" );
@@ -99,7 +95,7 @@ int main( int, char ** )
 
 	static char program[PATH_MAX];
 	snprintf( program, sizeof( program ), "%s/hl2_launcher", bundleDir );
-	static char *argv[kMaxArgs];
+	static char *argv[mobileapp::kMaxArgs];
 	int argc = 0;
 	argv[argc++] = program;
 	argv[argc++] = const_cast<char *>( "-game" );
@@ -122,7 +118,7 @@ int main( int, char ** )
 	static char argumentsPath[PATH_MAX];
 	static char argumentsStorage[4096];
 	snprintf( argumentsPath, sizeof( argumentsPath ), "%s/commandline.txt", contentDir );
-	argc = AppendArgumentsFile(
+	argc = mobileapp::AppendArgumentsFile(
 	    argumentsPath, argv, argc, argumentsStorage, sizeof( argumentsStorage ) );
 	argv[argc] = NULL;
 

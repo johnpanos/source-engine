@@ -58,7 +58,9 @@
     ],
     "orientations": [
       "UIInterfaceOrientationLandscapeLeft",
-      "UIInterfaceOrientationLandscapeRight"
+      "UIInterfaceOrientationLandscapeRight",
+      "UIInterfaceOrientationPortrait",
+      "UIInterfaceOrientationPortraitUpsideDown"
     ],
     "note": "Info.plist is generated from these keys by build-ios-app.sh. UIFileSharingEnabled lets the Files app and devicectl place content in Documents. No privacy usage keys: the product requests no protected resource yet (microphone voice capture is unverified on device)."
   },

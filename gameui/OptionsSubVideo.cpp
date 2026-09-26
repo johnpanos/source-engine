@@ -42,6 +42,12 @@ extern IMaterialSystem *materials;
 
 using namespace vgui;
 
+// A phone or tablet owns its display: no windowed mode, gamma ramp or aspect
+// filter, and the modes follow the device.
+#if defined( ANDROID ) || defined( PLATFORM_IOS )
+#define MOBILE_VIDEO_OPTIONS 1
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: aspect ratio mappings (for normal/widescreen combo)
 //-----------------------------------------------------------------------------
@@ -1157,7 +1163,7 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 	unicodeText = g_pVGuiLocalize->Find("#GameUI_AspectWide16x10");
 	g_pVGuiLocalize->ConvertUnicodeToANSI(unicodeText, pszAspectName[2], 32);
 
-#ifndef ANDROID
+#ifndef MOBILE_VIDEO_OPTIONS
 	int iNormalItemID = m_pAspectRatio->AddItem( pszAspectName[0], NULL );
 	int i16x9ItemID = m_pAspectRatio->AddItem( pszAspectName[1], NULL );
 	int i16x10ItemID = m_pAspectRatio->AddItem( pszAspectName[2], NULL );
@@ -1233,7 +1239,7 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 	m_pWindowed->AddItem( "#GameUI_Windowed", NULL );
 #endif
 
-#ifdef ANDROID
+#ifdef MOBILE_VIDEO_OPTIONS
 	m_pWindowed->SetEnabled( false );
 #endif
 
@@ -1288,7 +1294,7 @@ void COptionsSubVideo::PrepareResolutionList()
 
 	// Clean up before filling the info again.
 	m_pMode->DeleteAllItems();
-#ifndef ANDROID
+#ifndef MOBILE_VIDEO_OPTIONS
 	m_pAspectRatio->SetItemEnabled(1, false);
 	m_pAspectRatio->SetItemEnabled(2, false);
 #endif
@@ -1356,7 +1362,7 @@ void COptionsSubVideo::PrepareResolutionList()
 		int itemID = -1;
 
 		int iAspectMode = GetScreenAspectMode( plist->width, plist->height );
-#ifndef ANDROID
+#ifndef MOBILE_VIDEO_OPTIONS
 		if ( iAspectMode > 0 )
 		{
 			m_pAspectRatio->SetItemEnabled( iAspectMode, true );
@@ -1388,7 +1394,7 @@ void COptionsSubVideo::PrepareResolutionList()
 	}
 
 	// disable ratio selection if we can't display widescreen.
-#ifndef ANDROID
+#ifndef MOBILE_VIDEO_OPTIONS
 	m_pAspectRatio->SetEnabled( bFoundWidescreen );
 #endif
 
@@ -1517,7 +1523,7 @@ void COptionsSubVideo::OnResetData()
 #endif
 
 	// reset gamma control
-#ifdef ANDROID
+#ifdef MOBILE_VIDEO_OPTIONS
 	m_pGammaButton->SetEnabled( false );
 #else
 	m_pGammaButton->SetEnabled( !config.Windowed() );
@@ -1788,7 +1794,7 @@ void COptionsSubVideo::PerformLayout()
 
 	if ( m_pGammaButton )
 	{
-#ifdef ANDROID
+#ifdef MOBILE_VIDEO_OPTIONS
 		m_pGammaButton->SetEnabled( false );
 #else
 		const MaterialSystem_Config_t &config = materials->GetCurrentConfigForVideoCard();
@@ -1815,7 +1821,7 @@ void COptionsSubVideo::OnTextChanged(Panel *pPanel, const char *pszText)
             OnDataChanged();
         }
     }
-#ifndef ANDROID
+#ifndef MOBILE_VIDEO_OPTIONS
 	else if (pPanel == m_pAspectRatio)
 	{
 		PrepareResolutionList();
@@ -1866,7 +1872,7 @@ void		COptionsSubVideo::EnableOrDisableWindowedForVR()
 	}
 	else
 	{
-#ifdef ANDROID
+#ifdef MOBILE_VIDEO_OPTIONS
 		m_pWindowed->SetEnabled( false );
 #else
 		m_pWindowed->SetEnabled( true );

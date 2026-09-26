@@ -33,6 +33,8 @@
 
 #include "utllinkedlist.h"
 #include "tier0/icommandline.h"
+#include "tier2/tier2.h"
+#include "inputsystem/iinputsystem.h"
 
 
 /* 
@@ -1553,6 +1555,16 @@ bool CInputSystem::InternalMousePressed(MouseCode code)
 	if ( IsChildOfModalPanel( (VPANEL)pTargetPanel ) )
 	{	
 		g_pSurface->SetTopLevelFocus( (VPANEL)pTargetPanel );
+	}
+
+	// A tap away from the focused text field hides the on-screen keyboard it
+	// raised (Android, iOS: there may be no hide key). Desktop text input is
+	// unaffected (IInputSystem::StopTextInput).
+	VPanel *pKeyFocus = pContext->_keyFocus;
+	if ( g_pInputSystem && code == MOUSE_LEFT && pTargetPanel != pKeyFocus &&
+		 !( pTargetPanel && pKeyFocus && pTargetPanel->HasParent( pKeyFocus ) ) )
+	{
+		g_pInputSystem->StopTextInput();
 	}
 
 	return bFilter;

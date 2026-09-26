@@ -521,7 +521,8 @@ def check_deps(conf):
 		# No AppKit, Carbon, IOKit, OpenGL or ApplicationServices on iOS.
 		conf.check(lib='iconv', uselib_store='ICONV')
 		for framework in ('Foundation', 'CoreFoundation', 'CoreGraphics', 'CoreAudio',
-				'AudioToolbox', 'SystemConfiguration', 'UIKit', 'CoreServices', 'CFNetwork'):
+				'AudioToolbox', 'SystemConfiguration', 'UIKit', 'CoreServices', 'CFNetwork',
+				'CoreMotion'):
 			conf.env['FRAMEWORK_' + framework.upper()] = framework
 
 	if conf.options.TESTS:
@@ -642,7 +643,7 @@ def configure(conf):
 	conf.load('subproject xcompile compiler_c compiler_cxx gccdeps gitversion clang_compilation_database strip_on_install_v2 waf_unit_test enforce_pic')
 	if conf.env.DEST_OS == 'win32' and conf.env.DEST_CPU == 'amd64':
 		conf.load('masm')
-	elif conf.env.DEST_OS == 'darwin':
+	elif conf.env.DEST_OS in ('darwin', 'ios'):
 		conf.load('mm_hook')
 
 	conf.env.BIT32_MANDATORY = conf.options.TARGET32

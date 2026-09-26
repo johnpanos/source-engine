@@ -87,7 +87,7 @@ COptionsDialog::COptionsDialog(vgui::Panel *parent) : PropertyDialog(parent, "Op
 	AddPage(new COptionsSubKeyboard(this), "#GameUI_Keyboard");
 	AddPage(new COptionsSubMouse(this), "#GameUI_Mouse");
 
-#ifdef ANDROID
+#if defined( ANDROID ) || defined( PLATFORM_IOS )
 	AddPage(new COptionsSubTouch(this), "Touch");
 #endif
 

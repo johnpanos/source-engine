@@ -300,12 +300,59 @@ Fixes needed for iOS (each is guarded, so desktop builds are unchanged):
   (`~/src/mac/ios-deploy.sh`, set up in another session: free Personal Team,
   the connected iPhone 16 Pro on iOS 27). Linux produces the unsigned bundle.
 
+## First device run, touch, motion and orientation (2026-09-25)
+
+- **First device run (user report):** `7444d5c7` ran on the iPhone 16 Pro
+  (iOS 27.0), signed and installed by the user's Mac tooling, and exited 0.
+  The single-instance lock was dropped for iOS in that commit: an app sandbox
+  cannot lock files in `/tmp`, and the system runs one instance anyway.
+- **User direction:** port the Android touch UI ("i have no controls"), the
+  motion controls, portrait, and a way to dismiss the keyboard.
+- **Touch controls:** `touch_enable` and `touch_gyro` default on for
+  `PLATFORM_IOS`, as on Android, and the Options dialog has the Touch page.
+  `build-ios-app.sh` packages the icons from `tools/android/touch_icons.py`
+  into `Portal.app/touch/`. At startup the app root installs them into
+  `<game>/custom/android_touch/`, the path Android uses, through the shared
+  `launcher_main/mobile_app_root.cpp`. That file now holds the installer and
+  the arguments-file reader that were duplicated in `android_main.cpp`. The
+  Android root compiles against it with the NDK r30 clang, and the 56 Android
+  profile and APK tests pass.
+- **Motion controls:** `inputsystem/gyro_sensor_ios.mm` implements the
+  `CGyroSensor` contract with Core Motion's device-motion stream, which
+  provides the bias-corrected rotation rate and gravity with sample
+  timestamps. A private serial operation queue owns the shared integrator and
+  up filter (`gyro_math`). Core Motion's device axes match Android's natural
+  axes. SDL3 reports iOS display orientation with the same semantics (natural
+  portrait on the main screen), so `gyro_sdl.cpp`'s screen mapping is
+  unchanged. Reading the gyroscope needs no usage-description key. The
+  binary links CoreMotion.
+- **Orientation:** all four orientations, as on Android (SDL hint and
+  Info.plist); the back buffer follows the drawable
+  (`mat_windowed_fullscreen`). The video options use Android's mobile policy
+  (`MOBILE_VIDEO_OPTIONS`: no windowed mode, gamma or aspect filter).
+  Info.plist also declares `UIApplicationSupportsIndirectInputEvents`, which
+  SDL asked for in the first device log.
+- **Keyboard dismissal:** `IInputSystem::StopTextInput` was added at the end
+  of the interface; the only implementer is in-tree. It acts only where SDL
+  reports a screen keyboard, the same condition under which `sdl3mgr` stops
+  keeping text input on for the whole window. So desktop input is unchanged,
+  and Wayland and X11 report one only without a physical keyboard or in Steam
+  gamepad mode. The keyboard hides:
+  - when a text field loses focus;
+  - when a VGUI tap lands outside the focused field (`InputWin32.cpp`);
+  - on Return on iOS (`SDL_HINT_RETURN_KEY_HIDES_IME`).
+- **Evidence:** `./build-ios-app.sh` builds; the static-composition check
+  passes (22 modules); the bundle holds the 18 icon files and the manifest.
+  The Linux static tree (`build-static`) builds the shared input, VGUI and
+  GameUI changes.
+- **Unverified:** the touch layout, gyro aiming, rotation and keyboard
+  behavior on the device. They need a user run.
+
 ## Not done
 
-- Device evidence: the app has not been signed with a provisioning profile,
-  installed or started. It needs Developer Mode on the phone, content in
-  Documents, and the iOS obligations in AGENTS.md (lifecycle, touch, memory
-  pressure).
+- Device evidence beyond the first boot: the AGENTS.md iOS obligations
+  (lifecycle, surface recreation, memory pressure) and the touch, gyro and
+  rotation behavior above.
 - The static root's list of modules lives in `launcher_main/wscript`. An iOS
   product profile should own it.
 - Static products still contain the loader's callers: the `-tools` path,

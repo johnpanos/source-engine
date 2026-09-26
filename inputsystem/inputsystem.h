@@ -388,6 +388,7 @@ public:
 	virtual bool EnableGyro( bool bEnable );
 	virtual bool GetGyroAccumulators( float &pitch, float &yaw, float &roll );
 	virtual bool GetGyroUp( float &right, float &up, float &out );
+	virtual void StopTextInput();
 
 #if defined( USE_SDL )
 	void PollInputState_Platform();

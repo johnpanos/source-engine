@@ -19,7 +19,7 @@ def build(bld):
 	if bld.env.ANDROID_SDL3:
 		# SDLActivity's native entry: libmain.so exporting SDL_main.
 		bld.shlib(
-			source   = ['android_main.cpp'],
+			source   = ['android_main.cpp', 'mobile_app_root.cpp'],
 			target   = 'main',
 			name     = PROJECT_NAME,
 			features = 'c cxx',
@@ -36,7 +36,7 @@ def build(bld):
 		# The app executable: SDL3 owns main() (SDL_main.h) and starts UIKit;
 		# the root links and binds every module (static_composition.cpp).
 		bld(
-			source   = ['ios_main.cpp', 'static_composition.cpp'],
+			source   = ['ios_main.cpp', 'mobile_app_root.cpp', 'static_composition.cpp'],
 			target   = PROJECT_NAME,
 			name     = PROJECT_NAME,
 			features = 'c cxx cxxprogram',

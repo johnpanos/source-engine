@@ -1,6 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: The device gyroscope, sampled on its own thread (Android NDK).
+// Purpose: The device gyroscope, sampled on its own thread (Android NDK:
+//          gyro_sensor.cpp; iOS Core Motion: gyro_sensor_ios.mm).
 //
 // The sensor thread owns every NDK sensor object and integrates each sample
 // into running rotation totals using the samples' own timestamps. It also
