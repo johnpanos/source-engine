@@ -871,8 +871,11 @@ Keep the table concise and link details below or from the domain progress file.
     `freebsd-legacy`). It gets no further work, and
     `platform/sdl2/window_system` needs no suite. Retiring those profiles, or
     SDL2 itself, is a separate user decision.
-  - Still open: Waf's `--platform-provider` defaults to `sdl2`; changing the
-    default is a separate change.
+  - Waf's `--platform-provider` defaults to `auto` (2026-09-26, user
+    direction): `sdl3` for every Vulkan client and iOS/tvOS, `sdl2` only for
+    legacy-renderer products (tests, tools, dedicated and the legacy client
+    scripts), whose configure is unchanged. Vulkan builds no longer need the
+    flag; an explicit `sdl2` with a Vulkan backend fails configure.
   - Changes no row's state: R14 and R18 stay `partial`, and R16's hard-gate
     violation stays until R14 closes.
 

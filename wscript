@@ -244,7 +244,19 @@ def run_test(self, fragment, msg):
 	result = self.check_cxx(fragment=fragment, msg=msg, mandatory = False)
 	return False if result == None else True
 
+def resolve_platform_provider(conf):
+	# SDL3 is the window/input provider wherever the product can use it: every
+	# Vulkan client, and the iOS/tvOS client. SDL2 remains only for the
+	# legacy-renderer products and compatibility profiles (AGENTS.md, R14/R18).
+	# The resolved name replaces 'auto' so product-profile checks see the
+	# provider actually linked; stored options keep 'auto' and resolve again.
+	if conf.options.PLATFORM_PROVIDER == 'auto':
+		vulkan = conf.options.RENDER_BACKEND in ('vulkan', 'native-vulkan')
+		conf.options.PLATFORM_PROVIDER = 'sdl3' if vulkan or conf.env.DEST_OS == 'ios' else 'sdl2'
+	conf.msg('Window/input provider', conf.options.PLATFORM_PROVIDER)
+
 def define_platform(conf):
+	resolve_platform_provider(conf)
 	conf.env.SDL3 = conf.options.PLATFORM_PROVIDER == 'sdl3'
 	conf.env.DXVK = conf.options.RENDER_BACKEND == 'vulkan'
 	conf.env.NATIVE_VULKAN = conf.options.RENDER_BACKEND == 'native-vulkan'
@@ -256,7 +268,8 @@ def define_platform(conf):
 		if conf.env.DEST_OS == 'ios' and not (conf.env.NATIVE_VULKAN and conf.env.SDL3):
 			conf.fatal('The iOS and tvOS clients require --platform-provider=sdl3 --render-backend=native-vulkan')
 		if not (conf.env.SDL3 and (conf.env.DXVK or conf.env.NATIVE_VULKAN)):
-			conf.fatal('Select both --platform-provider=sdl3 and --render-backend=vulkan')
+			conf.fatal('SDL3 and the Vulkan render backends require each other; '
+				'--platform-provider=sdl2 selects the legacy renderer')
 		conf.options.SDL = 1
 		conf.options.GL = 0
 		conf.define('USE_SDL3', 1)
@@ -419,8 +432,10 @@ def options(opt):
 
 	grp.add_option('--use-sdl', action = 'store', dest = 'SDL', type = 'int', default = sys.platform != 'win32',
 		help = 'build engine with SDL [default: %default]')
-	grp.add_option('--platform-provider', choices=['sdl2', 'sdl3'], default='sdl2',
-		dest='PLATFORM_PROVIDER', help='linked window/input provider')
+	grp.add_option('--platform-provider', choices=['auto', 'sdl2', 'sdl3'], default='auto',
+		dest='PLATFORM_PROVIDER',
+		help='linked window/input provider; auto selects sdl3 for Vulkan and iOS clients, '
+			'sdl2 for legacy-renderer products [default: %default]')
 	grp.add_option('--render-backend', choices=['legacy', 'vulkan', 'native-vulkan'], default='legacy',
 		dest='RENDER_BACKEND', help='linked renderer; vulkan uses the DXVK compatibility provider')
 	grp.add_option('--physics-backend', choices=['ivp', 'box3d', 'both'], default='ivp',
