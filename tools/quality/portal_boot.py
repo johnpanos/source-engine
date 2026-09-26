@@ -29,10 +29,20 @@ IMMUTABLE_ASSETS = {
     ".wav", ".mp3", ".ogg", ".webm", ".bik",
 }
 EXCLUDED_DIRECTORIES = {"screenshots", "save", "logs", "dumps"}
-# Version 1 exercises grow, shrink, aspect changes and non-aligned dimensions.
+# The sizes exercise grow, shrink, aspect changes and non-aligned dimensions.
+# Version 2 fixes the frame time and waits several frames per step (see
+# resize_commands) and adds the queued settle sweep.
+RESIZE_WORKLOAD_VERSION = 2
 RESIZE_WORKLOAD = ((640, 480), (801, 601), (1024, 576), (1279, 719),
                    (960, 720), (641, 479), (1280, 800), (1001, 701),
                    (800, 600), (1200, 675), (721, 541), (1024, 768))
+# Queued mode: a screenshot leaves queued rendering for its frame
+# (AllowThreading), so the main thread runs the render worker's queue. Taken at
+# each command-buffer pass from 0 to 24 after a resize (about 12 frames, past
+# the 60 ms settle), one screenshot lands in the frame that queues the settled
+# resize. Each size must still complete: a completion lost there once stopped
+# rendering for good.
+RESIZE_SETTLE_SWEEP = tuple(((860 + 8 * offset, 540 + 6 * offset), offset) for offset in range(25))
 
 
 
@@ -393,16 +403,52 @@ RESIZE_DRAG_WORKLOAD = tuple((800 + 20 * step, 600 + 10 * step) for step in rang
 
 # Main-thread cost of one resize request. Queued: publication only, the render
 # worker does the work. Sync: the resize itself, which must fit in one 60 Hz
-# frame for resizing to stay smooth.
+# frame for resizing to stay smooth. The engine reports the path each request
+# took (`path=worker|main`): in queued mode a frame without the worker (after a
+# screenshot) applies the resize on the main thread, under the sync budget.
 RESIZE_REQUEST_BUDGET_US = {"queued": 2000, "sync": 16667}
+RESIZE_PATH_MODE = {"worker": "queued", "main": "sync"}
+
+# Longest run of consecutive scaled presents a queued resize may show. Until the
+# render worker applies a settled resize, frames of the old size are scaled to
+# the new drawable: the engine's 60 ms settle (UpdateWindowSize) is 4 frames at
+# the workload's fps_max 60, plus the frame that requests the resize, the frame
+# the worker renders at the old size, and one frame of margin. A back buffer
+# that never follows its drawable scales every frame at that size and fails.
+QUEUED_SCALED_PRESENT_RUN_LIMIT = 7
+
+# Window systems where the server resizes the window before the client learns
+# its new size. A frame rendered in between is scaled to the new window: during
+# a continuous drag every frame can be, however promptly the renderer resizes.
+# A settled queued resize there also scales until the client sees the new size
+# (one frame) and its swapchain follows it (one frame): measured 7 on X11
+# against 5 on Wayland (2026-09-26).
+SERVER_SIZED_WINDOW_DRIVERS = ("x11",)
+SERVER_SIZED_SCALED_PRESENT_RUN_ALLOWANCE = 2
+PRESENT_CENSUS = r"\[vulkan\] presents=(\d+) scaled=(\d+)(?: longest_scaled_run=(\d+))?"
+
+
+def settled_present_census(log, expected):
+    """The renderer's present census at the last settled step, before any drag.
+
+    The renderer prints its census (on stderr, not interleaved with the console
+    log) with every native screenshot, and the workload's first screenshots are
+    one per settled step."""
+    census = re.findall(PRESENT_CENSUS, log)
+    return census[len(expected) - 1] if expected and len(census) >= len(expected) else None
 
 
 def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=(), mode="queued",
-                   require_unscaled=False):
+                   require_unscaled=False, sweep=()):
     """Require exact logical/drawable convergence and nonblocking full-frame presents.
 
-    `require_unscaled` also requires the renderer's census to report that no
-    present scaled its back buffer to the window (`[vulkan] presents=N scaled=0`)."""
+    `require_unscaled` also requires the renderer's present census. A synchronous
+    resize applies before the frame renders, so no present up to the last
+    settled step may scale its back buffer to the window, nor during the drag
+    unless the window system sizes windows itself (`SERVER_SIZED_WINDOW_DRIVERS`).
+    A queued resize settles first, so frames of the old size are scaled until
+    the worker applies it; no run of consecutive scaled presents may outlast
+    that (`QUEUED_SCALED_PRESENT_RUN_LIMIT`)."""
     observed = [(int(lw), int(lh), int(dw), int(dh)) for lw, lh, dw, dh in re.findall(
         r"RFC0001 resize observed: logical=(\d+)x(\d+) drawable=(\d+)x(\d+)", log)]
     queued = [(int(serial), int(width), int(height), int(micros))
@@ -435,6 +481,14 @@ def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=(),
                   if (frame.get("width"), frame.get("height")) == drawable]
         if not frames or not all(frame.get("has_scene_detail", False) for frame in frames):
             failures.append("missing or blank resize image at drawable %dx%d" % drawable)
+    if mode == "queued" and sweep:
+        for (width, height), _offset in sweep:
+            extents = [(dw, dh) for lw, lh, dw, dh in observed if (lw, lh) == (width, height)]
+            if not extents:
+                failures.append("SDL window did not reach sweep size %dx%d" % (width, height))
+            elif not any(item[1:3] == extents[-1] for item in completed):
+                failures.append("renderer did not complete sweep drawable %dx%d "
+                                "(a screenshot during the settle)" % extents[-1])
     if mode == "sync":
         # Every drawable seen, the drag's included, is resized on its frame, and
         # every image the run captured, the ones taken mid-drag included, is a
@@ -449,17 +503,41 @@ def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=(),
                 failures.append("image %dx%d is blank or not a size the renderer resized to"
                                 % size)
     budget = RESIZE_REQUEST_BUDGET_US[mode]
-    if queued and max(item[3] for item in queued) > budget:
-        failures.append("main-thread resize request exceeded %dus" % budget)
-    presents = re.findall(r"\[vulkan\] presents=(\d+) scaled=(\d+)", log)
-    scaled = None
+    paths = {int(serial): path for serial, path in re.findall(
+        r"RFC0001 resize queued: serial=(\d+) .*? path=(\w+)", log)}
+    for serial, width, height, micros in sorted(set(queued)):
+        path_budget = RESIZE_REQUEST_BUDGET_US[RESIZE_PATH_MODE.get(paths.get(serial), mode)]
+        if micros > path_budget:
+            failures.append("main-thread resize request %dx%d exceeded %dus (%s path)"
+                            % (width, height, path_budget, paths.get(serial, mode)))
+    presents = re.findall(PRESENT_CENSUS, log)
+    driver = re.search(r"RFC0001 window: provider=\w+ driver=(\w+)", log)
+    driver = driver.group(1) if driver else None
+    scaled = scaled_run = None
     if require_unscaled:
         if not presents:
             failures.append("renderer reported no present census")
-        else:
+        elif mode == "sync":
             scaled = int(presents[-1][1])
-            if scaled:
+            settled = settled_present_census(log, expected)
+            if settled is None:
+                failures.append("renderer reported no present census at the settled sizes")
+            elif int(settled[1]):
+                failures.append("%d presents scaled the back buffer to the window at settled "
+                                "sizes" % int(settled[1]))
+            if scaled and driver not in SERVER_SIZED_WINDOW_DRIVERS:
                 failures.append("%d presents scaled the back buffer to the window" % scaled)
+        elif not presents[-1][2]:
+            scaled = int(presents[-1][1])
+            failures.append("renderer reported no longest scaled-present run")
+        else:
+            scaled, scaled_run = int(presents[-1][1]), int(presents[-1][2])
+            limit = QUEUED_SCALED_PRESENT_RUN_LIMIT
+            if driver in SERVER_SIZED_WINDOW_DRIVERS:
+                limit += SERVER_SIZED_SCALED_PRESENT_RUN_ALLOWANCE
+            if scaled_run > limit:
+                failures.append("%d consecutive presents scaled the back buffer to the window "
+                                "(a settled queued resize allows %d)" % (scaled_run, limit))
     if any(item[3] != 0 for item in completed):
         failures.append("main thread waited for a renderer resize")
     presents = [record for record in trace_records if record.get("event") == "present"]
@@ -468,11 +546,14 @@ def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=(),
     if any(record.get("cropped") is not False for record in presents):
         failures.append("resize used cropped or unclassified presentation")
     return {"schema": "source-resize-evidence/v1", "status": "fail" if failures else "pass",
-            "mode": mode, "request_budget_us": budget, "scaled_presents": scaled,
+            "mode": mode, "window_driver": driver, "request_budget_us": budget,
+            "scaled_presents": scaled,
+            "longest_scaled_present_run": scaled_run,
             # Main-thread UI relayout after each resize; measured, not budgeted.
             "max_ui_relayout_us": max(ui_micros) if ui_micros else None,
             "requested_logical_sizes": list(expected), "observed_extents": observed,
-            "queued_resizes": queued, "completed_resizes": completed, "failures": failures,
+            "queued_resizes": queued, "resize_paths": paths, "completed_resizes": completed,
+            "failures": failures,
             "coverage": "SDL logical and drawable extents, lock-free main-thread publication, render-worker completion, exact nonblank backbuffers, and uncropped presentation."}
 
 
@@ -481,10 +562,25 @@ def resize_commands(workload=RESIZE_WORKLOAD, mode="queued"):
 
     `mode` selects the material system's threading: "queued" resizes on the
     render worker once the extent settles, "sync" on the frame it changes."""
-    commands = ["mat_queue_mode %d" % (2 if mode == "queued" else 0), "wait 120"]
+    # `wait` counts command-buffer passes, not rendered frames. A frame runs at
+    # least two passes, and after a slow frame (a native screenshot renders and
+    # reads back a whole frame) the host catches up with a tick, and its passes,
+    # for each 15 ms it fell behind. A step's whole wait could then pass in one
+    # frame: the next size arrived before the last one settled, or in the frame
+    # that took the screenshot, which then captured the next size. A fixed frame
+    # time (one 15 ms tick per frame) removes the catch-up, and each wait keeps a
+    # margin of several frames: the settle and the render worker after a resize,
+    # and a frame boundary between a screenshot and the next resize.
+    commands = ["mat_queue_mode %d" % (2 if mode == "queued" else 0), "host_framerate 0.015",
+                "wait 120"]
     for width, height in workload:
         commands += ["mat_resizewindow %d %d" % (width, height),
-                     "wait 12", "screenshot", "wait 1"]
+                     "wait 30", "screenshot", "wait 6"]
+    if mode == "queued":
+        for (width, height), offset in RESIZE_SETTLE_SWEEP:
+            commands += ["mat_resizewindow %d %d" % (width, height)]
+            commands += ["wait %d" % offset] if offset else []
+            commands += ["screenshot", "wait 30"]
     if mode == "sync":
         # Screenshots taken mid-drag are frames the window really presented.
         for step, (width, height) in enumerate(RESIZE_DRAG_WORKLOAD):
@@ -756,8 +852,8 @@ def main(argv=None):
             tail = command.index("+wait", command.index("+developer"))
             resize_script = install_resize_script(stage, mode=args.resize_mode)
             command = command[:tail] + ["-resizetelemetry", "+exec", "rfc0001_resize_e2e"]
-            evidence["resize_workload"] = {"version": 1, "sizes": RESIZE_WORKLOAD,
-                                           **resize_script}
+            evidence["resize_workload"] = {"version": RESIZE_WORKLOAD_VERSION,
+                                           "sizes": RESIZE_WORKLOAD, **resize_script}
         if args.require_provider_catalog:
             command += ["-moduleloadtelemetry"]
         environment = os.environ.copy()
@@ -819,7 +915,7 @@ def main(argv=None):
                 trace_records = [json.loads(line) for line in trace.read_text().splitlines() if line]
             evidence["resize"] = inspect_resize(
                 log, screenshots, trace_records=trace_records, mode=args.resize_mode,
-                require_unscaled=args.renderer == "native-vulkan")
+                require_unscaled=args.renderer == "native-vulkan", sweep=RESIZE_SETTLE_SWEEP)
             failures.extend(evidence["resize"]["failures"])
         if args.require_provider_catalog:
             evidence["provider_catalog"] = inspect_provider_catalog(log)

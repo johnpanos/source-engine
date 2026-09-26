@@ -772,12 +772,9 @@ void CMatSystemSurface::FinishDrawing( void )
 void CMatSystemSurface::RunFrame()
 {
 	// A display scale or ui_scale change relays out like a screen size change.
-	const double rzA = Plat_FloatTime(); // RZDBG
 	UpdateUIScale();
 	FollowScreenSize();
-	const double rzB = Plat_FloatTime(); // RZDBG
 	RunPendingFontReset();
-	if ( Plat_FloatTime() - rzA > 0.005 ) Msg( "RZDBG vgui follow=%.2fms fontreset=%.2fms\n", ( rzB - rzA ) * 1000.0, ( Plat_FloatTime() - rzB ) * 1000.0 ); // RZDBG
 
 	int nPollCount = g_pInputSystem->GetPollCount();
 	if ( m_nLastInputPollCount == nPollCount )

@@ -1674,33 +1674,33 @@ void CVideoMode_Common::ReadScreenPixels( int x, int y, int w, int h, void *pBuf
 //-----------------------------------------------------------------------------
 void CVideoMode_Common::TakeSnapshotTGA( const char *pFilename )
 {
-    // bitmap bits
-    uint8 *pImage = new uint8[ GetModeStereoWidth() * 3 * GetModeStereoHeight() ];
+	// bitmap bits
+	uint8 *pImage = new uint8[GetModeStereoWidth() * 3 * GetModeStereoHeight()];
 
-    // Get Bits from the material system
-    ReadScreenPixels( 0, 0, GetModeStereoWidth(), GetModeStereoHeight(), pImage, IMAGE_FORMAT_RGB888 );
-	Msg( "R03DBG screenshot t=%.4f mode=%dx%d\n", Plat_FloatTime(), GetModeStereoWidth(), GetModeStereoHeight() ); // R03DBG
+	// Get Bits from the material system
+	ReadScreenPixels(
+	    0, 0, GetModeStereoWidth(), GetModeStereoHeight(), pImage, IMAGE_FORMAT_RGB888 );
 
-    CUtlBuffer outBuf;
-    if ( TGAWriter::WriteToBuffer( pImage, outBuf, GetModeStereoWidth(), GetModeStereoHeight(), IMAGE_FORMAT_RGB888,
-        IMAGE_FORMAT_RGB888 ) )
-    {
-        if ( !g_pFileSystem->WriteFile( pFilename, NULL, outBuf ) )
-        {
-            Warning( "Couldn't write bitmap data snapshot to file %s.\n", pFilename );
-        }
+	CUtlBuffer outBuf;
+	if ( TGAWriter::WriteToBuffer( pImage, outBuf, GetModeStereoWidth(), GetModeStereoHeight(),
+	         IMAGE_FORMAT_RGB888, IMAGE_FORMAT_RGB888 ) )
+	{
+		if ( !g_pFileSystem->WriteFile( pFilename, NULL, outBuf ) )
+		{
+			Warning( "Couldn't write bitmap data snapshot to file %s.\n", pFilename );
+		}
 		else
 		{
 			char szPath[MAX_PATH];
 			szPath[0] = 0;
-			if ( g_pFileSystem->GetLocalPath( pFilename, szPath, sizeof(szPath) ) )
+			if ( g_pFileSystem->GetLocalPath( pFilename, szPath, sizeof( szPath ) ) )
 			{
 				AddScreenshotToSteam( szPath, GetModeStereoWidth(), GetModeStereoHeight() );
 			}
 		}
-    }
+	}
 
-    delete[] pImage;
+	delete[] pImage;
 }
 
 //-----------------------------------------------------------------------------
@@ -2479,7 +2479,6 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 	}
 
 	const MaterialWindowResizeStatus_t status = m_pWindowResize->GetWindowResizeStatus();
-	if ( status.m_nRequestedSerial != status.m_nCompletedSerial ) Msg( "R03DBG update-pending t=%.4f req=%llu done=%llu\n", Plat_FloatTime(), (unsigned long long)status.m_nRequestedSerial, (unsigned long long)status.m_nCompletedSerial ); // R03DBG
 	if ( status.m_nRequestedSerial != status.m_nCompletedSerial )
 		return false;
 	if ( status.m_nCompletedSerial > m_nCompletedResizeSerial )
@@ -2495,7 +2494,6 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 
 	uint drawableWidth = 0, drawableHeight = 0;
 	g_pLauncherMgr->DisplayedSize( drawableWidth, drawableHeight );
-	if ( CommandLine()->FindParm( "-resizetelemetry" ) ) { static double s_last = 0; const double now = Plat_FloatTime(); if ( m_nPendingDrawableWidth || drawableWidth != static_cast<uint>( GetModeWidth() ) || now - m_flPendingDrawableSince < 1.5 ) Msg( "RZDBG t=%.4f dt=%.1fms drawable=%ux%u mode=%dx%d pending=%ux%u\n", now, ( now - s_last ) * 1000.0, drawableWidth, drawableHeight, GetModeWidth(), GetModeHeight(), m_nPendingDrawableWidth, m_nPendingDrawableHeight ); s_last = now; } // RZDBG
 	if ( !drawableWidth || !drawableHeight )
 		return true;
 	if ( drawableWidth == static_cast<uint>( GetModeWidth() ) &&
@@ -2548,7 +2546,6 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 		return true;
 	}
 	m_bResizeQueueWarning = false;
-	const double rzA = Plat_FloatTime(); // RZDBG
 
 	const int oldUIWidth = GetModeUIWidth(), oldUIHeight = GetModeUIHeight();
 	// The drawable is taken as-is (the requested window size), not snapped to a
@@ -2556,10 +2553,8 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 	RequestedWindowVideoMode().width = drawableWidth;
 	RequestedWindowVideoMode().height = drawableHeight;
 	ResetCurrentModeForNewResolution( drawableWidth, drawableHeight, true );
-	const double rzB = Plat_FloatTime(); // RZDBG
 	m_bWindowed = bWindowed;
 	game->SetWindowSize( drawableWidth, drawableHeight );
-	const double rzC = Plat_FloatTime(); // RZDBG
 	// The view covers the drawable the renderer is switching to. Recomputing it
 	// from the back buffer (MarkClientViewRectDirty) would read the old extent:
 	// a D3D9 device only resets on a later frame, so the stale view would stay
@@ -2578,7 +2573,6 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 	// (proportional fonts, panel layout) is main-thread UI work, reported
 	// separately as ui_us rather than hidden inside the request.
 	const double uiStarted = Plat_FloatTime();
-	Msg( "RZDBG request=%.2fms reset=%.2fms setwindow=%.2fms view=%.2fms\n", ( rzA - requestStarted ) * 1000.0, ( rzB - rzA ) * 1000.0, ( rzC - rzB ) * 1000.0, ( uiStarted - rzC ) * 1000.0 ); // RZDBG
 	vgui::surface()->OnScreenSizeChanged( oldUIWidth, oldUIHeight );
 	const double uiFinished = Plat_FloatTime();
 	m_nPendingDrawableWidth = m_nPendingDrawableHeight = 0;
@@ -2587,11 +2581,13 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 		const uint64 requestMicros =
 		    static_cast<uint64>( ( uiStarted - requestStarted ) * 1000000.0 );
 		const uint64 uiMicros = static_cast<uint64>( ( uiFinished - uiStarted ) * 1000000.0 );
-		Msg( "R03DBG queued t=%.4f\n", Plat_FloatTime() ); // R03DBG
-		Msg( "RFC0001 resize queued: serial=%llu drawable=%ux%u request_us=%llu ui_us=%llu\n",
+		// path: the render worker applies the resize, or (no worker this frame)
+		// the main thread applied it inside the request.
+		Msg( "RFC0001 resize queued: serial=%llu drawable=%ux%u request_us=%llu ui_us=%llu "
+		     "path=%s\n",
 		    static_cast<unsigned long long>( request.m_nSerial ), drawableWidth, drawableHeight,
 		    static_cast<unsigned long long>( requestMicros ),
-		    static_cast<unsigned long long>( uiMicros ) );
+		    static_cast<unsigned long long>( uiMicros ), immediate ? "main" : "worker" );
 	}
 #endif
 	return true;

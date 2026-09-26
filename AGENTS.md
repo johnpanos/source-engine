@@ -1319,9 +1319,34 @@ Keep the table concise and link details below or from the domain progress file.
     Android launcher and the iOS/tvOS launcher still pin 0.
     `frame_pacing.py` defaults to 0 and takes `--mat-queue-mode 2`.
   - A TSan run of the product tree found 46 signatures only in mode 2, each
-    triaged in the record. `portal_boot --resize-stress` fails in both modes.
-    No device-loss or mobile evidence. See the
+    triaged in the record. `portal_boot --resize-stress` passes in both modes
+    since R32-RESIZE. No device-loss or mobile evidence. See the
     [queued rendering record](RFC/0001-native-vulkan-queued-rendering-progress.md).
+
+- R32-RESIZE: `partial` (2026-09-26, user direction). This makes window
+  resize and surface recreation robust on native Vulkan.
+  `portal_boot --resize-stress` now passes in queued and sync modes on
+  Wayland and X11, three runs each. It had never passed on native.
+  - Fixed: a resize queued just before rendering left queued mode (a
+    screenshot, a config change) was never published as complete, and the
+    engine stopped rendering for good. Every queue drain now publishes it
+    (`CMaterialSystem::PublishExecutedWindowResize`).
+  - Fixed: a new video mode rebuilt the whole swapchain, which costs about a
+    vsync on X11. Now it rebuilds only the back buffers
+    (`RecreateBackBuffers`). The slowest sync request on X11 fell from
+    21-24 ms to 7-9 ms.
+  - Harness (workload version 2):
+    - a fixed frame time and margins, because `wait` counts command-buffer
+      passes;
+    - a queued settle sweep that catches the lost completion, 2 of 2 runs
+      with the fix removed;
+    - per-path request budgets;
+    - a bound on the longest run of scaled presents, in place of "none" in
+      queued mode.
+  - Not done: Android surface recreation, iOS backgrounding, a Fold7 fold
+    run, device loss, a clang build, and budgets for the main-thread UI
+    relayout (up to 40 ms) and the native screenshot readback. See the
+    [record](RFC/0001-native-vulkan-progress.md#window-resize-and-surface-recreation-r32-resize-2026-09-26).
 
 - R32-LEGACY-SHADERS: `partial` (2026-09-25, user direction: "implement all
   missing shader types in vulkan native"). 84 GLSL ports of stdshader_dx9 pairs

@@ -1169,9 +1169,13 @@ public:
 	uint64_t SubmittedFrameSerial() const { return m_submitSerial; }
 	bool WaitForSubmittedFrame( uint64_t serial, uint64_t timeoutNs );
 	// Frames presented, and how many of them the present blit had to scale
-	// because the back buffer and the drawable differed.
+	// because the back buffer and the drawable differed. The longest run of
+	// consecutive scaled presents bounds how long the back buffer took to follow
+	// a changed drawable (a queued resize settles first; a synchronous one never
+	// scales).
 	uint64_t PresentCount() const { return m_presentCount; }
 	uint64_t ScaledPresentCount() const { return m_scaledPresentCount; }
+	uint64_t LongestScaledPresentRun() const { return m_longestScaledPresentRun; }
 
 	// The monitor gamma ramp (render.gamma-ramp.v1), applied to the presented
 	// image as D3D9's hardware ramp is; back-buffer reads (captures, ReadPixels)
@@ -1280,6 +1284,7 @@ private:
 	// `oldSwapchain` hands the presentation over (VkSwapchainCreateInfoKHR), so a
 	// rebuild never leaves the window without a presentable image.
 	bool CreateSwapchain( std::string *outError, VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE );
+	bool CreateBackBuffers( std::string *outError );
 	bool CreateRenderPass( std::string *outError );
 	bool CreateAttachmentPass( VkAttachmentLoadOp loadOp, VkImageLayout colorInitial,
 	    VkImageLayout colorFinal, VkImageLayout depthInitial, VkRenderPass *outPass,
@@ -1304,7 +1309,9 @@ private:
 	bool CreateCaptureImage( VkExtent2D extent, std::string *outError );
 
 	void DestroySwapchainObjects();
+	void DestroyBackBuffers();
 	bool RecreateSwapchain( std::string *outError );
+	bool RecreateBackBuffers( std::string *outError );
 	// Whether the surface's extent or transform differs from the ones the
 	// swapchain was built against; a SUBOPTIMAL result rebuilds only then.
 	bool SurfaceChangedSinceSwapchain();
@@ -1322,6 +1329,8 @@ private:
 	// blitting it. False (nothing recorded) when the pass is unavailable.
 	bool RecordPresentGamma(
 	    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture );
+	// Counts a present, scaled when the back buffer and the drawable differ.
+	void NotePresent( bool scaled );
 	// Copies the presented swapchain image (in `layout`, last written at
 	// `srcStage`/`srcAccess`) for capture if requested, then transitions it to
 	// PRESENT_SRC.
@@ -1435,6 +1444,8 @@ private:
 	bool m_capturePresented = false;
 	uint64_t m_presentCount = 0;
 	uint64_t m_scaledPresentCount = 0;
+	uint64_t m_scaledPresentRun = 0;
+	uint64_t m_longestScaledPresentRun = 0;
 	bool m_presentCapturable = false;
 	std::vector<VkImage> m_presentImages;
 

@@ -996,9 +996,10 @@ static void ReportUnimplementedEntries()
 	fprintf( stderr, "[vulkan] fog: scene mode=%d color=%d,%d,%d start=%.1f end=%.1f z=%.1f max=%.2f\n",
 	    static_cast<int>( g_Fog.sceneMode ), g_Fog.sceneColor[0], g_Fog.sceneColor[1],
 	    g_Fog.sceneColor[2], g_Fog.start, g_Fog.end, g_Fog.fogZ, g_Fog.maxDensity );
-	fprintf( stderr, "[vulkan] presents=%llu scaled=%llu\n",
+	fprintf( stderr, "[vulkan] presents=%llu scaled=%llu longest_scaled_run=%llu\n",
 	    static_cast<unsigned long long>( g_VulkanContext.PresentCount() ),
-	    static_cast<unsigned long long>( g_VulkanContext.ScaledPresentCount() ) );
+	    static_cast<unsigned long long>( g_VulkanContext.ScaledPresentCount() ),
+	    static_cast<unsigned long long>( g_VulkanContext.LongestScaledPresentRun() ) );
 	fprintf( stderr,
 	    "[vulkan] render targets: draws=%llu switches=%llu copies=%llu copies-dropped=%llu\n",
 	    static_cast<unsigned long long>( g_DrawsIntoTargets ),

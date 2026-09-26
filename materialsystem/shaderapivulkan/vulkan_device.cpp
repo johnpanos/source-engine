@@ -832,9 +832,16 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE, m_presentImages[i], "swapchain image %u", i );
 	if ( !GrowRenderFinished( actual, outError ) )
 		return false;
+	m_imagesInFlight.assign( actual, VK_NULL_HANDLE );
+	return CreateBackBuffers( outError );
+}
 
-	// One back buffer per swapchain image, so a frame never renders into one an
-	// earlier frame is still presenting from (m_imagesInFlight guards both).
+// One back buffer per swapchain image, so a frame never renders into one an
+// earlier frame is still presenting from (m_imagesInFlight guards both). They
+// are the video mode's size; the present blit scales them to the drawable.
+bool CVulkanContext::CreateBackBuffers( std::string *outError )
+{
+	const uint32_t actual = static_cast<uint32_t>( m_presentImages.size() );
 	m_swapExtent = ( m_requestedBackBuffer.width > 0 && m_requestedBackBuffer.height > 0 )
 	                   ? m_requestedBackBuffer
 	                   : m_presentExtent;
@@ -920,7 +927,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		iv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		iv.subresourceRange.levelCount = 1;
 		iv.subresourceRange.layerCount = 1;
-		r = vkCreateImageView( m_device, &iv, nullptr, &m_swapImageViews[i] );
+		VkResult r = vkCreateImageView( m_device, &iv, nullptr, &m_swapImageViews[i] );
 		if ( r == VK_SUCCESS && m_srgbAttachments )
 		{
 			iv.format = m_swapFormatSrgb;
@@ -933,11 +940,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		}
 	}
 
-	m_imagesInFlight.assign( actual, VK_NULL_HANDLE );
-
-	if ( !CreateDepthResources( outError ) )
-		return false;
-	return true;
+	return CreateDepthResources( outError );
 }
 
 bool CVulkanContext::CreateDepthResources( std::string *outError )
@@ -6442,8 +6445,14 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	                               ( m_requestedBackBuffer.width != m_swapExtent.width ||
 	                                   m_requestedBackBuffer.height != m_swapExtent.height );
 	const bool presentModePending = m_requestedVSync != m_swapchainVSync;
-	if ( ( drawableChanged || backBufferPending || presentModePending || m_acquireTimedOut ) &&
-	     !RecreateSwapchain( outError ) )
+	// A new back-buffer size alone keeps the swapchain (RecreateBackBuffers).
+	if ( drawableChanged || presentModePending || m_acquireTimedOut ||
+	     ( backBufferPending && m_swapchain == VK_NULL_HANDLE ) )
+	{
+		if ( !RecreateSwapchain( outError ) )
+			return false;
+	}
+	else if ( backBufferPending && !RecreateBackBuffers( outError ) )
 		return false;
 	m_acquireTimedOut = false;
 	if ( m_swapchain != VK_NULL_HANDLE && !ApplySampleCount( outError ) )
@@ -7852,15 +7861,26 @@ void CVulkanContext::RecordPresentBlit(
 	    static_cast<int32_t>( m_presentExtent.height ), 1 };
 	const bool sameSize = m_swapExtent.width == m_presentExtent.width &&
 	                      m_swapExtent.height == m_presentExtent.height;
-	++m_presentCount;
-	if ( !sameSize )
-		++m_scaledPresentCount;
+	NotePresent( !sameSize );
 	vkCmdBlitImage( cmd, m_swapImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	    m_presentImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
 	    sameSize ? VK_FILTER_NEAREST : m_presentFilter );
 
 	RecordPresentedCaptureAndRelease( cmd, imageIndex, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 	    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, capture );
+}
+
+void CVulkanContext::NotePresent( bool scaled )
+{
+	++m_presentCount;
+	if ( !scaled )
+	{
+		m_scaledPresentRun = 0;
+		return;
+	}
+	++m_scaledPresentCount;
+	++m_scaledPresentRun;
+	m_longestScaledPresentRun = std::max( m_longestScaledPresentRun, m_scaledPresentRun );
 }
 
 void CVulkanContext::RecordPresentedCaptureAndRelease( VkCommandBuffer cmd, uint32_t imageIndex,
@@ -8576,10 +8596,8 @@ bool CVulkanContext::RecordPresentGamma(
 	vkCmdDraw( cmd, 3, 1, 0, 0 );
 	vkCmdEndRenderPass( cmd );
 
-	++m_presentCount;
+	NotePresent( !sameSize );
 	++m_gammaPresentCount;
-	if ( !sameSize )
-		++m_scaledPresentCount;
 	RecordPresentedCaptureAndRelease( cmd, imageIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 	    capture );
@@ -9236,6 +9254,19 @@ bool CVulkanContext::ResolveCapturedPixels( std::string *outError )
 void CVulkanContext::DestroySwapchainObjects()
 {
 	DestroyPresentGammaTargets();
+	DestroyBackBuffers();
+	m_presentImages.clear();
+	m_imagesInFlight.clear();
+
+	if ( m_swapchain != VK_NULL_HANDLE )
+	{
+		vkDestroySwapchainKHR( m_device, m_swapchain, nullptr );
+		m_swapchain = VK_NULL_HANDLE;
+	}
+}
+
+void CVulkanContext::DestroyBackBuffers()
+{
 	for ( VkFramebuffer fb : m_framebuffers )
 		if ( fb != VK_NULL_HANDLE )
 			vkDestroyFramebuffer( m_device, fb, nullptr );
@@ -9275,14 +9306,6 @@ void CVulkanContext::DestroySwapchainObjects()
 		if ( mem != VK_NULL_HANDLE )
 			vkFreeMemory( m_device, mem, nullptr );
 	m_backBufferMemories.clear();
-	m_presentImages.clear();
-	m_imagesInFlight.clear();
-
-	if ( m_swapchain != VK_NULL_HANDLE )
-	{
-		vkDestroySwapchainKHR( m_device, m_swapchain, nullptr );
-		m_swapchain = VK_NULL_HANDLE;
-	}
 }
 
 bool CVulkanContext::RecreateSwapchain( std::string *outError )
@@ -9313,6 +9336,19 @@ bool CVulkanContext::RecreateSwapchain( std::string *outError )
 	return true;
 }
 
+// A new video mode keeps the swapchain: only the back buffers (and their depth
+// and framebuffers) take the new size. Recreating the swapchain as well cost a
+// vsync on X11 (vkCreateSwapchainKHR), on the thread that owns the device, for
+// every resize, and the window's own change already rebuilds it once.
+bool CVulkanContext::RecreateBackBuffers( std::string *outError )
+{
+	vkDeviceWaitIdle( m_device );
+	m_completedSerial = m_submitSerial;
+	RetireCompletedTextures();
+	DestroyBackBuffers();
+	return CreateBackBuffers( outError ) && CreateFramebuffers( outError );
+}
+
 bool CVulkanContext::SetBackBufferSize( int width, int height, std::string *outError )
 {
 	const VkExtent2D requested = { static_cast<uint32_t>( std::max( 0, width ) ),
@@ -9328,6 +9364,8 @@ bool CVulkanContext::SetBackBufferSize( int width, int height, std::string *outE
 	if ( m_swapchain != VK_NULL_HANDLE && target.width == current.width &&
 	     target.height == current.height )
 		return true;
+	if ( m_swapchain != VK_NULL_HANDLE )
+		return RecreateBackBuffers( outError );
 	return RecreateSwapchain( outError );
 }
 

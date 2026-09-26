@@ -1,6 +1,6 @@
 # RFC 0001 native Vulkan backend progress
 
-Updated: 2026-09-25
+Updated: 2026-09-26
 
 This record tracks the *native* Vulkan material backend (`shaderapivulkan`),
 distinct from the DXVK compatibility waypoint documented in
@@ -2107,3 +2107,87 @@ Evidence:
 Not done: no frame-time measurement of levels 1 and 2. The D3D9/DXVK tree was
 not rebuilt with the header change. No Android, Apple or combined validation
 and RenderDoc runs.
+
+## Window resize and surface recreation (R32-RESIZE, 2026-09-26)
+
+User direction: make window resize and surface recreation robust on native
+Vulkan, since every north-star platform needs it (window resize, rotation, a
+foldable's display swap, backgrounding). `portal_boot --resize-stress` had
+never passed on native. It now passes in both material-system modes on
+Wayland and X11.
+
+Found and fixed:
+- **A queued resize could stop rendering for good.** Anything that leaves
+  queued mode (a screenshot's `AllowThreading(false)`, a config change, a
+  material reload, a requested mode switch) makes the main thread run the
+  render worker's queue. If that queue held a resize request, the resize ran,
+  but only the worker published its completion. The engine then waited for
+  that serial forever: `UpdateWindowSize` returned false on every later
+  frame, so the screen never updated again. Every queue drain now publishes
+  through one owner, `CMaterialSystem::PublishExecutedWindowResize`
+  (`ForceSingleThreaded`, both `EndFrame` mode-switch drains, and the worker).
+- **Every resize rebuilt the swapchain twice.** A new video mode went through
+  `RecreateSwapchain`, as the window's own change already did.
+  `vkCreateSwapchainKHR` costs about a vsync on X11 (15-18 ms measured),
+  paid on the thread that owns the device. `SetBackBufferSize`, and a
+  back-buffer size deferred to `BeginFrame`, now rebuild only the back
+  buffers with their depth and framebuffers (`RecreateBackBuffers`); the
+  swapchain follows only the surface. The slowest synchronous resize request
+  on X11 fell from 21-24 ms to 7-9 ms.
+- **The harness measured frame rate, not resizing.** Its `wait` counts
+  command-buffer passes, and a frame runs at least two, more after a slow
+  frame: a native screenshot renders and reads back a frame (200-670 ms
+  here). A step's whole wait then passed within one frame, so the next size
+  arrived before the last settled (sizes merged), or the screenshot captured
+  the next size ("missing image"). Workload version 2 fixes the frame time
+  (`host_framerate 0.015`) and leaves several frames around each screenshot.
+- **Queued scaling was judged as a defect.** Until the worker applies a
+  settled resize, frames of the old size are scaled to the new window, as the
+  engine intends. The backend now reports its longest run of consecutive
+  scaled presents (`longest_scaled_run`). Queued mode must stay within the
+  settle: 7 presents, or 9 where the server sizes the window (X11). Sync mode
+  must present no scaled frame up to the last settled step. On Wayland it
+  must also present none during the drag. On X11 the server applies each
+  drag size before the client learns of it.
+- **Budgets by path.** The engine's telemetry now says which path each
+  request took (`path=worker|main`). A frame without the worker, such as the
+  one after a screenshot, resizes on the main thread and is judged by the
+  one-frame budget.
+- Removed debug prints (`R03DBG`) left in the resize path by an earlier
+  `jp: wip` commit. One logged every frame while a resize was pending.
+
+New oracle: in queued mode the workload adds a settle sweep. A screenshot is
+taken at every pass offset (0-24) from a resize, so one lands in the frame
+that queues it, and every sweep size must complete. With the three main-thread
+publications removed, it fails in 2 of 2 runs: rendering stops at offset 3 or
+4, and 22-23 sizes never complete. With them, it passes.
+
+Evidence (`build/` at `a0f37cae` plus this change, RADV, isolated headless
+mutter, `portal_boot.py --runtime run/runtime --build build --renderer
+native-vulkan --resize-stress --resize-mode queued|sync`):
+
+| Window system, mode | Result | Worker requests (max) | Main-thread requests (median / max) | Scaled presents (longest run) |
+| --- | --- | --- | --- | --- |
+| Wayland, queued | pass (x3) | 34 (8 µs) | 3 (5.3 / 5.7 ms) | 81 (5) |
+| Wayland, sync | pass (x3) | — | 25 (6.0 / 8.1 ms) | 0 |
+| X11, queued | pass (x3) | 28 (7 µs) | 9 (5.5 / 5.9 ms) | 157 (7) |
+| X11, sync | pass (x3) | — | 23 (5.6 / 7.6 ms) | 0-3, drag only |
+
+- The UI relayout after each resize takes up to 40 ms on the main thread
+  (`ui_us`, measured, not budgeted). The deferred font reset adds 140-200 ms
+  once a size settles.
+- `test_portal_boot.py`: 63 tests. They include the settle sweep, the
+  per-path budget, the scaled-run limit and the settled-census rule, each
+  with negative cases.
+- `native_vulkan_bringup_conformance` (99 checks) and
+  `render_presentation_sdl3_vulkan_conformance` (48 plus 5 pixel checks) pass
+  on Wayland and X11. The `linux-native-vulkan-gpu` profile passes 15/15. A
+  plain native `portal_boot` passes.
+- `material_facing_vulkan_conformance` and
+  `material_equivalence_vulkan_conformance` segfault right after device
+  creation, with this change and with the backend rebuilt from `a0f37cae`
+  alike. This predates the change and is not triaged.
+
+Not done: no Android surface recreation, iOS foreground/background or Fold7
+fold run; no device-loss case; no clang build of this change. Main-thread UI
+relayout and the native screenshot readback are unbudgeted.

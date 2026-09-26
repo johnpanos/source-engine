@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import re
 import struct
 import sys
 import tarfile
@@ -98,10 +99,21 @@ class AcceptanceTests(unittest.TestCase):
 
 class ResizeAcceptanceTests(unittest.TestCase):
     def test_resize_workload_uses_the_frame_command_buffer(self):
+        commands = boot.resize_commands(((641, 479),))
         self.assertEqual(
-            ["mat_queue_mode 2", "wait 120", "mat_resizewindow 641 479", "wait 12",
-             "screenshot", "wait 1", "wait 10", "quit"],
-            boot.resize_commands(((641, 479),)))
+            ["mat_queue_mode 2", "host_framerate 0.015", "wait 120", "mat_resizewindow 641 479",
+             "wait 30", "screenshot", "wait 6"], commands[:7])
+        self.assertEqual(["wait 10", "quit"], commands[-2:])
+        # The settle sweep: a screenshot at each pass offset from a resize.
+        sweep = commands[7:-2]
+        for (width, height), offset in boot.RESIZE_SETTLE_SWEEP:
+            step = ["mat_resizewindow %d %d" % (width, height)]
+            step += ["wait %d" % offset] if offset else []
+            step += ["screenshot", "wait 30"]
+            self.assertEqual(step, sweep[:len(step)])
+            sweep = sweep[len(step):]
+        self.assertEqual([], sweep)
+        self.assertEqual(list(range(25)), [offset for _, offset in boot.RESIZE_SETTLE_SWEEP])
 
     def test_resize_script_is_one_line_and_records_its_hash(self):
         with tempfile.TemporaryDirectory() as root:
@@ -109,7 +121,7 @@ class ResizeAcceptanceTests(unittest.TestCase):
             result = boot.install_resize_script(stage, ((641, 479),))
             script = stage / result["path"]
             self.assertEqual(1, len(script.read_text().splitlines()))
-            self.assertIn("wait 120; mat_resizewindow 641 479; wait 12", script.read_text())
+            self.assertIn("wait 120; mat_resizewindow 641 479; wait 30", script.read_text())
             self.assertEqual(boot.sha256(script), result["sha256"])
 
     def test_long_resize_workload_chains_scripts_below_the_line_limit(self):
@@ -150,10 +162,11 @@ class ResizeAcceptanceTests(unittest.TestCase):
 
     def test_sync_resize_workload_runs_without_the_render_worker_and_drags(self):
         commands = boot.resize_commands(((641, 479),), "sync")
-        self.assertEqual(["mat_queue_mode 0", "wait 120", "mat_resizewindow 641 479", "wait 12",
-                          "screenshot", "wait 1"], commands[:6])
+        self.assertEqual(["mat_queue_mode 0", "host_framerate 0.015", "wait 120",
+                          "mat_resizewindow 641 479", "wait 30", "screenshot", "wait 6"],
+                         commands[:7])
         drag = ["mat_resizewindow %d %d" % size for size in boot.RESIZE_DRAG_WORKLOAD]
-        self.assertEqual(drag, [c for c in commands[6:] if c.startswith("mat_resizewindow")])
+        self.assertEqual(drag, [c for c in commands[7:] if c.startswith("mat_resizewindow")])
         # One size per frame, with frames captured mid-drag.
         self.assertEqual("wait 1", commands[commands.index(drag[0]) + 1])
         self.assertEqual(len(boot.RESIZE_DRAG_WORKLOAD) // 4 + 2, commands.count("screenshot"))
@@ -197,6 +210,98 @@ class ResizeAcceptanceTests(unittest.TestCase):
         self.assertEqual("fail", status(log(9000, "[vulkan] presents=40 scaled=1\n"),
                                         require_unscaled=True)["status"])
         self.assertEqual("fail", status(log(9000, ""), require_unscaled=True)["status"])
+
+    def test_sync_resize_is_unscaled_at_settled_sizes_on_every_window_system(self):
+        def log(driver, settled, dragged):
+            return ("RFC0001 window: provider=sdl3 driver=%s\n"
+                    "RFC0001 resize observed: logical=641x479 drawable=641x479\n"
+                    "RFC0001 resize queued: serial=1 drawable=641x479 request_us=9000\n"
+                    "RFC0001 resize complete: serial=1 drawable=641x479 main_wait_us=0\n"
+                    "[vulkan] presents=40 scaled=%d longest_scaled_run=%d\n"
+                    "RFC0001 resize observed: logical=820x610 drawable=820x610\n"
+                    "RFC0001 resize queued: serial=2 drawable=820x610 request_us=9000\n"
+                    "RFC0001 resize complete: serial=2 drawable=820x610 main_wait_us=0\n"
+                    "[vulkan] presents=60 scaled=%d longest_scaled_run=%d\n"
+                    % (driver, settled, settled, settled + dragged, max(settled, dragged)))
+        images = [{"width": 641, "height": 479, "has_scene_detail": True}]
+        def status(text):
+            return boot.inspect_resize(text, images, ((641, 479),), mode="sync",
+                                       require_unscaled=True)["status"]
+        self.assertEqual("pass", status(log("wayland", 0, 0)))
+        # X11 resizes the window before the client learns of it, so a drag may
+        # present scaled frames there; a settled size may not, on any system.
+        self.assertEqual("pass", status(log("x11", 0, 3)))
+        self.assertEqual("fail", status(log("x11", 2, 0)))
+        self.assertEqual("fail", status(log("wayland", 0, 3)))
+        # Without a census at the settled sizes nothing certifies them.
+        self.assertEqual("fail", status(re.sub(r"\[vulkan\].*\n", "", log("x11", 0, 0))))
+
+    def test_queued_request_budget_follows_the_path_the_engine_took(self):
+        def failures(micros, path):
+            log = ("RFC0001 resize observed: logical=641x479 drawable=641x479\n"
+                   "RFC0001 resize queued: serial=1 drawable=641x479 request_us=%d ui_us=9 "
+                   "path=%s\n"
+                   "RFC0001 resize complete: serial=1 drawable=641x479 main_wait_us=0\n"
+                   % (micros, path))
+            images = [{"width": 641, "height": 479, "has_scene_detail": True}]
+            return boot.inspect_resize(log, images, ((641, 479),), mode="queued")["failures"]
+        self.assertEqual([], failures(40, "worker"))
+        # A frame without the render worker (after a screenshot) resizes on the
+        # main thread; that request is judged by the one-frame budget.
+        self.assertEqual([], failures(6000, "main"))
+        self.assertEqual(["main-thread resize request 641x479 exceeded 2000us (worker path)"],
+                         failures(6000, "worker"))
+        self.assertEqual(["main-thread resize request 641x479 exceeded 16667us (main path)"],
+                         failures(17000, "main"))
+
+    def test_queued_settle_sweep_requires_every_size_to_complete(self):
+        sweep = (((860, 540), 0), ((868, 546), 1))
+        def log(completed):
+            text = ""
+            for serial, ((w, h), _offset) in enumerate(sweep, 1):
+                text += ("RFC0001 resize observed: logical=%dx%d drawable=%dx%d\n"
+                         "RFC0001 resize queued: serial=%d drawable=%dx%d request_us=30\n"
+                         % (w, h, w, h, serial, w, h))
+                if serial in completed:
+                    text += ("RFC0001 resize complete: serial=%d drawable=%dx%d main_wait_us=0\n"
+                             % (serial, w, h))
+            return text
+        def failures(text):
+            return boot.inspect_resize(text, [], (), mode="queued", sweep=sweep)["failures"]
+        self.assertEqual([], failures(log((1, 2))))
+        # A resize queued as a screenshot left queued rendering never completes.
+        self.assertEqual(["renderer did not complete sweep drawable 868x546 "
+                          "(a screenshot during the settle)"], failures(log((1,))))
+        self.assertEqual(["SDL window did not reach sweep size 868x546"],
+                         failures(log((1,)).split("RFC0001 resize observed: logical=868")[0]))
+
+    def test_queued_resize_bounds_the_longest_scaled_present_run(self):
+        log = ("RFC0001 resize observed: logical=641x479 drawable=1282x958\n"
+               "RFC0001 resize queued: serial=1 drawable=1282x958 request_us=40\n"
+               "RFC0001 resize complete: serial=1 drawable=1282x958 main_wait_us=0\n")
+        images = [{"width": 1282, "height": 958, "has_scene_detail": True}]
+        limit = boot.QUEUED_SCALED_PRESENT_RUN_LIMIT
+        def result(census):
+            return boot.inspect_resize(log + census, images, ((641, 479),), mode="queued",
+                                       require_unscaled=True)
+        # Frames of the old size are scaled while a queued resize settles.
+        settled = result("[vulkan] presents=400 scaled=30 longest_scaled_run=%d\n" % limit)
+        self.assertEqual("pass", settled["status"])
+        self.assertEqual(limit, settled["longest_scaled_present_run"])
+        # A back buffer that stays behind its drawable longer than the settle.
+        self.assertEqual("fail", result(
+            "[vulkan] presents=400 scaled=30 longest_scaled_run=%d\n" % (limit + 1))["status"])
+        # A server-sized window system (X11) adds its own frames of lag.
+        x11 = "RFC0001 window: provider=sdl3 driver=x11\n"
+        allowance = limit + boot.SERVER_SIZED_SCALED_PRESENT_RUN_ALLOWANCE
+        self.assertEqual("pass", result(
+            x11 + "[vulkan] presents=400 scaled=30 longest_scaled_run=%d\n" % allowance)["status"])
+        self.assertEqual("fail", result(
+            x11 + "[vulkan] presents=400 scaled=30 longest_scaled_run=%d\n"
+            % (allowance + 1))["status"])
+        # A census without the run, or none at all, cannot certify it.
+        self.assertEqual("fail", result("[vulkan] presents=400 scaled=30\n")["status"])
+        self.assertEqual("fail", result("")["status"])
 
     def test_resize_rejects_main_thread_wait_budget_and_cropped_present(self):
         log = ("RFC0001 resize observed: logical=641x479 drawable=1282x958\n"

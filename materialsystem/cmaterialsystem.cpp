@@ -9,7 +9,6 @@
 #define MATSYS_INTERNAL
 
 #include "cmaterialsystem.h"
-#include <execinfo.h> // RZDBG
 
 #include "colorspace.h"
 #include "materialsystem/materialsystem_config.h"
@@ -910,9 +909,7 @@ bool CMaterialSystem::RequestWindowResize( const MaterialWindowResizeRequest_t &
 	if ( m_ThreadMode != MATERIAL_QUEUED_THREADED )
 		return ExecuteWindowResizeNow( request );
 
-	const double rzQ = Plat_FloatTime(); // RZDBG
 	CMatCallQueue *queue = GetRenderCallQueue();
-	Msg( "RZDBG getqueue=%.2fms\n", ( Plat_FloatTime() - rzQ ) * 1000.0 ); // RZDBG
 	if ( !queue )
 		return false;
 
@@ -1020,14 +1017,11 @@ void CMaterialSystem::ApplyWindowResize( const MaterialSystem_Config_t &config )
 	g_pShaderAPI->GetBackBufferDimensions( oldWidth, oldHeight );
 	ShaderDeviceInfo_t info;
 	ConvertModeStruct( &info, config );
-	const double rzA = Plat_FloatTime(); // RZDBG
 	g_pShaderAPI->ChangeVideoMode( info );
-	const double rzB = Plat_FloatTime(); // RZDBG
 	int newWidth = 0, newHeight = 0;
 	g_pShaderAPI->GetBackBufferDimensions( newWidth, newHeight );
 	if ( newWidth != oldWidth || newHeight != oldHeight )
 		TextureManager()->ReallocateRenderTargets();
-	Msg( "RZDBG apply t=%.4f main=%d change=%.2fms realloc=%.2fms %dx%d\n", rzB, (int)ThreadInMainThread(), ( rzB - rzA ) * 1000.0, ( Plat_FloatTime() - rzB ) * 1000.0, newWidth, newHeight ); // RZDBG
 #if defined( USE_SDL )
 	uint renderedWidth = static_cast<uint>( config.m_VideoMode.m_Width );
 	uint renderedHeight = static_cast<uint>( config.m_VideoMode.m_Height );
@@ -1578,8 +1572,7 @@ void CMaterialSystem::ForceSingleThreaded()
 		PublishExecutedWindowResize();
 		if( mat_debugalttab.GetBool() )
 		{
-			Warning("Forcing queued mode off!\n");
-			{ void *rzFrames[16]; int rzN = backtrace( rzFrames, 16 ); backtrace_symbols_fd( rzFrames, rzN, 2 ); } // RZDBG
+			Warning( "Forcing queued mode off!\n" );
 		}
 
 		// NOTE: Must happen after EndQueue or proxies get bound again, which is bad.

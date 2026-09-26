@@ -645,7 +645,6 @@ bool CCvar::IsMaterialThreadSetAllowed( ) const
 void CCvar::QueueMaterialThreadSetValue( ConVar *pConVar, const char *pValue )
 {
 	Assert( ThreadInMainThread() );
-	Msg( "RZDBG queued convar set %s\n", pConVar->GetName() ); // RZDBG
 	int j = m_QueuedConVarSets.AddToTail();
 	m_QueuedConVarSets[j].m_pConVar = pConVar;
 	m_QueuedConVarSets[j].m_nType = CONVAR_SET_STRING;
@@ -655,7 +654,6 @@ void CCvar::QueueMaterialThreadSetValue( ConVar *pConVar, const char *pValue )
 void CCvar::QueueMaterialThreadSetValue( ConVar *pConVar, int nValue )
 {
 	Assert( ThreadInMainThread() );
-	Msg( "RZDBG queued convar set %s\n", pConVar->GetName() ); // RZDBG
 	int j = m_QueuedConVarSets.AddToTail();
 	m_QueuedConVarSets[j].m_pConVar = pConVar;
 	m_QueuedConVarSets[j].m_nType = CONVAR_SET_INT;
@@ -665,7 +663,6 @@ void CCvar::QueueMaterialThreadSetValue( ConVar *pConVar, int nValue )
 void CCvar::QueueMaterialThreadSetValue( ConVar *pConVar, float flValue )
 {
 	Assert( ThreadInMainThread() );
-	Msg( "RZDBG queued convar set %s\n", pConVar->GetName() ); // RZDBG
 	int j = m_QueuedConVarSets.AddToTail();
 	m_QueuedConVarSets[j].m_pConVar = pConVar;
 	m_QueuedConVarSets[j].m_nType = CONVAR_SET_FLOAT;

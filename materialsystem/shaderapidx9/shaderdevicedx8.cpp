@@ -2505,7 +2505,6 @@ bool CShaderDeviceDx8::TryDeviceReset()
 	// FIXME: Make this rebuild the Dx9Device from scratch!
 	// Helps with compatibility
 	HRESULT hr = Dx9Device()->Reset( &m_PresentParameters );
-	Msg( "R03DBG reset t=%.4f %dx%d main=%d\n", Plat_FloatTime(), (int)m_PresentParameters.BackBufferWidth, (int)m_PresentParameters.BackBufferHeight, (int)ThreadInMainThread() ); // R03DBG
 	bool bResetSuccess = !FAILED(hr);
 
 #if defined(IS_WINDOWS_PC) && defined(SHADERAPIDX9)
@@ -2658,7 +2657,6 @@ bool CShaderDeviceDx8::ResizeWindow( const ShaderDeviceInfo_t &info )
 
 	SetPresentParameters( (VD3DHWND)m_hWnd, m_DisplayAdapter, info );
 	HRESULT hr = Dx9Device()->Reset( &m_PresentParameters );
-	Msg( "R03DBG resizewindow t=%.4f %dx%d main=%d\n", Plat_FloatTime(), (int)m_PresentParameters.BackBufferWidth, (int)m_PresentParameters.BackBufferHeight, (int)ThreadInMainThread() ); // R03DBG
 	if ( FAILED( hr ) )
 	{
 		Warning( "ResizeWindow: Reset failed, hr = 0x%08lX.\n", hr );
