@@ -38,6 +38,9 @@ FETCH_ONLY=0
 DEPS_ONLY=0
 CLEAN=0
 JOBS="$(nproc)"
+# The Mac whose actool compiles the app's icon asset catalog (Assets.car).
+ASSETS_HOST=macvm
+NO_ASSETS=0
 
 usage()
 {
@@ -51,6 +54,9 @@ Usage: $0 [options]
   --fetch-sdk-from HOST   copy the SDK from Xcode on HOST over ssh first
   --fetch-only            only fetch and verify pinned archives
   --deps-only             stop after the native dependencies
+  --assets-host HOST      Mac (ssh) whose actool compiles the home-screen icons
+                          (default: macvm)
+  --no-assets             build the app without home-screen icons
   --clean                 remove build-ios/ first
   -j N                    parallel jobs (default: $JOBS)
   -h, --help              this help
@@ -67,6 +73,8 @@ while [ $# -gt 0 ]; do
 	--fetch-sdk-from) FETCH_SDK_FROM="$2"; shift ;;
 	--fetch-only) FETCH_ONLY=1 ;;
 	--deps-only) DEPS_ONLY=1 ;;
+	--assets-host) ASSETS_HOST="$2"; shift ;;
+	--no-assets) NO_ASSETS=1 ;;
 	--clean) CLEAN=1 ;;
 	-j) JOBS="$2"; shift ;;
 	-j*) JOBS="${1#-j}" ;;
@@ -202,6 +210,25 @@ build_compiler_runtime()
 # ---------------------------------------------------------------------------
 # fetch_pin PROFILE JQ_PATH: download (if missing) and verify one pinned
 # archive, then extract it under dependencies/<os>/src; prints the source dir.
+# fetch_file PROFILE JQ_PATH: download (if missing) and verify one pinned
+# file that is used as it is (no archive); prints its path.
+fetch_file()
+{
+	local profile="$1" path="$2"
+	local url sha name
+	url="$(jq -er "$path.url" "$profile")"
+	sha="$(jq -er "$path.sha256" "$profile")"
+	name="$(jq -er "$path.cache_archive" "$profile")"
+	if [ ! -f "$CACHE/$name" ]; then
+		log "Downloading $url"
+		curl -fL --retry 3 -o "$CACHE/$name.partial" "$url" || die "download failed: $url"
+		mv "$CACHE/$name.partial" "$CACHE/$name"
+	fi
+	echo "$sha  $CACHE/$name" | sha256sum -c --quiet - ||
+		die "$CACHE/$name does not match its pinned sha256"
+	echo "$CACHE/$name"
+}
+
 fetch_pin()
 {
 	local profile="$1" path="$2"
@@ -463,4 +490,48 @@ if target['os'] == 'ios':
 with open(out, 'wb') as stream:
     plistlib.dump(plist, stream)
 PLIST
+
+# ---------------------------------------------------------------------------
+# 7. Home-screen icons: the profile's pinned key art as an asset catalog
+#    (tools/ios/app_icons.py), compiled to Assets.car by actool on the Mac
+# ---------------------------------------------------------------------------
+if [ "$NO_ASSETS" = 1 ]; then
+	log "Home-screen icons skipped (--no-assets)"
+else
+	case "$OS" in
+		ios) ICON_NAME=AppIcon; ICON_DEVICES="--target-device iphone --target-device ipad" ;;
+		tvos) ICON_NAME="App Icon & Top Shelf Image"; ICON_DEVICES="--target-device tv" ;;
+	esac
+	ART="$(fetch_file "$(pin_profile .app_icon)" .app_icon)"
+	ASSETS="$OUT/assets"
+	rm -rf "$ASSETS"
+	mkdir -p "$ASSETS/compiled"
+	python3 "$ROOT/tools/ios/app_icons.py" --platform "$OS" --art "$ART" \
+		--out "$ASSETS/Assets.xcassets" >/dev/null || die "could not make the icon asset catalog"
+	log "Compiling the home-screen icons with actool on $ASSETS_HOST"
+	REMOTE_ASSETS="/tmp/source-app-icons-$OS"
+	ssh -o BatchMode=yes "$ASSETS_HOST" "rm -rf $REMOTE_ASSETS && mkdir -p $REMOTE_ASSETS/out" &&
+		scp -q -r -o BatchMode=yes "$ASSETS/Assets.xcassets" "$ASSETS_HOST:$REMOTE_ASSETS/" &&
+		ssh -o BatchMode=yes "$ASSETS_HOST" "cd $REMOTE_ASSETS && xcrun actool Assets.xcassets \
+			--compile out --platform $SDK_PLATFORM --minimum-deployment-target $DEPLOYMENT_TARGET \
+			--app-icon '$ICON_NAME' $ICON_DEVICES --output-partial-info-plist partial.plist \
+			--output-format human-readable-text" > "$ASSETS/actool.log" 2>&1 &&
+		scp -q -r -o BatchMode=yes "$ASSETS_HOST:$REMOTE_ASSETS/out/." "$ASSETS/compiled/" &&
+		scp -q -o BatchMode=yes "$ASSETS_HOST:$REMOTE_ASSETS/partial.plist" "$ASSETS/" ||
+		die "actool on $ASSETS_HOST failed ($ASSETS/actool.log); --no-assets builds without icons"
+	grep -q "error:" "$ASSETS/actool.log" && die "actool reported errors ($ASSETS/actool.log)"
+	[ -f "$ASSETS/compiled/Assets.car" ] || die "actool wrote no Assets.car ($ASSETS/actool.log)"
+	cp -R "$ASSETS/compiled/." "$APP/"
+	# actool's Info.plist keys (CFBundleIcons, and TVTopShelfImage on tvOS).
+	python3 - "$APP/Info.plist" "$ASSETS/partial.plist" <<'ICONS'
+import plistlib, sys
+info_path, partial_path = sys.argv[1:3]
+with open(info_path, 'rb') as stream:
+    info = plistlib.load(stream)
+with open(partial_path, 'rb') as stream:
+    info.update(plistlib.load(stream))
+with open(info_path, 'wb') as stream:
+    plistlib.dump(info, stream)
+ICONS
+fi
 log "Built $APP (unsigned): sign and install it on the Mac"

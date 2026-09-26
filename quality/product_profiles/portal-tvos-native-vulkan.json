@@ -146,5 +146,12 @@
       "2026-09-26: 60 fps on an Apple TV 4K (frame_pacing_device.py, render-v1.json row tvos-portal-frame-pacing-60): the first baseline was GPU-bound at 16.3 ms render (frame median 18.4 ms). Per-pass GPU timers (-vkgputimers) showed the lightmapped and skin uber-shaders dominating; compiling out the alpha test where it cannot fire, specializing their static combos, dropping depth/stencil traffic after the last read, deferring uploads up to 4 MB and turning bloom off brought GPU render to about 10 ms median and 15.8 ms p99 with no missed refresh in the warm passes, after raising textures, models, filtering and shadows (see RFC/0001-native-vulkan-frame-pacing-progress.md).",
       "2026-09-26: controller buttons were unbound on every launch after the first. With a controller attached, the engine writes bindings with the controller names (A_BUTTON, L_TRIGGER), but config.cfg is read before the controller connects, when only the JOY names were accepted outside Linux builds; joy_xcontroller_cfg_loaded stayed 2, so 360controller.cfg never rebound them. ButtonCode_StringToButtonCode now always accepts the controller names. On the Apple TV, after one repair launch (joy_xcontroller_cfg_loaded 0), a relaunch reads the binds back with no invalid-key errors (key_listboundkeys: A_BUTTON +jump ... R_TRIGGER +attack)."
     ]
+  },
+  "app_icon": {
+    "url": "https://assets.nintendo.com/image/upload/ar_16:9,b_auto:border,c_lpad/b_white/f_auto/q_auto/dpr_1.5/c_scale,w_1300/store/software/switch/70010000050319/122954ab00a225034fa09c8e5ba29b2f9fc0b371a8d550c34ebeecc2727522c3",
+    "sha256": "9e90c4fe45f1deac2baff67c26d4d8f47cb05ebb9817e8fc080ed999810217a4",
+    "bytes": 79959,
+    "cache_archive": "portal-keyart-1950x1097.jpg",
+    "note": "Portal key art (1950x1097 JPEG, the Nintendo eShop store image), chosen by the user (2026-09-26) for the home-screen icons. Not committed: fetched and verified by sha256 like the other pins, and made into the app's asset catalog by tools/ios/app_icons.py; build-ios-app.sh compiles it with actool on the Mac. The artwork is Valve's; it is used for the user's own device builds, not for distribution."
   }
 }

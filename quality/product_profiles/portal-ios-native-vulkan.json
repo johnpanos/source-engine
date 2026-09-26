@@ -206,5 +206,9 @@
       "2026-09-25: the Linux static composition (same mechanism, ELF) boots testchmb_a_00 with no first-party shared library; see RFC/0001-static-composition-progress.md.",
       "2026-09-25: ld64-956.6 -r on arm64-apple-ios objects turns hidden symbols local, including inline-function statics, and pulls private archive members; ld64.lld 22.1.8 rejects -r."
     ]
+  },
+  "app_icon": {
+    "pin_source": "quality/product_profiles/portal-tvos-native-vulkan.json",
+    "note": "The tvOS profile's key art; tools/ios/app_icons.py makes the square iOS icon from it."
   }
 }
