@@ -115,7 +115,29 @@ The first oracle draft measured additive glass on encoded values and failed
 the frosted pane at 0.56; decoded, the same pixels give 1.00. A self-test keeps
 that color-space choice load-bearing.
 
-Still open: a view-set comparison against ports-off at the new default.
+### View set at the new default (2026-09-26)
+
+`tools/quality/legacy_ports_views.py` boots testchmb_a_01 headless three times
+at run.conf's settings (1920x1080, `mat_queue_mode 2`, Box3D with shape
+inertia, the job-graph and material settings): ports on, `-novklegacyports`,
+and ports on again as the run-to-run noise measure. Each run captures eight
+yaws and two upward views from the spawn point, then the pause menu. A view
+passes when the fraction of pixels differing by more than 16/255 stays within
+0.5 %, or three times its own noise; a comparison of two different views must
+exceed 5 %, or the comparison could not see a change.
+
+| View | On vs off | Noise |
+| --- | --- | --- |
+| yaw000 / yaw045 / yaw090 / yaw135 | 0.10 % / 0.01 % / 0.00 % / 0.01 % | 0.00-0.01 % |
+| yaw180 / yaw225 / yaw270 / yaw315 | 0.01 % / 0.00 % / 0.00 % / 0.12 % | 0.00-0.01 % |
+| up000 / up180 | 0.08 % / 0.00 % | 0.04 % / 0.00 % |
+| pause menu | 0.00 % (drawn) | 0.00 % |
+| Negative control (yaw000 on vs yaw090 off) | 65 % | |
+
+The window glass in the yaw135 and yaw180 views shows the room behind it. With
+the user's approval on Wayland, the glass oracle, the `forced/` files and the
+frame time above, the default-on gate is met. The row stays `partial` for the
+items under "Not ported, or not verified".
 
 ## How it works
 

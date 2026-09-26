@@ -1423,7 +1423,12 @@ Keep the table concise and link details below or from the domain progress file.
   - Frame time (`frame_pacing.py`, 6 interleaved rounds, `mat_queue_mode 2`,
     Box3D): ports on 4.04 ms warm median, off 4.42 ms (p99 6.39 vs 6.66
     ms); two ports-on rounds landed in the host's slow mode (5.7 ms).
-  - Still open: a view-set comparison against ports-off at the new default.
+  - View set (2026-09-26, `tools/quality/legacy_ports_views.py`):
+    testchmb_a_01 at run.conf's settings, 8 yaws, 2 upward views and the
+    pause menu, ports on vs `-novklegacyports`, with a second ports-on run as
+    the noise measure. Every view is within 0.12 % of pixels (> 16/255); a
+    mismatched-view negative control differs by 65 %. With this the
+    default-on gate is met.
   - Unverified or open: flashlight passes, DEPTHBLEND, wrinkle weights,
     pbr_ps30 parallax (the pinned FXC miscompiles it).
   - No gate closes. See the
