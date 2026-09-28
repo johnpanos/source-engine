@@ -33,6 +33,10 @@ enum class ResourceUsage : std::uint8_t
 	kIndex,
 	kIndirect,
 	kUniform,
+	// Handed to another API (an exported image, external_images.h): the
+	// writes are available and the image is in the layout its memory
+	// description holds. The next use in the port starts from kUndefined.
+	kExternal,
 	kCount
 };
 

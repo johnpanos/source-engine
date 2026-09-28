@@ -48,6 +48,8 @@ struct VulkanAdapterOptions
 		bool glDepthRange = false;   // D13: clip depth -1 to 1 mapped onto 0 to 1
 		CapabilitySet falseClaims{}; // D15: claimed in the facts, not implemented
 		bool ignoreColorWriteMasks = false; // D17: every channel written
+		bool staleExport = false;           // D18: the export names memory the image does not use
+		bool nullExternalImages = false;    // D18: claims kExternalImages, exports nothing
 	};
 	Sensitivity sensitivity;
 };

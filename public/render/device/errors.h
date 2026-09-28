@@ -43,7 +43,8 @@ enum class DeviceOperation : std::uint32_t
 	kBeginEncoder,
 	kSubmit,
 	kReadBuffer,
-	kRelease
+	kRelease,
+	kExportTexture
 };
 
 using DeviceError = foundation::Error<DeviceStatus, DeviceOperation>;

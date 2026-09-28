@@ -43,6 +43,9 @@ DeviceResult<void> ValidateTexture( const TextureDesc &desc, const Limits &limit
 		return Fail( DeviceStatus::kInvalidDescription, op );
 	if ( desc.dimension == TextureDimension::kCube && desc.depthOrLayers % 6 != 0 )
 		return Fail( DeviceStatus::kInvalidDescription, op );
+	// Only IExternalImages::CreateExported makes a texture another API reads.
+	if ( desc.usages.Has( ResourceUsage::kExternal ) )
+		return Fail( DeviceStatus::kInvalidDescription, op );
 	std::uint32_t extent = std::max( desc.width, desc.height );
 	std::uint32_t mips = 1;
 	while ( extent > 1 )

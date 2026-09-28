@@ -41,6 +41,7 @@
 #include "render/device/completion.h"
 #include "render/device/encoder.h"
 #include "render/device/errors.h"
+#include "render/device/external_images.h"
 #include "render/device/facts.h"
 #include "render/device/pipeline.h"
 #include "render/device/resources.h"
@@ -101,6 +102,10 @@ public:
 	virtual DeviceResult<void> Recover() = 0;
 
 	virtual std::size_t LiveResourceCount() const = 0;
+
+	// The exporter of textures to other APIs (clause D18): non-null exactly
+	// when the facts claim kExternalImages. The device owns it.
+	virtual IExternalImages *ExternalImages() { return nullptr; }
 };
 
 } // namespace render::device

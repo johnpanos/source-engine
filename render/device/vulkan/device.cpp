@@ -103,6 +103,8 @@ DeviceResult<void> VulkanDevice::Initialize()
 	// Only what this adapter implements: no transient aliasing, parallel
 	// native recording, async queues or ray query yet (RFC 0016 K1).
 	m_Facts.capabilities = { Capability::kCompute, Capability::kStorageBuffers };
+	if ( m_Adapter.externalImages || m_Options.sensitivity.nullExternalImages )
+		m_Facts.capabilities.Add( Capability::kExternalImages );
 	for ( std::uint32_t bit = 0; bit < static_cast<std::uint32_t>( Capability::kCount ); ++bit )
 	{
 		const Capability claimed = static_cast<Capability>( bit );
@@ -343,6 +345,9 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 	    LoadDevice<PFN_vkQueueSubmit2>( m_Device, "vkQueueSubmit2", "vkQueueSubmit2KHR" );
 	m_Vk.cmdBeginRendering = LoadDevice<PFN_vkCmdBeginRendering>(
 	    m_Device, "vkCmdBeginRendering", "vkCmdBeginRenderingKHR" );
+	if ( m_Adapter.externalImages )
+		m_Vk.getMemoryFd =
+		    LoadDevice<PFN_vkGetMemoryFdKHR>( m_Device, "vkGetMemoryFdKHR", nullptr );
 	m_Vk.cmdEndRendering =
 	    LoadDevice<PFN_vkCmdEndRendering>( m_Device, "vkCmdEndRendering", "vkCmdEndRenderingKHR" );
 	m_Vk.getSemaphoreCounterValue = LoadDevice<PFN_vkGetSemaphoreCounterValue>(
@@ -436,11 +441,7 @@ void VulkanDevice::DestroyLogical()
 		for ( auto &[id, sampler] : m_Samplers )
 			vkDestroySampler( m_Device, sampler.sampler, nullptr );
 		for ( auto &[id, texture] : m_Textures )
-		{
-			vkDestroyImageView( m_Device, texture.attachmentView, nullptr );
-			vkDestroyImageView( m_Device, texture.view, nullptr );
-			m_Memory.DestroyImage( texture.image, texture.memory );
-		}
+			DestroyTexture( texture );
 		for ( auto &[id, buffer] : m_Buffers )
 			m_Memory.DestroyBuffer( buffer.buffer, buffer.memory );
 	}
@@ -597,9 +598,7 @@ void VulkanDevice::Erase( ResourceId resource )
 	case ResourceKind::kTexture:
 		if ( auto found = m_Textures.find( resource.value ); found != m_Textures.end() )
 		{
-			vkDestroyImageView( m_Device, found->second.attachmentView, nullptr );
-			vkDestroyImageView( m_Device, found->second.view, nullptr );
-			m_Memory.DestroyImage( found->second.image, found->second.memory );
+			DestroyTexture( found->second );
 			m_Textures.erase( found );
 		}
 		break;

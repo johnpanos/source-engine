@@ -69,6 +69,9 @@ constexpr UsageScope kScopes[] = {
         VK_IMAGE_LAYOUT_GENERAL },
     // kUniform
     { kShaders, VK_ACCESS_2_UNIFORM_READ_BIT, VK_IMAGE_LAYOUT_GENERAL },
+    // kExternal: another API reads the memory after the token completes; the
+    // GENERAL layout is the one linear image memory is defined in.
+    { VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT, VK_IMAGE_LAYOUT_GENERAL },
 };
 static_assert( std::size( kScopes ) == static_cast<std::size_t>( ResourceUsage::kCount ),
     "one scope per usage" );

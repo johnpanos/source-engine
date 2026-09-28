@@ -133,6 +133,17 @@ DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical )
 	// A portability implementation requires the application to enable it.
 	if ( HasDeviceExtension( extensions, "VK_KHR_portability_subset" ) )
 		choice.extensions.push_back( "VK_KHR_portability_subset" );
+	// dmabuf export of LINEAR images (kExternalImages, clause D18). The
+	// format modifier extension's own dependencies are core in Vulkan 1.2.
+	if ( HasDeviceExtension( extensions, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME ) &&
+	     HasDeviceExtension( extensions, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME ) &&
+	     HasDeviceExtension( extensions, VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME ) )
+	{
+		choice.externalImages = true;
+		choice.extensions.push_back( VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME );
+		choice.extensions.push_back( VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME );
+		choice.extensions.push_back( VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME );
+	}
 
 	VkPhysicalDeviceVulkan12Features features12{};
 	features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;

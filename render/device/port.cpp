@@ -67,6 +67,8 @@ const char *DescribeOperation( DeviceOperation operation )
 		return "ReadBuffer";
 	case DeviceOperation::kRelease:
 		return "Release";
+	case DeviceOperation::kExportTexture:
+		return "ExportTexture";
 	}
 	return "unknown";
 }
@@ -89,6 +91,8 @@ const char *CapabilityName( Capability capability )
 		return "async-transfer";
 	case Capability::kRayQuery:
 		return "ray-query";
+	case Capability::kExternalImages:
+		return "external-images";
 	case Capability::kCount:
 		break;
 	}

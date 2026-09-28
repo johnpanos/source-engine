@@ -155,6 +155,9 @@ struct AdapterChoice
 	std::uint32_t presentFamily = 0; // host mode: the family that presents
 	bool core13 = false;             // else Vulkan 1.2 with the KHR extensions
 	bool anisotropy = false;
+	// dmabuf export of LINEAR images (external memory fd, dma_buf, DRM
+	// format modifiers): the adapter claims kExternalImages.
+	bool externalImages = false;
 	std::vector<const char *> extensions; // device extensions to enable
 };
 
@@ -249,6 +252,8 @@ struct TextureRecord
 	HostAllocation memory = nullptr;
 	VkImageView view = VK_NULL_HANDLE;           // the whole texture, for bindings
 	VkImageView attachmentView = VK_NULL_HANDLE; // mip 0, layer 0, for rendering
+	// An exported image's own dedicated memory (else the allocator's).
+	VkDeviceMemory exported = VK_NULL_HANDLE;
 	Track track;
 	bool released = false;
 
@@ -465,6 +470,7 @@ struct DeviceDispatch
 	PFN_vkCmdPipelineBarrier2 cmdPipelineBarrier2 = nullptr;
 	PFN_vkQueueSubmit2 queueSubmit2 = nullptr;
 	PFN_vkCmdBeginRendering cmdBeginRendering = nullptr;
+	PFN_vkGetMemoryFdKHR getMemoryFd = nullptr; // with externalImages
 	PFN_vkCmdEndRendering cmdEndRendering = nullptr;
 	PFN_vkGetSemaphoreCounterValue getSemaphoreCounterValue = nullptr;
 	PFN_vkWaitSemaphores waitSemaphores = nullptr;
@@ -472,7 +478,7 @@ struct DeviceDispatch
 
 class Translator;
 
-class VulkanDevice final : public IRenderDevice2
+class VulkanDevice final : public IRenderDevice2, public IExternalImages
 {
 public:
 	// host is set for a device a legacy host borrows (host_device.h); it is
@@ -509,6 +515,12 @@ public:
 	DeviceResult<void> WaitIdle() override;
 	DeviceResult<void> Recover() override;
 	std::size_t LiveResourceCount() const override;
+	IExternalImages *ExternalImages() override;
+
+	// IExternalImages ----------------------------------------------------------
+
+	foundation::Expected<ExternalImage, DeviceError> CreateExported(
+	    const TextureDesc &desc ) override;
 
 	// Diagnostics ------------------------------------------------------------
 
@@ -597,6 +609,9 @@ private:
 	void RecycleCompleted();
 	std::size_t CollectReleases();
 	void Erase( ResourceId resource );
+	// Destroys a texture's views, image and memory (the allocator's or its
+	// exported dedicated memory).
+	void DestroyTexture( TextureRecord &record );
 	bool *ReleasedFlag( ResourceId resource );
 
 	// Descriptors (pipelines.cpp).

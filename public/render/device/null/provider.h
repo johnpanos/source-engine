@@ -33,7 +33,9 @@ enum class CompletionMode : std::uint8_t
 
 struct NullOptions
 {
-	CapabilitySet capabilities = CapabilitySet::All();
+	// Everything but external images: the null device has no memory another
+	// API could import (clause D18).
+	CapabilitySet capabilities = CapabilitySet::All().Remove( Capability::kExternalImages );
 	ArtifactFormat artifactFormat = ArtifactFormat::kSpirv;
 	CompletionMode completion = CompletionMode::kOnPoll;
 	std::uint64_t uploadRingBytes = 1u << 20;

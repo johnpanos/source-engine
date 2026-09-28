@@ -29,6 +29,13 @@
 #include <thread>
 #include <vector>
 
+#if defined( __linux__ )
+#include <linux/dma-buf.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
 namespace rendertest
 {
 
@@ -66,6 +73,17 @@ inline std::span<const std::byte> Code( const std::uint32_t *words, std::size_t 
 template <std::size_t N> std::span<const std::byte> Code( const std::uint32_t ( &words )[N] )
 {
 	return Code( words, N );
+}
+
+// Closes an exported image's handle (a file descriptor where there are dmabufs).
+inline void CloseHandle( std::int64_t handle )
+{
+#if defined( __linux__ )
+	if ( handle >= 0 )
+		::close( int( handle ) );
+#else
+	(void)handle;
+#endif
 }
 
 inline std::vector<std::byte> Pattern( std::size_t size, std::uint8_t seed )
@@ -1207,6 +1225,118 @@ inline void ColorWriteMasks( Suite &s )
 	s.That( kept, "D17", "a red-and-alpha mask writes red and alpha and keeps green and blue" );
 }
 
+// D18 external images: the exporter exists exactly when kExternalImages is
+// claimed; a plain texture never takes kExternal; an exported image's memory,
+// mapped through its description (offset, stride), holds what the port reads
+// back from the texture; descriptions outside the rules fail by status.
+inline void ExternalImagesClause( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	IExternalImages *exporter = device->ExternalImages();
+	s.That(
+	    device->Facts().capabilities.Has( Capability::kExternalImages ) == ( exporter != nullptr ),
+	    "D18", "the exporter is present exactly when kExternalImages is claimed" );
+	constexpr std::uint32_t kWidth = 16;
+	constexpr std::uint32_t kHeight = 8;
+	TextureDesc desc;
+	desc.format = Format::kRGBA8Unorm;
+	desc.width = kWidth;
+	desc.height = kHeight;
+	desc.usages = {
+	    ResourceUsage::kCopyDestination, ResourceUsage::kCopySource, ResourceUsage::kExternal };
+	auto plain = device->CreateTexture( desc );
+	s.That( !plain && plain.Error().status == DeviceStatus::kInvalidDescription, "D18",
+	    "CreateTexture refuses kExternal" );
+	if ( !exporter )
+		return;
+	auto statusOf = [&]( const TextureDesc &candidate )
+	{
+		auto made = exporter->CreateExported( candidate );
+		if ( !made )
+			return made.Error().status;
+		CloseHandle( made.Value().handle );
+		(void)device->Release( made.Value().texture, CompletionToken{} );
+		return DeviceStatus::kInternal;
+	};
+	TextureDesc noExternal = desc;
+	noExternal.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+	TextureDesc mips = desc;
+	mips.mipLevels = 2;
+	TextureDesc wide = desc;
+	wide.format = Format::kRGBA16Float;
+	s.That( statusOf( noExternal ) == DeviceStatus::kInvalidDescription &&
+	            statusOf( mips ) == DeviceStatus::kInvalidDescription,
+	    "D18", "an export without kExternal, or of several mips, fails kInvalidDescription" );
+	s.That( statusOf( wide ) == DeviceStatus::kUnsupported, "D18",
+	    "an export of a format outside the four fails kUnsupported" );
+
+	auto image = exporter->CreateExported( desc );
+	if ( !s.That( image.HasValue() && image.Value().handle >= 0 && image.Value().fourcc != 0 &&
+	                  image.Value().stride >= kWidth * 4,
+	         "D18", "an image is exported with a handle and a plane description" ) )
+		return;
+	const ExternalImage exported = image.Value();
+	const std::uint64_t bytes = std::uint64_t( kWidth ) * kHeight * 4;
+	const std::vector<std::byte> pattern = Pattern( bytes, 5 );
+	const BufferId source =
+	    s.Buffer( *device, bytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	const BufferId out =
+	    s.Buffer( *device, bytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	CommandEncoder &e = encoder.Value();
+	e.TransitionBuffer( source, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.WriteBuffer( source, 0, pattern );
+	e.TransitionBuffer( source, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionTexture(
+	    exported.texture, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyBufferToTexture( source, exported.texture, { 0, 0, 0, kWidth, kHeight } );
+	e.TransitionTexture(
+	    exported.texture, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionBuffer( out, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyTextureToBuffer( exported.texture, out, { 0, 0, 0, kWidth, kHeight } );
+	e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionTexture( exported.texture, ResourceUsage::kCopySource, ResourceUsage::kExternal );
+	const std::optional<CompletionToken> token = s.Run( *device, e );
+	const bool finished = token && s.Finish( *device, *token );
+	s.That( finished, "D18", "the texture is written and handed to kExternal" );
+	const std::vector<std::byte> readback =
+	    finished ? s.ReadBack( *device, out, bytes ) : std::vector<std::byte>();
+	s.That( readback == pattern, "D18", "the port reads back what it wrote" );
+#if defined( __linux__ )
+	const int fd = int( exported.handle );
+	const std::size_t length = std::size_t( exported.offset ) +
+	                           std::size_t( exported.stride ) * ( kHeight - 1 ) + kWidth * 4;
+	void *mapped = ::mmap( nullptr, length, PROT_READ, MAP_SHARED, fd, 0 );
+	bool equal = mapped != MAP_FAILED && readback.size() == bytes;
+	if ( mapped != MAP_FAILED )
+	{
+		dma_buf_sync sync{ DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ };
+		(void)::ioctl( fd, DMA_BUF_IOCTL_SYNC, &sync );
+		const auto *base = static_cast<const std::byte *>( mapped ) + exported.offset;
+		for ( std::uint32_t y = 0; equal && y < kHeight; ++y )
+			equal = std::memcmp( base + std::size_t( y ) * exported.stride,
+			            readback.data() + std::size_t( y ) * kWidth * 4, kWidth * 4 ) == 0;
+		sync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ;
+		(void)::ioctl( fd, DMA_BUF_IOCTL_SYNC, &sync );
+		::munmap( mapped, length );
+	}
+	s.That( equal, "D18",
+	    "the exported memory, read at its offset and stride, equals the texture's readback" );
+	CloseHandle( exported.handle );
+#else
+	CloseHandle( exported.handle );
+	std::printf(
+	    "SKIP %s.D18 memory: no dmabuf mapping on this platform\n", s.m_Driver.name.c_str() );
+#endif
+	(void)device->Release( exported.texture, token.value_or( CompletionToken{} ) );
+	(void)device->Release( source, token.value_or( CompletionToken{} ) );
+	(void)device->Release( out, token.value_or( CompletionToken{} ) );
+}
+
 // D15 capability honesty: every capability an executing adapter claims
 // works. kCompute and kStorageBuffers: a dispatch writes a storage buffer;
 // kAsyncCompute: the same dispatch runs from a compute-queue encoder;
@@ -1342,6 +1472,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::Conventions( suite );
 	detail::DrawConstants( suite );
 	detail::ColorWriteMasks( suite );
+	detail::ExternalImagesClause( suite );
 	detail::CapabilityHonesty( suite );
 }
 
