@@ -20,6 +20,6 @@ def build(bld):
 		name        = 'render_legacy',
 		source      = bld.path.ant_glob('*.cpp'),
 		includes    = ['../../public'],
-		use         = ['render_frame', 'render_graph'],
+		use         = ['render_frame', 'render_graph', 'render_material'],
 		idx         = bld.get_taskgen_count()
 	)

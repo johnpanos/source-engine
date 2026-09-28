@@ -8257,7 +8257,7 @@
       "contract": "quality/fixtures/render-material/proxy-inventory-v1.json",
       "kind": "sensitivity",
       "profile": "linux-host-corpus",
-      "description": "The proxy-capture comparator (tools/render/proxy_corpus.py selftest), which the core side uses at K3: identical captures and a float change within 1e-5 agree; a changed float, vector component, matrix element, integer, texture frame, texture name and type, a missing variable, material or proxy, a material without its proxy, and a different time or frame are each reported.",
+      "description": "The proxy-capture comparator (tools/render/proxy_corpus.py selftest), which the core side uses at K3: identical captures and a float change within 1e-5 agree; a changed float, vector component, matrix element, integer, texture frame, texture name and type, a missing variable, material or proxy, a material without its proxy, and a different time or frame are each reported. The frontend-block comparator (block_differences) agrees on a block carrying the variables and reports a changed float, texture, texture-transform row, vector component and integer, a block whose values did not apply, a block key without a legacy variable, an unknown family and a missing block.",
       "command": [
         "{python}",
         "tools/render/proxy_corpus.py",
@@ -8310,6 +8310,47 @@
       "expect": "pass"
     },
     {
+      "id": "render.material.proxies.core-portal",
+      "domain": "Q-CONTENT",
+      "rfc": "0016",
+      "migration": "R88",
+      "contract": "quality/fixtures/render-material/proxy-capture-v1/portal/capture_0.jsonl",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0016 K4 'Proxy corpus', the frontend side on Portal (proxy_corpus.py capture --game portal --core): the capture of render.material.proxies.legacy-portal, and for every fixture material and pass the render core frontend's block line (RenderMaterialBlocks001, render/legacy/material_blocks.cpp): the bound material's variables after its proxies ran, mapped by render.material's importer (MapVariables, ApplyValues) into its family's parameter block and read back. Every pass has a block, and every block parameter equals the legacy variable its key names (textures by normalized name, flags and integers by the importer's rules, floats, vectors and texture transforms within 1e-5); legacy-family materials have no block. The comparator's seeded block faults are in render.material.proxies.comparator.",
+      "command": [
+        "{python}",
+        "tools/render/proxy_corpus.py",
+        "capture",
+        "--game",
+        "portal",
+        "--core",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 10,
+      "timeout_seconds": 1200,
+      "requires": [
+        "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",
+        "env:PORTAL_DLIGHT_LAB_BUILD",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/render/proxy_corpus.py",
+        "tools/quality/portal_boot.py",
+        "game/client/material_proxy_capture.cpp",
+        "render/legacy/material_blocks.cpp",
+        "public/render/legacy/material_blocks.h",
+        "render/material/vmt_import.cpp",
+        "quality/fixtures/render-material/proxy-inventory-v1.json",
+        "quality/fixtures/render-material/proxy-capture-v1/portal/capture_0.jsonl",
+        "quality/fixtures/render-material/proxy-capture-v1/portal/capture_1.jsonl",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.material.proxies.legacy-portal2",
       "domain": "Q-CONTENT",
       "rfc": "0016",
@@ -8340,6 +8381,48 @@
         "tools/quality/portal_boot.py",
         "tools/quality/stage_portal2_runtime.py",
         "game/client/material_proxy_capture.cpp",
+        "quality/fixtures/render-material/proxy-inventory-v1.json",
+        "quality/fixtures/render-material/proxy-capture-v1/portal2/capture_0.jsonl",
+        "quality/fixtures/render-material/proxy-capture-v1/portal2/capture_1.jsonl",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.material.proxies.core-portal2",
+      "domain": "Q-CONTENT",
+      "rfc": "0016",
+      "migration": "R88",
+      "contract": "quality/fixtures/render-material/proxy-capture-v1/portal2/capture_0.jsonl",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0016 K4 'Proxy corpus', the frontend side on Portal 2 (proxy_corpus.py capture --game portal2 --core): the capture of render.material.proxies.legacy-portal2, and for every fixture material and pass the render core frontend's block line (RenderMaterialBlocks001, render/legacy/material_blocks.cpp): the bound material's variables after its proxies ran, mapped by render.material's importer (MapVariables, ApplyValues) into its family's parameter block and read back. Every pass has a block, and every block parameter equals the legacy variable its key names (textures by normalized name, flags and integers by the importer's rules, floats, vectors and texture transforms within 1e-5); legacy-family materials have no block. The comparator's seeded block faults are in render.material.proxies.comparator.",
+      "command": [
+        "{python}",
+        "tools/render/proxy_corpus.py",
+        "capture",
+        "--game",
+        "portal2",
+        "--core",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 10,
+      "timeout_seconds": 1200,
+      "requires": [
+        "path:build-rc-p2/p2content/portal2",
+        "path:build-rc-p2/install/hl2_launcher",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/render/proxy_corpus.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "game/client/material_proxy_capture.cpp",
+        "render/legacy/material_blocks.cpp",
+        "public/render/legacy/material_blocks.h",
+        "render/material/vmt_import.cpp",
         "quality/fixtures/render-material/proxy-inventory-v1.json",
         "quality/fixtures/render-material/proxy-capture-v1/portal2/capture_0.jsonl",
         "quality/fixtures/render-material/proxy-capture-v1/portal2/capture_1.jsonl",
@@ -8692,6 +8775,11 @@
         "render/renderer/renderer.cpp",
         "render/pass/present/feature.cpp",
         "render/legacy/frontend.cpp",
+        "render/legacy/material_blocks.cpp",
+        "render/material/material.cpp",
+        "render/material/vmt_mapping.cpp",
+        "render/material/vmt_import.cpp",
+        "kvtext/keyvalues.cpp",
         "render/legacy/queued_capabilities.cpp",
         "render/composition/render_core.cpp",
         "render/composition/feature_catalog.cpp",

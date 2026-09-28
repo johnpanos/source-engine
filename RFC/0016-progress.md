@@ -1339,3 +1339,51 @@ At the Hammer session's request, the two families now produce the
   cube, with the expected pixels and no unresolved draw. Without the view
   group the pbr draw is counted, not drawn. `render.opaque.null` N4 runs
   the same scene on the null device.
+
+## K4 slice: the proxy corpus's frontend side (2026-09-28)
+
+State: K4's "Proxy corpus" check passes on Portal and Portal 2. K4 stays open
+only for `vertexlit` (the Hammer session).
+
+- **`RenderMaterialBlocks001`** (`public/render/legacy/material_blocks.h`,
+  a preserved-ABI package with plain C types) is a frontend app system beside
+  `RenderStageMarkers001`. The launcher adds it from the core's binding
+  (`RenderCoreBinding::materialBlocks`).
+  - `FormatBlock` takes a bound material's variables as the material system
+    prints them and maps them with `MapVariables` and `ApplyValues`, the
+    importer's own rules. It reads the family block back as one JSON line.
+  - A legacy-family material gets no block, and an unknown shader is
+    refused.
+  - The frontend stays strict. It never includes a legacy material header:
+    the caller formats the variables.
+- **The capture:** `mat_proxy_capture` writes the frontend's block line
+  after each material line, when the core is composed
+  (`mat_proxy_capture_blocks`, default 1).
+- **The check:** `proxy_corpus.py capture --core` requires a block for
+  every material pass. Each block parameter must equal the legacy variable
+  its key names: textures by name, flags and integers by the importer's
+  rules, and floats, vectors and texture transforms (rows 0 and 1) within
+  1e-5. The comparator selftest (`render.material.proxies.comparator`,
+  25 checks) catches a changed float, texture, transform row, vector
+  component and integer, an unapplied block, a key without a variable, an
+  unknown family and a missing block.
+- **Evidence** (`render.material.proxies.core-portal` and `.core-portal2`):
+
+  | Game | Proxies | Family blocks per capture | Parameters compared | Differences |
+  | --- | --- | --- | --- | --- |
+  | Portal | 66 | 136 (133 unlit, 3 vertexlit; 2 legacy passes) | 2,492 and 2,491 | 0 |
+  | Portal 2 | 69 | 136 (2 legacy passes) | 2,493 and 2,493 | 0 |
+
+  The proxies' outputs reach the blocks: MatrixRotate's and
+  TextureScroll's transforms, and Sine's `$alpha`, match their legacy
+  values. Both legacy captures still equal the recorded fixture.
+  Composition clause P5 covers the interface (18 checks, g++ and clang++).
+- **Found:** the first Portal 2 boot after a fresh reconfigure and install
+  failed the legacy fixture on the two noise proxies alone. Their values were
+  shifted by one draw of the shared random stream. Four later boots all
+  match exactly: without the core, with the core and blocks off, and twice
+  with blocks. It is a first-boot effect, not the block path. It is not
+  fixed.
+- **Not claimed:** the product draws no material through a family block
+  yet. Proxies still run at the legacy bind point, and routing draws to
+  families is K5 and K8 work.

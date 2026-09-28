@@ -24,7 +24,8 @@
 #define RENDER_COMPOSITION_RENDER_CORE_H
 
 #include "render/frame/renderer.h"
-class IRenderStageMarkers; // render/legacy/stage_markers.h (legacy-interop)
+class IRenderStageMarkers;   // render/legacy/stage_markers.h (legacy-interop)
+class IRenderMaterialBlocks; // render/legacy/material_blocks.h (legacy-interop)
 #include "render/legacy/capabilities.h"
 #include "render/legacy_shader_provider.h"
 #include "render/scene/scene.h"
@@ -73,6 +74,8 @@ struct RenderCoreBinding
 	render::frame::IRenderer *renderer = nullptr;
 	render::scene::SceneFactory sceneFactory;
 	IRenderStageMarkers *stageMarkers = nullptr;
+	// RenderMaterialBlocks001, for the proxy corpus's frontend side.
+	IRenderMaterialBlocks *materialBlocks = nullptr;
 	// The legacy backend's world mesh, light set and compute capabilities, in
 	// frame order (render/legacy/capabilities.h).
 	render::legacy::ILegacyCapabilities *capabilities = nullptr;

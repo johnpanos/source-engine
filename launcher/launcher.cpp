@@ -98,6 +98,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #include "render/device/vulkan/host_binding.h"
 #include "render/legacy/frame_source.h"
 #endif
+#include "render/legacy/material_blocks.h"
 #include "render/legacy/stage_markers.h"
 #endif
 #include "tier0/memdbgon.h"
@@ -944,7 +945,8 @@ bool CSourceAppSystemGroup::Create()
 		const RenderCoreBinding *binding = RenderCore_GetBinding( m_pRenderCore );
 		bound = RenderCore_GetLegacyProvider( m_pRenderCore );
 		if ( !bound || !Engine_BindRenderCore( binding ) ||
-		     !AddSystem( binding->stageMarkers, RENDER_STAGE_MARKERS_INTERFACE_VERSION ) )
+		     !AddSystem( binding->stageMarkers, RENDER_STAGE_MARKERS_INTERFACE_VERSION ) ||
+		     !AddSystem( binding->materialBlocks, RENDER_MATERIAL_BLOCKS_INTERFACE_VERSION ) )
 		{
 			Warning( "The render core could not be bound.\n" );
 			return false;

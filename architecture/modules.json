@@ -778,7 +778,8 @@
           "render.graph",
           "render.frame",
           "render.contracts",
-          "render.legacy-provider-contract"
+          "render.legacy-provider-contract",
+          "render.material"
         ],
         "kind": "legacy-interop",
         "legacyIncludes": [
@@ -1343,7 +1344,8 @@
       "render_legacy": {
         "allowedUse": [
           "render_frame",
-          "render_graph"
+          "render_graph",
+          "render_material"
         ]
       },
       "render_composition": {
@@ -1816,6 +1818,7 @@
       "vphysics_box3d/main.cpp",
       "unittests/physicstest/test_vphysics_conformance.cpp",
       "public/render/legacy/stage_markers.h",
+      "public/render/legacy/material_blocks.h",
       "public/engine/render_core_binding.h",
       "public/materialsystem/imaterialsystem.h",
       "public/materialsystem/imaterial.h",

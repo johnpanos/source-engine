@@ -30,6 +30,16 @@ fixture material loads and has its proxy; and both captures equal the recorded
 legacy capture (quality/fixtures/render-material/proxy-capture-v1/<game>/)
 under compare(). --record writes that fixture instead.
 
+capture --core also checks the frontend side: with the render core, each
+material line is followed by the frontend's block line (RenderMaterialBlocks001:
+the bound material's variables mapped by render.material's importer into its
+family's parameter block and read back). Every material pass must have one, and
+each block parameter must equal the legacy variable its key names
+(block_differences: textures by normalized name, integers exactly, floats,
+vectors and texture transforms (rows 0 and 1) within the tolerance).
+Materials of the legacy family have no block: the legacy family's parameters
+are the variables themselves.
+
 compare is the comparator the core side will use at K3: headers (time, frame,
 player), the proxy list, and per material and pass every variable's type and
 value, exactly for integers, strings and textures and within 1e-5 (relative
@@ -382,7 +392,7 @@ def command_materials(args):
 
 
 def read_capture(path):
-    header, proxies, materials, missing = None, [], {}, []
+    header, proxies, materials, missing, blocks = None, [], {}, [], {}
     for line in Path(path).read_text().splitlines():
         if not line.strip():
             continue
@@ -395,8 +405,10 @@ def read_capture(path):
             missing.append(record["name"])
         elif record["kind"] == "material":
             materials[(record["name"], record["pass"])] = record
+        elif record["kind"] == "block":
+            blocks[(record["name"], record["pass"])] = record
     return {"header": header, "proxies": sorted(proxies), "materials": materials,
-            "missing": sorted(missing)}
+            "missing": sorted(missing), "blocks": blocks}
 
 
 def close(a, b):
@@ -461,6 +473,83 @@ def compare(actual, expected):
             if difference:
                 differences.append("%s (%s): %s" % (key[0], key[1], difference))
     return differences
+
+
+def texture_name(text):
+    name = (text or "").lower().replace("\\", "/")
+    if name.startswith("materials/"):
+        name = name[len("materials/"):]
+    return name[:-4] if name.endswith(".vtf") else name
+
+
+def legacy_numbers(var):
+    """A legacy variable's numbers: a float or int as one, a vector's, a
+    matrix's rows 0 and 1 (row-major)."""
+    kind, value = var.get("type"), var.get("value")
+    if kind in ("float", "int"):
+        return [float(value)]
+    if kind == "vector":
+        return [float(v) for v in value]
+    if kind == "matrix":
+        return [float(v) for v in value[:8]]
+    return None
+
+
+def param_difference(param, var):
+    """None when a block parameter carries its legacy variable's value."""
+    key = param["key"]
+    if "texture" in param:
+        legacy = var.get("value") if var.get("type") in ("texture", "string") else None
+        if legacy is None or texture_name(param["texture"]) != texture_name(legacy):
+            return "%s: block texture %r, legacy %r" % (key, param["texture"], var.get("value"))
+        return None
+    numbers = legacy_numbers(var)
+    if numbers is None:
+        return "%s: legacy %s variable has no numeric value" % (key, var.get("type"))
+    if "int" in param:
+        # The importer's rules: a flag is 1 when nonzero, an integer truncates.
+        wanted = (1 if numbers[0] != 0 else 0) if param.get("kind") == "bool" else int(numbers[0])
+        if param["int"] != wanted:
+            return "%s: block %r, legacy %r" % (key, param["int"], var.get("value"))
+        return None
+    block = param["value"]
+    if len(numbers) == 1:
+        numbers = numbers * len(block)
+    if len(numbers) < len(block) or not all(close(a, b) for a, b in zip(block, numbers)):
+        return "%s: block %r, legacy %r" % (key, block, var.get("value"))
+    return None
+
+
+def block_differences(capture):
+    """(differences, blocks compared, parameters compared, legacy-family passes)."""
+    differences, compared, params, legacy = [], 0, 0, 0
+    for key, record in sorted(capture["materials"].items()):
+        block = capture["blocks"].get(key)
+        where = "%s (%s)" % key
+        if block is None:
+            differences.append("%s: no frontend block" % where)
+            continue
+        if block.get("family") is None:
+            differences.append("%s: the frontend knows no family for the shader" % where)
+            continue
+        if block["family"] == "legacy":
+            legacy += 1
+            continue
+        compared += 1
+        if not block.get("applied", False):
+            differences.append("%s: the values did not apply to the %s block" % (where,
+                                                                                 block["family"]))
+        variables = {v["name"].lower(): v for v in record["vars"]}
+        for param in block["params"]:
+            var = variables.get(param["key"].lower())
+            if var is None:
+                differences.append("%s: block %s has no legacy variable" % (where, param["key"]))
+                continue
+            params += 1
+            difference = param_difference(param, var)
+            if difference:
+                differences.append("%s: %s" % (where, difference))
+    return differences, compared, params, legacy
 
 
 def command_compare(args):
@@ -566,6 +655,16 @@ def command_capture(args):
         differences = compare(read_capture(path), read_capture(expected))
         checks.check(not differences, "%s.capture-%d.equals-the-recorded-legacy-values"
                      % (args.game, index), "; ".join(differences[:5]))
+    if args.core:
+        for index, path in enumerate(captures):
+            differences, compared, params, legacy = block_differences(read_capture(path))
+            checks.check(compared > 0, "%s.capture-%d.frontend-blocks-written" % (args.game, index),
+                         "no family block: is the render core composed?")
+            checks.check(not differences, "%s.capture-%d.blocks-carry-the-legacy-values"
+                         % (args.game, index), "; ".join(differences[:5]))
+            print("%s capture %d: %d family blocks, %d parameters compared, %d legacy-family "
+                  "passes, %d differences" % (args.game, index, compared, params, legacy,
+                                              len(differences)))
     changed = sum(1 for key, record in first["materials"].items()
                   if key in second["materials"] and
                   compare({"header": None, "proxies": [], "missing": [], "materials": {key: record}},
@@ -632,6 +731,40 @@ def command_selftest(_args):
     }
     for name, change in faults.items():
         checks.check(bool(compare(seeded(change), base)), "fault.%s.detected" % name)
+
+    # The frontend side: a block carrying the sample's variables agrees; each
+    # seeded block difference is reported.
+    def with_block(change=None):
+        capture = copy.deepcopy(base)
+        capture["blocks"] = {("proxy_corpus/sine", "none"): {
+            "family": "unlit", "applied": True, "params": [
+                {"key": "$alpha", "parameter": "alpha", "value": [0.55]},
+                {"key": "$basetexture", "parameter": "basetexture",
+                 "texture": "materials/vgui/white"},
+                {"key": "$basetexturetransform", "parameter": "basetexturetransform",
+                 "value": [1.0] + [0.0] * 7},
+                {"key": "$color", "parameter": "color", "value": [1.0, 1.0, 1.0]},
+                {"key": "$frame", "parameter": "frame", "int": 3, "kind": "int"}]}}
+        if change:
+            change(capture["blocks"][("proxy_corpus/sine", "none")])
+        return capture
+    checks.check(not block_differences(with_block())[0], "block.control.agrees")
+    block_faults = {
+        "float": lambda b: b["params"][0].update(value=[0.56]),
+        "texture": lambda b: b["params"][1].update(texture="materials/vgui/black"),
+        "transform": lambda b: b["params"][2]["value"].__setitem__(3, 0.25),
+        "vector": lambda b: b["params"][3].update(value=[1.0, 0.5, 1.0]),
+        "int": lambda b: b["params"][4].update(int=4),
+        "not-applied": lambda b: b.update(applied=False),
+        "unknown-key": lambda b: b["params"].append({"key": "$nosuch", "value": [0.0]}),
+        "unknown-family": lambda b: b.update(family=None),
+    }
+    for name, change in block_faults.items():
+        checks.check(bool(block_differences(with_block(change))[0]),
+                     "block.fault.%s.detected" % name)
+    missing = with_block()
+    missing["blocks"].clear()
+    checks.check(bool(block_differences(missing)[0]), "block.fault.missing-block.detected")
     return checks.report()
 
 
@@ -653,6 +786,8 @@ def main(argv=None):
     cap.add_argument("--runtime", help="the staged runtime (default ../source-engine/run/runtime "
                                        "or build-rc-p2/p2content)")
     cap.add_argument("--record", action="store_true", help="record the captures as the fixture")
+    cap.add_argument("--core", action="store_true",
+                     help="also check the frontend's family blocks against the legacy values")
     cap.set_defaults(run=command_capture)
     cmp_ = commands.add_parser("compare", help="compare two captures")
     cmp_.add_argument("actual")

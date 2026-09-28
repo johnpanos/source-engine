@@ -21,7 +21,8 @@
 #include "render/frame/feature.h"
 #include "render/frame/renderer.h"
 #include "render/legacy/capabilities.h"
-class IRenderStageMarkers; // render/legacy/stage_markers.h (legacy-interop)
+class IRenderStageMarkers;   // render/legacy/stage_markers.h (legacy-interop)
+class IRenderMaterialBlocks; // render/legacy/material_blocks.h (legacy-interop)
 #include "render/legacy_shader_provider.h"
 
 #include <cstdint>
@@ -38,6 +39,8 @@ public:
 	// The provider the material system binds; valid while the frontend lives.
 	virtual const LegacyShaderProvider *Provider() const = 0;
 	virtual IRenderStageMarkers *Markers() = 0;
+	// RenderMaterialBlocks001: bound materials' variables as family blocks.
+	virtual IRenderMaterialBlocks *MaterialBlocks() = 0;
 	// The legacy stream as a frame feature; the renderer owns it, and the
 	// frontend outlives the renderer.
 	virtual std::unique_ptr<frame::IRenderFeature> CreateStreamFeature() = 0;

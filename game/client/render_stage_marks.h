@@ -10,10 +10,12 @@
 #ifndef RENDER_STAGE_MARKS_H
 #define RENDER_STAGE_MARKS_H
 
+#include "render/legacy/material_blocks.h"
 #include "render/legacy/stage_markers.h"
 
 // Set in CHLClient::Init from the app system factory; NULL without a core.
 extern IRenderStageMarkers *g_pRenderStageMarkers;
+extern IRenderMaterialBlocks *g_pRenderMaterialBlocks;
 
 inline void ClientRender_MarkStage( RenderStageMarker stage )
 {

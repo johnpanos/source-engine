@@ -6,6 +6,7 @@
 //
 //=============================================================================//
 
+#include "frontend_material_blocks.h"
 #include "queued_capabilities.h"
 #include "render/legacy/core_backend.h"
 #include "render/legacy/stage_markers.h"
@@ -96,6 +97,7 @@ public:
 		return m_Backend ? &m_Provider : nullptr;
 	}
 	IRenderStageMarkers *Markers() override { return &m_Markers; }
+	IRenderMaterialBlocks *MaterialBlocks() override { return &m_MaterialBlocks; }
 	std::unique_ptr<frame::IRenderFeature> CreateStreamFeature() override
 	{
 		return std::make_unique<LegacyStreamFeature>();
@@ -124,6 +126,7 @@ private:
 	const LegacyShaderProvider *m_Backend;
 	LegacyShaderProvider m_Provider = {};
 	StageMarkers m_Markers;
+	FrontendMaterialBlocks m_MaterialBlocks;
 	QueuedCapabilities m_Capabilities;
 	std::uint32_t m_Creates = 0;
 };

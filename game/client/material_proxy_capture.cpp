@@ -6,9 +6,11 @@
 //			(the factory the engine's CMaterialProxyFactory asks) and, for
 //			each material matching a pattern, every material variable after its
 //			proxies bind: once with no proxy data (as world surfaces bind) and
-//			once with the local player's renderable (as models bind). The
-//			render core's frontend will run the same materials at the same
-//			time and must write the same values (K3).
+//			once with the local player's renderable (as models bind). With the
+//			render core, each material line is followed by the frontend's
+//			block line (RenderMaterialBlocks001): the same variables written
+//			into the material's family block, which must carry the same values
+//			(proxy_corpus.py compares them).
 //
 //=============================================================================//
 
@@ -19,6 +21,7 @@
 #include "materialsystem/imaterialproxy.h"
 #include "materialsystem/imaterialvar.h"
 #include "materialsystem/itexture.h"
+#include "render_stage_marks.h"
 #include "tier1/interface.h"
 #include "tier1/utlbuffer.h"
 #include "tier1/utlstring.h"
@@ -127,6 +130,110 @@ static void WriteMaterial( CUtlBuffer &out, IMaterial *pMaterial, const char *pP
 	out.PutString( "]}\n" );
 }
 
+// A variable's value as the material system prints a VMT value, for the
+// frontend's mapping (RenderMaterialBlocks001).
+static void FormatVariableText( IMaterialVar *pVar, CUtlString &text )
+{
+	char buffer[512];
+	switch ( pVar->GetType() )
+	{
+	case MATERIAL_VAR_TYPE_FLOAT:
+		Q_snprintf( buffer, sizeof( buffer ), "%.9g", pVar->GetFloatValue() );
+		break;
+	case MATERIAL_VAR_TYPE_INT:
+		Q_snprintf( buffer, sizeof( buffer ), "%d", pVar->GetIntValue() );
+		break;
+	case MATERIAL_VAR_TYPE_VECTOR:
+	{
+		float values[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		const int nComps = clamp( pVar->VectorSize(), 1, 4 );
+		pVar->GetVecValue( values, nComps );
+		int length = Q_snprintf( buffer, sizeof( buffer ), "[" );
+		for ( int i = 0; i < nComps; ++i )
+			length += Q_snprintf(
+			    buffer + length, sizeof( buffer ) - length, "%s%.9g", i ? " " : "", values[i] );
+		Q_snprintf( buffer + length, sizeof( buffer ) - length, "]" );
+		break;
+	}
+	case MATERIAL_VAR_TYPE_MATRIX:
+	{
+		const VMatrix &matrix = pVar->GetMatrixValue();
+		int length = Q_snprintf( buffer, sizeof( buffer ), "[" );
+		for ( int i = 0; i < 16; ++i )
+			length += Q_snprintf( buffer + length, sizeof( buffer ) - length, "%s%.9g",
+			    i ? " " : "", matrix.m[i / 4][i % 4] );
+		Q_snprintf( buffer + length, sizeof( buffer ) - length, "]" );
+		break;
+	}
+	case MATERIAL_VAR_TYPE_TEXTURE:
+	{
+		ITexture *pTexture = pVar->GetTextureValue();
+		Q_strncpy( buffer, pTexture ? pTexture->GetName() : "", sizeof( buffer ) );
+		break;
+	}
+	case MATERIAL_VAR_TYPE_MATERIAL:
+	{
+		IMaterial *pValue = pVar->GetMaterialValue();
+		Q_strncpy( buffer, pValue ? pValue->GetName() : "", sizeof( buffer ) );
+		break;
+	}
+	default:
+		Q_strncpy( buffer, pVar->GetStringValue() ? pVar->GetStringValue() : "", sizeof( buffer ) );
+		break;
+	}
+	text = buffer;
+}
+
+// The render core frontend's block line for the material, after its proxies
+// bound: its defined variables through RenderMaterialBlocks001.
+static ConVar mat_proxy_capture_blocks( "mat_proxy_capture_blocks", "1", FCVAR_NONE,
+    "mat_proxy_capture also writes the render core frontend's family blocks" );
+
+static void WriteBlock( CUtlBuffer &out, IMaterial *pMaterial, const char *pPass )
+{
+	if ( !g_pRenderMaterialBlocks || !mat_proxy_capture_blocks.GetBool() )
+		return;
+	IMaterialVar **ppVars = pMaterial->GetShaderParams();
+	const int nVars = pMaterial->ShaderParamCount();
+	CUtlVector<CUtlString> keys, values;
+	for ( int i = 0; i < nVars; ++i )
+	{
+		if ( !ppVars[i]->IsDefined() )
+			continue;
+		keys.AddToTail( CUtlString( ppVars[i]->GetName() ) );
+		FormatVariableText( ppVars[i], values[values.AddToTail()] );
+	}
+	CUtlVector<const char *> keyTexts, valueTexts;
+	for ( int i = 0; i < keys.Count(); ++i )
+	{
+		keyTexts.AddToTail( keys[i].Get() );
+		valueTexts.AddToTail( values[i].Get() );
+	}
+	CUtlVector<char> line;
+	line.SetCount( 4096 );
+	int length = g_pRenderMaterialBlocks->FormatBlock( pMaterial->GetName(), pPass,
+	    pMaterial->GetShaderName(), keys.Count(), keyTexts.Base(), valueTexts.Base(), line.Base(),
+	    line.Count() );
+	if ( length >= line.Count() )
+	{
+		line.SetCount( length + 1 );
+		length = g_pRenderMaterialBlocks->FormatBlock( pMaterial->GetName(), pPass,
+		    pMaterial->GetShaderName(), keys.Count(), keyTexts.Base(), valueTexts.Base(),
+		    line.Base(), line.Count() );
+	}
+	if ( length > 0 )
+	{
+		out.PutString( line.Base() );
+		out.PutChar( '\n' );
+		return;
+	}
+	out.PutString( "{\"kind\":\"block\",\"name\":" );
+	WriteJsonString( out, pMaterial->GetName() );
+	out.PutString( ",\"pass\":" );
+	WriteJsonString( out, pPass );
+	out.PutString( length == 0 ? ",\"family\":\"legacy\"}\n" : ",\"family\":null}\n" );
+}
+
 static int CompareNames( const CUtlString *pA, const CUtlString *pB )
 {
 	return Q_strcmp( pA->Get(), pB->Get() );
@@ -208,15 +315,20 @@ CON_COMMAND( mat_proxy_capture,
 			Msg( "mat_proxy_capture: %s (none)\n", pName );
 			pMaterial->CallBindProxy( NULL );
 			WriteMaterial( out, pMaterial, "none" );
+			WriteBlock( out, pMaterial, "none" );
 		}
 		if ( pPlayer && Q_strstr( pPassList, "player" ) )
 		{
 			Msg( "mat_proxy_capture: %s (player)\n", pName );
 			pMaterial->CallBindProxy( pPlayer->GetClientRenderable() );
 			WriteMaterial( out, pMaterial, "player" );
+			WriteBlock( out, pMaterial, "player" );
 		}
 		if ( Q_strstr( pPassList, "unbound" ) )
+		{
 			WriteMaterial( out, pMaterial, "unbound" );
+			WriteBlock( out, pMaterial, "unbound" );
+		}
 	}
 	if ( !g_pFullFileSystem->WriteFile( args[1], "DEFAULT_WRITE_PATH", out ) )
 		Warning( "mat_proxy_capture: cannot write %s\n", args[1] );

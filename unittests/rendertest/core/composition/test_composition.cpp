@@ -10,12 +10,17 @@
 //			   module and forwards creation, counting it;
 //			P3 RenderStageMarkers001 marks stages of the engine's frames,
 //			   rejects the engine-owned begin and end, and counts violations;
-//			P4 each frame runs the legacy-stream pass before present.
+//			P4 each frame runs the legacy-stream pass before present;
+//			P5 RenderMaterialBlocks001 writes a family material's variables as
+//			   its block (an UnlitGeneric's $color read back from the unlit
+//			   block), writes nothing for a legacy-family shader and refuses
+//			   an unknown shader.
 //
 //=============================================================================//
 
 #include "render/composition/render_core.h"
 #include "render/device/device.h"
+#include "render/legacy/material_blocks.h"
 #include "render/legacy/stage_markers.h"
 #include "testing/checks.h"
 
@@ -67,6 +72,30 @@ int main()
 	checks.That( binding && binding->device && binding->renderer && binding->sceneFactory.create &&
 	                 binding->stageMarkers && std::strcmp( binding->deviceName, "null" ) == 0,
 	    "P1.the-binding-is-complete" );
+	if ( IRenderMaterialBlocks *blocks = binding ? binding->materialBlocks : nullptr )
+	{
+		const char *keys[] = { "$basetexture", "$color", "$refractamount" };
+		const char *values[] = { "vgui/white", "[0.5 0.25 1]", ".2" };
+		char line[1024];
+		const int length = blocks->FormatBlock(
+		    "a/b", "none", "UnlitGeneric", 2, keys, values, line, sizeof( line ) );
+		checks.That( length > 0 && length < int( sizeof( line ) ) &&
+		                 std::strstr( line, "\"family\":\"unlit\"" ) &&
+		                 std::strstr( line, "\"key\":\"$color\",\"parameter\":\"color\",\"value\":"
+		                                    "[0.5,0.25,1]" ) &&
+		                 std::strstr( line, "\"texture\":\"materials/vgui/white\"" ),
+		    "P5.a-family-material-becomes-its-block" );
+		checks.That( blocks->FormatBlock( "a/c", "none", "Refract", 1, keys + 2, values + 2, line,
+		                 sizeof( line ) ) == 0,
+		    "P5.a-legacy-family-material-has-no-block" );
+		checks.That( blocks->FormatBlock( "a/d", "none", "NoSuchShader", 0, nullptr, nullptr, line,
+		                 sizeof( line ) ) == -1,
+		    "P5.an-unknown-shader-is-refused" );
+	}
+	else
+	{
+		checks.That( false, "P5.the-binding-has-material-blocks" );
+	}
 	// A host drives its own graphs on the core's device port.
 	if ( binding && binding->device )
 	{

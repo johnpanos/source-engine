@@ -134,6 +134,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->binding.renderer = core->renderer.get();
 	core->binding.sceneFactory.create = &render::scene::CreateRenderScene;
 	core->binding.stageMarkers = core->frontend->Markers();
+	core->binding.materialBlocks = core->frontend->MaterialBlocks();
 	core->binding.capabilities = core->frontend->Capabilities();
 	core->binding.deviceName = core->deviceName.c_str();
 	return core.release();
