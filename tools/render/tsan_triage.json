@@ -1,0 +1,66 @@
+{
+  "schema": "render-tsan-triage/v1",
+  "source": "RFC/0001-native-vulkan-queued-rendering-progress.md (TSan product tree, 2026-09-26): the queued-mode triage RFC 0016 K3 calls the K0 triage list",
+  "families": [
+    {
+      "id": "engine-pool.bones",
+      "reason": "pooled bone setup (R30 cohort): known engine-pool debt, present in mode 0",
+      "frames": ["SetupBones", "CBoneSetup", "Studio_BuildMatrices", "CBoneCache", "C_BaseAnimating::"]
+    },
+    {
+      "id": "engine-pool.particles",
+      "reason": "pooled particle simulation and its random contexts (R21 cohort): known engine-pool debt, present in mode 0",
+      "frames": ["CParticleCollection", "CParticleOperator", "CParticleSystem", "C_OP_", "C_INIT_", "UniformRandomStream", "CNewParticleEffect"]
+    },
+    {
+      "id": "engine-pool.traces",
+      "reason": "traces from pooled work (particles, bones) against the world and physics: known engine-pool debt, present in mode 0",
+      "frames": ["CEngineTrace", "TraceRay", "ClipRayToCollideable", "CM_BoxTrace", "CPhysicsCollision", "vphysics"]
+    },
+    {
+      "id": "engine-pool.spatial-partition",
+      "reason": "the spatial partition read from pooled work: known engine-pool debt, present in both modes",
+      "frames": ["CSpatialPartition", "CVoxelTree", "CVoxelHash", "CLeafList"]
+    },
+    {
+      "id": "engine-pool.model-cache",
+      "reason": "model cache lookups from pooled work: known engine-pool debt, present in mode 0",
+      "frames": ["CMDLCache", "CDataCache", "CStudioHdr", "mdlcache"]
+    },
+    {
+      "id": "queued.material-proxies",
+      "reason": "Source's queued design (same under D3D9 and DXVK): proxies on the main thread against queued CMaterialVar::Set* on the render thread; at worst a value one frame old or torn",
+      "frames": ["CMaterialVar::", "::OnBind", "IMaterialProxy"]
+    },
+    {
+      "id": "queued.lightmap-marking",
+      "reason": "Source's queued design: R_MarkLights marking surfaces against the queued R_BuildLightMapGuts",
+      "frames": ["R_MarkLights", "R_BuildLightMapGuts", "R_AddDynamicLights", "R_PushDlights"]
+    },
+    {
+      "id": "queued.debug-vars",
+      "reason": "Source's queued design: g_nDebugVarsSignature written in BeginFrame and read in DrawMesh",
+      "frames": ["g_nDebugVarsSignature"]
+    },
+    {
+      "id": "queued.spew",
+      "reason": "Source's queued design: spew from the render thread (DrawElements and others)",
+      "frames": ["_SpewMessage", "SpewOutput", "ConMsg", "Msg\\b"]
+    },
+    {
+      "id": "native.debug-texture-list",
+      "reason": "native backend, debug only: EnableDebugTextureList writes a flag the render thread's frame end reads (texture list panel)",
+      "frames": ["EnableDebugTextureList"]
+    },
+    {
+      "id": "shutdown.legacy-threads",
+      "reason": "added at K3 (2026-09-28, agent decision): teardown races of legacy threads, first seen when the K3 lane reached shutdown (the K0 run hung at exit and was killed). CTextureManager::Shutdown writes the exit flags the texture AsyncLoader and AsyncReader threads poll without synchronization; CAsyncUploaderThread deletes itself; CThread's destructor reads what the exiting thread wrote (the server's achievement save thread at module unload). Not render-core code; the owner is R20/R46 thread and global retirement",
+      "frames": ["CTextureManager::Shutdown", "AsyncLoader::ThreadLoader_Main", "AsyncReader::ReaderMain", "CAsyncUploaderThread::", "CThread::~CThread"]
+    },
+    {
+      "id": "sdl.audio",
+      "reason": "SDL audio device thread against the mixer: an existing family, not queue-specific",
+      "frames": ["SDL_.*Audio", "CAudioDeviceSDL", "audio_sdl"]
+    }
+  ]
+}

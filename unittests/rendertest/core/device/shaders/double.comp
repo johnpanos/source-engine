@@ -1,0 +1,18 @@
+#version 450
+// render.device.v2 suite fixture (test_device_vulkan.cpp kDoubleCompute):
+// values[i] = values[i] * 2 + 1. Embedded as built by the pinned compiler with
+// --target-env=vulkan1.1 -O; tools/render/shader_toolchain.py check rebuilds
+// and compares it.
+
+layout( local_size_x = 64 ) in;
+
+layout( set = 3, binding = 0 ) buffer Data
+{
+	uint values[];
+};
+
+void main()
+{
+	uint i = gl_GlobalInvocationID.x;
+	values[i] = values[i] * 2u + 1u;
+}

@@ -540,3 +540,240 @@ class HermeticHeaderTest(unittest.TestCase):
             self.root, self.block, capabilities.compiler_deps(self.root, 'g++'))
         self.assertEqual(1, len(errors))
         self.assertIn('does not compile alone', errors[0])
+
+
+class LayerContractTest(unittest.TestCase):
+    """CAP011: the RFC 0016 render layer contract, one seeded fixture per rule."""
+
+    EDGES = {
+        'foundation': [],
+        'jobs.graph': ['foundation'],
+        'render.math': ['foundation'],
+        'render.contracts': [],
+        'render.device': ['foundation', 'render.math', 'render.contracts'],
+        'render.graph': ['foundation', 'render.math', 'render.device', 'jobs.graph'],
+        'render.resources': ['render.device', 'content.texture-contract'],
+        'render.material': ['render.graph', 'render.resources', 'content.keyvalues-text'],
+        'render.scene': ['render.material'],
+        'render.frame': ['render.scene', 'render.graph'],
+        'render.renderer': ['render.frame'],
+        'render.pass.shadows': ['render.frame', 'render.scene'],
+        'render.pass.present': ['render.frame'],
+        'render.legacy-frontend': ['render.frame', 'render.contracts'],
+        'render.composition': ['render.renderer', 'render.pass.shadows', 'render.pass.present',
+                               'render.legacy-frontend', 'render.device.vulkan', 'render.device.null',
+                               'render.bridge.sdl3-vulkan', 'render.indirect-light'],
+        'render.device.vulkan': ['foundation', 'render.math', 'render.contracts', 'render.device'],
+        'render.device.null': ['render.device'],
+        'render.bridge.sdl3-vulkan': ['render.device', 'platform.sdl3.render-surface'],
+        'render.indirect-light': ['render.contracts', 'world.map-container'],
+        'content.texture-contract': [],
+        'content.keyvalues-text': [],
+        'platform.sdl3.render-surface': [],
+        'world.map-container': [],
+    }
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        modules = []
+        for mid, edges in self.EDGES.items():
+            directory = mid.replace('.', '/').replace('-', '_')
+            module = {'id': mid, 'paths': [f'{directory}/'], 'allowedEdges': list(edges)}
+            if mid.startswith(('render.device.', 'render.bridge.')):
+                module['kind'] = 'backend'
+            modules.append(module)
+        self.contract = {
+            'id': 'render', 'rfc': '0016', 'prefix': 'render.',
+            'layers': [
+                ['foundation', 'render.math', 'render.contracts', 'jobs.graph'],
+                ['render.device'],
+                ['render.graph', 'render.shader-library', 'render.resources'],
+                ['render.material'],
+                ['render.scene'],
+                ['render.frame'],
+                ['render.renderer', 'render.pass.*', 'render.legacy-frontend'],
+                ['render.composition']],
+            'externalBases': ['content.keyvalues-text', 'content.texture-contract'],
+            'independent': [['render.renderer', 'render.pass.*', 'render.legacy-frontend'],
+                            ['render.device.vulkan', 'render.device.gl', 'render.device.null']],
+            'adapters': {'render.device': ['render.device.vulkan', 'render.device.gl',
+                                           'render.device.null', 'render.bridge.*']},
+            'adapterConsumers': ['render.composition'],
+            'outside': [{'modules': ['render.indirect-light'], 'owner': 'R91',
+                         'reason': 'Predates the core; moves onto it with the remaining cohorts.'}],
+            'backendIdentity': {'identifier': 'diagnosticBackend',
+                                'allowedModules': ['render.device', 'render.composition']},
+            'planned': ['render.device.gl', 'render.shader-library']}
+        self.block = {'modules': modules, 'standardHeaders': [], 'targets': {},
+                      'layerContracts': [self.contract]}
+
+    def module(self, mid):
+        return next(m for m in self.block['modules'] if m['id'] == mid)
+
+    def add(self, mid, edges, kind=None):
+        module = {'id': mid, 'paths': [mid.replace('.', '/') + '/'], 'allowedEdges': edges}
+        if kind:
+            module['kind'] = kind
+        self.block['modules'].append(module)
+
+    def write(self, name, text):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    def errors(self):
+        return capabilities.layer_contract_errors(self.root, self.block, archlint.strip_comments_and_literals)
+
+    def assertRule(self, rule, subject):
+        errors = self.errors()
+        self.assertTrue(any(e.startswith(f'CAP011 rule {rule} ') and subject in e for e in errors), errors)
+        return errors
+
+    def test_valid_contract_passes(self):
+        self.assertEqual(self.errors(), [])
+        # check() runs CAP011 alongside the other capability checks.
+        self.assertEqual(capabilities.check(self.root, self.block, archlint.strip_comments_and_literals), [])
+
+    def test_upward_edge_fails_rule_1(self):
+        self.module('render.scene')['allowedEdges'].append('render.frame')
+        errors = self.assertRule(1, 'render.scene: edge to render.frame (layer 5) from layer 4')
+        self.assertEqual(len(errors), 1)
+
+    def test_same_layer_edge_fails_rule_1(self):
+        self.module('render.graph')['allowedEdges'].append('render.resources')
+        self.assertRule(1, 'render.graph: edge to render.resources (layer 2)')
+
+    def test_layer_zero_family_edge_fails_but_external_vocabulary_passes(self):
+        self.module('render.contracts')['allowedEdges'].append('render.math')
+        self.assertRule(1, 'render.contracts: edge to render.math (layer 0)')
+        self.module('render.contracts')['allowedEdges'] = ['foundation', 'jobs.graph']
+        self.assertEqual(self.errors(), [])
+        self.module('jobs.graph')['allowedEdges'].append('render.math')
+        self.assertRule(1, 'jobs.graph: edge to render.math')
+
+    def test_external_base_passes_and_undeclared_base_fails(self):
+        self.module('render.scene')['allowedEdges'].append('content.keyvalues-text')
+        self.assertEqual(self.errors(), [])
+        self.module('render.scene')['allowedEdges'].append('world.map-container')
+        self.assertRule(1, 'render.scene: edge to undeclared base world.map-container')
+
+    def test_edge_to_outside_module_fails_rule_1(self):
+        self.module('render.frame')['allowedEdges'].append('render.indirect-light')
+        self.assertRule(1, 'render.frame: edge to render.indirect-light, which is outside')
+
+    def test_sibling_edge_fails_rule_2(self):
+        self.module('render.pass.shadows')['allowedEdges'].append('render.renderer')
+        errors = self.assertRule(2, 'render.pass.shadows: edge to independent sibling render.renderer')
+        self.assertFalse(any('rule 1' in e for e in errors), errors)
+
+    def test_pass_to_pass_edge_fails_rule_2(self):
+        self.module('render.pass.present')['allowedEdges'].append('render.pass.shadows')
+        self.assertRule(2, 'render.pass.present: edge to independent sibling render.pass.shadows')
+
+    def test_portable_edge_to_adapter_fails_rule_3(self):
+        self.module('render.graph')['allowedEdges'].append('render.device.vulkan')
+        errors = self.assertRule(3, 'render.graph: edge to adapter render.device.vulkan')
+        self.assertEqual(len(errors), 1)
+
+    def test_pattern_adapter_is_an_adapter(self):
+        self.module('render.frame')['allowedEdges'].append('render.bridge.sdl3-vulkan')
+        self.assertRule(3, 'render.frame: edge to adapter render.bridge.sdl3-vulkan')
+
+    def test_adapter_consumers_and_test_fixtures_may_name_adapters(self):
+        self.add('render.device.vulkan.tests', ['render.device.vulkan'], kind='native-test')
+        self.contract['layers'][7].append('render.device.vulkan.tests')
+        self.assertEqual(self.errors(), [])
+
+    def test_adapter_to_adapter_edge_fails(self):
+        self.contract['planned'].remove('render.device.gl')
+        self.add('render.device.gl', ['render.device', 'render.device.vulkan'], kind='backend')
+        errors = self.errors()
+        self.assertTrue(any(e.startswith('CAP011 rule 2 render.device.gl: edge to independent sibling '
+                                         'render.device.vulkan') for e in errors), errors)
+        self.assertTrue(any(e.startswith('CAP011 rule 3 render.device.gl: adapter of render.device '
+                                         'depends on render.device.vulkan (adapter)') for e in errors), errors)
+
+    def test_adapter_edge_above_layer_zero_fails_rule_3(self):
+        self.module('render.device.null')['allowedEdges'].append('render.graph')
+        self.assertRule(3, 'render.device.null: adapter of render.device depends on render.graph (layer 2)')
+
+    def test_adapter_native_grant_passes(self):
+        self.module('render.device.null')['allowedEdges'].append('platform.sdl3.render-surface')
+        self.assertEqual(self.errors(), [])
+
+    def test_unlayered_render_module_fails_rule_4(self):
+        self.add('render.stray', ['render.contracts'])
+        self.assertRule(4, 'render.stray: render.* module has no layer')
+
+    def test_pass_pattern_places_new_passes(self):
+        self.add('render.pass.bloom', ['render.frame'])
+        self.assertEqual(self.errors(), [])
+
+    def test_declared_module_that_does_not_exist_fails_rule_4(self):
+        self.contract['planned'].remove('render.shader-library')
+        self.assertRule(4, 'render.shader-library: declared in the layer contract but not a capability module')
+
+    def test_planned_module_that_exists_fails_rule_4(self):
+        self.add('render.shader-library', ['render.device'])
+        self.assertRule(4, 'render.shader-library: planned but already a capability module')
+
+    def test_module_in_two_places_fails_rule_4(self):
+        self.contract['layers'][2].append('render.device.null')
+        self.assertRule(4, 'render.device.null: declared in more than one place')
+        self.contract['layers'][2].remove('render.device.null')
+        self.contract['outside'].append({'modules': ['render.indirect-light'], 'owner': 'R90', 'reason': 'x'})
+        self.assertRule(4, 'render.indirect-light: listed in more than one outside group')
+
+    def test_outside_exempts_a_pattern_matched_legacy_module(self):
+        self.add('render.bridge.legacy-mesh', ['render.contracts', 'render.indirect-light'], kind='backend')
+        self.assertRule(3, 'render.bridge.legacy-mesh: adapter of render.device depends on render.indirect-light')
+        self.contract['outside'][0]['modules'].append('render.bridge.legacy-mesh')
+        self.assertEqual(self.errors(), [])
+        self.contract['outside'][0]['modules'].append('render.device.null')
+        self.assertRule(4, 'render.device.null: both in the layer contract and outside it')
+
+    def test_outside_group_needs_owner_and_reason(self):
+        self.contract['outside'][0].update(owner='later', reason='')
+        errors = self.errors()
+        self.assertIn('CAP011 layerContracts render outside group 1: owner must be a roadmap row', errors)
+        self.assertIn('CAP011 layerContracts render outside group 1: needs a reason', errors)
+
+    def test_contract_structure(self):
+        del self.contract['prefix']
+        self.contract['layer'] = []
+        self.contract['adapters'] = {'render.nowhere': ['render.device.null']}
+        errors = self.errors()
+        for expected in ('missing key prefix', 'unknown key layer', 'adapter port render.nowhere is not in a layer'):
+            self.assertTrue(any(expected in e for e in errors), errors)
+        self.contract.update(prefix='render.', layers=['render.device'])
+        del self.contract['layer']
+        self.assertTrue(any('layers must be a list of non-empty module lists' in e for e in self.errors()))
+
+    def test_backend_identity_comparison_fails_rule_5(self):
+        self.write('render/pass/shadows/feature.cpp',
+                   'void Draw( const DeviceFacts &facts )\n{\n\tif ( facts.diagnosticBackend == "vulkan" )\n'
+                   '\t\treturn;\n}\n')
+        errors = self.assertRule(5, 'render/pass/shadows/feature.cpp:3 (render.pass.shadows): compares')
+        self.assertEqual(len(errors), 1)
+
+    def test_backend_identity_comparison_forms(self):
+        for line in ('if ( "gl" != facts.diagnosticBackend )', 'if ( facts.diagnosticBackend.starts_with( "v" ) )',
+                     'if ( strcmp( name, facts.diagnosticBackend ) == 0 )',
+                     'auto order = diagnosticBackend <=> other;'):
+            self.write('render/graph/compile.cpp', line + '\n')
+            self.assertRule(5, 'render/graph/compile.cpp:1 (render.graph)')
+
+    def test_backend_identity_mentions_pass(self):
+        self.write('render/pass/shadows/feature.cpp',
+                   '// diagnosticBackend == "x"\n/* diagnosticBackend != y */\n'
+                   'void Log( const DeviceFacts &facts )\n{\n\tLog( facts.diagnosticBackend );\n'
+                   '\tLog( "diagnosticBackend == vulkan" );\n}\n')
+        self.write('render/device/vulkan/facts.cpp', 'void Fill( DeviceFacts &facts )\n{\n'
+                   '\tfacts.diagnosticBackend = "vulkan";\n}\n')
+        self.write('render/composition/select.cpp', 'bool b = config.diagnosticBackend == "gl";\n')
+        self.assertEqual(self.errors(), [])
+        # An adapter is portable for rule 5 unless allowed.
+        self.write('render/device/vulkan/facts.cpp', 'bool b = facts.diagnosticBackend == "gl";\n')
+        self.assertRule(5, 'render/device/vulkan/facts.cpp:1 (render.device.vulkan)')

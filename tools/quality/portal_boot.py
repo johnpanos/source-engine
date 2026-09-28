@@ -73,8 +73,15 @@ def stage_runtime(runtime, stage, game="portal", content_only=False):
                 directories[:] = [name for name in directories if name != "bin"]
         directories[:] = sorted(name for name in directories
                                 if name.lower() not in EXCLUDED_DIRECTORIES)
+        # A linked directory (a staged Portal 2 runtime links its retail
+        # overlays) stays one link; os.walk would otherwise stage it empty.
+        linked = sorted(name for name in directories if (Path(directory) / name).is_symlink())
+        directories[:] = [name for name in directories if name not in linked]
         destination = stage / relative
         destination.mkdir(parents=True, exist_ok=True)
+        for name in linked:
+            (destination / name).symlink_to((Path(directory) / name).resolve(),
+                                            target_is_directory=True)
         for name in sorted(filenames):
             source = Path(directory) / name
             if source.suffix.lower() in {".log", ".dmp"}:
@@ -89,8 +96,9 @@ def stage_runtime(runtime, stage, game="portal", content_only=False):
     return count
 
 
-def content_files(content_root):
-    """Validated (source, relative) files of a compiled map content root."""
+def content_files(content_root, require_map=True):
+    """Validated (source, relative) files of a compiled map content root, or
+    (require_map False) of a materials-only root."""
     source_root = Path(content_root).resolve()
     if not source_root.is_dir():
         raise ValueError("content root is missing")
@@ -106,15 +114,18 @@ def content_files(content_root):
                 or source.suffix.lower() not in allowed.get(relative.parts[0], set())):
             raise ValueError("content root has an unsupported file: " + str(relative))
         files.append((source, relative))
-    if not any(relative.parts[0] == "maps" for _, relative in files):
+    if require_map and not any(relative.parts[0] == "maps" for _, relative in files):
         raise ValueError("content root has no map")
+    if not require_map and any(relative.parts[0] != "materials" for _, relative in files):
+        raise ValueError("a material root holds only materials/")
     return files
 
 
-def install_content(content_root, stage, game="portal"):
-    """Overlay a private compiled map and its materials into a staged game."""
+def install_content(content_root, stage, game="portal", require_map=True):
+    """Overlay a private compiled map and its materials (or, require_map False,
+    private materials alone) into a staged game."""
     plan = []
-    for source, relative in content_files(content_root):
+    for source, relative in content_files(content_root, require_map):
         target = stage / game / relative
         if target.exists() or target.is_symlink():
             raise ValueError("private content would replace installed content: " + str(relative))
@@ -705,6 +716,9 @@ def main(argv=None):
     parser.add_argument("--build", type=Path)
     parser.add_argument("--content-root", type=Path,
                         help="private maps/ and materials/ files added to the staged game")
+    parser.add_argument("--material-root", type=Path,
+                        help="private materials/ files added to the staged game without a map "
+                             "(e.g. the proxy corpus fixture materials)")
     parser.add_argument("--shader-artifacts", type=Path,
                         help="overlay source-matched shader artifacts into the private runtime")
     parser.add_argument("--render-trace", action="store_true",
@@ -712,6 +726,10 @@ def main(argv=None):
     parser.add_argument("--draw-state-fixtures", action="store_true",
                         help="write the screenshot frame's per-draw state (source-draw-state/v1) "
                              "to draw-state/ for cross-backend comparison")
+    parser.add_argument("--view-oracle", action="store_true",
+                        help="write each screenshot frame's views and draws "
+                             "(source-view-oracle/v1, RFC 0016 K0) to vo/; "
+                             "tools/render/view_oracle.py compares them")
     parser.add_argument("--renderdoc", action="store_true",
                         help="run under RenderDoc (renderdoccmd) and capture the frame after "
                              "the final screenshot command into renderdoc/*.rdc "
@@ -743,6 +761,9 @@ def main(argv=None):
                              "screenshot (repeatable). Player commands such as setpos and "
                              "setang need the client prefix: 'cmd setpos 0 0 64'")
     parser.add_argument("--map", default="testchmb_a_00")
+    parser.add_argument("--game", choices=("portal", "portal2"), default="portal",
+                        help="game directory; portal2 needs a runtime staged by "
+                             "stage_portal2_runtime.py (retail content) and a Portal 2 build")
     parser.add_argument("--engine-arg", action="append", default=[],
                         help="extra launcher argument placed before +map (repeatable), e.g. "
                              "'-hostframetrace' '<file>'")
@@ -775,14 +796,18 @@ def main(argv=None):
     evidence = {"schema": "portal-boot-evidence/v1", "status": "fail",
                 "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "source": conformance.source_identity(conformance.repo_root()),
-                "runtime": str(args.runtime.resolve()), "map": args.map,
+                "runtime": str(args.runtime.resolve()), "map": args.map, "game": args.game,
                 "requested_resolution": [args.width, args.height]}
     try:
         stage = output / "runtime"
-        evidence["staging"] = stage_runtime(args.runtime, stage)
-        evidence["build_overrides"] = install_build(args.build, stage) if args.build else {}
+        game = args.game
+        evidence["staging"] = stage_runtime(args.runtime, stage, game=game)
+        evidence["build_overrides"] = install_build(args.build, stage, game=game) if args.build else {}
         if args.content_root:
-            evidence["content_overrides"] = install_content(args.content_root, stage)
+            evidence["content_overrides"] = install_content(args.content_root, stage, game=game)
+        if args.material_root:
+            evidence["material_overrides"] = install_content(args.material_root, stage, game=game,
+                                                             require_map=False)
         if args.shader_artifacts:
             evidence["shader_overrides"] = install_shader_artifacts(args.shader_artifacts, stage)
         executable = stage / "hl2_launcher"
@@ -790,8 +815,10 @@ def main(argv=None):
             raise ValueError("runtime is missing hl2_launcher")
         evidence["executables"] = {str(path.relative_to(stage)): sha256(path)
                                    for path in [executable] + sorted((stage / "bin").glob("*.so"))
-                                   + sorted((stage / "portal/bin").glob("*.so"))}
-        command = [str(executable), "-game", "portal", "-windowed", "-w", str(args.width), "-h", str(args.height),
+                                   + sorted((stage / game / "bin").glob("*.so"))}
+        # Relative to the working directory (the staged runtime): the engine
+        # refuses command lines over 512 characters, the program path included.
+        command = ["./" + executable.name, "-game", game, "-windowed", "-w", str(args.width), "-h", str(args.height),
                    # -multirun: an isolated boot must not collide with (or be refused
                    # by) a game the user is running.
                    "-multirun",
@@ -803,8 +830,8 @@ def main(argv=None):
                    "+map", args.map,
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0"]
         if args.startup_command:
-            (stage / "portal/cfg").mkdir(parents=True, exist_ok=True)
-            (stage / "portal/cfg/portal_boot_startup.cfg").write_text(
+            (stage / game / "cfg").mkdir(parents=True, exist_ok=True)
+            (stage / game / "cfg/portal_boot_startup.cfg").write_text(
                 "".join(line + "\n" for line in args.startup_command))
         # Extra console commands run once the map has loaded, before the capture
         # (e.g. "setpos X Y Z" / "setang P Y R" to frame the same view on every
@@ -813,8 +840,8 @@ def main(argv=None):
             # Written to a cfg and exec'd: the command line splits arguments (and
             # reads a negative number as an option), a cfg keeps each line whole.
             # The local player exists only after spawn, hence the wait.
-            (stage / "portal/cfg").mkdir(parents=True, exist_ok=True)
-            (stage / "portal/cfg/portal_boot_commands.cfg").write_text(
+            (stage / game / "cfg").mkdir(parents=True, exist_ok=True)
+            (stage / game / "cfg/portal_boot_commands.cfg").write_text(
                 "".join(line + "\n" for line in args.console_command))
             command += ["+wait", "300", "+exec", "portal_boot_commands.cfg"]
         command += ["+wait", str(args.capture_wait),
@@ -844,7 +871,13 @@ def main(argv=None):
         if args.draw_state_fixtures:
             fixture_dir = output / "draw-state"
             fixture_dir.mkdir()
-            command[1:1] = ["-drawstatefixture", str(fixture_dir)]
+            # Relative to the product's working directory (the staged runtime):
+            # the engine refuses command lines over 512 characters.
+            command[1:1] = ["-drawstatefixture", os.path.relpath(fixture_dir, stage)]
+        if args.view_oracle:
+            oracle_dir = output / "vo"  # short: see the 512-character limit above
+            oracle_dir.mkdir()
+            command[1:1] = ["-vieworacle", os.path.relpath(oracle_dir, stage)]
         if args.resize_stress:
             # Cmd_Exec_f evaluates separate file lines immediately. A single
             # semicolon-delimited line is parsed as one delayed command sequence,
@@ -860,8 +893,8 @@ def main(argv=None):
         if args.shader_debug:
             environment["SOURCE_VK_SHADER_DIR"] = shader_environment
         environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
-        environment["SteamAppId"] = "400"
-        environment["SteamGameId"] = "400"
+        environment["SteamAppId"] = environment["SteamGameId"] = \
+            "620" if game == "portal2" else "400"
         if args.render_trace:
             trace = output / "render-trace.jsonl"
             if trace.exists():
@@ -898,7 +931,7 @@ def main(argv=None):
                                            ("DISPLAY", "WAYLAND_DISPLAY", "SDL_VIDEODRIVER", "GDK_BACKEND")}
         code, timed_out, loaded, seconds = run_product(command, stage, environment,
                                                        args.timeout, output / "stdout.log")
-        log_paths = [output / "stdout.log", stage / "engine.log", stage / "portal/console.log"]
+        log_paths = [output / "stdout.log", stage / "engine.log", stage / game / "console.log"]
         log = "\n".join(path.read_text(errors="replace") for path in log_paths if path.is_file())
         screenshots = [info for path in sorted(stage.rglob("screenshots/*.tga"))
                        if (info := screenshot_info(path))]
@@ -931,6 +964,13 @@ def main(argv=None):
                                                 "bytes": path.stat().st_size} for path in fixtures]
             if not fixtures:
                 failures.append("requested draw-state fixtures were not written")
+        if args.view_oracle:
+            captures = sorted(oracle_dir.glob("*.jsonl"))
+            evidence["view_oracle_captures"] = [{"path": str(path), "sha256": sha256(path),
+                                                 "bytes": path.stat().st_size}
+                                                for path in captures]
+            if not captures:
+                failures.append("requested view oracle captures were not written")
         if args.render_trace:
             if not trace.is_file() or trace.stat().st_size == 0:
                 failures.append("requested renderer trace was not produced")

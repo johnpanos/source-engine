@@ -19,10 +19,6 @@
 #ifndef JOBSYSTEM_JOB_GRAPH_H
 #define JOBSYSTEM_JOB_GRAPH_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
 #include <cstdint>
 #include <functional>
 #include <vector>

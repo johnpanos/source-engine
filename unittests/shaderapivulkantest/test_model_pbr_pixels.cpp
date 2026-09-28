@@ -14,7 +14,7 @@
 
 #include "mapcontainer/probe_volume.h"
 #include "render/pbr_brdf.h"
-#include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.h"
+#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_world_lightmap.h"
 #include "testing/conformance_result.h"
@@ -342,7 +342,7 @@ bool Draw( CVulkanContext &context, const Handles &handles, const Scene &scene,
 	context.QueueDynamicTriangles( &quad[0][0], 6, nullptr, &normalTangent[0][0], alpha );
 	context.RequestCapture();
 	bool skip = false;
-	if ( !context.BeginFrame( &skip, error ) || skip || !context.EndFrame( error ) )
+	if ( !context.RenderFrame( &skip, error ) || skip )
 	{
 		if ( skip )
 			*error = "surface unexpectedly skipped a model PBR frame";
@@ -588,6 +588,7 @@ int main()
 	    render_vulkan::MakeSdl3LegacySurfaceHost( window, &error );
 	CVulkanContext context;
 	render_vulkan::VulkanContextConfig config;
+	config.deviceFactory = &render::device::vulkan::HostDeviceFactory();
 	config.appName = "model-pbr-pixels";
 	config.enableValidation = true;
 #ifdef VULKAN_TEST_DESCRIPTOR_SET_LIMIT

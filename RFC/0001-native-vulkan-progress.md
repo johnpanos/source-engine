@@ -184,8 +184,9 @@ and upload, and draw submission. The SPIR-V is compiled from
 [`materialsystem/shaderapivulkan/shaders/demo_triangle.{vert,frag}`](../materialsystem/shaderapivulkan/shaders)
 with `glslc` and embedded in
 [`demo_triangle_spv.h`](../materialsystem/shaderapivulkan/demo_triangle_spv.h);
-regenerate by recompiling those files and re-running the embed step (the header
-documents the exact commands). This demo pipeline is a bounded proof, not the
+since RFC 0016 K0 (2026-09-26) the pinned compiler
+(`quality/toolchain/shader-compiler.json`) rebuilds it, and
+`tools/render/shader_toolchain.py check` verifies it byte for byte. This demo pipeline is a bounded proof, not the
 material path.
 
 The **texture path** is delivered and verified too (`InitTexturedQuad()`): a

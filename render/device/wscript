@@ -1,0 +1,17 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.device (RFC 0016 layer 1): the render.device.v2 port's shared value
+# helpers, encoder and description rules. No graphics API.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.device',
+		target      = 'render_device',
+		name        = 'render_device',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../public'],
+		use         = [],
+		idx         = bld.get_taskgen_count()
+	)

@@ -18,6 +18,8 @@
 #include "debugoverlay.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal_dlights.h"
+
 #include "tier0/memdbgon.h"
 
 //-----------------------------------------------------------------------------
@@ -293,6 +295,9 @@ R_PushDlights
 */
 void R_PushDlights (void)
 {
+	// RFC 0016 K7: dynamic lights imaged through open portals join the frame's
+	// dlights before they are marked (portal_dlights.h).
+	PortalDLights_Update();
 	R_MarkDLightsOnSurface( host_state.worldbrush->nodes );
 	MarkDLightsOnStaticProps();
 }

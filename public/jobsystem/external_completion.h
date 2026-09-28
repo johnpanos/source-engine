@@ -32,10 +32,6 @@
 #ifndef JOBSYSTEM_EXTERNAL_COMPLETION_H
 #define JOBSYSTEM_EXTERNAL_COMPLETION_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
 #include <condition_variable>
 #include <cstdint>
 #include <functional>

@@ -1,0 +1,16 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.math (RFC 0016 layer 0): vectors, matrices, bounds and frusta.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.math',
+		target      = 'render_math',
+		name        = 'render_math',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../public'],
+		use         = [],
+		idx         = bld.get_taskgen_count()
+	)

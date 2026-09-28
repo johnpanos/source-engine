@@ -1,4 +1,5 @@
-"""Strict, baseline-free checks for the bounded RFC 0001 composition modules."""
+"""Strict, baseline-free checks for the bounded RFC 0001 composition modules,
+including the RFC 0016 layer contracts (CAP011, layer_contract_errors)."""
 import os
 import re
 from pathlib import Path
@@ -105,7 +106,285 @@ def check(root, block, strip):
                 continue
             if dependency != mid and dependency not in modules[mid]['allowedEdges']:
                 errors.append(f'CAP002 {relative}: forbidden include {name}; inject a narrow capability')
+    if block.get('layerContracts') is not None:
+        errors += layer_contract_errors(root, block, strip)
     return errors
+
+
+# --- Layer contracts (RFC 0016 "Layer contract and import rules") -----------
+
+LAYER_CONTRACT_KEYS = {'id', 'rfc', 'description', 'prefix', 'layers', 'externalBases', 'independent',
+                       'adapters', 'adapterConsumers', 'outside', 'backendIdentity', 'planned'}
+LAYER_CONTRACT_REQUIRED = ('id', 'prefix', 'layers')
+OUTSIDE_KEYS = {'modules', 'owner', 'reason'}
+BACKEND_IDENTITY_KEYS = {'identifier', 'allowedModules'}
+
+
+def matches(entry, mid):
+    """A contract entry is an exact module id, or a `prefix.*` pattern that
+    matches every module below that prefix."""
+    return mid.startswith(entry[:-1]) if entry.endswith('.*') else mid == entry
+
+
+def matching(entries, mid):
+    return any(matches(entry, mid) for entry in entries)
+
+
+def is_string_list(value):
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def layer_contract_shape_errors(contract):
+    """Structural errors of one layerContracts entry (CAP011)."""
+    name = contract.get('id', '?') if isinstance(contract, dict) else '?'
+    label = f'CAP011 layerContracts {name}'
+    if not isinstance(contract, dict):
+        return [f'{label}: each layer contract is an object']
+    errors = [f'{label}: missing key {key}' for key in LAYER_CONTRACT_REQUIRED if key not in contract]
+    errors += [f'{label}: unknown key {key}' for key in sorted(set(contract) - LAYER_CONTRACT_KEYS)]
+    layers = contract.get('layers', [])
+    if not isinstance(layers, list) or not all(is_string_list(layer) and layer for layer in layers):
+        errors.append(f'{label}: layers must be a list of non-empty module lists')
+    for key in ('externalBases', 'adapterConsumers', 'planned'):
+        if not is_string_list(contract.get(key, [])):
+            errors.append(f'{label}: {key} must be a list of module ids')
+    independent = contract.get('independent', [])
+    if not isinstance(independent, list) or not all(is_string_list(group) for group in independent):
+        errors.append(f'{label}: independent must be a list of module lists')
+    adapters = contract.get('adapters', {})
+    if not isinstance(adapters, dict) or not all(is_string_list(v) for v in adapters.values()):
+        errors.append(f'{label}: adapters maps each port to a list of adapter modules')
+    elif is_string_list_of_lists(layers):
+        layered = [entry for layer in layers for entry in layer]
+        errors += [f'{label}: adapter port {port} is not in a layer'
+                   for port in sorted(adapters) if port not in layered]
+    outside = contract.get('outside', [])
+    if not isinstance(outside, list) or not all(isinstance(group, dict) for group in outside):
+        errors.append(f'{label}: outside must be a list of groups')
+    else:
+        for index, group in enumerate(outside):
+            where = f'{label} outside group {index + 1}'
+            errors += [f'{where}: unknown key {key}' for key in sorted(set(group) - OUTSIDE_KEYS)]
+            if not ROADMAP_ROW.match(str(group.get('owner', ''))):
+                errors.append(f'{where}: owner must be a roadmap row')
+            if not group.get('reason'):
+                errors.append(f'{where}: needs a reason')
+            modules = group.get('modules')
+            if not is_string_list(modules) or not modules:
+                errors.append(f'{where}: lists no modules')
+            elif len(set(modules)) != len(modules):
+                errors.append(f'{where}: modules must be unique')
+    identity = contract.get('backendIdentity')
+    if identity is not None:
+        if not isinstance(identity, dict) or not isinstance(identity.get('identifier'), str) \
+                or not re.fullmatch(r'\w+', identity.get('identifier', '')) \
+                or not is_string_list(identity.get('allowedModules', [])):
+            errors.append(f'{label}: backendIdentity needs an identifier and a list of allowedModules')
+        else:
+            errors += [f'{label}: backendIdentity unknown key {key}'
+                       for key in sorted(set(identity) - BACKEND_IDENTITY_KEYS)]
+    return errors
+
+
+def is_string_list_of_lists(value):
+    return isinstance(value, list) and all(is_string_list(item) for item in value)
+
+
+def classify_modules(contract, modules):
+    """Place each capability module in the contract.
+
+    Returns ({module: layer index}, {adapter: port}, outside set, errors).
+    An `outside` exemption wins over a pattern match but not over an exact
+    layer or adapter entry; any other second placement is an error (rule 4).
+    """
+    prefix, layers = contract['prefix'], contract['layers']
+    adapters = contract.get('adapters', {})
+    outside_groups = [group.get('modules', []) for group in contract.get('outside', [])]
+    layer_of, port_of, outside, errors = {}, {}, set(), []
+    for mid in sorted(modules):
+        places, exact = [], False
+        for index, layer in enumerate(layers):
+            if matching(layer, mid):
+                places.append(('layer', index))
+                exact |= mid in layer
+        for port, entries in sorted(adapters.items()):
+            if matching(entries, mid):
+                places.append(('adapter', port))
+                exact |= mid in entries
+        exempt = [index for index, group in enumerate(outside_groups) if matching(group, mid)]
+        if len(exempt) > 1:
+            errors.append(f'CAP011 rule 4 {mid}: listed in more than one outside group')
+        if exempt:
+            if exact:
+                errors.append(f'CAP011 rule 4 {mid}: both in the layer contract and outside it')
+            outside.add(mid)
+            continue
+        if len(places) > 1:
+            where = ', '.join(f'layer {v}' if k == 'layer' else f'adapter of {v}' for k, v in places)
+            errors.append(f'CAP011 rule 4 {mid}: declared in more than one place ({where})')
+        if places:
+            kind, value = places[0]
+            if kind == 'layer':
+                layer_of[mid] = value
+            else:
+                port_of[mid] = value
+        elif mid.startswith(prefix):
+            errors.append(f'CAP011 rule 4 {mid}: {prefix}* module has no layer, adapter column or '
+                          f'outside group; place it in {contract["id"]} layerContracts')
+    return layer_of, port_of, outside, errors
+
+
+def declared_entry_errors(contract, modules):
+    """Rule 4: exact contract entries name real modules, or planned ones."""
+    planned = set(contract.get('planned', []))
+    entries = [entry for layer in contract['layers'] for entry in layer]
+    entries += [entry for group in contract.get('independent', []) for entry in group]
+    entries += [entry for group in contract.get('adapters', {}).values() for entry in group]
+    entries += contract.get('externalBases', []) + contract.get('adapterConsumers', [])
+    entries += [entry for group in contract.get('outside', []) for entry in group.get('modules', [])]
+    entries += list(contract.get('adapters', {}))
+    entries += contract.get('backendIdentity', {}).get('allowedModules', [])
+    errors = [f'CAP011 rule 4 {entry}: declared in the layer contract but not a capability module'
+              for entry in sorted(set(entries))
+              if not entry.endswith('.*') and entry not in modules and entry not in planned]
+    errors += [f'CAP011 rule 4 {entry}: planned but already a capability module; remove it from planned'
+               for entry in sorted(planned & set(modules))]
+    return errors
+
+
+def edge_errors(contract, modules, layer_of, port_of, outside):
+    """Rules 1-3 over the declared allowedEdges."""
+    prefix = contract['prefix']
+    bases = set(contract.get('externalBases', []))
+    consumers = contract.get('adapterConsumers', [])
+    errors = []
+    for mid in sorted(modules):
+        if mid in outside:
+            continue
+        module = modules[mid]
+        for dep in sorted(module['allowedEdges']):
+            if dep in port_of and mid not in port_of and not matching(consumers, mid) \
+                    and module.get('kind') != 'native-test':
+                errors.append(f'CAP011 rule 3 {mid}: edge to adapter {dep}; only '
+                              f'{", ".join(consumers) or "adapter consumers"} may name an adapter')
+        if mid in layer_of:
+            errors += layered_edge_errors(contract, modules, mid, layer_of, port_of, outside, bases)
+        elif mid in port_of:
+            port = port_of[mid]
+            for dep in sorted(module['allowedEdges']):
+                if dep == port or dep not in modules or layer_of.get(dep) == 0 \
+                        or not dep.startswith(prefix):
+                    continue
+                what = 'adapter' if dep in port_of else f'layer {layer_of[dep]}' if dep in layer_of \
+                    else 'module outside the layers'
+                errors.append(f'CAP011 rule 3 {mid}: adapter of {port} depends on {dep} ({what}); '
+                              f'an adapter depends only on its port, layer 0 and its native grants')
+    for group in contract.get('independent', []):
+        for mid in sorted(modules):
+            if mid in outside or not matching(group, mid):
+                continue
+            for dep in sorted(modules[mid]['allowedEdges']):
+                if dep != mid and dep in modules and matching(group, dep):
+                    errors.append(f'CAP011 rule 2 {mid}: edge to independent sibling {dep}')
+    return errors
+
+
+def layered_edge_errors(contract, modules, mid, layer_of, port_of, outside, bases):
+    """Rule 1 for one layered module. Modules borrowed into layer 0 from
+    outside the family (foundation, jobs.graph) are only kept from depending
+    on the family; family members may use them as bases. An edge between
+    members of one independence group is reported once, as rule 2."""
+    prefix, level, module = contract['prefix'], layer_of[mid], modules[mid]
+    consumer = matching(contract.get('adapterConsumers', []), mid)
+    family = mid.startswith(prefix)
+    errors = []
+    for dep in sorted(module['allowedEdges']):
+        if dep in port_of or dep not in modules:
+            continue  # rule 3; CAP004 reports unknown modules
+        if dep in layer_of:
+            below = layer_of[dep] < level or (level == 0 and not dep.startswith(prefix))
+            siblings = any(matching(group, mid) and matching(group, dep)
+                           for group in contract.get('independent', []))
+            if not below and not siblings and (family or dep.startswith(prefix)):
+                errors.append(f'CAP011 rule 1 {mid}: edge to {dep} (layer {layer_of[dep]}) from layer '
+                              f'{level}; dependencies point down')
+        elif consumer or dep in bases:
+            continue
+        elif dep in outside:
+            errors.append(f'CAP011 rule 1 {mid}: edge to {dep}, which is outside the layer contract; '
+                          f'layered modules do not depend on pre-core render code')
+        elif not family and not dep.startswith(prefix):
+            continue
+        else:
+            errors.append(f'CAP011 rule 1 {mid}: edge to undeclared base {dep}; add it to a layer '
+                          f'or externalBases')
+    return errors
+
+
+def backend_identity_patterns(identifier):
+    name = rf'\b{re.escape(identifier)}\b'
+    return [re.compile(pattern) for pattern in (
+        rf'{name}\s*(==|!=|<=>)',
+        rf'(==|!=)\s*[\w.\->()]*{name}',
+        rf'{name}\s*\.\s*(compare|starts_with|ends_with|find)\s*\(',
+        rf'strcmp\s*\([^;]*{name}')]
+
+
+def backend_identity_errors(root, block, contract, checked, strip):
+    """Rule 5: portable code never compares the diagnostic backend identifier."""
+    identity = contract.get('backendIdentity')
+    if not identity:
+        return []
+    allowed = set(identity.get('allowedModules', []))
+    patterns = backend_identity_patterns(identity['identifier'])
+    modules = {m['id']: m for m in block['modules']}
+    root = Path(root).resolve()
+    errors = []
+    for mid in sorted(checked - allowed):
+        for prefix in modules[mid]['paths']:
+            base = root / prefix
+            for path in sorted(base.rglob('*') if base.is_dir() else [base]):
+                if not path.is_file() or path.suffix not in SOURCE:
+                    continue
+                relative = path.relative_to(root).as_posix()
+                if owner(relative, block) != mid:
+                    continue
+                lines = strip(path.read_text(encoding='utf-8', errors='replace')).splitlines()
+                for number, line in enumerate(lines, 1):
+                    if any(pattern.search(line) for pattern in patterns):
+                        errors.append(f'CAP011 rule 5 {relative}:{number} ({mid}): compares the device\'s '
+                                      f'diagnostic backend identifier; follow capabilities')
+    return errors
+
+
+def layer_contract_errors(root, block, strip):
+    """CAP011: the declared layer contracts (RFC 0016) over the module rows.
+
+    1. down only: a layered module's edges target lower layers or declared
+       external bases, never an outside (pre-core) module of the family;
+    2. modules in one `independent` group have no edges among them;
+    3. only `adapterConsumers` (and test fixtures) name an adapter, and an
+       adapter depends only on its port, layer 0 and non-family modules;
+    4. every module with the family prefix has one place: a layer, an adapter
+       column or a row-owned `outside` group; exact entries name modules;
+    5. no layered module or adapter outside `backendIdentity.allowedModules`
+       compares the backend identifier in its sources.
+    """
+    contracts = block.get('layerContracts')
+    if not isinstance(contracts, list):
+        return ['CAP011 layerContracts must be a list']
+    modules = {m['id']: m for m in block['modules']}
+    errors = []
+    for contract in contracts:
+        shape = layer_contract_shape_errors(contract)
+        if shape:
+            errors += shape
+            continue
+        layer_of, port_of, outside, placed = classify_modules(contract, modules)
+        errors += placed + declared_entry_errors(contract, modules)
+        errors += edge_errors(contract, modules, layer_of, port_of, outside)
+        errors += backend_identity_errors(root, block, contract, set(layer_of) | set(port_of), strip)
+    return sorted(set(errors))
 
 
 # --- Preserved ABI declarations stay free of the C++20 vocabulary ------------

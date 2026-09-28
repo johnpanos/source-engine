@@ -3,10 +3,14 @@
 // Purpose: Native Vulkan device bring-up and presentation core for the
 //          shaderapivulkan backend (RFC 0001 rank 14/16, roadmap R28/R32).
 //
-//          This module owns the genuine native Vulkan objects: instance,
-//          physical-device selection, logical device and queues, the window
-//          surface, the swapchain and its render targets, per-frame
-//          command buffers and synchronization, and clean teardown. It clears
+//          The instance, physical-device choice, logical device, queues, memory
+//          and completion belong to render.device.vulkan (RFC 0016 K1): this
+//          context borrows them through the adapter's host interop
+//          (render/device/vulkan/host_device.h). Every buffer and image it uses
+//          is allocated there, each submission signals the adapter's timeline,
+//          and long-lived resources are released behind its values. This module
+//          owns the window surface, the swapchain and its render targets,
+//          per-frame command buffers and synchronization, and clean teardown. It clears
 //          and presents a real frame and can read the presented image back for
 //          outcome-driven verification.
 //
@@ -35,6 +39,10 @@
 #include "vulkan_shader_library.h"
 #include "vulkan_legacy_programs.h"
 #include "vulkan_surface_host.h"
+#include "../../render/device/vulkan/host_device.h"
+#include "render/device/completion.h"
+#include "render/device/device.h"
+#include "render/device/encoder.h"
 
 #include <vulkan/vulkan.h>
 
@@ -72,10 +80,16 @@ template <typename T> struct DefaultInitAllocator : std::allocator<T>
 	}
 };
 
+// A suballocation of render.device.vulkan's allocator.
+using VulkanMemory = render::device::vulkan::HostAllocation;
+
 // Requested behavior for a device bring-up. Required behavior that cannot be
 // satisfied fails Init() with a diagnostic instead of silently degrading.
 struct VulkanContextConfig
 {
+	// The Vulkan adapter that creates the device (the composition root binds
+	// it: NativeVulkanShaderBackend_BindDeviceFactory). Init fails without it.
+	const render::device::vulkan::IHostDeviceFactory *deviceFactory = nullptr;
 	const char *appName = "Source Native Vulkan";
 	// Turn on the Khronos validation layer and a debug messenger. Init() fails
 	// if validation is required but the layer/extension are unavailable.
@@ -256,21 +270,53 @@ public:
 	// material state. The first index/count are relative to the WMSH index section.
 	bool QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCount );
 
-	// Begin recording a frame. Acquires the next swapchain image (recreating
-	// the swapchain on OUT_OF_DATE), begins the primary command buffer, and
-	// opens the clear render pass. Returns false with *outError on a real
-	// error; returns true with *outSkip==true when the frame should be skipped
-	// this iteration (e.g. a zero-size / minimized window) with no error.
-	bool BeginFrame( bool *outSkip, std::string *outError );
+	// A frame (RFC 0016 K3). The frame's commands are recorded into a port
+	// encoder of the render core: the legacy frontend's frame graph, or
+	// RenderFrame's own encoder. Nothing records into a command buffer of
+	// this context any more.
+	//
+	// PrepareFrame acquires the next swapchain image (recreating the
+	// swapchain on OUT_OF_DATE), waits for the frame slot and the image, and
+	// makes a requested capture's image. Returns false with *outError on a
+	// real error; returns true with *outSkip==true when the frame should be
+	// skipped this iteration (e.g. a zero-size / minimized window).
+	bool PrepareFrame( bool *outSkip, std::string *outError );
+	// The prepared frame's stages, in recording order (the legacy frontend's
+	// render::legacy::LegacyFrameStage). Resolve runs only when multisampled
+	// and capture only when a back-buffer readback was requested.
+	enum FrameStage
+	{
+		kFrameStageComputeAndUploads = 0,
+		kFrameStageScene,
+		kFrameStageResolve,
+		kFrameStageCapture,
+		kFrameStagePresent,
+		kFrameStageCount
+	};
+	bool HasFrameStage( FrameStage stage ) const;
+	// Adds one stage of the prepared frame to a port encoder of this
+	// context's host device, as host work the adapter records at Submit. The
+	// present stage also adds the acquire as a wait and the present semaphore
+	// as a signal. The stages share one encoder, in order.
+	void AttachFrameStage( FrameStage stage, render::device::CommandEncoder &encoder );
+	// After the encoder's submission (or its failure): the frame's
+	// bookkeeping, a requested capture's pixels, and the present. Returns
+	// false with *outError on a real error.
+	bool FinishFrame(
+	    const render::device::CompletionToken &token, bool submitted, std::string *outError );
+	// A whole frame on an encoder of its own: PrepareFrame, every stage, the
+	// port's Submit, FinishFrame. For tools and tests, and for a backend no
+	// frame executor was bound to.
+	bool RenderFrame( bool *outSkip, std::string *outError );
+	// The host device's port (render.device.v2), for frame executors.
+	render::device::IRenderDevice2 *Port();
 
-	// The color the next BeginFrame's render pass clears to (linear RGBA, 0..1).
+	// The color the next frame's render pass clears to (linear RGBA, 0..1).
 	void SetClearColor( float r, float g, float b, float a );
 
-	// Close the render pass and submit + present the acquired image. When a
-	// capture was requested via RequestCapture() before this call, the color
-	// image is copied to host-visible memory and is available afterwards from
-	// GetCapturedPixels(). Returns false with *outError on a real error.
-	bool EndFrame( std::string *outError );
+	// When a capture was requested via RequestCapture() before a frame, its
+	// color image is copied to host-visible memory and is available after
+	// FinishFrame from GetCapturedPixels().
 
 	// Recreate the swapchain and its targets for a new drawable size. Safe to
 	// call between frames. A zero-size result is retained without error and
@@ -1238,6 +1284,8 @@ public:
 	void CloseFrameStats();
 	void MarkFrame( const char *label );
 	FrameCost &CurrentFrameCost() { return m_frameCost; }
+	// The costs of the last finished frame (kept when its stats are written).
+	const FrameCost &LastFrameCost() const { return m_lastFrameCost; }
 
 	enum
 	{
@@ -1297,11 +1345,12 @@ private:
 	void ReadSlotGpuTime( uint32_t slot );
 	void WriteFrameStats( uint64_t endUs );
 
-	bool CreateInstance( std::string *outError );
-	bool SetupDebugMessenger( std::string *outError );
+	// The adapter (render.device.vulkan) creates the instance, the device and
+	// its queues; the context names its surface, extensions and features.
+	bool CreateDevice( std::string *outError );
+	void DescribeDevice( VkPhysicalDevice physical, uint32_t graphicsFamily,
+	    render::device::vulkan::HostDeviceFeatures *out );
 	bool CreateSurface( std::string *outError );
-	bool PickPhysicalDevice( std::string *outError );
-	bool CreateLogicalDevice( std::string *outError );
 	VkSampler CreateManagedSampler( int state, int anisotropy ) const;
 	// `oldSwapchain` hands the presentation over (VkSwapchainCreateInfoKHR), so a
 	// rebuild never leaves the window without a presentable image.
@@ -1368,7 +1417,6 @@ private:
 	void DestroyPresentGamma();
 	bool ResolveCapturedPixels( std::string *outError );
 
-	uint32_t FindMemoryType( uint32_t typeBits, VkMemoryPropertyFlags props, bool *found ) const;
 	// The vertex attributes a pipeline declares, less those its vertex stage
 	// does not read (Vulkan reports each as WARNING-Shader-OutputNotConsumed).
 	// CreateShaderModule records each vertex module's input locations from its
@@ -1388,11 +1436,25 @@ private:
 	bool CreateShaderModule(
 	    const uint32_t *code, size_t sizeBytes, VkShaderModule *outModule, std::string *outError );
 	bool CreateBuffer( VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
-	    VkBuffer *outBuffer, VkDeviceMemory *outMemory, std::string *outError );
+	    VkBuffer *outBuffer, VulkanMemory *outMemory, std::string *outError );
+	// Memory through render.device.vulkan: an image bound to memory with the
+	// given properties (the first matching type, as before), and the
+	// allocation's mapping and freeing. FreeMemory is for memory whose buffer
+	// or image no submitted work still uses.
+	bool CreateImage( const VkImageCreateInfo &info, VkMemoryPropertyFlags props, VkImage *outImage,
+	    VulkanMemory *outMemory, const char *what, std::string *outError );
+	VkResult MapMemory( VulkanMemory memory, void **data );
+	void UnmapMemory( VulkanMemory memory );
+	void FreeMemory( VulkanMemory memory );
 	void DestroyDemoTriangle();
 
 	bool BeginSingleTimeCommands( VkCommandBuffer *outCmd, std::string *outError );
-	bool EndSingleTimeCommands( VkCommandBuffer cmd, std::string *outError );
+	// Submits cmd signaling the next value of the adapter's timeline (outValue)
+	// and never waits: the command buffer is freed behind that value, and the
+	// caller releases what the work reads behind it too (or waits for it, for
+	// a readback).
+	bool EndSingleTimeCommands(
+	    VkCommandBuffer cmd, std::string *outError, uint64_t *outValue = nullptr );
 	void DestroyTexturedQuad();
 	void DestroyIndexedUbo();
 	void DestroyDemoDepth();
@@ -1402,8 +1464,14 @@ private:
 	IVulkanSurfaceHost *m_host = nullptr;
 	VulkanContextConfig m_config;
 
+	// The device this context borrows (render.device.vulkan's host interop);
+	// the handles below are its, cached.
+	std::unique_ptr<render::device::vulkan::IHostDevice> m_hostDevice;
+	std::vector<const char *> m_deviceExtensions; // DescribeDevice's, until creation
+	bool m_toolingInfo = false;
+	std::string m_createError;
+	uint64_t m_adapterAllocations = 0; // the adapter's own (its upload ring)
 	VkInstance m_instance = VK_NULL_HANDLE;
-	VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
 	VkSurfaceKHR m_surface = VK_NULL_HANDLE;
 	VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
 	VkDevice m_device = VK_NULL_HANDLE;
@@ -1423,8 +1491,8 @@ private:
 	uint64_t m_resolveCount = 0;
 	VkImage m_msColor = VK_NULL_HANDLE;
 	VkImage m_msDepth = VK_NULL_HANDLE;
-	VkDeviceMemory m_msColorMemory = VK_NULL_HANDLE;
-	VkDeviceMemory m_msDepthMemory = VK_NULL_HANDLE;
+	VulkanMemory m_msColorMemory = VK_NULL_HANDLE;
+	VulkanMemory m_msDepthMemory = VK_NULL_HANDLE;
 	VkImageView m_msColorView = VK_NULL_HANDLE;
 	VkImageView m_msColorViewSrgb = VK_NULL_HANDLE;
 	VkImageView m_msDepthView = VK_NULL_HANDLE;
@@ -1507,11 +1575,11 @@ private:
 	VkDescriptorPool m_gammaDescriptorPool = VK_NULL_HANDLE;
 	VkDescriptorSet m_gammaSets[kMaxFramesInFlight] = {};
 	VkBuffer m_gammaRampBuffers[kMaxFramesInFlight] = {};
-	VkDeviceMemory m_gammaRampMemories[kMaxFramesInFlight] = {};
+	VulkanMemory m_gammaRampMemories[kMaxFramesInFlight] = {};
 	float *m_gammaRampMapped[kMaxFramesInFlight] = {};
 	std::vector<VkImageView> m_presentImageViews;
 	std::vector<VkFramebuffer> m_presentFramebuffers;
-	std::vector<VkDeviceMemory> m_backBufferMemories;
+	std::vector<VulkanMemory> m_backBufferMemories;
 	std::vector<VkImage> m_swapImages;
 	std::vector<VkImageView> m_swapImageViews;
 	std::vector<VkFramebuffer> m_framebuffers;
@@ -1526,7 +1594,7 @@ private:
 	bool m_clipPlanesSupported = false;
 	bool m_blockCompression = false;
 	std::vector<VkImage> m_depthImages;
-	std::vector<VkDeviceMemory> m_depthMemories;
+	std::vector<VulkanMemory> m_depthMemories;
 	std::vector<VkImageView> m_depthViews;
 
 	VkRenderPass m_renderPass = VK_NULL_HANDLE;
@@ -1537,7 +1605,6 @@ private:
 	VkRenderPass m_renderPassLoad = VK_NULL_HANDLE;
 	VkRenderPass m_renderPassTarget = VK_NULL_HANDLE;
 	VkCommandPool m_commandPool = VK_NULL_HANDLE;
-	std::vector<VkCommandBuffer> m_commandBuffers;
 
 	uint32_t m_framesInFlight = 2;
 	uint32_t m_descriptorSetLimit = 0;
@@ -1559,16 +1626,36 @@ private:
 	uint32_t m_currentFrame = 0;
 	std::vector<VkSemaphore> m_imageAvailable;
 	std::vector<VkSemaphore> m_renderFinished; // per swapchain image (GrowRenderFinished)
-	std::vector<VkFence> m_inFlight;
-	// Maps each swapchain image to the in-flight fence currently using it, so a
-	// freshly acquired image is not recorded into while a prior submission that
-	// targeted it is still executing.
-	std::vector<VkFence> m_imagesInFlight;
+	// Completion is the adapter's timeline (render.device.vulkan): each frame
+	// slot's last submission signaled m_slotValue, and each swapchain image's
+	// last submission m_imageValue (0: none), so a freshly acquired image is not
+	// recorded into while a prior submission that targeted it still executes.
+	uint64_t m_slotValue[kMaxFramesInFlight] = {};
+	std::vector<uint64_t> m_imageValue;
+	// Frame serials in flight with the timeline value each signals; the oldest
+	// whose value completed advances m_completedSerial (UpdateCompletedSerial).
+	std::vector<std::pair<uint64_t, uint64_t>> m_serialValues;
+	void UpdateCompletedSerial();
+	// One-time command buffers submitted and the timeline value that frees each.
+	std::vector<std::pair<uint64_t, VkCommandBuffer>> m_oneTimeCommands;
+	// Releases a buffer and its memory once the submission that signals value
+	// completes (render.device.vulkan's release queue).
+	void ReleaseBufferAfter( uint64_t value, VkBuffer buffer, VulkanMemory memory );
+	// Objects the frame being recorded may still use, destroyed once the
+	// submission with frame serial afterSerial completes (as m_retiredTextures).
+	struct RetiredObject
+	{
+		uint64_t afterSerial;
+		void ( *destroy )( CVulkanContext *context, uint64_t a, uint64_t b );
+		uint64_t a;
+		uint64_t b;
+	};
+	std::vector<RetiredObject> m_retiredObjects;
 
 	// Host-visible linear image used to copy the rendered color image out for
 	// verification. Allocated lazily on the first capture request.
 	VkImage m_captureImage = VK_NULL_HANDLE;
-	VkDeviceMemory m_captureMemory = VK_NULL_HANDLE;
+	VulkanMemory m_captureMemory = VK_NULL_HANDLE;
 	VkExtent2D m_captureExtent = { 0, 0 };
 	bool m_captureRequested = false;
 	bool m_capturePending = false;
@@ -1580,13 +1667,13 @@ private:
 	VkPipelineLayout m_demoPipelineLayout = VK_NULL_HANDLE;
 	VkPipeline m_demoPipeline = VK_NULL_HANDLE;
 	VkBuffer m_demoVertexBuffer = VK_NULL_HANDLE;
-	VkDeviceMemory m_demoVertexMemory = VK_NULL_HANDLE;
+	VulkanMemory m_demoVertexMemory = VK_NULL_HANDLE;
 	uint32_t m_demoVertexCount = 0;
 	bool m_drawDemoTriangle = false;
 
 	// Bounded textured-quad pipeline (R32 texture-path proof), optional.
 	VkImage m_texImage = VK_NULL_HANDLE;
-	VkDeviceMemory m_texMemory = VK_NULL_HANDLE;
+	VulkanMemory m_texMemory = VK_NULL_HANDLE;
 	VkImageView m_texView = VK_NULL_HANDLE;
 	VkSampler m_texSampler = VK_NULL_HANDLE;
 	VkDescriptorSetLayout m_texDescLayout = VK_NULL_HANDLE;
@@ -1595,17 +1682,17 @@ private:
 	VkPipelineLayout m_texQuadPipelineLayout = VK_NULL_HANDLE;
 	VkPipeline m_texQuadPipeline = VK_NULL_HANDLE;
 	VkBuffer m_texQuadVertexBuffer = VK_NULL_HANDLE;
-	VkDeviceMemory m_texQuadVertexMemory = VK_NULL_HANDLE;
+	VulkanMemory m_texQuadVertexMemory = VK_NULL_HANDLE;
 	uint32_t m_texQuadVertexCount = 0;
 	bool m_drawTexturedQuad = false;
 
 	// Bounded indexed + uniform-buffer pipeline (R32 index/constant proof).
 	VkBuffer m_iuVertexBuffer = VK_NULL_HANDLE;
-	VkDeviceMemory m_iuVertexMemory = VK_NULL_HANDLE;
+	VulkanMemory m_iuVertexMemory = VK_NULL_HANDLE;
 	VkBuffer m_iuIndexBuffer = VK_NULL_HANDLE;
-	VkDeviceMemory m_iuIndexMemory = VK_NULL_HANDLE;
+	VulkanMemory m_iuIndexMemory = VK_NULL_HANDLE;
 	VkBuffer m_iuUniformBuffer = VK_NULL_HANDLE;
-	VkDeviceMemory m_iuUniformMemory = VK_NULL_HANDLE;
+	VulkanMemory m_iuUniformMemory = VK_NULL_HANDLE;
 	void *m_iuUniformMapped = nullptr;
 	VkDescriptorSetLayout m_iuDescLayout = VK_NULL_HANDLE;
 	VkDescriptorPool m_iuDescPool = VK_NULL_HANDLE;
@@ -1618,7 +1705,7 @@ private:
 
 	// Bounded depth-test demo pipeline (R32 depth/occlusion proof).
 	VkBuffer m_depthDemoVertexBuffer = VK_NULL_HANDLE;
-	VkDeviceMemory m_depthDemoVertexMemory = VK_NULL_HANDLE;
+	VulkanMemory m_depthDemoVertexMemory = VK_NULL_HANDLE;
 	VkPipelineLayout m_demoDepthPipelineLayout = VK_NULL_HANDLE;
 	VkPipeline m_demoDepthPipeline = VK_NULL_HANDLE;
 	uint32_t m_depthDemoVertexCount = 0;
@@ -1841,7 +1928,7 @@ private:
 	struct SkinUniformBuffer
 	{
 		VkBuffer buffer = VK_NULL_HANDLE;
-		VkDeviceMemory memory = VK_NULL_HANDLE;
+		VulkanMemory memory = VK_NULL_HANDLE;
 		void *mapped = nullptr;
 		VkDeviceSize capacity = 0;
 		VkDescriptorSet set = VK_NULL_HANDLE;
@@ -1918,7 +2005,7 @@ private:
 	TexturedPipelineTemplate m_texTemplate = {};
 	VkPipelineLayout m_dynTexPipelineLayout = VK_NULL_HANDLE;
 	VkImage m_dynTexImage = VK_NULL_HANDLE;
-	VkDeviceMemory m_dynTexMemory = VK_NULL_HANDLE;
+	VulkanMemory m_dynTexMemory = VK_NULL_HANDLE;
 	VkImageView m_dynTexView = VK_NULL_HANDLE;
 	VkSampler m_dynTexSampler = VK_NULL_HANDLE;
 	// Sampler per addressing/filter combination, including anisotropy.
@@ -1938,7 +2025,7 @@ private:
 	struct ManagedTexture
 	{
 		VkImage image = VK_NULL_HANDLE;
-		VkDeviceMemory memory = VK_NULL_HANDLE;
+		VulkanMemory memory = VK_NULL_HANDLE;
 		VkImageView view = VK_NULL_HANDLE;
 		// Per-texture descriptor set, so each draw can bind its own texture.
 		VkDescriptorSet descSet = VK_NULL_HANDLE;
@@ -1957,7 +2044,7 @@ private:
 		// Sampler state (kSampler* bits); 0 is D3D9's default: wrap, point.
 		int samplerState = 0;
 		VkImage depthImage = VK_NULL_HANDLE;
-		VkDeviceMemory depthMemory = VK_NULL_HANDLE;
+		VulkanMemory depthMemory = VK_NULL_HANDLE;
 		VkImageView depthView = VK_NULL_HANDLE;
 		VkFramebuffer framebuffer = VK_NULL_HANDLE;
 		// sRGB view of an 8-bit or BC image: a render target's sRGB attachment
@@ -2064,7 +2151,7 @@ private:
 	struct StreamBuffer
 	{
 		VkBuffer buffer = VK_NULL_HANDLE;
-		VkDeviceMemory memory = VK_NULL_HANDLE;
+		VulkanMemory memory = VK_NULL_HANDLE;
 		void *mapped = nullptr;
 		VkDeviceSize capacity = 0;
 	};
@@ -2116,6 +2203,7 @@ private:
 	bool FlushPendingUploads( std::string *outError );
 	bool EnsureStreamBuffer( StreamBuffer &stream, VkDeviceSize bytes, VkBufferUsageFlags usage );
 	void DestroyStreamBuffer( StreamBuffer &stream );
+	void ReleaseStreamBufferAfter( uint64_t value, StreamBuffer &stream );
 	// kDynVertexFloats per vertex (QueueDynamicTriangles documents the record).
 	std::vector<float, DefaultInitAllocator<float>> m_dynQueued;
 	// Index lists of indexed draws, each relative to its draw's first vertex.
@@ -2315,6 +2403,19 @@ private:
 	// Per-frame acquisition state, valid between BeginFrame and EndFrame.
 	uint32_t m_acquiredImage = 0;
 	bool m_frameOpen = false;
+	// The prepared frame's capture (PrepareFrame decides it), and when its
+	// recording ended (the submit cost runs from there to FinishFrame).
+	bool m_frameCapture = false;
+	bool m_frameCapturePresented = false;
+	int64_t m_recordEndUs = 0;
+	FrameCost m_lastFrameCost;
+	// Records the prepared frame's stages (AttachFrameStage's host work):
+	// all of them, or one.
+	void RecordFrameCommands( VkCommandBuffer cmd );
+	void RecordFrameStage( FrameStage stage, VkCommandBuffer cmd );
+	void RecordFrameComputeAndUploads( VkCommandBuffer cmd );
+	void RecordFrameScene( VkCommandBuffer cmd );
+	void RecordFramePresent( VkCommandBuffer cmd );
 
 	VkClearColorValue m_clearColor = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
@@ -2338,8 +2439,6 @@ private:
 
 	// Debug-messenger entry points, resolved from the instance when validation
 	// is enabled.
-	PFN_vkCreateDebugUtilsMessengerEXT m_pfnCreateDebugMessenger = nullptr;
-	PFN_vkDestroyDebugUtilsMessengerEXT m_pfnDestroyDebugMessenger = nullptr;
 
 	friend VkBool32 VulkanDebugCallbackTrampoline( VkDebugUtilsMessageSeverityFlagBitsEXT,
 	    VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT *, void * );

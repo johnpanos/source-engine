@@ -24,7 +24,6 @@
 
 namespace gpu_compute
 {
-static const char *const kGpuComputeInterface = "RenderGpuCompute001";
 
 // Where a buffer lives: Upload (the CPU writes, the GPU reads: device-local
 // where the device has host-visible local memory) or Readback (the GPU

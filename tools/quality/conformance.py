@@ -880,6 +880,8 @@ def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
     env = run_environment(profile)
     env["CONFORMANCE_SEED"] = str(seed)
     env["CONFORMANCE_SUITE"] = sid
+    # Command suites that compile C++ themselves build with the selected compiler.
+    env["CONFORMANCE_CXX"] = cxx
     argv, cwd = [out_bin], None
     if suite.get("command") is not None:
         # Command suites run from the repository root with a private scratch

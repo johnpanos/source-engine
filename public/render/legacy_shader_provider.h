@@ -44,14 +44,15 @@ struct LegacyShaderServices
 	IShaderShadow *shadow = nullptr;
 	IMaterialSystemHardwareConfig *hardware = nullptr;
 	IDebugTextureInfo *debugTextures = nullptr;
-	// Optional map-scoped upload capability. Queried through the material adapter
-	// only while this selected provider remains bound.
+	// Optional map-scoped upload capability. The engine reaches it through the
+	// render core's legacy frontend (render/legacy/capabilities.h), which
+	// orders its calls with the frame.
 	world_mesh_gpu::IWorldMeshUpload *worldMeshUpload = nullptr;
-	// Optional per-frame light set sink (render/light_set.h, RFC 0011), queried
+	// Optional per-frame light set sink (render/light_set.h, RFC 0011), reached
 	// the same way.
 	light_set::ILightSetConsumer *lightSetConsumer = nullptr;
 	// Optional compute service for engine-side GPU producers
-	// (render/gpu_compute.h, RFC 0011 G6), queried the same way.
+	// (render/gpu_compute.h, RFC 0011 G6), reached the same way.
 	gpu_compute::IGpuCompute *gpuCompute = nullptr;
 
 	// Optional. Backend-owned facts the legacy MaterialAdapterInfo_t cannot carry:
@@ -80,6 +81,12 @@ struct LegacyShaderProvider
 	// their vertex bytes replayed into the provider's own mesh on the render
 	// thread. A provider without it runs the material system single-threaded.
 	bool supportsQueuedRendering;
+	// Optional, for a provider with its own state (the render core's legacy
+	// frontend, RFC 0016): when createFor is set the material system calls
+	// createFor( context, services ) instead of create, so no global holds
+	// the state. context is owned by the provider and outlives the binding.
+	void *context = nullptr;
+	bool ( *createFor )( void *context, LegacyShaderServices *services ) = nullptr;
 };
 
 } // namespace render

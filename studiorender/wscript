@@ -30,6 +30,7 @@ def build(bld):
 		'r_studiogettriangles.cpp',
 		'r_studiolight.cpp',
 		'r_studiostats.cpp',
+		'skin_capture.cpp',
 		'../public/tier0/memoverride.cpp'
 	]
 

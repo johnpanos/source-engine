@@ -12,7 +12,7 @@
 //
 //===========================================================================//
 
-#include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.h"
+#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_world_lightmap.h"
 #include "render/indirect_switcher.h"
@@ -186,7 +186,7 @@ bool DrawFrame( CVulkanContext &context, const Images &images, float *mean, std:
 	context.QueueDynamicTriangles( &quad[0][0], 6, nullptr, &normalTangent[0][0], alpha );
 	context.RequestCapture();
 	bool skip = false;
-	if ( !context.BeginFrame( &skip, error ) || skip || !context.EndFrame( error ) )
+	if ( !context.RenderFrame( &skip, error ) || skip )
 		return false;
 	int width = 0, height = 0;
 	const std::vector<uint8_t> &pixels = context.GetCapturedPixels( &width, &height );
@@ -230,6 +230,7 @@ int main()
 	    render_vulkan::MakeSdl3LegacySurfaceHost( window, &error );
 	CVulkanContext context;
 	render_vulkan::VulkanContextConfig config;
+	config.deviceFactory = &render::device::vulkan::HostDeviceFactory();
 	config.appName = "indirect-switching";
 	config.enableValidation = true;
 #ifdef VULKAN_TEST_DESCRIPTOR_SET_LIMIT

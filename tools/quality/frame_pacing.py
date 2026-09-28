@@ -159,6 +159,7 @@ def summarize(frames):
         "mean_ms": round(sum(intervals_ms) / len(intervals_ms), 3),
         "median_ms": round(percentile(intervals_ms, 0.5), 3),
         "p90_ms": round(percentile(intervals_ms, 0.9), 3),
+        "p95_ms": round(percentile(intervals_ms, 0.95), 3),
         "p99_ms": round(percentile(intervals_ms, 0.99), 3),
         "max_ms": round(max(intervals_ms), 3),
     }
@@ -190,6 +191,12 @@ def summarize(frames):
     for kind in ("emit", "emit_convert", "record"):
         summary[kind + "_median_ms"] = round(percentile(
             [frame.get("cost", {}).get(kind, [0, 0])[1] / 1000.0 for frame in frames], 0.5), 3)
+    # Main-thread submission (render-v1.json's submission_*): the backend's
+    # draw emission, on the main thread when mat_queue_mode is 0.
+    emit = [frame.get("cost", {}).get("emit", [0, 0])[1] / 1000.0 for frame in frames]
+    summary["submission_median_ms"] = round(percentile(emit, 0.5), 3)
+    summary["submission_p95_ms"] = round(percentile(emit, 0.95), 3)
+    summary["submission_p99_ms"] = round(percentile(emit, 0.99), 3)
     convert = summarize_convert(frames)
     if convert:
         summary["convert"] = convert
@@ -339,6 +346,21 @@ def analyze(frames, passes, hitch_ratio=DEFAULT_HITCH_RATIO, hitch_floor_ms=DEFA
     return report, failures
 
 
+RENDER_BUDGETS = Path(__file__).resolve().parents[2] / "quality/budgets/render-v1.json"
+
+
+def budget_limits(row_id, vsync=False, path=RENDER_BUDGETS):
+    """The limits of one quality/budgets/render-v1.json row for a run's
+    presentation mode (its vsync limits, else its headroom limits)."""
+    budgets = json.loads(Path(path).read_text())
+    for row in budgets["rows"]:
+        if row["id"] == row_id:
+            limits = dict(row["modes"]["vsync" if vsync else "headroom"])
+            limits.pop("meaning", None)
+            return dict(limits, row=row_id, mode="vsync" if vsync else "headroom")
+    raise ValueError("no budget row %s in %s" % (row_id, path))
+
+
 def check_budgets(report, budgets):
     """Budgets apply to the last (warm) pass; the first pass is reported, not gated."""
     failures = []
@@ -349,6 +371,9 @@ def check_budgets(report, budgets):
         return ["warm pass measured no frames"]
     if budgets.get("max_hitches") is not None and warm["hitch_count"] > budgets["max_hitches"]:
         failures.append("warm pass has %d hitches (budget %d)" % (warm["hitch_count"], budgets["max_hitches"]))
+    for key, label in (("max_p50_ms", "median_ms"), ("max_p95_ms", "p95_ms")):
+        if budgets.get(key) is not None and warm["summary"][label] > budgets[key]:
+            failures.append("warm pass %s %.3f ms exceeds budget %.3f ms" % (label, warm["summary"][label], budgets[key]))
     if budgets.get("max_p99_ms") is not None and warm["summary"]["p99_ms"] > budgets["max_p99_ms"]:
         failures.append("warm pass p99 %.3f ms exceeds budget %.3f ms" % (warm["summary"]["p99_ms"], budgets["max_p99_ms"]))
     if budgets.get("max_frame_ms") is not None and warm["summary"]["max_ms"] > budgets["max_frame_ms"]:
@@ -362,7 +387,8 @@ def check_budgets(report, budgets):
             failures.append("warm pass has no missed-refresh count (budget needs refresh_hz)")
         elif missed > budgets["max_missed_refreshes"]:
             failures.append("warm pass missed %d refreshes (budget %d)" % (missed, budgets["max_missed_refreshes"]))
-    for key, label in (("max_gpu_render_p99_ms", "gpu_render_p99_ms"), ("max_cpu_p99_ms", "cpu_p99_ms")):
+    for key, label in (("max_gpu_render_p99_ms", "gpu_render_p99_ms"), ("max_cpu_p99_ms", "cpu_p99_ms"),
+                       ("max_submission_p99_ms", "submission_p99_ms")):
         if budgets.get(key) is not None:
             value = warm["summary"].get(label)
             if value is None:
@@ -518,7 +544,8 @@ def run_once(args, scenario, passes, build, output, extra_args=()):
             report, analysis_failures = analyze(frames, passes, args.hitch_ratio, args.hitch_floor_ms)
             failures.extend(analysis_failures)
             evidence["analysis"] = report
-            budgets = scenario.get("budgets", {})
+            budgets = (budget_limits(args.budget_row, getattr(args, "vsync", False))
+                       if getattr(args, "budget_row", None) else scenario.get("budgets", {}))
             evidence["budgets"] = budgets
             evidence["budget_failures"] = check_budgets(report, budgets)
     except (OSError, ValueError) as error:
@@ -597,6 +624,8 @@ def main(argv=None):
     parser.add_argument("--hitch-ratio", type=float, default=DEFAULT_HITCH_RATIO)
     parser.add_argument("--hitch-floor-ms", type=float, default=DEFAULT_HITCH_FLOOR_MS)
     parser.add_argument("--baseline", type=Path, help="earlier evidence.json to compare against")
+    parser.add_argument("--budget-row", help="row id in quality/budgets/render-v1.json to gate the warm "
+                        "pass with (its headroom limits) instead of the scenario's budgets")
     parser.add_argument("--extra-arg", action="append", default=[],
                         help="extra engine command-line argument (repeatable), e.g. an A/B switch")
     args = parser.parse_args(argv)

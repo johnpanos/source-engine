@@ -9,7 +9,7 @@
 //          required instance extensions, creating and destroying the
 //          VkSurfaceKHR, the drawable size in pixels, and whether the platform
 //          currently provides a native surface -- goes through this interface.
-//          Only a bridge (e.g. sdl3/sdl3_vulkan_surface_host.cpp) implements it,
+//          Only a bridge (e.g. render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp) implements it,
 //          so the core includes no window-system header.
 //
 //===========================================================================//

@@ -5,7 +5,13 @@
   backends (Vulkan first, OpenGL second), ToGL stays for mods, and the RFC
   now fixes the directory layout, the ports and the layer contract, and
   states each gate as objective tests. The decisions in
-  [Decisions](#decisions-2026-09-26) can be revisited before K1
+  [Decisions](#decisions-2026-09-26) can be revisited before K1.
+  Implementation started the same day: the layout, the layer contract and
+  the runtime wiring exist as the R86-LAYOUT slice, recorded in the
+  [progress record](0016-progress.md). Where that slice settled a proposed
+  spelling differently, this RFC now says what was built. Every K0 check
+  passes (2026-09-26), with the Portal 2 monitor view declared absent: the
+  Portal 2 client compiles monitors out
 - Date: 2026-09-26
 - Scope: The engine's renderer beneath the frozen material-system API: an
   explicit, backend-neutral GPU device port with Vulkan, OpenGL and null
@@ -414,13 +420,14 @@ edges (CAP002 direct, CAP005 transitive), and the links must too (CAP006).
 
 | Layer | Modules | May depend on |
 | --- | --- | --- |
-| 7 Applications | `render.composition`; engine and client roots, Hammer, tools, test fixtures | anything below, including adapters |
+| 8 Test fixtures | `render.core-tests` (`unittests/rendertest/core/`) | anything below, including adapters |
+| 7 Applications | `render.composition`; engine and client roots, Hammer, tools | anything below, including adapters |
 | 6 Features and renderers | `render.renderer`, `render.pass.*`, `render.legacy-frontend` | layers 0–5; legacy headers only for the frontend |
 | 5 Frame port | `render.frame` | layers 0–4 |
 | 4 Scene | `render.scene` | layers 0–3 |
 | 3 Materials | `render.material` | layers 0–2, `content.keyvalues-text` |
 | 2 Core services | `render.graph`, `render.shader-library`, `render.resources` | layers 0–1; `render.resources` also `content.texture-contract` and the texture readers |
-| 1 Device port | `render.device` | layer 0 |
+| 1 Ports | `render.device`, `render.legacy-provider-contract` | layer 0 |
 | 0 Vocabulary | `foundation`, `render.math`, `render.contracts`, `jobs.graph` | nothing in the render family |
 | Adapters (column) | `render.device.vulkan`, `render.device.gl`, `render.device.null`, `render.bridge.*` | `render.device`, layer 0, and their native SDK grants |
 
@@ -908,7 +915,7 @@ R32's done condition names.
 | Check | Runs as | Passes when |
 | --- | --- | --- |
 | Graph suite | `render.graph.v1` | all clauses pass on the null adapter and the Vulkan adapter |
-| Independent model agrees | `render.graph.model` (the Python model in `tools/render/`) | transitions, lifetimes and alias sets agree with the compiler on 1,000 seeded random graphs |
+| Independent model agrees | `render.graph.v1` (G7: an independent C++ reference model in the suite, sharing no code with the compiler) | culling, transitions, lifetimes and alias sets agree with the compiler on 1,000 seeded random graphs |
 | Bad graphs caught | `render.graph.v1.sensitivity` | a missing transition, overlapping live aliases, a culled side-effect pass, a reordered dependent pass and a read of an undefined version are each detected (5 of 5) |
 | Synchronization validated | Vulkan validation layer with synchronization validation during the pixel families and one `portal_boot` run | zero validation messages |
 | Serial equals pooled | `render.graph.recording` on the null adapter | serial and pooled recording produce identical command streams (hash equal) on the 1,000 seeded graphs |
@@ -954,11 +961,19 @@ move onto the graph in K2.
 
 | Check | Runs as | Passes when |
 | --- | --- | --- |
-| GPU equals CPU skinning | `render.skinning` over every model in the K0 views and the Portal 2 character set | maximum position error at most 1e-3 units and normal error at most 1e-3 per component against the CPU oracle |
+| GPU equals CPU skinning | `render.skinning.corpus` over every model in the K0 views and the Portal 2 character set, captured from studiorender's software path | position error at most the larger of 1e-3 units and 4 ulp of the coordinate, and normal and tangent error at most 1e-3 per component, against the CPU oracle (tolerance version 2) |
 | Defects caught | same suite | a seeded bone-index error and a seeded flex-weight error are detected |
 | Pixels | skinning and model-light pixel families | within tolerance |
 | CPU skinning retired where possible | runtime census on the K0 views | zero CPU-skinned draws on native profiles except materials that set `NeedsSoftwareSkinning` |
 | Cost recorded | `frame_pacing.py` with `-vkframestats` | per-vertex skinning cost recorded next to the quoted 90 ns |
+
+Tolerance version 2 (amended 2026-09-28, agent decision under the user's
+standing instruction): the first corpus run put Portal 2 models near 7,000
+units, where fp32 spacing is 4.9e-4. The legacy path blends bone matrices and
+the kernel blends transformed points, so the two round differently by up to
+3 ulp (1.46e-3 units). A flat 1e-3 bound therefore failed on rounding, not on
+skinning. The seeded bone-index kernel misses by more than 2,000 times the
+tolerance. Normals and tangents keep the flat 1e-3.
 
 ### K7: Lights and shadows
 
@@ -1354,7 +1369,6 @@ unittests/rendertest/
     └── fakes/            fake scene, fake visibility provider, fake features
 tools/render/
 ├── shader_artifacts.py   pinned compiler + SPIRV-Cross driver, reflection check
-├── graph_model.py        independent transition, lifetime and alias model
 └── tests/
 tools/archlint/           CAP011 in capabilities.py; fixtures under tools/archlint/tests/
 quality/
@@ -1392,8 +1406,15 @@ def build(bld):
 	)
 ```
 
+- **Options.** `--render-core-device` (`null`, `vulkan`, `gl`; default `null`
+  until K1) and `--render-core-features` (default `legacy-stream,present`) set
+  the launcher's defaults; `--render-core-gl` builds the OpenGL adapter and
+  fails configure until K10 adds it.
 - **Dialects.** Every module target is `cxx20` in
-  `quality/toolchain/policy.json`; `render_legacy` is `cxx20-permissive`.
+  `quality/toolchain/policy.json`, `render_legacy` included: it keeps the
+  strict environment and adds the platform's defines for its one legacy
+  header, and it uses the core's standard-library ABI rather than the
+  engine's `_GLIBCXX_USE_CXX11_ABI=0` (nothing ABI-sensitive crosses).
 - **Pinned dependencies.** VMA and SPIRV-Cross are pinned archives in the
   product profiles, unpacked under `dependencies/` like DXVK Native. VMA is
   a `uselib` grant of `render.device.vulkan` only. SPIRV-Cross is a host
@@ -1433,28 +1454,40 @@ frontend:
   "legacyIncludes": ["materialsystem/", "shaderapi/", "tier0/", "tier1/", "mathlib/"] }
 ```
 
-The layer contract is one new section, read by CAP011:
+The layer contract is one new section, read by CAP011. As installed
+(R86-LAYOUT), abbreviated:
 
 ```json
 "layerContracts": [ {
-  "id": "render",
+  "id": "render", "rfc": "0016", "prefix": "render.",
   "layers": [
     ["foundation", "render.math", "render.contracts", "jobs.graph"],
-    ["render.device"],
+    ["render.device", "render.legacy-provider-contract"],
     ["render.graph", "render.shader-library", "render.resources"],
     ["render.material"],
     ["render.scene"],
     ["render.frame"],
     ["render.renderer", "render.pass.*", "render.legacy-frontend"],
-    ["render.composition"] ],
-  "externalBases": ["content.keyvalues-text", "content.texture-contract",
+    ["render.composition"],
+    ["render.core-tests"] ],
+  "externalBases": ["testing.contracts", "content.keyvalues-text", "content.texture-contract",
                     "content.ktx2-reader", "content.vtf-reader"],
   "independent": [ ["render.renderer", "render.pass.*", "render.legacy-frontend"],
                    ["render.device.vulkan", "render.device.gl", "render.device.null"] ],
-  "adapters": { "render.device": ["render.device.vulkan", "render.device.gl",
-                                  "render.device.null", "render.bridge.*"] },
-  "adapterConsumers": ["render.composition"] } ]
+  "adapters": { "render.device": ["render.device.vulkan", "render.device.gl", "render.device.null"] },
+  "adapterConsumers": ["render.composition", "render.core-tests"],
+  "planned": ["jobs.graph", "render.device.gl"],
+  "outside": [ { "owner": "R91", "reason": "…", "modules": ["render.vulkan.core", "render.bridge.sdl3-vulkan", …] } ],
+  "backendIdentity": { "identifier": "diagnosticBackend",
+                       "allowedModules": ["render.device", "render.composition", "render.core-tests"] } } ]
 ```
+
+`planned` lists ids declared before their module exists; an entry that
+becomes a module must leave it. `outside` lists the render modules from before
+the core (the native Vulkan backend in `shaderapivulkan`, its bridges and
+tests, the legacy provider glue). They are exempt from rule 4, a layered
+module may not depend on them, and the group shrinks as Appendix A.3 moves
+their files; it is empty at K9.
 
 Application code outside the manifest's modules (the launcher, Hammer's
 roots, test fixtures) reaches adapters only through `render.composition`,
@@ -1468,14 +1501,15 @@ target's links.
 launcher (composition root)
   │
   ├─ RenderCore_Create(config)                          render.composition
-  │     config.device    ← -render-device vulkan | gl | null (default from the product profile)
+  │     config.device    ← -render-device vulkan | gl | null (default: Waf --render-core-device)
   │     config.bridge    ← the presentation pair for that device and the window provider
-  │     config.features  ← the product profile's feature list
+  │     config.features  ← -render-features (default: Waf --render-core-features)
   │     builds: device adapter → graph, shader library, resources → material registry and
   │             families → renderer and features → legacy frontend
   │
   ├─ MaterialSystem_BindShaderProvider(materialsystem, core legacy provider)
-  │     existing call; -renderer core selects it; the material system keeps its API
+  │     existing call; the frontend wraps the backend -renderer selected and keeps its
+  │     id; -norendercore composes no core; the material system keeps its API
   │
   ├─ Engine_BindRenderCore(RenderCoreBinding)            new, like Engine_BindLinkedGameModules
   │     IRenderer, SceneFactory, IRenderStageMarkers
@@ -1498,18 +1532,21 @@ module, so every implementation arrives through the binding):
 | `engine/indirect_light_host.cpp` | Probe volume through the side channel, compute through `"RenderGpuCompute001"` | `ProbeVolume` object and `render.pass.indirect` [K3] |
 | `engine/light_set_publisher.cpp` | `"RenderLightSetConsumer001"` | Publishes into the scene's light set, consumed by `render.pass.lights` [K3, K7] |
 | `engine/host_frame_graph.cpp` | Host phases | Adds a render-extract node that commits change sets [K5] |
-| `engine/view.cpp`, `engine/gl_rmain.cpp` | View setup for the material system | Builds `FrameDesc` and views [K3] |
+| `engine/host_render_steps.h` | Host render steps | `EngineFrameBegin` and `EngineFrameEnd` begin and end the core's frame (R86-LAYOUT) |
+| `engine/gl_rmain.cpp` | `CRender::Push3DView`, `PopView` | Mark each 3D view's begin and end, so views nest without touching the client's push sites (R86-LAYOUT); builds `FrameDesc` and views [K3] |
+| `engine/gl_rmisc.cpp` | `R_LevelInit`, `R_LevelShutdown` | Create and drop the world's scene (R86-LAYOUT) |
+| `engine/view.cpp` | View setup for the material system | Builds `FrameDesc` and views [K3] |
 
 Client, material system and other products:
 
 | Place | Change |
 | --- | --- |
-| `game/client/cdll_client_int.cpp` | Looks up `"RenderStageMarkers001"` at init [K3] |
-| `game/client/viewrender.cpp` | Marks each stage [K3]; stops drawing each cohort the scene takes over [K5–K8] |
+| `game/client/cdll_client_int.cpp` | Looks up `"RenderStageMarkers001"` at init (R86-LAYOUT) |
+| `game/client/viewrender.cpp` | Marks the skybox, opaque, translucent, view-model, post-process and HUD stages (R86-LAYOUT); stops drawing each cohort the scene takes over [K5–K8] |
 | `game/client/portal/PortalRender.cpp`, `game/client/portal2/portal/portalrender.cpp` | Portal views as `IRenderStageHooks`, then view generators [K8] |
 | `materialsystem/cmaterialsystem.cpp` | Side-channel `QueryInterface` branches and the side-channel fields of `LegacyShaderServices` removed [K3]; the public API is unchanged |
 | `materialsystem/cmatrendercontext.cpp`, `cmatqueuedrendercontext.cpp` | Unchanged |
-| Hammer GTK viewport (R17) | Links `render.composition` with its own scene; OpenGL in a `GtkGLArea` or the dmabuf bridge is R17's decision |
+| Hammer | `hammer.adapters.render` projects the document into a scene the editor owns (R86-LAYOUT); the GTK viewport (R17) links `render.composition` to draw it; OpenGL in a `GtkGLArea` or the dmabuf bridge is R17's decision |
 | Dedicated server | Links no render module and never calls `Engine_BindRenderCore`; its link map is the evidence |
 | iOS and tvOS | `rendercore` is a module object; the static composition check lists it; nothing is loaded by name |
 

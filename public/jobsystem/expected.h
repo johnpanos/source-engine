@@ -8,10 +8,6 @@
 #ifndef JOBSYSTEM_EXPECTED_H
 #define JOBSYSTEM_EXPECTED_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
 #include "foundation/expected.h"
 
 namespace jobsystem

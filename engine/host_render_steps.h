@@ -25,6 +25,7 @@
 #define HOST_RENDER_STEPS_H
 
 #include "host_frame_graph.h" // HostRenderState_t, HostRenderStep_t
+#include "render_core_host.h"
 
 //-----------------------------------------------------------------------------
 // Render stage prologue (_Host_RunFrame_Render)
@@ -151,6 +152,9 @@ static void HostRender_EngineFrameBegin( HostRenderState_t & )
 		toolframework->RenderFrameBegin();
 	}
 
+	// The render core's frame spans the views the client renders (RFC 0016).
+	RenderCoreHost_BeginFrame();
+
 	cl.UpdateAreaBits_BackwardsCompatible();
 
 	Shader_BeginRendering();
@@ -188,6 +192,7 @@ static void HostRender_EngineFrameEnd( HostRenderState_t & )
 
 		g_EngineRenderer->FrameEnd();
 	}
+	RenderCoreHost_EndFrame();
 }
 
 static void HostRender_DynamicModels( HostRenderState_t & )

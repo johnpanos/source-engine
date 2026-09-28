@@ -1,0 +1,1090 @@
+{
+ "schema": "render-shader-layouts/v1",
+ "description": "Declared shader layouts (RFC 0016 'Shader artifacts', check render.shader-artifacts). tools/render/shader_artifacts.py checks every artifact's reflection against its pass or family at build time. Passes are the native backend's pipelines today (descriptor sets as the backend numbers them); families are render.material.v2 families on the port (at most four groups, set index = role: frame 0, view 1, material 2, draw 3). Change a declaration only with the shader interface it describes; 'derive-layouts' prints what the reflections imply.",
+ "passes": {
+  "legacy-ports": {
+   "description": "The legacy stdshader_dx9 ports (vulkan_legacy_programs.cpp): D3D9 samplers in set 0 (the backend layout has 16 slots; the ports use 0-11), constants in set 1.",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/legacy/*"
+   ],
+   "push_constants": [
+    "fragment",
+    "vertex"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 1,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 2,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 3,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 4,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 5,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 6,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 7,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 8,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 9,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 10,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 11,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 0,
+     "kind": "uniform-buffer",
+     "stages": [
+      "vertex",
+      "fragment"
+     ]
+    }
+   ]
+  },
+  "world-pbr": {
+   "description": "WMSH world and world glass (vulkan_world_pbr.cpp): grouped sets frame textures (0), probe and lighting textures (1), constants (2).",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/world_mesh.vert",
+    "materialsystem/shaderapivulkan/shaders/world_pbr.vert",
+    "materialsystem/shaderapivulkan/shaders/world_pbr.frag",
+    "materialsystem/shaderapivulkan/shaders/world_pbr_glass.frag"
+   ],
+   "push_constants": [
+    "vertex",
+    "fragment"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 1,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 2,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 3,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 4,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 5,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 6,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 1,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 2,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 3,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 4,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 5,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 2,
+     "binding": 0,
+     "kind": "uniform-buffer",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ]
+  },
+  "model-pbr": {
+   "description": "PBRMetalRough on models (model_pbr.frag), drawn with the skin vertex stage; the world PBR grouping.",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/model_pbr.frag"
+   ],
+   "push_constants": [
+    "fragment"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 1,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 2,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 3,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 5,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 6,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 1,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 2,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 3,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 4,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 2,
+     "binding": 0,
+     "kind": "uniform-buffer",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ]
+  },
+  "pbr-direct": {
+   "description": "The RFC 0007 synthetic PBR direct-light pixel stage.",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/pbr_direct.frag"
+   ],
+   "push_constants": [
+    "fragment"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 2,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ]
+  },
+  "skin-phong": {
+   "description": "VertexLitGeneric $phong (skin_vs20/skin_ps20b), SolidEnergy and paint blobs: one texture per set 0-5 and constants in set 6 (seven sets; RFC 0016 decision 3 moves it to the vertexlit family's four groups).",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/skin.vert",
+    "materialsystem/shaderapivulkan/shaders/skin.frag",
+    "materialsystem/shaderapivulkan/shaders/solidenergy.vert",
+    "materialsystem/shaderapivulkan/shaders/solidenergy.frag",
+    "materialsystem/shaderapivulkan/shaders/paintblob.frag"
+   ],
+   "push_constants": [
+    "vertex",
+    "fragment"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 2,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 3,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 4,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 5,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 6,
+     "binding": 0,
+     "kind": "uniform-buffer",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ],
+   "excluded_targets": [
+    {
+     "format": "glsl450",
+     "units": [
+      "g_skinFragSpv",
+      "g_solidEnergyFragSpv",
+      "g_paintBlobFragSpv"
+     ],
+     "reason": "seven descriptor sets (0-6), over the four-group ceiling: flattened to OpenGL, sets 5 and 6 need texture units 80 and up, beyond gl_MaxCombinedTextureImageUnits (80). The GLSL 4.50 artifact builds once the pass has the four groups of its family (RFC 0016 decision 3)"
+    }
+   ]
+  },
+  "lightmapped": {
+   "description": "LightmappedGeneric/WorldVertexTransition and paint on world surfaces: grouped textures (set 0) and constants (set 1).",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/lightmapped.vert",
+    "materialsystem/shaderapivulkan/shaders/lightmapped.frag",
+    "materialsystem/shaderapivulkan/shaders/lightmappedpaint.frag"
+   ],
+   "push_constants": [
+    "vertex",
+    "fragment"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 1,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 2,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 3,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 4,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 5,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 6,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 7,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 0,
+     "kind": "uniform-buffer",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ]
+  },
+  "material-tex": {
+   "description": "The textured material stage (one texture per set 0-3).",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/demo_dyn_tex.vert",
+    "materialsystem/shaderapivulkan/shaders/demo_dyn_tex.frag"
+   ],
+   "push_constants": [
+    "vertex",
+    "fragment"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 2,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 3,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ]
+  },
+  "portal-refract": {
+   "description": "PortalRefract (portal_refract_vs20/ps2x).",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/portal_refract.vert",
+    "materialsystem/shaderapivulkan/shaders/portal_refract.frag"
+   ],
+   "push_constants": [
+    "vertex",
+    "fragment"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 2,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ]
+  },
+  "screenspace-post": {
+   "description": "Bloom and color correction (Downsample_nohdr, BlurFilter, Engine_Post).",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/screenspace_post.vert",
+    "materialsystem/shaderapivulkan/shaders/screenspace_post.frag"
+   ],
+   "push_constants": [
+    "fragment"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 1,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 2,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 3,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 4,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 5,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 6,
+     "binding": 0,
+     "kind": "uniform-buffer",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ],
+   "excluded_targets": [
+    {
+     "format": "glsl450",
+     "units": [
+      "g_postFragSpv"
+     ],
+     "reason": "seven descriptor sets (0-6), over the four-group ceiling: flattened to OpenGL, sets 5 and 6 need texture units 80 and up, beyond gl_MaxCombinedTextureImageUnits (80). The GLSL 4.50 artifact builds once the pass has the four groups of its family (RFC 0016 decision 3)"
+    }
+   ]
+  },
+  "present": {
+   "description": "The present-time gamma pass and the frame copy's depth-to-alpha (soft particles).",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/present_gamma.vert",
+    "materialsystem/shaderapivulkan/shaders/present_gamma.frag",
+    "materialsystem/shaderapivulkan/shaders/depth_to_alpha.frag"
+   ],
+   "push_constants": [
+    "fragment"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 1,
+     "kind": "uniform-buffer",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ]
+  },
+  "compute-fill": {
+   "description": "RFC 0011 G5 compute conformance program.",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/compute_fill.comp"
+   ],
+   "push_constants": [
+    "compute"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 1,
+     "kind": "storage-texture",
+     "stages": [
+      "compute"
+     ]
+    }
+   ]
+  },
+  "pbr-brdf-check": {
+   "description": "render.pbr-brdf.glsl suite program.",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/pbr_brdf_check.comp"
+   ],
+   "push_constants": [
+    "compute"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 1,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    }
+   ]
+  },
+  "reflection-probes-check": {
+   "description": "render.reflection-probes.glsl suite program.",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/reflection_probes_check.comp"
+   ],
+   "push_constants": [
+    "compute"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 1,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 2,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    }
+   ]
+  },
+  "sdf-probe-trace": {
+   "description": "RFC 0011 G6 SDF-traced probe update.",
+   "push_constants": [
+    "compute"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 1,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 2,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 3,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 4,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 5,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 6,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 7,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 8,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    }
+   ],
+   "units": [
+    "g_sdfProbeTraceSpv"
+   ]
+  },
+  "sdf-probe-trace-ray-query": {
+   "description": "RFC 0011 G7: the probe update traced with ray queries (SPIR-V 1.5), the scene's acceleration structure at set 0 binding 5.",
+   "push_constants": [
+    "compute"
+   ],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 1,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 2,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 3,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 4,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 5,
+     "kind": "acceleration-structure",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 6,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 7,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 8,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 9,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 10,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    },
+    {
+     "set": 0,
+     "binding": 11,
+     "kind": "storage-buffer",
+     "stages": [
+      "compute"
+     ]
+    }
+   ],
+   "units": [
+    "g_rayQueryProbeTraceSpv"
+   ],
+   "excluded_targets": [
+    {
+     "format": "glsl450",
+     "units": [
+      "g_rayQueryProbeTraceSpv"
+     ],
+     "reason": "ray query is a Vulkan capability; OpenGL 4.5 has none (RFC 0016 capabilities: RFC 0011 producers that need it are unavailable), and SPIRV-Cross emits ray queries only as Vulkan GLSL 460"
+    }
+   ]
+  },
+  "demo": {
+   "description": "The bring-up pipelines without resources (demo_triangle_spv.h).",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/demo_triangle.vert",
+    "materialsystem/shaderapivulkan/shaders/demo_triangle.frag",
+    "materialsystem/shaderapivulkan/shaders/demo_depth.vert",
+    "materialsystem/shaderapivulkan/shaders/demo_dyn.vert",
+    "materialsystem/shaderapivulkan/shaders/demo_greenify.frag",
+    "materialsystem/shaderapivulkan/shaders/demo_constcolor.frag",
+    "materialsystem/shaderapivulkan/shaders/demo_texquad.vert",
+    "materialsystem/shaderapivulkan/shaders/demo_indexed_ubo.vert"
+   ],
+   "push_constants": [
+    "fragment",
+    "vertex"
+   ],
+   "bindings": []
+  },
+  "demo-texquad": {
+   "description": "The bring-up textured quad.",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/demo_texquad.frag"
+   ],
+   "push_constants": [],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "combined-image-sampler",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ]
+  },
+  "demo-indexed-ubo": {
+   "description": "The bring-up uniform-buffer draw.",
+   "sources": [
+    "materialsystem/shaderapivulkan/shaders/demo_indexed_ubo.frag"
+   ],
+   "push_constants": [],
+   "bindings": [
+    {
+     "set": 0,
+     "binding": 0,
+     "kind": "uniform-buffer",
+     "stages": [
+      "fragment"
+     ]
+    }
+   ]
+  }
+ },
+ "families": {}
+}

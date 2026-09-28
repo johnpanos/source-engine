@@ -78,6 +78,39 @@ class DrawStateDiffTest(unittest.TestCase):
             bad.write_text("{}\n")
             self.assertEqual(diff.main(["--reference", str(bad), "--candidate", str(same)]), 2)
 
+    def test_exact_mode_is_ordered_and_sees_every_field(self):
+        frame = [draw(), draw(material="dev/engine_post", seq=1)]
+        self.assertEqual(diff.compare_exact(frame, [dict(d, seq=d["seq"] + 9) for d in frame]), [])
+        swapped = diff.compare_exact(frame, frame[::-1])
+        self.assertEqual([d["index"] for d in swapped], [0, 1])
+        # The set comparison cannot see a changed viewport; the exact one does.
+        moved = diff.compare_exact(frame, [draw(viewport=[0, 0, 1, 1]), frame[1]])
+        self.assertEqual(moved[0]["fields"], ["viewport"])
+        missing = diff.compare_exact(frame, frame[:1])
+        self.assertEqual((missing[0]["index"], missing[0]["fields"]), (1, ["(missing)"]))
+
+    def test_exact_mode_ignores_only_declared_components(self):
+        declared = {("Downsample_nohdr", "base_texture_transform"): (2, 3)}
+        ref = draw(shader="Downsample_nohdr", base_texture_transform=[1, 2, 7e28, 5e-41, 0, 1, 0, 0])
+        garbage = dict(ref, base_texture_transform=[1, 2, -3e18, 4e-41, 0, 1, 0, 0])
+        self.assertEqual(diff.compare_exact([ref], [garbage], declared), [])
+        read = dict(ref, base_texture_transform=[1, 3, 7e28, 5e-41, 0, 1, 0, 0])
+        self.assertEqual(diff.compare_exact([ref], [read], declared)[0]["fields"],
+                         ["base_texture_transform"])
+        other = draw(base_texture_transform=[1, 0, 9, 0, 0, 1, 0, 0])
+        self.assertTrue(diff.compare_exact([draw()], [other], declared))
+
+    def test_exact_exit_codes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            same = Path(temp) / "a.jsonl"
+            other = Path(temp) / "b.jsonl"
+            header = json.dumps({"schema": diff.SCHEMA, "draws": 1}) + "\n"
+            same.write_text(header + json.dumps(draw()) + "\n")
+            other.write_text(header + json.dumps(draw(viewport=[0, 0, 2, 2])) + "\n")
+            args = ["--exact", "--reference", str(same), "--candidate"]
+            self.assertEqual(diff.main(args + [str(same)]), 0)
+            self.assertEqual(diff.main(args + [str(other)]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

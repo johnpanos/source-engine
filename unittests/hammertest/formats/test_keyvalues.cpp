@@ -130,12 +130,65 @@ void TestComparatorNormalization()
 	CHECK( !CompareKeyValues( d.root, e.root ).equal );
 }
 
+void TestConditionals()
+{
+	// Tags after a value and before a block's brace stay on what they follow.
+	const ParseResult parsed = ParseKeyValues( "LightmappedGeneric\n{\n"
+	                                           "\t\"$envmap\" \"env_cubemap\" [$WIN32 && !$OSX]\n"
+	                                           "\t\"$bumpmap\" \"a/b\"\n"
+	                                           "\t\">=dx90\" [!$X360] { \"$c\" \"1\" }\n}\n" );
+	CHECK( parsed.ok && parsed.root.children.size() == 1 );
+	const KeyValueNode &material = parsed.root.children[0];
+	CHECK( material.pairs.size() == 2 && material.pairs[0].condition == "$WIN32 && !$OSX" );
+	CHECK( material.pairs.size() == 2 && material.pairs[1].condition.empty() );
+	CHECK( material.children.size() == 1 && material.children[0].condition == "!$X360" );
+
+	// The writer keeps them, and the comparator sees them.
+	const ParseResult again = ParseKeyValues( WriteKeyValues( parsed.root ) );
+	CHECK( again.ok && CompareKeyValues( parsed.root, again.root ).equal );
+	const ParseResult untagged = ParseKeyValues( "LightmappedGeneric\n{\n"
+	                                             "\t\"$envmap\" \"env_cubemap\"\n"
+	                                             "\t\"$bumpmap\" \"a/b\"\n"
+	                                             "\t\">=dx90\" [!$X360] { \"$c\" \"1\" }\n}\n" );
+	CHECK( untagged.ok && !CompareKeyValues( parsed.root, untagged.root ).equal );
+
+	// A tag between a key and its value, or an unterminated one, is malformed.
+	CHECK( !ParseKeyValues( "m\n{\n\t\"$a\" [$WIN32] \"1\"\n}\n" ).ok );
+	CHECK( !ParseKeyValues( "m\n{\n\t\"$a\" \"1\" [$WIN32\n}\n" ).ok );
+	CHECK( !ParseKeyValues( "m\n{\n\t[$WIN32] \"$a\" \"1\"\n}\n" ).ok );
+
+	// End of input closes open blocks only when asked (Source's reader does).
+	const std::string unclosed = "m\n{\n\t\"$a\" \"1\"\n\tProxies\n\t{\n";
+	CHECK( !ParseKeyValues( unclosed ).ok );
+	kvtext::ParseOptions lenient;
+	lenient.closeBlocksAtEnd = true;
+	const ParseResult closed = ParseKeyValues( unclosed, lenient );
+	CHECK( closed.ok && closed.root.children.size() == 1 &&
+	       closed.root.children[0].pairs.size() == 1 &&
+	       closed.root.children[0].children.size() == 1 );
+	CHECK( !ParseKeyValues( "m\n{\n}\n}\n", lenient ).ok );
+
+	// The expression grammar of Source's KeyValues.
+	const auto symbols = []( std::string_view name )
+	{
+		return name == "WIN32" || name == "LINUX";
+	};
+	CHECK( kvtext::EvaluateCondition( "$WIN32 && !$OSX", symbols ) == true );
+	CHECK( kvtext::EvaluateCondition( "[$X360 || $LINUX]", symbols ) == true );
+	CHECK( kvtext::EvaluateCondition( "!($WIN32 && $LINUX)", symbols ) == false );
+	CHECK( kvtext::EvaluateCondition( "0 || 2", symbols ) == true );
+	CHECK( !kvtext::EvaluateCondition( "$WIN32 &&", symbols ).has_value() );
+	CHECK( !kvtext::EvaluateCondition( "($WIN32", symbols ).has_value() );
+	CHECK( !kvtext::EvaluateCondition( "[$WIN32", symbols ).has_value() );
+}
+
 int main()
 {
 	TestParseStructure();
 	TestRoundTripAndUnknownPreserved();
 	TestMalformedInput();
 	TestComparatorNormalization();
+	TestConditionals();
 
 	if ( g_failures != 0 )
 	{

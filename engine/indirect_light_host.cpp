@@ -38,6 +38,7 @@
 #include "render/indirect_switcher.h"
 #include "render/light_set.h"
 #include "render/world_mesh_upload.h"
+#include "render_core_host.h"
 #include "tier0/dbg.h"
 #include "tier0/platform.h"
 #include "tier1/interface.h"
@@ -434,9 +435,7 @@ Host &TheHost()
 
 gpu_compute::IGpuCompute *GpuCompute()
 {
-	return materials ? static_cast<gpu_compute::IGpuCompute *>(
-	                       materials->QueryInterface( gpu_compute::kGpuComputeInterface ) )
-	                 : nullptr;
+	return RenderCoreHost_GpuCompute();
 }
 
 // Moving geometry the static field lacks: every drawn brush entity (a door,
@@ -509,9 +508,7 @@ void ApplyOcclusion( Host &host )
 
 world_mesh_gpu::IWorldMeshUpload *Uploader()
 {
-	return materials ? static_cast<world_mesh_gpu::IWorldMeshUpload *>(
-	                       materials->QueryInterface( world_mesh_gpu::kWorldMeshUploadInterface ) )
-	                 : nullptr;
+	return RenderCoreHost_WorldMeshUpload();
 }
 
 // Makes `frame` what consumers sample: the CPU view (the ambient cube) and
@@ -972,5 +969,25 @@ public:
 };
 
 static CIndirectLightPortals s_IndirectLightPortals;
+
+int IndirectLight_OpenPortals( indirect_portals::PortalInput *out, int max )
+{
+	const std::vector<Portal> &portals = TheHost().portals;
+	int count = 0;
+	for ( const Portal &portal : portals )
+	{
+		if ( count >= max )
+			break;
+		indirect_portals::PortalInput &to = out[count++];
+		std::memcpy( to.origin, portal.origin, sizeof( to.origin ) );
+		std::memcpy( to.forward, portal.forward, sizeof( to.forward ) );
+		std::memcpy( to.right, portal.right, sizeof( to.right ) );
+		std::memcpy( to.up, portal.up, sizeof( to.up ) );
+		to.halfWidth = portal.halfWidth;
+		to.halfHeight = portal.halfHeight;
+		std::memcpy( to.toLinked, portal.toLinked, sizeof( to.toLinked ) );
+	}
+	return count;
+}
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR_WITH_NAMESPACE( CIndirectLightPortals, indirect_portals::,
     IIndirectLightPortals, indirect_portals::kIndirectLightPortalsVersion, s_IndirectLightPortals );

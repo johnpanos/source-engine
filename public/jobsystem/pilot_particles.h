@@ -21,10 +21,6 @@
 #ifndef JOBSYSTEM_PILOT_PARTICLES_H
 #define JOBSYSTEM_PILOT_PARTICLES_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
 #include <cstdint>
 #include <vector>
 

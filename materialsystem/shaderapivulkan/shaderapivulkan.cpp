@@ -30,17 +30,19 @@
 #include "filesystem.h"
 #include "tier1/KeyValues.h"
 #include "vulkan_device.h"
+#include "render/legacy/frame_source.h"
 #include "vulkan_emit_convert.h"
 #include "vulkan_mesh_layout.h"
 #include "shaderapivulkan_legacy.h"
 #include "vulkan_world_mesh_upload.h"
 #include "render/light_set.h"
 #include "render/direct_light_selection.h"
-#include "sdl3/sdl3_vulkan_surface_host.h"
+#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "vtf/vtf.h"
 #include "pixelwriter.h"
 #include "shaderapi/commandbuffer.h"
 #include "drawstatefixture.h"
+#include "vieworaclecapture.h"
 #include "renderparm.h"
 #if defined( USE_SDL )
 #include "appframework/ilaunchermgr.h"
@@ -174,6 +176,85 @@ static uint32_t EmitParallelMinVertices()
 	return static_cast<uint32_t>( std::max( 1, value ) );
 }
 
+// The Vulkan adapter (render.device.vulkan) the composition root bound: it
+// creates the device the context borrows (RFC 0016 K1, one Vulkan stack). The
+// adapter's code lives in the root's module, so this one holds no copy.
+static const render::device::vulkan::IHostDeviceFactory *g_DeviceFactory = nullptr;
+
+// RFC 0016 K3: the frame runs in the render core's frame graph. The
+// composition root binds the legacy frontend's executor
+// (NativeVulkanShaderBackend_BindFrameExecutor); without one a frame runs on
+// an encoder of its own (CVulkanContext::RenderFrame). Either way the frame's
+// commands are recorded into a port encoder.
+static render::legacy::ILegacyFrameExecutor *g_FrameExecutor = nullptr;
+
+class CVulkanFrameSource final : public render::legacy::ILegacyFrameSource
+{
+public:
+	render::device::IRenderDevice2 &Device() override { return *g_VulkanContext.Port(); }
+	bool Prepare( bool *skip ) override { return g_VulkanContext.PrepareFrame( skip, &m_error ); }
+	bool HasStage( render::legacy::LegacyFrameStage stage ) override
+	{
+		return g_VulkanContext.HasFrameStage( ContextStage( stage ) );
+	}
+	bool RecordStage(
+	    render::legacy::LegacyFrameStage stage, render::device::CommandEncoder &encoder ) override
+	{
+		g_VulkanContext.AttachFrameStage( ContextStage( stage ), encoder );
+		return true;
+	}
+	bool Finish( const render::device::CompletionToken &token, bool submitted ) override
+	{
+		return g_VulkanContext.FinishFrame( token, submitted, &m_error );
+	}
+	std::string m_error;
+
+private:
+	static render_vulkan::CVulkanContext::FrameStage ContextStage(
+	    render::legacy::LegacyFrameStage stage )
+	{
+		return static_cast<render_vulkan::CVulkanContext::FrameStage>(
+		    static_cast<unsigned int>( stage ) );
+	}
+};
+
+static_assert( static_cast<int>( render::legacy::LegacyFrameStage::kComputeAndUploads ) ==
+                       render_vulkan::CVulkanContext::kFrameStageComputeAndUploads &&
+                   static_cast<int>( render::legacy::LegacyFrameStage::kScene ) ==
+                       render_vulkan::CVulkanContext::kFrameStageScene &&
+                   static_cast<int>( render::legacy::LegacyFrameStage::kResolve ) ==
+                       render_vulkan::CVulkanContext::kFrameStageResolve &&
+                   static_cast<int>( render::legacy::LegacyFrameStage::kCapture ) ==
+                       render_vulkan::CVulkanContext::kFrameStageCapture &&
+                   static_cast<int>( render::legacy::LegacyFrameStage::kPresent ) ==
+                       render_vulkan::CVulkanContext::kFrameStagePresent &&
+                   static_cast<int>( render::legacy::LegacyFrameStage::kCount ) ==
+                       render_vulkan::CVulkanContext::kFrameStageCount,
+    "the context's frame stages are the frontend's" );
+
+static bool RunVulkanFrame( std::string *outError )
+{
+	if ( g_FrameExecutor && g_VulkanContext.Port() )
+	{
+		CVulkanFrameSource source;
+		const bool ok = g_FrameExecutor->RunFrame( source );
+		static bool s_announced = false;
+		if ( !s_announced && g_FrameExecutor->LastFramePasses() > 0 )
+		{
+			s_announced = true;
+			fprintf( stderr,
+			    "[vulkan] frames run in the render core's frame graph (RFC 0016 K3): "
+			    "%u stage passes\n",
+			    g_FrameExecutor->LastFramePasses() );
+		}
+		if ( !ok && outError )
+			*outError = source.m_error;
+		return ok;
+	}
+	bool skip = false;
+	return g_VulkanContext.RenderFrame( &skip, outError );
+}
+
 // Brings the context up against the engine's window. The window reference is
 // handed to the pair-specific bridge untouched; nothing here interprets it.
 static bool InitVulkanContext(
@@ -196,6 +277,7 @@ static bool InitVulkanContext(
 		withTools.debugLabels = render_vulkan::DebugLabelPolicy::Off;
 	if ( const char *shaderDir = getenv( "SOURCE_VK_SHADER_DIR" ) )
 		withTools.shaderDebugDirectory = shaderDir;
+	withTools.deviceFactory = g_DeviceFactory;
 	if ( !g_VulkanContext.Init( *host, withTools, outError ) )
 		return false;
 	if ( mat_pix_events.GetInt() < 0 )
@@ -1150,6 +1232,15 @@ public:
 	}
 	bool WorldMeshDrawQueued() const { return m_worldDrawQueued; }
 	bool IsWorldMeshBatch() const { return m_worldMeshBatch; }
+	// The geometry of the draw in progress, for the view oracle (vieworaclecapture.h).
+	void DescribeViewOracleDraw( vieworacle::Draw &draw ) const
+	{
+		draw.primitive = static_cast<int>( m_primitiveType );
+		draw.worldBatch = m_worldMeshBatch;
+		draw.firstIndex = m_worldMeshBatch ? static_cast<int>( m_worldFirstIndex ) : m_drawFirst;
+		draw.indexCount = m_worldMeshBatch ? static_cast<int>( m_worldIndexCount ) : m_drawCount;
+		draw.vertexCount = ( m_pVertexSource ? m_pVertexSource : this )->m_numVerts;
+	}
 
 	// Sets the primitive type
 	void SetPrimitiveType( MaterialPrimitiveType_t type );
@@ -1645,12 +1736,7 @@ public:
 		    : r_probevolume_visibility.IsValid() && !r_probevolume_visibility.GetBool() ? 2
 		                                                                                : 1 );
 		std::string error;
-		bool skip = false;
-		if ( g_VulkanContext.BeginFrame( &skip, &error ) )
-		{
-			if ( !skip )
-				g_VulkanContext.EndFrame( &error );
-		}
+		(void)RunVulkanFrame( &error );
 		g_VulkanContext.EndStreamFrame();
 	}
 	virtual void GetWindowSize( int &width, int &height ) const;
@@ -2055,6 +2141,8 @@ public:
 	void RenderPass( int nPass, int nPassCount );
 	// Records the pass just rendered as a draw-state fixture.
 	void RecordDrawStateFixture( int nPass, int nPassCount );
+	// Records the pass just rendered, and its geometry, in the view oracle.
+	void RecordViewOracleDraw( int nPass, int nPassCount );
 
 	// stuff related to matrix stacks
 	void MatrixMode( MaterialMatrixMode_t matrixMode );
@@ -2684,17 +2772,22 @@ public:
 
 	// Hooks for firing PIX events from outside the Material System...
 	// Capture-tool labels (VK_EXT_debug_utils) in the frame's record order.
+	// Also the view oracle's events (vieworaclecapture.h): the engine's view
+	// spans arrive here as PIX events in the frame's submission order.
 	virtual void BeginPIXEvent( unsigned long color, const char *szName )
 	{
+		vieworacle::Instance().LabelBegin( szName );
 		g_VulkanContext.QueueFrameLabel( render_vulkan::CVulkanContext::FrameLabelOp::Push, szName,
 		    static_cast<uint32_t>( color ) );
 	}
 	virtual void EndPIXEvent()
 	{
+		vieworacle::Instance().LabelEnd();
 		g_VulkanContext.QueueFrameLabel( render_vulkan::CVulkanContext::FrameLabelOp::Pop );
 	}
 	virtual void SetPIXMarker( unsigned long color, const char *szName )
 	{
+		vieworacle::Instance().Marker( szName );
 		g_VulkanContext.QueueFrameLabel( render_vulkan::CVulkanContext::FrameLabelOp::Insert,
 		    szName, static_cast<uint32_t>( color ) );
 	}
@@ -3077,6 +3170,18 @@ extern "C" DLL_EXPORT bool NativeVulkanShaderBackend_Create(
     render::LegacyShaderServices *services )
 {
 	return CreateNativeVulkanShaderBackend( services );
+}
+
+extern "C" DLL_EXPORT void NativeVulkanShaderBackend_BindDeviceFactory(
+    const render::device::vulkan::IHostDeviceFactory *factory )
+{
+	g_DeviceFactory = factory;
+}
+
+extern "C" DLL_EXPORT void NativeVulkanShaderBackend_BindFrameExecutor(
+    render::legacy::ILegacyFrameExecutor *executor )
+{
+	g_FrameExecutor = executor;
 }
 
 extern "C" DLL_EXPORT const render::LegacyShaderProvider *NativeVulkanShaderBackend_Describe()
@@ -9167,6 +9272,8 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 	}
 	if ( drawstatefixture::Instance().Enabled() )
 		RecordDrawStateFixture( nPass, nPassCount );
+	if ( vieworacle::Instance().Enabled() )
+		RecordViewOracleDraw( nPass, nPassCount );
 }
 
 // Draw-state fixture (drawstatefixture.h) of the pass just rendered: what this
@@ -9287,6 +9394,31 @@ void CShaderAPIVulkan::RecordDrawStateFixture( int nPass, int nPassCount )
 	draw.submitted = g_LastDropReason[0] == 0;
 	draw.dropReason = g_LastDropReason;
 	drawstatefixture::Instance().Record( draw );
+}
+
+void CShaderAPIVulkan::RecordViewOracleDraw( int nPass, int nPassCount )
+{
+	vieworacle::Draw draw;
+	draw.material = g_pBoundMaterial ? g_pBoundMaterial->GetName() : "";
+	draw.shader = g_pBoundMaterial ? g_pBoundMaterial->GetShaderName() : "";
+	draw.pass = nPass;
+	draw.passCount = nPassCount;
+	if ( g_pRenderMesh )
+		g_pRenderMesh->DescribeViewOracleDraw( draw );
+	const int target = g_VulkanContext.RenderTarget();
+	if ( target >= 0 )
+		draw.target = FixtureTextureName( target );
+	ShaderViewport_t viewport;
+	GetViewports( &viewport, 1 );
+	if ( g_Viewport.m_nWidth <= 0 || g_Viewport.m_nHeight <= 0 )
+		g_VulkanContext.GetRenderTargetExtent( viewport.m_nWidth, viewport.m_nHeight );
+	draw.viewport[0] = viewport.m_nTopLeftX;
+	draw.viewport[1] = viewport.m_nTopLeftY;
+	draw.viewport[2] = viewport.m_nWidth;
+	draw.viewport[3] = viewport.m_nHeight;
+	draw.submitted = g_LastDropReason[0] == 0;
+	draw.dropReason = g_LastDropReason;
+	vieworacle::Instance().RecordDraw( draw );
 }
 
 // stuff related to matrix stacks. These drive the model/view/projection matrices
@@ -10786,6 +10918,12 @@ void CShaderAPIVulkan::ClearBuffers( bool bClearColor, bool bClearDepth, bool bC
     int renderTargetWidth, int renderTargetHeight )
 {
 	NoteDeviceUse( "ClearBuffers" );
+	if ( vieworacle::Instance().Enabled() )
+	{
+		const int target = g_VulkanContext.RenderTarget();
+		vieworacle::Instance().Clear( bClearColor, bClearDepth, bClearStencil,
+		    target >= 0 ? FixtureTextureName( target ) : "backbuffer" );
+	}
 	// A clear is part of the frame's ordered stream: it applies to whichever
 	// target is current when it is issued, bounded by the viewport as in D3D9.
 	// Frame boundaries come from Present, not from clears -- the engine clears
@@ -10876,6 +11014,7 @@ void CShaderAPIVulkan::ReadPixels(
 {
 	NoteDeviceUse( "ReadPixels" );
 	drawstatefixture::Instance().WriteFrame( "screenshot" );
+	vieworacle::Instance().WriteFrame( "screenshot" );
 	// Copy the most recently presented frame (captured by CVulkanContext) into
 	// the caller's buffer, converting to the requested format. This is what the
 	// engine's +screenshot path reads; without it every capture is blank.
@@ -10885,10 +11024,8 @@ void CShaderAPIVulkan::ReadPixels(
 	// here, not every frame -- a full-frame GPU copy per frame stalls the loop).
 	{
 		std::string err;
-		bool skip = false;
 		g_VulkanContext.RequestCapture();
-		if ( g_VulkanContext.BeginFrame( &skip, &err ) && !skip )
-			g_VulkanContext.EndFrame( &err );
+		(void)RunVulkanFrame( &err );
 	}
 	int cw = 0, ch = 0;
 	const std::vector<uint8_t> &px = g_VulkanContext.GetCapturedPixels( &cw, &ch );
@@ -10949,6 +11086,7 @@ void CShaderAPIVulkan::ReadPixels(
 	ReportUnimplementedEntries();
 	ReportDroppedMaterials();
 	drawstatefixture::Instance().WriteFrame( "screenshot" );
+	vieworacle::Instance().WriteFrame( "screenshot" );
 
 	// The engine's +screenshot path calls THIS overload (a source rect in the back
 	// buffer -> a destination rect in `data` at `nDstStride`). Without it the
@@ -10959,10 +11097,8 @@ void CShaderAPIVulkan::ReadPixels(
 		return;
 	{
 		std::string err;
-		bool skip = false;
 		g_VulkanContext.RequestCapture();
-		if ( g_VulkanContext.BeginFrame( &skip, &err ) && !skip )
-			g_VulkanContext.EndFrame( &err );
+		(void)RunVulkanFrame( &err );
 	}
 	int cw = 0, ch = 0;
 	const std::vector<uint8_t> &px = g_VulkanContext.GetCapturedPixels( &cw, &ch );
@@ -11170,6 +11306,8 @@ void CShaderAPIVulkan::BeginFrame()
 {
 	drawstatefixture::Instance().Configure( "vulkan-native" );
 	drawstatefixture::Instance().BeginFrame();
+	vieworacle::Instance().Configure( "vulkan-native" );
+	vieworacle::Instance().BeginFrame();
 	++g_CurrentFrameNumber;
 	g_TextureMemoryUsedLastFrame = 0;
 }

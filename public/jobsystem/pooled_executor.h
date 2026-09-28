@@ -27,10 +27,6 @@
 #ifndef JOBSYSTEM_POOLED_EXECUTOR_H
 #define JOBSYSTEM_POOLED_EXECUTOR_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
 #include "jobsystem/graph_executor.h"
 #include "jobsystem/worker_backend.h"
 

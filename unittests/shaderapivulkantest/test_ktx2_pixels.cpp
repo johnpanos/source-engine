@@ -4,7 +4,7 @@
 //
 //===========================================================================//
 
-#include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.h"
+#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
 #include "testing/conformance_result.h"
 #ifdef RFC0008_KTX_READER
@@ -88,7 +88,7 @@ bool DrawAndCapture( render_vulkan::CVulkanContext &context, int texture,
 	context.QueueDynamicTriangles( vertices.data(), 6 );
 	context.RequestCapture();
 	bool skip = false;
-	if ( !context.BeginFrame( &skip, &error ) || skip || !context.EndFrame( &error ) )
+	if ( !context.RenderFrame( &skip, &error ) || skip )
 		return false;
 	int width = 0;
 	int height = 0;
@@ -128,6 +128,7 @@ int main()
 	    render_vulkan::MakeSdl3LegacySurfaceHost( window, &error );
 	render_vulkan::CVulkanContext context;
 	render_vulkan::VulkanContextConfig config;
+	config.deviceFactory = &render::device::vulkan::HostDeviceFactory();
 	config.appName = "ktx2-native-pixels";
 	config.enableValidation = true;
 	if ( !host || !context.Init( *host, config, &error ) )

@@ -1,0 +1,415 @@
+{
+  "schema": "render-view-oracles/v1",
+  "id": "render-view-oracles-v1",
+  "description": "RFC 0016 K0 frozen view oracles and per-draw state fixtures (tools/render/view_oracle.py). Each scenario boots one map on the native Vulkan client headless (portal_boot.py), places the camera per shot and screenshots; the backend records the frame's views and draws (source-view-oracle/v1, -vieworacle) and its per-draw state (source-draw-state/v1, -drawstatefixture). Determinism: host_framerate fixes the step; -deterministicrender fixes particle seeds and the world's static batch order and seeds the shared random stream with 0 (as -random_invariant); -nosound keeps scripted scenes from waiting on real-time sound playback; noclip and a camera re-placed right before each screenshot keep the view still. Coverage notes: no Portal map has a Water material, a point_camera or a func_monitor, so water reflection and refraction come from Portal 2 (sp_a1_wakeup), and the Portal monitor shots spawn a point_camera (the client's DrawMonitors renders every active point_camera into _rt_Camera). The Portal 2 client in this tree compiles monitors out (viewrender.cpp defines USE_MONITORS only for HL2_CLIENT_DLL and CSTRIKE_DLL, and client_portal2.vpc defines neither), so no Portal 2 map renders a monitor view; retail Portal 2 does (sp_a4_intro's Wheatley monitors).",
+  "common": {
+    "renderer": "native-vulkan",
+    "physics": "vphysics_box3d",
+    "size": [
+      1024,
+      768
+    ],
+    "engine_args": [
+      "-deterministicrender",
+      "-nosound"
+    ],
+    "startup_commands": [
+      "host_framerate 0.015"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "portal_testchmb_a_00",
+      "game": "portal",
+      "map": "testchmb_a_00",
+      "why": "K0 map. The relaxation vault's frosted glass; two portals opened in the second room facing each other, so every recursion depth up to the limit is visible; the legacy-ports view set at the spawn point; a spawned point_camera, linked (info_camera_link) to the blue portal so the server activates it while the portal is in the PVS, for the monitor view (no Portal map has one).",
+      "intro_frames": 2400,
+      "setup": [
+        "noclip",
+        "ent_create prop_portal targetname vo_blue LinkageGroupID 7 PortalTwo 0",
+        "ent_create prop_portal targetname vo_orange LinkageGroupID 7 PortalTwo 1",
+        "ent_fire vo_blue NewLocation \"-960 -560 630 0 180 0\" 1",
+        "ent_fire vo_orange NewLocation \"-1140 -560 630 0 0 0\" 1",
+        "ent_fire vo_blue SetActivatedState 1 2",
+        "ent_fire vo_orange SetActivatedState 1 2",
+        "ent_create point_camera targetname vo_cam",
+        "ent_fire vo_cam AddOutput \"origin -1100 -560 660\" 1",
+        "ent_fire vo_cam AddOutput \"angles 10 0 0\" 1",
+        "ent_create info_camera_link targetname vo_camlink target vo_blue PointCamera vo_cam",
+        "ent_fire vo_cam SetOff 2"
+      ],
+      "shots": [
+        {
+          "view_set": "legacy-ports",
+          "camera": [
+            -608,
+            -347,
+            161
+          ]
+        },
+        {
+          "name": "glass_vault",
+          "features": [
+            "glass"
+          ],
+          "commands": [
+            "cmd setpos -538 -367 161",
+            "cmd setang 4 -172 0"
+          ],
+          "settle": 30,
+          "expect": {
+            "materials": [
+              "glass"
+            ]
+          }
+        },
+        {
+          "name": "recursion_limit1",
+          "features": [
+            "portal_recursion"
+          ],
+          "commands": [
+            "r_portal_stencil_depth 1",
+            "cmd setpos -1088 -560 580",
+            "cmd setang 0 0 0"
+          ],
+          "settle": 20,
+          "expect": {
+            "nested_depth": 1
+          }
+        },
+        {
+          "name": "recursion_limit2",
+          "features": [
+            "portal_recursion"
+          ],
+          "commands": [
+            "r_portal_stencil_depth 2",
+            "cmd setpos -1088 -560 580",
+            "cmd setang 0 0 0"
+          ],
+          "settle": 20,
+          "expect": {
+            "nested_depth": 2
+          }
+        },
+        {
+          "name": "recursion_limit10",
+          "features": [
+            "portal_recursion"
+          ],
+          "commands": [
+            "r_portal_stencil_depth 10",
+            "cmd setpos -1088 -560 580",
+            "cmd setang 0 0 0"
+          ],
+          "settle": 20,
+          "expect": {
+            "nested_depth": 10
+          }
+        },
+        {
+          "name": "monitor",
+          "features": [
+            "monitor"
+          ],
+          "commands": [
+            "ent_fire vo_cam SetOn",
+            "cmd setpos -1088 -560 580",
+            "cmd setang 0 0 0"
+          ],
+          "settle": 30,
+          "post": [
+            "ent_fire vo_cam SetOff"
+          ],
+          "expect": {
+            "kinds": {
+              "monitor": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "portal_testchmb_a_08",
+      "game": "portal",
+      "map": "testchmb_a_08",
+      "why": "K0 map. The chamber's frosted observation glass and a Refract window; two portals opened facing each other on the chamber floor; the legacy-ports view set at the chamber spawn point; a spawned point_camera, linked (info_camera_link) to the blue portal so the server activates it while the portal is in the PVS, for the monitor view (no Portal map has one).",
+      "intro_frames": 1200,
+      "setup": [
+        "noclip",
+        "ent_create prop_portal targetname vo_blue LinkageGroupID 7 PortalTwo 0",
+        "ent_create prop_portal targetname vo_orange LinkageGroupID 7 PortalTwo 1",
+        "ent_fire vo_blue NewLocation \"130 17 55 0 180 0\" 1",
+        "ent_fire vo_orange NewLocation \"-40 17 55 0 0 0\" 1",
+        "ent_fire vo_blue SetActivatedState 1 2",
+        "ent_fire vo_orange SetActivatedState 1 2",
+        "ent_create point_camera targetname vo_cam",
+        "ent_fire vo_cam AddOutput \"origin 0 17 100\" 1",
+        "ent_fire vo_cam AddOutput \"angles 10 0 0\" 1",
+        "ent_create info_camera_link targetname vo_camlink target vo_blue PointCamera vo_cam",
+        "ent_fire vo_cam SetOff 2"
+      ],
+      "shots": [
+        {
+          "view_set": "legacy-ports",
+          "camera": [
+            2,
+            17,
+            1
+          ]
+        },
+        {
+          "name": "glass_frosted",
+          "features": [
+            "glass"
+          ],
+          "commands": [
+            "cmd setpos -150 0 128",
+            "cmd setang -5 180 0"
+          ],
+          "settle": 30,
+          "expect": {
+            "materials": [
+              "glass"
+            ]
+          }
+        },
+        {
+          "name": "glass_refract",
+          "features": [
+            "glass"
+          ],
+          "commands": [
+            "cmd setpos -420 98 269",
+            "cmd setang 0 180 0"
+          ],
+          "settle": 30,
+          "expect": {
+            "materials": [
+              "glass"
+            ]
+          }
+        },
+        {
+          "name": "recursion_limit1",
+          "features": [
+            "portal_recursion"
+          ],
+          "commands": [
+            "r_portal_stencil_depth 1",
+            "cmd setpos 2 17 1",
+            "cmd setang 0 0 0"
+          ],
+          "settle": 20,
+          "expect": {
+            "nested_depth": 1
+          }
+        },
+        {
+          "name": "recursion_limit2",
+          "features": [
+            "portal_recursion"
+          ],
+          "commands": [
+            "r_portal_stencil_depth 2",
+            "cmd setpos 2 17 1",
+            "cmd setang 0 0 0"
+          ],
+          "settle": 20,
+          "expect": {
+            "nested_depth": 2
+          }
+        },
+        {
+          "name": "recursion_limit10",
+          "features": [
+            "portal_recursion"
+          ],
+          "commands": [
+            "r_portal_stencil_depth 10",
+            "cmd setpos 2 17 1",
+            "cmd setang 0 0 0"
+          ],
+          "settle": 20,
+          "expect": {
+            "nested_depth": 10
+          }
+        },
+        {
+          "name": "monitor",
+          "features": [
+            "monitor"
+          ],
+          "commands": [
+            "ent_fire vo_cam SetOn",
+            "cmd setpos 2 17 1",
+            "cmd setang 0 0 0"
+          ],
+          "settle": 30,
+          "post": [
+            "ent_fire vo_cam SetOff"
+          ],
+          "expect": {
+            "kinds": {
+              "monitor": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "portal_testchmb_a_01_ports",
+      "game": "portal",
+      "map": "testchmb_a_01",
+      "settings": "legacy-ports",
+      "why": "The legacy-ports view set where tools/quality/legacy_ports_views.py defines it: testchmb_a_01 from the spawn point at run.conf's settings (1920x1080, mat_queue_mode 2, the job-graph and emit settings), eight yaws, two upward views and the pause menu.",
+      "intro_frames": 300,
+      "setup": [],
+      "shots": [
+        {
+          "view_set": "legacy-ports"
+        }
+      ]
+    },
+    {
+      "id": "portal2_sp_a1_wakeup",
+      "game": "portal2",
+      "map": "sp_a1_wakeup",
+      "why": "The K0 Portal 2 map: the flooded GLaDOS chamber's Water material draws the water reflection and refraction views (water_glados_01: $reflecttexture and $refracttexture); frosted break-glass windows; two portals opened facing each other near the spawn point; the legacy-ports view set at the spawn point. It has no monitor (portal2_sp_a4_intro records one).",
+      "intro_frames": 900,
+      "setup": [
+        "noclip",
+        "ent_create prop_portal targetname vo_blue LinkageGroupID 7 PortalTwo 0",
+        "ent_create prop_portal targetname vo_orange LinkageGroupID 7 PortalTwo 1",
+        "ent_fire vo_blue NewLocation \"6976 730 440 0 270 0\" 1",
+        "ent_fire vo_orange NewLocation \"6976 560 440 0 90 0\" 1",
+        "ent_fire vo_blue SetActivatedState 1 2",
+        "ent_fire vo_orange SetActivatedState 1 2"
+      ],
+      "shots": [
+        {
+          "view_set": "legacy-ports",
+          "camera": [
+            6976,
+            496,
+            384
+          ]
+        },
+        {
+          "name": "water_a",
+          "features": [
+            "water_reflection",
+            "water_refraction"
+          ],
+          "commands": [
+            "cmd setpos 8700 900 460",
+            "cmd setang 25 30 0"
+          ],
+          "settle": 40,
+          "expect": {
+            "kinds": {
+              "water_reflection": 1,
+              "water_refraction": 1
+            }
+          }
+        },
+        {
+          "name": "water_b",
+          "features": [
+            "water_reflection",
+            "water_refraction"
+          ],
+          "commands": [
+            "cmd setpos 9352 1216 700",
+            "cmd setang 45 0 0"
+          ],
+          "settle": 40,
+          "expect": {
+            "kinds": {
+              "water_reflection": 1,
+              "water_refraction": 1
+            }
+          }
+        },
+        {
+          "name": "glass_a",
+          "features": [
+            "glass"
+          ],
+          "commands": [
+            "cmd setpos 7232 1150 384",
+            "cmd setang 0 -90 0"
+          ],
+          "settle": 30,
+          "expect": {
+            "materials": [
+              "glass"
+            ]
+          }
+        },
+        {
+          "name": "glass_b",
+          "features": [
+            "glass"
+          ],
+          "commands": [
+            "cmd setpos 7450 960 384",
+            "cmd setang 0 180 0"
+          ],
+          "settle": 30,
+          "expect": {
+            "materials": [
+              "glass"
+            ]
+          }
+        },
+        {
+          "name": "recursion_limit1",
+          "features": [
+            "portal_recursion"
+          ],
+          "commands": [
+            "r_portal_stencil_depth 1",
+            "cmd setpos 6976 600 384",
+            "cmd setang 0 90 0"
+          ],
+          "settle": 20,
+          "expect": {
+            "nested_depth": 1
+          }
+        },
+        {
+          "name": "recursion_limit2",
+          "features": [
+            "portal_recursion"
+          ],
+          "commands": [
+            "r_portal_stencil_depth 2",
+            "cmd setpos 6976 600 384",
+            "cmd setang 0 90 0"
+          ],
+          "settle": 20,
+          "expect": {
+            "nested_depth": 2
+          }
+        },
+        {
+          "name": "recursion_limit10",
+          "features": [
+            "portal_recursion"
+          ],
+          "commands": [
+            "r_portal_stencil_depth 10",
+            "cmd setpos 6976 600 384",
+            "cmd setang 0 90 0"
+          ],
+          "settle": 20,
+          "expect": {
+            "nested_depth": 10
+          }
+        }
+      ]
+    }
+  ]
+}

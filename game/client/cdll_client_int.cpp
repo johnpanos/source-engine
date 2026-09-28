@@ -195,6 +195,7 @@ extern void ProcessPortalTeleportations( void );
 void ProcessOnDataChangedEvents();
 void SimulateEntities();
 #include "client_render_start_steps.h"
+#include "render_stage_marks.h"
 
 #ifdef FSTOP
 #include "blob_networkbypass.h"
@@ -207,6 +208,7 @@ extern IClientMode *GetClientModeNormal();
 
 // IF YOU ADD AN INTERFACE, EXTERN IT IN THE HEADER FILE.
 IVEngineClient	*engine = NULL;
+IRenderStageMarkers *g_pRenderStageMarkers = NULL;
 IVModelRender *modelrender = NULL;
 IVEfx *effects = NULL;
 // RFC 0011 G10: optional; the engine's indirect light takes the open portals.
@@ -1034,6 +1036,10 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 
 	// Not fatal if the material system stub isn't around.
 	materials_stub = (IMaterialSystemStub*)appSystemFactory( MATERIAL_SYSTEM_STUB_INTERFACE_VERSION, NULL );
+
+	// The render core's stage markers (RFC 0016); absent without a core.
+	g_pRenderStageMarkers =
+	    (IRenderStageMarkers *)appSystemFactory( RENDER_STAGE_MARKERS_INTERFACE_VERSION, NULL );
 
 	if( !g_pMaterialSystemHardwareConfig )
 		return false;

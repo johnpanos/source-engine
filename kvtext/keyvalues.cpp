@@ -8,6 +8,7 @@
 #include "kvtext/keyvalues.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace kvtext
 {
@@ -30,6 +31,7 @@ namespace
 enum class TokenKind
 {
 	kString,
+	kCondition, // a [tag]; text is the expression without brackets
 	kOpen,
 	kClose,
 	kEnd,
@@ -108,6 +110,21 @@ public:
 				out.push_back( { TokenKind::kString, value, startLine } );
 				continue;
 			}
+			// A conditional tag: '[' to ']' on one line, spaces allowed.
+			if ( c == '[' )
+			{
+				const std::size_t close = m_text.find_first_of( "]\n", m_pos );
+				if ( close == std::string::npos || m_text[close] != ']' )
+				{
+					error = "unterminated conditional tag";
+					errorLine = m_line;
+					return false;
+				}
+				out.push_back( { TokenKind::kCondition,
+				    m_text.substr( m_pos + 1, close - m_pos - 1 ), m_line } );
+				m_pos = close + 1;
+				continue;
+			}
 			// Bare word (block name): up to whitespace/brace/quote.
 			std::string word;
 			const std::size_t startLine = m_line;
@@ -137,7 +154,10 @@ private:
 class Parser
 {
 public:
-	Parser( const std::vector<Token> &tokens ) : m_tokens( tokens ) {}
+	Parser( const std::vector<Token> &tokens, bool closeBlocksAtEnd )
+	    : m_tokens( tokens ), m_closeBlocksAtEnd( closeBlocksAtEnd )
+	{
+	}
 
 	// Parses a block body into 'node' until a close brace or end of input.
 	bool ParseBody(
@@ -148,7 +168,7 @@ public:
 			const Token &token = Peek();
 			if ( token.kind == TokenKind::kEnd )
 			{
-				if ( atTopLevel )
+				if ( atTopLevel || m_closeBlocksAtEnd )
 				{
 					return true;
 				}
@@ -172,33 +192,59 @@ public:
 				errorLine = token.line;
 				return false;
 			}
+			if ( token.kind == TokenKind::kCondition )
+			{
+				error = "unexpected conditional tag [" + token.text + "]";
+				errorLine = token.line;
+				return false;
+			}
 
 			// token is a string: either a block name (followed by '{') or a key.
 			const Token first = Next();
+			std::string blockCondition;
+			if ( Peek().kind == TokenKind::kCondition )
+			{
+				blockCondition = Next().text;
+				if ( Peek().kind != TokenKind::kOpen )
+				{
+					error = "conditional tag between key '" + first.text + "' and its value";
+					errorLine = Peek().line;
+					return false;
+				}
+			}
 			const Token &after = Peek();
 			if ( after.kind == TokenKind::kOpen )
 			{
 				Next(); // consume '{'
 				KeyValueNode child;
 				child.name = first.text;
+				child.condition = std::move( blockCondition );
 				if ( !ParseBody( child, false, error, errorLine ) )
 				{
 					return false;
 				}
-				if ( Peek().kind != TokenKind::kClose )
+				if ( Peek().kind == TokenKind::kClose )
+				{
+					Next(); // consume '}'
+				}
+				else if ( !( m_closeBlocksAtEnd && Peek().kind == TokenKind::kEnd ) )
 				{
 					error = "expected '}' to close block '" + first.text + "'";
 					errorLine = Peek().line;
 					return false;
 				}
-				Next(); // consume '}'
 				node.children.push_back( std::move( child ) );
 				continue;
 			}
 			if ( after.kind == TokenKind::kString )
 			{
 				const Token value = Next();
-				node.pairs.push_back( { first.text, value.text } );
+				std::string condition;
+				if ( Peek().kind == TokenKind::kCondition )
+				{
+					condition = Next().text;
+				}
+				node.pairs.push_back( { first.text, value.text, std::move( condition ) } );
 				continue;
 			}
 			error = "expected a value or '{' after '" + first.text + "'";
@@ -212,6 +258,7 @@ private:
 	const Token &Next() { return m_tokens[m_index++]; }
 
 	const std::vector<Token> &m_tokens;
+	bool m_closeBlocksAtEnd = false;
 	std::size_t m_index = 0;
 };
 
@@ -220,6 +267,10 @@ void WriteNode( const KeyValueNode &node, int depth, std::string &out )
 	const std::string indent( static_cast<std::size_t>( depth ), '\t' );
 	out += indent;
 	out += node.name;
+	if ( !node.condition.empty() )
+	{
+		out += " [" + node.condition + "]";
+	}
 	out += "\n";
 	out += indent;
 	out += "{\n";
@@ -232,7 +283,12 @@ void WriteNode( const KeyValueNode &node, int depth, std::string &out )
 		out += pair.key;
 		out += "\" \"";
 		out += pair.value;
-		out += "\"\n";
+		out += '"';
+		if ( !pair.condition.empty() )
+		{
+			out += " [" + pair.condition + "]";
+		}
+		out += "\n";
 	}
 	for ( const KeyValueNode &child : node.children )
 	{
@@ -249,7 +305,8 @@ std::vector<std::string> SortedPairs( const KeyValueNode &node )
 	flat.reserve( node.pairs.size() );
 	for ( const KeyValue &pair : node.pairs )
 	{
-		flat.push_back( pair.key + std::string( 1, '\0' ) + pair.value );
+		flat.push_back( pair.key + std::string( 1, '\0' ) + pair.value + std::string( 1, '\0' ) +
+		                pair.condition );
 	}
 	std::sort( flat.begin(), flat.end() );
 	return flat;
@@ -261,6 +318,12 @@ bool CompareNode(
 	if ( a.name != b.name )
 	{
 		divergence = path + ": block name '" + a.name + "' != '" + b.name + "'";
+		return false;
+	}
+	if ( a.condition != b.condition )
+	{
+		divergence = path + " (" + a.name + "): conditional tag '" + a.condition + "' != '" +
+		             b.condition + "'";
 		return false;
 	}
 
@@ -289,9 +352,154 @@ bool CompareNode(
 	return true;
 }
 
+// Source's KeyValues conditional grammar (tier1/kvconditional.cpp):
+// or := and ( "||" and )*, and := unary ( "&&" unary )*,
+// unary := "!" unary | "(" or ")" | "$" name | digits.
+class ConditionParser
+{
+public:
+	ConditionParser( std::string_view text, const std::function<bool( std::string_view )> &symbol )
+	    : m_text( text ), m_symbol( symbol )
+	{
+	}
+
+	std::optional<bool> Evaluate()
+	{
+		const bool value = ParseOr();
+		SkipSpaces();
+		if ( m_error || m_pos != m_text.size() )
+		{
+			return std::nullopt;
+		}
+		return value;
+	}
+
+private:
+	void SkipSpaces()
+	{
+		while ( m_pos < m_text.size() && ( m_text[m_pos] == ' ' || m_text[m_pos] == '\t' ) )
+		{
+			++m_pos;
+		}
+	}
+
+	bool Accept( std::string_view token )
+	{
+		SkipSpaces();
+		if ( m_text.substr( m_pos, token.size() ) != token )
+		{
+			return false;
+		}
+		m_pos += token.size();
+		return true;
+	}
+
+	bool ParseOr()
+	{
+		bool value = ParseAnd();
+		while ( !m_error && Accept( "||" ) )
+		{
+			const bool right = ParseAnd();
+			value = value || right;
+		}
+		return value;
+	}
+
+	bool ParseAnd()
+	{
+		bool value = ParseUnary();
+		while ( !m_error && Accept( "&&" ) )
+		{
+			const bool right = ParseUnary();
+			value = value && right;
+		}
+		return value;
+	}
+
+	bool ParseUnary()
+	{
+		if ( Accept( "!" ) )
+		{
+			return !ParseUnary();
+		}
+		if ( Accept( "(" ) )
+		{
+			const bool value = ParseOr();
+			if ( !Accept( ")" ) )
+			{
+				m_error = true;
+			}
+			return value;
+		}
+		SkipSpaces();
+		const bool isSymbol = m_pos < m_text.size() && m_text[m_pos] == '$';
+		if ( isSymbol )
+		{
+			++m_pos;
+		}
+		const std::size_t start = m_pos;
+		while ( m_pos < m_text.size() &&
+		        ( std::isalnum( static_cast<unsigned char>( m_text[m_pos] ) ) ||
+		            m_text[m_pos] == '_' ) )
+		{
+			++m_pos;
+		}
+		const std::string_view name = m_text.substr( start, m_pos - start );
+		if ( name.empty() )
+		{
+			m_error = true;
+			return false;
+		}
+		if ( isSymbol )
+		{
+			return m_symbol ? m_symbol( name ) : false;
+		}
+		bool nonzero = false;
+		for ( const char c : name )
+		{
+			if ( !std::isdigit( static_cast<unsigned char>( c ) ) )
+			{
+				m_error = true;
+				return false;
+			}
+			nonzero = nonzero || c != '0';
+		}
+		return nonzero;
+	}
+
+	std::string_view m_text;
+	const std::function<bool( std::string_view )> &m_symbol;
+	std::size_t m_pos = 0;
+	bool m_error = false;
+};
+
 } // namespace
 
+std::optional<bool> EvaluateCondition(
+    std::string_view expression, const std::function<bool( std::string_view )> &symbol )
+{
+	// Accept the tag with its brackets, as a caller may hold it.
+	if ( !expression.empty() && expression.front() == '[' )
+	{
+		while ( !expression.empty() && ( expression.back() == ' ' || expression.back() == '\t' ) )
+		{
+			expression.remove_suffix( 1 );
+		}
+		if ( expression.size() < 2 || expression.back() != ']' )
+		{
+			return std::nullopt;
+		}
+		expression = expression.substr( 1, expression.size() - 2 );
+	}
+	return ConditionParser( expression, symbol ).Evaluate();
+}
+
 ParseResult ParseKeyValues( const std::string &text )
+{
+	return ParseKeyValues( text, ParseOptions{} );
+}
+
+ParseResult ParseKeyValues( const std::string &text, const ParseOptions &options )
 {
 	ParseResult result;
 	std::vector<Token> tokens;
@@ -302,7 +510,7 @@ ParseResult ParseKeyValues( const std::string &text )
 		return result;
 	}
 
-	Parser parser( tokens );
+	Parser parser( tokens, options.closeBlocksAtEnd );
 	KeyValueNode root;
 	if ( !parser.ParseBody( root, true, result.error, result.errorLine ) )
 	{

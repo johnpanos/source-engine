@@ -1,0 +1,16 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.device.null (RFC 0016 adapter): the recording device.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.device.null',
+		target      = 'render_device_null',
+		name        = 'render_device_null',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_device'],
+		idx         = bld.get_taskgen_count()
+	)

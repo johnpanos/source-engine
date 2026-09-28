@@ -32,10 +32,6 @@
 #ifndef JOBSYSTEM_PARALLEL_EXECUTOR_H
 #define JOBSYSTEM_PARALLEL_EXECUTOR_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
 #include <memory>
 
 #include "jobsystem/graph_executor.h"

@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -38,8 +39,10 @@ inline VKAPI_ATTR VkBool32 VKAPI_CALL OnMessage( VkDebugUtilsMessageSeverityFlag
 
 struct Device
 {
+	// The device render.device.vulkan created (RFC 0016 K1): the suites use
+	// the adapter's instance, device, queue and allocator, as the product does.
+	std::unique_ptr<render::device::vulkan::IHostDevice> host;
 	VkInstance instance = VK_NULL_HANDLE;
-	VkDebugUtilsMessengerEXT messenger = VK_NULL_HANDLE;
 	VkPhysicalDevice physical = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
 	VkQueue queue = VK_NULL_HANDLE;
@@ -48,98 +51,53 @@ struct Device
 	bool validation = false;
 	ComputeCaps queried;
 	DeviceFeatureChain chain;
+	std::vector<const char *> extensions;
 	std::string name;
 };
 
 inline bool CreateDevice( Device *d )
 {
-	uint32_t apiVersion = VK_API_VERSION_1_1;
-	auto enumerateVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
-	    vkGetInstanceProcAddr( VK_NULL_HANDLE, "vkEnumerateInstanceVersion" ) );
-	if ( enumerateVersion )
-		enumerateVersion( &apiVersion );
 	uint32_t layers = 0;
 	vkEnumerateInstanceLayerProperties( &layers, nullptr );
 	std::vector<VkLayerProperties> layer( layers );
 	vkEnumerateInstanceLayerProperties( &layers, layer.data() );
 	for ( const VkLayerProperties &l : layer )
 		d->validation |= std::strcmp( l.layerName, "VK_LAYER_KHRONOS_validation" ) == 0;
-	VkApplicationInfo app = {};
-	app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	app.pApplicationName = "render.compute";
-	app.apiVersion = apiVersion >= VK_API_VERSION_1_2 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1;
-	const char *layerName = "VK_LAYER_KHRONOS_validation";
-	const char *debugExtension = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-	VkInstanceCreateInfo info = {};
-	info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-	info.pApplicationInfo = &app;
-	if ( d->validation )
+	render::device::vulkan::HostDeviceRequest request;
+	request.applicationName = "render.compute";
+	request.validation = d->validation;
+	request.messageCallback = &OnMessage;
+	request.user = d;
+	// The compute foundation's feature chain on the device the adapter chose.
+	request.describeDevice = []( void *user, VkPhysicalDevice physical, uint32_t family,
+	                             render::device::vulkan::HostDeviceFeatures *out )
 	{
-		info.enabledLayerCount = 1;
-		info.ppEnabledLayerNames = &layerName;
-		info.enabledExtensionCount = 1;
-		info.ppEnabledExtensionNames = &debugExtension;
-	}
-	if ( vkCreateInstance( &info, nullptr, &d->instance ) != VK_SUCCESS )
+		Device *device = static_cast<Device *>( user );
+		device->queried = QueryComputeCaps( physical, family );
+		device->extensions.clear();
+		device->chain.Build(
+		    physical, device->queried, VkPhysicalDeviceFeatures(), &device->extensions );
+		out->features = device->chain.Head();
+		out->extensions = device->extensions.data();
+		out->extensionCount = uint32_t( device->extensions.size() );
+	};
+	char error[256] = {};
+	d->host = render::device::vulkan::HostDeviceFactory().Create( request, error, sizeof( error ) );
+	if ( !d->host )
+	{
+		std::fprintf( stderr, "headless_vulkan: %s\n", error );
 		return false;
-	if ( d->validation )
-	{
-		auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-		    vkGetInstanceProcAddr( d->instance, "vkCreateDebugUtilsMessengerEXT" ) );
-		VkDebugUtilsMessengerCreateInfoEXT messenger = {};
-		messenger.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-		messenger.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-		                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-		messenger.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
-		messenger.pfnUserCallback = &OnMessage;
-		if ( create )
-			create( d->instance, &messenger, nullptr, &d->messenger );
 	}
-	uint32_t count = 0;
-	vkEnumeratePhysicalDevices( d->instance, &count, nullptr );
-	std::vector<VkPhysicalDevice> devices( count );
-	vkEnumeratePhysicalDevices( d->instance, &count, devices.data() );
-	for ( VkPhysicalDevice physical : devices )
-	{
-		uint32_t families = 0;
-		vkGetPhysicalDeviceQueueFamilyProperties( physical, &families, nullptr );
-		std::vector<VkQueueFamilyProperties> family( families );
-		vkGetPhysicalDeviceQueueFamilyProperties( physical, &families, family.data() );
-		for ( uint32_t f = 0; f < families && d->physical == VK_NULL_HANDLE; ++f )
-		{
-			if ( family[f].queueFlags & VK_QUEUE_GRAPHICS_BIT )
-			{
-				d->physical = physical;
-				d->family = f;
-			}
-		}
-		if ( d->physical != VK_NULL_HANDLE )
-			break;
-	}
-	if ( d->physical == VK_NULL_HANDLE )
-		return false;
+	const render::device::vulkan::HostDeviceInfo &info = d->host->Info();
+	d->instance = info.instance;
+	d->physical = info.physical;
+	d->device = info.device;
+	d->queue = info.graphicsQueue;
+	d->family = info.graphicsFamily;
+	d->validation = info.validation;
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( d->physical, &properties );
 	d->name = properties.deviceName;
-	d->queried = QueryComputeCaps( d->physical, d->family );
-	std::vector<const char *> extensions;
-	d->chain.Build( d->physical, d->queried, VkPhysicalDeviceFeatures(), &extensions );
-	float priority = 1.0f;
-	VkDeviceQueueCreateInfo queue = {};
-	queue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queue.queueFamilyIndex = d->family;
-	queue.queueCount = 1;
-	queue.pQueuePriorities = &priority;
-	VkDeviceCreateInfo device = {};
-	device.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	device.pNext = d->chain.Chain();
-	device.queueCreateInfoCount = 1;
-	device.pQueueCreateInfos = &queue;
-	device.enabledExtensionCount = uint32_t( extensions.size() );
-	device.ppEnabledExtensionNames = extensions.data();
-	if ( vkCreateDevice( d->physical, &device, nullptr, &d->device ) != VK_SUCCESS )
-		return false;
-	vkGetDeviceQueue( d->device, d->family, 0, &d->queue );
 	VkCommandPoolCreateInfo pool = {};
 	pool.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
@@ -186,15 +144,9 @@ inline void Finish( Device &d, VkFence fence, VkCommandBuffer cmd )
 inline void DestroyDevice( Device &d )
 {
 	vkDestroyCommandPool( d.device, d.pool, nullptr );
-	vkDestroyDevice( d.device, nullptr );
-	if ( d.messenger != VK_NULL_HANDLE )
-	{
-		auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-		    vkGetInstanceProcAddr( d.instance, "vkDestroyDebugUtilsMessengerEXT" ) );
-		if ( destroy )
-			destroy( d.instance, d.messenger, nullptr );
-	}
-	vkDestroyInstance( d.instance, nullptr );
+	d.host.reset(); // the adapter destroys the device and the instance
+	d.device = VK_NULL_HANDLE;
+	d.instance = VK_NULL_HANDLE;
 }
 
 } // namespace headless_vulkan

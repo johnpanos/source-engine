@@ -6,10 +6,14 @@ and material_spv_index.h: each array's content hash and source, which names
 the shader modules the backend creates (vulkan_shader_library.cpp).
 
     python3 materialsystem/shaderapivulkan/shaders/regen_material_spv.py
+    python3 .../regen_material_spv.py --check [--compare-dir DIR]
     python3 .../regen_material_spv.py --check-index
     python3 .../regen_material_spv.py --debug-out DIR
 
-Needs glslc on PATH. The output is written in the layout clang-format keeps.
+Compiles with the pinned glslc (quality/toolchain/shader-compiler.json), which
+tools/render/shader_toolchain.py locates and verifies. The output is written in
+the layout clang-format keeps. --check exits 1 when either header is not what
+the GLSL compiles to (with --compare-dir, the copies of the same name in DIR).
 --check-index verifies the index against material_spv.h (no compiler).
 --debug-out writes, for every array still built from the current GLSL, a
 named variant with source-level debug information (glslangValidator -gVS:
@@ -30,6 +34,8 @@ import sys
 import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parents[2] / "tools" / "render"))
+import shader_toolchain  # noqa: E402
 OUTPUT = HERE.parent / "material_spv.h"
 INDEX_OUTPUT = HERE.parent / "material_spv_index.h"
 # (array name, source, extra glslc arguments)
@@ -177,7 +183,8 @@ def describe(source, extra):
 def compile_words(source, extra):
     with tempfile.TemporaryDirectory() as tmp:
         out = pathlib.Path(tmp) / "shader.spv"
-        subprocess.run(["glslc", "-O", *extra, str(HERE / source), "-o", str(out)], check=True)
+        subprocess.run([shader_toolchain.glslc(), "-O", *extra, str(HERE / source), "-o",
+                        str(out)], check=True)
         data = out.read_bytes()
     return [int.from_bytes(data[i:i + 4], "little") for i in range(0, len(data), 4)]
 
@@ -200,8 +207,9 @@ def debug_arguments(extra):
 def compile_debug(source, extra):
     with tempfile.TemporaryDirectory() as tmp:
         out = pathlib.Path(tmp) / "shader.spv"
-        result = subprocess.run(["glslangValidator", *debug_arguments(extra), str(HERE / source),
-                                 "-o", str(out)], capture_output=True, text=True)
+        result = subprocess.run([shader_toolchain.glslang_validator(), *debug_arguments(extra),
+                                 str(HERE / source), "-o", str(out)], capture_output=True,
+                                text=True)
         if result.returncode != 0:
             raise RuntimeError("glslangValidator %s failed:\n%s" % (
                 describe(source, extra), result.stdout + result.stderr))
@@ -257,9 +265,9 @@ def index_text(arrays):
     return "".join(parts)
 
 
-def regenerate():
-    subprocess.run([sys.executable, str(HERE / "gen_pbr_split_sum.py"), "--check"],
-                   check=True)
+def render():
+    """(material_spv.h, material_spv_index.h) as the GLSL compiles to them."""
+    shader_toolchain.glslc()  # resolve and verify once, before the workers
     compiled = parallel(compile_words, [(source, extra) for _, source, extra in SHADERS])
     parts = [HEADER]
     for (name, source, extra), words in zip(SHADERS, compiled):
@@ -268,8 +276,29 @@ def regenerate():
         parts.extend("    0x%08xu,\n" % word for word in words)
         parts.append("};\n")
     parts.append("\n#endif // SHADERAPIVULKAN_MATERIAL_SPV_H\n")
-    OUTPUT.write_text("".join(parts))
-    INDEX_OUTPUT.write_text(index_text(dict(zip((n for n, _, _ in SHADERS), compiled))))
+    return "".join(parts), index_text(dict(zip((n for n, _, _ in SHADERS), compiled)))
+
+
+def regenerate():
+    subprocess.run([sys.executable, str(HERE / "gen_pbr_split_sum.py"), "--check"],
+                   check=True)
+    material, index = render()
+    OUTPUT.write_text(material)
+    INDEX_OUTPUT.write_text(index)
+
+
+def check(compare_dir=None):
+    """1 when a header differs from what the GLSL compiles to."""
+    stale = []
+    for path, text in zip((OUTPUT, INDEX_OUTPUT), render()):
+        if compare_dir:
+            path = pathlib.Path(compare_dir) / path.name
+        if not path.is_file() or path.read_text() != text:
+            stale.append(str(path))
+    for path in stale:
+        print("%s is not what the GLSL compiles to; run %s" % (path, pathlib.Path(__file__).name),
+              file=sys.stderr)
+    return 1 if stale else 0
 
 
 def check_index():
@@ -320,22 +349,35 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true",
+                      help="exit 1 when a header is not what the GLSL compiles to")
     mode.add_argument("--check-index", action="store_true",
                       help="verify material_spv_index.h against material_spv.h")
     mode.add_argument("--debug-out", type=pathlib.Path,
                       help="write the named debug variants to this directory")
+    parser.add_argument("--compare-dir", type=pathlib.Path,
+                        help="with --check: compare against the headers in this directory")
     args = parser.parse_args(argv)
+    if args.compare_dir and not args.check:
+        parser.error("--compare-dir needs --check")
     if args.check_index:
         return check_index()
-    if args.debug_out:
-        manifest = write_debug(args.debug_out)
-        stale = [e for e in manifest["entries"] if e["status"] != "written"]
-        print("%d debug shaders in %s" % (len(manifest["entries"]) - len(stale), args.debug_out))
-        for entry in stale:
-            print("skipped %s (%s): %s" % (entry["array"], entry["source"], entry["status"]),
-                  file=sys.stderr)
-        return 0
-    regenerate()
+    try:
+        if args.check:
+            return check(args.compare_dir)
+        if args.debug_out:
+            manifest = write_debug(args.debug_out)
+            stale = [e for e in manifest["entries"] if e["status"] != "written"]
+            print("%d debug shaders in %s" % (len(manifest["entries"]) - len(stale),
+                                              args.debug_out))
+            for entry in stale:
+                print("skipped %s (%s): %s" % (entry["array"], entry["source"], entry["status"]),
+                      file=sys.stderr)
+            return 0
+        regenerate()
+    except shader_toolchain.ToolchainError as error:
+        print("regen_material_spv: %s" % error, file=sys.stderr)
+        return 2
     return 0
 
 

@@ -21,6 +21,7 @@
 #include "render/gpu_compute.h"
 #include "vulkan_debug_utils.h"
 #include "vulkan_shader_library.h"
+#include "../../render/device/vulkan/host_device.h"
 
 #include <vulkan/vulkan.h>
 
@@ -65,6 +66,8 @@ public:
 	    const VkPhysicalDeviceFeatures &baseFeatures, std::vector<const char *> *extensions );
 	// Links into VkDeviceCreateInfo::pNext (pEnabledFeatures must be null).
 	const void *Chain() const { return &m_features2; }
+	// The chain's head, for render.device.vulkan to add its requirements to.
+	VkPhysicalDeviceFeatures2 *Head() { return &m_features2; }
 	const ComputeCaps &Enabled() const { return m_enabled; }
 
 private:
@@ -89,10 +92,11 @@ enum class ComputeBinding : uint8_t
 class ComputeResources
 {
 public:
-	// `physical`/`device` outlive this object; Shutdown releases everything
-	// (after the owner waited for the device).
-	bool Init( VkPhysicalDevice physical, VkDevice device, const ComputeCaps &enabled,
-	    std::string *error );
+	// `host` (the device render.device.vulkan created, whose allocator makes
+	// every buffer and image here) outlives this object; Shutdown releases
+	// everything (after the owner waited for the device).
+	bool Init(
+	    render::device::vulkan::IHostDevice &host, const ComputeCaps &enabled, std::string *error );
 	void Shutdown();
 	bool Ready() const { return m_device != VK_NULL_HANDLE && m_enabled.compute; }
 	// Borrowed, and outliving this object (either may be null): the code and
@@ -177,7 +181,7 @@ private:
 		VkBuffer buffer = VK_NULL_HANDLE;
 		VkImage image = VK_NULL_HANDLE;
 		VkImageView view = VK_NULL_HANDLE;
-		VkDeviceMemory memory = VK_NULL_HANDLE;
+		render::device::vulkan::HostAllocation memory = nullptr;
 		void *mapped = nullptr;
 		VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
 		VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
@@ -190,7 +194,7 @@ private:
 		// An acceleration structure: its storage (buffer/memory above), build
 		// inputs and scratch (extra), and what RecordBuild needs.
 		VkAccelerationStructureKHR structure = VK_NULL_HANDLE;
-		std::vector<std::pair<VkBuffer, VkDeviceMemory>> extra;
+		std::vector<std::pair<VkBuffer, render::device::vulkan::HostAllocation>> extra;
 		VkAccelerationStructureTypeKHR structureType =
 		    VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 		VkAccelerationStructureGeometryKHR geometry = {};
@@ -205,12 +209,11 @@ private:
 
 	Resource *Find( uint32_t handle );
 	const Resource *Find( uint32_t handle ) const;
-	bool Memory( const VkMemoryRequirements &requirements, VkMemoryPropertyFlags flags,
-	    VkDeviceMemory *memory, std::string *error, bool deviceAddress = false );
-	// A buffer with its own memory; mapped when host-visible; allocated for
-	// device addresses when `usage` asks for them.
+	// A buffer bound to render.device.vulkan memory with `flags`; mapped (for
+	// its lifetime) when `mapped` is set.
 	bool MakeBuffer( VkDeviceSize bytes, VkBufferUsageFlags usage, VkMemoryPropertyFlags flags,
-	    VkBuffer *buffer, VkDeviceMemory *memory, void **mapped, std::string *error );
+	    VkBuffer *buffer, render::device::vulkan::HostAllocation *memory, void **mapped,
+	    std::string *error );
 	VkDeviceAddress Address( VkBuffer buffer ) const;
 	uint32_t FinishStructure(
 	    Resource &resource, VkBuildAccelerationStructureFlagsKHR flags, std::string *error );
@@ -218,6 +221,7 @@ private:
 
 	// Guards everything below; Find's pointers are valid only while it is held.
 	mutable std::recursive_mutex m_mutex;
+	render::device::vulkan::IHostDevice *m_host = nullptr;
 	VkPhysicalDevice m_physical = VK_NULL_HANDLE;
 	VkDevice m_device = VK_NULL_HANDLE;
 	ComputeCaps m_enabled;

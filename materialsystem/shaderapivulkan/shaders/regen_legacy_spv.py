@@ -2,7 +2,7 @@
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 """Regenerates legacy_spv.h: the legacy shader ports' SPIR-V and program table.
 
-    python3 materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py [--check]
+    python3 materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py [--check [--compare-dir DIR]]
 
 Every shaders/legacy/<name>.vert and <name>.frag becomes the array
 g_legacy_<name>_vert / g_legacy_<name>_frag. A pixel stage registers the D3D9
@@ -13,7 +13,9 @@ shader pairs it ports with one line each (vulkan_legacy_programs.h):
 
 `vert` names the shaders/legacy/<stage>.vert the pair draws with; the samplers
 are the D3D9 samplers the port reads, in binding order of set 0 (at most sixteen).
-Needs glslc on PATH. --check exits 1 when legacy_spv.h is not what the GLSL
+Compiles with the pinned glslc (quality/toolchain/shader-compiler.json), which
+tools/render/shader_toolchain.py locates and verifies. --check exits 1 when
+legacy_spv.h (with --compare-dir, the copy in DIR) is not what the GLSL
 compiles to (a GLSL change without a regenerated header).
 """
 
@@ -25,6 +27,8 @@ import sys
 import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parents[2] / "tools" / "render"))
+import shader_toolchain  # noqa: E402
 SOURCES = HERE / "legacy"
 OUTPUT = HERE.parent / "legacy_spv.h"
 MAX_SAMPLER_SLOTS = 16
@@ -60,8 +64,8 @@ class LegacyError(Exception):
 def compile_words(source):
     with tempfile.TemporaryDirectory() as tmp:
         out = pathlib.Path(tmp) / "shader.spv"
-        subprocess.run(["glslc", "-O", "-Werror", "-I", str(SOURCES), str(source), "-o", str(out)],
-                       check=True)
+        subprocess.run([shader_toolchain.glslc(), "-O", "-Werror", "-I", str(SOURCES), str(source),
+                        "-o", str(out)], check=True)
         data = out.read_bytes()
     return [int.from_bytes(data[i:i + 4], "little") for i in range(0, len(data), 4)]
 
@@ -158,16 +162,21 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true",
                         help="exit 1 when legacy_spv.h is not what the GLSL compiles to")
+    parser.add_argument("--compare-dir", type=pathlib.Path,
+                        help="with --check: compare against legacy_spv.h in this directory")
     args = parser.parse_args()
+    if args.compare_dir and not args.check:
+        parser.error("--compare-dir needs --check")
     try:
         text = render()
-    except LegacyError as error:
+    except (LegacyError, shader_toolchain.ToolchainError) as error:
         print("regen_legacy_spv: %s" % error, file=sys.stderr)
         return 2
     if args.check:
-        current = OUTPUT.read_text() if OUTPUT.exists() else ""
+        target = args.compare_dir / OUTPUT.name if args.compare_dir else OUTPUT
+        current = target.read_text() if target.exists() else ""
         if current != text:
-            print("legacy_spv.h is stale; run %s" % pathlib.Path(__file__).name, file=sys.stderr)
+            print("%s is stale; run %s" % (target, pathlib.Path(__file__).name), file=sys.stderr)
             return 1
         return 0
     OUTPUT.write_text(text)

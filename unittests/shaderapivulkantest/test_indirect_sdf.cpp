@@ -907,7 +907,7 @@ int main( int argc, char **argv )
 	}
 	ComputeResources resources;
 	std::string error;
-	Check( resources.Init( d.physical, d.device, d.chain.Enabled(), &error ), "compute: " + error );
+	Check( resources.Init( *d.host, d.chain.Enabled(), &error ), "compute: " + error );
 	Frames frames( d, resources );
 	if ( argc >= 4 && std::string( argv[1] ) == "--bench" )
 	{

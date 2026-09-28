@@ -16,7 +16,7 @@ def options(opt):
 	return
 
 def configure(conf):
-	return
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
 
 def build(bld):
 	source = [
@@ -36,13 +36,19 @@ def build(bld):
 		'../public',
 	]
 
+	# jobs.graph (RFC 0016 K0): a strict capability module. Its C++ API crosses
+	# into the engine and client, which build with libstdc++'s old dual ABI on
+	# Linux, so it keeps that ABI (as platform_composition_legacyabi does).
+	defines = [ '_GLIBCXX_USE_CXX11_ABI=0' ] if bld.env.DEST_OS == 'linux' else []
 	bld.stlib(
+		env       = bld.strict_cpp20_env(),
 		source    = source,
 		target    = PROJECT_NAME,
 		name      = PROJECT_NAME,
-		features  = 'c cxx',
+		arch_module = 'jobs.graph',
+		features  = 'cxx capability_strict',
 		includes  = includes,
-		defines   = [],
+		defines   = defines,
 		use       = [],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()

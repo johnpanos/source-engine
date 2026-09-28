@@ -25,6 +25,9 @@
 #include "vtf/vtf.h"
 #include "studio.h"
 #include "particles_internal.h"
+#include "tier0/icommandline.h"
+
+#include <atomic>
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -875,6 +878,25 @@ void CWorldCollideContextData::operator delete( void* pData, int nBlockUse, cons
 #include "tier0/memdbgon.h"
 
 //-----------------------------------------------------------------------------
+// -deterministicrender (RFC 0016 K0 view oracles): a collection created without
+// an explicit seed takes the next value of a process-wide sequence instead of
+// its address plus the millisecond clock, so a run with a fixed frame time
+// (host_framerate) simulates the same particles as the previous run. Off, the
+// seed is unchanged.
+//-----------------------------------------------------------------------------
+static bool ParticleFixedSeeds()
+{
+	static const bool s_bFixed = CommandLine()->FindParm( "-deterministicrender" ) != 0;
+	return s_bFixed;
+}
+
+static int NextFixedParticleSeed()
+{
+	static std::atomic<int> s_nNext( 1 );
+	return s_nNext.fetch_add( 7919, std::memory_order_relaxed );
+}
+
+//-----------------------------------------------------------------------------
 // Constructor, destructor
 //-----------------------------------------------------------------------------
 CParticleCollection::CParticleCollection( )
@@ -1003,6 +1025,10 @@ void CParticleCollection::Init( CParticleSystemDefinition *pDef, float flDelay, 
 	if ( m_bIsScrubbable )
 	{
 		m_nRandomSeed = nRandomSeed;
+	}
+	else if ( ParticleFixedSeeds() )
+	{
+		m_nRandomSeed = NextFixedParticleSeed();
 	}
 	else
 	{

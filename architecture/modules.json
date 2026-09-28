@@ -143,6 +143,17 @@
         ]
       },
       {
+        "id": "jobs.graph",
+        "paths": [
+          "public/jobsystem/",
+          "jobsystem/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts"
+        ]
+      },
+      {
         "id": "platform.tool-process",
         "paths": [
           "public/platform/tool_process_client.h",
@@ -242,8 +253,11 @@
           "public/render/light_set.h",
           "public/render/spark_light.h",
           "public/render/direct_light_selection.h",
+          "public/render/indirect_portals.h",
+          "public/render/portal_lights.h",
           "public/render/indirect_policy.h",
-          "public/render/gpu_compute.h"
+          "public/render/gpu_compute.h",
+          "public/render/world_mesh_upload.h"
         ],
         "allowedEdges": []
       },
@@ -342,9 +356,6 @@
           "materialsystem/shaderapivulkan/vulkan_present_mode.h",
           "materialsystem/shaderapivulkan/vulkan_adapter.h",
           "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
-          "materialsystem/shaderapivulkan/vulkan_render_backend.h",
-          "materialsystem/shaderapivulkan/vulkan_render_backend.cpp",
-          "materialsystem/shaderapivulkan/vulkan_render_backend_native.h",
           "materialsystem/shaderapivulkan/demo_triangle_spv.h",
           "materialsystem/shaderapivulkan/material_spv.h",
           "materialsystem/shaderapivulkan/vulkan_compute.h",
@@ -353,7 +364,9 @@
           "materialsystem/shaderapivulkan/vulkan_shader_library.h"
         ],
         "allowedEdges": [
-          "render.contracts"
+          "render.contracts",
+          "render.device",
+          "render.device.vulkan"
         ],
         "externalHeaders": [
           "vulkan/vulkan.h"
@@ -390,10 +403,10 @@
         "allowedEdges": [
           "render.vulkan.core",
           "render.bridge.texture-image-vulkan",
+          "render.contracts",
           "world.map-container"
         ],
         "legacyIncludes": [
-          "render/world_mesh_upload.h",
           "tier0/dbg.h"
         ],
         "uselib": [
@@ -420,12 +433,13 @@
         "id": "render.bridge.sdl3-vulkan",
         "kind": "backend",
         "paths": [
-          "materialsystem/shaderapivulkan/sdl3/"
+          "render/bridge/sdl3-vulkan/"
         ],
         "allowedEdges": [
           "render.contracts",
           "render.vulkan.core",
-          "platform.sdl3.render-surface"
+          "platform.sdl3.render-surface",
+          "render.device.vulkan"
         ],
         "externalHeaders": [
           "SDL3/SDL.h",
@@ -460,7 +474,8 @@
           "render.vulkan.core",
           "testing.contracts",
           "world.map-container",
-          "world.map-container.test-cases"
+          "world.map-container.test-cases",
+          "render.device.vulkan"
         ],
         "externalHeaders": [
           "SDL3/SDL.h",
@@ -484,7 +499,8 @@
         "allowedEdges": [
           "render.contracts",
           "render.conformance-tests",
-          "render.vulkan.core"
+          "render.vulkan.core",
+          "render.device.vulkan"
         ],
         "uselib": [
           "VULKAN"
@@ -524,6 +540,289 @@
         "legacyIncludes": [
           "filesystem_passthru.h",
           "../../materialsystem/IShaderSystem.h"
+        ]
+      },
+      {
+        "id": "render.math",
+        "paths": [
+          "public/render/math/",
+          "render/math/"
+        ],
+        "allowedEdges": []
+      },
+      {
+        "id": "render.device",
+        "paths": [
+          "public/render/device/",
+          "render/device/"
+        ],
+        "allowedEdges": [
+          "foundation"
+        ]
+      },
+      {
+        "id": "render.device.null",
+        "paths": [
+          "public/render/device/null/",
+          "render/device/null/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device"
+        ]
+      },
+      {
+        "id": "render.device.vulkan",
+        "paths": [
+          "public/render/device/vulkan/",
+          "render/device/vulkan/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.contracts",
+          "render.device"
+        ],
+        "kind": "backend",
+        "externalHeaders": [
+          "vk_mem_alloc.h",
+          "vulkan/vulkan.h"
+        ],
+        "uselib": [
+          "VULKAN"
+        ]
+      },
+      {
+        "id": "render.graph",
+        "paths": [
+          "public/render/graph/",
+          "render/graph/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "jobs.graph",
+          "render.device"
+        ]
+      },
+      {
+        "id": "render.shader-library",
+        "paths": [
+          "public/render/shaderlib/",
+          "render/shaderlib/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device"
+        ]
+      },
+      {
+        "id": "render.resources",
+        "paths": [
+          "public/render/resources/",
+          "render/resources/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device"
+        ]
+      },
+      {
+        "id": "render.material",
+        "paths": [
+          "public/render/material/",
+          "render/material/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.contracts",
+          "content.keyvalues-text"
+        ]
+      },
+      {
+        "id": "render.scene",
+        "paths": [
+          "public/render/scene/",
+          "render/scene/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "jobs.graph",
+          "render.math"
+        ]
+      },
+      {
+        "id": "render.frame",
+        "paths": [
+          "public/render/frame/",
+          "render/frame/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.graph"
+        ]
+      },
+      {
+        "id": "render.renderer",
+        "paths": [
+          "public/render/renderer/",
+          "render/renderer/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.graph",
+          "render.frame"
+        ]
+      },
+      {
+        "id": "render.pass.opaque",
+        "paths": [
+          "public/render/pass/opaque/",
+          "render/pass/opaque/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.device",
+          "render.graph",
+          "render.resources",
+          "render.scene"
+        ]
+      },
+      {
+        "id": "render.pass.skinning",
+        "paths": [
+          "public/render/pass/skinning/",
+          "render/pass/skinning/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.graph"
+        ]
+      },
+      {
+        "id": "render.pass.present",
+        "paths": [
+          "public/render/pass/present/",
+          "render/pass/present/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.graph",
+          "render.frame"
+        ]
+      },
+      {
+        "id": "render.pass.lights",
+        "paths": [
+          "public/render/pass/lights/",
+          "render/pass/lights/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.contracts",
+          "render.device",
+          "render.graph"
+        ]
+      },
+      {
+        "id": "render.pass.shadows",
+        "paths": [
+          "public/render/pass/shadows/",
+          "render/pass/shadows/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.device",
+          "render.graph",
+          "render.resources"
+        ]
+      },
+      {
+        "id": "render.legacy-frontend",
+        "paths": [
+          "public/render/legacy/",
+          "render/legacy/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.graph",
+          "render.frame",
+          "render.contracts",
+          "render.legacy-provider-contract"
+        ],
+        "kind": "legacy-interop",
+        "legacyIncludes": [
+          "appframework/IAppSystem.h"
+        ]
+      },
+      {
+        "id": "render.composition",
+        "paths": [
+          "public/render/composition/",
+          "render/composition/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.device",
+          "render.device.null",
+          "render.device.vulkan",
+          "render.graph",
+          "render.shader-library",
+          "render.resources",
+          "render.material",
+          "render.scene",
+          "render.frame",
+          "render.renderer",
+          "render.pass.present",
+          "render.legacy-frontend",
+          "render.legacy-provider-contract"
+        ]
+      },
+      {
+        "id": "render.core-tests",
+        "paths": [
+          "unittests/rendertest/core/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "testing.contracts",
+          "render.contracts",
+          "jobs.graph",
+          "render.math",
+          "render.device",
+          "render.device.null",
+          "render.device.vulkan",
+          "render.graph",
+          "render.shader-library",
+          "render.resources",
+          "render.material",
+          "render.scene",
+          "render.frame",
+          "render.renderer",
+          "render.pass.present",
+          "render.pass.skinning",
+          "render.pass.opaque",
+          "render.pass.lights",
+          "render.pass.shadows",
+          "render.legacy-frontend",
+          "render.legacy-provider-contract",
+          "render.composition"
+        ],
+        "kind": "native-test",
+        "externalHeaders": [
+          "random",
+          "vulkan/vulkan.h"
+        ],
+        "legacyIncludes": [
+          "appframework/IAppSystem.h"
         ]
       },
       {
@@ -800,6 +1099,7 @@
       "algorithm",
       "array",
       "atomic",
+      "bit",
       "cassert",
       "cctype",
       "chrono",
@@ -816,6 +1116,7 @@
       "cstring",
       "ctime",
       "deque",
+      "exception",
       "fstream",
       "functional",
       "initializer_list",
@@ -830,11 +1131,15 @@
       "source_location",
       "span",
       "sstream",
+      "stddef.h",
       "string",
+      "string.h",
       "string_view",
       "thread",
+      "tuple",
       "type_traits",
       "unordered_map",
+      "unordered_set",
       "utility",
       "vector"
     ],
@@ -893,6 +1198,124 @@
           "kvtext",
           "mapgeometry"
         ]
+      },
+      "render_math": {
+        "allowedUse": []
+      },
+      "render_device": {
+        "allowedUse": []
+      },
+      "render_device_null": {
+        "allowedUse": [
+          "render_device"
+        ]
+      },
+      "render_device_vulkan": {
+        "allowedUse": [
+          "render_device",
+          "VULKAN"
+        ]
+      },
+      "render_graph": {
+        "allowedUse": [
+          "render_device",
+          "jobsystem"
+        ]
+      },
+      "render_shaderlib": {
+        "allowedUse": [
+          "render_device"
+        ]
+      },
+      "render_resources": {
+        "allowedUse": [
+          "render_device"
+        ]
+      },
+      "render_material": {
+        "allowedUse": [
+          "render_device",
+          "kvtext"
+        ]
+      },
+      "render_scene": {
+        "allowedUse": [
+          "render_math",
+          "jobsystem"
+        ]
+      },
+      "render_frame": {
+        "allowedUse": [
+          "render_graph",
+          "render_device"
+        ]
+      },
+      "render_renderer": {
+        "allowedUse": [
+          "render_frame",
+          "render_graph",
+          "render_device"
+        ]
+      },
+      "render_pass_present": {
+        "allowedUse": [
+          "render_frame"
+        ]
+      },
+      "render_pass_lights": {
+        "allowedUse": [
+          "render_math",
+          "render_graph",
+          "render_device"
+        ]
+      },
+      "render_pass_shadows": {
+        "allowedUse": [
+          "render_math",
+          "render_graph",
+          "render_device",
+          "render_resources"
+        ]
+      },
+      "render_pass_skinning": {
+        "allowedUse": [
+          "render_graph",
+          "render_device"
+        ]
+      },
+      "render_pass_opaque": {
+        "allowedUse": [
+          "render_scene",
+          "render_resources",
+          "render_graph",
+          "render_device"
+        ]
+      },
+      "render_legacy": {
+        "allowedUse": [
+          "render_frame",
+          "render_graph"
+        ]
+      },
+      "render_composition": {
+        "allowedUse": [
+          "render_renderer",
+          "render_pass_present",
+          "render_legacy",
+          "render_scene",
+          "render_frame",
+          "render_graph",
+          "render_resources",
+          "render_material",
+          "render_shaderlib",
+          "render_device_null",
+          "render_device",
+          "render_math",
+          "render_device_vulkan"
+        ]
+      },
+      "jobsystem": {
+        "allowedUse": []
       }
     },
     "targetOwners": {
@@ -916,7 +1339,6 @@
             "filesystem_stdio",
             "hl2_launcher",
             "inputsystem",
-            "jobsystem",
             "launcher",
             "mathlib",
             "particles",
@@ -1207,11 +1629,118 @@
           ]
         }
       ]
-    }
+    },
+    "layerContracts": [
+      {
+        "id": "render",
+        "rfc": "0016",
+        "description": "RFC 0016 render core layers, checked by archlint CAP011. Dependencies point down: a module may depend only on modules in lower layers or on the external bases; features and renderers, and device adapters, are independent siblings; only render.composition and test fixtures name an adapter (fixtures sit in their own top layer, above composition); portable modules never compare the device's diagnostic backend identifier. The outside group lists render modules that predate the core; they retire with the legacy stream (R91, RFC 0016 K9) and shrink only.",
+        "prefix": "render.",
+        "layers": [
+          [
+            "foundation",
+            "render.math",
+            "render.contracts",
+            "jobs.graph"
+          ],
+          [
+            "render.device",
+            "render.legacy-provider-contract"
+          ],
+          [
+            "render.graph",
+            "render.shader-library",
+            "render.resources"
+          ],
+          [
+            "render.material"
+          ],
+          [
+            "render.scene"
+          ],
+          [
+            "render.frame"
+          ],
+          [
+            "render.renderer",
+            "render.pass.*",
+            "render.legacy-frontend"
+          ],
+          [
+            "render.composition"
+          ],
+          [
+            "render.core-tests"
+          ]
+        ],
+        "externalBases": [
+          "testing.contracts",
+          "content.keyvalues-text",
+          "content.texture-contract",
+          "content.ktx2-reader",
+          "content.vtf-reader"
+        ],
+        "independent": [
+          [
+            "render.renderer",
+            "render.pass.*",
+            "render.legacy-frontend"
+          ],
+          [
+            "render.device.vulkan",
+            "render.device.gl",
+            "render.device.null"
+          ]
+        ],
+        "adapters": {
+          "render.device": [
+            "render.device.vulkan",
+            "render.device.gl",
+            "render.device.null"
+          ]
+        },
+        "adapterConsumers": [
+          "render.composition",
+          "render.core-tests"
+        ],
+        "planned": [
+          "render.device.gl"
+        ],
+        "outside": [
+          {
+            "owner": "R91",
+            "reason": "Render modules from before the core (the native Vulkan backend inside shaderapivulkan, its bridges and tests, and the legacy provider glue). RFC 0016 moves them into the layered modules by phase (Appendix A.3) and deletes the rest at K9.",
+            "modules": [
+              "render.indirect-light",
+              "render.dxsupport-keyvalues",
+              "render.legacy-backend-provider",
+              "render.conformance-tests",
+              "render.vulkan.core",
+              "render.bridge.texture-image-vulkan",
+              "render.bridge.world-mesh-vulkan",
+              "render.bridge.sdl3-vulkan",
+              "render.bridge.sdl3-vulkan.native-tests",
+              "render.vulkan.native-tests",
+              "render.shader-extension-contract",
+              "render.shader-extension-host",
+              "render.shader-extension-abi-test"
+            ]
+          }
+        ],
+        "backendIdentity": {
+          "identifier": "diagnosticBackend",
+          "allowedModules": [
+            "render.device",
+            "render.composition",
+            "render.core-tests"
+          ]
+        }
+      }
+    ]
   },
   "description": "RFC 0001 architectural manifest. Phase A currently freezes legacy dynamic-loader boundaries.",
   "legacyAbi": {
-    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog. The Linux VBSP host tool keeps its material and physics factories in its private legacy compile-tool adapters. Reviewed 2026-09-25 (R04-DRIFT, user decision): the imported matchmaking framework's IAppSystem::Connect, the Portal 2 GameUI's IGameUI::Initialize/Connect, the Box3D provider's IPhysics::QueryInterface and the VPhysics conformance test host, which loads each provider through its CreateInterface export. Reviewed 2026-09-25 (static composition, agent decision under the user's standing instruction): public/engine/linked_game_modules.h binds a statically composed product's client, server and GameUI modules to the engine; the game module contract is the CreateInterface ABI.",
+    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog. The Linux VBSP host tool keeps its material and physics factories in its private legacy compile-tool adapters. Reviewed 2026-09-25 (R04-DRIFT, user decision): the imported matchmaking framework's IAppSystem::Connect, the Portal 2 GameUI's IGameUI::Initialize/Connect, the Box3D provider's IPhysics::QueryInterface and the VPhysics conformance test host, which loads each provider through its CreateInterface export. Reviewed 2026-09-25 (static composition, agent decision under the user's standing instruction): public/engine/linked_game_modules.h binds a statically composed product's client, server and GameUI modules to the engine; the game module contract is the CreateInterface ABI. Reviewed 2026-09-26 (RFC 0016 K0, agent decision under the user's standing instruction): the frozen render surface of RFC 0016 'Compatibility surface' — the material system (IMaterialSystem 081 with IMatRenderContext, IMaterial, IMaterialVar, ITexture, IMesh, IMaterialProxy 003 and its factory, IMaterialSystemHardwareConfig 012), IStudioRender 025, IVRenderView 014, IVModelRender 016, IShadowMgr, and the mod shader ABI (ShaderDLL004, IShader, CBaseShader, CBaseVSShader, IShaderShadow 010, IShaderDynamicAPI, IShaderUtil, IShaderAPI, IShaderDevice, IShaderSystem); legacy.render-abi holds their vtable order.",
     "paths": [
       "video/provider_catalog_runtime.h",
       "video/provider_catalog_runtime.cpp",
@@ -1236,7 +1765,34 @@
       "game/client/portal2/gameui/gameui_interface.h",
       "game/client/portal2/gameui/gameui_interface.cpp",
       "vphysics_box3d/main.cpp",
-      "unittests/physicstest/test_vphysics_conformance.cpp"
+      "unittests/physicstest/test_vphysics_conformance.cpp",
+      "public/render/legacy/stage_markers.h",
+      "public/engine/render_core_binding.h",
+      "public/materialsystem/imaterialsystem.h",
+      "public/materialsystem/imaterial.h",
+      "public/materialsystem/imaterialvar.h",
+      "public/materialsystem/itexture.h",
+      "public/materialsystem/imesh.h",
+      "public/materialsystem/imaterialproxy.h",
+      "public/materialsystem/imaterialproxyfactory.h",
+      "public/materialsystem/imaterialsystemhardwareconfig.h",
+      "public/materialsystem/ishaderapi.h",
+      "public/materialsystem/IShader.h",
+      "public/istudiorender.h",
+      "public/ivrenderview.h",
+      "public/engine/ivmodelrender.h",
+      "public/engine/ishadowmgr.h",
+      "public/shaderapi/ishaderapi.h",
+      "public/shaderapi/ishaderdynamic.h",
+      "public/shaderapi/ishadershadow.h",
+      "public/shaderapi/ishaderutil.h",
+      "public/shaderapi/IShaderDevice.h",
+      "public/shaderlib/ShaderDLL.h",
+      "public/shaderlib/cshader.h",
+      "public/shaderlib/BaseShader.h",
+      "materialsystem/IShaderSystem.h",
+      "materialsystem/stdshaders/BaseVSShader.h",
+      "quality/fixtures/render-abi/render_abi_v1.h"
     ]
   },
   "loaderExceptions": {
@@ -1636,6 +2192,19 @@
         "allowedEdges": [
           "hammer.app",
           "hammer.ports",
+          "foundation"
+        ]
+      },
+      {
+        "id": "hammer.adapters.render",
+        "strict": false,
+        "owns": "The editor's own render scene (RFC 0016 A.7): document solids projected into a render::scene the editor composes; the viewport that draws it is R17",
+        "allowedEdges": [
+          "content.vmf",
+          "content.keyvalues-text",
+          "world.map-geometry",
+          "render.scene",
+          "render.math",
           "foundation"
         ]
       },

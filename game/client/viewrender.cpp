@@ -78,6 +78,8 @@
 // Projective textures
 #include "C_Env_Projected_Texture.h"
 
+#include "render_stage_marks.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -1084,6 +1086,8 @@ void CViewRender::DrawRenderablesInList( CUtlVector< IClientRenderable * > &list
 //-----------------------------------------------------------------------------
 void CViewRender::DrawViewModels( const CViewSetup &view, bool drawViewmodel )
 {
+	ClientRender_MarkStage( RENDER_STAGE_VIEW_MODEL );
+
 	VPROF( "CViewRender::DrawViewModel" );
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__ );
 
@@ -2151,6 +2155,7 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 				{
 					bFlashlightIsOn = pLocal->IsEffectActive( EF_DIMLIGHT );
 				}
+				ClientRender_MarkStage( RENDER_STAGE_POST_PROCESS );
 				DoEnginePostProcessing( view.x, view.y, view.width, view.height, bFlashlightIsOn );
 			}
 			pRenderContext.SafeRelease();
@@ -2255,6 +2260,7 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 
 	if ( whatToDraw & RENDERVIEW_DRAWHUD )
 	{
+		ClientRender_MarkStage( RENDER_STAGE_HUD );
 		VPROF_BUDGET( "VGui_DrawHud", VPROF_BUDGETGROUP_OTHER_VGUI );
 		int viewWidth = view.m_nUnscaledWidth;
 		int viewHeight = view.m_nUnscaledHeight;
@@ -3600,6 +3606,8 @@ void CRendering3dView::BuildRenderableRenderLists( int viewID )
 //-----------------------------------------------------------------------------
 void CRendering3dView::DrawWorld( float waterZAdjust )
 {
+	ClientRender_MarkStage( RENDER_STAGE_OPAQUE );
+
 	VPROF_INCREMENT_COUNTER( "RenderWorld", 1 );
 	VPROF_BUDGET( "DrawWorld", VPROF_BUDGETGROUP_WORLD_RENDERING );
 	if( !r_drawopaqueworld.GetBool() )
@@ -4009,6 +4017,8 @@ static void DrawOpaqueRenderables_Range( CClientRenderablesList::CEntry *pEntiti
 
 void CRendering3dView::DrawOpaqueRenderables( ERenderDepthMode DepthMode )
 {
+	ClientRender_MarkStage( RENDER_STAGE_OPAQUE );
+
 	VPROF_BUDGET("CViewRender::DrawOpaqueRenderables", "DrawOpaqueRenderables" );
 
 	if( !r_drawopaquerenderables.GetBool() )
@@ -4366,6 +4376,8 @@ static inline void DrawTranslucentRenderable( IClientRenderable *pEnt, bool twoP
 //-----------------------------------------------------------------------------
 void CRendering3dView::DrawTranslucentRenderablesNoWorld( bool bInSkybox )
 {
+	ClientRender_MarkStage( RENDER_STAGE_TRANSLUCENT );
+
 	VPROF( "CViewRender::DrawTranslucentRenderablesNoWorld" );
 
 	if ( !m_pMainView->ShouldDrawEntities() || !r_drawtranslucentrenderables.GetBool() )
@@ -4444,6 +4456,8 @@ void CRendering3dView::DrawNoZBufferTranslucentRenderables( void )
 //-----------------------------------------------------------------------------
 void CRendering3dView::DrawTranslucentRenderables( bool bInSkybox, bool bShadowDepth )
 {
+	ClientRender_MarkStage( RENDER_STAGE_TRANSLUCENT );
+
 #ifdef PORTAL //if we're in the portal mod, we need to make a detour so we can render portal views using stencil areas
 	if( ShouldDrawPortals() ) //no recursive stencil views during skybox rendering (although we might be drawing a skybox while already in a recursive stencil view)
 	{
@@ -4882,6 +4896,7 @@ void CSkyboxView::DrawInternal( view_id_t iSkyBoxViewID, bool bInvokePreAndPostR
 	//m_bOverrideVisOrigin could hose us here, so call direct
 	render->ViewSetupVis( false, 1, &m_pSky3dParams->origin.Get() );
 	render->Push3DView( (*this), m_ClearFlags, pRenderTarget, GetFrustum(), pDepthTarget );
+	ClientRender_MarkStage( RENDER_STAGE_SKYBOX );
 
 	// Store off view origin and angles
 	SetupCurrentView( origin, angles, iSkyBoxViewID );

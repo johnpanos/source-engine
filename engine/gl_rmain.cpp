@@ -34,6 +34,8 @@
 #include "tier1/utlstack.h"
 #include "r_decal.h"
 #include "cl_main.h"
+#include "render_core_host.h"
+#include "tier0/icommandline.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -553,6 +555,52 @@ void CRender::ClearView( CViewSetup &view, int nFlags, ITexture* pRenderTarget, 
 	}
 }
 
+//-----------------------------------------------------------------------------
+// View oracle (RFC 0016 K0; materialsystem/vieworaclecapture.h). Under
+// -vieworacle every Push3DView/Push2DView ... PopView span is bracketed by a
+// render-context PIX event named "vieworacle " plus a JSON object describing
+// the view, so the shader API receives the view boundaries in the frame's
+// submission order, queued rendering included. Off, one cached bool.
+//-----------------------------------------------------------------------------
+static bool ViewOracleEnabled()
+{
+	static const bool s_bEnabled = CommandLine()->FindParm( "-vieworacle" ) != 0;
+	return s_bEnabled;
+}
+
+static void ViewOracleBegin( bool b2D, const CViewSetup &view, int nFlags, ITexture *pRenderTarget,
+    bool bNoDraw, int nStackDepth )
+{
+	CMatRenderContextPtr pRenderContext( materials );
+	const bool bExplicitTarget = pRenderTarget != NULL;
+	if ( !pRenderTarget && !bNoDraw )
+		pRenderTarget = pRenderContext->GetRenderTarget();
+	char szTarget[128];
+	V_strncpy( szTarget,
+	    bNoDraw ? "(nodraw)" : ( pRenderTarget ? pRenderTarget->GetName() : "backbuffer" ),
+	    sizeof( szTarget ) );
+	for ( char *p = szTarget; *p; ++p )
+	{
+		if ( *p == '"' || *p == '\\' || (unsigned char)*p < 0x20 )
+			*p = '_';
+	}
+	char szName[512];
+	V_snprintf( szName, sizeof( szName ),
+	    "vieworacle {\"type\":\"%s\",\"stack\":%d,\"target\":\"%s\",\"explicit_target\":%s,"
+	    "\"viewport\":[%d,%d,%d,%d],\"origin\":[%.1f,%.1f,%.1f],\"angles\":[%.1f,%.1f,%.1f],"
+	    "\"fov\":%.2f,\"ortho\":%s,\"flags\":%d,\"nodraw\":%s}",
+	    b2D ? "2d" : "3d", nStackDepth, szTarget, bExplicitTarget ? "true" : "false", view.x,
+	    view.y, view.width, view.height, view.origin.x, view.origin.y, view.origin.z, view.angles.x,
+	    view.angles.y, view.angles.z, view.fov, view.m_bOrtho ? "true" : "false", nFlags,
+	    bNoDraw ? "true" : "false" );
+	pRenderContext->BeginPIXEvent( PIX_VALVE_ORANGE, szName );
+}
+
+static void ViewOracleEnd()
+{
+	CMatRenderContextPtr pRenderContext( materials );
+	pRenderContext->EndPIXEvent();
+}
 
 //-----------------------------------------------------------------------------
 // Push, pop views
@@ -638,8 +686,11 @@ void CRender::Push3DView( const CViewSetup &view, int nFlags, ITexture* pRenderT
 	int i = m_ViewStack.Push( );
 	m_ViewStack[i].m_View = view;
 	m_ViewStack[i].m_bIs2DView = false;
+	RenderCoreHost_MarkViewBegin();
 	m_ViewStack[i].m_bNoDraw = ( ( nFlags & VIEW_NO_DRAW ) != 0 );
 	m_ViewStack[i].m_bExplicitTarget = pRenderTarget != NULL;
+	if ( ViewOracleEnabled() )
+		ViewOracleBegin( false, view, nFlags, pRenderTarget, m_ViewStack[i].m_bNoDraw, i );
 
 	CViewSetup &topView = m_ViewStack[i].m_View;
 
@@ -697,6 +748,8 @@ void CRender::Push2DView( const CViewSetup &view, int nFlags, ITexture* pRenderT
 	m_ViewStack[i].m_bIs2DView = true;
 	m_ViewStack[i].m_bNoDraw = ( ( nFlags & VIEW_NO_DRAW ) != 0 );
 	m_ViewStack[i].m_bExplicitTarget = pRenderTarget != NULL;
+	if ( ViewOracleEnabled() )
+		ViewOracleBegin( true, view, nFlags, pRenderTarget, m_ViewStack[i].m_bNoDraw, i );
 	m_ViewStack[i].m_matrixView = m_matrixView;
 	m_ViewStack[i].m_matrixProjection = m_matrixProjection;
 	m_ViewStack[i].m_matrixWorldToScreen = m_matrixWorldToScreen;
@@ -734,6 +787,11 @@ void CRender::Push2DView( const CViewSetup &view, int nFlags, ITexture* pRenderT
 
 void CRender::PopView( Frustum frustumPlanes )
 {
+	if ( !m_ViewStack.Top().m_bIs2DView )
+		RenderCoreHost_MarkViewEnd();
+	if ( ViewOracleEnabled() )
+		ViewOracleEnd();
+
 	if ( !m_ViewStack.Top().m_bNoDraw )
 	{
 		CMatRenderContextPtr pRenderContext( materials );

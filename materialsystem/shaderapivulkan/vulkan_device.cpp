@@ -25,9 +25,6 @@ namespace render_vulkan
 namespace
 {
 
-const char *const kValidationLayer = "VK_LAYER_KHRONOS_validation";
-const char *const kSwapchainExtension = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-
 void Log( const char *fmt, ... )
 {
 	va_list args;
@@ -42,19 +39,6 @@ void SetError( std::string *outError, const std::string &message )
 	if ( outError )
 		*outError = message;
 	Log( "error: %s\n", message.c_str() );
-}
-
-bool InstanceHasExtension( const char *name )
-{
-	uint32_t count = 0;
-	vkEnumerateInstanceExtensionProperties( nullptr, &count, nullptr );
-	std::vector<VkExtensionProperties> extensions( count );
-	if ( count )
-		vkEnumerateInstanceExtensionProperties( nullptr, &count, extensions.data() );
-	for ( const VkExtensionProperties &extension : extensions )
-		if ( std::strcmp( extension.extensionName, name ) == 0 )
-			return true;
-	return false;
 }
 
 const char *ResultString( VkResult r )
@@ -148,9 +132,7 @@ bool CVulkanContext::Init(
 	    std::max<uint32_t>( 1, std::min<uint32_t>( config.framesInFlight, kMaxFramesInFlight ) );
 	m_validationErrorCount = 0;
 
-	if ( !CreateInstance( outError ) || !SetupDebugMessenger( outError ) ||
-	     !CreateSurface( outError ) || !PickPhysicalDevice( outError ) ||
-	     !CreateLogicalDevice( outError ) || !CreateSwapchain( outError ) ||
+	if ( !CreateDevice( outError ) || !CreateSwapchain( outError ) ||
 	     !CreateRenderPass( outError ) || !CreateFramebuffers( outError ) ||
 	     !CreateCommandResources( outError ) || !CreateSyncObjects( outError ) )
 	{
@@ -169,140 +151,6 @@ bool CVulkanContext::Init(
 	    m_vendorId, m_isDiscrete ? "discrete" : "integrated/other",
 	    m_validationEnabled ? "on" : "off", m_swapExtent.width, m_swapExtent.height,
 	    m_swapImages.size() );
-	return true;
-}
-
-bool CVulkanContext::CreateInstance( std::string *outError )
-{
-	std::vector<const char *> extensions;
-	if ( !m_host->GetInstanceExtensions( &extensions, outError ) )
-		return false;
-
-	// Decide whether validation can/should be enabled.
-	bool wantValidation = m_config.enableValidation || m_config.requireValidation;
-	bool layerAvailable = false;
-	if ( wantValidation )
-	{
-		uint32_t layerCount = 0;
-		vkEnumerateInstanceLayerProperties( &layerCount, nullptr );
-		std::vector<VkLayerProperties> layers( layerCount );
-		if ( layerCount )
-			vkEnumerateInstanceLayerProperties( &layerCount, layers.data() );
-		for ( const VkLayerProperties &lp : layers )
-		{
-			if ( std::strcmp( lp.layerName, kValidationLayer ) == 0 )
-			{
-				layerAvailable = true;
-				break;
-			}
-		}
-		if ( !layerAvailable )
-		{
-			if ( m_config.requireValidation )
-			{
-				SetError( outError,
-				    "required validation layer VK_LAYER_KHRONOS_validation is not available" );
-				return false;
-			}
-			Log( "validation requested but layer unavailable; continuing without it\n" );
-		}
-	}
-
-	m_validationEnabled = wantValidation && layerAvailable;
-	// VK_EXT_debug_utils: the validation messenger, and object names and labels
-	// for capture tools (SetupDebugTools decides whether they are emitted).
-	m_debugUtilsExtension =
-	    m_validationEnabled || ( m_config.debugLabels != DebugLabelPolicy::Off &&
-	                               InstanceHasExtension( VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) );
-	if ( m_debugUtilsExtension && std::none_of( extensions.begin(), extensions.end(),
-	                                  []( const char *name )
-	                                  {
-		                                  return std::strcmp(
-		                                             name, VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) == 0;
-	                                  } ) )
-		extensions.push_back( VK_EXT_DEBUG_UTILS_EXTENSION_NAME );
-	// Portability implementations (MoltenVK on Apple platforms) are listed
-	// only to an instance that enumerates them.
-	const bool portabilityEnumeration =
-	    InstanceHasExtension( VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME );
-	if ( portabilityEnumeration )
-		extensions.push_back( VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME );
-
-	VkApplicationInfo appInfo = {};
-	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	appInfo.pApplicationName = m_config.appName ? m_config.appName : "Source Native Vulkan";
-	appInfo.applicationVersion = VK_MAKE_VERSION( 1, 0, 0 );
-	appInfo.pEngineName = "Source";
-	appInfo.engineVersion = VK_MAKE_VERSION( 1, 0, 0 );
-	// Vulkan 1.2 where the loader has it: the compute foundation's feature
-	// chain (RFC 0011 G5) uses its core structures; devices below 1.2 still
-	// run everything else.
-	uint32_t loaderVersion = VK_API_VERSION_1_1;
-	if ( const auto enumerate = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
-	         vkGetInstanceProcAddr( VK_NULL_HANDLE, "vkEnumerateInstanceVersion" ) ) )
-		enumerate( &loaderVersion );
-	appInfo.apiVersion = loaderVersion >= VK_API_VERSION_1_2 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1;
-
-	VkInstanceCreateInfo createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-	createInfo.pApplicationInfo = &appInfo;
-	if ( portabilityEnumeration )
-		createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-	createInfo.enabledExtensionCount = static_cast<uint32_t>( extensions.size() );
-	createInfo.ppEnabledExtensionNames = extensions.data();
-	const char *enabledLayers[] = { kValidationLayer };
-	if ( m_validationEnabled )
-	{
-		createInfo.enabledLayerCount = 1;
-		createInfo.ppEnabledLayerNames = enabledLayers;
-	}
-
-	VkResult r = vkCreateInstance( &createInfo, nullptr, &m_instance );
-	if ( r != VK_SUCCESS )
-	{
-		SetError( outError, std::string( "vkCreateInstance failed: " ) + ResultString( r ) );
-		return false;
-	}
-	return true;
-}
-
-bool CVulkanContext::SetupDebugMessenger( std::string *outError )
-{
-	if ( !m_validationEnabled )
-		return true;
-
-	m_pfnCreateDebugMessenger = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-	    vkGetInstanceProcAddr( m_instance, "vkCreateDebugUtilsMessengerEXT" ) );
-	m_pfnDestroyDebugMessenger = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-	    vkGetInstanceProcAddr( m_instance, "vkDestroyDebugUtilsMessengerEXT" ) );
-	if ( !m_pfnCreateDebugMessenger || !m_pfnDestroyDebugMessenger )
-	{
-		// Extension advertised but entry points missing: only fatal if required.
-		if ( m_config.requireValidation )
-		{
-			SetError( outError, "debug utils messenger entry points unavailable" );
-			return false;
-		}
-		return true;
-	}
-
-	VkDebugUtilsMessengerCreateInfoEXT info = {};
-	info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-	                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-	info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-	                   VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-	                   VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-	info.pfnUserCallback = VulkanDebugCallbackTrampoline;
-	info.pUserData = this;
-
-	VkResult r = m_pfnCreateDebugMessenger( m_instance, &info, nullptr, &m_debugMessenger );
-	if ( r != VK_SUCCESS && m_config.requireValidation )
-	{
-		SetError( outError,
-		    std::string( "vkCreateDebugUtilsMessengerEXT failed: " ) + ResultString( r ) );
-		return false;
-	}
 	return true;
 }
 
@@ -362,138 +210,15 @@ bool CVulkanContext::SurfaceChangedSinceSwapchain()
 	       caps.currentExtent.height != m_swapSurfaceExtent.height;
 }
 
-bool CVulkanContext::PickPhysicalDevice( std::string *outError )
+// The device's extensions and features, for the device the adapter chose
+// (render.device.vulkan adds its own requirements to both).
+void CVulkanContext::DescribeDevice( VkPhysicalDevice physical, uint32_t graphicsFamily,
+    render::device::vulkan::HostDeviceFeatures *out )
 {
-	uint32_t count = 0;
-	vkEnumeratePhysicalDevices( m_instance, &count, nullptr );
-	if ( count == 0 )
-	{
-		SetError( outError, "no Vulkan physical devices found" );
-		return false;
-	}
-	std::vector<VkPhysicalDevice> devices( count );
-	vkEnumeratePhysicalDevices( m_instance, &count, devices.data() );
-
-	int bestScore = -1;
-	VkPhysicalDevice best = VK_NULL_HANDLE;
-	uint32_t bestGraphics = UINT32_MAX;
-	uint32_t bestPresent = UINT32_MAX;
-
-	for ( VkPhysicalDevice dev : devices )
-	{
-		// Must expose the swapchain extension.
-		uint32_t extCount = 0;
-		vkEnumerateDeviceExtensionProperties( dev, nullptr, &extCount, nullptr );
-		std::vector<VkExtensionProperties> exts( extCount );
-		if ( extCount )
-			vkEnumerateDeviceExtensionProperties( dev, nullptr, &extCount, exts.data() );
-		bool hasSwapchain = false;
-		for ( const VkExtensionProperties &e : exts )
-			if ( std::strcmp( e.extensionName, kSwapchainExtension ) == 0 )
-				hasSwapchain = true;
-		if ( !hasSwapchain )
-			continue;
-
-		// Must present at least one surface format and present mode.
-		uint32_t fmtCount = 0, pmCount = 0;
-		vkGetPhysicalDeviceSurfaceFormatsKHR( dev, m_surface, &fmtCount, nullptr );
-		vkGetPhysicalDeviceSurfacePresentModesKHR( dev, m_surface, &pmCount, nullptr );
-		if ( fmtCount == 0 || pmCount == 0 )
-			continue;
-
-		// Find graphics + present queue families.
-		uint32_t qfCount = 0;
-		vkGetPhysicalDeviceQueueFamilyProperties( dev, &qfCount, nullptr );
-		std::vector<VkQueueFamilyProperties> qfs( qfCount );
-		vkGetPhysicalDeviceQueueFamilyProperties( dev, &qfCount, qfs.data() );
-
-		uint32_t graphics = UINT32_MAX, present = UINT32_MAX;
-		for ( uint32_t i = 0; i < qfCount; ++i )
-		{
-			if ( ( qfs[i].queueFlags & VK_QUEUE_GRAPHICS_BIT ) && graphics == UINT32_MAX )
-				graphics = i;
-			VkBool32 presentSupport = VK_FALSE;
-			vkGetPhysicalDeviceSurfaceSupportKHR( dev, i, m_surface, &presentSupport );
-			if ( presentSupport )
-			{
-				// Prefer a family that does both.
-				if ( ( qfs[i].queueFlags & VK_QUEUE_GRAPHICS_BIT ) )
-					present = i;
-				else if ( present == UINT32_MAX )
-					present = i;
-			}
-		}
-		if ( graphics == UINT32_MAX || present == UINT32_MAX )
-			continue;
-
-		VkPhysicalDeviceProperties props = {};
-		vkGetPhysicalDeviceProperties( dev, &props );
-		bool discrete = ( props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU );
-		if ( m_config.requireDiscreteGpu && !discrete )
-			continue;
-
-		const int score = ScorePhysicalDeviceType( props.deviceType );
-
-		if ( score > bestScore )
-		{
-			bestScore = score;
-			best = dev;
-			bestGraphics = graphics;
-			bestPresent = present;
-		}
-	}
-
-	if ( best == VK_NULL_HANDLE )
-	{
-		SetError(
-		    outError, m_config.requireDiscreteGpu
-		                  ? "no discrete GPU with graphics+present+swapchain support was found"
-		                  : "no Vulkan device with graphics+present+swapchain support was found" );
-		return false;
-	}
-
-	m_physicalDevice = best;
-	m_graphicsQueueFamily = bestGraphics;
-	m_presentQueueFamily = bestPresent;
-
-	VkPhysicalDeviceProperties props = {};
-	vkGetPhysicalDeviceProperties( m_physicalDevice, &props );
-	m_deviceName = props.deviceName;
-	m_vendorId = props.vendorID;
-	m_deviceId = props.deviceID;
-	m_isDiscrete = ( props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU );
-
-	VkPhysicalDeviceMemoryProperties mem = {};
-	vkGetPhysicalDeviceMemoryProperties( m_physicalDevice, &mem );
-	m_deviceLocalMemoryBytes = 0;
-	for ( uint32_t i = 0; i < mem.memoryHeapCount; ++i )
-		if ( mem.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT )
-			m_deviceLocalMemoryBytes += mem.memoryHeaps[i].size;
-
-	return true;
-}
-
-bool CVulkanContext::CreateLogicalDevice( std::string *outError )
-{
-	float priority = 1.0f;
-	std::vector<VkDeviceQueueCreateInfo> queueInfos;
-
-	VkDeviceQueueCreateInfo gq = {};
-	gq.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	gq.queueFamilyIndex = m_graphicsQueueFamily;
-	gq.queueCount = 1;
-	gq.pQueuePriorities = &priority;
-	queueInfos.push_back( gq );
-
-	if ( m_presentQueueFamily != m_graphicsQueueFamily )
-	{
-		VkDeviceQueueCreateInfo pq = gq;
-		pq.queueFamilyIndex = m_presentQueueFamily;
-		queueInfos.push_back( pq );
-	}
-
-	std::vector<const char *> deviceExts = { kSwapchainExtension };
-	bool toolingInfo = false;
+	m_physicalDevice = physical;
+	m_graphicsQueueFamily = graphicsFamily;
+	std::vector<const char *> &deviceExts = m_deviceExtensions;
+	deviceExts.clear();
 	// sRGB views of the swapchain images (linear-space blending of sRGB writes).
 	{
 		uint32_t extCount = 0;
@@ -524,7 +249,7 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 		if ( m_nonSemanticInfo )
 			deviceExts.push_back( VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME );
 		// A capture tool announces itself through VK_EXT_tooling_info.
-		toolingInfo = has( VK_EXT_TOOLING_INFO_EXTENSION_NAME );
+		m_toolingInfo = has( VK_EXT_TOOLING_INFO_EXTENSION_NAME );
 		// A portability implementation (MoltenVK) that exposes
 		// VK_KHR_portability_subset requires the application to enable it.
 		// (The extension's name macro is in the beta header.)
@@ -600,27 +325,91 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	m_featureChain.Build( m_physicalDevice,
 	    QueryComputeCaps( m_physicalDevice, m_graphicsQueueFamily ), features, &deviceExts );
 	m_computeCaps = m_featureChain.Enabled();
-	VkDeviceCreateInfo createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	createInfo.pNext = m_featureChain.Chain();
-	createInfo.queueCreateInfoCount = static_cast<uint32_t>( queueInfos.size() );
-	createInfo.pQueueCreateInfos = queueInfos.data();
-	createInfo.enabledExtensionCount = static_cast<uint32_t>( deviceExts.size() );
-	createInfo.ppEnabledExtensionNames = deviceExts.data();
+	out->features = m_featureChain.Head();
+	out->extensions = deviceExts.data();
+	out->extensionCount = static_cast<uint32_t>( deviceExts.size() );
+}
 
-	VkResult r = vkCreateDevice( m_physicalDevice, &createInfo, nullptr, &m_device );
-	if ( r != VK_SUCCESS )
+bool CVulkanContext::CreateDevice( std::string *outError )
+{
+	std::vector<const char *> extensions;
+	if ( !m_host->GetInstanceExtensions( &extensions, outError ) )
+		return false;
+	render::device::vulkan::HostDeviceRequest request;
+	request.applicationName = m_config.appName ? m_config.appName : "Source Native Vulkan";
+	request.instanceExtensions = extensions.data();
+	request.instanceExtensionCount = static_cast<uint32_t>( extensions.size() );
+	request.validation = m_config.enableValidation || m_config.requireValidation;
+	request.requireValidation = m_config.requireValidation;
+	request.debugUtils = m_config.debugLabels != DebugLabelPolicy::Off;
+	request.messageCallback = VulkanDebugCallbackTrampoline;
+	request.messageUser = this;
+	request.requireDiscrete = m_config.requireDiscreteGpu;
+	request.user = this;
+	request.createSurface = []( void *user, VkInstance instance, VkSurfaceKHR *surface )
 	{
-		SetError( outError, std::string( "vkCreateDevice failed: " ) + ResultString( r ) );
+		CVulkanContext *context = static_cast<CVulkanContext *>( user );
+		context->m_instance = instance;
+		if ( !context->CreateSurface( &context->m_createError ) )
+			return false;
+		*surface = context->m_surface;
+		return true;
+	};
+	request.describeDevice = []( void *user, VkPhysicalDevice physical, uint32_t graphicsFamily,
+	                             render::device::vulkan::HostDeviceFeatures *out )
+	{
+		static_cast<CVulkanContext *>( user )->DescribeDevice( physical, graphicsFamily, out );
+	};
+	if ( !m_config.deviceFactory )
+	{
+		SetError( outError,
+		    "no Vulkan device adapter is bound (render.device.vulkan: the "
+		    "composition root binds it with NativeVulkanShaderBackend_BindDeviceFactory)" );
 		return false;
 	}
+	char error[512] = {};
+	m_createError.clear();
+	m_hostDevice = m_config.deviceFactory->Create( request, error, sizeof( error ) );
+	if ( !m_hostDevice )
+	{
+		// The adapter destroyed the surface with the instance.
+		m_surface = VK_NULL_HANDLE;
+		m_instance = VK_NULL_HANDLE;
+		SetError( outError, m_createError.empty() ? std::string( error )
+		                                          : std::string( error ) + ": " + m_createError );
+		return false;
+	}
+	m_adapterAllocations = m_hostDevice->LiveAllocations();
+	const render::device::vulkan::HostDeviceInfo &info = m_hostDevice->Info();
+	m_instance = info.instance;
+	m_physicalDevice = info.physical;
+	m_device = info.device;
+	m_surface = info.surface;
+	m_graphicsQueueFamily = info.graphicsFamily;
+	m_presentQueueFamily = info.presentFamily;
+	m_graphicsQueue = info.graphicsQueue;
+	m_presentQueue = info.presentQueue;
+	m_validationEnabled = info.validation;
+	m_debugUtilsExtension = info.debugUtils;
+	m_computeCaps = m_featureChain.Enabled();
 
-	vkGetDeviceQueue( m_device, m_graphicsQueueFamily, 0, &m_graphicsQueue );
-	vkGetDeviceQueue( m_device, m_presentQueueFamily, 0, &m_presentQueue );
-	SetupDebugTools( toolingInfo );
+	VkPhysicalDeviceProperties props = {};
+	vkGetPhysicalDeviceProperties( m_physicalDevice, &props );
+	m_deviceName = props.deviceName;
+	m_vendorId = props.vendorID;
+	m_deviceId = props.deviceID;
+	m_isDiscrete = ( props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU );
+	VkPhysicalDeviceMemoryProperties mem = {};
+	vkGetPhysicalDeviceMemoryProperties( m_physicalDevice, &mem );
+	m_deviceLocalMemoryBytes = 0;
+	for ( uint32_t i = 0; i < mem.memoryHeapCount; ++i )
+		if ( mem.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT )
+			m_deviceLocalMemoryBytes += mem.memoryHeaps[i].size;
+
+	SetupDebugTools( m_toolingInfo );
 	m_compute.SetDebugTools( &m_shaderLibrary, &m_debugUtils );
 	std::string computeError;
-	if ( !m_compute.Init( m_physicalDevice, m_device, m_computeCaps, &computeError ) )
+	if ( !m_compute.Init( *m_hostDevice, m_computeCaps, &computeError ) )
 		std::fprintf( stderr, "[NativeVulkan] compute unavailable: %s\n", computeError.c_str() );
 	std::fprintf( stderr,
 	    "[NativeVulkan] compute %s, storage images %s, ray query %s (device API %u.%u)\n",
@@ -832,12 +621,12 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE, m_presentImages[i], "swapchain image %u", i );
 	if ( !GrowRenderFinished( actual, outError ) )
 		return false;
-	m_imagesInFlight.assign( actual, VK_NULL_HANDLE );
+	m_imageValue.assign( actual, 0 );
 	return CreateBackBuffers( outError );
 }
 
 // One back buffer per swapchain image, so a frame never renders into one an
-// earlier frame is still presenting from (m_imagesInFlight guards both). They
+// earlier frame is still presenting from (m_imageValue guards both). They
 // are the video mode's size; the present blit scales them to the drawable.
 bool CVulkanContext::CreateBackBuffers( std::string *outError )
 {
@@ -889,28 +678,10 @@ bool CVulkanContext::CreateBackBuffers( std::string *outError )
 			img.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 			img.pNext = &formatList;
 		}
-		if ( vkCreateImage( m_device, &img, nullptr, &m_swapImages[i] ) != VK_SUCCESS )
-		{
-			SetError( outError, "vkCreateImage (back buffer) failed" );
+		if ( !CreateImage( img, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &m_swapImages[i],
+		         &m_backBufferMemories[i], "back buffer", outError ) )
 			return false;
-		}
 		m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE, m_swapImages[i], "back buffer %u", i );
-		VkMemoryRequirements req = {};
-		vkGetImageMemoryRequirements( m_device, m_swapImages[i], &req );
-		bool found = false;
-		const uint32_t type =
-		    FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &found );
-		VkMemoryAllocateInfo ai = {};
-		ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-		ai.allocationSize = req.size;
-		ai.memoryTypeIndex = type;
-		if ( !found ||
-		     vkAllocateMemory( m_device, &ai, nullptr, &m_backBufferMemories[i] ) != VK_SUCCESS )
-		{
-			SetError( outError, "vkAllocateMemory (back buffer) failed" );
-			return false;
-		}
-		vkBindImageMemory( m_device, m_swapImages[i], m_backBufferMemories[i], 0 );
 	}
 
 	m_swapImageViews.resize( actual );
@@ -965,32 +736,10 @@ bool CVulkanContext::CreateDepthResources( std::string *outError )
 		            ( m_sceneDepthUsable ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0 );
 		img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		if ( vkCreateImage( m_device, &img, nullptr, &m_depthImages[i] ) != VK_SUCCESS )
-		{
-			SetError( outError, "vkCreateImage (depth) failed" );
+		if ( !CreateImage( img, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &m_depthImages[i],
+		         &m_depthMemories[i], "depth", outError ) )
 			return false;
-		}
 		m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE, m_depthImages[i], "back buffer depth %u", i );
-		VkMemoryRequirements req = {};
-		vkGetImageMemoryRequirements( m_device, m_depthImages[i], &req );
-		bool found = false;
-		uint32_t type =
-		    FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &found );
-		if ( !found )
-		{
-			SetError( outError, "no device-local memory type for depth image" );
-			return false;
-		}
-		VkMemoryAllocateInfo ai = {};
-		ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-		ai.allocationSize = req.size;
-		ai.memoryTypeIndex = type;
-		if ( vkAllocateMemory( m_device, &ai, nullptr, &m_depthMemories[i] ) != VK_SUCCESS )
-		{
-			SetError( outError, "vkAllocateMemory (depth) failed" );
-			return false;
-		}
-		vkBindImageMemory( m_device, m_depthImages[i], m_depthMemories[i], 0 );
 
 		VkImageViewCreateInfo iv = {};
 		iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1224,19 +973,8 @@ bool CVulkanContext::CreateCommandResources( std::string *outError )
 		return false;
 	}
 
-	m_commandBuffers.resize( m_framesInFlight );
-	VkCommandBufferAllocateInfo alloc = {};
-	alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	alloc.commandPool = m_commandPool;
-	alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	alloc.commandBufferCount = m_framesInFlight;
-	r = vkAllocateCommandBuffers( m_device, &alloc, m_commandBuffers.data() );
-	if ( r != VK_SUCCESS )
-	{
-		SetError(
-		    outError, std::string( "vkAllocateCommandBuffers failed: " ) + ResultString( r ) );
-		return false;
-	}
+	// Frames record into the render core's port encoders (RFC 0016 K3), so
+	// the context allocates no frame command buffers of its own.
 	return true;
 }
 
@@ -1265,46 +1003,23 @@ bool CVulkanContext::GrowRenderFinished( size_t count, std::string *outError )
 bool CVulkanContext::CreateSyncObjects( std::string *outError )
 {
 	m_imageAvailable.resize( m_framesInFlight );
-	m_inFlight.resize( m_framesInFlight );
 	if ( !GrowRenderFinished( std::max<size_t>( m_framesInFlight, m_presentImages.size() ),
 	         outError ) )
 		return false;
 
 	VkSemaphoreCreateInfo sem = {};
 	sem.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-	VkFenceCreateInfo fence = {};
-	fence.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	fence.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
 	for ( uint32_t i = 0; i < m_framesInFlight; ++i )
 	{
-		if ( vkCreateSemaphore( m_device, &sem, nullptr, &m_imageAvailable[i] ) != VK_SUCCESS ||
-		     vkCreateFence( m_device, &fence, nullptr, &m_inFlight[i] ) != VK_SUCCESS )
+		m_slotValue[i] = 0;
+		if ( vkCreateSemaphore( m_device, &sem, nullptr, &m_imageAvailable[i] ) != VK_SUCCESS )
 		{
 			SetError( outError, "failed to create per-frame synchronization objects" );
 			return false;
 		}
 	}
 	return true;
-}
-
-uint32_t CVulkanContext::FindMemoryType(
-    uint32_t typeBits, VkMemoryPropertyFlags props, bool *found ) const
-{
-	VkPhysicalDeviceMemoryProperties mem = {};
-	vkGetPhysicalDeviceMemoryProperties( m_physicalDevice, &mem );
-	for ( uint32_t i = 0; i < mem.memoryTypeCount; ++i )
-	{
-		if ( ( typeBits & ( 1u << i ) ) && ( mem.memoryTypes[i].propertyFlags & props ) == props )
-		{
-			if ( found )
-				*found = true;
-			return i;
-		}
-	}
-	if ( found )
-		*found = false;
-	return 0;
 }
 
 bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outError )
@@ -1321,7 +1036,7 @@ bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outErro
 	}
 	if ( m_captureMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( m_device, m_captureMemory, nullptr );
+		FreeMemory( m_captureMemory );
 		m_captureMemory = VK_NULL_HANDLE;
 	}
 
@@ -1338,38 +1053,14 @@ bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outErro
 	img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	VkResult r = vkCreateImage( m_device, &img, nullptr, &m_captureImage );
-	if ( r != VK_SUCCESS )
-	{
-		SetError( outError, std::string( "vkCreateImage (capture) failed: " ) + ResultString( r ) );
+	// Host-visible, coherent where the device has such a linear image type.
+	std::string coherentError;
+	if ( !CreateImage( img,
+	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	         &m_captureImage, &m_captureMemory, "capture", &coherentError ) &&
+	     !CreateImage( img, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &m_captureImage, &m_captureMemory,
+	         "capture", outError ) )
 		return false;
-	}
-
-	VkMemoryRequirements req = {};
-	vkGetImageMemoryRequirements( m_device, m_captureImage, &req );
-	bool found = false;
-	uint32_t type = FindMemoryType( req.memoryTypeBits,
-	    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &found );
-	if ( !found )
-		type = FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &found );
-	if ( !found )
-	{
-		SetError( outError, "no host-visible memory type for capture image" );
-		return false;
-	}
-
-	VkMemoryAllocateInfo ai = {};
-	ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	ai.allocationSize = req.size;
-	ai.memoryTypeIndex = type;
-	r = vkAllocateMemory( m_device, &ai, nullptr, &m_captureMemory );
-	if ( r != VK_SUCCESS )
-	{
-		SetError(
-		    outError, std::string( "vkAllocateMemory (capture) failed: " ) + ResultString( r ) );
-		return false;
-	}
-	vkBindImageMemory( m_device, m_captureImage, m_captureMemory, 0 );
 	m_captureExtent = extent;
 	return true;
 }
@@ -1473,7 +1164,7 @@ const VkPipelineVertexInputStateCreateInfo *CVulkanContext::FilterVertexInput(
 }
 
 bool CVulkanContext::CreateBuffer( VkDeviceSize size, VkBufferUsageFlags usage,
-    VkMemoryPropertyFlags props, VkBuffer *outBuffer, VkDeviceMemory *outMemory,
+    VkMemoryPropertyFlags props, VkBuffer *outBuffer, VulkanMemory *outMemory,
     std::string *outError )
 {
 	VkBufferCreateInfo bi = {};
@@ -1481,36 +1172,50 @@ bool CVulkanContext::CreateBuffer( VkDeviceSize size, VkBufferUsageFlags usage,
 	bi.size = size;
 	bi.usage = usage;
 	bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	VkResult r = vkCreateBuffer( m_device, &bi, nullptr, outBuffer );
+	render::device::vulkan::HostMemory memory;
+	memory.required = props;
+	const VkResult r = m_hostDevice->CreateBuffer( bi, memory, outBuffer, outMemory );
 	if ( r != VK_SUCCESS )
 	{
-		SetError( outError, std::string( "vkCreateBuffer failed: " ) + ResultString( r ) );
+		*outBuffer = VK_NULL_HANDLE;
+		*outMemory = nullptr;
+		SetError( outError, std::string( "buffer creation failed: " ) + ResultString( r ) );
 		return false;
 	}
-
-	VkMemoryRequirements req = {};
-	vkGetBufferMemoryRequirements( m_device, *outBuffer, &req );
-	bool found = false;
-	uint32_t type = FindMemoryType( req.memoryTypeBits, props, &found );
-	if ( !found )
-	{
-		SetError( outError, "no memory type satisfies the requested buffer properties" );
-		return false;
-	}
-
-	VkMemoryAllocateInfo ai = {};
-	ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	ai.allocationSize = req.size;
-	ai.memoryTypeIndex = type;
-	r = vkAllocateMemory( m_device, &ai, nullptr, outMemory );
-	if ( r != VK_SUCCESS )
-	{
-		SetError(
-		    outError, std::string( "vkAllocateMemory (buffer) failed: " ) + ResultString( r ) );
-		return false;
-	}
-	vkBindBufferMemory( m_device, *outBuffer, *outMemory, 0 );
 	return true;
+}
+
+bool CVulkanContext::CreateImage( const VkImageCreateInfo &info, VkMemoryPropertyFlags props,
+    VkImage *outImage, VulkanMemory *outMemory, const char *what, std::string *outError )
+{
+	render::device::vulkan::HostMemory memory;
+	memory.required = props;
+	const VkResult r = m_hostDevice->CreateImage( info, memory, outImage, outMemory );
+	if ( r != VK_SUCCESS )
+	{
+		*outImage = VK_NULL_HANDLE;
+		*outMemory = nullptr;
+		SetError(
+		    outError, std::string( "image creation (" ) + what + ") failed: " + ResultString( r ) );
+		return false;
+	}
+	return true;
+}
+
+VkResult CVulkanContext::MapMemory( VulkanMemory memory, void **data )
+{
+	return m_hostDevice->Map( memory, data );
+}
+
+void CVulkanContext::UnmapMemory( VulkanMemory memory )
+{
+	m_hostDevice->Unmap( memory );
+}
+
+void CVulkanContext::FreeMemory( VulkanMemory memory )
+{
+	if ( memory )
+		m_hostDevice->Free( memory );
 }
 
 bool CVulkanContext::InitDemoTriangle( std::string *outError )
@@ -1543,13 +1248,13 @@ bool CVulkanContext::InitDemoTriangle( std::string *outError )
 		return false;
 
 	void *mapped = nullptr;
-	if ( vkMapMemory( m_device, m_demoVertexMemory, 0, sizeof( verts ), 0, &mapped ) != VK_SUCCESS )
+	if ( MapMemory( m_demoVertexMemory, &mapped ) != VK_SUCCESS )
 	{
 		SetError( outError, "vkMapMemory (demo vertex buffer) failed" );
 		return false;
 	}
 	std::memcpy( mapped, verts, sizeof( verts ) );
-	vkUnmapMemory( m_device, m_demoVertexMemory );
+	UnmapMemory( m_demoVertexMemory );
 
 	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE;
 	if ( !CreateShaderModule(
@@ -1696,7 +1401,7 @@ void CVulkanContext::DestroyDemoTriangle()
 	}
 	if ( m_demoVertexMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( m_device, m_demoVertexMemory, nullptr );
+		FreeMemory( m_demoVertexMemory );
 		m_demoVertexMemory = VK_NULL_HANDLE;
 	}
 	m_demoVertexCount = 0;
@@ -1722,30 +1427,60 @@ bool CVulkanContext::BeginSingleTimeCommands( VkCommandBuffer *outCmd, std::stri
 	return true;
 }
 
-bool CVulkanContext::EndSingleTimeCommands( VkCommandBuffer cmd, std::string *outError )
+bool CVulkanContext::EndSingleTimeCommands(
+    VkCommandBuffer cmd, std::string *outError, uint64_t *outValue )
 {
 	CFrameCostScope cost( m_frameCost, kCostSingleSubmit );
+	if ( outValue )
+		*outValue = 0;
 	if ( vkEndCommandBuffer( cmd ) != VK_SUCCESS )
 	{
 		SetError( outError, "vkEndCommandBuffer (single-time) failed" );
 		vkFreeCommandBuffers( m_device, m_commandPool, 1, &cmd );
 		return false;
 	}
+	// Later submissions on this queue follow it (its barriers make its writes
+	// visible to them); nothing waits for it here.
+	const VkSemaphore timeline = m_hostDevice->Timeline();
+	const uint64_t value = m_hostDevice->NextSubmitValue();
+	VkTimelineSemaphoreSubmitInfo values = {};
+	values.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+	values.signalSemaphoreValueCount = 1;
+	values.pSignalSemaphoreValues = &value;
 	VkSubmitInfo submit = {};
 	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submit.pNext = &values;
 	submit.commandBufferCount = 1;
 	submit.pCommandBuffers = &cmd;
-	VkResult r = vkQueueSubmit( m_graphicsQueue, 1, &submit, VK_NULL_HANDLE );
-	if ( r == VK_SUCCESS )
-		r = vkQueueWaitIdle( m_graphicsQueue );
-	vkFreeCommandBuffers( m_device, m_commandPool, 1, &cmd );
+	submit.signalSemaphoreCount = 1;
+	submit.pSignalSemaphores = &timeline;
+	const VkResult r = vkQueueSubmit( m_graphicsQueue, 1, &submit, VK_NULL_HANDLE );
 	if ( r != VK_SUCCESS )
 	{
+		m_hostDevice->AbandonValue( value );
+		vkFreeCommandBuffers( m_device, m_commandPool, 1, &cmd );
 		SetError(
 		    outError, std::string( "single-time command submit failed: " ) + ResultString( r ) );
 		return false;
 	}
+	m_oneTimeCommands.emplace_back( value, cmd );
+	if ( outValue )
+		*outValue = value;
 	return true;
+}
+
+void CVulkanContext::ReleaseBufferAfter( uint64_t value, VkBuffer buffer, VulkanMemory memory )
+{
+	m_hostDevice->ReleaseBufferAfter( value, buffer, memory );
+}
+
+void CVulkanContext::ReleaseStreamBufferAfter( uint64_t value, StreamBuffer &stream )
+{
+	if ( stream.mapped )
+		UnmapMemory( stream.memory );
+	if ( stream.buffer != VK_NULL_HANDLE || stream.memory )
+		m_hostDevice->ReleaseBufferAfter( value, stream.buffer, stream.memory );
+	stream = StreamBuffer();
 }
 
 bool CVulkanContext::InitTexturedQuad( std::string *outError )
@@ -1785,50 +1520,28 @@ bool CVulkanContext::InitTexturedQuad( std::string *outError )
 	img.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	if ( vkCreateImage( m_device, &img, nullptr, &m_texImage ) != VK_SUCCESS )
-	{
-		SetError( outError, "vkCreateImage (texture) failed" );
+	if ( !CreateImage( img, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &m_texImage, &m_texMemory,
+	         "texture", outError ) )
 		return false;
-	}
-	VkMemoryRequirements req = {};
-	vkGetImageMemoryRequirements( m_device, m_texImage, &req );
-	bool found = false;
-	uint32_t type =
-	    FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &found );
-	if ( !found )
-	{
-		SetError( outError, "no device-local memory type for texture" );
-		return false;
-	}
-	VkMemoryAllocateInfo ai = {};
-	ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	ai.allocationSize = req.size;
-	ai.memoryTypeIndex = type;
-	if ( vkAllocateMemory( m_device, &ai, nullptr, &m_texMemory ) != VK_SUCCESS )
-	{
-		SetError( outError, "vkAllocateMemory (texture) failed" );
-		return false;
-	}
-	vkBindImageMemory( m_device, m_texImage, m_texMemory, 0 );
 
 	// Staging buffer with the pixels.
 	VkBuffer staging = VK_NULL_HANDLE;
-	VkDeviceMemory stagingMem = VK_NULL_HANDLE;
+	VulkanMemory stagingMem = VK_NULL_HANDLE;
 	if ( !CreateBuffer( texBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging,
 	         &stagingMem, outError ) )
 		return false;
 	void *mapped = nullptr;
-	vkMapMemory( m_device, stagingMem, 0, texBytes, 0, &mapped );
+	MapMemory( stagingMem, &mapped );
 	std::memcpy( mapped, pixels.data(), texBytes );
-	vkUnmapMemory( m_device, stagingMem );
+	UnmapMemory( stagingMem );
 
 	// Upload: UNDEFINED -> TRANSFER_DST, copy, TRANSFER_DST -> SHADER_READ_ONLY.
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
 	if ( !BeginSingleTimeCommands( &cmd, outError ) )
 	{
 		vkDestroyBuffer( m_device, staging, nullptr );
-		vkFreeMemory( m_device, stagingMem, nullptr );
+		FreeMemory( stagingMem );
 		return false;
 	}
 	VkImageMemoryBarrier toDst = {};
@@ -1858,14 +1571,14 @@ bool CVulkanContext::InitTexturedQuad( std::string *outError )
 	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
 	    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toRead );
 
-	if ( !EndSingleTimeCommands( cmd, outError ) )
+	uint64_t uploaded = 0;
+	if ( !EndSingleTimeCommands( cmd, outError, &uploaded ) )
 	{
 		vkDestroyBuffer( m_device, staging, nullptr );
-		vkFreeMemory( m_device, stagingMem, nullptr );
+		FreeMemory( stagingMem );
 		return false;
 	}
-	vkDestroyBuffer( m_device, staging, nullptr );
-	vkFreeMemory( m_device, stagingMem, nullptr );
+	ReleaseBufferAfter( uploaded, staging, stagingMem );
 
 	// View + sampler.
 	VkImageViewCreateInfo iv = {};
@@ -1964,9 +1677,9 @@ bool CVulkanContext::InitTexturedQuad( std::string *outError )
 	         &m_texQuadVertexBuffer, &m_texQuadVertexMemory, outError ) )
 		return false;
 	void *qmap = nullptr;
-	vkMapMemory( m_device, m_texQuadVertexMemory, 0, sizeof( quad ), 0, &qmap );
+	MapMemory( m_texQuadVertexMemory, &qmap );
 	std::memcpy( qmap, quad, sizeof( quad ) );
-	vkUnmapMemory( m_device, m_texQuadVertexMemory );
+	UnmapMemory( m_texQuadVertexMemory );
 
 	// Shaders + pipeline.
 	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE;
@@ -2102,7 +1815,7 @@ void CVulkanContext::DestroyTexturedQuad()
 	}
 	if ( m_texQuadVertexMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( m_device, m_texQuadVertexMemory, nullptr );
+		FreeMemory( m_texQuadVertexMemory );
 		m_texQuadVertexMemory = VK_NULL_HANDLE;
 	}
 	if ( m_texDescPool != VK_NULL_HANDLE )
@@ -2133,7 +1846,7 @@ void CVulkanContext::DestroyTexturedQuad()
 	}
 	if ( m_texMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( m_device, m_texMemory, nullptr );
+		FreeMemory( m_texMemory );
 		m_texMemory = VK_NULL_HANDLE;
 	}
 	m_texQuadVertexCount = 0;
@@ -2179,26 +1892,25 @@ bool CVulkanContext::InitIndexedUbo( std::string *outError )
 	         &m_iuVertexBuffer, &m_iuVertexMemory, outError ) )
 		return false;
 	void *vmap = nullptr;
-	vkMapMemory( m_device, m_iuVertexMemory, 0, sizeof( verts ), 0, &vmap );
+	MapMemory( m_iuVertexMemory, &vmap );
 	std::memcpy( vmap, verts, sizeof( verts ) );
-	vkUnmapMemory( m_device, m_iuVertexMemory );
+	UnmapMemory( m_iuVertexMemory );
 
 	if ( !CreateBuffer( sizeof( indices ), VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
 	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 	         &m_iuIndexBuffer, &m_iuIndexMemory, outError ) )
 		return false;
 	void *imap = nullptr;
-	vkMapMemory( m_device, m_iuIndexMemory, 0, sizeof( indices ), 0, &imap );
+	MapMemory( m_iuIndexMemory, &imap );
 	std::memcpy( imap, indices, sizeof( indices ) );
-	vkUnmapMemory( m_device, m_iuIndexMemory );
+	UnmapMemory( m_iuIndexMemory );
 
 	// Persistently-mapped uniform (constant) buffer holding the fragment color.
 	if ( !CreateBuffer( sizeof( m_iuColor ), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 	         &m_iuUniformBuffer, &m_iuUniformMemory, outError ) )
 		return false;
-	if ( vkMapMemory( m_device, m_iuUniformMemory, 0, sizeof( m_iuColor ), 0,
-	         &m_iuUniformMapped ) != VK_SUCCESS )
+	if ( MapMemory( m_iuUniformMemory, &m_iuUniformMapped ) != VK_SUCCESS )
 	{
 		SetError( outError, "vkMapMemory (uniform) failed" );
 		return false;
@@ -2393,7 +2105,7 @@ void CVulkanContext::DestroyIndexedUbo()
 	}
 	if ( m_iuUniformMapped )
 	{
-		vkUnmapMemory( m_device, m_iuUniformMemory );
+		UnmapMemory( m_iuUniformMemory );
 		m_iuUniformMapped = nullptr;
 	}
 	if ( m_iuUniformBuffer != VK_NULL_HANDLE )
@@ -2403,7 +2115,7 @@ void CVulkanContext::DestroyIndexedUbo()
 	}
 	if ( m_iuUniformMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( m_device, m_iuUniformMemory, nullptr );
+		FreeMemory( m_iuUniformMemory );
 		m_iuUniformMemory = VK_NULL_HANDLE;
 	}
 	if ( m_iuIndexBuffer != VK_NULL_HANDLE )
@@ -2413,7 +2125,7 @@ void CVulkanContext::DestroyIndexedUbo()
 	}
 	if ( m_iuIndexMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( m_device, m_iuIndexMemory, nullptr );
+		FreeMemory( m_iuIndexMemory );
 		m_iuIndexMemory = VK_NULL_HANDLE;
 	}
 	if ( m_iuVertexBuffer != VK_NULL_HANDLE )
@@ -2423,7 +2135,7 @@ void CVulkanContext::DestroyIndexedUbo()
 	}
 	if ( m_iuVertexMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( m_device, m_iuVertexMemory, nullptr );
+		FreeMemory( m_iuVertexMemory );
 		m_iuVertexMemory = VK_NULL_HANDLE;
 	}
 	m_iuIndexCount = 0;
@@ -2465,9 +2177,9 @@ bool CVulkanContext::InitDemoDepth( std::string *outError )
 	         &m_depthDemoVertexBuffer, &m_depthDemoVertexMemory, outError ) )
 		return false;
 	void *vmap = nullptr;
-	vkMapMemory( m_device, m_depthDemoVertexMemory, 0, sizeof( verts ), 0, &vmap );
+	MapMemory( m_depthDemoVertexMemory, &vmap );
 	std::memcpy( vmap, verts, sizeof( verts ) );
-	vkUnmapMemory( m_device, m_depthDemoVertexMemory );
+	UnmapMemory( m_depthDemoVertexMemory );
 
 	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE;
 	if ( !CreateShaderModule( g_demoDepthVertSpv, sizeof( g_demoDepthVertSpv ), &vert, outError ) )
@@ -2603,7 +2315,7 @@ void CVulkanContext::DestroyDemoDepth()
 	}
 	if ( m_depthDemoVertexMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( m_device, m_depthDemoVertexMemory, nullptr );
+		FreeMemory( m_depthDemoVertexMemory );
 		m_depthDemoVertexMemory = VK_NULL_HANDLE;
 	}
 	m_depthDemoVertexCount = 0;
@@ -2809,49 +2521,27 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		ii.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 		ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		if ( vkCreateImage( m_device, &ii, nullptr, &m_dynTexImage ) != VK_SUCCESS )
-		{
-			SetError( outError, "vkCreateImage (dynamic texture) failed" );
+		if ( !CreateImage( ii, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &m_dynTexImage, &m_dynTexMemory,
+		         "dynamic texture", outError ) )
 			return false;
-		}
 		m_debugUtils.Name( VK_OBJECT_TYPE_IMAGE, m_dynTexImage, "built-in fallback texture" );
-		VkMemoryRequirements req = {};
-		vkGetImageMemoryRequirements( m_device, m_dynTexImage, &req );
-		bool found = false;
-		uint32_t type =
-		    FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &found );
-		if ( !found )
-		{
-			SetError( outError, "no device-local memory for dynamic texture" );
-			return false;
-		}
-		VkMemoryAllocateInfo ai = {};
-		ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-		ai.allocationSize = req.size;
-		ai.memoryTypeIndex = type;
-		if ( vkAllocateMemory( m_device, &ai, nullptr, &m_dynTexMemory ) != VK_SUCCESS )
-		{
-			SetError( outError, "vkAllocateMemory (dynamic texture) failed" );
-			return false;
-		}
-		vkBindImageMemory( m_device, m_dynTexImage, m_dynTexMemory, 0 );
 
 		VkBuffer staging = VK_NULL_HANDLE;
-		VkDeviceMemory stagingMem = VK_NULL_HANDLE;
+		VulkanMemory stagingMem = VK_NULL_HANDLE;
 		if ( !CreateBuffer( sizeof( texels ), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 		         &staging, &stagingMem, outError ) )
 			return false;
 		void *mapped = nullptr;
-		vkMapMemory( m_device, stagingMem, 0, sizeof( texels ), 0, &mapped );
+		MapMemory( stagingMem, &mapped );
 		std::memcpy( mapped, texels, sizeof( texels ) );
-		vkUnmapMemory( m_device, stagingMem );
+		UnmapMemory( stagingMem );
 
 		VkCommandBuffer cmd = VK_NULL_HANDLE;
 		if ( !BeginSingleTimeCommands( &cmd, outError ) )
 		{
 			vkDestroyBuffer( m_device, staging, nullptr );
-			vkFreeMemory( m_device, stagingMem, nullptr );
+			FreeMemory( stagingMem );
 			return false;
 		}
 		VkImageMemoryBarrier toDst = {};
@@ -2877,14 +2567,14 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		toRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toRead );
-		if ( !EndSingleTimeCommands( cmd, outError ) )
+		uint64_t uploaded = 0;
+		if ( !EndSingleTimeCommands( cmd, outError, &uploaded ) )
 		{
 			vkDestroyBuffer( m_device, staging, nullptr );
-			vkFreeMemory( m_device, stagingMem, nullptr );
+			FreeMemory( stagingMem );
 			return false;
 		}
-		vkDestroyBuffer( m_device, staging, nullptr );
-		vkFreeMemory( m_device, stagingMem, nullptr );
+		ReleaseBufferAfter( uploaded, staging, stagingMem );
 
 		VkImageViewCreateInfo iv = {};
 		iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -3909,11 +3599,11 @@ bool CVulkanContext::EnsureUniformRingSlot( SkinUniformBuffer &slot, VkDeviceSiz
 		return true;
 	CFrameCostScope cost( m_frameCost, kCostBufferGrow );
 	if ( slot.mapped )
-		vkUnmapMemory( m_device, slot.memory );
+		UnmapMemory( slot.memory );
 	if ( slot.buffer != VK_NULL_HANDLE )
 		vkDestroyBuffer( m_device, slot.buffer, nullptr );
 	if ( slot.memory != VK_NULL_HANDLE )
-		vkFreeMemory( m_device, slot.memory, nullptr );
+		FreeMemory( slot.memory );
 	slot.mapped = nullptr;
 	slot.buffer = VK_NULL_HANDLE;
 	slot.memory = VK_NULL_HANDLE;
@@ -3923,7 +3613,7 @@ bool CVulkanContext::EnsureUniformRingSlot( SkinUniformBuffer &slot, VkDeviceSiz
 	if ( !CreateBuffer( capacity, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 	         &slot.buffer, &slot.memory, &error ) ||
-	     vkMapMemory( m_device, slot.memory, 0, capacity, 0, &slot.mapped ) != VK_SUCCESS )
+	     MapMemory( slot.memory, &slot.mapped ) != VK_SUCCESS )
 	{
 		Log( "%s buffer (%llu bytes) unavailable: %s\n", what,
 		    static_cast<unsigned long long>( capacity ), error.c_str() );
@@ -4016,11 +3706,11 @@ void CVulkanContext::DestroySkinPipeline()
 	for ( SkinUniformBuffer &slot : m_skinUbos )
 	{
 		if ( slot.mapped )
-			vkUnmapMemory( m_device, slot.memory );
+			UnmapMemory( slot.memory );
 		if ( slot.buffer != VK_NULL_HANDLE )
 			vkDestroyBuffer( m_device, slot.buffer, nullptr );
 		if ( slot.memory != VK_NULL_HANDLE )
-			vkFreeMemory( m_device, slot.memory, nullptr );
+			FreeMemory( slot.memory );
 	}
 	m_skinUbos.clear();
 	if ( m_skinPipelineLayout != VK_NULL_HANDLE )
@@ -4419,33 +4109,9 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 		ii.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 		ii.pNext = &formatList;
 	}
-	if ( vkCreateImage( m_device, &ii, nullptr, &t.image ) != VK_SUCCESS )
-	{
-		SetError( outError, "vkCreateImage (managed texture) failed" );
+	if ( !CreateImage( ii, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &t.image, &t.memory,
+	         "managed texture", outError ) )
 		return -1;
-	}
-	VkMemoryRequirements req = {};
-	vkGetImageMemoryRequirements( m_device, t.image, &req );
-	bool found = false;
-	uint32_t type =
-	    FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &found );
-	if ( !found )
-	{
-		vkDestroyImage( m_device, t.image, nullptr );
-		SetError( outError, "no device-local memory for managed texture" );
-		return -1;
-	}
-	VkMemoryAllocateInfo ai = {};
-	ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	ai.allocationSize = req.size;
-	ai.memoryTypeIndex = type;
-	if ( vkAllocateMemory( m_device, &ai, nullptr, &t.memory ) != VK_SUCCESS )
-	{
-		vkDestroyImage( m_device, t.image, nullptr );
-		SetError( outError, "vkAllocateMemory (managed texture) failed" );
-		return -1;
-	}
-	vkBindImageMemory( m_device, t.image, t.memory, 0 );
 
 	VkImageViewCreateInfo iv = {};
 	iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -4457,7 +4123,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	iv.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, t.mipLevels, 0, t.layers };
 	if ( vkCreateImageView( m_device, &iv, nullptr, &t.view ) != VK_SUCCESS )
 	{
-		vkFreeMemory( m_device, t.memory, nullptr );
+		FreeMemory( t.memory );
 		vkDestroyImage( m_device, t.image, nullptr );
 		SetError( outError, "vkCreateImageView (managed texture) failed" );
 		return -1;
@@ -4468,7 +4134,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 		if ( vkCreateImageView( m_device, &iv, nullptr, &t.srgbView ) != VK_SUCCESS )
 		{
 			vkDestroyImageView( m_device, t.view, nullptr );
-			vkFreeMemory( m_device, t.memory, nullptr );
+			FreeMemory( t.memory );
 			vkDestroyImage( m_device, t.image, nullptr );
 			SetError( outError, "vkCreateImageView (managed texture, sRGB) failed" );
 			return -1;
@@ -4576,13 +4242,13 @@ void CVulkanContext::ReleaseManagedTextureObjects( ManagedTexture &t )
 	if ( t.depthImage != VK_NULL_HANDLE )
 		vkDestroyImage( m_device, t.depthImage, nullptr );
 	if ( t.depthMemory != VK_NULL_HANDLE )
-		vkFreeMemory( m_device, t.depthMemory, nullptr );
+		FreeMemory( t.depthMemory );
 	if ( t.view != VK_NULL_HANDLE )
 		vkDestroyImageView( m_device, t.view, nullptr );
 	if ( t.image != VK_NULL_HANDLE )
 		vkDestroyImage( m_device, t.image, nullptr );
 	if ( t.memory != VK_NULL_HANDLE )
-		vkFreeMemory( m_device, t.memory, nullptr );
+		FreeMemory( t.memory );
 	t = ManagedTexture();
 }
 
@@ -4613,9 +4279,41 @@ void CVulkanContext::DestroyManagedTexture( int handle )
 	RetireCompletedTextures();
 }
 
+void CVulkanContext::UpdateCompletedSerial()
+{
+	const uint64_t completed = m_hostDevice->CompletedValue();
+	size_t done = 0;
+	while ( done < m_serialValues.size() && m_serialValues[done].second <= completed )
+		m_completedSerial = std::max( m_completedSerial, m_serialValues[done++].first );
+	m_serialValues.erase( m_serialValues.begin(), m_serialValues.begin() + done );
+	size_t kept = 0;
+	for ( const std::pair<uint64_t, VkCommandBuffer> &submitted : m_oneTimeCommands )
+	{
+		if ( submitted.first <= completed )
+			vkFreeCommandBuffers( m_device, m_commandPool, 1, &submitted.second );
+		else
+			m_oneTimeCommands[kept++] = submitted;
+	}
+	m_oneTimeCommands.resize( kept );
+	// The adapter's own releases behind completed values.
+	m_hostDevice->Collect();
+}
+
 void CVulkanContext::RetireCompletedTextures()
 {
+	if ( m_hostDevice )
+		UpdateCompletedSerial();
 	m_compute.Collect( m_completedSerial );
+	size_t keptObjects = 0;
+	for ( size_t i = 0; i < m_retiredObjects.size(); ++i )
+	{
+		const RetiredObject retired = m_retiredObjects[i];
+		if ( retired.afterSerial <= m_completedSerial )
+			retired.destroy( this, retired.a, retired.b );
+		else
+			m_retiredObjects[keptObjects++] = retired;
+	}
+	m_retiredObjects.resize( keptObjects );
 	size_t kept = 0;
 	for ( RetiredTexture &r : m_retiredTextures )
 	{
@@ -4670,26 +4368,9 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 	           ( m_sceneDepthUsable ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0 );
 	di.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	di.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	if ( vkCreateImage( m_device, &di, nullptr, &t.depthImage ) != VK_SUCCESS )
-	{
-		SetError( outError, "vkCreateImage (render-target depth) failed" );
+	if ( !CreateImage( di, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &t.depthImage, &t.depthMemory,
+	         "render-target depth", outError ) )
 		return -1;
-	}
-	VkMemoryRequirements req = {};
-	vkGetImageMemoryRequirements( m_device, t.depthImage, &req );
-	bool found = false;
-	const uint32_t type =
-	    FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &found );
-	VkMemoryAllocateInfo ai = {};
-	ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	ai.allocationSize = req.size;
-	ai.memoryTypeIndex = type;
-	if ( !found || vkAllocateMemory( m_device, &ai, nullptr, &t.depthMemory ) != VK_SUCCESS )
-	{
-		SetError( outError, "no device memory for render-target depth" );
-		return -1;
-	}
-	vkBindImageMemory( m_device, t.depthImage, t.depthMemory, 0 );
 
 	VkImageViewCreateInfo dv = {};
 	dv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -4792,10 +4473,60 @@ void CVulkanContext::SetManagedTextureSamplerState( int handle, int samplerState
 		return;
 	// Source sets sampler state while it creates the texture, before any frame
 	// samples it. A later change must not rewrite a set that a submitted frame
-	// may still be reading, so let the device finish first.
+	// may still be reading: the new sampler goes into fresh sets (a replay looks
+	// the texture's set up by handle, so everything not yet submitted uses them)
+	// and the old sets retire behind the newest submitted frame.
+	VkDescriptorSet *const owned[2] = { &t.descSet, &t.descSetSrgb };
+	VkDescriptorSet fresh[2] = {};
+	bool allocated =
+	    m_dynTexDescPool != VK_NULL_HANDLE && m_liveTextureSets + 2 < kMaxManagedTexSets;
+	for ( int srgb = 0; srgb < 2 && allocated; ++srgb )
 	{
-		CFrameCostScope cost( m_frameCost, kCostDeviceWaitIdle );
-		vkDeviceWaitIdle( m_device );
+		if ( *owned[srgb] == VK_NULL_HANDLE )
+			continue;
+		VkDescriptorSetAllocateInfo da = {};
+		da.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		da.descriptorPool = m_dynTexDescPool;
+		da.descriptorSetCount = 1;
+		da.pSetLayouts = &m_dynTexDescLayout;
+		allocated = vkAllocateDescriptorSets( m_device, &da, &fresh[srgb] ) == VK_SUCCESS;
+		if ( allocated )
+			++m_liveTextureSets;
+		else
+			fresh[srgb] = VK_NULL_HANDLE;
+	}
+	if ( allocated )
+	{
+		for ( int srgb = 0; srgb < 2; ++srgb )
+		{
+			if ( *owned[srgb] == VK_NULL_HANDLE )
+				continue;
+			m_retiredObjects.push_back( { m_submitSerial,
+			    []( CVulkanContext *context, uint64_t set, uint64_t )
+			    {
+				    const VkDescriptorSet retired = reinterpret_cast<VkDescriptorSet>( set );
+				    vkFreeDescriptorSets(
+				        context->m_device, context->m_dynTexDescPool, 1, &retired );
+				    --context->m_liveTextureSets;
+			    },
+			    reinterpret_cast<uint64_t>( *owned[srgb] ), 0 } );
+			*owned[srgb] = fresh[srgb];
+		}
+	}
+	else
+	{
+		// The pool is full: rewrite in place once the newest submitted frame,
+		// the last that can read the sets, has completed (a timeline wait).
+		for ( VkDescriptorSet set : fresh )
+		{
+			if ( set != VK_NULL_HANDLE )
+			{
+				vkFreeDescriptorSets( m_device, m_dynTexDescPool, 1, &set );
+				--m_liveTextureSets;
+			}
+		}
+		CFrameCostScope cost( m_frameCost, kCostFenceWait );
+		WaitForSubmittedFrame( m_submitSerial, UINT64_MAX );
 	}
 	for ( int srgb = 0; srgb < 2; ++srgb )
 	{
@@ -4989,28 +4720,34 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 	if ( !FlushPendingUploads( outError ) )
 		return false;
 	VkBuffer staging = VK_NULL_HANDLE;
-	VkDeviceMemory stagingMem = VK_NULL_HANDLE;
+	VulkanMemory stagingMem = VK_NULL_HANDLE;
 	if ( !CreateBuffer( dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging,
 	         &stagingMem, outError ) )
 		return false;
 	void *mapped = nullptr;
-	vkMapMemory( m_device, stagingMem, 0, dataSize, 0, &mapped );
+	MapMemory( stagingMem, &mapped );
 	std::memcpy( mapped, data, dataSize );
-	vkUnmapMemory( m_device, stagingMem );
+	UnmapMemory( stagingMem );
 
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
 	if ( !BeginSingleTimeCommands( &cmd, outError ) )
 	{
 		vkDestroyBuffer( m_device, staging, nullptr );
-		vkFreeMemory( m_device, stagingMem, nullptr );
+		FreeMemory( stagingMem );
 		return false;
 	}
 	upload.offset = 0;
 	RecordTextureUpload( cmd, t.image, upload, staging, 0 );
-	const bool ok = EndSingleTimeCommands( cmd, outError );
-	vkDestroyBuffer( m_device, staging, nullptr );
-	vkFreeMemory( m_device, stagingMem, nullptr );
+	uint64_t uploaded = 0;
+	const bool ok = EndSingleTimeCommands( cmd, outError, &uploaded );
+	if ( ok )
+		ReleaseBufferAfter( uploaded, staging, stagingMem );
+	else
+	{
+		vkDestroyBuffer( m_device, staging, nullptr );
+		FreeMemory( stagingMem );
+	}
 	if ( ok && level == 0 )
 		t.uploaded = true;
 	return ok;
@@ -5094,7 +4831,11 @@ bool CVulkanContext::FlushPendingUploads( std::string *outError )
 	if ( ok )
 	{
 		ok = RecordPendingUploads( cmd, stream );
-		ok = EndSingleTimeCommands( cmd, outError ) && ok;
+		uint64_t uploaded = 0;
+		if ( EndSingleTimeCommands( cmd, outError, &uploaded ) )
+			ReleaseStreamBufferAfter( uploaded, stream );
+		else
+			ok = false;
 	}
 	DestroyStreamBuffer( stream );
 	if ( !ok )
@@ -6258,7 +5999,7 @@ void CVulkanContext::DestroyDynamicMesh()
 	}
 	if ( m_dynTexMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( m_device, m_dynTexMemory, nullptr );
+		FreeMemory( m_dynTexMemory );
 		m_dynTexMemory = VK_NULL_HANDLE;
 	}
 	// The device is idle here: every texture, deleted or not, can go.
@@ -6272,6 +6013,9 @@ void CVulkanContext::DestroyDynamicMesh()
 	for ( RetiredTexture &r : m_retiredTextures )
 		ReleaseManagedTextureObjects( r.texture );
 	m_retiredTextures.clear();
+	for ( const RetiredObject &retired : m_retiredObjects )
+		retired.destroy( this, retired.a, retired.b );
+	m_retiredObjects.clear();
 	m_computeWork.clear();
 	m_compute.Shutdown();
 	m_freeTextureHandles.clear();
@@ -6308,7 +6052,7 @@ bool CVulkanContext::EnsureStreamBuffer(
 	if ( !CreateBuffer( capacity, usage,
 	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 	         &stream.buffer, &stream.memory, &error ) ||
-	     vkMapMemory( m_device, stream.memory, 0, capacity, 0, &stream.mapped ) != VK_SUCCESS )
+	     MapMemory( stream.memory, &stream.mapped ) != VK_SUCCESS )
 	{
 		Log( "stream buffer (%llu bytes) unavailable: %s\n",
 		    static_cast<unsigned long long>( capacity ), error.c_str() );
@@ -6322,11 +6066,11 @@ bool CVulkanContext::EnsureStreamBuffer(
 void CVulkanContext::DestroyStreamBuffer( StreamBuffer &stream )
 {
 	if ( stream.mapped )
-		vkUnmapMemory( m_device, stream.memory );
+		UnmapMemory( stream.memory );
 	if ( stream.buffer != VK_NULL_HANDLE )
 		vkDestroyBuffer( m_device, stream.buffer, nullptr );
 	if ( stream.memory != VK_NULL_HANDLE )
-		vkFreeMemory( m_device, stream.memory, nullptr );
+		FreeMemory( stream.memory );
 	stream = StreamBuffer();
 }
 
@@ -6364,7 +6108,7 @@ bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, 
 		return false;
 	}
 	void *mapped = nullptr;
-	const VkResult mapResult = vkMapMemory( m_device, staging.memory, 0, stagingBytes, 0, &mapped );
+	const VkResult mapResult = MapMemory( staging.memory, &mapped );
 	if ( mapResult != VK_SUCCESS )
 	{
 		SetError(
@@ -6404,34 +6148,28 @@ bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, 
 	}
 	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
 	    0, 0, nullptr, 2, barriers, 0, nullptr );
-	const bool uploaded = EndSingleTimeCommands( cmd, outError );
-	DestroyStreamBuffer( staging );
-	if ( !uploaded )
+	uint64_t uploadValue = 0;
+	const bool uploaded = EndSingleTimeCommands( cmd, outError, &uploadValue );
+	if ( uploaded )
+		ReleaseStreamBufferAfter( uploadValue, staging );
+	else
 	{
+		DestroyStreamBuffer( staging );
 		DestroyStreamBuffer( newIndices );
 		DestroyStreamBuffer( newVertices );
 		return false;
 	}
 
-	if ( WorldMeshResident() )
-	{
-		const VkResult idle = vkDeviceWaitIdle( m_device );
-		if ( idle != VK_SUCCESS )
-		{
-			SetError(
-			    outError, std::string( "WMSH replacement wait failed: " ) + ResultString( idle ) );
-			DestroyStreamBuffer( newIndices );
-			DestroyStreamBuffer( newVertices );
-			return false;
-		}
-	}
 	SetWorldLightmapHandle( -1 );
 	SetProbeVolumeHandles( -1, -1, 0 );
 	SetProbeDeltaHandle( -1 );
 	SetShadowField( -1, nullptr, 0.0f, nullptr );
 	SetReflectionProbes( nullptr, 0, 0, 0 );
-	DestroyStreamBuffer( m_worldIndexBuffer );
-	DestroyStreamBuffer( m_worldVertexBuffer );
+	// Submitted frames may still read the old mesh; nothing recorded later
+	// does (a replay binds the resident buffers). Released behind the newest
+	// submission's value, without waiting.
+	ReleaseStreamBufferAfter( m_hostDevice->SubmittedValue(), m_worldIndexBuffer );
+	ReleaseStreamBufferAfter( m_hostDevice->SubmittedValue(), m_worldVertexBuffer );
 	newVertices.capacity = vertexBytes;
 	newIndices.capacity = indexBytes;
 	m_worldVertexBuffer = newVertices;
@@ -6650,13 +6388,16 @@ bool CVulkanContext::ReadWorldMeshBytes(
 	hostRead.size = VK_WHOLE_SIZE;
 	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
 	    nullptr, 1, &hostRead, 0, nullptr );
-	if ( !EndSingleTimeCommands( cmd, outError ) )
+	// A readback: wait for its own submission's value, nothing more.
+	uint64_t copied = 0;
+	if ( !EndSingleTimeCommands( cmd, outError, &copied ) ||
+	     m_hostDevice->WaitValue( copied, UINT64_MAX ) != VK_SUCCESS )
 	{
 		DestroyStreamBuffer( staging );
 		return false;
 	}
 	void *mapped = nullptr;
-	const VkResult mapResult = vkMapMemory( m_device, staging.memory, 0, bytes, 0, &mapped );
+	const VkResult mapResult = MapMemory( staging.memory, &mapped );
 	if ( mapResult != VK_SUCCESS )
 	{
 		SetError(
@@ -6676,15 +6417,14 @@ void CVulkanContext::ReleaseWorldMesh()
 	if ( m_device == VK_NULL_HANDLE )
 		return;
 	++m_worldMeshRevision;
-	if ( WorldMeshResident() )
-		vkDeviceWaitIdle( m_device );
 	SetWorldLightmapHandle( -1 );
 	SetProbeVolumeHandles( -1, -1, 0 );
 	SetProbeDeltaHandle( -1 );
 	SetShadowField( -1, nullptr, 0.0f, nullptr );
 	SetReflectionProbes( nullptr, 0, 0, 0 );
-	DestroyStreamBuffer( m_worldIndexBuffer );
-	DestroyStreamBuffer( m_worldVertexBuffer );
+	// Released behind the newest submission, without waiting (UploadWorldMesh).
+	ReleaseStreamBufferAfter( m_hostDevice->SubmittedValue(), m_worldIndexBuffer );
+	ReleaseStreamBufferAfter( m_hostDevice->SubmittedValue(), m_worldVertexBuffer );
 	m_worldVertexCount = 0;
 	m_worldIndexCount = 0;
 }
@@ -6701,14 +6441,12 @@ bool CVulkanContext::WaitForSubmittedFrame( uint64_t serial, uint64_t timeoutNs 
 		return false;
 	if ( serial <= m_completedSerial )
 		return true;
-	// A slot's fence is reset only just before that slot submits again, after
-	// BeginFrame waited for it; so a submission not yet known complete still
-	// owns its slot's fence.
-	for ( uint32_t slot = 0; slot < m_framesInFlight; ++slot )
+	// A serial not yet known complete is still in m_serialValues.
+	for ( const std::pair<uint64_t, uint64_t> &submitted : m_serialValues )
 	{
-		if ( m_slotSerial[slot] != serial )
+		if ( submitted.first != serial )
 			continue;
-		if ( vkWaitForFences( m_device, 1, &m_inFlight[slot], VK_TRUE, timeoutNs ) != VK_SUCCESS )
+		if ( m_hostDevice->WaitValue( submitted.second, timeoutNs ) != VK_SUCCESS )
 			return false;
 		// One queue completes submissions in order.
 		m_completedSerial = std::max( m_completedSerial, serial );
@@ -6717,7 +6455,7 @@ bool CVulkanContext::WaitForSubmittedFrame( uint64_t serial, uint64_t timeoutNs 
 	return false;
 }
 
-bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
+bool CVulkanContext::PrepareFrame( bool *outSkip, std::string *outError )
 {
 	if ( outSkip )
 		*outSkip = false;
@@ -6725,12 +6463,12 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	m_frameBeginCpuUs = ThreadCpuMicros();
 	if ( !IsValid() )
 	{
-		SetError( outError, "BeginFrame on an invalid context" );
+		SetError( outError, "PrepareFrame on an invalid context" );
 		return false;
 	}
 	if ( m_frameOpen )
 	{
-		SetError( outError, "BeginFrame called while a frame is already open" );
+		SetError( outError, "PrepareFrame called while a frame is already open" );
 		return false;
 	}
 	bool surfaceReady = true;
@@ -6773,13 +6511,13 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		return true;
 	}
 
+	if ( m_slotValue[m_currentFrame] != 0 )
 	{
 		CFrameCostScope wait( m_frameCost, kCostFenceWait );
-		vkWaitForFences( m_device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX );
+		m_hostDevice->WaitValue( m_slotValue[m_currentFrame], UINT64_MAX );
 	}
 	// One queue completes submissions in order: this slot's is done, so are all
 	// before it.
-	m_completedSerial = std::max( m_completedSerial, m_slotSerial[m_currentFrame] );
 	RetireCompletedTextures();
 	ReadSlotGpuTime( m_currentFrame );
 	// The slot's grouped sets are no longer read: they return to its pools.
@@ -6828,28 +6566,141 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		return false;
 	}
 
-	// If a previous frame is still using this image, wait on its fence.
-	if ( m_imagesInFlight[imageIndex] != VK_NULL_HANDLE )
+	// If a previous frame is still using this image, wait for its value.
+	if ( m_imageValue[imageIndex] != 0 )
 	{
 		CFrameCostScope wait( m_frameCost, kCostFenceWait );
-		vkWaitForFences( m_device, 1, &m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX );
+		m_hostDevice->WaitValue( m_imageValue[imageIndex], UINT64_MAX );
 	}
-	m_imagesInFlight[imageIndex] = m_inFlight[m_currentFrame];
 
 	m_acquiredImage = imageIndex;
 
-	VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
-	vkResetCommandBuffer( cmd, 0 );
-
-	VkCommandBufferBeginInfo begin = {};
-	begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	r = vkBeginCommandBuffer( cmd, &begin );
-	if ( r != VK_SUCCESS )
-	{
-		SetError( outError, std::string( "vkBeginCommandBuffer failed: " ) + ResultString( r ) );
+	// The back buffer is captured (what ReadPixels reads), or on request the
+	// swapchain image the window presents. Its image is made here: recording
+	// runs inside the adapter's Submit, where nothing may fail halfway.
+	m_frameCapture = m_captureRequested && ( !m_capturePresented || m_presentCapturable );
+	m_frameCapturePresented = m_frameCapture && m_capturePresented;
+	if ( m_frameCapture &&
+	     !CreateCaptureImage( m_frameCapturePresented ? m_presentExtent : m_swapExtent, outError ) )
 		return false;
+	m_frameOpen = true;
+	return true;
+}
+
+render::device::IRenderDevice2 *CVulkanContext::Port()
+{
+	return m_hostDevice ? &m_hostDevice->Port() : nullptr;
+}
+
+bool CVulkanContext::HasFrameStage( FrameStage stage ) const
+{
+	switch ( stage )
+	{
+	case kFrameStageResolve:
+		return m_activeSamples > 1;
+	case kFrameStageCapture:
+		return m_frameCapture && !m_frameCapturePresented;
+	default:
+		return stage >= kFrameStageComputeAndUploads && stage < kFrameStageCount;
 	}
+}
+
+void CVulkanContext::AttachFrameStage( FrameStage stage, render::device::CommandEncoder &encoder )
+{
+	static const render::device::vulkan::IHostDevice::NativeRecord kRecords[kFrameStageCount] = {
+	    []( void *user, VkCommandBuffer cmd )
+	    {
+		    static_cast<CVulkanContext *>( user )->RecordFrameStage(
+		        kFrameStageComputeAndUploads, cmd );
+	    },
+	    []( void *user, VkCommandBuffer cmd )
+	    {
+		    static_cast<CVulkanContext *>( user )->RecordFrameStage( kFrameStageScene, cmd );
+	    },
+	    []( void *user, VkCommandBuffer cmd )
+	    {
+		    static_cast<CVulkanContext *>( user )->RecordFrameStage( kFrameStageResolve, cmd );
+	    },
+	    []( void *user, VkCommandBuffer cmd )
+	    {
+		    static_cast<CVulkanContext *>( user )->RecordFrameStage( kFrameStageCapture, cmd );
+	    },
+	    []( void *user, VkCommandBuffer cmd )
+	    {
+		    static_cast<CVulkanContext *>( user )->RecordFrameStage( kFrameStagePresent, cmd );
+	    },
+	};
+	m_hostDevice->RecordNative( encoder, kRecords[stage], this );
+	if ( stage != kFrameStagePresent )
+		return;
+	// Only the present (a blit, or the gamma pass's color writes) touches the
+	// acquired swapchain image; rendering into the back buffer need not wait
+	// for the acquire. The wait and signal apply to the whole submission.
+	m_hostDevice->AddSubmitWait( encoder, m_imageAvailable[m_currentFrame],
+	    VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT );
+	m_hostDevice->AddSubmitSignal( encoder, m_renderFinished[m_acquiredImage] );
+}
+
+bool CVulkanContext::RenderFrame( bool *outSkip, std::string *outError )
+{
+	if ( !PrepareFrame( outSkip, outError ) )
+		return false;
+	if ( outSkip && *outSkip )
+		return true;
+	// The same work AttachFrameStage adds to the graph's passes, on an encoder
+	// of its own.
+	render::device::CompletionToken token;
+	const bool submitted = m_hostDevice->SubmitNative(
+	    []( void *user, VkCommandBuffer cmd )
+	    {
+		    static_cast<CVulkanContext *>( user )->RecordFrameCommands( cmd );
+	    },
+	    this, m_imageAvailable[m_currentFrame],
+	    VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+	    m_renderFinished[m_acquiredImage], &token );
+	return FinishFrame( token, submitted, outError );
+}
+
+void CVulkanContext::RecordFrameCommands( VkCommandBuffer cmd )
+{
+	for ( int stage = 0; stage < kFrameStageCount; ++stage )
+	{
+		if ( HasFrameStage( static_cast<FrameStage>( stage ) ) )
+			RecordFrameStage( static_cast<FrameStage>( stage ), cmd );
+	}
+}
+
+void CVulkanContext::RecordFrameStage( FrameStage stage, VkCommandBuffer cmd )
+{
+	// Labels the stream opens are closed at the end of their stage, so they
+	// nest inside the graph pass's own label.
 	m_debugUtils.BeginFrameCommands( cmd );
+	switch ( stage )
+	{
+	case kFrameStageComputeAndUploads:
+		RecordFrameComputeAndUploads( cmd );
+		break;
+	case kFrameStageScene:
+		RecordFrameScene( cmd );
+		break;
+	case kFrameStageResolve:
+		// Everything after this reads the single-sampled back buffer.
+		ResolveBackBuffer( cmd, m_acquiredImage );
+		break;
+	case kFrameStageCapture:
+		RecordCapture( cmd, m_acquiredImage );
+		break;
+	case kFrameStagePresent:
+		RecordFramePresent( cmd );
+		break;
+	case kFrameStageCount:
+		break;
+	}
+	m_debugUtils.EndFrameCommands();
+}
+
+void CVulkanContext::RecordFrameComputeAndUploads( VkCommandBuffer cmd )
+{
 	m_recordBeginUs = FrameClockMicros();
 	if ( m_timestampPool != VK_NULL_HANDLE )
 	{
@@ -6881,7 +6732,11 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		m_pendingUploads.clear();
 		m_pendingUploadData.clear();
 	}
+}
 
+void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
+{
+	const uint32_t imageIndex = m_acquiredImage;
 	// Queries are reset outside any render pass, before the stream that issues
 	// them replays. Only the slots this stream issues are reset, so a result of
 	// an earlier frame that the engine has yet to read survives.
@@ -8097,8 +7952,37 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	// (ClearBuffers) so the last frame's geometry stays available for an
 	// on-demand screenshot capture (IShaderAPI::ReadPixels re-renders it).
 
-	m_frameOpen = true;
-	return true;
+	vkCmdEndRenderPass( cmd );
+}
+
+void CVulkanContext::RecordFramePresent( VkCommandBuffer cmd )
+{
+	const uint32_t imageIndex = m_acquiredImage;
+	const bool capturePresented = m_frameCapturePresented;
+	const bool captureBackBuffer = m_frameCapture && !m_frameCapturePresented;
+	const VkImageLayout backBufferLayout = captureBackBuffer
+	                                           ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+	                                           : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	if ( m_timestampPool != VK_NULL_HANDLE )
+		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool,
+		    m_currentFrame * kTimestampsPerFrame + 1 );
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+		GpuTimerMark( cmd, "present (waits for the swapchain image)" );
+	ApplyPublishedGammaRamp();
+	if ( !m_gammaActive ||
+	     !RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
+		RecordPresentBlit( cmd, imageIndex, backBufferLayout, capturePresented );
+	m_captureRequested = m_capturePresented = false;
+
+	if ( m_computeFlush )
+		m_computeFlush( cmd, m_submitSerial + 1 );
+	if ( m_timestampPool != VK_NULL_HANDLE )
+		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool,
+		    m_currentFrame * kTimestampsPerFrame + 2 );
+	if ( m_gpuTimerPool != VK_NULL_HANDLE )
+		GpuTimerMark( cmd, "end" );
+	m_recordEndUs = FrameClockMicros();
+	m_frameCost.Add( kCostRecord, m_recordEndUs - m_recordBeginUs );
 }
 
 bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
@@ -8336,7 +8220,7 @@ bool CVulkanContext::CreateMsaaTargets( int samples, std::string *outError )
 	}
 
 	const auto createImage = [&]( VkFormat format, VkImageUsageFlags usage, bool mutableSrgb,
-	                             VkImage *outImage, VkDeviceMemory *outMemory ) -> bool
+	                             VkImage *outImage, VulkanMemory *outMemory ) -> bool
 	{
 		const VkFormat viewFormats[2] = { m_swapFormat, m_swapFormatSrgb };
 		VkImageFormatListCreateInfo formatList = {};
@@ -8360,18 +8244,8 @@ bool CVulkanContext::CreateMsaaTargets( int samples, std::string *outError )
 			img.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 			img.pNext = &formatList;
 		}
-		if ( vkCreateImage( m_device, &img, nullptr, outImage ) != VK_SUCCESS )
-			return false;
-		VkMemoryRequirements req = {};
-		vkGetImageMemoryRequirements( m_device, *outImage, &req );
-		bool found = false;
-		VkMemoryAllocateInfo ai = {};
-		ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-		ai.allocationSize = req.size;
-		ai.memoryTypeIndex =
-		    FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &found );
-		return found && vkAllocateMemory( m_device, &ai, nullptr, outMemory ) == VK_SUCCESS &&
-		       vkBindImageMemory( m_device, *outImage, *outMemory, 0 ) == VK_SUCCESS;
+		return CreateImage( img, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outImage, outMemory,
+		    "multisample target", nullptr );
 	};
 	const auto createView = [&]( VkImage image, VkFormat format, VkImageAspectFlags aspects,
 	                            VkImageView *outView ) -> bool
@@ -8404,7 +8278,7 @@ bool CVulkanContext::CreateMsaaTargets( int samples, std::string *outError )
 	        m_srgbAttachments, &m_msColor, &m_msColorMemory ) &&
 	    createImage( m_depthFormat,
 	        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-	            ( m_sceneDepthUsable ? VK_IMAGE_USAGE_SAMPLED_BIT : 0u ),
+	            ( m_sceneDepthUsable ? VkImageUsageFlags( VK_IMAGE_USAGE_SAMPLED_BIT ) : 0u ),
 	        false, &m_msDepth, &m_msDepthMemory ) &&
 	    createView( m_msColor, m_swapFormat, VK_IMAGE_ASPECT_COLOR_BIT, &m_msColorView ) &&
 	    ( !m_srgbAttachments || createView( m_msColor, m_swapFormatSrgb, VK_IMAGE_ASPECT_COLOR_BIT,
@@ -8453,10 +8327,10 @@ void CVulkanContext::DestroyMsaaTargets()
 			vkDestroyImage( m_device, *image, nullptr );
 		*image = VK_NULL_HANDLE;
 	}
-	for ( VkDeviceMemory *memory : { &m_msColorMemory, &m_msDepthMemory } )
+	for ( VulkanMemory *memory : { &m_msColorMemory, &m_msDepthMemory } )
 	{
 		if ( *memory != VK_NULL_HANDLE )
-			vkFreeMemory( m_device, *memory, nullptr );
+			FreeMemory( *memory );
 		*memory = VK_NULL_HANDLE;
 	}
 	m_msExtent = { 0, 0 };
@@ -8689,8 +8563,7 @@ bool CVulkanContext::EnsurePresentGamma( std::string *outError )
 		if ( !CreateBuffer( rampBytes, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 		         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 		         &m_gammaRampBuffers[slot], &m_gammaRampMemories[slot], outError ) ||
-		     vkMapMemory( m_device, m_gammaRampMemories[slot], 0, rampBytes, 0, &mapped ) !=
-		         VK_SUCCESS )
+		     MapMemory( m_gammaRampMemories[slot], &mapped ) != VK_SUCCESS )
 		{
 			SetError( outError, "gamma ramp buffer could not be created" );
 			DestroyPresentGamma();
@@ -8850,7 +8723,7 @@ void CVulkanContext::DestroyPresentGamma()
 		if ( m_gammaRampBuffers[slot] != VK_NULL_HANDLE )
 			vkDestroyBuffer( m_device, m_gammaRampBuffers[slot], nullptr );
 		if ( m_gammaRampMemories[slot] != VK_NULL_HANDLE )
-			vkFreeMemory( m_device, m_gammaRampMemories[slot], nullptr );
+			FreeMemory( m_gammaRampMemories[slot] );
 		m_gammaRampBuffers[slot] = VK_NULL_HANDLE;
 		m_gammaRampMemories[slot] = VK_NULL_HANDLE;
 		m_gammaRampMapped[slot] = nullptr;
@@ -8949,92 +8822,32 @@ bool CVulkanContext::RecordPresentGamma(
 	return true;
 }
 
-bool CVulkanContext::EndFrame( std::string *outError )
+bool CVulkanContext::FinishFrame(
+    const render::device::CompletionToken &token, bool submitted, std::string *outError )
 {
 	if ( !m_frameOpen )
 	{
-		SetError( outError, "EndFrame called without an open frame" );
+		SetError( outError, "FinishFrame called without an open frame" );
 		return false;
 	}
-
-	VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
-	uint32_t imageIndex = m_acquiredImage;
-
-	vkCmdEndRenderPass( cmd );
-	// Everything after this reads the single-sampled back buffer.
-	if ( m_activeSamples > 1 )
-		ResolveBackBuffer( cmd, imageIndex );
-
-	// The back buffer is captured (what ReadPixels reads), or on request the
-	// swapchain image the window presents.
-	bool doCapture = m_captureRequested && ( !m_capturePresented || m_presentCapturable );
-	const bool capturePresented = doCapture && m_capturePresented;
-	const bool captureBackBuffer = doCapture && !m_capturePresented;
-	if ( doCapture &&
-	     !CreateCaptureImage( capturePresented ? m_presentExtent : m_swapExtent, outError ) )
-		return false;
-	if ( captureBackBuffer && !RecordCapture( cmd, imageIndex ) )
-		return false;
-	const VkImageLayout backBufferLayout = captureBackBuffer
-	                                           ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-	                                           : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	if ( m_timestampPool != VK_NULL_HANDLE )
-		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool,
-		    m_currentFrame * kTimestampsPerFrame + 1 );
-	if ( m_gpuTimerPool != VK_NULL_HANDLE )
-		GpuTimerMark( cmd, "present (waits for the swapchain image)" );
-	ApplyPublishedGammaRamp();
-	if ( !m_gammaActive ||
-	     !RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
-		RecordPresentBlit( cmd, imageIndex, backBufferLayout, capturePresented );
-	m_captureRequested = m_capturePresented = false;
-
-	if ( m_computeFlush )
-		m_computeFlush( cmd, m_submitSerial + 1 );
-	if ( m_timestampPool != VK_NULL_HANDLE )
-		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool,
-		    m_currentFrame * kTimestampsPerFrame + 2 );
-	if ( m_gpuTimerPool != VK_NULL_HANDLE )
-		GpuTimerMark( cmd, "end" );
-	m_debugUtils.EndFrameCommands();
-	VkResult r = vkEndCommandBuffer( cmd );
-	m_frameCost.Add( kCostRecord, FrameClockMicros() - m_recordBeginUs );
-	if ( r != VK_SUCCESS )
+	const uint32_t imageIndex = m_acquiredImage;
+	const bool doCapture = m_frameCapture;
+	m_frameCost.Add( kCostSubmit, FrameClockMicros() - m_recordEndUs );
+	if ( !submitted )
 	{
-		SetError( outError, std::string( "vkEndCommandBuffer failed: " ) + ResultString( r ) );
+		// The acquired image is not presented; the next frame acquires again.
+		m_frameOpen = false;
+		m_captureRequested = m_capturePresented = false;
+		SetError( outError, "the frame's submission failed" );
 		return false;
 	}
-
-	// Only the present (a blit, or the gamma pass's color writes) touches the
-	// acquired swapchain image; rendering into the back buffer need not wait
-	// for the acquire.
-	VkPipelineStageFlags waitStage =
-	    VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	VkSubmitInfo submit = {};
-	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submit.waitSemaphoreCount = 1;
-	submit.pWaitSemaphores = &m_imageAvailable[m_currentFrame];
-	submit.pWaitDstStageMask = &waitStage;
-	submit.commandBufferCount = 1;
-	submit.pCommandBuffers = &cmd;
-	submit.signalSemaphoreCount = 1;
-	submit.pSignalSemaphores = &m_renderFinished[imageIndex];
-
-	vkResetFences( m_device, 1, &m_inFlight[m_currentFrame] );
-	{
-		CFrameCostScope submitCost( m_frameCost, kCostSubmit );
-		r = vkQueueSubmit( m_graphicsQueue, 1, &submit, m_inFlight[m_currentFrame] );
-	}
-	if ( r == VK_SUCCESS )
-	{
-		m_slotSerial[m_currentFrame] = ++m_submitSerial;
-		m_slotStatsFrame[m_currentFrame] = ++m_statsFrame;
-	}
-	if ( r != VK_SUCCESS )
-	{
-		SetError( outError, std::string( "vkQueueSubmit failed: " ) + ResultString( r ) );
-		return false;
-	}
+	const uint64_t value = token.value;
+	m_slotSerial[m_currentFrame] = ++m_submitSerial;
+	m_slotValue[m_currentFrame] = value;
+	m_imageValue[imageIndex] = value;
+	m_serialValues.emplace_back( m_submitSerial, value );
+	m_slotStatsFrame[m_currentFrame] = ++m_statsFrame;
+	VkResult r = VK_SUCCESS;
 	// The queries this frame replayed now have results on their way.
 	for ( const std::pair<int, uint64_t> &issue : m_replayedQueries )
 		m_querySlots[static_cast<size_t>( issue.first )].submitted = issue.second;
@@ -9044,7 +8857,7 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	// before the host-visible copy is valid to read.
 	if ( doCapture )
 	{
-		vkWaitForFences( m_device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX );
+		m_hostDevice->WaitValue( value, UINT64_MAX );
 		if ( !ResolveCapturedPixels( outError ) )
 			return false;
 	}
@@ -9531,6 +9344,7 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 	}
 	m_gpuResultFrame = 0;
 	m_frameMarks.clear();
+	m_lastFrameCost = m_frameCost;
 	m_frameCost.Reset();
 	m_prevFrameBeginUs = m_frameBeginUs;
 	m_prevFrameBeginCpuUs = m_frameBeginCpuUs;
@@ -9545,19 +9359,14 @@ bool CVulkanContext::ResolveCapturedPixels( std::string *outError )
 	vkGetImageSubresourceLayout( m_device, m_captureImage, &sub, &layout );
 
 	void *mapped = nullptr;
-	VkResult r = vkMapMemory( m_device, m_captureMemory, 0, VK_WHOLE_SIZE, 0, &mapped );
+	VkResult r = MapMemory( m_captureMemory, &mapped );
 	if ( r != VK_SUCCESS )
 	{
 		SetError( outError, std::string( "vkMapMemory (capture) failed: " ) + ResultString( r ) );
 		return false;
 	}
 
-	VkMappedMemoryRange range = {};
-	range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-	range.memory = m_captureMemory;
-	range.offset = 0;
-	range.size = VK_WHOLE_SIZE;
-	vkInvalidateMappedMemoryRanges( m_device, 1, &range );
+	m_hostDevice->Invalidate( m_captureMemory, 0, VK_WHOLE_SIZE );
 
 	const int w = static_cast<int>( m_captureExtent.width );
 	const int h = static_cast<int>( m_captureExtent.height );
@@ -9589,7 +9398,7 @@ bool CVulkanContext::ResolveCapturedPixels( std::string *outError )
 			}
 		}
 	}
-	vkUnmapMemory( m_device, m_captureMemory );
+	UnmapMemory( m_captureMemory );
 
 	m_capturedWidth = w;
 	m_capturedHeight = h;
@@ -9601,7 +9410,7 @@ void CVulkanContext::DestroySwapchainObjects()
 	DestroyPresentGammaTargets();
 	DestroyBackBuffers();
 	m_presentImages.clear();
-	m_imagesInFlight.clear();
+	m_imageValue.clear();
 
 	if ( m_swapchain != VK_NULL_HANDLE )
 	{
@@ -9638,18 +9447,18 @@ void CVulkanContext::DestroyBackBuffers()
 		if ( img != VK_NULL_HANDLE )
 			vkDestroyImage( m_device, img, nullptr );
 	m_depthImages.clear();
-	for ( VkDeviceMemory mem : m_depthMemories )
+	for ( VulkanMemory mem : m_depthMemories )
 		if ( mem != VK_NULL_HANDLE )
-			vkFreeMemory( m_device, mem, nullptr );
+			FreeMemory( mem );
 	m_depthMemories.clear();
 
 	for ( VkImage img : m_swapImages )
 		if ( img != VK_NULL_HANDLE )
 			vkDestroyImage( m_device, img, nullptr );
 	m_swapImages.clear();
-	for ( VkDeviceMemory mem : m_backBufferMemories )
+	for ( VulkanMemory mem : m_backBufferMemories )
 		if ( mem != VK_NULL_HANDLE )
-			vkFreeMemory( m_device, mem, nullptr );
+			FreeMemory( mem );
 	m_backBufferMemories.clear();
 }
 
@@ -9742,7 +9551,7 @@ void CVulkanContext::Shutdown()
 	}
 	if ( m_captureMemory != VK_NULL_HANDLE )
 	{
-		vkFreeMemory( m_device, m_captureMemory, nullptr );
+		FreeMemory( m_captureMemory );
 		m_captureMemory = VK_NULL_HANDLE;
 	}
 	m_captureExtent = { 0, 0 };
@@ -9794,19 +9603,19 @@ void CVulkanContext::Shutdown()
 		for ( VkSemaphore s : m_renderFinished )
 			if ( s != VK_NULL_HANDLE )
 				vkDestroySemaphore( m_device, s, nullptr );
-		for ( VkFence f : m_inFlight )
-			if ( f != VK_NULL_HANDLE )
-				vkDestroyFence( m_device, f, nullptr );
 		m_imageAvailable.clear();
 		m_renderFinished.clear();
-		m_inFlight.clear();
+		for ( uint64_t &value : m_slotValue )
+			value = 0;
+		m_serialValues.clear();
+		// The pool below frees them.
+		m_oneTimeCommands.clear();
 
 		if ( m_commandPool != VK_NULL_HANDLE )
 		{
 			vkDestroyCommandPool( m_device, m_commandPool, nullptr );
 			m_commandPool = VK_NULL_HANDLE;
 		}
-		m_commandBuffers.clear();
 
 		for ( VkRenderPass *pass : { &m_renderPass, &m_renderPassLoad, &m_renderPassTarget,
 		          &m_renderPassLoadSrgb, &m_renderPassTargetSrgb, &m_renderPassClearSrgb } )
@@ -9829,14 +9638,13 @@ void CVulkanContext::Shutdown()
 
 		m_debugUtils.Reset();
 		m_shaderLibrary = VulkanShaderLibrary();
-		vkDestroyDevice( m_device, nullptr );
-		m_device = VK_NULL_HANDLE;
-	}
-
-	if ( m_debugMessenger != VK_NULL_HANDLE && m_pfnDestroyDebugMessenger )
-	{
-		m_pfnDestroyDebugMessenger( m_instance, m_debugMessenger, nullptr );
-		m_debugMessenger = VK_NULL_HANDLE;
+		// Every release the adapter holds for this context is due (the
+		// device is idle), and runs while this context's state is intact.
+		m_hostDevice->Collect();
+		if ( m_hostDevice->LiveAllocations() > m_adapterAllocations )
+			Log( "shutdown: %llu allocations still live\n",
+			    static_cast<unsigned long long>(
+			        m_hostDevice->LiveAllocations() - m_adapterAllocations ) );
 	}
 
 	if ( m_surface != VK_NULL_HANDLE && m_instance != VK_NULL_HANDLE )
@@ -9844,12 +9652,10 @@ void CVulkanContext::Shutdown()
 		m_host->DestroySurface( m_instance, m_surface );
 		m_surface = VK_NULL_HANDLE;
 	}
-
-	if ( m_instance != VK_NULL_HANDLE )
-	{
-		vkDestroyInstance( m_instance, nullptr );
-		m_instance = VK_NULL_HANDLE;
-	}
+	// The adapter destroys the device, its allocator and the instance.
+	m_hostDevice.reset();
+	m_device = VK_NULL_HANDLE;
+	m_instance = VK_NULL_HANDLE;
 
 	m_physicalDevice = VK_NULL_HANDLE;
 	m_graphicsQueue = VK_NULL_HANDLE;

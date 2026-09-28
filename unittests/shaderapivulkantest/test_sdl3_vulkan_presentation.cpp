@@ -14,8 +14,8 @@
 //===========================================================================//
 
 #include "../rendertest/conformance/render_presentation_conformance.h"
-#include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_presentation.h"
-#include "../../materialsystem/shaderapivulkan/vulkan_render_backend_native.h"
+#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_presentation.h"
+#include "../../render/device/vulkan/backend_v1/render_backend_v1.h"
 #include "../../platform/sdl3/render_surface/sdl3_render_surfaces.h"
 
 #include <SDL3/SDL.h>

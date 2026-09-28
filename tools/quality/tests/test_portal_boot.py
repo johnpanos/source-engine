@@ -606,6 +606,22 @@ class StagingTests(unittest.TestCase):
             self.assertFalse((stage / "portal2/bin/client.so").exists())
             self.assertFalse((stage / "bin/engine.so").exists())
 
+    def test_linked_directories_stay_links(self):
+        # A Portal 2 runtime staged by stage_portal2_runtime.py links its
+        # retail overlay directories; they are not walked into empty copies.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime, stage, retail = root / "p2", root / "staged", root / "retail_update"
+            retail.mkdir()
+            (retail / "pak01_dir.vpk").write_bytes(b"vpk")
+            (runtime / "portal2").mkdir(parents=True)
+            (runtime / "portal2/gameinfo.txt").write_text("gameinfo")
+            (runtime / "update").symlink_to(retail, target_is_directory=True)
+            boot.stage_runtime(runtime, stage, game="portal2")
+            self.assertTrue((stage / "update").is_symlink())
+            self.assertEqual((stage / "update").resolve(), retail.resolve())
+            self.assertTrue((stage / "update/pak01_dir.vpk").is_file())
+
     def test_refuses_to_stage_inside_original_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             runtime = Path(directory)

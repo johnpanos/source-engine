@@ -50,8 +50,10 @@
 #ifndef SWDS
 #include "Overlay.h"
 #include "render/world_mesh_upload.h"
+#include "render_core_host.h"
 #include "worldmesh_cull.h"
 #include "paint_render.h"
+#include "tier0/icommandline.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -146,8 +148,7 @@ static world_mesh_gpu::IWorldMeshUpload *WorldMeshDrawProvider()
 	     !pWorld->pWorldMeshLeafRanges || !pWorld->pWorldMeshLeafReferences ||
 	     !pWorld->pWorldMeshGroups )
 		return NULL;
-	world_mesh_gpu::IWorldMeshUpload *uploader = static_cast<world_mesh_gpu::IWorldMeshUpload *>(
-	    materials->QueryInterface( world_mesh_gpu::kWorldMeshUploadInterface ) );
+	world_mesh_gpu::IWorldMeshUpload *uploader = RenderCoreHost_WorldMeshUpload();
 	return uploader && uploader->IsResident() ? uploader : NULL;
 }
 
@@ -1356,6 +1357,26 @@ struct batchlist_t
 	unsigned short numIndex;
 };
 
+// -deterministicrender (RFC 0016 K0 view oracles): Shader_DrawChainsStatic
+// orders its vertex-format batches by the world static mesh's first material
+// sort ID instead of its heap address, so two runs submit the world's static
+// batches in the same order. Off, the address order is unchanged.
+static bool DeterministicWorldBatchOrder()
+{
+	static const bool s_bDeterministic = CommandLine()->FindParm( "-deterministicrender" ) != 0;
+	return s_bDeterministic;
+}
+
+template <typename T> static int WorldStaticMeshRank( const T *pMesh )
+{
+	for ( int sortID = 0; sortID < g_WorldStaticMeshes.Count(); ++sortID )
+	{
+		if ( g_WorldStaticMeshes[sortID] == pMesh )
+			return sortID;
+	}
+	return g_WorldStaticMeshes.Count();
+}
+
 void Shader_DrawChainsStatic( const CMSurfaceSortList &sortList, int nSortGroup, bool bShadowDepth )
 {
 	tmZoneFiltered( TELEMETRY_LEVEL0, 50, TMZF_NONE, "%s", __FUNCTION__ );
@@ -1508,6 +1529,19 @@ void Shader_DrawChainsStatic( const CMSurfaceSortList &sortList, int nSortGroup,
 		{
 			meshMap[i] = i;
 		}
+		const bool bDeterministicOrder = DeterministicWorldBatchOrder();
+		int meshRank[MAX_VERTEX_FORMAT_CHANGES];
+		if ( bDeterministicOrder )
+		{
+			for ( i = 0; i < meshTotal; i++ )
+			{
+#ifdef NEWMESH
+				meshRank[i] = WorldStaticMeshRank( meshList[i].pVertexBuffer );
+#else
+				meshRank[i] = WorldStaticMeshRank( meshList[i].pMesh );
+#endif
+			}
+		}
 
 		bool swapped = true;
 		while ( swapped )
@@ -1515,11 +1549,17 @@ void Shader_DrawChainsStatic( const CMSurfaceSortList &sortList, int nSortGroup,
 			swapped = false;
 			for ( i = 1; i < meshTotal; i++ )
 			{
+				bool bBefore;
+				if ( bDeterministicOrder )
+					bBefore = meshRank[meshMap[i]] < meshRank[meshMap[i - 1]];
+				else
 #ifdef NEWMESH
-				if ( meshList[meshMap[i]].pVertexBuffer < meshList[meshMap[i-1]].pVertexBuffer )
+					bBefore =
+					    meshList[meshMap[i]].pVertexBuffer < meshList[meshMap[i - 1]].pVertexBuffer;
 #else
-				if ( meshList[meshMap[i]].pMesh < meshList[meshMap[i-1]].pMesh )
+					bBefore = meshList[meshMap[i]].pMesh < meshList[meshMap[i - 1]].pMesh;
 #endif
+				if ( bBefore )
 				{
 					int tmp = meshMap[i-1];
 					meshMap[i-1] = meshMap[i];

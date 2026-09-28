@@ -1,0 +1,25 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.composition (RFC 0016 layer 7): RenderCore_Create for application
+# roots. The only render module that names device adapters.
+
+def build(bld):
+	use = ['render_renderer', 'render_pass_present', 'render_legacy', 'render_scene',
+		'render_frame', 'render_graph', 'render_resources', 'render_material',
+		'render_shaderlib', 'render_device_null', 'render_device', 'render_math']
+	defines = []
+	if bld.env.RENDER_CORE_VULKAN:
+		use.append('render_device_vulkan')
+		defines.append('RENDER_CORE_VULKAN')
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.composition',
+		target      = 'render_composition',
+		name        = 'render_composition',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../public'],
+		defines     = defines,
+		use         = use,
+		idx         = bld.get_taskgen_count()
+	)

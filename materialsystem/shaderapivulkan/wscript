@@ -57,7 +57,7 @@ def build(bld):
 		'vulkan_world_reflection_probes.cpp',
 		'vulkan_world_mesh_upload.cpp',
 		# The SDL3-Vulkan pair bridge: the only source here that includes SDL.
-		'sdl3/sdl3_vulkan_surface_host.cpp',
+		'../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]
 

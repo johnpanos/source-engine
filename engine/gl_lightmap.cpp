@@ -32,6 +32,8 @@
 #include <vector>
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal_dlights.h"
+
 #include "tier0/memdbgon.h"
 
 //-----------------------------------------------------------------------------
@@ -116,11 +118,40 @@ bool R_CanUseVisibleDLight( int dlight )
 	return true;
 }
 
+//-----------------------------------------------------------------------------
+// RFC 0016 K7: a light imaged through a portal (portal_dlights.h) lights a
+// luxel only when the path through the portal reaches it. The luxel's world
+// position: the surface's first luxel (R_ComputeSurfaceBasis), stepped along
+// the lightmap axes, then out of the brush entity's space.
+//-----------------------------------------------------------------------------
+struct PortalLuxelClip
+{
+	int slot = -1;
+	const Vector *pLuxelBase = NULL;
+	const matrix3x4_t *pEntityToWorld = NULL;
+};
+
+static bool PortalLuxelLit( const PortalLuxelClip *pClip, SurfaceHandle_t surfID, int s, int t )
+{
+	if ( !pClip )
+		return true;
+	mtexinfo_t *pTexInfo = MSurf_TexInfo( surfID );
+	const float fixupFactor = pTexInfo->worldUnitsPerLuxel * pTexInfo->worldUnitsPerLuxel;
+	Vector local = *pClip->pLuxelBase;
+	VectorMA(
+	    local, s * fixupFactor, pTexInfo->lightmapVecsLuxelsPerWorldUnits[0].AsVector3D(), local );
+	VectorMA(
+	    local, t * fixupFactor, pTexInfo->lightmapVecsLuxelsPerWorldUnits[1].AsVector3D(), local );
+	Vector world;
+	VectorTransform( local, *pClip->pEntityToWorld, world );
+	return PortalDLights_Reaches( pClip->slot, world );
+}
 
 //-----------------------------------------------------------------------------
 // Adds a single dynamic light
 //-----------------------------------------------------------------------------
-static bool AddSingleDynamicLight( dlight_t& dl, SurfaceHandle_t surfID, const Vector &lightOrigin, float perpDistSq, float lightRadiusSq )
+static bool AddSingleDynamicLight( dlight_t &dl, SurfaceHandle_t surfID, const Vector &lightOrigin,
+    float perpDistSq, float lightRadiusSq, const PortalLuxelClip *pClip )
 {
 	// transform the light into brush local space
 	Vector local;
@@ -173,7 +204,7 @@ static bool AddSingleDynamicLight( dlight_t& dl, SurfaceHandle_t surfID, const V
 
 			float inPlaneDistSq = sd * sd + td * td;
 			float totalDistSq = inPlaneDistSq + perpDistSq;
-			if (totalDistSq < lightRadiusSq)
+			if ( totalDistSq < lightRadiusSq && PortalLuxelLit( pClip, surfID, s, t ) )
 			{
 				// at least all floating point only happens when a luxel is lit.
 				float scale = (totalDistSq != 0.0f) ? ooQuadraticAttn / totalDistSq : 1.0f;
@@ -199,8 +230,9 @@ static bool AddSingleDynamicLight( dlight_t& dl, SurfaceHandle_t surfID, const V
 //-----------------------------------------------------------------------------
 // Adds a dynamic light to the bumped lighting
 //-----------------------------------------------------------------------------
-static void AddSingleDynamicLightToBumpLighting( dlight_t& dl, SurfaceHandle_t surfID, 
-	const Vector &lightOrigin, float perpDistSq, float lightRadiusSq, Vector* pBumpBasis, const Vector& luxelBasePosition )
+static void AddSingleDynamicLightToBumpLighting( dlight_t &dl, SurfaceHandle_t surfID,
+    const Vector &lightOrigin, float perpDistSq, float lightRadiusSq, Vector *pBumpBasis,
+    const Vector &luxelBasePosition, const PortalLuxelClip *pClip )
 {
 	Vector local;
 	// FIXME: For now, only elights can be spotlights
@@ -271,7 +303,7 @@ static void AddSingleDynamicLightToBumpLighting( dlight_t& dl, SurfaceHandle_t s
 			float inPlaneDistSq = sd * sd + td * td;
 			float totalDistSq = inPlaneDistSq + perpDistSq;
 
-			if (totalDistSq < lightRadiusSq)
+			if ( totalDistSq < lightRadiusSq && PortalLuxelLit( pClip, surfID, s, t ) )
 			{
 				// at least all floating point only happens when a luxel is lit.
 				float scale = (totalDistSq != 0.0f) ? ooQuadraticAttn / totalDistSq : 1.0f;
@@ -447,10 +479,14 @@ void R_AddDynamicLights( dlight_t *pLights, SurfaceHandle_t surfID, const matrix
 	bool computedBumpBasis = false;
 	Vector luxelBasePosition;
 
+	// Lights imaged through portals (portal_dlights.h) are clipped per luxel;
+	// displacements cannot clip yet, so they leave them out.
+	const unsigned int portalImages = PortalDLights_ImageMask();
+
 	// Displacements do dynamic lights different
 	if( SurfaceHasDispInfo( surfID ) )
 	{
-		MSurf_DispInfo( surfID )->AddDynamicLights(pLights, lightMask);
+		MSurf_DispInfo( surfID )->AddDynamicLights( pLights, lightMask & ~portalImages );
 		return;
 	}
 
@@ -479,21 +515,29 @@ void R_AddDynamicLights( dlight_t *pLights, SurfaceHandle_t surfID, const matrix
 			if (lightRadiusSq <= perpDistSq)
 				continue;
 
-			if (!needsBumpmap)
-			{
-				AddSingleDynamicLight( pLights[lnum], surfID, lightOrigin, perpDistSq, lightRadiusSq );
-				continue;
-			}
-
-			// Here, I'm precomputing things needed by bumped lighting that
-			// are the same for a surface...
-			if (!computedBumpBasis)
+			// Here, I'm precomputing things needed by bumped lighting (and by
+			// the portal clip) that are the same for a surface...
+			const bool portalImage = ( portalImages & testBit ) != 0;
+			if ( !computedBumpBasis && ( needsBumpmap || portalImage ) )
 			{
 				R_ComputeSurfaceBasis( surfID, bumpNormals, luxelBasePosition );
 				computedBumpBasis = true;
 			}
+			PortalLuxelClip clip;
+			clip.slot = lnum;
+			clip.pLuxelBase = &luxelBasePosition;
+			clip.pEntityToWorld = &entityToWorld;
+			const PortalLuxelClip *pClip = portalImage ? &clip : NULL;
 
-			AddSingleDynamicLightToBumpLighting( pLights[lnum], surfID, lightOrigin, perpDistSq, lightRadiusSq, bumpNormals, luxelBasePosition );
+			if ( !needsBumpmap )
+			{
+				AddSingleDynamicLight(
+				    pLights[lnum], surfID, lightOrigin, perpDistSq, lightRadiusSq, pClip );
+				continue;
+			}
+
+			AddSingleDynamicLightToBumpLighting( pLights[lnum], surfID, lightOrigin, perpDistSq,
+			    lightRadiusSq, bumpNormals, luxelBasePosition, pClip );
 		}
 	}
 }

@@ -17,7 +17,7 @@
 //=============================================================================//
 
 #include "conformance/render_backend_conformance.h"
-#include "../../materialsystem/shaderapivulkan/vulkan_render_backend.h"
+#include "../../render/device/vulkan/backend_v1/render_backend_v1.h"
 
 #include <cstdio>
 #include <memory>

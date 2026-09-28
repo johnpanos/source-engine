@@ -1,0 +1,42 @@
+# Contract: `render.material.v2` and `render.shader-artifacts.v1` (first slice)
+
+Modules: `render.material` (layer 3), `render.shader-library` and
+`render.resources` (layer 2)
+Suites: `unittests/rendertest/core/material/test_material.cpp`,
+`unittests/rendertest/core/shaderlib/test_shaderlib.cpp`,
+`unittests/rendertest/core/resources/test_resources.cpp`
+Rows: R88 (RFC 0016 K4; this is its first slice)
+
+| Clause | Obligation |
+| --- | --- |
+| M1 | A family's parameters take std140-style offsets; textures take slots |
+| M2 | Duplicate families or parameters, and families of more than four bind groups, fail |
+| M3 | A family's missing capability is named |
+| M4 | Parameter blocks start at the defaults; setters check name and type; the revision rises only on a real change |
+| S1 | The artifact store rejects duplicate keys and empty artifacts |
+| S2 | Permutation keys are a bijection over the declared axes |
+| S3 | A recipe resolves only to the requested artifact format, failing by key otherwise, and survives a move |
+| R1–R5 | Resource caches upload staged bytes, end in their use usage, keep a replaced resource live until the replacing submission completes, and release everything at teardown |
+
+## K4 clauses (2026-09-28)
+
+Suites: `test_material.cpp` (`render.material.v2`), `test_material_sensitivity.cpp`
+(`render.material.v2.sensitivity`), the corpus (`render.material.vmt-corpus`,
+`.sensitivity`, `.asan`) and the artifacts (`render.shader-artifacts`,
+`.sensitivity`). The shared clauses are `material_conformance.h`.
+
+| Clause | Obligation |
+| --- | --- |
+| F1–F4 | The VMT mapping defines the core families `lightmapped`, `vertexlit`, `unlit` and `pbr` (in that order); each registers with the four groups; the schema is exactly the GPU key rows, PBR's is RFC 0007's; defaults come from the rows; the legacy shader table is populated and its aliases resolve |
+| K1 | Every GPU key row's value lands in the parameter its key names (the key without its `$`) in the built-in schema. A row mapped to another parameter, or read with another kind, is caught (sensitivity S1, S2) |
+| R1 | A derived copy (`ParameterBlockCopy`) is not current after any change to its block and equals it (bytes, textures, revision) after a refresh; refreshing a current copy copies nothing. A copy never refreshed after a change, and one whose revision moves without its bytes, are caught (S3, S4) |
+| V1–V10 | VMT reading follows the material system: `[$SYMBOL]` tags, `cond?` variables, the profile's fallback block, first definitions (a conditional one replaces), aliases, the legacy family keeping every variable, `subrect`, unknown shaders by name, texture prefixes, enumerations, braced colors, scalars filling vectors, unreadable values reported, proxies, editor and metadata keys, unmapped keys, malformed text, the end of input closing blocks |
+| P1–P3 | Patches: includes resolve in order; insert adds and overwrites; replace overwrites only existing keys; missing, absent and more than ten nested includes fail by status |
+| B1–B3 | PBRMetalRough: required parameters are named when absent; the fallback reference must be well formed, exist and not name the material itself |
+| A1–A2 | `ApplyValues` writes a material's values at their offsets and raises the revision; a block of another family refuses them |
+| C1 | Every VMT of the Portal and Portal 2 corpus imports or is reported with its status; the family counts, unsupported counts, unsupported materials and the family digest equal `quality/fixtures/render-material/vmt-corpus-v1.json`; a seeded wrong shader mapping and a missing VMT are caught |
+| A-ART | Every shader the backend ships builds a SPIR-V and a GLSL 4.50 artifact (or a declared exclusion); reflection matches `render/shaders/layouts.json`; a family declares at most four groups; the artifacts rewrite the committed headers byte for byte |
+
+Open for K4 after K3: the family ports and their pixel oracles, running the
+proxy corpus on the core (the legacy capture exists), texture transforms in
+the family schemas, and deleting the committed `*_spv.h` headers.

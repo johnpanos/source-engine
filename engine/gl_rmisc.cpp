@@ -38,6 +38,7 @@
 #include "indirect_light_host.h"
 #include "paint.h"
 #include "paint_render.h"
+#include "render_core_host.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -240,6 +241,8 @@ R_LevelInit
 */
 void R_LevelInit( void )
 {
+	RenderCoreHost_LevelInit();
+
 	ConDMsg( "Initializing renderer...\n" );
 
 	COM_TimestampedLog( "R_LevelInit: Start" );
@@ -306,6 +309,8 @@ void R_LevelInit( void )
 
 void R_LevelShutdown()
 {
+	RenderCoreHost_LevelShutdown();
+
 	R_PaintShutdown();
 	R_Surface_LevelShutdown();
 	R_Areaportal_LevelShutdown();

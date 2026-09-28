@@ -1,0 +1,19 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.pass.shadows (RFC 0016 layer 6 feature, K7): shadow atlas planning,
+# spot and flashlight shadow views, texel-snapped sun cascades, the caster
+# depth pass and the receiver helper (shadow_sample.glsl, its SPIR-V committed
+# in shadow_spv.h until the K4 artifact build).
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.pass.shadows',
+		target      = 'render_pass_shadows',
+		name        = 'render_pass_shadows',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_math', 'render_graph', 'render_device', 'render_resources'],
+		idx         = bld.get_taskgen_count()
+	)

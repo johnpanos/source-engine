@@ -10,10 +10,10 @@
 #include <cstddef>
 #include <cstdint>
 
+// The engine reaches it through the render core's legacy frontend
+// (render/legacy/capabilities.h).
 namespace world_mesh_gpu
 {
-
-static const char *const kWorldMeshUploadInterface = "WorldMeshUpload008";
 
 struct WorldMeshUploadRequest
 {

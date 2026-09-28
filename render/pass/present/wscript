@@ -1,0 +1,16 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.pass.present (RFC 0016 layer 6 feature).
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.pass.present',
+		target      = 'render_pass_present',
+		name        = 'render_pass_present',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_frame'],
+		idx         = bld.get_taskgen_count()
+	)

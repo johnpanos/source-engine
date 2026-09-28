@@ -31,10 +31,6 @@
 #ifndef JOBSYSTEM_DYNAMIC_SCOPE_H
 #define JOBSYSTEM_DYNAMIC_SCOPE_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>

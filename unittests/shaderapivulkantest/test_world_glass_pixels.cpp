@@ -9,7 +9,7 @@
 //
 //===========================================================================//
 
-#include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.h"
+#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
 #include "testing/conformance_result.h"
 
@@ -100,6 +100,7 @@ int main()
 	    render_vulkan::MakeSdl3LegacySurfaceHost( window, &error );
 	CVulkanContext context;
 	render_vulkan::VulkanContextConfig config;
+	config.deviceFactory = &render::device::vulkan::HostDeviceFactory();
 	config.appName = "wmsh-glass-pixels";
 	config.enableValidation = true;
 #ifdef VULKAN_TEST_DESCRIPTOR_SET_LIMIT
@@ -233,7 +234,7 @@ int main()
 		}
 		context.RequestCapture();
 		bool skip = false;
-		if ( !context.BeginFrame( &skip, &error ) || skip || !context.EndFrame( &error ) )
+		if ( !context.RenderFrame( &skip, &error ) || skip )
 			return false;
 		frame = context.GetCapturedPixels( &frameW, &frameH );
 		if ( frameW < kSize / 2 || frameH < kSize / 2 ||

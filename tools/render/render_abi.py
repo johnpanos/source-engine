@@ -1,0 +1,615 @@
+#!/usr/bin/env python3
+"""Frozen render ABI vtable tables (RFC 0016 K0 check `legacy.render-abi`).
+
+    python3 tools/render/render_abi.py check
+    python3 tools/render/render_abi.py record [--update]
+    python3 tools/render/render_abi.py sensitivity [--cxx g++] [--out DIR]
+
+The recorded table, quality/fixtures/render-abi/render_abi_v1.h, lists every
+vtable slot of the frozen material-system and studio-render interfaces in
+Itanium (Linux x86_64) order: each virtual method with its full signature,
+the this-adjustment a caller through the interface applies, and its function
+slot; destructor pairs; secondary vtables; the slot count; and the interface
+version string where the header defines one.
+
+The conformance suite (unittests/renderabitest/render_abi_conformance.cpp,
+compiled in the legacy-cxx11 dialect) includes that table and derives each
+slot from the compiler's own pointer-to-member-function value, so its oracle
+is the compiler that builds a frozen consumer, not the header text or this
+script.
+
+`record` derives the table from clang's vtable layout dump
+(-fdump-vtable-layouts) of the current headers. It refuses to replace an
+existing table without --update: the table is the frozen contract, and
+changing it is a reviewed ABI decision, never a way to make a check pass.
+`check` rederives the table and fails on any difference (a second oracle,
+independent of the suite's compiler).
+
+`sensitivity` proves the suite detects ABI changes in each interface: for
+every interface it copies the headers to a private include root and seeds
+(1) a swap of two adjacent virtual declarations and (2) a virtual appended
+after the last one. clang's layout dump must confirm each seed changes that
+interface's layout only (swapping two overriders of base virtuals does not,
+and such candidates are skipped); the suite, rebuilt against the copy, must
+then fail naming that interface and no other. An unmutated copy must pass
+(control). It reports a checks-v1 record.
+
+Compiler flags come from the manifest row `legacy.render-abi` and its
+profile through the conformance runner's own build function, so this script
+holds no second copy of them.
+"""
+import argparse
+import difflib
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "tools", "quality"))
+import conformance  # noqa: E402  (the shared runner: manifest, profiles, build commands)
+
+TABLE_VERSION = "render-abi-v1"
+TABLE = "quality/fixtures/render-abi/render_abi_v1.h"
+SUITE_ID = "legacy.render-abi"
+
+# The frozen interfaces RFC 0016 K0 names: (class, header under public/,
+# interface version macro or None). Order is the table's order.
+INTERFACES = [
+    ("IMaterialSystem", "materialsystem/imaterialsystem.h", "MATERIAL_SYSTEM_INTERFACE_VERSION"),
+    ("IMatRenderContext", "materialsystem/imaterialsystem.h", None),
+    ("IMaterial", "materialsystem/imaterial.h", None),
+    ("IMaterialVar", "materialsystem/imaterialvar.h", None),
+    ("ITexture", "materialsystem/itexture.h", None),
+    ("IMesh", "materialsystem/imesh.h", None),
+    ("IMaterialProxy", "materialsystem/imaterialproxy.h", "IMATERIAL_PROXY_INTERFACE_VERSION"),
+    ("IStudioRender", "istudiorender.h", "STUDIO_RENDER_INTERFACE_VERSION"),
+]
+
+PROBE_PREFIX = "RenderAbiRecordProbe_"
+PROBE_TAIL = "RenderAbiRecordProbeTail"
+
+
+class AbiError(Exception):
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Build flags (owned by the manifest row)
+# ---------------------------------------------------------------------------
+
+def load_suite(root=ROOT):
+    # Read without the runner's validation: `record` runs before the table
+    # the row names as its contract exists.
+    manifest = conformance.load_json(os.path.join(root, "quality", "conformance.manifest.json"))
+    suite = next((s for s in manifest["suites"] if s["id"] == SUITE_ID), None)
+    if suite is None:
+        raise AbiError("manifest has no %s row" % SUITE_ID)
+    profiles_dir = os.path.join(root, manifest.get("profiles_dir", "quality/profiles"))
+    return suite, conformance.load_profile(profiles_dir, suite["profile"])
+
+
+def compile_command(root, cxx, source, suite, profile, extra=()):
+    """The suite's compile command for `source` (its first unit's dialect and
+    flags), without the -c/-o tail."""
+    unit = dict(suite["units"][0], sources=[source])
+    probe = dict(suite, units=[unit], extra_flags=list(extra) + suite.get("extra_flags", []))
+    command = conformance.unit_build_commands(root, cxx, profile, probe, "/dev/null")[0]
+    cut = command.index("-c")
+    return command[:cut]
+
+
+# ---------------------------------------------------------------------------
+# Deriving the table from clang's vtable layout dump
+# ---------------------------------------------------------------------------
+
+def dump_source():
+    lines = ["// Generated by tools/render/render_abi.py for clang -fdump-vtable-layouts."]
+    for header in sorted(set(h for _, h, _ in INTERFACES)):
+        lines.append('#include "%s"' % header)
+    for name, _, _ in INTERFACES:
+        lines.append("struct %s%s : %s { virtual void %s(); };" % (PROBE_PREFIX, name, name, PROBE_TAIL))
+        lines.append("void %s%s::%s() {}" % (PROBE_PREFIX, name, PROBE_TAIL))
+    return "\n".join(lines) + "\n"
+
+
+ENTRY = re.compile(r"^\s*(\d+) \| (.*)$")
+ADDRESS = re.compile(r"^\s*-- \((\w+), (-?\d+)\) vtable address --$")
+SIGNATURE = re.compile(r"^(?P<prefix>.*?)(?P<cls>[A-Za-z_]\w*)::(?P<name>~?[A-Za-z_]\w*)$")
+
+
+def split_signature(text):
+    """'R C::M(P) const [pure]' -> (ret, cls, name, params, quals)."""
+    text = re.sub(r"\s*\[pure\]$", "", text.strip())
+    quals = ""
+    for q in (" const",):
+        if text.endswith(q):
+            quals, text = q.strip(), text[: -len(q)]
+    if not text.endswith(")"):
+        raise AbiError("unparsed signature: %r" % text)
+    depth = 0
+    for i in range(len(text) - 1, -1, -1):
+        depth += {")": 1, "(": -1}.get(text[i], 0)
+        if depth == 0:
+            break
+    head, params = text[:i], text[i + 1: -1]
+    m = SIGNATURE.match(head)
+    if not m:
+        raise AbiError("unparsed signature head: %r" % head)
+    # A va_list parameter decays to the builtin tag pointer; spell it portably.
+    params = params.replace("__va_list_tag *", "va_list")
+    return m.group("prefix").strip(), m.group("cls"), m.group("name"), params, quals
+
+
+def parse_layouts(dump):
+    """{probe class: [section, ...]} where a section is
+    {"base": name, "offset": int, "entries": [(index, text), ...]}."""
+    layouts, sections, current = {}, None, None
+    for line in dump.splitlines():
+        head = re.match(r"^Vtable for '(\w+)' \(\d+ entries\)\.$", line)
+        if head:
+            sections = layouts.setdefault(head.group(1), [])
+            current = None
+            continue
+        if sections is None:
+            continue
+        if not line.strip():
+            sections = None
+            continue
+        m = ENTRY.match(line)
+        if m:
+            index, text = int(m.group(1)), m.group(2)
+            if text.startswith("offset_to_top"):
+                current = {"base": None, "offset": None, "start": index + 2, "entries": []}
+                sections.append(current)
+            elif text.endswith(" RTTI"):
+                pass
+            elif text.startswith(("vcall_offset", "vbase_offset")):
+                raise AbiError("virtual inheritance is not modelled: %s" % text)
+            else:
+                current["entries"].append((index - current["start"], text))
+            continue
+        m = ADDRESS.match(line)
+        if m and current is not None and current["base"] is None:
+            current["base"], current["offset"] = m.group(1), int(m.group(2))
+    return layouts
+
+
+def table_from_layouts(layouts, versions):
+    """The recorded table model: one record per interface."""
+    table = []
+    for name, header, macro in INTERFACES:
+        probe = PROBE_PREFIX + name
+        if probe not in layouts:
+            raise AbiError("no vtable layout for %s" % probe)
+        sections = layouts[probe]
+        record = {"name": name, "header": "public/" + header, "macro": macro,
+                  "version": versions.get(macro) if macro else None,
+                  "slots": None, "methods": [], "destructors": [], "secondary": []}
+        for number, section in enumerate(sections):
+            primary = number == 0
+            if not primary:
+                if section["offset"] is None or section["offset"] <= 0:
+                    raise AbiError("%s: secondary vtable without an offset" % name)
+                record["secondary"].append({"base": section["base"], "offset": section["offset"],
+                                            "slots": len(section["entries"])})
+            for slot, text in section["entries"]:
+                if PROBE_TAIL in text:
+                    if not primary:
+                        raise AbiError("%s: probe tail in a secondary vtable" % name)
+                    record["slots"] = slot
+                    continue
+                if "::~" in text:
+                    kind = re.search(r"\[(complete|deleting)\]", text)
+                    if not kind:
+                        raise AbiError("%s: unparsed destructor %r" % (name, text))
+                    record["destructors"].append({"adj": 0 if primary else section["offset"],
+                                                  "slot": slot, "kind": kind.group(1)})
+                    continue
+                ret, cls, method, params, quals = split_signature(text)
+                record["methods"].append({
+                    "adj": 0 if primary else section["offset"], "slot": slot,
+                    "ret": ret, "cls": cls, "name": method, "params": params, "quals": quals,
+                    "signature": re.sub(r"\s*\[pure\]$", "", text.strip()).replace(
+                        "__va_list_tag *", "va_list")})
+        if record["slots"] is None:
+            raise AbiError("%s: probe tail slot not found" % name)
+        if macro and record["version"] is None:
+            raise AbiError("%s: version macro %s not defined" % (name, macro))
+        table.append(record)
+    return table
+
+
+def c_string(text):
+    return '"%s"' % text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def pmf_type(method, declarator=""):
+    """'R ( C::*declarator )( params ) quals' for a recorded method."""
+    ret = method["ret"]
+    # 'ITexture *' spells as 'ITexture *( C::* )( ... )'.
+    spacer = "" if ret.endswith(("*", "&")) else " "
+    params = ( " %s " % method["params"]) if method["params"] else ""
+    quals = (" " + method["quals"]) if method["quals"] else ""
+    return "%s%s( %s::*%s )(%s)%s" % (ret, spacer, method["cls"], declarator, params, quals)
+
+
+def render_table(table):
+    out = [
+        "//========= Copyright Valve Corporation, All rights reserved. ============//",
+        "//",
+        "// Recorded vtable table %s of the frozen render interfaces (RFC 0016 K0," % TABLE_VERSION,
+        "// check legacy.render-abi). Itanium ABI, Linux x86_64. Generated by",
+        "// `python3 tools/render/render_abi.py record` from clang's vtable layout",
+        "// dump; reviewed and never regenerated to make a check pass. A change here is",
+        "// an ABI break of every prebuilt consumer of these interfaces.",
+        "//",
+        "// X-macro list, included twice by",
+        "// unittests/renderabitest/render_abi_conformance.cpp:",
+        "//   RENDER_ABI_INTERFACE( I, header, slots )  primary vtable function slots",
+        "//   RENDER_ABI_VERSION( I, MACRO, value )     interface version string",
+        "//   RENDER_ABI_METHOD( I, adj, slot, signature, Declarer, Name, PmfDeclaration )",
+        "//   RENDER_ABI_DESTRUCTOR( I, adj, slot, kind )",
+        "//   RENDER_ABI_SECONDARY( I, Base, adj, slots ) secondary vtable of Base",
+        "//   RENDER_ABI_END( I )",
+        "// `adj` is the this-adjustment of a call through an I*, `slot` the",
+        "// function index in the vtable that adjustment selects. PmfDeclaration",
+        "// declares RenderAbiPmf, the member pointer type of the recorded",
+        "// signature; it is resolved in a class derived from Declarer, where the",
+        "// declarer's nested types (printed unqualified) and protected members",
+        "// are visible.",
+        "//=============================================================================//",
+        "",
+        "#define RENDER_ABI_TABLE_VERSION %s" % c_string(TABLE_VERSION),
+        "",
+        "// clang-format off",
+        "",
+    ]
+    for record in table:
+        name = record["name"]
+        out.append("// %s (%s): %d primary slots, %d methods, %d secondary vtable(s)" % (
+            name, record["header"], record["slots"], len(record["methods"]), len(record["secondary"])))
+        out.append("RENDER_ABI_INTERFACE( %s, %s, %d )" % (name, c_string(record["header"]), record["slots"]))
+        if record["macro"]:
+            out.append("RENDER_ABI_VERSION( %s, %s, %s )" % (name, record["macro"], record["version"]))
+        for sec in record["secondary"]:
+            out.append("RENDER_ABI_SECONDARY( %s, %s, %d, %d )" % (name, sec["base"], sec["offset"], sec["slots"]))
+        rows = [("m", m["adj"], m["slot"], m) for m in record["methods"]] + \
+               [("d", d["adj"], d["slot"], d) for d in record["destructors"]]
+        for kind, adj, slot, item in sorted(rows, key=lambda r: (r[1], r[2])):
+            if kind == "d":
+                out.append("RENDER_ABI_DESTRUCTOR( %s, %d, %d, %s )" % (name, adj, slot, c_string(item["kind"])))
+            else:
+                out.append("RENDER_ABI_METHOD( %s, %d, %d, %s,\n\t%s, %s, %s )" % (
+                    name, adj, slot, c_string(item["signature"]), item["cls"], item["name"],
+                    pmf_type(item, "RenderAbiPmf")))
+        out.append("RENDER_ABI_END( %s )" % name)
+        out.append("")
+    out.append("// clang-format on")
+    return "\n".join(out) + "\n"
+
+
+def derive_table(root=ROOT, clang="clang++", include_root=None):
+    """The table model from clang's dump of the headers (under `include_root`,
+    searched first, when given)."""
+    suite, profile = load_suite(root)
+    with tempfile.TemporaryDirectory(prefix="render_abi_") as tmp:
+        source = os.path.join(tmp, "render_abi_dump.cpp")
+        with open(source, "w") as stream:
+            stream.write(dump_source())
+        extra = ["-isystem", include_root] if include_root else []
+        base = compile_command(root, clang, source, suite, profile, extra)
+        base = [a for a in base if a != "-Werror"]
+        layout = subprocess.run(base + ["-S", "-o", os.devnull, "-Xclang", "-fdump-vtable-layouts", source],
+                                cwd=root, capture_output=True, text=True)
+        if layout.returncode != 0:
+            raise AbiError("clang layout dump failed:\n" + layout.stderr[-4000:])
+        macros = subprocess.run(base + ["-E", "-dM", source], cwd=root, capture_output=True, text=True)
+        if macros.returncode != 0:
+            raise AbiError("clang macro dump failed:\n" + macros.stderr[-4000:])
+        versions = {}
+        for line in macros.stdout.splitlines():
+            m = re.match(r'^#define (\w+) ("[^"]*")$', line)
+            if m:
+                versions[m.group(1)] = m.group(2)
+    return table_from_layouts(parse_layouts(layout.stdout), versions)
+
+
+# ---------------------------------------------------------------------------
+# Seeded slot reorders
+# ---------------------------------------------------------------------------
+
+def _mask_comments(text):
+    """Same-length copy of `text` with comments and literals blanked, so
+    structure can be scanned by index."""
+    out, i, n = list(text), 0, len(text)
+    while i < n:
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+        elif text[i] in "\"'":
+            quote, j = text[i], i + 1
+            while j < n and text[j] != quote:
+                j += 2 if text[j] == "\\" else 1
+            j += 1
+        else:
+            i += 1
+            continue
+        for k in range(i, j):
+            if out[k] != "\n":
+                out[k] = " "
+        i = j
+    return "".join(out)
+
+
+def class_body(text, name):
+    """(start, end) of the body between the braces of class `name`."""
+    masked = _mask_comments(text)
+    m = re.search(r"\b(?:abstract_class|class|struct)\s+%s\b[^;{]*\{" % re.escape(name), masked)
+    if not m:
+        raise AbiError("class %s not found" % name)
+    depth, start = 1, m.end()
+    for i in range(start, len(masked)):
+        depth += {"{": 1, "}": -1}.get(masked[i], 0)
+        if depth == 0:
+            return start, i
+    raise AbiError("class %s is not closed" % name)
+
+
+def member_declarations(text, name):
+    """[(start, end, masked text)] of the member statements of class `name`,
+    each spanning its first significant character through its ';' (or the
+    closing brace of an inline body). Preprocessor lines and access
+    specifiers are statements of their own, so they separate neighbours."""
+    start, end = class_body(text, name)
+    masked = _mask_comments(text)
+    statements, depth, paren, first, i = [], 0, 0, None, start
+    while i < end:
+        c = masked[i]
+        if first is None and c == "#":
+            j = i
+            while True:
+                j = masked.find("\n", j)
+                j = end if j < 0 or j > end else j
+                if j >= end or masked[j - 1] != "\\":
+                    break
+                j += 1
+            statements.append((i, j, masked[i:j]))
+            i = j
+            continue
+        if first is None and not c.isspace():
+            first = i
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0 and paren == 0 and first is not None:
+                statements.append((first, i + 1, masked[first:i + 1]))
+                first = None
+        elif c == "(":
+            paren += 1
+        elif c == ")":
+            paren -= 1
+        elif c == ";" and depth == 0 and paren == 0 and first is not None:
+            statements.append((first, i + 1, masked[first:i + 1]))
+            first = None
+        elif c == ":" and depth == 0 and paren == 0 and first is not None and \
+                re.fullmatch(r"(public|protected|private)\s*", masked[first:i]):
+            statements.append((first, i + 1, masked[first:i + 1]))
+            first = None
+        i += 1
+    return statements
+
+
+def is_plain_virtual(statement):
+    body = statement.strip()
+    return (body.startswith("virtual ") and "~" not in body and "{" not in body
+            and "#" not in body and "\n\n" not in body)
+
+
+def seed_swaps(text, name):
+    """Candidate mutants of `text`: each swaps one pair of adjacent plain
+    virtual declarations of class `name`, in declaration order; yields
+    (mutated text, first, second). Swapping two overriders of base virtuals
+    leaves the vtable unchanged, so callers confirm each candidate is a real
+    reorder before using it."""
+    statements = member_declarations(text, name)
+    for (a0, a1, am), (b0, b1, bm) in zip(statements, statements[1:]):
+        if not (is_plain_virtual(am) and is_plain_virtual(bm)):
+            continue
+        if _mask_comments(text[a1:b0]).strip():
+            continue
+        first, second = text[a0:a1], text[b0:b1]
+        mutated = text[:a0] + second + text[a1:b0] + first + text[b1:]
+        yield mutated, " ".join(first.split()), " ".join(second.split())
+
+
+def mirror_headers(root, dest):
+    """Private include root holding copies of every header the table names,
+    laid out as under public/ (whole directories, so relative includes stay
+    inside the copy)."""
+    for header in sorted(set(h for _, h, _ in INTERFACES)):
+        directory = os.path.dirname(header)
+        if directory:
+            target = os.path.join(dest, directory)
+            if not os.path.isdir(target):
+                shutil.copytree(os.path.join(root, "public", directory), target)
+        else:
+            shutil.copy2(os.path.join(root, "public", header), os.path.join(dest, header))
+
+
+def build_and_run(root, cxx, suite, profile, work, include_root):
+    """Build the suite with `include_root` searched first; returns
+    (built, exit status, output)."""
+    patched = dict(suite, extra_flags=["-isystem", include_root] + list(suite.get("extra_flags", [])))
+    out_bin = os.path.join(work, "render_abi_suite")
+    for command in conformance.unit_build_commands(root, cxx, profile, patched, out_bin):
+        result = subprocess.run(command, cwd=root, capture_output=True, text=True)
+        if result.returncode != 0:
+            return False, result.returncode, result.stdout + result.stderr
+    run = subprocess.run([out_bin], cwd=root, capture_output=True, text=True, timeout=120)
+    return True, run.returncode, run.stdout + run.stderr
+
+
+def seed_append(text, name):
+    """`text` with a new pure virtual after the last plain virtual declaration
+    of class `name`: a method the recorded table does not list."""
+    last = [end for _, end, member in member_declarations(text, name) if is_plain_virtual(member)]
+    if not last:
+        raise AbiError("%s: no virtual declaration to append after" % name)
+    added = "virtual void RenderAbiSeededExtra() = 0;"
+    return text[:last[-1]] + "\n\t" + added + text[last[-1]:], added
+
+
+def sensitivity(root, cxx, clang, out_dir):
+    """Per interface: a slot reorder (the first adjacent swap clang confirms
+    changes that interface's layout) and an appended virtual. Each must be a
+    real layout change of that interface only, and the suite must fail
+    naming that interface and no other."""
+    suite, profile = load_suite(root)
+    checks = failures = 0
+
+    def check(ok, label):
+        nonlocal checks, failures
+        checks += 1
+        if not ok:
+            failures += 1
+        print("%s %s" % ("PASS" if ok else "FAIL", label))
+
+    def seeded(work, recorded, name, header, label, mutants):
+        include_root = os.path.join(work, "%s.%s" % (name, label.split()[0]))
+        os.makedirs(include_root)
+        mirror_headers(root, include_root)
+        path = os.path.join(include_root, header)
+        with open(path, "r", encoding="utf-8", errors="surrogateescape", newline="") as stream:
+            text = stream.read()
+        chosen, neutral = None, 0
+        for mutated, description in mutants(text):
+            with open(path, "w", encoding="utf-8", errors="surrogateescape", newline="") as stream:
+                stream.write(mutated)
+            derived = table_blocks(render_table(derive_table(root, clang, include_root)))
+            changed = [n for n in recorded if recorded[n] != derived.get(n)]
+            if changed:
+                chosen = (description, changed)
+                break
+            neutral += 1
+        check(chosen is not None and chosen[1] == [name],
+              "%s: seeded %s changes this interface's layout only (%s; %d ABI-neutral "
+              "candidate(s) skipped)" % (name, label, ", ".join(chosen[1]) if chosen else "none", neutral))
+        if chosen is None:
+            return
+        built, status, output = build_and_run(root, cxx, suite, profile, work, include_root)
+        named = re.search(r"^FAIL %s\b" % re.escape(name), output, re.M) is not None
+        check(built and status != 0 and named, "%s: %s %s detected" % (name, label, chosen[0]))
+        if not (built and status != 0 and named):
+            print("\n".join(output.splitlines()[-15:]))
+        others = set(re.findall(r"^FAIL (\w+)", output, re.M)) - {name}
+        check(built and not others, "%s: %s: no other interface reported (%s)" % (
+            name, label, ", ".join(sorted(others)) or "none"))
+
+    def swaps(text, name):
+        for mutated, first, second in seed_swaps(text, name):
+            yield mutated, "[%s] <-> [%s]" % (first[:60], second[:60])
+
+    def appends(text, name):
+        mutated, added = seed_append(text, name)
+        yield mutated, "[%s]" % added
+
+    os.makedirs(out_dir, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="render_abi_sens_", dir=out_dir) as work:
+        control = os.path.join(work, "control")
+        os.makedirs(control)
+        mirror_headers(root, control)
+        built, status, output = build_and_run(root, cxx, suite, profile, work, control)
+        check(built and status == 0 and re.search(r"^CONFORMANCE \d+ 0$", output, re.M) is not None,
+              "control: unmutated header copy passes")
+        recorded = table_blocks(render_table(derive_table(root, clang, control)))
+        for name, header, _ in INTERFACES:
+            seeded(work, recorded, name, header, "slot reorder", lambda t, n=name: swaps(t, n))
+            seeded(work, recorded, name, header, "appended virtual", lambda t, n=name: appends(t, n))
+    return testing_record(checks, failures)
+
+
+def table_blocks(text):
+    """{interface: its block of the rendered table}, plus the preamble."""
+    blocks, name = {"(preamble)": []}, "(preamble)"
+    for line in text.splitlines(True):
+        m = re.match(r"^// (\w+) \(public/", line)
+        if m:
+            name = m.group(1)
+            blocks[name] = []
+        blocks[name].append(line)
+    return blocks
+
+
+def compare_tables(recorded, derived):
+    """One check per interface block (and the preamble); prints a bounded diff
+    of each differing block and a checks-v1 record."""
+    old, new = table_blocks(recorded), table_blocks(derived)
+    checks = failures = 0
+    for name in ["(preamble)"] + [n for n, _, _ in INTERFACES]:
+        checks += 1
+        if old.get(name) == new.get(name):
+            print("PASS %s matches the current headers" % name)
+            continue
+        failures += 1
+        print("FAIL %s differs from the current headers" % name)
+        sys.stdout.writelines(list(difflib.unified_diff(
+            old.get(name, []), new.get(name, []), TABLE, "derived"))[:40])
+    return testing_record(checks, failures)
+
+
+def testing_record(checks, failures):
+    print("CONFORMANCE %d %d" % (checks, failures))
+    sys.stdout.flush()
+    return 0 if checks > 0 and failures == 0 else 1
+
+
+# ---------------------------------------------------------------------------
+# Command line
+# ---------------------------------------------------------------------------
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+    rec = sub.add_parser("record", help="derive the table and write it")
+    rec.add_argument("--update", action="store_true", help="replace an existing table (reviewed ABI change)")
+    rec.add_argument("--clang", default="clang++")
+    chk = sub.add_parser("check", help="rederive the table and compare with the recorded one")
+    chk.add_argument("--clang", default="clang++")
+    sen = sub.add_parser("sensitivity", help="seeded slot reorders, one per interface")
+    sen.add_argument("--cxx", default=os.environ.get("CXX", "g++"))
+    sen.add_argument("--clang", default="clang++", help="confirms each seeded swap is a real reorder")
+    sen.add_argument("--out", default=os.environ.get("CONFORMANCE_OUT") or tempfile.gettempdir())
+    args = parser.parse_args(argv)
+
+    try:
+        if args.command == "sensitivity":
+            return sensitivity(ROOT, args.cxx, args.clang, args.out)
+        text = render_table(derive_table(ROOT, args.clang))
+        path = os.path.join(ROOT, TABLE)
+        if args.command == "record":
+            if os.path.exists(path) and not args.update:
+                print("%s exists; the recorded table is the frozen contract. Use `check`, "
+                      "or --update for a reviewed ABI change." % TABLE, file=sys.stderr)
+                return 2
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as stream:
+                stream.write(text)
+            print("recorded %s" % TABLE)
+            return 0
+        with open(path) as stream:
+            recorded = stream.read()
+        return compare_tables(recorded, text)
+    except AbiError as error:
+        print("error: %s" % error, file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

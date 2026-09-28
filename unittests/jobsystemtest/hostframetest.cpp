@@ -623,6 +623,15 @@ void Shader_BeginRendering()
 {
 	Record( "Shader_BeginRendering" );
 }
+// The render core's frame (RFC 0016, engine/render_core_host.h) is not part of
+// the legacy frame this oracle compares against, so its calls record nothing
+// here; the render core's own suites cover them.
+void RenderCoreHost_BeginFrame()
+{
+}
+void RenderCoreHost_EndFrame()
+{
+}
 void V_RenderView()
 {
 	Record( "V_RenderView" );

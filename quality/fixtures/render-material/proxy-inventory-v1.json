@@ -1,0 +1,820 @@
+{
+ "schema": "render-proxy-inventory/v1",
+ "description": "Material proxies the Portal and Portal 2 clients register (RFC 0016 K4 proxy corpus). Written by tools/render/proxy_corpus.py inventory from the client sources their VPC projects select on Linux; the capture checks it against the proxies each client registers at run time.",
+ "games": {
+  "portal": [
+   {
+    "name": "Abs",
+    "class": "CAbsProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 835
+   },
+   {
+    "name": "Add",
+    "class": "CAddProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 77
+   },
+   {
+    "name": "Alpha",
+    "class": "CAlphaMaterialProxy",
+    "file": "game/client/alphamaterialproxy.cpp",
+    "line": 62
+   },
+   {
+    "name": "AnimatedEntityTexture",
+    "class": "CAnimatedEntityTextureProxy",
+    "file": "game/client/animatedentitytextureproxy.cpp",
+    "line": 24
+   },
+   {
+    "name": "AnimatedOffsetTexture",
+    "class": "CAnimatedOffsetTextureProxy",
+    "file": "game/client/animatedoffsettextureproxy.cpp",
+    "line": 28
+   },
+   {
+    "name": "AnimatedTexture",
+    "class": "CAnimatedTextureProxy",
+    "file": "game/client/animatedtextureproxy.cpp",
+    "line": 21
+   },
+   {
+    "name": "AnimateSpecificTexture",
+    "class": "CAnimateSpecificTexture",
+    "file": "game/client/AnimateSpecificTextureProxy.cpp",
+    "line": 53
+   },
+   {
+    "name": "BloomAdd",
+    "class": "CBloomAddMaterialProxy",
+    "file": "game/client/viewpostprocess.cpp",
+    "line": 1391
+   },
+   {
+    "name": "BreakableSurface",
+    "class": "CBreakableSurfaceProxy",
+    "file": "game/client/c_func_breakablesurf.cpp",
+    "line": 1336
+   },
+   {
+    "name": "Camo",
+    "class": "CCamoMaterialProxy",
+    "file": "game/client/camomaterialproxy.cpp",
+    "line": 582
+   },
+   {
+    "name": "Clamp",
+    "class": "CClampProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 359
+   },
+   {
+    "name": "ConveyorScroll",
+    "class": "CConveyorMaterialProxy",
+    "file": "game/client/c_func_conveyor.cpp",
+    "line": 158
+   },
+   {
+    "name": "CurrentTime",
+    "class": "CTimeMaterialProxy",
+    "file": "game/client/timematerialproxy.cpp",
+    "line": 24
+   },
+   {
+    "name": "Divide",
+    "class": "CDivideProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 263
+   },
+   {
+    "name": "Dummy",
+    "class": "CDummyMaterialProxy",
+    "file": "game/client/dummyproxy.cpp",
+    "line": 47
+   },
+   {
+    "name": "Empty",
+    "class": "CEmptyProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 853
+   },
+   {
+    "name": "engine_post",
+    "class": "CEnginePostMaterialProxy",
+    "file": "game/client/viewpostprocess.cpp",
+    "line": 1354
+   },
+   {
+    "name": "EntityOrigin",
+    "class": "CEntityOriginMaterialProxy",
+    "file": "game/client/entityoriginmaterialproxy.cpp",
+    "line": 54
+   },
+   {
+    "name": "EntityOriginAlyx",
+    "class": "CEntityOriginAlyxMaterialProxy",
+    "file": "game/client/entityoriginmaterialproxy.cpp",
+    "line": 98
+   },
+   {
+    "name": "EntityRandom",
+    "class": "CEntityRandomProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 324
+   },
+   {
+    "name": "EntitySpeed",
+    "class": "CEntitySpeedProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 279
+   },
+   {
+    "name": "Ep1IntroVortRefract",
+    "class": "CEp1IntroVortRefractMaterialProxy",
+    "file": "game/client/entityoriginmaterialproxy.cpp",
+    "line": 148
+   },
+   {
+    "name": "Equals",
+    "class": "CEqualsProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 471
+   },
+   {
+    "name": "Exponential",
+    "class": "CExponentialProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 811
+   },
+   {
+    "name": "FleshInterior",
+    "class": "CFleshInteriorMaterialProxy",
+    "file": "game/client/episodic/flesh_internal_material_proxy.cpp",
+    "line": 225
+   },
+   {
+    "name": "Frac",
+    "class": "CFracProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 527
+   },
+   {
+    "name": "GaussianNoise",
+    "class": "CGaussianNoiseProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 742
+   },
+   {
+    "name": "Health",
+    "class": "CProxyHealth",
+    "file": "game/client/ProxyHealth.cpp",
+    "line": 57
+   },
+   {
+    "name": "HeliBlade",
+    "class": "CHeliBladeMaterialProxy",
+    "file": "game/client/hl2/c_basehelicopter.cpp",
+    "line": 90
+   },
+   {
+    "name": "Int",
+    "class": "CIntProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 580
+   },
+   {
+    "name": "IsNPC",
+    "class": "CProxyIsNPC",
+    "file": "game/client/IsNPCProxy.cpp",
+    "line": 61
+   },
+   {
+    "name": "lampbeam",
+    "class": "CLampBeamProxy",
+    "file": "game/client/lampbeamproxy.cpp",
+    "line": 91
+   },
+   {
+    "name": "lamphalo",
+    "class": "CLampHaloProxy",
+    "file": "game/client/lamphaloproxy.cpp",
+    "line": 103
+   },
+   {
+    "name": "LessOrEqual",
+    "class": "CLessOrEqualProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 952
+   },
+   {
+    "name": "LinearRamp",
+    "class": "CLinearRampProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 629
+   },
+   {
+    "name": "MaterialModify",
+    "class": "CMaterialModifyProxy",
+    "file": "game/client/C_MaterialModifyControl.cpp",
+    "line": 797
+   },
+   {
+    "name": "MaterialModifyAnimated",
+    "class": "CMaterialModifyAnimatedProxy",
+    "file": "game/client/C_MaterialModifyControl.cpp",
+    "line": 798
+   },
+   {
+    "name": "MatrixRotate",
+    "class": "CMatrixRotateProxy",
+    "file": "game/client/matrixproxy.cpp",
+    "line": 181
+   },
+   {
+    "name": "MotionBlur",
+    "class": "CMotionBlurMaterialProxy",
+    "file": "game/client/viewpostprocess.cpp",
+    "line": 2650
+   },
+   {
+    "name": "Multiply",
+    "class": "CMultiplyProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 192
+   },
+   {
+    "name": "ParticleSphereProxy",
+    "class": "ParticleSphereProxy",
+    "file": "game/client/particle_proxies.cpp",
+    "line": 76
+   },
+   {
+    "name": "PlayerLogo",
+    "class": "CPlayerLogoProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 488
+   },
+   {
+    "name": "PlayerPosition",
+    "class": "CPlayerPositionProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 249
+   },
+   {
+    "name": "PlayerProximity",
+    "class": "CPlayerProximityProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 68
+   },
+   {
+    "name": "PlayerSpeed",
+    "class": "CPlayerSpeedProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 205
+   },
+   {
+    "name": "PlayerTeamMatch",
+    "class": "CPlayerTeamMatchProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 112
+   },
+   {
+    "name": "PlayerView",
+    "class": "CPlayerViewProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 164
+   },
+   {
+    "name": "PortalOpenAmount",
+    "class": "CPortalOpenAmountProxy",
+    "file": "game/client/portal/materialproxy_portalstatic.cpp",
+    "line": 145
+   },
+   {
+    "name": "PortalPickAlphaMask",
+    "class": "CPortalPickAlphaMaskProxy",
+    "file": "game/client/portal/MaterialProxy_Portal_PickAlphaMask.cpp",
+    "line": 127
+   },
+   {
+    "name": "PortalStatic",
+    "class": "CPortalStaticPortalProxy",
+    "file": "game/client/portal/materialproxy_portalstatic.cpp",
+    "line": 125
+   },
+   {
+    "name": "PortalStaticModel",
+    "class": "CPortalStaticProxy",
+    "file": "game/client/portal/materialproxy_portalstatic.cpp",
+    "line": 104
+   },
+   {
+    "name": "Pupil",
+    "class": "CPupilProxy",
+    "file": "game/client/proxypupil.cpp",
+    "line": 127
+   },
+   {
+    "name": "SelectFirstIfNonZero",
+    "class": "CSelectFirstIfNonZeroProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 1093
+   },
+   {
+    "name": "Shadow",
+    "class": "CShadowProxy",
+    "file": "game/client/clientshadowmgr.cpp",
+    "line": 4187
+   },
+   {
+    "name": "ShadowModel",
+    "class": "CShadowModelProxy",
+    "file": "game/client/clientshadowmgr.cpp",
+    "line": 4280
+   },
+   {
+    "name": "Shield",
+    "class": "CShieldProxy",
+    "file": "game/client/hl2/shieldproxy.cpp",
+    "line": 110
+   },
+   {
+    "name": "Sine",
+    "class": "CSineProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 424
+   },
+   {
+    "name": "Subtract",
+    "class": "CSubtractProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 134
+   },
+   {
+    "name": "TextureScroll",
+    "class": "CTextureScrollMaterialProxy",
+    "file": "game/client/texturescrollmaterialproxy.cpp",
+    "line": 127
+   },
+   {
+    "name": "TextureTransform",
+    "class": "CTextureTransformProxy",
+    "file": "game/client/matrixproxy.cpp",
+    "line": 122
+   },
+   {
+    "name": "ToggleTexture",
+    "class": "CBaseToggleTextureProxy",
+    "file": "game/client/toggletextureproxy.cpp",
+    "line": 22
+   },
+   {
+    "name": "UniformNoise",
+    "class": "CUniformNoiseProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 672
+   },
+   {
+    "name": "VortEmissive",
+    "class": "CVortEmissiveProxy",
+    "file": "game/client/episodic/c_vort_charge_token.cpp",
+    "line": 598
+   },
+   {
+    "name": "WaterLOD",
+    "class": "CWaterLODMaterialProxy",
+    "file": "game/client/WaterLODMaterialProxy.cpp",
+    "line": 83
+   },
+   {
+    "name": "WorldDims",
+    "class": "CWorldDimsProxy",
+    "file": "game/client/WorldDimsProxy.cpp",
+    "line": 76
+   },
+   {
+    "name": "WrapMinMax",
+    "class": "CWrapMinMaxProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 1015
+   }
+  ],
+  "portal2": [
+   {
+    "name": "Abs",
+    "class": "CAbsProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 835
+   },
+   {
+    "name": "Add",
+    "class": "CAddProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 77
+   },
+   {
+    "name": "Alpha",
+    "class": "CAlphaMaterialProxy",
+    "file": "game/client/alphamaterialproxy.cpp",
+    "line": 62
+   },
+   {
+    "name": "AnimatedEntityTexture",
+    "class": "CAnimatedEntityTextureProxy",
+    "file": "game/client/animatedentitytextureproxy.cpp",
+    "line": 24
+   },
+   {
+    "name": "AnimatedOffsetTexture",
+    "class": "CAnimatedOffsetTextureProxy",
+    "file": "game/client/animatedoffsettextureproxy.cpp",
+    "line": 28
+   },
+   {
+    "name": "AnimatedTexture",
+    "class": "CAnimatedTextureProxy",
+    "file": "game/client/animatedtextureproxy.cpp",
+    "line": 21
+   },
+   {
+    "name": "AnimateSpecificTexture",
+    "class": "CAnimateSpecificTexture",
+    "file": "game/client/AnimateSpecificTextureProxy.cpp",
+    "line": 53
+   },
+   {
+    "name": "BloomAdd",
+    "class": "CBloomAddMaterialProxy",
+    "file": "game/client/viewpostprocess.cpp",
+    "line": 1391
+   },
+   {
+    "name": "BreakableSurface",
+    "class": "CBreakableSurfaceProxy",
+    "file": "game/client/c_func_breakablesurf.cpp",
+    "line": 1336
+   },
+   {
+    "name": "Camo",
+    "class": "CCamoMaterialProxy",
+    "file": "game/client/camomaterialproxy.cpp",
+    "line": 582
+   },
+   {
+    "name": "Clamp",
+    "class": "CClampProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 359
+   },
+   {
+    "name": "ConveyorScroll",
+    "class": "CConveyorMaterialProxy",
+    "file": "game/client/c_func_conveyor.cpp",
+    "line": 158
+   },
+   {
+    "name": "CurrentTime",
+    "class": "CTimeMaterialProxy",
+    "file": "game/client/timematerialproxy.cpp",
+    "line": 24
+   },
+   {
+    "name": "Divide",
+    "class": "CDivideProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 263
+   },
+   {
+    "name": "Dummy",
+    "class": "CDummyMaterialProxy",
+    "file": "game/client/dummyproxy.cpp",
+    "line": 47
+   },
+   {
+    "name": "Empty",
+    "class": "CEmptyProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 853
+   },
+   {
+    "name": "engine_post",
+    "class": "CEnginePostMaterialProxy",
+    "file": "game/client/viewpostprocess.cpp",
+    "line": 1354
+   },
+   {
+    "name": "EntityOrigin",
+    "class": "CEntityOriginMaterialProxy",
+    "file": "game/client/entityoriginmaterialproxy.cpp",
+    "line": 54
+   },
+   {
+    "name": "EntityOriginAlyx",
+    "class": "CEntityOriginAlyxMaterialProxy",
+    "file": "game/client/entityoriginmaterialproxy.cpp",
+    "line": 98
+   },
+   {
+    "name": "EntityRandom",
+    "class": "CEntityRandomProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 324
+   },
+   {
+    "name": "EntitySpeed",
+    "class": "CEntitySpeedProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 279
+   },
+   {
+    "name": "Ep1IntroVortRefract",
+    "class": "CEp1IntroVortRefractMaterialProxy",
+    "file": "game/client/entityoriginmaterialproxy.cpp",
+    "line": 148
+   },
+   {
+    "name": "Equals",
+    "class": "CEqualsProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 471
+   },
+   {
+    "name": "Exponential",
+    "class": "CExponentialProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 811
+   },
+   {
+    "name": "FizzlerVortex",
+    "class": "CFizzlerVortexProxy",
+    "file": "game/client/portal/c_trigger_portal_cleanser.cpp",
+    "line": 340
+   },
+   {
+    "name": "FleshInterior",
+    "class": "CFleshInteriorMaterialProxy",
+    "file": "game/client/episodic/flesh_internal_material_proxy.cpp",
+    "line": 225
+   },
+   {
+    "name": "Frac",
+    "class": "CFracProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 527
+   },
+   {
+    "name": "GaussianNoise",
+    "class": "CGaussianNoiseProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 742
+   },
+   {
+    "name": "Health",
+    "class": "CProxyHealth",
+    "file": "game/client/ProxyHealth.cpp",
+    "line": 57
+   },
+   {
+    "name": "Int",
+    "class": "CIntProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 580
+   },
+   {
+    "name": "IsNPC",
+    "class": "CProxyIsNPC",
+    "file": "game/client/IsNPCProxy.cpp",
+    "line": 61
+   },
+   {
+    "name": "lampbeam",
+    "class": "CLampBeamProxy",
+    "file": "game/client/lampbeamproxy.cpp",
+    "line": 91
+   },
+   {
+    "name": "lamphalo",
+    "class": "CLampHaloProxy",
+    "file": "game/client/lamphaloproxy.cpp",
+    "line": 103
+   },
+   {
+    "name": "LessOrEqual",
+    "class": "CLessOrEqualProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 952
+   },
+   {
+    "name": "LightedFloorButton",
+    "class": "CLightedFloorButtonProxy",
+    "file": "game/client/portal2/c_prop_floor_button.cpp",
+    "line": 73
+   },
+   {
+    "name": "LightedMouth",
+    "class": "CLightedMouthProxy",
+    "file": "game/client/portal2/c_npc_personality_core.cpp",
+    "line": 279
+   },
+   {
+    "name": "LinearRamp",
+    "class": "CLinearRampProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 629
+   },
+   {
+    "name": "MaterialModify",
+    "class": "CMaterialModifyProxy",
+    "file": "game/client/C_MaterialModifyControl.cpp",
+    "line": 797
+   },
+   {
+    "name": "MaterialModifyAnimated",
+    "class": "CMaterialModifyAnimatedProxy",
+    "file": "game/client/C_MaterialModifyControl.cpp",
+    "line": 798
+   },
+   {
+    "name": "MatrixRotate",
+    "class": "CMatrixRotateProxy",
+    "file": "game/client/matrixproxy.cpp",
+    "line": 181
+   },
+   {
+    "name": "MotionBlur",
+    "class": "CMotionBlurMaterialProxy",
+    "file": "game/client/viewpostprocess.cpp",
+    "line": 2650
+   },
+   {
+    "name": "Multiply",
+    "class": "CMultiplyProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 192
+   },
+   {
+    "name": "ParticleSphereProxy",
+    "class": "ParticleSphereProxy",
+    "file": "game/client/particle_proxies.cpp",
+    "line": 76
+   },
+   {
+    "name": "PhotoMaterial",
+    "class": "CPhotoMaterialProxy",
+    "file": "game/client/portal2/c_item_photo.cpp",
+    "line": 82
+   },
+   {
+    "name": "PlacementPhoto",
+    "class": "CPlacementPhotoMaterialProxy",
+    "file": "game/client/portal2/c_item_photo.cpp",
+    "line": 159
+   },
+   {
+    "name": "PlayerLogo",
+    "class": "CPlayerLogoProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 488
+   },
+   {
+    "name": "PlayerPosition",
+    "class": "CPlayerPositionProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 249
+   },
+   {
+    "name": "PlayerProximity",
+    "class": "CPlayerProximityProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 68
+   },
+   {
+    "name": "PlayerSpeed",
+    "class": "CPlayerSpeedProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 205
+   },
+   {
+    "name": "PlayerTeamMatch",
+    "class": "CPlayerTeamMatchProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 112
+   },
+   {
+    "name": "PlayerView",
+    "class": "CPlayerViewProxy",
+    "file": "game/client/proxyplayer.cpp",
+    "line": 164
+   },
+   {
+    "name": "PortalOpenAmount",
+    "class": "CPortalOpenAmountProxy",
+    "file": "game/client/portal2/portal/materialproxy_portalstatic.cpp",
+    "line": 120
+   },
+   {
+    "name": "PortalPickAlphaMask",
+    "class": "CPortalPickAlphaMaskProxy",
+    "file": "game/client/portal2/portal/materialproxy_portal_pickalphamask.cpp",
+    "line": 122
+   },
+   {
+    "name": "PortalStatic",
+    "class": "CPortalStaticPortalProxy",
+    "file": "game/client/portal2/portal/materialproxy_portalstatic.cpp",
+    "line": 100
+   },
+   {
+    "name": "PortalStaticModel",
+    "class": "CPortalStaticProxy",
+    "file": "game/client/portal2/portal/materialproxy_portalstatic.cpp",
+    "line": 79
+   },
+   {
+    "name": "Pupil",
+    "class": "CPupilProxy",
+    "file": "game/client/proxypupil.cpp",
+    "line": 127
+   },
+   {
+    "name": "SelectFirstIfNonZero",
+    "class": "CSelectFirstIfNonZeroProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 1093
+   },
+   {
+    "name": "Shadow",
+    "class": "CShadowProxy",
+    "file": "game/client/clientshadowmgr.cpp",
+    "line": 4187
+   },
+   {
+    "name": "ShadowModel",
+    "class": "CShadowModelProxy",
+    "file": "game/client/clientshadowmgr.cpp",
+    "line": 4280
+   },
+   {
+    "name": "Sine",
+    "class": "CSineProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 424
+   },
+   {
+    "name": "Subtract",
+    "class": "CSubtractProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 134
+   },
+   {
+    "name": "TextureScroll",
+    "class": "CTextureScrollMaterialProxy",
+    "file": "game/client/texturescrollmaterialproxy.cpp",
+    "line": 127
+   },
+   {
+    "name": "TextureTransform",
+    "class": "CTextureTransformProxy",
+    "file": "game/client/matrixproxy.cpp",
+    "line": 122
+   },
+   {
+    "name": "ToggleTexture",
+    "class": "CBaseToggleTextureProxy",
+    "file": "game/client/toggletextureproxy.cpp",
+    "line": 22
+   },
+   {
+    "name": "TractorBeam",
+    "class": "CTractorBeamProxy",
+    "file": "game/client/portal2/c_trigger_tractorbeam.cpp",
+    "line": 588
+   },
+   {
+    "name": "UniformNoise",
+    "class": "CUniformNoiseProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 672
+   },
+   {
+    "name": "WaterLOD",
+    "class": "CWaterLODMaterialProxy",
+    "file": "game/client/WaterLODMaterialProxy.cpp",
+    "line": 83
+   },
+   {
+    "name": "WorldDims",
+    "class": "CWorldDimsProxy",
+    "file": "game/client/WorldDimsProxy.cpp",
+    "line": 76
+   },
+   {
+    "name": "WrapMinMax",
+    "class": "CWrapMinMaxProxy",
+    "file": "game/client/mathproxy.cpp",
+    "line": 1015
+   }
+  ]
+ }
+}

@@ -1058,7 +1058,9 @@ int Sys_InitGame( CreateInterfaceFn appSystemFactory, const char* pBaseDir, void
 #endif
 
 	// NOTE: Can't use COM_CheckParm here because it hasn't been set up yet.
-	SeedRandomNumberGenerator( CommandLine()->FindParm( "-random_invariant" ) != 0 );
+	// -deterministicrender (RFC 0016 K0 view oracles) implies an invariant seed.
+	SeedRandomNumberGenerator( CommandLine()->FindParm( "-random_invariant" ) != 0 ||
+	                           CommandLine()->FindParm( "-deterministicrender" ) != 0 );
 
 	TRACEINIT( Sys_InitMemory(), Sys_ShutdownMemory() );
 

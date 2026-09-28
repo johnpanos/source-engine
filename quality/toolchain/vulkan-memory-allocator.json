@@ -1,0 +1,29 @@
+{
+  "schema": "vulkan-memory-allocator-pin/v1",
+  "description": "The pinned Vulkan Memory Allocator (RFC 0016 decision 4, gate K1 'One Vulkan stack'). render.device.vulkan is its only user: every buffer, image and device-memory allocation of the Vulkan adapter, and of the legacy native Vulkan backend that borrows the adapter's device (render/device/vulkan/host_device.h), is made through it. It is a header-only library. tools/render/vma_pin.py is the single owner of the pin: 'fetch' downloads the archive below into the archive cache (or takes an archive already there), verifies its sha256, and unpacks exactly the listed files into 'directory'; 'check' verifies that every unpacked file matches its recorded sha256. Waf's configure step runs the same verification and fails when the header is absent or differs, so no build reads an unpinned copy.",
+  "directory": "dependencies/vulkan-memory-allocator",
+  "archive_cache": "dependencies/vulkan-memory-allocator/archives",
+  "component": {
+    "name": "VulkanMemoryAllocator",
+    "version": "v3.4.0",
+    "commit": "3aa921224c154a0d2c43912bc88e1c42ce1f7607",
+    "url": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/3aa921224c154a0d2c43912bc88e1c42ce1f7607.tar.gz",
+    "sha256": "5935dc47d8659bb681f1b7218f903ec171d10c39509752fd64eb2c9daf601ced",
+    "archive_bytes": 1002898,
+    "cache_archive": "VulkanMemoryAllocator-3aa921224c154a0d2c43912bc88e1c42ce1f7607.tar.gz",
+    "extracted_directory": "VulkanMemoryAllocator-3aa921224c154a0d2c43912bc88e1c42ce1f7607",
+    "license": "MIT (LICENSE.txt)"
+  },
+  "component_note": "The newest release when pinned: tag v3.4.0 resolved through the GitHub API on 2026-09-28 (refs/tags/v3.4.0 -> commit 3aa92122, published 2026-06-04). The archive sha256 is the pin; the unpacked files' digests below let the build verify the copy without the archive.",
+  "files": {
+    "include/vk_mem_alloc.h": "8487b7995ad3b263eb73bc5b9a77d71aa69b6bef5d58a715c02d2663afd81f1a",
+    "LICENSE.txt": "52df2c03d6cfc9ffec13c9d3626c530fc9ce0cbe41d5ea3d10cd46edeb1aeb38"
+  },
+  "configuration": {
+    "note": "render/device/vulkan/memory.cpp is the one translation unit that defines VMA_IMPLEMENTATION. VMA_STATIC_VULKAN_FUNCTIONS=0 and VMA_DYNAMIC_VULKAN_FUNCTIONS=1, with vkGetInstanceProcAddr and vkGetDeviceProcAddr passed in: Android's libvulkan exports only the 1.0/1.1 symbols of its API level, so static linking of VMA's Vulkan 1.3 entry points (vkGetDeviceBufferMemoryRequirements) fails there; dynamic lookup works with every loader, and MoltenVK.",
+    "defines": {
+      "VMA_STATIC_VULKAN_FUNCTIONS": "0",
+      "VMA_DYNAMIC_VULKAN_FUNCTIONS": "1"
+    }
+  }
+}

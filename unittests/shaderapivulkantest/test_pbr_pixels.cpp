@@ -10,7 +10,7 @@
 //===========================================================================//
 
 #include "render/pbr_brdf.h"
-#include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.h"
+#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
 #include "testing/conformance_result.h"
 
@@ -88,7 +88,7 @@ bool RunCase( render_vulkan::CVulkanContext &context, int baseHandle, int mraoHa
 	context.QueueDynamicTriangles( &kQuad[0][0], 6 );
 	context.RequestCapture();
 	bool skip = false;
-	if ( !context.BeginFrame( &skip, &error ) || skip || !context.EndFrame( &error ) )
+	if ( !context.RenderFrame( &skip, &error ) || skip )
 	{
 		if ( skip )
 			error = "surface unexpectedly skipped a PBR frame";
@@ -220,6 +220,7 @@ int main()
 	    render_vulkan::MakeSdl3LegacySurfaceHost( window, &error );
 	render_vulkan::CVulkanContext context;
 	render_vulkan::VulkanContextConfig config;
+	config.deviceFactory = &render::device::vulkan::HostDeviceFactory();
 	config.appName = "pbr-native-pixels";
 	config.enableValidation = true;
 	if ( !host || !context.Init( *host, config, &error ) )

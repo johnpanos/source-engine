@@ -205,11 +205,11 @@ void CVulkanContext::DestroyLegacyPipeline()
 	for ( SkinUniformBuffer &slot : m_legacyUbos )
 	{
 		if ( slot.mapped )
-			vkUnmapMemory( m_device, slot.memory );
+			UnmapMemory( slot.memory );
 		if ( slot.buffer != VK_NULL_HANDLE )
 			vkDestroyBuffer( m_device, slot.buffer, nullptr );
 		if ( slot.memory != VK_NULL_HANDLE )
-			vkFreeMemory( m_device, slot.memory, nullptr );
+			FreeMemory( slot.memory );
 	}
 	m_legacyUbos.clear();
 	for ( LegacySamplerPool &pool : m_legacySamplerPools )

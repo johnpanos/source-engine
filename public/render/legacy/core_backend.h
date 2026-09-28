@@ -1,0 +1,63 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: render.legacy-frontend (RFC 0016): the one place legacy rendering
+//			meets the core. It gives the material system its shader provider
+//			(through the existing MaterialSystem_BindShaderProvider), gives the
+//			client RenderStageMarkers001, adds the legacy stream to each
+//			frame's graph as a feature, and hands the engine the backend's
+//			optional capabilities in frame order (capabilities.h).
+//
+//			Until K3 the provider forwards to the linked legacy backend it
+//			wraps, keeping that backend's id so profile selection and quirks
+//			are unchanged, and the legacy-stream pass only marks where the
+//			legacy work sits in the frame. At K3 the frontend implements
+//			IShaderAPI itself and records the legacy work into that pass.
+//
+//=============================================================================//
+
+#ifndef RENDER_LEGACY_CORE_BACKEND_H
+#define RENDER_LEGACY_CORE_BACKEND_H
+
+#include "render/frame/feature.h"
+#include "render/frame/renderer.h"
+#include "render/legacy/capabilities.h"
+class IRenderStageMarkers; // render/legacy/stage_markers.h (legacy-interop)
+#include "render/legacy_shader_provider.h"
+
+#include <cstdint>
+#include <memory>
+
+namespace render::legacy
+{
+
+class ILegacyFrontend
+{
+public:
+	virtual ~ILegacyFrontend() = default;
+
+	// The provider the material system binds; valid while the frontend lives.
+	virtual const LegacyShaderProvider *Provider() const = 0;
+	virtual IRenderStageMarkers *Markers() = 0;
+	// The legacy stream as a frame feature; the renderer owns it, and the
+	// frontend outlives the renderer.
+	virtual std::unique_ptr<frame::IRenderFeature> CreateStreamFeature() = 0;
+	// The renderer the markers forward to; set once, after it is created.
+	virtual void BindRenderer( frame::IRenderer *renderer ) = 0;
+	// How many times the material system composed the legacy backend
+	// through this frontend.
+	virtual std::uint32_t ProviderCreates() const = 0;
+	// The capabilities of the backend the material system last created
+	// through the frontend; valid while the frontend lives.
+	virtual ILegacyCapabilities *Capabilities() = 0;
+	// The render call queue the capabilities order their calls on; null
+	// (the default) calls the backend directly.
+	virtual void BindRenderCallQueue( const RenderCallQueueHost *host ) = 0;
+};
+
+// backend: the linked legacy backend the frontend wraps; it outlives the
+// frontend. nullptr when the product composes no legacy backend.
+std::unique_ptr<ILegacyFrontend> CreateLegacyFrontend( const LegacyShaderProvider *backend );
+
+} // namespace render::legacy
+
+#endif // RENDER_LEGACY_CORE_BACKEND_H

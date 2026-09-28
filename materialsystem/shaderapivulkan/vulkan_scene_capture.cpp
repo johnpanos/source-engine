@@ -121,20 +121,8 @@ bool CVulkanContext::EnsureSceneCapture( std::string *outError )
 	           VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	bool ok = vkCreateImage( m_device, &ii, nullptr, &depth.image ) == VK_SUCCESS;
-	if ( ok )
-	{
-		VkMemoryRequirements req = {};
-		vkGetImageMemoryRequirements( m_device, depth.image, &req );
-		bool found = false;
-		VkMemoryAllocateInfo ai = {};
-		ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-		ai.allocationSize = req.size;
-		ai.memoryTypeIndex =
-		    FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &found );
-		ok = found && vkAllocateMemory( m_device, &ai, nullptr, &depth.memory ) == VK_SUCCESS &&
-		     vkBindImageMemory( m_device, depth.image, depth.memory, 0 ) == VK_SUCCESS;
-	}
+	bool ok = CreateImage( ii, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &depth.image, &depth.memory,
+	    "scene depth", outError );
 	if ( ok )
 	{
 		VkImageViewCreateInfo iv = {};
@@ -418,11 +406,13 @@ bool CVulkanContext::ReadSceneDepth(
 		CaptureError( outError, "scene depth readback does not know this depth format" );
 		return false;
 	}
-	vkDeviceWaitIdle( m_device );
+	// The copy below follows every submitted frame on the queue, and its
+	// barrier chains after their last depth write (fragment stage); only its
+	// own completion is waited for.
 	const VkDeviceSize texelBytes = words == kUnorm16 ? 2 : 4;
 	const VkDeviceSize bytes = VkDeviceSize( depth.width ) * depth.height * texelBytes;
 	VkBuffer buffer = VK_NULL_HANDLE;
-	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VulkanMemory memory = VK_NULL_HANDLE;
 	if ( !CreateBuffer( bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &buffer,
 	         &memory, outError ) )
@@ -446,10 +436,12 @@ bool CVulkanContext::ReadSceneDepth(
 		    VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT );
 		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &back );
-		ok = EndSingleTimeCommands( cmd, outError );
+		uint64_t copied = 0;
+		ok = EndSingleTimeCommands( cmd, outError, &copied ) &&
+		     m_hostDevice->WaitValue( copied, UINT64_MAX ) == VK_SUCCESS;
 	}
 	void *mapped = nullptr;
-	if ( ok && vkMapMemory( m_device, memory, 0, bytes, 0, &mapped ) == VK_SUCCESS )
+	if ( ok && MapMemory( memory, &mapped ) == VK_SUCCESS )
 	{
 		const size_t count = size_t( depth.width ) * depth.height;
 		outDepth->resize( count );
@@ -470,7 +462,7 @@ bool CVulkanContext::ReadSceneDepth(
 			for ( size_t i = 0; i < count; ++i )
 				( *outDepth )[i] = float( texels[i] ) / 65535.0f;
 		}
-		vkUnmapMemory( m_device, memory );
+		UnmapMemory( memory );
 		if ( outWidth )
 			*outWidth = depth.width;
 		if ( outHeight )
@@ -479,7 +471,7 @@ bool CVulkanContext::ReadSceneDepth(
 	else
 		ok = false;
 	vkDestroyBuffer( m_device, buffer, nullptr );
-	vkFreeMemory( m_device, memory, nullptr );
+	FreeMemory( memory );
 	return ok;
 }
 

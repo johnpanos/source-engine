@@ -29,6 +29,7 @@
 #include "mapcontainer/world_mesh.h"
 #include "mapcontainer/world_mesh_format.h"
 #include "render/world_mesh_upload.h"
+#include "render_core_host.h"
 #endif
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "materialsystem/materialsystem_config.h"
@@ -4550,9 +4551,7 @@ int g_nMapLoadCount = 0;
 #ifndef SWDS
 static world_mesh_gpu::IWorldMeshUpload *WorldMeshUploader()
 {
-	return materials ? static_cast<world_mesh_gpu::IWorldMeshUpload *>(
-	                       materials->QueryInterface( world_mesh_gpu::kWorldMeshUploadInterface ) )
-	                 : NULL;
+	return RenderCoreHost_WorldMeshUpload();
 }
 
 static uint32_t WorldMeshU32( const unsigned char *pBytes )

@@ -18,6 +18,7 @@
 #include "ctype.h"
 
 #include "tier1/fmtstr.h"
+#include "tier0/icommandline.h"
 #ifndef DEDICATED
 #if defined( DX_TO_GL_ABSTRACTION )
 #include "togl/rendermechanism.h"
@@ -2098,6 +2099,16 @@ static int CompareVertexFormats( VertexFormat_t Fmt1, VertexFormat_t Fmt2 )
 		return 0;
 }
 
+// -deterministicrender (RFC 0016 K0 view oracles): materials equal in every
+// other respect are ordered by name before address, so the world's sort IDs,
+// and the batches drawn in their order, are the same in every run. Off, the
+// address decides as before.
+static bool DeterministicMaterialOrder()
+{
+	static const bool s_bDeterministic = CommandLine()->FindParm( "-deterministicrender" ) != 0;
+	return s_bDeterministic;
+}
+
 int CMatRenderContext::CompareMaterialCombos( IMaterial *pMaterial1, IMaterial *pMaterial2, int lightMapID1, int lightMapID2 )
 {
 	pMaterial1 = ((IMaterialInternal *)pMaterial1)->GetRealTimeVersion(); //always work with the real time version of materials internally.
@@ -2154,6 +2165,13 @@ int CMatRenderContext::CompareMaterialCombos( IMaterial *pMaterial1, IMaterial *
 	int dLightmap = lightMapID1 - lightMapID2;
 	if ( dLightmap )
 		return dLightmap;
+
+	if ( DeterministicMaterialOrder() )
+	{
+		int dName = Q_stricmp( pMat1->GetName(), pMat2->GetName() );
+		if ( dName )
+			return dName;
+	}
 
 	return (intp)pMat1 - (intp)pMat2;
 }

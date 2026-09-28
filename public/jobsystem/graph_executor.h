@@ -22,10 +22,6 @@
 #ifndef JOBSYSTEM_GRAPH_EXECUTOR_H
 #define JOBSYSTEM_GRAPH_EXECUTOR_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
 #include <atomic>
 #include <cstdint>
 #include <vector>

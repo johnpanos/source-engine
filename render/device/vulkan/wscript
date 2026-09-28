@@ -1,0 +1,43 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.device.vulkan (RFC 0016 adapter): render.device.v2 over Vulkan. The
+# only render target that sees Vulkan; its public header is a factory. It
+# allocates through the pinned Vulkan Memory Allocator
+# (quality/toolchain/vulkan-memory-allocator.json), verified here on every
+# build and unpacked from the pinned archive when absent.
+
+import os
+import sys
+
+def vma_include(bld):
+	root = bld.path.find_node('../../..').abspath()
+	sys.path.insert(0, os.path.join(root, 'tools', 'render'))
+	try:
+		import vma_pin
+	finally:
+		sys.path.pop(0)
+	pin = vma_pin.load_pin()
+	problems = vma_pin.verify(pin)
+	if problems and all('is missing' in problem for problem in problems):
+		vma_pin.fetch(pin)
+		problems = vma_pin.verify(pin)
+	if problems:
+		bld.fatal('render.device.vulkan: the Vulkan Memory Allocator does not match its pin: ' +
+			'; '.join(problems))
+	return str(vma_pin.include_directory(pin))
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.device.vulkan',
+		target      = 'render_device_vulkan',
+		name        = 'render_device_vulkan',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		# The allocator is a pinned third-party header: a system include, so
+		# the strict warnings apply to the adapter and not to it.
+		cxxflags    = ['-isystem', vma_include(bld)],
+		use         = ['render_device', 'VULKAN'],
+		idx         = bld.get_taskgen_count()
+	)

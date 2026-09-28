@@ -1,0 +1,1234 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: render.device.vulkan (RFC 0016 K1): encoders, submission-time
+//			validation and translation into a VkCommandBuffer.
+//
+//			Encoders record a command list, as the null adapter's do. Submit
+//			first validates every encoder in order against the device's usage
+//			state (the null adapter's rules, plus what Vulkan needs to avoid
+//			undefined behavior: a draw names a pipeline that matches the
+//			rendering attachments, bound vertex and index buffers and bind
+//			groups of the pipeline's layouts, attachments large enough for the
+//			render area). A rejected submission records nothing and leaves the
+//			tracked state unchanged. An accepted one is translated on the
+//			submitting thread:
+//
+//			- each transition becomes one vkCmdPipelineBarrier2 from the
+//			  resource's tracked usage to the new one (scopes from ScopeOf); a
+//			  transition from kUndefined discards the contents (UNDEFINED old
+//			  layout) but still waits for the tracked usage;
+//			- the port runs commands as if one after another, so a resource
+//			  written in a usage and accessed again in it without a transition
+//			  (two uploads to one buffer, two passes on one target, two
+//			  dispatches on one storage buffer) gets a barrier within that
+//			  usage first;
+//			- clip Y up and a top-left origin come from a negative-height
+//			  viewport; depth 0 to 1 is Vulkan's own;
+//			- every submission ends with a barrier that makes device writes
+//			  visible to the host, for ReadBuffer.
+//
+//=============================================================================//
+
+#include "vulkan_device.h"
+
+#include <algorithm>
+#include <cstring>
+#include <unordered_set>
+
+namespace render::device::vulkan
+{
+
+// Encoder ----------------------------------------------------------------------
+
+VulkanEncoder::~VulkanEncoder()
+{
+	if ( !m_Submitted )
+		m_Device.AbandonUploads( *this );
+}
+
+void VulkanEncoder::TransitionTexture(
+    TextureId texture, ResourceUsage before, ResourceUsage after, const SubresourceRange &range )
+{
+	Command command;
+	command.op = Op::kTransitionTexture;
+	command.a = texture.value;
+	command.before = before;
+	command.after = after;
+	command.range = range;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::TransitionBuffer( BufferId buffer, ResourceUsage before, ResourceUsage after )
+{
+	Command command;
+	command.op = Op::kTransitionBuffer;
+	command.a = buffer.value;
+	command.before = before;
+	command.after = after;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::ClearTexture(
+    TextureId texture, const ClearColor &color, const SubresourceRange &range )
+{
+	NotRendering();
+	Command command;
+	command.op = Op::kClearTexture;
+	command.a = texture.value;
+	command.color = color;
+	command.range = range;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::WriteBuffer(
+    BufferId buffer, std::uint64_t offset, std::span<const std::byte> bytes )
+{
+	NotRendering();
+	Command command;
+	command.op = Op::kWriteBuffer;
+	command.a = buffer.value;
+	command.copy.destinationOffset = offset;
+	command.copy.size = bytes.size();
+	if ( bytes.empty() )
+		m_Error = true;
+	else
+		m_Device.StageUpload( *this, command, bytes );
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::CopyBuffer( BufferId source, BufferId destination, const BufferCopy &copy )
+{
+	NotRendering();
+	Command command;
+	command.op = Op::kCopyBuffer;
+	command.a = source.value;
+	command.b = destination.value;
+	command.copy = copy;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::CopyTextureToBuffer(
+    TextureId source, BufferId destination, const TextureBufferCopy &copy )
+{
+	NotRendering();
+	Command command;
+	command.op = Op::kCopyTextureToBuffer;
+	command.a = source.value;
+	command.b = destination.value;
+	command.textureCopy = copy;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::CopyBufferToTexture(
+    BufferId source, TextureId destination, const TextureBufferCopy &copy )
+{
+	NotRendering();
+	Command command;
+	command.op = Op::kCopyBufferToTexture;
+	command.a = source.value;
+	command.b = destination.value;
+	command.textureCopy = copy;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::BeginRendering( const RenderingDesc &desc )
+{
+	NotRendering();
+	m_Rendering = true;
+	Command command;
+	command.op = Op::kBeginRendering;
+	command.colors.assign( desc.colors.begin(), desc.colors.end() );
+	command.depth = desc.depth;
+	command.width = desc.width;
+	command.height = desc.height;
+	if ( desc.width == 0 || desc.height == 0 || ( desc.colors.empty() && !desc.depth ) )
+		m_Error = true;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::EndRendering()
+{
+	if ( !m_Rendering )
+		m_Error = true;
+	m_Rendering = false;
+	Command command;
+	command.op = Op::kEndRendering;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::SetPipeline( PipelineId pipeline )
+{
+	Command command;
+	command.op = Op::kSetPipeline;
+	command.a = pipeline.value;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::SetBindGroup( BindGroupRole role, BindGroupId group )
+{
+	Command command;
+	command.op = Op::kSetBindGroup;
+	command.a = group.value;
+	command.slot = static_cast<std::uint32_t>( role );
+	if ( command.slot >= kMaxBindGroups )
+		m_Error = true;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::SetVertexBuffer( std::uint32_t slot, BufferId buffer, std::uint64_t offset )
+{
+	Command command;
+	command.op = Op::kSetVertexBuffer;
+	command.a = buffer.value;
+	command.slot = slot;
+	command.offset = offset;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::SetIndexBuffer( BufferId buffer, std::uint64_t offset, IndexFormat format )
+{
+	Command command;
+	command.op = Op::kSetIndexBuffer;
+	command.a = buffer.value;
+	command.offset = offset;
+	command.indexFormat = format;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::SetViewport( const Viewport &viewport )
+{
+	Command command;
+	command.op = Op::kSetViewport;
+	command.viewport = viewport;
+	if ( !( viewport.width > 0.0f ) || !( viewport.height > 0.0f ) )
+		m_Error = true;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::Draw( std::uint32_t vertexCount, std::uint32_t instanceCount,
+    std::uint32_t firstVertex, std::uint32_t firstInstance )
+{
+	Drawing();
+	Command command;
+	command.op = Op::kDraw;
+	command.params[0] = vertexCount;
+	command.params[1] = instanceCount;
+	command.params[2] = firstVertex;
+	command.params[3] = firstInstance;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::DrawIndexed( std::uint32_t indexCount, std::uint32_t instanceCount,
+    std::uint32_t firstIndex, std::int32_t vertexOffset, std::uint32_t firstInstance )
+{
+	Drawing();
+	Command command;
+	command.op = Op::kDrawIndexed;
+	command.params[0] = indexCount;
+	command.params[1] = instanceCount;
+	command.params[2] = firstIndex;
+	command.params[3] = firstInstance;
+	command.vertexOffset = vertexOffset;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::Native( void ( *record )( void *, VkCommandBuffer ), void *user )
+{
+	// Host work runs outside the port's rendering.
+	if ( m_Rendering || !record )
+		m_Error = true;
+	Command command;
+	command.op = Op::kNative;
+	command.native = record;
+	command.nativeUser = user;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::AddWait( VkSemaphore semaphore, VkPipelineStageFlags2 stage )
+{
+	VkSemaphoreSubmitInfo info{};
+	info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	info.semaphore = semaphore;
+	info.stageMask = stage;
+	m_Waits.push_back( info );
+}
+
+void VulkanEncoder::AddSignal( VkSemaphore semaphore )
+{
+	VkSemaphoreSubmitInfo info{};
+	info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	info.semaphore = semaphore;
+	info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	m_Signals.push_back( info );
+}
+
+void VulkanEncoder::SetDrawConstants( std::uint32_t offset, std::span<const std::byte> bytes )
+{
+	Command command;
+	command.op = Op::kSetDrawConstants;
+	command.offset = offset;
+	command.bytes.assign( bytes.begin(), bytes.end() );
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::Dispatch( std::uint32_t x, std::uint32_t y, std::uint32_t z )
+{
+	NotRendering();
+	Command command;
+	command.op = Op::kDispatch;
+	command.params[0] = x;
+	command.params[1] = y;
+	command.params[2] = z;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::BeginLabel( std::string_view label )
+{
+	++m_Labels;
+	Command command;
+	command.op = Op::kBeginLabel;
+	command.label = std::string( label );
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::EndLabel()
+{
+	if ( m_Labels == 0 )
+		m_Error = true;
+	else
+		--m_Labels;
+	Command command;
+	command.op = Op::kEndLabel;
+	Push( std::move( command ) );
+}
+
+// Uploads ----------------------------------------------------------------------
+
+void VulkanDevice::StageUpload(
+    VulkanEncoder &encoder, Command &command, std::span<const std::byte> bytes )
+{
+	if ( const auto allocation = m_Ring.Allocate( bytes.size(), CompletedValue() ) )
+	{
+		std::memcpy( m_Ring.Data( allocation->first ), bytes.data(), bytes.size() );
+		command.ringOffset = allocation->first;
+		encoder.RingAllocations().push_back( allocation->second );
+		return;
+	}
+	// The ring is full: this upload gets its own staging buffer, released
+	// behind its submission's token. Never an overwrite, never a wait.
+	m_DeferredUploads.fetch_add( 1 );
+	auto staging = CreateHostBuffer(
+	    bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, DeviceOperation::kSubmit );
+	if ( !staging )
+	{
+		encoder.SetError();
+		return;
+	}
+	std::memcpy( staging.Value().mapped, bytes.data(), bytes.size() );
+	command.staging = staging.Value().buffer;
+	encoder.Staging().push_back( staging.Value() );
+}
+
+void VulkanDevice::AbandonUploads( VulkanEncoder &encoder )
+{
+	for ( std::uint64_t id : encoder.RingAllocations() )
+		m_Ring.Abandon( id );
+	encoder.RingAllocations().clear();
+	for ( HostBuffer &staging : encoder.Staging() )
+		DestroyHostBuffer( staging );
+	encoder.Staging().clear();
+}
+
+// Validation -------------------------------------------------------------------
+
+bool VulkanDevice::GroupsMatch( const ValidationState &state ) const
+{
+	const PipelineRecord *pipeline = state.pipeline;
+	for ( std::uint32_t role = 0; role < kMaxBindGroups; ++role )
+	{
+		if ( !pipeline->layoutHasBindings[role] )
+			continue;
+		const auto group = m_BindGroups.find( state.groups[role] );
+		if ( group == m_BindGroups.end() || group->second.released ||
+		     group->second.layout != pipeline->layouts[role] )
+			return false;
+	}
+	return true;
+}
+
+bool VulkanDevice::ValidateDraw( const ValidationState &state, bool indexed ) const
+{
+	const PipelineRecord *pipeline = state.pipeline;
+	if ( !pipeline || pipeline->kind != PipelineKind::kGraphics || !state.rendering )
+		return false;
+	if ( pipeline->colorFormats != state.colors || pipeline->depthFormat != state.depth ||
+	     pipeline->sampleCount != state.samples )
+		return false;
+	for ( std::uint32_t slot = 0; slot < pipeline->vertexBuffers; ++slot )
+	{
+		if ( slot >= 64 || !( state.vertexSlots & ( std::uint64_t( 1 ) << slot ) ) )
+			return false;
+	}
+	if ( indexed && !state.index )
+		return false;
+	return GroupsMatch( state );
+}
+
+bool VulkanDevice::Validate(
+    const std::vector<Command> &commands, std::unordered_map<std::uint64_t, ResourceUsage> &states )
+{
+	auto state = [&]( std::uint64_t id, ResourceUsage current ) -> ResourceUsage &
+	{
+		return states.try_emplace( id, current ).first->second;
+	};
+	auto texture = [&]( std::uint64_t id, ResourceUsage required ) -> TextureRecord *
+	{
+		TextureRecord *t = LiveTexture( id );
+		return t && state( id, t->track.usage ) == required ? t : nullptr;
+	};
+	auto buffer = [&]( std::uint64_t id, ResourceUsage required ) -> BufferRecord *
+	{
+		BufferRecord *b = LiveBuffer( id );
+		return b && state( id, b->track.usage ) == required ? b : nullptr;
+	};
+	auto copyFits =
+	    []( const TextureRecord &t, const BufferRecord &b, const TextureBufferCopy &copy )
+	{
+		const std::uint32_t texel = BytesPerTexel( t.desc.format );
+		if ( copy.mip >= t.desc.mipLevels || copy.layer >= t.layers || copy.width == 0 ||
+		     copy.height == 0 || copy.width > t.Width( copy.mip ) ||
+		     copy.height > t.Height( copy.mip ) || t.desc.sampleCount != 1 ||
+		     copy.bufferOffset % texel != 0 )
+			return false;
+		const std::uint64_t bytes = static_cast<std::uint64_t>( copy.width ) * copy.height * texel;
+		return copy.bufferOffset <= b.desc.size && bytes <= b.desc.size - copy.bufferOffset;
+	};
+
+	ValidationState v;
+	for ( const Command &command : commands )
+	{
+		switch ( command.op )
+		{
+		case Op::kTransitionTexture:
+		{
+			TextureRecord *t = LiveTexture( command.a );
+			if ( !t || !t->desc.usages.Has( command.after ) )
+				return false;
+			ResourceUsage &current = state( command.a, t->track.usage );
+			if ( command.before != ResourceUsage::kUndefined && command.before != current )
+				return false;
+			current = command.after;
+			break;
+		}
+		case Op::kTransitionBuffer:
+		{
+			BufferRecord *b = LiveBuffer( command.a );
+			if ( !b || !b->desc.usages.Has( command.after ) )
+				return false;
+			ResourceUsage &current = state( command.a, b->track.usage );
+			if ( command.before != ResourceUsage::kUndefined && command.before != current )
+				return false;
+			current = command.after;
+			break;
+		}
+		case Op::kClearTexture:
+			if ( !texture( command.a, ResourceUsage::kCopyDestination ) )
+				return false;
+			break;
+		case Op::kWriteBuffer:
+		{
+			BufferRecord *b = buffer( command.a, ResourceUsage::kCopyDestination );
+			if ( !b || command.copy.destinationOffset > b->desc.size ||
+			     command.copy.size > b->desc.size - command.copy.destinationOffset )
+				return false;
+			break;
+		}
+		case Op::kCopyBuffer:
+		{
+			BufferRecord *src = buffer( command.a, ResourceUsage::kCopySource );
+			BufferRecord *dst = buffer( command.b, ResourceUsage::kCopyDestination );
+			if ( !src || !dst || command.copy.sourceOffset > src->desc.size ||
+			     command.copy.size > src->desc.size - command.copy.sourceOffset ||
+			     command.copy.destinationOffset > dst->desc.size ||
+			     command.copy.size > dst->desc.size - command.copy.destinationOffset )
+				return false;
+			break;
+		}
+		case Op::kCopyTextureToBuffer:
+		{
+			TextureRecord *t = texture( command.a, ResourceUsage::kCopySource );
+			BufferRecord *b = buffer( command.b, ResourceUsage::kCopyDestination );
+			if ( !t || !b || !copyFits( *t, *b, command.textureCopy ) )
+				return false;
+			break;
+		}
+		case Op::kCopyBufferToTexture:
+		{
+			BufferRecord *b = buffer( command.a, ResourceUsage::kCopySource );
+			TextureRecord *t = texture( command.b, ResourceUsage::kCopyDestination );
+			if ( !t || !b || !copyFits( *t, *b, command.textureCopy ) )
+				return false;
+			break;
+		}
+		case Op::kBeginRendering:
+		{
+			v.colors.clear();
+			v.depth = Format::kUnknown;
+			v.samples = 0;
+			auto fits = [&]( const TextureRecord &t )
+			{
+				if ( t.attachmentView == VK_NULL_HANDLE || command.width > t.desc.width ||
+				     command.height > t.desc.height )
+					return false;
+				if ( v.samples != 0 && v.samples != t.desc.sampleCount )
+					return false;
+				v.samples = t.desc.sampleCount;
+				return true;
+			};
+			for ( const ColorAttachment &color : command.colors )
+			{
+				TextureRecord *t = texture( color.texture.value, ResourceUsage::kColorAttachment );
+				if ( !t || !fits( *t ) )
+					return false;
+				v.colors.push_back( t->desc.format );
+				if ( color.resolve.IsValid() )
+				{
+					TextureRecord *r =
+					    texture( color.resolve.value, ResourceUsage::kResolveDestination );
+					if ( !r || r->attachmentView == VK_NULL_HANDLE || r->desc.sampleCount != 1 ||
+					     t->desc.sampleCount == 1 || r->desc.format != t->desc.format ||
+					     command.width > r->desc.width || command.height > r->desc.height )
+						return false;
+				}
+			}
+			if ( command.depth )
+			{
+				const std::uint64_t id = command.depth->texture.value;
+				TextureRecord *t = texture( id, ResourceUsage::kDepthWrite );
+				if ( !t )
+				{
+					t = texture( id, ResourceUsage::kDepthRead );
+					// A read-only depth attachment cannot be cleared.
+					if ( t && command.depth->load == LoadOp::kClear )
+						return false;
+				}
+				if ( !t || !fits( *t ) )
+					return false;
+				v.depth = t->desc.format;
+			}
+			v.rendering = true;
+			break;
+		}
+		case Op::kEndRendering:
+			v.rendering = false;
+			break;
+		case Op::kSetPipeline:
+		{
+			const auto pipeline = m_Pipelines.find( command.a );
+			if ( pipeline == m_Pipelines.end() || pipeline->second.released )
+				return false;
+			v.pipeline = &pipeline->second;
+			v.constants.Bind( pipeline->second.drawConstantBytes );
+			break;
+		}
+		case Op::kSetBindGroup:
+		{
+			const auto group = m_BindGroups.find( command.a );
+			if ( group == m_BindGroups.end() || group->second.released )
+				return false;
+			// A group whose resources were released would read freed memory.
+			for ( const ResourceId &resource : group->second.resources )
+			{
+				const bool live = resource.kind == ResourceKind::kBuffer
+				                      ? LiveBuffer( resource.value ) != nullptr
+				                  : resource.kind == ResourceKind::kTexture
+				                      ? LiveTexture( resource.value ) != nullptr
+				                      : Live( m_Samplers, resource.value );
+				if ( !live )
+					return false;
+			}
+			v.groups[command.slot] = command.a;
+			break;
+		}
+		case Op::kSetVertexBuffer:
+			if ( !buffer( command.a, ResourceUsage::kVertex ) || command.slot >= 64 ||
+			     command.slot >= m_Properties.limits.maxVertexInputBindings )
+				return false;
+			v.vertexSlots |= std::uint64_t( 1 ) << command.slot;
+			break;
+		case Op::kSetIndexBuffer:
+			if ( !buffer( command.a, ResourceUsage::kIndex ) )
+				return false;
+			v.index = true;
+			break;
+		case Op::kSetDrawConstants:
+			if ( !v.constants.Write( std::uint32_t( command.offset ), command.bytes.size() ) )
+				return false;
+			break;
+		case Op::kNative:
+			// Host work leaves nothing bound for the port.
+			if ( v.rendering )
+				return false;
+			v.pipeline = nullptr;
+			v.groups.fill( 0 );
+			v.constants.Bind( 0 );
+			break;
+		case Op::kDraw:
+		case Op::kDrawIndexed:
+			if ( !ValidateDraw( v, command.op == Op::kDrawIndexed ) || !v.constants.Ready() )
+				return false;
+			break;
+		case Op::kDispatch:
+			if ( !v.pipeline || v.pipeline->kind != PipelineKind::kCompute || !GroupsMatch( v ) ||
+			     !v.constants.Ready() )
+				return false;
+			break;
+		case Op::kSetViewport:
+		case Op::kBeginLabel:
+		case Op::kEndLabel:
+			break;
+		}
+	}
+	return true;
+}
+
+// Translation ------------------------------------------------------------------
+
+class Translator
+{
+public:
+	Translator( VulkanDevice &device, VkCommandBuffer buffer ) : m_D( device ), m_Cmd( buffer ) {}
+
+	void Encoder( const std::vector<Command> &commands )
+	{
+		m_Pipeline = nullptr;
+		m_Groups.fill( 0 );
+		m_Viewport.reset();
+		for ( std::size_t i = 0; i < commands.size(); ++i )
+			Translate( commands, i );
+	}
+
+	// Device writes become visible to the host (ReadBuffer) at completion.
+	void Finish()
+	{
+		VkMemoryBarrier2 barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+		barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		barrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+		barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+		barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+		VkDependencyInfo dependency{};
+		dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		dependency.memoryBarrierCount = 1;
+		dependency.pMemoryBarriers = &barrier;
+		m_D.m_Vk.cmdPipelineBarrier2( m_Cmd, &dependency );
+	}
+
+	// The submission was accepted: its usage state becomes the device's.
+	void Commit()
+	{
+		for ( const auto &[id, track] : m_Tracks )
+		{
+			if ( BufferRecord *buffer = m_D.LiveBuffer( id ) )
+				buffer->track = track;
+			else if ( TextureRecord *texture = m_D.LiveTexture( id ) )
+				texture->track = track;
+		}
+	}
+
+private:
+	Track &TrackOf( std::uint64_t id )
+	{
+		const auto found = m_Tracks.find( id );
+		if ( found != m_Tracks.end() )
+			return found->second;
+		Track initial;
+		if ( const BufferRecord *buffer = m_D.LiveBuffer( id ) )
+			initial = buffer->track;
+		else if ( const TextureRecord *texture = m_D.LiveTexture( id ) )
+			initial = texture->track;
+		return m_Tracks.emplace( id, initial ).first->second;
+	}
+
+	void ImageBarrier( const TextureRecord &texture, const UsageScope &src, const UsageScope &dst,
+	    VkImageLayout oldLayout )
+	{
+		VkImageMemoryBarrier2 barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+		barrier.srcStageMask = src.stages;
+		barrier.srcAccessMask = src.access;
+		barrier.dstStageMask = dst.stages;
+		barrier.dstAccessMask = dst.access;
+		barrier.oldLayout = oldLayout;
+		barrier.newLayout = dst.layout;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.image = texture.image;
+		// Usage is tracked per resource, so every transition covers it all.
+		barrier.subresourceRange = { BarrierAspects( texture.desc.format ), 0,
+		    VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS };
+		VkDependencyInfo dependency{};
+		dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		dependency.imageMemoryBarrierCount = 1;
+		dependency.pImageMemoryBarriers = &barrier;
+		m_D.m_Vk.cmdPipelineBarrier2( m_Cmd, &dependency );
+	}
+
+	void BufferBarrier( const BufferRecord &buffer, const UsageScope &src, const UsageScope &dst )
+	{
+		VkBufferMemoryBarrier2 barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+		barrier.srcStageMask = src.stages;
+		barrier.srcAccessMask = src.access;
+		barrier.dstStageMask = dst.stages;
+		barrier.dstAccessMask = dst.access;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.buffer = buffer.buffer;
+		barrier.offset = 0;
+		barrier.size = VK_WHOLE_SIZE;
+		VkDependencyInfo dependency{};
+		dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		dependency.bufferMemoryBarrierCount = 1;
+		dependency.pBufferMemoryBarriers = &barrier;
+		m_D.m_Vk.cmdPipelineBarrier2( m_Cmd, &dependency );
+	}
+
+	void Transition( std::uint64_t id, ResourceUsage before, ResourceUsage after )
+	{
+		Track &track = TrackOf( id );
+		// Wait for whatever the resource was last used as; a transition from
+		// kUndefined discards the contents but still orders after that use.
+		const UsageScope &src = ScopeOf( track.usage );
+		const UsageScope &dst = ScopeOf( after );
+		if ( const BufferRecord *buffer = m_D.LiveBuffer( id ) )
+		{
+			BufferBarrier( *buffer, src, dst );
+		}
+		else if ( const TextureRecord *texture = m_D.LiveTexture( id ) )
+		{
+			if ( dst.layout != VK_IMAGE_LAYOUT_UNDEFINED )
+				ImageBarrier( *texture, src, dst,
+				    before == ResourceUsage::kUndefined ? VK_IMAGE_LAYOUT_UNDEFINED : src.layout );
+		}
+		track.usage = after;
+		track.dirty = false;
+	}
+
+	// Orders an access after an unbarriered write in the same usage.
+	void Access( std::uint64_t id, bool write )
+	{
+		Track &track = TrackOf( id );
+		if ( track.dirty )
+		{
+			const UsageScope &scope = ScopeOf( track.usage );
+			if ( const BufferRecord *buffer = m_D.LiveBuffer( id ) )
+				BufferBarrier( *buffer, scope, scope );
+			else if ( const TextureRecord *texture = m_D.LiveTexture( id ) )
+				ImageBarrier( *texture, scope, scope, scope.layout );
+			track.dirty = false;
+		}
+		if ( write )
+			track.dirty = true;
+	}
+
+	// Shader accesses through bind groups: a resource in a write usage
+	// (storage write) is written; the others are only read.
+	void GroupAccesses( const std::vector<std::uint64_t> &groups )
+	{
+		std::unordered_set<std::uint64_t> seen;
+		for ( std::uint64_t groupId : groups )
+		{
+			const auto group = m_D.m_BindGroups.find( groupId );
+			if ( groupId == 0 || group == m_D.m_BindGroups.end() )
+				continue;
+			for ( const ResourceId &resource : group->second.resources )
+			{
+				if ( resource.kind == ResourceKind::kSampler ||
+				     !seen.insert( resource.value ).second )
+					continue;
+				Access( resource.value, IsWrite( TrackOf( resource.value ).usage ) );
+			}
+		}
+	}
+
+	void Flush( VkPipelineBindPoint point )
+	{
+		if ( !m_Pipeline )
+			return;
+		for ( std::uint32_t role = 0; role < kMaxBindGroups; ++role )
+		{
+			if ( !m_Pipeline->layouts[role].IsValid() || !m_Groups[role] || !m_GroupDirty[role] )
+				continue;
+			const auto group = m_D.m_BindGroups.find( m_Groups[role] );
+			if ( group == m_D.m_BindGroups.end() ||
+			     group->second.layout != m_Pipeline->layouts[role] )
+				continue;
+			vkCmdBindDescriptorSets(
+			    m_Cmd, point, m_Pipeline->pipelineLayout, role, 1, &group->second.set, 0, nullptr );
+			m_GroupDirty[role] = false;
+		}
+	}
+
+	void ApplyViewport( std::uint32_t width, std::uint32_t height )
+	{
+		const Viewport viewport = m_Viewport.value_or( Viewport{
+		    0.0f, 0.0f, static_cast<float>( width ), static_cast<float>( height ), 0.0f, 1.0f } );
+		// Negative height: clip +Y points up and row 0 is the top row.
+		VkViewport flipped{};
+		flipped.x = viewport.x;
+		flipped.y = viewport.y + viewport.height;
+		flipped.width = viewport.width;
+		flipped.height = -viewport.height;
+		flipped.minDepth = viewport.minDepth;
+		flipped.maxDepth = viewport.maxDepth;
+		const VulkanAdapterOptions::Sensitivity &broken = m_D.m_Options.sensitivity;
+		if ( broken.flipY )
+		{
+			flipped.y = viewport.y;
+			flipped.height = viewport.height;
+		}
+		if ( broken.glDepthRange )
+			flipped.minDepth = 0.5f * ( viewport.minDepth + viewport.maxDepth );
+		vkCmdSetViewport( m_Cmd, 0, 1, &flipped );
+	}
+
+	void BeginRendering( const std::vector<Command> &commands, std::size_t index )
+	{
+		const Command &command = commands[index];
+		// Everything the pass's draws may write through bind groups, found
+		// ahead, since no barrier may sit inside the rendering.
+		std::vector<std::uint64_t> groups( m_Groups.begin(), m_Groups.end() );
+		for ( std::size_t i = index + 1; i < commands.size() && commands[i].op != Op::kEndRendering;
+		    ++i )
+		{
+			if ( commands[i].op == Op::kSetBindGroup )
+				groups.push_back( commands[i].a );
+		}
+		GroupAccesses( groups );
+
+		std::vector<VkRenderingAttachmentInfo> colors;
+		for ( const ColorAttachment &color : command.colors )
+		{
+			const TextureRecord *texture = m_D.LiveTexture( color.texture.value );
+			Access( color.texture.value, true );
+			VkRenderingAttachmentInfo info{};
+			info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+			info.imageView = texture->attachmentView;
+			info.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			info.loadOp = color.load == LoadOp::kLoad    ? VK_ATTACHMENT_LOAD_OP_LOAD
+			              : color.load == LoadOp::kClear ? VK_ATTACHMENT_LOAD_OP_CLEAR
+			                                             : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			info.storeOp = color.store == StoreOp::kStore ? VK_ATTACHMENT_STORE_OP_STORE
+			                                              : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			info.clearValue.color = {
+			    { color.clear.r, color.clear.g, color.clear.b, color.clear.a } };
+			if ( color.resolve.IsValid() )
+			{
+				const TextureRecord *resolve = m_D.LiveTexture( color.resolve.value );
+				Access( color.resolve.value, true );
+				info.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+				info.resolveImageView = resolve->attachmentView;
+				info.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			}
+			colors.push_back( info );
+		}
+		VkRenderingAttachmentInfo depth{};
+		VkRenderingAttachmentInfo stencil{};
+		const TextureRecord *depthTexture = nullptr;
+		if ( command.depth )
+		{
+			const std::uint64_t id = command.depth->texture.value;
+			depthTexture = m_D.LiveTexture( id );
+			const bool readOnly = TrackOf( id ).usage == ResourceUsage::kDepthRead;
+			Access( id, !readOnly );
+			depth.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+			depth.imageView = depthTexture->attachmentView;
+			depth.imageLayout = ScopeOf( TrackOf( id ).usage ).layout;
+			depth.loadOp = command.depth->load == LoadOp::kLoad ? VK_ATTACHMENT_LOAD_OP_LOAD
+			               : command.depth->load == LoadOp::kClear
+			                   ? VK_ATTACHMENT_LOAD_OP_CLEAR
+			                   : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			depth.storeOp = readOnly ? VK_ATTACHMENT_STORE_OP_NONE
+			                : command.depth->store == StoreOp::kStore
+			                    ? VK_ATTACHMENT_STORE_OP_STORE
+			                    : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			depth.clearValue.depthStencil = { command.depth->clearDepth, 0 };
+			stencil = depth;
+		}
+		VkRenderingInfo info{};
+		info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+		info.renderArea = { { 0, 0 }, { command.width, command.height } };
+		info.layerCount = 1;
+		info.colorAttachmentCount = static_cast<std::uint32_t>( colors.size() );
+		info.pColorAttachments = colors.data();
+		info.pDepthAttachment = depthTexture ? &depth : nullptr;
+		info.pStencilAttachment =
+		    depthTexture && depthTexture->desc.format == Format::kD24UnormS8 ? &stencil : nullptr;
+		m_D.m_Vk.cmdBeginRendering( m_Cmd, &info );
+		m_Width = command.width;
+		m_Height = command.height;
+		m_Rendering = true;
+		ApplyViewport( m_Width, m_Height );
+		const VkRect2D scissor{ { 0, 0 }, { command.width, command.height } };
+		vkCmdSetScissor( m_Cmd, 0, 1, &scissor );
+	}
+
+	void ClearTexture( const Command &command )
+	{
+		const TextureRecord *texture = m_D.LiveTexture( command.a );
+		Access( command.a, true );
+		const SubresourceRange &r = command.range;
+		const std::uint32_t mips = r.baseMip < texture->desc.mipLevels
+		                               ? std::min( r.mipCount, texture->desc.mipLevels - r.baseMip )
+		                               : 0;
+		const std::uint32_t layers = r.baseLayer < texture->layers
+		                                 ? std::min( r.layerCount, texture->layers - r.baseLayer )
+		                                 : 0;
+		if ( mips == 0 || layers == 0 )
+			return;
+		const VkImageSubresourceRange range{
+		    BarrierAspects( texture->desc.format ), r.baseMip, mips, r.baseLayer, layers };
+		if ( IsDepthFormat( texture->desc.format ) )
+		{
+			const VkClearDepthStencilValue value{ std::clamp( command.color.r, 0.0f, 1.0f ), 0 };
+			vkCmdClearDepthStencilImage(
+			    m_Cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &value, 1, &range );
+		}
+		else
+		{
+			VkClearColorValue value{};
+			value.float32[0] = command.color.r;
+			value.float32[1] = command.color.g;
+			value.float32[2] = command.color.b;
+			value.float32[3] = command.color.a;
+			vkCmdClearColorImage(
+			    m_Cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &value, 1, &range );
+		}
+	}
+
+	void TextureCopy( const Command &command, bool toBuffer )
+	{
+		const std::uint64_t textureId = toBuffer ? command.a : command.b;
+		const std::uint64_t bufferId = toBuffer ? command.b : command.a;
+		const TextureRecord *texture = m_D.LiveTexture( textureId );
+		const BufferRecord *buffer = m_D.LiveBuffer( bufferId );
+		Access( textureId, !toBuffer );
+		Access( bufferId, toBuffer );
+		const TextureBufferCopy &copy = command.textureCopy;
+		VkBufferImageCopy region{};
+		region.bufferOffset = copy.bufferOffset;
+		region.imageSubresource.aspectMask = CopyAspect( texture->desc.format );
+		region.imageSubresource.mipLevel = copy.mip;
+		region.imageSubresource.baseArrayLayer = copy.layer;
+		region.imageSubresource.layerCount = 1;
+		region.imageExtent = { copy.width, copy.height, 1 };
+		if ( toBuffer )
+			vkCmdCopyImageToBuffer( m_Cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			    buffer->buffer, 1, &region );
+		else
+			vkCmdCopyBufferToImage( m_Cmd, buffer->buffer, texture->image,
+			    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region );
+	}
+
+	void Translate( const std::vector<Command> &commands, std::size_t index )
+	{
+		const Command &command = commands[index];
+		switch ( command.op )
+		{
+		case Op::kTransitionTexture:
+		case Op::kTransitionBuffer:
+			Transition( command.a, command.before, command.after );
+			break;
+		case Op::kClearTexture:
+			ClearTexture( command );
+			break;
+		case Op::kWriteBuffer:
+		{
+			const BufferRecord *buffer = m_D.LiveBuffer( command.a );
+			Access( command.a, true );
+			VkBufferCopy region{};
+			region.srcOffset = command.staging != VK_NULL_HANDLE ? 0 : command.ringOffset;
+			region.dstOffset = command.copy.destinationOffset;
+			region.size = command.copy.size;
+			vkCmdCopyBuffer( m_Cmd,
+			    command.staging != VK_NULL_HANDLE ? command.staging : m_D.m_Ring.Buffer(),
+			    buffer->buffer, 1, &region );
+			break;
+		}
+		case Op::kCopyBuffer:
+		{
+			const BufferRecord *source = m_D.LiveBuffer( command.a );
+			const BufferRecord *destination = m_D.LiveBuffer( command.b );
+			Access( command.a, false );
+			Access( command.b, true );
+			if ( command.copy.size == 0 )
+				break;
+			VkBufferCopy region{};
+			region.srcOffset = command.copy.sourceOffset;
+			region.dstOffset = command.copy.destinationOffset;
+			region.size = command.copy.size;
+			vkCmdCopyBuffer( m_Cmd, source->buffer, destination->buffer, 1, &region );
+			break;
+		}
+		case Op::kCopyTextureToBuffer:
+			TextureCopy( command, true );
+			break;
+		case Op::kCopyBufferToTexture:
+			TextureCopy( command, false );
+			break;
+		case Op::kBeginRendering:
+			BeginRendering( commands, index );
+			break;
+		case Op::kEndRendering:
+			m_D.m_Vk.cmdEndRendering( m_Cmd );
+			m_Rendering = false;
+			break;
+		case Op::kSetPipeline:
+		{
+			m_Pipeline = &m_D.m_Pipelines.find( command.a )->second;
+			vkCmdBindPipeline( m_Cmd,
+			    m_Pipeline->kind == PipelineKind::kCompute ? VK_PIPELINE_BIND_POINT_COMPUTE
+			                                               : VK_PIPELINE_BIND_POINT_GRAPHICS,
+			    m_Pipeline->pipeline );
+			m_GroupDirty.fill( true );
+			break;
+		}
+		case Op::kSetBindGroup:
+			m_Groups[command.slot] = command.a;
+			m_GroupDirty[command.slot] = true;
+			break;
+		case Op::kSetVertexBuffer:
+		{
+			const VkBuffer buffer = m_D.LiveBuffer( command.a )->buffer;
+			const VkDeviceSize offset = command.offset;
+			vkCmdBindVertexBuffers( m_Cmd, command.slot, 1, &buffer, &offset );
+			break;
+		}
+		case Op::kSetIndexBuffer:
+			vkCmdBindIndexBuffer( m_Cmd, m_D.LiveBuffer( command.a )->buffer, command.offset,
+			    command.indexFormat == IndexFormat::kUint16 ? VK_INDEX_TYPE_UINT16
+			                                                : VK_INDEX_TYPE_UINT32 );
+			break;
+		case Op::kSetViewport:
+			m_Viewport = command.viewport;
+			if ( m_Rendering )
+				ApplyViewport( m_Width, m_Height );
+			break;
+		case Op::kDraw:
+			Flush( VK_PIPELINE_BIND_POINT_GRAPHICS );
+			vkCmdDraw(
+			    m_Cmd, command.params[0], command.params[1], command.params[2], command.params[3] );
+			break;
+		case Op::kDrawIndexed:
+			Flush( VK_PIPELINE_BIND_POINT_GRAPHICS );
+			vkCmdDrawIndexed( m_Cmd, command.params[0], command.params[1], command.params[2],
+			    command.vertexOffset, command.params[3] );
+			break;
+		case Op::kNative:
+			command.native( command.nativeUser, m_Cmd );
+			// The host may have bound anything: rebind before the next use.
+			m_Pipeline = nullptr;
+			m_Groups.fill( 0 );
+			m_GroupDirty.fill( true );
+			m_Viewport.reset();
+			break;
+		case Op::kSetDrawConstants:
+			vkCmdPushConstants( m_Cmd, m_Pipeline->pipelineLayout,
+			    DrawConstantStages( m_Pipeline->kind ), std::uint32_t( command.offset ),
+			    std::uint32_t( command.bytes.size() ), command.bytes.data() );
+			break;
+		case Op::kDispatch:
+			GroupAccesses( std::vector<std::uint64_t>( m_Groups.begin(), m_Groups.end() ) );
+			Flush( VK_PIPELINE_BIND_POINT_COMPUTE );
+			vkCmdDispatch( m_Cmd, command.params[0], command.params[1], command.params[2] );
+			break;
+		case Op::kBeginLabel:
+			if ( m_D.m_Instance->beginLabel )
+			{
+				VkDebugUtilsLabelEXT label{};
+				label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+				label.pLabelName = command.label.c_str();
+				m_D.m_Instance->beginLabel( m_Cmd, &label );
+			}
+			break;
+		case Op::kEndLabel:
+			if ( m_D.m_Instance->endLabel )
+				m_D.m_Instance->endLabel( m_Cmd );
+			break;
+		}
+	}
+
+	VulkanDevice &m_D;
+	VkCommandBuffer m_Cmd;
+	std::unordered_map<std::uint64_t, Track> m_Tracks;
+	const PipelineRecord *m_Pipeline = nullptr;
+	std::array<std::uint64_t, kMaxBindGroups> m_Groups{};
+	std::array<bool, kMaxBindGroups> m_GroupDirty{};
+	std::optional<Viewport> m_Viewport;
+	bool m_Rendering = false;
+	std::uint32_t m_Width = 0;
+	std::uint32_t m_Height = 0;
+};
+
+// Submission -------------------------------------------------------------------
+
+DeviceResult<VulkanDevice::CommandContext> VulkanDevice::AcquireContext()
+{
+	if ( !m_FreeContexts.empty() )
+	{
+		CommandContext context = std::move( m_FreeContexts.back() );
+		m_FreeContexts.pop_back();
+		return context;
+	}
+	CommandContext context;
+	VkCommandPoolCreateInfo pool{};
+	pool.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	pool.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+	pool.queueFamilyIndex = m_Adapter.queueFamily;
+	VkResult result = vkCreateCommandPool( m_Device, &pool, nullptr, &context.pool );
+	if ( result != VK_SUCCESS )
+		return Fail( StatusOf( result ), DeviceOperation::kSubmit, result );
+	VkCommandBufferAllocateInfo allocate{};
+	allocate.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocate.commandPool = context.pool;
+	allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocate.commandBufferCount = 1;
+	result = vkAllocateCommandBuffers( m_Device, &allocate, &context.buffer );
+	if ( result != VK_SUCCESS )
+	{
+		vkDestroyCommandPool( m_Device, context.pool, nullptr );
+		return Fail( StatusOf( result ), DeviceOperation::kSubmit, result );
+	}
+	return context;
+}
+
+DeviceResult<CompletionToken> VulkanDevice::Submit(
+    QueueKind queue, std::span<CommandEncoder> encoders, const SubmitWaits &waits )
+{
+	const DeviceOperation op = DeviceOperation::kSubmit;
+	// Encoders are consumed whatever the outcome; an unsubmitted backend
+	// returns its upload ranges when it is destroyed.
+	std::vector<std::unique_ptr<IEncoderBackend>> backends;
+	backends.reserve( encoders.size() );
+	for ( CommandEncoder &encoder : encoders )
+		backends.push_back( encoder.TakeBackend() );
+
+	if ( m_State != DeviceState::kAvailable )
+		return Fail( DeviceStatus::kDeviceLost, op );
+	if ( queue != QueueKind::kGraphics )
+		return Fail( DeviceStatus::kUnsupported, op );
+	std::uint64_t waitValue = 0;
+	for ( const CompletionToken &wait : waits.tokens )
+	{
+		if ( wait.NamesSubmission() && wait.epoch < m_Epoch )
+			return Fail( DeviceStatus::kStaleEpoch, op );
+		if ( !wait.NamesSubmission() )
+			continue;
+		if ( wait.queue != QueueKind::kGraphics || wait.epoch > m_Epoch ||
+		     wait.value > m_Submitted )
+			return Fail( DeviceStatus::kInvalidDescription, op );
+		waitValue = std::max( waitValue, wait.value );
+	}
+
+	std::unordered_map<std::uint64_t, ResourceUsage> states;
+	std::vector<VulkanEncoder *> recorded;
+	for ( std::unique_ptr<IEncoderBackend> &backend : backends )
+	{
+		VulkanEncoder *encoder = dynamic_cast<VulkanEncoder *>( backend.get() );
+		if ( !encoder || &encoder->Device() != this || encoder->Queue() != queue )
+			return Fail( DeviceStatus::kInvalidHandle, op );
+		if ( !encoder->Complete() || !Validate( encoder->Commands(), states ) )
+			return Fail( DeviceStatus::kInvalidState, op );
+		recorded.push_back( encoder );
+	}
+
+	RecycleCompleted();
+	auto acquired = AcquireContext();
+	if ( !acquired )
+		return foundation::MakeUnexpected( acquired.Error() );
+	CommandContext context = std::move( acquired ).Value();
+	auto giveBack = [&]( VkResult result ) -> foundation::Unexpected<DeviceError>
+	{
+		if ( result == VK_ERROR_DEVICE_LOST )
+			MarkLost();
+		if ( vkResetCommandPool( m_Device, context.pool, 0 ) == VK_SUCCESS )
+			m_FreeContexts.push_back( std::move( context ) );
+		else
+			vkDestroyCommandPool( m_Device, context.pool, nullptr );
+		return Fail( StatusOf( result ), op, result );
+	};
+
+	VkCommandBufferBeginInfo begin{};
+	begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	VkResult result = vkBeginCommandBuffer( context.buffer, &begin );
+	if ( result != VK_SUCCESS )
+		return giveBack( result );
+	Translator translator( *this, context.buffer );
+	for ( VulkanEncoder *encoder : recorded )
+		translator.Encoder( encoder->Commands() );
+	translator.Finish();
+	result = vkEndCommandBuffer( context.buffer );
+	if ( result != VK_SUCCESS )
+		return giveBack( result );
+
+	const std::uint64_t value = m_Submitted + 1;
+	VkSemaphoreSubmitInfo signal{};
+	signal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	signal.semaphore = m_Timeline;
+	signal.value = value;
+	signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	VkSemaphoreSubmitInfo wait{};
+	wait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	wait.semaphore = m_Timeline;
+	wait.value = waitValue;
+	wait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	VkCommandBufferSubmitInfo commandInfo{};
+	commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+	commandInfo.commandBuffer = context.buffer;
+	// The timeline, then the encoders' binary semaphores (host interop).
+	std::vector<VkSemaphoreSubmitInfo> waitInfos;
+	std::vector<VkSemaphoreSubmitInfo> signalInfos{ signal };
+	if ( waitValue > 0 )
+		waitInfos.push_back( wait );
+	for ( VulkanEncoder *encoder : recorded )
+	{
+		waitInfos.insert( waitInfos.end(), encoder->Waits().begin(), encoder->Waits().end() );
+		signalInfos.insert(
+		    signalInfos.end(), encoder->Signals().begin(), encoder->Signals().end() );
+	}
+	VkSubmitInfo2 submit{};
+	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+	submit.waitSemaphoreInfoCount = static_cast<std::uint32_t>( waitInfos.size() );
+	submit.pWaitSemaphoreInfos = waitInfos.data();
+	submit.commandBufferInfoCount = 1;
+	submit.pCommandBufferInfos = &commandInfo;
+	submit.signalSemaphoreInfoCount = static_cast<std::uint32_t>( signalInfos.size() );
+	submit.pSignalSemaphoreInfos = signalInfos.data();
+	{
+		// A borrowing host shares the queue (host_device.h).
+		std::lock_guard<std::mutex> lock( m_QueueMutex );
+		result = m_Vk.queueSubmit2( m_Queue, 1, &submit, VK_NULL_HANDLE );
+	}
+	if ( result != VK_SUCCESS )
+		return giveBack( result ); // marks the device lost on VK_ERROR_DEVICE_LOST
+
+	m_Submitted = value;
+	const CompletionToken token{ queue, m_Epoch, value };
+	translator.Commit();
+	for ( VulkanEncoder *encoder : recorded )
+	{
+		for ( std::uint64_t allocation : encoder->RingAllocations() )
+			m_Ring.Submit( allocation, value );
+		for ( HostBuffer &staging : encoder->Staging() )
+			context.staging.push_back( staging );
+		encoder->Staging().clear();
+		encoder->MarkSubmitted();
+	}
+	context.value = value;
+	m_InFlight.push_back( std::move( context ) );
+	return token;
+}
+
+} // namespace render::device::vulkan

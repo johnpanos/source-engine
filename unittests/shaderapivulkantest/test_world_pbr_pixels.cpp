@@ -5,7 +5,7 @@
 //
 //===========================================================================//
 
-#include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.h"
+#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_world_lightmap.h"
 #include "../mapcontainertest/world_lightmap_cases.h"
@@ -68,7 +68,7 @@ bool DrawWorld( render_vulkan::CVulkanContext &context, std::uint8_t *red, std::
 	}
 	context.RequestCapture();
 	bool skip = false;
-	if ( !context.BeginFrame( &skip, error ) || skip || !context.EndFrame( error ) )
+	if ( !context.RenderFrame( &skip, error ) || skip )
 		return false;
 	int width = 0;
 	int height = 0;
@@ -126,6 +126,7 @@ int main()
 	    render_vulkan::MakeSdl3LegacySurfaceHost( window, &error );
 	render_vulkan::CVulkanContext context;
 	render_vulkan::VulkanContextConfig config;
+	config.deviceFactory = &render::device::vulkan::HostDeviceFactory();
 	config.appName = "wmsh-pbr-pixels";
 	config.enableValidation = true;
 #ifdef VULKAN_TEST_DESCRIPTOR_SET_LIMIT

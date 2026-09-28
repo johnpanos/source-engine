@@ -1,0 +1,542 @@
+{
+  "schema": "render-view-oracle-fixture/v1",
+  "scenario": "portal2_sp_a1_wakeup",
+  "game": "portal2",
+  "map": "sp_a1_wakeup",
+  "recorded_utc": "2026-09-26T22:50:23.027754+00:00",
+  "captured_utc": "2026-09-26T22:49:32.475049+00:00",
+  "source": {
+    "source_revision": "a750871b8347772beee143666bf4a3c38571145f",
+    "dirty": false,
+    "dirty_files": 0,
+    "dirty_digest": null,
+    "capture_sources": {
+      "engine/gl_rmain.cpp": "2af96a37fa735bb5301b25351ab88fc45e44132571de3366d4b14c0b658c5b60",
+      "engine/gl_rsurf.cpp": "5b37e1515d1714df7f035b290692c5df11f5be5fcd691a8b9c7e41856e094fa0",
+      "engine/sys_dll.cpp": "b19b88993df5eb524f2ce1e07e4c5efddf6cefdebc7b002a3ffb2f5d4f8853bb",
+      "particles/particles.cpp": "5a94d73e08aac1cc269ed85d61c64aa414fb7784e8ba2b5701f3e39d5e5c9903",
+      "materialsystem/cmatrendercontext.cpp": "9e11cad527ebf016d382165d97ab3037b6a7f709965719d0dafc09d819afe60a",
+      "materialsystem/vieworaclecapture.h": "afb5c9d440979190a724636205c20446725257fab5565f69e10ae92e6c5b78c9",
+      "materialsystem/drawstatefixture.h": "1e91fdf0277627b24cadb9f98fddfa3ab0b3ab72ed498f1430d292feaba34a00",
+      "materialsystem/shaderapivulkan/shaderapivulkan.cpp": "61d835a6b04964dd7bc1106080e1477649e7a8dc8a94bffcaad67b378f9ca61b",
+      "tools/quality/portal_boot.py": "0eefddf1e8c64c5d35a975cd1e8b9ea9ec463ee11c35d5a076c8de8c14eea259",
+      "tools/render/view_oracle.py": "8ad6eeb5adb2856f5e26f182857839b545c230bd885f9dd81307042953b6be2d",
+      "quality/workloads/render-view-oracles-v1.json": "cd49d715ae17f2cff9b0d5a01a2f2ba358bfbde99510f5af788d64a3e268cc41"
+    }
+  },
+  "runtime": {
+    "path": "/home/john/src/source-engine-render-core/build-rc-p2/p2content",
+    "sha256": "1851db09ea7d5830ed0d38aa1e08f0b4a269b1d75e44873f113693d822355bed",
+    "files": {
+      "portal2/gameinfo.txt": "92064b30e81930b1618cefef8ffb366bae0b06b2f5b4eea46c825eb9b76d3ba5",
+      "portal2/pak01_dir.vpk": "a7a9a102d326aef7bcf529f11d08e961262b9842a0daa8eb00d202f5bad0251b",
+      "update/pak01_dir.vpk": "5d8895eacf62133377abb2dbce71b59265b098d68e52461d8a253884006e0137",
+      "portal2_dlc1/pak01_dir.vpk": "fd580cb2637a7ecd0735437c27e9e92c699796965d0576391b5e0293677bd77c",
+      "portal2_dlc2/pak01_dir.vpk": "a22e803192401b6e4291d8c9a2591f78069122c1d669279712c5d9f3c325ab15",
+      "portal2/maps/sp_a1_wakeup.bsp": "8995c5e5d98fab0a946551f78131add9980fed29dd59b3175e8cea2fa96c86ba"
+    }
+  },
+  "build": {
+    "path": "/home/john/src/source-engine-render-core/build-rc-p2/install",
+    "executables_sha256": "24db8575d7fb581bceee29f46cdabbb517563c76a2f50aef66e0978006b31209"
+  },
+  "queue_mode": 0,
+  "command": [
+    "/usr/bin/python3",
+    "/home/john/src/source-engine-render-core/tools/quality/portal_boot.py",
+    "--game",
+    "portal2",
+    "--runtime",
+    "build-rc-p2/p2content",
+    "--build",
+    "build-rc-p2/install",
+    "--out",
+    "/home/john/src/source-engine-render-core/build-rc-vo/o/f7/portal2_sp_a1_wakeup",
+    "--headless",
+    "--renderer",
+    "native-vulkan",
+    "--map",
+    "sp_a1_wakeup",
+    "--physics",
+    "vphysics_box3d",
+    "--width",
+    "1024",
+    "--height",
+    "768",
+    "--view-oracle",
+    "--draw-state-fixtures",
+    "--capture-wait",
+    "2044",
+    "--timeout",
+    "900",
+    "--console-command",
+    "noclip",
+    "--console-command",
+    "ent_create prop_portal targetname vo_blue LinkageGroupID 7 PortalTwo 0",
+    "--console-command",
+    "ent_create prop_portal targetname vo_orange LinkageGroupID 7 PortalTwo 1",
+    "--console-command",
+    "ent_fire vo_blue NewLocation \"6976 730 440 0 270 0\" 1",
+    "--console-command",
+    "ent_fire vo_orange NewLocation \"6976 560 440 0 90 0\" 1",
+    "--console-command",
+    "ent_fire vo_blue SetActivatedState 1 2",
+    "--console-command",
+    "ent_fire vo_orange SetActivatedState 1 2",
+    "--console-command",
+    "alias vo_shot0 \"cmd setpos 6976 496 384; cmd setang 0 0 0; wait 45; cmd setpos 6976 496 384; cmd setang 0 0 0; wait 3; screenshot; wait 20; vo_shot1\"",
+    "--console-command",
+    "alias vo_shot1 \"cmd setpos 6976 496 384; cmd setang 0 45 0; wait 45; cmd setpos 6976 496 384; cmd setang 0 45 0; wait 3; screenshot; wait 20; vo_shot2\"",
+    "--console-command",
+    "alias vo_shot2 \"cmd setpos 6976 496 384; cmd setang 0 90 0; wait 45; cmd setpos 6976 496 384; cmd setang 0 90 0; wait 3; screenshot; wait 20; vo_shot3\"",
+    "--console-command",
+    "alias vo_shot3 \"cmd setpos 6976 496 384; cmd setang 0 135 0; wait 45; cmd setpos 6976 496 384; cmd setang 0 135 0; wait 3; screenshot; wait 20; vo_shot4\"",
+    "--console-command",
+    "alias vo_shot4 \"cmd setpos 6976 496 384; cmd setang 0 180 0; wait 45; cmd setpos 6976 496 384; cmd setang 0 180 0; wait 3; screenshot; wait 20; vo_shot5\"",
+    "--console-command",
+    "alias vo_shot5 \"cmd setpos 6976 496 384; cmd setang 0 225 0; wait 45; cmd setpos 6976 496 384; cmd setang 0 225 0; wait 3; screenshot; wait 20; vo_shot6\"",
+    "--console-command",
+    "alias vo_shot6 \"cmd setpos 6976 496 384; cmd setang 0 270 0; wait 45; cmd setpos 6976 496 384; cmd setang 0 270 0; wait 3; screenshot; wait 20; vo_shot7\"",
+    "--console-command",
+    "alias vo_shot7 \"cmd setpos 6976 496 384; cmd setang 0 315 0; wait 45; cmd setpos 6976 496 384; cmd setang 0 315 0; wait 3; screenshot; wait 20; vo_shot8\"",
+    "--console-command",
+    "alias vo_shot8 \"cmd setpos 6976 496 384; cmd setang -50 0 0; wait 45; cmd setpos 6976 496 384; cmd setang -50 0 0; wait 3; screenshot; wait 20; vo_shot9\"",
+    "--console-command",
+    "alias vo_shot9 \"cmd setpos 6976 496 384; cmd setang -50 180 0; wait 45; cmd setpos 6976 496 384; cmd setang -50 180 0; wait 3; screenshot; wait 20; vo_shot10\"",
+    "--console-command",
+    "alias vo_shot10 \"cmd setpos 8700 900 460; cmd setang 25 30 0; wait 40; cmd setpos 8700 900 460; cmd setang 25 30 0; wait 3; screenshot; wait 10; vo_shot11\"",
+    "--console-command",
+    "alias vo_shot11 \"cmd setpos 9352 1216 700; cmd setang 45 0 0; wait 40; cmd setpos 9352 1216 700; cmd setang 45 0 0; wait 3; screenshot; wait 10; vo_shot12\"",
+    "--console-command",
+    "alias vo_shot12 \"cmd setpos 7232 1150 384; cmd setang 0 -90 0; wait 30; cmd setpos 7232 1150 384; cmd setang 0 -90 0; wait 3; screenshot; wait 10; vo_shot13\"",
+    "--console-command",
+    "alias vo_shot13 \"cmd setpos 7450 960 384; cmd setang 0 180 0; wait 30; cmd setpos 7450 960 384; cmd setang 0 180 0; wait 3; screenshot; wait 10; vo_shot14\"",
+    "--console-command",
+    "alias vo_shot14 \"r_portal_stencil_depth 1; cmd setpos 6976 600 384; cmd setang 0 90 0; wait 20; cmd setpos 6976 600 384; cmd setang 0 90 0; wait 3; screenshot; wait 10; vo_shot15\"",
+    "--console-command",
+    "alias vo_shot15 \"r_portal_stencil_depth 2; cmd setpos 6976 600 384; cmd setang 0 90 0; wait 20; cmd setpos 6976 600 384; cmd setang 0 90 0; wait 3; screenshot; wait 10; vo_shot16\"",
+    "--console-command",
+    "alias vo_shot16 \"r_portal_stencil_depth 10; cmd setpos 6976 600 384; cmd setang 0 90 0; wait 20; cmd setpos 6976 600 384; cmd setang 0 90 0; wait 3; screenshot; wait 10; vo_shot17\"",
+    "--console-command",
+    "alias vo_shot17 \"gameui_activate; wait 90; wait 3; screenshot; wait 20\"",
+    "--console-command",
+    "wait 900; vo_shot0",
+    "--engine-arg=-deterministicrender",
+    "--engine-arg=-nosound",
+    "--startup-command",
+    "host_framerate 0.015"
+  ],
+  "shots": [
+    {
+      "name": "ports_yaw000",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw000.views.jsonl.gz",
+      "views_sha256": "2e1583cfcb027f06e72345bc5368b53d4965f504da5ed55897540d117f24bffc",
+      "draw_state": "ports_yaw000.draw-state.jsonl.gz",
+      "draw_state_sha256": "abdd7ef591392bb8c3409671dad58dccbeb0bbbf82d80545d5932f97674830f4",
+      "summary": {
+        "views": 4,
+        "draws": 32,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 32
+    },
+    {
+      "name": "ports_yaw045",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw045.views.jsonl.gz",
+      "views_sha256": "784a72aece299319bfdc3a5352edba789222ebb2797c528bdad8fa06e962565f",
+      "draw_state": "ports_yaw045.draw-state.jsonl.gz",
+      "draw_state_sha256": "b7e79428ca8444aa6648a737af72bf5225069527c527d95f400aef15c9f64d00",
+      "summary": {
+        "views": 6,
+        "draws": 311,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 2
+      },
+      "draw_state_draws": 311
+    },
+    {
+      "name": "ports_yaw090",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw090.views.jsonl.gz",
+      "views_sha256": "a53e73e88a3ab4c903aeb98cb083c3426965477746421c99a90c997ae54f9687",
+      "draw_state": "ports_yaw090.draw-state.jsonl.gz",
+      "draw_state_sha256": "490b100f2dacea2573c9a90f560ea1931e483289a2f99800f714434e5fa8b801",
+      "summary": {
+        "views": 6,
+        "draws": 389,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 2
+      },
+      "draw_state_draws": 389
+    },
+    {
+      "name": "ports_yaw135",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw135.views.jsonl.gz",
+      "views_sha256": "8d4f766feb4de9c89e0f3ef19df8f69296b3cd5692a2032e6e5b97cb7ba0fd42",
+      "draw_state": "ports_yaw135.draw-state.jsonl.gz",
+      "draw_state_sha256": "59b150c4b7892421c30b6d58125508f2797599dc65087b35fbf7e27da054d6df",
+      "summary": {
+        "views": 6,
+        "draws": 341,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 2
+      },
+      "draw_state_draws": 341
+    },
+    {
+      "name": "ports_yaw180",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw180.views.jsonl.gz",
+      "views_sha256": "40f4e6b7bfcd38a7716f0d741bb54cde44bed87281e8a3bd8be86cbec85a65c2",
+      "draw_state": "ports_yaw180.draw-state.jsonl.gz",
+      "draw_state_sha256": "1ee2c7c626d649cfee0daa96d26d65a01d78d3a1799e37f596b8df1f59725b25",
+      "summary": {
+        "views": 4,
+        "draws": 32,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 32
+    },
+    {
+      "name": "ports_yaw225",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw225.views.jsonl.gz",
+      "views_sha256": "dd2acc616b6dbe4012d05a45e7751b18baef177dd10f2e8eda1258de7d794be8",
+      "draw_state": "ports_yaw225.draw-state.jsonl.gz",
+      "draw_state_sha256": "0170a5e4b4ecb1860877ed96b09ddca70acb80bb8b0a6e2314e4ce75463be7aa",
+      "summary": {
+        "views": 4,
+        "draws": 34,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 34
+    },
+    {
+      "name": "ports_yaw270",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw270.views.jsonl.gz",
+      "views_sha256": "c2fb9ab87b31c5276a7713cc9907d6f9fcf728cd95d697c14337347e12828625",
+      "draw_state": "ports_yaw270.draw-state.jsonl.gz",
+      "draw_state_sha256": "cf94aad78e6176e6979e412ab109f897d80457486dc442835b2341bdd28597fa",
+      "summary": {
+        "views": 4,
+        "draws": 34,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 34
+    },
+    {
+      "name": "ports_yaw315",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw315.views.jsonl.gz",
+      "views_sha256": "f65669760a16833fb8adc5631917dc6acb1b6e7b7939a4b40a46deaef6cfec5b",
+      "draw_state": "ports_yaw315.draw-state.jsonl.gz",
+      "draw_state_sha256": "fe43f47b8f581034ce326b7998549f95a5543671cb52ddb3a70b36a245cafe27",
+      "summary": {
+        "views": 4,
+        "draws": 35,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 35
+    },
+    {
+      "name": "ports_up000",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_up000.views.jsonl.gz",
+      "views_sha256": "68c47cfd0cda2fcacc33c767f8779804af0cb29d95e30aa4e4b99ab49d5c9663",
+      "draw_state": "ports_up000.draw-state.jsonl.gz",
+      "draw_state_sha256": "36a6c8b362d6e692e472fdeb29b044d285b7cde3166c3a20b71060f530f388d5",
+      "summary": {
+        "views": 4,
+        "draws": 37,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 37
+    },
+    {
+      "name": "ports_up180",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_up180.views.jsonl.gz",
+      "views_sha256": "7b60d25cf5738d876e56012f094fd1f5e11709bb258b6747ae363d28a6f3224d",
+      "draw_state": "ports_up180.draw-state.jsonl.gz",
+      "draw_state_sha256": "9df002a7d5456774656cb541c21f295ff60e5faba58d42b87b133d7e9dacc70e",
+      "summary": {
+        "views": 4,
+        "draws": 37,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 37
+    },
+    {
+      "name": "water_a",
+      "features": [
+        "water_reflection",
+        "water_refraction"
+      ],
+      "views": "water_a.views.jsonl.gz",
+      "views_sha256": "42592ff2e8e39e76638a83f67618c7a89d0f6df53225d7282d1c1e513ea8064a",
+      "draw_state": "water_a.draw-state.jsonl.gz",
+      "draw_state_sha256": "a91d47986d8ab68da5cdaba1a555d800282c30f231313b4790d217696d3c904c",
+      "summary": {
+        "views": 8,
+        "draws": 332,
+        "clears": 9,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1,
+          "water_reflection": 1,
+          "water_refraction": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 332
+    },
+    {
+      "name": "water_b",
+      "features": [
+        "water_reflection",
+        "water_refraction"
+      ],
+      "views": "water_b.views.jsonl.gz",
+      "views_sha256": "b42bb16c1b5b8ac7e866247beea0d510c88e9fa867ff8920493af6e5cef84be7",
+      "draw_state": "water_b.draw-state.jsonl.gz",
+      "draw_state_sha256": "2c09d2779aa497cf9e8098dc2d9e1cf7be7bcc5f641df5433d9c26ee72a43004",
+      "summary": {
+        "views": 8,
+        "draws": 233,
+        "clears": 8,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1,
+          "water_reflection": 1,
+          "water_refraction": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 233
+    },
+    {
+      "name": "glass_a",
+      "features": [
+        "glass"
+      ],
+      "views": "glass_a.views.jsonl.gz",
+      "views_sha256": "38ba5710a7a969a70042259ff8d29b51cc7e148ea70221001e01b6bb46ca5a1a",
+      "draw_state": "glass_a.draw-state.jsonl.gz",
+      "draw_state_sha256": "0fef6f450e04b0321e1be7a76d40054cddf10286cc69af049bfd3f6cd94b562d",
+      "summary": {
+        "views": 4,
+        "draws": 96,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 96
+    },
+    {
+      "name": "glass_b",
+      "features": [
+        "glass"
+      ],
+      "views": "glass_b.views.jsonl.gz",
+      "views_sha256": "e528c8a0e29954c0b52cfcf1b74768a155aaeccce51bc280eec65a73a61a0acf",
+      "draw_state": "glass_b.draw-state.jsonl.gz",
+      "draw_state_sha256": "b8a2f75f2df8facb2ff23c3ea6c0161aec96516523a3b375fd5d5dfac7179a0c",
+      "summary": {
+        "views": 4,
+        "draws": 170,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 170
+    },
+    {
+      "name": "recursion_limit1",
+      "features": [
+        "portal_recursion"
+      ],
+      "views": "recursion_limit1.views.jsonl.gz",
+      "views_sha256": "67250095ab3e8f3403a1fbed251b8076c642c3909cac3292c242ce457c1594f5",
+      "draw_state": "recursion_limit1.draw-state.jsonl.gz",
+      "draw_state_sha256": "9ac5ed08477c911e47eb841f38b8f634cb63338c28e41f8bfa2002a882aefca6",
+      "summary": {
+        "views": 6,
+        "draws": 377,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 377
+    },
+    {
+      "name": "recursion_limit2",
+      "features": [
+        "portal_recursion"
+      ],
+      "views": "recursion_limit2.views.jsonl.gz",
+      "views_sha256": "32ae474dfa69744c907658ac8f18b4191da31dffb520c061c0012664c19a49ee",
+      "draw_state": "recursion_limit2.draw-state.jsonl.gz",
+      "draw_state_sha256": "4a66b7356ab32230ecbfce9f7fb9efbd07f3ae9816e2ec8705dec53ca8a84177",
+      "summary": {
+        "views": 7,
+        "draws": 499,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 3,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 2
+      },
+      "draw_state_draws": 499
+    },
+    {
+      "name": "recursion_limit10",
+      "features": [
+        "portal_recursion"
+      ],
+      "views": "recursion_limit10.views.jsonl.gz",
+      "views_sha256": "59611ce539a6f479ced9b6b51271fd032b3d4f00d61e67fcdd40b3740ad21f2b",
+      "draw_state": "recursion_limit10.draw-state.jsonl.gz",
+      "draw_state_sha256": "7fc8faeffbf664527011bb25d60348b5232fd66917966e09c64549fcb88113f5",
+      "summary": {
+        "views": 15,
+        "draws": 1170,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 11,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 10
+      },
+      "draw_state_draws": 1170
+    },
+    {
+      "name": "ports_pause_menu",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_pause_menu.views.jsonl.gz",
+      "views_sha256": "ad74d7166287d87ebf097435db702fa1410d874f5da50cf186c5af85030a02a4",
+      "draw_state": "ports_pause_menu.draw-state.jsonl.gz",
+      "draw_state_sha256": "0f39a3332be962e0c6c3199f53142031bd000418808f4ae25de491234763079f",
+      "summary": {
+        "views": 15,
+        "draws": 1203,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 11,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 10
+      },
+      "draw_state_draws": 1203
+    }
+  ]
+}

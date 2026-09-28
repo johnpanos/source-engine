@@ -42,6 +42,8 @@
 #include "render/light_set.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal_dlights.h"
+
 #include "tier0/memdbgon.h"
 
 // EMIT_SURFACE LIGHTS:
@@ -1635,12 +1637,23 @@ static const byte* AddDLights( LightingStateInfo_t& info, LightingState_t& light
 		if (dl->flags & (DLIGHT_NO_MODEL_ILLUMINATION | DLIGHT_DISPLACEMENT_MASK)) 
 			continue;
 
-		// Fast reject. If we can reject it here, then we don't have to call WorldLightFromDynamicLight..
-		bool bReject;
-		int lightCluster = CM_LeafCluster( g_DLightLeafAccessors[i].GetLeaf( dl->origin ) );
-		pVis = FastRejectLightSource( bIgnoreVis, pVis, origin, emit_point, lightCluster, bReject );
-		if ( bReject )
+		// A light imaged through a portal reaches the model only through it
+		// (portal_dlights.h); its image's leaf is behind the portal's wall, so
+		// the leaf visibility test does not apply to it.
+		const bool bPortalImage = ( PortalDLights_ImageMask() & ( 1 << i ) ) != 0;
+		if ( bPortalImage && !PortalDLights_Reaches( i, origin ) )
 			continue;
+
+		// Fast reject. If we can reject it here, then we don't have to call WorldLightFromDynamicLight..
+		if ( !bPortalImage )
+		{
+			bool bReject = false;
+			int lightCluster = CM_LeafCluster( g_DLightLeafAccessors[i].GetLeaf( dl->origin ) );
+			pVis = FastRejectLightSource(
+			    bIgnoreVis, pVis, origin, emit_point, lightCluster, bReject );
+			if ( bReject )
+				continue;
+		}
 
 		// Construct a world light representing the dynamic light
 		// we're making a static list here because the lighting state
@@ -1648,8 +1661,8 @@ static const byte* AddDLights( LightingStateInfo_t& info, LightingState_t& light
 		WorldLightFromDynamicLight( *dl, s_pDynamicLight[i] );
 
 		// Now add that world light into our list of worldlights
-		pVis = AddWorldLightToLightingState( &s_pDynamicLight[i], NULL, lightingState,
-			info, origin, pVis, true, bIgnoreVis, bIgnoreVisTest );
+		pVis = AddWorldLightToLightingState( &s_pDynamicLight[i], NULL, lightingState, info, origin,
+		    pVis, true, bIgnoreVis || bPortalImage, bIgnoreVisTest || bPortalImage );
 	}
 	return pVis;
 }
@@ -2818,6 +2831,10 @@ void ComputeDynamicLighting( const Vector& pt, const Vector* pNormal, Vector& co
 
 			// If the light doesn't affect models, then continue
 			if (dl->flags & (DLIGHT_NO_MODEL_ILLUMINATION | DLIGHT_DISPLACEMENT_MASK))
+				continue;
+
+			// A light imaged through a portal reaches the point only through it.
+			if ( !PortalDLights_Reaches( i, pt ) )
 				continue;
 
 			// Construct a world light representing the dynamic light

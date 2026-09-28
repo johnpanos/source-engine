@@ -48,6 +48,10 @@ Context.Context.line_just = 55 # should fit for everything on 80x26
 projects={
 	'game': [
 		'jobsystem',
+		# RFC 0016 render core; never in 'dedicated'.
+		'render',
+		# The keyvalues codec render.material reads VMTs with (R08-LIBS).
+		'kvtext',
 		'mapcontainer',
 		'appframework',
 		'bitmap',
@@ -107,6 +111,7 @@ projects={
 	],
 	'tests': [
 		'platform',
+		'render',
 		'dedicated/composition',
 		'mapcontainer',
 		'mapgeometry',
@@ -138,6 +143,7 @@ projects={
 	],
 	'tools': [
 		'fgdlib',
+		'render',
 		'jobsystem',
 		'mapcontainer',
 		'mapgeometry',
@@ -147,6 +153,7 @@ projects={
 		'hammer/core',
 		'hammer/adapters/platform',
 		'hammer/adapters/mcp',
+		'hammer/adapters/render',
 		'hammer/cli',
 		'tier0',
 		'tier1',
@@ -457,6 +464,20 @@ def options(opt):
 		dest='RENDER_BACKEND',
 		help='linked renderer; auto selects native-vulkan for 64-bit Linux, Android and iOS clients '
 			'and legacy otherwise; vulkan uses the DXVK compatibility provider [default: %default]')
+	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl'], default='null',
+		dest='RENDER_CORE_DEVICE',
+		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
+			'names another; vulkan needs the native Vulkan backend, gl is RFC 0016 K10 [default: %default]')
+	grp.add_option('--render-core-features', default='legacy-stream,present',
+		dest='RENDER_CORE_FEATURES',
+		help='RFC 0016 render core: the frame features a client composes, in order [default: %default]')
+	grp.add_option('--render-core-gl', action='store_true', default=False, dest='RENDER_CORE_GL',
+		help='build the OpenGL 4.5 device adapter of the render core (RFC 0016 K10) [default: %default]')
+	grp.add_option('--shader-artifacts', choices=['auto', 'on', 'off'], default='auto',
+		dest='SHADER_ARTIFACTS',
+		help='RFC 0016 K4: build the per-target shader artifacts with the pinned host tools '
+			'(tools/render/shader_toolchain.py build); auto builds them when the tools exist, '
+			'on fails configure without them [default: %default]')
 	# Not read by the build: both providers are linked, and -physics selects one
 	# at run time (Box3D by default). Existing trees stored the old 'ivp' default,
 	# so giving the option an effect would drop Box3D from them on reconfigure.
@@ -1031,6 +1052,8 @@ def configure(conf):
 		conf.env.CC.insert(0, 'ccache')
 		conf.env.CXX.insert(0, 'ccache')
 
+	configure_render_core(conf)
+
 	if conf.options.TESTS:
 		conf.add_subproject(projects['tests'])
 	elif conf.options.TOOLS:
@@ -1071,6 +1094,27 @@ def configure(conf):
 		if conf.env.DEBUGAPI:
 			projects['game'].insert(0, 'debugapi')
 		conf.add_subproject(projects['game'])
+
+def configure_render_core(conf):
+	'''RFC 0016: the render family (render/) builds for client, tool and test
+	products only; a dedicated product never adds it, so it cannot link it.
+	Device adapters build only when configured: Vulkan with the native Vulkan
+	backend, OpenGL with --render-core-gl (K10).'''
+	conf.env.RENDER_CORE = not conf.options.DEDICATED
+	conf.env.RENDER_CORE_VULKAN = bool(conf.env.RENDER_CORE and conf.env.NATIVE_VULKAN)
+	conf.env.RENDER_CORE_GL = bool(conf.env.RENDER_CORE and conf.options.RENDER_CORE_GL)
+	conf.env.RENDER_CORE_DEVICE = conf.options.RENDER_CORE_DEVICE
+	conf.env.RENDER_CORE_FEATURES = conf.options.RENDER_CORE_FEATURES
+	if conf.env.RENDER_CORE_GL and not os.path.isfile(os.path.join(conf.path.abspath(), 'render/device/gl/wscript')):
+		conf.fatal('--render-core-gl: the OpenGL device adapter is RFC 0016 K10 work and does not exist yet')
+	if conf.options.RENDER_CORE_DEVICE == 'vulkan' and not conf.env.RENDER_CORE_VULKAN:
+		conf.fatal('--render-core-device=vulkan needs the native Vulkan backend (--render-backend=native-vulkan)')
+	if conf.options.RENDER_CORE_DEVICE == 'gl' and not conf.env.RENDER_CORE_GL:
+		conf.fatal('--render-core-device=gl needs --render-core-gl')
+	if conf.env.RENDER_CORE:
+		conf.msg('Render core device adapters', ', '.join(['null'] +
+			(['vulkan'] if conf.env.RENDER_CORE_VULKAN else []) +
+			(['gl'] if conf.env.RENDER_CORE_GL else [])))
 
 def build(bld):
 	os.environ["CCACHE_DIR"] = os.path.abspath('.ccache/'+bld.env.COMPILER_CC+'/'+bld.env.DEST_OS+'/'+bld.env.DEST_CPU)

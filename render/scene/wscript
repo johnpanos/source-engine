@@ -1,0 +1,16 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.scene (RFC 0016); edges in architecture/modules.json.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.scene',
+		target      = 'render_scene',
+		name        = 'render_scene',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../public'],
+		use         = ['render_math', 'jobsystem'],
+		idx         = bld.get_taskgen_count()
+	)

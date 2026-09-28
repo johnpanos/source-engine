@@ -35,7 +35,6 @@
 
 namespace light_set
 {
-static const char *const kLightSetConsumerInterface = "RenderLightSetConsumer001";
 
 enum class LightKind : uint8_t
 {
@@ -275,8 +274,8 @@ private:
 	std::map<Key, uint32_t> m_live;
 };
 
-// A renderer that consumes the frame's light set (queried by
-// kLightSetConsumerInterface). Publish is called on the main thread once per
+// A renderer that consumes the frame's light set (the engine reaches it
+// through render/legacy/capabilities.h). Publish is called on the main thread once per
 // frame before its render work; the consumer copies what it keeps.
 class ILightSetConsumer
 {

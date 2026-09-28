@@ -91,6 +91,15 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #include "render/legacy_shader_provider.h"
 #include "render/builtin_shader_provider.h"
 #include "engine/debugapi_root.h"
+#if defined( LINKED_RENDER_CORE )
+#include "engine/render_core_binding.h"
+#include "render/composition/render_core.h"
+#if defined( LINKED_NATIVE_VULKAN_BACKEND )
+#include "render/device/vulkan/host_binding.h"
+#include "render/legacy/frame_source.h"
+#endif
+#include "render/legacy/stage_markers.h"
+#endif
 #include "tier0/memdbgon.h"
 
 #define DEFAULT_HL2_GAMEDIR	"hl2"
@@ -608,6 +617,11 @@ private:
 	const char *DetermineDefaultGame();
 
 	bool m_bEditMode;
+#if defined( LINKED_RENDER_CORE )
+	// RFC 0016: the render core this root composed; destroyed after every
+	// app system and module (Destroy), since they borrow it.
+	RenderCore *m_pRenderCore = nullptr;
+#endif
 };
 
 
@@ -894,7 +908,54 @@ bool CSourceAppSystemGroup::Create()
 		if ( catalog[i] && !Q_stricmp( requested, catalog[i]->id ) )
 			selected = catalog[i];
 	}
-	if ( !selected || !MaterialSystem_BindShaderProvider( pMaterialSystem, selected ) )
+	if ( !selected )
+	{
+		Warning( "Required render provider '%s' is not available in this product.\n", requested );
+		return false;
+	}
+#if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
+	// RFC 0016 K1: the native Vulkan backend borrows its device from the
+	// Vulkan adapter (render.device.vulkan), linked once, here.
+	NativeVulkanShaderBackend_BindDeviceFactory( &render::device::vulkan::HostDeviceFactory() );
+	// RFC 0016 K3: its frames run in the render core's frame graph.
+	NativeVulkanShaderBackend_BindFrameExecutor( &render::legacy::LegacyFrameExecutor() );
+#endif
+	const render::LegacyShaderProvider *bound = selected;
+#if defined( LINKED_RENDER_CORE )
+	// RFC 0016 A.7: compose the render core around the selected legacy
+	// backend. The material system binds the core's legacy frontend (which
+	// keeps the backend's id), the engine gets the renderer and the scene
+	// factory, and the client finds the stage markers as an app system.
+	// -norendercore composes nothing, as before the core existed.
+	if ( !CommandLine()->FindParm( "-norendercore" ) )
+	{
+		RenderCoreConfig config;
+		config.device = CommandLine()->ParmValue( "-render-device", RENDER_CORE_DEFAULT_DEVICE );
+		config.features = CommandLine()->ParmValue( "-render-features", RENDER_CORE_FEATURES );
+		config.legacyBackend = selected;
+		config.validation = CommandLine()->FindParm( "-render-validation" ) != 0;
+		RenderCoreResult result;
+		m_pRenderCore = RenderCore_Create( &config, &result );
+		if ( !m_pRenderCore )
+		{
+			Warning( "Render core composition failed: %s\n", result.message );
+			return false;
+		}
+		const RenderCoreBinding *binding = RenderCore_GetBinding( m_pRenderCore );
+		bound = RenderCore_GetLegacyProvider( m_pRenderCore );
+		if ( !bound || !Engine_BindRenderCore( binding ) ||
+		     !AddSystem( binding->stageMarkers, RENDER_STAGE_MARKERS_INTERFACE_VERSION ) )
+		{
+			Warning( "The render core could not be bound.\n" );
+			return false;
+		}
+		// The legacy backend's capabilities order their calls on the material
+		// system's render call queue (render/legacy/capabilities.h).
+		RenderCore_BindRenderCallQueue( m_pRenderCore, MaterialSystem_RenderCallQueueHost() );
+		Msg( "Render core: device %s, features %s\n", binding->deviceName, config.features );
+	}
+#endif
+	if ( !MaterialSystem_BindShaderProvider( pMaterialSystem, bound ) )
 	{
 		Warning( "Required render provider '%s' is not available in this product.\n", requested );
 		return false;
@@ -1040,6 +1101,12 @@ void CSourceAppSystemGroup::Destroy()
 	g_pEngineAPI = NULL;
 	g_pMaterialSystem = NULL;
 	g_pHammer = NULL;
+
+#if defined( LINKED_RENDER_CORE )
+	// Every system and module that borrowed the core is gone.
+	RenderCore_Destroy( m_pRenderCore );
+	m_pRenderCore = nullptr;
+#endif
 
 #ifdef WIN32
 	CoUninitialize();

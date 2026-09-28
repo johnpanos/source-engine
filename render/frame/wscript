@@ -1,0 +1,16 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.frame (RFC 0016); edges in architecture/modules.json.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.frame',
+		target      = 'render_frame',
+		name        = 'render_frame',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../public'],
+		use         = ['render_graph', 'render_device'],
+		idx         = bld.get_taskgen_count()
+	)

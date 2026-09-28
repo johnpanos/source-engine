@@ -1,0 +1,98 @@
+// render.pass.skinning (RFC 0016 K6): compute skinning with flex, the GPU
+// path of public/render/pass/skinning/skinning.h. SkinReference in
+// skinning.cpp is its CPU oracle and follows the same order of operations.
+//
+// Each invocation takes one vertex: it adds its flex deltas (weight
+// mix( w.x, w.y, side ) per delta, stereo flexes as studiorender splits them)
+// to the position, the normal and the tangent S, as common_vs_fxc.h's
+// ApplyMorph does, then skins as SkinPosition and SkinPositionNormalAndTangentSpace
+// do: three bones, weights w0, w1 and 1 - w0 - w1, indices in the low three
+// bytes, an index past the palette reading bone 0. The normal and tangent
+// are left unnormalized.
+//
+// SEEDED_BONE_INDEX_ERROR and SEEDED_FLEX_WEIGHT_ERROR build the defective
+// variants the render.skinning suite must reject; no product uses them.
+#version 450
+
+layout( local_size_x = 64 ) in;
+
+struct SkinVertex
+{
+	vec4 positionWeight0;
+	vec4 normalWeight1;
+	vec4 tangent;
+	uvec4 bones;
+};
+
+struct FlexDelta
+{
+	vec4 positionFlex; // w: the flex index (bits)
+	vec4 normalSide;   // w: the side, 0 for the first weight, 1 for the second
+	vec4 wrinkle;      // x
+};
+
+struct SkinnedVertex
+{
+	vec4 positionWrinkle;
+	vec4 normal;
+	vec4 tangent;
+};
+
+layout( std430, set = 3, binding = 0 ) readonly buffer Vertices { SkinVertex vertices[]; };
+layout( std430, set = 3, binding = 1 ) readonly buffer Bones { vec4 boneRows[]; };
+layout( std430, set = 3, binding = 2 ) readonly buffer FlexOffsets { uint flexOffsets[]; };
+layout( std430, set = 3, binding = 3 ) readonly buffer FlexDeltas { FlexDelta deltas[]; };
+layout( std430, set = 3, binding = 4 ) readonly buffer FlexWeights { vec2 flexWeights[]; };
+layout( std430, set = 3, binding = 5 ) writeonly buffer Output { SkinnedVertex skinned[]; };
+
+void main()
+{
+	const uint v = gl_GlobalInvocationID.x;
+	if ( v >= uint( vertices.length() ) )
+		return;
+	SkinVertex vertex = vertices[v];
+	vec3 position = vertex.positionWeight0.xyz;
+	vec3 normal = vertex.normalWeight1.xyz;
+	vec3 tangent = vertex.tangent.xyz;
+	float wrinkle = 0.0;
+	for ( uint d = flexOffsets[v]; d < flexOffsets[v + 1]; ++d )
+	{
+		const FlexDelta delta = deltas[d];
+		const vec2 w = flexWeights[floatBitsToUint( delta.positionFlex.w )];
+#ifdef SEEDED_FLEX_WEIGHT_ERROR
+		const float weight = w.x;
+#else
+		const float weight = mix( w.x, w.y, delta.normalSide.w );
+#endif
+		position += weight * delta.positionFlex.xyz;
+		normal += weight * delta.normalSide.xyz;
+		tangent += weight * delta.normalSide.xyz;
+		wrinkle += weight * delta.wrinkle.x;
+	}
+
+	const uint boneCount = uint( boneRows.length() ) / 3u;
+	const float weights[3] = float[3]( vertex.positionWeight0.w, vertex.normalWeight1.w,
+	    1.0 - ( vertex.positionWeight0.w + vertex.normalWeight1.w ) );
+	vec3 outPosition = vec3( 0.0 );
+	vec3 outNormal = vec3( 0.0 );
+	vec3 outTangent = vec3( 0.0 );
+	for ( uint b = 0u; b < 3u; ++b )
+	{
+#ifdef SEEDED_BONE_INDEX_ERROR
+		uint bone = ( vertex.bones.x >> ( 8u * ( ( b + 1u ) % 3u ) ) ) & 0xffu;
+#else
+		uint bone = ( vertex.bones.x >> ( 8u * b ) ) & 0xffu;
+#endif
+		bone = bone < boneCount ? bone : 0u;
+		const vec4 r0 = boneRows[bone * 3u + 0u];
+		const vec4 r1 = boneRows[bone * 3u + 1u];
+		const vec4 r2 = boneRows[bone * 3u + 2u];
+		const vec4 p = vec4( position, 1.0 );
+		outPosition += weights[b] * vec3( dot( r0, p ), dot( r1, p ), dot( r2, p ) );
+		outNormal += weights[b] * vec3( dot( r0.xyz, normal ), dot( r1.xyz, normal ), dot( r2.xyz, normal ) );
+		outTangent += weights[b] * vec3( dot( r0.xyz, tangent ), dot( r1.xyz, tangent ), dot( r2.xyz, tangent ) );
+	}
+	skinned[v].positionWrinkle = vec4( outPosition, wrinkle );
+	skinned[v].normal = vec4( outNormal, 0.0 );
+	skinned[v].tangent = vec4( outTangent, vertex.tangent.w );
+}

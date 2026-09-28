@@ -20,6 +20,10 @@ namespace mapcontainer
 {
 class ProbeVolumeView;
 }
+namespace indirect_portals
+{
+struct PortalInput;
+}
 
 // A map's indirect-light inputs, borrowed for BeginMap (it copies what it
 // keeps): the validated PRBV, and when the map has them its RTRN radiosity
@@ -53,6 +57,11 @@ void IndirectLight_EndMap();
 // Once per rendered frame on the main thread, before the view renders, with
 // the frame's light set. Uploads the published volume when it changes.
 void IndirectLight_Frame( const light_set::Snapshot &lights );
+
+// The client's open portals (render/indirect_portals.h, RFC 0011 G10) as last
+// published, copied into `out` (at most `max`); returns the count. Also the
+// source of dynamic lights through portals (portal_dlights.h).
+int IndirectLight_OpenPortals( indirect_portals::PortalInput *out, int max );
 
 // The volume models sample on the CPU this frame (the ambient cube); null
 // without a map volume. Valid until the next IndirectLight_Frame.

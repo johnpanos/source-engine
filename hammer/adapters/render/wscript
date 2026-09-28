@@ -1,0 +1,28 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# Hammer's own render scene (RFC 0002 hammer.adapters.render, RFC 0016 A.7):
+# the editor document's solids projected into a render::scene the editor owns.
+
+top = '.'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'render_scene_projection.cpp' ],
+		target    = 'hammer_render',
+		name      = 'hammer_render',
+		arch_module = 'hammer.adapters.render',
+		features  = 'cxx',
+		includes  = [ '../../../public', '../../..' ],
+		defines   = [],
+		use       = [ 'vmf', 'kvtext', 'mapgeometry', 'render_scene', 'render_math' ],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

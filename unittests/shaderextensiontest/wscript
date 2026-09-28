@@ -73,7 +73,7 @@ def build(bld):
 			pixel_use += ['shaderapidx9']
 			pixel_defines += ['LINKED_DX9_BACKEND']
 		if bld.env.NATIVE_VULKAN:
-			pixel_use += ['shaderapivulkan']
+			pixel_use += ['shaderapivulkan', 'render_device_vulkan', 'render_device']
 			pixel_defines += ['LINKED_NATIVE_VULKAN_BACKEND']
 		bld.program(
 			features='cxx', env=test_env.derive(),

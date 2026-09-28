@@ -1,0 +1,247 @@
+#version 450
+// render.pass.lights light assignment (RFC 0016 K7, render.lights.v1).
+//
+// One invocation per froxel runs the tests of the serial path
+// (render/pass/lights/clusters.cpp AssignLights) against every packed light
+// (PackClusterLights: view-space records, in light-set order after the
+// maxLights cut) and writes the froxel's list: first a count, then an offset
+// from one atomic counter, then the light-set indices of its lights,
+// ascending.
+//
+// Contract with the serial path (render.lights.clusters.gpu): with no
+// index-capacity overflow, each froxel's list equals the serial path's list;
+// only the offsets differ (they depend on scheduling). The per-froxel limit
+// keeps the same lowest light indices, and the counters equal ClusterStats'
+// assignments, froxelsOverflowed and assignmentsDropped. Under index-capacity
+// overflow the lists that lose room depend on scheduling: each list is a
+// prefix of the serial path's per-froxel-limited list, and the kept and
+// dropped totals are defined.
+//
+// The arithmetic follows the serial path's order of operations, and every
+// result is `precise`, so no stage fuses a multiply and an add the CPU
+// rounds separately. Square roots are the only operations the device may
+// round differently (Vulkan allows a few ULP).
+//
+// SEEDED_SLICE_OFF_BY_ONE, SEEDED_CONE_IGNORED and SEEDED_UNCOUNTED_OVERFLOW
+// build the defective variants the render.lights.clusters.gpu suite must
+// reject; no product uses them.
+
+layout( local_size_x = 64 ) in;
+
+// Every binding is in the dispatch's own group (the draw role, as for
+// render.pass.skinning's kernel).
+layout( std140, set = 3, binding = 0 ) uniform ClusterParams
+{
+	uvec4 grid;   // tilesX, tilesY, slices, packed light count
+	uvec4 limits; // maxLightsPerFroxel, maxLightIndices, 0, 0
+}
+params;
+
+struct ClusterLight
+{
+	vec4 positionRadius;    // view space; radius 3e38 when unbounded
+	vec4 directionOuterCos; // view-space unit axis; outer cosine (-1: a point light)
+};
+
+layout( std430, set = 3, binding = 1 ) readonly buffer Lights
+{
+	ClusterLight lights[];
+};
+
+// ClusterLightTable::lightSetIndex: the light-set index of each packed light.
+layout( std430, set = 3, binding = 2 ) readonly buffer LightSetIndex
+{
+	uint lightSetIndex[];
+};
+
+// PackClusterGrid's layout: tilesX + 1 column planes, tilesY + 1 row planes
+// (xyz normal, w distance), then slices + 1 slice depths in x, then the
+// ( tilesX + 1 ) * ( tilesY + 1 ) corner rays in xyz.
+layout( std430, set = 3, binding = 3 ) readonly buffer Grid
+{
+	vec4 gridData[];
+};
+
+layout( std430, set = 3, binding = 4 ) writeonly buffer Froxels
+{
+	uvec2 froxelRanges[]; // offset, count
+};
+
+layout( std430, set = 3, binding = 5 ) buffer Indices
+{
+	uint indexCount;        // reset to 0 before dispatch
+	uint froxelsOverflowed; // reset to 0 before dispatch
+	uint assignmentsDropped;
+	uint pad;
+	uint lightIndices[];
+};
+
+const float kRelativeSlack = 4.0e-6;
+const float kUnbounded = 1.0e38;
+
+vec4 ColumnPlane( uint i )
+{
+	return gridData[i];
+}
+
+vec4 RowPlane( uint j )
+{
+	return gridData[params.grid.x + 1u + j];
+}
+
+float SliceDepth( uint k )
+{
+	return gridData[params.grid.x + params.grid.y + 2u + k].x;
+}
+
+vec3 CornerRay( uint x, uint y )
+{
+	uint base = params.grid.x + params.grid.y + params.grid.z + 3u;
+	return gridData[base + y * ( params.grid.x + 1u ) + x].xyz;
+}
+
+// math::Dot's order: ( x + y ) + z.
+float Dot3( vec3 a, vec3 b )
+{
+	precise float result = a.x * b.x + a.y * b.y + a.z * b.z;
+	return result;
+}
+
+float Distance( vec4 plane, vec3 p )
+{
+	precise float result = Dot3( plane.xyz, p ) + plane.w;
+	return result;
+}
+
+bool SphereMayTouchCone( ClusterLight light, vec3 center, float radius )
+{
+	vec3 apex = light.positionRadius.xyz;
+	vec3 axis = light.directionOuterCos.xyz;
+	float cosOuter = light.directionOuterCos.w;
+	precise float sinOuter = sqrt( max( 0.0, 1.0 - cosOuter * cosOuter ) );
+	precise vec3 v = center - apex;
+	precise float lengthSquared = Dot3( v, v );
+	precise float along = Dot3( v, axis );
+	precise float across = sqrt( max( 0.0, lengthSquared - along * along ) );
+	precise float coneDistance = cosOuter * across - along * sinOuter;
+	if ( coneDistance > radius )
+		return false;
+	if ( light.positionRadius.w < kUnbounded )
+	{
+		precise float reach = radius + light.positionRadius.w;
+		if ( along > reach )
+			return false;
+	}
+	if ( cosOuter >= 0.0 && along < -radius )
+		return false;
+	return true;
+}
+
+bool Reaches( ClusterLight light, uint x, uint y, uint k )
+{
+	vec3 c = light.positionRadius.xyz;
+	float r = light.positionRadius.w;
+	bool unbounded = r >= kUnbounded;
+	precise float centerLength = sqrt( Dot3( c, c ) );
+	precise float planeRadius = unbounded ? r : r + kRelativeSlack * ( centerLength + r );
+	if ( !( Distance( ColumnPlane( x ), c ) >= -planeRadius &&
+	         Distance( ColumnPlane( x + 1u ), c ) <= planeRadius &&
+	         Distance( RowPlane( y ), c ) >= -planeRadius &&
+	         Distance( RowPlane( y + 1u ), c ) <= planeRadius ) )
+		return false;
+#ifdef SEEDED_SLICE_OFF_BY_ONE
+	float sliceNear = SliceDepth( min( k + 1u, params.grid.z ) );
+	float sliceFar = SliceDepth( min( k + 2u, params.grid.z ) );
+#else
+	float sliceNear = SliceDepth( k );
+	float sliceFar = SliceDepth( k + 1u );
+#endif
+	float depth = -c.z;
+	precise float slabNear = depth + planeRadius;
+	precise float slabFar = depth - planeRadius;
+	if ( slabNear < sliceNear || slabFar > sliceFar )
+		return false;
+
+	vec3 rays[4] = vec3[4]( CornerRay( x, y ), CornerRay( x + 1u, y ), CornerRay( x, y + 1u ),
+	    CornerRay( x + 1u, y + 1u ) );
+	precise vec3 corners[8];
+	for ( int i = 0; i < 4; ++i )
+	{
+		corners[i] = rays[i] * sliceNear;
+		corners[i + 4] = rays[i] * sliceFar;
+	}
+	vec3 lo = corners[0];
+	vec3 hi = lo;
+	for ( int i = 0; i < 8; ++i )
+	{
+		lo = min( lo, corners[i] );
+		hi = max( hi, corners[i] );
+	}
+	if ( !unbounded )
+	{
+		precise float boxRadius = planeRadius + kRelativeSlack * sliceFar;
+		precise vec3 gap = c - max( lo, min( c, hi ) );
+		precise float gapSquared = Dot3( gap, gap );
+		precise float boxSquared = boxRadius * boxRadius;
+		if ( gapSquared > boxSquared )
+			return false;
+	}
+#ifndef SEEDED_CONE_IGNORED
+	if ( light.directionOuterCos.w > -1.0 )
+	{
+		precise vec3 middle = ( lo + hi ) * 0.5;
+		float bound = 0.0;
+		for ( int i = 0; i < 8; ++i )
+		{
+			precise vec3 offset = corners[i] - middle;
+			bound = max( bound, sqrt( Dot3( offset, offset ) ) );
+		}
+		precise float slack =
+		    kRelativeSlack * ( sqrt( Dot3( middle, middle ) ) + bound + centerLength );
+		precise float sphereRadius = bound + slack;
+		if ( !SphereMayTouchCone( light, middle, sphereRadius ) )
+			return false;
+	}
+#endif
+	return true;
+}
+
+void main()
+{
+	uint tilesX = params.grid.x;
+	uint tilesY = params.grid.y;
+	uint froxel = gl_GlobalInvocationID.x;
+	if ( froxel >= tilesX * tilesY * params.grid.z )
+		return;
+	uint x = froxel % tilesX;
+	uint y = ( froxel / tilesX ) % tilesY;
+	uint k = froxel / ( tilesX * tilesY );
+
+	uint candidates = 0u;
+	for ( uint i = 0u; i < params.grid.w; ++i )
+	{
+		if ( Reaches( lights[i], x, y, k ) )
+			++candidates;
+	}
+	uint keep = min( candidates, params.limits.x );
+	uint offset = atomicAdd( indexCount, keep );
+	uint room = offset < params.limits.y ? params.limits.y - offset : 0u;
+	keep = min( keep, room );
+#ifndef SEEDED_UNCOUNTED_OVERFLOW
+	if ( keep < candidates )
+	{
+		atomicAdd( froxelsOverflowed, 1u );
+		atomicAdd( assignmentsDropped, candidates - keep );
+	}
+#endif
+	uint written = 0u;
+	for ( uint i = 0u; i < params.grid.w && written < keep; ++i )
+	{
+		if ( Reaches( lights[i], x, y, k ) )
+		{
+			lightIndices[offset + written] = lightSetIndex[i];
+			++written;
+		}
+	}
+	froxelRanges[froxel] = uvec2( offset, keep );
+}

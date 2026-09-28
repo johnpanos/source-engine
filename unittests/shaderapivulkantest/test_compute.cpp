@@ -203,7 +203,7 @@ int main()
 	Capabilities( d );
 	ComputeResources compute;
 	std::string error;
-	Check( compute.Init( d.physical, d.device, d.chain.Enabled(), &error ), "compute init: " + error );
+	Check( compute.Init( *d.host, d.chain.Enabled(), &error ), "compute init: " + error );
 	Dispatch( d, compute );
 	Check( RetirementHolds( d, compute, 2, true ),
 	    "a retired resource lives until its submission completes, then is freed" );

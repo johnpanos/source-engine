@@ -26,9 +26,7 @@
 #include "ctexturecompositor.h"
 #include "materialsystem/idebugtextureinfo.h"
 #include "legacy_render_backend_provider.h"
-#include "render/gpu_compute.h"
-#include "render/light_set.h"
-#include "render/world_mesh_upload.h"
+#include "render/legacy/capabilities.h"
 
 // NOTE: This must be the last file included!!!
 #include "tier0/memdbgon.h"
@@ -654,10 +652,13 @@ bool CMaterialSystem::BindBuiltinShaderProvider( const BuiltinShaderProvider &pr
 
 bool CMaterialSystem::BindShaderProvider( const render::LegacyShaderProvider &provider )
 {
-	if ( m_ShaderAPIFactory || !provider.id || !provider.id[0] || !provider.create )
+	if ( m_ShaderAPIFactory || !provider.id || !provider.id[0] ||
+	     ( !provider.create && !provider.createFor ) )
 		return false;
 	render::LegacyShaderServices services;
-	if ( !provider.create( &services ) || !services.IsComplete() )
+	const bool created = provider.createFor ? provider.createFor( provider.context, &services )
+	                                        : provider.create( &services );
+	if ( !created || !services.IsComplete() )
 	{
 		Warning( "Render provider '%s' lacks required material services.\n", provider.id );
 		return false;
@@ -668,33 +669,64 @@ bool CMaterialSystem::BindShaderProvider( const render::LegacyShaderProvider &pr
 	delete[] m_pShaderDLL;
 	m_pShaderDLL = description;
 	m_ShaderServices = services;
-	m_pQueuedWorldMeshUpload.reset();
-	if ( services.worldMeshUpload )
-		m_pQueuedWorldMeshUpload.reset(
-		    new CQueuedWorldMeshUpload( services.worldMeshUpload, RenderCapabilityHost() ) );
-	m_pQueuedLightSetConsumer.reset();
-	if ( services.lightSetConsumer )
-		m_pQueuedLightSetConsumer.reset(
-		    new CQueuedLightSetConsumer( services.lightSetConsumer, RenderCapabilityHost() ) );
 	m_SelectedShaderProvider = provider;
 	m_bShaderProviderSelected = true;
 	m_ShaderAPIFactory = LegacyShaderInterface;
 	return true;
 }
 
-RenderCapabilityQueueHost CMaterialSystem::RenderCapabilityHost()
+namespace
 {
-	RenderCapabilityQueueHost host;
-	host.renderCallQueue = [this]()
+
+// A call the render core's legacy frontend queued (render/legacy/capabilities.h).
+// The call queue releases it whether it runs or is flushed unrun.
+class CRenderCallQueueFunctor final : public CFunctorBase
+{
+public:
+	CRenderCallQueueFunctor( void ( *call )( void * ), void *payload, void ( *destroy )( void * ) )
+	    : m_call( call ), m_payload( payload ), m_destroy( destroy )
 	{
-		return GetRenderCallQueue();
-	};
-	host.boundMaterial = [this]() -> IMaterial *
-	{
-		IMatRenderContextInternal *context = GetRenderContextInternal();
-		return context ? context->GetCurrentMaterialInternal() : NULL;
-	};
-	return host;
+	}
+	~CRenderCallQueueFunctor() { m_destroy( m_payload ); }
+	void operator()() override { m_call( m_payload ); }
+
+private:
+	void ( *m_call )( void * );
+	void *m_payload;
+	void ( *m_destroy )( void * );
+};
+
+bool RenderCallQueueActive()
+{
+	return g_MaterialSystem.GetRenderCallQueue() != NULL;
+}
+
+bool QueueRenderCall( void ( *call )( void * ), void *payload, void ( *destroy )( void * ) )
+{
+	CMatCallQueue *queue = g_MaterialSystem.GetRenderCallQueue();
+	if ( !queue )
+		return false;
+	CFunctor *functor = new CRenderCallQueueFunctor( call, payload, destroy );
+	queue->QueueFunctor( functor );
+	functor->Release();
+	return true;
+}
+
+IMaterial *RenderCallQueueBoundMaterial()
+{
+	IMatRenderContextInternal *context = g_MaterialSystem.GetRenderContextInternal();
+	return context ? context->GetCurrentMaterialInternal() : NULL;
+}
+
+} // namespace
+
+DLL_EXPORT const render::legacy::RenderCallQueueHost *MaterialSystem_RenderCallQueueHost()
+{
+	static render::legacy::RenderCallQueueHost s_host;
+	s_host.active = &RenderCallQueueActive;
+	s_host.queue = &QueueRenderCall;
+	s_host.boundMaterial = &RenderCallQueueBoundMaterial;
+	return &s_host;
 }
 
 CreateInterfaceFn CMaterialSystem::CreateShaderAPI( const char *name )
@@ -725,8 +757,6 @@ void CMaterialSystem::DestroyShaderAPI()
 	g_pHWConfig = NULL;
 	g_pShaderShadow = NULL;
 	m_ShaderServices = render::LegacyShaderServices();
-	m_pQueuedWorldMeshUpload.reset();
-	m_pQueuedLightSetConsumer.reset();
 	m_ShaderAPIFactory = NULL;
 }
 
@@ -873,16 +903,6 @@ void *CMaterialSystem::QueryShaderAPI( const char *name )
 //-----------------------------------------------------------------------------
 void *CMaterialSystem::QueryInterface( const char *pInterfaceName )
 {
-	// World mesh and light set calls are ordered with the frame's queued
-	// render-context calls; the compute service orders itself against the
-	// submission it records into (gpu_compute.h).
-	if ( pInterfaceName && !Q_strcmp( pInterfaceName, world_mesh_gpu::kWorldMeshUploadInterface ) )
-		return static_cast<world_mesh_gpu::IWorldMeshUpload *>( m_pQueuedWorldMeshUpload.get() );
-	if ( pInterfaceName && !Q_strcmp( pInterfaceName, light_set::kLightSetConsumerInterface ) )
-		return static_cast<light_set::ILightSetConsumer *>( m_pQueuedLightSetConsumer.get() );
-	if ( pInterfaceName && !Q_strcmp( pInterfaceName, gpu_compute::kGpuComputeInterface ) )
-		return m_ShaderServices.gpuCompute;
-
 	if ( pInterfaceName &&
 	     !Q_strcmp( pInterfaceName, MATERIALSYSTEM_WINDOW_RESIZE_INTERFACE_VERSION ) )
 	{

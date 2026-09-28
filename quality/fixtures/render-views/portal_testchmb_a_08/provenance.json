@@ -1,0 +1,526 @@
+{
+  "schema": "render-view-oracle-fixture/v1",
+  "scenario": "portal_testchmb_a_08",
+  "game": "portal",
+  "map": "testchmb_a_08",
+  "recorded_utc": "2026-09-26T22:50:22.980137+00:00",
+  "captured_utc": "2026-09-26T22:49:32.488635+00:00",
+  "source": {
+    "source_revision": "a750871b8347772beee143666bf4a3c38571145f",
+    "dirty": false,
+    "dirty_files": 0,
+    "dirty_digest": null,
+    "capture_sources": {
+      "engine/gl_rmain.cpp": "2af96a37fa735bb5301b25351ab88fc45e44132571de3366d4b14c0b658c5b60",
+      "engine/gl_rsurf.cpp": "5b37e1515d1714df7f035b290692c5df11f5be5fcd691a8b9c7e41856e094fa0",
+      "engine/sys_dll.cpp": "b19b88993df5eb524f2ce1e07e4c5efddf6cefdebc7b002a3ffb2f5d4f8853bb",
+      "particles/particles.cpp": "5a94d73e08aac1cc269ed85d61c64aa414fb7784e8ba2b5701f3e39d5e5c9903",
+      "materialsystem/cmatrendercontext.cpp": "9e11cad527ebf016d382165d97ab3037b6a7f709965719d0dafc09d819afe60a",
+      "materialsystem/vieworaclecapture.h": "afb5c9d440979190a724636205c20446725257fab5565f69e10ae92e6c5b78c9",
+      "materialsystem/drawstatefixture.h": "1e91fdf0277627b24cadb9f98fddfa3ab0b3ab72ed498f1430d292feaba34a00",
+      "materialsystem/shaderapivulkan/shaderapivulkan.cpp": "61d835a6b04964dd7bc1106080e1477649e7a8dc8a94bffcaad67b378f9ca61b",
+      "tools/quality/portal_boot.py": "0eefddf1e8c64c5d35a975cd1e8b9ea9ec463ee11c35d5a076c8de8c14eea259",
+      "tools/render/view_oracle.py": "8ad6eeb5adb2856f5e26f182857839b545c230bd885f9dd81307042953b6be2d",
+      "quality/workloads/render-view-oracles-v1.json": "cd49d715ae17f2cff9b0d5a01a2f2ba358bfbde99510f5af788d64a3e268cc41"
+    }
+  },
+  "runtime": {
+    "path": "/home/john/src/source-engine/run/runtime",
+    "sha256": "68ce8f92e22a475f4aa5ba9983655c5aa6ad11647d94604944846f44c420957b",
+    "files": {
+      "portal/gameinfo.txt": "3a8f390ecc45e192f8fed287aec05394d3b168bb82041b26c41aba8e1c005fb3",
+      "portal/portal_pak_dir.vpk": "11ac8d930872d398d975d8f2e3a43fa2c47d2894619b5584efdda7072bde48b9",
+      "portal/maps/testchmb_a_08.bsp": "2cbff0e9a7586eadaa4c1c50d1416ef8691aa13802de1510aa1ae93a99329513"
+    }
+  },
+  "build": {
+    "path": "/home/john/src/source-engine-render-core/build-rc-vo/install",
+    "executables_sha256": "90a2e54aa4cd790dce27ee2601fb3a8ba2b29430bf6872d6aaa2edf283b4986b"
+  },
+  "queue_mode": 0,
+  "command": [
+    "/usr/bin/python3",
+    "/home/john/src/source-engine-render-core/tools/quality/portal_boot.py",
+    "--game",
+    "portal",
+    "--runtime",
+    "../source-engine/run/runtime",
+    "--build",
+    "build-rc-vo/install",
+    "--out",
+    "/home/john/src/source-engine-render-core/build-rc-vo/o/f7/portal_testchmb_a_08",
+    "--headless",
+    "--renderer",
+    "native-vulkan",
+    "--map",
+    "testchmb_a_08",
+    "--physics",
+    "vphysics_box3d",
+    "--width",
+    "1024",
+    "--height",
+    "768",
+    "--view-oracle",
+    "--draw-state-fixtures",
+    "--capture-wait",
+    "2281",
+    "--timeout",
+    "900",
+    "--console-command",
+    "noclip",
+    "--console-command",
+    "ent_create prop_portal targetname vo_blue LinkageGroupID 7 PortalTwo 0",
+    "--console-command",
+    "ent_create prop_portal targetname vo_orange LinkageGroupID 7 PortalTwo 1",
+    "--console-command",
+    "ent_fire vo_blue NewLocation \"130 17 55 0 180 0\" 1",
+    "--console-command",
+    "ent_fire vo_orange NewLocation \"-40 17 55 0 0 0\" 1",
+    "--console-command",
+    "ent_fire vo_blue SetActivatedState 1 2",
+    "--console-command",
+    "ent_fire vo_orange SetActivatedState 1 2",
+    "--console-command",
+    "ent_create point_camera targetname vo_cam",
+    "--console-command",
+    "ent_fire vo_cam AddOutput \"origin 0 17 100\" 1",
+    "--console-command",
+    "ent_fire vo_cam AddOutput \"angles 10 0 0\" 1",
+    "--console-command",
+    "ent_create info_camera_link targetname vo_camlink target vo_blue PointCamera vo_cam",
+    "--console-command",
+    "ent_fire vo_cam SetOff 2",
+    "--console-command",
+    "alias vo_shot0 \"cmd setpos 2 17 1; cmd setang 0 0 0; wait 45; cmd setpos 2 17 1; cmd setang 0 0 0; wait 3; screenshot; wait 20; vo_shot1\"",
+    "--console-command",
+    "alias vo_shot1 \"cmd setpos 2 17 1; cmd setang 0 45 0; wait 45; cmd setpos 2 17 1; cmd setang 0 45 0; wait 3; screenshot; wait 20; vo_shot2\"",
+    "--console-command",
+    "alias vo_shot2 \"cmd setpos 2 17 1; cmd setang 0 90 0; wait 45; cmd setpos 2 17 1; cmd setang 0 90 0; wait 3; screenshot; wait 20; vo_shot3\"",
+    "--console-command",
+    "alias vo_shot3 \"cmd setpos 2 17 1; cmd setang 0 135 0; wait 45; cmd setpos 2 17 1; cmd setang 0 135 0; wait 3; screenshot; wait 20; vo_shot4\"",
+    "--console-command",
+    "alias vo_shot4 \"cmd setpos 2 17 1; cmd setang 0 180 0; wait 45; cmd setpos 2 17 1; cmd setang 0 180 0; wait 3; screenshot; wait 20; vo_shot5\"",
+    "--console-command",
+    "alias vo_shot5 \"cmd setpos 2 17 1; cmd setang 0 225 0; wait 45; cmd setpos 2 17 1; cmd setang 0 225 0; wait 3; screenshot; wait 20; vo_shot6\"",
+    "--console-command",
+    "alias vo_shot6 \"cmd setpos 2 17 1; cmd setang 0 270 0; wait 45; cmd setpos 2 17 1; cmd setang 0 270 0; wait 3; screenshot; wait 20; vo_shot7\"",
+    "--console-command",
+    "alias vo_shot7 \"cmd setpos 2 17 1; cmd setang 0 315 0; wait 45; cmd setpos 2 17 1; cmd setang 0 315 0; wait 3; screenshot; wait 20; vo_shot8\"",
+    "--console-command",
+    "alias vo_shot8 \"cmd setpos 2 17 1; cmd setang -50 0 0; wait 45; cmd setpos 2 17 1; cmd setang -50 0 0; wait 3; screenshot; wait 20; vo_shot9\"",
+    "--console-command",
+    "alias vo_shot9 \"cmd setpos 2 17 1; cmd setang -50 180 0; wait 45; cmd setpos 2 17 1; cmd setang -50 180 0; wait 3; screenshot; wait 20; vo_shot10\"",
+    "--console-command",
+    "alias vo_shot10 \"cmd setpos -150 0 128; cmd setang -5 180 0; wait 30; cmd setpos -150 0 128; cmd setang -5 180 0; wait 3; screenshot; wait 10; vo_shot11\"",
+    "--console-command",
+    "alias vo_shot11 \"cmd setpos -420 98 269; cmd setang 0 180 0; wait 30; cmd setpos -420 98 269; cmd setang 0 180 0; wait 3; screenshot; wait 10; vo_shot12\"",
+    "--console-command",
+    "alias vo_shot12 \"r_portal_stencil_depth 1; cmd setpos 2 17 1; cmd setang 0 0 0; wait 20; cmd setpos 2 17 1; cmd setang 0 0 0; wait 3; screenshot; wait 10; vo_shot13\"",
+    "--console-command",
+    "alias vo_shot13 \"r_portal_stencil_depth 2; cmd setpos 2 17 1; cmd setang 0 0 0; wait 20; cmd setpos 2 17 1; cmd setang 0 0 0; wait 3; screenshot; wait 10; vo_shot14\"",
+    "--console-command",
+    "alias vo_shot14 \"r_portal_stencil_depth 10; cmd setpos 2 17 1; cmd setang 0 0 0; wait 20; cmd setpos 2 17 1; cmd setang 0 0 0; wait 3; screenshot; wait 10; vo_shot15\"",
+    "--console-command",
+    "alias vo_shot15 \"ent_fire vo_cam SetOn; cmd setpos 2 17 1; cmd setang 0 0 0; wait 30; cmd setpos 2 17 1; cmd setang 0 0 0; wait 3; screenshot; wait 10; ent_fire vo_cam SetOff; vo_shot16\"",
+    "--console-command",
+    "alias vo_shot16 \"gameui_activate; wait 90; wait 3; screenshot; wait 20\"",
+    "--console-command",
+    "wait 1200; vo_shot0",
+    "--engine-arg=-deterministicrender",
+    "--engine-arg=-nosound",
+    "--startup-command",
+    "host_framerate 0.015"
+  ],
+  "shots": [
+    {
+      "name": "ports_yaw000",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw000.views.jsonl.gz",
+      "views_sha256": "3dc915432b985699be31d9c13f7fca1b1c6c733fe505fc69d3ff340db46b316d",
+      "draw_state": "ports_yaw000.draw-state.jsonl.gz",
+      "draw_state_sha256": "34288b32aeaf9f9e37e435944b8a3818aeda7ace7b689128de0e072cf71c7435",
+      "summary": {
+        "views": 7,
+        "draws": 622,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 3,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 2
+      },
+      "draw_state_draws": 622
+    },
+    {
+      "name": "ports_yaw045",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw045.views.jsonl.gz",
+      "views_sha256": "9cd52e773f9d0587571f00b7545d65be73e906497b45c535774a86520ed1c2d5",
+      "draw_state": "ports_yaw045.draw-state.jsonl.gz",
+      "draw_state_sha256": "2993848ae2faa6fd6651555886462bf70a5090d12465ace49ae555b25892dc6b",
+      "summary": {
+        "views": 6,
+        "draws": 422,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 422
+    },
+    {
+      "name": "ports_yaw090",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw090.views.jsonl.gz",
+      "views_sha256": "ff89279d3b39ed72f3e29d544f11f678447501c724aeee13cb68cedfecbcb633",
+      "draw_state": "ports_yaw090.draw-state.jsonl.gz",
+      "draw_state_sha256": "be55ba4b596c930f6b7c7d863737ac7e24733ce7a7e8795b62a15f64c0ec17f7",
+      "summary": {
+        "views": 5,
+        "draws": 298,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 298
+    },
+    {
+      "name": "ports_yaw135",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw135.views.jsonl.gz",
+      "views_sha256": "8295374210aa542ad83e0676f7541b0a19ff0ad74d4016f2d6c8a07eb3d4d9d9",
+      "draw_state": "ports_yaw135.draw-state.jsonl.gz",
+      "draw_state_sha256": "e2cc81f8fe3385b5f08d1542df08bf8278b468796d047fcfbaa665e6e0f49d5a",
+      "summary": {
+        "views": 6,
+        "draws": 368,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 2
+      },
+      "draw_state_draws": 368
+    },
+    {
+      "name": "ports_yaw180",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw180.views.jsonl.gz",
+      "views_sha256": "bc629bf1070fe61b0544b204ab1cce32cc4bfe79ec5c0aac8fb4497d1598ce05",
+      "draw_state": "ports_yaw180.draw-state.jsonl.gz",
+      "draw_state_sha256": "0050ea5e7e76145d147d14e28d44333f34068e5e30159c9bd66e9ab6e113b574",
+      "summary": {
+        "views": 6,
+        "draws": 490,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 2
+      },
+      "draw_state_draws": 490
+    },
+    {
+      "name": "ports_yaw225",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw225.views.jsonl.gz",
+      "views_sha256": "1ca72b446b6e12c40c637653877ef1874e726fdd459c5bae362709059613c1e9",
+      "draw_state": "ports_yaw225.draw-state.jsonl.gz",
+      "draw_state_sha256": "d92496010e597159d8dbafafe5cd7a9e6b7a125a0fd195bb5b0ecf5784d792b8",
+      "summary": {
+        "views": 6,
+        "draws": 456,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 2
+      },
+      "draw_state_draws": 456
+    },
+    {
+      "name": "ports_yaw270",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw270.views.jsonl.gz",
+      "views_sha256": "2a574e7c98af40902109fc2eff8198fdd9a285e2694cfd0f5dfe119b808ef92e",
+      "draw_state": "ports_yaw270.draw-state.jsonl.gz",
+      "draw_state_sha256": "664836ecc11dff13ab4a3770d4b7561e57ed98cdbc8d934cd40eb806eb9189b8",
+      "summary": {
+        "views": 5,
+        "draws": 341,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 341
+    },
+    {
+      "name": "ports_yaw315",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw315.views.jsonl.gz",
+      "views_sha256": "75bd6fb9d92f20022fef9ac296e619d9fec9f89eabc8cf2d01b1f5cab47fa142",
+      "draw_state": "ports_yaw315.draw-state.jsonl.gz",
+      "draw_state_sha256": "64f7f55d9d3436baad200c8a7b5499039e6f0add94298d65d71c65c19c8a4437",
+      "summary": {
+        "views": 6,
+        "draws": 381,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 381
+    },
+    {
+      "name": "ports_up000",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_up000.views.jsonl.gz",
+      "views_sha256": "2be5f906fd6419cd3d3fe0a10fea7ca628f7a6b735ee63dcccda565dbf5b2474",
+      "draw_state": "ports_up000.draw-state.jsonl.gz",
+      "draw_state_sha256": "805727ab548da46aaaaafdb20f413749c3d735c46ef7f007fc43fd93160d5baf",
+      "summary": {
+        "views": 5,
+        "draws": 178,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 178
+    },
+    {
+      "name": "ports_up180",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_up180.views.jsonl.gz",
+      "views_sha256": "c8b150c2e95565d03fc9d65f39904f85bcd242eb9669f90b069a1a3a2daa7d7f",
+      "draw_state": "ports_up180.draw-state.jsonl.gz",
+      "draw_state_sha256": "b15cd0dd25796e612dd8f929b23ba4acfd024ea97e48a9591e32f0972408e75d",
+      "summary": {
+        "views": 5,
+        "draws": 257,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 257
+    },
+    {
+      "name": "glass_frosted",
+      "features": [
+        "glass"
+      ],
+      "views": "glass_frosted.views.jsonl.gz",
+      "views_sha256": "ee8e0803b8fa2785bf34171183bb6fab4b5d12b741d608c616d1806636c19d66",
+      "draw_state": "glass_frosted.draw-state.jsonl.gz",
+      "draw_state_sha256": "96d221c560a18df7a09c1cab6fa1bc0e2e73e5666e9dd5af9766da05fcb42e4e",
+      "summary": {
+        "views": 4,
+        "draws": 113,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 113
+    },
+    {
+      "name": "glass_refract",
+      "features": [
+        "glass"
+      ],
+      "views": "glass_refract.views.jsonl.gz",
+      "views_sha256": "61cd09051646e79b017ff4da694de949cfdbe90207c17c369e3e8ecf1f3fa4d8",
+      "draw_state": "glass_refract.draw-state.jsonl.gz",
+      "draw_state_sha256": "c0d33b4cbd9392b776c6ca7d943d5b7d4683c3f701e442732359109c562795b1",
+      "summary": {
+        "views": 4,
+        "draws": 81,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 81
+    },
+    {
+      "name": "recursion_limit1",
+      "features": [
+        "portal_recursion"
+      ],
+      "views": "recursion_limit1.views.jsonl.gz",
+      "views_sha256": "ae40ceae27cb9a9c861895cee7b5e7b469a90b1e776d53c20baf9e2d013be81e",
+      "draw_state": "recursion_limit1.draw-state.jsonl.gz",
+      "draw_state_sha256": "d1a41aad351e955744833e5b90bacbfd5a4366b9af95fe7787a84299a0ddd164",
+      "summary": {
+        "views": 6,
+        "draws": 489,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 489
+    },
+    {
+      "name": "recursion_limit2",
+      "features": [
+        "portal_recursion"
+      ],
+      "views": "recursion_limit2.views.jsonl.gz",
+      "views_sha256": "2f872d62bc3b6d14a01c2ddf15daa9739086e573b9fe6a6f23ebb0d782b72bbf",
+      "draw_state": "recursion_limit2.draw-state.jsonl.gz",
+      "draw_state_sha256": "9ce8011faad12d1b3f9f3f03ace9c4d17821b1f7bcb6434670b458dc66da028c",
+      "summary": {
+        "views": 7,
+        "draws": 620,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 3,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 2
+      },
+      "draw_state_draws": 620
+    },
+    {
+      "name": "recursion_limit10",
+      "features": [
+        "portal_recursion"
+      ],
+      "views": "recursion_limit10.views.jsonl.gz",
+      "views_sha256": "0a69566ef945eee08d44a0c21ce22d8bd11ee566e2b95c8b4a00d607db581a73",
+      "draw_state": "recursion_limit10.draw-state.jsonl.gz",
+      "draw_state_sha256": "c1fc162fd046905005204fee38d985dffd931967fbe19e4dcc3b03a09947d9f2",
+      "summary": {
+        "views": 15,
+        "draws": 1463,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 11,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 10
+      },
+      "draw_state_draws": 1463
+    },
+    {
+      "name": "monitor",
+      "features": [
+        "monitor"
+      ],
+      "views": "monitor.views.jsonl.gz",
+      "views_sha256": "72f6488ab6defc3feeb1e925860b849ce348656591dc8f135024e9a5215528d9",
+      "draw_state": "monitor.draw-state.jsonl.gz",
+      "draw_state_sha256": "efe51a7746c6170b6c0dd2d8e0e600f617f99a5ebf2a495f758e0b5755c10649",
+      "summary": {
+        "views": 27,
+        "draws": 2767,
+        "clears": 6,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "monitor": 1,
+          "nested": 22,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 10
+      },
+      "draw_state_draws": 2767
+    },
+    {
+      "name": "ports_pause_menu",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_pause_menu.views.jsonl.gz",
+      "views_sha256": "71326813950497ac716faa79b25b0b82ec8a943aa64cb8e2bdfa45c5a79939f5",
+      "draw_state": "ports_pause_menu.draw-state.jsonl.gz",
+      "draw_state_sha256": "4117714ecfa60e48f468d2356e2728a7a5b3ca3fffc0bc6a0e2f4d20ef22b452",
+      "summary": {
+        "views": 15,
+        "draws": 1472,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 11,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 10
+      },
+      "draw_state_draws": 1472
+    }
+  ]
+}

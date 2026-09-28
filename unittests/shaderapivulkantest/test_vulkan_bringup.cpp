@@ -16,7 +16,7 @@
 //===========================================================================//
 
 #include "vulkan_device.h"
-#include "sdl3/sdl3_vulkan_surface_host.h"
+#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "render/render_gamma_ramp.h"
 
 #include <SDL3/SDL.h>
@@ -72,7 +72,7 @@ bool PresentAndCapture(
 			else
 				ctx.RequestCapture();
 		}
-		if ( !ctx.BeginFrame( &skip, err ) )
+		if ( !ctx.RenderFrame( &skip, err ) )
 			return false;
 		if ( skip )
 		{
@@ -80,8 +80,6 @@ bool PresentAndCapture(
 			SDL_Delay( 8 );
 			continue;
 		}
-		if ( !ctx.EndFrame( err ) )
-			return false;
 	}
 	return true;
 }
@@ -110,6 +108,8 @@ int main( int argc, char **argv )
 	}
 
 	VulkanContextConfig config;
+
+	config.deviceFactory = &render::device::vulkan::HostDeviceFactory();
 	config.appName = "native-vulkan-bringup";
 	config.enableValidation = true; // opportunistic when the layer exists
 	config.requireValidation = requireValidation;
@@ -788,7 +788,7 @@ int main( int argc, char **argv )
 			bool skip = true;
 			for ( int attempt = 0; skip && attempt < 100; ++attempt )
 			{
-				if ( !ctx.BeginFrame( &skip, &err ) )
+				if ( !ctx.RenderFrame( &skip, &err ) )
 					break;
 				if ( skip )
 					SDL_Delay( 8 );
@@ -796,7 +796,7 @@ int main( int argc, char **argv )
 			Check( !skip, "pass-merge frame records" );
 			if ( skip )
 				continue;
-			const render_vulkan::FrameCost &cost = ctx.CurrentFrameCost();
+			const render_vulkan::FrameCost &cost = ctx.LastFrameCost();
 			const uint32_t passes = cost.count[render_vulkan::kCostRenderPass];
 			const uint32_t copies = cost.count[render_vulkan::kCostTargetCopy];
 			std::fprintf( stderr, "  %s: %u render passes, %u copies\n", mode, passes, copies );
@@ -814,7 +814,7 @@ int main( int argc, char **argv )
 				Check( passes == ( srgb ? 7u : 3u ), "without merging, each view change breaks" );
 				Check( copies == 2, "without merging, every copy is made" );
 			}
-			Check( ctx.EndFrame( &err ), "pass-merge frame presents" );
+			Check( err.empty(), "pass-merge frame presents" );
 			if ( merge && query >= 0 )
 			{
 				const int64_t samples = ctx.OcclusionQueryResult( query, true );

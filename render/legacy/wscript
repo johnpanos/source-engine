@@ -1,0 +1,25 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.legacy-frontend (RFC 0016 layer 6, legacy-interop): the material
+# system's provider, RenderStageMarkers001 and the legacy-stream feature.
+#
+# RenderStageMarkers001 is an IAppSystem, so this target reads tier0/tier1
+# headers and needs the platform's defines. It keeps the strict environment
+# and the core's standard-library ABI: nothing ABI-sensitive crosses into the
+# legacy modules, which see only interfaces and C++11 structs.
+
+def build(bld):
+	env = bld.strict_cpp20_env()
+	env.DEFINES = [value for value in bld.env.DEFINES
+		if not value.startswith('_GLIBCXX_USE_CXX11_ABI=')]
+	bld.stlib(
+		env         = env,
+		features    = 'cxx capability_strict',
+		arch_module = 'render.legacy-frontend',
+		target      = 'render_legacy',
+		name        = 'render_legacy',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../public'],
+		use         = ['render_frame', 'render_graph'],
+		idx         = bld.get_taskgen_count()
+	)

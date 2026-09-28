@@ -1,0 +1,134 @@
+{
+  "schema": "render-device-vulkan-features/v1",
+  "description": "RFC 0016 K1 'Feature support recorded' (render.device.vulkan-features): support for the three features the Vulkan adapter (render/device/vulkan/) requires, timeline semaphores, synchronization2 and dynamic rendering, per declared profile. Each measured entry is the device render/device/vulkan/instance.cpp's SelectAdapter would choose, probed by tools/render/vulkan_features_probe.c (probe --platform linux|android --entry). 'core' means the device's API version includes the feature (1.2 for timeline semaphores, 1.3 for the others); 'extension' means the device lists the KHR extension; 'supported' is the feature bit from vkGetPhysicalDeviceFeatures2. Required profiles: linux-desktop and android-fold7; Apple rows are optional (AGENTS.md) and are unavailable until an Apple runner exists. Checked by 'python3 tools/render/vulkan_features.py check'.",
+  "profiles": {
+    "linux-desktop": {
+      "required": true,
+      "status": "measured",
+      "device": {
+        "name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+        "vendor_id": "0x1002",
+        "device_id": "0x1586",
+        "api_version": "1.4.354",
+        "driver_name": "radv",
+        "driver_info": "Mesa 26.2.3"
+      },
+      "adapter_path": "core13",
+      "portability_subset": false,
+      "features": {
+        "timeline_semaphore": {
+          "core": true,
+          "extension": true,
+          "supported": true
+        },
+        "synchronization2": {
+          "core": true,
+          "extension": true,
+          "supported": true
+        },
+        "dynamic_rendering": {
+          "core": true,
+          "extension": true,
+          "supported": true
+        }
+      },
+      "all_devices": [
+        {
+          "index": 0,
+          "name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+          "type": "integrated",
+          "eligible": true,
+          "selected": true
+        },
+        {
+          "index": 1,
+          "name": "llvmpipe (LLVM 22.1.8, 256 bits)",
+          "type": "cpu",
+          "eligible": true,
+          "selected": false
+        }
+      ],
+      "evidence": {
+        "date": "2026-09-28",
+        "command": "python3 tools/render/vulkan_features.py probe --platform linux",
+        "host": {
+          "platform": "linux",
+          "uname": "7.2.7-cachyos1.fc44.x86_64",
+          "node": "fedora"
+        },
+        "probe": "render-device-vulkan-features-probe/v1",
+        "probe_sha256": "9998cd0fe16bd7ade8e380fcc3c7f431b3ac0cab2a810ac14f39b5f2ed9d1ba8",
+        "loader_api": "1.4.341"
+      }
+    },
+    "android-fold7": {
+      "required": true,
+      "status": "measured",
+      "device": {
+        "name": "Adreno (TM) 840",
+        "vendor_id": "0x5143",
+        "device_id": "0x44050a31",
+        "api_version": "1.4.295",
+        "driver_name": "Qualcomm Technologies Inc. Adreno Vulkan Driver",
+        "driver_info": "Driver Build: 2e66171171, I1fac26e44e, 1777575019\nDate: 05/01/26\nCompiler Version: E031.50.19.27\nDriver Branch: \n",
+        "marketed_as": "Samsung Galaxy Z Fold7 (SM-F971U1, Snapdragon SM8850)"
+      },
+      "adapter_path": "core13",
+      "portability_subset": false,
+      "features": {
+        "timeline_semaphore": {
+          "core": true,
+          "extension": true,
+          "supported": true
+        },
+        "synchronization2": {
+          "core": true,
+          "extension": true,
+          "supported": true
+        },
+        "dynamic_rendering": {
+          "core": true,
+          "extension": true,
+          "supported": true
+        }
+      },
+      "all_devices": [
+        {
+          "index": 0,
+          "name": "Adreno (TM) 840",
+          "type": "integrated",
+          "eligible": true,
+          "selected": true
+        }
+      ],
+      "evidence": {
+        "date": "2026-09-28",
+        "command": "python3 tools/render/vulkan_features.py probe --platform android",
+        "host": {
+          "platform": "android",
+          "model": "SM-F971U1",
+          "device": "h8q",
+          "fingerprint": "samsung/h8quew/h8q:17/CP2A.260605.016/F971U1UEU3AZI5_OYM3AZI5:user/release-keys",
+          "soc": "SM8850"
+        },
+        "probe": "render-device-vulkan-features-probe/v1",
+        "probe_sha256": "b34db0792def935ca6512f038beb4d8dcfa76a4be014c5c851d56eb0a8a4d98f",
+        "loader_api": "1.4.0"
+      }
+    },
+    "ios-iphone": {
+      "required": false,
+      "status": "unavailable",
+      "target": "iPhone 16 Pro (iOS, MoltenVK v1.4.2)",
+      "date": "2026-09-28",
+      "reason": "no Apple runner on this host (Linux); the probe needs a MoltenVK build run on the device. Optional per AGENTS.md: recorded as unavailable, not measured."
+    },
+    "tvos-appletv": {
+      "required": false,
+      "status": "unavailable",
+      "target": "Apple TV 4K (tvOS, MoltenVK v1.4.2)",
+      "date": "2026-09-28",
+      "reason": "no Apple runner on this host (Linux); the probe needs a MoltenVK build run on the device. Optional per AGENTS.md: recorded as unavailable, not measured."
+    }
+  }
+}

@@ -411,13 +411,13 @@ marks no implementation gate done.
 | 31 / R31 | Physics core compatibility; 0004 C | R19 | Required traces, filters, events, materials, constraints/ragdolls, controllers and persistence pass client/dedicated gameplay corpus | partial (provider level; [0004 progress](RFC/0004-progress.md)) |
 | 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | active ([video options](RFC/0001-native-vulkan-video-options-progress.md); [queued rendering](RFC/0001-native-vulkan-queued-rendering-progress.md)) |
 | 33 / R47 | PBR material family core; 0007 A/D | R02, R15 | BRDF analytic and white-furnace tests; `pbr` pixel family matches Cycles references; negative controls fail; capability and validated fallback on D3D9/DXVK | active ([0007 progress](RFC/0007-progress.md)) |
-| 34 / R86 | Render core prerequisites, device contract and Vulkan provider; 0016 K0–K1 | R02, R05, R10, R16 | Layer contract (archlint CAP011) rejects its seeded violations; `jobs.graph` module; pinned shader compiler; material/shader/studio headers in `legacyAbi.paths` with vtable fixtures; view and per-draw oracles captured; `render.device.v2` shared suite catches the bad providers; port headers reach no Vulkan/GL/SDL header; `CVulkanContext` allocates, uploads and retires through the Vulkan adapter; no idle waits on frame paths; pixel families byte-identical; per-profile feature support recorded | planned ([RFC 0016](RFC/0016-render-core.md)) |
-| 35 / R87 | Render graph and inversion; 0016 K2–K3 | R86 | Graph compiler agrees with the independent model and catches bad graphs; sync validation silent; legacy frontend records `IMatRenderContext` into stage passes; render `QueryInterface` side channels gone; pixel families, view oracles and per-draw fixtures byte-identical in both queued modes | planned ([RFC 0016](RFC/0016-render-core.md)) |
-| 36 / R88 | Shader library and materials v2; 0016 K4 | R87 | Families with schemas and parameter blocks; `legacy`, `pbr`, `lightmapped`, `vertexlit` and `unlit` on the core with VMT importers; each matches its port; proxy corpus passes; four-group ceiling enforced | planned ([RFC 0016](RFC/0016-render-core.md)) |
+| 34 / R86 | Render core prerequisites, device contract and Vulkan provider; 0016 K0–K1 | R02, R05, R10, R16 | Layer contract (archlint CAP011) rejects its seeded violations; `jobs.graph` module; pinned shader compiler; material/shader/studio headers in `legacyAbi.paths` with vtable fixtures; view and per-draw oracles captured; `render.device.v2` shared suite catches the bad providers; port headers reach no Vulkan/GL/SDL header; `CVulkanContext` allocates, uploads and retires through the Vulkan adapter; no idle waits on frame paths; pixel families byte-identical; per-profile feature support recorded | partial ([R86-LAYOUT](RFC/0016-progress.md#r86-layout-layout-layer-contract-and-runtime-wiring-2026-09-26); [K0 met](RFC/0016-progress.md#k0-prerequisites-and-frozen-oracles-2026-09-26): layer contract, `jobs.graph`, pinned shader compiler, frozen headers, 8 of 8 vtable fixtures, view and draw-state oracles, desktop and Fold7 budgets; K1: `render.device.v2` on the null and Vulkan adapters, 10 of 10 bad adapters, no single Vulkan stack yet; branch `render-core`) |
+| 35 / R87 | Render graph and inversion; 0016 K2–K3 | R86 | Graph compiler agrees with the independent model and catches bad graphs; sync validation silent; legacy frontend records `IMatRenderContext` into stage passes; render `QueryInterface` side channels gone; pixel families, view oracles and per-draw fixtures byte-identical in both queued modes | partial ([R86-LAYOUT](RFC/0016-progress.md#r86-layout-layout-layer-contract-and-runtime-wiring-2026-09-26); [K2 core](RFC/0016-progress.md#k2-k5-k6-and-k3k9-tooling-core-slices-2026-09-28): aliasing, sync validator, pooled executor, transient pool, 5 of 5 bad graphs, graph suite on null and Vulkan; product passes on the graph and the K3 inversion open; [K3](RFC/0016-progress.md#k3-slice-3-stage-passes-and-the-queued-tsan-lane-2026-09-28), 2026-09-28: frames run as stage passes of the frame graph, side channels gone, record replay gone, pixels, views and draw state unchanged in both queued modes, K1 set, Portal 2 and resize boots pass, queued TSan lane clean against the triage list; open: frame time on a quiet desktop host and the Fold7) |
+| 36 / R88 | Shader library and materials v2; 0016 K4 | R87 | Families with schemas and parameter blocks; `legacy`, `pbr`, `lightmapped`, `vertexlit` and `unlit` on the core with VMT importers; each matches its port; proxy corpus passes; four-group ceiling enforced | partial ([K4 groundwork](RFC/0016-progress.md#k4-shader-library-and-materials-groundwork-2026-09-28): per-target artifacts with pinned SPIRV-Cross, VMT import and corpus, material suite, legacy proxy captures; family ports and pixel oracles wait for K3) |
 | 37 / R92 | OpenGL device adapter; 0016 K10 | R88 | OpenGL 4.5 adapter passes `render.device.v2` for every capability it claims, including the conventions section; no portable module changes or compares the backend identity; capability negotiation selects declared fallbacks or fails composition by name; pixel families within the recorded cross-backend tolerance; `portal-linux-gl` boots; ToGL legacy profiles unchanged | planned ([RFC 0016](RFC/0016-render-core.md)) |
-| 38 / R89 | GPU scene, views, world, props and skinned models; 0016 K5–K6 | R88 | Scene change sets and snapshots; world, props and models drawn from the scene; culling matches legacy; compute skinning matches the CPU oracle; submission time improves against its budget; a second scene works in-process | planned ([RFC 0016](RFC/0016-render-core.md)) |
-| 39 / R90 | Clustered lights and shadow atlas; 0016 K7 | R89 | Clustered lighting over `render.light-set.v1`; spot, flashlight and sun-cascade shadows with oracles; dlight behavior decision recorded; atlas budgets pass on desktop and the Fold7 | planned ([RFC 0016](RFC/0016-render-core.md)) |
-| 40 / R91 | Remaining render cohorts and legacy-stream retirement; 0016 K8–K9 | R89, R90 | Particles, decals, sprites/beams, post, UI, water, sky and portal/mirror/monitor views on the core; first-party legacy-stream use zero on native Portal/Portal 2 (ratchet); mod-style fixture renders through the frontend | planned ([RFC 0016](RFC/0016-render-core.md)) |
+| 38 / R89 | GPU scene, views, world, props and skinned models; 0016 K5–K6 | R88 | Scene change sets and snapshots; world, props and models drawn from the scene; culling matches legacy; compute skinning matches the CPU oracle; submission time improves against its budget; a second scene works in-process | partial ([K5, K6 slices](RFC/0016-progress.md#k2-k5-k6-and-k3k9-tooling-core-slices-2026-09-28): pooled culling, publication TSan lane, two scenes drawn on the GPU; GPU skinning matches studiorender's software skinning on a real-model corpus; world, props, product skinning, pixels and costs open) |
+| 39 / R90 | Clustered lights and shadow atlas; 0016 K7 | R89 | Clustered lighting over `render.light-set.v1`; spot, flashlight and sun-cascade shadows with oracles; dlight behavior decision recorded; atlas budgets pass on desktop and the Fold7 | partial ([K7 headless slice](RFC/0016-progress.md#k7-headless-slice-clustered-light-assignment-and-shadow-atlas-2026-09-28): cluster assignment with zero false negatives over 1,000 scenes, shadow atlas, spot, flashlight and cascade views; GPU lane, pixel oracles, flashlight scene, dlight decision and budgets open) |
+| 40 / R91 | Remaining render cohorts and legacy-stream retirement; 0016 K8–K9 | R89, R90 | Particles, decals, sprites/beams, post, UI, water, sky and portal/mirror/monitor views on the core; first-party legacy-stream use zero on native Portal/Portal 2 (ratchet); mod-style fixture renders through the frontend | partial ([K9 static ratchet](RFC/0016-progress.md#k3-and-k9-static-scans-842bb152): 490 first-party legacy-stream sites, shrink-only; no cohort moved) |
 | 41 / R65 | Runtime antialiasing: 4x MSAA targets, alpha to coverage, PBR specular AA; 0012 A0–A3, A5 | R02, R32, R47 | Edge/alpha/shimmer/identity oracles with negative providers pass; glass keeps scene depth under MSAA; per-profile target memory policy and 4x recommendation follow measured Linux and Fold7 budgets | planned ([RFC 0012](RFC/0012-antialiasing-msaa-specular-alpha-coverage.md)) |
 | 42 / R48 | Compile tools on Waf and bake seam; 0007 B, vvis track | R01, R02, R03 | vbsp/vvis/vrad build on a declared profile; byte-identical legacy lumps and PVS vs legacy executables; shared baker suite passes the legacy provider and rejects bad providers | partial ([Linux compiler host smoke](RFC/0007-progress.md#r48-host-compiler-preparation-2026-09-23); [R48-BAKER](RFC/0007-progress.md#r48-baker-light-baker-seam-and-pipeline-consolidation) planned) |
 | 43 / R53 | BSP2 container and map-reader seam; 0008 F1 | R02, R04 | Legacy lumps carried byte-identically; client/server load both containers; independent reader, fuzzing and dedicated-server link evidence pass | active ([0008 progress](RFC/0008-progress.md)) |
@@ -779,8 +779,51 @@ Keep the table concise and link details below or from the domain progress file.
   - Prerequisites found while writing it: the job system has no capability
     module, the GLSL compiler isn't pinned, and no material or shader-API
     header is in `legacyAbi.paths`. All three are K0 work.
-  - Nothing is implemented, and no other row changes state. R86 is
-    dependency-ready.
+  - Nothing was implemented when the RFC landed; R86 was dependency-ready.
+  - R86-LAYOUT (2026-09-26, user goal: "implement this according to the RFC
+    directory layout and architectural arrow"), on branch `render-core` in
+    the worktree `../source-engine-render-core`:
+    - Fourteen strict static libraries under `render/` and
+      `public/render/<module>/`, one per layer-contract module, built for
+      client, tool and test products only; the dedicated product never adds
+      them. The Vulkan adapter builds with the native Vulkan backend; the GL
+      adapter option fails configure until K10.
+    - archlint CAP011 reads the new `layerContracts` section; its six RFC
+      fixtures fail with their rule, and `check --all` passes.
+    - Runtime: the launcher composes the core around the selected legacy
+      backend (the frontend keeps its id; `-norendercore` rolls back), binds
+      the engine (`Engine_BindRenderCore`) and adds `RenderStageMarkers001`.
+      The engine drives frames in the host render steps, marks views at
+      `CRender::Push3DView`/`PopView` and owns the world scene; the client
+      marks content stages. Hammer projects its document into its own scene.
+    - Evidence: `render.device.v2` null (279) and Vulkan (499, 0 validation
+      messages), 10 of 10 bad adapters, graph (1,000 random graphs agree with
+      the model), scene, frame, composition and Hammer suites, g++ and
+      clang++. A Portal boot on the null device ran 208 frames with 0 stage
+      order violations, in both queued modes and with the Vulkan adapter;
+      pixels match `-norendercore` within run-to-run noise. The dedicated link
+      map holds no render code, the engine defines none, and the static
+      composition check passes with the core in the program.
+    - Not done: every gate. K0's job-system module, compiler pin, frozen
+      headers and oracles; K1's single Vulkan stack; K2's model, pooled
+      executor and aliasing; the K3 inversion and the `rendercore` rename.
+      The iOS app builds with the core statically linked, but has not run on
+      a device. No Android build and no frame-time measurement.
+      See the [record](RFC/0016-progress.md).
+  - K0 (2026-09-26, user direction: "K0 is required"): every check passes
+    on the Linux desktop and the Fold7. The job system is the strict
+    `jobs.graph` module; shaderc v2026.1 is pinned by source archive and
+    rebuilds every committed SPIR-V module byte-identically; 24 frozen render
+    headers are under CAP010; `legacy.render-abi` holds 541 vtable slots
+    (8 of 8 seeded reorders detected); the view and draw-state oracles cover
+    `testchmb_a_00`, `testchmb_a_08`, the legacy-ports set and Portal 2's
+    `sp_a1_wakeup` (21,632 draws, every single-draw removal detected) under
+    a new opt-in `-deterministicrender`; `render-v1.json` has desktop and
+    Fold7 k0_records (the Fold7 limits revised at the user's direction after
+    its first measurement). Gap: the Portal 2 client compiles monitors out
+    (`USE_MONITORS`), a parity gap against retail, so its monitor view is
+    not captured. See the
+    [K0 record](RFC/0016-progress.md#k0-prerequisites-and-frozen-oracles-2026-09-26).
 - R61–R64 (RFC 0008 F8–F11): added 2026-09-23 as `planned` for versioned native
   map spatial data, a modern model asset path, visual parity and geometry
   scalability, and direct USD development-runtime iteration. They extend the
@@ -820,11 +863,26 @@ Keep the table concise and link details below or from the domain progress file.
       `render.presentation.v1` pair that exports frames as dmabufs;
     - the GTK host shows them zero-copy (`GdkDmabufTexture`) and forwards
       input as normalized events;
-    - play/stop starts and stops the child on the freshly compiled map;
-    - the same bridge serves a native-renderer viewport (R17).
+    - play/stop starts and stops the child on the freshly compiled map.
 
     It is sequenced after the command layer and the author → compile → play
     loop suite. Nothing is implemented yet.
+  - Editor viewports (agent decision under the user's standing instruction,
+    2026-09-28, agreed with the Hammer session; supersedes "the same bridge
+    serves a native-renderer viewport"): the viewports render in-process.
+    - The GTK host composes the RFC 0016 render core (`RenderCore_Create`,
+      Vulkan device, no legacy backend) and renders each view offscreen from
+      `presenters::EditorWorkspace`'s `viewport::RenderSnapshot`, with the
+      workspace's cameras passed per frame.
+    - Frames reach GTK as a dmabuf in a `GdkDmabufTexture`, with a readback
+      into `GdkMemoryTexture` as the first step. The document, cameras and
+      overlays already live in-process, and a child process would have to
+      stream every edit.
+    - The child-process `render.presentation.v1` bridge stays for
+      play-in-editor, and both share the dmabuf-to-GTK presentation step.
+    - Owner: the Hammer session (R17). The GL renderer is deleted once the
+      core covers cameras, 2D wireframe and grid, selection, tool overlays,
+      displacements and entity markers.
 - R08: `active`. See the
   [RFC 0002 current state](RFC/0002-progress.md#current-state-2026-09-25).
   - R08-CMD (2026-09-25, first slice of the map-building loop):

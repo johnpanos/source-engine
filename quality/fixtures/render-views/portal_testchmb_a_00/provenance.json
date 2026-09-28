@@ -1,0 +1,493 @@
+{
+  "schema": "render-view-oracle-fixture/v1",
+  "scenario": "portal_testchmb_a_00",
+  "game": "portal",
+  "map": "testchmb_a_00",
+  "recorded_utc": "2026-09-26T22:50:22.898223+00:00",
+  "captured_utc": "2026-09-26T22:49:32.468001+00:00",
+  "source": {
+    "source_revision": "a750871b8347772beee143666bf4a3c38571145f",
+    "dirty": false,
+    "dirty_files": 0,
+    "dirty_digest": null,
+    "capture_sources": {
+      "engine/gl_rmain.cpp": "2af96a37fa735bb5301b25351ab88fc45e44132571de3366d4b14c0b658c5b60",
+      "engine/gl_rsurf.cpp": "5b37e1515d1714df7f035b290692c5df11f5be5fcd691a8b9c7e41856e094fa0",
+      "engine/sys_dll.cpp": "b19b88993df5eb524f2ce1e07e4c5efddf6cefdebc7b002a3ffb2f5d4f8853bb",
+      "particles/particles.cpp": "5a94d73e08aac1cc269ed85d61c64aa414fb7784e8ba2b5701f3e39d5e5c9903",
+      "materialsystem/cmatrendercontext.cpp": "9e11cad527ebf016d382165d97ab3037b6a7f709965719d0dafc09d819afe60a",
+      "materialsystem/vieworaclecapture.h": "afb5c9d440979190a724636205c20446725257fab5565f69e10ae92e6c5b78c9",
+      "materialsystem/drawstatefixture.h": "1e91fdf0277627b24cadb9f98fddfa3ab0b3ab72ed498f1430d292feaba34a00",
+      "materialsystem/shaderapivulkan/shaderapivulkan.cpp": "61d835a6b04964dd7bc1106080e1477649e7a8dc8a94bffcaad67b378f9ca61b",
+      "tools/quality/portal_boot.py": "0eefddf1e8c64c5d35a975cd1e8b9ea9ec463ee11c35d5a076c8de8c14eea259",
+      "tools/render/view_oracle.py": "8ad6eeb5adb2856f5e26f182857839b545c230bd885f9dd81307042953b6be2d",
+      "quality/workloads/render-view-oracles-v1.json": "cd49d715ae17f2cff9b0d5a01a2f2ba358bfbde99510f5af788d64a3e268cc41"
+    }
+  },
+  "runtime": {
+    "path": "/home/john/src/source-engine/run/runtime",
+    "sha256": "c2b1cf5cd88b5d689729a0bdc93415814458b971319ba2163898cf10945ccdf3",
+    "files": {
+      "portal/gameinfo.txt": "3a8f390ecc45e192f8fed287aec05394d3b168bb82041b26c41aba8e1c005fb3",
+      "portal/portal_pak_dir.vpk": "11ac8d930872d398d975d8f2e3a43fa2c47d2894619b5584efdda7072bde48b9",
+      "portal/maps/testchmb_a_00.bsp": "9e1674866df01e6383a654eb4da7c770f9e788786e3bc5d412aece4f2432747e"
+    }
+  },
+  "build": {
+    "path": "/home/john/src/source-engine-render-core/build-rc-vo/install",
+    "executables_sha256": "90a2e54aa4cd790dce27ee2601fb3a8ba2b29430bf6872d6aaa2edf283b4986b"
+  },
+  "queue_mode": 0,
+  "command": [
+    "/usr/bin/python3",
+    "/home/john/src/source-engine-render-core/tools/quality/portal_boot.py",
+    "--game",
+    "portal",
+    "--runtime",
+    "../source-engine/run/runtime",
+    "--build",
+    "build-rc-vo/install",
+    "--out",
+    "/home/john/src/source-engine-render-core/build-rc-vo/o/f7/portal_testchmb_a_00",
+    "--headless",
+    "--renderer",
+    "native-vulkan",
+    "--map",
+    "testchmb_a_00",
+    "--physics",
+    "vphysics_box3d",
+    "--width",
+    "1024",
+    "--height",
+    "768",
+    "--view-oracle",
+    "--draw-state-fixtures",
+    "--capture-wait",
+    "3438",
+    "--timeout",
+    "900",
+    "--console-command",
+    "noclip",
+    "--console-command",
+    "ent_create prop_portal targetname vo_blue LinkageGroupID 7 PortalTwo 0",
+    "--console-command",
+    "ent_create prop_portal targetname vo_orange LinkageGroupID 7 PortalTwo 1",
+    "--console-command",
+    "ent_fire vo_blue NewLocation \"-960 -560 630 0 180 0\" 1",
+    "--console-command",
+    "ent_fire vo_orange NewLocation \"-1140 -560 630 0 0 0\" 1",
+    "--console-command",
+    "ent_fire vo_blue SetActivatedState 1 2",
+    "--console-command",
+    "ent_fire vo_orange SetActivatedState 1 2",
+    "--console-command",
+    "ent_create point_camera targetname vo_cam",
+    "--console-command",
+    "ent_fire vo_cam AddOutput \"origin -1100 -560 660\" 1",
+    "--console-command",
+    "ent_fire vo_cam AddOutput \"angles 10 0 0\" 1",
+    "--console-command",
+    "ent_create info_camera_link targetname vo_camlink target vo_blue PointCamera vo_cam",
+    "--console-command",
+    "ent_fire vo_cam SetOff 2",
+    "--console-command",
+    "alias vo_shot0 \"cmd setpos -608 -347 161; cmd setang 0 0 0; wait 45; cmd setpos -608 -347 161; cmd setang 0 0 0; wait 3; screenshot; wait 20; vo_shot1\"",
+    "--console-command",
+    "alias vo_shot1 \"cmd setpos -608 -347 161; cmd setang 0 45 0; wait 45; cmd setpos -608 -347 161; cmd setang 0 45 0; wait 3; screenshot; wait 20; vo_shot2\"",
+    "--console-command",
+    "alias vo_shot2 \"cmd setpos -608 -347 161; cmd setang 0 90 0; wait 45; cmd setpos -608 -347 161; cmd setang 0 90 0; wait 3; screenshot; wait 20; vo_shot3\"",
+    "--console-command",
+    "alias vo_shot3 \"cmd setpos -608 -347 161; cmd setang 0 135 0; wait 45; cmd setpos -608 -347 161; cmd setang 0 135 0; wait 3; screenshot; wait 20; vo_shot4\"",
+    "--console-command",
+    "alias vo_shot4 \"cmd setpos -608 -347 161; cmd setang 0 180 0; wait 45; cmd setpos -608 -347 161; cmd setang 0 180 0; wait 3; screenshot; wait 20; vo_shot5\"",
+    "--console-command",
+    "alias vo_shot5 \"cmd setpos -608 -347 161; cmd setang 0 225 0; wait 45; cmd setpos -608 -347 161; cmd setang 0 225 0; wait 3; screenshot; wait 20; vo_shot6\"",
+    "--console-command",
+    "alias vo_shot6 \"cmd setpos -608 -347 161; cmd setang 0 270 0; wait 45; cmd setpos -608 -347 161; cmd setang 0 270 0; wait 3; screenshot; wait 20; vo_shot7\"",
+    "--console-command",
+    "alias vo_shot7 \"cmd setpos -608 -347 161; cmd setang 0 315 0; wait 45; cmd setpos -608 -347 161; cmd setang 0 315 0; wait 3; screenshot; wait 20; vo_shot8\"",
+    "--console-command",
+    "alias vo_shot8 \"cmd setpos -608 -347 161; cmd setang -50 0 0; wait 45; cmd setpos -608 -347 161; cmd setang -50 0 0; wait 3; screenshot; wait 20; vo_shot9\"",
+    "--console-command",
+    "alias vo_shot9 \"cmd setpos -608 -347 161; cmd setang -50 180 0; wait 45; cmd setpos -608 -347 161; cmd setang -50 180 0; wait 3; screenshot; wait 20; vo_shot10\"",
+    "--console-command",
+    "alias vo_shot10 \"cmd setpos -538 -367 161; cmd setang 4 -172 0; wait 30; cmd setpos -538 -367 161; cmd setang 4 -172 0; wait 3; screenshot; wait 10; vo_shot11\"",
+    "--console-command",
+    "alias vo_shot11 \"r_portal_stencil_depth 1; cmd setpos -1088 -560 580; cmd setang 0 0 0; wait 20; cmd setpos -1088 -560 580; cmd setang 0 0 0; wait 3; screenshot; wait 10; vo_shot12\"",
+    "--console-command",
+    "alias vo_shot12 \"r_portal_stencil_depth 2; cmd setpos -1088 -560 580; cmd setang 0 0 0; wait 20; cmd setpos -1088 -560 580; cmd setang 0 0 0; wait 3; screenshot; wait 10; vo_shot13\"",
+    "--console-command",
+    "alias vo_shot13 \"r_portal_stencil_depth 10; cmd setpos -1088 -560 580; cmd setang 0 0 0; wait 20; cmd setpos -1088 -560 580; cmd setang 0 0 0; wait 3; screenshot; wait 10; vo_shot14\"",
+    "--console-command",
+    "alias vo_shot14 \"ent_fire vo_cam SetOn; cmd setpos -1088 -560 580; cmd setang 0 0 0; wait 30; cmd setpos -1088 -560 580; cmd setang 0 0 0; wait 3; screenshot; wait 10; ent_fire vo_cam SetOff; vo_shot15\"",
+    "--console-command",
+    "alias vo_shot15 \"gameui_activate; wait 90; wait 3; screenshot; wait 20\"",
+    "--console-command",
+    "wait 2400; vo_shot0",
+    "--engine-arg=-deterministicrender",
+    "--engine-arg=-nosound",
+    "--startup-command",
+    "host_framerate 0.015"
+  ],
+  "shots": [
+    {
+      "name": "ports_yaw000",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw000.views.jsonl.gz",
+      "views_sha256": "9009e45261f24cff7b07ef45e145bc1826d6bc7fee056faf6963465374650202",
+      "draw_state": "ports_yaw000.draw-state.jsonl.gz",
+      "draw_state_sha256": "3d241a45df406d4bc4f9e7750e616ed929ffe6b3d99f5353cd2cd28d8c12edc1",
+      "summary": {
+        "views": 4,
+        "draws": 106,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 106
+    },
+    {
+      "name": "ports_yaw045",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw045.views.jsonl.gz",
+      "views_sha256": "bba4bfadeefa0edeed2b9ee2092d3aad61adf679b588f40ece1745d78b069a31",
+      "draw_state": "ports_yaw045.draw-state.jsonl.gz",
+      "draw_state_sha256": "044356d0046712fa3537a1b7e73d6b55d0e66e2094a38b059f9ad15622169e5e",
+      "summary": {
+        "views": 4,
+        "draws": 134,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 134
+    },
+    {
+      "name": "ports_yaw090",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw090.views.jsonl.gz",
+      "views_sha256": "1de4e15621ac838690badb5ff5c349b02295ef8e399750c21460638ef1fb0e25",
+      "draw_state": "ports_yaw090.draw-state.jsonl.gz",
+      "draw_state_sha256": "417e83f810f36bcc1f1b7aabbb88a219e23101407f39ab5ed40a14f0845bb7d7",
+      "summary": {
+        "views": 4,
+        "draws": 76,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 76
+    },
+    {
+      "name": "ports_yaw135",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw135.views.jsonl.gz",
+      "views_sha256": "c934852da68cfd20382f2b83c998dba0eae13daacf0d2a1a325bc27425e15094",
+      "draw_state": "ports_yaw135.draw-state.jsonl.gz",
+      "draw_state_sha256": "d2d74879c2902a5101d1227533e0be69d51f2091c8c1d96f17b38a28de313db0",
+      "summary": {
+        "views": 4,
+        "draws": 69,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 69
+    },
+    {
+      "name": "ports_yaw180",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw180.views.jsonl.gz",
+      "views_sha256": "5f0f32bace3a037cea8f9a1dfa81663a570709d23f357f6675ad0135ab948e5e",
+      "draw_state": "ports_yaw180.draw-state.jsonl.gz",
+      "draw_state_sha256": "c7ac30ff85353de5d96fb67b9f98029861116d15b65f0b253caf7bf1260a9817",
+      "summary": {
+        "views": 4,
+        "draws": 71,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 71
+    },
+    {
+      "name": "ports_yaw225",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw225.views.jsonl.gz",
+      "views_sha256": "b4c0ba4412bc420a576ee1a328f8248130883a627b26a27f03575f92552dc0dd",
+      "draw_state": "ports_yaw225.draw-state.jsonl.gz",
+      "draw_state_sha256": "5f53d2b5f46b3d87de9e7a07db0bf2485c01d839d431d3ab1c1c83b8a758ec34",
+      "summary": {
+        "views": 4,
+        "draws": 67,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 67
+    },
+    {
+      "name": "ports_yaw270",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw270.views.jsonl.gz",
+      "views_sha256": "74673d19159f53202c25fe710c71a5592525566698d5e8c3360f169b305b73ca",
+      "draw_state": "ports_yaw270.draw-state.jsonl.gz",
+      "draw_state_sha256": "57aceb64bae5d505b70b6215d0a7de9460befb7829117a170adbf1df474575c5",
+      "summary": {
+        "views": 4,
+        "draws": 90,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 90
+    },
+    {
+      "name": "ports_yaw315",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_yaw315.views.jsonl.gz",
+      "views_sha256": "5cdb91f8f7a37c917af53143a622e6823aea4ad487deff3aed7b42c8c2430b88",
+      "draw_state": "ports_yaw315.draw-state.jsonl.gz",
+      "draw_state_sha256": "192b8020178e39baab531f12d8ac27b7cc4a323ecb2acb8fb2b1f812cc904c1c",
+      "summary": {
+        "views": 4,
+        "draws": 110,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 110
+    },
+    {
+      "name": "ports_up000",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_up000.views.jsonl.gz",
+      "views_sha256": "01e32ebe2cc5cd5c2cf545248281b81c2163db699dd993dbd25482e73569b889",
+      "draw_state": "ports_up000.draw-state.jsonl.gz",
+      "draw_state_sha256": "873d5c27f2a859a0af338381d45383ec0f2a2f360d5fa1b21c7be5da769a51b8",
+      "summary": {
+        "views": 4,
+        "draws": 90,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 90
+    },
+    {
+      "name": "ports_up180",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_up180.views.jsonl.gz",
+      "views_sha256": "36cc9146c3a91b14fbbf1eac4796abf40f01eaf2a63ca33997c3b4629e059f69",
+      "draw_state": "ports_up180.draw-state.jsonl.gz",
+      "draw_state_sha256": "99af29e9e1c10b6ee45940128fdc6e30851c79a12afac1975b74aa70fcb1ff4d",
+      "summary": {
+        "views": 5,
+        "draws": 103,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 103
+    },
+    {
+      "name": "glass_vault",
+      "features": [
+        "glass"
+      ],
+      "views": "glass_vault.views.jsonl.gz",
+      "views_sha256": "c06d5c9fd4eebd53a4442352a994de4566b071ae2b5bd1f26b43463a3ecade82",
+      "draw_state": "glass_vault.draw-state.jsonl.gz",
+      "draw_state_sha256": "58ecfef2f4858aac5dfb4f450d1fda6d6edbb1d20f740643088db42490c188b6",
+      "summary": {
+        "views": 4,
+        "draws": 68,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 0
+      },
+      "draw_state_draws": 68
+    },
+    {
+      "name": "recursion_limit1",
+      "features": [
+        "portal_recursion"
+      ],
+      "views": "recursion_limit1.views.jsonl.gz",
+      "views_sha256": "88af372191703be67bb3e7dc790220a91a481a83bb60ce9f80bae3c70aa6cfc2",
+      "draw_state": "recursion_limit1.draw-state.jsonl.gz",
+      "draw_state_sha256": "e3fb40bca3ff4b62196c4a8167ae17b4949cd7a3ba42d181354f52f1961dc24e",
+      "summary": {
+        "views": 6,
+        "draws": 193,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 2,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 1
+      },
+      "draw_state_draws": 193
+    },
+    {
+      "name": "recursion_limit2",
+      "features": [
+        "portal_recursion"
+      ],
+      "views": "recursion_limit2.views.jsonl.gz",
+      "views_sha256": "fc937ddfc3718465a01a9c2f9282629f0472e695e007462a6fbdc6cb56ba3b61",
+      "draw_state": "recursion_limit2.draw-state.jsonl.gz",
+      "draw_state_sha256": "d0cdcfd74d650a97361a30190fc30cda155c181e249c3855bfc761133fd7d9f0",
+      "summary": {
+        "views": 7,
+        "draws": 269,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 3,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 2
+      },
+      "draw_state_draws": 269
+    },
+    {
+      "name": "recursion_limit10",
+      "features": [
+        "portal_recursion"
+      ],
+      "views": "recursion_limit10.views.jsonl.gz",
+      "views_sha256": "802bc451dd68acb747e257bdfbdf9ecebef2b11ab91743a7d14ed4c88ae0da6b",
+      "draw_state": "recursion_limit10.draw-state.jsonl.gz",
+      "draw_state_sha256": "afefa79291ba16a925e255c70212ab45e2c8e9b0709d8ee1a452fdfa5f6905e3",
+      "summary": {
+        "views": 15,
+        "draws": 836,
+        "clears": 5,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 11,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 10
+      },
+      "draw_state_draws": 836
+    },
+    {
+      "name": "monitor",
+      "features": [
+        "monitor"
+      ],
+      "views": "monitor.views.jsonl.gz",
+      "views_sha256": "726ba32f5eaafd4fbe1c210b453d60f4bb99daa665377ee3357db2e21231ec49",
+      "draw_state": "monitor.draw-state.jsonl.gz",
+      "draw_state_sha256": "dca894cedd6113e04a72848428a49f996687a1e51b8b9cad1816d360f12fd61e",
+      "summary": {
+        "views": 27,
+        "draws": 1611,
+        "clears": 6,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "monitor": 1,
+          "nested": 22,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 10
+      },
+      "draw_state_draws": 1611
+    },
+    {
+      "name": "ports_pause_menu",
+      "features": [
+        "legacy_ports_view_set"
+      ],
+      "views": "ports_pause_menu.views.jsonl.gz",
+      "views_sha256": "dc8e2b589add68d14c3c3a86856ca6054980e4ff7bed288636ae84f97427ee52",
+      "draw_state": "ports_pause_menu.draw-state.jsonl.gz",
+      "draw_state_sha256": "74fccb2c13543ed2a0bccf93e97fb43f34bbc0efa9d5e838113cb2d543f4e26d",
+      "summary": {
+        "views": 15,
+        "draws": 838,
+        "clears": 4,
+        "kinds": {
+          "2d": 2,
+          "main": 1,
+          "nested": 11,
+          "viewmodel": 1
+        },
+        "max_nested_depth": 10
+      },
+      "draw_state_draws": 838
+    }
+  ]
+}

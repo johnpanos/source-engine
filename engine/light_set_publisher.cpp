@@ -14,10 +14,12 @@
 #include "gl_model_private.h"
 #include "materialsystem/imaterialsystem.h"
 #include "mathlib/mathlib.h"
+#include "portal_dlights.h"
 #include "r_local.h"
 #include "render.h"
 #include "render/direct_light_selection.h"
 #include "render/light_set.h"
+#include "render_core_host.h"
 
 #include <cmath>
 #include <vector>
@@ -47,13 +49,15 @@ void ToLinear( const ColorRGBExp32 &color, float out[3] )
 	out[2] = TexLightToLinear( color.b, color.exponent );
 }
 
-void GatherDynamic(
-    const dlight_t *lights, int count, LightKind kind, std::vector<DynamicLightInput> *out )
+// `skip`: slots left out (the dlights imaged through portals, which the
+// per-pixel consumers cannot clip to their portal yet; portal_dlights.h).
+void GatherDynamic( const dlight_t *lights, int count, LightKind kind, unsigned int skip,
+    std::vector<DynamicLightInput> *out )
 {
 	for ( int i = 0; i < count; ++i )
 	{
 		const dlight_t &dl = lights[i];
-		if ( !dl.IsRadiusGreaterThanZero() )
+		if ( !dl.IsRadiusGreaterThanZero() || ( skip & ( 1u << i ) ) != 0 )
 			continue;
 		DynamicLightInput input;
 		input.kind = kind;
@@ -95,8 +99,7 @@ void LightSet_PublishFrame()
 	{
 		s_builtMap = g_nMapLoadCount;
 		s_builder.BeginMap( uint64_t( g_nMapLoadCount ) );
-		s_consumer = static_cast<ILightSetConsumer *>(
-		    materials->QueryInterface( kLightSetConsumerInterface ) );
+		s_consumer = RenderCoreHost_LightSetConsumer();
 	}
 	std::vector<WorldLightInput> worldLights;
 	worldLights.reserve( size_t( world->numworldlights ) );
@@ -124,8 +127,9 @@ void LightSet_PublishFrame()
 	for ( int i = 0; i < MAX_LIGHTSTYLES; ++i )
 		styles[i] = LightStyleValue( i );
 	std::vector<DynamicLightInput> dynamic;
-	GatherDynamic( cl_dlights, MAX_DLIGHTS, LightKind::Dynamic, &dynamic );
-	GatherDynamic( cl_elights, MAX_ELIGHTS, LightKind::Entity, &dynamic );
+	GatherDynamic(
+	    cl_dlights, MAX_DLIGHTS, LightKind::Dynamic, PortalDLights_ImageMask(), &dynamic );
+	GatherDynamic( cl_elights, MAX_ELIGHTS, LightKind::Entity, 0, &dynamic );
 	Snapshot snapshot = s_builder.Build( worldLights, styles, dynamic );
 	// Renderers with a direct-light budget rank lights from the last main view.
 	snapshot.hasView = true;

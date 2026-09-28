@@ -1,0 +1,174 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: render.pass.lights on the device (RFC 0016 K7, render.lights.v1):
+//			cluster_assign.comp as a render.graph compute pass.
+//
+//			PrepareClusterDispatch lays out what one view's dispatch reads:
+//			the parameters, the packed light records (PackClusterLights) with
+//			the light-set index of each, and the packed grid
+//			(PackClusterGrid). AddClusterUploadPass writes them and zeroes the
+//			index list's counters in a copy pass; AddClusterAssignPass runs
+//			the kernel, one invocation per froxel. Its outputs are the
+//			froxels' ranges and the index list, the lists the serial path
+//			(AssignLights) builds, with the offsets in scheduling order:
+//
+//			- with no index-capacity overflow each froxel's list equals the
+//			  serial path's, ascending light-set indices;
+//			- the counters equal ClusterStats' froxelsOverflowed and
+//			  assignmentsDropped, and min( requested, capacity ) equals its
+//			  assignments;
+//			- under index-capacity overflow a froxel's list is a prefix of
+//			  its per-froxel-limited serial list, and only the totals are
+//			  defined (which froxels lose room depends on scheduling).
+//
+//			Lights beyond maxLights never reach the device (PackClusterLights
+//			cuts them); ClusterStats::lightsOverCapacity counts them on the
+//			CPU.
+//
+//=============================================================================//
+
+#ifndef RENDER_PASS_LIGHTS_CLUSTER_PASS_H
+#define RENDER_PASS_LIGHTS_CLUSTER_PASS_H
+
+#include "foundation/expected.h"
+#include "render/device/device.h"
+#include "render/graph/graph_builder.h"
+#include "render/pass/lights/clusters.h"
+
+#include <cstdint>
+#include <memory>
+#include <span>
+#include <vector>
+
+namespace render::pass::lights
+{
+
+// std140 parameters (binding 0).
+struct ClusterParamsGpu
+{
+	std::uint32_t grid[4] = {};   // tilesX, tilesY, slices, packed light count
+	std::uint32_t limits[4] = {}; // maxLightsPerFroxel, maxLightIndices, 0, 0
+};
+
+// The index list's header (binding 5), before the indices.
+struct ClusterIndexHeader
+{
+	// Indices the froxels asked for after their per-froxel limit; the list
+	// holds min( requested, maxLightIndices ) of them.
+	std::uint32_t requested = 0;
+	std::uint32_t froxelsOverflowed = 0;
+	std::uint32_t assignmentsDropped = 0;
+	std::uint32_t reserved = 0;
+};
+
+static_assert( sizeof( ClusterParamsGpu ) == 32 && sizeof( ClusterIndexHeader ) == 16 &&
+               sizeof( ClusterLightGpu ) == 32 && sizeof( FroxelRange ) == 8 );
+
+// One view's dispatch inputs. Each list holds at least one record, so every
+// binding has a size; lightCount says how many are real.
+struct ClusterDispatchData
+{
+	ClusterParamsGpu params;
+	std::vector<ClusterLightGpu> lights;
+	std::vector<std::uint32_t> lightSetIndex;
+	std::vector<math::float4> grid;
+	std::uint32_t froxelCount = 0;
+	std::uint32_t lightCount = 0;
+	std::uint32_t indexCapacity = 0;
+
+	std::uint64_t FroxelBytes() const
+	{
+		return std::uint64_t( froxelCount ) * sizeof( FroxelRange );
+	}
+	std::uint64_t IndexBytes() const
+	{
+		return sizeof( ClusterIndexHeader ) +
+		       std::uint64_t( indexCapacity ) * sizeof( std::uint32_t );
+	}
+};
+
+ClusterDispatchData PrepareClusterDispatch(
+    const ClusterGrid &grid, std::span<const light_set::RuntimeLight> lights );
+
+// The dispatch's buffers: params as a uniform buffer (kUniform); lights,
+// light-set indices and grid as read-only storage (kStorageRead); froxels and
+// indices as written storage (kStorageWrite).
+struct ClusterBuffers
+{
+	device::BufferId params;
+	device::BufferId lights;
+	device::BufferId lightSetIndex;
+	device::BufferId grid;
+	device::BufferId froxels;
+	device::BufferId indices;
+	std::uint32_t froxelCount = 0;
+	std::uint32_t lightRecords = 1; // records bound (at least 1)
+	std::uint32_t gridRecords = 0;
+	std::uint32_t indexCapacity = 0;
+};
+
+enum class ClusterKernelStatus : std::uint8_t
+{
+	kNoCompute = 1, // the device lacks Capability::kCompute
+	kDevice         // the device refused the layout, pipeline or bind group
+};
+
+class ClusterKernel
+{
+public:
+	// `code` is the kernel's SPIR-V; the default is cluster_assign.comp. The
+	// suite passes its seeded defective variants here.
+	static foundation::Expected<std::unique_ptr<ClusterKernel>, ClusterKernelStatus> Create(
+	    device::IRenderDevice2 &device, std::span<const std::uint32_t> code = {} );
+	~ClusterKernel();
+	ClusterKernel( const ClusterKernel & ) = delete;
+	ClusterKernel &operator=( const ClusterKernel & ) = delete;
+
+	// Records one dispatch. The buffers must already be in their usages; the
+	// index header must be zero. The bind group stays live until Collect.
+	foundation::Expected<void, ClusterKernelStatus> Record(
+	    device::CommandEncoder &encoder, const ClusterBuffers &buffers );
+	// Releases the bind groups of recorded dispatches behind `token`.
+	void Collect( device::CompletionToken token );
+	// Dispatches a graph pass could not record; the owner checks this after
+	// execution and fails the frame when it rose.
+	std::uint32_t RecordFailures() const { return m_RecordFailures; }
+
+private:
+	explicit ClusterKernel( device::IRenderDevice2 &device ) : m_Device( device ) {}
+	device::IRenderDevice2 &m_Device;
+	device::BindGroupLayoutId m_Layout;
+	device::PipelineId m_Pipeline;
+	std::vector<device::BindGroupId> m_Pending;
+	device::CompletionToken m_LastToken;
+	std::uint32_t m_RecordFailures = 0;
+};
+
+// Graph resources of one view's assignment.
+struct ClusterPassResources
+{
+	graph::ResourceRef params;
+	graph::ResourceRef lights;
+	graph::ResourceRef lightSetIndex;
+	graph::ResourceRef grid;
+	graph::ResourceRef froxels;
+	graph::ResourceRef indices;
+};
+
+// Transient buffers sized for `data`, declared on `builder`.
+ClusterPassResources CreateClusterResources(
+    graph::GraphBuilder &builder, const ClusterDispatchData &data );
+
+// A copy pass writing the inputs and zeroing the index header. `data` is
+// kept alive by the pass until the graph is destroyed.
+void AddClusterUploadPass( graph::GraphBuilder &builder,
+    std::shared_ptr<const ClusterDispatchData> data, const ClusterPassResources &resources );
+
+// The compute pass. The kernel must outlive the graph's execution; a
+// dispatch it cannot record counts in RecordFailures.
+void AddClusterAssignPass( graph::GraphBuilder &builder, ClusterKernel &kernel,
+    const ClusterDispatchData &data, const ClusterPassResources &resources );
+
+} // namespace render::pass::lights
+
+#endif // RENDER_PASS_LIGHTS_CLUSTER_PASS_H

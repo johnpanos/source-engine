@@ -1,0 +1,83 @@
+{
+ "schema": "render-vmt-corpus/v1",
+ "profile": "native Vulkan (VmtProfile defaults)",
+ "games": {
+  "portal": {
+   "materials": 6000,
+   "families": {
+    "legacy": 784,
+    "lightmapped": 2253,
+    "unlit": 1384,
+    "vertexlit": 1547
+   },
+   "unsupported": {
+    "malformed": 1,
+    "unknown-shader": 31
+   },
+   "unsupported_materials": [
+    "materials/debug/debuglightingonly.vmt: unknown-shader (DebugLightingOnly)",
+    "materials/debug/debugluxels.vmt: unknown-shader (DebugLuxels)",
+    "materials/debug/debugluxelsnoalpha.vmt: unknown-shader (DebugLuxels)",
+    "materials/debug/debugworldnormals.vmt: unknown-shader (VertexNormals)",
+    "materials/debug/showblurredcolor.vmt: unknown-shader (ShowDestAlpha)",
+    "materials/debug/showdestalpha.vmt: unknown-shader (ShowDestAlpha)",
+    "materials/debug/showdestalpha_blurred.vmt: unknown-shader (ShowDestAlpha)",
+    "materials/debug/showdestalphatimescolor_blurred.vmt: unknown-shader (ShowDestAlpha)",
+    "materials/debug/yuv.vmt: unknown-shader (yuv)",
+    "materials/dev/dev_camo.vmt: unknown-shader (BaseTimesMod2xEnvMap)",
+    "materials/dev/example_model_material.vmt: unknown-shader (Example_Model)",
+    "materials/editor/lightmapgrid.vmt: unknown-shader (DebugLuxels)",
+    "materials/editor/lightmapgriddecal.vmt: unknown-shader (DebugLuxels)",
+    "materials/editor/translucentlightmap.vmt: unknown-shader (TranslucentLightmap)",
+    "materials/engine/framesync.vmt: unknown-shader (InternalFrameSync)",
+    "materials/engine/setz.vmt: unknown-shader (SetZ)",
+    "materials/engine/volumetricfog.vmt: unknown-shader (VolumetricFog)",
+    "materials/glass/glasswindow018a_cracked.vmt: unknown-shader (LightmappedTwoTexture)",
+    "materials/models/effects/portalrift_sheet_dx60.vmt: unknown-shader (Rift_dx6)",
+    "materials/perftest/loader/loader_darkchrome.vmt: unknown-shader (VertexLitGeneric_DX6)",
+    "materials/perftest/loader/loader_steelchrome1.vmt: unknown-shader (VertexLitGeneric_DX6)",
+    "materials/perftest/loader/loaderchrome.vmt: unknown-shader (VertexLitGeneric_DX6)",
+    "materials/shadertest/basetimeslightmaptimes2detail.vmt: unknown-shader (BaseTimesLightmapTimesDetail)",
+    "materials/shadertest/basetimeslightmapwet.vmt: unknown-shader (BaseTimesLightmapWet)",
+    "materials/shadertest/camo.vmt: unknown-shader (Camo)",
+    "materials/shadertest/debugmodifyvertex.vmt: unknown-shader (DebugModifyVertex)",
+    "materials/shadertest/gooinglass.vmt: unknown-shader (GooInGlass)",
+    "materials/shadertest/vertextexturetest.vmt: unknown-shader (vertextexturetest)",
+    "materials/shadertest/volumetricfog.vmt: unknown-shader (VolumetricFog)",
+    "materials/sprites/predator.vmt: unknown-shader (predator)",
+    "materials/tools/toolsskyfog.vmt: unknown-shader (SkyFog)",
+    "materials/vgui/screens/vgui_overlay.vmt: malformed (material line 12: expected a name or key before '{')"
+   ],
+   "digest": "945d94eaa75eabbb03e604a2e29532ca20be3f87e6d344520f4ce5c00d81be19"
+  },
+  "portal2": {
+   "materials": 3738,
+   "families": {
+    "legacy": 541,
+    "lightmapped": 829,
+    "unlit": 1144,
+    "vertexlit": 1211
+   },
+   "unsupported": {
+    "missing-include": 1,
+    "unknown-shader": 12
+   },
+   "unsupported_materials": [
+    "materials/debug/debugluxels.vmt: unknown-shader (DebugLuxels)",
+    "materials/dev/depth_of_field.vmt: unknown-shader (DepthOfField)",
+    "materials/editor/lightmapgrid.vmt: unknown-shader (DebugLuxels)",
+    "materials/editor/lightmapgriddecal.vmt: unknown-shader (DebugLuxels)",
+    "materials/editor/translucentlightmap.vmt: unknown-shader (TranslucentLightmap)",
+    "materials/engine/lightshaft.vmt: unknown-shader (LightShafts)",
+    "materials/engine/setz.vmt: unknown-shader (SetZ)",
+    "materials/engine/simpleworldmodel.vmt: unknown-shader (worldimposter)",
+    "materials/models/npcs/glados/glados_temp.vmt: unknown-shader (black)",
+    "materials/models/props_foliage/urban_trees_branches02_dry.vmt: missing-include (materials/models/props_foliage/tree_include_dryleaves.vmt)",
+    "materials/models/props_hub/glados_chamber_dest01.vmt: unknown-shader (black)",
+    "materials/tools/toolsblack_cheap.vmt: unknown-shader (black)",
+    "materials/tools/toolsblack_noportal_skybox.vmt: unknown-shader (Black)"
+   ],
+   "digest": "fdd24430e70c22819c9c8dcc51355d481e0dec9a9f614961d9cc75326d8236cc"
+  }
+ }
+}

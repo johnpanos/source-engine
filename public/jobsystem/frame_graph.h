@@ -18,10 +18,6 @@
 #ifndef JOBSYSTEM_FRAME_GRAPH_H
 #define JOBSYSTEM_FRAME_GRAPH_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
 #include <vector>
 
 #include "jobsystem/job_graph.h"

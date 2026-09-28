@@ -448,6 +448,7 @@ $Project
 		$File	"text_message.cpp"
 		$File	"texturescrollmaterialproxy.cpp"
 		$File	"timematerialproxy.cpp"
+		$File	"material_proxy_capture.cpp"
 		$File	"toggletextureproxy.cpp"
 		$File	"$SRCDIR\game\shared\usercmd.cpp"
 		$File	"$SRCDIR\game\shared\usermessages.cpp"

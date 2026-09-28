@@ -373,6 +373,82 @@
     "hammer_cli": {
       "dialect": "cxx20",
       "rfc": "0002"
+    },
+    "render_math": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_device": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_device_null": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_device_vulkan": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_graph": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_shaderlib": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_resources": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_material": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_scene": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_frame": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_renderer": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_pass_present": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_pass_lights": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_pass_shadows": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_pass_skinning": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_pass_opaque": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_legacy": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "render_composition": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
+    "hammer_render": {
+      "dialect": "cxx20",
+      "rfc": "0016"
     }
   },
   "cxx20_header_sets": [

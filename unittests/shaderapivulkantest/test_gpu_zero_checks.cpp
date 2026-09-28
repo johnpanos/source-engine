@@ -9,7 +9,7 @@
 //
 //===========================================================================//
 
-#include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.h"
+#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
 #include "testing/conformance_result.h"
 
@@ -38,6 +38,7 @@ int main()
 	    render_vulkan::MakeSdl3LegacySurfaceHost( window, &error );
 	render_vulkan::CVulkanContext context;
 	render_vulkan::VulkanContextConfig config;
+	config.deviceFactory = &render::device::vulkan::HostDeviceFactory();
 	config.appName = "gpu-zero-checks";
 	if ( !host || !context.Init( *host, config, &error ) )
 	{
@@ -50,8 +51,7 @@ int main()
 	bool skip = false;
 	context.SetClearColor( 0, 0, 0, 1 );
 	context.RequestCapture();
-	const bool rendered =
-	    context.BeginFrame( &skip, &error ) && ( skip || context.EndFrame( &error ) );
+	const bool rendered = context.RenderFrame( &skip, &error );
 	std::printf( "rendered one frame: %s\n", rendered ? "yes" : error.c_str() );
 	context.Shutdown();
 	host.reset();

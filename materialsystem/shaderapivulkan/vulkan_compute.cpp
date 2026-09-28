@@ -145,9 +145,12 @@ void DeviceFeatureChain::Build( VkPhysicalDevice physical, const ComputeCaps &ca
 }
 
 bool ComputeResources::Init(
-    VkPhysicalDevice physical, VkDevice device, const ComputeCaps &enabled, std::string *error )
+    render::device::vulkan::IHostDevice &host, const ComputeCaps &enabled, std::string *error )
 {
 	std::lock_guard<std::recursive_mutex> lock( m_mutex );
+	const VkPhysicalDevice physical = host.Info().physical;
+	const VkDevice device = host.Info().device;
+	m_host = &host;
 	m_physical = physical;
 	m_device = device;
 	m_enabled = enabled;
@@ -211,32 +214,6 @@ const ComputeResources::Resource *ComputeResources::Find( uint32_t handle ) cons
 	return nullptr;
 }
 
-bool ComputeResources::Memory( const VkMemoryRequirements &requirements,
-    VkMemoryPropertyFlags flags, VkDeviceMemory *memory, std::string *error, bool deviceAddress )
-{
-	VkMemoryAllocateFlagsInfo addressed = {};
-	addressed.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-	addressed.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-	VkPhysicalDeviceMemoryProperties properties = {};
-	vkGetPhysicalDeviceMemoryProperties( m_physical, &properties );
-	for ( uint32_t i = 0; i < properties.memoryTypeCount; ++i )
-	{
-		if ( !( requirements.memoryTypeBits & ( 1u << i ) ) ||
-		     ( properties.memoryTypes[i].propertyFlags & flags ) != flags )
-			continue;
-		VkMemoryAllocateInfo allocate = {};
-		allocate.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-		allocate.allocationSize = requirements.size;
-		allocate.memoryTypeIndex = i;
-		allocate.pNext = deviceAddress ? &addressed : nullptr;
-		if ( vkAllocateMemory( m_device, &allocate, nullptr, memory ) == VK_SUCCESS )
-			return true;
-	}
-	if ( error )
-		*error = "no memory type for a compute resource";
-	return false;
-}
-
 uint32_t ComputeResources::CreateBuffer( size_t bytes, std::string *error, bool readback )
 {
 	std::lock_guard<std::recursive_mutex> lock( m_mutex );
@@ -250,20 +227,23 @@ uint32_t ComputeResources::CreateBuffer( size_t bytes, std::string *error, bool 
 	info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
 	             VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	if ( vkCreateBuffer( m_device, &info, nullptr, &resource.buffer ) != VK_SUCCESS )
-		return 0;
-	VkMemoryRequirements requirements = {};
-	vkGetBufferMemoryRequirements( m_device, resource.buffer, &requirements );
 	const VkMemoryPropertyFlags visible =
 	    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-	const bool placed =
-	    ( readback && Memory( requirements, visible | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-	                      &resource.memory, nullptr ) ) ||
-	    Memory( requirements, visible, &resource.memory, error );
-	if ( !placed ||
-	     vkBindBufferMemory( m_device, resource.buffer, resource.memory, 0 ) != VK_SUCCESS ||
-	     vkMapMemory( m_device, resource.memory, 0, bytes, 0, &resource.mapped ) != VK_SUCCESS )
+	render::device::vulkan::HostMemory memory;
+	memory.required = visible | ( readback ? VK_MEMORY_PROPERTY_HOST_CACHED_BIT : 0 );
+	memory.mapped = true;
+	bool placed = m_host->CreateBuffer( info, memory, &resource.buffer, &resource.memory,
+	                  &resource.mapped ) == VK_SUCCESS;
+	if ( !placed && readback )
 	{
+		memory.required = visible;
+		placed = m_host->CreateBuffer( info, memory, &resource.buffer, &resource.memory,
+		             &resource.mapped ) == VK_SUCCESS;
+	}
+	if ( !placed )
+	{
+		if ( error )
+			*error = "no memory type for a compute resource";
 		Destroy( resource );
 		return 0;
 	}
@@ -273,30 +253,23 @@ uint32_t ComputeResources::CreateBuffer( size_t bytes, std::string *error, bool 
 }
 
 bool ComputeResources::MakeBuffer( VkDeviceSize bytes, VkBufferUsageFlags usage,
-    VkMemoryPropertyFlags flags, VkBuffer *buffer, VkDeviceMemory *memory, void **mapped,
-    std::string *error )
+    VkMemoryPropertyFlags flags, VkBuffer *buffer, render::device::vulkan::HostAllocation *memory,
+    void **mapped, std::string *error )
 {
 	VkBufferCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	info.size = std::max<VkDeviceSize>( bytes, 4 );
 	info.usage = usage;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	*buffer = VK_NULL_HANDLE;
-	*memory = VK_NULL_HANDLE;
-	if ( vkCreateBuffer( m_device, &info, nullptr, buffer ) != VK_SUCCESS )
-		return false;
-	VkMemoryRequirements requirements = {};
-	vkGetBufferMemoryRequirements( m_device, *buffer, &requirements );
-	const bool addressed = ( usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT ) != 0;
-	if ( !Memory( requirements, flags, memory, error, addressed ) ||
-	     vkBindBufferMemory( m_device, *buffer, *memory, 0 ) != VK_SUCCESS ||
-	     ( mapped && vkMapMemory( m_device, *memory, 0, info.size, 0, mapped ) != VK_SUCCESS ) )
+	render::device::vulkan::HostMemory placement;
+	placement.required = flags;
+	placement.mapped = mapped != nullptr;
+	if ( m_host->CreateBuffer( info, placement, buffer, memory, mapped ) != VK_SUCCESS )
 	{
-		vkDestroyBuffer( m_device, *buffer, nullptr );
-		if ( *memory != VK_NULL_HANDLE )
-			vkFreeMemory( m_device, *memory, nullptr );
 		*buffer = VK_NULL_HANDLE;
-		*memory = VK_NULL_HANDLE;
+		*memory = nullptr;
+		if ( error )
+			*error = "no memory type for a compute resource";
 		return false;
 	}
 	return true;
@@ -330,7 +303,7 @@ uint32_t ComputeResources::CreateGeometry( const float *positions, uint32_t vert
 	    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 	const VkDeviceSize vertexBytes = VkDeviceSize( vertexCount ) * 12;
 	const VkDeviceSize indexBytes = VkDeviceSize( indexCount ) * 4;
-	std::pair<VkBuffer, VkDeviceMemory> vertices, triangles;
+	std::pair<VkBuffer, render::device::vulkan::HostAllocation> vertices, triangles;
 	void *vertexData = nullptr, *indexData = nullptr;
 	if ( !MakeBuffer(
 	         vertexBytes, input, visible, &vertices.first, &vertices.second, &vertexData, error ) )
@@ -375,7 +348,7 @@ uint32_t ComputeResources::CreateScene(
 	Resource resource;
 	resource.kind = ComputeBinding::AccelerationStructure;
 	resource.structureType = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-	std::pair<VkBuffer, VkDeviceMemory> table;
+	std::pair<VkBuffer, render::device::vulkan::HostAllocation> table;
 	void *mapped = nullptr;
 	if ( !MakeBuffer( VkDeviceSize( count ) * sizeof( VkAccelerationStructureInstanceKHR ),
 	         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
@@ -435,7 +408,7 @@ uint32_t ComputeResources::FinishStructure(
 	sizes.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
 	m_buildSizes( m_device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &build,
 	    &resource.primitives, &sizes );
-	std::pair<VkBuffer, VkDeviceMemory> scratch;
+	std::pair<VkBuffer, render::device::vulkan::HostAllocation> scratch;
 	bool ok =
 	    MakeBuffer( sizes.accelerationStructureSize,
 	        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR |
@@ -527,18 +500,20 @@ uint32_t ComputeResources::CreateStorageImage(
 	info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
 	             VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	if ( vkCreateImage( m_device, &info, nullptr, &resource.image ) != VK_SUCCESS )
+	render::device::vulkan::HostMemory local;
+	local.required = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	if ( m_host->CreateImage( info, local, &resource.image, &resource.memory ) != VK_SUCCESS )
+	{
+		if ( error )
+			*error = "no memory type for a compute resource";
 		return 0;
-	VkMemoryRequirements requirements = {};
-	vkGetImageMemoryRequirements( m_device, resource.image, &requirements );
+	}
 	VkImageViewCreateInfo view = {};
 	view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	view.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	view.format = format;
 	view.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-	if ( !Memory( requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &resource.memory, error ) ||
-	     vkBindImageMemory( m_device, resource.image, resource.memory, 0 ) != VK_SUCCESS ||
-	     ( view.image = resource.image,
+	if ( ( view.image = resource.image,
 	         vkCreateImageView( m_device, &view, nullptr, &resource.view ) != VK_SUCCESS ) )
 	{
 		Destroy( resource );
@@ -793,18 +768,13 @@ void ComputeResources::Destroy( Resource &resource )
 	if ( resource.structure != VK_NULL_HANDLE )
 		m_destroyStructure( m_device, resource.structure, nullptr );
 	for ( const auto &extra : resource.extra )
-	{
-		vkDestroyBuffer( m_device, extra.first, nullptr );
-		vkFreeMemory( m_device, extra.second, nullptr );
-	}
+		m_host->DestroyBuffer( extra.first, extra.second );
 	if ( resource.view != VK_NULL_HANDLE )
 		vkDestroyImageView( m_device, resource.view, nullptr );
 	if ( resource.image != VK_NULL_HANDLE )
-		vkDestroyImage( m_device, resource.image, nullptr );
-	if ( resource.buffer != VK_NULL_HANDLE )
-		vkDestroyBuffer( m_device, resource.buffer, nullptr );
-	if ( resource.memory != VK_NULL_HANDLE )
-		vkFreeMemory( m_device, resource.memory, nullptr );
+		m_host->DestroyImage( resource.image, resource.memory );
+	else if ( resource.buffer != VK_NULL_HANDLE || resource.memory )
+		m_host->DestroyBuffer( resource.buffer, resource.memory );
 	resource = Resource();
 }
 

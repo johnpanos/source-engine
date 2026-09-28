@@ -17,6 +17,7 @@
 #include "mathlib/vector.h"
 #include "mathlib/vmatrix.h"
 #include "studiorendercontext.h"
+#include "skin_capture.h"
 #include "tier2/tier2.h"
 #include "tier0/vprof.h"
 
@@ -1156,6 +1157,9 @@ public:
 #endif
 		}
 
+		// RFC 0016 K6 corpus capture (off unless SOURCE_SKIN_CAPTURE is set).
+		CSkinCapture *const pCapture = CSkinCapture::Get();
+
 		int n, idx;
 		for ( int j=0; j < numVertices; ++j )
 		{
@@ -1211,6 +1215,12 @@ public:
 			// Transform the vert into world space
 			R_TransformVert( pSrcPos, pSrcNorm, pSrcTangentS, pSkinMat, 
 				*(VectorAligned*)&dstVertex.m_vecPosition, dstVertex.m_vecNormal, *(Vector4DAligned*)&dstVertex.m_vecUserData );
+			if ( pCapture )
+			{
+				pCapture->Vertex( *pSrcPos, *pSrcNorm, nHasTangentSpace ? pSrcTangentS : NULL,
+				    vert.m_BoneWeights, nDoFlex && vertexCache.IsVertexFlexed( n ),
+				    dstVertex.m_vecPosition, dstVertex.m_vecNormal, dstVertex.m_vecUserData );
+			}
 
 #if defined( _WIN32 )
 			if ( nHasSIMD )
@@ -1658,8 +1668,14 @@ void CStudioRender::R_StudioSoftwareProcessMesh( mstudiomesh_t* pmesh, CMeshBuil
 	const mstudio_meshvertexdata_t *pVertData = GetFatVertexData( pmesh, m_pStudioHdr );
 	if ( pVertData )
 	{
+		CSkinCapture *pCapture = CSkinCapture::Get();
+		if ( pCapture )
+			pCapture->BeginMesh( numVertices, m_pStudioHdr->numbones, m_PoseToWorld );
 		// invoke the software mesh processing handler
-		g_SoftwareProcessMeshFunc[idx]( pVertData, m_PoseToWorld, m_VertexCache, meshBuilder, numVertices, pGroupToMesh, nAlphaMask, pMaterial ); 
+		g_SoftwareProcessMeshFunc[idx]( pVertData, m_PoseToWorld, m_VertexCache, meshBuilder,
+		    numVertices, pGroupToMesh, nAlphaMask, pMaterial );
+		if ( pCapture )
+			pCapture->EndMesh();
 	}
 }
 

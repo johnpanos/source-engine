@@ -103,6 +103,9 @@
 #include "pixelwriter.h"
 #include "render/builtin_shader_provider.h"
 #include "render/legacy_shader_provider.h"
+#if defined( LINKED_NATIVE_VULKAN_BACKEND )
+#include "render/device/vulkan/host_binding.h"
+#endif
 #include "tier0/icommandline.h"
 #include "tier1/tier1.h"
 #include "tier2/tier2.h"
@@ -296,6 +299,11 @@ bool CMaterialPixelApp::Create()
 	    NativeVulkanShaderBackend_Describe(),
 #endif
 	};
+#if defined( LINKED_NATIVE_VULKAN_BACKEND )
+	// As the product's root does (RFC 0016 K1): the native backend borrows its
+	// device from the Vulkan adapter.
+	NativeVulkanShaderBackend_BindDeviceFactory( &render::device::vulkan::HostDeviceFactory() );
+#endif
 	const char *requested = CommandLine()->ParmValue( "-renderer", "" );
 	const render::LegacyShaderProvider *selected = NULL;
 	for ( const render::LegacyShaderProvider *provider : catalog )

@@ -382,7 +382,7 @@ int main()
 	std::printf( "device %s\n", d.name.c_str() );
 	ComputeResources compute;
 	std::string error;
-	const bool ready = compute.Init( d.physical, d.device, d.chain.Enabled(), &error );
+	const bool ready = compute.Init( *d.host, d.chain.Enabled(), &error );
 	Check( ready, "compute init: " + error );
 	if ( ready )
 	{
