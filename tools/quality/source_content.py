@@ -4,8 +4,10 @@
 
 `ContentResolver(runtime)` searches a staged runtime in portal/gameinfo.txt
 order (Portal VPK, Portal loose files, the shared HL2 texture and misc VPKs
-and loose files). Shared by the physics corpus harness, the map pipeline's
-dynamic-model step and the legacy relight scene.
+and loose files). A staged Portal 2 runtime (tools/quality/stage_portal2_runtime.py)
+is searched in portal2/gameinfo.txt order instead. Shared by the physics corpus
+harness, the map pipeline's dynamic-model step, the legacy relight scene and
+the VMF compile (tools/quality/vmf_map_build.py).
 """
 
 import os
@@ -19,6 +21,19 @@ SEARCH_PATHS = [
     ("vpk", "hl2/hl2_textures_dir.vpk"),
     ("vpk", "hl2/hl2_misc_dir.vpk"),
     ("dir", "hl2"),
+]
+
+# portal2/gameinfo.txt order: the update, DLC2 and DLC1 packs and loose files,
+# then Portal 2's own pack and loose files.
+PORTAL2_SEARCH_PATHS = [
+    ("vpk", "update/pak01_dir.vpk"),
+    ("dir", "update"),
+    ("vpk", "portal2_dlc2/pak01_dir.vpk"),
+    ("dir", "portal2_dlc2"),
+    ("vpk", "portal2_dlc1/pak01_dir.vpk"),
+    ("dir", "portal2_dlc1"),
+    ("vpk", "portal2/pak01_dir.vpk"),
+    ("dir", "portal2"),
 ]
 
 
@@ -82,7 +97,8 @@ class VpkDirectory:
 class ContentResolver:
     def __init__(self, runtime):
         self.layers = []
-        for kind, relative in SEARCH_PATHS:
+        portal2 = os.path.isfile(os.path.join(runtime, "portal2/pak01_dir.vpk"))
+        for kind, relative in PORTAL2_SEARCH_PATHS if portal2 else SEARCH_PATHS:
             path = os.path.join(runtime, relative)
             if kind == "vpk" and os.path.isfile(path):
                 self.layers.append(("vpk", path, VpkDirectory(path)))

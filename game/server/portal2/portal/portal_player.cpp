@@ -2790,8 +2790,39 @@ void CPortal_Player::PlayerRunCommand(CUserCmd *ucmd, IMoveHelper *moveHelper)
 		ucmd->buttons &= ~IN_USE;
 	}
 
-	// This engine user command lacks Portal 2 held-entity and teleport acknowledgements.
-	// The server remains authoritative until the command format is extended.
+	//============================================================================
+	// Fix the eye angles after portalling. The client may have sent commands with
+	// the old view angles before it knew about the teleportation.
+
+	//sorry for crappy name, the client sent us a command, we acknowledged it, and they are now telling us the latest one they received an acknowledgement for in this brand new command
+	int iLastCommandAcknowledgementReceivedOnClientForThisCommand = ucmd->command_number - ucmd->command_acknowledgements_pending;
+	while( (m_PendingPortalTransforms.Count() > 0) && (iLastCommandAcknowledgementReceivedOnClientForThisCommand >= m_PendingPortalTransforms[0].command_number) )
+	{
+		m_PendingPortalTransforms.Remove( 0 );
+	}
+
+	// The server changed the angles, and the user command was created after the teleportation, but before the client knew they teleported. Need to fix up the angles into the new space
+	if( m_PendingPortalTransforms.Count() > ucmd->predictedPortalTeleportations )
+	{
+		matrix3x4_t matComputeFinalTransform[2];
+		int iFlip = 0;
+
+		//most common case will be exactly 1 transform
+		matComputeFinalTransform[0] = m_PendingPortalTransforms[ucmd->predictedPortalTeleportations].matTransform;
+
+		for( int i = ucmd->predictedPortalTeleportations + 1; i < m_PendingPortalTransforms.Count(); ++i )
+		{
+			ConcatTransforms( m_PendingPortalTransforms[i].matTransform, matComputeFinalTransform[iFlip], matComputeFinalTransform[1-iFlip] );
+			iFlip = 1 - iFlip;
+		}
+
+		//apply the final transform
+		matrix3x4_t matAngleTransformIn, matAngleTransformOut;
+		AngleMatrix( ucmd->viewangles, matAngleTransformIn );
+		ConcatTransforms( matComputeFinalTransform[iFlip], matAngleTransformIn, matAngleTransformOut );
+		MatrixAngles( matAngleTransformOut, ucmd->viewangles );
+	}
+
 	PreventCrouchJump( ucmd );
 
 	if ( m_PortalLocal.m_bZoomedIn )

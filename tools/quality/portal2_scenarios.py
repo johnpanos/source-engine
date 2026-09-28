@@ -13,7 +13,15 @@ A scenario may also declare ``console_checks`` for evidence the server-side
 driver cannot see, such as client debug output. The driver brackets a window
 with ``QA_WINDOW <label> BEGIN`` and ``QA_WINDOW <label> END``; a check then
 needs at least one line in that window matching ``select``, every one of them
-matching ``expect``, or no line matching ``absent``.
+matching ``expect``, or no line matching ``absent``. A ``view_continuity``
+check instead judges the client's per-frame view trace in the window
+(``cl_portal_view_trace``; tools/quality/portal_view_trace.py): no frame may
+jump or turn beyond its limits once portal crossings are undone, and the
+window must hold the declared number of crossings.
+
+A workload may declare ``maps`` that are not retail content: each names a
+builder script (relative to the repository root) that compiles the map and
+installs it into the runtime's portal2/maps before any scenario runs.
 
 The client renders offscreen (SDL's offscreen video driver), so no window
 reaches the desktop. Retail content comes from a local Steam installation.
@@ -32,6 +40,7 @@ import sys
 import time
 
 import conformance
+import portal_view_trace
 import stage_portal2_runtime
 
 
@@ -70,6 +79,11 @@ def load_workload(path):
             isinstance(script, str) and script.endswith(".nut") and (path.parent / script).is_file()
             for script in includes):
         raise ScenarioError("%s: an included script is missing" % path)
+    maps = workload.get("maps", {})
+    if not isinstance(maps, dict) or not all(
+            SIMPLE_NAME.fullmatch(str(name)) and isinstance(builder, str) and
+            (Path(conformance.repo_root()) / builder).is_file() for name, builder in maps.items()):
+        raise ScenarioError("%s: a map builder is missing" % path)
     installed = [Path(script).name for script in [driver] + includes] + \
         [Path(str(scenario.get("script", ""))).name for scenario in workload.get("scenarios", [])]
     if len(set(installed)) != len(installed):
@@ -115,8 +129,16 @@ def load_console_checks(path, scenario):
         if not SIMPLE_NAME.fullmatch(str(check.get("window", ""))):
             raise ScenarioError("%s: %s needs a simple window name" % (path, check["name"]))
         keys = set(check) - {"name", "window"}
+        if keys == {"view_continuity"}:
+            limits = check["view_continuity"]
+            if not isinstance(limits, dict) or not set(limits) <= set(portal_view_trace.DEFAULTS) or \
+                    not all(isinstance(value, (int, float)) for value in limits.values()):
+                raise ScenarioError("%s: %s view_continuity takes %s" % (
+                    path, check["name"], ", ".join(sorted(portal_view_trace.DEFAULTS))))
+            continue
         if keys not in ({"select", "expect"}, {"absent"}):
-            raise ScenarioError("%s: %s needs select and expect, or absent" % (path, check["name"]))
+            raise ScenarioError("%s: %s needs select and expect, absent, or view_continuity" % (
+                path, check["name"]))
         for key in keys:
             try:
                 re.compile(check[key])
@@ -143,11 +165,15 @@ def console_windows(lines):
             for label, edges in markers.items()}
 
 
-def evaluate_console_check(check, windows):
+def evaluate_console_check(check, windows, lines=()):
     """Returns (outcome, detail) for one console check."""
     window = windows.get(check["window"])
     if window is None:
         return "FAIL", "window %s was not bracketed once" % check["window"]
+    if "view_continuity" in check:
+        before, window = portal_view_trace.window_lines(list(lines), check["window"])
+        ok, detail, _ = portal_view_trace.judge(before, window, check["view_continuity"])
+        return ("PASS" if ok else "FAIL"), detail
     if "absent" in check:
         found = [line for line in window if re.search(check["absent"], line)]
         if found:
@@ -217,7 +243,7 @@ def evaluate(scenario, log, returncode, timed_out):
         if check in checks:
             failures.append("check reported twice: " + check)
             continue
-        outcome, detail = evaluate_console_check(console_check, windows)
+        outcome, detail = evaluate_console_check(console_check, windows, lines)
         checks[check] = {"outcome": outcome, "detail": detail}
         if outcome != "PASS":
             failures.append("%s failed: %s" % (check, detail))
@@ -263,6 +289,20 @@ def install_scripts(workload_path, workload, runtime):
         # Only a single-line config honours wait; this one only starts the driver.
         (config / ("qa_%s.cfg" % scenario["name"])).write_text(
             "script_execute %s/%s\n" % (SCRIPT_DIRECTORY, Path(scenario["script"]).stem))
+
+
+def build_maps(workload, runtime, output):
+    """Compile and install the workload's own maps (``maps``) into the runtime."""
+    root = Path(conformance.repo_root())
+    for name, builder in sorted(workload.get("maps", {}).items()):
+        log = output / ("map-%s.log" % name)
+        with log.open("wb") as stream:
+            code = subprocess.run([sys.executable, str(root / builder), "--runtime", str(runtime),
+                                   "--install-game-dir", str(Path(runtime) / "portal2"),
+                                   "--out", str(output / "maps" / name)],
+                                  stdout=stream, stderr=subprocess.STDOUT).returncode
+        if code != 0 or not (Path(runtime) / "portal2/maps" / (name + ".bsp")).is_file():
+            raise ValueError("building map %s failed (%s)" % (name, log))
 
 
 def write_fake_zenity(directory):
@@ -392,6 +432,7 @@ def main(argv=None):
         evidence["installed"] = stage_portal2_runtime.portal_boot.install_build(
             args.build, args.runtime, game="portal2")
         install_scripts(args.workload, workload, args.runtime)
+        build_maps(workload, args.runtime.resolve(), output)
     except (OSError, ValueError) as error:
         evidence["status"] = "fail"
         evidence["error"] = str(error)

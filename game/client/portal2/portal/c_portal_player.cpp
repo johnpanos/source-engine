@@ -79,6 +79,8 @@ ConVar player_held_object_keep_out_of_camera("player_held_object_keep_out_of_cam
 ConVar mp_auto_taunt( "mp_auto_taunt", "0", FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY );
 ConVar mp_auto_accept_team_taunt( "mp_auto_accept_team_taunt", "1", FCVAR_ARCHIVE );
 
+ConVar cl_portal_view_trace( "cl_portal_view_trace", "0", FCVAR_CHEAT, "Print the local player's view each frame (PVIEW) and portal poses when they change (PVIEW_PORTAL)." );
+ConVar cl_portal_view_trace_shots( "cl_portal_view_trace_shots", "0", FCVAR_CHEAT, "With cl_portal_view_trace, screenshot every frame while the eye is within this many units of a linked portal's opening (screenshots/pview_<frame>.tga)." );
 ConVar cl_fov( "cl_fov", "90", FCVAR_NONE, "Client-side fov control that is global for all splitscreen players on this machine.  This gets overriden via splitscreen_config.txt for splitscreen." );
 
 extern ConVar sv_debug_player_use;
@@ -2958,6 +2960,99 @@ void C_Portal_Player::CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNe
 
 	if( !IsLocalPlayer() ) //HACKHACK: This is a quick hammer to fix the roll on nonlocal players
 		eyeAngles[ROLL] = 0.0f;
+	else if( cl_portal_view_trace.GetBool() )
+		TracePortalView( eyeOrigin, eyeAngles );
+}
+
+//-----------------------------------------------------------------------------
+// Portal traversal diagnostics (quality/workloads/portal2-portals-v1): one
+// PVIEW line per view the local player computes, and a PVIEW_PORTAL line for
+// each portal whenever its pose, link or activation changes (and for every
+// portal when tracing starts). tools/quality/portal2_scenarios.py checks the
+// view path is continuous once each crossing is undone through its portal.
+//-----------------------------------------------------------------------------
+void C_Portal_Player::TracePortalView( const Vector &eyeOrigin, const QAngle &eyeAngles )
+{
+	struct TracedPortal_t
+	{
+		EHANDLE hPortal;
+		Vector vOrigin;
+		QAngle qAngles;
+		int iLinked;
+		bool bActive;
+	};
+	static CUtlVector<TracedPortal_t> s_Traced;
+	static int s_iLastTraceFrame = -2;
+
+	if( s_iLastTraceFrame < gpGlobals->framecount - 1 )
+		s_Traced.RemoveAll(); // tracing (re)started: report every portal
+	s_iLastTraceFrame = gpGlobals->framecount;
+
+	for( int i = 0; i != CPortal_Base2D_Shared::AllPortals.Count(); ++i )
+	{
+		C_Portal_Base2D *pPortal = CPortal_Base2D_Shared::AllPortals[i];
+		C_Portal_Base2D *pLinked = pPortal->m_hLinkedPortal.Get();
+		const int iLinked = pLinked ? pLinked->entindex() : -1;
+		const bool bActive = pPortal->IsActive();
+		int iTraced = s_Traced.Count();
+		for( int j = 0; j != s_Traced.Count(); ++j )
+		{
+			if( s_Traced[j].hPortal.Get() == pPortal )
+			{
+				iTraced = j;
+				break;
+			}
+		}
+		if( iTraced == s_Traced.Count() )
+		{
+			s_Traced.AddToTail();
+			s_Traced[iTraced].hPortal = pPortal;
+			s_Traced[iTraced].iLinked = -2;
+		}
+		TracedPortal_t &traced = s_Traced[iTraced];
+		if( traced.iLinked == iLinked && traced.bActive == bActive &&
+			traced.vOrigin == pPortal->m_ptOrigin && traced.qAngles == pPortal->m_qAbsAngle )
+			continue;
+		traced.vOrigin = pPortal->m_ptOrigin;
+		traced.qAngles = pPortal->m_qAbsAngle;
+		traced.iLinked = iLinked;
+		traced.bActive = bActive;
+		Msg( "PVIEW_PORTAL f=%d portal %d linked %d active %d origin (%.3f %.3f %.3f) angles (%.3f %.3f %.3f)\n",
+			gpGlobals->framecount, pPortal->entindex(), iLinked, bActive ? 1 : 0,
+			traced.vOrigin.x, traced.vOrigin.y, traced.vOrigin.z,
+			traced.qAngles.x, traced.qAngles.y, traced.qAngles.z );
+	}
+
+	// Screenshots near a portal opening. The engine takes a queued screenshot at
+	// the end of the next frame it renders, so the file carries that frame's
+	// number.
+	const float flShotRange = cl_portal_view_trace_shots.GetFloat();
+	bool bNearPortal = false;
+	for( int i = 0; flShotRange > 0.0f && i != CPortal_Base2D_Shared::AllPortals.Count(); ++i )
+	{
+		C_Portal_Base2D *pPortal = CPortal_Base2D_Shared::AllPortals[i];
+		if( !pPortal->IsActivedAndLinked() )
+			continue;
+		const Vector vOffset = eyeOrigin - pPortal->m_ptOrigin;
+		if( fabs( vOffset.Dot( pPortal->m_vForward ) ) < flShotRange &&
+			fabs( vOffset.Dot( pPortal->m_vRight ) ) < pPortal->GetHalfWidth() + flShotRange &&
+			fabs( vOffset.Dot( pPortal->m_vUp ) ) < pPortal->GetHalfHeight() + flShotRange )
+			bNearPortal = true;
+	}
+	if( bNearPortal )
+	{
+		char szCommand[64];
+		V_snprintf( szCommand, sizeof( szCommand ), "screenshot pview_%06d\n", gpGlobals->framecount + 1 );
+		engine->ClientCmd_Unrestricted( szCommand );
+	}
+
+	const Vector vBody = GetRenderOrigin();
+	const C_Portal_Base2D *pTransformedBy = m_bEyePositionIsTransformedByPortal && m_pNoDrawForRecursionLevelOne
+		? m_pNoDrawForRecursionLevelOne->m_hLinkedPortal.Get() : NULL;
+	Msg( "PVIEW f=%d t=%.4f rt=%.4f eye (%.3f %.3f %.3f) ang (%.3f %.3f %.3f) body (%.3f %.3f %.3f) through %d\n",
+		gpGlobals->framecount, gpGlobals->curtime, gpGlobals->realtime,
+		eyeOrigin.x, eyeOrigin.y, eyeOrigin.z, eyeAngles.x, eyeAngles.y, eyeAngles.z,
+		vBody.x, vBody.y, vBody.z, pTransformedBy ? pTransformedBy->entindex() : -1 );
 }
 
 void C_Portal_Player::CalcPortalView( Vector &eyeOrigin, QAngle &eyeAngles, float &fov )

@@ -109,6 +109,18 @@ bool CDebugOverlay::ShouldDraw( void )
 //-----------------------------------------------------------------------------
 void CDebugOverlay::Paint()
 {
+	// The engine places overlay text in viewport pixels, but panels paint in UI
+	// units (pixels divided by the UI scale); map one onto the other.
+	int nViewportX, nViewportY, nViewportWide, nViewportTall;
+	{
+		CMatRenderContextPtr pRenderContext( materials );
+		pRenderContext->GetViewport( nViewportX, nViewportY, nViewportWide, nViewportTall );
+	}
+	int nScreenWide, nScreenTall;
+	vgui::surface()->GetScreenSize( nScreenWide, nScreenTall );
+	const float flUnitsPerPixelX = nViewportWide > 0 ? (float)nScreenWide / nViewportWide : 1.0f;
+	const float flUnitsPerPixelY = nViewportTall > 0 ? (float)nScreenTall / nViewportTall : 1.0f;
+
 	OverlayText_t* pCurrText = debugoverlay->GetFirst();
 	while (pCurrText) 
 	{
@@ -127,8 +139,10 @@ void CDebugOverlay::Paint()
 			{
 				if (!debugoverlay->ScreenPosition( pCurrText->origin, screenPos ))
 				{
-					float xPos		= screenPos[0];
-					float yPos		= screenPos[1]+ (pCurrText->lineOffset*13); // Line spacing;
+					// Center each line on the point it labels.
+					const int nTextWide = g_pMatSystemSurface->DrawTextLen( m_hFont, "%s", pCurrText->text );
+					float xPos		= screenPos[0] * flUnitsPerPixelX - nTextWide / 2;
+					float yPos		= screenPos[1] * flUnitsPerPixelY + (pCurrText->lineOffset*13); // Line spacing;
 					g_pMatSystemSurface->DrawColoredText( m_hFont, xPos, yPos, r, g, b, a, "%s", pCurrText->text );
 				}
 			}
@@ -136,8 +150,8 @@ void CDebugOverlay::Paint()
 			{
 				if (!debugoverlay->ScreenPosition( pCurrText->flXPos,pCurrText->flYPos, screenPos ))
 				{
-					float xPos		= screenPos[0];
-					float yPos		= screenPos[1]+ (pCurrText->lineOffset*13); // Line spacing;
+					float xPos		= screenPos[0] * flUnitsPerPixelX;
+					float yPos		= screenPos[1] * flUnitsPerPixelY + (pCurrText->lineOffset*13); // Line spacing;
 					g_pMatSystemSurface->DrawColoredText( m_hFont, xPos, yPos, r, g, b, a, "%s", pCurrText->text );
 				}
 			}

@@ -1,0 +1,115 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Portal traversal on qa_portal_walk, a chamber built for it (tools/quality/portal2_portal_map.py, compiled and installed by the runner): the player fires both portals with the gun and walks, falls and loops through them. The client traces its view every frame (cl_portal_view_trace); view_continuity checks require every traced frame to follow from the one before, directly or through a portal. Run by tools/quality/portal2_scenarios.py.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "scenarios": [
+    {
+      "name": "qa_portal_walk",
+      "map": "qa_portal_walk",
+      "script": "qa_portal_walk.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "gun.held",
+        "black_wall.no_portal",
+        "blue.placed",
+        "blue.faces_south",
+        "orange.placed",
+        "orange.faces_west",
+        "cross.blue_to_orange",
+        "cross.blue_to_orange_heading",
+        "cross.orange_to_blue",
+        "cross.orange_to_blue_heading",
+        "cross_20fps.blue_to_orange",
+        "cross_20fps.on_center_line",
+        "view.black_wall_no_portal",
+        "view.blue_to_orange",
+        "view.orange_to_blue",
+        "view.blue_to_orange_20fps"
+      ],
+      "console_checks": [
+        {
+          "name": "view.black_wall_no_portal",
+          "window": "black_wall",
+          "absent": "^PVIEW_PORTAL .* active 1 origin \\(-6[0-9][0-9]\\."
+        },
+        {
+          "name": "view.blue_to_orange",
+          "window": "blue_to_orange",
+          "view_continuity": {
+            "max_speed": 400,
+            "max_turn_rate": 30,
+            "min_crossings": 1,
+            "max_crossings": 1
+          }
+        },
+        {
+          "name": "view.orange_to_blue",
+          "window": "orange_to_blue",
+          "view_continuity": {
+            "max_speed": 400,
+            "max_turn_rate": 30,
+            "min_crossings": 1,
+            "max_crossings": 1
+          }
+        },
+        {
+          "name": "view.blue_to_orange_20fps",
+          "window": "blue_to_orange_20fps",
+          "view_continuity": {
+            "max_speed": 400,
+            "max_turn_rate": 30,
+            "min_crossings": 1,
+            "max_crossings": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "qa_portal_fall",
+      "map": "qa_portal_walk",
+      "script": "qa_portal_fall.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "gun.held",
+        "blue.placed",
+        "blue.faces_up",
+        "orange.placed",
+        "orange.faces_west",
+        "floor_to_wall.landed_west_of_orange",
+        "orange_ceiling.placed",
+        "orange_ceiling.faces_down",
+        "loop.orange_moved",
+        "loop.still_falling_in_column",
+        "view.floor_to_wall",
+        "view.floor_ceiling_loop"
+      ],
+      "console_checks": [
+        {
+          "name": "view.floor_to_wall",
+          "window": "floor_to_wall",
+          "view_continuity": {
+            "max_speed": 1500,
+            "max_turn_rate": 540,
+            "min_crossings": 1,
+            "max_crossings": 1
+          }
+        },
+        {
+          "name": "view.floor_ceiling_loop",
+          "window": "floor_ceiling_loop",
+          "view_continuity": {
+            "max_speed": 4000,
+            "max_turn_rate": 30,
+            "min_crossings": 4
+          }
+        }
+      ]
+    }
+  ],
+  "includes": [
+    "qa_portals.nut"
+  ],
+  "maps": {
+    "qa_portal_walk": "tools/quality/portal2_portal_map.py"
+  }
+}

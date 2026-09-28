@@ -167,6 +167,7 @@ public:
 
 	virtual void	CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNear, float &zFar, float &fov );
 	void			CalcPortalView( Vector &eyeOrigin, QAngle &eyeAngles, float &fov );
+	void			TracePortalView( const Vector &eyeOrigin, const QAngle &eyeAngles );
 	virtual void	CalcViewModelView( const Vector& eyeOrigin, const QAngle& eyeAngles);
 
 	bool			IsInvalidHandoff( CBaseEntity *pObject );

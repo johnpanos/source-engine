@@ -4444,8 +4444,6 @@ void CRendering3dView::DrawNoZBufferTranslucentRenderables( void )
 //-----------------------------------------------------------------------------
 void CRendering3dView::DrawTranslucentRenderables( bool bInSkybox, bool bShadowDepth )
 {
-	const ClientWorldListInfo_t& info = *m_pWorldListInfo;
-
 #ifdef PORTAL //if we're in the portal mod, we need to make a detour so we can render portal views using stencil areas
 	if( ShouldDrawPortals() ) //no recursive stencil views during skybox rendering (although we might be drawing a skybox while already in a recursive stencil view)
 	{
@@ -4525,6 +4523,10 @@ void CRendering3dView::DrawTranslucentRenderables( bool bInSkybox, bool bShadowD
 		DrawTranslucentRenderablesNoWorld( bInSkybox );
 		return;
 	}
+
+	// Taken after the portal detour above, as CS:GO does: drawing portal views
+	// rebuilds the world lists and releases the ones this view started with.
+	const ClientWorldListInfo_t& info = *m_pWorldListInfo;
 
 	VPROF_BUDGET( "CViewRender::DrawTranslucentRenderables", "DrawTranslucentRenderables" );
 	int iPrevLeaf = info.m_LeafCount - 1;
