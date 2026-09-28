@@ -1,31 +1,33 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.family.unlit (RFC 0016 K4 "Families match ports", the
-//			`unlit` family) on render.device.vulkan.
+// Purpose: render.family.lightmapped (RFC 0016 K4 "Families match ports", the
+//			`lightmapped` family) on render.device.vulkan.
 //
-//			Each case of quality/fixtures/legacy-shaders/families/unlit.vdf
-//			(an UnlitGeneric material, its textures and a clip-space quad) is
-//			imported with render.material's VMT importer into an `unlit`
-//			parameter block, claimed by the family (ClaimUnlit) and drawn with
-//			the family's pipeline into a 256x256 sRGB target, as the material
-//			pixel harness draws it. The sampled pixels must match the legacy
-//			port's within kTolerance levels per channel: the port's pixels are
-//			the versioned fixture quality/fixtures/render-families/
-//			unlit-port-v1.vdf, recorded from a legacy_shader_conformance.py run
-//			that judged the port against the retail D3D9 bytecode
-//			(tools/render/family_port_pixels.py). The fixture must name the
-//			case file with its current sha256, so a changed case needs a new
-//			recording. With the Khronos validation layer installed, the run
-//			must report no message.
+//			Each case of quality/fixtures/legacy-shaders/families/
+//			lightmapped.vdf (a LightmappedGeneric material, its textures, a
+//			lightmap and a clip-space quad) is imported with render.material's
+//			VMT importer into a `lightmapped` parameter block, claimed by the
+//			family (ClaimLightmapped) and drawn with the family's pipeline,
+//			the material group and a draw group holding the case's lightmap,
+//			into a 256x256 sRGB target, as the material pixel harness draws
+//			it. The sampled pixels must match the legacy port's within
+//			kTolerance levels per channel (quality/fixtures/render-families/
+//			lightmapped-port-v1.vdf, recorded by
+//			tools/render/family_port_pixels.py from a
+//			legacy_shader_conformance.py run judged against the retail D3D9
+//			bytecode). With the Khronos validation layer installed, the run
+//			must report no message. family_pixel_cases.h holds the shared
+//			harness.
 //
-//			Seeded defect (sensitivity row): RENDER_MATERIAL_UNLIT_SEEDED_
-//			IGNORE_VERTEX_COLOR (unlit_family.cpp) packs $vertexcolor as off.
+//			Seeded defect (sensitivity row): RENDER_MATERIAL_LIGHTMAPPED_
+//			SEEDED_GAMMA_COLOR (lightmapped_family.cpp) gamma-converts $color,
+//			as unlit does and the port does not.
 //
 //=============================================================================//
 
 #include "family_pixel_cases.h"
 #include "render/device/vulkan/provider.h"
-#include "render/material/unlit_family.h"
+#include "render/material/lightmapped_family.h"
 #include "render/material/vmt_import.h"
 #include "testing/checks.h"
 
@@ -47,8 +49,8 @@ using namespace render::material;
 using namespace rendertest::families;
 namespace vulkan = render::device::vulkan;
 
-const char *const kCaseFile = "quality/fixtures/legacy-shaders/families/unlit.vdf";
-const char *const kFixture = "quality/fixtures/render-families/unlit-port-v1.vdf";
+const char *const kCaseFile = "quality/fixtures/legacy-shaders/families/lightmapped.vdf";
+const char *const kFixture = "quality/fixtures/render-families/lightmapped-port-v1.vdf";
 
 } // namespace
 
@@ -59,8 +61,8 @@ int main()
 	if ( !set )
 		return checks.Report();
 	const FamilyRegistry registry = BuiltinFamilies();
-	const FamilySchema *unlit = registry.Find( "unlit" );
-	if ( !checks.That( unlit != nullptr, "setup.unlit-family-registers" ) )
+	const FamilySchema *lightmapped = registry.Find( "lightmapped" );
+	if ( !checks.That( lightmapped != nullptr, "setup.lightmapped-family-registers" ) )
 		return checks.Report();
 
 	// The family refuses what it does not draw, naming it.
@@ -71,27 +73,32 @@ int main()
 			auto imported = ImportVmt( vmt, context );
 			if ( !imported )
 				return false;
-			ParameterBlock block( *unlit );
+			ParameterBlock block( *lightmapped );
 			if ( !ApplyValues( imported.Value(), block ) )
 				return false;
 			(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
-			if ( const std::optional<std::size_t> index = unlit->IndexOf( named );
-			    index && unlit->layout[*index].type == ParameterType::kTexture )
+			if ( const std::optional<std::size_t> index = lightmapped->IndexOf( named );
+			    index && lightmapped->layout[*index].type == ParameterType::kTexture )
 				(void)block.SetTexture( named, device::TextureId( 2 ) );
-			const UnlitClaim claim = ClaimUnlit( block );
+			const LightmappedClaim claim = ClaimLightmapped( block );
 			return !claim.claimed && claim.reason.find( named ) != std::string::npos;
 		};
 		checks.That(
-		    refused( "\"UnlitGeneric\" { \"$basetexture\" \"a\" \"$detail\" \"b\" }", "detail" ),
-		    "claim.refuses-a-detail-texture-by-name" );
+		    refused(
+		        "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$bumpmap\" \"b\" }", "bumpmap" ),
+		    "claim.refuses-a-bump-map-by-name" );
+		checks.That( refused( "\"WorldVertexTransition\" { \"$basetexture\" \"a\" "
+		                      "\"$basetexture2\" \"b\" }",
+		                 "basetexture2" ),
+		    "claim.refuses-a-second-base-texture-by-name" );
 		checks.That(
-		    refused( "\"UnlitGeneric\" { \"$basetexture\" \"a\" \"$envmapcontrast\" \"0.5\" }",
-		        "envmapcontrast" ),
+		    refused( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$additive\" \"1\" }",
+		        "additive" ),
+		    "claim.refuses-additive-by-name" );
+		checks.That( refused( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$envmapcontrast\" "
+		                      "\"0.5\" }",
+		                 "envmapcontrast" ),
 		    "claim.refuses-an-env-map-parameter-by-name" );
-		checks.That( refused( "\"UnlitGeneric\" { \"$basetexture\" \"a\" \"$translucent\" \"1\" "
-		                      "\"$additive\" \"1\" }",
-		                 "additive" ),
-		    "claim.refuses-translucent-additive" );
 	}
 
 	const bool layer = vulkan::ValidationLayerAvailable();
@@ -107,15 +114,15 @@ int main()
 		if ( !checks.That( created.HasValue(), "device.a-vulkan-device-is-created" ) )
 			return checks.Report();
 		std::unique_ptr<device::IRenderDevice2> device = std::move( created ).Value();
-		auto family =
-		    UnlitFamily::Create( *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
+		auto family = LightmappedFamily::Create(
+		    *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
 		if ( !checks.That( family.HasValue(), "family.creates" ) )
 			return checks.Report();
 
 		for ( const FamilyCase &testCase : set->cases )
 		{
 			const std::string &name = testCase.name;
-			const ImportedCase imported = ImportCase( checks, testCase, *unlit );
+			const ImportedCase imported = ImportCase( checks, testCase, *lightmapped );
 			if ( !imported.block || testCase.triangles.empty() )
 				continue;
 			const CaseTexture *texture = nullptr;
@@ -124,21 +131,24 @@ int main()
 				if ( value.parameter == "basetexture" )
 					texture = FindTexture( *set, value.text );
 			}
-			if ( !checks.That( texture != nullptr, "import." + name + ".base-texture-resolves" ) )
+			if ( !checks.That( texture != nullptr, "import." + name + ".base-texture-resolves" ) ||
+			     !checks.That(
+			         testCase.lightmap != nullptr, "case." + name + ".lightmap-resolves" ) )
 				continue;
-			const UnlitClaim claim = ClaimUnlit( *imported.block );
+			const LightmappedClaim claim = ClaimLightmapped( *imported.block );
 			if ( !That( checks, claim.claimed, "claim." + name, claim.reason ) )
 				continue;
 			auto pipeline = family.Value()->Pipeline( claim );
 			if ( !checks.That( pipeline.HasValue(), "pipeline." + name ) )
 				continue;
 
-			std::vector<UnlitVertex> quad;
+			std::vector<LightmappedVertex> quad;
 			for ( const CaseVertex &corner : testCase.triangles )
 			{
-				UnlitVertex vertex;
+				LightmappedVertex vertex;
 				std::copy( corner.position, corner.position + 3, vertex.position );
 				std::copy( corner.uv0, corner.uv0 + 2, vertex.uv );
+				std::copy( corner.uv1, corner.uv1 + 2, vertex.lightmapUv );
 				std::copy( corner.color, corner.color + 4, vertex.color );
 				quad.push_back( vertex );
 			}
@@ -147,6 +157,8 @@ int main()
 			draw.groups.push_back(
 			    { device::BindGroupRole::kMaterial, family.Value()->MaterialLayout(),
 			        std::as_bytes( std::span( &claim.constants, 1 ) ), { texture } } );
+			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(), {},
+			    { testCase.lightmap } } );
 			draw.vertices = std::as_bytes( std::span( quad ) );
 			draw.vertexCount = std::uint32_t( quad.size() );
 			std::copy( testCase.clear, testCase.clear + 4, draw.clear );
@@ -156,7 +168,7 @@ int main()
 			++drawnCases;
 			JudgeCase( checks, testCase, drawn );
 		}
-		checks.That( drawnCases == 6, "cases.every-case-drew" );
+		checks.That( drawnCases == 8, "cases.every-case-drew" );
 		(void)device->WaitIdle();
 	}
 	if ( layer )

@@ -153,7 +153,9 @@ GENERATED = {
     "families_spv.h": ("render::material::spirv",
         "the material families' programs (RFC 0016 K4, render.material)", (
         ("kUnlitVertex", FAMILIES + "/unlit.vert", DEVICE_OPTIONS),
-        ("kUnlitFragment", FAMILIES + "/unlit.frag", DEVICE_OPTIONS))),
+        ("kUnlitFragment", FAMILIES + "/unlit.frag", DEVICE_OPTIONS),
+        ("kLightmappedVertex", FAMILIES + "/lightmapped.vert", DEVICE_OPTIONS),
+        ("kLightmappedFragment", FAMILIES + "/lightmapped.frag", DEVICE_OPTIONS))),
     "lines_spv.h": ("render::pass::lines::spirv",
         "the lines pass: wireframe, grid and overlays (RFC 0016, Hammer viewports)", (
         ("kLinesVertex", LINES + "/lines.vert", DEVICE_OPTIONS),

@@ -1119,3 +1119,57 @@ frontend side of the proxy corpus.
 | Families match ports | `unlit` within 2 levels of its port on 6 cases, with a seeded defect caught; `lightmapped`, `vertexlit` and `pbr` open | partial |
 | Bind-group ceiling | the `unlit` family is judged by the artifact build (one group); a seeded fifth group still fails | pass |
 
+
+## K4 family slice: `lightmapped` (2026-09-28)
+
+State: the world's family is on the core and matches its legacy port
+exactly. K4 stays open for `vertexlit` (the Hammer session), `pbr` and the
+frontend side of the proxy corpus.
+
+- **The family:** `render.material`'s `LightmappedFamily`.
+  - Its program is `render/material/families/lightmapped.{vert,frag}`,
+    generated into `spv/families_spv.h`.
+  - `ClaimLightmapped` claims LightmappedGeneric's and
+    WorldVertexTransition's base texture, `$color`/`$alpha`, vertex color,
+    vertex alpha blending, alpha test and translucency. It refuses bump
+    maps, `$basetexture2`, env maps, `$additive` and every other parameter
+    set away from its default, by name.
+  - Two groups: the material group holds the constants, the base texture
+    and its sampler. The draw group (role kDraw) holds the lightmap page and
+    its sampler, because surfaces of one material sit on different pages.
+    `layouts.json` declares both, so the artifact build judges the
+    reflection and the ceiling.
+- **The oracle:** eight cases in
+  `quality/fixtures/legacy-shaders/families/lightmapped.vdf`, drawn by the
+  port (`-vklegacylightmapped`) and judged against the retail D3D9
+  bytecode, all pass. `render.family.lightmapped` (92 checks, g++ and
+  clang++) draws each with the family: all eight match the port's pixels
+  exactly. `.seeded-gamma-color` is caught.
+- **What matching the port took**, read from the port's captured
+  constants:
+  - The tint is `$color` times the lightmap scale, 2 in gamma space and
+    2^2.2 linear. `$color` is not gamma converted, unlike unlit's.
+  - Vertex color is used unconverted, also unlike unlit's.
+  - The port's vertex fast path (no texture transform, no detail) holds
+    for every claimed material. With `$vertexcolor` the vertex alpha
+    replaces the modulation alpha; without it, `$alpha` applies twice (VS
+    modulation and PS factor). Two added cases pin this:
+    `vertexcolor_alpha` and `vertexalpha_only`.
+  - `$vertexalpha` without `$vertexcolor` only selects blending: the
+    port's vertex format has no color then.
+- **Shared code:**
+  - `render/material/family_program.{h,cpp}` holds the claim rule
+    (`UnclaimedParameter`), parameter reads and Source's gamma table for
+    every family. `unlit` now uses it.
+  - `unittests/rendertest/core/material/family_pixel_cases.{h,cpp}` is the
+    suites' harness: case and fixture parsing, import, the D3D9 half-pixel
+    to-clip, drawing with any number of groups, and judging. The unlit
+    suite runs on it (65 checks, unchanged verdicts); `vertexlit` can too.
+- **Fixed:** `render.core-tests` lacked its edge to
+  `content.keyvalues-text`, so archlint reported CAP002 on the unlit suite
+  (reported by the Hammer session).
+
+| K4 check | Evidence | Result |
+| --- | --- | --- |
+| Families match ports | `unlit` within 2 levels on 6 cases; `lightmapped` exact on 8 cases; a seeded defect caught for each; `vertexlit` and `pbr` open | partial |
+| Bind-group ceiling | `unlit` (one group) and `lightmapped` (material and draw) judged by the artifact build; a seeded fifth group still fails | pass |

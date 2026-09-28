@@ -813,6 +813,7 @@
           "unittests/rendertest/core/"
         ],
         "allowedEdges": [
+          "content.keyvalues-text",
           "foundation",
           "testing.contracts",
           "render.contracts",
