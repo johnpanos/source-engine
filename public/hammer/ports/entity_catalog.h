@@ -104,8 +104,8 @@ struct EntityClassInfo
 	std::optional<mapgeometry::Vec3d> boxMins;
 	std::optional<mapgeometry::Vec3d> boxMaxs;
 	std::optional<mapgeometry::Vec3d> color; // 0..255 components
-	std::string model;  // studio("...") or a studio key default
-	std::string sprite; // iconsprite("...")
+	std::string model;                       // studio("...") or a studio key default
+	std::string sprite;                      // iconsprite("...")
 
 	const KeyDefinition *FindKey( std::string_view key ) const;
 	bool HasInput( std::string_view name ) const;

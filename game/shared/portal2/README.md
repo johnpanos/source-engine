@@ -150,7 +150,15 @@ with the gun and:
   holds another, with glow sprites and glass in view; looks and sweeps across
   them and walks through twice;
 - `sp_a2_triple_laser_cube_removed`: a redirection cube carrying a laser is
-  removed.
+  removed;
+- `qa_portal_crowd`: 248 animated props (personality spheres and Chell
+  models) appear in doubling waves between two facing portals while the
+  player looks into them and turns.
+
+The workload passes on this build (`./play_p2`'s Box3D and job-graph
+arguments) and on a clang AddressSanitizer build of the same tree
+(`--sanitize=address`; `new_delete_type_mismatch=0`, see below), as does the
+triple-laser workload.
 
 `cl_portal_view_trace 1` prints the client's final view every frame (`PVIEW`)
 and each portal's pose when it changes (`PVIEW_PORTAL`);
@@ -192,6 +200,54 @@ Fixed:
   world list before drawing portal views, which release and rebuild that list;
   CS:GO binds it after. The pooled list object is usually handed straight back,
   so this was not reproduced as a crash, but a nested portal view can take it.
+- **Crash placing a portal: 32-bit pointer offset.**
+  `CStaticCollisionPolyhedronCache` packs the world's brush polyhedrons into
+  one block and moves their pointers by `int memoryOffset`. On 64-bit heaps
+  more than 2 GB apart the offset truncates, the cached polyhedrons point
+  nowhere, and the first portal placed next to a brush crashes in
+  `ClipPolyhedron` (from `CPortalSimulator::CreatePolyhedrons`). glibc's
+  arena usually keeps the two blocks close, so this build survived; the ASan
+  build crashed on every first shot, and other allocators (Android's Scudo,
+  Apple's malloc zones) can place them apart too. Portal 1's copy of the file
+  already used `intp`; this one does too now.
+- **Heap corruption from pooled bone setup.** Every animated model with 16 or
+  more bones appends itself to `g_PreviousBoneSetups` on its first bone setup
+  of a frame. The opaque-renderables bone setup of each view
+  (`r_threaded_renderables` with the pooled `r_renderable_job_graph`, on by
+  default here) runs that on pool threads and the main thread at once, and
+  the append had no lock, so a growing list was reallocated under another
+  thread: `double free or corruption (!prev)` from `realloc` in
+  `C_BaseAnimating::SetupBones`, 2 aborts in 13 soak runs of
+  `sp_a2_triple_laser`. Each portal view is another view, and entities seen
+  only through a portal are appended there. A gdb probe caught a worker and
+  the main thread in `SetupBones` in the same batch with the batch flag
+  clear. The list now takes a lock for appends and removals, as CS:GO's
+  `MarkForThreadedBoneSetup` does. Three crowd runs without the lock did not
+  crash, so this rests on the probe, the abort stacks and CS:GO's fix.
+- **Out of per-frame render data with many models in portal views.** The
+  queued material system copies each model's bones into a per-frame arena of
+  2200 KB. `qa_portal_crowd` filled it ("Out of memory in render data!") and
+  the render thread then crashed in `CStudioRender::DrawModel` on a NULL bone
+  array. Retail Portal 2's material system (CS:GO's) sizes the arena 6600 KB
+  for `portal2` because every portal view redraws the scene; this engine now
+  does too, and `CStudioRenderContext::DrawModel` skips a model whose bones or
+  flex weights could not be copied instead of queueing a NULL draw.
+- **Native Vulkan screenshot overflow.** The native backend's diagnostic
+  report, printed on every screenshot, named stream records from a table of
+  three kinds; queries and scene captures are kinds 3 to 5, so a frame with
+  either read past the table and printed a stray pointer. The table now has
+  all six and a bounds check (found by the ASan build).
+
+Crashes in the user's core dumps from 2026-09-25/26 match the laser fix (both
+stacks). One render crash, in the nested `DrawTranslucentRenderables` under
+`DrawPortalsUsingStencils`, is in the function the world-list fix changes but
+was not reproduced. Four `PlayerRoughLandingEffects` sound crashes all fell
+between 02:56 and 03:20 on 09-26, while the sound emitter was being changed;
+they do not reproduce (`qa_portal_fall` now lands the player at about 1,050
+units/s and checks it, `loop.landed`).
+Left open: the ASan build reports `new-delete-type-mismatch` in
+`CSquirrelVM::TranslateCall` (a sized delete of a mismatched type in the
+VScript bridge); it does not crash a normal build.
 
 Also found: `portal2_physics.py check` at this revision fails
 `sp_a2_triple_laser_fling.cube.landing_x` (a cube flung through a portal lands

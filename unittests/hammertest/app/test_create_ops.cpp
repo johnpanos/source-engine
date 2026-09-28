@@ -115,7 +115,8 @@ int main()
 	{
 		PrimitiveSpec spec;
 		spec.kind = PrimitiveKind::Cylinder;
-		checks.That( !MakePrimitive( spec, { Vec3d( 0, 0, 0 ), Vec3d( 0, 64, 64 ) }, tex ), "flat box (negative)" );
+		checks.That( !MakePrimitive( spec, { Vec3d( 0, 0, 0 ), Vec3d( 0, 64, 64 ) }, tex ),
+		    "flat box (negative)" );
 		spec.sides = 2;
 		checks.That( !MakePrimitive( spec, box, tex ), "two sides (negative)" );
 		spec.sides = 33;
@@ -130,7 +131,8 @@ int main()
 		scene::DocumentEdit edit( doc );
 		scene::ObjectId id;
 		PrimitiveSpec spec;
-		checks.That( CreatePrimitive( edit, spec, box, tex, id ).HasValue() && edit.FindSolid( id ), "create a block" );
+		checks.That( CreatePrimitive( edit, spec, box, tex, id ).HasValue() && edit.FindSolid( id ),
+		    "create a block" );
 		scene::FaceTexture none;
 		checks.That( !CreatePrimitive( edit, spec, box, none, id ), "no material (negative)" );
 		checks.That( scene::ValidateEdit( edit ).empty(), "created block validates" );
@@ -145,11 +147,14 @@ int main()
 		arch.wallWidth = 16;
 		std::vector<scene::ObjectId> segments;
 		scene::ObjectId group;
-		checks.That( CreateArch( edit, arch, { Vec3d( -128, -128, 0 ), Vec3d( 128, 128, 32 ) }, tex, group, &segments )
+		checks.That( CreateArch( edit, arch, { Vec3d( -128, -128, 0 ), Vec3d( 128, 128, 32 ) }, tex,
+		                 group, &segments )
 		                 .HasValue(),
 		    "create an arch" );
-		checks.That( edit.FindGroup( group ) && segments.size() == 8, "one grouped solid per segment" );
-		checks.That( scene::GroupMembers( edit, group ) == segments, "segments are the group's members" );
+		checks.That(
+		    edit.FindGroup( group ) && segments.size() == 8, "one grouped solid per segment" );
+		checks.That(
+		    scene::GroupMembers( edit, group ) == segments, "segments are the group's members" );
 		checks.That( scene::ValidateEdit( edit ).empty(), "arch validates" );
 		bool allOut = true;
 		for ( scene::ObjectId s : segments )
@@ -157,21 +162,25 @@ int main()
 		checks.That( allOut, "arch segments face outward" );
 		ArchSpec bad = arch;
 		bad.arc = 0;
-		checks.That( !CreateArch( edit, bad, { Vec3d( -128, -128, 0 ), Vec3d( 128, 128, 32 ) }, tex, group ),
+		checks.That(
+		    !CreateArch( edit, bad, { Vec3d( -128, -128, 0 ), Vec3d( 128, 128, 32 ) }, tex, group ),
 		    "zero arc (negative)" );
 		arch.addHeight = 8;
 		segments.clear();
-		checks.That( CreateArch( edit, arch, { Vec3d( -128, -128, 0 ), Vec3d( 128, 128, 32 ) }, tex, group, &segments )
+		checks.That( CreateArch( edit, arch, { Vec3d( -128, -128, 0 ), Vec3d( 128, 128, 32 ) }, tex,
+		                 group, &segments )
 		                 .HasValue(),
 		    "spiral arch" );
-		checks.That( scene::SolidBounds( *edit.FindSolid( segments.back() ) )->mins.z == 56, "each segment rises" );
+		checks.That( scene::SolidBounds( *edit.FindSolid( segments.back() ) )->mins.z == 56,
+		    "each segment rises" );
 	}
 
 	// Entities with catalog defaults.
 	{
 		hammertest::FakeEntityCatalog catalog;
 		auto flags = hammertest::FakeEntityCatalog::Key( "spawnflags", "flags" );
-		flags.choices = { { "1", "Start off", true }, { "2", "Toggle", false }, { "4", "Once", true } };
+		flags.choices = {
+		    { "1", "Start off", true }, { "2", "Toggle", false }, { "4", "Once", true } };
 		catalog
 		    .AddPoint( "light",
 		        { hammertest::FakeEntityCatalog::Key( "_light", "color255", "255 255 255 200" ),
@@ -179,17 +188,23 @@ int main()
 		    .AddSolid( "func_door" );
 		scene::DocumentEdit edit( doc );
 		scene::ObjectId id;
-		checks.That( PlaceEntity( edit, "LIGHT", Vec3d( 1, 2, 3 ), &catalog, id ).HasValue(), "place with catalog" );
+		checks.That( PlaceEntity( edit, "LIGHT", Vec3d( 1, 2, 3 ), &catalog, id ).HasValue(),
+		    "place with catalog" );
 		const scene::Entity *e = edit.FindEntity( id );
 		checks.That( e && e->classname == "light", "catalog spelling of the class" );
-		checks.That( e && e->Key( "_light" ) && *e->Key( "_light" ) == "255 255 255 200", "default key applied" );
+		checks.That( e && e->Key( "_light" ) && *e->Key( "_light" ) == "255 255 255 200",
+		    "default key applied" );
 		checks.That( e && !e->Key( "targetname" ), "keys without defaults are not added" );
-		checks.That( e && e->Key( "spawnflags" ) && *e->Key( "spawnflags" ) == "5", "default-on flags summed" );
+		checks.That( e && e->Key( "spawnflags" ) && *e->Key( "spawnflags" ) == "5",
+		    "default-on flags summed" );
 		checks.That( e && e->Origin() == Vec3d( 1, 2, 3 ), "origin" );
-		checks.That( !PlaceEntity( edit, "nope", Vec3d(), &catalog, id ), "unknown class (negative)" );
-		checks.That( !PlaceEntity( edit, "func_door", Vec3d(), &catalog, id ), "brush class (negative)" );
+		checks.That(
+		    !PlaceEntity( edit, "nope", Vec3d(), &catalog, id ), "unknown class (negative)" );
+		checks.That(
+		    !PlaceEntity( edit, "func_door", Vec3d(), &catalog, id ), "brush class (negative)" );
 		checks.That( !PlaceEntity( edit, "", Vec3d(), nullptr, id ), "empty class (negative)" );
-		checks.That( PlaceEntity( edit, "info_anything", Vec3d(), nullptr, id ).HasValue(), "no catalog: any class" );
+		checks.That( PlaceEntity( edit, "info_anything", Vec3d(), nullptr, id ).HasValue(),
+		    "no catalog: any class" );
 	}
 
 	return checks.Report();

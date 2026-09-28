@@ -107,7 +107,9 @@ EditSession::~EditSession()
 
 bool EditSession::RunGuards()
 {
-	BusyScope busy( m_busy );
+	// Guards may commit their drafts (Execute), but may not change the
+	// selection, replace the document or move through history.
+	BusyScope guarding( m_guarding );
 	// Copy: a guard may drop its own subscription.
 	const std::map<std::uint64_t, SelectionGuard> guards = m_registry->guards;
 	for ( const auto &entry : guards )
@@ -134,8 +136,8 @@ void EditSession::Publish( const SessionEvent &event )
 	}
 }
 
-foundation::Expected<CommitInfo, EditError> EditSession::Commit(
-    const std::string &label, scene::DocumentEdit &edit, const std::optional<Selection> &selectionAfter )
+foundation::Expected<CommitInfo, EditError> EditSession::Commit( const std::string &label,
+    scene::DocumentEdit &edit, const std::optional<Selection> &selectionAfter )
 {
 	const std::vector<std::string> problems = scene::ValidateEdit( edit );
 	if ( !problems.empty() )
@@ -177,8 +179,8 @@ foundation::Expected<CommitInfo, EditError> EditSession::Commit(
 	return info;
 }
 
-foundation::Expected<CommitInfo, EditError> EditSession::Execute(
-    const std::string &label, const Operation &operation, const std::optional<Selection> &selectionAfter )
+foundation::Expected<CommitInfo, EditError> EditSession::Execute( const std::string &label,
+    const Operation &operation, const std::optional<Selection> &selectionAfter )
 {
 	if ( m_busy )
 	{
@@ -212,7 +214,7 @@ foundation::Expected<CommitInfo, EditError> EditSession::ExecuteSelecting(
 
 foundation::Expected<void, EditError> EditSession::Undo()
 {
-	if ( m_busy )
+	if ( m_busy || m_guarding )
 	{
 		return Busy();
 	}
@@ -235,7 +237,7 @@ foundation::Expected<void, EditError> EditSession::Undo()
 
 foundation::Expected<void, EditError> EditSession::Redo()
 {
-	if ( m_busy )
+	if ( m_busy || m_guarding )
 	{
 		return Busy();
 	}
@@ -289,9 +291,30 @@ void EditSession::MarkSaved()
 	Publish( event );
 }
 
+void EditSession::SetMapVersion( int mapVersion )
+{
+	auto apply = [mapVersion]( scene::DocumentSettings &settings )
+	{
+		settings.version.mapVersion = mapVersion;
+		settings.SetWorldKey( "mapversion", std::to_string( mapVersion ) );
+	};
+	apply( m_document.MutableSettings() );
+	for ( HistoryEntry &entry : m_history.MutableEntries() )
+	{
+		if ( entry.changes.settingsBefore )
+		{
+			apply( *entry.changes.settingsBefore );
+		}
+		if ( entry.changes.settingsAfter )
+		{
+			apply( *entry.changes.settingsAfter );
+		}
+	}
+}
+
 foundation::Expected<void, EditError> EditSession::Replace( scene::MapDocument document )
 {
-	if ( m_busy )
+	if ( m_busy || m_guarding )
 	{
 		return Busy();
 	}
@@ -312,7 +335,7 @@ foundation::Expected<void, EditError> EditSession::Replace( scene::MapDocument d
 
 foundation::Expected<void, EditError> EditSession::ChangeSelection( Selection next )
 {
-	if ( m_busy )
+	if ( m_busy || m_guarding )
 	{
 		return Busy();
 	}
@@ -361,7 +384,8 @@ SessionSubscription EditSession::Subscribe( Observer observer )
 	const std::uint64_t id = m_registry->next++;
 	m_registry->observers.emplace( id, std::move( observer ) );
 	std::weak_ptr<Registry> weak = m_registry;
-	return SessionSubscription( [weak, id]()
+	return SessionSubscription(
+	    [weak, id]()
 	    {
 		    if ( const std::shared_ptr<Registry> r = weak.lock() )
 		    {
@@ -375,7 +399,8 @@ SessionSubscription EditSession::AddSelectionGuard( SelectionGuard guard )
 	const std::uint64_t id = m_registry->next++;
 	m_registry->guards.emplace( id, std::move( guard ) );
 	std::weak_ptr<Registry> weak = m_registry;
-	return SessionSubscription( [weak, id]()
+	return SessionSubscription(
+	    [weak, id]()
 	    {
 		    if ( const std::shared_ptr<Registry> r = weak.lock() )
 		    {

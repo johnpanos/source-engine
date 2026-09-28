@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 # hammer_cli: the headless Hammer host (RFC 0002 map-building loop). A
-# composition root that runs command scripts through hammer::app::EditorCommands
+# composition root that runs command scripts through hammer::app::SessionCommands
 # against the disk; tools/quality/hammer_loop.py drives it.
 
 top = '.'
@@ -23,7 +23,8 @@ def build(bld):
 		features  = 'cxx cxxprogram',
 		includes  = [ '../../public', '../..' ],
 		defines   = [],
-		use       = [ 'hammer_mcp', 'hammer_app', 'hammer_platform', 'platform_posix', 'vmf', 'kvtext', 'mapgeometry' ],
+		use       = [ 'hammer_mcp', 'hammer_formats', 'hammer_app', 'hammer_ports', 'hammer_scene',
+		              'hammer_platform', 'platform_posix', 'vmf', 'kvtext', 'mapgeometry' ],
 		install_path = None,
 		subsystem = 'CONSOLE',
 		idx       = bld.get_taskgen_count()

@@ -51,7 +51,8 @@ bool IsVisible( const DocumentReader &doc, ObjectId id );
 // Bounds of an object: a solid's vertices, an entity's origin box (point
 // entities use +/- 'pointHalfSize'; brush entities the union of their solids),
 // a group's members. Nothing when the object has no extent.
-std::optional<Box> ObjectBounds( const DocumentReader &doc, ObjectId id, double pointHalfSize = 8.0 );
+std::optional<Box> ObjectBounds(
+    const DocumentReader &doc, ObjectId id, double pointHalfSize = 8.0 );
 std::optional<Box> ObjectsBounds(
     const DocumentReader &doc, const std::vector<ObjectId> &ids, double pointHalfSize = 8.0 );
 

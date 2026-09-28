@@ -57,11 +57,18 @@ STEAM_ROOT = Path(os.environ.get(
     "P2_STEAM_ROOT", Path.home() / ".local/share/Steam/steamapps/common/Portal 2"))
 
 # ------------------------------------------------------------- materials
+# The palette of Portal 2's sp_a2_triple_laser (its compiled faces by area):
+# tall white panels on the walls with 4 x 4 and single-slab accents, the
+# large 2 x 2 wall tile on the ceilings, 4 x 4 black metal with fine-grid and
+# brushed accents, white floor tile and black floor metal.
 WHITE_WALL = "TILE/WHITE_WALL_TILE003A"
+WHITE_GRID = "TILE/WHITE_WALL_TILE003F"
+WHITE_SLAB = "TILE/WHITE_WALL_TILE003L"
 WHITE_FLOOR = "TILE/WHITE_FLOOR_TILE002A"
-WHITE_CEILING = "TILE/WHITE_CEILING_TILE002A"
-BLACK_WALL = "METAL/BLACK_WALL_METAL_002C"
+WHITE_CEILING = "TILE/WHITE_WALL_TILE003C"
+BLACK_WALL = "METAL/BLACK_WALL_METAL_002A"
 BLACK_TRIM = "METAL/BLACK_WALL_METAL_002B"
+BLACK_BRUSHED = "METAL/BLACK_WALL_METAL_002D"
 BLACK_FLOOR = "METAL/BLACK_FLOOR_METAL_001C"
 NODRAW = "TOOLS/TOOLSNODRAW"
 TRIGGER = "TOOLS/TOOLSTRIGGER"
@@ -307,7 +314,7 @@ def shell(m):
     """The chamber's walls, floor, ledge and ceiling, with their cut-outs."""
     # Lower floor: white tile; the ledge: a black block with a black floor.
     m.slab("z", (-T, 0), ((X0, LEDGE_X), (Y0, Y1)), WHITE_FLOOR, face="z+")
-    m.box((LEDGE_X, Y0, -T), (X1, Y1, LEDGE_Z - 8), BLACK_WALL,
+    m.box((LEDGE_X, Y0, -T), (X1, Y1, LEDGE_Z - 8), BLACK_BRUSHED,
           {"z+": NODRAW, "z-": NODRAW, "y-": NODRAW, "y+": NODRAW, "x+": NODRAW})
     bx, by = BUTTON
     m.slab("z", (LEDGE_Z - 8, LEDGE_Z), ((LEDGE_X, X1), (Y0, Y1)), BLACK_FLOOR,
@@ -322,7 +329,7 @@ def shell(m):
     # North wall: white below the ledge and on the ledge (the way up), black trim.
     m.slab("y", (Y1, Y1 + T), span, BLACK_WALL, face="y-",
            zones=[(((X0, LEDGE_X), (0, 320)), WHITE_WALL),
-                  (((LEDGE_X, X1), (LEDGE_Z, LEDGE_Z + 192)), WHITE_WALL)])
+                  (((LEDGE_X, X1), (LEDGE_Z, LEDGE_Z + 192)), WHITE_GRID)])
     # South wall: white low on the lower floor, the observation window above.
     ox, _, oz = OBSERVATION
     m.slab("y", (Y0 - T, Y0), span, BLACK_WALL, face="y+",
@@ -378,7 +385,7 @@ def doors(m):
                                        "origin": "%d 0 %d" % (X1 + 16, LEDGE_Z),
                                        "angles": "0 180 0"})
     corridor(m, HALL[0], HALL[1], 0, HALL_TOP, "x+", BLACK_FLOOR, panels=HALL_PANELS,
-             wall=WHITE_WALL)
+             wall=WHITE_SLAB)
     corridor(m, EXIT[0], EXIT[1], LEDGE_Z, EXIT_TOP, "x-", BLACK_FLOOR, strips=EXIT_STRIPS)
 
 

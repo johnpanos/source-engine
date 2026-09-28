@@ -33,16 +33,20 @@ int main()
 	// AngleMatrix columns are forward, left, up.
 	{
 		const Mat3 r = AngleMatrix( 0, 90, 0 );
-		checks.That( Near( Apply( r, Vec3d( 1, 0, 0 ) ), Vec3d( 0, 1, 0 ) ), "yaw 90 turns +X to +Y" );
+		checks.That(
+		    Near( Apply( r, Vec3d( 1, 0, 0 ) ), Vec3d( 0, 1, 0 ) ), "yaw 90 turns +X to +Y" );
 		const Mat3 p = AngleMatrix( 90, 0, 0 );
-		checks.That( Near( Apply( p, Vec3d( 1, 0, 0 ) ), Vec3d( 0, 0, -1 ) ), "pitch 90 points forward down" );
+		checks.That( Near( Apply( p, Vec3d( 1, 0, 0 ) ), Vec3d( 0, 0, -1 ) ),
+		    "pitch 90 points forward down" );
 		const Mat3 roll = AngleMatrix( 0, 0, 90 );
-		checks.That( Near( Apply( roll, Vec3d( 0, 1, 0 ) ), Vec3d( 0, 0, 1 ) ), "roll 90 lifts left to up" );
+		checks.That(
+		    Near( Apply( roll, Vec3d( 0, 1, 0 ) ), Vec3d( 0, 0, 1 ) ), "roll 90 lifts left to up" );
 	}
 
 	// MatrixToAngles inverts AngleMatrix away from gimbal lock.
 	{
-		const double cases[][3] = { { 10, 20, 30 }, { -45, 135, 0 }, { 0, -90, 15 }, { 80, 0, -60 } };
+		const double cases[][3] = {
+		    { 10, 20, 30 }, { -45, 135, 0 }, { 0, -90, 15 }, { 80, 0, -60 } };
 		for ( const auto &c : cases )
 		{
 			const EulerAngles a = MatrixToAngles( AngleMatrix( c[0], c[1], c[2] ) );
@@ -78,18 +82,23 @@ int main()
 	{
 		const Affine about = Affine::About( Mat3::AxisRotation( 2, 90 ), Vec3d( 10, 10, 0 ) );
 		checks.That( about.Point( Vec3d( 10, 10, 5 ) ) == Vec3d( 10, 10, 5 ), "pivot is fixed" );
-		checks.That( about.Point( Vec3d( 20, 10, 0 ) ) == Vec3d( 10, 20, 0 ), "rotation about the pivot" );
+		checks.That(
+		    about.Point( Vec3d( 20, 10, 0 ) ) == Vec3d( 10, 20, 0 ), "rotation about the pivot" );
 		const Affine move = Affine::Translation( Vec3d( 1, 2, 3 ) );
 		checks.That( move.IsTranslation() && !about.IsTranslation(), "translation detection" );
 		const Affine both = Compose( move, about );
-		checks.That( both.Point( Vec3d( 20, 10, 0 ) ) == Vec3d( 11, 22, 3 ), "compose applies right first" );
+		checks.That(
+		    both.Point( Vec3d( 20, 10, 0 ) ) == Vec3d( 11, 22, 3 ), "compose applies right first" );
 		const std::optional<Affine> inv = Inverse( both );
-		checks.That( inv.has_value() && Near( inv->Point( Vec3d( 11, 22, 3 ) ), Vec3d( 20, 10, 0 ) ),
+		checks.That(
+		    inv.has_value() && Near( inv->Point( Vec3d( 11, 22, 3 ) ), Vec3d( 20, 10, 0 ) ),
 		    "inverse undoes the map" );
-		checks.That( Affine::About( Mat3::Mirror( 0 ), Vec3d() ).Mirrors(), "a mirror flips handedness" );
+		checks.That(
+		    Affine::About( Mat3::Mirror( 0 ), Vec3d() ).Mirrors(), "a mirror flips handedness" );
 		checks.That( !about.Mirrors(), "a rotation does not" );
 		// Negative: singular maps have no inverse.
-		checks.That( !Inverse( Affine::About( Mat3::Scale( Vec3d( 1, 0, 1 ) ), Vec3d() ) ).has_value(),
+		checks.That(
+		    !Inverse( Affine::About( Mat3::Scale( Vec3d( 1, 0, 1 ) ), Vec3d() ) ).has_value(),
 		    "a singular map has no inverse" );
 	}
 
@@ -98,7 +107,8 @@ int main()
 		Plane top;
 		top.normal = Vec3d( 0, 0, 1 );
 		top.dist = 64;
-		const std::optional<Plane> moved = TransformPlane( Affine::Translation( Vec3d( 0, 0, 16 ) ), top );
+		const std::optional<Plane> moved =
+		    TransformPlane( Affine::Translation( Vec3d( 0, 0, 16 ) ), top );
 		checks.That( moved && Near( moved->normal, Vec3d( 0, 0, 1 ) ), "translated normal" );
 		checks.That( moved && std::fabs( moved->dist - 80 ) < 1e-9, "translated distance" );
 
@@ -115,7 +125,8 @@ int main()
 		    TransformPlane( Affine::About( Mat3::Scale( Vec3d( 2, 1, 1 ) ), Vec3d() ), slope );
 		checks.That( scaled && Near( scaled->normal, Normalize( Vec3d( 1, 0, 2 ) ) ),
 		    "non-uniform scale transforms the normal by the inverse transpose" );
-		checks.That( !TransformPlane( Affine::About( Mat3::Scale( Vec3d( 0, 1, 1 ) ), Vec3d() ), top ),
+		checks.That(
+		    !TransformPlane( Affine::About( Mat3::Scale( Vec3d( 0, 1, 1 ) ), Vec3d() ), top ),
 		    "a singular map refuses planes" );
 	}
 

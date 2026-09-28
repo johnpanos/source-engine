@@ -21,26 +21,6 @@
 namespace hammer::app
 {
 
-const char *CommandStatusName( CommandStatus status )
-{
-	switch ( status )
-	{
-	case CommandStatus::UnknownCommand:
-		return "unknown command";
-	case CommandStatus::MissingArgument:
-		return "missing argument";
-	case CommandStatus::InvalidArgument:
-		return "invalid argument";
-	case CommandStatus::Rejected:
-		return "rejected";
-	case CommandStatus::IoFailure:
-		return "i/o failure";
-	case CommandStatus::SyntaxError:
-		return "syntax error";
-	}
-	return "error";
-}
-
 namespace
 {
 
@@ -50,40 +30,7 @@ using Result = foundation::Expected<std::string, CommandError>;
 foundation::Unexpected<CommandError> Fail(
     CommandStatus status, std::string_view command, std::string detail )
 {
-	return foundation::MakeUnexpected(
-	    CommandError{ status, std::string( command ), std::move( detail ), 0 } );
-}
-
-std::optional<double> ParseNumber( const std::string &text )
-{
-	if ( text.empty() )
-		return std::nullopt;
-	errno = 0;
-	char *end = nullptr;
-	const double value = std::strtod( text.c_str(), &end );
-	if ( errno != 0 || end == text.c_str() || *end != '\0' )
-		return std::nullopt;
-	return value;
-}
-
-std::optional<Vec3d> ParseVector( const std::string &text )
-{
-	errno = 0;
-	const char *cursor = text.c_str();
-	double v[3];
-	for ( double &component : v )
-	{
-		char *end = nullptr;
-		component = std::strtod( cursor, &end );
-		if ( end == cursor || errno != 0 )
-			return std::nullopt;
-		cursor = end;
-	}
-	while ( *cursor == ' ' || *cursor == '\t' )
-		++cursor;
-	if ( *cursor != '\0' )
-		return std::nullopt;
-	return Vec3d( v[0], v[1], v[2] );
+	return CommandFailure( status, command, std::move( detail ) );
 }
 
 struct Context
@@ -98,7 +45,7 @@ struct Context
 
 	foundation::Expected<double, CommandError> Number( const char *key ) const
 	{
-		if ( auto value = ParseNumber( Arg( key ) ) )
+		if ( auto value = ParseCommandNumber( Arg( key ) ) )
 			return *value;
 		return Fail( CommandStatus::InvalidArgument, name,
 		    std::string( key ) + " is not a number: " + Arg( key ) );
@@ -106,7 +53,7 @@ struct Context
 
 	foundation::Expected<int, CommandError> Id( const char *key ) const
 	{
-		const auto value = ParseNumber( Arg( key ) );
+		const auto value = ParseCommandNumber( Arg( key ) );
 		if ( !value || *value != static_cast<double>( static_cast<int>( *value ) ) )
 			return Fail( CommandStatus::InvalidArgument, name,
 			    std::string( key ) + " is not an integer id: " + Arg( key ) );
@@ -115,7 +62,7 @@ struct Context
 
 	foundation::Expected<Vec3d, CommandError> Vector( const char *key ) const
 	{
-		if ( auto value = ParseVector( Arg( key ) ) )
+		if ( auto value = ParseCommandVector( Arg( key ) ) )
 			return *value;
 		return Fail( CommandStatus::InvalidArgument, name,
 		    std::string( key ) + " is not an \"x y z\" vector: " + Arg( key ) );
@@ -275,7 +222,7 @@ const std::vector<CommandEntry> &Table()
 				        token += list[i];
 				        continue;
 			        }
-			        const auto value = ParseNumber( token );
+			        const auto value = ParseCommandNumber( token );
 			        if ( !value || *value != static_cast<double>( static_cast<int>( *value ) ) )
 				        return Fail(
 				            CommandStatus::InvalidArgument, c.name, "not an id list: " + list );
@@ -440,16 +387,6 @@ const std::vector<CommandEntry> &Table()
 	return table;
 }
 
-bool Contains( const std::vector<std::string> &keys, const std::string &key )
-{
-	for ( const std::string &k : keys )
-	{
-		if ( k == key )
-			return true;
-	}
-	return false;
-}
-
 } // namespace
 
 EditorCommands::EditorCommands(
@@ -465,18 +402,8 @@ foundation::Expected<std::string, CommandError> EditorCommands::Execute(
 	{
 		if ( entry.info.name != name )
 			continue;
-		for ( const std::string &key : entry.info.required )
-		{
-			if ( args.find( key ) == args.end() )
-				return Fail( CommandStatus::MissingArgument, name, "missing " + key );
-		}
-		for ( const auto &pair : args )
-		{
-			if ( !Contains( entry.info.required, pair.first ) &&
-			     !Contains( entry.info.optional, pair.first ) )
-				return Fail(
-				    CommandStatus::InvalidArgument, name, "unknown argument " + pair.first );
-		}
+		if ( auto valid = ValidateCommandArgs( entry.info, args ); !valid )
+			return foundation::MakeUnexpected( std::move( valid ).Error() );
 		return entry.run( Context{ m_controller, m_store, m_builder, args, name } );
 	}
 	return Fail( CommandStatus::UnknownCommand, name, "no such command" );
@@ -485,19 +412,11 @@ foundation::Expected<std::string, CommandError> EditorCommands::Execute(
 foundation::Expected<std::vector<std::string>, CommandError> EditorCommands::Run(
     const std::vector<ScriptCommand> &script )
 {
-	std::vector<std::string> outputs;
-	for ( const ScriptCommand &command : script )
-	{
-		auto result = Execute( command.name, command.args );
-		if ( !result )
-		{
-			CommandError error = result.Error();
-			error.line = command.line;
-			return foundation::MakeUnexpected( std::move( error ) );
-		}
-		outputs.push_back( std::move( result.Value() ) );
-	}
-	return outputs;
+	return RunCommandScript( script,
+	    [this]( std::string_view name, const CommandArgs &args )
+	    {
+		    return Execute( name, args );
+	    } );
 }
 
 const std::vector<CommandInfo> &EditorCommands::Catalog()
@@ -510,73 +429,6 @@ const std::vector<CommandInfo> &EditorCommands::Catalog()
 		return infos;
 	}();
 	return catalog;
-}
-
-foundation::Expected<std::vector<ScriptCommand>, CommandError> ParseCommandScript(
-    std::string_view text )
-{
-	std::vector<ScriptCommand> script;
-	int lineNumber = 0;
-	std::size_t start = 0;
-	while ( start <= text.size() )
-	{
-		std::size_t end = text.find( '\n', start );
-		if ( end == std::string_view::npos )
-			end = text.size();
-		const std::string_view line = text.substr( start, end - start );
-		start = end + 1;
-		++lineNumber;
-
-		ScriptCommand command;
-		command.line = lineNumber;
-		std::size_t i = 0;
-		auto skipSpace = [&]
-		{
-			while ( i < line.size() && ( line[i] == ' ' || line[i] == '\t' || line[i] == '\r' ) )
-				++i;
-		};
-		auto syntax = [&]( std::string detail )
-		{
-			return foundation::MakeUnexpected( CommandError{
-			    CommandStatus::SyntaxError, command.name, std::move( detail ), lineNumber } );
-		};
-		skipSpace();
-		if ( i >= line.size() || line[i] == '#' )
-			continue;
-		while ( i < line.size() && line[i] != ' ' && line[i] != '\t' && line[i] != '\r' )
-			command.name += line[i++];
-		for ( ;; )
-		{
-			skipSpace();
-			if ( i >= line.size() || line[i] == '#' )
-				break;
-			std::string key;
-			while ( i < line.size() && line[i] != '=' && line[i] != ' ' && line[i] != '\t' )
-				key += line[i++];
-			if ( key.empty() || i >= line.size() || line[i] != '=' )
-				return syntax( "expected key=value" );
-			++i;
-			std::string value;
-			if ( i < line.size() && line[i] == '"' )
-			{
-				++i;
-				while ( i < line.size() && line[i] != '"' )
-					value += line[i++];
-				if ( i >= line.size() )
-					return syntax( "unterminated quote" );
-				++i;
-			}
-			else
-			{
-				while ( i < line.size() && line[i] != ' ' && line[i] != '\t' && line[i] != '\r' )
-					value += line[i++];
-			}
-			if ( !command.args.emplace( key, value ).second )
-				return syntax( "duplicate argument " + key );
-		}
-		script.push_back( std::move( command ) );
-	}
-	return script;
 }
 
 } // namespace hammer::app

@@ -38,8 +38,8 @@ void RemoveEmptyContainers(
 // Groups the given objects (a solid of a brush entity stands for its entity)
 // under a new group. When they all share one enclosing group the new group
 // nests in it; otherwise it is top level.
-EditResult GroupObjects( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
-    scene::ObjectId &created );
+EditResult GroupObjects(
+    scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids, scene::ObjectId &created );
 
 // Dissolves the given groups: members move to each group's enclosing group.
 EditResult UngroupObjects( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &groups );
@@ -57,7 +57,8 @@ EditResult TieToEntity( scene::DocumentEdit &edit, const std::vector<scene::Obje
 EditResult MoveToWorld( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids );
 
 // Quick hide: sets the 'hidden' flag of the given objects.
-EditResult SetHidden( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids, bool hidden );
+EditResult SetHidden(
+    scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids, bool hidden );
 // Hides every visible top-level object not among 'keep' (after expansion).
 EditResult HideUnselected( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &keep );
 // Clears every quick-hide flag.

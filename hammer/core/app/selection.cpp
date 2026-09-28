@@ -100,13 +100,18 @@ std::vector<T> Combine( const std::vector<T> &current, const std::vector<T> &ite
 
 } // namespace
 
-Selection CombineObjects( const Selection &current, const std::vector<ObjectId> &ids, SelectMode mode )
+Selection CombineObjects(
+    const Selection &current, const std::vector<ObjectId> &ids, SelectMode mode )
 {
 	Selection out = current;
 	ObjectId last;
 	bool added = false;
 	std::vector<ObjectId> items = ids;
-	std::erase_if( items, []( ObjectId id ) { return !id.IsValid(); } );
+	std::erase_if( items,
+	    []( ObjectId id )
+	    {
+		    return !id.IsValid();
+	    } );
 	out.objects = Combine( current.objects, items, mode, last, added );
 	if ( added )
 	{
@@ -119,7 +124,8 @@ Selection CombineObjects( const Selection &current, const std::vector<ObjectId> 
 	return out;
 }
 
-Selection CombineFaces( const Selection &current, const std::vector<FaceRef> &faces, SelectMode mode )
+Selection CombineFaces(
+    const Selection &current, const std::vector<FaceRef> &faces, SelectMode mode )
 {
 	Selection out = current;
 	FaceRef last;
@@ -181,7 +187,8 @@ std::vector<ObjectId> Selectables(
 
 } // namespace
 
-Selection SelectAll( const scene::DocumentReader &doc, SelectionGranularity granularity, bool includeHidden )
+Selection SelectAll(
+    const scene::DocumentReader &doc, SelectionGranularity granularity, bool includeHidden )
 {
 	Selection out;
 	out.objects = Selectables( doc, granularity, includeHidden );

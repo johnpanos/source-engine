@@ -121,7 +121,8 @@ Extent TextureExtent( const FaceTexture &t, const std::vector<Vec3d> &vertices )
 	Extent e;
 	for ( const Vec3d &p : vertices )
 	{
-		e.Add( mapgeometry::Dot( p, t.u.axis ) / t.u.scale, mapgeometry::Dot( p, t.v.axis ) / t.v.scale );
+		e.Add( mapgeometry::Dot( p, t.u.axis ) / t.u.scale,
+		    mapgeometry::Dot( p, t.v.axis ) / t.v.scale );
 	}
 	return e;
 }
@@ -169,7 +170,8 @@ FaceTexture LockTexture( const FaceTexture &texture, const mapgeometry::Affine &
 	return out;
 }
 
-FaceTexture AlignedTexture( const FaceTexture &texture, const Vec3d &normal, TextureAlignment alignment )
+FaceTexture AlignedTexture(
+    const FaceTexture &texture, const Vec3d &normal, TextureAlignment alignment )
 {
 	FaceTexture out = texture;
 	const mapgeometry::TextureAxes world = mapgeometry::WorldAlignedTextureAxes( normal );
@@ -239,7 +241,8 @@ const scene::Side *FindFace( const scene::DocumentReader &doc, const FaceRef &fa
 	return solid ? solid->FindSide( face.side ) : nullptr;
 }
 
-EditResult ApplyMaterial( scene::DocumentEdit &edit, const std::vector<FaceRef> &faces, const std::string &material )
+EditResult ApplyMaterial(
+    scene::DocumentEdit &edit, const std::vector<FaceRef> &faces, const std::string &material )
 {
 	if ( material.empty() )
 	{
@@ -256,8 +259,8 @@ EditResult ApplyMaterial( scene::DocumentEdit &edit, const std::vector<FaceRef> 
 	return {};
 }
 
-EditResult ApplyMaterialToObjects(
-    scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids, const std::string &material )
+EditResult ApplyMaterialToObjects( scene::DocumentEdit &edit,
+    const std::vector<scene::ObjectId> &ids, const std::string &material )
 {
 	if ( material.empty() )
 	{
@@ -345,8 +348,39 @@ EditResult ShiftTexture(
 	return {};
 }
 
+EditResult SetSmoothingGroup(
+    scene::DocumentEdit &edit, const std::vector<FaceRef> &faces, int group, bool on )
+{
+	if ( group < 1 || group > 32 )
+	{
+		return Reject( "smoothing groups are numbered 1 to 32" );
+	}
+	if ( EditResult ok = CheckFaces( edit, faces ); !ok )
+	{
+		return ok;
+	}
+	const std::uint32_t bit = 1u << ( group - 1 );
+	bool changed = false;
+	for ( const FaceRef &f : faces )
+	{
+		const std::uint32_t current = FindFace( edit, f )->texture.smoothingGroups;
+		const std::uint32_t next = on ? ( current | bit ) : ( current & ~bit );
+		if ( next != current )
+		{
+			MutableFace( edit, f )->texture.smoothingGroups = next;
+			changed = true;
+		}
+	}
+	if ( !changed )
+	{
+		return NothingToDo( "the faces already have that smoothing group setting" );
+	}
+	return {};
+}
+
 EditResult JustifyTexture( scene::DocumentEdit &edit, const std::vector<FaceRef> &faces,
-    Justification justification, const ports::IMaterialInfo &materials, bool treatAsOne, int fitU, int fitV )
+    Justification justification, const ports::IMaterialInfo &materials, bool treatAsOne, int fitU,
+    int fitV )
 {
 	if ( fitU < 1 || fitV < 1 )
 	{
@@ -436,7 +470,8 @@ EditResult JustifyTexture( scene::DocumentEdit &edit, const std::vector<FaceRef>
 	return {};
 }
 
-EditResult AlignTexture( scene::DocumentEdit &edit, const std::vector<FaceRef> &faces, TextureAlignment alignment )
+EditResult AlignTexture(
+    scene::DocumentEdit &edit, const std::vector<FaceRef> &faces, TextureAlignment alignment )
 {
 	if ( EditResult ok = CheckFaces( edit, faces ); !ok )
 	{
@@ -478,7 +513,8 @@ EditResult ReplaceMaterial( scene::DocumentEdit &edit, const std::vector<scene::
 		for ( const scene::Side &side : current->sides )
 		{
 			const std::string mat = Lower( side.texture.material );
-			matches = matches || ( substring ? mat.find( needle ) != std::string::npos : mat == needle );
+			matches =
+			    matches || ( substring ? mat.find( needle ) != std::string::npos : mat == needle );
 		}
 		if ( !matches )
 		{

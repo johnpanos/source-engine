@@ -21,8 +21,14 @@
 //			                     compare equal under kvtext::CompareKeyValues.
 //			  CanonicalFixture   every modeled field of the VMF feature fixture
 //			                     decodes to its exact expected value.
-//			  OddityFixture      recoverable oddities decode, warn, and keep
-//			                     their content (verbatim where unmodeled).
+//			  MissingIdsFixture  objects and sides without ids get fresh unique
+//			                     ids, with one warning (the only lossless oddity).
+//			  RejectsUnmodeled   each kind of content the model cannot hold is a
+//			                     CodecError naming its block path and line.
+//			  CountText/CountDocument, CompareFileSemantics
+//			                     file-level checks for maps from other writers:
+//			                     structural counts, and block/key/value equality
+//			                     with numbers compared by value.
 //
 //			The fixtures are VMF text in the legacy writer's layout (tabs, pairs
 //			before child blocks, legacy key order); they are built by small
@@ -429,6 +435,8 @@ inline Findings CanonicalText( const IMapCodec &codec, std::string_view text )
 class VmfWriter
 {
 public:
+	explicit VmfWriter( int depth = 0 ) : m_depth( depth ) {}
+
 	void Open( const std::string &name )
 	{
 		m_out += Tabs() + name + "\n" + Tabs() + "{\n";
@@ -462,7 +470,7 @@ struct BoxSpec
 	int sideCount = 6;
 	std::map<int, std::map<std::string, std::string>> overrides; // side -> key -> value
 	std::function<void( VmfWriter &, int )> sideExtra;           // after a side's standard keys
-	std::function<void( VmfWriter & )> tail;                     // after the sides
+	std::function<void( VmfWriter & )> tail;                     // after the sides (the editor)
 };
 
 inline void WriteBox( VmfWriter &w, const BoxSpec &b )
@@ -541,6 +549,16 @@ inline void WriteEditor(
 	w.Close();
 }
 
+// The editor block legacy writes for an object with a color and nothing else.
+inline std::function<void( VmfWriter & )> PlainEditor( const std::string &color )
+{
+	return [color]( VmfWriter &w )
+	{
+		WriteEditor(
+		    w, { { "color", color }, { "visgroupshown", "1" }, { "visgroupautoshown", "1" } } );
+	};
+}
+
 inline void WriteHeader( VmfWriter &w, const std::string &mapVersion )
 {
 	w.Open( "versioninfo" );
@@ -552,7 +570,61 @@ inline void WriteHeader( VmfWriter &w, const std::string &mapVersion )
 	w.Close();
 }
 
-// Every well-formed VMF feature, in the writer's canonical layout.
+inline void WriteViewSettings( VmfWriter &w, const std::string &grid )
+{
+	w.Open( "viewsettings" );
+	w.Pair( "bSnapToGrid", "1" );
+	w.Pair( "bShowGrid", "1" );
+	w.Pair( "bShowLogicalGrid", "0" );
+	w.Pair( "nGridSpacing", grid );
+	w.Pair( "bShow3DGrid", "0" );
+	w.Close();
+}
+
+// "v v v ... " with 'count' copies of 'v'.
+inline std::string Repeat( const std::string &v, int count )
+{
+	std::string out;
+	for ( int i = 0; i < count; ++i )
+	{
+		out += ( i ? " " : "" ) + v;
+	}
+	return out;
+}
+
+// Rows "row0".."rowN-1" of a displacement block.
+inline void WriteRows( VmfWriter &w, const std::string &name, int rows, const std::string &row )
+{
+	w.Open( name );
+	for ( int r = 0; r < rows; ++r )
+	{
+		w.Pair( "row" + std::to_string( r ), row );
+	}
+	w.Close();
+}
+
+// A power-2 displacement with every block legacy Hammer writes.
+inline void WriteFullDisplacement( VmfWriter &w, const std::string &start )
+{
+	w.Open( "dispinfo" );
+	w.Pair( "power", "2" );
+	w.Pair( "startposition", start );
+	w.Pair( "flags", "0" );
+	w.Pair( "elevation", "0" );
+	w.Pair( "subdiv", "0" );
+	WriteRows( w, "normals", 5, Repeat( "0 0 1", 5 ) );
+	WriteRows( w, "distances", 5, "0 1.5 3 1.5 0" );
+	WriteRows( w, "offsets", 5, Repeat( "0 0 0", 5 ) );
+	WriteRows( w, "offset_normals", 5, Repeat( "0 0 1", 5 ) );
+	WriteRows( w, "alphas", 5, "0 64 128 64 255" );
+	WriteRows( w, "triangle_tags", 4, "9 9 1 1 9 9 1 1" );
+	w.Open( "allowed_verts" );
+	w.Pair( "10", Repeat( "-1", 10 ) );
+	w.Close();
+	w.Close();
+}
+
+// Every VMF feature the model holds, in the writer's canonical layout.
 inline std::string CanonicalVmf()
 {
 	VmfWriter w;
@@ -573,10 +645,7 @@ inline std::string CanonicalVmf()
 	w.Pair( "visgroupid", "3" );
 	w.Close();
 	w.Close();
-	w.Open( "viewsettings" );
-	w.Pair( "bSnapToGrid", "1" );
-	w.Pair( "nGridSpacing", "16" );
-	w.Close();
+	WriteViewSettings( w, "16" );
 
 	w.Open( "world" );
 	w.Pair( "id", "1" );
@@ -607,29 +676,25 @@ inline std::string CanonicalVmf()
 		b.c = { "-64.5", "-0.333333", "0", "-16", "32", "96.125" };
 		b.sideExtra = []( VmfWriter &e, int side )
 		{
-			if ( side == 1 )
-			{
-				e.Pair( "texturelock", "1" ); // not modeled: kept as an extra pair
-			}
 			if ( side == 0 )
 			{
+				WriteFullDisplacement( e, "[-64.5 -0.333333 96.125]" );
+			}
+			if ( side == 1 )
+			{
+				// A power-3 displacement with the pre-release keys and only the
+				// blocks old files carry.
 				e.Open( "dispinfo" );
-				e.Pair( "power", "2" );
-				e.Pair( "startposition", "[-64.5 -0.333333 96.125]" );
-				e.Pair( "elevation", "0" );
-				e.Pair( "subdiv", "0" );
-				e.Open( "normals" );
-				for ( int row = 0; row < 5; ++row )
-				{
-					e.Pair( "row" + std::to_string( row ), "0 0 1 0 0 1 0 0 1 0 0 1 0 0 1" );
-				}
-				e.Close();
-				e.Open( "distances" );
-				for ( int row = 0; row < 5; ++row )
-				{
-					e.Pair( "row" + std::to_string( row ), "0 1.5 3 1.5 0" );
-				}
-				e.Close();
+				e.Pair( "power", "3" );
+				e.Pair( "startposition", "[0 0 0]" );
+				e.Pair( "flags", "2" );
+				e.Pair( "mintess", "-1" );
+				e.Pair( "smooth", "0.5" );
+				e.Pair( "alpha", "[0 255 0 255]" );
+				e.Pair( "elevation", "8" );
+				e.Pair( "subdiv", "1" );
+				WriteRows( e, "normals", 9, Repeat( "0 0 1", 9 ) );
+				WriteRows( e, "distances", 9, Repeat( "0.25", 9 ) );
 				e.Close();
 			}
 		};
@@ -648,18 +713,12 @@ inline std::string CanonicalVmf()
 	w.Close();
 	w.Open( "group" );
 	w.Pair( "id", "41" );
-	WriteEditor(
-	    w, { { "color", "10 20 30" }, { "visgroupshown", "1" }, { "visgroupautoshown", "1" } } );
+	PlainEditor( "10 20 30" )( w );
 	w.Close();
 	w.Open( "hidden" );
 	w.Open( "group" );
 	w.Pair( "id", "42" );
-	w.Close();
-	w.Close();
-	w.Open( "mystery" );
-	w.Pair( "keep", "me" );
-	w.Open( "nested" );
-	w.Pair( "a", "b" );
+	WriteEditor( w, { { "visgroupshown", "1" }, { "visgroupautoshown", "1" } } );
 	w.Close();
 	w.Close();
 	w.Close(); // world
@@ -680,7 +739,7 @@ inline std::string CanonicalVmf()
 	WriteEditor(
 	    w, { { "color", "220 30 220" }, { "groupid", "40" }, { "visgroupid", "3" },
 	           { "visgroupid", "2" }, { "visgroupshown", "1" }, { "visgroupautoshown", "1" },
-	           { "logicalpos", "[0 500]" }, { "comments", "fires the door" } } );
+	           { "comments", "fires the door" }, { "logicalpos", "[0 500]" } } );
 	w.Close();
 
 	w.Open( "entity" );
@@ -693,15 +752,7 @@ inline std::string CanonicalVmf()
 		b.id = 71;
 		b.firstSide = 72;
 		b.c = { "64", "0", "0", "128", "64", "64" };
-		b.sideExtra = []( VmfWriter &e, int side )
-		{
-			if ( side == 0 )
-			{
-				e.Open( "vertices_plus" );
-				e.Pair( "v", "64 64 64" );
-				e.Close();
-			}
-		};
+		b.tail = PlainEditor( "0 180 90" );
 		WriteBox( w, b );
 	}
 	w.Open( "hidden" );
@@ -710,11 +761,11 @@ inline std::string CanonicalVmf()
 		b.id = 78;
 		b.firstSide = 79;
 		b.c = { "128", "0", "0", "192", "64", "64" };
+		b.tail = PlainEditor( "0 180 90" );
 		WriteBox( w, b );
 	}
 	w.Close();
-	WriteEditor(
-	    w, { { "color", "220 30 220" }, { "visgroupshown", "1" }, { "visgroupautoshown", "1" } } );
+	PlainEditor( "220 30 220" )( w );
 	w.Close();
 
 	w.Open( "hidden" );
@@ -732,9 +783,7 @@ inline std::string CanonicalVmf()
 	w.Pair( "id", "95" );
 	w.Pair( "classname", "info_target" );
 	w.Pair( "origin", "0 0 0" );
-	w.Open( "blob" );
-	w.Pair( "x", "y" );
-	w.Close();
+	WriteEditor( w, { { "visgroupshown", "1" }, { "visgroupautoshown", "0" } } );
 	w.Close();
 
 	w.Open( "cameras" );
@@ -772,10 +821,6 @@ inline std::string CanonicalVmf()
 	w.Close();
 	w.Close();
 	w.Close();
-
-	w.Open( "quickhide" );
-	w.Pair( "count", "0" );
-	w.Close();
 	return w.Text();
 }
 
@@ -786,9 +831,7 @@ inline std::string SingleCordonVmf()
 	WriteHeader( w, "1" );
 	w.Open( "visgroups" );
 	w.Close();
-	w.Open( "viewsettings" );
-	w.Pair( "bSnapToGrid", "1" );
-	w.Close();
+	WriteViewSettings( w, "64" );
 	w.Open( "world" );
 	w.Pair( "id", "1" );
 	w.Pair( "mapversion", "1" );
@@ -805,48 +848,17 @@ inline std::string SingleCordonVmf()
 	return w.Text();
 }
 
-// Recoverable oddities. Each must decode, warn, and keep its content.
-inline std::string OddityVmf()
+// Objects and sides without ids (early files): the one recoverable oddity.
+inline std::string MissingIdsVmf()
 {
 	VmfWriter w;
-	WriteHeader( w, "1" );
 	w.Open( "world" );
 	w.Pair( "id", "1" );
 	w.Pair( "classname", "worldspawn" );
 	{
-		BoxSpec b; // a good solid
+		BoxSpec b;
 		b.id = 10;
 		b.firstSide = 11;
-		WriteBox( w, b );
-	}
-	{
-		BoxSpec b; // three sides
-		b.id = 30;
-		b.firstSide = 31;
-		b.sideCount = 3;
-		WriteBox( w, b );
-	}
-	{
-		BoxSpec b; // a malformed plane
-		b.id = 34;
-		b.firstSide = 140;
-		b.overrides[2] = { { "plane", "(0 0 0) (1 1) (2 2 2)" } };
-		WriteBox( w, b );
-	}
-	w.Open( "hidden" );
-	{
-		BoxSpec b; // three sides, hidden
-		b.id = 36;
-		b.firstSide = 150;
-		b.sideCount = 3;
-		WriteBox( w, b );
-	}
-	w.Close();
-	{
-		BoxSpec b; // reuses side id 11
-		b.id = 50;
-		b.firstSide = 51;
-		b.overrides[5] = { { "id", "11" } };
 		WriteBox( w, b );
 	}
 	{
@@ -854,39 +866,289 @@ inline std::string OddityVmf()
 		b.c = { "200", "0", "0", "264", "64", "64" };
 		WriteBox( w, b );
 	}
+	w.Close();
+	w.Open( "entity" );
+	w.Pair( "classname", "info_target" );
+	w.Pair( "origin", "1 2 3" );
+	w.Close();
+	return w.Text();
+}
+
+// A small complete map the rejection cases each break in one place.
+inline std::string SmallVmf()
+{
+	VmfWriter w;
+	WriteHeader( w, "1" );
+	w.Open( "visgroups" );
+	w.Open( "visgroup" );
+	w.Pair( "name", "A" );
+	w.Pair( "visgroupid", "1" );
+	w.Pair( "color", "1 2 3" );
+	w.Close();
+	w.Close();
+	WriteViewSettings( w, "64" );
+	w.Open( "world" );
+	w.Pair( "id", "1" );
+	w.Pair( "mapversion", "1" );
+	w.Pair( "classname", "worldspawn" );
+	w.Pair( "skyname", "sky" );
 	{
-		BoxSpec b; // a missing group
-		b.id = 57;
-		b.firstSide = 160;
-		b.tail = []( VmfWriter &e )
-		{
-			WriteEditor( e, { { "groupid", "999" } } );
-		};
+		BoxSpec b;
+		b.id = 2;
+		b.firstSide = 3;
+		b.tail = PlainEditor( "1 1 1" );
 		WriteBox( w, b );
 	}
+	{
+		BoxSpec b;
+		b.id = 9;
+		b.firstSide = 10;
+		b.c = { "100", "0", "0", "164", "64", "64" };
+		b.sideExtra = []( VmfWriter &e, int side )
+		{
+			if ( side == 0 )
+			{
+				WriteFullDisplacement( e, "[100 0 64]" );
+			}
+		};
+		b.tail = PlainEditor( "2 2 2" );
+		WriteBox( w, b );
+	}
+	w.Open( "group" );
+	w.Pair( "id", "20" );
+	PlainEditor( "3 3 3" )( w );
+	w.Close();
 	w.Close();
 	w.Open( "entity" );
-	w.Pair( "id", "60" );
+	w.Pair( "id", "30" );
 	w.Pair( "classname", "logic_relay" );
+	w.Pair( "targetname", "r" );
 	w.Open( "connections" );
-	w.Pair( "OnTrigger", "a,b,c,0,-1" );
-	w.Pair( "OnSpawn", "garbage" );
-	w.Pair( "OnUser1", "x,y,z,notanumber,1" );
+	w.Pair( "OnTrigger", "a,b,,0,-1" );
 	w.Close();
+	WriteEditor( w, { { "color", "4 4 4" }, { "visgroupshown", "1" }, { "visgroupautoshown", "1" },
+	                    { "logicalpos", "[0 0]" } } );
 	w.Close();
-	w.Open( "entity" );
-	w.Pair( "id", "bad" );
-	w.Pair( "classname", "info_target" );
+	w.Open( "cameras" );
+	w.Pair( "activecamera", "-1" );
+	w.Open( "camera" );
+	w.Pair( "position", "[0 0 0]" );
+	w.Pair( "look", "[1 0 0]" );
+	w.Close();
 	w.Close();
 	w.Open( "cordons" );
 	w.Pair( "active", "0" );
-	w.Close();
 	w.Open( "cordon" );
+	w.Pair( "name", "c" );
+	w.Pair( "active", "1" );
+	w.Open( "box" );
 	w.Pair( "mins", "(0 0 0)" );
 	w.Pair( "maxs", "(1 1 1)" );
-	w.Pair( "active", "1" );
+	w.Close();
+	w.Close();
 	w.Close();
 	return w.Text();
+}
+
+// --- Text surgery for the rejection cases ---------------------------------------------------
+
+// Offset of the 'occurrence'-th (1-based) 'needle', or npos.
+inline std::size_t FindNth( const std::string &text, const std::string &needle, int occurrence )
+{
+	std::size_t at = std::string::npos;
+	std::size_t from = 0;
+	for ( int i = 0; i < occurrence; ++i )
+	{
+		at = text.find( needle, from );
+		if ( at == std::string::npos )
+		{
+			return at;
+		}
+		from = at + 1;
+	}
+	return at;
+}
+
+// 1-based line of the 'occurrence'-th 'needle'; -1 when absent.
+inline int LineOf( const std::string &text, const std::string &needle, int occurrence = 1 )
+{
+	const std::size_t at = FindNth( text, needle, occurrence );
+	if ( at == std::string::npos )
+	{
+		return -1;
+	}
+	return static_cast<int>( std::count(
+	           text.begin(), text.begin() + static_cast<std::ptrdiff_t>( at ), '\n' ) ) +
+	       1;
+}
+
+// Inserts 'lines' after the line holding the 'occurrence'-th 'marker'.
+inline std::string InsertAfter( const std::string &text, const std::string &marker,
+    const std::string &lines, int occurrence = 1 )
+{
+	const std::size_t at = FindNth( text, marker, occurrence );
+	const std::size_t eol = at == std::string::npos ? std::string::npos : text.find( '\n', at );
+	if ( eol == std::string::npos )
+	{
+		return text + lines;
+	}
+	return text.substr( 0, eol + 1 ) + lines + text.substr( eol + 1 );
+}
+
+inline std::string ReplaceNth(
+    const std::string &text, const std::string &from, const std::string &to, int occurrence = 1 )
+{
+	const std::size_t at = FindNth( text, from, occurrence );
+	if ( at == std::string::npos )
+	{
+		return text;
+	}
+	return text.substr( 0, at ) + to + text.substr( at + from.size() );
+}
+
+// Replaces the whole line holding the 'occurrence'-th 'marker'.
+inline std::string ReplaceLine( const std::string &text, const std::string &marker,
+    const std::string &line, int occurrence = 1 )
+{
+	const std::size_t at = FindNth( text, marker, occurrence );
+	if ( at == std::string::npos )
+	{
+		return text;
+	}
+	const std::size_t bol = text.rfind( '\n', at ) + 1;
+	const std::size_t eol = text.find( '\n', at );
+	return text.substr( 0, bol ) + line + text.substr( eol );
+}
+
+// One kind of content the model cannot hold, in an otherwise valid map. Decode
+// must fail with a message containing 'expect' (block path and reason) at
+// 'line'.
+struct RejectionCase
+{
+	std::string name;
+	std::string text;
+	std::string expect;
+	int line = 0;
+};
+
+inline std::vector<RejectionCase> RejectionCases()
+{
+	const std::string base = SmallVmf();
+	std::vector<RejectionCase> cases;
+	auto add =
+	    [&]( const std::string &name, const std::string &text, const std::string &expect, int line )
+	{
+		cases.push_back( { name, text, expect, line } );
+	};
+	std::string t;
+
+	t = base + "quickhide\n{\n\t\"count\" \"1\"\n}\n";
+	add( "unknown top-level block", t, "quickhide[0]: unknown top-level block 'quickhide'",
+	    LineOf( t, "quickhide" ) );
+	t = "\"loose\" \"1\"\n" + base;
+	add( "key outside any block", t, "key 'loose' is outside any block", 1 );
+	t = base + "world\n{\n}\n";
+	add( "second world block", t, "world: a second 'world' block", LineOf( t, "world\n{", 2 ) );
+	t = InsertAfter( base, "\"prefab\" \"0\"", "\t\"autosave\" \"1\"\n" );
+	add( "unknown versioninfo key", t, "versioninfo: unknown key 'autosave'",
+	    LineOf( t, "autosave" ) );
+	t = InsertAfter( base, "\"bShow3DGrid\" \"0\"", "\t\"nLogicalGridSpacing\" \"8\"\n" );
+	add( "unknown viewsettings key", t, "viewsettings: unknown key 'nLogicalGridSpacing'",
+	    LineOf( t, "nLogicalGridSpacing" ) );
+	t = InsertAfter( base, "\"visgroupid\" \"1\"", "\t\t\"hidden\" \"1\"\n" );
+	add( "unknown visgroup key", t, "visgroups/visgroup[0]: unknown key 'hidden'",
+	    LineOf( t, "\"hidden\"" ) );
+	t = InsertAfter( base, "\"skyname\" \"sky\"", "\tmystery\n\t{\n\t}\n" );
+	add( "unknown world child", t, "world/mystery[0]: unknown block 'mystery'",
+	    LineOf( t, "mystery" ) );
+	t = InsertAfter( base, "\"id\" \"2\"", "\t\t\"note\" \"x\"\n" );
+	add( "unknown solid key", t, "world/solid[0]: unknown key 'note'", LineOf( t, "\"note\"" ) );
+	t = InsertAfter( base, "\"id\" \"4\"", "\t\t\t\"texturelock\" \"1\"\n" );
+	add( "unknown side key", t, "world/solid[0]/side[1]: unknown key 'texturelock'",
+	    LineOf( t, "texturelock" ) );
+	t = InsertAfter( base, "\"id\" \"3\"", "\t\t\tvertices_plus\n\t\t\t{\n\t\t\t}\n" );
+	add( "unknown side child", t,
+	    "world/solid[0]/side[0]/vertices_plus: unknown block 'vertices_plus'",
+	    LineOf( t, "vertices_plus" ) );
+	t = InsertAfter(
+	    base, "\"material\" \"DEV/DEV_MEASUREGENERIC01B\"", "\t\t\t\"material\" \"X\"\n" );
+	add( "duplicate side key", t, "world/solid[0]/side[0]: duplicate key 'material'",
+	    LineOf( t, "\"material\" \"X\"" ) );
+	t = ReplaceLine(
+	    base, "(0 0 0) (64 0 0) (64 64 0)", "\t\t\t\"plane\" \"(0 0 0) (1 1) (2 2 2)\"" );
+	add( "malformed plane", t, "world/solid[0]/side[1]: key 'plane' value", LineOf( t, "(1 1)" ) );
+	t = ReplaceNth( base, "\"id\" \"2\"", "\"id\" \"two\"" );
+	add( "malformed id", t, "world/solid[0]: key 'id' value \"two\" is not an id",
+	    LineOf( t, "\"two\"" ) );
+	t = InsertAfter( base, "\"color\" \"1 1 1\"", "\t\t\t\"cordonsolid\" \"1\"\n" );
+	add( "unknown editor key", t, "world/solid[0]/editor: unknown key 'cordonsolid'",
+	    LineOf( t, "cordonsolid" ) );
+	t = InsertAfter( base, "\"color\" \"1 1 1\"", "\t\t\t\"groupid\" \"999\"\n" );
+	add( "groupid naming no group", t, "world/solid[0]/editor: groupid 999 names no group",
+	    LineOf( t, "\"999\"" ) );
+	t = ReplaceNth( base, "\"logicalpos\" \"[0 0]\"", "\"logicalpos\" \"[1.5 0]\"" );
+	add( "fractional logicalpos", t, "entity[0]/editor: key 'logicalpos' value",
+	    LineOf( t, "[1.5 0]" ) );
+	t = InsertAfter( base, "\"power\" \"2\"", "\t\t\t\t\"uaxis\" \"[1 0 0]\"\n" );
+	add( "unknown dispinfo key", t, "world/solid[1]/side[0]/dispinfo: unknown key 'uaxis'",
+	    LineOf( t, "\"uaxis\" \"[1 0 0]\"" ) );
+	t = ReplaceLine( base, "\"row4\" \"0 0 1", "", 1 );
+	t = ReplaceNth( t, "\n\n", "\n" );
+	add( "missing displacement row", t,
+	    "world/solid[1]/side[0]/dispinfo/normals: has 4 rows; the power needs 5",
+	    LineOf( t, "normals" ) );
+	t = ReplaceNth( base, "\"row0\" \"9 9 1 1 9 9 1 1\"", "\"row0\" \"9 9\"" );
+	add( "short triangle-tag row", t, "dispinfo/triangle_tags: row0 needs 8 numbers, found 2",
+	    LineOf( t, "\"9 9\"" ) );
+	t = ReplaceNth( base, "\"10\" \"-1", "\"9\" \"-1" );
+	add( "allowed_verts key mismatch", t,
+	    "dispinfo/allowed_verts: key '9' is not the word count 10", LineOf( t, "\"9\" \"-1" ) );
+	t = InsertAfter( base, "\"id\" \"30\"", "\tblob\n\t{\n\t}\n" );
+	add(
+	    "unknown entity child", t, "entity[0]/blob[0]: unknown block 'blob'", LineOf( t, "blob" ) );
+	t = ReplaceNth( base, "\"a,b,,0,-1\"", "\"garbage\"" );
+	add( "unparsable connection", t, "entity[0]/connections[0]: connection 'OnTrigger' \"garbage\"",
+	    LineOf( t, "garbage" ) );
+	t = ReplaceNth( base, "\t\"classname\" \"logic_relay\"\n", "" );
+	add( "entity without classname", t, "entity[0]: an entity needs a classname",
+	    LineOf( t, "entity" ) );
+	t = ReplaceNth( base, "\"classname\" \"worldspawn\"", "\"classname\" \"func_detail\"" );
+	add( "world classname", t, "world: key 'classname' value \"func_detail\" is not worldspawn",
+	    LineOf( t, "func_detail" ) );
+	t = InsertAfter( base, "\"id\" \"20\"", "\t\t\"name\" \"g\"\n" );
+	add( "unknown group key", t, "world/group[0]: unknown key 'name'",
+	    LineOf( t, "\"name\" \"g\"" ) );
+	t = InsertAfter( base, "\"color\" \"3 3 3\"", "\t\t\t\"groupid\" \"20\"\n" );
+	add( "group containing itself", t, "world/group[0]: group 20 contains itself",
+	    LineOf( t, "\tgroup" ) );
+	t = ReplaceNth( base, "\"position\" \"[0 0 0]\"", "\"position\" \"[0 0]\"" );
+	add( "malformed camera vector", t, "cameras/camera[0]: key 'position' value",
+	    LineOf( t, "\"position\" \"[0 0]\"" ) );
+	t = InsertAfter( base, "\"maxs\" \"(1 1 1)\"", "\t\t\t\"inset\" \"1\"\n" );
+	add( "unknown cordon box key", t, "cordons/cordon[0]/box[0]: unknown key 'inset'",
+	    LineOf( t, "inset" ) );
+	t = ReplaceNth( base, "\"id\" \"15\"", "\"id\" \"3\"" );
+	add( "duplicate side id", t, "world/solid[1]/side[5]: side id 3 is already used",
+	    LineOf( t, "\"id\" \"3\"", 2 ) - 2 );
+	t = ReplaceNth( base, "\"id\" \"30\"", "\"id\" \"9\"" );
+	add( "duplicate object id", t, "entity[0]: entity id 9 is already used",
+	    LineOf( t, "\"id\" \"9\"", 2 ) - 2 );
+	t = base + "hidden\n{\n\tsolid\n\t{\n\t}\n}\n";
+	add( "hidden non-entity at the top level", t, "hidden[0]/solid[0]: unknown block 'solid'",
+	    LineOf( t, "hidden\n{\n\tsolid" ) + 2 );
+	{
+		// A solid with three sides.
+		VmfWriter w( 1 );
+		BoxSpec b;
+		b.id = 90;
+		b.firstSide = 91;
+		b.sideCount = 3;
+		WriteBox( w, b );
+		t = InsertAfter( base, "\"skyname\" \"sky\"", w.Text() );
+		add( "three-sided solid", t, "world/solid[0]: a solid needs at least four sides; it has 3",
+		    LineOf( t, "\"id\" \"90\"" ) - 2 );
+	}
+	return cases;
 }
 
 // --- Fixture predicates ------------------------------------------------------------------
@@ -910,45 +1172,6 @@ template <typename T> const T *ByVmfId( const std::map<ObjectId, T> &objects, st
 	return nullptr;
 }
 
-// Finds a block named 'name' with "id" 'id' anywhere below 'node'.
-inline const kvtext::KeyValueNode *FindBlock(
-    const kvtext::KeyValueNode &node, const std::string &name, const std::string &id )
-{
-	for ( const kvtext::KeyValueNode &child : node.children )
-	{
-		const std::string *value = child.Find( "id" );
-		if ( child.name == name && value && *value == id )
-		{
-			return &child;
-		}
-		if ( const kvtext::KeyValueNode *inner = FindBlock( child, name, id ) )
-		{
-			return inner;
-		}
-	}
-	return nullptr;
-}
-
-inline bool HasPair(
-    const kvtext::KeyValueNode &node, const std::string &key, const std::string &value )
-{
-	for ( const kvtext::KeyValue &kv : node.pairs )
-	{
-		if ( kv.key == key && kv.value == value )
-		{
-			return true;
-		}
-	}
-	for ( const kvtext::KeyValueNode &child : node.children )
-	{
-		if ( HasPair( child, key, value ) )
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
 inline Findings CanonicalFixture( const IMapCodec &codec )
 {
 	Findings f;
@@ -964,11 +1187,10 @@ inline Findings CanonicalFixture( const IMapCodec &codec )
 	f.Expect( decoded->warnings.empty(), "canonical fixture decodes without warnings" );
 
 	// Document settings.
-	f.Expect(
-	    s.versionInfo.size() == 5 && s.versionInfo[2] == kvtext::KeyValue{ "mapversion", "3" },
-	    "versioninfo pairs in order" );
-	f.Expect( Same( s.viewSettings, { { "bSnapToGrid", "1" }, { "nGridSpacing", "16" } } ),
-	    "viewsettings pairs in order" );
+	const hammer::scene::VersionInfo version{ 400, 8864, 3, 100, false };
+	f.Expect( s.version == version, "versioninfo fields" );
+	const hammer::scene::ViewSettings view{ true, true, false, 16, false };
+	f.Expect( s.view == view, "viewsettings fields" );
 	f.Expect( s.visgroups.size() == 2 && s.visgroups[0].name == "Walls" && s.visgroups[0].id == 2 &&
 	              s.visgroups[0].color == hammer::scene::Rgb{ 255, 0, 0 } &&
 	              s.visgroups[0].children.size() == 1 && s.visgroups[0].children[0].id == 5 &&
@@ -981,10 +1203,6 @@ inline Findings CanonicalFixture( const IMapCodec &codec )
 	f.Expect( Same( s.worldKeys, { { "mapversion", "3" }, { "skyname", "sky_day01_01" },
 	                                 { "maxpropscreenwidth", "-1" } } ),
 	    "worldspawn keys in order, without id and classname" );
-	f.Expect( s.worldExtraChildren.size() == 1 && s.worldExtraChildren[0].name == "mystery" &&
-	              s.worldExtraChildren[0].children.size() == 1 &&
-	              s.worldExtraChildren[0].children[0].name == "nested",
-	    "unknown world child kept verbatim" );
 	f.Expect( s.activeCamera == 1 && s.cameras.size() == 2 &&
 	              s.cameras[0].position == Vec3d( 0, -128, 64 ) &&
 	              s.cameras[1].position == Vec3d( 256.5, 12.25, -3 ) &&
@@ -997,10 +1215,6 @@ inline Findings CanonicalFixture( const IMapCodec &codec )
 	              s.cordons[0].boxes[1].maxs == Vec3d( 700, 100, 100 ) &&
 	              s.cordons[1].name == "off" && !s.cordons[1].active,
 	    "cordon list with names, flags and boxes" );
-	const std::vector<kvtext::KeyValue> quickhide = { { "count", "0" } };
-	f.Expect( s.unknownBlocks.size() == 1 && s.unknownBlocks[0].name == "quickhide" &&
-	              s.unknownBlocks[0].pairs == quickhide,
-	    "unknown top-level block kept verbatim" );
 
 	// Objects.
 	f.Expect( doc.Solids().size() == 4 && doc.Entities().size() == 4 && doc.Groups().size() == 3,
@@ -1039,39 +1253,62 @@ inline Findings CanonicalFixture( const IMapCodec &codec )
 		f.Expect( top.texture.rotation == 15 && top.texture.lightmapScale == 32,
 		    "rotation and lightmap scale" );
 		f.Expect( top.texture.smoothingGroups == 0x80000000u, "smoothing groups (signed text)" );
+		f.Expect( !top.displacement, "a flat side has no displacement" );
 	}
 	f.Expect( !s10->owner.IsValid() && !s10->hidden && s10->group == g40->id,
 	    "world solid: no owner, visible, in group 40" );
 	f.Expect( s10->editor.color == hammer::scene::Rgb{ 0, 180, 90 } &&
-	              Same( s10->editor.visgroupIds, { 5 } ) && s10->editor.visgroupShown,
+	              Same( s10->editor.visgroupIds, { 5 } ) && s10->editor.visgroupShown &&
+	              !s10->editor.logicalPos && !s10->editor.comments,
 	    "solid editor color and visgroup" );
 	f.Expect( s20->hidden && !s20->owner.IsValid(), "hidden world solid" );
 	f.Expect( !s20->editor.visgroupShown && s20->editor.visgroupAutoShown, "visgroup shown flags" );
-	if ( s20->sides.size() == 6 )
+	if ( f.Expect(
+	         s20->sides.size() == 6 && s20->sides[0].displacement && s20->sides[1].displacement,
+	         "two displaced sides" ) )
 	{
-		f.Expect( s20->sides[0].dispinfo && s20->sides[0].dispinfo->Find( "power" ) &&
-		              *s20->sides[0].dispinfo->Find( "power" ) == "2" &&
-		              s20->sides[0].dispinfo->children.size() == 2,
-		    "displacement kept verbatim on its side" );
 		f.Expect( s20->sides[0].points[0] == Vec3d( -64.5, 32, 96.125 ) &&
 		              s20->sides[0].points[2] == Vec3d( -16, -0.333333, 96.125 ),
 		    "fractional plane points exactly" );
+		const hammer::scene::Displacement &d = *s20->sides[0].displacement;
+		f.Expect( d.power == 2 && d.startPosition == Vec3d( -64.5, -0.333333, 96.125 ) &&
+		              d.flags == 0 && d.elevation == 0 && !d.subdivided && !d.minTess &&
+		              !d.smoothingAngle && !d.cornerAlphas,
+		    "displacement scalars" );
+		f.Expect( d.normals && d.normals->size() == 25 && ( *d.normals )[24] == Vec3d( 0, 0, 1 ),
+		    "25 displacement normals" );
+		f.Expect( d.distances && d.distances->size() == 25 && ( *d.distances )[1] == 1.5 &&
+		              ( *d.distances )[7] == 3,
+		    "displacement distances row-major" );
+		f.Expect( d.offsets && d.offsets->size() == 25 && d.offsetNormals &&
+		              d.offsetNormals->size() == 25,
+		    "displacement offsets and offset normals" );
 		f.Expect(
-		    Same( s20->sides[1].extraPairs, { { "texturelock", "1" } } ), "unknown side key kept" );
-	}
-	else
-	{
-		f.Expect( false, "hidden solid has six sides" );
+		    d.alphas && d.alphas->size() == 25 && ( *d.alphas )[4] == 255, "displacement alphas" );
+		f.Expect( d.triangleTags && d.triangleTags->size() == 32 && ( *d.triangleTags )[0] == 9 &&
+		              ( *d.triangleTags )[2] == 1,
+		    "two triangle tags per quad" );
+		f.Expect( d.allowedVerts && d.allowedVerts->size() == 10 && ( *d.allowedVerts )[9] == -1,
+		    "allowed verts words" );
+		const hammer::scene::Displacement &old = *s20->sides[1].displacement;
+		const std::array<double, 4> corners = { 0, 255, 0, 255 };
+		f.Expect( old.power == 3 && old.flags == 2 && old.minTess == -1 &&
+		              old.smoothingAngle == 0.5 && old.cornerAlphas == corners &&
+		              old.elevation == 8 && old.subdivided,
+		    "pre-release displacement keys" );
+		f.Expect( old.normals && old.normals->size() == 81 && old.distances &&
+		              old.distances->size() == 81 && ( *old.distances )[80] == 0.25,
+		    "power 3 rows hold 9 x 9 values" );
+		f.Expect( !old.offsets && !old.offsetNormals && !old.alphas && !old.triangleTags &&
+		              !old.allowedVerts,
+		    "blocks the file omits stay absent" );
 	}
 	f.Expect( s71->owner == e70->id && !s71->hidden && s78->owner == e70->id && s78->hidden,
 	    "brush entity owns its solids (one hidden)" );
-	f.Expect( !s71->sides.empty() && s71->sides[0].extraChildren.size() == 1 &&
-	              s71->sides[0].extraChildren[0].name == "vertices_plus",
-	    "unknown side child kept" );
 	f.Expect( g40->group == g41->id && !g41->group.IsValid() &&
 	              g40->editor.color == hammer::scene::Rgb{ 242, 195, 0 },
 	    "nested groups" );
-	f.Expect( g42->hidden && !g40->hidden, "hidden group" );
+	f.Expect( g42->hidden && !g40->hidden && !g42->editor.color, "hidden group without a color" );
 	const std::vector<kvtext::KeyValue> relayKeys = {
 	    { "targetname", "relay" }, { "spawnflags", "0" }, { "spawnflags", "1" } };
 	f.Expect( e60->classname == "logic_relay" && e60->keys == relayKeys,
@@ -1091,14 +1328,15 @@ inline Findings CanonicalFixture( const IMapCodec &codec )
 	}
 	f.Expect( e60->group == g40->id && Same( e60->editor.visgroupIds, { 3, 2 } ),
 	    "entity group and visgroups" );
-	f.Expect( Same( e60->editor.extra,
-	              { { "logicalpos", "[0 500]" }, { "comments", "fires the door" } } ),
-	    "editor extras in order" );
+	const std::array<int, 2> logical = { 0, 500 };
+	f.Expect( e60->editor.logicalPos == logical &&
+	              e60->editor.comments == std::string( "fires the door" ),
+	    "logical position and comments" );
 	f.Expect(
 	    hammer::scene::EntitySolids( doc, e70->id ).size() == 2, "brush entity has two solids" );
 	f.Expect( e90->hidden && !e60->hidden && !e70->hidden, "hidden point entity" );
-	f.Expect( e95->extraChildren.size() == 1 && e95->extraChildren[0].name == "blob",
-	    "unknown entity child kept" );
+	f.Expect( !e95->editor.color && e95->editor.visgroupShown && !e95->editor.visgroupAutoShown,
+	    "an editor block without a color" );
 	return f;
 }
 
@@ -1119,97 +1357,182 @@ inline Findings SingleCordonFixture( const IMapCodec &codec )
 	return f;
 }
 
-inline Findings OddityFixture( const IMapCodec &codec )
+// Missing ids are the only lossless oddity: fresh unique ids and one warning.
+inline Findings MissingIdsFixture( const IMapCodec &codec )
 {
 	Findings f;
-	const std::string text = OddityVmf();
-	const std::optional<DecodedMap> decoded = DecodeOrReport( codec, text, 3, f, "oddities" );
+	const std::string text = MissingIdsVmf();
+	const std::optional<DecodedMap> decoded = DecodeOrReport( codec, text, 3, f, "missing ids" );
 	if ( !decoded )
 	{
 		return f;
 	}
 	const MapDocument &doc = decoded->document;
-	f.Expect( doc.Validate().empty(), "oddity fixture decodes to a consistent document" );
-	// Solids 10, 50, 57 and the id-less one are modeled; 30, 34 and 36 are not.
-	f.Expect( doc.Solids().size() == 4, "four modeled solids" );
-	f.Expect( decoded->warnings.size() >= 9, "a warning per oddity (at least nine)" );
-	const Solid *s10 = ByVmfId( doc.Solids(), 10 );
-	const Solid *s50 = ByVmfId( doc.Solids(), 50 );
-	const Solid *s57 = ByVmfId( doc.Solids(), 57 );
-	f.Expect( s10 && s10->sides.size() == 6 && s10->sides[0].vmfId == 11,
-	    "the first owner of a side id keeps it" );
-	if ( s50 && s50->sides.size() == 6 )
-	{
-		f.Expect(
-		    s50->sides[0].vmfId == 51 && s50->sides[4].vmfId == 55 && s50->sides[5].vmfId > 160,
-		    "a duplicate side id is replaced by a fresh one above every file id" );
-	}
-	else
-	{
-		f.Expect( false, "solid 50 has six sides" );
-	}
-	f.Expect( s57 && !s57->group.IsValid(), "a missing group leaves the solid ungrouped" );
-	std::set<std::uint32_t> ids;
-	bool fresh = true;
+	f.Expect( doc.Validate().empty(), "missing-id fixture decodes to a consistent document" );
+	f.Expect( decoded->warnings.size() == 1, "one warning names the fresh ids" );
+	// The file holds ids 1 and 10..16; everything else is fresh.
+	std::vector<std::uint32_t> all;
 	for ( const auto &[id, solid] : doc.Solids() )
 	{
-		fresh = fresh && solid.vmfId != 0;
+		all.push_back( solid.vmfId );
 		for ( const hammer::scene::Side &side : solid.sides )
 		{
-			fresh = fresh && side.vmfId != 0 && ids.insert( side.vmfId ).second;
+			all.push_back( side.vmfId );
 		}
 	}
-	f.Expect( fresh, "id-less solids and sides get fresh unique ids" );
-	const Entity *e60 = ByVmfId( doc.Entities(), 60 );
-	f.Expect( e60 && e60->connections.size() == 1, "the parsable connection is modeled" );
-	f.Expect( doc.Entities().size() == 2, "both entities decode" );
-	bool freshEntity = false;
 	for ( const auto &[id, entity] : doc.Entities() )
 	{
-		freshEntity = freshEntity || ( entity.classname == "info_target" && entity.vmfId > 160 );
+		all.push_back( entity.vmfId );
 	}
-	f.Expect( freshEntity, "a malformed entity id is replaced by a fresh one" );
-	f.Expect( doc.Settings().cordonForm == DocumentSettings::CordonForm::List,
-	    "the first cordon block wins" );
-
-	// Unmodeled content survives an encode.
-	const std::optional<std::string> encoded = EncodeOrReport( codec, doc, f, "oddities encode" );
-	if ( !encoded )
+	const std::set<std::uint32_t> ids( all.begin(), all.end() );
+	bool fresh = ids.size() == all.size() && all.size() == 15;
+	for ( const std::uint32_t id : ids )
 	{
-		return f;
+		fresh = fresh && ( ( id >= 10 && id <= 16 ) || id > 16 );
 	}
-	const kvtext::ParseResult out = kvtext::ParseKeyValues( *encoded );
-	f.Expect( out.ok, "encoded oddities parse" );
-	const kvtext::KeyValueNode *s30 = FindBlock( out.root, "solid", "30" );
-	f.Expect( s30 && s30->children.size() == 3, "the three-sided solid is kept verbatim" );
-	const kvtext::KeyValueNode *s34 = FindBlock( out.root, "solid", "34" );
-	f.Expect( s34 && HasPair( *s34, "plane", "(0 0 0) (1 1) (2 2 2)" ),
-	    "the solid with a malformed plane is kept verbatim" );
-	bool hiddenKept = false;
-	for ( const kvtext::KeyValueNode &top : out.root.children )
-	{
-		const kvtext::KeyValueNode *hidden = nullptr;
-		for ( const kvtext::KeyValueNode &child : top.children )
-		{
-			if ( child.name == "hidden" && FindBlock( child, "solid", "36" ) )
-			{
-				hidden = &child;
-			}
-		}
-		hiddenKept = hiddenKept || hidden;
-	}
-	f.Expect( hiddenKept, "a hidden unmodeled solid stays inside its hidden wrapper" );
-	f.Expect( HasPair( out.root, "OnSpawn", "garbage" ) &&
-	              HasPair( out.root, "OnUser1", "x,y,z,notanumber,1" ),
-	    "unparsable connections are kept verbatim" );
-	f.Expect( HasPair( out.root, "maxs", "(1 1 1)" ), "the second cordon block is kept verbatim" );
-
+	f.Expect( fresh && *ids.rbegin() > 16, "fresh ids are unique and above every file id" );
+	const Solid *kept = ByVmfId( doc.Solids(), 10 );
+	f.Expect( kept && kept->sides[0].vmfId == 11, "ids the file has are kept" );
 	Findings stable = RoundTrip( codec, text, 3 );
 	for ( const std::string &p : stable.problems )
 	{
-		f.problems.push_back( "oddity round trip: " + p );
+		f.problems.push_back( "missing-id round trip: " + p );
 	}
 	return f;
+}
+
+// Every kind of content the model cannot hold is rejected with its block path
+// and source line; nothing is dropped silently.
+inline Findings RejectsUnmodeled( const IMapCodec &codec )
+{
+	Findings f;
+	f.Expect(
+	    codec.Decode( SmallVmf(), 1 ).HasValue(), "the base map of the rejection cases decodes" );
+	for ( const RejectionCase &c : RejectionCases() )
+	{
+		const auto result = codec.Decode( c.text, 1 );
+		if ( result )
+		{
+			f.problems.push_back( c.name + ": accepted content the model cannot hold" );
+			continue;
+		}
+		const hammer::ports::CodecError &e = result.Error();
+		f.Expect( e.message.find( c.expect ) != std::string::npos,
+		    c.name + ": message \"" + e.message + "\" lacks \"" + c.expect + "\"" );
+		f.Expect( e.line == c.line, c.name + ": line " + std::to_string( e.line ) + ", expected " +
+		                                std::to_string( c.line ) );
+	}
+	return f;
+}
+
+// --- File-level semantics (for maps from other writers) ------------------------------------
+
+// Structural counts of a map, from its text or from a decoded document.
+struct ContentCounts
+{
+	std::size_t solids = 0;
+	std::size_t sides = 0;
+	std::size_t displacements = 0;
+	std::size_t entities = 0;
+	std::size_t connections = 0;
+	std::size_t groups = 0;
+	std::size_t visgroups = 0;
+	std::size_t hidden = 0;
+	std::size_t cameras = 0;
+	std::size_t cordons = 0;
+
+	friend bool operator==( const ContentCounts &, const ContentCounts & ) = default;
+
+	std::string Describe() const
+	{
+		return "solids " + std::to_string( solids ) + ", sides " + std::to_string( sides ) +
+		       ", displacements " + std::to_string( displacements ) + ", entities " +
+		       std::to_string( entities ) + ", connections " + std::to_string( connections ) +
+		       ", groups " + std::to_string( groups ) + ", visgroups " +
+		       std::to_string( visgroups ) + ", hidden " + std::to_string( hidden ) + ", cameras " +
+		       std::to_string( cameras ) + ", cordons " + std::to_string( cordons );
+	}
+};
+
+inline void CountBlocks( const kvtext::KeyValueNode &node, ContentCounts &c )
+{
+	for ( const kvtext::KeyValueNode &child : node.children )
+	{
+		const std::string &n = child.name;
+		c.solids += n == "solid";
+		c.sides += n == "side";
+		c.displacements += n == "dispinfo";
+		c.entities += n == "entity";
+		c.connections += n == "connections" ? child.pairs.size() : 0;
+		c.groups += n == "group";
+		c.visgroups += n == "visgroup";
+		c.hidden += n == "hidden" ? child.children.size() : 0;
+		c.cameras += n == "camera";
+		if ( n == "cordons" )
+		{
+			c.cordons += child.children.size();
+			continue;
+		}
+		c.cordons += n == "cordon";
+		CountBlocks( child, c );
+	}
+}
+
+inline ContentCounts CountText( const kvtext::KeyValueNode &root )
+{
+	ContentCounts c;
+	CountBlocks( root, c );
+	return c;
+}
+
+inline std::size_t CountVisgroups( const std::vector<hammer::scene::Visgroup> &tree )
+{
+	std::size_t n = 0;
+	for ( const hammer::scene::Visgroup &v : tree )
+	{
+		n += 1 + CountVisgroups( v.children );
+	}
+	return n;
+}
+
+inline ContentCounts CountDocument( const MapDocument &doc )
+{
+	ContentCounts c;
+	c.solids = doc.Solids().size();
+	c.entities = doc.Entities().size();
+	c.groups = doc.Groups().size();
+	for ( const auto &[id, solid] : doc.Solids() )
+	{
+		c.sides += solid.sides.size();
+		c.hidden += solid.hidden;
+		for ( const hammer::scene::Side &side : solid.sides )
+		{
+			c.displacements += side.displacement.has_value();
+		}
+	}
+	for ( const auto &[id, entity] : doc.Entities() )
+	{
+		c.connections += entity.connections.size();
+		c.hidden += entity.hidden;
+	}
+	for ( const auto &[id, group] : doc.Groups() )
+	{
+		c.hidden += group.hidden;
+	}
+	c.visgroups = CountVisgroups( doc.Settings().visgroups );
+	c.cameras = doc.Settings().cameras.size();
+	c.cordons = doc.Settings().cordons.size();
+	return c;
+}
+
+// Compares two parsed maps: block names and order, key/value multisets, with
+// every numeric token compared by value (legacy MSVC writes "1.52588e-005").
+inline kvtext::CompareResult CompareFileSemantics(
+    kvtext::KeyValueNode original, kvtext::KeyValueNode written )
+{
+	NormalizeNumbers( original );
+	NormalizeNumbers( written );
+	return kvtext::CompareKeyValues( original, written );
 }
 
 } // namespace map_codec_oracle

@@ -75,8 +75,8 @@ Selection Prune( const scene::DocumentReader &doc, const Selection &selection );
 Selection SelectAll( const scene::DocumentReader &doc, SelectionGranularity granularity,
     bool includeHidden = false );
 // Every top-level object (per granularity) not currently selected.
-Selection InvertSelection( const scene::DocumentReader &doc, const Selection &current,
-    SelectionGranularity granularity );
+Selection InvertSelection(
+    const scene::DocumentReader &doc, const Selection &current, SelectionGranularity granularity );
 
 } // namespace hammer::app
 

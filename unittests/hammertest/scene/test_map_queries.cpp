@@ -53,19 +53,25 @@ int main()
 		bare = edit.Add( n );
 
 		// Queries run on the staged edit too.
-		checks.Equal( GroupMembers( edit, outer ).size(), std::size_t( 2 ), "staged: outer has inner + door" );
+		checks.Equal( GroupMembers( edit, outer ).size(), std::size_t( 2 ),
+		    "staged: outer has inner + door" );
 		CommitEdit( doc, edit );
 	}
 
-	checks.That( GroupMembers( doc, outer ) == std::vector<ObjectId>{ inner, door }, "outer's direct members" );
-	checks.That( GroupMembers( doc, inner ) == std::vector<ObjectId>{ grouped }, "brush-entity solids stay with the entity" );
+	checks.That( GroupMembers( doc, outer ) == std::vector<ObjectId>{ inner, door },
+	    "outer's direct members" );
+	checks.That( GroupMembers( doc, inner ) == std::vector<ObjectId>{ grouped },
+	    "brush-entity solids stay with the entity" );
 	checks.That( EntitySolids( doc, door ) == std::vector<ObjectId>{ doorSolid }, "entity solids" );
 
 	const std::vector<ObjectId> all = ExpandObjects( doc, { outer } );
-	checks.That( all == std::vector<ObjectId>{ outer, inner, grouped, door, doorSolid }, "expand a group" );
-	checks.That( ExpandToLeaves( doc, { outer } ) == std::vector<ObjectId>{ grouped, door, doorSolid },
+	checks.That(
+	    all == std::vector<ObjectId>{ outer, inner, grouped, door, doorSolid }, "expand a group" );
+	checks.That(
+	    ExpandToLeaves( doc, { outer } ) == std::vector<ObjectId>{ grouped, door, doorSolid },
 	    "leaves drop groups" );
-	checks.That( ExpandObjects( doc, { door, door, doorSolid } ) == std::vector<ObjectId>{ door, doorSolid },
+	checks.That(
+	    ExpandObjects( doc, { door, door, doorSolid } ) == std::vector<ObjectId>{ door, doorSolid },
 	    "expansion deduplicates" );
 	ObjectId unknown;
 	unknown.value = 12345;
@@ -77,23 +83,30 @@ int main()
 	checks.That( TopLevelOf( doc, loose ) == loose, "a loose solid is top level" );
 
 	const std::optional<Box> lampBox = ObjectBounds( doc, lamp );
-	checks.That( lampBox && lampBox->mins == Vec3d( 42, 42, 42 ) && lampBox->maxs == Vec3d( 58, 58, 58 ),
+	checks.That(
+	    lampBox && lampBox->mins == Vec3d( 42, 42, 42 ) && lampBox->maxs == Vec3d( 58, 58, 58 ),
 	    "point entity bounds use the half size" );
 	const std::optional<Box> doorBox = ObjectBounds( doc, door );
-	checks.That( doorBox && doorBox->mins == Vec3d( 0, 100, 0 ) && doorBox->maxs == Vec3d( 8, 164, 128 ),
+	checks.That(
+	    doorBox && doorBox->mins == Vec3d( 0, 100, 0 ) && doorBox->maxs == Vec3d( 8, 164, 128 ),
 	    "brush entity bounds are its solids" );
 	const std::optional<Box> groupBox = ObjectBounds( doc, outer );
-	checks.That( groupBox && groupBox->mins == Vec3d( 0, 0, 0 ) && groupBox->maxs == Vec3d( 116, 164, 128 ),
+	checks.That(
+	    groupBox && groupBox->mins == Vec3d( 0, 0, 0 ) && groupBox->maxs == Vec3d( 116, 164, 128 ),
 	    "group bounds cover nested members" );
-	checks.That( !ObjectBounds( doc, bare ), "an originless point entity has no bounds (negative)" );
+	checks.That(
+	    !ObjectBounds( doc, bare ), "an originless point entity has no bounds (negative)" );
 	checks.That( !ObjectBounds( doc, unknown ), "unknown id has no bounds" );
 
 	checks.That( NameMatches( "door_01", "Door_01" ), "names match case-insensitively" );
-	checks.That( NameMatches( "door*", "Door_01" ) && !NameMatches( "door*", "lamp" ), "trailing wildcard" );
+	checks.That(
+	    NameMatches( "door*", "Door_01" ) && !NameMatches( "door*", "lamp" ), "trailing wildcard" );
 	checks.That( !NameMatches( "door", "door_01" ), "no implicit prefix match" );
-	checks.That( FindEntitiesByName( doc, "lamp*" ) == std::vector<ObjectId>{ lamp }, "find by name" );
+	checks.That(
+	    FindEntitiesByName( doc, "lamp*" ) == std::vector<ObjectId>{ lamp }, "find by name" );
 	checks.That( FindEntitiesByName( doc, "" ).empty(), "empty pattern finds nothing (negative)" );
-	checks.That( FindEntitiesByClass( doc, "func_*" ) == std::vector<ObjectId>{ door }, "find by class" );
+	checks.That(
+	    FindEntitiesByClass( doc, "func_*" ) == std::vector<ObjectId>{ door }, "find by class" );
 
 	const std::uint32_t sideId = doc.FindSolid( grouped )->sides[2].vmfId;
 	const std::optional<FaceRef> face = FindSideById( doc, sideId );

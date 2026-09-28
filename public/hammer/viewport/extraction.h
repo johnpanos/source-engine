@@ -46,6 +46,7 @@
 #include "hammer/ports/entity_catalog.h"
 #include "hammer/scene/change_set.h"
 #include "hammer/scene/map_document.h"
+#include "hammer/scene/displacement_geometry.h"
 #include "hammer/scene/solid_geometry.h"
 #include "hammer/viewport/camera.h"
 #include "hammer/viewport/view_policy.h"
@@ -64,6 +65,9 @@ struct FaceDraw
 	std::string material;
 	std::vector<mapgeometry::Vec3d> vertices; // counter-clockwise from outside
 	mapgeometry::Vec3d normal;                // outward
+	// A displaced side draws this mesh in place of its flat polygon (legacy);
+	// absent for ordinary faces and for malformed displacements.
+	std::optional<mapgeometry::DisplacementSurface> displacement;
 	bool selected = false;
 
 	friend bool operator==( const FaceDraw &, const FaceDraw & ) = default;

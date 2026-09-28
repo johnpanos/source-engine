@@ -55,7 +55,8 @@ int main()
 		mapped = mapped && f.material == box.sides[f.sourcePlane].texture.material;
 	checks.That( mapped, "faces carry their side's material" );
 	const std::optional<Box> b = SolidBounds( box );
-	checks.That( b && b->mins == Vec3d( -32, 0, 0 ) && b->maxs == Vec3d( 32, 64, 128 ), "exact bounds" );
+	checks.That(
+	    b && b->mins == Vec3d( -32, 0, 0 ) && b->maxs == Vec3d( 32, 64, 128 ), "exact bounds" );
 
 	// Points from a plane reproduce the plane.
 	{
@@ -65,7 +66,8 @@ int main()
 		Side s;
 		s.points = PointsFromPlane( p );
 		const mapgeometry::Plane q = s.Plane();
-		checks.That( mapgeometry::NearlyEqual( q.normal, p.normal, 1e-12 ) && std::fabs( q.dist - 17 ) < 1e-9,
+		checks.That( mapgeometry::NearlyEqual( q.normal, p.normal, 1e-12 ) &&
+		                 std::fabs( q.dist - 17 ) < 1e-9,
 		    "PointsFromPlane round-trips" );
 		mapgeometry::Plane down;
 		down.normal = Vec3d( 0, 0, -1 );
@@ -100,15 +102,30 @@ int main()
 		checks.That( !NormalizeSides( open ), "open side set refused" );
 	}
 
+	// Ray entry maps back to the entered side.
+	{
+		const std::optional<SolidRayHit> hit =
+		    RayEnterSolid( box, Vec3d( 0, 32, 500 ), Vec3d( 0, 0, -1 ) );
+		checks.That( hit && hit->t == 372 && hit->point == Vec3d( 0, 32, 128 ) &&
+		                 hit->normal == Vec3d( 0, 0, 1 ),
+		    "a downward ray enters the top" );
+		checks.That( hit && box.sides[hit->side].Plane().normal == Vec3d( 0, 0, 1 ),
+		    "the hit names the top side" );
+		checks.That( !RayEnterSolid( box, Vec3d( 0, 32, 500 ), Vec3d( 0, 0, 1 ) ),
+		    "a ray pointing away misses (negative)" );
+	}
+
 	// Box arithmetic.
 	{
 		Box a{ Vec3d( 0, 0, 0 ), Vec3d( 10, 10, 10 ) };
 		const Box c{ Vec3d( 10, 0, 0 ), Vec3d( 20, 10, 10 ) };
-		checks.That( a.Intersects( c ) && !a.Intersects( c, -0.5 ), "touching boxes intersect only with slack" );
+		checks.That( a.Intersects( c ) && !a.Intersects( c, -0.5 ),
+		    "touching boxes intersect only with slack" );
 		checks.That( a.Encloses( { Vec3d( 1, 1, 1 ), Vec3d( 9, 9, 9 ) } ), "enclosure" );
 		checks.That( !a.Encloses( c ), "partial overlap is not enclosure" );
 		a.Extend( c );
-		checks.That( a.maxs == Vec3d( 20, 10, 10 ) && a.Center() == Vec3d( 10, 5, 5 ), "extend and center" );
+		checks.That(
+		    a.maxs == Vec3d( 20, 10, 10 ) && a.Center() == Vec3d( 10, 5, 5 ), "extend and center" );
 		checks.That( PointBox( Vec3d( 1, 2, 3 ) ).Size() == Vec3d(), "point box has no size" );
 	}
 

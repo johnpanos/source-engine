@@ -1,13 +1,16 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Headless Hammer host (RFC 0002 map-building loop). A composition
-//			root that runs command scripts through the shared command layer
-//			(hammer::app::EditorCommands) against the disk, with no UI. The GTK
-//			editor, UI-driven tests and an MCP server drive the same commands.
+//			root that runs command scripts through the domain command layer
+//			(hammer::app::SessionCommands over an EditSession) against the
+//			disk, with no UI, composing the full-fidelity VMF codec, the tool
+//			process map builder and, with --fgd, the FGD entity catalog. UI
+//			hosts, UI-driven tests and the MCP server drive the same commands.
 //
 //			hammer_cli --script room.hcmd --root <dir>   run a script
 //			hammer_cli --mcp --root <dir>                 serve MCP on stdin/stdout
 //			hammer_cli --commands                         list the command catalog
+//			  [--fgd FILE]  entity schema (its @includes resolve beside it)
 //
 //			Script paths are relative to --root (default: the working
 //			directory). Absolute paths and ".." components are rejected.
@@ -18,12 +21,15 @@
 #include "hammer/adapters/platform/disk_file_store.h"
 #include "hammer/adapters/mcp/mcp_server.h"
 #include "hammer/adapters/platform/tool_process_map_builder.h"
-#include "hammer/app/editor_commands.h"
+#include "hammer/app/session_commands.h"
+#include "hammer/formats/fgd_entity_catalog.h"
+#include "hammer/formats/vmf_map_codec.h"
 
 #include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <iterator>
 #include <sstream>
 #include <string>
@@ -89,14 +95,14 @@ private:
 int Usage()
 {
 	std::fprintf( stderr,
-	    "usage: hammer_cli (--script FILE | --mcp) [--root DIR] [--repo DIR] [--builds DIR] | "
-	    "--commands\n" );
+	    "usage: hammer_cli (--script FILE | --mcp) [--root DIR] [--repo DIR] [--builds DIR] "
+	    "[--fgd FILE] | --commands\n" );
 	return 2;
 }
 
 int ListCommands()
 {
-	for ( const hammer::app::CommandInfo &info : hammer::app::EditorCommands::Catalog() )
+	for ( const hammer::app::CommandInfo &info : hammer::app::SessionCommands::Catalog() )
 	{
 		std::printf( "%s", info.name.c_str() );
 		for ( const std::string &arg : info.required )
@@ -116,6 +122,7 @@ int main( int argc, char **argv )
 	std::string root;
 	std::string repo = ".";
 	std::string builds;
+	std::string fgd;
 	bool mcp = false;
 	for ( int i = 1; i < argc; ++i )
 	{
@@ -132,13 +139,42 @@ int main( int argc, char **argv )
 			repo = argv[++i];
 		else if ( arg == "--builds" && i + 1 < argc )
 			builds = argv[++i];
+		else if ( arg == "--fgd" && i + 1 < argc )
+			fgd = argv[++i];
 		else
 			return Usage();
 	}
 	if ( script.empty() == !mcp )
 		return Usage();
 
-	hammer::app::EditorController controller;
+	// An entity schema is optional; without one any class name is accepted.
+	std::optional<hammer::formats::FgdEntityCatalog> catalog;
+	if ( !fgd.empty() )
+	{
+		const std::string dir =
+		    fgd.find( '/' ) == std::string::npos ? "." : fgd.substr( 0, fgd.rfind( '/' ) );
+		auto loaded = hammer::formats::FgdEntityCatalog::Load( fgd,
+		    [&]( const std::string &name ) -> std::optional<std::string>
+		    {
+			    std::ifstream in( name == fgd ? name : dir + "/" + name, std::ios::binary );
+			    if ( !in )
+				    return std::nullopt;
+			    return std::string(
+			        ( std::istreambuf_iterator<char>( in ) ), std::istreambuf_iterator<char>() );
+		    } );
+		if ( !loaded )
+		{
+			std::fprintf( stderr, "hammer_cli: %s:%zu: %s\n", loaded.Error().file.c_str(),
+			    loaded.Error().line, loaded.Error().message.c_str() );
+			return 1;
+		}
+		catalog.emplace( std::move( loaded ).Value() );
+	}
+
+	hammer::app::EditSession session;
+	hammer::app::EditorSettings settings;
+	hammer::formats::VmfMapCodec codec;
+	hammer::app::MapFragment clipboard;
 	RootedFileStore store( root );
 	// build_map runs tools/quality/vmf_map_build.py through the platform
 	// tool-process provider, with file-store paths resolved under --root.
@@ -150,13 +186,23 @@ int main( int argc, char **argv )
 	    {
 		    return root.empty() ? path : root + "/" + path;
 	    } );
-	hammer::app::EditorCommands commands( controller, store, &builder );
+	hammer::app::SessionServices services;
+	services.codec = &codec;
+	services.store = &store;
+	services.builder = &builder;
+	services.catalog = catalog ? &*catalog : nullptr;
+	services.clipboard = &clipboard;
+	hammer::app::SessionCommands commands( session, settings, services );
 
 	if ( mcp )
 	{
 		// MCP stdio transport: one JSON-RPC message per line in and out. Nothing
 		// else may reach stdout; diagnostics go to stderr.
-		hammer::adapters::mcp::McpServer server( commands );
+		hammer::adapters::mcp::McpServer server( hammer::app::SessionCommands::Catalog(),
+		    [&commands]( std::string_view name, const hammer::app::CommandArgs &args )
+		    {
+			    return commands.Execute( name, args );
+		    } );
 		std::string line;
 		while ( std::getline( std::cin, line ) )
 		{

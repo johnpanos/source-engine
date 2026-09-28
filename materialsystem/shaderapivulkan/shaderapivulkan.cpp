@@ -1044,18 +1044,21 @@ static void ReportUnimplementedEntries()
 			return g_TextureRecords[static_cast<size_t>( handle )].name.c_str();
 		return "(none)";
 	};
-	static const char *const kKinds[] = { "draw", "clear", "copy" };
+	// Indexed by CVulkanContext::kRecord*.
+	static const char *const kKinds[] = { "draw", "clear", "copy", "qbeg", "qend", "scap" };
 	for ( const auto &r : g_VulkanContext.DescribeStreamRecords() )
 	{
+		const bool bKnownKind = r.kind >= 0 && r.kind < static_cast<int>( ARRAYSIZE( kKinds ) );
 		fprintf( stderr,
 		    "[vulkan]   %-5s tgt=%-4d sh=%d blend=%d verts=%-6u mod=%.2f,%.2f,%.2f,%.2f "
 		    "vcol=%.2f,%.2f,%.2f vp=%.0f,%.0f,%.0f,%.0f uv=[%.2f..%.2f,%.2f..%.2f] "
 		    "xf=%.2f,%.2f,%.2f,%.2f/%.2f,%.2f,%.2f,%.2f tex=%s\n",
-		    kKinds[r.kind], r.target, r.shaderIndex, r.raster.blend, r.vertexCount, r.modulation[0],
-		    r.modulation[1], r.modulation[2], r.modulation[3], r.firstColor[0], r.firstColor[1],
-		    r.firstColor[2], r.viewport[0], r.viewport[1], r.viewport[2], r.viewport[3], r.uvMin[0],
-		    r.uvMax[0], r.uvMin[1], r.uvMax[1], r.texXform0[0], r.texXform0[1], r.texXform0[2],
-		    r.texXform0[3], r.texXform1[0], r.texXform1[1], r.texXform1[2], r.texXform1[3],
+		    bKnownKind ? kKinds[r.kind] : "?", r.target, r.shaderIndex, r.raster.blend,
+		    r.vertexCount, r.modulation[0], r.modulation[1], r.modulation[2], r.modulation[3],
+		    r.firstColor[0], r.firstColor[1], r.firstColor[2], r.viewport[0], r.viewport[1],
+		    r.viewport[2], r.viewport[3], r.uvMin[0], r.uvMax[0], r.uvMin[1], r.uvMax[1],
+		    r.texXform0[0], r.texXform0[1], r.texXform0[2], r.texXform0[3], r.texXform1[0],
+		    r.texXform1[1], r.texXform1[2], r.texXform1[3],
 		    r.kind == 0 ? textureName( r.texHandle ) : textureName( r.target ) );
 	}
 

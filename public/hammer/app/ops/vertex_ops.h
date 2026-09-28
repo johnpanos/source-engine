@@ -33,7 +33,8 @@ std::vector<std::pair<int, int>> SolidEdgeList( const scene::Solid &solid );
 
 // The solid rebuilt around 'points' (their convex hull), inheriting textures
 // and side ids from 'original'. Nothing when the points do not span a volume
-// or some point is not a hull vertex (the result would be concave).
+// or some point is not a corner of the hull (inside it, or inside one of its
+// faces or edges): the result would not keep that vertex.
 std::optional<scene::Solid> RebuildFromVertices(
     const scene::Solid &original, const std::vector<mapgeometry::Vec3d> &points );
 

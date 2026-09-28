@@ -68,6 +68,8 @@ struct DisplacementSurface
 	std::vector<std::array<int, 3>> triangles; // 2*(side-1)^2 triangles
 
 	std::size_t VertexCount() const { return vertices.size(); }
+
+	friend bool operator==( const DisplacementSurface &, const DisplacementSurface & ) = default;
 };
 
 // Builds the displaced surface for a quad face. 'corners' are the face's four

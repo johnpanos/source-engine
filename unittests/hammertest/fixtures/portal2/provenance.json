@@ -1,0 +1,53 @@
+{
+  "schema": "hammer-fixture-provenance/v1",
+  "fixtures": [
+    {
+      "file": "sp_a2_trust_fling.vmf",
+      "sha256": "0cda1e17bca8621b33611c2b12f1bb8a4a62802d114899412bbb1c92c632ec82",
+      "source": "Portal 2 Authoring Tools sample map source (sdk_content/maps), copied from the chamber-sdk fixtures (commit 8803f64)",
+      "writer": "legacy Hammer, editorversion 400, editorbuild 5195",
+      "game_profile": "portal2",
+      "feature_tags": [
+        "world solids",
+        "brush entities",
+        "point entities",
+        "entity I/O connections",
+        "groups",
+        "nested groups",
+        "visgroups",
+        "hidden entities",
+        "editor logicalpos and comments",
+        "cameras",
+        "cordons list",
+        "viewsettings",
+        "func_instance"
+      ],
+      "expected_diagnostics": [],
+      "comparator": "hammer.formats.vmf_map_codec semantic comparator (numbers by value)",
+      "note": "The repository-level provenance and distribution warning applies. Line endings are CRLF, as Hammer writes them."
+    },
+    {
+      "file": "zoo_mechanics.vmf",
+      "sha256": "c27d6e89b606926f9b45cd704949492d880b4ec9c09c1278aa0e2ebf2752de22",
+      "source": "chamber-sdk replica map fixture (commit 8803f64), written by Portal 2 Hammer",
+      "writer": "legacy Hammer, editorversion 400, editorbuild 5304",
+      "game_profile": "portal2",
+      "feature_tags": [
+        "world solids",
+        "brush entities",
+        "point entities",
+        "entity I/O connections",
+        "groups",
+        "visgroups",
+        "hidden entities",
+        "editor logicalpos",
+        "cameras",
+        "cordons list",
+        "viewsettings"
+      ],
+      "expected_diagnostics": [],
+      "comparator": "hammer.formats.vmf_map_codec semantic comparator (numbers by value)",
+      "note": "The repository-level provenance and distribution warning applies. Line endings are CRLF, as Hammer writes them."
+    }
+  ]
+}

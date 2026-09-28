@@ -31,8 +31,8 @@ enum class PlaneSide
 	Spanning, // points on both sides
 };
 
-PlaneSide ClassifyPoints( const std::vector<Vec3d> &points, const Plane &plane,
-    double epsilon = kPlaneEpsilon );
+PlaneSide ClassifyPoints(
+    const std::vector<Vec3d> &points, const Plane &plane, double epsilon = kPlaneEpsilon );
 
 // Every vertex of every face of 'solid'.
 std::vector<Vec3d> SolidVertices( const BrushSolid &solid );
@@ -55,6 +55,21 @@ bool IsClosedSolid( const std::vector<Plane> &planes );
 // volume (fewer than four points, or all coplanar within 'epsilon').
 std::optional<std::vector<Plane>> ConvexHullPlanes(
     const std::vector<Vec3d> &points, double epsilon = kPlaneEpsilon );
+
+// A ray entering a convex volume: the ray parameter and the index of the plane
+// it enters through.
+struct RayEntry
+{
+	double t = 0.0;
+	int plane = -1;
+};
+
+// Where the ray origin + t * direction (t >= 0) enters the convex volume bounded
+// by the outward 'planes'. Nothing when it misses, runs parallel outside a
+// plane, or starts inside the volume. 'direction' need not be unit length; t is
+// in its units.
+std::optional<RayEntry> RayEnterConvex(
+    const std::vector<Plane> &planes, const Vec3d &origin, const Vec3d &direction );
 
 // Distance within which a computed vertex coordinate is snapped to the nearest
 // integer: clipping large face quads leaves ~1e-11 noise on exact corners.

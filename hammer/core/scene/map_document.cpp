@@ -166,8 +166,8 @@ void MapDocument::AdvanceCounters( std::uint32_t nextLocal, std::uint32_t nextVm
 namespace
 {
 
-template <typename T> bool PutInto( std::map<ObjectId, T> &into, T value, std::uint32_t serial,
-    std::uint32_t &nextLocal )
+template <typename T>
+bool PutInto( std::map<ObjectId, T> &into, T value, std::uint32_t serial, std::uint32_t &nextLocal )
 {
 	if ( !value.id.IsValid() || DocumentSerialOf( value.id ) != serial )
 	{
@@ -229,14 +229,17 @@ bool MapDocument::Erase( ObjectId id )
 std::vector<std::string> MapDocument::Validate() const
 {
 	std::vector<std::string> problems;
-	auto idText = []( ObjectId id ) { return std::to_string( id.value & 0xffffffffu ); };
+	auto idText = []( ObjectId id )
+	{
+		return std::to_string( id.value & 0xffffffffu );
+	};
 
 	auto checkGroupRef = [&]( ObjectId group, ObjectId self, const char *what )
 	{
 		if ( group.IsValid() && !m_groups.count( group ) )
 		{
-			problems.push_back( std::string( what ) + " " + idText( self ) +
-			                    " refers to a missing group" );
+			problems.push_back(
+			    std::string( what ) + " " + idText( self ) + " refers to a missing group" );
 		}
 	};
 

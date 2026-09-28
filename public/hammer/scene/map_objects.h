@@ -20,13 +20,20 @@
 //			angles and every other key live in its ordered key list; the typed
 //			accessors parse and format through that one list.
 //
+//			No escape hatches: every piece of map state is a typed field here or
+//			in map_document.h. There is no verbatim block, no "extra" key list
+//			and no opaque node, so a codec either models what it reads or
+//			refuses it; nothing is carried without meaning. (Entity and world
+//			key/value lists are the entity data model itself: Source entities
+//			are defined by their keys, which the class schema types.)
+//
 //=============================================================================//
 
 #ifndef HAMMER_SCENE_MAP_OBJECTS_H
 #define HAMMER_SCENE_MAP_OBJECTS_H
 
 #include "foundation/strong_id.h"
-#include "kvtext/keyvalues.h"
+#include "kvtext/keyvalues.h" // kvtext::KeyValue: an ordered entity key
 #include "mapgeometry/brush.h"
 
 #include <array>
@@ -105,9 +112,43 @@ struct EditorInfo
 	std::vector<int> visgroupIds; // persistent visgroup ids, in authored order
 	bool visgroupShown = true;
 	bool visgroupAutoShown = true;
-	std::vector<kvtext::KeyValue> extra; // logicalpos, comments, unknown keys
+	// Position in the logical (entity I/O) view, "[x y]"; absent when unset.
+	std::optional<std::array<int, 2>> logicalPos;
+	// The object's free-text editor comment; absent when unset.
+	std::optional<std::string> comments;
 
 	friend bool operator==( const EditorInfo &, const EditorInfo & ) = default;
+};
+
+// A displaced face (the VMF 'dispinfo' block). Per-vertex arrays are row-major
+// over a (2^power + 1)^2 grid; triangle tags have two per quad over a
+// (2^power)^2 grid. Each array is absent when the file omits its block, so an
+// authored file round-trips exactly. The pre-release keys (mintess, smooth,
+// alpha) that legacy Hammer still reads are modeled too.
+struct Displacement
+{
+	int power = 2;
+	mapgeometry::Vec3d startPosition;
+	int flags = 0;
+	double elevation = 0.0;
+	bool subdivided = false;
+	std::optional<int> minTess;
+	std::optional<double> smoothingAngle;
+	std::optional<std::array<double, 4>> cornerAlphas;
+
+	std::optional<std::vector<mapgeometry::Vec3d>> normals;
+	std::optional<std::vector<double>> distances;
+	std::optional<std::vector<mapgeometry::Vec3d>> offsets;
+	std::optional<std::vector<mapgeometry::Vec3d>> offsetNormals;
+	std::optional<std::vector<double>> alphas;
+	std::optional<std::vector<int>> triangleTags;
+	std::optional<std::vector<std::int64_t>> allowedVerts; // the "allowed_verts" words
+
+	// Vertices per row ((2^power) + 1) and quads per row (2^power).
+	int VertsPerRow() const { return ( 1 << power ) + 1; }
+	int QuadsPerRow() const { return 1 << power; }
+
+	friend bool operator==( const Displacement &, const Displacement & ) = default;
 };
 
 struct Side
@@ -115,9 +156,7 @@ struct Side
 	std::uint32_t vmfId = 0;
 	std::array<mapgeometry::Vec3d, 3> points; // the authored plane points
 	FaceTexture texture;
-	std::optional<kvtext::KeyValueNode> dispinfo; // displacement data, verbatim
-	std::vector<kvtext::KeyValue> extraPairs;
-	std::vector<kvtext::KeyValueNode> extraChildren;
+	std::optional<Displacement> displacement;
 
 	// The half-space of 'points' (VMF winding: normal = (p0-p1) x (p2-p1)
 	// normalized, pointing out of the solid). A degenerate triple gives a zero
@@ -131,13 +170,11 @@ struct Solid
 {
 	ObjectId id;
 	std::uint32_t vmfId = 0;
-	ObjectId owner; // the brush entity that owns this solid; invalid = world
-	ObjectId group; // the group this solid belongs to; invalid = none
+	ObjectId owner;      // the brush entity that owns this solid; invalid = world
+	ObjectId group;      // the group this solid belongs to; invalid = none
 	bool hidden = false; // quick-hidden (the VMF 'hidden' wrapper)
 	std::vector<Side> sides;
 	EditorInfo editor;
-	std::vector<kvtext::KeyValue> extraPairs;
-	std::vector<kvtext::KeyValueNode> extraChildren;
 
 	const Side *FindSide( std::uint32_t sideVmfId ) const;
 	Side *FindSide( std::uint32_t sideVmfId );
@@ -176,7 +213,6 @@ struct Entity
 	std::vector<kvtext::KeyValue> keys; // every key except "id" and "classname"
 	std::vector<Connection> connections;
 	EditorInfo editor;
-	std::vector<kvtext::KeyValueNode> extraChildren;
 
 	// The first value of 'key', or nullptr.
 	const std::string *Key( std::string_view key ) const;
@@ -204,7 +240,6 @@ struct Group
 	ObjectId group; // enclosing group; invalid = top level
 	bool hidden = false;
 	EditorInfo editor;
-	std::vector<kvtext::KeyValue> extraPairs;
 
 	friend bool operator==( const Group &, const Group & ) = default;
 };

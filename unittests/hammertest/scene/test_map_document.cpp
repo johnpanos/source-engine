@@ -43,7 +43,8 @@ int main()
 		Side side;
 		side.points = { Vec3d( 0, 0, 64 ), Vec3d( 0, 64, 64 ), Vec3d( 64, 64, 64 ) };
 		const mapgeometry::Plane p = side.Plane();
-		checks.That( p.normal == Vec3d( 0, 0, 1 ) && p.dist == 64, "legacy (p0-p1)x(p2-p1) winding faces up" );
+		checks.That( p.normal == Vec3d( 0, 0, 1 ) && p.dist == 64,
+		    "legacy (p0-p1)x(p2-p1) winding faces up" );
 		Side degenerate;
 		degenerate.points = { Vec3d( 0, 0, 0 ), Vec3d( 1, 0, 0 ), Vec3d( 2, 0, 0 ) };
 		checks.That( degenerate.Plane().normal == Vec3d(), "collinear points give a zero normal" );
@@ -55,7 +56,8 @@ int main()
 		e.classname = "light";
 		checks.That( !e.Origin(), "no origin key -> nothing" );
 		e.SetOrigin( Vec3d( 1, -2.5, 0 ) );
-		checks.That( e.Key( "origin" ) && *e.Key( "origin" ) == "1 -2.5 0", "origin formats compactly" );
+		checks.That(
+		    e.Key( "origin" ) && *e.Key( "origin" ) == "1 -2.5 0", "origin formats compactly" );
 		checks.That( e.Origin() == Vec3d( 1, -2.5, 0 ), "origin parses back" );
 		checks.That( !e.SetKey( "origin", "1 -2.5 0" ), "setting an equal value is a no-op" );
 		checks.That( e.SetKey( "targetname", "lamp" ) && e.Name() == "lamp", "targetname" );
@@ -67,7 +69,8 @@ int main()
 		checks.That( !e.Angles(), "four numbers are not angles" );
 		e.SetAngles( Vec3d( -0.0, 90, 0 ) );
 		checks.That( *e.Key( "angles" ) == "0 90 0", "negative zero formats as 0" );
-		checks.That( e.RemoveKey( "angles" ) && !e.RemoveKey( "angles" ), "remove reports presence" );
+		checks.That(
+		    e.RemoveKey( "angles" ) && !e.RemoveKey( "angles" ), "remove reports presence" );
 	}
 
 	// Connections: both separators, and malformed values.
@@ -76,28 +79,41 @@ int main()
 		checks.That( c && c->target == "door" && c->input == "Open" && c->parameter.empty() &&
 		                 c->delay == 0.5 && c->timesToFire == -1 && c->separator == ',',
 		    "comma connection parses" );
-		checks.That( c && FormatConnectionValue( *c ) == "door,Open,,0.5,-1", "comma connection formats" );
-		const std::optional<Connection> esc =
-		    ParseConnection( "OnPressed", "relay\x1bTrigger\x1b" "a,b\x1b" "0\x1b" "1" );
-		checks.That( esc && esc->parameter == "a,b" && esc->separator == '\x1b', "ESC separator keeps commas" );
-		checks.That( esc && FormatConnectionValue( *esc ) == "relay\x1bTrigger\x1b" "a,b\x1b" "0\x1b" "1",
+		checks.That(
+		    c && FormatConnectionValue( *c ) == "door,Open,,0.5,-1", "comma connection formats" );
+		const std::optional<Connection> esc = ParseConnection( "OnPressed", "relay\x1bTrigger\x1b"
+		                                                                    "a,b\x1b"
+		                                                                    "0\x1b"
+		                                                                    "1" );
+		checks.That( esc && esc->parameter == "a,b" && esc->separator == '\x1b',
+		    "ESC separator keeps commas" );
+		checks.That( esc && FormatConnectionValue( *esc ) == "relay\x1bTrigger\x1b"
+		                                                     "a,b\x1b"
+		                                                     "0\x1b"
+		                                                     "1",
 		    "ESC connection formats" );
-		checks.That( !ParseConnection( "OnTrigger", "door,Open,0.5,-1" ), "four fields are rejected" );
-		checks.That( !ParseConnection( "OnTrigger", "door,Open,,soon,-1" ), "non-numeric delay is rejected" );
-		checks.That( !ParseConnection( "OnTrigger", "door,Open,,0,1.5" ), "fractional count is rejected" );
+		checks.That(
+		    !ParseConnection( "OnTrigger", "door,Open,0.5,-1" ), "four fields are rejected" );
+		checks.That( !ParseConnection( "OnTrigger", "door,Open,,soon,-1" ),
+		    "non-numeric delay is rejected" );
+		checks.That(
+		    !ParseConnection( "OnTrigger", "door,Open,,0,1.5" ), "fractional count is rejected" );
 	}
 
 	// Identity: serial-stamped, never reissued, VMF floor.
 	{
 		MapDocument doc( 7 );
-		checks.That( doc.Settings().WorldKey( "mapversion" ) != nullptr, "a new world has a mapversion" );
+		checks.That(
+		    doc.Settings().WorldKey( "mapversion" ) != nullptr, "a new world has a mapversion" );
 		const ObjectId a = doc.AllocateId();
 		const ObjectId b = doc.AllocateId();
-		checks.That( a != b && DocumentSerialOf( a ) == 7 && DocumentSerialOf( b ) == 7, "ids carry the serial" );
+		checks.That( a != b && DocumentSerialOf( a ) == 7 && DocumentSerialOf( b ) == 7,
+		    "ids carry the serial" );
 		Solid s = MakeBox( doc, Vec3d( 0, 0, 0 ), Vec3d( 64, 64, 64 ) );
 		const ObjectId sid = s.id;
 		checks.That( doc.Put( s ), "put a solid" );
-		checks.That( doc.KindOf( sid ) == ObjectKind::Solid && doc.FindSolid( sid ), "lookup by kind" );
+		checks.That(
+		    doc.KindOf( sid ) == ObjectKind::Solid && doc.FindSolid( sid ), "lookup by kind" );
 		checks.That( !doc.FindEntity( sid ), "a solid is not an entity" );
 		checks.That( doc.Erase( sid ) && !doc.Contains( sid ) && !doc.Erase( sid ), "erase once" );
 		// Re-putting an old id (undo) must push the counter past it.
@@ -107,8 +123,10 @@ int main()
 		for ( Side &side : late.sides )
 			side.vmfId += 1000;
 		checks.That( doc.Put( late ), "put a restored id" );
-		checks.That( ( doc.AllocateId().value & 0xffffffffu ) == 501, "restored ids are never reissued" );
-		checks.That( doc.AllocateVmfId() > late.sides.back().vmfId, "VMF id floor follows put sides" );
+		checks.That(
+		    ( doc.AllocateId().value & 0xffffffffu ) == 501, "restored ids are never reissued" );
+		checks.That(
+		    doc.AllocateVmfId() > late.sides.back().vmfId, "VMF id floor follows put sides" );
 		doc.NoteVmfId( 9000 );
 		checks.Equal( doc.AllocateVmfId(), std::uint32_t( 9001 ), "NoteVmfId raises the floor" );
 
@@ -137,8 +155,8 @@ int main()
 		doc.Put( g );
 		checks.That( doc.Validate().empty(), "a consistent document validates" );
 		checks.Equal( doc.ObjectCount(), std::size_t( 3 ), "object count" );
-		checks.Equal( doc.SolidIds().size() + doc.EntityIds().size() + doc.GroupIds().size(), std::size_t( 3 ),
-		    "ids by kind" );
+		checks.Equal( doc.SolidIds().size() + doc.EntityIds().size() + doc.GroupIds().size(),
+		    std::size_t( 3 ), "ids by kind" );
 
 		MapDocument bad = doc;
 		Solid orphan = s;
@@ -174,19 +192,22 @@ int main()
 		bad.Put( thin );
 		checks.Equal( bad.Validate().size(), std::size_t( 1 ), "a solid needs four sides" );
 
-		checks.That( SameContent( doc, doc ) && !SameContent( doc, bad ), "SameContent compares content" );
+		checks.That(
+		    SameContent( doc, doc ) && !SameContent( doc, bad ), "SameContent compares content" );
 	}
 
 	// Settings and the visgroup tree.
 	{
 		DocumentSettings s;
-		checks.That( s.SetWorldKey( "skyname", "sky_day01_01" ) && !s.SetWorldKey( "skyname", "sky_day01_01" ),
+		checks.That( s.SetWorldKey( "skyname", "sky_day01_01" ) &&
+		                 !s.SetWorldKey( "skyname", "sky_day01_01" ),
 		    "world keys change once" );
 		Visgroup inner{ 3, "inner", std::nullopt, {} };
 		Visgroup outer{ 1, "outer", Rgb{ 1, 2, 3 }, { inner } };
 		s.visgroups = { outer, Visgroup{ 2, "other", std::nullopt, {} } };
 		const VisgroupLookup found = FindVisgroup( s.visgroups, 3 );
-		checks.That( found.visgroup && found.visgroup->name == "inner" && found.parentId == 1, "nested lookup" );
+		checks.That( found.visgroup && found.visgroup->name == "inner" && found.parentId == 1,
+		    "nested lookup" );
 		checks.That( FindVisgroup( s.visgroups, 2 ).parentId == 0, "top-level parent is 0" );
 		checks.That( !FindVisgroup( s.visgroups, 9 ).visgroup, "missing visgroup" );
 	}

@@ -17,6 +17,7 @@
 #define HAMMER_APP_EDITOR_COMMANDS_H
 
 #include "foundation/expected.h"
+#include "hammer/app/command_script.h"
 #include "hammer/app/editor_controller.h"
 #include "hammer/ports/file_store.h"
 #include "hammer/ports/map_builder.h"
@@ -28,46 +29,6 @@
 
 namespace hammer::app
 {
-
-using CommandArgs = std::map<std::string, std::string>;
-
-enum class CommandStatus
-{
-	UnknownCommand,
-	MissingArgument,
-	InvalidArgument, // unparsable value or an argument the command does not take
-	Rejected,        // the controller refused the edit (degenerate, unknown id, no-op)
-	IoFailure,       // the file store could not read or write
-	SyntaxError,     // a script line could not be parsed
-};
-
-// A short lowercase name for reports ("unknown command", "i/o failure", ...).
-const char *CommandStatusName( CommandStatus status );
-
-// Readable context is part of the error because commands are the application
-// boundary: `command` and `detail` name the request that failed.
-struct CommandError
-{
-	CommandStatus status = CommandStatus::Rejected;
-	std::string command;
-	std::string detail;
-	int line = 0; // script line, 1-based; 0 outside a script
-};
-
-struct CommandInfo
-{
-	std::string name;
-	std::vector<std::string> required;
-	std::vector<std::string> optional;
-	std::string summary;
-};
-
-struct ScriptCommand
-{
-	std::string name;
-	CommandArgs args;
-	int line = 0;
-};
 
 class EditorCommands
 {
@@ -94,9 +55,6 @@ private:
 	ports::IFileStore &m_store;
 	ports::IMapBuilder *m_builder;
 };
-
-[[nodiscard]] foundation::Expected<std::vector<ScriptCommand>, CommandError> ParseCommandScript(
-    std::string_view text );
 
 } // namespace hammer::app
 

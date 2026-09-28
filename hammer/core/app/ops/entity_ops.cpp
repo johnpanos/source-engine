@@ -26,7 +26,8 @@ bool Reserved( const std::string &key )
 }
 
 // Entities to edit, or an error when there are none.
-EditResult Targets( const scene::DocumentReader &doc, const std::vector<ObjectId> &ids, std::vector<ObjectId> &out )
+EditResult Targets(
+    const scene::DocumentReader &doc, const std::vector<ObjectId> &ids, std::vector<ObjectId> &out )
 {
 	out = EntitiesOf( doc, ids );
 	if ( out.empty() )
@@ -38,7 +39,8 @@ EditResult Targets( const scene::DocumentReader &doc, const std::vector<ObjectId
 
 } // namespace
 
-std::vector<ObjectId> EntitiesOf( const scene::DocumentReader &doc, const std::vector<ObjectId> &ids )
+std::vector<ObjectId> EntitiesOf(
+    const scene::DocumentReader &doc, const std::vector<ObjectId> &ids )
 {
 	std::set<ObjectId> out;
 	for ( ObjectId id : scene::ExpandObjects( doc, ids ) )
@@ -58,8 +60,8 @@ std::vector<ObjectId> EntitiesOf( const scene::DocumentReader &doc, const std::v
 	return std::vector<ObjectId>( out.begin(), out.end() );
 }
 
-EditResult SetKey( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, const std::string &key,
-    const std::string &value )
+EditResult SetKey( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids,
+    const std::string &key, const std::string &value )
 {
 	if ( Reserved( key ) )
 	{
@@ -88,7 +90,8 @@ EditResult SetKey( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, 
 	return {};
 }
 
-EditResult RemoveKey( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, const std::string &key )
+EditResult RemoveKey(
+    scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, const std::string &key )
 {
 	if ( Reserved( key ) )
 	{
@@ -115,8 +118,8 @@ EditResult RemoveKey( scene::DocumentEdit &edit, const std::vector<ObjectId> &id
 	return {};
 }
 
-EditResult RenameKey( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, const std::string &from,
-    const std::string &to )
+EditResult RenameKey( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids,
+    const std::string &from, const std::string &to )
 {
 	if ( Reserved( from ) || Reserved( to ) )
 	{
@@ -162,8 +165,8 @@ EditResult RenameKey( scene::DocumentEdit &edit, const std::vector<ObjectId> &id
 	return {};
 }
 
-EditResult SetClass( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, const std::string &classname,
-    const ports::IEntityCatalog *catalog )
+EditResult SetClass( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids,
+    const std::string &classname, const ports::IEntityCatalog *catalog )
 {
 	if ( classname.empty() )
 	{
@@ -212,7 +215,8 @@ EditResult SetClass( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids
 	return {};
 }
 
-EditResult SetSpawnFlag( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, long long flag, bool on )
+EditResult SetSpawnFlag(
+    scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, long long flag, bool on )
 {
 	if ( flag <= 0 || ( flag & ( flag - 1 ) ) != 0 )
 	{
@@ -242,7 +246,8 @@ EditResult SetSpawnFlag( scene::DocumentEdit &edit, const std::vector<ObjectId> 
 	return {};
 }
 
-EditResult AddConnection( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, const scene::Connection &c )
+EditResult AddConnection(
+    scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, const scene::Connection &c )
 {
 	if ( c.output.empty() || c.target.empty() || c.input.empty() )
 	{
@@ -264,7 +269,8 @@ EditResult AddConnection( scene::DocumentEdit &edit, const std::vector<ObjectId>
 	return {};
 }
 
-EditResult ReplaceConnection( scene::DocumentEdit &edit, ObjectId id, std::size_t index, const scene::Connection &c )
+EditResult ReplaceConnection(
+    scene::DocumentEdit &edit, ObjectId id, std::size_t index, const scene::Connection &c )
 {
 	const scene::Entity *e = edit.FindEntity( id );
 	if ( !e || index >= e->connections.size() )
@@ -280,6 +286,18 @@ EditResult ReplaceConnection( scene::DocumentEdit &edit, ObjectId id, std::size_
 		return NothingToDo( "the connection is unchanged" );
 	}
 	edit.MutableEntity( id )->connections[index] = c;
+	return {};
+}
+
+EditResult RemoveConnectionAt( scene::DocumentEdit &edit, ObjectId id, std::size_t index )
+{
+	const scene::Entity *e = edit.FindEntity( id );
+	if ( !e || index >= e->connections.size() )
+	{
+		return Reject( "no such connection" );
+	}
+	auto &connections = edit.MutableEntity( id )->connections;
+	connections.erase( connections.begin() + static_cast<std::ptrdiff_t>( index ) );
 	return {};
 }
 
@@ -312,8 +330,8 @@ EditResult RemoveConnections( scene::DocumentEdit &edit, const std::vector<Objec
 	return {};
 }
 
-EditResult RenameEntity( scene::DocumentEdit &edit, ObjectId id, const std::string &name, bool updateReferences,
-    const ports::IEntityCatalog *catalog )
+EditResult RenameEntity( scene::DocumentEdit &edit, ObjectId id, const std::string &name,
+    bool updateReferences, const ports::IEntityCatalog *catalog )
 {
 	const scene::Entity *e = edit.FindEntity( id );
 	if ( !e )
@@ -337,8 +355,8 @@ EditResult RenameEntity( scene::DocumentEdit &edit, ObjectId id, const std::stri
 	{
 		return {};
 	}
-	static const char *const kConventional[] = { "target", "parentname", "filtername", "damagefilter",
-		"lightingorigin" };
+	static const char *const kConventional[] = {
+	    "target", "parentname", "filtername", "damagefilter", "lightingorigin" };
 	for ( ObjectId other : edit.EntityIds() )
 	{
 		const scene::Entity *o = edit.FindEntity( other );
@@ -391,7 +409,8 @@ EditResult RenameEntity( scene::DocumentEdit &edit, ObjectId id, const std::stri
 	return {};
 }
 
-EditResult SetWorldKey( scene::DocumentEdit &edit, const std::string &key, const std::string &value )
+EditResult SetWorldKey(
+    scene::DocumentEdit &edit, const std::string &key, const std::string &value )
 {
 	if ( Reserved( key ) )
 	{

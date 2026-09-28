@@ -2,14 +2,16 @@
 //
 // Purpose: Sensitivity suite for the IMapCodec conformance oracle (RFC 0002,
 //			ports.map_codec.v1 / formats.vmf_map_codec.v1). Each seeded bad
-//			codec wraps the real VmfMapCodec and breaks one promise (drops
+//			codec wraps the real VmfMapCodec and breaks one promise: it drops
 //			connections, regenerates texture axes, loses hidden flags,
 //			renumbers side ids, rounds coordinates, flattens brush entities,
-//			drops verbatim content, ignores the serial, sorts keys, drops group
-//			membership, issues unstable runtime ids, drops warnings, reuses
-//			side ids, drops displacements). Every one must be DETECTED by the
-//			same oracle clause the positive suite passes with the real codec;
-//			the real codec is run through each clause as the control.
+//			ignores the serial, sorts keys, drops group membership, issues
+//			unstable runtime ids, drops warnings, reuses side ids, drops or
+//			shifts displacement data, drops logical positions and comments,
+//			drops version and view settings, drops editor colors, or silently
+//			drops content the model cannot hold instead of rejecting it. Every
+//			one must be DETECTED by the oracle clause named for it; the real
+//			codec passes every clause as the control.
 //
 //=============================================================================//
 
@@ -19,7 +21,10 @@
 #include "testing/checks.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <string>
 #include <vector>
@@ -34,7 +39,7 @@ using mapgeometry::Vec3d;
 namespace
 {
 
-// Applies 'edit' to a copy of every object (Put replaces by id).
+// Applies the edits to a copy of every object (Put replaces by id).
 MapDocument EditObjects( const MapDocument &doc, const std::function<void( Solid & )> &solid,
     const std::function<void( Entity & )> &entity = {},
     const std::function<void( Group & )> &group = {} )
@@ -68,6 +73,23 @@ MapDocument EditObjects( const MapDocument &doc, const std::function<void( Solid
 		out.Put( std::move( copy ) );
 	}
 	return out;
+}
+
+// Applies 'edit' to every displacement.
+MapDocument EditDisplacements(
+    const MapDocument &doc, const std::function<void( Displacement & )> &edit )
+{
+	return EditObjects( doc,
+	    [&]( Solid &s )
+	    {
+		    for ( Side &side : s.sides )
+		    {
+			    if ( side.displacement )
+			    {
+				    edit( *side.displacement );
+			    }
+		    }
+	    } );
 }
 
 // A codec that behaves like the real one except for a seeded defect.
@@ -108,6 +130,79 @@ private:
 	DecodeHook m_afterDecode;
 	EncodeHook m_beforeEncode;
 	std::uint32_t m_forcedSerial;
+};
+
+void RemoveBlocks( kvtext::KeyValueNode &node, const std::string &name )
+{
+	std::erase_if( node.children,
+	    [&]( const kvtext::KeyValueNode &child )
+	    {
+		    return child.name == name;
+	    } );
+	for ( kvtext::KeyValueNode &child : node.children )
+	{
+		RemoveBlocks( child, name );
+	}
+}
+
+// The escape-hatch codec: instead of rejecting content the model cannot hold,
+// it silently strips whatever the strict decoder names (the block, or the line
+// of the offending key) and decodes what is left.
+class LenientCodec final : public IMapCodec
+{
+public:
+	std::string_view FormatName() const override { return "vmf-lenient"; }
+
+	foundation::Expected<DecodedMap, CodecError> Decode(
+	    std::string_view text, std::uint32_t serial ) const override
+	{
+		std::string current( text );
+		for ( int attempt = 0;; ++attempt )
+		{
+			auto result = m_real.Decode( current, serial );
+			const std::string message = result ? std::string() : result.Error().message;
+			if ( result || attempt == 64 || message.rfind( "not VMF text", 0 ) == 0 )
+			{
+				return result;
+			}
+			const std::size_t block = message.find( "block '" );
+			if ( message.find( "unknown" ) != std::string::npos && block != std::string::npos )
+			{
+				const std::size_t start = block + 7;
+				const std::string name =
+				    message.substr( start, message.find( '\'', start ) - start );
+				kvtext::ParseResult parsed = kvtext::ParseKeyValues( current );
+				RemoveBlocks( parsed.root, name );
+				current = kvtext::WriteKeyValues( parsed.root );
+				continue;
+			}
+			const int line = result.Error().line;
+			if ( line <= 0 )
+			{
+				return result;
+			}
+			std::size_t bol = 0;
+			for ( int l = 1; l < line && bol != std::string::npos; ++l )
+			{
+				bol = current.find( '\n', bol );
+				bol = bol == std::string::npos ? bol : bol + 1;
+			}
+			if ( bol == std::string::npos )
+			{
+				return result;
+			}
+			const std::size_t eol = current.find( '\n', bol );
+			current.erase( bol, eol == std::string::npos ? std::string::npos : eol - bol + 1 );
+		}
+	}
+
+	foundation::Expected<std::string, CodecError> Encode( const MapDocument &doc ) const override
+	{
+		return m_real.Encode( doc );
+	}
+
+private:
+	VmfMapCodec m_real;
 };
 
 BadCodec OnDecode( std::function<MapDocument( const MapDocument & )> edit )
@@ -189,6 +284,45 @@ MapDocument FractionalDocument()
 	return doc;
 }
 
+std::filesystem::path RepoRoot()
+{
+	if ( std::filesystem::is_directory( "unittests/hammertest/fixtures/portal2" ) )
+	{
+		return std::filesystem::current_path();
+	}
+	return std::filesystem::path( __FILE__ )
+	    .parent_path()
+	    .parent_path()
+	    .parent_path()
+	    .parent_path();
+}
+
+// The real-map clause: a vendored Portal 2 map saved by 'codec' is the
+// original semantically and by structural counts.
+map_codec_oracle::Findings Portal2Semantics( const IMapCodec &codec, const std::string &original )
+{
+	map_codec_oracle::Findings f;
+	const auto decoded = codec.Decode( original, 1 );
+	if ( !f.Expect( decoded.HasValue(), "the Portal 2 map decodes" ) )
+	{
+		return f;
+	}
+	const auto encoded = codec.Encode( decoded.Value().document );
+	if ( !f.Expect( encoded.HasValue(), "the Portal 2 map encodes" ) )
+	{
+		return f;
+	}
+	const kvtext::ParseResult source = kvtext::ParseKeyValues( original );
+	const kvtext::ParseResult saved = kvtext::ParseKeyValues( encoded.Value() );
+	const kvtext::CompareResult same =
+	    map_codec_oracle::CompareFileSemantics( source.root, saved.root );
+	f.Expect( same.equal, "saved Portal 2 map is the original: " + same.firstDivergence );
+	f.Expect( map_codec_oracle::CountText( source.root ) ==
+	              map_codec_oracle::CountDocument( decoded.Value().document ),
+	    "Portal 2 counts match" );
+	return f;
+}
+
 using Clause = std::function<map_codec_oracle::Findings( const IMapCodec & )>;
 
 } // namespace
@@ -197,6 +331,12 @@ int main()
 {
 	testing::Checks checks;
 	namespace oracle = map_codec_oracle;
+
+	std::ifstream zooFile(
+	    RepoRoot() / "unittests/hammertest/fixtures/portal2/zoo_mechanics.vmf", std::ios::binary );
+	const std::string zoo(
+	    std::istreambuf_iterator<char>{ zooFile }, std::istreambuf_iterator<char>{} );
+	checks.That( !zoo.empty(), "the vendored Portal 2 map is readable" );
 
 	const std::map<std::string, Clause> clauses = {
 	    { "RoundTrip",
@@ -214,15 +354,25 @@ int main()
 	        {
 		        return oracle::CanonicalFixture( c );
 	        } },
-	    { "OddityFixture",
+	    { "MissingIdsFixture",
 	        []( const IMapCodec &c )
 	        {
-		        return oracle::OddityFixture( c );
+		        return oracle::MissingIdsFixture( c );
+	        } },
+	    { "RejectsUnmodeled",
+	        []( const IMapCodec &c )
+	        {
+		        return oracle::RejectsUnmodeled( c );
 	        } },
 	    { "DocumentRoundTrip",
 	        []( const IMapCodec &c )
 	        {
 		        return oracle::DocumentRoundTrip( c, FractionalDocument() );
+	        } },
+	    { "Portal2Semantics",
+	        [&zoo]( const IMapCodec &c )
+	        {
+		        return Portal2Semantics( c, zoo );
 	        } },
 	};
 
@@ -238,12 +388,22 @@ int main()
 	struct Mutant
 	{
 		std::string name;
-		BadCodec codec;
+		std::function<oracle::Findings( const Clause & )> run;
 		std::vector<std::string> detectedBy;
 	};
 	std::vector<Mutant> mutants;
+	auto add = [&]( const std::string &name, BadCodec codec, std::vector<std::string> by )
+	{
+		auto shared = std::make_shared<BadCodec>( std::move( codec ) );
+		mutants.push_back( { name,
+		    [shared]( const Clause &c )
+		    {
+			    return c( *shared );
+		    },
+		    std::move( by ) } );
+	};
 
-	mutants.push_back( { "drops connections",
+	add( "drops connections",
 	    OnDecode(
 	        []( const MapDocument &d )
 	        {
@@ -253,9 +413,8 @@ int main()
 			            e.connections.clear();
 		            } );
 	        } ),
-	    { "CanonicalFixture", "CanonicalText" } } );
-
-	mutants.push_back( { "regenerates texture axes",
+	    { "CanonicalFixture", "CanonicalText", "Portal2Semantics" } );
+	add( "regenerates texture axes",
 	    OnEncode(
 	        []( const MapDocument &d )
 	        {
@@ -268,9 +427,8 @@ int main()
 			            }
 		            } );
 	        } ),
-	    { "RoundTrip", "CanonicalText" } } );
-
-	mutants.push_back( { "loses hidden flags",
+	    { "RoundTrip", "CanonicalText" } );
+	add( "loses hidden flags",
 	    OnDecode(
 	        []( const MapDocument &d )
 	        {
@@ -289,9 +447,8 @@ int main()
 			            g.hidden = false;
 		            } );
 	        } ),
-	    { "CanonicalFixture", "CanonicalText" } } );
-
-	mutants.push_back( { "renumbers side ids",
+	    { "CanonicalFixture", "CanonicalText", "Portal2Semantics" } );
+	add( "renumbers side ids",
 	    OnDecode(
 	        []( const MapDocument &d )
 	        {
@@ -305,9 +462,8 @@ int main()
 			            }
 		            } );
 	        } ),
-	    { "CanonicalFixture", "CanonicalText", "OddityFixture" } } );
-
-	mutants.push_back( { "rounds coordinates to float",
+	    { "CanonicalFixture", "CanonicalText", "MissingIdsFixture", "Portal2Semantics" } );
+	add( "rounds coordinates to float",
 	    OnEncode(
 	        []( const MapDocument &d )
 	        {
@@ -324,9 +480,8 @@ int main()
 			            }
 		            } );
 	        } ),
-	    { "DocumentRoundTrip", "RoundTrip" } } );
-
-	mutants.push_back( { "flattens brush entities into the world",
+	    { "DocumentRoundTrip", "RoundTrip" } );
+	add( "flattens brush entities into the world",
 	    OnDecode(
 	        []( const MapDocument &d )
 	        {
@@ -336,31 +491,9 @@ int main()
 			            s.owner = ObjectId();
 		            } );
 	        } ),
-	    { "CanonicalFixture", "CanonicalText" } } );
-
-	mutants.push_back( { "drops content it does not model",
-	    OnDecode(
-	        []( const MapDocument &d )
-	        {
-		        MapDocument out = EditObjects(
-		            d,
-		            []( Solid &s )
-		            {
-			            s.extraChildren.clear();
-		            },
-		            []( Entity &e )
-		            {
-			            e.extraChildren.clear();
-		            } );
-		        out.MutableSettings().unknownBlocks.clear();
-		        out.MutableSettings().worldExtraChildren.clear();
-		        return out;
-	        } ),
-	    { "CanonicalFixture", "CanonicalText", "OddityFixture" } } );
-
-	mutants.push_back( { "ignores the requested serial", BadCodec( {}, {}, 1 ), { "RoundTrip" } } );
-
-	mutants.push_back( { "sorts entity keys",
+	    { "CanonicalFixture", "CanonicalText", "Portal2Semantics" } );
+	add( "ignores the requested serial", BadCodec( {}, {}, 1 ), { "RoundTrip" } );
+	add( "sorts entity keys",
 	    OnDecode(
 	        []( const MapDocument &d )
 	        {
@@ -374,9 +507,8 @@ int main()
 			                } );
 		            } );
 	        } ),
-	    { "CanonicalFixture" } } );
-
-	mutants.push_back( { "drops group membership",
+	    { "CanonicalFixture" } );
+	add( "drops group membership",
 	    OnDecode(
 	        []( const MapDocument &d )
 	        {
@@ -395,21 +527,17 @@ int main()
 			            g.group = ObjectId();
 		            } );
 	        } ),
-	    { "CanonicalFixture", "CanonicalText" } } );
-
-	mutants.push_back(
-	    { "issues runtime ids in reverse order", OnDecode( ReverseIds ), { "RoundTrip" } } );
-
-	mutants.push_back( { "drops warnings",
+	    { "CanonicalFixture", "CanonicalText" } );
+	add( "issues runtime ids in reverse order", OnDecode( ReverseIds ), { "RoundTrip" } );
+	add( "drops warnings",
 	    BadCodec(
 	        []( DecodedMap &m )
 	        {
 		        m.warnings.clear();
 	        },
 	        {} ),
-	    { "OddityFixture" } } );
-
-	mutants.push_back( { "reuses side ids across solids",
+	    { "MissingIdsFixture" } );
+	add( "reuses side ids across solids",
 	    OnDecode(
 	        []( const MapDocument &d )
 	        {
@@ -423,9 +551,8 @@ int main()
 			            }
 		            } );
 	        } ),
-	    { "RoundTrip", "CanonicalFixture" } } );
-
-	mutants.push_back( { "drops displacements on save",
+	    { "RoundTrip", "CanonicalFixture" } );
+	add( "drops displacements on save",
 	    OnEncode(
 	        []( const MapDocument &d )
 	        {
@@ -434,19 +561,125 @@ int main()
 		            {
 			            for ( Side &side : s.sides )
 			            {
-				            side.dispinfo.reset();
+				            side.displacement.reset();
 			            }
 		            } );
 	        } ),
-	    { "RoundTrip", "CanonicalText" } } );
+	    { "RoundTrip", "CanonicalText" } );
+	add( "loses displacement rows",
+	    OnDecode(
+	        []( const MapDocument &d )
+	        {
+		        return EditDisplacements( d,
+		            []( Displacement &disp )
+		            {
+			            disp.offsets.reset();
+			            disp.alphas.reset();
+		            } );
+	        } ),
+	    { "CanonicalFixture", "CanonicalText" } );
+	add( "writes displacement values shifted by one",
+	    OnEncode(
+	        []( const MapDocument &d )
+	        {
+		        return EditDisplacements( d,
+		            []( Displacement &disp )
+		            {
+			            if ( disp.distances )
+			            {
+				            std::rotate( disp.distances->begin(), disp.distances->begin() + 1,
+				                disp.distances->end() );
+			            }
+		            } );
+	        } ),
+	    { "RoundTrip", "CanonicalText" } );
+	add( "drops the pre-release displacement keys",
+	    OnDecode(
+	        []( const MapDocument &d )
+	        {
+		        return EditDisplacements( d,
+		            []( Displacement &disp )
+		            {
+			            disp.minTess.reset();
+			            disp.smoothingAngle.reset();
+			            disp.cornerAlphas.reset();
+		            } );
+	        } ),
+	    { "CanonicalFixture", "CanonicalText" } );
+	add( "drops logical positions and comments",
+	    OnDecode(
+	        []( const MapDocument &d )
+	        {
+		        return EditObjects( d, {},
+		            []( Entity &e )
+		            {
+			            e.editor.logicalPos.reset();
+			            e.editor.comments.reset();
+		            } );
+	        } ),
+	    { "CanonicalFixture", "CanonicalText", "Portal2Semantics" } );
+	add( "drops version and view settings",
+	    OnDecode(
+	        []( const MapDocument &d )
+	        {
+		        MapDocument out = d;
+		        out.MutableSettings().version = VersionInfo{};
+		        out.MutableSettings().view = ViewSettings{};
+		        return out;
+	        } ),
+	    { "CanonicalFixture", "CanonicalText", "Portal2Semantics" } );
+	add( "drops editor colors",
+	    OnDecode(
+	        []( const MapDocument &d )
+	        {
+		        return EditObjects(
+		            d,
+		            []( Solid &s )
+		            {
+			            s.editor.color.reset();
+		            },
+		            []( Entity &e )
+		            {
+			            e.editor.color.reset();
+		            },
+		            []( Group &g )
+		            {
+			            g.editor.color.reset();
+		            } );
+	        } ),
+	    { "CanonicalFixture", "CanonicalText", "Portal2Semantics" } );
+	{
+		auto lenient = std::make_shared<LenientCodec>();
+		mutants.push_back( { "silently drops content the model cannot hold",
+		    [lenient]( const Clause &c )
+		    {
+			    return c( *lenient );
+		    },
+		    { "RejectsUnmodeled" } } );
+	}
 
 	for ( const Mutant &mutant : mutants )
 	{
 		for ( const std::string &name : mutant.detectedBy )
 		{
-			const oracle::Findings f = clauses.at( name )( mutant.codec );
+			const oracle::Findings f = mutant.run( clauses.at( name ) );
 			checks.That( !f.Ok(), "mutant '" + mutant.name + "' is detected by " + name );
 		}
+	}
+
+	// The lenient codec really accepts the unmodeled content: detection comes
+	// from the rejection cases, not from a crash or a parse failure.
+	{
+		const LenientCodec lenient;
+		std::size_t accepted = 0;
+		const std::vector<oracle::RejectionCase> cases = oracle::RejectionCases();
+		for ( const oracle::RejectionCase &c : cases )
+		{
+			accepted += lenient.Decode( c.text, 1 ).HasValue();
+		}
+		checks.That( accepted * 2 > cases.size(),
+		    "the lenient codec accepts most rejection cases (" + std::to_string( accepted ) +
+		        " of " + std::to_string( cases.size() ) + ")" );
 	}
 
 	// The comparator itself: renamed runtime ids are the same content; one changed

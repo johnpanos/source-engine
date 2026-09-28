@@ -587,5 +587,50 @@ int main()
 	Content( checks, fixture, catalog );
 	Edges( checks, fixture );
 	Cache( checks, fixture, catalog );
+	// A displaced side carries its mesh; the other faces stay flat.
+	{
+		hammer::scene::MapDocument ddoc;
+		hammer::scene::FaceTexture dtex;
+		dtex.material = "NATURE/BLENDGRASSGRAVEL001A";
+		hammer::scene::ObjectId ground;
+		{
+			hammer::scene::DocumentEdit edit( ddoc );
+			hammer::scene::Solid s = hammer::scene::MakeBoxSolid(
+			    { mapgeometry::Vec3d( 0, 0, -16 ), mapgeometry::Vec3d( 128, 128, 0 ) }, dtex );
+			hammer::scene::Displacement d;
+			d.power = 2;
+			d.startPosition = mapgeometry::Vec3d( 0, 0, 0 );
+			d.normals = std::vector<mapgeometry::Vec3d>( 25, mapgeometry::Vec3d( 0, 0, 1 ) );
+			d.distances = std::vector<double>( 25, 0.0 );
+			( *d.distances )[12] = 32.0;
+			s.sides[0].displacement = d;
+			ground = edit.Add( s );
+			hammer::scene::CommitEdit( ddoc, edit );
+		}
+		const RenderSnapshot snap = Extract( ddoc, {}, {} );
+		std::size_t displaced = 0;
+		double peak = 0.0;
+		for ( const FaceDraw &f : snap.solids.front().faces )
+		{
+			if ( f.displacement )
+			{
+				++displaced;
+				for ( const mapgeometry::Vec3d &v : f.displacement->vertices )
+					peak = std::max( peak, v.z );
+			}
+		}
+		checks.Equal( displaced, std::size_t( 1 ), "one displaced face carries a mesh" );
+		checks.Near( peak, 32.0, 1e-9, "the mesh is displaced" );
+		hammer::scene::MapDocument broken = ddoc;
+		hammer::scene::Solid bad = *broken.FindSolid( ground );
+		bad.sides[0].displacement->distances->pop_back();
+		broken.Put( bad );
+		bool none = true;
+		const RenderSnapshot brokenSnap = Extract( broken, {}, {} );
+		for ( const FaceDraw &f : brokenSnap.solids.front().faces )
+			none = none && !f.displacement;
+		checks.That( none, "a malformed displacement draws no mesh (negative)" );
+	}
+
 	return checks.Report();
 }

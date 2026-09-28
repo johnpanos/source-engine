@@ -20,7 +20,10 @@
 //
 //			Threading: single-sequence. Observers run synchronously after a
 //			change is committed; a mutation requested from inside an observer
-//			or guard is refused with EditErrorCode::Busy.
+//			is refused with EditErrorCode::Busy. A guard may commit its draft
+//			with Execute/ExecuteSelecting (that commit records its own history
+//			entry before the selection changes), but a selection change,
+//			document replacement or undo/redo from a guard is Busy.
 //
 //=============================================================================//
 
@@ -94,7 +97,10 @@ class SessionSubscription
 {
 public:
 	SessionSubscription() = default;
-	explicit SessionSubscription( std::function<void()> release ) : m_release( std::move( release ) ) {}
+	explicit SessionSubscription( std::function<void()> release )
+	    : m_release( std::move( release ) )
+	{
+	}
 	~SessionSubscription() { Reset(); }
 	SessionSubscription( SessionSubscription &&other ) noexcept;
 	SessionSubscription &operator=( SessionSubscription &&other ) noexcept;
@@ -151,6 +157,11 @@ public:
 	foundation::Expected<void, EditError> JumpTo( std::size_t position );
 
 	void MarkSaved();
+	// Records the map version a save wrote (versioninfo and the world
+	// "mapversion" key) as bookkeeping: no history entry, no modified flag,
+	// and every recorded settings state adopts it, so undo never rolls the
+	// saved version back.
+	void SetMapVersion( int mapVersion );
 	// Replaces the document (open, new map): history cleared, selection empty,
 	// unmodified. Passes the selection guards first.
 	foundation::Expected<void, EditError> Replace( scene::MapDocument document );
@@ -187,7 +198,8 @@ private:
 	Selection m_selection;
 	ChangeHistory m_history;
 	std::shared_ptr<Registry> m_registry; // shared with subscriptions' release
-	int m_busy = 0;
+	int m_busy = 0;                       // observers are running: every mutation is refused
+	int m_guarding = 0; // guards are running: only Execute (a draft commit) is allowed
 };
 
 } // namespace hammer::app

@@ -226,7 +226,10 @@ std::optional<Box> ObjectsBounds(
 
 bool NameMatches( std::string_view pattern, std::string_view name )
 {
-	auto lower = []( char c ) { return static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) ); };
+	auto lower = []( char c )
+	{
+		return static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
+	};
 	if ( !pattern.empty() && pattern.back() == '*' )
 	{
 		const std::string_view prefix = pattern.substr( 0, pattern.size() - 1 );

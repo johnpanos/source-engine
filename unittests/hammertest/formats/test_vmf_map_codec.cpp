@@ -2,16 +2,17 @@
 //
 // Purpose: hammer.formats VMF map codec conformance (RFC 0002, R08 domain
 //			logic; contracts formats.vmf_map_codec.v1 and ports.map_codec.v1).
-//			Runs the shared IMapCodec oracle (map_codec_oracle.h) against
-//			VmfMapCodec: the canonical feature fixture field by field and byte
-//			for byte, both cordon forms, the oddity fixture, an edited document
-//			whose runtime ids are not in write order, and the repository's
-//			sample maps. VMF-specific checks: warnings name each oddity with its
-//			source line, and the exact-number rule.
+//			Runs the shared IMapCodec oracle (map_codec_oracle.h) against the
+//			strict VmfMapCodec: the canonical feature fixture field by field and
+//			byte for byte (typed displacements, editor logical positions and
+//			comments, version and view settings), both cordon forms, missing
+//			ids, an edited document whose runtime ids are not in write order,
+//			and the repository's sample maps.
 //
-//			Negative checks: parse errors report a line; foreign text is
-//			rejected; content VMF cannot hold fails Encode instead of being
-//			written wrongly.
+//			Negative checks: every kind of content the model cannot hold is a
+//			CodecError with its block path and line; parse errors report a line;
+//			foreign text is rejected; content VMF cannot hold fails Encode
+//			instead of being written wrongly.
 //
 //			Optional corpus: when HAMMER_VMF_CORPUS names a directory, every
 //			.vmf in it is also round-tripped (not part of the required run).
@@ -65,33 +66,6 @@ void Report( testing::Checks &checks, const map_codec_oracle::Findings &f, const
 	checks.That( f.Ok(), what + ( f.Ok() ? "" : ": " + f.Summary() ) );
 }
 
-// 1-based line of the first occurrence of 'needle'.
-int LineOf( const std::string &text, const std::string &needle )
-{
-	const std::size_t at = text.find( needle );
-	if ( at == std::string::npos )
-	{
-		return -1;
-	}
-	return static_cast<int>(
-	           std::count( text.begin(), text.begin() + static_cast<long>( at ), '\n' ) ) +
-	       1;
-}
-
-// The warning containing 'fragment', or nullptr.
-const hammer::ports::CodecDiagnostic *FindWarning(
-    const std::vector<hammer::ports::CodecDiagnostic> &warnings, const std::string &fragment )
-{
-	for ( const hammer::ports::CodecDiagnostic &w : warnings )
-	{
-		if ( w.message.find( fragment ) != std::string::npos )
-		{
-			return &w;
-		}
-	}
-	return nullptr;
-}
-
 Solid MakeSolid( MapDocument &doc, const Box &box, const std::string &material )
 {
 	FaceTexture tex;
@@ -104,6 +78,25 @@ Solid MakeSolid( MapDocument &doc, const Box &box, const std::string &material )
 		side.vmfId = doc.AllocateVmfId();
 	}
 	return s;
+}
+
+// A full power-2 displacement with values %.10g cannot hold exactly.
+Displacement MakeDisplacement()
+{
+	Displacement d;
+	d.power = 2;
+	d.startPosition = Vec3d( 0, 0, 64.0 / 3.0 );
+	d.flags = 4;
+	d.elevation = 0.1 + 0.2;
+	d.subdivided = true;
+	d.normals = std::vector<Vec3d>( 25, Vec3d( 0, 0, 1 ) );
+	d.distances = std::vector<double>( 25, 1.0 / 3.0 );
+	d.offsets = std::vector<Vec3d>( 25, Vec3d( 0.5, 0, 0 ) );
+	d.offsetNormals = std::vector<Vec3d>( 25, Vec3d( 0, 0, 1 ) );
+	d.alphas = std::vector<double>( 25, 255 );
+	d.triangleTags = std::vector<int>( 32, 9 );
+	d.allowedVerts = std::vector<std::int64_t>( 10, -1 );
+	return d;
 }
 
 // A document as editing leaves it: runtime ids in creation order (an entity
@@ -123,7 +116,8 @@ MapDocument EditedDocument()
 	light.connections.push_back( { "OnUser2", "lamp", "SetPattern", "x,y", 0.25, 2, '\x1b' } );
 	light.editor.color = Rgb{ 1, 2, 3 };
 	light.editor.visgroupIds = { 7 };
-	light.editor.extra = { { "logicalpos", "[0 0]" } };
+	light.editor.logicalPos = std::array<int, 2>{ -250, 1000 };
+	light.editor.comments = "a lamp";
 	doc.Put( light );
 
 	Solid wall = MakeSolid(
@@ -131,12 +125,8 @@ MapDocument EditedDocument()
 	wall.sides[0].texture.u.shift = 0.1 + 0.2;
 	wall.sides[0].texture.rotation = 1.0 / 7.0;
 	wall.sides[0].texture.smoothingGroups = 0xFFFFFFFFu;
-	kvtext::KeyValueNode disp;
-	disp.name = "dispinfo";
-	disp.pairs = { { "power", "3" } };
-	wall.sides[1].dispinfo = disp;
-	wall.sides[2].extraPairs = { { "texturelock", "0" } };
-	wall.extraPairs = { { "note", "kept" } };
+	wall.sides[0].displacement = MakeDisplacement();
+	wall.editor.color = Rgb{ 5, 6, 7 };
 
 	Entity door;
 	door.id = doc.AllocateId();
@@ -144,10 +134,6 @@ MapDocument EditedDocument()
 	door.classname = "func_door";
 	door.hidden = true;
 	door.keys = { { "speed", "100" }, { "speed", "200" } };
-	kvtext::KeyValueNode blob;
-	blob.name = "blob";
-	blob.pairs = { { "a", "b" } };
-	door.extraChildren = { blob };
 	Solid panel = MakeSolid( doc, Box{ Vec3d( 64, 0, 0 ), Vec3d( 72, 64, 96 ) }, "METAL/DOOR01" );
 	panel.owner = door.id;
 	panel.hidden = true;
@@ -171,14 +157,10 @@ MapDocument EditedDocument()
 	doc.Put( inner );
 
 	DocumentSettings &s = doc.MutableSettings();
-	s.versionInfo = { { "editorversion", "400" }, { "mapversion", "12" } };
-	s.viewSettings = { { "nGridSpacing", "8" } };
+	s.version = VersionInfo{ 400, 5195, 12, 100, true };
+	s.view = ViewSettings{ false, true, true, 8, true };
 	s.worldVmfId = 1;
 	s.SetWorldKey( "skyname", "sky_dust" );
-	kvtext::KeyValueNode mystery;
-	mystery.name = "mystery";
-	mystery.pairs = { { "k", "v" } };
-	s.worldExtraChildren = { mystery };
 	Visgroup child;
 	child.id = 8;
 	child.name = "Child";
@@ -196,10 +178,6 @@ MapDocument EditedDocument()
 	s.cordons = { cordon };
 	s.cordonsActive = true;
 	s.cordonForm = DocumentSettings::CordonForm::Single;
-	kvtext::KeyValueNode palette;
-	palette.name = "palette_plus";
-	palette.pairs = { { "color0", "255 255 255" } };
-	s.unknownBlocks = { palette };
 	return doc;
 }
 
@@ -224,14 +202,17 @@ int main()
 	Report( checks, map_codec_oracle::RoundTrip( codec, map_codec_oracle::CanonicalVmf() ),
 	    "canonical fixture round trip" );
 	Report( checks, map_codec_oracle::SingleCordonFixture( codec ), "single cordon form" );
-	Report( checks, map_codec_oracle::OddityFixture( codec ), "oddity fixture" );
+	Report( checks, map_codec_oracle::MissingIdsFixture( codec ), "missing ids" );
+	Report( checks, map_codec_oracle::RejectsUnmodeled( codec ), "unmodeled content is rejected" );
 	Report( checks, map_codec_oracle::DocumentRoundTrip( codec, EditedDocument() ),
 	    "edited document round trip up to runtime ids" );
 	Report( checks, map_codec_oracle::DocumentRoundTrip( codec, MapDocument( 4 ) ),
 	    "new empty document round trip" );
+	checks.That( map_codec_oracle::RejectionCases().size() >= 30,
+	    "the rejection catalogue covers 30 kinds" );
 
 	// Edited ids come back renumbered in write order, and the document then
-	// round-trips with identical ids.
+	// round-trips with identical ids and exact numbers.
 	{
 		const MapDocument edited = EditedDocument();
 		const auto text = codec.Encode( edited );
@@ -244,13 +225,14 @@ int main()
 			if ( decoded )
 			{
 				const MapDocument &d = decoded.Value().document;
-				const Solid *wall = map_codec_oracle::ByVmfId(
-				    d.Solids(), edited.FindSolid( edited.SolidIds().front() )->vmfId );
+				const Solid &original = *edited.FindSolid( edited.SolidIds().front() );
+				const Solid *wall = map_codec_oracle::ByVmfId( d.Solids(), original.vmfId );
 				checks.That( wall && wall->sides[0].texture.u.shift == 0.1 + 0.2 &&
 				                 wall->sides[0].texture.rotation == 1.0 / 7.0 &&
-				                 wall->sides[0].points ==
-				                     edited.FindSolid( edited.SolidIds().front() )->sides[0].points,
+				                 wall->sides[0].points == original.sides[0].points,
 				    "numbers %.10g cannot hold come back bit for bit" );
+				checks.That( wall && wall->sides[0].displacement == MakeDisplacement(),
+				    "a typed displacement comes back exactly" );
 				checks.That( wall && wall->sides[0].texture.smoothingGroups == 0xFFFFFFFFu,
 				    "all 32 smoothing-group bits survive" );
 				checks.That(
@@ -258,17 +240,21 @@ int main()
 				    "world solids get the lowest runtime ids" );
 			}
 			checks.That(
-			    text.Value().find( "\"delay\"" ) == std::string::npos &&
-			        text.Value().find( "lamp,TurnOff,,0.3333333333333333,-1" ) != std::string::npos,
+			    text.Value().find( "lamp,TurnOff,,0.3333333333333333,-1" ) != std::string::npos,
 			    "an inexact connection delay is written exactly" );
 			checks.That(
-			    text.Value().find( "\"origin\" \"0.3333333333 -2.5 1e-07\"" ) != std::string::npos,
-			    "entity keys are written as stored" );
+			    text.Value().find( "\"logicalpos\" \"[-250 1000]\"" ) != std::string::npos &&
+			        text.Value().find( "\"comments\" \"a lamp\"" ) != std::string::npos,
+			    "logical position and comments are written" );
+			checks.That( text.Value().find( "\"allowed_verts\"" ) == std::string::npos &&
+			                 text.Value().find( "\"10\" \"-1 -1 -1 -1 -1 -1 -1 -1 -1 -1\"" ) !=
+			                     std::string::npos,
+			    "allowed_verts is keyed by its word count" );
 		}
 	}
 
-	// Cordon form normalization: an unnamed single cordon is single; a named one
-	// or none-with-cordons becomes the list form.
+	// Cordon form normalization: a named cordon, or cordons without a form, are
+	// written in the list form.
 	{
 		MapDocument doc( 5 );
 		Cordon named;
@@ -287,76 +273,20 @@ int main()
 		    checks, map_codec_oracle::DocumentRoundTrip( codec, doc ), "cordons without a form" );
 	}
 
-	// --- VMF-specific: warnings name each oddity and its line ---------------------------------
+	// --- VMF-specific error text ---------------------------------------------------------------
 	{
-		const std::string text = map_codec_oracle::OddityVmf();
-		const auto decoded = codec.Decode( text, 3 );
-		checks.That( decoded.HasValue(), "oddities decode" );
-		if ( decoded )
-		{
-			const auto &w = decoded.Value().warnings;
-			const auto *three = FindWarning( w, "solid 30 has 3 sides" );
-			checks.That( three && three->line == LineOf( text, "\"id\" \"30\"" ) - 2,
-			    "a three-sided solid warns at its line" );
-			const auto *plane = FindWarning( w, "(0 0 0) (1 1) (2 2 2)" );
-			checks.That( plane && plane->message.find( "malformed" ) != std::string::npos &&
-			                 plane->line == LineOf( text, "\"id\" \"142\"" ) - 2,
-			    "a malformed plane warns at its side" );
-			checks.That( FindWarning( w, "solid 36 has 3 sides" ) != nullptr,
-			    "a hidden three-sided solid warns" );
-			checks.That( FindWarning( w, "side id 11 is used more than once" ) != nullptr,
-			    "a duplicate side id warns" );
-			checks.That( FindWarning( w, "had no id" ) != nullptr, "missing ids warn once" );
-			checks.That( FindWarning( w, "groupid 999 names no group" ) != nullptr,
-			    "a missing group warns" );
-			const auto *garbage = FindWarning( w, "'OnSpawn' \"garbage\"" );
-			checks.That( garbage && garbage->line == LineOf( text, "connections" ),
-			    "an unparsable connection warns at its block" );
-			checks.That( FindWarning( w, "'OnUser1'" ) != nullptr,
-			    "a connection with a non-numeric delay warns" );
-			checks.That(
-			    FindWarning( w, "entity id 'bad'" ) != nullptr, "a malformed entity id warns" );
-			checks.That( FindWarning( w, "second 'cordon' block" ) != nullptr,
-			    "a second cordon block warns" );
-			checks.Equal( w.size(), std::size_t( 10 ), "exactly one warning per oddity" );
-		}
-	}
-
-	// A group with unmodeled children stays verbatim and its members keep the
-	// reference; nested oddities in known blocks are preserved.
-	{
-		const std::string text = "world\n{\n\t\"id\" \"1\"\n\t\"classname\" \"worldspawn\"\n"
-		                         "\tgroup\n\t{\n\t\t\"id\" \"5\"\n\t\tweird\n\t\t{\n\t\t}\n\t}\n}\n"
-		                         "entity\n{\n\t\"id\" \"6\"\n\t\"classname\" \"info_target\"\n"
-		                         "\teditor\n\t{\n\t\t\"groupid\" \"5\"\n\t\t\"color\" \"1 2\"\n"
-		                         "\t\tsub\n\t\t{\n\t\t}\n\t}\n}\n"
-		                         "versioninfo\n{\n\t\"a\" \"b\"\n\tchild\n\t{\n\t}\n}\n"
-		                         "visgroups\n{\n\tvisgroup\n\t{\n\t\t\"name\" \"x\"\n\t}\n}\n";
-		const auto decoded = codec.Decode( text, 2 );
-		checks.That( decoded.HasValue(), "odd groups and editors decode" );
-		if ( decoded )
-		{
-			const MapDocument &d = decoded.Value().document;
-			const Entity *e = map_codec_oracle::ByVmfId( d.Entities(), 6 );
-			checks.That( d.Groups().empty() && d.Settings().worldExtraChildren.size() == 1,
-			    "a group with an unknown child is kept verbatim" );
-			const std::vector<kvtext::KeyValue> extra = { { "color", "1 2" }, { "groupid", "5" } };
-			checks.That( e && !e->group.IsValid() && e->editor.extra == extra,
-			    "a member of a verbatim group keeps its groupid; a malformed color is kept" );
-			checks.That( e && e->extraChildren.size() == 1 && e->extraChildren[0].name == "editor",
-			    "editor child blocks are kept in a separate editor block" );
-			const std::vector<kvtext::KeyValue> version = { { "a", "b" } };
-			checks.That(
-			    d.Settings().versionInfo == version && d.Settings().unknownBlocks.size() == 2,
-			    "child blocks of versioninfo and a malformed visgroups block are kept" );
-			Report(
-			    checks, map_codec_oracle::RoundTrip( codec, text, 2 ), "odd groups round trip" );
-		}
+		const std::string text = map_codec_oracle::InsertAfter(
+		    map_codec_oracle::SmallVmf(), "\"id\" \"4\"", "\t\t\t\"foo\" \"1\"\n" );
+		const auto result = codec.Decode( text, 1 );
+		checks.That( !result &&
+		                 result.Error().message == "world/solid[0]/side[1]: unknown key 'foo'" &&
+		                 result.Error().line == map_codec_oracle::LineOf( text, "\"foo\"" ),
+		    "an unknown key names its block path and line exactly" );
 	}
 
 	// --- Negative: text that is not VMF --------------------------------------------------------
 	{
-		const auto open = codec.Decode( "versioninfo\n{\n\t\"a\" \"b\"\n", 1 );
+		const auto open = codec.Decode( "versioninfo\n{\n\t\"editorversion\" \"400\"\n", 1 );
 		checks.That( !open && open.Error().line == 4, "an unclosed block reports the end line" );
 		const auto stray = codec.Decode( "world\n{\n}\n}\n", 1 );
 		checks.That( !stray && stray.Error().line == 4, "a stray close brace reports its line" );
@@ -382,6 +312,14 @@ int main()
 		e.keys = { { "message", "say \"hi\"" } };
 		doc.Put( e );
 		checks.That( EncodeFails( doc, "holds a '\"'" ), "a quote in a value fails Encode" );
+
+		MapDocument named( 6 );
+		Entity shadow = e;
+		shadow.id = named.AllocateId();
+		shadow.keys = { { "classname", "light" } };
+		named.Put( shadow );
+		checks.That( EncodeFails( named, "holds a 'classname' key" ),
+		    "a second classname among the keys fails Encode" );
 
 		MapDocument owners( 6 );
 		Solid orphan = MakeSolid( owners, Box{ Vec3d( 0, 0, 0 ), Vec3d( 8, 8, 8 ) }, "A" );
@@ -412,11 +350,19 @@ int main()
 		checks.That( EncodeFails( conn, "cannot be written" ),
 		    "a comma parameter with the comma separator fails Encode" );
 
-		MapDocument names( 6 );
-		kvtext::KeyValueNode block;
-		block.name = "has space";
-		names.MutableSettings().unknownBlocks = { block };
-		checks.That( EncodeFails( names, "block name" ), "an unwritable block name fails Encode" );
+		MapDocument disp( 6 );
+		Solid displaced = MakeSolid( disp, Box{ Vec3d( 0, 0, 0 ), Vec3d( 8, 8, 8 ) }, "A" );
+		Displacement short_ = MakeDisplacement();
+		short_.distances->pop_back();
+		displaced.sides[0].displacement = short_;
+		disp.Put( displaced );
+		checks.That(
+		    EncodeFails( disp, "displacement distances has 24 entries; its power needs 25" ),
+		    "a displacement array that does not match its power fails Encode" );
+		displaced.sides[0].displacement->power = 7;
+		disp.Put( displaced );
+		checks.That(
+		    EncodeFails( disp, "power 7" ), "an unsupported displacement power fails Encode" );
 	}
 
 	// --- Repository sample maps -----------------------------------------------------------------
@@ -440,10 +386,16 @@ int main()
 			const std::string text = ReadFile( file );
 			Report( checks, map_codec_oracle::RoundTrip( codec, text, 11 ),
 			    "sample " + file.filename().string() + " round trip" );
-			if ( file.filename() == "room.vmf" )
+			if ( file.filename() == "displacement.vmf" )
 			{
-				Report( checks, map_codec_oracle::SemanticText( codec, text ),
-				    "sample room.vmf (canonical) is reproduced semantically" );
+				const auto decoded = codec.Decode( text, 11 );
+				const Solid *s =
+				    decoded ? map_codec_oracle::ByVmfId( decoded.Value().document.Solids(), 2 )
+				            : nullptr;
+				checks.That( s && s->sides[0].displacement && s->sides[0].displacement->distances &&
+				                 ( *s->sides[0].displacement->distances )[6] == 28.1 &&
+				                 !s->sides[0].displacement->offsets,
+				    "sample displacement.vmf decodes its typed displacement" );
 			}
 		}
 	}

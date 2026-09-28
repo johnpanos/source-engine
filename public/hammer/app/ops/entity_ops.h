@@ -30,7 +30,8 @@ namespace hammer::app::ops
 // already has that value.
 EditResult SetKey( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
     const std::string &key, const std::string &value );
-EditResult RemoveKey( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids, const std::string &key );
+EditResult RemoveKey(
+    scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids, const std::string &key );
 // Renames a key, keeping its value and position. Refuses when an entity
 // already has 'to'.
 EditResult RenameKey( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
@@ -43,14 +44,18 @@ EditResult SetClass( scene::DocumentEdit &edit, const std::vector<scene::ObjectI
     const std::string &classname, const ports::IEntityCatalog *catalog );
 
 // Sets or clears spawnflags bit 'flag' (a power of two).
-EditResult SetSpawnFlag( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
-    long long flag, bool on );
+EditResult SetSpawnFlag(
+    scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids, long long flag, bool on );
 
 EditResult AddConnection( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
     const scene::Connection &connection );
 // Replaces connection 'index' of entity 'id'.
 EditResult ReplaceConnection( scene::DocumentEdit &edit, scene::ObjectId id, std::size_t index,
     const scene::Connection &connection );
+// Removes connection 'index' of entity 'id' (exactly that one, even when an
+// identical connection exists at another index).
+EditResult RemoveConnectionAt( scene::DocumentEdit &edit, scene::ObjectId id, std::size_t index );
+
 // Removes the connections matching 'match' from each entity.
 EditResult RemoveConnections( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
     const std::function<bool( const scene::Connection & )> &match );
@@ -64,10 +69,12 @@ EditResult RenameEntity( scene::DocumentEdit &edit, scene::ObjectId id, const st
     bool updateReferences, const ports::IEntityCatalog *catalog );
 
 // Worldspawn keys (not "classname"/"id").
-EditResult SetWorldKey( scene::DocumentEdit &edit, const std::string &key, const std::string &value );
+EditResult SetWorldKey(
+    scene::DocumentEdit &edit, const std::string &key, const std::string &value );
 
 // The entities 'ids' stand for (groups expand; brush solids map to owners).
-std::vector<scene::ObjectId> EntitiesOf( const scene::DocumentReader &doc, const std::vector<scene::ObjectId> &ids );
+std::vector<scene::ObjectId> EntitiesOf(
+    const scene::DocumentReader &doc, const std::vector<scene::ObjectId> &ids );
 
 } // namespace hammer::app::ops
 

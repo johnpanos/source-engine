@@ -67,6 +67,9 @@ public:
 	std::size_t Position() const { return m_position; }
 	std::size_t Size() const { return m_entries.size(); }
 	const std::vector<HistoryEntry> &Entries() const { return m_entries; }
+	// For bookkeeping that must follow every recorded state (the saved map
+	// version); never for content changes.
+	std::vector<HistoryEntry> &MutableEntries() { return m_entries; }
 	std::size_t Limit() const { return m_limit; }
 	void SetLimit( std::size_t limit );
 

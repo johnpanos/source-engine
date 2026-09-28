@@ -90,6 +90,48 @@ std::optional<Box> SolidBounds( const Solid &solid )
 	return Box{ geometry.mins, geometry.maxs };
 }
 
+std::optional<SolidRayHit> RayEnterSolid(
+    const Solid &solid, const Vec3d &origin, const Vec3d &direction )
+{
+	const mapgeometry::BrushSolid geometry = BuildGeometry( solid );
+	std::vector<mapgeometry::Plane> planes;
+	for ( const mapgeometry::BrushFace &face : geometry.faces )
+	{
+		planes.push_back( face.plane );
+	}
+	const std::optional<mapgeometry::RayEntry> entry =
+	    mapgeometry::RayEnterConvex( planes, origin, direction );
+	if ( !entry )
+	{
+		return std::nullopt;
+	}
+	const mapgeometry::BrushFace &face = geometry.faces[static_cast<std::size_t>( entry->plane )];
+	SolidRayHit hit;
+	hit.t = entry->t;
+	hit.side = static_cast<std::size_t>( face.sourcePlane );
+	hit.point = origin + direction * entry->t;
+	hit.normal = face.plane.normal;
+	return hit;
+}
+
+std::optional<std::array<Vec3d, 4>> QuadCorners( const Solid &solid, std::size_t sideIndex )
+{
+	for ( const mapgeometry::BrushFace &face : BuildGeometry( solid ).faces )
+	{
+		if ( static_cast<std::size_t>( face.sourcePlane ) != sideIndex )
+		{
+			continue;
+		}
+		if ( face.vertices.size() != 4 )
+		{
+			return std::nullopt;
+		}
+		return std::array<Vec3d, 4>{
+		    face.vertices[0], face.vertices[1], face.vertices[2], face.vertices[3] };
+	}
+	return std::nullopt;
+}
+
 std::array<Vec3d, 3> PointsFromPolygon( const std::vector<Vec3d> &ccw )
 {
 	// Side::Plane() takes (p0 - p1) x (p2 - p1); for a counter-clockwise polygon
@@ -155,24 +197,18 @@ Solid MakeBoxSolid( const Box &box, const FaceTexture &texture )
 	};
 	// Counter-clockwise from outside for each of the six faces.
 	const FaceSpec faces[6] = {
-	    { Vec3d( 0, 0, 1 ),
-	        { Vec3d( a.x, a.y, b.z ), Vec3d( b.x, a.y, b.z ), Vec3d( b.x, b.y, b.z ),
-	            Vec3d( a.x, b.y, b.z ) } },
-	    { Vec3d( 0, 0, -1 ),
-	        { Vec3d( a.x, b.y, a.z ), Vec3d( b.x, b.y, a.z ), Vec3d( b.x, a.y, a.z ),
-	            Vec3d( a.x, a.y, a.z ) } },
-	    { Vec3d( -1, 0, 0 ),
-	        { Vec3d( a.x, a.y, a.z ), Vec3d( a.x, a.y, b.z ), Vec3d( a.x, b.y, b.z ),
-	            Vec3d( a.x, b.y, a.z ) } },
-	    { Vec3d( 1, 0, 0 ),
-	        { Vec3d( b.x, b.y, a.z ), Vec3d( b.x, b.y, b.z ), Vec3d( b.x, a.y, b.z ),
-	            Vec3d( b.x, a.y, a.z ) } },
-	    { Vec3d( 0, -1, 0 ),
-	        { Vec3d( b.x, a.y, a.z ), Vec3d( b.x, a.y, b.z ), Vec3d( a.x, a.y, b.z ),
-	            Vec3d( a.x, a.y, a.z ) } },
-	    { Vec3d( 0, 1, 0 ),
-	        { Vec3d( a.x, b.y, a.z ), Vec3d( a.x, b.y, b.z ), Vec3d( b.x, b.y, b.z ),
-	            Vec3d( b.x, b.y, a.z ) } },
+	    { Vec3d( 0, 0, 1 ), { Vec3d( a.x, a.y, b.z ), Vec3d( b.x, a.y, b.z ),
+	                            Vec3d( b.x, b.y, b.z ), Vec3d( a.x, b.y, b.z ) } },
+	    { Vec3d( 0, 0, -1 ), { Vec3d( a.x, b.y, a.z ), Vec3d( b.x, b.y, a.z ),
+	                             Vec3d( b.x, a.y, a.z ), Vec3d( a.x, a.y, a.z ) } },
+	    { Vec3d( -1, 0, 0 ), { Vec3d( a.x, a.y, a.z ), Vec3d( a.x, a.y, b.z ),
+	                             Vec3d( a.x, b.y, b.z ), Vec3d( a.x, b.y, a.z ) } },
+	    { Vec3d( 1, 0, 0 ), { Vec3d( b.x, b.y, a.z ), Vec3d( b.x, b.y, b.z ),
+	                            Vec3d( b.x, a.y, b.z ), Vec3d( b.x, a.y, a.z ) } },
+	    { Vec3d( 0, -1, 0 ), { Vec3d( b.x, a.y, a.z ), Vec3d( b.x, a.y, b.z ),
+	                             Vec3d( a.x, a.y, b.z ), Vec3d( a.x, a.y, a.z ) } },
+	    { Vec3d( 0, 1, 0 ), { Vec3d( a.x, b.y, a.z ), Vec3d( a.x, b.y, b.z ),
+	                            Vec3d( b.x, b.y, b.z ), Vec3d( b.x, b.y, a.z ) } },
 	};
 	Solid solid;
 	for ( const FaceSpec &f : faces )

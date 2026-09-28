@@ -1965,3 +1965,40 @@ Reproduce:
 python3 tools/quality/probe_encoding.py --samples 100000 \
     --out quality-results/rfc0011-decisions/encoding.json
 ```
+
+## Portal 2 GI test chamber `sp_gi_chamber_01` (2026-09-28, user direction)
+
+User direction: "build an actual test chamber using our GI mapping pipeline",
+with "dynamic and moving lights as part of the art direction", the clean
+Aperture Portal 2 theme, and the textures of `sp_a2_triple_laser`. This is a
+content consumer of G1–G10 and closes no gate.
+
+- `tools/quality/portal2_gi_chamber.py` authors the chamber as a VMF from the
+  Portal 2 SDK's instances (collapsed by `vmf_instances.py`: the pinned vbsp
+  has no instance I/O). It compiles it against run/runtime-p2, relights it
+  with the new `portal2-chamber` export profile (directional page and RPRB v2
+  probes), and publishes it. `./play_p2 +map sp_gi_chamber_01` mounts it
+  (`stage_portal2_runtime.py --mount-published`).
+- Lights: baked ceiling panels and a tungsten observation room. Dynamic:
+  a swept observer spot on a looping `func_door_rotating`, two amber beacons
+  on `func_rotating`s, the fizzler glow (style 5), the button indicator and
+  the exit corridor, switched by the floor button. With the button down, 7
+  dlights are on: the whole native direct budget.
+- Evidence (preview profile): `portal2_gi_chamber.py --capture` boots it
+  headless in a private runtime. It records WMSH, the 3-layer LMAP, PRBV,
+  RTRN, SDFV and 8 RPRB probes ready, and `producer sdf (auto)`. It captures
+  the observer's pool at three times and the pressed state. Gameplay
+  identity: 58 legacy lumps identical.
+- Pipeline fixes found on the way:
+  - `legacy_bsp_scene.py` dropped `$ssbump` and `$envmap`. It now emits a
+    normal map and AO from the bump basis, and a roughness map from the
+    envmap mask and tint.
+  - SDK light instances needed Hammer's light pitch convention (vrad's
+    direction is up-positive).
+  - Relights of other games' maps take a manifest `legacy_runtime`.
+  - `vmf_map_build.py` stages static-prop models.
+  - `build-p2` needed the KTX reader.
+- Gap, not fixed: `light_set::Builder` marks every world light `baked`. A
+  switchable named `light`, which the relight leaves out of the bake, gets
+  no direct light on the relit world mesh (only producer indirect). The
+  chamber uses `light_dynamic` for its switched lights.

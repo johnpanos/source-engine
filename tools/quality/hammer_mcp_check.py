@@ -129,7 +129,7 @@ def main():
         _, text, error = client.call("create_block", mins="0 0 0", maxs="0 0 0")
         checks.check(error is True and "rejected" in text, "control.command-error", text)
         _, after, _ = client.call("info")
-        checks.check(before == after and before.startswith("brushes=6 entities=2"),
+        checks.check(before == after and before.startswith("solids=6 entities=2"),
                      "control.state-unchanged", "%s / %s" % (before, after))
 
         _, built, error = client.call("build_map", path="ui_room.vmf", quality="fast", publish=False)

@@ -1,5 +1,5 @@
 # hammer-loop-v1: a sealed 256x256x128 room with a player start and a light.
-# Driven through the Hammer command layer (hammer::app::EditorCommands).
+# Driven through the Hammer command layer (hammer::app::SessionCommands).
 new_map
 set_material material=DEV/DEV_MEASUREGENERIC01B
 create_block mins="-144 -144 -16" maxs="144 144 0"

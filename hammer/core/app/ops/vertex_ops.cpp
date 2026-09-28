@@ -77,27 +77,42 @@ std::vector<std::pair<int, int>> SolidEdgeList( const scene::Solid &solid )
 	return std::vector<std::pair<int, int>>( edges.begin(), edges.end() );
 }
 
-std::optional<scene::Solid> RebuildFromVertices( const scene::Solid &original, const std::vector<Vec3d> &points )
+std::optional<scene::Solid> RebuildFromVertices(
+    const scene::Solid &original, const std::vector<Vec3d> &points )
 {
-	const std::optional<std::vector<mapgeometry::Plane>> hull = mapgeometry::ConvexHullPlanes( points );
+	const std::optional<std::vector<mapgeometry::Plane>> hull =
+	    mapgeometry::ConvexHullPlanes( points );
 	if ( !hull )
 	{
 		return std::nullopt;
 	}
-	// Every point must lie on the hull boundary; one strictly inside means the
-	// requested shape is concave.
+	// Every point must be a corner of the hull: on at least three hull planes
+	// whose normals span 3D. A point strictly inside, or inside a face or on an
+	// edge, would be absorbed, so the requested shape is not a convex solid
+	// with those vertices and the move is refused.
 	for ( const Vec3d &p : points )
 	{
-		bool onBoundary = false;
+		std::vector<Vec3d> normals;
 		for ( const mapgeometry::Plane &plane : *hull )
 		{
 			if ( std::fabs( mapgeometry::PlaneDistance( plane, p ) ) <= mapgeometry::kPlaneEpsilon )
 			{
-				onBoundary = true;
-				break;
+				normals.push_back( plane.normal );
 			}
 		}
-		if ( !onBoundary )
+		bool corner = false;
+		for ( std::size_t i = 0; i < normals.size() && !corner; ++i )
+		{
+			for ( std::size_t j = i + 1; j < normals.size() && !corner; ++j )
+			{
+				for ( std::size_t k = j + 1; k < normals.size() && !corner; ++k )
+				{
+					corner = std::fabs( mapgeometry::Dot( normals[i],
+					             mapgeometry::Cross( normals[j], normals[k] ) ) ) > 1.0e-6;
+				}
+			}
+		}
+		if ( !corner )
 		{
 			return std::nullopt;
 		}
@@ -121,7 +136,8 @@ std::optional<scene::Solid> RebuildFromVertices( const scene::Solid &original, c
 		for ( std::size_t i = 0; i < oldPlanes.size(); ++i )
 		{
 			const double dot = mapgeometry::Dot( oldPlanes[i].normal, plane.normal );
-			if ( dot > 0.9999 && std::fabs( oldPlanes[i].dist - plane.dist ) < mapgeometry::kPlaneEpsilon )
+			if ( dot > 0.9999 &&
+			     std::fabs( oldPlanes[i].dist - plane.dist ) < mapgeometry::kPlaneEpsilon )
 			{
 				same = static_cast<int>( i );
 			}
@@ -147,8 +163,8 @@ std::optional<scene::Solid> RebuildFromVertices( const scene::Solid &original, c
 	return scene::NormalizeSides( out );
 }
 
-EditResult MoveVertices( scene::DocumentEdit &edit, scene::ObjectId solidId, const std::vector<int> &indices,
-    const Vec3d &delta )
+EditResult MoveVertices( scene::DocumentEdit &edit, scene::ObjectId solidId,
+    const std::vector<int> &indices, const Vec3d &delta )
 {
 	const scene::Solid *solid = edit.FindSolid( solidId );
 	if ( !solid )

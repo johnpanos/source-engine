@@ -58,110 +58,39 @@ std::vector<double> ParseNumbers( const std::string &text )
 	return out;
 }
 
-std::string JoinNumbers( const std::vector<double> &values )
+// Transforms a displacement: the start position is a point; normals, offsets
+// and offset normals are vectors. A normal's length change moves into the
+// matching distance so the displaced surface follows the map exactly; offset
+// normals are renormalized.
+void TransformDisplacement( scene::Displacement &disp, const Affine &xf )
 {
-	std::string out;
-	for ( std::size_t i = 0; i < values.size(); ++i )
+	disp.startPosition = Tidy( xf.Point( disp.startPosition ) );
+	if ( disp.normals )
 	{
-		out += ( i ? " " : "" ) + scene::FormatNumber( values[i] );
-	}
-	return out;
-}
-
-kvtext::KeyValueNode *FindChild( kvtext::KeyValueNode &node, const char *name )
-{
-	for ( kvtext::KeyValueNode &child : node.children )
-	{
-		if ( child.name == name )
+		std::vector<Vec3d> &normals = *disp.normals;
+		for ( std::size_t i = 0; i < normals.size(); ++i )
 		{
-			return &child;
-		}
-	}
-	return nullptr;
-}
-
-// Transforms the vector rows of a dispinfo block: the start position is a point;
-// normals and offsets are vectors; a normal's length change moves into the
-// matching distance so the displaced surface follows the map exactly.
-void TransformDispInfo( kvtext::KeyValueNode &disp, const Affine &xf )
-{
-	for ( kvtext::KeyValue &kv : disp.pairs )
-	{
-		if ( kv.key == "startposition" )
-		{
-			const std::vector<double> v = ParseNumbers( kv.value );
-			if ( v.size() == 3 )
+			const Vec3d v = xf.Direction( normals[i] );
+			const double len = mapgeometry::Length( v );
+			normals[i] = Tidy( len > 1.0e-12 ? v / len : Vec3d() );
+			if ( disp.distances && i < disp.distances->size() && len > 1.0e-12 )
 			{
-				const Vec3d p = Tidy( xf.Point( Vec3d( v[0], v[1], v[2] ) ) );
-				kv.value = "[" + scene::FormatVec3( p ) + "]";
+				( *disp.distances )[i] *= len;
 			}
 		}
 	}
-	kvtext::KeyValueNode *normals = FindChild( disp, "normals" );
-	kvtext::KeyValueNode *distances = FindChild( disp, "distances" );
-	if ( normals )
+	if ( disp.offsets )
 	{
-		for ( kvtext::KeyValue &row : normals->pairs )
+		for ( Vec3d &offset : *disp.offsets )
 		{
-			std::vector<double> n = ParseNumbers( row.value );
-			std::vector<double> *d = nullptr;
-			std::vector<double> dist;
-			kvtext::KeyValue *distRow = nullptr;
-			if ( distances )
-			{
-				for ( kvtext::KeyValue &r : distances->pairs )
-				{
-					if ( r.key == row.key )
-					{
-						distRow = &r;
-						dist = ParseNumbers( r.value );
-						d = &dist;
-					}
-				}
-			}
-			for ( std::size_t i = 0; i + 2 < n.size(); i += 3 )
-			{
-				const Vec3d v = xf.Direction( Vec3d( n[i], n[i + 1], n[i + 2] ) );
-				const double len = mapgeometry::Length( v );
-				const Vec3d unit = len > 1.0e-12 ? v / len : Vec3d();
-				n[i] = Tidy( unit.x );
-				n[i + 1] = Tidy( unit.y );
-				n[i + 2] = Tidy( unit.z );
-				if ( d && i / 3 < d->size() && len > 1.0e-12 )
-				{
-					( *d )[i / 3] *= len;
-				}
-			}
-			row.value = JoinNumbers( n );
-			if ( distRow )
-			{
-				distRow->value = JoinNumbers( dist );
-			}
+			offset = Tidy( xf.Direction( offset ) );
 		}
 	}
-	for ( const char *name : { "offsets", "offset_normals" } )
+	if ( disp.offsetNormals )
 	{
-		kvtext::KeyValueNode *rows = FindChild( disp, name );
-		if ( !rows )
+		for ( Vec3d &normal : *disp.offsetNormals )
 		{
-			continue;
-		}
-		const bool unit = std::string( name ) == "offset_normals";
-		for ( kvtext::KeyValue &row : rows->pairs )
-		{
-			std::vector<double> n = ParseNumbers( row.value );
-			for ( std::size_t i = 0; i + 2 < n.size(); i += 3 )
-			{
-				Vec3d v = xf.Direction( Vec3d( n[i], n[i + 1], n[i + 2] ) );
-				if ( unit )
-				{
-					v = mapgeometry::Normalize( v );
-				}
-				n[i] = Tidy( v.x );
-				n[i + 1] = Tidy( v.y );
-				n[i + 2] = Tidy( v.z );
-			}
-			row.value = JoinNumbers( n );
+			normal = Tidy( mapgeometry::Normalize( xf.Direction( normal ) ) );
 		}
 	}
 }
@@ -225,9 +154,9 @@ std::optional<scene::Solid> TransformedSolid(
 		{
 			side.texture = LockTexture( side.texture, xf );
 		}
-		if ( side.dispinfo )
+		if ( side.displacement )
 		{
-			TransformDispInfo( *side.dispinfo, xf );
+			TransformDisplacement( *side.displacement, xf );
 		}
 	}
 	// The result must still bound a closed solid with outward planes.
@@ -350,8 +279,8 @@ EditResult Rotate( scene::DocumentEdit &edit, const std::vector<scene::ObjectId>
 	{
 		return NothingToDo( "zero rotation" );
 	}
-	return TransformObjects(
-	    edit, ids, Affine::About( mapgeometry::Mat3::AxisRotation( axis, degrees ), pivot ), options );
+	return TransformObjects( edit, ids,
+	    Affine::About( mapgeometry::Mat3::AxisRotation( axis, degrees ), pivot ), options );
 }
 
 EditResult ScaleToBox( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
@@ -394,7 +323,8 @@ EditResult Mirror( scene::DocumentEdit &edit, const std::vector<scene::ObjectId>
 	{
 		return Reject( "mirror axis must be 0, 1 or 2" );
 	}
-	return TransformObjects( edit, ids, Affine::About( mapgeometry::Mat3::Mirror( axis ), pivot ), options );
+	return TransformObjects(
+	    edit, ids, Affine::About( mapgeometry::Mat3::Mirror( axis ), pivot ), options );
 }
 
 EditResult SnapToGrid( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
@@ -446,7 +376,8 @@ EditResult AlignObjects( scene::DocumentEdit &edit, const std::vector<scene::Obj
 		}
 		Vec3d delta;
 		mapgeometry::SetComponent( delta, axis, target - at );
-		if ( EditResult r = TransformObjects( edit, { id }, Affine::Translation( delta ), options ); !r )
+		if ( EditResult r = TransformObjects( edit, { id }, Affine::Translation( delta ), options );
+		    !r )
 		{
 			return r;
 		}

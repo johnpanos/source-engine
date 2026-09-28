@@ -93,10 +93,10 @@ JsonValue Initialize( const JsonValue *params )
 	return result;
 }
 
-JsonValue ToolList()
+JsonValue ToolList( const std::vector<app::CommandInfo> &catalog )
 {
 	JsonValue tools = JsonValue::Array();
-	for ( const app::CommandInfo &info : app::EditorCommands::Catalog() )
+	for ( const app::CommandInfo &info : catalog )
 	{
 		JsonValue properties = JsonValue::Object();
 		JsonValue required = JsonValue::Array();
@@ -160,7 +160,17 @@ bool ArgumentText( const JsonValue &value, std::string &out )
 
 } // namespace
 
-McpServer::McpServer( app::EditorCommands &commands ) : m_commands( commands )
+McpServer::McpServer( app::EditorCommands &commands )
+    : McpServer( app::EditorCommands::Catalog(),
+          [&commands]( std::string_view name, const app::CommandArgs &args )
+          {
+	          return commands.Execute( name, args );
+          } )
+{
+}
+
+McpServer::McpServer( const std::vector<app::CommandInfo> &catalog, Execute execute )
+    : m_catalog( catalog ), m_execute( std::move( execute ) )
 {
 }
 
@@ -217,12 +227,12 @@ std::optional<std::string> McpServer::HandleLine( std::string_view line )
 	if ( !m_initialized )
 		return RespondError( *id, kInvalidRequest, name + " before initialize" );
 	if ( name == "tools/list" )
-		return Respond( *id, ToolList() );
+		return Respond( *id, ToolList( m_catalog ) );
 
 	const JsonValue *tool = params ? params->Find( "name" ) : nullptr;
 	if ( !tool || tool->GetKind() != JsonValue::Kind::String )
 		return RespondError( *id, kInvalidParams, "tools/call needs a tool name" );
-	const auto &catalog = app::EditorCommands::Catalog();
+	const auto &catalog = m_catalog;
 	const auto info = std::find_if( catalog.begin(), catalog.end(),
 	    [&]( const app::CommandInfo &entry )
 	    {
@@ -248,7 +258,7 @@ std::optional<std::string> McpServer::HandleLine( std::string_view line )
 		}
 	}
 
-	auto result = m_commands.Execute( tool->Text(), args );
+	auto result = m_execute( tool->Text(), args );
 	if ( !result )
 	{
 		const app::CommandError &error = result.Error();

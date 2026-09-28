@@ -44,7 +44,8 @@ int main()
 		light.SetOrigin( Vec3d( 32, 32, 32 ) );
 		lightId = edit.Add( light );
 		checks.That( !doc.Contains( boxId ), "staging never touches the base" );
-		checks.That( edit.FindSolid( boxId ) && edit.FindEntity( lightId ), "reads see staged objects" );
+		checks.That(
+		    edit.FindSolid( boxId ) && edit.FindEntity( lightId ), "reads see staged objects" );
 		checks.Equal( edit.SolidIds().size(), std::size_t( 1 ), "staged ids by kind" );
 		const Solid *staged = edit.FindSolid( boxId );
 		bool allIds = staged->vmfId != 0;
@@ -65,14 +66,17 @@ int main()
 		DocumentEdit edit( doc );
 		Entity *light = edit.MutableEntity( lightId );
 		light->SetKey( "_light", "255 255 255 200" );
-		checks.That( doc.FindEntity( lightId )->Key( "_light" ) == nullptr, "copy-on-write leaves base intact" );
+		checks.That( doc.FindEntity( lightId )->Key( "_light" ) == nullptr,
+		    "copy-on-write leaves base intact" );
 		checks.That( edit.Remove( boxId ), "remove a live object" );
-		checks.That( !edit.FindSolid( boxId ) && !edit.KindOf( boxId ), "removed object is hidden" );
+		checks.That(
+		    !edit.FindSolid( boxId ) && !edit.KindOf( boxId ), "removed object is hidden" );
 		checks.That( !edit.Remove( boxId ), "removing twice fails (negative)" );
 		checks.That( edit.MutableSolid( boxId ) == nullptr, "cannot mutate a removed object" );
 		checks.That( edit.MutableSolid( lightId ) == nullptr, "cannot mutate as the wrong kind" );
 		edit.MutableSettings().SetWorldKey( "skyname", "sky_wasteland02" );
-		checks.That( doc.Settings().WorldKey( "skyname" ) == nullptr, "settings staged separately" );
+		checks.That(
+		    doc.Settings().WorldKey( "skyname" ) == nullptr, "settings staged separately" );
 		edit2 = CommitEdit( doc, edit );
 	}
 	checks.Equal( edit2.Modified().size(), std::size_t( 1 ), "one modification" );
@@ -115,7 +119,8 @@ int main()
 		edit.Put( restored );
 		const ChangeSet c = CommitEdit( doc, edit );
 		checks.Equal( c.Created().size(), std::size_t( 1 ), "put of a removed id is a creation" );
-		checks.That( doc.FindSolid( boxId ) && *doc.FindSolid( boxId ) == restored, "put restores the value" );
+		checks.That( doc.FindSolid( boxId ) && *doc.FindSolid( boxId ) == restored,
+		    "put restores the value" );
 	}
 
 	// Negative: a change set from another document is refused atomically.
@@ -125,7 +130,8 @@ int main()
 		edit.Add( BoxSolid( Vec3d( 0, 0, 0 ), Vec3d( 8, 8, 8 ) ) );
 		const ChangeSet foreign = edit.Finish();
 		const MapDocument snapshot = doc;
-		checks.That( !Apply( doc, foreign, ApplyDirection::Forward ), "foreign change set refused" );
+		checks.That(
+		    !Apply( doc, foreign, ApplyDirection::Forward ), "foreign change set refused" );
 		checks.That( SameContent( doc, snapshot ), "refusal leaves the document unchanged" );
 	}
 
@@ -156,7 +162,8 @@ int main()
 		Solid d = BoxSolid( Vec3d( 300, 0, 0 ), Vec3d( 364, 64, 64 ) );
 		d.sides[0].vmfId = doc.FindSolid( boxId )->sides[0].vmfId;
 		dupe.Add( d );
-		checks.That( !ValidateEdit( dupe ).empty(), "a side id clash with an untouched solid is rejected" );
+		checks.That(
+		    !ValidateEdit( dupe ).empty(), "a side id clash with an untouched solid is rejected" );
 
 		DocumentEdit orphan( doc );
 		Entity door;
@@ -167,7 +174,8 @@ int main()
 		orphan.Add( owned );
 		checks.That( ValidateEdit( orphan ).empty(), "a brush entity with its solid is valid" );
 		orphan.Remove( doorId );
-		checks.That( !ValidateEdit( orphan ).empty(), "a solid left owned by a removed entity is rejected" );
+		checks.That(
+		    !ValidateEdit( orphan ).empty(), "a solid left owned by a removed entity is rejected" );
 
 		DocumentEdit cycle( doc );
 		const ObjectId g1 = cycle.Add( Group{} );

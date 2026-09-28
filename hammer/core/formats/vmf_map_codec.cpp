@@ -1,10 +1,13 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Implementation of public/hammer/formats/vmf_map_codec.h: the
-//			full-fidelity VMF codec. Key orders and value formats follow the
+//			strict VMF codec. Every block and key maps to a typed field of the
+//			scene model; content the model cannot hold is a CodecError naming
+//			its block path and line. Key orders and value formats follow the
 //			legacy writer (hammer/mapdoc.cpp, mapworld.cpp, mapentity.cpp,
-//			mapsolid.cpp, mapface.cpp, mapclass.cpp, editgameclass.cpp,
-//			mapgroup.cpp), so the output loads in legacy Hammer and vbsp.
+//			mapsolid.cpp, mapface.cpp, mapdisp.cpp, mapclass.cpp,
+//			editgameclass.cpp, mapgroup.cpp), so the output loads in legacy
+//			Hammer and vbsp.
 //
 //=============================================================================//
 
@@ -40,9 +43,11 @@ using hammer::scene::CameraBookmark;
 using hammer::scene::Connection;
 using hammer::scene::Cordon;
 using hammer::scene::CordonBox;
+using hammer::scene::Displacement;
 using hammer::scene::DocumentSettings;
 using hammer::scene::EditorInfo;
 using hammer::scene::Entity;
+using hammer::scene::FaceTexture;
 using hammer::scene::Group;
 using hammer::scene::MapDocument;
 using hammer::scene::ObjectId;
@@ -50,6 +55,8 @@ using hammer::scene::Rgb;
 using hammer::scene::Side;
 using hammer::scene::Solid;
 using hammer::scene::TextureAxis;
+using hammer::scene::VersionInfo;
+using hammer::scene::ViewSettings;
 using hammer::scene::Visgroup;
 using kvtext::KeyValue;
 using kvtext::KeyValueNode;
@@ -209,32 +216,61 @@ std::vector<std::string_view> Words( std::string_view text )
 	return words;
 }
 
-std::optional<Vec3d> ParseVec3( std::string_view text )
+std::optional<std::vector<double>> ParseNumbers( std::string_view text )
 {
-	const std::vector<std::string_view> words = Words( text );
-	if ( words.size() != 3 )
+	std::vector<double> out;
+	for ( const std::string_view word : Words( text ) )
 	{
-		return std::nullopt;
+		const std::optional<double> v = ParseNumber( word );
+		if ( !v )
+		{
+			return std::nullopt;
+		}
+		out.push_back( *v );
 	}
-	const std::optional<double> x = ParseNumber( words[0] );
-	const std::optional<double> y = ParseNumber( words[1] );
-	const std::optional<double> z = ParseNumber( words[2] );
-	if ( !x || !y || !z )
-	{
-		return std::nullopt;
-	}
-	return Vec3d( *x, *y, *z );
+	return out;
 }
 
-// "<open>x y z<close>" (blanks around allowed).
-std::optional<Vec3d> ParseEnclosedVec3( std::string_view text, char open, char close )
+std::optional<std::vector<std::int64_t>> ParseIntegers( std::string_view text )
+{
+	std::vector<std::int64_t> out;
+	for ( const std::string_view word : Words( text ) )
+	{
+		const std::optional<std::int64_t> v = ParseInteger( word );
+		if ( !v )
+		{
+			return std::nullopt;
+		}
+		out.push_back( *v );
+	}
+	return out;
+}
+
+// "<open>n1 ... nk<close>" with exactly 'count' numbers.
+std::optional<std::vector<double>> ParseEnclosed(
+    std::string_view text, char open, char close, std::size_t count )
 {
 	text = Trim( text );
 	if ( text.size() < 2 || text.front() != open || text.back() != close )
 	{
 		return std::nullopt;
 	}
-	return ParseVec3( text.substr( 1, text.size() - 2 ) );
+	std::optional<std::vector<double>> values = ParseNumbers( text.substr( 1, text.size() - 2 ) );
+	if ( !values || values->size() != count )
+	{
+		return std::nullopt;
+	}
+	return values;
+}
+
+std::optional<Vec3d> ParseEnclosedVec3( std::string_view text, char open, char close )
+{
+	const std::optional<std::vector<double>> v = ParseEnclosed( text, open, close, 3 );
+	if ( !v )
+	{
+		return std::nullopt;
+	}
+	return Vec3d( ( *v )[0], ( *v )[1], ( *v )[2] );
 }
 
 // "(x y z) (x y z) (x y z)", nothing else.
@@ -253,17 +289,14 @@ std::optional<std::array<Vec3d, 3>> ParsePlane( std::string_view text )
 		{
 			break;
 		}
-		if ( text[i] != '(' || found == 3 )
-		{
-			return std::nullopt;
-		}
 		const std::size_t close = text.find( ')', i );
-		if ( close == std::string_view::npos )
+		if ( text[i] != '(' || found == 3 || close == std::string_view::npos )
 		{
 			return std::nullopt;
 		}
-		const std::optional<Vec3d> point = ParseVec3( text.substr( i + 1, close - i - 1 ) );
-		if ( !point || text.substr( i + 1, close - i - 1 ).find( '(' ) != std::string_view::npos )
+		const std::optional<Vec3d> point =
+		    ParseEnclosedVec3( text.substr( i, close - i + 1 ), '(', ')' );
+		if ( !point )
 		{
 			return std::nullopt;
 		}
@@ -282,31 +315,21 @@ std::optional<TextureAxis> ParseAxis( std::string_view text )
 {
 	text = Trim( text );
 	const std::size_t close = text.find( ']' );
-	if ( text.empty() || text.front() != '[' || close == std::string_view::npos )
+	if ( close == std::string_view::npos )
 	{
 		return std::nullopt;
 	}
-	const std::vector<std::string_view> inner = Words( text.substr( 1, close - 1 ) );
-	const std::vector<std::string_view> after = Words( text.substr( close + 1 ) );
-	if ( inner.size() != 4 || after.size() != 1 )
+	const std::optional<std::vector<double>> inner =
+	    ParseEnclosed( text.substr( 0, close + 1 ), '[', ']', 4 );
+	const std::optional<std::vector<double>> after = ParseNumbers( text.substr( close + 1 ) );
+	if ( !inner || !after || after->size() != 1 )
 	{
 		return std::nullopt;
-	}
-	double values[5];
-	const std::string_view parts[5] = { inner[0], inner[1], inner[2], inner[3], after[0] };
-	for ( int i = 0; i < 5; ++i )
-	{
-		const std::optional<double> v = ParseNumber( parts[i] );
-		if ( !v )
-		{
-			return std::nullopt;
-		}
-		values[i] = *v;
 	}
 	TextureAxis axis;
-	axis.axis = Vec3d( values[0], values[1], values[2] );
-	axis.shift = values[3];
-	axis.scale = values[4];
+	axis.axis = Vec3d( ( *inner )[0], ( *inner )[1], ( *inner )[2] );
+	axis.shift = ( *inner )[3];
+	axis.scale = ( *after )[0];
 	return axis;
 }
 
@@ -327,6 +350,28 @@ std::optional<Rgb> ParseRgb( std::string_view text )
 	return Rgb{ *r, *g, *b };
 }
 
+// "[x y]" with integer components (the logical-view position).
+std::optional<std::array<int, 2>> ParseLogicalPos( std::string_view text )
+{
+	text = Trim( text );
+	if ( text.size() < 2 || text.front() != '[' || text.back() != ']' )
+	{
+		return std::nullopt;
+	}
+	const std::vector<std::string_view> words = Words( text.substr( 1, text.size() - 2 ) );
+	if ( words.size() != 2 )
+	{
+		return std::nullopt;
+	}
+	const std::optional<int> x = ParseInt( words[0] );
+	const std::optional<int> y = ParseInt( words[1] );
+	if ( !x || !y )
+	{
+		return std::nullopt;
+	}
+	return std::array<int, 2>{ *x, *y };
+}
+
 std::string FormatRgb( const Rgb &c )
 {
 	return std::to_string( c.r ) + " " + std::to_string( c.g ) + " " + std::to_string( c.b );
@@ -342,19 +387,62 @@ std::string FormatAxis( const TextureAxis &a )
 	return "[" + ExactVec3( a.axis ) + " " + ExactNumber( a.shift ) + "] " + ExactNumber( a.scale );
 }
 
-// --- Source lines of blocks -------------------------------------------------------
+// --- Source lines ------------------------------------------------------------------
 
-// Maps each parsed block to the line of its name. The kvtext tree carries no
-// lines, so this re-scans the text with the tokenizer's rules: blocks appear in
-// the text in the same (pre)order as in the tree.
-class BlockLines
+// The line of every parsed block and of each of its pairs. The kvtext tree
+// carries no lines, so the text is re-tokenized with the parser's rules and
+// walked with the parser's grammar; blocks then match the tree in preorder.
+class SourceLines
 {
 public:
-	BlockLines( const std::string &text, const KeyValueNode &root )
+	SourceLines( const std::string &text, const KeyValueNode &root )
 	{
-		std::vector<int> lines;
+		Tokenize( text );
+		std::vector<Block> blocks;
+		std::size_t at = 0;
+		Block top;
+		Walk( at, top, blocks );
+		m_rootPairs = top.pairLines;
+		std::size_t next = 0;
+		Assign( root, blocks, next );
+	}
+
+	int Line( const KeyValueNode &node ) const
+	{
+		const auto it = m_blocks.find( &node );
+		return it == m_blocks.end() ? 0 : it->second.line;
+	}
+
+	int PairLine( const KeyValueNode &node, std::size_t pair, bool isRoot = false ) const
+	{
+		const std::vector<int> *lines = &m_rootPairs;
+		if ( !isRoot )
+		{
+			const auto it = m_blocks.find( &node );
+			if ( it == m_blocks.end() )
+			{
+				return 0;
+			}
+			lines = &it->second.pairLines;
+		}
+		return pair < lines->size() ? ( *lines )[pair] : Line( node );
+	}
+
+private:
+	struct Token
+	{
+		char kind; // 's' string, '{', '}'
+		int line;
+	};
+	struct Block
+	{
+		int line = 0;
+		std::vector<int> pairLines;
+	};
+
+	void Tokenize( const std::string &text )
+	{
 		int line = 1;
-		int lastStringLine = 1;
 		std::size_t i = 0;
 		while ( i < text.size() )
 		{
@@ -375,18 +463,14 @@ public:
 					++i;
 				}
 			}
-			else if ( c == '{' )
+			else if ( c == '{' || c == '}' )
 			{
-				lines.push_back( lastStringLine );
-				++i;
-			}
-			else if ( c == '}' )
-			{
+				m_tokens.push_back( { c, line } );
 				++i;
 			}
 			else if ( c == '"' )
 			{
-				lastStringLine = line;
+				m_tokens.push_back( { 's', line } );
 				++i;
 				while ( i < text.size() && text[i] != '"' )
 				{
@@ -397,7 +481,7 @@ public:
 			}
 			else
 			{
-				lastStringLine = line;
+				m_tokens.push_back( { 's', line } );
 				while ( i < text.size() && !IsBlank( text[i] ) && text[i] != '{' &&
 				        text[i] != '}' && text[i] != '"' )
 				{
@@ -405,28 +489,49 @@ public:
 				}
 			}
 		}
-		std::size_t next = 0;
-		Assign( root, lines, next );
 	}
 
-	int Line( const KeyValueNode &node ) const
+	// Mirrors kvtext's parser on text it accepted: a string followed by '{'
+	// opens a block, a string followed by a string is a pair.
+	void Walk( std::size_t &at, Block &into, std::vector<Block> &blocks )
 	{
-		const auto it = m_lines.find( &node );
-		return it == m_lines.end() ? 0 : it->second;
-	}
-
-private:
-	void Assign( const KeyValueNode &node, const std::vector<int> &lines, std::size_t &next )
-	{
-		for ( const KeyValueNode &child : node.children )
+		while ( at < m_tokens.size() && m_tokens[at].kind != '}' )
 		{
-			m_lines[&child] = next < lines.size() ? lines[next] : 0;
-			++next;
-			Assign( child, lines, next );
+			const Token first = m_tokens[at++];
+			if ( at < m_tokens.size() && m_tokens[at].kind == '{' )
+			{
+				++at;
+				const std::size_t index = blocks.size();
+				blocks.push_back( { first.line, {} } );
+				Block inner{ first.line, {} };
+				Walk( at, inner, blocks );
+				blocks[index].pairLines = std::move( inner.pairLines );
+				++at; // '}'
+			}
+			else
+			{
+				into.pairLines.push_back( first.line );
+				++at;
+			}
 		}
 	}
 
-	std::unordered_map<const KeyValueNode *, int> m_lines;
+	void Assign( const KeyValueNode &node, const std::vector<Block> &blocks, std::size_t &next )
+	{
+		for ( const KeyValueNode &child : node.children )
+		{
+			if ( next < blocks.size() )
+			{
+				m_blocks[&child] = blocks[next];
+			}
+			++next;
+			Assign( child, blocks, next );
+		}
+	}
+
+	std::vector<Token> m_tokens;
+	std::vector<int> m_rootPairs;
+	std::unordered_map<const KeyValueNode *, Block> m_blocks;
 };
 
 // --- Decoding ------------------------------------------------------------------------
@@ -434,7 +539,13 @@ private:
 struct GroupRef
 {
 	std::uint32_t id = 0;
-	std::string raw;
+	std::string path;
+	int line = 0;
+};
+
+struct Where
+{
+	std::string path;
 	int line = 0;
 };
 
@@ -443,8 +554,9 @@ struct PendingSolid
 	Solid solid;
 	bool hasId = false;
 	std::vector<bool> sideHasId;
+	std::vector<Where> sideWhere;
 	std::optional<GroupRef> group;
-	int line = 0;
+	Where where;
 };
 
 struct PendingEntity
@@ -453,7 +565,7 @@ struct PendingEntity
 	bool hasId = false;
 	std::optional<GroupRef> group;
 	std::vector<PendingSolid> solids;
-	int line = 0;
+	Where where;
 };
 
 struct PendingGroup
@@ -461,896 +573,1244 @@ struct PendingGroup
 	Group group;
 	bool hasId = false;
 	std::optional<GroupRef> parent;
-	int line = 0;
+	Where where;
 };
 
-KeyValueNode Wrap( std::string name, KeyValueNode inner )
+std::string ChildPath( const std::string &parent, const std::string &name, int index )
 {
-	KeyValueNode wrapper;
-	wrapper.name = std::move( name );
-	wrapper.children.push_back( std::move( inner ) );
-	return wrapper;
+	const std::string self = index < 0 ? name : name + "[" + std::to_string( index ) + "]";
+	return parent.empty() ? self : parent + "/" + self;
+}
+
+// Numbers each child by its position among same-named siblings.
+std::vector<int> SiblingIndices( const KeyValueNode &node )
+{
+	std::map<std::string, int> counts;
+	std::vector<int> indices;
+	for ( const KeyValueNode &child : node.children )
+	{
+		indices.push_back( counts[child.name]++ );
+	}
+	return indices;
 }
 
 class Decoder
 {
 public:
-	explicit Decoder( const BlockLines &lines ) : m_lines( lines ) {}
+	explicit Decoder( const SourceLines &lines ) : m_lines( lines ) {}
 
-	std::vector<CodecDiagnostic> warnings;
+	std::optional<CodecError> error;
 	DocumentSettings settings;
 	bool sawWorld = false;
 	std::vector<PendingSolid> worldSolids;
 	std::vector<PendingGroup> groups;
 	std::vector<PendingEntity> entities;
-	std::set<std::uint32_t> verbatimGroupIds;
 
-	void Warn( std::string message, int line )
+	bool Fail( const std::string &path, const std::string &message, int line )
 	{
-		warnings.push_back( { std::move( message ), line } );
-	}
-	int Line( const KeyValueNode &node ) const { return m_lines.Line( node ); }
-
-	void DecodeTop( const KeyValueNode &root )
-	{
-		std::set<std::string> seen;
-		for ( const KeyValueNode &block : root.children )
+		if ( !error )
 		{
+			error = CodecError{ ( path.empty() ? std::string() : path + ": " ) + message, line };
+		}
+		return false;
+	}
+
+	bool DecodeTop( const KeyValueNode &root )
+	{
+		if ( !root.pairs.empty() )
+		{
+			return Fail( "", "key '" + root.pairs.front().key + "' is outside any block",
+			    m_lines.PairLine( root, 0, true ) );
+		}
+		const std::vector<int> index = SiblingIndices( root );
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < root.children.size(); ++i )
+		{
+			const KeyValueNode &block = root.children[i];
 			const std::string &name = block.name;
 			const bool singleton = name == "versioninfo" || name == "visgroups" ||
 			                       name == "viewsettings" || name == "world" || name == "cameras" ||
 			                       name == "cordon" || name == "cordons";
-			if ( singleton )
+			const std::string path = ChildPath( "", name, singleton ? -1 : index[i] );
+			if ( singleton && !seen.insert( name == "cordons" ? "cordon" : name ).second )
 			{
-				// 'cordon' and 'cordons' hold the same data: only one is read.
-				const std::string family = name == "cordons" ? "cordon" : name;
-				if ( !seen.insert( family ).second )
-				{
-					Warn( "a second '" + name + "' block is kept verbatim", Line( block ) );
-					settings.unknownBlocks.push_back( block );
-					continue;
-				}
+				return Fail(
+				    path, "a second '" + name + "' block (the map holds one)", Line( block ) );
 			}
+			bool ok = true;
 			if ( name == "versioninfo" )
 			{
-				DecodePairBlock( block, settings.versionInfo );
+				ok = DecodeVersion( block, path );
 			}
 			else if ( name == "viewsettings" )
 			{
-				DecodePairBlock( block, settings.viewSettings );
+				ok = DecodeView( block, path );
 			}
 			else if ( name == "visgroups" )
 			{
-				DecodeVisgroups( block );
+				ok = DecodeVisgroups( block, path );
 			}
 			else if ( name == "world" )
 			{
-				DecodeWorld( block );
+				ok = DecodeWorld( block, path );
 			}
 			else if ( name == "entity" )
 			{
-				DecodeEntity( block, false );
+				ok = DecodeEntity( block, path, false );
 			}
 			else if ( name == "hidden" )
 			{
-				DecodeTopHidden( block );
+				ok = DecodeTopHidden( block, path );
 			}
 			else if ( name == "cameras" )
 			{
-				DecodeCameras( block );
+				ok = DecodeCameras( block, path );
 			}
 			else if ( name == "cordon" )
 			{
-				DecodeSingleCordon( block );
+				ok = DecodeSingleCordon( block, path );
 			}
 			else if ( name == "cordons" )
 			{
-				DecodeCordonList( block );
+				ok = DecodeCordonList( block, path );
 			}
 			else
 			{
-				settings.unknownBlocks.push_back( block );
+				ok = Fail( path, "unknown top-level block '" + name + "'", Line( block ) );
 			}
-		}
-	}
-
-private:
-	// A block of plain pairs; stray child blocks keep a verbatim copy (only the
-	// children) among the unknown blocks.
-	void DecodePairBlock( const KeyValueNode &block, std::vector<KeyValue> &into )
-	{
-		into = block.pairs;
-		if ( !block.children.empty() )
-		{
-			Warn( "child blocks of '" + block.name + "' are kept in a separate verbatim block",
-			    Line( block ) );
-			KeyValueNode rest;
-			rest.name = block.name;
-			rest.children = block.children;
-			settings.unknownBlocks.push_back( std::move( rest ) );
-		}
-	}
-
-	static bool DecodeVisgroup( const KeyValueNode &node, Visgroup &out )
-	{
-		std::optional<std::string> name;
-		std::optional<int> id;
-		for ( const KeyValue &kv : node.pairs )
-		{
-			if ( kv.key == "name" && !name )
-			{
-				name = kv.value;
-			}
-			else if ( kv.key == "visgroupid" && !id )
-			{
-				id = ParseInt( kv.value );
-				if ( !id )
-				{
-					return false;
-				}
-			}
-			else if ( kv.key == "color" && !out.color )
-			{
-				out.color = ParseRgb( kv.value );
-				if ( !out.color )
-				{
-					return false;
-				}
-			}
-			else
+			if ( !ok )
 			{
 				return false;
 			}
-		}
-		if ( !name || !id )
-		{
-			return false;
-		}
-		out.name = *name;
-		out.id = *id;
-		for ( const KeyValueNode &child : node.children )
-		{
-			Visgroup inner;
-			if ( child.name != "visgroup" || !DecodeVisgroup( child, inner ) )
-			{
-				return false;
-			}
-			out.children.push_back( std::move( inner ) );
 		}
 		return true;
 	}
 
-	void DecodeVisgroups( const KeyValueNode &block )
+private:
+	int Line( const KeyValueNode &node ) const { return m_lines.Line( node ); }
+	int PairLine( const KeyValueNode &node, std::size_t pair ) const
 	{
-		std::vector<Visgroup> tree;
-		bool ok = block.pairs.empty();
-		for ( const KeyValueNode &child : block.children )
-		{
-			Visgroup v;
-			if ( !ok || child.name != "visgroup" || !DecodeVisgroup( child, v ) )
-			{
-				ok = false;
-				break;
-			}
-			tree.push_back( std::move( v ) );
-		}
-		if ( !ok )
-		{
-			Warn(
-			    "the 'visgroups' block is not in the expected form; kept verbatim", Line( block ) );
-			settings.unknownBlocks.push_back( block );
-			return;
-		}
-		settings.visgroups = std::move( tree );
+		return m_lines.PairLine( node, pair );
 	}
 
-	void DecodeCameras( const KeyValueNode &block )
+	bool UnknownKey( const KeyValueNode &node, const std::string &path, std::size_t pair )
 	{
-		std::vector<CameraBookmark> cameras;
-		std::optional<int> active;
-		bool ok = true;
-		for ( const KeyValue &kv : block.pairs )
+		return Fail( path, "unknown key '" + node.pairs[pair].key + "'", PairLine( node, pair ) );
+	}
+
+	bool Malformed(
+	    const KeyValueNode &node, const std::string &path, std::size_t pair, const char *expected )
+	{
+		const KeyValue &kv = node.pairs[pair];
+		return Fail( path, "key '" + kv.key + "' value \"" + kv.value + "\" is not " + expected,
+		    PairLine( node, pair ) );
+	}
+
+	// False (with an error) when 'key' was already seen in this block.
+	bool Once( std::set<std::string> &seen, const KeyValueNode &node, const std::string &path,
+	    std::size_t pair )
+	{
+		if ( !seen.insert( node.pairs[pair].key ).second )
 		{
-			if ( kv.key == "activecamera" && !active )
+			return Fail(
+			    path, "duplicate key '" + node.pairs[pair].key + "'", PairLine( node, pair ) );
+		}
+		return true;
+	}
+
+	bool NoChildren( const KeyValueNode &node, const std::string &path )
+	{
+		if ( !node.children.empty() )
+		{
+			return Fail( path, "unknown block '" + node.children.front().name + "'",
+			    Line( node.children.front() ) );
+		}
+		return true;
+	}
+
+	template <typename T, typename Parse>
+	bool Read( const KeyValueNode &node, const std::string &path, std::size_t pair, T &into,
+	    Parse parse, const char *expected )
+	{
+		auto value = parse( node.pairs[pair].value );
+		if ( !value )
+		{
+			return Malformed( node, path, pair, expected );
+		}
+		into = *value;
+		return true;
+	}
+
+	bool DecodeVersion( const KeyValueNode &node, const std::string &path )
+	{
+		VersionInfo &v = settings.version;
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
+		{
+			const std::string &key = node.pairs[i].key;
+			if ( !Once( seen, node, path, i ) )
 			{
-				active = ParseInt( kv.value );
-				ok = ok && active.has_value();
+				return false;
+			}
+			bool ok = true;
+			if ( key == "editorversion" )
+			{
+				ok = Read( node, path, i, v.editorVersion, ParseInt, "an integer" );
+			}
+			else if ( key == "editorbuild" )
+			{
+				ok = Read( node, path, i, v.editorBuild, ParseInt, "an integer" );
+			}
+			else if ( key == "mapversion" )
+			{
+				ok = Read( node, path, i, v.mapVersion, ParseInt, "an integer" );
+			}
+			else if ( key == "formatversion" )
+			{
+				ok = Read( node, path, i, v.formatVersion, ParseInt, "an integer" );
+			}
+			else if ( key == "prefab" )
+			{
+				ok = Read( node, path, i, v.prefab, ParseFlag, "0 or 1" );
 			}
 			else
 			{
-				ok = false;
+				ok = UnknownKey( node, path, i );
 			}
-		}
-		for ( const KeyValueNode &child : block.children )
-		{
-			std::optional<Vec3d> position;
-			std::optional<Vec3d> look;
-			ok = ok && child.name == "camera" && child.children.empty() && child.pairs.size() == 2;
-			for ( const KeyValue &kv : child.pairs )
-			{
-				if ( kv.key == "position" && !position )
-				{
-					position = ParseEnclosedVec3( kv.value, '[', ']' );
-				}
-				else if ( kv.key == "look" && !look )
-				{
-					look = ParseEnclosedVec3( kv.value, '[', ']' );
-				}
-			}
-			ok = ok && position && look;
 			if ( !ok )
 			{
-				break;
+				return false;
 			}
-			cameras.push_back( { *position, *look } );
 		}
-		if ( !ok )
-		{
-			Warn( "the 'cameras' block is not in the expected form; kept verbatim", Line( block ) );
-			settings.unknownBlocks.push_back( block );
-			return;
-		}
-		settings.cameras = std::move( cameras );
-		settings.activeCamera = active.value_or( -1 );
+		return NoChildren( node, path );
 	}
 
-	static std::optional<CordonBox> DecodeBoxPairs( const std::vector<KeyValue> &pairs,
-	    std::optional<bool> *active, std::optional<std::string> *name )
+	bool DecodeView( const KeyValueNode &node, const std::string &path )
 	{
-		std::optional<Vec3d> mins;
-		std::optional<Vec3d> maxs;
-		for ( const KeyValue &kv : pairs )
+		ViewSettings &v = settings.view;
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
 		{
-			if ( kv.key == "mins" && !mins )
+			const std::string &key = node.pairs[i].key;
+			if ( !Once( seen, node, path, i ) )
 			{
-				mins = ParseEnclosedVec3( kv.value, '(', ')' );
-				if ( !mins )
-				{
-					return std::nullopt;
-				}
+				return false;
 			}
-			else if ( kv.key == "maxs" && !maxs )
+			bool ok = true;
+			if ( key == "bSnapToGrid" )
 			{
-				maxs = ParseEnclosedVec3( kv.value, '(', ')' );
-				if ( !maxs )
-				{
-					return std::nullopt;
-				}
+				ok = Read( node, path, i, v.snapToGrid, ParseFlag, "0 or 1" );
 			}
-			else if ( active && kv.key == "active" && !*active )
+			else if ( key == "bShowGrid" )
 			{
-				*active = ParseFlag( kv.value );
-				if ( !*active )
-				{
-					return std::nullopt;
-				}
+				ok = Read( node, path, i, v.showGrid, ParseFlag, "0 or 1" );
 			}
-			else if ( name && kv.key == "name" && !*name )
+			else if ( key == "bShowLogicalGrid" )
 			{
-				*name = kv.value;
+				ok = Read( node, path, i, v.showLogicalGrid, ParseFlag, "0 or 1" );
+			}
+			else if ( key == "nGridSpacing" )
+			{
+				ok = Read( node, path, i, v.gridSpacing, ParseInt, "an integer" );
+			}
+			else if ( key == "bShow3DGrid" )
+			{
+				ok = Read( node, path, i, v.show3DGrid, ParseFlag, "0 or 1" );
 			}
 			else
+			{
+				ok = UnknownKey( node, path, i );
+			}
+			if ( !ok )
+			{
+				return false;
+			}
+		}
+		return NoChildren( node, path );
+	}
+
+	bool DecodeVisgroup( const KeyValueNode &node, const std::string &path, Visgroup &out )
+	{
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
+		{
+			const std::string &key = node.pairs[i].key;
+			if ( !Once( seen, node, path, i ) )
+			{
+				return false;
+			}
+			bool ok = true;
+			if ( key == "name" )
+			{
+				out.name = node.pairs[i].value;
+			}
+			else if ( key == "visgroupid" )
+			{
+				ok = Read( node, path, i, out.id, ParseInt, "an integer" );
+			}
+			else if ( key == "color" )
+			{
+				ok = Read( node, path, i, out.color, ParseRgb, "three integers" );
+			}
+			else
+			{
+				ok = UnknownKey( node, path, i );
+			}
+			if ( !ok )
+			{
+				return false;
+			}
+		}
+		if ( !seen.count( "name" ) || !seen.count( "visgroupid" ) )
+		{
+			return Fail( path, "a visgroup needs a name and a visgroupid", Line( node ) );
+		}
+		return DecodeVisgroupChildren( node, path, out.children );
+	}
+
+	bool DecodeVisgroupChildren(
+	    const KeyValueNode &node, const std::string &path, std::vector<Visgroup> &into )
+	{
+		const std::vector<int> index = SiblingIndices( node );
+		for ( std::size_t i = 0; i < node.children.size(); ++i )
+		{
+			const KeyValueNode &child = node.children[i];
+			const std::string childPath = ChildPath( path, child.name, index[i] );
+			if ( child.name != "visgroup" )
+			{
+				return Fail( childPath, "unknown block '" + child.name + "'", Line( child ) );
+			}
+			Visgroup v;
+			if ( !DecodeVisgroup( child, childPath, v ) )
+			{
+				return false;
+			}
+			into.push_back( std::move( v ) );
+		}
+		return true;
+	}
+
+	bool DecodeVisgroups( const KeyValueNode &node, const std::string &path )
+	{
+		if ( !node.pairs.empty() )
+		{
+			return UnknownKey( node, path, 0 );
+		}
+		return DecodeVisgroupChildren( node, path, settings.visgroups );
+	}
+
+	bool DecodeCameras( const KeyValueNode &node, const std::string &path )
+	{
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
+		{
+			if ( !Once( seen, node, path, i ) )
+			{
+				return false;
+			}
+			if ( node.pairs[i].key != "activecamera" )
+			{
+				return UnknownKey( node, path, i );
+			}
+			if ( !Read( node, path, i, settings.activeCamera, ParseInt, "an integer" ) )
+			{
+				return false;
+			}
+		}
+		const std::vector<int> index = SiblingIndices( node );
+		for ( std::size_t c = 0; c < node.children.size(); ++c )
+		{
+			const KeyValueNode &child = node.children[c];
+			const std::string childPath = ChildPath( path, child.name, index[c] );
+			if ( child.name != "camera" )
+			{
+				return Fail( childPath, "unknown block '" + child.name + "'", Line( child ) );
+			}
+			CameraBookmark camera;
+			std::set<std::string> keys;
+			for ( std::size_t i = 0; i < child.pairs.size(); ++i )
+			{
+				const std::string &key = child.pairs[i].key;
+				if ( !Once( keys, child, childPath, i ) )
+				{
+					return false;
+				}
+				bool ok = true;
+				auto vec = []( std::string_view t )
+				{
+					return ParseEnclosedVec3( t, '[', ']' );
+				};
+				if ( key == "position" )
+				{
+					ok = Read( child, childPath, i, camera.position, vec, "\"[x y z]\"" );
+				}
+				else if ( key == "look" )
+				{
+					ok = Read( child, childPath, i, camera.look, vec, "\"[x y z]\"" );
+				}
+				else
+				{
+					ok = UnknownKey( child, childPath, i );
+				}
+				if ( !ok )
+				{
+					return false;
+				}
+			}
+			if ( keys.size() != 2 )
+			{
+				return Fail( childPath, "a camera needs a position and a look", Line( child ) );
+			}
+			if ( !NoChildren( child, childPath ) )
+			{
+				return false;
+			}
+			settings.cameras.push_back( camera );
+		}
+		return true;
+	}
+
+	// mins/maxs (and, where allowed, active and name) of a cordon box block.
+	bool DecodeBox( const KeyValueNode &node, const std::string &path, CordonBox &box,
+	    std::set<std::string> &seen, bool *active, std::string *name )
+	{
+		auto point = []( std::string_view t )
+		{
+			return ParseEnclosedVec3( t, '(', ')' );
+		};
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
+		{
+			const std::string &key = node.pairs[i].key;
+			if ( !Once( seen, node, path, i ) )
+			{
+				return false;
+			}
+			bool ok = true;
+			if ( key == "mins" )
+			{
+				ok = Read( node, path, i, box.mins, point, "\"(x y z)\"" );
+			}
+			else if ( key == "maxs" )
+			{
+				ok = Read( node, path, i, box.maxs, point, "\"(x y z)\"" );
+			}
+			else if ( key == "active" && active )
+			{
+				ok = Read( node, path, i, *active, ParseFlag, "0 or 1" );
+			}
+			else if ( key == "name" && name )
+			{
+				*name = node.pairs[i].value;
+			}
+			else
+			{
+				ok = UnknownKey( node, path, i );
+			}
+			if ( !ok )
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool DecodeSingleCordon( const KeyValueNode &node, const std::string &path )
+	{
+		Cordon cordon;
+		CordonBox box;
+		std::set<std::string> seen;
+		bool active = false;
+		if ( !DecodeBox( node, path, box, seen, &active, nullptr ) || !NoChildren( node, path ) )
+		{
+			return false;
+		}
+		if ( !seen.count( "mins" ) || !seen.count( "maxs" ) )
+		{
+			return Fail( path, "a cordon needs mins and maxs", Line( node ) );
+		}
+		cordon.active = active;
+		cordon.boxes.push_back( box );
+		settings.cordons = { cordon };
+		settings.cordonsActive = active;
+		settings.cordonForm = DocumentSettings::CordonForm::Single;
+		return true;
+	}
+
+	bool DecodeCordonList( const KeyValueNode &node, const std::string &path )
+	{
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
+		{
+			if ( !Once( seen, node, path, i ) )
+			{
+				return false;
+			}
+			if ( node.pairs[i].key != "active" )
+			{
+				return UnknownKey( node, path, i );
+			}
+			if ( !Read( node, path, i, settings.cordonsActive, ParseFlag, "0 or 1" ) )
+			{
+				return false;
+			}
+		}
+		const std::vector<int> index = SiblingIndices( node );
+		for ( std::size_t c = 0; c < node.children.size(); ++c )
+		{
+			const KeyValueNode &child = node.children[c];
+			const std::string childPath = ChildPath( path, child.name, index[c] );
+			if ( child.name != "cordon" )
+			{
+				return Fail( childPath, "unknown block '" + child.name + "'", Line( child ) );
+			}
+			Cordon cordon;
+			std::set<std::string> keys;
+			CordonBox unused;
+			if ( !DecodeBox( child, childPath, unused, keys, &cordon.active, &cordon.name ) )
+			{
+				return false;
+			}
+			if ( keys.count( "mins" ) || keys.count( "maxs" ) )
+			{
+				return Fail(
+				    childPath, "a listed cordon holds its extents in 'box' blocks", Line( child ) );
+			}
+			const std::vector<int> boxIndex = SiblingIndices( child );
+			for ( std::size_t b = 0; b < child.children.size(); ++b )
+			{
+				const KeyValueNode &boxNode = child.children[b];
+				const std::string boxPath = ChildPath( childPath, boxNode.name, boxIndex[b] );
+				if ( boxNode.name != "box" )
+				{
+					return Fail( boxPath, "unknown block '" + boxNode.name + "'", Line( boxNode ) );
+				}
+				CordonBox box;
+				std::set<std::string> boxKeys;
+				if ( !DecodeBox( boxNode, boxPath, box, boxKeys, nullptr, nullptr ) ||
+				     !NoChildren( boxNode, boxPath ) )
+				{
+					return false;
+				}
+				if ( boxKeys.size() != 2 )
+				{
+					return Fail( boxPath, "a box needs mins and maxs", Line( boxNode ) );
+				}
+				cordon.boxes.push_back( box );
+			}
+			settings.cordons.push_back( std::move( cordon ) );
+		}
+		settings.cordonForm = DocumentSettings::CordonForm::List;
+		return true;
+	}
+
+	bool DecodeEditor( const KeyValueNode &node, const std::string &path, EditorInfo &info,
+	    std::optional<GroupRef> &group )
+	{
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
+		{
+			const std::string &key = node.pairs[i].key;
+			if ( key != "visgroupid" && !Once( seen, node, path, i ) )
+			{
+				return false;
+			}
+			bool ok = true;
+			if ( key == "color" )
+			{
+				ok = Read( node, path, i, info.color, ParseRgb, "three integers" );
+			}
+			else if ( key == "visgroupid" )
+			{
+				int id = 0;
+				ok = Read( node, path, i, id, ParseInt, "an integer" );
+				info.visgroupIds.push_back( id );
+			}
+			else if ( key == "groupid" )
+			{
+				std::uint32_t id = 0;
+				ok = Read( node, path, i, id, ParseId, "an id" );
+				group = GroupRef{ id, path, PairLine( node, i ) };
+			}
+			else if ( key == "visgroupshown" )
+			{
+				ok = Read( node, path, i, info.visgroupShown, ParseFlag, "0 or 1" );
+			}
+			else if ( key == "visgroupautoshown" )
+			{
+				ok = Read( node, path, i, info.visgroupAutoShown, ParseFlag, "0 or 1" );
+			}
+			else if ( key == "logicalpos" )
+			{
+				ok = Read( node, path, i, info.logicalPos, ParseLogicalPos, "\"[x y]\" integers" );
+			}
+			else if ( key == "comments" )
+			{
+				info.comments = node.pairs[i].value;
+			}
+			else
+			{
+				ok = UnknownKey( node, path, i );
+			}
+			if ( !ok )
+			{
+				return false;
+			}
+		}
+		return NoChildren( node, path );
+	}
+
+	bool ReadId( const KeyValueNode &node, const std::string &path, std::size_t pair,
+	    std::uint32_t &into, bool &hasId )
+	{
+		hasId = Read( node, path, pair, into, ParseId, "an id" );
+		return hasId;
+	}
+
+	// A block of 'rows' pairs "row0".."rowN-1", each holding 'perRow' numbers.
+	template <typename T, typename Parse>
+	bool DecodeRows( const KeyValueNode &node, const std::string &path, int rows, int perRow,
+	    Parse parse, std::vector<T> &out )
+	{
+		if ( !NoChildren( node, path ) )
+		{
+			return false;
+		}
+		if ( node.pairs.size() != static_cast<std::size_t>( rows ) )
+		{
+			return Fail( path,
+			    "has " + std::to_string( node.pairs.size() ) + " rows; the power needs " +
+			        std::to_string( rows ),
+			    Line( node ) );
+		}
+		for ( int r = 0; r < rows; ++r )
+		{
+			const KeyValue &kv = node.pairs[static_cast<std::size_t>( r )];
+			const int line = PairLine( node, static_cast<std::size_t>( r ) );
+			if ( kv.key != "row" + std::to_string( r ) )
+			{
+				return Fail( path,
+				    "expected key 'row" + std::to_string( r ) + "', found '" + kv.key + "'", line );
+			}
+			auto values = parse( kv.value );
+			if ( !values || values->size() != static_cast<std::size_t>( perRow ) )
+			{
+				return Fail( path,
+				    kv.key + " needs " + std::to_string( perRow ) + " numbers" +
+				        ( values ? ", found " + std::to_string( values->size() ) : std::string() ),
+				    line );
+			}
+			out.insert( out.end(), values->begin(), values->end() );
+		}
+		return true;
+	}
+
+	bool DecodeVectorRows( const KeyValueNode &node, const std::string &path, int verts,
+	    std::optional<std::vector<Vec3d>> &into )
+	{
+		std::vector<double> flat;
+		if ( !DecodeRows( node, path, verts, verts * 3, ParseNumbers, flat ) )
+		{
+			return false;
+		}
+		std::vector<Vec3d> out;
+		for ( std::size_t i = 0; i + 2 < flat.size(); i += 3 )
+		{
+			out.push_back( Vec3d( flat[i], flat[i + 1], flat[i + 2] ) );
+		}
+		into = std::move( out );
+		return true;
+	}
+
+	bool DecodeDisplacement( const KeyValueNode &node, const std::string &path, Displacement &d )
+	{
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
+		{
+			const std::string &key = node.pairs[i].key;
+			if ( !Once( seen, node, path, i ) )
+			{
+				return false;
+			}
+			bool ok = true;
+			if ( key == "power" )
+			{
+				ok = Read( node, path, i, d.power, ParseInt, "an integer" );
+				if ( ok && ( d.power < 1 || d.power > 4 ) )
+				{
+					ok = Malformed( node, path, i, "a displacement power from 1 to 4" );
+				}
+			}
+			else if ( key == "startposition" )
+			{
+				ok = Read(
+				    node, path, i, d.startPosition,
+				    []( std::string_view t )
+				    {
+					    return ParseEnclosedVec3( t, '[', ']' );
+				    },
+				    "\"[x y z]\"" );
+			}
+			else if ( key == "flags" )
+			{
+				ok = Read( node, path, i, d.flags, ParseInt, "an integer" );
+			}
+			else if ( key == "elevation" )
+			{
+				ok = Read( node, path, i, d.elevation, ParseNumber, "a number" );
+			}
+			else if ( key == "subdiv" )
+			{
+				ok = Read( node, path, i, d.subdivided, ParseFlag, "0 or 1" );
+			}
+			else if ( key == "mintess" )
+			{
+				ok = Read( node, path, i, d.minTess, ParseInt, "an integer" );
+			}
+			else if ( key == "smooth" )
+			{
+				ok = Read( node, path, i, d.smoothingAngle, ParseNumber, "a number" );
+			}
+			else if ( key == "alpha" )
+			{
+				std::vector<double> v;
+				ok = Read(
+				    node, path, i, v,
+				    []( std::string_view t )
+				    {
+					    return ParseEnclosed( t, '[', ']', 4 );
+				    },
+				    "\"[a b c d]\"" );
+				if ( ok )
+				{
+					d.cornerAlphas = std::array<double, 4>{ v[0], v[1], v[2], v[3] };
+				}
+			}
+			else
+			{
+				ok = UnknownKey( node, path, i );
+			}
+			if ( !ok )
+			{
+				return false;
+			}
+		}
+		if ( !seen.count( "power" ) || !seen.count( "startposition" ) )
+		{
+			return Fail( path, "a displacement needs a power and a startposition", Line( node ) );
+		}
+		const int verts = d.VertsPerRow();
+		const int quads = d.QuadsPerRow();
+		std::set<std::string> blocks;
+		for ( const KeyValueNode &child : node.children )
+		{
+			const std::string childPath = ChildPath( path, child.name, -1 );
+			if ( !blocks.insert( child.name ).second )
+			{
+				return Fail( childPath, "duplicate block '" + child.name + "'", Line( child ) );
+			}
+			bool ok = true;
+			if ( child.name == "normals" )
+			{
+				ok = DecodeVectorRows( child, childPath, verts, d.normals );
+			}
+			else if ( child.name == "offsets" )
+			{
+				ok = DecodeVectorRows( child, childPath, verts, d.offsets );
+			}
+			else if ( child.name == "offset_normals" )
+			{
+				ok = DecodeVectorRows( child, childPath, verts, d.offsetNormals );
+			}
+			else if ( child.name == "distances" || child.name == "alphas" )
+			{
+				std::vector<double> values;
+				ok = DecodeRows( child, childPath, verts, verts, ParseNumbers, values );
+				( child.name == "distances" ? d.distances : d.alphas ) = std::move( values );
+			}
+			else if ( child.name == "triangle_tags" )
+			{
+				std::vector<std::int64_t> tags;
+				ok = DecodeRows( child, childPath, quads, quads * 2, ParseIntegers, tags );
+				std::vector<int> out;
+				for ( const std::int64_t tag : tags )
+				{
+					if ( tag < std::numeric_limits<int>::min() ||
+					     tag > std::numeric_limits<int>::max() )
+					{
+						return Fail( childPath, "a triangle tag is out of range", Line( child ) );
+					}
+					out.push_back( static_cast<int>( tag ) );
+				}
+				d.triangleTags = std::move( out );
+			}
+			else if ( child.name == "allowed_verts" )
+			{
+				ok = DecodeAllowedVerts( child, childPath, d );
+			}
+			else
+			{
+				ok = Fail( childPath, "unknown block '" + child.name + "'", Line( child ) );
+			}
+			if ( !ok )
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	// One pair whose key is the number of words it holds ("10" in legacy files).
+	bool DecodeAllowedVerts( const KeyValueNode &node, const std::string &path, Displacement &d )
+	{
+		if ( !NoChildren( node, path ) )
+		{
+			return false;
+		}
+		if ( node.pairs.size() != 1 )
+		{
+			return Fail( path, "needs exactly one key (the word count)", Line( node ) );
+		}
+		const std::optional<std::vector<std::int64_t>> words = ParseIntegers( node.pairs[0].value );
+		if ( !words )
+		{
+			return Malformed( node, path, 0, "integers" );
+		}
+		if ( node.pairs[0].key != std::to_string( words->size() ) )
+		{
+			return Fail( path,
+			    "key '" + node.pairs[0].key + "' is not the word count " +
+			        std::to_string( words->size() ),
+			    PairLine( node, 0 ) );
+		}
+		d.allowedVerts = *words;
+		return true;
+	}
+
+	bool DecodeSide( const KeyValueNode &node, const std::string &path, Side &side, bool &hasId )
+	{
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
+		{
+			const std::string &key = node.pairs[i].key;
+			if ( !Once( seen, node, path, i ) )
+			{
+				return false;
+			}
+			FaceTexture &t = side.texture;
+			bool ok = true;
+			if ( key == "id" )
+			{
+				ok = ReadId( node, path, i, side.vmfId, hasId );
+			}
+			else if ( key == "plane" )
+			{
+				ok = Read( node, path, i, side.points, ParsePlane, "\"(x y z) (x y z) (x y z)\"" );
+			}
+			else if ( key == "material" )
+			{
+				t.material = node.pairs[i].value;
+			}
+			else if ( key == "uaxis" )
+			{
+				ok = Read( node, path, i, t.u, ParseAxis, "\"[x y z shift] scale\"" );
+			}
+			else if ( key == "vaxis" )
+			{
+				ok = Read( node, path, i, t.v, ParseAxis, "\"[x y z shift] scale\"" );
+			}
+			else if ( key == "rotation" )
+			{
+				ok = Read( node, path, i, t.rotation, ParseNumber, "a number" );
+			}
+			else if ( key == "lightmapscale" )
+			{
+				ok = Read( node, path, i, t.lightmapScale, ParseNumber, "a number" );
+			}
+			else if ( key == "smoothing_groups" )
+			{
+				ok = Read( node, path, i, t.smoothingGroups, ParseMask, "a 32-bit integer" );
+			}
+			else
+			{
+				ok = UnknownKey( node, path, i );
+			}
+			if ( !ok )
+			{
+				return false;
+			}
+		}
+		if ( !seen.count( "plane" ) )
+		{
+			return Fail( path, "a side needs a plane", Line( node ) );
+		}
+		for ( const KeyValueNode &child : node.children )
+		{
+			const std::string childPath = ChildPath( path, child.name, -1 );
+			if ( child.name != "dispinfo" )
+			{
+				return Fail( childPath, "unknown block '" + child.name + "'", Line( child ) );
+			}
+			if ( side.displacement )
+			{
+				return Fail( childPath, "duplicate block 'dispinfo'", Line( child ) );
+			}
+			Displacement d;
+			if ( !DecodeDisplacement( child, childPath, d ) )
+			{
+				return false;
+			}
+			side.displacement = std::move( d );
+		}
+		return true;
+	}
+
+	std::optional<PendingSolid> DecodeSolid(
+	    const KeyValueNode &node, const std::string &path, bool hidden )
+	{
+		PendingSolid pending;
+		pending.where = { path, Line( node ) };
+		pending.solid.hidden = hidden;
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
+		{
+			if ( !Once( seen, node, path, i ) )
+			{
+				return std::nullopt;
+			}
+			if ( node.pairs[i].key != "id" )
+			{
+				UnknownKey( node, path, i );
+				return std::nullopt;
+			}
+			if ( !ReadId( node, path, i, pending.solid.vmfId, pending.hasId ) )
 			{
 				return std::nullopt;
 			}
 		}
-		if ( !mins || !maxs )
-		{
-			return std::nullopt;
-		}
-		return CordonBox{ *mins, *maxs };
-	}
-
-	void DecodeSingleCordon( const KeyValueNode &block )
-	{
-		std::optional<bool> active;
-		const std::optional<CordonBox> box =
-		    block.children.empty() ? DecodeBoxPairs( block.pairs, &active, nullptr ) : std::nullopt;
-		if ( !box )
-		{
-			Warn( "the 'cordon' block is not in the expected form; kept verbatim", Line( block ) );
-			settings.unknownBlocks.push_back( block );
-			return;
-		}
-		Cordon cordon;
-		cordon.active = active.value_or( false );
-		cordon.boxes.push_back( *box );
-		settings.cordons = { cordon };
-		settings.cordonsActive = cordon.active;
-		settings.cordonForm = DocumentSettings::CordonForm::Single;
-	}
-
-	void DecodeCordonList( const KeyValueNode &block )
-	{
-		std::optional<bool> active;
-		std::vector<Cordon> cordons;
-		bool ok = true;
-		for ( const KeyValue &kv : block.pairs )
-		{
-			if ( kv.key == "active" && !active )
-			{
-				active = ParseFlag( kv.value );
-				ok = ok && active.has_value();
-			}
-			else
-			{
-				ok = false;
-			}
-		}
-		for ( const KeyValueNode &child : block.children )
-		{
-			if ( !ok || child.name != "cordon" )
-			{
-				ok = false;
-				break;
-			}
-			Cordon cordon;
-			std::optional<std::string> name;
-			std::optional<bool> cordonActive;
-			for ( const KeyValue &kv : child.pairs )
-			{
-				if ( kv.key == "name" && !name )
-				{
-					name = kv.value;
-				}
-				else if ( kv.key == "active" && !cordonActive )
-				{
-					cordonActive = ParseFlag( kv.value );
-					ok = ok && cordonActive.has_value();
-				}
-				else
-				{
-					ok = false;
-				}
-			}
-			for ( const KeyValueNode &boxNode : child.children )
-			{
-				const std::optional<CordonBox> box =
-				    boxNode.name == "box" && boxNode.children.empty()
-				        ? DecodeBoxPairs( boxNode.pairs, nullptr, nullptr )
-				        : std::nullopt;
-				if ( !box )
-				{
-					ok = false;
-					break;
-				}
-				cordon.boxes.push_back( *box );
-			}
-			if ( !ok )
-			{
-				break;
-			}
-			cordon.name = name.value_or( std::string() );
-			cordon.active = cordonActive.value_or( true );
-			cordons.push_back( std::move( cordon ) );
-		}
-		if ( !ok )
-		{
-			Warn( "the 'cordons' block is not in the expected form; kept verbatim", Line( block ) );
-			settings.unknownBlocks.push_back( block );
-			return;
-		}
-		settings.cordons = std::move( cordons );
-		settings.cordonsActive = active.value_or( false );
-		settings.cordonForm = DocumentSettings::CordonForm::List;
-	}
-
-	// The 'editor' block. Unknown child blocks are returned in 'children'.
-	EditorInfo DecodeEditor( const KeyValueNode &node, std::optional<GroupRef> &group,
-	    std::vector<KeyValueNode> &children )
-	{
-		EditorInfo info;
-		std::set<std::string> seen;
-		for ( const KeyValue &kv : node.pairs )
-		{
-			const bool first = seen.insert( kv.key ).second;
-			if ( kv.key == "color" && first )
-			{
-				info.color = ParseRgb( kv.value );
-				if ( info.color )
-				{
-					continue;
-				}
-			}
-			else if ( kv.key == "visgroupid" )
-			{
-				if ( const std::optional<int> id = ParseInt( kv.value ) )
-				{
-					info.visgroupIds.push_back( *id );
-					continue;
-				}
-			}
-			else if ( kv.key == "groupid" && first )
-			{
-				if ( const std::optional<std::uint32_t> id = ParseId( kv.value ) )
-				{
-					group = GroupRef{ *id, kv.value, Line( node ) };
-					continue;
-				}
-			}
-			else if ( kv.key == "visgroupshown" && first )
-			{
-				if ( const std::optional<bool> flag = ParseFlag( kv.value ) )
-				{
-					info.visgroupShown = *flag;
-					continue;
-				}
-			}
-			else if ( kv.key == "visgroupautoshown" && first )
-			{
-				if ( const std::optional<bool> flag = ParseFlag( kv.value ) )
-				{
-					info.visgroupAutoShown = *flag;
-					continue;
-				}
-			}
-			info.extra.push_back( kv );
-		}
-		children = node.children;
-		return info;
-	}
-
-	// Reads a persistent id; a malformed one is dropped (a fresh id replaces it).
-	bool ReadId( const KeyValue &kv, std::uint32_t &into, const char *what, int line )
-	{
-		if ( const std::optional<std::uint32_t> id = ParseId( kv.value ) )
-		{
-			into = *id;
-			return true;
-		}
-		Warn(
-		    std::string( what ) + " id '" + kv.value + "' is not a number; a fresh id replaces it",
-		    line );
-		return false;
-	}
-
-	// A side; returns the reason when the side cannot be modeled.
-	std::optional<std::string> DecodeSide( const KeyValueNode &node, Side &side, bool &hasId )
-	{
-		std::set<std::string> seen;
-		bool hasPlane = false;
-		for ( const KeyValue &kv : node.pairs )
-		{
-			const bool first = seen.insert( kv.key ).second;
-			if ( !first )
-			{
-				side.extraPairs.push_back( kv );
-			}
-			else if ( kv.key == "id" )
-			{
-				hasId = ReadId( kv, side.vmfId, "side", Line( node ) );
-			}
-			else if ( kv.key == "plane" )
-			{
-				const std::optional<std::array<Vec3d, 3>> points = ParsePlane( kv.value );
-				if ( !points )
-				{
-					return "side plane '" + kv.value + "' is malformed";
-				}
-				side.points = *points;
-				hasPlane = true;
-			}
-			else if ( kv.key == "material" )
-			{
-				side.texture.material = kv.value;
-			}
-			else if ( kv.key == "uaxis" || kv.key == "vaxis" )
-			{
-				const std::optional<TextureAxis> axis = ParseAxis( kv.value );
-				if ( !axis )
-				{
-					return "side " + kv.key + " '" + kv.value + "' is malformed";
-				}
-				( kv.key == "uaxis" ? side.texture.u : side.texture.v ) = *axis;
-			}
-			else if ( kv.key == "rotation" || kv.key == "lightmapscale" )
-			{
-				const std::optional<double> value = ParseNumber( kv.value );
-				if ( !value )
-				{
-					return "side " + kv.key + " '" + kv.value + "' is not a number";
-				}
-				( kv.key == "rotation" ? side.texture.rotation : side.texture.lightmapScale ) =
-				    *value;
-			}
-			else if ( kv.key == "smoothing_groups" )
-			{
-				const std::optional<std::uint32_t> mask = ParseMask( kv.value );
-				if ( !mask )
-				{
-					return "side smoothing_groups '" + kv.value + "' is not a number";
-				}
-				side.texture.smoothingGroups = *mask;
-			}
-			else
-			{
-				side.extraPairs.push_back( kv );
-			}
-		}
-		if ( !hasPlane )
-		{
-			return std::string( "a side has no plane" );
-		}
-		for ( const KeyValueNode &child : node.children )
-		{
-			if ( child.name == "dispinfo" && !side.dispinfo )
-			{
-				side.dispinfo = child;
-			}
-			else
-			{
-				side.extraChildren.push_back( child );
-			}
-		}
-		return std::nullopt;
-	}
-
-	// A solid; nothing (after a warning) when it must be kept verbatim.
-	std::optional<PendingSolid> DecodeSolid( const KeyValueNode &node, bool hidden )
-	{
-		PendingSolid pending;
-		pending.line = Line( node );
-		pending.solid.hidden = hidden;
-		bool sawId = false;
+		const std::vector<int> index = SiblingIndices( node );
 		bool sawEditor = false;
-		for ( const KeyValue &kv : node.pairs )
+		for ( std::size_t c = 0; c < node.children.size(); ++c )
 		{
-			if ( kv.key == "id" && !sawId )
-			{
-				sawId = true;
-				pending.hasId = ReadId( kv, pending.solid.vmfId, "solid", pending.line );
-			}
-			else
-			{
-				pending.solid.extraPairs.push_back( kv );
-			}
-		}
-		const std::string label =
-		    "solid" +
-		    ( pending.hasId ? " " + std::to_string( pending.solid.vmfId ) : std::string() );
-		for ( const KeyValueNode &child : node.children )
-		{
+			const KeyValueNode &child = node.children[c];
 			if ( child.name == "side" )
 			{
+				const std::string sidePath = ChildPath( path, "side", index[c] );
 				Side side;
 				bool sideHasId = false;
-				if ( const std::optional<std::string> why = DecodeSide( child, side, sideHasId ) )
+				if ( !DecodeSide( child, sidePath, side, sideHasId ) )
 				{
-					Warn( label + ": " + *why + "; the solid is kept verbatim", Line( child ) );
 					return std::nullopt;
 				}
 				pending.solid.sides.push_back( std::move( side ) );
 				pending.sideHasId.push_back( sideHasId );
+				pending.sideWhere.push_back( { sidePath, Line( child ) } );
 			}
 			else if ( child.name == "editor" && !sawEditor )
 			{
 				sawEditor = true;
-				std::vector<KeyValueNode> rest;
-				pending.solid.editor = DecodeEditor( child, pending.group, rest );
-				PreserveEditorChildren(
-				    std::move( rest ), pending.solid.extraChildren, Line( child ) );
+				if ( !DecodeEditor( child, ChildPath( path, "editor", -1 ), pending.solid.editor,
+				         pending.group ) )
+				{
+					return std::nullopt;
+				}
 			}
 			else
 			{
-				pending.solid.extraChildren.push_back( child );
+				Fail( ChildPath( path, child.name, index[c] ), "unknown block '" + child.name + "'",
+				    Line( child ) );
+				return std::nullopt;
 			}
 		}
 		if ( pending.solid.sides.size() < 4 )
 		{
-			Warn( label + " has " + std::to_string( pending.solid.sides.size() ) +
-			          " sides (a solid needs at least four); it is kept verbatim",
-			    pending.line );
+			Fail( path,
+			    "a solid needs at least four sides; it has " +
+			        std::to_string( pending.solid.sides.size() ),
+			    Line( node ) );
 			return std::nullopt;
 		}
 		return pending;
 	}
 
-	void PreserveEditorChildren(
-	    std::vector<KeyValueNode> children, std::vector<KeyValueNode> &into, int line )
+	bool DecodeGroup( const KeyValueNode &node, const std::string &path, bool hidden )
 	{
-		if ( children.empty() )
+		PendingGroup pending;
+		pending.where = { path, Line( node ) };
+		pending.group.hidden = hidden;
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
 		{
-			return;
+			if ( !Once( seen, node, path, i ) )
+			{
+				return false;
+			}
+			if ( node.pairs[i].key != "id" )
+			{
+				return UnknownKey( node, path, i );
+			}
+			if ( !ReadId( node, path, i, pending.group.vmfId, pending.hasId ) )
+			{
+				return false;
+			}
 		}
-		Warn( "child blocks of an 'editor' block are kept in a separate verbatim 'editor' block",
-		    line );
-		KeyValueNode rest;
-		rest.name = "editor";
-		rest.children = std::move( children );
-		into.push_back( std::move( rest ) );
+		bool sawEditor = false;
+		for ( const KeyValueNode &child : node.children )
+		{
+			if ( child.name != "editor" || sawEditor )
+			{
+				return Fail( ChildPath( path, child.name, -1 ),
+				    "unknown block '" + child.name + "'", Line( child ) );
+			}
+			sawEditor = true;
+			if ( !DecodeEditor( child, ChildPath( path, "editor", -1 ), pending.group.editor,
+			         pending.parent ) )
+			{
+				return false;
+			}
+		}
+		groups.push_back( std::move( pending ) );
+		return true;
 	}
 
-	void DecodeWorld( const KeyValueNode &block )
+	bool DecodeWorld( const KeyValueNode &node, const std::string &path )
 	{
 		sawWorld = true;
 		settings.worldKeys.clear();
-		bool sawId = false;
-		bool sawClass = false;
-		for ( const KeyValue &kv : block.pairs )
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
 		{
-			if ( kv.key == "id" && !sawId )
+			const KeyValue &kv = node.pairs[i];
+			if ( kv.key == "id" || kv.key == "classname" )
 			{
-				sawId = true;
-				if ( const std::optional<std::uint32_t> id = ParseId( kv.value ) )
+				if ( !Once( seen, node, path, i ) )
 				{
-					settings.worldVmfId = *id;
+					return false;
 				}
-				else
+				if ( kv.key == "id" )
 				{
-					Warn( "world id '" + kv.value + "' is not a number; 1 is used", Line( block ) );
+					if ( !Read( node, path, i, settings.worldVmfId, ParseId, "an id" ) )
+					{
+						return false;
+					}
 				}
-			}
-			else if ( kv.key == "classname" && !sawClass && kv.value == "worldspawn" )
-			{
-				sawClass = true; // implied by the block
-			}
-			else
-			{
-				if ( kv.key == "classname" && !sawClass )
+				else if ( kv.value != "worldspawn" )
 				{
-					Warn( "world classname '" + kv.value + "' is not worldspawn; kept as a key",
-					    Line( block ) );
+					return Malformed( node, path, i, "worldspawn" );
 				}
-				settings.worldKeys.push_back( kv );
+				continue;
 			}
+			settings.worldKeys.push_back( kv );
 		}
-		for ( const KeyValueNode &child : block.children )
+		const std::vector<int> index = SiblingIndices( node );
+		for ( std::size_t c = 0; c < node.children.size(); ++c )
 		{
+			const KeyValueNode &child = node.children[c];
+			const std::string childPath = ChildPath( path, child.name, index[c] );
 			if ( child.name == "solid" )
 			{
-				WorldSolid( child, false, child );
+				if ( !WorldSolid( child, childPath, false ) )
+				{
+					return false;
+				}
 			}
 			else if ( child.name == "group" )
 			{
-				WorldGroup( child, false, child );
-			}
-			else if ( child.name == "hidden" && child.pairs.empty() )
-			{
-				for ( const KeyValueNode &inner : child.children )
+				if ( !DecodeGroup( child, childPath, false ) )
 				{
-					if ( inner.name == "solid" )
+					return false;
+				}
+			}
+			else if ( child.name == "hidden" )
+			{
+				if ( !child.pairs.empty() )
+				{
+					return UnknownKey( child, childPath, 0 );
+				}
+				const std::vector<int> inner = SiblingIndices( child );
+				for ( std::size_t h = 0; h < child.children.size(); ++h )
+				{
+					const KeyValueNode &object = child.children[h];
+					const std::string objectPath = ChildPath( childPath, object.name, inner[h] );
+					bool ok = true;
+					if ( object.name == "solid" )
 					{
-						WorldSolid( inner, true, Wrap( "hidden", inner ) );
+						ok = WorldSolid( object, objectPath, true );
 					}
-					else if ( inner.name == "group" )
+					else if ( object.name == "group" )
 					{
-						WorldGroup( inner, true, Wrap( "hidden", inner ) );
+						ok = DecodeGroup( object, objectPath, true );
 					}
 					else
 					{
-						Warn( "a hidden '" + inner.name + "' in the world is kept verbatim",
-						    Line( inner ) );
-						settings.worldExtraChildren.push_back( Wrap( "hidden", inner ) );
+						ok = Fail(
+						    objectPath, "unknown block '" + object.name + "'", Line( object ) );
+					}
+					if ( !ok )
+					{
+						return false;
 					}
 				}
 			}
 			else
 			{
-				if ( child.name == "hidden" )
-				{
-					Warn( "a 'hidden' block with keys is kept verbatim", Line( child ) );
-				}
-				settings.worldExtraChildren.push_back( child );
+				return Fail( childPath, "unknown block '" + child.name + "'", Line( child ) );
 			}
 		}
+		return true;
 	}
 
-	void WorldSolid( const KeyValueNode &node, bool hidden, const KeyValueNode &verbatim )
+	bool WorldSolid( const KeyValueNode &node, const std::string &path, bool hidden )
 	{
-		if ( std::optional<PendingSolid> solid = DecodeSolid( node, hidden ) )
+		std::optional<PendingSolid> solid = DecodeSolid( node, path, hidden );
+		if ( !solid )
 		{
-			worldSolids.push_back( std::move( *solid ) );
+			return false;
 		}
-		else
-		{
-			settings.worldExtraChildren.push_back( verbatim );
-		}
+		worldSolids.push_back( std::move( *solid ) );
+		return true;
 	}
 
-	void WorldGroup( const KeyValueNode &node, bool hidden, const KeyValueNode &verbatim )
+	bool DecodeConnections( const KeyValueNode &node, const std::string &path, Entity &entity )
 	{
-		PendingGroup pending;
-		pending.line = Line( node );
-		pending.group.hidden = hidden;
-		bool sawId = false;
-		for ( const KeyValue &kv : node.pairs )
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
 		{
-			if ( kv.key == "id" && !sawId )
+			const KeyValue &kv = node.pairs[i];
+			std::optional<Connection> c = hammer::scene::ParseConnection( kv.key, kv.value );
+			if ( !c )
 			{
-				sawId = true;
-				pending.hasId = ReadId( kv, pending.group.vmfId, "group", pending.line );
+				return Fail( path,
+				    "connection '" + kv.key + "' \"" + kv.value +
+				        "\" is not target,input,parameter,delay,times",
+				    PairLine( node, i ) );
 			}
-			else
-			{
-				pending.group.extraPairs.push_back( kv );
-			}
+			entity.connections.push_back( std::move( *c ) );
 		}
-		// A Group models one 'editor' block and nothing else below it.
-		std::vector<KeyValueNode> rest;
-		if ( node.children.size() == 1 && node.children.front().name == "editor" )
-		{
-			pending.group.editor = DecodeEditor( node.children.front(), pending.parent, rest );
-		}
-		if ( node.children.size() > 1 || !rest.empty() ||
-		     ( node.children.size() == 1 && node.children.front().name != "editor" ) )
-		{
-			Warn( "a group with child blocks other than one 'editor' is kept verbatim",
-			    pending.line );
-			if ( pending.hasId )
-			{
-				verbatimGroupIds.insert( pending.group.vmfId );
-			}
-			settings.worldExtraChildren.push_back( verbatim );
-			return;
-		}
-		groups.push_back( std::move( pending ) );
+		return NoChildren( node, path );
 	}
 
-	void DecodeEntity( const KeyValueNode &block, bool hidden )
+	bool DecodeEntity( const KeyValueNode &node, const std::string &path, bool hidden )
 	{
 		PendingEntity pending;
-		pending.line = Line( block );
+		pending.where = { path, Line( node ) };
 		Entity &entity = pending.entity;
 		entity.hidden = hidden;
-		bool sawId = false;
-		bool sawClass = false;
-		bool sawEditor = false;
-		for ( const KeyValue &kv : block.pairs )
+		std::set<std::string> seen;
+		for ( std::size_t i = 0; i < node.pairs.size(); ++i )
 		{
-			if ( kv.key == "id" && !sawId )
+			const KeyValue &kv = node.pairs[i];
+			if ( kv.key == "id" || kv.key == "classname" )
 			{
-				sawId = true;
-				pending.hasId = ReadId( kv, entity.vmfId, "entity", pending.line );
+				if ( !Once( seen, node, path, i ) )
+				{
+					return false;
+				}
+				if ( kv.key == "id" )
+				{
+					if ( !ReadId( node, path, i, entity.vmfId, pending.hasId ) )
+					{
+						return false;
+					}
+				}
+				else
+				{
+					entity.classname = kv.value;
+				}
+				continue;
 			}
-			else if ( kv.key == "classname" && !sawClass )
-			{
-				sawClass = true;
-				entity.classname = kv.value;
-			}
-			else
-			{
-				entity.keys.push_back( kv );
-			}
+			entity.keys.push_back( kv );
 		}
-		KeyValueNode preservedConnections;
-		preservedConnections.name = "connections";
-		for ( const KeyValueNode &child : block.children )
+		if ( !seen.count( "classname" ) )
 		{
+			return Fail( path, "an entity needs a classname", Line( node ) );
+		}
+		const std::vector<int> index = SiblingIndices( node );
+		bool sawEditor = false;
+		for ( std::size_t c = 0; c < node.children.size(); ++c )
+		{
+			const KeyValueNode &child = node.children[c];
+			const std::string childPath = ChildPath( path, child.name, index[c] );
+			bool ok = true;
 			if ( child.name == "connections" )
 			{
-				for ( const KeyValue &kv : child.pairs )
-				{
-					if ( std::optional<Connection> c =
-					         hammer::scene::ParseConnection( kv.key, kv.value ) )
-					{
-						entity.connections.push_back( std::move( *c ) );
-					}
-					else
-					{
-						Warn( "entity connection '" + kv.key + "' \"" + kv.value +
-						          "\" is not target,input,parameter,delay,times; kept verbatim",
-						    Line( child ) );
-						preservedConnections.pairs.push_back( kv );
-					}
-				}
-				if ( !child.children.empty() )
-				{
-					Warn(
-					    "child blocks of a 'connections' block are kept verbatim", Line( child ) );
-					for ( const KeyValueNode &inner : child.children )
-					{
-						preservedConnections.children.push_back( inner );
-					}
-				}
+				ok = DecodeConnections( child, childPath, entity );
 			}
 			else if ( child.name == "solid" )
 			{
-				EntitySolid( pending, child, false, child );
+				ok = EntitySolid( pending, child, childPath, false );
 			}
-			else if ( child.name == "hidden" && child.pairs.empty() )
+			else if ( child.name == "hidden" )
 			{
-				for ( const KeyValueNode &inner : child.children )
+				if ( !child.pairs.empty() )
 				{
-					if ( inner.name == "solid" )
-					{
-						EntitySolid( pending, inner, true, Wrap( "hidden", inner ) );
-					}
-					else
-					{
-						Warn( "a hidden '" + inner.name + "' in an entity is kept verbatim",
-						    Line( inner ) );
-						entity.extraChildren.push_back( Wrap( "hidden", inner ) );
-					}
+					return UnknownKey( child, childPath, 0 );
+				}
+				const std::vector<int> inner = SiblingIndices( child );
+				for ( std::size_t h = 0; h < child.children.size() && ok; ++h )
+				{
+					const KeyValueNode &object = child.children[h];
+					const std::string objectPath = ChildPath( childPath, object.name, inner[h] );
+					ok = object.name == "solid"
+					         ? EntitySolid( pending, object, objectPath, true )
+					         : Fail( objectPath, "unknown block '" + object.name + "'",
+					               Line( object ) );
 				}
 			}
 			else if ( child.name == "editor" && !sawEditor )
 			{
 				sawEditor = true;
-				std::vector<KeyValueNode> rest;
-				entity.editor = DecodeEditor( child, pending.group, rest );
-				PreserveEditorChildren( std::move( rest ), entity.extraChildren, Line( child ) );
+				ok = DecodeEditor(
+				    child, ChildPath( path, "editor", -1 ), entity.editor, pending.group );
 			}
 			else
 			{
-				if ( child.name == "hidden" )
-				{
-					Warn( "a 'hidden' block with keys is kept verbatim", Line( child ) );
-				}
-				entity.extraChildren.push_back( child );
+				ok = Fail( childPath, "unknown block '" + child.name + "'", Line( child ) );
 			}
-		}
-		if ( !preservedConnections.pairs.empty() || !preservedConnections.children.empty() )
-		{
-			entity.extraChildren.push_back( std::move( preservedConnections ) );
+			if ( !ok )
+			{
+				return false;
+			}
 		}
 		entities.push_back( std::move( pending ) );
+		return true;
 	}
 
-	void EntitySolid(
-	    PendingEntity &entity, const KeyValueNode &node, bool hidden, const KeyValueNode &verbatim )
+	bool EntitySolid(
+	    PendingEntity &entity, const KeyValueNode &node, const std::string &path, bool hidden )
 	{
-		if ( std::optional<PendingSolid> solid = DecodeSolid( node, hidden ) )
+		std::optional<PendingSolid> solid = DecodeSolid( node, path, hidden );
+		if ( !solid )
 		{
-			entity.solids.push_back( std::move( *solid ) );
+			return false;
 		}
-		else
-		{
-			entity.entity.extraChildren.push_back( verbatim );
-		}
+		entity.solids.push_back( std::move( *solid ) );
+		return true;
 	}
 
-	void DecodeTopHidden( const KeyValueNode &block )
+	bool DecodeTopHidden( const KeyValueNode &node, const std::string &path )
 	{
-		if ( !block.pairs.empty() )
+		if ( !node.pairs.empty() )
 		{
-			Warn( "a 'hidden' block with keys is kept verbatim", Line( block ) );
-			settings.unknownBlocks.push_back( block );
-			return;
+			return UnknownKey( node, path, 0 );
 		}
-		for ( const KeyValueNode &inner : block.children )
+		const std::vector<int> index = SiblingIndices( node );
+		for ( std::size_t c = 0; c < node.children.size(); ++c )
 		{
-			if ( inner.name == "entity" )
+			const KeyValueNode &child = node.children[c];
+			const std::string childPath = ChildPath( path, child.name, index[c] );
+			if ( child.name != "entity" )
 			{
-				DecodeEntity( inner, true );
+				return Fail( childPath, "unknown block '" + child.name + "'", Line( child ) );
 			}
-			else
+			if ( !DecodeEntity( child, childPath, true ) )
 			{
-				Warn( "a hidden '" + inner.name + "' at the top level is kept verbatim",
-				    Line( inner ) );
-				settings.unknownBlocks.push_back( Wrap( "hidden", inner ) );
+				return false;
 			}
 		}
+		return true;
 	}
 
-	const BlockLines &m_lines;
+	const SourceLines &m_lines;
 };
-
-// Every "id" in content kept verbatim, so fresh ids never collide with it.
-void NoteVerbatimIds( const KeyValueNode &node, MapDocument &doc )
-{
-	for ( const KeyValue &kv : node.pairs )
-	{
-		if ( kv.key == "id" )
-		{
-			if ( const std::optional<std::uint32_t> id = ParseId( kv.value ) )
-			{
-				doc.NoteVmfId( *id );
-			}
-		}
-	}
-	for ( const KeyValueNode &child : node.children )
-	{
-		NoteVerbatimIds( child, doc );
-	}
-}
-
-void NoteVerbatimIds( const std::vector<KeyValueNode> &nodes, MapDocument &doc )
-{
-	for ( const KeyValueNode &node : nodes )
-	{
-		NoteVerbatimIds( node, doc );
-	}
-}
 
 // --- Encoding --------------------------------------------------------------------------
 
@@ -1359,16 +1819,12 @@ void Add( KeyValueNode &node, std::string key, std::string value )
 	node.pairs.push_back( { std::move( key ), std::move( value ) } );
 }
 
-bool HasChild( const std::vector<KeyValueNode> &children, std::string_view name )
+KeyValueNode Wrap( std::string name, KeyValueNode inner )
 {
-	for ( const KeyValueNode &child : children )
-	{
-		if ( child.name == name )
-		{
-			return true;
-		}
-	}
-	return false;
+	KeyValueNode wrapper;
+	wrapper.name = std::move( name );
+	wrapper.children.push_back( std::move( inner ) );
+	return wrapper;
 }
 
 bool IsFinite( const Vec3d &v )
@@ -1409,7 +1865,6 @@ public:
 		return ExactVec3( v );
 	}
 
-	// The persistent id of a group reference; empty when there is none.
 	std::optional<std::uint32_t> GroupVmfId( ObjectId group, const char *what )
 	{
 		if ( !group.IsValid() )
@@ -1425,21 +1880,16 @@ public:
 		return g->vmfId;
 	}
 
-	void EmitEditor( KeyValueNode &parent, const EditorInfo &info, ObjectId group, const char *what,
-	    const std::vector<KeyValueNode> &extraChildren )
+	// Legacy CMapClass::SaveVMF order; every object gets its editor block.
+	KeyValueNode EncodeEditor( const EditorInfo &info, ObjectId group, const char *what )
 	{
-		const std::optional<std::uint32_t> groupId = GroupVmfId( group, what );
-		if ( info == EditorInfo{} && !groupId && !HasChild( extraChildren, "editor" ) )
-		{
-			return;
-		}
 		KeyValueNode editor;
 		editor.name = "editor";
 		if ( info.color )
 		{
 			Add( editor, "color", FormatRgb( *info.color ) );
 		}
-		if ( groupId )
+		if ( const std::optional<std::uint32_t> groupId = GroupVmfId( group, what ) )
 		{
 			Add( editor, "groupid", std::to_string( *groupId ) );
 		}
@@ -1449,11 +1899,113 @@ public:
 		}
 		Add( editor, "visgroupshown", info.visgroupShown ? "1" : "0" );
 		Add( editor, "visgroupautoshown", info.visgroupAutoShown ? "1" : "0" );
-		for ( const KeyValue &kv : info.extra )
+		if ( info.comments )
 		{
-			editor.pairs.push_back( kv );
+			Add( editor, "comments", *info.comments );
 		}
-		parent.children.push_back( std::move( editor ) );
+		if ( info.logicalPos )
+		{
+			Add( editor, "logicalpos",
+			    "[" + std::to_string( ( *info.logicalPos )[0] ) + " " +
+			        std::to_string( ( *info.logicalPos )[1] ) + "]" );
+		}
+		return editor;
+	}
+
+	template <typename T, typename Format>
+	void AddRows( KeyValueNode &parent, const char *name,
+	    const std::optional<std::vector<T>> &values, int rows, int perRow, Format format )
+	{
+		if ( !values )
+		{
+			return;
+		}
+		if ( values->size() !=
+		     static_cast<std::size_t>( rows ) * static_cast<std::size_t>( perRow ) )
+		{
+			Fail( std::string( "displacement " ) + name + " has " +
+			      std::to_string( values->size() ) + " entries; its power needs " +
+			      std::to_string( rows * perRow ) );
+			return;
+		}
+		KeyValueNode block;
+		block.name = name;
+		for ( int r = 0; r < rows; ++r )
+		{
+			std::string row;
+			for ( int c = 0; c < perRow; ++c )
+			{
+				row += ( c ? " " : "" ) +
+				       format( ( *values )[static_cast<std::size_t>( r * perRow + c )] );
+			}
+			Add( block, "row" + std::to_string( r ), row );
+		}
+		parent.children.push_back( std::move( block ) );
+	}
+
+	// Legacy CMapDisp::SaveVMF layout (with the pre-release keys where present).
+	KeyValueNode EncodeDisplacement( const Displacement &d )
+	{
+		KeyValueNode node;
+		node.name = "dispinfo";
+		if ( d.power < 1 || d.power > 4 )
+		{
+			Fail( "displacement power " + std::to_string( d.power ) + " is not 1 to 4" );
+			return node;
+		}
+		Add( node, "power", std::to_string( d.power ) );
+		Add( node, "startposition", "[" + Vec( d.startPosition ) + "]" );
+		Add( node, "flags", std::to_string( d.flags ) );
+		if ( d.minTess )
+		{
+			Add( node, "mintess", std::to_string( *d.minTess ) );
+		}
+		if ( d.smoothingAngle )
+		{
+			Add( node, "smooth", Number( *d.smoothingAngle ) );
+		}
+		if ( d.cornerAlphas )
+		{
+			const std::array<double, 4> &a = *d.cornerAlphas;
+			Add( node, "alpha",
+			    "[" + Number( a[0] ) + " " + Number( a[1] ) + " " + Number( a[2] ) + " " +
+			        Number( a[3] ) + "]" );
+		}
+		Add( node, "elevation", Number( d.elevation ) );
+		Add( node, "subdiv", d.subdivided ? "1" : "0" );
+		const int verts = d.VertsPerRow();
+		const int quads = d.QuadsPerRow();
+		auto vec = [this]( const Vec3d &v )
+		{
+			return Vec( v );
+		};
+		auto num = [this]( double v )
+		{
+			return Number( v );
+		};
+		auto integer = []( int v )
+		{
+			return std::to_string( v );
+		};
+		AddRows( node, "normals", d.normals, verts, verts, vec );
+		AddRows( node, "distances", d.distances, verts, verts, num );
+		AddRows( node, "offsets", d.offsets, verts, verts, vec );
+		AddRows( node, "offset_normals", d.offsetNormals, verts, verts, vec );
+		AddRows( node, "alphas", d.alphas, verts, verts, num );
+		AddRows( node, "triangle_tags", d.triangleTags, quads, quads * 2, integer );
+		if ( d.allowedVerts )
+		{
+			KeyValueNode block;
+			block.name = "allowed_verts";
+			std::string words;
+			for ( std::size_t i = 0; i < d.allowedVerts->size(); ++i )
+			{
+				words += ( i ? " " : "" ) + std::to_string( ( *d.allowedVerts )[i] );
+			}
+			Add( block, std::to_string( d.allowedVerts->size() ), words );
+			node.children.push_back( std::move( block ) );
+		}
+		return node;
 	}
 
 	KeyValueNode EncodeSide( const Side &side )
@@ -1467,32 +2019,25 @@ public:
 				Fail( "a side point is not finite" );
 			}
 		}
-		Add( node, "id", std::to_string( side.vmfId ) );
-		Add( node, "plane", FormatPlane( side.points ) );
-		Add( node, "material", side.texture.material );
-		if ( !IsFinite( side.texture.u.axis ) || !IsFinite( side.texture.v.axis ) ||
-		     !std::isfinite( side.texture.u.shift ) || !std::isfinite( side.texture.v.shift ) ||
-		     !std::isfinite( side.texture.u.scale ) || !std::isfinite( side.texture.v.scale ) )
+		const hammer::scene::FaceTexture &t = side.texture;
+		if ( !IsFinite( t.u.axis ) || !IsFinite( t.v.axis ) || !std::isfinite( t.u.shift ) ||
+		     !std::isfinite( t.v.shift ) || !std::isfinite( t.u.scale ) ||
+		     !std::isfinite( t.v.scale ) )
 		{
 			Fail( "a texture axis is not finite" );
 		}
-		Add( node, "uaxis", FormatAxis( side.texture.u ) );
-		Add( node, "vaxis", FormatAxis( side.texture.v ) );
-		Add( node, "rotation", Number( side.texture.rotation ) );
-		Add( node, "lightmapscale", Number( side.texture.lightmapScale ) );
+		Add( node, "id", std::to_string( side.vmfId ) );
+		Add( node, "plane", FormatPlane( side.points ) );
+		Add( node, "material", t.material );
+		Add( node, "uaxis", FormatAxis( t.u ) );
+		Add( node, "vaxis", FormatAxis( t.v ) );
+		Add( node, "rotation", Number( t.rotation ) );
+		Add( node, "lightmapscale", Number( t.lightmapScale ) );
 		Add( node, "smoothing_groups",
-		    std::to_string( static_cast<std::int32_t>( side.texture.smoothingGroups ) ) );
-		for ( const KeyValue &kv : side.extraPairs )
+		    std::to_string( static_cast<std::int32_t>( t.smoothingGroups ) ) );
+		if ( side.displacement )
 		{
-			node.pairs.push_back( kv );
-		}
-		if ( side.dispinfo )
-		{
-			node.children.push_back( *side.dispinfo );
-		}
-		for ( const KeyValueNode &child : side.extraChildren )
-		{
-			node.children.push_back( child );
+			node.children.push_back( EncodeDisplacement( *side.displacement ) );
 		}
 		return node;
 	}
@@ -1502,19 +2047,11 @@ public:
 		KeyValueNode node;
 		node.name = "solid";
 		Add( node, "id", std::to_string( solid.vmfId ) );
-		for ( const KeyValue &kv : solid.extraPairs )
-		{
-			node.pairs.push_back( kv );
-		}
 		for ( const Side &side : solid.sides )
 		{
 			node.children.push_back( EncodeSide( side ) );
 		}
-		EmitEditor( node, solid.editor, solid.group, "a solid", solid.extraChildren );
-		for ( const KeyValueNode &child : solid.extraChildren )
-		{
-			node.children.push_back( child );
-		}
+		node.children.push_back( EncodeEditor( solid.editor, solid.group, "a solid" ) );
 		return solid.hidden ? Wrap( "hidden", std::move( node ) ) : node;
 	}
 
@@ -1523,12 +2060,33 @@ public:
 		KeyValueNode node;
 		node.name = "group";
 		Add( node, "id", std::to_string( group.vmfId ) );
-		for ( const KeyValue &kv : group.extraPairs )
-		{
-			node.pairs.push_back( kv );
-		}
-		EmitEditor( node, group.editor, group.group, "a group", {} );
+		node.children.push_back( EncodeEditor( group.editor, group.group, "a group" ) );
 		return group.hidden ? Wrap( "hidden", std::move( node ) ) : node;
+	}
+
+	std::string ConnectionValue( const Connection &c )
+	{
+		if ( !std::isfinite( c.delay ) )
+		{
+			Fail( "connection '" + c.output + "' has a non-finite delay" );
+			return std::string();
+		}
+		std::string value = hammer::scene::FormatConnectionValue( c );
+		std::optional<Connection> back = hammer::scene::ParseConnection( c.output, value );
+		if ( !back || !( *back == c ) )
+		{
+			// The owner's format rounds the delay; write it exactly.
+			value = c.target + c.separator + c.input + c.separator + c.parameter + c.separator +
+			        ExactNumber( c.delay ) + c.separator + std::to_string( c.timesToFire );
+			back = hammer::scene::ParseConnection( c.output, value );
+			if ( !back || !( *back == c ) )
+			{
+				Fail( "connection '" + c.output +
+				      "' cannot be written: a field holds the separator or the separator is not "
+				      "',' or 0x1B" );
+			}
+		}
+		return value;
 	}
 
 	KeyValueNode EncodeEntity( const Entity &entity, const std::vector<const Solid *> &solids )
@@ -1539,6 +2097,11 @@ public:
 		Add( node, "classname", entity.classname );
 		for ( const KeyValue &kv : entity.keys )
 		{
+			if ( kv.key == "id" || kv.key == "classname" )
+			{
+				Fail( "entity " + std::to_string( entity.vmfId ) + " holds a '" + kv.key +
+				      "' key among its keys" );
+			}
 			node.pairs.push_back( kv );
 		}
 		if ( !entity.connections.empty() )
@@ -1555,38 +2118,8 @@ public:
 		{
 			node.children.push_back( EncodeSolid( *solid ) );
 		}
-		EmitEditor( node, entity.editor, entity.group, "an entity", entity.extraChildren );
-		for ( const KeyValueNode &child : entity.extraChildren )
-		{
-			node.children.push_back( child );
-		}
+		node.children.push_back( EncodeEditor( entity.editor, entity.group, "an entity" ) );
 		return entity.hidden ? Wrap( "hidden", std::move( node ) ) : node;
-	}
-
-	std::string ConnectionValue( const Connection &c )
-	{
-		if ( !std::isfinite( c.delay ) )
-		{
-			Fail( "connection '" + c.output + "' has a non-finite delay" );
-			return std::string();
-		}
-		std::string value = hammer::scene::FormatConnectionValue( c );
-		std::optional<Connection> back = hammer::scene::ParseConnection( c.output, value );
-		if ( !back || !( *back == c ) )
-		{
-			// The owner's format rounds the delay; write it exactly.
-			Connection exact = c;
-			value = c.target + c.separator + c.input + c.separator + c.parameter + c.separator +
-			        ExactNumber( c.delay ) + c.separator + std::to_string( c.timesToFire );
-			back = hammer::scene::ParseConnection( c.output, value );
-			if ( !back || !( *back == exact ) )
-			{
-				Fail( "connection '" + c.output +
-				      "' cannot be written: a field holds the separator or the separator is not "
-				      "',' or 0x1B" );
-			}
-		}
-		return value;
 	}
 
 	KeyValueNode EncodeVisgroup( const Visgroup &v )
@@ -1620,9 +2153,14 @@ public:
 		const DocumentSettings &settings = m_doc.Settings();
 		KeyValueNode root;
 
+		// Legacy CMapDoc::SaveVersionInfoVMF and SaveViewSettingsVMF.
 		KeyValueNode version;
 		version.name = "versioninfo";
-		version.pairs = settings.versionInfo;
+		Add( version, "editorversion", std::to_string( settings.version.editorVersion ) );
+		Add( version, "editorbuild", std::to_string( settings.version.editorBuild ) );
+		Add( version, "mapversion", std::to_string( settings.version.mapVersion ) );
+		Add( version, "formatversion", std::to_string( settings.version.formatVersion ) );
+		Add( version, "prefab", settings.version.prefab ? "1" : "0" );
 		root.children.push_back( std::move( version ) );
 
 		KeyValueNode visgroups;
@@ -1635,10 +2173,13 @@ public:
 
 		KeyValueNode view;
 		view.name = "viewsettings";
-		view.pairs = settings.viewSettings;
+		Add( view, "bSnapToGrid", settings.view.snapToGrid ? "1" : "0" );
+		Add( view, "bShowGrid", settings.view.showGrid ? "1" : "0" );
+		Add( view, "bShowLogicalGrid", settings.view.showLogicalGrid ? "1" : "0" );
+		Add( view, "nGridSpacing", std::to_string( settings.view.gridSpacing ) );
+		Add( view, "bShow3DGrid", settings.view.show3DGrid ? "1" : "0" );
 		root.children.push_back( std::move( view ) );
 
-		// Objects by owner, in id order.
 		std::vector<const Solid *> worldSolids;
 		std::map<ObjectId, std::vector<const Solid *>> entitySolids;
 		for ( const auto &[id, solid] : m_doc.Solids() )
@@ -1670,7 +2211,12 @@ public:
 		Add( world, "classname", "worldspawn" );
 		for ( ; key < settings.worldKeys.size(); ++key )
 		{
-			world.pairs.push_back( settings.worldKeys[key] );
+			const KeyValue &kv = settings.worldKeys[key];
+			if ( kv.key == "id" || kv.key == "classname" )
+			{
+				Fail( "the world holds a '" + kv.key + "' key among its keys" );
+			}
+			world.pairs.push_back( kv );
 		}
 		for ( const Solid *solid : worldSolids )
 		{
@@ -1679,10 +2225,6 @@ public:
 		for ( const auto &[id, group] : m_doc.Groups() )
 		{
 			world.children.push_back( EncodeGroup( group ) );
-		}
-		for ( const KeyValueNode &child : settings.worldExtraChildren )
-		{
-			world.children.push_back( child );
 		}
 		root.children.push_back( std::move( world ) );
 
@@ -1736,11 +2278,6 @@ public:
 			}
 			root.children.push_back( std::move( list ) );
 		}
-
-		for ( const KeyValueNode &block : settings.unknownBlocks )
-		{
-			root.children.push_back( block );
-		}
 		return root;
 	}
 
@@ -1748,24 +2285,9 @@ private:
 	const MapDocument &m_doc;
 };
 
-// Text the kvtext writer cannot represent: a quote anywhere, and block names
-// that would not read back as one bare word.
-std::optional<std::string> Unwritable( const KeyValueNode &node, bool isRoot )
+// Text the kvtext writer cannot represent: a quote in a key or value.
+std::optional<std::string> Unwritable( const KeyValueNode &node )
 {
-	if ( !isRoot )
-	{
-		if ( node.name.empty() || node.name.rfind( "//", 0 ) == 0 )
-		{
-			return "block name '" + node.name + "' cannot be written";
-		}
-		for ( const char c : node.name )
-		{
-			if ( IsBlank( c ) || c == '{' || c == '}' || c == '"' )
-			{
-				return "block name '" + node.name + "' cannot be written";
-			}
-		}
-	}
 	for ( const KeyValue &kv : node.pairs )
 	{
 		if ( kv.key.find( '"' ) != std::string::npos || kv.value.find( '"' ) != std::string::npos )
@@ -1775,7 +2297,7 @@ std::optional<std::string> Unwritable( const KeyValueNode &node, bool isRoot )
 	}
 	for ( const KeyValueNode &child : node.children )
 	{
-		if ( std::optional<std::string> why = Unwritable( child, false ) )
+		if ( std::optional<std::string> why = Unwritable( child ) )
 		{
 			return why;
 		}
@@ -1795,15 +2317,13 @@ foundation::Expected<DecodedMap, CodecError> VmfMapCodec::Decode(
 		return foundation::MakeUnexpected(
 		    CodecError{ "not VMF text: " + parsed.error, static_cast<int>( parsed.errorLine ) } );
 	}
-	if ( !parsed.root.pairs.empty() )
-	{
-		return foundation::MakeUnexpected(
-		    CodecError{ "not VMF text: key/value pairs outside any block", 0 } );
-	}
 
-	const BlockLines lines( owned, parsed.root );
+	const SourceLines lines( owned, parsed.root );
 	Decoder decoder( lines );
-	decoder.DecodeTop( parsed.root );
+	if ( !decoder.DecodeTop( parsed.root ) )
+	{
+		return foundation::MakeUnexpected( *decoder.error );
+	}
 
 	MapDocument doc( serial );
 	DocumentSettings &settings = doc.MutableSettings();
@@ -1813,106 +2333,104 @@ foundation::Expected<DecodedMap, CodecError> VmfMapCodec::Decode(
 	}
 	settings = std::move( decoder.settings );
 
-	// Persistent ids: note every id first, then replace missing and duplicate ones
-	// with fresh ids above all of them, in the runtime-id order.
-	doc.NoteVmfId( settings.worldVmfId );
-	NoteVerbatimIds( settings.worldExtraChildren, doc );
-	NoteVerbatimIds( settings.unknownBlocks, doc );
+	// Persistent ids: every object and side id must be unique (legacy Hammer
+	// keeps one id space for objects; overlays name side ids). Missing ids get
+	// fresh ones above every id in the file.
+	std::set<std::uint32_t> objectIds;
+	std::set<std::uint32_t> sideIds;
+	std::optional<CodecError> duplicate;
+	auto noteObject = [&]( std::uint32_t id, bool hasId, const Where &where, const char *what )
+	{
+		if ( !hasId || duplicate )
+		{
+			return;
+		}
+		if ( !objectIds.insert( id ).second )
+		{
+			duplicate = CodecError{ where.path + ": " + what + " id " + std::to_string( id ) +
+			                            " is already used by another object",
+			    where.line };
+		}
+		doc.NoteVmfId( id );
+	};
 	auto noteSolid = [&]( const PendingSolid &s )
 	{
-		if ( s.hasId )
+		noteObject( s.solid.vmfId, s.hasId, s.where, "solid" );
+		for ( std::size_t i = 0; i < s.solid.sides.size() && !duplicate; ++i )
 		{
-			doc.NoteVmfId( s.solid.vmfId );
-		}
-		for ( std::size_t i = 0; i < s.solid.sides.size(); ++i )
-		{
-			if ( s.sideHasId[i] )
+			if ( !s.sideHasId[i] )
 			{
-				doc.NoteVmfId( s.solid.sides[i].vmfId );
+				continue;
 			}
+			const std::uint32_t id = s.solid.sides[i].vmfId;
+			if ( !sideIds.insert( id ).second )
+			{
+				duplicate = CodecError{ s.sideWhere[i].path + ": side id " + std::to_string( id ) +
+				                            " is already used by another side",
+				    s.sideWhere[i].line };
+			}
+			doc.NoteVmfId( id );
 		}
-		NoteVerbatimIds( s.solid.extraChildren, doc );
 	};
+	doc.NoteVmfId( settings.worldVmfId );
 	for ( const PendingSolid &s : decoder.worldSolids )
 	{
 		noteSolid( s );
 	}
 	for ( const PendingGroup &g : decoder.groups )
 	{
-		doc.NoteVmfId( g.group.vmfId );
+		noteObject( g.group.vmfId, g.hasId, g.where, "group" );
 	}
 	for ( const PendingEntity &e : decoder.entities )
 	{
-		if ( e.hasId )
-		{
-			doc.NoteVmfId( e.entity.vmfId );
-		}
-		NoteVerbatimIds( e.entity.extraChildren, doc );
+		noteObject( e.entity.vmfId, e.hasId, e.where, "entity" );
 		for ( const PendingSolid &s : e.solids )
 		{
 			noteSolid( s );
 		}
 	}
+	if ( duplicate )
+	{
+		return foundation::MakeUnexpected( *duplicate );
+	}
 
 	std::size_t missing = 0;
-	std::set<std::uint32_t> sideIds;
-	std::set<std::uint32_t> objectIds;
-	auto objectId = [&]( std::uint32_t &vmfId, bool hasId, const char *what, int line )
+	auto fresh = [&]( std::uint32_t &id, bool hasId )
 	{
 		if ( !hasId )
 		{
-			vmfId = doc.AllocateVmfId();
+			id = doc.AllocateVmfId();
 			++missing;
 		}
-		else if ( !objectIds.insert( vmfId ).second )
-		{
-			decoder.warnings.push_back( { std::string( what ) + " id " + std::to_string( vmfId ) +
-			                                  " is used by more than one object; kept",
-			    line } );
-		}
 	};
-	auto fixSolid = [&]( PendingSolid &s )
+	auto freshSolid = [&]( PendingSolid &s )
 	{
-		objectId( s.solid.vmfId, s.hasId, "solid", s.line );
+		fresh( s.solid.vmfId, s.hasId );
 		for ( std::size_t i = 0; i < s.solid.sides.size(); ++i )
 		{
-			Side &side = s.solid.sides[i];
-			if ( !s.sideHasId[i] )
-			{
-				side.vmfId = doc.AllocateVmfId();
-				++missing;
-			}
-			else if ( !sideIds.insert( side.vmfId ).second )
-			{
-				const std::uint32_t fresh = doc.AllocateVmfId();
-				decoder.warnings.push_back(
-				    { "side id " + std::to_string( side.vmfId ) +
-				            " is used more than once; reassigned " + std::to_string( fresh ),
-				        s.line } );
-				side.vmfId = fresh;
-			}
-			sideIds.insert( side.vmfId );
+			fresh( s.solid.sides[i].vmfId, s.sideHasId[i] );
 		}
 	};
 	for ( PendingSolid &s : decoder.worldSolids )
 	{
-		fixSolid( s );
+		freshSolid( s );
 	}
 	for ( PendingGroup &g : decoder.groups )
 	{
-		objectId( g.group.vmfId, g.hasId, "group", g.line );
+		fresh( g.group.vmfId, g.hasId );
 	}
 	for ( PendingEntity &e : decoder.entities )
 	{
-		objectId( e.entity.vmfId, e.hasId, "entity", e.line );
+		fresh( e.entity.vmfId, e.hasId );
 		for ( PendingSolid &s : e.solids )
 		{
-			fixSolid( s );
+			freshSolid( s );
 		}
 	}
+	std::vector<CodecDiagnostic> warnings;
 	if ( missing > 0 )
 	{
-		decoder.warnings.push_back(
+		warnings.push_back(
 		    { std::to_string( missing ) + " objects or sides had no id; fresh ids were assigned",
 		        0 } );
 	}
@@ -1938,67 +2456,62 @@ foundation::Expected<DecodedMap, CodecError> VmfMapCodec::Decode(
 		}
 	}
 
-	// Group references.
-	auto resolve = [&]( const std::optional<GroupRef> &ref, ObjectId &into, EditorInfo &editor )
+	// Group references must resolve, and groups must not contain themselves.
+	std::optional<CodecError> unresolved;
+	auto resolve = [&]( const std::optional<GroupRef> &ref, ObjectId &into )
 	{
-		if ( !ref )
+		if ( !ref || unresolved )
 		{
 			return;
 		}
 		const auto it = groupByVmfId.find( ref->id );
-		if ( it != groupByVmfId.end() )
+		if ( it == groupByVmfId.end() )
 		{
-			into = it->second;
+			unresolved = CodecError{
+			    ref->path + ": groupid " + std::to_string( ref->id ) + " names no group",
+			    ref->line };
+			return;
 		}
-		else if ( decoder.verbatimGroupIds.count( ref->id ) )
-		{
-			editor.extra.push_back( { "groupid", ref->raw } ); // names a verbatim group
-		}
-		else
-		{
-			decoder.warnings.push_back(
-			    { "groupid " + ref->raw + " names no group; the membership is dropped",
-			        ref->line } );
-		}
+		into = it->second;
 	};
 	for ( PendingSolid &s : decoder.worldSolids )
 	{
-		resolve( s.group, s.solid.group, s.solid.editor );
+		resolve( s.group, s.solid.group );
 	}
 	for ( PendingGroup &g : decoder.groups )
 	{
-		resolve( g.parent, g.group.group, g.group.editor );
+		resolve( g.parent, g.group.group );
 	}
 	for ( PendingEntity &e : decoder.entities )
 	{
-		resolve( e.group, e.entity.group, e.entity.editor );
+		resolve( e.group, e.entity.group );
 		for ( PendingSolid &s : e.solids )
 		{
-			resolve( s.group, s.solid.group, s.solid.editor );
+			resolve( s.group, s.solid.group );
 		}
 	}
-	// Break group cycles at the group that closes them.
-	std::map<ObjectId, PendingGroup *> groupsById;
-	for ( PendingGroup &g : decoder.groups )
+	if ( unresolved )
+	{
+		return foundation::MakeUnexpected( *unresolved );
+	}
+	std::map<ObjectId, const PendingGroup *> groupsById;
+	for ( const PendingGroup &g : decoder.groups )
 	{
 		groupsById[g.group.id] = &g;
 	}
-	for ( PendingGroup &g : decoder.groups )
+	for ( const PendingGroup &g : decoder.groups )
 	{
 		ObjectId at = g.group.group;
-		std::size_t steps = 0;
-		while ( at.IsValid() && steps <= groupsById.size() )
+		for ( std::size_t steps = 0; at.IsValid() && steps <= groupsById.size(); ++steps )
 		{
 			if ( at == g.group.id )
 			{
-				decoder.warnings.push_back( { "group " + std::to_string( g.group.vmfId ) +
-				                                  " contains itself; its parent group is dropped",
-				    g.line } );
-				g.group.group = ObjectId();
-				break;
+				return foundation::MakeUnexpected(
+				    CodecError{ g.where.path + ": group " + std::to_string( g.group.vmfId ) +
+				                    " contains itself",
+				        g.where.line } );
 			}
 			at = groupsById[at]->group.group;
-			++steps;
 		}
 	}
 
@@ -2025,7 +2538,7 @@ foundation::Expected<DecodedMap, CodecError> VmfMapCodec::Decode(
 		return foundation::MakeUnexpected( CodecError{
 		    "internal: the decoded document is inconsistent: " + problems.front(), 0 } );
 	}
-	return DecodedMap{ std::move( doc ), std::move( decoder.warnings ) };
+	return DecodedMap{ std::move( doc ), std::move( warnings ) };
 }
 
 foundation::Expected<std::string, CodecError> VmfMapCodec::Encode(
@@ -2037,7 +2550,7 @@ foundation::Expected<std::string, CodecError> VmfMapCodec::Encode(
 	{
 		return foundation::MakeUnexpected( *encoder.error );
 	}
-	if ( std::optional<std::string> why = Unwritable( root, true ) )
+	if ( std::optional<std::string> why = Unwritable( root ) )
 	{
 		return foundation::MakeUnexpected( CodecError{ *why, 0 } );
 	}

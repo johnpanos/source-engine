@@ -12,6 +12,7 @@
 #include "mapgeometry/vec3.h"
 #include "testing/checks.h"
 
+#include <cmath>
 
 using namespace mapgeometry;
 
@@ -37,13 +38,16 @@ int main()
 	testing::Checks checks;
 
 	const Plane floor = PlaneThrough( Vec3d( 0, 0, 0 ), Vec3d( 0, 0, 1 ) );
-	checks.That( ClassifyPoints( { Vec3d( 0, 0, 1 ), Vec3d( 5, 5, 2 ) }, floor ) == PlaneSide::Front,
+	checks.That(
+	    ClassifyPoints( { Vec3d( 0, 0, 1 ), Vec3d( 5, 5, 2 ) }, floor ) == PlaneSide::Front,
 	    "points above are in front" );
-	checks.That( ClassifyPoints( { Vec3d( 0, 0, -1 ), Vec3d( 0, 0, 0 ) }, floor ) == PlaneSide::Back,
+	checks.That(
+	    ClassifyPoints( { Vec3d( 0, 0, -1 ), Vec3d( 0, 0, 0 ) }, floor ) == PlaneSide::Back,
 	    "points below or on are behind" );
 	checks.That( ClassifyPoints( { Vec3d( 0, 0, 0.001 ) }, floor ) == PlaneSide::On,
 	    "within epsilon is on the plane" );
-	checks.That( ClassifyPoints( { Vec3d( 0, 0, -1 ), Vec3d( 0, 0, 1 ) }, floor ) == PlaneSide::Spanning,
+	checks.That(
+	    ClassifyPoints( { Vec3d( 0, 0, -1 ), Vec3d( 0, 0, 1 ) }, floor ) == PlaneSide::Spanning,
 	    "both sides span" );
 	checks.That( Flipped( floor ).normal == Vec3d( 0, 0, -1 ) && Flipped( floor ).dist == 0,
 	    "flip reverses the plane" );
@@ -70,7 +74,8 @@ int main()
 			         Dot( f.plane.normal, planes[f.sourcePlane].normal ) > 0.999;
 		}
 		checks.That( mapped, "each face names its input plane" );
-		checks.Equal( SolidVertices( solid ).size(), std::size_t( 8 ), "a box has eight unique vertices" );
+		checks.Equal(
+		    SolidVertices( solid ).size(), std::size_t( 8 ), "a box has eight unique vertices" );
 	}
 
 	// Convex hull: a cube's corners plus an interior point give six planes.
@@ -88,11 +93,12 @@ int main()
 			checks.That( solid.bounded && solid.maxs == Vec3d( 16, 16, 16 ), "hull bounds" );
 		}
 		// A pyramid: four base corners and an apex.
-		const std::optional<std::vector<Plane>> pyr = ConvexHullPlanes(
-		    { Vec3d( 0, 0, 0 ), Vec3d( 16, 0, 0 ), Vec3d( 16, 16, 0 ), Vec3d( 0, 16, 0 ), Vec3d( 8, 8, 16 ) } );
+		const std::optional<std::vector<Plane>> pyr = ConvexHullPlanes( { Vec3d( 0, 0, 0 ),
+		    Vec3d( 16, 0, 0 ), Vec3d( 16, 16, 0 ), Vec3d( 0, 16, 0 ), Vec3d( 8, 8, 16 ) } );
 		checks.That( pyr.has_value() && pyr->size() == 5, "pyramid hull has five planes" );
 		// Negative: coplanar and too few points.
-		checks.That( !ConvexHullPlanes( { Vec3d( 0, 0, 0 ), Vec3d( 1, 0, 0 ), Vec3d( 0, 1, 0 ), Vec3d( 1, 1, 0 ) } ),
+		checks.That( !ConvexHullPlanes( { Vec3d( 0, 0, 0 ), Vec3d( 1, 0, 0 ), Vec3d( 0, 1, 0 ),
+		                 Vec3d( 1, 1, 0 ) } ),
 		    "coplanar points have no hull" );
 		checks.That( !ConvexHullPlanes( { Vec3d( 0, 0, 0 ), Vec3d( 1, 0, 0 ), Vec3d( 0, 1, 1 ) } ),
 		    "three points have no hull" );
@@ -100,10 +106,14 @@ int main()
 
 	// Overlap: separated, touching and interpenetrating boxes.
 	{
-		const BrushSolid a = BuildSolidFromPlanes( BoxPlanes( Vec3d( 0, 0, 0 ), Vec3d( 16, 16, 16 ) ) );
-		const BrushSolid b = BuildSolidFromPlanes( BoxPlanes( Vec3d( 8, 8, 8 ), Vec3d( 24, 24, 24 ) ) );
-		const BrushSolid c = BuildSolidFromPlanes( BoxPlanes( Vec3d( 16, 0, 0 ), Vec3d( 32, 16, 16 ) ) );
-		const BrushSolid d = BuildSolidFromPlanes( BoxPlanes( Vec3d( 40, 0, 0 ), Vec3d( 48, 8, 8 ) ) );
+		const BrushSolid a =
+		    BuildSolidFromPlanes( BoxPlanes( Vec3d( 0, 0, 0 ), Vec3d( 16, 16, 16 ) ) );
+		const BrushSolid b =
+		    BuildSolidFromPlanes( BoxPlanes( Vec3d( 8, 8, 8 ), Vec3d( 24, 24, 24 ) ) );
+		const BrushSolid c =
+		    BuildSolidFromPlanes( BoxPlanes( Vec3d( 16, 0, 0 ), Vec3d( 32, 16, 16 ) ) );
+		const BrushSolid d =
+		    BuildSolidFromPlanes( BoxPlanes( Vec3d( 40, 0, 0 ), Vec3d( 48, 8, 8 ) ) );
 		checks.That( SolidsOverlap( a, b ), "interpenetrating boxes overlap" );
 		checks.That( !SolidsOverlap( a, c ), "face-touching boxes do not overlap" );
 		checks.That( !SolidsOverlap( a, d ), "separated boxes do not overlap" );
@@ -111,8 +121,28 @@ int main()
 		std::vector<Plane> wedge = BoxPlanes( Vec3d( 0, 0, 0 ), Vec3d( 16, 16, 16 ) );
 		wedge.push_back( PlaneThrough( Vec3d( 16, 0, 0 ), Normalize( Vec3d( 1, 1, 0 ) ) ) );
 		const BrushSolid w = BuildSolidFromPlanes( wedge );
-		const BrushSolid e = BuildSolidFromPlanes( BoxPlanes( Vec3d( 12, 12, 0 ), Vec3d( 20, 20, 16 ) ) );
+		const BrushSolid e =
+		    BuildSolidFromPlanes( BoxPlanes( Vec3d( 12, 12, 0 ), Vec3d( 20, 20, 16 ) ) );
 		checks.That( !SolidsOverlap( w, e ), "a cut corner clears a box beside the cut" );
+	}
+
+	// Ray entry into a convex volume.
+	{
+		const std::vector<Plane> cube = BoxPlanes( Vec3d( 0, 0, 0 ), Vec3d( 16, 16, 16 ) );
+		const std::optional<RayEntry> e =
+		    RayEnterConvex( cube, Vec3d( -10, 8, 8 ), Vec3d( 1, 0, 0 ) );
+		checks.That(
+		    e && std::fabs( e->t - 10 ) < 1e-12 && cube[e->plane].normal == Vec3d( -1, 0, 0 ),
+		    "a ray enters through the -X face at t=10" );
+		const std::optional<RayEntry> scaled =
+		    RayEnterConvex( cube, Vec3d( -10, 8, 8 ), Vec3d( 2, 0, 0 ) );
+		checks.That( scaled && std::fabs( scaled->t - 5 ) < 1e-12, "t is in direction units" );
+		checks.That( !RayEnterConvex( cube, Vec3d( -10, 8, 8 ), Vec3d( -1, 0, 0 ) ),
+		    "pointing away misses (negative)" );
+		checks.That( !RayEnterConvex( cube, Vec3d( 8, 8, 8 ), Vec3d( 1, 0, 0 ) ),
+		    "starting inside is no entry (negative)" );
+		checks.That( !RayEnterConvex( cube, Vec3d( -10, 20, 8 ), Vec3d( 1, 0, 0 ) ),
+		    "parallel outside misses (negative)" );
 	}
 
 	return checks.Report();

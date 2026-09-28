@@ -45,6 +45,7 @@ fi
 # The editor core the shell links: the interaction authority (EditorController)
 # and the shared services it composes, plus the DiskFileStore adapter for file I/O.
 CORE="\
+$ROOT/hammer/core/app/command_script.cpp \
 $ROOT/hammer/core/app/editor_commands.cpp \
 $ROOT/hammer/core/app/map_build_queue.cpp \
 $ROOT/hammer/adapters/platform/tool_process_map_builder.cpp \

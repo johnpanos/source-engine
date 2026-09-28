@@ -78,7 +78,8 @@ void ApplyClassDefaults( scene::Entity &entity, const ports::EntityClassInfo &in
 // solid class, and its defaults are applied; without one any non-empty class
 // is accepted.
 EditResult PlaceEntity( scene::DocumentEdit &edit, const std::string &classname,
-    const mapgeometry::Vec3d &origin, const ports::IEntityCatalog *catalog, scene::ObjectId &created );
+    const mapgeometry::Vec3d &origin, const ports::IEntityCatalog *catalog,
+    scene::ObjectId &created );
 
 } // namespace hammer::app::ops
 

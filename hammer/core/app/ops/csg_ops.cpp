@@ -50,7 +50,8 @@ scene::Solid Fresh( scene::Solid solid )
 	return solid;
 }
 
-std::vector<scene::ObjectId> SolidsOf( const scene::DocumentReader &doc, const std::vector<scene::ObjectId> &ids )
+std::vector<scene::ObjectId> SolidsOf(
+    const scene::DocumentReader &doc, const std::vector<scene::ObjectId> &ids )
 {
 	std::vector<scene::ObjectId> out;
 	for ( scene::ObjectId id : scene::ExpandToLeaves( doc, ids ) )
@@ -64,8 +65,8 @@ std::vector<scene::ObjectId> SolidsOf( const scene::DocumentReader &doc, const s
 }
 
 // Replaces solid 'id' by 'pieces': the first keeps the id, the rest are new.
-void ReplaceWithPieces( scene::DocumentEdit &edit, scene::ObjectId id, std::vector<scene::Solid> pieces,
-    std::vector<scene::ObjectId> *created )
+void ReplaceWithPieces( scene::DocumentEdit &edit, scene::ObjectId id,
+    std::vector<scene::Solid> pieces, std::vector<scene::ObjectId> *created )
 {
 	if ( pieces.empty() )
 	{
@@ -98,7 +99,8 @@ void ReplaceWithPieces( scene::DocumentEdit &edit, scene::ObjectId id, std::vect
 
 } // namespace
 
-SplitResult SplitSolid( const scene::Solid &solid, const Plane &plane, const scene::FaceTexture &capTexture )
+SplitResult SplitSolid(
+    const scene::Solid &solid, const Plane &plane, const scene::FaceTexture &capTexture )
 {
 	SplitResult out;
 	const Plane n = mapgeometry::PlaneThrough( plane.normal * plane.dist, plane.normal );
@@ -107,8 +109,9 @@ SplitResult SplitSolid( const scene::Solid &solid, const Plane &plane, const sce
 	return out;
 }
 
-EditResult ClipSolids( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids, const Plane &plane,
-    ClipKeep keep, const scene::FaceTexture &capTexture, std::vector<scene::ObjectId> *created )
+EditResult ClipSolids( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
+    const Plane &plane, ClipKeep keep, const scene::FaceTexture &capTexture,
+    std::vector<scene::ObjectId> *created )
 {
 	if ( mapgeometry::Length( plane.normal ) < 1.0e-9 )
 	{
@@ -123,15 +126,17 @@ EditResult ClipSolids( scene::DocumentEdit &edit, const std::vector<scene::Objec
 	{
 		return NothingToDo( "no solids selected" );
 	}
-	const Plane unit = mapgeometry::PlaneThrough(
-	    mapgeometry::Normalize( plane.normal ) * ( plane.dist / mapgeometry::Length( plane.normal ) ),
-	    plane.normal );
+	const Plane unit =
+	    mapgeometry::PlaneThrough( mapgeometry::Normalize( plane.normal ) *
+	                                   ( plane.dist / mapgeometry::Length( plane.normal ) ),
+	        plane.normal );
 
 	bool any = false;
 	for ( scene::ObjectId id : solids )
 	{
 		const scene::Solid &solid = *edit.FindSolid( id );
-		const std::vector<Vec3d> vertices = mapgeometry::SolidVertices( scene::BuildGeometry( solid ) );
+		const std::vector<Vec3d> vertices =
+		    mapgeometry::SolidVertices( scene::BuildGeometry( solid ) );
 		if ( mapgeometry::ClassifyPoints( vertices, unit ) != mapgeometry::PlaneSide::Spanning )
 		{
 			continue;
@@ -198,8 +203,10 @@ EditResult Carve( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> 
 			scene::Solid remaining = *target;
 			for ( const mapgeometry::BrushFace &face : carverGeometry.faces )
 			{
-				const scene::Side &carverSide = carver.sides[static_cast<std::size_t>( face.sourcePlane )];
-				scene::Side outside = CapSide( mapgeometry::Flipped( face.plane ), carverSide.texture, false );
+				const scene::Side &carverSide =
+				    carver.sides[static_cast<std::size_t>( face.sourcePlane )];
+				scene::Side outside =
+				    CapSide( mapgeometry::Flipped( face.plane ), carverSide.texture, false );
 				if ( std::optional<scene::Solid> piece = WithSide( remaining, outside ) )
 				{
 					pieces.push_back( std::move( *piece ) );
@@ -234,8 +241,8 @@ EditResult Carve( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> 
 	return {};
 }
 
-EditResult Hollow( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids, double thickness,
-    std::vector<scene::ObjectId> *groups )
+EditResult Hollow( scene::DocumentEdit &edit, const std::vector<scene::ObjectId> &ids,
+    double thickness, std::vector<scene::ObjectId> *groups )
 {
 	if ( thickness == 0.0 )
 	{
@@ -267,9 +274,11 @@ EditResult Hollow( scene::DocumentEdit &edit, const std::vector<scene::ObjectId>
 			}
 		}
 		std::optional<scene::Solid> core = scene::NormalizeSides( offset );
-		if ( !core || core->sides.size() != scene::NormalizeSides( solid ).value_or( solid ).sides.size() )
+		if ( !core ||
+		     core->sides.size() != scene::NormalizeSides( solid ).value_or( solid ).sides.size() )
 		{
-			return Reject( "a solid is too thin for walls of " + scene::FormatNumber( std::fabs( thickness ) ) );
+			return Reject( "a solid is too thin for walls of " +
+			               scene::FormatNumber( std::fabs( thickness ) ) );
 		}
 		// Walls: the outer solid carved by the inner one.
 		const scene::Solid &outer = thickness > 0 ? solid : *core;
@@ -279,13 +288,16 @@ EditResult Hollow( scene::DocumentEdit &edit, const std::vector<scene::ObjectId>
 		scene::Solid remaining = outer;
 		for ( const mapgeometry::BrushFace &face : innerGeometry.faces )
 		{
-			const scene::Side &innerSide = inner.sides[static_cast<std::size_t>( face.sourcePlane )];
-			scene::Side outside = CapSide( mapgeometry::Flipped( face.plane ), innerSide.texture, false );
+			const scene::Side &innerSide =
+			    inner.sides[static_cast<std::size_t>( face.sourcePlane )];
+			scene::Side outside =
+			    CapSide( mapgeometry::Flipped( face.plane ), innerSide.texture, false );
 			if ( std::optional<scene::Solid> wall = WithSide( remaining, outside ) )
 			{
 				plan.walls.push_back( std::move( *wall ) );
 			}
-			std::optional<scene::Solid> rest = WithSide( remaining, CapSide( face.plane, innerSide.texture, false ) );
+			std::optional<scene::Solid> rest =
+			    WithSide( remaining, CapSide( face.plane, innerSide.texture, false ) );
 			if ( !rest )
 			{
 				break;
@@ -304,7 +316,8 @@ EditResult Hollow( scene::DocumentEdit &edit, const std::vector<scene::ObjectId>
 		const scene::Solid original = *edit.FindSolid( plan.id );
 		scene::Group group;
 		group.group = original.owner.IsValid() ? scene::ObjectId() : original.group;
-		const scene::ObjectId groupId = original.owner.IsValid() ? scene::ObjectId() : edit.Add( group );
+		const scene::ObjectId groupId =
+		    original.owner.IsValid() ? scene::ObjectId() : edit.Add( group );
 		edit.Remove( plan.id );
 		for ( scene::Solid &wall : plan.walls )
 		{

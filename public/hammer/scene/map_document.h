@@ -66,13 +66,36 @@ struct CameraBookmark
 	friend bool operator==( const CameraBookmark &, const CameraBookmark & ) = default;
 };
 
+// The VMF 'versioninfo' block: which editor wrote the file.
+struct VersionInfo
+{
+	int editorVersion = 400;
+	int editorBuild = 0;
+	int mapVersion = 0;
+	int formatVersion = 100;
+	bool prefab = false;
+
+	friend bool operator==( const VersionInfo &, const VersionInfo & ) = default;
+};
+
+// The VMF 'viewsettings' block: the 2D/3D grid state saved with the map.
+struct ViewSettings
+{
+	bool snapToGrid = true;
+	bool showGrid = true;
+	bool showLogicalGrid = false;
+	int gridSpacing = 64;
+	bool show3DGrid = false;
+
+	friend bool operator==( const ViewSettings &, const ViewSettings & ) = default;
+};
+
 struct DocumentSettings
 {
-	std::vector<kvtext::KeyValue> versionInfo;  // the 'versioninfo' pairs
-	std::vector<kvtext::KeyValue> viewSettings; // the 'viewsettings' pairs
+	VersionInfo version;
+	ViewSettings view;
 	std::uint32_t worldVmfId = 1;
 	std::vector<kvtext::KeyValue> worldKeys; // worldspawn keys except id/classname
-	std::vector<kvtext::KeyValueNode> worldExtraChildren; // unknown 'world' children
 	std::vector<Visgroup> visgroups;
 	std::vector<Cordon> cordons;
 	bool cordonsActive = false;
@@ -88,7 +111,6 @@ struct DocumentSettings
 	CordonForm cordonForm = CordonForm::None;
 	std::vector<CameraBookmark> cameras;
 	int activeCamera = -1;
-	std::vector<kvtext::KeyValueNode> unknownBlocks; // top-level blocks, verbatim
 
 	// The first worldspawn value of 'key', or nullptr.
 	const std::string *WorldKey( std::string_view key ) const;

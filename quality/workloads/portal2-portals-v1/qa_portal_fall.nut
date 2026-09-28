@@ -78,6 +78,18 @@ QA_Expect( "loop.still_falling_in_column", function()
 	       o.z > -80 && o.z < 460 && v.z < -600
 } )
 QA_Do( "shot in the loop", function() { PW_Shot( "loop" ) }, 0.3 )
-QA_Do( "close the portals", function() { SendToConsole( "ent_fire prop_portal Fizzle" ) }, 2.0 )
+// Closing the pair drops the player onto the floor at loop speed: the hard
+// landing (PlayerRoughLandingEffects, its sound) must not crash.
+QA_Do( "close the portals", function()
+{
+	::FALL.landingSpeed <- -QA_Player().GetVelocity().z
+	SendToConsole( "ent_fire prop_portal Fizzle" )
+}, 2.0 )
+QA_Expect( "loop.landed", function()
+{
+	local o = QA_Player().GetOrigin()
+	QA_Detail( "player " + QA_Vec( o ) + " after falling at " + ::FALL.landingSpeed + " u/s" )
+	return ::FALL.landingSpeed > 600 && o.z < 4 && QA_Player().GetHealth() > 0
+} )
 
 QA_Start( "qa_portal_fall" )

@@ -314,6 +314,30 @@
       "dialect": "cxx20",
       "rfc": "0002"
     },
+    "hammer_scene": {
+      "dialect": "cxx20",
+      "rfc": "0002"
+    },
+    "hammer_ports": {
+      "dialect": "cxx20",
+      "rfc": "0002"
+    },
+    "hammer_formats": {
+      "dialect": "cxx20",
+      "rfc": "0002"
+    },
+    "hammer_viewport": {
+      "dialect": "cxx20",
+      "rfc": "0002"
+    },
+    "hammer_tools": {
+      "dialect": "cxx20",
+      "rfc": "0002"
+    },
+    "hammer_presenters": {
+      "dialect": "cxx20",
+      "rfc": "0002"
+    },
     "hammer_platform": {
       "dialect": "cxx20",
       "rfc": "0002"

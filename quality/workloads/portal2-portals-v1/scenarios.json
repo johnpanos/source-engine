@@ -81,7 +81,8 @@
         "loop.orange_moved",
         "loop.still_falling_in_column",
         "view.floor_to_wall",
-        "view.floor_ceiling_loop"
+        "view.floor_ceiling_loop",
+        "loop.landed"
       ],
       "console_checks": [
         {

@@ -91,7 +91,8 @@ void ChangeHistory::Trim()
 	const std::size_t drop = m_entries.size() - m_limit;
 	// Never drop entries at or after the position: those are the undo target.
 	const std::size_t dropped = drop < m_position ? drop : m_position;
-	m_entries.erase( m_entries.begin(), m_entries.begin() + static_cast<std::ptrdiff_t>( dropped ) );
+	m_entries.erase(
+	    m_entries.begin(), m_entries.begin() + static_cast<std::ptrdiff_t>( dropped ) );
 	m_position -= dropped;
 	if ( m_saved )
 	{

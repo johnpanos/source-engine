@@ -32,7 +32,8 @@ ObjectId Representative( const scene::DocumentReader &doc, ObjectId id )
 	return id;
 }
 
-std::vector<ObjectId> Representatives( const scene::DocumentReader &doc, const std::vector<ObjectId> &ids )
+std::vector<ObjectId> Representatives(
+    const scene::DocumentReader &doc, const std::vector<ObjectId> &ids )
 {
 	std::set<ObjectId> out;
 	for ( ObjectId id : ids )
@@ -97,8 +98,8 @@ void RemoveEmptyContainers( scene::DocumentEdit &edit, const std::vector<ObjectI
 		{
 			// Only groups this edit emptied (or created): an authored empty group
 			// in the base document is content, not debris.
-			const bool wasPopulated = !edit.Base().FindGroup( id ) ||
-			                          !scene::GroupMembers( edit.Base(), id ).empty();
+			const bool wasPopulated =
+			    !edit.Base().FindGroup( id ) || !scene::GroupMembers( edit.Base(), id ).empty();
 			if ( wasPopulated && scene::GroupMembers( edit, id ).empty() )
 			{
 				edit.Remove( id );
@@ -128,7 +129,8 @@ EditResult DeleteObjects( scene::DocumentEdit &edit, const std::vector<ObjectId>
 	return {};
 }
 
-EditResult GroupObjects( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, ObjectId &created )
+EditResult GroupObjects(
+    scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, ObjectId &created )
 {
 	// Group the top of each hit within the shared parent level.
 	std::vector<ObjectId> members = Representatives( edit, ids );
@@ -190,8 +192,9 @@ EditResult UngroupObjects( scene::DocumentEdit &edit, const std::vector<ObjectId
 	return {};
 }
 
-EditResult TieToEntity( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids, const std::string &classname,
-    const ports::IEntityCatalog *catalog, ObjectId existing, ObjectId &entity )
+EditResult TieToEntity( scene::DocumentEdit &edit, const std::vector<ObjectId> &ids,
+    const std::string &classname, const ports::IEntityCatalog *catalog, ObjectId existing,
+    ObjectId &entity )
 {
 	const std::vector<ObjectId> solids = Solids( edit, ids );
 	if ( solids.empty() )

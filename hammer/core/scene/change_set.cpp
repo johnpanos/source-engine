@@ -18,7 +18,12 @@ namespace hammer::scene
 
 ObjectId IdOf( const MapObject &object )
 {
-	return std::visit( []( const auto &o ) { return o.id; }, object );
+	return std::visit(
+	    []( const auto &o )
+	    {
+		    return o.id;
+	    },
+	    object );
 }
 
 ObjectKind KindOf( const MapObject &object )
@@ -78,7 +83,12 @@ namespace
 
 void PutObject( MapDocument &doc, const MapObject &object )
 {
-	std::visit( [&]( const auto &o ) { doc.Put( o ); }, object );
+	std::visit(
+	    [&]( const auto &o )
+	    {
+		    doc.Put( o );
+	    },
+	    object );
 }
 
 } // namespace
@@ -251,8 +261,8 @@ std::vector<ObjectId> DocumentEdit::AllIds() const
 namespace
 {
 
-template <typename T> T *MutableOf( std::map<ObjectId, std::optional<MapObject>> &staged,
-    const T *current, ObjectId id )
+template <typename T>
+T *MutableOf( std::map<ObjectId, std::optional<MapObject>> &staged, const T *current, ObjectId id )
 {
 	if ( !current )
 	{
@@ -423,7 +433,10 @@ std::vector<ObjectId> DocumentEdit::TouchedIds() const
 std::vector<std::string> ValidateEdit( const DocumentEdit &edit )
 {
 	std::vector<std::string> problems;
-	auto idText = []( ObjectId id ) { return std::to_string( id.value & 0xffffffffu ); };
+	auto idText = []( ObjectId id )
+	{
+		return std::to_string( id.value & 0xffffffffu );
+	};
 	const std::vector<ObjectId> touched = edit.TouchedIds();
 
 	std::set<std::uint32_t> touchedSides;
@@ -441,7 +454,8 @@ std::vector<std::string> ValidateEdit( const DocumentEdit &edit )
 		{
 			if ( group.IsValid() && !edit.FindGroup( group ) )
 			{
-				problems.push_back( std::string( what ) + " " + idText( id ) + " refers to a missing group" );
+				problems.push_back(
+				    std::string( what ) + " " + idText( id ) + " refers to a missing group" );
 			}
 		};
 		if ( *kind == ObjectKind::Solid )
@@ -510,7 +524,8 @@ std::vector<std::string> ValidateEdit( const DocumentEdit &edit )
 			{
 				if ( touchedSides.count( side.vmfId ) )
 				{
-					problems.push_back( "side id " + std::to_string( side.vmfId ) + " is not unique" );
+					problems.push_back(
+					    "side id " + std::to_string( side.vmfId ) + " is not unique" );
 				}
 			}
 		}

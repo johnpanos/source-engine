@@ -52,6 +52,24 @@ mapgeometry::BrushSolid BuildGeometry( const Solid &solid );
 // Bounds of the solid's vertices; nothing when it has no faces.
 std::optional<Box> SolidBounds( const Solid &solid );
 
+// Where a ray enters a solid: the ray parameter (in 'direction' units), the
+// index into Solid::sides of the side it enters, the point and that side's
+// outward normal. Nothing when it misses or starts inside.
+struct SolidRayHit
+{
+	double t = 0.0;
+	std::size_t side = 0;
+	mapgeometry::Vec3d point;
+	mapgeometry::Vec3d normal;
+};
+std::optional<SolidRayHit> RayEnterSolid(
+    const Solid &solid, const mapgeometry::Vec3d &origin, const mapgeometry::Vec3d &direction );
+
+// The four corners of side 'sideIndex''s face, in winding order; nothing when
+// the face does not have exactly four vertices.
+std::optional<std::array<mapgeometry::Vec3d, 4>> QuadCorners(
+    const Solid &solid, std::size_t sideIndex );
+
 // Authored side points for a face polygon given counter-clockwise as seen from
 // outside (BrushFace order): three of its vertices, ordered so Side::Plane()
 // reproduces the polygon's outward plane. Requires three or more vertices.

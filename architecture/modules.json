@@ -1555,7 +1555,8 @@
           "hammer.ports",
           "render.contracts",
           "content.keyvalues-text",
-          "content.vmf"
+          "content.vmf",
+          "foundation"
         ]
       },
       {

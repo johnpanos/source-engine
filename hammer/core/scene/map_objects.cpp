@@ -180,7 +180,11 @@ bool Entity::SetKey( std::string_view key, std::string_view value )
 bool Entity::RemoveKey( std::string_view key )
 {
 	const std::size_t before = keys.size();
-	std::erase_if( keys, [&]( const kvtext::KeyValue &kv ) { return kv.key == key; } );
+	std::erase_if( keys,
+	    [&]( const kvtext::KeyValue &kv )
+	    {
+		    return kv.key == key;
+	    } );
 	return keys.size() != before;
 }
 

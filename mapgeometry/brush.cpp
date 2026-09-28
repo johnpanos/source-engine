@@ -172,21 +172,52 @@ bool SolveThreePlanes( const Plane &a, const Plane &b, const Plane &c, Vec3d &ou
 	return true;
 }
 
+// True when 'p' is not affinely dependent on 'basis' (at most three points):
+// it lies off the point, line or plane they span.
+bool ExtendsBasis( const std::vector<Vec3d> &basis, const Vec3d &p )
+{
+	constexpr double kEps = 1.0e-6;
+	if ( basis.empty() )
+	{
+		return true;
+	}
+	const Vec3d d = Sub( p, basis[0] );
+	if ( basis.size() == 1 )
+	{
+		return Dot( d, d ) > kEps;
+	}
+	const Vec3d e1 = Sub( basis[1], basis[0] );
+	const Vec3d c = Cross( e1, d );
+	if ( basis.size() == 2 )
+	{
+		return Dot( c, c ) > kEps;
+	}
+	const Vec3d n = Cross( e1, Sub( basis[2], basis[0] ) );
+	return std::fabs( Dot( n, d ) ) > kEps;
+}
+
 // Computes a point strictly interior to the convex region bounded by 'planes',
 // independent of the planes' outward/inward orientation. It enumerates the
 // polytope's candidate vertices (triple-plane intersections that lie on a single
 // consistent side of every plane) and averages them. Returns false when the
 // planes bound no finite region (no such vertices).
+//
+// The centroid of any set of polytope vertices that spans a volume is strictly
+// interior, so the search stops once four affinely independent vertices are
+// found; only degenerate (flat) vertex sets are enumerated in full. This keeps
+// the result's orientation identical while avoiding the O(n^4) full scan on
+// many-sided solids.
 bool ComputeInteriorPoint( const std::vector<Plane> &planes, Vec3d &out )
 {
 	Vec3d sum;
 	std::size_t count = 0;
+	std::vector<Vec3d> basis;
 	const std::size_t n = planes.size();
-	for ( std::size_t i = 0; i < n; ++i )
+	for ( std::size_t i = 0; i < n && basis.size() < 4; ++i )
 	{
-		for ( std::size_t j = i + 1; j < n; ++j )
+		for ( std::size_t j = i + 1; j < n && basis.size() < 4; ++j )
 		{
-			for ( std::size_t k = j + 1; k < n; ++k )
+			for ( std::size_t k = j + 1; k < n && basis.size() < 4; ++k )
 			{
 				Vec3d p;
 				if ( !SolveThreePlanes( planes[i], planes[j], planes[k], p ) )
@@ -216,6 +247,10 @@ bool ComputeInteriorPoint( const std::vector<Plane> &planes, Vec3d &out )
 				{
 					sum = Add( sum, p );
 					++count;
+					if ( ExtendsBasis( basis, p ) )
+					{
+						basis.push_back( p );
+					}
 				}
 			}
 		}

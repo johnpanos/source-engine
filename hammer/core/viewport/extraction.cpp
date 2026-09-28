@@ -105,6 +105,12 @@ std::optional<SolidDraw> DrawSolid( const Context &ctx, ObjectId id )
 		faceDraw.material = std::move( face.material );
 		faceDraw.vertices = std::move( face.vertices );
 		faceDraw.normal = face.plane.normal;
+		if ( face.sourcePlane >= 0 &&
+		     solid->sides[static_cast<std::size_t>( face.sourcePlane )].displacement )
+		{
+			faceDraw.displacement =
+			    scene::BuildDisplacement( *solid, static_cast<std::size_t>( face.sourcePlane ) );
+		}
 		faceDraw.selected = std::binary_search( ctx.selectedFaces.begin(), ctx.selectedFaces.end(),
 		    scene::FaceRef{ id, faceDraw.side } );
 		draw.faces.push_back( std::move( faceDraw ) );

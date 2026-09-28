@@ -4,7 +4,8 @@ Module: `hammer.ports` · Interface: `hammer::ports::IMapCodec`
 Header: `public/hammer/ports/map_codec.h`
 Real provider: `hammer::formats::VmfMapCodec` (`formats.vmf_map_codec.v1`)
 Shared suite: `unittests/hammertest/formats/map_codec_oracle.h`
-Conformance: `unittests/hammertest/formats/test_vmf_map_codec.cpp` (+ `_negative`)
+Conformance: `unittests/hammertest/formats/test_vmf_map_codec.cpp` (+ `_negative`),
+`unittests/hammertest/formats/test_vmf_portal2_roundtrip.cpp`
 Migration: `HAM-VMFCODEC-001` (proposed id; R08-DOMAIN)
 
 Map persistence port. A codec turns file text into a detached
@@ -29,12 +30,14 @@ selects or constructs a codec; the composition root wires one.
 ## 3. Results and guarantees
 
 - **Detached decode.** `Decode` builds a new document and returns it only on
-  success; it never touches an existing document. Text that is not the format
-  fails with `CodecError { message, line }`, `line` the 1-based source line.
+  success; it never touches an existing document.
+- **No escape hatches.** Every datum of an accepted file lands in a typed field
+  of the scene model. Content the model cannot represent is a `CodecError`
+  whose message names the block path and whose `line` is the 1-based source
+  line; nothing is carried verbatim and nothing is dropped.
+- **Warnings are lossless.** A warning (`CodecDiagnostic`) reports a recovery
+  that loses nothing (for VMF: fresh ids for objects that had none).
 - **Consistent result.** A decoded document passes `MapDocument::Validate()`.
-- **Warnings, not loss.** Recoverable oddities are `CodecDiagnostic` warnings
-  (with a line when one applies); the affected data is kept verbatim where the
-  format allows.
 - **Serial.** Every runtime id of a decoded document carries `serial`.
 - **Round trip from text.** `Decode(Encode(Decode(t)))` is `SameContent` with
   `Decode(t)` including equal runtime ids (the codec issues ids in a fixed
@@ -56,31 +59,32 @@ selects or constructs a codec; the composition root wires one.
 
 ## 5. Invariants
 
-- The codec never keeps two authorities: the decoded document is the only
-  content; nothing is cached between calls.
-- Persistent ids in the output are never lower than the document's `NextVmfId`
-  floor would allow a collision with (fresh ids come from `AllocateVmfId` after
-  every id in the input was noted).
+- The decoded document is the only content; nothing is cached between calls.
+- Fresh persistent ids never collide: they are allocated with
+  `AllocateVmfId` after every id in the input was noted.
 
 ## 6. Side effects and performance
 
-- None beyond allocation. Linear in the text size; the two Portal 2 sample maps
-  (1.5 MB and 0.4 MB, 986 solids) decode and re-encode in well under a second
-  with `-O2`.
+- None beyond allocation. Linear in the text size.
 
 ## 7. Conformance suite and providers
 
-- `map_codec_oracle.h` is the shared suite. Every clause takes `const IMapCodec &`
-  and returns `Findings` (empty = pass): `RoundTrip`, `DocumentRoundTrip`,
-  `SemanticText` (exact or numbers-by-value), `CanonicalText`,
-  `CanonicalFixture`, `SingleCordonFixture`, `OddityFixture`, and the
-  comparator `SameContentUpToIds`.
-- `test_vmf_map_codec.cpp` runs every clause against `VmfMapCodec`.
-- `test_vmf_map_codec_negative.cpp` runs 14 seeded bad codecs (each wraps the
-  real one and breaks one promise) and requires each to be detected by its named
-  clause, with the real codec as the control; it also checks the comparator
-  detects a changed field, a dropped reference and a settings change while
-  accepting renamed ids.
-- Both run headlessly with g++ and clang++ (`-std=c++20 -Wall -Wextra -Werror`)
+- `map_codec_oracle.h` is the shared suite. Every clause takes
+  `const IMapCodec &` and returns `Findings` (empty = pass): `RoundTrip`,
+  `DocumentRoundTrip`, `SemanticText` (exact or numbers-by-value),
+  `CanonicalText`, `CanonicalFixture`, `SingleCordonFixture`,
+  `MissingIdsFixture`, `RejectsUnmodeled` (32 kinds of unmodeled content, each
+  with its expected path and line), the comparator `SameContentUpToIds`, and the
+  file-level `CountText`/`CountDocument`/`CompareFileSemantics`.
+- `test_vmf_map_codec.cpp` runs every clause against `VmfMapCodec`;
+  `test_vmf_portal2_roundtrip.cpp` runs the file-level checks on the vendored
+  Portal 2 maps.
+- `test_vmf_map_codec_negative.cpp` runs 20 seeded bad codecs (each wraps the
+  real one and breaks one promise, including a lenient codec that silently
+  strips what the strict decoder rejects) and requires each to be detected by
+  its named clause, with the real codec as the control; it also checks the
+  comparator detects a changed field, a dropped reference and a settings change
+  while accepting renamed ids.
+- All run headlessly with g++ and clang++ (`-std=c++20 -Wall -Wextra -Werror`)
   on `linux-headless-core`. A fake codec for application tests can reuse the
   same oracle.

@@ -1,10 +1,11 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Model Context Protocol server over the Hammer command layer
-//			(RFC 0002, hammer.adapters.mcp). Each EditorCommands catalog entry
-//			is one MCP tool, and each tool call is one EditorCommands::Execute,
-//			so an agent edits the same document, history and files as the GTK
-//			host and command scripts.
+// Purpose: Model Context Protocol server over a Hammer command layer
+//			(RFC 0002, hammer.adapters.mcp). Each catalog entry is one MCP tool
+//			and each tool call is one Execute of the same command layer, so an
+//			agent edits the same document, history and files as the UI host and
+//			command scripts. The composition root chooses the command layer
+//			(app::SessionCommands, or the older app::EditorCommands).
 //
 //			Transport-free: HandleLine takes one newline-delimited JSON-RPC 2.0
 //			message (MCP stdio framing) and returns the response line, or
@@ -21,6 +22,9 @@
 
 #include "hammer/app/editor_commands.h"
 
+#include <functional>
+#include <vector>
+
 #include <optional>
 #include <string>
 #include <string_view>
@@ -33,8 +37,13 @@ inline constexpr const char *kProtocolVersion = "2025-06-18";
 class McpServer
 {
 public:
+	using Execute = std::function<app::CommandResult( std::string_view, const app::CommandArgs & )>;
+
 	// Borrows the command layer, which must outlive this object.
 	explicit McpServer( app::EditorCommands &commands );
+	// Any command layer: its catalog (which must outlive this object) and its
+	// execute function (app::SessionCommands in hammer_cli).
+	McpServer( const std::vector<app::CommandInfo> &catalog, Execute execute );
 
 	// One message in; the response line (no trailing newline) or nothing.
 	[[nodiscard]] std::optional<std::string> HandleLine( std::string_view line );
@@ -42,7 +51,8 @@ public:
 	bool Initialized() const { return m_initialized; }
 
 private:
-	app::EditorCommands &m_commands;
+	const std::vector<app::CommandInfo> &m_catalog;
+	Execute m_execute;
 	bool m_initialized = false;
 };
 

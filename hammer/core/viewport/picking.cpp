@@ -8,6 +8,7 @@
 #include "hammer/viewport/picking.h"
 
 #include "hammer/scene/solid_geometry.h"
+#include "mapgeometry/polytope.h"
 #include "mapgeometry/vec3.h"
 
 #include <algorithm>
@@ -23,8 +24,6 @@ using scene::ObjectId;
 
 namespace
 {
-
-constexpr double kParallelEpsilon = 1.0e-12;
 
 bool Finite( const Vec3d &v )
 {
@@ -115,55 +114,6 @@ bool BeforeRay( const RayHit &a, const RayHit &b )
 		return a.t < b.t;
 	}
 	return a.object < b.object;
-}
-
-// Ray against a convex volume given by outward planes: the entering t and
-// the entering plane index, or nothing (miss, or the origin is inside).
-struct Entry
-{
-	double t = 0.0;
-	int plane = -1;
-};
-
-template <typename PlaneAt>
-std::optional<Entry> EnterConvex(
-    int planeCount, PlaneAt planeAt, const Vec3d &origin, const Vec3d &direction )
-{
-	double tEnter = -std::numeric_limits<double>::infinity();
-	double tExit = std::numeric_limits<double>::infinity();
-	int enterPlane = -1;
-	for ( int i = 0; i < planeCount; ++i )
-	{
-		const mapgeometry::Plane plane = planeAt( i );
-		const double denom = mapgeometry::Dot( plane.normal, direction );
-		const double side = mapgeometry::PlaneDistance( plane, origin );
-		if ( std::fabs( denom ) < kParallelEpsilon )
-		{
-			if ( side > 0.0 )
-			{
-				return std::nullopt; // parallel and outside
-			}
-			continue;
-		}
-		const double t = -side / denom;
-		if ( denom < 0.0 )
-		{
-			if ( t > tEnter )
-			{
-				tEnter = t;
-				enterPlane = i;
-			}
-		}
-		else
-		{
-			tExit = std::min( tExit, t );
-		}
-	}
-	if ( enterPlane < 0 || tEnter > tExit || tEnter < 0.0 )
-	{
-		return std::nullopt;
-	}
-	return Entry{ tEnter, enterPlane };
 }
 
 mapgeometry::Plane BoxPlane( const scene::Box &box, int index )
@@ -308,13 +258,14 @@ std::vector<RayHit> PickRay( const scene::DocumentReader &doc, const Vec3d &orig
 			{
 				continue;
 			}
-			const std::optional<Entry> entry = EnterConvex(
-			    static_cast<int>( geometry.faces.size() ),
-			    [&]( int i )
-			    {
-				    return geometry.faces[static_cast<std::size_t>( i )].plane;
-			    },
-			    origin, dir );
+			std::vector<mapgeometry::Plane> planes;
+			planes.reserve( geometry.faces.size() );
+			for ( const mapgeometry::BrushFace &f : geometry.faces )
+			{
+				planes.push_back( f.plane );
+			}
+			const std::optional<mapgeometry::RayEntry> entry =
+			    mapgeometry::RayEnterConvex( planes, origin, dir );
 			if ( !entry || entry->t > maxDistance )
 			{
 				continue;
@@ -355,13 +306,13 @@ std::vector<RayHit> PickRay( const scene::DocumentReader &doc, const Vec3d &orig
 				continue;
 			}
 			const scene::Box box = *marker;
-			const std::optional<Entry> entry = EnterConvex(
-			    6,
-			    [&]( int i )
-			    {
-				    return BoxPlane( box, i );
-			    },
-			    origin, dir );
+			std::vector<mapgeometry::Plane> planes;
+			for ( int i = 0; i < 6; ++i )
+			{
+				planes.push_back( BoxPlane( box, i ) );
+			}
+			const std::optional<mapgeometry::RayEntry> entry =
+			    mapgeometry::RayEnterConvex( planes, origin, dir );
 			if ( !entry || entry->t > maxDistance )
 			{
 				continue;

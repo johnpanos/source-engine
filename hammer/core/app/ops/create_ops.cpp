@@ -60,9 +60,11 @@ std::vector<std::pair<double, double>> PolyMake( double x1, double y1, double x2
 }
 
 // A solid from the convex hull of 'points', textured per face.
-std::optional<scene::Solid> HullSolid( const std::vector<Vec3d> &points, const scene::FaceTexture &texture )
+std::optional<scene::Solid> HullSolid(
+    const std::vector<Vec3d> &points, const scene::FaceTexture &texture )
 {
-	const std::optional<std::vector<mapgeometry::Plane>> planes = mapgeometry::ConvexHullPlanes( points );
+	const std::optional<std::vector<mapgeometry::Plane>> planes =
+	    mapgeometry::ConvexHullPlanes( points );
 	if ( !planes )
 	{
 		return std::nullopt;
@@ -104,8 +106,8 @@ std::optional<scene::Solid> MakePrimitive(
 	{
 		return std::nullopt;
 	}
-	const bool needsSides = spec.kind == PrimitiveKind::Cylinder || spec.kind == PrimitiveKind::Spike ||
-	                        spec.kind == PrimitiveKind::Sphere;
+	const bool needsSides = spec.kind == PrimitiveKind::Cylinder ||
+	                        spec.kind == PrimitiveKind::Spike || spec.kind == PrimitiveKind::Sphere;
 	if ( needsSides && ( spec.sides < 3 || spec.sides > 32 ) )
 	{
 		return std::nullopt;
@@ -157,7 +159,8 @@ std::optional<scene::Solid> MakePrimitive(
 			const double angle = step * ring;
 			const double s = std::sin( Radians( angle ) );
 			const double h = std::round( ch + rh * std::cos( Radians( angle ) ) );
-			for ( const auto &[a, b] : PolyMake( ca - ra * s, cb - rb * s, ca + ra * s, cb + rb * s, spec.sides ) )
+			for ( const auto &[a, b] :
+			    PolyMake( ca - ra * s, cb - rb * s, ca + ra * s, cb + rb * s, spec.sides ) )
 			{
 				points.push_back( ToWorld( spec.axis, a, b, h ) );
 			}
@@ -168,8 +171,8 @@ std::optional<scene::Solid> MakePrimitive(
 	return HullSolid( points, texture );
 }
 
-EditResult CreatePrimitive( scene::DocumentEdit &edit, const PrimitiveSpec &spec, const scene::Box &box,
-    const scene::FaceTexture &texture, scene::ObjectId &created )
+EditResult CreatePrimitive( scene::DocumentEdit &edit, const PrimitiveSpec &spec,
+    const scene::Box &box, const scene::FaceTexture &texture, scene::ObjectId &created )
 {
 	if ( texture.material.empty() )
 	{
@@ -185,7 +188,8 @@ EditResult CreatePrimitive( scene::DocumentEdit &edit, const PrimitiveSpec &spec
 }
 
 EditResult CreateArch( scene::DocumentEdit &edit, const ArchSpec &spec, const scene::Box &box,
-    const scene::FaceTexture &texture, scene::ObjectId &created, std::vector<scene::ObjectId> *segments )
+    const scene::FaceTexture &texture, scene::ObjectId &created,
+    std::vector<scene::ObjectId> *segments )
 {
 	const Vec3d size = box.Size();
 	if ( size.x <= 0.0 || size.y <= 0.0 || spec.sides < 3 || spec.sides > 128 || spec.arc <= 0.0 ||
@@ -210,7 +214,8 @@ EditResult CreateArch( scene::DocumentEdit &edit, const ArchSpec &spec, const sc
 	auto arcPoint = [&]( double rx, double ry, int i )
 	{
 		const double angle = spec.startAngle + spec.arc * i / spec.sides;
-		return std::pair<double, double>( std::round( center.x + std::cos( Radians( angle ) ) * rx ),
+		return std::pair<double, double>(
+		    std::round( center.x + std::cos( Radians( angle ) ) * rx ),
 		    std::round( center.y + std::sin( Radians( angle ) ) * ry ) );
 	};
 
@@ -232,7 +237,8 @@ EditResult CreateArch( scene::DocumentEdit &edit, const ArchSpec &spec, const sc
 		std::optional<scene::Solid> segment = HullSolid( points, texture );
 		if ( !segment )
 		{
-			return Reject( "arch segment " + std::to_string( i ) + " is degenerate; use more space or fewer sides" );
+			return Reject( "arch segment " + std::to_string( i ) +
+			               " is degenerate; use more space or fewer sides" );
 		}
 		built.push_back( std::move( *segment ) );
 	}
@@ -276,8 +282,8 @@ void ApplyClassDefaults( scene::Entity &entity, const ports::EntityClassInfo &in
 	}
 }
 
-EditResult PlaceEntity( scene::DocumentEdit &edit, const std::string &classname, const Vec3d &origin,
-    const ports::IEntityCatalog *catalog, scene::ObjectId &created )
+EditResult PlaceEntity( scene::DocumentEdit &edit, const std::string &classname,
+    const Vec3d &origin, const ports::IEntityCatalog *catalog, scene::ObjectId &created )
 {
 	if ( classname.empty() )
 	{

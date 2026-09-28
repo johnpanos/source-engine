@@ -51,8 +51,8 @@ enum class TextureAlignment
 	World,
 	Face,
 };
-scene::FaceTexture AlignedTexture(
-    const scene::FaceTexture &texture, const mapgeometry::Vec3d &normal, TextureAlignment alignment );
+scene::FaceTexture AlignedTexture( const scene::FaceTexture &texture,
+    const mapgeometry::Vec3d &normal, TextureAlignment alignment );
 
 // Rotates the texture axes 'degrees' counterclockwise about the texture normal
 // (cross(v, u)) and adds 'degrees' to the rotation field.
@@ -60,7 +60,8 @@ scene::FaceTexture RotatedTexture( const scene::FaceTexture &texture, double deg
 
 // Wraps shifts into [0, size) per axis (legacy NormalizeTextureShifts) and
 // rounds axis components within 0.001 of an integer.
-scene::FaceTexture NormalizedShifts( const scene::FaceTexture &texture, const ports::MaterialSize &size );
+scene::FaceTexture NormalizedShifts(
+    const scene::FaceTexture &texture, const ports::MaterialSize &size );
 
 // --- Operations -------------------------------------------------------------------
 
@@ -91,6 +92,10 @@ EditResult SetTextureValues( scene::DocumentEdit &edit, const std::vector<scene:
 // Adds to the shifts (the texture nudge).
 EditResult ShiftTexture( scene::DocumentEdit &edit, const std::vector<scene::FaceRef> &faces,
     double deltaU, double deltaV );
+
+// Sets or clears smoothing group 'group' (1..32) on the faces.
+EditResult SetSmoothingGroup(
+    scene::DocumentEdit &edit, const std::vector<scene::FaceRef> &faces, int group, bool on );
 
 enum class Justification
 {
