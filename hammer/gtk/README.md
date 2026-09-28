@@ -7,87 +7,77 @@ A GTK4 + libadwaita host for the Hammer editor — the delivery target of
 touchpad-driven 3D/2D viewport.
 
 This is a **separate product** from the engine's waf build. It links only the
-dependency-free editor core (VMF codec, editor document, and the VMF→brush
-geometry bridge) plus system GTK/GL; no MFC, no `tier0`, no engine DLLs. All
-GTK/GDK/OpenGL native detail is confined to this directory — the core it drives
-has no display, GPU, or platform dependency.
+dependency-free editor core and the format libraries under it plus system
+GTK/GL; no MFC, no `tier0`, no engine DLLs. All GTK/GDK/OpenGL native detail is
+confined to this directory — the core it drives has no display, GPU, or platform
+dependency.
+
+## Architecture
+
+The shell is a thin host over `hammer::presenters::EditorWorkspace`
+(`public/hammer/presenters/editor_workspace.h`), which owns the one document and
+undo history (`app::EditSession`), the editor settings (grid, snap, active
+material and entity class), the named command catalog (`app::SessionCommands`,
+the same commands `hammer_cli` scripts and MCP clients run), the tools, the
+viewport cameras and their navigation (`tools::CameraController`), the render
+snapshot and the `ActionCatalog` (menus and shortcuts). The host:
+
+- turns GTK pointer, key and scroll events into `tools::` events and hands them
+  to the workspace, which offers them to catalog shortcuts, camera navigation
+  and the active tool, in that order;
+- draws the workspace's `viewport::RenderSnapshot`, grid lines and tool overlay
+  through the workspace's cameras (`renderer.{h,cpp}`), so what is drawn and
+  what a click means come from one camera;
+- fulfils what only a host can: file dialogs, running the map, and F9's build
+  off the UI thread (`app::MapBuildQueue` with the GLib and thread runners);
+- builds its menu bar from the `ActionCatalog` (one `app.act-*` action each,
+  enabled and checked state from the catalog).
+
+Maps are read and written by the strict VMF codec (`formats::VmfMapCodec`):
+every piece of map state loads into typed fields, and content it does not model
+is an open error naming the block and line.
 
 ## What works today
 
-- Boots a GTK4 + libadwaita window and **opens a simple VMF** (File ▸ Open, `⌃O`,
-  or `--open MAP.vmf`) and **saves** one (File ▸ Save/Save As, `⌃S`) through the
-  shared `SaveDocument` orchestrator over `DiskFileStore`.
 - **Classic Hammer layout:** menu bar, toolbar, left tool palette, the four
   viewports (3D **camera** + 2D **top** X/Y, **front** X/Z, **side** Y/Z), the
-  right **object bar** (Select · Texture group · Current texture · VisGroups ·
-  Show/Edit/Mark), and a status bar with a live coordinate read-out, brush count,
-  and grid/tool indicator.
-- **Drag-resizable panels:** every boundary is a splitter — the tool palette, the
-  object bar, and all four viewport panes resize by dragging (nested `GtkPaned`).
-- **Core editing UX flows**, all through the single headless authority
-  `hammer::app::EditorController`:
-  - **Block tool** — drag a rectangle in any 2D view (grid-snapped, live pending
-    box shown yellow in all views), press **Enter** to create an extruded brush.
-  - **Selection tool** — click a brush to select (highlighted orange), drag to
-    move (grid-snapped), click empty space to deselect, **Delete** to remove.
-    Clicking a brush in the **3D camera view** selects it too (ray pick), the same
-    way MFC Hammer selects in 3D.
-  - **Undo/Redo** (`⌃Z` / `⌃Y`), **New** (`⌃N`) — one history stack for all edits.
-    **Ctrl-click** adds/removes a brush from a multi-selection (in 2D or 3D); a
-    nudge, drag-move or delete then applies to the whole selection. In a 2D view,
-    **arrow keys** nudge the selection one grid step, and **right-click** opens a
-    context menu (a selection menu when a brush is selected, otherwise the default
-    view menu). Like MFC, the 3D view has no menu.
-- **3D preview:** the camera view renders shaded brushes with available base textures; the
-  2D views render wireframe geometry over a Hammer-style power-of-two grid with
-  coloured world axes; the selected/pending brush is tinted in every view.
-
-Not yet implemented (later RFC 0002 rows): entity/property editing, non-box brush
-editing, vertex/clip tools, full Source material fidelity, and displacements.
-The remaining tool-palette buttons, texture panel, and unimplemented menu items
-are laid out but inert.
+  right **object bar**, and a status bar with a live coordinate read-out, brush
+  count and grid/tool indicator. Every boundary is a drag-resizable splitter.
+- **Files:** New, Open (`--open MAP.vmf`), Save, Save As through the workspace.
+- **Tools** (the domain tools; their headers under `public/hammer/tools/`
+  document each state machine): Selection (click, Ctrl-toggle, marquee, move,
+  scale/rotate handles, arrow nudge), Block (drag a box in a 2D view, drag
+  again in another view for its height, **Enter** creates it), Entity (click in
+  a 2D view, or on a surface in the 3D view), Clip, Vertex and Face (**Shift+A**,
+  which also opens the Texture Application window).
+- **Every catalog action** from the menus or its shortcut: undo/redo, cut/copy/
+  paste/duplicate, hide/unhide, grid **[ ]**, snap, group/ungroup, tie to entity,
+  carve, **F** make hollow, apply material, texture lock, selection granularity,
+  check/fix problems, **F9** build and **Shift+F9** build and run.
+- **Rendering:** the 3D view shades brushes (with base textures when game assets
+  are mounted), displacements and entity markers; the 2D views draw wireframes
+  over the workspace's grid; selections, faces, pending boxes and handles are
+  highlighted in every view.
 
 ## Navigation
 
-### Classic Hammer 3D camera (matches MFC)
-
-Hover the **3D camera view** to give it focus, then:
-
-| Input | Effect |
-| --- | --- |
-| **Z** | Toggle mouse-look: the cursor hides and moving the mouse turns the camera. Press **Z** again to release. |
-| **W / A / S / D** | Fly forward / left / back / right along the view. |
-| **Q / E** | Fly down / up (world vertical). |
-| **Shift** (held) | Fly faster. |
-| Left-click (no drag) | Ray-pick a brush to select it. |
-| Left-drag | Orbit the camera. |
-
-Fly keys work whenever the 3D view is focused; **Z** additionally frees the mouse
-to look around (Hammer's free-look). Movement is time-integrated, so it is smooth
-and frame-rate independent. (GTK4 cannot warp the pointer, so mouse-look rotates
-by pointer delta with the cursor hidden rather than re-centering each frame.)
-
-### 2D views (matches MFC)
-
-| Input | Effect |
-| --- | --- |
-| **Space + left-drag** | Pan the view (MFC's pan idiom). |
-| **Tab** | Cycle the view orientation: Top → Front → Side. |
-| Left-click / drag | Select a brush / drag-move it (grid-snapped). |
-| **Ctrl + click** | Add / remove a brush from the multi-selection. |
-| **Arrow keys** | Nudge the selection one grid step. |
-| **+ / −** | Zoom in / out, anchored at the cursor. |
-| **1 – 9 / 0** | Preset zoom levels / frame the whole map. |
-| **Right-click** | Context menu (selection menu when a brush is selected). |
-
-### Touchpad / mouse (Apple/Figma-style, additive)
+The workspace's `CameraController` owns the bindings
+(`public/hammer/tools/camera_controller.h`):
 
 | Input | 2D views | 3D camera |
 | --- | --- | --- |
-| Two-finger scroll (touchpad) | Pan (kinetic) | Orbit |
-| Pinch | Zoom, anchored at the pinch point | Dolly |
-| ⌃ + scroll / wheel | Zoom, anchored at the cursor | Dolly |
-| Middle-drag | Pan | Orbit |
+| Middle-drag | Pan | Pan |
+| **Space** + left-drag | Pan | Look |
+| Right-drag | — | Look (Source 2) |
+| **Alt** + left-drag | — | Orbit |
+| Wheel | Zoom about the cursor | Dolly |
+| **W A S D / E Q** (held; **Shift** faster) | — | Fly |
+| **= / −** | Zoom about the centre | — |
+
+The host adds: **Tab** cycles a 2D pane Top → Front → Side; touchpad scrolling
+pans a 2D view (**Ctrl**: zooms) and dollies the 3D view; pinch zooms; View ▸
+Reset Views (`⌃R`) frames the map; right-click in a 2D view opens a context
+menu.
 
 ## Build
 
@@ -129,12 +119,8 @@ hammer/gtk/hammer_gtk --screenshot out.ppm hammer/gtk/samples/room.vmf --width 8
 # The classic 2x2 quad (camera / top / front / side) to one PPM:
 hammer/gtk/hammer_gtk --quad quad.ppm hammer/gtk/samples/room.vmf --width 1600 --height 1200
 
-# Build a map with SIMULATED editing input (no file) and render it:
+# Build a map by driving the workspace with SIMULATED input and render it:
 hammer/gtk/hammer_gtk --demo demo.ppm --width 1600 --height 1200
-
-# Load a VMF THROUGH the EditorController and render it (proves real brush shapes,
-# not bounding boxes — e.g. the wedge ramp shows a triangle in the front view):
-hammer/gtk/hammer_gtk --cquad cwedge.ppm hammer/gtk/samples/wedge.vmf --width 1600 --height 1200
 
 # Render a displacement (dispinfo terrain) map — the +Z face is a subdivided,
 # displaced hill (3D shaded relief + the triangulated grid in the 2D views):
@@ -144,11 +130,12 @@ hammer/gtk/hammer_gtk --quad disp.ppm hammer/gtk/samples/displacement.vmf --widt
 hammer/gtk/tests/viewport_smoke.sh
 ```
 
-The editing UX flows are covered headlessly, independent of GTK, by the
-`hammer.app.editor_controller` Q-EDITOR conformance suite
-(`unittests/hammertest/app/test_editor_controller.cpp`), which drives the same
-`EditorController` the GUI uses with simulated input to build, edit, undo, and
-save a map. Run it via `unittests/hammertest/run_headless.sh`.
+The offscreen path opens maps through the same `EditorWorkspace` the window
+uses. The editing flows are covered headlessly by the Q-EDITOR suites of the
+layers under the workspace (`hammer.presenters.editor_workspace`, the tool and
+command suites), and end to end by `corpus.hammer.ui`
+(`tools/quality/hammer_ui_test.py`), which drives this shell in an isolated
+compositor the way a user makes a map.
 
 Set `HAMMER_GTK_DEBUG=1` to print each viewport's GL version on realize.
 
@@ -156,15 +143,15 @@ Set `HAMMER_GTK_DEBUG=1` to print each viewport's GL version on realize.
 
 | File | Responsibility |
 | --- | --- |
-| `app.cpp` | Window, classic layout, gestures/keys, tools, File▸New/Open/Save, actions |
-| `renderer.{h,cpp}` | Pure-GL renderer: shaded 3D + 2D ortho wireframe/grid + highlight. No GTK |
+| `app.cpp` | Window, classic layout, input translation, dialogs, async build, catalog menus |
+| `renderer.{h,cpp}` | Pure-GL renderer of a render snapshot through a workspace camera, grid and overlay. No GTK |
 | `offscreen.cpp` | EGL offscreen render for `--screenshot` / `--quad` / `--demo` verification |
 | `samples/room.vmf` | A minimal valid Source room (floor/ceiling/walls/pillar) |
 | `tests/viewport_smoke.sh` | Build + render + content-assert smoke test |
 
-The editing authority (`hammer::app::EditorController`) and file I/O
-(`hammer::adapters::platform::DiskFileStore`, `SaveDocument`) live in the shared
-core, not here — the host only presents them. There is no host-local file store.
+The editing authority (`EditorWorkspace` and the layers under it) and file I/O
+(`hammer::adapters::platform::DiskFileStore`) live in the shared core, not here
+— the host only presents them. There is no host-local document or file store.
 
 The geometry bridge itself lives in the strict core: brush geometry in
 `public/mapgeometry/brush.h` and `mapgeometry/brush.cpp`, and the

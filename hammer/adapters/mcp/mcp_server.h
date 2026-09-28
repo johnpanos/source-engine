@@ -5,7 +5,7 @@
 //			and each tool call is one Execute of the same command layer, so an
 //			agent edits the same document, history and files as the UI host and
 //			command scripts. The composition root chooses the command layer
-//			(app::SessionCommands, or the older app::EditorCommands).
+//			(app::SessionCommands in hammer_cli).
 //
 //			Transport-free: HandleLine takes one newline-delimited JSON-RPC 2.0
 //			message (MCP stdio framing) and returns the response line, or
@@ -20,7 +20,7 @@
 #ifndef HAMMER_ADAPTERS_MCP_MCP_SERVER_H
 #define HAMMER_ADAPTERS_MCP_MCP_SERVER_H
 
-#include "hammer/app/editor_commands.h"
+#include "hammer/app/command_script.h"
 
 #include <functional>
 #include <vector>
@@ -39,9 +39,7 @@ class McpServer
 public:
 	using Execute = std::function<app::CommandResult( std::string_view, const app::CommandArgs & )>;
 
-	// Borrows the command layer, which must outlive this object.
-	explicit McpServer( app::EditorCommands &commands );
-	// Any command layer: its catalog (which must outlive this object) and its
+	// A command layer: its catalog (which must outlive this object) and its
 	// execute function (app::SessionCommands in hammer_cli).
 	McpServer( const std::vector<app::CommandInfo> &catalog, Execute execute );
 

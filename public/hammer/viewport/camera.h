@@ -11,8 +11,8 @@
 //			Coordinates are continuous (a pixel's centre is x + 0.5).
 //
 //			2D views. Each view maps two world axes to the screen: u to the
-//			right and v UP (so screen y and v run opposite ways). The mapping
-//			is the one EditorController::ViewAxes uses, so tools agree:
+//			right and v UP (so screen y and v run opposite ways). AxesOf is the
+//			one owner of the mapping, so tools and renderers agree:
 //				Top   = X / Y, free axis Z, looking down -Z
 //				Front = X / Z, free axis Y, looking along +Y
 //				Side  = Y / Z, free axis X, looking along -X
@@ -54,7 +54,7 @@ enum class ViewKind
 
 // The world axis indices (0 = X, 1 = Y, 2 = Z) a view maps to screen right
 // (u), screen up (v), and the free (depth) axis. Camera3D reports the Top
-// mapping, as EditorController::ViewAxes does.
+// mapping.
 struct ViewAxes
 {
 	int u = 0;

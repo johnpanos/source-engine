@@ -187,6 +187,11 @@ public:
 	// The path of the last successful Open or Save; empty for a new map.
 	const std::string &MapPath() const { return m_path; }
 
+	// Frames every camera on the document's visible bounds (2D views need a
+	// viewport size; an empty map centres them on the origin). Open, New and
+	// every document replacement do this; hosts call it for "reset views".
+	void FrameDocument();
+
 	// --- Per-frame queries ----------------------------------------------------------------
 	const viewport::RenderSnapshot &Snapshot() const { return m_snapshot.Snapshot(); }
 	std::uint64_t SnapshotRevision() const { return m_snapshot.Revision(); }
@@ -201,7 +206,6 @@ public:
 private:
 	tools::ToolContext ContextFor( viewport::ViewKind view );
 	void OnSessionEvent( const app::SessionEvent &event );
-	void FrameDocument();
 	InputOutcome Finish(
 	    InputOutcome outcome, std::uint64_t revisionBefore, std::uint64_t selectionBefore );
 	InputOutcome ExecuteAction( const ActionSpec &spec );

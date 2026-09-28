@@ -5,15 +5,25 @@
 //			classic Hammer layout (menu, toolbar, tool palette, the four viewports,
 //			object bar, status bar) over the strict headless editor core.
 //
-//			It is a THIN PRESENTER: the single live editing authority is
-//			hammer::app::EditorController (spatial tools, selection, one undo
-//			history). This host only translates GTK gestures/keys into normalized
-//			controller calls and renders controller.BuildScene(); it holds no second
-//			document or undo stack. Save routes through the shared SaveDocument
-//			orchestrator over hammer::adapters::platform::DiskFileStore; load reads
-//			the file and feeds the text to EditorController::LoadVmf. All GTK/GDK/GL
-//			native detail is confined here. A headless "--screenshot/--quad" path
-//			(offscreen.cpp) shares the renderer for windowless verification.
+//			It is a THIN HOST over hammer::presenters::EditorWorkspace, which owns
+//			the one document and undo history (EditSession), the editor settings,
+//			the named command catalog (SessionCommands), the tools, the viewport
+//			cameras and their navigation, the render snapshot and the action
+//			catalog. This file only:
+//
+//			  * turns GTK pointer, key and scroll events into tools:: events and
+//			    hands them to the workspace (keys go through the ActionCatalog's
+//			    shortcuts first, as in every host);
+//			  * draws the workspace's snapshot, grid lines and tool overlay through
+//			    the workspace's cameras (renderer.h);
+//			  * fulfils host requests the workspace cannot: file dialogs, running
+//			    the map, and F9's build OFF the UI thread (MapBuildQueue);
+//			  * builds its menus from the ActionCatalog.
+//
+//			Files go through the strict VMF codec (hammer::formats::VmfMapCodec)
+//			over the DiskFileStore. All GTK/GDK/GL native detail is confined here.
+//			A headless "--screenshot/--quad" path (offscreen.cpp) shares the
+//			renderer for windowless verification.
 //
 //=============================================================================//
 
@@ -22,13 +32,15 @@
 #include "../../platform/runners/thread_task_runner.h"
 #include "hammer/adapters/platform/disk_file_store.h"
 #include "hammer/adapters/platform/tool_process_map_builder.h"
-#include "hammer/app/editor_commands.h"
-#include "hammer/app/editor_controller.h"
 #include "hammer/app/map_build_queue.h"
-#include "hammer/app/save_orchestrator.h"
 #include "hammer/formats/material_catalog.h"
 #include "hammer/formats/search_path_assets.h"
+#include "hammer/formats/vmf_map_codec.h"
 #include "hammer/formats/vpk_archive.h"
+#include "hammer/presenters/editor_workspace.h"
+#include "hammer/tools/block_tool.h"
+#include "hammer/tools/entity_tool.h"
+#include "hammer/tools/selection_tool.h"
 #ifdef HAMMER_KTX_PREVIEW
 #include "hammer/adapters/source/ktx2_preview.h"
 #endif
@@ -36,17 +48,16 @@
 #include "glib_task_runner.h"
 #include "renderer.h"
 
-#include <optional>
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -58,7 +69,9 @@ namespace
 {
 
 constexpr const char *kAppId = "com.valvesoftware.HammerGtk";
-constexpr int kNoHighlight = INT_MIN;
+
+using hammer::viewport::ViewKind;
+namespace tools = hammer::tools;
 
 struct AppState;
 
@@ -66,40 +79,30 @@ struct Viewport
 {
 	AppState *app = nullptr;
 	hammergtk::Renderer renderer;
-	hammergtk::ViewMode mode = hammergtk::ViewMode::Perspective;
-	hammer::app::ViewId vid = hammer::app::ViewId::Camera;
+	ViewKind kind = ViewKind::Camera3D;
 	const char *label = "";
 	GtkGLArea *area = nullptr;
+	GtkWidget *caption = nullptr; // OSD label, updated when Tab cycles the 2D view
 	bool glReady = false;
-	bool pending = false;
+	bool uploaded = false; // the renderer holds the current scene
 
-	double startX = 0.0; // tool-drag start (widget coords)
+	tools::PointerButton button = tools::PointerButton::None; // held, while dragging
+	double startX = 0.0; // press position (logical widget pixels)
 	double startY = 0.0;
-	double orbitPrevX = 0.0; // incremental orbit/pan bookkeeping
-	double orbitPrevY = 0.0;
-	double panPrevX = 0.0;
-	double panPrevY = 0.0;
 	double cursorX = 0.0;
 	double cursorY = 0.0;
 	double pinchPrev = 1.0;
+};
 
-	// --- 3D free-fly / mouse-look navigation (Perspective view only) ---------
-	bool mouseLook = false;    // Z toggled free-look: motion rotates the camera
-	bool haveLookPrev = false; // whether lookPrev* holds a valid last position
-	double lookPrevX = 0.0;    // last pointer pos while in mouse-look
-	double lookPrevY = 0.0;    //   (widget coords), for the rotation delta
-	bool keyForward = false;   // WASD / QE / RF fly keys currently held
-	bool keyBack = false;
-	bool keyLeft = false;
-	bool keyRight = false;
-	bool keyUp = false;
-	bool keyDown = false;
-	bool keyFast = false;         // Shift held: fly faster
-	guint flyTick = 0;            // frame-clock tick source id (fly integration)
-	gint64 flyPrevUs = 0;         // last tick time for dt, 0 = uninitialised
-	double dragDist = 0.0;        // accumulated |drag| this press, to detect a click
-	bool dragIsPan = false;       // this left-drag is a space+drag pan (2D), not a tool
-	GtkWidget *caption = nullptr; // OSD label, updated when Tab cycles the 2D view
+// What the renderers were last given: the snapshot revision and the selection
+// its highlight flags came from. A change of either re-uploads the scene.
+struct SceneKey
+{
+	std::uint64_t revision = ~std::uint64_t( 0 );
+	hammer::app::Selection selection;
+	const void *catalog = nullptr;
+
+	friend bool operator==( const SceneKey &, const SceneKey & ) = default;
 };
 
 struct AppState
@@ -113,12 +116,13 @@ struct AppState
 	// ./play. Fixed by the composition root (--builds, --no-publish).
 	const std::string buildsRoot;
 	const bool publishBuilds;
-	hammer::app::EditorController controller;
-	// Every document edit and file operation the shell issues goes through the
-	// shared command layer (the same one scripts, tests and an MCP client use).
+
+	// Services the workspace borrows: the strict VMF codec, the disk store and
+	// the map builder over the platform tool-process provider (the editor runs
+	// from the repository root). Declared before the workspace, which borrows
+	// them and so must go first.
+	hammer::formats::VmfMapCodec codec;
 	hammer::adapters::platform::DiskFileStore store;
-	// F9 builds through the same command (build_map) over the platform
-	// tool-process provider; the editor runs from the repository root.
 	std::unique_ptr<platform::IToolProcessProvider> processes =
 	    platform::CreatePosixToolProcessProvider();
 	hammer::adapters::platform::ToolProcessMapBuilder builder{ *processes, ".", buildsRoot,
@@ -126,7 +130,9 @@ struct AppState
 	    {
 		    return path;
 	    } };
-	hammer::app::EditorCommands commands{ controller, store, &builder };
+	hammer::presenters::EditorWorkspace workspace{
+	    hammer::presenters::WorkspaceServices{ &codec, &store, &builder, nullptr, nullptr } };
+
 	// F9 compiles off the UI thread: the queue runs the builder on its own
 	// thread and replies on the GTK main loop. Declaration order is teardown
 	// order in reverse: the queue goes first, then the build thread joins (a
@@ -135,11 +141,16 @@ struct AppState
 	hammer::gtk::GlibTaskRunner uiRunner;
 	platform::ThreadTaskRunner buildThread{ "hammer-build" };
 	hammer::app::MapBuildQueue builds{ builder, buildThread, uiRunner };
+
 	std::array<Viewport, 4> viewports;
-	std::string currentPath;
+	Viewport *hovered = nullptr; // the view keys go to when focus is elsewhere
+	SceneKey sceneKey;
+	guint flyTick = 0;    // frame-clock tick while the camera flies
+	gint64 flyPrevUs = 0; // last tick time, 0 = uninitialised
+
 	std::string openOnStart;
 	bool startMaximized = false; // --maximized: window at the screen origin
-	std::string mountOnStart; // comma-separated _dir.vpk paths to mount at launch
+	std::string mountOnStart;    // comma-separated _dir.vpk paths to mount at launch
 
 	// Mounted game assets and the material catalog resolved over them. The catalog
 	// borrows the search path, which borrows the archives; declaration order here
@@ -159,7 +170,6 @@ struct AppState
 	GtkToggleButton *blockBtn = nullptr;
 	GtkToggleButton *entityBtn = nullptr;
 	bool suppressToolSignal = false;
-	bool spaceHeld = false; // Space held: left-drag pans a 2D view (MFC nav idiom)
 
 	// Object-bar texture preview (current material).
 	GtkWidget *texSwatch = nullptr;
@@ -177,7 +187,7 @@ struct AppState
 };
 
 // ---------------------------------------------------------------------------
-// Presentation refresh: push the controller's scene to every viewport.
+// Presentation refresh: the workspace's state onto the widgets.
 // ---------------------------------------------------------------------------
 
 void SetHelp( AppState *st, const std::string &text )
@@ -188,71 +198,118 @@ void SetHelp( AppState *st, const std::string &text )
 	}
 }
 
+std::string ActiveToolName( AppState *st )
+{
+	const tools::ITool *active = st->workspace.Tools().Active();
+	return active ? std::string( active->Name() ) : std::string();
+}
+
+std::string ToolDisplayName( const std::string &tool )
+{
+	if ( tool == tools::BlockTool::kName )
+		return "Block";
+	if ( tool == tools::EntityTool::kName )
+		return "Entity";
+	if ( tool == tools::SelectionTool::kName )
+		return "Select";
+	std::string name = tool;
+	if ( !name.empty() )
+		name[0] = static_cast<char>( std::toupper( static_cast<unsigned char>( name[0] ) ) );
+	return name;
+}
+
+// Syncs the menu actions' enabled and checked state with the catalog.
+void UpdateActions( AppState *st );
+
 void UpdateChrome( AppState *st )
 {
+	hammer::presenters::EditorWorkspace &ws = st->workspace;
 	if ( st->objectsCount )
 	{
 		char buf[128];
 		char sel[48] = { 0 };
-		const std::size_t n = st->controller.SelectionCount();
+		const std::size_t n = ws.Session().CurrentSelection().objects.size();
 		if ( n > 0 )
 		{
 			std::snprintf( sel, sizeof( sel ), "  ·  %zu selected", n );
 		}
 		std::snprintf(
-		    buf, sizeof( buf ), "%zu brush(es)%s", st->controller.Brushes().size(), sel );
+		    buf, sizeof( buf ), "%zu brush(es)%s", ws.Session().Document().SolidIds().size(), sel );
 		gtk_label_set_text( st->objectsCount, buf );
 	}
 	if ( st->snapLabel )
 	{
 		char buf[64];
-		std::snprintf( buf, sizeof( buf ), "Grid: %d  ·  %s", st->controller.GridSize(),
-		    st->controller.CurrentTool() == hammer::app::Tool::Block ? "Block" : "Select" );
+		std::snprintf( buf, sizeof( buf ), "Grid: %g  ·  %s", ws.Settings().gridSize,
+		    ToolDisplayName( ActiveToolName( st ) ).c_str() );
 		gtk_label_set_text( st->snapLabel, buf );
 	}
 	if ( st->window )
 	{
+		const std::string &path = ws.MapPath();
 		const std::string base =
-		    st->currentPath.empty()
-		        ? std::string( "untitled" )
-		        : st->currentPath.substr( st->currentPath.find_last_of( "/" ) + 1 );
-		const std::string title =
-		    "Hammer - [" + base + ( st->controller.IsModified() ? " *]" : "]" );
+		    path.empty() ? std::string( "untitled" ) : path.substr( path.find_last_of( '/' ) + 1 );
+		const std::string title = "Hammer - [" + base + ( ws.Session().IsModified() ? " *]" : "]" );
 		gtk_window_set_title( GTK_WINDOW( st->window ), title.c_str() );
 	}
+	st->suppressToolSignal = true;
+	const std::string tool = ActiveToolName( st );
+	if ( st->selectBtn )
+		gtk_toggle_button_set_active( st->selectBtn, tool == tools::SelectionTool::kName );
+	if ( st->blockBtn )
+		gtk_toggle_button_set_active( st->blockBtn, tool == tools::BlockTool::kName );
+	if ( st->entityBtn )
+		gtk_toggle_button_set_active( st->entityBtn, tool == tools::EntityTool::kName );
+	st->suppressToolSignal = false;
+	UpdateActions( st );
 }
 
-// Uploads the current scene to every ready viewport. 'frame' re-centres each view
-// (used on load/new/reset); live edits pass false so the view stays put.
-void RefreshScene( AppState *st, bool frame )
+// Logical size of a viewport's widget, which is the size its camera works in.
+void ViewSize( const Viewport &vp, int &w, int &h )
 {
-	const mapgeometry::WorldScene scene = st->controller.BuildScene();
-	const std::vector<int> selectedIds = st->controller.Selections();
+	w = gtk_widget_get_width( GTK_WIDGET( vp.area ) );
+	h = gtk_widget_get_height( GTK_WIDGET( vp.area ) );
+}
+
+// Tells the workspace this viewport's size before it interprets an event or
+// draws (two panes may show the same kind after Tab).
+void SyncViewSize( Viewport &vp )
+{
+	if ( !vp.area )
+		return;
+	int w = 0;
+	int h = 0;
+	ViewSize( vp, w, h );
+	vp.app->workspace.SetViewportSize( vp.kind, w, h );
+}
+
+// Redraws every viewport; re-uploads the scene to those whose renderer is
+// behind the workspace's snapshot, selection or material catalog.
+void RefreshScene( AppState *st )
+{
+	SceneKey key{ st->workspace.SnapshotRevision(), st->workspace.Session().CurrentSelection(),
+	    st->catalog.get() };
+	if ( !( key == st->sceneKey ) )
+	{
+		st->sceneKey = key;
+		for ( Viewport &vp : st->viewports )
+		{
+			vp.uploaded = false;
+		}
+	}
 	for ( Viewport &vp : st->viewports )
 	{
-		if ( vp.glReady && vp.area )
+		if ( vp.area )
 		{
-			gtk_gl_area_make_current( vp.area );
-			if ( gtk_gl_area_get_error( vp.area ) == nullptr )
-			{
-				vp.renderer.SetMaterialCatalog( st->catalog.get() );
-				vp.renderer.SetHighlight( kNoHighlight );
-				vp.renderer.SetHighlights( selectedIds ); // highlight the whole selection
-				vp.renderer.SetScene( scene );
-				if ( frame )
-				{
-					vp.renderer.FrameScene();
-				}
-			}
 			gtk_gl_area_queue_render( vp.area );
-		}
-		else
-		{
-			vp.pending = true;
 		}
 	}
 	UpdateChrome( st );
 }
+
+// Applies what the workspace reported for one input event: its status message
+// and a redraw.
+void Apply( AppState *st, const hammer::presenters::InputOutcome &outcome );
 
 // ---------------------------------------------------------------------------
 // Game-asset mounting and material preview.
@@ -263,9 +320,13 @@ void RefreshScene( AppState *st, bool frame )
 void SetCurrentMaterial( AppState *st, const std::string &name )
 {
 	st->currentMaterial = name;
-	// The current material IS the active material the controller applies (Material
-	// tool, Apply-to-Selection) and gives new Block brushes. One owner, one update.
-	st->controller.SetActiveMaterial( name );
+	// The current material IS the editor settings' face material, which
+	// apply_material uses and new geometry gets. One owner, one update.
+	if ( auto set = st->workspace.Commands().Execute( "set_material", { { "material", name } } );
+	    !set )
+	{
+		SetHelp( st, "set_material: " + set.Error().detail );
+	}
 
 	std::string label = name;
 	st->swatchRgba.clear();
@@ -386,7 +447,7 @@ std::size_t MountAssets( AppState *st, const std::string &vpkList )
 		}
 	}
 
-	RefreshScene( st, false );
+	RefreshScene( st );
 	char msg[128];
 	std::snprintf( msg, sizeof( msg ), "Mounted %zu archive(s); %zu materials available",
 	    st->archives.size(), count );
@@ -395,41 +456,27 @@ std::size_t MountAssets( AppState *st, const std::string &vpkList )
 }
 
 // ---------------------------------------------------------------------------
-// File operations (single save path via SaveDocument + DiskFileStore).
+// File operations: the workspace's Open/Save over the strict codec.
 // ---------------------------------------------------------------------------
-
-// Runs one named command; on failure the status bar shows why. Returns its
-// output, or nothing on failure.
-std::optional<std::string> RunCommand(
-    AppState *st, const char *name, const hammer::app::CommandArgs &args = {} )
-{
-	auto result = st->commands.Execute( name, args );
-	if ( !result )
-	{
-		SetHelp( st, std::string( name ) + ": " + result.Error().detail );
-		return std::nullopt;
-	}
-	return std::move( result.Value() );
-}
 
 void DoOpen( AppState *st, const std::string &path )
 {
-	if ( !RunCommand( st, "open", { { "path", path } } ) )
+	if ( !st->workspace.Open( path ) )
 	{
+		SetHelp( st, st->workspace.Status().Message() );
 		return;
 	}
-	st->currentPath = path;
-	RefreshScene( st, true );
+	RefreshScene( st );
 	SetHelp( st, "Opened " + path );
 }
 
-void DoSave( AppState *st, const std::string &path )
+void DoSave( AppState *st, std::string path )
 {
-	if ( !RunCommand( st, "save", { { "path", path } } ) )
+	if ( !st->workspace.Save( path ) )
 	{
+		SetHelp( st, st->workspace.Status().Message() );
 		return;
 	}
-	st->currentPath = path;
 	UpdateChrome( st );
 	SetHelp( st, "Saved " + path );
 }
@@ -516,23 +563,183 @@ void ActionSaveAs( GSimpleAction *, GVariant *, gpointer user_data )
 void ActionSave( GSimpleAction *action, GVariant *param, gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
-	if ( st->currentPath.empty() )
+	if ( st->workspace.MapPath().empty() )
 	{
 		ActionSaveAs( action, param, user_data );
 	}
 	else
 	{
-		DoSave( st, st->currentPath );
+		DoSave( st, st->workspace.MapPath() );
+	}
+}
+
+// ---- Map build (F9) -------------------------------------------------------
+
+std::string MapNameOf( const std::string &path )
+{
+	std::string map = path.substr( path.find_last_of( '/' ) + 1 );
+	map = map.substr( 0, map.rfind( '.' ) );
+	for ( char &c : map )
+		c = static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
+	return map;
+}
+
+void RunMap( const std::string &map )
+{
+	const gchar *argv[] = { "./play", map.c_str(), nullptr };
+	g_spawn_async( nullptr, const_cast<gchar **>( argv ), nullptr, G_SPAWN_DEFAULT, nullptr,
+	    nullptr, nullptr, nullptr );
+}
+
+// The catalog's map.build / map.build_and_run, run the way this host must: it
+// saves on this thread, then compiles off it and publishes the map (./play
+// <map>); 'run' also launches it (Source 2's "load in engine after building").
+// The editor stays usable while the map compiles.
+void StartBuild( AppState *st, bool run )
+{
+	if ( st->builds.Busy() )
+	{
+		SetHelp( st, "A build is already running" );
+		return;
+	}
+	const std::string path = st->workspace.MapPath().empty()
+	                             ? std::string( "quality-results/hammer-builds/untitled.vmf" )
+	                             : st->workspace.MapPath();
+	if ( !st->workspace.Save( path ) )
+	{
+		SetHelp( st, "build_map: " + st->workspace.Status().Message() );
+		return;
+	}
+	UpdateChrome( st );
+	const std::string map = MapNameOf( path );
+	const hammer::app::BuildStart started =
+	    st->builds.Start( hammer::ports::MapBuildRequest{ path, false, st->publishBuilds },
+	        [st, map, run]( const hammer::ports::MapBuildResult &result )
+	        {
+		        if ( !result.ok )
+		        {
+			        SetHelp( st, "build_map: " + result.status + ": " + result.detail );
+			        return;
+		        }
+		        if ( !st->publishBuilds )
+		        {
+			        SetHelp( st, "Built " + map + " (not published)" );
+			        return;
+		        }
+		        SetHelp( st,
+		            "Built " + map + ( run ? "; launching ./play " + map : "; ./play " + map ) );
+		        if ( run )
+		        {
+			        RunMap( map );
+		        }
+	        } );
+	SetHelp( st, started == hammer::app::BuildStart::kStarted
+	                 ? "Building " + map + " ..."
+	                 : std::string( "Build unavailable" ) );
+}
+
+// ---- Actions ----------------------------------------------------------------
+
+void ActionOpen( GSimpleAction *, GVariant *, gpointer user_data );
+void ActionSaveAs( GSimpleAction *, GVariant *, gpointer user_data );
+void OpenTextureWindow( AppState *st );
+
+void Apply( AppState *st, const hammer::presenters::InputOutcome &outcome )
+{
+	if ( !outcome.status.empty() )
+	{
+		SetHelp( st, outcome.status );
+	}
+	if ( outcome.hostRequest == "open_dialog" )
+	{
+		ActionOpen( nullptr, nullptr, st );
+	}
+	else if ( outcome.hostRequest == "save_dialog" )
+	{
+		ActionSaveAs( nullptr, nullptr, st );
+	}
+	else if ( outcome.hostRequest == "run_map" && !st->workspace.MapPath().empty() )
+	{
+		RunMap( MapNameOf( st->workspace.MapPath() ) );
+	}
+	else if ( outcome.hostRequest == "properties" )
+	{
+		SetHelp( st, "Properties: not in this shell yet" );
+	}
+	if ( outcome.actionId == "tools.face" )
+	{
+		// Legacy Shift+A: the face tool comes with the Texture Application window.
+		OpenTextureWindow( st );
+	}
+	if ( outcome.redraw || outcome.handled || !outcome.actionId.empty() )
+	{
+		RefreshScene( st );
+	}
+}
+
+// Runs a catalog action as a menu, toolbar or palette button would. The build
+// actions run asynchronously here (StartBuild) instead of in the workspace.
+void RunCatalogAction( AppState *st, const std::string &id )
+{
+	if ( id == "map.build" || id == "map.build_and_run" )
+	{
+		StartBuild( st, id == "map.build_and_run" );
+		return;
+	}
+	Apply( st, st->workspace.RunAction( id ) );
+}
+
+// A catalog id as a GAction name ("edit.undo" -> "act-edit-undo").
+std::string ActionNameOf( const std::string &id )
+{
+	std::string name = "act-" + id;
+	for ( char &c : name )
+	{
+		if ( c == '.' || c == '_' )
+			c = '-';
+	}
+	return name;
+}
+
+struct CatalogAction
+{
+	AppState *st;
+	std::string id;
+	GSimpleAction *action;
+};
+
+std::vector<std::unique_ptr<CatalogAction>> &CatalogActions()
+{
+	static std::vector<std::unique_ptr<CatalogAction>> actions;
+	return actions;
+}
+
+void OnCatalogAction( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	const CatalogAction *a = static_cast<const CatalogAction *>( user_data );
+	RunCatalogAction( a->st, a->id );
+}
+
+void UpdateActions( AppState *st )
+{
+	static std::uint64_t seen = ~std::uint64_t( 0 );
+	hammer::presenters::ActionCatalog &catalog = st->workspace.Actions();
+	if ( catalog.Revision() == seen )
+		return;
+	seen = catalog.Revision();
+	for ( const auto &a : CatalogActions() )
+	{
+		g_simple_action_set_enabled( a->action, catalog.IsEnabled( a->id ) );
+		if ( const std::optional<bool> checked = catalog.IsChecked( a->id ) )
+		{
+			g_simple_action_set_state( a->action, g_variant_new_boolean( *checked ) );
+		}
 	}
 }
 
 void ActionNew( GSimpleAction *, GVariant *, gpointer user_data )
 {
-	AppState *st = static_cast<AppState *>( user_data );
-	st->controller.NewMap();
-	st->currentPath.clear();
-	RefreshScene( st, true );
-	SetHelp( st, "New map" );
+	RunCatalogAction( static_cast<AppState *>( user_data ), "file.new" );
 }
 
 void ActionQuit( GSimpleAction *, GVariant *, gpointer user_data )
@@ -544,83 +751,29 @@ void ActionQuit( GSimpleAction *, GVariant *, gpointer user_data )
 	}
 }
 
-void ActionUndo( GSimpleAction *, GVariant *, gpointer user_data )
-{
-	AppState *st = static_cast<AppState *>( user_data );
-	if ( st->controller.Undo() )
-	{
-		RefreshScene( st, false );
-		SetHelp( st, "Undo" );
-	}
-}
-
-void ActionRedo( GSimpleAction *, GVariant *, gpointer user_data )
-{
-	AppState *st = static_cast<AppState *>( user_data );
-	if ( st->controller.Redo() )
-	{
-		RefreshScene( st, false );
-		SetHelp( st, "Redo" );
-	}
-}
-
-void ActionDelete( GSimpleAction *, GVariant *, gpointer user_data )
-{
-	AppState *st = static_cast<AppState *>( user_data );
-	if ( st->controller.DeleteSelection() )
-	{
-		RefreshScene( st, false );
-	}
-}
-
 void ActionResetViews( GSimpleAction *, GVariant *, gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
 	for ( Viewport &vp : st->viewports )
 	{
-		if ( vp.area )
-		{
-			gtk_gl_area_make_current( vp.area );
-			vp.renderer.FrameScene();
-			gtk_gl_area_queue_render( vp.area );
-		}
+		SyncViewSize( vp );
 	}
+	st->workspace.FrameDocument();
+	RefreshScene( st );
 }
 
-void SetToolUi( AppState *st, hammer::app::Tool tool )
+void SetTool( AppState *st, const char *actionId )
 {
-	st->controller.SetTool( tool );
-	st->suppressToolSignal = true;
-	if ( st->selectBtn )
-	{
-		gtk_toggle_button_set_active( st->selectBtn, tool == hammer::app::Tool::Select );
-	}
-	if ( st->blockBtn )
-	{
-		gtk_toggle_button_set_active( st->blockBtn, tool == hammer::app::Tool::Block );
-	}
-	if ( st->entityBtn )
-	{
-		gtk_toggle_button_set_active( st->entityBtn, tool == hammer::app::Tool::Entity );
-	}
-	st->suppressToolSignal = false;
-	RefreshScene( st, false );
-	SetHelp( st,
-	    tool == hammer::app::Tool::Block
-	        ? "Block tool (Shift+B): drag in a 2D view, Enter to create, F to hollow"
-	    : tool == hammer::app::Tool::Entity
-	        ? "Entity tool (Shift+E): click in a 2D view to place " + st->controller.EntityClass()
-	        : "Selection tool (Shift+S): click a brush, drag to move" );
-}
-
-void ActionToolSelect( GSimpleAction *, GVariant *, gpointer user_data )
-{
-	SetToolUi( static_cast<AppState *>( user_data ), hammer::app::Tool::Select );
-}
-
-void ActionToolBlock( GSimpleAction *, GVariant *, gpointer user_data )
-{
-	SetToolUi( static_cast<AppState *>( user_data ), hammer::app::Tool::Block );
+	RunCatalogAction( st, actionId );
+	const std::string tool = ActiveToolName( st );
+	SetHelp(
+	    st, tool == tools::BlockTool::kName
+	            ? "Block tool (Shift+B): drag in a 2D view (again in another view for the height), "
+	              "Enter to create, F to hollow"
+	        : tool == tools::EntityTool::kName
+	            ? "Entity tool (Shift+E): click in a view to place " +
+	                  st->workspace.Settings().entityClass
+	            : "Selection tool (Shift+S): click to select, drag to move" );
 }
 
 // ---- GtkGLArea callbacks ---------------------------------------------------
@@ -647,16 +800,8 @@ void OnGlRealize( GtkGLArea *area, gpointer user_data )
 		g_error_free( gerr );
 		return;
 	}
-	vp->renderer.SetViewMode( vp->mode );
 	vp->glReady = true;
-
-	const int selId =
-	    vp->app->controller.Selection() ? *vp->app->controller.Selection() : kNoHighlight;
-	vp->renderer.SetMaterialCatalog( vp->app->catalog.get() );
-	vp->renderer.SetHighlight( selId );
-	vp->renderer.SetScene( vp->app->controller.BuildScene() );
-	vp->renderer.FrameScene();
-	vp->pending = false;
+	vp->uploaded = false;
 }
 
 void OnGlUnrealize( GtkGLArea *area, gpointer user_data )
@@ -669,400 +814,504 @@ void OnGlUnrealize( GtkGLArea *area, gpointer user_data )
 gboolean OnGlRender( GtkGLArea *area, GdkGLContext *, gpointer user_data )
 {
 	Viewport *vp = static_cast<Viewport *>( user_data );
+	AppState *st = vp->app;
+	hammer::presenters::EditorWorkspace &ws = st->workspace;
+	if ( !vp->glReady )
+	{
+		return TRUE;
+	}
+	if ( !vp->uploaded )
+	{
+		vp->renderer.SetMaterialCatalog( st->catalog.get() );
+		vp->renderer.SetSnapshot( ws.Snapshot() );
+		vp->uploaded = true;
+	}
+	SyncViewSize( *vp );
 	const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( area ) );
 	const int w = gtk_widget_get_width( GTK_WIDGET( area ) ) * scale;
 	const int h = gtk_widget_get_height( GTK_WIDGET( area ) ) * scale;
-	vp->renderer.Render( w, h );
+	const tools::OverlayList overlay = ws.Overlay( vp->kind );
+	if ( vp->kind == ViewKind::Camera3D )
+	{
+		vp->renderer.Render3D( ws.Camera3DView(), overlay, w, h );
+	}
+	else
+	{
+		vp->renderer.Render2D(
+		    ws.Camera2DFor( vp->kind ), ws.GridLines( vp->kind ), overlay, w, h );
+	}
 	return TRUE;
 }
 
-// ---- Input helpers ---------------------------------------------------------
+// ---- Input translation -------------------------------------------------------
 
-void WidgetToWorld( Viewport *vp, double wx, double wy, double &u, double &v )
+tools::Modifiers ModifiersOf( GdkModifierType state )
 {
-	const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( vp->area ) );
-	const int w = gtk_widget_get_width( GTK_WIDGET( vp->area ) ) * scale;
-	const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
-	float fu = 0.0f;
-	float fv = 0.0f;
-	vp->renderer.PixelToWorld(
-	    static_cast<float>( wx * scale ), static_cast<float>( wy * scale ), w, h, fu, fv );
-	u = fu;
-	v = fv;
+	std::uint8_t bits = 0;
+	if ( state & GDK_SHIFT_MASK )
+		bits |= tools::kShift;
+	if ( state & GDK_CONTROL_MASK )
+		bits |= tools::kCtrl;
+	if ( state & GDK_ALT_MASK )
+		bits |= tools::kAlt;
+	return tools::Mods( bits );
+}
+
+tools::PointerButton ButtonOf( guint button )
+{
+	switch ( button )
+	{
+	case GDK_BUTTON_PRIMARY:
+		return tools::PointerButton::Left;
+	case GDK_BUTTON_MIDDLE:
+		return tools::PointerButton::Middle;
+	case GDK_BUTTON_SECONDARY:
+		return tools::PointerButton::Right;
+	default:
+		return tools::PointerButton::None;
+	}
+}
+
+std::optional<tools::KeyEvent> KeyEventOf( guint keyval, GdkModifierType state, bool press )
+{
+	tools::KeyEvent event;
+	event.phase = press ? tools::KeyPhase::Press : tools::KeyPhase::Release;
+	event.modifiers = ModifiersOf( state );
+	using K = tools::Key;
+	switch ( keyval )
+	{
+	case GDK_KEY_Return:
+	case GDK_KEY_KP_Enter:
+	case GDK_KEY_ISO_Enter:
+		event.key = K::Enter;
+		return event;
+	case GDK_KEY_Escape:
+		event.key = K::Escape;
+		return event;
+	case GDK_KEY_Delete:
+	case GDK_KEY_KP_Delete:
+		event.key = K::Delete;
+		return event;
+	case GDK_KEY_BackSpace:
+		event.key = K::Backspace;
+		return event;
+	case GDK_KEY_Left:
+	case GDK_KEY_KP_Left:
+		event.key = K::Left;
+		return event;
+	case GDK_KEY_Right:
+	case GDK_KEY_KP_Right:
+		event.key = K::Right;
+		return event;
+	case GDK_KEY_Up:
+	case GDK_KEY_KP_Up:
+		event.key = K::Up;
+		return event;
+	case GDK_KEY_Down:
+	case GDK_KEY_KP_Down:
+		event.key = K::Down;
+		return event;
+	case GDK_KEY_Page_Up:
+		event.key = K::PageUp;
+		return event;
+	case GDK_KEY_Page_Down:
+		event.key = K::PageDown;
+		return event;
+	case GDK_KEY_Home:
+		event.key = K::Home;
+		return event;
+	case GDK_KEY_End:
+		event.key = K::End;
+		return event;
+	case GDK_KEY_Tab:
+	case GDK_KEY_ISO_Left_Tab:
+		event.key = K::Tab;
+		return event;
+	case GDK_KEY_space:
+		event.key = K::Space;
+		return event;
+	default:
+		break;
+	}
+	if ( keyval >= GDK_KEY_F1 && keyval <= GDK_KEY_F12 )
+	{
+		event.key = static_cast<K>( static_cast<int>( K::F1 ) + ( keyval - GDK_KEY_F1 ) );
+		return event;
+	}
+	const guint32 ch = gdk_keyval_to_unicode( gdk_keyval_to_lower( keyval ) );
+	if ( ch > 0x20 && ch < 0x7f )
+	{
+		event.key = K::Character;
+		event.character = static_cast<char>( std::tolower( static_cast<int>( ch ) ) );
+		return event;
+	}
+	return std::nullopt; // modifiers alone, dead keys, non-ASCII
 }
 
 void UpdateCoords( Viewport *vp )
 {
 	AppState *st = vp->app;
-	if ( !st->coordLabel || vp->mode == hammergtk::ViewMode::Perspective )
+	if ( !st->coordLabel || vp->kind == ViewKind::Camera3D )
 	{
 		return;
 	}
-	double u = 0.0;
-	double v = 0.0;
-	WidgetToWorld( vp, vp->cursorX, vp->cursorY, u, v );
-	int ua = 0;
-	int va = 1;
-	int fa = 2;
-	switch ( vp->mode )
-	{
-	case hammergtk::ViewMode::Front:
-		ua = 0;
-		va = 2;
-		break;
-	case hammergtk::ViewMode::Side:
-		ua = 1;
-		va = 2;
-		break;
-	default:
-		break;
-	}
-	(void)fa;
+	const hammer::viewport::Camera2D &camera = st->workspace.Camera2DFor( vp->kind );
+	const hammer::viewport::PlanePoint p = camera.ScreenToPlane( vp->cursorX, vp->cursorY );
+	const hammer::viewport::ViewAxes axes = camera.Axes();
 	const char *letters = "xyz";
 	char buf[96];
-	std::snprintf( buf, sizeof( buf ), "%c %.0f  %c %.0f", letters[ua], u, letters[va], v );
+	std::snprintf(
+	    buf, sizeof( buf ), "%c %.0f  %c %.0f", letters[axes.u], p.u, letters[axes.v], p.v );
 	gtk_label_set_text( st->coordLabel, buf );
 }
 
-// ---- 3D free-fly / mouse-look (classic Hammer camera navigation) -----------
-
-// Degrees of camera rotation per pixel of mouse motion in look mode (MFC uses
-// 0.4). World units per second the camera flies with WASD, and the Shift boost.
-constexpr double kLookSpeed = 0.4;
-constexpr double kFlyBaseSpeed = 640.0;
-constexpr double kFlyFastSpeed = 1800.0;
-
-void SetCursorHidden( Viewport *vp, bool hidden )
+const char *GdkCursorName( tools::Cursor cursor )
 {
-	if ( hidden )
+	switch ( cursor )
 	{
-		GdkCursor *none = gdk_cursor_new_from_name( "none", nullptr );
-		gtk_widget_set_cursor( GTK_WIDGET( vp->area ), none );
-		if ( none )
-		{
-			g_object_unref( none );
-		}
-	}
-	else
-	{
-		gtk_widget_set_cursor( GTK_WIDGET( vp->area ), nullptr );
+	case tools::Cursor::Crosshair:
+		return "crosshair";
+	case tools::Cursor::Move:
+		return "move";
+	case tools::Cursor::ResizeN:
+	case tools::Cursor::ResizeS:
+		return "ns-resize";
+	case tools::Cursor::ResizeE:
+	case tools::Cursor::ResizeW:
+		return "ew-resize";
+	case tools::Cursor::ResizeNE:
+	case tools::Cursor::ResizeSW:
+		return "nesw-resize";
+	case tools::Cursor::ResizeNW:
+	case tools::Cursor::ResizeSE:
+		return "nwse-resize";
+	case tools::Cursor::Rotate:
+		return "grab";
+	case tools::Cursor::Forbidden:
+		return "not-allowed";
+	case tools::Cursor::Hand:
+		return "pointer";
+	case tools::Cursor::Text:
+		return "text";
+	case tools::Cursor::Default:
+	default:
+		return nullptr;
 	}
 }
 
-// Per-frame fly integration: while any movement key is held, translates the 3D
-// camera by speed*dt along the view basis. Runs only while keys are down (started
-// and stopped by UpdateFlyTick), so the frame clock idles when nothing moves.
-gboolean OnFlyTick( GtkWidget *, GdkFrameClock *clock, gpointer user_data )
+void UpdateCursor( Viewport *vp )
 {
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	const gint64 now = gdk_frame_clock_get_frame_time( clock );
-	if ( vp->flyPrevUs == 0 )
-	{
-		vp->flyPrevUs = now;
-		return G_SOURCE_CONTINUE;
-	}
-	double dt = static_cast<double>( now - vp->flyPrevUs ) / 1.0e6;
-	vp->flyPrevUs = now;
-	if ( dt > 0.25 )
-	{
-		dt = 0.25; // clamp long stalls, like MFC's ProcessInput
-	}
-	if ( dt <= 0.0 )
-	{
-		return G_SOURCE_CONTINUE;
-	}
-
-	const double step = ( vp->keyFast ? kFlyFastSpeed : kFlyBaseSpeed ) * dt;
-	double fwd = 0.0;
-	double strafe = 0.0;
-	double rise = 0.0;
-	if ( vp->keyForward )
-	{
-		fwd += step;
-	}
-	if ( vp->keyBack )
-	{
-		fwd -= step;
-	}
-	if ( vp->keyRight )
-	{
-		strafe += step;
-	}
-	if ( vp->keyLeft )
-	{
-		strafe -= step;
-	}
-	if ( vp->keyUp )
-	{
-		rise += step;
-	}
-	if ( vp->keyDown )
-	{
-		rise -= step;
-	}
-	if ( fwd != 0.0 || strafe != 0.0 || rise != 0.0 )
-	{
-		vp->renderer.FlyMove(
-		    static_cast<float>( fwd ), static_cast<float>( strafe ), static_cast<float>( rise ) );
-		gtk_gl_area_queue_render( vp->area );
-	}
-	return G_SOURCE_CONTINUE;
+	const char *name =
+	    GdkCursorName( vp->app->workspace.CursorFor( vp->kind, vp->cursorX, vp->cursorY ) );
+	gtk_widget_set_cursor_from_name( GTK_WIDGET( vp->area ), name );
 }
 
-// Starts/stops the frame-clock tick so it runs exactly while a fly key is held.
-void UpdateFlyTick( Viewport *vp )
+void SendPointer( Viewport *vp, tools::PointerPhase phase, tools::PointerButton button, double x,
+    double y, GdkModifierType state )
 {
-	const bool wantTick =
-	    vp->keyForward || vp->keyBack || vp->keyLeft || vp->keyRight || vp->keyUp || vp->keyDown;
-	if ( wantTick && vp->flyTick == 0 )
-	{
-		vp->flyPrevUs = 0;
-		vp->flyTick =
-		    gtk_widget_add_tick_callback( GTK_WIDGET( vp->area ), OnFlyTick, vp, nullptr );
-	}
-	else if ( !wantTick && vp->flyTick != 0 )
-	{
-		gtk_widget_remove_tick_callback( GTK_WIDGET( vp->area ), vp->flyTick );
-		vp->flyTick = 0;
-	}
-}
-
-void SetMouseLook( Viewport *vp, bool on )
-{
-	if ( vp->mode != hammergtk::ViewMode::Perspective || vp->mouseLook == on )
-	{
-		return;
-	}
-	vp->mouseLook = on;
-	vp->haveLookPrev = false;
-	SetCursorHidden( vp, on );
-	SetHelp( vp->app, on ? "Mouse-look: move to look, WASD/QE to fly, Z to release"
-	                     : "Camera view — click to select, Z for mouse-look" );
-}
-
-void ClearFlyKeys( Viewport *vp )
-{
-	vp->keyForward = false;
-	vp->keyBack = false;
-	vp->keyLeft = false;
-	vp->keyRight = false;
-	vp->keyUp = false;
-	vp->keyDown = false;
-	UpdateFlyTick( vp );
-}
-
-void OnMotion( GtkEventControllerMotion *, double x, double y, gpointer user_data )
-{
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	if ( vp->mouseLook && vp->mode == hammergtk::ViewMode::Perspective )
-	{
-		if ( vp->haveLookPrev )
-		{
-			// Mouse right -> turn right; mouse up -> look up. (Signs chosen to match
-			// a first-person feel; flip kLookSpeed's use here to invert an axis.)
-			const double dx = x - vp->lookPrevX;
-			const double dy = y - vp->lookPrevY;
-			vp->renderer.FlyLook(
-			    static_cast<float>( -dx * kLookSpeed ), static_cast<float>( dy * kLookSpeed ) );
-			gtk_gl_area_queue_render( vp->area );
-		}
-		vp->lookPrevX = x;
-		vp->lookPrevY = y;
-		vp->haveLookPrev = true;
-	}
+	AppState *st = vp->app;
+	SyncViewSize( *vp );
+	tools::PointerEvent event;
+	event.phase = phase;
+	event.button = button;
+	event.modifiers = ModifiersOf( state );
+	event.x = x;
+	event.y = y;
+	event.view = vp->kind;
+	event.timestampMs = static_cast<std::uint64_t>( g_get_monotonic_time() / 1000 );
+	Apply( st, st->workspace.OnPointer( vp->kind, event ) );
 	vp->cursorX = x;
 	vp->cursorY = y;
 	UpdateCoords( vp );
+	UpdateCursor( vp );
 }
 
-// Tool drag (left button): 2D views drive the active editing tool; the camera
-// view orbits.
-void OnToolBegin( GtkGestureDrag *gesture, double startX, double startY, gpointer user_data )
+// ---- Camera fly (held W/A/S/D/E/Q, integrated per frame) ---------------------
+
+gboolean OnFlyTick( GtkWidget *, GdkFrameClock *clock, gpointer user_data );
+
+// Runs the frame-clock tick exactly while the camera controller has fly keys
+// held, so the clock idles when nothing moves.
+void UpdateFlyTick( AppState *st )
 {
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	vp->startX = startX;
-	vp->startY = startY;
-	vp->orbitPrevX = 0.0;
-	vp->orbitPrevY = 0.0;
-	vp->dragDist = 0.0;
-	if ( vp->mode == hammergtk::ViewMode::Perspective )
+	const bool flying = st->workspace.CameraControl().Flying();
+	if ( flying && st->flyTick == 0 && st->window )
 	{
-		return;
+		st->flyPrevUs = 0;
+		st->flyTick = gtk_widget_add_tick_callback( st->window, OnFlyTick, st, nullptr );
 	}
-	// Space + left-drag pans a 2D view (MFC's navigation idiom), instead of editing.
-	vp->dragIsPan = vp->app->spaceHeld;
-	if ( vp->dragIsPan )
+	else if ( !flying && st->flyTick != 0 )
 	{
-		return;
+		gtk_widget_remove_tick_callback( st->window, st->flyTick );
+		st->flyTick = 0;
 	}
-	// Ctrl-click adds/removes the brush from a multi-selection (MFC additive select).
-	const GdkModifierType mods =
-	    gtk_event_controller_get_current_event_state( GTK_EVENT_CONTROLLER( gesture ) );
-	const bool additive = ( mods & GDK_CONTROL_MASK ) != 0;
-	double u = 0.0;
-	double v = 0.0;
-	WidgetToWorld( vp, startX, startY, u, v );
-	vp->app->controller.PointerDown( vp->vid, u, v, additive );
-	RefreshScene( vp->app, false );
 }
 
-void OnToolUpdate( GtkGestureDrag *, double offX, double offY, gpointer user_data )
+gboolean OnFlyTick( GtkWidget *, GdkFrameClock *clock, gpointer user_data )
 {
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	if ( vp->mode == hammergtk::ViewMode::Perspective )
+	AppState *st = static_cast<AppState *>( user_data );
+	const gint64 now = gdk_frame_clock_get_frame_time( clock );
+	if ( st->flyPrevUs != 0 )
 	{
-		const double dx = offX - vp->orbitPrevX;
-		const double dy = offY - vp->orbitPrevY;
-		vp->orbitPrevX = offX;
-		vp->orbitPrevY = offY;
-		vp->dragDist += std::abs( dx ) + std::abs( dy );
-		vp->renderer.DragBy( static_cast<float>( dx ), static_cast<float>( dy ) );
-		gtk_gl_area_queue_render( vp->area );
-		return;
-	}
-	if ( vp->dragIsPan )
-	{
-		// Space + left-drag pan: incremental like the middle-button pan.
-		const double dx = offX - vp->orbitPrevX;
-		const double dy = offY - vp->orbitPrevY;
-		vp->orbitPrevX = offX;
-		vp->orbitPrevY = offY;
-		vp->renderer.DragBy( static_cast<float>( dx ), static_cast<float>( dy ) );
-		gtk_gl_area_queue_render( vp->area );
-		return;
-	}
-	double u = 0.0;
-	double v = 0.0;
-	WidgetToWorld( vp, vp->startX + offX, vp->startY + offY, u, v );
-	vp->app->controller.PointerDrag( vp->vid, u, v );
-	RefreshScene( vp->app, false );
-}
-
-void OnToolEnd( GtkGestureDrag *gesture, double offX, double offY, gpointer user_data )
-{
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	if ( vp->mode == hammergtk::ViewMode::Perspective )
-	{
-		// A left click that barely moved (not an orbit-drag) is a 3D ray pick, so
-		// the camera view can select brushes like MFC's selection tool does.
-		if ( vp->dragDist < 4.0 )
+		// Long stalls are clamped, like MFC's ProcessInput.
+		const double dt = std::min( static_cast<double>( now - st->flyPrevUs ) / 1.0e6, 0.25 );
+		if ( dt > 0.0 )
 		{
-			const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( vp->area ) );
-			const int w = gtk_widget_get_width( GTK_WIDGET( vp->area ) ) * scale;
-			const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
-			const GdkModifierType mods =
-			    gtk_event_controller_get_current_event_state( GTK_EVENT_CONTROLLER( gesture ) );
-			const bool additive = ( mods & GDK_CONTROL_MASK ) != 0;
-			float o[3] = { 0.0f, 0.0f, 0.0f };
-			float d[3] = { 0.0f, 0.0f, 0.0f };
-			if ( vp->renderer.PixelToRay( static_cast<float>( vp->startX * scale ),
-			         static_cast<float>( vp->startY * scale ), w, h, o, d ) )
+			Apply( st, st->workspace.Advance( dt ) );
+		}
+	}
+	st->flyPrevUs = now;
+	return G_SOURCE_CONTINUE;
+}
+
+// ---- Keys ----------------------------------------------------------------------
+
+void CycleView2D( Viewport *vp );
+
+// One key event for 'vp' (the focused view, or the hovered one when focus is
+// elsewhere). Host keys first: Tab cycles a 2D pane's view, and the catalog's
+// build chords run the asynchronous build. Everything else goes to the
+// workspace (catalog shortcuts, camera keys, then the active tool).
+gboolean HandleKey( AppState *st, Viewport *vp, guint keyval, GdkModifierType state, bool press )
+{
+	if ( !vp )
+	{
+		vp = st->hovered ? st->hovered : &st->viewports[1];
+	}
+	const std::optional<tools::KeyEvent> event = KeyEventOf( keyval, state, press );
+	if ( !event )
+	{
+		return FALSE;
+	}
+	if ( press )
+	{
+		if ( event->key == tools::Key::Tab && !event->modifiers.Any() &&
+		     vp->kind != ViewKind::Camera3D )
+		{
+			CycleView2D( vp );
+			return TRUE;
+		}
+		const std::string chord = hammer::presenters::EditorWorkspace::ChordOf( *event );
+		if ( const hammer::presenters::ActionSpec *spec =
+		         hammer::presenters::ActionCatalog::FindByShortcut( chord ) )
+		{
+			if ( spec->id == "map.build" || spec->id == "map.build_and_run" )
 			{
-				AppState *st = vp->app;
-				if ( st->controller.CurrentTool() == hammer::app::Tool::Entity )
-				{
-					// Source 2's Entity tool: click a surface in the 3D view to place the
-					// active class on it, through the shared command layer.
-					auto vec = []( const float v[3] )
-					{
-						char buf[96];
-						std::snprintf( buf, sizeof( buf ), "%.6g %.6g %.6g", v[0], v[1], v[2] );
-						return std::string( buf );
-					};
-					if ( auto id = RunCommand( st, "place_on_surface",
-					         { { "classname", st->controller.EntityClass() },
-					             { "origin", vec( o ) }, { "dir", vec( d ) } } ) )
-					{
-						SetHelp(
-						    st, "Placed " + st->controller.EntityClass() + " (id " + *id + ")" );
-					}
-				}
-				else
-				{
-					st->controller.PickByRay( mapgeometry::Vec3d( o[0], o[1], o[2] ),
-					    mapgeometry::Vec3d( d[0], d[1], d[2] ), additive );
-				}
-				RefreshScene( st, false );
+				RunCatalogAction( st, spec->id );
+				return TRUE;
 			}
 		}
-		return;
 	}
-	if ( vp->dragIsPan )
+	SyncViewSize( *vp );
+	const hammer::presenters::InputOutcome outcome = st->workspace.OnKey( vp->kind, *event );
+	Apply( st, outcome );
+	UpdateFlyTick( st );
+	return outcome.handled ? TRUE : FALSE;
+}
+
+gboolean OnViewKeyPressed(
+    GtkEventControllerKey *, guint keyval, guint, GdkModifierType state, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	return HandleKey( vp->app, vp, keyval, state, true );
+}
+
+void OnViewKeyReleased(
+    GtkEventControllerKey *, guint keyval, guint, GdkModifierType state, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	HandleKey( vp->app, vp, keyval, state, false );
+}
+
+// Keys that reach the window while no viewport has focus (a palette button,
+// the object bar) go to the hovered view. A focused viewport already had them.
+bool ViewportHasFocus( AppState *st )
+{
+	GtkWidget *focus = st->window ? gtk_root_get_focus( GTK_ROOT( st->window ) ) : nullptr;
+	for ( const Viewport &vp : st->viewports )
 	{
-		vp->dragIsPan = false;
-		return;
+		if ( focus && focus == GTK_WIDGET( vp.area ) )
+			return true;
 	}
-	double u = 0.0;
-	double v = 0.0;
-	WidgetToWorld( vp, vp->startX + offX, vp->startY + offY, u, v );
-	vp->app->controller.PointerUp( vp->vid, u, v );
-	RefreshScene( vp->app, false );
+	return false;
 }
 
-// Pan drag (middle button): pans a 2D view / orbits the camera.
-void OnPanBegin( GtkGestureDrag *, double, double, gpointer user_data )
+gboolean OnWindowKeyPressed(
+    GtkEventControllerKey *, guint keyval, guint, GdkModifierType state, gpointer user_data )
 {
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	vp->panPrevX = 0.0;
-	vp->panPrevY = 0.0;
+	AppState *st = static_cast<AppState *>( user_data );
+	return ViewportHasFocus( st ) ? FALSE : HandleKey( st, nullptr, keyval, state, true );
 }
 
-void OnPanUpdate( GtkGestureDrag *, double offX, double offY, gpointer user_data )
+void OnWindowKeyReleased(
+    GtkEventControllerKey *, guint keyval, guint, GdkModifierType state, gpointer user_data )
 {
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	const double dx = offX - vp->panPrevX;
-	const double dy = offY - vp->panPrevY;
-	vp->panPrevX = offX;
-	vp->panPrevY = offY;
-	vp->renderer.DragBy( static_cast<float>( dx ), static_cast<float>( dy ) );
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( !ViewportHasFocus( st ) )
+	{
+		HandleKey( st, nullptr, keyval, state, false );
+	}
+}
+
+void OnWindowActive( GObject *window, GParamSpec *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( !gtk_window_is_active( GTK_WINDOW( window ) ) )
+	{
+		Apply( st, st->workspace.OnFocusLost() );
+		UpdateFlyTick( st );
+	}
+}
+
+// Tab cycles a 2D pane's orientation Top -> Front -> Side -> Top, like MFC's
+// draw-type cycle. Each orientation has its own workspace camera.
+void CycleView2D( Viewport *vp )
+{
+	struct ViewDef
+	{
+		ViewKind kind;
+		const char *label;
+	};
+	static const ViewDef order[] = {
+	    { ViewKind::Top, "top (x/y)" },
+	    { ViewKind::Front, "front (x/z)" },
+	    { ViewKind::Side, "side (y/z)" },
+	};
+	int cur = 0;
+	for ( int i = 0; i < 3; ++i )
+	{
+		if ( order[i].kind == vp->kind )
+		{
+			cur = i;
+		}
+	}
+	const ViewDef &next = order[( cur + 1 ) % 3];
+	vp->kind = next.kind;
+	vp->label = next.label;
+	SyncViewSize( *vp );
+	if ( vp->caption )
+	{
+		gtk_label_set_text( GTK_LABEL( vp->caption ), next.label );
+	}
+	gtk_accessible_update_property(
+	    GTK_ACCESSIBLE( vp->area ), GTK_ACCESSIBLE_PROPERTY_LABEL, next.label, -1 );
+	UpdateCoords( vp );
 	gtk_gl_area_queue_render( vp->area );
 }
 
+// ---- Pointer ---------------------------------------------------------------------
+
+// Any button: press, drag and release become Down, Move and Up for the
+// workspace, which offers them to the camera controller, then the active tool.
+void OnDragBegin( GtkGestureDrag *gesture, double x, double y, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	vp->button = ButtonOf( gtk_gesture_single_get_current_button( GTK_GESTURE_SINGLE( gesture ) ) );
+	if ( vp->button == tools::PointerButton::None )
+	{
+		return; // extra mouse buttons are not editor input
+	}
+	vp->startX = x;
+	vp->startY = y;
+	gtk_widget_grab_focus( GTK_WIDGET( vp->area ) );
+	SendPointer( vp, tools::PointerPhase::Down, vp->button, x, y,
+	    gtk_event_controller_get_current_event_state( GTK_EVENT_CONTROLLER( gesture ) ) );
+}
+
+void OnDragUpdate( GtkGestureDrag *gesture, double offX, double offY, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	if ( vp->button == tools::PointerButton::None )
+	{
+		return;
+	}
+	SendPointer( vp, tools::PointerPhase::Move, tools::PointerButton::None, vp->startX + offX,
+	    vp->startY + offY,
+	    gtk_event_controller_get_current_event_state( GTK_EVENT_CONTROLLER( gesture ) ) );
+}
+
+void OnDragEnd( GtkGestureDrag *gesture, double offX, double offY, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	const tools::PointerButton button = vp->button;
+	if ( button == tools::PointerButton::None )
+	{
+		return; // cancelled (OnDragCancel), or a button the tools do not use
+	}
+	vp->button = tools::PointerButton::None;
+	SendPointer( vp, tools::PointerPhase::Up, button, vp->startX + offX, vp->startY + offY,
+	    gtk_event_controller_get_current_event_state( GTK_EVENT_CONTROLLER( gesture ) ) );
+}
+
+// A drag GTK cancels (a popover or grab took the pointer) ends no gesture with
+// a release: the workspace cancels its tool and camera drags as on focus loss.
+void OnDragCancel( GtkGesture *, GdkEventSequence *, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	if ( vp->button == tools::PointerButton::None )
+	{
+		return;
+	}
+	vp->button = tools::PointerButton::None;
+	Apply( vp->app, vp->app->workspace.OnFocusLost() );
+	UpdateFlyTick( vp->app );
+}
+
+// Hover (no button held): tools show where a click would act.
+void OnMotion( GtkEventControllerMotion *motion, double x, double y, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	if ( vp->button != tools::PointerButton::None )
+	{
+		return; // the drag gesture reports these
+	}
+	SendPointer( vp, tools::PointerPhase::Move, tools::PointerButton::None, x, y,
+	    gtk_event_controller_get_current_event_state( GTK_EVENT_CONTROLLER( motion ) ) );
+}
+
+// Wheel notches go to the workspace (2D zoom about the cursor, 3D dolly).
+// Touchpad scrolling pans a 2D view (Ctrl: zooms) and dollies the 3D view;
+// pinches zoom. Those drive the workspace cameras' own navigation functions.
 gboolean OnScroll( GtkEventControllerScroll *ctrl, double dx, double dy, gpointer user_data )
 {
 	Viewport *vp = static_cast<Viewport *>( user_data );
-	const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( vp->area ) );
-	const int w = gtk_widget_get_width( GTK_WIDGET( vp->area ) ) * scale;
-	const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
-	const float px = static_cast<float>( vp->cursorX * scale );
-	const float py = static_cast<float>( vp->cursorY * scale );
-
-	const GdkScrollUnit unit = gtk_event_controller_scroll_get_unit( ctrl );
-	const float gain = ( unit == GDK_SCROLL_UNIT_WHEEL ) ? 42.0f : 2.0f;
+	AppState *st = vp->app;
+	SyncViewSize( *vp );
 	const GdkModifierType state =
 	    gtk_event_controller_get_current_event_state( GTK_EVENT_CONTROLLER( ctrl ) );
-	const bool ctrlHeld = ( state & GDK_CONTROL_MASK ) != 0;
-
-	if ( vp->mode == hammergtk::ViewMode::Perspective )
+	if ( gtk_event_controller_scroll_get_unit( ctrl ) == GDK_SCROLL_UNIT_WHEEL )
 	{
-		if ( ctrlHeld )
-		{
-			vp->renderer.ZoomBy( std::pow( 1.1f, static_cast<float>( dy ) ) );
-		}
-		else
-		{
-			vp->renderer.PanScroll(
-			    static_cast<float>( dx ) * gain * 0.5f, static_cast<float>( dy ) * gain * 0.5f );
-		}
+		tools::WheelEvent wheel;
+		wheel.steps = -dy;
+		wheel.x = vp->cursorX;
+		wheel.y = vp->cursorY;
+		wheel.view = vp->kind;
+		wheel.modifiers = ModifiersOf( state );
+		Apply( st, st->workspace.OnWheel( vp->kind, wheel ) );
 	}
-	else if ( ctrlHeld )
+	else if ( vp->kind == ViewKind::Camera3D )
 	{
-		vp->renderer.ZoomAtPixel( std::pow( 1.1f, static_cast<float>( -dy ) ), px, py, w, h );
-		UpdateCoords( vp );
+		st->workspace.Camera3DView().Fly( -dy * 4.0, dx * 4.0, 0.0 );
+		RefreshScene( st );
+	}
+	else if ( state & GDK_CONTROL_MASK )
+	{
+		st->workspace.Camera2DFor( vp->kind )
+		    .ZoomAt( vp->cursorX, vp->cursorY, std::pow( 1.02, -dy ) );
+		RefreshScene( st );
 	}
 	else
 	{
-		vp->renderer.PanScroll( static_cast<float>( dx ) * gain, static_cast<float>( dy ) * gain );
-		UpdateCoords( vp );
+		st->workspace.Camera2DFor( vp->kind ).PanPixels( -dx, -dy );
+		RefreshScene( st );
 	}
-	gtk_gl_area_queue_render( vp->area );
+	UpdateCoords( vp );
 	return TRUE;
 }
 
 void OnZoomBegin( GtkGesture *, GdkEventSequence *, gpointer user_data )
 {
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	vp->pinchPrev = 1.0;
+	static_cast<Viewport *>( user_data )->pinchPrev = 1.0;
 }
 
 void OnZoomChanged( GtkGestureZoom *zoom, double scaleRatio, gpointer user_data )
@@ -1074,401 +1323,28 @@ void OnZoomChanged( GtkGestureZoom *zoom, double scaleRatio, gpointer user_data 
 	}
 	const double delta = scaleRatio / vp->pinchPrev;
 	vp->pinchPrev = scaleRatio;
-	const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( vp->area ) );
-	const int w = gtk_widget_get_width( GTK_WIDGET( vp->area ) ) * scale;
-	const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
 	double cx = vp->cursorX;
 	double cy = vp->cursorY;
 	gtk_gesture_get_bounding_box_center( GTK_GESTURE( zoom ), &cx, &cy );
-	vp->renderer.ZoomAtPixel( static_cast<float>( delta ), static_cast<float>( cx * scale ),
-	    static_cast<float>( cy * scale ), w, h );
-	gtk_gl_area_queue_render( vp->area );
+	SyncViewSize( *vp );
+	if ( vp->kind == ViewKind::Camera3D )
+	{
+		vp->app->workspace.Camera3DView().Fly( ( delta - 1.0 ) * 512.0, 0.0, 0.0 );
+	}
+	else
+	{
+		vp->app->workspace.Camera2DFor( vp->kind ).ZoomAt( cx, cy, delta );
+	}
+	RefreshScene( vp->app );
 }
 
-// Defined below (with the Texture Application window); Shift+A opens it.
-void OpenTextureWindow( AppState *st );
-
-gboolean OnKeyPressed(
-    GtkEventControllerKey *, guint keyval, guint, GdkModifierType state, gpointer user_data )
-{
-	AppState *st = static_cast<AppState *>( user_data );
-	switch ( keyval )
-	{
-	// Shift+A yields the uppercase keysym; this is legacy Hammer's texture-
-	// application tool shortcut. Open the Texture Application window.
-	case GDK_KEY_A:
-		OpenTextureWindow( st );
-		return TRUE;
-	case GDK_KEY_Return:
-	case GDK_KEY_KP_Enter:
-		if ( st->controller.Commit() )
-		{
-			RefreshScene( st, false );
-			SetHelp( st, "Brush created" );
-		}
-		return TRUE;
-	case GDK_KEY_Delete:
-	case GDK_KEY_BackSpace:
-		if ( st->controller.DeleteSelection() )
-		{
-			RefreshScene( st, false );
-		}
-		return TRUE;
-	case GDK_KEY_Escape:
-		SetToolUi( st, st->controller.CurrentTool() ); // clears any pending box
-		return TRUE;
-	// Tool keys follow Source 2 (and classic) Hammer: Shift+B/E/S. Plain letters
-	// stay free for camera movement (WASD).
-	case GDK_KEY_B:
-		SetToolUi( st, hammer::app::Tool::Block );
-		return TRUE;
-	case GDK_KEY_E:
-		SetToolUi( st, hammer::app::Tool::Entity );
-		return TRUE;
-	case GDK_KEY_S:
-		SetToolUi( st, hammer::app::Tool::Select );
-		return TRUE;
-	// F9 saves on this thread, then builds off it and publishes the map
-	// (./play <map>); Shift+F9 also runs it (Source 2's "load in engine after
-	// building"). The editor stays usable while the map compiles.
-	case GDK_KEY_F9:
-	{
-		const bool run = ( state & GDK_SHIFT_MASK ) != 0;
-		if ( st->builds.Busy() )
-		{
-			SetHelp( st, "A build is already running" );
-			return TRUE;
-		}
-		const std::string path = st->currentPath.empty()
-		                             ? std::string( "quality-results/hammer-builds/untitled.vmf" )
-		                             : st->currentPath;
-		if ( !RunCommand( st, "save", { { "path", path } } ) )
-			return TRUE;
-		st->currentPath = path;
-		UpdateChrome( st );
-		std::string map = path.substr( path.find_last_of( '/' ) + 1 );
-		map = map.substr( 0, map.rfind( '.' ) );
-		for ( char &c : map )
-			c = static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
-		const hammer::app::BuildStart started =
-		    st->builds.Start( hammer::ports::MapBuildRequest{ path, false, st->publishBuilds },
-		        [st, map, run]( const hammer::ports::MapBuildResult &result )
-		        {
-			        if ( !result.ok )
-			        {
-				        SetHelp( st, "build_map: " + result.status + ": " + result.detail );
-				        return;
-			        }
-			        if ( !st->publishBuilds )
-			        {
-				        SetHelp( st, "Built " + map + " (not published)" );
-				        return;
-			        }
-			        SetHelp( st, "Built " + map +
-			                         ( run ? "; launching ./play " + map : "; ./play " + map ) );
-			        if ( run )
-			        {
-				        const gchar *argv[] = { "./play", map.c_str(), nullptr };
-				        g_spawn_async( nullptr, const_cast<gchar **>( argv ), nullptr,
-				            G_SPAWN_DEFAULT, nullptr, nullptr, nullptr, nullptr );
-			        }
-		        } );
-		SetHelp( st, started == hammer::app::BuildStart::kStarted
-		                 ? "Building " + map + " ..."
-		                 : std::string( "Build unavailable" ) );
-		return TRUE;
-	}
-	// [ and ] halve and double the grid (classic Hammer), between 1 and 512 units.
-	case GDK_KEY_bracketleft:
-	case GDK_KEY_bracketright:
-	{
-		const int grid = st->controller.GridSize();
-		const int next =
-		    keyval == GDK_KEY_bracketleft ? std::max( grid / 2, 1 ) : std::min( grid * 2, 512 );
-		if ( RunCommand( st, "set_grid", { { "size", std::to_string( next ) } } ) )
-		{
-			UpdateChrome( st );
-		}
-		return TRUE;
-	}
-	// F: turn the selected block into a room (Source 2's "flip faces"), with
-	// walls one grid unit thick.
-	case GDK_KEY_f:
-		if ( st->controller.SelectionCount() == 1 )
-		{
-			const std::string id = std::to_string( *st->controller.Selection() );
-			if ( auto walls = RunCommand( st, "hollow",
-			         { { "id", id },
-			             { "thickness", std::to_string( st->controller.GridSize() ) } } ) )
-			{
-				RefreshScene( st, false );
-				SetHelp( st, "Hollowed into a room (walls " + *walls + ")" );
-			}
-		}
-		return TRUE;
-	default:
-		break;
-	}
-	return FALSE;
-}
-
-// The two world axes a 2D view edits (its horizontal/vertical screen axes).
-void ViewAxes2D( hammergtk::ViewMode mode, int &uAxis, int &vAxis )
-{
-	switch ( mode )
-	{
-	case hammergtk::ViewMode::Front: // X / Z
-		uAxis = 0;
-		vAxis = 2;
-		break;
-	case hammergtk::ViewMode::Side: // Y / Z
-		uAxis = 1;
-		vAxis = 2;
-		break;
-	default: // Top: X / Y
-		uAxis = 0;
-		vAxis = 1;
-		break;
-	}
-}
-
-// Tab cycles a 2D view's orientation Top -> Front -> Side -> Top, like MFC's
-// draw-type cycle. Renderer mode and controller ViewId (edit axes) move together.
-void CycleView2D( Viewport *vp )
-{
-	struct ViewDef
-	{
-		hammergtk::ViewMode mode;
-		hammer::app::ViewId vid;
-		const char *label;
-	};
-	static const ViewDef order[] = {
-	    { hammergtk::ViewMode::Top, hammer::app::ViewId::Top, "top (x/y)" },
-	    { hammergtk::ViewMode::Front, hammer::app::ViewId::Front, "front (x/z)" },
-	    { hammergtk::ViewMode::Side, hammer::app::ViewId::Side, "side (y/z)" },
-	};
-	int cur = 0;
-	for ( int i = 0; i < 3; ++i )
-	{
-		if ( order[i].mode == vp->mode )
-		{
-			cur = i;
-		}
-	}
-	const ViewDef &next = order[( cur + 1 ) % 3];
-	vp->mode = next.mode;
-	vp->vid = next.vid;
-	vp->label = next.label;
-	vp->renderer.SetViewMode( next.mode );
-	vp->renderer.FrameScene(); // reframe for the new axes (pure math, no GL)
-	if ( vp->caption )
-	{
-		gtk_label_set_text( GTK_LABEL( vp->caption ), next.label );
-	}
-	gtk_gl_area_queue_render( vp->area );
-}
-
-// Arrow-key nudge of the selected brush by one grid step along the 2D view axes
-// (screen up = +v). One undo unit per nudge, via the controller (single authority).
-void Nudge2D( Viewport *vp, int du, int dv )
-{
-	if ( !vp->app->controller.Selection() )
-	{
-		return;
-	}
-	int uAxis = 0;
-	int vAxis = 1;
-	ViewAxes2D( vp->mode, uAxis, vAxis );
-	const double grid = static_cast<double>( vp->app->controller.GridSize() );
-	double d[3] = { 0.0, 0.0, 0.0 };
-	d[uAxis] += du * grid;
-	d[vAxis] += dv * grid;
-	if ( vp->app->controller.MoveSelectionBy( d[0], d[1], d[2] ) )
-	{
-		RefreshScene( vp->app, false );
-	}
-}
-
-// +/- keyboard zoom for a 2D view, anchored at the cursor like the wheel zoom.
-void Zoom2DKey( Viewport *vp, bool zoomIn )
-{
-	const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( vp->area ) );
-	const int w = gtk_widget_get_width( GTK_WIDGET( vp->area ) ) * scale;
-	const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
-	const float px = static_cast<float>( vp->cursorX * scale );
-	const float py = static_cast<float>( vp->cursorY * scale );
-	vp->renderer.ZoomAtPixel( zoomIn ? 1.2f : ( 1.0f / 1.2f ), px, py, w, h );
-	UpdateCoords( vp );
-	gtk_gl_area_queue_render( vp->area );
-}
-
-// Per-viewport key handling. The 3D camera view: Z toggles mouse-look and WASD/QE
-// fly (held state integrated by OnFlyTick); the 2D views: Tab cycles orientation,
-// arrows nudge the selection, +/- zoom. Space (either) arms space+drag panning.
-// Consuming a view's keys matches MFC, where the focused view captures them;
-// unhandled keys fall through to the window shortcuts (B/S tools, Delete, etc.).
-gboolean OnViewKeyPressed(
-    GtkEventControllerKey *, guint keyval, guint, GdkModifierType state, gpointer user_data )
-{
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	if ( keyval == GDK_KEY_space )
-	{
-		vp->app->spaceHeld = true; // used by the left-drag gesture; don't consume
-		return FALSE;
-	}
-	if ( vp->mode != hammergtk::ViewMode::Perspective )
-	{
-		// Number keys 1..9 jump to preset zoom levels (0.0625 px/unit doubling per
-		// step); 0 frames the whole map -- MFC's numeric zoom shortcuts.
-		if ( keyval >= GDK_KEY_1 && keyval <= GDK_KEY_9 )
-		{
-			vp->renderer.SetOrthoScale(
-			    0.0625f * std::pow( 2.0f, static_cast<float>( keyval - GDK_KEY_1 ) ) );
-			UpdateCoords( vp );
-			gtk_gl_area_queue_render( vp->area );
-			return TRUE;
-		}
-		if ( keyval == GDK_KEY_0 )
-		{
-			vp->renderer.FrameScene();
-			UpdateCoords( vp );
-			gtk_gl_area_queue_render( vp->area );
-			return TRUE;
-		}
-		switch ( keyval )
-		{
-		case GDK_KEY_Tab:
-		case GDK_KEY_ISO_Left_Tab:
-			CycleView2D( vp );
-			return TRUE;
-		case GDK_KEY_Up:
-			Nudge2D( vp, 0, 1 );
-			return TRUE;
-		case GDK_KEY_Down:
-			Nudge2D( vp, 0, -1 );
-			return TRUE;
-		case GDK_KEY_Left:
-			Nudge2D( vp, -1, 0 );
-			return TRUE;
-		case GDK_KEY_Right:
-			Nudge2D( vp, 1, 0 );
-			return TRUE;
-		case GDK_KEY_plus:
-		case GDK_KEY_equal:
-		case GDK_KEY_KP_Add:
-			Zoom2DKey( vp, true );
-			return TRUE;
-		case GDK_KEY_minus:
-		case GDK_KEY_KP_Subtract:
-			Zoom2DKey( vp, false );
-			return TRUE;
-		default:
-			return FALSE;
-		}
-	}
-	vp->keyFast = ( state & GDK_SHIFT_MASK ) != 0;
-	switch ( keyval )
-	{
-	case GDK_KEY_z:
-	case GDK_KEY_Z:
-		SetMouseLook( vp, !vp->mouseLook );
-		return TRUE;
-	case GDK_KEY_w:
-	case GDK_KEY_W:
-		vp->keyForward = true;
-		UpdateFlyTick( vp );
-		return TRUE;
-	case GDK_KEY_s:
-	case GDK_KEY_S:
-		vp->keyBack = true;
-		UpdateFlyTick( vp );
-		return TRUE;
-	case GDK_KEY_a:
-	case GDK_KEY_A:
-		vp->keyLeft = true;
-		UpdateFlyTick( vp );
-		return TRUE;
-	case GDK_KEY_d:
-	case GDK_KEY_D:
-		vp->keyRight = true;
-		UpdateFlyTick( vp );
-		return TRUE;
-	case GDK_KEY_e:
-	case GDK_KEY_E:
-		vp->keyUp = true;
-		UpdateFlyTick( vp );
-		return TRUE;
-	case GDK_KEY_q:
-	case GDK_KEY_Q:
-		vp->keyDown = true;
-		UpdateFlyTick( vp );
-		return TRUE;
-	default:
-		return FALSE;
-	}
-}
-
-void OnViewKeyReleased(
-    GtkEventControllerKey *, guint keyval, guint, GdkModifierType state, gpointer user_data )
-{
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	if ( keyval == GDK_KEY_space )
-	{
-		vp->app->spaceHeld = false;
-		return;
-	}
-	if ( vp->mode != hammergtk::ViewMode::Perspective )
-	{
-		return;
-	}
-	vp->keyFast = ( state & GDK_SHIFT_MASK ) != 0;
-	// Handle both cases: a held key's release can arrive shifted (w vs W).
-	switch ( keyval )
-	{
-	case GDK_KEY_w:
-	case GDK_KEY_W:
-		vp->keyForward = false;
-		break;
-	case GDK_KEY_s:
-	case GDK_KEY_S:
-		vp->keyBack = false;
-		break;
-	case GDK_KEY_a:
-	case GDK_KEY_A:
-		vp->keyLeft = false;
-		break;
-	case GDK_KEY_d:
-	case GDK_KEY_D:
-		vp->keyRight = false;
-		break;
-	case GDK_KEY_e:
-	case GDK_KEY_E:
-		vp->keyUp = false;
-		break;
-	case GDK_KEY_q:
-	case GDK_KEY_Q:
-		vp->keyDown = false;
-		break;
-	default:
-		return;
-	}
-	UpdateFlyTick( vp );
-}
-
-// Give a hovered viewport keyboard focus so its keys reach OnViewKeyPressed
-// (MFC makes the view active and grabs focus on mouse-move). On leave, drop any
-// held fly keys so the camera doesn't keep drifting once the pointer is away.
+// A hovered viewport takes keyboard focus (MFC makes the view active on
+// mouse-move) and is where window-level keys go.
 void OnViewEnter( GtkEventControllerMotion *, double, double, gpointer user_data )
 {
 	Viewport *vp = static_cast<Viewport *>( user_data );
+	vp->app->hovered = vp;
 	gtk_widget_grab_focus( GTK_WIDGET( vp->area ) );
-}
-
-void OnViewLeave( GtkEventControllerMotion *, gpointer user_data )
-{
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	ClearFlyKeys( vp );
-	vp->haveLookPrev = false;
 }
 
 void OnPopoverClosed( GtkPopover *popover, gpointer )
@@ -1477,30 +1353,35 @@ void OnPopoverClosed( GtkPopover *popover, gpointer )
 }
 
 // Right-click context menu. Faithful to MFC: the 2D views get a popup (a
-// selection menu when a brush is selected, otherwise the default view menu); the
-// 3D camera view has no right-click menu in MFC, so it gets none here either.
+// selection menu when something is selected, otherwise the default view menu);
+// the 3D camera view has none (its right button looks around).
 void OnContextClick( GtkGestureClick *, int, double x, double y, gpointer user_data )
 {
 	Viewport *vp = static_cast<Viewport *>( user_data );
-	if ( vp->mode == hammergtk::ViewMode::Perspective )
+	if ( vp->kind == ViewKind::Camera3D )
 	{
 		return;
 	}
-
-	GMenu *model = g_menu_new();
-	if ( vp->app->controller.Selection() )
+	auto item = []( GMenu *menu, const char *label, const std::string &id )
 	{
-		g_menu_append( model, "Delete", "app.delete" );
-		GMenu *tools = g_menu_new();
-		g_menu_append( tools, "Selection Tool", "app.tool-select" );
-		g_menu_append( tools, "Block Tool", "app.tool-block" );
-		g_menu_append_section( model, nullptr, G_MENU_MODEL( tools ) );
-		g_object_unref( tools );
+		const std::string action = "app." + ActionNameOf( id );
+		g_menu_append( menu, label, action.c_str() );
+	};
+	GMenu *model = g_menu_new();
+	if ( !vp->app->workspace.Session().CurrentSelection().Empty() )
+	{
+		item( model, "Delete", "edit.delete" );
+		item( model, "Group", "tools.group" );
+		GMenu *toolsMenu = g_menu_new();
+		item( toolsMenu, "Selection Tool", "tools.selection" );
+		item( toolsMenu, "Block Tool", "tools.block" );
+		g_menu_append_section( model, nullptr, G_MENU_MODEL( toolsMenu ) );
+		g_object_unref( toolsMenu );
 	}
 	else
 	{
-		g_menu_append( model, "Block Tool", "app.tool-block" );
-		g_menu_append( model, "Selection Tool", "app.tool-select" );
+		item( model, "Block Tool", "tools.block" );
+		item( model, "Selection Tool", "tools.selection" );
 		GMenu *view = g_menu_new();
 		g_menu_append( view, "Reset Views", "app.reset-views" );
 		g_menu_append_section( model, nullptr, G_MENU_MODEL( view ) );
@@ -1520,13 +1401,11 @@ void OnContextClick( GtkGestureClick *, int, double x, double y, gpointer user_d
 
 // ---- Widget construction ---------------------------------------------------
 
-GtkWidget *MakeViewport(
-    AppState *st, int index, hammergtk::ViewMode mode, hammer::app::ViewId vid, const char *label )
+GtkWidget *MakeViewport( AppState *st, int index, ViewKind kind, const char *label )
 {
 	Viewport &vp = st->viewports[index];
 	vp.app = st;
-	vp.mode = mode;
-	vp.vid = vid;
+	vp.kind = kind;
 	vp.label = label;
 
 	// An interactive region with its own pointer and key handling: the
@@ -1542,28 +1421,22 @@ GtkWidget *MakeViewport(
 	gtk_gl_area_set_has_depth_buffer( GTK_GL_AREA( glarea ), TRUE );
 	gtk_widget_set_hexpand( glarea, TRUE );
 	gtk_widget_set_vexpand( glarea, TRUE );
-	// Focusable so a hovered view receives key events (camera fly / mouse-look).
+	// Focusable so a hovered view receives key events.
 	gtk_widget_set_focusable( glarea, TRUE );
 	g_signal_connect( glarea, "realize", G_CALLBACK( OnGlRealize ), &vp );
 	g_signal_connect( glarea, "unrealize", G_CALLBACK( OnGlUnrealize ), &vp );
 	g_signal_connect( glarea, "render", G_CALLBACK( OnGlRender ), &vp );
 
-	// Left button: tool / orbit.
-	GtkGesture *tool = gtk_gesture_drag_new();
-	gtk_gesture_single_set_button( GTK_GESTURE_SINGLE( tool ), GDK_BUTTON_PRIMARY );
-	g_signal_connect( tool, "drag-begin", G_CALLBACK( OnToolBegin ), &vp );
-	g_signal_connect( tool, "drag-update", G_CALLBACK( OnToolUpdate ), &vp );
-	g_signal_connect( tool, "drag-end", G_CALLBACK( OnToolEnd ), &vp );
-	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( tool ) );
+	// Every button: the workspace routes it (camera navigation, then the tool).
+	GtkGesture *drag = gtk_gesture_drag_new();
+	gtk_gesture_single_set_button( GTK_GESTURE_SINGLE( drag ), 0 );
+	g_signal_connect( drag, "drag-begin", G_CALLBACK( OnDragBegin ), &vp );
+	g_signal_connect( drag, "drag-update", G_CALLBACK( OnDragUpdate ), &vp );
+	g_signal_connect( drag, "drag-end", G_CALLBACK( OnDragEnd ), &vp );
+	g_signal_connect( drag, "cancel", G_CALLBACK( OnDragCancel ), &vp );
+	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( drag ) );
 
-	// Middle button: pan / orbit.
-	GtkGesture *pan = gtk_gesture_drag_new();
-	gtk_gesture_single_set_button( GTK_GESTURE_SINGLE( pan ), GDK_BUTTON_MIDDLE );
-	g_signal_connect( pan, "drag-begin", G_CALLBACK( OnPanBegin ), &vp );
-	g_signal_connect( pan, "drag-update", G_CALLBACK( OnPanUpdate ), &vp );
-	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( pan ) );
-
-	// Touchpad two-finger scroll (pan/orbit, kinetic) + ctrl/pinch zoom.
+	// Wheel, touchpad scroll (kinetic) and pinch.
 	GtkEventController *scroll =
 	    gtk_event_controller_scroll_new( static_cast<GtkEventControllerScrollFlags>(
 	        GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES | GTK_EVENT_CONTROLLER_SCROLL_KINETIC ) );
@@ -1578,16 +1451,14 @@ GtkWidget *MakeViewport(
 	GtkEventController *motion = gtk_event_controller_motion_new();
 	g_signal_connect( motion, "motion", G_CALLBACK( OnMotion ), &vp );
 	g_signal_connect( motion, "enter", G_CALLBACK( OnViewEnter ), &vp );
-	g_signal_connect( motion, "leave", G_CALLBACK( OnViewLeave ), &vp );
 	gtk_widget_add_controller( glarea, motion );
 
-	// Per-view keys (Z mouse-look, WASD/QE fly) for the 3D camera view.
 	GtkEventController *viewKeys = gtk_event_controller_key_new();
 	g_signal_connect( viewKeys, "key-pressed", G_CALLBACK( OnViewKeyPressed ), &vp );
 	g_signal_connect( viewKeys, "key-released", G_CALLBACK( OnViewKeyReleased ), &vp );
 	gtk_widget_add_controller( glarea, viewKeys );
 
-	// Right button: context menu (2D views; the 3D view has none, like MFC).
+	// Right click: context menu (2D views).
 	GtkGesture *context = gtk_gesture_click_new();
 	gtk_gesture_single_set_button( GTK_GESTURE_SINGLE( context ), GDK_BUTTON_SECONDARY );
 	g_signal_connect( context, "pressed", G_CALLBACK( OnContextClick ), &vp );
@@ -1602,6 +1473,7 @@ GtkWidget *MakeViewport(
 	gtk_widget_set_valign( caption, GTK_ALIGN_START );
 	gtk_widget_set_margin_start( caption, 4 );
 	gtk_widget_set_margin_top( caption, 4 );
+	gtk_widget_set_can_target( caption, FALSE );
 	gtk_overlay_add_overlay( GTK_OVERLAY( overlay ), caption );
 
 	GtkWidget *frame = gtk_frame_new( nullptr );
@@ -1618,7 +1490,7 @@ void OnSelectToggled( GtkToggleButton *btn, gpointer user_data )
 	}
 	if ( gtk_toggle_button_get_active( btn ) )
 	{
-		SetToolUi( st, hammer::app::Tool::Select );
+		SetTool( st, "tools.selection" );
 	}
 }
 
@@ -1631,7 +1503,7 @@ void OnBlockToggled( GtkToggleButton *btn, gpointer user_data )
 	}
 	if ( gtk_toggle_button_get_active( btn ) )
 	{
-		SetToolUi( st, hammer::app::Tool::Block );
+		SetTool( st, "tools.block" );
 	}
 }
 
@@ -1640,7 +1512,7 @@ void OnEntityToggled( GtkToggleButton *btn, gpointer user_data )
 	AppState *st = static_cast<AppState *>( user_data );
 	if ( !st->suppressToolSignal && gtk_toggle_button_get_active( btn ) )
 	{
-		SetToolUi( st, hammer::app::Tool::Entity );
+		SetTool( st, "tools.entity" );
 	}
 }
 
@@ -1654,10 +1526,16 @@ void OnEntityClassChanged( GObject *dropdown, GParamSpec *, gpointer user_data )
 	const guint index = gtk_drop_down_get_selected( GTK_DROP_DOWN( dropdown ) );
 	if ( index < G_N_ELEMENTS( kEntityClasses ) - 1 )
 	{
-		st->controller.SetEntityClass( kEntityClasses[index] );
-		if ( st->controller.CurrentTool() == hammer::app::Tool::Entity )
+		if ( auto set = st->workspace.Commands().Execute(
+		         "set_entity_class", { { "classname", kEntityClasses[index] } } );
+		    !set )
 		{
-			SetToolUi( st, hammer::app::Tool::Entity ); // refresh the help text
+			SetHelp( st, "set_entity_class: " + set.Error().detail );
+		}
+		else if ( ActiveToolName( st ) == tools::EntityTool::kName )
+		{
+			SetHelp( st, std::string( "Entity tool (Shift+E): click in a view to place " ) +
+			                 kEntityClasses[index] );
 		}
 	}
 }
@@ -1909,9 +1787,9 @@ GtkWidget *MakeToolbar()
 	    { "document-new-symbolic", "New", "app.new" },
 	    { "document-open-symbolic", "Open", "app.open" },
 	    { "document-save-symbolic", "Save", "app.save" },
-	    { "edit-undo-symbolic", "Undo", "app.undo" },
-	    { "edit-redo-symbolic", "Redo", "app.redo" },
-	    { "edit-delete-symbolic", "Delete", "app.delete" },
+	    { "edit-undo-symbolic", "Undo", "app.act-edit-undo" },
+	    { "edit-redo-symbolic", "Redo", "app.act-edit-redo" },
+	    { "edit-delete-symbolic", "Delete", "app.act-edit-delete" },
 	    { "view-restore-symbolic", "Reset Views", "app.reset-views" },
 	};
 	for ( const Item &it : items )
@@ -1958,19 +1836,17 @@ GtkWidget *MakeViewportGrid( AppState *st )
 {
 	GtkWidget *topPane = gtk_paned_new( GTK_ORIENTATION_HORIZONTAL );
 	gtk_paned_set_start_child(
-	    GTK_PANED( topPane ), MakeViewport( st, 0, hammergtk::ViewMode::Perspective,
-	                              hammer::app::ViewId::Camera, "camera" ) );
-	gtk_paned_set_end_child( GTK_PANED( topPane ),
-	    MakeViewport( st, 1, hammergtk::ViewMode::Top, hammer::app::ViewId::Top, "top (x/y)" ) );
+	    GTK_PANED( topPane ), MakeViewport( st, 0, ViewKind::Camera3D, "camera" ) );
+	gtk_paned_set_end_child(
+	    GTK_PANED( topPane ), MakeViewport( st, 1, ViewKind::Top, "top (x/y)" ) );
 	gtk_paned_set_resize_start_child( GTK_PANED( topPane ), TRUE );
 	gtk_paned_set_resize_end_child( GTK_PANED( topPane ), TRUE );
 
 	GtkWidget *bottomPane = gtk_paned_new( GTK_ORIENTATION_HORIZONTAL );
 	gtk_paned_set_start_child(
-	    GTK_PANED( bottomPane ), MakeViewport( st, 2, hammergtk::ViewMode::Front,
-	                                 hammer::app::ViewId::Front, "front (x/z)" ) );
-	gtk_paned_set_end_child( GTK_PANED( bottomPane ),
-	    MakeViewport( st, 3, hammergtk::ViewMode::Side, hammer::app::ViewId::Side, "side (y/z)" ) );
+	    GTK_PANED( bottomPane ), MakeViewport( st, 2, ViewKind::Front, "front (x/z)" ) );
+	gtk_paned_set_end_child(
+	    GTK_PANED( bottomPane ), MakeViewport( st, 3, ViewKind::Side, "side (y/z)" ) );
 	gtk_paned_set_resize_start_child( GTK_PANED( bottomPane ), TRUE );
 	gtk_paned_set_resize_end_child( GTK_PANED( bottomPane ), TRUE );
 
@@ -1984,53 +1860,46 @@ GtkWidget *MakeViewportGrid( AppState *st )
 	return vPane;
 }
 
+// The menu bar is the ActionCatalog's categories in order, one item per action
+// (app.act-*), plus the host's own entries (Save As, assets, Reset Views, Quit).
 GMenu *MakeMenuModel()
 {
 	GMenu *bar = g_menu_new();
-
-	GMenu *file = g_menu_new();
-	g_menu_append( file, "New", "app.new" );
-	g_menu_append( file, "Open…", "app.open" );
-	g_menu_append( file, "Save", "app.save" );
-	g_menu_append( file, "Save As…", "app.saveas" );
-	GMenu *fileAssets = g_menu_new();
-	g_menu_append( fileAssets, "Mount Game Assets…", "app.mount-assets" );
-	g_menu_append( fileAssets, "Texture Application (Shift+A)…", "app.browse-materials" );
-	g_menu_append_section( file, nullptr, G_MENU_MODEL( fileAssets ) );
-	GMenu *fileEnd = g_menu_new();
-	g_menu_append( fileEnd, "Quit", "app.quit" );
-	g_menu_append_section( file, nullptr, G_MENU_MODEL( fileEnd ) );
-	g_menu_append_submenu( bar, "File", G_MENU_MODEL( file ) );
-	g_object_unref( fileEnd );
-
-	GMenu *edit = g_menu_new();
-	g_menu_append( edit, "Undo", "app.undo" );
-	g_menu_append( edit, "Redo", "app.redo" );
-	g_menu_append( edit, "Delete", "app.delete" );
-	g_menu_append_submenu( bar, "Edit", G_MENU_MODEL( edit ) );
-
-	GMenu *tools = g_menu_new();
-	g_menu_append( tools, "Selection Tool", "app.tool-select" );
-	g_menu_append( tools, "Block Tool", "app.tool-block" );
-	g_menu_append( tools, "Texture Application (Shift+A)…", "app.browse-materials" );
-	g_menu_append_submenu( bar, "Tools", G_MENU_MODEL( tools ) );
-
-	GMenu *view = g_menu_new();
-	g_menu_append( view, "Reset Views", "app.reset-views" );
-	g_menu_append_submenu( bar, "View", G_MENU_MODEL( view ) );
-
-	for ( const char *name : { "Map", "Instancing", "Window", "Help" } )
+	for ( const std::string &category : hammer::presenters::ActionCatalog::Categories() )
 	{
-		GMenu *stub = g_menu_new();
-		g_menu_append( stub, "(not implemented)", "app.noop" );
-		g_menu_append_submenu( bar, name, G_MENU_MODEL( stub ) );
-		g_object_unref( stub );
+		GMenu *menu = g_menu_new();
+		GMenu *main = g_menu_new();
+		for ( const hammer::presenters::ActionSpec *spec :
+		    hammer::presenters::ActionCatalog::InCategory( category ) )
+		{
+			const std::string action = "app." + ActionNameOf( spec->id );
+			g_menu_append( main, spec->label.c_str(), action.c_str() );
+		}
+		g_menu_append_section( menu, nullptr, G_MENU_MODEL( main ) );
+		g_object_unref( main );
+		if ( category == "File" )
+		{
+			GMenu *more = g_menu_new();
+			g_menu_append( more, "Save As…", "app.saveas" );
+			g_menu_append( more, "Mount Game Assets…", "app.mount-assets" );
+			g_menu_append( more, "Texture Application…", "app.browse-materials" );
+			g_menu_append_section( menu, nullptr, G_MENU_MODEL( more ) );
+			g_object_unref( more );
+			GMenu *end = g_menu_new();
+			g_menu_append( end, "Quit", "app.quit" );
+			g_menu_append_section( menu, nullptr, G_MENU_MODEL( end ) );
+			g_object_unref( end );
+		}
+		else if ( category == "View" )
+		{
+			GMenu *more = g_menu_new();
+			g_menu_append( more, "Reset Views", "app.reset-views" );
+			g_menu_append_section( menu, nullptr, G_MENU_MODEL( more ) );
+			g_object_unref( more );
+		}
+		g_menu_append_submenu( bar, category.c_str(), G_MENU_MODEL( menu ) );
+		g_object_unref( menu );
 	}
-
-	g_object_unref( file );
-	g_object_unref( edit );
-	g_object_unref( tools );
-	g_object_unref( view );
 	return bar;
 }
 
@@ -2076,10 +1945,12 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 	gtk_box_append( GTK_BOX( root ), gtk_separator_new( GTK_ORIENTATION_HORIZONTAL ) );
 	gtk_box_append( GTK_BOX( root ), MakeStatusBar( st ) );
 
-	// Window-level key handling (Enter/Delete/Esc/tool shortcuts).
+	// Keys that reach the window with no viewport focused go to the hovered view.
 	GtkEventController *keys = gtk_event_controller_key_new();
-	g_signal_connect( keys, "key-pressed", G_CALLBACK( OnKeyPressed ), st );
+	g_signal_connect( keys, "key-pressed", G_CALLBACK( OnWindowKeyPressed ), st );
+	g_signal_connect( keys, "key-released", G_CALLBACK( OnWindowKeyReleased ), st );
 	gtk_widget_add_controller( window, keys );
+	g_signal_connect( window, "notify::is-active", G_CALLBACK( OnWindowActive ), st );
 
 	gtk_window_set_child( GTK_WINDOW( window ), root );
 
@@ -2092,6 +1963,15 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 	{
 		DoOpen( st, st->openOnStart );
 	}
+	else
+	{
+		// A fresh map, which also frames the cameras on the empty map.
+		if ( !st->workspace.New() )
+		{
+			SetHelp( st, st->workspace.Status().Message() );
+		}
+	}
+	RefreshScene( st );
 
 	if ( st->startMaximized )
 	{
@@ -2236,9 +2116,12 @@ void OnTextureChosen( GtkFlowBox *, GtkFlowBoxChild *child, gpointer user_data )
 		return;
 	}
 	SetCurrentMaterial( st, name );
-	SetToolUi( st, hammer::app::Tool::Material );
+	// The Face tool applies the active material with a right click, as the
+	// legacy texture tool does.
+	st->workspace.RunAction( "tools.face" );
+	RefreshScene( st );
 	SetHelp( st, std::string( "Active material: " ) + name +
-	                 "  ·  click a brush to apply, or use Apply to Selection" );
+	                 "  ·  right-click a face to apply, or use Apply to Selection" );
 }
 
 // Flowbox filter: keep a cell iff its material name contains the (lowercased)
@@ -2284,24 +2167,20 @@ void OnTextureSearch( GtkSearchEntry *entry, gpointer user_data )
 	gtk_flow_box_invalidate_filter( flow );
 }
 
-// Apply the active material to every face of the selected brush and re-render.
+// Apply the active material to the selection (the catalog's apply_material).
 void OnApplyToSelection( GtkButton *, gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
-	if ( !st->controller.Selection() )
+	if ( st->workspace.Session().CurrentSelection().Empty() )
 	{
 		SetHelp( st, "Select a brush first, then Apply to Selection" );
 		return;
 	}
-	if ( st->controller.ApplyActiveMaterialToSelection() )
-	{
-		RefreshScene( st, false );
-		SetHelp( st, std::string( "Applied " ) + st->currentMaterial + " to the selected brush" );
-	}
-	else
-	{
-		SetHelp( st, "The selected brush already uses that material" );
-	}
+	const std::uint64_t before = st->workspace.Session().Revision();
+	RunCatalogAction( st, "tools.apply_material" );
+	SetHelp( st, st->workspace.Session().Revision() != before
+	                 ? "Applied " + st->currentMaterial + " to the selection"
+	                 : std::string( "The selection already uses that material" ) );
 }
 
 // The window borrows AppState's preview-widget slots while open; release them so
@@ -2467,17 +2346,28 @@ void AddActions( GtkApplication *app, AppState *st )
 	    { "save", ActionSave, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "saveas", ActionSaveAs, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "quit", ActionQuit, nullptr, nullptr, nullptr, { 0, 0, 0 } },
-	    { "undo", ActionUndo, nullptr, nullptr, nullptr, { 0, 0, 0 } },
-	    { "redo", ActionRedo, nullptr, nullptr, nullptr, { 0, 0, 0 } },
-	    { "delete", ActionDelete, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "reset-views", ActionResetViews, nullptr, nullptr, nullptr, { 0, 0, 0 } },
-	    { "tool-select", ActionToolSelect, nullptr, nullptr, nullptr, { 0, 0, 0 } },
-	    { "tool-block", ActionToolBlock, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "mount-assets", ActionMountAssets, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "browse-materials", ActionBrowseMaterials, nullptr, nullptr, nullptr, { 0, 0, 0 } },
-	    { "noop", nullptr, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	};
 	g_action_map_add_action_entries( G_ACTION_MAP( app ), entries, G_N_ELEMENTS( entries ), st );
+
+	// One action per catalog entry; toggles carry their checked state. Their
+	// shortcuts are the catalog's and reach the workspace through the key
+	// handlers, so they get no GTK accelerators.
+	for ( const hammer::presenters::ActionSpec &spec : hammer::presenters::ActionCatalog::Specs() )
+	{
+		const std::string name = ActionNameOf( spec.id );
+		const bool toggle = st->workspace.Actions().IsChecked( spec.id ).has_value();
+		GSimpleAction *action = toggle ? g_simple_action_new_stateful(
+		                                     name.c_str(), nullptr, g_variant_new_boolean( FALSE ) )
+		                               : g_simple_action_new( name.c_str(), nullptr );
+		auto &entry = CatalogActions().emplace_back(
+		    std::make_unique<CatalogAction>( CatalogAction{ st, spec.id, action } ) );
+		g_signal_connect( action, "activate", G_CALLBACK( OnCatalogAction ), entry.get() );
+		g_action_map_add_action( G_ACTION_MAP( app ), G_ACTION( action ) );
+		g_object_unref( action ); // the map holds it
+	}
 
 	struct Accel
 	{
@@ -2485,13 +2375,8 @@ void AddActions( GtkApplication *app, AppState *st )
 		const char *accel;
 	};
 	const Accel accels[] = {
-	    { "app.new", "<Control>n" },
-	    { "app.open", "<Control>o" },
-	    { "app.save", "<Control>s" },
 	    { "app.saveas", "<Control><Shift>s" },
 	    { "app.quit", "<Control>q" },
-	    { "app.undo", "<Control>z" },
-	    { "app.redo", "<Control>y" },
 	    { "app.reset-views", "<Control>r" },
 	};
 	for ( const Accel &a : accels )
@@ -2518,9 +2403,7 @@ int RunApp( AppState *st, char **argv )
 int RenderScreenshot(
     const std::string &vmfPath, const std::string &outPpm, int width, int height );
 int RenderQuad( const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH );
-int RenderControllerDemo( const std::string &outPpm, int tileW, int tileH );
-int RenderControllerLoad(
-    const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH );
+int RenderWorkspaceDemo( const std::string &outPpm, int tileW, int tileH );
 int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &outPpm, int width,
     int height, const std::string &vpkList );
 
@@ -2531,8 +2414,6 @@ int main( int argc, char **argv )
 	std::string quadOut;
 	std::string quadIn;
 	std::string demoOut;
-	std::string cquadOut;
-	std::string cquadIn;
 	std::string texturedOut;
 	std::string texturedIn;
 	std::string texturedVpks;
@@ -2560,11 +2441,6 @@ int main( int argc, char **argv )
 		else if ( a == "--demo" && i + 1 < argc )
 		{
 			demoOut = argv[++i];
-		}
-		else if ( a == "--cquad" && i + 2 < argc )
-		{
-			cquadOut = argv[++i];
-			cquadIn = argv[++i];
 		}
 		else if ( a == "--textured" && i + 3 < argc )
 		{
@@ -2605,7 +2481,8 @@ int main( int argc, char **argv )
 			std::printf( "Usage: hammer_gtk [--open MAP.vmf] [--maximized] [--builds DIR] "
 			             "[--no-publish]\n"
 			             "       hammer_gtk --screenshot OUT.ppm MAP.vmf [--width W --height H]\n"
-			             "       hammer_gtk --quad OUT.ppm MAP.vmf [--width W --height H]\n" );
+			             "       hammer_gtk --quad OUT.ppm MAP.vmf [--width W --height H]\n"
+			             "       hammer_gtk --demo OUT.ppm [--width W --height H]\n" );
 			return 0;
 		}
 	}
@@ -2620,11 +2497,7 @@ int main( int argc, char **argv )
 	}
 	if ( !demoOut.empty() )
 	{
-		return RenderControllerDemo( demoOut, width / 2, height / 2 );
-	}
-	if ( !cquadOut.empty() )
-	{
-		return RenderControllerLoad( cquadIn, cquadOut, width / 2, height / 2 );
+		return RenderWorkspaceDemo( demoOut, width / 2, height / 2 );
 	}
 	if ( !texturedOut.empty() )
 	{

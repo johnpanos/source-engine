@@ -54,7 +54,7 @@ def build(bld):
 		env       = bld.strict_cpp20_env(),
 		source    = [ 'app/change_history.cpp', 'app/clipboard.cpp', 'app/command_script.cpp',
 		              'app/document_history.cpp', 'app/document_io.cpp', 'app/edit_session.cpp',
-		              'app/editor_commands.cpp', 'app/editor_controller.cpp', 'app/editor_document.cpp',
+		              'app/editor_document.cpp',
 		              'app/entity_selection.cpp', 'app/fragment_io.cpp', 'app/instance_fixup.cpp',
 		              'app/map_build_queue.cpp', 'app/map_check.cpp', 'app/property_value.cpp',
 		              'app/save_orchestrator.cpp', 'app/selection.cpp', 'app/session_commands.cpp',
@@ -69,7 +69,7 @@ def build(bld):
 		features  = 'cxx',
 		includes  = [ '../../public' ],
 		defines   = [],
-		use       = [ 'hammer_ports', 'hammer_scene', 'vmf', 'kvtext', 'mapgeometry' ],
+		use       = [ 'hammer_ports', 'hammer_scene', 'kvtext', 'mapgeometry' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)

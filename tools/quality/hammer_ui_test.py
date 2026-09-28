@@ -9,7 +9,9 @@ private session bus; XTest is not delivered by Xwayland here). Positions in a
 view come from the status-bar coordinates the editor shows while hovering:
 
   1. halve the grid twice with "[" (64 -> 16), pick the Block tool;
-  2. drag a 384x384 block in the top view and press Return;
+  2. drag a 384x384 block in the top view, drag its 128-unit height in the
+     front view (a new box there keeps the pending box's depth, as in
+     legacy Hammer) and press Return;
   3. press F to hollow it into a room (walls one grid unit thick);
   4. pick the Entity tool, click a player start into the front view, choose
      "light" in the class dropdown (keyboard: Down, Return) and click a light;
@@ -57,6 +59,7 @@ ENTITY_CLASSES = ("info_player_start", "light")  # the dropdown's order (hammer/
 # The authored room: a block from (-192,-192,0) to (192,192,128), hollowed with
 # 16-unit walls. Entities go in the front view (x/z), so they land at y = 0.
 ROOM_HALF = 192
+ROOM_HEIGHT = 128
 PLAYER = (-64, 32)   # front-view (x, z)
 LIGHT = (64, 96)
 
@@ -104,7 +107,7 @@ def judge(vmf_path, build_path):
         except (AttributeError, ValueError):
             return False
         inner = ROOM_HALF - 16
-        return abs(x) < inner and abs(y) < inner and 16 <= z < 112
+        return abs(x) < inner and abs(y) < inner and 16 <= z < ROOM_HEIGHT - 16
 
     for classname, check in (("info_player_start", "player"), ("light", "light")):
         origins = entities.get(classname, [])
@@ -292,7 +295,9 @@ class Driver:
             return px, py
         cu, cv = self.hover_world(x + w * 0.5, y + h * 0.4)
         pu, pv = (x + w * 0.5 - ax) / su + au, (y + h * 0.4 - ay) / sv + av
-        if abs(cu - pu) > 2 or abs(cv - pv) > 2:
+        # Judged in pixels: the label shows whole units, so at a zoom below one
+        # pixel per unit a correct view is off by up to a pixel's worth.
+        if abs(cu - pu) * abs(su) > 1.5 or abs(cv - pv) * abs(sv) > 1.5:
             raise RuntimeError("%s is not linear: (%s, %s) predicted (%.1f, %.1f)"
                                % (view, cu, cv, pu, pv))
         return to_screen
@@ -359,6 +364,12 @@ def drive(case, log):
     x0, y0 = top(-ROOM_HALF, -ROOM_HALF)
     x1, y1 = top(ROOM_HALF, ROOM_HALF)
     d.drag(x0, y0, x1, y1)
+    # The height: redraw the box in the front view from its top-left corner
+    # (outside the pending box, so not a handle); the depth (y) carries over.
+    front = d.calibrate("front (x/z)")
+    x0, y0 = front(-ROOM_HALF, ROOM_HEIGHT)
+    x1, y1 = front(ROOM_HALF, 0)
+    d.drag(x0, y0, x1, y1)
     d.key("Return")  # commits the block
     d.wait_label(r"^1 brush\(es\)")
     d.note("block committed")
@@ -369,7 +380,6 @@ def drive(case, log):
         d.note("hollowed")
 
     d.press(d.named("Entity Tool", "toggle button"))
-    front = d.calibrate("front (x/z)")
     d.choose_class("info_player_start")
     d.click(*front(*PLAYER))
     d.note("player start placed")

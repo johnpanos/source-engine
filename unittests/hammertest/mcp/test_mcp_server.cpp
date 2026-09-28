@@ -12,7 +12,10 @@
 
 #include "hammer/adapters/mcp/json_value.h"
 #include "hammer/adapters/mcp/mcp_server.h"
-#include "hammer/app/editor_commands.h"
+#include "hammer/app/edit_session.h"
+#include "hammer/app/editor_settings.h"
+#include "hammer/app/session_commands.h"
+#include "hammer/formats/vmf_map_codec.h"
 #include "testing/checks.h"
 
 #include "../app/fake_file_store.h"
@@ -26,16 +29,24 @@ namespace
 using hammer::adapters::mcp::JsonValue;
 using hammer::adapters::mcp::McpServer;
 using hammer::adapters::mcp::ParseJson;
-using hammer::app::EditorCommands;
-using hammer::app::EditorController;
+using hammer::app::SessionCommands;
 using hammertest::InMemoryFileStore;
 
+// The command layer hammer_cli --mcp serves: SessionCommands over one
+// EditSession, with the strict VMF codec over an in-memory store.
 struct Fixture
 {
-	EditorController controller;
+	hammer::app::EditSession session;
+	hammer::app::EditorSettings settings;
+	hammer::formats::VmfMapCodec codec;
 	InMemoryFileStore store;
-	EditorCommands commands{ controller, store };
-	McpServer server{ commands };
+	SessionCommands commands{ session, settings,
+	    hammer::app::SessionServices{ &codec, &store, nullptr, nullptr, nullptr, nullptr } };
+	McpServer server{ SessionCommands::Catalog(),
+	    [this]( std::string_view name, const hammer::app::CommandArgs &args )
+	    {
+		    return commands.Execute( name, args );
+	    } };
 };
 
 std::string Call( int id, const std::string &tool, const std::string &arguments = "{}" )
@@ -49,7 +60,7 @@ const char kInitialize[] = R"({"jsonrpc":"2.0","id":0,"method":"initialize","par
                            R"({"protocolVersion":"2025-06-18","capabilities":{},)"
                            R"("clientInfo":{"name":"test","version":"1"}}})";
 
-// The room of hammer.app.editor_commands, authored by script.
+// A sealed room with a player start and a light, authored by script.
 const char kRoomScript[] = R"(new_map
 create_block mins="-144 -144 -16" maxs="144 144 0"
 create_block mins="-144 -144 128" maxs="144 144 144"
@@ -212,7 +223,7 @@ int main()
 		    response( f.server, R"({"jsonrpc":"2.0","id":5,"method":"tools/list"})" );
 		const JsonValue *tools =
 		    list.Find( "result" ) ? list.Find( "result" )->Find( "tools" ) : nullptr;
-		const auto &catalog = EditorCommands::Catalog();
+		const auto &catalog = SessionCommands::Catalog();
 		checks.That( tools && tools->Items().size() == catalog.size(), "tools.one-per-command" );
 		bool schemasMatch = tools != nullptr;
 		for ( size_t i = 0; tools && i < tools->Items().size() && i < catalog.size(); ++i )

@@ -11,8 +11,7 @@ Migration: `R08-DOMAIN`
 The named, serializable command layer over `EditSession`: one catalog shared by
 scripts, UI actions, UI-driven tests and the MCP server. `command_script` is
 the shared vocabulary (errors, catalog entries, argument validation, the
-script format and value parsers) that the older `EditorCommands` also uses.
-Required.
+script format and value parsers). Required.
 
 ## 2. Accepted inputs
 

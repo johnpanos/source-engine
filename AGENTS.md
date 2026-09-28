@@ -894,9 +894,16 @@ Keep the table concise and link details below or from the domain progress file.
     `SessionCommands` and `presenters::EditorWorkspace` as the one object a
     UI binds. The VMF codec has no escape hatches (user requirement): real
     Portal 2 maps load into typed fields and round-trip. 59 suites, 2,925
-    checks, both compilers; `hammer_cli` and MCP run on the new stack. The
-    GTK shell is not yet bound. See the
+    checks, both compilers; `hammer_cli` and MCP run on the new stack. See the
     [record](RFC/0002-progress.md#r08-domain-headless-domain-logic-for-the-editor-slice-done-2026-09-28).
+  - R08-GTK-WORKSPACE (2026-09-28, user direction "replace EditorController
+    with our new domain models"): `hammer/gtk` is a thin host over
+    `EditorWorkspace`. Its renderer draws the render snapshot, grid and tool
+    overlay through the workspace cameras, and its menus come from the
+    `ActionCatalog`. `EditorController`, `EditorCommands` and their four
+    suites are deleted. Q-EDITOR passes 118 of 118 suites on both compilers,
+    and `corpus.hammer.ui` passes. See the
+    [record](RFC/0002-progress.md#r08-gtk-workspace-the-gtk-shell-on-editorworkspace-slice-done-2026-09-28).
   - R08-ASYNC-BUILD (2026-09-26): F9 saves on the UI thread and compiles
     through `hammer::app::MapBuildQueue`. The builder runs on a
     `ThreadTaskRunner`, and the reply returns on `hammer::gtk::GlibTaskRunner`.
@@ -910,8 +917,8 @@ Keep the table concise and link details below or from the domain progress file.
     The inventory has 46 authored records. `archlint hammer --coverage`
     reports 38 of 531 files classified, because 8 records were extracted into
     capability libraries and no longer count. Its authored total (452) is
-    stale. There are 67 Q-EDITOR suites: 63 headless and four corpus suites
-    (loop, ui, mcp and glib-runner).
+    stale. There are 122 Q-EDITOR suites (2026-09-28): 118 headless and four
+    corpus suites (loop, ui, mcp and glib-runner).
   - `archlint hammer --verify` passes again (2026-09-25, user decision): the
     validator accepts Hammer edges to registered capability modules, such as
     the R47 schema's `hammer.formats` → `render.contracts`.

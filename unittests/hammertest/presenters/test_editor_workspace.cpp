@@ -258,6 +258,12 @@ int main()
 	wheel.y = 300;
 	checks.That(
 	    ws.OnWheel( ViewKind::Top, wheel ).handled && top.Zoom() > zoom, "the wheel zooms" );
+	const double zoomedIn = top.Zoom();
+	ws.FrameDocument(); // a host's "reset views"
+	checks.That( ws.Snapshot().bounds &&
+	                 top.Center() == top.ToPlane( ws.Snapshot().bounds->Center() ) &&
+	                 top.Zoom() < zoomedIn,
+	    "FrameDocument re-frames a panned and zoomed view on the document" );
 	const Vec3d eye = cam3.Position();
 	ws.OnKey( ViewKind::Camera3D, KeyEvent::Char( 'w' ) );
 	checks.That( ws.Advance( 0.5 ).redraw && !( cam3.Position() == eye ), "W flies the 3D camera" );

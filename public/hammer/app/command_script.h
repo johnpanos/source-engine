@@ -3,10 +3,9 @@
 // Purpose: The shared vocabulary of Hammer's named command layers (RFC 0002,
 //			hammer.app): argument maps, structured errors, catalog entries, the
 //			line-oriented script format, argument validation against a catalog
-//			entry, and the value parsers commands share. Both command layers
-//			(EditorCommands over the feasibility controller and SessionCommands
-//			over EditSession) route through this one owner, so scripts, MCP
-//			tools and UI actions parse and fail the same way.
+//			entry, and the value parsers commands share. SessionCommands (over
+//			EditSession) routes through this one owner, so scripts, MCP tools
+//			and UI actions parse and fail the same way.
 //
 //			Script format: one command per line, `name key=value key="a b"`,
 //			'#' starts a comment. Vectors are "x y z".

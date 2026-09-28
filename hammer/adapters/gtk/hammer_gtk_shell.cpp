@@ -13,7 +13,7 @@
 //			entity editor authority (hammer::app::EntitySelection +
 //			EditorDocument::AggregateProperty / SetPropertyOnSelection). The full
 //			Hammer 4-viewport layout with a real Source-material renderer and the
-//			Block/Selection *geometry* tools (hammer::app::EditorController) is the
+//			domain tools (hammer::presenters::EditorWorkspace) is the
 //			separate hammer/gtk product. The two must not duplicate a layout; keep
 //			this one minimal and focused on the entity/property-editing seam.
 //

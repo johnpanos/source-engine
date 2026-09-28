@@ -160,15 +160,6 @@ bool ArgumentText( const JsonValue &value, std::string &out )
 
 } // namespace
 
-McpServer::McpServer( app::EditorCommands &commands )
-    : McpServer( app::EditorCommands::Catalog(),
-          [&commands]( std::string_view name, const app::CommandArgs &args )
-          {
-	          return commands.Execute( name, args );
-          } )
-{
-}
-
 McpServer::McpServer( const std::vector<app::CommandInfo> &catalog, Execute execute )
     : m_catalog( catalog ), m_execute( std::move( execute ) )
 {

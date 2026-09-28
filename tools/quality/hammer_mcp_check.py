@@ -109,7 +109,8 @@ def main():
 
         _, _, error = client.call("new_map")
         checks.equal(error, False, "call.new-map")
-        _, block, error = client.call("create_block", mins=[-H, -H, 0], maxs=[H, H, 128])
+        _, block, error = client.call("create_block", mins=[-H, -H, 0],
+                                      maxs=[H, H, hammer_ui_test.ROOM_HEIGHT])
         checks.check(not error and block.isdigit(), "call.create-block", block)
         _, walls, error = client.call("hollow", id=block, thickness=16)
         checks.check(error is False, "call.hollow", walls)

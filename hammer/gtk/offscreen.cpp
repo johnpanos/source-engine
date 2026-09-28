@@ -2,68 +2,44 @@
 //
 // Purpose: Headless offscreen render path for the GTK Hammer shell (RFC 0002).
 //			Creates an OpenGL 3.3-core context with EGL (no window server needed),
-//			renders a loaded VMF into an offscreen framebuffer with the SAME
-//			hammergtk::Renderer the interactive viewports use, and writes a binary
-//			PPM. Two forms: a single 3D view (--screenshot) and the classic 2x2
-//			quad of camera/top/front/side views (--quad). This is what lets the
-//			viewports be verified automatically: "same pixels, no window".
+//			opens a map through the SAME hammer::presenters::EditorWorkspace the
+//			window uses (strict VMF codec, render snapshot, framed cameras), draws
+//			it with the SAME hammergtk::Renderer, and writes a binary PPM. Forms:
+//			a single 3D view (--screenshot), the classic 2x2 quad of camera/top/
+//			front/side views (--quad), a textured 3D view (--textured), and a quad
+//			of a map built by simulated editor input (--demo). This is what lets
+//			the viewports be verified automatically: "same pixels, no window".
 //
 //=============================================================================//
 
-#include "mapgeometry/brush.h"
-
 #include "renderer.h"
+
+#include "hammer/adapters/platform/disk_byte_store.h"
+#include "hammer/adapters/platform/disk_file_store.h"
+#include "hammer/formats/material_catalog.h"
+#include "hammer/formats/search_path_assets.h"
+#include "hammer/formats/vmf_map_codec.h"
+#include "hammer/formats/vpk_archive.h"
+#include "hammer/presenters/editor_workspace.h"
+#ifdef HAMMER_KTX_PREVIEW
+#include "hammer/adapters/source/ktx2_preview.h"
+#endif
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include <epoxy/egl.h>
 #include <epoxy/gl.h>
 
-// The offscreen path is self-contained and free of GTK. It reads the file via the
-// shared DiskFileStore and imports full-fidelity VMF geometry directly through the
-// keyvalues codec + VMF geometry decoder (not the editable box model), so a screenshot of
-// an arbitrary map shows its real brushes.
-#include "hammer/adapters/platform/disk_byte_store.h"
-#include "hammer/adapters/platform/disk_file_store.h"
-#include "hammer/app/editor_controller.h"
-#include "kvtext/keyvalues.h"
-#include "hammer/formats/material_catalog.h"
-#include "hammer/formats/search_path_assets.h"
-#include "vmf/vmf_geometry.h"
-#ifdef HAMMER_KTX_PREVIEW
-#include "hammer/adapters/source/ktx2_preview.h"
-#endif
-#include "hammer/formats/vpk_archive.h"
-
-#include <memory>
-
 namespace
 {
 
-bool LoadSceneForScreenshot(
-    const std::string &path, mapgeometry::WorldScene &scene, std::string &error )
-{
-	hammer::adapters::platform::DiskFileStore store;
-	std::string text;
-	if ( !store.Read( path, text ) )
-	{
-		error = "could not read " + path;
-		return false;
-	}
-	kvtext::ParseResult pr = kvtext::ParseKeyValues( text );
-	if ( !pr.ok )
-	{
-		error = pr.error;
-		return false;
-	}
-	scene = vmf::BuildSceneFromDocument( pr.root );
-	return true;
-}
+using hammer::viewport::ViewKind;
 
 bool WritePpm( const std::string &path, int w, int h, const std::vector<std::uint8_t> &rgb )
 {
@@ -225,6 +201,172 @@ void BlitTile( std::vector<std::uint8_t> &dst, int fullW, const std::vector<std:
 	}
 }
 
+// A workspace over the strict codec and the disk store (no builder, no
+// catalogs): the editor's own document, snapshot and cameras.
+struct Editor
+{
+	hammer::formats::VmfMapCodec codec;
+	hammer::adapters::platform::DiskFileStore store;
+	hammer::presenters::EditorWorkspace workspace{
+	    hammer::presenters::WorkspaceServices{ &codec, &store, nullptr, nullptr, nullptr } };
+
+	void SetSize( int width, int height )
+	{
+		for ( ViewKind kind :
+		    { ViewKind::Camera3D, ViewKind::Top, ViewKind::Front, ViewKind::Side } )
+		{
+			workspace.SetViewportSize( kind, width, height );
+		}
+	}
+
+	// Opens 'path' with every camera 'width' x 'height' (so opening frames them).
+	bool Open( const std::string &path, int width, int height, const char *tag )
+	{
+		SetSize( width, height );
+		if ( !workspace.Open( path ) )
+		{
+			std::fprintf( stderr, "%s: failed to open %s: %s\n", tag, path.c_str(),
+			    workspace.Status().Message().c_str() );
+			return false;
+		}
+		return true;
+	}
+};
+
+// Draws one view of the workspace into the bound framebuffer and reads it back.
+std::vector<std::uint8_t> RenderView( hammergtk::Renderer &renderer,
+    hammer::presenters::EditorWorkspace &ws, ViewKind kind, int width, int height )
+{
+	const hammer::tools::OverlayList overlay = ws.Overlay( kind );
+	if ( kind == ViewKind::Camera3D )
+	{
+		renderer.Render3D( ws.Camera3DView(), overlay, width, height );
+	}
+	else
+	{
+		renderer.Render2D( ws.Camera2DFor( kind ), ws.GridLines( kind ), overlay, width, height );
+	}
+	glFinish();
+	return ReadRgbTopDown( width, height );
+}
+
+// An EGL context with a bound WxH framebuffer, released on scope exit.
+struct OffscreenTarget
+{
+	EglContext egl;
+	GLuint fbo = 0;
+	GLuint colorTex = 0;
+	GLuint depthRb = 0;
+	int status = 0; // 0 = ready, else the exit code
+
+	OffscreenTarget( int width, int height, const char *tag )
+	{
+		egl = CreateEgl( width, height );
+		if ( !egl.ok )
+		{
+			std::fprintf( stderr, "%s: EGL context creation failed\n", tag );
+			status = 4;
+			return;
+		}
+		if ( !CreateFbo( width, height, fbo, colorTex, depthRb ) )
+		{
+			std::fprintf( stderr, "%s: framebuffer incomplete\n", tag );
+			status = 5;
+		}
+	}
+	~OffscreenTarget()
+	{
+		if ( egl.ok )
+		{
+			glDeleteFramebuffers( 1, &fbo );
+			glDeleteRenderbuffers( 1, &depthRb );
+			glDeleteTextures( 1, &colorTex );
+		}
+		DestroyEgl( egl );
+	}
+};
+
+// Renders the workspace's 3D view to 'outPpm'.
+int RenderSingle( hammer::presenters::EditorWorkspace &ws,
+    hammer::formats::MaterialCatalog *catalog, const std::string &outPpm, int width, int height,
+    const char *tag )
+{
+	OffscreenTarget target( width, height, tag );
+	if ( target.status )
+	{
+		return target.status;
+	}
+	hammergtk::Renderer renderer;
+	std::string error;
+	if ( !renderer.Init( error ) )
+	{
+		std::fprintf( stderr, "%s: renderer init failed: %s\n", tag, error.c_str() );
+		return 6;
+	}
+	renderer.SetMaterialCatalog( catalog );
+	renderer.SetSnapshot( ws.Snapshot() );
+	const std::vector<std::uint8_t> rgb =
+	    RenderView( renderer, ws, ViewKind::Camera3D, width, height );
+	if ( !WritePpm( outPpm, width, height, rgb ) )
+	{
+		std::fprintf( stderr, "%s: failed to write %s\n", tag, outPpm.c_str() );
+		return 7;
+	}
+	std::printf( "%s: wrote %s (%dx%d), %d solids, %d triangles, %d entities\n", tag,
+	    outPpm.c_str(), width, height, renderer.SolidCount(), renderer.TriangleCount(),
+	    renderer.EntityCount() );
+	return 0;
+}
+
+// Renders the classic 2x2 quad (camera / top / front / side) to a PPM: camera
+// top-left, top(X/Y) top-right, front(X/Z) bottom-left, side(Y/Z) bottom-right,
+// matching the on-screen layout.
+int RenderQuadOf( hammer::presenters::EditorWorkspace &ws, const std::string &outPpm, int tileW,
+    int tileH, const char *tag )
+{
+	OffscreenTarget target( tileW, tileH, tag );
+	if ( target.status )
+	{
+		return target.status;
+	}
+	hammergtk::Renderer renderer;
+	std::string error;
+	if ( !renderer.Init( error ) )
+	{
+		std::fprintf( stderr, "%s: renderer init failed: %s\n", tag, error.c_str() );
+		return 6;
+	}
+	renderer.SetSnapshot( ws.Snapshot() );
+	const int fullW = tileW * 2;
+	const int fullH = tileH * 2;
+	std::vector<std::uint8_t> composite( static_cast<std::size_t>( fullW ) * fullH * 3, 20 );
+	struct Tile
+	{
+		ViewKind kind;
+		int tx;
+		int ty;
+	};
+	const Tile tiles[] = {
+	    { ViewKind::Camera3D, 0, 0 },
+	    { ViewKind::Top, 1, 0 },
+	    { ViewKind::Front, 0, 1 },
+	    { ViewKind::Side, 1, 1 },
+	};
+	for ( const Tile &t : tiles )
+	{
+		BlitTile( composite, fullW, RenderView( renderer, ws, t.kind, tileW, tileH ), tileW, tileH,
+		    t.tx, t.ty );
+	}
+	if ( !WritePpm( outPpm, fullW, fullH, composite ) )
+	{
+		std::fprintf( stderr, "%s: failed to write %s\n", tag, outPpm.c_str() );
+		return 7;
+	}
+	std::printf( "%s: wrote %s (%dx%d), %d solids, %d entities\n", tag, outPpm.c_str(), fullW,
+	    fullH, renderer.SolidCount(), renderer.EntityCount() );
+	return 0;
+}
+
 } // namespace
 
 int RenderScreenshot( const std::string &vmfPath, const std::string &outPpm, int width, int height )
@@ -234,66 +376,12 @@ int RenderScreenshot( const std::string &vmfPath, const std::string &outPpm, int
 		std::fprintf( stderr, "screenshot: invalid size %dx%d\n", width, height );
 		return 2;
 	}
-	mapgeometry::WorldScene scene;
-	std::string error;
-	if ( !LoadSceneForScreenshot( vmfPath, scene, error ) )
+	Editor editor;
+	if ( !editor.Open( vmfPath, width, height, "screenshot" ) )
 	{
-		std::fprintf(
-		    stderr, "screenshot: failed to load %s: %s\n", vmfPath.c_str(), error.c_str() );
 		return 3;
 	}
-
-	EglContext egl = CreateEgl( width, height );
-	if ( !egl.ok )
-	{
-		std::fprintf( stderr, "screenshot: EGL context creation failed\n" );
-		DestroyEgl( egl );
-		return 4;
-	}
-
-	GLuint fbo = 0;
-	GLuint colorTex = 0;
-	GLuint depthRb = 0;
-	if ( !CreateFbo( width, height, fbo, colorTex, depthRb ) )
-	{
-		std::fprintf( stderr, "screenshot: framebuffer incomplete\n" );
-		DestroyEgl( egl );
-		return 5;
-	}
-
-	int rc = 0;
-	{
-		hammergtk::Renderer renderer;
-		if ( !renderer.Init( error ) )
-		{
-			std::fprintf( stderr, "screenshot: renderer init failed: %s\n", error.c_str() );
-			rc = 6;
-		}
-		else
-		{
-			renderer.SetScene( scene );
-			renderer.Render( width, height );
-			glFinish();
-			const std::vector<std::uint8_t> rgb = ReadRgbTopDown( width, height );
-			if ( !WritePpm( outPpm, width, height, rgb ) )
-			{
-				std::fprintf( stderr, "screenshot: failed to write %s\n", outPpm.c_str() );
-				rc = 7;
-			}
-			else
-			{
-				std::printf( "screenshot: wrote %s (%dx%d), %d solids, %d triangles\n",
-				    outPpm.c_str(), width, height, renderer.SolidCount(),
-				    renderer.TriangleCount() );
-			}
-		}
-	}
-
-	glDeleteFramebuffers( 1, &fbo );
-	glDeleteRenderbuffers( 1, &depthRb );
-	glDeleteTextures( 1, &colorTex );
-	DestroyEgl( egl );
-	return rc;
+	return RenderSingle( editor.workspace, nullptr, outPpm, width, height, "screenshot" );
 }
 
 // Renders a single 3D view of a VMF with materials mounted from one or more VPK
@@ -308,11 +396,9 @@ int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &out
 		std::fprintf( stderr, "textured: invalid size %dx%d\n", width, height );
 		return 2;
 	}
-	mapgeometry::WorldScene scene;
-	std::string error;
-	if ( !LoadSceneForScreenshot( vmfPath, scene, error ) )
+	Editor editor;
+	if ( !editor.Open( vmfPath, width, height, "textured" ) )
 	{
-		std::fprintf( stderr, "textured: failed to load %s: %s\n", vmfPath.c_str(), error.c_str() );
 		return 3;
 	}
 
@@ -351,229 +437,86 @@ int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &out
 #else
 	hammer::formats::MaterialCatalog catalog( assets );
 #endif
-
-	EglContext egl = CreateEgl( width, height );
-	if ( !egl.ok )
-	{
-		std::fprintf( stderr, "textured: EGL context creation failed\n" );
-		DestroyEgl( egl );
-		return 4;
-	}
-	GLuint fbo = 0, colorTex = 0, depthRb = 0;
-	if ( !CreateFbo( width, height, fbo, colorTex, depthRb ) )
-	{
-		std::fprintf( stderr, "textured: framebuffer incomplete\n" );
-		DestroyEgl( egl );
-		return 5;
-	}
-
-	int rc = 0;
-	{
-		hammergtk::Renderer renderer;
-		if ( !renderer.Init( error ) )
-		{
-			std::fprintf( stderr, "textured: renderer init failed: %s\n", error.c_str() );
-			rc = 6;
-		}
-		else
-		{
-			renderer.SetMaterialCatalog( &catalog );
-			renderer.SetScene( scene );
-			renderer.FrameScene();
-			renderer.Render( width, height );
-			glFinish();
-			const std::vector<std::uint8_t> rgb = ReadRgbTopDown( width, height );
-			if ( !WritePpm( outPpm, width, height, rgb ) )
-			{
-				std::fprintf( stderr, "textured: failed to write %s\n", outPpm.c_str() );
-				rc = 7;
-			}
-			else
-			{
-				std::printf( "textured: wrote %s (%dx%d), %d solids, %d triangles\n",
-				    outPpm.c_str(), width, height, renderer.SolidCount(),
-				    renderer.TriangleCount() );
-			}
-		}
-	}
-
-	glDeleteFramebuffers( 1, &fbo );
-	glDeleteRenderbuffers( 1, &depthRb );
-	glDeleteTextures( 1, &colorTex );
-	DestroyEgl( egl );
-	return rc;
+	return RenderSingle( editor.workspace, &catalog, outPpm, width, height, "textured" );
 }
-
-// Renders the classic 2x2 viewport quad (camera / top / front / side) to a single
-// PPM: camera top-left, top(X/Y) top-right, front(X/Z) bottom-left, side(Y/Z)
-// bottom-right, matching the on-screen layout.
-namespace
-{
-
-// Renders a prebuilt scene as the classic 2x2 quad (camera / top / front / side)
-// to a PPM. 'highlightId' tints one solid (a selected brush) like the live UI.
-int RenderQuadScene( const mapgeometry::WorldScene &scene, const std::string &outPpm, int tileW,
-    int tileH, int highlightId, const char *tag )
-{
-	if ( tileW <= 0 || tileH <= 0 )
-	{
-		std::fprintf( stderr, "%s: invalid size %dx%d\n", tag, tileW, tileH );
-		return 2;
-	}
-
-	EglContext egl = CreateEgl( tileW, tileH );
-	if ( !egl.ok )
-	{
-		std::fprintf( stderr, "%s: EGL context creation failed\n", tag );
-		DestroyEgl( egl );
-		return 4;
-	}
-
-	GLuint fbo = 0;
-	GLuint colorTex = 0;
-	GLuint depthRb = 0;
-	if ( !CreateFbo( tileW, tileH, fbo, colorTex, depthRb ) )
-	{
-		std::fprintf( stderr, "%s: framebuffer incomplete\n", tag );
-		DestroyEgl( egl );
-		return 5;
-	}
-
-	int rc = 0;
-	{
-		std::string error;
-		hammergtk::Renderer renderer;
-		if ( !renderer.Init( error ) )
-		{
-			std::fprintf( stderr, "%s: renderer init failed: %s\n", tag, error.c_str() );
-			rc = 6;
-		}
-		else
-		{
-			renderer.SetHighlight( highlightId );
-			renderer.SetScene( scene );
-
-			const int fullW = tileW * 2;
-			const int fullH = tileH * 2;
-			std::vector<std::uint8_t> composite(
-			    static_cast<std::size_t>( fullW ) * fullH * 3, 20 );
-
-			struct Tile
-			{
-				hammergtk::ViewMode mode;
-				int tx;
-				int ty;
-			};
-			const Tile tiles[] = {
-			    { hammergtk::ViewMode::Perspective, 0, 0 },
-			    { hammergtk::ViewMode::Top, 1, 0 },
-			    { hammergtk::ViewMode::Front, 0, 1 },
-			    { hammergtk::ViewMode::Side, 1, 1 },
-			};
-			for ( const Tile &t : tiles )
-			{
-				renderer.SetViewMode( t.mode );
-				renderer.FrameScene();
-				renderer.Render( tileW, tileH );
-				glFinish();
-				const std::vector<std::uint8_t> tile = ReadRgbTopDown( tileW, tileH );
-				BlitTile( composite, fullW, tile, tileW, tileH, t.tx, t.ty );
-			}
-
-			if ( !WritePpm( outPpm, fullW, fullH, composite ) )
-			{
-				std::fprintf( stderr, "%s: failed to write %s\n", tag, outPpm.c_str() );
-				rc = 7;
-			}
-			else
-			{
-				std::printf( "%s: wrote %s (%dx%d), %d solids\n", tag, outPpm.c_str(), fullW, fullH,
-				    renderer.SolidCount() );
-			}
-		}
-	}
-
-	glDeleteFramebuffers( 1, &fbo );
-	glDeleteRenderbuffers( 1, &depthRb );
-	glDeleteTextures( 1, &colorTex );
-	DestroyEgl( egl );
-	return rc;
-}
-
-} // namespace
 
 int RenderQuad( const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH )
 {
-	mapgeometry::WorldScene scene;
-	std::string error;
-	if ( !LoadSceneForScreenshot( vmfPath, scene, error ) )
+	if ( tileW <= 0 || tileH <= 0 )
 	{
-		std::fprintf( stderr, "quad: failed to load %s: %s\n", vmfPath.c_str(), error.c_str() );
+		std::fprintf( stderr, "quad: invalid size %dx%d\n", tileW, tileH );
+		return 2;
+	}
+	Editor editor;
+	if ( !editor.Open( vmfPath, tileW, tileH, "quad" ) )
+	{
 		return 3;
 	}
-	return RenderQuadScene( scene, outPpm, tileW, tileH, -2147483647, "quad" );
+	return RenderQuadOf( editor.workspace, outPpm, tileW, tileH, "quad" );
 }
 
-// Builds a small map by driving EditorController with SIMULATED input (the exact
-// calls the GUI makes from gestures/keys), selects one brush, and renders the
-// result. A visual companion to the headless conformance UI test.
-int RenderControllerDemo( const std::string &outPpm, int tileW, int tileH )
+// Builds a small map by driving the EditorWorkspace with SIMULATED input (the
+// events the window sends from gestures and keys), selects one brush, and
+// renders the result. A visual companion to the UI-driven conformance test.
+int RenderWorkspaceDemo( const std::string &outPpm, int tileW, int tileH )
 {
-	hammer::app::EditorController c;
-	c.SetGridSize( 64 );
-
-	auto block = [&]( hammer::app::ViewId view, double u0, double v0, double u1, double v1 )
+	if ( tileW <= 0 || tileH <= 0 )
 	{
-		c.SetTool( hammer::app::Tool::Block );
-		c.PointerDown( view, u0, v0 );
-		c.PointerDrag( view, u1, v1 );
-		c.PointerUp( view, u1, v1 );
-		c.Commit();
+		std::fprintf( stderr, "demo: invalid size %dx%d\n", tileW, tileH );
+		return 2;
+	}
+	Editor editor;
+	hammer::presenters::EditorWorkspace &ws = editor.workspace;
+	editor.SetSize( tileW, tileH );
+	if ( !ws.New() )
+	{
+		std::fprintf( stderr, "demo: %s\n", ws.Status().Message().c_str() );
+		return 3;
+	}
+
+	namespace tools = hammer::tools;
+	auto pointer = [&]( ViewKind view, tools::PointerPhase phase, double u, double v )
+	{
+		const hammer::viewport::Camera2D &camera = ws.Camera2DFor( view );
+		const hammer::viewport::ScreenPoint p = camera.PlaneToScreen( { u, v } );
+		tools::PointerEvent event;
+		event.phase = phase;
+		event.button = phase == tools::PointerPhase::Move ? tools::PointerButton::None
+		                                                  : tools::PointerButton::Left;
+		event.x = p.x;
+		event.y = p.y;
+		event.view = view;
+		ws.OnPointer( view, event );
+	};
+	auto drag = [&]( ViewKind view, double u0, double v0, double u1, double v1 )
+	{
+		pointer( view, tools::PointerPhase::Down, u0, v0 );
+		pointer( view, tools::PointerPhase::Move, u1, v1 );
+		pointer( view, tools::PointerPhase::Up, u1, v1 );
+	};
+	auto enter = [&]()
+	{
+		ws.OnKey( ViewKind::Top, tools::KeyEvent::Press( tools::Key::Enter ) );
 	};
 
-	// An L-shaped floor plan plus a taller tower, all via simulated Block drags.
-	c.SetBlockDepth( 64 );
-	block( hammer::app::ViewId::Top, 0, 0, 384, 128 );
-	block( hammer::app::ViewId::Top, 0, 128, 128, 384 );
-	c.SetBlockDepth( 320 );
-	block( hammer::app::ViewId::Top, 256, 256, 448, 448 );
+	// An L-shaped floor plan (one grid step tall), then a tower whose height is
+	// drawn in the front view, all via simulated Block drags.
+	ws.RunAction( "tools.block" );
+	drag( ViewKind::Top, 0, 0, 384, 128 );
+	enter();
+	drag( ViewKind::Top, 0, 128, 128, 384 );
+	enter();
+	drag( ViewKind::Top, 256, 256, 448, 448 );
+	drag( ViewKind::Front, 256, 320, 448, 0 );
+	enter();
 
 	// Select the tower (Selection tool click) so it renders highlighted.
-	c.SetTool( hammer::app::Tool::Select );
-	c.PointerDown( hammer::app::ViewId::Top, 350, 350 );
-	c.PointerUp( hammer::app::ViewId::Top, 350, 350 );
-	const int selId = c.Selection() ? *c.Selection() : -2147483647;
+	ws.RunAction( "tools.selection" );
+	pointer( ViewKind::Top, tools::PointerPhase::Down, 350, 350 );
+	pointer( ViewKind::Top, tools::PointerPhase::Up, 350, 350 );
 
-	std::printf( "demo: built %zu brushes via simulated input\n", c.Brushes().size() );
-	return RenderQuadScene( c.BuildScene(), outPpm, tileW, tileH, selId, "demo" );
-}
-
-// Loads a VMF THROUGH the EditorController (the editor's own path) and renders it,
-// to verify the editable model preserves and renders real brush shapes rather than
-// bounding boxes.
-int RenderControllerLoad(
-    const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH )
-{
-	hammer::adapters::platform::DiskFileStore store;
-	std::string text;
-	if ( !store.Read( vmfPath, text ) )
-	{
-		std::fprintf( stderr, "cquad: could not read %s\n", vmfPath.c_str() );
-		return 3;
-	}
-	hammer::app::EditorController c;
-	std::string error;
-	if ( !c.LoadVmf( text, error ) )
-	{
-		std::fprintf( stderr, "cquad: LoadVmf failed: %s\n", error.c_str() );
-		return 3;
-	}
-	std::size_t maxFaces = 0;
-	for ( const auto &b : c.Brushes() )
-	{
-		maxFaces = std::max( maxFaces, b.planes.size() );
-	}
-	std::printf( "cquad: controller loaded %zu brushes (max %zu faces on a brush)\n",
-	    c.Brushes().size(), maxFaces );
-	return RenderQuadScene( c.BuildScene(), outPpm, tileW, tileH, -2147483647, "cquad" );
+	std::printf( "demo: built %zu brushes via simulated input, %zu selected\n",
+	    ws.Session().Document().SolidIds().size(), ws.Session().CurrentSelection().objects.size() );
+	ws.FrameDocument();
+	return RenderQuadOf( ws, outPpm, tileW, tileH, "demo" );
 }

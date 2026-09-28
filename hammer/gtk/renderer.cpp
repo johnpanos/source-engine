@@ -2,16 +2,21 @@
 //
 // Purpose: Implementation of the GTK Hammer viewport renderer (see renderer.h).
 //			Uses libepoxy for GL entry points. No GTK/GDK includes: the caller owns
-//			context/current-ness and framebuffer binding. Renders either a shaded
-//			perspective camera view or a 2D orthographic wireframe-with-grid view.
+//			context/current-ness and framebuffer binding. The view transforms are
+//			derived from the viewport cameras' own projections (Camera2D::
+//			WorldToScreen, Camera3D's basis and field of view), so a pixel drawn
+//			here and a pixel the tools pick agree.
 //
 //=============================================================================//
 
 #include "renderer.h"
 
+#include "mapgeometry/vec3.h"
+
 #include <epoxy/gl.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -22,7 +27,17 @@ namespace hammergtk
 namespace
 {
 
-constexpr float kPi = 3.14159265358979323846f;
+using hammer::tools::OverlayItem;
+using hammer::tools::OverlayKind;
+using hammer::tools::OverlayRole;
+using hammer::viewport::Camera2D;
+using hammer::viewport::Camera3D;
+using hammer::viewport::GridLine;
+using hammer::viewport::GridLineKind;
+using hammer::viewport::GridLineOrientation;
+using mapgeometry::Vec3d;
+
+constexpr double kPi = 3.14159265358979323846;
 
 // ---- Minimal column-major mat4 helpers (GL order) --------------------------
 
@@ -49,65 +64,89 @@ Mat4 Multiply( const Mat4 &a, const Mat4 &b )
 	return r;
 }
 
-Mat4 Perspective( float fovyRad, float aspect, float zNear, float zFar )
+Mat4 Perspective( double fovyRad, double aspect, double zNear, double zFar )
 {
 	Mat4 r;
 	for ( float &v : r.m )
 	{
 		v = 0.0f;
 	}
-	const float f = 1.0f / std::tan( fovyRad * 0.5f );
-	r.m[0] = f / aspect;
-	r.m[5] = f;
-	r.m[10] = ( zFar + zNear ) / ( zNear - zFar );
+	const double f = 1.0 / std::tan( fovyRad * 0.5 );
+	r.m[0] = static_cast<float>( f / aspect );
+	r.m[5] = static_cast<float>( f );
+	r.m[10] = static_cast<float>( ( zFar + zNear ) / ( zNear - zFar ) );
 	r.m[11] = -1.0f;
-	r.m[14] = ( 2.0f * zFar * zNear ) / ( zNear - zFar );
+	r.m[14] = static_cast<float>( ( 2.0 * zFar * zNear ) / ( zNear - zFar ) );
 	return r;
 }
 
-void Normalize3( float v[3] )
+// The view matrix of a Camera3D: rows Right, Up and -Forward about the eye.
+Mat4 ViewOf( const Camera3D &camera )
 {
-	const float len = std::sqrt( v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );
-	if ( len > 1.0e-8f )
+	const Vec3d r = camera.Right();
+	const Vec3d u = camera.Up();
+	const Vec3d f = camera.Forward();
+	const Vec3d &eye = camera.Position();
+	Mat4 m;
+	m.m[0] = static_cast<float>( r.x );
+	m.m[4] = static_cast<float>( r.y );
+	m.m[8] = static_cast<float>( r.z );
+	m.m[12] = static_cast<float>( -mapgeometry::Dot( r, eye ) );
+	m.m[1] = static_cast<float>( u.x );
+	m.m[5] = static_cast<float>( u.y );
+	m.m[9] = static_cast<float>( u.z );
+	m.m[13] = static_cast<float>( -mapgeometry::Dot( u, eye ) );
+	m.m[2] = static_cast<float>( -f.x );
+	m.m[6] = static_cast<float>( -f.y );
+	m.m[10] = static_cast<float>( -f.z );
+	m.m[14] = static_cast<float>( mapgeometry::Dot( f, eye ) );
+	m.m[3] = 0.0f;
+	m.m[7] = 0.0f;
+	m.m[11] = 0.0f;
+	m.m[15] = 1.0f;
+	return m;
+}
+
+// World -> clip for a Camera2D. The camera's projection is affine, so it is
+// read off Camera2D::WorldToScreen at the origin and the three unit vectors
+// rather than restating its axis and sign conventions here.
+Mat4 OrthoOf( const Camera2D &camera )
+{
+	const double w = camera.Width();
+	const double h = camera.Height();
+	const hammer::viewport::ScreenPoint s0 = camera.WorldToScreen( Vec3d( 0, 0, 0 ) );
+	const Vec3d unit[3] = { Vec3d( 1, 0, 0 ), Vec3d( 0, 1, 0 ), Vec3d( 0, 0, 1 ) };
+	Mat4 m;
+	for ( float &v : m.m )
 	{
-		v[0] /= len;
-		v[1] /= len;
-		v[2] /= len;
+		v = 0.0f;
 	}
+	for ( int i = 0; i < 3; ++i )
+	{
+		const hammer::viewport::ScreenPoint s = camera.WorldToScreen( unit[i] );
+		m.m[i * 4 + 0] = static_cast<float>( 2.0 / w * ( s.x - s0.x ) );
+		m.m[i * 4 + 1] = static_cast<float>( -2.0 / h * ( s.y - s0.y ) );
+	}
+	m.m[12] = static_cast<float>( 2.0 / w * s0.x - 1.0 );
+	m.m[13] = static_cast<float>( 1.0 - 2.0 / h * s0.y );
+	m.m[15] = 1.0f;
+	return m;
 }
 
-void Cross3( const float a[3], const float b[3], float out[3] )
+// Logical pixels (y down) -> clip.
+Mat4 ScreenOf( int width, int height )
 {
-	out[0] = a[1] * b[2] - a[2] * b[1];
-	out[1] = a[2] * b[0] - a[0] * b[2];
-	out[2] = a[0] * b[1] - a[1] * b[0];
-}
-
-Mat4 LookAt( const float eye[3], const float center[3], const float up[3] )
-{
-	float f[3] = { center[0] - eye[0], center[1] - eye[1], center[2] - eye[2] };
-	Normalize3( f );
-	float s[3];
-	Cross3( f, up, s );
-	Normalize3( s );
-	float u[3];
-	Cross3( s, f, u );
-
-	Mat4 r;
-	r.m[0] = s[0];
-	r.m[4] = s[1];
-	r.m[8] = s[2];
-	r.m[1] = u[0];
-	r.m[5] = u[1];
-	r.m[9] = u[2];
-	r.m[2] = -f[0];
-	r.m[6] = -f[1];
-	r.m[10] = -f[2];
-	r.m[12] = -( s[0] * eye[0] + s[1] * eye[1] + s[2] * eye[2] );
-	r.m[13] = -( u[0] * eye[0] + u[1] * eye[1] + u[2] * eye[2] );
-	r.m[14] = f[0] * eye[0] + f[1] * eye[1] + f[2] * eye[2];
-	r.m[15] = 1.0f;
-	return r;
+	Mat4 m;
+	for ( float &v : m.m )
+	{
+		v = 0.0f;
+	}
+	m.m[0] = 2.0f / static_cast<float>( width );
+	m.m[5] = -2.0f / static_cast<float>( height );
+	m.m[12] = -1.0f;
+	m.m[13] = 1.0f;
+	m.m[15] = 1.0f;
+	return m;
 }
 
 // ---- Shaders ---------------------------------------------------------------
@@ -133,14 +172,12 @@ const char *kFragmentSrc = "#version 330 core\n"
                            "in vec3 vColor;\n"
                            "in vec2 vUV;\n"
                            "uniform int uWire;\n"
-                           "uniform int uOverride;\n"
-                           "uniform vec3 uOverrideColor;\n"
                            "uniform int uUseTexture;\n"
                            "uniform sampler2D uTex;\n"
                            "out vec4 fragColor;\n"
                            "void main(){\n"
                            "  if (uWire == 1) {\n"
-                           "    fragColor = vec4(uOverride == 1 ? uOverrideColor : vColor, 1.0);\n"
+                           "    fragColor = vec4(vColor, 1.0);\n"
                            "    return;\n"
                            "  }\n"
                            "  vec3 base = (uUseTexture == 1) ? texture(uTex, vUV).rgb : vColor;\n"
@@ -170,34 +207,112 @@ bool CompileShader( GLenum type, const char *src, GLuint &out, std::string &erro
 	return true;
 }
 
-void SolidColor( int index, float out[3] )
+struct Color
+{
+	float r = 1.0f;
+	float g = 1.0f;
+	float b = 1.0f;
+};
+
+Color SolidFill( int index )
 {
 	const std::uint32_t h = static_cast<std::uint32_t>( index ) * 2654435761u;
-	out[0] = 0.45f + 0.5f * ( ( h & 0xFF ) / 255.0f );
-	out[1] = 0.45f + 0.5f * ( ( ( h >> 8 ) & 0xFF ) / 255.0f );
-	out[2] = 0.45f + 0.5f * ( ( ( h >> 16 ) & 0xFF ) / 255.0f );
+	return { 0.45f + 0.5f * ( ( h & 0xFF ) / 255.0f ),
+	    0.45f + 0.5f * ( ( ( h >> 8 ) & 0xFF ) / 255.0f ),
+	    0.45f + 0.5f * ( ( ( h >> 16 ) & 0xFF ) / 255.0f ) };
+}
+
+Color FromRgb( const hammer::scene::Rgb &c )
+{
+	return { c.r / 255.0f, c.g / 255.0f, c.b / 255.0f };
+}
+
+constexpr Color kEdge = { 0.50f, 0.52f, 0.58f };
+constexpr Color kSelectedFill = { 1.00f, 0.62f, 0.28f };
+constexpr Color kSelectedEdge = { 1.00f, 0.58f, 0.15f };
+constexpr Color kSelectedFace = { 1.00f, 0.35f, 0.35f };
+constexpr Color kDisplacementEdge = { 0.35f, 0.55f, 0.40f };
+constexpr Color kEntityDefault = { 0.85f, 0.35f, 0.85f };
+
+Color RoleColor( OverlayRole role )
+{
+	switch ( role )
+	{
+	case OverlayRole::Selection:
+		return { 1.00f, 0.58f, 0.15f };
+	case OverlayRole::Pending:
+		return { 1.00f, 0.88f, 0.30f };
+	case OverlayRole::Handle:
+		return { 0.95f, 0.95f, 0.95f };
+	case OverlayRole::HandleHot:
+		return { 1.00f, 1.00f, 0.20f };
+	case OverlayRole::Hover:
+		return { 0.55f, 0.80f, 1.00f };
+	case OverlayRole::Clip:
+		return { 0.35f, 1.00f, 0.45f };
+	case OverlayRole::Error:
+	default:
+		return { 1.00f, 0.25f, 0.25f };
+	}
 }
 
 // One interleaved vertex is 11 floats: pos(3) normal(3) colour(3) texcoord(2).
-// The line and grid buffers carry the same layout with dummy (0,0) texcoords, so
-// SetupAttribs is uniform and no stale attribute state leaks between draws.
+// Every buffer carries the same layout, so SetupAttribs is uniform.
 constexpr int kVertexFloats = 11;
 
-// Pushes one interleaved vertex (pos, normal, colour, uv) onto a buffer.
-void PushVertex( std::vector<float> &out, float x, float y, float z, float nx, float ny, float nz,
-    float r, float g, float b, float u = 0.0f, float v = 0.0f )
+void PushVertex( std::vector<float> &out, const Vec3d &p, const Vec3d &n, const Color &c,
+    float u = 0.0f, float v = 0.0f )
 {
-	out.push_back( x );
-	out.push_back( y );
-	out.push_back( z );
-	out.push_back( nx );
-	out.push_back( ny );
-	out.push_back( nz );
-	out.push_back( r );
-	out.push_back( g );
-	out.push_back( b );
-	out.push_back( u );
-	out.push_back( v );
+	out.insert( out.end(),
+	    { static_cast<float>( p.x ), static_cast<float>( p.y ), static_cast<float>( p.z ),
+	        static_cast<float>( n.x ), static_cast<float>( n.y ), static_cast<float>( n.z ), c.r,
+	        c.g, c.b, u, v } );
+}
+
+void PushLine( std::vector<float> &out, const Vec3d &a, const Vec3d &b, const Color &c )
+{
+	PushVertex( out, a, Vec3d( 0, 0, 1 ), c );
+	PushVertex( out, b, Vec3d( 0, 0, 1 ), c );
+}
+
+std::array<Vec3d, 8> BoxCorners( const Vec3d &lo, const Vec3d &hi )
+{
+	return { Vec3d( lo.x, lo.y, lo.z ), Vec3d( hi.x, lo.y, lo.z ), Vec3d( hi.x, hi.y, lo.z ),
+	    Vec3d( lo.x, hi.y, lo.z ), Vec3d( lo.x, lo.y, hi.z ), Vec3d( hi.x, lo.y, hi.z ),
+	    Vec3d( hi.x, hi.y, hi.z ), Vec3d( lo.x, hi.y, hi.z ) };
+}
+
+void PushBoxEdges( std::vector<float> &out, const Vec3d &lo, const Vec3d &hi, const Color &c )
+{
+	const std::array<Vec3d, 8> p = BoxCorners( lo, hi );
+	static const int kEdges[12][2] = { { 0, 1 }, { 1, 2 }, { 2, 3 }, { 3, 0 }, { 4, 5 }, { 5, 6 },
+	    { 6, 7 }, { 7, 4 }, { 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 } };
+	for ( const auto &e : kEdges )
+	{
+		PushLine( out, p[e[0]], p[e[1]], c );
+	}
+}
+
+// The six faces of a box as triangles, each with its outward normal.
+int PushBoxFaces( std::vector<float> &out, const Vec3d &lo, const Vec3d &hi, const Color &c )
+{
+	const std::array<Vec3d, 8> p = BoxCorners( lo, hi );
+	struct Quad
+	{
+		int a, b, c, d;
+		Vec3d n;
+	};
+	const Quad quads[6] = { { 0, 3, 2, 1, Vec3d( 0, 0, -1 ) }, { 4, 5, 6, 7, Vec3d( 0, 0, 1 ) },
+	    { 0, 1, 5, 4, Vec3d( 0, -1, 0 ) }, { 2, 3, 7, 6, Vec3d( 0, 1, 0 ) },
+	    { 1, 2, 6, 5, Vec3d( 1, 0, 0 ) }, { 3, 0, 4, 7, Vec3d( -1, 0, 0 ) } };
+	for ( const Quad &q : quads )
+	{
+		for ( int i : { q.a, q.b, q.c, q.a, q.c, q.d } )
+		{
+			PushVertex( out, p[i], q.n, c );
+		}
+	}
+	return 12;
 }
 
 void SetupAttribs()
@@ -216,6 +331,17 @@ void SetupAttribs()
 	    3, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>( 9 * sizeof( float ) ) );
 }
 
+void Upload( GLuint vao, GLuint vbo, const std::vector<float> &data, GLenum usage )
+{
+	glBindVertexArray( vao );
+	glBindBuffer( GL_ARRAY_BUFFER, vbo );
+	glBufferData( GL_ARRAY_BUFFER, static_cast<GLsizeiptr>( data.size() * sizeof( float ) ),
+	    data.empty() ? nullptr : data.data(), usage );
+	SetupAttribs();
+	glBindVertexArray( 0 );
+	glBindBuffer( GL_ARRAY_BUFFER, 0 );
+}
+
 } // namespace
 
 Renderer::~Renderer()
@@ -229,9 +355,9 @@ void Renderer::ReleaseGl()
 	{
 		return;
 	}
-	const GLuint buffers[] = { m_meshVbo, m_lineVbo, m_gridVbo };
+	const GLuint buffers[] = { m_meshVbo, m_lineVbo, m_dynVbo };
 	glDeleteBuffers( 3, buffers );
-	const GLuint arrays[] = { m_meshVao, m_lineVao, m_gridVao };
+	const GLuint arrays[] = { m_meshVao, m_lineVao, m_dynVao };
 	glDeleteVertexArrays( 3, arrays );
 	for ( const auto &kv : m_textures )
 	{
@@ -246,8 +372,8 @@ void Renderer::ReleaseGl()
 	{
 		glDeleteProgram( m_program );
 	}
-	m_meshVbo = m_lineVbo = m_gridVbo = 0;
-	m_meshVao = m_lineVao = m_gridVao = m_program = 0;
+	m_meshVbo = m_lineVbo = m_dynVbo = 0;
+	m_meshVao = m_lineVao = m_dynVao = m_program = 0;
 	m_initialized = false;
 }
 
@@ -319,14 +445,14 @@ bool Renderer::Init( std::string &error )
 	glGenBuffers( 1, &m_meshVbo );
 	glGenVertexArrays( 1, &m_lineVao );
 	glGenBuffers( 1, &m_lineVbo );
-	glGenVertexArrays( 1, &m_gridVao );
-	glGenBuffers( 1, &m_gridVbo );
+	glGenVertexArrays( 1, &m_dynVao );
+	glGenBuffers( 1, &m_dynVbo );
 
 	m_initialized = true;
 	return true;
 }
 
-void Renderer::SetScene( const mapgeometry::WorldScene &scene )
+void Renderer::SetSnapshot( const hammer::viewport::RenderSnapshot &snapshot )
 {
 	if ( !m_initialized )
 	{
@@ -336,8 +462,10 @@ void Renderer::SetScene( const mapgeometry::WorldScene &scene )
 	std::vector<float> mesh;
 	std::vector<float> lines;
 	m_triCount = 0;
-	m_solidCount = static_cast<int>( scene.solids.size() );
+	m_solidCount = static_cast<int>( snapshot.solids.size() );
+	m_entityCount = static_cast<int>( snapshot.entities.size() );
 	m_meshRanges.clear();
+	m_bounds = snapshot.bounds;
 
 	// Appends a per-texture draw run, merging with the previous run when the
 	// texture matches so a wall of same-material faces is one draw call.
@@ -355,677 +483,339 @@ void Renderer::SetScene( const mapgeometry::WorldScene &scene )
 			m_meshRanges.push_back( { texture, firstVertex, vertexCount } );
 		}
 	};
+	auto vertexCount = [&]()
+	{
+		return static_cast<int>( mesh.size() / kVertexFloats );
+	};
 
 	int solidIndex = 0;
-	for ( const mapgeometry::BrushSolid &solid : scene.solids )
+	for ( const hammer::viewport::SolidDraw &solid : snapshot.solids )
 	{
-		// A negative id is the in-progress "pending" box; an id matching the
-		// highlight is the selected brush. Both get a distinct fill/edge colour.
-		const bool pending = solid.id < 0;
-		bool selected = solid.id == m_highlightId;
-		for ( int id : m_highlights )
+		Color fill = solid.selected ? kSelectedFill : SolidFill( solidIndex );
+		Color edge = solid.selected          ? kSelectedEdge
+		             : solid.owner.IsValid() ? FromRgb( solid.color )
+		                                     : kEdge;
+		++solidIndex;
+
+		for ( const hammer::viewport::FaceDraw &face : solid.faces )
 		{
-			if ( id == solid.id )
+			const int first = vertexCount();
+			if ( face.displacement )
 			{
-				selected = true;
-				break;
+				// Terrain: the displaced grid, blended grass -> dirt by vertex alpha.
+				const mapgeometry::DisplacementSurface &disp = *face.displacement;
+				const int n = static_cast<int>( disp.vertices.size() );
+				for ( const std::array<int, 3> &tri : disp.triangles )
+				{
+					if ( std::any_of( tri.begin(), tri.end(),
+					         [n]( int i )
+					         {
+						         return i < 0 || i >= n;
+					         } ) )
+					{
+						continue;
+					}
+					for ( int i : tri )
+					{
+						const double alpha = i < static_cast<int>( disp.vertexAlphas.size() )
+						                         ? disp.vertexAlphas[i]
+						                         : 0.0;
+						const float t = static_cast<float>( alpha ) / 255.0f;
+						const Color c =
+						    face.selected || solid.selected
+						        ? ( face.selected ? kSelectedFace : kSelectedFill )
+						        : Color{ 0.32f + t * 0.20f, 0.48f - t * 0.08f, 0.28f + t * 0.02f };
+						const Vec3d normal = i < static_cast<int>( disp.vertexNormals.size() )
+						                         ? disp.vertexNormals[i]
+						                         : face.normal;
+						PushVertex( mesh, disp.vertices[i], normal, c );
+					}
+					++m_triCount;
+					for ( int e = 0; e < 3; ++e )
+					{
+						PushLine( lines, disp.vertices[tri[e]], disp.vertices[tri[( e + 1 ) % 3]],
+						    solid.selected ? edge : kDisplacementEdge );
+					}
+				}
+				addRange( 0, first, vertexCount() - first );
+				continue;
 			}
-		}
-
-		float color[3];
-		SolidColor( solidIndex++, color );
-		float edge[3] = { 0.50f, 0.52f, 0.58f };
-		if ( pending )
-		{
-			color[0] = 0.90f;
-			color[1] = 0.80f;
-			color[2] = 0.30f;
-			edge[0] = 1.00f;
-			edge[1] = 0.88f;
-			edge[2] = 0.30f;
-		}
-		else if ( selected )
-		{
-			color[0] = 1.00f;
-			color[1] = 0.62f;
-			color[2] = 0.28f;
-			edge[0] = 1.00f;
-			edge[1] = 0.58f;
-			edge[2] = 0.15f;
-		}
-
-		for ( const mapgeometry::BrushFace &face : solid.faces )
-		{
 			if ( face.vertices.size() < 3 )
 			{
 				continue;
 			}
-			const float n[3] = { static_cast<float>( face.plane.normal.x ),
-			    static_cast<float>( face.plane.normal.y ),
-			    static_cast<float>( face.plane.normal.z ) };
 
-			// Resolve this face's texture. Pending/selected brushes stay flat-shaded
-			// so their highlight fill reads clearly; only ordinary faces are textured.
-			unsigned int texture = 0;
-			if ( !pending && !selected )
-			{
-				texture = TextureFor( face.material );
-			}
+			// Selected solids and faces stay flat-shaded so the highlight reads;
+			// ordinary faces are textured when the catalog resolves the material.
+			const bool highlighted = solid.selected || face.selected;
+			const unsigned int texture = highlighted ? 0 : TextureFor( face.material );
 
 			// World-planar UVs: project onto the two world axes least aligned with
-			// the face normal, at Source's default 0.25 texels/unit, so the texture
-			// tiles at a plausible real-world size. Only meaningful when textured.
-			int aU = 0, aV = 1;
-			const float ax = std::fabs( n[0] ), ay = std::fabs( n[1] ), az = std::fabs( n[2] );
-			if ( az >= ax && az >= ay )
-			{
-				aU = 0;
-				aV = 1; // floor/ceiling: X,Y
-			}
-			else if ( ax >= ay )
-			{
-				aU = 1;
-				aV = 2; // X-facing wall: Y,Z
-			}
-			else
-			{
-				aU = 0;
-				aV = 2; // Y-facing wall: X,Z
-			}
-			float worldU = 128.0f, worldV = 128.0f;
+			// the face normal, at Source's default 0.25 units per texel.
+			const double ax = std::fabs( face.normal.x );
+			const double ay = std::fabs( face.normal.y );
+			const double az = std::fabs( face.normal.z );
+			const int aU = ( az >= ax && az >= ay ) ? 0 : ( ax >= ay ? 1 : 0 );
+			const int aV = ( az >= ax && az >= ay ) ? 1 : 2;
+			double worldU = 128.0;
+			double worldV = 128.0;
 			if ( texture )
 			{
 				if ( const hammer::formats::VtfImage *img =
 				         m_catalog->BaseTextureImage( face.material ) )
 				{
-					worldU = ( img->width > 0 ? img->width : 512 ) * 0.25f;
-					worldV = ( img->height > 0 ? img->height : 512 ) * 0.25f;
+					worldU = ( img->width > 0 ? img->width : 512 ) * 0.25;
+					worldV = ( img->height > 0 ? img->height : 512 ) * 0.25;
 				}
 			}
-			auto uAt = [&]( const mapgeometry::Vec3d &p )
+			auto uv = [&]( const Vec3d &p, int axis, double size )
 			{
-				const double c[3] = { p.x, p.y, p.z };
-				return static_cast<float>( c[aU] ) / worldU;
-			};
-			auto vAt = [&]( const mapgeometry::Vec3d &p )
-			{
-				const double c[3] = { p.x, p.y, p.z };
-				return static_cast<float>( c[aV] ) / worldV;
+				return static_cast<float>( mapgeometry::Component( p, axis ) / size );
 			};
 
-			const int faceFirstVertex = static_cast<int>( mesh.size() / kVertexFloats );
-			const mapgeometry::Vec3d &v0 = face.vertices[0];
+			const Color faceFill = face.selected ? kSelectedFace : fill;
+			const Vec3d &v0 = face.vertices[0];
 			for ( std::size_t i = 1; i + 1 < face.vertices.size(); ++i )
 			{
-				const mapgeometry::Vec3d tri[3] = { v0, face.vertices[i], face.vertices[i + 1] };
-				for ( const mapgeometry::Vec3d &p : tri )
+				for ( const Vec3d *p : { &v0, &face.vertices[i], &face.vertices[i + 1] } )
 				{
-					PushVertex( mesh, static_cast<float>( p.x ), static_cast<float>( p.y ),
-					    static_cast<float>( p.z ), n[0], n[1], n[2], color[0], color[1], color[2],
-					    uAt( p ), vAt( p ) );
+					PushVertex( mesh, *p, face.normal, faceFill, uv( *p, aU, worldU ),
+					    uv( *p, aV, worldV ) );
 				}
 				++m_triCount;
 			}
-			const int faceVertexCount =
-			    static_cast<int>( mesh.size() / kVertexFloats ) - faceFirstVertex;
-			addRange( texture, faceFirstVertex, faceVertexCount );
+			addRange( texture, first, vertexCount() - first );
 
+			const Color faceEdge = face.selected ? kSelectedFace : edge;
 			for ( std::size_t i = 0; i < face.vertices.size(); ++i )
 			{
-				const mapgeometry::Vec3d &a = face.vertices[i];
-				const mapgeometry::Vec3d &b = face.vertices[( i + 1 ) % face.vertices.size()];
-				PushVertex( lines, static_cast<float>( a.x ), static_cast<float>( a.y ),
-				    static_cast<float>( a.z ), 0, 0, 1, edge[0], edge[1], edge[2] );
-				PushVertex( lines, static_cast<float>( b.x ), static_cast<float>( b.y ),
-				    static_cast<float>( b.z ), 0, 0, 1, edge[0], edge[1], edge[2] );
+				PushLine( lines, face.vertices[i], face.vertices[( i + 1 ) % face.vertices.size()],
+				    faceEdge );
 			}
 		}
 	}
 
-	// Displacement (dispinfo terrain) surfaces: emit each as flat-shaded triangles
-	// into the mesh (an untextured range) and its grid edges into the wireframe, so
-	// terrain draws in the 3D view and the 2D wireframe alongside the brushes.
-	// Per-triangle flat normals give relief without stored per-vertex normals; the
-	// per-vertex alpha blends a grass/dirt colour so 2-material blends read.
-	for ( const mapgeometry::DisplacementMesh &disp : scene.displacements )
+	// Point entities: their marker boxes, filled in 3D and outlined everywhere.
+	for ( const hammer::viewport::EntityDraw &entity : snapshot.entities )
 	{
-		const int dispFirst = static_cast<int>( mesh.size() / kVertexFloats );
-		for ( const std::array<int, 3> &tri : disp.triangles )
-		{
-			const int i0 = tri[0], i1 = tri[1], i2 = tri[2];
-			const int n = static_cast<int>( disp.vertices.size() );
-			if ( i0 < 0 || i1 < 0 || i2 < 0 || i0 >= n || i1 >= n || i2 >= n )
-			{
-				continue;
-			}
-			const mapgeometry::Vec3d &a = disp.vertices[i0];
-			const mapgeometry::Vec3d &b = disp.vertices[i1];
-			const mapgeometry::Vec3d &c = disp.vertices[i2];
-			float nx =
-			    static_cast<float>( ( b.y - a.y ) * ( c.z - a.z ) - ( b.z - a.z ) * ( c.y - a.y ) );
-			float ny =
-			    static_cast<float>( ( b.z - a.z ) * ( c.x - a.x ) - ( b.x - a.x ) * ( c.z - a.z ) );
-			float nz =
-			    static_cast<float>( ( b.x - a.x ) * ( c.y - a.y ) - ( b.y - a.y ) * ( c.x - a.x ) );
-			const float nlen = std::sqrt( nx * nx + ny * ny + nz * nz );
-			if ( nlen > 1.0e-8f )
-			{
-				nx /= nlen;
-				ny /= nlen;
-				nz /= nlen;
-			}
-			const int idx[3] = { i0, i1, i2 };
-			const mapgeometry::Vec3d *pv[3] = { &a, &b, &c };
-			for ( int k = 0; k < 3; ++k )
-			{
-				const double al =
-				    idx[k] < static_cast<int>( disp.alphas.size() ) ? disp.alphas[idx[k]] : 0.0;
-				const float t = static_cast<float>( al ) / 255.0f;
-				// grass (low alpha) -> dirt (high alpha)
-				const float cr = 0.32f + t * ( 0.52f - 0.32f );
-				const float cg = 0.48f + t * ( 0.40f - 0.48f );
-				const float cb = 0.28f + t * ( 0.30f - 0.28f );
-				PushVertex( mesh, static_cast<float>( pv[k]->x ), static_cast<float>( pv[k]->y ),
-				    static_cast<float>( pv[k]->z ), nx, ny, nz, cr, cg, cb, 0.0f, 0.0f );
-			}
-			++m_triCount;
-
-			const mapgeometry::Vec3d *edgePts[3] = { &a, &b, &c };
-			for ( int e = 0; e < 3; ++e )
-			{
-				const mapgeometry::Vec3d &p0 = *edgePts[e];
-				const mapgeometry::Vec3d &p1 = *edgePts[( e + 1 ) % 3];
-				PushVertex( lines, static_cast<float>( p0.x ), static_cast<float>( p0.y ),
-				    static_cast<float>( p0.z ), 0, 0, 1, 0.35f, 0.55f, 0.40f );
-				PushVertex( lines, static_cast<float>( p1.x ), static_cast<float>( p1.y ),
-				    static_cast<float>( p1.z ), 0, 0, 1, 0.35f, 0.55f, 0.40f );
-			}
-		}
-		addRange( 0, dispFirst, static_cast<int>( mesh.size() / kVertexFloats ) - dispFirst );
+		const hammer::scene::Rgb &rgb = entity.color;
+		const Color color = entity.selected                              ? kSelectedFill
+		                    : ( rgb.r == 0 && rgb.g == 0 && rgb.b == 0 ) ? kEntityDefault
+		                                                                 : FromRgb( rgb );
+		const int first = vertexCount();
+		PushBoxFaces( mesh, entity.mins, entity.maxs, color );
+		addRange( 0, first, vertexCount() - first );
+		PushBoxEdges( lines, entity.mins, entity.maxs, entity.selected ? kSelectedEdge : color );
 	}
 
-	m_meshVertexCount = static_cast<int>( mesh.size() / kVertexFloats );
+	m_meshVertexCount = vertexCount();
 	m_lineVertexCount = static_cast<int>( lines.size() / kVertexFloats );
+	Upload( m_meshVao, m_meshVbo, mesh, GL_STATIC_DRAW );
+	Upload( m_lineVao, m_lineVbo, lines, GL_STATIC_DRAW );
+}
 
-	glBindVertexArray( m_meshVao );
-	glBindBuffer( GL_ARRAY_BUFFER, m_meshVbo );
-	glBufferData( GL_ARRAY_BUFFER, static_cast<GLsizeiptr>( mesh.size() * sizeof( float ) ),
-	    mesh.empty() ? nullptr : mesh.data(), GL_STATIC_DRAW );
-	SetupAttribs();
-
-	glBindVertexArray( m_lineVao );
-	glBindBuffer( GL_ARRAY_BUFFER, m_lineVbo );
-	glBufferData( GL_ARRAY_BUFFER, static_cast<GLsizeiptr>( lines.size() * sizeof( float ) ),
-	    lines.empty() ? nullptr : lines.data(), GL_STATIC_DRAW );
-	SetupAttribs();
-
+void Renderer::DrawDynamic(
+    const std::vector<float> &vertices, unsigned int mode, const float mvp[16] )
+{
+	if ( vertices.empty() )
+	{
+		return;
+	}
+	Upload( m_dynVao, m_dynVbo, vertices, GL_DYNAMIC_DRAW );
+	glUniformMatrix4fv( glGetUniformLocation( m_program, "uMVP" ), 1, GL_FALSE, mvp );
+	glBindVertexArray( m_dynVao );
+	glDrawArrays( mode, 0, static_cast<GLsizei>( vertices.size() / kVertexFloats ) );
 	glBindVertexArray( 0 );
-	glBindBuffer( GL_ARRAY_BUFFER, 0 );
-
-	if ( scene.bounded )
-	{
-		m_sceneCenter[0] = static_cast<float>( ( scene.mins.x + scene.maxs.x ) * 0.5 );
-		m_sceneCenter[1] = static_cast<float>( ( scene.mins.y + scene.maxs.y ) * 0.5 );
-		m_sceneCenter[2] = static_cast<float>( ( scene.mins.z + scene.maxs.z ) * 0.5 );
-		const float dx = static_cast<float>( scene.maxs.x - scene.mins.x );
-		const float dy = static_cast<float>( scene.maxs.y - scene.mins.y );
-		const float dz = static_cast<float>( scene.maxs.z - scene.mins.z );
-		m_sceneSize[0] = dx;
-		m_sceneSize[1] = dy;
-		m_sceneSize[2] = dz;
-		m_sceneRadius = 0.5f * std::sqrt( dx * dx + dy * dy + dz * dz );
-		if ( m_sceneRadius < 1.0f )
-		{
-			m_sceneRadius = 1.0f;
-		}
-		m_haveScene = true;
-	}
-	else
-	{
-		m_haveScene = false;
-	}
-	// Note: SetScene does NOT move the camera, so live edits keep the current
-	// view. Callers frame explicitly via FrameScene() after a load/new/reset.
 }
 
-void Renderer::AxisIndices( int &uAxis, int &vAxis ) const
+void Renderer::DrawOverlay( const hammer::tools::OverlayList &overlay, const float worldMvp[16],
+    const float screenMvp[16], bool depthTest )
 {
-	switch ( m_mode )
+	std::vector<float> worldLines;
+	std::vector<float> screenLines;
+	std::vector<float> screenFill;
+	auto screen = []( double x, double y )
 	{
-	case ViewMode::Top: // X / Y
-		uAxis = 0;
-		vAxis = 1;
-		break;
-	case ViewMode::Front: // X / Z
-		uAxis = 0;
-		vAxis = 2;
-		break;
-	case ViewMode::Side: // Y / Z
-		uAxis = 1;
-		vAxis = 2;
-		break;
-	default:
-		uAxis = 0;
-		vAxis = 1;
-		break;
-	}
-}
-
-void Renderer::FrameScene()
-{
-	m_camera.target[0] = m_sceneCenter[0];
-	m_camera.target[1] = m_sceneCenter[1];
-	m_camera.target[2] = m_sceneCenter[2];
-	m_camera.distance = m_sceneRadius * 2.6f + 64.0f;
-	m_camera.yawDeg = 45.0f;
-	m_camera.pitchDeg = 28.0f;
-
-	int uAxis = 0;
-	int vAxis = 1;
-	AxisIndices( uAxis, vAxis );
-	m_ortho.panU = m_sceneCenter[uAxis];
-	m_ortho.panV = m_sceneCenter[vAxis];
-	// Fit this view's own 2D extent with a margin, relative to a nominal viewport.
-	const float fit = std::max( m_sceneSize[uAxis], m_sceneSize[vAxis] ) + 128.0f;
-	m_ortho.pixelsPerUnit = ( 0.85f * 620.0f ) / fit;
-}
-
-void Renderer::DragBy( float dxPixels, float dyPixels )
-{
-	if ( m_mode == ViewMode::Perspective )
-	{
-		m_camera.yawDeg += -dxPixels * 0.4f;
-		m_camera.pitchDeg += dyPixels * 0.4f;
-		if ( m_camera.pitchDeg > 89.0f )
-		{
-			m_camera.pitchDeg = 89.0f;
-		}
-		if ( m_camera.pitchDeg < -89.0f )
-		{
-			m_camera.pitchDeg = -89.0f;
-		}
-	}
-	else
-	{
-		// Pan: screen +y is down, world V axis is up, so invert dy.
-		m_ortho.panU -= dxPixels / m_ortho.pixelsPerUnit;
-		m_ortho.panV += dyPixels / m_ortho.pixelsPerUnit;
-	}
-}
-
-void Renderer::ZoomBy( float factor )
-{
-	if ( m_mode == ViewMode::Perspective )
-	{
-		m_camera.distance *= factor;
-		if ( m_camera.distance < 8.0f )
-		{
-			m_camera.distance = 8.0f;
-		}
-		if ( m_camera.distance > 1.0e6f )
-		{
-			m_camera.distance = 1.0e6f;
-		}
-	}
-	else
-	{
-		m_ortho.pixelsPerUnit /= factor;
-		if ( m_ortho.pixelsPerUnit < 1.0e-4f )
-		{
-			m_ortho.pixelsPerUnit = 1.0e-4f;
-		}
-		if ( m_ortho.pixelsPerUnit > 64.0f )
-		{
-			m_ortho.pixelsPerUnit = 64.0f;
-		}
-	}
-}
-
-void Renderer::PanScroll( float dxUnits, float dyUnits )
-{
-	if ( m_mode == ViewMode::Perspective )
-	{
-		// Two-finger scroll orbits the camera.
-		DragBy( -dxUnits, -dyUnits );
-		return;
-	}
-	// Natural pan: the canvas follows the fingers.
-	m_ortho.panU += dxUnits / m_ortho.pixelsPerUnit;
-	m_ortho.panV -= dyUnits / m_ortho.pixelsPerUnit;
-}
-
-void Renderer::ZoomAtPixel( float factor, float px, float py, int widthPx, int heightPx )
-{
-	if ( m_mode == ViewMode::Perspective )
-	{
-		ZoomBy( 1.0f / factor ); // factor>1 zooms in; dolly closer
-		return;
-	}
-	float wu = 0.0f;
-	float wv = 0.0f;
-	PixelToWorld( px, py, widthPx, heightPx, wu, wv );
-	m_ortho.pixelsPerUnit *= factor;
-	if ( m_ortho.pixelsPerUnit < 1.0e-4f )
-	{
-		m_ortho.pixelsPerUnit = 1.0e-4f;
-	}
-	if ( m_ortho.pixelsPerUnit > 64.0f )
-	{
-		m_ortho.pixelsPerUnit = 64.0f;
-	}
-	// Re-anchor so the same world point stays under the cursor.
-	m_ortho.panU = wu - ( px - widthPx * 0.5f ) / m_ortho.pixelsPerUnit;
-	m_ortho.panV = wv + ( py - heightPx * 0.5f ) / m_ortho.pixelsPerUnit;
-}
-
-void Renderer::SetOrthoScale( float pixelsPerUnit )
-{
-	if ( m_mode == ViewMode::Perspective )
-	{
-		return;
-	}
-	m_ortho.pixelsPerUnit = std::clamp( pixelsPerUnit, 1.0e-4f, 64.0f );
-}
-
-void Renderer::PixelToWorld(
-    float px, float py, int widthPx, int heightPx, float &outU, float &outV ) const
-{
-	outU = m_ortho.panU + ( px - widthPx * 0.5f ) / m_ortho.pixelsPerUnit;
-	outV = m_ortho.panV - ( py - heightPx * 0.5f ) / m_ortho.pixelsPerUnit;
-}
-
-void Renderer::CameraVectors( float eye[3], float forward[3], float right[3], float up[3] ) const
-{
-	const float yaw = m_camera.yawDeg * kPi / 180.0f;
-	const float pitch = m_camera.pitchDeg * kPi / 180.0f;
-	// 'dir' points from the target out to the eye (matches RenderPerspective).
-	const float dir[3] = {
-	    std::cos( pitch ) * std::cos( yaw ),
-	    std::cos( pitch ) * std::sin( yaw ),
-	    std::sin( pitch ),
+		return Vec3d( x, y, 0.0 );
 	};
-	eye[0] = m_camera.target[0] + m_camera.distance * dir[0];
-	eye[1] = m_camera.target[1] + m_camera.distance * dir[1];
-	eye[2] = m_camera.target[2] + m_camera.distance * dir[2];
-
-	// Look direction is target - eye = -dir.
-	forward[0] = -dir[0];
-	forward[1] = -dir[1];
-	forward[2] = -dir[2];
-	Normalize3( forward );
-
-	const float worldUp[3] = { 0.0f, 0.0f, 1.0f };
-	Cross3( forward, worldUp, right ); // screen-right = f x up (as in LookAt)
-	Normalize3( right );
-	Cross3( right, forward, up ); // screen-up = right x forward
-	Normalize3( up );
+	for ( const OverlayItem &item : overlay.items )
+	{
+		const Color c = RoleColor( item.role );
+		switch ( item.kind )
+		{
+		case OverlayKind::WorldLine:
+			if ( item.world.size() >= 2 )
+			{
+				PushLine( worldLines, item.world[0], item.world[1], c );
+			}
+			break;
+		case OverlayKind::WorldBox:
+			if ( item.world.size() >= 2 )
+			{
+				PushBoxEdges( worldLines, item.world[0], item.world[1], c );
+			}
+			break;
+		case OverlayKind::WorldPolygon:
+			for ( std::size_t i = 0; i < item.world.size(); ++i )
+			{
+				PushLine( worldLines, item.world[i], item.world[( i + 1 ) % item.world.size()], c );
+			}
+			break;
+		case OverlayKind::ScreenRect:
+		{
+			const Vec3d p[4] = { screen( item.a.x, item.a.y ), screen( item.b.x, item.a.y ),
+			    screen( item.b.x, item.b.y ), screen( item.a.x, item.b.y ) };
+			for ( int i = 0; i < 4; ++i )
+			{
+				PushLine( screenLines, p[i], p[( i + 1 ) % 4], c );
+			}
+			break;
+		}
+		case OverlayKind::ScreenHandle:
+		{
+			// A filled square, or an octagon for round handles.
+			const int sides = item.shape == hammer::tools::HandleShape::Circle ? 8 : 4;
+			const double start = sides == 4 ? kPi / 4.0 : 0.0;
+			const double radius = sides == 4 ? item.size * std::sqrt( 2.0 ) : item.size;
+			const Vec3d center = screen( item.a.x, item.a.y );
+			for ( int i = 0; i < sides; ++i )
+			{
+				const double a0 = start + 2.0 * kPi * i / sides;
+				const double a1 = start + 2.0 * kPi * ( i + 1 ) / sides;
+				PushVertex( screenFill, center, Vec3d( 0, 0, 1 ), c );
+				PushVertex( screenFill,
+				    center + Vec3d( radius * std::cos( a0 ), radius * std::sin( a0 ), 0 ),
+				    Vec3d( 0, 0, 1 ), c );
+				PushVertex( screenFill,
+				    center + Vec3d( radius * std::cos( a1 ), radius * std::sin( a1 ), 0 ),
+				    Vec3d( 0, 0, 1 ), c );
+			}
+			break;
+		}
+		case OverlayKind::ScreenLabel:
+			break; // no GL text; the host's status bar carries tool status
+		}
+	}
+	glUniform1i( glGetUniformLocation( m_program, "uWire" ), 1 );
+	glUniform1i( glGetUniformLocation( m_program, "uUseTexture" ), 0 );
+	if ( depthTest )
+	{
+		glEnable( GL_DEPTH_TEST );
+	}
+	DrawDynamic( worldLines, GL_LINES, worldMvp );
+	glDisable( GL_DEPTH_TEST );
+	DrawDynamic( screenLines, GL_LINES, screenMvp );
+	DrawDynamic( screenFill, GL_TRIANGLES, screenMvp );
 }
 
-void Renderer::FlyLook( float dYawDeg, float dPitchDeg )
+void Renderer::Render3D(
+    const Camera3D &camera, const hammer::tools::OverlayList &overlay, int fbWidth, int fbHeight )
 {
-	if ( m_mode != ViewMode::Perspective )
+	if ( !m_initialized || fbWidth <= 0 || fbHeight <= 0 || !camera.HasArea() )
 	{
 		return;
 	}
-	// Keep the eye fixed while the look direction turns: rotate, then place the
-	// orbit target back in front of the (unchanged) eye at the same distance.
-	float eye[3];
-	float f[3];
-	float r[3];
-	float u[3];
-	CameraVectors( eye, f, r, u );
-
-	m_camera.yawDeg += dYawDeg;
-	m_camera.pitchDeg += dPitchDeg;
-	if ( m_camera.pitchDeg > 89.0f )
-	{
-		m_camera.pitchDeg = 89.0f;
-	}
-	if ( m_camera.pitchDeg < -89.0f )
-	{
-		m_camera.pitchDeg = -89.0f;
-	}
-
-	const float yaw = m_camera.yawDeg * kPi / 180.0f;
-	const float pitch = m_camera.pitchDeg * kPi / 180.0f;
-	const float dir[3] = {
-	    std::cos( pitch ) * std::cos( yaw ),
-	    std::cos( pitch ) * std::sin( yaw ),
-	    std::sin( pitch ),
-	};
-	// target = eye - distance*dir keeps |eye - target| = distance with eye fixed.
-	m_camera.target[0] = eye[0] - m_camera.distance * dir[0];
-	m_camera.target[1] = eye[1] - m_camera.distance * dir[1];
-	m_camera.target[2] = eye[2] - m_camera.distance * dir[2];
-}
-
-void Renderer::FlyMove( float forward, float right, float up )
-{
-	if ( m_mode != ViewMode::Perspective )
-	{
-		return;
-	}
-	float eye[3];
-	float f[3];
-	float r[3];
-	float u[3];
-	CameraVectors( eye, f, r, u );
-	// Translate the target; the eye follows by the same delta (dir/distance fixed),
-	// so this flies the camera without changing orientation. Vertical is world +Z.
-	m_camera.target[0] += forward * f[0] + right * r[0];
-	m_camera.target[1] += forward * f[1] + right * r[1];
-	m_camera.target[2] += forward * f[2] + right * r[2] + up;
-}
-
-bool Renderer::PixelToRay(
-    float px, float py, int widthPx, int heightPx, float outOrigin[3], float outDir[3] ) const
-{
-	if ( m_mode != ViewMode::Perspective || widthPx <= 0 || heightPx <= 0 )
-	{
-		return false;
-	}
-	float eye[3];
-	float f[3];
-	float r[3];
-	float u[3];
-	CameraVectors( eye, f, r, u );
-
-	// Match RenderPerspective's projection: 60 deg vertical fov, aspect = w/h.
-	const float tanHalf = std::tan( ( 60.0f * kPi / 180.0f ) * 0.5f );
-	const float aspect = static_cast<float>( widthPx ) / static_cast<float>( heightPx );
-	const float ndcX = 2.0f * px / static_cast<float>( widthPx ) - 1.0f;
-	const float ndcY = 1.0f - 2.0f * py / static_cast<float>( heightPx );
-	for ( int i = 0; i < 3; ++i )
-	{
-		outDir[i] = f[i] + ndcX * aspect * tanHalf * r[i] + ndcY * tanHalf * u[i];
-	}
-	Normalize3( outDir );
-	outOrigin[0] = eye[0];
-	outOrigin[1] = eye[1];
-	outOrigin[2] = eye[2];
-	return true;
-}
-
-void Renderer::RenderPerspective( int widthPx, int heightPx )
-{
+	glViewport( 0, 0, fbWidth, fbHeight );
 	glClearColor( 0.13f, 0.14f, 0.17f, 1.0f );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	glEnable( GL_DEPTH_TEST );
 
-	const float yaw = m_camera.yawDeg * kPi / 180.0f;
-	const float pitch = m_camera.pitchDeg * kPi / 180.0f;
-	const float eye[3] = {
-	    m_camera.target[0] + m_camera.distance * std::cos( pitch ) * std::cos( yaw ),
-	    m_camera.target[1] + m_camera.distance * std::cos( pitch ) * std::sin( yaw ),
-	    m_camera.target[2] + m_camera.distance * std::sin( pitch ),
-	};
-	const float up[3] = { 0.0f, 0.0f, 1.0f };
-	const float aspect = static_cast<float>( widthPx ) / static_cast<float>( heightPx );
-	const float zFar = m_camera.distance + m_sceneRadius * 4.0f + 1024.0f;
-	const Mat4 mvp = Multiply( Perspective( 60.0f * kPi / 180.0f, aspect, 4.0f, zFar ),
-	    LookAt( eye, m_camera.target, up ) );
+	// Depth range: past the farthest corner of the scene from the eye.
+	double zFar = 16384.0;
+	if ( m_bounds )
+	{
+		for ( const Vec3d &corner : BoxCorners( m_bounds->mins, m_bounds->maxs ) )
+		{
+			zFar = std::max( zFar, mapgeometry::Length( corner - camera.Position() ) + 1024.0 );
+		}
+	}
+	const double aspect =
+	    static_cast<double>( camera.Width() ) / static_cast<double>( camera.Height() );
+	const Mat4 mvp =
+	    Multiply( Perspective( camera.Fov() * kPi / 180.0, aspect, 2.0, zFar ), ViewOf( camera ) );
 
 	glUseProgram( m_program );
 	glUniformMatrix4fv( glGetUniformLocation( m_program, "uMVP" ), 1, GL_FALSE, mvp.m );
-	glUniform1i( glGetUniformLocation( m_program, "uOverride" ), 0 );
-
 	glUniform1i( glGetUniformLocation( m_program, "uWire" ), 0 );
 	glUniform1i( glGetUniformLocation( m_program, "uTex" ), 0 ); // sampler on unit 0
 	glEnable( GL_POLYGON_OFFSET_FILL );
 	glPolygonOffset( 1.0f, 1.0f );
 	glBindVertexArray( m_meshVao );
 	const GLint useTexLoc = glGetUniformLocation( m_program, "uUseTexture" );
-	if ( m_meshRanges.empty() )
+	glActiveTexture( GL_TEXTURE0 );
+	for ( const MeshRange &range : m_meshRanges )
 	{
-		// No catalog / untextured scene: one flat draw, identical to the original.
-		glUniform1i( useTexLoc, 0 );
-		glDrawArrays( GL_TRIANGLES, 0, m_meshVertexCount );
-	}
-	else
-	{
-		glActiveTexture( GL_TEXTURE0 );
-		for ( const MeshRange &range : m_meshRanges )
+		glUniform1i( useTexLoc, range.texture ? 1 : 0 );
+		if ( range.texture )
 		{
-			glUniform1i( useTexLoc, range.texture ? 1 : 0 );
-			if ( range.texture )
-			{
-				glBindTexture( GL_TEXTURE_2D, range.texture );
-			}
-			glDrawArrays( GL_TRIANGLES, range.firstVertex, range.vertexCount );
+			glBindTexture( GL_TEXTURE_2D, range.texture );
 		}
-		glBindTexture( GL_TEXTURE_2D, 0 );
+		glDrawArrays( GL_TRIANGLES, range.firstVertex, range.vertexCount );
 	}
+	glBindTexture( GL_TEXTURE_2D, 0 );
 	glDisable( GL_POLYGON_OFFSET_FILL );
 
 	glUniform1i( glGetUniformLocation( m_program, "uWire" ), 1 );
 	glBindVertexArray( m_lineVao );
 	glDrawArrays( GL_LINES, 0, m_lineVertexCount );
-}
 
-void Renderer::BuildGrid( int widthPx, int heightPx )
-{
-	int uAxis = 0;
-	int vAxis = 1;
-	AxisIndices( uAxis, vAxis );
-
-	const float halfU = ( widthPx * 0.5f ) / m_ortho.pixelsPerUnit;
-	const float halfV = ( heightPx * 0.5f ) / m_ortho.pixelsPerUnit;
-	const float minU = m_ortho.panU - halfU;
-	const float maxU = m_ortho.panU + halfU;
-	const float minV = m_ortho.panV - halfV;
-	const float maxV = m_ortho.panV + halfV;
-
-	// Choose a grid step that keeps lines at least ~7px apart (Hammer powers of 2).
-	float step = 64.0f;
-	while ( step * m_ortho.pixelsPerUnit < 7.0f )
-	{
-		step *= 2.0f;
-	}
-
-	std::vector<float> grid;
-	auto pushLine = [&]( float u0, float v0, float u1, float v1, float r, float g, float b )
-	{
-		float p0[3] = { 0, 0, 0 };
-		float p1[3] = { 0, 0, 0 };
-		p0[uAxis] = u0;
-		p0[vAxis] = v0;
-		p1[uAxis] = u1;
-		p1[vAxis] = v1;
-		PushVertex( grid, p0[0], p0[1], p0[2], 0, 0, 1, r, g, b );
-		PushVertex( grid, p1[0], p1[1], p1[2], 0, 0, 1, r, g, b );
-	};
-
-	const float startU = std::ceil( minU / step ) * step;
-	for ( float u = startU; u <= maxU; u += step )
-	{
-		const bool major = std::fabs( std::fmod( u, step * 8.0f ) ) < 0.5f;
-		const float c = major ? 0.22f : 0.13f;
-		pushLine( u, minV, u, maxV, c, c, c + 0.02f );
-	}
-	const float startV = std::ceil( minV / step ) * step;
-	for ( float v = startV; v <= maxV; v += step )
-	{
-		const bool major = std::fabs( std::fmod( v, step * 8.0f ) ) < 0.5f;
-		const float c = major ? 0.22f : 0.13f;
-		pushLine( minU, v, maxU, v, c, c, c + 0.02f );
-	}
-
-	// Origin axes (Hammer draws the world axes brighter).
-	if ( minU <= 0.0f && maxU >= 0.0f )
-	{
-		pushLine( 0.0f, minV, 0.0f, maxV, 0.20f, 0.45f, 0.20f );
-	}
-	if ( minV <= 0.0f && maxV >= 0.0f )
-	{
-		pushLine( minU, 0.0f, maxU, 0.0f, 0.45f, 0.20f, 0.20f );
-	}
-
-	m_gridVertexCount = static_cast<int>( grid.size() / kVertexFloats );
-	glBindVertexArray( m_gridVao );
-	glBindBuffer( GL_ARRAY_BUFFER, m_gridVbo );
-	glBufferData( GL_ARRAY_BUFFER, static_cast<GLsizeiptr>( grid.size() * sizeof( float ) ),
-	    grid.empty() ? nullptr : grid.data(), GL_DYNAMIC_DRAW );
-	SetupAttribs();
+	const Mat4 screenMvp = ScreenOf( camera.Width(), camera.Height() );
+	DrawOverlay( overlay, mvp.m, screenMvp.m, false );
 	glBindVertexArray( 0 );
+	glUseProgram( 0 );
 }
 
-void Renderer::RenderOrtho( int widthPx, int heightPx )
+void Renderer::Render2D( const Camera2D &camera, const std::vector<GridLine> &grid,
+    const hammer::tools::OverlayList &overlay, int fbWidth, int fbHeight )
 {
+	if ( !m_initialized || fbWidth <= 0 || fbHeight <= 0 || !camera.HasArea() )
+	{
+		return;
+	}
+	glViewport( 0, 0, fbWidth, fbHeight );
 	glClearColor( 0.03f, 0.03f, 0.04f, 1.0f );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	glDisable( GL_DEPTH_TEST );
 
-	int uAxis = 0;
-	int vAxis = 1;
-	AxisIndices( uAxis, vAxis );
-
-	const float halfU = ( widthPx * 0.5f ) / m_ortho.pixelsPerUnit;
-	const float halfV = ( heightPx * 0.5f ) / m_ortho.pixelsPerUnit;
-
-	// Build an MVP that maps the two selected world axes to NDC.
-	Mat4 mvp;
-	for ( float &v : mvp.m )
-	{
-		v = 0.0f;
-	}
-	mvp.m[uAxis * 4 + 0] = 1.0f / halfU; // world[uAxis] -> ndc.x
-	mvp.m[vAxis * 4 + 1] = 1.0f / halfV; // world[vAxis] -> ndc.y
-	mvp.m[12] = -m_ortho.panU / halfU;   // translate x
-	mvp.m[13] = -m_ortho.panV / halfV;   // translate y
-	mvp.m[15] = 1.0f;
-
 	glUseProgram( m_program );
-	glUniformMatrix4fv( glGetUniformLocation( m_program, "uMVP" ), 1, GL_FALSE, mvp.m );
 	glUniform1i( glGetUniformLocation( m_program, "uWire" ), 1 );
+	glUniform1i( glGetUniformLocation( m_program, "uUseTexture" ), 0 );
 
-	// Grid (per-vertex colours).
-	BuildGrid( widthPx, heightPx );
-	glUniform1i( glGetUniformLocation( m_program, "uOverride" ), 0 );
-	glBindVertexArray( m_gridVao );
-	glDrawArrays( GL_LINES, 0, m_gridVertexCount );
+	// Grid lines arrive in screen space (the workspace computed them from the
+	// same camera and the grid policy).
+	const Mat4 screenMvp = ScreenOf( camera.Width(), camera.Height() );
+	std::vector<float> gridLines;
+	for ( const GridLine &line : grid )
+	{
+		const bool vertical = line.orientation == GridLineOrientation::Vertical;
+		Color c = { 0.13f, 0.13f, 0.15f };
+		switch ( line.kind )
+		{
+		case GridLineKind::Major:
+			c = { 0.22f, 0.22f, 0.24f };
+			break;
+		case GridLineKind::Block:
+			c = { 0.26f, 0.26f, 0.36f };
+			break;
+		case GridLineKind::Axis:
+			c = vertical ? Color{ 0.20f, 0.45f, 0.20f } : Color{ 0.45f, 0.20f, 0.20f };
+			break;
+		case GridLineKind::Minor:
+			break;
+		}
+		const Vec3d a = vertical ? Vec3d( line.screen, 0, 0 ) : Vec3d( 0, line.screen, 0 );
+		const Vec3d b = vertical ? Vec3d( line.screen, camera.Height(), 0 )
+		                         : Vec3d( camera.Width(), line.screen, 0 );
+		PushLine( gridLines, a, b, c );
+	}
+	DrawDynamic( gridLines, GL_LINES, screenMvp.m );
 
-	// Scene edges in their per-brush colours (normal grey, selected orange,
-	// pending yellow) -- Hammer's 2D wireframe with selection feedback.
-	glUniform1i( glGetUniformLocation( m_program, "uOverride" ), 0 );
+	const Mat4 mvp = OrthoOf( camera );
+	glUniformMatrix4fv( glGetUniformLocation( m_program, "uMVP" ), 1, GL_FALSE, mvp.m );
 	glBindVertexArray( m_lineVao );
 	glDrawArrays( GL_LINES, 0, m_lineVertexCount );
-}
 
-void Renderer::Render( int widthPx, int heightPx )
-{
-	if ( !m_initialized || heightPx <= 0 || widthPx <= 0 )
-	{
-		return;
-	}
-	glViewport( 0, 0, widthPx, heightPx );
-	if ( m_mode == ViewMode::Perspective )
-	{
-		RenderPerspective( widthPx, heightPx );
-	}
-	else
-	{
-		RenderOrtho( widthPx, heightPx );
-	}
+	DrawOverlay( overlay, mvp.m, screenMvp.m, false );
 	glBindVertexArray( 0 );
 	glUseProgram( 0 );
 }

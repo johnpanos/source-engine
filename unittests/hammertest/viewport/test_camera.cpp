@@ -1,8 +1,8 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: hammer.viewport cameras (RFC 0002, R08 domain logic; contract
-//			viewport.camera.v1): the 2D view axis mapping shared with
-//			EditorController::ViewAxes, world <-> screen round trips, zoom about
+//			viewport.camera.v1): the 2D view axis mapping (AxesOf), world <->
+//			screen round trips, zoom about
 //			the cursor, panning and framing; the 3D camera's Source angle
 //			convention, pixel rays, projection, fly/look/orbit and framing, and
 //			the GTK shell's existing camera expectations re-expressed in this
@@ -63,7 +63,7 @@ bool BoxOnScreen( const Camera3D &camera, const Box &box )
 
 void AxisMapping( testing::Checks &checks )
 {
-	// Same table as EditorController::ViewAxes.
+	// Top = X/Y, Front = X/Z, Side = Y/Z; u right, v up.
 	const ViewAxes top = AxesOf( ViewKind::Top );
 	const ViewAxes front = AxesOf( ViewKind::Front );
 	const ViewAxes side = AxesOf( ViewKind::Side );

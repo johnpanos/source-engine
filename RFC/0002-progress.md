@@ -828,8 +828,8 @@ manifest (migration `R08-DOMAIN`), with negative checks.
 
 **Not done.**
 
-- The GTK shell still runs on `EditorController`; binding it to
-  `EditorWorkspace` is the next slice (R24/R25 scope).
+- The GTK shell was bound to `EditorWorkspace` in the next slice
+  (R08-GTK-WORKSPACE, below).
 - Legacy blocks the strict codec rejects because the model has no field
   for them yet: `quickhide`, `autosave`, the `cordonsolid` editor key,
   pre-release `dispinfo` `uaxis`/`vaxis`, world-level `connections`.
@@ -837,6 +837,87 @@ manifest (migration `R08-DOMAIN`), with negative checks.
   remapping of other position/angle keys in instances, and prefab
   libraries.
 
+
+### R08-GTK-WORKSPACE: the GTK shell on EditorWorkspace (slice done 2026-09-28)
+
+**Scope** (user direction 2026-09-28: "replace EditorController with our new
+domain models"). `hammer/gtk` becomes a thin host over
+`presenters::EditorWorkspace`, and the feasibility model it ran on is deleted.
+
+**Delivered.**
+
+- **Host (`hammer/gtk/app.cpp`).** GTK pointer, key and scroll events become
+  `tools::` events for the workspace, which offers them to catalog shortcuts,
+  camera navigation and the active tool.
+  - One drag gesture covers every button; hover goes through a motion
+    controller; a cancelled drag cancels like a focus loss.
+  - Keys are handled per viewport, with a window-level fallback to the
+    hovered view.
+  - The host keeps only what the domain cannot do: Tab cycles a 2D pane,
+    and the catalog's `map.build` / `map.build_and_run` chords run the
+    asynchronous `MapBuildQueue` build (R08-ASYNC-BUILD).
+  - File dialogs, `run_map` and the Texture Application window answer the
+    workspace's host requests.
+  - The menu bar is generated from the `ActionCatalog`: one `app.act-*`
+    action per entry, with enabled and checked state from the catalog.
+  - The palette, entity-class dropdown and material picker run catalog
+    actions or `set_entity_class` / `set_material`.
+- **Renderer (`hammer/gtk/renderer.{h,cpp}`).** It draws a
+  `viewport::RenderSnapshot` (solids, displacements, entity markers, object
+  and face selection), the workspace's grid lines and the active tool's
+  `OverlayList` through the workspace cameras.
+  - The 2D transform is read off `Camera2D::WorldToScreen`; the 3D one comes
+    from `Camera3D`'s basis and field of view. Drawing and picking share one
+    camera.
+  - The renderer's own orbit and ortho camera state is deleted.
+- **Offscreen path (`offscreen.cpp`).** `--screenshot`, `--quad` and
+  `--textured` open maps through the same workspace and strict codec.
+  `--demo` builds a map by driving the workspace with simulated input.
+  `--cquad` is gone: `--quad` now loads through the editor's own path.
+- **Build (`hammer/gtk/build.sh`).** The core sources are read from the Waf
+  declarations, so the wscripts stay the one list.
+- **Deleted.**
+  - `EditorController` and `EditorCommands` (headers and sources).
+  - Their four suites: `hammer.app.editor_controller`, `.sensitivity`,
+    `.pick` and `hammer.app.editor_commands`.
+  - The contract `app.editor_controller.v1`.
+  - The archlint exception for `editor_controller.cpp`, and `hammer_app`'s
+    link to `vmf`.
+  - The MCP adapter's `EditorCommands` constructor.
+- **MCP suite.** `hammer.adapters.mcp` now runs over `SessionCommands` with
+  the strict VMF codec; its room still saves byte-identically across script
+  and MCP.
+- **Workspace API.** `EditorWorkspace::FrameDocument` is public (Reset Views),
+  with a new check in `hammer.presenters.editor_workspace`.
+- **UI suite.** `corpus.hammer.ui` now also drags the room's height in the
+  front view.
+  - This follows the domain Block tool's legacy depth rule: a new box keeps
+    the pending box's depth, else one grid step. The deleted controller
+    always used 128.
+  - The calibration linearity check is judged in pixels, because the views
+    open at 0.25 px/unit, where the whole-unit label quantizes to 4 units.
+
+**Evidence (2026-09-28).**
+
+| Check | Result |
+| --- | --- |
+| Q-EDITOR headless, g++ and clang++ | 118 of 118 suites each (122 less the 4 deleted) |
+| `corpus.hammer.ui` (real GTK shell, headless mutter) | pass, 12 checks: room built, six walls, both entities inside, leak-free build; `no-hollow` and `no-light` rejected; 3 of 3 repeats pass |
+| `corpus.hammer.loop`, `corpus.hammer.mcp` | pass (14 and 21 checks) |
+| `hammer.adapters.mcp` | pass, 90 checks, over `SessionCommands` |
+| `hammer/gtk/tests/viewport_smoke.sh` | pass: room.vmf 7 solids, 84 triangles, 30.1% geometry pixels |
+| Offscreen `--quad` of `room.vmf`, `wedge.vmf`, `displacement.vmf`; `--demo` | all open through the strict codec and render |
+| `archlint hammer --verify`, stylelint `--changed` | pass; `check --all` shows only the two `game/shared/fstop` ARCH105 findings (other work) |
+
+**Not done.**
+
+- The object bar's visgroup list and texture groups are still static
+  widgets; the workspace's `VisgroupPanel`, `Outliner`, `EntityInspector`
+  and `FaceInspector` have no GTK views yet.
+- Overlay labels are not drawn: the GL renderer has no text.
+- The 3D view has no render of point-entity models or sprites.
+- The live editor does not serve MCP yet.
+- `hammer/adapters/gtk` (the thin entity shell) still uses `EditorDocument`.
 
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 

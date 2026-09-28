@@ -33,7 +33,7 @@ view axis mapping and the view angle convention have one owner.
 - Screen pixels: origin top-left, x right, y down, continuous coordinates.
 - 2D view kinds `Top`, `Front`, `Side`; `Camera3D` is rejected by
   `Camera2D::SetKind`.
-- Axis mapping (identical to `EditorController::ViewAxes`): Top = X/Y (free
+- Axis mapping (`AxesOf`, its one owner): Top = X/Y (free
   Z, looking down -Z), Front = X/Z (free Y, looking along +Y), Side = Y/Z (free
   X, looking along -X). u is screen right, v is screen up.
 - Zoom in (0, inf), clamped to [1/64, 256] (legacy `ZOOM_MAX` 256).

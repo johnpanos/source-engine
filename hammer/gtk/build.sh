@@ -42,29 +42,31 @@ if [ -n "${KTX_SOURCE_ROOT:-}" ] || [ -n "${KTX_BUILD_ROOT:-}" ]; then
 	KTX_ENABLED=1
 fi
 
-# The editor core the shell links: the interaction authority (EditorController)
-# and the shared services it composes, plus the DiskFileStore adapter for file I/O.
-CORE="\
-$ROOT/hammer/core/app/command_script.cpp \
-$ROOT/hammer/core/app/editor_commands.cpp \
-$ROOT/hammer/core/app/map_build_queue.cpp \
+# The editor core the shell links: EditorWorkspace and the layers under it
+# (presenters, tools, viewport, app, formats, ports, scene) and the format
+# libraries, with the sources their Waf declarations list (the wscripts own
+# them), plus the platform adapters the host composes.
+waf_sources() {
+	python3 - "$ROOT" "$@" <<'PY'
+import re, sys
+root, specs = sys.argv[1], sys.argv[2:]
+for spec in specs:
+    wscript, _, target = spec.partition(":")
+    text = open(f"{root}/{wscript}/wscript").read()
+    for block in re.findall(r"bld\.stlib\((.*?)\n\t\)", text, re.S):
+        name = re.search(r"target\s*=\s*'?([\w]+)'?", block).group(1)
+        if target and name != target:
+            continue
+        files = re.findall(r"'([^']+\.cpp)'", re.search(r"source\s*=\s*\[(.*?)\]", block, re.S).group(1))
+        print(" ".join(f"{root}/{wscript}/{f}" for f in files))
+PY
+}
+CORE="$( waf_sources hammer/core:hammer_presenters hammer/core:hammer_tools \
+	hammer/core:hammer_viewport hammer/core:hammer_app hammer/core:hammer_formats \
+	hammer/core:hammer_ports hammer/core:hammer_scene mapgeometry kvtext vmf ) \
 $ROOT/hammer/adapters/platform/tool_process_map_builder.cpp \
 $ROOT/platform/posix/tool_process_provider.cpp \
 $ROOT/platform/runners/thread_task_runner.cpp \
-$ROOT/hammer/core/app/editor_controller.cpp \
-$ROOT/mapgeometry/brush.cpp \
-$ROOT/mapgeometry/displacement.cpp \
-$ROOT/mapgeometry/rounding.cpp \
-$ROOT/mapgeometry/texture_axes.cpp \
-$ROOT/kvtext/keyvalues.cpp \
-$ROOT/vmf/vmf_geometry.cpp \
-$ROOT/hammer/core/formats/vpk_archive.cpp \
-$ROOT/hammer/core/formats/vtf_image.cpp \
-$ROOT/hammer/core/formats/material.cpp \
-$ROOT/hammer/core/formats/material_catalog.cpp \
-$ROOT/hammer/core/formats/search_path_assets.cpp \
-$ROOT/hammer/core/app/document_history.cpp \
-$ROOT/hammer/core/app/save_orchestrator.cpp \
 $ROOT/hammer/adapters/platform/disk_file_store.cpp \
 $ROOT/hammer/adapters/platform/disk_byte_store.cpp"
 
