@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: render.pbr-brdf.glsl (RFC 0007): the GLSL BRDF library
-//          (materialsystem/shaderapivulkan/shaders/pbr_brdf.glsl), which
+//          (render/shaders/common/pbr_brdf.glsl), which
 //          every native PBR stage includes, agrees with the C++ reference
 //          (public/render/pbr_brdf.h) on the same inputs. A compute program
 //          (pbr_brdf_check.comp) evaluates each GLSL function per case on a

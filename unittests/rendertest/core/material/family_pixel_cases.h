@@ -43,7 +43,8 @@ struct CaseTexture
 	std::uint32_t height = 0;
 	bool clamp = false;
 	bool point = false;
-	std::vector<std::uint8_t> texels; // RGBA8, row 0 at the top
+	render::device::Format format = render::device::Format::kRGBA8Srgb;
+	std::vector<std::uint8_t> texels; // bytes in `format`, row 0 at the top
 };
 
 struct CaseVertex
@@ -59,6 +60,7 @@ struct PortPixel
 	int x = 0;
 	int y = 0;
 	int rgba[4] = {};
+	int channels = 4; // 3 when the port's capture holds no alpha
 };
 
 struct FamilyCase
@@ -84,8 +86,53 @@ struct CaseSet
 std::optional<CaseSet> LoadCases(
     testing::Checks &checks, const char *caseFile, const char *fixtureFile );
 
+// A model family's fixture (family_port_pixels.py record-model): the model
+// pixel harness's own inputs, carried with the port's pixels. Each case is a
+// FamilyCase (its material as VMT text, the port's RGB pixels) with its
+// placement and Source model lighting.
+struct ModelLight
+{
+	std::string type; // "point", "spot" or "directional"
+	float color[3] = {};
+	float position[3] = {};
+	float direction[3] = {};
+	float attenuation[3] = {};
+	float theta = 0.0f;
+	float phi = 0.0f;
+	float falloff = 0.0f;
+};
+
+struct ModelQuad
+{
+	float corners[4][2] = {}; // clip-space x, y at the fixture's quad_z
+	float normal[3] = {};
+	float tangent[4] = {};
+};
+
+struct ModelCase
+{
+	FamilyCase common;          // name, vmt, clear, port pixels
+	float modelMatrix[12] = {}; // 3x4, row-major with column vectors
+	float cube[6][3] = {};
+	std::vector<ModelLight> lights;
+};
+
+struct ModelCaseSet
+{
+	std::map<std::string, CaseTexture> textures; // by normalized name, RGBA8 sRGB
+	std::vector<ModelQuad> quads;
+	std::vector<ModelCase> cases;
+	float quadZ = 0.0f;
+	float eye[3] = {};
+};
+
+// Reads a model fixture: setup.fixture-parses and case.<name>.has-a-material.
+std::optional<ModelCaseSet> LoadModelCases( testing::Checks &checks, const char *fixtureFile );
+
 // The texture a material value names, or nullptr.
 const CaseTexture *FindTexture( const CaseSet &set, const std::string &name );
+const CaseTexture *FindTexture(
+    const std::map<std::string, CaseTexture> &textures, const std::string &name );
 
 // A registry with every family of the built-in VMT mapping.
 render::material::FamilyRegistry BuiltinFamilies();
@@ -122,6 +169,8 @@ struct CaseDraw
 	std::span<const std::byte> vertices;
 	std::uint32_t vertexCount = 0;
 	int clear[4] = { 0, 0, 0, 255 };
+	// The draw constants; empty for CaseToClip() alone.
+	std::span<const std::byte> drawConstants;
 };
 
 // The draw constants' world-to-clip for a case: the cases are clip-space

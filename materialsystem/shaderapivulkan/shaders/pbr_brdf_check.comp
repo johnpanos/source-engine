@@ -4,7 +4,7 @@
 // public/render/pbr_brdf.h. One invocation per case.
 layout( local_size_x = 64, local_size_y = 1, local_size_z = 1 ) in;
 
-#include "pbr_brdf.glsl"
+#include "../../../render/shaders/common/pbr_brdf.glsl"
 
 // Per case: (N.V, N.L, N.H, V.H); (roughness, F0 rgb); (split-sum A, B,
 // clear-coat weight, clear-coat roughness).

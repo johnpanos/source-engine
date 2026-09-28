@@ -29,7 +29,7 @@ layout( push_constant ) uniform Constants
 }
 consts;
 
-#include "pbr_brdf.glsl"
+#include "../../../render/shaders/common/pbr_brdf.glsl"
 
 void main()
 {

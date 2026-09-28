@@ -7,7 +7,7 @@
 // file defines ReflectionProbeDiffuseLight, ReflectionProbeOccluderCount and
 // ReflectionProbeOccluder (R50-RELIGHT; reflection_probes.glsl).
 
-#include "pbr_brdf.glsl"
+#include "../../../render/shaders/common/pbr_brdf.glsl"
 
 // The map's RPRB texture, or the built-in 2D texture when it has none (its
 // first texel lacks the marker, so ReflectionProbesRadiance declines).

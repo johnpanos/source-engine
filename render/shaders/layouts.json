@@ -1138,6 +1138,109 @@
     ]
    }
   },
+  "pbr": {
+   "description": "render.material family `pbr` (RFC 0016 K4, RFC 0007 PBRMetalRough): the frame group holds the split-sum table and its sampler, the view group the model lighting, the material group the constants and the base, MRAO, normal-map and emission textures with their samplers; world-to-clip and object-to-world are a draw-constant block.",
+   "sources": [
+    "render/material/families/pbr.vert",
+    "render/material/families/pbr.frag"
+   ],
+   "push_constants": [
+    "vertex"
+   ],
+   "groups": {
+    "frame": [
+     {
+      "binding": 0,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 1,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     }
+    ],
+    "view": [
+     {
+      "binding": 0,
+      "kind": "uniform-buffer",
+      "stages": [
+       "vertex",
+       "fragment"
+      ]
+     }
+    ],
+    "material": [
+     {
+      "binding": 0,
+      "kind": "uniform-buffer",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 1,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 2,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 3,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 4,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 5,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 6,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 7,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 8,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     }
+    ]
+   }
+  },
   "unlit": {
    "description": "render.material family `unlit` (RFC 0016 K4): the material group holds the constants, the base texture and its sampler; world-to-clip is a draw-constant block.",
    "sources": [

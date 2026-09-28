@@ -249,8 +249,117 @@ std::optional<CaseSet> LoadCases(
 
 const CaseTexture *FindTexture( const CaseSet &set, const std::string &name )
 {
-	auto found = set.textures.find( Normalized( name ) );
-	return found == set.textures.end() ? nullptr : &found->second;
+	return FindTexture( set.textures, name );
+}
+
+const CaseTexture *FindTexture(
+    const std::map<std::string, CaseTexture> &textures, const std::string &name )
+{
+	auto found = textures.find( Normalized( name ) );
+	return found == textures.end() ? nullptr : &found->second;
+}
+
+namespace
+{
+
+template <std::size_t N>
+void CopyNumbers( const kvtext::KeyValueNode &node, const char *key, float ( &out )[N] )
+{
+	const std::vector<float> values = Numbers( node.Find( key ) );
+	for ( std::size_t i = 0; i < N && i < values.size(); ++i )
+		out[i] = values[i];
+}
+
+} // namespace
+
+std::optional<ModelCaseSet> LoadModelCases( testing::Checks &checks, const char *fixtureFile )
+{
+	const kvtext::ParseResult fixture = kvtext::ParseKeyValues( ReadFile( fixtureFile ) );
+	if ( !checks.That( fixture.ok && !fixture.root.children.empty(), "setup.fixture-parses" ) )
+		return std::nullopt;
+	const kvtext::KeyValueNode &root = fixture.root.children[0];
+	ModelCaseSet set;
+	set.quadZ = Numbers( root.Find( "quad_z" ) ).at( 0 );
+	CopyNumbers( root, "eye", set.eye );
+	int clear[4] = { 0, 0, 0, 255 };
+	const std::vector<float> clearValues = Numbers( root.Find( "clear" ) );
+	for ( std::size_t i = 0; i < 4 && i < clearValues.size(); ++i )
+		clear[i] = int( clearValues[i] );
+	std::map<std::string, std::string> materials; // name -> VMT text
+	for ( const kvtext::KeyValueNode &node : root.children )
+	{
+		if ( node.name == "texture" && node.Find( "name" ) )
+		{
+			CaseTexture texture;
+			texture.width = std::uint32_t( Numbers( node.Find( "width" ) ).at( 0 ) );
+			texture.height = std::uint32_t( Numbers( node.Find( "height" ) ).at( 0 ) );
+			for ( float value : Numbers( node.Find( "texels" ) ) )
+				texture.texels.push_back( std::uint8_t( value ) );
+			set.textures[Normalized( *node.Find( "name" ) )] = texture;
+		}
+		else if ( node.name == "material" && node.Find( "name" ) )
+		{
+			std::string vmt = "\"PBRMetalRough\"\n{\n";
+			for ( const kvtext::KeyValue &pair : node.pairs )
+			{
+				if ( pair.key != "name" )
+					vmt += "\t\"" + pair.key + "\" \"" + pair.value + "\"\n";
+			}
+			materials[*node.Find( "name" )] = vmt + "}\n";
+		}
+		else if ( node.name == "quad" )
+		{
+			ModelQuad quad;
+			const std::vector<float> corners = Numbers( node.Find( "corners" ) );
+			for ( std::size_t i = 0; i < 8 && i < corners.size(); ++i )
+				quad.corners[i / 2][i % 2] = corners[i];
+			CopyNumbers( node, "normal", quad.normal );
+			CopyNumbers( node, "tangent", quad.tangent );
+			set.quads.push_back( quad );
+		}
+		else if ( node.name == "case" && node.Find( "name" ) )
+		{
+			ModelCase modelCase;
+			FamilyCase &common = modelCase.common;
+			common.name = *node.Find( "name" );
+			std::copy( clear, clear + 4, common.clear );
+			const std::string *material = node.Find( "material" );
+			auto found = material ? materials.find( *material ) : materials.end();
+			if ( checks.That(
+			         found != materials.end(), "case." + common.name + ".has-a-material" ) )
+				common.vmt = found->second;
+			CopyNumbers( node, "model_matrix", modelCase.modelMatrix );
+			float cube[18] = {};
+			CopyNumbers( node, "cube", cube );
+			for ( int i = 0; i < 18; ++i )
+				modelCase.cube[i / 3][i % 3] = cube[i];
+			for ( const kvtext::KeyValueNode &child : node.children )
+			{
+				if ( child.name != "light" )
+					continue;
+				ModelLight light;
+				light.type = child.Find( "type" ) ? *child.Find( "type" ) : "";
+				CopyNumbers( child, "color", light.color );
+				CopyNumbers( child, "position", light.position );
+				CopyNumbers( child, "direction", light.direction );
+				CopyNumbers( child, "attenuation", light.attenuation );
+				light.theta = Numbers( child.Find( "theta" ) ).at( 0 );
+				light.phi = Numbers( child.Find( "phi" ) ).at( 0 );
+				light.falloff = Numbers( child.Find( "falloff" ) ).at( 0 );
+				modelCase.lights.push_back( light );
+			}
+			for ( const kvtext::KeyValue &pair : node.pairs )
+			{
+				const std::vector<float> n =
+				    pair.key == "pixel" ? Numbers( &pair.value ) : std::vector<float>();
+				if ( n.size() == 5 )
+					common.port.push_back( { int( n[0] ), int( n[1] ),
+					    { int( n[2] ), int( n[3] ), int( n[4] ), 255 }, 3 } );
+			}
+			set.cases.push_back( std::move( modelCase ) );
+		}
+	}
+	return set;
 }
 
 material::FamilyRegistry BuiltinFamilies()
@@ -267,6 +376,12 @@ ImportedCase ImportCase(
 {
 	ImportedCase imported;
 	material::VmtImportContext context;
+	// A PBR material's $fallbackmaterial must resolve; other profiles draw
+	// it, so the cases do not carry it.
+	context.resolve = []( std::string_view ) -> std::optional<std::string>
+	{
+		return std::string();
+	};
 	auto desc = material::ImportVmt( testCase.vmt, context );
 	if ( !checks.That( desc.HasValue() && desc.Value().family == family.desc.name,
 	         "import." + testCase.name + ".is-" + family.desc.name ) )
@@ -374,7 +489,7 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 				break;
 			}
 			device::TextureDesc desc;
-			desc.format = device::Format::kRGBA8Srgb;
+			desc.format = texture->format;
 			desc.width = texture->width;
 			desc.height = texture->height;
 			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
@@ -524,7 +639,9 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 					    encoder.SetBindGroup( draw.groups[g].role, groups[g].group );
 				    encoder.SetVertexBuffer( 0, context.Buffer( verticesRef ) );
 				    const std::array<float, 16> toClip = CaseToClip();
-				    encoder.SetDrawConstants( 0, std::as_bytes( std::span( toClip ) ) );
+				    encoder.SetDrawConstants( 0, draw.drawConstants.empty()
+				                                     ? std::as_bytes( std::span( toClip ) )
+				                                     : draw.drawConstants );
 				    encoder.Draw( draw.vertexCount );
 				    encoder.EndRendering();
 			    } );
@@ -567,21 +684,33 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 
 void JudgeCase( testing::Checks &checks, const FamilyCase &testCase, const Drawn &drawn )
 {
+	// RENDER_FAMILY_DUMP_DIR: the drawn frame as <case>.ppm, for diagnosis.
+	if ( const char *directory = std::getenv( "RENDER_FAMILY_DUMP_DIR" ) )
+	{
+		std::ofstream file(
+		    std::string( directory ) + "/" + testCase.name + ".ppm", std::ios::binary );
+		file << "P6\n" << kSize << " " << kSize << "\n255\n";
+		for ( std::size_t i = 0; i < std::size_t( kSize ) * kSize; ++i )
+			file.write( reinterpret_cast<const char *>( &drawn.rgba[i * 4] ), 3 );
+	}
 	int worst = 0;
 	std::string worstAt;
 	for ( const PortPixel &pixel : testCase.port )
 	{
 		const std::size_t i = ( std::size_t( pixel.y ) * kSize + std::size_t( pixel.x ) ) * 4;
-		for ( int c = 0; c < 4; ++c )
+		for ( int c = 0; c < pixel.channels; ++c )
 		{
 			const int difference = std::abs( int( drawn.rgba[i + c] ) - pixel.rgba[c] );
 			if ( difference > worst )
 			{
 				worst = difference;
 				worstAt = std::to_string( pixel.x ) + "," + std::to_string( pixel.y ) +
-				          " channel " + std::to_string( c ) + ": family " +
-				          std::to_string( drawn.rgba[i + c] ) + ", port " +
-				          std::to_string( pixel.rgba[c] );
+				          " channel " + std::to_string( c ) + ": family";
+				for ( int k = 0; k < pixel.channels; ++k )
+					worstAt += " " + std::to_string( drawn.rgba[i + k] );
+				worstAt += ", port";
+				for ( int k = 0; k < pixel.channels; ++k )
+					worstAt += " " + std::to_string( pixel.rgba[k] );
 			}
 		}
 	}

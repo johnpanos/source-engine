@@ -1,9 +1,10 @@
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 """Source guards for the native PBR stages (RFC 0007 R47 / RFC 0001 R29).
 
-* The BRDF has one GLSL copy, shaders/pbr_brdf.glsl, which every PBR stage
-  includes (directly or through world_pbr_probe.glsl); no stage defines its
-  own GGX, Smith or Schlick. The render.pbr-brdf.glsl GPU suite compares that
+* The BRDF has one GLSL copy, render/shaders/common/pbr_brdf.glsl, which
+  every PBR stage and the render.material `pbr` family include (directly or
+  through world_pbr_probe.glsl); no stage defines its own GGX, Smith or
+  Schlick. Includes resolve against the including file, as glslc's do. The render.pbr-brdf.glsl GPU suite compares that
   copy with public/render/pbr_brdf.h.
 * The PBR and GI stages bind their descriptors grouped by update frequency
   (vulkan_descriptor_groups.h): no set above 2, so they fit the four sets
@@ -13,14 +14,19 @@ The negative cases feed each check a stage that breaks it.
 """
 
 import pathlib
+import posixpath
 import re
 import unittest
 
-SHADERS = pathlib.Path(__file__).resolve().parents[3] / "materialsystem/shaderapivulkan/shaders"
-LIBRARY = "pbr_brdf.glsl"
-PBR_STAGES = ("pbr_direct.frag", "world_pbr.frag", "world_pbr_glass.frag", "model_pbr.frag")
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+SHADERS = "materialsystem/shaderapivulkan/shaders/"
+LIBRARY = "pbr_brdf.glsl"  # its file name; render/shaders/common/ holds it
+PBR_STAGES = tuple(SHADERS + name for name in (
+    "pbr_direct.frag", "world_pbr.frag", "world_pbr_glass.frag", "model_pbr.frag")) + (
+    "render/material/families/pbr.frag",)
 # Grouped stages: frame (0), material (1), constants (2).
-GROUPED_STAGES = ("world_pbr.frag", "world_pbr_glass.frag", "model_pbr.frag")
+GROUPED_STAGES = tuple(SHADERS + name for name in (
+    "world_pbr.frag", "world_pbr_glass.frag", "model_pbr.frag"))
 MAX_SET = 2
 # A BRDF term defined outside the library: a GGX denominator, or a function
 # whose name says it is one.
@@ -32,10 +38,16 @@ INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"', re.MULTILINE)
 SET = re.compile(r"layout\(\s*set\s*=\s*(\d+)")
 
 
+def is_library(name):
+    return pathlib.PurePosixPath(name).name == LIBRARY
+
+
 def includes(name, read, seen=None):
-    """Every file `name` includes, transitively."""
+    """Every file `name` includes, transitively, as paths resolved against
+    the including file."""
     seen = set() if seen is None else seen
-    for included in INCLUDE.findall(read(name)):
+    for text in INCLUDE.findall(read(name)):
+        included = posixpath.normpath(posixpath.join(posixpath.dirname(name), text))
         if included not in seen:
             seen.add(included)
             includes(included, read, seen)
@@ -45,10 +57,10 @@ def includes(name, read, seen=None):
 def library_problems(stages, read):
     problems = []
     for stage in stages:
-        if LIBRARY not in includes(stage, read):
+        if not any(is_library(name) for name in includes(stage, read)):
             problems.append("%s does not include %s" % (stage, LIBRARY))
     for name in sorted({*stages, *(i for s in stages for i in includes(s, read))}):
-        if name != LIBRARY and BRDF_DEFINITION.search(read(name)):
+        if not is_library(name) and BRDF_DEFINITION.search(read(name)):
             problems.append("%s defines a BRDF term outside %s" % (name, LIBRARY))
     return problems
 
@@ -64,7 +76,7 @@ def set_problems(stages, read):
 
 
 def read_shader(name):
-    return (SHADERS / name).read_text()
+    return (ROOT / name).read_text()
 
 
 class PbrShaderLibraryTest(unittest.TestCase):

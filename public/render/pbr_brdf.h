@@ -6,7 +6,7 @@
 //          multiple scattering, and weights Lambertian diffuse by what the
 //          split-sum specular directional albedo leaves. Results are linear
 //          radiometric values without color encoding or exposure.
-//          shaders/pbr_brdf.glsl is the GPU copy of these functions; the
+//          render/shaders/common/pbr_brdf.glsl is the GPU copy of these functions; the
 //          render.pbr-brdf.glsl suite evaluates both on the same inputs.
 //
 //===========================================================================//

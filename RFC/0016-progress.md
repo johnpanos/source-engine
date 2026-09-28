@@ -1173,3 +1173,66 @@ frontend side of the proxy corpus.
 | --- | --- | --- |
 | Families match ports | `unlit` within 2 levels on 6 cases; `lightmapped` exact on 8 cases; a seeded defect caught for each; `vertexlit` and `pbr` open | partial |
 | Bind-group ceiling | `unlit` (one group) and `lightmapped` (material and draw) judged by the artifact build; a seeded fifth group still fails | pass |
+
+## K4 family slice: `pbr` (2026-09-28)
+
+State: the RFC 0007 family is on the core for meshes and matches the native
+model port within 1 level. K4 stays open for `vertexlit` (the Hammer
+session) and the frontend side of the proxy corpus.
+
+- **The family:** `render.material`'s `PbrFamily`.
+  - Its program is `render/material/families/pbr.{vert,frag}` and
+    `pbr_lighting.glsl`, generated into `spv/families_spv.h`.
+  - `ClaimPbr` claims `$basetexture`, `$mraotexture`, `$bumpmap`,
+    `$emissiontexture` and `$emissionscale`. It refuses environment maps,
+    alpha test, translucency, clear coat and glass by name, so those
+    materials stay on the native stages until the family claims them.
+  - Three groups: the frame group holds the split-sum table
+    (`SplitSumTable()` from RFC 0007's generated table). The view group
+    holds Source's model lighting: `PackSourceModelLighting` packs the
+    ambient cube and up to four lights as the shader API does (sorted spot,
+    point, directional, with `SetLight`'s cone). The material group holds
+    the constants and four texture/sampler pairs.
+  - The draw constants are world-to-clip and object-to-world: the
+    128-byte `FamilyDrawConstants` prefix the Hammer session's opaque pass
+    pushes.
+  - Model lighting is the legacy frontend's interface until K7's light
+    set replaces it.
+- **One BRDF:** `pbr_brdf.glsl` moved to `render/shaders/common/`, as the
+  RFC's migration table says. The backend's stages include it by a
+  relative path, which every compile path (the build, the regenerators,
+  glslangValidator debug variants) resolves against the including file.
+  - `PbrSplitSumCoordinate` is split out of `PbrSplitSum`, because GLSL
+    cannot pass a separately constructed sampler to a function.
+  - The native `pbr-model` frames are byte-identical before and after;
+    `render.pbr-brdf.glsl` passes.
+  - The source guard (`test_pbr_shader_library.py`) resolves includes as
+    glslc does, and now also covers the family's stage.
+- **The oracle:** the native `pbr-model` material pixel run is judged per
+  pixel against an independent BRDF model (`material_pixel_pbr_model.py`).
+  - `family_port_pixels.py record-model` records a passing run as
+    `quality/fixtures/render-families/pbr-port-v1.vdf`. The fixture holds
+    the harness's own inputs (textures, materials, quads, and each case's
+    placement, cube and lights) with the port's pixels on an 8-pixel grid
+    wherever the oracle judges one (7,132 pixels). The harness stays the
+    case table's only owner.
+  - `render.family.pbr` (85 checks, g++ and clang++) draws every case with
+    the family. Every case is within 1 level of the port, three of them
+    exactly. `.seeded-ignore-normal-map` is caught.
+  - `pbr_skinned` is drawn with its placement as a rigid transform:
+    skinning is `render.pass.skinning`'s (K6).
+- **What matching the port took:** a directional light's direction. The
+  port's pixel constants place a directional light 10,000 units from the
+  lighting origin against its direction (`CommitPixelShaderLighting`),
+  while the vertex constants carry the light's own position, which lies
+  along its direction. The family shines a directional light along its
+  direction.
+- **Harness:** `family_pixel_cases` gained model fixtures
+  (`LoadModelCases`), any texture format, RGB-only port pixels, per-family
+  draw constants, a `$fallbackmaterial` resolver, and
+  `RENDER_FAMILY_DUMP_DIR` for frame dumps.
+
+| K4 check | Evidence | Result |
+| --- | --- | --- |
+| Families match ports | `unlit` within 2 levels on 6 cases; `lightmapped` exact on 8; `pbr` within 1 on 8 (7,132 pixels); a seeded defect caught for each; `vertexlit` open | partial |
+| Bind-group ceiling | `unlit`, `lightmapped` and `pbr` (frame, view and material groups) judged by the artifact build (1,342 checks); a seeded fifth group still fails | pass |

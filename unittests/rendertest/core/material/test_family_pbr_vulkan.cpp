@@ -1,0 +1,296 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: render.family.pbr (RFC 0016 K4 "Families match ports", the `pbr`
+//			family) on render.device.vulkan.
+//
+//			quality/fixtures/render-families/pbr-port-v1.vdf is a passing
+//			native `pbr-model` material pixel run (judged per pixel against an
+//			independent BRDF model by material_pixel_pbr_model.py), recorded by
+//			tools/render/family_port_pixels.py record-model: the harness's
+//			textures, PBRMetalRough materials, quads and per case the
+//			placement, ambient cube and Source model lights, with the model
+//			port's pixels wherever the oracle judges one. Each case's
+//			material is imported with the VMT importer into a `pbr` block,
+//			claimed by ClaimPbr and drawn with the family: the frame group
+//			holds the split-sum table, the view group the model lighting
+//			(PackSourceModelLighting), the material group the constants and
+//			textures, and the draw constants world-to-clip (with the D3D9
+//			half-pixel shift) and the case's placement. The pixels must match
+//			the port's within kTolerance levels per channel. pbr_skinned is
+//			drawn with its placement as a rigid transform: skinning is
+//			render.pass.skinning's (K6). With the Khronos validation layer
+//			installed, the run must report no message. family_pixel_cases.h
+//			holds the shared harness.
+//
+//			Seeded defect (sensitivity row): RENDER_MATERIAL_PBR_SEEDED_
+//			IGNORE_NORMAL_MAP (pbr_family.cpp) claims every material without
+//			its normal map.
+//
+//=============================================================================//
+
+#include "family_pixel_cases.h"
+#include "render/device/vulkan/provider.h"
+#include "render/material/pbr_family.h"
+#include "render/material/vmt_import.h"
+#include "testing/checks.h"
+
+#include <algorithm>
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <vector>
+
+namespace
+{
+
+using namespace render;
+using namespace render::material;
+using namespace rendertest::families;
+namespace vulkan = render::device::vulkan;
+
+const char *const kFixture = "quality/fixtures/render-families/pbr-port-v1.vdf";
+
+PbrLightType LightType( const std::string &type )
+{
+	if ( type == "spot" )
+		return PbrLightType::kSpot;
+	return type == "directional" ? PbrLightType::kDirectional : PbrLightType::kPoint;
+}
+
+// A texture's copy in the format the family samples it with.
+CaseTexture As( const CaseTexture &texture, device::Format format )
+{
+	CaseTexture copy = texture;
+	copy.format = format;
+	return copy;
+}
+
+} // namespace
+
+int main()
+{
+	testing::Checks checks;
+	const std::optional<ModelCaseSet> set = LoadModelCases( checks, kFixture );
+	if ( !set )
+		return checks.Report();
+	const FamilyRegistry registry = BuiltinFamilies();
+	const FamilySchema *pbr = registry.Find( "pbr" );
+	if ( !checks.That( pbr != nullptr, "setup.pbr-family-registers" ) )
+		return checks.Report();
+
+	// The family refuses what it does not draw, naming it.
+	{
+		auto refused = [&]( const char *vmt, const char *named )
+		{
+			VmtImportContext context;
+			context.resolve = []( std::string_view ) -> std::optional<std::string>
+			{
+				return std::string();
+			};
+			auto imported = ImportVmt( vmt, context );
+			if ( !imported )
+				return false;
+			ParameterBlock block( *pbr );
+			if ( !ApplyValues( imported.Value(), block ) )
+				return false;
+			for ( const MaterialValue &value : imported.Value().values )
+			{
+				if ( value.kind == ValueKind::kTexture )
+					(void)block.SetTexture( value.parameter, device::TextureId( 1 ) );
+			}
+			const PbrClaim claim = ClaimPbr( block );
+			return !claim.claimed && claim.reason.find( named ) != std::string::npos;
+		};
+		const char *const base =
+		    "\"PBRMetalRough\" { \"$basetexture\" \"a\" \"$mraotexture\" \"b\" "
+		    "\"$fallbackmaterial\" \"f\" ";
+		checks.That( refused( ( std::string( base ) + "\"$envmap\" \"c\" }" ).c_str(), "envmap" ),
+		    "claim.refuses-an-environment-map-by-name" );
+		checks.That(
+		    refused( ( std::string( base ) + "\"$alphatest\" \"1\" }" ).c_str(), "alphatest" ),
+		    "claim.refuses-alpha-test-by-name" );
+		checks.That(
+		    refused( ( std::string( base ) + "\"$clearcoat\" \"0.5\" }" ).c_str(), "clearcoat" ),
+		    "claim.refuses-clear-coat-by-name" );
+		checks.That( refused( ( std::string( base ) + "\"$transmission\" \"1\" }" ).c_str(),
+		                 "transmission" ),
+		    "claim.refuses-glass-by-name" );
+		// The importer already requires $mraotexture; a block without one bound
+		// (a texture that failed to load) is refused too.
+		{
+			VmtImportContext context;
+			context.resolve = []( std::string_view ) -> std::optional<std::string>
+			{
+				return std::string();
+			};
+			auto imported = ImportVmt( ( std::string( base ) + "}" ).c_str(), context );
+			ParameterBlock block( *pbr );
+			bool refused = false;
+			if ( imported && ApplyValues( imported.Value(), block ) )
+			{
+				(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+				const PbrClaim claim = ClaimPbr( block );
+				refused = !claim.claimed && claim.reason.find( "mraotexture" ) != std::string::npos;
+			}
+			checks.That( refused, "claim.refuses-a-material-without-mrao-bound" );
+		}
+	}
+
+	// PackSourceModelLighting sorts spot, point, directional, stably.
+	{
+		PbrLightDesc lights[3];
+		lights[0].type = PbrLightType::kDirectional;
+		lights[0].color[0] = 1.0f;
+		lights[1].type = PbrLightType::kPoint;
+		lights[1].color[0] = 2.0f;
+		lights[2].type = PbrLightType::kSpot;
+		lights[2].color[0] = 3.0f;
+		lights[2].theta = 0.5f;
+		lights[2].phi = 1.0f;
+		const float eye[3] = {};
+		const float cube[6][3] = {};
+		const PbrModelLighting packed = PackSourceModelLighting( eye, cube, lights );
+		checks.That( packed.eye[3] == 3.0f && packed.lights[0].color[0] == 3.0f &&
+		                 packed.lights[1].color[0] == 2.0f && packed.lights[2].color[0] == 1.0f,
+		    "lighting.lights-sort-spot-point-directional" );
+		checks.That( packed.lights[2].color[3] == 1.0f && packed.lights[0].direction[3] == 1.0f &&
+		                 packed.lights[0].spot[1] > packed.lights[0].spot[2],
+		    "lighting.directional-and-spot-flags-and-cone" );
+	}
+
+	const bool layer = vulkan::ValidationLayerAvailable();
+	std::atomic<std::uint64_t> messages{ 0 };
+	vulkan::VulkanAdapterOptions options;
+	options.validation = layer;
+	options.validationCounter = &messages;
+	if ( const char *adapter = std::getenv( "RENDER_VK_ADAPTER" ) )
+		options.adapterIndex = std::atoi( adapter );
+	int drawnCases = 0;
+	{
+		auto created = vulkan::Create( options );
+		if ( !checks.That( created.HasValue(), "device.a-vulkan-device-is-created" ) )
+			return checks.Report();
+		std::unique_ptr<device::IRenderDevice2> device = std::move( created ).Value();
+		auto family =
+		    PbrFamily::Create( *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
+		if ( !checks.That( family.HasValue(), "family.creates" ) )
+			return checks.Report();
+
+		const PbrSplitSumTable table = SplitSumTable();
+		CaseTexture splitSum;
+		splitSum.width = table.width;
+		splitSum.height = table.height;
+		splitSum.clamp = true;
+		splitSum.format = table.format;
+		splitSum.texels.resize( table.texels.size() * sizeof( float ) );
+		std::memcpy( splitSum.texels.data(), table.texels.data(), splitSum.texels.size() );
+		CaseTexture unused;
+		unused.width = unused.height = 1;
+		unused.format = device::Format::kRGBA8Unorm;
+		unused.texels = { 0, 0, 0, 255 };
+
+		for ( const ModelCase &modelCase : set->cases )
+		{
+			const FamilyCase &testCase = modelCase.common;
+			const std::string &name = testCase.name;
+			const ImportedCase imported = ImportCase( checks, testCase, *pbr );
+			if ( !imported.block )
+				continue;
+			const PbrClaim claim = ClaimPbr( *imported.block );
+			if ( !That( checks, claim.claimed, "claim." + name, claim.reason ) )
+				continue;
+			auto pipeline = family.Value()->Pipeline( claim );
+			if ( !checks.That( pipeline.HasValue(), "pipeline." + name ) )
+				continue;
+			// The textures, in the formats the family samples them with.
+			std::optional<CaseTexture> base, mrao, normal, emission;
+			for ( const MaterialValue &value : imported.material.values )
+			{
+				const CaseTexture *texture = FindTexture( set->textures, value.text );
+				if ( !texture )
+					continue;
+				if ( value.parameter == "basetexture" )
+					base = As( *texture, device::Format::kRGBA8Srgb );
+				else if ( value.parameter == "mraotexture" )
+					mrao = As( *texture, device::Format::kRGBA8Unorm );
+				else if ( value.parameter == "bumpmap" )
+					normal = As( *texture, device::Format::kRGBA8Unorm );
+				else if ( value.parameter == "emissiontexture" )
+					emission = As( *texture, device::Format::kRGBA8Srgb );
+			}
+			if ( !checks.That( base && mrao, "import." + name + ".textures-resolve" ) )
+				continue;
+
+			std::vector<PbrLightDesc> lights;
+			for ( const ModelLight &light : modelCase.lights )
+			{
+				PbrLightDesc desc;
+				desc.type = LightType( light.type );
+				std::copy( light.color, light.color + 3, desc.color );
+				std::copy( light.position, light.position + 3, desc.position );
+				std::copy( light.direction, light.direction + 3, desc.direction );
+				std::copy( light.attenuation, light.attenuation + 3, desc.attenuation );
+				desc.theta = light.theta;
+				desc.phi = light.phi;
+				desc.falloff = light.falloff;
+				lights.push_back( desc );
+			}
+			const PbrModelLighting lighting =
+			    PackSourceModelLighting( set->eye, modelCase.cube, lights );
+
+			std::vector<PbrVertex> vertices;
+			const float uvs[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+			for ( const ModelQuad &quad : set->quads )
+			{
+				for ( int corner : { 0, 1, 2, 0, 2, 3 } )
+				{
+					PbrVertex vertex;
+					vertex.position[0] = quad.corners[corner][0];
+					vertex.position[1] = quad.corners[corner][1];
+					vertex.position[2] = set->quadZ;
+					std::copy( quad.normal, quad.normal + 3, vertex.normal );
+					std::copy( quad.tangent, quad.tangent + 4, vertex.tangent );
+					std::copy( uvs[corner], uvs[corner] + 2, vertex.uv );
+					vertices.push_back( vertex );
+				}
+			}
+			PbrDrawConstants drawConstants;
+			const std::array<float, 16> toClip = CaseToClip();
+			std::copy( toClip.begin(), toClip.end(), drawConstants.toClip );
+			std::copy( modelCase.modelMatrix, modelCase.modelMatrix + 12, drawConstants.world );
+			drawConstants.world[15] = 1.0f;
+
+			CaseDraw draw;
+			draw.pipeline = pipeline.Value();
+			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
+			    {}, { &splitSum } } );
+			draw.groups.push_back( { device::BindGroupRole::kView, family.Value()->ViewLayout(),
+			    std::as_bytes( std::span( &lighting, 1 ) ), {} } );
+			draw.groups.push_back( { device::BindGroupRole::kMaterial,
+			    family.Value()->MaterialLayout(), std::as_bytes( std::span( &claim.constants, 1 ) ),
+			    { &*base, &*mrao, normal ? &*normal : &unused,
+			        emission ? &*emission : &unused } } );
+			draw.vertices = std::as_bytes( std::span( vertices ) );
+			draw.vertexCount = std::uint32_t( vertices.size() );
+			draw.drawConstants = std::as_bytes( std::span( &drawConstants, 1 ) );
+			std::copy( testCase.clear, testCase.clear + 4, draw.clear );
+			const Drawn drawn = DrawCase( *device, draw );
+			if ( !checks.That( drawn.ok, "draw." + name ) )
+				continue;
+			++drawnCases;
+			JudgeCase( checks, testCase, drawn );
+		}
+		checks.That( drawnCases == 8, "cases.every-case-drew" );
+		(void)device->WaitIdle();
+	}
+	if ( layer )
+		checks.Equal( messages.load(), std::uint64_t( 0 ), "validation.no-messages" );
+	else
+		std::printf( "SKIP validation: the Khronos validation layer is not installed\n" );
+	return checks.Report();
+}

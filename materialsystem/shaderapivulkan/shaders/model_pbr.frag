@@ -85,7 +85,7 @@ layout( push_constant ) uniform Constants
 }
 consts;
 
-#include "pbr_brdf.glsl"
+#include "../../../render/shaders/common/pbr_brdf.glsl"
 #ifdef PROBE_VOLUME
 layout( set = 0, binding = 2 ) uniform sampler2D probeAtlas; // PRBV atlas, RGBA16F
 layout( set = 0, binding = 3 ) uniform sampler2D probeGrids; // grid table, RGBA32F
