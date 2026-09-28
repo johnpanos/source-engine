@@ -12,7 +12,8 @@
 //			- draws whose mesh or program does not resolve, whose material's
 //			  texture is not resident, whose mesh stride is not the program's,
 //			  or whose program reads a draw group the instance lacks or has of
-//			  another layout are counted, not drawn;
+//			  another layout, or a view group the frame lacks, are counted, not
+//			  drawn;
 //			- invalid targets fail with kInvalidTargets before any pass is
 //			  added.
 //
@@ -33,8 +34,8 @@ int main()
 	    StageMaterials( *device, device::Format::kRGBA8Unorm, device::Format::kD32Float );
 	if ( !checks.That( meshes && materials, "setup.meshes-and-materials" ) )
 		return checks.Report();
-	checks.Equal( materials->programs.ReadyCount(), std::size_t( 4 ),
-	    "setup.four-programs-ready-and-the-untextured-one-not" );
+	checks.Equal( materials->programs.ReadyCount(), std::size_t( 5 ),
+	    "setup.five-programs-ready-and-the-untextured-one-not" );
 	(void)device->Poll(); // staging released behind completed tokens goes at the next poll
 	const std::size_t baseline = device->LiveResourceCount();
 
@@ -42,8 +43,8 @@ int main()
 	const FrameResult first = DrawScene( *device, *materials, *meshes, *a->Snapshot() );
 	checks.That( first.ok && first.passes == 2, "N1.draw-and-readback-passes-run" );
 	checks.That( first.stats.drawn == 2, "N2.resolved-draws-are-drawn" );
-	checks.Equal( first.stats.unresolved, 6u,
-	    "N2.missing-mesh-unknown-material-absent-texture-wrong-stride-and-draw-groups-counted" );
+	checks.Equal( first.stats.unresolved, 7u,
+	    "N2.missing-mesh-unknown-material-absent-texture-wrong-stride-and-groups-counted" );
 	const FrameResult second = DrawScene( *device, *materials, *meshes, *a->Snapshot() );
 	checks.That( second.ok, "N1.a-second-frame-runs" );
 	checks.Equal( device->LiveResourceCount(), baseline, "N1.frames-create-no-device-objects" );

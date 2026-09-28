@@ -240,6 +240,8 @@ foundation::Expected<void, ProgramStatus> MaterialPrograms::Set(
 	program.vertexStride = request.vertexStride;
 	program.drawConstantBytes = request.drawConstantBytes;
 	program.drawLayout = request.drawLayout;
+	program.frameLayout = request.frameLayout;
+	program.viewLayout = request.viewLayout;
 	return {};
 }
 

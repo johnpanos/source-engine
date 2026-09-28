@@ -14,7 +14,9 @@
 //			(drawLayout); a scene instance names its group
 //			(MeshInstanceDesc::drawGroup), resolved through IDrawGroups
 //			(DrawGroups builds them), and the pass binds it when the layouts
-//			match.
+//			match. Frame and view groups (roles kFrame, kView: a lookup
+//			table, a view's lighting) come from the pass's owner in the same
+//			shape and are checked against frameLayout and viewLayout.
 //
 //			Draw constants (D16) share one prefix in every family: the draw's
 //			world-to-clip matrix, then its world matrix, both row-major with
@@ -63,6 +65,10 @@ struct DrawProgram
 	std::uint32_t vertexStride = 0;       // the pipeline's vertex buffer 0
 	std::uint32_t drawConstantBytes = 0;  // a prefix of FamilyDrawConstants
 	device::BindGroupLayoutId drawLayout; // role kDraw; invalid when the family reads none
+	// The frame and view groups the family reads (roles kFrame, kView), which
+	// the pass's owner supplies per frame and view; invalid when it reads none.
+	device::BindGroupLayoutId frameLayout;
+	device::BindGroupLayoutId viewLayout;
 };
 
 struct DrawGroup

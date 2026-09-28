@@ -15,7 +15,8 @@
 //			- O4 draws whose mesh or material does not resolve, whose texture is
 //			  not resident, whose stride is not the program's or whose draw group
 //			  is missing or of another layout are counted and not drawn: A with
-//			  six such draws gives A's bytes;
+//			  seven such draws (one reading a view group the frame lacks) gives
+//			  A's bytes;
 //			- validation: no message from the Khronos validation layer
 //			  (synchronization validation included) when it is installed.
 //
@@ -119,7 +120,7 @@ int main()
 		auto withMissing = SceneA( true );
 		const FrameResult missing =
 		    DrawScene( *device, programs, *meshes, *withMissing->Snapshot() );
-		checks.That( missing.stats.drawn == 2 && missing.stats.unresolved == 6,
+		checks.That( missing.stats.drawn == 2 && missing.stats.unresolved == 7,
 		    "O4.unresolved-draws-are-counted" );
 		checks.That(
 		    missing.ok && missing.rgba == frameA.rgba, "O4.unresolved-draws-are-not-drawn" );

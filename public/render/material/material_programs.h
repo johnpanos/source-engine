@@ -68,8 +68,10 @@ struct ProgramRequest
 	device::PipelineId pipeline;
 	std::uint32_t vertexStride = 0;
 	std::uint32_t drawConstantBytes = 0;
-	device::BindGroupLayoutId drawLayout; // invalid when the family reads no draw group
-	GroupRequest material;                // role kMaterial
+	device::BindGroupLayoutId drawLayout;  // invalid when the family reads no draw group
+	device::BindGroupLayoutId frameLayout; // invalid when the family reads no frame group
+	device::BindGroupLayoutId viewLayout;  // invalid when the family reads no view group
+	GroupRequest material;                 // role kMaterial
 };
 
 enum class ProgramStatus : std::uint8_t

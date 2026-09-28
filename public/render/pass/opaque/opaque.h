@@ -12,12 +12,13 @@
 //			matrix; FamilyDrawConstants), cut to the bytes the program reads.
 //			A program that reads a draw group (drawLayout) gets the instance's
 //			(MeshInstanceDesc::drawGroup through IDrawGroups), which must have
-//			that layout. Depth test, blending and culling are the family
+//			that layout; one that reads a frame or view group gets the
+//			sources' frame or view group, which must have its layout. Depth test, blending and culling are the family
 //			pipeline's.
 //
-//			A draw whose mesh, program or needed draw group does not resolve,
-//			or whose mesh stride or draw group layout is not the program's, is
-//			not drawn; it is counted in
+//			A draw whose mesh, program or needed group does not resolve, or
+//			whose mesh stride or group layout is not the program's, is not
+//			drawn; it is counted in
 //			OpaqueStats::unresolved, which the frame's owner checks (nothing
 //			is dropped silently).
 //
@@ -80,6 +81,10 @@ struct OpaqueSources
 	const IMeshResolver &meshes;
 	const material::IDrawPrograms &programs;
 	const material::IDrawGroups *drawGroups = nullptr; // for families that read one
+	// The frame's and the view's groups (roles kFrame, kView), for families
+	// that read them (a lookup table, a view's lighting).
+	const material::DrawGroup *frame = nullptr;
+	const material::DrawGroup *view = nullptr;
 };
 
 // Adds the draw pass. The snapshot, list and sources are read here; the

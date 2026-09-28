@@ -39,6 +39,7 @@ constexpr std::uint32_t kSize = 64;
 constexpr std::uint64_t kUntexturedMaterial = 8; // names a texture never staged
 constexpr std::uint64_t kDrawGroupMaterial = 10; // reads a draw group of layout A
 constexpr std::uint64_t kOtherLayoutGroup = 5;   // a draw group of layout B
+constexpr std::uint64_t kViewGroupMaterial = 11; // reads a view group the frame lacks
 
 // A unit cube around the origin: 8 corners, 12 triangles, in the unlit
 // family's vertex (uv 0, white).
@@ -77,8 +78,9 @@ public:
 
 // Materials 1 red, 2 blue, 3 green: the unlit family's $color over a white
 // texture. Material 8 names a texture that is never staged; material 10
-// reads a draw group of layout A, and draw group 5 has layout B; anything
-// else is unknown.
+// reads a draw group of layout A, and draw group 5 has layout B; material 11
+// reads a view group, which the frames do not supply; anything else is
+// unknown.
 struct Materials
 {
 	explicit Materials( device::IRenderDevice2 &device )
@@ -144,6 +146,7 @@ inline std::unique_ptr<scene::IRenderScene> SceneA( bool withMissing = false )
 		wrongGroup.drawGroup = kOtherLayoutGroup;
 		changes.Add( result->Reserve(), noGroup );
 		changes.Add( result->Reserve(), wrongGroup );
+		changes.Add( result->Reserve(), Cube( { -1.0f, 0.0f, -20.0f }, 1.0f, kViewGroupMaterial ) );
 	}
 	(void)result->Commit( changes );
 	return result;
@@ -361,7 +364,12 @@ inline std::unique_ptr<Materials> StageMaterials(
 	material::GroupRequest other;
 	other.layout = materials->layouts[1];
 	other.textures.push_back( { 0, "white", 1, {} } );
-	if ( !materials->programs.Set( kDrawGroupMaterial, grouped.Value() ) ||
+	auto viewed = materials->family->Request( FlatClaim( 1, 1, 1 ), "white" );
+	if ( !viewed )
+		return nullptr;
+	viewed.Value().viewLayout = materials->layouts[0];
+	if ( !materials->programs.Set( kViewGroupMaterial, viewed.Value() ) ||
+	     !materials->programs.Set( kDrawGroupMaterial, grouped.Value() ) ||
 	     !materials->drawGroups.Set( kOtherLayoutGroup, other ) )
 		return nullptr;
 	device::CompletionToken token;
