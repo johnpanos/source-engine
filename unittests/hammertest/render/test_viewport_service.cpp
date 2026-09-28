@@ -16,7 +16,10 @@
 //			   afterwards, and once the destructor has returned and the device
 //			   has polled, it holds nothing the renderer made;
 //			S5 a shut-down render runner refuses jobs, and destroying the
-//			   service then does not wait.
+//			   service then does not wait;
+//			S6 a material source set on the service is asked for textures
+//			   only on the render thread, and is destroyed there with the
+//			   service.
 //
 //=============================================================================//
 
@@ -27,6 +30,7 @@
 #include "testing/checks.h"
 #include "viewport_fixture.h"
 
+#include <atomic>
 #include <chrono>
 #include <thread>
 #include <vector>
@@ -35,6 +39,8 @@ namespace
 {
 
 using namespace hammertest::viewport_render;
+using hammer::render_adapter::IMaterialTextures;
+using hammer::render_adapter::MaterialImage;
 using hammer::render_adapter::ViewJob;
 using hammer::render_adapter::ViewportService;
 using hammer::render_adapter::ViewportStatus;
@@ -64,6 +70,27 @@ template <typename Ready> bool DrainUntil( platform::ManualTaskRunner &reply, Re
 	return true;
 }
 
+// Records where it is asked and destroyed.
+class Source final : public IMaterialTextures
+{
+public:
+	Source( std::thread::id test, std::atomic<int> &asked, std::atomic<int> &destroyedOn )
+	    : m_Test( test ), m_Asked( asked ), m_DestroyedOn( destroyedOn )
+	{
+	}
+	~Source() override { m_DestroyedOn = std::this_thread::get_id() == m_Test ? 2 : 1; }
+	std::optional<MaterialImage> BaseTexture( const std::string & ) override
+	{
+		m_Asked += std::this_thread::get_id() == m_Test ? 1000 : 1;
+		return std::nullopt;
+	}
+
+private:
+	std::thread::id m_Test;
+	std::atomic<int> &m_Asked;
+	std::atomic<int> &m_DestroyedOn;
+};
+
 } // namespace
 
 int main()
@@ -77,6 +104,8 @@ int main()
 	Build( d );
 	auto scene = std::make_shared<const hammer::viewport::RenderSnapshot>( Snapshot( d ) );
 
+	std::atomic<int> asked{ 0 };
+	std::atomic<int> destroyedOn{ 0 };
 	{
 		platform::ThreadTaskRunner render( "viewport-test-render" );
 		{
@@ -146,6 +175,24 @@ int main()
 			                 *noScene == ViewportStatus::kInvalidView,
 			    "S3.invalid-jobs-reply-with-kInvalidView" );
 
+			// S6.
+			checks.That( service.SetMaterialSource( std::make_unique<Source>(
+			                 std::this_thread::get_id(), asked, destroyedOn ) ),
+			    "S6.a-material-source-is-accepted" );
+			bool textured = false;
+			(void)service.Submit( scene, 1, ViewJob( TopJob() ),
+			    [&]( ViewportService::Result result )
+			    {
+				    textured = result.HasValue();
+			    } );
+			checks.That( DrainUntil( reply,
+			                 [&]
+			                 {
+				                 return textured;
+			                 } ) &&
+			                 asked > 0 && asked < 1000,
+			    "S6.the-source-is-asked-only-on-the-render-thread" );
+
 			// S4: jobs in flight at destruction.
 			for ( int i = 0; i < 8; ++i )
 			{
@@ -157,6 +204,7 @@ int main()
 			}
 		}
 		reply.RunUntilIdle();
+		checks.Equal( destroyedOn.load(), 1, "S6.the-source-is-destroyed-on-the-render-thread" );
 		// Resources released behind completed tokens go at the device's next poll.
 		(void)device->Poll();
 		checks.Equal(

@@ -7,6 +7,7 @@
 //
 //			G1 a snapshot's solids become two triangles per quad face and one
 //			   edge per face side; point entities become shaded marker boxes;
+//			   with no texture sizes everything is one untextured batch;
 //			G2 selection is data: the selected solid's faces carry the
 //			   selection fill and its edges the selection edge color, others
 //			   their own;
@@ -21,7 +22,14 @@
 //			G6 ViewFor(Camera2D) projects like Camera2D::WorldToScreen for
 //			   every 2D kind, and ViewFor(Camera3D) like Camera3D::
 //			   WorldToScreen, with depth in [0, 1] growing with distance;
-//			G7 each projection check rejects a seeded wrong view.
+//			G7 each projection check rejects a seeded wrong view;
+//			G8 the textured preview: faces whose material has a texture size
+//			   go into that material's batch with the shading alone as color
+//			   (the selection tint over the selected solid) and uv from the
+//			   side's texture axes over the size, restated here; markers stay
+//			   untextured;
+//			G9 a material without a size (or a zero size) stays in the
+//			   untextured batch, as with no sizes at all.
 //
 //=============================================================================//
 
@@ -41,6 +49,8 @@ using hammer::render_adapter::AppendOverlay;
 using hammer::render_adapter::BuildSceneGeometry;
 using hammer::render_adapter::LineVertex;
 using hammer::render_adapter::SceneGeometry;
+using hammer::render_adapter::TextureSize;
+using hammer::render_adapter::UnlitVertex;
 using hammer::render_adapter::ViewFor;
 using hammer::viewport::ViewKind;
 namespace lines = render::pass::lines;
@@ -56,6 +66,23 @@ struct Rgb
 Rgb ColorOf( const LineVertex &v )
 {
 	return { int( v.color & 0xFF ), int( ( v.color >> 8 ) & 0xFF ), int( ( v.color >> 16 ) & 0xFF ) };
+}
+
+Rgb ColorOf( const UnlitVertex &v )
+{
+	return { v.color[0], v.color[1], v.color[2] };
+}
+
+// The batch of 'material' ("" is the untextured one), or an empty list.
+const std::vector<UnlitVertex> &Batch( const SceneGeometry &g, const std::string &material )
+{
+	static const std::vector<UnlitVertex> none;
+	for ( const auto &batch : g.faces )
+	{
+		if ( batch.material == material )
+			return batch.vertices;
+	}
+	return none;
 }
 
 // The shading rule, restated independently of the adapter.
@@ -81,22 +108,65 @@ Rgb Shaded( double r, double g, double b, Vec3d n )
 	return { byte( r * d ), byte( g * d ), byte( b * d ) };
 }
 
-// The color of the first face triangle whose vertices all have z == 'z' and
-// x within [x0, x1].
-std::optional<Rgb> FaceColor( const SceneGeometry &g, double z, double x0, double x1 )
+// The color of the first face triangle of a batch whose vertices all have
+// z == 'z' and x within [x0, x1].
+std::optional<Rgb> FaceColor(
+    const std::vector<UnlitVertex> &faces, double z, double x0, double x1 )
 {
-	for ( std::size_t i = 0; i + 2 < g.faces.size(); i += 3 )
+	for ( std::size_t i = 0; i + 2 < faces.size(); i += 3 )
 	{
 		bool match = true;
 		for ( std::size_t k = 0; k < 3; ++k )
 		{
-			const float *p = g.faces[i + k].position;
+			const float *p = faces[i + k].position;
 			match = match && std::fabs( p[2] - z ) < 1e-3 && p[0] >= x0 - 1e-3 && p[0] <= x1 + 1e-3;
 		}
 		if ( match )
-			return ColorOf( g.faces[i] );
+			return ColorOf( faces[i] );
 	}
 	return std::nullopt;
+}
+
+std::optional<Rgb> FaceColor( const SceneGeometry &g, double z, double x0, double x1 )
+{
+	return FaceColor( Batch( g, "" ), z, x0, x1 );
+}
+
+// Whether every vertex of 'faces' has the uv of some face of the snapshot
+// that holds its position: texels = dot(p, axis) / scale + shift, over the size.
+bool UvsFollowTheAxes( const std::vector<UnlitVertex> &faces,
+    const hammer::viewport::RenderSnapshot &snapshot, TextureSize size )
+{
+	for ( const UnlitVertex &v : faces )
+	{
+		const Vec3d p( v.position[0], v.position[1], v.position[2] );
+		bool matched = false;
+		for ( const auto &solid : snapshot.solids )
+		{
+			for ( const auto &face : solid.faces )
+			{
+				bool holds = false;
+				for ( const Vec3d &q : face.vertices )
+					holds =
+					    holds || ( std::fabs( q.x - p.x ) < 1e-3 && std::fabs( q.y - p.y ) < 1e-3 &&
+					                 std::fabs( q.z - p.z ) < 1e-3 );
+				if ( !holds )
+					continue;
+				auto texel = [&]( const hammer::scene::TextureAxis &axis )
+				{
+					return ( p.x * axis.axis.x + p.y * axis.axis.y + p.z * axis.axis.z ) /
+					           axis.scale +
+					       axis.shift;
+				};
+				matched = matched ||
+				          ( std::fabs( texel( face.uAxis ) / size.width - v.uv[0] ) < 1e-4 &&
+				              std::fabs( texel( face.vAxis ) / size.height - v.uv[1] ) < 1e-4 );
+			}
+		}
+		if ( !matched )
+			return false;
+	}
+	return !faces.empty();
 }
 
 bool EdgeColorsIn( const SceneGeometry &g, double x0, double x1, Rgb color )
@@ -180,7 +250,10 @@ int main()
 
 	// G1.
 	checks.Equal( g.triangles, 24u, "G1.two-triangles-per-quad-face" );
-	checks.Equal( g.faces.size(), std::size_t( 24 * 3 + 36 ), "G1.solid-triangles-and-a-marker-box" );
+	checks.That( g.faces.size() == 1 && g.faces[0].material.empty(),
+	    "G1.no-sizes-means-one-untextured-batch" );
+	checks.Equal(
+	    Batch( g, "" ).size(), std::size_t( 24 * 3 + 36 ), "G1.solid-triangles-and-a-marker-box" );
 	checks.Equal(
 	    g.edges.size(), std::size_t( 12 * 4 * 2 + 24 ), "G1.one-edge-per-face-side-and-marker-edges" );
 
@@ -199,6 +272,50 @@ int main()
 	                 rightTop->r + rightTop->g + rightTop->b >
 	                     rightBottom->r + rightBottom->g + rightBottom->b,
 	    "G3.an-upward-face-is-brighter-than-a-downward-one" );
+
+	// G8, G9.
+	{
+		const std::string material = "DEV/DEV_MEASUREGENERIC01B";
+		const TextureSize size{ 64, 32 };
+		const auto snapshot = Snapshot( d );
+		const SceneGeometry textured = BuildSceneGeometry( snapshot,
+		    [&]( const std::string &name ) -> std::optional<TextureSize>
+		    {
+			    return name == material ? std::optional<TextureSize>( size ) : std::nullopt;
+		    } );
+		checks.That( textured.faces.size() == 2 && textured.faces[0].material.empty() &&
+		                 textured.faces[1].material == material,
+		    "G8.textured-faces-get-their-material-batch" );
+		checks.Equal( Batch( textured, material ).size(), std::size_t( 24 * 3 ),
+		    "G8.every-solid-face-is-textured" );
+		checks.Equal(
+		    Batch( textured, "" ).size(), std::size_t( 36 ), "G8.the-marker-box-stays-untextured" );
+		const auto texturedTop = FaceColor( Batch( textured, material ), 64, 64, 192 );
+		const auto selectedTop = FaceColor( Batch( textured, material ), 128, -128, 0 );
+		checks.That( texturedTop && *texturedTop == Shaded( 1, 1, 1, Vec3d( 0, 0, 1 ) ),
+		    "G8.a-textured-face-is-colored-by-the-shading-alone" );
+		checks.That( selectedTop && *selectedTop == Shaded( 1.00, 0.62, 0.28, Vec3d( 0, 0, 1 ) ),
+		    "G8.the-selection-tints-a-textured-face" );
+		checks.That( UvsFollowTheAxes( Batch( textured, material ), snapshot, size ),
+		    "G8.uv-follows-the-texture-axes-over-the-size" );
+		checks.That(
+		    !UvsFollowTheAxes( Batch( textured, material ), snapshot, TextureSize{ 32, 32 } ),
+		    "G8.a-wrong-size-is-rejected" );
+		const SceneGeometry missing = BuildSceneGeometry( snapshot,
+		    []( const std::string & ) -> std::optional<TextureSize>
+		    {
+			    return std::nullopt;
+		    } );
+		const SceneGeometry zero = BuildSceneGeometry( snapshot,
+		    []( const std::string & ) -> std::optional<TextureSize>
+		    {
+			    return TextureSize{ 0, 16 };
+		    } );
+		checks.That( missing.faces.size() == 1 && zero.faces.size() == 1 &&
+		                 Batch( missing, "" ).size() == Batch( g, "" ).size() &&
+		                 Batch( zero, "" ).size() == Batch( g, "" ).size(),
+		    "G9.a-material-without-a-size-stays-untextured" );
+	}
 
 	// G4.
 	{

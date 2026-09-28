@@ -1,13 +1,18 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.opaque.null (RFC 0016 K5, headless): render.pass.opaque on
-//			render.device.null. The null device validates every transition and
-//			binding against its own state, so a frame it accepts has its
-//			accesses declared; pixels are the Vulkan suite's job.
+// Purpose: render.opaque.null (RFC 0016 K5, K4 families, headless):
+//			render.pass.opaque on render.device.null. The null device validates
+//			every transition and binding against its own state, so a frame it
+//			accepts has its accesses declared (mesh buffers, the programs'
+//			uniform buffers and textures); pixels are the Vulkan suite's job.
 //
-//			- the upload and draw passes run, with one pipeline per vertex
-//			  stride shared across frames;
-//			- unresolved meshes and materials are counted, not drawn;
+//			- the draw and readback passes run, and frames create no device
+//			  objects (pipelines and groups are the family's and
+//			  MaterialPrograms');
+//			- draws whose mesh or program does not resolve, whose material's
+//			  texture is not resident, whose mesh stride is not the program's,
+//			  or whose program reads a draw group the instance lacks or has of
+//			  another layout are counted, not drawn;
 //			- invalid targets fail with kInvalidTargets before any pass is
 //			  added.
 //
@@ -24,32 +29,34 @@ int main()
 	auto device = device::null::Create( {} ).Value();
 	resources::MeshCache cache( *device );
 	std::optional<Meshes> meshes = StageCube( *device, cache );
-	auto renderer =
-	    OpaqueRenderer::Create( *device, device::Format::kRGBA8Unorm, device::Format::kD32Float );
-	if ( !checks.That( meshes && renderer, "setup.mesh-and-renderer" ) )
+	std::unique_ptr<Materials> materials =
+	    StageMaterials( *device, device::Format::kRGBA8Unorm, device::Format::kD32Float );
+	if ( !checks.That( meshes && materials, "setup.meshes-and-materials" ) )
 		return checks.Report();
+	checks.Equal( materials->programs.ReadyCount(), std::size_t( 4 ),
+	    "setup.four-programs-ready-and-the-untextured-one-not" );
+	(void)device->Poll(); // staging released behind completed tokens goes at the next poll
 	const std::size_t baseline = device->LiveResourceCount();
 
 	auto a = SceneA( true );
-	const FrameResult first = DrawScene( *device, *renderer.Value(), *meshes, *a->Snapshot() );
-	checks.That( first.ok && first.passes == 3, "N1.upload-draw-and-readback-passes-run" );
-	checks.That(
-	    first.stats.drawn == 2 && first.stats.unresolved == 2, "N2.unresolved-draws-are-counted" );
-	const std::size_t afterFirst = device->LiveResourceCount();
-	const FrameResult second = DrawScene( *device, *renderer.Value(), *meshes, *a->Snapshot() );
-	checks.That( second.ok && device->LiveResourceCount() == afterFirst,
-	    "N1.frames-reuse-the-pipeline-and-release-their-groups" );
-	checks.That( afterFirst == baseline + 1, "N1.one-pipeline-for-one-stride" );
+	const FrameResult first = DrawScene( *device, *materials, *meshes, *a->Snapshot() );
+	checks.That( first.ok && first.passes == 2, "N1.draw-and-readback-passes-run" );
+	checks.That( first.stats.drawn == 2, "N2.resolved-draws-are-drawn" );
+	checks.Equal( first.stats.unresolved, 6u,
+	    "N2.missing-mesh-unknown-material-absent-texture-wrong-stride-and-draw-groups-counted" );
+	const FrameResult second = DrawScene( *device, *materials, *meshes, *a->Snapshot() );
+	checks.That( second.ok, "N1.a-second-frame-runs" );
+	checks.Equal( device->LiveResourceCount(), baseline, "N1.frames-create-no-device-objects" );
 
 	graph::GraphBuilder builder;
 	const scene::SceneView view = View();
 	const scene::DrawList list = scene::BuildDrawList( *a->Snapshot(), view );
 	OpaqueTargets invalid;
-	auto refused = renderer.Value()->AddPasses(
-	    builder, *a->Snapshot(), list, view, *meshes, Colors(), invalid );
+	auto refused = AddOpaquePasses( builder, *a->Snapshot(), list, view,
+	    { *meshes, materials->programs, &materials->drawGroups }, invalid );
 	checks.That(
 	    !refused && refused.Error() == OpaqueStatus::kInvalidTargets && builder.Passes().empty(),
 	    "N3.invalid-targets-fail-before-adding-passes" );
-	checks.Equal( renderer.Value()->RecordFailures(), 0u, "N1.records-without-failure" );
+	checks.Equal( materials->programs.GroupFailures(), 0u, "N1.groups-without-failure" );
 	return checks.Report();
 }

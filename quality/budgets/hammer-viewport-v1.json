@@ -18,7 +18,8 @@
       "limits": {
         "edit_to_pixels_p95_ms": 16.0,
         "edit_to_pixels_max_ms": 50.0
-      }
+      },
+      "note": "The flat preview (no assets mounted)."
     },
     {
       "id": "desktop-small-room-4-views",
@@ -36,7 +37,29 @@
       "limits": {
         "edit_to_pixels_p95_ms": 8.0,
         "edit_to_pixels_max_ms": 33.0
-      }
+      },
+      "note": "The flat preview (no assets mounted)."
+    },
+    {
+      "id": "desktop-trust-fling-4-views-textured",
+      "profile": "linux-native-vulkan-gpu",
+      "decided": "2026-09-28",
+      "workload": {
+        "map": "unittests/hammertest/fixtures/portal2/sp_a2_trust_fling.vmf",
+        "views": 4,
+        "width": 640,
+        "height": 480,
+        "warmup_edits": 5,
+        "edits": 40,
+        "edit": "move_selection by 16 units on one solid",
+        "textures_env": "HAMMER_TEXTURE_VPKS",
+        "textures": "Portal 2's portal2/pak01_dir.vpk (not in the repository; the row is measured where HAMMER_TEXTURE_VPKS names it)"
+      },
+      "limits": {
+        "edit_to_pixels_p95_ms": 16.0,
+        "edit_to_pixels_max_ms": 50.0
+      },
+      "note": "The textured preview the window shows once assets are mounted: every face batch through the unlit family with its base texture. Limits as the flat row: a texture is fetched once per material, so an edit restages the same batches."
     }
   ]
 }

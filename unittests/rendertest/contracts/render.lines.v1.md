@@ -20,6 +20,7 @@ overlay draw through)
 | P5 | Screen filled items (handles) draw over screen lines |
 | P6 | Colors are straight-alpha RGBA8, alpha-blended |
 | P7 | Resident batches draw; the same inputs give byte-identical frames; the Khronos validation layer reports no message |
+| P8 | Colors are display (sRGB-encoded) values: on an sRGB target the pass decodes them with the exact sRGB curve, so they read back as written within one level (the pass shares that target with the material families, which draw in linear light) |
 
 Text labels are not drawn by this pass (RFC 0016 decision "lines and overlays": text waits for
 a text pass on RFC 0010 fonts). The shaders are committed SPIR-V (`lines_spv.h`, an EMBEDDED row

@@ -1021,15 +1021,50 @@ capture and sharing measurements remain R17's.
   tools product then builds `texturecontainer`, and `hammer_gtk` compiles
   `ktx2_preview.cpp` with `HAMMER_KTX_PREVIEW`.
 
+**Follow-up: the textured viewport on K4's families (2026-09-28).**
+
+- **Solids through the families.** `BuildSceneGeometry` returns one face
+  batch per material, in the unlit family's vertex. Faces carry their
+  side's texture axes (`viewport::FaceDraw::uAxis`, `vAxis`, new).
+  - A textured face gets uv = (dot(p, axis) / scale + shift) / size, and
+    its color is the editor's shading (with the selection tint).
+  - Faces without a texture, displacement blend tints and entity markers
+    stay in the untextured batch with the flat fill colors.
+  - `ViewportRenderer` stages one mesh and one instance of its own
+    `render.scene` per batch. It draws them through `render.pass.opaque`
+    and the `unlit` family into an sRGB target. Edges, grid and overlay
+    follow through `render.pass.lines`.
+  - The unit-box `SceneProjection` is deleted; the renderer's scene holds
+    the real batches.
+- **Textures.** `IMaterialTextures` is the render sequence's source of
+  base textures, asked once per material. The shell implements it with
+  `hammer::gtk::CatalogTextures`: its own VPK archives and
+  `MaterialCatalog`, with the KTX2 decoder in the KTX build.
+  - `ViewportService` owns the source on the render sequence;
+    `SetMaterialSource` swaps it when assets mount.
+  - `hammer_gtk --textured OUT.ppm MAP.vmf VPKS` draws the camera view
+    textured. On sp_a2_trust_fling with Portal 2's `pak01_dir.vpk`, 50 of
+    50 materials are textured in 51 draws.
+- **Colors.** The unlit family reads vertex colors as gamma 2.2, so the
+  renderer re-encodes the display colors at staging. The flat preview keeps
+  its pixels within one level (R1).
+- **RFC 0008 smoke.** `tools/quality/hammer_ktx2_preview.py` passes with
+  the KTX build: 89,854 red pixels from the packaged KTX2, and 0 for the
+  corrupt control.
+- **Budget, textured row.** `desktop-trust-fling-4-views-textured` in
+  `hammer-viewport-v1.json` runs as
+  `corpus.hammer.viewport-budget.textured`. It is optional and needs
+  `HAMMER_TEXTURE_VPKS`. Results:
+  - textured: p95 4.9 ms, max 5.7 ms;
+  - flat: p95 5.9 ms on trust_fling and 2.9 ms on the room.
+
 **Not done.**
 
-- Textured and lit previews: K4 families, then R89/R90. The solids draw as a
-  resident lines-pass batch until a family draws `render.scene` instances
-  (see RFC 0016's interim note).
-- Readback into `GdkMemoryTexture`, not a dmabuf (clause D18, after D17).
-- `tools/quality/hammer_ktx2_preview.py`'s textured viewport run waits for
-  the textured viewport.
+- Lit previews (R89/R90). Textures are sampled from mip 0 only, and
+  translucent and alpha-tested materials draw opaque.
+- Readback into `GdkMemoryTexture`, not a dmabuf (clause D18).
 - The budget is desktop only, with no Fold7 or low-core row.
+- Each edit restages every batch; per-solid meshes would restage one.
 
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 

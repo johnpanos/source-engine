@@ -343,6 +343,11 @@ foundation::Expected<LinesStats, LinesStatus> LinesRenderer::AddPasses(
 	stats.listVertices = static_cast<std::uint32_t>( frame->vertices.size() );
 	stats.draws = static_cast<std::uint32_t>( frame->draws.size() );
 	frame->world.params[0] = view.depthBias;
+	const float srgb =
+	    ( m_ColorFormat == Format::kRGBA8Srgb || m_ColorFormat == Format::kBGRA8Srgb ) ? 1.0f
+	                                                                                   : 0.0f;
+	frame->world.params[1] = srgb;
+	frame->screen.params[1] = srgb;
 
 	// The list's vertices, uploaded into a transient buffer.
 	graph::ResourceRef listBuffer;

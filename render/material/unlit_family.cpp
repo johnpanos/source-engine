@@ -143,4 +143,22 @@ foundation::Expected<PipelineId, UnlitStatus> UnlitFamily::Pipeline( const Unlit
 	return pipeline.Value();
 }
 
+foundation::Expected<ProgramRequest, UnlitStatus> UnlitFamily::Request(
+    const UnlitClaim &claim, std::string baseTexture, const SamplerDesc &sampler )
+{
+	auto pipeline = Pipeline( claim );
+	if ( !pipeline )
+		return foundation::MakeUnexpected( pipeline.Error() );
+	ProgramRequest request;
+	request.pipeline = pipeline.Value();
+	request.vertexStride = sizeof( UnlitVertex );
+	request.drawConstantBytes = sizeof( UnlitDrawConstants );
+	request.material.layout = m_MaterialLayout;
+	request.material.constantsBinding = 0;
+	const auto bytes = std::as_bytes( std::span( &claim.constants, 1 ) );
+	request.material.constants.assign( bytes.begin(), bytes.end() );
+	request.material.textures.push_back( { 1, std::move( baseTexture ), 2, sampler } );
+	return request;
+}
+
 } // namespace render::material

@@ -1,8 +1,9 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.opaque (RFC 0016 K5) on render.device.vulkan: scene draw
-//			lists drawn by render.pass.opaque through render.graph, with real
-//			pixels.
+// Purpose: render.opaque (RFC 0016 K5, K4 families) on render.device.vulkan:
+//			scene draw lists drawn by render.pass.opaque through render.graph
+//			and the unlit family (flat $color materials over a white texture),
+//			with real pixels.
 //
 //			- O1 scene A: the near red cube covers the center of the far blue
 //			  cube although blue draws later (the depth test), and the blue
@@ -11,8 +12,10 @@
 //			  frame nothing of A's cubes;
 //			- O3 destroying scene A (the scene and its snapshots) leaves B's
 //			  frame byte-identical;
-//			- O4 draws whose mesh or material does not resolve are counted and
-//			  not drawn: A with two such draws gives A's bytes;
+//			- O4 draws whose mesh or material does not resolve, whose texture is
+//			  not resident, whose stride is not the program's or whose draw group
+//			  is missing or of another layout are counted and not drawn: A with
+//			  six such draws gives A's bytes;
 //			- validation: no message from the Khronos validation layer
 //			  (synchronization validation included) when it is installed.
 //
@@ -81,16 +84,17 @@ int main()
 		std::unique_ptr<device::IRenderDevice2> device = std::move( created ).Value();
 		resources::MeshCache cache( *device );
 		std::optional<Meshes> meshes = StageCube( *device, cache );
-		auto renderer = OpaqueRenderer::Create(
-		    *device, device::Format::kRGBA8Unorm, device::Format::kD32Float );
-		if ( !checks.That( meshes && renderer, "setup.mesh-and-renderer" ) )
+		std::unique_ptr<Materials> materials =
+		    StageMaterials( *device, device::Format::kRGBA8Unorm, device::Format::kD32Float );
+		if ( !checks.That( meshes && materials, "setup.meshes-and-materials" ) )
 			return checks.Report();
+		const Materials &programs = *materials;
 
 		const scene::SceneView view = View();
 		auto a = SceneA();
 		auto b = SceneB();
-		const FrameResult frameA = DrawScene( *device, *renderer.Value(), *meshes, *a->Snapshot() );
-		const FrameResult frameB = DrawScene( *device, *renderer.Value(), *meshes, *b->Snapshot() );
+		const FrameResult frameA = DrawScene( *device, programs, *meshes, *a->Snapshot() );
+		const FrameResult frameB = DrawScene( *device, programs, *meshes, *b->Snapshot() );
 		checks.That( frameA.ok && frameB.ok, "O1.both-frames-run" );
 		checks.That(
 		    frameA.stats.drawn == 2 && frameA.stats.unresolved == 0 && frameB.stats.drawn == 1,
@@ -109,19 +113,19 @@ int main()
 		    "O2.scenes-do-not-share-content" );
 
 		a.reset();
-		const FrameResult again = DrawScene( *device, *renderer.Value(), *meshes, *b->Snapshot() );
+		const FrameResult again = DrawScene( *device, programs, *meshes, *b->Snapshot() );
 		checks.That( again.ok && again.rgba == frameB.rgba, "O3.destroying-a-leaves-b-identical" );
 
 		auto withMissing = SceneA( true );
 		const FrameResult missing =
-		    DrawScene( *device, *renderer.Value(), *meshes, *withMissing->Snapshot() );
-		checks.That( missing.stats.drawn == 2 && missing.stats.unresolved == 2,
+		    DrawScene( *device, programs, *meshes, *withMissing->Snapshot() );
+		checks.That( missing.stats.drawn == 2 && missing.stats.unresolved == 6,
 		    "O4.unresolved-draws-are-counted" );
 		checks.That(
 		    missing.ok && missing.rgba == frameA.rgba, "O4.unresolved-draws-are-not-drawn" );
-		checks.Equal( renderer.Value()->RecordFailures(), 0u, "O1.records-without-failure" );
-		renderer.Value().reset();
+		checks.Equal( materials->programs.GroupFailures(), 0u, "O1.groups-without-failure" );
 		(void)device->WaitIdle();
+		materials.reset();
 	}
 	if ( layer )
 		checks.Equal( messages.load(), std::uint64_t( 0 ), "validation.no-messages" );

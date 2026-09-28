@@ -2,26 +2,37 @@
 //
 // Purpose: The editor's viewports on the RFC 0016 render core (RFC 0002
 //			hammer.adapters.render; RFC 0016 "Editor viewports"). One
-//			ViewportRenderer draws any number of views of one document through
-//			render.pass.lines on the device the composition root passes in
-//			(RenderCore_Create's binding->device), offscreen, into RGBA8
-//			pixels the host shows (a GdkMemoryTexture now, a dmabuf later).
+//			ViewportRenderer draws any number of views of one document on the
+//			device the composition root passes in (RenderCore_Create's
+//			binding->device), offscreen, into sRGB RGBA8 pixels the host shows
+//			(a GdkMemoryTexture now, a dmabuf later).
 //
-//			Scene geometry (scene_geometry.h) is resident: SetScene restages
-//			the faces and edges only when the caller's key changes (the
-//			snapshot revision and selection), so camera moves, hover and tool
-//			feedback upload only the per-view list (grid and overlay).
+//			Solids draw through the material families (RFC 0016 K4): each
+//			face batch (scene_geometry.h) is a mesh and one instance of the
+//			renderer's own render.scene, drawn by render.pass.opaque with the
+//			unlit family. With a material source (IMaterialTextures) the
+//			camera view is textured: a material's base texture is fetched once
+//			on the render sequence, staged in a TextureCache and drawn through
+//			its own program; a face whose texture is missing draws untextured.
+//			Without a source every face is untextured (the flat preview).
+//			Edges, the grid and tool overlays draw through render.pass.lines.
 //
-//			A view renders as one graph: a lines pass for the grid (2D views,
-//			clearing the target), then one for the scene and the tool
-//			overlay, then a copy into a readback buffer. The 3D view draws the
-//			shaded faces and biased edges depth-tested; 2D views draw the
-//			edges over the grid. Nothing blocks: Render submits and returns a
-//			ticket, and Take returns the pixels once the device completes it
-//			(RenderAndWait polls for offscreen hosts and tests).
+//			Scene geometry is resident: SetScene restages the batches and
+//			edges only when the caller's key changes (the snapshot revision
+//			and selection), so camera moves, hover and tool feedback upload
+//			only the per-view list (grid and overlay).
 //
-//			Lifetime: the renderer borrows the device and must be destroyed
-//			before it; its destructor waits for its own frames to complete.
+//			A view renders as one graph: in the camera view the opaque pass
+//			(clearing), then the lines pass for the depth-tested, biased edges
+//			and the overlay; in 2D views the grid lines pass (clearing), then
+//			the edges and overlay; then a copy into a readback buffer. Nothing
+//			blocks: Render submits and returns a ticket, and Take returns the
+//			pixels once the device completes it (RenderAndWait polls for
+//			offscreen hosts and tests).
+//
+//			Lifetime: the renderer borrows the device and the material source
+//			and must be destroyed before them; its destructor waits for its
+//			own frames to complete. It is used on one sequence.
 //
 //=============================================================================//
 
@@ -29,9 +40,15 @@
 #define HAMMER_ADAPTERS_RENDER_VIEWPORT_RENDERER_H
 
 #include "foundation/expected.h"
+#include "material_textures.h"
 #include "render/device/device.h"
+#include "render/material/material_programs.h"
+#include "render/material/unlit_family.h"
 #include "render/pass/lines/lines.h"
+#include "render/pass/opaque/opaque.h"
 #include "render/resources/mesh_cache.h"
+#include "render/resources/texture_cache.h"
+#include "render/scene/scene.h"
 #include "scene_geometry.h"
 
 #include <cstdint>
@@ -66,7 +83,7 @@ enum class ViewportStatus : std::uint8_t
 {
 	kDevice = 1,   // the device refused a resource, submission or readback
 	kGraph,        // the view's graph did not compile or run
-	kPass,         // render.pass.lines refused the view
+	kPass,         // a pass or the material family refused the view
 	kInvalidView,  // no camera for the view's kind, or a zero size
 	kUnknownTicket // Take for a ticket this renderer does not hold
 };
@@ -78,6 +95,17 @@ struct SceneStats
 	std::uint32_t faceVertices = 0;
 	std::uint32_t edgeVertices = 0;
 	std::uint32_t stagings = 0; // times the scene was restaged
+	std::uint32_t batches = 0;  // face batches (instances), the untextured one included
+	std::uint32_t texturedBatches = 0;
+	std::uint32_t textures = 0;        // materials whose base texture is resident
+	std::uint32_t missingTextures = 0; // materials the source had no texture for
+};
+
+// What the last Render drew (its opaque pass).
+struct ViewStats
+{
+	std::uint32_t drawn = 0;
+	std::uint32_t unresolved = 0;
 };
 
 class ViewportRenderer
@@ -85,8 +113,9 @@ class ViewportRenderer
 public:
 	using Ticket = std::uint64_t;
 
+	// 'textures' null: the flat preview.
 	static foundation::Expected<std::unique_ptr<ViewportRenderer>, ViewportStatus> Create(
-	    ::render::device::IRenderDevice2 &device );
+	    ::render::device::IRenderDevice2 &device, IMaterialTextures *textures = nullptr );
 	~ViewportRenderer();
 
 	ViewportRenderer( const ViewportRenderer & ) = delete;
@@ -96,6 +125,7 @@ public:
 	foundation::Expected<void, ViewportStatus> SetScene(
 	    const viewport::RenderSnapshot &snapshot, std::uint64_t key );
 	const SceneStats &Scene() const { return m_Stats; }
+	const ViewStats &LastView() const { return m_LastView; }
 
 	// Records and submits one view.
 	foundation::Expected<Ticket, ViewportStatus> Render( const ViewRequest &request );
@@ -116,19 +146,46 @@ private:
 		std::uint32_t height = 0;
 	};
 
-	explicit ViewportRenderer( ::render::device::IRenderDevice2 &device )
-	    : m_Device( device ), m_Meshes( device )
+	struct Material
 	{
-	}
+		std::uint64_t id = 0;
+		std::optional<TextureSize> size; // nothing: no texture, drawn untextured
+	};
+
+	class Meshes final : public ::render::pass::opaque::IMeshResolver
+	{
+	public:
+		std::map<std::uint64_t, ::render::resources::MeshEntry> entries;
+		const ::render::resources::MeshEntry *Mesh( std::uint64_t mesh ) const override
+		{
+			auto found = entries.find( mesh );
+			return found == entries.end() ? nullptr : &found->second;
+		}
+	};
+
+	ViewportRenderer( ::render::device::IRenderDevice2 &device, IMaterialTextures *textures );
 	void Release( const Pending &pending );
+	foundation::Expected<void, ViewportStatus> ResolveMaterials(
+	    const viewport::RenderSnapshot &snapshot );
+	foundation::Expected<std::uint64_t, ViewportStatus> AddProgram(
+	    std::uint64_t id, const std::string &texture );
 
 	::render::device::IRenderDevice2 &m_Device;
-	::render::resources::MeshCache m_Meshes;
+	IMaterialTextures *m_Source = nullptr;
+	::render::resources::MeshCache m_MeshCache;
+	::render::resources::TextureCache m_Textures;
+	::render::material::MaterialPrograms m_Programs;
+	std::unique_ptr<::render::material::UnlitFamily> m_Unlit;
 	std::unique_ptr<::render::pass::lines::LinesRenderer> m_Lines;
-	std::optional<::render::resources::MeshEntry> m_Faces;
+	std::unique_ptr<::render::scene::IRenderScene> m_Scene;
+	std::vector<::render::scene::InstanceId> m_Instances;
+	Meshes m_FaceMeshes; // by material id (one batch per material)
+	std::map<std::string, Material> m_Materials;
+	std::uint64_t m_NextMaterial = 2; // 1 is the untextured batch
 	std::optional<::render::resources::MeshEntry> m_Edges;
 	std::optional<scene::Box> m_Bounds;
 	SceneStats m_Stats;
+	ViewStats m_LastView;
 	bool m_HaveScene = false;
 	std::map<Ticket, Pending> m_Pending;
 	Ticket m_NextTicket = 1;

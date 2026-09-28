@@ -100,7 +100,10 @@ std::optional<SolidDraw> DrawSolid( const Context &ctx, ObjectId id )
 		if ( face.sourcePlane >= 0 &&
 		     static_cast<std::size_t>( face.sourcePlane ) < solid->sides.size() )
 		{
-			faceDraw.side = solid->sides[static_cast<std::size_t>( face.sourcePlane )].vmfId;
+			const scene::Side &side = solid->sides[static_cast<std::size_t>( face.sourcePlane )];
+			faceDraw.side = side.vmfId;
+			faceDraw.uAxis = side.texture.u;
+			faceDraw.vAxis = side.texture.v;
 		}
 		faceDraw.material = std::move( face.material );
 		faceDraw.vertices = std::move( face.vertices );

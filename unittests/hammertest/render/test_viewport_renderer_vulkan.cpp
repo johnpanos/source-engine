@@ -8,7 +8,9 @@
 //
 //			R1 3D: the pixel under each box's top-face center (projected by
 //			   the view's own Camera3D) has that face's color as the geometry
-//			   builds it: the selected box the shaded selection fill, the
+//			   builds it, within one level (the unlit family decodes vertex
+//			   colors as gamma 2.2 and the renderer re-encodes the display
+//			   colors for it): the selected box the shaded selection fill, the
 //			   other its own fill;
 //			R2 2D: the pixel on a box edge (projected by the Camera2D) has the
 //			   edge color (selection orange for the selected box, the plain
@@ -17,6 +19,12 @@
 //			R3 a restage after the selection moves changes the old selected
 //			   box's edges to the plain color; the same inputs give the same
 //			   frame;
+//			R4 textured: with a material source whose base texture is red on
+//			   its left half and blue on its right, the unselected box's top
+//			   face shows red where the side's texture axes put u in the left
+//			   half and blue where they put it in the right, each the texel
+//			   times the face's shading (sRGB-correct, within two levels); a
+//			   source with no texture leaves the R1 colors;
 //			the Khronos validation layer reports no message.
 //
 //=============================================================================//
@@ -26,6 +34,7 @@
 #include "testing/checks.h"
 #include "viewport_fixture.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -36,6 +45,8 @@ namespace
 
 using namespace hammertest::viewport_render;
 using hammer::render_adapter::BuildSceneGeometry;
+using hammer::render_adapter::IMaterialTextures;
+using hammer::render_adapter::MaterialImage;
 using hammer::render_adapter::SceneGeometry;
 using hammer::render_adapter::ViewportRenderer;
 using hammer::render_adapter::ViewPixels;
@@ -70,25 +81,107 @@ bool Near( const ViewPixels &pixels, double x, double y, Rgb color )
 	return false;
 }
 
-Rgb ColorOf( std::uint32_t packed )
+bool Within( Rgb a, Rgb b, int levels )
 {
-	return { int( packed & 0xFF ), int( ( packed >> 8 ) & 0xFF ), int( ( packed >> 16 ) & 0xFF ) };
+	return std::abs( a.r - b.r ) <= levels && std::abs( a.g - b.g ) <= levels &&
+	       std::abs( a.b - b.b ) <= levels;
 }
 
 std::optional<Rgb> TopFaceColor( const SceneGeometry &g, double z, double x0, double x1 )
 {
-	for ( std::size_t i = 0; i + 2 < g.faces.size(); i += 3 )
+	for ( const auto &batch : g.faces )
 	{
-		bool match = true;
-		for ( std::size_t k = 0; k < 3; ++k )
+		const auto &faces = batch.vertices;
+		for ( std::size_t i = 0; i + 2 < faces.size(); i += 3 )
 		{
-			const float *p = g.faces[i + k].position;
-			match = match && std::fabs( p[2] - z ) < 1e-3 && p[0] >= x0 - 1e-3 && p[0] <= x1 + 1e-3;
+			bool match = true;
+			for ( std::size_t k = 0; k < 3; ++k )
+			{
+				const float *p = faces[i + k].position;
+				match =
+				    match && std::fabs( p[2] - z ) < 1e-3 && p[0] >= x0 - 1e-3 && p[0] <= x1 + 1e-3;
+			}
+			if ( match )
+				return Rgb{ faces[i].color[0], faces[i].color[1], faces[i].color[2] };
 		}
-		if ( match )
-			return ColorOf( g.faces[i].color );
 	}
 	return std::nullopt;
+}
+
+double ToLinear( double display )
+{
+	return display <= 0.04045 ? display / 12.92 : std::pow( ( display + 0.055 ) / 1.055, 2.4 );
+}
+
+int ToDisplay( double linear )
+{
+	const double v =
+	    linear <= 0.0031308 ? linear * 12.92 : 1.055 * std::pow( linear, 1.0 / 2.4 ) - 0.055;
+	return int( std::lround( std::clamp( v, 0.0, 1.0 ) * 255.0 ) );
+}
+
+// texel x shade in linear light, as the unlit family draws a textured face.
+Rgb Modulated( Rgb texel, Rgb shade )
+{
+	auto channel = []( int t, int s )
+	{
+		return ToDisplay( ToLinear( t / 255.0 ) * ToLinear( s / 255.0 ) );
+	};
+	return {
+	    channel( texel.r, shade.r ), channel( texel.g, shade.g ), channel( texel.b, shade.b ) };
+}
+
+constexpr Rgb kRed{ 220, 40, 30 };
+constexpr Rgb kBlue{ 30, 60, 220 };
+constexpr std::uint32_t kTextureWidth = 1024;
+
+// Red on the left half of a 1024x2 texture, blue on the right, for the
+// fixture's material (or nothing at all when 'none').
+class HalfTextures final : public IMaterialTextures
+{
+public:
+	explicit HalfTextures( bool none ) : m_None( none ) {}
+	std::optional<MaterialImage> BaseTexture( const std::string & ) override
+	{
+		if ( m_None )
+			return std::nullopt;
+		MaterialImage image;
+		image.width = kTextureWidth;
+		image.height = 2;
+		for ( std::uint32_t y = 0; y < image.height; ++y )
+		{
+			for ( std::uint32_t x = 0; x < image.width; ++x )
+			{
+				const Rgb c = x < kTextureWidth / 2 ? kRed : kBlue;
+				image.rgba.insert( image.rgba.end(),
+				    { std::uint8_t( c.r ), std::uint8_t( c.g ), std::uint8_t( c.b ), 255 } );
+			}
+		}
+		return image;
+	}
+
+private:
+	bool m_None = false;
+};
+
+// The fraction of the texture width at x on the unselected box's top face.
+double UFraction( const hammer::viewport::RenderSnapshot &snapshot, double x, double y )
+{
+	for ( const auto &solid : snapshot.solids )
+	{
+		for ( const auto &face : solid.faces )
+		{
+			if ( face.normal.z > 0.9 && face.vertices[0].z > 63 && face.vertices[0].z < 65 )
+			{
+				const auto &a = face.uAxis;
+				const double u =
+				    ( x * a.axis.x + y * a.axis.y + 64 * a.axis.z ) / a.scale + a.shift;
+				const double f = u / kTextureWidth;
+				return f - std::floor( f );
+			}
+		}
+	}
+	return -1.0;
 }
 
 constexpr Rgb kSelectedEdge{ 255, 148, 38 };
@@ -138,13 +231,15 @@ int main()
 			const auto rightCenter = eye.WorldToScreen( Vec3d( 128, 0, 64 ) );
 			const auto leftColor = TopFaceColor( geometry, 128, -128, 0 );
 			const auto rightColor = TopFaceColor( geometry, 64, 64, 192 );
-			checks.That( leftCenter && leftColor &&
-			                 At( frame3D.Value(), int( leftCenter->x ), int( leftCenter->y ) ) ==
-			                     *leftColor,
+			checks.That(
+			    leftCenter && leftColor &&
+			        Within( At( frame3D.Value(), int( leftCenter->x ), int( leftCenter->y ) ),
+			            *leftColor, 1 ),
 			    "R1.the-selected-top-face-shows-its-selection-fill" );
-			checks.That( rightCenter && rightColor &&
-			                 At( frame3D.Value(), int( rightCenter->x ), int( rightCenter->y ) ) ==
-			                     *rightColor,
+			checks.That(
+			    rightCenter && rightColor &&
+			        Within( At( frame3D.Value(), int( rightCenter->x ), int( rightCenter->y ) ),
+			            *rightColor, 1 ),
 			    "R1.the-other-top-face-shows-its-own-fill" );
 		}
 
@@ -186,6 +281,73 @@ int main()
 			    "R3.a-restage-follows-the-selection" );
 		}
 		made.Value().reset();
+
+		// R4.
+		{
+			const hammer::viewport::RenderSnapshot plain = Snapshot( d, false );
+			HalfTextures half( false );
+			HalfTextures none( true );
+			auto textured = ViewportRenderer::Create( *device, &half );
+			auto untextured = ViewportRenderer::Create( *device, &none );
+			checks.That( textured && untextured && textured.Value()->SetScene( plain, 1 ) &&
+			                 untextured.Value()->SetScene( plain, 1 ) &&
+			                 textured.Value()->Scene().texturedBatches == 1,
+			    "R4.textured-scenes-are-staged" );
+			// Points on the top face at y = 0 whose u lies well inside each half.
+			std::optional<double> redX;
+			std::optional<double> blueX;
+			for ( double x = 70; x <= 186; x += 2 )
+			{
+				const double f = UFraction( plain, x, 0 );
+				if ( !redX && f > 0.1 && f < 0.4 )
+					redX = x;
+				if ( !blueX && f > 0.6 && f < 0.9 )
+					blueX = x;
+			}
+			checks.That( redX && blueX, "R4.the-face-spans-both-halves" );
+			auto frame =
+			    textured ? textured.Value()->RenderAndWait( request3D )
+			             : foundation::Expected<ViewPixels, hammer::render_adapter::ViewportStatus>(
+			                   foundation::MakeUnexpected(
+			                       hammer::render_adapter::ViewportStatus::kDevice ) );
+			const auto shade =
+			    TopFaceColor( BuildSceneGeometry( plain,
+			                      []( const std::string & )
+			                      {
+				                      return std::optional<hammer::render_adapter::TextureSize>(
+				                          { kTextureWidth, 2 } );
+			                      } ),
+			        64, 64, 192 );
+			if ( frame && redX && blueX && shade )
+			{
+				const auto red = eye.WorldToScreen( Vec3d( *redX, 0, 64 ) );
+				const auto blue = eye.WorldToScreen( Vec3d( *blueX, 0, 64 ) );
+				const Rgb gotRed = red ? At( frame.Value(), int( red->x ), int( red->y ) ) : Rgb{};
+				const Rgb gotBlue =
+				    blue ? At( frame.Value(), int( blue->x ), int( blue->y ) ) : Rgb{};
+				checks.That( Within( gotRed, Modulated( kRed, *shade ), 2 ),
+				    "R4.the-left-half-of-u-is-the-red-texel-times-the-shading" );
+				checks.That( Within( gotBlue, Modulated( kBlue, *shade ), 2 ),
+				    "R4.the-right-half-of-u-is-the-blue-texel-times-the-shading" );
+			}
+			else
+			{
+				checks.That( false, "R4.the-textured-frame-renders" );
+			}
+			auto flat =
+			    untextured
+			        ? untextured.Value()->RenderAndWait( request3D )
+			        : foundation::Expected<ViewPixels, hammer::render_adapter::ViewportStatus>(
+			              foundation::MakeUnexpected(
+			                  hammer::render_adapter::ViewportStatus::kDevice ) );
+			const auto rightCenter = eye.WorldToScreen( Vec3d( 128, 0, 64 ) );
+			const auto rightColor = TopFaceColor( BuildSceneGeometry( plain ), 64, 64, 192 );
+			checks.That(
+			    flat && rightCenter && rightColor &&
+			        Within( At( flat.Value(), int( rightCenter->x ), int( rightCenter->y ) ),
+			            *rightColor, 1 ),
+			    "R4.a-source-without-the-texture-leaves-the-flat-colors" );
+		}
 		(void)device->WaitIdle();
 	}
 	if ( layer )

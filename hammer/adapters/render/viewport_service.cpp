@@ -19,14 +19,15 @@ namespace hammer::render_adapter
 struct ViewportService::State
 {
 	State( ::render::device::IRenderDevice2 &d, platform::ITaskRunner &r,
-	    platform::ISequencedTaskRunner &p )
-	    : device( d ), render( r ), reply( p )
+	    platform::ISequencedTaskRunner &p, std::unique_ptr<IMaterialTextures> t )
+	    : device( d ), render( r ), reply( p ), textures( std::move( t ) )
 	{
 	}
 
 	::render::device::IRenderDevice2 &device;
 	platform::ITaskRunner &render;
 	platform::ISequencedTaskRunner &reply;
+	std::unique_ptr<IMaterialTextures> textures; // the render sequence's; outlives the renderer
 	std::unique_ptr<ViewportRenderer> renderer;
 	std::atomic<bool> alive{ true };
 };
@@ -80,8 +81,9 @@ void Poll( const std::shared_ptr<State> &state, ViewportRenderer::Ticket ticket,
 } // namespace
 
 ViewportService::ViewportService( ::render::device::IRenderDevice2 &device,
-    platform::ITaskRunner &render, platform::ISequencedTaskRunner &reply )
-    : m_State( std::make_shared<State>( device, render, reply ) )
+    platform::ITaskRunner &render, platform::ISequencedTaskRunner &reply,
+    std::unique_ptr<IMaterialTextures> textures )
+    : m_State( std::make_shared<State>( device, render, reply, std::move( textures ) ) )
 {
 }
 
@@ -97,6 +99,7 @@ ViewportService::~ViewportService()
 	         [state, gone]
 	         {
 		         state->renderer.reset();
+		         state->textures.reset();
 		         gone->set_value();
 	         } ) == platform::PostResult::kAccepted )
 	{
@@ -106,7 +109,22 @@ ViewportService::~ViewportService()
 	{
 		// The render runner is already shut down, so nothing else runs there.
 		m_State->renderer.reset();
+		m_State->textures.reset();
 	}
+}
+
+bool ViewportService::SetMaterialSource( std::unique_ptr<IMaterialTextures> textures )
+{
+	std::shared_ptr<State> state = m_State;
+	auto shared = std::make_shared<std::unique_ptr<IMaterialTextures>>( std::move( textures ) );
+	return state->render.PostTask(
+	           [state, shared]
+	           {
+		           // The renderer borrows the source, so it goes first; the next
+		           // job makes a new one, which restages the scene.
+		           state->renderer.reset();
+		           state->textures = std::move( *shared );
+	           } ) == platform::PostResult::kAccepted;
 }
 
 bool ViewportService::Submit( std::shared_ptr<const viewport::RenderSnapshot> scene,
@@ -123,7 +141,7 @@ bool ViewportService::Submit( std::shared_ptr<const viewport::RenderSnapshot> sc
 		           }
 		           if ( !state->renderer )
 		           {
-			           auto made = ViewportRenderer::Create( state->device );
+			           auto made = ViewportRenderer::Create( state->device, state->textures.get() );
 			           if ( !made )
 			           {
 				           Reply( state, foundation::MakeUnexpected( made.Error() ),

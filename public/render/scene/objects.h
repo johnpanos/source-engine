@@ -24,6 +24,9 @@ struct MeshInstanceDesc
 {
 	std::uint64_t mesh = 0;     // a render.resources mesh the owner resolved
 	std::uint64_t material = 0; // a render.material MaterialId value
+	// A render.material draw group (per-draw resources such as a lightmap
+	// page) for families that read one; 0 for none.
+	std::uint64_t drawGroup = 0;
 	math::float4x4 world;
 	math::Aabb localBounds;
 	std::uint32_t viewMask = ~0u; // views (by bit) the instance may appear in

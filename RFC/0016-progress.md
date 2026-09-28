@@ -1174,6 +1174,59 @@ frontend side of the proxy corpus.
 | Families match ports | `unlit` within 2 levels on 6 cases; `lightmapped` exact on 8 cases; a seeded defect caught for each; `vertexlit` and `pbr` open | partial |
 | Bind-group ceiling | `unlit` (one group) and `lightmapped` (material and draw) judged by the artifact build; a seeded fifth group still fails | pass |
 
+## K4 slice: families draw scene instances, and Hammer's textured viewport (2026-09-28)
+
+State: `render.pass.opaque` draws `render.scene` instances through the
+material families, and Hammer's camera view is textured through the `unlit`
+family. The lines-pass interim for Hammer's solids is gone. `vertexlit` and
+D18 (dmabuf export) are next on the Hammer session's side.
+
+- **Owners of the families' groups** (`public/render/material/material_programs.h`):
+  - `GroupResidency` is the one mechanism. Per id, it holds a group of one
+    layout with an optional uniform buffer of packed constants and named
+    `TextureCache` textures with their samplers.
+  - A group exists only while every texture it names is in the cache, and
+    is rebuilt when a texture's revision rises. Samplers are shared by
+    description. It follows the caches' Set/RecordUploads/Retire protocol.
+  - `MaterialPrograms` serves programs (`IDrawPrograms`): pipeline, stride,
+    draw-constant size, the draw layout the family reads, and the material
+    group.
+  - `DrawGroups` serves per-draw groups (`IDrawGroups`), such as
+    `lightmapped`'s lightmap page. Families turn a claim into a
+    `ProgramRequest`; `UnlitFamily::Request` is the first.
+- **Draw-constant convention** (`draw_program.h`): every family's D16 block
+  starts with `FamilyDrawConstants { toClip[16]; world[16]; }` (128 bytes).
+  The pass writes the first `drawConstantBytes`.
+- **`render.pass.opaque`:**
+  - `AddOpaquePasses(builder, snapshot, list, view, OpaqueSources{meshes,
+    programs, drawGroups}, targets)` draws each item with its program's
+    pipeline and material group.
+  - It binds the instance's draw group (`MeshInstanceDesc::drawGroup`,
+    new) when the program reads one.
+  - It imports every mesh buffer, texture and uniform buffer in its
+    residency usage and creates no device objects.
+  - `OpaqueRenderer`, the flat-color shaders and their GENERATED row are
+    deleted.
+- **`render.pass.lines`:** colors are display values. On an sRGB target the
+  pass decodes them, so the pass can share the families' sRGB target
+  (clause P8).
+- **Hammer:** described in the
+  [RFC 0002 record](RFC/0002-progress.md#r17-core-the-gtk-viewports-on-the-render-core-slice-done-2026-09-28).
+  - The viewport draws one mesh and one instance of its own `render.scene`
+    per material batch, through the opaque pass and `unlit`.
+  - Base textures come from `IMaterialTextures`, the host's
+    `MaterialCatalog` on the render sequence.
+  - RFC 0008's `hammer_ktx2_preview.py` smoke passes: 89,854 red pixels
+    from the packaged KTX2, and 0 for the corrupt control.
+
+| Check | Suite | Result |
+| --- | --- | --- |
+| Group residency, programs, draw groups | `render.material.programs` (31 checks, null device) | pass |
+| Opaque through families | `render.opaque.null` (9), `render.opaque` (14, Vulkan, validation silent): depth test, two scenes, unresolved draws (missing mesh, unknown material, absent texture, wrong stride, missing or wrong-layout draw group) counted | pass |
+| Lines on an sRGB target | `render.lines` P8 (18 checks) | pass |
+| Hammer textured viewport | `hammer.adapters.render.geometry` (G8, G9), `.viewport.null` (V6), `.viewport` (R4: texel times shading per UV half, within two levels), `.service` (S6, and its TSan row) | pass |
+| Positive draw-group draw | waits for `LightmappedFamily::Request` | open |
+
 ## K4 family slice: `pbr` (2026-09-28)
 
 State: the RFC 0007 family is on the core for meshes and matches the native

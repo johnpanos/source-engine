@@ -20,6 +20,9 @@
 //			   reads half white;
 //			P7 a resident batch draws, and the same inputs give identical
 //			   frames;
+//			P8 colors are display values: on an sRGB target the pass decodes
+//			   them, so they read back as written (without the decode 128
+//			   would read 188);
 //			the Khronos validation layer reports no message.
 //
 //=============================================================================//
@@ -155,6 +158,30 @@ int main()
 		checks.That(
 		    At( handled, 32, 32 ) == Rgb{ 0, 255, 0 } && At( handled, 10, 32 ) == Rgb{ 255, 0, 0 },
 		    "P5.screen-filled-items-draw-over-screen-lines" );
+
+		// P8.
+		{
+			auto srgb = LinesRenderer::Create(
+			    *device, device::Format::kRGBA8Srgb, device::Format::kD32Float );
+			const Rgba8 colors[] = { { 128, 64, 200, 255 }, { 10, 20, 30, 255 },
+			    { 250, 5, 90, 255 }, { 255, 255, 255, 255 } };
+			LineList quads;
+			for ( int i = 0; i < 4; ++i )
+				quads.Quad( { Space::kScreen, false }, float( i * 16 ), 0, float( i * 16 + 16 ), 16,
+				    colors[i] );
+			const FrameResult frame = srgb ? Draw( *device, *srgb.Value(), quads, {}, BoxView(),
+			                                     true, device::Format::kRGBA8Srgb )
+			                               : FrameResult();
+			bool exact = frame.ok;
+			for ( int i = 0; i < 4 && exact; ++i )
+			{
+				const Rgb got = At( frame, i * 16 + 8, 8 );
+				exact = std::abs( got.r - colors[i].r ) <= 1 &&
+				        std::abs( got.g - colors[i].g ) <= 1 &&
+				        std::abs( got.b - colors[i].b ) <= 1;
+			}
+			checks.That( exact, "P8.display-colors-read-back-on-an-srgb-target" );
+		}
 
 		// P6.
 		LineList alpha;

@@ -17,7 +17,7 @@ def configure(conf):
 def build(bld):
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
-		source    = [ 'render_scene_projection.cpp', 'scene_geometry.cpp', 'viewport_renderer.cpp',
+		source    = [ 'scene_geometry.cpp', 'viewport_renderer.cpp',
 		              'viewport_service.cpp' ],
 		target    = 'hammer_render',
 		name      = 'hammer_render',
@@ -26,6 +26,7 @@ def build(bld):
 		includes  = [ '../../../public', '../../..' ],
 		defines   = [],
 		use       = [ 'hammer_tools', 'hammer_viewport', 'hammer_scene', 'render_pass_lines',
+		              'render_pass_opaque', 'render_material',
 		              'render_resources', 'render_graph', 'render_device', 'render_scene',
 		              'render_math', 'mapgeometry' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,

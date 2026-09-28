@@ -15,11 +15,16 @@
 //			never blocks on the GPU); the pixels come back through the reply
 //			runner. Jobs run in submission order.
 //
+//			The textured preview's material source (IMaterialTextures) is
+//			owned by the service and used only on the render sequence;
+//			SetMaterialSource replaces it there, and the next job restages
+//			the scene with it. Without one the views are the flat preview.
+//
 //			Lifetime: the device and both runners outlive the service. The
 //			destructor stops replies at once and waits, on the render
-//			sequence, for the renderer (and its frames) to be gone, so the
-//			device can be destroyed right after it. A job's reply never runs
-//			after the service is destroyed.
+//			sequence, for the renderer (and its frames) and the material
+//			source to be gone, so the device can be destroyed right after it.
+//			A job's reply never runs after the service is destroyed.
 //
 //=============================================================================//
 
@@ -54,10 +59,10 @@ public:
 	using Result = foundation::Expected<ViewPixels, ViewportStatus>;
 	using Done = std::function<void( Result )>;
 
-	// Borrows the device and both runners. The renderer is created on
-	// 'render' with the first job.
+	// Borrows the device and both runners; owns 'textures' (may be null). The
+	// renderer is created on 'render' with the first job.
 	ViewportService( ::render::device::IRenderDevice2 &device, platform::ITaskRunner &render,
-	    platform::ISequencedTaskRunner &reply );
+	    platform::ISequencedTaskRunner &reply, std::unique_ptr<IMaterialTextures> textures = {} );
 	~ViewportService();
 
 	ViewportService( const ViewportService & ) = delete;
@@ -67,6 +72,10 @@ public:
 	// False when the render runner refused the job (shut down).
 	[[nodiscard]] bool Submit( std::shared_ptr<const viewport::RenderSnapshot> scene,
 	    std::uint64_t key, ViewJob job, Done done );
+
+	// Replaces the material source (null: the flat preview) after the jobs
+	// already posted. False when the render runner refused it.
+	[[nodiscard]] bool SetMaterialSource( std::unique_ptr<IMaterialTextures> textures );
 
 	// Poll interval while a frame is on the GPU.
 	static constexpr std::uint64_t kPollNanoseconds = 250'000;

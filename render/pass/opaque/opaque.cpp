@@ -1,17 +1,17 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.pass.opaque (RFC 0016 K5); see opaque.h.
+// Purpose: render.pass.opaque (RFC 0016 K5, K4 families); see opaque.h.
 //
 //=============================================================================//
 
 #include "render/pass/opaque/opaque.h"
 
-#include "spv/opaque_spv.h"
 #include "render/graph/executor.h"
 
-#include <cstring>
+#include <map>
+#include <memory>
 #include <span>
-#include <utility>
+#include <vector>
 
 namespace render::pass::opaque
 {
@@ -24,201 +24,127 @@ using namespace render::device;
 struct Draw
 {
 	resources::MeshEntry mesh;
-	PipelineId pipeline;
-	std::uint32_t instance = 0;
+	const material::DrawProgram *program = nullptr;
+	const material::DrawGroup *drawGroup = nullptr;
+	material::FamilyDrawConstants constants;
 };
 
-struct Frame
-{
-	float viewProjection[4][4] = {};
-	std::vector<InstanceRecord> instances;
-	std::vector<Draw> draws;
-};
-
-void Store( const math::float4x4 &m, float out[4][4] )
+void Store( const math::float4x4 &m, float out[16] )
 {
 	for ( int r = 0; r < 4; ++r )
 	{
-		out[r][0] = m.rows[r].x;
-		out[r][1] = m.rows[r].y;
-		out[r][2] = m.rows[r].z;
-		out[r][3] = m.rows[r].w;
+		out[r * 4 + 0] = m.rows[r].x;
+		out[r * 4 + 1] = m.rows[r].y;
+		out[r * 4 + 2] = m.rows[r].z;
+		out[r * 4 + 3] = m.rows[r].w;
 	}
 }
 
 } // namespace
 
-foundation::Expected<std::unique_ptr<OpaqueRenderer>, OpaqueStatus> OpaqueRenderer::Create(
-    IRenderDevice2 &device, Format colorFormat, Format depthFormat )
-{
-	std::unique_ptr<OpaqueRenderer> renderer( new OpaqueRenderer( device ) );
-	renderer->m_ColorFormat = colorFormat;
-	renderer->m_DepthFormat = depthFormat;
-	static const BindingDesc view[] = {
-	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex } } };
-	static const BindingDesc draw[] = {
-	    { 0, BindingKind::kStorageBuffer, 1, { ShaderStage::kVertex } } };
-	auto viewLayout = device.CreateBindGroupLayout( { BindGroupRole::kView, view } );
-	auto drawLayout = device.CreateBindGroupLayout( { BindGroupRole::kDraw, draw } );
-	if ( !viewLayout || !drawLayout )
-		return foundation::MakeUnexpected( OpaqueStatus::kDevice );
-	renderer->m_ViewLayout = viewLayout.Value();
-	renderer->m_DrawLayout = drawLayout.Value();
-	return renderer;
-}
-
-OpaqueRenderer::~OpaqueRenderer()
-{
-	for ( const auto &[stride, pipeline] : m_Pipelines )
-		(void)m_Device.Release( pipeline, m_LastToken );
-	if ( m_ViewLayout.IsValid() )
-		(void)m_Device.Release( m_ViewLayout, m_LastToken );
-	if ( m_DrawLayout.IsValid() )
-		(void)m_Device.Release( m_DrawLayout, m_LastToken );
-}
-
-foundation::Expected<PipelineId, OpaqueStatus> OpaqueRenderer::PipelineFor( std::uint32_t stride )
-{
-	if ( auto found = m_Pipelines.find( stride ); found != m_Pipelines.end() )
-		return found->second;
-	static const ReflectedBinding vertexBindings[] = {
-	    { static_cast<std::uint32_t>( BindGroupRole::kView ), 0, BindingKind::kUniformBuffer },
-	    { static_cast<std::uint32_t>( BindGroupRole::kDraw ), 0, BindingKind::kStorageBuffer } };
-	const ShaderArtifactView stages[] = {
-	    { ShaderStage::kVertex, ArtifactFormat::kSpirv,
-	        std::as_bytes( std::span( spirv::kOpaqueVertex ) ), "main", vertexBindings },
-	    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
-	        std::as_bytes( std::span( spirv::kOpaqueFragment ) ), "main", {} } };
-	const BindGroupLayoutId layouts[kMaxBindGroups] = { {}, m_ViewLayout, {}, m_DrawLayout };
-	const VertexAttribute attributes[] = { { 0, VertexFormat::kFloat3, 0, 0 } };
-	const VertexBufferLayout buffers[] = { { stride, false } };
-	const Format colors[] = { m_ColorFormat };
-	PipelineDesc desc;
-	desc.kind = PipelineKind::kGraphics;
-	desc.stages = stages;
-	desc.layouts = layouts;
-	desc.vertex = { attributes, buffers };
-	desc.raster.cull = CullMode::kNone;
-	desc.depthStencil = { true, true, CompareOp::kLessEqual };
-	desc.colorFormats = colors;
-	desc.depthFormat = m_DepthFormat;
-	desc.debugName = "render.pass.opaque";
-	auto pipeline = m_Device.CreatePipeline( desc );
-	if ( !pipeline )
-		return foundation::MakeUnexpected( OpaqueStatus::kDevice );
-	m_Pipelines.emplace( stride, pipeline.Value() );
-	return pipeline.Value();
-}
-
-foundation::Expected<OpaqueStats, OpaqueStatus> OpaqueRenderer::AddPasses(
-    graph::GraphBuilder &builder, const scene::SceneSnapshot &snapshot, const scene::DrawList &list,
-    const scene::SceneView &view, const IMeshResolver &meshes, const IMaterialColors &colors,
-    const OpaqueTargets &targets )
+foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBuilder &builder,
+    const scene::SceneSnapshot &snapshot, const scene::DrawList &list, const scene::SceneView &view,
+    const OpaqueSources &sources, const OpaqueTargets &targets )
 {
 	if ( !targets.color.IsValid() || !targets.depth.IsValid() || targets.width == 0 ||
 	     targets.height == 0 )
 		return foundation::MakeUnexpected( OpaqueStatus::kInvalidTargets );
 	OpaqueStats stats;
-	auto frame = std::make_shared<Frame>();
-	Store( view.viewProjection, frame->viewProjection );
+	auto draws = std::make_shared<std::vector<Draw>>();
 	for ( const scene::DrawItem &item : list.items )
 	{
-		const resources::MeshEntry *mesh = meshes.Mesh( item.mesh );
-		InstanceRecord record;
-		if ( !mesh || item.instance >= snapshot.instances.size() ||
-		     !colors.Color( item.material, record.color ) )
+		const resources::MeshEntry *mesh = sources.meshes.Mesh( item.mesh );
+		const material::DrawProgram *program = sources.programs.Program( item.material );
+		if ( !mesh || !program || item.instance >= snapshot.instances.size() ||
+		     mesh->vertexStride != program->vertexStride )
 		{
 			++stats.unresolved;
 			continue;
 		}
-		auto pipeline = PipelineFor( mesh->vertexStride );
-		if ( !pipeline )
-			return foundation::MakeUnexpected( pipeline.Error() );
-		Store( snapshot.instances[item.instance].desc.world, record.world );
-		frame->draws.push_back(
-		    { *mesh, pipeline.Value(), static_cast<std::uint32_t>( frame->instances.size() ) } );
-		frame->instances.push_back( record );
+		const scene::MeshInstanceDesc &instance = snapshot.instances[item.instance].desc;
+		const material::DrawGroup *drawGroup = nullptr;
+		if ( program->drawLayout.IsValid() )
+		{
+			drawGroup =
+			    sources.drawGroups ? sources.drawGroups->Group( instance.drawGroup ) : nullptr;
+			if ( !drawGroup || drawGroup->layout != program->drawLayout )
+			{
+				++stats.unresolved;
+				continue;
+			}
+		}
+		Draw draw;
+		draw.mesh = *mesh;
+		draw.program = program;
+		draw.drawGroup = drawGroup;
+		const math::float4x4 &world = instance.world;
+		Store( math::Multiply( view.viewProjection, world ), draw.constants.toClip );
+		Store( world, draw.constants.world );
+		draws->push_back( draw );
 	}
-	stats.drawn = static_cast<std::uint32_t>( frame->draws.size() );
+	stats.drawn = static_cast<std::uint32_t>( draws->size() );
 
-	BufferDesc viewDesc;
-	viewDesc.size = sizeof( frame->viewProjection );
-	const graph::ResourceRef viewBuffer = builder.CreateBuffer( "opaque-view", viewDesc );
-	BufferDesc instanceDesc;
-	instanceDesc.size =
-	    std::max<std::size_t>( frame->instances.size(), 1 ) * sizeof( InstanceRecord );
-	const graph::ResourceRef instanceBuffer =
-	    builder.CreateBuffer( "opaque-instances", instanceDesc );
-
-	builder.AddPass( "opaque-upload", graph::PassKind::kCopy )
-	    .Write( viewBuffer, ResourceUsage::kCopyDestination )
-	    .Write( instanceBuffer, ResourceUsage::kCopyDestination )
-	    .Execute(
-	        [frame, viewBuffer, instanceBuffer]( graph::RecordContext &context )
-	        {
-		        context.Encoder().WriteBuffer( context.Buffer( viewBuffer ), 0,
-		            std::as_bytes( std::span( &frame->viewProjection[0][0], 16 ) ) );
-		        if ( !frame->instances.empty() )
-			        context.Encoder().WriteBuffer( context.Buffer( instanceBuffer ), 0,
-			            std::as_bytes( std::span<const InstanceRecord>( frame->instances ) ) );
-	        } );
-
-	// The meshes' buffers, imported once each in their residency usages.
+	// Every buffer and texture the draws read, imported once each in its
+	// residency usage.
 	std::map<std::uint64_t, graph::ResourceRef> vertexRefs;
 	std::map<std::uint64_t, graph::ResourceRef> indexRefs;
-	auto import = [&]( BufferId buffer, ResourceUsage usage,
-	                  std::map<std::uint64_t, graph::ResourceRef> &refs )
+	std::map<std::uint64_t, graph::ResourceRef> uniformRefs;
+	std::map<std::uint64_t, graph::ResourceRef> textureRefs;
+	auto importBuffer = [&]( BufferId buffer, ResourceUsage usage,
+	                        std::map<std::uint64_t, graph::ResourceRef> &refs )
 	{
 		if ( refs.count( buffer.value ) == 0 )
 		{
 			BufferDesc desc;
 			desc.usages = { usage };
-			refs[buffer.value] = builder.ImportBuffer( "mesh", buffer, desc, usage, usage );
+			refs[buffer.value] =
+			    builder.ImportBuffer( "opaque-buffer", buffer, desc, usage, usage );
 		}
 	};
-	for ( const Draw &draw : frame->draws )
+	for ( const Draw &draw : *draws )
 	{
-		import( draw.mesh.vertices, ResourceUsage::kVertex, vertexRefs );
+		importBuffer( draw.mesh.vertices, ResourceUsage::kVertex, vertexRefs );
 		if ( draw.mesh.indices.IsValid() )
-			import( draw.mesh.indices, ResourceUsage::kIndex, indexRefs );
+			importBuffer( draw.mesh.indices, ResourceUsage::kIndex, indexRefs );
+		for ( const material::ResidentGroup *group :
+		    { &draw.program->material, draw.drawGroup ? &draw.drawGroup->resident : nullptr } )
+		{
+			if ( !group )
+				continue;
+			for ( BufferId uniform : group->uniforms )
+				importBuffer( uniform, ResourceUsage::kUniform, uniformRefs );
+			for ( const material::SampledTexture &texture : group->textures )
+			{
+				if ( textureRefs.count( texture.texture.value ) == 0 )
+					textureRefs[texture.texture.value] =
+					    builder.ImportTexture( "opaque-texture", texture.texture, texture.desc,
+					        ResourceUsage::kSampled, ResourceUsage::kSampled );
+			}
+		}
 	}
 
 	graph::PassBuilder pass = builder.AddPass( "opaque", graph::PassKind::kRender );
-	pass.Read( viewBuffer, ResourceUsage::kUniform )
-	    .Read( instanceBuffer, ResourceUsage::kStorageRead )
-	    .Write( targets.color, ResourceUsage::kColorAttachment )
+	pass.Write( targets.color, ResourceUsage::kColorAttachment )
 	    .Write( targets.depth, ResourceUsage::kDepthWrite );
 	for ( const auto &[buffer, ref] : vertexRefs )
 		pass.Read( ref, ResourceUsage::kVertex );
 	for ( const auto &[buffer, ref] : indexRefs )
 		pass.Read( ref, ResourceUsage::kIndex );
+	for ( const auto &[buffer, ref] : uniformRefs )
+		pass.Read( ref, ResourceUsage::kUniform );
+	for ( const auto &[texture, ref] : textureRefs )
+		pass.Read( ref, ResourceUsage::kSampled );
 	pass.Execute(
-	    [this, frame, viewBuffer, instanceBuffer, targets]( graph::RecordContext &context )
+	    [draws, targets]( graph::RecordContext &context )
 	    {
-		    const BindGroupEntry viewEntry[] = {
-		        { 0, context.Buffer( viewBuffer ), 0, 0, {}, {} } };
-		    const BindGroupEntry drawEntry[] = {
-		        { 0, context.Buffer( instanceBuffer ), 0, 0, {}, {} } };
-		    auto viewGroup = m_Device.CreateBindGroup( { m_ViewLayout, viewEntry } );
-		    auto drawGroup = m_Device.CreateBindGroup( { m_DrawLayout, drawEntry } );
-		    {
-			    std::lock_guard<std::mutex> lock( m_PendingLock );
-			    if ( viewGroup )
-				    m_Pending.push_back( viewGroup.Value() );
-			    if ( drawGroup )
-				    m_Pending.push_back( drawGroup.Value() );
-			    if ( !viewGroup || !drawGroup )
-			    {
-				    ++m_RecordFailures;
-				    return;
-			    }
-		    }
 		    CommandEncoder &encoder = context.Encoder();
 		    ColorAttachment color;
 		    color.texture = context.Texture( targets.color );
+		    color.load = targets.clearColor ? LoadOp::kClear : LoadOp::kLoad;
 		    color.clear = targets.clear;
 		    DepthAttachment depth;
 		    depth.texture = context.Texture( targets.depth );
+		    depth.load = targets.clearDepth ? LoadOp::kClear : LoadOp::kLoad;
 		    const ColorAttachment colorList[] = { color };
 		    RenderingDesc rendering;
 		    rendering.colors = colorList;
@@ -228,45 +154,39 @@ foundation::Expected<OpaqueStats, OpaqueStatus> OpaqueRenderer::AddPasses(
 		    encoder.BeginRendering( rendering );
 		    encoder.SetViewport(
 		        { 0.0f, 0.0f, float( targets.width ), float( targets.height ), 0.0f, 1.0f } );
-		    PipelineId bound;
-		    for ( const Draw &draw : frame->draws )
+		    const material::DrawProgram *bound = nullptr;
+		    const material::DrawGroup *boundDraw = nullptr;
+		    for ( const Draw &draw : *draws )
 		    {
-			    if ( draw.pipeline != bound )
+			    if ( draw.program != bound )
 			    {
-				    encoder.SetPipeline( draw.pipeline );
-				    encoder.SetBindGroup( BindGroupRole::kView, viewGroup.Value() );
-				    encoder.SetBindGroup( BindGroupRole::kDraw, drawGroup.Value() );
-				    bound = draw.pipeline;
+				    encoder.SetPipeline( draw.program->pipeline );
+				    encoder.SetBindGroup( BindGroupRole::kMaterial, draw.program->material.group );
+				    bound = draw.program;
+				    boundDraw = nullptr;
 			    }
+			    if ( draw.drawGroup && draw.drawGroup != boundDraw )
+			    {
+				    encoder.SetBindGroup( BindGroupRole::kDraw, draw.drawGroup->resident.group );
+				    boundDraw = draw.drawGroup;
+			    }
+			    if ( draw.program->drawConstantBytes > 0 )
+				    encoder.SetDrawConstants( 0, std::as_bytes( std::span( &draw.constants, 1 ) )
+				                                     .first( draw.program->drawConstantBytes ) );
 			    encoder.SetVertexBuffer( 0, draw.mesh.vertices );
 			    if ( draw.mesh.indices.IsValid() )
 			    {
 				    encoder.SetIndexBuffer( draw.mesh.indices, 0, draw.mesh.indexFormat );
-				    encoder.DrawIndexed( draw.mesh.indexCount, 1, 0, 0, draw.instance );
+				    encoder.DrawIndexed( draw.mesh.indexCount, 1, 0, 0, 0 );
 			    }
 			    else
 			    {
-				    encoder.Draw( draw.mesh.vertexCount, 1, 0, draw.instance );
+				    encoder.Draw( draw.mesh.vertexCount, 1, 0, 0 );
 			    }
 		    }
 		    encoder.EndRendering();
 	    } );
 	return stats;
-}
-
-void OpaqueRenderer::Collect( CompletionToken token )
-{
-	std::lock_guard<std::mutex> lock( m_PendingLock );
-	for ( BindGroupId group : m_Pending )
-		(void)m_Device.Release( group, token );
-	m_Pending.clear();
-	m_LastToken = token;
-}
-
-std::uint32_t OpaqueRenderer::RecordFailures() const
-{
-	std::lock_guard<std::mutex> lock( m_PendingLock );
-	return m_RecordFailures;
 }
 
 } // namespace render::pass::opaque

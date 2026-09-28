@@ -1,0 +1,92 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: What a pass needs to draw a material through its family (RFC
+//			0016 K4, render.material): the family's pipeline for the
+//			material, its material bind group (role kMaterial), the vertex
+//			stride the pipeline reads, and the resources the group names, so
+//			the pass can declare every access to the graph. Passes resolve a
+//			material id through IDrawPrograms; MaterialPrograms
+//			(material_programs.h) is the owner that builds them.
+//
+//			Some families also read a per-draw group (role kDraw): resources
+//			that differ between draws of one material, such as the lightmap
+//			page a surface sits on. Such a program names the layout it reads
+//			(drawLayout); a scene instance names its group
+//			(MeshInstanceDesc::drawGroup), resolved through IDrawGroups
+//			(DrawGroups builds them), and the pass binds it when the layouts
+//			match.
+//
+//			Draw constants (D16) share one prefix in every family: the draw's
+//			world-to-clip matrix, then its world matrix, both row-major with
+//			column vectors as render.math stores them. A family reads the
+//			first drawConstantBytes of FamilyDrawConstants (unlit reads only
+//			toClip), and the pass writes exactly that many.
+//
+//=============================================================================//
+
+#ifndef RENDER_MATERIAL_DRAW_PROGRAM_H
+#define RENDER_MATERIAL_DRAW_PROGRAM_H
+
+#include "render/device/device.h"
+
+#include <cstdint>
+#include <vector>
+
+namespace render::material
+{
+
+struct FamilyDrawConstants
+{
+	float toClip[16] = {};
+	float world[16] = {};
+};
+static_assert( sizeof( FamilyDrawConstants ) == device::kMaxDrawConstantBytes );
+
+struct SampledTexture
+{
+	device::TextureId texture;
+	device::TextureDesc desc;
+};
+
+// A bind group and the resources it names, each resident in its usage.
+struct ResidentGroup
+{
+	device::BindGroupId group;
+	std::vector<SampledTexture> textures;   // in kSampled
+	std::vector<device::BufferId> uniforms; // in kUniform
+};
+
+struct DrawProgram
+{
+	device::PipelineId pipeline;
+	ResidentGroup material;               // role kMaterial
+	std::uint32_t vertexStride = 0;       // the pipeline's vertex buffer 0
+	std::uint32_t drawConstantBytes = 0;  // a prefix of FamilyDrawConstants
+	device::BindGroupLayoutId drawLayout; // role kDraw; invalid when the family reads none
+};
+
+struct DrawGroup
+{
+	device::BindGroupLayoutId layout;
+	ResidentGroup resident; // role kDraw
+};
+
+class IDrawPrograms
+{
+public:
+	virtual ~IDrawPrograms() = default;
+	// nullptr when the material has no program (unknown, or not resident yet).
+	virtual const DrawProgram *Program( std::uint64_t material ) const = 0;
+};
+
+class IDrawGroups
+{
+public:
+	virtual ~IDrawGroups() = default;
+	// nullptr when the id names no group (unknown, or not resident yet).
+	virtual const DrawGroup *Group( std::uint64_t drawGroup ) const = 0;
+};
+
+} // namespace render::material
+
+#endif // RENDER_MATERIAL_DRAW_PROGRAM_H

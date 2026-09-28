@@ -12,7 +12,11 @@
 //			discs for handles. Each has a Style: world space (through the
 //			view's world-to-clip matrix) or screen space (logical pixels of
 //			the target, origin at the top-left, y down), and depth-tested or
-//			not. Colors are 8-bit RGBA, straight alpha, alpha-blended.
+//			not. Colors are 8-bit RGBA, straight alpha, alpha-blended. They are
+//			display (sRGB-encoded) values: on an sRGB target the pass decodes
+//			them to linear light, so a color reads back as written on either
+//			kind of target (and the pass shares an sRGB target with the
+//			material families, which draw in linear light).
 //
 //			Resident geometry an owner keeps in render.resources (MeshBatch,
 //			vertices in the LineVertex layout) draws with the list, so a large

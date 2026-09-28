@@ -75,11 +75,12 @@ inline LinesView BoxView( float depthBias = 0.0f )
 // Draws into fresh targets and reads the color back.
 inline FrameResult Draw( device::IRenderDevice2 &device, LinesRenderer &renderer,
     const LineList &list, std::span<const MeshBatch> batches = {},
-    const LinesView &view = BoxView(), bool withDepth = true )
+    const LinesView &view = BoxView(), bool withDepth = true,
+    device::Format colorFormat = device::Format::kRGBA8Unorm )
 {
 	FrameResult result;
 	device::TextureDesc colorDesc;
-	colorDesc.format = device::Format::kRGBA8Unorm;
+	colorDesc.format = colorFormat;
 	colorDesc.width = colorDesc.height = kSize;
 	colorDesc.usages = {
 	    device::ResourceUsage::kColorAttachment, device::ResourceUsage::kCopySource };

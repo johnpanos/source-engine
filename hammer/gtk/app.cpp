@@ -50,6 +50,7 @@
 #include "hammer/adapters/source/ktx2_preview.h"
 #endif
 
+#include "catalog_textures.h"
 #include "glib_task_runner.h"
 #include "viewport_widget.h"
 
@@ -474,6 +475,13 @@ std::size_t MountAssets( AppState *st, const std::string &vpkList )
 		}
 	}
 
+	// The camera view's textured preview reads the same archives through its
+	// own catalog on the render sequence.
+	if ( st->views )
+	{
+		std::string errors;
+		(void)st->views->SetMaterialSource( hammer::gtk::CatalogTextures::Open( vpkList, errors ) );
+	}
 	RefreshScene( st );
 	char msg[128];
 	std::snprintf( msg, sizeof( msg ), "Mounted %zu archive(s); %zu materials available",
@@ -2527,7 +2535,7 @@ int RenderWorkspaceDemo( const std::string &outPpm, int tileW, int tileH );
 int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &outPpm, int width,
     int height, const std::string &vpkList );
 int RenderEditBudget( const std::string &vmfPath, const std::string &outJson, int width, int height,
-    int warmup, int edits );
+    int warmup, int edits, const std::string &vpkList );
 
 int main( int argc, char **argv )
 {
@@ -2544,6 +2552,7 @@ int main( int argc, char **argv )
 	std::string budgetIn;
 	int budgetEdits = 40;
 	int budgetWarmup = 5;
+	std::string budgetTextures;
 	bool maximized = false;
 	std::string buildsRoot = "quality-results/hammer-builds";
 	bool publishBuilds = true;
@@ -2583,6 +2592,10 @@ int main( int argc, char **argv )
 		else if ( a == "--edits" && i + 1 < argc )
 		{
 			budgetEdits = std::atoi( argv[++i] );
+		}
+		else if ( a == "--textures" && i + 1 < argc )
+		{
+			budgetTextures = argv[++i];
 		}
 		else if ( a == "--warmup" && i + 1 < argc )
 		{
@@ -2628,8 +2641,9 @@ int main( int argc, char **argv )
 			    "       hammer_gtk --screenshot OUT.ppm MAP.vmf [--width W --height H]\n"
 			    "       hammer_gtk --quad OUT.ppm MAP.vmf [--width W --height H]\n"
 			    "       hammer_gtk --demo OUT.ppm [--width W --height H]\n"
+			    "       hammer_gtk --textured OUT.ppm MAP.vmf VPK[,VPK...] [--width W --height H]\n"
 			    "       hammer_gtk --viewport-budget OUT.json MAP.vmf [--width W --height H] "
-			    "[--edits N --warmup N]\n" );
+			    "[--edits N --warmup N] [--textures VPK[,VPK...]]\n" );
 			return 0;
 		}
 	}
@@ -2648,7 +2662,8 @@ int main( int argc, char **argv )
 	}
 	if ( !budgetOut.empty() )
 	{
-		return RenderEditBudget( budgetIn, budgetOut, width, height, budgetWarmup, budgetEdits );
+		return RenderEditBudget(
+		    budgetIn, budgetOut, width, height, budgetWarmup, budgetEdits, budgetTextures );
 	}
 	if ( !texturedOut.empty() )
 	{

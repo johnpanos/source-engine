@@ -7,6 +7,9 @@ through the command layer and times until all four views' new frames are back
 on the host sequence from the render sequence (RFC 0016 decision "threading";
 RFC 0002 R17). The samples are judged against the row's p95 and max limits.
 
+Rows whose workload names a textures_env (the textured preview over a game's
+VPKs) run only when selected with --row and their variable is set.
+
 A control judges the same samples against a limit no real run meets
 (0.001 ms), which must be rejected, so a judge that passes everything fails
 this suite.
@@ -19,6 +22,7 @@ Results are reported as checks-v1 (tools/quality/conformance_result.py).
 
 import argparse
 import json
+import os
 import math
 import subprocess
 import sys
@@ -56,6 +60,8 @@ def run_row(gtk, row, out, timeout):
     command = [str(gtk), "--viewport-budget", str(samples_path), str(ROOT / workload["map"]),
                "--width", str(workload["width"]), "--height", str(workload["height"]),
                "--warmup", str(workload["warmup_edits"]), "--edits", str(workload["edits"])]
+    if "textures_env" in workload:
+        command += ["--textures", os.environ[workload["textures_env"]]]
     ran = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     (out / (row["id"] + ".log")).write_text(" ".join(command) + "\n" + ran.stdout + ran.stderr)
     if ran.returncode != 0 or not samples_path.exists():
@@ -87,8 +93,21 @@ def main():
 
     budgets = json.loads(args.budgets.read_text())
     checks.equal(budgets.get("schema"), "hammer-viewport-budget/v1", "budgets.schema")
-    rows = [r for r in budgets["rows"] if not args.row or r["id"] in args.row]
-    checks.check(bool(rows), "budgets.rows", "no rows selected")
+    # Rows that need content outside the repository run when named (--row) and
+    # their environment variable is set; the manifest's separate optional row
+    # does that, so the default run certifies only in-repository workloads.
+    if args.row:
+        rows = [r for r in budgets["rows"] if r["id"] in args.row]
+    else:
+        rows = [r for r in budgets["rows"] if "textures_env" not in r["workload"]]
+    missing = [r for r in rows
+               if r["workload"].get("textures_env")
+               and not os.environ.get(r["workload"]["textures_env"])]
+    for row in missing:
+        checks.check(False, row["id"] + ".content",
+                     "%s is not set" % row["workload"]["textures_env"])
+    rows = [r for r in rows if r not in missing]
+    checks.check(bool(rows) or bool(missing), "budgets.rows", "no rows selected")
     summary = {"schema": "hammer-viewport-budget-results/v1", "rows": {}}
     for row in rows:
         name = row["id"]

@@ -8,9 +8,14 @@
 
 #include "render/graph/executor.h"
 #include "render/graph/graph_builder.h"
+#include "render/scene/draw_list.h"
 
+#include <array>
 #include <chrono>
+#include <cmath>
+#include <set>
 #include <span>
+#include <string>
 #include <thread>
 #include <utility>
 
@@ -28,22 +33,96 @@ using ::render::pass::lines::MeshBatch;
 using ::render::pass::lines::Space;
 using ::render::pass::lines::Topology;
 
-constexpr device::ClearColor kClear3D = { 0.13f, 0.14f, 0.17f, 1.0f };
-constexpr device::ClearColor kClear2D = { 0.03f, 0.03f, 0.04f, 1.0f };
+constexpr device::Format kColorFormat = device::Format::kRGBA8Srgb;
+constexpr device::Format kDepthFormat = device::Format::kD32Float;
+constexpr std::uint64_t kUntextured = 1; // the untextured batch's material and mesh id
+constexpr const char *kWhite = "hammer-white";
+
+// The clear colors as the editor shows them, in linear light for the sRGB target.
+float Linear( float display )
+{
+	return display <= 0.04045f ? display / 12.92f : std::pow( ( display + 0.055f ) / 1.055f, 2.4f );
+}
+
+device::ClearColor Clear( float r, float g, float b )
+{
+	return { Linear( r ), Linear( g ), Linear( b ), 1.0f };
+}
+
+// The unlit family reads vertex colors as gamma 2.2 (Source's convention); the
+// editor's shading colors are display (sRGB) values. This table re-encodes a
+// display byte so the family's decode gives its sRGB linear value, and the
+// sRGB target shows the byte again (within a level of quantization).
+const std::array<std::uint8_t, 256> &Gamma22FromDisplay()
+{
+	static const std::array<std::uint8_t, 256> table = []
+	{
+		std::array<std::uint8_t, 256> out{};
+		for ( int i = 0; i < 256; ++i )
+		{
+			const double linear = Linear( float( i ) / 255.0f );
+			out[i] = std::uint8_t( std::lround( std::pow( linear, 1.0 / 2.2 ) * 255.0 ) );
+		}
+		return out;
+	}();
+	return table;
+}
+
+std::string TextureName( const std::string &material )
+{
+	return "hammer-texture:" + material;
+}
+
+::render::math::Aabb BoundsOf( const std::vector<UnlitVertex> &vertices )
+{
+	::render::math::Aabb bounds;
+	for ( const UnlitVertex &v : vertices )
+	{
+		const ::render::math::float3 p = { v.position[0], v.position[1], v.position[2] };
+		if ( bounds.IsEmpty() )
+		{
+			bounds.min = bounds.max = p;
+			continue;
+		}
+		bounds.min = { std::min( bounds.min.x, p.x ), std::min( bounds.min.y, p.y ),
+		    std::min( bounds.min.z, p.z ) };
+		bounds.max = { std::max( bounds.max.x, p.x ), std::max( bounds.max.y, p.y ),
+		    std::max( bounds.max.z, p.z ) };
+	}
+	return bounds;
+}
 
 } // namespace
 
-foundation::Expected<std::unique_ptr<ViewportRenderer>, ViewportStatus> ViewportRenderer::Create(
-    device::IRenderDevice2 &device )
+ViewportRenderer::ViewportRenderer( device::IRenderDevice2 &device, IMaterialTextures *textures )
+    : m_Device( device ), m_Source( textures ), m_MeshCache( device ), m_Textures( device ),
+      m_Programs( device, m_Textures ), m_Scene( ::render::scene::CreateRenderScene() )
 {
-	std::unique_ptr<ViewportRenderer> renderer( new ViewportRenderer( device ) );
-	auto lines = pass::lines::LinesRenderer::Create(
-	    device, device::Format::kRGBA8Unorm, device::Format::kD32Float );
-	if ( !lines )
+}
+
+foundation::Expected<std::unique_ptr<ViewportRenderer>, ViewportStatus> ViewportRenderer::Create(
+    device::IRenderDevice2 &device, IMaterialTextures *textures )
+{
+	std::unique_ptr<ViewportRenderer> renderer( new ViewportRenderer( device, textures ) );
+	auto lines = pass::lines::LinesRenderer::Create( device, kColorFormat, kDepthFormat );
+	auto unlit = material::UnlitFamily::Create( device, kColorFormat, kDepthFormat );
+	if ( !lines || !unlit )
 	{
 		return foundation::MakeUnexpected( ViewportStatus::kPass );
 	}
 	renderer->m_Lines = std::move( lines ).Value();
+	renderer->m_Unlit = std::move( unlit ).Value();
+	device::TextureDesc white;
+	white.format = kColorFormat;
+	white.width = white.height = 1;
+	white.usages = { device::ResourceUsage::kCopyDestination, device::ResourceUsage::kSampled };
+	const std::byte texel[4] = {
+	    std::byte( 255 ), std::byte( 255 ), std::byte( 255 ), std::byte( 255 ) };
+	if ( !renderer->m_Textures.Stage( kWhite, white, texel ) ||
+	     !renderer->AddProgram( kUntextured, kWhite ) )
+	{
+		return foundation::MakeUnexpected( ViewportStatus::kDevice );
+	}
 	return renderer;
 }
 
@@ -79,6 +158,77 @@ ViewportRenderer::~ViewportRenderer()
 	m_Lines.reset();
 }
 
+// The unlit family's program for a material id: its base texture (a
+// TextureCache name) modulated by the vertex colors (the editor's shading).
+foundation::Expected<std::uint64_t, ViewportStatus> ViewportRenderer::AddProgram(
+    std::uint64_t id, const std::string &texture )
+{
+	material::UnlitClaim claim;
+	claim.claimed = true;
+	claim.constants.flags[0] = 1.0f; // $vertexcolor
+	auto request = m_Unlit->Request( claim, texture );
+	if ( !request || !m_Programs.Set( id, request.Value() ) )
+	{
+		return foundation::MakeUnexpected( ViewportStatus::kDevice );
+	}
+	return id;
+}
+
+// Fetches the base texture of every material the snapshot names for the first
+// time (misses are kept too).
+foundation::Expected<void, ViewportStatus> ViewportRenderer::ResolveMaterials(
+    const viewport::RenderSnapshot &snapshot )
+{
+	if ( !m_Source )
+	{
+		return {};
+	}
+	std::set<std::string> named;
+	for ( const viewport::SolidDraw &solid : snapshot.solids )
+	{
+		for ( const viewport::FaceDraw &face : solid.faces )
+		{
+			if ( !face.material.empty() && m_Materials.count( face.material ) == 0 )
+			{
+				named.insert( face.material );
+			}
+		}
+	}
+	for ( const std::string &name : named )
+	{
+		Material material;
+		std::optional<MaterialImage> image = m_Source->BaseTexture( name );
+		if ( image && image->width > 0 && image->height > 0 &&
+		     image->rgba.size() == std::size_t( image->width ) * image->height * 4 )
+		{
+			device::TextureDesc desc;
+			desc.format = kColorFormat;
+			desc.width = image->width;
+			desc.height = image->height;
+			desc.usages = {
+			    device::ResourceUsage::kCopyDestination, device::ResourceUsage::kSampled };
+			const std::string texture = TextureName( name );
+			if ( !m_Textures.Stage( texture, desc, std::as_bytes( std::span( image->rgba ) ) ) )
+			{
+				return foundation::MakeUnexpected( ViewportStatus::kDevice );
+			}
+			material.id = m_NextMaterial++;
+			if ( auto added = AddProgram( material.id, texture ); !added )
+			{
+				return foundation::MakeUnexpected( added.Error() );
+			}
+			material.size = TextureSize{ image->width, image->height };
+			++m_Stats.textures;
+		}
+		else
+		{
+			++m_Stats.missingTextures;
+		}
+		m_Materials.emplace( name, material );
+	}
+	return {};
+}
+
 void ViewportRenderer::Release( const Pending &pending )
 {
 	(void)m_Device.Release( pending.color, pending.token );
@@ -92,57 +242,118 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
 	{
 		return {};
 	}
-	const SceneGeometry geometry = BuildSceneGeometry( snapshot );
-	auto stage = [&]( const char *name, const std::vector<LineVertex> &vertices,
-	                 std::optional<resources::MeshEntry> &slot ) -> bool
+	if ( auto resolved = ResolveMaterials( snapshot ); !resolved )
 	{
-		if ( vertices.empty() )
+		return resolved;
+	}
+	const SceneGeometry geometry = BuildSceneGeometry( snapshot,
+	    [this]( const std::string &material ) -> std::optional<TextureSize>
+	    {
+		    auto found = m_Materials.find( material );
+		    return found == m_Materials.end() ? std::nullopt : found->second.size;
+	    } );
+
+	// One mesh and one scene instance per batch, keyed by its material id.
+	::render::scene::ChangeSet changes;
+	for ( ::render::scene::InstanceId instance : m_Instances )
+	{
+		changes.Remove( instance );
+	}
+	m_Instances.clear();
+	std::map<std::uint64_t, ::render::resources::MeshEntry> meshes;
+	std::uint32_t faceVertices = 0;
+	std::uint32_t textured = 0;
+	for ( const FaceBatch &batch : geometry.faces )
+	{
+		const std::uint64_t id =
+		    batch.material.empty() ? kUntextured : m_Materials.at( batch.material ).id;
+		std::vector<UnlitVertex> vertices = batch.vertices;
+		const std::array<std::uint8_t, 256> &encode = Gamma22FromDisplay();
+		for ( UnlitVertex &vertex : vertices )
 		{
-			if ( slot )
-			{
-				(void)m_Meshes.Evict( name );
-			}
-			slot.reset();
-			return true;
+			for ( int c = 0; c < 3; ++c )
+				vertex.color[c] = encode[vertex.color[c]];
 		}
 		resources::MeshData data;
-		data.vertices = std::as_bytes( std::span<const LineVertex>( vertices ) );
-		data.vertexStride = sizeof( LineVertex );
-		auto entry = m_Meshes.Stage( name, data );
+		data.vertices = std::as_bytes( std::span<const UnlitVertex>( vertices ) );
+		data.vertexStride = sizeof( UnlitVertex );
+		auto entry = m_MeshCache.Stage( "hammer-faces:" + std::to_string( id ), data );
 		if ( !entry )
 		{
-			return false;
+			return foundation::MakeUnexpected( ViewportStatus::kDevice );
 		}
-		slot = entry.Value();
-		return true;
-	};
-	if ( !stage( "hammer-faces", geometry.faces, m_Faces ) ||
-	     !stage( "hammer-edges", geometry.edges, m_Edges ) )
+		meshes[id] = entry.Value();
+		::render::scene::MeshInstanceDesc desc;
+		desc.mesh = id;
+		desc.material = id;
+		desc.localBounds = BoundsOf( batch.vertices );
+		const ::render::scene::InstanceId instance = m_Scene->Reserve();
+		changes.Add( instance, desc );
+		m_Instances.push_back( instance );
+		faceVertices += static_cast<std::uint32_t>( batch.vertices.size() );
+		textured += batch.material.empty() ? 0 : 1;
+	}
+	for ( const auto &[id, entry] : m_FaceMeshes.entries )
+	{
+		if ( meshes.count( id ) == 0 )
+		{
+			(void)m_MeshCache.Evict( "hammer-faces:" + std::to_string( id ) );
+		}
+	}
+	m_FaceMeshes.entries = std::move( meshes );
+	if ( !m_Scene->Commit( changes ) )
 	{
 		return foundation::MakeUnexpected( ViewportStatus::kDevice );
 	}
+	if ( geometry.edges.empty() )
+	{
+		if ( m_Edges )
+		{
+			(void)m_MeshCache.Evict( "hammer-edges" );
+		}
+		m_Edges.reset();
+	}
+	else
+	{
+		resources::MeshData data;
+		data.vertices = std::as_bytes( std::span<const LineVertex>( geometry.edges ) );
+		data.vertexStride = sizeof( LineVertex );
+		auto entry = m_MeshCache.Stage( "hammer-edges", data );
+		if ( !entry )
+		{
+			return foundation::MakeUnexpected( ViewportStatus::kDevice );
+		}
+		m_Edges = entry.Value();
+	}
+
 	// The uploads run in their own submission; later frames on the queue see
-	// them, and replaced buffers retire behind its completion.
+	// them, and replaced buffers and groups retire behind its completion.
 	auto encoder = m_Device.BeginEncoder( device::QueueKind::kGraphics );
 	if ( !encoder )
 	{
 		return foundation::MakeUnexpected( ViewportStatus::kDevice );
 	}
-	m_Meshes.RecordUploads( encoder.Value() );
+	m_MeshCache.RecordUploads( encoder.Value() );
+	m_Textures.RecordUploads( encoder.Value() );
+	m_Programs.RecordUploads( encoder.Value() );
 	device::CommandEncoder encoders[] = { std::move( encoder ).Value() };
 	auto token = m_Device.Submit( device::QueueKind::kGraphics, encoders, {} );
 	if ( !token )
 	{
 		return foundation::MakeUnexpected( ViewportStatus::kDevice );
 	}
-	m_Meshes.Retire( token.Value() );
+	m_MeshCache.Retire( token.Value() );
+	m_Textures.Retire( token.Value() );
+	m_Programs.Retire( token.Value() );
 	m_LastToken = token.Value();
 	m_Bounds = snapshot.bounds;
 	m_HaveScene = true;
 	m_Stats.key = key;
 	m_Stats.triangles = geometry.triangles;
-	m_Stats.faceVertices = static_cast<std::uint32_t>( geometry.faces.size() );
+	m_Stats.faceVertices = faceVertices;
 	m_Stats.edgeVertices = static_cast<std::uint32_t>( geometry.edges.size() );
+	m_Stats.batches = static_cast<std::uint32_t>( geometry.faces.size() );
+	m_Stats.texturedBatches = textured;
 	++m_Stats.stagings;
 	return {};
 }
@@ -164,14 +375,14 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 	}
 
 	device::TextureDesc colorDesc;
-	colorDesc.format = device::Format::kRGBA8Unorm;
+	colorDesc.format = kColorFormat;
 	colorDesc.width = request.pixelWidth;
 	colorDesc.height = request.pixelHeight;
 	colorDesc.usages = {
 	    device::ResourceUsage::kColorAttachment, device::ResourceUsage::kCopySource };
 	colorDesc.debugName = "hammer-viewport";
 	device::TextureDesc depthDesc = colorDesc;
-	depthDesc.format = device::Format::kD32Float;
+	depthDesc.format = kDepthFormat;
 	depthDesc.usages = { device::ResourceUsage::kDepthWrite };
 	depthDesc.debugName = "hammer-viewport-depth";
 	device::BufferDesc readbackDesc;
@@ -204,11 +415,31 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 	targets.depth = depthRef;
 	targets.width = request.pixelWidth;
 	targets.height = request.pixelHeight;
-	targets.clear = threeD ? kClear3D : kClear2D;
+	targets.clear = threeD ? Clear( 0.13f, 0.14f, 0.17f ) : Clear( 0.03f, 0.03f, 0.04f );
 
-	// 2D: the grid first, under everything.
-	bool cleared = false;
-	if ( !threeD && !request.grid.empty() )
+	// First pass (clearing): the solids through the families in the camera
+	// view, the grid in 2D views.
+	m_LastView = ViewStats();
+	if ( threeD )
+	{
+		::render::scene::ViewDesc viewDesc;
+		viewDesc.projection = view.worldToClip; // the view matrix stays identity
+		const ::render::scene::SceneView sceneView = ::render::scene::MakeView( viewDesc );
+		const std::shared_ptr<const ::render::scene::SceneSnapshot> snapshot = m_Scene->Snapshot();
+		const ::render::scene::DrawList list =
+		    ::render::scene::BuildDrawList( *snapshot, sceneView );
+		pass::opaque::OpaqueTargets opaque{
+		    colorRef, depthRef, request.pixelWidth, request.pixelHeight, targets.clear };
+		auto drawn = pass::opaque::AddOpaquePasses(
+		    builder, *snapshot, list, sceneView, { m_FaceMeshes, m_Programs }, opaque );
+		if ( !drawn )
+		{
+			Release( pending );
+			return foundation::MakeUnexpected( ViewportStatus::kPass );
+		}
+		m_LastView = { drawn.Value().drawn, drawn.Value().unresolved };
+	}
+	else
 	{
 		LineList grid;
 		AppendGrid( request.grid, view.width, view.height, grid );
@@ -217,23 +448,20 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 			Release( pending );
 			return foundation::MakeUnexpected( ViewportStatus::kPass );
 		}
-		cleared = true;
 	}
 
+	// Then the edges (depth-tested and biased in the camera view) and the
+	// tool overlay.
 	LineList overlay;
 	AppendOverlay( request.overlay, overlay );
 	std::vector<MeshBatch> batches;
-	if ( threeD && m_Faces )
-	{
-		batches.push_back( { *m_Faces, Topology::kFilled, { Space::kWorld, true } } );
-	}
 	if ( m_Edges )
 	{
 		batches.push_back( { *m_Edges, Topology::kLines, { Space::kWorld, threeD } } );
 	}
 	LinesTargets scene = targets;
-	scene.clearColor = !cleared;
-	scene.clearDepth = !cleared;
+	scene.clearColor = false;
+	scene.clearDepth = false;
 	if ( !m_Lines->AddPasses( builder, overlay, batches, view, scene ) )
 	{
 		Release( pending );

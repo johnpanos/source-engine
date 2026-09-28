@@ -9,7 +9,8 @@
 //
 //			Content. One SolidDraw per shown solid with faces (id order): its
 //			face polygons (scene::BuildGeometry, vertices counter-clockwise
-//			from outside) with the side's VMF id, material and outward normal.
+//			from outside) with the side's VMF id, material, texture axes and
+//			outward normal.
 //			One EntityDraw per shown point entity with a marker (id order). A
 //			brush entity has no EntityDraw: its solids carry it as 'owner'.
 //			Visibility, marker boxes and colors follow view_policy.h.
@@ -63,6 +64,8 @@ struct FaceDraw
 {
 	std::uint32_t side = 0; // the side's persistent VMF id
 	std::string material;
+	scene::TextureAxis uAxis; // the side's texture axes (texels = dot(p, axis) / scale + shift)
+	scene::TextureAxis vAxis;
 	std::vector<mapgeometry::Vec3d> vertices; // counter-clockwise from outside
 	mapgeometry::Vec3d normal;                // outward
 	// A displaced side draws this mesh in place of its flat polygon (legacy);

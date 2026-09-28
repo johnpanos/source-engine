@@ -635,6 +635,7 @@
         "allowedEdges": [
           "foundation",
           "render.device",
+          "render.resources",
           "render.contracts",
           "content.keyvalues-text",
           "render.shader-library"
@@ -687,6 +688,7 @@
           "foundation",
           "render.math",
           "render.device",
+          "render.material",
           "render.graph",
           "render.resources",
           "render.scene",
@@ -1266,6 +1268,7 @@
       "render_material": {
         "allowedUse": [
           "render_device",
+          "render_resources",
           "kvtext",
           "render_spv"
         ]
@@ -1321,6 +1324,7 @@
       "render_pass_opaque": {
         "allowedUse": [
           "render_scene",
+          "render_material",
           "render_resources",
           "render_graph",
           "render_device",
@@ -2254,6 +2258,8 @@
           "render.resources",
           "render.graph",
           "render.device",
+          "render.pass.opaque",
+          "render.material",
           "render.scene",
           "render.math",
           "foundation"

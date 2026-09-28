@@ -10,14 +10,20 @@
 //			   nothing, a new key restages;
 //			V2 a 2D view with a grid runs two render passes (the grid clears,
 //			   the scene loads) and draws the edges and the overlay; the 3D
-//			   view runs one and draws faces, edges and the overlay;
+//			   view runs two (the solids through render.pass.opaque and the
+//			   unlit family, then the edges) and resolves every batch;
 //			V3 nothing blocks: Take returns nothing while the device has not
 //			   completed the frame and the pixels (width x height RGBA) once
 //			   it has;
 //			V4 a view without its camera, a zero size and an unknown ticket
 //			   are refused;
 //			V5 the renderer releases everything it made: after it is gone the
-//			   device holds what it held before.
+//			   device holds what it held before;
+//			V6 with a material source, a material with a texture gets its own
+//			   batch and program (the source is asked once per material, not
+//			   per restage), the camera view draws the untextured batch and
+//			   the textured one, and a material without a texture stays
+//			   untextured.
 //
 //=============================================================================//
 
@@ -32,6 +38,8 @@ namespace
 {
 
 using namespace hammertest::viewport_render;
+using hammer::render_adapter::IMaterialTextures;
+using hammer::render_adapter::MaterialImage;
 using hammer::render_adapter::ViewportRenderer;
 using hammer::render_adapter::ViewportStatus;
 using hammer::render_adapter::ViewRequest;
@@ -57,6 +65,23 @@ Trace Recorded( render::device::IRenderDevice2 &device )
 	}
 	return trace;
 }
+
+// A 4x4 gray texture for DEV/DEV_MEASUREGENERIC01B; nothing for other names.
+class FakeTextures final : public IMaterialTextures
+{
+public:
+	std::optional<MaterialImage> BaseTexture( const std::string &material ) override
+	{
+		asked.push_back( material );
+		if ( material != "DEV/DEV_MEASUREGENERIC01B" )
+			return std::nullopt;
+		MaterialImage image;
+		image.width = image.height = 4;
+		image.rgba.assign( 4 * 4 * 4, 128 );
+		return image;
+	}
+	std::vector<std::string> asked;
+};
 
 } // namespace
 
@@ -127,7 +152,10 @@ int main()
 		auto ticket3D = renderer.Render( request3D );
 		control->CompleteAll();
 		const Trace trace3D = Recorded( *device );
-		checks.That( ticket3D.HasValue() && trace3D.passes == 1, "V2.the-3d-view-is-one-pass" );
+		checks.That( ticket3D.HasValue() && trace3D.passes == 2,
+		    "V2.the-3d-view-is-the-opaque-pass-then-the-edges" );
+		checks.That( renderer.LastView().drawn == 1 && renderer.LastView().unresolved == 0,
+		    "V2.the-untextured-batch-resolves" );
 		checks.Equal( trace3D.draws,
 		    std::vector<std::uint64_t>{ renderer.Scene().faceVertices, renderer.Scene().edgeVertices },
 		    "V2.the-3d-view-draws-faces-then-edges" );
@@ -162,5 +190,51 @@ int main()
 	control->CompleteAll();
 	(void)device->Poll();
 	checks.Equal( device->LiveResourceCount(), baseline, "V5.everything-is-released" );
+
+	// V6.
+	{
+		FakeTextures textures;
+		auto made = ViewportRenderer::Create( *device, &textures );
+		if ( !checks.That( made.HasValue(), "V6.a-textured-renderer" ) )
+			return checks.Report();
+		ViewportRenderer &renderer = *made.Value();
+		hammer::scene::FaceTexture other;
+		other.material = "DEV/MISSING";
+		{
+			hammer::scene::DocumentEdit edit( d.doc );
+			(void)edit.Add( hammer::scene::MakeBoxSolid(
+			    hammer::scene::Box{ Vec3d( 256, 0, 0 ), Vec3d( 320, 64, 64 ) }, other ) );
+			hammer::scene::CommitEdit( d.doc, edit );
+		}
+		checks.That( renderer.SetScene( Snapshot( d ), 1 ).HasValue() &&
+		                 renderer.SetScene( Snapshot( d, false ), 2 ).HasValue(),
+		    "V6.staged-twice" );
+		checks.Equal(
+		    textures.asked.size(), std::size_t( 2 ), "V6.the-source-is-asked-once-per-material" );
+		checks.That( renderer.Scene().textures == 1 && renderer.Scene().missingTextures == 1 &&
+		                 renderer.Scene().batches == 2 && renderer.Scene().texturedBatches == 1,
+		    "V6.one-textured-batch-and-a-missing-texture-stays-untextured" );
+		control->CompleteAll();
+		const hammer::viewport::Camera3D eye = EyeCamera();
+		ViewRequest request;
+		request.kind = ViewKind::Camera3D;
+		request.camera3D = &eye;
+		request.pixelWidth = 64;
+		request.pixelHeight = 48;
+		control->ClearRecorded();
+		auto ticket = renderer.Render( request );
+		control->CompleteAll();
+		const Trace trace = Recorded( *device );
+		checks.That( ticket.HasValue() && renderer.LastView().drawn == 2 &&
+		                 renderer.LastView().unresolved == 0 && trace.draws.size() == 3 &&
+		                 trace.draws[0] + trace.draws[1] == renderer.Scene().faceVertices,
+		    "V6.the-camera-view-draws-both-batches-then-the-edges" );
+		if ( ticket )
+			(void)renderer.Take( ticket.Value() );
+	}
+	(void)device->Poll();
+	control->CompleteAll();
+	(void)device->Poll();
+	checks.Equal( device->LiveResourceCount(), baseline, "V6.everything-is-released" );
 	return checks.Report();
 }

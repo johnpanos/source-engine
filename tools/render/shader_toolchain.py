@@ -84,7 +84,6 @@ from conformance_result import Checks  # noqa: E402
 SHADERS = "materialsystem/shaderapivulkan/shaders"
 DEVICE = "unittests/rendertest/core/device"
 SKINNING = "render/pass/skinning"
-OPAQUE = "render/pass/opaque"
 LINES = "render/pass/lines"
 FAMILIES = "render/material/families"
 SKINNING_TESTS = "unittests/rendertest/core/skinning"
@@ -147,9 +146,6 @@ GENERATED = {
         ("g_demoDynVertSpv", SHADERS + "/demo_dyn.vert", ()))),
     "skin_spv.h": ("render::pass::skinning::spirv", "the skinning compute pass (RFC 0016 K6)", (
         ("kSkinCompute", SKINNING + "/skin.comp", DEVICE_OPTIONS),)),
-    "opaque_spv.h": ("render::pass::opaque::spirv", "the opaque pass (RFC 0016 K5)", (
-        ("kOpaqueVertex", OPAQUE + "/opaque.vert", DEVICE_OPTIONS),
-        ("kOpaqueFragment", OPAQUE + "/opaque.frag", DEVICE_OPTIONS))),
     "families_spv.h": ("render::material::spirv",
         "the material families' programs (RFC 0016 K4, render.material)", (
         ("kUnlitVertex", FAMILIES + "/unlit.vert", DEVICE_OPTIONS),

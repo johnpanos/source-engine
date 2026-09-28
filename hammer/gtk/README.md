@@ -102,10 +102,20 @@ hammer/gtk/hammer_gtk --open hammer/gtk/samples/room.vmf
 or `HAMMER_GTK_TREE`), configured with `--render-core-vulkan=on` when the tree
 is new or older than a `wscript`, and copies the program to the path given.
 
-The 3D preview is flat-shaded with the editor's fixed two-light shading.
-Textured previews come with the render core's material families (RFC 0016 K4:
-`render.material` over the material catalog's texels); until then the material
-browser and the object bar's swatch show textures, and `--textured` refuses.
+The 3D preview uses the editor's fixed two-light shading. Once game assets are
+mounted ("Mount Game Assets…", or `--mount VPK[,VPK...]` at start), the camera view is
+textured: each material's base texture comes from the mounted VPKs through its
+own `MaterialCatalog` on the render sequence (`catalog_textures.cpp`), and the
+solids draw through the render core's `unlit` material family (RFC 0016 K4).
+Faces whose texture is missing draw with the flat fill colors. The viewports
+render on their own thread (`ViewportService`); frames come back to the GTK
+main loop as `GdkMemoryTexture`s.
+
+For KTX2 material previews, build with the pinned KTX reader:
+
+```sh
+KTX_SOURCE_ROOT=/path/to/ktx KTX_BUILD_ROOT=/path/to/ktx/build hammer/gtk/build.sh
+```
 
 ## Verify without a window server
 
@@ -119,6 +129,13 @@ hammer/gtk/hammer_gtk --screenshot out.ppm hammer/gtk/samples/room.vmf --width 8
 
 # The classic 2x2 quad (camera / top / front / side) to one PPM:
 hammer/gtk/hammer_gtk --quad quad.ppm hammer/gtk/samples/room.vmf --width 1600 --height 1200
+
+# The 3D view textured from game VPKs (comma-separated):
+hammer/gtk/hammer_gtk --textured textured.ppm MAP.vmf /path/to/pak01_dir.vpk
+
+# Edit-to-pixels samples for quality/budgets/hammer-viewport-v1.json
+# (tools/quality/hammer_viewport_budget.py judges them):
+hammer/gtk/hammer_gtk --viewport-budget samples.json MAP.vmf --width 640 --height 480
 
 # Build a map by driving the workspace with SIMULATED input and render it:
 hammer/gtk/hammer_gtk --demo demo.ppm --width 1600 --height 1200

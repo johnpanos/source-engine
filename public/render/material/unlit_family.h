@@ -30,6 +30,7 @@
 
 #include "foundation/expected.h"
 #include "render/device/device.h"
+#include "render/material/material_programs.h"
 #include "render/material/parameter_block.h"
 
 #include <cstdint>
@@ -97,6 +98,12 @@ public:
 	device::BindGroupLayoutId MaterialLayout() const { return m_MaterialLayout; }
 	// The pipeline for a claim's blend mode and alpha write (created on first use).
 	foundation::Expected<device::PipelineId, UnlitStatus> Pipeline( const UnlitClaim &claim );
+	// The claim as a MaterialPrograms request: the pipeline, the material
+	// layout, the packed constants (binding 0) and 'baseTexture', a
+	// TextureCache name, at binding 1 with its sampler at binding 2. Stage the
+	// base texture as an sRGB format, as the family samples it.
+	foundation::Expected<ProgramRequest, UnlitStatus> Request(
+	    const UnlitClaim &claim, std::string baseTexture, const device::SamplerDesc &sampler = {} );
 
 private:
 	explicit UnlitFamily( device::IRenderDevice2 &device ) : m_Device( device ) {}

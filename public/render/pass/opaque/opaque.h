@@ -1,24 +1,32 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.pass.opaque (RFC 0016 K5): draws a scene view's draw list
-//			as graph passes.
+// Purpose: render.pass.opaque (RFC 0016 K5, drawing through K4's material
+//			families): draws a scene view's draw list as one graph pass.
 //
-//			AddOpaquePass resolves each draw's mesh (render.resources) and
-//			color, writes the view's view-projection and one record per drawn
-//			instance (world matrix, color) into transient buffers in a copy
-//			pass, then draws the list in its order into the color and depth
-//			targets with a depth test. A draw whose mesh or material does not
-//			resolve is not drawn; it is counted in OpaqueStats::unresolved,
-//			which the frame's owner checks (nothing is dropped silently).
+//			AddOpaquePasses resolves each draw's mesh (render.resources) and
+//			its material's family program (render.material IDrawPrograms),
+//			then draws the list in its order into the color and depth
+//			targets: per draw, the program's pipeline and material bind group,
+//			and the draw constants' shared prefix (world-to-clip = the view's
+//			view-projection times the instance's world matrix, then the world
+//			matrix; FamilyDrawConstants), cut to the bytes the program reads.
+//			A program that reads a draw group (drawLayout) gets the instance's
+//			(MeshInstanceDesc::drawGroup through IDrawGroups), which must have
+//			that layout. Depth test, blending and culling are the family
+//			pipeline's.
 //
-//			The color stands in for material families until K4: families will
-//			supply the pipelines, the material bind group and the raster state
-//			(this pass culls nothing).
+//			A draw whose mesh, program or needed draw group does not resolve,
+//			or whose mesh stride or draw group layout is not the program's, is
+//			not drawn; it is counted in
+//			OpaqueStats::unresolved, which the frame's owner checks (nothing
+//			is dropped silently).
 //
-//			Mesh buffers are imported in their residency usages (vertex,
-//			index), so the graph sees every access. Bind groups name buffers
-//			that exist only during execution, so they are created while
-//			recording and released behind the token given to Collect.
+//			Mesh buffers, the groups' textures and uniform buffers are
+//			imported in their residency usages (vertex, index, sampled,
+//			uniform), so the graph sees every access. The pass creates no
+//			device objects: pipelines and groups belong to the families,
+//			MaterialPrograms and DrawGroups, which must outlive the graph's
+//			execution.
 //
 //=============================================================================//
 
@@ -28,24 +36,14 @@
 #include "foundation/expected.h"
 #include "render/device/device.h"
 #include "render/graph/graph_builder.h"
+#include "render/material/draw_program.h"
 #include "render/resources/mesh_cache.h"
 #include "render/scene/draw_list.h"
 
 #include <cstdint>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <vector>
 
 namespace render::pass::opaque
 {
-
-struct InstanceRecord // std430, 80 bytes
-{
-	float world[4][4] = {}; // row-major, column vectors
-	float color[4] = {};
-};
-static_assert( sizeof( InstanceRecord ) == 80 );
 
 class IMeshResolver
 {
@@ -55,14 +53,6 @@ public:
 	virtual const resources::MeshEntry *Mesh( std::uint64_t mesh ) const = 0;
 };
 
-class IMaterialColors
-{
-public:
-	virtual ~IMaterialColors() = default;
-	// False when the id names no material.
-	virtual bool Color( std::uint64_t material, float out[4] ) const = 0;
-};
-
 struct OpaqueTargets
 {
 	graph::ResourceRef color; // written as kColorAttachment
@@ -70,6 +60,8 @@ struct OpaqueTargets
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
 	device::ClearColor clear;
+	bool clearColor = true; // false: load the target's contents
+	bool clearDepth = true;
 };
 
 struct OpaqueStats
@@ -80,45 +72,22 @@ struct OpaqueStats
 
 enum class OpaqueStatus : std::uint8_t
 {
-	kDevice = 1, // a layout or pipeline was refused
-	kInvalidTargets
+	kInvalidTargets = 1
 };
 
-class OpaqueRenderer
+struct OpaqueSources
 {
-public:
-	static foundation::Expected<std::unique_ptr<OpaqueRenderer>, OpaqueStatus> Create(
-	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat );
-	~OpaqueRenderer();
-	OpaqueRenderer( const OpaqueRenderer & ) = delete;
-	OpaqueRenderer &operator=( const OpaqueRenderer & ) = delete;
-
-	// Adds the upload and draw passes. The snapshot, list and resolvers are
-	// read here; the renderer must outlive the graph's execution.
-	foundation::Expected<OpaqueStats, OpaqueStatus> AddPasses( graph::GraphBuilder &builder,
-	    const scene::SceneSnapshot &snapshot, const scene::DrawList &list,
-	    const scene::SceneView &view, const IMeshResolver &meshes, const IMaterialColors &colors,
-	    const OpaqueTargets &targets );
-	// Bind groups recorded so far are released behind `token`.
-	void Collect( device::CompletionToken token );
-	// Draw passes that could not create their bind groups while recording.
-	std::uint32_t RecordFailures() const;
-
-private:
-	explicit OpaqueRenderer( device::IRenderDevice2 &device ) : m_Device( device ) {}
-	foundation::Expected<device::PipelineId, OpaqueStatus> PipelineFor( std::uint32_t stride );
-
-	device::IRenderDevice2 &m_Device;
-	device::Format m_ColorFormat = device::Format::kUnknown;
-	device::Format m_DepthFormat = device::Format::kUnknown;
-	device::BindGroupLayoutId m_ViewLayout;
-	device::BindGroupLayoutId m_DrawLayout;
-	std::map<std::uint32_t, device::PipelineId> m_Pipelines; // by vertex stride
-	mutable std::mutex m_PendingLock;                        // recording may run on a pool worker
-	std::vector<device::BindGroupId> m_Pending;
-	std::uint32_t m_RecordFailures = 0;
-	device::CompletionToken m_LastToken;
+	const IMeshResolver &meshes;
+	const material::IDrawPrograms &programs;
+	const material::IDrawGroups *drawGroups = nullptr; // for families that read one
 };
+
+// Adds the draw pass. The snapshot, list and sources are read here; the
+// meshes' buffers and the groups' objects must outlive the graph's
+// execution.
+foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBuilder &builder,
+    const scene::SceneSnapshot &snapshot, const scene::DrawList &list, const scene::SceneView &view,
+    const OpaqueSources &sources, const OpaqueTargets &targets );
 
 } // namespace render::pass::opaque
 

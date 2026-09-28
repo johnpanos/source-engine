@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <map>
 
 namespace hammer::render_adapter
 {
@@ -92,14 +93,36 @@ LineVertex Vertex( const Vec3d &p, Rgba8 color )
 	return v;
 }
 
+UnlitVertex FaceVertex( const Vec3d &p, Rgba8 color, float u = 0.0f, float v = 0.0f )
+{
+	UnlitVertex vertex;
+	vertex.position[0] = float( p.x );
+	vertex.position[1] = float( p.y );
+	vertex.position[2] = float( p.z );
+	vertex.uv[0] = u;
+	vertex.uv[1] = v;
+	vertex.color[0] = color.r;
+	vertex.color[1] = color.g;
+	vertex.color[2] = color.b;
+	vertex.color[3] = color.a;
+	return vertex;
+}
+
+// A point's texture coordinate along one axis, in texture widths.
+float TexCoord( const Vec3d &p, const scene::TextureAxis &axis, std::uint32_t size )
+{
+	const double scale = std::abs( axis.scale ) > 1.0e-9 ? axis.scale : 1.0;
+	return float( ( mapgeometry::Dot( p, axis.axis ) / scale + axis.shift ) / double( size ) );
+}
+
 void PushEdge( std::vector<LineVertex> &out, const Vec3d &a, const Vec3d &b, Rgba8 color )
 {
 	out.push_back( Vertex( a, color ) );
 	out.push_back( Vertex( b, color ) );
 }
 
-void PushBox(
-    SceneGeometry &geometry, const Vec3d &lo, const Vec3d &hi, const Color &fill, Rgba8 edge )
+void PushBox( std::vector<UnlitVertex> &faces, std::vector<LineVertex> &edges, const Vec3d &lo,
+    const Vec3d &hi, const Color &fill, Rgba8 edge )
 {
 	const std::array<Vec3d, 8> p = { Vec3d( lo.x, lo.y, lo.z ), Vec3d( hi.x, lo.y, lo.z ),
 	    Vec3d( hi.x, hi.y, lo.z ), Vec3d( lo.x, hi.y, lo.z ), Vec3d( lo.x, lo.y, hi.z ),
@@ -117,14 +140,14 @@ void PushBox(
 		const Rgba8 shaded = ToRgba( Shade( fill, q.n ) );
 		for ( int i : { q.a, q.b, q.c, q.a, q.c, q.d } )
 		{
-			geometry.faces.push_back( Vertex( p[i], shaded ) );
+			faces.push_back( FaceVertex( p[i], shaded ) );
 		}
 	}
 	static const int kEdges[12][2] = { { 0, 1 }, { 1, 2 }, { 2, 3 }, { 3, 0 }, { 4, 5 }, { 5, 6 },
 	    { 6, 7 }, { 7, 4 }, { 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 } };
 	for ( const auto &e : kEdges )
 	{
-		PushEdge( geometry.edges, p[e[0]], p[e[1]], edge );
+		PushEdge( edges, p[e[0]], p[e[1]], edge );
 	}
 }
 
@@ -152,9 +175,27 @@ Color RoleColor( tools::OverlayRole role )
 
 } // namespace
 
-SceneGeometry BuildSceneGeometry( const viewport::RenderSnapshot &snapshot )
+SceneGeometry BuildSceneGeometry(
+    const viewport::RenderSnapshot &snapshot, const TextureSizes &sizes )
 {
 	SceneGeometry geometry;
+	std::map<std::string, std::vector<UnlitVertex>> batches; // "" sorts first
+	std::vector<UnlitVertex> &untextured = batches[std::string()];
+	std::map<std::string, std::optional<TextureSize>> known;
+	auto sizeOf = [&]( const std::string &material ) -> std::optional<TextureSize>
+	{
+		if ( !sizes || material.empty() )
+			return std::nullopt;
+		auto found = known.find( material );
+		if ( found == known.end() )
+		{
+			std::optional<TextureSize> size = sizes( material );
+			if ( size && ( size->width == 0 || size->height == 0 ) )
+				size.reset();
+			found = known.emplace( material, size ).first;
+		}
+		return found->second;
+	};
 	int solidIndex = 0;
 	for ( const viewport::SolidDraw &solid : snapshot.solids )
 	{
@@ -165,6 +206,20 @@ SceneGeometry BuildSceneGeometry( const viewport::RenderSnapshot &snapshot )
 		++solidIndex;
 		for ( const viewport::FaceDraw &face : solid.faces )
 		{
+			const std::optional<TextureSize> size = sizeOf( face.material );
+			std::vector<UnlitVertex> &out = size ? batches[face.material] : untextured;
+			// Over a texture the color is the shading and the selection tint only.
+			const Color white{};
+			const Color tint = face.selected    ? kSelectedFace
+			                   : solid.selected ? kSelectedFill
+			                                    : white;
+			auto textured = [&]( const Vec3d &p, const Color &color )
+			{
+				return size
+				           ? FaceVertex( p, ToRgba( color ), TexCoord( p, face.uAxis, size->width ),
+				                 TexCoord( p, face.vAxis, size->height ) )
+				           : FaceVertex( p, ToRgba( color ) );
+			};
 			if ( face.displacement )
 			{
 				// Terrain: the displaced grid, blended grass -> dirt by vertex alpha.
@@ -188,15 +243,15 @@ SceneGeometry BuildSceneGeometry( const viewport::RenderSnapshot &snapshot )
 						                         : 0.0;
 						const float t = static_cast<float>( alpha ) / 255.0f;
 						const Color base =
-						    face.selected ? kSelectedFace
+						    size            ? tint
+						    : face.selected ? kSelectedFace
 						    : solid.selected
 						        ? kSelectedFill
 						        : Color{ 0.32f + t * 0.20f, 0.48f - t * 0.08f, 0.28f + t * 0.02f };
 						const Vec3d normal = i < static_cast<int>( disp.vertexNormals.size() )
 						                         ? disp.vertexNormals[i]
 						                         : face.normal;
-						geometry.faces.push_back(
-						    Vertex( disp.vertices[i], ToRgba( Shade( base, normal ) ) ) );
+						out.push_back( textured( disp.vertices[i], Shade( base, normal ) ) );
 					}
 					++geometry.triangles;
 					for ( int e = 0; e < 3; ++e )
@@ -211,14 +266,16 @@ SceneGeometry BuildSceneGeometry( const viewport::RenderSnapshot &snapshot )
 			{
 				continue;
 			}
-			const Rgba8 shaded =
-			    ToRgba( Shade( face.selected ? kSelectedFace : fill, face.normal ) );
+			const Color shaded = Shade( size            ? tint
+			                            : face.selected ? kSelectedFace
+			                                            : fill,
+			    face.normal );
 			const Vec3d &v0 = face.vertices[0];
 			for ( std::size_t i = 1; i + 1 < face.vertices.size(); ++i )
 			{
-				geometry.faces.push_back( Vertex( v0, shaded ) );
-				geometry.faces.push_back( Vertex( face.vertices[i], shaded ) );
-				geometry.faces.push_back( Vertex( face.vertices[i + 1], shaded ) );
+				out.push_back( textured( v0, shaded ) );
+				out.push_back( textured( face.vertices[i], shaded ) );
+				out.push_back( textured( face.vertices[i + 1], shaded ) );
 				++geometry.triangles;
 			}
 			const Rgba8 faceEdge = ToRgba( face.selected ? kSelectedFace : edge );
@@ -235,8 +292,13 @@ SceneGeometry BuildSceneGeometry( const viewport::RenderSnapshot &snapshot )
 		const Color color = entity.selected                              ? kSelectedFill
 		                    : ( rgb.r == 0 && rgb.g == 0 && rgb.b == 0 ) ? kEntityDefault
 		                                                                 : FromRgb( rgb );
-		PushBox( geometry, entity.mins, entity.maxs, color,
+		PushBox( untextured, geometry.edges, entity.mins, entity.maxs, color,
 		    ToRgba( entity.selected ? kSelectedEdge : color ) );
+	}
+	for ( auto &[material, vertices] : batches )
+	{
+		if ( !vertices.empty() )
+			geometry.faces.push_back( { material, std::move( vertices ) } );
 	}
 	return geometry;
 }

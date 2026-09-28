@@ -9,11 +9,13 @@
 //			hammer::render_adapter::ViewportRenderer, and writes a binary PPM.
 //			Forms: a single 3D view (--screenshot), the classic 2x2 quad of
 //			camera/top/front/side views (--quad), and a quad of a map built by
-//			simulated editor input (--demo). --textured waits for the core's
-//			material families (RFC 0016 K4) and fails saying so.
+//			simulated editor input (--demo). --textured draws the 3D view with
+//			the materials' base textures from the given VPKs, through the
+//			core's unlit material family (RFC 0016 K4).
 //
 //=============================================================================//
 
+#include "catalog_textures.h"
 #include "hammer/adapters/platform/disk_file_store.h"
 #include "hammer/adapters/render/viewport_service.h"
 #include "hammer/app/session_commands.h"
@@ -112,7 +114,7 @@ struct Viewports
 	std::unique_ptr<RenderCore, CoreDeleter> core;
 	std::unique_ptr<hammer::render_adapter::ViewportRenderer> renderer;
 
-	bool Compose( const char *tag )
+	bool Compose( const char *tag, hammer::render_adapter::IMaterialTextures *textures = nullptr )
 	{
 		RenderCoreConfig config;
 		config.device = "vulkan";
@@ -127,7 +129,7 @@ struct Viewports
 			    result.message[0] ? result.message : "no render device" );
 			return false;
 		}
-		auto made = hammer::render_adapter::ViewportRenderer::Create( *binding->device );
+		auto made = hammer::render_adapter::ViewportRenderer::Create( *binding->device, textures );
 		if ( !made )
 		{
 			std::fprintf( stderr, "%s: the viewport renderer did not start\n", tag );
@@ -271,12 +273,53 @@ int RenderScreenshot( const std::string &vmfPath, const std::string &outPpm, int
 // The textured preview needs the render core's material families (RFC 0016
 // K4: render.material over formats::MaterialCatalog's texels); until they land
 // this refuses rather than render an untextured view under a textured name.
-int RenderTexturedScreenshot(
-    const std::string &, const std::string &, int, int, const std::string & )
+int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &outPpm, int width,
+    int height, const std::string &vpkList )
 {
-	std::fprintf( stderr, "textured: textured previews wait for the render core's material "
-	                      "families (RFC 0016 K4)\n" );
-	return 8;
+	const char *tag = "textured";
+	if ( width <= 0 || height <= 0 )
+	{
+		std::fprintf( stderr, "%s: invalid size %dx%d\n", tag, width, height );
+		return 2;
+	}
+	std::string errors;
+	std::unique_ptr<hammer::gtk::CatalogTextures> textures =
+	    hammer::gtk::CatalogTextures::Open( vpkList, errors );
+	if ( !textures )
+	{
+		std::fprintf( stderr, "%s: no VPK mounted: %s\n", tag, errors.c_str() );
+		return 5;
+	}
+	Editor editor;
+	if ( !editor.Open( vmfPath, width, height, tag ) )
+	{
+		return 3;
+	}
+	Viewports views;
+	if ( !views.Compose( tag, textures.get() ) )
+	{
+		return 4;
+	}
+	const std::vector<std::uint8_t> rgb =
+	    RenderView( *views.renderer, editor.workspace, ViewKind::Camera3D, width, height );
+	if ( rgb.empty() )
+	{
+		std::fprintf( stderr, "%s: the view did not render\n", tag );
+		return 6;
+	}
+	if ( !WritePpm( outPpm, width, height, rgb ) )
+	{
+		std::fprintf( stderr, "%s: failed to write %s\n", tag, outPpm.c_str() );
+		return 7;
+	}
+	const hammer::render_adapter::SceneStats &scene = views.renderer->Scene();
+	std::printf( "%s: wrote %s (%dx%d), %u triangles, %u of %u materials textured, "
+	             "%u without a texture, %u draws\n",
+	    tag, outPpm.c_str(), width, height, scene.triangles, scene.textures,
+	    scene.textures + scene.missingTextures, scene.missingTextures,
+	    views.renderer->LastView().drawn );
+	views.renderer.reset(); // it borrows the textures
+	return 0;
 }
 
 int RenderQuad( const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH )
@@ -366,7 +409,7 @@ int RenderWorkspaceDemo( const std::string &outPpm, int tileW, int tileH )
 // timed from issuing one edit to all four views' new frames arriving back.
 // Writes the samples in milliseconds as JSON.
 int RenderEditBudget( const std::string &vmfPath, const std::string &outJson, int width, int height,
-    int warmup, int edits )
+    int warmup, int edits, const std::string &vpkList )
 {
 	if ( width <= 0 || height <= 0 || edits <= 0 || warmup < 0 )
 	{
@@ -405,8 +448,22 @@ int RenderEditBudget( const std::string &vmfPath, const std::string &outJson, in
 	std::vector<double> samples;
 	bool failed = false;
 	{
+		// The textured preview when VPKs are given, as the window does once
+		// assets are mounted.
+		std::unique_ptr<hammer::gtk::CatalogTextures> textures;
+		if ( !vpkList.empty() )
+		{
+			std::string errors;
+			textures = hammer::gtk::CatalogTextures::Open( vpkList, errors );
+			if ( !textures )
+			{
+				std::fprintf( stderr, "viewport-budget: no VPK mounted: %s\n", errors.c_str() );
+				return 5;
+			}
+		}
 		platform::ThreadTaskRunner render( "hammer-render" );
-		hammer::render_adapter::ViewportService service( *binding->device, render, host );
+		hammer::render_adapter::ViewportService service(
+		    *binding->device, render, host, std::move( textures ) );
 		const ViewKind kinds[] = {
 		    ViewKind::Camera3D, ViewKind::Top, ViewKind::Front, ViewKind::Side };
 		for ( int round = 0; round < warmup + edits && !failed; ++round )
