@@ -85,8 +85,8 @@ struct MaterialValue
 	std::string parameter; // the family parameter
 	std::string key;       // the VMT key, as written
 	ValueKind kind = ValueKind::kFloat;
-	float numbers[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-	std::string text; // kTexture and kMaterial: the normalized reference
+	float numbers[8] = {}; // kTransform: rows 0 and 1; other kinds the first four
+	std::string text;      // kTexture and kMaterial: the normalized reference
 };
 
 struct VmtPair
@@ -120,6 +120,15 @@ struct MaterialDesc
 
 foundation::Expected<MaterialDesc, ImportError> ImportVmt(
     std::string_view text, const VmtImportContext &context );
+
+// A shader's variables mapped as ImportVmt maps a VMT's, without the text
+// (conditions, fallback blocks and patches are already applied): the family,
+// its values, metadata and unmapped keys. The legacy frontend passes a bound
+// material's variables here, as the material system formats them, so a
+// proxy's output reaches the family's block by the importer's own rules.
+// It does not check a PBR material's references (ImportVmt does).
+foundation::Expected<MaterialDesc, ImportError> MapVariables(
+    std::string_view shader, std::vector<VmtPair> variables, const VmtImportContext &context );
 
 // Writes a material's GPU parameters into a block of its family (textures and
 // material references are bound elsewhere). Fails on a parameter the block's

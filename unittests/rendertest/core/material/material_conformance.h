@@ -77,9 +77,19 @@ inline std::vector<std::string> KeyMappingViolations( const VmtMappingTable &map
 		}
 		next += 1.0f;
 		std::string value = std::to_string( static_cast<int>( next ) );
-		float wanted[4] = { next, next, next, next };
+		float wanted[8] = { next, next, next, next };
 		wanted[0] = static_cast<float>( static_cast<int>( next ) );
-		if ( row.kind == ValueKind::kBool || row.kind == ValueKind::kEnum )
+		if ( row.kind == ValueKind::kTransform )
+		{
+			// A row-major 4x4; the block keeps rows 0 and 1.
+			value = "[";
+			for ( int i = 0; i < 16; ++i )
+				value += ( i ? " " : "" ) + std::to_string( next + 0.125f * i );
+			value += "]";
+			for ( int i = 0; i < 8; ++i )
+				wanted[i] = next + 0.125f * i;
+		}
+		else if ( row.kind == ValueKind::kBool || row.kind == ValueKind::kEnum )
 		{
 			value = "1";
 			wanted[0] = 1.0f;
@@ -112,10 +122,11 @@ inline std::vector<std::string> KeyMappingViolations( const VmtMappingTable &map
 			continue;
 		}
 		const ParameterLayout &layout = schema->layout[*index];
-		const int components = layout.type == ParameterType::kFloat2   ? 2
-		                       : layout.type == ParameterType::kFloat3 ? 3
-		                       : layout.type == ParameterType::kFloat4 ? 4
-		                                                               : 1;
+		const int components = layout.type == ParameterType::kFloat2      ? 2
+		                       : layout.type == ParameterType::kFloat3    ? 3
+		                       : layout.type == ParameterType::kFloat4    ? 4
+		                       : layout.type == ParameterType::kTransform ? 8
+		                                                                  : 1;
 		for ( int i = 0; i < components; ++i )
 		{
 			float stored = 0.0f;

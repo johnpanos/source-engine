@@ -35,6 +35,8 @@ std::uint32_t SizeOf( ParameterType type )
 		return 12;
 	case ParameterType::kFloat4:
 		return 16;
+	case ParameterType::kTransform:
+		return 32;
 	case ParameterType::kTexture:
 		return 0;
 	}
@@ -49,6 +51,7 @@ std::uint32_t AlignmentOf( ParameterType type )
 		return 8;
 	case ParameterType::kFloat3:
 	case ParameterType::kFloat4:
+	case ParameterType::kTransform:
 		return 16;
 	default:
 		return 4;
@@ -196,6 +199,12 @@ foundation::Expected<void, MaterialError> ParameterBlock::SetFloat4(
     std::string_view name, const float ( &value )[4] )
 {
 	return Write( name, ParameterType::kFloat4, value, sizeof( value ) );
+}
+
+foundation::Expected<void, MaterialError> ParameterBlock::SetTransform(
+    std::string_view name, const float ( &rows )[8] )
+{
+	return Write( name, ParameterType::kTransform, rows, sizeof( rows ) );
 }
 
 foundation::Expected<void, MaterialError> ParameterBlock::SetInt(

@@ -1289,3 +1289,31 @@ session) and the frontend side of the proxy corpus.
 | --- | --- | --- |
 | Families match ports | `unlit` within 2 levels on 6 cases; `lightmapped` exact on 8; `pbr` within 1 on 8 (7,132 pixels); a seeded defect caught for each; `vertexlit` open | partial |
 | Bind-group ceiling | `unlit`, `lightmapped` and `pbr` (frame, view and material groups) judged by the artifact build (1,342 checks); a seeded fifth group still fails | pass |
+
+## K4 slice: texture transforms in the schemas, and `MapVariables` (2026-09-28)
+
+The first step of the proxy corpus's frontend side: proxies such as
+TextureTransform, TextureScroll and MatrixRotate write
+`$basetexturetransform`, which no family schema carried. A material that set
+a transform was therefore drawn by a family that ignored it.
+
+- `kTransform` parameters hold rows 0 and 1 of the 4x4 (8 floats, 16-byte
+  aligned, the identity by default), as Source's shaders read a texture
+  transform. The legacy-derived families carry `$basetexturetransform`,
+  `$detailtexturetransform` and `$envmapmasktransform`; `lightmapped` and
+  `vertexlit` add `$bumptransform`, and `lightmapped` adds
+  `$basetexturetransform2` and `$blendmasktransform`.
+- The importer reads both of the material system's forms (16 row-major
+  numbers, or `center u v scale u v rotate degrees translate u v`, composed as
+  `CreateMatrixMaterialVarFromKeyValue` composes it). A malformed value keeps
+  the identity with a diagnostic.
+- `MapVariables(shader, variables)` is ImportVmt's shader and variable
+  mapping without the text. The legacy frontend will pass a bound material's
+  variables through it, so a proxy's output reaches the family's block by the
+  importer's own rules.
+- The families refuse a transform they do not claim, by name.
+- Evidence: `render.material.v2` 76 checks (X1–X4: both forms, a malformed
+  value, layout and apply, and `MapVariables` equal to `ImportVmt`). The
+  key-mapping oracle covers the new rows. The VMT corpus and its `.asan` lane
+  pass with unchanged counts, and the unlit, lightmapped and pbr family
+  suites pass.

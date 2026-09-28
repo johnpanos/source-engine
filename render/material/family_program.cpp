@@ -30,6 +30,8 @@ std::size_t ByteSize( ParameterType type )
 		return 12;
 	case ParameterType::kFloat4:
 		return 16;
+	case ParameterType::kTransform:
+		return 32;
 	case ParameterType::kTexture:
 		return 0;
 	}

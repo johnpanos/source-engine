@@ -16,6 +16,7 @@
 #include "render/pbr_material_schema.h"
 #include "testing/checks.h"
 
+#include <cmath>
 #include <cstring>
 #include <map>
 
@@ -387,6 +388,93 @@ void TestApply( testing::Checks &checks )
 
 } // namespace
 
+// Texture transforms (rows 0 and 1, as shaders read them) in both of the
+// material system's text forms, and MapVariables mapping as ImportVmt does.
+void TestTransforms( testing::Checks &checks )
+{
+	VmtImportContext context;
+	auto near = []( const float *a, const float *b, int count )
+	{
+		for ( int i = 0; i < count; ++i )
+		{
+			if ( std::fabs( a[i] - b[i] ) > 1e-5f )
+				return false;
+		}
+		return true;
+	};
+	// T(c + t) Rz(30) S(2, 3) T(-c) with c = (.5, .5), t = (.1, .2).
+	const float composed[8] = {
+	    1.7320508f, -1.5f, 0.0f, 0.4839746f, 1.0f, 2.5980762f, 0.0f, -1.0990381f };
+	auto center = ImportVmt( "UnlitGeneric { $basetexturetransform \"center .5 .5 scale 2 3 "
+	                         "rotate 30 translate .1 .2\" }",
+	    context );
+	const MaterialValue *value =
+	    center ? ValueOf( center.Value(), "basetexturetransform" ) : nullptr;
+	checks.That(
+	    value && value->kind == ValueKind::kTransform && near( value->numbers, composed, 8 ),
+	    "X1.center-scale-rotate-translate-composes-as-the-material-system" );
+	auto matrix = ImportVmt( "LightmappedGeneric { $bumptransform \"[1 2 3 4 5 6 7 8 9 10 11 12 "
+	                         "13 14 15 16]\" }",
+	    context );
+	const float rows[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+	value = matrix ? ValueOf( matrix.Value(), "bumptransform" ) : nullptr;
+	checks.That( value && near( value->numbers, rows, 8 ), "X1.a-matrix-keeps-rows-0-and-1" );
+	auto bad = ImportVmt( "UnlitGeneric { $basetexturetransform \"spin 3\" }", context );
+	checks.That(
+	    bad && !ValueOf( bad.Value(), "basetexturetransform" ) && !bad.Value().diagnostics.empty(),
+	    "X2.a-malformed-transform-keeps-its-default-with-a-diagnostic" );
+
+	FamilyRegistry registry;
+	for ( const FamilyDesc &desc : FamiliesFromMapping( BuiltinVmtMapping() ) )
+		(void)registry.Register( desc );
+	const FamilySchema *unlit = registry.Find( "unlit" );
+	const std::optional<std::size_t> index =
+	    unlit ? unlit->IndexOf( "basetexturetransform" ) : std::nullopt;
+	bool identity = false;
+	bool applied = false;
+	if ( index )
+	{
+		const ParameterLayout &layout = unlit->layout[*index];
+		ParameterBlock block( *unlit );
+		float stored[8] = {};
+		std::memcpy( stored, block.Bytes().data() + layout.offset, sizeof( stored ) );
+		const float identityRows[8] = { 1, 0, 0, 0, 0, 1, 0, 0 };
+		identity = layout.type == ParameterType::kTransform && layout.offset % 16 == 0 &&
+		           near( stored, identityRows, 8 );
+		if ( center && ApplyValues( center.Value(), block ) )
+		{
+			std::memcpy( stored, block.Bytes().data() + layout.offset, sizeof( stored ) );
+			applied = near( stored, composed, 8 );
+		}
+	}
+	checks.That( identity, "X3.a-transform-defaults-to-the-identity-on-16-bytes" );
+	checks.That( applied, "X3.a-transform-applies-to-its-block" );
+
+	// MapVariables: a bound material's variables map as its VMT would.
+	auto imported = ImportVmt( "UnlitGeneric { $basetexture a/b $color \"[.5 .25 1]\" "
+	                           "$basetexturetransform \"center .5 .5 scale 2 3 rotate 30 "
+	                           "translate .1 .2\" $alpha .5 $unknownkey 3 }",
+	    context );
+	auto mapped = MapVariables( "UnlitGeneric",
+	    { { "$basetexture", "a/b" }, { "$color", "[.5 .25 1]" },
+	        { "$basetexturetransform", "center .5 .5 scale 2 3 rotate 30 translate .1 .2" },
+	        { "$alpha", ".5" }, { "$unknownkey", "3" } },
+	    context );
+	bool same = imported && mapped && imported.Value().family == mapped.Value().family &&
+	            imported.Value().values.size() == mapped.Value().values.size() &&
+	            imported.Value().unmapped == mapped.Value().unmapped;
+	for ( std::size_t i = 0; same && i < imported.Value().values.size(); ++i )
+	{
+		const MaterialValue &a = imported.Value().values[i];
+		const MaterialValue &b = mapped.Value().values[i];
+		same = a.parameter == b.parameter && a.text == b.text && near( a.numbers, b.numbers, 8 );
+	}
+	checks.That( same, "X4.map-variables-maps-as-import-does" );
+	auto unknown = MapVariables( "NoSuchShader", {}, context );
+	checks.That( !unknown && unknown.Error().status == ImportStatus::kUnknownShader,
+	    "X4.map-variables-reports-an-unknown-shader" );
+}
+
 int main()
 {
 	using namespace render;
@@ -398,6 +486,7 @@ int main()
 	TestPatches( checks );
 	TestPbr( checks );
 	TestApply( checks );
+	TestTransforms( checks );
 
 	FamilyRegistry registry;
 	FamilyDesc lit;

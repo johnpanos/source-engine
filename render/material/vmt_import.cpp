@@ -13,6 +13,9 @@
 #include "render/material/vmt_import.h"
 #include "render/pbr_material_schema.h"
 
+#include <array>
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <utility>
@@ -500,6 +503,73 @@ int ReadNumbers( std::string_view text, float ( &out )[4] )
 	return count;
 }
 
+// A texture transform as CreateMatrixMaterialVarFromKeyValue (cmaterial.cpp)
+// parses one: 16 row-major numbers in brackets, or center, scale, rotate
+// (degrees) and translate, composed as T(center + translate) Rz S T(-center)
+// with VMatrix's float arithmetic. Rows 0 and 1 go to `rows`.
+bool ReadTransform( const std::string &text, float ( &rows )[8] )
+{
+	using Matrix = std::array<std::array<float, 4>, 4>;
+	Matrix m = {};
+	const int full =
+	    std::sscanf( text.c_str(), " [ %f %f %f %f  %f %f %f %f  %f %f %f %f  %f %f %f %f ]",
+	        &m[0][0], &m[0][1], &m[0][2], &m[0][3], &m[1][0], &m[1][1], &m[1][2], &m[1][3],
+	        &m[2][0], &m[2][1], &m[2][2], &m[2][3], &m[3][0], &m[3][1], &m[3][2], &m[3][3] );
+	if ( full != 16 )
+	{
+		float center[2], scale[2], angle, translate[2];
+		if ( std::sscanf( text.c_str(), " center %f %f scale %f %f rotate %f translate %f %f",
+		         &center[0], &center[1], &scale[0], &scale[1], &angle, &translate[0],
+		         &translate[1] ) != 7 )
+			return false;
+		auto identity = []
+		{
+			Matrix out = {};
+			for ( int i = 0; i < 4; ++i )
+				out[i][i] = 1.0f;
+			return out;
+		};
+		auto multiply = []( const Matrix &a, const Matrix &b )
+		{
+			Matrix out = {};
+			for ( int i = 0; i < 4; ++i )
+			{
+				for ( int j = 0; j < 4; ++j )
+					out[i][j] = a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j] +
+					            a[i][3] * b[3][j];
+			}
+			return out;
+		};
+		Matrix step = identity();
+		step[0][3] = -center[0];
+		step[1][3] = -center[1];
+		m = step;
+		step = identity();
+		step[0][0] = scale[0];
+		step[1][1] = scale[1];
+		m = multiply( step, m );
+		const double radians = angle * ( 3.14159265358979323846 / 180.0f );
+		const float sine = static_cast<float>( std::sin( radians ) );
+		const float cosine = static_cast<float>( std::cos( radians ) );
+		step = identity();
+		step[0][0] = cosine;
+		step[0][1] = -sine;
+		step[1][0] = sine;
+		step[1][1] = cosine;
+		m = multiply( step, m );
+		step = identity();
+		step[0][3] = center[0] + translate[0];
+		step[1][3] = center[1] + translate[1];
+		m = multiply( step, m );
+	}
+	for ( int i = 0; i < 4; ++i )
+	{
+		rows[i] = m[0][i];
+		rows[4 + i] = m[1][i];
+	}
+	return true;
+}
+
 bool ReadValue( const VmtKeyRow &row, const std::string &value, MaterialValue &out,
     std::vector<std::string> &diagnostics )
 {
@@ -513,6 +583,12 @@ bool ReadValue( const VmtKeyRow &row, const std::string &value, MaterialValue &o
 	case ValueKind::kMaterial:
 		out.text = NormalizedPath( value );
 		return true;
+	case ValueKind::kTransform:
+		if ( ReadTransform( value, out.numbers ) )
+			return true;
+		diagnostics.push_back(
+		    out.key + " \"" + value + "\" is not a transform; the identity applies" );
+		return false;
 	case ValueKind::kEnum:
 	{
 		std::string_view names = row.fallback;
@@ -622,6 +698,62 @@ foundation::Expected<void, ImportError> CheckPbr(
 	return {};
 }
 
+// The shader's row (nullptr for the legacy family), with desc's shader,
+// legacyShader, family and reason set; fails on an unknown shader.
+foundation::Expected<const VmtShaderRow *, ImportError> ResolveShader(
+    const VmtMappingTable &mapping, std::string_view shader, MaterialDesc &desc )
+{
+	desc.shader = std::string( shader );
+	desc.legacyShader = CanonicalShader( mapping, shader );
+	// A row may also name a material kind that is not a shader ("subrect").
+	const std::string name = desc.legacyShader.empty() ? Lowered( shader ) : desc.legacyShader;
+	const VmtShaderRow *row = nullptr;
+	for ( const VmtShaderRow &candidate : mapping.shaders )
+	{
+		if ( candidate.shader == name )
+			row = &candidate;
+	}
+	if ( !row && desc.legacyShader.empty() )
+		return Fail( ImportStatus::kUnknownShader, std::string( shader ) );
+	desc.legacyShader = name;
+	desc.family = row ? std::string( row->family ) : std::string( kLegacyFamily );
+	desc.reason = row ? std::string( row->reason ) : std::string( mapping.legacyReason );
+	if ( row && row->family == kLegacyFamily )
+		row = nullptr; // the legacy family maps no keys
+	return row;
+}
+
+// desc.variables into the family's values, metadata and unmapped keys: a
+// family's own rows first, then metadata, then the rest is unmapped.
+void MapValues( const VmtMappingTable &mapping, const VmtShaderRow *row, MaterialDesc &desc )
+{
+	for ( const VmtPair &variable : desc.variables )
+	{
+		const std::string key = Lowered( variable.key );
+		const VmtKeyRow *keyRow = nullptr;
+		for ( const VmtKeyRow &candidate : mapping.keys )
+		{
+			if ( row && candidate.family == row->family && candidate.key == key )
+				keyRow = &candidate;
+		}
+		if ( !keyRow )
+		{
+			bool metadata = false;
+			for ( const VmtMetadataRow &item : mapping.metadata )
+				metadata = metadata || item.key == key;
+			if ( metadata )
+				desc.metadata.push_back( variable );
+			else if ( row )
+				desc.unmapped.push_back( key );
+			continue;
+		}
+		MaterialValue value;
+		value.key = variable.key;
+		if ( ReadValue( *keyRow, variable.value, value, desc.diagnostics ) )
+			desc.values.push_back( std::move( value ) );
+	}
+}
+
 } // namespace
 
 std::string_view ImportStatusName( ImportStatus status )
@@ -660,55 +792,15 @@ foundation::Expected<MaterialDesc, ImportError> ImportVmt(
 		return foundation::MakeUnexpected( expanded.Error() );
 	const KeyValueNode &block = expanded.Value();
 
-	desc.shader = block.name;
-	desc.legacyShader = CanonicalShader( mapping, block.name );
-	// A row may also name a material kind that is not a shader ("subrect").
-	const std::string name = desc.legacyShader.empty() ? Lowered( block.name ) : desc.legacyShader;
-	const VmtShaderRow *row = nullptr;
-	for ( const VmtShaderRow &shader : mapping.shaders )
-	{
-		if ( shader.shader == name )
-			row = &shader;
-	}
-	if ( !row && desc.legacyShader.empty() )
-		return Fail( ImportStatus::kUnknownShader, block.name );
-	desc.legacyShader = name;
-	desc.family = row ? std::string( row->family ) : std::string( kLegacyFamily );
-	desc.reason = row ? std::string( row->reason ) : std::string( mapping.legacyReason );
-	if ( row && row->family == kLegacyFamily )
-		row = nullptr; // the legacy family maps no keys
+	auto row = ResolveShader( mapping, block.name, desc );
+	if ( !row )
+		return foundation::MakeUnexpected( row.Error() );
 
 	const KeyValueNode *fallback =
 	    FallbackBlock( block, block.name, conditions, desc.fallbackBlock );
 	for ( Variable &variable : CollectVariables( block, fallback, conditions, desc ) )
 		desc.variables.push_back( { std::move( variable.key ), std::move( variable.value ) } );
-
-	// A family's own rows first, then metadata, then the rest is unmapped.
-	for ( const VmtPair &variable : desc.variables )
-	{
-		const std::string key = Lowered( variable.key );
-		const VmtKeyRow *keyRow = nullptr;
-		for ( const VmtKeyRow &candidate : mapping.keys )
-		{
-			if ( row && candidate.family == row->family && candidate.key == key )
-				keyRow = &candidate;
-		}
-		if ( !keyRow )
-		{
-			bool metadata = false;
-			for ( const VmtMetadataRow &item : mapping.metadata )
-				metadata = metadata || item.key == key;
-			if ( metadata )
-				desc.metadata.push_back( variable );
-			else if ( row )
-				desc.unmapped.push_back( key );
-			continue;
-		}
-		MaterialValue value;
-		value.key = variable.key;
-		if ( ReadValue( *keyRow, variable.value, value, desc.diagnostics ) )
-			desc.values.push_back( std::move( value ) );
-	}
+	MapValues( mapping, row.Value(), desc );
 
 	const KeyValueNode *proxies = fallback ? FindBlock( *fallback, "proxies" ) : nullptr;
 	if ( !proxies )
@@ -731,6 +823,19 @@ foundation::Expected<MaterialDesc, ImportError> ImportVmt(
 		if ( !checked )
 			return foundation::MakeUnexpected( checked.Error() );
 	}
+	return desc;
+}
+
+foundation::Expected<MaterialDesc, ImportError> MapVariables(
+    std::string_view shader, std::vector<VmtPair> variables, const VmtImportContext &context )
+{
+	const VmtMappingTable &mapping = context.mapping ? *context.mapping : BuiltinVmtMapping();
+	MaterialDesc desc;
+	auto row = ResolveShader( mapping, shader, desc );
+	if ( !row )
+		return foundation::MakeUnexpected( row.Error() );
+	desc.variables = std::move( variables );
+	MapValues( mapping, row.Value(), desc );
 	return desc;
 }
 
@@ -761,7 +866,14 @@ foundation::Expected<void, MaterialError> ApplyValues(
 			break;
 		}
 		case ValueKind::kFloat4:
-			written = block.SetFloat4( value.parameter, value.numbers );
+		{
+			const float numbers[4] = {
+			    value.numbers[0], value.numbers[1], value.numbers[2], value.numbers[3] };
+			written = block.SetFloat4( value.parameter, numbers );
+			break;
+		}
+		case ValueKind::kTransform:
+			written = block.SetTransform( value.parameter, value.numbers );
 			break;
 		case ValueKind::kInt:
 		case ValueKind::kBool:

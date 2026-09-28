@@ -86,6 +86,9 @@ constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$znearer", "znearer", ValueKind::kBool, "0" },
     { {}, "$no_draw", "no_draw", ValueKind::kBool, "0" },
     { {}, "$model", "model", ValueKind::kBool, "0" },
+    { {}, "$basetexturetransform", "basetexturetransform", ValueKind::kTransform, "" },
+    { {}, "$detailtexturetransform", "detailtexturetransform", ValueKind::kTransform, "" },
+    { {}, "$envmapmasktransform", "envmapmasktransform", ValueKind::kTransform, "" },
 };
 
 constexpr VmtKeyRow kLegacyDerivedKeys[] = {
@@ -103,6 +106,9 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "lightmapped", "$basetexture2noenvmap", "basetexture2noenvmap", ValueKind::kBool, "0" },
     { "lightmapped", "$selfillumtint", "selfillumtint", ValueKind::kFloat3, "[1 1 1]" },
     { "lightmapped", "$masked", "masked", ValueKind::kBool, "0" },
+    { "lightmapped", "$bumptransform", "bumptransform", ValueKind::kTransform, "" },
+    { "lightmapped", "$basetexturetransform2", "basetexturetransform2", ValueKind::kTransform, "" },
+    { "lightmapped", "$blendmasktransform", "blendmasktransform", ValueKind::kTransform, "" },
 
     { "vertexlit", "$bumpmap", "bumpmap", ValueKind::kTexture, "" },
     { "vertexlit", "$bumpframe", "bumpframe", ValueKind::kInt, "0" },
@@ -126,6 +132,7 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "vertexlit", "$rimlightboost", "rimlightboost", ValueKind::kFloat, "1" },
     { "vertexlit", "$rimmask", "rimmask", ValueKind::kBool, "0" },
     { "vertexlit", "$ambientonly", "ambientonly", ValueKind::kBool, "0" },
+    { "vertexlit", "$bumptransform", "bumptransform", ValueKind::kTransform, "" },
 
     { "unlit", "$vertexalphatest", "vertexalphatest", ValueKind::kBool, "0" },
     { "unlit", "$hdrcolorscale", "hdrcolorscale", ValueKind::kFloat, "1" },
@@ -210,6 +217,8 @@ ParameterType TypeOf( ValueKind kind )
 {
 	switch ( kind )
 	{
+	case ValueKind::kTransform:
+		return ParameterType::kTransform;
 	case ValueKind::kTexture:
 		return ParameterType::kTexture;
 	case ValueKind::kFloat:
@@ -231,10 +240,15 @@ ParameterType TypeOf( ValueKind kind )
 
 // A row's default as numbers: the leading numbers of its text ("[1 1 1]",
 // "0.5"); an enum's default is its first name, index 0.
-void DefaultOf( const VmtKeyRow &row, float ( &out )[4] )
+void DefaultOf( const VmtKeyRow &row, float ( &out )[8] )
 {
 	if ( row.kind == ValueKind::kEnum || row.kind == ValueKind::kTexture )
 		return;
+	if ( row.kind == ValueKind::kTransform )
+	{
+		out[0] = out[5] = 1.0f; // the identity's rows 0 and 1
+		return;
+	}
 	const std::string text( row.fallback );
 	const char *cursor = text.c_str();
 	int count = 0;

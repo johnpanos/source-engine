@@ -37,6 +37,9 @@ public:
 	foundation::Expected<void, MaterialError> SetFloat4(
 	    std::string_view name, const float ( &value )[4] );
 	foundation::Expected<void, MaterialError> SetInt( std::string_view name, std::int32_t value );
+	// A texture transform's rows 0 and 1.
+	foundation::Expected<void, MaterialError> SetTransform(
+	    std::string_view name, const float ( &rows )[8] );
 	foundation::Expected<void, MaterialError> SetTexture(
 	    std::string_view name, device::TextureId texture );
 

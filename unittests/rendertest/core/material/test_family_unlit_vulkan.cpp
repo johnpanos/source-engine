@@ -92,6 +92,10 @@ int main()
 		                      "\"$additive\" \"1\" }",
 		                 "additive" ),
 		    "claim.refuses-translucent-additive" );
+		checks.That( refused( "\"UnlitGeneric\" { \"$basetexture\" \"a\" \"$basetexturetransform\" "
+		                      "\"center .5 .5 scale 2 2 rotate 0 translate 0 0\" }",
+		                 "basetexturetransform" ),
+		    "claim.refuses-a-texture-transform-by-name" );
 	}
 
 	const bool layer = vulkan::ValidationLayerAvailable();

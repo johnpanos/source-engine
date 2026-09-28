@@ -99,6 +99,11 @@ int main()
 		                      "\"0.5\" }",
 		                 "envmapcontrast" ),
 		    "claim.refuses-an-env-map-parameter-by-name" );
+		checks.That(
+		    refused( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$basetexturetransform\" "
+		             "\"center .5 .5 scale 2 2 rotate 0 translate 0 0\" }",
+		        "basetexturetransform" ),
+		    "claim.refuses-a-texture-transform-by-name" );
 	}
 
 	const bool layer = vulkan::ValidationLayerAvailable();

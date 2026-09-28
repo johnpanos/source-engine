@@ -30,15 +30,19 @@ inline constexpr std::string_view kLegacyFamily = "legacy";
 // How a VMT value is read: the legacy IMaterialVar rules.
 enum class ValueKind : std::uint8_t
 {
-	kTexture, // a texture name; "materials/" is prefixed, ".vtf" dropped
-	kFloat,   // a number; the first component of a vector
-	kFloat2,  // "[x y]", "{X Y}" (0-255) or a scalar for every component
-	kFloat3,  // as kFloat2 with three components (colors)
-	kFloat4,  // as kFloat2 with four components
-	kInt,     // an integer; a float truncates
-	kBool,    // an integer flag: nonzero is true
-	kEnum,    // one of the row's names, stored as its index
-	kMaterial // another material's name (no prefix): not a GPU parameter
+	kTexture,  // a texture name; "materials/" is prefixed, ".vtf" dropped
+	kFloat,    // a number; the first component of a vector
+	kFloat2,   // "[x y]", "{X Y}" (0-255) or a scalar for every component
+	kFloat3,   // as kFloat2 with three components (colors)
+	kFloat4,   // as kFloat2 with four components
+	kInt,      // an integer; a float truncates
+	kBool,     // an integer flag: nonzero is true
+	kEnum,     // one of the row's names, stored as its index
+	kMaterial, // another material's name (no prefix): not a GPU parameter
+	// A texture transform, as the material system parses one: "[16 numbers]"
+	// (row-major) or "center u v scale u v rotate degrees translate u v";
+	// rows 0 and 1 are kept. The default is the identity.
+	kTransform
 };
 
 struct VmtKeyRow

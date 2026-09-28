@@ -29,14 +29,15 @@ enum class ParameterType : std::uint8_t
 	kFloat3,
 	kFloat4,
 	kInt,
-	kTexture // bound through the material group, not the uniform block
+	kTexture,  // bound through the material group, not the uniform block
+	kTransform // a texture transform: rows 0 and 1 of the 4x4 (8 floats), as shaders read it
 };
 
 struct ParameterDesc
 {
 	std::string name;
 	ParameterType type = ParameterType::kFloat;
-	float defaults[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	float defaults[8] = {}; // a transform's two rows; other types use the first four
 };
 
 struct FamilyDesc
