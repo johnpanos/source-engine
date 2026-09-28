@@ -87,6 +87,7 @@
     "compile.light-unsupported": "A light uses an input the v1 light policy does not convert, or converts to no light",
     "compile.leak": "The world solids do not seal the entities from the void",
     "compile.tool-failed": "vbsp, vvis, vrad or bsp2tool failed or produced no output",
+    "compile.lighting-failed": "the lighting back end (map_lighting.py, --lighting) failed or changed a gameplay lump",
     "compile.output-check": "The independent BSP2 checks (usd_map_check.py) failed"
   }
 }

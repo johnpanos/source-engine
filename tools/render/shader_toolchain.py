@@ -82,6 +82,7 @@ SHADERS = "materialsystem/shaderapivulkan/shaders"
 DEVICE = "unittests/rendertest/core/device"
 SKINNING = "render/pass/skinning"
 OPAQUE = "render/pass/opaque"
+LINES = "render/pass/lines"
 SKINNING_TESTS = "unittests/rendertest/core/skinning"
 LIGHTS = "render/pass/lights"
 SHADOWS = "render/pass/shadows"
@@ -139,6 +140,8 @@ EMBEDDED = (
     (SKINNING + "/skin_spv.h", "kSkinCompute", SKINNING + "/skin.comp", DEVICE_OPTIONS),
     (OPAQUE + "/opaque_spv.h", "kOpaqueVertex", OPAQUE + "/opaque.vert", DEVICE_OPTIONS),
     (OPAQUE + "/opaque_spv.h", "kOpaqueFragment", OPAQUE + "/opaque.frag", DEVICE_OPTIONS),
+    (LINES + "/lines_spv.h", "kLinesVertex", LINES + "/lines.vert", DEVICE_OPTIONS),
+    (LINES + "/lines_spv.h", "kLinesFragment", LINES + "/lines.frag", DEVICE_OPTIONS),
     (SKINNING_TESTS + "/skin_defects_spv.h", "kSkinBoneIndexError", SKINNING + "/skin.comp",
      DEVICE_OPTIONS + ("-DSEEDED_BONE_INDEX_ERROR",)),
     (SKINNING_TESTS + "/skin_defects_spv.h", "kSkinFlexWeightError", SKINNING + "/skin.comp",

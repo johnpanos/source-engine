@@ -57,7 +57,7 @@ class BuildGateTest(unittest.TestCase):
         self.vmf.write_text(ROOM)
         self.missing = []
         patcher = mock.patch.object(vmf_map_build, "stage_compile_game",
-                                    side_effect=lambda game, runtime, materials: self.missing)
+                                    side_effect=lambda game, runtime, materials, models=(): self.missing)
         patcher.start()
         self.addCleanup(patcher.stop)
 

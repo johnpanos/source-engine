@@ -34,6 +34,11 @@ ports::MapBuildResult ToolProcessMapBuilder::Build( const ports::MapBuildRequest
 	{
 		run.argv.push_back( "--publish" );
 	}
+	if ( !request.lighting.empty() )
+	{
+		run.argv.push_back( "--lighting" );
+		run.argv.push_back( request.lighting );
+	}
 	run.workingDirectory = m_repoRoot;
 	run.executionTimeout = std::chrono::minutes( 30 );
 	run.cancellationTimeout = std::chrono::seconds( 5 );

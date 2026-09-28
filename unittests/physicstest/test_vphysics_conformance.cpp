@@ -1734,6 +1734,27 @@ static void TestSimulation()
 		ObsFloats( "sim.free-fall-drop", "r0.25", 1, &drop );
 		Check( TIER_GAMEPLAY, "sim.motion-disabled-stays", NearVec( PositionOf( pFrozen ), Vector( 200, 0, 2000 ), 0.01f ) );
 		Check( TIER_GAMEPLAY, "sim.static-stays", NearVec( PositionOf( world.pFloor ), vec3_origin, 0.01f ) );
+
+		// Teleporting stops the object: IVP beams it, zeroing the core's
+		// speed. A velocity the game set since the last step is still
+		// pending and survives, as does the rotation. Game code sets the
+		// velocity after the position when it wants one; the player
+		// controller teleports its shadow after a falling player every tick.
+		AngularImpulse spin( 0, 0, 90 );
+		pCube->SetVelocity( NULL, &spin );
+		Step( world.pEnv, kTick );
+		float spinBefore = AngularVelocityOf( pCube ).z;
+		pCube->SetPosition( Vector( 0, 0, 2000 ), vec3_angle, true );
+		Vector stopped = VelocityOf( pCube );
+		float spinAfter = AngularVelocityOf( pCube ).z;
+		Check( TIER_GAMEPLAY, "object.teleport-stops", stopped.Length() < 1.0f, "v (%.2f %.2f %.2f)", stopped.x, stopped.y, stopped.z );
+		Check( TIER_GAMEPLAY, "object.teleport-keeps-spin", spinBefore > 45.0f && Near( spinAfter, spinBefore, 1.0f ),
+		    "spin %.2f -> %.2f", spinBefore, spinAfter );
+		Vector thrown( 100, 0, 0 );
+		pCube->SetVelocity( &thrown, NULL );
+		pCube->SetPosition( Vector( 0, 0, 1900 ), vec3_angle, true );
+		Vector kept = VelocityOf( pCube );
+		Check( TIER_GAMEPLAY, "object.teleport-keeps-set-velocity", NearVec( kept, thrown, 1.0f ), "v (%.2f %.2f %.2f)", kept.x, kept.y, kept.z );
 		DestroyWorld( world );
 	}
 

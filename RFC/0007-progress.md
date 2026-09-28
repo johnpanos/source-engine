@@ -541,7 +541,10 @@ stylelint reports one failure in the unrelated shader pixel conformance source.
 
 State: `planned` (recorded 2026-09-24 at the user's direction). Child of R48
 (seam, legacy provider, shared suite); its Cycles provider feeds R49. Owner:
-unassigned. Nothing below is installed.
+unassigned. The baker contract, its providers and the shared suite are not
+installed. Since 2026-09-28 the seam's place is fixed: every map is lit by one
+back end, which bakes only through `light_baker.py` (see
+[One lighting back end](#one-lighting-back-end-and-the-seams-place-installed-2026-09-28)).
 
 ### Observed starting point (read-only audit, 2026-09-24)
 
@@ -781,6 +784,80 @@ Blender/Cycles pipeline without a manifest. See the
   keeps its lightmaps for brush entities, displacements and translucent
   faces), and Hammer under Wine cannot launch the Linux script. It closes no
   R48 criterion.
+
+### One lighting back end and the seam's place (installed 2026-09-28)
+
+User direction (2026-09-28): make the relight the only lighting back end. Front
+ends differ only in how they make the BSP; the back end takes the BSP and,
+optionally, an authored scene, deriving one from the BSP's faces when there is
+none; USD-native maps reach Cycles through it; R48-BAKER's seam then sits in
+one place, behind it.
+
+- The back end is `pbrt_map_build.Pipeline`, entered through
+  [`map_lighting.py`](../tools/quality/map_lighting.py) `light(bsp, name, out,
+  toolchain, scene=None, ...)`. A manifest now names a `bsp` (the old
+  `legacy_bsp` key is accepted as its name), a `scene`, or both.
+- Front ends:
+  - VMF: `vmf_map_build.py --lighting PROFILE`;
+  - Hammer: `hammer::ports::MapBuildRequest::lighting`, passed by
+    `ToolProcessMapBuilder`, and `hammer_gtk --lighting PROFILE`;
+  - generators: `portal2_gi_chamber.py` through `vmf_map_build.light`;
+  - a regular compile: `vrad_cycles.py`;
+  - shipped maps: `legacy_bsp_relight.py`, now a thin caller;
+  - USD-native: `usd_map_compile.py --lighting PROFILE`, which lights the vrad
+    stage's BSP and publishes the lit package with its provenance, extended by
+    a `lighting` record (new error `compile.lighting-failed`);
+  - PBRT/USD scene manifests: the pipeline's own front end. `collision` and
+    `compile` now run before any bake, from the scene's stage instead of the
+    lit one, with the switchable sources named by
+    `radiosity_transfer.scene_sources`. That function is Blender-free and is
+    now the one owner of the transfer's source names and styles; the radiosity
+    bake asserts that Blender's emissive materials match it.
+- The back end's `identity` step (`gameplay_identity.py`, moved out of the
+  relight wrapper) now gates every map, scene maps included.
+- The world-light policy in `pack` is one rule: with a probe volume, keep only
+  the world lights the bake left to the engine (a derived scene's start-dark
+  named lights; none for an authored scene); without one, the authored path's
+  control removal is unchanged. SDF light cells are culled by the map's PVS for
+  every map.
+- The seam: [`light_baker.py`](../tools/quality/light_baker.py) holds the one
+  table of light-transport operations (`bake`, `probe`, `probe-volume`,
+  `radiosity`, `sdf`) and today's `CyclesBaker` provider. The pipeline's steps
+  and cache keys name operations; `remote_blender.py` sends the same
+  operations to a GPU host; `gi_probes.py bake`, an oracle harness, calls the
+  seam too. No other tool runs a bake script.
+- Scope item 7, partly: `pbrt_map_build.py` and `probe_volume_bake.py` are
+  behind the seam. The `worldstage_cycles_*` preview bridge was a second
+  Cycles lighting path; `worldstage_cycles_bake_preview.py`,
+  `worldstage_legacy_lightmap_preview.py` and
+  `worldstage_cycles_supplemental_bakes.py` are deleted rather than migrated.
+  The research oracles that read their recorded outputs
+  (`worldstage_sh_l1_*`, `worldstage_directional_bake_compare.py`,
+  `worldstage_cycles_basis_oracle.py`) remain.
+- Evidence (no new Cycles run beyond these; the user stopped long lighting
+  builds on 2026-09-28):
+  - `tests/test_lighting_back_end.py`, 20 tests: the manifest model; a
+    recording pipeline plans the derived, the authored-over-a-given-BSP and
+    the scene-compiled cases (front end before any bake, bakes only through
+    the seam, identity after pack); a scan finds no bake script run outside
+    the seam, and its own negative lines are caught (a test); the scene
+    sources' order, styles, authored styles, cut-off and name uniqueness; the
+    VMF front end's hand-off.
+  - A copy of the gallery build `mix-light-swap` rebuilt through the new
+    order: its collision VMF is byte-identical to the old one (the scene's
+    stage and the front end's source naming give the same file), the style
+    check in `pack` passes, and the identity gate passes on a scene map (59
+    legacy lumps identical; world lights and leaf ambient rewritten).
+  - `usd_map_compile.py --lighting` on the U0 room reached the back end's
+    derived scene and layout before it was stopped at the bake.
+  - `tests/test_usd_map_compile.py` (the new error code exercised),
+    `test_legacy_relight`, `test_vrad_cycles`, `test_vmf_map_build`,
+    `test_pbrt_map_build_run` and the Hammer suites
+    `hammer.app.map_build_queue`, `hammer.app.session_commands`,
+    `hammer.adapters.mcp`, `hammer.presenters.*` and `corpus.hammer.loop` pass;
+    `hammer_gtk` builds.
+- Not done here: the `ILightBaker` contract and its suite, the vrad provider,
+  the RNM/L1 owners, and a lit USD-native map through a complete bake.
 
 ### Scope
 

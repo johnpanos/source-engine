@@ -386,6 +386,55 @@ void TestGround()
 	s_pCollision->DestroyCollide( pDeck );
 	DestroyWorld( world );
 }
+
+// A player put inside static geometry (a script teleport into a brush):
+// movement finds it stuck and keeps the game position, and with nothing
+// touched and no ground CBasePlayer::PostThinkVPhysics holds the shadow's
+// target there with the wish velocity (maxspeed on each axis). IVP's
+// controller keeps the embedded shadow at its target, so the player stays
+// stuck where it was put; a shadow pushed out of the solid drags the player
+// after it (VPhysicsShadowUpdate moves a stuck player to the shadow). Two
+// cases: the hull spans the block's full height (no hull corner inside it),
+// and the hull's top reaches into it.
+void TestEmbedded()
+{
+	const struct
+	{
+		const char *pName;
+		float feetZ;
+	} cases[] = {
+		{ "player.embedded-spanning-stays", 100.0f },
+		{ "player.embedded-corner-stays", 130.0f },
+	};
+	for ( int c = 0; c < ARRAYSIZE( cases ); c++ )
+	{
+		World_t world;
+		if ( !CreateWorld( world, NULL ) )
+			return;
+		// A 32 unit block, 140..172 above the floor, wider than the hull.
+		CPhysCollide *pBlock = s_pCollision->BBoxToCollide( Vector( -64, -64, 140 ), Vector( 64, 64, 172 ) );
+		objectparams_t params = DefaultParams( 1.0f, NULL );
+		IPhysicsObject *pBlockObject = world.pEnv->CreatePolyObjectStatic( pBlock, world.material, vec3_origin, vec3_angle, &params );
+		Player_t player;
+		const Vector start( 0, 0, cases[c].feetZ );
+		if ( pBlockObject && CreatePlayer( world, start, player ) )
+		{
+			float drift = 0.0f;
+			for ( int i = 0; i < (int)( 1.0f / kTick + 0.5f ); i++ )
+			{
+				Drive( player.pController, start, Vector( 320, 320, 320 ), NULL );
+				Step( world.pEnv, kTick );
+				drift = MAX( drift, ( PositionOf( player.pObject ) - start ).Length() );
+			}
+			Check( TIER_GAMEPLAY, cases[c].pName, drift < 1.0f, "shadow moved %.2f", drift );
+		}
+		DestroyPlayer( world, player );
+		if ( pBlockObject )
+			world.pEnv->DestroyObject( pBlockObject );
+		s_pCollision->DestroyCollide( pBlock );
+		DestroyWorld( world );
+	}
+}
 }
 
 void TestPlayerController()
@@ -396,4 +445,5 @@ void TestPlayerController()
 	TestCollisionStateVelocity();
 	TestPushing();
 	TestGround();
+	TestEmbedded();
 }

@@ -183,6 +183,7 @@ public:
 
 private:
 	static bool PreSolve( b3ShapeId shapeIdA, b3ShapeId shapeIdB, b3Pos point, b3Vec3 normal, void *pContext );
+	bool IsEmbeddedPlayerContact( b3ShapeId shapeA, CPhysicsObjectBox3D *pA, b3ShapeId shapeB, CPhysicsObjectBox3D *pB ) const;
 	bool PairAllowed( CPhysicsObjectBox3D *pA, CPhysicsObjectBox3D *pB ) const;
 	void UpdateDeletedPairs();
 	static bool CustomFilter( b3ShapeId shapeIdA, b3ShapeId shapeIdB, void *pContext );

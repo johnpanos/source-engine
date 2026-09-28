@@ -107,15 +107,19 @@ struct SceneKey
 
 struct AppState
 {
-	AppState( std::string builds, bool publish )
-	    : buildsRoot( std::move( builds ) ), publishBuilds( publish )
+	AppState( std::string builds, bool publish, std::string lighting )
+	    : buildsRoot( std::move( builds ) ), publishBuilds( publish ),
+	      buildLighting( std::move( lighting ) )
 	{
 	}
 
-	// Where F9 writes its build records, and whether it publishes the map for
-	// ./play. Fixed by the composition root (--builds, --no-publish).
+	// Where F9 writes its build records, whether it publishes the map for
+	// ./play, and the export profile the lighting back end lights it with
+	// (empty: vrad's lighting). Fixed by the composition root (--builds,
+	// --no-publish, --lighting).
 	const std::string buildsRoot;
 	const bool publishBuilds;
+	const std::string buildLighting;
 
 	// Services the workspace borrows: the strict VMF codec, the disk store and
 	// the map builder over the platform tool-process provider (the editor runs
@@ -613,7 +617,8 @@ void StartBuild( AppState *st, bool run )
 	UpdateChrome( st );
 	const std::string map = MapNameOf( path );
 	const hammer::app::BuildStart started =
-	    st->builds.Start( hammer::ports::MapBuildRequest{ path, false, st->publishBuilds },
+	    st->builds.Start( hammer::ports::MapBuildRequest{ path, false, st->publishBuilds,
+	                                                      st->buildLighting },
 	        [st, map, run]( const hammer::ports::MapBuildResult &result )
 	        {
 		        if ( !result.ok )
@@ -2421,6 +2426,7 @@ int main( int argc, char **argv )
 	bool maximized = false;
 	std::string buildsRoot = "quality-results/hammer-builds";
 	bool publishBuilds = true;
+	std::string buildLighting;
 	std::string mountVpks;
 	int width = 1024;
 	int height = 768;
@@ -2464,6 +2470,10 @@ int main( int argc, char **argv )
 		{
 			publishBuilds = false;
 		}
+		else if ( a == "--lighting" && i + 1 < argc )
+		{
+			buildLighting = argv[++i];
+		}
 		else if ( a == "--mount" && i + 1 < argc )
 		{
 			mountVpks = argv[++i];
@@ -2479,7 +2489,7 @@ int main( int argc, char **argv )
 		else if ( a == "--help" || a == "-h" )
 		{
 			std::printf( "Usage: hammer_gtk [--open MAP.vmf] [--maximized] [--builds DIR] "
-			             "[--no-publish]\n"
+			             "[--no-publish] [--lighting PROFILE]\n"
 			             "       hammer_gtk --screenshot OUT.ppm MAP.vmf [--width W --height H]\n"
 			             "       hammer_gtk --quad OUT.ppm MAP.vmf [--width W --height H]\n"
 			             "       hammer_gtk --demo OUT.ppm [--width W --height H]\n" );
@@ -2504,7 +2514,7 @@ int main( int argc, char **argv )
 		return RenderTexturedScreenshot( texturedIn, texturedOut, width, height, texturedVpks );
 	}
 
-	AppState st( buildsRoot, publishBuilds );
+	AppState st( buildsRoot, publishBuilds, buildLighting );
 	st.openOnStart = openPath;
 	st.startMaximized = maximized;
 	st.mountOnStart = mountVpks;

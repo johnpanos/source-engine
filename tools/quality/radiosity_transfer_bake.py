@@ -63,8 +63,8 @@ import radiosity_transfer  # noqa: E402
 
 SOURCE_UNITS_PER_METER = 39.37007874015748
 INTERIOR = probe_volume.IRRADIANCE_TILE - 2
-FIRST_STYLE = 32
-MAX_SWITCHED = 32  # vbsp MAX_SWITCHED_LIGHTS
+FIRST_STYLE = radiosity_transfer.FIRST_STYLE
+MAX_SWITCHED = radiosity_transfer.MAX_SWITCHED
 SAMPLES_PER_PATCH_EDGE = 4  # surface samples per patch edge length
 RECEIVERS_PER_PATCH = 4
 RAY_OFFSET = 1e-4  # meters: ray origins off their surface
@@ -85,31 +85,16 @@ def srgb_to_linear(values):
 
 # ---------------------------------------------------------------- sources
 
-def prim_name(path):
-    return str(path).rstrip("/").rsplit("/", 1)[-1] or str(path)
+prim_name = radiosity_transfer.prim_name
 
 
 def collect_sources(scene, materials):
-    """[{name, kind, style, objects, world, material}] in style order.
-
-    Styles are assigned in order (32, 33, ...) unless the scene authors them
-    (a relit compiled map: `sourceEngine:authoredLightStyles` on the stage,
-    `sourceEngine:lightStyle` on its styled lights): then each light keeps its
-    own style and every other source is fixed."""
-    sources = []
-    lights = [(shape, pbrt_blender.emitter_objects(index, shape))
-              for index, shape in enumerate(scene["emitters"])] + \
-        [(light, ["Sun%02d" % index])
-         for index, light in enumerate(scene.get("distant_lights", []))]
-    authored = scene.get("authored_light_styles") or any("style" in light for light, _ in lights)
-    for light, objects in lights:
-        sources.append({"name": prim_name(light.get("source") or objects[0]), "kind": "light",
-                        "objects": objects})
-        if authored:
-            sources[-1]["authored_style"] = light.get("style", -1)
-    if scene["environment"]:
-        sources.append({"name": prim_name(scene["environment"].get("source") or "Sky"),
-                        "kind": "sky", "world": True})
+    """[{name, kind, style, objects, world, material}] in style order: the
+    names and styles of radiosity_transfer.scene_sources, with the Blender
+    objects and materials that emit for each. The emissive materials Blender
+    built must be the ones the scene model names, or a map's front end would
+    have named different switchable lights than the bake transports."""
+    built = []
     for name, material in sorted(materials.items()):
         shader = material.node_tree.nodes.get("Principled BSDF")
         if shader is None:
@@ -118,18 +103,20 @@ def collect_sources(scene, materials):
         color = shader.inputs["Emission Color"]
         if strength.default_value > 0 and (color.is_linked or
                                            max(color.default_value[:3]) > 0):
-            sources.append({"name": name, "kind": "emissive", "material": material})
-    names = set()
-    for index, source in enumerate(sources):
-        base, suffix = source["name"][:40], 1
-        while source["name"] in names or not source["name"]:
-            source["name"] = "%s_%d" % (base, suffix)
-            suffix += 1
-        names.add(source["name"])
-        if authored:
-            source["style"] = source.pop("authored_style", -1)
-        else:
-            source["style"] = FIRST_STYLE + index if index < MAX_SWITCHED else -1
+            built.append(name)
+    expected = radiosity_transfer.emissive_materials(scene)
+    if built != expected:
+        raise ValueError("emissive materials differ from the scene model: built %s, "
+                         "expected %s" % (built, expected))
+    sources = radiosity_transfer.scene_sources(scene, built)
+    for source in sources:
+        if "emitter" in source:
+            source["objects"] = pbrt_blender.emitter_objects(
+                source["emitter"], scene["emitters"][source["emitter"]])
+        elif "sun" in source:
+            source["objects"] = ["Sun%02d" % source["sun"]]
+        elif source["kind"] == "emissive":
+            source["material"] = materials[source["material_name"]]
     return sources
 
 

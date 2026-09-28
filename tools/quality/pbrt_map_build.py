@@ -1,37 +1,58 @@
 #!/usr/bin/env python3
-"""Build a playable BSP2 map from a PBRT-v4 or OpenUSD scene with one command.
+"""The one lighting back end for every map, with the scene maps' own front end.
 
     python3 tools/quality/pbrt_map_build.py \\
         --manifest quality/fixtures/pbrt-maps/living-room.json \\
         --out quality-results/living-room-map [--boot]
 
-The manifest (`pbrt-map-manifest/v1`) holds only per-scene decisions that the
-scene file cannot supply: map name, lightmap settings, collision selection and
-optional material exclusions. Its `scene` is a `.pbrt` file or an authored
-`.usd`/`.usda`/`.usdc` stage; every later step reads either through
-`map_scene`. The toolchain file (`pbrt-map-toolchain/v1`)
-holds machine paths. `tools/quality/pbrt_map_toolchain.py provision` builds the
-pinned tools under build/toolchains/ and writes the default toolchain file;
-`--check-toolchain` validates versions and capabilities and exits.
+Every map is lit here. The back end takes a compiled BSP and, optionally, an
+authored visual scene; with no scene it derives one from the BSP's faces,
+materials and lights. Front ends differ only in how they make the BSP: a VMF
+(`vmf_map_build.py --lighting`, which Hammer's build runs), a generator such as
+`portal2_gi_chamber.py`, a regular compile (`vrad_cycles.py`), a shipped map
+(`legacy_bsp_relight.py`), a USD-native map (`usd_map_compile.py --lighting`),
+or a PBRT/USD scene manifest, whose own front end (`collision`, `compile`)
+compiles a collision/PVS BSP from the scene before any bake. The others enter
+through `map_lighting.light`. The back end bakes only through the one baker
+seam (`light_baker.py`), and its `identity` gate checks that the packed map
+carries every gameplay lump of the front end's BSP byte for byte.
 
-A manifest with `legacy_bsp` instead of `scene` relights a compiled map
-(`legacy_bsp_relight.py` writes one; its optional `legacy_game` is the
-compile's game directory, searched for materials before the game runtime,
-which is how `vrad_cycles.py` hooks a regular vbsp/vvis/vrad compile into this
-pipeline; its optional `legacy_runtime` is the staged game runtime the
-materials come from, such as run/runtime-p2 for a Portal 2 map, in place of
-the toolchain's): the scene is authored from the BSP, the
-BSP itself replaces `collision` and `compile` (its gameplay lumps are carried
-unchanged), its baked world lights are removed in `pack`, the scene's light
-emitters stay invisible, and there is no sky dome or traversal gate. Steps:
+The manifest (`pbrt-map-manifest/v1`) holds only per-map decisions: map name,
+lightmap settings, collision selection and optional material exclusions, and
+one of three combinations:
 
-    legacy-scene (legacy_bsp manifests) legacy_bsp_scene.py: the BSP's world faces,
+    scene        a `.pbrt` file or an authored `.usd`/`.usda`/`.usdc` stage; this
+                 pipeline's front end compiles the BSP
+    bsp          a front end's compiled BSP (`legacy_bsp` is its old name); the
+                 scene is derived from it (`legacy-scene`), with `legacy_game`, the
+                 compile's game directory searched for materials first, and
+                 `legacy_runtime`, the staged game runtime the materials come from
+                 (run/runtime-p2 for a Portal 2 map) in place of the toolchain's
+    bsp + scene  a compiled BSP lit with an authored scene in the map's space
+
+Every later step reads the scene through `map_scene`. The toolchain file
+(`pbrt-map-toolchain/v1`) holds machine paths; `pbrt_map_toolchain.py
+provision` builds the pinned tools under build/toolchains/ and writes the
+default one; `--check-toolchain` validates versions and capabilities and exits.
+
+With a derived scene, the scene's light emitters stay invisible and there is
+no sky dome or traversal gate. Wherever a probe volume carries the models'
+light, `pack` keeps only the world lights the bake left to the engine: a
+derived scene's named lights that start dark, and none for an authored scene
+(its compiled light entities are the switchable sources' zero-light stand-ins,
+whose light the radiosity transfer owns). Steps:
+
+    legacy-scene (a bsp with no scene) legacy_bsp_scene.py: the BSP's world faces,
                  materials, occluders and lights as an authored USD scene
     scene        (USD scenes) usd_scene.py extract: map-scene/v1 model + normalized stage
     environment  sky (PBRT equal-area map or USD DomeLight) -> Z-up equirect EXR +
                  display texture (if any sky)
     stage        PBRT -> USD stage in Blender (+ optional Cycles reference render)
     reference-gate  Cycles render vs the scene's reference image (manifest reference.gate)
+    collision    (front end, scene maps) shell/solids/spawn VMF from the scene's stage, its
+                 switchable sources (radiosity_transfer.switchable_sources) named `light`s
+    compile      (front end) vbsp2 / vvis / vrad -> collision + PVS BSP; a manifest's
+                 `bsp` replaces both
     layout       (lightmap.layout "planar", the default) lightmap_layout.py: exact UVs for flat
                  geometry and xatlas charts (within a verified stretch) for curved surfaces,
                  written into a copy of the stage; the bake uses them unchanged
@@ -56,17 +77,17 @@ emitters stay invisible, and there is no sky dome or traversal gate. Steps:
                  derived from the volume (leaf_ambient_from_prbv.py) in `pack`
     radiosity    optional RFC 0011 G4 RTRN (profile/manifest radiosity, needs probe_volume):
                  patches, form factors, per-light injection and the probe gather
-                 (radiosity_transfer_bake.py); its switchable lights become named
-                 `light` entities in `collision` and the transfer is packed beside PRBV
+                 (radiosity_transfer_bake.py); its switchable sources are the ones the
+                 front end named, and the transfer is packed beside PRBV
     sdf          optional RFC 0011 G6 SDFV (profile/manifest sdf_volume, needs radiosity):
                  the static world's signed distance, reflectance and emission per voxel
                  and its analytic lights, styled as the transfer's sources
-                 (sdf_volume_bake.py); packed beside RTRN
+                 (sdf_volume_bake.py), light cells culled by the BSP's PVS; packed beside RTRN
     ktx2         atlas -> linear RGBA16F KTX2 (LMAP payload)
     sky          render stage = lighting stage + SkyDome for window views (scenes with a sky)
-    collision    shell/solids/spawn VMF
-    compile      vbsp2 / vvis / vrad -> collision + PVS BSP
-    pack         USD triangles -> WMSH + LMAP (+ PRBV) inside BSP2
+    pack         USD triangles -> WMSH + LMAP (+ PRBV, RTRN, SDFV, RPRB) inside BSP2
+    identity     gameplay_identity.py: every legacy lump of the BSP carried byte for byte
+                 except the world lights and leaf ambient
     content      VTF/VMT materials + maps/<map>.bsp content root
     boot         (with --boot) headless native Vulkan boot and screenshot at the spawn
     camera-boot  (with --boot) second boot with the camera at the PBRT reference eye
@@ -113,13 +134,16 @@ import map_scene  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
 import pbrt_traversal  # noqa: E402
 import playable_maps  # noqa: E402
+import gameplay_identity  # noqa: E402
+import light_baker  # noqa: E402
+import radiosity_transfer  # noqa: E402
 import reference_compare  # noqa: E402
 import remote_blender  # noqa: E402
 
-STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "layout", "bake", "noise", "denoise", "directional",
-         "seams", "probe", "rprb", "probe-volume", "radiosity", "sdf", "ktx2", "sky",
-         "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
-         "traversal-boot", "traversal", "audit")
+STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "collision", "compile",
+         "layout", "bake", "noise", "denoise", "directional", "seams", "probe", "rprb",
+         "probe-volume", "radiosity", "sdf", "ktx2", "sky", "pack", "identity", "content", "boot",
+         "camera-boot", "runtime-gate", "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
 GATES = ("reference-gate", "noise", "runtime-gate", "traversal", "audit")
 PROFILES = ROOT / "quality" / "map_export_profiles"
@@ -185,12 +209,16 @@ def load_manifest(path):
     name = manifest.get("map", "")
     if not name.replace("_", "").isalnum() or name.lower() != name:
         raise ValueError("manifest map must be lowercase [a-z0-9_]")
-    if "legacy_bsp" in manifest:
-        if "scene" in manifest:
-            raise ValueError("a manifest names a scene or a legacy_bsp, not both")
-        manifest["legacy_bsp"] = str((ROOT / manifest["legacy_bsp"]).resolve())
-        if not Path(manifest["legacy_bsp"]).is_file():
-            raise ValueError("legacy_bsp does not exist: " + manifest["legacy_bsp"])
+    if "legacy_bsp" in manifest:  # the key's name before any BSP could be lit
+        if "bsp" in manifest:
+            raise ValueError("a manifest names one bsp (legacy_bsp is its old name)")
+        manifest["bsp"] = manifest.pop("legacy_bsp")
+    if "bsp" in manifest:
+        manifest["bsp"] = str((ROOT / manifest["bsp"]).resolve())
+        if not Path(manifest["bsp"]).is_file():
+            raise ValueError("bsp does not exist: " + manifest["bsp"])
+        if "collision" in manifest:
+            raise ValueError("a manifest with a bsp was compiled by its front end: no collision")
         if "legacy_game" in manifest:
             manifest["legacy_game"] = str((ROOT / manifest["legacy_game"]).resolve())
             if not Path(manifest["legacy_game"]).is_dir():
@@ -200,11 +228,13 @@ def load_manifest(path):
             if not Path(manifest["legacy_runtime"]).is_dir():
                 raise ValueError("legacy_runtime is not a directory: " +
                                  manifest["legacy_runtime"])
-        # The `legacy-scene` step writes the scene (Pipeline sets its path).
-        manifest["scene"] = None
-        manifest["scene_format"] = "usd"
         manifest.setdefault("quality", LEGACY_QUALITY)
-        return manifest
+        if not manifest.get("scene"):
+            # No authored scene: the `legacy-scene` step derives one from the
+            # BSP (Pipeline sets its path).
+            manifest["scene"] = None
+            manifest["scene_format"] = "usd"
+            return manifest
     manifest["scene"] = str((ROOT / manifest["scene"]).resolve())
     manifest["scene_format"] = "usd" if map_scene.is_usd(manifest["scene"]) else "pbrt"
     manifest.setdefault("quality", DEFAULT_QUALITY)
@@ -240,8 +270,8 @@ def bsp_entities(path):
     return entities
 
 
-def check_legacy_light_styles(bsp, controls):
-    """Each styled source of a relit map is a style of the map's own lights
+def check_derived_light_styles(bsp, controls):
+    """Each styled source of a derived scene is a style of the map's own lights
     (vbsp writes a named light's switchable style, 32+, into its entity; the
     preset animated styles 1-31 are authored there)."""
     styles = {entity.get("style") for entity in bsp_entities(bsp)
@@ -335,14 +365,20 @@ class Pipeline:
         self.identities = {}
         self.map = manifest["map"]
         self.usd = manifest["scene_format"] == "usd"
-        self.legacy = manifest.get("legacy_bsp")
-        if self.legacy:
+        # The back end lights a compiled BSP: a front end's (`bsp`), or the
+        # one this pipeline's front end compiles from the scene (`collision`,
+        # `compile`). Its scene is authored (`scene`) or derived from the BSP.
+        self.bsp_input = manifest.get("bsp")
+        self.derived = manifest.get("scene") is None
+        if self.derived:
             manifest["scene"] = str(out.resolve() / "legacy-scene" / "scene.usda")
         # A USD scene is read through the model its `scene` step extracts.
         self.scene_file = (self.out / "scene" / "scene.json") if self.usd else manifest["scene"]
         self.scene = None if self.usd else map_scene.parse(self.scene_file)
         # Cycles steps on another host's GPU (toolchain `remote_blender`).
         self.remote = remote_blender.from_toolchain(toolchain)
+        # Every light-transport product comes from this one baker (R48-BAKER seam).
+        self.baker = light_baker.CyclesBaker(self.blender)
         self.current = (None, ())
         self.state_path = self.out / "steps.json"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.is_file() else {}
@@ -387,7 +423,7 @@ class Pipeline:
         if self.radiosity and not self.probe_volume:
             raise ValueError("radiosity needs the probe_volume it gathers into")
         self.sdf_volume = with_defaults(manifest, self.profile, "sdf_volume")
-        if self.legacy and not self.probe_volume:
+        if self.derived and not self.probe_volume:
             raise ValueError("a relit map needs a probe_volume: its world lights move there")
         if self.sdf_volume and not self.radiosity:
             raise ValueError("sdf_volume needs the radiosity transfer its light styles follow")
@@ -403,6 +439,7 @@ class Pipeline:
         self.hidden_materials = list(world_mesh.get("exclude_materials", []))
         self.paths = {
             "legacy_scene": self.out / "legacy-scene",
+            "identity": self.out / "gameplay-identity.json",
             "environment": self.out / "environment.exr",
             "stage": self.out / "stage" / (self.map + ".usdc"),
             "stage_receipt": self.out / "stage.json",
@@ -656,17 +693,17 @@ class Pipeline:
             content += sorted(f for f in (Path(game) / "materials").rglob("*") if f.is_file())
             settings["game"] = game
             game_args = ["--game-dir", game]
-        self.step("legacy-scene", [self.legacy] + content, settings,
+        self.step("legacy-scene", [self.bsp_input] + content, settings,
                   ["legacy_bsp_scene.py", "legacy_bsp.py", "vtf_decode.py", "source_content.py",
                    "bsp2_reader.py"], [p["legacy_scene"]],
                   lambda: self.usd_python("legacy-scene", "legacy_bsp_scene.py", [
-                      "--bsp", self.legacy, "--runtime", runtime, "--map-name", self.map,
+                      "--bsp", self.bsp_input, "--runtime", runtime, "--map-name", self.map,
                       "--out", p["legacy_scene"]] + game_args))
 
     def build(self):
         self.out.mkdir(parents=True, exist_ok=True)
         p = self.paths
-        if self.legacy:
+        if self.derived:
             self.legacy_scene()
         if self.usd:
             self.extract_usd_scene()
@@ -717,6 +754,17 @@ class Pipeline:
                       lambda: self.run("reference-gate", [sys.executable,
                                                           HERE / "reference_compare.py"] +
                                        gate_args))
+        # Front end: a scene map compiles its own collision/PVS BSP from the
+        # scene (its switchable sources named, so vbsp styles them); any other
+        # map arrives compiled. Everything after this lights that BSP.
+        if self.bsp_input:
+            self.state.pop("collision", None)
+            self.state.pop("compile", None)
+            p["bsp"] = Path(self.bsp_input)
+        else:
+            self.collision_and_compile(scene, self.probe_volume,
+                                       radiosity_transfer.switchable_sources(self.scene)
+                                       if self.radiosity else [])
         self.lightmap["exclude_materials"] = applicable_exclusions(
             self.lightmap["exclude_materials"], self.authored_exclusions,
             self.scene["materials"])
@@ -759,12 +807,12 @@ class Pipeline:
                                                       "device", "directional", "light_paths",
                                                       "layers", "seed", "layout",
                                                       "noise_target")}),
-                  SCENE_SCRIPTS + ["pbrt_blender.py", "pbrt_lightmap_bake.py"],
+                  SCENE_SCRIPTS + self.baker.scripts("bake"),
                   [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]] +
                   ([p["directional_bakes"]] if directional else []) +
                   ([p["layers"]] if layers else []) +
                   ([p["noise_pair"]] if noise_target else []),
-                  lambda: self.blender("bake", "pbrt_lightmap_bake.py", bake_args))
+                  lambda: self.baker.bake("bake", bake_args))
         if noise_target:
             halves = [p["noise_pair"] / "total-a.exr", p["noise_pair"] / "total-b.exr"]
             mean_samples = 2 * max(1, (self.lightmap["samples"] + 1) // 2)
@@ -853,10 +901,9 @@ class Pipeline:
                       ([environment] if environment else []),
                       dict(probe, device=self.lightmap["device"], seed=self.lightmap["seed"],
                            denoise=probe.get("denoise", True), bounds_m=bounds),
-                      SCENE_SCRIPTS + ["pbrt_reflection_probe.py", "reflection_probe_set.py",
-                                       "reflection_probe.py", "pbrt_blender.py"],
+                      SCENE_SCRIPTS + self.baker.scripts("probe"),
                       [p["probe"]],
-                      lambda: self.blender("probe", "pbrt_reflection_probe.py", face_args))
+                      lambda: self.baker.bake("probe", face_args))
             self.step("rprb", [p["probe"] / "probes.json"],
                       {"width": probe.get("width", 512),
                        "preview_gain": self.lightmap["preview_gain"]},
@@ -881,10 +928,9 @@ class Pipeline:
             self.step("probe-volume", [p["stage"]] + self.scene_sources() +
                       ([environment] if environment else []),
                       dict(volume, light_paths=self.lightmap["light_paths"]),
-                      SCENE_SCRIPTS + ["probe_volume_bake.py", "probe_volume.py",
-                                       "pbrt_blender.py"],
+                      SCENE_SCRIPTS + self.baker.scripts("probe-volume"),
                       [p["prbv"], p["prbv_work"]],
-                      lambda: self.blender("probe-volume", "probe_volume_bake.py", volume_args))
+                      lambda: self.baker.bake("probe-volume", volume_args))
         radiosity = self.radiosity
         if radiosity:
             radiosity_args = ["--scene", scene, "--stage", p["stage"], "--prbv", p["prbv"],
@@ -898,34 +944,28 @@ class Pipeline:
             self.step("radiosity", [p["stage"], p["prbv"]] + self.scene_sources() +
                       ([environment] if environment else []),
                       dict(radiosity, light_paths=self.lightmap["light_paths"]),
-                      SCENE_SCRIPTS + ["radiosity_transfer_bake.py", "radiosity_transfer.py",
-                                       "probe_volume.py", "pbrt_blender.py"],
+                      SCENE_SCRIPTS + self.baker.scripts("radiosity"),
                       [p["rtrn"], p["rtrn_work"]],
-                      lambda: self.blender("radiosity", "radiosity_transfer_bake.py",
-                                           radiosity_args))
+                      lambda: self.baker.bake("radiosity", radiosity_args))
         field = self.sdf_volume
         if field:
             field_args = ["--scene", scene, "--stage", p["stage"],
                           "--voxel", str(field["voxel_m"]),
                           "--transfer-receipt", p["rtrn_work"] / "rtrn-bake.json",
                           "--out", p["sdfv"], "--work", p["sdfv_work"]] + env_args
-            # Light cells (profile sdf_volume.light_cell_m / light_cutoff); a
-            # relit map's PVS culls them too.
+            # Light cells (profile sdf_volume.light_cell_m / light_cutoff),
+            # culled by the map's PVS too.
             if "light_cell_m" in field:
                 field_args += ["--light-cell", str(field["light_cell_m"])]
             if "light_cutoff" in field:
                 field_args += ["--light-cutoff", str(field["light_cutoff"])]
-            if self.legacy:
-                field_args += ["--bsp", self.legacy]
-            self.step("sdf", [p["stage"], p["rtrn"]] + self.scene_sources() +
-                      ([environment] if environment else []) +
-                      ([self.legacy] if self.legacy else []),
+            field_args += ["--bsp", p["bsp"]]
+            self.step("sdf", [p["stage"], p["rtrn"], p["bsp"]] + self.scene_sources() +
+                      ([environment] if environment else []),
                       dict(field),
-                      SCENE_SCRIPTS + ["sdf_volume_bake.py", "sdf_volume.py", "sdf_light_cells.py",
-                                       "legacy_bsp.py", "radiosity_transfer_bake.py",
-                                       "pbrt_blender.py"],
+                      SCENE_SCRIPTS + self.baker.scripts("sdf"),
                       [p["sdfv"], p["sdfv_work"]],
-                      lambda: self.blender("sdf", "sdf_volume_bake.py", field_args))
+                      lambda: self.baker.bake("sdf", field_args))
         # The scene sun's LMAP marker texels lived in the retired probe band's
         # marker row and had no shader reader; scene maps no longer write them.
         layer_args = [item for role, out in denoised_layers.items()
@@ -948,7 +988,7 @@ class Pipeline:
                                            directional_args + layer_args + seam_args))
         pack_stage = p["lighting_stage"]
         # A relit map keeps its own skybox; no sky dome joins its world mesh.
-        if environment and not self.legacy:
+        if environment and not self.derived:
             pack_stage = p["render_stage"]
             self.step("sky", [p["lighting_stage"], p["sky_texture"]], {},
                       ["pbrt_sky_dome.py"],
@@ -956,33 +996,31 @@ class Pipeline:
                       lambda: self.usd_python("sky", "pbrt_sky_dome.py", [
                           "--stage", p["lighting_stage"], "--sky-texture", p["sky_texture"],
                           "--out-stage", p["render_stage"]]))
+        # The transfer's switchable sources as the bake numbered them.
         controls = self.light_controls() if radiosity else []
-        if self.legacy:
-            self.state.pop("collision", None)
-            self.state.pop("compile", None)
-            p["bsp"] = Path(self.legacy)
-        else:
-            self.collision_and_compile(scene, volume, controls)
         pack_bsp = p["bsp_ambient"] if volume else p["bsp"]
         scene_receipt = p["legacy_scene"] / "scene-receipt.json"
 
         def pack():
             seconds = 0.0
             if controls:
-                if self.legacy:
-                    check_legacy_light_styles(p["bsp"], controls)
-                else:
-                    check_light_styles(p["bsp"], controls)
+                (check_derived_light_styles if self.derived else check_light_styles)(
+                    p["bsp"], controls)
             if volume:
                 seconds += self.run("pack", [sys.executable, HERE / "leaf_ambient_from_prbv.py",
                                              "--bsp", p["bsp"], "--prbv", p["prbv"],
                                              "--out", p["bsp_ambient"], "--receipt",
                                              p["bsp_ambient"].with_suffix(".json")])
             worldlights = p["bsp_ambient"].with_name(p["bsp_ambient"].stem + "_worldlights.json")
-            if self.legacy:
-                # vrad's lights are in the bake now; only the lights it left
-                # out (named lights that start dark) stay world lights.
-                kept = json.loads(scene_receipt.read_text())["kept_world_light_styles"]
+            if volume:
+                # The bake owns every light it baked, and the probe volume
+                # carries the models' share: only the lights the bake left to
+                # the engine stay world lights. A derived scene leaves its
+                # named lights that start dark; an authored scene none (its
+                # compiled light entities are the switchable sources' zero-light
+                # stand-ins, whose light the transfer owns).
+                kept = (json.loads(scene_receipt.read_text())["kept_world_light_styles"]
+                        if self.derived else [])
                 seconds += self.run("pack", [sys.executable, HERE / "bsp_worldlights.py",
                                              "--bsp", pack_bsp, "--out", pack_bsp,
                                              "--keep-only", "--receipt", worldlights] +
@@ -1001,8 +1039,8 @@ class Pipeline:
         pack_args = ([
                       "--stage", pack_stage, "--bsp", pack_bsp, "--material-prefix",
                       self.map, "--require-lightmap-uv"] +
-                      # A relit map's lights are invisible, as the entities were.
-                      (["--include-emitters"] if self.scene["emitters"] and not self.legacy
+                      # A derived scene's lights are invisible, as the entities were.
+                      (["--include-emitters"] if self.scene["emitters"] and not self.derived
                        else []) + [
                       "--lightmap-ktx2", p["ktx2"], "--bsp2tool", self.tools["bsp2tool"],
                       "--out", p["wmsh"], "--out-bsp2", p["bsp2"]] +
@@ -1022,27 +1060,35 @@ class Pipeline:
                   ([p["prbv"]] if volume else []) + ([p["rtrn"]] if radiosity else []) +
                   ([p["sdfv"]] if self.sdf_volume else []) +
                   ([p["rprb"]] if probe else []) +
-                  ([scene_receipt] if self.legacy else []),
+                  ([scene_receipt] if self.derived else []),
                   dict({"prefix": self.map, **self.world_mesh},
                        **({"probe_volume": True} if volume else {}),
                        **({"radiosity_transfer": True} if radiosity else {}),
                        **({"sdf_volume": True} if self.sdf_volume else {}),
                        **({"reflection_probes": True} if probe else {}),
                        **({"hidden_meshes": sorted(hidden)} if hidden else {}),
-                       **({"legacy": True} if self.legacy else {})),
+                       **({"derived_scene": True} if self.derived else {})),
                   ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py", "worldstage_mesh_pack.py"] +
                   (["leaf_ambient_from_prbv.py", "probe_volume.py"] if volume else []) +
-                  (["bsp_worldlights.py"] if controls or self.legacy else []),
+                  (["bsp_worldlights.py"] if controls or volume else []),
                   [p["wmsh"], p["wmsh"].with_name(p["wmsh"].name + ".json"), p["bsp2"]] +
                   ([p["bsp_ambient"], p["bsp_ambient"].with_suffix(".json")] if volume else []),
                   pack)
+        # Lighting changes only lighting: the packed map carries every
+        # gameplay lump of the front end's BSP byte for byte.
+        self.step("identity", [p["bsp"], p["bsp2"]],
+                  {"relit_lumps": sorted(gameplay_identity.RELIT_LUMPS)},
+                  ["gameplay_identity.py", "bsp2_reader.py"], [p["identity"]],
+                  lambda: self.run("identity", [sys.executable, HERE / "gameplay_identity.py",
+                                                "--bsp", p["bsp"], "--bsp2", p["bsp2"],
+                                                "--out", p["identity"]]))
         self.finish(scene, environment, reference)
 
     def collision_and_compile(self, scene, volume, controls):
         """`collision` and `compile`: a collision/PVS BSP for a scene map."""
         p = self.paths
         collision = self.manifest.get("collision", {})
-        collision_args = ["--scene", scene, "--stage", p["lighting_stage"], "--map-name",
+        collision_args = ["--scene", scene, "--stage", p["stage"], "--map-name",
                           self.map, "--out-dir", p["collision"]]
         if volume:
             collision_args.append("--no-fallback-light")
@@ -1077,7 +1123,7 @@ class Pipeline:
                           ("--solid-mesh", "solid_meshes")):
             for value in collision.get(key, []):
                 collision_args += [flag, value]
-        self.step("collision", [scene, p["lighting_stage"]],
+        self.step("collision", [scene, p["stage"]],
                   dict(collision, **({"fallback_light": False} if volume else {}),
                        **({"light_controls": [c["name"] for c in controls]} if controls
                           else {})),
@@ -1101,7 +1147,7 @@ class Pipeline:
         """`content` and the boot, gate and audit steps of a packed map."""
         p = self.paths
         tools = Path(self.tools["compile_tools"])
-        sky = environment and not self.legacy
+        sky = environment and not self.derived
         sky_args = ["--sky-texture", p["sky_texture"]] if sky else []
         self.step("content", [scene, p["stage_receipt"], p["bsp2"]] + self.scene_sources() +
                   ([p["sky_texture"]] if sky else []), {},
@@ -1151,7 +1197,8 @@ class Pipeline:
                                                         HERE / "reference_compare.py"] +
                                        gate_args))
         # A relit map keeps its compiled collision; its drop test is the game's.
-        if self.boot and not self.legacy:
+        # The drop test reads the collision receipt a scene map's front end wrote.
+        if self.boot and not self.bsp_input:
             receipt_path = p["collision"] / "collision-receipt.json"
             probe_commands = pbrt_traversal.commands(json.loads(receipt_path.read_text()))
             content_files = sorted(f for f in p["content"].rglob("*") if f.is_file())

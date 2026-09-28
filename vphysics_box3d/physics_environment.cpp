@@ -880,12 +880,87 @@ void CPhysicsEnvironmentBox3D::UpdateDeletedPairs()
 	}
 }
 
+namespace
+{
+// Overlap IVP's collision margin keeps pairs within; deeper is interpenetration.
+const float kEmbeddedDepth = 1.0f * kMetersPerInch;
+
+// True when a hull, shrunk by kEmbeddedDepth on each side of its bounds,
+// still overlaps the other hull where both bodies are now.
+bool HullsInterpenetrate( b3ShapeId shape, b3ShapeId otherShape )
+{
+	if ( b3Shape_GetType( shape ) != b3_hullShape || b3Shape_GetType( otherShape ) != b3_hullShape )
+		return false;
+	const b3HullData *pHull = b3Shape_GetHull( shape );
+	const b3HullData *pOther = b3Shape_GetHull( otherShape );
+	const b3Vec3 *pPoints = b3GetHullPoints( pHull );
+	int count = MIN( pHull->vertexCount, B3_MAX_SHAPE_CAST_POINTS );
+	b3Vec3 lo = pPoints[0], hi = pPoints[0];
+	for ( int i = 1; i < count; i++ )
+	{
+		lo = b3Min( lo, pPoints[i] );
+		hi = b3Max( hi, pPoints[i] );
+	}
+	b3Vec3 size = b3Sub( hi, lo );
+	if ( size.x <= 2 * kEmbeddedDepth || size.y <= 2 * kEmbeddedDepth || size.z <= 2 * kEmbeddedDepth )
+		return false;
+	b3Vec3 center = b3MulSV( 0.5f, b3Add( lo, hi ) );
+	b3Transform toOther = b3InvMulWorldTransforms( b3Body_GetTransform( b3Shape_GetBody( otherShape ) ),
+		b3Body_GetTransform( b3Shape_GetBody( shape ) ) );
+	b3Vec3 inset[B3_MAX_SHAPE_CAST_POINTS];
+	for ( int i = 0; i < count; i++ )
+	{
+		b3Vec3 p = pPoints[i];
+		p.x += p.x < center.x ? kEmbeddedDepth : -kEmbeddedDepth;
+		p.y += p.y < center.y ? kEmbeddedDepth : -kEmbeddedDepth;
+		p.z += p.z < center.z ? kEmbeddedDepth : -kEmbeddedDepth;
+		inset[i] = b3TransformPoint( toOther, p );
+	}
+	b3DistanceInput input;
+	memset( &input, 0, sizeof( input ) );
+	input.proxyA.points = b3GetHullPoints( pOther );
+	input.proxyA.count = pOther->vertexCount;
+	input.proxyB.points = inset;
+	input.proxyB.count = count;
+	input.transform = b3Transform_identity;
+	input.useRadii = false;
+	b3SimplexCache cache;
+	memset( &cache, 0, sizeof( cache ) );
+	return b3ShapeDistance( &input, &cache, NULL, 0 ).distance <= 1e-5f;
+}
+}
+
+// IVP makes no contact for a pair that is already interpenetrating. It sets
+// rescue velocities instead (IVP_Anomaly_Manager::inter_penetration), and a
+// driving player controller replaces those with its own on the next step.
+// So a player teleported into a brush keeps its shadow where the game holds
+// it and stays stuck there. Box3D solves the overlap and pushes the shadow
+// out, and CBasePlayer::VPhysicsShadowUpdate drags the stuck player after it
+// (player.embedded-*). Pairs with moving objects keep Box3D's response: the
+// game solves those itself (ShouldSolvePenetration).
+bool CPhysicsEnvironmentBox3D::IsEmbeddedPlayerContact( b3ShapeId shapeA, CPhysicsObjectBox3D *pA, b3ShapeId shapeB, CPhysicsObjectBox3D *pB ) const
+{
+	for ( int i = 0; i < m_playerControllers.Count(); i++ )
+	{
+		CPhysicsObjectBox3D *pPlayer = m_playerControllers[i]->DrivenObject();
+		if ( !pPlayer )
+			continue;
+		if ( pPlayer == pA && pB && !pB->IsMoveable() )
+			return HullsInterpenetrate( shapeA, shapeB );
+		if ( pPlayer == pB && pA && !pA->IsMoveable() )
+			return HullsInterpenetrate( shapeB, shapeA );
+	}
+	return false;
+}
+
 bool CPhysicsEnvironmentBox3D::PreSolve( b3ShapeId shapeIdA, b3ShapeId shapeIdB, b3Pos point, b3Vec3 normal, void *pContext )
 {
 	CPhysicsEnvironmentBox3D *pEnv = static_cast<CPhysicsEnvironmentBox3D *>( pContext );
+	CPhysicsObjectBox3D *pA = ObjectOf( shapeIdA ), *pB = ObjectOf( shapeIdB );
+	if ( pEnv->IsEmbeddedPlayerContact( shapeIdA, pA, shapeIdB, pB ) )
+		return false;
 	if ( !pEnv->m_deletedPairs.Count() )
 		return true;
-	CPhysicsObjectBox3D *pA = ObjectOf( shapeIdA ), *pB = ObjectOf( shapeIdB );
 	for ( int i = 0; i < pEnv->m_deletedPairs.Count(); i++ )
 	{
 		const DeletedPair_t &pair = pEnv->m_deletedPairs[i];
@@ -1338,6 +1413,26 @@ void CPhysicsEnvironmentBox3D::PostStep( float dt )
 	DispatchSleepWakeEvents();
 }
 
+static unsigned long long QaDigest( const CUtlVector<IPhysicsObject *> &objects )
+{
+	unsigned long long h = 1469598103934665603ull;
+	for ( int i = 0; i < objects.Count(); i++ )
+	{
+		Vector p, v;
+		QAngle a;
+		objects[i]->GetPosition( &p, &a );
+		objects[i]->GetVelocity( &v, NULL );
+		float f[9] = { p.x, p.y, p.z, a.x, a.y, a.z, v.x, v.y, v.z };
+		const unsigned char *b = (const unsigned char *)f;
+		for ( int k = 0; k < (int)sizeof( f ); k++ )
+		{
+			h ^= b[k];
+			h *= 1099511628211ull;
+		}
+	}
+	return h;
+}
+
 void CPhysicsEnvironmentBox3D::Step( float dt )
 {
 	// Wakes from game calls made between steps are reported too.
@@ -1347,9 +1442,30 @@ void CPhysicsEnvironmentBox3D::Step( float dt )
 	double solverStart = Plat_FloatTime();
 	if ( m_pStepScheduler )
 		m_pStepScheduler->BeginStep();
+	unsigned long long qaPre = QaDigest( m_objects );
+	extern CPhysicsObjectBox3D *g_qaTrack;
+	extern int g_qaSince;
+	bool qaTracked = g_qaTrack && m_objects.Find( g_qaTrack ) != m_objects.InvalidIndex() && g_qaSince < 400;
+	Vector qaP0, qaV0;
+	if ( qaTracked )
+	{
+		g_qaTrack->GetPosition( &qaP0, NULL );
+		g_qaTrack->GetVelocity( &qaV0, NULL );
+	}
 	b3World_Step( m_world, dt, kSubSteps );
 	if ( m_pStepScheduler )
 		m_pStepScheduler->EndStep();
+	if ( qaTracked )
+	{
+		Vector p, v;
+		AngularImpulse w;
+		g_qaTrack->GetPosition( &p, NULL );
+		g_qaTrack->GetVelocity( &v, &w );
+		Msg( "QATRK %d pre (%.4f %.4f %.4f | %.4f %.4f %.4f) post (%.4f %.4f %.4f | %.4f %.4f %.4f | %.3f %.3f %.3f)\n", g_qaSince++,
+			qaP0.x, qaP0.y, qaP0.z, qaV0.x, qaV0.y, qaV0.z, p.x, p.y, p.z, v.x, v.y, v.z, w.x, w.y, w.z );
+	}
+	if ( getenv( "QA_STEP_DIGEST" ) )
+		Msg( "QADIG %p %d n %d pre %016llx post %016llx\n", this, m_stepCount, m_objects.Count(), qaPre, QaDigest( m_objects ) );
 	double solverEnd = Plat_FloatTime();
 	m_stepCount++;
 	m_simulationTime += dt;

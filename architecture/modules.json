@@ -691,6 +691,20 @@
         ]
       },
       {
+        "id": "render.pass.lines",
+        "paths": [
+          "public/render/pass/lines/",
+          "render/pass/lines/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.device",
+          "render.graph",
+          "render.resources"
+        ]
+      },
+      {
         "id": "render.pass.skinning",
         "paths": [
           "public/render/pass/skinning/",
@@ -810,6 +824,7 @@
           "render.pass.present",
           "render.pass.skinning",
           "render.pass.opaque",
+          "render.pass.lines",
           "render.pass.lights",
           "render.pass.shadows",
           "render.legacy-frontend",
@@ -1289,6 +1304,14 @@
           "render_resources",
           "render_graph",
           "render_device"
+        ]
+      },
+      "render_pass_lines": {
+        "allowedUse": [
+          "render_resources",
+          "render_graph",
+          "render_device",
+          "render_math"
         ]
       },
       "render_legacy": {

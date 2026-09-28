@@ -56,6 +56,18 @@ float4x4 Perspective( float verticalFovRadians, float aspect, float nearZ, float
 // Right-handed orthographic box with the same depth and Y conventions.
 float4x4 Orthographic( float width, float height, float nearZ, float farZ );
 
+// Convention-free builders for callers that own their camera conventions
+// (RFC 0016 decision "cameras": the Hammer editor's viewport cameras).
+//
+// The view of an eye with an explicit orthonormal basis: forward maps to
+// view -Z, right to +X and up to +Y. LookAt is this basis derived from a
+// target.
+float4x4 LookBasis(
+    const float3 &eye, const float3 &forward, const float3 &right, const float3 &up );
+// Logical pixels of a width x height target (origin at the top-left, y down,
+// as the device's framebuffer rows run) to clip space; z passes through.
+float4x4 PixelToClip( float width, float height );
+
 } // namespace render::math
 
 #endif // RENDER_MATH_MATRIX_H

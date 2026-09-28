@@ -8,9 +8,10 @@
     python3 tools/quality/gi_probes.py malformed --map-build DIR --out DIR
 
 `bake` extracts one fixture state's stage (as `gi_reference.py render` does)
-and bakes its probe volume with `probe_volume_bake.py`, the map pipeline's
-baker, under the fixture's map-export profile. The map build bakes only the
-baked state; `bake` covers the others.
+and bakes its probe volume through the map lighting back end's baker seam
+(`light_baker.py`, operation `probe-volume`), under the fixture's
+map-export profile. The map build bakes only the baked state; `bake`
+covers the others.
 
 `analytic` samples the volume with the reference sampler
 (`probe_volume.Volume.sample`) at the fixture's analytic probe positions. It
@@ -52,6 +53,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 import bsp2_reader  # noqa: E402
 import gi_reference  # noqa: E402
+import light_baker  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_map_build  # noqa: E402
 import probe_volume  # noqa: E402
@@ -114,7 +116,10 @@ def cmd_bake(args):
         environment = directory / "environment.exr"
         iio.imwrite(environment, map_scene.environment_equirect(scene, 2048).astype(np.float32))
         arguments += ["--environment", environment]
-    tools.blender("probe_volume_bake.py", arguments, log)
+    # The map lighting back end's baker seam, as an oracle harness uses it.
+    baker = light_baker.CyclesBaker(lambda operation, script, argv: tools.blender(script, argv,
+                                                                                   log))
+    baker.bake("probe-volume", arguments)
     print("[%s/%s] baked %s" % (args.fixture, args.state, directory / "probes.prbv"))
     return 0
 

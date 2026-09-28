@@ -473,6 +473,12 @@ def options(opt):
 		help='RFC 0016 render core: the frame features a client composes, in order [default: %default]')
 	grp.add_option('--render-core-gl', action='store_true', default=False, dest='RENDER_CORE_GL',
 		help='build the OpenGL 4.5 device adapter of the render core (RFC 0016 K10) [default: %default]')
+	grp.add_option('--render-core-vulkan', choices=['auto', 'on', 'off'], default='auto',
+		dest='RENDER_CORE_VULKAN',
+		help='RFC 0016 render core: build the Vulkan device adapter for the tools product (the '
+			'Hammer editor viewports), which has no engine renderer; auto builds it when the '
+			'Vulkan loader is found, on fails configure without it. Clients follow '
+			'--render-backend [default: %default]')
 	grp.add_option('--shader-artifacts', choices=['auto', 'on', 'off'], default='auto',
 		dest='SHADER_ARTIFACTS',
 		help='RFC 0016 K4: build the per-target shader artifacts with the pinned host tools '
@@ -1058,6 +1064,7 @@ def configure(conf):
 		conf.add_subproject(projects['tests'])
 	elif conf.options.TOOLS:
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if conf.env.DEST_OS == 'linux' else [])
+		tool_projects += hammer_gtk_projects(conf)
 		conf.add_subproject(tool_projects)
 	elif conf.options.DEDICATED:
 		if conf.env.DEBUGAPI:
@@ -1095,6 +1102,19 @@ def configure(conf):
 			projects['game'].insert(0, 'debugapi')
 		conf.add_subproject(projects['game'])
 
+def hammer_gtk_projects(conf):
+	'''RFC 0002 linux-gtk-desktop: the GTK Hammer shell (hammer/gtk) builds with
+	the tools product on Linux when GTK 4, libadwaita and the render core's
+	Vulkan adapter (its viewports) are present; otherwise it is left out.'''
+	conf.env.HAMMER_GTK = False
+	if conf.env.DEST_OS != 'linux' or not conf.env.RENDER_CORE_VULKAN:
+		return []
+	found = all(conf.check_cfg(package=package, uselib_store=store, args=['--cflags', '--libs'],
+		mandatory=False) for package, store in (('gtk4', 'GTK4'), ('libadwaita-1', 'ADWAITA')))
+	conf.env.HAMMER_GTK = bool(found)
+	conf.msg('Hammer GTK shell (hammer/gtk)', 'yes' if found else 'no (needs gtk4 and libadwaita-1)')
+	return ['hammer/gtk'] if found else []
+
 def configure_render_core(conf):
 	'''RFC 0016: the render family (render/) builds for client, tool and test
 	products only; a dedicated product never adds it, so it cannot link it.
@@ -1102,6 +1122,12 @@ def configure_render_core(conf):
 	backend, OpenGL with --render-core-gl (K10).'''
 	conf.env.RENDER_CORE = not conf.options.DEDICATED
 	conf.env.RENDER_CORE_VULKAN = bool(conf.env.RENDER_CORE and conf.env.NATIVE_VULKAN)
+	# The tools product has no engine renderer, so the editor's viewports take
+	# the Vulkan adapter on their own (RFC 0016 "Editor viewports").
+	if conf.env.RENDER_CORE and conf.options.TOOLS and conf.options.RENDER_CORE_VULKAN != 'off':
+		conf.env.RENDER_CORE_VULKAN = bool(conf.check_cfg(package='vulkan', uselib_store='VULKAN',
+			args=['--cflags', '--libs'], msg='Checking for the Vulkan loader (render core)',
+			mandatory=conf.options.RENDER_CORE_VULKAN == 'on'))
 	conf.env.RENDER_CORE_GL = bool(conf.env.RENDER_CORE and conf.options.RENDER_CORE_GL)
 	conf.env.RENDER_CORE_DEVICE = conf.options.RENDER_CORE_DEVICE
 	conf.env.RENDER_CORE_FEATURES = conf.options.RENDER_CORE_FEATURES
@@ -1143,6 +1169,7 @@ def build(bld):
 		bld.add_subproject(projects['tests'])
 	elif bld.env.TOOLS:
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if bld.env.DEST_OS == 'linux' else [])
+		tool_projects += ['hammer/gtk'] if bld.env.HAMMER_GTK else []
 		bld.add_subproject(tool_projects)
 	elif bld.env.DEDICATED:
 		# First: its protoc rule ends a build group that its consumers follow.

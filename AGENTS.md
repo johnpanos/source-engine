@@ -608,8 +608,19 @@ Keep the table concise and link details below or from the domain progress file.
     instead of Blender's, and a `seams` gate checks it
     ([record](RFC/0007-progress.md#lightmap-layout-seams-and-noise-installed-2026-09-25)).
     This is not the seam.
-  - No baker code is installed. See the
-    [R48-BAKER record](RFC/0007-progress.md#r48-baker-light-baker-seam-and-pipeline-consolidation).
+  - One lighting back end (2026-09-28, user direction): every map is lit by
+    `pbrt_map_build`'s pipeline through `map_lighting.py`: a compiled BSP
+    plus an authored scene, or one derived from the BSP. Front ends differ
+    only in how they make the BSP: VMF (`vmf_map_build.py --lighting`),
+    Hammer (`MapBuildRequest::lighting`), generators, `vrad_cycles.py`,
+    shipped maps, USD-native (`usd_map_compile.py --lighting`), and PBRT/USD
+    scenes, whose collision BSP now compiles before any bake. Its
+    `identity` gate covers every map. The seam's place is fixed:
+    `light_baker.py` is the one table of bake operations, and no other tool
+    runs a bake script. The World Stage preview bridge scripts are retired.
+  - The `ILightBaker` contract, its providers and the shared suite are not
+    installed, so the row stays `planned`. See the
+    [R48-BAKER record](RFC/0007-progress.md#one-lighting-back-end-and-the-seams-place-installed-2026-09-28).
   - Interim hook (2026-09-25, user direction): `tools/quality/vrad_cycles.py`
     is a vrad drop-in. It runs vrad, then the Cycles relight of its BSP, so a
     regular vbsp/vvis/vrad compile feeds the Blender pipeline. It is not the

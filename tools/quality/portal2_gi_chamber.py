@@ -5,8 +5,9 @@ GI map pipeline, with dynamic and moving lights as part of its art direction.
 The chamber is authored here as a VMF with the Portal 2 SDK's own pieces
 (door frames, the cube dropper, the fizzler, the floor button base, ceiling
 light panels and an observation room, collapsed by `vmf_instances.py`),
-compiled by `vmf_map_build.py` against the staged Portal 2 runtime and relit
-by `legacy_bsp_relight.py`: Cycles bakes the opaque world, the probe volume,
+compiled by `vmf_map_build.py` against the staged Portal 2 runtime and lit by
+the one lighting back end (`map_lighting.py`, scene derived from the BSP, via
+`vmf_map_build.light`): Cycles bakes the opaque world, the probe volume,
 the radiosity transfer and the SDF volume, so every indirect-light producer
 (`r_indirect_producer sdf` on desktop) brings the moving lights' bounce to the
 white tiles. Gameplay lumps are carried byte for byte.
@@ -584,9 +585,10 @@ def build_vmf(sdk):
 # ================================================================ building
 def build(out, toolchain_path, runtime, sdk, quality, relight_quality, device=None,
           force_from=None, publish=True):
-    """Compile and relight the chamber; a published build is mounted by
-    ./play_p2 (stage_portal2_runtime.py --mount-published)."""
-    import legacy_bsp_relight
+    """The generator front end: write the VMF, compile it (vmf_map_build.py)
+    and hand the BSP to the lighting back end (map_lighting.py) with the scene
+    derived from the BSP. A published build is mounted by ./play_p2
+    (stage_portal2_runtime.py --mount-published)."""
     import vmf_map_build
 
     out.mkdir(parents=True, exist_ok=True)
@@ -597,11 +599,10 @@ def build(out, toolchain_path, runtime, sdk, quality, relight_quality, device=No
     if record["status"] != "pass":
         raise SystemExit("%s: compile %s (%s)" % (NAME, record["status"],
                                                   out / "compile" / "build.json"))
-    bsp = Path(record["content_root"]) / "maps" / (NAME + ".bsp")
-    toolchain = legacy_bsp_relight.load_toolchain(toolchain_path)
-    return legacy_bsp_relight.relight(bsp, NAME, out / "relight", toolchain, relight_quality,
-                                      force_from=force_from, publish=publish, device=device,
-                                      runtime=runtime)
+    identity = vmf_map_build.light(record, out / "compile", relight_quality, runtime,
+                                   toolchain_path, device, publish, force_from)
+    vmf_map_build.finish(out / "compile", record)
+    return identity
 
 
 # The review views (feet position; the eye is 64 above) and the states between

@@ -743,6 +743,16 @@ class PolicyTest(unittest.TestCase):
         with self.assertRaises(KeyError):
             compiler.fail(PROFILE, "compile.made-up", [])
 
+    def test_lighting_failure_is_a_compile_error(self):
+        # --lighting hands the vrad stage's BSP to map_lighting.py; a back end
+        # that fails (here: no such BSP) fails the build before any publish.
+        with tempfile.TemporaryDirectory() as scratch:
+            result = {"bsp": Path(scratch) / "missing.bsp", "provenance": {}}
+            with self.assertRaises(compiler.CompileError) as caught:
+                compiler.light_compiled(result, MAP, RUNTIME, "legacy-relight-preview",
+                                        Path(scratch) / "lighting")
+            self.assertEqual(caught.exception.code, "compile.lighting-failed")
+
     def test_stage_runner_contract(self):
         with tempfile.TemporaryDirectory() as scratch:
             build = compiler.Build(Path(scratch) / "work")

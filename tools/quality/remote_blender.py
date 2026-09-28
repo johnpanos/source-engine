@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Run the map pipeline's Cycles steps on another machine's GPU over SSH.
 
-Every GPU-heavy step of `pbrt_map_build.py` (the lightmap bake, reflection
+Every GPU-heavy step of the lighting back end (`pbrt_map_build.py`: the
+baker seam's operations in `light_baker.py`, the lightmap bake, reflection
 probes, probe volume, radiosity transfer and SDF volume) is one Blender
 process reading and writing files by absolute path. With a `remote_blender`
 block in the toolchain file, those steps run on the remote host instead, and
@@ -57,7 +58,11 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-REMOTE_STEPS = ("bake", "probe", "probe-volume", "radiosity", "sdf")
+sys.path.insert(0, str(HERE))
+import light_baker  # noqa: E402
+
+# The baker seam's operations: every light-transport product a map carries.
+REMOTE_STEPS = tuple(light_baker.OPERATIONS)
 DEFAULT_SSH = ("ssh", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=30")
 # Repository trees the Blender scripts read besides their inputs: the scripts
 # and their imports, and the export/product profiles some of them load.

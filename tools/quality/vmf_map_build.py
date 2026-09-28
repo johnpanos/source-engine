@@ -18,6 +18,11 @@ Steps, each recorded in <out>/build.json:
      map store (./play <name>); --install-game-dir copies it into a staged game
      directory's maps/ instead (a product the store is not mounted in, such as
      the F-Stop runtime's run/runtime-fstop/fstop);
+  3a. --lighting PROFILE hands the compiled BSP to the one lighting back end
+     (map_lighting.py): Cycles lightmap layers, probe volume, radiosity and
+     SDF from the BSP's faces, materials and lights, packed into a BSP2 whose
+     gameplay lumps are the compile's byte for byte; with --publish the lit
+     map is published instead of the vrad-only one;
   4. --boot runs the installed Portal product headless on the map
      (tools/quality/portal_boot.py): the map must be active, a player must
      spawn, and the capture must show scene detail.
@@ -263,6 +268,24 @@ def install(record, game_dir):
     return target
 
 
+def light(record, out, profile, runtime, toolchain=None, device=None, publish=True,
+          force_from=None):
+    """Hand a passed compile to the lighting back end (`map_lighting.light`):
+    Cycles bakes the map's world, probe volume, radiosity and SDF from the
+    compiled BSP's faces, materials and lights (export profile `profile`),
+    and the lit BSP2 is published as the map (./play <map>). Returns the
+    gameplay identity, recorded in the build record as `lighting`."""
+    import map_lighting
+    bsp = Path(record["content_root"]) / "maps" / (record["map"] + ".bsp")
+    identity = map_lighting.light(bsp, record["map"], out / "lighting",
+                                  map_lighting.load_toolchain(toolchain), quality=profile,
+                                  runtime=runtime, device=device, force_from=force_from,
+                                  publish=publish)
+    record["lighting"] = {"profile": profile, "build": str(out / "lighting"),
+                          "identity": identity["status"], "published": publish}
+    return identity
+
+
 def finish(out, record):
     (out / "build.json").write_text(json.dumps(record, indent=2) + "\n")
     return record
@@ -296,6 +319,12 @@ def main():
     b.add_argument("--runtime", type=Path, default=ROOT / "run/runtime",
                    help="staged runtime the map's materials come from")
     b.add_argument("--publish", action="store_true", help="publish to the playable map store")
+    b.add_argument("--lighting", metavar="PROFILE",
+                   help="light the compiled map with the lighting back end (map_lighting.py) "
+                        "using this export profile, e.g. legacy-relight-preview; with --publish "
+                        "the lit map is published")
+    b.add_argument("--lighting-device", choices=("cpu", "gpu", "auto"),
+                   help="Cycles device for the lighting bakes (default: the profile's)")
     b.add_argument("--install-game-dir", type=Path,
                    help="also copy the map into <dir>/maps (a staged game directory)")
     b.add_argument("--boot", action="store_true", help="boot the map headless (portal_boot.py)")
@@ -308,7 +337,14 @@ def main():
     print("vmf_map_build: %s %s (%s)" % (record["map"], record["status"], out / "build.json"))
     if record["status"] != "pass":
         return 1
-    if args.publish:
+    if args.lighting:
+        # The back end publishes the lit map in place of the vrad-only one.
+        identity = light(record, out, args.lighting, args.runtime.resolve(), args.toolchain,
+                         args.lighting_device, publish=args.publish)
+        finish(out, record)
+        print("vmf_map_build: %s lit (%s, gameplay identity %s)" % (
+            record["map"], args.lighting, identity["status"]))
+    elif args.publish:
         print("published " + playable_maps.describe(playable_maps.publish(record)))
     if args.install_game_dir:
         print("installed " + str(install(record, args.install_game_dir.resolve())))

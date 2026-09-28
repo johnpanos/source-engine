@@ -75,6 +75,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import map_scene  # noqa: E402
 import probe_volume  # noqa: E402
 
 MAGIC = 0x4E525452  # "RTRN"
@@ -99,6 +100,78 @@ NORMAL_TOLERANCE = 1e-3
 Y00 = 0.5 / math.sqrt(math.pi)
 FNV_OFFSET = 0xCBF29CE484222325
 FNV_PRIME = 0x100000001B3
+
+
+# Switchable sources: styles 32, 33, ... in source order, as many as vbsp
+# switches (MAX_SWITCHED_LIGHTS); later sources are fixed (style -1).
+FIRST_STYLE = 32
+MAX_SWITCHED = 32
+
+
+def prim_name(path):
+    return str(path).rstrip("/").rsplit("/", 1)[-1] or str(path)
+
+
+def emissive_materials(scene):
+    """The world (non-prop) materials that emit, by scene material name, sorted:
+    an emission texture or a nonzero emission colour (as pbrt_blender builds
+    them into a Principled BSDF's emission)."""
+    props = map_scene.prop_shape_names(scene)
+    names = sorted({shape["material"] for shape in scene["shapes"]
+                    if shape["name"] not in props and shape.get("material")})
+    emissive = []
+    for name in names:
+        summary = map_scene.material_summary(scene, name)
+        color = summary.get("emission_color")
+        if "emission" in summary["textures"] or (color and max(color[:3]) > 0):
+            emissive.append(name)
+    return emissive
+
+
+def scene_sources(scene, emissive=None):
+    """The transfer's sources [{name, kind, style, emitter | sun}] in style
+    order: the one owner of their names and styles. A map's front end names
+    the switchable ones in its compiled BSP (so vbsp gives them these styles)
+    before any bake; the radiosity and SDF bakes transport them.
+
+    Styles are assigned in order (FIRST_STYLE, ...) unless the scene authors
+    them (a scene derived from a compiled map: `authored_light_styles`, and
+    `style` on its styled lights); then each light keeps its own style and
+    every other source is fixed. `emissive` overrides the emissive materials
+    (the bake passes the ones Blender built)."""
+    lights = [(shape, map_scene.emitter_name(index, shape), {"emitter": index})
+              for index, shape in enumerate(scene["emitters"])] + \
+        [(light, "Sun%02d" % index, {"sun": index})
+         for index, light in enumerate(scene.get("distant_lights", []))]
+    authored = scene.get("authored_light_styles") or any("style" in light for light, _, _ in lights)
+    sources = []
+    for light, first, origin in lights:
+        sources.append(dict({"name": prim_name(light.get("source") or first), "kind": "light"},
+                            **origin))
+        if authored:
+            sources[-1]["authored_style"] = light.get("style", -1)
+    if scene["environment"]:
+        sources.append({"name": prim_name(scene["environment"].get("source") or "Sky"),
+                        "kind": "sky", "world": True})
+    for name in emissive_materials(scene) if emissive is None else emissive:
+        sources.append({"name": name, "kind": "emissive", "material_name": name})
+    names = set()
+    for index, source in enumerate(sources):
+        base, suffix = source["name"][:40], 1
+        while source["name"] in names or not source["name"]:
+            source["name"] = "%s_%d" % (base, suffix)
+            suffix += 1
+        names.add(source["name"])
+        if authored:
+            source["style"] = source.pop("authored_style", -1)
+        else:
+            source["style"] = FIRST_STYLE + index if index < MAX_SWITCHED else -1
+    return sources
+
+
+def switchable_sources(scene):
+    """The sources the game switches (style >= 0), in style order."""
+    return [source for source in scene_sources(scene) if source["style"] >= 0]
 
 
 class TransferError(ValueError):

@@ -22,6 +22,39 @@ collision edit does not repeat the bake. `--from STEP` forces a step and all
 later ones. Logs are in `<out>/logs/<step>.log`; the failing step prints its
 tail.
 
+## One lighting back end
+
+Every map is lit by one back end (`pbrt_map_build.py`'s pipeline, entered
+through `map_lighting.py`). It takes a compiled BSP and, optionally, an
+authored visual scene; with no scene it derives one from the BSP's faces,
+materials and lights. Front ends differ only in how they make the BSP:
+
+| Front end | Makes the BSP with | Enters the back end through |
+| --- | --- | --- |
+| a VMF | `vmf_map_build.py` (vbsp/vvis/vrad) | `vmf_map_build.py --lighting PROFILE` |
+| Hammer | the editor's build (`build_map`, F9) running `vmf_map_build.py` | `MapBuildRequest::lighting`; `hammer_gtk --lighting PROFILE` |
+| a generator | a script writing a VMF, e.g. `portal2_gi_chamber.py` | `vmf_map_build.light` |
+| a regular compile | Hammer's or a script's vbsp/vvis/vrad | `vrad_cycles.py` in place of vrad |
+| a shipped map | the game's own BSP | `legacy_bsp_relight.py` |
+| USD-native | `usd_map_compile.py` (`vbsp -authored`) | `usd_map_compile.py --lighting PROFILE` |
+| a PBRT/USD scene | the manifest's own front end: `collision` and `compile` from the scene, before any bake | `pbrt_map_build.py --manifest` (scene as the authored visuals) |
+
+```sh
+python3 tools/quality/map_lighting.py --bsp maps/room.bsp --map room \
+  [--scene room.usda] [--quality legacy-relight-preview] [--runtime run/runtime-p2]
+```
+
+The back end bakes only through one seam, `light_baker.py` (the lightmap
+layers and directional page, reflection probes, probe volume, radiosity
+transfer and SDF volume; R48-BAKER's baker contract replaces its provider
+table). Its `identity` step (`gameplay_identity.py`) gates every map: the
+packed BSP2 carries every legacy lump of the front end's BSP byte for byte,
+except the world lights and the leaf ambient. The earlier World Stage preview
+bridge (`worldstage_cycles_bake_preview.py`,
+`worldstage_legacy_lightmap_preview.py`, `worldstage_cycles_supplemental_bakes.py`)
+was a second Cycles lighting path; it was retired on 2026-09-28 and remains
+in git history, and its recorded RFC 0008 evidence stays valid as recorded.
+
 ## Playing a map
 
 A finished build is published to `run/maps/<map>/` (untracked), and every
@@ -162,7 +195,8 @@ The Portal 2 client tree needs the KTX reader too
 
 `portal2_gi_chamber.py` authors `sp_gi_chamber_01`, a clean Aperture test
 chamber, and builds it end to end: VMF, `vmf_map_build.py` (full
-vbsp/vvis/vrad against run/runtime-p2), then this relight, then publishing.
+vbsp/vvis/vrad against run/runtime-p2), then the one lighting back end with the scene derived from the BSP
+(`vmf_map_build.light`), then publishing.
 
 ```sh
 python3 tools/quality/portal2_gi_chamber.py            # about an hour on the CPU
@@ -299,6 +333,47 @@ two HIP bakes of the same scene differ. CPU+GPU hybrid rendering was measured
 about 24% slower than the GPU alone (a shared power budget), so it is not
 offered.
 
+## Baking on another machine's GPU
+
+The Cycles steps (`bake`, `probe`, `probe-volume`, `radiosity`, `sdf`) can
+run on another Linux host's GPU over SSH (`tools/quality/remote_blender.py`).
+Everything else stays here: the toolchain, the game content, the step cache
+and the published map. Each remote step pushes its inputs to the same
+absolute paths on the host with rsync, runs the pinned Blender there, and
+pulls the build directory back; its log and progress stream here as usual.
+
+The host needs:
+
+- Linux (or WSL2 with GPU passthrough) with a recent NVIDIA driver
+  (`nvidia-smi` works); Cycles uses OptiX, then CUDA;
+- Blender at the profile's pinned version (5.2.2): the official
+  `blender-5.2.2-linux-x64.tar.xz` from download.blender.org, unpacked
+  anywhere; it includes Cycles' CUDA and OptiX kernels;
+- `rsync`, and an SSH server this machine can log in to with a key
+  (`ssh-copy-id user@host`, then `ssh -o BatchMode=yes user@host true`);
+- write access to this checkout's absolute path. If the user differs, once:
+  `sudo mkdir -p /home/john/src/source-engine && sudo chown $USER /home/john/src/source-engine`;
+- disk for the mirrored scripts and fixtures (about 120 MB) plus the build
+  directory of the map being baked (a few GB for a 4096 atlas).
+
+Then, here:
+
+```sh
+python3 tools/quality/remote_blender.py configure --host user@host \
+  --blender /opt/blender-5.2.2-linux-x64/blender        # writes ...toolchain-gpu.json
+python3 tools/quality/remote_blender.py check --smoke   # SSH, rsync, version, root, GPUs, a render
+python3 tools/quality/portal2_gi_chamber.py \
+  --toolchain build/toolchains/pbrt-map-toolchain-gpu.json --device gpu
+```
+
+Any pipeline command that takes `--toolchain` works the same way. GPU bakes
+are statistical, not bit-identical like CPU bakes (`cycles_device.py`), so
+they must pass the pipeline's noise and denoise gates rather than match a CPU
+bake. The remote Blender's host, version and binary digest are part of each
+step's cache key: switching hosts rebakes. The transport was rehearsed on this
+machine with a stand-in `ssh` that runs commands locally, on the chamber
+preview (all five steps, gameplay identity passing); a real host is untested.
+
 ## Owners
 
 | Knowledge | Owner |
@@ -331,9 +406,14 @@ offered.
 | Traced producers' probe focus, independent of the engine host | `tools/quality/gi_focus.py` |
 | Bake progress from Cycles' log | `tools/quality/bake_progress.py` (tests: `tests/test_bake_progress.py`) |
 | Publishing to `./play` (store, mounts, launch arguments) | `tools/quality/playable_maps.py` (tests: `tests/test_playable_maps.py`) |
+| The lighting back end's front door (BSP + optional scene) | `tools/quality/map_lighting.py` (tests: `tests/test_lighting_back_end.py`) |
+| The baker seam: every light-transport operation and its provider | `tools/quality/light_baker.py` (tests: `tests/test_lighting_back_end.py`) |
+| Gameplay identity gate (legacy lumps carried byte for byte) | `tools/quality/gameplay_identity.py` (tests: `tests/test_legacy_relight.py`) |
+| The radiosity transfer's sources, names and switchable styles | `tools/quality/radiosity_transfer.py` `scene_sources` (tests: `tests/test_lighting_back_end.py`) |
 | Portal 2 SDK instance collapse (transforms, name fixup, I/O rewrite) | `tools/quality/vmf_instances.py` (tests: `tests/test_vmf_instances.py`) |
 | The Portal 2 GI test chamber (layout, puzzle, light rig, review views) | `tools/quality/portal2_gi_chamber.py` |
 | Headless Portal 2 view capture | `tools/quality/portal2_map_views.py` |
+| Cycles steps on another host's GPU (sync, run, pull, host check) | `tools/quality/remote_blender.py` (tests: `tests/test_remote_blender.py`) |
 
 ## Known limits (preview, not RFC 0008 acceptance)
 

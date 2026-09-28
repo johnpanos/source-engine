@@ -165,4 +165,25 @@ float4x4 Orthographic( float width, float height, float nearZ, float farZ )
 	return result;
 }
 
+float4x4 LookBasis(
+    const float3 &eye, const float3 &forward, const float3 &right, const float3 &up )
+{
+	float4x4 result;
+	result.rows[0] = { right.x, right.y, right.z, -Dot( right, eye ) };
+	result.rows[1] = { up.x, up.y, up.z, -Dot( up, eye ) };
+	result.rows[2] = { -forward.x, -forward.y, -forward.z, Dot( forward, eye ) };
+	result.rows[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	return result;
+}
+
+float4x4 PixelToClip( float width, float height )
+{
+	float4x4 result;
+	result.rows[0] = { 2.0f / width, 0.0f, 0.0f, -1.0f };
+	result.rows[1] = { 0.0f, -2.0f / height, 0.0f, 1.0f };
+	result.rows[2] = { 0.0f, 0.0f, 1.0f, 0.0f };
+	result.rows[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	return result;
+}
+
 } // namespace render::math

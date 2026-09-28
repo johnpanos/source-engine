@@ -23,6 +23,7 @@ PORTABLE = [
 	'pass/present',
 	'pass/skinning',
 	'pass/opaque',
+	'pass/lines',
 	'pass/lights',
 	'pass/shadows',
 	'legacy',

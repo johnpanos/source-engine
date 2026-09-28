@@ -1,0 +1,17 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.pass.lines (RFC 0016 layer 6 feature): lines, outlines and
+# flat-colored primitives over a portable item list.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.pass.lines',
+		target      = 'render_pass_lines',
+		name        = 'render_pass_lines',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_resources', 'render_graph', 'render_device', 'render_math'],
+		idx         = bld.get_taskgen_count()
+	)

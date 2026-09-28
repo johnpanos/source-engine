@@ -876,9 +876,24 @@ void CPhysicsObjectBox3D::ApplyDrag( float dt, float airDensity )
 //-----------------------------------------------------------------------------
 // Transform
 //-----------------------------------------------------------------------------
+CPhysicsObjectBox3D *g_qaTrack = NULL;
+int g_qaSince = 0;
 void CPhysicsObjectBox3D::TeleportTo( const Vector &position, const QAngle &angles )
 {
+	if ( getenv( "QA_STEP_DIGEST" ) && ( strstr( m_name, "metal_box" ) || strstr( m_name, "cube" ) ) )
+	{
+		g_qaTrack = this;
+		g_qaSince = 0;
+		Msg( "QATRK teleport %s (%.3f %.3f %.3f)\n", m_name, position.x, position.y, position.z );
+	}
 	b3Body_SetTransform( m_body, ToB3( position ), ToB3( angles ) );
+	// IVP beams the object (IVP_Calc_Next_PSI_Solver::set_transformation),
+	// which zeroes the core's speed: only a velocity the game set since the
+	// last step (IVP's pending speed_change) and the rotation survive. A
+	// shadow the player controller teleports after the player every tick
+	// would otherwise keep gathering gravity (object.teleport-*).
+	if ( b3Body_GetType( m_body ) == b3_dynamicBody )
+		b3Body_SetLinearVelocity( m_body, ToB3( m_uncommittedLinear ) );
 }
 
 void CPhysicsObjectBox3D::SetPosition( const Vector &worldPosition, const QAngle &angles, bool isTeleport )

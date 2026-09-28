@@ -150,6 +150,9 @@ public:
 	virtual bool WasFrozen() override { return false; }
 
 	void Simulate( float dt );
+	// The object the controller drives toward the game's target this step
+	// (the game passed a velocity), or NULL when physics moves it freely.
+	CPhysicsObjectBox3D *DrivenObject() const { return m_enabled ? m_pObject : NULL; }
 	// The environment reports deleted objects so a deleted ground is dropped
 	// (IVP's object listener).
 	void ObjectDestroyed( IPhysicsObject *pObject );

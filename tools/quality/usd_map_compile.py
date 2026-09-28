@@ -43,6 +43,12 @@
 #             -> compiled records);
 #   check     the independent output checks (usd_map_check.py) against the
 #             validator's objects table and the game content;
+#   lighting  (--lighting PROFILE) the one lighting back end (map_lighting.py)
+#             lights the vrad stage's BSP: Cycles bakes the lightmap layers,
+#             probe volume, radiosity and SDF from the BSP's faces, materials
+#             and lights, into a BSP2 whose gameplay lumps are the compile's
+#             byte for byte (its gameplay identity gate); that lit package is
+#             what publishes, its provenance extended by a `lighting` record;
 #   publish   the commit: the content root with provenance.json and build.json
 #             goes to the published-map store in one rename
 #             (playable_maps.publish), so `./play <map>` loads it.
@@ -614,17 +620,43 @@ def compile_stage(stage, name, tools, runtime, work, previous=None, timeout=600,
                                                               usd_map_check.check_map))
     finally:
         (work / "build.json").write_text(json.dumps(build.record(), indent=2, sort_keys=True))
-    return {"build": work / "build.json", "bsp2": assembled["bsp2"],
+    return {"build": work / "build.json", "bsp2": assembled["bsp2"], "bsp": vrad["bsp"],
             "content_root": assembled["bsp2"].parents[1],
             "provenance": json.loads(assembled["provenance"].read_text()),
             "check": json.loads(checked["check"].read_text())}
+
+
+def light_compiled(result, name, runtime, profile, out, device=None):
+    """Hand the vrad stage's BSP to the one lighting back end (map_lighting.py,
+    the scene derived from the BSP) and return `result` for its lit package.
+    It runs under the host's python3, as the map pipeline does (this tool runs
+    under the OpenUSD interpreter, whose PYTHONPATH it must not inherit)."""
+    command = ["python3", str(HERE / "map_lighting.py"), "--bsp", str(result["bsp"]), "--map", name,
+               "--out", str(out), "--quality", profile, "--runtime", str(runtime),
+               "--no-publish"] + (["--device", device] if device else [])
+    environment = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH",)}
+    completed = subprocess.run(command, env=environment)
+    identity_path = Path(out) / "gameplay-identity.json"
+    if completed.returncode or not identity_path.is_file():
+        raise CompileError("compile.lighting-failed",
+                           ["map_lighting.py exited %d; build %s" % (completed.returncode, out)])
+    identity = json.loads(identity_path.read_text())
+    content = Path(out) / "content"
+    lit = content / "maps" / (name + ".bsp")
+    provenance = dict(result["provenance"], lighting={
+        "profile": profile, "build": str(out), "bsp2_sha256": sha256(lit),
+        "gameplay_identity": identity["status"],
+        "identical_lumps": identity["identical_lumps"]})
+    return dict(result, content_root=content, provenance=provenance,
+                published_bsp2_sha256=sha256(lit))
 
 
 def publish(result, name, store):
     """The commit: one rename into the store (playable_maps.publish)."""
     import playable_maps
     summary = {"map": name, "status": "pass", "failed_gates": [],
-               "bsp2_sha256": result["provenance"]["bsp2_sha256"],
+               "bsp2_sha256": result.get("published_bsp2_sha256",
+                                         result["provenance"]["bsp2_sha256"]),
                "content_root": str(result["content_root"])}
     return playable_maps.publish(summary, store, sidecars={
         "provenance.json": json.dumps(result["provenance"], indent=2, sort_keys=True) + "\n",
@@ -654,6 +686,13 @@ def main(argv=None):
     build.add_argument("--no-previous", action="store_true")
     build.add_argument("--no-publish", action="store_true")
     build.add_argument("--json", type=Path, help="write the build outcome here")
+    build.add_argument("--lighting", metavar="PROFILE",
+                       help="light the map with the lighting back end (map_lighting.py) "
+                            "using this export profile, e.g. legacy-relight-preview")
+    build.add_argument("--lighting-device", choices=("cpu", "gpu", "auto"))
+    build.add_argument("--lighting-out", type=Path,
+                       help="the lighting build (default quality-results/lighting/<map>; "
+                            "kept, so later builds reuse its steps)")
     args = parser.parse_args(argv)
 
     import playable_maps
@@ -670,6 +709,11 @@ def main(argv=None):
     status = 1
     try:
         result = compile_stage(args.stage, args.map, args.tools, args.runtime, work, previous)
+        if args.lighting:
+            result = light_compiled(result, args.map, args.runtime.resolve(), args.lighting,
+                                    (args.lighting_out or ROOT / "quality-results/lighting" /
+                                     args.map).resolve(), args.lighting_device)
+            outcome["lighting"] = result["provenance"]["lighting"]
         outcome.update({"status": "pass", "bsp2_sha256": result["provenance"]["bsp2_sha256"],
                         "checks": result["check"]["checks"]})
         if not args.no_publish:

@@ -377,6 +377,14 @@ packer and native world consumer close that path.
 
 ### F2 Cycles flat-lightmap in-game preview (2026-09-23)
 
+Retired 2026-09-28: every map is now lit by one back end (a compiled BSP plus
+an authored or derived scene, `map_lighting.py`), so this bridge's scripts
+(`worldstage_cycles_bake_preview.py`, `worldstage_legacy_lightmap_preview.py`,
+`worldstage_cycles_supplemental_bakes.py`) are deleted. A VMF map reaches
+Cycles through `vmf_map_build.py --lighting`. The evidence below was recorded
+with them and stays valid as recorded; the scripts remain in git history. See
+[RFC 0007 R48-BAKER](0007-progress.md#one-lighting-back-end-and-the-seams-place-installed-2026-09-28).
+
 The [preview bridge](../tools/quality/worldstage_legacy_lightmap_preview.py)
 checks the geometry Stage, composed Portal material Stage and Cycles EXR hashes
 against their manifests. It samples the 4× atlas in Source's 17×17 luxel
