@@ -1086,5 +1086,41 @@
    ]
   }
  },
- "families": {}
+ "families": {
+  "unlit": {
+   "description": "render.material family `unlit` (RFC 0016 K4): the material group holds the constants, the base texture and its sampler; world-to-clip is a draw-constant block.",
+   "sources": [
+    "render/material/families/unlit.vert",
+    "render/material/families/unlit.frag"
+   ],
+   "push_constants": [
+    "vertex"
+   ],
+   "groups": {
+    "material": [
+     {
+      "binding": 0,
+      "kind": "uniform-buffer",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 1,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 2,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     }
+    ]
+   }
+  }
+ }
 }

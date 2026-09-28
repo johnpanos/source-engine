@@ -86,6 +86,7 @@ DEVICE = "unittests/rendertest/core/device"
 SKINNING = "render/pass/skinning"
 OPAQUE = "render/pass/opaque"
 LINES = "render/pass/lines"
+FAMILIES = "render/material/families"
 SKINNING_TESTS = "unittests/rendertest/core/skinning"
 LIGHTS = "render/pass/lights"
 SHADOWS = "render/pass/shadows"
@@ -149,6 +150,10 @@ GENERATED = {
     "opaque_spv.h": ("render::pass::opaque::spirv", "the opaque pass (RFC 0016 K5)", (
         ("kOpaqueVertex", OPAQUE + "/opaque.vert", DEVICE_OPTIONS),
         ("kOpaqueFragment", OPAQUE + "/opaque.frag", DEVICE_OPTIONS))),
+    "families_spv.h": ("render::material::spirv",
+        "the material families' programs (RFC 0016 K4, render.material)", (
+        ("kUnlitVertex", FAMILIES + "/unlit.vert", DEVICE_OPTIONS),
+        ("kUnlitFragment", FAMILIES + "/unlit.frag", DEVICE_OPTIONS))),
     "lines_spv.h": ("render::pass::lines::spirv",
         "the lines pass: wireframe, grid and overlays (RFC 0016, Hammer viewports)", (
         ("kLinesVertex", LINES + "/lines.vert", DEVICE_OPTIONS),
@@ -179,6 +184,10 @@ GENERATED = {
         ("kShadowReceiverDepthReversed", SHADOWS + "/shadow_receiver.frag",
          DEVICE_OPTIONS + ("-DSEEDED_DEPTH_REVERSED",)),)),
 }
+
+# GENERATED headers holding material-family programs: artifact units that a
+# layouts.json family owns (tools/render/shader_artifacts.py).
+FAMILY_HEADERS = ("families_spv.h",)
 
 # Every generated header's name (the regenerators' and GENERATED's).
 GENERATED_NAMES = tuple(sorted({n for _, _, names in REGENERATORS for n in names} |

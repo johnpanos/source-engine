@@ -588,7 +588,24 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 
 		std::vector<VkPipelineColorBlendAttachmentState> blends;
 		for ( std::size_t i = 0; i < desc.colorFormats.size(); ++i )
+		{
 			blends.push_back( Blend( desc.blends.empty() ? BlendMode::kOpaque : desc.blends[i] ) );
+			// D17: the channels the pipeline writes.
+			const std::uint8_t mask =
+			    desc.colorWriteMasks.empty() || m_Options.sensitivity.ignoreColorWriteMasks
+			        ? kColorWriteAll
+			        : desc.colorWriteMasks[i];
+			VkColorComponentFlags components = 0;
+			if ( mask & kColorWriteRed )
+				components |= VK_COLOR_COMPONENT_R_BIT;
+			if ( mask & kColorWriteGreen )
+				components |= VK_COLOR_COMPONENT_G_BIT;
+			if ( mask & kColorWriteBlue )
+				components |= VK_COLOR_COMPONENT_B_BIT;
+			if ( mask & kColorWriteAlpha )
+				components |= VK_COLOR_COMPONENT_A_BIT;
+			blends.back().colorWriteMask = components;
+		}
 		VkPipelineColorBlendStateCreateInfo blend{};
 		blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 		blend.attachmentCount = static_cast<std::uint32_t>( blends.size() );

@@ -842,11 +842,14 @@ int main()
 	asyncCompute.falseClaims.Add( Capability::kAsyncCompute );
 	vulkan::VulkanAdapterOptions::Sensitivity aliasing;
 	aliasing.falseClaims.Add( Capability::kTransientAliasing );
+	vulkan::VulkanAdapterOptions::Sensitivity writeMasks;
+	writeMasks.ignoreColorWriteMasks = true;
 	const Case cases[] = {
 	    { "flipped-y", flipY, "under-test.D13 clip y" },
 	    { "gl-depth-range", glDepth, "under-test.D13 clip z" },
 	    { "false-async-compute", asyncCompute, "under-test.D15 claimed async compute" },
 	    { "false-aliasing", aliasing, "under-test.D15 claims transient-aliasing" },
+	    { "ignored-write-masks", writeMasks, "under-test.D17 a red-and-alpha mask" },
 	};
 	for ( const Case &c : cases )
 	{

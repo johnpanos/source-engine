@@ -636,7 +636,8 @@
           "foundation",
           "render.device",
           "render.contracts",
-          "content.keyvalues-text"
+          "content.keyvalues-text",
+          "render.shader-library"
         ]
       },
       {
@@ -1264,7 +1265,8 @@
       "render_material": {
         "allowedUse": [
           "render_device",
-          "kvtext"
+          "kvtext",
+          "render_spv"
         ]
       },
       "render_scene": {

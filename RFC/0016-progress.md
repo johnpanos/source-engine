@@ -1060,3 +1060,62 @@ like the other passes: a `GENERATED` row, `"spv/lines_spv.h"`,
 regenerated `material_spv.h`, `material_spv_index.h` and `legacy_spv.h`
 equal what the build now writes from its GLSL, byte for byte.
 
+## K4 family slice: `unlit`, and port clause D17 (2026-09-28)
+
+State: the first material family is on the core and matches its legacy
+port. K4 stays open for `lightmapped`, `vertexlit` and `pbr`, and for the
+frontend side of the proxy corpus.
+- Split with the Hammer session, agreed 2026-09-28 at the user's direction
+  ("make sure K4 is completed"):
+  - Hammer owns `vertexlit`, `render.pass.opaque` drawing scene instances
+    through families, family textures through `render.resources`, and the
+    dmabuf capability (clause D18).
+  - This session owns `unlit`, `lightmapped`, `pbr`, D17 and the proxy
+    corpus.
+
+- **The family:** `render.material`'s `UnlitFamily`.
+  - Its program is `render/material/families/unlit.{vert,frag}`, generated
+    into `spv/families_spv.h`.
+  - `ClaimUnlit` claims UnlitGeneric's base texture, `$color`/`$alpha`,
+    vertex color and alpha, alpha test, and translucent or additive
+    blending. Any other parameter set away from its default makes it refuse
+    the material, naming the parameter, so the material stays on its legacy
+    port: a declared narrower capability.
+  - The material group (role kMaterial) holds the packed constants, the
+    base texture and a sampler; world-to-clip is a D16 draw-constant block.
+  - `layouts.json` declares the family (one group of four), so the artifact
+    build judges its reflection and the bind-group ceiling (1,291 checks).
+- **The oracle:**
+  - `quality/fixtures/legacy-shaders/families/unlit.vdf` has six cases.
+  - `legacy_shader_conformance.py` draws them through the port and judges
+    it against the retail D3D9 bytecode; all six pass.
+  - `tools/render/family_port_pixels.py` records the port's pixels as
+    `quality/fixtures/render-families/unlit-port-v1.vdf`, with the case
+    file's sha256.
+  - `render.family.unlit` (59 checks, g++ and clang++) imports each case,
+    claims it, draws it with the family on `render.device.vulkan` and
+    compares. Every case is within 2 levels, five of them exactly.
+  - `.seeded-ignore-vertex-color` is caught.
+- **What matching the port took:**
+  - Source's gamma rules: `$color` through mathlib's `GammaToLinear` (the
+    pow 2.2 table, and 1 from 0.95), vertex color through pow 2.2.
+  - The D3D9 half-pixel shift a legacy draw carries: +1/w in x and −1/h in
+    y in clip space. The legacy frontend owns it; native cameras such as
+    Hammer's don't need it.
+  - The port's alpha-write rule: no destination alpha for translucent and
+    alpha-tested draws. This needed a new port clause.
+- **D17, color write masks:** `PipelineDesc::colorWriteMasks`, one
+  `kColorWrite*` mask per color format.
+  - Validation rejects a wrong count and masks outside the four channels.
+  - Vulkan maps it to `colorWriteMask`.
+  - The shared suite checks it on real pixels: a red-and-alpha mask keeps
+    green and blue. `render.device.v2.null` 375 checks, `.vulkan` 694.
+  - The Vulkan sensitivity knob `ignoreColorWriteMasks` fails D17 alone.
+- **Also:** the artifact debt report no longer lists push constants as
+  non-port. They are D16 draw constants; only a block over 128 bytes owes.
+
+| K4 check | Evidence | Result |
+| --- | --- | --- |
+| Families match ports | `unlit` within 2 levels of its port on 6 cases, with a seeded defect caught; `lightmapped`, `vertexlit` and `pbr` open | partial |
+| Bind-group ceiling | the `unlit` family is judged by the artifact build (one group); a seeded fifth group still fails | pass |
+

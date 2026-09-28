@@ -35,8 +35,9 @@ Suites: `test_material.cpp` (`render.material.v2`), `test_material_sensitivity.c
 | B1–B3 | PBRMetalRough: required parameters are named when absent; the fallback reference must be well formed, exist and not name the material itself |
 | A1–A2 | `ApplyValues` writes a material's values at their offsets and raises the revision; a block of another family refuses them |
 | C1 | Every VMT of the Portal and Portal 2 corpus imports or is reported with its status; the family counts, unsupported counts, unsupported materials and the family digest equal `quality/fixtures/render-material/vmt-corpus-v1.json`; a seeded wrong shader mapping and a missing VMT are caught |
-| A-ART | Every shader the backend ships builds a SPIR-V and a GLSL 4.50 artifact (or a declared exclusion); reflection matches `render/shaders/layouts.json`; a family declares at most four groups; the artifacts rewrite the committed headers byte for byte |
+| A-ART | Every shader the backend ships, and every family program, builds a SPIR-V and a GLSL 4.50 artifact (or a declared exclusion); reflection matches `render/shaders/layouts.json`; a family declares at most four groups; the generated headers agree with the regenerators and the compiler (none is committed) |
+| F-UNLIT | `render.family.unlit`: the `unlit` family (`unlit_family.h`) claims UnlitGeneric's base texture, `$color`/`$alpha`, vertex color and alpha, alpha test, and translucent or additive blending; it refuses any other parameter set away from its default, by name. Each case of `quality/fixtures/legacy-shaders/families/unlit.vdf`, imported and claimed, drawn with the family into an sRGB target with the D3D9 half-pixel shift a legacy draw carries, matches the legacy port's pixels within 2 levels (`quality/fixtures/render-families/unlit-port-v1.vdf`, recorded from a port run judged against the retail D3D9 bytecode). Source's gamma rules apply: `$color` through the 2.2 table (1 from 0.95), vertex color through pow 2.2; destination alpha is kept for translucent and alpha-tested draws (D17). Seeded: `$vertexcolor` packed off is caught |
 
-Open for K4 after K3: the family ports and their pixel oracles, running the
-proxy corpus on the core (the legacy capture exists), texture transforms in
-the family schemas, and deleting the committed `*_spv.h` headers.
+Open for K4: the `lightmapped`, `vertexlit` and `pbr` families with their
+pixel oracles, running the proxy corpus on the core (the legacy capture
+exists), and texture transforms in the family schemas.

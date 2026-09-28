@@ -104,6 +104,7 @@ EXTENSIONS = {"spirv": ".spv", "glsl450": ".glsl"}
 STAGES = {".vert": "vertex", ".frag": "fragment", ".comp": "compute"}
 ROLES = ("frame", "view", "material", "draw")  # render::device::BindGroupRole
 MAX_GROUPS = 4  # render::device::kMaxBindGroups
+MAX_DRAW_CONSTANT_BYTES = 128  # render::device::kMaxDrawConstantBytes (D16)
 # OpenGL has flat binding slots per resource kind; each group owns this many.
 GL_SLOTS_PER_GROUP = 16
 # spirv-cross --reflect resource lists and their binding kinds. The port
@@ -179,9 +180,11 @@ def inventory(root=ROOT):
         units.append(Unit(legacy.array_name(path.stem, path.suffix[1:]),
                           LEGACY + "/" + path.name, ["-O", "-Werror", "-I", LEGACY], [],
                           "legacy"))
-    # The backend's file-static generated arrays (demo_triangle_spv.h).
+    # The backend's file-static generated arrays (demo_triangle_spv.h) and the
+    # material families' programs (families_spv.h, RFC 0016 K4), whose
+    # layouts.json family entries the bind-group ceiling judges.
     for header, (namespace, _, rows) in sorted(st.GENERATED.items()):
-        if namespace is None:
+        if namespace is None or header in st.FAMILY_HEADERS:
             for array, source, options in rows:
                 units.append(Unit(array, source, list(options), [], header))
     # Axes: the options that vary between a source's units.
@@ -516,15 +519,17 @@ def build_artifacts(checks, units, layouts, out=None, root=ROOT):
     index["over_ceiling"] = {name: sets for name, sets in index["sets_used"].items()
                              if len(sets) > MAX_GROUPS or any(s >= MAX_GROUPS for s in sets)}
     # What the switch-over onto render.device.v2 must change: binding kinds
-    # and push constants the port does not have.
+    # the port does not have. Push constants are the port's draw constants
+    # (clause D16) up to kMaxDrawConstantBytes, so only a larger block owes.
     debt = {}
     for kind in ("passes", "families"):
         for name, entry in layouts.get(kind, {}).items():
             items = entry.get("bindings", []) + [b for group in entry.get("groups", {}).values()
                                                  for b in group]
             foreign = sorted({b["kind"] for b in items} - PORT_KINDS)
-            if entry.get("push_constants"):
-                foreign.append("push-constants")
+            if entry.get("push_constants") and \
+                    entry.get("push_constant_bytes", 0) > MAX_DRAW_CONSTANT_BYTES:
+                foreign.append("push-constants over %d bytes" % MAX_DRAW_CONSTANT_BYTES)
             if foreign:
                 debt[name] = foreign
     index["non_port_interface"] = debt

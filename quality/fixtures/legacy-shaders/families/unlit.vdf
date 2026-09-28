@@ -1,0 +1,129 @@
+// RFC 0016 K4 "Families match ports": UnlitGeneric in the combos the core's
+// `unlit` family claims (base texture, $color and $alpha, vertex color and
+// alpha, alpha test, translucent and additive blending). The legacy port
+// draws them (run with --extra-arg=-vklegacyvertexlit; its pixels are judged
+// against the retail D3D9 bytecode) and records the port pixels the family
+// suite compares with (tools/render/family_port_pixels.py). Quads are in clip
+// space (identity transforms). Detail textures and env maps are not claimed
+// by the family yet; their cases stay in ../vertexlitgeneric.vdf.
+"LegacyShaderCases"
+{
+	"texture"
+	{
+		"name" "conformance/legacy/vlg_base"
+		"width" "4"
+		"height" "4"
+		"clamp" "1"
+		"texels" "94 210 231 254  32 59 113 110  201 203 131 179  208 50 79 33  203 236 198 123  73 251 153 80  252 127 176 52  155 48 249 149  197 71 51 125  216 110 32 106  129 56 187 48  104 51 186 178  70 187 77 63  78 126 173 191  27 77 82 241  228 61 40 254"
+	}
+	"texture"
+	{
+		"name" "conformance/legacy/vlg_base_opaque"
+		"width" "4"
+		"height" "4"
+		"clamp" "1"
+		"texels" "146 208 41 255  51 255 106 255  28 209 172 255  204 128 112 255  113 90 56 255  137 217 142 255  65 47 44 255  250 227 254 255  101 123 225 255  41 171 207 255  47 127 117 255  191 109 159 255  235 42 242 255  169 129 140 255  22 87 94 255  61 27 170 255"
+	}
+	"case"
+	{
+		"name" "family_unlit_base_color"
+		"shader" "UnlitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlg_base_opaque"
+			"$color" "[0.9 0.8 1]"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "family_unlit_translucent_alpha"
+		"shader" "UnlitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlg_base"
+			"$color" "[1 0.7 0.5]"
+			"$alpha" "0.6"
+			"$translucent" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "family_unlit_vertexcolor"
+		"shader" "UnlitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlg_base_opaque"
+			"$vertexcolor" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "color" "255 180 90 255" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "color" "120 255 200 220" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "color" "90 140 255 180" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "color" "255 255 255 255" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "family_unlit_vertexcolor_alpha"
+		"shader" "UnlitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlg_base"
+			"$vertexcolor" "1"
+			"$vertexalpha" "1"
+			"$translucent" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" "color" "255 180 90 255" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" "color" "120 255 200 220" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" "color" "90 140 255 180" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" "color" "255 255 255 255" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "family_unlit_alphatest"
+		"shader" "UnlitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlg_base"
+			"$alphatest" "1"
+			"$alphatestreference" "0.5"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+	"case"
+	{
+		"name" "family_unlit_additive"
+		"shader" "UnlitGeneric"
+		"clear" "40 70 110 255"
+		"material"
+		{
+			"$basetexture" "conformance/legacy/vlg_base_opaque"
+			"$color" "[0.6 0.5 0.9]"
+			"$additive" "1"
+		}
+		"vertex" { "pos" "-1 1 0.5" "uv0" "0 0" "normal" "0.2 0.3 -1" }
+		"vertex" { "pos" "1 1 0.4" "uv0" "1 0" "normal" "-0.4 0.2 -1" }
+		"vertex" { "pos" "1 -1 0.6" "uv0" "1 1" "normal" "0.1 -0.5 -0.8" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" "normal" "0.5 -0.1 -0.9" }
+		"points" "0.125 0.125 0.375 0.125 0.625 0.375 0.875 0.625 0.3 0.8 0.5 0.5 0.2 0.45 0.7 0.2 0.9 0.9 0.1 0.6 0.55 0.8 0.8 0.35"
+	}
+}

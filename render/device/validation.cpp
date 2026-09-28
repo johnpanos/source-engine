@@ -129,6 +129,15 @@ DeviceResult<void> ValidatePipeline(
 			return Fail( DeviceStatus::kInvalidDescription, op );
 		if ( !desc.blends.empty() && desc.blends.size() != desc.colorFormats.size() )
 			return Fail( DeviceStatus::kInvalidDescription, op );
+		// D17: a write mask per color format, each within the four channels.
+		if ( !desc.colorWriteMasks.empty() &&
+		     desc.colorWriteMasks.size() != desc.colorFormats.size() )
+			return Fail( DeviceStatus::kInvalidDescription, op );
+		for ( std::uint8_t mask : desc.colorWriteMasks )
+		{
+			if ( mask > kColorWriteAll )
+				return Fail( DeviceStatus::kInvalidDescription, op );
+		}
 		if ( desc.colorFormats.size() > facts.limits.maxColorAttachments )
 			return Fail( DeviceStatus::kUnsupported, op );
 	}

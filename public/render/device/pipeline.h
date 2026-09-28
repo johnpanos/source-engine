@@ -120,6 +120,14 @@ enum class BlendMode : std::uint8_t
 	kAdditive       // src + dst
 };
 
+// The color components a pipeline writes to an attachment (clause D17): a bit
+// per channel. The rest keep what the attachment held.
+inline constexpr std::uint8_t kColorWriteRed = 1;
+inline constexpr std::uint8_t kColorWriteGreen = 2;
+inline constexpr std::uint8_t kColorWriteBlue = 4;
+inline constexpr std::uint8_t kColorWriteAlpha = 8;
+inline constexpr std::uint8_t kColorWriteAll = 15;
+
 struct RasterState
 {
 	CullMode cull = CullMode::kBack;
@@ -149,6 +157,8 @@ struct PipelineDesc
 	DepthStencilState depthStencil;
 	std::span<const Format> colorFormats;
 	std::span<const BlendMode> blends; // one per color format, or empty for opaque
+	// One kColorWrite* mask per color format, or empty for every channel (D17).
+	std::span<const std::uint8_t> colorWriteMasks;
 	Format depthFormat = Format::kUnknown;
 	std::uint32_t sampleCount = 1;
 	std::string_view debugName;
