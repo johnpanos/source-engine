@@ -3,36 +3,42 @@
 
 One hall with five bays, split by half-length divider walls, that places the
 F-Stop entities ported into the fstop product (game/server/fstop, FSTOP-guarded
-base code) with their DATADESC keyfields and inputs:
+base code) with their DATADESC keyfields and inputs, set up so each one does
+what its code does. tools/quality/fstop_mechanics_check.py boots the map
+headless and checks that behavior; every output it judges is wired to a
+probe.<entity>.<output> logic_relay.
 
-* A, camera and photos (spawn here): weapon_camera (3 capture slots, scaling
-  and zoom on) and weapon_placement pickups; capturable props at three
-  scale values (canbecaptured, scalevalue): the objects of Valve's F-Stop
-  camera training photos (materials/photos: barrel, crate, fan, tire) and
-  an F-Stop instruction manual scrap (the photos' stairs, gnome and doorway
-  have no complete physics model in the staged content); info_placement_helper
-  targets (one forced and size-limited); a trigger_photo_eraser; an
-  env_dof_controller.
-* B, F-Stop props: prop_levitator, prop_geyser, prop_monopole (active,
-  positive) above a func_monopole_field, prop_air_vent, prop_mousetrap (its
-  trigger_callback volumes are created by the prop), prop_reflect, prop_swap,
-  prop_tombstone, prop_building (targets the resized portal) and
-  prop_android_dispenser. Valve never shipped the tombstone and dollhouse
-  models these two set (models/props_fstop/tombstone001.mdl and
-  dollhouse04.mdl; the depots carry only their materials), so they draw as
-  the error model.
+* A, camera and photos (spawn here): weapon_camera (one photo, which is all
+  the inventory holds; scaling and zoom on) and weapon_placement pickups;
+  capturable props at three scale values (canbecaptured, scalevalue): the
+  objects of Valve's F-Stop camera training photos (materials/photos:
+  barrel, crate, fan, tire) and an F-Stop instruction manual scrap (the
+  photos' stairs, gnome and doorway have no complete physics model in the
+  staged content); an item_photo holding a photo of a crate;
+  info_placement_helper targets (one forced and size-limited); a
+  func_placement_clip wall; a trigger_photo_eraser; an env_dof_controller.
+* B, F-Stop props: prop_levitator (the balloon), prop_geyser (pitched up; it
+  pushes along its forward axis), prop_monopole above a func_monopole_field,
+  prop_air_vent, prop_mousetrap (its trigger_callback volumes are created by
+  the prop), prop_reflect and prop_swap (photographing them lifts the player
+  or trades places), prop_tombstone over a dirt patch (it raises zombies only
+  from dirt) and prop_android_dispenser (dispensing). Valve never shipped the
+  tombstone model (models/props_fstop/tombstone001.mdl; the depots carry only
+  its materials), so it draws as the error model; prop_building is left out,
+  because without its dollhouse model (dollhouse04.mdl) it has no door
+  attachment to open its portal at.
 * C, portals: a prop_portal_linked_door pair; a prop_portal pair spawned
   resized through HalfWidth/HalfHeight and resized again by the Resize input
   (a button toggles between two sizes); a prop_portal_tunnel with its
-  success and fail targets.
-* D, NPCs on an info_node grid: npc_android with ai_addon_shield and
-  npc_android_basic with ai_addon_minigun (the CreateAddon input at map
-  start; the add-on models never shipped either), npc_chicken with its nest
-  (info_hint of HINT_PORTAL2_NEST, 1200, at Valve's nest model and eggs),
-  npc_hover_turret (its code sets the placeholder
-  models/props_gameplay/cube.mdl, which no depot has); a filter_enemy with filter_object_size as the androids'
-  enemy filter, and a filter_size trigger that lights a lamp when a
-  scale-1 object enters.
+  success and fail targets; an env_portal_laser burning a breakable crate;
+  a talking prop_personality_sphere (CoreType 4, its sphere02 lines).
+* D, NPCs on an info_node grid: npc_android (neutral), two npc_android_basic
+  with the add-ons that attach to them (ai_addon_shield and ai_addon_saw
+  through CreateAddon at map start; the add-on models never shipped, so the
+  add-ons work unseen), npc_chicken with its nest (info_hint of
+  HINT_PORTAL2_NEST, 1200, at Valve's nest model and eggs), npc_hover_turret;
+  a filter_enemy with filter_object_size as the androids' enemy filter, and a
+  filter_size trigger that lights a lamp when a scale-1 object enters.
 * E, blobs and bots on the same node grid: npc_blob_fountain and
   npc_blob_demomonster (HULL_TINY_FLUID; sv_blob_lennard_jones 1 turns on
   their cohesion), and the companion bots npc_medicbot and npc_obot, which
@@ -174,7 +180,7 @@ def button(vmf, name, center, outputs):
 def bay_camera(vmf):
     """A: x -1280..-768. The player spawns here."""
     vmf.entity("info_player_start", {"origin": "-1150 0 8", "angles": "0 0 0"})
-    prop(vmf, "weapon_camera", (-1100, -120, 16), {"targetname": "camera", "captureslots": "3",
+    prop(vmf, "weapon_camera", (-1100, -120, 16), {"targetname": "camera", "captureslots": "1",
                                                   "canscale": "1", "canzoom": "1"})
     prop(vmf, "weapon_placement", (-1100, 120, 16), {"targetname": "placement"})
     # Capturable physics props at the three object scale levels.
@@ -196,6 +202,16 @@ def bay_camera(vmf):
           "snap_to_helper_angles": "1", "usesizelimit": "1", "target_size": "0",
           "target_classname": "prop_physics", "StartDisabled": "0"},
          outputs=probed("helper_cube", "OnObjectPlaced", "OnObjectPlacedSize"))
+    # A photo lying on the floor: picking it up (+use) photographs its target.
+    prop(vmf, physics_class(CRATE), (-1000, 650, 24),
+         {"targetname": "photo_crate", "model": CRATE, "canbecaptured": "1", "scalevalue": "0",
+          "spawnflags": "256"},
+         outputs=probed("photo_crate", "OnCameraCapture", "OnCameraRelease"))
+    prop(vmf, "item_photo", (-1150, 650, 16), {"targetname": "photo", "target_entity": "photo_crate"},
+         outputs=probed("photo", "OnPickedUp"))
+    # A wall only the placement trace sees (collision group PLACEMENT_SOLID).
+    vmf.entity("func_placement_clip", {"targetname": "placement_clip", "StartDisabled": "0"},
+               solids=[box(vmf, (-880, 560, 0), (-860, 760, 128), FIELD)])
     vmf.entity("trigger_photo_eraser", {"targetname": "photo_eraser", "spawnflags": "9",
                                         "StartDisabled": "0"},
                solids=[box(vmf, (-1260, -760, 0), (-1200, -560, 128), TRIGGER)],
@@ -208,7 +224,15 @@ def bay_camera(vmf):
 def bay_props(vmf):
     """B: x -768..-256."""
     prop(vmf, "prop_levitator", (-680, -600, 16), {"targetname": "levitator"})
-    prop(vmf, "prop_geyser", (-560, -600, 0), {"targetname": "geyser"})
+    # The balloon floats up; this physics-object trigger under the ceiling sees it arrive.
+    vmf.entity("filter_activator_name", {"targetname": "filter_levitator",
+                                         "filtername": "levitator", "origin": "-680 -600 300"})
+    vmf.entity("trigger_multiple", {"targetname": "levitator_high", "spawnflags": "8",
+                                    "filtername": "filter_levitator", "wait": "1",
+                                    "StartDisabled": "0"},
+               solids=[box(vmf, (-760, -700, 260), (-600, -500, 380), TRIGGER)],
+               outputs=probed("levitator_high", "OnStartTouch"))
+    prop(vmf, "prop_geyser", (-560, -600, 0), {"targetname": "geyser"}, angles=(-90, 0, 0))
     prop(vmf, "prop_air_vent", (-440, -600, 0), {"targetname": "air_vent"})
     prop(vmf, "prop_mousetrap", (-340, -600, 0), {"targetname": "mousetrap"})
     prop(vmf, "prop_monopole", (-600, 0, 64),
@@ -218,7 +242,7 @@ def bay_props(vmf):
     vmf.entity("func_monopole_field", {"targetname": "monopole_field", "StartActive": "1",
                                        "StartPositive": "0", "HitboxPadding": "0 0 0"},
                solids=[box(vmf, (-720, -96, 0), (-560, 96, 16), FIELD)],
-               outputs=probed("monopole_field", "OnAttach", "OnDetach"))
+               )
     prop(vmf, "prop_physics", (-600, 120, 24), {"targetname": "monopole_cube", "model": CUBE,
                                                 "canbecaptured": "1", "scalevalue": "0"})
     # Photographing these is refused (TestPreCapture) and does their trick instead:
@@ -229,8 +253,6 @@ def bay_props(vmf):
     # The tombstone raises zombies only over dirt (TestValidGround: game material 'D').
     vmf.world.append(box(vmf, (-760, 420, 0), (-600, 580, 2), DIRT))
     prop(vmf, "prop_tombstone", (-680, 500, 4), {"targetname": "tombstone"})
-    prop(vmf, "prop_building", (-500, 500, 0), {"targetname": "building",
-                                                "target_portal": "portal_resize_a"})
     # Dispenses one npc_android_basic at a time; the next rises 2 s after it dies.
     prop(vmf, "prop_android_dispenser", (-340, 520, 0), {"targetname": "dispenser",
                                                          "StartDisabled": "0"},
@@ -261,6 +283,13 @@ def bay_portals(vmf):
     vmf.entity("logic_auto", {"origin": "0 -600 16", "spawnflags": "1"},
                outputs=[("OnMapSpawn", "door_a", "Open", "", 1.0),
                         ("OnMapSpawn", "door_b", "Open", "", 1.0)])
+    # The laser burns what it hits: a breakable crate in its path.
+    prop(vmf, "env_portal_laser", (-220, -680, 40), {"targetname": "laser"})
+    prop(vmf, "prop_physics", (180, -680, 24),
+         {"targetname": "laser_target", "model": CRATE, "canbecaptured": "0"},
+         outputs=probed("laser_target", "OnBreak"))
+    prop(vmf, "prop_personality_sphere", (0, -300, 16),
+         {"targetname": "sphere", "CoreType": "4", "DelayBetweenLines": "2"})
     prop(vmf, "prop_portal_tunnel", (0, 0, 0),
          {"targetname": "tunnel", "successtarget": "tunnel_success",
           "failtarget": "tunnel_fail", "failtarget_floor": "tunnel_fail_floor",
@@ -284,15 +313,18 @@ def bay_npcs(vmf):
     node_grid(vmf, 256, 768)
     vmf.entity("filter_enemy", {"targetname": "filter_small_enemies", "filtername": "!player",
                                 "filter_object_size": "0", "origin": "300 -700 16"})
-    prop(vmf, "npc_android", (400, -400, 8),
+    # npc_android is neutral to the player; npc_android_basic hunts them. Add-ons
+    # attach only to the front/rear ("eyes") of npc_android_basic.
+    prop(vmf, "npc_android", (400, -650, 8), {"targetname": "android"}, angles=(0, 180, 0))
+    prop(vmf, "npc_android_basic", (400, -400, 8),
          {"targetname": "android_shield", "enemyfilter": "filter_small_enemies"},
          angles=(0, 180, 0))
     prop(vmf, "npc_android_basic", (400, -150, 8),
-         {"targetname": "android_minigun", "enemyfilter": "filter_small_enemies"},
+         {"targetname": "android_saw", "enemyfilter": "filter_small_enemies"},
          angles=(0, 180, 0))
     vmf.entity("logic_auto", {"origin": "400 -600 16", "spawnflags": "1"},
                outputs=[("OnMapSpawn", "android_shield", "CreateAddon", "ai_addon_shield", 1.0),
-                        ("OnMapSpawn", "android_minigun", "CreateAddon", "ai_addon_minigun", 1.0)])
+                        ("OnMapSpawn", "android_saw", "CreateAddon", "ai_addon_saw", 1.0)])
     prop(vmf, "npc_chicken", (600, 250, 8), {"targetname": "chicken"},
          outputs=probed("chicken", "OnDeath"))
     prop(vmf, "info_hint", (700, 450, 8), {"targetname": "chicken_nest", "hinttype": "1200",
@@ -328,8 +360,10 @@ def bay_blobs(vmf):
     prop(vmf, "npc_blob_demomonster", (1000, 300, 8),
          {"targetname": "blob_monster", "particlecount": "80", "particle_radius": "5"})
     # The companion bots: the medic (defensive) and offense bots.
-    prop(vmf, "npc_medicbot", (900, 620, 8), {"targetname": "medicbot"}, angles=(0, 180, 0))
-    prop(vmf, "npc_obot", (1150, 620, 8), {"targetname": "obot"}, angles=(0, 180, 0))
+    prop(vmf, "npc_medicbot", (900, 620, 8), {"targetname": "medicbot"}, angles=(0, 180, 0),
+         outputs=probed("medicbot", "OnPlayerUse"))
+    prop(vmf, "npc_obot", (1150, 620, 8), {"targetname": "obot"}, angles=(0, 180, 0),
+         outputs=probed("obot", "OnPlayerUse"))
 
 
 def vmf_text():

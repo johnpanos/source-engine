@@ -40,7 +40,8 @@ BEGIN_DATADESC( CEnvDOFController )
 	DEFINE_INPUTFUNC( FIELD_FLOAT,	"SetNearBlurRadius",	InputSetNearBlurRadius ),
 	DEFINE_INPUTFUNC( FIELD_FLOAT,	"SetFarBlurRadius",		InputSetFarBlurRadius ),
 	DEFINE_INPUTFUNC( FIELD_STRING,	"SetFocusTarget",		InputSetFocusTarget ),
-	DEFINE_INPUTFUNC( FIELD_STRING, "SetFocusTargetRange",	InputSetFocusTargetRange ),
+	// A float input: declared as a string, the value read back as 0.
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetFocusTargetRange",	InputSetFocusTargetRange ),
 
 END_DATADESC()
 

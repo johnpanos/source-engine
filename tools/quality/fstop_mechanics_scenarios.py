@@ -5,8 +5,23 @@ shows it. Steps are (game seconds after the scenario starts, command); "client:"
 run on the player's client.
 """
 
-from fstop_mechanics_check import (Scenario, count_at_least, count_change, displaced, fired,
-                                   logged, moved, not_fired, not_logged, peak, samples)
+from fstop_mechanics_check import (Scenario, count_at_least, count_change, displaced, dumped,
+                                   emitted, fired, health_dropped, jumped, logged, moved,
+                                   not_fired, not_logged, peak, samples)
+
+TRACE = "sv_soundemitter_trace 1"
+CAMERA = "client:give weapon_camera"
+
+
+def photograph(at, setpos):
+    """Stand at setpos (setpos/setang console text), raise the camera and take a photo."""
+    return [(at, "client:%s; give weapon_camera" % setpos), (at + 1, "client:use weapon_camera")] \
+        + press(at + 2, "attack") + press(at + 3, "attack")
+
+
+def place(at, setpos):
+    """Stand at setpos and place the photo (raise the placement tool, place)."""
+    return [(at, "client:" + setpos)] + press(at + 1, "attack") + press(at + 2, "attack")
 
 
 def press(at, button, frames=6):
@@ -118,4 +133,90 @@ SCENARIOS = [
             (3, "client:getpos"),
         ] + press(4, "attack") + press(5, "attack") + samples(6, 7),
         checks=[displaced(60)]),
+    Scenario(
+        "levitator",
+        "prop_levitator (the balloon) floats up to the ceiling",
+        steps=[(10, "report_entities")],
+        checks=[fired("levitator_high", "OnStartTouch"), count_at_least("phys_keepupright", 1)]),
+    Scenario(
+        "monopole_field",
+        "func_monopole_field (positive) pushes the player standing on it",
+        steps=[(1, "client:setpos -640 0 24; setang 0 0 0")] + samples(2, 6),
+        checks=[displaced(32)]),
+    Scenario(
+        "placement_helper",
+        "info_placement_helper snaps a photo placed near it and fires OnObjectPlaced",
+        steps=photograph(1, "setpos -1080 -450 8; setang 20 0 0")
+        + place(6, "setpos -1000 -500 8; setang 20 0 0"),
+        checks=[fired("capturable_0", "OnCameraRelease"),
+                fired("helper_free", "OnObjectPlaced")]),
+    Scenario(
+        "placement_clip",
+        "func_placement_clip stops a placement aimed through it",
+        steps=photograph(1, "setpos -1080 -450 8; setang 20 0 0")
+        + place(6, "setpos -960 660 8; setang 20 0 0"),
+        checks=[fired("capturable_0", "OnCameraCapture"),
+                not_fired("capturable_0", "OnCameraRelease")]),
+    Scenario(
+        "item_photo",
+        "item_photo: picking it up photographs its target (the crate)",
+        steps=[(1, "client:setpos -1210 650 8; setang 40 0 0"),
+               (2, "client:+use; wait 6; -use")],
+        checks=[fired("photo", "OnPickedUp"), fired("photo_crate", "OnCameraCapture")]),
+    Scenario(
+        "dof_controller",
+        "env_dof_controller takes its inputs (SetFocusTargetRange as a float)",
+        steps=[(1, "ent_fire dof SetFarBlurRadius 5"), (1, "ent_fire dof SetFocusTargetRange 123"),
+               (3, "ent_dump dof")],
+        checks=[dumped("far_radius", "5.00"), dumped("focus_range", "123.00")]),
+    Scenario(
+        "laser",
+        "env_portal_laser burns and breaks the crate in its beam",
+        steps=[(10, "report_entities")],
+        checks=[fired("laser_target", "OnBreak")]),
+    Scenario(
+        "personality_sphere",
+        "prop_personality_sphere (CoreType 4) talks: its sphere02 lines play",
+        steps=[(0, TRACE), (12, "report_entities")],
+        checks=[emitted("sphere02")]),
+    Scenario(
+        "linked_door",
+        "prop_portal_linked_door: walking into door_a comes out of door_b",
+        steps=[(1, "client:setpos -300 -480 8; setang 0 0 0"),
+               (2, "client:+forward")] + samples(2, 5),
+        checks=[jumped("x", 250, "walking covers about 200 units a second")]),
+    Scenario(
+        "portal_tunnel",
+        "prop_portal_tunnel builds its partner tunnel, portals and blockers",
+        steps=[(3, "report_entities")],
+        checks=[count_at_least("prop_portal_tunnel", 2), count_at_least("entity_blocker", 2)]),
+    Scenario(
+        "chicken",
+        "npc_chicken clucks as it wanders",
+        steps=[(0, TRACE), (10, "report_entities")],
+        checks=[emitted("NPC_Chicken.Clucks")]),
+    Scenario(
+        "hover_turret",
+        "npc_hover_turret shoots a player in sight",
+        steps=[(0, TRACE), (1, "client:setpos 450 -300 8; setang 0 -45 0; god")],
+        checks=[emitted("NPC_FloorTurret.ShotSounds")]),
+    Scenario(
+        "androids",
+        "npc_android_basic hunts and hurts the player; its add-ons are installed",
+        steps=[(1, "report_entities"), (1, "client:setpos 330 -400 8; setang 0 0 0"),
+               (2, "ent_dump !player"), (12, "ent_dump !player")],
+        checks=[count_at_least("ai_addon_shield", 1), count_at_least("ai_addon_saw", 1),
+                not_logged(r"AddOn Error"), health_dropped()]),
+    Scenario(
+        "blobs",
+        "npc_blob_fountain and npc_blob_demomonster spawn their particles",
+        steps=[(2, "report_entities")],
+        checks=[logged(r"blob server spawn: npc_blob_fountain"),
+                logged(r"blob server spawn: npc_blob_demomonster")]),
+    Scenario(
+        "bots",
+        "npc_medicbot answers the player's +use",
+        steps=[(1, "client:setpos 900 540 8; setang 10 90 0"),
+               (2, "client:+use; wait 6; -use")],
+        checks=[fired("medicbot", "OnPlayerUse")]),
 ]

@@ -180,6 +180,9 @@ CMonopole::CMonopole( void )
 {
 	m_forceLimit = 0;
 	m_torqueLimit = 0;
+	// On and positive unless the map's StartActive / StartPositive say otherwise.
+	m_bActive = true;
+	m_bPositive = true;
 }
 
 //-----------------------------------------------------------------------------
@@ -220,8 +223,8 @@ void CMonopole::Spawn( void )
 	pPhysicsObject->Wake();
 	pPhysicsObject->EnableMotion( false );
 
-	m_bPositive = true;
-	m_bActive = true;
+	// Spawn used to force both on here, which ignored the StartActive and
+	// StartPositive keyvalues; their defaults are set in the constructor.
 	m_pConstraintGroup = NULL;
 	m_flTotalMass = 0;
 

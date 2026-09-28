@@ -154,6 +154,28 @@ void CPortalLaser::UpdateOnRemove( void )
 	{
 		UTIL_Remove( m_pPlacementHelper );
 	}
+
+	// The drop left the beams, the looping sound and its proxy behind.
+	for ( int i = 0; i < ARRAYSIZE( m_pChildBeams ); ++i )
+	{
+		if ( m_pChildBeams[i] != NULL )
+		{
+			UTIL_Remove( m_pChildBeams[i] );
+			m_pChildBeams[i] = NULL;
+		}
+	}
+	if ( m_pAmbientSound != NULL )
+	{
+		CSoundEnvelopeController::GetController().SoundDestroy( m_pAmbientSound );
+		m_pAmbientSound = NULL;
+	}
+	if ( m_pSoundProxy != NULL )
+	{
+		UTIL_Remove( m_pSoundProxy );
+		m_pSoundProxy = NULL;
+	}
+
+	BaseClass::UpdateOnRemove();
 }
 
 //-----------------------------------------------------------------------------

@@ -318,8 +318,10 @@ CPropPersonalitySphere::~CPropPersonalitySphere()
 
 void CPropPersonalitySphere::Spawn( void )
 {
-	Precache();
+	// The model first: the prop's Precache needs its name (the drop set it after,
+	// and every sphere warned that it had no model name).
 	KeyValue( "model", GLADOS_CORE_MODEL_NAME );
+	Precache();
 	BaseClass::Spawn();
 
 	//Default to 'dropped' animation

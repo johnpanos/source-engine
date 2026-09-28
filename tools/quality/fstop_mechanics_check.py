@@ -170,6 +170,42 @@ def displaced(at_least, why=""):
     return check
 
 
+def emitted(sound, at_least=1):
+    """sound was emitted (needs sv_soundemitter_trace 1 in the scenario)."""
+    return logged(r"EmitSound: +'%s" % re.escape(sound), at_least, "sound " + sound)
+
+
+def jumped(axis, at_least, why=""):
+    """Between two consecutive getpos samples the player's axis jumped by at
+    least at_least: a teleport, faster than walking (about 200 units/s)."""
+    i = "xyz".index(axis)
+
+    def check(log):
+        p = positions(log)
+        if len(p) < 2:
+            return False, "need 2 getpos results, have %d" % len(p)
+        best = max(abs(b[i] - a[i]) for a, b in zip(p, p[1:]))
+        return best >= at_least, "player %s jumped %.1f between samples (need >= %.1f)%s" % (
+            axis, best, at_least, "; " + why if why else "")
+    return check
+
+
+def dumped(field, value):
+    """An ent_dump printed `field: value` (ent_dump prints non-zero keyfields)."""
+    return logged(r"^\s*%s: %s\b" % (re.escape(field), re.escape(value)), 1,
+                  "ent_dump field")
+
+
+def health_dropped():
+    """The player's health (ent_dump !player) fell between the first and last dump."""
+    def check(log):
+        values = [int(v) for v in re.findall(r"^\s*health: (-?\d+)", log, re.M)]
+        if len(values) < 2:
+            return False, "need 2 health dumps, have %d" % len(values)
+        return values[-1] < values[0], "player health %d -> %d" % (values[0], values[-1])
+    return check
+
+
 def samples(start, stop, command="client:getpos", every=1):
     """(t, command) every `every` seconds from start to stop inclusive."""
     return [(t, command) for t in range(start, stop + 1, every)]
@@ -177,7 +213,7 @@ def samples(start, stop, command="client:getpos", every=1):
 
 def logged(pattern, at_least=1, why=""):
     def check(log):
-        n = len(re.findall(pattern, log))
+        n = len(re.findall(pattern, log, re.M))
         return n >= at_least, "%r seen %d time(s) (need %d)%s" % (
             pattern, n, at_least, "; " + why if why else "")
     return check
