@@ -1,96 +1,53 @@
 #!/bin/sh
-# Developer build for the GTK4 + libadwaita Hammer desktop shell (RFC 0002,
-# linux-gtk-desktop). This is a separate product from the engine's waf build; it
-# links the strict headless editor core (hammer/core) with a native GTK UI.
+# Builds the GTK4 + libadwaita Hammer shell (RFC 0002, linux-gtk-desktop) and
+# copies it to [output-binary]. The shell is the Waf target hammer_gtk of the
+# tools product, so it links the Waf-built editor libraries and the RFC 0016
+# render core (with its pinned Vulkan Memory Allocator and shaders) instead of
+# compiling its own copies. It builds in its own tools tree (build-hammer-gtk
+# unless HAMMER_GTK_TREE names another), configured with
+# --render-core-vulkan=on when new or older than a wscript; later runs rebuild
+# incrementally.
 #
-# Requires: gtk4, libadwaita-1, epoxy (pkg-config), a C++20 compiler.
-# Usage: hammer/gtk/build.sh [output-binary]   (run from the repo root or anywhere)
+# Requires: gtk4, libadwaita-1 and the Vulkan loader (pkg-config), and what the
+# tools product needs.
+# Usage: hammer/gtk/build.sh [output-binary]   (run from anywhere)
 set -eu
 
 ROOT="$( cd "$( dirname "$0" )/../.." && pwd )"
 OUT="${1:-$ROOT/hammer/gtk/hammer_gtk}"
-CXX="${CXX:-g++}"
+TREE="${HAMMER_GTK_TREE:-build-hammer-gtk}"
+cd "$ROOT"
+export WAFLOCK=".lock-waf-$( basename "$TREE" )"
+LOG="$ROOT/$TREE.log"
 
-PKGS="gtk4 libadwaita-1 epoxy"
-
-KTX_ENABLED=0
-if [ -n "${KTX_SOURCE_ROOT:-}" ] || [ -n "${KTX_BUILD_ROOT:-}" ]; then
-	if [ -z "${KTX_SOURCE_ROOT:-}" ] || [ -z "${KTX_BUILD_ROOT:-}" ]; then
-		echo "set both KTX_SOURCE_ROOT and KTX_BUILD_ROOT for KTX2 previews" >&2
-		exit 2
-	fi
-	KTX_SOURCE_ROOT=$( cd "$KTX_SOURCE_ROOT" && pwd -P )
-	KTX_BUILD_ROOT=$( cd "$KTX_BUILD_ROOT" && pwd -P )
-	EXPECTED_KTX_REVISION=$( python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["dependencies"]["ktx_software"]["revision"])' \
-		"$ROOT/quality/product_profiles/ktx2-linux-tools.json" )
-	ACTUAL_KTX_REVISION=$( git -C "$KTX_SOURCE_ROOT" rev-parse HEAD )
-	if [ "$ACTUAL_KTX_REVISION" != "$EXPECTED_KTX_REVISION" ]; then
-		echo "KTX source revision differs from the pinned profile" >&2
-		exit 2
-	fi
-	if [ -n "$( git -C "$KTX_SOURCE_ROOT" status --porcelain --untracked-files=no )" ]; then
-		echo "KTX source checkout has tracked changes" >&2
-		exit 2
-	fi
-	KTX_READER_ARCHIVE="$KTX_BUILD_ROOT/lib/libktx_read.a"
-	if [ ! -f "$KTX_READER_ARCHIVE" ] || \
-		! grep -Fqx "CMAKE_HOME_DIRECTORY:INTERNAL=$KTX_SOURCE_ROOT" "$KTX_BUILD_ROOT/CMakeCache.txt" || \
-		! grep -Fqx "CMAKE_BUILD_TYPE:STRING=Release" "$KTX_BUILD_ROOT/CMakeCache.txt"; then
-		echo "build the pinned ktx_read target before building Hammer" >&2
-		exit 2
-	fi
-	KTX_ENABLED=1
-fi
-
-# The editor core the shell links: EditorWorkspace and the layers under it
-# (presenters, tools, viewport, app, formats, ports, scene) and the format
-# libraries, with the sources their Waf declarations list (the wscripts own
-# them), plus the platform adapters the host composes.
-waf_sources() {
-	python3 - "$ROOT" "$@" <<'PY'
-import re, sys
-root, specs = sys.argv[1], sys.argv[2:]
-for spec in specs:
-    wscript, _, target = spec.partition(":")
-    text = open(f"{root}/{wscript}/wscript").read()
-    for block in re.findall(r"bld\.stlib\((.*?)\n\t\)", text, re.S):
-        name = re.search(r"target\s*=\s*'?([\w]+)'?", block).group(1)
-        if target and name != target:
-            continue
-        files = re.findall(r"'([^']+\.cpp)'", re.search(r"source\s*=\s*\[(.*?)\]", block, re.S).group(1))
-        print(" ".join(f"{root}/{wscript}/{f}" for f in files))
-PY
+# Configure when the tree is new, left the shell out, or is older than a build
+# script (a changed wscript can add configure-time steps, such as the shader
+# artifacts of RFC 0016 K4).
+stale() {
+	[ ! -f "$TREE/c4che/_cache.py" ] && return 0
+	grep -q "^HAMMER_GTK = True" "$TREE/c4che/_cache.py" || return 0
+	[ -n "$( find . -path ./build -prune -o -path "./$TREE" -prune -o -path './build-*' -prune \
+		-o -path ./.git -prune -o -name wscript -newer "$TREE/c4che/_cache.py" -print -quit )" ]
 }
-CORE="$( waf_sources hammer/core:hammer_presenters hammer/core:hammer_tools \
-	hammer/core:hammer_viewport hammer/core:hammer_app hammer/core:hammer_formats \
-	hammer/core:hammer_ports hammer/core:hammer_scene mapgeometry kvtext vmf ) \
-$ROOT/hammer/adapters/platform/tool_process_map_builder.cpp \
-$ROOT/platform/posix/tool_process_provider.cpp \
-$ROOT/platform/runners/thread_task_runner.cpp \
-$ROOT/hammer/adapters/platform/disk_file_store.cpp \
-$ROOT/hammer/adapters/platform/disk_byte_store.cpp"
-
-HOST="\
-$ROOT/hammer/gtk/app.cpp \
-$ROOT/hammer/gtk/glib_task_runner.cpp \
-$ROOT/hammer/gtk/offscreen.cpp \
-$ROOT/hammer/gtk/renderer.cpp"
-
-# shellcheck disable=SC2046,SC2086
-set -- -std=c++20 -Wall -Wextra -Werror -O2 \
-	"-I$ROOT/public" "-I$ROOT" "-I$ROOT/hammer/gtk" \
-	$(pkg-config --cflags $PKGS) $HOST $CORE
-if [ "$KTX_ENABLED" -eq 1 ]; then
-	set -- "$@" -DHAMMER_KTX_PREVIEW \
-		"-I$KTX_SOURCE_ROOT/lib/include" "-I$KTX_SOURCE_ROOT/external/dfdutils" \
-		"$ROOT/hammer/adapters/source/ktx2_preview.cpp" \
-		"$ROOT/texturecontainer/ktx2_reader.cpp"
+if stale; then
+	if ! ./waf configure --tools --disable-warns -T release -o "$TREE" --render-core-vulkan=on \
+		--prefix="$ROOT/$TREE/install" >"$LOG" 2>&1; then
+		tail -30 "$LOG" >&2
+		echo "hammer/gtk/build.sh: configure failed (log: $LOG)" >&2
+		exit 1
+	fi
+	if ! grep -q "^HAMMER_GTK = True" "$TREE/c4che/_cache.py"; then
+		grep -i "hammer gtk shell\|vulkan loader" "$LOG" >&2 || true
+		echo "hammer/gtk/build.sh: the tools product left the GTK shell out (log: $LOG)" >&2
+		exit 1
+	fi
 fi
-# shellcheck disable=SC2046
-set -- "$@" $(pkg-config --libs $PKGS)
-if [ "$KTX_ENABLED" -eq 1 ]; then
-	set -- "$@" "$KTX_READER_ARCHIVE" -lz -lzstd
+if ! ./waf build --targets=hammer_gtk >>"$LOG" 2>&1; then
+	grep -E "error|Error" "$LOG" | tail -30 >&2
+	echo "hammer/gtk/build.sh: build failed (log: $LOG)" >&2
+	exit 1
 fi
-"$CXX" "$@" -o "$OUT"
-
+if [ "$( realpath -m "$OUT" )" != "$( realpath -m "$TREE/hammer/gtk/hammer_gtk" )" ]; then
+	cp "$TREE/hammer/gtk/hammer_gtk" "$OUT"
+fi
 echo "built $OUT"

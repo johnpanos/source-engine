@@ -375,6 +375,23 @@ class LinkGraphTest(unittest.TestCase):
         self.assertTrue(any('arch_module hammer.app is not a capability or Hammer module' in e
                             for e in errors))
 
+    def test_native_hammer_host_grants_its_uselib(self):
+        hammer = {'strictIncludeRoots': ['public/hammer/', 'hammer/core/'],
+                  'modules': [{'id': 'hammer.app', 'allowedEdges': ['base']},
+                              {'id': 'hammer.shell', 'kind': 'backend', 'uselib': ['GTK4'],
+                               'allowedEdges': ['hammer.app']},
+                              {'id': 'hammer.portable', 'allowedEdges': ['hammer.app']}]}
+        record = self.record(('shell', 'hammer/gtk/app.cpp', ['GTK4'], 'hammer.shell'))
+        errors, judged, _ = capabilities.link_graph_errors(self.block, record, None, hammer)
+        self.assertEqual(([], 1), (errors, judged))
+        # A library the host does not grant, and a portable Hammer owner, fail.
+        record = self.record(('shell', 'hammer/gtk/app.cpp', ['GTK4', 'ADWAITA'], 'hammer.shell'),
+                             ('tool', 'hammer/tool/main.cpp', ['GTK4'], 'hammer.portable'))
+        errors, _, _ = capabilities.link_graph_errors(self.block, record, None, hammer)
+        self.assertEqual(2, len(errors), errors)
+        self.assertTrue(any('shell (hammer.shell): uses native library ADWAITA' in e for e in errors))
+        self.assertTrue(any('tool (hammer.portable): uses native library GTK4' in e for e in errors))
+
     def test_sidecar_declarations_are_validated(self):
         group = {'id': 'g', 'owner': 'R46', 'reason': 'r', 'targets': ['a']}
         cases = [

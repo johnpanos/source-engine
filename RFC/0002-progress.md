@@ -919,6 +919,85 @@ domain models"). `hammer/gtk` becomes a thin host over
 - The live editor does not serve MCP yet.
 - `hammer/adapters/gtk` (the thin entity shell) still uses `EditorDocument`.
 
+### R17-CORE: the GTK viewports on the render core (slice done 2026-09-28)
+
+**Scope** (the user's handoff through the RFC 0016 session: "you own
+integrating the RFC 0016 render core into Hammer"; the in-process design is
+the RFC 0016 decision "Editor viewports", recorded in AGENTS.md). The shell's
+viewports draw through the RFC 0016 render core, and its GL renderer is
+deleted. This is the first R17 slice. Source-material fidelity, scale,
+capture and sharing measurements remain R17's.
+
+**Delivered.**
+
+- **The core's side:** `render.pass.lines` and the `render.math` builders
+  `LookBasis` and `PixelToClip` (see the
+  [RFC 0016 record](0016-progress.md#hammers-viewports-on-the-core-2026-09-28)).
+  `--render-core-vulkan` gives the tools product the Vulkan adapter.
+- **`hammer.adapters.render`:**
+  - `scene_geometry.{h,cpp}`: pure functions from a `RenderSnapshot` to lit
+    face triangles and edges in the GL renderer's colors and shading; from
+    `tools::OverlayList` and the grid to line items; and from `Camera2D` and
+    `Camera3D` to views. The 2D view is read off `WorldToScreen`, so no
+    convention is restated.
+  - `viewport_renderer.{h,cpp}`: `ViewportRenderer` restages the scene per
+    key, renders one view per call (the grid pass clears, the scene pass
+    loads, then a readback), never blocks (`Render` then `Take`), and waits
+    for its own frames on destruction.
+  - `SceneProjection` follows the `RenderSnapshot` by `ObjectId`, not VMF
+    KeyValues, and the adapter no longer links VMF or KeyValues.
+- **The shell:**
+  - `viewport_widget.{h,cpp}`: a widget with zero natural size that shows its
+    view's texture and reports resizes.
+  - The host composes the core at activation. If it cannot, the status bar
+    says why, and editing still works.
+  - A frame-clock tick renders only views that are behind the workspace and
+    have no frame in flight; unmapped and zero-size views skip.
+  - With `HAMMER_GTK_FRAME_DIR`, each view's latest frame is also written as
+    a PPM.
+  - The offscreen modes compose the same core and renderer; EGL and epoxy
+    are gone. `--textured` refuses with exit 8 until K4's material families
+    land.
+- **Build:**
+  - `hammer_gtk` is a Waf program of the tools product, added when GTK 4,
+    libadwaita and the core's Vulkan adapter are found.
+  - `hammer/gtk/build.sh` configures a tree of its own (`build-hammer-gtk`)
+    when it is new or older than a `wscript`, builds, and copies the program.
+  - Architecture decision: archlint lets a Hammer module of a native kind
+    grant its `uselib`, as native capability modules do (`combined_modules`,
+    with a fixture test). `hammer.adapters.gtk` is `backend` with GTK4 and
+    ADWAITA.
+- **Deleted:** `hammer/gtk/renderer.{h,cpp}` and `tests/test_camera_nav.cpp` /
+  `camera_nav_test.sh`. That camera math is `viewport::Camera3D`'s and
+  `CameraController`'s, and their suites cover it.
+
+**Evidence (2026-09-28).**
+
+| Check | Result |
+| --- | --- |
+| `hammer.adapters.render.geometry` | 18 checks: counts, selection colors, the shading rule restated independently, overlay and grid mapping; `ViewFor` matches both cameras over 200+ random points, and seeded wrong views are rejected |
+| `hammer.adapters.render.viewport.null` | 17 checks: staging per key, passes and draws per view kind, no pixels before completion, refusals, everything released |
+| `hammer.adapters.render.viewport` (Vulkan) | 15 checks: top-face centers, edges, grid and overlay pixels where the cameras project them; restage follows selection; identical repeats; validation silent |
+| `hammer.adapters.render` | 6 checks on the retargeted projection |
+| `corpus.hammer.ui` | 14 checks. The live editor's frames show the room: 762 edge pixels in the top view and 11.6% drawn in the camera view. With no Vulkan driver, both frame checks fail and the editing checks pass |
+| `viewport_smoke.sh` | pass: 7 solids, 84 triangles, 30.1% geometry pixels |
+| Q-EDITOR headless, g++ and clang++ | 121 of 121 suites each (the new geometry and null-device viewport suites among them) |
+| archlint `check --all`, `hammer --verify`, tests; stylelint `--changed` | pass (the two `game/shared/fstop` ARCH105 findings are other work); 158 archlint tests |
+
+**Not done.**
+
+- Textured and lit previews: K4 families, then R89/R90. The solids draw as a
+  resident lines-pass batch until a family draws `render.scene` instances
+  (see RFC 0016's interim note).
+- Readback into `GdkMemoryTexture`, not a dmabuf; rendering on the GTK main
+  loop, not a render sequence.
+- No edit-to-pixels budget (the RFC 0016 decision names ≤ 16 ms for
+  sp_a2_trust_fling across 4 views).
+- The KTX2 preview build of the material browser (`HAMMER_KTX_PREVIEW`) is
+  not wired into the Waf target.
+- `tools/quality/hammer_ktx2_preview.py`'s textured viewport run waits for
+  K4.
+
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 
 A research agent assembled this from the Valve Developer Community Source 2

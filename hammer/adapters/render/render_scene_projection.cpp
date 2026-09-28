@@ -6,8 +6,6 @@
 
 #include "hammer/adapters/render/render_scene_projection.h"
 
-#include "vmf/vmf_geometry.h"
-
 #include <algorithm>
 
 namespace hammer::render_adapter
@@ -29,25 +27,22 @@ SceneProjection::SceneProjection( render::scene::SceneFactory factory )
 }
 
 foundation::Expected<SyncResult, render::scene::SceneError> SceneProjection::Sync(
-    const kvtext::KeyValueNode &document )
+    const viewport::RenderSnapshot &snapshot )
 {
-	const mapgeometry::WorldScene world = vmf::BuildSceneFromDocument( document );
-	std::map<std::int64_t, render::math::Aabb> current;
-	for ( std::size_t i = 0; i < world.solids.size(); ++i )
+	std::map<std::uint64_t, render::math::Aabb> current;
+	for ( const viewport::SolidDraw &solid : snapshot.solids )
 	{
-		const mapgeometry::BrushSolid &solid = world.solids[i];
-		if ( !solid.bounded )
-			continue;
-		const std::int64_t key = solid.id > 0 ? solid.id : -static_cast<std::int64_t>( i + 1 );
-		current[key] = { { static_cast<float>( solid.mins.x ), static_cast<float>( solid.mins.y ),
-		                     static_cast<float>( solid.mins.z ) },
-		    { static_cast<float>( solid.maxs.x ), static_cast<float>( solid.maxs.y ),
-		        static_cast<float>( solid.maxs.z ) } };
+		const scene::Box &box = solid.bounds;
+		current[solid.id.value] = {
+		    { static_cast<float>( box.mins.x ), static_cast<float>( box.mins.y ),
+		        static_cast<float>( box.mins.z ) },
+		    { static_cast<float>( box.maxs.x ), static_cast<float>( box.maxs.y ),
+		        static_cast<float>( box.maxs.z ) } };
 	}
 
 	SyncResult result;
 	render::scene::ChangeSet changes;
-	std::map<std::int64_t, Tracked> next;
+	std::map<std::uint64_t, Tracked> next;
 	for ( const auto &[key, bounds] : current )
 	{
 		const auto found = m_Solids.find( key );

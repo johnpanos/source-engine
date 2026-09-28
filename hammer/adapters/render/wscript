@@ -1,8 +1,10 @@
 #! /usr/bin/env python
 # encoding: utf-8
 
-# Hammer's own render scene (RFC 0002 hammer.adapters.render, RFC 0016 A.7):
-# the editor document's solids projected into a render::scene the editor owns.
+# Hammer's viewports on the RFC 0016 render core (RFC 0002
+# hammer.adapters.render; RFC 0016 A.7 and "Editor viewports"): the viewport
+# geometry and renderer over render.pass.lines, and the editor document's
+# solids projected into a render::scene the editor owns.
 
 top = '.'
 
@@ -15,14 +17,16 @@ def configure(conf):
 def build(bld):
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
-		source    = [ 'render_scene_projection.cpp' ],
+		source    = [ 'render_scene_projection.cpp', 'scene_geometry.cpp', 'viewport_renderer.cpp' ],
 		target    = 'hammer_render',
 		name      = 'hammer_render',
 		arch_module = 'hammer.adapters.render',
 		features  = 'cxx',
 		includes  = [ '../../../public', '../../..' ],
 		defines   = [],
-		use       = [ 'vmf', 'kvtext', 'mapgeometry', 'render_scene', 'render_math' ],
+		use       = [ 'hammer_tools', 'hammer_viewport', 'hammer_scene', 'render_pass_lines',
+		              'render_resources', 'render_graph', 'render_device', 'render_scene',
+		              'render_math', 'mapgeometry' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)

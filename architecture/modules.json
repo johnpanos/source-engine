@@ -2240,11 +2240,16 @@
       {
         "id": "hammer.adapters.render",
         "strict": false,
-        "owns": "The editor's own render scene (RFC 0016 A.7): document solids projected into a render::scene the editor composes; the viewport that draws it is R17",
+        "owns": "The editor's viewports on the RFC 0016 render core (RFC 0016 A.7 and 'Editor viewports'): viewport geometry and the offscreen ViewportRenderer over render.pass.lines, and document solids projected into a render::scene the editor composes",
         "allowedEdges": [
-          "content.vmf",
-          "content.keyvalues-text",
           "world.map-geometry",
+          "hammer.scene",
+          "hammer.viewport",
+          "hammer.tools",
+          "render.pass.lines",
+          "render.resources",
+          "render.graph",
+          "render.device",
           "render.scene",
           "render.math",
           "foundation"
@@ -2269,8 +2274,19 @@
       {
         "id": "hammer.adapters.gtk",
         "strict": false,
-        "owns": "Canonical GTK4/libadwaita rendering+interaction shell at hammer/gtk/ (4-view layout, GL viewports, tool/menu input, main-context dispatch); sibling of hammer.adapters.mfc, both driving the reusable MFC-free libraries",
+        "kind": "backend",
+        "uselib": [
+          "GTK4",
+          "ADWAITA"
+        ],
+        "owns": "Canonical GTK4/libadwaita rendering+interaction shell at hammer/gtk/ (4-view layout, viewports drawn by the RFC 0016 render core, tool/menu input, main-context dispatch); sibling of hammer.adapters.mfc, both driving the reusable MFC-free libraries",
         "allowedEdges": [
+          "hammer.adapters.render",
+          "render.composition",
+          "render.device",
+          "hammer.formats",
+          "platform.posix",
+          "platform.runners",
           "hammer.presenters",
           "hammer.app",
           "hammer.tools",

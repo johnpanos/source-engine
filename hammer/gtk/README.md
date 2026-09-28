@@ -6,11 +6,12 @@ A GTK4 + libadwaita host for the Hammer editor — the delivery target of
 `public/hammer/`) with a native UI laid out like classic Hammer, plus a modern
 touchpad-driven 3D/2D viewport.
 
-This is a **separate product** from the engine's waf build. It links only the
-dependency-free editor core and the format libraries under it plus system
-GTK/GL; no MFC, no `tier0`, no engine DLLs. All GTK/GDK/OpenGL native detail is
-confined to this directory — the core it drives has no display, GPU, or platform
-dependency.
+This is a **separate product scope**: the Waf target `hammer_gtk` of the tools
+product, built when GTK 4, libadwaita and the RFC 0016 render core's Vulkan
+adapter are available. It links the editor core, the format libraries and the
+render core plus system GTK; no MFC, no `tier0`, no engine DLLs. All GTK/GDK
+native detail is confined to this directory, and all GPU detail to the render
+core; the editor core it drives has no display, GPU or platform dependency.
 
 ## Architecture
 
@@ -25,9 +26,15 @@ snapshot and the `ActionCatalog` (menus and shortcuts). The host:
 - turns GTK pointer, key and scroll events into `tools::` events and hands them
   to the workspace, which offers them to catalog shortcuts, camera navigation
   and the active tool, in that order;
-- draws the workspace's `viewport::RenderSnapshot`, grid lines and tool overlay
-  through the workspace's cameras (`renderer.{h,cpp}`), so what is drawn and
-  what a click means come from one camera;
+- shows each view as drawn by the RFC 0016 render core (RFC 0016 "Editor
+  viewports"): the host composes the core (`RenderCore_Create`, Vulkan device,
+  no legacy backend), and `hammer::render_adapter::ViewportRenderer`
+  (`hammer/adapters/render/`) draws the workspace's `viewport::RenderSnapshot`,
+  grid lines and tool overlay through the workspace's cameras with
+  `render.pass.lines`, offscreen, into a readback the viewport widget
+  (`viewport_widget.{h,cpp}`) shows as a texture. What is drawn and what a
+  click means come from one camera; views render only when behind the
+  workspace, and nothing waits on the GPU;
 - fulfils what only a host can: file dialogs, running the map, and F9's build
   off the UI thread (`app::MapBuildQueue` with the GLib and thread runners);
 - builds its menu bar from the `ActionCatalog` (one `app.act-*` action each,
@@ -81,36 +88,30 @@ menu.
 
 ## Build
 
-Requires `gtk4`, `libadwaita-1`, and `epoxy` (via `pkg-config`) and a C++20
-compiler. From anywhere in the checkout:
+Requires `gtk4`, `libadwaita-1` and the Vulkan loader (via `pkg-config`), and
+what the tools product needs, including the pinned shader tools
+(`python3 tools/render/shader_toolchain.py build`). From anywhere in the
+checkout:
 
 ```sh
 hammer/gtk/build.sh                 # builds hammer/gtk/hammer_gtk
 hammer/gtk/hammer_gtk --open hammer/gtk/samples/room.vmf
 ```
 
-To enable packaged KTX2 previews in the material browser and textured
-viewport, point the build at the source and CMake build of the revision pinned
-in `quality/product_profiles/ktx2-linux-tools.json`:
+`build.sh` builds the Waf target in its own tools tree (`build-hammer-gtk`,
+or `HAMMER_GTK_TREE`), configured with `--render-core-vulkan=on` when the tree
+is new or older than a `wscript`, and copies the program to the path given.
 
-```sh
-KTX_SOURCE_ROOT=/tmp/rfc0008-ktx-pin \
-KTX_BUILD_ROOT=/tmp/rfc0008-ktx-pin/build-rfc0008 \
-  hammer/gtk/build.sh /tmp/rfc0008-hammer-ktx-preview
-python3 tools/quality/hammer_ktx2_preview.py \
-  --binary /tmp/rfc0008-hammer-ktx-preview \
-  --out quality-results/rfc0008-f3-hammer-ktx-product.json
-```
-
-This preview accepts packaged RGBA8/BGRA8 2D KTX2 assets through the shared
-runtime reader. Present KTX2 assets take precedence over VTF and must decode;
-compressed KTX2 formats are not yet previewed. A build without the pinned
-reader keeps the legacy VTF preview path.
+The 3D preview is flat-shaded with the editor's fixed two-light shading.
+Textured previews come with the render core's material families (RFC 0016 K4:
+`render.material` over the material catalog's texels); until then the material
+browser and the object bar's swatch show textures, and `--textured` refuses.
 
 ## Verify without a window server
 
-The same renderer drives an offscreen EGL path, so the 3D preview can be checked
-headlessly (Mesa's software rasteriser is sufficient):
+The offscreen modes open maps through the same `EditorWorkspace` and draw them
+through the same render core and `ViewportRenderer`, with no window server (a
+Vulkan device is needed; Mesa's lavapipe is sufficient):
 
 ```sh
 # Single 3D view to a PPM:
@@ -137,15 +138,18 @@ command suites), and end to end by `corpus.hammer.ui`
 (`tools/quality/hammer_ui_test.py`), which drives this shell in an isolated
 compositor the way a user makes a map.
 
-Set `HAMMER_GTK_DEBUG=1` to print each viewport's GL version on realize.
+With `HAMMER_GTK_FRAME_DIR` set, the window also writes each view's latest frame
+there (`camera.ppm`, `top.ppm`, `front.ppm`, `side.ppm`); the UI-driven suite
+judges what the live editor showed from them.
 
 ## Files
 
 | File | Responsibility |
 | --- | --- |
 | `app.cpp` | Window, classic layout, input translation, dialogs, async build, catalog menus |
-| `renderer.{h,cpp}` | Pure-GL renderer of a render snapshot through a workspace camera, grid and overlay. No GTK |
-| `offscreen.cpp` | EGL offscreen render for `--screenshot` / `--quad` / `--demo` verification |
+| `viewport_widget.{h,cpp}` | The viewport widget: shows the render core's frame for its view, reports size changes |
+| `offscreen.cpp` | Offscreen render through the render core for `--screenshot` / `--quad` / `--demo` |
+| `wscript`, `build.sh` | The Waf target and its build wrapper |
 | `samples/room.vmf` | A minimal valid Source room (floor/ceiling/walls/pillar) |
 | `tests/viewport_smoke.sh` | Build + render + content-assert smoke test |
 

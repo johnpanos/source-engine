@@ -1,0 +1,35 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# The GTK4 + libadwaita Hammer shell (RFC 0002 linux-gtk-desktop): a thin host
+# over presenters::EditorWorkspace whose viewports draw through the RFC 0016
+# render core (RenderCore_Create with the Vulkan device). Built with the tools
+# product when the root finds GTK 4, libadwaita and the core's Vulkan adapter
+# (hammer_gtk_projects in the top-level wscript); hammer/gtk/build.sh drives it.
+
+top = '.'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.program(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'app.cpp', 'glib_task_runner.cpp', 'offscreen.cpp', 'viewport_widget.cpp' ],
+		target    = 'hammer_gtk',
+		name      = 'hammer_gtk',
+		arch_module = 'hammer.adapters.gtk',
+		features  = 'cxx cxxprogram',
+		includes  = [ '../../public', '../..', '.' ],
+		defines   = [],
+		use       = [ 'hammer_render', 'hammer_presenters', 'hammer_tools', 'hammer_viewport',
+		              'hammer_formats', 'hammer_app', 'hammer_ports', 'hammer_scene',
+		              'hammer_platform', 'platform_posix', 'platform_runners', 'render_composition',
+		              'vmf', 'kvtext', 'mapgeometry', 'GTK4', 'ADWAITA' ],
+		install_path = None,
+		subsystem = 'CONSOLE',
+		idx       = bld.get_taskgen_count()
+	)

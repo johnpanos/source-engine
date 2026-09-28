@@ -14,16 +14,20 @@
 //			  * turns GTK pointer, key and scroll events into tools:: events and
 //			    hands them to the workspace (keys go through the ActionCatalog's
 //			    shortcuts first, as in every host);
-//			  * draws the workspace's snapshot, grid lines and tool overlay through
-//			    the workspace's cameras (renderer.h);
+//			  * shows each view as drawn by the RFC 0016 render core: the host
+//			    composes the core (RenderCore_Create, Vulkan device, no legacy
+//			    backend) and hammer::render_adapter::ViewportRenderer draws the
+//			    workspace's snapshot, grid lines and tool overlay through the
+//			    workspace's cameras offscreen; frames arrive as textures in the
+//			    viewport widgets (viewport_widget.h);
 //			  * fulfils host requests the workspace cannot: file dialogs, running
 //			    the map, and F9's build OFF the UI thread (MapBuildQueue);
 //			  * builds its menus from the ActionCatalog.
 //
 //			Files go through the strict VMF codec (hammer::formats::VmfMapCodec)
 //			over the DiskFileStore. All GTK/GDK/GL native detail is confined here.
-//			A headless "--screenshot/--quad" path (offscreen.cpp) shares the
-//			renderer for windowless verification.
+//			A headless "--screenshot/--quad" path (offscreen.cpp) renders through
+//			the same core and ViewportRenderer for windowless verification.
 //
 //=============================================================================//
 
@@ -37,6 +41,7 @@
 #include "hammer/formats/search_path_assets.h"
 #include "hammer/formats/vmf_map_codec.h"
 #include "hammer/formats/vpk_archive.h"
+#include "hammer/adapters/render/viewport_renderer.h"
 #include "hammer/presenters/editor_workspace.h"
 #include "hammer/tools/block_tool.h"
 #include "hammer/tools/entity_tool.h"
@@ -46,7 +51,7 @@
 #endif
 
 #include "glib_task_runner.h"
-#include "renderer.h"
+#include "viewport_widget.h"
 
 #include <algorithm>
 #include <array>
@@ -61,8 +66,9 @@
 #include <string>
 #include <vector>
 
+#include "render/composition/render_core.h"
+
 #include <adwaita.h>
-#include <epoxy/gl.h>
 #include <gtk/gtk.h>
 
 namespace
@@ -78,13 +84,12 @@ struct AppState;
 struct Viewport
 {
 	AppState *app = nullptr;
-	hammergtk::Renderer renderer;
 	ViewKind kind = ViewKind::Camera3D;
 	const char *label = "";
-	GtkGLArea *area = nullptr;
+	GtkWidget *area = nullptr;    // the HammerViewport widget
 	GtkWidget *caption = nullptr; // OSD label, updated when Tab cycles the 2D view
-	bool glReady = false;
-	bool uploaded = false; // the renderer holds the current scene
+	bool dirty = true;            // the shown frame is behind the workspace
+	std::optional<hammer::render_adapter::ViewportRenderer::Ticket> pending;
 
 	tools::PointerButton button = tools::PointerButton::None; // held, while dragging
 	double startX = 0.0; // press position (logical widget pixels)
@@ -94,13 +99,12 @@ struct Viewport
 	double pinchPrev = 1.0;
 };
 
-// What the renderers were last given: the snapshot revision and the selection
-// its highlight flags came from. A change of either re-uploads the scene.
+// What the renderer was last given: the snapshot revision and the selection
+// its highlight flags came from. A change of either restages the scene.
 struct SceneKey
 {
 	std::uint64_t revision = ~std::uint64_t( 0 );
 	hammer::app::Selection selection;
-	const void *catalog = nullptr;
 
 	friend bool operator==( const SceneKey &, const SceneKey & ) = default;
 };
@@ -146,9 +150,23 @@ struct AppState
 	platform::ThreadTaskRunner buildThread{ "hammer-build" };
 	hammer::app::MapBuildQueue builds{ builder, buildThread, uiRunner };
 
+	// The render core the viewports draw through (RFC 0016 "Editor
+	// viewports"): composed by this root with the Vulkan device and no legacy
+	// backend. The viewport renderer borrows its device, so it is declared
+	// after the core and goes first.
+	struct CoreDeleter
+	{
+		void operator()( RenderCore *core ) const { RenderCore_Destroy( core ); }
+	};
+	std::unique_ptr<RenderCore, CoreDeleter> core;
+	std::unique_ptr<hammer::render_adapter::ViewportRenderer> viewRenderer;
+	std::string renderError; // why the viewports cannot draw, when they cannot
+
 	std::array<Viewport, 4> viewports;
 	Viewport *hovered = nullptr; // the view keys go to when focus is elsewhere
 	SceneKey sceneKey;
+	std::uint64_t sceneSerial = 0; // bumps with sceneKey; the renderer's scene key
+	guint renderTick = 0;          // frame-clock tick while views render or wait
 	guint flyTick = 0;    // frame-clock tick while the camera flies
 	gint64 flyPrevUs = 0; // last tick time, 0 = uninitialised
 
@@ -287,27 +305,24 @@ void SyncViewSize( Viewport &vp )
 	vp.app->workspace.SetViewportSize( vp.kind, w, h );
 }
 
-// Redraws every viewport; re-uploads the scene to those whose renderer is
-// behind the workspace's snapshot, selection or material catalog.
+// Starts the render tick if views need rendering or frames are in flight.
+void ScheduleRender( AppState *st );
+
+// Marks every viewport behind the workspace; the render tick draws them. A
+// changed snapshot revision or selection gives the renderer a new scene key.
 void RefreshScene( AppState *st )
 {
-	SceneKey key{ st->workspace.SnapshotRevision(), st->workspace.Session().CurrentSelection(),
-	    st->catalog.get() };
+	SceneKey key{ st->workspace.SnapshotRevision(), st->workspace.Session().CurrentSelection() };
 	if ( !( key == st->sceneKey ) )
 	{
 		st->sceneKey = key;
-		for ( Viewport &vp : st->viewports )
-		{
-			vp.uploaded = false;
-		}
+		++st->sceneSerial;
 	}
 	for ( Viewport &vp : st->viewports )
 	{
-		if ( vp.area )
-		{
-			gtk_gl_area_queue_render( vp.area );
-		}
+		vp.dirty = true;
 	}
+	ScheduleRender( st );
 	UpdateChrome( st );
 }
 
@@ -781,71 +796,183 @@ void SetTool( AppState *st, const char *actionId )
 	            : "Selection tool (Shift+S): click to select, drag to move" );
 }
 
-// ---- GtkGLArea callbacks ---------------------------------------------------
+// ---- Viewport rendering -------------------------------------------------------
 
-void OnGlRealize( GtkGLArea *area, gpointer user_data )
+// A frame's pixels as a texture for the viewport widget.
+GdkTexture *TextureOf( const hammer::render_adapter::ViewPixels &pixels )
 {
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	gtk_gl_area_make_current( area );
-	if ( gtk_gl_area_get_error( area ) != nullptr )
+	GBytes *bytes = g_bytes_new( pixels.rgba.data(), pixels.rgba.size() );
+	GdkTexture *texture = gdk_memory_texture_new( int( pixels.width ), int( pixels.height ),
+	    GDK_MEMORY_R8G8B8A8, bytes, std::size_t( pixels.width ) * 4 );
+	g_bytes_unref( bytes );
+	return texture;
+}
+
+// With HAMMER_GTK_FRAME_DIR set (the UI-driven conformance suite), each
+// view's latest frame is also written there as <view>.ppm (camera, top, front
+// or side), so a test can judge what the live editor showed.
+void DumpFrame( const Viewport &vp, const hammer::render_adapter::ViewPixels &pixels )
+{
+	static const char *const dir = std::getenv( "HAMMER_GTK_FRAME_DIR" );
+	if ( !dir || !*dir )
 	{
 		return;
 	}
-	if ( std::getenv( "HAMMER_GTK_DEBUG" ) != nullptr )
+	const std::string label( vp.label );
+	const std::string path =
+	    std::string( dir ) + "/" + label.substr( 0, label.find( ' ' ) ) + ".ppm";
+	const std::string temporary = path + ".tmp";
+	if ( FILE *file = std::fopen( temporary.c_str(), "wb" ) )
 	{
-		const char *ver = reinterpret_cast<const char *>( glGetString( GL_VERSION ) );
-		std::fprintf( stderr, "[hammer_gtk] %s GL_VERSION=%s\n", vp->label, ver ? ver : "?" );
+		std::fprintf( file, "P6\n%u %u\n255\n", pixels.width, pixels.height );
+		for ( std::size_t i = 0; i + 4 <= pixels.rgba.size(); i += 4 )
+		{
+			std::fwrite( &pixels.rgba[i], 1, 3, file );
+		}
+		std::fclose( file );
+		std::rename( temporary.c_str(), path.c_str() );
 	}
-	std::string error;
-	if ( !vp->renderer.Init( error ) )
+}
+
+// One render step for every view: collect finished frames, then render the
+// views that are behind the workspace and have no frame in flight. Nothing
+// waits on the device; the tick polls again next frame.
+bool PumpViews( AppState *st )
+{
+	hammer::render_adapter::ViewportRenderer *renderer = st->viewRenderer.get();
+	if ( !renderer )
 	{
-		GError *gerr =
-		    g_error_new_literal( g_quark_from_static_string( "hammergtk" ), 1, error.c_str() );
-		gtk_gl_area_set_error( area, gerr );
-		g_error_free( gerr );
+		return false;
+	}
+	bool busy = false;
+	for ( Viewport &vp : st->viewports )
+	{
+		if ( !vp.area )
+		{
+			continue;
+		}
+		if ( vp.pending )
+		{
+			auto taken = renderer->Take( *vp.pending );
+			if ( !taken )
+			{
+				vp.pending.reset();
+				SetHelp( st, "Viewport frame lost" );
+			}
+			else if ( taken.Value() )
+			{
+				GdkTexture *texture = TextureOf( *taken.Value() );
+				hammer_viewport_set_texture( HAMMER_VIEWPORT( vp.area ), texture );
+				g_object_unref( texture );
+				DumpFrame( vp, *taken.Value() );
+				vp.pending.reset();
+			}
+			else
+			{
+				busy = true;
+				continue;
+			}
+		}
+		if ( !vp.dirty )
+		{
+			continue;
+		}
+		int w = 0;
+		int h = 0;
+		ViewSize( vp, w, h );
+		if ( w <= 0 || h <= 0 || !gtk_widget_get_mapped( vp.area ) )
+		{
+			continue; // unmapped or zero-size views skip frames
+		}
+		SyncViewSize( vp );
+		hammer::presenters::EditorWorkspace &ws = st->workspace;
+		if ( !renderer->SetScene( ws.Snapshot(), st->sceneSerial ) )
+		{
+			SetHelp( st, "Viewport scene could not be staged" );
+			continue;
+		}
+		const int scale = gtk_widget_get_scale_factor( vp.area );
+		hammer::render_adapter::ViewRequest request;
+		request.kind = vp.kind;
+		if ( vp.kind == ViewKind::Camera3D )
+		{
+			request.camera3D = &ws.Camera3DView();
+		}
+		else
+		{
+			request.camera2D = &ws.Camera2DFor( vp.kind );
+			request.grid = ws.GridLines( vp.kind );
+		}
+		request.overlay = ws.Overlay( vp.kind );
+		request.pixelWidth = static_cast<std::uint32_t>( w * scale );
+		request.pixelHeight = static_cast<std::uint32_t>( h * scale );
+		auto ticket = renderer->Render( request );
+		vp.dirty = false;
+		if ( ticket )
+		{
+			vp.pending = ticket.Value();
+			busy = true;
+		}
+	}
+	return busy;
+}
+
+gboolean OnRenderTick( GtkWidget *, GdkFrameClock *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( PumpViews( st ) )
+	{
+		return G_SOURCE_CONTINUE;
+	}
+	st->renderTick = 0;
+	return G_SOURCE_REMOVE;
+}
+
+void ScheduleRender( AppState *st )
+{
+	if ( st->renderTick == 0 && st->window && st->viewRenderer )
+	{
+		st->renderTick = gtk_widget_add_tick_callback( st->window, OnRenderTick, st, nullptr );
+	}
+}
+
+void OnViewResized( HammerViewport *, int, int, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	vp->dirty = true;
+	ScheduleRender( vp->app );
+}
+
+// Composes the render core the viewports draw through. Failing leaves the
+// views blank and says why in the status bar; editing still works.
+void ComposeRenderer( AppState *st )
+{
+	RenderCoreConfig config;
+	config.device = "vulkan";
+	config.features = "";
+	config.legacyBackend = nullptr;
+	RenderCoreResult result;
+	RenderCore *core = RenderCore_Create( &config, &result );
+	const RenderCoreBinding *binding = core ? RenderCore_GetBinding( core ) : nullptr;
+	if ( !core || !binding || !binding->device )
+	{
+		st->renderError = std::string( "Viewports unavailable: " ) +
+		                  ( result.message[0] ? result.message : "no render device" );
+		if ( core )
+		{
+			RenderCore_Destroy( core );
+		}
 		return;
 	}
-	vp->glReady = true;
-	vp->uploaded = false;
-}
-
-void OnGlUnrealize( GtkGLArea *area, gpointer user_data )
-{
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	gtk_gl_area_make_current( area );
-	vp->glReady = false;
-}
-
-gboolean OnGlRender( GtkGLArea *area, GdkGLContext *, gpointer user_data )
-{
-	Viewport *vp = static_cast<Viewport *>( user_data );
-	AppState *st = vp->app;
-	hammer::presenters::EditorWorkspace &ws = st->workspace;
-	if ( !vp->glReady )
+	st->core.reset( core );
+	auto renderer = hammer::render_adapter::ViewportRenderer::Create( *binding->device );
+	if ( !renderer )
 	{
-		return TRUE;
+		st->renderError = "Viewports unavailable: the viewport renderer could not start";
+		st->core.reset();
+		return;
 	}
-	if ( !vp->uploaded )
-	{
-		vp->renderer.SetMaterialCatalog( st->catalog.get() );
-		vp->renderer.SetSnapshot( ws.Snapshot() );
-		vp->uploaded = true;
-	}
-	SyncViewSize( *vp );
-	const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( area ) );
-	const int w = gtk_widget_get_width( GTK_WIDGET( area ) ) * scale;
-	const int h = gtk_widget_get_height( GTK_WIDGET( area ) ) * scale;
-	const tools::OverlayList overlay = ws.Overlay( vp->kind );
-	if ( vp->kind == ViewKind::Camera3D )
-	{
-		vp->renderer.Render3D( ws.Camera3DView(), overlay, w, h );
-	}
-	else
-	{
-		vp->renderer.Render2D(
-		    ws.Camera2DFor( vp->kind ), ws.GridLines( vp->kind ), overlay, w, h );
-	}
-	return TRUE;
+	st->viewRenderer = std::move( renderer ).Value();
 }
 
 // ---- Input translation -------------------------------------------------------
@@ -1201,7 +1328,8 @@ void CycleView2D( Viewport *vp )
 	gtk_accessible_update_property(
 	    GTK_ACCESSIBLE( vp->area ), GTK_ACCESSIBLE_PROPERTY_LABEL, next.label, -1 );
 	UpdateCoords( vp );
-	gtk_gl_area_queue_render( vp->area );
+	vp->dirty = true;
+	ScheduleRender( vp->app );
 }
 
 // ---- Pointer ---------------------------------------------------------------------
@@ -1416,21 +1544,15 @@ GtkWidget *MakeViewport( AppState *st, int index, ViewKind kind, const char *lab
 	// An interactive region with its own pointer and key handling: the
 	// "application" role, named for assistive technology (and the UI-driven
 	// conformance test, which finds each view by this name).
-	GtkWidget *glarea = GTK_WIDGET( g_object_new(
-	    GTK_TYPE_GL_AREA, "accessible-role", GTK_ACCESSIBLE_ROLE_APPLICATION, nullptr ) );
-	vp.area = GTK_GL_AREA( glarea );
+	GtkWidget *view = hammer_viewport_new( GTK_ACCESSIBLE_ROLE_APPLICATION );
+	vp.area = view;
 	gtk_accessible_update_property(
-	    GTK_ACCESSIBLE( glarea ), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1 );
-	gtk_gl_area_set_allowed_apis( GTK_GL_AREA( glarea ), GDK_GL_API_GL );
-	gtk_gl_area_set_required_version( GTK_GL_AREA( glarea ), 3, 3 );
-	gtk_gl_area_set_has_depth_buffer( GTK_GL_AREA( glarea ), TRUE );
-	gtk_widget_set_hexpand( glarea, TRUE );
-	gtk_widget_set_vexpand( glarea, TRUE );
+	    GTK_ACCESSIBLE( view ), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1 );
+	gtk_widget_set_hexpand( view, TRUE );
+	gtk_widget_set_vexpand( view, TRUE );
 	// Focusable so a hovered view receives key events.
-	gtk_widget_set_focusable( glarea, TRUE );
-	g_signal_connect( glarea, "realize", G_CALLBACK( OnGlRealize ), &vp );
-	g_signal_connect( glarea, "unrealize", G_CALLBACK( OnGlUnrealize ), &vp );
-	g_signal_connect( glarea, "render", G_CALLBACK( OnGlRender ), &vp );
+	gtk_widget_set_focusable( view, TRUE );
+	hammer_viewport_set_resized( HAMMER_VIEWPORT( view ), OnViewResized, &vp );
 
 	// Every button: the workspace routes it (camera navigation, then the tool).
 	GtkGesture *drag = gtk_gesture_drag_new();
@@ -1439,38 +1561,38 @@ GtkWidget *MakeViewport( AppState *st, int index, ViewKind kind, const char *lab
 	g_signal_connect( drag, "drag-update", G_CALLBACK( OnDragUpdate ), &vp );
 	g_signal_connect( drag, "drag-end", G_CALLBACK( OnDragEnd ), &vp );
 	g_signal_connect( drag, "cancel", G_CALLBACK( OnDragCancel ), &vp );
-	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( drag ) );
+	gtk_widget_add_controller( view, GTK_EVENT_CONTROLLER( drag ) );
 
 	// Wheel, touchpad scroll (kinetic) and pinch.
 	GtkEventController *scroll =
 	    gtk_event_controller_scroll_new( static_cast<GtkEventControllerScrollFlags>(
 	        GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES | GTK_EVENT_CONTROLLER_SCROLL_KINETIC ) );
 	g_signal_connect( scroll, "scroll", G_CALLBACK( OnScroll ), &vp );
-	gtk_widget_add_controller( glarea, scroll );
+	gtk_widget_add_controller( view, scroll );
 
 	GtkGesture *pinch = gtk_gesture_zoom_new();
 	g_signal_connect( pinch, "begin", G_CALLBACK( OnZoomBegin ), &vp );
 	g_signal_connect( pinch, "scale-changed", G_CALLBACK( OnZoomChanged ), &vp );
-	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( pinch ) );
+	gtk_widget_add_controller( view, GTK_EVENT_CONTROLLER( pinch ) );
 
 	GtkEventController *motion = gtk_event_controller_motion_new();
 	g_signal_connect( motion, "motion", G_CALLBACK( OnMotion ), &vp );
 	g_signal_connect( motion, "enter", G_CALLBACK( OnViewEnter ), &vp );
-	gtk_widget_add_controller( glarea, motion );
+	gtk_widget_add_controller( view, motion );
 
 	GtkEventController *viewKeys = gtk_event_controller_key_new();
 	g_signal_connect( viewKeys, "key-pressed", G_CALLBACK( OnViewKeyPressed ), &vp );
 	g_signal_connect( viewKeys, "key-released", G_CALLBACK( OnViewKeyReleased ), &vp );
-	gtk_widget_add_controller( glarea, viewKeys );
+	gtk_widget_add_controller( view, viewKeys );
 
 	// Right click: context menu (2D views).
 	GtkGesture *context = gtk_gesture_click_new();
 	gtk_gesture_single_set_button( GTK_GESTURE_SINGLE( context ), GDK_BUTTON_SECONDARY );
 	g_signal_connect( context, "pressed", G_CALLBACK( OnContextClick ), &vp );
-	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( context ) );
+	gtk_widget_add_controller( view, GTK_EVENT_CONTROLLER( context ) );
 
 	GtkWidget *overlay = gtk_overlay_new();
-	gtk_overlay_set_child( GTK_OVERLAY( overlay ), glarea );
+	gtk_overlay_set_child( GTK_OVERLAY( overlay ), view );
 	GtkWidget *caption = gtk_label_new( label );
 	vp.caption = caption;
 	gtk_widget_add_css_class( caption, "osd" );
@@ -1958,6 +2080,12 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 	g_signal_connect( window, "notify::is-active", G_CALLBACK( OnWindowActive ), st );
 
 	gtk_window_set_child( GTK_WINDOW( window ), root );
+
+	ComposeRenderer( st );
+	if ( !st->renderError.empty() )
+	{
+		SetHelp( st, st->renderError );
+	}
 
 	if ( !st->mountOnStart.empty() )
 	{

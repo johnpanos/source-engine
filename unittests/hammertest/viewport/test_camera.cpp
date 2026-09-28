@@ -400,7 +400,7 @@ void Camera3DNavigation( testing::Checks &checks )
 	    "a point box frames at a positive distance (degenerate viewport ok)" );
 }
 
-// The GTK shell's orbit camera (hammer/gtk/tests/test_camera_nav.cpp),
+// The GTK shell's former orbit camera (its GL renderer, deleted with R17),
 // expressed as an eye plus Source angles: eye = target + distance * dir with
 // dir = (cos p cos y, cos p sin y, sin p), looking at the target.
 void GtkCompatibility( testing::Checks &checks )

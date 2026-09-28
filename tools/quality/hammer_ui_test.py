@@ -18,8 +18,10 @@ view come from the status-bar coordinates the editor shows while hovering:
   5. press F9, which saves and compiles the map.
 
 The oracle judges the files the editor wrote, never the UI's own claims: the
-saved VMF must hold a six-wall room with both entities inside it, and the build
-record must show a leak-free compile. Two negative controls drive the same UI
+saved VMF must hold a six-wall room with both entities inside it, the build
+record must show a leak-free compile, and the frames the live editor showed
+(written with HAMMER_GTK_FRAME_DIR by its render-core viewports) must draw the
+room's walls in the top view and shaded geometry in the camera view. Two negative controls drive the same UI
 with one step left out; the oracle must reject each:
 
   no-hollow  skips F: the saved map is one solid block (room.walls fails).
@@ -85,6 +87,38 @@ def vmf_blocks(text):
 def keyvalue(body, key):
     m = re.search(r'"%s"\s+"([^"]*)"' % re.escape(key), body)
     return m.group(1) if m else None
+
+
+# What the live editor last showed, from the frames it writes with
+# HAMMER_GTK_FRAME_DIR (its render-core viewports, RFC 0016 "Editor
+# viewports"): the top view must show the room's walls as edge lines, the
+# camera view shaded geometry over its clear color.
+EDGE_COLORS = ((128, 133, 148), (255, 148, 38))  # plain and selected edges
+CAMERA_CLEAR = (33, 36, 43)
+
+
+def read_ppm(path):
+    data = path.read_bytes() if path.is_file() else b""
+    match = re.match(rb"P6\s+(\d+)\s+(\d+)\s+255\s", data)
+    if not match:
+        return 0, 0, b""
+    width, height = int(match.group(1)), int(match.group(2))
+    return width, height, data[match.end():match.end() + width * height * 3]
+
+
+def judge_frames(frames):
+    results = {}
+    width, height, top = read_ppm(frames / "top.ppm")
+    edges = sum(1 for i in range(0, len(top) - 2, 3) if tuple(top[i:i + 3]) in EDGE_COLORS)
+    results["shown.top"] = (width > 0 and edges >= 200,
+                            "%dx%d top frame, %d edge pixels" % (width, height, edges))
+    width, height, camera = read_ppm(frames / "camera.ppm")
+    drawn = sum(1 for i in range(0, len(camera) - 2, 3)
+                if sum(abs(a - b) for a, b in zip(camera[i:i + 3], CAMERA_CLEAR)) > 18)
+    share = drawn / float(width * height) if width and height else 0.0
+    results["shown.camera"] = (share >= 0.02, "%dx%d camera frame, %.1f%% drawn"
+                               % (width, height, 100 * share))
+    return results
 
 
 def judge(vmf_path, build_path):
@@ -407,7 +441,10 @@ def inner(args):
                         ["/usr/libexec/at-spi2-registryd", "--use-gnome-session=false"]):
             procs.append(subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
             time.sleep(1)
-        env = dict(os.environ, GDK_BACKEND="x11", GTK_CSD="1", GTK_A11Y="atspi")
+        frames = out / "frames"
+        frames.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ, GDK_BACKEND="x11", GTK_CSD="1", GTK_A11Y="atspi",
+                   HAMMER_GTK_FRAME_DIR=str(frames))
         app_log = open(out / "hammer_gtk.log", "w")
         procs.append(subprocess.Popen(
             [args.gtk, "--maximized", "--open", str(out / "author" / args.vmf_name),
@@ -457,6 +494,7 @@ def run_case(case, args, out):
         else {"status": "no driver record (session exit %d)" % session.returncode}
     stem = vmf_name[:-4]
     verdict = judge(author / vmf_name, case_dir / "builds" / stem / "build.json")
+    verdict.update(judge_frames(case_dir / "frames"))
     driver["elapsed_seconds"] = round(time.monotonic() - started, 2)
     return driver, verdict
 

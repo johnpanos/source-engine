@@ -394,7 +394,7 @@ marks no implementation gate done.
 | 14 / R14 | Window/input contracts and SDL3 provider; 0001 rank 7 | R06 | The shared window/input suite passes against the SDL3 provider and the fake backend; current product behavior captured and preserved; normalized events, optional behavior, surface ownership and input lifecycle conformance pass | partial (window/input contracts with a fake-backend suite, `platform.window` + sensitivity; no SDL3 window/input provider yet, and SDL3 products reach SDL through the `platform/sdl3/legacy_include` adapter; the SDL2 adapter is legacy-profile only (user decision, 2026-09-26); R16 delivered the surface slice) |
 | 15 / R15 | Render seam, scoped legacy services and null provider; 0001 rank 8 | R06 | Explicit provider/caps/profile selection; null and legacy contract suites; material consumer tested without new shader globals | done ([render seam](RFC/0001-render-seam-progress.md)) |
 | 16 / R16 | Pair-specific presentation bridges; 0001 rank 9, 0006 M3 | R14, R15 | Native handles confined; multi-surface resize/zero-size/loss/shutdown pass; delayed GPU completion prevents early reuse | done ([presentation bridges](RFC/0001-presentation-bridge-progress.md); R14 surface slice only) |
-| 17 / R17 | Hammer real renderer feasibility; 0002 R1 | R08, R15, R16 | Source-material viewport on declared GTK X11/Wayland profiles; state/target restoration, scale, capture, sharing and teardown measured | planned |
+| 17 / R17 | Hammer real renderer feasibility; 0002 R1 | R08, R15, R16 | Source-material viewport on declared GTK X11/Wayland profiles; state/target restoration, scale, capture, sharing and teardown measured | partial ([R17-CORE](RFC/0002-progress.md#r17-core-the-gtk-viewports-on-the-render-core-slice-done-2026-09-28), 2026-09-28: the GTK viewports draw through the RFC 0016 core (`render.pass.lines`, `ViewportRenderer`); the GL renderer is deleted; `corpus.hammer.ui` judges the live frames; flat-shaded, no Source materials until K4; scale, capture, sharing and teardown unmeasured) |
 | 18 / R18 | SDL3 provider completion; 0001 rank 10 | R14, R16 | The SDL3 window/input suites and representative behavior pass on every declared SDL3 profile; SDK dependency is private and SDL is off generic include paths; supported interop pairs tested; the SDL2 legacy profiles still build | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 19 / R19 | Box3D one-worker vertical slice; 0004 B | R05, R09 | Pinned coherent provider loads existing BSP/PHY, compound prop, inside trace, verified impact, ragdoll and matching-schema restore | partial ([0004 progress](RFC/0004-progress.md)) |
 | 20 / R20 | Parallel scheduler and controlled legacy bridge; 0003 C, 0006 M2 | R10 | Bounded queue/worker contracts, publication/wake/overflow and native stress pass; no forbidden helping/nested wait; total capacity and overhead measured | partial ([batch migration](RFC/0003-batch-migration-progress.md); [pool trust](RFC/0003-scheduler-trust-progress.md); [bounds, budgets](RFC/0003-scheduler-nodes-progress.md)) |
@@ -894,6 +894,13 @@ Keep the table concise and link details below or from the domain progress file.
     - Owner: the Hammer session (R17). The GL renderer is deleted once the
       core covers cameras, 2D wireframe and grid, selection, tool overlays,
       displacements and entity markers.
+    - Done 2026-09-28 (R17-CORE): the viewports draw through the core, and
+      the GL renderer is deleted. `hammer_gtk` is a Waf target of the tools
+      product (`--render-core-vulkan`). The frames are read back into a
+      `GdkMemoryTexture`, not yet a dmabuf, and the solids are drawn by
+      `render.pass.lines` until K4's families draw `render.scene` instances.
+      See the
+      [record](RFC/0002-progress.md#r17-core-the-gtk-viewports-on-the-render-core-slice-done-2026-09-28).
 - R08: `active`. See the
   [RFC 0002 current state](RFC/0002-progress.md#current-state-2026-09-25).
   - R08-CMD (2026-09-25, first slice of the map-building loop):

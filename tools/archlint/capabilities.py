@@ -659,11 +659,17 @@ def hammer_strict_module(path, hammer_block):
 
 def combined_modules(block, hammer_block=None):
     """Capability modules plus the Hammer modules, which own no paths of their
-    own here (their files map by directory, hammer_strict_module)."""
+    own here (their files map by directory, hammer_strict_module). A Hammer
+    module of a native kind (a desktop host such as the GTK shell) grants its
+    `uselib` native libraries to the targets it owns, as a native capability
+    module does."""
     modules = {m['id']: m for m in block['modules']}
     for module in ( hammer_block or {} ).get('modules', []):
-        modules.setdefault(module['id'], {'id': module['id'], 'paths': [],
-                                          'allowedEdges': module.get('allowedEdges', [])})
+        entry = {'id': module['id'], 'paths': [], 'allowedEdges': module.get('allowedEdges', [])}
+        if module.get('kind') in NATIVE_KINDS:
+            entry['kind'] = module['kind']
+            entry['uselib'] = list(module.get('uselib', []))
+        modules.setdefault(module['id'], entry)
     return modules
 
 
