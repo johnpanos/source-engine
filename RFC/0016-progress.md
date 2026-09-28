@@ -1246,7 +1246,7 @@ session) and the frontend side of the proxy corpus.
     ambient cube and up to four lights as the shader API does (sorted spot,
     point, directional, with `SetLight`'s cone). The material group holds
     the constants and four texture/sampler pairs.
-  - The draw constants are world-to-clip and object-to-world: the
+  - The draw constants are object-to-clip and object-to-world: the
     128-byte `FamilyDrawConstants` prefix the Hammer session's opaque pass
     pushes.
   - Model lighting is the legacy frontend's interface until K7's light
@@ -1317,3 +1317,25 @@ a transform was therefore drawn by a family that ignored it.
   key-mapping oracle covers the new rows. The VMT corpus and its `.asan` lane
   pass with unchanged counts, and the unlit, lightmapped and pbr family
   suites pass.
+
+## K4 slice: lightmapped and pbr programs for the opaque pass (2026-09-28)
+
+At the Hammer session's request, the two families now produce the
+`ProgramRequest` and `GroupRequest` shapes the opaque pass draws with
+(5acb0860, 2875f40e):
+
+- `LightmappedFamily::Request(claim, baseTexture)` fills the material group
+  and sets `drawLayout`; `LightmapGroup(page)` is a draw group for a
+  lightmap page.
+- `PbrFamily::Request(claim, PbrTextures)` fills the material group (a
+  placeholder texture fills the unused normal-map and emission slots) and
+  sets `frameLayout` and `viewLayout`; `FrameGroup(table)` and
+  `ViewGroup(lighting)` are the frame's and the view's groups.
+- The `pbr` program follows the pass's draw constants: `toClip` is
+  object-to-clip and `world` object-to-world (it had applied `world`
+  twice). `render.family.pbr` passes object-to-clip and is unchanged.
+- `render.opaque` O6 (19 checks, g++ and clang++): scene C draws a
+  lightmapped cube lit by its page and a pbr cube lit by the view's ambient
+  cube, with the expected pixels and no unresolved draw. Without the view
+  group the pbr draw is counted, not drawn. `render.opaque.null` N4 runs
+  the same scene on the null device.

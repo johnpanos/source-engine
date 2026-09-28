@@ -14,8 +14,8 @@
 //			claimed by ClaimPbr and drawn with the family: the frame group
 //			holds the split-sum table, the view group the model lighting
 //			(PackSourceModelLighting), the material group the constants and
-//			textures, and the draw constants world-to-clip (with the D3D9
-//			half-pixel shift) and the case's placement. The pixels must match
+//			textures, and the draw constants object-to-clip (the case's
+//			placement, then the D3D9 half-pixel shift) and object-to-world. The pixels must match
 //			the port's within kTolerance levels per channel. pbr_skinned is
 //			drawn with its placement as a rigid transform: skinning is
 //			render.pass.skinning's (K6). With the Khronos validation layer
@@ -259,11 +259,22 @@ int main()
 					vertices.push_back( vertex );
 				}
 			}
+			// Object-to-clip: the harness's clip space with the D3D9 half-pixel
+			// shift, after the case's placement.
 			PbrDrawConstants drawConstants;
-			const std::array<float, 16> toClip = CaseToClip();
-			std::copy( toClip.begin(), toClip.end(), drawConstants.toClip );
 			std::copy( modelCase.modelMatrix, modelCase.modelMatrix + 12, drawConstants.world );
 			drawConstants.world[15] = 1.0f;
+			const std::array<float, 16> shift = CaseToClip();
+			for ( int row = 0; row < 4; ++row )
+			{
+				for ( int column = 0; column < 4; ++column )
+				{
+					float sum = 0.0f;
+					for ( int k = 0; k < 4; ++k )
+						sum += shift[row * 4 + k] * drawConstants.world[k * 4 + column];
+					drawConstants.toClip[row * 4 + column] = sum;
+				}
+			}
 
 			CaseDraw draw;
 			draw.pipeline = pipeline.Value();

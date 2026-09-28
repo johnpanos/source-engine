@@ -17,6 +17,13 @@
 //			  is missing or of another layout are counted and not drawn: A with
 //			  seven such draws (one reading a view group the frame lacks) gives
 //			  A's bytes;
+//			- O6 scene C, the other families with their groups: a lightmapped
+//			  cube reads its lightmap page from its draw group (white times the
+//			  page times the lightmap scale), and a pbr cube reads the frame's
+//			  split-sum table and the view's model lighting (a white rough
+//			  dielectric under a uniform ambient cube returns the cube); both
+//			  draw and none is unresolved. Without the view group the pbr draw is
+//			  counted and not drawn;
 //			- validation: no message from the Khronos validation layer
 //			  (synchronization validation included) when it is installed.
 //
@@ -27,6 +34,7 @@
 #include "testing/checks.h"
 
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -49,6 +57,22 @@ Rgb At( const FrameResult &frame, std::pair<int, int> pixel )
 		return { -1, -1, -1 };
 	const std::uint8_t *p = &frame.rgba[( std::size_t( y ) * kSize + std::size_t( x ) ) * 4];
 	return { p[0], p[1], p[2] };
+}
+
+bool Near( Rgb a, Rgb b )
+{
+	return std::abs( a.r - b.r ) <= 2 && std::abs( a.g - b.g ) <= 2 && std::abs( a.b - b.b ) <= 2;
+}
+
+int Unorm( float linear )
+{
+	return int( std::lround( std::fmin( std::fmax( linear, 0.0f ), 1.0f ) * 255.0f ) );
+}
+
+float SrgbToLinear( std::uint8_t value )
+{
+	const float c = value / 255.0f;
+	return c <= 0.04045f ? c / 12.92f : std::pow( ( c + 0.055f ) / 1.055f, 2.4f );
 }
 
 bool Contains( const FrameResult &frame, Rgb color )
@@ -124,6 +148,28 @@ int main()
 		    "O4.unresolved-draws-are-counted" );
 		checks.That(
 		    missing.ok && missing.rgba == frameA.rgba, "O4.unresolved-draws-are-not-drawn" );
+		auto c = SceneC();
+		const material::DrawGroup *frameGroup = materials->drawGroups.Group( kPbrFrameGroup );
+		const material::DrawGroup *viewGroup = materials->drawGroups.Group( kPbrViewGroup );
+		const FrameResult frameC =
+		    DrawScene( *device, programs, *meshes, *c->Snapshot(), frameGroup, viewGroup );
+		checks.That( frameGroup && viewGroup && frameC.ok && frameC.stats.drawn == 2 &&
+		                 frameC.stats.unresolved == 0,
+		    "O6.lightmapped-and-pbr-draws-resolve" );
+		const Rgb page{ Unorm( SrgbToLinear( kPageTexel[0] ) * material::kLightmapScaleLinear ),
+		    Unorm( SrgbToLinear( kPageTexel[1] ) * material::kLightmapScaleLinear ),
+		    Unorm( SrgbToLinear( kPageTexel[2] ) * material::kLightmapScaleLinear ) };
+		checks.That( Near( At( frameC, Pixel( view, { -1.5f, 0.0f, -5.25f } ) ), page ),
+		    "O6.the-lightmapped-cube-shows-its-page" );
+		const Rgb ambient{ Unorm( kAmbient[0] ), Unorm( kAmbient[1] ), Unorm( kAmbient[2] ) };
+		checks.That( Near( At( frameC, Pixel( view, { 1.5f, 0.0f, -5.25f } ) ), ambient ),
+		    "O6.the-pbr-cube-returns-the-view-s-ambient-cube" );
+		const FrameResult noView =
+		    DrawScene( *device, programs, *meshes, *c->Snapshot(), frameGroup, nullptr );
+		checks.That( noView.ok && noView.stats.drawn == 1 && noView.stats.unresolved == 1 &&
+		                 At( noView, Pixel( view, { 1.5f, 0.0f, -5.25f } ) ) == kClear,
+		    "O6.without-the-view-group-the-pbr-draw-is-unresolved" );
+		checks.Equal( materials->drawGroups.GroupFailures(), 0u, "O6.draw-groups-without-failure" );
 		checks.Equal( materials->programs.GroupFailures(), 0u, "O1.groups-without-failure" );
 		(void)device->WaitIdle();
 		materials.reset();

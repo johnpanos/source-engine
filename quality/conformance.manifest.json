@@ -7463,6 +7463,8 @@
         "render/material/vmt_import.cpp",
         "render/material/family_program.cpp",
         "render/material/unlit_family.cpp",
+        "render/material/lightmapped_family.cpp",
+        "render/material/pbr_family.cpp",
         "render/material/material_programs.cpp",
         "render/pass/opaque/opaque.cpp",
         "unittests/rendertest/core/pass/opaque/test_opaque.cpp"
@@ -7513,6 +7515,8 @@
         "render/material/vmt_import.cpp",
         "render/material/family_program.cpp",
         "render/material/unlit_family.cpp",
+        "render/material/lightmapped_family.cpp",
+        "render/material/pbr_family.cpp",
         "render/material/material_programs.cpp",
         "render/pass/opaque/opaque.cpp",
         "unittests/rendertest/core/pass/opaque/test_opaque_vulkan.cpp"

@@ -249,4 +249,49 @@ foundation::Expected<PipelineId, PbrStatus> PbrFamily::Pipeline( const PbrClaim 
 	return m_Pipeline;
 }
 
+foundation::Expected<ProgramRequest, PbrStatus> PbrFamily::Request(
+    const PbrClaim &claim, PbrTextures textures, const SamplerDesc &sampler )
+{
+	auto pipeline = Pipeline( claim );
+	if ( !pipeline )
+		return foundation::MakeUnexpected( pipeline.Error() );
+	ProgramRequest request;
+	request.pipeline = pipeline.Value();
+	request.vertexStride = sizeof( PbrVertex );
+	request.drawConstantBytes = sizeof( PbrDrawConstants );
+	request.frameLayout = m_FrameLayout;
+	request.viewLayout = m_ViewLayout;
+	request.material.layout = m_MaterialLayout;
+	request.material.constantsBinding = 0;
+	const auto bytes = std::as_bytes( std::span( &claim.constants, 1 ) );
+	request.material.constants.assign( bytes.begin(), bytes.end() );
+	std::string names[] = { std::move( textures.base ), std::move( textures.mrao ),
+	    claim.normalMap ? std::move( textures.normal ) : textures.placeholder,
+	    claim.emission ? std::move( textures.emission ) : textures.placeholder };
+	for ( std::uint32_t slot = 0; slot < 4; ++slot )
+		request.material.textures.push_back(
+		    { 1 + slot * 2, std::move( names[slot] ), 2 + slot * 2, sampler } );
+	return request;
+}
+
+GroupRequest PbrFamily::FrameGroup( std::string table ) const
+{
+	GroupRequest request;
+	request.layout = m_FrameLayout;
+	SamplerDesc sampler;
+	sampler.address = AddressMode::kClampToEdge;
+	request.textures.push_back( { 0, std::move( table ), 1, sampler } );
+	return request;
+}
+
+GroupRequest PbrFamily::ViewGroup( const PbrModelLighting &lighting ) const
+{
+	GroupRequest request;
+	request.layout = m_ViewLayout;
+	request.constantsBinding = 0;
+	const auto bytes = std::as_bytes( std::span( &lighting, 1 ) );
+	request.constants.assign( bytes.begin(), bytes.end() );
+	return request;
+}
+
 } // namespace render::material

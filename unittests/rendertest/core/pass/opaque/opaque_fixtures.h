@@ -4,7 +4,9 @@
 //			mesh of the unlit family's vertex, a mesh resolver, three flat
 //			materials drawn by the unlit family over a white texture, the two
 //			scenes, and a frame that draws a scene into its own color and depth
-//			targets and reads the color back.
+//			targets and reads the color back. Scene C draws a lightmapped cube
+//			with its lightmap page as a draw group, and a pbr cube that reads
+//			the frame's split-sum table and the view's model lighting.
 //
 //=============================================================================//
 
@@ -13,7 +15,9 @@
 
 #include "render/graph/compiled_graph.h"
 #include "render/graph/executor.h"
+#include "render/material/lightmapped_family.h"
 #include "render/material/material_programs.h"
+#include "render/material/pbr_family.h"
 #include "render/material/unlit_family.h"
 #include "render/pass/opaque/opaque.h"
 #include "render/scene/scene.h"
@@ -41,6 +45,18 @@ constexpr std::uint64_t kDrawGroupMaterial = 10; // reads a draw group of layout
 constexpr std::uint64_t kOtherLayoutGroup = 5;   // a draw group of layout B
 constexpr std::uint64_t kViewGroupMaterial = 11; // reads a view group the frame lacks
 
+// Scene C: the lightmapped and pbr families with their groups.
+constexpr std::uint64_t kLightmappedCubeMesh = 3;
+constexpr std::uint64_t kPbrCubeMesh = 4;
+constexpr std::uint64_t kLightmappedMaterial = 20;
+constexpr std::uint64_t kPbrMaterial = 21;
+constexpr std::uint64_t kLightmapPage = 40; // the lightmapped cube's draw group
+constexpr std::uint64_t kPbrFrameGroup = 41;
+constexpr std::uint64_t kPbrViewGroup = 42;
+// The page's texel (sRGB) and the view's ambient cube (every face).
+constexpr std::uint8_t kPageTexel[4] = { 128, 64, 32, 255 };
+constexpr float kAmbient[3] = { 0.5f, 0.25f, 0.125f };
+
 // A unit cube around the origin: 8 corners, 12 triangles, in the unlit
 // family's vertex (uv 0, white).
 inline resources::MeshData CubeData(
@@ -60,6 +76,63 @@ inline resources::MeshData CubeData(
 	resources::MeshData data;
 	data.vertices = std::as_bytes( std::span<const material::UnlitVertex>( vertices ) );
 	data.vertexStride = sizeof( material::UnlitVertex );
+	data.indices = std::as_bytes( std::span<const std::uint16_t>( indices ) );
+	data.indexFormat = device::IndexFormat::kUint16;
+	return data;
+}
+
+// The cube in the lightmapped family's vertex: the unlit cube's corners,
+// every lightmap coordinate at the page's center.
+inline resources::MeshData LightmappedCubeData(
+    std::vector<material::LightmappedVertex> &vertices, std::vector<std::uint16_t> &indices )
+{
+	std::vector<material::UnlitVertex> corners;
+	resources::MeshData data = CubeData( corners, indices );
+	vertices.clear();
+	for ( const material::UnlitVertex &corner : corners )
+	{
+		material::LightmappedVertex vertex;
+		std::copy( corner.position, corner.position + 3, vertex.position );
+		vertex.lightmapUv[0] = vertex.lightmapUv[1] = 0.5f;
+		vertices.push_back( vertex );
+	}
+	data.vertices = std::as_bytes( std::span<const material::LightmappedVertex>( vertices ) );
+	data.vertexStride = sizeof( material::LightmappedVertex );
+	return data;
+}
+
+// The cube in the pbr family's vertex: four corners per face with the
+// face's normal and a tangent along it.
+inline resources::MeshData PbrCubeData(
+    std::vector<material::PbrVertex> &vertices, std::vector<std::uint16_t> &indices )
+{
+	vertices.clear();
+	indices.clear();
+	for ( int axis = 0; axis < 3; ++axis )
+	{
+		for ( float sign : { -1.0f, 1.0f } )
+		{
+			const int u = ( axis + 1 ) % 3;
+			const int v = ( axis + 2 ) % 3;
+			const std::uint16_t first = std::uint16_t( vertices.size() );
+			for ( int corner = 0; corner < 4; ++corner )
+			{
+				material::PbrVertex vertex;
+				vertex.position[axis] = 0.5f * sign;
+				vertex.position[u] = ( corner & 1 ) ? 0.5f : -0.5f;
+				vertex.position[v] = ( corner & 2 ) ? 0.5f : -0.5f;
+				vertex.normal[axis] = sign;
+				vertex.tangent[u] = 1.0f;
+				vertex.tangent[3] = 1.0f;
+				vertices.push_back( vertex );
+			}
+			for ( std::uint16_t index : { 0, 1, 3, 0, 3, 2 } )
+				indices.push_back( std::uint16_t( first + index ) );
+		}
+	}
+	resources::MeshData data;
+	data.vertices = std::as_bytes( std::span<const material::PbrVertex>( vertices ) );
+	data.vertexStride = sizeof( material::PbrVertex );
 	data.indices = std::as_bytes( std::span<const std::uint16_t>( indices ) );
 	data.indexFormat = device::IndexFormat::kUint16;
 	return data;
@@ -95,6 +168,8 @@ struct Materials
 	}
 	device::IRenderDevice2 &device;
 	std::unique_ptr<material::UnlitFamily> family;
+	std::unique_ptr<material::LightmappedFamily> lightmapped;
+	std::unique_ptr<material::PbrFamily> pbr;
 	resources::TextureCache textures;
 	material::MaterialPrograms programs;
 	material::DrawGroups drawGroups;
@@ -161,6 +236,20 @@ inline std::unique_ptr<scene::IRenderScene> SceneB()
 	return result;
 }
 
+inline std::unique_ptr<scene::IRenderScene> SceneC()
+{
+	auto result = scene::CreateRenderScene();
+	scene::ChangeSet changes;
+	scene::MeshInstanceDesc lit =
+	    Cube( { -1.5f, 0.0f, -6.0f }, 1.5f, kLightmappedMaterial, kLightmappedCubeMesh );
+	lit.drawGroup = kLightmapPage;
+	changes.Add( result->Reserve(), lit );
+	changes.Add(
+	    result->Reserve(), Cube( { 1.5f, 0.0f, -6.0f }, 1.5f, kPbrMaterial, kPbrCubeMesh ) );
+	(void)result->Commit( changes );
+	return result;
+}
+
 inline scene::SceneView View()
 {
 	scene::ViewDesc desc;
@@ -202,7 +291,8 @@ struct FrameResult
 
 // Draws `snapshot` into fresh targets and reads the color back.
 inline FrameResult DrawScene( device::IRenderDevice2 &device, const Materials &materials,
-    const Meshes &meshes, const scene::SceneSnapshot &snapshot )
+    const Meshes &meshes, const scene::SceneSnapshot &snapshot,
+    const material::DrawGroup *frame = nullptr, const material::DrawGroup *viewGroup = nullptr )
 {
 	FrameResult result;
 	const scene::SceneView view = View();
@@ -232,7 +322,7 @@ inline FrameResult DrawScene( device::IRenderDevice2 &device, const Materials &m
 	    readbackDesc, device::ResourceUsage::kUndefined, device::ResourceUsage::kCopyDestination );
 	OpaqueTargets targets{ colorRef, depthRef, kSize, kSize, { 0.0f, 0.0f, 0.0f, 1.0f } };
 	auto stats = AddOpaquePasses( builder, snapshot, list, view,
-	    { meshes, materials.programs, &materials.drawGroups }, targets );
+	    { meshes, materials.programs, &materials.drawGroups, frame, viewGroup }, targets );
 	if ( stats )
 	{
 		result.stats = stats.Value();
@@ -299,8 +389,15 @@ inline std::optional<Meshes> StageCube(
 	positions.vertices = std::as_bytes( std::span<const float>( packed ) );
 	positions.vertexStride = 12;
 	auto positionOnly = cache.Stage( "positions", positions );
+	std::vector<material::LightmappedVertex> lightmappedVertices;
+	std::vector<std::uint16_t> lightmappedIndices;
+	auto lightmapped = cache.Stage(
+	    "lightmapped-cube", LightmappedCubeData( lightmappedVertices, lightmappedIndices ) );
+	std::vector<material::PbrVertex> pbrVertices;
+	std::vector<std::uint16_t> pbrIndices;
+	auto pbr = cache.Stage( "pbr-cube", PbrCubeData( pbrVertices, pbrIndices ) );
 	device::CompletionToken token;
-	if ( !entry || !positionOnly ||
+	if ( !entry || !positionOnly || !lightmapped || !pbr ||
 	     !Upload(
 	         device,
 	         [&]( device::CommandEncoder &encoder )
@@ -313,11 +410,66 @@ inline std::optional<Meshes> StageCube(
 	Meshes meshes;
 	meshes.entries[kCubeMesh] = entry.Value();
 	meshes.entries[kPositionOnlyMesh] = positionOnly.Value();
+	meshes.entries[kLightmappedCubeMesh] = lightmapped.Value();
+	meshes.entries[kPbrCubeMesh] = pbr.Value();
 	return meshes;
 }
 
+// Scene C's families, textures, programs and groups: a lightmapped
+// material over the white texture whose draw group holds the page, and a pbr
+// dielectric (white base, MRAO rough and unoccluded) whose frame group holds
+// the split-sum table and whose view group holds a uniform ambient cube.
+inline bool StageSceneCMaterials( device::IRenderDevice2 &device, Materials &materials,
+    device::Format color, device::Format depth )
+{
+	auto lightmapped = material::LightmappedFamily::Create( device, color, depth );
+	auto pbr = material::PbrFamily::Create( device, color, depth );
+	if ( !lightmapped || !pbr )
+		return false;
+	materials.lightmapped = std::move( lightmapped ).Value();
+	materials.pbr = std::move( pbr ).Value();
+	auto stage = [&]( const char *name, device::Format format, std::uint32_t size,
+	                 std::span<const std::byte> pixels )
+	{
+		device::TextureDesc desc;
+		desc.format = format;
+		desc.width = desc.height = size;
+		desc.usages = { device::ResourceUsage::kCopyDestination, device::ResourceUsage::kSampled };
+		return materials.textures.Stage( name, desc, pixels ).HasValue();
+	};
+	const std::byte mrao[4] = {
+	    std::byte( 0 ), std::byte( 255 ), std::byte( 255 ), std::byte( 255 ) };
+	const material::PbrSplitSumTable table = material::SplitSumTable();
+	if ( !stage(
+	         "page", device::Format::kRGBA8Srgb, 1, std::as_bytes( std::span( kPageTexel ) ) ) ||
+	     !stage( "mrao", device::Format::kRGBA8Unorm, 1, mrao ) ||
+	     !stage( "splitsum", table.format, table.width,
+	         std::as_bytes( std::span<const float>( table.texels ) ) ) )
+		return false;
+
+	material::LightmappedClaim litClaim;
+	litClaim.claimed = true;
+	auto lit = materials.lightmapped->Request( litClaim, "white" );
+	if ( !lit || !materials.programs.Set( kLightmappedMaterial, lit.Value() ) ||
+	     !materials.drawGroups.Set(
+	         kLightmapPage, materials.lightmapped->LightmapGroup( "page" ) ) )
+		return false;
+
+	material::PbrClaim pbrClaim;
+	pbrClaim.claimed = true;
+	auto program = materials.pbr->Request( pbrClaim, { "white", "mrao", "", "", "white" } );
+	const float eye[3] = {};
+	float cube[6][3];
+	for ( auto &face : cube )
+		std::copy( kAmbient, kAmbient + 3, face );
+	const material::PbrModelLighting lighting = material::PackSourceModelLighting( eye, cube, {} );
+	return program && materials.programs.Set( kPbrMaterial, program.Value() ) &&
+	       materials.drawGroups.Set( kPbrFrameGroup, materials.pbr->FrameGroup( "splitsum" ) ) &&
+	       materials.drawGroups.Set( kPbrViewGroup, materials.pbr->ViewGroup( lighting ) );
+}
+
 // The unlit family for `color`, the white texture and materials 1-3 and 8,
-// uploaded.
+// and scene C's materials, uploaded.
 inline std::unique_ptr<Materials> StageMaterials(
     device::IRenderDevice2 &device, device::Format color, device::Format depth )
 {
@@ -371,6 +523,8 @@ inline std::unique_ptr<Materials> StageMaterials(
 	if ( !materials->programs.Set( kViewGroupMaterial, viewed.Value() ) ||
 	     !materials->programs.Set( kDrawGroupMaterial, grouped.Value() ) ||
 	     !materials->drawGroups.Set( kOtherLayoutGroup, other ) )
+		return nullptr;
+	if ( !StageSceneCMaterials( device, *materials, color, depth ) )
 		return nullptr;
 	device::CompletionToken token;
 	if ( !Upload(

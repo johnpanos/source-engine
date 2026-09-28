@@ -15,7 +15,9 @@
 //			  another layout, or a view group the frame lacks, are counted, not
 //			  drawn;
 //			- invalid targets fail with kInvalidTargets before any pass is
-//			  added.
+//			  added;
+//			- scene C's lightmapped draw (its page as a draw group) and pbr draw
+//			  (the frame's and view's groups) resolve and draw.
 //
 //=============================================================================//
 
@@ -34,8 +36,8 @@ int main()
 	    StageMaterials( *device, device::Format::kRGBA8Unorm, device::Format::kD32Float );
 	if ( !checks.That( meshes && materials, "setup.meshes-and-materials" ) )
 		return checks.Report();
-	checks.Equal( materials->programs.ReadyCount(), std::size_t( 5 ),
-	    "setup.five-programs-ready-and-the-untextured-one-not" );
+	checks.Equal( materials->programs.ReadyCount(), std::size_t( 7 ),
+	    "setup.seven-programs-ready-and-the-untextured-one-not" );
 	(void)device->Poll(); // staging released behind completed tokens goes at the next poll
 	const std::size_t baseline = device->LiveResourceCount();
 
@@ -58,6 +60,12 @@ int main()
 	checks.That(
 	    !refused && refused.Error() == OpaqueStatus::kInvalidTargets && builder.Passes().empty(),
 	    "N3.invalid-targets-fail-before-adding-passes" );
+	auto c = SceneC();
+	const FrameResult families = DrawScene( *device, *materials, *meshes, *c->Snapshot(),
+	    materials->drawGroups.Group( kPbrFrameGroup ),
+	    materials->drawGroups.Group( kPbrViewGroup ) );
+	checks.That( families.ok && families.stats.drawn == 2 && families.stats.unresolved == 0,
+	    "N4.lightmapped-and-pbr-draw-with-their-groups" );
 	checks.Equal( materials->programs.GroupFailures(), 0u, "N1.groups-without-failure" );
 	return checks.Report();
 }

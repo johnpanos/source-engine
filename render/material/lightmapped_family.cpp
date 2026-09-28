@@ -150,4 +150,31 @@ foundation::Expected<PipelineId, LightmappedStatus> LightmappedFamily::Pipeline(
 	return pipeline.Value();
 }
 
+foundation::Expected<ProgramRequest, LightmappedStatus> LightmappedFamily::Request(
+    const LightmappedClaim &claim, std::string baseTexture, const SamplerDesc &sampler )
+{
+	auto pipeline = Pipeline( claim );
+	if ( !pipeline )
+		return foundation::MakeUnexpected( pipeline.Error() );
+	ProgramRequest request;
+	request.pipeline = pipeline.Value();
+	request.vertexStride = sizeof( LightmappedVertex );
+	request.drawConstantBytes = sizeof( LightmappedDrawConstants );
+	request.drawLayout = m_DrawLayout;
+	request.material.layout = m_MaterialLayout;
+	request.material.constantsBinding = 0;
+	const auto bytes = std::as_bytes( std::span( &claim.constants, 1 ) );
+	request.material.constants.assign( bytes.begin(), bytes.end() );
+	request.material.textures.push_back( { 1, std::move( baseTexture ), 2, sampler } );
+	return request;
+}
+
+GroupRequest LightmappedFamily::LightmapGroup( std::string page, const SamplerDesc &sampler ) const
+{
+	GroupRequest request;
+	request.layout = m_DrawLayout;
+	request.textures.push_back( { 0, std::move( page ), 1, sampler } );
+	return request;
+}
+
 } // namespace render::material

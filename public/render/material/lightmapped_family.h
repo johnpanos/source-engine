@@ -38,6 +38,7 @@
 
 #include "foundation/expected.h"
 #include "render/device/device.h"
+#include "render/material/material_programs.h"
 #include "render/material/parameter_block.h"
 
 #include <cstdint>
@@ -114,6 +115,15 @@ public:
 	// The pipeline for a claim's blend mode and alpha write (created on first use).
 	foundation::Expected<device::PipelineId, LightmappedStatus> Pipeline(
 	    const LightmappedClaim &claim );
+	// The claim as a MaterialPrograms request: the pipeline, the material
+	// group (constants at binding 0, 'baseTexture', a TextureCache name, at 1
+	// with its sampler at 2) and the draw layout, which each draw's lightmap
+	// page fills (LightmapGroup). Stage the base texture as sRGB.
+	foundation::Expected<ProgramRequest, LightmappedStatus> Request( const LightmappedClaim &claim,
+	    std::string baseTexture, const device::SamplerDesc &sampler = {} );
+	// A draw group for a lightmap page ('page', a TextureCache name staged as
+	// sRGB, at binding 0 with its sampler at 1), for DrawGroups.
+	GroupRequest LightmapGroup( std::string page, const device::SamplerDesc &sampler = {} ) const;
 
 private:
 	explicit LightmappedFamily( device::IRenderDevice2 &device ) : m_Device( device ) {}

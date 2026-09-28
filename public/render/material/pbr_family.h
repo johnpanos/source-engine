@@ -26,7 +26,7 @@
 //			kView) holds the model lighting (PbrModelLighting); the material
 //			group (role kMaterial) holds the constants and four texture and
 //			sampler pairs. The draw constants are the FamilyDrawConstants
-//			prefix: world-to-clip and object-to-world.
+//			prefix: object-to-clip and object-to-world.
 //
 //=============================================================================//
 
@@ -35,6 +35,7 @@
 
 #include "foundation/expected.h"
 #include "render/device/device.h"
+#include "render/material/material_programs.h"
 #include "render/material/parameter_block.h"
 
 #include <cstdint>
@@ -53,7 +54,8 @@ struct PbrConstants
 };
 static_assert( sizeof( PbrConstants ) == 16 );
 
-// The draw constants (pbr.vert), row-major with column vectors.
+// The draw constants (pbr.vert), row-major with column vectors: the
+// FamilyDrawConstants prefix, object-to-clip then object-to-world.
 struct PbrDrawConstants
 {
 	float toClip[16] = {};
@@ -129,6 +131,19 @@ struct PbrSplitSumTable
 };
 PbrSplitSumTable SplitSumTable();
 
+// A material's textures by TextureCache name. `normal` and `emission` are
+// read only when the claim uses them; otherwise `placeholder` (any resident
+// texture) fills the slot. Stage base and emission as sRGB, MRAO and the
+// normal map as linear data.
+struct PbrTextures
+{
+	std::string base;
+	std::string mrao;
+	std::string normal;
+	std::string emission;
+	std::string placeholder;
+};
+
 struct PbrClaim
 {
 	bool claimed = false;
@@ -167,6 +182,16 @@ public:
 	device::BindGroupLayoutId MaterialLayout() const { return m_MaterialLayout; }
 	// The opaque pipeline (created on first use).
 	foundation::Expected<device::PipelineId, PbrStatus> Pipeline( const PbrClaim &claim );
+	// The claim as a MaterialPrograms request: the pipeline, the frame and
+	// view layouts, and the material group (constants and the four texture
+	// and sampler pairs, one sampler description for all).
+	foundation::Expected<ProgramRequest, PbrStatus> Request(
+	    const PbrClaim &claim, PbrTextures textures, const device::SamplerDesc &sampler = {} );
+	// The frame group: the split-sum table ('table', a TextureCache name of a
+	// texture holding SplitSumTable()) with a linear, clamped sampler.
+	GroupRequest FrameGroup( std::string table ) const;
+	// A view group holding `lighting` (PackSourceModelLighting).
+	GroupRequest ViewGroup( const PbrModelLighting &lighting ) const;
 
 private:
 	explicit PbrFamily( device::IRenderDevice2 &device ) : m_Device( device ) {}

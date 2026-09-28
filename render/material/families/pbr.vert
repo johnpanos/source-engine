@@ -1,6 +1,6 @@
 // render.material family `pbr` (RFC 0016 K4): PBRMetalRough on meshes. The
-// draw constants carry world-to-clip and object-to-world (row-major with
-// column vectors, the FamilyDrawConstants prefix). Normals and tangents are
+// draw constants are the FamilyDrawConstants prefix: the draw's object-to-clip
+// and object-to-world matrices (row-major with column vectors). Normals and tangents are
 // transformed by object-to-world's upper 3x3, as the model port does, and
 // normalized per pixel. Each light's attenuation is Source's per-vertex term
 // (common_vs_fxc.h GetVertexAttenForLight), interpolated as the port does.
@@ -47,7 +47,7 @@ float VertexAttenuation( int i, vec3 position )
 void main()
 {
 	const vec4 world = draw.world * vec4( position, 1.0 );
-	gl_Position = draw.toClip * world;
+	gl_Position = draw.toClip * vec4( position, 1.0 );
 	uv = uv0;
 	worldPosition = world.xyz;
 	const mat3 basis = mat3( draw.world );
