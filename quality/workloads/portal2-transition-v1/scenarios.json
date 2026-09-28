@@ -1,0 +1,83 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Portal 2 single-player level transitions: leave a map through its own departure elevator and arrive in the next map through the level change. Run by tools/quality/portal2_scenarios.py; the start script hands off before the level change and the arrival script (started by the mapspawn.nut hook) finishes the scenario.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "scenarios": [
+    {
+      "name": "sp_a1_intro3_to_intro4",
+      "map": "sp_a1_intro3",
+      "script": "sp_a1_intro3_depart.nut",
+      "arrival": {
+        "map": "sp_a1_intro4",
+        "script": "sp_a1_intro4_arrive.nut"
+      },
+      "timeout_seconds": 240,
+      "required_checks": [
+        "departure.elevator_arrived",
+        "departure.elevator_descends",
+        "departure.stats_controller",
+        "transition.exit_relay",
+        "transition.ride_save_refused",
+        "transition.through_stats_controller",
+        "transition.changelevel",
+        "transition.landmark",
+        "transition.connected",
+        "transition.post_transition",
+        "arrival.map",
+        "arrival.in_elevator",
+        "arrival.stats_controller",
+        "arrival.elevator_down",
+        "arrival.walked_out",
+        "arrival.save_allowed"
+      ],
+      "console_checks": [
+        {
+          "name": "transition.exit_relay",
+          "window": "transition",
+          "select": "output @transition_from_map:OnTrigger",
+          "expect": "count=1$"
+        },
+        {
+          "name": "transition.ride_save_refused",
+          "window": "transition",
+          "select": "REJECTING: qa_transition_ride",
+          "expect": "due to map_wants_save_disable"
+        },
+        {
+          "name": "transition.through_stats_controller",
+          "window": "transition",
+          "absent": "DLC1 not installed fall through|'@changelevel' entity missing"
+        },
+        {
+          "name": "transition.changelevel",
+          "window": "transition",
+          "select": "Host_Changelevel",
+          "expect": "^---- Host_Changelevel ----$"
+        },
+        {
+          "name": "transition.landmark",
+          "window": "transition",
+          "select": "^Spawn Server: ",
+          "expect": "^Spawn Server: sp_a1_intro4: \\[__p2_landmark\\]$"
+        },
+        {
+          "name": "transition.connected",
+          "window": "transition",
+          "absent": "Level transition ERROR|Can't find connection"
+        },
+        {
+          "name": "transition.post_transition",
+          "window": "transition",
+          "select": "Teleporting to default start pos",
+          "expect": "^Teleporting to default start pos$"
+        },
+        {
+          "name": "arrival.save_allowed",
+          "window": "arrival",
+          "select": "qa_transition_arrival",
+          "expect": "^Saving game to save/qa_transition_arrival\\.sav\\.\\.\\.$"
+        }
+      ]
+    }
+  ]
+}

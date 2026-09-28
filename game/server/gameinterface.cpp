@@ -1126,6 +1126,14 @@ bool CServerGameDLL::LevelInit( const char *pMapName, char const *pMapEntities, 
 #ifdef FSTOP
 	UTIL_ClearPlacementHelpers();
 #endif // FSTOP
+
+	// A map that disabled saves (a Portal 2 elevator ride) did so for the
+	// level it left.
+	if ( gpGlobals->eLoadType == MapLoad_Transition )
+	{
+		static ConVarRef map_wants_save_disable( "map_wants_save_disable" );
+		map_wants_save_disable.SetValue( 0 );
+	}
 	return true;
 }
 

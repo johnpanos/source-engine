@@ -1856,16 +1856,21 @@ int CChangeLevel::BuildChangeLevelList( levellist_t *pLevelList, int maxList )
 #ifdef PORTAL2
 	// Portal 2 maps change level through point_changelevel, not triggers.
 	// Retail connects the two maps of the last point_changelevel transition
-	// through its landmarks: the origin map's info_landmark_entry leads to
-	// the destination, and the destination's info_landmark_exit leads back.
-	// Without this connection the engine disconnects the arriving player.
+	// through its landmarks. A map's info_landmark_exit sits where the player
+	// leaves (at @exit_teleport) and its info_landmark_entry where the next
+	// map's player arrives (in the trigger that runs OnPostTransition), so
+	// the origin map's connection uses its exit landmark and the destination
+	// map's connection back uses its entry landmark. The engine places the
+	// player at the same offset from the second as from the first. Without
+	// this connection the engine disconnects the arriving player.
 	{
 		const char *pszOrigin = ChangeLevel_OriginMapName();
 		const char *pszDestination = ChangeLevel_DestinationMapName();
 		if ( pszOrigin && pszOrigin[0] && pszDestination && pszDestination[0] )
 		{
 			const bool bOnOrigin = V_stricmp( STRING( gpGlobals->mapname ), pszOrigin ) == 0;
-			CBaseEntity *pLandmark = gEntList.FindEntityByClassname( NULL, bOnOrigin ? "info_landmark_entry" : "info_landmark_exit" );
+			CBaseEntity *pLandmark = gEntList.FindEntityByClassname(
+			    NULL, bOnOrigin ? "info_landmark_exit" : "info_landmark_entry" );
 			if ( pLandmark && pLandmark->edict() &&
 				 AddTransitionToList( pLevelList, 0, bOnOrigin ? pszDestination : pszOrigin, ChangeLevel_GetLandmarkName(), pLandmark->edict() ) )
 			{

@@ -19,6 +19,16 @@ check instead judges the client's per-frame view trace in the window
 jump or turn beyond its limits once portal crossings are undone, and the
 window must hold the declared number of crossings.
 
+A scenario may continue on another map: ``arrival`` names the map the start
+map's own level change leads to and the script to run there. The start script
+ends its part with ``QA_Handoff()``, which prints ``QA_HANDOFF`` with its counts
+(the level change resets the VM); a ``mapspawn.nut`` hook, rebuilt from the
+installed game's own file for each run, starts the arrival script one second
+after the arrival map spawns, and that script finishes with ``QA_DONE``. The
+QA_DONE counts then cover only the arrival map, and the harness adds the
+handoff's. A scenario with ``arrival`` needs exactly one handoff from its start
+map and a QA_DONE from the arrival map; one without must not hand off.
+
 A workload may declare ``maps`` that are not retail content: each names a
 builder script (relative to the repository root) that compiles the map and
 installs it into the runtime's portal2/maps before any scenario runs.
@@ -52,6 +62,9 @@ CHECK_NAME = re.compile(r"[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+")
 CHECK_LINE = re.compile(r"^QA_CHECK (\S+) (PASS|FAIL)(?: (.*))?$")
 DONE_LINE = re.compile(r"^QA_DONE (\S+) checks=(\d+) failures=(\d+)\s*$")
 WINDOW_LINE = re.compile(r"^QA_WINDOW (\S+) (BEGIN|END)\s*$")
+HANDOFF_LINE = re.compile(r"^QA_HANDOFF (\S+) map=(\S+) checks=(\d+) failures=(\d+)\s*$")
+START_LINE = re.compile(r"^QA_LOG (\S+) t=\S+ start map=(\S+) ")
+MAPSPAWN = "mapspawn.nut"
 SCRIPT_ERROR = "AN ERROR HAS OCCURED"
 # The callstack Squirrel prints after an error names the failing script file.
 SCRIPT_ERROR_CONTEXT_LINES = 24
@@ -85,7 +98,8 @@ def load_workload(path):
             (Path(conformance.repo_root()) / builder).is_file() for name, builder in maps.items()):
         raise ScenarioError("%s: a map builder is missing" % path)
     installed = [Path(script).name for script in [driver] + includes] + \
-        [Path(str(scenario.get("script", ""))).name for scenario in workload.get("scenarios", [])]
+        [Path(str(script)).name for scenario in workload.get("scenarios", [])
+         for script in scenario_scripts(scenario)]
     if len(set(installed)) != len(installed):
         raise ScenarioError("%s: scripts must have distinct file names" % path)
     scenarios = workload.get("scenarios")
@@ -103,6 +117,15 @@ def load_workload(path):
         if not isinstance(script, str) or not script.endswith(".nut") or \
                 not (path.parent / script).is_file():
             raise ScenarioError("%s: %s script is missing" % (path, name))
+        arrival = scenario.get("arrival")
+        if arrival is not None:
+            if not isinstance(arrival, dict) or set(arrival) != {"map", "script"} or \
+                    not SIMPLE_NAME.fullmatch(str(arrival["map"])) or \
+                    arrival["map"] == scenario["map"] or \
+                    not str(arrival["script"]).endswith(".nut") or \
+                    not (path.parent / arrival["script"]).is_file():
+                raise ScenarioError("%s: %s arrival needs another simple map name and an "
+                                    "existing script" % (path, name))
         timeout = scenario.get("timeout_seconds")
         if not isinstance(timeout, (int, float)) or timeout <= 0:
             raise ScenarioError("%s: %s needs a positive timeout" % (path, name))
@@ -112,6 +135,14 @@ def load_workload(path):
             raise ScenarioError("%s: %s needs unique dotted required checks" % (path, name))
         load_console_checks(path, scenario)
     return workload
+
+
+def scenario_scripts(scenario):
+    """The scenario's start script, then its arrival script if it has one."""
+    scripts = [scenario.get("script", "")]
+    if isinstance(scenario.get("arrival"), dict):
+        scripts.append(scenario["arrival"].get("script", ""))
+    return scripts
 
 
 def load_console_checks(path, scenario):
@@ -223,6 +254,28 @@ def evaluate(scenario, log, returncode, timed_out):
             failures.append("%s failed: %s" % (check, detail))
     failures += ["undeclared check: " + check for check in undeclared]
 
+    # A scenario with an arrival map hands off once on its start map; the
+    # arrival map's QA_DONE counts only its own checks.
+    handoffs = [HANDOFF_LINE.match(line.strip()) for line in lines]
+    handoffs = [match for match in handoffs if match]
+    arrival = scenario.get("arrival")
+    handed = (0, 0)
+    if arrival is None:
+        if handoffs:
+            failures.append("QA_HANDOFF from a scenario without an arrival map")
+    elif len(handoffs) != 1:
+        failures.append("expected one QA_HANDOFF record, found %d" % len(handoffs))
+    elif handoffs[0].group(1) != name or handoffs[0].group(2) != scenario["map"]:
+        failures.append("QA_HANDOFF names %s on %s" % (handoffs[0].group(1), handoffs[0].group(2)))
+    else:
+        handed = (int(handoffs[0].group(3)), int(handoffs[0].group(4)))
+    if arrival is not None:
+        started = [START_LINE.match(line.strip()) for line in lines]
+        started = [match.group(2) for match in started if match and match.group(1) == name]
+        if started != [scenario["map"], arrival["map"]]:
+            failures.append("driver started on %s, expected %s then %s" % (
+                ", ".join(started) or "no map", scenario["map"], arrival["map"]))
+
     done = [DONE_LINE.match(line.strip()) for line in lines]
     done = [match for match in done if match]
     if len(done) != 1:
@@ -230,11 +283,12 @@ def evaluate(scenario, log, returncode, timed_out):
     else:
         record = done[0]
         reported_failures = sum(1 for value in checks.values() if value["outcome"] != "PASS")
+        counts = (int(record.group(2)) + handed[0], int(record.group(3)) + handed[1])
         if record.group(1) != name:
             failures.append("QA_DONE names scenario " + record.group(1))
-        elif (int(record.group(2)), int(record.group(3))) != (len(checks), reported_failures):
-            failures.append("QA_DONE counts %s/%s differ from the %d checks and %d failures "
-                            "in the log" % (record.group(2), record.group(3), len(checks),
+        elif counts != (len(checks), reported_failures):
+            failures.append("QA_DONE counts %d/%d differ from the %d checks and %d failures "
+                            "in the log" % (counts[0], counts[1], len(checks),
                                             reported_failures))
 
     windows = console_windows(lines)
@@ -279,7 +333,7 @@ def install_scripts(workload_path, workload, runtime):
         shutil.rmtree(vscripts)
     vscripts.mkdir(parents=True)
     scripts = [workload["driver"]] + workload.get("includes", []) + \
-        [scenario["script"] for scenario in workload["scenarios"]]
+        [script for scenario in workload["scenarios"] for script in scenario_scripts(scenario)]
     for script in scripts:
         # A workload may share another workload's driver; scripts install flat
         # under qa/, so scenarios include them as qa/<name>.
@@ -289,6 +343,28 @@ def install_scripts(workload_path, workload, runtime):
         # Only a single-line config honours wait; this one only starts the driver.
         (config / ("qa_%s.cfg" % scenario["name"])).write_text(
             "script_execute %s/%s\n" % (SCRIPT_DIRECTORY, Path(scenario["script"]).stem))
+
+
+def install_mapspawn_hook(runtime, steam_root, scenario):
+    """Rebuilds scripts/vscripts/mapspawn.nut from the installed game's own
+    file, adding the hook that starts the scenario's arrival script."""
+    hook = Path(runtime) / "portal2/scripts/vscripts" / MAPSPAWN
+    pristine = Path(steam_root) / "portal2/scripts/vscripts" / MAPSPAWN
+    text = pristine.read_text(errors="replace").rstrip() + "\n" if pristine.is_file() else ""
+    arrival = scenario.get("arrival")
+    if arrival is not None:
+        # Only the server VM has EntFire, and the driver's QA table guards
+        # against a second start in the same VM.
+        include = "if ( !( \\\"QA\\\" in getroottable() ) ) DoIncludeScript( \\\"%s/%s\\\", " \
+            "getroottable() )" % (SCRIPT_DIRECTORY, Path(arrival["script"]).stem)
+        text += ("// PORTAL2_SCENARIOS_ARRIVAL_HOOK\n"
+                 "if ( ( \"EntFire\" in getroottable() ) && GetMapName() == \"%s\" )\n"
+                 "\tEntFire( \"worldspawn\", \"RunScriptCode\", \"%s\", 1.0 )\n"
+                 % (arrival["map"], include))
+    if hook.is_symlink() or hook.exists():
+        hook.unlink()
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text(text)
 
 
 def build_maps(workload, runtime, output):
@@ -316,8 +392,25 @@ def write_fake_zenity(directory):
 
 
 def run_scenario(scenario, runtime, output, start_frames, width, height, tool_directory,
-                 gdb_script=None, extra_args=(), wrapper=()):
+                 gdb_script=None, extra_args=(), wrapper=(), steam_root=None):
     runtime = Path(runtime).resolve()
+    if steam_root is None:
+        if scenario.get("arrival") is not None:
+            raise ScenarioError("%s has an arrival map but no Steam root for the hook" %
+                                scenario["name"])
+        return run_game(scenario, runtime, output, start_frames, width, height, tool_directory,
+                        gdb_script, extra_args, wrapper)
+    install_mapspawn_hook(runtime, steam_root, scenario)
+    try:
+        return run_game(scenario, runtime, output, start_frames, width, height, tool_directory,
+                        gdb_script, extra_args, wrapper)
+    finally:
+        # Other workloads share the runtime: leave the game's own file.
+        install_mapspawn_hook(runtime, steam_root, {})
+
+
+def run_game(scenario, runtime, output, start_frames, width, height, tool_directory,
+             gdb_script, extra_args, wrapper):
     console = runtime / "portal2/console.log"
     console.unlink(missing_ok=True)
     environment = dict(os.environ)
@@ -444,7 +537,8 @@ def main(argv=None):
     for scenario in scenarios:
         print("== %s (%s)" % (scenario["name"], scenario["map"]), flush=True)
         result = run_scenario(scenario, args.runtime, output / scenario["name"], args.start_frames,
-                              args.width, args.height, tools, args.gdb_script, args.extra_arg)
+                              args.width, args.height, tools, args.gdb_script, args.extra_arg,
+                              steam_root=args.steam_root)
         evidence["results"].append(result)
         evidence_path.write_text(json.dumps(evidence, indent=2) + "\n")
         for check, value in result["checks"].items():

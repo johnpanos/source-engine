@@ -40,7 +40,7 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | ID | Gap | Maps and callers | State |
 | --- | --- | --- | --- |
 | G01 | `portal_stats_controller` (`CPortalStatsController`) is absent, so `OnLevelEnd` from the transition scripts never changes level | `sp_transition_list.nut`, `mp_coop_transition_list.nut` | done (see log) |
-| G01a | `point_changelevel` transitions have no level connection, so the engine disconnects the arriving player ("Can't find connection") | every SP transition | done (see log) |
+| G01a | `point_changelevel` transitions have no level connection, so the engine disconnects the arriving player ("Can't find connection"); the first fix paired the wrong landmarks, so the player arrived outside the map | every SP transition | done (see log; scenario `portal2-transition-v1`) |
 | G01b | 64-bit user-message sizes: `sizeof( long )` registrations (8 bytes) against 4-byte `WRITE_LONG`/`WRITE_EHANDLE`, so the engine refuses `PaintEntity`, `ChangePaintColor`, `StartSurvey`, `ScoreboardTempUpdate` (and Portal 1 `EntityPortalled`) | paint on props, surveys, portal teleport fix-up | done; runtime check pending |
 | G02 | Engine paint-map API is stubbed (`HasPaintmap`, `SpherePaintSurface`, `SphereTracePaintSurface`, paint-map save/restore), so gel cannot coat world surfaces | 30 maps set `paintinmap` | done on native Vulkan (see log); brush entities, save/restore and co-op join unverified |
 | G03 | `func_portal_detector` is the Portal 1 version: no `OnStartTouchPortal`/`OnEndTouchPortal`/`OnEndTouchLinkedPortal`/`OnEndTouchBothLinkedPortals`, no `CheckAllIDs` | 10+ maps | done (see log) |
@@ -217,3 +217,23 @@ Newest last. Each entry names the build and the check that passed.
     retail portal2_linux) passes 14/14. It failed 11 of 14 before, and its
     in-game negative controls fail as required. See the README's "Portal 2
     paint retail conformance".
+- 2026-09-28, G01a correction (build-p2 release, Box3D, native Vulkan):
+  the connection added on 2026-09-24 paired the wrong landmarks. Each map
+  has an `info_landmark_exit` at `@exit_teleport`, where the player leaves,
+  and an `info_landmark_entry` in the trigger that runs
+  `OnPostTransition()`, where the next map's player arrives. The origin map
+  now connects through its exit landmark and the destination through its
+  entry landmark. Before, the player arrived 256 units outside the transition
+  room of `sp_a1_intro4` and fell forever, so `OnPostTransition` never
+  teleported them into the arrival elevator.
+  - Also ported from `cstrike15_src`: the engine's `map_wants_save_disable`
+    (the elevator's `StartMoving()` sets it; a player save is refused while
+    it is set, autosaves are not). It is cleared on disconnect and when a
+    transition loads the next level.
+  - Oracle: the `portal2-transition-v1` scenario `sp_a1_intro3_to_intro4`
+    (`tools/quality/portal2_scenarios.py`, which now lets a scenario continue
+    on an `arrival` map) leaves sp_a1_intro3 through its own departure
+    elevator and arrives through the level change. It passes 16/16, 3 of 3
+    runs. The same run on the pre-fix `libserver.so` fails 5 checks: the
+    player falls at (-2352, -3052), there is no `OnPostTransition`, no
+    elevator ride or walk out, and the arrival save is refused.

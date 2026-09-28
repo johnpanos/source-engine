@@ -226,6 +226,12 @@ void CClientState::Disconnect( const char *pszReason, bool bShowMainMenu )
 		g_GameEventManager.FireEventClientSide( event );
 	}
 
+	// clear any map hacks
+	{
+		static ConVarRef map_wants_save_disable( "map_wants_save_disable" );
+		map_wants_save_disable.SetValue( 0 );
+	}
+
 	// stop any demo activities
 #ifndef _XBOX
 	demoplayer->StopPlayback();

@@ -7,6 +7,7 @@
 //
 //   QA_CHECK <scenario>.<check> PASS|FAIL <detail>
 //   QA_DONE <scenario> checks=<n> failures=<n>
+//   QA_HANDOFF <scenario> map=<map> checks=<n> failures=<n>  (before a level change)
 //
 // The harness fails a run that has no QA_DONE, a FAIL, a missing required
 // check, or a script error. Squirrel 2.2 closures do not capture locals, so
@@ -88,6 +89,17 @@ function QA_Finish()
 	::QA.done = true
 	printl( "QA_DONE " + ::QA.scenario + " checks=" + ::QA.checks + " failures=" + ::QA.failures )
 	SendToConsole( "wait 30; quit" )
+}
+
+// Ends this map's part of a scenario that continues on its arrival map
+// (portal2_scenarios.py "arrival"). The level change resets the VM, so the
+// counts so far go to the log; the arrival script starts a fresh QA table
+// under the same scenario name and ends with QA_Finish.
+function QA_Handoff()
+{
+	::QA.done = true
+	printl( "QA_HANDOFF " + ::QA.scenario + " map=" + GetMapName() + " checks=" + ::QA.checks +
+		" failures=" + ::QA.failures )
 }
 
 function QA_Tick()

@@ -157,6 +157,75 @@ class ConsoleCheckTests(unittest.TestCase):
         self.assertFailsWith(self.evaluate(log), "check reported twice: beam.stops")
 
 
+ARRIVAL_SCENARIO = dict(SCENARIO, arrival={"map": "sp_next", "script": "next.nut"},
+                        required_checks=["socket.fired", "socket.parented", "arrival.placed"])
+ARRIVAL_GOOD = """QA_LOG demo t=1 start map=sp_demo steps=3
+QA_CHECK demo.socket.fired PASS sphere (1 2 3)
+QA_CHECK demo.socket.parented PASS parent=socket
+QA_HANDOFF demo map=sp_demo checks=2 failures=0
+---- Host_Changelevel ----
+QA_LOG demo t=2 start map=sp_next steps=2
+QA_CHECK demo.arrival.placed PASS in the elevator
+QA_DONE demo checks=1 failures=0
+"""
+
+
+class ArrivalTests(unittest.TestCase):
+    def evaluate(self, log, scenario=ARRIVAL_SCENARIO):
+        return scenarios.evaluate(scenario, log, 0, False)
+
+    def assertFailsWith(self, result, text):
+        self.assertEqual(result["status"], "fail")
+        self.assertTrue(any(text in failure for failure in result["failures"]), result["failures"])
+
+    def test_handoff_and_arrival_pass(self):
+        result = self.evaluate(ARRIVAL_GOOD)
+        self.assertEqual(result["status"], "pass", result["failures"])
+
+    def test_missing_handoff_fails(self):
+        log = ARRIVAL_GOOD.replace("QA_HANDOFF demo map=sp_demo checks=2 failures=0\n", "")
+        self.assertFailsWith(self.evaluate(log), "expected one QA_HANDOFF")
+
+    def test_handoff_from_the_wrong_map_fails(self):
+        log = ARRIVAL_GOOD.replace("QA_HANDOFF demo map=sp_demo", "QA_HANDOFF demo map=sp_next")
+        self.assertFailsWith(self.evaluate(log), "QA_HANDOFF names")
+
+    def test_handoff_counts_must_match_the_log(self):
+        log = ARRIVAL_GOOD.replace("map=sp_demo checks=2", "map=sp_demo checks=1")
+        self.assertFailsWith(self.evaluate(log), "QA_DONE counts 2/0 differ")
+
+    def test_arrival_script_never_started_fails(self):
+        # The level change failed: the arrival map's driver never ran.
+        log = ARRIVAL_GOOD.split("---- Host_Changelevel ----")[0]
+        result = self.evaluate(log)
+        self.assertFailsWith(result, "driver started on sp_demo, expected sp_demo then sp_next")
+        self.assertFailsWith(result, "expected one QA_DONE record")
+        self.assertFailsWith(result, "required check not reported: arrival.placed")
+
+    def test_reloaded_start_map_fails(self):
+        log = ARRIVAL_GOOD.replace("start map=sp_next", "start map=sp_demo")
+        self.assertFailsWith(self.evaluate(log), "driver started on sp_demo, sp_demo")
+
+    def test_handoff_without_an_arrival_map_fails(self):
+        log = GOOD.replace("QA_DONE", "QA_HANDOFF demo map=sp_demo checks=0 failures=0\nQA_DONE")
+        self.assertFailsWith(self.evaluate(log, SCENARIO), "without an arrival map")
+
+    def test_mapspawn_hook_is_rebuilt_and_restored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            steam, runtime = Path(directory) / "steam", Path(directory) / "runtime"
+            original = steam / "portal2/scripts/vscripts" / scenarios.MAPSPAWN
+            original.parent.mkdir(parents=True)
+            original.write_text('printl("==== calling mapspawn.nut")\n')
+            hook = runtime / "portal2/scripts/vscripts" / scenarios.MAPSPAWN
+            scenarios.install_mapspawn_hook(runtime, steam, ARRIVAL_SCENARIO)
+            text = hook.read_text()
+            self.assertTrue(text.startswith(original.read_text()))
+            self.assertIn('GetMapName() == "sp_next"', text)
+            self.assertIn('DoIncludeScript( \\"%s/next\\"' % scenarios.SCRIPT_DIRECTORY, text)
+            scenarios.install_mapspawn_hook(runtime, steam, SCENARIO)
+            self.assertEqual(hook.read_text(), original.read_text())
+
+
 class WorkloadTests(unittest.TestCase):
     def write(self, directory, workload, scripts=("driver.nut", "demo.nut")):
         for script in scripts:
@@ -181,6 +250,22 @@ class WorkloadTests(unittest.TestCase):
             self.assertIn('QA_Start( "%s" )' % scenario["name"], text)
             for check in scenario["required_checks"]:
                 self.assertIn('"%s"' % check, text, "%s does not report %s" % (script.name, check))
+
+    def test_installed_transition_workload_is_valid(self):
+        path = ROOT / "quality/workloads/portal2-transition-v1/scenarios.json"
+        workload = scenarios.load_workload(path)
+        for scenario in workload["scenarios"]:
+            self.assertIn("arrival", scenario)
+            start = (path.parent / scenario["script"]).read_text()
+            arrival = (path.parent / scenario["arrival"]["script"]).read_text()
+            for text in (start, arrival):
+                self.assertIn('QA_Start( "%s" )' % scenario["name"], text)
+            self.assertIn("QA_Handoff()", start)
+            console = {check["name"] for check in scenario.get("console_checks", [])}
+            for check in scenario["required_checks"]:
+                if check not in console:
+                    self.assertIn('"%s"' % check, start + arrival,
+                                  "no script reports %s" % check)
 
     def test_rejects_bad_workloads(self):
         cases = {

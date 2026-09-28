@@ -84,6 +84,9 @@ ConVar save_history_count("save_history_count", "1", 0, "Keep this many old copi
 ConVar sv_autosave( "sv_autosave", "1", 0, "Set to 1 to autosave game on level transition. Does not affect autosave triggers." );
 ConVar save_async( "save_async", "1" );
 ConVar save_disable( "save_disable", "0" );
+// Same as save_disable for player saves, but maps set it (Portal 2's elevator
+// rides) and it is cleared on disconnect and at each level transition.
+ConVar map_wants_save_disable( "map_wants_save_disable", "0" );
 ConVar save_noxsave( "save_noxsave", "0" );
 
 ConVar save_screenshot( "save_screenshot", "1", 0, "0 = none, 1 = non-autosave, 2 = always" );
@@ -646,6 +649,14 @@ int CSaveRestore::SaveGameSlot( const char *pSaveName, const char *pSaveComment,
 {
 	if ( save_disable.GetBool()  )
 	{
+		return 0;
+	}
+
+	const bool bIsMapAutosave =
+	    !stricmp( pSaveName, "autosave" ) || !stricmp( pSaveName, "autosavedangerous" );
+	if ( !bIsMapAutosave && map_wants_save_disable.GetBool() )
+	{
+		Warning( "*** REJECTING: %s, due to map_wants_save_disable.\n", pSaveName );
 		return 0;
 	}
 
