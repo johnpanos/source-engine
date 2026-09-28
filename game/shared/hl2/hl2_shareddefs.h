@@ -35,6 +35,12 @@ enum
 	HL2COLLISION_GROUP_ANTLION,
 	HL2COLLISION_GROUP_LAST_NPC,
 	HL2COLLISION_GROUP_COMBINE_BALL_NPC,
+
+#ifdef FSTOP
+	// F-Stop (the CS:GO-era base keeps these in public/const.h under PORTAL2)
+	COLLISION_GROUP_CAMERA_SOLID,		// Solid only to the camera's test trace
+	COLLISION_GROUP_PLACEMENT_SOLID,	// Solid only to the placement tool's test trace
+#endif // FSTOP
 };
 
 

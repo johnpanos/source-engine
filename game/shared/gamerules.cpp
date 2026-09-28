@@ -10,6 +10,9 @@
 #include "tier0/vprof.h"
 #include "KeyValues.h"
 #include "iachievementmgr.h"
+#ifdef FSTOP
+#include "hl2_shareddefs.h"
+#endif // FSTOP
 
 #ifdef CLIENT_DLL
 
@@ -729,6 +732,22 @@ bool CGameRules::ShouldCollide( int collisionGroup0, int collisionGroup1 )
 	if ( collisionGroup0 == COLLISION_GROUP_INTERACTIVE_DEBRIS && ( collisionGroup1 == COLLISION_GROUP_PLAYER_MOVEMENT || collisionGroup1 == COLLISION_GROUP_PLAYER ) )
 		 return false;
 #endif
+
+#ifdef FSTOP
+	// Only hit something of the same group
+	if ( collisionGroup0 == COLLISION_GROUP_CAMERA_SOLID || collisionGroup1 == COLLISION_GROUP_CAMERA_SOLID )
+	{
+		if ( collisionGroup0 != COLLISION_GROUP_CAMERA_SOLID || collisionGroup1 != COLLISION_GROUP_CAMERA_SOLID )
+			return false;
+	}
+
+	// Only hit something of the same group
+	if ( collisionGroup0 == COLLISION_GROUP_PLACEMENT_SOLID || collisionGroup1 == COLLISION_GROUP_PLACEMENT_SOLID )
+	{
+		if ( collisionGroup0 != COLLISION_GROUP_PLACEMENT_SOLID || collisionGroup1 != COLLISION_GROUP_PLACEMENT_SOLID )
+			return false;
+	}
+#endif // FSTOP
 
 	if ( collisionGroup0 == COLLISION_GROUP_BREAKABLE_GLASS && collisionGroup1 == COLLISION_GROUP_BREAKABLE_GLASS )
 		return false;

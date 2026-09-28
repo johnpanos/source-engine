@@ -56,15 +56,34 @@ the record's last u32 is the albedo band's row (0 in v1). A v1 payload never
 has the flag.
 
 Relighting (McAuley, "Rendering the World of Far Cry 4", GDC 2015: a G-buffer
-cubemap relit at runtime; here with the distance too, so the relit point can
-be shadowed and lit by point lights): at the lookup direction and lod, the
-point the capture saw is capture + direction * distance, and the probe's
-radiance gains albedo * change(point, normal), where `change` is the scene's
-diffuse-light change since the bake in the lightmap's unit (irradiance / pi:
-the producer's change volume and the unbaked lights, world_pbr.frag),
-clamped at zero. It is exact in the baked state (change 0) and for a mirror
-reflection of a Lambertian surface; for a rough lookup the change is taken at
-the lobe's centre.
+cubemap relit at runtime; here with the distance too): at the lookup
+direction and lod, the capture saw the point capture + direction * distance
+with the band's albedo and normal. The consumer supplies the scene's diffuse
+light there (irradiance / pi, the lightmap's unit) now and as baked, and the
+moving occluders (axis-aligned boxes with a reflectance: a closed door, which
+no bake contains). Per channel (`relight`):
+
+  * light removed is relative: radiance * now / baked, so a surface that went
+    dark reflects dark with its baked detail scaled, not the detail less a
+    smooth estimate (visibility is multiplicative);
+  * light added is absolute: radiance + albedo * (now - baked), as is any
+    change where the baked light is below RELIGHT_FLOOR (no ratio);
+  * clamped at zero.
+
+It is the traced producers' own rule for a probe texel (indirect_sdf.h
+TracedProducer::Change: removed relative, added absolute). It is exact in the
+baked state (now == baked) and for a mirror reflection of a Lambertian
+surface; for a rough lookup the light is taken at the lobe's centre.
+
+An occluder on the segment from the capture to that point hides it
+(`occluded_segment`): the capture now sees the occluder's face, whose
+radiance is its reflectance times the light now at the entry point along the
+face's outward normal. Other engines normalize a capture by the diffuse
+light at the shaded point (Lazarov, "Getting More Physical in Call of Duty:
+Black Ops II", SIGGRAPH 2013; Unreal Engine's reflection-capture lightmap
+mixing); relighting at the point seen keeps the capture's parallax and
+detail, and the occluder test lets a closed door appear in reflections
+rather than only darkening them.
 
 Blending (world_pbr_probe.glsl mirrors `blend_weights`): visit probes by rank
 (influence volume ascending, the global probe last). A probe's weight is 1
@@ -108,6 +127,10 @@ FLAG_GLOBAL = 1
 MAX_COORDINATE = 1.0e6
 SOURCE_UNITS_PER_METER = 39.37007874015748
 FACING_EDGE = 0.1
+# Relighting (RPRB v2): below this baked diffuse light a removal is absolute
+# (indirect_sdf.h's kRelativeFloor), and at most this many moving occluders.
+RELIGHT_FLOOR = 1e-4
+MAX_OCCLUDERS = 16
 # The GPU form (`gpu_texture`, mapcontainer::WriteReflectionProbeTexture):
 # one RGBA16F texture, 2 W0 wide. Row 0: texel 0 = (count, mips, W0,
 # GPU_MARKER), texel 1 = (mode, 0, 0, 0). Row 1 + rank: the probe of that
@@ -515,11 +538,55 @@ def blend_weights(points, normals, probes, mode=MODE_BLEND):
     return weights / total
 
 
+def relight(radiance, albedo, now, baked):
+    """RPRB v2's relight rule per channel (see the module notes): light
+    removed scales the baked radiance, light added is albedo times the
+    increase; clamped at zero."""
+    relative = (now < baked) & (baked > RELIGHT_FLOOR)
+    ratio = np.maximum(now, 0.0) / np.where(relative, baked, 1.0)
+    return np.maximum(np.where(relative, radiance * ratio, radiance + albedo * (now - baked)),
+                      0.0)
+
+
+def occluded_segment(origin, directions, lengths, occluders):
+    """The nearest occluder box on each segment origin + t * direction,
+    0 <= t < length: (hit, entry t, the entered face's outward normal, the
+    occluder's reflectance). A segment that starts inside a box is hidden at
+    t = 0 with the normal facing back along it."""
+    count = len(directions)
+    hit = np.zeros(count, dtype=bool)
+    best = np.asarray(lengths, dtype=np.float64).copy()
+    normal = np.zeros((count, 3))
+    reflectance = np.zeros(count)
+    safe = np.where(directions >= 0.0, np.maximum(directions, 1e-12),
+                    np.minimum(directions, -1e-12))
+    for lo, hi, value in occluders:
+        first = (np.asarray(lo, dtype=np.float64) - origin) / safe
+        second = (np.asarray(hi, dtype=np.float64) - origin) / safe
+        near_axes = np.minimum(first, second)
+        near = near_axes.max(axis=1)
+        far = np.maximum(first, second).min(axis=1)
+        entry = np.maximum(near, 0.0)
+        found = (far >= entry) & (entry < best)
+        if not found.any():
+            continue
+        axis = near_axes.argmax(axis=1)
+        face = np.zeros((count, 3))
+        face[np.arange(count), axis] = -np.sign(safe[np.arange(count), axis])
+        face = np.where((near < 0.0)[:, None], -directions, face)
+        hit |= found
+        best = np.where(found, entry, best)
+        normal = np.where(found[:, None], face, normal)
+        reflectance = np.where(found, value, reflectance)
+    return hit, best, normal, reflectance
+
+
 def probe_radiance(points, reflected, roughness, probe, chain, parallax=True, bands=None,
-                   change=None):
+                   light=None, occluders=()):
     """One probe's split-sum fetch for rays leaving shaded points; with its
-    relight `bands` and a `change(points, normals)` (the scene's diffuse-light
-    change, irradiance / pi, at world points), relit (see RPRB v2)."""
+    relight `bands`, a `light(points, normals) -> (now, baked)` (the scene's
+    diffuse light, irradiance / pi, at world points) and the moving
+    `occluders` ((lo, hi, reflectance) boxes), relit (see RPRB v2)."""
     direction, local = reflected, roughness
     if parallax:
         lookup, shaded, captured, valid = reflection_probe.parallax_lookup(
@@ -528,19 +595,26 @@ def probe_radiance(points, reflected, roughness, probe, chain, parallax=True, ba
                                                                     captured), roughness)
         direction = reflection_probe.corrected_direction(lookup, reflected, roughness)
     radiance = reflection_probe.sample_chain(chain, direction, local)
-    if bands is None or change is None:
+    if bands is None or light is None:
         return radiance
     albedo = reflection_probe.sample_chain(bands[0], direction, local, channels=4)
     normal = reflection_probe.sample_chain(bands[1], direction, local)
     normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
-    seen = np.asarray(probe["capture"]) + direction * albedo[:, 3:4]
-    return np.maximum(radiance + albedo[:, :3] * change(seen, normal), 0.0)
+    capture = np.asarray(probe["capture"], dtype=np.float64)
+    hidden, t, face, reflectance = occluded_segment(capture, direction, albedo[:, 3],
+                                                    list(occluders)[:MAX_OCCLUDERS])
+    seen = capture + direction * np.where(hidden, t, albedo[:, 3])[:, None]
+    now, baked = light(seen, np.where(hidden[:, None], face, normal))
+    relit = relight(radiance, albedo[:, :3], now, baked)
+    return np.where(hidden[:, None], np.maximum(reflectance[:, None] * now, 0.0), relit)
 
 
-def shade(points, normals, reflected, roughness, layout, mode=MODE_BLEND, change=None):
+def shade(points, normals, reflected, roughness, layout, mode=MODE_BLEND, light=None,
+          occluders=()):
     """The blended probe radiance the shader computes (world units of the
-    layout, directions unit). Oracle for world_pbr_probe.glsl. `change`
-    relights the probes that carry relight bands (None: as baked)."""
+    layout, directions unit). Oracle for world_pbr_probe.glsl. `light` and
+    `occluders` relight the probes that carry relight bands (None: as
+    baked)."""
     points = np.asarray(points, dtype=np.float64)
     reflected = np.asarray(reflected, dtype=np.float64)
     roughness = np.broadcast_to(np.asarray(roughness, dtype=np.float64), (len(points),))
@@ -560,7 +634,8 @@ def shade(points, normals, reflected, roughness, layout, mode=MODE_BLEND, change
             bands = layout["relight"][index] if layout.get("relight") else None
             result[used] += weights[used, index, None] * probe_radiance(
                 points[used], reflected[used], roughness[used], probe, chain,
-                parallax=selection != MODE_DIRECTION, bands=bands, change=change)
+                parallax=selection != MODE_DIRECTION, bands=bands, light=light,
+                occluders=occluders)
     return result
 
 
@@ -1031,13 +1106,29 @@ def fixture_relight(probes):
     return bands
 
 
-def fixture_change(points, normals):
-    """The analytic diffuse-light change the relight samples use (Source
-    units): the C++ suite and reflection_probes_check.comp implement it too."""
+def fixture_light(points, normals):
+    """The analytic diffuse light (now, baked) the relight samples use
+    (Source units): the baked light is positive, and now differs from it by
+    a change that removes light in some places and adds it in others, so
+    both halves of `relight` are exercised. The C++ suite and
+    reflection_probes_check.comp implement it too."""
     points = np.asarray(points, dtype=np.float64)
     normals = np.asarray(normals, dtype=np.float64)
-    return np.stack((0.002 * points[:, 0] + 0.5 * np.maximum(normals[:, 2], 0.0),
-                     0.3 - 0.003 * points[:, 1], 0.25 * normals[:, 0] - 0.1), axis=1)
+    baked = np.stack((0.3 + 0.001 * points[:, 0], 0.25 + 0.1 * np.abs(normals[:, 2]),
+                      0.2 + 0.0005 * points[:, 2]), axis=1)
+    change = np.stack((0.002 * points[:, 0] + 0.5 * np.maximum(normals[:, 2], 0.0) - 0.45,
+                       0.3 - 0.003 * points[:, 1], 0.25 * normals[:, 0] - 0.1), axis=1)
+    return baked + change, baked
+
+
+# The fixture's moving occluder (meters): a door-sized slab across the room
+# between the two captures, which hides part of each capture's view.
+FIXTURE_OCCLUDER = ((2.8, 1.2, 0.0), (3.2, 2.8, 2.2), 0.4)
+
+
+def fixture_occluders(scale=SOURCE_UNITS_PER_METER):
+    lo, hi, reflectance = FIXTURE_OCCLUDER
+    return [(np.asarray(lo) * scale, np.asarray(hi) * scale, reflectance)]
 
 
 def write_fixture(out):
@@ -1070,7 +1161,8 @@ def write_fixture(out):
                                                        *reflected[i], roughness[i],
                                                        *radiance[i])))
     (out / "samples.txt").write_text("\n".join(rows) + "\n")
-    # v2: the same probes with relight bands, relit by fixture_change.
+    # v2: the same probes with relight bands, relit by fixture_light with the
+    # fixture's occluder.
     relit = build(probes, chains, relight=fixture_relight(probes))
     (out / "valid-relight.rprb").write_bytes(relit)
     relit_layout = read(relit)
@@ -1081,7 +1173,7 @@ def write_fixture(out):
         lines.append("%d %s %r %s" % (offset, fmt[1:], value, code))
     (out / "relight-malformations.txt").write_text("\n".join(lines) + "\n")
     rows = ["# mode px py pz nx ny nz rx ry rz roughness -> r g b (Source units), relit by "
-            "fixture_change"]
+            "fixture_light with FIXTURE_OCCLUDER"]
     for mode in (MODE_BLEND, MODE_NEAREST, MODE_DIRECTION):
         count = 48
         points = np.column_stack((rng.uniform(0.2, 5.8, count), rng.uniform(0.2, 3.8, count),
@@ -1091,7 +1183,7 @@ def write_fixture(out):
         reflected /= np.linalg.norm(reflected, axis=1, keepdims=True)
         roughness = rng.choice((0.0, 0.2, 0.5, 1.0), count)
         radiance = shade(points, normals, reflected, roughness, relit_layout, mode,
-                         change=fixture_change)
+                         light=fixture_light, occluders=fixture_occluders())
         for i in range(count):
             rows.append(" ".join("%.9g" % v for v in (mode, *points[i], *normals[i],
                                                        *reflected[i], roughness[i],

@@ -96,6 +96,10 @@ public:
 	virtual float FlPlayerFallDamage( CBasePlayer *pPlayer );
 
 	bool	MegaPhyscannonActive( void ) { return m_bMegaPhysgun;	}
+#ifdef FSTOP
+	// Entities held in a photo (in stasis) take no damage
+	bool AllowDamage( CBaseEntity *pVictim, const CTakeDamageInfo &info );
+#endif // FSTOP
 
 private:
 

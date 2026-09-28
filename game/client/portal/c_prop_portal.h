@@ -48,6 +48,11 @@ public:
 	
 	cplane_t				m_plane_Origin;	// The plane on which this portal is placed, normal facing outward (matching model forward vec)
 
+#ifdef FSTOP
+	// F-Stop: the server's size (CProp_Portal::Resize); applied in OnDataChanged
+	float					m_fNetworkHalfWidth, m_fNetworkHalfHeight;
+#endif // FSTOP
+
 	virtual void			Spawn( void );
 	virtual void			Activate( void );
 	virtual void			ClientThink( void );

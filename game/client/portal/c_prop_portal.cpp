@@ -48,6 +48,10 @@ IMPLEMENT_CLIENTCLASS_DT( C_Prop_Portal, DT_Prop_Portal, CProp_Portal )
 	RecvPropEHandle( RECVINFO(m_hLinkedPortal) ),
 	RecvPropBool( RECVINFO(m_bActivated) ),
 	RecvPropBool( RECVINFO(m_bIsPortal2) ),
+#ifdef FSTOP
+	RecvPropFloat( RECVINFO( m_fNetworkHalfWidth ) ),
+	RecvPropFloat( RECVINFO( m_fNetworkHalfHeight ) ),
+#endif // FSTOP
 END_RECV_TABLE()
 
 
@@ -186,6 +190,10 @@ static C_PortalInitHelper s_PortalInitHelper;
 
 C_Prop_Portal::C_Prop_Portal( void )
 {
+#ifdef FSTOP
+	m_fNetworkHalfWidth = PORTAL_HALF_WIDTH;
+	m_fNetworkHalfHeight = PORTAL_HALF_HEIGHT;
+#endif // FSTOP
 	TransformedLighting.m_LightShadowHandle = CLIENTSHADOW_INVALID_HANDLE;
 	CProp_Portal_Shared::AllPortals.AddToTail( this );
 }
@@ -286,7 +294,7 @@ void C_Prop_Portal::Simulate()
 	C_BaseViewModel *pLocalPlayerViewModel = pLocalPlayer->GetViewModel();
 
 	CBaseEntity *pEntsNearPortal[1024];
-	int iEntsNearPortal = UTIL_EntitiesInSphere( pEntsNearPortal, 1024, GetNetworkOrigin(), PORTAL_HALF_HEIGHT, 0, PARTITION_CLIENT_NON_STATIC_EDICTS );
+	int iEntsNearPortal = UTIL_EntitiesInSphere( pEntsNearPortal, 1024, GetNetworkOrigin(), GetHalfHeight(), 0, PARTITION_CLIENT_NON_STATIC_EDICTS );
 
 	if( iEntsNearPortal != 0 )
 	{
@@ -553,8 +561,17 @@ void C_Prop_Portal::OnDataChanged( DataUpdateType_t updateType )
 
 	bool bPortalMoved = ( (PreDataChanged.m_vOrigin != m_ptOrigin ) ||
 						(PreDataChanged.m_qAngles != GetNetworkAngles()) || 
+#ifdef FSTOP
+						// A resize rebuilds the simulation like a move. (Compared before
+						// SetHalfSizes: the F-Stop drop applied the size first, so this was always false.)
+						(GetHalfWidth() != m_fNetworkHalfWidth) ||
+						(GetHalfHeight() != m_fNetworkHalfHeight) ||
+#endif // FSTOP
 						(PreDataChanged.m_bActivated == false) ||
 						(PreDataChanged.m_bIsPortal2 != m_bIsPortal2) );
+#ifdef FSTOP
+	SetHalfSizes( m_fNetworkHalfWidth, m_fNetworkHalfHeight );
+#endif // FSTOP
 
 	bool bNewLinkage = ( (PreDataChanged.m_hLinkedTo.Get() != m_hLinkedPortal.Get()) );
 	if( bNewLinkage )
@@ -574,9 +591,12 @@ void C_Prop_Portal::OnDataChanged( DataUpdateType_t updateType )
 		if( bPortalMoved )
 		{			
 			Vector ptForwardOrigin = m_ptOrigin + m_vForward;// * 3.0f;
-			Vector vScaledRight = m_vRight * (PORTAL_HALF_WIDTH * 0.95f);
-			Vector vScaledUp = m_vUp * (PORTAL_HALF_HEIGHT  * 0.95f);
+			Vector vScaledRight = m_vRight * (GetHalfWidth() * 0.95f);
+			Vector vScaledUp = m_vUp * (GetHalfHeight() * 0.95f);
 
+#ifdef FSTOP
+			m_PortalSimulator.SetSize( GetHalfWidth(), GetHalfHeight() );
+#endif // FSTOP
 			m_PortalSimulator.MoveTo( GetNetworkOrigin(), GetNetworkAngles() );
 
 			//update our associated portal environment
@@ -983,8 +1003,8 @@ public:
 				out.right[k] = portal->m_vRight[k];
 				out.up[k] = portal->m_vUp[k];
 			}
-			out.halfWidth = PORTAL_HALF_WIDTH;
-			out.halfHeight = PORTAL_HALF_HEIGHT;
+			out.halfWidth = portal->GetHalfWidth();
+			out.halfHeight = portal->GetHalfHeight();
 			const VMatrix &toLinked = portal->MatrixThisToLinked();
 			for ( int row = 0; row < 3; ++row )
 				for ( int column = 0; column < 4; ++column )

@@ -86,6 +86,12 @@ typedef struct
 class CHudTexture;
 class Color;
 
+#ifdef FSTOP
+// F-Stop: mouse wheel directions passed to CBaseCombatWeapon::OnMouseWheel
+#define MWHEEL_UP		 1
+#define MWHEEL_DOWN		-1
+#endif // FSTOP
+
 namespace vgui2
 {
 	typedef unsigned long HFont;
@@ -243,6 +249,9 @@ public:
 	virtual void			ItemPostFrame( void );					// called each frame by the player PostThink
 	virtual void			ItemBusyFrame( void );					// called each frame by the player PostThink, if the player's not ready to attack yet
 	virtual void			ItemHolsterFrame( void ) {};			// called each frame by the player PreThink, if the weapon is holstered
+#ifdef FSTOP
+	virtual	void			OnMouseWheel( int nDirection ) {}		// the mwheel_up/mwheel_down commands (hl2_player.cpp)
+#endif // FSTOP
 	virtual void			WeaponIdle( void );						// called when no buttons pressed
 	virtual void			HandleFireOnEmpty();					// Called when they have the attack button down
 																	// but they are out of ammo. The default implementation
@@ -434,6 +443,10 @@ public:
 	virtual void			Operator_FrameUpdate( CBaseCombatCharacter  *pOperator );
 	virtual void			Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
 	virtual void			Operator_ForceNPCFire( CBaseCombatCharacter  *pOperator, bool bSecondary ) { return; }
+#ifdef FSTOP
+	// F-Stop weapon add-ons fire at a specific target (addon_basecombatweapon.cpp)
+	virtual void			Operator_ForceNPCFire( CBaseCombatCharacter *pOperator, bool bSecondary, CBaseEntity *pTarget ) { Operator_ForceNPCFire( pOperator, bSecondary ); }
+#endif // FSTOP
 	// NOTE: This should never be called when a character is operating the weapon.  Animation events should be
 	// routed through the character, and then back into CharacterAnimEvent() 
 	void					HandleAnimEvent( animevent_t *pEvent );

@@ -16,6 +16,10 @@
 #include "datacache/idatacache.h"
 #include "tier0/threadtools.h"
 
+#ifdef FSTOP
+#include "photo.h"
+#endif // FSTOP
+
 
 struct animevent_t;
 struct matrix3x4_t;
@@ -337,6 +341,23 @@ public:
 
 	bool PrefetchSequence( int iSequence );
 
+#ifdef FSTOP
+	// Camera interface
+	START_BRANCHING_SINGLETON_DEFINITION( CPhotoPlacementQuery )
+	{
+	public:
+		virtual bool GetPlacementPosition_NoHelper( CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, Vector &positionOut, QAngle &anglesOut );
+	};
+	END_BRANCHING_SINGLETON_DEFINITION( CPhotoPlacementQuery );
+
+	virtual bool MayBeCaptured( void );
+	virtual bool TestPreCapture( void ) { return true; }
+	virtual void OnCaptured( void );
+	virtual void OnReleased( void );
+	virtual void OnFizzled( void );
+	virtual bool ShouldSavePhysics( void );
+#endif // FSTOP
+
 private:
 	void LockStudioHdr();
 	void UnlockStudioHdr();
@@ -347,6 +368,15 @@ private:
 	void InputSetModelScale( inputdata_t &inputdata );
 
 	bool CanSkipAnimation( void );
+
+#ifdef FSTOP
+public:
+	void SetObjectScaleLevel( int nScaleLevel ) { m_nObjectScaleLevel = nScaleLevel; }
+	int GetObjectScaleLevel( void ) { return m_nObjectScaleLevel; }
+protected:
+	int	m_nObjectScaleLevel;
+	bool m_bCanBeCaptured;			// Set true this prop allows capture by weapon_camera
+#endif // FSTOP
 
 public:
 	CNetworkVar( int, m_nForceBone );
@@ -421,6 +451,11 @@ protected:
 
 public:
 	COutputEvent m_OnIgnite;
+#ifdef FSTOP
+	COutputEvent m_OnCameraCapture;	// captured by weapon_camera
+	COutputEvent m_OnCameraRelease; // put back into the world by weapon_camera
+	COutputEvent m_OnFizzled;		// Fizzled by a fizzler
+#endif // FSTOP
 
 private:
 	CStudioHdr			*m_pStudioHdr;
@@ -477,7 +512,12 @@ inline void CBaseAnimating::ResetSequence(int nSequence)
 
 inline float CBaseAnimating::GetPlaybackRate()
 {
+#ifdef FSTOP
+	// F-Stop: scaled objects animate slower as they grow, faster as they shrink
+	return m_flPlaybackRate * ( 1.0f / sqrt( GetModelScale() ) );
+#else
 	return m_flPlaybackRate;
+#endif // FSTOP
 }
 
 inline void CBaseAnimating::SetPlaybackRate( float rate )

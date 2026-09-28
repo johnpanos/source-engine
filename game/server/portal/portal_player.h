@@ -24,6 +24,10 @@ class CPortal_Player;
 #include "func_liquidportal.h"
 #include "ai_speech.h"			// For expresser host
 
+#ifdef FSTOP
+#include "inv_photos.h"
+#endif // FSTOP
+
 #ifndef PORTAL2
 struct PortalPlayerStatistics_t
 {
@@ -59,6 +63,28 @@ public:
 	virtual void Spawn( void );
 	virtual void OnRestore( void );
 	virtual void Activate( void );
+
+#ifdef FSTOP
+	virtual void InitialSpawn( void );
+	virtual void ItemPostFrame( void );
+
+	void	SetPlacingPhoto( bool bPlacing );
+	void	OnPhotoAdded( int nIndex );
+	void	OnPhotoRemoved( int nIndex );
+	void	SetSelectedPhoto( int nIndex );
+	int		GetSelectedPhoto( void );
+	void	ClearPhotos( void );
+	void	StripPhotos( bool bNotifyPlayer = true );
+	void	FlashDenyIndicator( float flDuration, unsigned char nType );
+	void	FlashInventory( float flDuration, unsigned char nType );
+	void	Flash( float flDuration, const Vector &vecPosition );
+	void	ControlHelperAnimate( unsigned char nActiveIcon, bool bClear = false );
+	void	UpdateLocatorEntityIndices( int *pIndices, int nNumIndices );
+
+	// The camera zooms its own view; +zoom only toggles the HUD state
+	void	StartZooming( void );
+	void	StopZooming( void );
+#endif // FSTOP
 
 	virtual void NotifySystemEvent( CBaseEntity *pNotify, notify_system_event_t eventType, const notify_system_event_params_t &params );
 
@@ -224,6 +250,10 @@ private:
 
 
 public:
+#ifdef FSTOP
+	// F-Stop's photo inventory
+	CPhotoInventory m_PhotoInventory;
+#endif // FSTOP
 
 	CNetworkVar( bool, m_bPitchReorientation );
 	CNetworkHandle( CProp_Portal, m_hPortalEnvironment ); //if the player is in a portal environment, this is the associated portal

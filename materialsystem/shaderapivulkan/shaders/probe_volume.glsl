@@ -5,7 +5,15 @@
 // grid; the atlas is the lump's RGBA16F atlas, sampled with clamped bilinear
 // filtering, which matches the C++ Bilinear() texel-centre convention.
 //
-// The includer declares probeAtlas and probeGrids.
+// The includer declares probeAtlas and probeGrids. With PROBE_VOLUME_SECOND
+// it also declares probeSecondAtlas, an atlas of the same layout (the
+// runtime volume beside a change volume, or the reverse), sampled with the
+// first atlas's weights and visibility by ProbeIrradiancePair.
+//
+// The grid table's rows after the grids are the moving occluders the
+// volume's visibility was cut by (world_mesh_upload.h): texel 0 a box's low
+// corner and reflectance, texel 1 its high corner; row 0 texel 5's z holds
+// their count (ProbeOccluderCount, ProbeOccluder).
 
 const float kProbeNormalBias = 0.1;
 const float kProbeCrushThreshold = 0.2;
@@ -20,20 +28,27 @@ vec2 ProbeOctEncode( vec3 d )
 	return p;
 }
 
-vec4 ProbeTile( vec2 origin, float tile, uint probe, uint tilesPerRow, vec3 direction )
+vec2 ProbeTileTexel( vec2 origin, float tile, uint probe, uint tilesPerRow, vec3 direction )
 {
 	const vec2 oct = ProbeOctEncode( direction );
 	const float interior = tile - 2.0;
 	const vec2 corner =
 	    origin + vec2( float( probe % tilesPerRow ), float( probe / tilesPerRow ) ) * tile;
-	const vec2 texel = corner + 1.0 + ( oct * 0.5 + 0.5 ) * interior;
+	return corner + 1.0 + ( oct * 0.5 + 0.5 ) * interior;
+}
+
+vec4 ProbeTile( vec2 origin, float tile, uint probe, uint tilesPerRow, vec3 direction )
+{
+	const vec2 texel = ProbeTileTexel( origin, tile, probe, tilesPerRow, direction );
 	return textureLod( probeAtlas, texel / vec2( textureSize( probeAtlas, 0 ) ), 0.0 );
 }
 
 // Irradiance / pi from `layer` at a surface point; false outside grid `g`.
-bool ProbeSampleGrid(
-    int g, vec3 position, vec3 normal, int layer, bool useVisibility, out vec3 result )
+// `second` is the same from probeSecondAtlas (PROBE_VOLUME_SECOND), else 0.
+bool ProbeSampleGridPair( int g, vec3 position, vec3 normal, int layer, bool useVisibility,
+    out vec3 result, out vec3 second )
 {
+	second = vec3( 0.0 );
 	const vec4 row0 = texelFetch( probeGrids, ivec2( 0, g ), 0 );
 	const vec4 row1 = texelFetch( probeGrids, ivec2( 1, g ), 0 );
 	const vec4 row2 = texelFetch( probeGrids, ivec2( 2, g ), 0 );
@@ -57,6 +72,7 @@ bool ProbeSampleGrid(
 	const vec3 alpha = g3 - vec3( base );
 	const uint stateRow = tilesPerRow * 16u;
 	vec3 total = vec3( 0.0 );
+	vec3 totalSecond = vec3( 0.0 );
 	float weights = 0.0;
 	for ( int corner = 0; corner < 8; ++corner )
 	{
@@ -100,11 +116,25 @@ bool ProbeSampleGrid(
 		if ( weight < kProbeCrushThreshold )
 			weight *= weight * weight / ( kProbeCrushThreshold * kProbeCrushThreshold );
 		weight *= trilinear;
-		total += weight * ProbeTile( irradianceOrigin, 8.0, probe, tilesPerRow, normal ).rgb;
+		const vec2 texel = ProbeTileTexel( irradianceOrigin, 8.0, probe, tilesPerRow, normal );
+		total += weight * textureLod( probeAtlas, texel / vec2( textureSize( probeAtlas, 0 ) ),
+		                      0.0 ).rgb;
+#ifdef PROBE_VOLUME_SECOND
+		totalSecond += weight * textureLod( probeSecondAtlas,
+		                            texel / vec2( textureSize( probeSecondAtlas, 0 ) ), 0.0 ).rgb;
+#endif
 		weights += weight;
 	}
 	result = weights > 0.0 ? total / weights : vec3( 0.0 );
+	second = weights > 0.0 ? totalSecond / weights : vec3( 0.0 );
 	return true;
+}
+
+bool ProbeSampleGrid(
+    int g, vec3 position, vec3 normal, int layer, bool useVisibility, out vec3 result )
+{
+	vec3 unused;
+	return ProbeSampleGridPair( g, position, normal, layer, useVisibility, result, unused );
 }
 
 // The first grid holding the point; false outside every grid, or when the
@@ -123,4 +153,39 @@ bool ProbeIrradiance(
 			return true;
 	}
 	return false;
+}
+
+#ifdef PROBE_VOLUME_SECOND
+// ProbeIrradiance from both atlases with the first's weights.
+bool ProbeIrradiancePair( vec3 position, vec3 normal, int layer, bool useVisibility,
+    out vec3 result, out vec3 second )
+{
+	const vec4 counts = texelFetch( probeGrids, ivec2( 5, 0 ), 0 );
+	result = vec3( 0.0 );
+	second = vec3( 0.0 );
+	if ( float( layer ) >= counts.x )
+		return false;
+	const int grids = int( counts.y );
+	for ( int g = 0; g < grids; ++g )
+	{
+		if ( ProbeSampleGridPair( g, position, normal, layer, useVisibility, result, second ) )
+			return true;
+	}
+	return false;
+}
+#endif
+
+// The moving occluders after the grid rows.
+int ProbeOccluderCount()
+{
+	return int( texelFetch( probeGrids, ivec2( 5, 0 ), 0 ).z );
+}
+
+void ProbeOccluder( int k, out vec3 lo, out vec3 hi, out float reflectance )
+{
+	const int row = int( texelFetch( probeGrids, ivec2( 5, 0 ), 0 ).y ) + k;
+	const vec4 low = texelFetch( probeGrids, ivec2( 0, row ), 0 );
+	lo = low.xyz;
+	reflectance = low.w;
+	hi = texelFetch( probeGrids, ivec2( 1, row ), 0 ).xyz;
 }

@@ -24,6 +24,14 @@ ConVar fov_desired( "fov_desired", "75", FCVAR_ARCHIVE | FCVAR_USERINFO, "Sets t
 
 // The current client mode. Always ClientModeNormal in HL.
 IClientMode *g_pClientMode = NULL;
+#ifdef FSTOP
+// F-Stop's HUD uses the later accessor (as the Portal 2 client defines it);
+// this client has the single g_pClientMode.
+IClientMode *GetClientMode()
+{
+	return g_pClientMode;
+}
+#endif
 
 //extern EHANDLE g_eKillTarget1;
 //extern EHANDLE g_eKillTarget2;

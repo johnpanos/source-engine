@@ -431,9 +431,62 @@ void ReflectionProbesView::SampleLevel(
 	}
 }
 
+float ReflectionProbeRelit( float radiance, float albedo, float now, float baked ) noexcept
+{
+	const bool relative = now < baked && baked > kReflectionProbeRelightFloor;
+	return std::max( relative ? radiance * ( std::max( now, 0.0f ) / baked )
+	                          : radiance + albedo * ( now - baked ),
+	    0.0f );
+}
+
+bool ReflectionProbeOccluded( const ReflectionProbeOccluder *occluders, uint32_t count,
+    const float origin[3], const float direction[3], float length, float *outT,
+    float outNormal[3], uint32_t *outIndex ) noexcept
+{
+	bool found = false;
+	float best = length;
+	for ( uint32_t k = 0; k < count; ++k )
+	{
+		float nearAxes[3];
+		float near = -INFINITY;
+		float far = INFINITY;
+		int axis = 0;
+		for ( int a = 0; a < 3; ++a )
+		{
+			const float d = direction[a];
+			const float safe = d >= 0.0f ? std::max( d, 1e-12f ) : std::min( d, -1e-12f );
+			const float first = ( occluders[k].lo[a] - origin[a] ) / safe;
+			const float second = ( occluders[k].hi[a] - origin[a] ) / safe;
+			nearAxes[a] = std::min( first, second );
+			far = std::min( far, std::max( first, second ) );
+			// The first axis on ties, as numpy's argmax.
+			if ( nearAxes[a] > near )
+			{
+				near = nearAxes[a];
+				axis = a;
+			}
+		}
+		const float entry = std::max( near, 0.0f );
+		if ( !( far >= entry ) || !( entry < best ) )
+			continue;
+		found = true;
+		best = entry;
+		*outIndex = k;
+		for ( int a = 0; a < 3; ++a )
+		{
+			if ( near < 0.0f )
+				outNormal[a] = -direction[a];
+			else
+				outNormal[a] = a == axis ? ( direction[a] >= 0.0f ? -1.0f : 1.0f ) : 0.0f;
+		}
+	}
+	*outT = best;
+	return found;
+}
+
 void ReflectionProbesView::ProbeRadiance( uint32_t probe, const float position[3],
     const float reflected[3], float roughness, bool parallax,
-    const ReflectionProbeDiffuseChange *change, float out[3] ) const noexcept
+    const ReflectionProbeRelight *relight, float out[3] ) const noexcept
 {
 	const ReflectionProbeRecord &record = m_layout.probes[probe];
 	float direction[3] = { reflected[0], reflected[1], reflected[2] };
@@ -492,27 +545,31 @@ void ReflectionProbesView::ProbeRadiance( uint32_t probe, const float position[3
 			result[c] = a[c] * ( 1 - blend ) + b[c] * blend;
 	};
 	sample( record.bandRow, 3, out );
-	if ( !change || !m_layout.relight )
+	if ( !relight || !m_layout.relight )
 		return;
-	// Relight (RPRB v2): the point the capture saw along the lookup, lit by
-	// the change since the bake.
-	float albedo[4], normal[3], seen[3], delta[3];
+	// Relight (RPRB v2): the point the capture saw along the lookup, or the
+	// face of a moving occluder in front of it.
+	float albedo[4], normal[3], seen[3], now[3], baked[3], t, face[3];
+	uint32_t hit;
 	sample( record.relightRow, 4, albedo );
 	sample( record.relightRow + m_layout.width / 2, 3, normal );
 	const float length = std::max( std::sqrt( Dot( normal, normal ) ), 1e-12f );
+	for ( float &value : normal )
+		value /= length;
+	const bool hidden = ReflectionProbeOccluded( relight->occluders,
+	    std::min( relight->occluderCount, kReflectionProbeMaxOccluders ), record.capture,
+	    direction, albedo[3], &t, face, &hit );
 	for ( int axis = 0; axis < 3; ++axis )
-	{
-		normal[axis] /= length;
-		seen[axis] = record.capture[axis] + direction[axis] * albedo[3];
-	}
-	change->evaluate( change->context, seen, normal, delta );
+		seen[axis] = record.capture[axis] + direction[axis] * ( hidden ? t : albedo[3] );
+	relight->evaluate( relight->context, seen, hidden ? face : normal, now, baked );
 	for ( int c = 0; c < 3; ++c )
-		out[c] = std::max( out[c] + albedo[c] * delta[c], 0.0f );
+		out[c] = hidden ? std::max( relight->occluders[hit].reflectance * now[c], 0.0f )
+		                : ReflectionProbeRelit( out[c], albedo[c], now[c], baked[c] );
 }
 
 void ReflectionProbesView::Radiance( const float position[3], const float normal[3],
     const float reflected[3], float roughness, ReflectionProbeMode mode, float outRadiance[3],
-    const ReflectionProbeDiffuseChange *change ) const noexcept
+    const ReflectionProbeRelight *relight ) const noexcept
 {
 	outRadiance[0] = outRadiance[1] = outRadiance[2] = 0.0f;
 	const uint32_t selection = uint32_t( mode ) & kReflectionProbeModeSelection;
@@ -533,7 +590,7 @@ void ReflectionProbesView::Radiance( const float position[3], const float normal
 		}
 		else
 			ProbeRadiance( i, position, reflected, roughness,
-			    selection != uint32_t( ReflectionProbeMode::DirectionOnly ), change, sample );
+			    selection != uint32_t( ReflectionProbeMode::DirectionOnly ), relight, sample );
 		for ( int c = 0; c < 3; ++c )
 			outRadiance[c] += weights[i] * sample[c];
 	}

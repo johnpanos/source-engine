@@ -1,0 +1,40 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryComplexCityNight"
+    metersPerUnit = 1
+    subLayers = [
+        @../complex-city-night.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryComplexCityNight"
+{
+    over "Lights"
+    {
+        over "Moon"
+        {
+            float inputs:intensity = 0
+        }
+    }
+
+    over "Looks"
+    {
+        over "BulbAmber"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+
+        over "BulbCyan"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+    }
+}
+

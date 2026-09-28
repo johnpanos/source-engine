@@ -477,8 +477,14 @@ public:
 		g_AI_SensedObjectsManager.Term();
 		g_pAINetworkManager->DeleteAllAINetworks();
 		g_AI_SchedulesManager.DeleteAllSchedules();
+#ifdef FSTOP
+		g_AI_AgentSchedulesManager.DeleteAllSchedules();
+#endif
 		g_AI_SquadManager.DeleteAllSquads();
 		g_AI_SchedulesManager.DestroyStringRegistries();
+#ifdef FSTOP
+		g_AI_AgentSchedulesManager.DestroyStringRegistries();
+#endif
 	}
 };
 

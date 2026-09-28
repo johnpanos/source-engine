@@ -46,6 +46,9 @@ DOOR_MATERIAL = "DEV/DEV_MEASUREGENERIC01B"
 # A swinging lamp (--lamp): a Half-Life 2 lampshade, a physics prop (the caged
 # lights have no collision model, so prop_physics removes them).
 LAMP_MODEL = "models/props_c17/lampshade001a.mdl"
+# An orbiting bulb's visible glow (--orbit-light): an additive HL2 sprite.
+GLOW_SPRITE = "sprites/light_glow02_add.vmt"
+GLOW_SCALE = 0.15
 WALL = 16
 PLAYER_HALF_WIDTH = 16
 PLAYER_HEIGHT = 72
@@ -58,6 +61,27 @@ MAX_COMPONENTS = 512
 
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def source_light_color(rgb):
+    """Linear light color as Source's per-channel mantissas and shared
+    exponent: color = mantissa * 2^exponent / 255."""
+    peak = max(rgb)
+    exponent = math.ceil(math.log2(peak)) if peak > 0 else 0
+    return [max(0, min(255, round(c * 255.0 / 2.0 ** exponent))) for c in rgb], exponent
+
+
+def dynamic_light(entity_id, name, origin, rgb, parent=None):
+    """An inverse-square light_dynamic of linear color `rgb` (Source units)."""
+    mantissas, exponent = source_light_color(rgb)
+    return (["entity", "{", '\t"id" "%d"' % entity_id, '\t"classname" "light_dynamic"',
+             '\t"targetname" "%s"' % name] +
+            (['\t"parentname" "%s"' % parent] if parent else []) +
+            ['\t"origin" "%.3f %.3f %.3f"' % tuple(origin),
+             # 16: DLIGHT_INVERSE_SQUARE, the physical bulb.
+             '\t"spawnflags" "16"', '\t"_light" "%d %d %d 255"' % tuple(mantissas),
+             '\t"brightness" "%d"' % exponent, '\t"distance" "4000"',
+             '\t"_cone" "0"', '\t"_inner_cone" "0"', '\t"style" "0"', "}"])
 
 
 KDOP_DIRECTIONS = [(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, -1, 0), (1, 0, 1),
@@ -369,6 +393,19 @@ def main():
                              "inverse-square light_dynamic NAME_light of linear COLOR; each "
                              "HOLD (degrees) is a point_teleport NAME_hold_<k> that places it "
                              "there (after `ent_fire NAME DisableMotion`)")
+    parser.add_argument("--orbit", action="append", default=[],
+                        metavar="NAME,CX,CY,CZ,SPEED[,HOLD...]",
+                        help="a mover the --orbit-light bulbs ride: a func_rotating NAME spinning "
+                             "SPEED degrees per second (negative: clockwise from above) about "
+                             "the vertical through the centre (meters), neither solid nor "
+                             "drawn, so no light treats it as an occluder; each HOLD (yaw "
+                             "degrees) is a point_teleport NAME_hold_<k> that places it there "
+                             "(after `ent_fire NAME Stop`)")
+    parser.add_argument("--orbit-light", action="append", default=[],
+                        metavar="ORBIT,NAME,X,Y,Z,R,G,B",
+                        help="an unbaked bulb riding the --orbit ORBIT, at a point (meters) at "
+                             "the orbit's yaw 0: an inverse-square light_dynamic NAME of linear "
+                             "color R,G,B and an additive glow sprite NAME_glow")
     parser.add_argument("--dynamic-light", action="append", default=[],
                         metavar="NAME,X,Y,Z,COLOR",
                         help="an unbaked bulb at a point (meters): an inverse-square "
@@ -532,24 +569,16 @@ def main():
             return [anchor[0] + length * SOURCE_UNITS_PER_METER * math.sin(angle), anchor[1],
                     anchor[2] - length * SOURCE_UNITS_PER_METER * math.cos(angle)]
         end = at_angle(release)
-        # The light's color as Source's color and exponent: mantissa * 2^exponent / 255.
-        exponent = math.ceil(math.log2(color)) if color > 0 else 0
-        mantissa = max(0, min(255, round(color * 255.0 / 2.0 ** exponent)))
+        mantissas, exponent = source_light_color([color] * 3)
+        mantissa = mantissas[0]
         at = '\t"origin" "%.3f %.3f %.3f"' % tuple(end)
         base = 60 + index * 5
         lines.extend(["entity", "{", '\t"id" "%d"' % base, '\t"classname" "prop_physics"',
                       '\t"targetname" "%s"' % name, '\t"model" "%s"' % LAMP_MODEL, at,
                       # Pitch tilts the lamp's up axis along the rope.
-                      '\t"angles" "%g 0 0"' % -release, '\t"spawnflags" "0"', "}",
-                      "entity", "{", '\t"id" "%d"' % (base + 1),
-                      '\t"classname" "light_dynamic"', '\t"targetname" "%s_light"' % name,
-                      '\t"parentname" "%s"' % name, at,
-                      # 16: DLIGHT_INVERSE_SQUARE, the physical bulb.
-                      '\t"spawnflags" "16"',
-                      '\t"_light" "%d %d %d 255"' % (mantissa, mantissa, mantissa),
-                      '\t"brightness" "%d"' % exponent, '\t"distance" "4000"',
-                      '\t"_cone" "0"', '\t"_inner_cone" "0"', '\t"style" "0"', "}",
-                      "entity", "{", '\t"id" "%d"' % (base + 2),
+                      '\t"angles" "%g 0 0"' % -release, '\t"spawnflags" "0"', "}"] +
+                     dynamic_light(base + 1, name + "_light", end, [color] * 3, parent=name) +
+                     ["entity", "{", '\t"id" "%d"' % (base + 2),
                       '\t"classname" "phys_lengthconstraint"',
                       '\t"targetname" "%s_rope"' % name, at, '\t"attach1" "%s"' % name,
                       '\t"attachpoint" "%.3f %.3f %.3f"' % tuple(anchor),
@@ -580,18 +609,66 @@ def main():
         x, y, z, color = (float(v) for v in values)
         origin = [x * SOURCE_UNITS_PER_METER, y * SOURCE_UNITS_PER_METER,
                   z * SOURCE_UNITS_PER_METER]
-        exponent = math.ceil(math.log2(color)) if color > 0 else 0
-        mantissa = max(0, min(255, round(color * 255.0 / 2.0 ** exponent)))
-        lines.extend(["entity", "{", '\t"id" "%d"' % (90 + index),
-                      '\t"classname" "light_dynamic"', '\t"targetname" "%s"' % name,
-                      '\t"origin" "%.3f %.3f %.3f"' % tuple(origin),
-                      # 16: DLIGHT_INVERSE_SQUARE, the physical bulb.
-                      '\t"spawnflags" "16"',
-                      '\t"_light" "%d %d %d 255"' % (mantissa, mantissa, mantissa),
-                      '\t"brightness" "%d"' % exponent, '\t"distance" "4000"',
-                      '\t"_cone" "0"', '\t"_inner_cone" "0"', '\t"style" "0"', "}"])
+        mantissas, exponent = source_light_color([color] * 3)
+        mantissa = mantissas[0]
+        lines.extend(dynamic_light(90 + index, name, origin, [color] * 3))
         bulbs.append({"name": name, "origin_source_units": origin,
                       "color": [mantissa, exponent]})
+    # Orbits: a func_rotating about a vertical axis, not solid (the bulbs pass
+    # through nothing) and not drawn (so the indirect-light host's moving-brush
+    # proxies, which block light, skip it), carrying its bulbs and their glows.
+    orbits = {}
+    for index, spec in enumerate(args.orbit):
+        name, *values = spec.split(",")
+        cx, cy, cz, speed, *holds = (float(v) for v in values)
+        if speed == 0:
+            parser.error("orbit %s: SPEED must be nonzero" % name)
+        centre = [cx * SOURCE_UNITS_PER_METER, cy * SOURCE_UNITS_PER_METER,
+                  cz * SOURCE_UNITS_PER_METER]
+        planes, vertices = convex_brush(box_planes(
+            [c - 2.0 for c in centre] + [c + 2.0 for c in centre]), 0.25)
+        base = 200 + index * 20
+        # 1 start on, 4 z axis, 64 not solid; 2 reverses (clockwise from above).
+        flags = 1 | 4 | 64 | (2 if speed < 0 else 0)
+        lines.extend(["entity", "{", '\t"id" "%d"' % base, '\t"classname" "func_rotating"',
+                      '\t"targetname" "%s"' % name,
+                      '\t"origin" "%.3f %.3f %.3f"' % tuple(centre),
+                      '\t"maxspeed" "%g"' % abs(speed), '\t"fanfriction" "100"',
+                      '\t"spawnflags" "%d"' % flags, '\t"rendermode" "10"',
+                      '\t"disableshadows" "1"', '\t"volume" "0"',
+                      brush_text(950 + index, side, planes, vertices, NODRAW_MATERIAL), "}"])
+        side += len(planes)
+        for k, hold in enumerate(holds):
+            lines.extend(["entity", "{", '\t"id" "%d"' % (base + 1 + k),
+                          '\t"classname" "point_teleport"',
+                          '\t"targetname" "%s_hold_%d"' % (name, k), '\t"target" "%s"' % name,
+                          '\t"origin" "%.3f %.3f %.3f"' % tuple(centre),
+                          '\t"angles" "0 %g 0"' % hold, "}"])
+        orbits[name] = {"name": name, "centre_source_units": centre,
+                        "degrees_per_second": speed,
+                        "holds": [{"name": "%s_hold_%d" % (name, k), "yaw_degrees": hold}
+                                  for k, hold in enumerate(holds)],
+                        "lights": []}
+    for index, spec in enumerate(args.orbit_light):
+        orbit, name, *values = spec.split(",")
+        if orbit not in orbits:
+            parser.error("orbit light %s rides unknown orbit %s" % (name, orbit))
+        x, y, z, *rgb = (float(v) for v in values)
+        origin = [x * SOURCE_UNITS_PER_METER, y * SOURCE_UNITS_PER_METER,
+                  z * SOURCE_UNITS_PER_METER]
+        peak = max(rgb) or 1.0
+        glow = [round(255 * c / peak) for c in rgb]
+        base = 400 + index * 2
+        lines.extend(dynamic_light(base, name, origin, rgb, parent=orbit) +
+                     ["entity", "{", '\t"id" "%d"' % (base + 1), '\t"classname" "env_sprite"',
+                      '\t"targetname" "%s_glow"' % name, '\t"parentname" "%s"' % orbit,
+                      '\t"origin" "%.3f %.3f %.3f"' % tuple(origin),
+                      '\t"model" "%s"' % GLOW_SPRITE, '\t"scale" "%g"' % GLOW_SCALE,
+                      '\t"rendermode" "5"', '\t"renderamt" "255"',
+                      '\t"rendercolor" "%d %d %d"' % tuple(glow), '\t"spawnflags" "1"', "}"])
+        mantissas, exponent = source_light_color(rgb)
+        orbits[orbit]["lights"].append({"name": name, "origin_source_units": origin,
+                                        "color": mantissas + [exponent]})
     placed = []
     for index, prop in enumerate(map_scene.props(scene)):
         origin = [value * SOURCE_UNITS_PER_METER for value in prop["origin_m"]]
@@ -633,6 +710,7 @@ def main():
                "doors": doors,
                "lamps": lamps,
                "dynamic_lights": bulbs,
+               "orbits": list(orbits.values()),
                "light_controls": [{"name": name, "style": 32 + index}
                                   for index, name in enumerate(args.light_control)],
                "policy": "18-DOP per connected component; floor triangles extruded; "

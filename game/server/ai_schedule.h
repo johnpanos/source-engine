@@ -20,6 +20,9 @@
 
 class	CStringRegistry;
 class   CAI_ClassScheduleIdSpace;
+#ifdef FSTOP
+class   CAI_GlobalScheduleNamespace;
+#endif
 class	CAI_BaseNPC;
 
 struct	Task_t;
@@ -80,6 +83,10 @@ public:
 
 	bool LoadSchedules( const char* prefix, CAI_ClassScheduleIdSpace *pIdSpace  );
 	bool LoadSchedulesFromBuffer( const char *prefix, const char *pfile, CAI_ClassScheduleIdSpace *pIdSpace );
+#ifdef FSTOP
+	// F-Stop AI agents (fstop/ai_agent.h) parse schedules in their own namespace.
+	bool LoadSchedulesFromBuffer( const char *prefix, const char *pfile, CAI_ClassScheduleIdSpace *pIdSpace, CAI_GlobalScheduleNamespace *pGlobalNamespace );
+#endif
 
 private:
 	friend class CAI_SystemHook;
@@ -106,6 +113,9 @@ private:
 };
 
 extern CAI_SchedulesManager g_AI_SchedulesManager;
+#ifdef FSTOP
+extern CAI_SchedulesManager g_AI_AgentSchedulesManager;
+#endif
 
 class CAI_Schedule
 {

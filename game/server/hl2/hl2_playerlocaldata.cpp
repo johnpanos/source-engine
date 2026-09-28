@@ -32,6 +32,10 @@ BEGIN_SEND_TABLE_NOBASE( CHL2PlayerLocalData, DT_HL2Local )
 	SendPropFloat( SENDINFO(m_flFlashBattery) ),
 	SendPropVector( SENDINFO(m_vecLocatorOrigin) ),
 #endif
+#ifdef FSTOP
+	SendPropArray3( SENDINFO_ARRAY3(m_nLocatorEntityIndices), SendPropInt( SENDINFO_ARRAY(m_nLocatorEntityIndices) ) ),
+	SendPropBool( SENDINFO(m_bPlacingPhoto) ),
+#endif // FSTOP
 END_SEND_TABLE()
 
 BEGIN_SIMPLE_DATADESC( CHL2PlayerLocalData )
@@ -48,6 +52,10 @@ BEGIN_SIMPLE_DATADESC( CHL2PlayerLocalData )
 	DEFINE_FIELD( m_flFlashBattery, FIELD_FLOAT ),
 	DEFINE_FIELD( m_vecLocatorOrigin, FIELD_POSITION_VECTOR ),
 #endif
+#ifdef FSTOP
+	DEFINE_ARRAY( m_nLocatorEntityIndices, FIELD_INTEGER, 16 ),
+	DEFINE_FIELD( m_bPlacingPhoto, FIELD_BOOLEAN ),
+#endif // FSTOP
 	// Ladder related stuff
 	DEFINE_FIELD( m_hLadder, FIELD_EHANDLE ),
 	DEFINE_EMBEDDED( m_LadderMove ),
@@ -65,5 +73,13 @@ CHL2PlayerLocalData::CHL2PlayerLocalData()
 #ifdef HL2_EPISODIC
 	m_flFlashBattery = 0.0f;
 #endif
+#ifdef FSTOP
+	for ( int i = 0; i < 16; i++ )
+	{
+		m_nLocatorEntityIndices.GetForModify(i) = -1;
+	}
+
+	m_bPlacingPhoto = false;
+#endif // FSTOP
 }
 

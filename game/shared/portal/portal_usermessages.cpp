@@ -59,6 +59,16 @@ void RegisterUserMessages()
 	usermessages->Register( "VoteFailed", 2 );
 	usermessages->Register( "VoteSetup", -1 );  // Initiates client-side voting UI
 
+#ifdef FSTOP
+	usermessages->Register( "InventoryFlash", sizeof( float ) + 1 );
+	usermessages->Register( "IndicatorFlash", sizeof( float ) + 1 );
+	usermessages->Register( "ControlHelperAnimate", 2 );
+	// An EHANDLE (WRITE_LONG, 32 bits) and a byte; F-Stop registered sizeof( long ),
+	// which is 8 bytes on 64-bit targets.
+	usermessages->Register( "TakePhoto", sizeof( int32 ) + sizeof( uint8 ) );
+	usermessages->Register( "Flash", sizeof( float ) + sizeof( Vector ) );
+#endif // FSTOP
+
 	// NVNT register haptic user messages
 	RegisterHapticMessages();
 }

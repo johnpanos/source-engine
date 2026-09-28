@@ -750,15 +750,23 @@ def portal_view(out):
     write_json(directory / "map.json", manifest)
 
 
+# A dynamic bulb is a sphere of the light set's inverse-square source radius
+# (light_set::kInverseSquareSourceRadius, 2 units) emitting radiance L: its
+# diffuse light at distance d is L (R / d)^2, which the engine's
+# inverse-square light gives with color L (R / 100 units)^2.
+BULB_RADIUS_M = 2.0 / SOURCE_UNITS_PER_METER
+
+
+def bulb_engine_color(radiance):
+    """The inverse-square light_dynamic color of a bulb of `radiance`."""
+    return radiance * (2.0 / 100.0) ** 2
+
+
 # `swing` (RFC 0011 G9): the bulb, its rope and the swing it is released into.
 SWING_ANCHOR_M = (2.5, 2.5, 3.0)
 SWING_LENGTH_M = 1.5
 SWING_ANGLE_DEGREES = 40.0
-# The bulb is a sphere of the light set's inverse-square source radius
-# (light_set::kInverseSquareSourceRadius, 2 units) emitting radiance
-# SWING_RADIANCE: its diffuse light at distance d is L (R / d)^2, which the
-# engine's inverse-square light gives with color L (R / 100 units)^2.
-SWING_BULB_RADIUS_M = 2.0 / SOURCE_UNITS_PER_METER
+SWING_BULB_RADIUS_M = BULB_RADIUS_M
 SWING_RADIANCE = 500.0
 
 
@@ -826,7 +834,7 @@ def swing(out):
         {"swing": {"anchor_m": list(SWING_ANCHOR_M), "length_m": SWING_LENGTH_M,
                    "angle_degrees": SWING_ANGLE_DEGREES, "bulb_radius_m": SWING_BULB_RADIUS_M,
                    "radiance": SWING_RADIANCE,
-                   "engine_color": SWING_RADIANCE * (2.0 / 100.0) ** 2}}))
+                   "engine_color": bulb_engine_color(SWING_RADIANCE)}}))
     manifest = map_manifest("gi_swing", "quality/fixtures/gi/swing/states/baked.usda",
                             solid_meshes=["Pillar"])
     # The lamp: a physics prop on a rope constraint from the anchor, carrying
@@ -835,7 +843,7 @@ def swing(out):
     manifest["collision"]["lamps"] = [{
         "name": "Lamp", "anchor_m": list(SWING_ANCHOR_M), "length_m": SWING_LENGTH_M,
         "release_degrees": -SWING_ANGLE_DEGREES, "holds_degrees": holds,
-        "color_linear": SWING_RADIANCE * (2.0 / 100.0) ** 2}]
+        "color_linear": bulb_engine_color(SWING_RADIANCE)}]
     write_json(directory / "map.json", manifest)
 
 

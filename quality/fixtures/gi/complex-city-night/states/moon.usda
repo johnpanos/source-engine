@@ -1,0 +1,41 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryComplexCityNight"
+    metersPerUnit = 1
+    subLayers = [
+        @../complex-city-night.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryComplexCityNight"
+{
+    over "World"
+    {
+        over "BulbRed"
+        {
+            token visibility = "invisible"
+        }
+
+        over "BulbGreen"
+        {
+            token visibility = "invisible"
+        }
+
+        over "BulbBlue"
+        {
+            token visibility = "invisible"
+        }
+
+        over "BulbAmber"
+        {
+            token visibility = "invisible"
+        }
+
+        over "BulbCyan"
+        {
+            token visibility = "invisible"
+        }
+    }
+}
+

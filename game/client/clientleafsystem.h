@@ -199,6 +199,13 @@ public:
 
 	// Use alternate translucent sorting algorithm (draw translucent objects in the furthest leaf they lie in)
 	virtual void EnableAlternateSorting( ClientRenderHandle_t handle, bool bEnable ) = 0;
+
+#ifdef FSTOP
+	// F-Stop: fills a render list entry for one renderable outside of leaf collation (the
+	// camera's photo view draws just its subject). Returns RENDER_GROUP_COUNT when the
+	// renderable is not in the leaf system.
+	virtual RenderGroup_t GenerateRenderListEntry( IClientRenderable *pRenderable, CClientRenderablesList::CEntry &entryOut ) = 0;
+#endif
 };
 
 

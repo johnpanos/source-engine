@@ -3158,6 +3158,97 @@
       "expect": "fail",
       "expected_divergence": "FAIL lone.retail.s1.origin closed-oriented-manifold"
     },
+      {
+        "id": "blobulator.phys-tiler",
+        "domain": "Q-PHYSICS",
+        "rfc": "0005",
+        "contract": "public/blobulator/physics/PhysTiler.h",
+        "kind": "positive",
+        "profile": "linux-headless-core",
+        "description": "F-Stop blob physics neighbour search (clean-room PhysTiler; the particles themselves are VPhysics spheres): every particle's list equals a brute-force all-pairs oracle with bitwise squared distances, no self or duplicates, NULL-terminated and symmetric so the NPCs' a<b force loop visits each pair once, over random clouds, lattice points on cell faces, pairs at exactly r, coincident particles, a clamped radius, coordinates past the packed cell range and a NaN centre; origin and insertion-order invariance, determinism, frame reset and factory reuse, with negative controls for each checker. Legacy tier0/mathlib headers are system headers; unittests/blobulatortest/tier0_link_fake.cpp supplies their link surface",
+        "result_protocol": "checks-v1",
+        "extra_flags": [
+          "-DLINUX",
+          "-D_LINUX",
+          "-DPOSIX",
+          "-D_POSIX",
+          "-DPLATFORM_POSIX",
+          "-DGNUC",
+          "-DNO_MALLOC_OVERRIDE",
+          "-isystem",
+          "public",
+          "-isystem",
+          "public/tier0"
+        ],
+        "units": [
+          {
+            "id": "tiler",
+            "dialect": "cxx20-permissive",
+            "flags": [
+              "-Wno-unused-parameter"
+            ],
+            "sources": [
+              "game/shared/blobulator/PhysTiler.cpp"
+            ]
+          },
+          {
+            "id": "suite",
+            "dialect": "cxx20",
+            "sources": [
+              "unittests/blobulatortest/test_phystiler.cpp",
+              "unittests/blobulatortest/tier0_link_fake.cpp"
+            ]
+          }
+        ],
+        "min_checks": 250,
+        "expect": "pass"
+      },
+      {
+        "id": "blobulator.phys-tiler.sensitivity",
+        "domain": "Q-PHYSICS",
+        "rfc": "0005",
+        "contract": "public/blobulator/physics/PhysTiler.h",
+        "kind": "sensitivity",
+        "profile": "linux-headless-core",
+        "description": "blobulator.phys-tiler with the tiler built with -DBLOBULATOR_PHYS_SEED_DEFECT, which skips the cells on one side of each particle: the brute-force comparison must fail the run",
+        "result_protocol": "checks-v1",
+        "extra_flags": [
+          "-DLINUX",
+          "-D_LINUX",
+          "-DPOSIX",
+          "-D_POSIX",
+          "-DPLATFORM_POSIX",
+          "-DGNUC",
+          "-DNO_MALLOC_OVERRIDE",
+          "-isystem",
+          "public",
+          "-isystem",
+          "public/tier0"
+        ],
+        "units": [
+          {
+            "id": "tiler",
+            "dialect": "cxx20-permissive",
+            "flags": [
+              "-Wno-unused-parameter",
+              "-DBLOBULATOR_PHYS_SEED_DEFECT"
+            ],
+            "sources": [
+              "game/shared/blobulator/PhysTiler.cpp"
+            ]
+          },
+          {
+            "id": "suite",
+            "dialect": "cxx20",
+            "sources": [
+              "unittests/blobulatortest/test_phystiler.cpp",
+              "unittests/blobulatortest/tier0_link_fake.cpp"
+            ]
+          }
+        ],
+        "expect": "fail",
+        "expected_divergence": "FAIL cloud.r0.5.n17.e1.5 matches-brute-force"
+      },
     {
       "id": "mathlib.core",
       "domain": "Q-FOUNDATION",

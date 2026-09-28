@@ -33,6 +33,14 @@
 // without it, the ambient cube. params2.w is 0 without a resident volume, 1 to sample with the
 // visibility test and 2 without it (r_probevolume_visibility 0).
 //
+// R50-RELIGHT: with PROBE_VOLUME, the map's reflection probes that carry
+// relight bands are relit (reflection_probes.glsl) when params.y's
+// kProbeChange flag says the producer's change volume is bound (frame set
+// binding 6, beside the published volume at binding 2): the light at each
+// point a probe saw now is the published volume's total, and as baked that
+// less the total change; the grid table's occluder rows are the moving
+// occluders.
+//
 // INDIRECT_VIEW (RFC 0011 debug view) writes only the indirect light, for
 // comparison with Cycles' DiffInd pass: params2.y is the view (1 the diffuse
 // light cube( n ), or the probe volume's indirect layer, no albedo; 2 the
@@ -78,13 +86,19 @@ layout( push_constant ) uniform Constants
 consts;
 
 #include "pbr_brdf.glsl"
-#ifndef ENV_CUBE
-#include "world_pbr_probe.glsl"
-#endif
 #ifdef PROBE_VOLUME
 layout( set = 0, binding = 2 ) uniform sampler2D probeAtlas; // PRBV atlas, RGBA16F
 layout( set = 0, binding = 3 ) uniform sampler2D probeGrids; // grid table, RGBA32F
+// The producer's change volume (R50-RELIGHT), when kProbeChange is set.
+layout( set = 0, binding = 6 ) uniform sampler2D probeSecondAtlas;
+#define PROBE_VOLUME_SECOND
 #include "probe_volume.glsl"
+#ifndef ENV_CUBE
+#define REFLECTION_PROBE_RELIGHT
+#endif
+#endif
+#ifndef ENV_CUBE
+#include "world_pbr_probe.glsl"
 #endif
 
 const int kNormalMap = 1;
@@ -92,6 +106,35 @@ const int kEmission = 2;
 const int kEnvMap = 4;
 const int kMapProbe = 8;
 const int kClearCoat = 32;
+const int kProbeChange = 64;
+
+#ifdef REFLECTION_PROBE_RELIGHT
+bool ProbeChangeBound()
+{
+	return ( int( consts.params.y ) & kProbeChange ) != 0 && consts.params2.w > 0.5;
+}
+
+// R50-RELIGHT: the diffuse light at a point a probe saw, now and as baked.
+void ReflectionProbeDiffuseLight( vec3 position, vec3 normal, out vec3 now, out vec3 baked )
+{
+	now = vec3( 0.0 );
+	baked = vec3( 0.0 );
+	vec3 change;
+	if ( ProbeChangeBound() &&
+	     ProbeIrradiancePair( position, normal, 0, consts.params2.w < 1.5, now, change ) )
+		baked = now - change;
+}
+
+int ReflectionProbeOccluderCount()
+{
+	return ProbeChangeBound() ? ProbeOccluderCount() : 0;
+}
+
+void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi, out float reflectance )
+{
+	ProbeOccluder( k, lo, hi, reflectance );
+}
+#endif
 
 vec3 SrgbToLinear( vec3 c )
 {

@@ -43,6 +43,15 @@ protected:
 	unsigned char m_iControlPointParents[kMAXCONTROLPOINTS];
 
 	bool		m_bWeatherEffect;
+
+#ifdef FSTOP
+	// Server-controlled control points (CS:GO): values the server moves, such
+	// as prop_portal_tunnel's; assignment 255 ends the list.
+	void		ApplyServerControlPoints();
+	Vector		m_vServerControlPoints[4];
+	uint8		m_iServerControlPointAssignments[4];
+	HPARTICLEFFECT	m_pEffect;
+#endif
 };
 
 IMPLEMENT_CLIENTCLASS(C_ParticleSystem, DT_ParticleSystem, CParticleSystem);
@@ -61,6 +70,10 @@ BEGIN_RECV_TABLE_NOBASE( C_ParticleSystem, DT_ParticleSystem )
 	RecvPropArray3( RECVINFO_ARRAY(m_hControlPointEnts), RecvPropEHandle( RECVINFO( m_hControlPointEnts[0] ) ) ),
 	RecvPropArray3( RECVINFO_ARRAY(m_iControlPointParents), RecvPropInt( RECVINFO(m_iControlPointParents[0]))), 
 	RecvPropBool( RECVINFO( m_bWeatherEffect ) ),
+#ifdef FSTOP
+	RecvPropArray3( RECVINFO_ARRAY(m_vServerControlPoints), RecvPropVector( RECVINFO( m_vServerControlPoints[0] ) ) ),
+	RecvPropArray3( RECVINFO_ARRAY(m_iServerControlPointAssignments), RecvPropInt( RECVINFO(m_iServerControlPointAssignments[0]))),
+#endif
 END_RECV_TABLE();
 
 //-----------------------------------------------------------------------------
@@ -69,7 +82,29 @@ END_RECV_TABLE();
 C_ParticleSystem::C_ParticleSystem()
 {
 	m_bWeatherEffect = false;
+#ifdef FSTOP
+	for ( int i = 0; i < ARRAYSIZE( m_iServerControlPointAssignments ); ++i )
+	{
+		m_vServerControlPoints[i].Init();
+		m_iServerControlPointAssignments[i] = 255;
+	}
+#endif
 }
+
+#ifdef FSTOP
+void C_ParticleSystem::ApplyServerControlPoints()
+{
+	CNewParticleEffect *pEffect = m_pEffect;
+	if ( !pEffect )
+		return;
+	for ( int i = 0; i < ARRAYSIZE( m_iServerControlPointAssignments ); ++i )
+	{
+		if ( m_iServerControlPointAssignments[i] == 255 )
+			break;
+		pEffect->SetControlPoint( m_iServerControlPointAssignments[i], m_vServerControlPoints[i] );
+	}
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -100,6 +135,10 @@ void C_ParticleSystem::PostDataUpdate( DataUpdateType_t updateType )
 	}
 	else
 	{
+#ifdef FSTOP
+		if ( m_bActive )
+			ApplyServerControlPoints();
+#endif
 		if ( m_bOldActive != m_bActive )
 		{
 			if ( m_bActive )
@@ -158,6 +197,11 @@ void C_ParticleSystem::ClientThink( void )
 
 				// TODO: This can go when the SkipToTime code below goes
 				ParticleProp()->OnParticleSystemUpdated( pEffect, 0.0f );
+
+#ifdef FSTOP
+				m_pEffect = pEffect;
+				ApplyServerControlPoints();
+#endif
 
 				// Skip the effect ahead if we're restarting it
 				float flTimeDelta = gpGlobals->curtime - m_flStartTime;

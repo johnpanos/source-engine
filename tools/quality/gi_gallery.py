@@ -148,6 +148,10 @@ class Scene:
         self.solids = []
         self.probe_bounds = None
         self.extra = {}
+        # Dynamic bulbs (name -> center, radiance) and the orbits they ride
+        # in game (the map manifest's collision `orbits`).
+        self.bulbs = {}
+        self.orbits = []
         # The stage camera places the player spawn (pbrt_collision_vmf.py):
         # the first view unless a scene names a pose clear for the player hull.
         self.spawn = None
@@ -300,6 +304,33 @@ class Scene:
         light.CreateColorAttr(Gf.Vec3f(*color))
         return light
 
+    def bulb(self, name, center, radiance):
+        """A dynamic bulb: a sphere of the engine light's source radius
+        emitting colored `radiance`, with its own material <name> (so a state
+        can `dark` it) and a translate op (so a state can move it,
+        `bulb_at`, or leave it out of the bake, `hidden`)."""
+        self.mat(name, (0.0, 0.0, 0.0), radiance)
+        path = self.author.root_path.AppendPath("World/" + name)
+        UsdGeom.Xform.Define(self.author.stage, path).AddTranslateOp().Set(Gf.Vec3d(*center))
+        shape = path.AppendChild(name + "Shape")
+        gf.sphere_mesh(self.author.stage, shape, gf.BULB_RADIUS_M, 24, 12)
+        UsdShade.MaterialBindingAPI.Apply(self.author.stage.GetPrimAtPath(shape)).Bind(
+            self.author.materials[name])
+        self.bulbs[name] = {"center": tuple(center), "radiance": tuple(radiance)}
+        return name
+
+    def orbit(self, name, center, degrees_per_second, holds, bulbs):
+        """In game, `bulbs` ride a func_rotating about the vertical through
+        `center` from their authored (yaw 0) places; each hold (yaw degrees)
+        is a point_teleport <name>_hold_<k> (pbrt_collision_vmf.py --orbit)."""
+        self.orbits.append({
+            "name": name, "center_m": list(center), "degrees_per_second": degrees_per_second,
+            "holds_degrees": list(holds),
+            "lights": [{"name": b, "position_m": list(self.bulbs[b]["center"]),
+                        "color_linear": [round(gf.bulb_engine_color(c), 6)
+                                         for c in self.bulbs[b]["radiance"]]}
+                       for b in bulbs]})
+
     # --------------------------------------------------------------- states
     def base(self, state, note):
         self.states[state] = {"layer": None, "note": note, "edits": []}
@@ -322,6 +353,14 @@ class Scene:
     def dark(self, *materials):
         return [(self.material_path(m), "inputs:emissiveColor", Sdf.ValueTypeNames.Color3f,
                  Gf.Vec3f(0.0, 0.0, 0.0)) for m in materials]
+
+    def bulb_at(self, bulb, center):
+        return [("%s/World/%s" % (self.root, bulb), "xformOp:translate",
+                 Sdf.ValueTypeNames.Double3, Gf.Vec3d(*center))]
+
+    def hidden(self, *bulbs):
+        return [("%s/World/%s" % (self.root, b), "visibility", None, UsdGeom.Tokens.invisible)
+                for b in bulbs]
 
     def moved(self, light, center, direction=(0.0, 0.0, -1.0)):
         matrix = gf.look_rotation(direction)
@@ -469,6 +508,8 @@ class Scene:
         manifest["lightmap"] = {"samples": self.samples}
         if self.layout:
             manifest["lightmap"]["layout"] = self.layout
+        if self.orbits:
+            manifest["collision"]["orbits"] = self.orbits
         manifest.setdefault("probe_volume", {})["samples"] = 1024
         gf.write_json(self.directory / "map.json", manifest)
 
@@ -1701,12 +1742,10 @@ def colonnade(out):
     s.finish()
 
 
-def city_block(out):
-    s = Scene(out, "complex-city-block", "complex", "Nine colored buildings at sunset: low "
-              "orange sun and blue sky add along a street, and the street reads far redder "
-              "under the sun than under the sky")
-    s.mat("Asphalt", (0.4, 0.4, 0.4))
-    s.panel("Ground", (-20.0, -20.0, 0.0), (20.0, 20.0, 0.0), 2, 1, "Asphalt")
+def city_buildings(s):
+    """The city block's nine colored buildings, 4 m square on a 6 m grid
+    (centres -6, 0, 6; 2 m streets between them), 3.05 to 9.29 m tall.
+    Bldg11, the centre, is 3.05 m and Bldg22, the north-east, 6.88 m."""
     rng = random.Random(9)
     names = []
     for i, cx in enumerate((-6.0, 0.0, 6.0)):
@@ -1718,6 +1757,16 @@ def city_block(out):
             s.box(name, (cx - 2.0, cy - 2.0, 0.0), (cx + 2.0, cy + 2.0, height), name,
                   skip=("Zn",))
             names.append(name)
+    return names
+
+
+def city_block(out):
+    s = Scene(out, "complex-city-block", "complex", "Nine colored buildings at sunset: low "
+              "orange sun and blue sky add along a street, and the street reads far redder "
+              "under the sun than under the sky")
+    s.mat("Asphalt", (0.4, 0.4, 0.4))
+    s.panel("Ground", (-20.0, -20.0, 0.0), (20.0, 20.0, 0.0), 2, 1, "Asphalt")
+    city_buildings(s)
     sun, sky = (1.0, 0.6, 0.3), (0.3, 0.45, 0.9)
     s.sun("Sun", 200.0, 15.0, 3.0, sun)
     s.sky("Sky", 0.5, sky)
@@ -1731,6 +1780,87 @@ def city_block(out):
     s.dominant("sky", "street", "Ground", 2, [0], 1.5)
     s.probe_bounds = (-10.0, -10.0, 0.25, 10.0, 10.0, 6.0)
     s.finish()
+
+
+def yawed(center, point, degrees):
+    """`point` turned `degrees` (counter-clockwise from above) about the
+    vertical through `center`."""
+    a = math.radians(degrees)
+    dx, dy = point[0] - center[0], point[1] - center[1]
+    return (round(center[0] + dx * math.cos(a) - dy * math.sin(a), 6),
+            round(center[1] + dx * math.sin(a) + dy * math.cos(a), 6), point[2])
+
+
+def city_night(out):
+    s = Scene(out, "complex-city-night", "complex", "The city block at night under a dim "
+              "moonlit sky, with five colored bulbs orbiting through its streets below the "
+              "rooftops: red, green and blue on a 3 m ring road round the centre block, amber "
+              "and cyan on a 3 m ring round the north-east block. Each building shadows the "
+              "street behind it from the bulbs across it, the shadows move as the rings turn, "
+              "and the night is the moon plus each ring")
+    s.mat("Asphalt", (0.4, 0.4, 0.4))
+    # Street patches are regions of their own, cut out of the ground (a patch
+    # over it would be coplanar and z-fight): each lies behind a building
+    # from one ring's bulb.
+    streets = {"StreetW11": ((-4.0, -1.0), (-2.0, 1.0)), "StreetE11": ((2.0, -1.0), (4.0, 1.0)),
+               "StreetW22": ((2.0, 5.0), (4.0, 7.0)), "StreetE22": ((8.0, 5.0), (10.0, 7.0))}
+    s.wall("Ground", 0.0, 2, 1, ((-20.0, -20.0), (20.0, 20.0)), list(streets.values()),
+           "Asphalt")
+    for name, ((x0, y0), (x1, y1)) in streets.items():
+        s.panel(name, (x0, y0, 0.0), (x1, y1, 0.0), 2, 1, "Asphalt")
+    city_buildings(s)
+    s.sky("Moon", 1.0, (0.04, 0.06, 0.12))
+    # Ring A: a 3 m circle round Bldg11 stays in the streets all the way
+    # round (it enters no 4 m block), 2 m up, under every roof. Ring B the
+    # same round Bldg22, 2.5 m up; it turns the other way.
+    radiance = 2500.0
+    ring_a, ring_b = (0.0, 0.0, 2.0), (6.0, 6.0, 2.5)
+    bulbs_a = {"BulbRed": (RED, 0.0), "BulbGreen": (GREEN, 120.0), "BulbBlue": (BLUE, 240.0)}
+    bulbs_b = {"BulbAmber": ((1.0, 0.45, 0.0), 0.0), "BulbCyan": ((0.0, 0.7, 1.0), 180.0)}
+    holds_a, holds_b = (0.0, 60.0), (0.0, -90.0)
+    for ring, bulbs in ((ring_a, bulbs_a), (ring_b, bulbs_b)):
+        for name, (color, yaw) in bulbs.items():
+            s.bulb(name, yawed(ring, (ring[0] + 3.0, ring[1], ring[2]), yaw),
+                   tuple(radiance * c for c in color))
+    s.orbit("RingA", ring_a, 30.0, holds_a, list(bulbs_a))
+    s.orbit("RingB", ring_b, -45.0, holds_b, list(bulbs_b))
+    s.probe("ProbeSphere", (-3.0, 3.0, 0.6))
+    # Every view looks along a street from 3 m up, over the patches.
+    s.view("west", (-3.0, -7.5, 3.0), (-3.0, 0.5, 0.0),
+           ["StreetW11", "Ground", "Bldg01", "Bldg11", "ProbeSphere"])
+    s.view("east", (3.0, -7.5, 3.0), (3.0, 0.5, 0.0), ["StreetE11", "Ground", "Bldg11", "Bldg21"])
+    s.view("north", (3.0, 12.0, 3.0), (3.0, 5.5, 0.0),
+           ["StreetW22", "Ground", "Bldg12", "Bldg22"])
+    s.view("far-east", (9.0, -1.5, 3.0), (9.0, 6.0, 0.0),
+           ["StreetE22", "Ground", "Bldg21", "Bldg22"])
+    s.spawn = ((0.0, -13.0, 1.7), (0.0, 0.0, 1.5))
+    s.base("night", "the moon and both rings at yaw 0")
+    s.state("moon", "the moon alone, the bulbs left out: the map's bake",
+            s.hidden(*bulbs_a, *bulbs_b))
+    s.state("ring-a", "ring A alone at yaw 0", s.off("Moon") + s.dark(*bulbs_b))
+    s.state("ring-b", "ring B alone at yaw 0", s.off("Moon") + s.dark(*bulbs_a))
+    turned = []
+    for ring, bulbs, hold in ((ring_a, bulbs_a, holds_a[1]), (ring_b, bulbs_b, holds_b[1])):
+        for name in bulbs:
+            turned += s.bulb_at(name, yawed(ring, s.bulbs[name]["center"], hold))
+    s.state("turned", "the moon and both rings at their second hold (A +60, B -90 degrees)",
+            turned)
+    s.superpose_all("night", ["moon", "ring-a", "ring-b"])
+    # Shadows: a street no straight line from a bulb reaches gets none of
+    # its direct light, in the channels no other bulb of the ring emits.
+    s.zero("ring-a", "west", [0], ["StreetW11"], ["direct"],
+           name="Bldg11 shadows the red bulb (east of it) off the west street")
+    s.zero("ring-a", "east", [1, 2], ["StreetE11"], ["direct"],
+           name="Bldg11 shadows the green and blue bulbs (west of it) off the east street")
+    s.zero("ring-b", "north", [0], ["StreetW22"], ["direct"],
+           name="Bldg22 shadows the amber bulb (east of it) off its west street")
+    s.zero("ring-b", "far-east", [2], ["StreetE22"], ["direct"],
+           name="Bldg22 shadows the cyan bulb (west of it) off its east street")
+    # Turned 60 degrees, the green bulb stands over the west street.
+    s.dominant("turned", "west", "StreetW11", 1, [0, 2], 3.0, lights=["direct"],
+               name="turned: the green bulb lights the west street, red and blue shadowed")
+    s.probe_bounds = (-10.0, -10.0, 0.25, 12.0, 12.0, 6.0)
+    s.finish(baked_state="moon")
 
 
 # ======================================================================
@@ -1910,7 +2040,7 @@ GALLERY = (mix_rgb_ceiling, mix_cmy_ceiling, mix_complementary_corridor, mix_rgb
            leak_quad_rooms, leak_slit, leak_stacked, louver, l_corridor, colored_shadows,
            directional_probe, vertical_gradient, courtyard_sun, intensity_ladder,
            albedo_ladder, hdr_pair, color_temperature, emissive_orbs, stairwell, colonnade,
-           city_block, pinhole, long_hall, corner_seam, colored_quadrants, four_fold,
+           city_block, city_night, pinhole, long_hall, corner_seam, colored_quadrants, four_fold,
            stripe_floor)
 
 

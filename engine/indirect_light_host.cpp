@@ -542,8 +542,28 @@ void Consume( const FrameVolume &frame )
 	if ( host.deviceLost || !uploader || !uploader->IsResident() )
 		return;
 	const mapcontainer::ProbeVolumeLayout &layout = host.current->layout;
-	std::vector<float> table( layout.gridCount * mapcontainer::kProbeGridTableFloats );
+	// The grid rows, then the moving occluders this volume's visibility was
+	// cut by (world_mesh_upload.h): relit reflection probes test their line
+	// of sight against the same boxes.
+	const uint32_t occluders = r_indirect_occlusion.GetBool()
+	                               ? uint32_t( std::min<size_t>( host.visibilityProxies.size(),
+	                                     world_mesh_gpu::kProbeVolumeMaxOccluders ) )
+	                               : 0u;
+	std::vector<float> table(
+	    size_t( layout.gridCount + occluders ) * mapcontainer::kProbeGridTableFloats, 0.0f );
 	mapcontainer::WriteProbeGridTable( layout, table.data() );
+	table[5 * 4 + 2] = float( occluders );
+	for ( uint32_t k = 0; k < occluders; ++k )
+	{
+		const Proxy &proxy = host.visibilityProxies[k];
+		float *row = table.data() + size_t( layout.gridCount + k ) * mapcontainer::kProbeGridTableFloats;
+		for ( int axis = 0; axis < 3; ++axis )
+		{
+			row[axis] = proxy.lo[axis];
+			row[4 + axis] = proxy.hi[axis];
+		}
+		row[3] = proxy.reflectance;
+	}
 	world_mesh_gpu::ProbeVolumeUploadRequest request;
 	request.atlasWidth = layout.atlasWidth;
 	request.atlasHeight = layout.atlasHeight;
@@ -551,6 +571,7 @@ void Consume( const FrameVolume &frame )
 	request.gridCount = layout.gridCount;
 	request.tableFloats = mapcontainer::kProbeGridTableFloats;
 	request.gridTable = table.data();
+	request.occluderCount = occluders;
 	// BakedPlusDelta: the world adds the change from the bake.
 	if ( frame.policy == indirect_policy::Policy::BakedPlusDelta && host.scene.baked &&
 	     host.current != host.scene.baked &&

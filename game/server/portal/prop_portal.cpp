@@ -35,6 +35,10 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+#ifdef FSTOP
+extern bool UTIL_FizzlePlayerPhotos( CPortal_Player *pPlayer );
+#endif // FSTOP
+
 
 #define MINIMUM_FLOOR_PORTAL_EXIT_VELOCITY 50.0f
 #define MINIMUM_FLOOR_TO_FLOOR_PORTAL_EXIT_VELOCITY 225.0f
@@ -61,9 +65,16 @@ BEGIN_DATADESC( CProp_Portal )
 	DEFINE_FIELD( m_matrixThisToLinked, FIELD_VMATRIX ),
 	DEFINE_KEYFIELD( m_bActivated,		FIELD_BOOLEAN,		"Activated" ),
 	DEFINE_KEYFIELD( m_bIsPortal2,		FIELD_BOOLEAN,		"PortalTwo" ),
+#ifdef FSTOP
+	DEFINE_KEYFIELD( m_fNetworkHalfWidth, FIELD_FLOAT,		"HalfWidth" ),
+	DEFINE_KEYFIELD( m_fNetworkHalfHeight, FIELD_FLOAT,		"HalfHeight" ),
+#endif // FSTOP
 	DEFINE_FIELD( m_vPrevForward,		FIELD_VECTOR ),
 	DEFINE_FIELD( m_hMicrophone,		FIELD_EHANDLE ),
 	DEFINE_FIELD( m_hSpeaker,			FIELD_EHANDLE ),
+#ifdef FSTOP
+	DEFINE_FIELD( m_bHACKUseMicrophones, FIELD_BOOLEAN ),
+#endif // FSTOP
 
 	DEFINE_SOUNDPATCH( m_pAmbientSound ),
 
@@ -89,6 +100,9 @@ BEGIN_DATADESC( CProp_Portal )
 	DEFINE_INPUTFUNC( FIELD_BOOLEAN, "SetActivatedState", InputSetActivatedState ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "Fizzle", InputFizzle ),
 	DEFINE_INPUTFUNC( FIELD_STRING, "NewLocation", InputNewLocation ),
+#ifdef FSTOP
+	DEFINE_INPUTFUNC( FIELD_STRING, "Resize", InputResize ),
+#endif // FSTOP
 
 	DEFINE_OUTPUT( m_OnPlacedSuccessfully, "OnPlacedSuccessfully" ),
 
@@ -98,7 +112,30 @@ IMPLEMENT_SERVERCLASS_ST( CProp_Portal, DT_Prop_Portal )
 	SendPropEHandle( SENDINFO(m_hLinkedPortal) ),
 	SendPropBool( SENDINFO(m_bActivated) ),
 	SendPropBool( SENDINFO(m_bIsPortal2) ),
+#ifdef FSTOP
+	SendPropFloat( SENDINFO( m_fNetworkHalfWidth ) ),
+	SendPropFloat( SENDINFO( m_fNetworkHalfHeight ) ),
+#endif // FSTOP
 END_SEND_TABLE()
+
+#ifdef FSTOP
+float CProp_Portal::s_DefaultPortalHalfWidth = PORTAL_HALF_WIDTH;
+float CProp_Portal::s_DefaultPortalHalfHeight = PORTAL_HALF_HEIGHT;
+
+void CProp_Portal::GetPortalSize( float &fHalfWidth, float &fHalfHeight, CProp_Portal *pPortal )
+{
+	if( pPortal )
+	{
+		fHalfWidth = pPortal->GetHalfWidth();
+		fHalfHeight = pPortal->GetHalfHeight();
+	}
+	else
+	{
+		fHalfWidth = s_DefaultPortalHalfWidth;
+		fHalfHeight = s_DefaultPortalHalfHeight;
+	}
+}
+#endif // FSTOP
 
 LINK_ENTITY_TO_CLASS( prop_portal, CProp_Portal );
 
@@ -111,6 +148,9 @@ CProp_Portal::CProp_Portal( void )
 {
 	m_vPrevForward = Vector( 0.0f, 0.0f, 0.0f );
 	m_PortalSimulator.SetPortalSimulatorCallbacks( this );
+#ifdef FSTOP
+	m_bHACKUseMicrophones = true;
+#endif // FSTOP
 
 	// Init to something safe
 	for ( int i = 0; i < 4; ++i )
@@ -118,37 +158,62 @@ CProp_Portal::CProp_Portal( void )
 		m_vPortalCorners[i] = Vector(0,0,0);
 	}
 
+#ifdef FSTOP
+	// Keyfields and Resize() may change these before Spawn rebuilds the shape
+	m_fNetworkHalfWidth = s_DefaultPortalHalfWidth;
+	m_fNetworkHalfHeight = s_DefaultPortalHalfHeight;
+#endif // FSTOP
+	m_pCollisionShape = NULL;
+	UpdateCollisionShape();
+
+	CProp_Portal_Shared::AllPortals.AddToTail( this );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: (Re)builds the portal's collision shape from its local bounds
+//-----------------------------------------------------------------------------
+void CProp_Portal::UpdateCollisionShape( void )
+{
+	if( m_pCollisionShape )
+	{
+		physcollision->DestroyCollide( m_pCollisionShape );
+		m_pCollisionShape = NULL;
+	}
+
+	Vector vLocalMins = GetLocalMins();
+	Vector vLocalMaxs = GetLocalMaxs();
+
 	//create the collision shape.... TODO: consider having one shared collideable between all portals
 	float fPlanes[6*4];
 	fPlanes[(0*4) + 0] = 1.0f;
 	fPlanes[(0*4) + 1] = 0.0f;
 	fPlanes[(0*4) + 2] = 0.0f;
-	fPlanes[(0*4) + 3] = CProp_Portal_Shared::vLocalMaxs.x;
+	fPlanes[(0*4) + 3] = vLocalMaxs.x;
 
 	fPlanes[(1*4) + 0] = -1.0f;
 	fPlanes[(1*4) + 1] = 0.0f;
 	fPlanes[(1*4) + 2] = 0.0f;
-	fPlanes[(1*4) + 3] = -CProp_Portal_Shared::vLocalMins.x;
+	fPlanes[(1*4) + 3] = -vLocalMins.x;
 
 	fPlanes[(2*4) + 0] = 0.0f;
 	fPlanes[(2*4) + 1] = 1.0f;
 	fPlanes[(2*4) + 2] = 0.0f;
-	fPlanes[(2*4) + 3] = CProp_Portal_Shared::vLocalMaxs.y;
+	fPlanes[(2*4) + 3] = vLocalMaxs.y;
 
 	fPlanes[(3*4) + 0] = 0.0f;
 	fPlanes[(3*4) + 1] = -1.0f;
 	fPlanes[(3*4) + 2] = 0.0f;
-	fPlanes[(3*4) + 3] = -CProp_Portal_Shared::vLocalMins.y;
+	fPlanes[(3*4) + 3] = -vLocalMins.y;
 
 	fPlanes[(4*4) + 0] = 0.0f;
 	fPlanes[(4*4) + 1] = 0.0f;
 	fPlanes[(4*4) + 2] = 1.0f;
-	fPlanes[(4*4) + 3] = CProp_Portal_Shared::vLocalMaxs.z;
+	fPlanes[(4*4) + 3] = vLocalMaxs.z;
 
 	fPlanes[(5*4) + 0] = 0.0f;
 	fPlanes[(5*4) + 1] = 0.0f;
 	fPlanes[(5*4) + 2] = -1.0f;
-	fPlanes[(5*4) + 3] = -CProp_Portal_Shared::vLocalMins.z;
+	fPlanes[(5*4) + 3] = -vLocalMins.z;
 
 	CPolyhedron *pPolyhedron = GeneratePolyhedronFromPlanes( fPlanes, 6, 0.00001f, true );
 	Assert( pPolyhedron != NULL );
@@ -156,8 +221,6 @@ CProp_Portal::CProp_Portal( void )
 	pPolyhedron->Release();
 	Assert( pConvex != NULL );
 	m_pCollisionShape = physcollision->ConvertConvexToCollide( &pConvex, 1 );
-
-	CProp_Portal_Shared::AllPortals.AddToTail( this );
 }
 
 CProp_Portal::~CProp_Portal( void )
@@ -261,8 +324,13 @@ void CProp_Portal::Spawn( void )
 {
 	Precache();
 
-	Assert( s_PortalLinkageGroups[m_iLinkageGroupID].Find( this ) == -1 );
-	s_PortalLinkageGroups[m_iLinkageGroupID].AddToTail( this );
+#ifdef FSTOP
+	if ( m_iLinkageGroupID != PORTAL_LINKAGE_GROUP_INVALID )
+#endif // FSTOP
+	{
+		Assert( s_PortalLinkageGroups[m_iLinkageGroupID].Find( this ) == -1 );
+		s_PortalLinkageGroups[m_iLinkageGroupID].AddToTail( this );
+	}
 
 	m_matrixThisToLinked.Identity(); //don't accidentally teleport objects to zero space
 	
@@ -275,8 +343,12 @@ void CProp_Portal::Spawn( void )
 
 	//VPhysicsInitNormal( SOLID_VPHYSICS, FSOLID_TRIGGER, false );
 	//CreateVPhysics();
+#ifdef FSTOP
+	UpdateCollisionShape();
+	m_PortalSimulator.SetSize( GetHalfWidth(), GetHalfHeight() );
+#endif // FSTOP
 	ResetModel();	
-	SetSize( CProp_Portal_Shared::vLocalMins, CProp_Portal_Shared::vLocalMaxs );
+	SetSize( GetLocalMins(), GetLocalMaxs() );
 
 	UpdateCorners();
 
@@ -325,11 +397,19 @@ void CProp_Portal::DelayedPlacementThink( void )
 	// Bad surface and near fizzle effects take priority
 	if ( m_iDelayedFailure != PORTAL_FIZZLE_BAD_SURFACE && m_iDelayedFailure != PORTAL_FIZZLE_NEAR_BLUE && m_iDelayedFailure != PORTAL_FIZZLE_NEAR_RED )
 	{
+#ifdef FSTOP
+		if ( IsPortalOverlappingOtherPortals( this, m_vDelayedPosition, m_qDelayedAngles, false, GetHalfWidth(), GetHalfHeight() ) )
+#else
 		if ( IsPortalOverlappingOtherPortals( this, m_vDelayedPosition, m_qDelayedAngles ) )
+#endif // FSTOP
 		{
 			m_iDelayedFailure = PORTAL_FIZZLE_OVERLAPPED_LINKED;
 		}
+#ifdef FSTOP
+		else if ( IsPortalIntersectingNoPortalVolume( m_vDelayedPosition, m_qDelayedAngles, vForward, GetHalfWidth(), GetHalfHeight() ) )
+#else
 		else if ( IsPortalIntersectingNoPortalVolume( m_vDelayedPosition, m_qDelayedAngles, vForward ) )
+#endif // FSTOP
 		{
 			m_iDelayedFailure = PORTAL_FIZZLE_BAD_VOLUME;
 		}
@@ -400,14 +480,14 @@ void CProp_Portal::TestRestingSurfaceThink( void )
 		Vector vCorner = vOrigin;
 
 		if ( iCorner % 2 == 0 )
-			vCorner += vRight * ( PORTAL_HALF_WIDTH - PORTAL_BUMP_FORGIVENESS * 1.1f );
+			vCorner += vRight * ( GetHalfWidth() - PORTAL_BUMP_FORGIVENESS * 1.1f );
 		else
-			vCorner += -vRight * ( PORTAL_HALF_WIDTH - PORTAL_BUMP_FORGIVENESS * 1.1f );
+			vCorner += -vRight * ( GetHalfWidth() - PORTAL_BUMP_FORGIVENESS * 1.1f );
 
 		if ( iCorner < 2 )
-			vCorner += vUp * ( PORTAL_HALF_HEIGHT - PORTAL_BUMP_FORGIVENESS * 1.1f );
+			vCorner += vUp * ( GetHalfHeight() - PORTAL_BUMP_FORGIVENESS * 1.1f );
 		else
-			vCorner += -vUp * ( PORTAL_HALF_HEIGHT - PORTAL_BUMP_FORGIVENESS * 1.1f );
+			vCorner += -vUp * ( GetHalfHeight() - PORTAL_BUMP_FORGIVENESS * 1.1f );
 
 		Ray_t ray;
 		ray.Init( vCorner, vCorner - vForward );
@@ -452,7 +532,7 @@ void CProp_Portal::ResetModel( void )
 	else
 		SetModel( "models/portals/portal2.mdl" );
 
-	SetSize( CProp_Portal_Shared::vLocalMins, CProp_Portal_Shared::vLocalMaxs );
+	SetSize( GetLocalMins(), GetLocalMaxs() );
 
 	SetSolid( SOLID_OBB );
 	SetSolidFlags( FSOLID_TRIGGER | FSOLID_NOT_SOLID | FSOLID_CUSTOMBOXTEST | FSOLID_CUSTOMRAYTEST );
@@ -742,8 +822,18 @@ void CProp_Portal::PunchAllPenetratingPlayers( void )
 
 void CProp_Portal::Activate( void )
 {
-	if( s_PortalLinkageGroups[m_iLinkageGroupID].Find( this ) == -1 )
-		s_PortalLinkageGroups[m_iLinkageGroupID].AddToTail( this );
+#ifdef FSTOP
+	// The shape is not saved; rebuild it at the restored size
+	UpdateCollisionShape();
+#endif // FSTOP
+
+#ifdef FSTOP
+	if ( m_iLinkageGroupID != PORTAL_LINKAGE_GROUP_INVALID )
+#endif // FSTOP
+	{
+		if( s_PortalLinkageGroups[m_iLinkageGroupID].Find( this ) == -1 )
+			s_PortalLinkageGroups[m_iLinkageGroupID].AddToTail( this );
+	}
 
 	if( m_pAttachedCloningArea == NULL )
 		m_pAttachedCloningArea = CPhysicsCloneArea::CreatePhysicsCloneArea( this );
@@ -762,6 +852,10 @@ void CProp_Portal::Activate( void )
 	{
 		Vector ptCenter = GetAbsOrigin();
 		QAngle qAngles = GetAbsAngles();
+#ifdef FSTOP
+		SetSize( GetLocalMins(), GetLocalMaxs() );
+		m_PortalSimulator.SetSize( GetHalfWidth(), GetHalfHeight() );
+#endif // FSTOP
 		m_PortalSimulator.MoveTo( ptCenter, qAngles );
 
 		//resimulate everything we're touching
@@ -1312,6 +1406,15 @@ void CProp_Portal::TeleportTouchingEntity( CBaseEntity *pOther )
 	//	NDebugOverlay::EntityBounds( pOther, 0, 255, 0, 128, 60.0f );
 
 	Assert( (bPlayer == false) || (pOtherAsPlayer->m_hPortalEnvironment.Get() == m_hLinkedPortal.Get()) );
+
+#ifdef FSTOP
+	// Fizzle if we are a part of a prop_portal_tunnel
+	if ( bPlayer && GetOwnerEntity() && FClassnameIs( GetOwnerEntity(), "prop_portal_tunnel" ) )
+	{
+		CPortal_Player *pPlayer = (CPortal_Player *) pOtherAsPlayer;
+		UTIL_FizzlePlayerPhotos( pPlayer );
+	}
+#endif // FSTOP
 }
 
 
@@ -1583,14 +1686,14 @@ void CProp_Portal::WakeNearbyEntities( void )
 	QAngle qAngles = GetAbsAngles();
 
 	Vector ptOBBStart = ptOrigin;
-	ptOBBStart += vForward * CProp_Portal_Shared::vLocalMins.x;
-	ptOBBStart += vRight * CProp_Portal_Shared::vLocalMins.y;
-	ptOBBStart += vUp * CProp_Portal_Shared::vLocalMins.z;
+	ptOBBStart += vForward * GetLocalMins().x;
+	ptOBBStart += vRight * GetLocalMins().y;
+	ptOBBStart += vUp * GetLocalMins().z;
 
 
-	vForward *= CProp_Portal_Shared::vLocalMaxs.x - CProp_Portal_Shared::vLocalMins.x;
-	vRight *= CProp_Portal_Shared::vLocalMaxs.y - CProp_Portal_Shared::vLocalMins.y;
-	vUp *= CProp_Portal_Shared::vLocalMaxs.z - CProp_Portal_Shared::vLocalMins.z;
+	vForward *= GetLocalMaxs().x - GetLocalMins().x;
+	vRight *= GetLocalMaxs().y - GetLocalMins().y;
+	vUp *= GetLocalMaxs().z - GetLocalMins().z;
 
 
 	Vector vAABBMins, vAABBMaxs;
@@ -1624,7 +1727,7 @@ void CProp_Portal::WakeNearbyEntities( void )
 			Vector ptEntityCenter = pEntCollision->GetCollisionOrigin();
 
 			//double check intersection at the OBB vs OBB level, we don't want to affect large piles of physics objects if we don't have to. It gets slow
-			if( IsOBBIntersectingOBB( ptOrigin, qAngles, CProp_Portal_Shared::vLocalMins, CProp_Portal_Shared::vLocalMaxs, 
+			if( IsOBBIntersectingOBB( ptOrigin, qAngles, GetLocalMins(), GetLocalMaxs(), 
 				ptEntityCenter, pEntCollision->GetCollisionAngles(), pEntCollision->OBBMins(), pEntCollision->OBBMaxs() ) )
 			{
 				if( FClassnameIs( pEntity, "func_portal_detector" ) )
@@ -1859,7 +1962,14 @@ void CProp_Portal::UpdatePortalLinkage( void )
 					CProp_Portal *pCurrentPortal = pPortals[i];
 					if( pCurrentPortal == this )
 						continue;
+#ifdef FSTOP
+					// Portals of different sizes can't link; scaling through a portal is unsupported
+					if( pCurrentPortal->m_bActivated && pCurrentPortal->m_hLinkedPortal.Get() == NULL &&
+						(pCurrentPortal->m_fNetworkHalfWidth == m_fNetworkHalfWidth) &&
+						(pCurrentPortal->m_fNetworkHalfHeight == m_fNetworkHalfHeight) )
+#else
 					if( pCurrentPortal->m_bActivated && pCurrentPortal->m_hLinkedPortal.Get() == NULL )
+#endif // FSTOP
 					{
 						pLink = pCurrentPortal;
 						pCurrentPortal->m_hLinkedPortal = this;
@@ -1883,7 +1993,14 @@ void CProp_Portal::UpdatePortalLinkage( void )
 			m_bIsPortal2 = !m_hLinkedPortal->m_bIsPortal2;
 
 			// Initialize mics/speakers
-			if( m_hMicrophone == 0 )
+#ifdef FSTOP
+			// F-Stop portal doors turn the portal mic/speaker pair off (prop_portal_tunnel)
+			const bool bUseMicrophones = m_bHACKUseMicrophones;
+#else
+			const bool bUseMicrophones = true;
+#endif // FSTOP
+
+			if( m_hMicrophone == 0 && bUseMicrophones )
 			{
 				inputdata_t inputdata;
 
@@ -1914,7 +2031,7 @@ void CProp_Portal::UpdatePortalLinkage( void )
 				}
 			}
 
-			if ( m_hLinkedPortal->m_hMicrophone == 0 )
+			if ( m_hLinkedPortal->m_hMicrophone == 0 && bUseMicrophones )
 			{
 				inputdata_t inputdata;
 
@@ -1945,18 +2062,21 @@ void CProp_Portal::UpdatePortalLinkage( void )
 				}
 			}
 
-			// Set microphone/speaker positions
-			Vector vZero( 0.0f, 0.0f, 0.0f );
+			if ( bUseMicrophones )
+			{
+				// Set microphone/speaker positions
+				Vector vZero( 0.0f, 0.0f, 0.0f );
 
-			CEnvMicrophone *pMicrophone = static_cast<CEnvMicrophone*>( m_hMicrophone.Get() );
-			pMicrophone->AddSpawnFlags( SF_MICROPHONE_IGNORE_NONATTENUATED );
-			pMicrophone->Teleport( &GetAbsOrigin(), &GetAbsAngles(), &vZero );
-			inputdata_t in;
-			pMicrophone->InputEnable( in );
+				CEnvMicrophone *pMicrophone = static_cast<CEnvMicrophone*>( m_hMicrophone.Get() );
+				pMicrophone->AddSpawnFlags( SF_MICROPHONE_IGNORE_NONATTENUATED );
+				pMicrophone->Teleport( &GetAbsOrigin(), &GetAbsAngles(), &vZero );
+				inputdata_t in;
+				pMicrophone->InputEnable( in );
 
-			CSpeaker *pSpeaker = static_cast<CSpeaker*>( m_hSpeaker.Get() );
-			pSpeaker->Teleport( &GetAbsOrigin(), &GetAbsAngles(), &vZero );
-			pSpeaker->InputTurnOn( in );
+				CSpeaker *pSpeaker = static_cast<CSpeaker*>( m_hSpeaker.Get() );
+				pSpeaker->Teleport( &GetAbsOrigin(), &GetAbsAngles(), &vZero );
+				pSpeaker->InputTurnOn( in );
+			}
 
 			UpdatePortalTeleportMatrix();
 		}
@@ -1968,6 +2088,9 @@ void CProp_Portal::UpdatePortalLinkage( void )
 
 		Vector ptCenter = GetAbsOrigin();
 		QAngle qAngles = GetAbsAngles();
+#ifdef FSTOP
+		m_PortalSimulator.SetSize( GetHalfWidth(), GetHalfHeight() );
+#endif // FSTOP
 		m_PortalSimulator.MoveTo( ptCenter, qAngles );
 
 		if( pLink )
@@ -2168,13 +2291,13 @@ void CProp_Portal::InputSetActivatedState( inputdata_t &inputdata )
 		QAngle qAngles;
 		VectorAngles( tr.plane.normal, vUp, qAngles );
 
-		float fPlacementSuccess = VerifyPortalPlacement( this, tr.endpos, qAngles, PORTAL_PLACED_BY_FIXED );
+		float fPlacementSuccess = VerifyPortalPlacement( this, tr.endpos, qAngles, PORTAL_PLACED_BY_FIXED, false, GetHalfWidth(), GetHalfHeight() );
 		PlacePortal( tr.endpos, qAngles, fPlacementSuccess );
 
 		// If the fixed portal is overlapping a portal that was placed before it... kill it!
 		if ( fPlacementSuccess )
 		{
-			IsPortalOverlappingOtherPortals( this, vOrigin, GetAbsAngles(), true );
+			IsPortalOverlappingOtherPortals( this, vOrigin, GetAbsAngles(), true, GetHalfWidth(), GetHalfHeight() );
 
 			CreateSounds();
 
@@ -2252,6 +2375,93 @@ void CProp_Portal::InputNewLocation( inputdata_t &inputdata )
 	NewLocation( vNewOrigin, vNewAngles );
 }
 
+#ifdef FSTOP
+void CProp_Portal::Resize( float fHalfWidth, float fHalfHeight )
+{
+	if( (fHalfWidth == m_fNetworkHalfWidth) && (fHalfHeight == m_fNetworkHalfHeight) )
+		return;
+
+	m_fNetworkHalfWidth = fHalfWidth;
+	m_fNetworkHalfHeight = fHalfHeight;
+
+	CProp_Portal *pLinked = m_hLinkedPortal;
+	if( pLinked )
+	{
+		if( (m_fNetworkHalfWidth != pLinked->m_fNetworkHalfWidth) || (m_fNetworkHalfHeight != pLinked->m_fNetworkHalfHeight) )
+		{
+			//different portal sizes, unsupported, unlink. Scaling is a whole different ball of wax.
+			//if you're resizing both portals. They'll find eachother in UpdatePortalLinkage() once they're both resized.
+			m_hLinkedPortal = NULL;
+			m_PortalSimulator.DetachFromLinked();
+			pLinked->m_hLinkedPortal = NULL;
+			pLinked->m_PortalSimulator.DetachFromLinked();
+		}
+	}
+
+	UpdateCollisionShape();
+	ResetModel();
+	if( m_pAttachedCloningArea )
+		m_pAttachedCloningArea->Resize( fHalfWidth, fHalfHeight );
+	Vector vOrigin = GetAbsOrigin();
+	QAngle qAngles = GetAbsAngles();
+	if( m_bActivated && VerifyPortalPlacement( this, vOrigin, qAngles, PORTAL_PLACED_BY_PEDESTAL, false, m_fNetworkHalfWidth, m_fNetworkHalfHeight ) < 1.0f )
+	{
+		m_bActivated = false; //we can't support the current placement. Disable the portal
+		m_PortalSimulator.DetachFromLinked();
+		Fizzle();
+	}
+
+	m_PortalSimulator.SetSize( fHalfWidth, fHalfHeight );
+	UpdateCorners();
+
+	if( pLinked )
+		pLinked->UpdatePortalLinkage();
+
+	UpdatePortalLinkage();
+}
+
+void CProp_Portal::InputResize( inputdata_t &inputdata )
+{
+	char sResizeStats[MAX_PATH];
+	Q_strncpy( sResizeStats, inputdata.value.String(), sizeof(sResizeStats) );
+
+	char* pTok = strtok( sResizeStats, " " );
+	float fHalfWidth = pTok ? atof(pTok) : 0.0f;
+	pTok = strtok( NULL, " " );
+	float fHalfHeight = pTok ? atof(pTok) : 0.0f;
+
+	if ( fHalfWidth <= 0.0f || fHalfHeight <= 0.0f )
+	{
+		Warning( "%s: Resize needs \"[half width] [half height]\", got \"%s\"\n", GetDebugName(), inputdata.value.String() );
+		return;
+	}
+
+	Resize( fHalfWidth, fHalfHeight );
+}
+
+void CC_Resize_Portals( const CCommand &args )
+{
+	if( args.ArgC() != 3 )
+	{
+		Warning( "syntax: Portals_ResizeAll [half width] [half height]\n" );
+		return;
+	}
+
+	float fHalfWidth = atof(args[1]);
+	float fHalfHeight = atof(args[2]);
+
+	int iPortalCount = CProp_Portal_Shared::AllPortals.Count();
+	for( int i = 0; i != iPortalCount; ++i )
+	{
+		CProp_Portal_Shared::AllPortals[i]->Resize( fHalfWidth, fHalfHeight );
+	}
+
+	CProp_Portal::s_DefaultPortalHalfWidth = fHalfWidth;
+	CProp_Portal::s_DefaultPortalHalfHeight = fHalfHeight;
+}
+static ConCommand Portals_ResizeAll("Portals_ResizeAll", CC_Resize_Portals, "Resizes all portals (for testing), Portals_ResizeAll [half width] [half height]", FCVAR_CHEAT);
+#endif // FSTOP
+
 void CProp_Portal::UpdateCorners()
 {
 	Vector vOrigin = GetAbsOrigin();
@@ -2262,8 +2472,8 @@ void CProp_Portal::UpdateCorners()
 	{
 		Vector vAddPoint = vOrigin;
 
-		vAddPoint += vRight * ((i & (1<<0))?(PORTAL_HALF_WIDTH):(-PORTAL_HALF_WIDTH));
-		vAddPoint += vUp * ((i & (1<<1))?(PORTAL_HALF_HEIGHT):(-PORTAL_HALF_HEIGHT));
+		vAddPoint += vRight * ((i & (1<<0))?(GetHalfWidth()):(-GetHalfWidth()));
+		vAddPoint += vUp * ((i & (1<<1))?(GetHalfHeight()):(-GetHalfHeight()));
 
 		m_vPortalCorners[i] = vAddPoint;
 	}
@@ -2274,7 +2484,19 @@ void CProp_Portal::UpdateCorners()
 
 void CProp_Portal::ChangeLinkageGroup( unsigned char iLinkageGroupID )
 {
+#ifdef FSTOP
+	if ( iLinkageGroupID == PORTAL_LINKAGE_GROUP_INVALID )
+	{
+		// invalid is the 'inactive portal' group for portals not yet linked.
+		m_iLinkageGroupID = iLinkageGroupID;
+		return;
+	}
+
+	// We should be moving from a linkage id to another one, unless we're coming from INVALID
+	Assert( s_PortalLinkageGroups[m_iLinkageGroupID].Find( this ) != -1 || m_iLinkageGroupID == PORTAL_LINKAGE_GROUP_INVALID );
+#else
 	Assert( s_PortalLinkageGroups[m_iLinkageGroupID].Find( this ) != -1 );
+#endif // FSTOP
 	s_PortalLinkageGroups[m_iLinkageGroupID].FindAndRemove( this );
 	s_PortalLinkageGroups[iLinkageGroupID].AddToTail( this );
 	m_iLinkageGroupID = iLinkageGroupID;
@@ -2321,6 +2543,35 @@ const CUtlVector<CProp_Portal *> *CProp_Portal::GetPortalLinkageGroup( unsigned 
 {
 	return &s_PortalLinkageGroups[iLinkageGroupID];
 }
+
+#ifdef FSTOP
+// Hands out linkage IDs in order. If somebody has taken the slot, it walks to a free one and picks that as the new starting location.
+static unsigned char s_iBestGuessUnusedLinkageID = 0;
+unsigned char UTIL_GetUnusedLinkageID( void )
+{
+	if ( s_PortalLinkageGroups[s_iBestGuessUnusedLinkageID].Count() == 0 )
+	{
+		// early out for best guess
+		return s_iBestGuessUnusedLinkageID++;
+	}
+	else
+	{
+		// walk all linkage groups for a free one
+		for ( int i = 0; i < 256; ++i )
+		{
+			if ( s_PortalLinkageGroups[i].Count() == 0 )
+			{
+				s_iBestGuessUnusedLinkageID = i+1;
+				return i;
+			}
+		}
+	}
+
+	Warning( "*** All portal linkage IDs in use! ***\nThere may be >254 portal pairs, or some bug causing the linkage IDs not to be freed up.\n" );
+	Assert( 0 );
+	return PORTAL_LINKAGE_GROUP_INVALID;
+}
+#endif // FSTOP
 
 
 

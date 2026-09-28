@@ -211,10 +211,10 @@ void CPortalGameMovement::FunnelIntoPortal( CProp_Portal *pPortal, Vector &wishd
 	if ( fabsf( wishdir[ 0 ] ) > 64.0f || fabsf( wishdir[ 1 ] ) > 64.0f || mv->m_vecVelocity[ 2 ] > -165.0f || vPlayerToPortal.z < -512.0f )
 		return;
 
-	// Make sure we're in the 2D portal rectangle
-	if ( ( vPlayerToPortal.Dot( vPortalRight ) * vPortalRight ).Length() > PORTAL_HALF_WIDTH * 1.5f )
+	// Make sure we're in the 2D portal rectangle (the portal's own size: F-Stop portals resize)
+	if ( ( vPlayerToPortal.Dot( vPortalRight ) * vPortalRight ).Length() > pPortal->GetHalfWidth() * 1.5f )
 		return;
-	if ( ( vPlayerToPortal.Dot( vPortalUp ) * vPortalUp ).Length() > PORTAL_HALF_HEIGHT * 1.5f )
+	if ( ( vPlayerToPortal.Dot( vPortalUp ) * vPortalUp ).Length() > pPortal->GetHalfHeight() * 1.5f )
 		return;
 
 	if ( vPlayerToPortal.z > -8.0f )

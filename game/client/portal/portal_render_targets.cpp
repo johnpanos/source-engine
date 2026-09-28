@@ -203,6 +203,8 @@ void CPortalRenderTargets::ShutdownClientRenderTargets()
 }
 
 
+#if !defined( FSTOP ) // F-Stop: CApertureRenderTargets extends these and is the exposed singleton
 static CPortalRenderTargets g_PortalRenderTargets;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CPortalRenderTargets, IClientRenderTargets, CLIENTRENDERTARGETS_INTERFACE_VERSION, g_PortalRenderTargets );
 CPortalRenderTargets* portalrendertargets = &g_PortalRenderTargets;
+#endif

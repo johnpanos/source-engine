@@ -14,9 +14,13 @@
 //  - Seeded mutation fuzzing never crashes the validator.
 //  - RPRB v2 (R50-RELIGHT): the relight fixture validates and its GPU texture
 //    matches the Python writer's; its malformation corpus fails as in
-//    Python; with the fixture's analytic change the reference reproduces
-//    the Python oracle's relit samples; a zero change reproduces the baked
-//    radiance exactly, and relighting is ignored without a change.
+//    Python; with the fixture's analytic light (now and baked) and its
+//    moving occluder the reference reproduces the Python oracle's relit
+//    samples; unchanged light reproduces the baked radiance exactly, the
+//    occluder changes the lookups it hides and relighting is ignored without
+//    a relight. The rule (removed light relative, added light absolute) and
+//    the occluder test (entry, face normal, a start inside, a miss) are
+//    checked on their own values.
 //
 //=============================================================================//
 
@@ -302,18 +306,58 @@ void CheckBlend( const ReflectionProbesView &view )
 	    "valid modes are 0..3 and 5..7" );
 }
 
-// reflection_probe_set.fixture_change: the analytic change the relit
-// samples were computed with (Source units).
-void FixtureChange( void *, const float p[3], const float n[3], float out[3] )
+// reflection_probe_set.fixture_light: the analytic diffuse light (now and
+// baked) the relit samples were computed with (Source units).
+void FixtureLight( void *, const float p[3], const float n[3], float now[3], float baked[3] )
 {
-	out[0] = 0.002f * p[0] + 0.5f * std::max( n[2], 0.0f );
-	out[1] = 0.3f - 0.003f * p[1];
-	out[2] = 0.25f * n[0] - 0.1f;
+	baked[0] = 0.3f + 0.001f * p[0];
+	baked[1] = 0.25f + 0.1f * std::fabs( n[2] );
+	baked[2] = 0.2f + 0.0005f * p[2];
+	now[0] = baked[0] + 0.002f * p[0] + 0.5f * std::max( n[2], 0.0f ) - 0.45f;
+	now[1] = baked[1] + 0.3f - 0.003f * p[1];
+	now[2] = baked[2] + 0.25f * n[0] - 0.1f;
 }
 
-void ZeroChange( void *, const float *, const float *, float out[3] )
+// The light as baked: nothing changed.
+void UnchangedLight( void *, const float p[3], const float n[3], float now[3], float baked[3] )
 {
-	out[0] = out[1] = out[2] = 0.0f;
+	float ignored[3];
+	FixtureLight( nullptr, p, n, ignored, baked );
+	for ( int c = 0; c < 3; ++c )
+		now[c] = baked[c];
+}
+
+// reflection_probe_set.FIXTURE_OCCLUDER in Source units.
+const float kUnitsPerMeter = 39.37007874015748f;
+const ReflectionProbeOccluder kFixtureOccluder = {
+    { 2.8f * kUnitsPerMeter, 1.2f * kUnitsPerMeter, 0.0f },
+    { 3.2f * kUnitsPerMeter, 2.8f * kUnitsPerMeter, 2.2f * kUnitsPerMeter }, 0.4f };
+
+void CheckRelightRule()
+{
+	Check( ReflectionProbeRelit( 0.2f, 0.5f, 0.1f, 0.4f ) == 0.05f,
+	    "light removed scales the capture: 0.2 * 0.1 / 0.4" );
+	Check( ReflectionProbeRelit( 0.2f, 0.5f, 0.4f, 0.2f ) == 0.2f + 0.5f * 0.2f,
+	    "light added is albedo times the increase" );
+	Check( ReflectionProbeRelit( 0.2f, 0.5f, -1.0f, 0.4f ) == 0.0f &&
+	           ReflectionProbeRelit( 0.2f, 0.5f, 0.0f, 1e-5f ) == 0.2f - 0.5f * 1e-5f,
+	    "relit light clamps at zero; below the floor a removal is absolute" );
+	const ReflectionProbeOccluder box = { { 10, -5, -5 }, { 12, 5, 5 }, 0.3f };
+	const float origin[3] = { 0, 0, 0 }, along[3] = { 1, 0, 0 };
+	float t = -1, normal[3] = {};
+	uint32_t index = 99;
+	Check( ReflectionProbeOccluded( &box, 1, origin, along, 100, &t, normal, &index ) &&
+	           t == 10 && normal[0] == -1 && normal[1] == 0 && normal[2] == 0 && index == 0,
+	    "an occluder on the segment: its entry and the entered face's outward normal" );
+	Check( !ReflectionProbeOccluded( &box, 1, origin, along, 9.5f, &t, normal, &index ),
+	    "an occluder beyond the point seen hides nothing" );
+	const float inside[3] = { 11, 0, 0 }, back[3] = { -1, 0, 0 };
+	Check( ReflectionProbeOccluded( &box, 1, inside, back, 50, &t, normal, &index ) && t == 0 &&
+	           normal[0] == 1,
+	    "a segment starting inside an occluder is hidden at once, facing back along itself" );
+	const float up[3] = { 0, 0, 1 };
+	Check( !ReflectionProbeOccluded( &box, 1, origin, up, 100, &t, normal, &index ),
+	    "a segment that misses the box is not hidden" );
 }
 
 void CheckRelight()
@@ -346,12 +390,14 @@ void CheckRelight()
 	Check( HalfToFloat( texture[5] ) == 0.0f, "relight false turns it off" );
 	// The reference against the Python oracle's relit samples.
 	const ReflectionProbesView view( relit.data(), layout );
-	const ReflectionProbeDiffuseChange change = { FixtureChange, nullptr };
-	const ReflectionProbeDiffuseChange zero = { ZeroChange, nullptr };
+	ReflectionProbeRelight relight = { FixtureLight, nullptr, &kFixtureOccluder, 1 };
+	ReflectionProbeRelight open = { FixtureLight, nullptr, nullptr, 0 };
+	const ReflectionProbeRelight unchanged = { UnchangedLight, nullptr, nullptr, 0 };
 	std::ifstream samples( std::string( kFixtures ) + "relight-samples.txt" );
 	std::string line;
 	int count = 0;
 	double worst = 0.0, identity = 0.0, moved = 0.0;
+	int occluded = 0;
 	while ( std::getline( samples, line ) )
 	{
 		if ( line.empty() || line[0] == '#' )
@@ -368,25 +414,32 @@ void CheckRelight()
 		fields >> roughness;
 		for ( float &v : expectedRadiance )
 			fields >> v;
-		float radiance[3], baked[3], unchanged[3];
-		view.Radiance( position, normal, reflected, roughness, ModeOf( mode ), radiance, &change );
+		float radiance[3], baked[3], same[3], unoccluded[3];
+		view.Radiance( position, normal, reflected, roughness, ModeOf( mode ), radiance, &relight );
 		view.Radiance( position, normal, reflected, roughness, ModeOf( mode ), baked );
-		view.Radiance( position, normal, reflected, roughness, ModeOf( mode ), unchanged, &zero );
+		view.Radiance(
+		    position, normal, reflected, roughness, ModeOf( mode ), same, &unchanged );
+		view.Radiance(
+		    position, normal, reflected, roughness, ModeOf( mode ), unoccluded, &open );
+		bool differs = false;
 		for ( int c = 0; c < 3; ++c )
 		{
 			worst = std::max( worst, double( std::fabs( radiance[c] - expectedRadiance[c] ) ) );
-			identity = std::max( identity, double( std::fabs( unchanged[c] - baked[c] ) ) );
+			identity = std::max( identity, double( std::fabs( same[c] - baked[c] ) ) );
 			moved = std::max( moved, double( std::fabs( radiance[c] - baked[c] ) ) );
+			differs |= std::fabs( radiance[c] - unoccluded[c] ) > 1e-4f;
 		}
+		occluded += differs ? 1 : 0;
 		++count;
 	}
-	std::printf( "relit reference worst absolute error %.6f over %d samples; zero change %.6g; "
-	             "largest relight %.4f\n",
-	    worst, count, identity, moved );
+	std::printf( "relit reference worst absolute error %.6f over %d samples; unchanged light "
+	             "%.6g; largest relight %.4f; %d samples see the occluder\n",
+	    worst, count, identity, moved, occluded );
 	Check( count == 144, "relight-samples.txt has 48 samples per mode" );
 	Check( worst < 0.02, "the C++ relit reference reproduces the Python oracle's samples" );
-	Check( identity == 0.0, "a zero change reproduces the baked radiance exactly" );
-	Check( moved > 0.1, "the fixture's change moves the radiance (the check can fail)" );
+	Check( identity == 0.0, "unchanged light reproduces the baked radiance exactly" );
+	Check( moved > 0.1, "the fixture's light moves the radiance (the check can fail)" );
+	Check( occluded >= 5, "the moving occluder changes the lookups it hides" );
 }
 
 void CheckFuzz( const std::vector<char> &valid )
@@ -439,6 +492,7 @@ int main()
 		CheckBlend( view );
 		CheckFuzz( valid );
 		CheckRelight();
+		CheckRelightRule();
 		CheckFuzz( Load( "valid-relight.rprb" ) );
 	}
 	return testing::ReportConformance( g_checks, g_failures );

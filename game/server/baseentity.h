@@ -30,6 +30,18 @@
 class CPortal_Base2D;
 #endif // PORTAL2
 
+#ifdef FSTOP
+// Matches an entity name against a query with the entity wildcard rules.
+bool EntityNamesMatch( const char *pszQuery, string_t nameToMatch );
+
+// F-Stop: photo capture and placement queries (game/server/fstop/photo.h).
+#include "branchingsingleton.h"
+struct CaptureInfo_t;
+struct CameraInfo_ScaleData_t;
+struct CheckPlacementData_t;
+class CInfoPlacementHelper;
+#endif // FSTOP
+
 class CDamageModifier;
 class CDmgAccumulator;
 
@@ -107,6 +119,9 @@ enum Class_T
 	CLASS_PLAYER_ALLY_VITAL,
 	CLASS_ANTLION,
 	CLASS_BARNACLE,
+#ifdef FSTOP
+	CLASS_BLOB,
+#endif // FSTOP
 	CLASS_BULLSEYE,
 	//CLASS_BULLSQUID,	
 	CLASS_CITIZEN_PASSIVE,	
@@ -462,6 +477,11 @@ public:
 	void					ClearModelIndexOverrides( void );
 	virtual void			SetModelIndexOverride( int index, int nValue );
 
+#ifdef FSTOP
+	// F-Stop: the AI add-on (ai_addon.h) this entity installs on an NPC host.
+	virtual string_t		GetAIAddOn( void ) const;
+#endif // FSTOP
+
 public:
 	// virtual methods for derived classes to override
 	virtual bool			TestCollision( const Ray_t& ray, unsigned int mask, trace_t& trace );
@@ -678,6 +698,25 @@ public:
 	void		MakeDormant( void );
 	int			IsDormant( void );
 
+#ifdef FSTOP
+	// F-Stop: entities 'in stasis' (held in a photo) don't draw, collide, think,
+	// or give/accept entity I/O.
+	virtual void		SetStasis( bool bStasis );
+	virtual bool		IsInStasis ( void ) const { return m_bIsInStasis; }
+
+protected:
+	void	EnterStasis( void );
+	void	LeaveStasis( void );
+	void	RebaseTimeEntriesForStasis( bool bEnteringStasis );
+	// Rebase all the think times as deltas or from deltas to current ticks
+	void	RebaseThinkTicks( bool bMakeDeltas );
+
+	MoveType_t	m_PreStasisMoveType;
+	bool		m_bIsInStasis;
+
+public:
+#endif // FSTOP
+
 	void		RemoveDeferred( void );	// Sets the entity invisible, and makes it remove itself on the next frame
 
 	// checks to see if the entity is marked for deletion
@@ -888,6 +927,10 @@ public:
 	void SetRenderColorG( byte g );
 	void SetRenderColorB( byte b );
 	void SetRenderColorA( byte a );
+#ifdef FSTOP
+	void SetRenderAlpha( byte a ) { SetRenderColorA( a ); }
+	byte GetRenderAlpha( ) const { return m_clrRender->a; }
+#endif // FSTOP
 
 	// was pev->animtime:  consider moving to CBaseAnimating
 	float		m_flPrevAnimTime;
@@ -1399,6 +1442,10 @@ public:
 	
 	void					SetModelName( string_t name );
 
+#ifdef FSTOP
+	void					SetAIAddOn( string_t name );
+#endif // FSTOP
+
 	model_t					*GetModel( void );
 
 	// These methods return a *world-aligned* box relative to the absorigin of the entity.
@@ -1782,6 +1829,9 @@ private:
 	float			m_flGroundChangeTime; // Time that the ground entity changed
 	
 	string_t		m_ModelName;
+#ifdef FSTOP
+	string_t		m_AIAddOn;
+#endif // FSTOP
 
 	// Velocity of the thing we're standing on (world space)
 	CNetworkVarForDerived( Vector, m_vecBaseVelocity );
@@ -2001,6 +2051,41 @@ public:
 	{
 		return s_bAbsQueriesValid;
 	}
+
+#ifdef FSTOP
+public:
+	// F-Stop: how weapon_camera captures and weapon_placement places this
+	// entity. Subclasses extend it with START_BRANCHING_SINGLETON_DEFINITION;
+	// the default implementation is in game/server/fstop/photo.cpp.
+	START_BRANCHING_SINGLETON_DEFINITION_NOBASE( CPhotoPlacementQuery )
+	{
+	public:
+		virtual ~CPhotoPlacementQuery() {}
+		bool CheckPlacement( CaptureInfo_t &captureInfo, int iScaleStep, const Vector &vPlacementOrigin, const Vector &vPlacementDirection, const QAngle &qPlacementAngles, Vector &positionOut, QAngle &anglesOut, CInfoPlacementHelper **pHelperOut, ITraceFilter *pTraceFilter = NULL );
+		virtual ITraceFilter *ModifyBaseTraceFilter( ITraceFilter *pBaseFilter );
+		virtual bool GetPlacementPosition( CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, Vector &positionOut, QAngle &anglesOut );
+		virtual bool GetPlacementPosition_NoHelper( CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, Vector &positionOut, QAngle &anglesOut );
+		virtual float GetPlacementHelperOffset(	CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData );
+		virtual int GetNumScaleUpSteps( const CaptureInfo_t* pCaptureInfo );
+		virtual int GetNumScaleDownSteps( const CaptureInfo_t* pCaptureInfo );
+		virtual float GetScaleForStep( int nScaleStep, const CaptureInfo_t* pCaptureInfo );
+		virtual float GetMaxPlacementDistance( void );
+
+		virtual void GetCentering( CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, Vector &vExtentsOut, Vector &vCenterToOriginOut );
+		virtual void GetRotatedCentering( CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, const VMatrix &matRotation, Vector &vExtentsOut, Vector &vCenterToOriginOut );
+		void GetRotatedCentering( CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, const QAngle &qAngles, Vector &vExtentsOut, Vector &vCenterToOriginOut ); //generates a VMatrix and calls the virtual version
+
+	protected:
+		virtual CameraInfo_ScaleData_t *GetSimpleScales( void );
+		int CustomDataGetNumScaleUpSteps( const CameraInfo_ScaleData_t &ScaleData );
+		int CustomDataGetNumScaleDownSteps( const CameraInfo_ScaleData_t &ScaleData );
+		float CustomDataGetScaleForStep( int nScaleStep, const CameraInfo_ScaleData_t &ScaleData );
+
+		bool WallPlacement( float fBumpLeftRightDist, float fBumpUpDownDist, float fBumpOffWall, CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, Vector &positionOut, QAngle &anglesOut );
+		bool SpacePlacement( CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, const QAngle &qPlacementAngleIN, int traceMask, Vector &positionOut );
+	};
+	END_BRANCHING_SINGLETON_DEFINITION_NOBASE( CPhotoPlacementQuery );
+#endif // FSTOP
 };
 
 // Send tables exposed in this module.
@@ -2667,6 +2752,21 @@ inline int CBaseEntity::GetModelIndex( void ) const
 {
 	return m_nModelIndex;
 }
+
+#ifdef FSTOP
+//-----------------------------------------------------------------------------
+// AddOn related methods
+//-----------------------------------------------------------------------------
+inline void CBaseEntity::SetAIAddOn( string_t addonName )
+{
+	m_AIAddOn = addonName;
+}
+
+inline string_t CBaseEntity::GetAIAddOn( void ) const
+{
+	return m_AIAddOn;
+}
+#endif // FSTOP
 
 
 

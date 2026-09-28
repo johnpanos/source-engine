@@ -398,10 +398,16 @@ class RelightOracleTest(unittest.TestCase):
         self.probe = {"capture": self.capture, "box_min": np.array(ROOM[0], float),
                       "box_max": np.array(ROOM[1], float)}
 
-    def error(self, bands, change):
+    def light(self, points, normals):
+        """The diffuse light now (baked plus the point light) and as baked."""
+        baked = np.full((len(points), 3), self.BAKED)
+        return baked + self.change(points, normals), baked
+
+    def error(self, bands, light, truth=None):
         radiance = rps.probe_radiance(self.points, self.reflected, np.zeros(len(self.points)),
-                                      self.probe, self.chain, bands=bands, change=change)
-        return float(np.mean(np.abs(radiance - self.truth)) / np.mean(self.truth))
+                                      self.probe, self.chain, bands=bands, light=light)
+        truth = self.truth if truth is None else truth
+        return float(np.mean(np.abs(radiance - truth)) / np.mean(truth))
 
     def test_relit_probe_matches_the_lit_room_and_the_controls_fail(self):
         distance, _ = self.scene(self.points, self.reflected, 1e4)
@@ -410,18 +416,92 @@ class RelightOracleTest(unittest.TestCase):
         lookup = rps.probe_radiance(self.points, self.reflected, np.zeros(len(self.points)),
                                     self.probe, self.chain)
         floor = float(np.mean(np.abs(lookup - baked)) / np.mean(baked))
-        relit = self.error(self.bands, self.change)
+        relit = self.error(self.bands, self.light)
         unrelit = self.error(None, None)
         halved = [level * (1.0, 1.0, 1.0, 0.5) for level in self.bands[0]]
-        misplaced = self.error((halved, self.bands[1]), self.change)
+        misplaced = self.error((halved, self.bands[1]), self.light)
         self.assertLess(relit, floor + 0.02)
         self.assertGreater(unrelit, 4 * relit)
         self.assertGreater(misplaced, 2 * relit)
 
+    def test_removed_light_scales_the_capture_and_the_additive_control_fails(self):
+        """The capture holds a bright beam (a patch of direct light through a
+        doorway) that the smooth diffuse-light field does not resolve. When
+        the room's light drops to a tenth, the relit probe is the capture
+        times the drop, beam included; adding albedo times the field's
+        (negative) change instead leaves most of the beam lit."""
+        width = 512
+        directions = reflection_probe.equirect_directions(width).reshape(-1, 3)
+        seen, _ = self.scene(np.tile(self.capture, (len(directions), 1)), directions, 1e4)
+        points = self.capture + seen[:, None] * directions
+
+        def beam(hits):
+            return 1.0 + 4.0 * ((hits[:, 0] > 6.0 - 1e-6) & (hits[:, 2] < 1.5))[:, None]
+        chain = [(self.albedo(points) * self.BAKED * beam(points)).reshape(width // 2, width, 3)]
+
+        def dimmed(points, normals):
+            baked = np.full((len(points), 3), self.BAKED)
+            return 0.1 * baked, baked
+        distance, _ = self.scene(self.points, self.reflected, 1e4)
+        hits = self.points + distance[:, None] * self.reflected
+        truth = 0.1 * self.albedo(hits) * self.BAKED * beam(hits)
+        roughness = np.zeros(len(self.points))
+        relit = rps.probe_radiance(self.points, self.reflected, roughness, self.probe, chain,
+                                   bands=self.bands, light=dimmed)
+        baked = rps.probe_radiance(self.points, self.reflected, roughness, self.probe, chain)
+        albedo = self.albedo(hits)
+        additive = np.maximum(baked - albedo * 0.9 * self.BAKED, 0.0)
+        lit = beam(hits)[:, 0] > 1.0
+        self.assertGreater(lit.sum(), 20)
+
+        def error(radiance):
+            return float(np.mean(np.abs(radiance - truth)) / np.mean(truth))
+        self.assertLess(error(relit), 0.1)
+        self.assertGreater(error(additive), 5 * error(relit))
+        # The rule itself: removal is exactly relative, addition absolute.
+        np.testing.assert_allclose(
+            rps.relight(np.array([[0.2, 0.2, 0.2]]), np.array([[0.5, 0.5, 0.5]]),
+                        np.array([[0.1, 0.4, 0.4]]), np.array([[0.4, 0.4, 0.2]])),
+            [[0.05, 0.2, 0.3]])
+
+    def test_an_occluder_hides_what_the_capture_saw(self):
+        """A slab between the capture and the far wall: lookups whose seen
+        point lies behind it take the slab's face (its reflectance times the
+        light now there), the others are relit as without it."""
+        slab = ((4.5, 0.0, 0.0), (4.7, 4.0, 3.0), 0.3)
+        radiance = rps.probe_radiance(self.points, self.reflected, np.zeros(len(self.points)),
+                                      self.probe, self.chain, bands=self.bands,
+                                      light=self.light, occluders=[slab])
+        free = rps.probe_radiance(self.points, self.reflected, np.zeros(len(self.points)),
+                                  self.probe, self.chain, bands=self.bands, light=self.light)
+        direction = rps.reflection_probe.corrected_direction(
+            rps.reflection_probe.parallax_lookup(self.points, self.reflected, self.capture,
+                                                 self.probe["box_min"],
+                                                 self.probe["box_max"])[0],
+            self.reflected, np.zeros(len(self.points)))
+        albedo = rps.reflection_probe.sample_chain(self.bands[0], direction,
+                                                   np.zeros(len(self.points)), channels=4)
+        hidden, t, face, _ = rps.occluded_segment(self.capture, direction, albedo[:, 3], [slab])
+        self.assertGreater(hidden.sum(), 20)
+        self.assertGreater((~hidden).sum(), 20)
+        np.testing.assert_array_equal(radiance[~hidden], free[~hidden])
+        entry = self.capture + direction[hidden] * t[hidden, None]
+        np.testing.assert_allclose(entry[:, 0], 4.5, atol=1e-9)
+        np.testing.assert_allclose(face[hidden], np.tile((-1.0, 0.0, 0.0), (hidden.sum(), 1)))
+        now, _ = self.light(entry, face[hidden])
+        np.testing.assert_allclose(radiance[hidden], 0.3 * now)
+        # Inside the slab the capture sees nothing else: the face is at t = 0.
+        inside, t0, back, _ = rps.occluded_segment(np.array((4.6, 2.0, 1.0)),
+                                                   np.array([[1.0, 0.0, 0.0]]), [5.0], [slab])
+        self.assertTrue(inside[0])
+        self.assertEqual(t0[0], 0.0)
+        np.testing.assert_array_equal(back[0], (-1.0, 0.0, 0.0))
+
     def test_zero_change_is_the_baked_probe_exactly(self):
         zero = rps.probe_radiance(self.points, self.reflected, np.zeros(len(self.points)),
                                   self.probe, self.chain, bands=self.bands,
-                                  change=lambda p, n: np.zeros((len(p), 3)))
+                                  light=lambda p, n: (np.full((len(p), 3), self.BAKED),
+                                                      np.full((len(p), 3), self.BAKED)))
         baked = rps.probe_radiance(self.points, self.reflected, np.zeros(len(self.points)),
                                    self.probe, self.chain)
         np.testing.assert_array_equal(zero, baked)

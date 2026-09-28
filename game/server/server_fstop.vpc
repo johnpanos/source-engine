@@ -1,0 +1,115 @@
+//-----------------------------------------------------------------------------
+//	SERVER_FSTOP.VPC
+//
+//	F-Stop: the Portal 1 server (server_portal.vpc) plus Valve's F-Stop
+//	prototype sources in game\server\fstop. Waf lists it after
+//	server_base.vpc and server_portal.vpc (game/server/wscript).
+//
+//	Not built: npc_companionbot, npc_medicbot and npc_obot speak through a
+//	concept-handle manager (g_pConceptManager) and response-system follow-ups
+//	(EOZ_Hacks::ResponseFollowup) that no available source drop contains.
+//
+//	The blob NPCs (npc_surface, npc_fountain, npc_demomonster) keep their
+//	particles in VPhysics; the neighbour search Valve's blobulator physics
+//	library supplied is the clean-room PhysTiler
+//	(public/blobulator/physics, game/shared/blobulator/PhysTiler.cpp).
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		"..\.."
+$Macro GAMENAME 	"fstop"
+
+$Configuration
+{
+	$Compiler
+	{
+		$AdditionalIncludeDirectories	"$BASE;.\fstop;$SRCDIR\game\shared\fstop"
+		$PreprocessorDefinitions		"$BASE;FSTOP"
+	}
+}
+
+$Project "Server (F-Stop)"
+{
+	$Folder	"Source Files"
+	{
+		$Folder	"F-Stop"
+		{
+			$File	"fstop\addon_basecombatweapon.cpp"
+			$File	"fstop\addon_baseshooter.cpp"
+			$File	"fstop\addon_baseshooter.h"
+			$File	"fstop\addon_bomb.cpp"
+			$File	"fstop\addon_brain.cpp"
+			$File	"fstop\addon_dartgun.cpp"
+			$File	"fstop\addon_minigun.cpp"
+			$File	"fstop\addon_mortar.cpp"
+			$File	"fstop\addon_propeller.cpp"
+			$File	"fstop\addon_rpg.cpp"
+			$File	"fstop\addon_saw.cpp"
+			$File	"fstop\addon_shield.cpp"
+			$File	"fstop\addon_thrownprojectile.cpp"
+			$File	"fstop\ai_addon.cpp"
+			$File	"fstop\ai_addon.h"
+			$File	"fstop\ai_addon_builder.cpp"
+			$File	"fstop\ai_addon_factory.cpp"
+			$File	"fstop\ai_agent.cpp"
+			$File	"fstop\ai_agent.h"
+			$File	"fstop\ai_behavior_addonhost.cpp"
+			$File	"fstop\ai_behavior_addonhost.h"
+			$File	"fstop\blob_particle.cpp"
+			$File	"fstop\blob_particle.h"
+			$File	"fstop\branchingsingleton.h"
+			$File	"fstop\cbaseprojectile.cpp"
+			$File	"fstop\cbaseprojectile.h"
+			$File	"fstop\env_dof_controller.cpp"
+			$File	"fstop\env_dof_controller.h"
+			$File	"fstop\env_portal_laser.cpp"
+			$File	"fstop\func_monopole_field.cpp"
+			$File	"fstop\func_pipe_entrance.cpp"
+			$File	"fstop\func_pipe_entrance.h"
+			$File	"fstop\func_placement_clip.cpp"
+			$File	"fstop\info_placement_helper.cpp"
+			$File	"fstop\info_placement_helper.h"
+			$File	"fstop\inv_photos.cpp"
+			$File	"fstop\inv_photos.h"
+			$File	"fstop\item_photo.cpp"
+			$File	"fstop\npc_android.cpp"
+			$File	"fstop\npc_android.h"
+			$File	"fstop\npc_android_basic.cpp"
+			$File	"fstop\npc_android_missile.cpp"
+			$File	"fstop\npc_chicken.cpp"
+			$File	"fstop\npc_demomonster.cpp"
+			$File	"fstop\npc_demomonster.h"
+			$File	"fstop\npc_fountain.cpp"
+			$File	"fstop\npc_fountain.h"
+			$File	"fstop\npc_hover_turret.cpp"
+			$File	"fstop\npc_surface.cpp"
+			$File	"fstop\npc_surface.h"
+			$File	"fstop\photo.cpp"
+			$File	"fstop\photo.h"
+			$File	"fstop\point_entity_label.cpp"
+			$File	"fstop\prop_air_vent.cpp"
+			$File	"fstop\prop_air_vent.h"
+			$File	"fstop\prop_android_dispenser.cpp"
+			$File	"fstop\prop_building.cpp"
+			$File	"fstop\prop_geyser.cpp"
+			$File	"fstop\prop_levitator.cpp"
+			$File	"fstop\prop_monopole.cpp"
+			$File	"fstop\prop_mousetrap.cpp"
+			$File	"fstop\prop_personality_sphere.cpp"
+			$File	"fstop\prop_portal_linked_door.cpp"
+			$File	"fstop\prop_portal_tunnel.cpp"
+			$File	"fstop\prop_reflect.cpp"
+			$File	"fstop\prop_swap.cpp"
+			$File	"fstop\prop_tombstone.cpp"
+			$File	"fstop\trigger_callback.cpp"
+			$File	"fstop\trigger_callback.h"
+			$File	"fstop\trigger_photo_eraser.cpp"
+			$File	"fstop\unseen_movement.cpp"
+			$File	"fstop\unseen_movement.h"
+			$File	"fstop\weapon_camera.cpp"
+			$File	"fstop\weapon_camera.h"
+			$File	"fstop\weapon_placement.cpp"
+			$File	"$SRCDIR\game\shared\fstop\blob_networkbypass.cpp"
+			$File	"$SRCDIR\game\shared\blobulator\PhysTiler.cpp"
+		}
+	}
+}

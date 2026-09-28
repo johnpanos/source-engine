@@ -17,6 +17,9 @@
 #include "ai_hint.h"
 #include "bitstring.h"
 #include "stringregistry.h"
+#ifdef FSTOP
+#include "ai_agent.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -26,6 +29,9 @@
 // Init static variables
 //-----------------------------------------------------------------------------
 CAI_SchedulesManager g_AI_SchedulesManager;
+#ifdef FSTOP
+CAI_SchedulesManager g_AI_AgentSchedulesManager;
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose:	Delete all the string registries
@@ -34,6 +40,9 @@ CAI_SchedulesManager g_AI_SchedulesManager;
 //-----------------------------------------------------------------------------
 void CAI_SchedulesManager::DestroyStringRegistries(void)
 {
+#ifdef FSTOP
+	CAI_Agent::GetSchedulingSymbols()->Clear();
+#endif
 	CAI_BaseNPC::GetSchedulingSymbols()->Clear();
 	CAI_BaseNPC::gm_SquadSlotNamespace.Clear();
 
@@ -44,6 +53,9 @@ void CAI_SchedulesManager::DestroyStringRegistries(void)
 
 void CAI_SchedulesManager::CreateStringRegistries( void )
 {
+#ifdef FSTOP
+	CAI_Agent::GetSchedulingSymbols()->Clear();
+#endif
 	CAI_BaseNPC::GetSchedulingSymbols()->Clear();
 	CAI_BaseNPC::gm_SquadSlotNamespace.Clear();
 
@@ -66,6 +78,16 @@ void CAI_BaseNPC::InitSchedulingTables()
 	CAI_BaseNPC::InitDefaultSquadSlotSR();
 }
 
+#ifdef FSTOP
+void CAI_Agent::InitSchedulingTables()
+{
+	CAI_Agent::gm_ClassScheduleIdSpace.Init( "CAI_Agent", CAI_Agent::GetSchedulingSymbols() );
+	CAI_Agent::InitDefaultScheduleSR();
+	CAI_Agent::InitDefaultConditionSR();
+	CAI_Agent::InitDefaultTaskSR();
+}
+#endif
+
 bool CAI_SchedulesManager::LoadAllSchedules(void)
 {
 	// If I haven't loaded schedules yet
@@ -73,11 +95,20 @@ bool CAI_SchedulesManager::LoadAllSchedules(void)
 	{
 		// Init defaults
 		CAI_BaseNPC::InitSchedulingTables();
+#ifdef FSTOP
+		CAI_Agent::InitSchedulingTables();
+#endif
 		if (!CAI_BaseNPC::LoadDefaultSchedules())
 		{
 			CAI_BaseNPC::m_nDebugBits |= bits_debugDisableAI;
 			DevMsg("ERROR:  Mistake in default schedule definitions, AI Disabled.\n");
 		}
+#ifdef FSTOP
+		if (!CAI_Agent::LoadDefaultSchedules())
+		{
+			DevMsg("ERROR:  Mistake in default agent schedule definitions.\n");
+		}
+#endif
 
 // UNDONE: enable this after the schedules are all loaded (right now some load in monster spawns)
 #if 0
@@ -190,7 +221,24 @@ int CAI_SchedulesManager::GetGoalID( const char *token )
 //			false - if data load fails
 //-----------------------------------------------------------------------------
 
+#ifdef FSTOP
 bool CAI_SchedulesManager::LoadSchedulesFromBuffer( const char *prefix, const char *pStartFile, CAI_ClassScheduleIdSpace *pIdSpace )
+{
+	return LoadSchedulesFromBuffer( prefix, pStartFile, pIdSpace, CAI_BaseNPC::GetSchedulingSymbols() );
+}
+
+#define SCHEDULE_LOAD_SCHEDULE_ID( name )	pGlobalNamespace->ScheduleSymbolToId( name )
+#define SCHEDULE_LOAD_TASK_ID( name )		pGlobalNamespace->TaskSymbolToId( name )
+#define SCHEDULE_LOAD_CONDITION_ID( name )	pGlobalNamespace->ConditionSymbolToId( name )
+
+bool CAI_SchedulesManager::LoadSchedulesFromBuffer( const char *prefix, const char *pStartFile, CAI_ClassScheduleIdSpace *pIdSpace, CAI_GlobalScheduleNamespace *pGlobalNamespace )
+#else
+#define SCHEDULE_LOAD_SCHEDULE_ID( name )	CAI_BaseNPC::GetScheduleID( name )
+#define SCHEDULE_LOAD_TASK_ID( name )		CAI_BaseNPC::GetTaskID( name )
+#define SCHEDULE_LOAD_CONDITION_ID( name )	CAI_BaseNPC::GetConditionID( name )
+
+bool CAI_SchedulesManager::LoadSchedulesFromBuffer( const char *prefix, const char *pStartFile, CAI_ClassScheduleIdSpace *pIdSpace )
+#endif
 {
 	char token[1024];
 	char save_token[1024];
@@ -211,7 +259,7 @@ bool CAI_SchedulesManager::LoadSchedulesFromBuffer( const char *prefix, const ch
 			return false;
 		}
 
-		int scheduleID = CAI_BaseNPC::GetScheduleID(token);
+		int scheduleID = SCHEDULE_LOAD_SCHEDULE_ID(token);
 		if (scheduleID == -1)
 		{
 			DevMsg( "ERROR: LoadSchd (%s): Unknown schedule type (%s)\n", prefix, token);
@@ -242,7 +290,7 @@ bool CAI_SchedulesManager::LoadSchedulesFromBuffer( const char *prefix, const ch
 		while ((token[0]!='\0') && (stricmp("Interrupts",token)))
 		{
 			// Convert generic ID to sub-class specific enum
-			int taskID = CAI_BaseNPC::GetTaskID(token);
+			int taskID = SCHEDULE_LOAD_TASK_ID(token);
 			tempTask[taskNum].iTask = (pIdSpace) ? pIdSpace->TaskGlobalToLocal(taskID) : AI_RemapFromGlobal( taskID );
 			
 			// If not a valid condition, send a warning message
@@ -294,7 +342,7 @@ bool CAI_SchedulesManager::LoadSchedulesFromBuffer( const char *prefix, const ch
 				pfile = engine->ParseFile(pfile, token, sizeof( token ) );
 
 				// Convert generic ID to sub-class specific enum
-				int taskID = CAI_BaseNPC::GetTaskID(token);
+				int taskID = SCHEDULE_LOAD_TASK_ID(token);
 				tempTask[taskNum].flTaskData = (pIdSpace) ? pIdSpace->TaskGlobalToLocal(taskID) : AI_RemapFromGlobal( taskID );
 
 				if (tempTask[taskNum].flTaskData == -1)
@@ -319,7 +367,7 @@ bool CAI_SchedulesManager::LoadSchedulesFromBuffer( const char *prefix, const ch
 				pfile = engine->ParseFile(pfile, token, sizeof( token ) );
 
 				// Convert generic ID to sub-class specific enum
-				int schedID = CAI_BaseNPC::GetScheduleID(token);
+				int schedID = SCHEDULE_LOAD_SCHEDULE_ID(token);
 				tempTask[taskNum].flTaskData = (pIdSpace) ? pIdSpace->ScheduleGlobalToLocal(schedID) : AI_RemapFromGlobal( schedID );
 
 				if (tempTask[taskNum].flTaskData == -1)
@@ -480,7 +528,7 @@ bool CAI_SchedulesManager::LoadSchedulesFromBuffer( const char *prefix, const ch
 		while ((token[0]!='\0') && (stricmp("Schedule",token)))
 		{
 			// Convert generic ID to sub-class specific enum
-			int condID = CAI_BaseNPC::GetConditionID(token);
+			int condID = SCHEDULE_LOAD_CONDITION_ID(token);
 
 			// If not a valid condition, send a warning message
 			if (condID == -1)

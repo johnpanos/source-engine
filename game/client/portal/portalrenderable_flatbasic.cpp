@@ -81,6 +81,10 @@ CPortalRenderable_FlatBasic::CPortalRenderable_FlatBasic( void )
 	m_fSecondaryStaticAmount( 0.0f ),
 	m_fOpenAmount( 0.0f ),
 	m_bIsPortal2( false )
+#ifdef FSTOP
+	, m_fHalfWidth( PORTAL_HALF_WIDTH ),
+	m_fHalfHeight( PORTAL_HALF_HEIGHT )
+#endif // FSTOP
 {
 	m_InternallyMaintainedData.m_VisData.m_fDistToAreaPortalTolerance = 64.0f;
 	m_InternallyMaintainedData.m_VisData.m_vecVisOrigin = Vector(0,0,0);
@@ -127,8 +131,8 @@ void CPortalRenderable_FlatBasic::PortalMoved( void )
 
 	// Update the points on the portal which we add to PVS
 	{
-		Vector vScaledRight = m_vRight * PORTAL_HALF_WIDTH;
-		Vector vScaledUp = m_vUp * PORTAL_HALF_HEIGHT;
+		Vector vScaledRight = m_vRight * GetHalfWidth();
+		Vector vScaledUp = m_vUp * GetHalfHeight();
 
 		m_InternallyMaintainedData.m_ptCorners[0] = (m_InternallyMaintainedData.m_ptForwardOrigin + vScaledRight) + vScaledUp;
 		m_InternallyMaintainedData.m_ptCorners[1] = (m_InternallyMaintainedData.m_ptForwardOrigin - vScaledRight) + vScaledUp;
@@ -160,7 +164,7 @@ void CPortalRenderable_FlatBasic::PortalMoved( void )
 			float fRightBlend = sinf( fCirclePos );
 
 			Vector vNormal = -fUpBlend * m_vUp - fRightBlend * m_vRight;
-			Vector ptOnPlane = m_ptOrigin + (m_vUp * (fUpBlend * PORTAL_HALF_HEIGHT * 1.1f)) + (m_vRight * (fRightBlend * PORTAL_HALF_WIDTH * 1.1f));
+			Vector ptOnPlane = m_ptOrigin + (m_vUp * (fUpBlend * GetHalfHeight() * 1.1f)) + (m_vRight * (fRightBlend * GetHalfWidth() * 1.1f));
 
 			m_InternallyMaintainedData.m_BoundingPlanes[i].Init( vNormal, vNormal.Dot( ptOnPlane ) );
 		}
@@ -223,7 +227,7 @@ bool CPortalRenderable_FlatBasic::CalcFrustumThroughPortal( const Vector &ptCurr
 	int iNextViewRecursionLevel = iViewRecursionLevel + 1;
 
 	if( (iViewRecursionLevel == 0) && 
-		( (ptCurrentViewOrigin - m_ptOrigin).LengthSqr() < (PORTAL_HALF_HEIGHT * PORTAL_HALF_HEIGHT) ) )//FIXME: Player closeness check might need reimplementation
+		( (ptCurrentViewOrigin - m_ptOrigin).LengthSqr() < (GetHalfHeight() * GetHalfHeight()) ) )//FIXME: Player closeness check might need reimplementation
 	{
 		//calculations are most likely going to be completely useless, return nothing
 		return false;
@@ -746,9 +750,9 @@ void CPortalRenderable_FlatBasic::DrawComplexPortalMesh( const IMaterial *pMater
 {
 	PortalMeshPoint_t BaseVertices[4];
 
-	Vector ptBottomLeft = m_ptOrigin + (m_vForward * (fForwardOffsetModifier)) - (m_vRight * PORTAL_HALF_WIDTH) - (m_vUp * PORTAL_HALF_HEIGHT);
-	Vector vScaledUp = m_vUp * (2.0f * PORTAL_HALF_HEIGHT);
-	Vector vScaledRight = m_vRight * (2.0f * PORTAL_HALF_WIDTH);
+	Vector ptBottomLeft = m_ptOrigin + (m_vForward * (fForwardOffsetModifier)) - (m_vRight * GetHalfWidth()) - (m_vUp * GetHalfHeight());
+	Vector vScaledUp = m_vUp * (2.0f * GetHalfHeight());
+	Vector vScaledRight = m_vRight * (2.0f * GetHalfWidth());
 
 	CMatRenderContextPtr pRenderContext( materials );
 	VMatrix matView;
@@ -824,10 +828,10 @@ void CPortalRenderable_FlatBasic::DrawSimplePortalMesh( const IMaterial *pMateri
 	Vector ptCenter = m_ptOrigin + (m_vForward * fForwardOffsetModifier);
 
 	Vector verts[4];
-	verts[0] = ptCenter + (m_vRight * PORTAL_HALF_WIDTH) - (m_vUp * PORTAL_HALF_HEIGHT);
-	verts[1] = ptCenter + (m_vRight * PORTAL_HALF_WIDTH) + (m_vUp * PORTAL_HALF_HEIGHT);	
-	verts[2] = ptCenter - (m_vRight * PORTAL_HALF_WIDTH) - (m_vUp * PORTAL_HALF_HEIGHT);
-	verts[3] = ptCenter - (m_vRight * PORTAL_HALF_WIDTH) + (m_vUp * PORTAL_HALF_HEIGHT);
+	verts[0] = ptCenter + (m_vRight * GetHalfWidth()) - (m_vUp * GetHalfHeight());
+	verts[1] = ptCenter + (m_vRight * GetHalfWidth()) + (m_vUp * GetHalfHeight());	
+	verts[2] = ptCenter - (m_vRight * GetHalfWidth()) - (m_vUp * GetHalfHeight());
+	verts[3] = ptCenter - (m_vRight * GetHalfWidth()) + (m_vUp * GetHalfHeight());
 
 	float vTangent[4] = { -m_vRight.x, -m_vRight.y, -m_vRight.z, 1.0f };
 
@@ -920,7 +924,7 @@ void CPortalRenderable_FlatBasic::DrawRenderFixMesh( const IMaterial *pMaterialO
 	if( (vPortalCenterToCamera.Dot( m_vForward ) < -1.0f) ) //camera coplanar (to 1.0 units) or in front of portal plane
 		return;
 
-	if( vPortalCenterToCamera.LengthSqr() < (PORTAL_HALF_HEIGHT * PORTAL_HALF_HEIGHT) ) //FIXME: Player closeness check might need reimplementation
+	if( vPortalCenterToCamera.LengthSqr() < (GetHalfHeight() * GetHalfHeight()) ) //FIXME: Player closeness check might need reimplementation
 	{
 		//if the player is this close to the portal, immediately get rid of any static it has as well as draw the fix
 		m_fStaticAmount = 0.0f;
@@ -1118,8 +1122,8 @@ void CPortalRenderable_FlatBasic::RenderFogQuad( void )
 	pRenderContext->GetMatrix( MATERIAL_PROJECTION, &matProj );
 	MatrixMultiply( matProj, matView, matViewProj );
 
-	Vector vUp = m_vUp * (PORTAL_HALF_HEIGHT * 2.0f);
-	Vector vRight = m_vRight * (PORTAL_HALF_WIDTH * 2.0f);
+	Vector vUp = m_vUp * (GetHalfHeight() * 2.0f);
+	Vector vRight = m_vRight * (GetHalfWidth() * 2.0f);
 
 	Vector ptCorners[4];
 	ptCorners[0] = (m_ptOrigin + vUp) + vRight;
@@ -1256,7 +1260,7 @@ bool CPortalRenderable_FlatBasic::ShouldUpdatePortalView_BasedOnView( const CVie
 	Vector vCameraPos = currentView.origin;
 
 	if( (g_pPortalRender->GetViewRecursionLevel() == 0) &&
-		((m_ptOrigin - vCameraPos).LengthSqr() < (PORTAL_HALF_HEIGHT * PORTAL_HALF_HEIGHT)) ) //FIXME: Player closeness check might need reimplementation
+		((m_ptOrigin - vCameraPos).LengthSqr() < (GetHalfHeight() * GetHalfHeight())) ) //FIXME: Player closeness check might need reimplementation
 	{
 		return true; //fudgery time. The player might not be able to see the surface, but they can probably see the render fix
 	}

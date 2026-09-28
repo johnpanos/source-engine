@@ -136,6 +136,7 @@ public:
 
 	virtual CNPCSpawnDestination *FindSpawnDestination();
 	virtual void MakeNPC( void );
+	CAI_BaseNPC *MakeNPCFromTemplate( void );
 	void MakeNPCInRadius( void );
 	void MakeNPCInLine( void );
 	virtual void MakeMultipleNPCS( int nNPCs );

@@ -58,16 +58,32 @@ vec4 ReflectionProbesSample( vec2 texel )
 	return mix( upper, lower, f.y );
 }
 
-// R50-RELIGHT: the analytic change the relight fixture is relit by
-// (tools/quality/reflection_probe_set.py fixture_change; the C++ suite's
-// FixtureChange), so a texture with relight bands exercises the relit path.
+// R50-RELIGHT: the analytic light (now and baked) and the moving occluder
+// the relight fixture is relit by (tools/quality/reflection_probe_set.py
+// fixture_light and FIXTURE_OCCLUDER; the C++ suite's FixtureLight), so a
+// texture with relight bands exercises the relit and occluded paths.
 #define REFLECTION_PROBE_RELIGHT
 #include "reflection_probes.glsl"
 
-vec3 ReflectionProbeDiffuseChange( vec3 position, vec3 normal )
+void ReflectionProbeDiffuseLight( vec3 position, vec3 normal, out vec3 now, out vec3 baked )
 {
-	return vec3( 0.002 * position.x + 0.5 * max( normal.z, 0.0 ), 0.3 - 0.003 * position.y,
-	    0.25 * normal.x - 0.1 );
+	baked = vec3( 0.3 + 0.001 * position.x, 0.25 + 0.1 * abs( normal.z ),
+	    0.2 + 0.0005 * position.z );
+	now = baked + vec3( 0.002 * position.x + 0.5 * max( normal.z, 0.0 ) - 0.45,
+	                  0.3 - 0.003 * position.y, 0.25 * normal.x - 0.1 );
+}
+
+int ReflectionProbeOccluderCount()
+{
+	return 1;
+}
+
+void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi, out float reflectance )
+{
+	const float unitsPerMeter = 39.37007874015748;
+	lo = vec3( 2.8, 1.2, 0.0 ) * unitsPerMeter;
+	hi = vec3( 3.2, 2.8, 2.2 ) * unitsPerMeter;
+	reflectance = 0.4;
 }
 
 void main()

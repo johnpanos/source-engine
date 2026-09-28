@@ -813,6 +813,11 @@ void CAI_BaseNPC::MaintainSchedule ( void )
 			bStopProcessing = true;
 	}
 
+#ifdef FSTOP
+	// Behaviors' secondary schedule channels (F-Stop AI add-ons).
+	MaintainAddOnBehaviorChannels();
+#endif
+
 	// UNDONE: We have to do this so that we have an animation set to blend to if RunTask changes the animation
 	// RunTask() will always change animations at the end of a script!
 	// Don't do this twice

@@ -112,6 +112,11 @@ enum Hint_e
 
 	// CS port hints
 	HINT_CSTRIKE_HOSTAGE_ESCAPE = 1100,
+
+#ifdef FSTOP
+	// Aperture (F-Stop) hints
+	HINT_PORTAL2_NEST = 1200,
+#endif // FSTOP
 };
 const char *GetHintTypeDescription( Hint_e iHintType );
 const char *GetHintTypeDescription( CAI_Hint *pHint );

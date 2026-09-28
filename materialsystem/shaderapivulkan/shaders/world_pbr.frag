@@ -63,18 +63,12 @@ consts;
 
 // R50-RELIGHT: with a change to relight by (the producer's change volume or
 // the unbaked lights), the map's probes that carry relight bands are relit
-// (ReflectionProbeDiffuseChange, below).
+// (ReflectionProbeDiffuseLight, below). Every lookup is relit, whatever its
+// weight: a matte dielectric reflects only a few percent of what it sees, but
+// where the room goes dark (a door closes) that unrelit few percent is all
+// the pixel shows.
 #if defined( DELTA_VOLUME ) || defined( DIRECT_LIGHTS )
 #define REFLECTION_PROBE_RELIGHT
-// The share of the pixel the probe lookup being made contributes (its
-// directional albedo's luminance times the probe weight). Below
-// kRelightMinWeight the change is skipped: a matte dielectric's reflection
-// carries about 4% of what it sees, and the pixel already shows the change
-// diffusely, so the skipped part is at most a tenth of a change the pixel
-// has, while mirrors, metals and glossy floors at grazing angles stay relit.
-// The change volume's per-sample cost is what this saves (R50-RELIGHT cost).
-const float kRelightMinWeight = 0.1;
-float g_relightWeight = 1.0;
 #endif
 #include "world_pbr_probe.glsl"
 
@@ -126,6 +120,9 @@ layout( set = 0, binding = 2 ) uniform sampler2D producerIndirect;
 #ifdef DELTA_VOLUME
 layout( set = 0, binding = 2 ) uniform sampler2D probeAtlas; // the change, PRBV layout
 layout( set = 0, binding = 3 ) uniform sampler2D probeGrids; // grid table, RGBA32F
+// The published (runtime) volume, which relit probes read beside the change.
+layout( set = 0, binding = 6 ) uniform sampler2D probeSecondAtlas;
+#define PROBE_VOLUME_SECOND
 #include "probe_volume.glsl"
 
 // The producer's change of indirect diffuse light at `position` along `normal`.
@@ -319,21 +316,42 @@ vec3 DirectLightRadiance( vec3 normal, vec3 view, vec3 diffuseAlbedo, vec3 f0, f
 #endif
 
 #ifdef REFLECTION_PROBE_RELIGHT
-// R50-RELIGHT: what a relight band's point gains since the bake: the change
-// the world itself adds under this variant (the producer's change volume,
-// the unbaked lights' shadowed direct light), in the bake's unit.
-vec3 ReflectionProbeDiffuseChange( vec3 position, vec3 normal )
+// R50-RELIGHT: the diffuse light at a relight band's point now and as baked,
+// in the bake's unit. With the change volume: the published volume's total
+// (the producer's field, its direct light cut by moving occluders), and the
+// bake's as that less the total change. The unbaked lights' shadowed direct
+// light is light added now.
+void ReflectionProbeDiffuseLight( vec3 position, vec3 normal, out vec3 now, out vec3 baked )
 {
-	vec3 change = vec3( 0.0 );
-	if ( g_relightWeight < kRelightMinWeight )
-		return change;
+	now = vec3( 0.0 );
+	baked = vec3( 0.0 );
 #ifdef DELTA_VOLUME
-	change += IndirectChangeAt( position, normal );
+	vec3 change;
+	if ( ProbeIrradiancePair( position, normal, 0, true, change, now ) )
+		baked = now - change;
 #endif
 #ifdef DIRECT_LIGHTS
-	change += DirectLightDiffuseAt( position, normal );
+	now += DirectLightDiffuseAt( position, normal );
 #endif
-	return change;
+}
+
+int ReflectionProbeOccluderCount()
+{
+#ifdef DELTA_VOLUME
+	return ProbeOccluderCount();
+#else
+	return 0;
+#endif
+}
+
+void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi, out float reflectance )
+{
+#ifdef DELTA_VOLUME
+	ProbeOccluder( k, lo, hi, reflectance );
+#else
+	lo = hi = vec3( 0.0 );
+	reflectance = 0.0;
+#endif
 }
 #endif
 
@@ -432,9 +450,6 @@ void main()
 	float horizon = clamp( 1.0 + 1.3 * dot( reflected, normalize( fragNormal ) ), 0.0, 1.0 );
 	float probeWeight = occlusion * horizon * horizon;
 	vec3 image = diffuse;
-#ifdef REFLECTION_PROBE_RELIGHT
-	g_relightWeight = dot( directionalAlbedo, vec3( 0.2126, 0.7152, 0.0722 ) ) * probeWeight;
-#endif
 	if ( ImageRadiance( reflected, roughness, probe ) )
 		image += probe * directionalAlbedo * probeWeight;
 	if ( coat > 0.0 )
@@ -444,9 +459,6 @@ void main()
 		// normal needs no horizon term).
 		float coatFresnel = PbrFresnelSchlick( 0.04, max( dot( coatNormal, view ), 0.0 ) ) * coat;
 		image *= 1.0 - coatFresnel;
-#ifdef REFLECTION_PROBE_RELIGHT
-		g_relightWeight = coatFresnel * occlusion;
-#endif
 		if ( ImageRadiance( reflect( -view, coatNormal ), max( consts.lightRadiance.w, 0.02 ),
 		         probe ) )
 			image += probe * coatFresnel * occlusion;

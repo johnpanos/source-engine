@@ -192,6 +192,10 @@ public:
 	virtual void SetEventHandler( IMotionEvent *handler ) override { m_pHandler = handler; }
 	virtual void AttachObject( IPhysicsObject *pObject, bool checkIfAlreadyAttached ) override
 	{
+		// Match IVP: restore and legacy game code may attempt to attach a missing
+		// or static physics object.
+		if ( !pObject || pObject->IsStatic() )
+			return;
 		if ( checkIfAlreadyAttached && m_objects.Find( pObject ) != m_objects.InvalidIndex() )
 			return;
 		m_objects.AddToTail( pObject );

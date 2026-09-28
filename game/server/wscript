@@ -14,6 +14,8 @@ games = {
 	'hl2mp': ['server_base.vpc', 'server_hl2mp.vpc'],
 	'portal': ['server_base.vpc', 'server_portal.vpc'],
 	'portal2': ['server_base.vpc', 'server_portal_base.vpc', 'server_portal2.vpc'],
+	# F-Stop: the Portal 1 server plus Valve's F-Stop prototype sources.
+	'fstop': ['server_base.vpc', 'server_portal.vpc', 'server_fstop.vpc'],
 	'hl1': ['server_base.vpc', 'server_hl1.vpc'],
 	'hl1mp': ['server_base.vpc', 'server_hl1mp.vpc'],
 	'cstrike': ['server_base.vpc', 'server_cstrike.vpc', 'nav_mesh.vpc'],

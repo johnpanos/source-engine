@@ -183,6 +183,11 @@ public:
 
 	void	PrimaryAttack( void );
 	virtual float GetFireRate( void ) { return 1; };
+#ifdef FSTOP
+	// F-Stop: an NPC launches a missile, at pTarget when given (AI add-ons
+	// fire mounted weapons).
+	void	Operator_ForceNPCFire( CBaseCombatCharacter *pOperator, bool bSecondary, CBaseEntity *pTarget );
+#endif
 	void	ItemPostFrame( void );
 
 	void	Activate( void );

@@ -117,6 +117,10 @@ public:
 	virtual void DrawSmallEntities( bool enable );
 	virtual void EnableAlternateSorting( ClientRenderHandle_t handle, bool bEnable );
 
+#ifdef FSTOP
+	virtual RenderGroup_t GenerateRenderListEntry( IClientRenderable *pRenderable, CClientRenderablesList::CEntry &entryOut );
+#endif
+
 	// Adds a renderable to a set of leaves
 	virtual void AddRenderableToLeaves( ClientRenderHandle_t handle, int nLeafCount, unsigned short *pLeaves );
 
@@ -1683,6 +1687,43 @@ void CClientLeafSystem::CollateRenderablesInLeaf( int leaf, int worldListLeafInd
 		}
 	}
 }
+
+
+#ifdef FSTOP
+//-----------------------------------------------------------------------------
+// F-Stop: the render list entry CollateRenderablesInLeaf would make for this
+// renderable, without leaf, frustum or occlusion culling.
+//-----------------------------------------------------------------------------
+RenderGroup_t CClientLeafSystem::GenerateRenderListEntry( IClientRenderable *pRenderable, CClientRenderablesList::CEntry &entryOut )
+{
+	ClientRenderHandle_t handle = pRenderable->RenderHandle();
+	if ( handle == INVALID_CLIENT_RENDER_HANDLE || !m_Renderables.IsValidIndex( handle ) )
+		return RENDER_GROUP_COUNT;
+
+	RenderableInfo_t &renderable = m_Renderables[handle];
+	RenderGroup_t group = (RenderGroup_t)renderable.m_RenderGroup;
+	bool bTwoPass = false;
+	if ( group == RENDER_GROUP_TRANSLUCENT_ENTITY )
+	{
+		bTwoPass = ( ( renderable.m_Flags & RENDER_FLAGS_TWOPASS ) != 0 ) && ( renderable.m_pRenderable->GetFxBlend() == 255 );
+	}
+	else if ( RENDER_GROUP_CFG_NUM_OPAQUE_ENT_BUCKETS > 1 &&
+		group >= RENDER_GROUP_OPAQUE_STATIC && group <= RENDER_GROUP_OPAQUE_ENTITY )
+	{
+		Vector absMins, absMaxs, dims;
+		CalcRenderableWorldSpaceAABB( renderable.m_pRenderable, absMins, absMaxs );
+		VectorSubtract( absMaxs, absMins, dims );
+		float const fDimension = MAX( MAX( fabs( dims.x ), fabs( dims.y ) ), fabs( dims.z ) );
+		group = DetectBucketedRenderGroup( group, fDimension );
+	}
+
+	entryOut.m_pRenderable = renderable.m_pRenderable;
+	entryOut.m_iWorldListInfoLeaf = 0;
+	entryOut.m_TwoPass = bTwoPass;
+	entryOut.m_RenderHandle = handle;
+	return group;
+}
+#endif
 
 
 //-----------------------------------------------------------------------------

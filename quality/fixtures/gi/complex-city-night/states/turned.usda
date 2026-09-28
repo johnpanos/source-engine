@@ -1,0 +1,41 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryComplexCityNight"
+    metersPerUnit = 1
+    subLayers = [
+        @../complex-city-night.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryComplexCityNight"
+{
+    over "World"
+    {
+        over "BulbRed"
+        {
+            double3 xformOp:translate = (1.5, 2.598076, 2)
+        }
+
+        over "BulbGreen"
+        {
+            double3 xformOp:translate = (-3, -0, 2)
+        }
+
+        over "BulbBlue"
+        {
+            double3 xformOp:translate = (1.5, -2.598076, 2)
+        }
+
+        over "BulbAmber"
+        {
+            double3 xformOp:translate = (6, 3, 2.5)
+        }
+
+        over "BulbCyan"
+        {
+            double3 xformOp:translate = (6, 9, 2.5)
+        }
+    }
+}
+

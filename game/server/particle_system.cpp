@@ -30,6 +30,10 @@ IMPLEMENT_SERVERCLASS_ST_NOBASE(CParticleSystem, DT_ParticleSystem)
 	SendPropArray3( SENDINFO_ARRAY3(m_hControlPointEnts), SendPropEHandle( SENDINFO_ARRAY(m_hControlPointEnts) ) ),
 	SendPropArray3( SENDINFO_ARRAY3(m_iControlPointParents), SendPropInt( SENDINFO_ARRAY(m_iControlPointParents), 3, SPROP_UNSIGNED ) ),
 	SendPropBool( SENDINFO(m_bWeatherEffect) ),
+#ifdef FSTOP
+	SendPropArray3( SENDINFO_ARRAY3(m_vServerControlPoints), SendPropVector(SENDINFO_ARRAY(m_vServerControlPoints)) ),
+	SendPropArray3( SENDINFO_ARRAY3(m_iServerControlPointAssignments), SendPropInt(SENDINFO_ARRAY(m_iServerControlPointAssignments), -1, SPROP_UNSIGNED ) ),
+#endif // FSTOP
 END_SEND_TABLE()
 
 BEGIN_DATADESC( CParticleSystem )
@@ -38,6 +42,10 @@ BEGIN_DATADESC( CParticleSystem )
 	DEFINE_FIELD( m_bActive,			FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_flStartTime,		FIELD_TIME ),
 	DEFINE_KEYFIELD( m_iszEffectName,	FIELD_STRING, "effect_name" ),
+#ifdef FSTOP
+	DEFINE_ARRAY( m_vServerControlPoints, FIELD_VECTOR, CParticleSystem::kSERVERCONTROLLEDPOINTS ),
+	DEFINE_ARRAY( m_iServerControlPointAssignments, FIELD_CHARACTER, CParticleSystem::kSERVERCONTROLLEDPOINTS ),
+#endif // FSTOP
 	//DEFINE_FIELD( m_iEffectIndex, FIELD_INTEGER ),	// Don't save. Refind after loading.
 
 	DEFINE_KEYFIELD( m_iszControlPointNames[0], FIELD_STRING, "cpoint1" ),
@@ -130,7 +138,41 @@ CParticleSystem::CParticleSystem()
 {
 	m_bWeatherEffect = false;
 	m_bDisableSaveRestore = false;
+#ifdef FSTOP
+	for( int i = 0; i != kSERVERCONTROLLEDPOINTS; ++i )
+	{
+		m_iServerControlPointAssignments.GetForModify(i) = 255;
+	}
+#endif // FSTOP
 }
+
+#ifdef FSTOP
+//-----------------------------------------------------------------------------
+// Purpose: Try to allocate one of the server controlled control points to
+// hold the value. Designed to let the server funnel some variables to
+// particle systems (size, color, swirliness, ...)
+//-----------------------------------------------------------------------------
+bool CParticleSystem::SetControlPointValue( int iControlPoint, const Vector &vValue )
+{
+	for( int i = 0; i != kSERVERCONTROLLEDPOINTS; ++i )
+	{
+		if( m_iServerControlPointAssignments[i] == iControlPoint )
+		{
+			m_vServerControlPoints.GetForModify(i) = vValue;
+			return true;
+		}
+		if( m_iServerControlPointAssignments[i] == 255 )
+		{
+			m_iServerControlPointAssignments.GetForModify(i) = iControlPoint;
+			m_vServerControlPoints.GetForModify(i) = vValue;
+			return true;
+		}
+	}
+
+	Warning( "No free server controlled control points.\n" );
+	return false; //already using up all of our server control points
+}
+#endif // FSTOP
 
 //-----------------------------------------------------------------------------
 // Purpose: Controls whether this particle entity participates in save/restore.

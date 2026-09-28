@@ -24,6 +24,11 @@
 // FIX ME
 #include "portal_shareddefs.h"
 
+#ifdef FSTOP
+// F-Stop: the 'inactive portal' group for portals that aren't linked yet
+#define PORTAL_LINKAGE_GROUP_INVALID 255
+#endif // FSTOP
+
 static const char *s_pDelayedPlacementContext = "DelayedPlacementContext";
 static const char *s_pTestRestingSurfaceContext = "TestRestingSurfaceContext";
 static const char *s_pFizzleThink = "FizzleThink";
@@ -51,6 +56,9 @@ public:
 	bool	m_bSharedEnvironmentConfiguration; //this will be set by an instance of CPortal_Environment when two environments are in close proximity
 
 	EHANDLE	m_hMicrophone; //the microphone for teleporting sound
+#ifdef FSTOP
+	bool	m_bHACKUseMicrophones;	// If this portal should use a mic/speaker system to transmit sounds through portals
+#endif // FSTOP
 	EHANDLE	m_hSpeaker; //the speaker for teleported sound
 	
 	CSoundPatch		*m_pAmbientSound;
@@ -148,7 +156,45 @@ public:
 	//find a portal with the designated attributes, or creates one with them, favors active portals over inactive
 	static CProp_Portal		*FindPortal( unsigned char iLinkageGroupID, bool bPortal2, bool bCreateIfNothingFound = false );
 	static const CUtlVector<CProp_Portal *> *GetPortalLinkageGroup( unsigned char iLinkageGroupID );
+
+	// The portal's size. F-Stop portals are resizable; Portal's are fixed.
+#ifdef FSTOP
+	inline float			GetHalfWidth( void ) const { return m_fNetworkHalfWidth; }
+	inline float			GetHalfHeight( void ) const { return m_fNetworkHalfHeight; }
+	inline Vector			GetLocalMins( void ) const { return Vector( 0.0f, -m_fNetworkHalfWidth, -m_fNetworkHalfHeight ); }
+	inline Vector			GetLocalMaxs( void ) const { return Vector( 64.0f, m_fNetworkHalfWidth, m_fNetworkHalfHeight ); }
+#else
+	inline float			GetHalfWidth( void ) const { return PORTAL_HALF_WIDTH; }
+	inline float			GetHalfHeight( void ) const { return PORTAL_HALF_HEIGHT; }
+	inline Vector			GetLocalMins( void ) const { return Vector( 0.0f, -PORTAL_HALF_WIDTH, -PORTAL_HALF_HEIGHT ); }	// CProp_Portal_Shared::vLocalMins
+	inline Vector			GetLocalMaxs( void ) const { return Vector( 64.0f, PORTAL_HALF_WIDTH, PORTAL_HALF_HEIGHT ); }	// CProp_Portal_Shared::vLocalMaxs
+#endif // FSTOP
+
+private:
+	void					UpdateCollisionShape( void );	// (re)builds m_pCollisionShape from the local bounds
+
+#ifdef FSTOP
+public:
+	void					Resize( float fHalfWidth, float fHalfHeight );
+	void					InputResize( inputdata_t &inputdata );
+
+	CNetworkVar( float, m_fNetworkHalfWidth );
+	CNetworkVar( float, m_fNetworkHalfHeight );
+
+	static float			s_DefaultPortalHalfWidth;
+	static float			s_DefaultPortalHalfHeight;
+
+	//NULL portal will return default width/height
+	static void				GetPortalSize( float &fHalfWidth, float &fHalfHeight, CProp_Portal *pPortal = NULL );
+
+	friend class CPropPortalTunnel;
+#endif // FSTOP
 };
+
+#ifdef FSTOP
+// Finds a free linkage id for a portal.
+unsigned char UTIL_GetUnusedLinkageID( void );
+#endif // FSTOP
 
 
 //-----------------------------------------------------------------------------

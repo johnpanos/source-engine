@@ -98,6 +98,10 @@
 #include "env_debughistory.h"
 #include "collisionutils.h"
 
+#ifdef FSTOP
+#include "ai_addon.h"
+#endif
+
 extern ConVar sk_healthkit;
 
 // dvs: for opening doors -- these should probably not be here
@@ -4737,6 +4741,18 @@ void CAI_BaseNPC::GatherConditions( void )
 	}
 	else
 		ClearCondition( COND_IN_PVS );
+
+#ifdef FSTOP
+	// A behavior host does this for all its behaviors; elsewhere the add-on
+	// behaviors never run as the primary behavior.
+	if ( !HostsBehaviors() )
+	{
+		for ( int i = 0; i < m_AddOnBehaviors.Count(); i++ )
+		{
+			m_AddOnBehaviors[i]->GatherConditionsNotActive();
+		}
+	}
+#endif
 
 	g_AIConditionsTimer.End();
 }
@@ -10764,6 +10780,9 @@ BEGIN_DATADESC( CAI_BaseNPC )
 	DEFINE_INPUTFUNC( FIELD_VOID,	"HolsterAndDestroyWeapon", InputHolsterAndDestroyWeapon ),
 	DEFINE_INPUTFUNC( FIELD_VOID,	"UnholsterWeapon", InputUnholsterWeapon ),
 	DEFINE_INPUTFUNC( FIELD_STRING,	"ForceInteractionWithNPC", InputForceInteractionWithNPC ),
+#ifdef FSTOP
+	DEFINE_INPUTFUNC( FIELD_STRING, "CreateAddon", InputCreateAddon ),
+#endif
 	DEFINE_INPUTFUNC( FIELD_STRING, "UpdateEnemyMemory", InputUpdateEnemyMemory ),
 
 	// Function pointers
@@ -11331,6 +11350,9 @@ CAI_BaseNPC::CAI_BaseNPC(void)
 	m_afCapability				= 0;		// Make sure this is cleared in the base class
 
 	SetHullType(HULL_HUMAN);  // Give human hull by default, subclasses should override
+#ifdef FSTOP
+	m_nAITraceMask				= MASK_NPCSOLID;
+#endif
 
 	m_iMySquadSlot				= SQUAD_SLOT_NONE;
 	m_flSumDamage				= 0;
@@ -11421,6 +11443,10 @@ void CAI_BaseNPC::UpdateOnRemove(void)
 
 		CleanupOnDeath( NULL, false );
 	}
+
+#ifdef FSTOP
+	DestroyAddOnBehaviors();
+#endif
 
 	// Chain at end to mimic destructor unwind order
 	BaseClass::UpdateOnRemove();
@@ -14139,3 +14165,132 @@ bool CAI_BaseNPC::IsInChoreo() const
 {
 	return m_bInChoreo;
 }
+
+#ifdef FSTOP
+//-----------------------------------------------------------------------------
+// F-Stop AI add-on behaviors
+//-----------------------------------------------------------------------------
+void CAI_BaseNPC::AddBehavior( CAI_BehaviorBase *pBehavior )
+{
+	Assert( m_AddOnBehaviors.Find( pBehavior ) == m_AddOnBehaviors.InvalidIndex() );
+
+	m_AddOnBehaviors.AddToTail( pBehavior );
+	pBehavior->SetOuter( this );
+	OnAddOnBehaviorAdded( pBehavior );
+}
+
+//-----------------------------------------------------------------------------
+void CAI_BaseNPC::RemoveAndDestroyBehavior( CAI_BehaviorBase *pBehavior )
+{
+	if ( m_AddOnBehaviors.Find( pBehavior ) == m_AddOnBehaviors.InvalidIndex() )
+	{
+		// Only behaviors attached through AddBehavior are owned by the NPC.
+		AssertMsg( 0, "RemoveAndDestroyBehavior: not an add-on behavior" );
+		return;
+	}
+
+	OnAddOnBehaviorRemoved( pBehavior );
+	m_AddOnBehaviors.FindAndRemove( pBehavior );
+	delete pBehavior;
+}
+
+//-----------------------------------------------------------------------------
+void CAI_BaseNPC::MaintainAddOnBehaviorChannels()
+{
+	// A host's list includes its add-on behaviors; the others have no active
+	// channels and return at once.
+	CAI_BehaviorBase **ppBehaviors = AccessBehaviors();
+	for ( int i = 0; i < NumBehaviors(); i++ )
+	{
+		ppBehaviors[i]->MaintainChannelSchedules();
+	}
+}
+
+//-----------------------------------------------------------------------------
+void CAI_BaseNPC::DestroyAddOnBehaviors()
+{
+	while ( m_AddOnBehaviors.Count() )
+	{
+		RemoveAndDestroyBehavior( m_AddOnBehaviors.Tail() );
+	}
+}
+
+//-----------------------------------------------------------------------------
+void CAI_BaseNPC::TranslateAddOnAttachment( char *pchAttachmentName, int iCount )
+{
+#ifdef HL2_DLL
+	if( Classify() == CLASS_ZOMBIE || ClassMatches( "npc_combine*" ) )
+	{
+		if ( Q_strcmp( pchAttachmentName, "addon_rear" ) == 0 || 
+			 Q_strcmp( pchAttachmentName, "addon_front" ) == 0 || 
+			 Q_strcmp( pchAttachmentName, "addon_rear_or_front" ) == 0 )
+		{
+			if ( iCount == 0 )
+			{
+				Q_strcpy( pchAttachmentName, "eyes" );
+			}
+			else
+			{
+				Q_strcpy( pchAttachmentName, "" );
+			}
+
+			return;
+		}
+	}
+#endif
+
+	if( Q_strcmp( pchAttachmentName, "addon_baseshooter" ) == 0 )
+	{
+		switch ( iCount )
+		{
+		case 0:
+			Q_strcpy( pchAttachmentName, "anim_attachment_lh" );
+			break;
+
+		case 1:
+			Q_strcpy( pchAttachmentName, "anim_attachment_rh" );
+			break;
+
+		default:
+			Q_strcpy( pchAttachmentName, "" );
+		}
+
+		return;
+	}
+
+	Q_strcpy( pchAttachmentName, "" );
+}
+
+//-----------------------------------------------------------------------------
+// create an addon and attach to npc
+//-----------------------------------------------------------------------------
+void CAI_BaseNPC::InputCreateAddon( inputdata_t &inputdata )
+{
+	Vector vecSpawnOrigin = GetLocalOrigin();
+
+	const char *pszAddonName = inputdata.value.String();
+
+	// Spawn the addon
+	CBaseEntity *pItem = (CBaseEntity *)CreateEntityByName( pszAddonName );
+
+	if ( pItem )
+	{
+		pItem->SetAbsOrigin( vecSpawnOrigin );
+
+		DispatchSpawn( pItem );
+
+		// install the addon
+		CAI_AddOn *pAddOn = dynamic_cast< CAI_AddOn * >( pItem );
+		if ( pAddOn )
+		{
+			pAddOn->Install( this );
+		}
+		else
+		{
+			Warning( "%s: CreateAddon: %s is not an AI add-on\n", GetDebugName(), pszAddonName );
+			UTIL_Remove( pItem );
+		}
+	}
+}
+#endif // FSTOP
+

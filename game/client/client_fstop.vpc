@@ -1,0 +1,46 @@
+//-----------------------------------------------------------------------------
+//	CLIENT_FSTOP.VPC
+//
+//	F-Stop: the Portal 1 client (client_portal.vpc) plus Valve's F-Stop
+//	prototype sources in game\client\fstop. Waf lists it after
+//	client_base.vpc and client_portal.vpc (game/client/wscript).
+//
+//	The blob NPCs' client classes (fstop\c_npc_surface) draw with the
+//	clean-room blobulator tiler the Portal 2 paint renderer uses
+//	(portal2\blobulator\ImpTiler.cpp).
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		"..\.."
+$Macro GAMENAME 	"fstop"
+
+$Configuration
+{
+	$Compiler
+	{
+		$AdditionalIncludeDirectories	"$BASE;.\fstop;$SRCDIR\game\shared\fstop"
+		$PreprocessorDefinitions		"$BASE;FSTOP"
+	}
+}
+
+$Project "Client (F-Stop)"
+{
+	$Folder	"Source Files"
+	{
+		$Folder	"F-Stop"
+		{
+			$File	"fstop\aperture_render_targets.cpp"
+			$File	"fstop\aperture_render_targets.h"
+			$File	"fstop\c_env_dof_controller.cpp"
+			$File	"fstop\c_item_photo.cpp"
+			$File	"fstop\c_npc_hover_turret.cpp"
+			$File	"fstop\c_npc_surface.cpp"
+			$File	"fstop\c_npc_surface.h"
+			$File	"fstop\hud_flash.cpp"
+			$File	"fstop\hud_indicator.cpp"
+			$File	"fstop\hud_photo_inventory.cpp"
+			$File	"fstop\hud_viewfinder.cpp"
+			$File	"$SRCDIR\game\shared\fstop\blob_networkbypass.cpp"
+			$File	"portal2\blobulator\ImpTiler.cpp"
+		}
+	}
+}

@@ -10,6 +10,7 @@
 #pragma once
 #endif
 
+#include "portal_shareddefs.h"	// PORTAL_HALF_WIDTH, PORTAL_HALF_HEIGHT
 #include "engine/IEngineTrace.h"
 
 extern bool g_bBulletPortalTrace;
@@ -60,7 +61,7 @@ void UTIL_Portal_RayTransform( const VMatrix matThisToLinked, const Ray_t &raySo
 void UTIL_Portal_PlaneTransform( const VMatrix matThisToLinked, const cplane_t &planeSource, cplane_t &planeTransformed );
 void UTIL_Portal_PlaneTransform( const VMatrix matThisToLinked, const VPlane &planeSource, VPlane &planeTransformed );
 
-void UTIL_Portal_Triangles( const Vector &ptPortalCenter, const QAngle &qPortalAngles, Vector pvTri1[ 3 ], Vector pvTri2[ 3 ] );
+void UTIL_Portal_Triangles( const Vector &ptPortalCenter, const QAngle &qPortalAngles, Vector pvTri1[ 3 ], Vector pvTri2[ 3 ], float fHalfWidth = PORTAL_HALF_WIDTH, float fHalfHeight = PORTAL_HALF_HEIGHT );
 void UTIL_Portal_Triangles( const CProp_Portal *pPortal, Vector pvTri1[ 3 ], Vector pvTri2[ 3 ] );
 void UTIL_Portal_AABB( const CProp_Portal *pPortal, Vector &vMin, Vector &vMax );
 
@@ -82,7 +83,7 @@ float UTIL_IntersectRayWithPortal( const Ray_t &ray, const CProp_Portal *pPortal
 bool UTIL_IntersectRayWithPortalOBB( const CProp_Portal *pPortal, const Ray_t &ray, trace_t *pTrace );
 bool UTIL_IntersectRayWithPortalOBBAsAABB( const CProp_Portal *pPortal, const Ray_t &ray, trace_t *pTrace );
 
-bool UTIL_IsBoxIntersectingPortal( const Vector &vecBoxCenter, const Vector &vecBoxExtents, const Vector &ptPortalCenter, const QAngle &qPortalAngles, float flTolerance = 0.0f );
+bool UTIL_IsBoxIntersectingPortal( const Vector &vecBoxCenter, const Vector &vecBoxExtents, const Vector &ptPortalCenter, const QAngle &qPortalAngles, float flTolerance = 0.0f, float fHalfWidth = PORTAL_HALF_WIDTH, float fHalfHeight = PORTAL_HALF_HEIGHT );
 bool UTIL_IsBoxIntersectingPortal( const Vector &vecBoxCenter, const Vector &vecBoxExtents, const CProp_Portal *pPortal, float flTolerance = 0.0f );
 
 CProp_Portal *UTIL_IntersectEntityExtentsWithPortal( const CBaseEntity *pEntity );

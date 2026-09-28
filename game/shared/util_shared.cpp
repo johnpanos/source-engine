@@ -1111,6 +1111,266 @@ int UTIL_StringFieldToInt( const char *szValue, const char **pValueStrings, int 
 	return -1;
 }
 
+#ifdef FSTOP
+bool UTIL_FindClosestPassableSpace( const Vector &vOriginalCenter, const Vector &vExtents, const Vector &vIndecisivePush, ITraceFilter *pTraceFilter, unsigned int fMask, unsigned int iIterations, Vector &vCenterOut )
+{
+	Assert( vExtents != vec3_origin );
+
+	trace_t traces[2];
+	Ray_t entRay;
+	entRay.m_Extents = vExtents;
+	entRay.m_IsRay = false;
+	entRay.m_IsSwept = true;
+	entRay.m_StartOffset = vec3_origin;
+
+	Vector vOriginalExtents = vExtents;
+	Vector vCenter = vOriginalCenter;
+	Vector vGrowSize = vExtents * (1.0f / (float)(iIterations + 1));
+	Vector vCurrentExtents = vExtents - vGrowSize;
+
+	int iLargestExtent = 0;
+	{
+		float fLargestExtent = vOriginalExtents[0];
+		for( int i = 1; i != 3; ++i )
+		{
+			if( vOriginalExtents[i] > fLargestExtent )
+			{
+				iLargestExtent = i;
+				fLargestExtent = vOriginalExtents[i];
+			}
+		}
+	}
+
+
+	Ray_t testRay;
+	testRay.m_Extents = vGrowSize;
+	testRay.m_IsRay = false;
+	testRay.m_IsSwept = true;
+	testRay.m_StartOffset = vec3_origin;
+
+	float fOriginalExtentDists[8]; //distance between extents
+	//generate distance lookup. We reference this by XOR'ing the indices of two extents to find the axis of difference
+	{
+		//Since the ratios of lengths never change, we're going to normalize these distances to a value so we can simply scale on each iteration
+		//We've picked the largest extent as the basis simply because it's nonzero
+		float fNormalizer = 1.0f / vOriginalExtents[iLargestExtent];
+				
+		float fXDiff = vOriginalExtents.x * 2.0f * fNormalizer;
+		float fXSqr = fXDiff * fXDiff;
+
+		float fYDiff = vOriginalExtents.y * 2.0f * fNormalizer;
+		float fYSqr = fYDiff * fYDiff;
+
+		float fZDiff = vOriginalExtents.z * 2.0f * fNormalizer;
+		float fZSqr = fZDiff * fZDiff;
+
+		fOriginalExtentDists[0] = 0.0f; //should never get hit
+		fOriginalExtentDists[1] = fXDiff; //line along x axis		
+		fOriginalExtentDists[2] = fYDiff; //line along y axis
+		fOriginalExtentDists[3] = sqrt( fXSqr + fYSqr ); //diagonal perpendicular to z-axis
+		fOriginalExtentDists[4] = fZDiff; //line along z axis
+		fOriginalExtentDists[5] = sqrt( fXSqr + fZSqr ); //diagonal perpendicular to y-axis
+		fOriginalExtentDists[6] = sqrt( fYSqr + fZSqr ); //diagonal perpendicular to x-axis
+		fOriginalExtentDists[7] = sqrt( fXSqr + fYSqr + fZSqr ); //diagonal on all axes
+	}
+
+	Vector ptExtents[8]; //ordering is going to be like 3 bits, where 0 is a min on the related axis, and 1 is a max on the same axis, axis order x y z
+	float fExtentsValidation[8]; //some points are more valid than others, and this is our measure
+
+	vCenter.z += 0.001f; //to satisfy m_IsSwept on first pass
+	
+	unsigned int iFailCount;
+	for( iFailCount = 0; iFailCount != iIterations; ++iFailCount )
+	{
+		//float fXDistribution[2] = { -vCurrentExtents.x, vCurrentExtents.x };
+		//float fYDistribution[3] = { -vCurrentExtents.y, 0.0f, vCurrentExtents.y };
+		//float fZDistribution[5] = { -vCurrentExtents.z, 0.0f, 0.0f, 0.0f, vCurrentExtents.z };
+
+		//hey look, they can overlap
+		float fExtentDistribution[6] = { vCenter.z - vCurrentExtents.z, // Z-
+										vCenter.x - vCurrentExtents.x,  // X-
+										vCenter.x + vCurrentExtents.x,  // X+
+										vCenter.y - vCurrentExtents.y,  // Y-
+										vCenter.z + vCurrentExtents.z,  // Z+
+										vCenter.y + vCurrentExtents.y }; // Y+
+
+		float *pXDistribution = &fExtentDistribution[1];
+		float *pYDistribution = &fExtentDistribution[3];
+
+		bool bExtentInvalid[8];
+		float fExtentDists[8];
+		bool bAnyInvalid = false;
+		for( int i = 0; i != 8; ++i )
+		{
+			ptExtents[i].x = pXDistribution[i & (1<<0)]; //fExtentDistribution[(0 or 1) + 1]
+			ptExtents[i].y = pYDistribution[i & (1<<1)]; //fExtentDistribution[(0 or 2) + 3]
+			ptExtents[i].z = fExtentDistribution[i & (1<<2)]; //fExtentDistribution[(0 or 4)]
+
+			fExtentsValidation[i] = 0.0f;
+			bExtentInvalid[i] = enginetrace->PointOutsideWorld( ptExtents[i] );
+			bAnyInvalid |= bExtentInvalid[i];
+			fExtentDists[i] = fOriginalExtentDists[i] * vExtents[iLargestExtent];
+		}
+
+		//trace from all extents to all other extents and rate the validity
+		{
+			unsigned int counters[2]; //I know it's weird, get over it
+			for( counters[0] = 0; counters[0] != 7; ++counters[0] )
+			{
+				for( counters[1] = counters[0] + 1; counters[1] != 8; ++counters[1] )
+				{
+					for( int i = 0; i != 2; ++i )
+					{
+						if( bExtentInvalid[counters[i]] )
+						{
+							traces[i].startsolid = true;
+							traces[i].fraction = 0.0f;
+						}
+						else
+						{
+							testRay.m_Start = ptExtents[counters[i]];
+							testRay.m_Delta = ptExtents[counters[1-i]] - ptExtents[counters[i]];
+							enginetrace->TraceRay( testRay, fMask, pTraceFilter, &traces[i] );
+						}
+					}
+
+					float fDistance = fExtentDists[counters[0] ^ counters[1]];
+
+					for( int i = 0; i != 2; ++i )
+					{
+						if( (traces[i].fraction == 1.0f) && (traces[1-i].fraction != 1.0f) )
+						{
+							//One sided collision >_<
+							traces[i].startsolid = true;
+							traces[i].fraction = 0.0f;
+							break;
+						}
+					}
+
+					for( int i = 0; i != 2; ++i )
+					{
+						if( traces[i].startsolid )
+						{
+							bExtentInvalid[counters[i]] = true;
+							bAnyInvalid = true;
+						}
+						else
+						{
+							fExtentsValidation[counters[i]] += traces[i].fraction * fDistance;
+						}
+					}
+				}
+			}
+		}
+
+		//optimally we should do this check before tracing extents. But one sided collision is a bitch
+		if( !bAnyInvalid )
+		{
+			//try to trace back to the starting position (if we start in valid, the endpoint will be closer to the original center)
+			entRay.m_Start = vCenter;
+			entRay.m_Delta = vOriginalCenter - vCenter;
+
+			enginetrace->TraceRay( entRay, fMask, pTraceFilter, &traces[0] );
+			if( traces[0].startsolid == false )
+			{
+				//damned one sided collision
+				vCenterOut = traces[0].endpos;
+				return true; //current placement worked
+			}
+		}
+
+		//find the direction to move based on the extent validity
+		{
+			Vector vNewOriginDirection( 0.0f, 0.0f, 0.0f );
+			float fTotalValidation = 0.0f;
+			for( int i = 0; i != 8; ++i )
+			{
+				if( !bExtentInvalid[i] )
+				{
+					vNewOriginDirection += (ptExtents[i] - vCenter) * fExtentsValidation[i];
+					fTotalValidation += fExtentsValidation[i];
+				}
+			}
+
+			if( fTotalValidation != 0.0f )
+			{
+				vCenter += (vNewOriginDirection / fTotalValidation);
+
+				//increase sizing
+				testRay.m_Extents += vGrowSize; //increase the ray size
+				vCurrentExtents -= vGrowSize; //while reducing the overall test region size (so outermost ray extents are the same)
+			}
+			else
+			{
+				//no point was valid, apply the indecisive vector
+				vCenter += vIndecisivePush;
+
+				//reset sizing
+				testRay.m_Extents = vGrowSize;
+				vCurrentExtents = vOriginalExtents - vGrowSize;
+			}
+		}
+	}
+
+	//Warning( "FindClosestPassableSpace() failure.\n" );
+
+	// X360TBD: Hits in portal devtest
+	//AssertMsg( IsX360() || iFailCount != iIterations, "FindClosestPassableSpace() failure." );
+	vCenterOut = vOriginalCenter;
+	return false;
+}
+
+bool UTIL_FindClosestPassableSpace( CBaseEntity *pEntity, const Vector &vIndecisivePush, unsigned int fMask, unsigned int iIterations, Vector &vOriginOut, Vector *pStartingPosition ) //assumes the object is already in a mostly passable space
+{
+	// Don't ever do this to entities with a move parent
+	if ( pEntity->GetMoveParent() )
+	{
+		vOriginOut = pEntity->GetAbsOrigin();
+		return false;
+	}
+
+	Vector vEntityMaxs;
+	Vector vEntityMins;
+	pEntity->CollisionProp()->WorldSpaceAABB( &vEntityMins, &vEntityMaxs );
+
+	Vector ptEntityCenter = ((vEntityMins + vEntityMaxs) / 2.0f);
+	//vEntityMins -= ptEntityCenter;
+	vEntityMaxs -= ptEntityCenter;
+	
+	Vector vCenterToOrigin = pEntity->GetAbsOrigin() - ptEntityCenter;
+	if( pStartingPosition != NULL )
+	{
+		Vector vOriginOffset = (*pStartingPosition) - pEntity->GetAbsOrigin();
+		ptEntityCenter += vOriginOffset;
+	}
+
+	CTraceFilterSimple traceFilter( pEntity, pEntity->GetCollisionGroup() );
+
+
+	Vector vResult;
+	bool bSuccess = UTIL_FindClosestPassableSpace( ptEntityCenter, vEntityMaxs, vIndecisivePush, &traceFilter, fMask, iIterations, vResult );
+	vResult += vCenterToOrigin;
+	vOriginOut = vResult; // as CS:GO; the F-Stop drop never wrote vOriginOut
+	return bSuccess;
+}
+
+
+bool UTIL_FindClosestPassableSpace( CBaseEntity *pEntity, const Vector &vIndecisivePush, unsigned int fMask, Vector *pStartingPosition )
+{
+	Vector vNewPos;
+	bool bWorked = UTIL_FindClosestPassableSpace( pEntity, vIndecisivePush, fMask, 100, vNewPos, pStartingPosition );
+	if( bWorked )
+	{
+#ifdef CLIENT_DLL
+		pEntity->SetAbsOrigin( vNewPos );
+#else
+		pEntity->Teleport( &vNewPos, NULL, NULL );
+#endif
+	}
+	return bWorked;
+}
+#endif // FSTOP
+
 
 int find_day_of_week( struct tm& found_day, int day_of_week, int step )
 {

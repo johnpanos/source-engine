@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Launch the F-Stop target: the Portal 1 game plus Valve's F-Stop prototype
+# sources (game/{server,client}/fstop), built in its own Waf tree, on Portal
+# content with the F-Stop content root overlaid (tools/quality/stage_fstop_runtime.py).
+#
+#   ./play_fstop                 build, stage and boot $MAP (dev_fstop)
+#   ./play_fstop +map lab_01     extra arguments go to the launcher; a later +map wins
+#   ./play_fstop --prepare       configure and stage only
+#
+# Physics, job and material arguments follow ./play and ./play_p2: Box3D with
+# shape inertia, the pooled render-start and query-cache graphs, full bump maps.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+FSTOP_BUILD_DIR="${FSTOP_BUILD_DIR:-$ROOT/build-fstop}"
+FSTOP_RUNTIME="${FSTOP_RUNTIME:-$ROOT/run/runtime-fstop}"
+FSTOP_BASE_RUNTIME="${FSTOP_BASE_RUNTIME:-$ROOT/run/runtime}"
+FSTOP_CONTENT="${FSTOP_CONTENT:-$HOME/Downloads/April 22nd 2020, random leaked shit/mega-archive/svn-master/game}"
+FSTOP_WAFLOCK=.lock-waf-fstop
+#MAP="${MAP:-dev_fstop}"
+MAP="${MAP:-fstop_mechanics}"
+WIDTH="${WIDTH:-1920}"
+HEIGHT="${HEIGHT:-1080}"
+RENDERER="${RENDERER:-native-vulkan}"
+PHYSICS="${PHYSICS:-vphysics_box3d}"
+PHYSICS_ARGS="${PHYSICS_ARGS--physics_shape_inertia}"
+JOB_ARGS="${JOB_ARGS-+cl_render_start_graph 2 +sv_querycache_job_graph 2 +portal_carve_job_graph 2 -vkemitparallel 1}"
+MAT_ARGS="${MAT_ARGS-+mat_bumpmap 1 +mat_picmip -1 +r_lod 0}"
+EXTRA_ARGS="${EXTRA_ARGS--novid -insecure +mat_queue_mode 2}"
+SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
+
+mode="${1:-}"
+if [[ "$mode" == "--prepare" ]]; then
+    shift
+fi
+
+if [[ -d "$FSTOP_BUILD_DIR/c4che" ]]; then
+    if ! grep -Eq "^GAMES = ['\"]fstop['\"]$" "$FSTOP_BUILD_DIR"/c4che/*_cache.py; then
+        echo "play_fstop: $FSTOP_BUILD_DIR is configured for a different game" >&2
+        exit 1
+    fi
+else
+    echo "play_fstop: configuring the F-Stop build in $FSTOP_BUILD_DIR"
+    (cd "$ROOT" && WAFLOCK="$FSTOP_WAFLOCK" python3 ./waf configure \
+        --platform-provider=sdl3 --render-backend=native-vulkan \
+        --build-games=fstop --disable-warns -T release \
+        -o "$FSTOP_BUILD_DIR" --prefix="$FSTOP_BUILD_DIR/install")
+fi
+
+if [[ "$mode" != "--prepare" ]]; then
+    # Replay the tree's own configure options if a wscript, Waf tool, toolchain
+    # policy or profile changed since it was configured, as run.sh does.
+    WAFLOCK="$FSTOP_WAFLOCK" python3 "$ROOT/tools/quality/ensure_configured.py" --build "$FSTOP_BUILD_DIR"
+    . "$ROOT/tools/quality/launcher_ccache.sh"
+    launcher_ccache "$FSTOP_BUILD_DIR"
+    (cd "$ROOT" && WAFLOCK="$FSTOP_WAFLOCK" python3 ./waf build)
+fi
+
+stage_args=(--runtime "$FSTOP_RUNTIME" --base-runtime "$FSTOP_BASE_RUNTIME"
+            --content-root "$FSTOP_CONTENT")
+[[ "$mode" != "--prepare" ]] && stage_args+=(--build "$FSTOP_BUILD_DIR")
+python3 "$ROOT/tools/quality/stage_fstop_runtime.py" "${stage_args[@]}"
+[[ "$mode" == "--prepare" ]] && exit 0
+
+cd "$FSTOP_RUNTIME"
+export SDL_VIDEODRIVER SDL_VIDEO_DRIVER="$SDL_VIDEODRIVER"
+export SteamAppId=400 SteamGameId=400
+export LD_LIBRARY_PATH="$PWD/bin:${LD_LIBRARY_PATH:-}"
+physics_args=(-physics "$PHYSICS")
+for arg in "$@"; do
+    if [[ "$arg" == "-physics" ]]; then
+        physics_args=()
+    fi
+done
+# shellcheck disable=SC2206  # the ConVar lists are intentionally word-split
+config_args=($PHYSICS_ARGS $JOB_ARGS $MAT_ARGS $EXTRA_ARGS)
+exec ./hl2_launcher -game fstop -windowed -w "$WIDTH" -h "$HEIGHT" -renderer "$RENDERER" \
+    "${physics_args[@]}" "${config_args[@]}" +map "$MAP" "$@"

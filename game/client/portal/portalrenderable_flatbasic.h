@@ -13,6 +13,7 @@
 #endif
 
 #include "PortalRender.h"
+#include "portal_shareddefs.h"	// PORTAL_HALF_WIDTH, PORTAL_HALF_HEIGHT
 
 struct PortalMeshPoint_t;
 #define PORTALRENDERFIXMESH_OUTERBOUNDPLANES 12
@@ -116,6 +117,22 @@ public:
 	float			m_fSecondaryStaticAmount; // used to help kludge the end of our recursive rendering chain
 	float			m_fOpenAmount;	
 	bool			m_bIsPortal2; //for any set of portals, one must be portal 1, and the other portal 2. Uses different render targets
+	// The portal's size. F-Stop portals are resizable (the server's
+	// CProp_Portal::Resize, networked as m_fNetworkHalfWidth/Height); Portal's are fixed.
+#ifdef FSTOP
+	float			m_fHalfWidth, m_fHalfHeight;
+
+	inline float	GetHalfWidth( void ) const { return m_fHalfWidth; }
+	inline float	GetHalfHeight( void ) const { return m_fHalfHeight; }
+	inline Vector	GetLocalMins( void ) const { return Vector( 0.0f, -m_fHalfWidth, -m_fHalfHeight ); }
+	inline Vector	GetLocalMaxs( void ) const { return Vector( 64.0f, m_fHalfWidth, m_fHalfHeight ); }
+	inline void		SetHalfSizes( float fHalfWidth, float fHalfHeight ) { m_fHalfWidth = fHalfWidth; m_fHalfHeight = fHalfHeight; }
+#else
+	inline float	GetHalfWidth( void ) const { return PORTAL_HALF_WIDTH; }
+	inline float	GetHalfHeight( void ) const { return PORTAL_HALF_HEIGHT; }
+	inline Vector	GetLocalMins( void ) const { return Vector( 0.0f, -PORTAL_HALF_WIDTH, -PORTAL_HALF_HEIGHT ); }
+	inline Vector	GetLocalMaxs( void ) const { return Vector( 64.0f, PORTAL_HALF_WIDTH, PORTAL_HALF_HEIGHT ); }
+#endif // FSTOP
 };
 
 #endif //#ifndef PORTALRENDERABLE_FLATBASIC_H

@@ -15,7 +15,9 @@ Steps, each recorded in <out>/build.json:
      --quality full for release lighting). A leak is a failure: vbsp's log
      reports it and writes a pointfile;
   3. package <out>/content/maps/<name>.bsp; --publish copies it to the playable
-     map store (./play <name>);
+     map store (./play <name>); --install-game-dir copies it into a staged game
+     directory's maps/ instead (a product the store is not mounted in, such as
+     the F-Stop runtime's run/runtime-fstop/fstop);
   4. --boot runs the installed Portal product headless on the map
      (tools/quality/portal_boot.py): the map must be active, a player must
      spawn, and the capture must show scene detail.
@@ -215,6 +217,22 @@ def compile_in(work, data, name, out, tools, runtime, quality):
     return record
 
 
+def install(record, game_dir):
+    """Copy a passed build's maps/<name>.bsp into <game_dir>/maps; returns the path."""
+    if record.get("status") != "pass":
+        raise ValueError("only a passed build can be installed")
+    source = Path(record["content_root"]) / "maps" / (record["map"] + ".bsp")
+    game_dir = Path(game_dir)
+    if not game_dir.is_dir():
+        raise ValueError("game directory is missing: " + str(game_dir))
+    target = game_dir / "maps" / source.name
+    target.parent.mkdir(exist_ok=True)
+    partial = target.with_name(target.name + ".partial")
+    shutil.copy2(source, partial)
+    os.replace(partial, target)
+    return target
+
+
 def finish(out, record):
     (out / "build.json").write_text(json.dumps(record, indent=2) + "\n")
     return record
@@ -248,6 +266,8 @@ def main():
     b.add_argument("--runtime", type=Path, default=ROOT / "run/runtime",
                    help="staged runtime the map's materials come from")
     b.add_argument("--publish", action="store_true", help="publish to the playable map store")
+    b.add_argument("--install-game-dir", type=Path,
+                   help="also copy the map into <dir>/maps (a staged game directory)")
     b.add_argument("--boot", action="store_true", help="boot the map headless (portal_boot.py)")
     b.add_argument("--boot-runtime", type=Path, default=ROOT / "run/runtime-native")
     args = parser.parse_args()
@@ -260,6 +280,8 @@ def main():
         return 1
     if args.publish:
         print("published " + playable_maps.describe(playable_maps.publish(record)))
+    if args.install_game_dir:
+        print("installed " + str(install(record, args.install_game_dir.resolve())))
     if args.boot:
         result = boot(record, out, args.boot_runtime.resolve())
         record["boot"] = result

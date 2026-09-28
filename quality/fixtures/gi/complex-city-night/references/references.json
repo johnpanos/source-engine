@@ -1,0 +1,4883 @@
+{
+  "analytic": [],
+  "fixture": "complex-city-night",
+  "fixture_reference_digest": "5f5312a241f3bf16c2a0e1ebe59f4bdc93b3eef7a658f99b1e3c0bdd7fbea389",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 109,
+    "controls_unrejected": [],
+    "failed": 5,
+    "oracles": 9
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "moon": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "442ecde54bc0c849ad4e59f7b335fca34dff1331ca50fcdbf0de46a77a6f9f8b",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/complex-city-night/complex-city-night.usda": "c136ff93a92a10afb46218a08aae6ac40d2977e91b0fb45a362b0cf180fd6fcb",
+        "quality/fixtures/gi/complex-city-night/states/moon.usda": "6d8a8aaf61543055d9ef3d0e49891d03de3444ab6a2cff93ecd5d09f8dcc14d9"
+      }
+    },
+    "night": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "699bdbd5ec9356c13c376bcaeaedb946e230f90349fa08efecdbb1f1452c2146",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/complex-city-night/complex-city-night.usda": "c136ff93a92a10afb46218a08aae6ac40d2977e91b0fb45a362b0cf180fd6fcb"
+      }
+    },
+    "ring-a": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "ed87e4d284e01ba1fbdf2276f68c0a7fbfd815590af7f3e7963f679893a11447",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/complex-city-night/complex-city-night.usda": "c136ff93a92a10afb46218a08aae6ac40d2977e91b0fb45a362b0cf180fd6fcb",
+        "quality/fixtures/gi/complex-city-night/states/ring-a.usda": "a28755a8d6e6d91fd3e81287c877c029e2933b72b48f67d3c77f873c60fd452e"
+      }
+    },
+    "ring-b": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "85f031d62762756d288bc34902eb37a5f32cd7d53a1f3ffd6decbc9c56d83507",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/complex-city-night/complex-city-night.usda": "c136ff93a92a10afb46218a08aae6ac40d2977e91b0fb45a362b0cf180fd6fcb",
+        "quality/fixtures/gi/complex-city-night/states/ring-b.usda": "a32dd9aa3b40a287d195f3b4c889613df45a10a9b7a57b30917360ec48fa4d9f"
+      }
+    },
+    "turned": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "629107beb3bf116d89128a2675115b3685b7282957e90be8d1263a655d441525",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/complex-city-night/complex-city-night.usda": "c136ff93a92a10afb46218a08aae6ac40d2977e91b0fb45a362b0cf180fd6fcb",
+        "quality/fixtures/gi/complex-city-night/states/turned.usda": "a2d0456260dcb90133e906582d99a5fd407bff8f774f87b25c2659bc6ead9749"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "fail",
+  "views": {
+    "moon.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "moon.east.index.png",
+          "sha256": "0b28950bdeb943b8f13c119e7a2f9061a059ef8a52c351154216dcae1ec595e6"
+        },
+        "indirect": {
+          "file": "moon.east.indirect.exr",
+          "sha256": "d7c1c9ecee66d03f4e4079c006195040d9c07300cd07fd5a54c79697a0a7ccad"
+        },
+        "total": {
+          "file": "moon.east.total.exr",
+          "sha256": "3f08defa89db5edeacb23d042f972c07f19af2bf6ac89989c597772d95316d83"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "Ground": 10,
+        "ProbeSphereShape": 11,
+        "StreetE11": 12,
+        "StreetE22": 13,
+        "StreetW11": 14,
+        "StreetW22": 15
+      },
+      "regions": {
+        "Bldg11": {
+          "albedo": [
+            0.375,
+            0.75,
+            0.625
+          ],
+          "direct": [
+            0.004715510178357363,
+            0.007071456406265497,
+            0.01414291188120842
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.005606292746961117,
+            0.010784580372273922,
+            0.022757478058338165
+          ],
+          "pixels": 1083,
+          "total": [
+            0.0038706716150045395,
+            0.01339202094823122,
+            0.023062745109200478
+          ]
+        },
+        "Bldg21": {
+          "albedo": [
+            0.625,
+            0.375,
+            0.75
+          ],
+          "direct": [
+            0.005820243153721094,
+            0.008728142827749252,
+            0.017456285655498505
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.005300499964505434,
+            0.010617618449032307,
+            0.025778017938137054
+          ],
+          "pixels": 1370,
+          "total": [
+            0.00695046316832304,
+            0.007254661060869694,
+            0.03242575004696846
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.4000106453895569,
+            0.4000106453895569,
+            0.4000106453895569
+          ],
+          "direct": [
+            0.012508227489888668,
+            0.018757546320557594,
+            0.03751509264111519
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            10.0
+          ],
+          "indirect": [
+            0.00322408857755363,
+            0.0071016959846019745,
+            0.016100842505693436
+          ],
+          "pixels": 5496,
+          "total": [
+            0.006293026730418205,
+            0.010343877598643303,
+            0.02144675888121128
+          ]
+        },
+        "StreetE11": {
+          "albedo": [
+            0.40000662207603455,
+            0.40000662207603455,
+            0.40000662207603455
+          ],
+          "direct": [
+            0.009069100022315979,
+            0.013600192964076996,
+            0.02720038592815399
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            12.0
+          ],
+          "indirect": [
+            0.00422828271985054,
+            0.007392351049929857,
+            0.021064788103103638
+          ],
+          "pixels": 196,
+          "total": [
+            0.00531903887167573,
+            0.00839715264737606,
+            0.019306384027004242
+          ]
+        }
+      },
+      "state": "moon"
+    },
+    "moon.far-east": {
+      "camera": "far-east",
+      "files": {
+        "index": {
+          "file": "moon.far-east.index.png",
+          "sha256": "efb3ec0f19c29e723cc29a3ab50e0c1ef554a35da7ce4d12349ea6eba5857ff9"
+        },
+        "indirect": {
+          "file": "moon.far-east.indirect.exr",
+          "sha256": "0e9cff50492f56704073d7657560d26ca4a48e79bbb67a05b532fd2ea89d7ba8"
+        },
+        "total": {
+          "file": "moon.far-east.total.exr",
+          "sha256": "ba86c63c1db8546ea65d7275be42c050d98e9b754f589383c557daf42ba2e763"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "Ground": 10,
+        "ProbeSphereShape": 11,
+        "StreetE11": 12,
+        "StreetE22": 13,
+        "StreetW11": 14,
+        "StreetW22": 15
+      },
+      "regions": {
+        "Bldg21": {
+          "albedo": [
+            0.625,
+            0.375,
+            0.75
+          ],
+          "direct": [
+            0.023907450959086418,
+            0.03585203364491463,
+            0.07170406728982925
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.0055812629871070385,
+            0.008057448081672192,
+            0.01718081161379814
+          ],
+          "pixels": 16159,
+          "total": [
+            0.01843046396970749,
+            0.01646609604358673,
+            0.06666357070207596
+          ]
+        },
+        "Bldg22": {
+          "albedo": [
+            0.75,
+            0.375,
+            0.625
+          ],
+          "direct": [
+            0.018502891063690186,
+            0.02774730697274208,
+            0.05549461394548416
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.006561756134033203,
+            0.008135505951941013,
+            0.0220063216984272
+          ],
+          "pixels": 2268,
+          "total": [
+            0.01879849098622799,
+            0.01345604844391346,
+            0.048438020050525665
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.39993590116500854,
+            0.39993590116500854,
+            0.39993590116500854
+          ],
+          "direct": [
+            0.031190093606710434,
+            0.04677317664027214,
+            0.09354635328054428
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            10.0
+          ],
+          "indirect": [
+            0.003817025339230895,
+            0.00333397020585835,
+            0.012828501872718334
+          ],
+          "pixels": 17739,
+          "total": [
+            0.014003083109855652,
+            0.020043278113007545,
+            0.04255075007677078
+          ]
+        },
+        "StreetE22": {
+          "albedo": [
+            0.4000069499015808,
+            0.4000069499015808,
+            0.4000069499015808
+          ],
+          "direct": [
+            0.025160741060972214,
+            0.037731513381004333,
+            0.07546302676200867
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            13.0
+          ],
+          "indirect": [
+            0.0076956781558692455,
+            0.005744088441133499,
+            0.01976841129362583
+          ],
+          "pixels": 226,
+          "total": [
+            0.01314276922494173,
+            0.017390519380569458,
+            0.038093194365501404
+          ]
+        }
+      },
+      "state": "moon"
+    },
+    "moon.north": {
+      "camera": "north",
+      "files": {
+        "index": {
+          "file": "moon.north.index.png",
+          "sha256": "1402e1af90ebf42b05e9634d79411c04b2fbb9eb62f61070a26a91d76811ef42"
+        },
+        "indirect": {
+          "file": "moon.north.indirect.exr",
+          "sha256": "6ca05e6b7b5cf99b7872e5f5ec7adba8c0d6ce27f1215180f559f6739a305464"
+        },
+        "total": {
+          "file": "moon.north.total.exr",
+          "sha256": "d92d9154cb57474b7ed4cdb9530bdbc26e4aa497d593d0dead471c691a4d9fa2"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "Ground": 10,
+        "ProbeSphereShape": 11,
+        "StreetE11": 12,
+        "StreetE22": 13,
+        "StreetW11": 14,
+        "StreetW22": 15
+      },
+      "regions": {
+        "Bldg12": {
+          "albedo": [
+            0.375,
+            0.625,
+            0.75
+          ],
+          "direct": [
+            0.02184320241212845,
+            0.032756317406892776,
+            0.06551263481378555
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.005784727167338133,
+            0.00835542380809784,
+            0.01822548173367977
+          ],
+          "pixels": 12605,
+          "total": [
+            0.010360470972955227,
+            0.0256948322057724,
+            0.06280380487442017
+          ]
+        },
+        "Bldg22": {
+          "albedo": [
+            0.75,
+            0.375,
+            0.625
+          ],
+          "direct": [
+            0.021890174597501755,
+            0.03282702714204788,
+            0.06565405428409576
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.00573158310726285,
+            0.008560352958738804,
+            0.01851368509232998
+          ],
+          "pixels": 12605,
+          "total": [
+            0.02071634866297245,
+            0.015520253218710423,
+            0.0526047982275486
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.3999364376068115,
+            0.3999364376068115,
+            0.3999364376068115
+          ],
+          "direct": [
+            0.02584903873503208,
+            0.03876364603638649,
+            0.07752729207277298
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            10.0
+          ],
+          "indirect": [
+            0.004996260162442923,
+            0.006723081227391958,
+            0.01863066852092743
+          ],
+          "pixels": 17460,
+          "total": [
+            0.012338276021182537,
+            0.018195001408457756,
+            0.03846368566155434
+          ]
+        },
+        "StreetW22": {
+          "albedo": [
+            0.40000811219215393,
+            0.40000811219215393,
+            0.40000811219215393
+          ],
+          "direct": [
+            0.010827981866896152,
+            0.016237856820225716,
+            0.03247571364045143
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.005068599246442318,
+            0.00674425670877099,
+            0.022271014750003815
+          ],
+          "pixels": 486,
+          "total": [
+            0.006358739919960499,
+            0.009192992001771927,
+            0.021899046376347542
+          ]
+        }
+      },
+      "state": "moon"
+    },
+    "moon.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "moon.west.index.png",
+          "sha256": "e320497d8ba3dde66ab7ddfa748ba23c147f29c138ebe2e0e387bcc3cbb2cd08"
+        },
+        "indirect": {
+          "file": "moon.west.indirect.exr",
+          "sha256": "c2df87e68b6c4615dac82eac07b5d07afbcfef1b02dff9c9a0b886fc8e33eb7d"
+        },
+        "total": {
+          "file": "moon.west.total.exr",
+          "sha256": "473d2d0296dc08b60f55d06132653d8ef9b01573f943a5da0b4903b25daa7d43"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "Ground": 10,
+        "ProbeSphereShape": 11,
+        "StreetE11": 12,
+        "StreetE22": 13,
+        "StreetW11": 14,
+        "StreetW22": 15
+      },
+      "regions": {
+        "Bldg01": {
+          "albedo": [
+            0.75,
+            0.625,
+            0.375
+          ],
+          "direct": [
+            0.007476604077965021,
+            0.01121204998344183,
+            0.022424105554819107
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.00728865759447217,
+            0.011350492015480995,
+            0.016752971336245537
+          ],
+          "pixels": 2121,
+          "total": [
+            0.011073945090174675,
+            0.014101602137088776,
+            0.014691406860947609
+          ]
+        },
+        "Bldg11": {
+          "albedo": [
+            0.375,
+            0.75,
+            0.625
+          ],
+          "direct": [
+            0.004520502407103777,
+            0.006779031828045845,
+            0.01355806179344654
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.006875071674585342,
+            0.012105272151529789,
+            0.015174160711467266
+          ],
+          "pixels": 1082,
+          "total": [
+            0.004273340106010437,
+            0.014163229614496231,
+            0.017957640811800957
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.40001213550567627,
+            0.40001213550567627,
+            0.40001213550567627
+          ],
+          "direct": [
+            0.012112492695450783,
+            0.018164146691560745,
+            0.03632829338312149
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            10.0
+          ],
+          "indirect": [
+            0.004922874737530947,
+            0.008059274405241013,
+            0.009467074647545815
+          ],
+          "pixels": 5422,
+          "total": [
+            0.0068142530508339405,
+            0.010489527136087418,
+            0.018318450078368187
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999873876571655,
+            0.5999873876571655,
+            0.5999873876571655
+          ],
+          "direct": [
+            0.006498232483863831,
+            0.009744868613779545,
+            0.01948973722755909
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            11.0
+          ],
+          "indirect": [
+            0.005885440856218338,
+            0.011246167123317719,
+            0.015303944237530231
+          ],
+          "pixels": 56,
+          "total": [
+            0.007430048193782568,
+            0.012594357132911682,
+            0.020875776186585426
+          ]
+        },
+        "StreetW11": {
+          "albedo": [
+            0.40000662207603455,
+            0.40000662207603455,
+            0.40000662207603455
+          ],
+          "direct": [
+            0.009070256724953651,
+            0.01360192708671093,
+            0.02720385417342186
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            14.0
+          ],
+          "indirect": [
+            0.004926858935505152,
+            0.010144149884581566,
+            0.01183013804256916
+          ],
+          "pixels": 196,
+          "total": [
+            0.005598936229944229,
+            0.009498581290245056,
+            0.015613850206136703
+          ]
+        }
+      },
+      "state": "moon"
+    },
+    "night.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "night.east.index.png",
+          "sha256": "2065d6d789a55eba3f99e037f99ac94c701b91792854c000da46e316350efd13"
+        },
+        "indirect": {
+          "file": "night.east.indirect.exr",
+          "sha256": "51cb0cf0b7ae34de60faa11c997c2463adf9d2e43a22fcdfd79a6eb73ecd62f2"
+        },
+        "total": {
+          "file": "night.east.total.exr",
+          "sha256": "1fe50b0fa8f623b1fc1dfb07956c35cf595ab2d05bffaf58fbc38f9a6cbe8488"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg11": {
+          "albedo": [
+            0.375,
+            0.75,
+            0.625
+          ],
+          "direct": [
+            0.6955279111862183,
+            0.012076223269104958,
+            0.08298070728778839
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.3162899315357208,
+            0.034293804317712784,
+            0.18538962304592133
+          ],
+          "pixels": 1083,
+          "total": [
+            0.37943214178085327,
+            0.03477746620774269,
+            0.16773147881031036
+          ]
+        },
+        "Bldg21": {
+          "albedo": [
+            0.625,
+            0.375,
+            0.75
+          ],
+          "direct": [
+            0.6259673833847046,
+            0.01375639159232378,
+            0.05098094046115875
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.21228820085525513,
+            0.040088098496198654,
+            0.11013593524694443
+          ],
+          "pixels": 1370,
+          "total": [
+            0.5239094495773315,
+            0.02019169181585312,
+            0.12083766609430313
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.40001097321510315,
+            0.40001097321510315,
+            0.40001097321510315
+          ],
+          "direct": [
+            0.18648341298103333,
+            0.03931097313761711,
+            0.10426846146583557
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.10057321935892105,
+            0.02525651454925537,
+            0.09756722301244736
+          ],
+          "pixels": 5480,
+          "total": [
+            0.11482445895671844,
+            0.025827333331108093,
+            0.08073553442955017
+          ]
+        },
+        "StreetE11": {
+          "albedo": [
+            0.40000662207603455,
+            0.40000662207603455,
+            0.40000662207603455
+          ],
+          "direct": [
+            1.4033468961715698,
+            0.05217788740992546,
+            0.08228978514671326
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            17.0
+          ],
+          "indirect": [
+            0.7369588613510132,
+            0.05561000481247902,
+            0.11637941747903824
+          ],
+          "pixels": 196,
+          "total": [
+            0.85613614320755,
+            0.043115850538015366,
+            0.07946893572807312
+          ]
+        }
+      },
+      "state": "night"
+    },
+    "night.far-east": {
+      "camera": "far-east",
+      "files": {
+        "index": {
+          "file": "night.far-east.index.png",
+          "sha256": "4b6a8cf727fc9e10ba9a828e7a0bcdbbfac35e985ff09f354a5d57d821348af8"
+        },
+        "indirect": {
+          "file": "night.far-east.indirect.exr",
+          "sha256": "f50562f4d5b7cfb63a105a9223dca848bb0d0c812f3684608a718e5678d1401c"
+        },
+        "total": {
+          "file": "night.far-east.total.exr",
+          "sha256": "f20692d6c5afb83fae2953d9df58640b2b2de2995d9bb00ee6c07b5d48846d67"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg21": {
+          "albedo": [
+            0.625,
+            0.375,
+            0.75
+          ],
+          "direct": [
+            0.05451856926083565,
+            0.049626510590314865,
+            0.07170248031616211
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.02224018983542919,
+            0.014807606115937233,
+            0.017775550484657288
+          ],
+          "pixels": 16159,
+          "total": [
+            0.0479743592441082,
+            0.02416282333433628,
+            0.06710843741893768
+          ]
+        },
+        "Bldg22": {
+          "albedo": [
+            0.75,
+            0.375,
+            0.625
+          ],
+          "direct": [
+            0.48986998200416565,
+            0.24682964384555817,
+            0.0554836168885231
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.06649952381849289,
+            0.03848731145262718,
+            0.04235387220978737
+          ],
+          "pixels": 2268,
+          "total": [
+            0.4172768294811249,
+            0.10699412226676941,
+            0.06114839389920235
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.39993590116500854,
+            0.39993590116500854,
+            0.39993590116500854
+          ],
+          "direct": [
+            0.15771324932575226,
+            0.10582771897315979,
+            0.0935567244887352
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.0544901080429554,
+            0.016888324171304703,
+            0.01664346642792225
+          ],
+          "pixels": 17739,
+          "total": [
+            0.08488280326128006,
+            0.04908737912774086,
+            0.0440809428691864
+          ]
+        },
+        "StreetE22": {
+          "albedo": [
+            0.4000069499015808,
+            0.4000069499015808,
+            0.4000069499015808
+          ],
+          "direct": [
+            0.9481024742126465,
+            0.4530397951602936,
+            0.07542077451944351
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            18.0
+          ],
+          "indirect": [
+            0.3259964883327484,
+            0.07676664739847183,
+            0.02057846076786518
+          ],
+          "pixels": 226,
+          "total": [
+            0.5096477270126343,
+            0.21192577481269836,
+            0.038400307297706604
+          ]
+        }
+      },
+      "state": "night"
+    },
+    "night.north": {
+      "camera": "north",
+      "files": {
+        "index": {
+          "file": "night.north.index.png",
+          "sha256": "11c90a3174fe8c4b265ea93c5a95de2048a2190e7daaea848ae9f0c31c4a0f6b"
+        },
+        "indirect": {
+          "file": "night.north.indirect.exr",
+          "sha256": "15811e331522f20d1c2e8cc36119a3c27289f9a9b09e2ad02acda0d14fed5faa"
+        },
+        "total": {
+          "file": "night.north.total.exr",
+          "sha256": "0be8aa86ba72da8c792accf833b72ca46733ff671ad90b45639d5cf5a2ba5480"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg12": {
+          "albedo": [
+            0.375,
+            0.625,
+            0.75
+          ],
+          "direct": [
+            0.02432996593415737,
+            0.15768875181674957,
+            0.24398809671401978
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.012145365588366985,
+            0.054557520896196365,
+            0.1275130957365036
+          ],
+          "pixels": 12605,
+          "total": [
+            0.01367819681763649,
+            0.13265417516231537,
+            0.278626024723053
+          ]
+        },
+        "Bldg22": {
+          "albedo": [
+            0.75,
+            0.375,
+            0.625
+          ],
+          "direct": [
+            0.024372149258852005,
+            0.1579146683216095,
+            0.2441166341304779
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.013491988182067871,
+            0.07451299577951431,
+            0.14103752374649048
+          ],
+          "pixels": 12605,
+          "total": [
+            0.028398102149367332,
+            0.08716019988059998,
+            0.24072086811065674
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.3999364376068115,
+            0.3999364376068115,
+            0.3999364376068115
+          ],
+          "direct": [
+            0.036785878241062164,
+            0.1203368753194809,
+            0.19194535911083221
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.012174426577985287,
+            0.054747577756643295,
+            0.12314043194055557
+          ],
+          "pixels": 17460,
+          "total": [
+            0.01958438754081726,
+            0.07003506273031235,
+            0.1260364055633545
+          ]
+        },
+        "StreetW22": {
+          "albedo": [
+            0.40000811219215393,
+            0.40000811219215393,
+            0.40000811219215393
+          ],
+          "direct": [
+            0.059491317719221115,
+            0.653559684753418,
+            0.9429265856742859
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            20.0
+          ],
+          "indirect": [
+            0.04845057427883148,
+            0.4196678400039673,
+            0.9589518308639526
+          ],
+          "pixels": 486,
+          "total": [
+            0.043177470564842224,
+            0.4292975962162018,
+            0.7607633471488953
+          ]
+        }
+      },
+      "state": "night"
+    },
+    "night.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "night.west.index.png",
+          "sha256": "cc83b6c74680c6c054ceb083739fc2de58edbd3e4a6585697557ad3bb09386a9"
+        },
+        "indirect": {
+          "file": "night.west.indirect.exr",
+          "sha256": "4ee7547ec192c85581481c03acc1f175d46f1c654544c0899fc3e8cbb54857f3"
+        },
+        "total": {
+          "file": "night.west.total.exr",
+          "sha256": "64919b0e45a824803d550e135e1f5258f6a6db071c21c4b469c3f08245229f67"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg01": {
+          "albedo": [
+            0.75,
+            0.625,
+            0.375
+          ],
+          "direct": [
+            0.007477215491235256,
+            0.04686415567994118,
+            0.26209577918052673
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.01767353154718876,
+            0.06008903682231903,
+            0.1417904496192932
+          ],
+          "pixels": 2121,
+          "total": [
+            0.018863053992390633,
+            0.06684579700231552,
+            0.15145741403102875
+          ]
+        },
+        "Bldg11": {
+          "albedo": [
+            0.375,
+            0.75,
+            0.625
+          ],
+          "direct": [
+            0.004521020222455263,
+            0.006779804825782776,
+            3.755596876144409
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.018085729330778122,
+            0.07220439612865448,
+            0.35958075523376465
+          ],
+          "pixels": 1082,
+          "total": [
+            0.008477522991597652,
+            0.059238139539957047,
+            2.571988105773926
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.40001213550567627,
+            0.40001213550567627,
+            0.40001213550567627
+          ],
+          "direct": [
+            0.012108824215829372,
+            0.040549106895923615,
+            0.4563397169113159
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.00879556592553854,
+            0.03721136972308159,
+            0.20550419390201569
+          ],
+          "pixels": 5422,
+          "total": [
+            0.00836188718676567,
+            0.031104600057005882,
+            0.26474180817604065
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999873876571655,
+            0.5999873876571655,
+            0.5999873876571655
+          ],
+          "direct": [
+            0.006482525262981653,
+            0.3759917914867401,
+            0.019442636519670486
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            16.0
+          ],
+          "indirect": [
+            0.011574975214898586,
+            0.4142419397830963,
+            0.06382346153259277
+          ],
+          "pixels": 56,
+          "total": [
+            0.010834279470145702,
+            0.4741303324699402,
+            0.04995863512158394
+          ]
+        },
+        "StreetW11": {
+          "albedo": [
+            0.40000662207603455,
+            0.40000662207603455,
+            0.40000662207603455
+          ],
+          "direct": [
+            0.00907130166888237,
+            0.03800344467163086,
+            0.07645516842603683
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            19.0
+          ],
+          "indirect": [
+            0.008323458023369312,
+            0.17061272263526917,
+            0.10443992912769318
+          ],
+          "pixels": 196,
+          "total": [
+            0.006958018057048321,
+            0.08344781398773193,
+            0.07235920429229736
+          ]
+        }
+      },
+      "state": "night"
+    },
+    "ring-a.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "ring-a.east.index.png",
+          "sha256": "2065d6d789a55eba3f99e037f99ac94c701b91792854c000da46e316350efd13"
+        },
+        "indirect": {
+          "file": "ring-a.east.indirect.exr",
+          "sha256": "b462b7dc2fe0752cdef7d659cc7c5305b679375710beba4cbd12d7e554c2f4f0"
+        },
+        "total": {
+          "file": "ring-a.east.total.exr",
+          "sha256": "0b9984dba7230c466e9dc26bdbf8c716d40e4649f7475a87c0665830617e6a70"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg11": {
+          "albedo": [
+            0.375,
+            0.75,
+            0.625
+          ],
+          "direct": [
+            0.689844012260437,
+            0.0,
+            0.061692990362644196
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.3082626163959503,
+            0.010085523128509521,
+            0.13445083796977997
+          ],
+          "pixels": 1083,
+          "total": [
+            0.3742901682853699,
+            0.007564144674688578,
+            0.12258993089199066
+          ]
+        },
+        "Bldg21": {
+          "albedo": [
+            0.625,
+            0.375,
+            0.75
+          ],
+          "direct": [
+            0.6197758316993713,
+            0.0,
+            0.02637591026723385
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.20672106742858887,
+            0.01454360131174326,
+            0.05559162050485611
+          ],
+          "pixels": 1370,
+          "total": [
+            0.5165605545043945,
+            0.0054538557305932045,
+            0.06147569417953491
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.40001097321510315,
+            0.40001097321510315,
+            0.40001097321510315
+          ],
+          "direct": [
+            0.174131378531456,
+            0.0032502133399248123,
+            0.042046919465065
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.09692515432834625,
+            0.0070864190347492695,
+            0.057203296571969986
+          ],
+          "pixels": 5480,
+          "total": [
+            0.10842429846525192,
+            0.004134729504585266,
+            0.039700739085674286
+          ]
+        },
+        "StreetE11": {
+          "albedo": [
+            0.40000662207603455,
+            0.40000662207603455,
+            0.40000662207603455
+          ],
+          "direct": [
+            1.3910976648330688,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            17.0
+          ],
+          "indirect": [
+            0.7324007749557495,
+            0.01777498424053192,
+            0.021549368277192116
+          ],
+          "pixels": 196,
+          "total": [
+            0.8494133353233337,
+            0.007110103499144316,
+            0.008619883097708225
+          ]
+        }
+      },
+      "state": "ring-a"
+    },
+    "ring-a.far-east": {
+      "camera": "far-east",
+      "files": {
+        "index": {
+          "file": "ring-a.far-east.index.png",
+          "sha256": "4b6a8cf727fc9e10ba9a828e7a0bcdbbfac35e985ff09f354a5d57d821348af8"
+        },
+        "indirect": {
+          "file": "ring-a.far-east.indirect.exr",
+          "sha256": "036c3dbf10faf220e876882edee43f531dede49d8a81ae84895b7272b785f966"
+        },
+        "total": {
+          "file": "ring-a.far-east.total.exr",
+          "sha256": "d235c0cc9375dd15eb441da55c693028fcd47976d459eb137a8f7ea112f22e4f"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg21": {
+          "albedo": [
+            0.625,
+            0.375,
+            0.75
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.0002279061736771837,
+            0.0002754192682914436,
+            0.00028549073613248765
+          ],
+          "pixels": 16159,
+          "total": [
+            0.00014244162593968213,
+            0.00010328218195354566,
+            0.0002141177683370188
+          ]
+        },
+        "Bldg22": {
+          "albedo": [
+            0.75,
+            0.375,
+            0.625
+          ],
+          "direct": [
+            0.0,
+            0.0069697266444563866,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.01112294290214777,
+            0.00847275834530592,
+            0.0027690117713063955
+          ],
+          "pixels": 2268,
+          "total": [
+            0.008342213928699493,
+            0.005790933035314083,
+            0.0017306292429566383
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.39993590116500854,
+            0.39993590116500854,
+            0.39993590116500854
+          ],
+          "direct": [
+            0.0,
+            0.0021115352865308523,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.0018925563199445605,
+            0.0014101085253059864,
+            0.0004847935342695564
+          ],
+          "pixels": 17739,
+          "total": [
+            0.000757034111302346,
+            0.0014086765004321933,
+            0.0001939200737979263
+          ]
+        },
+        "StreetE22": {
+          "albedo": [
+            0.4000069499015808,
+            0.4000069499015808,
+            0.4000069499015808
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            18.0
+          ],
+          "indirect": [
+            0.0003415579267311841,
+            0.00020578560361173004,
+            0.0001106444324250333
+          ],
+          "pixels": 226,
+          "total": [
+            0.00013662534183822572,
+            8.231554966187105e-05,
+            4.4258493289817125e-05
+          ]
+        }
+      },
+      "state": "ring-a"
+    },
+    "ring-a.north": {
+      "camera": "north",
+      "files": {
+        "index": {
+          "file": "ring-a.north.index.png",
+          "sha256": "11c90a3174fe8c4b265ea93c5a95de2048a2190e7daaea848ae9f0c31c4a0f6b"
+        },
+        "indirect": {
+          "file": "ring-a.north.indirect.exr",
+          "sha256": "3bedc9525c0889dc747c9c01372ecfe1a9b5eda4f75d5ecd13fcc1bc0e5d34c5"
+        },
+        "total": {
+          "file": "ring-a.north.total.exr",
+          "sha256": "f6a6ea969586a48a6817c3ecb6643b29a3a8d28ffcb1202527c7878a19544b25"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg12": {
+          "albedo": [
+            0.375,
+            0.625,
+            0.75
+          ],
+          "direct": [
+            0.0024853325448930264,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.005812560208141804,
+            0.0020594086963683367,
+            0.00029614026425406337
+          ],
+          "pixels": 12605,
+          "total": [
+            0.003111718688160181,
+            0.0012871318031102419,
+            0.00022210540191736072
+          ]
+        },
+        "Bldg22": {
+          "albedo": [
+            0.75,
+            0.375,
+            0.625
+          ],
+          "direct": [
+            0.00248457258567214,
+            0.000162187367095612,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.0040631904266774654,
+            0.0029513442423194647,
+            0.00041959009831771255
+          ],
+          "pixels": 12605,
+          "total": [
+            0.00491082901135087,
+            0.0011675682617351413,
+            0.00026224381872452796
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.3999364376068115,
+            0.3999364376068115,
+            0.3999364376068115
+          ],
+          "direct": [
+            0.010941686108708382,
+            0.0017087578307837248,
+            0.00031430996023118496
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.006668725050985813,
+            0.003640165086835623,
+            0.0006834320374764502
+          ],
+          "pixels": 17460,
+          "total": [
+            0.007044279016554356,
+            0.0021396144293248653,
+            0.000399103038944304
+          ]
+        },
+        "StreetW22": {
+          "albedo": [
+            0.40000811219215393,
+            0.40000811219215393,
+            0.40000811219215393
+          ],
+          "direct": [
+            0.048583339899778366,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            20.0
+          ],
+          "indirect": [
+            0.04169459268450737,
+            0.01636914722621441,
+            0.0020133010111749172
+          ],
+          "pixels": 486,
+          "total": [
+            0.03611177206039429,
+            0.006547765340656042,
+            0.0008053337805904448
+          ]
+        }
+      },
+      "state": "ring-a"
+    },
+    "ring-a.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "ring-a.west.index.png",
+          "sha256": "cc83b6c74680c6c054ceb083739fc2de58edbd3e4a6585697557ad3bb09386a9"
+        },
+        "indirect": {
+          "file": "ring-a.west.indirect.exr",
+          "sha256": "51f0c4c47af8c21d7c477f4c31846e7c4e3267a18cbf1df459948444d480283f"
+        },
+        "total": {
+          "file": "ring-a.west.total.exr",
+          "sha256": "16dfa144e8e493cc016b17b782b295e9159b717a80eec9b152dd08ffbf7067b7"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg01": {
+          "albedo": [
+            0.75,
+            0.625,
+            0.375
+          ],
+          "direct": [
+            0.0,
+            0.035670746117830276,
+            0.23961558938026428
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.010332047007977962,
+            0.04524295777082443,
+            0.11822514981031418
+          ],
+          "pixels": 2121,
+          "total": [
+            0.007749032229185104,
+            0.050571031868457794,
+            0.1341904252767563
+          ]
+        },
+        "Bldg11": {
+          "albedo": [
+            0.375,
+            0.75,
+            0.625
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            3.742527484893799
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.011013138107955456,
+            0.056630391627550125,
+            0.34249815344810486
+          ],
+          "pixels": 1082,
+          "total": [
+            0.004129924811422825,
+            0.042472776025533676,
+            2.5531423091888428
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.40001213550567627,
+            0.40001213550567627,
+            0.40001213550567627
+          ],
+          "direct": [
+            0.0,
+            0.022333156317472458,
+            0.42008107900619507
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.003811182687059045,
+            0.02822078950703144,
+            0.19456157088279724
+          ],
+          "pixels": 5422,
+          "total": [
+            0.0015245004324242473,
+            0.020221972838044167,
+            0.24586129188537598
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999873876571655,
+            0.5999873876571655,
+            0.5999873876571655
+          ],
+          "direct": [
+            0.0,
+            0.36237597465515137,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            16.0
+          ],
+          "indirect": [
+            0.005519576370716095,
+            0.4138822555541992,
+            0.04154742509126663
+          ],
+          "pixels": 56,
+          "total": [
+            0.003311676438897848,
+            0.4657452702522278,
+            0.024927932769060135
+          ]
+        },
+        "StreetW11": {
+          "albedo": [
+            0.40000662207603455,
+            0.40000662207603455,
+            0.40000662207603455
+          ],
+          "direct": [
+            0.0,
+            0.024340039119124413,
+            0.0496814139187336
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            19.0
+          ],
+          "indirect": [
+            0.003540230682119727,
+            0.16081267595291138,
+            0.09083027392625809
+          ],
+          "pixels": 196,
+          "total": [
+            0.001416114973835647,
+            0.0740622729063034,
+            0.05620557814836502
+          ]
+        }
+      },
+      "state": "ring-a"
+    },
+    "ring-b.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "ring-b.east.index.png",
+          "sha256": "2065d6d789a55eba3f99e037f99ac94c701b91792854c000da46e316350efd13"
+        },
+        "indirect": {
+          "file": "ring-b.east.indirect.exr",
+          "sha256": "f899f3b19ad123e5a98ccc86ea3633d8eddf42944b4271a8e841cb97658e21fd"
+        },
+        "total": {
+          "file": "ring-b.east.total.exr",
+          "sha256": "af70bec12991eb1728502acf5a42b69da8a43d334966005004258fcf158f7be7"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg11": {
+          "albedo": [
+            0.375,
+            0.75,
+            0.625
+          ],
+          "direct": [
+            0.0,
+            0.005040688905864954,
+            0.007200980558991432
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.0005567086627706885,
+            0.013309421949088573,
+            0.0297024417668581
+          ],
+          "pixels": 1083,
+          "total": [
+            0.0002087656466756016,
+            0.013762565329670906,
+            0.023064661771059036
+          ]
+        },
+        "Bldg21": {
+          "albedo": [
+            0.625,
+            0.375,
+            0.75
+          ],
+          "direct": [
+            0.0,
+            0.005037117749452591,
+            0.007195890881121159
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.0007506759720854461,
+            0.014890234917402267,
+            0.028873803094029427
+          ],
+          "pixels": 1370,
+          "total": [
+            0.0004691728390753269,
+            0.007472754456102848,
+            0.027052270248532295
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.40001097321510315,
+            0.40001097321510315,
+            0.40001097321510315
+          ],
+          "direct": [
+            2.8118695354351075e-06,
+            0.017425011843442917,
+            0.024891044944524765
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.0002664408239070326,
+            0.011011081747710705,
+            0.024388648569583893
+          ],
+          "pixels": 5480,
+          "total": [
+            0.0001077025881386362,
+            0.01137460395693779,
+            0.0197121761739254
+          ]
+        },
+        "StreetE11": {
+          "albedo": [
+            0.40000662207603455,
+            0.40000662207603455,
+            0.40000662207603455
+          ],
+          "direct": [
+            0.0,
+            0.03859562799334526,
+            0.05513661727309227
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            17.0
+          ],
+          "indirect": [
+            0.0005542806466110051,
+            0.032089415937662125,
+            0.07748261839151382
+          ],
+          "pixels": 196,
+          "total": [
+            0.00022171581804286689,
+            0.02827446162700653,
+            0.0530485101044178
+          ]
+        }
+      },
+      "state": "ring-b"
+    },
+    "ring-b.far-east": {
+      "camera": "far-east",
+      "files": {
+        "index": {
+          "file": "ring-b.far-east.index.png",
+          "sha256": "4b6a8cf727fc9e10ba9a828e7a0bcdbbfac35e985ff09f354a5d57d821348af8"
+        },
+        "indirect": {
+          "file": "ring-b.far-east.indirect.exr",
+          "sha256": "2e23ab1befcbae963169b4c0dc64bb076b1d23e46fbed7cc79ec642df0130f86"
+        },
+        "total": {
+          "file": "ring-b.far-east.total.exr",
+          "sha256": "e8575c54d9ef62a289240efd671e11b8e5a8cf9567d9d777ef419a87fa649b4d"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg21": {
+          "albedo": [
+            0.625,
+            0.375,
+            0.75
+          ],
+          "direct": [
+            0.030611950904130936,
+            0.01377534307539463,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.016456253826618195,
+            0.00647512124851346,
+            0.0003083991468884051
+          ],
+          "pixels": 16159,
+          "total": [
+            0.029417764395475388,
+            0.00759392324835062,
+            0.00023129978217184544
+          ]
+        },
+        "Bldg22": {
+          "albedo": [
+            0.75,
+            0.375,
+            0.625
+          ],
+          "direct": [
+            0.4711083173751831,
+            0.21199876070022583,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.048918720334768295,
+            0.021764015778899193,
+            0.01773124188184738
+          ],
+          "pixels": 2268,
+          "total": [
+            0.3900205194950104,
+            0.08766107261180878,
+            0.011082026176154613
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.39993590116500854,
+            0.39993590116500854,
+            0.39993590116500854
+          ],
+          "direct": [
+            0.12654432654380798,
+            0.05695398151874542,
+            1.3067712643533014e-05
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.0488918274641037,
+            0.012178588658571243,
+            0.0033504387829452753
+          ],
+          "pixels": 17739,
+          "total": [
+            0.07017567753791809,
+            0.02765359729528427,
+            0.001345423748716712
+          ]
+        },
+        "StreetE22": {
+          "albedo": [
+            0.4000069499015808,
+            0.4000069499015808,
+            0.4000069499015808
+          ],
+          "direct": [
+            0.9218621253967285,
+            0.41483789682388306,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            18.0
+          ],
+          "indirect": [
+            0.3189173936843872,
+            0.07106262445449829,
+            0.0008563839364796877
+          ],
+          "pixels": 226,
+          "total": [
+            0.4963197708129883,
+            0.19436337053775787,
+            0.00034255909849889576
+          ]
+        }
+      },
+      "state": "ring-b"
+    },
+    "ring-b.north": {
+      "camera": "north",
+      "files": {
+        "index": {
+          "file": "ring-b.north.index.png",
+          "sha256": "11c90a3174fe8c4b265ea93c5a95de2048a2190e7daaea848ae9f0c31c4a0f6b"
+        },
+        "indirect": {
+          "file": "ring-b.north.indirect.exr",
+          "sha256": "ddde5b7296bce30421ed6213685d65cf4f46cd44e349454b3c930fe4a8c03086"
+        },
+        "total": {
+          "file": "ring-b.north.total.exr",
+          "sha256": "aa5101263898d7b1b9bb6bff21efd0f2d550b898ab85da8f17c5011b3080e0a2"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg12": {
+          "albedo": [
+            0.375,
+            0.625,
+            0.75
+          ],
+          "direct": [
+            0.0,
+            0.1249268651008606,
+            0.17846688628196716
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.0005920804105699062,
+            0.04415525868535042,
+            0.10911756008863449
+          ],
+          "pixels": 12605,
+          "total": [
+            0.00022202981926966459,
+            0.10567625612020493,
+            0.21568883955478668
+          ]
+        },
+        "Bldg22": {
+          "albedo": [
+            0.75,
+            0.375,
+            0.625
+          ],
+          "direct": [
+            0.0,
+            0.1249416247010231,
+            0.17848794162273407
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.0036899398546665907,
+            0.06295588612556458,
+            0.12219395488500595
+          ],
+          "pixels": 12605,
+          "total": [
+            0.0027674671728163958,
+            0.0704614594578743,
+            0.18792624771595
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.3999364376068115,
+            0.3999364376068115,
+            0.3999364376068115
+          ],
+          "direct": [
+            0.0,
+            0.07987545430660248,
+            0.11410825699567795
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.0004912968724966049,
+            0.044393278658390045,
+            0.1039450541138649
+          ],
+          "pixels": 17460,
+          "total": [
+            0.00019652151968330145,
+            0.049708422273397446,
+            0.08722258359193802
+          ]
+        },
+        "StreetW22": {
+          "albedo": [
+            0.40000811219215393,
+            0.40000811219215393,
+            0.40000811219215393
+          ],
+          "direct": [
+            0.0,
+            0.6370217800140381,
+            0.9100311994552612
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            20.0
+          ],
+          "indirect": [
+            0.00041108031291514635,
+            0.39665356278419495,
+            0.9330750703811646
+          ],
+          "pixels": 486,
+          "total": [
+            0.0001644347357796505,
+            0.4134768545627594,
+            0.7372546195983887
+          ]
+        }
+      },
+      "state": "ring-b"
+    },
+    "ring-b.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "ring-b.west.index.png",
+          "sha256": "cc83b6c74680c6c054ceb083739fc2de58edbd3e4a6585697557ad3bb09386a9"
+        },
+        "indirect": {
+          "file": "ring-b.west.indirect.exr",
+          "sha256": "a2fb510be1cb1c91c0b20f4483e3cf49c912cc282358312879ffe268c58b5a25"
+        },
+        "total": {
+          "file": "ring-b.west.total.exr",
+          "sha256": "6b95c15b809de9d924640ca05f14693c2f39508d1eedc75c176111a5085efa9a"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg01": {
+          "albedo": [
+            0.75,
+            0.625,
+            0.375
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.00018098484724760056,
+            0.003725823713466525,
+            0.006402917206287384
+          ],
+          "pixels": 2121,
+          "total": [
+            0.000135738417156972,
+            0.002328635426238179,
+            0.0024010951165109873
+          ]
+        },
+        "Bldg11": {
+          "albedo": [
+            0.375,
+            0.75,
+            0.625
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.00011388140410417691,
+            0.003035877365618944,
+            0.0032062376849353313
+          ],
+          "pixels": 1082,
+          "total": [
+            4.2705549276433885e-05,
+            0.0022769076749682426,
+            0.002003898611292243
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.40001213550567627,
+            0.40001213550567627,
+            0.40001213550567627
+          ],
+          "direct": [
+            0.0,
+            2.1003500023653032e-06,
+            3.0004989639564883e-06
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            4.60430201201234e-05,
+            0.001046560239046812,
+            0.0013527071569114923
+          ],
+          "pixels": 5422,
+          "total": [
+            1.8417462342767976e-05,
+            0.00041947141289711,
+            0.0005422912654466927
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999873876571655,
+            0.5999873876571655,
+            0.5999873876571655
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            16.0
+          ],
+          "indirect": [
+            0.00015184910444077104,
+            0.004054477903991938,
+            0.006875951308757067
+          ],
+          "pixels": 56,
+          "total": [
+            9.110757673624903e-05,
+            0.0024326362181454897,
+            0.00412548566237092
+          ]
+        },
+        "StreetW11": {
+          "albedo": [
+            0.40000662207603455,
+            0.40000662207603455,
+            0.40000662207603455
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            19.0
+          ],
+          "indirect": [
+            7.20674215699546e-05,
+            0.002021691994741559,
+            0.0022484599612653255
+          ],
+          "pixels": 196,
+          "total": [
+            2.8827436835854314e-05,
+            0.0008086899179033935,
+            0.0008993987576104701
+          ]
+        }
+      },
+      "state": "ring-b"
+    },
+    "turned.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "turned.east.index.png",
+          "sha256": "1fcb49addb227f30476238e0b5555666fc69712a0db4fa96a415489517fd79ce"
+        },
+        "indirect": {
+          "file": "turned.east.indirect.exr",
+          "sha256": "208e9f8f20c20293c2edbc939d1491875f13d3256e89e5c937547f5fad95c8e3"
+        },
+        "total": {
+          "file": "turned.east.total.exr",
+          "sha256": "47ba4cdc5e3841b6907395fecb29d65c8692666abe9b42b610fba7528c49d120"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg11": {
+          "albedo": [
+            0.375,
+            0.75,
+            0.625
+          ],
+          "direct": [
+            0.005114282015711069,
+            0.007250798400491476,
+            3.767789363861084
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.06829307228326797,
+            0.04159453511238098,
+            0.4285958707332611
+          ],
+          "pixels": 1083,
+          "total": [
+            0.027527762576937675,
+            0.036633994430303574,
+            2.622741222381592
+          ]
+        },
+        "Bldg21": {
+          "albedo": [
+            0.625,
+            0.375,
+            0.75
+          ],
+          "direct": [
+            0.04227312281727791,
+            0.008728256449103355,
+            0.2948532998561859
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.03953307121992111,
+            0.03099539503455162,
+            0.21198274195194244
+          ],
+          "pixels": 1370,
+          "total": [
+            0.05112883821129799,
+            0.014896361157298088,
+            0.38012659549713135
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.4000106453895569,
+            0.4000106453895569,
+            0.4000106453895569
+          ],
+          "direct": [
+            0.04919692501425743,
+            0.02494535967707634,
+            0.4549165964126587
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.03264128416776657,
+            0.018738271668553352,
+            0.2807725965976715
+          ],
+          "pixels": 5496,
+          "total": [
+            0.032735805958509445,
+            0.01747376285493374,
+            0.29428067803382874
+          ]
+        },
+        "StreetE11": {
+          "albedo": [
+            0.40000662207603455,
+            0.40000662207603455,
+            0.40000662207603455
+          ],
+          "direct": [
+            0.03388239070773125,
+            0.01359932404011488,
+            0.07598260790109634
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            17.0
+          ],
+          "indirect": [
+            0.14940306544303894,
+            0.027572710067033768,
+            0.1899280995130539
+          ],
+          "pixels": 196,
+          "total": [
+            0.07331536710262299,
+            0.0164690800011158,
+            0.10636600106954575
+          ]
+        }
+      },
+      "state": "turned"
+    },
+    "turned.far-east": {
+      "camera": "far-east",
+      "files": {
+        "index": {
+          "file": "turned.far-east.index.png",
+          "sha256": "3c68f34f195852dc2f95dddd8fa347dcd0fdbe507f3fc346a647f7ecb5112e9f"
+        },
+        "indirect": {
+          "file": "turned.far-east.indirect.exr",
+          "sha256": "cd9abc623443836f6878402d0f57bf41c96e2f96c7d5840c18da665fdbe97b54"
+        },
+        "total": {
+          "file": "turned.far-east.total.exr",
+          "sha256": "0b6ed743172054d37f5df1fe0618d91e7a9efda02f31bdcb5e7cf2bf4f0dedf1"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg21": {
+          "albedo": [
+            0.625,
+            0.375,
+            0.75
+          ],
+          "direct": [
+            0.023907450959086418,
+            0.03585203364491463,
+            0.07170406728982925
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.015148540958762169,
+            0.011242883279919624,
+            0.018364252522587776
+          ],
+          "pixels": 16159,
+          "total": [
+            0.02441001869738102,
+            0.017660638317465782,
+            0.06755135208368301
+          ]
+        },
+        "Bldg22": {
+          "albedo": [
+            0.75,
+            0.375,
+            0.625
+          ],
+          "direct": [
+            0.38613128662109375,
+            0.18371310830116272,
+            0.05549326166510582
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.33378902077674866,
+            0.08355434983968735,
+            0.027968676760792732
+          ],
+          "pixels": 2268,
+          "total": [
+            0.539940595626831,
+            0.1002253070473671,
+            0.05216372385621071
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.39993590116500854,
+            0.39993590116500854,
+            0.39993590116500854
+          ],
+          "direct": [
+            0.10082840919494629,
+            0.08256234228610992,
+            0.10333836823701859
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.05724642798304558,
+            0.01427050493657589,
+            0.016080837696790695
+          ],
+          "pixels": 17739,
+          "total": [
+            0.06323112547397614,
+            0.038733940571546555,
+            0.04776839539408684
+          ]
+        },
+        "StreetE22": {
+          "albedo": [
+            0.4000069499015808,
+            0.4000069499015808,
+            0.4000069499015808
+          ],
+          "direct": [
+            0.02515968307852745,
+            0.03772993013262749,
+            0.07545986026525497
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            18.0
+          ],
+          "indirect": [
+            0.029636425897479057,
+            0.010478042997419834,
+            0.02092587761580944
+          ],
+          "pixels": 226,
+          "total": [
+            0.021918784826993942,
+            0.019283510744571686,
+            0.03855491057038307
+          ]
+        }
+      },
+      "state": "turned"
+    },
+    "turned.north": {
+      "camera": "north",
+      "files": {
+        "index": {
+          "file": "turned.north.index.png",
+          "sha256": "34a3b94a9ce3c0793e073cc03b909e2131c3e78d67bb3613fcd9a04f624ee74c"
+        },
+        "indirect": {
+          "file": "turned.north.indirect.exr",
+          "sha256": "6d5ed49e5346cf0fbbf26a18f8bbac6a79ab2194457e38d81c426436e52a620e"
+        },
+        "total": {
+          "file": "turned.north.total.exr",
+          "sha256": "25bffa8c64877072c858e8ce2eb0eab41f7b7273738b69b5a8c826fc64f2dc9c"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg12": {
+          "albedo": [
+            0.375,
+            0.625,
+            0.75
+          ],
+          "direct": [
+            0.022800084203481674,
+            0.07032755017280579,
+            0.11856980621814728
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.0278889462351799,
+            0.023057937622070312,
+            0.039548393338918686
+          ],
+          "pixels": 12605,
+          "total": [
+            0.019008370116353035,
+            0.05836589261889458,
+            0.11858893930912018
+          ]
+        },
+        "Bldg22": {
+          "albedo": [
+            0.75,
+            0.375,
+            0.625
+          ],
+          "direct": [
+            0.03880138695240021,
+            1.1752392053604126,
+            1.6976549625396729
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.01903149113059044,
+            0.05882187932729721,
+            0.09566335380077362
+          ],
+          "pixels": 12605,
+          "total": [
+            0.04337479546666145,
+            0.46277138590812683,
+            1.1208242177963257
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.3999364376068115,
+            0.3999364376068115,
+            0.3999364376068115
+          ],
+          "direct": [
+            0.046378713101148605,
+            0.28683164715766907,
+            0.43164339661598206
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.024435166269540787,
+            0.05495946481823921,
+            0.12716948986053467
+          ],
+          "pixels": 17460,
+          "total": [
+            0.028326107189059258,
+            0.13671889901161194,
+            0.22352759540081024
+          ]
+        },
+        "StreetW22": {
+          "albedo": [
+            0.40000811219215393,
+            0.40000811219215393,
+            0.40000811219215393
+          ],
+          "direct": [
+            0.11113917082548141,
+            0.016238227486610413,
+            0.032476454973220825
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            20.0
+          ],
+          "indirect": [
+            0.17313343286514282,
+            0.03388797119259834,
+            0.05279286205768585
+          ],
+          "pixels": 486,
+          "total": [
+            0.11371096223592758,
+            0.020050805062055588,
+            0.034108277410268784
+          ]
+        }
+      },
+      "state": "turned"
+    },
+    "turned.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "turned.west.index.png",
+          "sha256": "b7b4144e274047c2fb9939af3fb37e6f0c7b4f4d98775cf3aa5cb7404eac8c6b"
+        },
+        "indirect": {
+          "file": "turned.west.indirect.exr",
+          "sha256": "864ee9c7c9b045c50f84f7c2a240ea4717f91c28e6cb40ce3297f558dcd3aaf3"
+        },
+        "total": {
+          "file": "turned.west.total.exr",
+          "sha256": "a6b1337998336279082e08cfd05e2e25ad57502f73751b80aa08e13e7d551df5"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Bldg00": 1,
+        "Bldg01": 2,
+        "Bldg02": 3,
+        "Bldg10": 4,
+        "Bldg11": 5,
+        "Bldg12": 6,
+        "Bldg20": 7,
+        "Bldg21": 8,
+        "Bldg22": 9,
+        "BulbAmberShape": 10,
+        "BulbBlueShape": 11,
+        "BulbCyanShape": 12,
+        "BulbGreenShape": 13,
+        "BulbRedShape": 14,
+        "Ground": 15,
+        "ProbeSphereShape": 16,
+        "StreetE11": 17,
+        "StreetE22": 18,
+        "StreetW11": 19,
+        "StreetW22": 20
+      },
+      "regions": {
+        "Bldg01": {
+          "albedo": [
+            0.75,
+            0.625,
+            0.375
+          ],
+          "direct": [
+            0.013287338428199291,
+            0.4722285270690918,
+            0.04972825571894646
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.02417682483792305,
+            0.3310011327266693,
+            0.06354785710573196
+          ],
+          "pixels": 2121,
+          "total": [
+            0.02809813804924488,
+            0.5020189881324768,
+            0.042478542774915695
+          ]
+        },
+        "Bldg11": {
+          "albedo": [
+            0.375,
+            0.75,
+            0.625
+          ],
+          "direct": [
+            0.0045197149738669395,
+            0.6970268487930298,
+            0.0751834362745285
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.018841102719306946,
+            0.4313621520996094,
+            0.1422969400882721
+          ],
+          "pixels": 1082,
+          "total": [
+            0.008760306984186172,
+            0.8462924957275391,
+            0.13592517375946045
+          ]
+        },
+        "Ground": {
+          "albedo": [
+            0.40001243352890015,
+            0.40001243352890015,
+            0.40001243352890015
+          ],
+          "direct": [
+            0.014866655692458153,
+            0.193092480301857,
+            0.07892225682735443
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.010972932912409306,
+            0.17733794450759888,
+            0.053555164486169815
+          ],
+          "pixels": 5406,
+          "total": [
+            0.010336005128920078,
+            0.14817428588867188,
+            0.05299181491136551
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999873876571655,
+            0.5999873876571655,
+            0.5999873876571655
+          ],
+          "direct": [
+            0.0686456635594368,
+            0.6380739212036133,
+            0.019426966086030006
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            16.0
+          ],
+          "indirect": [
+            0.06537304818630219,
+            0.7165680527687073,
+            0.022275779396295547
+          ],
+          "pixels": 56,
+          "total": [
+            0.08040957897901535,
+            0.8127671480178833,
+            0.025021126493811607
+          ]
+        },
+        "StreetW11": {
+          "albedo": [
+            0.40000662207603455,
+            0.40000662207603455,
+            0.40000662207603455
+          ],
+          "direct": [
+            0.009051387198269367,
+            1.4056572914123535,
+            0.027147261425852776
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            19.0
+          ],
+          "indirect": [
+            0.02321399562060833,
+            1.1798444986343384,
+            0.025471458211541176
+          ],
+          "pixels": 196,
+          "total": [
+            0.01290635671466589,
+            1.0342180728912354,
+            0.02104782871901989
+          ]
+        }
+      },
+      "state": "turned"
+    }
+  }
+}

@@ -30,7 +30,20 @@
 #include "tier0/memdbgon.h"
 
 // Increment this to force rebuilding of all networks
+#ifdef FSTOP
+// F-Stop adds HULL_TINY_FLUID, which changes the per-link hull arrays, so its
+// graphs must not be read by (or from) the other games' layout.
+#define	 AINET_VERSION_NUMBER	1037
+#else
 #define	 AINET_VERSION_NUMBER	37
+#endif
+
+// The contents a hull's link tests trace against.
+#ifdef FSTOP
+#define AI_HULL_LINK_MASK( hull )	NAI_Hull::TraceMask( hull )
+#else
+#define AI_HULL_LINK_MASK( hull )	MASK_NPCWORLDSTATIC
+#endif
 
 //-----------------------------------------------------------------------------
 
@@ -2959,14 +2972,14 @@ int CAI_NetworkBuilder::ComputeConnection( CAI_Node *pSrcNode, CAI_Node *pDestNo
 	// ==============================================================
 	// @Note (toml 02-10-03): this should be optimized, caching the results of CanFitAtNode() 
 	if ( !( pSrcNode->m_eNodeInfo & ( HullToBit( hull ) << NODE_ENT_FLAGS_SHIFT ) ) &&
-		 !m_pTestHull->GetNavigator()->CanFitAtNode(srcId,MASK_NPCWORLDSTATIC) )
+		 !m_pTestHull->GetNavigator()->CanFitAtNode(srcId,AI_HULL_LINK_MASK( hull )) )
 	{
 		DebugConnectMsg( srcId, destId, "      Cannot fit at node %d\n", srcId );
 		return 0;
 	}
 	
 	if (  !( pDestNode->m_eNodeInfo & ( HullToBit( hull ) << NODE_ENT_FLAGS_SHIFT ) ) &&
-		 !m_pTestHull->GetNavigator()->CanFitAtNode(destId,MASK_NPCWORLDSTATIC) )
+		 !m_pTestHull->GetNavigator()->CanFitAtNode(destId,AI_HULL_LINK_MASK( hull )) )
 	{
 		DebugConnectMsg( srcId, destId, "      Cannot fit at node %d\n", destId );
 		return 0;
@@ -2982,7 +2995,7 @@ int CAI_NetworkBuilder::ComputeConnection( CAI_Node *pSrcNode, CAI_Node *pDestNo
 		// Air nodes only connect to other air nodes and nothing else
 		if (pSrcNode->m_eNodeType == NODE_AIR && pDestNode->GetType() == NODE_AIR)
 		{
-			AI_TraceHull( pSrcNode->GetOrigin(), pDestNode->GetOrigin(), NAI_Hull::Mins(hull),NAI_Hull::Maxs(hull), MASK_NPCWORLDSTATIC, m_pTestHull, COLLISION_GROUP_NONE, &tr );
+			AI_TraceHull( pSrcNode->GetOrigin(), pDestNode->GetOrigin(), NAI_Hull::Mins(hull),NAI_Hull::Maxs(hull), AI_HULL_LINK_MASK( hull ), m_pTestHull, COLLISION_GROUP_NONE, &tr );
 			if (!tr.startsolid && tr.fraction == 1.0)
 			{
 				result |= bits_CAP_MOVE_FLY;
@@ -3007,7 +3020,7 @@ int CAI_NetworkBuilder::ComputeConnection( CAI_Node *pSrcNode, CAI_Node *pDestNo
 		{
 			AI_TraceHull( srcPos, destPos, 
 							NAI_Hull::Mins(hull),NAI_Hull::Maxs(hull), 
-							MASK_NPCWORLDSTATIC, m_pTestHull, COLLISION_GROUP_NONE, &tr );
+							AI_HULL_LINK_MASK( hull ), m_pTestHull, COLLISION_GROUP_NONE, &tr );
 			if (!tr.startsolid && tr.fraction == 1.0)
 			{
 				result |= bits_CAP_MOVE_CLIMB;
@@ -3023,7 +3036,7 @@ int CAI_NetworkBuilder::ComputeConnection( CAI_Node *pSrcNode, CAI_Node *pDestNo
 				return 0;
 			}
 
-			AI_TraceHull( srcPos, destPos, NAI_Hull::Mins(hull),NAI_Hull::Maxs(hull), MASK_NPCWORLDSTATIC, m_pTestHull, COLLISION_GROUP_NONE, &tr );
+			AI_TraceHull( srcPos, destPos, NAI_Hull::Mins(hull),NAI_Hull::Maxs(hull), AI_HULL_LINK_MASK( hull ), m_pTestHull, COLLISION_GROUP_NONE, &tr );
 			if (!tr.startsolid && tr.fraction == 1.0)
 			{
 				result |= bits_CAP_MOVE_CLIMB;
@@ -3051,13 +3064,13 @@ int CAI_NetworkBuilder::ComputeConnection( CAI_Node *pSrcNode, CAI_Node *pDestNo
 		Vector srcPos	 = pSrcNode->GetPosition(hull);
 		Vector destPos	 = pDestNode->GetPosition(hull);
 
-		if (!m_pTestHull->GetMoveProbe()->CheckStandPosition( srcPos, MASK_NPCWORLDSTATIC))
+		if (!m_pTestHull->GetMoveProbe()->CheckStandPosition( srcPos, AI_HULL_LINK_MASK( hull )))
 		{
 			DebugConnectMsg( srcId, destId, "      Failed to stand at %d\n", srcId );
 			fStandFailed = true;
 		}
 
-		if (!m_pTestHull->GetMoveProbe()->CheckStandPosition( destPos, MASK_NPCWORLDSTATIC))
+		if (!m_pTestHull->GetMoveProbe()->CheckStandPosition( destPos, AI_HULL_LINK_MASK( hull )))
 		{
 			DebugConnectMsg( srcId, destId, "      Failed to stand at %d\n", destId );
 			fStandFailed = true;
@@ -3068,7 +3081,7 @@ int CAI_NetworkBuilder::ComputeConnection( CAI_Node *pSrcNode, CAI_Node *pDestNo
 
 		if ( !fStandFailed )
 		{
-			fWalkFailed = !m_pTestHull->GetMoveProbe()->TestGroundMove( srcPos, destPos, MASK_NPCWORLDSTATIC, AITGM_IGNORE_INITIAL_STAND_POS, NULL );
+			fWalkFailed = !m_pTestHull->GetMoveProbe()->TestGroundMove( srcPos, destPos, AI_HULL_LINK_MASK( hull ), AITGM_IGNORE_INITIAL_STAND_POS, NULL );
 			if ( fWalkFailed )
 				DebugConnectMsg( srcId, destId, "      Failed to walk between nodes\n" );
 		}

@@ -201,11 +201,39 @@ CPortalSimulator::~CPortalSimulator( void )
 
 
 
+#ifdef FSTOP
+void CPortalSimulator::SetSize( float fHalfWidth, float fHalfHeight )
+{
+	if( (m_InternalData.Placement.fHalfWidth == fHalfWidth) && (m_InternalData.Placement.fHalfHeight == fHalfHeight) ) //not actually resizing at all
+		return;
+
+	m_InternalData.Placement.fHalfWidth = fHalfWidth;
+	m_InternalData.Placement.fHalfHeight = fHalfHeight;
+
+	// Not placed yet: the size is picked up by the first MoveTo()
+	if( !m_bLocalDataIsReady )
+		return;
+
+	MovedOrResized( m_InternalData.Placement.ptCenter, m_InternalData.Placement.qAngles );
+}
+#endif // FSTOP
+
 void CPortalSimulator::MoveTo( const Vector &ptCenter, const QAngle &angles )
 {
 	if( (m_InternalData.Placement.ptCenter == ptCenter) && (m_InternalData.Placement.qAngles == angles) ) //not actually moving at all
 		return;
 
+#ifdef FSTOP
+	MovedOrResized( ptCenter, angles );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Rebuilds the portal's placement data, hole and simulation for a
+//			new center/angles or a new size (SetSize)
+//-----------------------------------------------------------------------------
+void CPortalSimulator::MovedOrResized( const Vector &ptCenter, const QAngle &angles )
+{
+#endif // FSTOP
 	CREATEDEBUGTIMER( functionTimer );
 
 	STARTDEBUGTIMER( functionTimer );
@@ -278,22 +306,22 @@ void CPortalSimulator::MoveTo( const Vector &ptCenter, const QAngle &angles )
 		fHolePlanes[(2*4) + 0] = m_InternalData.Placement.vUp.x;
 		fHolePlanes[(2*4) + 1] = m_InternalData.Placement.vUp.y;
 		fHolePlanes[(2*4) + 2] = m_InternalData.Placement.vUp.z;
-		fHolePlanes[(2*4) + 3] = m_InternalData.Placement.vUp.Dot( m_InternalData.Placement.ptCenter + (m_InternalData.Placement.vUp * (PORTAL_HALF_HEIGHT * 0.98f)) );
+		fHolePlanes[(2*4) + 3] = m_InternalData.Placement.vUp.Dot( m_InternalData.Placement.ptCenter + (m_InternalData.Placement.vUp * (GetHalfHeight() * 0.98f)) );
 
 		fHolePlanes[(3*4) + 0] = -m_InternalData.Placement.vUp.x;
 		fHolePlanes[(3*4) + 1] = -m_InternalData.Placement.vUp.y;
 		fHolePlanes[(3*4) + 2] = -m_InternalData.Placement.vUp.z;
-		fHolePlanes[(3*4) + 3] = -m_InternalData.Placement.vUp.Dot( m_InternalData.Placement.ptCenter - (m_InternalData.Placement.vUp * (PORTAL_HALF_HEIGHT * 0.98f)) );
+		fHolePlanes[(3*4) + 3] = -m_InternalData.Placement.vUp.Dot( m_InternalData.Placement.ptCenter - (m_InternalData.Placement.vUp * (GetHalfHeight() * 0.98f)) );
 
 		fHolePlanes[(4*4) + 0] = -m_InternalData.Placement.vRight.x;
 		fHolePlanes[(4*4) + 1] = -m_InternalData.Placement.vRight.y;
 		fHolePlanes[(4*4) + 2] = -m_InternalData.Placement.vRight.z;
-		fHolePlanes[(4*4) + 3] = -m_InternalData.Placement.vRight.Dot( m_InternalData.Placement.ptCenter - (m_InternalData.Placement.vRight * (PORTAL_HALF_WIDTH * 0.98f)) );
+		fHolePlanes[(4*4) + 3] = -m_InternalData.Placement.vRight.Dot( m_InternalData.Placement.ptCenter - (m_InternalData.Placement.vRight * (GetHalfWidth() * 0.98f)) );
 
 		fHolePlanes[(5*4) + 0] = m_InternalData.Placement.vRight.x;
 		fHolePlanes[(5*4) + 1] = m_InternalData.Placement.vRight.y;
 		fHolePlanes[(5*4) + 2] = m_InternalData.Placement.vRight.z;
-		fHolePlanes[(5*4) + 3] = m_InternalData.Placement.vRight.Dot( m_InternalData.Placement.ptCenter + (m_InternalData.Placement.vRight * (PORTAL_HALF_WIDTH * 0.98f)) );
+		fHolePlanes[(5*4) + 3] = m_InternalData.Placement.vRight.Dot( m_InternalData.Placement.ptCenter + (m_InternalData.Placement.vRight * (GetHalfWidth() * 0.98f)) );
 
 		CPolyhedron *pPolyhedron = GeneratePolyhedronFromPlanes( fHolePlanes, 6, PORTAL_POLYHEDRON_CUT_EPSILON, true );
 		Assert( pPolyhedron != NULL );
@@ -2026,6 +2054,10 @@ void CPortalSimulator::CreatePolyhedrons( void )
 		placement.vForward = m_InternalData.Placement.vForward;
 		placement.vRight = m_InternalData.Placement.vRight;
 		placement.vUp = m_InternalData.Placement.vUp;
+#ifdef FSTOP
+		placement.fHoleHalfWidth = GetHalfWidth() + PORTAL_HOLE_HALF_WIDTH_MOD;
+		placement.fHoleHalfHeight = GetHalfHeight() + PORTAL_HOLE_HALF_HEIGHT_MOD;
+#endif // FSTOP
 
 		CUtlVector<const CPolyhedron *> WallBrushPolyhedrons;
 		const bool bSimulatingVPhysics = IsSimulatingVPhysics();

@@ -153,7 +153,10 @@ void ImpTiler::UpdateThreshold()
 
 void ImpTiler::beginFrame( const Point3D &offset, bool bNoMargin, bool bDeferDraw )
 {
+	// Release unfinished geometry without discarding this frame's configured draw target.
+	IMatRenderContext **ppRenderContext = m_ppRenderContext;
 	ReleaseFrame();
+	m_ppRenderContext = ppRenderContext;
 	m_Offset = offset;
 }
 

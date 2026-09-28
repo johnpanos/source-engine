@@ -1282,3 +1282,12 @@ CAmmoDef *GetAmmoDef()
 	return &def;
 }
 
+#if defined( FSTOP ) && !defined( CLIENT_DLL )
+bool CPortalGameRules::AllowDamage( CBaseEntity *pVictim, const CTakeDamageInfo &info )
+{
+	if ( pVictim->IsInStasis() )
+		return false;
+
+	return BaseClass::AllowDamage( pVictim, info );
+}
+#endif // FSTOP && !CLIENT_DLL

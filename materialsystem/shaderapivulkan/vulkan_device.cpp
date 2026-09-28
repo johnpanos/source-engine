@@ -7336,6 +7336,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool pbrModel = false;
 			bool pbrModelEnv = false;
 			bool pbrModelProbe = false;
+			bool pbrModelChange = false;
+			bool glassRelight = false;
 			bool lightmapped = false; // on skin's push block and constants
 			bool post = false;        // on the skin layout
 			bool legacy = false;      // the skin push block, its own layout
@@ -7410,6 +7412,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				selectedLayout = m_worldGlassPipelineLayout;
 				pbrWorld = true;
 				glass = true;
+				// R50-RELIGHT: the change and published volumes relight the
+				// map's reflection probes.
+				glassRelight = EffectiveIndirectPolicy() == 1 && ProbeDeltaResident();
 			}
 			else if ( d.shaderIndex == kDynShaderPortalRefract )
 			{
@@ -7466,6 +7471,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				// The map's probe volume, per pixel, where the device supports it.
 				pbrModelProbe =
 				    m_probeSampling != 0 && ProbeVolumeResident() && ProbeVolumeSamplingSupported();
+				// R50-RELIGHT: the change volume beside it relights the map's
+				// reflection probes.
+				pbrModelChange = pbrModelProbe && !pbrModelEnv &&
+				                 EffectiveIndirectPolicy() == 1 && ProbeDeltaResident();
 				selected =
 				    PbrModelPipeline( d.raster, pbrModelEnv, openSrgb, passSamples, pbrModelProbe );
 				if ( selected == VK_NULL_HANDLE || !c || !skinConstantsOk ||
@@ -7640,7 +7649,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					        pbrModelProbe ? m_probeGridHandle : -1, -1, openTarget, false ),
 					    GroupedImage( -1, m_whiteVolumeHandle, openTarget, false ),
 					    GroupedImage(
-					        pbrModelEnv ? -1 : m_reflectionProbeHandle, -1, openTarget, false ) };
+					        pbrModelEnv ? -1 : m_reflectionProbeHandle, -1, openTarget, false ),
+					    GroupedImage(
+					        pbrModelChange ? m_probeDeltaHandle : -1, -1, openTarget, false ) };
 					bool baseSrgb = false;
 					const CGroupedDescriptors::Image
 					    material[CGroupedDescriptors::kMaterialBindings] = {
@@ -7776,8 +7787,11 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					// LMAP indirect layer). BakedPlusDelta: the producer's change
 					// volume and the volume's grid table.
 					const int indirectSource = pbrWorldRuntime ? m_worldLightmapIndirectHandle
-					                           : pbrWorldDelta ? m_probeDeltaHandle
-					                                           : -1;
+					                           : pbrWorldDelta || glassRelight ? m_probeDeltaHandle
+					                                                           : -1;
+					// R50-RELIGHT: relit reflection probes read the published
+					// volume beside the change.
+					const bool probeChange = pbrWorldDelta || glassRelight;
 					// RFC 0011 G9: the shadow field (a white volume, unread, when
 					// the map has none).
 					const int shadowField =
@@ -7786,10 +7800,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					    GroupedImage( m_pbrSplitSumHandle, -1, openTarget, false ),
 					    GroupedImage( worldLightmap, -1, openTarget, false ),
 					    GroupedImage( indirectSource, -1, openTarget, false ),
-					    GroupedImage(
-					        pbrWorldDelta ? m_probeGridHandle : -1, -1, openTarget, false ),
+					    GroupedImage( probeChange ? m_probeGridHandle : -1, -1, openTarget, false ),
 					    GroupedImage( shadowField, m_whiteVolumeHandle, openTarget, false ),
-					    GroupedImage( m_reflectionProbeHandle, -1, openTarget, false ) };
+					    GroupedImage( m_reflectionProbeHandle, -1, openTarget, false ),
+					    GroupedImage( probeChange ? m_probeAtlasHandle : -1, -1, openTarget, false ) };
 					bool baseSrgb = false;
 					const CGroupedDescriptors::Image
 					    material[CGroupedDescriptors::kMaterialBindings] = {
@@ -7917,6 +7931,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				if ( pbrModel && !pbrModelEnv &&
 				     ( m_worldLightmapHandle >= 0 || m_reflectionProbeHandle >= 0 ) )
 					combos |= kPbrModelMapProbe;
+				if ( pbrModelChange )
+					combos |= kPbrModelProbeChange;
 				if ( paintBlob && !ManagedTextureIsCube( d.samplerHandles[7] ) )
 					combos &= ~kPaintBlobEnvMap;
 				pushData[29] = static_cast<float>( combos );
@@ -7979,6 +7995,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					pushData[26] = 0.5f * viewport.width;
 					pushData[27] = 0.5f * viewport.height;
 					pushData[30] = static_cast<float>( sceneColor.mipLevels );
+					// material.w: the relight volumes are bound (R50-RELIGHT).
+					pushData[31] = glassRelight ? 1.0f : 0.0f;
 				}
 				pushFloats = 32;
 				if ( m_clipPlanesSupported )

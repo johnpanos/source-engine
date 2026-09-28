@@ -87,6 +87,10 @@ public:
 	
 	int					Flags() const;
 	Navigation_t		NavType() const;
+#ifdef FSTOP
+	// F-Stop's propeller add-on turns ground waypoints into fly waypoints.
+	void				SetNavType( Navigation_t type )		{ m_iWPType = type; }
+#endif
 
 	// Flag modification method
 	void				ModifyFlags( int fFlags, bool bEnable );

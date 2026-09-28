@@ -119,7 +119,8 @@ bool UploadWorldProbeVolume( CVulkanContext &context,
 		return fail( "PRBV requires a resident world mesh" );
 	if ( !request.atlas || !request.gridTable || request.atlasWidth == 0 ||
 	     request.atlasHeight == 0 || request.atlasWidth > 16384 || request.atlasHeight > 16384 ||
-	     request.gridCount == 0 || request.gridCount > 16 || request.tableFloats != kTableFloats )
+	     request.gridCount == 0 || request.gridCount > 16 || request.tableFloats != kTableFloats ||
+	     request.occluderCount > world_mesh_gpu::kProbeVolumeMaxOccluders )
 		return fail( "PRBV upload request is malformed" );
 	std::string detail;
 	const int atlas = context.CreateManagedTexture( int( request.atlasWidth ),
@@ -132,11 +133,13 @@ bool UploadWorldProbeVolume( CVulkanContext &context,
 			context.DestroyManagedTexture( atlas );
 		return fail( "PRBV atlas upload failed: " + detail );
 	}
+	// The grid rows, then the moving occluders' rows.
+	const uint32_t rows = request.gridCount + request.occluderCount;
 	const int grids = context.CreateManagedTexture(
-	    int( kTableFloats / 4 ), int( request.gridCount ), VK_FORMAT_R32G32B32A32_SFLOAT, &detail );
+	    int( kTableFloats / 4 ), int( rows ), VK_FORMAT_R32G32B32A32_SFLOAT, &detail );
 	if ( grids < 0 || !context.UploadManagedTexture( grids,
 	                      reinterpret_cast<const uint8_t *>( request.gridTable ),
-	                      size_t( request.gridCount ) * kTableFloats * sizeof( float ), &detail ) )
+	                      size_t( rows ) * kTableFloats * sizeof( float ), &detail ) )
 	{
 		if ( grids >= 0 )
 			context.DestroyManagedTexture( grids );

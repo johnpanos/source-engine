@@ -110,8 +110,8 @@ bool CQueuedWorldMeshUpload::UploadProbeVolume(
 	    size_t( request.atlasWidth ) * request.atlasHeight * kRgba16fTexelBytes;
 	std::shared_ptr<Bytes> atlas = CopyBytes( request.atlas, atlasBytes );
 	std::shared_ptr<Bytes> delta = CopyBytes( request.deltaAtlas, atlasBytes );
-	std::shared_ptr<Bytes> table = CopyBytes(
-	    request.gridTable, size_t( request.gridCount ) * request.tableFloats * sizeof( float ) );
+	std::shared_ptr<Bytes> table = CopyBytes( request.gridTable,
+	    size_t( request.gridCount + request.occluderCount ) * request.tableFloats * sizeof( float ) );
 	world_mesh_gpu::ProbeVolumeUploadRequest copy = request;
 	world_mesh_gpu::IWorldMeshUpload *provider = m_provider;
 	QueueCapabilityCall( queue,

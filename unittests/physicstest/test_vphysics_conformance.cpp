@@ -1654,13 +1654,21 @@ static void TestObjects()
 
 	CAntiGravity handler;
 	IPhysicsMotionController *pMotion = pEnv->CreateMotionController( &handler );
-	if ( Check( TIER_BOOT, "motion.create", pMotion != NULL ) && pOther )
+	if ( Check( TIER_BOOT, "motion.create", pMotion != NULL ) )
 	{
-		pMotion->AttachObject( pOther, true );
-		pMotion->AttachObject( pOther, true );
-		Check( TIER_BOOT, "motion.attach-once", pMotion->CountObjects() == 1, "%d", pMotion->CountObjects() );
-		pMotion->DetachObject( pOther );
-		Check( TIER_BOOT, "motion.detach", pMotion->CountObjects() == 0 );
+		pMotion->AttachObject( NULL, true );
+		pMotion->AttachObject( world.pFloor, true );
+		Check( TIER_BOOT, "motion.reject-invalid", pMotion->CountObjects() == 0, "%d",
+			pMotion->CountObjects() );
+		if ( pOther )
+		{
+			pMotion->AttachObject( pOther, true );
+			pMotion->AttachObject( pOther, true );
+			Check( TIER_BOOT, "motion.attach-once", pMotion->CountObjects() == 1, "%d",
+				pMotion->CountObjects() );
+			pMotion->DetachObject( pOther );
+			Check( TIER_BOOT, "motion.detach", pMotion->CountObjects() == 0 );
+		}
 		pEnv->DestroyMotionController( pMotion );
 	}
 

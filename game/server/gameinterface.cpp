@@ -155,6 +155,10 @@ CSteamGameServerAPIContext *steamgameserverapicontext = &s_SteamGameServerAPICon
 
 IUploadGameStats *gamestatsuploader = NULL;
 
+#ifdef FSTOP
+#include "blob_networkbypass.h"
+#endif // FSTOP
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -653,6 +657,11 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 		return false;
 	if ( (scenefilecache = (ISceneFileCache *)appSystemFactory( SCENE_FILE_CACHE_INTERFACE_VERSION, NULL )) == NULL )
 		return false;
+#ifdef FSTOP
+	// The blob NPCs share particle state with the client outside the network
+	if ( !BlobNetworkBypass_Connect( appSystemFactory ) )
+		return false;
+#endif // FSTOP
 #ifdef PORTAL2
 	// Portal 2 port: the VScript VM is optional. It comes from the engine when
 	// it exposes the script manager interface, else from the vscript module;
@@ -1113,6 +1122,10 @@ bool CServerGameDLL::LevelInit( const char *pMapName, char const *pMapEntities, 
 	// clear any pending autosavedangerous
 	m_fAutoSaveDangerousTime = 0.0f;
 	m_fAutoSaveDangerousMinHealthToCommit = 0.0f;
+
+#ifdef FSTOP
+	UTIL_ClearPlacementHelpers();
+#endif // FSTOP
 	return true;
 }
 

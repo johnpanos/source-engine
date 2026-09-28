@@ -18,10 +18,12 @@
 // lightmap's linear units (the map's exposure gain applied).
 //
 // RPRB v2 (R50-RELIGHT) adds relight bands: per probe, the albedo and ray
-// distance, and the normal, of what its capture saw, so a consumer can add
-// albedo * (the scene's diffuse-light change since the bake) at the point
-// seen (McAuley, "Rendering the World of Far Cry 4", GDC 2015, relights a
-// G-buffer cubemap; the distance here also lets that point be shadowed).
+// distance, and the normal, of what its capture saw, so a consumer can relight
+// the point seen (McAuley, "Rendering the World of Far Cry 4", GDC 2015,
+// relights a G-buffer cubemap). The rule (reflection_probe_set.py `relight`):
+// light removed since the bake scales the capture (now / baked), light added
+// is albedo * (now - baked); a moving occluder on the capture's line of sight
+// replaces the point seen by the occluder's face.
 //
 //=============================================================================//
 
@@ -147,15 +149,44 @@ uint32_t ReflectionProbeTextureRows( const ReflectionProbesLayout &layout ) noex
 void WriteReflectionProbeTexture( const void *pData, const ReflectionProbesLayout &layout,
     ReflectionProbeMode mode, uint16_t *pOut, bool relight = true ) noexcept;
 
-// The scene's diffuse-light change since the bake (irradiance / pi, the
-// lightmap's unit) at a world point with a unit normal: what relights a
-// probe's relight bands.
-struct ReflectionProbeDiffuseChange
+// Relighting (RPRB v2): below this baked diffuse light a removal is absolute
+// (indirect_sdf.h's kRelativeFloor), and at most this many moving occluders
+// are tested (the traced producers' proxy limit).
+static const float kReflectionProbeRelightFloor = 1e-4f;
+static const uint32_t kReflectionProbeMaxOccluders = 16;
+
+// Moving geometry no bake contains (a closed door): an axis-aligned box,
+// Source units, and the diffuse reflectance of its faces.
+struct ReflectionProbeOccluder
+{
+	float lo[3];
+	float hi[3];
+	float reflectance;
+};
+
+// What relights a probe's relight bands: the scene's diffuse light
+// (irradiance / pi, the lightmap's unit) at a world point with a unit normal,
+// now and as baked, and the moving occluders.
+struct ReflectionProbeRelight
 {
 	void ( *evaluate )( void *context, const float position[3], const float normal[3],
-	    float outChange[3] );
+	    float outNow[3], float outBaked[3] );
 	void *context;
+	const ReflectionProbeOccluder *occluders = nullptr;
+	uint32_t occluderCount = 0;
 };
+
+// The relight rule per channel: removed light relative, added light
+// absolute, clamped at zero.
+float ReflectionProbeRelit( float radiance, float albedo, float now, float baked ) noexcept;
+
+// The nearest occluder on the segment origin + t * direction, 0 <= t <
+// length: false when none; else its entry t, the entered face's outward
+// normal (a segment starting inside faces back along itself, t = 0) and
+// its index.
+bool ReflectionProbeOccluded( const ReflectionProbeOccluder *occluders, uint32_t count,
+    const float origin[3], const float direction[3], float length, float *outT,
+    float outNormal[3], uint32_t *outIndex ) noexcept;
 
 // A read-only view of validated bytes; the caller keeps them alive.
 class ReflectionProbesView
@@ -164,10 +195,10 @@ public:
 	ReflectionProbesView( const void *pData, const ReflectionProbesLayout &layout ) noexcept;
 	// Specular image light arriving at `position` (geometric normal
 	// `normal`) along the unit reflected ray at perceptual `roughness`.
-	// With `change`, probes carrying relight bands are relit by it.
+	// With `relight`, probes carrying relight bands are relit by it.
 	void Radiance( const float position[3], const float normal[3], const float reflected[3],
 	    float roughness, ReflectionProbeMode mode, float outRadiance[3],
-	    const ReflectionProbeDiffuseChange *change = nullptr ) const noexcept;
+	    const ReflectionProbeRelight *relight = nullptr ) const noexcept;
 	// The per-probe sample weights at a point (at most two nonzero, sum 1).
 	void Weights( const float position[3], const float normal[3], ReflectionProbeMode mode,
 	    float outWeights[kReflectionProbesMaxProbes] ) const noexcept;
@@ -175,7 +206,7 @@ public:
 
 private:
 	void ProbeRadiance( uint32_t probe, const float position[3], const float reflected[3],
-	    float roughness, bool parallax, const ReflectionProbeDiffuseChange *change,
+	    float roughness, bool parallax, const ReflectionProbeRelight *relight,
 	    float out[3] ) const noexcept;
 	// Bilinear, `channels` of the band starting at atlas row `top`.
 	void SampleLevel( uint32_t top, uint32_t level, const float uv[2], int channels,

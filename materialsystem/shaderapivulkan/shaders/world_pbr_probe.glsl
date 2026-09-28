@@ -4,7 +4,8 @@
 // rows carry a map built before RPRB's one direction-only probe; the map's
 // RPRB probes are frame set binding 5 (R50-PARALLAX, reflection_probes.glsl).
 // An includer that defines REFLECTION_PROBE_RELIGHT before including this
-// file defines ReflectionProbeDiffuseChange (R50-RELIGHT; world_pbr.frag).
+// file defines ReflectionProbeDiffuseLight, ReflectionProbeOccluderCount and
+// ReflectionProbeOccluder (R50-RELIGHT; reflection_probes.glsl).
 
 #include "pbr_brdf.glsl"
 

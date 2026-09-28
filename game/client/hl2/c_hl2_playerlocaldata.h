@@ -45,6 +45,11 @@ public:
 	float	m_flFlashBattery;
 	Vector	m_vecLocatorOrigin;
 #endif
+#ifdef FSTOP
+	// F-Stop: entities the viewfinder marks, and whether a photo is being placed.
+	int		m_nLocatorEntityIndices[16];
+	bool	m_bPlacingPhoto;
+#endif
 
 	// Ladder related data
 	EHANDLE			m_hLadder;

@@ -63,6 +63,10 @@ extern ConVar replay_rendersetting_renderglow;
 #include "econ_item_description.h"
 #endif
 
+#ifdef FSTOP
+#include "c_basehlplayer.h"
+#endif // FSTOP
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -497,6 +501,13 @@ void ClientModeShared::OverrideMouseInput( float *x, float *y )
 //-----------------------------------------------------------------------------
 bool ClientModeShared::ShouldDrawViewModel()
 {
+#ifdef FSTOP
+	// Don't draw the viewmodel while zoomed in (the F-Stop camera zooms)
+	C_BaseHLPlayer *pHLPlayer = (C_BaseHLPlayer *) C_BasePlayer::GetLocalPlayer();
+	if ( pHLPlayer && pHLPlayer->m_HL2Local.m_bZooming )
+		return false;
+#endif // FSTOP
+
 	return true;
 }
 

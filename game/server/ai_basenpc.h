@@ -823,9 +823,40 @@ public:
 	// Return "true" to signal a schedule interrupt is desired
 	virtual bool OnBehaviorChangeStatus(  CAI_BehaviorBase *pBehavior, bool fCanFinishSchedule ) { return false; }
 
+#ifdef FSTOP
+	//-----------------------------------------------------
+	// F-Stop AI add-ons attach heap behaviors to a live NPC (fstop/ai_addon.h).
+	// The NPC owns them until RemoveAndDestroyBehavior or its removal. On a
+	// CAI_BehaviorHost they also join the host's behaviors and can take over
+	// scheduling; on any NPC their schedule channels run each think and they
+	// gather conditions while not running.
+	//-----------------------------------------------------
+	void			AddBehavior( CAI_BehaviorBase *pBehavior );
+	void			RemoveAndDestroyBehavior( CAI_BehaviorBase *pBehavior );
+
+	virtual CAI_BehaviorBase **	AccessBehaviors() 	{ return ( m_AddOnBehaviors.Count() ) ? m_AddOnBehaviors.Base() : NULL; }
+	virtual int					NumBehaviors()		{ return m_AddOnBehaviors.Count(); }
+
+	// Where an add-on of the named kind mounts on this NPC: the iCount-th
+	// candidate attachment, or "" when there are no more.
+	virtual void		TranslateAddOnAttachment( char *pchAttachmentName, int iCount );
+
+protected:
+	// True for CAI_BehaviorHost, which runs its behaviors' bridges itself.
+	virtual bool		HostsBehaviors() const { return false; }
+	virtual void		OnAddOnBehaviorAdded( CAI_BehaviorBase *pBehavior ) {}
+	virtual void		OnAddOnBehaviorRemoved( CAI_BehaviorBase *pBehavior ) {}
+
+	void				MaintainAddOnBehaviorChannels();
+	void				DestroyAddOnBehaviors();
+
+private:
+	CUtlVector<CAI_BehaviorBase *> m_AddOnBehaviors;
+#else
 private:
 	virtual CAI_BehaviorBase **	AccessBehaviors() 	{ return NULL; }
 	virtual int					NumBehaviors()		{ return 0; }
+#endif // FSTOP
 
 public:
 	//-----------------------------------------------------
@@ -1154,6 +1185,10 @@ protected:
 	bool HasInteractionCantDie( void );
 
 	void InputForceInteractionWithNPC( inputdata_t &inputdata );
+#ifdef FSTOP
+	// Spawns the named ai_addon_* entity and installs it on this NPC.
+	void InputCreateAddon( inputdata_t &inputdata );
+#endif
 	void StartForcedInteraction( CAI_BaseNPC *pNPC, int iInteraction );
 	void CleanupForcedInteraction( void );
 	void CalculateForcedInteractionPosition( void );
@@ -1302,12 +1337,22 @@ public:
 	virtual bool		CanStandOn( CBaseEntity *pSurface ) const;
 
 	virtual bool		IsJumpLegal( const Vector &startPos, const Vector &apex, const Vector &endPos ) const; // Override for specific creature types
+#ifdef FSTOP
+	// Virtual so a behavior host can let its behaviors (F-Stop add-ons) decide.
+	virtual bool		IsJumpLegal( const Vector &startPos, const Vector &apex, const Vector &endPos, float maxUp, float maxDown, float maxDist ) const;
+#else
 	bool				IsJumpLegal( const Vector &startPos, const Vector &apex, const Vector &endPos, float maxUp, float maxDown, float maxDist ) const;
+#endif
 	bool 				ShouldMoveWait();
 	virtual float		StepHeight() const			{ return 18.0f; }
 	float				GetStepDownMultiplier() const;
 	virtual float		GetMaxJumpSpeed() const		{ return 350.0f; }
+#ifdef FSTOP
+	virtual float		GetJumpGravity() const		{ return GetDefaultJumpGravity(); }
+	virtual float		GetDefaultJumpGravity() const	{ return 1.0f; }
+#else
 	virtual float		GetJumpGravity() const		{ return 1.0f; }
+#endif
 	
 	//---------------------------------
 	
@@ -2140,6 +2185,17 @@ public:
 	void				GetPlayerAvoidBounds( Vector *pMins, Vector *pMaxs );
 
 	void				StartPingEffect( void ) { m_flTimePingEffect = gpGlobals->curtime + 2.0f; DispatchUpdateTransmitState(); }
+
+#ifdef FSTOP
+protected:
+	// F-Stop: the contents mask the NPC's own AI traces use (always
+	// MASK_NPCSOLID here; F-Stop code reads it through the accessors).
+	unsigned int		m_nAITraceMask;
+
+public:
+	inline unsigned int	GetAITraceMask( void ) const { return m_nAITraceMask; }
+	inline unsigned int GetAITraceMask_BrushOnly( void ) const { return (m_nAITraceMask & ~CONTENTS_MONSTER); }
+#endif // FSTOP
 };
 
 

@@ -44,6 +44,21 @@ public:
 	virtual void StartTouch( CBaseEntity *pOther );
 	virtual void NotifySystemEvent( CBaseEntity *pNotify, notify_system_event_t eventType, const notify_system_event_params_t &params );
 
+#ifdef FSTOP
+	virtual void OnCaptured( void );
+	virtual void OnReleased( void );
+	START_BRANCHING_SINGLETON_DEFINITION( CPhotoPlacementQuery )
+	{
+	public:
+		virtual bool GetPlacementPosition_NoHelper( CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, Vector &positionOut, QAngle &anglesOut );
+		virtual float GetMaxPlacementDistance( void );
+
+	protected:
+		virtual CameraInfo_ScaleData_t *GetSimpleScales( void );
+	};
+	END_BRANCHING_SINGLETON_DEFINITION( CPhotoPlacementQuery );
+#endif // FSTOP
+
 #ifdef PORTAL2
 	// Any linked portal the ball passes, including Portal 2 portal doors.
 	CHandle<CPortal_Base2D> m_hTouchedPortal; // Pointer to the portal we are touched most recently
@@ -432,6 +447,67 @@ void CPropEnergyBall::EndTouch( CBaseEntity *pOther )
 	BaseClass::EndTouch( pOther );
 	
 }
+
+#ifdef FSTOP
+
+void CPropEnergyBall::OnCaptured( void )
+{
+	StopLoopingSounds();
+	
+	BaseClass::OnCaptured();
+}
+
+void CPropEnergyBall::OnReleased( void )
+{
+	CreateSounds();
+
+	float flSpeed = GetAbsVelocity().Length();
+	
+	Vector vecForward;
+	GetVectors( &vecForward, NULL, NULL );
+
+	// Slam this, we're changing direction!
+	m_vLastKnownDirection = vecForward;
+
+	AngularImpulse angImp = vec3_origin;
+	Vector vecSpeed = (vecForward * flSpeed );
+	IPhysicsObject *pPhysObj = VPhysicsGetObject();
+	if ( pPhysObj ) 
+	{
+		pPhysObj->SetVelocityInstantaneous( &vecSpeed, &angImp );
+	}
+
+	BaseClass::OnReleased();
+}
+
+//------------------------------------------------------------------------------
+// Placement query
+//------------------------------------------------------------------------------
+
+bool CPropEnergyBall::CPhotoPlacementQuery::GetPlacementPosition_NoHelper( CaptureInfo_t &captureInfo,
+																		  CheckPlacementData_t &placementData,
+																		  Vector &positionOut,
+																		  QAngle &anglesOut )
+{
+	anglesOut = placementData.qTraceAngles;
+	positionOut = placementData.Trace.endpos + (placementData.Trace.plane.normal * 8.0f * placementData.fScale );
+
+	return true;
+}
+
+CameraInfo_ScaleData_t *CPropEnergyBall::CPhotoPlacementQuery::GetSimpleScales( void )
+{
+	static float s_DefaultScales[] = { 1.0f, 2.0f, 4.0f };
+	static CameraInfo_ScaleData_t simpleScales( s_DefaultScales, sizeof(s_DefaultScales)/sizeof(float) );
+	return &simpleScales;
+}
+
+float CPropEnergyBall::CPhotoPlacementQuery::GetMaxPlacementDistance( void )
+{
+	return (20.0f * 12.0f);
+}
+
+#endif // FSTOP
 
 class CEnergyBallLauncher : public CPointCombineBallLauncher
 {

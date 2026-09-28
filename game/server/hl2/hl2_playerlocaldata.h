@@ -45,6 +45,12 @@ public:
 	CNetworkVar( Vector, m_vecLocatorOrigin );
 #endif
 
+#ifdef FSTOP
+	// F-Stop photo HUD state
+	CNetworkArray( int, m_nLocatorEntityIndices, 16 );
+	CNetworkVar( bool, m_bPlacingPhoto );
+#endif // FSTOP
+
 	// Ladder related data
 	CNetworkVar( EHANDLE, m_hLadder );
 	LadderMove_t			m_LadderMove;

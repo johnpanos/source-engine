@@ -32,7 +32,8 @@ INPUT_GLOBS = (
     "tools/quality/toolchain_policy.py",
     "tools/quality/product_profile.py",
 )
-LOCK = ".lock-waf_%s_build" % sys.platform
+# Waf names its lock file from WAFLOCK (./play_p2 sets .lock-waf-p2).
+LOCK = os.environ.get("WAFLOCK", ".lock-waf_%s_build" % sys.platform)
 
 
 def recorded_wscripts(build):

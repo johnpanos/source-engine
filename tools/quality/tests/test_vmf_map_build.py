@@ -136,6 +136,24 @@ class BuildGateTest(unittest.TestCase):
         self.build()
         self.assertTrue((self.tmp / "out/compile/room.lin").is_file())
 
+    def test_install_copies_the_map_into_a_game_directory(self):
+        self.compilers()
+        record = self.build()
+        game = self.tmp / "runtime/fstop"
+        game.mkdir(parents=True)
+        target = vmf_map_build.install(record, game)
+        self.assertEqual(game / "maps/room.bsp", target)
+        self.assertEqual(b"VBSP", target.read_bytes())
+        self.assertFalse((game / "maps/room.bsp.partial").exists())
+
+    def test_install_refuses_a_failed_build_or_missing_game_directory(self):
+        self.compilers(vrad="sys.exit(3)")
+        with self.assertRaises(ValueError):
+            vmf_map_build.install(self.build(), self.tmp)
+        self.compilers()
+        with self.assertRaises(ValueError):
+            vmf_map_build.install(self.build(), self.tmp / "no-such-game")
+
     def test_input_inside_the_work_directory_survives(self):
         self.compilers()
         inside = self.tmp / "out/compile/room.vmf"

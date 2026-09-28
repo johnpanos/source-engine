@@ -1579,6 +1579,73 @@ bool CWeaponRPG::WeaponShouldBeLowered( void )
 	return BaseClass::WeaponShouldBeLowered();
 }
 
+#ifdef FSTOP
+//-----------------------------------------------------------------------------
+// Purpose: One forced NPC launch
+//-----------------------------------------------------------------------------
+void CWeaponRPG::Operator_ForceNPCFire( CBaseCombatCharacter *pOperator, bool bSecondary, CBaseEntity *pTarget )
+{
+	// Ensure we have enough rounds in the clip
+	m_iClip1++;
+
+	Vector vecShootOrigin;
+	QAngle	angShootDir;
+	GetAttachment( LookupAttachment( "muzzle" ), vecShootOrigin, angShootDir );
+
+	if ( pTarget )
+	{
+		Vector vecShootDir;
+		vecShootDir = pTarget->WorldSpaceCenter() - vecShootOrigin;
+		VectorAngles( vecShootDir, angShootDir );
+	}
+
+	m_hMissile = CMissile::Create( vecShootOrigin, angShootDir, pOperator->edict() );
+
+	m_hMissile->m_hOwner = this;
+
+	// If the shot is clear to the player, give the missile a grace period
+	m_hMissile->SetGracePeriod( 0.3 );
+
+	DecrementAmmo( pOperator );
+
+	SendWeaponAnim( ACT_VM_PRIMARYATTACK );
+	WeaponSound( SINGLE );
+
+	m_iPrimaryAttacks++;
+
+	CSoundEnt::InsertSound( SOUND_COMBAT, GetAbsOrigin(), 1000, 0.2, GetOwner(), SOUNDENT_CHANNEL_WEAPON );
+
+	// Check to see if we should trigger any RPG firing triggers
+	int iCount = g_hWeaponFireTriggers.Count();
+	for ( int i = 0; i < iCount; i++ )
+	{
+		if ( g_hWeaponFireTriggers[i]->IsTouching( pOperator ) )
+		{
+			if ( FClassnameIs( g_hWeaponFireTriggers[i], "trigger_rpgfire" ) )
+			{
+				g_hWeaponFireTriggers[i]->ActivateMultiTrigger( pOperator );
+			}
+		}
+	}
+
+	if( hl2_episodic.GetBool() )
+	{
+		CAI_BaseNPC **ppAIs = g_AI_Manager.AccessAIs();
+		int nAIs = g_AI_Manager.NumAIs();
+
+		string_t iszStriderClassname = AllocPooledString( "npc_strider" );
+
+		for ( int i = 0; i < nAIs; i++ )
+		{
+			if( ppAIs[ i ]->m_iClassname == iszStriderClassname )
+			{
+				ppAIs[ i ]->DispatchInteraction( g_interactionPlayerLaunchedRPG, NULL, m_hMissile );
+			}
+		}
+	}
+}
+#endif // FSTOP
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------

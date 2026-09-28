@@ -45,6 +45,32 @@
 
 class IBehaviorBackBridge;
 
+#ifdef FSTOP
+//-------------------------------------
+// F-Stop (from the CS:GO-era AI): a behavior can run secondary schedules on
+// numbered channels beside the NPC's primary schedule. The AI add-ons
+// (game/server/fstop/addon_*.cpp) fire and aim this way while the host moves.
+//-------------------------------------
+
+struct AIChannelScheduleState_t
+{
+	AIChannelScheduleState_t() { memset( this, 0, sizeof( *this ) ); }
+
+	bool				 bActive;
+	CAI_Schedule *		 pSchedule;
+	int					 idealSchedule;
+	int					 failSchedule;
+	int					 iCurTask;
+	TaskStatus_e		 fTaskStatus;
+	float				 timeStarted;
+	float				 timeCurTaskStarted;
+	AI_TaskFailureCode_t taskFailureCode;
+	bool				 bScheduleWasInterrupted;
+
+	DECLARE_SIMPLE_DATADESC();
+};
+#endif // FSTOP
+
 //-------------------------------------
 
 abstract_class CAI_BehaviorBase : public CAI_Component
@@ -142,8 +168,76 @@ public:
 	virtual int	Save( ISave &save );
 	virtual int	Restore( IRestore &restore );
 
+#ifdef FSTOP
+	// Behaviors an add-on owns are saved by the add-on, not by the host NPC.
+	virtual bool ShouldNPCSave() { return true; }
+
+	static void SaveBehaviors(ISave &save, CAI_BehaviorBase *pCurrentBehavior, CAI_BehaviorBase **ppBehavior, int nBehaviors, bool bTestIfNPCSave = true );
+	static int RestoreBehaviors(IRestore &restore, CAI_BehaviorBase **ppBehavior, int nBehaviors, bool bTestIfNPCSave = true ); // returns index of "current" behavior, or -1
+
+	// Movement hooks every behavior of a host may change, running or not
+	// (CAI_BehaviorHost asks each in turn). The defaults defer to the host.
+	virtual float GetJumpGravity() const;
+	virtual bool IsJumpLegal( const Vector &startPos, const Vector &apex, const Vector &endPos, float maxUp, float maxDown, float maxDist ) const;
+	virtual bool MovementCost( int moveType, const Vector &vecStart, const Vector &vecEnd, float *pCost );
+
+	//
+	// Secondary schedule channel support
+	//
+	void StartChannel( int channel );
+	void StopChannel( int channel );
+
+	void MaintainChannelSchedules();
+	void MaintainSchedule( int channel );
+
+	void SetSchedule( int channel, CAI_Schedule *pNewSchedule );
+	bool SetSchedule( int channel, int localScheduleID );
+
+	void ClearSchedule( int channel, const char *szReason );
+
+	CAI_Schedule *GetCurSchedule( int channel );
+	bool IsCurSchedule( int channel, int schedId, bool fIdeal = true );
+	virtual void OnScheduleChange( int channel );
+
+	virtual void OnStartSchedule( int channel, int scheduleType );
+
+	virtual int SelectSchedule( int channel );
+	virtual int SelectFailSchedule( int channel, int failedSchedule, int failedTask, AI_TaskFailureCode_t taskFailCode );
+	virtual int TranslateSchedule( int channel, int scheduleType ) { return scheduleType; }
+
+	virtual void StartTask( int channel, const Task_t *pTask );
+	virtual void RunTask( int channel, const Task_t *pTask );
+
+	const Task_t *GetCurTask( void ) { return BaseClass::GetCurTask(); }
+	const Task_t *GetCurTask( int channel );
+
+	bool TaskIsComplete( int channel )	{ return ( m_ScheduleChannels[channel].fTaskStatus == TASKSTATUS_COMPLETE ); }
+	int TaskIsComplete()	{ return BaseClass::TaskIsComplete(); }
+
+	virtual void TaskFail( AI_TaskFailureCode_t code ) { BaseClass::TaskFail( code ); }
+	void TaskFail( const char *pszGeneralFailText )	{ BaseClass::TaskFail( pszGeneralFailText ); }
+	void TaskComplete( bool fIgnoreSetFailedCondition = false ) { BaseClass::TaskComplete( fIgnoreSetFailedCondition ); }
+
+	virtual void TaskFail( int channel, AI_TaskFailureCode_t code );
+	void TaskFail( int channel, const char *pszGeneralFailText )	{ TaskFail( channel, MakeFailCode( pszGeneralFailText ) ); }
+	void TaskComplete( int channel, bool fIgnoreSetFailedCondition = false );
+
+private:
+	bool IsScheduleValid( AIChannelScheduleState_t *pScheduleState );
+	CAI_Schedule *GetNewSchedule( int channel );
+	CAI_Schedule *GetFailSchedule( AIChannelScheduleState_t *pScheduleState );
+	const Task_t *GetTask( AIChannelScheduleState_t *pScheduleState );
+
+	void SaveChannels( ISave &save );
+	void RestoreChannels( IRestore &restore );
+
+	CUtlVector<AIChannelScheduleState_t> m_ScheduleChannels;
+
+public:
+#else
 	static void SaveBehaviors(ISave &save, CAI_BehaviorBase *pCurrentBehavior, CAI_BehaviorBase **ppBehavior, int nBehaviors );
 	static int RestoreBehaviors(IRestore &restore, CAI_BehaviorBase **ppBehavior, int nBehaviors ); // returns index of "current" behavior, or -1
+#endif // FSTOP
 
 protected:
 
@@ -361,6 +455,13 @@ public:
 
 	virtual void		 BackBridge_HandleAnimEvent( animevent_t *pEvent ) = 0;
 
+#ifdef FSTOP
+	// What the host would answer without its behaviors.
+	virtual float		 BackBridge_GetJumpGravity() const = 0;
+	virtual bool		 BackBridge_IsJumpLegal( const Vector &startPos, const Vector &apex, const Vector &endPos, float maxUp, float maxDown, float maxDist ) const = 0;
+	virtual bool		 BackBridge_MovementCost( int moveType, const Vector &vecStart, const Vector &vecEnd, float *pCost ) = 0;
+#endif
+
 //-------------------------------------
 
 };
@@ -463,6 +564,24 @@ public:
 	void			OnChangeActiveWeapon( CBaseCombatWeapon *pOldWeapon, CBaseCombatWeapon *pNewWeapon );
 	virtual bool	SpeakMapmakerInterruptConcept( string_t iszConcept );
 
+#ifdef FSTOP
+	// Any behavior may change these, running or not; the first that answers
+	// differently from the host wins (CS:GO-era rule).
+	float			GetJumpGravity() const;
+	using			BASE_NPC::IsJumpLegal;	// keep the 3-argument overload visible
+	bool			IsJumpLegal( const Vector &startPos, const Vector &apex, const Vector &endPos, float maxUp, float maxDown, float maxDist ) const;
+	bool			MovementCost( int moveType, const Vector &vecStart, const Vector &vecEnd, float *pCost );
+
+protected:
+	// AI add-ons attach and detach behaviors while the NPC lives
+	// (CAI_BaseNPC::AddBehavior); here they join the host's behaviors.
+	bool			HostsBehaviors() const { return true; }
+	void			OnAddOnBehaviorAdded( CAI_BehaviorBase *pBehavior );
+	void			OnAddOnBehaviorRemoved( CAI_BehaviorBase *pBehavior );
+
+public:
+#endif
+
 	void			OnRestore();
 
 	void			ModifyOrAppendCriteria( AI_CriteriaSet& set );
@@ -517,8 +636,19 @@ private:
 
 	void			BackBridge_HandleAnimEvent( animevent_t *pEvent );
 
+#ifdef FSTOP
+	float			BackBridge_GetJumpGravity() const;
+	bool			BackBridge_IsJumpLegal( const Vector &startPos, const Vector &apex, const Vector &endPos, float maxUp, float maxDown, float maxDist ) const;
+	bool			BackBridge_MovementCost( int moveType, const Vector &vecStart, const Vector &vecEnd, float *pCost );
+
+public:
+	// Public here as in CAI_BaseNPC, so add-ons can enumerate them.
+#endif
 	CAI_BehaviorBase **AccessBehaviors();
 	int				NumBehaviors();
+#ifdef FSTOP
+private:
+#endif
 
 	CAI_BehaviorBase *			   m_pCurBehavior;
 	CUtlVector<CAI_BehaviorBase *> m_Behaviors;
@@ -1462,6 +1592,112 @@ inline void CAI_BehaviorHost<BASE_NPC>::BackBridge_HandleAnimEvent( animevent_t 
 	BaseClass::HandleAnimEvent( pEvent );
 }
 
+#ifdef FSTOP
+//-------------------------------------
+
+template <class BASE_NPC>
+inline float CAI_BehaviorHost<BASE_NPC>::BackBridge_GetJumpGravity() const
+{
+	return BaseClass::GetJumpGravity();
+}
+
+//-------------------------------------
+
+template <class BASE_NPC>
+inline bool CAI_BehaviorHost<BASE_NPC>::BackBridge_IsJumpLegal( const Vector &startPos, const Vector &apex, const Vector &endPos, float maxUp, float maxDown, float maxDist ) const
+{
+	return BaseClass::IsJumpLegal( startPos, apex, endPos, maxUp, maxDown, maxDist );
+}
+
+//-------------------------------------
+
+template <class BASE_NPC>
+inline bool CAI_BehaviorHost<BASE_NPC>::BackBridge_MovementCost( int moveType, const Vector &vecStart, const Vector &vecEnd, float *pCost )
+{
+	return BaseClass::MovementCost( moveType, vecStart, vecEnd, pCost );
+}
+
+//-------------------------------------
+
+template <class BASE_NPC>
+inline float CAI_BehaviorHost<BASE_NPC>::GetJumpGravity() const
+{
+	float base = BaseClass::GetJumpGravity();
+	for( int i = 0; i < m_Behaviors.Count(); i++ )
+	{
+		float current = m_Behaviors[i]->GetJumpGravity();
+		if ( current != base )
+		{
+			return current;
+		}
+	}
+
+	return base;
+}
+
+//-------------------------------------
+
+template <class BASE_NPC>
+inline bool CAI_BehaviorHost<BASE_NPC>::IsJumpLegal( const Vector &startPos, const Vector &apex, const Vector &endPos, float maxUp, float maxDown, float maxDist ) const
+{
+	bool base = BaseClass::IsJumpLegal( startPos, apex, endPos, maxUp, maxDown, maxDist );
+	for( int i = 0; i < m_Behaviors.Count(); i++ )
+	{
+		bool current = m_Behaviors[i]->IsJumpLegal( startPos, apex, endPos, maxUp, maxDown, maxDist );
+		if ( current != base )
+		{
+			return current;
+		}
+	}
+
+	return base;
+}
+
+//-------------------------------------
+
+template <class BASE_NPC>
+inline bool CAI_BehaviorHost<BASE_NPC>::MovementCost( int moveType, const Vector &vecStart, const Vector &vecEnd, float *pCost )
+{
+	bool base = BaseClass::MovementCost( moveType, vecStart, vecEnd, pCost );
+	for( int i = 0; i < m_Behaviors.Count(); i++ )
+	{
+		bool current = m_Behaviors[i]->MovementCost( moveType, vecStart, vecEnd, pCost );
+		if ( current != base )
+		{
+			return current;
+		}
+	}
+
+	return base;
+}
+
+//-------------------------------------
+
+template <class BASE_NPC>
+inline void CAI_BehaviorHost<BASE_NPC>::OnAddOnBehaviorAdded( CAI_BehaviorBase *pBehavior )
+{
+	AddBehavior( pBehavior );
+}
+
+//-------------------------------------
+
+template <class BASE_NPC>
+inline void CAI_BehaviorHost<BASE_NPC>::OnAddOnBehaviorRemoved( CAI_BehaviorBase *pBehavior )
+{
+	Assert( m_Behaviors.Find( pBehavior ) != m_Behaviors.InvalidIndex() );
+
+	if ( m_pCurBehavior == pBehavior )
+	{
+		// Let the host pick a schedule of its own next think.
+		ChangeBehaviorTo( NULL );
+		this->ClearSchedule( "Behavior removed" );
+	}
+
+	m_Behaviors.FindAndRemove( pBehavior );
+	pBehavior->SetBackBridge( NULL );
+}
+#endif // FSTOP
+
 //-------------------------------------
 
 template <class BASE_NPC>
@@ -1892,7 +2128,10 @@ inline void CAI_BehaviorHost<BASE_NPC>::AddBehavior( CAI_BehaviorBase *pBehavior
 {
 #ifdef DEBUG
 	Assert( m_Behaviors.Find( pBehavior ) == m_Behaviors.InvalidIndex() );
+#ifndef FSTOP
+	// F-Stop's AI add-ons also add behaviors to a live NPC.
 	Assert( m_fDebugInCreateBehaviors );
+#endif
 	for ( int i = 0; i < m_Behaviors.Count(); i++)
 	{
 		Assert( typeid(*m_Behaviors[i]) != typeid(*pBehavior) );

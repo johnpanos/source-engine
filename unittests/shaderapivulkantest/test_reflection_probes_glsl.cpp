@@ -19,10 +19,12 @@
 //  - A texture without the marker (an LMAP page) carries no probes.
 //  - With the validation layer present, no message is reported.
 //  - R50-RELIGHT: over the relight fixture (RPRB v2), the shader relit by
-//    the fixture's analytic change (reflection_probes_check.comp) matches the
-//    reference relit by the same change in each selection mode; the relit
-//    shader is rejected against the unrelit reference (the control), and
-//    with the texture's relight switch off it matches the unrelit reference.
+//    the fixture's analytic light and moving occluder
+//    (reflection_probes_check.comp) matches the reference relit by the same
+//    light and occluder in each selection mode; the relit shader is rejected
+//    against the unrelit reference and, in the blended mode, against the
+//    reference without the occluder (the controls), and with the texture's
+//    relight switch off it matches the unrelit reference.
 //
 //===========================================================================//
 
@@ -196,14 +198,14 @@ bool Evaluate( Device &d, ComputeResources &compute, const std::vector<uint16_t>
 
 size_t Agreeing( const ReflectionProbesView &view, ReflectionProbeMode reference,
     const std::vector<Case> &cases, const std::vector<Result> &gpu, std::string *first,
-    const ReflectionProbeDiffuseChange *change = nullptr )
+    const ReflectionProbeRelight *relight = nullptr )
 {
 	size_t agreeing = 0;
 	for ( size_t i = 0; i < cases.size(); ++i )
 	{
 		float cpu[3];
 		view.Radiance( cases[i].positionRoughness, cases[i].normal, cases[i].reflected,
-		    cases[i].positionRoughness[3], reference, cpu, change );
+		    cases[i].positionRoughness[3], reference, cpu, relight );
 		if ( Close( gpu[i].radiance, cpu ) && gpu[i].radiance[3] == 1.0f )
 		{
 			++agreeing;
@@ -297,13 +299,22 @@ void Compare( Device &d, ComputeResources &compute )
 	}
 }
 
-// reflection_probe_set.fixture_change, as reflection_probes_check.comp has it.
-void FixtureChange( void *, const float p[3], const float n[3], float out[3] )
+// reflection_probe_set.fixture_light and FIXTURE_OCCLUDER, as
+// reflection_probes_check.comp has them.
+void FixtureLight( void *, const float p[3], const float n[3], float now[3], float baked[3] )
 {
-	out[0] = 0.002f * p[0] + 0.5f * std::max( n[2], 0.0f );
-	out[1] = 0.3f - 0.003f * p[1];
-	out[2] = 0.25f * n[0] - 0.1f;
+	baked[0] = 0.3f + 0.001f * p[0];
+	baked[1] = 0.25f + 0.1f * std::fabs( n[2] );
+	baked[2] = 0.2f + 0.0005f * p[2];
+	now[0] = baked[0] + 0.002f * p[0] + 0.5f * std::max( n[2], 0.0f ) - 0.45f;
+	now[1] = baked[1] + 0.3f - 0.003f * p[1];
+	now[2] = baked[2] + 0.25f * n[0] - 0.1f;
 }
+
+const float kUnitsPerMeter = 39.37007874015748f;
+const ReflectionProbeOccluder kFixtureOccluder = {
+    { 2.8f * kUnitsPerMeter, 1.2f * kUnitsPerMeter, 0.0f },
+    { 3.2f * kUnitsPerMeter, 2.8f * kUnitsPerMeter, 2.2f * kUnitsPerMeter }, 0.4f };
 
 void CompareRelight( Device &d, ComputeResources &compute )
 {
@@ -316,7 +327,8 @@ void CompareRelight( Device &d, ComputeResources &compute )
 	if ( g_failures )
 		return;
 	const ReflectionProbesView view( bytes.data(), layout );
-	const ReflectionProbeDiffuseChange change = { FixtureChange, nullptr };
+	const ReflectionProbeRelight relight = { FixtureLight, nullptr, &kFixtureOccluder, 1 };
+	const ReflectionProbeRelight open = { FixtureLight, nullptr, nullptr, 0 };
 	const std::vector<Case> cases = Cases();
 	const uint32_t width = layout.atlasWidth;
 	const uint32_t height = ReflectionProbeTextureRows( layout );
@@ -333,13 +345,18 @@ void CompareRelight( Device &d, ComputeResources &compute )
 		if ( !Evaluate( d, compute, texture, width, height, cases, &baked ) )
 			return;
 		std::string first;
-		const size_t agreeing = Agreeing( view, mode, cases, relit, &first, &change );
+		const size_t agreeing = Agreeing( view, mode, cases, relit, &first, &relight );
 		const size_t control = Agreeing( view, mode, cases, relit, nullptr );
+		const size_t unoccluded = Agreeing( view, mode, cases, relit, nullptr, &open );
 		std::string offFirst;
 		const size_t off = Agreeing( view, mode, cases, baked, &offFirst );
-		std::printf( "relit %s: %zu of %zu agree; against the unrelit reference %zu; switched off "
-		             "%zu\n",
-		    ModeName( mode ), agreeing, cases.size(), control, off );
+		std::printf( "relit %s: %zu of %zu agree; against the unrelit reference %zu, the "
+		             "unoccluded one %zu; switched off %zu\n",
+		    ModeName( mode ), agreeing, cases.size(), control, unoccluded, off );
+		if ( mode == ReflectionProbeMode::Blend )
+			Check( unoccluded < cases.size(),
+			    "the comparator rejects the reference without the occluder for the relit "
+			    "shader, blended" );
 		Check( agreeing == cases.size(),
 		    std::string( "relit reflection_probes.glsl matches the relit reference, " ) +
 		        ModeName( mode ) + ( first.empty() ? "" : ": " + first ) );

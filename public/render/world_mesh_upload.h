@@ -13,7 +13,7 @@
 namespace world_mesh_gpu
 {
 
-static const char *const kWorldMeshUploadInterface = "WorldMeshUpload007";
+static const char *const kWorldMeshUploadInterface = "WorldMeshUpload008";
 
 struct WorldMeshUploadRequest
 {
@@ -56,7 +56,11 @@ struct WorldLightmapUploadRequest
 // The map's validated RFC 0011 PRBV probe volume in its GPU form: the lump's
 // RGBA16F atlas (rows top first) and the grid table
 // mapcontainer::WriteProbeGridTable writes (gridCount rows of `tableFloats`
-// floats, RGBA32F texels).
+// floats, RGBA32F texels), followed by `occluderCount` rows of the moving
+// occluders the volume's visibility was cut by (R50-RELIGHT: relit
+// reflection probes test their line of sight against them): texel 0 the
+// box's low corner and its reflectance, texel 1 its high corner and 0, the
+// rest 0; row 0 texel 5's z holds occluderCount.
 struct ProbeVolumeUploadRequest
 {
 	uint32_t atlasWidth = 0;
@@ -64,12 +68,15 @@ struct ProbeVolumeUploadRequest
 	const void *atlas = nullptr;
 	uint32_t gridCount = 0;
 	uint32_t tableFloats = 0;
-	const float *gridTable = nullptr;
+	const float *gridTable = nullptr; // gridCount + occluderCount rows
 	// RFC 0011 G4: a BakedPlusDelta producer's change volume, the same size
-	// and layout as `atlas` with the signed change in its indirect layer; null
-	// when the published volume is the bake (the world then reads the bake).
+	// and layout as `atlas` with the signed change from the bake in its total
+	// and indirect layers; null when the published volume is the bake (the
+	// world then reads the bake).
 	const void *deltaAtlas = nullptr;
+	uint32_t occluderCount = 0; // at most kProbeVolumeMaxOccluders
 };
+static const uint32_t kProbeVolumeMaxOccluders = 16;
 
 // RFC 0011 G9: the map's SDFV signed distances, which shadow the frame's
 // unbaked lights: half floats in Source units, x fastest, the first voxel's

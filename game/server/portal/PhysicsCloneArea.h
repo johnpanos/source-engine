@@ -38,7 +38,21 @@ public:
 	void					CloneTouchingEntities( void );
 	void					CloneNearbyEntities( void );
 	static CPhysicsCloneArea *CreatePhysicsCloneArea( CProp_Portal *pFollowPortal );	
+
+#ifdef FSTOP
+	// F-Stop: follows its portal's size (CProp_Portal::Resize)
+	void					Resize( float fPortalHalfWidth, float fPortalHalfHeight );
+	const Vector			&GetLocalMins( void ) const { return m_vLocalMins; }
+	const Vector			&GetLocalMaxs( void ) const { return m_vLocalMaxs; }
+#else
+	const Vector			&GetLocalMins( void ) const { return vLocalMins; }
+	const Vector			&GetLocalMaxs( void ) const { return vLocalMaxs; }
+#endif // FSTOP
 private:
+#ifdef FSTOP
+	Vector					m_vLocalMins = vLocalMins;
+	Vector					m_vLocalMaxs = vLocalMaxs;
+#endif // FSTOP
 
 	CProp_Portal			*m_pAttachedPortal;
 	CPortalSimulator		*m_pAttachedSimulator;

@@ -67,7 +67,7 @@ public:
 	// Combined image samplers per group; every binding is written.
 	enum
 	{
-		kFrameBindings = 6,
+		kFrameBindings = 7,
 		kMaterialBindings = 6,
 		kLightmappedBindings = 8,
 		kMaxBindings = 8
@@ -81,6 +81,10 @@ public:
 		kFrameProbeGrid = 3,
 		kFrameShadowField = 4,      // 3D
 		kFrameReflectionProbes = 5, // the map's RPRB texture (R50-PARALLAX)
+		// R50-RELIGHT: the other probe atlas relit reflection probes read: the
+		// published volume beside a change volume at kFrameIndirect (world,
+		// glass), or the change volume beside the published one (models).
+		kFrameProbeSecond = 6,
 	};
 	// Material set bindings.
 	enum

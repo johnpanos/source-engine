@@ -52,6 +52,11 @@ public:
 	void	AddViewKick( void );
 	void	DryFire( void );
 	void	Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
+#ifdef FSTOP
+	// F-Stop: fires as the player would, at pTarget when given (AI add-ons
+	// fire mounted weapons).
+	void	Operator_ForceNPCFire( CBaseCombatCharacter  *pOperator, bool bSecondary, CBaseEntity *pTarget );
+#endif
 
 	void	UpdatePenaltyTime( void );
 
@@ -173,6 +178,104 @@ void CWeaponPistol::Precache( void )
 {
 	BaseClass::Precache();
 }
+
+#ifdef FSTOP
+//-----------------------------------------------------------------------------
+// Purpose: One forced shot (CS:GO-era CBaseCombatWeapon::BaseForceFire)
+//-----------------------------------------------------------------------------
+void CWeaponPistol::Operator_ForceNPCFire( CBaseCombatCharacter *pOperator, bool bSecondary, CBaseEntity *pTarget )
+{
+	if ( ( gpGlobals->curtime - m_flLastAttackTime ) > 0.5f )
+	{
+		m_nNumShotsFired = 0;
+	}
+	else
+	{
+		m_nNumShotsFired++;
+	}
+
+	m_flLastAttackTime = gpGlobals->curtime;
+	m_flSoonestPrimaryAttack = gpGlobals->curtime + PISTOL_FASTEST_REFIRE_TIME;
+	CSoundEnt::InsertSound( SOUND_COMBAT, GetAbsOrigin(), SOUNDENT_VOLUME_PISTOL, 0.2, GetOwner() );
+
+	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+
+	if( pOwner )
+	{
+		// Each time the player fires the pistol, reset the view punch.
+		pOwner->ViewPunchReset();
+	}
+
+	// Ensure we have enough rounds in the clip
+	m_iClip1++;
+
+	// If my clip is empty (and I use clips) start reload
+	if ( UsesClipsForAmmo1() && !m_iClip1 ) 
+	{
+		Reload();
+		return;
+	}
+
+	pOperator->DoMuzzleFlash();
+
+	SendWeaponAnim( GetPrimaryAttackActivity() );
+
+	FireBulletsInfo_t info;
+
+	QAngle	angShootDir;
+	GetAttachment( LookupAttachment( "muzzle" ), info.m_vecSrc, angShootDir );
+
+	if ( pTarget )
+	{
+		info.m_vecDirShooting = pTarget->WorldSpaceCenter() - info.m_vecSrc;
+		VectorNormalize( info.m_vecDirShooting );
+	}
+	else
+	{
+		AngleVectors( angShootDir, &info.m_vecDirShooting );
+	}
+
+	// To make the firing framerate independent, we may have to fire more than one bullet here on low-framerate systems, 
+	// especially if the weapon we're firing has a really fast rate of fire.
+	info.m_iShots = 0;
+	float fireRate = GetFireRate();
+
+	while ( m_flNextPrimaryAttack <= gpGlobals->curtime )
+	{
+		// MUST call sound before removing a round from the clip of a CMachineGun
+		WeaponSound( SINGLE, m_flNextPrimaryAttack );
+		m_flNextPrimaryAttack = m_flNextPrimaryAttack + fireRate;
+		info.m_iShots++;
+		if ( !fireRate )
+			break;
+	}
+
+	// Make sure we don't fire more than the amount in the clip
+	if ( UsesClipsForAmmo1() )
+	{
+		info.m_iShots = MIN( info.m_iShots, m_iClip1.Get() );
+		m_iClip1 -= info.m_iShots;
+	}
+	else
+	{
+		info.m_iShots = MIN( info.m_iShots, pOperator->GetAmmoCount( m_iPrimaryAmmoType ) );
+		pOperator->RemoveAmmo( info.m_iShots, m_iPrimaryAmmoType );
+	}
+
+	info.m_flDistance = MAX_TRACE_LENGTH;
+	info.m_iAmmoType = m_iPrimaryAmmoType;
+	info.m_iTracerFreq = 2;
+	info.m_vecSpread = pOperator->GetAttackSpread( this );
+
+	pOperator->FireBullets( info );
+
+	// Add an accuracy penalty which can move past our maximum penalty time if we're really spastic
+	m_flAccuracyPenalty += PISTOL_ACCURACY_SHOT_PENALTY_TIME;
+
+	m_iPrimaryAttacks++;
+	gamestats->Event_WeaponFired( pOwner, true, GetClassname() );
+}
+#endif // FSTOP
 
 //-----------------------------------------------------------------------------
 // Purpose:

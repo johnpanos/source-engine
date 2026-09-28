@@ -784,8 +784,17 @@ void CTemplateNPCMaker::MakeNPC( void )
 		return;
 	}
 
+	MakeNPCFromTemplate();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Spawns one NPC from the template here and returns it (NULL if
+//          none); F-Stop's AI add-on builder names and equips that NPC
+//-----------------------------------------------------------------------------
+CAI_BaseNPC *CTemplateNPCMaker::MakeNPCFromTemplate( void )
+{
 	if (!CanMakeNPC( ( m_iszDestinationGroup != NULL_STRING ) ))
-		return;
+		return NULL;
 
 	CNPCSpawnDestination *pDestination = NULL;
 	if ( m_iszDestinationGroup != NULL_STRING )
@@ -794,7 +803,7 @@ void CTemplateNPCMaker::MakeNPC( void )
 		if ( !pDestination )
 		{
 			DevMsg( 2, "%s '%s' failed to find a valid spawnpoint in destination group: '%s'\n", GetClassname(), STRING(GetEntityName()), STRING(m_iszDestinationGroup) );
-			return;
+			return NULL;
 		}
 	}
 
@@ -809,7 +818,7 @@ void CTemplateNPCMaker::MakeNPC( void )
 	if ( !pent )
 	{
 		Warning("NULL Ent in NPCMaker!\n" );
-		return;
+		return NULL;
 	}
 	
 	if ( pDestination )
@@ -872,6 +881,8 @@ void CTemplateNPCMaker::MakeNPC( void )
 			SetUse( NULL );
 		}
 	}
+
+	return pent;
 }
 
 //-----------------------------------------------------------------------------

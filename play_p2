@@ -54,6 +54,9 @@ if [[ "$mode" == "--prepare" || "$mode" == "--configure-only" ]]; then
     exit 0
 fi
 
+# Replay the tree's own configure options if a wscript, Waf tool, toolchain
+# policy or profile changed since it was configured, as run.sh does.
+WAFLOCK="$P2_WAFLOCK" python3 "$ROOT/tools/quality/ensure_configured.py" --build "$P2_BUILD_DIR"
 # The ccache directory and size limit shared with ./play's tree (run.sh).
 . "$ROOT/tools/quality/launcher_ccache.sh"
 launcher_ccache "$P2_BUILD_DIR"

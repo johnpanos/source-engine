@@ -10,8 +10,13 @@
 
 struct ai_hull_t
 {
+#ifdef FSTOP
+	ai_hull_t( int bit, const char *pName, const Vector &_mins, const Vector &_maxs, const Vector &_smallMins, const Vector &_smallMaxs, unsigned int _nAITraceMask = MASK_NPCWORLDSTATIC )
+		: hullBit( bit ), mins( _mins ), maxs( _maxs ), smallMins( _smallMins ), smallMaxs( _smallMaxs ), name( pName ), nAITraceMask( _nAITraceMask ) {}
+#else
 	ai_hull_t( int bit, const char *pName, const Vector &_mins, const Vector &_maxs, const Vector &_smallMins, const Vector &_smallMaxs )
 		: hullBit( bit ), mins( _mins ), maxs( _maxs ), smallMins( _smallMins ), smallMaxs( _smallMaxs ), name( pName ) {}
+#endif
 	int			hullBit;
 	const char*	name;
 
@@ -20,6 +25,9 @@ struct ai_hull_t
 
 	Vector	smallMins;
 	Vector	smallMaxs;
+#ifdef FSTOP
+	unsigned int nAITraceMask;
+#endif
 };
 
 //=================================================================================
@@ -47,6 +55,10 @@ ai_hull_t  Tiny_Centered_Hull	(bits_TINY_CENTERED_HULL,	"TINY_CENTERED_HULL",	Ve
 ai_hull_t  Large_Hull			(bits_LARGE_HULL,			"LARGE_HULL",			Vector(-40,-40,   0),	Vector(40, 40, 100),	Vector(-40,-40, 0),		Vector(40, 40, 100) );
 ai_hull_t  Large_Centered_Hull	(bits_LARGE_CENTERED_HULL,	"LARGE_CENTERED_HULL",	Vector(-38,-38, -38),	Vector(38, 38, 38),		Vector(-30,-30,-30),	Vector(30, 30, 30) );
 ai_hull_t  Medium_Tall_Hull		(bits_MEDIUM_TALL_HULL,		"MEDIUM_TALL_HULL",		Vector(-18,-18,   0),	Vector(18, 18, 100),	Vector(-12,-12, 0),	    Vector(12, 12, 100) );
+#ifdef FSTOP
+// CS:GO's non-Swarm blob hull.
+ai_hull_t  Tiny_Fluid_Hull		(bits_TINY_FLUID_HULL,		"TINY_FLUID_HULL",		Vector(-6.5,-6.5,   0),	Vector(6.5, 6.5, 13),	Vector(-6.5,-6.5, 0),	Vector(6.5, 6.5, 13),	MASK_NPCWORLDSTATIC_FLUID );
+#endif
 #endif//HL1_DLL
 
 //
@@ -64,6 +76,9 @@ ai_hull_t*	hull[NUM_HULLS] =
 	&Large_Hull,
 	&Large_Centered_Hull,
 	&Medium_Tall_Hull,
+#ifdef FSTOP
+	&Tiny_Fluid_Hull,
+#endif
 };
 
 
@@ -72,6 +87,13 @@ ai_hull_t*	hull[NUM_HULLS] =
 // Input  :
 // Output :
 //-----------------------------------------------------------------------------
+#ifdef FSTOP
+unsigned int NAI_Hull::TraceMask(int id)
+{
+	return hull[id]->nAITraceMask;
+}
+#endif
+
 const Vector &NAI_Hull::Mins(int id)			
 { 
 	return hull[id]->mins;

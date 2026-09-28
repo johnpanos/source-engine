@@ -110,6 +110,11 @@ public:
 	int					FindEffect( const char *pEffectName, int nStart = 0 );
 	inline CNewParticleEffect *GetParticleEffectFromIdx( int idx );
 
+#if defined( FSTOP ) && defined( CLIENT_DLL )
+	// F-Stop: the camera renders an entity's attached particles into its photo
+	int					GetAllParticleEffectRenderables( IClientRenderable **pOutput, int iMaxOutput );
+#endif
+
 private:
 	int					GetParticleAttachment( C_BaseEntity *pEntity, const char *pszAttachmentName, const char *pszParticleName );
 	int					FindEffect( CNewParticleEffect *pEffect );

@@ -1,0 +1,342 @@
+{
+  "baked_state": "moon",
+  "cameras": {
+    "east": {
+      "eye": [
+        3.0,
+        -7.5,
+        3.0
+      ],
+      "forward": [
+        0.0,
+        0.9363291775690445,
+        -0.3511234415883917
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "far-east": {
+      "eye": [
+        9.0,
+        -1.5,
+        3.0
+      ],
+      "forward": [
+        0.0,
+        0.9284766908852594,
+        -0.3713906763541038
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "north": {
+      "eye": [
+        3.0,
+        12.0,
+        3.0
+      ],
+      "forward": [
+        0.0,
+        -0.9079593845004517,
+        -0.4190581774617469
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "west": {
+      "eye": [
+        -3.0,
+        -7.5,
+        3.0
+      ],
+      "forward": [
+        0.0,
+        0.9363291775690445,
+        -0.3511234415883917
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "complex",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "complex-city-night",
+  "oracles": [
+    {
+      "camera": "west",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "night = moon + ring-a + ring-b (west)",
+      "parts": [
+        "moon",
+        "ring-a",
+        "ring-b"
+      ],
+      "regions": [
+        "StreetW11",
+        "Ground",
+        "Bldg01",
+        "Bldg11",
+        "ProbeSphere"
+      ],
+      "sum": "night"
+    },
+    {
+      "camera": "east",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "night = moon + ring-a + ring-b (east)",
+      "parts": [
+        "moon",
+        "ring-a",
+        "ring-b"
+      ],
+      "regions": [
+        "StreetE11",
+        "Ground",
+        "Bldg11",
+        "Bldg21"
+      ],
+      "sum": "night"
+    },
+    {
+      "camera": "north",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "night = moon + ring-a + ring-b (north)",
+      "parts": [
+        "moon",
+        "ring-a",
+        "ring-b"
+      ],
+      "regions": [
+        "StreetW22",
+        "Ground",
+        "Bldg12",
+        "Bldg22"
+      ],
+      "sum": "night"
+    },
+    {
+      "camera": "far-east",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "night = moon + ring-a + ring-b (far-east)",
+      "parts": [
+        "moon",
+        "ring-a",
+        "ring-b"
+      ],
+      "regions": [
+        "StreetE22",
+        "Ground",
+        "Bldg21",
+        "Bldg22"
+      ],
+      "sum": "night"
+    },
+    {
+      "camera": "west",
+      "channels": [
+        0
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "Bldg11 shadows the red bulb (east of it) off the west street",
+      "regions": [
+        "StreetW11"
+      ],
+      "state": "ring-a"
+    },
+    {
+      "camera": "east",
+      "channels": [
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "Bldg11 shadows the green and blue bulbs (west of it) off the east street",
+      "regions": [
+        "StreetE11"
+      ],
+      "state": "ring-a"
+    },
+    {
+      "camera": "north",
+      "channels": [
+        0
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "Bldg22 shadows the amber bulb (east of it) off its west street",
+      "regions": [
+        "StreetW22"
+      ],
+      "state": "ring-b"
+    },
+    {
+      "camera": "far-east",
+      "channels": [
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "Bldg22 shadows the cyan bulb (west of it) off its east street",
+      "regions": [
+        "StreetE22"
+      ],
+      "state": "ring-b"
+    },
+    {
+      "camera": "west",
+      "channel": 1,
+      "factor": 3.0,
+      "kind": "dominant",
+      "lights": [
+        "direct"
+      ],
+      "name": "turned: the green bulb lights the west street, red and blue shadowed",
+      "over": [
+        0,
+        2
+      ],
+      "region": "StreetW11",
+      "state": "turned"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "The city block at night under a dim moonlit sky, with five colored bulbs orbiting through its streets below the rooftops: red, green and blue on a 3 m ring road round the centre block, amber and cyan on a 3 m ring round the north-east block. Each building shadows the street behind it from the bulbs across it, the shadows move as the rings turn, and the night is the moon plus each ring",
+  "regions": {
+    "east": {
+      "Bldg11": [
+        "Bldg11"
+      ],
+      "Bldg21": [
+        "Bldg21"
+      ],
+      "Ground": [
+        "Ground"
+      ],
+      "StreetE11": [
+        "StreetE11"
+      ]
+    },
+    "far-east": {
+      "Bldg21": [
+        "Bldg21"
+      ],
+      "Bldg22": [
+        "Bldg22"
+      ],
+      "Ground": [
+        "Ground"
+      ],
+      "StreetE22": [
+        "StreetE22"
+      ]
+    },
+    "north": {
+      "Bldg12": [
+        "Bldg12"
+      ],
+      "Bldg22": [
+        "Bldg22"
+      ],
+      "Ground": [
+        "Ground"
+      ],
+      "StreetW22": [
+        "StreetW22"
+      ]
+    },
+    "west": {
+      "Bldg01": [
+        "Bldg01"
+      ],
+      "Bldg11": [
+        "Bldg11"
+      ],
+      "Ground": [
+        "Ground"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "StreetW11": [
+        "StreetW11"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "complex-city-night.usda",
+  "states": {
+    "moon": {
+      "layer": "states/moon.usda",
+      "note": "the moon alone, the bulbs left out: the map's bake"
+    },
+    "night": {
+      "layer": null,
+      "note": "the moon and both rings at yaw 0"
+    },
+    "ring-a": {
+      "layer": "states/ring-a.usda",
+      "note": "ring A alone at yaw 0"
+    },
+    "ring-b": {
+      "layer": "states/ring-b.usda",
+      "note": "ring B alone at yaw 0"
+    },
+    "turned": {
+      "layer": "states/turned.usda",
+      "note": "the moon and both rings at their second hold (A +60, B -90 degrees)"
+    }
+  }
+}

@@ -1034,6 +1034,13 @@ class Pipeline:
         for bulb in collision.get("dynamic_lights", []):
             collision_args += ["--dynamic-light", ",".join([bulb["name"]] + [
                 "%g" % v for v in list(bulb["position_m"]) + [bulb["color_linear"]]])]
+        for orbit in collision.get("orbits", []):
+            collision_args += ["--orbit", ",".join([orbit["name"]] + [
+                "%g" % v for v in list(orbit["center_m"]) + [orbit["degrees_per_second"]] +
+                list(orbit.get("holds_degrees", []))])]
+            for light in orbit["lights"]:
+                collision_args += ["--orbit-light", ",".join([orbit["name"], light["name"]] + [
+                    "%g" % v for v in list(light["position_m"]) + list(light["color_linear"])])]
         for portal in collision.get("portals", []):
             collision_args += ["--portal", ",".join(
                 ["%g" % v for v in list(portal["center_m"]) + list(portal["normal"]) +

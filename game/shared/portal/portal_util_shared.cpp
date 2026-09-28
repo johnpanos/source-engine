@@ -1146,15 +1146,30 @@ void UTIL_Portal_PlaneTransform( const VMatrix matThisToLinked, const VPlane &pl
 	planeTransformed.Init( vTranformedNormal, fTransformedDist );
 }
 
-void UTIL_Portal_Triangles( const Vector &ptPortalCenter, const QAngle &qPortalAngles, Vector pvTri1[ 3 ], Vector pvTri2[ 3 ] )
+// A portal's half size: F-Stop server portals are resizable (CProp_Portal::Resize);
+// every other portal is the standard size.
+#if defined( FSTOP ) && defined( GAME_DLL )
+#define PORTAL_HALF_SIZE_OF( pPortal ) (pPortal)->GetHalfWidth(), (pPortal)->GetHalfHeight()
+#else
+#define PORTAL_HALF_SIZE_OF( pPortal ) PORTAL_HALF_WIDTH, PORTAL_HALF_HEIGHT
+#endif
+
+static inline void UTIL_Portal_GetHalfSize( const CProp_Portal *pPortal, float &fHalfWidth, float &fHalfHeight )
+{
+	float fSize[2] = { PORTAL_HALF_SIZE_OF( pPortal ) };
+	fHalfWidth = fSize[0];
+	fHalfHeight = fSize[1];
+}
+
+void UTIL_Portal_Triangles( const Vector &ptPortalCenter, const QAngle &qPortalAngles, Vector pvTri1[ 3 ], Vector pvTri2[ 3 ], float fHalfWidth, float fHalfHeight )
 {
 	// Get points to make triangles
 	Vector vRight, vUp;
 	AngleVectors( qPortalAngles, NULL, &vRight, &vUp );
 
-	Vector vTopEdge = vUp * PORTAL_HALF_HEIGHT;
+	Vector vTopEdge = vUp * fHalfHeight;
 	Vector vBottomEdge = -vTopEdge;
-	Vector vRightEdge = vRight * PORTAL_HALF_WIDTH;
+	Vector vRightEdge = vRight * fHalfWidth;
 	Vector vLeftEdge = -vRightEdge;
 
 	Vector vTopLeft = ptPortalCenter + vTopEdge + vLeftEdge;
@@ -1174,7 +1189,7 @@ void UTIL_Portal_Triangles( const Vector &ptPortalCenter, const QAngle &qPortalA
 
 void UTIL_Portal_Triangles( const CProp_Portal *pPortal, Vector pvTri1[ 3 ], Vector pvTri2[ 3 ] )
 {
-	UTIL_Portal_Triangles( pPortal->GetAbsOrigin(), pPortal->GetAbsAngles(), pvTri1, pvTri2 );
+	UTIL_Portal_Triangles( pPortal->GetAbsOrigin(), pPortal->GetAbsAngles(), pvTri1, pvTri2, PORTAL_HALF_SIZE_OF( pPortal ) );
 }
 
 float UTIL_Portal_DistanceThroughPortal( const CProp_Portal *pPortal, const Vector &vPoint1, const Vector &vPoint2 )
@@ -1259,10 +1274,13 @@ float UTIL_Portal_ShortestDistanceSqr( const Vector &vPoint1, const Vector &vPoi
 						float fRight = vRight.Dot( vCenterToIntersection );
 						float fUp = vUp.Dot( vCenterToIntersection );
 
+						float fLinkedHalfWidth, fLinkedHalfHeight;
+						UTIL_Portal_GetHalfSize( pLinkedPortal, fLinkedHalfWidth, fLinkedHalfHeight );
+
 						float fAbsRight = fabs( fRight );
 						float fAbsUp = fabs( fUp );
-						if( (fAbsRight > PORTAL_HALF_WIDTH) ||
-							(fAbsUp > PORTAL_HALF_HEIGHT) )
+						if( (fAbsRight > fLinkedHalfWidth) ||
+							(fAbsUp > fLinkedHalfHeight) )
 							bStraightLine = false;
 
 						if( bStraightLine == false )
@@ -1272,20 +1290,20 @@ float UTIL_Portal_ShortestDistanceSqr( const Vector &vPoint1, const Vector &vPoi
 
 							//find the offending extent and shorten both extents to bring it into the portal quad
 							float fNormalizer;
-							if( fAbsRight > PORTAL_HALF_WIDTH )
+							if( fAbsRight > fLinkedHalfWidth )
 							{
-								fNormalizer = fAbsRight/PORTAL_HALF_WIDTH;
+								fNormalizer = fAbsRight/fLinkedHalfWidth;
 
-								if( fAbsUp > PORTAL_HALF_HEIGHT )
+								if( fAbsUp > fLinkedHalfHeight )
 								{
-									float fUpNormalizer = fAbsUp/PORTAL_HALF_HEIGHT;
+									float fUpNormalizer = fAbsUp/fLinkedHalfHeight;
 									if( fUpNormalizer > fNormalizer )
 										fNormalizer = fUpNormalizer;
 								}
 							}
 							else
 							{
-								fNormalizer = fAbsUp/PORTAL_HALF_HEIGHT;
+								fNormalizer = fAbsUp/fLinkedHalfHeight;
 							}
 
 							vCenterToIntersection *= (1.0f/fNormalizer);
@@ -1341,8 +1359,10 @@ void UTIL_Portal_AABB( const CProp_Portal *pPortal, Vector &vMin, Vector &vMax )
 
 	//scale the extents to usable sizes
 	vOBBForward *= PORTAL_HALF_DEPTH;
-	vOBBRight *= PORTAL_HALF_WIDTH;
-	vOBBUp *= PORTAL_HALF_HEIGHT;
+	float fHalfWidth, fHalfHeight;
+	UTIL_Portal_GetHalfSize( pPortal, fHalfWidth, fHalfHeight );
+	vOBBRight *= fHalfWidth;
+	vOBBUp *= fHalfHeight;
 
 	vOrigin -= vOBBForward + vOBBRight + vOBBUp;
 
@@ -1416,11 +1436,11 @@ bool UTIL_IntersectRayWithPortalOBBAsAABB( const CProp_Portal *pPortal, const Ra
 	return IntersectRayWithBox( ray, vAABBMins, vAABBMaxs, 0.0f, pTrace );
 }
 
-bool UTIL_IsBoxIntersectingPortal( const Vector &vecBoxCenter, const Vector &vecBoxExtents, const Vector &ptPortalCenter, const QAngle &qPortalAngles, float flTolerance )
+bool UTIL_IsBoxIntersectingPortal( const Vector &vecBoxCenter, const Vector &vecBoxExtents, const Vector &ptPortalCenter, const QAngle &qPortalAngles, float flTolerance, float fHalfWidth, float fHalfHeight )
 {
 	Vector pvTri1[ 3 ], pvTri2[ 3 ];
 
-	UTIL_Portal_Triangles( ptPortalCenter, qPortalAngles, pvTri1, pvTri2 );
+	UTIL_Portal_Triangles( ptPortalCenter, qPortalAngles, pvTri1, pvTri2, fHalfWidth, fHalfHeight );
 
 	cplane_t plane;
 
@@ -1445,7 +1465,7 @@ bool UTIL_IsBoxIntersectingPortal( const Vector &vecBoxCenter, const Vector &vec
 	if( pPortal == NULL )
 		return false;
 
-	return UTIL_IsBoxIntersectingPortal( vecBoxCenter, vecBoxExtents, pPortal->GetAbsOrigin(), pPortal->GetAbsAngles(), flTolerance );
+	return UTIL_IsBoxIntersectingPortal( vecBoxCenter, vecBoxExtents, pPortal->GetAbsOrigin(), pPortal->GetAbsAngles(), flTolerance, PORTAL_HALF_SIZE_OF( pPortal ) );
 }
 
 CProp_Portal *UTIL_IntersectEntityExtentsWithPortal( const CBaseEntity *pEntity )
@@ -1680,11 +1700,13 @@ bool UTIL_Portal_EntityIsInPortalHole( const CProp_Portal *pPortal, CBaseEntity 
 
 	Vector vPortalForward, vPortalRight, vPortalUp;
 	pPortal->GetVectors( &vPortalForward, &vPortalRight, &vPortalUp );
+	float fHalfWidth, fHalfHeight;
+	UTIL_Portal_GetHalfSize( pPortal, fHalfWidth, fHalfHeight );
 	Vector ptPortalCenter = pPortal->GetAbsOrigin();
 
 	return OBBHasFullyContainedIntersectionWithQuad( vForward, vRight, vUp, ptOBBCenter, 
 		vPortalForward, vPortalForward.Dot( ptPortalCenter ), ptPortalCenter, 
-		vPortalRight, PORTAL_HALF_WIDTH + 1.0f, vPortalUp, PORTAL_HALF_HEIGHT + 1.0f );
+		vPortalRight, fHalfWidth + 1.0f, vPortalUp, fHalfHeight + 1.0f );
 }
 
 

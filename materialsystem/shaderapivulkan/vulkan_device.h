@@ -907,7 +907,10 @@ public:
 		kPbrModelEmission = 2,
 		kPbrModelEnvMap = 4,
 		kPbrModelMapProbe = 8, // set per draw when a map LMAP atlas is resident
-		kPbrModelClearCoat = 32
+		kPbrModelClearCoat = 32,
+		// Set per draw when the producer's change volume is bound beside the
+		// probe volume (R50-RELIGHT: relit reflection probes).
+		kPbrModelProbeChange = 64
 	};
 	// False when the device cannot bind the skin shader's seven descriptor sets
 	// or its push block; its draws are then declined.

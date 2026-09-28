@@ -26,6 +26,10 @@
 #include "c_portal_player.h"
 #endif // PORTAL
 
+#ifdef FSTOP
+#include "c_basehlplayer.h"
+#endif // FSTOP
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -104,6 +108,13 @@ bool CHudCrosshair::ShouldDraw( void )
 	if ( pPlayer->m_HL2Local.m_bZooming )
 		return false;
 	*/
+
+#ifdef FSTOP
+	// suppress crosshair in zoom (the F-Stop camera zooms).
+	C_BaseHLPlayer *pHLPlayer = dynamic_cast<C_BaseHLPlayer *>(pPlayer);
+	if ( pHLPlayer && pHLPlayer->m_HL2Local.m_bZooming )
+		return false;
+#endif // FSTOP
 
 	// draw a crosshair only if alive or spectating in eye
 	{

@@ -7,10 +7,16 @@
 //                                               (texel centres at + 0.5)
 //
 // and, when it defines REFLECTION_PROBE_RELIGHT (R50-RELIGHT), the scene's
-// diffuse-light change since the bake (irradiance / pi, the lightmap's unit)
-// at a world point with a unit normal:
+// diffuse light (irradiance / pi, the lightmap's unit) at a world point with a
+// unit normal, now and as baked, and the moving occluders (axis-aligned boxes
+// in Source units with a diffuse reflectance, at most
+// kReflectionProbeMaxOccluders):
 //
-//   vec3 ReflectionProbeDiffuseChange( vec3 position, vec3 normal )
+//   void ReflectionProbeDiffuseLight( vec3 position, vec3 normal,
+//                                     out vec3 now, out vec3 baked )
+//   int  ReflectionProbeOccluderCount()
+//   void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi,
+//                                 out float reflectance )
 //
 // world_pbr_probe.glsl reads a sampler; reflection_probes_check.comp reads a
 // storage buffer with explicit bilinear filtering, so the GPU suite runs
@@ -30,11 +36,19 @@
 //     corrected direction eased back to the ray as roughness grows (Lagarde
 //     and de Rousiers, "Moving Frostbite to PBR", SIGGRAPH 2014 course notes,
 //     Listing 25 and Listing F.1).
-//   * Relighting (R50-RELIGHT, RPRB v2): a probe with relight bands gains, at
-//     its lookup direction and lod, albedo * change at the point its capture
-//     saw there (capture + direction * distance, with the band's normal),
-//     clamped at zero, when the mode texel's y is 1 (McAuley, "Rendering the
-//     World of Far Cry 4", GDC 2015, relights a G-buffer cubemap).
+//   * Relighting (R50-RELIGHT, RPRB v2), when the mode texel's y is 1: at its
+//     lookup direction and lod, a probe with relight bands saw the point
+//     capture + direction * distance (the band's albedo and normal). Per
+//     channel, light removed there since the bake scales the capture
+//     (radiance * now / baked: visibility is multiplicative, so the capture's
+//     detail is kept) and light added is albedo * (now - baked), clamped at
+//     zero (ReflectionProbeRelit; the traced producers' rule for a probe
+//     texel, indirect_sdf.h TracedProducer::Change). A moving occluder on the
+//     segment from the capture to that point hides it: the capture sees the
+//     occluder's face, its reflectance times the light now at the entry
+//     point (McAuley, "Rendering the World of Far Cry 4", GDC 2015, relights
+//     a G-buffer cubemap; Lazarov, SIGGRAPH 2013, and Unreal Engine instead
+//     scale a capture by the diffuse light at the shaded point).
 //   * Blending: by rank (influence volume ascending, the global probe last),
 //     each probe takes its weight times what is still unassigned; a weight is
 //     1 inside the influence box, smoothstep to 0 at `fade` outside, times a
@@ -52,12 +66,17 @@
 // switch.
 
 #ifdef REFLECTION_PROBE_RELIGHT
-vec3 ReflectionProbeDiffuseChange( vec3 position, vec3 normal );
+void ReflectionProbeDiffuseLight( vec3 position, vec3 normal, out vec3 now, out vec3 baked );
+int ReflectionProbeOccluderCount();
+void ReflectionProbeOccluder( int k, out vec3 lo, out vec3 hi, out float reflectance );
 #endif
 
 const float kReflectionProbesMarker = -3.0;
 const float kReflectionProbeFacingEdge = 0.1;
 const int kReflectionProbesMaxProbes = 16;
+// mapcontainer::kReflectionProbeRelightFloor and kReflectionProbeMaxOccluders.
+const float kReflectionProbeRelightFloor = 1e-4;
+const int kReflectionProbeMaxOccluders = 16;
 // The weight view's colours by rank (mapcontainer::kReflectionProbeWeightPalette).
 const vec3 kReflectionProbeWeightPalette[6] = vec3[6]( vec3( 1.0, 0.0, 0.0 ),
     vec3( 0.0, 0.0, 1.0 ), vec3( 0.0, 1.0, 0.0 ), vec3( 1.0, 1.0, 0.0 ), vec3( 1.0, 0.0, 1.0 ),
@@ -80,6 +99,57 @@ vec4 ReflectionProbeLevel( vec2 uv, float level, float width0, float top )
 
 // One probe's split-sum fetch along the reflected ray from `position`,
 // relit when `relight` and the probe carries relight bands.
+#ifdef REFLECTION_PROBE_RELIGHT
+// The relight rule per channel (mapcontainer::ReflectionProbeRelit).
+vec3 ReflectionProbeRelit( vec3 radiance, vec3 albedo, vec3 now, vec3 baked )
+{
+	bvec3 relative = bvec3( vec3( lessThan( now, baked ) ) *
+	                        vec3( greaterThan( baked, vec3( kReflectionProbeRelightFloor ) ) ) );
+	vec3 scaled = radiance * ( max( now, vec3( 0.0 ) ) / mix( vec3( 1.0 ), baked, relative ) );
+	return max( mix( radiance + albedo * ( now - baked ), scaled, relative ), vec3( 0.0 ) );
+}
+
+// The nearest moving occluder on origin + t * direction, 0 <= t < length
+// (mapcontainer::ReflectionProbeOccluded): its entry t, the entered face's
+// outward normal and reflectance; false when none.
+bool ReflectionProbeOccluded( vec3 origin, vec3 direction, float length, out float t,
+    out vec3 faceNormal, out float reflectance )
+{
+	bool found = false;
+	t = length;
+	faceNormal = -direction;
+	reflectance = 0.0;
+	vec3 safe = vec3( direction.x >= 0.0 ? max( direction.x, 1e-12 ) : min( direction.x, -1e-12 ),
+	    direction.y >= 0.0 ? max( direction.y, 1e-12 ) : min( direction.y, -1e-12 ),
+	    direction.z >= 0.0 ? max( direction.z, 1e-12 ) : min( direction.z, -1e-12 ) );
+	int count = min( ReflectionProbeOccluderCount(), kReflectionProbeMaxOccluders );
+	for ( int k = 0; k < count; ++k )
+	{
+		vec3 lo, hi;
+		float value;
+		ReflectionProbeOccluder( k, lo, hi, value );
+		vec3 first = ( lo - origin ) / safe;
+		vec3 second = ( hi - origin ) / safe;
+		vec3 nearAxes = min( first, second );
+		vec3 farAxes = max( first, second );
+		float near = max( nearAxes.x, max( nearAxes.y, nearAxes.z ) );
+		float far = min( farAxes.x, min( farAxes.y, farAxes.z ) );
+		float entry = max( near, 0.0 );
+		if ( !( far >= entry ) || !( entry < t ) )
+			continue;
+		found = true;
+		t = entry;
+		reflectance = value;
+		// The first axis on ties, as the C++ reference.
+		int axis = nearAxes.x == near ? 0 : nearAxes.y == near ? 1 : 2;
+		vec3 face = vec3( 0.0 );
+		face[axis] = direction[axis] >= 0.0 ? -1.0 : 1.0;
+		faceNormal = near < 0.0 ? -direction : face;
+	}
+	return found;
+}
+#endif
+
 vec3 ReflectionProbeSample( int rank, int count, vec3 header, vec3 position, vec3 reflected,
     float roughness, bool parallax, bool relight )
 {
@@ -132,9 +202,16 @@ vec3 ReflectionProbeSample( int rank, int count, vec3 header, vec3 position, vec
 		vec3 normal = mix( ReflectionProbeLevel( uv, lower, header.z, normalTop ),
 		    ReflectionProbeLevel( uv, upper, header.z, normalTop ), lod - lower ).rgb;
 		normal /= max( length( normal ), 1e-12 );
-		vec3 seen = captureFade.xyz + direction * albedo.w;
-		radiance = max( radiance + albedo.rgb * ReflectionProbeDiffuseChange( seen, normal ),
-		    vec3( 0.0 ) );
+		float t, reflectance;
+		vec3 face;
+		bool hidden =
+		    ReflectionProbeOccluded( captureFade.xyz, direction, albedo.w, t, face, reflectance );
+		vec3 now, baked;
+		ReflectionProbeDiffuseLight(
+		    captureFade.xyz + direction * ( hidden ? t : albedo.w ), hidden ? face : normal, now,
+		    baked );
+		radiance = hidden ? max( reflectance * now, vec3( 0.0 ) )
+		                  : ReflectionProbeRelit( radiance, albedo.rgb, now, baked );
 	}
 #endif
 	return radiance;

@@ -577,8 +577,10 @@ private:
 	mutable size_t m_baseSize = 0;
 };
 
-// The world's change atlas under BakedPlusDelta: `published`'s atlas with its
-// indirect layer's irradiance texels replaced by published minus baked.
+// The world's change atlas under BakedPlusDelta: `published`'s atlas with the
+// irradiance texels of its total and indirect layers replaced by published
+// minus baked (the world adds the indirect change; relit reflection probes
+// take the bake's total from the total change).
 [[nodiscard]] inline bool ChangeAtlas(
     const Volume &published, const Volume &baked, std::vector<unsigned char> *out )
 {
@@ -590,22 +592,27 @@ private:
 	{
 		const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
 		const uint32_t rows = ( grid.probeCount + grid.tilesPerRow - 1 ) / grid.tilesPerRow;
-		for ( uint32_t y = 0; y < rows * mapcontainer::kProbeIrradianceTile; ++y )
+		for ( uint32_t layer = 0; layer < 2; ++layer )
 		{
-			const uint64_t row = uint64_t( grid.irradianceOrigin[1][1] + y ) * layout.atlasWidth;
-			for ( uint32_t x = 0; x < grid.tilesPerRow * mapcontainer::kProbeIrradianceTile; ++x )
+			for ( uint32_t y = 0; y < rows * mapcontainer::kProbeIrradianceTile; ++y )
 			{
-				const uint64_t texel = ( row + grid.irradianceOrigin[1][0] + x ) * 8;
-				for ( int c = 0; c < 3; ++c )
+				const uint64_t row =
+				    uint64_t( grid.irradianceOrigin[layer][1] + y ) * layout.atlasWidth;
+				for ( uint32_t x = 0; x < grid.tilesPerRow * mapcontainer::kProbeIrradianceTile;
+				      ++x )
 				{
-					uint16_t now, then;
-					std::memcpy(
-					    &now, published.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
-					std::memcpy(
-					    &then, baked.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
-					const uint16_t change = FloatToHalf(
-					    mapcontainer::HalfToFloat( now ) - mapcontainer::HalfToFloat( then ) );
-					std::memcpy( out->data() + texel + 2 * c, &change, 2 );
+					const uint64_t texel = ( row + grid.irradianceOrigin[layer][0] + x ) * 8;
+					for ( int c = 0; c < 3; ++c )
+					{
+						uint16_t now, then;
+						std::memcpy(
+						    &now, published.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
+						std::memcpy(
+						    &then, baked.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
+						const uint16_t change = FloatToHalf(
+						    mapcontainer::HalfToFloat( now ) - mapcontainer::HalfToFloat( then ) );
+						std::memcpy( out->data() + texel + 2 * c, &change, 2 );
+					}
 				}
 			}
 		}

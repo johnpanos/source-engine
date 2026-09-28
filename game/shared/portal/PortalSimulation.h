@@ -16,6 +16,7 @@
 #include "const.h"
 #include "tier1/utlmap.h"
 #include "tier1/utlvector.h"
+#include "portal_shareddefs.h"	// PORTAL_HALF_WIDTH, PORTAL_HALF_HEIGHT
 
 #define PORTAL_SIMULATORS_EMBED_GUID //define this to embed a unique integer with each portal simulator for debugging purposes
 
@@ -105,9 +106,18 @@ struct PS_PlacementData_t //stuff useful for geometric operations
 	PortalTransformAsAngledPosition_t ptaap_ThisToLinked;
 	PortalTransformAsAngledPosition_t ptaap_LinkedToThis;
 	CPhysCollide *pHoleShapeCollideable; //used to test if a collideable is in the hole, should NOT be collided against in general
+#ifdef FSTOP
+	// F-Stop portals can be resized (CProp_Portal::Resize)
+	float fHalfWidth;
+	float fHalfHeight;
+#endif // FSTOP
 	PS_PlacementData_t( void )
 	{
 		memset( this, 0, sizeof( PS_PlacementData_t ) );
+#ifdef FSTOP
+		fHalfWidth = PORTAL_HALF_WIDTH;
+		fHalfHeight = PORTAL_HALF_HEIGHT;
+#endif // FSTOP
 	}
 };
 
@@ -283,6 +293,16 @@ public:
 	void				MoveTo( const Vector &ptCenter, const QAngle &angles );
 	void				ClearEverything( void );
 
+#ifdef FSTOP
+	// Resizes the hole; rebuilds the simulation if the portal is placed
+	void				SetSize( float fHalfWidth, float fHalfHeight );
+	float				GetHalfWidth( void ) const { return m_InternalData.Placement.fHalfWidth; }
+	float				GetHalfHeight( void ) const { return m_InternalData.Placement.fHalfHeight; }
+#else
+	float				GetHalfWidth( void ) const { return PORTAL_HALF_WIDTH; }
+	float				GetHalfHeight( void ) const { return PORTAL_HALF_HEIGHT; }
+#endif // FSTOP
+
 	void				AttachTo( CPortalSimulator *pLinkedPortalSimulator );
 	void				DetachFromLinked( void ); //detach portals to sever the connection, saves work when planning on moving both portals
 	CPortalSimulator	*GetLinkedPortalSimulator( void ) const;
@@ -335,6 +355,9 @@ public:
 #endif
 
 protected:
+#ifdef FSTOP
+	void				MovedOrResized( const Vector &ptCenter, const QAngle &angles );
+#endif // FSTOP
 	bool				m_bLocalDataIsReady; //this side of the portal is properly setup, no guarantees as to linkage to another portal
 	bool				m_bSimulateVPhysics;
 	bool				m_bGenerateCollision;

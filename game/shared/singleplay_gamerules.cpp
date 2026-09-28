@@ -224,6 +224,11 @@ bool CSingleplayRules::Damage_ShouldNotBleed( int iDmgType )
 			if ( pWeapon == NULL )
 				continue;
 
+#ifdef FSTOP
+			if ( pWeapon == pCurrentWeapon )
+				continue;
+#endif // FSTOP
+
 			// If we have an active weapon and this weapon doesn't allow autoswitching away
 			// from another weapon, skip it.
 			if ( pCurrentWeapon && !pWeapon->AllowsAutoSwitchTo() )

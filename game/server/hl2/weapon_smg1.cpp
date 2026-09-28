@@ -58,6 +58,10 @@ public:
 
 	void FireNPCPrimaryAttack( CBaseCombatCharacter *pOperator, Vector &vecShootOrigin, Vector &vecShootDir );
 	void Operator_ForceNPCFire( CBaseCombatCharacter  *pOperator, bool bSecondary );
+#ifdef FSTOP
+	// F-Stop: aims at pTarget when given (AI add-ons fire mounted weapons).
+	void Operator_ForceNPCFire( CBaseCombatCharacter  *pOperator, bool bSecondary, CBaseEntity *pTarget );
+#endif
 	void Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
 
 	DECLARE_ACTTABLE();
@@ -201,6 +205,26 @@ void CWeaponSMG1::Operator_ForceNPCFire( CBaseCombatCharacter *pOperator, bool b
 	AngleVectors( angShootDir, &vecShootDir );
 	FireNPCPrimaryAttack( pOperator, vecShootOrigin, vecShootDir );
 }
+
+#ifdef FSTOP
+void CWeaponSMG1::Operator_ForceNPCFire( CBaseCombatCharacter *pOperator, bool bSecondary, CBaseEntity *pTarget )
+{
+	if ( !pTarget )
+	{
+		Operator_ForceNPCFire( pOperator, bSecondary );
+		return;
+	}
+
+	// Ensure we have enough rounds in the clip
+	m_iClip1++;
+
+	Vector vecShootOrigin, vecShootDir;
+	QAngle	angShootDir;
+	GetAttachment( LookupAttachment( "muzzle" ), vecShootOrigin, angShootDir );
+	vecShootDir = pTarget->WorldSpaceCenter() - vecShootOrigin;
+	FireNPCPrimaryAttack( pOperator, vecShootOrigin, vecShootDir );
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 

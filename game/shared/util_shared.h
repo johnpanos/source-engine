@@ -610,6 +610,12 @@ char* ReadAndAllocStringValue( KeyValues *pSub, const char *pName, const char *p
 
 int UTIL_StringFieldToInt( const char *szValue, const char **pValueStrings, int iNumStrings );
 
+#ifdef FSTOP
+bool		UTIL_FindClosestPassableSpace( const Vector &vCenter, const Vector &vExtents, const Vector &vIndecisivePush, ITraceFilter *pTraceFilter, unsigned int fMask, unsigned int iIterations, Vector &vCenterOut );
+bool		UTIL_FindClosestPassableSpace( CBaseEntity *pEntity, const Vector &vIndecisivePush, unsigned int fMask, unsigned int iIterations, Vector &vOriginOut, Vector *pStartingPosition = NULL );
+bool		UTIL_FindClosestPassableSpace( CBaseEntity *pEntity, const Vector &vIndecisivePush, unsigned int fMask, Vector *pStartingPosition = NULL );
+#endif // FSTOP
+
 //-----------------------------------------------------------------------------
 // Holidays
 //-----------------------------------------------------------------------------

@@ -87,7 +87,7 @@ void CPhysicsCloneArea::Spawn( void )
 	SetMoveType( MOVETYPE_NONE );
 	SetCollisionGroup( COLLISION_GROUP_PLAYER );
 
-	SetSize( vLocalMins, vLocalMaxs );
+	SetSize( GetLocalMins(), GetLocalMaxs() );
 }
 
 void CPhysicsCloneArea::Activate( void )
@@ -145,14 +145,14 @@ void CPhysicsCloneArea::CloneNearbyEntities( void )
 	QAngle qAngles = GetAbsAngles();
 
 	Vector ptOBBStart = ptOrigin;
-	ptOBBStart += vForward * vLocalMins.x;
-	ptOBBStart += vRight * vLocalMins.y;
-	ptOBBStart += vUp * vLocalMins.z;
+	ptOBBStart += vForward * GetLocalMins().x;
+	ptOBBStart += vRight * GetLocalMins().y;
+	ptOBBStart += vUp * GetLocalMins().z;
 	
 
-	vForward *= vLocalMaxs.x - vLocalMins.x;
-	vRight *= vLocalMaxs.y - vLocalMins.y;
-	vUp *= vLocalMaxs.z - vLocalMins.z;
+	vForward *= GetLocalMaxs().x - GetLocalMins().x;
+	vRight *= GetLocalMaxs().y - GetLocalMins().y;
+	vUp *= GetLocalMaxs().z - GetLocalMins().z;
 
 
 	Vector vAABBMins, vAABBMaxs;
@@ -201,7 +201,7 @@ void CPhysicsCloneArea::CloneNearbyEntities( void )
 				Vector ptEntityCenter = pEntCollision->GetCollisionOrigin();
 
 				//double check intersection at the OBB vs OBB level, we don't want to affect large piles of physics objects if we don't have to, it gets slow
-				if( IsOBBIntersectingOBB( ptOrigin, qAngles, vLocalMins, vLocalMaxs, 
+				if( IsOBBIntersectingOBB( ptOrigin, qAngles, GetLocalMins(), GetLocalMaxs(), 
 					ptEntityCenter, pEntCollision->GetCollisionAngles(), pEntCollision->OBBMins(), pEntCollision->OBBMaxs() ) )
 				{
 					tr.endpos = (ptOrigin + ptEntityCenter) * 0.5;
@@ -250,3 +250,18 @@ CPhysicsCloneArea *CPhysicsCloneArea::CreatePhysicsCloneArea( CProp_Portal *pFol
 	return pCloneArea;
 }
 
+#ifdef FSTOP
+void CPhysicsCloneArea::Resize( float fPortalHalfWidth, float fPortalHalfHeight )
+{
+	Vector vMins( vLocalMins.x, -fPortalHalfWidth * PHYSICSCLONEAREASCALE, -fPortalHalfHeight * PHYSICSCLONEAREASCALE );
+	//x is the forward which is fairly thin for portals, replacing with halfheight
+	Vector vMaxs( fPortalHalfHeight * PHYSICSCLONEAREASCALE, fPortalHalfWidth * PHYSICSCLONEAREASCALE, fPortalHalfHeight * PHYSICSCLONEAREASCALE );
+	if( (vMins == m_vLocalMins) && (vMaxs == m_vLocalMaxs) )
+		return;
+
+	m_vLocalMins = vMins;
+	m_vLocalMaxs = vMaxs;
+	SetSize( m_vLocalMins, m_vLocalMaxs );
+	UpdatePosition();
+}
+#endif // FSTOP

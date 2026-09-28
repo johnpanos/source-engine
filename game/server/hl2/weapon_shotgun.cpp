@@ -81,6 +81,10 @@ public:
 
 	void FireNPCPrimaryAttack( CBaseCombatCharacter *pOperator, bool bUseWeaponAngles );
 	void Operator_ForceNPCFire( CBaseCombatCharacter  *pOperator, bool bSecondary );
+#ifdef FSTOP
+	// F-Stop: aims at pTarget when given (AI add-ons fire mounted weapons).
+	void Operator_ForceNPCFire( CBaseCombatCharacter  *pOperator, bool bSecondary, CBaseEntity *pTarget );
+#endif
 	void Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
 
 	DECLARE_ACTTABLE();
@@ -196,6 +200,28 @@ void CWeaponShotgun::Operator_ForceNPCFire( CBaseCombatCharacter *pOperator, boo
 
 	FireNPCPrimaryAttack( pOperator, true );
 }
+
+#ifdef FSTOP
+void CWeaponShotgun::Operator_ForceNPCFire( CBaseCombatCharacter *pOperator, bool bSecondary, CBaseEntity *pTarget )
+{
+	if ( !pTarget )
+	{
+		Operator_ForceNPCFire( pOperator, bSecondary );
+		return;
+	}
+
+	Vector vecShootOrigin, vecShootDir;
+	WeaponSound( SINGLE_NPC );
+	pOperator->DoMuzzleFlash();
+
+	QAngle	angShootDir;
+	GetAttachment( LookupAttachment( "muzzle" ), vecShootOrigin, angShootDir );
+	vecShootDir = pTarget->WorldSpaceCenter() - vecShootOrigin;
+	VectorNormalize( vecShootDir );
+
+	pOperator->FireBullets( 8, vecShootOrigin, vecShootDir, GetBulletSpread(), MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0 );
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose:

@@ -41,6 +41,12 @@ public:
 
 	enum { kMAXCONTROLPOINTS = 63 }; ///< actually one less than the total number of cpoints since 0 is assumed to be me
 
+#ifdef FSTOP
+	enum { kSERVERCONTROLLEDPOINTS = 4 };
+	//server controlled control points (variables in particle effects instead of literal follow points)
+	bool		SetControlPointValue( int iControlPoint, const Vector &vValue );
+#endif // FSTOP
+
 protected:
 
 	/// Load up and resolve the entities that are supposed to be the control points 
@@ -58,6 +64,11 @@ protected:
 	CNetworkArray( EHANDLE, m_hControlPointEnts, kMAXCONTROLPOINTS );
 	CNetworkArray( unsigned char, m_iControlPointParents, kMAXCONTROLPOINTS );
 	CNetworkVar( bool,	m_bWeatherEffect );
+
+#ifdef FSTOP
+	CNetworkArray( Vector, m_vServerControlPoints, kSERVERCONTROLLEDPOINTS );
+	CNetworkArray( uint8, m_iServerControlPointAssignments, kSERVERCONTROLLEDPOINTS );
+#endif // FSTOP
 };
 
 #endif // PARTICLE_SYSTEM_H

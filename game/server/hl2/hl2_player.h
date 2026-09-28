@@ -300,9 +300,16 @@ private:
 	void				OnSquadMemberKilled( inputdata_t &data );
 
 	Class_T				m_nControlClass;			// Class when player is controlling another entity
+#ifdef FSTOP
+	// F-Stop: CPortal_Player keeps its photo HUD state in the local data.
+protected:
+#endif // FSTOP
 	// This player's HL2 specific data that should only be replicated to 
 	//  the player and not to other players.
 	CNetworkVarEmbedded( CHL2PlayerLocalData, m_HL2Local );
+#ifdef FSTOP
+private:
+#endif // FSTOP
 
 	float				m_flTimeAllSuitDevicesOff;
 

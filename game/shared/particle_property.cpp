@@ -494,6 +494,32 @@ int	CParticleProperty::FindEffect( CNewParticleEffect *pEffect )
 	return -1;
 }
 
+#if defined( FSTOP ) && defined( CLIENT_DLL )
+//-----------------------------------------------------------------------------
+// Purpose: Get's a list of all renderables used for this particle property
+//-----------------------------------------------------------------------------
+int CParticleProperty::GetAllParticleEffectRenderables( IClientRenderable **pOutput, int iMaxOutput )
+{
+	if( iMaxOutput == 0 )
+		return 0;
+
+	int iReturnedRenderables = 0;
+	int iParticleEffectListCount = m_ParticleEffects.Count();
+
+	for( int i = 0; i != iParticleEffectListCount; ++i )
+	{
+		if( m_ParticleEffects[i].pParticleEffect.IsValid() )
+		{
+			pOutput[iReturnedRenderables++] = m_ParticleEffects[i].pParticleEffect.GetObject();
+			if( iReturnedRenderables == iMaxOutput )
+				break;
+		}
+	}
+
+	return iReturnedRenderables;
+}
+#endif
+
 int CParticleProperty::FindEffect( const char *pEffectName, int nStart /*= 0*/ )
 {
 	for ( int i = nStart; i < m_ParticleEffects.Count(); i++ )

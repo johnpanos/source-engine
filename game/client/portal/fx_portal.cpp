@@ -5,7 +5,6 @@
 //=============================================================================//
 
 #include "cbase.h"
-#define PortalPlacedByType PortalPlacedBy_t
 #include "clienteffectprecachesystem.h"
 #include "fx.h"
 #include "fx_sparks.h"
@@ -19,6 +18,13 @@
 #include "shareddefs.h"
 #include "portal_shareddefs.h"
 #include "effect_color_tables.h"
+
+#ifdef PORTAL2
+// The Portal 2 build compiles this Portal 1 file against the Portal 2
+// portal_shareddefs.h, which names the enum PortalPlacedBy_t. A typedef, not a
+// macro before the includes: cbase.h can already bring in the header.
+typedef PortalPlacedBy_t PortalPlacedByType;
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

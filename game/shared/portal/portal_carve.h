@@ -25,8 +25,10 @@
 // of extremely thin erroneous collision at the separating plane.
 #define PORTAL_WORLD_WALL_HALF_SEPARATION_AMOUNT 0.1f
 
-#define PORTAL_HOLE_HALF_HEIGHT ( PORTAL_HALF_HEIGHT + 0.1f )
-#define PORTAL_HOLE_HALF_WIDTH ( PORTAL_HALF_WIDTH + 0.1f )
+#define PORTAL_HOLE_HALF_HEIGHT_MOD 0.1f
+#define PORTAL_HOLE_HALF_WIDTH_MOD 0.1f
+#define PORTAL_HOLE_HALF_HEIGHT ( PORTAL_HALF_HEIGHT + PORTAL_HOLE_HALF_HEIGHT_MOD )
+#define PORTAL_HOLE_HALF_WIDTH ( PORTAL_HALF_WIDTH + PORTAL_HOLE_HALF_WIDTH_MOD )
 
 // Every clip is independent: it reads one immutable input polyhedron and the
 // shared plane array, and returns a new heap polyhedron (never the shared
@@ -150,7 +152,31 @@ struct Placement_t
 	Vector vForward;
 	Vector vRight;
 	Vector vUp;
+#ifdef FSTOP
+	// F-Stop portals can be resized; the hole defaults to the standard portal's
+	float fHoleHalfWidth = PORTAL_HOLE_HALF_WIDTH;
+	float fHoleHalfHeight = PORTAL_HOLE_HALF_HEIGHT;
+#endif // FSTOP
 };
+
+// The half extents of the hole a placement carves.
+inline float HoleHalfWidth( const Placement_t &placement )
+{
+#ifdef FSTOP
+	return placement.fHoleHalfWidth;
+#else
+	return PORTAL_HOLE_HALF_WIDTH;
+#endif // FSTOP
+}
+
+inline float HoleHalfHeight( const Placement_t &placement )
+{
+#ifdef FSTOP
+	return placement.fHoleHalfHeight;
+#else
+	return PORTAL_HOLE_HALF_HEIGHT;
+#endif // FSTOP
+}
 
 // World-space bounds for gathering the wall brushes around a placement.
 inline void ComputeWallBrushBounds( const Placement_t &placement, Vector *pMins, Vector *pMaxs )
@@ -233,23 +259,23 @@ inline bool CarveWall( const Placement_t &placement, const float fWallClipPlane_
 	fPlanes[( 2 * 4 ) + 1] = placement.vUp.y;
 	fPlanes[( 2 * 4 ) + 2] = placement.vUp.z;
 	fPlanes[( 2 * 4 ) + 3] =
-	    placement.vUp.Dot( placement.ptCenter + ( placement.vUp * PORTAL_HOLE_HALF_HEIGHT ) );
+	    placement.vUp.Dot( placement.ptCenter + ( placement.vUp * HoleHalfHeight( placement ) ) );
 
 	fPlanes[( 3 * 4 ) + 0] = vDown.x;
 	fPlanes[( 3 * 4 ) + 1] = vDown.y;
 	fPlanes[( 3 * 4 ) + 2] = vDown.z;
-	fPlanes[( 3 * 4 ) + 3] = vDown.Dot( placement.ptCenter + ( vDown * PORTAL_HOLE_HALF_HEIGHT ) );
+	fPlanes[( 3 * 4 ) + 3] = vDown.Dot( placement.ptCenter + ( vDown * HoleHalfHeight( placement ) ) );
 
 	fPlanes[( 4 * 4 ) + 0] = vLeft.x;
 	fPlanes[( 4 * 4 ) + 1] = vLeft.y;
 	fPlanes[( 4 * 4 ) + 2] = vLeft.z;
-	fPlanes[( 4 * 4 ) + 3] = vLeft.Dot( placement.ptCenter + ( vLeft * PORTAL_HOLE_HALF_WIDTH ) );
+	fPlanes[( 4 * 4 ) + 3] = vLeft.Dot( placement.ptCenter + ( vLeft * HoleHalfWidth( placement ) ) );
 
 	fPlanes[( 5 * 4 ) + 0] = placement.vRight.x;
 	fPlanes[( 5 * 4 ) + 1] = placement.vRight.y;
 	fPlanes[( 5 * 4 ) + 2] = placement.vRight.z;
 	fPlanes[( 5 * 4 ) + 3] =
-	    placement.vRight.Dot( placement.ptCenter + ( placement.vRight * PORTAL_HOLE_HALF_WIDTH ) );
+	    placement.vRight.Dot( placement.ptCenter + ( placement.vRight * HoleHalfWidth( placement ) ) );
 
 	float *fSidePlanesOnly = &fPlanes[( 2 * 4 )];
 
@@ -306,14 +332,14 @@ inline bool CarveWall( const Placement_t &placement, const float fWallClipPlane_
 		//fPlanes[(1*4) + 3] = fTubeDepthDist;
 		fPlanes[( 2 * 4 ) + 3] = placement.vUp.Dot(
 		    placement.ptCenter +
-		    placement.vUp * ( PORTAL_HOLE_HALF_HEIGHT + PORTAL_WALL_MIN_THICKNESS ) );
+		    placement.vUp * ( HoleHalfHeight( placement ) + PORTAL_WALL_MIN_THICKNESS ) );
 		fPlanes[( 3 * 4 ) + 3] =
-		    vDown.Dot( placement.ptCenter + placement.vUp * PORTAL_HOLE_HALF_HEIGHT );
+		    vDown.Dot( placement.ptCenter + placement.vUp * HoleHalfHeight( placement ) );
 		fPlanes[( 4 * 4 ) + 3] = vLeft.Dot(
-		    placement.ptCenter + vLeft * ( PORTAL_HOLE_HALF_WIDTH + PORTAL_WALL_MIN_THICKNESS ) );
+		    placement.ptCenter + vLeft * ( HoleHalfWidth( placement ) + PORTAL_WALL_MIN_THICKNESS ) );
 		fPlanes[( 5 * 4 ) + 3] = placement.vRight.Dot(
 		    placement.ptCenter +
-		    placement.vRight * ( PORTAL_HOLE_HALF_WIDTH + PORTAL_WALL_MIN_THICKNESS ) );
+		    placement.vRight * ( HoleHalfWidth( placement ) + PORTAL_WALL_MIN_THICKNESS ) );
 
 		CPolyhedron *pTubePolyhedron =
 		    GeneratePolyhedronFromPlanes( fPlanes, 6, PORTAL_POLYHEDRON_CUT_EPSILON );
@@ -326,7 +352,7 @@ inline bool CarveWall( const Placement_t &placement, const float fWallClipPlane_
 		    placement.ptCenter + placement.vUp * ( PORTAL_WALL_FARDIST * 10.0f ) );
 		fPlanes[( 3 * 4 ) + 3] =
 		    vDown.Dot( placement.ptCenter +
-		               placement.vUp * ( PORTAL_HOLE_HALF_HEIGHT + PORTAL_WALL_MIN_THICKNESS ) );
+		               placement.vUp * ( HoleHalfHeight( placement ) + PORTAL_WALL_MIN_THICKNESS ) );
 		fPlanes[( 4 * 4 ) + 3] = fFarLeftPlaneDistance;
 		fPlanes[( 5 * 4 ) + 3] = fFarRightPlaneDistance;
 
@@ -340,14 +366,14 @@ inline bool CarveWall( const Placement_t &placement, const float fWallClipPlane_
 		//minimal portion that extends into the hole space
 		//fPlanes[(1*4) + 3] = fTubeDepthDist;
 		fPlanes[( 2 * 4 ) + 3] =
-		    placement.vUp.Dot( placement.ptCenter + ( vDown * PORTAL_HOLE_HALF_HEIGHT ) );
+		    placement.vUp.Dot( placement.ptCenter + ( vDown * HoleHalfHeight( placement ) ) );
 		fPlanes[( 3 * 4 ) + 3] = vDown.Dot(
-		    placement.ptCenter + vDown * ( PORTAL_HOLE_HALF_HEIGHT + PORTAL_WALL_MIN_THICKNESS ) );
+		    placement.ptCenter + vDown * ( HoleHalfHeight( placement ) + PORTAL_WALL_MIN_THICKNESS ) );
 		fPlanes[( 4 * 4 ) + 3] = vLeft.Dot(
-		    placement.ptCenter + vLeft * ( PORTAL_HOLE_HALF_WIDTH + PORTAL_WALL_MIN_THICKNESS ) );
+		    placement.ptCenter + vLeft * ( HoleHalfWidth( placement ) + PORTAL_WALL_MIN_THICKNESS ) );
 		fPlanes[( 5 * 4 ) + 3] = placement.vRight.Dot(
 		    placement.ptCenter +
-		    placement.vRight * ( PORTAL_HOLE_HALF_WIDTH + PORTAL_WALL_MIN_THICKNESS ) );
+		    placement.vRight * ( HoleHalfWidth( placement ) + PORTAL_WALL_MIN_THICKNESS ) );
 
 		CPolyhedron *pTubePolyhedron =
 		    GeneratePolyhedronFromPlanes( fPlanes, 6, PORTAL_POLYHEDRON_CUT_EPSILON );
@@ -358,7 +384,7 @@ inline bool CarveWall( const Placement_t &placement, const float fWallClipPlane_
 		//fPlanes[(1*4) + 3] += 2000.0f;
 		fPlanes[( 2 * 4 ) + 3] = placement.vUp.Dot(
 		    placement.ptCenter +
-		    ( vDown * ( PORTAL_HOLE_HALF_HEIGHT + PORTAL_WALL_MIN_THICKNESS ) ) );
+		    ( vDown * ( HoleHalfHeight( placement ) + PORTAL_WALL_MIN_THICKNESS ) ) );
 		fPlanes[( 3 * 4 ) + 3] =
 		    vDown.Dot( placement.ptCenter + ( vDown * ( PORTAL_WALL_FARDIST * 10.0f ) ) );
 		fPlanes[( 4 * 4 ) + 3] = fFarLeftPlaneDistance;
@@ -374,14 +400,14 @@ inline bool CarveWall( const Placement_t &placement, const float fWallClipPlane_
 		//minimal portion that extends into the hole space
 		//fPlanes[(1*4) + 3] = fTubeDepthDist;
 		fPlanes[( 2 * 4 ) + 3] =
-		    placement.vUp.Dot( placement.ptCenter + ( placement.vUp * PORTAL_HOLE_HALF_HEIGHT ) );
+		    placement.vUp.Dot( placement.ptCenter + ( placement.vUp * HoleHalfHeight( placement ) ) );
 		fPlanes[( 3 * 4 ) + 3] =
-		    vDown.Dot( placement.ptCenter + ( vDown * PORTAL_HOLE_HALF_HEIGHT ) );
+		    vDown.Dot( placement.ptCenter + ( vDown * HoleHalfHeight( placement ) ) );
 		fPlanes[( 4 * 4 ) + 3] =
 		    vLeft.Dot( placement.ptCenter +
-		               ( vLeft * ( PORTAL_HOLE_HALF_WIDTH + PORTAL_WALL_MIN_THICKNESS ) ) );
+		               ( vLeft * ( HoleHalfWidth( placement ) + PORTAL_WALL_MIN_THICKNESS ) ) );
 		fPlanes[( 5 * 4 ) + 3] =
-		    placement.vRight.Dot( placement.ptCenter + ( vLeft * PORTAL_HOLE_HALF_WIDTH ) );
+		    placement.vRight.Dot( placement.ptCenter + ( vLeft * HoleHalfWidth( placement ) ) );
 
 		CPolyhedron *pTubePolyhedron =
 		    GeneratePolyhedronFromPlanes( fPlanes, 6, PORTAL_POLYHEDRON_CUT_EPSILON );
@@ -392,14 +418,14 @@ inline bool CarveWall( const Placement_t &placement, const float fWallClipPlane_
 		//fPlanes[(1*4) + 3] += 2000.0f;
 		fPlanes[( 2 * 4 ) + 3] = placement.vUp.Dot(
 		    placement.ptCenter +
-		    ( placement.vUp * ( PORTAL_HOLE_HALF_HEIGHT + PORTAL_WALL_MIN_THICKNESS ) ) );
+		    ( placement.vUp * ( HoleHalfHeight( placement ) + PORTAL_WALL_MIN_THICKNESS ) ) );
 		fPlanes[( 3 * 4 ) + 3] = vDown.Dot(
 		    placement.ptCenter -
-		    ( placement.vUp * ( PORTAL_HOLE_HALF_HEIGHT + PORTAL_WALL_MIN_THICKNESS ) ) );
+		    ( placement.vUp * ( HoleHalfHeight( placement ) + PORTAL_WALL_MIN_THICKNESS ) ) );
 		fPlanes[( 4 * 4 ) + 3] = fFarLeftPlaneDistance;
 		fPlanes[( 5 * 4 ) + 3] = placement.vRight.Dot(
 		    placement.ptCenter +
-		    ( vLeft * ( PORTAL_HOLE_HALF_WIDTH + PORTAL_WALL_MIN_THICKNESS ) ) );
+		    ( vLeft * ( HoleHalfWidth( placement ) + PORTAL_WALL_MIN_THICKNESS ) ) );
 
 		bOk = ClipInOrder( pWallClippedPolyhedrons, iWallClippedPolyhedronCount, fSidePlanesOnly, 4,
 		    PORTAL_POLYHEDRON_CUT_EPSILON, &BrushesOut, iMode, pPool );
@@ -411,14 +437,14 @@ inline bool CarveWall( const Placement_t &placement, const float fWallClipPlane_
 		//minimal portion that extends into the hole space
 		//fPlanes[(1*4) + 3] = fTubeDepthDist;
 		fPlanes[( 2 * 4 ) + 3] = placement.vUp.Dot(
-		    placement.ptCenter + ( placement.vUp * ( PORTAL_HOLE_HALF_HEIGHT ) ) );
+		    placement.ptCenter + ( placement.vUp * ( HoleHalfHeight( placement ) ) ) );
 		fPlanes[( 3 * 4 ) + 3] =
-		    vDown.Dot( placement.ptCenter + ( vDown * ( PORTAL_HOLE_HALF_HEIGHT ) ) );
+		    vDown.Dot( placement.ptCenter + ( vDown * ( HoleHalfHeight( placement ) ) ) );
 		fPlanes[( 4 * 4 ) + 3] =
-		    vLeft.Dot( placement.ptCenter + placement.vRight * PORTAL_HOLE_HALF_WIDTH );
+		    vLeft.Dot( placement.ptCenter + placement.vRight * HoleHalfWidth( placement ) );
 		fPlanes[( 5 * 4 ) + 3] = placement.vRight.Dot(
 		    placement.ptCenter +
-		    placement.vRight * ( PORTAL_HOLE_HALF_WIDTH + PORTAL_WALL_MIN_THICKNESS ) );
+		    placement.vRight * ( HoleHalfWidth( placement ) + PORTAL_WALL_MIN_THICKNESS ) );
 
 		CPolyhedron *pTubePolyhedron =
 		    GeneratePolyhedronFromPlanes( fPlanes, 6, PORTAL_POLYHEDRON_CUT_EPSILON );
@@ -429,13 +455,13 @@ inline bool CarveWall( const Placement_t &placement, const float fWallClipPlane_
 		//fPlanes[(1*4) + 3] += 2000.0f;
 		fPlanes[( 2 * 4 ) + 3] = placement.vUp.Dot(
 		    placement.ptCenter +
-		    ( placement.vUp * ( PORTAL_HOLE_HALF_HEIGHT + PORTAL_WALL_MIN_THICKNESS ) ) );
+		    ( placement.vUp * ( HoleHalfHeight( placement ) + PORTAL_WALL_MIN_THICKNESS ) ) );
 		fPlanes[( 3 * 4 ) + 3] =
 		    vDown.Dot( placement.ptCenter +
-		               ( vDown * ( PORTAL_HOLE_HALF_HEIGHT + PORTAL_WALL_MIN_THICKNESS ) ) );
+		               ( vDown * ( HoleHalfHeight( placement ) + PORTAL_WALL_MIN_THICKNESS ) ) );
 		fPlanes[( 4 * 4 ) + 3] =
 		    vLeft.Dot( placement.ptCenter +
-		               placement.vRight * ( PORTAL_HOLE_HALF_WIDTH + PORTAL_WALL_MIN_THICKNESS ) );
+		               placement.vRight * ( HoleHalfWidth( placement ) + PORTAL_WALL_MIN_THICKNESS ) );
 		fPlanes[( 5 * 4 ) + 3] = fFarRightPlaneDistance;
 
 		bOk = ClipInOrder( pWallClippedPolyhedrons, iWallClippedPolyhedronCount, fSidePlanesOnly, 4,

@@ -2296,6 +2296,12 @@ void CCollisionEvent::UpdateDamageEvents( void )
 		}
 #endif
 
+#ifdef FSTOP
+		// F-Stop: physics impacts never damage the player
+		if ( event.pEntity->IsPlayer() )
+			continue;
+#endif // FSTOP
+
 		event.pEntity->TakeDamage( event.info );
 		int iEntBits2 = event.pEntity->IsAlive() ? 0x0001 : 0;
 		iEntBits2 |= event.pEntity->IsMarkedForDeletion() ? 0x0002 : 0;

@@ -75,7 +75,12 @@ CBaseHudWeaponSelection::CBaseHudWeaponSelection( const char *pElementName ) : C
 {
 	s_pInstance = this;
 	
+#ifdef FSTOP
+	// F-Stop: weapon selection is not hidden without the suit or in a vehicle.
+	SetHiddenBits( HIDEHUD_WEAPONSELECTION | HIDEHUD_PLAYERDEAD );
+#else
 	SetHiddenBits( HIDEHUD_WEAPONSELECTION | HIDEHUD_NEEDSUIT | HIDEHUD_PLAYERDEAD | HIDEHUD_INVEHICLE );
+#endif // FSTOP
 }
 
 //-----------------------------------------------------------------------------

@@ -382,6 +382,28 @@ public:
 	string_t GetPhysOverrideScript( void ) { return m_iszOverrideScript; }
 	float	GetMassScale( void ) { return m_massScale; }
 
+#ifdef FSTOP
+	START_BRANCHING_SINGLETON_DEFINITION( CPhotoPlacementQuery )
+	{
+	public:
+		struct PropPlacementData_t
+		{
+			Vector	vecOffset;
+			QAngle	qAlignAngles;
+			bool	bAlignOnlyVertical;
+			bool	bAlignOnlyHorizontal;
+			bool	bPinned;
+		};
+
+		virtual bool GetPlacementPosition_NoHelper( CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, Vector &positionOut, QAngle &anglesOut );
+		bool GetPropPosition( PropPlacementData_t &propData, CaptureInfo_t &captureInfo, CheckPlacementData_t &placementData, Vector &positionOut, QAngle &anglesOut );
+		bool ValidSurface( const Vector &vecNormal, PropPlacementData_t &propData );
+		bool FindPlacementPosition( const Vector &vecEndPos, float flAxisLength, float flCounterAxisLength, const Vector &vecDirection, Vector *vecOut );
+
+	};
+	END_BRANCHING_SINGLETON_DEFINITION( CPhotoPlacementQuery );
+#endif // FSTOP
+
 private:
 	// Compute impulse to apply to the enabled entity.
 	void ComputeEnablingImpulse( int index, gamevcollisionevent_t *pEvent );
@@ -438,5 +460,10 @@ int PropBreakablePrecacheAll( string_t modelName );
 extern ConVar func_breakdmg_bullet;
 extern ConVar func_breakdmg_club;
 extern ConVar func_breakdmg_explosive;
+
+#ifdef FSTOP
+bool UTIL_PropIsMotionDisabled( CBaseEntity *pObject );
+void UTIL_SetPropMotionDisabled( CBaseEntity *pObject );
+#endif // FSTOP
 
 #endif // PROPS_H
