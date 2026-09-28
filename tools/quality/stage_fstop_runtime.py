@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
-"""Stage the F-Stop target: Portal content, F-Stop content overlay, fstop build.
+"""Stage the F-Stop target: Portal content, Valve's F-Stop content, fstop build.
 
 The F-Stop product is the Portal 1 game plus Valve's F-Stop prototype sources
 (`./waf configure --build-games=fstop`, game/{server,client}/fstop). Its
 runtime is a Portal runtime (seeded once from --base-runtime, assets shared by
 symlink) with an `fstop` game directory in front of Portal's content:
 
-  fstop/                the MOD and write path; the fstop client/server in bin/
-  fstop_content/        the F-Stop content root's asset directories (links)
-  fstop_imported/       the content root's imported_fstop asset directories
-  Portal and HL2        exactly as portal/gameinfo.txt mounts them
+  fstop/                      the MOD and write path; the fstop client/server in bin/
+  Portal and HL2              exactly as portal/gameinfo.txt mounts them
+  fstop_valve/                Valve's portal2 asset directories (links)
+  fstop_valve_tempcontent/    Valve's portal2_tempcontent asset directories (links)
 
-Only asset directories of the content root are mounted. Its cfg, resource and
-script trees belong to the DLLs it shipped with, so the only scripts taken are
-the F-Stop weapon scripts and sound files that Portal lacks; the staged sound
-manifest is Portal's with those sound files appended, and the staged
-resource/fstop_english.txt is Portal's strings plus the F-Stop ones it lacks.
+The content root is Valve's own F-Stop-era tree: Steam2 depot 852 version 0
+(extracted; its top level holds portal2/ and portal2_tempcontent/). F-Stop
+was developed inside that Portal 2 tree, so its camera, photo, HUD, chicken,
+farm and android assets live there. They are mounted after Portal and HL2, so
+Portal's own content is unchanged and only what Portal lacks comes from Valve.
+The depot's maps are Portal 2 maps for Portal 2 game code and are not mounted.
+
+Scripts and strings come from the same tree: Valve's sound scripts for the
+F-Stop NPCs and props, its F-Stop HUD layout and PhotoInventory.res, and its
+fstop_* strings. The depot had already dropped the camera and placement weapon
+scripts (its weapon_manifest.txt comments them out) and the Weapon_Camera
+sounds, so those are authored here against Valve's models and sound files.
 """
 
 import argparse
@@ -30,17 +37,107 @@ import stage_runtime
 
 
 GAME = "fstop"
-# Asset directories mounted from <content-root>/fstop and <content-root>/imported_fstop.
-CONTENT_DIRECTORIES = ("maps", "materials", "models", "particles", "sound", "scenes",
-                       "expressions", "media")
-IMPORTED_DIRECTORIES = ("materials", "models", "sound")
-# F-Stop scripts Portal does not have. Sound files are added to the manifest.
-WEAPON_SCRIPTS = ("weapon_camera.txt", "weapon_placement.txt")
-SOUND_SCRIPTS = ("game_sounds_fstop.txt", "game_sounds_props_aperture.txt",
-                 "npc_sounds_android.txt", "npc_sounds_chicken.txt",
-                 "npc_sounds_mannequin.txt", "npc_sounds_zombie_aperture.txt")
+# (content-root directory, runtime link directory, asset directories mounted from it).
+VALVE_CONTENT = (
+    ("portal2", "fstop_valve", ("materials", "models", "sound", "scenes", "expressions",
+                                "particles")),
+    ("portal2_tempcontent", "fstop_valve_tempcontent", ("materials", "models", "sound")),
+)
+# Directories earlier stagings mounted from the Lever Softworks remake's content.
+RETIRED_LINKS = ("fstop_content", "fstop_imported")
+# Valve's F-Stop sound scripts (portal2/scripts); each is added to the manifest.
+VALVE_SOUND_SCRIPTS = ("game_sounds_props_aperture.txt", "game_sounds_spheres_auto_generated.txt",
+                       "npc_sounds_android.txt", "npc_sounds_chicken.txt",
+                       "npc_sounds_hover_turret.txt", "npc_sounds_mannequin.txt",
+                       "npc_sounds_zombie_aperture.txt")
+# Valve's F-Stop particle files (portal2/particles) the F-Stop entities name and
+# Portal's manifest lacks: airvent_* and geyser_* (prop_air_vent, prop_geyser),
+# feathers (npc_chicken), fizzler_* (trigger_photo_eraser) and zombie_* (zombies).
+VALVE_PARTICLES = ("airvents.pcf", "chicken.pcf", "fizzler.pcf", "geyser.pcf", "zombie.pcf")
+# HL2 sound scripts (already mounted) for the NPCs F-Stop spawns: prop_tombstone's
+# zombies with their headcrabs, and the android's strider footsteps.
+HL2_SOUND_SCRIPTS = ("npc_sounds_zombie.txt", "npc_sounds_headcrab.txt",
+                     "npc_sounds_strider.txt")
+# Scripts the depot no longer carries, authored against its models and sounds.
+AUTHORED_SCRIPTS = {
+    "weapon_camera.txt": """WeaponData
+{
+	"printname"		"#FSTOP_Camera"
+	"viewmodel"		"models/weapons/v_cam.mdl"
+	"playermodel"		"models/weapons/w_cam.mdl"
+	"anim_prefix"		"cam"
+	"bucket"		"0"
+	"bucket_position"	"0"
+	"clip_size"		"1"
+	"primary_ammo"		"None"
+	"secondary_ammo"	"None"
+	"weight"		"4"
+	"item_flags"		"0"
+	"autoswitchto"		"1"
+	SoundData
+	{
+		"single_shot"		"Weapon_Camera.Capture"
+		"single_shot_npc"	"Weapon_Camera.Capture"
+	}
+}
+""",
+    "weapon_placement.txt": """WeaponData
+{
+	"printname"		"#FSTOP_Placement"
+	"viewmodel"		"models/weapons/v_photo.mdl"
+	"playermodel"		"models/weapons/w_cam.mdl"
+	"anim_prefix"		"cam"
+	"bucket"		"1"
+	"bucket_position"	"0"
+	"clip_size"		"1"
+	"primary_ammo"		"None"
+	"secondary_ammo"	"None"
+	"weight"		"4"
+	"item_flags"		"0"
+	"autoswitchto"		"1"
+	SoundData
+	{
+		"single_shot"		"Weapon_Portalgun.fire_blue"
+		"double_shot"		"Weapon_Portalgun.fire_red"
+	}
+}
+""",
+    "game_sounds_fstop.txt": """"Weapon_Camera.Capture"
+{
+	"channel"		"CHAN_WEAPON"
+	"volume"		"0.9"
+	"soundlevel"	"SNDLVL_NORM"
+	"wave"		"camera/snapshot.wav"
+}
+
+"Weapon_Camera.Release"
+{
+	"channel"		"CHAN_WEAPON"
+	"volume"		"0.9"
+	"soundlevel"	"SNDLVL_NORM"
+	"wave"		"camera/release.wav"
+}
+
+"PhotoInventory.Erased"
+{
+	"channel"		"CHAN_ITEM"
+	"volume"		"0.9"
+	"soundlevel"	"SNDLVL_NORM"
+	"rndwave"
+	{
+		"wave"	"camera/photo_erase1.wav"
+		"wave"	"camera/photo_erase2.wav"
+		"wave"	"camera/photo_erase3.wav"
+	}
+}
+""",
+}
+AUTHORED_SOUND_SCRIPTS = ("game_sounds_fstop.txt",)
+# Strings the authored weapon scripts name; Valve's are taken by prefix.
+AUTHORED_TOKENS = {"FSTOP_Camera": "CAMERA", "FSTOP_Placement": "PHOTOS"}
+VALVE_TOKEN_PREFIX = "fstop_"
 # Resource files the F-Stop HUD loads (LoadControlSettings) that Portal lacks.
-RESOURCE_FILES = ("photoinventory.res",)
+RESOURCE_FILES = ("photoinventory.res", "controlhelper.res", "indicator.res")
 # F-Stop HUD elements (game/client/fstop) the staged HUD layout must place.
 HUD_ELEMENTS = ("HudControlHelper", "HudPhotoInventory", "HudViewfinder", "HudIndicator")
 # Portal gameinfo entries that make Portal the MOD or its gamebin. Portal's loose
@@ -67,23 +164,39 @@ def find_child(directory, name):
 
 
 def link_assets(source_root, destination, names):
-    """Replace `destination` with links to the present asset directories of `source_root`."""
+    """Replace `destination` with a lowercase mirror of `source_root`'s asset directories.
+
+    The engine looks assets up by lowercase path and Valve's tree came from a
+    case-insensitive Windows filesystem (materials/HUD, models/Camera), so each
+    file is linked under its lowercased relative path. Of names that differ only
+    in case, the first in sorted order is kept. Returns the mirrored directory
+    names and the number of files dropped that way.
+    """
     if destination.is_symlink() or destination.is_file():
         destination.unlink()
     elif destination.exists():
         shutil.rmtree(destination)
     destination.mkdir(parents=True)
-    linked = []
+    linked, shadowed = [], 0
     for name in names:
         source = find_child(source_root, name)
-        if source is not None and source.is_dir():
-            (destination / name).symlink_to(source.resolve())
-            linked.append(name)
-    return linked
+        if source is None or not source.is_dir():
+            continue
+        linked.append(name)
+        for path in sorted(source.rglob("*")):
+            if not path.is_file():
+                continue
+            target = destination / name / path.relative_to(source).as_posix().lower()
+            if target.exists() or target.is_symlink():
+                shadowed += 1
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(path.resolve())
+    return linked, shadowed
 
 
 def search_paths(portal_gameinfo):
-    """F-Stop's SearchPaths lines: fstop and its overlay, then Portal's content paths."""
+    """F-Stop's SearchPaths lines: fstop, Portal's content paths, then Valve's F-Stop content."""
     start = portal_gameinfo.find("SearchPaths")
     open_brace = portal_gameinfo.find("{", start)
     close_brace = portal_gameinfo.find("}", open_brace)
@@ -92,8 +205,6 @@ def search_paths(portal_gameinfo):
     first, lines = [], [
         "\t\t\tgame+mod+mod_write+game_write+default_write_path\t|gameinfo_path|.",
         "\t\t\tgamebin\t\t\t\t|gameinfo_path|bin",
-        "\t\t\tgame\t\t\t\tfstop_content",
-        "\t\t\tgame\t\t\t\tfstop_imported",
     ]
     for line in portal_gameinfo[open_brace + 1:close_brace].splitlines():
         entry = line.split("//", 1)[0].split()
@@ -105,6 +216,7 @@ def search_paths(portal_gameinfo):
         if kinds:
             (first if SHADER_OVERLAY in entry[1] else lines).append(
                 "\t\t\t%s\t\t\t%s" % ("+".join(kinds), entry[1]))
+    lines += ["\t\t\tgame\t\t\t\t%s" % link for _, link, _ in VALVE_CONTENT]
     return portal_gameinfo[:start], first + lines, portal_gameinfo[close_brace + 1:]
 
 
@@ -118,14 +230,17 @@ def write_gameinfo(runtime):
 
 
 def write_scripts(runtime, content_scripts):
+    """Valve's F-Stop sound scripts, the authored ones, and Portal's manifest naming them all."""
     scripts = runtime / GAME / "scripts"
     scripts.mkdir(parents=True, exist_ok=True)
     copied = []
-    for name in WEAPON_SCRIPTS + SOUND_SCRIPTS:
+    for name in VALVE_SOUND_SCRIPTS:
         source = find_child(content_scripts, name) if content_scripts.is_dir() else None
         if source is not None and source.is_file():
             shutil.copyfile(source, scripts / name)
             copied.append(name)
+    for name, text in AUTHORED_SCRIPTS.items():
+        (scripts / name).write_text(text, encoding="latin-1")
     found = source_content.ContentResolver(runtime).read("scripts/game_sounds_manifest.txt")
     manifest = found[0] if found else None
     if manifest is None:
@@ -133,10 +248,27 @@ def write_scripts(runtime, content_scripts):
     manifest = manifest.decode("latin-1")
     close = manifest.rfind("}")
     added = "".join('\t"precache_file"\t\t"scripts/%s"\n' % name
-                    for name in SOUND_SCRIPTS if name in copied)
+                    for name in copied + list(AUTHORED_SOUND_SCRIPTS + HL2_SOUND_SCRIPTS))
     manifest = manifest[:close] + "\n\t// F-Stop\n" + added + manifest[close:]
     (scripts / "game_sounds_manifest.txt").write_text(manifest, encoding="latin-1")
     return copied
+
+
+def write_particles(runtime):
+    """particles/particles_manifest.txt: Portal's manifest plus Valve's F-Stop particle files."""
+    found = source_content.ContentResolver(runtime).read("particles/particles_manifest.txt")
+    if not found or found[0] is None:
+        raise ValueError("the Portal runtime has no particles/particles_manifest.txt")
+    manifest = found[0].decode("latin-1")
+    listed = {m.lower() for m in re.findall(r'"file"\s+"!?particles/([^"]+)"', manifest)}
+    added = [name for name in VALVE_PARTICLES if name not in listed]
+    close = manifest.rfind("}")
+    manifest = (manifest[:close] + "\n\t// F-Stop (Valve's portal2 particles)\n" +
+                "".join('\t"file"\t\t"particles/%s"\n' % name for name in added) + manifest[close:])
+    particles = runtime / GAME / "particles"
+    particles.mkdir(parents=True, exist_ok=True)
+    (particles / "particles_manifest.txt").write_text(manifest, encoding="latin-1")
+    return added
 
 
 def layout_block(text, name):
@@ -196,7 +328,9 @@ def decode_localization(data):
 
 
 def write_localization(runtime, content_resource):
-    """resource/fstop_english.txt: Portal's tokens plus the content root's missing ones.
+    """resource/fstop_english.txt: Portal's tokens plus Valve's F-Stop ones and the authored ones.
+
+    Valve's are the fstop_* tokens of its portal2_english.txt that Portal lacks.
 
     The engine loads resource/<mod>_<language>.txt (vgui_baseui_interface.cpp),
     so with the fstop game directory Portal's portal_english.txt is not read.
@@ -208,13 +342,19 @@ def write_localization(runtime, content_resource):
     token = re.compile(r'^\s*"([^"]+)"\s+"((?:[^"\\]|\\.)*)"\s*(\[[^\]]*\])?\s*$')
     present = {match.group(1).lower() for match in map(token.match, portal.splitlines()) if match}
     extra = []
-    source = find_child(content_resource, "fstop_english.txt") if content_resource.is_dir() else None
+    source = (find_child(content_resource, "portal2_english.txt")
+              if content_resource.is_dir() else None)
+    candidates = list(AUTHORED_TOKENS.items())
     if source is not None:
         for line in decode_localization(source.read_bytes()).splitlines():
             match = token.match(line)
-            if match and not match.group(3) and match.group(1).lower() not in present:
-                present.add(match.group(1).lower())
-                extra.append('\t\t"%s"\t\t"%s"' % (match.group(1), match.group(2)))
+            if (match and not match.group(3)
+                    and match.group(1).lower().startswith(VALVE_TOKEN_PREFIX)):
+                candidates.append((match.group(1), match.group(2)))
+    for name, value in candidates:
+        if name.lower() not in present:
+            present.add(name.lower())
+            extra.append('\t\t"%s"\t\t"%s"' % (name, value))
     tokens = portal.find('"Tokens"')
     close = portal.rfind("}", 0, portal.rfind("}"))
     if tokens < 0 or close < 0:
@@ -233,9 +373,11 @@ def write_localization(runtime, content_resource):
 def stage(runtime, base_runtime, content_root, build=None):
     runtime = Path(runtime).resolve()
     content_root = Path(content_root).resolve()
-    fstop_content = find_child(content_root, "fstop") if content_root.is_dir() else None
-    if fstop_content is None:
-        raise SystemExit("stage_fstop_runtime: %s has no fstop content directory" % content_root)
+    roots = {name: find_child(content_root, name) if content_root.is_dir() else None
+             for name, _, _ in VALVE_CONTENT}
+    if not all(root is not None and root.is_dir() for root in roots.values()):
+        raise SystemExit("stage_fstop_runtime: %s is not Valve's depot 852 tree (needs %s)"
+                         % (content_root, " and ".join(roots)))
     if not (runtime / "portal/gameinfo.txt").is_file():
         if runtime.exists():
             raise SystemExit("stage_fstop_runtime: %s exists but has no portal/gameinfo.txt"
@@ -246,20 +388,29 @@ def stage(runtime, base_runtime, content_root, build=None):
         print("stage_fstop_runtime: seeding %s from %s" % (runtime, base_runtime))
         portal_boot.stage_runtime(Path(base_runtime), runtime)
     (runtime / GAME / "bin").mkdir(parents=True, exist_ok=True)
-    linked = link_assets(fstop_content, runtime / "fstop_content", CONTENT_DIRECTORIES)
-    imported = find_child(content_root, "imported_fstop")
-    linked_imported = (link_assets(imported, runtime / "fstop_imported", IMPORTED_DIRECTORIES)
-                       if imported is not None else [])
+    for name in RETIRED_LINKS:
+        retired = runtime / name
+        if retired.is_symlink() or retired.is_file():
+            retired.unlink()
+        elif retired.exists():
+            shutil.rmtree(retired)
+    linked, shadowed = [], 0
+    for name, link, directories in VALVE_CONTENT:
+        mirrored, dropped = link_assets(roots[name], runtime / link, directories)
+        linked += ["%s/%s" % (name, directory) for directory in mirrored]
+        shadowed += dropped
     write_gameinfo(runtime)
     write_blob_material(runtime)
-    content_scripts = find_child(fstop_content, "scripts") or fstop_content / "scripts"
+    valve = roots["portal2"]
+    content_scripts = find_child(valve, "scripts") or valve / "scripts"
     copied = write_scripts(runtime, content_scripts)
+    particles = write_particles(runtime)
     hud = write_hud_layout(runtime, content_scripts)
-    tokens = write_localization(runtime,
-                                find_child(fstop_content, "resource") or fstop_content / "resource")
-    print("stage_fstop_runtime: content %s; imported %s; scripts %s; %d HUD elements; "
-          "%d F-Stop tokens" % (",".join(linked) or "-", ",".join(linked_imported) or "-",
-                                ",".join(copied) or "-", hud, tokens))
+    tokens = write_localization(runtime, find_child(valve, "resource") or valve / "resource")
+    print("stage_fstop_runtime: Valve content %s (%d case duplicates skipped); Valve sound "
+          "scripts %s; particles %s; %d HUD elements; %d F-Stop tokens"
+          % (",".join(linked) or "-", shadowed, ",".join(copied) or "-",
+             ",".join(particles) or "-", hud, tokens))
     if build is not None:
         installed = portal_boot.install_build(Path(build), runtime, game=GAME)
         removed = stage_runtime.sanitize(runtime)
@@ -274,7 +425,7 @@ def main(argv=None):
     parser.add_argument("--base-runtime", type=Path,
                         help="a Portal runtime (portal/gameinfo.txt) to seed a new runtime from")
     parser.add_argument("--content-root", type=Path, required=True,
-                        help="directory holding the F-Stop game content (fstop/, imported_fstop/)")
+                        help="Valve's extracted depot 852 tree (portal2/, portal2_tempcontent/)")
     parser.add_argument("--build", type=Path, help="a Waf tree configured with --build-games=fstop")
     args = parser.parse_args(argv)
     stage(args.runtime, args.base_runtime, args.content_root, args.build)

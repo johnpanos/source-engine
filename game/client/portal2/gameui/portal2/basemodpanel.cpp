@@ -351,6 +351,8 @@ CBaseModPanel::CBaseModPanel(): BaseClass(0, "CBaseModPanel"),
 	m_bMovieLetterbox = false;
 	m_nMoviePlaybackWidth = 0;
 	m_nMoviePlaybackHeight = 0;
+	m_nMovieParamsWide = 0;
+	m_nMovieParamsTall = 0;
 
 	m_iStartupImageID = -1;
 
@@ -2999,6 +3001,8 @@ void CBaseModPanel::CalculateMovieParameters( BIKMaterial_t hBIKMaterial, bool b
 
 	m_flU0 = m_flV0 = 0.0f;
 	g_pBIK->GetTexCoordRange( hBIKMaterial, &m_flU1, &m_flV1 );
+	m_nMovieParamsWide = GetWide();
+	m_nMovieParamsTall = GetTall();
 
 	int nWidth, nHeight;
 	g_pBIK->GetFrameSize( hBIKMaterial, &nWidth, &nHeight );
@@ -3197,6 +3201,12 @@ bool CBaseModPanel::RenderMovie( BIKMaterial_t hBIKMaterial )
 	{
 		CalculateMovieParameters( hBIKMaterial );
 	}
+	// The panel follows the screen (in UI units); a window resize or UI scale
+	// change needs a new letterbox or crop.
+	else if ( m_nMovieParamsWide != GetWide() || m_nMovieParamsTall != GetTall() )
+	{
+		CalculateMovieParameters( hBIKMaterial, m_bMovieLetterbox );
+	}
 
 	// Update our frame, but only if Bink is ready for us to process another frame.
 	// We aren't really swapping here, but ReadyForSwap is a good way to throttle.
@@ -3220,6 +3230,7 @@ bool CBaseModPanel::RenderMovie( BIKMaterial_t hBIKMaterial )
 
 	if ( m_bMovieLetterbox && ( m_nMoviePlaybackWidth != nScreenWide || m_nMoviePlaybackHeight != nScreenTall ) )
 	{
+		xpos = ( nScreenWide - m_nMoviePlaybackWidth ) / 2;
 		ypos = ( nScreenTall - m_nMoviePlaybackHeight )/2;
 
 		vgui::surface()->DrawSetColor(  0, 0, 0, 255 );
@@ -3245,19 +3256,26 @@ bool CBaseModPanel::RenderMovie( BIKMaterial_t hBIKMaterial )
 	IMesh* pMesh = pRenderContext->GetDynamicMesh( true );
 	meshBuilder.Begin( pMesh, MATERIAL_QUADS, 1 );
 
-	float flLeftX = xpos;
-	float flRightX = xpos + ( m_nMoviePlaybackWidth - 1 );
+	// The panel's sizes are in UI units, but the quad is mapped over the
+	// viewport in pixels.
+	float flUnitsPerPixelX, flUnitsPerPixelY;
+	GetVGuiUnitsPerPixel( flUnitsPerPixelX, flUnitsPerPixelY );
+	const float flPlaybackWidth = MAX( 1.0f, m_nMoviePlaybackWidth / flUnitsPerPixelX );
+	const float flPlaybackHeight = MAX( 1.0f, m_nMoviePlaybackHeight / flUnitsPerPixelY );
 
-	float flTopY = ypos;
-	float flBottomY = ypos + ( m_nMoviePlaybackHeight - 1 );
+	float flLeftX = xpos / flUnitsPerPixelX;
+	float flRightX = flLeftX + ( flPlaybackWidth - 1 );
+
+	float flTopY = ypos / flUnitsPerPixelY;
+	float flBottomY = flTopY + ( flPlaybackHeight - 1 );
 
 	// Map our UVs to cut out just the portion of the video we're interested in
 	float flLeftU = m_flU0;
 	float flTopV = m_flV0;
 
 	// We need to subtract off a pixel to make sure we don't bleed
-	float flRightU = m_flU1 - ( 1.0f / (float)nScreenWide );
-	float flBottomV = m_flV1 - ( 1.0f / (float)nScreenTall );
+	float flRightU = m_flU1 - ( 1.0f / MAX( 1.0f, nScreenWide / flUnitsPerPixelX ) );
+	float flBottomV = m_flV1 - ( 1.0f / MAX( 1.0f, nScreenTall / flUnitsPerPixelY ) );
 
 	// Get the current viewport size
 	int vx, vy, vw, vh;

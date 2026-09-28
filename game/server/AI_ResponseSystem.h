@@ -4,6 +4,13 @@
 //
 //=============================================================================//
 
+// Products built with RESPONSE_RULES_LIBRARY (the F-Stop product) use the
+// cstrike15 response rules library and its speech code (game/server/rr_speech,
+// responserules/runtime) in place of this header's speech system.
+#if defined( RESPONSE_RULES_LIBRARY )
+#include "rr_speech/ai_responsesystem.h"
+#else
+
 #ifndef AI_RESPONSESYSTEM_H
 #define AI_RESPONSESYSTEM_H
 
@@ -39,3 +46,4 @@ class ISaveRestoreBlockHandler *GetDefaultResponseSystemSaveRestoreBlockHandler(
 class ISaveRestoreOps *GetResponseSystemSaveRestoreOps();
 
 #endif // AI_RESPONSESYSTEM_H
+#endif // RESPONSE_RULES_LIBRARY

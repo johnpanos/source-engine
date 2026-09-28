@@ -63,9 +63,10 @@ public:
 	// Current actor
 	CChoreoActor	*m_pActor;
 
-#if defined( PORTAL2 ) && defined( GAME_DLL )
+#if ( defined( PORTAL2 ) || defined( RESPONSE_RULES_LIBRARY ) ) && defined( GAME_DLL )
 	// Portal 2 port: the scene entity playing this event (CS:GO base), for
-	// the GetCurrentScene/GetSceneByIndex script functions.
+	// the GetCurrentScene/GetSceneByIndex script functions. F-Stop's companion
+	// bots resolve scene names through it.
 	EHANDLE			m_hSceneEntity;
 #endif
 

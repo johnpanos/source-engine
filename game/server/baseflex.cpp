@@ -24,6 +24,8 @@
 #include "datacache/imdlcache.h"
 #include "tier1/byteswap.h"
 
+#include "flexcycler.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -426,7 +428,7 @@ bool CBaseFlex::ClearSceneEvent( CSceneEventInfo *info, bool fastKill, bool canc
 //			expression - 
 //			duration - 
 //-----------------------------------------------------------------------------
-#ifdef PORTAL2
+#if defined( PORTAL2 ) || defined( RESPONSE_RULES_LIBRARY )
 void CBaseFlex::AddSceneEvent( CChoreoScene *scene, CChoreoEvent *event, CBaseEntity *pTarget, CBaseEntity *pSceneEntity )
 #else
 void CBaseFlex::AddSceneEvent( CChoreoScene *scene, CChoreoEvent *event, CBaseEntity *pTarget )
@@ -454,7 +456,7 @@ void CBaseFlex::AddSceneEvent( CChoreoScene *scene, CChoreoEvent *event, CBaseEn
 	info.m_pScene		= scene;
 	info.m_hTarget		= pTarget;
 	info.m_bStarted	= false;
-#ifdef PORTAL2
+#if defined( PORTAL2 ) || defined( RESPONSE_RULES_LIBRARY )
 	info.m_hSceneEntity = pSceneEntity;
 #endif
 
@@ -2224,73 +2226,22 @@ float CSceneEventInfo::UpdateWeight( CBaseFlex *pActor )
 // Purpose: 
 //-----------------------------------------------------------------------------
 
-class CFlexCycler : public CBaseFlex
-{
-private:
-	DECLARE_CLASS( CFlexCycler, CBaseFlex );
-public:
-	DECLARE_DATADESC();
-
-	CFlexCycler() { m_iszSentence = NULL_STRING; m_sentence = 0; }
-	void GenericCyclerSpawn(char *szModel, Vector vecMin, Vector vecMax);
-	virtual int	ObjectCaps( void ) { return (BaseClass::ObjectCaps() | FCAP_IMPULSE_USE); }
-	int OnTakeDamage( const CTakeDamageInfo &info );
-	void Spawn( void );
-	void Think( void );
-
-	virtual void ProcessSceneEvents( void );
-
-	// Don't treat as a live target
-	virtual bool IsAlive( void ) { return FALSE; }
-
-	float m_flextime;
-	LocalFlexController_t m_flexnum;
-	float m_flextarget[64];
-	float m_blinktime;
-	float m_looktime;
-	Vector m_lookTarget;
-	float m_speaktime;
-	int	m_istalking;
-	int	m_phoneme;
-
-	string_t m_iszSentence;
-	int m_sentence;
-
-	void SetFlexTarget( LocalFlexController_t flexnum );
-	LocalFlexController_t LookupFlex( const char *szTarget );
-};
+// CFlexCycler and CGenericFlexCycler are declared in flexcycler.h (as in cstrike15,
+// where flex_expresser.h derives from them).
 
 BEGIN_DATADESC( CFlexCycler )
 
-	DEFINE_FIELD( m_flextime, FIELD_TIME ),
-	DEFINE_FIELD( m_flexnum, FIELD_INTEGER ),
-	DEFINE_ARRAY( m_flextarget, FIELD_FLOAT, 64 ),
-	DEFINE_FIELD( m_blinktime, FIELD_TIME ),
-	DEFINE_FIELD( m_looktime, FIELD_TIME ),
-	DEFINE_FIELD( m_lookTarget, FIELD_POSITION_VECTOR ),
-	DEFINE_FIELD( m_speaktime, FIELD_TIME ),
-	DEFINE_FIELD( m_istalking, FIELD_INTEGER ),
-	DEFINE_FIELD( m_phoneme, FIELD_INTEGER ),
-	DEFINE_KEYFIELD( m_iszSentence, FIELD_STRING, "Sentence" ),
-	DEFINE_FIELD( m_sentence, FIELD_INTEGER ),
+DEFINE_FIELD( m_flextime, FIELD_TIME ), DEFINE_FIELD( m_flexnum, FIELD_INTEGER ),
+    DEFINE_ARRAY( m_flextarget, FIELD_FLOAT, 64 ), DEFINE_FIELD( m_blinktime, FIELD_TIME ),
+    DEFINE_FIELD( m_looktime, FIELD_TIME ), DEFINE_FIELD( m_lookTarget, FIELD_POSITION_VECTOR ),
+    DEFINE_FIELD( m_speaktime, FIELD_TIME ), DEFINE_FIELD( m_istalking, FIELD_INTEGER ),
+    DEFINE_FIELD( m_phoneme, FIELD_INTEGER ),
+    DEFINE_KEYFIELD( m_iszSentence, FIELD_STRING, "Sentence" ),
+    DEFINE_FIELD( m_sentence, FIELD_INTEGER ),
 
-END_DATADESC()
+    END_DATADESC()
 
-
-//
-// we should get rid of all the other cyclers and replace them with this.
-//
-class CGenericFlexCycler : public CFlexCycler
-{
-public:
-	DECLARE_CLASS( CGenericFlexCycler, CFlexCycler );
-
-	void Spawn( void ) { GenericCyclerSpawn( (char *)STRING( GetModelName() ), Vector(-16, -16, 0), Vector(16, 16, 72) ); }
-};
-
-LINK_ENTITY_TO_CLASS( cycler_flex, CGenericFlexCycler );
-
-
+        LINK_ENTITY_TO_CLASS( cycler_flex, CGenericFlexCycler );
 
 ConVar	flex_expression( "flex_expression","-" );
 ConVar	flex_talk( "flex_talk","0" );

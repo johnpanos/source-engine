@@ -14,7 +14,8 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-#define PORTAL_LINKED_DOOR_MODEL_NAME "models/props/door_02.mdl"
+// Valve's model; it ships in Steam2 depot 852 (portal2/models/props).
+#define PORTAL_LINKED_DOOR_MODEL_NAME "models/props/portaldoor.mdl"
 #define PORTAL_LINKED_DOOR_RESTING_SURFACE_TRACE_DIST 1.5f
 
 

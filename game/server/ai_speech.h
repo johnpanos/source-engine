@@ -5,6 +5,13 @@
 // $NoKeywords: $
 //=============================================================================//
 
+// Products built with RESPONSE_RULES_LIBRARY (the F-Stop product) use the
+// cstrike15 response rules library and its speech code (game/server/rr_speech,
+// responserules/runtime) in place of this header's speech system.
+#if defined( RESPONSE_RULES_LIBRARY )
+#include "rr_speech/ai_speech.h"
+#else
+
 #ifndef AI_SPEECH_H
 #define AI_SPEECH_H
 
@@ -399,3 +406,4 @@ inline void CAI_ExpresserHost<BASE_NPC>::DispatchResponse( const char *conceptNa
 //-----------------------------------------------------------------------------
 
 #endif // AI_SPEECH_H
+#endif // RESPONSE_RULES_LIBRARY

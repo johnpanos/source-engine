@@ -87,11 +87,23 @@ IResponseSystem *CBaseMultiplayerPlayer::GetResponseSystem()
 //-----------------------------------------------------------------------------
 // Purpose: Doesn't actually speak the concept. Just finds a response in the system. You then have to play it yourself.
 //-----------------------------------------------------------------------------
+#if defined( RESPONSE_RULES_LIBRARY )
+//-----------------------------------------------------------------------------
+// Purpose: Fill out given response with the appropriate one for this concept
+//-----------------------------------------------------------------------------
+void CBaseMultiplayerPlayer::SpeakConcept( AI_Response &outResponse, int iConcept )
+{
+	m_iCurrentConcept = iConcept;
+	AIConcept_t speechConcept( g_pszMPConcepts[iConcept] );
+	FindResponse( outResponse, speechConcept );
+}
+#else
 AI_Response *CBaseMultiplayerPlayer::SpeakConcept( int iConcept )
 {
 	m_iCurrentConcept = iConcept;
 	return SpeakFindResponse( g_pszMPConcepts[iConcept] );
 }
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 

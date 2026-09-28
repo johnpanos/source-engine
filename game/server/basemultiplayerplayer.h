@@ -32,7 +32,11 @@ public:
 
 	virtual bool			SpeakIfAllowed( AIConcept_t speechConcept, const char *modifiers = NULL, char *pszOutResponseChosen = NULL, size_t bufsize = 0, IRecipientFilter *filter = NULL );
 	virtual IResponseSystem *GetResponseSystem();
+#if defined( RESPONSE_RULES_LIBRARY )
+	void SpeakConcept( AI_Response &outResponse, int iConcept );
+#else
 	AI_Response				*SpeakConcept( int iConcept );
+#endif
 	virtual bool			SpeakConceptIfAllowed( int iConcept, const char *modifiers = NULL, char *pszOutResponseChosen = NULL, size_t bufsize = 0, IRecipientFilter *filter = NULL );
 
 	virtual bool		CanHearAndReadChatFrom( CBasePlayer *pPlayer );

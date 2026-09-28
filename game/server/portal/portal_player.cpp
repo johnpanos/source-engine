@@ -578,6 +578,18 @@ void CPortal_Player::UpdateExpression( void )
 	GetExpresser()->SetOuter( this );
 
 	ClearExpression();
+#if defined( RESPONSE_RULES_LIBRARY )
+	AI_Response response;
+	AIConcept_t speechConcept( g_pszChellConcepts[iConcept] );
+	if ( !FindResponse( response, speechConcept ) )
+	{
+		m_flExpressionLoopTime = gpGlobals->curtime + RandomFloat( 30, 40 );
+		return;
+	}
+
+	char szScene[256] = { 0 };
+	response.GetResponse( szScene, sizeof( szScene ) );
+#else
 	AI_Response *response = SpeakFindResponse( g_pszChellConcepts[iConcept] );
 	if ( !response )
 	{
@@ -587,6 +599,7 @@ void CPortal_Player::UpdateExpression( void )
 
 	char szScene[256] = { 0 };
 	response->GetResponse( szScene, sizeof(szScene) );
+#endif
 
 	// Ignore updates that choose the same scene
 	if ( m_iszExpressionScene != NULL_STRING && stricmp( STRING(m_iszExpressionScene), szScene ) == 0 )

@@ -43,6 +43,7 @@ protected:
 	virtual void	OnKeyCodePressed(vgui::KeyCode code);
 	virtual void	OnCommand( const char *command );
 	virtual void	OnThink();
+	virtual void PreApplyControlSettings( KeyValues *pResourceData );
 
 private:
 	void	GetSettings( bool bRecommendedSettings );
@@ -54,6 +55,7 @@ private:
 	void	GetResolutionName( vmode_t *pMode, char *pOutBuffer, int nOutBufferSize, bool &bIsNative );
 	void	ShowPowerSavingsWarning();
 	void	SetPowerSavingsState();
+	void SetUIScaleState();
 
 private:
 	int					m_nNumResolutionModes;
@@ -67,6 +69,7 @@ private:
 	BaseModHybridButton		*m_drpDisplayMode;
 	BaseModHybridButton		*m_drpPowerSavingsMode;
 	BaseModHybridButton		*m_drpSplitScreenDirection;
+	BaseModHybridButton *m_drpUIScale;
 	BaseModHybridButton		*m_btnAdvanced;
 	
 	bool	m_bDirtyValues;
@@ -78,6 +81,7 @@ private:
 	bool	m_bWindowed;
 	bool	m_bNoBorder;
 	int		m_nPowerSavingsMode;
+	float m_flUIScale; // ui_scale; 0 follows the display's scale
 
 	int		m_iCurrentResolutionWidth;
 	int		m_iCurrentResolutionHeight;

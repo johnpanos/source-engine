@@ -73,6 +73,11 @@
 #include "portal2/portal2_shared_compat.h"
 #endif
 
+#if defined( RESPONSE_RULES_LIBRARY )
+// CAI_Expresser::FireEntIOFromResponse (DispatchResponse)
+#include "ai_speech.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -6770,7 +6775,11 @@ void CBaseEntity::AddContext( const char *contextName )
 	while ( p )
 	{
 		duration = 0.0f;
+#if defined( RESPONSE_RULES_LIBRARY )
+		p = SplitContext( p, key, sizeof( key ), value, sizeof( value ), &duration, contextName );
+#else
 		p = SplitContext( p, key, sizeof( key ), value, sizeof( value ), &duration );
+#endif
 		if ( duration )
 		{
 			duration += gpGlobals->curtime;
@@ -6909,6 +6918,9 @@ void CBaseEntity::DispatchResponse( const char *conceptName )
 	// Handle the response here...
 	char response[ 256 ];
 	result.GetResponse( response, sizeof( response ) );
+#if defined( RESPONSE_RULES_LIBRARY )
+	using namespace ResponseRules;
+#endif
 	switch ( result.GetType() )
 	{
 	case RESPONSE_SPEAK:
@@ -6941,10 +6953,17 @@ void CBaseEntity::DispatchResponse( const char *conceptName )
 
 		}
 		break;
-	default:
-		// Don't know how to handle .vcds!!!
-		break;
-	}
+#if defined( RESPONSE_RULES_LIBRARY )
+	    case RESPONSE_ENTITYIO:
+	    {
+		    CAI_Expresser::FireEntIOFromResponse( response, this );
+		    break;
+	    }
+#endif
+	    default:
+		    // Don't know how to handle .vcds!!!
+		    break;
+	    }
 }
 
 //-----------------------------------------------------------------------------

@@ -113,7 +113,10 @@ void CFXDiscreetLine::Draw( double frametime )
 	// Better, more visible tracers
 	if ( tracer_extra.GetBool() )
 	{
-		float flScreenWidth = ScreenWidth();
+		// The view's width in pixels (ScreenWidth() is in UI units).
+		int nViewportX, nViewportY, nViewportWide, nViewportTall;
+		pRenderContext->GetViewport( nViewportX, nViewportY, nViewportWide, nViewportTall );
+		float flScreenWidth = nViewportWide;
 		float flHalfScreenWidth = flScreenWidth * 0.5f;
 		
 		float zCoord = CurrentViewForward().Dot( vecStart - CurrentViewOrigin() );

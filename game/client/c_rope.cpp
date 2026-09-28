@@ -1767,8 +1767,14 @@ void C_RopeKeyframe::BuildRope( RopeSegData_t *pSegmentData, const Vector &vCurr
 	// First draw a translucent rope underneath the solid rope for an antialiasing effect.
 	if ( ShouldUseFakeAA( m_pBackMaterial ) )
 	{
-		// Compute screen width
-		float flScreenWidth = ScreenWidth();
+		// The view's width in pixels (these widths are pixel thresholds;
+		// ScreenWidth() is in UI units, and this may run on the render thread).
+		int nViewportX, nViewportY, nViewportWide, nViewportTall;
+		{
+			CMatRenderContextPtr pRenderContext( materials );
+			pRenderContext->GetViewport( nViewportX, nViewportY, nViewportWide, nViewportTall );
+		}
+		float flScreenWidth = nViewportWide;
 		float flHalfScreenWidth = flScreenWidth / 2.0f;
 
 		float flExtraScreenSpaceWidth = rope_smooth_enlarge.GetFloat();

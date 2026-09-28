@@ -7,6 +7,7 @@
 // $NoKeywords: $
 //=============================================================================//
 #include "cbase.h"
+#include <vgui/ILocalize.h>
 #include <stdarg.h>
 #include "imessagechars.h"
 #include <vgui/IVGui.h>
@@ -251,8 +252,13 @@ int CMessageCharsPanel::AddText(
 	else
 		msg->hCustomFont = m_hFont;
 
-	// Return new cursor position
-	return x + g_pMatSystemSurface->DrawTextLen( msg->hCustomFont, "%s", data );
+	// Return new cursor position: the width the text advances (GetTextSize);
+	// DrawTextLen leaves out each character's leading space.
+	wchar_t wszText[1024];
+	g_pVGuiLocalize->ConvertANSIToUnicode( data, wszText, sizeof( wszText ) );
+	int nTextWide, nTextTall;
+	vgui::surface()->GetTextSize( msg->hCustomFont, wszText, nTextWide, nTextTall );
+	return x + nTextWide;
 }
 
 //-----------------------------------------------------------------------------
@@ -272,7 +278,12 @@ void CMessageCharsPanel::GetTextExtents( vgui::HFont hCustomFont, int *wide, int
 
 	Assert( hCustomFont );
 
-	*wide = g_pMatSystemSurface->DrawTextLen( hCustomFont, "%s", (char *)string );
+	// The width DrawColoredText advances (GetTextSize); DrawTextLen leaves out
+	// each character's leading space.
+	wchar_t wszText[1024];
+	g_pVGuiLocalize->ConvertANSIToUnicode( string, wszText, sizeof( wszText ) );
+	int nTextTall;
+	vgui::surface()->GetTextSize( hCustomFont, wszText, *wide, nTextTall );
 	*tall = vgui::surface()->GetFontTall( hCustomFont );
 }
 

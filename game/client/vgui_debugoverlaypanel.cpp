@@ -6,6 +6,7 @@
 // $NoKeywords: $
 //=============================================================================//
 #include "cbase.h"
+#include <vgui/ILocalize.h>
 #include "idebugoverlaypanel.h"
 #include "overlaytext.h"
 #include <vgui/IVGui.h>
@@ -132,8 +133,13 @@ void CDebugOverlay::Paint()
 			{
 				if (!debugoverlay->ScreenPosition( pCurrText->origin, screenPos ))
 				{
-					// Center each line on the point it labels.
-					const int nTextWide = g_pMatSystemSurface->DrawTextLen( m_hFont, "%s", pCurrText->text );
+					// Center each line on the point it labels (GetTextSize is the
+					// width DrawColoredText advances).
+					wchar_t wszText[1024];
+					g_pVGuiLocalize->ConvertANSIToUnicode(
+					    pCurrText->text, wszText, sizeof( wszText ) );
+					int nTextWide, nTextTall;
+					vgui::surface()->GetTextSize( m_hFont, wszText, nTextWide, nTextTall );
 					float xPos		= screenPos[0] * flUnitsPerPixelX - nTextWide / 2;
 					float yPos		= screenPos[1] * flUnitsPerPixelY + (pCurrText->lineOffset*13); // Line spacing;
 					g_pMatSystemSurface->DrawColoredText( m_hFont, xPos, yPos, r, g, b, a, "%s", pCurrText->text );

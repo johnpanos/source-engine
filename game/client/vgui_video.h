@@ -54,6 +54,9 @@ protected:
 	virtual void OnCommand( const char *pcCommand ) { BaseClass::OnCommand( pcCommand ); }
 	virtual void OnVideoOver(){}
 
+	// Fits the video's aspect ratio inside the panel's current size.
+	void UpdatePlaybackSize( void );
+
 protected:
 	IVideoMaterial *m_VideoMaterial;
 	

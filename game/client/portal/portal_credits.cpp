@@ -38,6 +38,10 @@ struct portalcreditname_t
 	bool bReset;
 	int iXOffset;
 	int iSlot;
+	// Lyric layout inputs (LayoutLyrics): the line moves the pen down a line,
+	// and the next line continues on this one's row.
+	bool bAdvancesLine;
+	bool bJoinsNext;
 };
 
 #define CREDITS_FILE "scripts/credits.txt"
@@ -109,6 +113,15 @@ private:
 	void DrawLogo( void );
 
 	void PrepareLogo( float flTime );
+
+	// The credits lay out in UI units from proportional fonts, so a window
+	// resize or UI scale change needs a new layout: lyrics are laid out again,
+	// and scrolling names keep their progress around the point they move to.
+	void UpdateLayoutForScreenSize( void );
+	void LayoutLyrics( void );
+	void BuildBorder( int iWidth, vgui::HFont hFont );
+	int GetOutroLineTall( void );
+	void GetPortalOutroSize( int &iWidth, int &iTall );
 	void PrepareOutroCredits( void );
 	void PreparePortalOutroCredits( void );
 	void PrepareIntroCredits( void );
@@ -183,6 +196,10 @@ private:
 	float m_flLyricsStartTime;
 
 	Color m_cColor;
+
+	// The HUD height and line pitch of the current layout (0: none).
+	int m_nLayoutTall;
+	int m_nLayoutLineTall;
 };	
 
 void CHudPortalCredits::PrepareCredits( const char *pKeyName )
@@ -244,6 +261,9 @@ CHudPortalCredits::CHudPortalCredits( const char *pElementName ) : CHudElement( 
 {
 	vgui::Panel *pParent = g_pClientMode->GetViewport();
 	SetParent( pParent );
+
+	m_nLayoutTall = 0;
+	m_nLayoutLineTall = 0;
 }
 
 void CHudPortalCredits::LevelShutdown()
@@ -257,6 +277,8 @@ void CHudPortalCredits::Clear( void )
 	m_CreditsList.RemoveAll();
 	m_LyricsList.RemoveAll();
 	m_bLastOneInPlace = false;
+	m_nLayoutTall = 0;
+	m_nLayoutLineTall = 0;
 	m_Alpha = m_TextColor[3];
 	m_iLogoState = LOGO_FADEOFF;
 }
@@ -319,9 +341,6 @@ void CHudPortalCredits::ReadLyrics( KeyValues *pKeyValue )
 
 	char *cTmp;
 
-	int iHeight = 0;
-	int iXOffsetTemp = 0;
-	bool bNextOnSameLine = false;
 	bool bNoY = false;
 
 	char tmpstr[255] = "";
@@ -332,7 +351,6 @@ void CHudPortalCredits::ReadLyrics( KeyValues *pKeyValue )
 	{
 		bNoY = false;
 		portalcreditname_t Credits;
-		vgui::HFont m_hTFont = GetClientSchemeFont( "CreditsOutroText", true );
 		V_strcpy_safe( Credits.szCreditName, pKVNames->GetName());
 		V_strcpy_safe( Credits.szFontName, pKeyValue->GetString( Credits.szCreditName, "Default" ) );
 
@@ -362,38 +380,28 @@ void CHudPortalCredits::ReadLyrics( KeyValues *pKeyValue )
 
 		if (Q_strcmp("&",Credits.szCreditName)==0) //clear screen code
 		{
-			iHeight = 0;
 			Credits.bReset = true;
 			Q_strcpy(Credits.szCreditName," ");
 		}
 		else Credits.bReset = false;
 
-		Credits.flYPos = iHeight;
+		Credits.flYPos = 0;
+		Credits.iXOffset = 0;
 		Credits.bActive = false;
 
-		if (bNextOnSameLine)
-		{
-			Credits.iXOffset=iXOffsetTemp;
-			//GetPixelWidth( tmpstr, m_hTFont )
-			bNextOnSameLine = false;
-		}
-		else 
-		{
-			iXOffsetTemp=0;
-			Credits.iXOffset = 0;
-		}
-
+		Credits.bJoinsNext = false;
 		if (Credits.szCreditName[0] == '*')
 		{
-			bNextOnSameLine = true;
+			Credits.bJoinsNext = true;
 			Q_strcpy(tmpstr,&Credits.szCreditName[1]);
 			Q_strcpy(Credits.szCreditName,tmpstr);
 			bNoY = true;
 		}
 
+		Credits.bAdvancesLine = false;
 		if ((!(Q_strcmp(" ",Credits.szCreditName)==0)) && !bNoY) 
 		{
-			iHeight += surface()->GetFontTall ( m_hTFont ) + m_flSeparation;
+			Credits.bAdvancesLine = true;
 			if (Q_strcmp("^",Credits.szCreditName)==0) 
 			{
 				Q_strcpy(Credits.szCreditName," ");
@@ -402,19 +410,13 @@ void CHudPortalCredits::ReadLyrics( KeyValues *pKeyValue )
 		
 		if ( Credits.szCreditName[0] == '#' )
 		{
-			g_pVGuiLocalize->ConstructString( Credits.szLyricLine, sizeof(Credits.szLyricLine), g_pVGuiLocalize->Find(Credits.szCreditName), 0 );
-			if (bNextOnSameLine)
-			{
-				iXOffsetTemp+=GetStringPixelWidth( Credits.szLyricLine, m_hTFont );
-			}
+			g_pVGuiLocalize->ConstructString( Credits.szLyricLine, sizeof( Credits.szLyricLine ),
+			    g_pVGuiLocalize->Find( Credits.szCreditName ), 0 );
 		}
 		else
 		{
-			g_pVGuiLocalize->ConvertANSIToUnicode( Credits.szCreditName, Credits.szLyricLine, sizeof( Credits.szLyricLine ) );
-			if (bNextOnSameLine)
-			{
-				iXOffsetTemp+=GetStringPixelWidth( Credits.szLyricLine, m_hTFont );
-			}
+			g_pVGuiLocalize->ConvertANSIToUnicode(
+			    Credits.szCreditName, Credits.szLyricLine, sizeof( Credits.szLyricLine ) );
 		}
 
 		Credits.flTimeStart = flTotalTime;
@@ -426,10 +428,57 @@ void CHudPortalCredits::ReadLyrics( KeyValues *pKeyValue )
 		pKVNames = pKVNames->GetNextKey();
 	}
 
-	g_iPortalCreditsPixelHeight = iHeight;
-
+	LayoutLyrics();
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: Places each lyric line: rows of the outro font's height plus the
+//			separation, "*" lines continuing on the next line's row, and "&"
+//			starting the screen again.
+//-----------------------------------------------------------------------------
+void CHudPortalCredits::LayoutLyrics( void )
+{
+	vgui::HFont m_hTFont = GetClientSchemeFont( "CreditsOutroText", true );
+	const int iLineTall = surface()->GetFontTall( m_hTFont ) + m_flSeparation;
+
+	int iHeight = 0;
+	int iXOffsetTemp = 0;
+	bool bNextOnSameLine = false;
+
+	for ( int i = 0; i < m_LyricsList.Count(); i++ )
+	{
+		portalcreditname_t &Credits = m_LyricsList[i];
+
+		if ( Credits.bReset )
+			iHeight = 0;
+
+		Credits.flYPos = iHeight;
+
+		if ( bNextOnSameLine )
+		{
+			Credits.iXOffset = iXOffsetTemp;
+			bNextOnSameLine = false;
+		}
+		else
+		{
+			iXOffsetTemp = 0;
+			Credits.iXOffset = 0;
+		}
+
+		if ( Credits.bJoinsNext )
+			bNextOnSameLine = true;
+
+		if ( Credits.bAdvancesLine )
+			iHeight += iLineTall;
+
+		if ( bNextOnSameLine )
+		{
+			iXOffsetTemp += GetStringPixelWidth( Credits.szLyricLine, m_hTFont );
+		}
+	}
+
+	g_iPortalCreditsPixelHeight = iHeight;
+}
 
 void CHudPortalCredits::ReadAscii( KeyValues *pKeyValue )
 {
@@ -1331,6 +1380,8 @@ void CHudPortalCredits::ApplySchemeSettings( IScheme *pScheme )
 
 void CHudPortalCredits::Paint()
 {
+	UpdateLayoutForScreenSize();
+
 	if ( m_iCreditsType == CREDITS_LOGO )
 	{
 		DrawLogo();
@@ -1396,6 +1447,9 @@ void CHudPortalCredits::PrepareOutroCredits( void )
 	SetActive( true );
 
 	g_iPortalCreditsPixelHeight = iHeight;
+
+	GetHudSize( iWidth, m_nLayoutTall );
+	m_nLayoutLineTall = GetOutroLineTall();
 }
 
 void CHudPortalCredits::PreparePortalOutroCredits( void )
@@ -1413,12 +1467,7 @@ void CHudPortalCredits::PreparePortalOutroCredits( void )
 
 	// fill the screen
 	int iWidth, iTall;
-	GetHudSize(iWidth, iTall);
-
-	iWidth = static_cast<int>( static_cast<float>(iTall) * (4.0f/3.0f) );
-
-	iWidth += m_iScreenWidthAdjustment;
-	iTall += m_iScreenHeightAdjustment;
+	GetPortalOutroSize( iWidth, iTall );
 	SetSize( iWidth+m_iScreenXOffset, iTall +m_iScreenYOffset );
 
 	m_iYOffset = 0;
@@ -1449,19 +1498,7 @@ void CHudPortalCredits::PreparePortalOutroCredits( void )
 
 		if (i==0)
 		{
-			Q_strcpy(m_szBorderH,"-");
-			while(GetPixelWidth( m_szBorderH, m_hTFont )< ((iWidth/2)-GetPixelWidth( "---", m_hTFont )))
-			{
-				int iCurrentLength = Q_strlen(m_szBorderH);
-				if (iCurrentLength < sizeof(m_szBorderH))
-				{
-					m_szBorderH[iCurrentLength] = '-';
-				}
-				else
-				{
-					break;
-				}
-			}
+			BuildBorder( iWidth, m_hTFont );
 		}
 
 
@@ -1489,6 +1526,110 @@ void CHudPortalCredits::PreparePortalOutroCredits( void )
 	m_flScrollTime = 2;
 	m_flLastPaintTime = gpGlobals->curtime;
 	m_flLastBlinkTime = gpGlobals->curtime;
+
+	GetHudSize( iWidth, m_nLayoutTall );
+	m_nLayoutLineTall = GetOutroLineTall();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: The Portal outro's area: 4:3 of the HUD height, with the
+//			credits file's adjustments.
+//-----------------------------------------------------------------------------
+void CHudPortalCredits::GetPortalOutroSize( int &iWidth, int &iTall )
+{
+	GetHudSize( iWidth, iTall );
+
+	iWidth = static_cast<int>( static_cast<float>( iTall ) * ( 4.0f / 3.0f ) );
+
+	iWidth += m_iScreenWidthAdjustment;
+	iTall += m_iScreenHeightAdjustment;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: The dashed rule across the names column: half the area's width.
+//-----------------------------------------------------------------------------
+void CHudPortalCredits::BuildBorder( int iWidth, vgui::HFont hFont )
+{
+	Q_strcpy( m_szBorderH, "-" );
+	int iLength = 1;
+	while (
+	    iLength < (int)sizeof( m_szBorderH ) - 1 &&
+	    GetPixelWidth( m_szBorderH, hFont ) < ( ( iWidth / 2 ) - GetPixelWidth( "---", hFont ) ) )
+	{
+		m_szBorderH[iLength++] = '-';
+		m_szBorderH[iLength] = '\0';
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: The names' line pitch: the first name's font plus the separation.
+//-----------------------------------------------------------------------------
+int CHudPortalCredits::GetOutroLineTall( void )
+{
+	if ( m_CreditsList.Count() == 0 )
+		return 0;
+
+	vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+	vgui::HFont hFont =
+	    vgui::scheme()->GetIScheme( scheme )->GetFont( m_CreditsList[0].szFontName, true );
+	return surface()->GetFontTall( hFont ) + (int)m_flSeparation;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Lays the rolling credits out again when the HUD height or the
+//			font size has changed since they were laid out (a window resize or
+//			a UI scale change; fonts rasterize again some time after the scheme
+//			is reapplied, so this checks every paint).
+//-----------------------------------------------------------------------------
+void CHudPortalCredits::UpdateLayoutForScreenSize( void )
+{
+	if ( m_nLayoutTall <= 0 )
+		return;
+
+	int iWidth, iTall;
+	GetHudSize( iWidth, iTall );
+	const int iLineTall = GetOutroLineTall();
+	if ( iTall == m_nLayoutTall && iLineTall == m_nLayoutLineTall )
+		return;
+
+	if ( m_iCreditsType == CREDITS_OUTRO )
+	{
+		// The names scroll from the bottom of the screen at a rate that
+		// covers their total height; both follow the HUD height.
+		const float flScale = (float)iTall / (float)m_nLayoutTall;
+		for ( int i = 0; i < m_CreditsList.Count(); i++ )
+		{
+			m_CreditsList[i].flYPos *= flScale;
+		}
+		g_iPortalCreditsPixelHeight = (int)( g_iPortalCreditsPixelHeight * flScale + 0.5f );
+	}
+	else if ( m_iCreditsType == CREDITS_OUTRO_PORTAL )
+	{
+		// The names sit whole lines above or below the middle of the area.
+		const float flOldMiddle = ( m_nLayoutTall + m_iScreenHeightAdjustment ) / 2;
+		const float flNewMiddle = ( iTall + m_iScreenHeightAdjustment ) / 2;
+		const float flLineScale =
+		    m_nLayoutLineTall > 0 ? (float)iLineTall / (float)m_nLayoutLineTall : 1.0f;
+		for ( int i = 0; i < m_CreditsList.Count(); i++ )
+		{
+			m_CreditsList[i].flYPos =
+			    flNewMiddle + ( m_CreditsList[i].flYPos - flOldMiddle ) * flLineScale;
+		}
+
+		if ( m_CreditsList.Count() )
+		{
+			int iAreaWide, iAreaTall;
+			GetPortalOutroSize( iAreaWide, iAreaTall );
+			vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+			BuildBorder( iAreaWide, vgui::scheme()->GetIScheme( scheme )->GetFont(
+			                            m_CreditsList[0].szFontName, true ) );
+		}
+
+		LayoutLyrics();
+	}
+
+	m_nLayoutTall = iTall;
+	m_nLayoutLineTall = iLineTall;
 }
 
 void CHudPortalCredits::PrepareIntroCredits( void )

@@ -107,7 +107,8 @@ extern float	GetFloorZ(const Vector &origin);
 #define HOVER_TURRET_BURST_SPEED				650
 #define HOVER_TURRET_NPC_BURST_SPEED			800
 
-#define HOVER_TURRET_MODEL	"models/props_gameplay/cube.mdl"
+// Valve's model; it ships in Steam2 depot 852 (portal2/models/npcs).
+#define HOVER_TURRET_MODEL	"models/npcs/hover_turret.mdl"
 
 //-----------------------------------------------------------------------------
 // Manhack 

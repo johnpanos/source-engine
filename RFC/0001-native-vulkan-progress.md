@@ -1778,6 +1778,56 @@ Follow-up, debug overlays and crosshair (2026-09-28, user direction):
   centered at both scales. `vgui.ui_scale` (28) and its sensitivity suite (6)
   pass.
 
+Follow-up, audit of Portal, Portal 2 and TF2 (2026-09-28, user direction):
+
+A read-only audit of the three games' VGUI code for window resizes and UI
+scales found these, now fixed. The rule it applied: `ScreenWidth()`,
+`ScreenHeight()`, `GetHudSize` and panel sizes are UI units;
+`engine->GetScreenSize`, `ISurface::GetFullscreenViewport`, `CViewSetup` and
+`GetViewport` are pixels.
+
+- `CModelPanel::Paint` (commentary model viewer; TF2's team, intro and round
+  panels) put unit bounds straight into its `CViewSetup`, so at 1.5 the model
+  drew at 2/3 size toward the top left. It converts both edges to pixels now.
+- `VideoPanel::Paint` mapped a unit rectangle over the pixel viewport (Portal 2
+  `playvideo` and level-transition videos, TF2 class intros), and its
+  letterbox was fitted once at `BeginPlayback`. It converts to pixels and
+  fits each paint (`UpdatePlaybackSize`).
+- Portal 2's `CBaseModPanel::RenderMovie` (menu background, Extras and attract
+  movies) had the same mapping; `CalculateMovieParameters` ran once. It maps
+  in pixels, centers a pillarbox as well as a letterbox, and recalculates when
+  the panel's size changes.
+- Portal 2's own Video dialog had no UI scale control (the one in Options >
+  Video is in the stand-alone GameUI, which Portal 2 does not use). A
+  "UI Scale" row (Automatic, 75-300%) is added to the loaded `video.res` by a
+  new `CBaseModFrame::PreApplyControlSettings` hook, so the retail file is
+  unchanged; the rows below it, including their `?windowed` positions, move
+  down a row. It applies `ui_scale` with the dialog's other changes.
+- Text placed with `DrawTextLen`, which leaves out each glyph's leading space:
+  `game_text` (`message.cpp`), `CTextMessagePanel`, `CMessageCharsPanel`, the
+  debug overlay and the console's notify and version lines now use
+  `GetTextSize`.
+- The rope fake-AA, tracer and rain minimum widths are pixel thresholds but
+  used `ScreenWidth()`; at 1.5 they drew 1.5x thicker. They use the view's
+  pixel width.
+- Portal's end credits laid out the "Still Alive" lyrics and names once;
+  after a resize or scale change lines overlapped. `UpdateLayoutForScreenSize`
+  lays the lyrics out again from recorded per-line flags and moves the names
+  about the middle of the area by the change in line pitch, keeping progress.
+- TF2's client builds its own copies of the shared client files
+  (`games/tf/game/client`), which had none of the fixes above: its HUD root
+  was sized to the view's pixels every frame, so centered HUD elements moved
+  toward the bottom right at 1.5. The fixes are ported there; see
+  `games/tf/README.md` on the `tf2-bringup` branch.
+- Evidence: Portal, Portal 2 and TF2 trees build. Headless native Vulkan at
+  1024x768, `ui_scale` 1.5 and 1: the Portal 2 main menu's movie fills the
+  screen at both; its Video dialog (opened through gdb) shows "UI Scale
+  150%" between Splitscreen Direction and Advanced Video; TF2 `ctf_2fort` MOTD, class menu (with its model panels) and
+  in-game HUD lay out the same at both, with a centered crosshair.
+- Not run: the credits (end of the game), the commentary model viewer, a
+  window resized while a video plays, and a negative control for the movie
+  mapping. No automated suite covers these paths.
+
 ## Shader rendering parameters and PC color conversion (2026-09-24)
 
 The native `IShaderAPI` now retains the float, int, and vector rendering

@@ -95,11 +95,31 @@ bool VideoPanel::BeginPlayback( const char *pFilename )
 	// FIXME: This may not always be true!
 	enginesound->NotifyBeginMoviePlayback();
 
-	int nWidth, nHeight;
-	m_VideoMaterial->GetVideoImageSize( &nWidth, &nHeight );
 	m_VideoMaterial->GetVideoTexCoordRange( &m_flU, &m_flV );
 	m_pMaterial = m_VideoMaterial->GetMaterial();
 
+	UpdatePlaybackSize();
+
+	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Fits the video inside the panel. Paint calls this every frame, so a
+//			window resize or UI scale change letterboxes against the new size.
+//-----------------------------------------------------------------------------
+void VideoPanel::UpdatePlaybackSize( void )
+{
+	if ( m_VideoMaterial == NULL )
+		return;
+
+	int nWidth, nHeight;
+	m_VideoMaterial->GetVideoImageSize( &nWidth, &nHeight );
+	if ( nWidth <= 0 || nHeight <= 0 || GetWide() <= 0 || GetTall() <= 0 )
+	{
+		m_nPlaybackWidth = GetWide();
+		m_nPlaybackHeight = GetTall();
+		return;
+	}
 
 	float flFrameRatio = ( (float) GetWide() / (float) GetTall() );
 	float flVideoRatio = ( (float) nWidth / (float) nHeight );
@@ -119,8 +139,6 @@ bool VideoPanel::BeginPlayback( const char *pFilename )
 		m_nPlaybackWidth = GetWide();
 		m_nPlaybackHeight = GetTall();
 	}
-
-	return true;
 }
 
 //-----------------------------------------------------------------------------
@@ -239,6 +257,8 @@ void VideoPanel::Paint( void )
 		OnClose();
 	}
 
+	UpdatePlaybackSize();
+
 	// Sit in the "center"
 	int xpos, ypos;
 	GetPanelPos( xpos, ypos );
@@ -267,19 +287,26 @@ void VideoPanel::Paint( void )
 	IMesh* pMesh = pRenderContext->GetDynamicMesh( true );
 	meshBuilder.Begin( pMesh, MATERIAL_QUADS, 1 );
 
-	float flLeftX = xpos;
-	float flRightX = xpos + (m_nPlaybackWidth-1);
+	// The panel's position and playback size are in UI units, but the quad is
+	// mapped over the viewport in pixels.
+	float flUnitsPerPixelX, flUnitsPerPixelY;
+	GetVGuiUnitsPerPixel( flUnitsPerPixelX, flUnitsPerPixelY );
+	const float flPlaybackWidth = MAX( 1.0f, m_nPlaybackWidth / flUnitsPerPixelX );
+	const float flPlaybackHeight = MAX( 1.0f, m_nPlaybackHeight / flUnitsPerPixelY );
 
-	float flTopY = ypos;
-	float flBottomY = ypos + (m_nPlaybackHeight-1);
+	float flLeftX = xpos / flUnitsPerPixelX;
+	float flRightX = flLeftX + ( flPlaybackWidth - 1 );
+
+	float flTopY = ypos / flUnitsPerPixelY;
+	float flBottomY = flTopY + ( flPlaybackHeight - 1 );
 
 	// Map our UVs to cut out just the portion of the video we're interested in
 	float flLeftU = 0.0f;
 	float flTopV = 0.0f;
 
 	// We need to subtract off a pixel to make sure we don't bleed
-	float flRightU = m_flU - ( 1.0f / (float) m_nPlaybackWidth );
-	float flBottomV = m_flV - ( 1.0f / (float) m_nPlaybackHeight );
+	float flRightU = m_flU - ( 1.0f / flPlaybackWidth );
+	float flBottomV = m_flV - ( 1.0f / flPlaybackHeight );
 
 	// Get the current viewport size
 	int vx, vy, vw, vh;

@@ -689,6 +689,10 @@ namespace BaseModUI
 		float			m_flMovieFadeInTime;					// Time to be fully faded in
 		int				m_nMoviePlaybackWidth;
 		int				m_nMoviePlaybackHeight;
+		// The panel size (UI units) the movie parameters were calculated for;
+		// RenderMovie recalculates them when the panel is resized.
+		int				m_nMovieParamsWide;
+		int				m_nMovieParamsTall;
 		bool			m_bMovieFailed;
 		bool			m_bMovieLetterbox;
 

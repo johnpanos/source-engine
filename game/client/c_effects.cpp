@@ -399,7 +399,11 @@ void CClient_Precipitation::Simulate( float dt )
 	// NOTE: When client-side prechaching works, we need to remove this
 	Precache();
 
-	m_flHalfScreenWidth = (float)ScreenWidth() / 2;
+	// The player's view width in pixels: the minimum rain width is in pixels,
+	// and ScreenWidth() is in UI units.
+	const CViewSetup *pViewSetup = view ? view->GetPlayerViewSetup() : NULL;
+	m_flHalfScreenWidth =
+	    (float)( pViewSetup && pViewSetup->width > 0 ? pViewSetup->width : ScreenWidth() ) / 2;
 
 	// Our sim methods needs dt	and wind vector
 	if ( dt )

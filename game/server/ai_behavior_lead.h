@@ -14,7 +14,11 @@
 #pragma once
 #endif
 
+#if defined( RESPONSE_RULES_LIBRARY )
+#include "ai_speech.h"
+#else
 typedef const char *AIConcept_t;
+#endif
 
 // Speak concepts
 #define TLK_LEAD_START				"TLK_LEAD_START"

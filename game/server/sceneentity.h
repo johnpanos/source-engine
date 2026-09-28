@@ -13,7 +13,15 @@
 // List of the last 5 lines of speech from NPCs for bug reports
 #define SPEECH_LIST_MAX_SOUNDS	5
 
+#if !defined( RESPONSE_RULES_LIBRARY )
 class AI_Response;
+#else
+namespace ResponseRules
+{
+class CRR_Response;
+};
+typedef ResponseRules::CRR_Response AI_Response;
+#endif
 
 struct recentNPCSpeech_t
 {

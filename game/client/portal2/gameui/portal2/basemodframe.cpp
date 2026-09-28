@@ -991,6 +991,8 @@ void CBaseModFrame::LoadControlSettings( const char *dialogResourceName, const c
 		pHook->deleteThis();
 	}
 
+	PreApplyControlSettings( rDat );
+
 	BaseClass::LoadControlSettings( dialogResourceName, pathID, rDat, pConditions );
 	if ( rDat != pPreloadedKeyValues )
 	{

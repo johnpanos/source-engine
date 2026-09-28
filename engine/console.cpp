@@ -1211,7 +1211,8 @@ int CConPanel::ProcessNotifyLines( int &left, int &top, int &right, int &bottom,
 
 			int fontTall = vgui::surface()->GetFontTall( m_hFontFixed ) + 1;
 
-			len = DrawTextLen( font, da_notify[i].szNotify );
+			int textTall;
+			vgui::surface()->GetTextSize( font, da_notify[i].szNotify, len, textTall );
 			x = GetWide() - 10 - len;
 
 			if ( y + fontTall > GetTall() - 20 )
@@ -1279,7 +1280,10 @@ void CConPanel::PaintBackground()
 	g_pVGuiLocalize->ConvertANSIToUnicode( ver, unicode, sizeof( unicode ) );
 
 	vgui::surface()->DrawSetTextColor( Color( 255, 255, 255, 255 ) );
-	int x = wide - DrawTextLen( m_hFont, unicode ) - 2;
+	// Right-aligned by the width the text advances (GetTextSize).
+	int textWide, textTall;
+	vgui::surface()->GetTextSize( m_hFont, unicode, textWide, textTall );
+	int x = wide - textWide - 2;
 	DrawText( m_hFont, x, 0, unicode );
 
 	if ( cl.IsActive() )
@@ -1297,7 +1301,8 @@ void CConPanel::PaintBackground()
 
 		int tall = vgui::surface()->GetFontTall( m_hFont );
 
-		x = wide - DrawTextLen( m_hFont, wUnicode ) - 2;
+		vgui::surface()->GetTextSize( m_hFont, wUnicode, textWide, textTall );
+		x = wide - textWide - 2;
 		DrawText( m_hFont, x, tall + 1, wUnicode );
 	}
 }

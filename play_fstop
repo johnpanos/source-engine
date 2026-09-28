@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Launch the F-Stop target: the Portal 1 game plus Valve's F-Stop prototype
 # sources (game/{server,client}/fstop), built in its own Waf tree, on Portal
-# content with the F-Stop content root overlaid (tools/quality/stage_fstop_runtime.py).
+# content plus Valve's F-Stop-era content from Steam2 depot 852 version 0
+# (tools/quality/stage_fstop_runtime.py). FSTOP_CONTENT is that depot, extracted:
+# its top level holds portal2/ and portal2_tempcontent/.
 #
 #   ./play_fstop                 build, stage and boot $MAP (dev_fstop)
 #   ./play_fstop +map lab_01     extra arguments go to the launcher; a later +map wins
@@ -15,7 +17,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 FSTOP_BUILD_DIR="${FSTOP_BUILD_DIR:-$ROOT/build-fstop}"
 FSTOP_RUNTIME="${FSTOP_RUNTIME:-$ROOT/run/runtime-fstop}"
 FSTOP_BASE_RUNTIME="${FSTOP_BASE_RUNTIME:-$ROOT/run/runtime}"
-FSTOP_CONTENT="${FSTOP_CONTENT:-$HOME/Downloads/April 22nd 2020, random leaked shit/mega-archive/svn-master/game}"
+FSTOP_CONTENT="${FSTOP_CONTENT:-$HOME/Downloads/portal2-steam2-research/852_0}"
 FSTOP_WAFLOCK=.lock-waf-fstop
 #MAP="${MAP:-dev_fstop}"
 MAP="${MAP:-fstop_mechanics}"

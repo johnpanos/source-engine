@@ -47,8 +47,20 @@ class CDmgAccumulator;
 
 struct CSoundParameters;
 
+#if defined( RESPONSE_RULES_LIBRARY )
+#ifndef AI_CriteriaSet
+#define AI_CriteriaSet ResponseRules::CriteriaSet
+#endif
+namespace ResponseRules
+{
+class CriteriaSet;
+class IResponseSystem;
+};
+using ResponseRules::IResponseSystem;
+#else
 class AI_CriteriaSet;
 class IResponseSystem;
+#endif
 class IEntitySaveUtils;
 class CRecipientFilter;
 class CStudioHdr;
@@ -968,6 +980,10 @@ protected:
 #endif
 
 	void RemoveExpiredConcepts( void );
+#if defined( RESPONSE_RULES_LIBRARY )
+public
+	: // cstrike15 makes the context accessors public; its speech code and F-Stop's bots read them.
+#endif
 	int	GetContextCount() const;						// Call RemoveExpiredConcepts to clean out expired concepts
 	const char *GetContextName( int index ) const;		// note: context may be expired
 	const char *GetContextValue( int index ) const; 	// note: context may be expired
@@ -1305,6 +1321,10 @@ public:
 
 #endif
 	virtual void	ModifyOrAppendCriteria( AI_CriteriaSet& set );
+#if defined( RESPONSE_RULES_LIBRARY )
+	// Called by the expresser after ModifyOrAppendCriteria (cstrike15).
+	virtual void ModifyOrAppendDerivedCriteria( AI_CriteriaSet &set ) {};
+#endif
 	void			AppendContextToCriteria( AI_CriteriaSet& set, const char *prefix = "" );
 	void			DumpResponseCriteria( void );
 	

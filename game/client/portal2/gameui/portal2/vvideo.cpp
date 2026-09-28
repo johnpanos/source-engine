@@ -32,6 +32,31 @@ using namespace BaseModUI;
 
 #define VIDEO_ANTIALIAS_COMMAND_PREFIX "_antialias"
 #define VIDEO_RESOLUTION_COMMAND_PREFIX "_res"
+#define VIDEO_UISCALE_COMMAND_PREFIX "_uiscale"
+
+// The UI scale row (ui_scale; 0 follows the display's scale). The shipped
+// video.res has no such row, so PreApplyControlSettings adds it.
+static const float s_UIScaleChoices[] = { 0.0f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f };
+
+static void GetUIScaleChoiceName( int nChoice, char *pOut, int nOutSize )
+{
+	if ( s_UIScaleChoices[nChoice] <= 0.0f )
+		V_strncpy( pOut, "Automatic", nOutSize );
+	else
+		V_snprintf( pOut, nOutSize, "%d%%", (int)( s_UIScaleChoices[nChoice] * 100.0f + 0.5f ) );
+}
+
+// The choice closest to a ui_scale value.
+static int GetUIScaleChoice( float flScale )
+{
+	int nBest = 0;
+	for ( int i = 1; i < ARRAYSIZE( s_UIScaleChoices ); ++i )
+	{
+		if ( fabsf( s_UIScaleChoices[i] - flScale ) < fabsf( s_UIScaleChoices[nBest] - flScale ) )
+			nBest = i;
+	}
+	return nBest;
+}
 
 int GetScreenAspectMode( int width, int height );
 
@@ -58,6 +83,8 @@ m_autodelete_pResourceLoadConditions( (KeyValues*) NULL )
 	m_drpDisplayMode = NULL;
 	m_drpPowerSavingsMode = NULL;
 	m_drpSplitScreenDirection = NULL;
+	m_drpUIScale = NULL;
+	m_flUIScale = 0.0f;
 	m_btnAdvanced = NULL;
 
 	m_bAcceptPowerSavingsWarning = false;
@@ -98,6 +125,7 @@ void Video::ApplySchemeSettings( vgui::IScheme *pScheme )
 	m_drpDisplayMode = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpDisplayMode" ) );
 	m_drpPowerSavingsMode = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpPowerSavingsMode" ) );
 	m_drpSplitScreenDirection = dynamic_cast< BaseModHybridButton* >( FindChildByName( "DrpSplitScreenDirection" ) );
+	m_drpUIScale = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpUIScale" ) );
 
 	SetupState( false );
 
@@ -242,6 +270,8 @@ void Video::SetupState( bool bUseRecommendedSettings )
 #endif
 		CGameUIConVarRef mat_powersavingsmode( "mat_powersavingsmode" );
 		m_nPowerSavingsMode = clamp( mat_powersavingsmode.GetInt(), 0, 1 );
+		CGameUIConVarRef ui_scale( "ui_scale" );
+		m_flUIScale = ui_scale.IsValid() ? ui_scale.GetFloat() : 0.0f;
 	}
 	else
 	{
@@ -255,6 +285,7 @@ void Video::SetupState( bool bUseRecommendedSettings )
 		m_bNoBorder = false;
 #endif
 		m_nPowerSavingsMode = m_nRecommendedPowerSavingsMode;
+		m_flUIScale = 0.0f;
 
 		m_bDirtyValues = true;
 		m_bPreferRecommendedResolution = true;
@@ -303,6 +334,7 @@ void Video::SetupState( bool bUseRecommendedSettings )
 	}
 
 	SetPowerSavingsState();
+	SetUIScaleState();
 }
 
 void Video::OnKeyCodePressed(KeyCode code)
@@ -423,6 +455,15 @@ void Video::OnCommand( const char *command )
 		m_bNoBorder = false;
 		m_bDirtyValues = true;
 		PrepareResolutionList();
+	}
+	else if ( StringHasPrefix( command, VIDEO_UISCALE_COMMAND_PREFIX ) )
+	{
+		const int nChoice = atoi( command + Q_strlen( VIDEO_UISCALE_COMMAND_PREFIX ) );
+		if ( nChoice >= 0 && nChoice < ARRAYSIZE( s_UIScaleChoices ) )
+		{
+			m_flUIScale = s_UIScaleChoices[nChoice];
+			m_bDirtyValues = true;
+		}
 	}
 	else if ( !V_stricmp( command, "ShowAdvanced" ) )
 	{
@@ -797,6 +838,15 @@ void Video::ApplyChanges()
 		CGameUIConVarRef mat_powersavingsmode( "mat_powersavingsmode" );
 		mat_powersavingsmode.SetValue( m_nPowerSavingsMode );
 
+		// A choice that matches the current value keeps it exactly (a console
+		// value such as 1.4 shows as its nearest choice).
+		CGameUIConVarRef ui_scale( "ui_scale" );
+		if ( ui_scale.IsValid() &&
+		     GetUIScaleChoice( ui_scale.GetFloat() ) != GetUIScaleChoice( m_flUIScale ) )
+		{
+			ui_scale.SetValue( m_flUIScale );
+		}
+
 		// save changes
 		engine->ClientCmd_Unrestricted( "mat_savechanges\n" );
 		engine->ClientCmd_Unrestricted( VarArgs( "host_writeconfig_ss %d", XBX_GetPrimaryUserId() ) );
@@ -874,6 +924,115 @@ void Video::ShowPowerSavingsWarning()
 void Video::AcceptPowerSavingsWarningCallback()
 {
 	m_bAcceptPowerSavingsWarning = true;
+}
+
+void Video::SetUIScaleState()
+{
+	if ( m_drpUIScale )
+	{
+		char szName[32];
+		GetUIScaleChoiceName( GetUIScaleChoice( m_flUIScale ), szName, sizeof( szName ) );
+		m_drpUIScale->SetCurrentSelection( szName );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Places the UI scale row where the Advanced button was and moves the
+//			button down a row, in the base settings and in each conditional
+//			block ("?windowed" moves the rows up when brightness is hidden).
+//			Returns the Advanced button's new base ypos.
+//-----------------------------------------------------------------------------
+static int MoveRowBelow( KeyValues *pAbove, KeyValues *pScale, KeyValues *pAdvanced )
+{
+	const int nRowY = pAdvanced->GetInt( "ypos" );
+	int nPitch = nRowY - pAbove->GetInt( "ypos" );
+	if ( nPitch <= 0 )
+		nPitch = 25;
+
+	for ( KeyValues *pCondition = pAdvanced->GetFirstTrueSubKey(); pCondition;
+	    pCondition = pCondition->GetNextTrueSubKey() )
+	{
+		if ( pCondition->GetName()[0] != '?' || !pCondition->FindKey( "ypos" ) )
+			continue;
+		KeyValues *pAboveCondition = pAbove->FindKey( pCondition->GetName() );
+		const int nConditionRowY = pCondition->GetInt( "ypos" );
+		int nConditionPitch =
+		    nConditionRowY - ( pAboveCondition && pAboveCondition->FindKey( "ypos" )
+		                             ? pAboveCondition->GetInt( "ypos" )
+		                             : pAbove->GetInt( "ypos" ) );
+		if ( nConditionPitch <= 0 )
+			nConditionPitch = nPitch;
+		pScale->FindKey( pCondition->GetName(), true )->SetInt( "ypos", nConditionRowY );
+		pCondition->SetInt( "ypos", nConditionRowY + nConditionPitch );
+	}
+
+	pScale->SetInt( "ypos", nRowY );
+	pAdvanced->SetInt( "ypos", nRowY + nPitch );
+	return nRowY + nPitch;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Adds the UI scale row above the Advanced button: a copy of the row
+//			above it (so it looks and navigates like the others) with the
+//			ui_scale choices. The rows below it move down one row, and the
+//			dialog grows by a tile when they no longer fit.
+//-----------------------------------------------------------------------------
+void Video::PreApplyControlSettings( KeyValues *pResourceData )
+{
+	if ( !pResourceData || pResourceData->FindKey( "DrpUIScale" ) )
+		return;
+
+	KeyValues *pAdvanced = pResourceData->FindKey( "BtnAdvanced" );
+	KeyValues *pAbove =
+	    pAdvanced ? pResourceData->FindKey( pAdvanced->GetString( "navUp" ) ) : NULL;
+	if ( !pAbove || V_stricmp( pAbove->GetString( "style" ), "DialogListButton" ) )
+		return;
+
+	KeyValues *pScale = pAbove->MakeCopy();
+	pScale->SetName( "DrpUIScale" );
+	pScale->SetString( "fieldName", "DrpUIScale" );
+	pScale->SetString( "labelText", "UI Scale" );
+	pScale->SetString( "navUp", pAbove->GetName() );
+	pScale->SetString( "navDown", "BtnAdvanced" );
+	if ( KeyValues *pOldList = pScale->FindKey( "list" ) )
+	{
+		pScale->RemoveSubKey( pOldList );
+		pOldList->deleteThis();
+	}
+	KeyValues *pList = pScale->FindKey( "list", true );
+	for ( int i = 0; i < ARRAYSIZE( s_UIScaleChoices ); ++i )
+	{
+		char szName[32];
+		GetUIScaleChoiceName( i, szName, sizeof( szName ) );
+		pList->SetString( szName, CFmtStr( "%s%d", VIDEO_UISCALE_COMMAND_PREFIX, i ) );
+	}
+	pResourceData->AddSubKey( pScale );
+
+	pAbove->SetString( "navDown", "DrpUIScale" );
+	pAdvanced->SetString( "navUp", "DrpUIScale" );
+	const int nAdvancedY = MoveRowBelow( pAbove, pScale, pAdvanced );
+
+	// The frame's size is in dialog tiles (Dialog.TileHeight, the same
+	// proportional units as the rows).
+	KeyValues *pFrame = NULL;
+	for ( KeyValues *pKey = pResourceData->GetFirstTrueSubKey(); pKey;
+	    pKey = pKey->GetNextTrueSubKey() )
+	{
+		if ( !V_stricmp( pKey->GetString( "ControlName" ), "Frame" ) )
+		{
+			pFrame = pKey;
+			break;
+		}
+	}
+	vgui::IScheme *pScheme = vgui::scheme()->GetIScheme( GetScheme() );
+	const int nTileTall = pScheme ? atoi( pScheme->GetResourceString( "Dialog.TileHeight" ) ) : 0;
+	if ( pFrame && nTileTall > 0 )
+	{
+		const int nBottom = nAdvancedY + pAdvanced->GetInt( "tall" );
+		const int nTiles = ( nBottom + nTileTall - 1 ) / nTileTall;
+		if ( nTiles > pFrame->GetInt( "tall" ) )
+			pFrame->SetInt( "tall", nTiles );
+	}
 }
 
 void Video::SetPowerSavingsState()

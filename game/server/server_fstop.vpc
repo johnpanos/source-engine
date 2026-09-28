@@ -5,9 +5,11 @@
 //	prototype sources in game\server\fstop. Waf lists it after
 //	server_base.vpc and server_portal.vpc (game/server/wscript).
 //
-//	Not built: npc_companionbot, npc_medicbot and npc_obot speak through a
-//	concept-handle manager (g_pConceptManager) and response-system follow-ups
-//	(EOZ_Hacks::ResponseFollowup) that no available source drop contains.
+//	Speech runs on the cstrike15 response rules library (RESPONSE_RULES_LIBRARY:
+//	responserules/runtime and game\server\rr_speech), the system Valve's
+//	Portal 2 server of the depot 841/852 builds was compiled with (their dSYMs
+//	name ResponseRules::CRR_Concept, CAI_ExpresserWithFollowup and
+//	ai_speechconcept.cpp). It replaces the SDK 2013 speech files below.
 //
 //	The blob NPCs (npc_surface, npc_fountain, npc_demomonster) keep their
 //	particles in VPhysics; the neighbour search Valve's blobulator physics
@@ -23,7 +25,7 @@ $Configuration
 	$Compiler
 	{
 		$AdditionalIncludeDirectories	"$BASE;.\fstop;$SRCDIR\game\shared\fstop"
-		$PreprocessorDefinitions		"$BASE;FSTOP"
+		$PreprocessorDefinitions		"$BASE;FSTOP;RESPONSE_RULES_LIBRARY"
 	}
 }
 
@@ -31,6 +33,27 @@ $Project "Server (F-Stop)"
 {
 	$Folder	"Source Files"
 	{
+		-$File	"AI_Criteria.cpp"
+		-$File	"AI_ResponseSystem.cpp"
+		-$File	"ai_speech.cpp"
+
+		$Folder	"Response rules speech (cstrike15)"
+		{
+			$File	"rr_speech\ai_criteria.cpp"
+			$File	"rr_speech\ai_criteria.h"
+			$File	"rr_speech\ai_expresserfollowup.cpp"
+			$File	"rr_speech\ai_responsesystem.cpp"
+			$File	"rr_speech\ai_responsesystem.h"
+			$File	"rr_speech\ai_speech.cpp"
+			$File	"rr_speech\ai_speech.h"
+			$File	"rr_speech\ai_speechconcept.cpp"
+			$File	"rr_speech\ai_speechconcept.h"
+			$File	"rr_speech\ai_speechqueue.cpp"
+			$File	"rr_speech\ai_speechqueue.h"
+			$File	"rr_speech\flex_expresser.cpp"
+			$File	"rr_speech\flex_expresser.h"
+		}
+
 		$Folder	"F-Stop"
 		{
 			$File	"fstop\addon_basecombatweapon.cpp"
@@ -76,11 +99,17 @@ $Project "Server (F-Stop)"
 			$File	"fstop\npc_android_basic.cpp"
 			$File	"fstop\npc_android_missile.cpp"
 			$File	"fstop\npc_chicken.cpp"
+			$File	"fstop\npc_companionbot.cpp"
+			$File	"fstop\npc_companionbot.h"
 			$File	"fstop\npc_demomonster.cpp"
 			$File	"fstop\npc_demomonster.h"
 			$File	"fstop\npc_fountain.cpp"
 			$File	"fstop\npc_fountain.h"
 			$File	"fstop\npc_hover_turret.cpp"
+			$File	"fstop\npc_medicbot.cpp"
+			$File	"fstop\npc_medicbot.h"
+			$File	"fstop\npc_obot.cpp"
+			$File	"fstop\npc_obot.h"
 			$File	"fstop\npc_surface.cpp"
 			$File	"fstop\npc_surface.h"
 			$File	"fstop\photo.cpp"

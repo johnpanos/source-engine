@@ -601,12 +601,23 @@ void CModelPanel::Paint()
 	int viewportX, viewportY, viewportWidth, viewportHeight;
 	pRenderContext->GetViewport( viewportX, viewportY, viewportWidth, viewportHeight );
 
+	// The panel's bounds and the .res viewport offset are in UI units, but the
+	// view is in viewport pixels. Convert both edges so the view covers exactly
+	// the pixels the panel does.
+	float flUnitsPerPixelX, flUnitsPerPixelY;
+	GetVGuiUnitsPerPixel( flUnitsPerPixelX, flUnitsPerPixelY );
+	const float flLeft = x + m_pModelInfo->m_vecViewportOffset.x;
+	const float flTop = y + m_pModelInfo->m_vecViewportOffset.y;
+	const int nPixelLeft = (int)( flLeft / flUnitsPerPixelX + 0.5f );
+	const int nPixelTop = (int)( flTop / flUnitsPerPixelY + 0.5f );
+
 	// Now draw it.
 	CViewSetup view;
-	view.x = x + m_pModelInfo->m_vecViewportOffset.x + viewportX; // we actually want to offset by the 
-	view.y = y + m_pModelInfo->m_vecViewportOffset.y + viewportY; // viewport origin here because Push3DView expects global coords below
-	view.width = w;
-	view.height = h;
+	view.x = nPixelLeft + viewportX; // we actually want to offset by the
+	view.y = nPixelTop +
+	         viewportY; // viewport origin here because Push3DView expects global coords below
+	view.width = (int)( ( flLeft + w ) / flUnitsPerPixelX + 0.5f ) - nPixelLeft;
+	view.height = (int)( ( flTop + h ) / flUnitsPerPixelY + 0.5f ) - nPixelTop;
 
 	view.m_bOrtho = false;
 

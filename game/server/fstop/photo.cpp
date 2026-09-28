@@ -227,6 +227,14 @@ bool CBaseEntity::CPhotoPlacementQuery::CheckPlacement( CaptureInfo_t &captureIn
 	if( pHelperOut )
 		*pHelperOut = placementData.hPlacementHelper.Get();
 
+	// CheckPlacementData_t's placed entity and position replaced the globals, but
+	// OnReleased (prop_levitator's tether, prop_air_vent's weld) still reads them.
+	// Publish the last check: weapon_placement runs it just before it releases the
+	// object. The world is not something to attach to.
+	CBaseEntity *pPlacedOn = bSucceeded ? placementData.pPlacedEntity : NULL;
+	g_placedEntity = ( pPlacedOn && !pPlacedOn->IsWorld() ) ? pPlacedOn : NULL;
+	g_placedPosition = bSucceeded ? placementData.vPlacedPosition : vec3_invalid;
+
 	return bSucceeded;
 }
 

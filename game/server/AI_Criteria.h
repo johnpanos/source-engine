@@ -4,6 +4,13 @@
 //
 //=============================================================================//
 
+// Products built with RESPONSE_RULES_LIBRARY (the F-Stop product) use the
+// cstrike15 response rules library and its speech code (game/server/rr_speech,
+// responserules/runtime) in place of this header's speech system.
+#if defined( RESPONSE_RULES_LIBRARY )
+#include "rr_speech/ai_criteria.h"
+#else
+
 #ifndef AI_CRITERIA_H
 #define AI_CRITERIA_H
 #ifdef _WIN32
@@ -236,3 +243,4 @@ private:
 };
 
 #endif // AI_CRITERIA_H
+#endif // RESPONSE_RULES_LIBRARY

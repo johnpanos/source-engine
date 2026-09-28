@@ -238,7 +238,12 @@ void CTextMessagePanel::AddChar( int r, int g, int b, int a, wchar_t ch )
 //-----------------------------------------------------------------------------
 void CTextMessagePanel::GetTextExtents( int *wide, int *tall, const char *string )
 {
-	*wide = g_pMatSystemSurface->DrawTextLen( m_hFont, "%s", (char *)string );
+	// The width DrawColoredText advances (GetTextSize); DrawTextLen leaves out
+	// each character's leading space.
+	wchar_t wszText[1024];
+	g_pVGuiLocalize->ConvertANSIToUnicode( string, wszText, sizeof( wszText ) );
+	int nTextTall;
+	vgui::surface()->GetTextSize( m_hFont, wszText, *wide, nTextTall );
 	*tall = vgui::surface()->GetFontTall( m_hFont );
 }
 

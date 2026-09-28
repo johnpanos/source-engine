@@ -126,7 +126,10 @@ protected:
 //============================================================================================================
 LINK_ENTITY_TO_CLASS( prop_monopole, CMonopole );
 
-const char MAGNET_MODEL_NAME[] = "models/props_gameplay/cube.mdl";
+// The drop's placeholder, models/flag/briefcase.mdl, exists in no depot; F-Stop's own
+// magnet model (Steam2 depot 852, portal2_tempcontent/models/props_farm) has the
+// collision model this entity needs (it removes itself without one).
+const char MAGNET_MODEL_NAME[] = "models/props_farm/magnet.mdl";
 
 // BUGBUG: This won't work!  Right now you can't save physics pointers inside an embedded type!
 BEGIN_SIMPLE_DATADESC( attached_objects_t )

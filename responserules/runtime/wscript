@@ -1,0 +1,47 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# The response rules runtime from the cstrike15 tree (responserules_runtime.vpc):
+# concepts, criteria, rules and the response system the game server's speech
+# code runs when it is built with RESPONSE_RULES_LIBRARY (the F-Stop product).
+
+top = '.'
+PROJECT_NAME = 'responserules_runtime'
+
+def options(opt):
+	# stub
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	source = [
+		'rrrlib.cpp',
+		'response_types.cpp',
+		'response_types_internal.cpp',
+		'response_system.cpp',
+		'rr_speechconcept.cpp',
+		'rr_response.cpp',
+		'criteriaset.cpp'
+	]
+
+	includes = [
+		'.',
+		'../../public',
+		'../../public/tier0',
+		'../../public/tier1',
+		'../../common'
+	]
+
+	bld.stlib(
+		source   = source,
+		target   = PROJECT_NAME,
+		name     = PROJECT_NAME,
+		features = 'c cxx',
+		includes = includes,
+		defines  = [],
+		# tier1: string pools and symbols; tier2: intervals; vstdlib: random.
+		use      = ['tier1', 'tier2', 'vstdlib'],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx      = bld.get_taskgen_count()
+	)

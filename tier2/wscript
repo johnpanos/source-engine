@@ -20,6 +20,7 @@ def build(bld):
 		'defaultfilesystem.cpp',
 		'dmconnect.cpp',
 		'fileutils.cpp',
+		'interval.cpp',
 		'keybindings.cpp',
 		'../public/map_utils.cpp',
 		'../public/materialsystem/MaterialSystemUtil.cpp',

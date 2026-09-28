@@ -246,6 +246,32 @@ enum AISpeechTargetSearchFlags_t
 	AIST_FACING_TARGET			= (1<<4),
 };
 
+#if defined( RESPONSE_RULES_LIBRARY )
+// The selection owns its response (cstrike15).
+struct AISpeechSelection_t
+{
+	AISpeechSelection_t() : response() {}
+
+	void Set( AIConcept_t newConcept, AI_Response &nuResponse, CBaseEntity *pTarget = NULL )
+	{
+		response = nuResponse;
+		speechConcept = newConcept;
+		hSpeechTarget = pTarget;
+	}
+
+	// Use in a specific case where the response has already been set.
+	void Set( AIConcept_t newConcept, CBaseEntity *pTarget )
+	{
+		Assert( !response.IsEmpty() );
+		speechConcept = newConcept;
+		hSpeechTarget = pTarget;
+	}
+
+	std::string speechConcept;
+	AI_Response response;
+	EHANDLE hSpeechTarget;
+};
+#else
 struct AISpeechSelection_t
 {
 	AISpeechSelection_t()
@@ -264,6 +290,7 @@ struct AISpeechSelection_t
 	AI_Response *		pResponse;
 	EHANDLE			hSpeechTarget;				
 };
+#endif
 
 //-------------------------------------
 

@@ -19,7 +19,15 @@
 
 struct flexsettinghdr_t;
 struct flexsetting_t;
+#if defined( RESPONSE_RULES_LIBRARY )
+namespace ResponseRules
+{
+class CRR_Response;
+};
+typedef ResponseRules::CRR_Response AI_Response;
+#else
 class AI_Response;
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose:  A .vfe referenced by a scene during .vcd playback
@@ -97,7 +105,7 @@ public:
 	virtual	bool		ClearSceneEvent( CSceneEventInfo *info, bool fastKill, bool canceled );
 
 	// Add the event to the queue for this actor
-#ifdef PORTAL2
+#if defined( PORTAL2 ) || defined( RESPONSE_RULES_LIBRARY )
 	void				AddSceneEvent( CChoreoScene *scene, CChoreoEvent *event, CBaseEntity *pTarget = NULL, CBaseEntity *pSceneEntity = NULL );
 #else
 	void				AddSceneEvent( CChoreoScene *scene, CChoreoEvent *event, CBaseEntity *pTarget = NULL );

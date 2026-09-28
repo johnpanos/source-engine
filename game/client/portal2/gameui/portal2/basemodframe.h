@@ -107,6 +107,9 @@ namespace BaseModUI {
 
 		// Load the control settings 
 		virtual void LoadControlSettings( const char *dialogResourceName, const char *pathID = NULL, KeyValues *pPreloadedKeyValues = NULL, KeyValues *pConditions = NULL );
+		// Called with the loaded resource data just before the controls are
+		// built from it: a frame can add controls the shipped .res files lack.
+		virtual void PreApplyControlSettings( KeyValues *pResourceData ) {}
 
 		MESSAGE_FUNC_CHARPTR( OnNavigateTo, "OnNavigateTo", panelName );
 
