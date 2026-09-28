@@ -360,9 +360,40 @@ int main()
 		                               { "mode", "melt" }, { "faces", top } } ),
 		    "unknown sculpt mode (negative)" );
 
+		checks.That(
+		    commands.Execute( "set_snap", { { "on", "0" } } ).HasValue() && !settings.snapToGrid,
+		    "snap off" );
+		(void)commands.Execute( "set_snap", { { "on", "1" } } );
+		checks.That( !commands.Execute( "fix_problem", { { "code", "no_such_code" } } ),
+		    "unknown problem code (negative)" );
+		// Seed a fixable problem: an output whose target names no entity.
+		auto lamp = commands.Execute(
+		    "place_entity", { { "classname", "light" }, { "origin", "0 0 64" } } );
+		checks.That(
+		    lamp && commands
+		                .Execute( "add_output", { { "output", "OnUser1" }, { "target", "nowhere" },
+		                                            { "input", "TurnOn" } } )
+		                .HasValue(),
+		    "seed a dangling output" );
 		auto problems = commands.Execute( "check_map", {} );
 		checks.That(
 		    problems && problems.Value().find( "fixable" ) != std::string::npos, "check the map" );
+		std::string fixableCode;
+		{
+			const std::string text = problems.ValueOr( std::string() );
+			const std::size_t at = text.find( "fixable=1" );
+			if ( at != std::string::npos )
+			{
+				const std::size_t lineStart = text.rfind( '\n', at );
+				const std::size_t begin = lineStart == std::string::npos ? 0 : lineStart + 1;
+				fixableCode = text.substr( begin, text.find( ' ', begin ) - begin );
+			}
+		}
+		auto fixed = commands.Execute( "fix_problem", { { "code", fixableCode } } );
+		checks.That(
+		    !fixableCode.empty() && fixed && fixed.Value() != "0", "fix one problem code" );
+		auto again = commands.Execute( "fix_problem", { { "code", fixableCode } } );
+		checks.That( !again, "the fixed code no longer matches (negative)" );
 		(void)commands.Execute( "fix_all", {} );
 		auto after = commands.Execute( "check_map", {} );
 		checks.That( after && after.Value().find( "fixable=1" ) == std::string::npos,

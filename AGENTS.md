@@ -888,6 +888,15 @@ Keep the table concise and link details below or from the domain progress file.
     - 13 of 14 seeded faults are detected; the survivor is equivalent.
     - Not done: the live GTK editor serving MCP, and a run with a real MCP
       client.
+  - R08-DOMAIN (2026-09-28, user goal "all the headless domain logic for
+    hammer, ready to be hooked up to the UI"): the scene, ports, formats,
+    app, viewport, tools and presenters layers, with `EditSession`,
+    `SessionCommands` and `presenters::EditorWorkspace` as the one object a
+    UI binds. The VMF codec has no escape hatches (user requirement): real
+    Portal 2 maps load into typed fields and round-trip. 59 suites, 2,925
+    checks, both compilers; `hammer_cli` and MCP run on the new stack. The
+    GTK shell is not yet bound. See the
+    [record](RFC/0002-progress.md#r08-domain-headless-domain-logic-for-the-editor-slice-done-2026-09-28).
   - R08-ASYNC-BUILD (2026-09-26): F9 saves on the UI thread and compiles
     through `hammer::app::MapBuildQueue`. The builder runs on a
     `ThreadTaskRunner`, and the reply returns on `hammer::gtk::GlibTaskRunner`.

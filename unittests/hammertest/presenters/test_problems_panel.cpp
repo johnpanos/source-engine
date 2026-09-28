@@ -6,7 +6,7 @@
 //			rescans (edits, undo and replacement rescan; selection changes and
 //			saves do not), go to, one fix and fix-all as one labeled undo step
 //			each. Negative checks: an unfixable problem and out-of-range rows
-//			refuse and change nothing, go to on a map-wide problem is Nothing,
+//			refuse and change nothing, go to on a map-wide problem is refused,
 //			fix-all with nothing fixable, destruction after the session.
 //
 //=============================================================================//
@@ -14,13 +14,15 @@
 #include "hammer/presenters/problems_panel.h"
 
 #include "hammer/app/edit_session.h"
+#include "hammer/app/editor_settings.h"
+#include "hammer/app/session_commands.h"
 #include "testing/checks.h"
 
 #include <memory>
 
 using namespace hammer;
 using namespace hammer::presenters;
-using app::EditErrorCode;
+using app::CommandStatus;
 using app::MapProblem;
 using scene::ObjectId;
 
@@ -47,7 +49,9 @@ int main()
 	}
 
 	auto session = std::make_unique<app::EditSession>( doc );
-	auto panel = std::make_unique<ProblemsPanel>( *session, nullptr, nullptr );
+	app::EditorSettings settings;
+	app::SessionCommands commands( *session, settings, app::SessionServices{} );
+	auto panel = std::make_unique<ProblemsPanel>( *session, commands, nullptr, nullptr );
 
 	const auto &rows = panel->Rows();
 	checks.Equal( rows.size(), std::size_t( 4 ), "four problems" );
@@ -73,14 +77,14 @@ int main()
 	                 session->CurrentSelection().objects == std::vector<ObjectId>{ relay },
 	    "go to selects the objects" );
 	checks.Equal( panel->ScanCount(), scans, "a selection change does not rescan" );
-	checks.That( panel->GoTo( 0 ).Error().code == EditErrorCode::Nothing,
+	checks.That( panel->GoTo( 0 ).Error().status == CommandStatus::Rejected,
 	    "a map-wide problem has nothing to select (negative)" );
 	session->MarkSaved();
 	checks.Equal( panel->ScanCount(), scans, "a save does not rescan" );
 
 	// Negative: refusals change nothing.
 	const std::uint64_t revision = session->Revision();
-	checks.That( panel->Fix( 0 ).Error().code == EditErrorCode::Rejected, "no fix (negative)" );
+	checks.That( panel->Fix( 0 ).Error().status == CommandStatus::Rejected, "no fix (negative)" );
 	checks.That( !panel->Fix( 99 ) && !panel->GoTo( 99 ), "out of range (negative)" );
 	checks.That( session->Revision() == revision && panel->Rows().size() == 4, "nothing changed" );
 
@@ -104,8 +108,7 @@ int main()
 	checks.That( panel->Rows().size() == 1 && panel->FixableCount() == 0 &&
 	                 panel->ErrorCount() == 1 && !session->Document().FindGroup( group ),
 	    "only the unfixable problem remains" );
-	checks.That(
-	    panel->FixAll().Error().code == EditErrorCode::Nothing, "nothing fixable left (negative)" );
+	checks.That( !panel->FixAll(), "nothing fixable left (negative)" );
 
 	// Replacement rescans.
 	checks.That( session->Replace( scene::MapDocument( 1 ) ).HasValue() &&

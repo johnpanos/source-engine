@@ -21,7 +21,7 @@ ids, chords in any spelling, host arguments (the map path).
 - Every Command action names a catalog command, passes only arguments it
   declares and provides every argument it requires (fixed, toggle, grid or
   host). Tool actions return the `hammer.tools` tool name; Host actions
-  return a host action name.
+  return a host action name (the properties window).
 - Ids and chords are unique; chords are stored canonical (Ctrl, Alt, Shift,
   Meta; upper-case letters; canonical key names) and looked up in any
   modifier order or case.

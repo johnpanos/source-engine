@@ -68,10 +68,12 @@ struct EntityQuery
 };
 
 // True when 'text' matches 'pattern' under 'mode'.
-bool TextMatches( std::string_view text, std::string_view pattern, TextMatch mode, bool caseSensitive );
+bool TextMatches(
+    std::string_view text, std::string_view pattern, TextMatch mode, bool caseSensitive );
 
 // The matching entities, in id order.
-std::vector<scene::ObjectId> FindEntities( const scene::DocumentReader &doc, const EntityQuery &query );
+std::vector<scene::ObjectId> FindEntities(
+    const scene::DocumentReader &doc, const EntityQuery &query );
 
 EditResult ReplaceKeyValues(
     scene::DocumentEdit &edit, const EntityQuery &query, const std::string &newValue, int &count );

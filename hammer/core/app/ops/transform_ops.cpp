@@ -12,6 +12,8 @@
 #include "mapgeometry/vec3.h"
 
 #include <cmath>
+#include <string_view>
+#include <cctype>
 #include <sstream>
 
 namespace hammer::app::ops
@@ -129,6 +131,38 @@ std::optional<mapgeometry::EulerAngles> ComposeAngles(
 	return a;
 }
 
+const char *const kOverlayCornerKeys[4] = { "uv0", "uv1", "uv2", "uv3" };
+
+bool IsOverlay( const scene::Entity &e )
+{
+	std::string lower = e.classname;
+	for ( char &c : lower )
+	{
+		c = static_cast<char>( std::tolower( static_cast<unsigned char>( c ) ) );
+	}
+	return lower == "info_overlay";
+}
+
+std::optional<Vec3d> KeyVec3( const scene::Entity &e, std::string_view key )
+{
+	const std::string *value = e.Key( key );
+	if ( !value )
+	{
+		return std::nullopt;
+	}
+	const std::optional<Vec3d> v = mapgeometry::ParseVec3( *value );
+	if ( !v || !std::isfinite( v->x ) || !std::isfinite( v->y ) || !std::isfinite( v->z ) )
+	{
+		return std::nullopt;
+	}
+	return v;
+}
+
+std::string TidyVec3( const Vec3d &v )
+{
+	return scene::FormatVec3( Tidy( v ) );
+}
+
 } // namespace
 
 std::optional<scene::Solid> TransformedSolid(
@@ -195,6 +229,7 @@ scene::Entity TransformedEntity( const scene::Entity &entity, const Affine &xf )
 	{
 		out.SetOrigin( Tidy( xf.Point( *origin ) ) );
 	}
+	out = TransformedOverlay( out, xf );
 	if ( xf.IsTranslation() )
 	{
 		return out;
@@ -217,6 +252,65 @@ scene::Entity TransformedEntity( const scene::Entity &entity, const Affine &xf )
 				out.SetKey( "angle", scene::FormatNumber( a->yaw ) );
 			}
 		}
+	}
+	return out;
+}
+
+scene::Entity TransformedOverlay( const scene::Entity &overlay, const mapgeometry::Affine &xf )
+{
+	scene::Entity out = overlay;
+	if ( !IsOverlay( overlay ) )
+	{
+		return out;
+	}
+	const std::optional<Vec3d> origin = KeyVec3( overlay, "BasisOrigin" );
+	const std::optional<Vec3d> u0 = KeyVec3( overlay, "BasisU" );
+	const std::optional<Vec3d> v0 = KeyVec3( overlay, "BasisV" );
+	const std::optional<Vec3d> n0 = KeyVec3( overlay, "BasisNormal" );
+	if ( !origin || !u0 || !v0 || !n0 || mapgeometry::Length( *u0 ) <= 1e-12 ||
+	     mapgeometry::Length( *v0 ) <= 1e-12 )
+	{
+		return out;
+	}
+	out.SetKey( "BasisOrigin", TidyVec3( xf.Point( *origin ) ) );
+	if ( xf.IsTranslation() )
+	{
+		return out;
+	}
+	const Vec3d u = mapgeometry::Normalize( *u0 );
+	const Vec3d v = mapgeometry::Normalize( *v0 );
+	const Vec3d tu = xf.Direction( u );
+	const Vec3d tv = xf.Direction( v );
+	const Vec3d tn = xf.Direction( *n0 );
+	auto unit = []( const Vec3d &a )
+	{
+		return std::fabs( mapgeometry::Length( a ) - 1.0 ) <= 1e-4;
+	};
+	auto perpendicular = []( const Vec3d &a, const Vec3d &b )
+	{
+		return std::fabs( mapgeometry::Dot( a, b ) ) <= 0.0025;
+	};
+	if ( unit( tu ) && unit( tv ) && unit( tn ) && perpendicular( tu, tv ) &&
+	     perpendicular( tu, tn ) && perpendicular( tv, tn ) )
+	{
+		out.SetKey( "BasisU", TidyVec3( tu ) );
+		out.SetKey( "BasisV", TidyVec3( tv ) );
+		out.SetKey( "BasisNormal", TidyVec3( tn ) );
+		return out;
+	}
+	// Scale or shear: keep the (normalized) axes and move the corners.
+	out.SetKey( "BasisU", TidyVec3( u ) );
+	out.SetKey( "BasisV", TidyVec3( v ) );
+	for ( int i = 0; i < 4; ++i )
+	{
+		const std::optional<Vec3d> uv = KeyVec3( overlay, kOverlayCornerKeys[i] );
+		if ( !uv )
+		{
+			continue;
+		}
+		const Vec3d moved = xf.Direction( u * uv->x + v * uv->y );
+		out.SetKey( kOverlayCornerKeys[i], TidyVec3( Vec3d( mapgeometry::Dot( u, moved ),
+		                                       mapgeometry::Dot( v, moved ), uv->z ) ) );
 	}
 	return out;
 }

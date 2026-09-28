@@ -123,8 +123,9 @@ std::vector<ActionSpec> BuildSpecs()
 	    WithRule( Cmd( "view.grid_lower", "Smaller Grid", "View", { "[", "Alt+A" }, "set_grid",
 	                  E::GridCanShrink ),
 	        ArgRule::GridLower ),
-	    HostAction( "view.snap_to_grid", "Snap to Grid", "View", "Shift+W", "snap_to_grid",
-	        CheckRule::SnapToGrid ),
+	    Toggle( Cmd( "view.snap_to_grid", "Snap to Grid", "View", { "Shift+W" }, "set_snap",
+	                E::Always ),
+	        "on", "1", "0", CheckRule::SnapToGrid ),
 	    // Tools
 	    ToolAction( "tools.selection", "Selection Tool", "Shift+S", "selection" ),
 	    ToolAction( "tools.block", "Block Tool", "Shift+B", "block" ),

@@ -159,7 +159,8 @@ std::optional<MapFragment> FragmentFromDocument( const scene::MapDocument &doc )
 	return fragment;
 }
 
-std::optional<MapFragment> TransformedFragment( const MapFragment &fragment, const mapgeometry::Affine &xf )
+std::optional<MapFragment> TransformedFragment(
+    const MapFragment &fragment, const mapgeometry::Affine &xf )
 {
 	MapFragment out;
 	out.visgroups = fragment.visgroups;
@@ -167,7 +168,8 @@ std::optional<MapFragment> TransformedFragment( const MapFragment &fragment, con
 	{
 		if ( const scene::Solid *s = std::get_if<scene::Solid>( &o ) )
 		{
-			std::optional<scene::Solid> moved = TransformedSolid( *s, xf, TransformOptions{ true } );
+			std::optional<scene::Solid> moved =
+			    TransformedSolid( *s, xf, TransformOptions{ true } );
 			if ( !moved )
 			{
 				return std::nullopt;
@@ -176,7 +178,7 @@ std::optional<MapFragment> TransformedFragment( const MapFragment &fragment, con
 		}
 		else if ( const scene::Entity *e = std::get_if<scene::Entity>( &o ) )
 		{
-			out.objects.emplace_back( TransformedOverlay( TransformedEntity( *e, xf ), xf ) );
+			out.objects.emplace_back( TransformedEntity( *e, xf ) );
 		}
 		else
 		{
@@ -247,9 +249,10 @@ EditResult InsertPrefab( scene::DocumentEdit &edit, const MapFragment &prefab, c
 		}
 		pivot = bounds->Center();
 	}
-	const mapgeometry::Affine xf = mapgeometry::Compose( mapgeometry::Affine::Translation( at - pivot ),
-	    mapgeometry::Affine::About(
-	        mapgeometry::AngleMatrix( anglesPYR.x, anglesPYR.y, anglesPYR.z ), pivot ) );
+	const mapgeometry::Affine xf =
+	    mapgeometry::Compose( mapgeometry::Affine::Translation( at - pivot ),
+	        mapgeometry::Affine::About(
+	            mapgeometry::AngleMatrix( anglesPYR.x, anglesPYR.y, anglesPYR.z ), pivot ) );
 	std::optional<MapFragment> placed = TransformedFragment( prefab, xf );
 	if ( !placed )
 	{

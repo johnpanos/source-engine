@@ -229,5 +229,23 @@ int main()
 		checks.That( out.power == 2 && !out.alphas, "other displacement fields are untouched" );
 	}
 
+	// Overlays move with their basis through the one entity transform.
+	{
+		scene::Entity overlay;
+		overlay.classname = "info_overlay";
+		overlay.SetKey( "BasisOrigin", "0 0 16" );
+		overlay.SetKey( "BasisU", "1 0 0" );
+		overlay.SetKey( "BasisV", "0 1 0" );
+		overlay.SetKey( "BasisNormal", "0 0 1" );
+		overlay.SetOrigin( Vec3d( 0, 0, 16 ) );
+		const scene::Entity moved =
+		    TransformedEntity( overlay, mapgeometry::Affine::Translation( Vec3d( 8, 0, 0 ) ) );
+		checks.That(
+		    *moved.Key( "BasisOrigin" ) == "8 0 16", "a moved overlay's basis origin follows" );
+		const scene::Entity turned = TransformedEntity( overlay,
+		    mapgeometry::Affine::About( mapgeometry::Mat3::AxisRotation( 2, 90 ), Vec3d() ) );
+		checks.That( *turned.Key( "BasisU" ) == "0 1 0", "a rotated overlay's basis turns" );
+	}
+
 	return checks.Report();
 }

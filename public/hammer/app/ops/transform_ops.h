@@ -73,8 +73,17 @@ EditResult AlignObjects( scene::DocumentEdit &edit, const std::vector<scene::Obj
 // result is degenerate. Exposed for tools that preview a transform.
 std::optional<scene::Solid> TransformedSolid(
     const scene::Solid &solid, const mapgeometry::Affine &xf, const TransformOptions &options );
-// The entity after 'xf' (origin and orientation keys).
+// The entity after 'xf' (origin and orientation keys; for an info_overlay
+// also its basis and uv corners, see TransformedOverlay).
 scene::Entity TransformedEntity( const scene::Entity &entity, const mapgeometry::Affine &xf );
+
+// An info_overlay's basis after 'xf': the origin is mapped as a point; for a
+// rigid map (rotation, mirror) the U, V and normal axes are mapped as vectors;
+// otherwise the axes are kept (normalized) and each uv corner is mapped through
+// the linear part and projected back onto them (legacy CMapOverlay::
+// DoTransform). Other entities, and overlays with malformed basis keys, are
+// returned unchanged.
+scene::Entity TransformedOverlay( const scene::Entity &overlay, const mapgeometry::Affine &xf );
 
 } // namespace hammer::app::ops
 

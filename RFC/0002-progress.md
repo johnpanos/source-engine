@@ -718,7 +718,7 @@ for the whole compile.
   compiles in about 0.1 s, too fast to see. The queue suite covers the
   non-blocking start.
 
-### R08-DOMAIN: headless domain logic for the editor (active 2026-09-28)
+### R08-DOMAIN: headless domain logic for the editor (slice done 2026-09-28)
 
 **Scope** (roadmap R08, feeding R13, R22, R23 and R24; user goal
 2026-09-28: "implement all the headless domain logic for hammer, ready to
@@ -762,9 +762,81 @@ recommended defaults" instruction):
 - **Numeric policy.** Scene geometry snaps vertices within 1e-4 of an
   integer (clipping 1e5 quads leaves ~1e-11 noise), so bounds and grid
   math are exact.
-- **Migration.** `EditorController` stays the live authority of the GTK
-  shell, the command layer and MCP until they are hooked to
-  `EditSession`. Deletion condition: no caller outside its own suites.
+- **No escape hatches** (user requirement, 2026-09-28: "all state loads
+  into actual classes or data structs and round trip"). The model has no
+  verbatim block, no "extra" key list and no opaque node: displacements,
+  version and view settings, and editor `logicalpos`/`comments` are typed.
+  The VMF codec refuses what it cannot model, naming the block path and
+  line. Entity and world key lists stay ordered key/value lists: they are
+  the entity data model itself.
+- **Migration.** `hammer_cli` (scripts and MCP) now runs on
+  `SessionCommands` over `EditSession` with the strict VMF codec.
+  `EditorController` stays the live authority of the GTK shell only, until
+  the shell binds `presenters::EditorWorkspace`. Deletion condition: no
+  caller outside its own suites.
+
+**Delivered** (2026-09-28). Every module has a contract record under
+`unittests/hammertest/contracts/` and its own suite in the conformance
+manifest (migration `R08-DOMAIN`), with negative checks.
+
+- **Geometry** (`world.map-geometry`): transforms, polytopes (incremental
+  hull, ray entry, closed-solid test), `BrushFace::sourcePlane`.
+- **Scene:** the typed document, staged edits and change sets with
+  `ValidateEdit`, solid and displacement geometry, structural queries, the
+  one visibility rule, and `DocumentIndex` for whole-map passes.
+- **Ports and formats:** `IMapCodec` with the strict `VmfMapCodec`,
+  `IEntityCatalog` with `FgdEntityCatalog` (the FGD parser now keeps
+  helpers, inputs, outputs, flag defaults and `@KeyFrameClass`),
+  `IMaterialInfo` with an adapter over `MaterialCatalog`.
+- **Application:** `EditSession` (one authority for content, selection and
+  labeled history; guards may commit drafts), `EditorSettings`, document
+  I/O, `SessionCommands` (about 100 named commands) over the operation
+  families: create (legacy stock primitives, arches, entities with catalog
+  defaults), transform (texture lock, overlays, displacements), CSG (clip,
+  carve, hollow), vertex and face editing, texture (justify/fit/align,
+  smoothing groups), structure (delete cleanup, groups, brush entities,
+  quick hide), entities (keys, class, flags, outputs, rename with
+  references), displacements (create, power, sculpt, alpha, sew),
+  clipboard and Paste Special, visgroups, cordons, the map check with
+  fixes, prefabs, instance collapse, decals and overlays, and entity
+  find/replace.
+- **Viewport:** 2D/3D cameras, the grid policy, picking with one ordering
+  policy, and render snapshots (displacement meshes included) with a
+  revision-keyed incremental cache.
+- **Tools:** normalized input, the tool contract and manager, the shared
+  interaction policy, selection, block, entity, clip, vertex and face tools,
+  and the camera controller.
+- **Presenters:** entity and face inspectors, outliner, class palette,
+  material browser, history, status bar, visgroups, problems, the action
+  catalog, and `EditorWorkspace`, the one object a UI host binds.
+- **Fixtures:** the Portal 2 maps `sp_a2_trust_fling` and `zoo_mechanics`
+  are vendored in `unittests/hammertest/fixtures/portal2/` with
+  `provenance.json`.
+
+**Evidence (2026-09-28).**
+
+| Check | Result |
+| --- | --- |
+| Q-EDITOR headless, g++ and clang++ (`-Wall -Wextra -Werror`) | 122 of 122 suites each; the 59 R08-DOMAIN suites hold 2,925 checks |
+| `hammer.formats.vmf_portal2_roundtrip` | both Portal 2 maps decode with no warnings, reload SameContent with identical ids, re-save byte-identically, and equal the original file semantically; seeded changes are caught |
+| `hammer.formats.vmf_map_codec.sensitivity` | 20 seeded bad codecs (including a lenient one that drops what the strict decoder rejects) each caught; 32 rejection cases with exact messages and lines |
+| `hammer.app.portal2_workflow` (unoptimized) | sp_a2_trust_fling: open 0.17 s, move everything 0.18 s, undo 0.003 s, map check 0.06 s (4.6 s before `DocumentIndex`), save 0.08 s |
+| `hammer.presenters.editor_workspace` | 49 checks driving the workspace like a UI: shortcuts, drags, undo keys, 3D placement, inspector drafts, save/reopen, host requests, camera input, focus loss |
+| `corpus.hammer.loop`, `corpus.hammer.mcp` on `hammer_cli` over `SessionCommands` | pass (14 and 21 checks): the scripted room compiles leak-free and boots headless on native Vulkan |
+| Waf `hammer_scene`, `hammer_ports`, `hammer_app`, `hammer_formats`, `hammer_viewport`, `hammer_tools`, `hammer_presenters`, `hammer_cli` | build (tools tree) |
+| `archlint hammer --verify`, stylelint `--changed` | pass; `check --all` reports only two ARCH105 findings in `game/shared/fstop` (other work) |
+
+**Not done.**
+
+- The GTK shell still runs on `EditorController`; binding it to
+  `EditorWorkspace` is the next slice (R24/R25 scope).
+- Legacy blocks the strict codec rejects because the model has no field
+  for them yet: `quickhide`, `autosave`, the `cordonsolid` editor key,
+  pre-release `dispinfo` `uaxis`/`vaxis`, world-level `connections`.
+- Vertex editing in 3D, shear handles, a cordon tool, the compiler's
+  remapping of other position/angle keys in instances, and prefab
+  libraries.
+
 
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 

@@ -30,7 +30,8 @@ bool SameChar( char a, char b, bool caseSensitive )
 	return Fold( a, caseSensitive ) == Fold( b, caseSensitive );
 }
 
-std::size_t Find( std::string_view text, std::string_view pattern, std::size_t from, bool caseSensitive )
+std::size_t Find(
+    std::string_view text, std::string_view pattern, std::size_t from, bool caseSensitive )
 {
 	if ( pattern.empty() || text.size() < pattern.size() )
 	{
@@ -61,7 +62,8 @@ bool Glob( std::string_view text, std::string_view pattern, bool caseSensitive )
 	while ( t < text.size() )
 	{
 		if ( p < pattern.size() &&
-		     ( pattern[p] == '?' || ( pattern[p] != '*' && SameChar( pattern[p], text[t], caseSensitive ) ) ) )
+		     ( pattern[p] == '?' ||
+		         ( pattern[p] != '*' && SameChar( pattern[p], text[t], caseSensitive ) ) ) )
 		{
 			++t;
 			++p;
@@ -177,7 +179,8 @@ std::optional<std::string> Replaced(
 
 } // namespace
 
-bool TextMatches( std::string_view text, std::string_view pattern, TextMatch mode, bool caseSensitive )
+bool TextMatches(
+    std::string_view text, std::string_view pattern, TextMatch mode, bool caseSensitive )
 {
 	switch ( mode )
 	{
@@ -244,7 +247,8 @@ EditResult ReplaceKeyValues(
 					c.target = std::move( *target );
 					++here;
 				}
-				if ( std::optional<std::string> parameter = Replaced( c.parameter, query, newValue ) )
+				if ( std::optional<std::string> parameter =
+				         Replaced( c.parameter, query, newValue ) )
 				{
 					c.parameter = std::move( *parameter );
 					++here;

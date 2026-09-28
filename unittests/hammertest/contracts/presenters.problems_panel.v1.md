@@ -13,7 +13,7 @@ build flow.
 
 ## 2. Accepted inputs
 
-A session, an optional `IEntityCatalog` and `IMaterialInfo`; row indices for
+A session, its `SessionCommands`, the optional `IEntityCatalog` and `IMaterialInfo` the commands were composed with; row indices for
 go-to and fix.
 
 ## 3. Results and guarantees
@@ -25,11 +25,12 @@ go-to and fix.
   replacement; selection changes and saves never rescan; `Refresh()` forces
   one.
 - `GoTo` selects the row's objects (Replace; guards apply); a map-wide
-  problem is Nothing.
-- `Fix` is one `Execute("Fix <code name>")` of `app::FixProblem`; an
-  unfixable problem is Rejected with nothing changed. `FixAll` is one
-  `Execute("Fix all problems")`; Nothing when nothing is fixable. Out-of-range
-  rows are Rejected.
+  problem is refused.
+- `Fix` runs the `fix_problem` command with the row's code and first object
+  (one undo step, "Fix <code name>"); an unfixable problem is refused with
+  nothing changed. `FixAll` runs `fix_all` (one step, "Fix all problems");
+  refused when nothing is fixable. Out-of-range rows are refused. Every
+  action returns `app::CommandResult`.
 
 ## 4. Ownership, threading
 

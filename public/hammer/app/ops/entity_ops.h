@@ -20,6 +20,7 @@
 
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace hammer::app::ops
@@ -67,6 +68,11 @@ EditResult RemoveConnections( scene::DocumentEdit &edit, const std::vector<scene
 // matched the old name exactly is updated too.
 EditResult RenameEntity( scene::DocumentEdit &edit, scene::ObjectId id, const std::string &name,
     bool updateReferences, const ports::IEntityCatalog *catalog );
+
+// Keys that name another entity when no schema types them: target,
+// parentname, filtername, damagefilter and lightingorigin (case-insensitive).
+// The one owner of that convention (rename, instance fixup).
+bool IsConventionalReferenceKey( std::string_view key );
 
 // Worldspawn keys (not "classname"/"id").
 EditResult SetWorldKey(

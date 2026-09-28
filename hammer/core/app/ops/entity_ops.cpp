@@ -9,6 +9,8 @@
 #include "hammer/app/ops/create_ops.h"
 #include "hammer/scene/map_queries.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <set>
 
@@ -355,8 +357,6 @@ EditResult RenameEntity( scene::DocumentEdit &edit, ObjectId id, const std::stri
 	{
 		return {};
 	}
-	static const char *const kConventional[] = {
-	    "target", "parentname", "filtername", "damagefilter", "lightingorigin" };
 	for ( ObjectId other : edit.EntityIds() )
 	{
 		const scene::Entity *o = edit.FindEntity( other );
@@ -368,14 +368,7 @@ EditResult RenameEntity( scene::DocumentEdit &edit, ObjectId id, const std::stri
 				const ports::KeyDefinition *def = info->FindKey( key );
 				return def && def->type == ports::KeyType::TargetDestination;
 			}
-			for ( const char *k : kConventional )
-			{
-				if ( key == k )
-				{
-					return true;
-				}
-			}
-			return false;
+			return IsConventionalReferenceKey( key );
 		};
 		bool touches = false;
 		for ( const scene::Connection &c : o->connections )
@@ -407,6 +400,26 @@ EditResult RenameEntity( scene::DocumentEdit &edit, ObjectId id, const std::stri
 		}
 	}
 	return {};
+}
+
+bool IsConventionalReferenceKey( std::string_view key )
+{
+	static const char *const kKeys[] = {
+	    "target", "parentname", "filtername", "damagefilter", "lightingorigin" };
+	for ( const char *k : kKeys )
+	{
+		const std::string_view candidate( k );
+		if ( candidate.size() == key.size() &&
+		     std::equal( key.begin(), key.end(), candidate.begin(),
+		         []( char a, char b )
+		         {
+			         return std::tolower( static_cast<unsigned char>( a ) ) == b;
+		         } ) )
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 EditResult SetWorldKey(

@@ -39,6 +39,7 @@
 #define HAMMER_APP_OPS_DECAL_OPS_H
 
 #include "hammer/app/edit_session.h"
+#include "hammer/app/ops/transform_ops.h"
 #include "hammer/scene/change_set.h"
 #include "mapgeometry/transform.h"
 
@@ -93,15 +94,6 @@ struct OverlayBasis
 // when the plane's normal is zero or not finite.
 std::optional<OverlayBasis> OverlayBasisFor(
     const mapgeometry::Plane &facePlane, const mapgeometry::Vec3d &point );
-
-// An info_overlay's basis keys after 'xf' (vbsp Overlay_Translate): the
-// origin is mapped as a point; with a rigid linear part (unit, perpendicular
-// images) the axes are rotated, otherwise U and V are kept (normalized) and
-// each uv corner is mapped through the linear part and projected back onto
-// them (legacy CMapOverlay::DoTransform). Other entities, and overlays with
-// malformed basis keys, are returned unchanged. TransformedEntity
-// (transform_ops) does not do this; callers that move overlays apply both.
-scene::Entity TransformedOverlay( const scene::Entity &overlay, const mapgeometry::Affine &xf );
 
 } // namespace hammer::app::ops
 

@@ -24,6 +24,7 @@
 #include "mapgeometry/polytope.h"
 #include "mapgeometry/vec3.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <functional>
@@ -416,6 +417,13 @@ const std::vector<CommandEntry> &Table()
 			        return c.Fail( CommandStatus::InvalidArgument,
 			            "grid size is a power of two from 1 to 1024" );
 		        c.settings.gridSize = s;
+		        return std::string();
+	        } },
+	    { { "set_snap", { "on" }, {}, "Grid snapping for tools (0 or 1)." },
+	        []( const Context &c ) -> CommandResult
+	        {
+		        TRY( on, c.Flag( "on", true ) );
+		        c.settings.snapToGrid = on.Value();
 		        return std::string();
 	        } },
 	    { { "set_texture_lock", { "on" }, {}, "Texture lock for transforms (0 or 1)." },
@@ -1769,6 +1777,52 @@ const std::vector<CommandEntry> &Table()
 			               IdList( p.objects ) + "\" " + p.message + "\n";
 		        }
 		        return out;
+	        } },
+	    { { "fix_problem", { "code" }, { "ids" },
+	          "Fix the fixable problems with this code (those naming ids first, when given) in one "
+	          "undo step; outputs the count." },
+	        []( const Context &c ) -> CommandResult
+	        {
+		        std::optional<MapProblem::Code> code;
+		        for ( int i = 0; i <= static_cast<int>( MapProblem::Code::OutsideMapBounds ); ++i )
+			        if ( c.Arg( "code" ) ==
+			             MapProblemCodeName( static_cast<MapProblem::Code>( i ) ) )
+				        code = static_cast<MapProblem::Code>( i );
+		        if ( !code )
+			        return c.Fail(
+			            CommandStatus::InvalidArgument, "unknown problem code " + c.Arg( "code" ) );
+		        std::vector<ObjectId> ids;
+		        if ( c.Has( "ids" ) )
+		        {
+			        TRY( chosen, c.Ids( "ids", false ) );
+			        ids = chosen.Value();
+		        }
+		        std::vector<MapProblem> matching;
+		        for ( const MapProblem &p :
+		            CheckMap( c.session.Document(), c.services.catalog, c.services.materials ) )
+		        {
+			        if ( p.code != *code || !p.fixable )
+				        continue;
+			        const bool named = ids.empty() || ( !p.objects.empty() &&
+			                                              std::find( ids.begin(), ids.end(),
+			                                                  p.objects.front() ) != ids.end() );
+			        if ( named )
+				        matching.push_back( p );
+		        }
+		        if ( matching.empty() )
+			        return c.Fail( CommandStatus::Rejected, "no fixable problem matches" );
+		        auto result = c.Edit( "Fix " + c.Arg( "code" ),
+		            [&]( scene::DocumentEdit &e ) -> EditResult
+		            {
+			            for ( const MapProblem &p : matching )
+				            if ( EditResult r = FixProblem( e, p, c.services.catalog );
+				                !r && r.Error().code != EditErrorCode::Nothing )
+					            return r;
+			            return {};
+		            } );
+		        if ( !result )
+			        return result;
+		        return std::to_string( matching.size() );
 	        } },
 	    { { "fix_all", {}, {}, "Fix every fixable map problem in one undo step." },
 	        []( const Context &c ) -> CommandResult

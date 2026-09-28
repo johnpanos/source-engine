@@ -255,11 +255,14 @@ int main()
 	checks.That( block.HasValue() && block.Value().target == ActionTarget::Tool &&
 	                 block.Value().tool == "block",
 	    "tool actions name the tool" );
-	auto snap = actions->Execute( "view.snap_to_grid" );
-	checks.That( snap.HasValue() && snap.Value().target == ActionTarget::Host &&
-	                 snap.Value().host == "snap_to_grid" &&
-	                 actions->IsChecked( "view.snap_to_grid" ) == std::optional<bool>( true ),
+	auto props = actions->Execute( "edit.properties" );
+	checks.That( props.HasValue() && props.Value().target == ActionTarget::Host &&
+	                 props.Value().host == "properties",
 	    "host actions name the host action" );
+	checks.That( actions->IsChecked( "view.snap_to_grid" ) == std::optional<bool>( true ) &&
+	                 actions->Execute( "view.snap_to_grid" ).HasValue() && !settings.snapToGrid &&
+	                 actions->IsChecked( "view.snap_to_grid" ) == std::optional<bool>( false ),
+	    "snap toggles through set_snap" );
 
 	// Host arguments and failing commands.
 	{

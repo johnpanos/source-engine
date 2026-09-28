@@ -19,8 +19,7 @@
 //			           vertex, face) and the host routes it to its tool
 //			           manager.
 //			  Host     view concerns without a command (the properties
-//			           window, the snap toggle until a set_snap command
-//			           exists): Execute returns the host action name.
+//			           window): Execute returns the host action name.
 //			map.build_and_run also sets runAfter: after a successful build the
 //			host launches the game.
 //

@@ -7,6 +7,7 @@
 #include "hammer/app/ops/instance_ops.h"
 
 #include "hammer/app/instance_fixup.h"
+#include "hammer/app/ops/entity_ops.h"
 #include "hammer/app/ops/prefab_ops.h"
 #include "hammer/scene/map_queries.h"
 #include "mapgeometry/transform.h"
@@ -38,17 +39,11 @@ bool IsInstance( const scene::Entity &e )
 	return Lower( e.classname ) == "func_instance";
 }
 
-// Keys that name entities (and so take the fixup) when no catalog types them.
+// Keys that name entities (and so take the fixup) when no catalog types them:
+// the entity's own name plus the shared reference convention.
 bool ConventionalNameKey( std::string_view key )
 {
-	static const char *const kKeys[] = { "targetname", "target", "parentname", "filtername",
-		"damagefilter", "lightingorigin" };
-	const std::string lower = Lower( key );
-	return std::any_of( std::begin( kKeys ), std::end( kKeys ),
-	    [&]( const char *k )
-	    {
-		    return lower == k;
-	    } );
+	return Lower( key ) == "targetname" || IsConventionalReferenceKey( key );
 }
 
 bool NamesEntity(

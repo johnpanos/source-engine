@@ -128,7 +128,7 @@ std::array<Vec3d, 4> Corners( double width, double height, const std::array<doub
 	const double w = width / 2.0;
 	const double h = height / 2.0;
 	return { Vec3d( -w, -h, third[0] ), Vec3d( -w, h, third[1] ), Vec3d( w, h, third[2] ),
-		Vec3d( w, -h, third[3] ) };
+	    Vec3d( w, -h, third[3] ) };
 }
 
 void WriteCorners( scene::Entity &e, const std::array<Vec3d, 4> &corners )
@@ -166,7 +166,8 @@ int MajorAxis( const Vec3d &v )
 
 } // namespace
 
-std::optional<OverlayBasis> OverlayBasisFor( const mapgeometry::Plane &facePlane, const Vec3d &point )
+std::optional<OverlayBasis> OverlayBasisFor(
+    const mapgeometry::Plane &facePlane, const Vec3d &point )
 {
 	const double length = mapgeometry::Length( facePlane.normal );
 	if ( !Finite( facePlane.normal ) || !std::isfinite( facePlane.dist ) || length <= 1e-12 ||
@@ -299,7 +300,8 @@ EditResult SetOverlayFaces(
 	return {};
 }
 
-EditResult SetOverlaySize( scene::DocumentEdit &edit, ObjectId overlay, double width, double height )
+EditResult SetOverlaySize(
+    scene::DocumentEdit &edit, ObjectId overlay, double width, double height )
 {
 	const scene::Entity *current = edit.FindEntity( overlay );
 	if ( !current || !IsOverlay( *current ) )
@@ -326,65 +328,6 @@ EditResult SetOverlaySize( scene::DocumentEdit &edit, ObjectId overlay, double w
 	}
 	*edit.MutableEntity( overlay ) = std::move( next );
 	return {};
-}
-
-scene::Entity TransformedOverlay( const scene::Entity &overlay, const mapgeometry::Affine &xf )
-{
-	scene::Entity out = overlay;
-	if ( !IsOverlay( overlay ) )
-	{
-		return out;
-	}
-	const std::optional<Vec3d> origin = KeyVec3( overlay, "BasisOrigin" );
-	const std::optional<Vec3d> u0 = KeyVec3( overlay, "BasisU" );
-	const std::optional<Vec3d> v0 = KeyVec3( overlay, "BasisV" );
-	const std::optional<Vec3d> n0 = KeyVec3( overlay, "BasisNormal" );
-	if ( !origin || !u0 || !v0 || !n0 || mapgeometry::Length( *u0 ) <= 1e-12 ||
-	     mapgeometry::Length( *v0 ) <= 1e-12 )
-	{
-		return out;
-	}
-	out.SetKey( "BasisOrigin", scene::FormatVec3( xf.Point( *origin ) ) );
-	if ( xf.IsTranslation() )
-	{
-		return out;
-	}
-	const Vec3d u = mapgeometry::Normalize( *u0 );
-	const Vec3d v = mapgeometry::Normalize( *v0 );
-	const Vec3d tu = xf.Direction( u );
-	const Vec3d tv = xf.Direction( v );
-	const Vec3d tn = xf.Direction( *n0 );
-	auto unit = []( const Vec3d &a )
-	{
-		return std::fabs( mapgeometry::Length( a ) - 1.0 ) <= 1e-4;
-	};
-	auto perpendicular = []( const Vec3d &a, const Vec3d &b )
-	{
-		return std::fabs( mapgeometry::Dot( a, b ) ) <= 0.0025;
-	};
-	if ( unit( tu ) && unit( tv ) && unit( tn ) && perpendicular( tu, tv ) &&
-	     perpendicular( tu, tn ) && perpendicular( tv, tn ) )
-	{
-		out.SetKey( "BasisU", scene::FormatVec3( tu ) );
-		out.SetKey( "BasisV", scene::FormatVec3( tv ) );
-		out.SetKey( "BasisNormal", scene::FormatVec3( tn ) );
-		return out;
-	}
-	// Scale or shear: keep the (normalized) axes and move the corners.
-	out.SetKey( "BasisU", scene::FormatVec3( u ) );
-	out.SetKey( "BasisV", scene::FormatVec3( v ) );
-	for ( int i = 0; i < 4; ++i )
-	{
-		const std::optional<Vec3d> uv = KeyVec3( overlay, kCornerKeys[i] );
-		if ( !uv )
-		{
-			continue;
-		}
-		const Vec3d moved = xf.Direction( u * uv->x + v * uv->y );
-		out.SetKey( kCornerKeys[i],
-		    scene::FormatVec3( Vec3d( mapgeometry::Dot( u, moved ), mapgeometry::Dot( v, moved ), uv->z ) ) );
-	}
-	return out;
 }
 
 } // namespace hammer::app::ops

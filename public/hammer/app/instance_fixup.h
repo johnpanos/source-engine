@@ -29,7 +29,7 @@
 #ifndef HAMMER_APP_INSTANCE_FIXUP_H
 #define HAMMER_APP_INSTANCE_FIXUP_H
 
-#include "kvtext/keyvalues.h"
+#include "hammer/scene/map_objects.h" // kvtext::KeyValue: an ordered entity key
 
 #include <optional>
 #include <string>

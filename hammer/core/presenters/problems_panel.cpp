@@ -11,12 +11,9 @@
 namespace hammer::presenters
 {
 
-using app::EditError;
-using app::EditErrorCode;
-
-ProblemsPanel::ProblemsPanel( app::EditSession &session, const ports::IEntityCatalog *catalog,
-    const ports::IMaterialInfo *materials )
-    : m_session( session ), m_catalog( catalog ), m_materials( materials )
+ProblemsPanel::ProblemsPanel( app::EditSession &session, app::SessionCommands &commands,
+    const ports::IEntityCatalog *catalog, const ports::IMaterialInfo *materials )
+    : m_session( session ), m_commands( commands ), m_catalog( catalog ), m_materials( materials )
 {
 	m_subscription = m_session.Subscribe(
 	    [this]( const app::SessionEvent &event )
@@ -69,57 +66,46 @@ void ProblemsPanel::Refresh()
 	++m_revision;
 }
 
-ProblemsPanel::Result ProblemsPanel::Run(
-    const std::string &label, const app::EditSession::Operation &operation )
-{
-	auto committed = m_session.Execute( label, operation );
-	if ( !committed )
-	{
-		return foundation::MakeUnexpected( committed.Error() );
-	}
-	return {};
-}
-
 ProblemsPanel::Result ProblemsPanel::GoTo( std::size_t row )
 {
 	if ( row >= m_rows.size() )
 	{
-		return foundation::MakeUnexpected(
-		    EditError{ EditErrorCode::Rejected, "no such problem" } );
+		return app::CommandFailure( app::CommandStatus::Rejected, "select", "no such problem" );
 	}
 	if ( m_rows[row].problem.objects.empty() )
 	{
-		return foundation::MakeUnexpected(
-		    EditError{ EditErrorCode::Nothing, "the problem concerns the whole map" } );
+		return app::CommandFailure(
+		    app::CommandStatus::Rejected, "select", "the problem concerns the whole map" );
 	}
-	return m_session.SelectObjects( m_rows[row].problem.objects, app::SelectMode::Replace );
+	auto selected =
+	    m_session.SelectObjects( m_rows[row].problem.objects, app::SelectMode::Replace );
+	if ( !selected )
+	{
+		return app::CommandFailure(
+		    app::CommandStatus::Rejected, "select", selected.Error().message );
+	}
+	return std::string();
 }
 
 ProblemsPanel::Result ProblemsPanel::Fix( std::size_t row )
 {
 	if ( row >= m_rows.size() )
 	{
-		return foundation::MakeUnexpected(
-		    EditError{ EditErrorCode::Rejected, "no such problem" } );
+		return app::CommandFailure(
+		    app::CommandStatus::Rejected, "fix_problem", "no such problem" );
 	}
-	const app::MapProblem problem = m_rows[row].problem;
-	const ports::IEntityCatalog *catalog = m_catalog;
-	return Run( "Fix " + m_rows[row].codeName,
-	    [&]( scene::DocumentEdit &edit )
-	    {
-		    return app::FixProblem( edit, problem, catalog );
-	    } );
+	app::CommandArgs args{ { "code", m_rows[row].codeName } };
+	if ( !m_rows[row].problem.objects.empty() )
+	{
+		args["ids"] =
+		    std::to_string( app::SessionCommands::ScriptId( m_rows[row].problem.objects.front() ) );
+	}
+	return m_commands.Execute( "fix_problem", args );
 }
 
 ProblemsPanel::Result ProblemsPanel::FixAll()
 {
-	const ports::IEntityCatalog *catalog = m_catalog;
-	const ports::IMaterialInfo *materials = m_materials;
-	return Run( "Fix all problems",
-	    [&]( scene::DocumentEdit &edit )
-	    {
-		    return app::FixAll( edit, catalog, materials );
-	    } );
+	return m_commands.Execute( "fix_all", {} );
 }
 
 } // namespace hammer::presenters

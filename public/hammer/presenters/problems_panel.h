@@ -20,12 +20,16 @@
 //			  GoTo(row)  selects the row's objects (EditSession::SelectObjects,
 //			             Replace; the selection guards apply). A map-wide
 //			             problem has none: Nothing.
-//			  Fix(row)   app::FixProblem in one Execute labeled
-//			             "Fix <code name>"; a problem without a fix is
-//			             Rejected and nothing changes.
-//			  FixAll()   app::FixAll in one Execute labeled "Fix all problems";
-//			             Nothing when no problem is fixable.
-//			An out-of-range row is Rejected.
+//			  Fix(row)   the fix_problem command with the row's code and its
+//			             first object (one undo step, "Fix <code name>"): it
+//			             fixes that code's fixable problems whose first object
+//			             is the row's; a problem without a fix is refused and
+//			             nothing changes. A fixable map-wide row (no objects)
+//			             fixes every problem of its code.
+//			  FixAll()   the fix_all command (one undo step, "Fix all
+//			             problems"); refused when no problem is fixable.
+//			GoTo and an out-of-range row fail with an app::CommandError too
+//			(status Rejected), so the panel has one result type.
 //
 //			The subscription is RAII; the panel may be destroyed before or
 //			after its session, but calls need a live session.
@@ -38,6 +42,7 @@
 #include "foundation/expected.h"
 #include "hammer/app/edit_session.h"
 #include "hammer/app/map_check.h"
+#include "hammer/app/session_commands.h"
 #include "hammer/ports/entity_catalog.h"
 #include "hammer/ports/material_info.h"
 
@@ -60,11 +65,12 @@ struct ProblemRow
 class ProblemsPanel
 {
 public:
-	using Result = foundation::Expected<void, app::EditError>;
+	using Result = app::CommandResult;
 
-	// 'catalog' and 'materials' may be null (their checks are skipped).
-	ProblemsPanel( app::EditSession &session, const ports::IEntityCatalog *catalog,
-	    const ports::IMaterialInfo *materials );
+	// 'catalog' and 'materials' are the ones 'commands' was composed with and
+	// may be null (their checks are skipped).
+	ProblemsPanel( app::EditSession &session, app::SessionCommands &commands,
+	    const ports::IEntityCatalog *catalog, const ports::IMaterialInfo *materials );
 	ProblemsPanel( const ProblemsPanel & ) = delete;
 	ProblemsPanel &operator=( const ProblemsPanel & ) = delete;
 
@@ -86,9 +92,8 @@ public:
 	Result FixAll();
 
 private:
-	Result Run( const std::string &label, const app::EditSession::Operation &operation );
-
 	app::EditSession &m_session;
+	app::SessionCommands &m_commands;
 	const ports::IEntityCatalog *m_catalog = nullptr;
 	const ports::IMaterialInfo *m_materials = nullptr;
 	app::SessionSubscription m_subscription;
