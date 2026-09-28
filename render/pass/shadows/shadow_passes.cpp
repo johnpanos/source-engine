@@ -8,7 +8,7 @@
 #include "render/pass/shadows/shadow_passes.h"
 
 #include "render/graph/executor.h"
-#include "shadow_spv.h"
+#include "spv/shadow_spv.h"
 
 #include <algorithm>
 #include <utility>

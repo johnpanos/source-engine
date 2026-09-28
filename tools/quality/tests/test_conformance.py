@@ -211,6 +211,39 @@ class ResponseFileTest(unittest.TestCase):
         self.assertEqual(r["outcome"], conformance.OUTCOME_PASS, r)
 
 
+class GeneratedIncludeRootTest(unittest.TestCase):
+    """A profile's generated include roots are written before the suite builds
+    (RFC 0016 K4: the SPIR-V headers are not committed), and a failed generator
+    cannot pass: the suite that needs its headers fails to build."""
+
+    WRITER = ("import os, sys; d = os.path.join(sys.argv[1], 'selftest_gen'); "
+              "os.makedirs(d, exist_ok=True); "
+              "open(os.path.join(d, 'value.h'), 'w').write('#define SELFTEST_GENERATED_VALUE 7\\n')")
+
+    def _run(self, command):
+        profile = dict(conformance.load_profile(os.path.join(REPO, PROFILES_DIR), "self-test"))
+        gid = "selftest-%d-%d" % (os.getpid(), time.monotonic_ns())
+        profile["generated_include_roots"] = [{"id": gid, "command": command}]
+        build_dir = tempfile.mkdtemp(prefix="conf-gen-")
+        try:
+            return conformance.run_suite(REPO, CXX, profile,
+                                         make_suite("generated", ["generated_include.cpp"]),
+                                         build_dir)
+        finally:
+            shutil.rmtree(build_dir, ignore_errors=True)
+            shutil.rmtree(os.path.join(REPO, "build", "quality", "generated", gid),
+                          ignore_errors=True)
+
+    def test_generated_header_reaches_the_build(self):
+        r = self._run(["{python}", "-c", self.WRITER, "{out}"])
+        self.assertEqual(r["outcome"], conformance.OUTCOME_PASS, r)
+
+    def test_failed_generator_fails_the_build(self):
+        r = self._run(["{python}", "-c", "import sys; sys.exit(3)"])
+        self.assertEqual(r["outcome"], conformance.OUTCOME_COMPILE_ERROR)
+        self.assertFalse(r["matched"])
+
+
 class ProviderTest(unittest.TestCase):
     """Unavailable providers never pass; optional skips never certify."""
 

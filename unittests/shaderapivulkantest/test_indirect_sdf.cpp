@@ -24,7 +24,7 @@
 //
 //===========================================================================//
 
-#include "../../materialsystem/shaderapivulkan/material_spv.h"
+#include "spv/material_spv.h"
 #include "../rendertest/indirect_contract.h"
 #include "headless_vulkan.h"
 #include "render/indirect_radiosity.h"

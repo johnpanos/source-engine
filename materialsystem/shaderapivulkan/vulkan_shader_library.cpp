@@ -6,7 +6,7 @@
 
 #include "vulkan_shader_library.h"
 
-#include "material_spv_index.h"
+#include "spv/material_spv_index.h"
 
 #include <cstring>
 #include <filesystem>

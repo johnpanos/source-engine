@@ -45,18 +45,25 @@ a declared layout fails the build.
 index: keys, files, sha256, reflected bindings, GL slots, specialization
 constants), and fails (exit 1) on any layout or compile failure; the Waf task
 (render/shaders/wscript) runs it, so products build artifacts at build time.
-With --headers it also writes material_spv.h, material_spv_index.h and
-legacy_spv.h from the SPIR-V artifacts, with the regenerators' own writers.
+With --headers DIR it also writes every generated header into DIR
+(shader_toolchain.GENERATED_NAMES): material_spv.h, material_spv_index.h and
+legacy_spv.h from the SPIR-V artifacts with the regenerators' own writers,
+the GENERATED headers from their rows. None is committed (RFC 0016 K4):
+consumers include "spv/<name>" from the build's generated directory.
+`headers --out DIR` writes the same headers without the GLSL 4.50 targets
+(the conformance runner's generated include root uses it).
 
-`check` is the gate: it builds every artifact, and requires that the headers
-written from the artifacts equal the committed material_spv.h,
-material_spv_index.h and legacy_spv.h byte for byte and that each array of
-demo_triangle_spv.h equals its artifact. It prints one checks-v1 record.
+`check` is the gate: it builds every artifact, writes the headers as the
+build does, and requires every generated header to be written, the backend's
+to agree with the regenerators (independent writers that compile for
+themselves, --check --compare-dir) and each unit's array to equal its
+artifact. It prints one checks-v1 record.
 
 --seed-fault runs the check against a seeded defect:
   layout-mismatch   one declared binding's kind is changed;
   fifth-group       a fixture family declares five groups;
-  flip-word         one word of one committed array is changed (a copy);
+  flip-word         one word of one array in each backend header the build
+                    wrote is changed;
 `sensitivity` requires the unseeded check to pass and each fault to fail for
 exactly its seeded defect.
 
@@ -172,9 +179,11 @@ def inventory(root=ROOT):
         units.append(Unit(legacy.array_name(path.stem, path.suffix[1:]),
                           LEGACY + "/" + path.name, ["-O", "-Werror", "-I", LEGACY], [],
                           "legacy"))
-    for header, array, source, options in st.EMBEDDED:
-        if header.startswith(BACKEND + "/"):
-            units.append(Unit(array, source, list(options), [], header))
+    # The backend's file-static generated arrays (demo_triangle_spv.h).
+    for header, (namespace, _, rows) in sorted(st.GENERATED.items()):
+        if namespace is None:
+            for array, source, options in rows:
+                units.append(Unit(array, source, list(options), [], header))
     # Axes: the options that vary between a source's units.
     by_source = {}
     for unit in units:
@@ -564,25 +573,69 @@ def first_difference(actual, expected):
                                                  len(expected.splitlines()))
 
 
-def check_headers(checks, units, words, committed_root, root=ROOT):
-    """The committed generated headers equal what the artifacts write."""
-    try:
-        written = headers_from_artifacts(units, words, root)
-    except (ArtifactError, st.ToolchainError) as error:
-        checks.check(False, "headers.written", str(error))
-        return
-    for name, text in sorted(written.items()):
-        path = Path(committed_root) / BACKEND / name
-        committed = path.read_text() if path.is_file() else ""
-        checks.check(committed == text, "headers.%s.byte-identical" % name,
-                     first_difference(committed, text))
+def write_headers(units, words, out_dir, root=ROOT):
+    """Every generated header (shader_toolchain.GENERATED_NAMES) into out_dir,
+    flat: the backend's with the regenerators' writers fed the artifacts'
+    SPIR-V, the GENERATED headers from their rows (a row that is a unit takes
+    its artifact; the others are compiled here). Returns the names written."""
+    written = headers_from_artifacts(units, words, root)
+    words = dict(words)
+    missing = [(array, source, options) for _, array, source, options in st.generated_rows()
+               if array not in words]
+    compiler = st.glslc()
+    with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as pool:
+        futures = [(array, pool.submit(st.compile_module, compiler, Path(root) / source,
+                                       list(options)))
+                   for array, source, options in missing]
+    for array, future in futures:
+        words[array] = future.result()
+    for header in st.GENERATED:
+        written[header] = st.render_generated(header, lambda array: words[array])
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, text in written.items():
+        target = out_dir / name
+        # Unchanged headers keep their timestamps, so consumers do not rebuild.
+        if not target.is_file() or target.read_text() != text:
+            target.write_text(text)
+    return sorted(written)
+
+
+def generate_headers(out_dir, root=ROOT):
+    """The build's generated headers without the other targets' artifacts
+    (the conformance runner and the toolchain check use it)."""
+    units = inventory(root)
+    st.glslc()
+    with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as pool:
+        futures = {unit.name: pool.submit(compile_spirv, unit, root) for unit in units}
+    words = {name: words_of(future.result()) for name, future in futures.items()}
+    return write_headers(units, words, out_dir, root)
+
+
+def check_headers(checks, units, words, generated_dir, root=ROOT):
+    """The generated headers in generated_dir: every one written; the
+    backend's agree with the regenerators, independent writers that compile
+    for themselves; each array of a unit equals its artifact."""
+    generated_dir = Path(generated_dir)
+    for name in st.GENERATED_NAMES:
+        checks.check((generated_dir / name).is_file(), "headers.%s.written" % name,
+                     "the build did not write it")
+    for name, script, _ in st.REGENERATORS:
+        result = subprocess.run([sys.executable, str(Path(root) / script), "--check",
+                                 "--compare-dir", str(generated_dir)],
+                                capture_output=True, text=True)
+        detail = (result.stdout + result.stderr).strip().splitlines()
+        checks.check(result.returncode == 0, "headers.%s.regenerator-agrees" % name,
+                     "%s --check exited %d: %s" % (Path(script).name, result.returncode,
+                                                   " | ".join(detail[-3:])))
     for unit in units:
         if unit.header in ("material", "legacy"):
             continue
-        arrays = st.embedded_arrays((Path(committed_root) / unit.header).read_text())
+        path = generated_dir / unit.header
+        arrays = st.embedded_arrays(path.read_text()) if path.is_file() else {}
         checks.check(arrays.get(unit.name) == words.get(unit.name),
-                     "headers.%s:%s.identical" % (Path(unit.header).name, unit.name),
-                     "the committed array differs from its SPIR-V artifact")
+                     "headers.%s:%s.identical" % (unit.header, unit.name),
+                     "the generated array differs from its SPIR-V artifact")
 
 
 # ---------------------------------------------------------------------------
@@ -605,25 +658,19 @@ FIFTH_GROUP_FAMILY = {
 }
 
 
-def seed_copies(seeded_root, units, root=ROOT):
-    """Copies of the committed headers with one word of one array changed in
-    each; returns the checks that must fail."""
+def seed_generated(generated_dir, units):
+    """One word of one array changed in each backend header written in
+    generated_dir; returns the checks that must fail."""
     expected = set()
-    files = sorted({BACKEND + "/material_spv.h", BACKEND + "/legacy_spv.h",
-                    BACKEND + "/material_spv_index.h"} |
-                   {u.header for u in units if u.header not in ("material", "legacy")})
-    for relative in files:
-        target = Path(seeded_root) / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(Path(root) / relative, target)
-        if relative.endswith("_index.h"):
-            continue
-        array, _ = st.flip_one_byte(target)
-        name = Path(relative).name
-        if name in ("material_spv.h", "legacy_spv.h"):
-            expected.add("headers.%s.byte-identical" % name)
+    for header in ["material_spv.h", "legacy_spv.h"] + sorted(
+            {u.header for u in units if u.header not in ("material", "legacy")}):
+        array, _ = st.flip_one_byte(Path(generated_dir) / header)
+        if header == "material_spv.h":
+            expected.add("headers.material.regenerator-agrees")
+        elif header == "legacy_spv.h":
+            expected.add("headers.legacy.regenerator-agrees")
         else:
-            expected.add("headers.%s:%s.identical" % (name, array))
+            expected.add("headers.%s:%s.identical" % (header, array))
     return expected
 
 
@@ -659,7 +706,6 @@ def run_check(out=None, seed_fault=None, root=ROOT, stream=None):
         checks.check(False, "setup", str(error))
         return checks, evidence
     expected = set()
-    committed_root = Path(root)
     if seed_fault == "layout-mismatch":
         name = seed_layout_mismatch(layouts)
         evidence["seeded"] = "kind of the first binding of pass %s" % name
@@ -671,13 +717,17 @@ def run_check(out=None, seed_fault=None, root=ROOT, stream=None):
         evidence["seeded"] = "family seeded-five-groups with five groups"
         expected = {"family.seeded-five-groups.bind-group-ceiling",
                     "family.seeded-five-groups.roles"}
-    elif seed_fault == "flip-word":
-        committed_root = scratch / "seeded"
-        expected = seed_copies(committed_root, units, root)
-        evidence["seeded"] = sorted(expected)
     evidence["units"] = len(units)
     words, index = build_artifacts(checks, units, layouts, scratch / "artifacts", root)
-    check_headers(checks, units, words, committed_root, root)
+    generated = scratch / "generated"
+    try:
+        write_headers(units, words, generated, root)
+    except (ArtifactError, st.ToolchainError) as error:
+        checks.check(False, "headers.written", str(error))
+    if seed_fault == "flip-word":
+        expected = seed_generated(generated, units)
+        evidence["seeded"] = sorted(expected)
+    check_headers(checks, units, words, generated, root)
     evidence["artifacts"] = sum(1 for a in index["artifacts"] if "file" in a)
     evidence["excluded"] = [a for a in index["artifacts"] if "excluded" in a]
     evidence["sets_used"] = index["sets_used"]
@@ -739,14 +789,22 @@ def command_build(args):
             shutil.rmtree(out / fmt, ignore_errors=True)
     words, index = build_artifacts(checks, units, layouts, out)
     if args.headers and not checks.failures:
-        written = headers_from_artifacts(units, words)
-        Path(args.headers).mkdir(parents=True, exist_ok=True)
-        for name, text in written.items():
-            (Path(args.headers) / name).write_text(text)
+        write_headers(units, words, args.headers)
     print("shader_artifacts: %d units, %d artifacts, %d failures" % (
         len(units), sum(1 for a in index["artifacts"] if "file" in a), checks.failures),
         file=sys.stderr)
     return 1 if checks.failures else 0
+
+
+def command_headers(args):
+    try:
+        names = generate_headers(args.out)
+    except (ArtifactError, st.ToolchainError) as error:
+        print("shader_artifacts: %s" % error, file=sys.stderr)
+        return 1
+    print("shader_artifacts: %d generated headers in %s" % (len(names), args.out),
+          file=sys.stderr)
+    return 0
 
 
 def command_derive_layouts(_args):
@@ -788,8 +846,12 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     build_parser = commands.add_parser("build", help="build every artifact and its index")
     build_parser.add_argument("--out", required=True)
-    build_parser.add_argument("--headers", help="also write the generated headers here")
+    build_parser.add_argument("--headers", help="also write every generated header here")
     build_parser.set_defaults(run=command_build)
+    headers_parser = commands.add_parser(
+        "headers", help="write only the generated headers (no GLSL 4.50 artifacts)")
+    headers_parser.add_argument("--out", required=True)
+    headers_parser.set_defaults(run=command_headers)
     check_parser = commands.add_parser("check", help="the render.shader-artifacts gate")
     check_parser.add_argument("--out", help="evidence and scratch directory")
     check_parser.add_argument("--seed-fault", choices=("layout-mismatch", "fifth-group",

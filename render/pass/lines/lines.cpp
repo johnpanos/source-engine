@@ -6,7 +6,7 @@
 
 #include "render/pass/lines/lines.h"
 
-#include "lines_spv.h"
+#include "spv/lines_spv.h"
 #include "render/graph/executor.h"
 
 #include <cmath>

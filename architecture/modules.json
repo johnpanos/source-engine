@@ -366,7 +366,8 @@
         "allowedEdges": [
           "render.contracts",
           "render.device",
-          "render.device.vulkan"
+          "render.device.vulkan",
+          "render.shader-library"
         ],
         "externalHeaders": [
           "vulkan/vulkan.h"
@@ -687,7 +688,8 @@
           "render.device",
           "render.graph",
           "render.resources",
-          "render.scene"
+          "render.scene",
+          "render.shader-library"
         ]
       },
       {
@@ -701,7 +703,8 @@
           "render.math",
           "render.device",
           "render.graph",
-          "render.resources"
+          "render.resources",
+          "render.shader-library"
         ]
       },
       {
@@ -713,7 +716,8 @@
         "allowedEdges": [
           "foundation",
           "render.device",
-          "render.graph"
+          "render.graph",
+          "render.shader-library"
         ]
       },
       {
@@ -740,7 +744,8 @@
           "render.math",
           "render.contracts",
           "render.device",
-          "render.graph"
+          "render.graph",
+          "render.shader-library"
         ]
       },
       {
@@ -754,7 +759,8 @@
           "render.math",
           "render.device",
           "render.graph",
-          "render.resources"
+          "render.resources",
+          "render.shader-library"
         ]
       },
       {
@@ -1110,6 +1116,14 @@
         ]
       }
     ],
+    "generatedHeaders": [
+      {
+        "prefix": "spv/",
+        "owner": "render.shader-library",
+        "producer": "render/shaders/wscript (the render_spv task generator; tools/render/shader_artifacts.py headers)",
+        "rfc": "0016 K4: the SPIR-V headers are generated, not committed"
+      }
+    ],
     "standardHeaders": [
       "algorithm",
       "array",
@@ -1281,7 +1295,8 @@
         "allowedUse": [
           "render_math",
           "render_graph",
-          "render_device"
+          "render_device",
+          "render_spv"
         ]
       },
       "render_pass_shadows": {
@@ -1289,13 +1304,15 @@
           "render_math",
           "render_graph",
           "render_device",
-          "render_resources"
+          "render_resources",
+          "render_spv"
         ]
       },
       "render_pass_skinning": {
         "allowedUse": [
           "render_graph",
-          "render_device"
+          "render_device",
+          "render_spv"
         ]
       },
       "render_pass_opaque": {
@@ -1303,7 +1320,8 @@
           "render_scene",
           "render_resources",
           "render_graph",
-          "render_device"
+          "render_device",
+          "render_spv"
         ]
       },
       "render_pass_lines": {
@@ -1311,7 +1329,8 @@
           "render_resources",
           "render_graph",
           "render_device",
-          "render_math"
+          "render_math",
+          "render_spv"
         ]
       },
       "render_legacy": {

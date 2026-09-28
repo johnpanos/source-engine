@@ -2,7 +2,8 @@
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 """Regenerates legacy_spv.h: the legacy shader ports' SPIR-V and program table.
 
-    python3 materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py [--check [--compare-dir DIR]]
+    python3 materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py --out DIR
+    python3 materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py --check --compare-dir DIR
 
 Every shaders/legacy/<name>.vert and <name>.frag becomes the array
 g_legacy_<name>_vert / g_legacy_<name>_frag. A pixel stage registers the D3D9
@@ -14,9 +15,10 @@ shader pairs it ports with one line each (vulkan_legacy_programs.h):
 `vert` names the shaders/legacy/<stage>.vert the pair draws with; the samplers
 are the D3D9 samplers the port reads, in binding order of set 0 (at most sixteen).
 Compiles with the pinned glslc (quality/toolchain/shader-compiler.json), which
-tools/render/shader_toolchain.py locates and verifies. --check exits 1 when
-legacy_spv.h (with --compare-dir, the copy in DIR) is not what the GLSL
-compiles to (a GLSL change without a regenerated header).
+tools/render/shader_toolchain.py locates and verifies. The header is not
+committed (RFC 0016 K4): the build generates it (tools/render/shader_artifacts.py
+headers), and this script is the independent writer the checks compare with.
+--check exits 1 when legacy_spv.h in DIR is not what the GLSL compiles to.
 """
 
 import argparse
@@ -30,7 +32,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[2] / "tools" / "render"))
 import shader_toolchain  # noqa: E402
 SOURCES = HERE / "legacy"
-OUTPUT = HERE.parent / "legacy_spv.h"
+OUTPUT = "legacy_spv.h"
 MAX_SAMPLER_SLOTS = 16
 DIMENSIONS = {"2d": "kLegacySampler2D", "cube": "kLegacySamplerCube", "3d": "kLegacySamplerVolume"}
 VERTEX_FLAGS = {"object_position": "kLegacyObjectPosition",
@@ -164,22 +166,24 @@ def main():
                         help="exit 1 when legacy_spv.h is not what the GLSL compiles to")
     parser.add_argument("--compare-dir", type=pathlib.Path,
                         help="with --check: compare against legacy_spv.h in this directory")
+    parser.add_argument("--out", type=pathlib.Path, help="write legacy_spv.h to this directory")
     args = parser.parse_args()
-    if args.compare_dir and not args.check:
-        parser.error("--compare-dir needs --check")
+    if args.check != bool(args.compare_dir) or args.check == bool(args.out):
+        parser.error("pass --check --compare-dir DIR, or --out DIR")
     try:
         text = render()
     except (LegacyError, shader_toolchain.ToolchainError) as error:
         print("regen_legacy_spv: %s" % error, file=sys.stderr)
         return 2
     if args.check:
-        target = args.compare_dir / OUTPUT.name if args.compare_dir else OUTPUT
+        target = args.compare_dir / OUTPUT
         current = target.read_text() if target.exists() else ""
         if current != text:
             print("%s is stale; run %s" % (target, pathlib.Path(__file__).name), file=sys.stderr)
             return 1
         return 0
-    OUTPUT.write_text(text)
+    args.out.mkdir(parents=True, exist_ok=True)
+    (args.out / OUTPUT).write_text(text)
     return 0
 
 

@@ -23,7 +23,7 @@
 //
 //=============================================================================//
 
-#include "skin_defects_spv.h"
+#include "spv/skin_defects_spv.h"
 #include "skinning_fixtures.h"
 #include "render/device/vulkan/provider.h"
 #include "render/graph/compiled_graph.h"

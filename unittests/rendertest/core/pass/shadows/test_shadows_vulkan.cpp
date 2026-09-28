@@ -62,7 +62,7 @@
 #include "render/pass/shadows/atlas.h"
 #include "render/pass/shadows/shadow_passes.h"
 #include "render/pass/shadows/shadow_views.h"
-#include "shadow_defects_spv.h"
+#include "spv/shadow_defects_spv.h"
 #include "testing/checks.h"
 
 #include <algorithm>

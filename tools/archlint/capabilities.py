@@ -22,6 +22,28 @@ def owner(path, block):
     return next(iter(owners)) if len(owners) == 1 else None
 
 
+def generated_owner(name, block):
+    """The module that owns a build-generated include (block['generatedHeaders']:
+    each entry names a path prefix and its owner), or None."""
+    for entry in block.get('generatedHeaders', []):
+        if name.startswith(entry['prefix']):
+            return entry['owner']
+    return None
+
+
+def generated_header_errors(block):
+    modules = {m['id'] for m in block['modules']}
+    errors = []
+    for entry in block.get('generatedHeaders', []):
+        missing = {'prefix', 'owner', 'producer'} - set(entry)
+        if missing:
+            errors.append(f'CAP004 generatedHeaders entry {entry.get("prefix")} lacks '
+                          f'{", ".join(sorted(missing))}')
+        elif entry['owner'] not in modules:
+            errors.append(f'CAP004 generatedHeaders {entry["prefix"]}: unknown owner {entry["owner"]}')
+    return errors
+
+
 def target_errors(name, use, includes, block):
     target = block['targets'].get(name)
     if target is None:
@@ -60,6 +82,7 @@ def check(root, block, strip):
         visit(mid)
     errors += target_owners(block)[1]
     errors += shared_library_groups(block)[1]
+    errors += generated_header_errors(block)
     paths = set()
     for module in modules.values():
         for prefix in module['paths']:
@@ -91,6 +114,14 @@ def check(root, block, strip):
             name = match.group(2)
             candidate = next((p.resolve() for p in (path.parent / name, root / 'public' / name)
                               if p.is_file()), None)
+            generated = generated_owner(name, block)
+            if candidate is None and generated is not None:
+                # A header the build writes (block['generatedHeaders']): owned
+                # by its declared module, so the ordinary edge rule applies.
+                if generated != mid and generated not in modules[mid]['allowedEdges']:
+                    errors.append(f'CAP002 {relative}: forbidden include {name}; '
+                                  f'generated headers belong to {generated}')
+                continue
             if candidate is None:
                 if native and name in module.get('externalHeaders', []):
                     continue

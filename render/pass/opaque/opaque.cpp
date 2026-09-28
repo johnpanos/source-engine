@@ -6,7 +6,7 @@
 
 #include "render/pass/opaque/opaque.h"
 
-#include "opaque_spv.h"
+#include "spv/opaque_spv.h"
 #include "render/graph/executor.h"
 
 #include <cstring>

@@ -18,7 +18,7 @@
 //
 //===========================================================================//
 
-#include "../../materialsystem/shaderapivulkan/material_spv.h"
+#include "spv/material_spv.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_compute.h"
 #include "headless_vulkan.h"
 #include "render/render_profile.h"

@@ -5,22 +5,26 @@ shaders that are compiled with options (demo_triangle_spv.h holds the rest),
 and material_spv_index.h: each array's content hash and source, which names
 the shader modules the backend creates (vulkan_shader_library.cpp).
 
-    python3 materialsystem/shaderapivulkan/shaders/regen_material_spv.py
-    python3 .../regen_material_spv.py --check [--compare-dir DIR]
-    python3 .../regen_material_spv.py --check-index
-    python3 .../regen_material_spv.py --debug-out DIR
+    python3 materialsystem/shaderapivulkan/shaders/regen_material_spv.py --out DIR
+    python3 .../regen_material_spv.py --check --compare-dir DIR
+    python3 .../regen_material_spv.py --check-index --compare-dir DIR
+    python3 .../regen_material_spv.py --debug-out DIR [--shipped DIR]
 
-Compiles with the pinned glslc (quality/toolchain/shader-compiler.json), which
+Neither header is committed (RFC 0016 K4): the build generates them
+(tools/render/shader_artifacts.py headers, into <build>/.../generated/spv/),
+and this script is the independent writer the checks compare with. Compiles
+with the pinned glslc (quality/toolchain/shader-compiler.json), which
 tools/render/shader_toolchain.py locates and verifies. The output is written in
-the layout clang-format keeps. --check exits 1 when either header is not what
-the GLSL compiles to (with --compare-dir, the copies of the same name in DIR).
---check-index verifies the index against material_spv.h (no compiler).
+the layout clang-format keeps. --check exits 1 when either header in DIR is not
+what the GLSL compiles to. --check-index verifies the index against
+material_spv.h in DIR (no compiler).
 --debug-out writes, for every array still built from the current GLSL, a
 named variant with source-level debug information (glslangValidator -gVS:
 NonSemantic.Shader.DebugInfo.100, unoptimized) as DIR/<array>.<hash>.spv,
 keyed by the embedded array's hash; `-vkshaderdir DIR` makes the backend use
-them (RenderDoc then shows GLSL names and steps source). Arrays whose GLSL
-changed since material_spv.h was generated are skipped and reported.
+them (RenderDoc then shows GLSL names and steps source). With --shipped (a
+build's generated spv directory) arrays whose GLSL changed since that build
+are skipped and reported; without it the current GLSL is what ships.
 """
 
 import argparse
@@ -36,8 +40,8 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[2] / "tools" / "render"))
 import shader_toolchain  # noqa: E402
-OUTPUT = HERE.parent / "material_spv.h"
-INDEX_OUTPUT = HERE.parent / "material_spv_index.h"
+OUTPUT = "material_spv.h"
+INDEX_OUTPUT = "material_spv_index.h"
 # (array name, source, extra glslc arguments)
 SHADERS = (
     ("g_materialTexVertSpv", "demo_dyn_tex.vert", []),
@@ -221,8 +225,8 @@ def parallel(function, items):
         return list(pool.map(lambda item: function(*item), items))
 
 
-def embedded_arrays(path=OUTPUT):
-    """{array name: words} as material_spv.h holds them."""
+def embedded_arrays(path):
+    """{array name: words} as a material_spv.h holds them."""
     arrays, name = {}, None
     for line in pathlib.Path(path).read_text().splitlines():
         match = re.match(r"static const uint32_t (\w+)\[\] = \{$", line)
@@ -279,20 +283,21 @@ def render():
     return "".join(parts), index_text(dict(zip((n for n, _, _ in SHADERS), compiled)))
 
 
-def regenerate():
+def regenerate(out_dir):
     subprocess.run([sys.executable, str(HERE / "gen_pbr_split_sum.py"), "--check"],
                    check=True)
     material, index = render()
-    OUTPUT.write_text(material)
-    INDEX_OUTPUT.write_text(index)
+    out_dir = pathlib.Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / OUTPUT).write_text(material)
+    (out_dir / INDEX_OUTPUT).write_text(index)
 
 
-def check(compare_dir=None):
-    """1 when a header differs from what the GLSL compiles to."""
+def check(compare_dir):
+    """1 when a header in compare_dir differs from what the GLSL compiles to."""
     stale = []
-    for path, text in zip((OUTPUT, INDEX_OUTPUT), render()):
-        if compare_dir:
-            path = pathlib.Path(compare_dir) / path.name
+    for name, text in zip((OUTPUT, INDEX_OUTPUT), render()):
+        path = pathlib.Path(compare_dir) / name
         if not path.is_file() or path.read_text() != text:
             stale.append(str(path))
     for path in stale:
@@ -301,14 +306,14 @@ def check(compare_dir=None):
     return 1 if stale else 0
 
 
-def check_index():
-    arrays = embedded_arrays()
+def check_index(compare_dir):
+    arrays = embedded_arrays(pathlib.Path(compare_dir) / OUTPUT)
     missing = [name for name, _, _ in SHADERS if name not in arrays]
     if missing:
         print("material_spv.h lacks %s; regenerate it" % ", ".join(missing), file=sys.stderr)
         return 1
-    if INDEX_OUTPUT.read_text() != index_text(arrays):
-        print("%s does not match material_spv.h; regenerate both" % INDEX_OUTPUT.name,
+    if (pathlib.Path(compare_dir) / INDEX_OUTPUT).read_text() != index_text(arrays):
+        print("%s does not match material_spv.h; regenerate both" % INDEX_OUTPUT,
               file=sys.stderr)
         return 1
     return 0
@@ -317,22 +322,23 @@ def check_index():
 DEBUG_FILE = re.compile(r"^\w+\.[0-9a-f]{16}\.spv$")
 
 
-def write_debug(directory):
-    """Debug variants of the embedded arrays still built from the current GLSL;
-    returns the manifest written beside them."""
+def write_debug(directory, shipped=None):
+    """Debug variants of the shipped arrays still built from the current GLSL
+    (shipped: a build's generated spv directory; without it the current GLSL
+    is what ships); returns the manifest written beside them."""
     directory = pathlib.Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     for old in directory.iterdir():
         if DEBUG_FILE.match(old.name):
             old.unlink()
-    arrays = embedded_arrays()
+    arrays = embedded_arrays(pathlib.Path(shipped) / OUTPUT) if shipped else None
     jobs = [(source, extra) for _, source, extra in SHADERS]
     current = parallel(compile_words, jobs)
     debug = parallel(compile_debug, jobs)
     entries = []
     for (name, source, extra), words, spirv in zip(SHADERS, current, debug):
         entry = {"array": name, "source": describe(source, extra)}
-        if arrays.get(name) != words:
+        if arrays is not None and arrays.get(name) != words:
             entry["status"] = "stale: material_spv.h was not regenerated after its GLSL changed"
         else:
             entry["hash"] = "%016x" % spirv_hash(words)
@@ -355,18 +361,24 @@ def main(argv=None):
                       help="verify material_spv_index.h against material_spv.h")
     mode.add_argument("--debug-out", type=pathlib.Path,
                       help="write the named debug variants to this directory")
+    mode.add_argument("--out", type=pathlib.Path,
+                      help="write material_spv.h and material_spv_index.h to this directory")
     parser.add_argument("--compare-dir", type=pathlib.Path,
-                        help="with --check: compare against the headers in this directory")
+                        help="with --check or --check-index: the headers to compare")
+    parser.add_argument("--shipped", type=pathlib.Path,
+                        help="with --debug-out: the build's generated spv directory")
     args = parser.parse_args(argv)
-    if args.compare_dir and not args.check:
-        parser.error("--compare-dir needs --check")
+    if (args.check or args.check_index) != bool(args.compare_dir):
+        parser.error("--check and --check-index need --compare-dir, and only they take it")
+    if not (args.check or args.check_index or args.debug_out or args.out):
+        parser.error("the build generates the headers; pass --out DIR to write copies")
     if args.check_index:
-        return check_index()
+        return check_index(args.compare_dir)
     try:
         if args.check:
             return check(args.compare_dir)
         if args.debug_out:
-            manifest = write_debug(args.debug_out)
+            manifest = write_debug(args.debug_out, args.shipped)
             stale = [e for e in manifest["entries"] if e["status"] != "written"]
             print("%d debug shaders in %s" % (len(manifest["entries"]) - len(stale),
                                               args.debug_out))
@@ -374,7 +386,7 @@ def main(argv=None):
                 print("skipped %s (%s): %s" % (entry["array"], entry["source"], entry["status"]),
                       file=sys.stderr)
             return 0
-        regenerate()
+        regenerate(args.out)
     except shader_toolchain.ToolchainError as error:
         print("regen_material_spv: %s" % error, file=sys.stderr)
         return 2

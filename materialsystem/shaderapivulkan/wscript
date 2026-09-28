@@ -36,7 +36,7 @@ def build(bld):
 		target = 'vulkan_debug',
 		name = 'vulkan_debug',
 		includes = [ '.' ] + bld.env.INCLUDES_VULKAN,
-		use = [ 'VULKAN' ],
+		use = [ 'VULKAN', 'render_spv' ],
 		install_path = None)
 
 	source = [
@@ -74,7 +74,7 @@ def build(bld):
 
 	libs = ['tier0','tier1','vstdlib','mathlib','bitmap','VULKAN','SDL3','vulkan_texture_image',
 		'vulkan_debug',
-		'mapcontainer']
+		'mapcontainer', 'render_spv']
 	if bld.env.KTX_READ_ENABLED:
 		libs += ['texturecontainer', 'KTXREAD']
 		defines += ['RFC0008_KTX_READER']

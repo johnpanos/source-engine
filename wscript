@@ -479,11 +479,12 @@ def options(opt):
 			'Hammer editor viewports), which has no engine renderer; auto builds it when the '
 			'Vulkan loader is found, on fails configure without it. Clients follow '
 			'--render-backend [default: %default]')
-	grp.add_option('--shader-artifacts', choices=['auto', 'on', 'off'], default='auto',
+	grp.add_option('--shader-artifacts', choices=['auto', 'on'], default='auto',
 		dest='SHADER_ARTIFACTS',
-		help='RFC 0016 K4: build the per-target shader artifacts with the pinned host tools '
-			'(tools/render/shader_toolchain.py build); auto builds them when the tools exist, '
-			'on fails configure without them [default: %default]')
+		help='RFC 0016 K4: kept for existing configure lines; the render core always builds '
+			'its SPIR-V headers and artifacts with the pinned host tools '
+			'(tools/render/shader_toolchain.py build), and configure fails without them '
+			'[default: %default]')
 	# Not read by the build: both providers are linked, and -physics selects one
 	# at run time (Box3D by default). Existing trees stored the old 'ivp' default,
 	# so giving the option an effect would drop Box3D from them on reconfigure.
@@ -1141,6 +1142,9 @@ def configure_render_core(conf):
 		conf.msg('Render core device adapters', ', '.join(['null'] +
 			(['vulkan'] if conf.env.RENDER_CORE_VULKAN else []) +
 			(['gl'] if conf.env.RENDER_CORE_GL else [])))
+		# In the root environment, before any subproject derives its own:
+		# the generated SPIR-V headers' tools must exist before any project builds.
+		conf.recurse('render/shaders')
 
 def build(bld):
 	os.environ["CCACHE_DIR"] = os.path.abspath('.ccache/'+bld.env.COMPILER_CC+'/'+bld.env.DEST_OS+'/'+bld.env.DEST_CPU)
@@ -1164,6 +1168,14 @@ def build(bld):
 		projects['game'] += ['engine/voice_codecs/opus']
 	if bld.env.ANDROID_SDL3:
 		projects['game'] += ['utils/bzip2']
+
+	# RFC 0016 K4: the generated SPIR-V headers, in a build group of their own
+	# ahead of every project. gccdeps learns header dependencies from the
+	# compiler after the fact, so Waf cannot order a consumer after a generated
+	# header by itself (debugapi's protoc rule ends a group the same way).
+	if bld.env.RENDER_CORE:
+		bld.recurse('render/shaders')
+		bld.add_group()
 
 	if bld.env.TESTS:
 		bld.add_subproject(projects['tests'])

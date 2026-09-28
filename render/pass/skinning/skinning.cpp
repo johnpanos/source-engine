@@ -8,7 +8,7 @@
 
 #include "render/graph/executor.h"
 
-#include "skin_spv.h"
+#include "spv/skin_spv.h"
 
 #include <algorithm>
 #include <cmath>

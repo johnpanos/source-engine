@@ -6,7 +6,7 @@
 
 #include "vulkan_compute.h"
 
-#include "material_spv.h"
+#include "spv/material_spv.h"
 #include "render/render_backend.h"
 
 #include <algorithm>

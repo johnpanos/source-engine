@@ -4,9 +4,13 @@
 # becomes one artifact per target format (SPIR-V, GLSL 4.50), built here with
 # the pinned host tools and checked against layouts.json by
 # tools/render/shader_artifacts.py. Products build artifacts at build time;
-# nothing compiles shaders at run time. The generated headers written beside
-# the index are what the backend includes once the committed *_spv.h headers
-# are deleted (the switch-over after K1).
+# nothing compiles shaders at run time.
+#
+# The SPIR-V headers (shader_toolchain.GENERATED_NAMES) are generated here too,
+# into <build>/render/shaders/generated/spv/, and are not committed. Consumers
+# include "spv/<name>" and name the `render_spv` task generator in `use`.
+# The root recurses this directory before every project and ends a build
+# group after it: gccdeps cannot order a consumer after a generated header.
 
 import os
 import subprocess
@@ -15,7 +19,14 @@ import sys
 top = '.'
 
 SHADERS = 'materialsystem/shaderapivulkan/shaders'
-GENERATED_HEADERS = ('material_spv.h', 'material_spv_index.h', 'legacy_spv.h')
+# The generated header names (shader_toolchain.GENERATED_NAMES).
+def generated_headers(root):
+	sys.path.insert(0, os.path.join(root, 'tools', 'render'))
+	try:
+		import shader_toolchain
+		return shader_toolchain.GENERATED_NAMES
+	finally:
+		sys.path.pop(0)
 
 def options(opt):
 	return
@@ -35,20 +46,16 @@ def pinned_tools(root):
 	return None
 
 def configure(conf):
-	mode = getattr(conf.options, 'SHADER_ARTIFACTS', 'auto')
 	conf.env.RENDER_SHADER_ARTIFACTS = False
-	if mode == 'off':
-		conf.msg('Shader artifacts', 'off (--shader-artifacts=off)', color='YELLOW')
-		return
 	problem = pinned_tools(conf.srcnode.abspath())
 	if problem:
-		if mode == 'on':
-			conf.fatal('--shader-artifacts=on: %s' % problem)
-		conf.msg('Shader artifacts', 'not built: %s' % problem.splitlines()[0][:120],
-			color='YELLOW')
-		return
+		# The render passes and the native backend embed generated SPIR-V, so
+		# a product with the render core cannot build without the tools.
+		conf.fatal('RFC 0016 K4: the render core embeds SPIR-V the build generates with the '
+			'pinned shader tools; build them with `python3 tools/render/shader_toolchain.py '
+			'build` (%s)' % problem.splitlines()[0][:200])
 	conf.env.RENDER_SHADER_ARTIFACTS = True
-	conf.msg('Shader artifacts', 'SPIR-V and GLSL 4.50 with the pinned tools')
+	conf.msg('Shader artifacts', 'SPIR-V headers and GLSL 4.50 with the pinned tools')
 
 def build(bld):
 	if not bld.env.RENDER_SHADER_ARTIFACTS:
@@ -58,10 +65,14 @@ def build(bld):
 		root.find_node('tools/render/shader_toolchain.py'),
 		root.find_node('quality/toolchain/shader-compiler.json'),
 		bld.path.find_node('layouts.json')]
-	inputs += root.ant_glob(SHADERS + '/**/*.vert ' + SHADERS + '/**/*.frag ' +
-		SHADERS + '/**/*.comp ' + SHADERS + '/**/*.glsl ' + SHADERS + '/regen_*.py')
+	# Every GLSL a generated header embeds: the backend's and the render passes'.
+	for directory in (SHADERS, 'render/pass'):
+		inputs += root.ant_glob(' '.join('%s/**/*.%s' % (directory, ext)
+			for ext in ('vert', 'frag', 'comp', 'glsl')))
+	inputs += root.ant_glob(SHADERS + '/regen_*.py')
 	index = bld.path.find_or_declare('artifacts/index.json')
-	headers = [bld.path.find_or_declare('generated/' + name) for name in GENERATED_HEADERS]
+	headers = [bld.path.find_or_declare('generated/spv/' + name)
+		for name in generated_headers(root.abspath())]
 
 	def build_artifacts(task):
 		return subprocess.run([sys.executable, task.inputs[0].abspath(), 'build',
@@ -70,6 +81,9 @@ def build(bld):
 			cwd=root.abspath()).returncode
 
 	# The tool is the source; every other input is a dependency, so a change to
-	# any GLSL, include, layout or pin rebuilds the artifacts.
+	# any GLSL, include, layout or pin rebuilds the artifacts. Consumers name
+	# `render_spv` in `use`: that posts this task even under --targets and adds
+	# the generated include root (export_includes).
 	bld(rule=build_artifacts, source=inputs[:1], deps=inputs[1:], target=[index] + headers,
-		name='render_shader_artifacts', color='CYAN', idx=bld.get_taskgen_count())
+		name='render_spv', export_includes=[bld.path.find_or_declare('generated')],
+		color='CYAN', idx=bld.get_taskgen_count())

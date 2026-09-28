@@ -11135,7 +11135,7 @@
       "contract": "quality/toolchain/shader-compiler.json",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0016 K0 'Shader compiler pinned': the pinned compiler rebuilds every committed SPIR-V module byte-identically, and a different compiler version fails. tools/render/shader_toolchain.py check resolves glslc ($SHADER_TOOLCHAIN_GLSLC, else the pinned build in dependencies/shader-toolchain made by 'shader_toolchain.py build' from the sha256-pinned shaderc, glslang, SPIRV-Tools and SPIRV-Headers archives, else PATH) and requires its --version to equal the pin exactly (glslangValidator likewise); then regen_material_spv.py --check (material_spv.h and material_spv_index.h) and regen_legacy_spv.py --check (legacy_spv.h) rebuild their headers, each array embedded by hand (demo_triangle_spv.h, the render.device.v2 fixtures in unittests/rendertest/core/device/ from their GLSL in shaders/) is rebuilt and compared word for word, and an inventory pass fails on any tracked or untracked C/C++ file holding a SPIR-V initializer that no regenerator or EMBEDDED row covers. About 10 s.",
+      "description": "RFC 0016 K0 'Shader compiler pinned': the pinned compiler rebuilds every committed SPIR-V module byte-identically, and a different compiler version fails. tools/render/shader_toolchain.py check resolves glslc ($SHADER_TOOLCHAIN_GLSLC, else the pinned build in dependencies/shader-toolchain made by 'shader_toolchain.py build' from the sha256-pinned shaderc, glslang, SPIRV-Tools and SPIRV-Headers archives, else PATH) and requires its --version to equal the pin exactly (glslangValidator likewise); then the generated headers (RFC 0016 K4: not committed) are written as the build writes them (shader_artifacts.generate_headers) and must agree with regen_material_spv.py and regen_legacy_spv.py --check --compare-dir (independent writers) and, row by row (GENERATED), with the compiler; the few arrays still committed (EMBEDDED: the render.device.v2 fixtures in unittests/rendertest/core/device/) are rebuilt and compared word for word; and an inventory pass fails on any tracked or untracked C/C++ file holding a SPIR-V initializer outside EMBEDDED, and on any committed copy of a generated header. About 25 s.",
       "command": [
         "{python}",
         "tools/render/shader_toolchain.py",
@@ -11157,10 +11157,6 @@
         "materialsystem/shaderapivulkan/shaders/regen_material_spv.py",
         "materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py",
         "tools/quality/conformance_result.py",
-        "materialsystem/shaderapivulkan/material_spv.h",
-        "materialsystem/shaderapivulkan/material_spv_index.h",
-        "materialsystem/shaderapivulkan/legacy_spv.h",
-        "materialsystem/shaderapivulkan/demo_triangle_spv.h",
         "unittests/rendertest/core/device/test_shaders.h",
         "unittests/rendertest/core/device/test_device_vulkan.cpp"
       ],
@@ -11319,7 +11315,7 @@
       "contract": "render/shaders/layouts.json",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0016 K4 'Artifacts per target' (tools/render/shader_artifacts.py check). Every shader module the native backend ships (the regenerators' material table, every shaders/legacy stage and the demo_triangle_spv.h arrays: 204 units) is built into one artifact per target format: SPIR-V with the pinned glslc and GLSL 4.50 with the pinned SPIRV-Cross (cross_compiler in quality/toolchain/shader-compiler.json) after flattening bind groups into GL slot ranges of 16, each GLSL artifact compiling as OpenGL GLSL with the pinned glslangValidator. Artifacts are keyed by source, compiler identity, format and permutation (the options that vary between a source's units, one bit each), and unique. Each SPIR-V artifact's reflection (spirv-cross --reflect) must match its declared pass or family in render/shaders/layouts.json (set, binding, kind, count, stage, push-constant stage), every declaration must be used, every unit must have exactly one owner, and a family may declare at most four groups in role order. The headers written from the artifacts with the regenerators' own writers must equal the committed material_spv.h, material_spv_index.h and legacy_spv.h byte for byte, and each demo_triangle_spv.h array its artifact. Declared GLSL 4.50 exclusions (ray query; the two seven-set passes) must still fail to cross-compile. About 3 s on 32 threads.",
+      "description": "RFC 0016 K4 'Artifacts per target' (tools/render/shader_artifacts.py check). Every shader module the native backend ships (the regenerators' material table, every shaders/legacy stage and the demo_triangle_spv.h arrays: 204 units) is built into one artifact per target format: SPIR-V with the pinned glslc and GLSL 4.50 with the pinned SPIRV-Cross (cross_compiler in quality/toolchain/shader-compiler.json) after flattening bind groups into GL slot ranges of 16, each GLSL artifact compiling as OpenGL GLSL with the pinned glslangValidator. Artifacts are keyed by source, compiler identity, format and permutation (the options that vary between a source's units, one bit each), and unique. Each SPIR-V artifact's reflection (spirv-cross --reflect) must match its declared pass or family in render/shaders/layouts.json (set, binding, kind, count, stage, push-constant stage), every declaration must be used, every unit must have exactly one owner, and a family may declare at most four groups in role order. The build's generated headers (every shader_toolchain.GENERATED_NAMES header, none committed since RFC 0016 K4) must all be written, material_spv.h, material_spv_index.h and legacy_spv.h must agree with the regenerators' independent --check --compare-dir writers, and each demo_triangle_spv.h array must equal its artifact. Declared GLSL 4.50 exclusions (ray query; the two seven-set passes) must still fail to cross-compile. About 3 s on 32 threads.",
       "command": [
         "{python}",
         "tools/render/shader_artifacts.py",
@@ -11343,11 +11339,7 @@
         "quality/toolchain/shader-compiler.json",
         "materialsystem/shaderapivulkan/shaders/regen_material_spv.py",
         "materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py",
-        "tools/quality/conformance_result.py",
-        "materialsystem/shaderapivulkan/material_spv.h",
-        "materialsystem/shaderapivulkan/material_spv_index.h",
-        "materialsystem/shaderapivulkan/legacy_spv.h",
-        "materialsystem/shaderapivulkan/demo_triangle_spv.h"
+        "tools/quality/conformance_result.py"
       ],
       "expect": "pass"
     },

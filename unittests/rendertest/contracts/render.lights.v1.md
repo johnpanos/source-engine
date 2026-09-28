@@ -3,8 +3,8 @@
 Module: `render.pass.lights` (RFC 0016 layer 6, K7)
 Headers: `public/render/pass/lights/` (`clusters.h`, `cluster_pass.h`)
 Sources: `render/pass/lights/clusters.cpp` (the serial path),
-`cluster_assign.comp` (the compute pass; its SPIR-V from the pinned glslc is
-committed in `cluster_assign_spv.h`) and `cluster_pass.cpp` (`ClusterKernel`,
+`cluster_assign.comp` (the compute pass; the build generates its SPIR-V with
+the pinned glslc into `spv/cluster_assign_spv.h`) and `cluster_pass.cpp` (`ClusterKernel`,
 the upload and assign graph passes)
 Suites: `unittests/rendertest/core/pass/lights/test_clusters.cpp` against the
 independent reference in `cluster_oracle.h`, the bad builders in

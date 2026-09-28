@@ -5,7 +5,7 @@
 //===========================================================================//
 
 #include "vulkan_device.h"
-#include "material_spv.h"
+#include "spv/material_spv.h"
 
 #include <algorithm>
 #include <cstdarg>

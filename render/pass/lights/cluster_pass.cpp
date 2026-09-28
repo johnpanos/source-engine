@@ -6,7 +6,7 @@
 
 #include "render/pass/lights/cluster_pass.h"
 
-#include "cluster_assign_spv.h"
+#include "spv/cluster_assign_spv.h"
 #include "render/graph/executor.h"
 
 #include <algorithm>

@@ -40,7 +40,7 @@
 //
 //=============================================================================//
 
-#include "cluster_defects_spv.h"
+#include "spv/cluster_defects_spv.h"
 #include "cluster_oracle.h"
 #include "render/device/vulkan/provider.h"
 #include "render/graph/compiled_graph.h"

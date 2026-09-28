@@ -36,6 +36,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import toolchain_policy  # noqa: E402
@@ -499,14 +500,47 @@ def rooted_flags(root, flags):
             else f for f in flags]
 
 
+_GENERATED_LOCK = threading.Lock()
+_GENERATED = {}
+
+
+def generated_include_roots(root, profile):
+    """Include flags for the profile's generated include roots: headers the
+    repository no longer commits (RFC 0016 K4: the SPIR-V headers), written
+    once per run by each entry's command into build/quality/generated/<id>.
+    A failed generator is reported here; the compiles that need its headers
+    then fail on the missing file."""
+    flags = []
+    for entry in profile.get("generated_include_roots", []):
+        path = os.path.join(root, "build", "quality", "generated", entry["id"])
+        with _GENERATED_LOCK:
+            if path not in _GENERATED:
+                argv = [sys.executable if arg == "{python}" else arg.replace("{out}", path)
+                        for arg in entry["command"]]
+                result = subprocess.run(argv, cwd=root, capture_output=True, text=True)
+                _GENERATED[path] = result.returncode == 0
+                if result.returncode:
+                    print("conformance: generated include root %s failed (exit %d): %s"
+                          % (entry["id"], result.returncode,
+                             " | ".join((result.stdout + result.stderr).strip().splitlines()[-3:])),
+                          file=sys.stderr)
+        flags += ["-I", path]
+    return flags
+
+
+def include_flags(root, profile):
+    flags = []
+    for inc in profile.get("include_roots", []):
+        flags += ["-I", os.path.join(root, inc)]
+    return flags + generated_include_roots(root, profile)
+
+
 def build_command(root, cxx, profile, suite, out_bin, config="default"):
     flags = ["-std=" + profile["cxx_std"]]
     flags += list(profile.get("base_flags", []))
     flags += rooted_flags(root, suite.get("extra_flags", []))
     flags += BUILD_CONFIGS[config]
-    includes = []
-    for inc in profile.get("include_roots", []):
-        includes += ["-I", os.path.join(root, inc)]
+    includes = include_flags(root, profile)
     sources = [os.path.join(root, s) for s in suite["sources"]]
     return [cxx, *flags, *includes, *sources, *rooted_flags(root, suite.get("link_flags", [])),
             *profile.get("link_flags", []), "-o", out_bin]
@@ -521,9 +555,7 @@ def separate_build_commands(root, cxx, profile, suite, out_bin, config="default"
     flags += list(profile.get("base_flags", []))
     flags += rooted_flags(root, suite.get("extra_flags", []))
     flags += BUILD_CONFIGS[config]
-    includes = []
-    for inc in profile.get("include_roots", []):
-        includes += ["-I", os.path.join(root, inc)]
+    includes = include_flags(root, profile)
     commands, objects = [], []
     for index, source in enumerate(suite["sources"]):
         obj = "%s.%d.o" % (out_bin, index)
@@ -558,9 +590,7 @@ def unit_build_commands(root, cxx, profile, suite, out_bin, config="default"):
     suites). Every other unit is compiled with CONFORMANCE_SHARED_<ID> set to
     that library's path, and the test program does not link it."""
     policy = toolchain_policy.load_policy(root)
-    includes = []
-    for inc in profile.get("include_roots", []):
-        includes += ["-I", os.path.join(root, inc)]
+    includes = include_flags(root, profile)
     shared_defines = ['-D%s="%s"' % (shared_unit_macro(unit), shared_unit_path(out_bin, unit))
                       for unit in suite["units"] if unit.get("link") == "shared"]
     commands, objects, libraries = [], [], []

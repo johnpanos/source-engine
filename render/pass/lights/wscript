@@ -2,7 +2,7 @@
 # encoding: utf-8
 # render.pass.lights (RFC 0016 layer 6 feature, K7): clustered light lists,
 # the serial path and cluster_assign.comp as a render.graph compute pass (its
-# SPIR-V committed in cluster_assign_spv.h until the K4 artifact build).
+# SPIR-V generated into spv/cluster_assign_spv.h by render_spv).
 
 def build(bld):
 	bld.stlib(
@@ -13,6 +13,6 @@ def build(bld):
 		name        = 'render_pass_lights',
 		source      = bld.path.ant_glob('*.cpp'),
 		includes    = ['../../../public'],
-		use         = ['render_math', 'render_graph', 'render_device'],
+		use         = ['render_math', 'render_graph', 'render_device', 'render_spv'],
 		idx         = bld.get_taskgen_count()
 	)

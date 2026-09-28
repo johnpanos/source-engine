@@ -61,6 +61,31 @@ class CapabilityBoundaryTest(unittest.TestCase):
         self.assertEqual(capabilities.target_errors('strict', [], ['public'], self.block), [])
         self.assertEqual(len(capabilities.target_errors('strict', ['tier0'], ['thirdparty'], self.block)), 2)
 
+    def generated(self, owner='base'):
+        self.block['generatedHeaders'] = [
+            {'prefix': 'spv/', 'owner': owner, 'producer': 'a build task'}]
+
+    def test_generated_header_belongs_to_its_declared_owner(self):
+        self.generated()
+        # Unresolved on disk (the build writes it), owned by base: feature may
+        # embed it through its edge to base.
+        self.write('public/feature/api.h', '#include "spv/kernel_spv.h"\n')
+        self.assertEqual(self.check(), [])
+
+    def test_generated_header_needs_an_edge_to_its_owner(self):
+        self.generated(owner='feature')
+        self.write('public/base/value.h', '#include "spv/kernel_spv.h"\n')
+        self.assertTrue(any('CAP002' in e and 'generated headers belong to feature' in e
+                            for e in self.check()))
+
+    def test_undeclared_generated_prefix_is_unresolved(self):
+        self.write('public/feature/api.h', '#include "spv/kernel_spv.h"\n')
+        self.assertTrue(any('CAP002' in e and 'unresolved include' in e for e in self.check()))
+
+    def test_generated_header_owner_must_exist(self):
+        self.generated(owner='nowhere')
+        self.assertTrue(any('CAP004' in e and 'unknown owner nowhere' in e for e in self.check()))
+
     def native_module(self):
         self.block['modules'].append({
             'id': 'backend', 'kind': 'backend', 'paths': ['public/base/private/'],

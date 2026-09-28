@@ -2,8 +2,8 @@
 # encoding: utf-8
 # render.pass.shadows (RFC 0016 layer 6 feature, K7): shadow atlas planning,
 # spot and flashlight shadow views, texel-snapped sun cascades, the caster
-# depth pass and the receiver helper (shadow_sample.glsl, its SPIR-V committed
-# in shadow_spv.h until the K4 artifact build).
+# depth pass and the receiver helper (shadow_sample.glsl, its SPIR-V generated
+# into spv/shadow_spv.h by render_spv).
 
 def build(bld):
 	bld.stlib(
@@ -14,6 +14,6 @@ def build(bld):
 		name        = 'render_pass_shadows',
 		source      = bld.path.ant_glob('*.cpp'),
 		includes    = ['../../../public'],
-		use         = ['render_math', 'render_graph', 'render_device', 'render_resources'],
+		use         = ['render_math', 'render_graph', 'render_device', 'render_resources', 'render_spv'],
 		idx         = bld.get_taskgen_count()
 	)

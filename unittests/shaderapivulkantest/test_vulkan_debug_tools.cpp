@@ -18,8 +18,8 @@
 
 #include "testing/conformance_result.h"
 
-#include "materialsystem/shaderapivulkan/material_spv.h"
-#include "materialsystem/shaderapivulkan/material_spv_index.h"
+#include "spv/material_spv.h"
+#include "spv/material_spv_index.h"
 #include "materialsystem/shaderapivulkan/vulkan_debug_utils.h"
 #include "materialsystem/shaderapivulkan/vulkan_shader_library.h"
 

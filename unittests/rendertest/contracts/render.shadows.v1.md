@@ -6,8 +6,8 @@ Headers: `public/render/pass/shadows/` (`atlas.h`, `shadow_views.h`,
 Sources: `render/pass/shadows/atlas.cpp`, `shadow_views.cpp`,
 `shadow_passes.cpp` (`ShadowDepthRenderer`, `ShadowReceiverRenderer`), the
 shaders `shadow_depth.vert`, `shadow_receiver.vert`, `shadow_receiver.frag`
-and the receiver helper `shadow_sample.glsl` (SPIR-V from the pinned glslc
-committed in `shadow_spv.h`)
+and the receiver helper `shadow_sample.glsl` (SPIR-V the build generates
+with the pinned glslc into `spv/shadow_spv.h`)
 Suites: `unittests/rendertest/core/pass/shadows/test_shadows.cpp` with the
 oracles in `shadow_oracle.h`, the bad providers in
 `test_shadows_negative.cpp`, and the pixel oracles in

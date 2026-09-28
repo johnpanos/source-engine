@@ -265,7 +265,7 @@ def main():
     check_parser.add_argument("--logs", action="append", required=True)
     sub.add_parser("selftest")
     args = parser.parse_args()
-    if args.command == "run" and not ( args.build and args.runtime ):
+    if args.command == "run" and not (args.build and args.runtime):
         parser.error("run needs --build and --runtime (or RENDER_TSAN_BUILD, RENDER_TSAN_RUNTIME)")
     if args.command == "run":
         return run(args)

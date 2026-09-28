@@ -9,7 +9,7 @@
 //===========================================================================//
 
 #include "vulkan_legacy_programs.h"
-#include "legacy_spv.h"
+#include "spv/legacy_spv.h"
 
 #include <cctype>
 

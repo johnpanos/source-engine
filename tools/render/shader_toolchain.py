@@ -23,12 +23,14 @@ owner of that pin:
   identity  prints the compilers the tools resolve and whether each is the
             pin.
   check     the gate: the resolved compiler must report exactly the pinned
-            identity, and every committed SPIR-V module must rebuild
-            byte-identically with it. The regenerators' --check modes cover
-            material_spv.h, material_spv_index.h and legacy_spv.h; EMBEDDED
-            below covers the modules embedded by hand, each rebuilt from its
-            GLSL; an inventory pass fails on any committed SPIR-V array this
-            check does not cover. Prints one `CONFORMANCE <checks> <failures>`
+            identity. The generated headers (GENERATED_NAMES; RFC 0016 K4
+            deleted their committed copies) are written as the build writes
+            them (shader_artifacts.generate_headers) and must agree with the
+            regenerators' independent --check writers and, row by row, with
+            the compiler. The few modules still committed (EMBEDDED) must
+            rebuild byte-identically. An inventory pass fails on any committed
+            SPIR-V array outside EMBEDDED, and on a committed copy of a
+            generated header. Prints one `CONFORMANCE <checks> <failures>`
             record (checks-v1).
 
 The compiler resolves, in order, from $SHADER_TOOLCHAIN_GLSLC, the pinned build
@@ -39,8 +41,9 @@ glslang_validator() from here instead of calling a compiler from PATH.
 --seed-fault runs the check against a seeded defect:
   foreign-compiler  a wrapper around the real compiler that reports another
                     version must fail toolchain.identity;
-  flip-byte         copies of every committed module file, each with one byte
-                    of one SPIR-V module changed, must fail their rebuild.
+  flip-byte         the generated headers and copies of every committed module
+                    file, each with one byte of one SPIR-V module changed,
+                    must fail their checks.
 `sensitivity` runs an unseeded control and both faults and requires each
 fault to be rejected for exactly its seeded defects (checks-v1).
 """
@@ -89,40 +92,23 @@ SHADOWS = "render/pass/shadows"
 LIGHTS_TESTS = "unittests/rendertest/core/pass/lights"
 SHADOWS_TESTS = "unittests/rendertest/core/pass/shadows"
 
-# The regenerators, each the owner of its generated headers' layout. `--check`
-# rebuilds them and compares; `--compare-dir DIR` compares against copies.
+# The regenerators: the independent writers of the backend's generated
+# headers (material_spv.h, material_spv_index.h, legacy_spv.h). The build
+# writes those headers from the artifacts (tools/render/shader_artifacts.py
+# headers); the checks run each regenerator with --check --compare-dir against
+# the build's copies.
 REGENERATORS = (
     ("material", SHADERS + "/regen_material_spv.py",
-     ("materialsystem/shaderapivulkan/material_spv.h",
-      "materialsystem/shaderapivulkan/material_spv_index.h")),
-    ("legacy", SHADERS + "/regen_legacy_spv.py",
-     ("materialsystem/shaderapivulkan/legacy_spv.h",)),
+     ("material_spv.h", "material_spv_index.h")),
+    ("legacy", SHADERS + "/regen_legacy_spv.py", ("legacy_spv.h",)),
 )
 
-# Committed SPIR-V embedded without a regenerator: (file, array, GLSL source,
-# glslc options). Each array must equal what the pinned compiler builds.
 DEVICE_OPTIONS = ("--target-env=vulkan1.1", "-O")
+
+# Committed SPIR-V: (file, array, GLSL source, glslc options). Only the
+# render.device.v2 suite's small test modules stay committed; each array must
+# equal what the pinned compiler builds.
 EMBEDDED = (
-    ("materialsystem/shaderapivulkan/demo_triangle_spv.h", "g_demoTriangleVertSpv",
-     SHADERS + "/demo_triangle.vert", ()),
-    ("materialsystem/shaderapivulkan/demo_triangle_spv.h", "g_demoTriangleFragSpv",
-     SHADERS + "/demo_triangle.frag", ()),
-    ("materialsystem/shaderapivulkan/demo_triangle_spv.h", "g_demoTexQuadVertSpv",
-     SHADERS + "/demo_texquad.vert", ()),
-    ("materialsystem/shaderapivulkan/demo_triangle_spv.h", "g_demoTexQuadFragSpv",
-     SHADERS + "/demo_texquad.frag", ()),
-    ("materialsystem/shaderapivulkan/demo_triangle_spv.h", "g_demoIndexedUboVertSpv",
-     SHADERS + "/demo_indexed_ubo.vert", ()),
-    ("materialsystem/shaderapivulkan/demo_triangle_spv.h", "g_demoIndexedUboFragSpv",
-     SHADERS + "/demo_indexed_ubo.frag", ()),
-    ("materialsystem/shaderapivulkan/demo_triangle_spv.h", "g_demoDepthVertSpv",
-     SHADERS + "/demo_depth.vert", ()),
-    ("materialsystem/shaderapivulkan/demo_triangle_spv.h", "g_demoGreenifyFragSpv",
-     SHADERS + "/demo_greenify.frag", ()),
-    ("materialsystem/shaderapivulkan/demo_triangle_spv.h", "g_demoConstColorFragSpv",
-     SHADERS + "/demo_constcolor.frag", ()),
-    ("materialsystem/shaderapivulkan/demo_triangle_spv.h", "g_demoDynVertSpv",
-     SHADERS + "/demo_dyn.vert", ()),
     (DEVICE + "/test_shaders.h", "kFullScreenVertex", DEVICE + "/shaders/tri.vert",
      DEVICE_OPTIONS),
     (DEVICE + "/test_shaders.h", "kTopHalfVertex", DEVICE + "/shaders/tophalf.vert",
@@ -137,32 +123,104 @@ EMBEDDED = (
      DEVICE_OPTIONS),
     (DEVICE + "/test_device_vulkan.cpp", "kPositionVertex", DEVICE + "/shaders/position.vert",
      DEVICE_OPTIONS),
-    (SKINNING + "/skin_spv.h", "kSkinCompute", SKINNING + "/skin.comp", DEVICE_OPTIONS),
-    (OPAQUE + "/opaque_spv.h", "kOpaqueVertex", OPAQUE + "/opaque.vert", DEVICE_OPTIONS),
-    (OPAQUE + "/opaque_spv.h", "kOpaqueFragment", OPAQUE + "/opaque.frag", DEVICE_OPTIONS),
-    (LINES + "/lines_spv.h", "kLinesVertex", LINES + "/lines.vert", DEVICE_OPTIONS),
-    (LINES + "/lines_spv.h", "kLinesFragment", LINES + "/lines.frag", DEVICE_OPTIONS),
-    (SKINNING_TESTS + "/skin_defects_spv.h", "kSkinBoneIndexError", SKINNING + "/skin.comp",
-     DEVICE_OPTIONS + ("-DSEEDED_BONE_INDEX_ERROR",)),
-    (SKINNING_TESTS + "/skin_defects_spv.h", "kSkinFlexWeightError", SKINNING + "/skin.comp",
-     DEVICE_OPTIONS + ("-DSEEDED_FLEX_WEIGHT_ERROR",)),
-    (LIGHTS + "/cluster_assign_spv.h", "kClusterAssignCompute", LIGHTS + "/cluster_assign.comp",
-     DEVICE_OPTIONS),
-    (LIGHTS_TESTS + "/cluster_defects_spv.h", "kClusterSliceOffByOne",
-     LIGHTS + "/cluster_assign.comp", DEVICE_OPTIONS + ("-DSEEDED_SLICE_OFF_BY_ONE",)),
-    (LIGHTS_TESTS + "/cluster_defects_spv.h", "kClusterConeIgnored",
-     LIGHTS + "/cluster_assign.comp", DEVICE_OPTIONS + ("-DSEEDED_CONE_IGNORED",)),
-    (LIGHTS_TESTS + "/cluster_defects_spv.h", "kClusterUncountedOverflow",
-     LIGHTS + "/cluster_assign.comp", DEVICE_OPTIONS + ("-DSEEDED_UNCOUNTED_OVERFLOW",)),
-    (SHADOWS + "/shadow_spv.h", "kShadowDepthVertex", SHADOWS + "/shadow_depth.vert",
-     DEVICE_OPTIONS),
-    (SHADOWS + "/shadow_spv.h", "kShadowReceiverVertex", SHADOWS + "/shadow_receiver.vert",
-     DEVICE_OPTIONS),
-    (SHADOWS + "/shadow_spv.h", "kShadowReceiverFragment", SHADOWS + "/shadow_receiver.frag",
-     DEVICE_OPTIONS),
-    (SHADOWS_TESTS + "/shadow_defects_spv.h", "kShadowReceiverDepthReversed",
-     SHADOWS + "/shadow_receiver.frag", DEVICE_OPTIONS + ("-DSEEDED_DEPTH_REVERSED",)),
 )
+
+# Generated headers written by glslc rows (RFC 0016 K4: none is committed; the
+# build writes them into <build>/render/shaders/generated/spv/ and consumers
+# include "spv/<name>"). name: (namespace, or None for the backend's
+# file-static arrays, purpose, ((array, GLSL source, glslc options), ...)).
+GENERATED = {
+    "demo_triangle_spv.h": (None,
+        "the native Vulkan bring-up demo pipelines and the dynamic-mesh material "
+        "catalog (demo_dyn.vert with demo_triangle.frag, demo_greenify.frag and "
+        "demo_constcolor.frag)", (
+        ("g_demoTriangleVertSpv", SHADERS + "/demo_triangle.vert", ()),
+        ("g_demoTriangleFragSpv", SHADERS + "/demo_triangle.frag", ()),
+        ("g_demoTexQuadVertSpv", SHADERS + "/demo_texquad.vert", ()),
+        ("g_demoTexQuadFragSpv", SHADERS + "/demo_texquad.frag", ()),
+        ("g_demoIndexedUboVertSpv", SHADERS + "/demo_indexed_ubo.vert", ()),
+        ("g_demoIndexedUboFragSpv", SHADERS + "/demo_indexed_ubo.frag", ()),
+        ("g_demoDepthVertSpv", SHADERS + "/demo_depth.vert", ()),
+        ("g_demoGreenifyFragSpv", SHADERS + "/demo_greenify.frag", ()),
+        ("g_demoConstColorFragSpv", SHADERS + "/demo_constcolor.frag", ()),
+        ("g_demoDynVertSpv", SHADERS + "/demo_dyn.vert", ()))),
+    "skin_spv.h": ("render::pass::skinning::spirv", "the skinning compute pass (RFC 0016 K6)", (
+        ("kSkinCompute", SKINNING + "/skin.comp", DEVICE_OPTIONS),)),
+    "opaque_spv.h": ("render::pass::opaque::spirv", "the opaque pass (RFC 0016 K5)", (
+        ("kOpaqueVertex", OPAQUE + "/opaque.vert", DEVICE_OPTIONS),
+        ("kOpaqueFragment", OPAQUE + "/opaque.frag", DEVICE_OPTIONS))),
+    "lines_spv.h": ("render::pass::lines::spirv",
+        "the lines pass: wireframe, grid and overlays (RFC 0016, Hammer viewports)", (
+        ("kLinesVertex", LINES + "/lines.vert", DEVICE_OPTIONS),
+        ("kLinesFragment", LINES + "/lines.frag", DEVICE_OPTIONS))),
+    "cluster_assign_spv.h": ("render::pass::lights::spirv",
+        "the clustered light assignment pass (RFC 0016 K7)", (
+        ("kClusterAssignCompute", LIGHTS + "/cluster_assign.comp", DEVICE_OPTIONS),)),
+    "shadow_spv.h": ("render::pass::shadows::spirv", "the shadow passes (RFC 0016 K7)", (
+        ("kShadowDepthVertex", SHADOWS + "/shadow_depth.vert", DEVICE_OPTIONS),
+        ("kShadowReceiverVertex", SHADOWS + "/shadow_receiver.vert", DEVICE_OPTIONS),
+        ("kShadowReceiverFragment", SHADOWS + "/shadow_receiver.frag", DEVICE_OPTIONS))),
+    "skin_defects_spv.h": ("rendertest::skinning::spirv",
+        "the skinning suites' seeded kernels (render.skinning sensitivity)", (
+        ("kSkinBoneIndexError", SKINNING + "/skin.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_BONE_INDEX_ERROR",)),
+        ("kSkinFlexWeightError", SKINNING + "/skin.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_FLEX_WEIGHT_ERROR",)))),
+    "cluster_defects_spv.h": ("rendertest::lights::spirv",
+        "the cluster suite's seeded kernels (render.lights.clusters.gpu)", (
+        ("kClusterSliceOffByOne", LIGHTS + "/cluster_assign.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_SLICE_OFF_BY_ONE",)),
+        ("kClusterConeIgnored", LIGHTS + "/cluster_assign.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_CONE_IGNORED",)),
+        ("kClusterUncountedOverflow", LIGHTS + "/cluster_assign.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_UNCOUNTED_OVERFLOW",)))),
+    "shadow_defects_spv.h": ("rendertest::shadows::spirv",
+        "the shadow suite's seeded receiver (render.shadows.pixels)", (
+        ("kShadowReceiverDepthReversed", SHADOWS + "/shadow_receiver.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEPTH_REVERSED",)),)),
+}
+
+# Every generated header's name (the regenerators' and GENERATED's).
+GENERATED_NAMES = tuple(sorted({n for _, _, names in REGENERATORS for n in names} |
+                               set(GENERATED)))
+
+
+def generated_rows():
+    """(header, array, GLSL source, options) of every GENERATED row."""
+    return tuple((header, array, source, options)
+                 for header, (_, _, rows) in sorted(GENERATED.items())
+                 for array, source, options in rows)
+
+
+def render_generated(header, words_of):
+    """The text of a GENERATED header; words_of(array) gives each array's
+    SPIR-V words."""
+    namespace, purpose, rows = GENERATED[header]
+    guard = "GENERATED_SPV_" + re.sub(r"[^A-Z0-9]", "_", header.upper())
+    out = ["//========= Copyright Valve Corporation, All rights reserved. ============//\n",
+           "//\n",
+           "// Purpose: SPIR-V of %s. GENERATED by\n" % purpose,
+           "//          tools/render/shader_artifacts.py headers with the pinned glslc\n",
+           "//          (quality/toolchain/shader-compiler.json); not committed, do not edit.\n",
+           "//\n",
+           "//=============================================================================//\n\n",
+           "#ifndef %s\n#define %s\n\n#include <cstdint>\n\n" % (guard, guard)]
+    if namespace:
+        out.append("namespace %s\n{\n\n" % namespace)
+    for array, source, options in rows:
+        words = words_of(array)
+        out.append("// %s%s\n" % (source, (" " + " ".join(options)) if options else ""))
+        declaration = ("inline constexpr std::uint32_t %s[] = {" if namespace
+                       else "static const uint32_t %s[] = {") % array
+        out.append(declaration + "\n")
+        for i in range(0, len(words), 8):
+            out.append("    " + ", ".join("0x%08xu" % w for w in words[i:i + 8]) + ",\n")
+        out.append("};\n\n")
+    if namespace:
+        out.append("} // namespace %s\n\n" % namespace)
+    out.append("#endif // %s\n" % guard)
+    return "".join(out)
+
 
 # Files whose SPIR-V-looking initializers are not compiler output.
 EXEMPT = {
@@ -411,13 +469,45 @@ def spirv_files(root):
     return found
 
 
-def check_inventory(checks, root, regenerators=REGENERATORS, table=EMBEDDED, exempt=None):
+def check_inventory(checks, root, table=EMBEDDED, exempt=None, names=GENERATED_NAMES):
     exempt = EXEMPT if exempt is None else exempt
-    covered = {output for _, _, outputs in regenerators for output in outputs}
-    covered |= {row[0] for row in table}
+    covered = {row[0] for row in table}
     for relative in sorted(spirv_files(root)):
         checks.check(relative in covered or relative in exempt, "inventory.files.%s" % relative,
-                     "committed SPIR-V that no regenerator or EMBEDDED row rebuilds")
+                     "committed SPIR-V that no EMBEDDED row rebuilds (generated headers "
+                     "are written by the build, not committed)")
+    tracked = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True,
+                             text=True).stdout.splitlines()
+    for name in names:
+        copies = [path for path in tracked if Path(path).name == name]
+        checks.check(not copies, "inventory.generated.%s.not-committed" % name,
+                     "committed copies of a generated header: %s" % ", ".join(copies))
+
+
+def check_generated(checks, compiler, source_root, generated_dir):
+    """One check per GENERATED row: the array in the generated header equals
+    the module the compiler builds."""
+    rows = generated_rows()
+    texts = {}
+    for header in sorted({row[0] for row in rows}):
+        path = Path(generated_dir) / header
+        texts[header] = embedded_arrays(path.read_text()) if path.is_file() else {}
+    jobs = [(compiler, Path(source_root) / source, list(options)) for _, _, source, options in rows]
+    with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as pool:
+        futures = [pool.submit(compile_module, *job) for job in jobs]
+    for (header, array, source, options), future in zip(rows, futures):
+        name = "generated.%s:%s" % (header, array)
+        try:
+            built = future.result()
+        except ToolchainError as error:
+            checks.check(False, name, str(error))
+            continue
+        written = texts[header].get(array)
+        if written is None:
+            checks.check(False, name, "no SPIR-V array %s in the generated %s" % (array, header))
+            continue
+        checks.check(written == built, name, "%s (from %s %s)" % (
+            first_difference(written, built), source, " ".join(options)))
 
 
 def run_regenerator(checks, name, script, compiler, compare_dir=None, root=ROOT):
@@ -478,20 +568,31 @@ def flip_one_byte(path):
     raise ToolchainError("%s has no SPIR-V array to seed" % path)
 
 
-def seed_copies(seeded_root, root=ROOT):
-    """Copies of every committed module file under seeded_root, each with one
-    byte changed; returns {relative path: (array, word)}."""
-    files = {output for _, _, outputs in REGENERATORS for output in outputs
-             if not output.endswith("_index.h")}
-    files |= {row[0] for row in EMBEDDED}
+def seed_copies(seeded_root, generated_dir, root=ROOT):
+    """Copies of every committed module file under seeded_root, and the
+    generated headers in generated_dir, each with one byte changed (the index
+    is left alone); returns {file: (array, word)}."""
     seeded = {}
-    for relative in sorted(files | {o for _, _, outs in REGENERATORS for o in outs}):
+    for relative in sorted({row[0] for row in EMBEDDED}):
         target = Path(seeded_root) / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(Path(root) / relative, target)
-        if relative in files:
-            seeded[relative] = flip_one_byte(target)
+        seeded[relative] = flip_one_byte(target)
+    for name in GENERATED_NAMES:
+        if not name.endswith("_index.h"):
+            seeded[name] = flip_one_byte(Path(generated_dir) / name)
     return seeded
+
+
+def write_generated(generated_dir, root=ROOT):
+    """The generated headers as the build writes them (lazy import: the
+    artifact tool imports this module)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import shader_artifacts
+    finally:
+        sys.path.pop(0)
+    shader_artifacts.generate_headers(generated_dir, root)
 
 
 # ---------------------------------------------------------------------------
@@ -544,15 +645,22 @@ def run_check(out=None, seed_fault=None, root=ROOT, stream=None):
         problem = str(error)
     checks.check(problem is None, "toolchain.debug-identity", problem or "")
 
-    committed_root, compare = Path(root), {}
+    generated = scratch / "generated"
+    try:
+        write_generated(generated, root)
+        checks.check(True, "generated.headers-written")
+    except Exception as error:  # the generator's own failure is this check's detail
+        checks.check(False, "generated.headers-written", str(error))
+        return checks, evidence
+    committed_root = Path(root)
     if seed_fault == "flip-byte":
         committed_root = scratch / "seeded"
         evidence["seeded"] = {path: "%s word %d" % seed
-                              for path, seed in seed_copies(committed_root, root).items()}
-        for name, _, outputs in REGENERATORS:
-            compare[name] = committed_root / Path(outputs[0]).parent
+                              for path, seed in seed_copies(committed_root, generated,
+                                                            root).items()}
     for name, script, _ in REGENERATORS:
-        run_regenerator(checks, name, script, compiler, compare.get(name), root)
+        run_regenerator(checks, name, script, compiler, generated, root)
+    check_generated(checks, compiler, root, generated)
     check_embedded(checks, compiler, root, committed_root)
     check_inventory(checks, root)
     return checks, evidence
@@ -589,9 +697,13 @@ def command_sensitivity(args):
                  "foreign-compiler.rejected-for-identity")
     flipped, evidence = runs["flip-byte"]
     expected = {"generator.%s" % name for name, _, _ in REGENERATORS}
+    seeded = evidence.get("seeded", {})
     for path in sorted({row[0] for row in EMBEDDED}):
-        array = evidence.get("seeded", {}).get(path, "? word").split(" word ")[0]
+        array = seeded.get(path, "? word").split(" word ")[0]
         expected.add("module.%s:%s" % (path, array))
+    for header in sorted(GENERATED):
+        array = seeded.get(header, "? word").split(" word ")[0]
+        expected.add("generated.%s:%s" % (header, array))
     failed = failed_names(flipped)
     for name in sorted(expected):
         checks.check(name in failed, "flip-byte.detected." + name, "the seeded byte passed")

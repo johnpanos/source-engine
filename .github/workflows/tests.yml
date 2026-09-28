@@ -92,6 +92,7 @@ jobs:
     - name: Run tests windows-i386
       run: |
         git submodule init && git submodule update
+        python tools/render/shader_toolchain.py build
         ./waf.bat configure -T release --tests --prefix=out/ --32bits
         ./waf.bat install
         cd out
@@ -109,6 +110,7 @@ jobs:
     - name: Run tests windows-amd64
       run: |
         git submodule init && git submodule update
+        python tools/render/shader_toolchain.py build
         ./waf.bat configure -T release --tests --prefix=out/
         ./waf.bat install
         cd out

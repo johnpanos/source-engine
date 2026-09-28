@@ -6,8 +6,8 @@
 //===========================================================================//
 
 #include "vulkan_device.h"
-#include "demo_triangle_spv.h"
-#include "material_spv.h"
+#include "spv/demo_triangle_spv.h"
+#include "spv/material_spv.h"
 #include "vulkan_present_mode.h"
 #include "render/pbr_split_sum_table.h"
 #include "render/render_sample_count.h"
