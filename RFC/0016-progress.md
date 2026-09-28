@@ -1387,3 +1387,81 @@ only for `vertexlit` (the Hammer session).
 - **Not claimed:** the product draws no material through a family block
   yet. Proxies still run at the legacy bind point, and routing draws to
   families is K5 and K8 work.
+
+## K4 family slice: `vertexlit` (2026-09-28)
+
+State: VertexLitGeneric's family is on the core and matches its legacy port
+exactly on 10 cases. With it every family K4 names matches its port. This
+section does not close K4; the product still draws no material through a
+family (K5, K8).
+
+- **The family:** `render.material`'s `VertexLitFamily`.
+  - Its program is `render/material/families/vertexlit.{vert,frag}`,
+    generated into `spv/families_spv.h`.
+  - `ClaimVertexLit` claims the base texture, `$color`/`$alpha`, alpha
+    test, translucency and `$halflambert`. It refuses bump maps, env maps,
+    detail, self-illumination, `$phong`, rim lights, light warps,
+    `$additive` and texture transforms by name.
+  - `$vertexcolor` and `$vertexalpha` are accepted and their vertex data
+    ignored: `vertexlitgeneric_dx9_helper.cpp` ignores both for
+    VertexLitGeneric. `$vertexalpha` still selects blending, as the port
+    blends (`EvaluateBlendRequirements`).
+  - Two groups. The material group holds the constants, the base texture
+    and its sampler. The draw group (role kDraw) holds the draw's lighting
+    in a uniform buffer, because each model instance has its own ambient
+    cube and lights. `LightingGroup` builds it for `DrawGroups`; `Request`
+    names the draw layout.
+  - The lighting is `PackSourceModelLighting`'s packing, the one owner that
+    `pbr` also uses (spot, point, directional; `SetLight`'s cone).
+  - The draw constants are the `FamilyDrawConstants` prefix. Positions and
+    normals reach the lights' space through object-to-world.
+- **The oracle:** ten cases in
+  `quality/fixtures/legacy-shaders/families/vertexlit.vdf`: ambient only,
+  point, directional with `$color`, spot, four lights of all three types,
+  half-Lambert, alpha test, translucency, `$alpha` alone, and ignored
+  vertex color. The port (`-vklegacyvertexlit`) draws them and is judged
+  against the retail D3D9 bytecode; all pass. `render.family.vertexlit`
+  (113 checks, g++ and clang++) matches the port's pixels exactly on every
+  case. `.seeded-ignore-half-lambert` is caught (12 levels on the
+  half-Lambert case).
+- **What matching the port took**, read from its captured constants:
+  - Per-vertex `DoLighting` with static control flow: the lights in order,
+    then the ambient cube, in the port's expressions (`i0` holds the light
+    count, so four lights are drawn).
+  - `$alpha` below one blends, as `$translucent` does
+    (`IsAlphaModulating`).
+  - The alpha-test reference is a byte: 0.5 is 127/255.
+  - Source's gamma table is indexed by `RoundFloatToInt`, which rounds
+    half to even. `SourceGammaToLinear` used `lround`, so `$color` 0.7
+    (178.5 in float) took index 179 instead of 178, one level off. It now
+    uses `lrint`. The `unlit` suite's `$color` 0.7 case is also exact now.
+- **Opaque pass:** scene C gains a vertexlit cube whose draw group holds
+  its lighting. It draws with the expected pixels (O6), and `render.opaque.null`
+  N4 draws three families.
+- **Harness:** `family_pixel_cases` reads case normals, the ambient cube
+  and light blocks, with the material pixel harness's defaults.
+- **Decisions** (agent, under the user's standing instruction):
+  - The lighting is a draw group, not a view group as in `pbr`. Source
+    lights each model instance with its own cube and lights.
+  - `PbrModelLighting` and `PackSourceModelLighting` keep their `pbr`
+    names; `VertexLitLighting` is an alias. A neutral header is a
+    follow-up for the `pbr` owner.
+  - Texture transforms are refused, as the other families refuse them.
+
+| K4 check | Evidence | Result |
+| --- | --- | --- |
+| Families match ports | `unlit` exact on 6 cases; `lightmapped` exact on 8; `pbr` within 1 on 8; `vertexlit` exact on 10 (120 pixels); a seeded defect caught for each | pass for the four families |
+| Bind-group ceiling | `render.shader-artifacts` (1,362 checks) judges `vertexlit` (material and draw groups) with the others; a seeded fifth group still fails | pass |
+
+Reproduce:
+
+```sh
+python3 tools/quality/legacy_shader_conformance.py --runtime run/runtime \
+    --build <installed client tree with material_pixel_conformance> \
+    --out <new dir> --cases quality/fixtures/legacy-shaders/families/vertexlit.vdf \
+    --hdr none --extra-arg=-vklegacyvertexlit
+python3 tools/render/family_port_pixels.py record --run <dir> --family vertexlit \
+    --out quality/fixtures/render-families/vertexlit-port-v1.vdf
+python3 tools/quality/conformance.py check --suite render.family.vertexlit \
+    --suite render.family.vertexlit.seeded-ignore-half-lambert [--cxx clang++]
+```

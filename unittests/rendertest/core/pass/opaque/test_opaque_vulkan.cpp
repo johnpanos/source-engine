@@ -21,8 +21,10 @@
 //			  cube reads its lightmap page from its draw group (white times the
 //			  page times the lightmap scale), and a pbr cube reads the frame's
 //			  split-sum table and the view's model lighting (a white rough
-//			  dielectric under a uniform ambient cube returns the cube); both
-//			  draw and none is unresolved. Without the view group the pbr draw is
+//			  dielectric under a uniform ambient cube returns the cube), and a
+//			  vertexlit cube reads its lighting from its draw group (white under
+//			  an ambient cube lit on +z shows that face's light); all three draw
+//			  and none is unresolved. Without the view group the pbr draw is
 //			  counted and not drawn;
 //			- validation: no message from the Khronos validation layer
 //			  (synchronization validation included) when it is installed.
@@ -153,7 +155,7 @@ int main()
 		const material::DrawGroup *viewGroup = materials->drawGroups.Group( kPbrViewGroup );
 		const FrameResult frameC =
 		    DrawScene( *device, programs, *meshes, *c->Snapshot(), frameGroup, viewGroup );
-		checks.That( frameGroup && viewGroup && frameC.ok && frameC.stats.drawn == 2 &&
+		checks.That( frameGroup && viewGroup && frameC.ok && frameC.stats.drawn == 3 &&
 		                 frameC.stats.unresolved == 0,
 		    "O6.lightmapped-and-pbr-draws-resolve" );
 		const Rgb page{ Unorm( SrgbToLinear( kPageTexel[0] ) * material::kLightmapScaleLinear ),
@@ -164,9 +166,13 @@ int main()
 		const Rgb ambient{ Unorm( kAmbient[0] ), Unorm( kAmbient[1] ), Unorm( kAmbient[2] ) };
 		checks.That( Near( At( frameC, Pixel( view, { 1.5f, 0.0f, -5.25f } ) ), ambient ),
 		    "O6.the-pbr-cube-returns-the-view-s-ambient-cube" );
+		const Rgb vertexLit{ Unorm( kVertexLitAmbient[0] ), Unorm( kVertexLitAmbient[1] ),
+		    Unorm( kVertexLitAmbient[2] ) };
+		checks.That( Near( At( frameC, Pixel( view, { 0.0f, 1.6f, -5.5f } ) ), vertexLit ),
+		    "O6.the-vertexlit-cube-shows-its-draw-group-s-lighting" );
 		const FrameResult noView =
 		    DrawScene( *device, programs, *meshes, *c->Snapshot(), frameGroup, nullptr );
-		checks.That( noView.ok && noView.stats.drawn == 1 && noView.stats.unresolved == 1 &&
+		checks.That( noView.ok && noView.stats.drawn == 2 && noView.stats.unresolved == 1 &&
 		                 At( noView, Pixel( view, { 1.5f, 0.0f, -5.25f } ) ) == kClear,
 		    "O6.without-the-view-group-the-pbr-draw-is-unresolved" );
 		checks.Equal( materials->drawGroups.GroupFailures(), 0u, "O6.draw-groups-without-failure" );

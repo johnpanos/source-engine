@@ -1275,6 +1275,51 @@
      }
     ]
    }
+  },
+  "vertexlit": {
+   "description": "render.material family `vertexlit` (RFC 0016 K4): the material group holds the constants, the base texture and its sampler; the draw group holds the draw's lighting (the ambient cube and up to four lights); world-to-clip and object-to-world are a draw-constant block.",
+   "sources": [
+    "render/material/families/vertexlit.vert",
+    "render/material/families/vertexlit.frag"
+   ],
+   "push_constants": [
+    "vertex"
+   ],
+   "groups": {
+    "material": [
+     {
+      "binding": 0,
+      "kind": "uniform-buffer",
+      "stages": [
+       "vertex",
+       "fragment"
+      ]
+     },
+     {
+      "binding": 1,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 2,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     }
+    ],
+    "draw": [
+     {
+      "binding": 0,
+      "kind": "uniform-buffer",
+      "stages": [
+       "vertex"
+      ]
+     }
+    ]
+   }
   }
  }
 }

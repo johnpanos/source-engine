@@ -35,7 +35,8 @@ bool ReadFlag( const ParameterBlock &block, std::string_view name );
 
 // Source's GammaToLinear for a material color component (mathlib
 // color_conversion.cpp): values above one pass unchanged, values from 0.95
-// are one, the rest go through the 256-entry pow(2.2) table.
+// are one, the rest go through the 256-entry pow(2.2) table, indexed by
+// RoundFloatToInt (half to even).
 float SourceGammaToLinear( float gamma );
 
 } // namespace render::material::detail

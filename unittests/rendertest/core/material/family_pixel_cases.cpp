@@ -150,6 +150,36 @@ std::string Normalized( std::string name )
 	return name;
 }
 
+// A case's "light" block, with material_pixel_legacy.cpp's defaults
+// (ApplyCaseLighting) for the keys it leaves out.
+ModelLight CaseLight( const kvtext::KeyValueNode &node )
+{
+	ModelLight light;
+	light.type = node.Find( "type" ) ? *node.Find( "type" ) : "point";
+	const float white[3] = { 1.0f, 1.0f, 1.0f };
+	const float down[3] = { 0.0f, 0.0f, -1.0f };
+	const float constant[3] = { 1.0f, 0.0f, 0.0f };
+	auto copy = [&node]( const char *key, float ( &out )[3], const float *fallback )
+	{
+		const std::vector<float> n = Numbers( node.Find( key ) );
+		for ( std::size_t i = 0; i < 3; ++i )
+			out[i] = i < n.size() ? n[i] : ( n.empty() && fallback ? fallback[i] : 0.0f );
+	};
+	copy( "color", light.color, white );
+	copy( "position", light.position, nullptr );
+	copy( "direction", light.direction, down );
+	copy( "attenuation", light.attenuation, constant );
+	auto scalar = [&node]( const char *key, float fallback )
+	{
+		const std::vector<float> n = Numbers( node.Find( key ) );
+		return n.empty() ? fallback : n[0];
+	};
+	light.theta = scalar( "theta", 0.5f );
+	light.phi = scalar( "phi", 1.0f );
+	light.falloff = scalar( "falloff", 1.0f );
+	return light;
+}
+
 } // namespace
 
 std::optional<CaseSet> LoadCases(
@@ -208,6 +238,8 @@ std::optional<CaseSet> LoadCases(
 		{
 			if ( child.name == "material" )
 				material = &child;
+			if ( child.name == "light" )
+				testCase.lights.push_back( CaseLight( child ) );
 			if ( child.name != "vertex" )
 				continue;
 			CaseVertex vertex;
@@ -215,8 +247,11 @@ std::optional<CaseSet> LoadCases(
 			const std::vector<float> uv0 = Numbers( child.Find( "uv0" ) );
 			const std::vector<float> uv1 = Numbers( child.Find( "uv1" ) );
 			const std::vector<float> rgba = Numbers( child.Find( "color" ) );
+			const std::vector<float> normal = Numbers( child.Find( "normal" ) );
 			for ( std::size_t i = 0; i < 3 && i < pos.size(); ++i )
 				vertex.position[i] = pos[i];
+			for ( std::size_t i = 0; i < 3 && i < normal.size(); ++i )
+				vertex.normal[i] = normal[i];
 			for ( std::size_t i = 0; i < 2 && i < uv0.size(); ++i )
 				vertex.uv0[i] = uv0[i];
 			for ( std::size_t i = 0; i < 2 && i < uv1.size(); ++i )
@@ -240,6 +275,9 @@ std::optional<CaseSet> LoadCases(
 		const std::vector<float> clearValues = Numbers( node.Find( "clear" ) );
 		for ( std::size_t i = 0; i < 4 && i < clearValues.size(); ++i )
 			testCase.clear[i] = int( clearValues[i] );
+		const std::vector<float> ambient = Numbers( node.Find( "ambient" ) );
+		for ( std::size_t i = 0; i < 18 && i < ambient.size(); ++i )
+			testCase.cube[i / 3][i % 3] = ambient[i];
 		testCase.port = port[testCase.name];
 		set.cases.push_back( std::move( testCase ) );
 	}

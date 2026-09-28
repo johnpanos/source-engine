@@ -52,6 +52,7 @@ struct CaseVertex
 	float position[3] = {};
 	float uv0[2] = {};
 	float uv1[2] = {};
+	float normal[3] = {};
 	std::uint8_t color[4] = { 255, 255, 255, 255 };
 };
 
@@ -63,6 +64,19 @@ struct PortPixel
 	int channels = 4; // 3 when the port's capture holds no alpha
 };
 
+// A Source model light (LightDesc_t), as a case or a model fixture gives it.
+struct ModelLight
+{
+	std::string type; // "point", "spot" or "directional"
+	float color[3] = {};
+	float position[3] = {};
+	float direction[3] = {};
+	float attenuation[3] = {};
+	float theta = 0.0f;
+	float phi = 0.0f;
+	float falloff = 0.0f;
+};
+
 struct FamilyCase
 {
 	std::string name;
@@ -71,6 +85,11 @@ struct FamilyCase
 	std::vector<CaseVertex> triangles; // the quad as two triangles
 	int clear[4] = { 0, 0, 0, 255 };
 	std::vector<PortPixel> port; // the port's pixels from the fixture
+	// The case's vertex lighting: "ambient" (+x -x +y -y +z -z) and its
+	// "light" blocks, with the material pixel harness's defaults for absent
+	// keys.
+	float cube[6][3] = {};
+	std::vector<ModelLight> lights;
 };
 
 struct CaseSet
@@ -90,18 +109,6 @@ std::optional<CaseSet> LoadCases(
 // pixel harness's own inputs, carried with the port's pixels. Each case is a
 // FamilyCase (its material as VMT text, the port's RGB pixels) with its
 // placement and Source model lighting.
-struct ModelLight
-{
-	std::string type; // "point", "spot" or "directional"
-	float color[3] = {};
-	float position[3] = {};
-	float direction[3] = {};
-	float attenuation[3] = {};
-	float theta = 0.0f;
-	float phi = 0.0f;
-	float falloff = 0.0f;
-};
-
 struct ModelQuad
 {
 	float corners[4][2] = {}; // clip-space x, y at the fixture's quad_z

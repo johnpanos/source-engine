@@ -119,7 +119,9 @@ float SourceGammaToLinear( float gamma )
 		return 0.0f;
 	if ( gamma >= 0.95f )
 		return 1.0f;
-	const int index = static_cast<int>( std::lround( gamma * 255.0f ) );
+	// RoundFloatToInt: round half to even (cvtss2si, vcvtns), as the default
+	// rounding mode lrint uses; 0.7 * 255 is 178.5 in float and indexes 178.
+	const int index = static_cast<int>( std::lrint( gamma * 255.0f ) );
 	return std::pow( static_cast<float>( index ) / 255.0f, 2.2f );
 }
 

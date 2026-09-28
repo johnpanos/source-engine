@@ -36,8 +36,8 @@ int main()
 	    StageMaterials( *device, device::Format::kRGBA8Unorm, device::Format::kD32Float );
 	if ( !checks.That( meshes && materials, "setup.meshes-and-materials" ) )
 		return checks.Report();
-	checks.Equal( materials->programs.ReadyCount(), std::size_t( 7 ),
-	    "setup.seven-programs-ready-and-the-untextured-one-not" );
+	checks.Equal( materials->programs.ReadyCount(), std::size_t( 8 ),
+	    "setup.eight-programs-ready-and-the-untextured-one-not" );
 	(void)device->Poll(); // staging released behind completed tokens goes at the next poll
 	const std::size_t baseline = device->LiveResourceCount();
 
@@ -64,7 +64,7 @@ int main()
 	const FrameResult families = DrawScene( *device, *materials, *meshes, *c->Snapshot(),
 	    materials->drawGroups.Group( kPbrFrameGroup ),
 	    materials->drawGroups.Group( kPbrViewGroup ) );
-	checks.That( families.ok && families.stats.drawn == 2 && families.stats.unresolved == 0,
+	checks.That( families.ok && families.stats.drawn == 3 && families.stats.unresolved == 0,
 	    "N4.lightmapped-and-pbr-draw-with-their-groups" );
 	checks.Equal( materials->programs.GroupFailures(), 0u, "N1.groups-without-failure" );
 	return checks.Report();

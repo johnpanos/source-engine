@@ -19,6 +19,7 @@
 #include "render/material/material_programs.h"
 #include "render/material/pbr_family.h"
 #include "render/material/unlit_family.h"
+#include "render/material/vertexlit_family.h"
 #include "render/pass/opaque/opaque.h"
 #include "render/scene/scene.h"
 
@@ -53,9 +54,15 @@ constexpr std::uint64_t kPbrMaterial = 21;
 constexpr std::uint64_t kLightmapPage = 40; // the lightmapped cube's draw group
 constexpr std::uint64_t kPbrFrameGroup = 41;
 constexpr std::uint64_t kPbrViewGroup = 42;
+constexpr std::uint64_t kVertexLitCubeMesh = 5;
+constexpr std::uint64_t kVertexLitMaterial = 22;
+constexpr std::uint64_t kVertexLitLighting = 43; // the vertexlit cube's draw group
 // The page's texel (sRGB) and the view's ambient cube (every face).
 constexpr std::uint8_t kPageTexel[4] = { 128, 64, 32, 255 };
 constexpr float kAmbient[3] = { 0.5f, 0.25f, 0.125f };
+// The vertexlit cube's ambient cube: its +z face (the face toward the
+// camera) only.
+constexpr float kVertexLitAmbient[3] = { 0.125f, 0.5f, 0.25f };
 
 // A unit cube around the origin: 8 corners, 12 triangles, in the unlit
 // family's vertex (uv 0, white).
@@ -138,6 +145,26 @@ inline resources::MeshData PbrCubeData(
 	return data;
 }
 
+// The cube in the vertexlit family's vertex: the pbr cube's faces with
+// their normals.
+inline resources::MeshData VertexLitCubeData(
+    std::vector<material::VertexLitVertex> &vertices, std::vector<std::uint16_t> &indices )
+{
+	std::vector<material::PbrVertex> faces;
+	resources::MeshData data = PbrCubeData( faces, indices );
+	vertices.clear();
+	for ( const material::PbrVertex &face : faces )
+	{
+		material::VertexLitVertex vertex;
+		std::copy( face.position, face.position + 3, vertex.position );
+		std::copy( face.normal, face.normal + 3, vertex.normal );
+		vertices.push_back( vertex );
+	}
+	data.vertices = std::as_bytes( std::span<const material::VertexLitVertex>( vertices ) );
+	data.vertexStride = sizeof( material::VertexLitVertex );
+	return data;
+}
+
 class Meshes final : public IMeshResolver
 {
 public:
@@ -170,6 +197,7 @@ struct Materials
 	std::unique_ptr<material::UnlitFamily> family;
 	std::unique_ptr<material::LightmappedFamily> lightmapped;
 	std::unique_ptr<material::PbrFamily> pbr;
+	std::unique_ptr<material::VertexLitFamily> vertexlit;
 	resources::TextureCache textures;
 	material::MaterialPrograms programs;
 	material::DrawGroups drawGroups;
@@ -246,6 +274,10 @@ inline std::unique_ptr<scene::IRenderScene> SceneC()
 	changes.Add( result->Reserve(), lit );
 	changes.Add(
 	    result->Reserve(), Cube( { 1.5f, 0.0f, -6.0f }, 1.5f, kPbrMaterial, kPbrCubeMesh ) );
+	scene::MeshInstanceDesc vertexlit =
+	    Cube( { 0.0f, 1.6f, -6.0f }, 1.0f, kVertexLitMaterial, kVertexLitCubeMesh );
+	vertexlit.drawGroup = kVertexLitLighting;
+	changes.Add( result->Reserve(), vertexlit );
 	(void)result->Commit( changes );
 	return result;
 }
@@ -396,8 +428,12 @@ inline std::optional<Meshes> StageCube(
 	std::vector<material::PbrVertex> pbrVertices;
 	std::vector<std::uint16_t> pbrIndices;
 	auto pbr = cache.Stage( "pbr-cube", PbrCubeData( pbrVertices, pbrIndices ) );
+	std::vector<material::VertexLitVertex> vertexLitVertices;
+	std::vector<std::uint16_t> vertexLitIndices;
+	auto vertexlit =
+	    cache.Stage( "vertexlit-cube", VertexLitCubeData( vertexLitVertices, vertexLitIndices ) );
 	device::CompletionToken token;
-	if ( !entry || !positionOnly || !lightmapped || !pbr ||
+	if ( !entry || !positionOnly || !lightmapped || !pbr || !vertexlit ||
 	     !Upload(
 	         device,
 	         [&]( device::CommandEncoder &encoder )
@@ -412,22 +448,27 @@ inline std::optional<Meshes> StageCube(
 	meshes.entries[kPositionOnlyMesh] = positionOnly.Value();
 	meshes.entries[kLightmappedCubeMesh] = lightmapped.Value();
 	meshes.entries[kPbrCubeMesh] = pbr.Value();
+	meshes.entries[kVertexLitCubeMesh] = vertexlit.Value();
 	return meshes;
 }
 
 // Scene C's families, textures, programs and groups: a lightmapped
-// material over the white texture whose draw group holds the page, and a pbr
+// material over the white texture whose draw group holds the page, a pbr
 // dielectric (white base, MRAO rough and unoccluded) whose frame group holds
-// the split-sum table and whose view group holds a uniform ambient cube.
+// the split-sum table and whose view group holds a uniform ambient cube, and
+// a vertexlit material over the white texture whose draw group holds its
+// lighting (an ambient cube lit on +z only, no lights).
 inline bool StageSceneCMaterials( device::IRenderDevice2 &device, Materials &materials,
     device::Format color, device::Format depth )
 {
 	auto lightmapped = material::LightmappedFamily::Create( device, color, depth );
 	auto pbr = material::PbrFamily::Create( device, color, depth );
-	if ( !lightmapped || !pbr )
+	auto vertexlit = material::VertexLitFamily::Create( device, color, depth );
+	if ( !lightmapped || !pbr || !vertexlit )
 		return false;
 	materials.lightmapped = std::move( lightmapped ).Value();
 	materials.pbr = std::move( pbr ).Value();
+	materials.vertexlit = std::move( vertexlit ).Value();
 	auto stage = [&]( const char *name, device::Format format, std::uint32_t size,
 	                 std::span<const std::byte> pixels )
 	{
@@ -463,9 +504,22 @@ inline bool StageSceneCMaterials( device::IRenderDevice2 &device, Materials &mat
 	for ( auto &face : cube )
 		std::copy( kAmbient, kAmbient + 3, face );
 	const material::PbrModelLighting lighting = material::PackSourceModelLighting( eye, cube, {} );
-	return program && materials.programs.Set( kPbrMaterial, program.Value() ) &&
-	       materials.drawGroups.Set( kPbrFrameGroup, materials.pbr->FrameGroup( "splitsum" ) ) &&
-	       materials.drawGroups.Set( kPbrViewGroup, materials.pbr->ViewGroup( lighting ) );
+	if ( !program || !materials.programs.Set( kPbrMaterial, program.Value() ) ||
+	     !materials.drawGroups.Set( kPbrFrameGroup, materials.pbr->FrameGroup( "splitsum" ) ) ||
+	     !materials.drawGroups.Set( kPbrViewGroup, materials.pbr->ViewGroup( lighting ) ) )
+		return false;
+
+	material::VertexLitClaim vertexLitClaim;
+	vertexLitClaim.claimed = true;
+	auto vertexLitProgram = materials.vertexlit->Request( vertexLitClaim, "white" );
+	float faces[6][3] = {};
+	std::copy( kVertexLitAmbient, kVertexLitAmbient + 3, faces[4] );
+	const material::VertexLitLighting vertexLitLighting =
+	    material::PackSourceModelLighting( eye, faces, {} );
+	return vertexLitProgram &&
+	       materials.programs.Set( kVertexLitMaterial, vertexLitProgram.Value() ) &&
+	       materials.drawGroups.Set(
+	           kVertexLitLighting, materials.vertexlit->LightingGroup( vertexLitLighting ) );
 }
 
 // The unlit family for `color`, the white texture and materials 1-3 and 8,
