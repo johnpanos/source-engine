@@ -54,7 +54,7 @@ public:
 
 	bool IsTerminalPoint() const { return m_bTerminalPoint; }
 
-	void SetCatcher( CCatcher *pCatcher ) { m_pCatcher = pCatcher; }
+	void SetCatcher( CCatcher *pCatcher );
 
 	bool IsPowered();
 
@@ -67,7 +67,9 @@ protected:
 
 	bool m_bPowered;
 	bool m_bTerminalPoint;
-	CCatcher *m_pCatcher;
+	CCatcher *GetCatcher() const;
+
+	EHANDLE m_hCatcher; // the catcher entity; CCatcher is a mixin, not an entity
 	string_t m_ModelName;
 };
 
@@ -111,7 +113,7 @@ protected:
 		POWER_STATE_POWERING_UP,
 	};
 
-	CPortalLaserTarget *m_pCatcherLaserTarget;
+	CHandle<CPortalLaserTarget> m_hCatcherLaserTarget;
 	COutputEvent m_OnPowered;
 	COutputEvent m_OnUnpowered;
 

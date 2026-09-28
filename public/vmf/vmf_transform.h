@@ -18,22 +18,21 @@
 #define VMF_VMF_TRANSFORM_H
 
 #include "kvtext/keyvalues.h"
-#include "mapgeometry/brush.h" // mapgeometry::Vec3d
+#include "mapgeometry/brush.h"     // mapgeometry::Vec3d
+#include "mapgeometry/transform.h" // the one owner of the rotation math
 
 namespace vmf
 {
 
-// A row-major 3x3 rotation matrix (identity by default).
-struct Mat3
-{
-	double m[3][3] = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
-};
+// The rotation vocabulary is world.map-geometry's (one owner of the Source
+// QAngle convention): a row-major 3x3 matrix, identity by default.
+using mapgeometry::Mat3;
 
 // Source QAngle (pitch, yaw, roll in degrees) -> rotation matrix.
-Mat3 AngleMatrix( double pitch, double yaw, double roll );
+using mapgeometry::AngleMatrix;
 
 // Matrix product (compose two rotations: applying 'b' then 'a').
-Mat3 Multiply( const Mat3 &a, const Mat3 &b );
+using mapgeometry::Multiply;
 
 // Rotate a vector (no translation).
 mapgeometry::Vec3d Rotate( const Mat3 &r, const mapgeometry::Vec3d &v );

@@ -645,6 +645,11 @@ void C_ClientRagdoll::Release( void )
 // was last time they setup their bones to determine if they need to re-setup their bones.
 static unsigned long	g_iModelBoneCounter = 0;
 CUtlVector<C_BaseAnimating *> g_PreviousBoneSetups;
+// SetupBones records an entity in g_PreviousBoneSetups on its first setup of a
+// frame, and that can happen on pool threads outside the bone batch (particles
+// asking for an attachment), so additions and removals take this lock, as
+// CS:GO's MarkForThreadedBoneSetup does. The batch itself only reads the list.
+static CThreadFastMutex g_PreviousBoneSetupsMutex;
 static unsigned long	g_iPreviousBoneCounter = (unsigned)-1;
 
 class C_BaseAnimatingGameSystem : public CAutoGameSystem
@@ -750,9 +755,12 @@ C_BaseAnimating::C_BaseAnimating() :
 //-----------------------------------------------------------------------------
 C_BaseAnimating::~C_BaseAnimating()
 {
-	int i = g_PreviousBoneSetups.Find( this );
-	if ( i != -1 )
-		g_PreviousBoneSetups.FastRemove( i );
+	{
+		AUTO_LOCK( g_PreviousBoneSetupsMutex );
+		int i = g_PreviousBoneSetups.Find( this );
+		if ( i != -1 )
+			g_PreviousBoneSetups.FastRemove( i );
+	}
 	RemoveFromClientSideAnimationList();
 
 	TermRopes();
@@ -2778,6 +2786,7 @@ void C_BaseAnimating::ThreadedBoneSetupEnd()
 		s_nThreadedBoneSetupItems = 0;
 	}
 	g_iPreviousBoneCounter++;
+	AUTO_LOCK( g_PreviousBoneSetupsMutex );
 	g_PreviousBoneSetups.RemoveAll();
 }
 
@@ -2919,6 +2928,7 @@ bool C_BaseAnimating::SetupBones( matrix3x4_t *pBoneToWorldOut, int nMaxBones, i
 	if ( g_bDoThreadedBoneSetup && !g_bInThreadedBoneSetup && ( nBoneCount >= 16 ) && !GetMoveParent() && m_iMostRecentBoneSetupRequest != g_iPreviousBoneCounter )
 	{
 		m_iMostRecentBoneSetupRequest = g_iPreviousBoneCounter;
+		AUTO_LOCK( g_PreviousBoneSetupsMutex );
 		Assert( g_PreviousBoneSetups.Find( this ) == -1 );
 		g_PreviousBoneSetups.AddToTail( this );
 	}

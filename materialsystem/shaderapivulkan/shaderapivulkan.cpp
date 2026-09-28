@@ -7336,10 +7336,9 @@ static void CommitPaintBlobConstants( const CShaderAPIVulkan &api )
 	for ( bool enabled : g_LightEnabled )
 		c.numLights += enabled ? 1 : 0;
 	using Ctx = render_vulkan::CVulkanContext;
-	if ( c.combos & Ctx::kPaintBlobFresnelWarp )
-		NoteUnimplemented( "paintblob_ps20b: FRESNEL_WARP" );
-	if ( c.combos & Ctx::kPaintBlobOpacityTexture )
-		NoteUnimplemented( "paintblob_ps20b: OPACITY_TEXTURE" );
+	// paintblob.frag reads OPACITY_TEXTURE's s6 through the light warp's set.
+	if ( ( c.combos & Ctx::kPaintBlobOpacityTexture ) && ( c.combos & Ctx::kPaintBlobLightWarp ) )
+		NoteUnimplemented( "paintblob_ps20b: LIGHT_WARP with OPACITY_TEXTURE" );
 	if ( c.combos & Ctx::kPaintBlobContactShadow )
 		NoteUnimplemented( "paintblob_ps20b: CONTACT_SHADOW" );
 	if ( g_psConstants[27][2] != 0.0f )

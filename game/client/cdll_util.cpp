@@ -232,6 +232,34 @@ client_textmessage_t *TextMessageGet( const char *pName )
 }
 
 //-----------------------------------------------------------------------------
+// Purpose: UI units per back buffer pixel. The surface's screen is the render
+//			viewport in UI units, so their ratio is the inverse UI scale.
+//-----------------------------------------------------------------------------
+void GetVGuiUnitsPerPixel( float &flUnitsPerPixelX, float &flUnitsPerPixelY )
+{
+	int nViewportX, nViewportY, nPixelsWide, nPixelsTall;
+	{
+		CMatRenderContextPtr pRenderContext( materials );
+		pRenderContext->GetViewport( nViewportX, nViewportY, nPixelsWide, nPixelsTall );
+	}
+	int nUnitsWide, nUnitsTall;
+	vgui::surface()->GetScreenSize( nUnitsWide, nUnitsTall );
+	flUnitsPerPixelX = nPixelsWide > 0 ? (float)nUnitsWide / nPixelsWide : 1.0f;
+	flUnitsPerPixelY = nPixelsTall > 0 ? (float)nUnitsTall / nPixelsTall : 1.0f;
+}
+
+void GetVGuiFullscreenViewport( int &x, int &y, int &wide, int &tall )
+{
+	vgui::surface()->GetFullscreenViewport( x, y, wide, tall );
+	float flUnitsPerPixelX, flUnitsPerPixelY;
+	GetVGuiUnitsPerPixel( flUnitsPerPixelX, flUnitsPerPixelY );
+	x = (int)( x * flUnitsPerPixelX + 0.5f );
+	y = (int)( y * flUnitsPerPixelY + 0.5f );
+	wide = (int)( wide * flUnitsPerPixelX + 0.5f );
+	tall = (int)( tall * flUnitsPerPixelY + 0.5f );
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: ScreenHeight returns the height of the screen, in pixels
 // Output : int
 //-----------------------------------------------------------------------------

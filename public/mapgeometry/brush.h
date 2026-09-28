@@ -46,6 +46,8 @@ struct Vec3d
 
 	constexpr Vec3d() = default;
 	constexpr Vec3d( double in_x, double in_y, double in_z ) : x( in_x ), y( in_y ), z( in_z ) {}
+
+	friend constexpr bool operator==( const Vec3d &, const Vec3d & ) = default;
 };
 
 // A plane in the form dot(normal, p) = dist, with 'normal' unit length. The
@@ -64,6 +66,9 @@ struct BrushFace
 	Plane plane;
 	std::vector<Vec3d> vertices;
 	std::string material;
+	// Index of the input plane this face was built from (BuildSolidFromPlanes),
+	// so callers can carry per-side data through a rebuild; -1 when unknown.
+	int sourcePlane = -1;
 };
 
 // One brush solid: its faces plus the VMF id it came from (0 when absent).

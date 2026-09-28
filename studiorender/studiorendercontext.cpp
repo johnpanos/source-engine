@@ -2259,6 +2259,13 @@ void CStudioRenderContext::DrawModel( DrawModelResults_t *pResults, const DrawMo
 		return;
 	} 
 
+	// No bone-to-world matrices: the caller's LockBoneMatrices ran out of
+	// per-frame render data, so there is nothing to skin the model with.
+	if ( !pBoneToWorld )
+	{
+		return;
+	}
+
 	// Replace the flex weight data with random data for testing
 	GenerateRandomFlexWeights( info.m_pStudioHdr->numflexdesc, pFlexWeights, pFlexDelayedWeights );
 
@@ -2317,7 +2324,14 @@ void CStudioRenderContext::DrawModel( DrawModelResults_t *pResults, const DrawMo
 				flex.m_pFlexDelayedWeights = rdFlexDelayed.Base();
 			}
 		}
-		pCallQueue->QueueCall( g_pStudioRenderImp, &CStudioRender::DrawModel, info, m_RC, pBoneToWorld, flex, flags );
+		// Out of per-frame render data (too many draws queued this frame, as
+		// with many models in several portal views): skip the model rather than
+		// queue a draw that reads NULL bone or flex data on the render thread.
+		if ( pBoneToWorld && flex.m_pFlexWeights && flex.m_pFlexDelayedWeights )
+		{
+			pCallQueue->QueueCall( g_pStudioRenderImp, &CStudioRender::DrawModel, info, m_RC,
+			                       pBoneToWorld, flex, flags );
+		}
 	}
 
 	if( flags & STUDIORENDER_DRAW_ACCURATETIME )

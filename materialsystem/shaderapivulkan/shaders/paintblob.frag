@@ -16,8 +16,12 @@
 // params2.x: NUM_LIGHTS. The environment cube's sRGB read is left to its view:
 // Portal 2's paint cube is RGBA16F, which D3D9's SRGBTEXTURE does not decode.
 //
-// FRESNEL_WARP, OPACITY_TEXTURE, CONTACT_SHADOW and the flashlight are not
-// ported (the shader API reports those combos unimplemented); the flashlight
+// OPACITY_TEXTURE (the erase gel's, water) reads s6, which shares set 4 with
+// the light warp: no Portal 2 blob material has both, and the shader API
+// reports that pair unimplemented. FRESNEL_WARP reads no texture: in
+// paintblob_ps20b its warped fresnel is computed but unused, so the combo only
+// drops the translucent-fresnel factor from the skin opacity. CONTACT_SHADOW
+// and the flashlight are not ported (reported unimplemented); the flashlight
 // term is disabled in paintblob_ps20b as well. BACK_SURFACE writes the frame
 // copy, without the destination-alpha depth.
 layout( location = 0 ) in vec2 vBaseUv;
@@ -32,7 +36,7 @@ layout( set = 0, binding = 0 ) uniform sampler2D g_tBase;             // s0
 layout( set = 1, binding = 0 ) uniform sampler2D g_tBump;             // s1
 layout( set = 2, binding = 0 ) uniform sampler2D g_tSpecMask;         // s3
 layout( set = 3, binding = 0 ) uniform samplerCube g_tEnvironment;    // s7
-layout( set = 4, binding = 0 ) uniform sampler2D g_tLightWarp;        // s4
+layout( set = 4, binding = 0 ) uniform sampler2D g_tLightWarp;        // s4, or s6 opacity
 layout( set = 5, binding = 0 ) uniform sampler2D g_tScreen;           // s2
 layout( set = 6, binding = 0 ) uniform PixelShaderConstants
 {
@@ -72,6 +76,8 @@ consts;
 // c27.x (paintblob_helper.cpp's PaintBlobStaticFlags_t).
 const int kBackSurface = 1;
 const int kLightWarp = 2;
+const int kFresnelWarp = 4;
+const int kOpacityTexture = 8;
 const int kInteriorLayer = 16;
 const int kEnvMap = 128;
 
@@ -178,7 +184,9 @@ void main()
 	const int combos = int( consts.params.y );
 	const int flags = int( consts.params.z );
 	const int nNumLights = int( consts.params2.x );
-	const bool bLightWarp = ( combos & kLightWarp ) != 0;
+	const bool bOpacityTexture = ( combos & kOpacityTexture ) != 0;
+	// Set 4 holds the opacity texture when the draw has one.
+	const bool bLightWarp = ( combos & kLightWarp ) != 0 && !bOpacityTexture;
 
 	vec2 vScreenPos = gl_FragCoord.xy / vec2( textureSize( g_tScreen, 0 ) );
 	vec3 vEyeDir = g_vEyePos - vWorldPos;
@@ -235,10 +243,16 @@ void main()
 	vBumpedWorldNormal =
 	    normalize( vBumpedWorldNormal + ( g_flBumpStrength - 1.0 ) * vBumpStrengthDir );
 
-	// Opacity and fresnel (no FRESNEL_WARP or OPACITY_TEXTURE)
+	// Opacity and fresnel (ComputeOpacityAndFresnel)
+	float flSkinOpacity = 1.0;
+	if ( bOpacityTexture )
+		flSkinOpacity = vBlendWeights.x * texture( g_tLightWarp, uv0 ).x +
+		                vBlendWeights.y * texture( g_tLightWarp, uv1 ).x +
+		                vBlendWeights.z * texture( g_tLightWarp, uv2 ).x;
 	float flFresnel = clamp( 1.0 - dot( vEyeDir, vFresnelWorldNormal ), 0.0, 1.0 );
-	float flSkinOpacity = mix( g_vTranslucentFresnelParams.x, g_vTranslucentFresnelParams.y,
-	    pow( flFresnel, g_vTranslucentFresnelParams.z ) );
+	if ( ( combos & kFresnelWarp ) == 0 )
+		flSkinOpacity *= mix( g_vTranslucentFresnelParams.x, g_vTranslucentFresnelParams.y,
+		    pow( flFresnel, g_vTranslucentFresnelParams.z ) );
 
 	// Ambient light (paintblob_vs20's AmbientLight of the vertex normal)
 	vec3 cAmbient = PixelShaderAmbientLight( vWorldNormal );

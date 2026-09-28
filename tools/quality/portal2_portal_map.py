@@ -11,6 +11,9 @@ quality/workloads/portal2-portals-v1 (run by tools/quality/portal2_scenarios.py)
   leave a portal;
 * two black pillars stand in the room as landmarks, so views through a portal
   are easy to tell apart;
+* translucent entities (glow sprites spread over the room's leaves and a glass
+  pane by the west wall) are in view from every portal, so each portal view
+  draws translucent renderables, including views seen through another portal;
 * the player spawns at the room's center facing north, on a dual portal gun
   (`weapon_portalgun`, both portals enabled).
 
@@ -40,6 +43,8 @@ WALL = "tile/white_wall_tile003a"
 FLOOR = "tile/white_floor_tile002a"
 CEILING = "tile/white_ceiling_tile002a"
 NO_PORTAL = "metal/black_wall_metal_002c"
+GLASS = "glass/glasswindow007a_less_shiny"
+SPRITE = "sprites/light_glow03.vmt"
 
 HALF = 640
 HEIGHT = 448
@@ -68,6 +73,13 @@ def build_vmf():
                                  "_light": "255 250 240 18", "_lightHDR": "-1 -1 -1 1",
                                  "_lightscaleHDR": "1", "_quadratic_attn": "0",
                                  "_linear_attn": "1", "_constant_attn": "0"})
+    for x in (-560, -160, 160, 560):
+        for y in (-560, 0, 560):
+            vmf.entity("env_sprite", {"origin": vec((x, y, 320)), "model": SPRITE, "spawnflags": "1",
+                                      "rendermode": "9", "renderamt": "255", "rendercolor": "255 220 160",
+                                      "scale": "0.5", "GlowProxySize": "4"})
+    vmf.entity("func_brush", {"rendermode": "0", "solidity": "0", "Solidity": "0"},
+               solids=[vmf.box((-480, 0, 64), (2, 160, 64), GLASS)])
     vmf.entity("info_player_start", {"origin": "0 0 8", "angles": "0 90 0"})
     vmf.entity("weapon_portalgun", {"origin": "0 0 24", "angles": "0 90 0",
                                     "CanFirePortal1": "1", "CanFirePortal2": "1"})

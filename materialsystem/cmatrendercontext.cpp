@@ -168,6 +168,12 @@ InitReturnVal_t CMatRenderContextBase::Init( )
 		{
 			nSize = 4400 * 1024;
 		}
+		else if ( gamedir && !Q_stricmp( "portal2", gamedir ) )
+		{
+			// Portal 2's retail size (CS:GO's material system): each visible
+			// portal redraws the scene, so a frame queues several views' bones.
+			nSize = 6600 * 1024;
+		}
 
 		sm_RenderData[0].Init( nSize, nCommitSize, 0, 32 );
 		sm_RenderData[1].Init( nSize, nCommitSize, 0, 32 );

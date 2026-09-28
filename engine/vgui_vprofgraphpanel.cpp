@@ -190,6 +190,9 @@ void CVProfGraphPanel::ApplySchemeSettings(vgui::IScheme *pScheme)
 
 	m_hFont = pScheme->GetFont( "DefaultVerySmall" );
 	Assert( m_hFont );
+
+	// Scheme settings are reapplied after the screen (in UI units) changes size.
+	SetSize( EngineVGui_ScreenWide(), EngineVGui_ScreenTall() );
 }
 
 
@@ -278,10 +281,11 @@ void CVProfGraphPanel::Paint()
 
 	// Draw the legend:
 	x += w / 2;
+	const int nTextTall = vgui::surface()->GetFontTall( m_hFont );
 	for( int i = 3; --i >= 0; )
 	{
 		Q_snprintf( sz, sizeof( sz ), "%07.3f ms (%s)", m_Samples[m_CurrentSample][i], pTitles[i] );
-		y -= 10;
+		y -= nTextTall;
 		g_pMatSystemSurface->DrawColoredText( m_hFont, x, y, color[i][0], color[i][1], color[i][2], 180, "%s", sz );
 	}
 }
@@ -309,11 +313,28 @@ void CVProfGraphPanel::PaintLineArt( int x, int y, int w )
 	// Update the sample graph:
 	GetNextSample();
 
+	// The graph is drawn as one-unit-thick quads, not lines: the surface's
+	// projection is in UI units, so a quad fills its units at any UI scale, and
+	// the native Vulkan backend draws no lines.
 	CMatRenderContextPtr pRenderContext( materials );
 
-	IMesh* m_pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, m_WhiteMaterial );
+	IMesh *pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, m_WhiteMaterial );
 	CMeshBuilder meshBuilder;
-	meshBuilder.Begin( m_pMesh, MATERIAL_LINES, 3 * w + 4 );
+	meshBuilder.Begin( pMesh, MATERIAL_QUADS, 3 * w + 4 );
+
+	// Fills [x1, x2) x [y1, y2).
+	auto AddQuad = [&meshBuilder]( int x1, int y1, int x2, int y2, const unsigned char *color )
+	{
+		const int nX[4] = { x1, x2, x2, x1 };
+		const int nY[4] = { y1, y1, y2, y2 };
+		for ( int v = 0; v < 4; v++ )
+		{
+			meshBuilder.Color4ubv( color );
+			meshBuilder.TexCoord2f( 0, 0.0f, 0.0f );
+			meshBuilder.Position3f( nX[v], nY[v], 0 );
+			meshBuilder.AdvanceVertex();
+		}
+	};
 
 	// Draw lines at 20, 30, 60 hz, and baseline
 	int i;
@@ -321,31 +342,9 @@ void CVProfGraphPanel::PaintLineArt( int x, int y, int w )
 	{
 		int nLineY = y - (nPanelHeight / 3) * i;
 
-		if ( i == 0 )
-		{
-			meshBuilder.Color4ub( 255, 255, 255, 255 );
-		}
-		else
-		{
-			meshBuilder.Color4ub( 128, 128, 128, 255 );
-		}
-
-		meshBuilder.TexCoord2f( 0, 0.0f, 0.0f );
-		meshBuilder.Position3f( x, nLineY, 0 );
-		meshBuilder.AdvanceVertex();
-
-		if ( i == 0 )
-		{
-			meshBuilder.Color4ub( 255, 255, 255, 255 );
-		}
-		else
-		{
-			meshBuilder.Color4ub( 128, 128, 128, 255 );
-		}
-
-		meshBuilder.TexCoord2f( 0, 0.0f, 0.0f );
-		meshBuilder.Position3f( x + w, nLineY, 0 );
-		meshBuilder.AdvanceVertex();
+		const unsigned char baseline[4] = { 255, 255, 255, 255 };
+		const unsigned char rate[4] = { 128, 128, 128, 255 };
+		AddQuad( x, nLineY, x + w, nLineY + 1, i == 0 ? baseline : rate );
 	}
 
 	byte color[3][4] = 
@@ -362,6 +361,7 @@ void CVProfGraphPanel::PaintLineArt( int x, int y, int w )
 	for( i = 3; --i >= 0; )
 	{
 		int sample = m_CurrentSample;
+		int nPrevX = 0, nPrevY = 0;
 		for (a=w; a >= 0; a-- )
 		{
 			h = (int)(m_Samples[sample][i] * flMsToPixel + 0.5f);
@@ -375,18 +375,14 @@ void CVProfGraphPanel::PaintLineArt( int x, int y, int w )
 			int px = (int)(x + (w - a - 1) * flDxDSample + 0.5f);
 			int py = y - h;
 
-			meshBuilder.Color4ubv( color[i] );
-			meshBuilder.TexCoord2f( 0, 0.0f, 0.0f );
-			meshBuilder.Position3f( px, py, 0 );
-			meshBuilder.AdvanceVertex();
-
-			if ( ( a != w ) && ( a != 0 ) )
+			// Join each sample to the previous one: a step one unit thick.
+			if ( a != w )
 			{
-				meshBuilder.Color4ubv( color[i] );
-				meshBuilder.TexCoord2f( 0, 0.0f, 0.0f );
-				meshBuilder.Position3f( px, py, 0 );
-				meshBuilder.AdvanceVertex();
+				AddQuad( nPrevX, MIN( nPrevY, py ), MAX( px, nPrevX + 1 ), MAX( nPrevY, py ) + 1,
+				    color[i] );
 			}
+			nPrevX = px;
+			nPrevY = py;
 
 			// Move on to the next sample:
 			sample--;
@@ -398,7 +394,7 @@ void CVProfGraphPanel::PaintLineArt( int x, int y, int w )
 	}
 
 	meshBuilder.End();
-	m_pMesh->Draw();
+	pMesh->Draw();
 }
 
 

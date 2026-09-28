@@ -1529,7 +1529,9 @@
         "strict": true,
         "owns": "Content graph, typed IDs, document metadata, invariants",
         "allowedEdges": [
-          "world.map-geometry"
+          "world.map-geometry",
+          "foundation",
+          "content.keyvalues-text"
         ]
       },
       {
@@ -1538,7 +1540,9 @@
         "owns": "Asset, persistence, job, and external-service contracts",
         "allowedEdges": [
           "world.map-geometry",
-          "hammer.scene"
+          "hammer.scene",
+          "foundation",
+          "content.keyvalues-text"
         ]
       },
       {
@@ -1573,7 +1577,8 @@
         "allowedEdges": [
           "world.map-geometry",
           "hammer.scene",
-          "hammer.ports"
+          "hammer.ports",
+          "foundation"
         ]
       },
       {
@@ -1585,7 +1590,8 @@
           "hammer.scene",
           "hammer.ports",
           "hammer.app",
-          "hammer.viewport"
+          "hammer.viewport",
+          "foundation"
         ]
       },
       {
@@ -1597,7 +1603,9 @@
           "hammer.tools",
           "hammer.viewport",
           "hammer.ports",
-          "hammer.scene"
+          "hammer.scene",
+          "foundation",
+          "world.map-geometry"
         ]
       },
       {

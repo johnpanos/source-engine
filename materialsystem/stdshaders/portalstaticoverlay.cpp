@@ -24,6 +24,7 @@ BEGIN_VS_SHADER( PortalStaticOverlay,
 				SHADER_PARAM( ALPHAMASKTEXTURE, SHADER_PARAM_TYPE_TEXTURE, "", "An alpha mask for odd shaped portals" )
 				SHADER_PARAM( ALPHAMASKTEXTUREFRAME, SHADER_PARAM_TYPE_INTEGER, "0", "" )
 				SHADER_PARAM( NOCOLORWRITE, SHADER_PARAM_TYPE_INTEGER, "0", "" )
+				SHADER_PARAM( GHOSTOVERLAY, SHADER_PARAM_TYPE_INTEGER, "0", "Portal 2: draw the portal where it is hidden (1 tinted by the vertex color, 2 the texture's color)" )
 				END_SHADER_PARAMS
 
 
@@ -62,6 +63,9 @@ SHADER_INIT
 
 	if( !params[NOCOLORWRITE]->IsDefined() )
 		params[NOCOLORWRITE]->SetIntValue( 0 );
+
+	if( !params[GHOSTOVERLAY]->IsDefined() )
+		params[GHOSTOVERLAY]->SetIntValue( 0 );
 }
 
 SHADER_DRAW
@@ -71,6 +75,8 @@ SHADER_DRAW
 
 	bool bIsModel = IS_FLAG_SET( MATERIAL_VAR_MODEL );
 	bool bColorWrites = params[NOCOLORWRITE]->GetIntValue() == 0;
+	int nGhostOverlay = clamp( params[GHOSTOVERLAY]->GetIntValue(), 0, 2 );
+	bool bGhostOverlay = nGhostOverlay != 0;
 
 	SHADOW_STATE
 	{
@@ -88,10 +94,22 @@ SHADER_DRAW
 		}
 
 		pShaderShadow->EnableBlending( true );
-		pShaderShadow->BlendFunc( SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
+		if( bGhostOverlay )
+		{
+			// Portal 2's ghost: a reverse z-test draws only the pixels where the
+			// portal is hidden, and one / inverse-source-alpha keeps it visible
+			// on bright surfaces in front of it.
+			pShaderShadow->DepthFunc( SHADER_DEPTHFUNC_FARTHER );
+			pShaderShadow->EnableDepthWrites( false );
+			pShaderShadow->BlendFunc( SHADER_BLEND_ONE, SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
+		}
+		else
+		{
+			pShaderShadow->BlendFunc( SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
 
-		pShaderShadow->EnableAlphaTest( true );
-		pShaderShadow->AlphaFunc( SHADER_ALPHAFUNC_GREATER, 0.0f );
+			pShaderShadow->EnableAlphaTest( true );
+			pShaderShadow->AlphaFunc( SHADER_ALPHAFUNC_GREATER, 0.0f );
+		}
 
 		pShaderShadow->EnableColorWrites( bColorWrites );
 
@@ -100,10 +118,14 @@ SHADER_DRAW
 
 		if( bStaticBlendTexture || bAlphaMaskTexture )
 			pShaderShadow->EnableTexture( SHADER_SAMPLER0, true );
+		if( bGhostOverlay && bStaticBlendTexture )
+			pShaderShadow->EnableSRGBRead( SHADER_SAMPLER0, true );
 		if( bStaticBlendTexture && bAlphaMaskTexture )
 			pShaderShadow->EnableTexture( SHADER_SAMPLER1, true );
 
 		int fmt = VERTEX_POSITION | VERTEX_NORMAL;
+		if( bGhostOverlay )
+			fmt |= VERTEX_COLOR;
 		int userDataSize = 0;
 		if( bIsModel )
 		{
@@ -117,6 +139,7 @@ SHADER_DRAW
 
 		DECLARE_STATIC_VERTEX_SHADER( portalstaticoverlay_vs20 );
 		SET_STATIC_VERTEX_SHADER_COMBO( MODEL,  bIsModel );
+		SET_STATIC_VERTEX_SHADER_COMBO( PORTALGHOSTOVERLAY, nGhostOverlay );
 		SET_STATIC_VERTEX_SHADER( portalstaticoverlay_vs20 );
 
 		// Avoid setting a pixel shader when only doing depth/stencil operations, as recommended by PIX
@@ -127,6 +150,7 @@ SHADER_DRAW
 				DECLARE_STATIC_PIXEL_SHADER( portalstaticoverlay_ps20b );
 				SET_STATIC_PIXEL_SHADER_COMBO( HASALPHAMASK, bAlphaMaskTexture );
 				SET_STATIC_PIXEL_SHADER_COMBO( HASSTATICTEXTURE, bStaticBlendTexture );
+				SET_STATIC_PIXEL_SHADER_COMBO( PORTALGHOSTOVERLAY, bGhostOverlay );
 				SET_STATIC_PIXEL_SHADER( portalstaticoverlay_ps20b );
 			}
 			else
@@ -134,6 +158,7 @@ SHADER_DRAW
 				DECLARE_STATIC_PIXEL_SHADER( portalstaticoverlay_ps20 );
 				SET_STATIC_PIXEL_SHADER_COMBO( HASALPHAMASK, bAlphaMaskTexture );
 				SET_STATIC_PIXEL_SHADER_COMBO( HASSTATICTEXTURE, bStaticBlendTexture );
+				SET_STATIC_PIXEL_SHADER_COMBO( PORTALGHOSTOVERLAY, bGhostOverlay );
 				SET_STATIC_PIXEL_SHADER( portalstaticoverlay_ps20 );
 			}
 		}

@@ -43,6 +43,27 @@ public:
 		m_bHASSTATICTEXTURE = true;
 #endif
 	}
+private:
+	int m_nPORTALGHOSTOVERLAY;
+#ifdef _DEBUG
+	bool m_bPORTALGHOSTOVERLAY;
+#endif
+public:
+	void SetPORTALGHOSTOVERLAY( int i )
+	{
+		Assert( i >= 0 && i <= 1 );
+		m_nPORTALGHOSTOVERLAY = i;
+#ifdef _DEBUG
+		m_bPORTALGHOSTOVERLAY = true;
+#endif
+	}
+	void SetPORTALGHOSTOVERLAY( bool i )
+	{
+		m_nPORTALGHOSTOVERLAY = i ? 1 : 0;
+#ifdef _DEBUG
+		m_bPORTALGHOSTOVERLAY = true;
+#endif
+	}
 public:
 	portalstaticoverlay_ps20_Static_Index( )
 	{
@@ -54,19 +75,23 @@ public:
 		m_bHASSTATICTEXTURE = false;
 #endif // _DEBUG
 		m_nHASSTATICTEXTURE = 0;
+#ifdef _DEBUG
+		m_bPORTALGHOSTOVERLAY = false;
+#endif // _DEBUG
+		m_nPORTALGHOSTOVERLAY = 0;
 	}
 	int GetIndex()
 	{
 		// Asserts to make sure that we aren't using any skipped combinations.
 		// Asserts to make sure that we are setting all of the combination vars.
 #ifdef _DEBUG
-		bool bAllStaticVarsDefined = m_bHASALPHAMASK && m_bHASSTATICTEXTURE;
+		bool bAllStaticVarsDefined = m_bHASALPHAMASK && m_bHASSTATICTEXTURE && m_bPORTALGHOSTOVERLAY;
 		Assert( bAllStaticVarsDefined );
 #endif // _DEBUG
-		return ( 4 * m_nHASALPHAMASK ) + ( 8 * m_nHASSTATICTEXTURE ) + 0;
+		return ( 4 * m_nHASALPHAMASK ) + ( 8 * m_nHASSTATICTEXTURE ) + ( 16 * m_nPORTALGHOSTOVERLAY ) + 0;
 	}
 };
-#define shaderStaticTest_portalstaticoverlay_ps20 psh_forgot_to_set_static_HASALPHAMASK + psh_forgot_to_set_static_HASSTATICTEXTURE + 0
+#define shaderStaticTest_portalstaticoverlay_ps20 psh_forgot_to_set_static_HASALPHAMASK + psh_forgot_to_set_static_HASSTATICTEXTURE + psh_forgot_to_set_static_PORTALGHOSTOVERLAY + 0
 class portalstaticoverlay_ps20_Dynamic_Index
 {
 private:

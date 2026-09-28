@@ -718,6 +718,54 @@ for the whole compile.
   compiles in about 0.1 s, too fast to see. The queue suite covers the
   non-blocking start.
 
+### R08-DOMAIN: headless domain logic for the editor (active 2026-09-28)
+
+**Scope** (roadmap R08, feeding R13, R22, R23 and R24; user goal
+2026-09-28: "implement all the headless domain logic for hammer, ready to
+be hooked up to the UI", and "build this in a modular and unit testable
+way"). `EditorController` was a feasibility model: brush entities
+flattened into world brushes, texture axes regenerated on save,
+connections, groups and visgroups dropped, and one class holding the
+tools. This slice builds the domain layers RFC 0002 declares, so the GTK
+shell only turns input into calls and draws what presenters produce.
+
+**Layers** (each a strict module; arrows point down):
+
+| Module | Owns (this slice) |
+| --- | --- |
+| `world.map-geometry` | `vec3.h` value arithmetic; `transform.h` (Source angles, affine maps, plane transforms; `vmf::AngleMatrix` now routes here); `polytope.h` (plane sides, closed solids, convex hulls, overlap, the integer snap policy); `BrushFace::sourcePlane` |
+| `hammer.scene` | `MapDocument`: full-fidelity content (solids, sides with authored plane points and texture axes, displacements verbatim, entities with ordered keys and connections, groups, visgroups, cordons, cameras, unknown blocks); `DocumentEdit`/`ChangeSet` (copy-on-write staging, lossless patches); `DocumentReader`; solid geometry; structural queries |
+| `hammer.ports` | `IMapCodec`, `IEntityCatalog`, `IMaterialInfo` (plus the existing file store and map builder) |
+| `hammer.formats` | the full-fidelity VMF codec; the FGD-backed entity catalog; a material-info adapter over `MaterialCatalog` |
+| `hammer.app` | `EditSession` (one document, selection, labeled history of change sets, change events, draft guards); operation families as pure functions over `DocumentEdit`; clipboard; map check; the session command catalog |
+| `hammer.viewport` | 2D/3D cameras and projection, the grid policy, picking (2D, 3D, marquee), render-snapshot extraction |
+| `hammer.tools` | normalized input values, the tool contract and manager, and the tools (selection, block, entity, clip, vertex, texture, cordon) |
+| `hammer.presenters` | inspector, face inspector, outliner, class palette, material browser, history, status bar, visgroups, problems and the action catalog |
+
+**Decisions** (agent, under the user's standing "no questions;
+recommended defaults" instruction):
+
+- **Identity.** `ObjectId` is 64-bit: the document serial in the high
+  half, a never-reused counter in the low half. Stale and foreign ids
+  resolve to nothing, which is RFC 0002's required stale-reference check.
+  VMF ids stay separate persistent fields (overlay `sides` keys name side
+  ids).
+- **Authority.** A side's three authored points are the plane authority
+  (exact round trip, exact transforms); an entity's key list is the
+  authority for origin and angles.
+- **Transactions.** Operations stage changes in a `DocumentEdit` and never
+  see the session. `Finish()` records per-object before/after values and
+  drops no-op changes, so undo installs recorded values and never inverts
+  geometry.
+- **Ports over formats.** `hammer.app` may not depend on `hammer.formats`;
+  it takes `IMapCodec` and `IEntityCatalog` from the composition root.
+- **Numeric policy.** Scene geometry snaps vertices within 1e-4 of an
+  integer (clipping 1e5 quads leaves ~1e-11 noise), so bounds and grid
+  math are exact.
+- **Migration.** `EditorController` stays the live authority of the GTK
+  shell, the command layer and MCP until they are hooked to
+  `EditSession`. Deletion condition: no caller outside its own suites.
+
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 
 A research agent assembled this from the Valve Developer Community Source 2

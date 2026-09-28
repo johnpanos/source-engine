@@ -145,8 +145,9 @@ void CHudCrosshair::GetDrawPosition ( float *pX, float *pY, bool *pbBehindCamera
 	QAngle curViewAngles = CurrentViewAngles();
 	Vector curViewOrigin = CurrentViewOrigin();
 
+	// The crosshair paints in UI units, so center it on the viewport in those.
 	int vx, vy, vw, vh;
-	vgui::surface()->GetFullscreenViewport( vx, vy, vw, vh );
+	GetVGuiFullscreenViewport( vx, vy, vw, vh );
 
 	float screenWidth = vw;
 	float screenHeight = vh;

@@ -66,11 +66,11 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | ID | Gap | State |
 | --- | --- | --- |
 | G15 | Cube/paint bomb `PaintPower`, `AllowFunnel`; paint bomb `BombType`, `PlaySpawnSound` | todo |
-| G16 | `info_paint_sprayer` radius keys (`start_radius_*`, `end_radius_*`, `radius_grow_time_*`) | todo |
+| G16 | `info_paint_sprayer` radius keys (`start_radius_*`, `end_radius_*`, `radius_grow_time_*`) | not a gap: retail `server.so` has no such keys (2026-09-28); blob size is `paintblob_min/max_radius_scale` |
 | G17 | `env_portal_laser` `AutoAimEnabled`, `NoPlacementHelper` | todo |
 | G18 | `npc_personality_core` `ModelSkin`, `AltModel`, `EnableReceivingFlashlight`/`DisableReceivingFlashlight` | todo |
 | G19 | `info_placement_helper` `target_size`, `usesizelimit` | todo |
-| G20 | `prop_vehicle_choreo_generic` view limits (`SetMin/MaxPitch/Yaw`), `SetCanShoot`, `UseAttachmentEyes`, `PlayerCanShoot`; `logic_playerproxy` `LowerWeapon`, `PaintPlayerWithPortalPaint` | todo |
+| G20 | `prop_vehicle_choreo_generic` view limits (`SetMin/MaxPitch/Yaw`), `SetCanShoot`, `UseAttachmentEyes`, `PlayerCanShoot`; `logic_playerproxy` `LowerWeapon` | todo (`PaintPlayerWithPortalPaint` done 2026-09-28, see log) |
 | G21 | `prop_tractor_beam` `NoEmitterParticles`; `vgui_screen` `IsTransparent`; `vgui_neurotoxin_countdown` `countdown`; `npc_bullseye` `AlwaysTransmit`; `point_viewcontrol` `TrackSpeed` | todo |
 | G22 | Retail-networked base classes (`func_brush`, `func_movelinear`, `func_button`, `prop_door_rotating`, `func_portal_bumper`) and co-op stats (`portal_mp_stats`) | todo |
 
@@ -79,7 +79,8 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | ID | Gap | State |
 | --- | --- | --- |
 | G23 | Portal 2's stencil fast path (bitmask stencil, batched portal quads, early-Z, scissor) ran only in queued material mode, which native Vulkan never uses, so the Portal 1-style `_Old` path always ran; early-Z had no caller | Portal 2 done (see log); Portal 1 backport todo |
-| G24 | Gel streams: the server never created the paint blob pool (crash on a sprayer's first blob), the blob materials were bound unreferenced, the `paintblob` shader was absent and Valve's blobulator library is unavailable | done on native Vulkan (see log); retail image comparison, `$interior` and flashlight unverified |
+| G24 | Gel streams: the server never created the paint blob pool (crash on a sprayer's first blob), the blob materials were bound unreferenced, the `paintblob` shader was absent and Valve's blobulator library is unavailable | done on native Vulkan (see log); retail stream shape and the erase gel's opacity compared 2026-09-28; flashlight unverified |
+| G25 | Portal ghosts: `portalstaticoverlay` was the Portal 1 shader, without Portal 2's `$ghostoverlay`, so the through-wall ring and brackets were drawn over every visible portal | done on native Vulkan (see log); DXVK source-matched `.vcs` packs need the new combos |
 
 ### Low
 
@@ -237,3 +238,35 @@ Newest last. Each entry names the build and the check that passed.
     runs. The same run on the pre-fix `libserver.so` fails 5 checks: the
     player falls at (-2352, -3052), there is no `OnPostTransition`, no
     elevator ride or walk out, and the arrival save is refused.
+- 2026-09-28, G24/G25/G20 (build-p2 release, native Vulkan): white gel and
+  water against retail `portal2_linux`, 1024x768.
+  - Gel streams fuse into one body again. The clean-room tiler's field kernel
+    was `(1-x)^12`; retail's is `(1-x)^2 / 4`, read from the 2010 client's
+    `CBucketBlobRenderer::RecalculateConstants` (`u = r^2 / (sqrt(2) R)^2`,
+    `k = u^2 - u + 0.25`). The white stream in `sp_a3_portal_intro` now
+    matches retail's shape; before, it broke into separate spheres.
+  - The erase gel (water, `blob_surface_erase`) uses `OPACITY_TEXTURE` and
+    `FRESNEL_WARP`, which the 2026-09-25 entry wrongly said no gel material
+    uses. `paintblob.frag` now reads s6 (in the light warp's set; no blob
+    material has both) and, as paintblob_ps20b does, `FRESNEL_WARP` only
+    drops the translucent fresnel. Retail's water refracts the room; ours is
+    still brighter (seen on `sp_a3_crazy_box`'s `paint_sprayer_erase_01`).
+  - Portals on white gel: on `sp_a3_portal_intro` a shot at the bare floor
+    places nothing and, once `paint_sprayer_2` has coated it, the same shot
+    places a portal at (112, 192, -16), identically on retail and this build.
+    `portal2_paint.py suite` still passes 14/14.
+  - G25: `portalstaticoverlay` has Portal 2's `$ghostoverlay` (from
+    `cstrike15_src`): a reverse z-test one unit off the wall, a one /
+    inverse-source-alpha blend and the 120-240 unit fade, as new static
+    combos with the largest strides, so existing combo indices (and shipped
+    `.vcs` files) are unchanged. `fxc_prep.pl` regenerated the selectors (it
+    reproduces the old ones byte for byte); the native ports follow. The
+    visible portal lost its brackets, and the ghost through a wall matches
+    retail (peak 53/106/150 against 58/114/149). The four existing
+    `portalstaticoverlay` legacy-shader cases pass in both HDR modes.
+  - G20: `logic_playerproxy` `PaintPlayerWithPortalPaint` calls
+    `CPortal_Player::Paint( PORTAL_POWER, vec3_origin )`, as the retail
+    handler does (found through its datadesc entry). The painted-player
+    screen effect it starts is still never drawn: nothing calls
+    `C_Portal_Player::RenderLocalScreenSpaceEffect`, and this tree has no
+    `engine_post` shader to composite it.

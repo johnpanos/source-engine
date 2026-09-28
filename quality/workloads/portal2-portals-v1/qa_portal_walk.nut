@@ -80,7 +80,9 @@ QA_Do( "slow end", function()
 	PW_Window( "blue_to_orange_20fps", "END" )
 	SendToConsole( "host_framerate 0" )
 }, 0.2 )
-QA_Expect( "cross_20fps.blue_to_orange", function() { return PW_ExitedFrom( ::PW.portals.orange ) } )
+// The press lasts long enough at any frame rate, so how far the player gets
+// past orange varies; it must only have come out of orange.
+QA_Expect( "cross_20fps.blue_to_orange", function() { return PW_ExitedFrom( ::PW.portals.orange, 600 ) } )
 QA_Expect( "cross_20fps.on_center_line", function()
 {
 	local o = QA_Player().GetOrigin()

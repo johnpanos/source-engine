@@ -37,6 +37,7 @@ private:
 	void InputSetMotionBlurAmount( inputdata_t &inputdata );
 	void InputAddPotatosToPortalgun( inputdata_t &inputdata );
 	void InputRemovePotatosFromPortalgun( inputdata_t &inputdata );
+	void InputPaintPlayerWithPortalPaint( inputdata_t &inputdata );
 
 	void SetPotatos( bool bShowPotatos );
 
@@ -76,6 +77,7 @@ BEGIN_DATADESC( CLogicPlayerProxy )
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetMotionBlurAmount", InputSetMotionBlurAmount ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "AddPotatosToPortalgun", InputAddPotatosToPortalgun ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "RemovePotatosFromPortalgun", InputRemovePotatosFromPortalgun ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "PaintPlayerWithPortalPaint", InputPaintPlayerWithPortalPaint ),
 END_DATADESC()
 
 LINK_ENTITY_TO_CLASS( logic_playerproxy, CLogicPlayerProxy );
@@ -202,6 +204,26 @@ void CLogicPlayerProxy::InputAddPotatosToPortalgun( inputdata_t &inputdata )
 void CLogicPlayerProxy::InputRemovePotatosFromPortalgun( inputdata_t &inputdata )
 {
 	SetPotatos( false );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Coats the player in conversion gel, as the retail server.so does:
+//          CPortal_Player::Paint( PORTAL_POWER, vec3_origin ), which starts the
+//          painted-player timer and its screen effect.
+//-----------------------------------------------------------------------------
+void CLogicPlayerProxy::InputPaintPlayerWithPortalPaint( inputdata_t &inputdata )
+{
+	if ( GameRules()->IsMultiplayer() )
+	{
+		Warning( "Can't use logic player proxy in multiplayer!\n" );
+		return;
+	}
+
+	CPortal_Player *pPlayer = GetPlayer();
+	if ( pPlayer )
+	{
+		pPlayer->Paint( PORTAL_POWER, vec3_origin );
+	}
 }
 
 //-----------------------------------------------------------------------------

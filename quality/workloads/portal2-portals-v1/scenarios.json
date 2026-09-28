@@ -104,6 +104,62 @@
           }
         }
       ]
+    },
+    {
+      "name": "qa_portal_tunnel",
+      "map": "qa_portal_walk",
+      "script": "qa_portal_tunnel.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "gun.held",
+        "blue.placed",
+        "blue.faces_south",
+        "orange.placed",
+        "orange.faces_north",
+        "views.survived",
+        "cross.blue_to_orange",
+        "cross.heading_north",
+        "cross.again",
+        "view.tunnel"
+      ],
+      "console_checks": [
+        {
+          "name": "view.tunnel",
+          "window": "tunnel",
+          "view_continuity": {
+            "max_speed": 400,
+            "max_turn_rate": 30,
+            "min_crossings": 1,
+            "max_crossings": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "sp_a2_triple_laser_cube_removed",
+      "map": "sp_a2_triple_laser",
+      "script": "sp_a2_triple_laser_cube_removed.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "entry.cube_spawned",
+        "cube.redirects",
+        "removed.child_laser_gone",
+        "removed.wall_laser_alive"
+      ]
+    },
+    {
+      "name": "qa_portal_crowd",
+      "map": "qa_portal_walk",
+      "script": "qa_portal_crowd.nut",
+      "timeout_seconds": 180,
+      "required_checks": [
+        "gun.held",
+        "blue.placed",
+        "blue.faces_south",
+        "orange.placed",
+        "orange.faces_north",
+        "crowd.spawned"
+      ]
     }
   ],
   "includes": [

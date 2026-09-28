@@ -104,7 +104,7 @@ void CHudZoom::ApplySchemeSettings( vgui::IScheme *scheme )
 	SetForceStereoRenderToFrameBuffer( true );
 	int x, y;
 	int screenWide, screenTall;
-	surface()->GetFullscreenViewport( x, y, screenWide, screenTall );
+	GetVGuiFullscreenViewport( x, y, screenWide, screenTall );
 	SetBounds(0, 0, screenWide, screenTall);
 }
 

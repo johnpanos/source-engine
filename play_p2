@@ -63,7 +63,8 @@ launcher_ccache "$P2_BUILD_DIR"
 (cd "$ROOT" && WAFLOCK="$P2_WAFLOCK" python3 ./waf build)
 
 python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \
-    --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME" --build "$P2_BUILD_DIR"
+    --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME" --build "$P2_BUILD_DIR" \
+    --mount-published
 
 cd "$P2_RUNTIME"
 export SteamAppId=620 SteamGameId=620

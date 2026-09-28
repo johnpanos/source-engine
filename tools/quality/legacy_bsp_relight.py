@@ -86,11 +86,14 @@ def load_toolchain(path=None):
 
 
 def relight(bsp, name, out, toolchain, quality=pbrt_map_build.LEGACY_QUALITY, game=None,
-            force_from=None, boot=False, keep_going=False, publish=True, device=None):
+            force_from=None, boot=False, keep_going=False, publish=True, device=None,
+            runtime=None):
     """Relight the compiled map `bsp` as map `name`, built in `out`.
 
     `game` is the directory the map was compiled against (vbsp/vrad
     `-game`); its loose materials are found before the game runtime's.
+    `runtime` is the staged game runtime the materials come from (default
+    the toolchain's; run/runtime-p2 for a Portal 2 map).
     `device` overrides the profile's Cycles device for every bake
     (`cycles_device.DEVICES`; `cpu` and `auto` are explicit opt-ins).
     Returns the gameplay identity; raises SystemExit when a step or the
@@ -103,6 +106,8 @@ def relight(bsp, name, out, toolchain, quality=pbrt_map_build.LEGACY_QUALITY, ga
                 "credit": "Relight of %s; its gameplay lumps are carried unchanged" % bsp.name}
     if game:
         manifest["legacy_game"] = str(Path(game).resolve())
+    if runtime:
+        manifest["legacy_runtime"] = str(Path(runtime).resolve())
     if device:
         manifest["lightmap"] = {"device": device}
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
@@ -154,6 +159,9 @@ def main():
     parser.add_argument("--device", choices=pbrt_map_build.cycles_device.DEVICES,
                         help="Cycles device for every bake (default: the profile's, gpu)")
     parser.add_argument("--toolchain", type=Path)
+    parser.add_argument("--runtime", type=Path,
+                        help="staged game runtime the materials come from (default: the "
+                             "toolchain's; run/runtime-p2 for a Portal 2 map)")
     parser.add_argument("--from", dest="force_from", choices=pbrt_map_build.STEPS)
     parser.add_argument("--boot", action="store_true",
                         help="boot the relit map headless on native Vulkan")
@@ -175,7 +183,8 @@ def main():
         stem = bsp.stem
     name = args.map_name or (stem.lower() + "_relit")
     relight(bsp, name, args.out or default_out(name), toolchain, args.quality, args.game,
-            args.force_from, args.boot, args.keep_going, not args.no_publish, args.device)
+            args.force_from, args.boot, args.keep_going, not args.no_publish, args.device,
+            args.runtime)
 
 
 if __name__ == "__main__":

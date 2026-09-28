@@ -50,18 +50,16 @@ static inline int FloorDiv( int a, int b )
 	return ( a >= 0 ) ? ( a / b ) : -( ( -a + b - 1 ) / b );
 }
 
-// Field kernel k(x) = (1-x)^12 on the squared distance in cutoff units; the
-// high exponent makes nearby blobs bridge softly instead of fusing into one
-// large mass (a Gaussian-like falloff that still ends at the cutoff).
+// Field kernel k(x) = (1-x)^2 / 4 on the squared distance in cutoff units:
+// retail's, from the 2010 client's CBucketBlobRenderer::RecalculateConstants,
+// which forms u = r^2 / (sqrt(2) cutoff)^2 and k = u^2 - u + 0.25. Its wide,
+// soft falloff fuses the blobs of a stream into one body of gel, as retail
+// draws it.
 static inline float Kernel( float x, float *pDerivFactor )
 {
 	float y = 1.0f - x;
-	float y2 = y * y;
-	float y4 = y2 * y2;
-	float y8 = y4 * y4;
-	float y11 = y8 * y2 * y;
-	*pDerivFactor = -12.0f * y11; // dk/dx
-	return y11 * y;
+	*pDerivFactor = -0.5f * y; // dk/dx
+	return 0.25f * y * y;
 }
 
 // Cube corners (bit 0 = x, bit 1 = y, bit 2 = z) and the six tetrahedra of the

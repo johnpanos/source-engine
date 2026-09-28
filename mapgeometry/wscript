@@ -21,8 +21,8 @@ def configure(conf):
 def build(bld):
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
-		source    = [ 'aabb.cpp', 'angle.cpp', 'brush.cpp', 'displacement.cpp', 'rounding.cpp',
-		              'texture_axes.cpp' ],
+		source    = [ 'aabb.cpp', 'angle.cpp', 'brush.cpp', 'displacement.cpp', 'polytope.cpp',
+		              'rounding.cpp', 'texture_axes.cpp', 'transform.cpp' ],
 		target    = PROJECT_NAME,
 		name      = PROJECT_NAME,
 		arch_module = 'world.map-geometry',

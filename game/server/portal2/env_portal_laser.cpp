@@ -69,9 +69,9 @@ BEGIN_DATADESC( CPortalLaser )
 
 	DEFINE_FIELD( m_bFromReflectedCube, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_hReflector, FIELD_EHANDLE ),
-	DEFINE_FIELD( m_pChildLaser, FIELD_CLASSPTR ),
-	DEFINE_AUTO_ARRAY( m_pSoundProxy, FIELD_CLASSPTR ),
-	DEFINE_FIELD( m_pPlacementHelper, FIELD_CLASSPTR ),
+	DEFINE_FIELD( m_hChildLaser, FIELD_EHANDLE ),
+	DEFINE_AUTO_ARRAY( m_hSoundProxy, FIELD_EHANDLE ),
+	DEFINE_FIELD( m_hPlacementHelper, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_bLaserOn, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_iLaserAttachment, FIELD_INTEGER ),
 
@@ -99,7 +99,7 @@ static const char LASER_BURN_SOUND[] = "HL2Player.BurnPain";
 //-----------------------------------------------------------------------------
 CPortalLaser::CPortalLaser()
 {
-	m_pChildLaser = NULL;
+	m_hChildLaser = NULL;
 	m_bFromReflectedCube = false;
 	m_hReflector = NULL;
 	m_vStartPoint = vec3_origin;
@@ -182,14 +182,14 @@ int CPortalLaser::UpdateTransmitState()
 //-----------------------------------------------------------------------------
 void CPortalLaser::CreateHelperEntities()
 {
-	if ( m_pPlacementHelper == NULL )
+	if ( m_hPlacementHelper == NULL )
 	{
-		m_pPlacementHelper = static_cast< CInfoPlacementHelper* >( CreateEntityByName( "info_placement_helper" ) );
-		m_pPlacementHelper->SetAbsOrigin( GetAbsOrigin() );
-		m_pPlacementHelper->SetAbsAngles( GetAbsAngles() );
-		m_pPlacementHelper->KeyValue( "radius", "16" );
-		m_pPlacementHelper->KeyValue( "hide_until_placed", "0" );
-		DispatchSpawn( m_pPlacementHelper );
+		m_hPlacementHelper = static_cast< CInfoPlacementHelper* >( CreateEntityByName( "info_placement_helper" ) );
+		m_hPlacementHelper->SetAbsOrigin( GetAbsOrigin() );
+		m_hPlacementHelper->SetAbsAngles( GetAbsAngles() );
+		m_hPlacementHelper->KeyValue( "radius", "16" );
+		m_hPlacementHelper->KeyValue( "hide_until_placed", "0" );
+		DispatchSpawn( m_hPlacementHelper );
 	}
 
 	CreateSoundProxies();
@@ -209,12 +209,12 @@ void CPortalLaser::CreateSoundProxies()
 		if ( pPlayer == NULL || !pPlayer->IsConnected() )
 			continue;
 
-		if ( m_pSoundProxy[i] == NULL )
+		if ( m_hSoundProxy[i] == NULL )
 		{
-			m_pSoundProxy[i] = CreateEntityByName( "info_target" );
-			m_pSoundProxy[i]->SetAbsOrigin( GetAbsOrigin() );
-			m_pSoundProxy[i]->AddEFlags( EFL_FORCE_CHECK_TRANSMIT );
-			m_pSoundProxy[i]->DispatchUpdateTransmitState();
+			m_hSoundProxy[i] = CreateEntityByName( "info_target" );
+			m_hSoundProxy[i]->SetAbsOrigin( GetAbsOrigin() );
+			m_hSoundProxy[i]->AddEFlags( EFL_FORCE_CHECK_TRANSMIT );
+			m_hSoundProxy[i]->DispatchUpdateTransmitState();
 		}
 
 		if ( m_pAmbientSound[i] == NULL )
@@ -223,11 +223,11 @@ void CPortalLaser::CreateSoundProxies()
 
 			if ( m_bIsLethal )
 			{
-				m_pAmbientSound[i] = controller.SoundCreate( filter, m_pSoundProxy[i]->entindex(), LETHAL_LASER_LOOPING_SOUND );
+				m_pAmbientSound[i] = controller.SoundCreate( filter, m_hSoundProxy[i]->entindex(), LETHAL_LASER_LOOPING_SOUND );
 			}
 			else
 			{
-				m_pAmbientSound[i] = controller.SoundCreate( filter, m_pSoundProxy[i]->entindex(), LASER_LOOPING_SOUND );
+				m_pAmbientSound[i] = controller.SoundCreate( filter, m_hSoundProxy[i]->entindex(), LASER_LOOPING_SOUND );
 			}
 
 			controller.Play( m_pAmbientSound[i], 1.0f, 100 );
@@ -250,9 +250,9 @@ void CPortalLaser::Activate()
 //-----------------------------------------------------------------------------
 void CPortalLaser::UpdateOnRemove()
 {
-	if ( m_pPlacementHelper )
+	if ( m_hPlacementHelper )
 	{
-		UTIL_Remove( m_pPlacementHelper );
+		UTIL_Remove( m_hPlacementHelper );
 	}
 
 	TurnOff();
@@ -1135,10 +1135,10 @@ CBaseEntity *CPortalLaser::TraceLaser( bool bIsFirstTrace, const Vector &vecStar
 //-----------------------------------------------------------------------------
 void CPortalLaser::RemoveChildLaser()
 {
-	if ( m_pChildLaser )
+	if ( m_hChildLaser )
 	{
-		UTIL_Remove( m_pChildLaser );
-		m_pChildLaser = NULL;
+		UTIL_Remove( m_hChildLaser );
+		m_hChildLaser = NULL;
 	}
 }
 
@@ -1147,23 +1147,23 @@ void CPortalLaser::RemoveChildLaser()
 //-----------------------------------------------------------------------------
 void CPortalLaser::UpdateNextLaser( const Vector &vecStart, const Vector &vecDirection, CBaseEntity *pParent )
 {
-	if ( m_pChildLaser == NULL )
+	if ( m_hChildLaser == NULL )
 	{
-		m_pChildLaser = static_cast< CPortalLaser* >( CreateEntityByName( "env_portal_laser" ) );
+		m_hChildLaser = static_cast<CPortalLaser *>( CreateEntityByName( "env_portal_laser" ) );
 
 		if ( pParent && UTIL_IsReflectiveCube( pParent ) )
 		{
-			m_pChildLaser->m_hReflector = pParent;
-			m_pChildLaser->SetParent( pParent );
-			m_pChildLaser->m_bFromReflectedCube = true;
+			m_hChildLaser->m_hReflector = pParent;
+			m_hChildLaser->SetParent( pParent );
+			m_hChildLaser->m_bFromReflectedCube = true;
 		}
 
-		DispatchSpawn( m_pChildLaser );
+		DispatchSpawn( m_hChildLaser );
 	}
-	else if ( pParent && UTIL_IsReflectiveCube( pParent ) && m_pChildLaser->m_hReflector.Get() != pParent )
+	else if ( pParent && UTIL_IsReflectiveCube( pParent ) && m_hChildLaser->m_hReflector.Get() != pParent )
 	{
 		// Moved on to a different cube; the old one no longer holds the laser
-		CPropWeightedCube *pOldCube = static_cast< CPropWeightedCube* >( m_pChildLaser->m_hReflector.Get() );
+		CPropWeightedCube *pOldCube = static_cast< CPropWeightedCube* >( m_hChildLaser->m_hReflector.Get() );
 		// Reconstruction note: the binary calls SetLaser without checking the old
 		// cube, which is NULL for a laser that was not reflected before.
 		if ( pOldCube )
@@ -1171,12 +1171,12 @@ void CPortalLaser::UpdateNextLaser( const Vector &vecStart, const Vector &vecDir
 			pOldCube->SetLaser( NULL );
 		}
 
-		m_pChildLaser->m_hReflector = pParent;
-		m_pChildLaser->SetParent( pParent );
-		m_pChildLaser->m_bFromReflectedCube = true;
+		m_hChildLaser->m_hReflector = pParent;
+		m_hChildLaser->SetParent( pParent );
+		m_hChildLaser->m_bFromReflectedCube = true;
 	}
 
-	m_pChildLaser->FireLaser( vecStart, vecDirection, pParent );
+	m_hChildLaser->FireLaser( vecStart, vecDirection, pParent );
 }
 
 //-----------------------------------------------------------------------------
@@ -1214,7 +1214,7 @@ bool CPortalLaser::ReflectLaserFromEntity( CBaseEntity *pEntity )
 
 		UpdateNextLaser( vecOffset, vecForward, pCube );
 
-		pCube->SetLaser( m_pChildLaser );
+		pCube->SetLaser( m_hChildLaser );
 
 		return true;
 	}
@@ -1297,7 +1297,10 @@ void CPortalLaser::FireLaser( const Vector &vecStart, const Vector &vecDirection
 
 		RemoveChildLaser();
 
-		UTIL_SetOrigin( m_pPlacementHelper, tr.endpos );
+		if ( m_hPlacementHelper )
+		{
+			UTIL_SetOrigin( m_hPlacementHelper, tr.endpos );
+		}
 		FireAtPoint( tr, true );
 	}
 	else
@@ -1366,7 +1369,10 @@ void CPortalLaser::FireLaser( const Vector &vecStart, const Vector &vecDirection
 
 				RemoveChildLaser();
 
-				UTIL_SetOrigin( m_pPlacementHelper, tr.endpos );
+				if ( m_hPlacementHelper )
+				{
+					UTIL_SetOrigin( m_hPlacementHelper, tr.endpos );
+				}
 				FireAtPoint( tr, true );
 			}
 		}
@@ -1436,9 +1442,9 @@ void CPortalLaser::StrikeThink()
 
 	for ( int i = 0; i < MAX_PLAYERS; ++i )
 	{
-		if ( m_pSoundProxy[i] )
+		if ( m_hSoundProxy[i] )
 		{
-			UTIL_SetOrigin( m_pSoundProxy[i], m_vecNearestSoundSource[i] );
+			UTIL_SetOrigin( m_hSoundProxy[i], m_vecNearestSoundSource[i] );
 		}
 	}
 

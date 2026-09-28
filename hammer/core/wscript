@@ -17,19 +17,53 @@ def configure(conf):
 	conf.load('strict_cpp20', tooldir='scripts/waifulib')
 
 def build(bld):
+	# hammer.scene: the map document content model, staged edits and change
+	# sets, solid geometry and structural queries.
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
-		source    = [ 'app/document_history.cpp', 'app/editor_commands.cpp', 'app/map_build_queue.cpp',
+		source    = [ 'scene/change_set.cpp', 'scene/handle_table.cpp', 'scene/map_document.cpp',
+		              'scene/map_objects.cpp', 'scene/map_queries.cpp', 'scene/scene_graph.cpp',
+		              'scene/solid_geometry.cpp' ],
+		target    = 'hammer_scene',
+		name      = 'hammer_scene',
+		arch_module = 'hammer.scene',
+		features  = 'cxx',
+		includes  = [ '../../public' ],
+		defines   = [],
+		use       = [ 'kvtext', 'mapgeometry' ],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)
+
+	# hammer.ports: shared helpers of the port contracts.
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'ports/entity_catalog.cpp' ],
+		target    = 'hammer_ports',
+		name      = 'hammer_ports',
+		arch_module = 'hammer.ports',
+		features  = 'cxx',
+		includes  = [ '../../public' ],
+		defines   = [],
+		use       = [ 'hammer_scene', 'mapgeometry' ],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)
+
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'app/change_history.cpp', 'app/document_history.cpp', 'app/edit_session.cpp',
+		              'app/editor_commands.cpp', 'app/map_build_queue.cpp',
 		              'app/editor_controller.cpp', 'app/editor_document.cpp',
 		              'app/entity_selection.cpp', 'app/property_value.cpp',
-		              'app/save_orchestrator.cpp', 'app/update_hint.cpp' ],
+		              'app/save_orchestrator.cpp', 'app/selection.cpp', 'app/update_hint.cpp' ],
 		target    = 'hammer_app',
 		name      = 'hammer_app',
 		arch_module = 'hammer.app',
 		features  = 'cxx',
 		includes  = [ '../../public' ],
 		defines   = [],
-		use       = [ 'vmf', 'kvtext', 'mapgeometry' ],
+		use       = [ 'hammer_ports', 'hammer_scene', 'vmf', 'kvtext', 'mapgeometry' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)

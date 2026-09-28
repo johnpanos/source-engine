@@ -1901,8 +1901,27 @@ void CMatSystemSurface::GetTextSize(HFont font, const wchar_t *text, int &wide, 
 	// The text is some number of lines of the font's height.
 	const int nLineTall = FontManager().GetFontTall( font );
 	const int nLines = nLineTall > 0 ? tall / nLineTall : 0;
-	wide = uiscale::UnitsCoveringPixels( wide, flScale );
 	tall = nLines * GetFontTall( font );
+
+	// DrawPrintText advances the pen by each character's width in whole units
+	// (GetCharABCwide), so a line is as wide as the sum of those, not as its
+	// pixel width divided by the scale.
+	wide = 0;
+	int nLineWide = 0;
+	for ( const wchar_t *pch = text; pch && *pch; ++pch )
+	{
+		if ( *pch == L'\n' )
+		{
+			nLineWide = 0;
+			continue;
+		}
+		if ( *pch == L'&' )
+			continue;
+		int a, b, c;
+		GetCharABCwide( font, *pch, a, b, c );
+		nLineWide += a + b + c;
+		wide = MAX( wide, nLineWide );
+	}
 }
 
 //-----------------------------------------------------------------------------

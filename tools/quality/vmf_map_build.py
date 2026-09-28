@@ -77,11 +77,28 @@ def referenced_materials(vmf_text):
     return sorted(materials)
 
 
-def stage_compile_game(game, runtime, materials):
+STATIC_PROP = re.compile(r'"classname"\s+"prop_static"')
+MODEL_KEY = re.compile(r'"model"\s+"([^"]+\.mdl)"', re.IGNORECASE)
+# The files vbsp (bounds, collision) and vrad (shadows, per-vertex light) read.
+MODEL_SUFFIXES = (".mdl", ".phy", ".vvd", ".dx90.vtx", ".dx80.vtx", ".vtx")
+
+
+def referenced_models(vmf_text):
+    """The models of a VMF's prop_static entities, lower-cased: vbsp builds the
+    static prop lump from their files, so the compile game needs them."""
+    models = set()
+    for block in re.split(r"\n\s*entity\s*\n", vmf_text):
+        if STATIC_PROP.search(block):
+            models.update(m.lower().replace("\\", "/") for m in MODEL_KEY.findall(block))
+    return sorted(models)
+
+
+def stage_compile_game(game, runtime, materials, models=()):
     """A game root for the compilers: the vbsp fixture's gameinfo and lights, and
-    the given materials (with base textures, for vrad's reflectivity) and the
-    surface properties, extracted from the staged runtime's packs. Returns the
-    materials the runtime does not have."""
+    the given materials (with base textures, for vrad's reflectivity), static
+    prop models and the surface properties, extracted from the staged
+    runtime's packs. Returns the materials and models the runtime does not
+    have."""
     shutil.rmtree(game, ignore_errors=True)
     game.mkdir(parents=True)
     for name in ("gameinfo.txt", "lights.rad"):
@@ -113,6 +130,17 @@ def stage_compile_game(game, runtime, materials):
                             re.IGNORECASE)
         if texture:
             extract("materials/%s.vtf" % texture.group(1).lower().replace("\\", "/"))
+    for model in models:
+        stem = model[:-len(".mdl")]
+        if extract(model) is None:
+            missing.append(model)
+            continue
+        for suffix in MODEL_SUFFIXES[1:]:
+            extract(stem + suffix)
+        # vrad reads the dx80 strip file; Portal 2 ships only dx90, the same format.
+        dx80, dx90 = game / (stem + ".dx80.vtx"), game / (stem + ".dx90.vtx")
+        if not dx80.exists() and dx90.exists():
+            shutil.copy2(dx90, dx80)
     return missing
 
 
@@ -187,8 +215,10 @@ def compile_in(work, data, name, out, tools, runtime, quality):
     log.write_text("")
 
     materials = referenced_materials(text)
-    missing = stage_compile_game(work / "game", runtime, materials)
+    models = referenced_models(text)
+    missing = stage_compile_game(work / "game", runtime, materials, models)
     record["materials"] = {"referenced": len(materials), "missing": missing}
+    record["static_prop_models"] = len(models)
     if missing:
         record.update(status="missing-materials", failed_gates=["materials"])
         return record

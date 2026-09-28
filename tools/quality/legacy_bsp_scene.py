@@ -25,7 +25,14 @@ content (a cubemap patch resolves to its included material). The base texture
 and bump map are decoded from their VTFs (`vtf_decode`); Source bump maps are
 DirectX (+Y down) and are written OpenGL (+Y up). `$alphatest` becomes a
 cut-out; everything else is opaque, dielectric, roughness 0.8 (or
-sqrt(2 / (e + 2)) of a numeric `$phongexponent`).
+sqrt(2 / (e + 2)) of a numeric `$phongexponent`). A self-shadowed bump map
+(`$ssbump`, Portal 2's tiles and panels) holds the light arriving along the
+three Source bump-basis directions: its normal is their weighted sum and its
+ambient occlusion their mean over a flat texel's 1/sqrt(3), so the relief and
+the dark grooves survive as a normal map and an occlusion texture. A material
+with a legacy `$envmap` gets a roughness texture instead of the constant: its
+environment-map mask (the bump or base alpha, or `$envmapmask`) scaled by the
+`$envmaptint` strength makes the masked texels glossier, down to 0.3.
 
 Lights come from vrad's compiled world lights (the HDR lump when present),
 in the engine's lightmap unit, which is the pipeline's (irradiance / pi):
@@ -72,6 +79,36 @@ LIGHT_RADIUS_UNITS = 2.0
 NORMALIZE_DISTANCE = 100.0  # vrad scales a light's brightness to its value here
 OCCLUDER = "relight_occluder"
 DEFAULT_ROUGHNESS = 0.8
+# Source's bump basis (tangent space, DirectX +Y down), the directions an
+# $ssbump texel's three channels record light from.
+BUMP_BASIS = ((math.sqrt(2.0 / 3.0), 0.0, 1.0 / math.sqrt(3.0)),
+              (-1.0 / math.sqrt(6.0), 1.0 / math.sqrt(2.0), 1.0 / math.sqrt(3.0)),
+              (-1.0 / math.sqrt(6.0), -1.0 / math.sqrt(2.0), 1.0 / math.sqrt(3.0)))
+FLAT_SSBUMP = 1.0 / math.sqrt(3.0)
+# The glossiest roughness a legacy environment map's full mask and tint give.
+GLOSSY_ROUGHNESS = 0.3
+
+
+def ssbump_maps(image):
+    """An $ssbump texture as (normal RGB uint8, OpenGL +Y up; occlusion uint8)."""
+    rgb = image[..., :3].astype(np.float64) / 255.0
+    basis = np.asarray(BUMP_BASIS)
+    normal = rgb @ basis
+    normal /= np.maximum(np.linalg.norm(normal, axis=2, keepdims=True), 1e-8)
+    normal[..., 1] = -normal[..., 1]  # DirectX (+Y down) -> OpenGL (+Y up)
+    occlusion = np.clip(rgb.mean(axis=2) / FLAT_SSBUMP, 0.0, 1.0)
+    return (np.clip(np.rint((normal * 0.5 + 0.5) * 255), 0, 255).astype(np.uint8),
+            np.clip(np.rint(occlusion * 255), 0, 255).astype(np.uint8))
+
+
+def envmap_strength(params):
+    """How strongly a legacy $envmap reflects (0..1), from its $envmaptint."""
+    tint = params.get("$envmaptint")
+    try:
+        values = [float(v) for v in re.findall(r"[-\d.]+", str(tint))] if tint else [1.0]
+    except ValueError:
+        values = [1.0]
+    return float(np.clip(2.5 * max(values or [1.0]), 0.0, 1.0))
 MAX_TEXTURE = 2048
 # Faces of these shaders are drawn by the legacy translucent/water passes.
 LEGACY_ONLY_SHADERS = {"water", "refract", "unlittwotexture", "monitorscreen",
@@ -434,6 +471,9 @@ def build_model(bsp, resolver, texture_dir):
     decoded = {}
 
     def texture_file(texture, kind):
+        """A decoded texture as a PNG record. Kinds: base (RGBA), normal (RGB),
+        ssbump-normal and ssbump-occlusion (from an $ssbump), mask (the alpha,
+        grey)."""
         if (texture, kind) in decoded:
             return decoded[(texture, kind)]
         found = materials.texture(texture)
@@ -446,10 +486,17 @@ def build_model(bsp, resolver, texture_dir):
         if kind == "normal":
             image = image.copy()
             image[..., 1] = 255 - image[..., 1]  # DirectX (+Y down) -> OpenGL (+Y up)
-        path = texture_dir / (sanitize(texture) + ("_normal" if kind == "normal" else "") +
-                              ".png")
-        Image.fromarray(image if kind != "normal" else image[..., :3],
-                        "RGBA" if kind != "normal" else "RGB").save(path)
+            out, mode = image[..., :3], "RGB"
+        elif kind.startswith("ssbump"):
+            normal, occlusion = ssbump_maps(image)
+            out, mode = (normal, "RGB") if kind == "ssbump-normal" else (occlusion, "L")
+        elif kind == "mask":
+            out, mode = image[..., 3], "L"
+        else:
+            out, mode = image, "RGBA"
+        suffix = "" if kind == "base" else "_" + kind
+        path = texture_dir / (sanitize(texture) + suffix + ".png")
+        Image.fromarray(np.ascontiguousarray(out), mode).save(path)
         decoded[(texture, kind)] = {"file": str(path), "source": source,
                                     "size": [int(image.shape[1]), int(image.shape[0])],
                                     "alpha": bool(kind == "base" and (image[..., 3] < 255).any())}
@@ -461,10 +508,14 @@ def build_model(bsp, resolver, texture_dir):
         base = params.get("$basetexture")
         record["base"] = texture_file(base, "base") if base else None
         bump = params.get("$bumpmap") or params.get("$normalmap")
+        record["occlusion"] = None
         if bump and truthy(params.get("$ssbump")):
-            approximations.setdefault(key, []).append("self-shadowed bump map dropped")
-            bump = None
-        record["normal"] = texture_file(bump, "normal") if bump else None
+            record["normal"] = texture_file(bump, "ssbump-normal")
+            record["occlusion"] = texture_file(bump, "ssbump-occlusion")
+            approximations.setdefault(key, []).append(
+                "self-shadowed bump map as a normal map and ambient occlusion")
+        else:
+            record["normal"] = texture_file(bump, "normal") if bump else None
         record["alphatest"] = truthy(params.get("$alphatest")) and bool(
             record["base"] and record["base"]["alpha"])
         record["alphatest_reference"] = float(params.get("$alphatestreference", 0.5) or 0.5)
@@ -484,8 +535,26 @@ def build_model(bsp, resolver, texture_dir):
                 "%s drawn as a lit PBR surface" % record["shader"])
         if record["shader"] == "worldvertextransition":
             approximations.setdefault(key, []).append("second blend layer dropped")
+        record["roughness_mask"] = None
         if params.get("$envmap"):
-            approximations.setdefault(key, []).append("legacy $envmap not carried")
+            # The mask the legacy shader multiplies its reflection by.
+            mask = None
+            if truthy(params.get("$normalmapalphaenvmapmask")) and bump:
+                mask = texture_file(bump, "mask")
+            elif truthy(params.get("$basealphaenvmapmask")) and base:
+                mask = texture_file(base, "mask")
+            elif params.get("$envmapmask"):
+                mask = texture_file(params["$envmapmask"], "mask")
+            strength = envmap_strength(params)
+            glossiest = record["roughness"] - strength * (record["roughness"] - GLOSSY_ROUGHNESS)
+            if mask:
+                record["roughness_mask"] = dict(mask, rough=record["roughness"],
+                                                glossy=glossiest)
+            else:
+                record["roughness"] = glossiest
+            approximations.setdefault(key, []).append(
+                "legacy $envmap as roughness %.2f..%.2f%s" % (
+                    glossiest, record["roughness"], " by its mask" if mask else ""))
 
     # Occluders: the non-bevel nodraw sides of the solid world brushes.
     occluders = []
@@ -780,8 +849,19 @@ def write_usd(model, path, map_name):
         surface = UsdShade.Shader.Define(stage, path.AppendChild("Surface"))
         surface.CreateIdAttr("UsdPreviewSurface")
         surface.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
-        surface.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(
-            float(record.get("roughness", 1.0)))
+        mask = record.get("roughness_mask")
+        if mask:
+            # roughness = rough + (glossy - rough) x mask
+            rough, glossy = mask["rough"], mask["glossy"]
+            surface.CreateInput("roughness", Sdf.ValueTypeNames.Float).ConnectToSource(
+                texture(path, "roughness", mask, "r", "raw",
+                        (glossy - rough,) * 3 + (1.0,), (rough,) * 3 + (0.0,)))
+        else:
+            surface.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(
+                float(record.get("roughness", 1.0)))
+        if record.get("occlusion"):
+            surface.CreateInput("occlusion", Sdf.ValueTypeNames.Float).ConnectToSource(
+                texture(path, "occlusion", record["occlusion"], "r", "raw"))
         if record.get("base"):
             surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
                 texture(path, "base", record["base"], "rgb", "sRGB"))

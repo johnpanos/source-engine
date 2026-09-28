@@ -146,9 +146,12 @@ public:
 	void				InitColors( void );
 	int					GraphValue( void );
 
+	// A filled rectangle in UI units, [x1, x2) x [y1, y2). color is at its top
+	// (or left) edge and color2 at its bottom (or right) edge.
 	struct CLineSegment
 	{
 		int			x1, y1, x2, y2;
+		bool bVertical;
 		byte		color[4];
 		byte		color2[4];
 	};
@@ -181,11 +184,23 @@ private:
 	void				PaintLineArt( int x, int y, int w, int graphtype, int maxmsgbytes );
 	void				DrawLargePacketSizes( int x, int w, int graphtype, float warning_threshold );
 
+	// The width text is drawn at (its pen advance). DrawTextLen leaves out each
+	// character's leading space, so text placed with it runs into its neighbor.
+	static int TextWide( HFont font, const char *text )
+	{
+		wchar_t wtext[256];
+		g_pVGuiLocalize->ConvertANSIToUnicode( text, wtext, sizeof( wtext ) );
+		int wide, tall;
+		g_pMatSystemSurface->GetTextSize( font, wtext, wide, tall );
+		return wide;
+	}
+
 	HFont			GetNetgraphFont()
 	{
 		return net_graphproportionalfont.GetBool() ? m_hFontProportional : m_hFont;
 	}
 
+	void UpdateTextMetrics();
 	void				ComputeNetgraphHeight();
 	void				UpdateEstimatedServerFramerate( INetChannelInfo *netchannel );
 
@@ -301,25 +316,31 @@ void NetgraphFontChangeCallback( IConVar *var, const char *pOldValue, float flOl
 
 void CNetGraphPanel::OnFontChanged()
 {
-	// Estimate the width of our panel.
-	char str[512];
-	wchar_t ustr[512];
-	Q_snprintf( str, sizeof( str ), "fps:  435  ping: 533 ms lerp 112.3 ms   0/0" );
-	g_pVGuiLocalize->ConvertANSIToUnicode( str, ustr, sizeof( ustr ) );
+	int w, h;
+	surface()->GetScreenSize( w, h );
+	SetSize( w, h );
+	SetPos( 0, 0 );
+
+	UpdateTextMetrics();
+}
+
+// The graph's width and height follow its text. Measured every paint: a UI
+// scale change rasterizes the fonts again some time after the panel's scheme
+// settings are reapplied, and metrics taken in between are stale.
+void CNetGraphPanel::UpdateTextMetrics()
+{
+	// The widest text row: "in", "lerp" and the packet rate side by side.
 	int textTall;
-	if ( m_hFontProportional == vgui::INVALID_FONT )
+	HFont font = GetNetgraphFont();
+	if ( font == vgui::INVALID_FONT )
 	{
 		m_EstimatedWidth = textTall = 0;
 	}
 	else
 	{
-		g_pMatSystemSurface->GetTextSize( m_hFontProportional, ustr, m_EstimatedWidth, textTall );
+		g_pMatSystemSurface->GetTextSize(
+		    font, L"in :9999   99.99 k/s lerp: 999.9 ms  999.9/s", m_EstimatedWidth, textTall );
 	}
-
-	int w, h;
-	surface()->GetScreenSize( w, h );
-	SetSize( w, h );
-	SetPos( 0, 0 );
 
 	ComputeNetgraphHeight();
 }
@@ -758,7 +779,7 @@ void CNetGraphPanel::DrawTextFields( int graphvalue, int x, int y, int w, netban
 
 	Q_snprintf( sz, sizeof( sz ), "in :%4i   %2.2f k/s ", totalsize, m_IncomingData );
 
-	int textWidth = g_pMatSystemSurface->DrawTextLen( font, "%s", sz );
+	int textWidth = TextWide( font, sz );
 
 	g_pMatSystemSurface->DrawColoredText( font, x, y, GRAPH_RED, GRAPH_GREEN, GRAPH_BLUE, 255, "%s", sz );
 
@@ -787,7 +808,7 @@ void CNetGraphPanel::DrawTextFields( int graphvalue, int x, int y, int w, netban
 	g_pMatSystemSurface->DrawColoredText( font, x + textWidth, y, interpcolor[ 0 ], interpcolor[ 1 ], interpcolor[ 2 ], 255, "%s", sz );
 
 	Q_snprintf( sz, sizeof( sz ), "%3.1f/s", m_AvgPacketIn );
-	textWidth = g_pMatSystemSurface->DrawTextLen( font, "%s", sz );
+	textWidth = TextWide( font, sz );
 
 	g_pMatSystemSurface->DrawColoredText( font, x + w - textWidth - 1, y, GRAPH_RED, GRAPH_GREEN, GRAPH_BLUE, 255, "%s", sz );
 
@@ -798,7 +819,7 @@ void CNetGraphPanel::DrawTextFields( int graphvalue, int x, int y, int w, netban
 	g_pMatSystemSurface->DrawColoredText( font, x, y, GRAPH_RED, GRAPH_GREEN, GRAPH_BLUE, 255, "%s", sz );
 
 	Q_snprintf( sz, sizeof( sz ), "%3.1f/s", m_AvgPacketOut );
-	textWidth = g_pMatSystemSurface->DrawTextLen( font, "%s", sz );
+	textWidth = TextWide( font, sz );
 
 	g_pMatSystemSurface->DrawColoredText( font, x + w - textWidth - 1, y, GRAPH_RED, GRAPH_GREEN, GRAPH_BLUE, 255, "%s", sz );
 
@@ -810,7 +831,7 @@ void CNetGraphPanel::DrawTextFields( int graphvalue, int x, int y, int w, netban
 	{
 		Q_snprintf( sz, sizeof( sz ), "loss:%3i    choke: %2i ", (int)(m_AvgPacketLoss*100.0f), (int)(m_AvgPacketChoke*100.0f) );
 
-		textWidth = g_pMatSystemSurface->DrawTextLen( font, "%s", sz );
+		textWidth = TextWide( font, sz );
 
 		g_pMatSystemSurface->DrawColoredText( font, x, y, GRAPH_RED, GRAPH_GREEN, GRAPH_BLUE, 255, "%s", sz );
 
@@ -948,16 +969,20 @@ void CNetGraphPanel::DrawStreamProgress( int x, int y, int width )
 	
 	byte color[3]; color[0] = 0; color[1] = 200; color[2] = 0;
 
+	// Underline the "in" and "out" text rows (the second and third).
+	const int textTall = surface()->GetFontTall( GetNetgraphFont() );
+	const int textTop = y - m_nNetGraphHeight;
+
 	if ( m_StreamTotal[FLOW_INCOMING] > 0 )
 	{
-		rcLine.y = y - m_nNetGraphHeight + 15 + 14;
+		rcLine.y = textTop + 2 * textTall - 1;
 		rcLine.width = (m_StreamRecv[FLOW_INCOMING]*width)/m_StreamTotal[FLOW_INCOMING];
 		DrawLine( &rcLine, color, 255 );
 	}
 
 	if ( m_StreamTotal[FLOW_OUTGOING] > 0 )
 	{
-		rcLine.y = y - m_nNetGraphHeight + 2*15 + 14;
+		rcLine.y = textTop + 3 * textTall - 1;
 		rcLine.width = (m_StreamRecv[FLOW_OUTGOING]*width)/m_StreamTotal[FLOW_OUTGOING];
 		DrawLine( &rcLine, color, 255 );
 	}
@@ -1122,12 +1147,12 @@ void CNetGraphPanel::DrawLargePacketSizes( int x, int w, int graphtype, float wa
 			char sz[ 32 ];
 			Q_snprintf( sz, sizeof( sz ), "%i", nTotalBytes );
 
-			int len = g_pMatSystemSurface->DrawTextLen( m_hFont, "%s", sz );
+			int len = TextWide( m_hFont, sz );
 
 			int textx, texty;
 
 			textx = rcFill.x - len / 2;
-			texty = MAX( 0, rcFill.y - 11 );
+			texty = MAX( 0, rcFill.y - g_pMatSystemSurface->GetFontTall( m_hFont ) );
 
 			g_pMatSystemSurface->DrawColoredText( m_hFont, textx, texty, 255, 255, 255, 255, "%s", sz );
 		}
@@ -1177,6 +1202,8 @@ void CNetGraphPanel::Paint()
 	{
 		net_scale.SetValue( 0.1f );
 	}
+
+	UpdateTextMetrics();
 
 	int sw, sh;
 	surface()->GetScreenSize( sw, sh );
@@ -1398,30 +1425,43 @@ void CNetGraphPanel::DrawLineSegments()
 	if ( c <= 0 )
 		return;
 
+	// Quads, not lines: the surface's projection is in UI units, so a one-unit
+	// rectangle covers every pixel of its unit at any UI scale (one-pixel lines
+	// leave gaps between units), and the native Vulkan backend draws no lines.
 	CMatRenderContextPtr pRenderContext( materials );
-	IMesh* m_pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, m_WhiteMaterial );
-	CMeshBuilder		meshBuilder;
-	meshBuilder.Begin( m_pMesh, MATERIAL_LINES, c );
+	IMesh *pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, m_WhiteMaterial );
 
-	int i;
-	for ( i = 0 ; i < c; i++ )
+	int nMaxVerts, nMaxIndices;
+	pRenderContext->GetMaxToRender( pMesh, false, &nMaxVerts, &nMaxIndices );
+	const int nMaxQuads = MAX( 1, MIN( nMaxVerts / 4, nMaxIndices / 6 ) );
+
+	for ( int nFirst = 0; nFirst < c; nFirst += nMaxQuads )
 	{
-		CLineSegment *seg = &m_Rects[ i ];
+		const int nQuads = MIN( nMaxQuads, c - nFirst );
 
-		meshBuilder.Color4ubv( seg->color );
-		meshBuilder.TexCoord2f( 0, 0.0f, 0.0f );
-		meshBuilder.Position3f( seg->x1, seg->y1, 0 );
-		meshBuilder.AdvanceVertex();
+		CMeshBuilder meshBuilder;
+		meshBuilder.Begin( pMesh, MATERIAL_QUADS, nQuads );
 
-		meshBuilder.Color4ubv( seg->color2 );
-		meshBuilder.TexCoord2f( 0, 0.0f, 0.0f );
-		meshBuilder.Position3f( seg->x2, seg->y2, 0 );
-		meshBuilder.AdvanceVertex();
+		for ( int i = nFirst; i < nFirst + nQuads; i++ )
+		{
+			const CLineSegment *seg = &m_Rects[i];
+
+			// Corners clockwise from the top left; color2 on the far edge.
+			const int x[4] = { seg->x1, seg->x2, seg->x2, seg->x1 };
+			const int y[4] = { seg->y1, seg->y1, seg->y2, seg->y2 };
+			const bool bFar[4] = { false, !seg->bVertical, true, seg->bVertical };
+			for ( int v = 0; v < 4; v++ )
+			{
+				meshBuilder.Color4ubv( bFar[v] ? seg->color2 : seg->color );
+				meshBuilder.TexCoord2f( 0, 0.0f, 0.0f );
+				meshBuilder.Position3f( x[v], y[v], 0 );
+				meshBuilder.AdvanceVertex();
+			}
+		}
+
+		meshBuilder.End();
+		pMesh->Draw();
 	}
-
-	meshBuilder.End();
-
-	m_pMesh->Draw();
 }
 
 //-----------------------------------------------------------------------------
@@ -1457,25 +1497,19 @@ void CNetGraphPanel::DrawLine2( vrect_t *rect, unsigned char *color, unsigned ch
 	seg->color2[2] = color2[2];
 	seg->color2[3] = alpha2;
 
-	if ( rect->width == 1 )
-	{
-		seg->x1 = rect->x;
-		seg->y1 = rect->y;
-		seg->x2 = rect->x;
-		seg->y2 = rect->y + rect->height;
-	}
-	else if ( rect->height == 1 )
-	{
-		seg->x1 = rect->x;
-		seg->y1 = rect->y;
-		seg->x2 = rect->x + rect->width;
-		seg->y2 = rect->y;
-	}
-	else
+	if ( rect->width != 1 && rect->height != 1 )
 	{
 		Assert( 0 );
 		m_Rects.Remove( idx );
+		return;
 	}
+
+	// A one-unit-wide rect is a vertical bar and its colors run top to bottom.
+	seg->bVertical = ( rect->width == 1 );
+	seg->x1 = rect->x;
+	seg->y1 = rect->y;
+	seg->x2 = rect->x + rect->width;
+	seg->y2 = rect->y + rect->height;
 }
 
 void CNetGraphPanel::UpdateEstimatedServerFramerate( INetChannelInfo *netchannel )

@@ -445,7 +445,7 @@ void CHudDamageIndicator::ApplySchemeSettings(vgui::IScheme *pScheme)
 	SetPaintBackgroundEnabled(false);
 
 	int vx, vy, vw, vh;
-	vgui::surface()->GetFullscreenViewport( vx, vy, vw, vh );
+	GetVGuiFullscreenViewport( vx, vy, vw, vh );
 
 	SetForceStereoRenderToFrameBuffer( true );
 

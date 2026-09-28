@@ -68,8 +68,9 @@ function PW_StandBefore( portal, distance )
 	QA_SetView( 0.0, QA_Deg( atan2( -n.y, -n.x ) ) )
 }
 
-// The player left `portal` on its front side, moving away along its normal.
-function PW_ExitedFrom( portal )
+// The player left `portal` on its front side, moving away along its normal,
+// and is at most `maxOut` units out.
+function PW_ExitedFrom( portal, maxOut = 260 )
 {
 	local o = QA_Player().GetOrigin()
 	local p = portal.GetOrigin()
@@ -78,7 +79,7 @@ function PW_ExitedFrom( portal )
 	local out = d.x * n.x + d.y * n.y
 	local side = fabs( d.x * n.y - d.y * n.x )
 	QA_Detail( "player " + QA_Vec( o ) + " portal " + QA_Vec( p ) + " out " + out + " side " + side )
-	return out > 16 && out < 260 && side < 48
+	return out > 16 && out < maxOut && side < 48
 }
 
 function PW_Heading( portal )

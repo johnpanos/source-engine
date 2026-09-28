@@ -7609,15 +7609,20 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				{
 					// shaders/paintblob.frag: s0 base (sRGB), s1 bump, s3 spec
 					// mask, s7 environment cube (the white cube without one; the
-					// push block then clears kPaintBlobEnvMap), s4 light warp, s2
-					// the frame copy, then this draw's constants.
+					// push block then clears kPaintBlobEnvMap), s4 light warp or,
+					// with OPACITY_TEXTURE, s6 opacity, s2 the frame copy, then
+					// this draw's constants.
 					const int envmap = ManagedTextureIsCube( d.samplerHandles[7] )
 					                       ? d.samplerHandles[7]
 					                       : m_whiteCubeHandle;
+					const bool opacity =
+					    ( m_dynSkinConstants[static_cast<size_t>( d.skin )].combos &
+					        kPaintBlobOpacityTexture ) != 0;
 					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[3], 0 ),
 					    sampledSet( envmap, kColorSrgbReadSampler7 ),
-					    sampledSet( d.samplerHandles[4], 0 ), sampledSet( d.samplerHandles[2], 0 ),
+					    sampledSet( d.samplerHandles[opacity ? 6 : 4], 0 ),
+					    sampledSet( d.samplerHandles[2], 0 ),
 					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
 					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,

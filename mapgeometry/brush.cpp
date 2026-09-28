@@ -447,6 +447,7 @@ BrushSolid BuildSolidFromPlanes(
 		BrushFace bf;
 		bf.plane = face;
 		bf.vertices = std::move( poly );
+		bf.sourcePlane = static_cast<int>( i );
 		if ( i < materials.size() )
 		{
 			bf.material = materials[i];

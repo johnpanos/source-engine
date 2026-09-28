@@ -44,10 +44,17 @@ namespace vgui
 
 extern bool g_MakingDevShots;
 
-// ScreenHeight returns the height of the screen, in pixels
+// ScreenHeight returns the height of the HUD, in UI units
 int		ScreenHeight( void );
-// ScreenWidth returns the width of the screen, in pixels
+// ScreenWidth returns the width of the HUD, in UI units
 int		ScreenWidth( void );
+
+// VGUI paints in UI units: back buffer pixels divided by the UI scale. These
+// convert pixel measurements (viewports, projected screen positions) to UI units,
+// measured from the surface's screen against the render viewport it covers.
+void GetVGuiUnitsPerPixel( float &flUnitsPerPixelX, float &flUnitsPerPixelY );
+// The fullscreen viewport (ISurface::GetFullscreenViewport, in pixels) in UI units.
+void GetVGuiFullscreenViewport( int &x, int &y, int &wide, int &tall );
 
 #define XRES(x)	( x  * ( ( float )ScreenWidth() / 640.0 ) )
 #define YRES(y)	( y  * ( ( float )ScreenHeight() / 480.0 ) )

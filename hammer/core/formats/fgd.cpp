@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cstddef>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace hammer::formats
@@ -199,6 +200,10 @@ EntityKind KindFromKeyword( const std::string &kw )
 	{
 		return EntityKind::Move;
 	}
+	if ( k == "keyframeclass" )
+	{
+		return EntityKind::KeyFrame;
+	}
 	return EntityKind::Other;
 }
 
@@ -206,7 +211,7 @@ bool IsClassKeyword( const std::string &kw )
 {
 	const std::string k = Lower( kw );
 	return k == "pointclass" || k == "solidclass" || k == "baseclass" || k == "keyvalueclass" ||
-	       k == "npcclass" || k == "filterclass" || k == "moveclass";
+	       k == "npcclass" || k == "filterclass" || k == "moveclass" || k == "keyframeclass";
 }
 
 // Recursive-descent parser over the token stream.
@@ -233,6 +238,20 @@ public:
 						return result;
 					}
 					result.classes.push_back( std::move( cls ) );
+				}
+				else if ( Lower( t.text ) == "include" )
+				{
+					const std::size_t line = t.line;
+					Next(); // @include
+					if ( Peek().type != TokType::Str && Peek().type != TokType::Word )
+					{
+						Fail( "expected a file name after @include", line );
+						result.error = m_error;
+						result.errorLine = m_errorLine;
+						return result;
+					}
+					result.includes.push_back( Next().text );
+					result.includeLines.push_back( line );
 				}
 				else
 				{
@@ -323,6 +342,12 @@ private:
 				Next(); // '+'
 				s += Next().text;
 			}
+			// A dangling '+' with no string after it (Valve's halflife2.fgd has
+			// one) ends the value; legacy Hammer accepts it.
+			if ( Peek().type == TokType::Word && Peek().text == "+" )
+			{
+				Next();
+			}
 			return s;
 		}
 		if ( Peek().type == TokType::Word )
@@ -336,6 +361,7 @@ private:
 	{
 		const Tok &kw = Next(); // @ClassKind
 		out.kind = KindFromKeyword( kw.text );
+		out.line = kw.line;
 
 		// Helpers until '='.
 		while ( Peek().type != TokType::Equals )
@@ -350,22 +376,30 @@ private:
 			{
 				const std::string helper = Lower( t.text );
 				Next();
-				if ( Peek().type == TokType::LParen )
+				if ( Peek().type == TokType::LParen && helper == "base" )
 				{
 					std::vector<std::string> args;
 					if ( !ReadParenArgs( args ) )
 					{
 						return false;
 					}
-					if ( helper == "base" )
+					for ( std::string &a : args )
 					{
-						for ( std::string &a : args )
-						{
-							out.bases.push_back( std::move( a ) );
-						}
+						out.bases.push_back( std::move( a ) );
 					}
 				}
-				// A helper word without parens (e.g. a modifier) is simply ignored.
+				else
+				{
+					// Any other helper, with or without an argument list (a bare
+					// word such as halfgridsnap has none).
+					FgdHelper h;
+					h.name = helper;
+					if ( Peek().type == TokType::LParen && !ReadHelperArgs( h.args ) )
+					{
+						return false;
+					}
+					out.helpers.push_back( std::move( h ) );
+				}
 			}
 			else
 			{
@@ -435,16 +469,56 @@ private:
 		return true;
 	}
 
+	// Reads a helper's "( ... )" into comma-separated arguments: the words of one
+	// argument joined by one space, quoted strings unquoted.
+	bool ReadHelperArgs( std::vector<std::string> &args )
+	{
+		Next(); // '('
+		std::string current;
+		bool sawComma = false;
+		while ( Peek().type != TokType::RParen )
+		{
+			const Tok &t = Peek();
+			if ( t.type == TokType::End )
+			{
+				Fail( "unterminated '(' argument list", t.line );
+				return false;
+			}
+			if ( t.type == TokType::Comma )
+			{
+				args.push_back( std::move( current ) );
+				current.clear();
+				sawComma = true;
+			}
+			else if ( t.type == TokType::Word || t.type == TokType::Str )
+			{
+				if ( !current.empty() )
+				{
+					current += ' ';
+				}
+				current += t.text;
+			}
+			Next(); // anything else inside the list is ignored
+		}
+		Next(); // ')'
+		if ( !current.empty() || sawComma )
+		{
+			args.push_back( std::move( current ) );
+		}
+		return true;
+	}
+
 	bool ParseMember( EntityClass &cls )
 	{
-		// input/output declarations: parsed and skipped (not stored this slice).
+		// input/output declarations: `input Name(type) : "help"`.
 		if ( Peek().type == TokType::Word &&
 		     ( Lower( Peek().text ) == "input" || Lower( Peek().text ) == "output" ) )
 		{
-			Next();                             // input/output
+			const bool isInput = Lower( Next().text ) == "input";
+			FgdIo io;
 			if ( Peek().type == TokType::Word ) // io name
 			{
-				Next();
+				io.name = Next().text;
 			}
 			if ( Peek().type == TokType::LParen )
 			{
@@ -453,11 +527,19 @@ private:
 				{
 					return false;
 				}
+				if ( !args.empty() )
+				{
+					io.type = args.front();
+				}
 			}
 			if ( Peek().type == TokType::Colon )
 			{
 				Next();
-				ReadValue(); // help text, ignored
+				io.help = ReadValue();
+			}
+			if ( !io.name.empty() )
+			{
+				( isInput ? cls.inputs : cls.outputs ).push_back( std::move( io ) );
 			}
 			return true;
 		}
@@ -491,7 +573,10 @@ private:
 		while ( Peek().type == TokType::Word && Peek( 1 ).type != TokType::LParen &&
 		        Peek( 1 ).type != TokType::End )
 		{
-			Next();
+			if ( Lower( Next().text ) == "readonly" )
+			{
+				prop.readOnly = true;
+			}
 		}
 
 		// Colon-separated fields: display, default, help (any may be empty).
@@ -545,11 +630,11 @@ private:
 					Next();
 					choice.label = ReadValue();
 				}
-				// A flags entry has a third ": <default>" field; consume it.
+				// A flags entry has a third ": <default>" field.
 				if ( Peek().type == TokType::Colon )
 				{
 					Next();
-					ReadValue();
+					choice.defaultValue = ReadValue();
 				}
 				prop.choices.push_back( std::move( choice ) );
 			}
@@ -567,6 +652,24 @@ private:
 	bool m_failed = false;
 };
 
+bool EqualsNoCase( const std::string &a, const std::string &b )
+{
+	if ( a.size() != b.size() )
+	{
+		return false;
+	}
+	for ( std::size_t i = 0; i < a.size(); ++i )
+	{
+		if ( std::tolower( static_cast<unsigned char>( a[i] ) ) !=
+		     std::tolower( static_cast<unsigned char>( b[i] ) ) )
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+// An exact name match first, then the first case-insensitive one.
 const EntityClass *FindClass( const std::vector<EntityClass> &classes, const std::string &name )
 {
 	for ( const EntityClass &c : classes )
@@ -576,29 +679,89 @@ const EntityClass *FindClass( const std::vector<EntityClass> &classes, const std
 			return &c;
 		}
 	}
+	for ( const EntityClass &c : classes )
+	{
+		if ( EqualsNoCase( c.name, name ) )
+		{
+			return &c;
+		}
+	}
 	return nullptr;
 }
 
-// Merges 'prop' into 'out', overriding any existing property with the same name.
-void MergeProperty( std::vector<FgdProperty> &out, const FgdProperty &prop )
+// Merges 'item' into 'out', overriding in place any existing entry with the same
+// (case-insensitive) name. Used for properties, inputs and outputs.
+template <typename T> void MergeNamed( std::vector<T> &out, const T &item )
 {
-	for ( FgdProperty &existing : out )
+	for ( T &existing : out )
 	{
-		if ( existing.name == prop.name )
+		if ( EqualsNoCase( existing.name, item.name ) )
 		{
-			existing = prop;
+			existing = item;
 			return;
 		}
 	}
-	out.push_back( prop );
+	out.push_back( item );
+}
+
+// Merges a class's own helpers over the inherited ones: every own helper named N
+// replaces all inherited helpers named N, taking the first one's position.
+void MergeHelpers( std::vector<FgdHelper> &out, const std::vector<FgdHelper> &own )
+{
+	for ( std::size_t i = 0; i < own.size(); ++i )
+	{
+		bool seen = false;
+		for ( std::size_t j = 0; j < i; ++j )
+		{
+			seen = seen || EqualsNoCase( own[j].name, own[i].name );
+		}
+		if ( seen )
+		{
+			continue; // placed with its group
+		}
+		std::vector<FgdHelper> group;
+		for ( std::size_t j = i; j < own.size(); ++j )
+		{
+			if ( EqualsNoCase( own[j].name, own[i].name ) )
+			{
+				group.push_back( own[j] );
+			}
+		}
+		std::size_t at = out.size();
+		for ( std::size_t k = 0; k < out.size(); ++k )
+		{
+			if ( EqualsNoCase( out[k].name, own[i].name ) )
+			{
+				at = k;
+				break;
+			}
+		}
+		std::vector<FgdHelper> kept;
+		for ( std::size_t k = 0; k < out.size(); ++k )
+		{
+			if ( k == at )
+			{
+				kept.insert( kept.end(), group.begin(), group.end() );
+			}
+			if ( !EqualsNoCase( out[k].name, own[i].name ) )
+			{
+				kept.push_back( std::move( out[k] ) );
+			}
+		}
+		if ( at == out.size() )
+		{
+			kept.insert( kept.end(), group.begin(), group.end() );
+		}
+		out = std::move( kept );
+	}
 }
 
 void CollectResolved( const std::vector<EntityClass> &classes, const std::string &name,
-    std::vector<FgdProperty> &out, std::vector<std::string> &visiting )
+    EntityClass &out, std::vector<std::string> &visiting )
 {
 	for ( const std::string &v : visiting )
 	{
-		if ( v == name )
+		if ( EqualsNoCase( v, name ) )
 		{
 			return; // cycle guard
 		}
@@ -615,8 +778,17 @@ void CollectResolved( const std::vector<EntityClass> &classes, const std::string
 	}
 	for ( const FgdProperty &prop : cls->properties )
 	{
-		MergeProperty( out, prop );
+		MergeNamed( out.properties, prop );
 	}
+	for ( const FgdIo &io : cls->inputs )
+	{
+		MergeNamed( out.inputs, io );
+	}
+	for ( const FgdIo &io : cls->outputs )
+	{
+		MergeNamed( out.outputs, io );
+	}
+	MergeHelpers( out.helpers, cls->helpers );
 	visiting.pop_back();
 }
 
@@ -638,8 +810,11 @@ std::optional<EntityClass> ResolveClass(
 	}
 	EntityClass resolved = *cls;
 	resolved.properties.clear();
+	resolved.helpers.clear();
+	resolved.inputs.clear();
+	resolved.outputs.clear();
 	std::vector<std::string> visiting;
-	CollectResolved( classes, name, resolved.properties, visiting );
+	CollectResolved( classes, cls->name, resolved, visiting );
 	return resolved;
 }
 

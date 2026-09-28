@@ -8,10 +8,11 @@
 // Valve's blobulator library, whose source is unavailable; it keeps the
 // retail design (cubic tiles of a regular grid, a particle field cut off at
 // the cutoff radius whose isosurface lies at the render radius of a lone
-// particle) with its own field function and polygonizer:
+// particle) and retail's field function (read from the 2010 client's
+// CBucketBlobRenderer), with its own polygonizer:
 //
 //   field    f(p) = sum_i k( |p - c_i|^2 / ( cutoffR * s_i )^2 ),
-//            k(x) = ( 1 - x )^12 for x < 1, else 0
+//            k(x) = ( 1 - x )^2 / 4 for x < 1, else 0
 //            (s_i = the particle's field scale, ImpParticle::scale)
 //   surface  f = k( ( renderR / cutoffR )^2 ), so a lone particle of scale s
 //            is a sphere of radius s * renderR

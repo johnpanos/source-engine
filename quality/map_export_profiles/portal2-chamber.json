@@ -1,0 +1,52 @@
+{
+  "schema": "map-export-profile/v1",
+  "name": "portal2-chamber",
+  "description": "A relit Portal 2 test chamber (tools/quality/portal2_gi_chamber.py): the legacy-relight bake, plus what Portal 2's clean Aperture materials need. The directional page makes the baked light follow the tiles' normal maps (their self-shadowed bump maps, converted by legacy_bsp_scene.py), and automatically placed reflection probes with relight bands (RPRB v2) give the black metal and white tile their reflections, relit by the runtime lights.",
+  "lightmap": {
+    "size": 4096,
+    "samples": 4096,
+    "device": "cpu",
+    "denoise": true,
+    "noise_target": 0.15,
+    "directional": true,
+    "light_paths": "gi-reference",
+    "layout": "planar",
+    "layers": [
+      "direct",
+      "indirect"
+    ],
+    "exclude_materials": [
+      "relight_occluder"
+    ]
+  },
+  "probe_volume": {
+    "spacing_m": 2.0,
+    "samples": 1024
+  },
+  "radiosity": {
+    "patch_size_m": 1.0,
+    "transfer_rays": 256,
+    "gather_rays": 4096,
+    "samples": 1024
+  },
+  "sdf_volume": {
+    "voxel_m": 0.4,
+    "light_cell_m": 2.0,
+    "light_cutoff": 0.001
+  },
+  "world_mesh": {
+    "exclude_materials": [
+      "relight_occluder"
+    ]
+  },
+  "reflection_probe": {
+    "width": 512,
+    "face_size": 256,
+    "samples": 512,
+    "light_paths": "gi-reference",
+    "relight": true
+  },
+  "reference": null,
+  "runtime_gate": null,
+  "audit": null
+}

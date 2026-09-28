@@ -23,8 +23,6 @@ namespace
 
 using mapgeometry::Vec3d;
 
-constexpr double kPi = 3.14159265358979323846;
-
 bool ParseDoubles( const std::string &text, std::vector<double> &out )
 {
 	out.clear();
@@ -119,41 +117,6 @@ void SetPair( kvtext::KeyValueNode &node, const std::string &key, const std::str
 }
 
 } // namespace
-
-Mat3 AngleMatrix( double pitch, double yaw, double roll )
-{
-	const double sp = std::sin( pitch * kPi / 180.0 );
-	const double cp = std::cos( pitch * kPi / 180.0 );
-	const double sy = std::sin( yaw * kPi / 180.0 );
-	const double cy = std::cos( yaw * kPi / 180.0 );
-	const double sr = std::sin( roll * kPi / 180.0 );
-	const double cr = std::cos( roll * kPi / 180.0 );
-
-	Mat3 r;
-	r.m[0][0] = cp * cy;
-	r.m[0][1] = sr * sp * cy - cr * sy;
-	r.m[0][2] = cr * sp * cy + sr * sy;
-	r.m[1][0] = cp * sy;
-	r.m[1][1] = sr * sp * sy + cr * cy;
-	r.m[1][2] = cr * sp * sy - sr * cy;
-	r.m[2][0] = -sp;
-	r.m[2][1] = sr * cp;
-	r.m[2][2] = cr * cp;
-	return r;
-}
-
-Mat3 Multiply( const Mat3 &a, const Mat3 &b )
-{
-	Mat3 out;
-	for ( int i = 0; i < 3; ++i )
-	{
-		for ( int j = 0; j < 3; ++j )
-		{
-			out.m[i][j] = a.m[i][0] * b.m[0][j] + a.m[i][1] * b.m[1][j] + a.m[i][2] * b.m[2][j];
-		}
-	}
-	return out;
-}
 
 Vec3d Rotate( const Mat3 &r, const Vec3d &v )
 {

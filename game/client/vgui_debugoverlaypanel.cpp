@@ -111,15 +111,8 @@ void CDebugOverlay::Paint()
 {
 	// The engine places overlay text in viewport pixels, but panels paint in UI
 	// units (pixels divided by the UI scale); map one onto the other.
-	int nViewportX, nViewportY, nViewportWide, nViewportTall;
-	{
-		CMatRenderContextPtr pRenderContext( materials );
-		pRenderContext->GetViewport( nViewportX, nViewportY, nViewportWide, nViewportTall );
-	}
-	int nScreenWide, nScreenTall;
-	vgui::surface()->GetScreenSize( nScreenWide, nScreenTall );
-	const float flUnitsPerPixelX = nViewportWide > 0 ? (float)nScreenWide / nViewportWide : 1.0f;
-	const float flUnitsPerPixelY = nViewportTall > 0 ? (float)nScreenTall / nViewportTall : 1.0f;
+	float flUnitsPerPixelX, flUnitsPerPixelY;
+	GetVGuiUnitsPerPixel( flUnitsPerPixelX, flUnitsPerPixelY );
 
 	OverlayText_t* pCurrText = debugoverlay->GetFirst();
 	while (pCurrText) 

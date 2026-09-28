@@ -141,6 +141,65 @@ lightmaps. Other current limits, each recorded in the receipt:
 - named lights that start dark stay world lights and are not baked;
 - static props do not occlude the bake.
 
+## Relighting a Portal 2 map
+
+A map compiled against Portal 2 content relights the same way; name the
+staged Portal 2 runtime its materials come from (manifest key
+`legacy_runtime`, or `--runtime`):
+
+```sh
+python3 tools/quality/legacy_bsp_relight.py --bsp path/to/map.bsp --map-name my_map \
+  --runtime run/runtime-p2
+./play_p2 +map my_map
+```
+
+`./play_p2` mounts every published map as `portal2/custom/pbrt-<map>`
+(`stage_portal2_runtime.py --mount-published`), as `./play` does for Portal.
+The Portal 2 client tree needs the KTX reader too
+(`pbrt_map_toolchain.py configure-client --build build-p2`).
+
+### The GI test chamber
+
+`portal2_gi_chamber.py` authors `sp_gi_chamber_01`, a clean Aperture test
+chamber, and builds it end to end: VMF, `vmf_map_build.py` (full
+vbsp/vvis/vrad against run/runtime-p2), then this relight, then publishing.
+
+```sh
+python3 tools/quality/portal2_gi_chamber.py            # about an hour on the CPU
+python3 tools/quality/portal2_gi_chamber.py --relight-quality legacy-relight-preview
+python3 tools/quality/portal2_gi_chamber.py --capture quality-results/sp_gi_chamber_01-views
+./play_p2 +map sp_gi_chamber_01
+```
+
+It uses the Portal 2 SDK's own pieces (door frames, cube dropper, fizzler,
+floor button base, light panels, observation room) from
+`sdk_content/maps/instances`, collapsed by `vmf_instances.py`, because the
+pinned vbsp has no instance I/O. Its light comes in three kinds, each carried
+by a different part of the pipeline:
+
+| Light | Examples | Carried by |
+| --- | --- | --- |
+| baked | ceiling panels, the tungsten observation room | Cycles LMAP layers, PRBV, RTRN, SDFV |
+| dynamic, switched | the exit corridor's panels, on with the door; the button indicator, blue then orange | `light_dynamic` (inverse square) in the runtime light set: direct light on the world, indirect through `r_indirect_producer` |
+| dynamic, moving | the observer's sweeping spot, two spinning amber beacons, the fizzler's pulsing glow (light style 5) | the same, parented to a looping `func_door_rotating` and `func_rotating`s |
+
+With the button down, seven dynamic lights are on: the native world path's
+whole direct-light budget. Named start-dark `light`s are not used: the relight
+leaves a switchable world light out of the bake, and the runtime light set
+counts every world light as baked, so on the relit world mesh such a light
+gives only its producers' indirect light (a known gap).
+
+Portal 2's world materials keep their relief: `legacy_bsp_scene.py` turns a
+self-shadowed bump map (`$ssbump`) into a normal map and ambient occlusion
+and a legacy `$envmap`'s mask and tint into roughness, and the
+`portal2-chamber` export profiles bake the directional page and relightable
+reflection probes for them.
+
+`--capture` boots the published map headless (`portal2_map_views.py`, a
+private runtime under run/runtime-p2-views) and saves its review views: the
+chamber at rest, the observer's sweep at three times, and the exit with the
+button held down.
+
 ## Hooking a regular compile into the pipeline
 
 `vrad_cycles.py` is a drop-in for vrad. Anything that runs vrad can run it
@@ -272,6 +331,9 @@ offered.
 | Traced producers' probe focus, independent of the engine host | `tools/quality/gi_focus.py` |
 | Bake progress from Cycles' log | `tools/quality/bake_progress.py` (tests: `tests/test_bake_progress.py`) |
 | Publishing to `./play` (store, mounts, launch arguments) | `tools/quality/playable_maps.py` (tests: `tests/test_playable_maps.py`) |
+| Portal 2 SDK instance collapse (transforms, name fixup, I/O rewrite) | `tools/quality/vmf_instances.py` (tests: `tests/test_vmf_instances.py`) |
+| The Portal 2 GI test chamber (layout, puzzle, light rig, review views) | `tools/quality/portal2_gi_chamber.py` |
+| Headless Portal 2 view capture | `tools/quality/portal2_map_views.py` |
 
 ## Known limits (preview, not RFC 0008 acceptance)
 

@@ -2,6 +2,7 @@
 // STATIC: "CONVERT_TO_SRGB"	"0..0"	[= 0] [XBOX]
 // STATIC: "HASALPHAMASK"		"0..1"
 // STATIC: "HASSTATICTEXTURE"	"0..1"
+// STATIC: "PORTALGHOSTOVERLAY"	"0..1"
 
 // DYNAMIC: "HDRENABLED"		"0..1"
 // DYNAMIC: "PIXELFOGTYPE"		"0..1"
@@ -45,6 +46,10 @@ struct PS_INPUT
 #endif
 
 	float4 worldPos_projPosZ		: TEXCOORD7;		// Necessary for pixel fog
+
+#if ( PORTALGHOSTOVERLAY )
+	float4 vVertexColor				: COLOR;
+#endif
 };
 
 
@@ -53,7 +58,22 @@ struct PS_INPUT
 float4 main( PS_INPUT i ) : COLOR
 {
 	HALF4 result;
-	
+
+#if ( PORTALGHOSTOVERLAY )
+	// Portal 2's ghost: the static texture's outline (an sRGB read), dimmed by
+	// the vertex alpha for a one / inverse-source-alpha blend, and never
+	// brighter than the tone map allows.
+#	if( HASSTATICTEXTURE )
+		result = tex2D( StaticTextureSampler, i.vStaticTexCoord );
+#	else
+		result = 0.25;
+#	endif
+	result.rgb *= i.vVertexColor.rgb;
+	result.rgb *= i.vVertexColor.a * g_StaticAmount.x;
+	result.a *= i.vVertexColor.a;
+	return FinalOutput( result, 0.0f, PIXEL_FOG_TYPE_NONE, TONEMAP_SCALE_NONE ) * saturate( LINEAR_LIGHT_SCALE );
+#else
+
 #	if( HASSTATICTEXTURE )
 		result.rgb = tex2D( StaticTextureSampler, i.vStaticTexCoord ).rgb;
 #	else
@@ -71,4 +91,5 @@ float4 main( PS_INPUT i ) : COLOR
 
 	float fogFactor = CalcPixelFogFactor( PIXELFOGTYPE, g_FogParams, g_EyePos_SpecExponent.z, i.worldPos_projPosZ.z, i.worldPos_projPosZ.w );
 	return FinalOutput( result, fogFactor, PIXELFOGTYPE, TONEMAP_SCALE_LINEAR );
+#endif
 }

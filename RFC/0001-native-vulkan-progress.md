@@ -1750,6 +1750,33 @@ Evidence:
   D3D9/DXVK tree (neither built nor run), and SDL2 (`sdlmgr.cpp` reports 1 and
   was not compiled in this profile).
 
+Follow-up, debug overlays and crosshair (2026-09-28, user direction):
+
+- The crosshair was not centered at a fractional scale. At `ui_scale 1.5`
+  (1024x768) it drew at (766, 574), because `CHudCrosshair` centered on
+  `ISurface::GetFullscreenViewport`, which is in pixels. The client now has one
+  converter, `GetVGuiUnitsPerPixel` / `GetVGuiFullscreenViewport`
+  (`cdll_util`), used by the crosshair, the vehicle and airboat crosshairs, the
+  zoom overlay, the damage indicator and the debug overlay text.
+- `CMatSystemSurface::GetTextSize` measured a line as its pixel width divided
+  by the scale, but `DrawPrintText` advances by each glyph's width rounded to
+  whole units. Measured text was narrower than drawn text; the net_graph
+  columns overlapped. It now sums the same per-glyph advances.
+- `net_graph` drew its bars as `MATERIAL_LINES`, which native Vulkan drops, and
+  one-pixel lines would leave gaps between units at 1.5. It draws quads now,
+  batched to the dynamic mesh limit. Its width follows the widest real row in
+  the font it draws with, measured each paint. It places text by pen advance,
+  not `DrawTextLen`, which leaves out each glyph's leading space. Row offsets
+  follow the font height. `vprof_graph` draws quads too; it is compiled only
+  with `VPROF_ENABLED`, which no Waf build defines, so it was syntax-checked
+  with that define and not run.
+- Evidence: headless native Vulkan `testchmb_a_01` with `net_graph 4`,
+  `cl_showfps 2`, `cl_showpos 2`, at `ui_scale` 1.5 and 1. Before the fix, at
+  1.5 there were no graph bars, overlapping text and an off-center crosshair.
+  After it, the bars draw, the text columns are separate and the crosshair is
+  centered at both scales. `vgui.ui_scale` (28) and its sensitivity suite (6)
+  pass.
+
 ## Shader rendering parameters and PC color conversion (2026-09-24)
 
 The native `IShaderAPI` now retains the float, int, and vector rendering

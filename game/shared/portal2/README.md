@@ -133,6 +133,73 @@ BEGIN/END` markers; the evaluator's fixtures cover it. On the log from before
 the fix, the three client checks fail (the beam ends at the far wall, x=8320)
 and the server checks pass.
 
+### Portal traversal and portal crashes (2026-09-28)
+
+`quality/workloads/portal2-portals-v1` runs on `qa_portal_walk`, a chamber
+built for it (`tools/quality/portal2_portal_map.py`; the runner compiles and
+installs it through the workload's `maps` entry, with `vmf_map_build.py` and
+Portal 2 materials from the staged runtime). The player fires both portals
+with the gun and:
+
+- `qa_portal_walk`: a shot at black metal leaves no portal; blue on the north
+  wall, orange on the east wall, both where aimed; walks through both ways,
+  then once more at 20 frames a second;
+- `qa_portal_fall`: walks onto a floor portal and flies out of a wall portal,
+  then falls through a floor/ceiling pair for four seconds and lands hard;
+- `qa_portal_tunnel`: two portals facing each other, so every portal view
+  holds another, with glow sprites and glass in view; looks and sweeps across
+  them and walks through twice;
+- `sp_a2_triple_laser_cube_removed`: a redirection cube carrying a laser is
+  removed.
+
+`cl_portal_view_trace 1` prints the client's final view every frame (`PVIEW`)
+and each portal's pose when it changes (`PVIEW_PORTAL`);
+`cl_portal_view_trace_shots <units>` also screenshots every frame while the
+eye is that close to a portal opening. A `view_continuity` console check
+(`tools/quality/portal_view_trace.py`) requires each frame's eye and view
+direction to follow from the previous frame's, directly or through a portal's
+matrix, within speed and turn limits, with the declared number of crossings.
+Its fixtures (`tools/quality/tests/test_portal_view_trace.py`) fail a jump, a
+view the teleport did not turn, a walk with no crossing, a crossing through an
+inactive portal and a snap back.
+
+Retail Portal 2 ran `qa_portal_walk` on the same BSP: both portals landed at
+the same points, and the walks ended at x = 500.0 against 499.2 here, on the
+centre line at 20 frames a second too. Retail has no view trace, so only its
+QA checks compare.
+
+Fixed:
+
+- **Laser crash when a cube is removed.** A laser that continues through a
+  portal or off a cube does so through a child `env_portal_laser`, parented
+  to the cube. Removing the cube (fizzler, dropper, `Kill`) removes the child
+  as an orphan, and the parent laser's raw `m_pChildLaser` then pointed at
+  freed memory: its next think crashed in `CPortalLaser::FireLaser ->
+  UTIL_Remove`. The same raw-pointer pattern crashed a level transition in
+  `CLaserCatcher::UpdateOnRemove` (its target was freed first). The child
+  laser, placement helper, sound proxies, catcher target and the target's
+  catcher are now handles. With the old code the cube scenario ends in
+  SIGSEGV with that stack; with handles it passes.
+- **Commands made before the client saw a teleport.** The client sends
+  `command_acknowledgements_pending` and `predictedPortalTeleportations` in
+  every command, but the server ignored them, so commands built before the
+  client knew of a teleport steered the player along the pre-portal heading:
+  3 to 10 units off the exit portal's centre line at 20 to 30 frames a
+  second. `CPortal_Player::PlayerRunCommand` now turns their view angles
+  through the pending portal transforms, as CS:GO's Portal 2 code does.
+- **World list read after portal views rebuilt it.**
+  `CRendering3dView::DrawTranslucentRenderables` bound `info` to the view's
+  world list before drawing portal views, which release and rebuild that list;
+  CS:GO binds it after. The pooled list object is usually handed straight back,
+  so this was not reproduced as a crash, but a nested portal view can take it.
+
+Also found: `portal2_physics.py check` at this revision fails
+`sp_a2_triple_laser_fling.cube.landing_x` (a cube flung through a portal lands
+155 units short of retail), `engine.frame_time`,
+`sp_a2_bridge_intro_bridge.stuck.sink`, and lacks retail references for two
+portal scenarios. They measure cubes, plates and bridges rather than player
+commands or lasers; they were not rerun on a build without the changes above.
+
 ### Portal 2 video retail conformance (2026-09-25)
 
 This section covers materials, shaders, proxies, textures and particles as

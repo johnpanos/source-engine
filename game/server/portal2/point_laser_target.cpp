@@ -21,7 +21,7 @@ BEGIN_DATADESC( CPortalLaserTarget )
 
 	DEFINE_THINKFUNC( DisableThink ),
 
-	DEFINE_FIELD( m_pCatcher, FIELD_CLASSPTR ),
+	DEFINE_FIELD( m_hCatcher, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_bPowered, FIELD_BOOLEAN ),
 
 	DEFINE_KEYFIELD( m_ModelName, FIELD_MODELNAME, "model" ),
@@ -91,9 +91,9 @@ int CPortalLaserTarget::OnTakeDamage( const CTakeDamageInfo &info )
 		m_bPowered = true;
 		m_OnPowered.FireOutput( this, this );
 
-		if ( m_pCatcher )
+		if ( CCatcher *pCatcher = GetCatcher() )
 		{
-			m_pCatcher->OnPowered();
+			pCatcher->OnPowered();
 		}
 
 		SetThink( &CPortalLaserTarget::DisableThink );
@@ -105,6 +105,16 @@ int CPortalLaserTarget::OnTakeDamage( const CTakeDamageInfo &info )
 	return 0;
 }
 
+void CPortalLaserTarget::SetCatcher( CCatcher *pCatcher )
+{
+	m_hCatcher = dynamic_cast<CBaseEntity *>( pCatcher );
+}
+
+CCatcher *CPortalLaserTarget::GetCatcher() const
+{
+	return dynamic_cast<CCatcher *>( m_hCatcher.Get() );
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: No laser has hit us recently, power down
 //-----------------------------------------------------------------------------
@@ -113,9 +123,9 @@ void CPortalLaserTarget::DisableThink()
 	m_bPowered = false;
 	m_OnUnpowered.FireOutput( this, this );
 
-	if ( m_pCatcher )
+	if ( CCatcher *pCatcher = GetCatcher() )
 	{
-		m_pCatcher->OnUnPowered();
+		pCatcher->OnUnPowered();
 	}
 
 	SetThink( NULL );
@@ -138,7 +148,7 @@ LINK_ENTITY_TO_CLASS( prop_laser_catcher, CLaserCatcher );
 
 BEGIN_DATADESC( CLaserCatcher )
 
-	DEFINE_FIELD( m_pCatcherLaserTarget, FIELD_CLASSPTR ),
+	DEFINE_FIELD( m_hCatcherLaserTarget, FIELD_EHANDLE ),
 
 	DEFINE_THINKFUNC( AnimateThink ),
 
@@ -249,9 +259,9 @@ void CLaserCatcher::AnimateThink()
 //-----------------------------------------------------------------------------
 void CLaserCatcher::UpdateOnRemove()
 {
-	if ( m_pCatcherLaserTarget )
+	if ( m_hCatcherLaserTarget )
 	{
-		UTIL_Remove( m_pCatcherLaserTarget );
+		UTIL_Remove( m_hCatcherLaserTarget );
 	}
 
 	StopSound( "prop_laser_catcher.powerloop" );
@@ -300,19 +310,20 @@ void CLaserCatcher::OnUnPowered()
 //-----------------------------------------------------------------------------
 void CLaserCatcher::CreateHelperEntities()
 {
-	if ( m_pCatcherLaserTarget == NULL )
+	if ( m_hCatcherLaserTarget == NULL )
 	{
 		Vector vecOrigin;
 		GetAttachment( m_iTargetAttachment, vecOrigin );
 
-		m_pCatcherLaserTarget = static_cast< CPortalLaserTarget* >( CreateEntityByName( "point_laser_target" ) );
-		m_pCatcherLaserTarget->SetAbsOrigin( vecOrigin );
-		m_pCatcherLaserTarget->SetAbsAngles( GetAbsAngles() );
-		m_pCatcherLaserTarget->KeyValue( "terminalpoint", IsTerminalPoint() );
+		m_hCatcherLaserTarget =
+		    static_cast<CPortalLaserTarget *>( CreateEntityByName( "point_laser_target" ) );
+		m_hCatcherLaserTarget->SetAbsOrigin( vecOrigin );
+		m_hCatcherLaserTarget->SetAbsAngles( GetAbsAngles() );
+		m_hCatcherLaserTarget->KeyValue( "terminalpoint", IsTerminalPoint() );
 		// Parented first: the target sizes itself from its catcher in Spawn.
-		m_pCatcherLaserTarget->SetParent( this );
-		DispatchSpawn( m_pCatcherLaserTarget );
-		m_pCatcherLaserTarget->SetCatcher( this );
+		m_hCatcherLaserTarget->SetParent( this );
+		DispatchSpawn( m_hCatcherLaserTarget );
+		m_hCatcherLaserTarget->SetCatcher( this );
 	}
 }
 
@@ -388,11 +399,11 @@ void CLaserCatcher::OnRestore()
 {
 	BaseClass::OnRestore();
 
-	if ( m_pCatcherLaserTarget )
+	if ( m_hCatcherLaserTarget )
 	{
-		m_pCatcherLaserTarget->SetCatcher( this );
+		m_hCatcherLaserTarget->SetCatcher( this );
 
-		if ( m_pCatcherLaserTarget->IsPowered() )
+		if ( m_hCatcherLaserTarget->IsPowered() )
 		{
 			EmitSound( "prop_laser_catcher.powerloop" );
 			DispatchParticleEffect( "laser_relay_powered", PATTACH_POINT_FOLLOW, this, "particle_emitter" );

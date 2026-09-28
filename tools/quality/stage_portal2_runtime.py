@@ -111,10 +111,22 @@ def main(argv=None):
     parser.add_argument("--build", type=Path)
     parser.add_argument("--mount-custom", action="store_true",
                         help="also mount <game>/custom/* (the Android app's touch icons)")
+    parser.add_argument("--mount-published", action="store_true",
+                        help="mount the map pipeline's published maps (run/maps) as "
+                             "portal2/custom/pbrt-<map>, as ./play does for Portal "
+                             "(implies --mount-custom)")
     args = parser.parse_args(argv)
     try:
-        vpk = stage_content(args.steam_root, args.runtime, args.mount_custom)
+        vpk = stage_content(args.steam_root, args.runtime,
+                            args.mount_custom or args.mount_published)
         print("Portal 2 content: " + str(vpk.resolve()))
+        if args.mount_published:
+            import playable_maps
+            mounted, skipped = playable_maps.mount(args.runtime, game="portal2")
+            for record in mounted.values():
+                print("play_p2: published map " + playable_maps.describe(record))
+            for name, reason in skipped.items():
+                print("play_p2: published map %s not mounted: %s" % (name, reason))
         if args.build:
             launcher = install_source_build(args.build, args.runtime)
             print("Portal 2 source launcher: " + str(launcher))

@@ -47,7 +47,9 @@ public:
 	// closest point on the beam; the 2010 binaries predate this helper.
 	Vector ClosestPointOnLineSegment( const Vector &vPos );
 
-	CPortalLaser *m_pChildLaser;
+	// Handles, not pointers: a child laser is parented to the cube it leaves, so
+	// removing the cube removes it as an orphan (CBaseEntity::UpdateOnRemove).
+	CHandle<CPortalLaser> m_hChildLaser;
 
 private:
 	void RemoveChildLaser();
@@ -93,9 +95,9 @@ private:
 	void DamageEntitiesAlongLaser( const CUtlVector< PortalLaserInfo_t > &infoList, bool bAutoAim );
 
 	Vector m_vecNearestSoundSource[ MAX_PLAYERS ];
-	CBaseEntity *m_pSoundProxy[ MAX_PLAYERS ];
+	EHANDLE m_hSoundProxy[ MAX_PLAYERS ];
 	CSoundPatch *m_pAmbientSound[ MAX_PLAYERS ];
-	CInfoPlacementHelper *m_pPlacementHelper;
+	CHandle<CInfoPlacementHelper> m_hPlacementHelper;
 	bool m_bGlowInitialized;
 	int m_iLaserAttachment;
 	string_t m_ModelName;

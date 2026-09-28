@@ -27,6 +27,8 @@ struct KeyValue
 {
 	std::string key;
 	std::string value;
+
+	friend bool operator==( const KeyValue &, const KeyValue & ) = default;
 };
 
 // A named block: ordered key/value pairs and ordered child blocks. The synthetic
@@ -39,6 +41,10 @@ struct KeyValueNode
 
 	// First value for a key, or nullptr. Duplicate keys keep their first here.
 	const std::string *Find( const std::string &key ) const;
+
+	// Exact structural equality (names, pair order and child order all count).
+	// CompareKeyValues is the semantic comparator with a divergence report.
+	friend bool operator==( const KeyValueNode &, const KeyValueNode & ) = default;
 };
 
 struct ParseResult

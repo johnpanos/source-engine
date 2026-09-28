@@ -18,7 +18,9 @@ A manifest with `legacy_bsp` instead of `scene` relights a compiled map
 (`legacy_bsp_relight.py` writes one; its optional `legacy_game` is the
 compile's game directory, searched for materials before the game runtime,
 which is how `vrad_cycles.py` hooks a regular vbsp/vvis/vrad compile into this
-pipeline): the scene is authored from the BSP, the
+pipeline; its optional `legacy_runtime` is the staged game runtime the
+materials come from, such as run/runtime-p2 for a Portal 2 map, in place of
+the toolchain's): the scene is authored from the BSP, the
 BSP itself replaces `collision` and `compile` (its gameplay lumps are carried
 unchanged), its baked world lights are removed in `pack`, the scene's light
 emitters stay invisible, and there is no sky dome or traversal gate. Steps:
@@ -192,6 +194,11 @@ def load_manifest(path):
             manifest["legacy_game"] = str((ROOT / manifest["legacy_game"]).resolve())
             if not Path(manifest["legacy_game"]).is_dir():
                 raise ValueError("legacy_game is not a directory: " + manifest["legacy_game"])
+        if "legacy_runtime" in manifest:
+            manifest["legacy_runtime"] = str((ROOT / manifest["legacy_runtime"]).resolve())
+            if not Path(manifest["legacy_runtime"]).is_dir():
+                raise ValueError("legacy_runtime is not a directory: " +
+                                 manifest["legacy_runtime"])
         # The `legacy-scene` step writes the scene (Pipeline sets its path).
         manifest["scene"] = None
         manifest["scene_format"] = "usd"
@@ -618,7 +625,7 @@ class Pipeline:
     def legacy_scene(self):
         """`legacy-scene` step: the compiled map's world as an authored scene."""
         p = self.paths
-        runtime = Path(self.tools["runtime"])
+        runtime = Path(self.manifest.get("legacy_runtime") or self.tools["runtime"])
         runtime = runtime if runtime.is_absolute() else ROOT / runtime
         # The game content the materials come from (VPK directories), after
         # the compile's own game directory (vrad's -game) when it has one.

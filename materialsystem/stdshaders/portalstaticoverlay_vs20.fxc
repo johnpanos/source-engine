@@ -1,4 +1,5 @@
 // STATIC: "MODEL"			"0..1"
+// STATIC: "PORTALGHOSTOVERLAY"	"0..2"
 
 // DYNAMIC: "SKINNING"		"0..1"
 
@@ -14,6 +15,11 @@ struct VS_INPUT
 	float4 vBoneWeights					: BLENDWEIGHT;
 	float4 vBoneIndices					: BLENDINDICES;
 	float4 vTexCoord					: TEXCOORD0;
+
+#if ( PORTALGHOSTOVERLAY )
+	float3 vNormal						: NORMAL;
+	float4 vGhostTintColor				: COLOR;
+#endif
 };
 
 
@@ -25,6 +31,10 @@ struct VS_OUTPUT
 	float vFog						: FOG;
 	
 	float4 worldPos_projPosZ		: TEXCOORD7;		// Necessary for pixel fog
+
+#if ( PORTALGHOSTOVERLAY )
+	float4 vColor					: COLOR;
+#endif
 };
 
 
@@ -32,18 +42,26 @@ VS_OUTPUT main( const VS_INPUT v )
 {
 	VS_OUTPUT o = ( VS_OUTPUT )0;
 
+	float4 vPos = v.vPos;
+#if ( PORTALGHOSTOVERLAY )
+	// Portal 2: the ghost (the portal seen through walls) is offset one unit off
+	// the wall and drawn with a reverse z-test, so it only shows where the
+	// portal is hidden.
+	vPos.xyz += v.vNormal.xyz;
+#endif
+
 	float3 worldPos;
 	if( MODEL == 1 )
 	{
 		SkinPosition( 
 				g_bSkinning, 
-				v.vPos,
+				vPos,
 				v.vBoneWeights, v.vBoneIndices,
 				worldPos );
 	}
 	else
 	{
-		worldPos = mul( v.vPos.xyz, cModel[0] );
+		worldPos = mul( vPos.xyz, cModel[0] );
 	}
 	
 	o.vProjPos = mul( float4( worldPos, 1 ), cViewProj );
@@ -51,6 +69,23 @@ VS_OUTPUT main( const VS_INPUT v )
 	o.vTexCoord1 = v.vTexCoord.xy;
 	o.vTexCoord2 = v.vTexCoord.xy;
 	o.vFog = CalcFog( worldPos, o.vProjPos.xyz, FOGTYPE_RANGE );
+
+#if ( PORTALGHOSTOVERLAY )
+	// 1 tints the ghost with the vertex color (co-op); 2 keeps the texture's.
+	o.vColor = float4( 1, 1, 1, 1 );
+#if ( PORTALGHOSTOVERLAY == 1 )
+	o.vColor.rgb = v.vGhostTintColor.rgb;
+#endif
+	// Facing the viewer, the ghost fades in from 120 to 240 units away.
+	float3 vViewRayWs = worldPos.xyz - cEyePos.xyz;
+	if ( dot( v.vNormal.xyz, vViewRayWs.xyz ) <= 0.0f )
+	{
+		float flDistSqr = dot( vViewRayWs.xyz, vViewRayWs.xyz );
+		o.vColor.a = saturate( ( flDistSqr - ( 120.0f * 120.0f ) ) / ( ( 240.0f * 240.0f ) - ( 120.0f * 120.0f ) ) );
+	}
+	// The vertex alpha is how open the portal is.
+	o.vColor.a *= v.vGhostTintColor.a;
+#endif
 
 	return o;
 }

@@ -157,6 +157,45 @@ class ConsoleCheckTests(unittest.TestCase):
         self.assertFailsWith(self.evaluate(log), "check reported twice: beam.stops")
 
 
+class ViewContinuityCheckTests(unittest.TestCase):
+    """The view_continuity kind judges the PVIEW trace inside its window."""
+
+    SCENARIO = dict(SCENARIO, required_checks=["socket.fired", "socket.parented", "view.walk"],
+                    console_checks=[{"name": "view.walk", "window": "walk",
+                                     "view_continuity": {"max_speed": 400, "max_turn_rate": 30,
+                                                         "min_crossings": 1, "max_crossings": 1}}])
+
+    def log(self, window):
+        import test_portal_view_trace as fixtures
+        return GOOD + "\n".join(fixtures.portal_lines() + ["QA_WINDOW walk BEGIN"] + window +
+                                 ["QA_WINDOW walk END"]) + "\n"
+
+    def walk(self, **options):
+        import test_portal_view_trace as fixtures
+        return fixtures.walk(**options)
+
+    def test_continuous_crossing_passes(self):
+        result = scenarios.evaluate(self.SCENARIO, self.log(self.walk()), 0, False)
+        self.assertEqual(result["status"], "pass", result["failures"])
+        self.assertIn("1 crossings", result["checks"]["view.walk"]["detail"])
+
+    def test_walk_without_crossing_fails(self):
+        result = scenarios.evaluate(self.SCENARIO, self.log(self.walk(steps=30)), 0, False)
+        self.assertEqual(result["status"], "fail")
+        self.assertTrue(any("view.walk failed" in failure for failure in result["failures"]))
+
+    def test_view_not_turned_fails(self):
+        window = [line.replace("ang (0.000 180.000 0.000)", "ang (0.000 90.000 0.000)")
+                  for line in self.walk()]
+        result = scenarios.evaluate(self.SCENARIO, self.log(window), 0, False)
+        self.assertEqual(result["status"], "fail")
+
+    def test_unbracketed_window_fails(self):
+        result = scenarios.evaluate(self.SCENARIO, GOOD, 0, False)
+        self.assertTrue(any("window walk was not bracketed" in failure
+                            for failure in result["failures"]), result["failures"])
+
+
 ARRIVAL_SCENARIO = dict(SCENARIO, arrival={"map": "sp_next", "script": "next.nut"},
                         required_checks=["socket.fired", "socket.parented", "arrival.placed"])
 ARRIVAL_GOOD = """QA_LOG demo t=1 start map=sp_demo steps=3
@@ -251,6 +290,24 @@ class WorkloadTests(unittest.TestCase):
             for check in scenario["required_checks"]:
                 self.assertIn('"%s"' % check, text, "%s does not report %s" % (script.name, check))
 
+    def test_installed_portal_workload_is_valid(self):
+        path = ROOT / "quality/workloads/portal2-portals-v1/scenarios.json"
+        workload = scenarios.load_workload(path)
+        self.assertEqual(workload["maps"], {"qa_portal_walk": "tools/quality/portal2_portal_map.py"})
+        for scenario in workload["scenarios"]:
+            script = path.parent / scenario["script"]
+            text = script.read_text() + (path.parent / "qa_portals.nut").read_text()
+            self.assertIn('QA_Start( "%s" )' % scenario["name"], text)
+            console = {check["name"] for check in scenario.get("console_checks", [])}
+            for check in scenario["required_checks"]:
+                if check in console:
+                    continue  # judged from the console log by the runner
+                # Checks made by PW_Place are built from the portal's color and facing.
+                if check.split(".")[1] in ("placed",) or check.split(".")[1].startswith("faces_"):
+                    self.assertIn('"%s"' % check.split(".")[0], text)
+                    continue
+                self.assertIn('"%s"' % check, text, "%s does not report %s" % (script.name, check))
+
     def test_installed_transition_workload_is_valid(self):
         path = ROOT / "quality/workloads/portal2-transition-v1/scenarios.json"
         workload = scenarios.load_workload(path)
@@ -288,6 +345,19 @@ class WorkloadTests(unittest.TestCase):
                 {"name": "socket.fired", "window": "w", "absent": "("}]),
             "console duplicate": self.workload(console_checks=[
                 {"name": "socket.fired", "window": "w", "absent": "x"}] * 2),
+            "continuity limit": self.workload(console_checks=[
+                {"name": "socket.fired", "window": "w", "view_continuity": {"speed": 1}}]),
+            "continuity value": self.workload(console_checks=[
+                {"name": "socket.fired", "window": "w", "view_continuity": {"max_speed": "fast"}}]),
+            "continuity mixed": self.workload(console_checks=[
+                {"name": "socket.fired", "window": "w", "view_continuity": {}, "absent": "x"}]),
+            "arrival script": self.workload(arrival={"map": "sp_next", "script": "missing.nut"}),
+            "arrival map": self.workload(arrival={"map": "../sp_next", "script": "demo.nut"}),
+            "arrival same map": self.workload(arrival={"map": "sp_demo", "script": "demo.nut"}),
+            "arrival keys": self.workload(arrival={"map": "sp_next"}),
+            "arrival script reused": self.workload(arrival={"map": "sp_next", "script": "demo.nut"}),
+            "map builder": dict(self.workload(), maps={"qa_room": "tools/quality/missing_map.py"}),
+            "map name": dict(self.workload(), maps={"../room": "tools/quality/portal2_portal_map.py"}),
         }
         for label, workload in cases.items():
             with self.subTest(label), tempfile.TemporaryDirectory() as directory:

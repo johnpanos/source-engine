@@ -2587,6 +2587,7 @@
       "sources": [
         "hammer/core/formats/instancing.cpp",
         "vmf/vmf_transform.cpp",
+        "mapgeometry/transform.cpp",
         "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_instancing.cpp"
       ],
@@ -2607,6 +2608,7 @@
       "sources": [
         "hammer/core/formats/instancing.cpp",
         "vmf/vmf_transform.cpp",
+        "mapgeometry/transform.cpp",
         "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_instancing_negative.cpp"
       ],
@@ -2925,6 +2927,7 @@
       "sources": [
         "hammer/core/formats/prefab.cpp",
         "vmf/vmf_transform.cpp",
+        "mapgeometry/transform.cpp",
         "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_prefab.cpp"
       ],
@@ -2942,6 +2945,7 @@
       "sources": [
         "hammer/core/formats/prefab.cpp",
         "vmf/vmf_transform.cpp",
+        "mapgeometry/transform.cpp",
         "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_prefab_negative.cpp"
       ],
@@ -2963,6 +2967,7 @@
         "hammer/core/formats/map_export.cpp",
         "hammer/core/formats/instancing.cpp",
         "vmf/vmf_transform.cpp",
+        "mapgeometry/transform.cpp",
         "hammer/core/formats/visgroups.cpp",
         "hammer/core/formats/cordon.cpp",
         "kvtext/keyvalues.cpp",
@@ -2986,6 +2991,7 @@
         "hammer/core/formats/map_export.cpp",
         "hammer/core/formats/instancing.cpp",
         "vmf/vmf_transform.cpp",
+        "mapgeometry/transform.cpp",
         "hammer/core/formats/visgroups.cpp",
         "hammer/core/formats/cordon.cpp",
         "kvtext/keyvalues.cpp",
@@ -3024,6 +3030,209 @@
         "hammer/core/formats/fgd.cpp",
         "kvtext/keyvalues.cpp",
         "unittests/hammertest/formats/test_entity_property_sheet_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.geometry.transform",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08-DOMAIN",
+      "contract": "unittests/hammertest/contracts/geometry.transform.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Map-space transforms: Source angle matrices and their inverse, exact quarter-turn rotations, affine composition and inversion, and plane transforms that keep the outside under mirrors and non-uniform scale; singular maps refused.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "mapgeometry/transform.cpp",
+        "unittests/hammertest/geometry/test_transform.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.geometry.polytope",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08-DOMAIN",
+      "contract": "unittests/hammertest/contracts/geometry.polytope.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Convex polytope predicates: plane-side classification, containment, closed-solid detection (open plane sets rejected), convex hulls for the vertex tool, separating-axis overlap, and BrushFace::sourcePlane mapping.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "mapgeometry/brush.cpp",
+        "mapgeometry/polytope.cpp",
+        "unittests/hammertest/geometry/test_polytope.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.scene.map_document",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08-DOMAIN",
+      "contract": "unittests/hammertest/contracts/scene.map_document.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Full-fidelity map document: side planes from authored points, ordered entity keys and connections (both separators), serial-stamped ids never reissued, VMF id floor, lookup by kind and every seeded invariant violation.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "hammer/core/scene/map_objects.cpp",
+        "hammer/core/scene/map_document.cpp",
+        "hammer/core/scene/change_set.cpp",
+        "hammer/core/scene/solid_geometry.cpp",
+        "hammer/core/scene/map_queries.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/polytope.cpp",
+        "mapgeometry/texture_axes.cpp",
+        "mapgeometry/transform.cpp",
+        "kvtext/keyvalues.cpp",
+        "unittests/hammertest/scene/test_map_document.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.scene.change_set",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08-DOMAIN",
+      "contract": "unittests/hammertest/contracts/scene.change_set.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Staged edits and change sets: copy-on-write staging, reads through staged state, no-op changes dropped, lossless forward/backward application, id retirement, foreign change sets refused atomically, and ValidateEdit's seeded invariant violations.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "hammer/core/scene/map_objects.cpp",
+        "hammer/core/scene/map_document.cpp",
+        "hammer/core/scene/change_set.cpp",
+        "hammer/core/scene/solid_geometry.cpp",
+        "hammer/core/scene/map_queries.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/polytope.cpp",
+        "mapgeometry/texture_axes.cpp",
+        "mapgeometry/transform.cpp",
+        "kvtext/keyvalues.cpp",
+        "unittests/hammertest/scene/test_change_set.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.scene.solid_geometry",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08-DOMAIN",
+      "contract": "unittests/hammertest/contracts/scene.solid_geometry.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Solid geometry: box solids with outward planes and world-aligned axes, faces mapped to sides, exact integer-snapped bounds, points from planes and polygons, side normalization keeping texture data, open side sets refused.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "hammer/core/scene/map_objects.cpp",
+        "hammer/core/scene/map_document.cpp",
+        "hammer/core/scene/change_set.cpp",
+        "hammer/core/scene/solid_geometry.cpp",
+        "hammer/core/scene/map_queries.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/polytope.cpp",
+        "mapgeometry/texture_axes.cpp",
+        "mapgeometry/transform.cpp",
+        "kvtext/keyvalues.cpp",
+        "unittests/hammertest/scene/test_solid_geometry.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.scene.map_queries",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08-DOMAIN",
+      "contract": "unittests/hammertest/contracts/scene.map_queries.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Structural queries on documents and staged edits: group and brush-entity membership, expansion to leaves, containers, bounds, the one visibility rule, target-name matching and side lookup.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "hammer/core/scene/map_objects.cpp",
+        "hammer/core/scene/map_document.cpp",
+        "hammer/core/scene/change_set.cpp",
+        "hammer/core/scene/solid_geometry.cpp",
+        "hammer/core/scene/map_queries.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/polytope.cpp",
+        "mapgeometry/texture_axes.cpp",
+        "mapgeometry/transform.cpp",
+        "kvtext/keyvalues.cpp",
+        "unittests/hammertest/scene/test_map_queries.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.selection",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08-DOMAIN",
+      "contract": "unittests/hammertest/contracts/app.selection.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Selection policy: pick resolution per granularity (groups, objects, solids), replace/add/toggle/remove with the primary rule, faces, pruning of dead ids and sides, select-all without hidden objects, invert.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "hammer/core/scene/map_objects.cpp",
+        "hammer/core/scene/map_document.cpp",
+        "hammer/core/scene/change_set.cpp",
+        "hammer/core/scene/solid_geometry.cpp",
+        "hammer/core/scene/map_queries.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/polytope.cpp",
+        "mapgeometry/texture_axes.cpp",
+        "mapgeometry/transform.cpp",
+        "kvtext/keyvalues.cpp",
+        "hammer/core/app/selection.cpp",
+        "unittests/hammertest/app/test_selection.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.change_history",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08-DOMAIN",
+      "contract": "unittests/hammertest/contracts/app.change_history.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Labeled undo history: redo-tail truncation, monotonic revision versus saved position, saved state lost with a discarded tail, bounded history trimming with consistent positions.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "hammer/core/app/change_history.cpp",
+        "unittests/hammertest/app/test_change_history.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.edit_session",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "R08-DOMAIN",
+      "contract": "unittests/hammertest/contracts/app.edit_session.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "The per-document editing authority: commit, atomic refusal, invariant rejection, no-op edits, undo/redo restoring selection, history jumps, the modified flag, events, selection guards (draft policy), reentrancy refusal, subscription lifetime and document replacement.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "hammer/core/scene/map_objects.cpp",
+        "hammer/core/scene/map_document.cpp",
+        "hammer/core/scene/change_set.cpp",
+        "hammer/core/scene/solid_geometry.cpp",
+        "hammer/core/scene/map_queries.cpp",
+        "mapgeometry/brush.cpp",
+        "mapgeometry/polytope.cpp",
+        "mapgeometry/texture_axes.cpp",
+        "mapgeometry/transform.cpp",
+        "kvtext/keyvalues.cpp",
+        "hammer/core/app/selection.cpp",
+        "hammer/core/app/change_history.cpp",
+        "hammer/core/app/edit_session.cpp",
+        "unittests/hammertest/app/test_edit_session.cpp"
       ],
       "expect": "pass"
     },
