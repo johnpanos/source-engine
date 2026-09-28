@@ -1510,3 +1510,23 @@ reach GTK as dmabufs without a copy.
 | Hammer exported frames | `hammer.adapters.render.viewport` R5 (an external frame equals the read-back frame; leases and resize), `.viewport.null` V7 | pass |
 | Live editor | `corpus.hammer.ui` (15 checks) with dmabuf frames and with `HAMMER_GTK_READBACK=1` | pass |
 | Edit-to-pixels | `hammer-viewport-v1.json` `desktop-trust-fling-4-views-dmabuf` | pass |
+
+## K4 closure: done (2026-09-28)
+
+K4 is met on the Linux desktop. The run at render-core `d041b2c3` (the
+tree of subsystem-refactor `fb97c8b2`, g++) passed all 22 K4 suites, 22 of
+22 matched. The families, programs and material suites also pass on
+clang++ (above and the Hammer session's `vertexlit` record).
+
+| K4 check | Evidence | Result |
+| --- | --- | --- |
+| Material suite | `render.material.v2` 76 checks (schema, parameter blocks, revisions, import, patches, PBR, texture transforms, `MapVariables`); `.sensitivity` 7: a wrong key mapping, a wrong kind and stale copies are caught | pass |
+| VMT corpus | `render.material.vmt-corpus` (18), `.sensitivity` (7) and `.asan` (18) over the Portal and Portal 2 VPKs; every VMT imports or is reported with its reason, no crash, counts recorded in `vmt-corpus-v1.json` | pass |
+| Families match ports | `unlit` 6 cases within 2 levels (exact since the Hammer session's gamma-table rounding fix); `lightmapped` 8 cases exact; `vertexlit` 10 cases exact (Hammer session); `pbr` 8 cases within 1 level (7,132 pixels); each family's seeded defect is caught; `legacy` is the K3 stage-pass path, byte-identical in both queued modes (K3 record), and `pbr_brdf.glsl`'s move left the native `pbr-model` frames byte-identical | pass |
+| Proxy corpus | `render.material.proxies.core-portal` and `.core-portal2` (cdca445a): every block parameter equals its legacy variable, 0 differences over 2,492 and 2,493 parameters per capture; `.inventory` (8) and `.comparator` (25) | pass |
+| Bind-group ceiling | `render.shader-artifacts` judges every family's reflection against `layouts.json` (unlit one group, lightmapped two, vertexlit two, pbr three); its `.sensitivity` (14) keeps a seeded fifth group and a seeded layout mismatch failing | pass |
+| Artifacts per target | `render.shader-artifacts` 1,362 checks: SPIR-V and GLSL 4.50 for every family; no committed `*_spv.h` (the build writes them); `shader_toolchain.py check` reproduces them | pass |
+
+Not claimed: hosted CI (not run), the Fold7 and Apple devices (K4 declares
+none), and the product drawing materials through families. K5 routes the
+world and props through the scene, and K8 does the other cohorts.
