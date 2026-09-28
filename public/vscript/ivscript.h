@@ -1,4 +1,4 @@
-//========== Copyright © 2008, Valve Corporation, All rights reserved. ========
+//========== Copyright ï¿½ 2008, Valve Corporation, All rights reserved. ========
 //
 // Purpose: VScript
 //
@@ -363,7 +363,18 @@ struct ScriptVariant_t
 	void operator=( bool b ) 				{ m_type = FIELD_BOOLEAN; m_bool = b; }
 	void operator=( HSCRIPT h ) 			{ m_type = FIELD_HSCRIPT; m_hScript = h; }
 
-	void Free()								{ if ( ( m_flags & SV_FREE ) && ( m_type == FIELD_HSCRIPT || m_type == FIELD_VECTOR || m_type == FIELD_CSTRING ) ) delete m_pszString; } // Generally only needed for return results
+	// Generally only needed for return results. Owned vectors come from new Vector and
+	// owned strings from strdup or malloc. An owned HSCRIPT is the VM's own copy of an
+	// object handle, opaque here: the VM that made it releases it (IScriptVM::ReleaseValue).
+	void Free()
+	{
+		if ( !( m_flags & SV_FREE ) )
+			return;
+		if ( m_type == FIELD_VECTOR )
+			delete m_pVector;
+		else if ( m_type == FIELD_CSTRING )
+			free( (void *)m_pszString );
+	}
 
 	template <typename T>
 	T Get()

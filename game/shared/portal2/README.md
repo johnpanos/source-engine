@@ -238,6 +238,21 @@ Fixed:
   either read past the table and printed a stray pointer. The table now has
   all six and a bounds check (found by the ASan build).
 
+- **Freeze with a light bridge through a portal (Box3D).** A bridge seen
+  through a portal is a convex 4121 units long, 64 wide and 1/64 unit thick;
+  Box3D's quickhull (`b3HullBuilder_ConnectFaces`) never returned on it, so
+  `sp_a2_bridge_intro_bridge_portal` hung the moment the portals were placed.
+  The Box3D provider now treats a convex thinner than 0.5 units and than
+  1/1000 of its size as flat, flattening it onto its middle plane and
+  colliding with a 0.5-unit slab, as it already did for flat pieces. The
+  shared physics suite has `collide.sliver-convex-builds` and
+  `collide.sliver-convex-blocks` with those exact points; without the change
+  the suite hangs (killed at 400 s). The rest of the gate is unchanged: IVP's
+  three known reference deficiencies and Box3D's three baseline gameplay
+  failures, with every seeded fault detected. On retail's references the
+  scenario now passes; the player stands 0.3 units higher on a bridge than
+  retail (inside the tolerance).
+
 Crashes in the user's core dumps from 2026-09-25/26 match the laser fix (both
 stacks). One render crash, in the nested `DrawTranslucentRenderables` under
 `DrawPortalsUsingStencils`, is in the function the world-list fix changes but
@@ -249,12 +264,17 @@ Left open: the ASan build reports `new-delete-type-mismatch` in
 `CSquirrelVM::TranslateCall` (a sized delete of a mismatched type in the
 VScript bridge); it does not crash a normal build.
 
-Also found: `portal2_physics.py check` at this revision fails
-`sp_a2_triple_laser_fling.cube.landing_x` (a cube flung through a portal lands
-155 units short of retail), `engine.frame_time`,
-`sp_a2_bridge_intro_bridge.stuck.sink`, and lacks retail references for two
-portal scenarios. They measure cubes, plates and bridges rather than player
-commands or lasers; they were not rerun on a build without the changes above.
+`portal2_physics.py` also runs these portal cases against retail. Retail
+references for `sp_a2_bridge_intro_bridge_portal` and
+`sp_a4_tb_intro_funnel_portal` were missing and are now recorded (3 retail
+runs each). Open, all pre-existing:
+`sp_a4_tb_intro_funnel_portal` carries the player 207 units along the exit
+portal's funnel where retail carries 477, and drops 56 below it (retail 36);
+`sp_a2_triple_laser_fling.cube.landing_x` (a cube flung through a portal
+lands 155 units short of retail); `engine.frame_time`; and
+`sp_a2_bridge_intro_bridge.stuck.sink` (64 units, retail 0), which fails the
+same before and after the bridge change. The funnel, fling and bridge
+scenarios pass under ASan.
 
 ### Portal 2 video retail conformance (2026-09-25)
 

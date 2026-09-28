@@ -176,18 +176,88 @@ bool IsFlat( const Vector *pPoints, int count )
 	return true;
 }
 
-void AddFlatSlab( const Vector *pPoints, int count, CUtlVector<b3HullData *> &out )
+// The normal of the largest triangle fanned from the first point: the plane a
+// flat or nearly flat point set lies in. False for collinear or coincident points.
+bool LargestTriangleNormal( const Vector *pPoints, int count, Vector &normal )
 {
-	Vector normal( 0, 0, 0 );
-	for ( int i = 1; i + 1 < count && normal.LengthSqr() < 1e-8f; i++ )
-		normal = CrossProduct( pPoints[i] - pPoints[0], pPoints[i + 1] - pPoints[0] );
-	if ( VectorNormalize( normal ) < 1e-6f )
-		return;	// collinear or coincident: nothing to collide with
-	CUtlVector<Vector> slab;
+	float bestLengthSqr = 0.0f;
+	normal.Init();
+	for ( int i = 1; i < count; i++ )
+	{
+		for ( int j = i + 1; j < count; j++ )
+		{
+			Vector candidate = CrossProduct( pPoints[i] - pPoints[0], pPoints[j] - pPoints[0] );
+			float lengthSqr = candidate.LengthSqr();
+			if ( lengthSqr > bestLengthSqr )
+			{
+				bestLengthSqr = lengthSqr;
+				normal = candidate;
+			}
+		}
+	}
+	return VectorNormalize( normal ) >= 1e-6f;
+}
+
+// Points far thinner than they are wide, such as a light bridge's slab (1/64
+// unit thick and, through a portal, thousands of units long): Box3D's quickhull
+// does not terminate on them, so they take the flat-slab path. Only small point
+// sets (built from planes or boxes, not .phy meshes) are tested.
+const int kSliverTestMaxPoints = 32;
+const float kSliverAspect = 1e-3f;
+
+bool IsSliver( const Vector *pPoints, int count )
+{
+	if ( count < 4 || count > kSliverTestMaxPoints )
+		return false;
+	Vector normal;
+	if ( !LargestTriangleNormal( pPoints, count, normal ) )
+		return true;
+	float lo = FLT_MAX, hi = -FLT_MAX;
+	Vector mins( FLT_MAX, FLT_MAX, FLT_MAX ), maxs( -FLT_MAX, -FLT_MAX, -FLT_MAX );
 	for ( int i = 0; i < count; i++ )
 	{
-		slab.AddToTail( pPoints[i] + normal * kFlatSlabHalfThickness );
-		slab.AddToTail( pPoints[i] - normal * kFlatSlabHalfThickness );
+		float distance = DotProduct( pPoints[i] - pPoints[0], normal );
+		lo = MIN( lo, distance );
+		hi = MAX( hi, distance );
+		VectorMin( mins, pPoints[i], mins );
+		VectorMax( maxs, pPoints[i], maxs );
+	}
+	float thickness = hi - lo;
+	return thickness < 2.0f * kFlatSlabHalfThickness &&
+	       thickness < kSliverAspect * ( maxs - mins ).Length();
+}
+
+void AddFlatSlab( const Vector *pPoints, int count, CUtlVector<b3HullData *> &out )
+{
+	Vector normal;
+	if ( !LargestTriangleNormal( pPoints, count, normal ) )
+		return;	// collinear or coincident: nothing to collide with
+	// Flatten onto the points' middle plane first, dropping duplicates, so a
+	// sliver's two faces do not hand the hull builder near-coincident points.
+	float lo = FLT_MAX, hi = -FLT_MAX;
+	for ( int i = 0; i < count; i++ )
+	{
+		float distance = DotProduct( pPoints[i] - pPoints[0], normal );
+		lo = MIN( lo, distance );
+		hi = MAX( hi, distance );
+	}
+	const float middle = ( lo + hi ) * 0.5f;
+	CUtlVector<Vector> flat;
+	for ( int i = 0; i < count; i++ )
+	{
+		Vector projected =
+		    pPoints[i] - normal * ( DotProduct( pPoints[i] - pPoints[0], normal ) - middle );
+		bool bDuplicate = false;
+		for ( int j = 0; j < flat.Count() && !bDuplicate; j++ )
+			bDuplicate = ( flat[j] - projected ).LengthSqr() < 1e-4f;
+		if ( !bDuplicate )
+			flat.AddToTail( projected );
+	}
+	CUtlVector<Vector> slab;
+	for ( int i = 0; i < flat.Count(); i++ )
+	{
+		slab.AddToTail( flat[i] + normal * kFlatSlabHalfThickness );
+		slab.AddToTail( flat[i] - normal * kFlatSlabHalfThickness );
 	}
 	if ( !AddHull( slab.Base(), slab.Count(), B3_MAX_HULL_VERTICES, out ) )
 		AddSimplifiedHull( slab.Base(), slab.Count(), out );
@@ -202,7 +272,8 @@ void BuildHulls( const Vector *pPoints, int count, const unsigned short *pTriang
 {
 	pConvex->volume = 0.0f;
 	pConvex->center.Init();
-	if ( AddHull( pPoints, count, B3_MAX_HULL_VERTICES, pConvex->hulls ) )
+	const bool bSliver = IsSliver( pPoints, count );
+	if ( !bSliver && AddHull( pPoints, count, B3_MAX_HULL_VERTICES, pConvex->hulls ) )
 	{
 		pConvex->volume = pConvex->hulls[0]->volume;
 		pConvex->center = FromB3( pConvex->hulls[0]->center );
@@ -210,7 +281,7 @@ void BuildHulls( const Vector *pPoints, int count, const unsigned short *pTriang
 	}
 	if ( count < 3 )
 		return;
-	if ( IsFlat( pPoints, count ) )
+	if ( bSliver || IsFlat( pPoints, count ) )
 	{
 		// A flat piece (IVP's double-sided triangle ledges) has no volume but
 		// still blocks traces and objects: collide with a thin slab around it.

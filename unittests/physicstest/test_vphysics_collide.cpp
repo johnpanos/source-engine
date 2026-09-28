@@ -607,6 +607,42 @@ void CheckSerialization( const char *pName, CPhysCollide *pCollide, bool observe
 	Check( TIER_BOOT, name, swappedSize == size && id == (int)DWordSwapC( (unsigned int)native ) && swappedSurface == (int)DWordSwapC( (unsigned int)nativeSurface ) );
 }
 
+// A convex far thinner than it is long: a Portal 2 light bridge segment seen
+// through a portal (4121 x 64 units, 1/64 unit thick; these are the points the
+// game passed when Box3D's hull builder looped forever). It must build, and a
+// box traced down onto its middle must stop on its top face.
+void TestSliverConvex()
+{
+	const float kBottom = 339.992188f, kTop = 340.007812f;
+	Vector sliver[8] = {
+	    Vector( -4621.09961f, -736.000244f, kBottom ),
+	    Vector( -500.100189f, -735.999878f, kBottom ),
+	    Vector( -4621.09961f, -800.000366f, kBottom ),
+	    Vector( -500.100189f, -800.0f, kBottom ),
+	    Vector( -4621.09961f, -736.000244f, kTop ),
+	    Vector( -500.10022f, -735.999878f, kTop ),
+	    Vector( -4621.09961f, -800.000366f, kTop ),
+	    Vector( -500.10022f, -800.0f, kTop ),
+	};
+	Vector *pSliver[8];
+	for ( int i = 0; i < 8; i++ )
+		pSliver[i] = &sliver[i];
+	CPhysConvex *pConvex = s_pCollision->ConvexFromVerts( pSliver, 8 );
+	CPhysCollide *pCollide = pConvex ? s_pCollision->ConvertConvexToCollide( &pConvex, 1 ) : NULL;
+	Check( TIER_GAMEPLAY, "collide.sliver-convex-builds", pCollide != NULL );
+	if ( !pCollide )
+		return;
+	// The points are in world space, so the collide sits at the origin.
+	trace_t tr;
+	const Vector half( 0.5f, 0.5f, 0.5f );
+	s_pCollision->TraceBox( Vector( -2560, -768, kTop + 256 ), Vector( -2560, -768, kTop - 256 ),
+	    -half, half, pCollide, vec3_origin, vec3_angle, &tr );
+	const float height = tr.fraction < 1.0f ? tr.endpos.z - half.z - kTop : -1000.0f;
+	Check( TIER_GAMEPLAY, "collide.sliver-convex-blocks", Near( height, 0.0f, 0.5f ),
+	    "top %.3f above the bridge's top face", height );
+	s_pCollision->DestroyCollide( pCollide );
+}
+
 void TestSerialization( const vcollide_t *pFixture )
 {
 	CPhysCollide *pBox = s_pCollision->BBoxToCollide( Vector( -16, -24, -8 ), Vector( 16, 24, 40 ) );
@@ -749,6 +785,7 @@ void TestCollideModels( const vcollide_t *pFixture, const char *pBsp )
 	TestPolysoup();
 	TestVirtualMesh();
 	TestBoxCone();
+	TestSliverConvex();
 	TestSerialization( pFixture );
 
 	// Diagnostics hooks: must be callable; IVP reports no statistics.

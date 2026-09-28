@@ -503,6 +503,81 @@
         "down.carried",
         "ride.carried"
       ]
+    },
+    "sp_a4_tb_intro_funnel_portal": {
+      "map": "sp_a4_tb_intro",
+      "metrics": {
+        "b.clearance": {
+          "min": 511.969,
+          "max": 511.969,
+          "runs": 3
+        },
+        "beam.segments": {
+          "min": 2.0,
+          "max": 2.0,
+          "runs": 3
+        },
+        "ride.ok_teleported": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "ride.along_b": {
+          "min": 477.115,
+          "max": 477.115,
+          "runs": 3
+        },
+        "ride.speed_along_b": {
+          "min": 2.273,
+          "max": 2.273,
+          "runs": 3
+        },
+        "ride.drop_below_b": {
+          "min": 36.0,
+          "max": 36.0,
+          "runs": 3
+        }
+      },
+      "checks": [
+        "beam.through_b",
+        "portals.placed",
+        "ride.through"
+      ]
+    },
+    "sp_a2_bridge_intro_bridge_portal": {
+      "map": "sp_a2_bridge_intro",
+      "metrics": {
+        "b.clearance": {
+          "min": 3000.0,
+          "max": 3000.0,
+          "runs": 3
+        },
+        "bridge.segments": {
+          "min": 2.0,
+          "max": 2.0,
+          "runs": 3
+        },
+        "bridge.ok_from_b": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        },
+        "stand.below_b": {
+          "min": 31.961,
+          "max": 31.961,
+          "runs": 3
+        },
+        "stand.ok_held": {
+          "min": 1.0,
+          "max": 1.0,
+          "runs": 3
+        }
+      },
+      "checks": [
+        "bridge.through_b",
+        "player.on_second_bridge",
+        "portals.placed"
+      ]
     }
   },
   "partial_updates": [
@@ -541,6 +616,19 @@
         "dirty": true,
         "dirty_files": 168,
         "dirty_digest": "1726732fc809e0b78b55a2a69339e4cad3e6c6ac50ea12dbc8f2d986c2d9dc89"
+      }
+    },
+    {
+      "scenarios": [
+        "sp_a2_bridge_intro_bridge_portal",
+        "sp_a4_tb_intro_funnel_portal"
+      ],
+      "recorded_utc": "2026-09-28T19:19:16.828303+00:00",
+      "source": {
+        "source_revision": "5c7678f718a4e3d502273717b9cf6b6cdf83e0dd",
+        "dirty": true,
+        "dirty_files": 2,
+        "dirty_digest": "efd2af4d818879f20747dcc2e5fa1e9d8d3b54a6d5273bc9aa7eb1f83cc4d474"
       }
     }
   ]

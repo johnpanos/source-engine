@@ -25,7 +25,7 @@ class CLinuxFont
 {
 public:
 	CLinuxFont();
-	~CLinuxFont();
+	virtual ~CLinuxFont();
 
 	// creates the font from windows.  returns false if font does not exist in the OS.
 	virtual bool CreateFromMemory(const char *windowsFontName, void *data, int size, int tall, int weight, int blur, int scanlines, int flags);

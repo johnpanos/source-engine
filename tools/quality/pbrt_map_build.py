@@ -114,6 +114,7 @@ import pbrt_map_toolchain  # noqa: E402
 import pbrt_traversal  # noqa: E402
 import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
+import remote_blender  # noqa: E402
 
 STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "layout", "bake", "noise", "denoise", "directional",
          "seams", "probe", "rprb", "probe-volume", "radiosity", "sdf", "ktx2", "sky",
@@ -340,6 +341,9 @@ class Pipeline:
         # A USD scene is read through the model its `scene` step extracts.
         self.scene_file = (self.out / "scene" / "scene.json") if self.usd else manifest["scene"]
         self.scene = None if self.usd else map_scene.parse(self.scene_file)
+        # Cycles steps on another host's GPU (toolchain `remote_blender`).
+        self.remote = remote_blender.from_toolchain(toolchain)
+        self.current = (None, ())
         self.state_path = self.out / "steps.json"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.is_file() else {}
         self.force_from = STEPS.index(force_from) if force_from else len(STEPS)
@@ -480,16 +484,24 @@ class Pipeline:
     def blender(self, step, script, arguments):
         # Cycles' debug log reports each bake's tiles and sample batches;
         # bake_progress turns it (and the script's PROGRESS lines) into progress.
-        return self.run(step, [self.tools["blender"], "-b", "--factory-startup",
-                               "--log-level", "debug", "--log", "cycles",
-                               "--python-exit-code", "9", "--python", HERE / script,
-                               "--"] + arguments,
-                        # BLAS on one thread: a script's forked workers (probe
-                        # tracing) inherit no OpenMP pool, so an OpenMP BLAS
-                        # call in them waits forever on the parent's barrier.
-                        # Cycles and OIDN use TBB, not OpenMP.
-                        env={"OCIO": self.tools["ocio"], "OMP_NUM_THREADS": "1",
-                             "OPENBLAS_NUM_THREADS": "1"},
+        options = ["-b", "--factory-startup", "--log-level", "debug", "--log", "cycles",
+                   "--python-exit-code", "9", "--python", HERE / script, "--"] + arguments
+        # BLAS on one thread: a script's forked workers (probe tracing) inherit
+        # no OpenMP pool, so an OpenMP BLAS call in them waits forever on the
+        # parent's barrier. Cycles and OIDN use TBB, not OpenMP.
+        env = {"OCIO": self.tools["ocio"], "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
+        if self.remote and self.remote.applies(step):
+            # remote_blender.py: mirror the inputs to the host, run there, pull
+            # the build directory back.
+            inputs = self.current[1] if self.current[0] == step else ()
+            paths = list(inputs) + [a for a in arguments if str(a).startswith("/")]
+            print("[%s] on %s" % (step, self.remote.host), flush=True)
+            self.remote.push(paths, self.out)
+            seconds = self.run(step, self.remote.command(options, env),
+                               progress=bake_progress.CyclesProgress(), silence=BLENDER_SILENCE)
+            self.remote.pull(self.out)
+            return seconds
+        return self.run(step, [self.tools["blender"]] + options, env=env,
                         progress=bake_progress.CyclesProgress(), silence=BLENDER_SILENCE)
 
     def usd_python(self, step, script, arguments):
@@ -521,7 +533,13 @@ class Pipeline:
                        "settings": settings,
                        "scripts": {s: self.file_sha256(HERE / s)
                                    for s in script_closure(tuple(scripts))},
-                       "tools": {t: self.identity(t) for t in STEP_TOOLS.get(name, ())}})
+                       "tools": {t: self.step_tool_identity(name, t)
+                                 for t in STEP_TOOLS.get(name, ())}})
+
+    def step_tool_identity(self, step, tool):
+        if tool == "blender" and self.remote and self.remote.applies(step):
+            return dict(self.remote.identity(), remote=True)
+        return self.identity(tool)
 
     def set_aside(self, name, outputs):
         """Move a step's existing outputs to .previous/<name> before it runs."""
@@ -568,6 +586,7 @@ class Pipeline:
         self.set_aside(name, outputs)
         (self.logs / (name + ".log")).unlink(missing_ok=True)
         print("[%s] running..." % name, flush=True)
+        self.current = (name, tuple(inputs))
         try:
             seconds = action()
             missing = [str(p) for p in outputs if not Path(p).exists()]

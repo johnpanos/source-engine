@@ -1899,7 +1899,11 @@ private:
 		{
 			for ( i = 0; i < params.Count(); i++ )
 			{
-				params[i].Free();
+				// The HSCRIPT arguments are this function's HSQOBJECT copies (no reference taken).
+				if ( params[i].m_type == FIELD_HSCRIPT && ( params[i].m_flags & SV_FREE ) )
+					delete (HSQOBJECT *)params[i].m_hScript;
+				else
+					params[i].Free();
 			}
 		}
 
@@ -2175,7 +2179,7 @@ private:
 			{ 
 				int size = object._unVal.pString->_len + 1; 
 				pReturn->m_type = FIELD_CSTRING;
-				pReturn->m_pszString = new char[size]; 
+				pReturn->m_pszString = (char *)malloc( size ); 
 				memcpy( (void *)pReturn->m_pszString, object._unVal.pString->_val, size ); 
 				pReturn->m_flags |= SV_FREE;
 			}

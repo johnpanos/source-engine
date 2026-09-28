@@ -31,7 +31,7 @@ class CWin32Font
 {
 public:
 	CWin32Font();
-	~CWin32Font();
+	virtual ~CWin32Font();
 
 	// creates the font from windows.  returns false if font does not exist in the OS.
 	virtual bool Create(const char *windowsFontName, int tall, int weight, int blur, int scanlines, int flags);
