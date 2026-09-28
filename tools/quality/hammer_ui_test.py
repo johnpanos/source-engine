@@ -121,6 +121,18 @@ def judge_frames(frames):
     return results
 
 
+def judge_frame_path(log_path):
+    """How the live editor's frames reached GTK (its log names the path): as
+    dmabufs when the device exports images, else read back; a refused dmabuf
+    import fails."""
+    text = log_path.read_text(errors="replace") if log_path.is_file() else ""
+    match = re.search(r"hammer_gtk: viewport frames as ([a-z -]+)", text)
+    refused = "dmabuf frames refused" in text
+    path = match.group(1) if match else "not logged"
+    return {"frames.path": (bool(match) and not refused,
+                            path + ("; a dmabuf import was refused" if refused else ""))}
+
+
 def judge(vmf_path, build_path):
     """Check names -> (ok, detail) for one case's outputs."""
     results = {}
@@ -495,6 +507,7 @@ def run_case(case, args, out):
     stem = vmf_name[:-4]
     verdict = judge(author / vmf_name, case_dir / "builds" / stem / "build.json")
     verdict.update(judge_frames(case_dir / "frames"))
+    verdict.update(judge_frame_path(case_dir / "hammer_gtk.log"))
     driver["elapsed_seconds"] = round(time.monotonic() - started, 2)
     return driver, verdict
 

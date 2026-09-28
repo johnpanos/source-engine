@@ -23,7 +23,9 @@
 //			   batch and program (the source is asked once per material, not
 //			   per restage), the camera view draws the untextured batch and
 //			   the textured one, and a material without a texture stays
-//			   untextured.
+//			   untextured;
+//			V7 the null device exports no images: a renderer cannot export,
+//			   and an external frame is refused with kUnsupported.
 //
 //=============================================================================//
 
@@ -236,5 +238,23 @@ int main()
 	control->CompleteAll();
 	(void)device->Poll();
 	checks.Equal( device->LiveResourceCount(), baseline, "V6.everything-is-released" );
+
+	// V7.
+	{
+		auto made = ViewportRenderer::Create( *device );
+		const hammer::viewport::Camera3D eye = EyeCamera();
+		ViewRequest request;
+		request.kind = ViewKind::Camera3D;
+		request.camera3D = &eye;
+		request.pixelWidth = 32;
+		request.pixelHeight = 24;
+		request.external = true;
+		auto refused = made ? made.Value()->Render( request )
+		                    : foundation::Expected<ViewportRenderer::Ticket, ViewportStatus>(
+		                          foundation::MakeUnexpected( ViewportStatus::kDevice ) );
+		checks.That( made && !made.Value()->CanExport() && !refused &&
+		                 refused.Error() == ViewportStatus::kUnsupported,
+		    "V7.an-external-frame-without-an-exporter-is-refused" );
+	}
 	return checks.Report();
 }

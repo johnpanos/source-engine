@@ -62,6 +62,8 @@ def run_row(gtk, row, out, timeout):
                "--warmup", str(workload["warmup_edits"]), "--edits", str(workload["edits"])]
     if "textures_env" in workload:
         command += ["--textures", os.environ[workload["textures_env"]]]
+    if workload.get("frames") == "dmabuf":
+        command += ["--dmabuf"]
     ran = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     (out / (row["id"] + ".log")).write_text(" ".join(command) + "\n" + ran.stdout + ran.stderr)
     if ran.returncode != 0 or not samples_path.exists():

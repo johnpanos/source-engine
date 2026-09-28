@@ -19,7 +19,8 @@
 //			shape and are checked against frameLayout and viewLayout.
 //
 //			Draw constants (D16) share one prefix in every family: the draw's
-//			world-to-clip matrix, then its world matrix, both row-major with
+//			object-to-clip matrix (the view-projection times the instance's
+//			world matrix), then its world matrix, both row-major with
 //			column vectors as render.math stores them. A family reads the
 //			first drawConstantBytes of FamilyDrawConstants (unlit reads only
 //			toClip), and the pass writes exactly that many.

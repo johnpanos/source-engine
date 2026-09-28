@@ -25,6 +25,11 @@
 //			   half and blue where they put it in the right, each the texel
 //			   times the face's shading (sRGB-correct, within two levels); a
 //			   source with no texture leaves the R1 colors;
+//			R5 exported frames (where the device exports images): an external
+//			   frame's memory, mapped through its description, equals the
+//			   read-back frame of the same view; a returned lease's image is
+//			   drawn into again (no new image), an unreturned one is not, and
+//			   a resize replaces the free images;
 //			the Khronos validation layer reports no message.
 //
 //=============================================================================//
@@ -37,6 +42,11 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
+
+#include <linux/dma-buf.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <cstdio>
 #include <cstdlib>
 
@@ -347,6 +357,71 @@ int main()
 			        Within( At( flat.Value(), int( rightCenter->x ), int( rightCenter->y ) ),
 			            *rightColor, 1 ),
 			    "R4.a-source-without-the-texture-leaves-the-flat-colors" );
+		}
+		// R5.
+		if ( device->ExternalImages() )
+		{
+			auto exporting = ViewportRenderer::Create( *device );
+			ViewportRenderer *r = exporting ? exporting.Value().get() : nullptr;
+			const bool staged = r && r->SetScene( Snapshot( d ), 1 ).HasValue() && r->CanExport();
+			ViewRequest external = request3D;
+			external.external = true;
+			auto readback = staged ? r->RenderAndWait( request3D )
+			                       : foundation::Expected<ViewPixels,
+			                             hammer::render_adapter::ViewportStatus>(
+			                             foundation::MakeUnexpected(
+			                                 hammer::render_adapter::ViewportStatus::kDevice ) );
+			auto first = staged ? r->RenderAndWait( external ) : readback;
+			bool equal = readback && first && first.Value().external && first.Value().rgba.empty();
+			if ( equal )
+			{
+				const hammer::render_adapter::ExternalFrame &frame = *first.Value().external;
+				const std::size_t rows = request3D.pixelHeight;
+				const std::size_t row = std::size_t( request3D.pixelWidth ) * 4;
+				const std::size_t length = frame.offset + frame.stride * ( rows - 1 ) + row;
+				void *mapped = ::mmap( nullptr, length, PROT_READ, MAP_SHARED, int( frame.handle ), 0 );
+				equal = mapped != MAP_FAILED;
+				if ( equal )
+				{
+					dma_buf_sync sync{ DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ };
+					(void)::ioctl( int( frame.handle ), DMA_BUF_IOCTL_SYNC, &sync );
+					const auto *base = static_cast<const std::uint8_t *>( mapped ) + frame.offset;
+					for ( std::size_t y = 0; equal && y < rows; ++y )
+						equal = std::memcmp( base + y * frame.stride,
+						            readback.Value().rgba.data() + y * row, row ) == 0;
+					sync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ;
+					(void)::ioctl( int( frame.handle ), DMA_BUF_IOCTL_SYNC, &sync );
+					::munmap( mapped, length );
+				}
+			}
+			checks.That( equal, "R5.an-external-frame-equals-the-read-back-frame" );
+			if ( first && first.Value().external )
+			{
+				auto second = r->RenderAndWait( external ); // the first is still leased
+				checks.That( second && second.Value().external && r->ExternalImageCount() == 2,
+				    "R5.a-leased-image-is-not-drawn-into" );
+				r->ReturnFrame( first.Value().external->lease );
+				if ( second && second.Value().external )
+					r->ReturnFrame( second.Value().external->lease );
+				auto third = r->RenderAndWait( external );
+				checks.That( third && third.Value().external && r->ExternalImageCount() == 2,
+				    "R5.a-returned-image-is-drawn-into-again" );
+				if ( third && third.Value().external )
+					r->ReturnFrame( third.Value().external->lease );
+				ViewRequest resized = external;
+				resized.pixelWidth = 128;
+				resized.pixelHeight = 64;
+				hammer::viewport::Camera3D small = EyeCamera( 128, 64 );
+				resized.camera3D = &small;
+				auto fourth = r->RenderAndWait( resized );
+				checks.That( fourth && fourth.Value().external && r->ExternalImageCount() == 1,
+				    "R5.a-resize-replaces-the-free-images" );
+			}
+			exporting.Value().reset();
+		}
+		else
+		{
+			std::printf( "SKIP R5: the device does not export images\n" );
 		}
 		(void)device->WaitIdle();
 	}

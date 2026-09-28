@@ -7,7 +7,7 @@
 //			its material's family program (render.material IDrawPrograms),
 //			then draws the list in its order into the color and depth
 //			targets: per draw, the program's pipeline and material bind group,
-//			and the draw constants' shared prefix (world-to-clip = the view's
+//			and the draw constants' shared prefix (object-to-clip = the view's
 //			view-projection times the instance's world matrix, then the world
 //			matrix; FamilyDrawConstants), cut to the bytes the program reads.
 //			A program that reads a draw group (drawLayout) gets the instance's

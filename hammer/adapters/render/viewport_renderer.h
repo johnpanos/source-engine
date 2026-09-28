@@ -70,22 +70,42 @@ struct ViewRequest
 	// Framebuffer pixels (the camera's logical size times the display scale).
 	std::uint32_t pixelWidth = 0;
 	std::uint32_t pixelHeight = 0;
+	// Render into an exported image (clause D18) the host shows without a
+	// copy, instead of reading the pixels back. Needs CanExport().
+	bool external = false;
+};
+
+// An exported frame: one plane of a dmabuf (render.device external_images.h).
+// The handle belongs to the renderer and stays valid until ReturnFrame(lease)
+// or the renderer's destruction; a host that keeps the memory longer takes
+// its own copy of the handle. The image is not drawn into again before its
+// lease is returned.
+struct ExternalFrame
+{
+	std::int64_t handle = -1;
+	std::uint32_t fourcc = 0;
+	std::uint64_t modifier = 0;
+	std::uint32_t offset = 0;
+	std::uint32_t stride = 0;
+	std::uint64_t lease = 0;
 };
 
 struct ViewPixels
 {
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
-	std::vector<std::uint8_t> rgba; // row 0 at the top, straight RGBA8
+	std::vector<std::uint8_t> rgba; // row 0 at the top, straight RGBA8; empty for an external frame
+	std::optional<ExternalFrame> external;
 };
 
 enum class ViewportStatus : std::uint8_t
 {
-	kDevice = 1,   // the device refused a resource, submission or readback
-	kGraph,        // the view's graph did not compile or run
-	kPass,         // a pass or the material family refused the view
-	kInvalidView,  // no camera for the view's kind, or a zero size
-	kUnknownTicket // Take for a ticket this renderer does not hold
+	kDevice = 1,    // the device refused a resource, submission or readback
+	kGraph,         // the view's graph did not compile or run
+	kPass,          // a pass or the material family refused the view
+	kInvalidView,   // no camera for the view's kind, or a zero size
+	kUnknownTicket, // Take for a ticket this renderer does not hold
+	kUnsupported    // an external frame on a device that does not export images
 };
 
 struct SceneStats
@@ -136,6 +156,15 @@ public:
 
 	std::size_t PendingCount() const { return m_Pending.size(); }
 
+	// Whether views may render into exported images (the device claims
+	// kExternalImages).
+	bool CanExport() const { return m_Device.ExternalImages() != nullptr; }
+	// The host no longer shows the frame of 'lease'; its image may be drawn
+	// into again. Unknown leases are ignored.
+	void ReturnFrame( std::uint64_t lease );
+	// Exported images the renderer holds (free and leased).
+	std::size_t ExternalImageCount() const { return m_External.size(); }
+
 private:
 	struct Pending
 	{
@@ -144,6 +173,16 @@ private:
 		::render::device::BufferId readback;
 		std::uint32_t width = 0;
 		std::uint32_t height = 0;
+		int external = -1; // the exported image's slot, or -1
+	};
+
+	struct ExternalSlot
+	{
+		::render::device::ExternalImage image;
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+		bool busy = false;       // rendering, or leased to the host
+		std::uint64_t lease = 0; // while leased
 	};
 
 	struct Material
@@ -165,6 +204,8 @@ private:
 
 	ViewportRenderer( ::render::device::IRenderDevice2 &device, IMaterialTextures *textures );
 	void Release( const Pending &pending );
+	foundation::Expected<int, ViewportStatus> ExternalSlotFor(
+	    std::uint32_t width, std::uint32_t height );
 	foundation::Expected<void, ViewportStatus> ResolveMaterials(
 	    const viewport::RenderSnapshot &snapshot );
 	foundation::Expected<std::uint64_t, ViewportStatus> AddProgram(
@@ -188,6 +229,8 @@ private:
 	ViewStats m_LastView;
 	bool m_HaveScene = false;
 	std::map<Ticket, Pending> m_Pending;
+	std::vector<ExternalSlot> m_External;
+	std::uint64_t m_NextLease = 1;
 	Ticket m_NextTicket = 1;
 	::render::device::CompletionToken m_LastToken;
 };

@@ -155,6 +155,15 @@ ViewportRenderer::~ViewportRenderer()
 			std::this_thread::yield();
 		}
 	}
+	if ( device::IExternalImages *exporter = m_Device.ExternalImages() )
+	{
+		for ( const ExternalSlot &slot : m_External )
+		{
+			(void)m_Device.Release( slot.image.texture, m_LastToken );
+			exporter->CloseHandle( slot.image.handle );
+		}
+	}
+	m_External.clear();
 	m_Lines.reset();
 }
 
@@ -231,8 +240,81 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::ResolveMaterials(
 
 void ViewportRenderer::Release( const Pending &pending )
 {
+	if ( pending.external >= 0 )
+	{
+		// The image stays in its slot; a frame that never reached the host
+		// frees it.
+		return;
+	}
 	(void)m_Device.Release( pending.color, pending.token );
 	(void)m_Device.Release( pending.readback, pending.token );
+}
+
+// A free exported image of the size, made when there is none; free images of
+// other sizes (a resized view) go.
+foundation::Expected<int, ViewportStatus> ViewportRenderer::ExternalSlotFor(
+    std::uint32_t width, std::uint32_t height )
+{
+	device::IExternalImages *exporter = m_Device.ExternalImages();
+	if ( !exporter )
+	{
+		return foundation::MakeUnexpected( ViewportStatus::kUnsupported );
+	}
+	for ( std::size_t i = 0; i < m_External.size(); )
+	{
+		ExternalSlot &slot = m_External[i];
+		if ( !slot.busy && ( slot.width != width || slot.height != height ) )
+		{
+			(void)m_Device.Release( slot.image.texture, m_LastToken );
+			exporter->CloseHandle( slot.image.handle );
+			m_External.erase( m_External.begin() + std::ptrdiff_t( i ) );
+			for ( auto &[ticket, pending] : m_Pending )
+			{
+				if ( pending.external > int( i ) )
+					--pending.external;
+			}
+			continue;
+		}
+		++i;
+	}
+	for ( std::size_t i = 0; i < m_External.size(); ++i )
+	{
+		if ( !m_External[i].busy )
+		{
+			m_External[i].busy = true;
+			return int( i );
+		}
+	}
+	device::TextureDesc desc;
+	desc.format = kColorFormat;
+	desc.width = width;
+	desc.height = height;
+	desc.usages = { device::ResourceUsage::kColorAttachment, device::ResourceUsage::kExternal };
+	desc.debugName = "hammer-viewport-external";
+	auto exported = exporter->CreateExported( desc );
+	if ( !exported )
+	{
+		return foundation::MakeUnexpected( ViewportStatus::kDevice );
+	}
+	ExternalSlot slot;
+	slot.image = exported.Value();
+	slot.width = width;
+	slot.height = height;
+	slot.busy = true;
+	m_External.push_back( slot );
+	return int( m_External.size() - 1 );
+}
+
+void ViewportRenderer::ReturnFrame( std::uint64_t lease )
+{
+	for ( ExternalSlot &slot : m_External )
+	{
+		if ( slot.busy && slot.lease == lease && lease != 0 )
+		{
+			slot.busy = false;
+			slot.lease = 0;
+		}
+	}
 }
 
 foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
@@ -390,25 +472,48 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 	readbackDesc.usages = { device::ResourceUsage::kCopyDestination };
 	readbackDesc.memory = device::MemoryKind::kReadback;
 	readbackDesc.debugName = "hammer-viewport-readback";
-	auto color = m_Device.CreateTexture( colorDesc );
-	auto readback = m_Device.CreateBuffer( readbackDesc );
-	if ( !color || !readback )
+	Pending pending{ {}, {}, {}, request.pixelWidth, request.pixelHeight, -1 };
+	if ( request.external )
 	{
-		if ( color )
-			(void)m_Device.Release( color.Value(), device::CompletionToken() );
-		if ( readback )
-			(void)m_Device.Release( readback.Value(), device::CompletionToken() );
-		return foundation::MakeUnexpected( ViewportStatus::kDevice );
+		// An exported image the host shows as it is: no readback.
+		auto slot = ExternalSlotFor( request.pixelWidth, request.pixelHeight );
+		if ( !slot )
+		{
+			return foundation::MakeUnexpected( slot.Error() );
+		}
+		pending.external = slot.Value();
+		pending.color = m_External[std::size_t( slot.Value() )].image.texture;
+		colorDesc.usages = {
+		    device::ResourceUsage::kColorAttachment, device::ResourceUsage::kExternal };
 	}
-	Pending pending{ {}, color.Value(), readback.Value(), request.pixelWidth, request.pixelHeight };
+	else
+	{
+		auto color = m_Device.CreateTexture( colorDesc );
+		auto readback = m_Device.CreateBuffer( readbackDesc );
+		if ( !color || !readback )
+		{
+			if ( color )
+				(void)m_Device.Release( color.Value(), device::CompletionToken() );
+			if ( readback )
+				(void)m_Device.Release( readback.Value(), device::CompletionToken() );
+			return foundation::MakeUnexpected( ViewportStatus::kDevice );
+		}
+		pending.color = color.Value();
+		pending.readback = readback.Value();
+	}
+	auto fail = [&]( ViewportStatus status )
+	{
+		if ( pending.external >= 0 )
+			m_External[std::size_t( pending.external )].busy = false;
+		Release( pending );
+		return foundation::MakeUnexpected( status );
+	};
 
 	graph::GraphBuilder builder;
-	const graph::ResourceRef colorRef = builder.ImportTexture( "hammer-viewport", color.Value(),
-	    colorDesc, device::ResourceUsage::kUndefined, device::ResourceUsage::kCopySource );
+	const graph::ResourceRef colorRef = builder.ImportTexture( "hammer-viewport", pending.color,
+	    colorDesc, device::ResourceUsage::kUndefined,
+	    request.external ? device::ResourceUsage::kExternal : device::ResourceUsage::kCopySource );
 	const graph::ResourceRef depthRef = builder.CreateTexture( "hammer-viewport-depth", depthDesc );
-	const graph::ResourceRef readbackRef = builder.ImportBuffer( "hammer-viewport-readback",
-	    readback.Value(), readbackDesc, device::ResourceUsage::kUndefined,
-	    device::ResourceUsage::kCopyDestination );
 
 	LinesTargets targets;
 	targets.color = colorRef;
@@ -434,8 +539,7 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 		    builder, *snapshot, list, sceneView, { m_FaceMeshes, m_Programs }, opaque );
 		if ( !drawn )
 		{
-			Release( pending );
-			return foundation::MakeUnexpected( ViewportStatus::kPass );
+			return fail( ViewportStatus::kPass );
 		}
 		m_LastView = { drawn.Value().drawn, drawn.Value().unresolved };
 	}
@@ -445,8 +549,7 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 		AppendGrid( request.grid, view.width, view.height, grid );
 		if ( !m_Lines->AddPasses( builder, grid, {}, view, targets ) )
 		{
-			Release( pending );
-			return foundation::MakeUnexpected( ViewportStatus::kPass );
+			return fail( ViewportStatus::kPass );
 		}
 	}
 
@@ -464,33 +567,36 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 	scene.clearDepth = false;
 	if ( !m_Lines->AddPasses( builder, overlay, batches, view, scene ) )
 	{
-		Release( pending );
-		return foundation::MakeUnexpected( ViewportStatus::kPass );
+		return fail( ViewportStatus::kPass );
 	}
-	const std::uint32_t width = request.pixelWidth;
-	const std::uint32_t height = request.pixelHeight;
-	builder.AddPass( "hammer-viewport-readback", graph::PassKind::kCopy )
-	    .Read( colorRef, device::ResourceUsage::kCopySource )
-	    .Write( readbackRef, device::ResourceUsage::kCopyDestination )
-	    .SideEffect()
-	    .Execute(
-	        [colorRef, readbackRef, width, height]( graph::RecordContext &context )
-	        {
-		        context.Encoder().CopyTextureToBuffer( context.Texture( colorRef ),
-		            context.Buffer( readbackRef ), { 0, 0, 0, width, height } );
-	        } );
+	if ( !request.external )
+	{
+		const std::uint32_t width = request.pixelWidth;
+		const std::uint32_t height = request.pixelHeight;
+		const graph::ResourceRef readbackRef =
+		    builder.ImportBuffer( "hammer-viewport-readback", pending.readback, readbackDesc,
+		        device::ResourceUsage::kUndefined, device::ResourceUsage::kCopyDestination );
+		builder.AddPass( "hammer-viewport-readback", graph::PassKind::kCopy )
+		    .Read( colorRef, device::ResourceUsage::kCopySource )
+		    .Write( readbackRef, device::ResourceUsage::kCopyDestination )
+		    .SideEffect()
+		    .Execute(
+		        [colorRef, readbackRef, width, height]( graph::RecordContext &context )
+		        {
+			        context.Encoder().CopyTextureToBuffer( context.Texture( colorRef ),
+			            context.Buffer( readbackRef ), { 0, 0, 0, width, height } );
+		        } );
+	}
 	auto compiled = graph::CompileGraph( std::move( builder ) );
 	if ( !compiled )
 	{
-		Release( pending );
-		return foundation::MakeUnexpected( ViewportStatus::kGraph );
+		return fail( ViewportStatus::kGraph );
 	}
 	graph::SerialGraphExecutor executor;
 	auto executed = executor.Execute( compiled.Value(), m_Device );
 	if ( !executed )
 	{
-		Release( pending );
-		return foundation::MakeUnexpected( ViewportStatus::kGraph );
+		return fail( ViewportStatus::kGraph );
 	}
 	pending.token = executed.Value().token;
 	m_Lines->Collect( pending.token );
@@ -518,6 +624,14 @@ foundation::Expected<std::optional<ViewPixels>, ViewportStatus> ViewportRenderer
 	ViewPixels pixels;
 	pixels.width = pending.width;
 	pixels.height = pending.height;
+	if ( pending.external >= 0 )
+	{
+		ExternalSlot &slot = m_External[std::size_t( pending.external )];
+		slot.lease = m_NextLease++;
+		pixels.external = ExternalFrame{ slot.image.handle, slot.image.fourcc, slot.image.modifier,
+		    slot.image.offset, slot.image.stride, slot.lease };
+		return std::optional<ViewPixels>( std::move( pixels ) );
+	}
 	pixels.rgba.resize( std::size_t( pending.width ) * pending.height * 4 );
 	const bool read =
 	    m_Device

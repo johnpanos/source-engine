@@ -17,6 +17,10 @@
 
 #include <optional>
 
+#if !defined( _WIN32 )
+#include <unistd.h>
+#endif
+
 namespace render::device::vulkan
 {
 
@@ -357,6 +361,16 @@ void VulkanDevice::DestroyTexture( TextureRecord &record )
 	record.image = VK_NULL_HANDLE;
 	record.exported = VK_NULL_HANDLE;
 	record.memory = nullptr;
+}
+
+void VulkanDevice::CloseHandle( std::int64_t handle )
+{
+#if !defined( _WIN32 )
+	if ( handle >= 0 )
+		::close( static_cast<int>( handle ) );
+#else
+	(void)handle;
+#endif
 }
 
 IExternalImages *VulkanDevice::ExternalImages()

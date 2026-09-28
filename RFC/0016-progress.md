@@ -1465,3 +1465,48 @@ python3 tools/render/family_port_pixels.py record --run <dir> --family vertexlit
 python3 tools/quality/conformance.py check --suite render.family.vertexlit \
     --suite render.family.vertexlit.seeded-ignore-half-lambert [--cxx clang++]
 ```
+
+## Port clause D18: external images, and the Hammer viewport's dmabuf frames (2026-09-28)
+
+State: `render.device.v2` exports images, and the Hammer editor's viewports
+reach GTK as dmabufs without a copy.
+
+- **The port:**
+  - `Capability::kExternalImages` and `ResourceUsage::kExternal` (the hand-over
+    to another API) are new, and so is `render/device/external_images.h`.
+  - `IRenderDevice2::ExternalImages()` is non-null exactly when the capability
+    is claimed.
+  - `IExternalImages::CreateExported` makes a 2D, one-mip RGBA8 or BGRA8 texture.
+    It returns a handle and one plane's description as opaque integers: a dmabuf
+    fd, DRM fourcc and modifier, offset and stride.
+  - `CloseHandle` closes a handle, so portable owners name no platform call.
+    `CreateTexture` refuses `kExternal`.
+- **Vulkan:** with `VK_KHR_external_memory_fd`,
+  `VK_EXT_external_memory_dma_buf` and `VK_EXT_image_drm_format_modifier`, an
+  exported image is LINEAR (`DRM_FORMAT_MOD_LINEAR`) in dedicated exportable
+  memory. `kExternal` is `GENERAL`.
+  - The memory is host-visible device-local where a type allows. On RADV a
+    device-local-only dmabuf cannot be mapped, and a toolkit's fallback, like the
+    clause, maps it.
+  - The null device drops the capability from its defaults.
+- **Clause D18** (shared suite): the exporter exists exactly when claimed, and
+  descriptions outside the rules fail by status. The exported memory, mapped at
+  its offset and stride after the hand-over, equals the port's readback.
+  - It passes on RADV (Strix Halo) and llvmpipe, g++ and clang++.
+  - Bad adapters `stale-export` and `null-exporter` each fail only D18.
+- **Hammer:**
+  - `ViewportRenderer` renders a view with `ViewRequest::external` into a pool
+    of exported images and hands out leases.
+  - `ViewportService::ReturnFrame` gives a lease back on the render sequence.
+  - The GTK shell dups the handle into a `GdkDmabufTexture` and returns the
+    lease when GTK drops the texture. It falls back to read-back pixels if GTK
+    refuses an import.
+  - `corpus.hammer.ui` passes on both paths and now judges which path the
+    live editor used (`frames.path`).
+
+| Check | Suite | Result |
+| --- | --- | --- |
+| D18 on the adapters | `render.device.v2.vulkan` (RADV; llvmpipe with `RENDER_VK_ADAPTER=1`), `.null`, `.vulkan.sensitivity` (stale-export, null-exporter) | pass |
+| Hammer exported frames | `hammer.adapters.render.viewport` R5 (an external frame equals the read-back frame; leases and resize), `.viewport.null` V7 | pass |
+| Live editor | `corpus.hammer.ui` (15 checks) with dmabuf frames and with `HAMMER_GTK_READBACK=1` | pass |
+| Edit-to-pixels | `hammer-viewport-v1.json` `desktop-trust-fling-4-views-dmabuf` | pass |

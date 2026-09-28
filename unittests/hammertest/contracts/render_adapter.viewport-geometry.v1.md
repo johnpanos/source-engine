@@ -39,10 +39,12 @@ and the `unlit` family (RFC 0016 K4), edges, grid and overlay through `render.pa
 | V4 | A view without its camera, a zero size and an unknown ticket are refused |
 | V5 | Everything the renderer made is released once it is gone |
 | V6 | With a material source, the source is asked once per material (not per restage); a material with a texture gets its own batch and program; one without stays untextured; the camera view draws both batches, then the edges; everything is released |
+| V7 | On a device that exports no images, `CanExport()` is false and an external frame is refused with `kUnsupported` |
 | R1 | On a real device, the pixel under a top face's projected center has that face's built color within one level (the unlit family reads vertex colors as gamma 2.2; the renderer re-encodes the display colors for it) |
 | R2 | Edge, grid and overlay pixels land where the camera projects them, in their colors |
 | R3 | A restage follows the selection; the same inputs give byte-identical frames; the validation layer reports nothing |
 | R4 | Textured: where the side's axes put u in a texture's left (red) half the top face shows red, in its right (blue) half blue, each the texel times the shading in linear light within two levels; a source with no texture leaves the R1 colors |
+| R5 | Exported frames (clause D18): an external frame's memory, mapped through its description, equals the read-back frame of the same view; a leased image is not drawn into (a second frame takes a new image), a returned one is, and a resize replaces the free images |
 | S1 | A job's pixels arrive only through the reply runner, never on the render thread, at the requested size |
 | S2 | Jobs reply in submission order |
 | S3 | A view without its camera and a missing scene reply with `kInvalidView` |
@@ -54,7 +56,9 @@ and the `unlit` family (RFC 0016 K4), edges, grid and overlay through `render.pa
 
 A `RenderSnapshot` and a caller key (the snapshot revision and selection); per view a
 `ViewRequest` (kind, the workspace's camera, grid lines, overlay, framebuffer size); optionally an
-`IMaterialTextures` source of base textures (sRGB RGBA8). Output: sRGB RGBA8 rows, top first.
+`IMaterialTextures` source of base textures (sRGB RGBA8). Output: sRGB RGBA8 rows, top first, or with `ViewRequest::external` an exported image
+(`ExternalFrame`: a dmabuf handle and plane, and a lease). The image is not drawn into again until
+the host returns the lease (`ReturnFrame`); the handle stays the renderer's.
 
 ## Failure behavior
 

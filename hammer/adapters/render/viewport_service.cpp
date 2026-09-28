@@ -113,6 +113,18 @@ ViewportService::~ViewportService()
 	}
 }
 
+bool ViewportService::ReturnFrame( std::uint64_t lease )
+{
+	std::shared_ptr<State> state = m_State;
+	return state->render.PostTask(
+	           [state, lease]
+	           {
+		           // The frames of a renderer since replaced went with it.
+		           if ( state->renderer )
+			           state->renderer->ReturnFrame( lease );
+	           } ) == platform::PostResult::kAccepted;
+}
+
 bool ViewportService::SetMaterialSource( std::unique_ptr<IMaterialTextures> textures )
 {
 	std::shared_ptr<State> state = m_State;
@@ -170,6 +182,7 @@ bool ViewportService::Submit( std::shared_ptr<const viewport::RenderSnapshot> sc
 		           request.overlay = std::move( job.overlay );
 		           request.pixelWidth = job.pixelWidth;
 		           request.pixelHeight = job.pixelHeight;
+		           request.external = job.external;
 		           auto ticket = state->renderer->Render( request );
 		           if ( !ticket )
 		           {

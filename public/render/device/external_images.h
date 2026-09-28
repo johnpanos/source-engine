@@ -40,7 +40,7 @@ namespace render::device
 struct ExternalImage
 {
 	TextureId texture;
-	std::int64_t handle = -1;   // a dmabuf file descriptor; the caller owns and closes it
+	std::int64_t handle = -1;   // a dmabuf file descriptor; the caller owns it (CloseHandle)
 	std::uint32_t fourcc = 0;   // DRM_FORMAT_* of the plane
 	std::uint64_t modifier = 0; // DRM_FORMAT_MOD_* (0 is linear)
 	std::uint32_t offset = 0;   // bytes to the first row
@@ -58,6 +58,9 @@ public:
 	// kInvalidDescription.
 	virtual foundation::Expected<ExternalImage, DeviceError> CreateExported(
 	    const TextureDesc &desc ) = 0;
+	// Closes a handle CreateExported returned (the platform's close), so that
+	// portable owners of exported images name no platform call.
+	virtual void CloseHandle( std::int64_t handle ) = 0;
 };
 
 } // namespace render::device

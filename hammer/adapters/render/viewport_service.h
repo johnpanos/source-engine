@@ -51,6 +51,7 @@ struct ViewJob
 	tools::OverlayList overlay;
 	std::uint32_t pixelWidth = 0;
 	std::uint32_t pixelHeight = 0;
+	bool external = false; // an exported frame (ViewRequest::external)
 };
 
 class ViewportService
@@ -76,6 +77,11 @@ public:
 	// Replaces the material source (null: the flat preview) after the jobs
 	// already posted. False when the render runner refused it.
 	[[nodiscard]] bool SetMaterialSource( std::unique_ptr<IMaterialTextures> textures );
+
+	// The host no longer shows an external frame (ViewportRenderer::
+	// ReturnFrame, on the render sequence). A lease of a renderer since
+	// replaced is ignored. False when the render runner refused it.
+	bool ReturnFrame( std::uint64_t lease );
 
 	// Poll interval while a frame is on the GPU.
 	static constexpr std::uint64_t kPollNanoseconds = 250'000;

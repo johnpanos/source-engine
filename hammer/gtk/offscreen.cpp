@@ -409,7 +409,7 @@ int RenderWorkspaceDemo( const std::string &outPpm, int tileW, int tileH )
 // timed from issuing one edit to all four views' new frames arriving back.
 // Writes the samples in milliseconds as JSON.
 int RenderEditBudget( const std::string &vmfPath, const std::string &outJson, int width, int height,
-    int warmup, int edits, const std::string &vpkList )
+    int warmup, int edits, const std::string &vpkList, bool external )
 {
 	if ( width <= 0 || height <= 0 || edits <= 0 || warmup < 0 )
 	{
@@ -495,12 +495,17 @@ int RenderEditBudget( const std::string &vmfPath, const std::string &outJson, in
 				job.overlay = ws.Overlay( kind );
 				job.pixelWidth = static_cast<std::uint32_t>( width );
 				job.pixelHeight = static_cast<std::uint32_t>( height );
+				job.external = external;
 				if ( !service.Submit( scene, ws.SnapshotRevision(), std::move( job ),
-				         [&arrived, &failed](
+				         [&arrived, &failed, &service, external](
 				             hammer::render_adapter::ViewportService::Result result )
 				         {
 					         ++arrived;
-					         failed = failed || !result;
+					         failed = failed || !result || ( external && !result.Value().external );
+					         // The window returns a dmabuf frame when GTK drops it;
+					         // here it is shown at once.
+					         if ( result && result.Value().external )
+						         (void)service.ReturnFrame( result.Value().external->lease );
 				         } ) )
 				{
 					failed = true;

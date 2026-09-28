@@ -33,7 +33,6 @@
 #include <linux/dma-buf.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <unistd.h>
 #endif
 
 namespace rendertest
@@ -73,17 +72,6 @@ inline std::span<const std::byte> Code( const std::uint32_t *words, std::size_t 
 template <std::size_t N> std::span<const std::byte> Code( const std::uint32_t ( &words )[N] )
 {
 	return Code( words, N );
-}
-
-// Closes an exported image's handle (a file descriptor where there are dmabufs).
-inline void CloseHandle( std::int64_t handle )
-{
-#if defined( __linux__ )
-	if ( handle >= 0 )
-		::close( int( handle ) );
-#else
-	(void)handle;
-#endif
 }
 
 inline std::vector<std::byte> Pattern( std::size_t size, std::uint8_t seed )
@@ -1256,7 +1244,7 @@ inline void ExternalImagesClause( Suite &s )
 		auto made = exporter->CreateExported( candidate );
 		if ( !made )
 			return made.Error().status;
-		CloseHandle( made.Value().handle );
+		exporter->CloseHandle( made.Value().handle );
 		(void)device->Release( made.Value().texture, CompletionToken{} );
 		return DeviceStatus::kInternal;
 	};
@@ -1326,9 +1314,9 @@ inline void ExternalImagesClause( Suite &s )
 	}
 	s.That( equal, "D18",
 	    "the exported memory, read at its offset and stride, equals the texture's readback" );
-	CloseHandle( exported.handle );
+	exporter->CloseHandle( exported.handle );
 #else
-	CloseHandle( exported.handle );
+	exporter->CloseHandle( exported.handle );
 	std::printf(
 	    "SKIP %s.D18 memory: no dmabuf mapping on this platform\n", s.m_Driver.name.c_str() );
 #endif

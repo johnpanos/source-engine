@@ -1058,11 +1058,21 @@ capture and sharing measurements remain R17's.
   - textured: p95 4.9 ms, max 5.7 ms;
   - flat: p95 5.9 ms on trust_fling and 2.9 ms on the room.
 
+**Follow-up: frames as dmabufs (2026-09-28).** RFC 0016 port clause D18
+added exported images, recorded in the
+[RFC 0016 record](RFC/0016-progress.md#port-clause-d18-external-images-and-the-hammer-viewports-dmabuf-frames-2026-09-28).
+- The viewports render into a pool of exported images and hand them to GTK
+  as `GdkDmabufTexture`s, with no copy. Each image goes back to the renderer
+  when GTK drops its texture.
+- The shell falls back to read-back pixels when the device exports nothing
+  or GTK refuses an import; `HAMMER_GTK_READBACK=1` forces that path.
+- `corpus.hammer.ui` passes on both paths and judges which one ran.
+- The budget gains `desktop-trust-fling-4-views-dmabuf`.
+
 **Not done.**
 
 - Lit previews (R89/R90). Textures are sampled from mip 0 only, and
   translucent and alpha-tested materials draw opaque.
-- Readback into `GdkMemoryTexture`, not a dmabuf (clause D18).
 - The budget is desktop only, with no Fold7 or low-core row.
 - Each edit restages every batch; per-solid meshes would restage one.
 

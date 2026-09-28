@@ -521,6 +521,7 @@ public:
 
 	foundation::Expected<ExternalImage, DeviceError> CreateExported(
 	    const TextureDesc &desc ) override;
+	void CloseHandle( std::int64_t handle ) override;
 
 	// Diagnostics ------------------------------------------------------------
 

@@ -67,6 +67,8 @@
 #include <string>
 #include <vector>
 
+#include <unistd.h>
+
 #include "render/composition/render_core.h"
 
 #include <adwaita.h>
@@ -81,6 +83,14 @@ using hammer::viewport::ViewKind;
 namespace tools = hammer::tools;
 
 struct AppState;
+
+// Returns exported frames to the render sequence once GTK drops their
+// textures. Textures may outlive the viewport service, so the owner clears
+// 'service' before the service goes.
+struct FrameReturns
+{
+	hammer::render_adapter::ViewportService *service = nullptr;
+};
 
 struct Viewport
 {
@@ -117,6 +127,7 @@ struct AppState
 	      buildLighting( std::move( lighting ) )
 	{
 	}
+	~AppState() { frameReturns->service = nullptr; } // before the service goes
 
 	// Where F9 writes its build records, whether it publishes the map for
 	// ./play, and the export profile the lighting back end lights it with
@@ -165,6 +176,11 @@ struct AppState
 	std::unique_ptr<RenderCore, CoreDeleter> core;
 	std::unique_ptr<platform::ThreadTaskRunner> renderThread;
 	std::unique_ptr<hammer::render_adapter::ViewportService> views;
+	// Frames reach GTK as dmabufs (zero-copy) when the device exports images
+	// and GTK imports them; otherwise, or after a failed import, as
+	// read-back pixels. HAMMER_GTK_READBACK=1 forces the read-back path.
+	bool dmabuf = false;
+	std::shared_ptr<FrameReturns> frameReturns = std::make_shared<FrameReturns>();
 	std::string renderError; // why the viewports cannot draw, when they cannot
 	// The snapshot the render sequence reads: an immutable copy made when the
 	// scene key moves.
@@ -814,9 +830,59 @@ void SetTool( AppState *st, const char *actionId )
 
 // ---- Viewport rendering -------------------------------------------------------
 
-// A frame's pixels as a texture for the viewport widget.
-GdkTexture *TextureOf( const hammer::render_adapter::ViewPixels &pixels )
+// An exported frame's lease while GTK shows it: GTK reads the image through
+// our own copy of the handle, and the lease goes back when the texture does.
+struct DmabufLease
 {
+	std::shared_ptr<FrameReturns> returns;
+	std::uint64_t lease = 0;
+	int fd = -1;
+};
+
+void ReleaseDmabuf( gpointer data )
+{
+	auto *lease = static_cast<DmabufLease *>( data );
+	if ( lease->fd >= 0 )
+	{
+		close( lease->fd );
+	}
+	if ( lease->returns->service )
+	{
+		(void)lease->returns->service->ReturnFrame( lease->lease );
+	}
+	delete lease;
+}
+
+// A frame as a texture for the viewport widget: the exported image itself
+// (a GdkDmabufTexture, no copy) or the read-back pixels. Null when GTK
+// refuses the dmabuf ('error' says why).
+GdkTexture *TextureOf( AppState *st, GtkWidget *area,
+    const hammer::render_adapter::ViewPixels &pixels, GError **error )
+{
+	if ( pixels.external )
+	{
+		const hammer::render_adapter::ExternalFrame &frame = *pixels.external;
+		auto *lease = new DmabufLease{ st->frameReturns, frame.lease, dup( int( frame.handle ) ) };
+		GdkDmabufTextureBuilder *builder = gdk_dmabuf_texture_builder_new();
+		gdk_dmabuf_texture_builder_set_display( builder, gtk_widget_get_display( area ) );
+		gdk_dmabuf_texture_builder_set_width( builder, pixels.width );
+		gdk_dmabuf_texture_builder_set_height( builder, pixels.height );
+		gdk_dmabuf_texture_builder_set_fourcc( builder, frame.fourcc );
+		gdk_dmabuf_texture_builder_set_modifier( builder, frame.modifier );
+		gdk_dmabuf_texture_builder_set_premultiplied( builder, TRUE ); // opaque frames
+		gdk_dmabuf_texture_builder_set_n_planes( builder, 1 );
+		gdk_dmabuf_texture_builder_set_fd( builder, 0, lease->fd );
+		gdk_dmabuf_texture_builder_set_offset( builder, 0, frame.offset );
+		gdk_dmabuf_texture_builder_set_stride( builder, 0, frame.stride );
+		GdkTexture *texture =
+		    gdk_dmabuf_texture_builder_build( builder, ReleaseDmabuf, lease, error );
+		g_object_unref( builder );
+		if ( !texture )
+		{
+			ReleaseDmabuf( lease ); // GTK calls the destroy function only for a texture it made
+		}
+		return texture;
+	}
 	GBytes *bytes = g_bytes_new( pixels.rgba.data(), pixels.rgba.size() );
 	GdkTexture *texture = gdk_memory_texture_new( int( pixels.width ), int( pixels.height ),
 	    GDK_MEMORY_R8G8B8A8, bytes, std::size_t( pixels.width ) * 4 );
@@ -826,24 +892,32 @@ GdkTexture *TextureOf( const hammer::render_adapter::ViewPixels &pixels )
 
 // With HAMMER_GTK_FRAME_DIR set (the UI-driven conformance suite), each
 // view's latest frame is also written there as <view>.ppm (camera, top, front
-// or side), so a test can judge what the live editor showed.
-void DumpFrame( const Viewport &vp, const hammer::render_adapter::ViewPixels &pixels )
+// or side), so a test can judge what the live editor showed. It is read from
+// the texture GTK shows, so a dmabuf frame is judged as GTK imported it.
+void DumpFrame( const Viewport &vp, GdkTexture *texture )
 {
 	static const char *const dir = std::getenv( "HAMMER_GTK_FRAME_DIR" );
 	if ( !dir || !*dir )
 	{
 		return;
 	}
+	const int width = gdk_texture_get_width( texture );
+	const int height = gdk_texture_get_height( texture );
+	std::vector<std::uint8_t> rgba( std::size_t( width ) * height * 4 );
+	GdkTextureDownloader *downloader = gdk_texture_downloader_new( texture );
+	gdk_texture_downloader_set_format( downloader, GDK_MEMORY_R8G8B8A8 );
+	gdk_texture_downloader_download_into( downloader, rgba.data(), std::size_t( width ) * 4 );
+	gdk_texture_downloader_free( downloader );
 	const std::string label( vp.label );
 	const std::string path =
 	    std::string( dir ) + "/" + label.substr( 0, label.find( ' ' ) ) + ".ppm";
 	const std::string temporary = path + ".tmp";
 	if ( FILE *file = std::fopen( temporary.c_str(), "wb" ) )
 	{
-		std::fprintf( file, "P6\n%u %u\n255\n", pixels.width, pixels.height );
-		for ( std::size_t i = 0; i + 4 <= pixels.rgba.size(); i += 4 )
+		std::fprintf( file, "P6\n%d %d\n255\n", width, height );
+		for ( std::size_t i = 0; i + 4 <= rgba.size(); i += 4 )
 		{
-			std::fwrite( &pixels.rgba[i], 1, 3, file );
+			std::fwrite( &rgba[i], 1, 3, file );
 		}
 		std::fclose( file );
 		std::rename( temporary.c_str(), path.c_str() );
@@ -895,18 +969,30 @@ void PumpViews( AppState *st )
 		job.overlay = ws.Overlay( vp.kind );
 		job.pixelWidth = static_cast<std::uint32_t>( w * scale );
 		job.pixelHeight = static_cast<std::uint32_t>( h * scale );
+		job.external = st->dmabuf;
 		vp.dirty = false;
 		vp.inFlight = st->views->Submit( st->sharedScene, st->sharedSerial, std::move( job ),
 		    [st, index]( hammer::render_adapter::ViewportService::Result result )
 		    {
 			    Viewport &view = st->viewports[index];
 			    view.inFlight = false;
-			    if ( result )
+			    GError *error = nullptr;
+			    GdkTexture *texture =
+			        result ? TextureOf( st, view.area, result.Value(), &error ) : nullptr;
+			    if ( texture )
 			    {
-				    GdkTexture *texture = TextureOf( result.Value() );
 				    hammer_viewport_set_texture( HAMMER_VIEWPORT( view.area ), texture );
+				    DumpFrame( view, texture );
 				    g_object_unref( texture );
-				    DumpFrame( view, result.Value() );
+			    }
+			    else if ( result )
+			    {
+				    // GTK could not import the dmabuf: read frames back from now on.
+				    std::fprintf( stderr, "hammer_gtk: dmabuf frames refused (%s); reading back\n",
+				        error ? error->message : "no reason" );
+				    g_clear_error( &error );
+				    st->dmabuf = false;
+				    view.dirty = true;
 			    }
 			    else
 			    {
@@ -968,6 +1054,11 @@ void ComposeRenderer( AppState *st )
 	st->renderThread = std::make_unique<platform::ThreadTaskRunner>( "hammer-render" );
 	st->views = std::make_unique<hammer::render_adapter::ViewportService>(
 	    *binding->device, *st->renderThread, st->uiRunner );
+	st->frameReturns->service = st->views.get();
+	const char *readback = std::getenv( "HAMMER_GTK_READBACK" );
+	st->dmabuf = binding->device->ExternalImages() != nullptr && !( readback && *readback == '1' );
+	std::fprintf( stderr, "hammer_gtk: viewport frames as %s\n",
+	    st->dmabuf ? "dmabufs" : "read-back pixels" );
 }
 
 // ---- Input translation -------------------------------------------------------
@@ -2535,7 +2626,7 @@ int RenderWorkspaceDemo( const std::string &outPpm, int tileW, int tileH );
 int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &outPpm, int width,
     int height, const std::string &vpkList );
 int RenderEditBudget( const std::string &vmfPath, const std::string &outJson, int width, int height,
-    int warmup, int edits, const std::string &vpkList );
+    int warmup, int edits, const std::string &vpkList, bool external );
 
 int main( int argc, char **argv )
 {
@@ -2553,6 +2644,7 @@ int main( int argc, char **argv )
 	int budgetEdits = 40;
 	int budgetWarmup = 5;
 	std::string budgetTextures;
+	bool budgetDmabuf = false;
 	bool maximized = false;
 	std::string buildsRoot = "quality-results/hammer-builds";
 	bool publishBuilds = true;
@@ -2592,6 +2684,10 @@ int main( int argc, char **argv )
 		else if ( a == "--edits" && i + 1 < argc )
 		{
 			budgetEdits = std::atoi( argv[++i] );
+		}
+		else if ( a == "--dmabuf" )
+		{
+			budgetDmabuf = true;
 		}
 		else if ( a == "--textures" && i + 1 < argc )
 		{
@@ -2643,7 +2739,7 @@ int main( int argc, char **argv )
 			    "       hammer_gtk --demo OUT.ppm [--width W --height H]\n"
 			    "       hammer_gtk --textured OUT.ppm MAP.vmf VPK[,VPK...] [--width W --height H]\n"
 			    "       hammer_gtk --viewport-budget OUT.json MAP.vmf [--width W --height H] "
-			    "[--edits N --warmup N] [--textures VPK[,VPK...]]\n" );
+			    "[--edits N --warmup N] [--textures VPK[,VPK...]] [--dmabuf]\n" );
 			return 0;
 		}
 	}
@@ -2662,8 +2758,8 @@ int main( int argc, char **argv )
 	}
 	if ( !budgetOut.empty() )
 	{
-		return RenderEditBudget(
-		    budgetIn, budgetOut, width, height, budgetWarmup, budgetEdits, budgetTextures );
+		return RenderEditBudget( budgetIn, budgetOut, width, height, budgetWarmup, budgetEdits,
+		    budgetTextures, budgetDmabuf );
 	}
 	if ( !texturedOut.empty() )
 	{

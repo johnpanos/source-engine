@@ -108,8 +108,12 @@ textured: each material's base texture comes from the mounted VPKs through its
 own `MaterialCatalog` on the render sequence (`catalog_textures.cpp`), and the
 solids draw through the render core's `unlit` material family (RFC 0016 K4).
 Faces whose texture is missing draw with the flat fill colors. The viewports
-render on their own thread (`ViewportService`); frames come back to the GTK
-main loop as `GdkMemoryTexture`s.
+render on their own thread (`ViewportService`). When the device exports images
+(RFC 0016 clause D18), each frame is an exported image GTK shows as a
+`GdkDmabufTexture` without a copy; the image goes back to the renderer when GTK
+drops the texture. Otherwise, or if GTK refuses an import, frames are read back
+into `GdkMemoryTexture`s. `HAMMER_GTK_READBACK=1` forces the read-back path; the
+log line `hammer_gtk: viewport frames as ...` names the path in use.
 
 For KTX2 material previews, build with the pinned KTX reader:
 

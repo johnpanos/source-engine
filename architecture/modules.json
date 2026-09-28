@@ -586,7 +586,8 @@
         "kind": "backend",
         "externalHeaders": [
           "vk_mem_alloc.h",
-          "vulkan/vulkan.h"
+          "vulkan/vulkan.h",
+          "unistd.h"
         ],
         "uselib": [
           "VULKAN"
@@ -845,7 +846,10 @@
         "kind": "native-test",
         "externalHeaders": [
           "random",
-          "vulkan/vulkan.h"
+          "vulkan/vulkan.h",
+          "linux/dma-buf.h",
+          "sys/ioctl.h",
+          "sys/mman.h"
         ],
         "legacyIncludes": [
           "appframework/IAppSystem.h"
