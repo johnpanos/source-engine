@@ -15,7 +15,19 @@ set -eu
 
 ROOT="$( cd "$( dirname "$0" )/../.." && pwd )"
 OUT="${1:-$ROOT/hammer/gtk/hammer_gtk}"
-TREE="${HAMMER_GTK_TREE:-build-hammer-gtk}"
+# KTX2 material previews (RFC 0008 F3) when both roots of the pinned
+# KTX-Software build are given; they build in a tree of their own.
+KTX_ARGS=""
+if [ -n "${KTX_SOURCE_ROOT:-}" ] || [ -n "${KTX_BUILD_ROOT:-}" ]; then
+	if [ -z "${KTX_SOURCE_ROOT:-}" ] || [ -z "${KTX_BUILD_ROOT:-}" ]; then
+		echo "set both KTX_SOURCE_ROOT and KTX_BUILD_ROOT for KTX2 previews" >&2
+		exit 2
+	fi
+	KTX_ARGS="--ktx-source-root=$KTX_SOURCE_ROOT --ktx-build-root=$KTX_BUILD_ROOT"
+	TREE="${HAMMER_GTK_TREE:-build-hammer-gtk-ktx}"
+else
+	TREE="${HAMMER_GTK_TREE:-build-hammer-gtk}"
+fi
 cd "$ROOT"
 export WAFLOCK=".lock-waf-$( basename "$TREE" )"
 LOG="$ROOT/$TREE.log"
@@ -30,8 +42,9 @@ stale() {
 		-o -path ./.git -prune -o -name wscript -newer "$TREE/c4che/_cache.py" -print -quit )" ]
 }
 if stale; then
+	# shellcheck disable=SC2086
 	if ! ./waf configure --tools --disable-warns -T release -o "$TREE" --render-core-vulkan=on \
-		--prefix="$ROOT/$TREE/install" >"$LOG" 2>&1; then
+		--prefix="$ROOT/$TREE/install" $KTX_ARGS >"$LOG" 2>&1; then
 		tail -30 "$LOG" >&2
 		echo "hammer/gtk/build.sh: configure failed (log: $LOG)" >&2
 		exit 1

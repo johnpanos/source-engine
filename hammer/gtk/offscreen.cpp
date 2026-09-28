@@ -15,16 +15,21 @@
 //=============================================================================//
 
 #include "hammer/adapters/platform/disk_file_store.h"
-#include "hammer/adapters/render/viewport_renderer.h"
+#include "hammer/adapters/render/viewport_service.h"
+#include "hammer/app/session_commands.h"
+#include "platform/runners/manual_task_runner.h"
+#include "platform/runners/thread_task_runner.h"
 #include "hammer/formats/vmf_map_codec.h"
 #include "hammer/presenters/editor_workspace.h"
 #include "render/composition/render_core.h"
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -353,4 +358,143 @@ int RenderWorkspaceDemo( const std::string &outPpm, int tileW, int tileH )
 	    ws.Session().Document().SolidIds().size(), ws.Session().CurrentSelection().objects.size() );
 	ws.FrameDocument();
 	return RenderQuadOf( ws, outPpm, tileW, tileH, "demo" );
+}
+
+// The edit-to-pixels measurement of quality/budgets/hammer-viewport-v1.json:
+// the window's own path (EditorWorkspace, an immutable scene copy per scene
+// change, ViewportService on a render thread, replies on the host sequence),
+// timed from issuing one edit to all four views' new frames arriving back.
+// Writes the samples in milliseconds as JSON.
+int RenderEditBudget( const std::string &vmfPath, const std::string &outJson, int width, int height,
+    int warmup, int edits )
+{
+	if ( width <= 0 || height <= 0 || edits <= 0 || warmup < 0 )
+	{
+		std::fprintf( stderr, "viewport-budget: invalid arguments\n" );
+		return 2;
+	}
+	Editor editor;
+	hammer::presenters::EditorWorkspace &ws = editor.workspace;
+	if ( !editor.Open( vmfPath, width, height, "viewport-budget" ) )
+	{
+		return 3;
+	}
+	const std::vector<hammer::scene::ObjectId> solids = ws.Session().Document().SolidIds();
+	if ( solids.empty() )
+	{
+		std::fprintf( stderr, "viewport-budget: the map has no solid\n" );
+		return 3;
+	}
+	const std::string id =
+	    std::to_string( hammer::app::SessionCommands::ScriptId( solids.front() ) );
+	if ( !ws.Commands().Execute( "select", { { "ids", id } } ) )
+	{
+		std::fprintf( stderr, "viewport-budget: could not select solid %s\n", id.c_str() );
+		return 3;
+	}
+
+	Viewports views;
+	if ( !views.Compose( "viewport-budget" ) )
+	{
+		return 4;
+	}
+	RenderCoreBinding const *binding = RenderCore_GetBinding( views.core.get() );
+	views.renderer.reset(); // the service owns the renderer on its render thread
+	platform::VirtualClock clock;
+	platform::ManualTaskRunner host( clock );
+	std::vector<double> samples;
+	bool failed = false;
+	{
+		platform::ThreadTaskRunner render( "hammer-render" );
+		hammer::render_adapter::ViewportService service( *binding->device, render, host );
+		const ViewKind kinds[] = {
+		    ViewKind::Camera3D, ViewKind::Top, ViewKind::Front, ViewKind::Side };
+		for ( int round = 0; round < warmup + edits && !failed; ++round )
+		{
+			const auto start = std::chrono::steady_clock::now();
+			const double step = ( round % 2 ) ? -16.0 : 16.0; // back and forth
+			if ( !ws.Commands().Execute(
+			         "move_selection", { { "delta", std::to_string( step ) + " 0 0" } } ) )
+			{
+				std::fprintf( stderr, "viewport-budget: the edit failed\n" );
+				failed = true;
+				break;
+			}
+			auto scene = std::make_shared<const hammer::viewport::RenderSnapshot>( ws.Snapshot() );
+			int arrived = 0;
+			for ( ViewKind kind : kinds )
+			{
+				hammer::render_adapter::ViewJob job;
+				job.kind = kind;
+				if ( kind == ViewKind::Camera3D )
+				{
+					job.camera3D = ws.Camera3DView();
+				}
+				else
+				{
+					job.camera2D = ws.Camera2DFor( kind );
+					job.grid = ws.GridLines( kind );
+				}
+				job.overlay = ws.Overlay( kind );
+				job.pixelWidth = static_cast<std::uint32_t>( width );
+				job.pixelHeight = static_cast<std::uint32_t>( height );
+				if ( !service.Submit( scene, ws.SnapshotRevision(), std::move( job ),
+				         [&arrived, &failed](
+				             hammer::render_adapter::ViewportService::Result result )
+				         {
+					         ++arrived;
+					         failed = failed || !result;
+				         } ) )
+				{
+					failed = true;
+				}
+			}
+			// The host sequence waits for its replies as the GTK loop would.
+			const auto deadline = start + std::chrono::seconds( 10 );
+			while ( arrived < 4 && !failed && std::chrono::steady_clock::now() < deadline )
+			{
+				host.RunUntilIdle();
+				if ( arrived < 4 )
+				{
+					std::this_thread::sleep_for( std::chrono::microseconds( 50 ) );
+				}
+			}
+			if ( arrived < 4 )
+			{
+				failed = true;
+				break;
+			}
+			const double ms = std::chrono::duration<double, std::milli>(
+			    std::chrono::steady_clock::now() - start )
+			                      .count();
+			if ( round >= warmup )
+			{
+				samples.push_back( ms );
+			}
+		}
+	}
+	if ( failed )
+	{
+		std::fprintf( stderr, "viewport-budget: a view did not render\n" );
+		return 6;
+	}
+	FILE *file = std::fopen( outJson.c_str(), "w" );
+	if ( !file )
+	{
+		std::fprintf( stderr, "viewport-budget: failed to write %s\n", outJson.c_str() );
+		return 7;
+	}
+	std::fprintf( file,
+	    "{\"schema\": \"hammer-viewport-samples/v1\", \"map\": \"%s\", \"width\": %d, "
+	    "\"height\": %d, \"views\": 4, \"warmup_edits\": %d, \"solids\": %zu, "
+	    "\"triangles_note\": \"edit-to-pixels in milliseconds\", \"samples_ms\": [",
+	    vmfPath.c_str(), width, height, warmup, solids.size() );
+	for ( std::size_t i = 0; i < samples.size(); ++i )
+	{
+		std::fprintf( file, "%s%.4f", i ? ", " : "", samples[i] );
+	}
+	std::fprintf( file, "]}\n" );
+	std::fclose( file );
+	std::printf( "viewport-budget: wrote %s (%zu samples)\n", outJson.c_str(), samples.size() );
+	return 0;
 }

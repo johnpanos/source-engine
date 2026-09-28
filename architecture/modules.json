@@ -2248,6 +2248,7 @@
           "hammer.scene",
           "hammer.viewport",
           "hammer.tools",
+          "platform.contracts",
           "render.pass.lines",
           "render.resources",
           "render.graph",
@@ -2284,6 +2285,8 @@
         "owns": "Canonical GTK4/libadwaita rendering+interaction shell at hammer/gtk/ (4-view layout, viewports drawn by the RFC 0016 render core, tool/menu input, main-context dispatch); sibling of hammer.adapters.mfc, both driving the reusable MFC-free libraries",
         "allowedEdges": [
           "hammer.adapters.render",
+          "content.hammer-ktx2-preview",
+          "content.ktx2-reader",
           "render.composition",
           "render.device",
           "hammer.formats",

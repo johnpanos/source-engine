@@ -1,0 +1,42 @@
+{
+  "schema": "hammer-viewport-budget/v1",
+  "description": "Edit-to-pixels budgets for the Hammer editor's viewports on the RFC 0016 render core (RFC 0016 decision 'threading'; RFC 0002 R17). A sample is the time from issuing one edit on the host sequence (a move of one solid through the command layer) to all four views' new frames arriving back on the host sequence from the render sequence: the snapshot update, the immutable scene copy, staging, recording, GPU execution, readback and the replies. Set before measurement from the RFC 0016 decision's 16 ms for sp_a2_trust_fling across four views. Measured by tools/quality/hammer_viewport_budget.py with hammer_gtk --viewport-budget.",
+  "rows": [
+    {
+      "id": "desktop-trust-fling-4-views",
+      "profile": "linux-native-vulkan-gpu",
+      "decided": "2026-09-28",
+      "workload": {
+        "map": "unittests/hammertest/fixtures/portal2/sp_a2_trust_fling.vmf",
+        "views": 4,
+        "width": 640,
+        "height": 480,
+        "warmup_edits": 5,
+        "edits": 40,
+        "edit": "move_selection by 16 units on one solid"
+      },
+      "limits": {
+        "edit_to_pixels_p95_ms": 16.0,
+        "edit_to_pixels_max_ms": 50.0
+      }
+    },
+    {
+      "id": "desktop-small-room-4-views",
+      "profile": "linux-native-vulkan-gpu",
+      "decided": "2026-09-28",
+      "workload": {
+        "map": "hammer/gtk/samples/room.vmf",
+        "views": 4,
+        "width": 640,
+        "height": 480,
+        "warmup_edits": 5,
+        "edits": 40,
+        "edit": "move_selection by 16 units on one solid"
+      },
+      "limits": {
+        "edit_to_pixels_p95_ms": 8.0,
+        "edit_to_pixels_max_ms": 33.0
+      }
+    }
+  ]
+}

@@ -904,8 +904,12 @@ def configure(conf):
 			conf.fatal('KTX reader tests require both --ktx-source-root and --ktx-build-root')
 		# The mobile products build the Android profile's pinned archive.
 		ktx_android = conf.env.DEST_OS in ('android', 'ios')
-		if not (conf.env.NATIVE_VULKAN and conf.env.DEST_OS in ('linux', 'android', 'ios')):
-			conf.fatal('KTX reader profile requires a Linux, Android or iOS native Vulkan client')
+		# Clients with the native Vulkan backend, and the Linux tools product (the
+		# Hammer shell's KTX2 material previews, RFC 0008 F3).
+		ktx_tools = conf.options.TOOLS and conf.env.DEST_OS == 'linux'
+		if not ( ( conf.env.NATIVE_VULKAN and conf.env.DEST_OS in ('linux', 'android', 'ios') ) or ktx_tools ):
+			conf.fatal('KTX reader profile requires a Linux, Android or iOS native Vulkan client '
+				'or the Linux tools product')
 		with open('quality/product_profiles/ktx2-linux-tools.json') as profile_file:
 			ktx_profile = json.load(profile_file)
 		ktx_pinned = ktx_profile['dependencies']['ktx_software']['revision']
@@ -1065,7 +1069,8 @@ def configure(conf):
 		conf.add_subproject(projects['tests'])
 	elif conf.options.TOOLS:
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if conf.env.DEST_OS == 'linux' else [])
-		tool_projects += hammer_gtk_projects(conf)
+		tool_projects += ( ['texturecontainer'] if conf.env.KTX_READ_ENABLED else [] ) + \
+			hammer_gtk_projects(conf)
 		conf.add_subproject(tool_projects)
 	elif conf.options.DEDICATED:
 		if conf.env.DEBUGAPI:
@@ -1181,6 +1186,7 @@ def build(bld):
 		bld.add_subproject(projects['tests'])
 	elif bld.env.TOOLS:
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if bld.env.DEST_OS == 'linux' else [])
+		tool_projects += ['texturecontainer'] if bld.env.KTX_READ_ENABLED else []
 		tool_projects += ['hammer/gtk'] if bld.env.HAMMER_GTK else []
 		bld.add_subproject(tool_projects)
 	elif bld.env.DEDICATED:

@@ -16,19 +16,28 @@ def configure(conf):
 	conf.load('strict_cpp20', tooldir='scripts/waifulib')
 
 def build(bld):
+	source = [ 'app.cpp', 'glib_task_runner.cpp', 'offscreen.cpp', 'viewport_widget.cpp' ]
+	use = [ 'hammer_render', 'hammer_presenters', 'hammer_tools', 'hammer_viewport',
+	        'hammer_formats', 'hammer_app', 'hammer_ports', 'hammer_scene',
+	        'hammer_platform', 'platform_posix', 'platform_runners', 'render_composition',
+	        'vmf', 'kvtext', 'mapgeometry', 'GTK4', 'ADWAITA' ]
+	defines = []
+	# KTX2 previews in the material catalog when the tree is configured with
+	# the pinned KTX-Software reader (--ktx-source-root/--ktx-build-root).
+	if bld.env.KTX_READ_ENABLED:
+		source += [ '../adapters/source/ktx2_preview.cpp' ]
+		use += [ 'texturecontainer', 'KTXREAD' ]
+		defines += [ 'HAMMER_KTX_PREVIEW' ]
 	bld.program(
 		env       = bld.strict_cpp20_env(),
-		source    = [ 'app.cpp', 'glib_task_runner.cpp', 'offscreen.cpp', 'viewport_widget.cpp' ],
+		source    = source,
 		target    = 'hammer_gtk',
 		name      = 'hammer_gtk',
 		arch_module = 'hammer.adapters.gtk',
 		features  = 'cxx cxxprogram',
 		includes  = [ '../../public', '../..', '.' ],
-		defines   = [],
-		use       = [ 'hammer_render', 'hammer_presenters', 'hammer_tools', 'hammer_viewport',
-		              'hammer_formats', 'hammer_app', 'hammer_ports', 'hammer_scene',
-		              'hammer_platform', 'platform_posix', 'platform_runners', 'render_composition',
-		              'vmf', 'kvtext', 'mapgeometry', 'GTK4', 'ADWAITA' ],
+		defines   = defines,
+		use       = use,
 		install_path = None,
 		subsystem = 'CONSOLE',
 		idx       = bld.get_taskgen_count()

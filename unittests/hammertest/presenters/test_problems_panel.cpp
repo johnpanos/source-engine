@@ -89,7 +89,10 @@ int main()
 	checks.That( session->Revision() == revision && panel->Rows().size() == 4, "nothing changed" );
 
 	// One fix.
+	const std::uint64_t panelRevision = panel->Revision();
 	checks.That( panel->Fix( 2 ).HasValue(), "fix duplicate keys" );
+	checks.That( panel->ScanCount() == scans && panel->Revision() > panelRevision,
+	    "an edit marks the rows stale without scanning" );
 	checks.That( session->History().UndoEntry()->label == "Fix duplicate-keys" &&
 	                 session->Document().FindEntity( dup )->keys.size() == 1 &&
 	                 *session->Document().FindEntity( dup )->Key( "message" ) == "first",

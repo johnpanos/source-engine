@@ -984,19 +984,52 @@ capture and sharing measurements remain R17's.
 | Q-EDITOR headless, g++ and clang++ | 121 of 121 suites each (the new geometry and null-device viewport suites among them) |
 | archlint `check --all`, `hammer --verify`, tests; stylelint `--changed` | pass (the two `game/shared/fstop` ARCH105 findings are other work); 158 archlint tests |
 
+**Follow-up: render sequence, edit-to-pixels budget, KTX2 build
+(2026-09-28).**
+
+- **Render sequence.** `hammer::render_adapter::ViewportService` owns the
+  `ViewportRenderer` on a render sequence (`platform::ThreadTaskRunner`
+  "hammer-render"), as `MapBuildQueue` does for builds. The host posts an
+  immutable shared snapshot (a new copy only when the scene key moves) and a
+  `ViewJob` with copies of the cameras, grid and overlay. The render sequence
+  polls the device with delayed tasks and never blocks on the GPU. Replies
+  come back on the GTK runner. The destructor stops replies and waits for the
+  renderer to go on its own sequence, so the device can be destroyed next.
+  Suites: `hammer.adapters.render.service` (S1–S5: pixels through the reply
+  runner at the requested size, submission order, invalid jobs refused, no
+  reply after destruction with the renderer gone, a shut-down runner) on g++
+  and clang++, and its TSan row.
+- **Budget.** `quality/budgets/hammer-viewport-v1.json` was set before
+  measurement from the RFC 0016 decision:
+  - sp_a2_trust_fling across 4 views at 640x480: p95 ≤ 16 ms, max ≤ 50 ms;
+  - the sample room: p95 ≤ 8 ms, max ≤ 33 ms.
+
+  A sample runs from one `move_selection` edit through the command layer to
+  all four views' frames being back on the host sequence.
+  `tools/quality/hammer_viewport_budget.py` (`corpus.hammer.viewport-budget`,
+  14 checks) judges `hammer_gtk --viewport-budget`, and a 0.001 ms control
+  must be rejected.
+  - First measurement: p50 48.6 ms on trust_fling, a fail. perf showed
+    `ProblemsPanel::Refresh` → `CheckMap` at about 55% of the edit: the
+    problems panel rescanned the whole map on every edit.
+  - Fix: the panel marks its rows stale and scans on the next read. Contract
+    `presenters.problems_panel.v1` is updated: rows are still current
+    whenever they are read.
+  - Now: trust_fling p95 6.9 ms, max 7.2 ms; room p95 2.0 ms, max 2.5 ms.
+- **KTX2 material previews.** With `KTX_SOURCE_ROOT`/`KTX_BUILD_ROOT`,
+  `build.sh` configures `build-hammer-gtk-ktx` with the pinned KTX reader. The
+  tools product then builds `texturecontainer`, and `hammer_gtk` compiles
+  `ktx2_preview.cpp` with `HAMMER_KTX_PREVIEW`.
+
 **Not done.**
 
 - Textured and lit previews: K4 families, then R89/R90. The solids draw as a
   resident lines-pass batch until a family draws `render.scene` instances
   (see RFC 0016's interim note).
-- Readback into `GdkMemoryTexture`, not a dmabuf; rendering on the GTK main
-  loop, not a render sequence.
-- No edit-to-pixels budget (the RFC 0016 decision names ≤ 16 ms for
-  sp_a2_trust_fling across 4 views).
-- The KTX2 preview build of the material browser (`HAMMER_KTX_PREVIEW`) is
-  not wired into the Waf target.
+- Readback into `GdkMemoryTexture`, not a dmabuf (clause D18, after D17).
 - `tools/quality/hammer_ktx2_preview.py`'s textured viewport run waits for
-  K4.
+  the textured viewport.
+- The budget is desktop only, with no Fold7 or low-core row.
 
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 

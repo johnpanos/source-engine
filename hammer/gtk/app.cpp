@@ -41,7 +41,7 @@
 #include "hammer/formats/search_path_assets.h"
 #include "hammer/formats/vmf_map_codec.h"
 #include "hammer/formats/vpk_archive.h"
-#include "hammer/adapters/render/viewport_renderer.h"
+#include "hammer/adapters/render/viewport_service.h"
 #include "hammer/presenters/editor_workspace.h"
 #include "hammer/tools/block_tool.h"
 #include "hammer/tools/entity_tool.h"
@@ -89,7 +89,7 @@ struct Viewport
 	GtkWidget *area = nullptr;    // the HammerViewport widget
 	GtkWidget *caption = nullptr; // OSD label, updated when Tab cycles the 2D view
 	bool dirty = true;            // the shown frame is behind the workspace
-	std::optional<hammer::render_adapter::ViewportRenderer::Ticket> pending;
+	bool inFlight = false;        // a job for this view is on the render sequence
 
 	tools::PointerButton button = tools::PointerButton::None; // held, while dragging
 	double startX = 0.0; // press position (logical widget pixels)
@@ -152,21 +152,29 @@ struct AppState
 
 	// The render core the viewports draw through (RFC 0016 "Editor
 	// viewports"): composed by this root with the Vulkan device and no legacy
-	// backend. The viewport renderer borrows its device, so it is declared
-	// after the core and goes first.
+	// backend. After composition the device is driven only from the render
+	// sequence, where the viewport service keeps its renderer; frames come
+	// back on uiRunner (RFC 0016 decision "threading"). Teardown runs in
+	// reverse: the service (which waits for its renderer to go on the render
+	// thread), the render thread, then the core and its device.
 	struct CoreDeleter
 	{
 		void operator()( RenderCore *core ) const { RenderCore_Destroy( core ); }
 	};
 	std::unique_ptr<RenderCore, CoreDeleter> core;
-	std::unique_ptr<hammer::render_adapter::ViewportRenderer> viewRenderer;
+	std::unique_ptr<platform::ThreadTaskRunner> renderThread;
+	std::unique_ptr<hammer::render_adapter::ViewportService> views;
 	std::string renderError; // why the viewports cannot draw, when they cannot
+	// The snapshot the render sequence reads: an immutable copy made when the
+	// scene key moves.
+	std::shared_ptr<const hammer::viewport::RenderSnapshot> sharedScene;
+	std::uint64_t sharedSerial = ~std::uint64_t( 0 );
 
 	std::array<Viewport, 4> viewports;
 	Viewport *hovered = nullptr; // the view keys go to when focus is elsewhere
 	SceneKey sceneKey;
 	std::uint64_t sceneSerial = 0; // bumps with sceneKey; the renderer's scene key
-	guint renderTick = 0;          // frame-clock tick while views render or wait
+	guint renderIdle = 0;          // idle source that submits dirty views
 	guint flyTick = 0;    // frame-clock tick while the camera flies
 	gint64 flyPrevUs = 0; // last tick time, 0 = uninitialised
 
@@ -834,46 +842,25 @@ void DumpFrame( const Viewport &vp, const hammer::render_adapter::ViewPixels &pi
 	}
 }
 
-// One render step for every view: collect finished frames, then render the
-// views that are behind the workspace and have no frame in flight. Nothing
-// waits on the device; the tick polls again next frame.
-bool PumpViews( AppState *st )
+// Submits every view that is behind the workspace and has no job in flight
+// to the render sequence. Replies arrive on the GTK main loop (uiRunner); a
+// view that changed again meanwhile is submitted when its reply lands.
+void PumpViews( AppState *st )
 {
-	hammer::render_adapter::ViewportRenderer *renderer = st->viewRenderer.get();
-	if ( !renderer )
+	if ( !st->views )
 	{
-		return false;
+		return;
 	}
-	bool busy = false;
-	for ( Viewport &vp : st->viewports )
+	hammer::presenters::EditorWorkspace &ws = st->workspace;
+	if ( st->sharedSerial != st->sceneSerial || !st->sharedScene )
 	{
-		if ( !vp.area )
-		{
-			continue;
-		}
-		if ( vp.pending )
-		{
-			auto taken = renderer->Take( *vp.pending );
-			if ( !taken )
-			{
-				vp.pending.reset();
-				SetHelp( st, "Viewport frame lost" );
-			}
-			else if ( taken.Value() )
-			{
-				GdkTexture *texture = TextureOf( *taken.Value() );
-				hammer_viewport_set_texture( HAMMER_VIEWPORT( vp.area ), texture );
-				g_object_unref( texture );
-				DumpFrame( vp, *taken.Value() );
-				vp.pending.reset();
-			}
-			else
-			{
-				busy = true;
-				continue;
-			}
-		}
-		if ( !vp.dirty )
+		st->sharedScene = std::make_shared<const hammer::viewport::RenderSnapshot>( ws.Snapshot() );
+		st->sharedSerial = st->sceneSerial;
+	}
+	for ( std::size_t index = 0; index < st->viewports.size(); ++index )
+	{
+		Viewport &vp = st->viewports[index];
+		if ( !vp.area || vp.inFlight || !vp.dirty )
 		{
 			continue;
 		}
@@ -885,54 +872,59 @@ bool PumpViews( AppState *st )
 			continue; // unmapped or zero-size views skip frames
 		}
 		SyncViewSize( vp );
-		hammer::presenters::EditorWorkspace &ws = st->workspace;
-		if ( !renderer->SetScene( ws.Snapshot(), st->sceneSerial ) )
-		{
-			SetHelp( st, "Viewport scene could not be staged" );
-			continue;
-		}
 		const int scale = gtk_widget_get_scale_factor( vp.area );
-		hammer::render_adapter::ViewRequest request;
-		request.kind = vp.kind;
+		hammer::render_adapter::ViewJob job;
+		job.kind = vp.kind;
 		if ( vp.kind == ViewKind::Camera3D )
 		{
-			request.camera3D = &ws.Camera3DView();
+			job.camera3D = ws.Camera3DView();
 		}
 		else
 		{
-			request.camera2D = &ws.Camera2DFor( vp.kind );
-			request.grid = ws.GridLines( vp.kind );
+			job.camera2D = ws.Camera2DFor( vp.kind );
+			job.grid = ws.GridLines( vp.kind );
 		}
-		request.overlay = ws.Overlay( vp.kind );
-		request.pixelWidth = static_cast<std::uint32_t>( w * scale );
-		request.pixelHeight = static_cast<std::uint32_t>( h * scale );
-		auto ticket = renderer->Render( request );
+		job.overlay = ws.Overlay( vp.kind );
+		job.pixelWidth = static_cast<std::uint32_t>( w * scale );
+		job.pixelHeight = static_cast<std::uint32_t>( h * scale );
 		vp.dirty = false;
-		if ( ticket )
-		{
-			vp.pending = ticket.Value();
-			busy = true;
-		}
+		vp.inFlight = st->views->Submit( st->sharedScene, st->sharedSerial, std::move( job ),
+		    [st, index]( hammer::render_adapter::ViewportService::Result result )
+		    {
+			    Viewport &view = st->viewports[index];
+			    view.inFlight = false;
+			    if ( result )
+			    {
+				    GdkTexture *texture = TextureOf( result.Value() );
+				    hammer_viewport_set_texture( HAMMER_VIEWPORT( view.area ), texture );
+				    g_object_unref( texture );
+				    DumpFrame( view, result.Value() );
+			    }
+			    else
+			    {
+				    SetHelp( st, "Viewport frame lost" );
+			    }
+			    if ( view.dirty )
+			    {
+				    ScheduleRender( st );
+			    }
+		    } );
 	}
-	return busy;
 }
 
-gboolean OnRenderTick( GtkWidget *, GdkFrameClock *, gpointer user_data )
+gboolean OnRenderIdle( gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
-	if ( PumpViews( st ) )
-	{
-		return G_SOURCE_CONTINUE;
-	}
-	st->renderTick = 0;
+	st->renderIdle = 0;
+	PumpViews( st );
 	return G_SOURCE_REMOVE;
 }
 
 void ScheduleRender( AppState *st )
 {
-	if ( st->renderTick == 0 && st->window && st->viewRenderer )
+	if ( st->renderIdle == 0 && st->views )
 	{
-		st->renderTick = gtk_widget_add_tick_callback( st->window, OnRenderTick, st, nullptr );
+		st->renderIdle = g_idle_add( OnRenderIdle, st );
 	}
 }
 
@@ -965,14 +957,9 @@ void ComposeRenderer( AppState *st )
 		return;
 	}
 	st->core.reset( core );
-	auto renderer = hammer::render_adapter::ViewportRenderer::Create( *binding->device );
-	if ( !renderer )
-	{
-		st->renderError = "Viewports unavailable: the viewport renderer could not start";
-		st->core.reset();
-		return;
-	}
-	st->viewRenderer = std::move( renderer ).Value();
+	st->renderThread = std::make_unique<platform::ThreadTaskRunner>( "hammer-render" );
+	st->views = std::make_unique<hammer::render_adapter::ViewportService>(
+	    *binding->device, *st->renderThread, st->uiRunner );
 }
 
 // ---- Input translation -------------------------------------------------------
@@ -2539,6 +2526,8 @@ int RenderQuad( const std::string &vmfPath, const std::string &outPpm, int tileW
 int RenderWorkspaceDemo( const std::string &outPpm, int tileW, int tileH );
 int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &outPpm, int width,
     int height, const std::string &vpkList );
+int RenderEditBudget( const std::string &vmfPath, const std::string &outJson, int width, int height,
+    int warmup, int edits );
 
 int main( int argc, char **argv )
 {
@@ -2551,6 +2540,10 @@ int main( int argc, char **argv )
 	std::string texturedIn;
 	std::string texturedVpks;
 	std::string openPath;
+	std::string budgetOut;
+	std::string budgetIn;
+	int budgetEdits = 40;
+	int budgetWarmup = 5;
 	bool maximized = false;
 	std::string buildsRoot = "quality-results/hammer-builds";
 	bool publishBuilds = true;
@@ -2581,6 +2574,19 @@ int main( int argc, char **argv )
 			texturedOut = argv[++i];
 			texturedIn = argv[++i];
 			texturedVpks = argv[++i];
+		}
+		else if ( a == "--viewport-budget" && i + 2 < argc )
+		{
+			budgetOut = argv[++i];
+			budgetIn = argv[++i];
+		}
+		else if ( a == "--edits" && i + 1 < argc )
+		{
+			budgetEdits = std::atoi( argv[++i] );
+		}
+		else if ( a == "--warmup" && i + 1 < argc )
+		{
+			budgetWarmup = std::atoi( argv[++i] );
 		}
 		else if ( a == "--open" && i + 1 < argc )
 		{
@@ -2616,11 +2622,14 @@ int main( int argc, char **argv )
 		}
 		else if ( a == "--help" || a == "-h" )
 		{
-			std::printf( "Usage: hammer_gtk [--open MAP.vmf] [--maximized] [--builds DIR] "
-			             "[--no-publish] [--lighting PROFILE]\n"
-			             "       hammer_gtk --screenshot OUT.ppm MAP.vmf [--width W --height H]\n"
-			             "       hammer_gtk --quad OUT.ppm MAP.vmf [--width W --height H]\n"
-			             "       hammer_gtk --demo OUT.ppm [--width W --height H]\n" );
+			std::printf(
+			    "Usage: hammer_gtk [--open MAP.vmf] [--maximized] [--builds DIR] "
+			    "[--no-publish] [--lighting PROFILE]\n"
+			    "       hammer_gtk --screenshot OUT.ppm MAP.vmf [--width W --height H]\n"
+			    "       hammer_gtk --quad OUT.ppm MAP.vmf [--width W --height H]\n"
+			    "       hammer_gtk --demo OUT.ppm [--width W --height H]\n"
+			    "       hammer_gtk --viewport-budget OUT.json MAP.vmf [--width W --height H] "
+			    "[--edits N --warmup N]\n" );
 			return 0;
 		}
 	}
@@ -2636,6 +2645,10 @@ int main( int argc, char **argv )
 	if ( !demoOut.empty() )
 	{
 		return RenderWorkspaceDemo( demoOut, width / 2, height / 2 );
+	}
+	if ( !budgetOut.empty() )
+	{
+		return RenderEditBudget( budgetIn, budgetOut, width, height, budgetWarmup, budgetEdits );
 	}
 	if ( !texturedOut.empty() )
 	{

@@ -21,14 +21,14 @@ ProblemsPanel::ProblemsPanel( app::EditSession &session, app::SessionCommands &c
 		    switch ( event.kind )
 		    {
 		    case app::SessionEventKind::Replaced:
-			    Refresh();
+			    MarkStale();
 			    break;
 		    case app::SessionEventKind::Edited:
 		    case app::SessionEventKind::Undone:
 		    case app::SessionEventKind::Redone:
-			    if ( m_session.Revision() != m_checkedRevision )
+			    if ( m_stale || m_session.Revision() != m_checkedRevision )
 			    {
-				    Refresh();
+				    MarkStale();
 			    }
 			    break;
 		    case app::SessionEventKind::SelectionChanged:
@@ -36,10 +36,63 @@ ProblemsPanel::ProblemsPanel( app::EditSession &session, app::SessionCommands &c
 			    break;
 		    }
 	    } );
-	Refresh();
+	++m_revision;
+}
+
+void ProblemsPanel::MarkStale()
+{
+	if ( !m_stale )
+	{
+		m_stale = true;
+		++m_revision;
+	}
+}
+
+void ProblemsPanel::EnsureCurrent() const
+{
+	if ( m_stale )
+	{
+		Scan();
+	}
 }
 
 void ProblemsPanel::Refresh()
+{
+	Scan();
+	++m_revision;
+}
+
+const std::vector<ProblemRow> &ProblemsPanel::Rows() const
+{
+	EnsureCurrent();
+	return m_rows;
+}
+
+std::size_t ProblemsPanel::ErrorCount() const
+{
+	EnsureCurrent();
+	return m_errors;
+}
+
+std::size_t ProblemsPanel::WarningCount() const
+{
+	EnsureCurrent();
+	return m_warnings;
+}
+
+std::size_t ProblemsPanel::FixableCount() const
+{
+	EnsureCurrent();
+	return m_fixable;
+}
+
+std::uint64_t ProblemsPanel::CheckedRevision() const
+{
+	EnsureCurrent();
+	return m_checkedRevision;
+}
+
+void ProblemsPanel::Scan() const
 {
 	const scene::MapDocument &doc = m_session.Document();
 	m_rows.clear();
@@ -62,12 +115,13 @@ void ProblemsPanel::Refresh()
 		m_rows.push_back( std::move( row ) );
 	}
 	m_checkedRevision = m_session.Revision();
+	m_stale = false;
 	++m_scans;
-	++m_revision;
 }
 
 ProblemsPanel::Result ProblemsPanel::GoTo( std::size_t row )
 {
+	EnsureCurrent();
 	if ( row >= m_rows.size() )
 	{
 		return app::CommandFailure( app::CommandStatus::Rejected, "select", "no such problem" );
@@ -89,6 +143,7 @@ ProblemsPanel::Result ProblemsPanel::GoTo( std::size_t row )
 
 ProblemsPanel::Result ProblemsPanel::Fix( std::size_t row )
 {
+	EnsureCurrent();
 	if ( row >= m_rows.size() )
 	{
 		return app::CommandFailure(

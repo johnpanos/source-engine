@@ -5,10 +5,15 @@
 //			rows of app::CheckMap for the session's document, counts by
 //			severity, "go to" and the fixes.
 //
-//			Refresh: the check reruns when the document changes (edit, undo,
-//			redo, replacement), keyed by the session revision so a selection
-//			change or a save never rescans; Refresh() forces a rescan (after
-//			the catalog or the material port reloads).
+//			Refresh: a document change (edit, undo, redo, replacement) marks
+//			the rows stale and bumps Revision(); the check reruns on the next
+//			read of the rows, a count, CheckedRevision() or an action, so the
+//			rows a caller reads are always those of the current document, and
+//			an edit nobody looks at costs no scan (the check is the largest
+//			per-edit cost on a real map). Staleness is keyed by the session
+//			revision, so a selection change or a save never rescans.
+//			Refresh() forces a rescan (after the catalog or the material port
+//			reloads).
 //
 //			Rows keep CheckMap's order (by code, then first object, then
 //			message). Each row carries the stable code name
@@ -74,15 +79,16 @@ public:
 	ProblemsPanel( const ProblemsPanel & ) = delete;
 	ProblemsPanel &operator=( const ProblemsPanel & ) = delete;
 
+	// Bumps when the rows change or go stale; reading does not bump it.
 	std::uint64_t Revision() const { return m_revision; }
-	const std::vector<ProblemRow> &Rows() const { return m_rows; }
-	std::size_t ErrorCount() const { return m_errors; }
-	std::size_t WarningCount() const { return m_warnings; }
-	std::size_t FixableCount() const { return m_fixable; }
+	const std::vector<ProblemRow> &Rows() const;
+	std::size_t ErrorCount() const;
+	std::size_t WarningCount() const;
+	std::size_t FixableCount() const;
 	// The session revision the rows were computed at.
-	std::uint64_t CheckedRevision() const { return m_checkedRevision; }
+	std::uint64_t CheckedRevision() const;
 	// How many times the document was scanned (a rescan counter for hosts
-	// and tests).
+	// and tests); reading it does not scan.
 	std::size_t ScanCount() const { return m_scans; }
 
 	void Refresh();
@@ -92,18 +98,24 @@ public:
 	Result FixAll();
 
 private:
+	void MarkStale();
+	void EnsureCurrent() const;
+	void Scan() const;
+
 	app::EditSession &m_session;
 	app::SessionCommands &m_commands;
 	const ports::IEntityCatalog *m_catalog = nullptr;
 	const ports::IMaterialInfo *m_materials = nullptr;
 	app::SessionSubscription m_subscription;
 	std::uint64_t m_revision = 0;
-	std::uint64_t m_checkedRevision = 0;
-	std::size_t m_scans = 0;
-	std::vector<ProblemRow> m_rows;
-	std::size_t m_errors = 0;
-	std::size_t m_warnings = 0;
-	std::size_t m_fixable = 0;
+	// The cache of the last scan: filled on read, so mutable.
+	mutable bool m_stale = true;
+	mutable std::uint64_t m_checkedRevision = 0;
+	mutable std::size_t m_scans = 0;
+	mutable std::vector<ProblemRow> m_rows;
+	mutable std::size_t m_errors = 0;
+	mutable std::size_t m_warnings = 0;
+	mutable std::size_t m_fixable = 0;
 };
 
 } // namespace hammer::presenters
