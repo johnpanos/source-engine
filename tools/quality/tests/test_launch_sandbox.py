@@ -227,7 +227,6 @@ ALLOWED = {
     "portal2_physics.py": "pending: retail cohort (busy file)",
     "legacy_shader_conformance.py": "pending: busy file",
     "hammer_ui_test.py": "pending: Hammer cohort (busy file; private XDG_CONFIG_HOME only)",
-    "hammer_viewport_budget.py": "pending: Hammer cohort",
 }
 
 

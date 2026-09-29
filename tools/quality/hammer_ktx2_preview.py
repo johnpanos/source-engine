@@ -6,6 +6,7 @@ import argparse
 from collections import defaultdict
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import struct
@@ -13,6 +14,7 @@ import subprocess
 import tempfile
 
 import conformance
+import launch_sandbox
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -74,11 +76,11 @@ def read_ppm(path):
     return red, pixels
 
 
-def run_product(binary, vmf, vpk, ppm):
+def run_product(binary, vmf, vpk, ppm, environment):
     process = subprocess.run(
         [str(binary), "--textured", str(ppm), str(vmf), str(vpk),
          "--width", "640", "--height", "480"],
-        cwd=ROOT, capture_output=True, text=True, timeout=60)
+        cwd=ROOT, capture_output=True, text=True, timeout=60, env=environment)
     if process.returncode != 0 or not ppm.is_file() or \
             "textured: wrote" not in process.stdout:
         raise GateFailure("Hammer product failed to render: " + process.stderr[-1000:])
@@ -104,11 +106,15 @@ def main(argv=None):
             work = Path(work)
             runs = []
             images = []
+            # A throwaway HOME and XDG directories for the editor (RFC 0005,
+            # launch sandbox).
+            sandbox = launch_sandbox.Sandbox(work / "sandbox")
+            environment = sandbox.environment(os.environ)
             for label, corrupt in (("valid", False), ("corrupt", True)):
                 vpk = work / f"{label}_dir.vpk"
                 ppm = work / f"{label}.ppm"
                 vpk.write_bytes(build_vpk(package, corrupt))
-                process = run_product(binary, vmf, vpk, ppm)
+                process = run_product(binary, vmf, vpk, ppm, environment)
                 red, pixels = read_ppm(ppm)
                 runs.append({"label": label, "red_pixels": red,
                              "image_sha256": sha256(ppm), "vpk_sha256": sha256(vpk),
@@ -117,6 +123,7 @@ def main(argv=None):
             if runs[0]["red_pixels"] < 1000 or runs[1]["red_pixels"] != 0 or \
                     images[0] == images[1]:
                 raise GateFailure("KTX2 positive and malformed controls did not diverge")
+            evidence["sandbox"] = sandbox.finish()
             evidence.update({"outcome": "pass", "runs": runs,
                              "binary_sha256": sha256(binary), "fixture_sha256": sha256(args.fixture),
                              "vmf_sha256": sha256(vmf),

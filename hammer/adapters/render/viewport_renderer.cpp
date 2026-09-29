@@ -936,7 +936,7 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 		pass::opaque::OpaqueTargets opaque{
 		    colorRef, depthRef, request.pixelWidth, request.pixelHeight, targets.clear };
 		auto drawn = pass::opaque::AddOpaquePasses(
-		    builder, *snapshot, list, sceneView, { m_FaceMeshes, m_Programs }, opaque );
+		    builder, *snapshot, list, sceneView, { .meshes = m_FaceMeshes, .programs = m_Programs, .frames = {} }, opaque );
 		if ( !drawn )
 		{
 			return fail( ViewportStatus::kPass );
@@ -947,7 +947,7 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 			opaque.clearColor = false;
 			opaque.clearDepth = false;
 			auto over = pass::opaque::AddOpaquePasses(
-			    builder, *snapshot, blended, blendedView, { m_FaceMeshes, m_Programs }, opaque );
+			    builder, *snapshot, blended, blendedView, { .meshes = m_FaceMeshes, .programs = m_Programs, .frames = {} }, opaque );
 			if ( !over )
 			{
 				return fail( ViewportStatus::kPass );

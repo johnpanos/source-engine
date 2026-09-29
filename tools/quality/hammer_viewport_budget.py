@@ -31,6 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/quality"))
 from conformance_result import Checks  # noqa: E402
+import launch_sandbox  # noqa: E402
 
 BUDGETS = ROOT / "quality/budgets/hammer-viewport-v1.json"
 SAMPLES_SCHEMA = "hammer-viewport-samples/v1"
@@ -54,7 +55,7 @@ def judge(samples, limits):
         p95, limits["edit_to_pixels_p95_ms"], worst, limits["edit_to_pixels_max_ms"])
 
 
-def run_row(gtk, row, out, timeout):
+def run_row(gtk, row, out, timeout, environment):
     workload = row["workload"]
     samples_path = out / (row["id"] + ".json")
     command = [str(gtk), "--viewport-budget", str(samples_path), str(ROOT / workload["map"]),
@@ -64,7 +65,8 @@ def run_row(gtk, row, out, timeout):
         command += ["--textures", os.environ[workload["textures_env"]]]
     if workload.get("frames") == "dmabuf":
         command += ["--dmabuf"]
-    ran = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    ran = subprocess.run(command, capture_output=True, text=True, timeout=timeout,
+                         env=environment)
     (out / (row["id"] + ".log")).write_text(" ".join(command) + "\n" + ran.stdout + ran.stderr)
     if ran.returncode != 0 or not samples_path.exists():
         return ran.returncode, None
@@ -111,9 +113,13 @@ def main():
     rows = [r for r in rows if r not in missing]
     checks.check(bool(rows) or bool(missing), "budgets.rows", "no rows selected")
     summary = {"schema": "hammer-viewport-budget-results/v1", "rows": {}}
+    # The editor runs with a throwaway HOME and XDG directories (RFC 0005,
+    # launch sandbox): nothing it saves reaches the user's configuration.
+    sandbox = launch_sandbox.Sandbox(out / "sandbox")
+    environment = sandbox.environment(os.environ)
     for row in rows:
         name = row["id"]
-        code, result = run_row(args.gtk, row, out, args.timeout)
+        code, result = run_row(args.gtk, row, out, args.timeout, environment)
         checks.check(code == 0 and result is not None, name + ".ran", "exit %s" % code)
         if result is None:
             continue
@@ -133,6 +139,7 @@ def main():
                                  "p95_ms": percentile(samples, 0.95) if samples else None,
                                  "max_ms": max(samples) if samples else None}
         print("%s: %s" % (name, detail))
+    summary["sandbox"] = sandbox.finish()
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return checks.report()
 
