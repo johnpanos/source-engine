@@ -3074,7 +3074,8 @@ into the product (binding rule 3).
     - It walks front to back along each pixel's own ray through the slices
       up to the scene depth, with Hillaire's energy-conserving step.
     - Each slice's froxel values are filtered bilinearly across columns.
-    - The result is blended as dst T + L on rgb only, so alpha is kept.
+    - It writes (L, T) under the port's transmittance blend (D21), so the
+      frame becomes dst T + L on rgb, alpha kept, T at the target's precision.
     - Marching per pixel keeps transmittance exact for a medium uniform
       across a column, the screen's edges included. A column integration
       evaluated at the column's centre misjudged the edge rays' length
@@ -3111,9 +3112,9 @@ into the product (binding rule 3).
 
 | Check | Evidence | Result |
 | --- | --- | --- |
-| Homogeneous transmittance | `render.lab.volumetric`: exp(-sigma_t d) at every pixel within 0.5 percent at densities 0, 0.002 and 0.005 per unit. The absolute term is one half-float ulp of the blend's alpha times the wall (2^-10); see the note below | pass |
-| Height fog and emission | exp(-analytic optical depth) within 2 percent inside a 4-pixel edge ring (the ring reaches 15 percent at the top corners, where the edge froxel is clamped); e (1 - T) / sigma_t within 0.5 percent | pass |
-| Single scattering against a numerical integral | a point light, albedo 0.6, g 0.5 and -0.3, against Simpson along each ray with transmittance on both legs. Mean relative error 0.0084 and 0.0058 (at most 0.03), p95 0.030 and 0.023 (at most 0.08), frame mean 1.0006 and 1.0093 (within 0.02) | pass |
+| Homogeneous transmittance | `render.lab.volumetric`: exp(-sigma_t d) at every pixel within 0.5 percent + 1e-4 at densities 0, 0.002 and 0.005 per unit (worst relative error 1.0 percent, on small values at the edges, inside the absolute term); see the note below | pass |
+| Height fog and emission | exp(-analytic optical depth) within 2 percent + 1e-4 at every pixel (worst 1.2 percent; the composite extrapolates the froxel values beyond the outermost column centres); e (1 - T) / sigma_t within 0.5 percent | pass |
+| Single scattering against a numerical integral | a point light, albedo 0.6, g 0.5 and -0.3, against Simpson along each ray with transmittance on both legs. Mean relative error 0.0067 and 0.0042 (at most 0.03), p95 0.018 and 0.015 (at most 0.08), frame mean 0.998 and 1.007 (within 0.02) | pass |
 | Density zero bitwise | density zero and an empty medium equal the frame without the pass bitwise, with the surface program's legacy range fog on; the foggy hall's clear views at `--fog-scale 0` equal the lab's frames from before the pass, byte for byte | pass |
 | No history after a camera cut | the frame after a cut is bitwise a new renderer's frame | pass |
 | Seeded stages | `render.lab.volumetric.sensitivity`: phase ignored and albedo ignored (inject) fail scatter.point; extinction applied twice and the slice off by one (composite) fail transmittance | pass (5) |
@@ -3132,12 +3133,27 @@ The suites pass with 0 validation messages (synchronization validation on).
   findings it reports are in files this slice does not touch. stylelint is
   clean.
 
-**Tolerance note.** The transmittance tolerance was 0.5 percent + 1e-4, fixed
-before the first run. The first run failed by about 1 percent at T = 0.05.
-The cause is the target, not the term: a half-float target converts the
-blend's source alpha a = 1 - T to half float before forming 1 - a. The rule
-now adds that quantum (2^-10 of the frame under the medium) and records its
-cause. The height fog's edge ring is reported, not judged.
+**Tolerance note.** The tolerances (0.5 percent + 1e-4 for transmittance
+and emission, 2 percent + 1e-4 for height fog) were fixed before the first
+run and are unchanged. The first build failed both, and the causes were
+fixed, not the rules (43's review):
+- **Transmittance precision.** A premultiplied blend of (L, 1 - T) lost a
+  small T to the half-float target: a = 0.95 is stored with a quantum of
+  2^-11, which is 1 percent of T = 0.05. The composite now writes (L, T)
+  under a new port blend mode, `BlendMode::kTransmittance` (src + dst * a,
+  the destination's alpha kept). It is render.device.v2 clause D21, with a
+  pixel check at a = 0.05 on a half-float target and a bad adapter that
+  draws it as premultiplied, and it is implemented in the Vulkan and OpenGL
+  adapters.
+- **Screen edges.** Within half a froxel of the edge, the froxel values
+  were held at the outermost column's value (the height fog's top corners
+  were 15 percent off). They are now extrapolated from the two outermost
+  columns, clamped at zero.
+
+`render.device.v2.gl.sensitivity`'s early-upload-reuse case (D10) is racy on
+radeonsi: it is not detected in 2 of 6 runs at the base commit
+(`8dd98ddc`), and the same holds with D21. This predates the slice, and the
+port owner has it.
 
 **Gallery** (`lighting_fixtures.py gallery --fixture foggy-hall`, denoised
 references, tolerance mean 0.10, p99 0.9):

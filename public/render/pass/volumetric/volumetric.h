@@ -34,7 +34,11 @@
 //			   bilinearly across columns: per slice of ray length d (the last
 //			   one ends at the surface),
 //			       L += T S (1 - exp(-sigma_t d)) / sigma_t,  T *= exp(-sigma_t d)
-//			   blended as dst * T + L (rgb only; alpha kept). Marching per
+//			   written as ( L, T ) and blended by BlendMode::kTransmittance
+//			   (render.device.v2 D21): dst * T + L, rgb only, alpha kept, T
+//			   at the target's own precision. Within half a froxel of the
+//			   screen's edge the froxel values are extrapolated from the two
+//			   outermost columns, not held. Marching per
 //			   pixel keeps the transmittance exact for a medium uniform across
 //			   a column, the screen's edges included. An integrated volume
 //			   (Hillaire's per-column prefix) is the translucent application's

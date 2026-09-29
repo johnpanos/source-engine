@@ -776,7 +776,10 @@ private:
 		for ( std::size_t i = 0; i < p.colorFormats.size(); ++i )
 		{
 			const auto index = static_cast<GLuint>( i );
-			const BlendMode mode = p.blends.empty() ? BlendMode::kOpaque : p.blends[i];
+			BlendMode mode = p.blends.empty() ? BlendMode::kOpaque : p.blends[i];
+			if ( mode == BlendMode::kTransmittance &&
+			     m_D.m_Options.sensitivity.transmittanceAsPremultiplied )
+				mode = BlendMode::kPremultiplied;
 			if ( mode == BlendMode::kOpaque )
 			{
 				m_Gl.Disablei( GL_BLEND, index );
@@ -794,6 +797,9 @@ private:
 				case BlendMode::kPremultiplied:
 					m_Gl.BlendFuncSeparatei(
 					    index, GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
+					break;
+				case BlendMode::kTransmittance:
+					m_Gl.BlendFuncSeparatei( index, GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_ONE );
 					break;
 				case BlendMode::kAdditive:
 				case BlendMode::kOpaque:

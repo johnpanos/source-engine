@@ -1127,6 +1127,8 @@ int main()
 	staleExport.staleExport = true;
 	vulkan::VulkanAdapterOptions::Sensitivity nullExporter;
 	nullExporter.nullExternalImages = true;
+	vulkan::VulkanAdapterOptions::Sensitivity transmittance;
+	transmittance.transmittanceAsPremultiplied = true;
 	const Case cases[] = {
 	    { "flipped-y", flipY, "under-test.D13 clip y" },
 	    { "gl-depth-range", glDepth, "under-test.D13 clip z" },
@@ -1135,6 +1137,7 @@ int main()
 	    { "ignored-write-masks", writeMasks, "under-test.D17 a red-and-alpha mask" },
 	    { "stale-export", staleExport, "under-test.D18 the exported memory" },
 	    { "null-exporter", nullExporter, "under-test.D18 the exporter is present" },
+	    { "transmittance-as-premultiplied", transmittance, "under-test.D21 src + dst * a" },
 	};
 	for ( const Case &c : cases )
 	{

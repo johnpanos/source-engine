@@ -9686,7 +9686,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-native-vulkan-gpu",
       "kind": "positive",
-      "description": "RFC 0016 K11 'Volumetric fog', the participating-media term (render/lab/volumetric_suite.cpp, render_lab suite volumetric --validate): render.pass.volumetric over a wall 600 units away drawn by the unlit point, on render.pass.lights' light grid subdivided 8 x 4 (SubdivideClusterGrid), against a double-precision C++ oracle that shares no code with the shaders. A homogeneous absorbing medium gives exp(-sigma_t d) at every pixel within 0.5 percent plus one half-float ulp of the blend's alpha times the wall, at densities 0, 0.002 and 0.005 per unit. A height fog gives exp(-its analytic optical depth) within 2 percent inside a 4-pixel edge ring, and the ring is reported. A purely emitting medium gives e (1 - T) / sigma_t within 0.5 percent. Single scattering of an inverse-square point light at albedo 0.6 and Henyey-Greenstein g 0.5 and -0.3 matches a Simpson integral along each ray with transmittance on both legs: mean relative error at most 3 percent, 95th percentile at most 8 percent, frame mean within 2 percent, for rays passing 50 units or more from the light. Density zero and an empty medium are bitwise the frame without the pass, with the surface program's legacy range fog on. A frame after a camera cut is bitwise a new renderer's frame, because the pass keeps no history. 0 validation messages.",
+      "description": "RFC 0016 K11 'Volumetric fog', the participating-media term (render/lab/volumetric_suite.cpp, render_lab suite volumetric --validate): render.pass.volumetric over a wall 600 units away drawn by the unlit point, on render.pass.lights' light grid subdivided 8 x 4 (SubdivideClusterGrid), against a double-precision C++ oracle that shares no code with the shaders. A homogeneous absorbing medium gives exp(-sigma_t d) at every pixel within 0.5 percent + 1e-4, at densities 0, 0.002 and 0.005 per unit (the composite carries T to the frame through render.device.v2 D21's transmittance blend). A height fog gives exp(-its analytic optical depth) within 2 percent + 1e-4 at every pixel, the screen's edges included. A purely emitting medium gives e (1 - T) / sigma_t within 0.5 percent. Single scattering of an inverse-square point light at albedo 0.6 and Henyey-Greenstein g 0.5 and -0.3 matches a Simpson integral along each ray with transmittance on both legs: mean relative error at most 3 percent, 95th percentile at most 8 percent, frame mean within 2 percent, for rays passing 50 units or more from the light. Density zero and an empty medium are bitwise the frame without the pass, with the surface program's legacy range fog on. A frame after a camera cut is bitwise a new renderer's frame, because the pass keeps no history. 0 validation messages.",
       "command": [
         "{python}",
         "tools/render/lab.py",
@@ -9706,6 +9706,7 @@
         "render/shaderlib/core_artifacts.cpp",
         "render/lab/volumetric_suite.cpp",
         "render/lab/lab_media.cpp",
+        "render/device/vulkan/pipelines.cpp",
         "render/lab/lab_canvas.cpp",
         "render/lab/lab_suite.cpp",
         "render/pass/volumetric/volumetric.cpp",

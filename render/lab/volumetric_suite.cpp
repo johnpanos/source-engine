@@ -382,58 +382,35 @@ vol::FogVolume Everywhere( float extinction, float albedo, float g )
 	return volume;
 }
 
-// The composite blends dst ( 1 - a ) + L with a = 1 - T, and the target
-// converts a to half float before blending: the transmittance applied carries
-// up to one half-float ulp of a below 1 (2^-11), about 2^-10 after the blend's
-// own rounding, times the frame under the medium. `surface[c]` is that frame.
-constexpr double kBlendTransmittanceUlp = 1.0 / 1024.0;
-
-// Every pixel at least `margin` pixels inside the screen within `relative`
-// + kBlendTransmittanceUlp * surface + 1e-4 of `expected( x, y, channel )`;
-// the ring outside the margin is reported (INFO), not judged.
+// Every pixel within `relative` + 1e-4 of `expected( x, y, channel )`.
 template <typename Expected>
 void Judge( Results &results, const std::string &name, const CanvasImage &image, double relative,
-    const float surface[3], std::uint32_t margin, Expected expected )
+    Expected expected )
 {
 	std::uint32_t outside = 0;
-	std::uint32_t judged = 0;
 	double worst = 0.0;
-	double worstRing = 0.0;
 	std::vector<float> exact( image.rgba.size(), 1.0f );
 	for ( std::uint32_t y = 0; y < kHeight; ++y )
 	{
 		for ( std::uint32_t x = 0; x < kWidth; ++x )
 		{
-			const bool ring =
-			    x < margin || y < margin || x + margin >= kWidth || y + margin >= kHeight;
 			for ( int c = 0; c < 3; ++c )
 			{
 				const double want = expected( x, y, c );
 				const double got = image.At( x, y )[c];
 				exact[( std::size_t( y ) * kWidth + x ) * 4 + c] = float( want );
 				const double error = std::fabs( got - want );
-				const double relativeError = error / ( std::fabs( want ) + 1e-12 );
-				if ( ring )
-				{
-					worstRing = std::max( worstRing, relativeError );
-					continue;
-				}
-				++judged;
-				worst = std::max( worst, relativeError );
-				const double absolute = kBlendTransmittanceUlp * surface[c] + 1e-4;
-				if ( !( error <= relative * std::fabs( want ) + absolute ) )
+				worst = std::max( worst, error / ( std::fabs( want ) + 1e-12 ) );
+				if ( !( error <= relative * std::fabs( want ) + 1e-4 ) )
 					++outside;
 			}
 		}
 	}
 	SaveImage( image.rgba, name + ".gpu" );
 	SaveImage( exact, name + ".exact" );
-	if ( margin > 0 )
-		std::printf( "INFO %s: the %u-pixel edge ring's worst relative error %.4f (not judged)\n",
-		    name.c_str(), margin, worstRing );
-	results.That( outside == 0 && judged > 0, name,
-	    Text( "%.0f of %.0f values outside; worst relative error %.5f", outside, double( judged ),
-	        worst ) );
+	results.That( outside == 0, name,
+	    Text( "%.0f of %.0f values outside; worst relative error %.5f", outside,
+	        double( kWidth * kHeight * 3 ), worst ) );
 }
 
 std::optional<std::string> VolumetricChecks( Lab &lab, Results &results )
@@ -456,7 +433,6 @@ std::optional<std::string> VolumetricChecks( Lab &lab, Results &results )
 		if ( std::optional<std::string> why = Render( lab, scene, renderer.get(), image ) )
 			return why;
 		Judge( results, Text( "transmittance.homogeneous-%.3f", extinction ), image, 0.005,
-		    scene.wall, 0,
 		    [&]( std::uint32_t x, std::uint32_t y, int c )
 		    {
 			    const D3 ray = PixelRay( camera, x + 0.5, y + 0.5 );
@@ -476,7 +452,7 @@ std::optional<std::string> VolumetricChecks( Lab &lab, Results &results )
 		CanvasImage image;
 		if ( std::optional<std::string> why = Render( lab, scene, renderer.get(), image ) )
 			return why;
-		Judge( results, "transmittance.height-fog", image, 0.02, scene.wall, 4,
+		Judge( results, "transmittance.height-fog", image, 0.02,
 		    [&]( std::uint32_t x, std::uint32_t y, int )
 		    {
 			    const D3 ray = PixelRay( scene.camera, x + 0.5, y + 0.5 );
@@ -503,7 +479,7 @@ std::optional<std::string> VolumetricChecks( Lab &lab, Results &results )
 		if ( std::optional<std::string> why = Render( lab, scene, renderer.get(), image ) )
 			return why;
 		const double e[3] = { 0.001, 0.002, 0.003 };
-		Judge( results, "emission.homogeneous", image, 0.005, scene.wall, 0,
+		Judge( results, "emission.homogeneous", image, 0.005,
 		    [&]( std::uint32_t x, std::uint32_t y, int c )
 		    {
 			    const D3 ray = PixelRay( camera, x + 0.5, y + 0.5 );

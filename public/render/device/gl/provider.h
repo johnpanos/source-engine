@@ -58,6 +58,7 @@ struct GlAdapterOptions
 		bool ignoreColorWriteMasks = false; // D17: every channel written
 		bool dropSpecialization = false;    // D20: the constants never reach the program
 		bool unsafeUploadReuse = false;     // D10: ring ranges retire at submission
+		bool transmittanceAsPremultiplied = false; // D21: kTransmittance drawn as kPremultiplied
 	};
 	Sensitivity sensitivity;
 };

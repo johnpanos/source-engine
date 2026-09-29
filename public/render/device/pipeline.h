@@ -127,7 +127,12 @@ enum class BlendMode : std::uint8_t
 	kOpaque,
 	kAlpha,         // src * a + dst * (1 - a)
 	kPremultiplied, // src + dst * (1 - a)
-	kAdditive       // src + dst
+	kAdditive,      // src + dst
+	// D21: src + dst * a in color, the destination's alpha kept: the source
+	// carries a transmittance in alpha (a participating medium's, RFC 0016).
+	// It is applied as written, so a small transmittance keeps its relative
+	// precision where 1 - a would lose it to the target's format.
+	kTransmittance
 };
 
 // The color components a pipeline writes to an attachment (clause D17): a bit

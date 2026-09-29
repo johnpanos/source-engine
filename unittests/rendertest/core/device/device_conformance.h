@@ -18,7 +18,9 @@
 #include "testing/checks.h"
 #include "test_shaders.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -1227,6 +1229,118 @@ inline void ColorWriteMasks( Suite &s )
 	s.That( kept, "D17", "a red-and-alpha mask writes red and alpha and keeps green and blue" );
 }
 
+// D21 transmittance blending: kTransmittance writes src + dst * a in color and
+// keeps the destination's alpha. On rasterizing adapters, over a half-float
+// target cleared to ( 0.8, 0.6, 0.4, 0.25 ), a draw of ( 0.01, 0.02, 0.03,
+// 0.05 ) gives ( 0.05, 0.05, 0.05, 0.25 ): the small transmittance applied at
+// the target's precision (a premultiplied blend would give 0.77, 0.59, 0.41).
+inline void TransmittanceBlend( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	BindGroupLayoutId layouts[kMaxBindGroups];
+	for ( std::uint32_t role = 0; role < kMaxBindGroups; ++role )
+	{
+		auto layout = device->CreateBindGroupLayout( { static_cast<BindGroupRole>( role ), {} } );
+		if ( !s.That( layout.HasValue(), "D21", "an empty layout is created" ) )
+			return;
+		layouts[role] = layout.Value();
+	}
+	const Format colors[] = { Format::kRGBA16Float };
+	const BlendMode blends[] = { BlendMode::kTransmittance };
+	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device->Facts().artifactFormat,
+	                                          s.Code( shaders::kFullScreenVertex ), "main", {} },
+	    { ShaderStage::kFragment, device->Facts().artifactFormat,
+	        s.Code( shaders::kConstantFragment ), "main", {}, 16 } };
+	PipelineDesc desc;
+	desc.stages = stages;
+	desc.layouts = layouts;
+	desc.colorFormats = colors;
+	desc.blends = blends;
+	desc.raster.cull = CullMode::kNone;
+	desc.drawConstantBytes = 16;
+	auto pipeline = device->CreatePipeline( desc );
+	if ( !s.That( pipeline.HasValue(), "D21", "a transmittance-blending pipeline is created" ) )
+		return;
+
+	constexpr std::uint32_t kSize = 8;
+	TextureDesc target;
+	target.format = Format::kRGBA16Float;
+	target.width = kSize;
+	target.height = kSize;
+	target.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
+	auto color = device->CreateTexture( target );
+	if ( !s.That( color.HasValue(), "D21", "the half-float target is created" ) )
+		return;
+	const std::uint64_t outBytes = std::uint64_t( kSize ) * kSize * 8;
+	const BufferId out = s.Buffer(
+	    *device, outBytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	CommandEncoder &e = encoder.Value();
+	e.TransitionTexture(
+	    color.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+	const ColorAttachment attachments[] = {
+	    { color.Value(), LoadOp::kClear, StoreOp::kStore, { 0.8f, 0.6f, 0.4f, 0.25f }, {} } };
+	RenderingDesc rendering;
+	rendering.colors = attachments;
+	rendering.width = kSize;
+	rendering.height = kSize;
+	e.BeginRendering( rendering );
+	e.SetViewport( { 0, 0, float( kSize ), float( kSize ), 0, 1 } );
+	e.SetPipeline( pipeline.Value() );
+	const float source[4] = { 0.01f, 0.02f, 0.03f, 0.05f };
+	e.SetDrawConstants( 0, std::as_bytes( std::span( source ) ) );
+	e.Draw( 3 );
+	e.EndRendering();
+	e.TransitionTexture(
+	    color.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
+	e.TransitionBuffer( out, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyTextureToBuffer( color.Value(), out, { 0, 0, 0, kSize, kSize } );
+	e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	const std::optional<CompletionToken> token = s.Run( *device, e );
+	s.That( token.has_value(), "D21", "a transmittance-blended draw submits" );
+	if ( !token || !s.m_Driver.rasterizes )
+	{
+		if ( !s.m_Driver.rasterizes )
+			std::printf(
+			    "SKIP %s.D21 pixels: the adapter does not rasterize\n", s.m_Driver.name.c_str() );
+		return;
+	}
+	if ( !s.Finish( *device, *token ) )
+		return;
+	const std::vector<std::byte> pixels = s.ReadBack( *device, out, outBytes );
+	// Half floats decoded here (normal numbers only: the values are 0.01 to 1).
+	const auto half = [&]( std::size_t offset )
+	{
+		std::uint16_t bits = 0;
+		std::memcpy( &bits, pixels.data() + offset, sizeof( bits ) );
+		const int exponent = ( bits >> 10 ) & 31;
+		const double mantissa = 1.0 + ( bits & 1023 ) / 1024.0;
+		return ( bits & 0x8000 ? -1.0 : 1.0 ) * std::ldexp( mantissa, exponent - 15 );
+	};
+	const double want[4] = { 0.01 + 0.8 * 0.05, 0.02 + 0.6 * 0.05, 0.03 + 0.4 * 0.05, 0.25 };
+	bool matched = pixels.size() == outBytes;
+	double worst = 0.0;
+	for ( std::size_t i = 0; matched && i < outBytes; i += 8 )
+	{
+		for ( int c = 0; c < 4; ++c )
+		{
+			const double error = std::fabs( half( i + 2 * c ) - want[c] ) / want[c];
+			worst = std::max( worst, error );
+			// A half float's relative precision is 2^-11; the blend rounds
+			// once more.
+			matched &= error <= 2.0 / 1024.0;
+		}
+	}
+	s.That( matched, "D21",
+	    "src + dst * a at a = 0.05 in color within 2^-10, the destination's alpha kept" );
+	if ( !matched )
+		std::printf( "INFO %s.D21 worst relative error %.5f\n", s.m_Driver.name.c_str(), worst );
+}
+
 // D20 specialization constants: a stage lists each id at most once (else
 // kInvalidDescription); an id the stage does not declare is ignored; on
 // rasterizing adapters a constant's value reaches the shader (specialized.frag
@@ -2025,6 +2139,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::DrawConstants( suite );
 	detail::ColorWriteMasks( suite );
 	detail::SpecializationConstants( suite );
+	detail::TransmittanceBlend( suite );
 	detail::ExternalImagesClause( suite );
 	detail::BlockCompressedFormats( suite );
 	detail::CapabilityHonesty( suite );

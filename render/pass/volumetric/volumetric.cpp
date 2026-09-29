@@ -353,8 +353,9 @@ VolumetricRenderer::Create(
 	recipe.topology = PrimitiveTopology::kTriangleList;
 	recipe.raster.cull = CullMode::kNone;
 	recipe.colorFormats = { colorFormat };
-	// dst * ( 1 - a ) + src with a = 1 - T: dst T + L.
-	recipe.blends = { BlendMode::kPremultiplied };
+	// src + dst * a with the source ( L, T ): dst T + L, T at the target's
+	// precision (render.device.v2 D21).
+	recipe.blends = { BlendMode::kTransmittance };
 	recipe.debugName = "render.pass.volumetric.composite";
 	auto resolved = shaderlib::Resolve( recipe, artifacts, format );
 	if ( !resolved )

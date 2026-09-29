@@ -178,6 +178,8 @@ int main()
 	specialization.dropSpecialization = true;
 	gl::GlAdapterOptions::Sensitivity uploads;
 	uploads.unsafeUploadReuse = true;
+	gl::GlAdapterOptions::Sensitivity transmittance;
+	transmittance.transmittanceAsPremultiplied = true;
 	const Case cases[] = {
 	    { "lower-left-origin", lowerLeft, "under-test.D13 clip y" },
 	    { "gl-depth-range", glDepth, "under-test.D13 clip z" },
@@ -186,6 +188,7 @@ int main()
 	    { "ignored-write-masks", writeMasks, "under-test.D17 a red-and-alpha mask" },
 	    { "dropped-specialization", specialization, "under-test.D20 the constant's value" },
 	    { "early-upload-reuse", uploads, "under-test.D10 " },
+	    { "transmittance-as-premultiplied", transmittance, "under-test.D21 src + dst * a" },
 	};
 	// A driver that runs each copy as it is submitted (llvmpipe) has read the
 	// range before the ring can hand it out again: early reuse cannot show.

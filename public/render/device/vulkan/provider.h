@@ -50,6 +50,7 @@ struct VulkanAdapterOptions
 		bool ignoreColorWriteMasks = false; // D17: every channel written
 		bool staleExport = false;           // D18: the export names memory the image does not use
 		bool nullExternalImages = false;    // D18: claims kExternalImages, exports nothing
+		bool transmittanceAsPremultiplied = false; // D21: kTransmittance drawn as kPremultiplied
 	};
 	Sensitivity sensitivity;
 };

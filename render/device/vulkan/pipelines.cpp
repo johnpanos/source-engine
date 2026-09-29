@@ -160,6 +160,13 @@ VkPipelineColorBlendAttachmentState Blend( BlendMode mode )
 		state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 		state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 		break;
+	case BlendMode::kTransmittance:
+		state.blendEnable = VK_TRUE;
+		state.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+		state.dstColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+		state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		break;
 	}
 	return state;
 }
@@ -612,7 +619,11 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		std::vector<VkPipelineColorBlendAttachmentState> blends;
 		for ( std::size_t i = 0; i < desc.colorFormats.size(); ++i )
 		{
-			blends.push_back( Blend( desc.blends.empty() ? BlendMode::kOpaque : desc.blends[i] ) );
+			BlendMode mode = desc.blends.empty() ? BlendMode::kOpaque : desc.blends[i];
+			if ( mode == BlendMode::kTransmittance &&
+			     m_Options.sensitivity.transmittanceAsPremultiplied )
+				mode = BlendMode::kPremultiplied;
+			blends.push_back( Blend( mode ) );
 			// D17: the channels the pipeline writes.
 			const std::uint8_t mask =
 			    desc.colorWriteMasks.empty() || m_Options.sensitivity.ignoreColorWriteMasks
