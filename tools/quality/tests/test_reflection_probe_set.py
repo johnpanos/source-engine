@@ -588,6 +588,24 @@ class PlacementTest(unittest.TestCase):
         self.assertLess(glossy[0]["capture"][0], 2.5)
         self.assertLess(glossy[0]["influence_max"][0], 0.5)
 
+    def test_a_walkable_cap_widens_the_grid_and_still_covers_each_room(self):
+        # sp_a2_core_relit (2026-09-29): a whole retail map at 0.75 m has tens
+        # of thousands of walkable samples and placement ran for hours.
+        scene = self.two_rooms()
+        bounds = (0.0, 0.0, -0.5), (11.2, 4.0, 2.9)
+        _, full = rps.place(scene, *bounds, params={"spacing_m": 0.25, "fit_rays": 256})
+        probes, capped = rps.place(scene, *bounds, params={"spacing_m": 0.25, "fit_rays": 256,
+                                                           "max_walkable": 60})
+        self.assertGreater(full["walkable_samples"], 60)
+        self.assertLessEqual(capped["walkable_samples"], 60)
+        self.assertGreater(capped["walkable_spacing_m"], 0.25)
+        self.assertEqual(full["walkable_spacing_m"], 0.25)
+        self.assertEqual(capped["uncovered_walkable"], 0)
+        xs = sorted(p["capture"][0] for p in probes if p["role"] == "room")
+        self.assertEqual(len(xs), 2)
+        self.assertLess(xs[0], 6.0)
+        self.assertGreater(xs[1], 6.2)
+
 
 if __name__ == "__main__":
     unittest.main()

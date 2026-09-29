@@ -1,7 +1,7 @@
 {
   "schema": "map-export-profile/v1",
   "name": "portal2-chamber-fast",
-  "description": "portal2-chamber at a fraction of its cost, for relighting maps without an overnight bake: the same 4096 atlas, light paths, layers, probe volume, radiosity transfer and SDFV, with the lightmap at 256 samples (the directional page's RNM bakes at 64), reflection probes at 128 samples (denoised by Cycles), each denoised per chart with OpenImageDenoise. A map whose volume at 2 m would exceed the PRBV's 1M probes (escape_02, sp_a2_core, sp_a2_bts6) gets the smallest spacing that fits (fit_limit; recorded in the PRBV receipt), as the SDFV already grows its voxel. Measured 2026-09-29 on sp_gi_chamber_01 (2048 atlas, gi-reference paths): after the per-chart OIDN denoise, 256 samples are within 1.7% (luminance-weighted mean absolute error) of a denoised 4096-sample bake, at 1/16 of its cost; 64 samples leave faint structured lines along triangle edges and 16 visible blotches. The RNM-basis bakes feed only the directional page's denoised luminance gradient, which moves by 0.038 (luminance-weighted) between 64 and 256 samples, about 1% of a normal-mapped texel's light. The release profile's noise gate (p99 of the denoised halves' residual, floored at 2% of the median light) is not applied: its 99th percentile lives in near-black texels (median 1.1% of the map's light, 3% of its energy) and one-texel groove faces, and would ask for about 1500 samples.",
+  "description": "portal2-chamber at a fraction of its cost, for relighting maps without an overnight bake: the same 4096 atlas, light paths, layers, probe volume, radiosity transfer and SDFV, with the lightmap at 256 samples (the directional page's RNM bakes at 64), reflection probes at 128 samples (denoised by Cycles), placed from at most 2000 walkable samples (the grid widens on a whole retail map, where 0.75 m gave tens of thousands and placement ran for hours), each denoised per chart with OpenImageDenoise. A map whose volume at 2 m would exceed the PRBV's 1M probes (escape_02, sp_a2_core, sp_a2_bts6) gets the smallest spacing that fits (fit_limit; recorded in the PRBV receipt), as the SDFV already grows its voxel. Measured 2026-09-29 on sp_gi_chamber_01 (2048 atlas, gi-reference paths): after the per-chart OIDN denoise, 256 samples are within 1.7% (luminance-weighted mean absolute error) of a denoised 4096-sample bake, at 1/16 of its cost; 64 samples leave faint structured lines along triangle edges and 16 visible blotches. The RNM-basis bakes feed only the directional page's denoised luminance gradient, which moves by 0.038 (luminance-weighted) between 64 and 256 samples, about 1% of a normal-mapped texel's light. The release profile's noise gate (p99 of the denoised halves' residual, floored at 2% of the median light) is not applied: its 99th percentile lives in near-black texels (median 1.1% of the map's light, 3% of its energy) and one-texel groove faces, and would ask for about 1500 samples.",
   "lightmap": {
     "size": 4096,
     "samples": 256,
@@ -45,7 +45,10 @@
     "face_size": 256,
     "samples": 128,
     "light_paths": "gi-reference",
-    "relight": true
+    "relight": true,
+    "placement": {
+      "max_walkable": 2000
+    }
   },
   "reference": null,
   "runtime_gate": null,

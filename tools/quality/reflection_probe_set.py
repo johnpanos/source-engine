@@ -663,6 +663,12 @@ PLACEMENT_DEFAULTS = {
     # mean is diluted by the many texels that do fit.
     "max_candidate_residual": 0.35,
     "fade_m": 0.5,
+    # At most this many walkable samples (None: no cap). Placement fits a
+    # box with fit_rays rays per sample and tests visibility between pairs,
+    # so a whole retail map at 0.75 m (tens of thousands of samples) takes
+    # hours; the grid's spacing widens until the samples fit. The RPRB holds
+    # max_probes captures whatever the spacing.
+    "max_walkable": None,
 }
 
 
@@ -755,6 +761,11 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=()):
     bounds_min = np.asarray(bounds_min, dtype=np.float64)
     bounds_max = np.asarray(bounds_max, dtype=np.float64)
     walkable = walkable_samples(raycast, bounds_min, bounds_max, params)
+    cap = params["max_walkable"]
+    while cap and len(walkable) > cap:
+        # Samples lie on a 2D grid of columns: their count falls as spacing^2.
+        params["spacing_m"] *= max(math.sqrt(len(walkable) / cap), 1.05)
+        walkable = walkable_samples(raycast, bounds_min, bounds_max, params)
     if not len(walkable):
         raise ValueError("no walkable sample under the bounds: nowhere to place a probe")
     directions = fibonacci_directions(params["fit_rays"])
@@ -815,7 +826,7 @@ def place(raycast, bounds_min, bounds_max, glossy=None, params=None, seeds=()):
                        "influence_max": box_max + margin, "fade": params["fade_m"],
                        "role": "room", "covers": int(newly.sum())})
         uncovered &= ~covers[chosen]
-    report = {"walkable_samples": int(len(walkable)),
+    report = {"walkable_samples": int(len(walkable)), "walkable_spacing_m": params["spacing_m"],
               "uncovered_walkable": int(uncovered.sum()), "room_stop": room_stop}
     if glossy is not None and len(glossy[0]):
         points, normals = (np.asarray(value, dtype=np.float64) for value in glossy)
