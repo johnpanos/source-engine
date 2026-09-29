@@ -1,6 +1,6 @@
 {
   "analytic": [],
-  "denoised": true,
+  "denoised": false,
   "fixture": "area-room",
   "fixture_reference_digest": "24307656471ade28c099551865acc59efdb8438ad195b534ee725a8da7383bfa",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
@@ -8,12 +8,8 @@
     "default": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "d1799435bc3a361f7dd08a3686db0822db0058304243f3dd3288c81cd22a2f42",
-      "cycles_device": "CPU",
-      "denoising": {
-        "denoiser": "OPENIMAGEDENOISE",
-        "guides": "albedo+normal",
-        "prefilter": "ACCURATE"
-      },
+      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "denoising": false,
       "extras_applied": {
         "medium": null,
         "projectors": []
@@ -27,21 +23,21 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
       "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
-      "samples": 256,
+      "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/area-room/area-room.usda": "37935720b98935db4bbce0f0c1d19f0b8a63a5bd9e5e7598e64da3dbc1042066"
       }
     }
   },
-  "samples": 256,
+  "samples": 2048,
   "schema": "lighting-references/v1",
   "seed": 20260929,
-  "status": "denoised",
+  "status": "final",
   "views": {
     "default.grazing": {
       "camera": "grazing",
@@ -118,13 +114,13 @@
         },
         "total": {
           "file": "default.grazing.total.exr",
-          "sha256": "53a568e690a7d7001b2b0041fd15bb19901346f4a95e547c2289a681da6e10f8"
+          "sha256": "ce91f48e1fe8ddef934d8da67b65b7681ab384e31a08d6bdc2fbd41f7bb18382"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 190771,
-      "mean_luminance": 0.34744562259833245,
+      "mean_luminance": 0.34734199829254286,
       "object_index": {
         "A_Xn": 1,
         "A_Xp": 2,
@@ -292,13 +288,13 @@
         },
         "total": {
           "file": "default.overview.total.exr",
-          "sha256": "2fe753343dfb9e964c4cb92e7b3b1568ee404dbd021064deecc20651e0fdbbfe"
+          "sha256": "f6b5f9fd01db9e973c92c136763acacfee7ebe1541fe41942343f0eb5ee34fae"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 189383,
-      "mean_luminance": 0.38522342270783,
+      "mean_luminance": 0.3851893822929984,
       "object_index": {
         "A_Xn": 1,
         "A_Xp": 2,
@@ -466,13 +462,13 @@
         },
         "total": {
           "file": "default.wall.total.exr",
-          "sha256": "336a1be6a60b96a77b85af63ab79e0b0c4b9305e5230f91fb109c61689afd9ba"
+          "sha256": "90792c8c8917e6b7395afbc37255af57ab1a49615481343b495c47cb26df2fab"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 194754,
-      "mean_luminance": 0.3853402536003442,
+      "mean_luminance": 0.3851387546479786,
       "object_index": {
         "A_Xn": 1,
         "A_Xp": 2,

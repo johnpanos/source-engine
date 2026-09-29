@@ -137,13 +137,19 @@ class ReferenceRenderRoutingTest(unittest.TestCase):
         tools = gi_reference.Tools.__new__(gi_reference.Tools)
         tools.values = {"blender": "blender", "ocio": "/abs/config.ocio"}
         tools.remote = Remote()
+        texture = "/elsewhere/legacy-scene/textures/wall.png"
         with mock.patch.object(gi_reference, "run", lambda command, env, log:
                                calls.append(("run", command))), \
+                mock.patch.object(gi_reference.map_scene, "parse", lambda path: {"path": path}), \
+                mock.patch.object(gi_reference.map_scene, "input_files",
+                                  lambda scene: [str(scene["path"]), texture]), \
                 mock.patch.dict("os.environ", {"LIGHTING_EXTRAS": str(work / "extras.json")}):
             tools.blender("gi_reference_blender.py", ["--scene", work / "scene.json",
                                                       "--samples", "4"], work / "log.txt")
         self.assertEqual(calls[0][:2], ("push", work.resolve()))
         self.assertIn(str(work / "scene.json"), calls[0][2])
+        # The scene's textures outside the work directory go too.
+        self.assertIn(texture, calls[0][2])
         self.assertEqual(calls[1], ("env", {"OCIO": "/abs/config.ocio",
                                             "LIGHTING_EXTRAS": str(work / "extras.json")}))
         self.assertEqual(calls[2], ("run", ["ssh", "root@h", "blender"]))

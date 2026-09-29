@@ -1,6 +1,6 @@
 {
   "analytic": [],
-  "denoised": true,
+  "denoised": false,
   "fixture": "foggy-hall",
   "fixture_reference_digest": "1064f630141eec0a6f5a3c20a989e97a2b7b58056be55c512391208c49d2bb4e",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
@@ -8,12 +8,8 @@
     "clear": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "c2d3392b8d90a71c0985bfd1f01d531691ddb715c9e83c3fefdea0e7c4aa9a9d",
-      "cycles_device": "CPU",
-      "denoising": {
-        "denoiser": "OPENIMAGEDENOISE",
-        "guides": "albedo+normal",
-        "prefilter": "ACCURATE"
-      },
+      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "denoising": false,
       "extras_applied": {
         "medium": null,
         "projectors": [
@@ -29,11 +25,11 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
       "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
-      "samples": 256,
+      "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/foggy-hall/foggy-hall.usda": "75cf53bb589c5ac7779b68060a7bec3ba25ee71665f236da8fd24e3fd57f58d3",
@@ -43,12 +39,8 @@
     "fog": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "a4ac23e27e94a9df1ecbf1bb401e6fa6ca95ce1b0c0307802434cda58b2077eb",
-      "cycles_device": "CPU",
-      "denoising": {
-        "denoiser": "OPENIMAGEDENOISE",
-        "guides": "albedo+normal",
-        "prefilter": "ACCURATE"
-      },
+      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "denoising": false,
       "extras_applied": {
         "medium": {
           "absorption_per_m": 0.01,
@@ -81,21 +73,21 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
       "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
-      "samples": 256,
+      "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/foggy-hall/foggy-hall.usda": "75cf53bb589c5ac7779b68060a7bec3ba25ee71665f236da8fd24e3fd57f58d3"
       }
     }
   },
-  "samples": 256,
+  "samples": 2048,
   "schema": "lighting-references/v1",
   "seed": 20260929,
-  "status": "denoised",
+  "status": "final",
   "views": {
     "clear.nave": {
       "camera": "nave",
@@ -364,13 +356,13 @@
         },
         "total": {
           "file": "clear.nave.total.exr",
-          "sha256": "bb75e95635b6e517fb651be563addfca64c85aaf727159034897cf102da121e9"
+          "sha256": "e4ad2f5620a52238b650c7388a8841e733e655cb54ee2bb4d19839cc0b8ffe58"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195916,
-      "mean_luminance": 0.7366101490014897,
+      "mean_luminance": 0.7364234342566919,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,
@@ -905,13 +897,13 @@
         },
         "total": {
           "file": "clear.side.total.exr",
-          "sha256": "bc12b221876b0046fcc6f9c2728ab5736eef26307305ff785f88d9ca0c1390cb"
+          "sha256": "6f80ed6be8c296adefcb40ef48b34375a00bde58d14ff7dc196812c9daeb85a8"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195899,
-      "mean_luminance": 0.695245501740486,
+      "mean_luminance": 0.6955314309086853,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,
@@ -1446,13 +1438,13 @@
         },
         "total": {
           "file": "fog.nave.total.exr",
-          "sha256": "1638d469b6fcd714f71eb3066d195502b458d0c2f5ba135afc47d8ccd1227417"
+          "sha256": "b2b33422a759b7ca3420e6afa2d2abc9609d44af396fc6bc82e990d9cc17b092"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195916,
-      "mean_luminance": 0.5459856886922273,
+      "mean_luminance": 0.5475588032793154,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,
@@ -1987,13 +1979,13 @@
         },
         "total": {
           "file": "fog.side.total.exr",
-          "sha256": "c297b5277e8d8228bd4d7ce4eee0ea0ae210f9c245ba2cd8ea8f0a19054284ce"
+          "sha256": "16c54715af053ffcefeb929a972b905c32a914936594487ce6d84b2d58ea1235"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195899,
-      "mean_luminance": 0.5164356558474773,
+      "mean_luminance": 0.5180242127346242,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,

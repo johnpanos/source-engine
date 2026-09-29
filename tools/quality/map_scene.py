@@ -93,6 +93,16 @@ def source_files(scene):
     return [scene["source"]] + sorted({str(root / name) for name in names})
 
 
+def input_files(scene):
+    """Every file a Blender process building this scene opens: for an
+    extracted USD model the model plus the layers and textures it read
+    (`source_files` above digests them as the model), for PBRT the same list.
+    A remote Blender (remote_blender.py) needs them all on its host."""
+    if is_usd_scene(scene):
+        return [scene["model"]] + list(scene.get("source_files") or [])
+    return source_files(scene)
+
+
 def props(scene):
     """Dynamic model placements; PBRT scenes have none."""
     return list(scene.get("props", []))

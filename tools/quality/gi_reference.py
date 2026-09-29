@@ -319,6 +319,10 @@ class Tools:
             work = log.parent.resolve()
             work.mkdir(parents=True, exist_ok=True)
             paths = [Path(a) if os.path.isabs(str(a)) else ROOT / str(a) for a in arguments]
+            # The scene's layers and textures live beside its source, not here.
+            for flag, value in zip(arguments, arguments[1:]):
+                if str(flag) == "--scene":
+                    paths += map(Path, map_scene.input_files(map_scene.parse(value)))
             self.remote.push(paths + [Path(v) for v in env.values() if os.path.isabs(v)], work)
             run(self.remote.command(options, env), os.environ, log)
             self.remote.pull(work, update=True)

@@ -1,6 +1,6 @@
 {
   "analytic": [],
-  "denoised": true,
+  "denoised": false,
   "fixture": "portal-pair",
   "fixture_reference_digest": "cfe8ad6c1c579b0c491b3b54ae7b3fc3636aadd66ed203dddc63f253010322a7",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
@@ -8,12 +8,8 @@
     "closed": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "afddfa96bb522d6edd700d933612c216e3817750abf99556e404ee6700cb2905",
-      "cycles_device": "CPU",
-      "denoising": {
-        "denoiser": "OPENIMAGEDENOISE",
-        "guides": "albedo+normal",
-        "prefilter": "ACCURATE"
-      },
+      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "denoising": false,
       "extras_applied": {
         "medium": null,
         "projectors": []
@@ -27,11 +23,11 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
       "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
-      "samples": 256,
+      "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/portal-pair/portal-pair.usda": "75c17782b0043a0aa2367d67a13f3898c4e34c275b764e3879b4b68ca322f56b"
@@ -40,12 +36,8 @@
     "glow-only": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "6776470c244912b8ef043f21038a31c46f733426e2c21628c72e46a070f86fae",
-      "cycles_device": "CPU",
-      "denoising": {
-        "denoiser": "OPENIMAGEDENOISE",
-        "guides": "albedo+normal",
-        "prefilter": "ACCURATE"
-      },
+      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "denoising": false,
       "extras_applied": {
         "medium": null,
         "projectors": []
@@ -59,11 +51,11 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
       "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
-      "samples": 256,
+      "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/portal-pair/portal-pair.usda": "75c17782b0043a0aa2367d67a13f3898c4e34c275b764e3879b4b68ca322f56b",
@@ -73,12 +65,8 @@
     "open": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "2fe87e0ca617baef077edea23446c12ffc604c96ac7b758daeb1e0415dcef6f8",
-      "cycles_device": "CPU",
-      "denoising": {
-        "denoiser": "OPENIMAGEDENOISE",
-        "guides": "albedo+normal",
-        "prefilter": "ACCURATE"
-      },
+      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "denoising": false,
       "extras_applied": {
         "medium": null,
         "projectors": []
@@ -92,11 +80,11 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
       "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
-      "samples": 256,
+      "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/portal-pair/portal-pair.usda": "75c17782b0043a0aa2367d67a13f3898c4e34c275b764e3879b4b68ca322f56b",
@@ -106,12 +94,8 @@
     "open-glow": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "8006f3f3df213d034d0d0bbb93048e2dd435dcde2b7a32f9a83e29f6161f64b2",
-      "cycles_device": "CPU",
-      "denoising": {
-        "denoiser": "OPENIMAGEDENOISE",
-        "guides": "albedo+normal",
-        "prefilter": "ACCURATE"
-      },
+      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "denoising": false,
       "extras_applied": {
         "medium": null,
         "projectors": []
@@ -125,11 +109,11 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
       "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
-      "samples": 256,
+      "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/portal-pair/portal-pair.usda": "75c17782b0043a0aa2367d67a13f3898c4e34c275b764e3879b4b68ca322f56b",
@@ -137,10 +121,10 @@
       }
     }
   },
-  "samples": 256,
+  "samples": 2048,
   "schema": "lighting-references/v1",
   "seed": 20260929,
-  "status": "denoised",
+  "status": "final",
   "views": {
     "closed.a-portal": {
       "camera": "a-portal",
@@ -158,13 +142,13 @@
         },
         "total": {
           "file": "closed.a-portal.total.exr",
-          "sha256": "1a86b888ae42391c658d66eb5cf72bd3c8a9504464cf6ecbaca76695d6c8f433"
+          "sha256": "fc3c6335e5ed3edcc0aed3c5cdfe6138ffe7a7a4b1f7aa311fbac66df6efc0bb"
         }
       },
       "finite": true,
       "index_from_state": "closed",
       "judged_pixels": 180411,
-      "mean_luminance": 0.2986743407307274,
+      "mean_luminance": 0.2986204825075341,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -208,13 +192,13 @@
         },
         "total": {
           "file": "closed.b-floor.total.exr",
-          "sha256": "55694422fb78135310ebcd7e57d5c550e99bf1d941c30a53effb0da28cd44b92"
+          "sha256": "f24d2cb8c15faf8c1c924145b966a7fbd893a66ee0a4c1d9d363f90115cec22b"
         }
       },
       "finite": true,
       "index_from_state": "closed",
       "judged_pixels": 187832,
-      "mean_luminance": 0.006337325637097644,
+      "mean_luminance": 0.006333887713953208,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -258,13 +242,13 @@
         },
         "total": {
           "file": "closed.b-portal.total.exr",
-          "sha256": "4d35fa7f684572b7f83d3fab455f544c9eb42e6415c643c0f1b189c1b4edf208"
+          "sha256": "b842a79e7fd77364871bcd45010277e3c2a62f8bd810817397be78cbf6cb99f0"
         }
       },
       "finite": true,
       "index_from_state": "closed",
       "judged_pixels": 184499,
-      "mean_luminance": 0.005899195745450965,
+      "mean_luminance": 0.005897063689306766,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -313,13 +297,13 @@
         },
         "total": {
           "file": "glow-only.a-portal.total.exr",
-          "sha256": "8220ce438847c32269437f771f59d89dbff775da4d1c11ef1e13b3f90ad9fc2f"
+          "sha256": "1f8ac93a44feac381bce6945bb5a5aa4a148e4e339634c89a43b7aee00f3f444"
         }
       },
       "finite": true,
       "index_from_state": "glow-only",
       "judged_pixels": 180411,
-      "mean_luminance": 0.051009469849959646,
+      "mean_luminance": 0.050973931522567406,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -385,13 +369,13 @@
         },
         "total": {
           "file": "glow-only.b-floor.total.exr",
-          "sha256": "2a12214816ca584d5eff7d35ccd53e114d07a8722617a5adb87a0f45603f73ee"
+          "sha256": "c9d8c825aec1c1159aad724f5a230c9cfa12a216de00fe53b00e3df0621e61ac"
         }
       },
       "finite": true,
       "index_from_state": "glow-only",
       "judged_pixels": 187832,
-      "mean_luminance": 0.07248822420934707,
+      "mean_luminance": 0.07262191949241364,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -457,13 +441,13 @@
         },
         "total": {
           "file": "glow-only.b-portal.total.exr",
-          "sha256": "c5084c92a1d0f8ea676cd591ce7ddfbada6a4ff9fad46d53f81d48916209a957"
+          "sha256": "e818f93b265df5a929788d50fc86b8d6c09457d6f0125c928f5c640eb2e2d95f"
         }
       },
       "finite": true,
       "index_from_state": "glow-only",
       "judged_pixels": 184499,
-      "mean_luminance": 0.062194302118637794,
+      "mean_luminance": 0.062290763317689415,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -529,13 +513,13 @@
         },
         "total": {
           "file": "open-glow.a-portal.total.exr",
-          "sha256": "7824b4770f2f56037fe5280891f121c9e4e6e7eb15c2bb5763bf0f42408fbebc"
+          "sha256": "b603fd7bca0d3962825cd3bab079a0191fe0d7cc3fb39a70acf431dffc5e2bb5"
         }
       },
       "finite": true,
       "index_from_state": "open-glow",
       "judged_pixels": 180411,
-      "mean_luminance": 0.29439664969167917,
+      "mean_luminance": 0.29424759316325416,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -601,13 +585,13 @@
         },
         "total": {
           "file": "open-glow.b-floor.total.exr",
-          "sha256": "0bd726c0309ed287bfa3d3725cd6d041bf1390f30dd038ed4c863363b0fec994"
+          "sha256": "0330cbc1e6a5635e92a6e4544e36daef8ea4fe8f2220315a6d3860d47ea4809c"
         }
       },
       "finite": true,
       "index_from_state": "open-glow",
       "judged_pixels": 187832,
-      "mean_luminance": 0.1700418036790007,
+      "mean_luminance": 0.17153855422181166,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -673,13 +657,13 @@
         },
         "total": {
           "file": "open-glow.b-portal.total.exr",
-          "sha256": "e9a7a6e6c030c5614433a28658e15d2215c108cf6a2edb4fce8023754ca989b8"
+          "sha256": "9b70035daee621dbc9c1ab95bb706ad4fda47342dafcbb2775bc9192e9b39bfc"
         }
       },
       "finite": true,
       "index_from_state": "open-glow",
       "judged_pixels": 184499,
-      "mean_luminance": 0.13755836310979921,
+      "mean_luminance": 0.13900954124806275,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -743,13 +727,13 @@
         },
         "total": {
           "file": "open.a-portal.total.exr",
-          "sha256": "80a442ebc2f40a2660137cf96d15162547330f0cf4bcb8a0bfd75f6573e24f05"
+          "sha256": "9921a710d657be5ae060d3dc50ea2aaf695d3a283222cc3a46c54b944e97d4fd"
         }
       },
       "finite": true,
       "index_from_state": "open",
       "judged_pixels": 180411,
-      "mean_luminance": 0.24317008059717,
+      "mean_luminance": 0.24329000424999286,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -811,13 +795,13 @@
         },
         "total": {
           "file": "open.b-floor.total.exr",
-          "sha256": "aed907a884464af37d99766998076a9ad536394da2c445ba146d52e11ae1bef4"
+          "sha256": "6f5eb2084daf4e364c9e34687ba0364c366878201890e60e0b136280c3e53739"
         }
       },
       "finite": true,
       "index_from_state": "open",
       "judged_pixels": 187832,
-      "mean_luminance": 0.09733498778777945,
+      "mean_luminance": 0.09891815776353802,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -879,13 +863,13 @@
         },
         "total": {
           "file": "open.b-portal.total.exr",
-          "sha256": "5bb0b2a1e1ceab5945919dc4fcd4afae034e0b97b3fc004ed03362b28693e9d3"
+          "sha256": "a4f3e4557160a07ae8770019071c3a9556e2ae2a16a9dddef82f755786546583"
         }
       },
       "finite": true,
       "index_from_state": "open",
       "judged_pixels": 184499,
-      "mean_luminance": 0.07520019043124694,
+      "mean_luminance": 0.07668881340531031,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,

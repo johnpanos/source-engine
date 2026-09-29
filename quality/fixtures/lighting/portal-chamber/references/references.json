@@ -1,6 +1,6 @@
 {
   "analytic": [],
-  "denoised": true,
+  "denoised": false,
   "fixture": "portal-chamber",
   "fixture_reference_digest": "7f13192b795746b9a5fbf3a4ff2850981a1ab3a9c3a8ae21554297ed70f224b7",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
@@ -8,12 +8,8 @@
     "default": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "916315a23bd545c818bfde523ef23ce3f7b8347743d042be05718a03d720b417",
-      "cycles_device": "CPU",
-      "denoising": {
-        "denoiser": "OPENIMAGEDENOISE",
-        "guides": "albedo+normal",
-        "prefilter": "ACCURATE"
-      },
+      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "denoising": false,
       "extras_applied": {
         "medium": null,
         "projectors": []
@@ -27,21 +23,21 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
       "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
-      "samples": 256,
+      "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
         "quality-results/relight/testchmb_a_00_relit-preview/legacy-scene/scene.usda": "14d3b2bc0ac4c620b79405892f66f1484471fedea18a26e433bd40fa3be173c7"
       }
     }
   },
-  "samples": 256,
+  "samples": 2048,
   "schema": "lighting-references/v1",
   "seed": 20260929,
-  "status": "denoised",
+  "status": "final",
   "views": {
     "default.room2": {
       "camera": "room2",
@@ -68,13 +64,13 @@
         },
         "total": {
           "file": "default.room2.total.exr",
-          "sha256": "2f63a853f8ac142787638d9000cfded00dc7eb2d9d2ec16667ddbfe723436344"
+          "sha256": "ab9c224d1d0ac812d4bf7a2037f2d4df3b9f5014fb98a8794ce4d61395efeaff"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196595,
-      "mean_luminance": 0.03418827282059677,
+      "mean_luminance": 0.03416663226035799,
       "object_index": {
         "LightDisk06": 1,
         "LightDisk09": 2,
@@ -162,13 +158,13 @@
         },
         "total": {
           "file": "default.vault.total.exr",
-          "sha256": "9b16e95828cb227739d0861b522c5c609787083356f573e8684aaf55ea49c785"
+          "sha256": "e75ff70883c85bc6b9b8b5f3d48b5e3ca7dc574840fb2f3c83f8f913c736b43b"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196597,
-      "mean_luminance": 0.04464361655682217,
+      "mean_luminance": 0.04486519285814356,
       "object_index": {
         "LightDisk06": 1,
         "LightDisk09": 2,

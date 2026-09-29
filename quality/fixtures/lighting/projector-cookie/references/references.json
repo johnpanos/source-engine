@@ -2,22 +2,22 @@
   "analytic": [
     {
       "check": "projector direct light = render.projected-light.v1 IrradianceAt",
-      "median_ratio": 0.999988132975975,
+      "median_ratio": 1.0000114792932702,
       "ok": true,
       "pixels": 20168,
       "view": "projector.room",
-      "within_10_percent": 0.9574077746925823
+      "within_10_percent": 0.9575565251884173
     },
     {
       "check": "projector direct light = render.projected-light.v1 IrradianceAt",
-      "median_ratio": 0.9999948537204051,
+      "median_ratio": 1.0000165859809598,
       "ok": true,
       "pixels": 54392,
       "view": "projector.wall",
-      "within_10_percent": 0.9868546845124283
+      "within_10_percent": 0.9869649948521841
     }
   ],
-  "denoised": true,
+  "denoised": false,
   "fixture": "projector-cookie",
   "fixture_reference_digest": "7adccaa1286053948128bcd889bb6d97aefe0c627137ac3ccde983cfe663121b",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
@@ -25,12 +25,8 @@
     "default": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "e6da9b063c1beb3c41feb1cfb3f55e6b4e12c5425f1910bed17bad71362a142e",
-      "cycles_device": "CPU",
-      "denoising": {
-        "denoiser": "OPENIMAGEDENOISE",
-        "guides": "albedo+normal",
-        "prefilter": "ACCURATE"
-      },
+      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "denoising": false,
       "extras_applied": {
         "medium": null,
         "projectors": [
@@ -46,11 +42,11 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
       "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
-      "samples": 256,
+      "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/projector-cookie/projector-cookie.usda": "d3a3d30495ea60d3592779cc3beab32ae39d99c2dcccf04b774b4e86e02dd473"
@@ -59,12 +55,8 @@
     "projector": {
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "5b05e971bfca694813597e80dcf65f85f68d61085e2757b4a6e81fc4ce04c28f",
-      "cycles_device": "CPU",
-      "denoising": {
-        "denoiser": "OPENIMAGEDENOISE",
-        "guides": "albedo+normal",
-        "prefilter": "ACCURATE"
-      },
+      "cycles_device": "OPTIX: NVIDIA GeForce RTX 4090",
+      "denoising": false,
       "extras_applied": {
         "medium": null,
         "projectors": [
@@ -80,11 +72,11 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "lighting_renderer_sha256": "9927c57ae004d8873c1445d10dd039928f694d6568bd2e27aa82a87a3caa6d2a",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
       "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
-      "samples": 256,
+      "samples": 2048,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/projector-cookie/projector-cookie.usda": "d3a3d30495ea60d3592779cc3beab32ae39d99c2dcccf04b774b4e86e02dd473",
@@ -92,10 +84,10 @@
       }
     }
   },
-  "samples": 256,
+  "samples": 2048,
   "schema": "lighting-references/v1",
   "seed": 20260929,
-  "status": "denoised",
+  "status": "final",
   "views": {
     "default.room": {
       "camera": "room",
@@ -109,13 +101,13 @@
         },
         "total": {
           "file": "default.room.total.exr",
-          "sha256": "0e10554879412a93fec42ec5dac906e640f67a5ec00433f2439e3829583486a2"
+          "sha256": "ae33d40fd59203d9948178aefdf2f40ae746c5804effb578bdd2285943466684"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196608,
-      "mean_luminance": 0.05421824850722601,
+      "mean_luminance": 0.05416010438453051,
       "object_index": {
         "BackWall": 1,
         "Floor": 2,
@@ -145,13 +137,13 @@
         },
         "total": {
           "file": "default.wall.total.exr",
-          "sha256": "bc8911123add0cb85a7550d3360f6deb803f78e56e412cd1e09d237c72f6f567"
+          "sha256": "367f1d20ed652195227a161f48ce2b11fd3e9275d00b477b46c6987efdcce99a"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196608,
-      "mean_luminance": 0.18291539622059502,
+      "mean_luminance": 0.18272531301170739,
       "object_index": {
         "BackWall": 1,
         "Floor": 2,
@@ -181,13 +173,13 @@
         },
         "total": {
           "file": "projector.room.total.exr",
-          "sha256": "20bd519e63d61d4b27035b9b3e84de3f134315beec8a41fd8f1a2922351f4756"
+          "sha256": "b449dd40c77f50396ab6a73103c9a8fbd7cd2148dbc254b7fb1e65d8cec55af4"
         }
       },
       "finite": true,
       "index_from_state": "projector",
       "judged_pixels": 196608,
-      "mean_luminance": 0.048431412078801785,
+      "mean_luminance": 0.048389032477709336,
       "object_index": {
         "BackWall": 1,
         "Floor": 2,
@@ -217,13 +209,13 @@
         },
         "total": {
           "file": "projector.wall.total.exr",
-          "sha256": "d6692a8c00be18120346050ec4154feb6afeefb640b9457f39c708eaab35d82e"
+          "sha256": "10044e4d27ee1a0961103d970c506071757a1e9f36b8f3af95829a1f32f83b07"
         }
       },
       "finite": true,
       "index_from_state": "projector",
       "judged_pixels": 196608,
-      "mean_luminance": 0.1778480834639999,
+      "mean_luminance": 0.17772285819306965,
       "object_index": {
         "BackWall": 1,
         "Floor": 2,
