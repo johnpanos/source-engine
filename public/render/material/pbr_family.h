@@ -36,9 +36,12 @@
 #include "foundation/expected.h"
 #include "render/device/device.h"
 #include "render/material/material_programs.h"
+#include "render/shaderlib/debug_view.h"
 #include "render/material/parameter_block.h"
 
 #include <cstdint>
+#include <map>
+#include <optional>
 #include <memory>
 #include <span>
 #include <string>
@@ -181,7 +184,14 @@ public:
 	// emission (texture, sampler).
 	device::BindGroupLayoutId MaterialLayout() const { return m_MaterialLayout; }
 	// The opaque pipeline (created on first use).
-	foundation::Expected<device::PipelineId, PbrStatus> Pipeline( const PbrClaim &claim );
+	// With a debug specialization (RFC 0014) that is not neutral, the same
+	// program with the debug constants.
+	foundation::Expected<device::PipelineId, PbrStatus> Pipeline(
+	    const PbrClaim &claim, const shaderlib::DebugSpecialization &debug = {} );
+	// The debug variant of the family's pipeline; the pipeline itself for a
+	// neutral specialization; nullopt for a pipeline the family did not make.
+	std::optional<device::PipelineId> DebugPipeline(
+	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug );
 	// The claim as a MaterialPrograms request: the pipeline, the frame and
 	// view layouts, and the material group (constants and the four texture
 	// and sampler pairs, one sampler description for all).
@@ -203,6 +213,7 @@ private:
 	device::BindGroupLayoutId m_ViewLayout;
 	device::BindGroupLayoutId m_MaterialLayout;
 	device::PipelineId m_Pipeline;
+	std::map<shaderlib::DebugSpecialization, device::PipelineId> m_DebugPipelines;
 };
 
 } // namespace render::material

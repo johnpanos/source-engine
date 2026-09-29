@@ -202,9 +202,10 @@ LinesRenderer::~LinesRenderer()
 }
 
 foundation::Expected<PipelineId, LinesStatus> LinesRenderer::PipelineFor(
-    Topology topology, bool depthTest )
+    Topology topology, bool depthTest, const shaderlib::DebugSpecialization &debug )
 {
-	const int key = ( topology == Topology::kFilled ? 2 : 0 ) + ( depthTest ? 1 : 0 );
+	const auto key =
+	    std::make_pair( ( topology == Topology::kFilled ? 2 : 0 ) + ( depthTest ? 1 : 0 ), debug );
 	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
 	{
 		return found->second;
@@ -232,6 +233,9 @@ foundation::Expected<PipelineId, LinesStatus> LinesRenderer::PipelineFor(
 	desc.blends = blends;
 	desc.depthFormat = m_DepthFormat;
 	desc.debugName = "render.pass.lines";
+	std::vector<SpecializationConstant> constants;
+	shaderlib::AppendDebugConstants( debug, ShaderStage::kFragment, constants );
+	desc.constants = constants;
 	auto pipeline = m_Device.CreatePipeline( desc );
 	if ( !pipeline )
 	{
@@ -282,7 +286,7 @@ foundation::Expected<LinesStats, LinesStatus> LinesRenderer::AddPasses(
 	                   std::uint32_t first,
 	                   std::uint32_t count ) -> foundation::Expected<void, LinesStatus>
 	{
-		auto pipeline = PipelineFor( topology, style.depthTest );
+		auto pipeline = PipelineFor( topology, style.depthTest, view.debug );
 		if ( !pipeline )
 		{
 			return foundation::MakeUnexpected( pipeline.Error() );

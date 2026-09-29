@@ -15,14 +15,28 @@
 //			base color times the lightmap's total light (the full surface is
 //			the Model assembly check).
 //
+//			The frame's debug controls (RFC 0014) apply through the --debug-*
+//			options, as cl_render_debug_* apply in the product: validated by
+//			render.frame, turned into each program's specialization, drawn
+//			with the program's debug pipeline.
+//
 //			Usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z
 //			           --forward x,y,z --up x,y,z --hfov degrees --size WxH
 //			           --out <file.pfm> [--model <models/x.mdl> --model-origin
-//			           x,y,z] [--validate] [--dump-mesh]
+//			           x,y,z] [--validate] [--dump-mesh] [--debug-view n]
+//			           [--debug-program name] [--debug-scale s]
+//			           [--debug-range r] [--debug-threshold t] [--debug-brdf n]
+//			           [--debug-furnace] [--debug-term name[,name...]]
+//			           [--debug-force-roughness r] [--debug-force-metalness m]
+//			       render_lab suite <name> [--validate] [--seeded <defect>]
+//			           (render/lab/suites.h: the lab's suites, checks-v1)
 //			Exit status: 0 drawn (and, with --validate, no validation
 //			messages); 1 a failure, printed with its reason.
 //
 //=============================================================================//
+
+#include "lab_support.h"
+#include "suites.h"
 
 #include "foundation/expected.h"
 #include "mapcontainer/map_container.h"
@@ -33,6 +47,7 @@
 #include "mdl/studio_model.h"
 #include "render/device/device.h"
 #include "render/device/vulkan/provider.h"
+#include "render/frame/debug_specialization.h"
 #include "render/material/lightmapped_family.h"
 #include "render/material/material_programs.h"
 #include "render/material/program_resolver.h"
@@ -64,6 +79,7 @@ namespace
 
 using namespace render;
 using namespace render::device;
+using namespace render::lab;
 namespace fs = std::filesystem;
 
 struct Options
@@ -81,6 +97,7 @@ struct Options
 	std::uint32_t height = 192;
 	bool validate = false;
 	bool dumpMesh = false;
+	frame::DebugControls debug;
 };
 
 int Fail( const std::string &why )
@@ -108,6 +125,8 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 		};
 		if ( arg == "--validate" )
 			options.validate = true;
+		else if ( arg == "--debug-furnace" )
+			options.debug.furnace = true;
 		else if ( arg == "--dump-mesh" )
 			options.dumpMesh = true;
 		else if ( !value )
@@ -133,6 +152,8 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 		else if ( arg == "--size" &&
 		          std::sscanf( value, "%ux%u", &options.width, &options.height ) == 2 )
 			take();
+		else if ( ParseDebugOption( arg, value, options.debug ) )
+			take();
 		else
 			return std::nullopt;
 	}
@@ -140,109 +161,6 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 	     options.width == 0 || options.height == 0 )
 		return std::nullopt;
 	return options;
-}
-
-std::optional<std::string> ReadFile( const fs::path &path )
-{
-	std::ifstream file( path, std::ios::binary );
-	if ( !file )
-		return std::nullopt;
-	std::ostringstream bytes;
-	bytes << file.rdbuf();
-	return bytes.str();
-}
-
-// A game directory's loose files, case-insensitively (Source content paths
-// are case-insensitive and the tools lowercase them).
-class GameFiles final : public mdl::IModelFiles
-{
-public:
-	explicit GameFiles( fs::path root ) : m_Root( std::move( root ) ) {}
-
-	std::optional<fs::path> Resolve( const std::string &relative ) const
-	{
-		fs::path direct = m_Root / relative;
-		if ( fs::exists( direct ) )
-			return direct;
-		std::string lowered = relative;
-		std::transform( lowered.begin(), lowered.end(), lowered.begin(),
-		    []( unsigned char c )
-		    {
-			    return char( std::tolower( c ) );
-		    } );
-		fs::path lower = m_Root / lowered;
-		if ( fs::exists( lower ) )
-			return lower;
-		return std::nullopt;
-	}
-	bool Exists( const std::string &path ) const override { return Resolve( path ).has_value(); }
-	bool Read( const std::string &path, std::string &out ) const override
-	{
-		const std::optional<fs::path> found = Resolve( path );
-		if ( !found )
-			return false;
-		std::optional<std::string> bytes = ReadFile( *found );
-		if ( !bytes )
-			return false;
-		out = std::move( *bytes );
-		return true;
-	}
-
-private:
-	fs::path m_Root;
-};
-
-std::optional<Format> PortFormat( texturecontainer::PixelFormat format, bool srgb )
-{
-	using texturecontainer::PixelFormat;
-	switch ( format )
-	{
-	case PixelFormat::Rgba8Unorm:
-	case PixelFormat::Rgba8Srgb:
-		return srgb ? Format::kRGBA8Srgb : Format::kRGBA8Unorm;
-	case PixelFormat::Bgra8Unorm:
-	case PixelFormat::Bgra8Srgb:
-		return srgb ? Format::kBGRA8Srgb : Format::kBGRA8Unorm;
-	case PixelFormat::Rgba16Float:
-		return Format::kRGBA16Float;
-	case PixelFormat::Bc1Unorm:
-	case PixelFormat::Bc1Srgb:
-		return srgb ? Format::kBC1Srgb : Format::kBC1Unorm;
-	case PixelFormat::Bc2Unorm:
-	case PixelFormat::Bc2Srgb:
-		return srgb ? Format::kBC2Srgb : Format::kBC2Unorm;
-	case PixelFormat::Bc3Unorm:
-	case PixelFormat::Bc3Srgb:
-		return srgb ? Format::kBC3Srgb : Format::kBC3Unorm;
-	case PixelFormat::Bc4Unorm:
-		return Format::kBC4Unorm;
-	case PixelFormat::Bc5Unorm:
-		return Format::kBC5Unorm;
-	default:
-		return std::nullopt;
-	}
-}
-
-// Stages a decoded image with its mips; the name is the importer's texture
-// reference ("materials/..."), which the programs' groups look up.
-std::optional<std::string> StageImage( resources::TextureCache &cache, const std::string &name,
-    const texturecontainer::TextureImage &image, bool srgb )
-{
-	const std::optional<Format> format = PortFormat( image.format, srgb );
-	if ( !format || image.levels.empty() )
-		return "texture " + name + " has a format the lab does not stage";
-	TextureDesc desc;
-	desc.format = *format;
-	desc.width = image.levels[0].width;
-	desc.height = image.levels[0].height;
-	desc.mipLevels = std::uint32_t( image.levels.size() );
-	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
-	std::vector<std::span<const std::byte>> levels;
-	for ( const texturecontainer::ImageLevel &level : image.levels )
-		levels.emplace_back( level.bytes );
-	if ( !cache.StageMips( name, desc, levels ) )
-		return "texture " + name + " was refused by the texture cache";
-	return std::nullopt;
 }
 
 // A material of the scene, resolved to a program.
@@ -313,50 +231,6 @@ std::optional<std::string> ResolveMaterial( const GameFiles &files,
 	return std::nullopt;
 }
 
-bool WritePfm( const fs::path &path, std::uint32_t width, std::uint32_t height,
-    const std::vector<float> &rgba )
-{
-	std::ofstream file( path, std::ios::binary );
-	if ( !file )
-		return false;
-	file << "PF\n" << width << " " << height << "\n-1.0\n";
-	// PFM rows run bottom to top; the target's rows run top to bottom.
-	for ( std::uint32_t row = 0; row < height; ++row )
-	{
-		const std::uint32_t y = height - 1 - row;
-		for ( std::uint32_t x = 0; x < width; ++x )
-		{
-			const float *pixel = &rgba[( std::size_t( y ) * width + x ) * 4];
-			file.write( reinterpret_cast<const char *>( pixel ), 3 * sizeof( float ) );
-		}
-	}
-	return bool( file );
-}
-
-float HalfToFloat( std::uint16_t half )
-{
-	const std::uint32_t sign = std::uint32_t( half & 0x8000u ) << 16;
-	const std::uint32_t exponent = ( half >> 10 ) & 0x1fu;
-	const std::uint32_t mantissa = half & 0x3ffu;
-	std::uint32_t bits = 0;
-	if ( exponent == 0 )
-	{
-		if ( mantissa != 0 )
-		{
-			float value = std::ldexp( float( mantissa ), -24 );
-			return sign ? -value : value;
-		}
-		bits = sign;
-	}
-	else if ( exponent == 31 )
-		bits = sign | 0x7f800000u | ( mantissa << 13 );
-	else
-		bits = sign | ( ( exponent + 112 ) << 23 ) | ( mantissa << 13 );
-	float value;
-	std::memcpy( &value, &bits, sizeof( value ) );
-	return value;
-}
-
 int Run( const Options &options )
 {
 	const GameFiles files( options.game );
@@ -424,20 +298,17 @@ int Run( const Options &options )
 	if ( totalLayer < 0 )
 		return Fail( "LMAP carries no Total layer" );
 
-	// The device, with synchronization validation when asked. Asked and not
-	// installed is a failure: zero messages from no layer proves nothing.
-	if ( options.validate && !vulkan::ValidationLayerAvailable() )
-		return Fail( "--validate: the Khronos validation layer is not installed" );
+	// The debug controls, as the renderer validates a frame's.
+	if ( auto valid = frame::ValidateDebugControls(
+	         options.debug, material::ProgramResolver::ProgramNames() );
+	    !valid )
+		return Fail( valid.Error().message );
+
+	// The device, with synchronization validation when asked.
 	std::atomic<std::uint64_t> messages{ 0 };
-	vulkan::VulkanAdapterOptions adapter;
-	adapter.validation = options.validate;
-	adapter.validationCounter = &messages;
-	if ( const char *index = std::getenv( "RENDER_VK_ADAPTER" ) )
-		adapter.adapterIndex = std::atoi( index );
-	auto created = vulkan::Create( adapter );
-	if ( !created )
-		return Fail( "no Vulkan device" );
-	std::unique_ptr<IRenderDevice2> device = std::move( created ).Value();
+	std::unique_ptr<IRenderDevice2> device;
+	if ( std::optional<std::string> why = CreateLabDevice( options.validate, messages, device ) )
+		return Fail( *why );
 	int status = 0;
 	{
 		const Format colorFormat = Format::kRGBA16Float;
@@ -705,7 +576,14 @@ int Run( const Options &options )
 				status = Fail( "a material group is not resident" );
 				break;
 			}
-			encoder.SetPipeline( m.program.request.pipeline );
+			auto pipeline = resolver.Value()->DebugPipeline(
+			    m.program, frame::DebugSpecializationFor( options.debug, m.program.name ) );
+			if ( !pipeline )
+			{
+				status = Fail( pipeline.Error() );
+				break;
+			}
+			encoder.SetPipeline( pipeline.Value() );
 			if ( m.program.request.frameLayout.IsValid() )
 				encoder.SetBindGroup( BindGroupRole::kFrame,
 				    groups.Group( frameGroupOf[m.program.request.frameLayout.value] )->group );
@@ -771,13 +649,16 @@ int Run( const Options &options )
 
 int main( int argc, char **argv )
 {
+	if ( argc >= 3 && std::string( argv[1] ) == "suite" )
+		return RunSuite( argc - 2, argv + 2 );
 	const std::optional<Options> options = ParseOptions( argc, argv );
 	if ( !options )
 	{
 		std::fprintf( stderr,
 		    "usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z --forward x,y,z --up "
 		    "x,y,z --hfov degrees --size WxH --out <file.pfm> [--model <models/x.mdl> "
-		    "--model-origin x,y,z] [--validate] [--dump-mesh]\n" );
+		    "--model-origin x,y,z] [--validate] [--dump-mesh] [--debug-* ...]\n"
+		    "       render_lab suite <name> [--validate] [--seeded <defect>]\n" );
 		return 2;
 	}
 	return Run( *options );

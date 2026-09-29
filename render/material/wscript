@@ -11,6 +11,6 @@ def build(bld):
 		name        = 'render_material',
 		source      = bld.path.ant_glob('*.cpp'),
 		includes    = ['../../public'],
-		use         = ['render_device', 'render_resources', 'kvtext', 'render_spv'],
+		use         = ['render_device', 'render_resources', 'render_shaderlib', 'kvtext', 'render_spv'],
 		idx         = bld.get_taskgen_count()
 	)

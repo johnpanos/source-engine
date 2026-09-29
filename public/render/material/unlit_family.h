@@ -31,9 +31,12 @@
 #include "foundation/expected.h"
 #include "render/device/device.h"
 #include "render/material/material_programs.h"
+#include "render/shaderlib/debug_view.h"
 #include "render/material/parameter_block.h"
 
 #include <cstdint>
+#include <tuple>
+#include <optional>
 #include <map>
 #include <memory>
 #include <string>
@@ -98,7 +101,14 @@ public:
 
 	device::BindGroupLayoutId MaterialLayout() const { return m_MaterialLayout; }
 	// The pipeline for a claim's blend mode and alpha write (created on first use).
-	foundation::Expected<device::PipelineId, UnlitStatus> Pipeline( const UnlitClaim &claim );
+	// With a debug specialization (RFC 0014) that is not neutral, the same
+	// program with the debug constants.
+	foundation::Expected<device::PipelineId, UnlitStatus> Pipeline(
+	    const UnlitClaim &claim, const shaderlib::DebugSpecialization &debug = {} );
+	// The debug variant of a pipeline this family made; the pipeline itself
+	// for a neutral specialization; nullopt when the family did not make it.
+	std::optional<device::PipelineId> DebugPipeline(
+	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug );
 	// The claim as a MaterialPrograms request: the pipeline, the material
 	// layout, the packed constants (binding 0) and 'baseTexture', a
 	// TextureCache name, at binding 1 with its sampler at binding 2. Stage the
@@ -114,7 +124,10 @@ private:
 	device::Format m_DepthFormat = device::Format::kUnknown;
 	std::uint32_t m_SampleCount = 1;
 	device::BindGroupLayoutId m_MaterialLayout;
-	std::map<std::pair<device::BlendMode, bool>, device::PipelineId> m_Pipelines;
+	std::map<std::tuple<device::BlendMode, bool, shaderlib::DebugSpecialization>,
+	    device::PipelineId>
+	    m_Pipelines;
+	std::map<std::uint64_t, UnlitClaim> m_Shipped; // the claim behind each shipped pipeline
 };
 
 } // namespace render::material

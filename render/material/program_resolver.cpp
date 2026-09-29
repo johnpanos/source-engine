@@ -190,14 +190,25 @@ ProgramResolver::ProgramResolver( std::unique_ptr<State> state ) : m_State( std:
 }
 ProgramResolver::~ProgramResolver() = default;
 
+namespace
+{
+constexpr std::string_view kProgramNames[] = { "lightmapped", "unlit", "preview" };
+}
+
+std::span<const std::string_view> ProgramResolver::ProgramNames()
+{
+	return kProgramNames;
+}
+
 foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResolver::Create(
     device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
-    std::uint32_t sampleCount, VertexLayout layout )
+    std::uint32_t sampleCount, VertexLayout layout, const ProgramModules &modules )
 {
 	auto state = std::make_unique<State>( device );
 	state->layout = layout == VertexLayout::kSurface ? LightmappedVertexLayout::kSurface
 	                                                 : LightmappedVertexLayout::kFlat;
-	auto lightmapped = LightmappedFamily::Create( device, colorFormat, depthFormat, sampleCount );
+	auto lightmapped = LightmappedFamily::Create(
+	    device, colorFormat, depthFormat, sampleCount, modules.lightmappedFragment );
 	auto unlit = UnlitFamily::Create( device, colorFormat, depthFormat, sampleCount );
 	if ( !lightmapped || !unlit )
 		return foundation::MakeUnexpected( std::string( "a family's layouts were refused" ) );
@@ -256,6 +267,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			                     ? "its bump or env map term reads the surface vertex, and the "
 			                       "resolver's is flat"
 			                     : "a lightmapped pipeline was refused" ) );
+		out.name = "lightmapped";
 		out.request = std::move( request ).Value();
 		out.blend = claim.blend;
 		out.drawInputs = { "lightmap" };
@@ -284,12 +296,27 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		if ( !request )
 			return foundation::MakeUnexpected(
 			    std::string( "a lightmapped pipeline was refused" ) );
+		out.name = "unlit";
 		out.request = std::move( request ).Value();
 		out.blend = claim.blend;
 		out.drawInputs = { "lightmap" }; // bound, not read: a neutral page serves
 		return out;
 	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
+}
+
+foundation::Expected<device::PipelineId, std::string> ProgramResolver::DebugPipeline(
+    const ResolvedProgram &program, const shaderlib::DebugSpecialization &debug )
+{
+	if ( debug.IsNeutral() )
+		return program.request.pipeline;
+	auto pipeline = m_State->lightmapped->DebugPipeline( program.request.pipeline, debug );
+	if ( !pipeline )
+		return foundation::MakeUnexpected(
+		    std::string( pipeline.Error() == LightmappedStatus::kInvalidRequest
+		                     ? "the program " + program.name + " was not made by this resolver"
+		                     : "the debug pipeline of " + program.name + " was refused" ) );
+	return pipeline.Value();
 }
 
 foundation::Expected<ProgramResolver::Preview, std::string> ProgramResolver::ResolvePreview(
@@ -365,6 +392,7 @@ foundation::Expected<ProgramResolver::Preview, std::string> ProgramResolver::Res
 	    s.lightmapped->Request( claim, base ? VmtTextureReference( base->value ) : std::string() );
 	if ( !request )
 		return foundation::MakeUnexpected( std::string( "a lightmapped pipeline was refused" ) );
+	out.program.name = "preview";
 	out.program.request = std::move( request ).Value();
 	out.program.blend = claim.blend;
 	out.program.drawInputs = { "lightmap" }; // bound, not read: a neutral page serves

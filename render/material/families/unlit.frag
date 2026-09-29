@@ -2,8 +2,11 @@
 // material color and alpha, times the vertex color and alpha when the
 // material asks for them, with alpha test; the arithmetic of the
 // vertexlit_and_unlit_generic port without lighting, in the port's gamma
-// space. Blending is pipeline state (UnlitFamily::BlendFor).
+// space. Blending is pipeline state (UnlitFamily::BlendFor). The debug views
+// (RFC 0014) come from debug_view.glsl.
 #version 450
+
+#include "../../shaders/common/debug_view.glsl"
 
 layout( set = 2, binding = 0 ) uniform Material
 {
@@ -26,5 +29,16 @@ void main()
 		result.a *= color.a;
 	if ( material.flags.z != 0.0 && result.a < material.flags.w )
 		discard;
+	if ( DebugViewActive() )
+	{
+		DebugInputs inputs = DebugInputsNone();
+		inputs.mask = kDebugHasAlbedo | kDebugHasUv0 | kDebugHasVertexColor;
+		inputs.albedo = result.rgb;
+		inputs.uv0 = uv;
+		inputs.vertexColor = color;
+		inputs.final = result.rgb;
+		outColor = DebugViewOutput( inputs );
+		return;
+	}
 	outColor = result;
 }

@@ -52,18 +52,25 @@ foundation::Expected<TextureEntry, ResourceError> TextureCache::StageMips( std::
 	// multiple of every texel size, as a buffer-to-texture copy needs.
 	constexpr std::uint64_t kAlign = 16;
 	const std::uint32_t texel = device::BytesPerTexel( desc.format );
+	// A cube uploads its six faces; every other texture its first layer.
+	const std::uint32_t layers = desc.dimension == device::TextureDimension::kCube ? 6u : 1u;
+	if ( desc.dimension == device::TextureDimension::kCube && desc.depthOrLayers != 6 )
+		return Fail( ResourceStatus::kSizeMismatch );
 	std::vector<Level> placed;
 	std::uint64_t total = 0;
 	for ( std::size_t m = 0; m < levels.size(); ++m )
 	{
 		const std::uint32_t width = std::max( desc.width >> m, 1u );
 		const std::uint32_t height = std::max( desc.height >> m, 1u );
-		const std::uint64_t expected = static_cast<std::uint64_t>( width ) * height * texel;
+		const std::uint64_t layerBytes = static_cast<std::uint64_t>( width ) * height * texel;
+		const std::uint64_t expected = layerBytes * layers;
 		if ( desc.width == 0 || desc.height == 0 || expected == 0 || levels[m].size() != expected )
 			return Fail( ResourceStatus::kSizeMismatch );
+		// Each layer at an aligned offset of its own.
+		const std::uint64_t layerStride = ( layerBytes + kAlign - 1 ) / kAlign * kAlign;
 		total = ( total + kAlign - 1 ) / kAlign * kAlign;
-		placed.push_back( { total, width, height } );
-		total += expected;
+		placed.push_back( { total, width, height, layers, layerStride } );
+		total += layerStride * ( layers - 1 ) + layerBytes;
 	}
 	device::TextureDesc resident = desc;
 	resident.usages.Add( device::ResourceUsage::kCopyDestination )
@@ -92,8 +99,17 @@ foundation::Expected<TextureEntry, ResourceError> TextureCache::StageMips( std::
 	}
 	Upload upload{ entry.texture, resident, std::vector<std::byte>( total ), std::move( placed ) };
 	for ( std::size_t m = 0; m < levels.size(); ++m )
-		std::copy( levels[m].begin(), levels[m].end(),
-		    upload.pixels.begin() + std::ptrdiff_t( upload.levels[m].offset ) );
+	{
+		const Level &level = upload.levels[m];
+		const std::size_t layerBytes = levels[m].size() / level.layers;
+		for ( std::uint32_t layer = 0; layer < level.layers; ++layer )
+		{
+			const auto source = levels[m].subspan( std::size_t( layer ) * layerBytes, layerBytes );
+			std::copy( source.begin(), source.end(),
+			    upload.pixels.begin() +
+			        std::ptrdiff_t( level.offset + std::uint64_t( layer ) * level.layerBytes ) );
+		}
+	}
 	m_Uploads.push_back( std::move( upload ) );
 	return entry;
 }
@@ -143,8 +159,10 @@ std::size_t TextureCache::RecordUploads( device::CommandEncoder &encoder )
 		for ( std::size_t m = 0; m < upload.levels.size(); ++m )
 		{
 			const Level &level = upload.levels[m];
-			encoder.CopyBufferToTexture( buffer.Value(), upload.texture,
-			    { level.offset, static_cast<std::uint32_t>( m ), 0, level.width, level.height } );
+			for ( std::uint32_t layer = 0; layer < level.layers; ++layer )
+				encoder.CopyBufferToTexture( buffer.Value(), upload.texture,
+				    { level.offset + std::uint64_t( layer ) * level.layerBytes,
+				        static_cast<std::uint32_t>( m ), layer, level.width, level.height } );
 		}
 		encoder.TransitionTexture( upload.texture, device::ResourceUsage::kCopyDestination,
 		    device::ResourceUsage::kSampled );

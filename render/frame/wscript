@@ -11,6 +11,6 @@ def build(bld):
 		name        = 'render_frame',
 		source      = bld.path.ant_glob('*.cpp'),
 		includes    = ['../../public'],
-		use         = ['render_graph', 'render_device'],
+		use         = ['render_graph', 'render_shaderlib', 'render_device'],
 		idx         = bld.get_taskgen_count()
 	)

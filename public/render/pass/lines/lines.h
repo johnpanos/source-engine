@@ -47,12 +47,14 @@
 #include "render/graph/graph_builder.h"
 #include "render/math/matrix.h"
 #include "render/resources/mesh_cache.h"
+#include "render/shaderlib/debug_view.h"
 
 #include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace render::pass::lines
@@ -140,6 +142,9 @@ struct LinesView
 	std::uint32_t width = 0; // the target's logical pixels, for screen space
 	std::uint32_t height = 0;
 	float depthBias = 0.0f; // clip-space z offset toward the eye for depth-tested lines
+	// The frame's debug specialization for the lines program (RFC 0014,
+	// program name "lines"); neutral draws the shipped pipelines.
+	shaderlib::DebugSpecialization debug;
 };
 
 struct LinesTargets
@@ -191,12 +196,13 @@ public:
 private:
 	explicit LinesRenderer( device::IRenderDevice2 &device ) : m_Device( device ) {}
 	foundation::Expected<device::PipelineId, LinesStatus> PipelineFor(
-	    Topology topology, bool depthTest );
+	    Topology topology, bool depthTest, const shaderlib::DebugSpecialization &debug );
 
 	device::IRenderDevice2 &m_Device;
 	device::Format m_ColorFormat = device::Format::kUnknown;
 	device::Format m_DepthFormat = device::Format::kUnknown;
-	std::map<int, device::PipelineId> m_Pipelines; // by topology * 2 + depth test
+	// By topology * 2 + depth test, and the debug specialization.
+	std::map<std::pair<int, shaderlib::DebugSpecialization>, device::PipelineId> m_Pipelines;
 	device::CompletionToken m_LastToken;
 };
 

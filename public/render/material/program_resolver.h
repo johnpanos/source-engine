@@ -29,6 +29,7 @@
 #include "render/device/device.h"
 #include "render/material/material_programs.h"
 #include "render/material/vmt_import.h"
+#include "render/shaderlib/debug_view.h"
 
 #include <memory>
 #include <optional>
@@ -77,10 +78,20 @@ enum class VertexLayout : std::uint8_t
 
 struct ResolvedProgram
 {
+	// The program's name, as cl_render_debug_view_program selects it (one
+	// of ProgramResolver::ProgramNames()).
+	std::string name;
 	ProgramRequest request;
 	device::BlendMode blend = device::BlendMode::kOpaque;
 	// The per-draw inputs the draw group takes, in binding order.
 	std::vector<std::string> drawInputs;
+};
+
+// Replacement program modules (SPIR-V words): the debug suites' seeded
+// programs. Empty spans keep the families' own.
+struct ProgramModules
+{
+	std::span<const std::uint32_t> lightmappedFragment;
 };
 
 class ProgramResolver
@@ -90,7 +101,10 @@ public:
 	// sample count.
 	static foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> Create(
 	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
-	    std::uint32_t sampleCount = 1, VertexLayout layout = VertexLayout::kFlat );
+	    std::uint32_t sampleCount = 1, VertexLayout layout = VertexLayout::kFlat,
+	    const ProgramModules &modules = {} );
+	// The names of the programs the resolver serves (ResolvedProgram::name).
+	static std::span<const std::string_view> ProgramNames();
 	~ProgramResolver();
 	ProgramResolver( const ProgramResolver & ) = delete;
 	ProgramResolver &operator=( const ProgramResolver & ) = delete;
@@ -101,6 +115,11 @@ public:
 	// name (in drawInputs order); nullopt when the program reads none.
 	std::optional<GroupRequest> DrawGroup(
 	    const ResolvedProgram &program, const std::vector<std::string> &inputTextures ) const;
+	// The program's pipeline under a debug specialization (RFC 0014): the
+	// shipped pipeline when it is neutral, else its debug variant (made on
+	// first use and kept); the reason when the program has no variant.
+	foundation::Expected<device::PipelineId, std::string> DebugPipeline(
+	    const ResolvedProgram &program, const shaderlib::DebugSpecialization &debug );
 	// The frame group a resolved program reads, for these terms; nullopt when
 	// it reads none.
 	std::optional<GroupRequest> FrameGroup(

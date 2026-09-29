@@ -195,6 +195,8 @@ PbrFamily::~PbrFamily()
 {
 	if ( m_Pipeline.IsValid() )
 		(void)m_Device.Release( m_Pipeline, CompletionToken() );
+	for ( const auto &[debug, pipeline] : m_DebugPipelines )
+		(void)m_Device.Release( pipeline, CompletionToken() );
 	for ( BindGroupLayoutId layout : { m_MaterialLayout, m_ViewLayout, m_FrameLayout } )
 	{
 		if ( layout.IsValid() )
@@ -202,10 +204,24 @@ PbrFamily::~PbrFamily()
 	}
 }
 
-foundation::Expected<PipelineId, PbrStatus> PbrFamily::Pipeline( const PbrClaim & )
+std::optional<PipelineId> PbrFamily::DebugPipeline(
+    PipelineId shipped, const shaderlib::DebugSpecialization &debug )
 {
-	if ( m_Pipeline.IsValid() )
+	if ( !m_Pipeline.IsValid() || shipped != m_Pipeline )
+		return std::nullopt;
+	auto pipeline = Pipeline( PbrClaim(), debug );
+	if ( !pipeline )
+		return std::nullopt;
+	return pipeline.Value();
+}
+
+foundation::Expected<PipelineId, PbrStatus> PbrFamily::Pipeline(
+    const PbrClaim &, const shaderlib::DebugSpecialization &debug )
+{
+	if ( debug.IsNeutral() && m_Pipeline.IsValid() )
 		return m_Pipeline;
+	if ( auto found = m_DebugPipelines.find( debug ); found != m_DebugPipelines.end() )
+		return found->second;
 	const ReflectedBinding vertexBindings[] = { { 1, 0, BindingKind::kUniformBuffer } };
 	std::vector<ReflectedBinding> fragmentBindings = { { 0, 0, BindingKind::kSampledTexture },
 	    { 0, 1, BindingKind::kSampler }, { 1, 0, BindingKind::kUniformBuffer },
@@ -242,9 +258,17 @@ foundation::Expected<PipelineId, PbrStatus> PbrFamily::Pipeline( const PbrClaim 
 	desc.blends = blends;
 	desc.depthFormat = m_DepthFormat;
 	desc.debugName = "render.material.pbr";
+	std::vector<SpecializationConstant> constants;
+	shaderlib::AppendDebugConstants( debug, ShaderStage::kFragment, constants );
+	desc.constants = constants;
 	auto pipeline = m_Device.CreatePipeline( desc );
 	if ( !pipeline )
 		return foundation::MakeUnexpected( PbrStatus::kDevice );
+	if ( !debug.IsNeutral() )
+	{
+		m_DebugPipelines.emplace( debug, pipeline.Value() );
+		return pipeline.Value();
+	}
 	m_Pipeline = pipeline.Value();
 	return m_Pipeline;
 }

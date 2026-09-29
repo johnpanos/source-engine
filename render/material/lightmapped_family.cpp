@@ -159,10 +159,11 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 }
 
 foundation::Expected<std::unique_ptr<LightmappedFamily>, LightmappedStatus>
-LightmappedFamily::Create(
-    IRenderDevice2 &device, Format colorFormat, Format depthFormat, std::uint32_t sampleCount )
+LightmappedFamily::Create( IRenderDevice2 &device, Format colorFormat, Format depthFormat,
+    std::uint32_t sampleCount, std::span<const std::uint32_t> fragmentModule )
 {
 	std::unique_ptr<LightmappedFamily> family( new LightmappedFamily( device ) );
+	family->m_FragmentModule = fragmentModule;
 	family->m_ColorFormat = colorFormat;
 	family->m_DepthFormat = depthFormat;
 	family->m_SampleCount = sampleCount;
@@ -204,14 +205,24 @@ LightmappedFamily::~LightmappedFamily()
 	}
 }
 
+foundation::Expected<PipelineId, LightmappedStatus> LightmappedFamily::DebugPipeline(
+    PipelineId shipped, const shaderlib::DebugSpecialization &debug )
+{
+	const auto found = m_Shipped.find( shipped.value );
+	if ( found == m_Shipped.end() )
+		return foundation::MakeUnexpected( LightmappedStatus::kInvalidRequest );
+	return Pipeline( found->second.first, found->second.second, debug );
+}
+
 foundation::Expected<PipelineId, LightmappedStatus> LightmappedFamily::Pipeline(
-    const LightmappedClaim &claim, LightmappedVertexLayout layout )
+    const LightmappedClaim &claim, LightmappedVertexLayout layout,
+    const shaderlib::DebugSpecialization &debug )
 {
 	if ( layout == LightmappedVertexLayout::kFlat && ( claim.terms & kLightmappedSurfaceTerms ) )
 		return foundation::MakeUnexpected( LightmappedStatus::kInvalidRequest );
 	const BlendMode blend = claim.blend;
-	const auto key =
-	    std::make_tuple( blend, claim.alphaWrite, claim.terms, claim.detailMode, layout );
+	const PipelineKey key =
+	    std::make_tuple( blend, claim.alphaWrite, claim.terms, claim.detailMode, layout, debug );
 	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
 		return found->second;
 	std::vector<ReflectedBinding> fragmentBindings = { { 0, 0, BindingKind::kUniformBuffer },
@@ -232,10 +243,12 @@ foundation::Expected<PipelineId, LightmappedStatus> LightmappedFamily::Pipeline(
 	                      std::as_bytes( std::span( spirv::kLightmappedVertex ) ) ),
 	        "main", vertexBindings, sizeof( LightmappedDrawConstants ) },
 	    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
-	        std::as_bytes( std::span( spirv::kLightmappedFragment ) ), "main", fragmentBindings,
-	        0 } };
-	const SpecializationConstant constants[] = { { ShaderStage::kFragment, 0, claim.terms },
+	        m_FragmentModule.empty() ? std::as_bytes( std::span( spirv::kLightmappedFragment ) )
+	                                 : std::as_bytes( m_FragmentModule ),
+	        "main", fragmentBindings, 0 } };
+	std::vector<SpecializationConstant> constants = { { ShaderStage::kFragment, 0, claim.terms },
 	    { ShaderStage::kFragment, 1, claim.detailMode } };
+	shaderlib::AppendDebugConstants( debug, ShaderStage::kFragment, constants );
 	const VertexAttribute flatAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
 	    { 1, VertexFormat::kFloat2, 12, 0 }, { 2, VertexFormat::kFloat2, 20, 0 },
 	    { 3, VertexFormat::kUnorm8x4, 28, 0 } };
@@ -277,6 +290,8 @@ foundation::Expected<PipelineId, LightmappedStatus> LightmappedFamily::Pipeline(
 	if ( !pipeline )
 		return foundation::MakeUnexpected( LightmappedStatus::kDevice );
 	m_Pipelines.emplace( key, pipeline.Value() );
+	if ( debug.IsNeutral() )
+		m_Shipped.emplace( pipeline.Value().value, std::make_pair( claim, layout ) );
 	return pipeline.Value();
 }
 

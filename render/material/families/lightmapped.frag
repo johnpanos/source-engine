@@ -9,9 +9,12 @@
 // - detail (TextureCombine) and self-illumination;
 // - the view's fog.
 // Unlit is this term with the lighting fixed at one. Blending is pipeline state.
+// The debug views and lighting-model controls (RFC 0014) come from
+// debug_view.glsl; at their neutral values they are dead code.
 #version 450
 
 #include "../../shaders/common/color_encoding.glsl"
+#include "../../shaders/common/debug_view.glsl"
 
 // The terms (the port's static combo bits where they exist).
 layout( constant_id = 0 ) const int kTerms = 0;
@@ -158,6 +161,7 @@ void main()
 	if ( bumpmap && !ssbump )
 		normalSample.xyz = normalSample.xyz * 2.0 - 1.0;
 
+	const bool furnace = DebugFurnace();
 	vec3 albedo = base.rgb;
 	// The port's vertex fast path (no texture transform): the vertex color
 	// replaces the modulation alpha, which otherwise applies $alpha a second
@@ -186,8 +190,18 @@ void main()
 	if ( material.flags.y != 0.0 && alpha < material.flags.z )
 		discard;
 
+	// The furnace (RFC 0014): albedo 1 after every modulation, the light a
+	// uniform radiance of 1 in place of the lightmap and the env map.
+	vec3 tint = material.tint.rgb;
+	if ( furnace )
+	{
+		albedo = vec3( 1.0 );
+		tint = vec3( 1.0 );
+	}
 	// The diffuse light: c12 is the tint times the lightmap scale.
-	const vec3 c12 = material.tint.rgb * ( lightingOne ? 1.0 : frame.light.x );
+	const vec3 c12 = tint * ( lightingOne ? 1.0 : frame.light.x );
+	// The baked light with albedo 1 (the debug view), before the tint.
+	vec3 baked = vec3( 0.0 );
 	vec3 diffuse;
 	if ( lightingOne )
 	{
@@ -207,7 +221,9 @@ void main()
 			diffuse = normalSample.x * light1 + normalSample.y * light2 + normalSample.z * light3;
 			// The running game's shaders may scale every ssbump (Portal 2's
 			// do); else $ssbumpmathfix does.
-			diffuse *= ( frame.fogMisc.y != 0.0 ? OO_SQRT_3 : material.state.z ) * c12;
+			const float weightScale = frame.fogMisc.y != 0.0 ? OO_SQRT_3 : material.state.z;
+			baked = diffuse * weightScale * frame.light.x;
+			diffuse *= weightScale * c12;
 			normalSample.xyz = normalize( bumpBasis[0] * normalSample.x +
 			                              bumpBasis[1] * normalSample.y +
 			                              bumpBasis[2] * normalSample.z );
@@ -220,19 +236,47 @@ void main()
 			dp.z = clamp( dot( normalSample.xyz, bumpBasis[2] ), 0.0, 1.0 );
 			dp *= dp;
 			diffuse = dp.x * light1 + dp.y * light2 + dp.z * light3;
+			baked = diffuse / dot( dp, vec3( 1.0 ) ) * frame.light.x;
 			diffuse *= c12 / dot( dp, vec3( 1.0 ) );
 		}
 	}
 	else
 	{
-		diffuse = texture( sampler2D( lightmap, lightmapSampler ), lightmapUv ).rgb * c12;
+		const vec3 page = texture( sampler2D( lightmap, lightmapSampler ), lightmapUv ).rgb;
+		baked = page * frame.light.x;
+		diffuse = page * c12;
+	}
+	// cl_render_debug_term baked: the frame of a zero lightmap page;
+	// cl_render_debug_brdf 2 (specular only) drops the diffuse lobe.
+	if ( !lightingOne && furnace )
+		diffuse = baked = vec3( 1.0 );
+	if ( !lightingOne && !DebugTermOn( kDebugTermBaked ) )
+		diffuse = vec3( 0.0 );
+
+	vec3 lit = kDebugBrdf == kDebugBrdfSpecularOnly ? vec3( 0.0 ) : albedo * diffuse;
+	// Self-illumination replaces the diffuse term by its tint times albedo
+	// where base alpha is set. Its emission is that tint's share; turning the
+	// term off is the frame of $selfillumtint 0.
+	vec3 emission = vec3( 0.0 );
+	if ( Term( kSelfIllum ) )
+	{
+		const vec3 selfIllum =
+		    DebugTermOn( kDebugTermEmission ) && !furnace ? material.selfIllumTint.rgb : vec3( 0.0 );
+		emission = selfIllum * albedo * base.a;
+		lit = mix( lit, selfIllum * albedo, base.a );
 	}
 
-	vec3 lit = albedo * diffuse;
-	if ( Term( kSelfIllum ) )
-		lit = mix( lit, material.selfIllumTint.rgb * albedo, base.a );
-
-	if ( Term( kCubemap ) )
+	vec3 imageSpecular = vec3( 0.0 );
+	vec3 shadingNormal = vec3( 0.0 );
+	const bool hasNormal = dot( worldNormal, worldNormal ) > 0.0;
+	if ( hasNormal )
+	{
+		shadingNormal = normalize( bumpmap ? normalSample.x * tangentS + normalSample.y * tangentT +
+		                                         normalSample.z * worldNormal
+		                                   : worldNormal );
+	}
+	if ( Term( kCubemap ) && DebugTermOn( kDebugTermIbl ) &&
+	     kDebugBrdf != kDebugBrdfDiffuseOnly )
 	{
 		vec3 specularFactor = vec3( 1.0 );
 		if ( Term( kNormalMapAlphaEnvmapMask ) )
@@ -250,8 +294,10 @@ void main()
 		    2.0 * dot( normal, toEye ) * normal - dot( normal, normal ) * toEye;
 		float fresnel = pow( 1.0 - dot( normal, normalize( toEye ) ), 5.0 );
 		fresnel = fresnel * material.envContrast.a + material.envTint.a;
-		vec3 specular =
-		    frame.eye.w * texture( samplerCube( envmapTexture, envmapSampler ), reflected ).rgb;
+		vec3 specular = furnace ? vec3( 1.0 )
+		                        : frame.eye.w * texture( samplerCube( envmapTexture, envmapSampler ),
+		                                            reflected )
+		                                            .rgb;
 		// Portal 2's $envmaplightscale: darker where the diffuse light is.
 		if ( material.envLightScale.z > 0.0 )
 		{
@@ -265,7 +311,44 @@ void main()
 		specular = mix( grey, specular, material.envSaturation.rgb );
 		// The port adds the specular term after the lightmap scale; the
 		// tint's lightmap scale is in c12 only.
-		lit += specular * fresnel;
+		imageSpecular = specular * fresnel;
+		lit += imageSpecular;
+	}
+
+	if ( DebugViewActive() )
+	{
+		DebugInputs inputs = DebugInputsNone();
+		inputs.mask = kDebugHasAlbedo | kDebugHasAo | kDebugHasUv0 | kDebugHasVertexColor;
+		if ( Term( kCubemap ) )
+			inputs.mask |= kDebugHasImageSpecular;
+		if ( Term( kSelfIllum ) )
+			inputs.mask |= kDebugHasEmission;
+		inputs.albedo = albedo * tint;
+		if ( hasNormal )
+		{
+			inputs.mask |= kDebugHasNormal;
+			inputs.normal = shadingNormal;
+		}
+		if ( bumpmap )
+		{
+			inputs.mask |= kDebugHasNormalMap;
+			inputs.normalMap = normalSample.xyz;
+		}
+		if ( !lightingOne )
+		{
+			inputs.mask |= kDebugHasBaked;
+			inputs.baked = baked;
+		}
+		inputs.imageSpecular = imageSpecular;
+		inputs.emission = emission;
+		inputs.uv0 = baseUv;
+		inputs.vertexColor = color;
+		inputs.final = lit;
+		vec4 view = DebugViewOutput( inputs );
+		if ( frame.light.z != 0.0 )
+			view.rgb = LinearToSrgb( view.rgb );
+		outColor = view;
+		return;
 	}
 
 	lit *= frame.light.y;

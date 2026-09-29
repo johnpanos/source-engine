@@ -20,6 +20,7 @@
 #include "render/device/errors.h"
 #include "render/device/resources.h"
 #include "render/device/usage.h"
+#include "render/frame/debug_controls.h"
 #include "render/frame/stage_hooks.h"
 #include "render/frame/stages.h"
 
@@ -39,6 +40,10 @@ struct FrameDesc
 	device::TextureDesc targetDesc;
 	device::ResourceUsage targetUsage = device::ResourceUsage::kUndefined;
 	device::ResourceUsage targetFinal = device::ResourceUsage::kUndefined;
+	// The frame's debug controls (RFC 0014). The renderer validates them at
+	// BeginFrame; an invalid value is refused and the previous one kept, so
+	// features always see the applied controls.
+	DebugControls debug;
 };
 
 // One frame's result, and the renderer's running totals.
@@ -54,6 +59,7 @@ struct FrameStats
 	std::uint64_t transitions = 0;
 	std::uint64_t transientsCreated = 0; // physical transients the frame created
 	std::uint64_t transientsReused = 0;  // taken from the renderer's pool instead
+	std::uint64_t debugRejected = 0;     // frames whose debug controls were refused
 	device::CompletionToken lastToken;
 };
 
@@ -84,6 +90,10 @@ public:
 	virtual bool MarkStage( Stage stage ) = 0;
 	virtual foundation::Expected<FrameStats, FrameError> EndFrame() = 0;
 	virtual const FrameStats &Totals() const = 0;
+	// The debug controls in effect (the last valid FrameDesc::debug), and why
+	// the last refused one was refused (status 0 before any refusal).
+	virtual const DebugControls &AppliedDebug() const = 0;
+	virtual const DebugControlsError &LastDebugRejection() const = 0;
 
 	// Hooks outlive their registration.
 	virtual void AddStageHooks( IRenderStageHooks *hooks ) = 0;

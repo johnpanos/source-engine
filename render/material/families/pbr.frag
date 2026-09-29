@@ -8,9 +8,14 @@
 // no probe the cube in the reflected direction is the specular image light.
 // The base and emission textures are sampled as sRGB and the target is sRGB;
 // tone mapping belongs to the frame's post pass.
+// The debug views and lighting-model controls (RFC 0014) come from
+// debug_view.glsl; at their neutral values they are dead code. The local
+// lights answer to the `clustered` term, the ambient cube to `probes` and the
+// cube in the reflected direction to `ibl`.
 #version 450
 
 #include "../../shaders/common/pbr_brdf.glsl"
+#include "../../shaders/common/debug_view.glsl"
 #include "pbr_lighting.glsl"
 
 layout( set = 0, binding = 0 ) uniform texture2D splitSumTexture;
@@ -36,10 +41,13 @@ layout( location = 4 ) in vec3 tangentS;
 layout( location = 5 ) in vec3 tangentT;
 layout( location = 0 ) out vec4 outColor;
 
-// PixelShaderAmbientLight: the faces weighted by the squared normal.
+// PixelShaderAmbientLight: the faces weighted by the squared normal. In the
+// furnace (RFC 0014) every face is a uniform radiance of 1.
 vec3 AmbientCube( vec3 n )
 {
 	const vec3 squared = n * n;
+	if ( DebugFurnace() )
+		return vec3( squared.x + squared.y + squared.z );
 	const bvec3 positive = greaterThanEqual( n, vec3( 0.0 ) );
 	return squared.x * ( positive.x ? lighting.cube[0] : lighting.cube[1] ).rgb +
 	       squared.y * ( positive.y ? lighting.cube[2] : lighting.cube[3] ).rgb +
@@ -48,19 +56,23 @@ vec3 AmbientCube( vec3 n )
 
 void main()
 {
+	const bool furnace = DebugFurnace();
 	const vec4 baseSample = texture( sampler2D( baseTexture, baseSampler ), uv );
-	const vec3 base = baseSample.rgb;
+	const vec3 base = furnace ? vec3( 1.0 ) : baseSample.rgb;
 	const vec3 mrao = texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb;
-	const float metalness = clamp( mrao.r, 0.0, 1.0 );
-	const float roughness = max( mrao.g, 0.02 );
-	const float occlusion = clamp( mrao.b, 0.0, 1.0 );
+	const float metalness =
+	    kDebugForceMetalness >= 0.0 ? kDebugForceMetalness : clamp( mrao.r, 0.0, 1.0 );
+	const float roughness =
+	    max( kDebugForceRoughness >= 0.0 ? kDebugForceRoughness : mrao.g, 0.02 );
+	const float occlusion = DebugTermOn( kDebugTermAo ) ? clamp( mrao.b, 0.0, 1.0 ) : 1.0;
 
 	const vec3 view = normalize( lighting.eye.xyz - worldPosition );
 	vec3 normal = dot( worldNormal, worldNormal ) > 1e-12 ? normalize( worldNormal ) : view;
+	vec3 mapped = vec3( 0.0, 0.0, 1.0 );
 	if ( material.flags.x != 0.0 )
 	{
 		const vec2 xy = texture( sampler2D( normalTexture, normalSampler ), uv ).rg * 2.0 - 1.0;
-		const vec3 mapped = vec3( xy, sqrt( max( 0.0, 1.0 - dot( xy, xy ) ) ) );
+		mapped = vec3( xy, sqrt( max( 0.0, 1.0 - dot( xy, xy ) ) ) );
 		normal = normalize( normalize( tangentS ) * mapped.x + normalize( tangentT ) * mapped.y +
 		                    normal * mapped.z );
 	}
@@ -70,12 +82,22 @@ void main()
 	    PbrSplitSumCoordinate( vec2( textureSize( sampler2D( splitSumTexture, splitSumSampler ), 0 ) ),
 	        normalDotView, roughness ) )
 	                          .rg;
-	const vec3 compensation = PbrEnergyCompensation( f0, splitSum );
-	const vec3 directionalAlbedo = PbrDirectionalAlbedo( f0, splitSum );
+	// cl_render_debug_brdf 3: multiple-scattering compensation off.
+	const bool compensate = kDebugBrdf != kDebugBrdfNoEnergyCompensation;
+	const vec3 compensation = compensate ? PbrEnergyCompensation( f0, splitSum ) : vec3( 1.0 );
+	const vec3 directionalAlbedo = compensate
+	                                   ? PbrDirectionalAlbedo( f0, splitSum )
+	                                   : min( vec3( 1.0 ), f0 * splitSum.x + vec3( splitSum.y ) );
 	const vec3 diffuseColor = base * ( 1.0 - metalness ) * ( vec3( 1.0 ) - directionalAlbedo );
+	// cl_render_debug_brdf 1 and 2: one lobe.
+	const bool diffuseLobe = kDebugBrdf != kDebugBrdfSpecularOnly;
+	const bool specularLobe = kDebugBrdf != kDebugBrdfDiffuseOnly;
 
-	vec3 color = diffuseColor * AmbientCube( normal ) * occlusion;
-	const int count = int( lighting.eye.w );
+	vec3 color = diffuseLobe && DebugTermOn( kDebugTermProbes )
+	                 ? diffuseColor * AmbientCube( normal ) * occlusion
+	                 : vec3( 0.0 );
+	vec3 direct = vec3( 0.0 );
+	const int count = DebugTermOn( kDebugTermClustered ) && !furnace ? int( lighting.eye.w ) : 0;
 	for ( int i = 0; i < 4; ++i )
 	{
 		if ( i >= count )
@@ -91,12 +113,66 @@ void main()
 		if ( normalDotLight <= 0.0 )
 			continue;
 		const vec3 incident = lighting.lights[i].color.rgb * lightAtten[i];
-		color += diffuseColor * incident * normalDotLight;
-		color += kPi * incident * PbrSpecular( normal, view, light, f0, roughness ) *
-		         compensation * normalDotLight;
+		if ( diffuseLobe )
+		{
+			const vec3 diffuse = diffuseColor * incident * normalDotLight;
+			color += diffuse;
+			direct += diffuse;
+		}
+		if ( specularLobe )
+		{
+			const vec3 specular = kPi * incident * PbrSpecular( normal, view, light, f0, roughness ) *
+			                      compensation * normalDotLight;
+			color += specular;
+			direct += specular;
+		}
 	}
-	color += AmbientCube( reflect( -view, normal ) ) * directionalAlbedo * occlusion;
-	if ( material.flags.y != 0.0 )
-		color += texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb * material.flags.z;
+	vec3 imageSpecular = vec3( 0.0 );
+	if ( specularLobe && DebugTermOn( kDebugTermIbl ) )
+	{
+		imageSpecular = AmbientCube( reflect( -view, normal ) ) * directionalAlbedo * occlusion;
+		color += imageSpecular;
+	}
+	vec3 emission = vec3( 0.0 );
+	if ( material.flags.y != 0.0 && DebugTermOn( kDebugTermEmission ) && !furnace )
+	{
+		emission =
+		    texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb * material.flags.z;
+		color += emission;
+	}
+
+	if ( DebugViewActive() )
+	{
+		DebugInputs inputs = DebugInputsNone();
+		inputs.mask = kDebugHasAlbedo | kDebugHasNormal | kDebugHasRoughness | kDebugHasMetalness |
+		              kDebugHasAo | kDebugHasDirect | kDebugHasImageSpecular | kDebugHasUv0;
+		inputs.albedo = base;
+		inputs.normal = normal;
+		if ( material.flags.x != 0.0 )
+		{
+			inputs.mask |= kDebugHasNormalMap;
+			inputs.normalMap = mapped;
+		}
+		inputs.roughness = roughness;
+		inputs.metalness = metalness;
+		inputs.ao = occlusion;
+		inputs.direct = direct;
+		inputs.imageSpecular = imageSpecular;
+		if ( material.flags.y != 0.0 )
+		{
+			inputs.mask |= kDebugHasEmission;
+			inputs.emission = emission;
+		}
+		inputs.uv0 = uv;
+		inputs.final = color;
+		outColor = DebugViewOutput( inputs );
+		return;
+	}
+	// cl_render_debug_brdf 4: the split-sum table's sample as red and green.
+	if ( kDebugBrdf == kDebugBrdfSplitSumSample )
+	{
+		outColor = vec4( splitSum, 0.0, 1.0 );
+		return;
+	}
 	outColor = vec4( color, baseSample.a );
 }

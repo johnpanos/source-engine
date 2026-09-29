@@ -20,6 +20,7 @@
 #include "render/frame/renderer.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace render::renderer
@@ -29,6 +30,9 @@ struct RendererDeps
 {
 	device::IRenderDevice2 *device = nullptr; // outlives the renderer
 	std::vector<std::unique_ptr<frame::IRenderFeature>> features;
+	// The names of the core programs the root composed, which
+	// cl_render_debug_view_program may name (RFC 0014).
+	std::vector<std::string> debugPrograms;
 };
 
 enum class RendererStatus : std::uint8_t

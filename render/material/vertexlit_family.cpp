@@ -105,11 +105,23 @@ VertexLitFamily::~VertexLitFamily()
 	}
 }
 
+std::optional<PipelineId> VertexLitFamily::DebugPipeline(
+    PipelineId shipped, const shaderlib::DebugSpecialization &debug )
+{
+	const auto found = m_Shipped.find( shipped.value );
+	if ( found == m_Shipped.end() )
+		return std::nullopt;
+	auto pipeline = Pipeline( found->second, debug );
+	if ( !pipeline )
+		return std::nullopt;
+	return pipeline.Value();
+}
+
 foundation::Expected<PipelineId, VertexLitStatus> VertexLitFamily::Pipeline(
-    const VertexLitClaim &claim )
+    const VertexLitClaim &claim, const shaderlib::DebugSpecialization &debug )
 {
 	const BlendMode blend = claim.blend;
-	const auto key = std::make_pair( blend, claim.alphaWrite );
+	const auto key = std::make_tuple( blend, claim.alphaWrite, debug );
 	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
 		return found->second;
 	const ReflectedBinding vertexBindings[] = {
@@ -147,10 +159,15 @@ foundation::Expected<PipelineId, VertexLitStatus> VertexLitFamily::Pipeline(
 	desc.colorWriteMasks = writes;
 	desc.depthFormat = m_DepthFormat;
 	desc.debugName = "render.material.vertexlit";
+	std::vector<SpecializationConstant> constants;
+	shaderlib::AppendDebugConstants( debug, ShaderStage::kFragment, constants );
+	desc.constants = constants;
 	auto pipeline = m_Device.CreatePipeline( desc );
 	if ( !pipeline )
 		return foundation::MakeUnexpected( VertexLitStatus::kDevice );
 	m_Pipelines.emplace( key, pipeline.Value() );
+	if ( debug.IsNeutral() )
+		m_Shipped.emplace( pipeline.Value().value, claim );
 	return pipeline.Value();
 }
 

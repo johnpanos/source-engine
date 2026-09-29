@@ -2171,3 +2171,47 @@ Reproduce: `WAFLOCK=.lock-waf-rc-lab ./waf build --target=render_lab`, then
 Open for K11: everything after composition. The lab still records its draws
 straight on the encoder; it moves onto the frame graph with the surface
 program (check "Model assembly").
+
+### RFC 0014 D0 in the lab: the view catalog on the core (2026-09-28)
+
+The debug view catalog is on the core and proven in `render_lab` (binding
+rule 3). Product wiring (the engine's `cl_render_debug_*` ConVars, the world
+pass, the hatch for legacy stream passes, the post bypass) is the next slice,
+and D0 closes only after it passes. Decisions are recorded in
+[RFC 0014](0014-native-vulkan-and-bsp2-debug-controls.md#implementation-decisions-d0-2026-09-28).
+
+- `render.shader-library`: `debug_view.h` holds the catalog (views 0–23 and
+  32–36; 1–17 installed, the others reserved until their terms reach the
+  core), the input and term bits, and the specialization constants 100–108.
+- `render.frame`:
+  - `DebugControls` is in `FrameDesc`, engine-facing, with no dual-ABI type;
+  - `ValidateDebugControls` gives a named status and a console message;
+  - `DebugSpecializationFor` maps the controls to one program's
+    specialization.
+- `render.renderer`: validates `FrameDesc::debug` at `BeginFrame`. It keeps
+  the last valid value and counts refusals (`debugRejected`,
+  `AppliedDebug()`, `LastDebugRejection()`). `RendererDeps::debugPrograms`
+  names the programs the filter may select.
+- `render/shaders/common/debug_view.glsl`: every formula, the hatch and the
+  filtered-out grey.
+- Every family program (`lightmapped`, `pbr`, `vertexlit`, `unlit`) and
+  `lines` report their inputs and write the view at their single output
+  point. Each family makes debug variants of its shipped pipelines
+  (`DebugPipeline`); the resolver serves them by `ResolvedProgram`, which now
+  carries its program's name.
+- The D1 controls the programs can already honor are in the same shaders:
+  - the terms that exist: `baked`, `ibl`, `emission`, `clustered`,
+    `probes` and `ao`;
+  - the BRDF modes, the furnace, and forced roughness and metalness (`pbr`).
+
+  Their D1 checks follow.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Views match their formulas (lab) | `render.debug-views` (`render_lab suite debug-views --validate`): 82 checks. Views 1–17 on analytic quads within one 8-bit step: the flat and bumped normal, the RNM baked basis, image specular from the program's constants, NaN/Inf/negative from pages that hold them, the checker, depth. The pbr direct and image-specular views equal the frame minus the frame with the term off. The hatch wherever a program lacks the input. The program filter. Validation of 16 malformed or reserved controls. Neutral controls give the shipped pipeline. 0 validation messages | pass |
+| Negative programs | `render.debug-views.sensitivity`: the swapped normal fails `view.2.*`; the tone-mapping view fails 20 radiometric and hatch checks; the NaN miss fails `view.16.nan`; shading instead of the hatch fails every hatch check (5 of 5) | pass |
+| Default identity | 24 suites on g++ and clang++: the four family suites and their seeded controls, `render.material.programs`, lines, opaque, world, resources (new R7 clause: cube faces), material v2, scene, frame, composition and the three Hammer viewport suites. Family worst differences are unchanged from the runs before the change (pbr 1 on the lit cases, 0 elsewhere). `render.shader-artifacts` and its sensitivity row pass with the new seeded header | pass |
+| Default identity, frame time | Portal interleaved A/B, recorded, not blocking (binding rule 7) | with the product slice |
+
+Open for D0: the product slice on native Vulkan Linux with the render
+sequence on and off the main thread; the Fold7 run (required for D0).

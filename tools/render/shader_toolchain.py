@@ -188,6 +188,17 @@ GENERATED = {
         "the shadow suite's seeded receiver (render.shadows.pixels)", (
         ("kShadowReceiverDepthReversed", SHADOWS + "/shadow_receiver.frag",
          DEVICE_OPTIONS + ("-DSEEDED_DEPTH_REVERSED",)),)),
+    "debug_view_defects_spv.h": ("render::lab::spirv",
+        "render_lab's debug-view suite's seeded programs (render.debug-views sensitivity, "
+        "RFC 0014)", (
+        ("kLightmappedSwappedNormal", FAMILIES + "/lightmapped.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEBUG_SWAPPED_NORMAL",)),
+        ("kLightmappedToneMaps", FAMILIES + "/lightmapped.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEBUG_TONE_MAPS",)),
+        ("kLightmappedMissesNan", FAMILIES + "/lightmapped.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEBUG_MISS_NAN",)),
+        ("kLightmappedNoHatch", FAMILIES + "/lightmapped.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEBUG_NO_HATCH",)))),
 }
 
 # GENERATED headers holding material-family programs: artifact units that a

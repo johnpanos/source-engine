@@ -53,8 +53,10 @@
 #include "render/device/device.h"
 #include "render/material/material_programs.h"
 #include "render/material/parameter_block.h"
+#include "render/shaderlib/debug_view.h"
 
 #include <cstdint>
+#include <span>
 #include <map>
 #include <memory>
 #include <string>
@@ -214,9 +216,11 @@ enum class LightmappedStatus : std::uint8_t
 class LightmappedFamily
 {
 public:
+	// fragmentModule: a replacement fragment program (SPIR-V words) for the
+	// debug suites' seeded programs; empty for the family's own.
 	static foundation::Expected<std::unique_ptr<LightmappedFamily>, LightmappedStatus> Create(
 	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
-	    std::uint32_t sampleCount = 1 );
+	    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {} );
 	~LightmappedFamily();
 	LightmappedFamily( const LightmappedFamily & ) = delete;
 	LightmappedFamily &operator=( const LightmappedFamily & ) = delete;
@@ -229,9 +233,17 @@ public:
 	// The pipeline for a claim's blend mode, alpha write and terms, on a
 	// vertex layout (created on first use). kInvalidRequest when the claim's
 	// terms read the surface vertex and the layout is flat.
+	// With a debug specialization (RFC 0014) that is not neutral, the same
+	// program with the debug constants.
 	foundation::Expected<device::PipelineId, LightmappedStatus> Pipeline(
 	    const LightmappedClaim &claim,
-	    LightmappedVertexLayout layout = LightmappedVertexLayout::kFlat );
+	    LightmappedVertexLayout layout = LightmappedVertexLayout::kFlat,
+	    const shaderlib::DebugSpecialization &debug = {} );
+	// The debug variant of a pipeline this family made (Pipeline with a
+	// neutral specialization); kInvalidRequest when the family did not make
+	// it. A neutral specialization returns the pipeline itself.
+	foundation::Expected<device::PipelineId, LightmappedStatus> DebugPipeline(
+	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug );
 	// The claim as a MaterialPrograms request: the pipeline, the material
 	// group (constants at binding 0; the base texture at 1, the env map at 3,
 	// its mask at 5, the bump map at 7 and the detail texture at 9, each with
@@ -259,11 +271,14 @@ private:
 	device::BindGroupLayoutId m_MaterialLayout;
 	device::BindGroupLayoutId m_DrawLayout;
 	device::BindGroupLayoutId m_FrameLayout;
-	// By blend, alpha write, terms, detail mode and vertex layout.
-	std::map<
-	    std::tuple<device::BlendMode, bool, std::uint32_t, std::uint32_t, LightmappedVertexLayout>,
-	    device::PipelineId>
-	    m_Pipelines;
+	std::span<const std::uint32_t> m_FragmentModule;
+	// By blend, alpha write, terms, detail mode, vertex layout and debug
+	// specialization.
+	using PipelineKey = std::tuple<device::BlendMode, bool, std::uint32_t, std::uint32_t,
+	    LightmappedVertexLayout, shaderlib::DebugSpecialization>;
+	std::map<PipelineKey, device::PipelineId> m_Pipelines;
+	// The claim behind each shipped (neutral) pipeline, for DebugPipeline.
+	std::map<std::uint64_t, std::pair<LightmappedClaim, LightmappedVertexLayout>> m_Shipped;
 };
 
 } // namespace render::material

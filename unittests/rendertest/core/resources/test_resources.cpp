@@ -42,7 +42,7 @@ device::CompletionToken Run( device::IRenderDevice2 &device, device::CommandEnco
 }
 
 std::vector<std::byte> ReadTexture( device::IRenderDevice2 &device, device::TextureId texture,
-    std::uint32_t width, std::uint32_t height, std::uint32_t mip = 0 )
+    std::uint32_t width, std::uint32_t height, std::uint32_t mip = 0, std::uint32_t layer = 0 )
 {
 	device::BufferDesc desc;
 	desc.size = static_cast<std::uint64_t>( width ) * height * 4;
@@ -52,7 +52,7 @@ std::vector<std::byte> ReadTexture( device::IRenderDevice2 &device, device::Text
 	auto encoder = device.BeginEncoder( device::QueueKind::kGraphics ).Value();
 	encoder.TransitionTexture( texture, ResourceUsage::kSampled, ResourceUsage::kCopySource );
 	encoder.TransitionBuffer( buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-	encoder.CopyTextureToBuffer( texture, buffer, { 0, mip, 0, width, height } );
+	encoder.CopyTextureToBuffer( texture, buffer, { 0, mip, layer, width, height } );
 	encoder.TransitionTexture( texture, ResourceUsage::kCopySource, ResourceUsage::kSampled );
 	const device::CompletionToken token = Run( device, encoder );
 	if ( !token.NamesSubmission() )
@@ -161,6 +161,36 @@ int main()
 		checks.That( landed, "R6.every-level-lands-in-its-mip" );
 		checks.That( textures.Evict( "chain" ).HasValue(), "R6.the-chain-evicts" );
 		textures.Retire( chainToken );
+
+		// R7: a cube stages its six faces, each into its own layer.
+		device::TextureDesc cube = desc;
+		cube.dimension = device::TextureDimension::kCube;
+		cube.width = cube.height = 2;
+		cube.depthOrLayers = 6;
+		std::vector<std::byte> faces;
+		for ( std::uint8_t face = 0; face < 6; ++face )
+		{
+			const std::vector<std::byte> one = Bytes( 16, std::uint8_t( 40 + face ) );
+			faces.insert( faces.end(), one.begin(), one.end() );
+		}
+		auto cubeEntry = textures.Stage( "cube", cube, faces );
+		checks.That( cubeEntry.HasValue(), "R7.a-cube-stages-with-six-faces" );
+		checks.That(
+		    !textures.Stage( "one-face", cube, Bytes( 16, 1 ) ) && !textures.Find( "one-face" ),
+		    "R7.a-cube-given-one-face-fails" );
+		auto cubeUpload = device->BeginEncoder( device::QueueKind::kGraphics ).Value();
+		(void)textures.RecordUploads( cubeUpload );
+		control->ClearRecorded();
+		const device::CompletionToken cubeToken = Run( *device, cubeUpload );
+		control->CompleteThrough( cubeToken.queue, cubeToken.value );
+		textures.Retire( cubeToken );
+		bool facesLanded = cubeEntry.HasValue();
+		for ( std::uint32_t face = 0; facesLanded && face < 6; ++face )
+			facesLanded = ReadTexture( *device, cubeEntry.Value().texture, 2, 2, 0, face ) ==
+			              Bytes( 16, std::uint8_t( 40 + face ) );
+		checks.That( facesLanded, "R7.every-face-lands-in-its-layer" );
+		checks.That( textures.Evict( "cube" ).HasValue(), "R7.the-cube-evicts" );
+		textures.Retire( cubeToken );
 
 		resources::MeshCache meshes( *device );
 		const std::vector<std::byte> vertices = Bytes( 96, 3 );

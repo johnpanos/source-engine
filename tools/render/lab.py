@@ -3,6 +3,7 @@
 
     python3 tools/render/lab.py composition [--tree build-rc-lab] [--out DIR]
     python3 tools/render/lab.py selftest
+    python3 tools/render/lab.py suite <name> [--tree build-rc-lab] [suite options]
 
 `composition` is K11's "Lab composes the core alone": render_lab's link holds
 no engine, material system, legacy frontend, composition root or SDL (its
@@ -13,6 +14,9 @@ layer and synchronization validation reporting nothing.
 
 `selftest` runs the link scans against seeded symbol lists: each forbidden
 module must be found (the scans' negative controls).
+
+`suite` runs one of render_lab's own suites (render/lab/suites.h) with the
+tree's libraries on the path; render_lab prints the checks-v1 record.
 
 Both print one checks-v1 record.
 """
@@ -186,10 +190,26 @@ def main():
     composition.add_argument("--tree", default="build-rc-lab")
     composition.add_argument("--out")
     sub.add_parser("selftest")
-    args = parser.parse_args()
+    suite = sub.add_parser("suite")
+    suite.add_argument("name")
+    suite.add_argument("--tree", default="build-rc-lab")
+    args, rest = parser.parse_known_args()
     if args.command == "composition":
         return run_composition(args)
+    if args.command == "suite":
+        binary = lab_binary(args.tree)
+        if not binary.exists():
+            print("FAIL lab.binary: %s is not built" % binary)
+            return report_missing()
+        sys.stdout.flush()
+        os.execve(str(binary), [str(binary), "suite", args.name] + rest, lab_env(args.tree))
     return run_selftest(args)
+
+
+def report_missing():
+    checks = Checks()
+    checks.check(False, "lab.binary")
+    return checks.report()
 
 
 if __name__ == "__main__":

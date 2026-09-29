@@ -294,6 +294,49 @@ unchanged.
 - Debug pipelines are created on first use and kept for the map. Their
   creation is excluded from the pipeline-miss log.
 
+### Implementation decisions (D0, 2026-09-28)
+
+Agent decisions by the render-core owner, under the user's standing
+instruction. The [progress record](0016-progress.md#rfc-0014-d0-in-the-lab-the-view-catalog-on-the-core-2026-09-28)
+has the evidence.
+
+- **Every debug parameter is a specialization constant.** The block in the
+  frame bind group described above is replaced. The ids are 100–108: view,
+  BRDF mode, terms off, flags (furnace, filtered out), scale, range,
+  threshold, forced roughness and forced metalness.
+  `public/render/shaderlib/debug_view.h` owns them together with the view
+  catalog. With no debug block there is no layout variant. A program whose
+  specialization is neutral receives no debug constant, so its pipeline is
+  the shipped one.
+  - A view's parameters are set only for the views that read them: the
+    scale for views 8–12, the range for view 15 and the threshold for view
+    17. That keeps one pipeline per view.
+- **Default identity.** Every view uses the same module. That is binding
+  rule 2 (one program), and it rules out a separate `-DDEBUG_VIEW` module.
+  "Modules and constants unchanged" therefore means:
+  - a shipped pipeline receives exactly its own constants;
+  - the family pixel suites report the same worst differences as before
+    the change.
+- **Formulas.** Luminance uses the Rec. 709 weights. Linear depth is
+  `1 / gl_FragCoord.w`, the clip-space w, which is the view-space depth.
+- **Programs.** The views are in `lightmapped` (which `unlit` and the
+  editor's `preview` draw through), `pbr`, `vertexlit` and `lines`. The
+  shadow receiver pass (`render.pass.shadows`) is an oracle pass whose
+  output encodes visibility, not a shading program, and takes no views.
+- **Terms on the programs that exist today.**
+  - `pbr`: its four model lights answer to `clustered`, its ambient cube
+    to `probes`, and its reflected-cube image light to `ibl`. `vertexlit`
+    mixes the cube and the lights in its vertex stage, so no light term is
+    separable there, and views 9 and 18–20 draw the hatch.
+  - On the `lightmapped` legacy point:
+    - `baked` off is the frame of a zero lightmap page;
+    - `emission` off is the frame of `$selfillumtint 0`;
+    - `ibl` off is the frame without `$envmap`;
+    - `cl_render_debug_brdf 1` and `2` drop the env map's specular term and
+      the diffuse term.
+- **Cube textures.** `render.resources`' `TextureCache` stages all six
+  faces of a cube. The lab needs this for its env maps and probes.
+
 ## What is this pixel, and which draw is broken (`render.debug-draws.v1`)
 
 ### Frame draw records

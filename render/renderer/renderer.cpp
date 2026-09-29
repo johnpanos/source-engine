@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace render::renderer
@@ -22,10 +24,13 @@ class Renderer final : public frame::IRenderer
 {
 public:
 	Renderer( device::IRenderDevice2 &device,
-	    std::vector<std::unique_ptr<frame::IRenderFeature>> features )
+	    std::vector<std::unique_ptr<frame::IRenderFeature>> features,
+	    std::vector<std::string> debugPrograms )
 	    : m_Device( device ), m_Features( std::move( features ) ), m_Transients( device ),
-	      m_Executor( m_Transients )
+	      m_Executor( m_Transients ), m_DebugPrograms( std::move( debugPrograms ) )
 	{
+		for ( const std::string &name : m_DebugPrograms )
+			m_DebugProgramNames.push_back( name );
 	}
 
 	foundation::Expected<void, frame::FrameError> BeginFrame(
@@ -38,6 +43,16 @@ public:
 		m_Frame = desc;
 		m_InFrame = true;
 		m_Current = frame::FrameStats();
+		// The debug controls apply to the whole frame; a refused value keeps
+		// the previous one (RFC 0014).
+		if ( auto valid = frame::ValidateDebugControls( desc.debug, m_DebugProgramNames ); valid )
+			m_AppliedDebug = desc.debug;
+		else
+		{
+			m_LastDebugRejection = valid.Error();
+			++m_Current.debugRejected;
+		}
+		m_Frame.debug = m_AppliedDebug;
 		m_Tracker.Reset();
 		(void)Record( frame::Stage::kFrameBegin );
 		return {};
@@ -117,11 +132,17 @@ public:
 		m_Totals.transitions += m_Current.transitions;
 		m_Totals.transientsCreated += m_Current.transientsCreated;
 		m_Totals.transientsReused += m_Current.transientsReused;
+		m_Totals.debugRejected += m_Current.debugRejected;
 		m_Totals.lastToken = m_Current.lastToken;
 		return m_Current;
 	}
 
 	const frame::FrameStats &Totals() const override { return m_Totals; }
+	const frame::DebugControls &AppliedDebug() const override { return m_AppliedDebug; }
+	const frame::DebugControlsError &LastDebugRejection() const override
+	{
+		return m_LastDebugRejection;
+	}
 
 	void AddStageHooks( frame::IRenderStageHooks *hooks ) override
 	{
@@ -164,6 +185,10 @@ private:
 	frame::FrameStats m_Current;
 	frame::FrameStats m_Totals;
 	bool m_InFrame = false;
+	std::vector<std::string> m_DebugPrograms;
+	std::vector<std::string_view> m_DebugProgramNames; // views of m_DebugPrograms
+	frame::DebugControls m_AppliedDebug;
+	frame::DebugControlsError m_LastDebugRejection{ frame::DebugControlsStatus( 0 ), {} };
 };
 
 } // namespace
@@ -181,8 +206,8 @@ foundation::Expected<std::unique_ptr<frame::IRenderer>, RendererError> CreateRen
 			return foundation::MakeUnexpected(
 			    RendererError{ RendererStatus::kMissingCapability, feature->Name(), *missing } );
 	}
-	return std::unique_ptr<frame::IRenderer>(
-	    std::make_unique<Renderer>( *deps.device, std::move( deps.features ) ) );
+	return std::unique_ptr<frame::IRenderer>( std::make_unique<Renderer>(
+	    *deps.device, std::move( deps.features ), std::move( deps.debugPrograms ) ) );
 }
 
 } // namespace render::renderer

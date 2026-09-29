@@ -53,10 +53,12 @@ public:
 	// pixels are mip 0, layer 0, rows tightly packed.
 	foundation::Expected<TextureEntry, ResourceError> Stage(
 	    std::string_view name, const device::TextureDesc &desc, std::span<const std::byte> pixels );
-	// levels[m] is mip m, layer 0, rows tightly packed, max(1, width >> m) by
-	// max(1, height >> m) texels; 1 <= levels.size() <= desc.mipLevels. Levels
-	// past the last one given are not uploaded (a sampler must not reach
-	// them). A level of the wrong size fails and stages nothing.
+	// levels[m] is mip m, rows tightly packed, max(1, width >> m) by
+	// max(1, height >> m) texels per layer; 1 <= levels.size() <=
+	// desc.mipLevels. A cube's level holds its six faces one after another
+	// (+x, -x, +y, -y, +z, -z); every other texture's level holds one layer.
+	// Levels past the last one given are not uploaded (a sampler must not
+	// reach them). A level of the wrong size fails and stages nothing.
 	foundation::Expected<TextureEntry, ResourceError> StageMips( std::string_view name,
 	    const device::TextureDesc &desc, std::span<const std::span<const std::byte>> levels );
 	const TextureEntry *Find( std::string_view name ) const;
@@ -71,9 +73,11 @@ public:
 private:
 	struct Level
 	{
-		std::uint64_t offset = 0; // in pixels
+		std::uint64_t offset = 0; // in bytes
 		std::uint32_t width = 0;
 		std::uint32_t height = 0;
+		std::uint32_t layers = 1;
+		std::uint64_t layerBytes = 0;
 	};
 
 	struct Upload
