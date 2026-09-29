@@ -34,6 +34,12 @@ BEGIN_DATADESC( CFuncPortalBumper )
 
 END_DATADESC()
 
+#ifdef PORTAL2
+IMPLEMENT_SERVERCLASS_ST( CFuncPortalBumper, DT_FuncPortalBumper )
+	SendPropBool( SENDINFO( m_bActive ) ),
+END_SEND_TABLE()
+#endif
+
 
 CFuncPortalBumper::CFuncPortalBumper()
 {

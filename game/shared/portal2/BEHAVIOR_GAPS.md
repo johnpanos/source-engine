@@ -72,7 +72,7 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | G19 | `info_placement_helper` `target_size`, `usesizelimit` | todo |
 | G20 | `prop_vehicle_choreo_generic` view limits (`SetMin/MaxPitch/Yaw`), `SetCanShoot`, `UseAttachmentEyes`, `PlayerCanShoot` (done 2026-09-29, see log); `logic_playerproxy` `LowerWeapon` | todo (`PaintPlayerWithPortalPaint` done 2026-09-28, see log) |
 | G21 | `prop_tractor_beam` `NoEmitterParticles`; `vgui_screen` `IsTransparent`; `vgui_neurotoxin_countdown` `countdown` (done, see log); `npc_bullseye` `AlwaysTransmit`; `point_viewcontrol` `TrackSpeed` | todo |
-| G22 | Retail-networked base classes (`func_brush`, `func_movelinear`, `func_button`, `prop_door_rotating`, `func_portal_bumper`) and co-op stats (`portal_mp_stats`) | todo |
+| G22 | Retail-networked base classes (`func_brush`, `func_movelinear`, `func_button`, `prop_door_rotating`, `func_portal_bumper` (done, see log)) and co-op stats (`portal_mp_stats`) | todo |
 
 ### Portal rendering
 
@@ -350,3 +350,11 @@ Newest last. Each entry names the build and the check that passed.
   (0x97ff40) on both its shot paths and skips the shot, dry fire included.
   Headless `sp_a2_turret_intro`: a turret still shoots the player in the open
   (`AddMultiDamage` hits). The glass case is not checked at runtime.
+- 2026-09-29, G22 `func_portal_bumper` (build-p2, native Vulkan): the
+  server sends `DT_FuncPortalBumper` (`m_bActive`) as the 2010 server dSYM
+  and the retail server do, so the client's predicted portal placement
+  (`portal_placement.cpp` under `CLIENT_DLL`) can bump off them; the client
+  class was reconstructed earlier but never received one. Headless
+  `sp_a2_bridge_the_gap`: `report_entities` counts 30 bumpers on the server
+  and `cl_showents` lists 9 `CFuncPortalBumper` on the client (those in the
+  PVS). Portal 1 keeps its unnetworked bumper.

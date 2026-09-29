@@ -13,6 +13,12 @@ class CFuncPortalBumper : public CBaseEntity
 {
 public:
 	DECLARE_CLASS( CFuncPortalBumper, CBaseEntity );
+#ifdef PORTAL2
+	// Portal 2 networks the bumper, so the client's predicted portal
+	// placement bumps off it too (DT_FuncPortalBumper in the 2010 dSYMs and
+	// the retail client and server)
+	DECLARE_SERVERCLASS();
+#endif
 
 	CFuncPortalBumper();
 
@@ -27,7 +33,11 @@ public:
 	DECLARE_DATADESC();
 
 private:
+#ifdef PORTAL2
+	CNetworkVar( bool, m_bActive );
+#else
 	bool m_bActive;
+#endif
 };
 
 #endif // FUNC_PORTAL_BUMPER_H
