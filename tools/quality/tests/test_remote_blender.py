@@ -1,7 +1,10 @@
+import io
+import json
 import shlex
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -29,7 +32,9 @@ class RemoteBlenderTest(unittest.TestCase):
     def test_command_runs_in_the_mirrored_root_with_the_environment(self):
         command = self.remote().command(["-b", "--python", "/src/engine/x y.py"],
                                         {"OCIO": "/src/engine/o.ocio", "OMP_NUM_THREADS": "1"})
-        self.assertEqual(command[:-1], list(remote_blender.DEFAULT_SSH) + ["user@gpu"])
+        self.assertEqual(command[2:4], ["exec", "--ssh"])
+        self.assertEqual(json.loads(command[4]), list(remote_blender.DEFAULT_SSH))
+        self.assertEqual(command[5:8], ["--host", "user@gpu", "--"])
         self.assertEqual(shlex.split(command[-1]),
                          ["cd", "/src/engine", "&&", "env", "OCIO=/src/engine/o.ocio",
                           "OMP_NUM_THREADS=1", "/opt/blender 5/blender", "-b", "--python",
@@ -37,7 +42,7 @@ class RemoteBlenderTest(unittest.TestCase):
 
     def test_custom_transport(self):
         remote = self.remote(ssh=["ssh", "-p", "2222"])
-        self.assertEqual(remote.command([], {})[:3], ["ssh", "-p", "2222"])
+        self.assertEqual(json.loads(remote.command([], {})[4]), ["ssh", "-p", "2222"])
 
     def test_inside(self):
         root = Path(tempfile.mkdtemp())
@@ -75,6 +80,57 @@ class RemoteBlenderTest(unittest.TestCase):
 
     def test_toolchain_without_a_block_stays_local(self):
         self.assertIsNone(remote_blender.from_toolchain({"blender": "blender"}))
+
+
+# A stand-in ssh: runs the command locally; with FAKE_SSH_DROP set, the first
+# `tail` it is asked for prints part of the output and fails as a dropped
+# connection does (exit 255).
+FAKE_SSH = """
+import os, subprocess, sys
+command = sys.argv[2]
+flag = os.environ.get("FAKE_SSH_DROP")
+if flag and command.startswith("tail") and not os.path.exists(flag):
+    open(flag, "w").close()
+    subprocess.run(["bash", "-c", "sleep 1; head -c 4 " + command.split()[-1]])
+    sys.exit(255)
+sys.exit(subprocess.run(["bash", "-c", command], stdin=sys.stdin).returncode)
+"""
+
+
+class DetachedJobTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        (self.tmp / "ssh.py").write_text(FAKE_SSH)
+        self.ssh = [sys.executable, str(self.tmp / "ssh.py")]
+        self.jobs = remote_blender.JOBS
+        remote_blender.JOBS = str(self.tmp / "jobs")
+
+    def tearDown(self):
+        remote_blender.JOBS = self.jobs
+
+    def test_output_and_exit_status_come_back(self):
+        out = io.BytesIO()
+        code = remote_blender.execute(self.ssh, "host", "echo one; echo two >&2; exit 3", out,
+                                      sleep=lambda s: None)
+        self.assertEqual(code, 3)
+        self.assertEqual(sorted(out.getvalue().decode().split()), ["one", "two"])
+
+    def test_a_dropped_connection_resumes_where_it_stopped(self):
+        out = io.BytesIO()
+        with mock.patch.dict("os.environ", {"FAKE_SSH_DROP": str(self.tmp / "dropped")}):
+            code = remote_blender.execute(self.ssh, "host",
+                                          "printf 'abcdefgh'; sleep 2; printf 'ijkl'", out,
+                                          sleep=lambda s: None)
+        self.assertEqual(code, 0)
+        text = out.getvalue().decode()
+        self.assertIn("connection lost", text)
+        self.assertEqual(text.replace("[remote_blender] connection lost; reconnecting\n", ""),
+                         "abcdefghijkl")
+
+    def test_the_job_runs_detached_with_a_watchdog(self):
+        script = remote_blender.start_script("/tmp/remote-blender/x", "blender -b")
+        self.assertIn("setsid bash -c '(blender -b); echo $? > /tmp/remote-blender/x/rc'", script)
+        self.assertIn("-gt %d" % remote_blender.LEASE_S, script)
 
 
 if __name__ == "__main__":

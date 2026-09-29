@@ -84,7 +84,7 @@ class VastBlenderTest(unittest.TestCase):
         remote = remote_blender.from_toolchain(json.loads(out.read_text()))
         self.assertEqual(remote.host, "root@1.2.3.4")
         self.assertEqual(remote.blender, vast_blender.BLENDER_REMOTE)
-        self.assertEqual(remote.command([], {})[:len(ssh)], ssh)
+        self.assertEqual(json.loads(remote.command([], {})[4]), ssh)
         self.assertTrue(remote.applies("render") and remote.applies("bake"))
         # The tool steps run there too, with the host's pinned OIDN as their identity.
         for step in ("noise", "denoise", "directional", "rprb"):

@@ -61,9 +61,14 @@ import argparse
 import hashlib
 import json
 import re
+import os
 import shlex
+import signal
 import subprocess
 import sys
+import threading
+import time
+import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -151,7 +156,14 @@ class RemoteBlender:
         line = "cd %s && env %s %s %s" % (
             shlex.quote(str(self.root)), exports, shlex.quote(self.blender),
             " ".join(shlex.quote(str(a)) for a in arguments))
-        return self.ssh + [self.host, line]
+        return self.detached(line)
+
+    def detached(self, line):
+        """The local command that runs shell `line` on the host as a detached
+        job (`execute`): it survives a dropped connection, and its output and
+        exit status come back here."""
+        return [sys.executable, str(Path(__file__).resolve()), "exec",
+                "--ssh", json.dumps(self.ssh), "--host", self.host, "--", line]
 
     def tool_command(self, arguments, env):
         """The local command that runs a Python tool step (`arguments` after
@@ -161,7 +173,7 @@ class RemoteBlender:
         line = "cd %s && env %s %s %s" % (
             shlex.quote(str(self.root)), exports, shlex.quote(self.python),
             " ".join(shlex.quote(str(a)) for a in arguments))
-        return self.ssh + [self.host, line]
+        return self.detached(line)
 
     def tool_identity(self, name):
         """A pinned tool's identity on the host (the block's `tools`), or None."""
@@ -187,6 +199,92 @@ class RemoteBlender:
         the host running it (each rented host has a new address)."""
         identity = self.identity()
         return {"version": identity["version"], "sha256": identity["sha256"]}
+
+
+# ============================================================ detached jobs
+# A remote step runs as a job on the host, not as the ssh session's child: a
+# dropped connection (seen on a rented host mid-radiosity, leaving the Blender
+# running as an orphan) no longer fails the step. The client streams the job's
+# output from a byte offset, reconnecting after a drop, and touches a
+# heartbeat; the host's watchdog kills a job whose client has been gone for
+# LEASE_S (the pipeline SIGKILLs a silent step's process group, so the client
+# cannot always stop the job itself).
+JOBS = "/tmp/remote-blender"
+HEARTBEAT_S = 60
+LEASE_S = 900
+RECONNECT_S = 600
+
+
+def start_script(directory, line):
+    """The host script that starts `line` as a detached job with its watchdog."""
+    job = "(%s); echo $? > %s/rc" % (line, directory)
+    watchdog = ("job=$(cat {d}/pid); while kill -0 $job 2>/dev/null; do "
+                "if [ $(( $(date +%s) - $(stat -c %Y {d}/hb) )) -gt {lease} ]; then "
+                "kill -TERM -$job; sleep 10; kill -KILL -$job 2>/dev/null; fi; sleep 30; done"
+                ).format(d=directory, lease=LEASE_S)
+    return "\n".join([
+        "set -e",
+        "mkdir -p %s && cd %s && touch hb" % (directory, directory),
+        "nohup setsid bash -c %s > out 2>&1 < /dev/null &" % shlex.quote(job),
+        "echo $! > pid",
+        "nohup setsid bash -c %s > /dev/null 2>&1 < /dev/null &" % shlex.quote(watchdog),
+        "echo STARTED",
+    ])
+
+
+def execute(ssh, host, line, stream=None, sleep=time.sleep):
+    """Run `line` on the host as a detached job; stream its output to
+    `stream` (stdout's bytes); return its exit status."""
+    stream = stream or sys.stdout.buffer
+    directory = "%s/%s" % (JOBS, uuid.uuid4().hex)
+    started = subprocess.run(ssh + [host, "bash -s"], input=start_script(directory, line),
+                             capture_output=True, text=True)
+    if "STARTED" not in started.stdout:
+        stream.write(("remote job did not start: %s\n" % started.stderr.strip()).encode())
+        return started.returncode or 1
+    stop = threading.Event()
+
+    def heartbeat():
+        while not stop.wait(HEARTBEAT_S):
+            subprocess.run(ssh + [host, "touch %s/hb" % directory], capture_output=True)
+
+    def cancel(*_):
+        subprocess.run(ssh + [host, "kill -TERM -$(cat %s/pid) 2>/dev/null" % directory],
+                       capture_output=True)
+        raise SystemExit(143)
+
+    threading.Thread(target=heartbeat, daemon=True).start()
+    previous = {sig: signal.signal(sig, cancel) for sig in (signal.SIGTERM, signal.SIGINT)}
+    offset, contact = 0, time.monotonic()
+    try:
+        while True:
+            tail = subprocess.Popen(ssh + [host, "tail -c +%d --pid=$(cat %s/pid) -f %s/out"
+                                           % (offset + 1, directory, directory)],
+                                    stdout=subprocess.PIPE)
+            for chunk in iter(lambda: tail.stdout.read1(65536), b""):
+                stream.write(chunk)
+                stream.flush()
+                offset += len(chunk)
+                contact = time.monotonic()
+            if tail.wait() == 0:
+                break
+            if time.monotonic() - contact > RECONNECT_S:
+                stream.write(b"lost the host for %d s; the job ends at its lease\n" % RECONNECT_S)
+                return 255
+            stream.write(b"[remote_blender] connection lost; reconnecting\n")
+            sleep(10)
+        for _ in range(10):
+            status = subprocess.run(ssh + [host, "cat %s/rc" % directory],
+                                    capture_output=True, text=True)
+            if status.returncode == 0 and status.stdout.strip():
+                return int(status.stdout.strip())
+            sleep(3)
+        stream.write(b"remote job left no exit status (killed?)\n")
+        return 1
+    finally:
+        stop.set()
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
 
 
 def _inside(path, roots):
@@ -302,7 +400,13 @@ def main():
     checker.add_argument("--toolchain", type=Path,
                          default=ROOT / "build/toolchains/pbrt-map-toolchain-gpu.json")
     checker.add_argument("--smoke", action="store_true", help="also render on the host's GPU")
+    runner = commands.add_parser("exec", help=argparse.SUPPRESS)
+    runner.add_argument("--ssh", required=True, help="the ssh command, as JSON")
+    runner.add_argument("--host", required=True)
+    runner.add_argument("line")
     args = parser.parse_args()
+    if args.command == "exec":
+        return execute(json.loads(args.ssh), args.host, args.line)
     if args.command == "configure":
         toolchain = json.loads(args.toolchain.read_text())
         block = {"host": args.host, "blender": args.blender}
