@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -142,6 +143,7 @@ int main()
 	if ( const char *adapter = std::getenv( "RENDER_VK_ADAPTER" ) )
 		options.adapterIndex = std::atoi( adapter );
 	int drawnCases = 0;
+	bool fogChecked = false;
 	{
 		auto created = vulkan::Create( options );
 		if ( !checks.That( created.HasValue(), "device.a-vulkan-device-is-created" ) )
@@ -203,8 +205,51 @@ int main()
 				continue;
 			++drawnCases;
 			JudgeCase( checks, testCase, drawn );
+
+			// The view's range fog, on the first opaque case: with 1 / range 0
+			// and start / range -0.5 the factor is 0.5 everywhere, squared to
+			// 0.25, so each pixel is a quarter of the way to the fog color in
+			// linear light (common_ps_fxc.h BlendPixelFog).
+			if ( fogChecked || claim.blend != device::BlendMode::kOpaque )
+				continue;
+			fogChecked = true;
+			LightmappedFrame fogged;
+			const float fogColor[3] = { 0.8f, 0.2f, 0.05f };
+			std::copy( fogColor, fogColor + 3, fogged.fogColor );
+			fogged.fogColor[3] = 0.0f;
+			fogged.fogParams[0] = -0.5f;
+			fogged.fogParams[2] = 1.0f;
+			fogged.fogParams[3] = 0.0f;
+			CaseDraw fogDraw = draw;
+			fogDraw.groups.back().constants = std::as_bytes( std::span( &fogged, 1 ) );
+			const Drawn withFog = DrawCase( *device, fogDraw );
+			if ( !checks.That( withFog.ok, "fog.draws" ) )
+				continue;
+			const auto toLinear = []( float c )
+			{
+				return c <= 0.04045f ? c / 12.92f : std::pow( ( c + 0.055f ) / 1.055f, 2.4f );
+			};
+			const auto toSrgb = []( float c )
+			{
+				return c <= 0.0031308f ? c * 12.92f : 1.055f * std::pow( c, 1.0f / 2.4f ) - 0.055f;
+			};
+			int worst = 0;
+			for ( std::size_t i = 0; i + 3 < drawn.rgba.size(); i += 4 )
+			{
+				for ( int c = 0; c < 3; ++c )
+				{
+					const float plain = toLinear( drawn.rgba[i + c] / 255.0f );
+					const float expected =
+					    toSrgb( plain + ( fogColor[c] - plain ) * 0.25f ) * 255.0f;
+					worst = std::max(
+					    worst, int( std::lround( std::fabs( expected - withFog.rgba[i + c] ) ) ) );
+				}
+			}
+			That( checks, worst <= 2, "fog.range-fog-mixes-a-quarter-toward-its-color",
+			    "worst " + std::to_string( worst ) + " levels" );
 		}
 		checks.That( drawnCases == 8, "cases.every-case-drew" );
+		checks.That( fogChecked, "fog.an-opaque-case-was-fogged" );
 		(void)device->WaitIdle();
 	}
 	if ( layer )

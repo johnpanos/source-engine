@@ -35,6 +35,21 @@ namespace render::legacy
 
 class ICoreTextures;
 
+// The view's fog at a slot, as the legacy pixel shaders read it
+// (common_ps_fxc.h CalcPixelFogFactor and BlendPixelFog, and the backend's
+// SetPixelShaderFogParams and UpdatePixelFogColorConstant for a pass that
+// writes sRGB and fogs to the scene's color).
+struct CorePassFog
+{
+	float type = -1.0f; // -1 none, 0 range, 1 height (below the water's z)
+	// Linear, and scaled by the tone-mapping scale in integer HDR.
+	float color[3] = { 0.0f, 0.0f, 0.0f };
+	// Range: start / range, water z, max density, 1 / range. Height: 0,
+	// water z, 1, 1 / range.
+	float params[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
+	float eyeZ = 0.0f; // the camera's world z
+};
+
 // The target a slot's pass draws into: the backend's open target at the
 // slot, as port textures in their home usages (color kColorAttachment, depth
 // kDepthWrite). Invalid textures when the backend has not imported that
@@ -66,6 +81,7 @@ struct CorePassTarget
 	// pages encode light, and the output's linear (tone-mapping) scale.
 	float lightmapScale = 1.0f;
 	float outputScale = 1.0f;
+	CorePassFog fog; // the view's fog at the slot
 };
 
 // The backend's textures as port textures (RFC 0016 K5 step 4): the image

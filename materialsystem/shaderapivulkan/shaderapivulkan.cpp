@@ -3161,9 +3161,35 @@ public:
 		// the lightmap scale for the pages' encoding and the linear tone-map
 		// scale (GetLightMapScaleFactor, SetToneMappingScaleLinear).
 		const bool integerHdr = CurrentHDRType() == HDR_TYPE_INTEGER;
-		const float lightmapScale = integerHdr ? 16.0f : powf( 2.0f, 2.2f );
-		const float outputScale = CurrentHDRType() == HDR_TYPE_NONE ? 1.0f : g_ToneMappingScale.x;
-		g_VulkanContext.QueueCorePass( tag, lightmapScale, outputScale );
+		render_vulkan::CVulkanContext::CorePassTerms terms;
+		terms.lightmapScale = integerHdr ? 16.0f : powf( 2.0f, 2.2f );
+		terms.outputScale = CurrentHDRType() == HDR_TYPE_NONE ? 1.0f : g_ToneMappingScale.x;
+		// The view's fog as SetPixelShaderFogParams and UpdatePixelFogColorConstant
+		// give it to a pass that writes sRGB and fogs to the scene's color.
+		if ( g_Fog.sceneMode == MATERIAL_FOG_LINEAR ||
+		     g_Fog.sceneMode == MATERIAL_FOG_LINEAR_BELOW_FOG_Z )
+		{
+			render::legacy::CorePassFog &fog = terms.fog;
+			const bool height = g_Fog.sceneMode == MATERIAL_FOG_LINEAR_BELOW_FOG_Z;
+			const float ooFogRange =
+			    g_Fog.end != g_Fog.start ? 1.0f / ( g_Fog.end - g_Fog.start ) : 1.0f;
+			fog.type = height ? 1.0f : 0.0f;
+			fog.params[0] = height ? 0.0f : g_Fog.start * ooFogRange;
+			fog.params[1] = g_Fog.fogZ;
+			fog.params[2] = height ? 1.0f : clamp( g_Fog.maxDensity, 0.0f, 1.0f );
+			fog.params[3] = ooFogRange;
+			for ( int i = 0; i < 3; ++i )
+			{
+				fog.color[i] =
+				    g_ShaderAPIEmpty.GammaToLinear_HardwareSpecific( g_Fog.sceneColor[i] / 255.0f );
+				if ( integerHdr )
+					fog.color[i] *= g_ToneMappingScale.x;
+			}
+			float eye[4];
+			g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
+			fog.eyeZ = eye[2];
+		}
+		g_VulkanContext.QueueCorePass( tag, terms );
 	}
 };
 static CVulkanCorePassSlots g_CorePassSlots;

@@ -6647,14 +6647,14 @@ void CVulkanContext::AttachFrameStage( FrameStage stage, render::device::Command
 	m_hostDevice->AddSubmitSignal( encoder, m_renderFinished[m_acquiredImage] );
 }
 
-void CVulkanContext::QueueCorePass( uint32_t tag, float lightmapScale, float outputScale )
+void CVulkanContext::QueueCorePass( uint32_t tag, const CorePassTerms &terms )
 {
 	if ( !m_corePassRecorder )
 		return;
 	DynDraw &record = AppendRecord( kRecordCorePass );
 	record.corePass = tag;
-	record.corePassLight[0] = lightmapScale;
-	record.corePassLight[1] = outputScale;
+	record.corePassTerms = static_cast<uint32_t>( m_corePassTerms.size() );
+	m_corePassTerms.push_back( terms );
 }
 
 void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &encoder )
@@ -6670,8 +6670,13 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 			continue;
 		m_hostDevice->BeginSection( encoder );
 		render::legacy::CorePassTarget target = CorePassTargetFor( d.target );
-		target.lightmapScale = d.corePassLight[0];
-		target.outputScale = d.corePassLight[1];
+		if ( d.corePassTerms < m_corePassTerms.size() )
+		{
+			const CorePassTerms &terms = m_corePassTerms[d.corePassTerms];
+			target.lightmapScale = terms.lightmapScale;
+			target.outputScale = terms.outputScale;
+			target.fog = terms.fog;
+		}
 		m_corePassRecorder->RecordSlot( d.corePass, encoder, target );
 		m_hostDevice->EndSection( encoder );
 	}

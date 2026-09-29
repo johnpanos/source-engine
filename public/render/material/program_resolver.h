@@ -48,6 +48,12 @@ struct FrameTerms
 	// The target has no sRGB view: the shader encodes its output (the
 	// resolver's color format is then the target's unorm format).
 	bool encodeOutput = false;
+	// The view's fog (legacy::CorePassFog's terms): type -1 none, 0 range,
+	// 1 height; color linear and tone-scaled; parameters; the eye's world z.
+	float fogType = -1.0f;
+	float fogColor[3] = { 0.0f, 0.0f, 0.0f };
+	float fogParams[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
+	float fogEyeZ = 0.0f;
 };
 
 struct ResolvedProgram

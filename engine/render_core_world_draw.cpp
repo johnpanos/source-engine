@@ -398,9 +398,9 @@ bool RenderCoreWorldDraw_ViewEligible( unsigned long flags )
 	                 DRAWWORLDLISTS_DRAW_REFRACTION | DRAWWORLDLISTS_DRAW_REFLECTION ) )
 		return false;
 	CMatRenderContextPtr pRenderContext( materials );
-	// Only the back buffer is a slot target, and the model has no fog term yet.
-	return pRenderContext->GetRenderTarget() == NULL &&
-	       pRenderContext->GetFogMode() == MATERIAL_FOG_NONE;
+	// Only the back buffer is a slot target. The view's fog (range or height)
+	// is a frame term, captured when the slot is marked.
+	return pRenderContext->GetRenderTarget() == NULL;
 }
 
 bool RenderCoreWorldDraw_Takes( SurfaceHandle_t surfID )

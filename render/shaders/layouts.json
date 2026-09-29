@@ -1111,7 +1111,8 @@
       "binding": 0,
       "kind": "uniform-buffer",
       "stages": [
-       "fragment"
+       "vertex",
+        "fragment"
       ]
      },
      {

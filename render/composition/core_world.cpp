@@ -181,6 +181,10 @@ void CoreWorld::RecordSlot(
 	world.frame = target.frame;
 	world.lightmapScale = target.lightmapScale;
 	world.outputScale = target.outputScale;
+	world.fogType = target.fog.type;
+	std::copy( target.fog.color, target.fog.color + 3, world.fogColor );
+	std::copy( target.fog.params, target.fog.params + 4, world.fogParams );
+	world.fogEyeZ = target.fog.eyeZ;
 	m_Pass.Record( tag, encoder, world );
 }
 

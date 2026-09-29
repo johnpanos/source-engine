@@ -75,7 +75,7 @@ LightmappedFamily::Create(
 	family->m_DepthFormat = depthFormat;
 	family->m_SampleCount = sampleCount;
 	const BindingDesc material[] = {
-	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } },
+	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } },
 	    { 1, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 2, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	const BindingDesc draw[] = { { 0, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
@@ -173,7 +173,9 @@ foundation::Expected<ProgramRequest, LightmappedStatus> LightmappedFamily::Reque
 	request.frameLayout = m_FrameLayout;
 	request.material.layout = m_MaterialLayout;
 	request.material.constantsBinding = 0;
-	const auto bytes = std::as_bytes( std::span( &claim.constants, 1 ) );
+	LightmappedConstants constants = claim.constants;
+	constants.state[0] = claim.blend == BlendMode::kOpaque && claim.alphaWrite ? 1.0f : 0.0f;
+	const auto bytes = std::as_bytes( std::span( &constants, 1 ) );
 	request.material.constants.assign( bytes.begin(), bytes.end() );
 	request.material.textures.push_back( { 1, std::move( baseTexture ), 2, sampler, true } );
 	return request;

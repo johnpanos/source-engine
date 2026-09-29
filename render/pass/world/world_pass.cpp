@@ -715,8 +715,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	};
 
 	// The frame group of a program's layout, its terms written for this slot.
-	const material::FrameTerms terms{
-	    target.lightmapScale, target.outputScale, target.encodeOutput };
+	material::FrameTerms terms;
+	terms.lightmapScale = target.lightmapScale;
+	terms.outputScale = target.outputScale;
+	terms.encodeOutput = target.encodeOutput;
+	terms.fogType = target.fogType;
+	std::copy( target.fogColor, target.fogColor + 3, terms.fogColor );
+	std::copy( target.fogParams, target.fogParams + 4, terms.fogParams );
+	terms.fogEyeZ = target.fogEyeZ;
 	std::map<std::uint64_t, bool> framesWritten;
 	auto frameGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{

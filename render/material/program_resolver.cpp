@@ -255,6 +255,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		claim.constants.flags[1] = unlit.constants.flags[2]; // $alphatest
 		claim.constants.flags[2] = unlit.constants.flags[3]; // its reference
 		claim.constants.flags[3] = 1.0f;                     // lighting is one
+		claim.constants.state[1] = 1.0f;                     // gamma vertex color
 		auto request = s.lightmapped->Request( claim, TextureOf( material, "basetexture" ) );
 		if ( !request )
 			return foundation::MakeUnexpected(
@@ -334,6 +335,7 @@ foundation::Expected<ProgramResolver::Preview, std::string> ProgramResolver::Res
 	claim.constants.flags[1] = alphaTest ? 1.0f : 0.0f;
 	claim.constants.flags[2] = detail::AlphaTestReference( scalar( "$alphatestreference", 0.0f ) );
 	claim.constants.flags[3] = 1.0f; // lighting is one
+	claim.constants.state[1] = 1.0f; // display (gamma) vertex colors, as the editor's are
 	const VmtPair *base = find( "$basetexture" );
 	auto request =
 	    s.lightmapped->Request( claim, base ? VmtTextureReference( base->value ) : std::string() );
@@ -369,6 +371,10 @@ std::optional<GroupRequest> ProgramResolver::FrameGroup(
 		frame.light[0] = terms.lightmapScale;
 		frame.light[1] = terms.outputScale;
 		frame.light[2] = terms.encodeOutput ? 1.0f : 0.0f;
+		std::copy( terms.fogColor, terms.fogColor + 3, frame.fogColor );
+		frame.fogColor[3] = terms.fogType;
+		std::copy( terms.fogParams, terms.fogParams + 4, frame.fogParams );
+		frame.fogMisc[0] = terms.fogEyeZ;
 		return s.lightmapped->FrameGroup( frame );
 	}
 	return std::nullopt;

@@ -61,8 +61,14 @@ struct LightmappedConstants
 	// vertexcolor, alphatest, reference, 1 when lighting is one (an unlit
 	// material drawn as this term's degenerate case)
 	float flags[4] = {};
+	// x: 1 when the material is fully opaque (no blend, no alpha test), where
+	// height fog writes its factor to the output alpha (the port's
+	// WRITEWATERFOGTODESTALPHA); set by Request from the claim. y: 1 when the
+	// vertex color is gamma-encoded and decoded per vertex (pow 2.2, as
+	// UnlitGeneric's port reads it); LightmappedGeneric's is used unconverted.
+	float state[4] = {};
 };
-static_assert( sizeof( LightmappedConstants ) == 32 );
+static_assert( sizeof( LightmappedConstants ) == 48 );
 
 // The frame's terms (std140, the Frame block of lightmapped.frag): one
 // lightmap term whose scale depends on how the pages encode light, and the
@@ -70,13 +76,20 @@ static_assert( sizeof( LightmappedConstants ) == 32 );
 // (scale 2^2.2 after sRGB decode); integer-HDR pages hold linear light / 16
 // (scale 16); the output scale is the frame's linear tone-mapping scale
 // (1 without HDR). The defaults are LDR's, where the family's pixel cases sit.
+//
+// The view's fog is a frame term too (legacy::CorePassFog): its color (linear,
+// tone-scaled in integer HDR) with its type in w (-1 none, 0 range, 1 height),
+// its parameters, and the eye's world z. The default is no fog.
 struct LightmappedFrame
 {
 	// lightmap scale, output scale, 1 to encode sRGB in the shader (a target
 	// without an sRGB view), unused
 	float light[4] = { kLightmapScaleLinear, 1.0f, 0.0f, 0.0f };
+	float fogColor[4] = { 0.0f, 0.0f, 0.0f, -1.0f };
+	float fogParams[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
+	float fogMisc[4] = {}; // x: the eye's world z
 };
-static_assert( sizeof( LightmappedFrame ) == 16 );
+static_assert( sizeof( LightmappedFrame ) == 64 );
 
 // The draw constants (lightmapped.vert): row-major with column vectors.
 struct LightmappedDrawConstants

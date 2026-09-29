@@ -1977,6 +1977,35 @@ Open, in order: the surface-model phases (next section), starting with S1
 (the translucent-stage world slot, render state and the fog view term); then
 render-target and nested views, the Submission cost row, and static props.
 
+## S1 slice: the fog view term, and UnlitGeneric's vertex color (2026-09-28)
+
+- **Fog is a frame term.** The backend captures the view's fog when a slot
+  is marked (`legacy::CorePassFog`: type, linear tone-scaled color,
+  parameters, eye z; the same values SetPixelShaderFogParams and
+  UpdatePixelFogColorConstant give a pass writing sRGB). The world pass
+  hands it to the `lightmapped` frame group, and lightmapped.frag applies
+  CalcPixelFogFactor and BlendPixelFog as the port does. Fogged views are
+  now the core's, and the engine no longer excludes them.
+- **Gamma vertex color is its own term** (source-engine-10's finding).
+  UnlitGeneric's port decodes vertex color per vertex (pow 2.2), and
+  LightmappedGeneric's doesn't. The resolver's unlit case set only lighting
+  one, so unlit materials with `$vertexcolor` drew darker than their port.
+  `LightmappedConstants::state.y` now decodes in the vertex stage, and the
+  unlit resolution and the editor preview set it.
+- The slot's terms move out of the draw record into a per-frame list
+  (`CVulkanContext::CorePassTerms`).
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Family | `render.family.lightmapped` 98: the port cases are unchanged (no fog by default), and the range-fog case is within 2 levels of the formula. Mutant: an unsquared factor fails. g++ and clang++ | pass |
+| escape_00, isolated | `-deterministicrender`, `r_core_world_isolate 1`: 205 fogged views drawn by the core, 0 failed. With `r_dynamic 0` the core against legacy is 16 pixels over 8 levels (max 17), all at two lamps. The negative control is 39,847 pixels over 8 | pass, outside the lamps |
+| escape_00, lamps | with dynamic lighting on, 2,074 pixels over 8 levels (max 31) at the same two lamps, and the core is darker. The ×12 difference is concentric rings: a small lightmap sampling offset on steep gradients, plus a dynamic contribution not found yet. No dynamic lightmap rebuild runs on this map (a counter on R_RenderDynamicLightmaps read 0), and re-importing the pages every slot changes nothing | open |
+| Queued, validated | escape_00, `mat_queue_mode 2`, `-vkvalidate`: 205 views, 0 failed, 0 validation messages | pass |
+
+Open: the lamp residual (next), then the rest of S1: blending in the
+translucent stage, `$decal`, `$nocull`, `$ignorez`, `$nofog`, and the
+per-material fog color (black for additive, grey for mod2x).
+
 ## The surface-model plan (2026-09-28)
 
 User direction: "have a plan for how to modernize most materials with them

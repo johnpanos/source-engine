@@ -320,7 +320,14 @@ public:
 	}
 	// Appends a slot record at this point of the stream (a no-op without a
 	// recorder).
-	void QueueCorePass( uint32_t tag, float lightmapScale, float outputScale );
+	// A slot's frame terms, captured when it was marked.
+	struct CorePassTerms
+	{
+		float lightmapScale = 1.0f;
+		float outputScale = 1.0f;
+		render::legacy::CorePassFog fog;
+	};
+	void QueueCorePass( uint32_t tag, const CorePassTerms &terms );
 	// Slots whose sections this context ran, and the frames that had one.
 	uint64_t CorePassesRun() const { return m_corePassesRun; }
 
@@ -453,6 +460,7 @@ public:
 		m_dynQueued.clear();
 		m_dynIndices.clear();
 		m_dynDrawRecords.clear();
+		m_corePassTerms.clear();
 		m_frameLabels.clear();
 		m_dynSkinConstants.clear();
 		m_dynLegacyConstants.clear();
@@ -2305,8 +2313,8 @@ private:
 		bool clearDepth = false;
 		float clearValue[4] = { 0, 0, 0, 1 };
 		int copyDst = -1;
-		uint32_t corePass = 0;             // kRecordCorePass: the slot's tag
-		float corePassLight[2] = { 1, 1 }; // and its lightmap and output scales
+		uint32_t corePass = 0;      // kRecordCorePass: the slot's tag
+		uint32_t corePassTerms = 0; // and its terms (m_corePassTerms)
 		// Occlusion query slot of a begin/end record, and which issue of that
 		// query the begin record is.
 		int query = -1;
@@ -2360,6 +2368,7 @@ private:
 	// A draw record carrying the state current now, before its geometry.
 	DynDraw &AppendDrawRecord();
 	std::vector<DynDraw> m_dynDrawRecords;
+	std::vector<CorePassTerms> m_corePassTerms; // the kRecordCorePass records' terms
 	// QueueFrameLabel's labels, each before the record at `record`.
 	struct FrameLabel
 	{

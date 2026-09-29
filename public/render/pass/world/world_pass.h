@@ -15,6 +15,9 @@
 //			the legacy stream while the pass is on. A material the model does
 //			not draw yet stays legacy, with the reason in WorldStats.
 //
+//			The view's fog (range or height) is a frame term captured when
+//			the slot is marked, so fogged views are the pass's too.
+//
 //			Per view, the engine queues the visible surfaces the pass draws
 //			and the view's world-to-clip (QueueView); the returned tag names
 //			the slot to mark at that point of the stream. When the scene pass
@@ -132,6 +135,11 @@ struct WorldTarget
 	// The frame's light terms at the slot (material::FrameTerms).
 	float lightmapScale = 1.0f;
 	float outputScale = 1.0f;
+	// The view's fog at the slot (material::FrameTerms, legacy::CorePassFog).
+	float fogType = -1.0f;
+	float fogColor[3] = { 0.0f, 0.0f, 0.0f };
+	float fogParams[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
+	float fogEyeZ = 0.0f;
 };
 
 struct WorldView
