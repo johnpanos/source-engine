@@ -8727,6 +8727,8 @@
       "description": "render.pass.world (RFC 0016 K5, the BSP world drawn by the core) on render.device.null: materials are claimed through the one program resolver (LightmappedGeneric, and UnlitGeneric as the lightmapped term with lighting one) and the others stay legacy with named gaps ($envmap, blended); a queued view records at its slot with its lightmap pages and a neutral white for a surface without one; a slot recorded again (a capture) draws the same view; a view queued against an earlier world, or naming a surface the pass does not draw, is counted; a claimed material the render sequence fails is a named failure and stays claimed (no escape hatch); a capture re-recording an earlier world's slot leaves the next world's views queued; objects a submission's earlier slots used outlive a level change or format change and are released at a later frame; a variable the model does not read keeps its material out unless at its shader's neutral value; views of a host frame the backend never recorded are skipped, and a view lost from a recorded frame fails.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/frame/debug_controls.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
@@ -8767,6 +8769,8 @@
       "description": "render.pass.opaque (RFC 0016 K5, drawing through K4's material families) on render.device.null, which validates every transition and binding: the draw and readback passes run and frames create no device objects; draws whose mesh or program does not resolve, whose material's texture is not resident, or whose mesh stride is not the program's are counted, not drawn; invalid targets fail before any pass is added. Materials are the unlit family's flat $color over a white texture, through MaterialPrograms.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
@@ -8815,6 +8819,8 @@
       "description": "render.pass.opaque (RFC 0016 K5, drawing through K4's material families) on render.device.vulkan with real pixels, the materials being the unlit family's flat $color over a white texture through MaterialPrograms: a near cube wins the depth test although the far one draws after it; two scenes render independently in one process and destroying one leaves the other's frame byte-identical ('Two scenes'); unresolved draws (missing mesh, unknown material, absent texture, wrong stride) are counted and not drawn; the Khronos validation layer (synchronization validation) reports no message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
@@ -8954,6 +8960,8 @@
       "description": "RFC 0016 K4 'Families match ports' for the unlit family: each case of quality/fixtures/legacy-shaders/families/unlit.vdf is imported with the VMT importer, claimed by ClaimUnlit and drawn with the family's pipeline on render.device.vulkan into a 256x256 sRGB target; the sampled pixels must match the legacy port's within 2 levels per channel (quality/fixtures/render-families/unlit-port-v1.vdf, recorded by tools/render/family_port_pixels.py from a legacy_shader_conformance.py run judged against the retail D3D9 bytecode; the fixture names the case file's sha256). No validation message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
@@ -9003,6 +9011,8 @@
       "description": "seeded: the family packs $vertexcolor as off; the vertex-color cases must leave the port's tolerance",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
@@ -9053,6 +9063,8 @@
       "description": "RFC 0016 K4 'Families match ports' for the lightmapped family: each case of quality/fixtures/legacy-shaders/families/lightmapped.vdf is imported with the VMT importer, claimed by ClaimLightmapped and drawn with the family's pipeline on render.device.vulkan (the material group, and a draw group holding the case's lightmap) into a 256x256 sRGB target; the sampled pixels must match the legacy port's within 2 levels per channel (quality/fixtures/render-families/lightmapped-port-v1.vdf, recorded by tools/render/family_port_pixels.py from a legacy_shader_conformance.py run judged against the retail D3D9 bytecode; the fixture names the case file's sha256). Bump maps, second base textures, env maps and $additive are refused by name. No validation message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
@@ -9102,6 +9114,8 @@
       "description": "seeded: the family gamma-converts $color as unlit does and the port does not; the $color case must leave the port's tolerance",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
@@ -9152,6 +9166,8 @@
       "description": "RFC 0016 K4 'Families match ports' for the vertexlit family: each case of quality/fixtures/legacy-shaders/families/vertexlit.vdf is imported with the VMT importer, claimed by ClaimVertexLit and drawn with the family's pipeline on render.device.vulkan (the material group, and a draw group holding the case's ambient cube and lights as PackSourceModelLighting packs them) into a 256x256 sRGB target; the sampled pixels must match the legacy port's within 2 levels per channel (quality/fixtures/render-families/vertexlit-port-v1.vdf, recorded by tools/render/family_port_pixels.py from a legacy_shader_conformance.py run with -vklegacyvertexlit judged against the retail D3D9 bytecode; the fixture names the case file's sha256). Bump maps, env maps, detail, self-illumination, $phong, rim lights, light warps and $additive are refused by name; blending follows the port's blend requirements. No validation message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
@@ -9202,6 +9218,8 @@
       "description": "seeded: the family drops $halflambert and lights with plain Lambert; the half-Lambert case must leave the port's tolerance",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
@@ -9253,6 +9271,8 @@
       "description": "RFC 0016 K4 'Families match ports' for the pbr family (RFC 0007 PBRMetalRough on meshes): quality/fixtures/render-families/pbr-port-v1.vdf is a passing native pbr-model material pixel run (judged per pixel against an independent BRDF model), recorded by tools/render/family_port_pixels.py record-model with the harness's own inputs; each case's material is imported, claimed by ClaimPbr and drawn with the family on render.device.vulkan (the split-sum table in the frame group, Source model lighting packed by PackSourceModelLighting in the draw group, the material group (the pbr point of the one surface program), and world-to-clip plus the case's placement as draw constants) into a 256x256 sRGB target; the port's pixels must be matched within 2 levels per channel. Environment maps, alpha test, clear coat, glass and a missing MRAO texture are refused by name; the light packing sorts spot, point, directional. No validation message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
@@ -9302,6 +9322,8 @@
       "description": "seeded: the family claims every material without its normal map; the bumped case must leave the port's tolerance",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
@@ -9611,6 +9633,8 @@
         "vulkan-device:gpu"
       ],
       "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
         "render/lab/area_lights_suite.cpp",
         "render/lab/lab_suite.cpp",
         "render/shaders/common/ltc.glsl",

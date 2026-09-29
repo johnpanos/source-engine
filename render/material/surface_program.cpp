@@ -8,7 +8,7 @@
 
 #include "render/pbr_ltc_table.h"
 #include "render/pbr_split_sum_table.h"
-#include "spv/families_spv.h"
+#include "render/shaderlib/core_artifacts.h"
 
 #include <iterator>
 
@@ -23,18 +23,21 @@ namespace
 // The material group's textures: binding, sampler binding after it.
 constexpr std::uint32_t kMaterialTextures = 7;
 
-std::span<const std::byte> VertexModule( SurfaceVertexLayout layout )
+// The program's stages in the core artifact store (RFC 0016 K10).
+constexpr const char *kFragmentSource = "render/material/families/surface.frag";
+
+const char *VertexSource( SurfaceVertexLayout layout )
 {
 	switch ( layout )
 	{
 	case SurfaceVertexLayout::kWorld:
-		return std::as_bytes( std::span( spirv::kSurfaceWorldVertex ) );
+		return "render/material/families/surface_world.vert";
 	case SurfaceVertexLayout::kModel:
-		return std::as_bytes( std::span( spirv::kSurfaceModelVertex ) );
+		return "render/material/families/surface_model.vert";
 	case SurfaceVertexLayout::kFlat:
 		break;
 	}
-	return std::as_bytes( std::span( spirv::kSurfaceFlatVertex ) );
+	return "render/material/families/surface_flat.vert";
 }
 
 } // namespace
@@ -174,31 +177,22 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const auto key = std::make_pair( variant, debug );
 	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
 		return found->second;
-	std::vector<ReflectedBinding> fragmentBindings = { { 0, 0, BindingKind::kUniformBuffer },
-	    { 0, 1, BindingKind::kSampledTexture }, { 0, 2, BindingKind::kSampler },
-	    { 0, 3, BindingKind::kSampledTexture }, { 0, 4, BindingKind::kSampler },
-	    { 2, 0, BindingKind::kUniformBuffer }, { 3, 0, BindingKind::kSampledTexture },
-	    { 3, 1, BindingKind::kSampler }, { 3, 2, BindingKind::kUniformBuffer } };
-	for ( std::uint32_t texture = 0; texture < kMaterialTextures; ++texture )
-	{
-		fragmentBindings.push_back( { 2, 1 + texture * 2, BindingKind::kSampledTexture } );
-		fragmentBindings.push_back( { 2, 2 + texture * 2, BindingKind::kSampler } );
-	}
-	// The flat and world vertices read the material block (the gamma vertex
-	// color); the model vertex reads the draw's model lighting.
-	const ReflectedBinding materialBinding[] = { { 2, 0, BindingKind::kUniformBuffer } };
-	const ReflectedBinding lightingBinding[] = { { 3, 2, BindingKind::kUniformBuffer } };
+	// The program in the device's artifact format (RFC 0016 K10), with its
+	// reflected bindings from the store; a suite's seeded fragment replaces
+	// the core one, on a SPIR-V device only.
+	const ArtifactFormat format = m_Device.Facts().artifactFormat;
+	shaderlib::ArtifactOverlay artifacts( shaderlib::CoreArtifacts() );
+	if ( !m_FragmentModule.empty() &&
+	     !artifacts.ReplaceSpirv( kFragmentSource, m_FragmentModule, format ) )
+		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
+	shaderlib::PipelineRecipe recipe =
+	    shaderlib::CoreRecipe( { VertexSource( variant.layout ), kFragmentSource } );
+	recipe.debugName = "render.material.surface";
+	auto resolved = shaderlib::Resolve( recipe, artifacts, format );
+	if ( !resolved )
+		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
 	const bool model = variant.layout == SurfaceVertexLayout::kModel;
 	const std::uint32_t drawConstantBytes = SurfaceDrawConstantBytes( variant.layout );
-	const ShaderArtifactView stages[] = {
-	    { ShaderStage::kVertex, ArtifactFormat::kSpirv, VertexModule( variant.layout ), "main",
-	        model ? std::span<const ReflectedBinding>( lightingBinding )
-	              : std::span<const ReflectedBinding>( materialBinding ),
-	        drawConstantBytes },
-	    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
-	        m_FragmentModule.empty() ? std::as_bytes( std::span( spirv::kSurfaceFragment ) )
-	                                 : std::as_bytes( m_FragmentModule ),
-	        "main", fragmentBindings, 0 } };
 	std::vector<SpecializationConstant> constants = { { ShaderStage::kFragment, 0, variant.terms },
 	    { ShaderStage::kFragment, 1, variant.detailMode } };
 	// The model vertex reads the terms too (the vertexlit point's lighting).
@@ -222,9 +216,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const BlendMode blends[] = { variant.blend };
 	const std::uint8_t writes[] = {
 	    variant.alphaWrite ? kColorWriteAll : std::uint8_t( kColorWriteAll & ~kColorWriteAlpha ) };
-	PipelineDesc desc;
-	desc.kind = PipelineKind::kGraphics;
-	desc.stages = stages;
+	PipelineDesc desc = resolved.Value().Desc();
 	desc.layouts = layouts;
 	desc.drawConstantBytes = drawConstantBytes;
 	switch ( variant.layout )

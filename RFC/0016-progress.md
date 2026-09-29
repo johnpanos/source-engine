@@ -2864,7 +2864,7 @@ session), taken on the slice 1-4 report:
    (`public/render/pass/skinning/feature.h`), which adds no passes until K6's
    product skinning feeds skinned meshes. The launcher reads both settings
    and logs substitutions; no client product was rebuilt for it.
-2. **Shader selection (slice 6, done except the surface program):** one
+2. **Shader selection (slice 6, done):** one
    artifact store, `CoreArtifacts()` (`public/render/shaderlib/core_artifacts.h`),
    built once from the table the build generates (`spv/core_artifact_table.h`,
    `shader_artifacts.py store_header`: every core program row in both
@@ -2876,9 +2876,14 @@ session), taken on the slice 1-4 report:
    A suite's seeded SPIR-V variant goes through an `ArtifactOverlay`
    (`ReplaceSpirv`), which refuses a device of another format instead of
    running the unseeded program. The surface program
-   (`render/material/surface_program.{h,cpp}`, `surface.frag`) still passes
-   SPIR-V and waits until K11 step b lands (port owner's timing condition),
-   so the world pass does not run on GL yet.
+   (`render/material/surface_program.cpp`) moved after K11 b1 (`a7ad7c9c`):
+   its three vertex stages and `surface.frag` resolve through the store with
+   their reflected bindings (the hand-written reflection is gone), and the
+   seeded fragments (`debug_view_defects_spv.h`, `area_light_defects_spv.h`)
+   still reach it through `fragmentModule`, as an `ArtifactOverlay`. No core
+   consumer names an artifact format now. `render_lab` composes only the
+   Vulkan device, so the world pass has not been run on GL; its programs
+   link on GL (`render.shader-artifacts.gl`).
 3. **Product boot:** blocked on K8/K9 (see the table).
 
 ## K11: the lab gallery, and where render_lab stands against Cycles (2026-09-29)
