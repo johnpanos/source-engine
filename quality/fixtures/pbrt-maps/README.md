@@ -369,8 +369,9 @@ python3 tools/quality/portal2_gi_chamber.py \
 Any pipeline command that takes `--toolchain` works the same way. GPU bakes
 are statistical, not bit-identical like CPU bakes (`cycles_device.py`), so
 they must pass the pipeline's noise and denoise gates rather than match a CPU
-bake. The remote Blender's host, version and binary digest are part of each
-step's cache key: switching hosts rebakes. The transport was rehearsed on this
+bake. The remote Blender's version and binary digest (not its host) are part
+of each step's cache key: another host with the same pinned Blender, such as
+a new vast.ai rental, reuses the cache. The transport was rehearsed on this
 machine with a stand-in `ssh` that runs commands locally, on the chamber
 preview (all five steps, gameplay identity passing).
 

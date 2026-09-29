@@ -47,8 +47,9 @@ The block:
 (`gi_reference.py`, `lighting_fixtures.py`, `gi_probes.py`). `vast_blender.py`
 rents a vast.ai host and writes a toolchain with this block.
 
-A step's cache key includes the remote Blender's identity (host, version and
-binary digest), so switching hosts rebakes, as switching local Blender does.
+A step's cache key includes the remote Blender's version and binary digest,
+not the host: the same pinned Blender on another (rented) host reuses the
+cache, and a different Blender rebakes, as switching local Blender does.
 """
 
 import argparse
@@ -148,6 +149,12 @@ class RemoteBlender:
                               "version": version.group(1) if version else "unknown",
                               "sha256": lines[-1].split()[0] if lines else "unknown"}
         return self._identity
+
+    def cache_identity(self):
+        """The part of `identity` a step's cache key names: the Blender, not
+        the host running it (each rented host has a new address)."""
+        identity = self.identity()
+        return {"version": identity["version"], "sha256": identity["sha256"]}
 
 
 def _inside(path, roots):

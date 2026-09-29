@@ -615,7 +615,7 @@ class Pipeline:
 
     def step_tool_identity(self, step, tool):
         if tool == "blender" and self.remote and self.remote.applies(step):
-            return dict(self.remote.identity(), remote=True)
+            return dict(self.remote.cache_identity(), remote=True)
         return self.identity(tool)
 
     def set_aside(self, name, outputs):

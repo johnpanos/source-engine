@@ -46,6 +46,14 @@ class RemoteBlenderTest(unittest.TestCase):
         self.assertTrue(remote_blender._inside(root / "a", [root / "a"]))
         self.assertFalse(remote_blender._inside(root, [root / "a"]))
 
+    def test_cache_identity_names_the_blender_not_the_host(self):
+        remote = self.remote()
+        remote._identity = {"host": "user@gpu", "version": "5.2.2", "sha256": "ab"}
+        other = self.remote(host="root@1.2.3.4")
+        other._identity = {"host": "root@1.2.3.4", "version": "5.2.2", "sha256": "ab"}
+        self.assertEqual(remote.cache_identity(), other.cache_identity())
+        self.assertNotIn("host", remote.cache_identity())
+
     def test_toolchain_without_a_block_stays_local(self):
         self.assertIsNone(remote_blender.from_toolchain({"blender": "blender"}))
 
