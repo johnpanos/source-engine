@@ -22,7 +22,7 @@ Do not edit generated files by hand.
 | `foggy-hall` | 24 m hall with a homogeneous medium (scattering 0.06/m, absorption 0.01/m, g 0.3), 16 ceiling spots + 240 wall bulbs (256 clustered lights), a projector shaft shadowed by a pillar | participating-media, runtime-lights, projected-lights, direct-visibility, indirect-diffuse-static, brdf | `nave`, `side` | `fog`, `clear` (density zero) |
 | `mirror-corridor` | 18 m corridor, floor from a metal mirror (0.02) through gloss 0.1 and 0.25 to 0.5 (above the SSR cutoff), colored wall panels, ceiling strips, a block near the camera whose reflection leaves the screen | screen-space-reflections, image-based-specular, filtered-roughness, specular-occlusion, brdf, area-lights, indirect-diffuse-static | `down`, `low` | `default` |
 | `material-sweep` | a wall of 24 smooth spheres, roughness 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8, 1.0: gold metal, clear coat (coat roughness swept) over red, white dielectric; key rectangle and a rim spot | brdf, image-based-specular, filtered-roughness, area-lights, runtime-lights, indirect-diffuse-static, specular-occlusion | `front`, `grazing` | `default` |
-| `portal-pair` | two sealed rooms joined only by a linked `prop_portal` pair on perpendicular walls (A's east, B's south): A's ceiling rectangle and a spot aimed through portal A past a post; B has a dim lamp of its own, a rough/polished floor split, a block and a dynamic probe sphere | brdf, area-lights, runtime-lights, direct-visibility, indirect-diffuse-static, indirect-diffuse-dynamic, image-based-specular, portal-transport | `b-portal`, `b-floor`, `a-portal` | `closed` (the portal world; the map's bake), `open` |
+| `portal-pair` | two sealed rooms joined only by a linked `prop_portal` pair on perpendicular walls (A's east, B's south): A's ceiling rectangle and a spot aimed through portal A past a post; B has a dim lamp of its own, a rough/polished floor split, a block and a dynamic probe sphere | brdf, area-lights, runtime-lights, direct-visibility, indirect-diffuse-static, indirect-diffuse-dynamic, image-based-specular, portal-transport | `b-portal`, `b-floor`, `a-portal` | `closed` (the portal world; the map's bake), `open`, `open-glow`, `glow-only` |
 | `portal-chamber` | Portal's `testchmb_a_00` as relit by `legacy_bsp_relight.py` (map `testchmb_a_00_relit`) | brdf, runtime-lights, direct-visibility, indirect-diffuse-static, image-based-specular, emission | `vault`, `room2` (the K0 view-oracle poses) | `default` |
 | `portal2-chamber` | `sp_gi_chamber_01` as built by `portal2_gi_chamber.py` | brdf, runtime-lights, direct-visibility, indirect-diffuse-static, image-based-specular, emission, ambient-occlusion | `spawn`, `chamber` | `default` |
 
@@ -94,6 +94,22 @@ the lighting model.
   `open`, and the plug in `closed`. The lab passes it only by drawing the
   view through the portal.
 - The negative control is the pair closed, judged against `open`.
+- **The portals' glow** (states `open-glow` and `glow-only`): Portal 2's
+  `r_portal_use_dlights` glow as an area light. Each portal has a one-sided
+  `light_rect` (`GlowA`, `GlowB`) the size of its opening (64 x 108 units),
+  2 mm in front of it and facing into its own room, in the game's portal
+  colour (`s_defaultPortalColors`: the first portal blue 64 160 255, the
+  second orange 255 160 32, linearized) at peak radiance 2. It is a runtime
+  light: declared in the lump but dark in `closed`, so the bake leaves it
+  out, and lit only by the glow states. It lights its own side only, as the
+  engine keeps it out of portal images (`DLIGHT_NO_PORTAL_IMAGE`); its
+  joined copy (`JoinedGlowA`, `JoinedGlowB`) lights the copy of its room
+  behind the other portal. `glow-only` isolates the term, with every other
+  light off. The references keep full light paths, since the glow's bounce
+  belongs to RFC 0011's indirect-light policy (render-core owner,
+  2026-09-29). The glow's own quad covers each opening from its room, so the
+  `through` region is not judged in the glow states (visible light shapes
+  are never judged).
 
 ## Lights in the entity lump
 

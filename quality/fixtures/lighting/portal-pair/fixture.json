@@ -70,7 +70,7 @@
     "entities": "entities.json",
     "lights": {
       "point": 0,
-      "rect": 2,
+      "rect": 4,
       "sky": 0,
       "spot": 1,
       "sun": 0
@@ -294,9 +294,17 @@
       "layer": null,
       "note": "the portal world: the pair closed (plugs in), the joined copies hidden; the map is built and baked from it"
     },
+    "glow-only": {
+      "layer": "states/glow-only.usda",
+      "note": "the pair open with only the portals' glow lit: the glow term alone, and none of it through the pair"
+    },
     "open": {
       "layer": "states/open.usda",
       "note": "the pair open: the plugs out, each room joined through the opening to the copy of the other behind its portal wall"
+    },
+    "open-glow": {
+      "layer": "states/open-glow.usda",
+      "note": "the pair open with the portals' glow: each opening's rectangle lights its own room (and its copy lights the copy of its room behind the other portal)"
     }
   }
 }

@@ -1,0 +1,154 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryPortalPair"
+    metersPerUnit = 1
+    subLayers = [
+        @../portal-pair.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryPortalPair"
+{
+    over "World"
+    {
+        over "PlugA"
+        {
+            token visibility = "invisible"
+        }
+
+        over "PlugB"
+        {
+            token visibility = "invisible"
+        }
+
+        over "JoinedA_Xn"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedA_Yn"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedA_Yp"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedA_Zn"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedA_Zp"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedPostA"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedB_Xn"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedB_Xp"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedB_Yp"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedB_Zp"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedFloorRoughB"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedFloorPolishedB"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedBlockB"
+        {
+            token visibility = "inherited"
+        }
+
+        over "JoinedProbeSphere"
+        {
+            token visibility = "inherited"
+        }
+    }
+
+    over "Lights"
+    {
+        over "JoinedLampA"
+        {
+            float inputs:intensity = 0
+            token visibility = "inherited"
+        }
+
+        over "JoinedLampB"
+        {
+            float inputs:intensity = 0
+            token visibility = "inherited"
+        }
+
+        over "JoinedSpotA"
+        {
+            float inputs:intensity = 0
+            token visibility = "inherited"
+        }
+
+        over "JoinedGlowA"
+        {
+            float inputs:intensity = 2
+            token visibility = "inherited"
+        }
+
+        over "JoinedGlowB"
+        {
+            float inputs:intensity = 2
+            token visibility = "inherited"
+        }
+
+        over "GlowA"
+        {
+            float inputs:intensity = 2
+        }
+
+        over "GlowB"
+        {
+            float inputs:intensity = 2
+        }
+
+        over "LampA"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "LampB"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "SpotA"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

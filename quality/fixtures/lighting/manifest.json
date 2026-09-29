@@ -267,7 +267,7 @@
       "entities": "entities.json",
       "lights": {
         "point": 0,
-        "rect": 2,
+        "rect": 4,
         "sky": 0,
         "spot": 1,
         "sun": 0
@@ -280,7 +280,9 @@
       "reused_map": false,
       "states": [
         "closed",
-        "open"
+        "glow-only",
+        "open",
+        "open-glow"
       ],
       "terms": [
         "brdf",

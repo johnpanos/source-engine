@@ -2,12 +2,12 @@
   "analytic": [],
   "denoised": true,
   "fixture": "portal-pair",
-  "fixture_reference_digest": "84ea9d4a0f7b9590869af385fec2416e39c2486cdea72cddf773166f4bf7d345",
+  "fixture_reference_digest": "cfe8ad6c1c579b0c491b3b54ae7b3fc3636aadd66ed203dddc63f253010322a7",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
   "renders": {
     "closed": {
       "blender": "5.2.2 LTS",
-      "composed_stage_sha256": "273d91ddb3d9b3117680840e3ec8dda8feb1d5b4805415e630ee7ab9773cb853",
+      "composed_stage_sha256": "afddfa96bb522d6edd700d933612c216e3817750abf99556e404ee6700cb2905",
       "cycles_device": "CPU",
       "denoising": {
         "denoiser": "OPENIMAGEDENOISE",
@@ -34,12 +34,45 @@
       "samples": 256,
       "seed": 20260929,
       "stage_layers": {
-        "quality/fixtures/lighting/portal-pair/portal-pair.usda": "c049c790aa16678e86c8f3682558519c914b425a48b8ae8c6589f703614ee87a"
+        "quality/fixtures/lighting/portal-pair/portal-pair.usda": "75c17782b0043a0aa2367d67a13f3898c4e34c275b764e3879b4b68ca322f56b"
+      }
+    },
+    "glow-only": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "6776470c244912b8ef043f21038a31c46f733426e2c21628c72e46a070f86fae",
+      "cycles_device": "CPU",
+      "denoising": {
+        "denoiser": "OPENIMAGEDENOISE",
+        "guides": "albedo+normal",
+        "prefilter": "ACCURATE"
+      },
+      "extras_applied": {
+        "medium": null,
+        "projectors": []
+      },
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "normal_maps": false,
+      "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
+      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "samples": 256,
+      "seed": 20260929,
+      "stage_layers": {
+        "quality/fixtures/lighting/portal-pair/portal-pair.usda": "75c17782b0043a0aa2367d67a13f3898c4e34c275b764e3879b4b68ca322f56b",
+        "quality/fixtures/lighting/portal-pair/states/glow-only.usda": "b3055670702b72e3f0036cec270be7c9c4800258320145d85d8e60bacbe9616a"
       }
     },
     "open": {
       "blender": "5.2.2 LTS",
-      "composed_stage_sha256": "5496841c95e47d372a94f2ba799c7d8ceaec8c609dd9ca16b76f79b2af805005",
+      "composed_stage_sha256": "2fe87e0ca617baef077edea23446c12ffc604c96ac7b758daeb1e0415dcef6f8",
       "cycles_device": "CPU",
       "denoising": {
         "denoiser": "OPENIMAGEDENOISE",
@@ -66,8 +99,41 @@
       "samples": 256,
       "seed": 20260929,
       "stage_layers": {
-        "quality/fixtures/lighting/portal-pair/portal-pair.usda": "c049c790aa16678e86c8f3682558519c914b425a48b8ae8c6589f703614ee87a",
+        "quality/fixtures/lighting/portal-pair/portal-pair.usda": "75c17782b0043a0aa2367d67a13f3898c4e34c275b764e3879b4b68ca322f56b",
         "quality/fixtures/lighting/portal-pair/states/open.usda": "5735d91b6234a138fc494c901114cca7eca97c53b2777dcd11cad29cb92e99c2"
+      }
+    },
+    "open-glow": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "8006f3f3df213d034d0d0bbb93048e2dd435dcde2b7a32f9a83e29f6161f64b2",
+      "cycles_device": "CPU",
+      "denoising": {
+        "denoiser": "OPENIMAGEDENOISE",
+        "guides": "albedo+normal",
+        "prefilter": "ACCURATE"
+      },
+      "extras_applied": {
+        "medium": null,
+        "projectors": []
+      },
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "normal_maps": false,
+      "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
+      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "samples": 256,
+      "seed": 20260929,
+      "stage_layers": {
+        "quality/fixtures/lighting/portal-pair/portal-pair.usda": "75c17782b0043a0aa2367d67a13f3898c4e34c275b764e3879b4b68ca322f56b",
+        "quality/fixtures/lighting/portal-pair/states/open-glow.usda": "033d497cb7b83e8ab282b6cb5ca9b42b39ca6d423c1db6427c39ceef3d26718f"
       }
     }
   },
@@ -81,22 +147,24 @@
       "emitter_indices": [
         13,
         14,
-        15
+        15,
+        16,
+        17
       ],
       "files": {
         "index": {
           "file": "closed.a-portal.index.png",
-          "sha256": "a96edca56fef1d9875364ca067d223dcaeb6a3c80a0ce66a01c450301f6e6138"
+          "sha256": "52ea14f09c609e857b7ab5928ce60302c02795a22fac1524c8e3838a29d36840"
         },
         "total": {
           "file": "closed.a-portal.total.exr",
-          "sha256": "3ed8f256270cdca4fdf8269c67f2fcfc0ea3d9325a922ed7f57bd256ed127182"
+          "sha256": "1a86b888ae42391c658d66eb5cf72bd3c8a9504464cf6ecbaca76695d6c8f433"
         }
       },
       "finite": true,
       "index_from_state": "closed",
-      "judged_pixels": 192803,
-      "mean_luminance": 0.3413930079133047,
+      "judged_pixels": 180411,
+      "mean_luminance": 0.2986743407307274,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -113,12 +181,14 @@
         "LightDisk02": 13,
         "LightQuad00": 14,
         "LightQuad01": 15,
-        "PlugA": 16,
-        "PlugB": 17,
-        "PortalWallA": 18,
-        "PortalWallB": 19,
-        "PostA": 20,
-        "ProbeSphereShape": 21
+        "LightQuad03": 16,
+        "LightQuad04": 17,
+        "PlugA": 18,
+        "PlugB": 19,
+        "PortalWallA": 20,
+        "PortalWallB": 21,
+        "PostA": 22,
+        "ProbeSphereShape": 23
       },
       "state": "closed"
     },
@@ -127,22 +197,24 @@
       "emitter_indices": [
         13,
         14,
-        15
+        15,
+        16,
+        17
       ],
       "files": {
         "index": {
           "file": "closed.b-floor.index.png",
-          "sha256": "90b55e284a5618e926c06b7352ed7542789c9f0efa4826f226bb6671ffba33bd"
+          "sha256": "3bcb7a7a4e85d7d8ba74c607db481bb9e2a4d32407c9923425830b11c600b389"
         },
         "total": {
           "file": "closed.b-floor.total.exr",
-          "sha256": "531d71de009bda953da4d59b15c8bc3b1f3dcf447dc5de859b2143ae5a1a64c8"
+          "sha256": "55694422fb78135310ebcd7e57d5c550e99bf1d941c30a53effb0da28cd44b92"
         }
       },
       "finite": true,
       "index_from_state": "closed",
-      "judged_pixels": 196608,
-      "mean_luminance": 0.006278769038768419,
+      "judged_pixels": 187832,
+      "mean_luminance": 0.006337325637097644,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -159,12 +231,14 @@
         "LightDisk02": 13,
         "LightQuad00": 14,
         "LightQuad01": 15,
-        "PlugA": 16,
-        "PlugB": 17,
-        "PortalWallA": 18,
-        "PortalWallB": 19,
-        "PostA": 20,
-        "ProbeSphereShape": 21
+        "LightQuad03": 16,
+        "LightQuad04": 17,
+        "PlugA": 18,
+        "PlugB": 19,
+        "PortalWallA": 20,
+        "PortalWallB": 21,
+        "PostA": 22,
+        "ProbeSphereShape": 23
       },
       "state": "closed"
     },
@@ -173,22 +247,24 @@
       "emitter_indices": [
         13,
         14,
-        15
+        15,
+        16,
+        17
       ],
       "files": {
         "index": {
           "file": "closed.b-portal.index.png",
-          "sha256": "fce2ff3f83a8cde0aad60461648f49f653de07c69fbfd87596f0b064fc8800ed"
+          "sha256": "2c45233693d888845830fd08160febf9e472f97fc2eff6a7d6f2d981a61b5e60"
         },
         "total": {
           "file": "closed.b-portal.total.exr",
-          "sha256": "bf11f8a20cc61172db664d02ae7b3a07f0cb2042ad23bb5d9a113d137382085e"
+          "sha256": "4d35fa7f684572b7f83d3fab455f544c9eb42e6415c643c0f1b189c1b4edf208"
         }
       },
       "finite": true,
       "index_from_state": "closed",
-      "judged_pixels": 196608,
-      "mean_luminance": 0.005839171269726672,
+      "judged_pixels": 184499,
+      "mean_luminance": 0.005899195745450965,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -205,16 +281,18 @@
         "LightDisk02": 13,
         "LightQuad00": 14,
         "LightQuad01": 15,
-        "PlugA": 16,
-        "PlugB": 17,
-        "PortalWallA": 18,
-        "PortalWallB": 19,
-        "PostA": 20,
-        "ProbeSphereShape": 21
+        "LightQuad03": 16,
+        "LightQuad04": 17,
+        "PlugA": 18,
+        "PlugB": 19,
+        "PortalWallA": 20,
+        "PortalWallB": 21,
+        "PostA": 22,
+        "ProbeSphereShape": 23
       },
       "state": "closed"
     },
-    "open.a-portal": {
+    "glow-only.a-portal": {
       "camera": "a-portal",
       "emitter_indices": [
         27,
@@ -222,22 +300,26 @@
         29,
         30,
         31,
-        32
+        32,
+        33,
+        34,
+        35,
+        36
       ],
       "files": {
         "index": {
-          "file": "open.a-portal.index.png",
-          "sha256": "8df369345a3b764a055f1015cf7b3f421e1df0021b1b84dd5cd9b22fa12f9b36"
+          "file": "glow-only.a-portal.index.png",
+          "sha256": "df97c0c695231a3f1544ed393e86764fcc816658acb77c23cf7c225ca4057aa6"
         },
         "total": {
-          "file": "open.a-portal.total.exr",
-          "sha256": "8389779bc6728927195ceeb1424ec417e00a3b6d56e5f5b069d7c14563fefd63"
+          "file": "glow-only.a-portal.total.exr",
+          "sha256": "8220ce438847c32269437f771f59d89dbff775da4d1c11ef1e13b3f90ad9fc2f"
         }
       },
       "finite": true,
-      "index_from_state": "open",
-      "judged_pixels": 192803,
-      "mean_luminance": 0.2431792100549083,
+      "index_from_state": "glow-only",
+      "judged_pixels": 180411,
+      "mean_luminance": 0.051009469849959646,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -271,10 +353,442 @@
         "LightQuad01": 30,
         "LightQuad03": 31,
         "LightQuad04": 32,
-        "PortalWallA": 33,
-        "PortalWallB": 34,
-        "PostA": 35,
-        "ProbeSphereShape": 36
+        "LightQuad06": 33,
+        "LightQuad07": 34,
+        "LightQuad08": 35,
+        "LightQuad09": 36,
+        "PortalWallA": 37,
+        "PortalWallB": 38,
+        "PostA": 39,
+        "ProbeSphereShape": 40
+      },
+      "state": "glow-only"
+    },
+    "glow-only.b-floor": {
+      "camera": "b-floor",
+      "emitter_indices": [
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36
+      ],
+      "files": {
+        "index": {
+          "file": "glow-only.b-floor.index.png",
+          "sha256": "1cdd14f88f4a2f39833cd9215b2451e37dd4bfd0820cd9ca1e3c9ea473493648"
+        },
+        "total": {
+          "file": "glow-only.b-floor.total.exr",
+          "sha256": "2a12214816ca584d5eff7d35ccd53e114d07a8722617a5adb87a0f45603f73ee"
+        }
+      },
+      "finite": true,
+      "index_from_state": "glow-only",
+      "judged_pixels": 187832,
+      "mean_luminance": 0.07248822420934707,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Yn": 2,
+        "A_Yp": 3,
+        "A_Zn": 4,
+        "A_Zp": 5,
+        "B_Xn": 6,
+        "B_Xp": 7,
+        "B_Yp": 8,
+        "B_Zp": 9,
+        "BlockB": 10,
+        "FloorPolishedB": 11,
+        "FloorRoughB": 12,
+        "JoinedA_Xn": 13,
+        "JoinedA_Yn": 14,
+        "JoinedA_Yp": 15,
+        "JoinedA_Zn": 16,
+        "JoinedA_Zp": 17,
+        "JoinedB_Xn": 18,
+        "JoinedB_Xp": 19,
+        "JoinedB_Yp": 20,
+        "JoinedB_Zp": 21,
+        "JoinedBlockB": 22,
+        "JoinedFloorPolishedB": 23,
+        "JoinedFloorRoughB": 24,
+        "JoinedPostA": 25,
+        "JoinedProbeSphere": 26,
+        "LightDisk02": 27,
+        "LightDisk05": 28,
+        "LightQuad00": 29,
+        "LightQuad01": 30,
+        "LightQuad03": 31,
+        "LightQuad04": 32,
+        "LightQuad06": 33,
+        "LightQuad07": 34,
+        "LightQuad08": 35,
+        "LightQuad09": 36,
+        "PortalWallA": 37,
+        "PortalWallB": 38,
+        "PostA": 39,
+        "ProbeSphereShape": 40
+      },
+      "state": "glow-only"
+    },
+    "glow-only.b-portal": {
+      "camera": "b-portal",
+      "emitter_indices": [
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36
+      ],
+      "files": {
+        "index": {
+          "file": "glow-only.b-portal.index.png",
+          "sha256": "6f4e042ddfe7da125a8e46202fa0af8617c443618371d95d5aa47397986f1da8"
+        },
+        "total": {
+          "file": "glow-only.b-portal.total.exr",
+          "sha256": "c5084c92a1d0f8ea676cd591ce7ddfbada6a4ff9fad46d53f81d48916209a957"
+        }
+      },
+      "finite": true,
+      "index_from_state": "glow-only",
+      "judged_pixels": 184499,
+      "mean_luminance": 0.062194302118637794,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Yn": 2,
+        "A_Yp": 3,
+        "A_Zn": 4,
+        "A_Zp": 5,
+        "B_Xn": 6,
+        "B_Xp": 7,
+        "B_Yp": 8,
+        "B_Zp": 9,
+        "BlockB": 10,
+        "FloorPolishedB": 11,
+        "FloorRoughB": 12,
+        "JoinedA_Xn": 13,
+        "JoinedA_Yn": 14,
+        "JoinedA_Yp": 15,
+        "JoinedA_Zn": 16,
+        "JoinedA_Zp": 17,
+        "JoinedB_Xn": 18,
+        "JoinedB_Xp": 19,
+        "JoinedB_Yp": 20,
+        "JoinedB_Zp": 21,
+        "JoinedBlockB": 22,
+        "JoinedFloorPolishedB": 23,
+        "JoinedFloorRoughB": 24,
+        "JoinedPostA": 25,
+        "JoinedProbeSphere": 26,
+        "LightDisk02": 27,
+        "LightDisk05": 28,
+        "LightQuad00": 29,
+        "LightQuad01": 30,
+        "LightQuad03": 31,
+        "LightQuad04": 32,
+        "LightQuad06": 33,
+        "LightQuad07": 34,
+        "LightQuad08": 35,
+        "LightQuad09": 36,
+        "PortalWallA": 37,
+        "PortalWallB": 38,
+        "PostA": 39,
+        "ProbeSphereShape": 40
+      },
+      "state": "glow-only"
+    },
+    "open-glow.a-portal": {
+      "camera": "a-portal",
+      "emitter_indices": [
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36
+      ],
+      "files": {
+        "index": {
+          "file": "open-glow.a-portal.index.png",
+          "sha256": "df97c0c695231a3f1544ed393e86764fcc816658acb77c23cf7c225ca4057aa6"
+        },
+        "total": {
+          "file": "open-glow.a-portal.total.exr",
+          "sha256": "7824b4770f2f56037fe5280891f121c9e4e6e7eb15c2bb5763bf0f42408fbebc"
+        }
+      },
+      "finite": true,
+      "index_from_state": "open-glow",
+      "judged_pixels": 180411,
+      "mean_luminance": 0.29439664969167917,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Yn": 2,
+        "A_Yp": 3,
+        "A_Zn": 4,
+        "A_Zp": 5,
+        "B_Xn": 6,
+        "B_Xp": 7,
+        "B_Yp": 8,
+        "B_Zp": 9,
+        "BlockB": 10,
+        "FloorPolishedB": 11,
+        "FloorRoughB": 12,
+        "JoinedA_Xn": 13,
+        "JoinedA_Yn": 14,
+        "JoinedA_Yp": 15,
+        "JoinedA_Zn": 16,
+        "JoinedA_Zp": 17,
+        "JoinedB_Xn": 18,
+        "JoinedB_Xp": 19,
+        "JoinedB_Yp": 20,
+        "JoinedB_Zp": 21,
+        "JoinedBlockB": 22,
+        "JoinedFloorPolishedB": 23,
+        "JoinedFloorRoughB": 24,
+        "JoinedPostA": 25,
+        "JoinedProbeSphere": 26,
+        "LightDisk02": 27,
+        "LightDisk05": 28,
+        "LightQuad00": 29,
+        "LightQuad01": 30,
+        "LightQuad03": 31,
+        "LightQuad04": 32,
+        "LightQuad06": 33,
+        "LightQuad07": 34,
+        "LightQuad08": 35,
+        "LightQuad09": 36,
+        "PortalWallA": 37,
+        "PortalWallB": 38,
+        "PostA": 39,
+        "ProbeSphereShape": 40
+      },
+      "state": "open-glow"
+    },
+    "open-glow.b-floor": {
+      "camera": "b-floor",
+      "emitter_indices": [
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36
+      ],
+      "files": {
+        "index": {
+          "file": "open-glow.b-floor.index.png",
+          "sha256": "1cdd14f88f4a2f39833cd9215b2451e37dd4bfd0820cd9ca1e3c9ea473493648"
+        },
+        "total": {
+          "file": "open-glow.b-floor.total.exr",
+          "sha256": "0bd726c0309ed287bfa3d3725cd6d041bf1390f30dd038ed4c863363b0fec994"
+        }
+      },
+      "finite": true,
+      "index_from_state": "open-glow",
+      "judged_pixels": 187832,
+      "mean_luminance": 0.1700418036790007,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Yn": 2,
+        "A_Yp": 3,
+        "A_Zn": 4,
+        "A_Zp": 5,
+        "B_Xn": 6,
+        "B_Xp": 7,
+        "B_Yp": 8,
+        "B_Zp": 9,
+        "BlockB": 10,
+        "FloorPolishedB": 11,
+        "FloorRoughB": 12,
+        "JoinedA_Xn": 13,
+        "JoinedA_Yn": 14,
+        "JoinedA_Yp": 15,
+        "JoinedA_Zn": 16,
+        "JoinedA_Zp": 17,
+        "JoinedB_Xn": 18,
+        "JoinedB_Xp": 19,
+        "JoinedB_Yp": 20,
+        "JoinedB_Zp": 21,
+        "JoinedBlockB": 22,
+        "JoinedFloorPolishedB": 23,
+        "JoinedFloorRoughB": 24,
+        "JoinedPostA": 25,
+        "JoinedProbeSphere": 26,
+        "LightDisk02": 27,
+        "LightDisk05": 28,
+        "LightQuad00": 29,
+        "LightQuad01": 30,
+        "LightQuad03": 31,
+        "LightQuad04": 32,
+        "LightQuad06": 33,
+        "LightQuad07": 34,
+        "LightQuad08": 35,
+        "LightQuad09": 36,
+        "PortalWallA": 37,
+        "PortalWallB": 38,
+        "PostA": 39,
+        "ProbeSphereShape": 40
+      },
+      "state": "open-glow"
+    },
+    "open-glow.b-portal": {
+      "camera": "b-portal",
+      "emitter_indices": [
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36
+      ],
+      "files": {
+        "index": {
+          "file": "open-glow.b-portal.index.png",
+          "sha256": "6f4e042ddfe7da125a8e46202fa0af8617c443618371d95d5aa47397986f1da8"
+        },
+        "total": {
+          "file": "open-glow.b-portal.total.exr",
+          "sha256": "e9a7a6e6c030c5614433a28658e15d2215c108cf6a2edb4fce8023754ca989b8"
+        }
+      },
+      "finite": true,
+      "index_from_state": "open-glow",
+      "judged_pixels": 184499,
+      "mean_luminance": 0.13755836310979921,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Yn": 2,
+        "A_Yp": 3,
+        "A_Zn": 4,
+        "A_Zp": 5,
+        "B_Xn": 6,
+        "B_Xp": 7,
+        "B_Yp": 8,
+        "B_Zp": 9,
+        "BlockB": 10,
+        "FloorPolishedB": 11,
+        "FloorRoughB": 12,
+        "JoinedA_Xn": 13,
+        "JoinedA_Yn": 14,
+        "JoinedA_Yp": 15,
+        "JoinedA_Zn": 16,
+        "JoinedA_Zp": 17,
+        "JoinedB_Xn": 18,
+        "JoinedB_Xp": 19,
+        "JoinedB_Yp": 20,
+        "JoinedB_Zp": 21,
+        "JoinedBlockB": 22,
+        "JoinedFloorPolishedB": 23,
+        "JoinedFloorRoughB": 24,
+        "JoinedPostA": 25,
+        "JoinedProbeSphere": 26,
+        "LightDisk02": 27,
+        "LightDisk05": 28,
+        "LightQuad00": 29,
+        "LightQuad01": 30,
+        "LightQuad03": 31,
+        "LightQuad04": 32,
+        "LightQuad06": 33,
+        "LightQuad07": 34,
+        "LightQuad08": 35,
+        "LightQuad09": 36,
+        "PortalWallA": 37,
+        "PortalWallB": 38,
+        "PostA": 39,
+        "ProbeSphereShape": 40
+      },
+      "state": "open-glow"
+    },
+    "open.a-portal": {
+      "camera": "a-portal",
+      "emitter_indices": [
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "files": {
+        "index": {
+          "file": "open.a-portal.index.png",
+          "sha256": "d993ea5e6356d387b0ce05441f5921542032d285306a945e8c34de16e834d92f"
+        },
+        "total": {
+          "file": "open.a-portal.total.exr",
+          "sha256": "80a442ebc2f40a2660137cf96d15162547330f0cf4bcb8a0bfd75f6573e24f05"
+        }
+      },
+      "finite": true,
+      "index_from_state": "open",
+      "judged_pixels": 180411,
+      "mean_luminance": 0.24317008059717,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Yn": 2,
+        "A_Yp": 3,
+        "A_Zn": 4,
+        "A_Zp": 5,
+        "B_Xn": 6,
+        "B_Xp": 7,
+        "B_Yp": 8,
+        "B_Zp": 9,
+        "BlockB": 10,
+        "FloorPolishedB": 11,
+        "FloorRoughB": 12,
+        "JoinedA_Xn": 13,
+        "JoinedA_Yn": 14,
+        "JoinedA_Yp": 15,
+        "JoinedA_Zn": 16,
+        "JoinedA_Zp": 17,
+        "JoinedB_Xn": 18,
+        "JoinedB_Xp": 19,
+        "JoinedB_Yp": 20,
+        "JoinedB_Zp": 21,
+        "JoinedBlockB": 22,
+        "JoinedFloorPolishedB": 23,
+        "JoinedFloorRoughB": 24,
+        "JoinedPostA": 25,
+        "JoinedProbeSphere": 26,
+        "LightDisk02": 27,
+        "LightDisk05": 28,
+        "LightQuad00": 29,
+        "LightQuad01": 30,
+        "LightQuad03": 31,
+        "LightQuad04": 32,
+        "LightQuad06": 33,
+        "LightQuad07": 34,
+        "PortalWallA": 35,
+        "PortalWallB": 36,
+        "PostA": 37,
+        "ProbeSphereShape": 38
       },
       "state": "open"
     },
@@ -286,22 +800,24 @@
         29,
         30,
         31,
-        32
+        32,
+        33,
+        34
       ],
       "files": {
         "index": {
           "file": "open.b-floor.index.png",
-          "sha256": "3d6bdbe4cdcec3b1a2405e8ac97a3fecc1488b3a51fa9656002cb97d79f4ddb6"
+          "sha256": "356db6965bc1bcee6d52455db78ea094a699c1cab25743a724b3727590a3d1a8"
         },
         "total": {
           "file": "open.b-floor.total.exr",
-          "sha256": "0e5386fec46fa0d796e9ed75de558fd61d9cd70fe481a92f3e1e03eec77182a4"
+          "sha256": "aed907a884464af37d99766998076a9ad536394da2c445ba146d52e11ae1bef4"
         }
       },
       "finite": true,
       "index_from_state": "open",
-      "judged_pixels": 196408,
-      "mean_luminance": 0.10064600743482653,
+      "judged_pixels": 187832,
+      "mean_luminance": 0.09733498778777945,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -335,10 +851,12 @@
         "LightQuad01": 30,
         "LightQuad03": 31,
         "LightQuad04": 32,
-        "PortalWallA": 33,
-        "PortalWallB": 34,
-        "PostA": 35,
-        "ProbeSphereShape": 36
+        "LightQuad06": 33,
+        "LightQuad07": 34,
+        "PortalWallA": 35,
+        "PortalWallB": 36,
+        "PostA": 37,
+        "ProbeSphereShape": 38
       },
       "state": "open"
     },
@@ -350,22 +868,24 @@
         29,
         30,
         31,
-        32
+        32,
+        33,
+        34
       ],
       "files": {
         "index": {
           "file": "open.b-portal.index.png",
-          "sha256": "fbfa4f9e1aad2da1ebe0df708ae01e27e3ff8c372ad1ac80561b621460a2ce15"
+          "sha256": "a22a79d78827f437518953e70de4328f0e4dd45c2605bae973bde4aabfe632e1"
         },
         "total": {
           "file": "open.b-portal.total.exr",
-          "sha256": "f51d8d01d29ddd6a7bdb300eb27cc88ad6deb9377beb39ce667cb9fd0d20f467"
+          "sha256": "5bb0b2a1e1ceab5945919dc4fcd4afae034e0b97b3fc004ed03362b28693e9d3"
         }
       },
       "finite": true,
       "index_from_state": "open",
-      "judged_pixels": 196549,
-      "mean_luminance": 0.08288381232958471,
+      "judged_pixels": 184499,
+      "mean_luminance": 0.07520019043124694,
       "object_index": {
         "A_Xn": 1,
         "A_Yn": 2,
@@ -399,10 +919,12 @@
         "LightQuad01": 30,
         "LightQuad03": 31,
         "LightQuad04": 32,
-        "PortalWallA": 33,
-        "PortalWallB": 34,
-        "PostA": 35,
-        "ProbeSphereShape": 36
+        "LightQuad06": 33,
+        "LightQuad07": 34,
+        "PortalWallA": 35,
+        "PortalWallB": 36,
+        "PostA": 37,
+        "ProbeSphereShape": 38
       },
       "state": "open"
     }

@@ -784,6 +784,52 @@ def Xform "GalleryPortalPair"
             matrix4d xformOp:transform = ( (1, -0, 0, 0), (0, 0.42905681456828765, 0.9032775043542899, 0), (-0, -0.9032775043542899, 0.42905681456828765, 0), (13, -4, 2.8, 1) )
             uniform token[] xformOpOrder = ["xformOp:transform"]
         }
+
+        def RectLight "GlowA"
+        {
+            color3f inputs:color = (0.047775753, 0.3586539, 1)
+            float inputs:height = 2.7432
+            float inputs:intensity = 0
+            bool inputs:normalize = 0
+            float inputs:width = 1.6256
+            matrix4d xformOp:transform = ( (0, 1, -0, 0), (0, 0, 1, 0), (1, -0, -0, 0), (4.998, 2, 1.4, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+        }
+
+        def RectLight "JoinedGlowA"
+        {
+            color3f inputs:color = (0.047775753, 0.3586539, 1)
+            float inputs:height = 2.7432
+            float inputs:intensity = 0
+            bool inputs:normalize = 0
+            float inputs:width = 1.6256
+            token visibility = "invisible"
+            matrix4d xformOp:transform = ( (-1, 0, 0, 0), (0, 0, 1, 0), (-0, 1, -0, 0), (13, -0.0019999999999997797, 1.4, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+        }
+
+        def RectLight "GlowB"
+        {
+            color3f inputs:color = (1, 0.3586539, 0.010397802)
+            float inputs:height = 2.7432
+            float inputs:intensity = 0
+            bool inputs:normalize = 0
+            float inputs:width = 1.6256
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 0, 1, 0), (-0, -1, -0, 0), (13, 0.002, 1.4, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+        }
+
+        def RectLight "JoinedGlowB"
+        {
+            color3f inputs:color = (1, 0.3586539, 0.010397802)
+            float inputs:height = 2.7432
+            float inputs:intensity = 0
+            bool inputs:normalize = 0
+            float inputs:width = 1.6256
+            token visibility = "invisible"
+            matrix4d xformOp:transform = ( (0, -1, 0, 0), (-0, 0, 1, 0), (-1, -0, -0, 0), (5.002, 2, 1.4, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+        }
     }
 
     def Xform "Props"

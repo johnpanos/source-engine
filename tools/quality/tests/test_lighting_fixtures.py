@@ -571,8 +571,50 @@ class PortalPair(unittest.TestCase):
         self.assertEqual(sorted(p["name"] for p in portals), ["PortalA", "PortalB"])
         self.assertTrue(all(p["aperture"] == "ellipse" for p in portals))
         self.assertIn("portal-transport", fixture["lighting"]["terms"])
-        self.assertEqual(sorted(fixture["states"]), ["closed", "open"])
+        self.assertEqual(sorted(fixture["states"]), ["closed", "glow-only", "open", "open-glow"])
         self.assertEqual(fixture["baked_state"], "closed")
+
+    def test_glow_is_a_runtime_rect_on_each_opening(self):
+        # Each portal's glow is a one-sided light_rect in the game's portal
+        # colour on its opening, facing into its own room, and dark in the
+        # baked state (a runtime light): intensity 0 on the base stage, lit
+        # only by the glow states' layers.
+        fixture = lf.load_fixture("portal-pair")
+        records = json.loads((fixture["directory"] / "entities.json").read_text())
+        portals = {p["name"]: p for p in fixture["lighting"]["portals"]}
+        glows = {e["_fixture_light"]: e for e in records["entities"]
+                 if e.get("_fixture_light", "").startswith("Glow")}
+        self.assertEqual(sorted(glows), ["GlowA", "GlowB"])
+        for name, portal in (("GlowA", portals["PortalA"]), ("GlowB", portals["PortalB"])):
+            keys = glows[name]
+            self.assertEqual(keys["classname"], lf.RECT_CLASS)
+            self.assertNotIn("targetname", keys)
+            self.assertEqual(keys["two_sided"], "0")
+            color = [float(c) for c in keys["color"].split()]
+            expected = [255.0 * (c / 255.0) ** 2.2 /
+                        max((d / 255.0) ** 2.2
+                            for d in lf.PORTAL_GLOW_COLORS[portal["portal_two"]])
+                        for c in lf.PORTAL_GLOW_COLORS[portal["portal_two"]]]
+            for a, b in zip(color, expected):
+                self.assertAlmostEqual(a, b, places=3)
+            forward, _, _ = lf.angle_vectors_roll(*[float(c) for c in keys["angles"].split()])
+            for a, b in zip(forward, portal["forward"]):
+                self.assertAlmostEqual(a, b, places=4)
+            # The opening's size: 2 half-width by 2 half-height, in any roll.
+            self.assertEqual(sorted(float(keys[k]) for k in ("width", "height")),
+                             sorted([2 * lf.PORTAL_HALF_WIDTH_UNITS,
+                                     2 * lf.PORTAL_HALF_HEIGHT_UNITS]))
+        stage = (fixture["directory"] / fixture["stage"]).read_text()
+        for name in ("GlowA", "GlowB", "JoinedGlowA", "JoinedGlowB"):
+            block = stage[stage.index('def RectLight "%s"' % name):]
+            block = block[:block.index("}")]
+            self.assertIn("float inputs:intensity = 0", block, name)
+        for state in ("open-glow", "glow-only"):
+            layer = (fixture["directory"] / "states" / (state + ".usda")).read_text()
+            for name in ("GlowA", "GlowB", "JoinedGlowA", "JoinedGlowB"):
+                block = layer[layer.index('over "%s"' % name):]
+                self.assertIn("inputs:intensity = %g" % lf.PORTAL_GLOW_RADIANCE,
+                              block[:block.index("}")], (state, name))
 
 
 class CheckedInSet(unittest.TestCase):

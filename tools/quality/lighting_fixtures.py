@@ -1111,6 +1111,14 @@ def portal_wall_faces(frame, r_range, u_range, half_width, half_height, segments
 PORTAL_HALF_WIDTH_UNITS = 32.0   # Portal's prop_portal (portal_shareddefs.h)
 PORTAL_HALF_HEIGHT_UNITS = 54.0
 PORTAL_SEGMENTS = 64
+# The portals' glow (Portal 2's r_portal_use_dlights as an area light): the
+# game's default portal colours (s_defaultPortalColors, portal_util_shared.cpp:
+# the first portal blue, the second orange), linearized, at this peak
+# radiance (lightmap unit), on a rectangle the size of the opening just in
+# front of it.
+PORTAL_GLOW_COLORS = {False: (64, 160, 255), True: (255, 160, 32)}
+PORTAL_GLOW_RADIANCE = 2.0
+PORTAL_GLOW_OFFSET_M = 0.002
 
 
 def portal_pair(Scene, out):
@@ -1216,6 +1224,30 @@ def portal_pair(Scene, out):
     for name, _ in joined_lights:
         UsdGeom.Imageable(stage.GetPrimAtPath(s.light_path(name))).CreateVisibilityAttr() \
             .Set(UsdGeom.Tokens.invisible)
+    # The portals' glow: a one-sided rectangle the size of each opening, just
+    # in front of it, facing into its own room, in the portal's colour. It is
+    # a runtime light (unbaked): declared as a light_rect entity, dark in
+    # `closed` (the bake) and lit only in the glow states. It lights its own
+    # side only, as the engine keeps it out of portal images
+    # (DLIGHT_NO_PORTAL_IMAGE); the joined copy of each glow lights the copy
+    # of its room behind the other portal.
+    glows, glow_copies = [], []
+    for name, frame, two, other in (("GlowA", a, False, b), ("GlowB", b, True, a)):
+        radiance = tuple(PORTAL_GLOW_RADIANCE * (c / 255.0) ** 2.2
+                         for c in PORTAL_GLOW_COLORS[two])
+        center = tuple(o + PORTAL_GLOW_OFFSET_M * f
+                       for o, f in zip(frame["origin"], frame["forward"]))
+        s.rect_light(name, center, (2.0 * half_w, 2.0 * half_h), radiance,
+                     direction=frame["forward"])
+        stage.GetPrimAtPath(s.light_path(name)).GetAttribute("inputs:intensity").Set(0.0)
+        peak, norm = peak_and_norm(radiance)
+        glows.append((name, peak))
+        s.rect("Joined" + name, portal_map_point(frame, other, center),
+               (2.0 * half_w, 2.0 * half_h), 0.0, norm,
+               portal_map_vector(frame, other, frame["forward"]))
+        UsdGeom.Imageable(stage.GetPrimAtPath(s.light_path("Joined" + name))) \
+            .CreateVisibilityAttr().Set(UsdGeom.Tokens.invisible)
+        glow_copies.append(("Joined" + name, peak))
     s.portal("PortalA", a, False)
     s.portal("PortalB", b, True)
     joined_a = [n for n in copies if n.startswith("JoinedA") or n == "JoinedPostA"]
@@ -1234,15 +1266,25 @@ def portal_pair(Scene, out):
     s.spawn = ((14.0, 4.2, 1.7), (12.5, 0.5, 0.7))
     s.base("closed", "the portal world: the pair closed (plugs in), the joined copies hidden; "
                      "the map is built and baked from it")
+    opened = ([(s.author.root_path.AppendPath("World/" + walls[r][1]).pathString,
+                "visibility", None, UsdGeom.Tokens.invisible) for r in ("A", "B")] +
+              [("%s/World/%s" % (s.root, n), "visibility", None, UsdGeom.Tokens.inherited)
+               for n in copies] +
+              [(s.light_path(n), "visibility", None, UsdGeom.Tokens.inherited)
+               for n, _ in joined_lights] +
+              [e for n, peak in joined_lights for e in s.intensity(n, peak)])
+    glowing = ([(s.light_path(n), "visibility", None, UsdGeom.Tokens.inherited)
+                for n, _ in glow_copies] +
+               [e for n, peak in glows + glow_copies for e in s.intensity(n, peak)])
     s.state("open", "the pair open: the plugs out, each room joined through the opening to "
-                    "the copy of the other behind its portal wall",
-            [(s.author.root_path.AppendPath("World/" + walls[r][1]).pathString, "visibility",
-              None, UsdGeom.Tokens.invisible) for r in ("A", "B")] +
-            [("%s/World/%s" % (s.root, n), "visibility", None, UsdGeom.Tokens.inherited)
-             for n in copies] +
-            [(s.light_path(n), "visibility", None, UsdGeom.Tokens.inherited)
-             for n, _ in joined_lights] +
-            [e for n, peak in joined_lights for e in s.intensity(n, peak)])
+                    "the copy of the other behind its portal wall", opened)
+    s.state("open-glow", "the pair open with the portals' glow: each opening's rectangle "
+                         "lights its own room (and its copy lights the copy of its room "
+                         "behind the other portal)", opened + glowing)
+    s.state("glow-only", "the pair open with only the portals' glow lit: the glow term "
+                         "alone, and none of it through the pair",
+            opened + glowing + s.off(lamp_a[0], lamp_b[0], spot[0]) +
+            s.off(*[n for n, _ in joined_lights]))
     return s.finish_lighting(with_probes())
 
 
