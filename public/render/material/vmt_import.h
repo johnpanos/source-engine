@@ -138,6 +138,14 @@ foundation::Expected<MaterialDesc, ImportError> MapVariables(
 // Writes a material's GPU parameters into a block of its family (textures and
 // material references are bound elsewhere). Fails on a parameter the block's
 // schema lacks or declares with another type.
+// A texture variable's value as the importer names textures ("materials/..."
+// without the extension; special names such as env_cubemap unchanged).
+std::string VmtTextureReference( std::string_view value );
+
+// The numbers of a VMT value: "[a b c]", "{A B C}" (0-255, scaled to 0-1) or
+// a scalar; returns how many (at most 4).
+int VmtNumbers( std::string_view value, float ( &out )[4] );
+
 foundation::Expected<void, MaterialError> ApplyValues(
     const MaterialDesc &material, ParameterBlock &block );
 

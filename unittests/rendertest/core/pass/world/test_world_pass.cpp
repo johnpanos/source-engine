@@ -26,6 +26,9 @@
 //			W10 Views of a host frame the backend never recorded are skipped,
 //			   not failed; a view whose slot never recorded while another slot
 //			   of its frame did is a failure.
+//			P1 The resolver's editor preview (ProgramResolver::ResolvePreview)
+//			   draws a material strict Resolve refuses, with its blend, and names
+//			   every variable it ignores.
 //			W8 Objects a frame used outlive it: a level change, or a second
 //			   target format, between two slots of one submission leaves the
 //			   first slot's objects alive, and they are released at a later
@@ -34,6 +37,7 @@
 //=============================================================================//
 
 #include "render/device/null/provider.h"
+#include "render/material/program_resolver.h"
 #include "render/pass/world/world_pass.h"
 #include "testing/checks.h"
 
@@ -252,6 +256,28 @@ int main()
 		checks.That( !unread.Draws( 1 ) && named, "W9.an-unread-variable-set-is-a-named-gap" );
 		checks.That(
 		    !unread.Draws( 2 ) && unknown, "W9.an-unread-variable-without-neutral-is-a-gap" );
+	}
+
+	// P1: the editor preview against strict resolution.
+	{
+		auto resolver =
+		    material::ProgramResolver::Create( device, Format::kRGBA8Srgb, Format::kD32Float, 1 );
+		auto mapped = material::MapVariables( "LightmappedGeneric",
+		    { { "$basetexture", "metal/plate" }, { "$envmap", "env_cubemap" }, { "$additive", "1" },
+		        { "$surfaceprop", "metal" } },
+		    {} );
+		if ( checks.That( resolver.HasValue() && mapped.HasValue(), "P1.setup" ) )
+		{
+			material::ProgramResolver &r = *resolver.Value();
+			checks.That( !r.Resolve( mapped.Value() ).HasValue(), "P1.strict-resolve-refuses" );
+			auto preview = r.ResolvePreview( mapped.Value() );
+			checks.That( preview.HasValue() && preview.Value().program.request.pipeline.IsValid() &&
+			                 preview.Value().program.blend == BlendMode::kAdditive,
+			    "P1.the-preview-draws-with-its-blend" );
+			checks.That( preview.HasValue() && preview.Value().ignored.size() == 1 &&
+			                 preview.Value().ignored[0] == "$envmap",
+			    "P1.the-preview-names-what-it-ignores" );
+		}
 	}
 
 	// W6: the lit material's texture does not import.

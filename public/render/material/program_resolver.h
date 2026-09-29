@@ -81,6 +81,19 @@ public:
 	std::optional<GroupRequest> FrameGroup(
 	    const ResolvedProgram &program, const FrameTerms &terms ) const;
 
+	// The editor's preview of any material (Hammer's textured view). By
+	// contract an approximation, never a claim, and never used by the game's
+	// passes: the base texture times $color and $alpha, with the material's
+	// blend (translucent, additive), alpha test and reference, the vertex
+	// color on and the lighting fixed at one. Every variable it does not
+	// read is named in `ignored`, so nothing is silent.
+	struct Preview
+	{
+		ResolvedProgram program;
+		std::vector<std::string> ignored; // lower case, as the VMT names them
+	};
+	foundation::Expected<Preview, std::string> ResolvePreview( const MaterialDesc &material );
+
 private:
 	struct State;
 	explicit ProgramResolver( std::unique_ptr<State> state );

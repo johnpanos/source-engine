@@ -839,6 +839,16 @@ foundation::Expected<MaterialDesc, ImportError> MapVariables(
 	return desc;
 }
 
+std::string VmtTextureReference( std::string_view value )
+{
+	return TextureReference( value );
+}
+
+int VmtNumbers( std::string_view value, float ( &out )[4] )
+{
+	return ReadNumbers( value, out );
+}
+
 foundation::Expected<void, MaterialError> ApplyValues(
     const MaterialDesc &material, ParameterBlock &block )
 {

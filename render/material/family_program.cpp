@@ -113,7 +113,11 @@ bool ReadFlag( const ParameterBlock &block, std::string_view name )
 
 float AlphaTestReference( const ParameterBlock &block )
 {
-	const float reference = ReadParameter( block, "alphatestreference" );
+	return AlphaTestReference( ReadParameter( block, "alphatestreference" ) );
+}
+
+float AlphaTestReference( float reference )
+{
 	return std::floor( ( reference > 0.0f ? reference : 0.7f ) * 255.0f ) / 255.0f;
 }
 

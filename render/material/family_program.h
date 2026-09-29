@@ -39,6 +39,8 @@ bool ReadFlag( const ParameterBlock &block, std::string_view name );
 // (CShaderShadowDX8::SetDefaultState); held as a byte, as D3DRS_ALPHAREF
 // holds it ((int)( reference * 255 )).
 float AlphaTestReference( const ParameterBlock &block );
+// The same rule for a $alphatestreference value (0 when unset).
+float AlphaTestReference( float reference );
 
 // Source's GammaToLinear for a material color component (mathlib
 // color_conversion.cpp): values above one pass unchanged, values from 0.95

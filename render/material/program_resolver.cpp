@@ -8,6 +8,8 @@
 
 #include "render/material/program_resolver.h"
 
+#include "family_program.h"
+
 #include "render/material/lightmapped_family.h"
 #include "render/material/registry.h"
 #include "render/material/unlit_family.h"
@@ -263,6 +265,84 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		return out;
 	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no program yet" );
+}
+
+foundation::Expected<ProgramResolver::Preview, std::string> ProgramResolver::ResolvePreview(
+    const MaterialDesc &material )
+{
+	State &s = *m_State;
+	// What the preview reads, by VMT key.
+	constexpr std::string_view kRead[] = { "$basetexture", "$color", "$alpha", "$translucent",
+	    "$additive", "$vertexalpha", "$alphatest", "$alphatestreference", "$vertexcolor" };
+	auto find = [&]( std::string_view key ) -> const VmtPair *
+	{
+		const VmtPair *found = nullptr;
+		for ( const VmtPair &variable : material.variables )
+		{
+			if ( SameKey( variable.key, key ) )
+				found = &variable;
+		}
+		return found;
+	};
+	auto flag = [&]( std::string_view key )
+	{
+		const VmtPair *variable = find( key );
+		float numbers[4] = {};
+		return variable && VmtNumbers( variable->value, numbers ) > 0 && numbers[0] != 0.0f;
+	};
+	auto scalar = [&]( std::string_view key, float fallback )
+	{
+		const VmtPair *variable = find( key );
+		float numbers[4] = {};
+		return variable && VmtNumbers( variable->value, numbers ) > 0 ? numbers[0] : fallback;
+	};
+
+	Preview out;
+	for ( const VmtPair &variable : material.variables )
+	{
+		bool read = false;
+		for ( std::string_view key : kRead )
+			read = read || SameKey( variable.key, key );
+		bool metadata = false;
+		for ( const VmtPair &item : material.metadata )
+			metadata = metadata || SameKey( item.key, variable.key );
+		if ( !read && !metadata )
+		{
+			std::string key = variable.key;
+			for ( char &c : key )
+				c = char( std::tolower( static_cast<unsigned char>( c ) ) );
+			out.ignored.push_back( std::move( key ) );
+		}
+	}
+
+	LightmappedClaim claim;
+	claim.claimed = true;
+	const bool alphaTest = flag( "$alphatest" );
+	claim.blend = flag( "$additive" )                                ? device::BlendMode::kAdditive
+	              : flag( "$translucent" ) || flag( "$vertexalpha" ) ? device::BlendMode::kAlpha
+	                                                                 : device::BlendMode::kOpaque;
+	claim.alphaWrite = claim.blend == device::BlendMode::kOpaque && !alphaTest;
+	float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	if ( const VmtPair *variable = find( "$color" ) )
+	{
+		if ( VmtNumbers( variable->value, color ) == 1 )
+			color[1] = color[2] = color[0];
+	}
+	std::copy( color, color + 3, claim.constants.tint );
+	claim.constants.tint[3] = scalar( "$alpha", 1.0f );
+	claim.constants.flags[0] = 1.0f; // the vertex color
+	claim.constants.flags[1] = alphaTest ? 1.0f : 0.0f;
+	claim.constants.flags[2] = detail::AlphaTestReference( scalar( "$alphatestreference", 0.0f ) );
+	claim.constants.flags[3] = 1.0f; // lighting is one
+	const VmtPair *base = find( "$basetexture" );
+	auto request =
+	    s.lightmapped->Request( claim, base ? VmtTextureReference( base->value ) : std::string() );
+	if ( !request )
+		return foundation::MakeUnexpected( std::string( "a lightmapped pipeline was refused" ) );
+	out.program.request = std::move( request ).Value();
+	out.program.blend = claim.blend;
+	out.program.drawInputs = { "lightmap" }; // bound, not read: a neutral page serves
+	return out;
 }
 
 std::optional<GroupRequest> ProgramResolver::DrawGroup(
