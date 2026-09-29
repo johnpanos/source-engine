@@ -149,7 +149,7 @@ def retail_libraries(mirror):
 
 
 def make_retail_mirror(steam_root, mirror):
-    """A symlink mirror of the installation with private portal2/cfg and scripts.
+    """A symlink mirror of the installation with private cfg directories and scripts.
 
     The executable is copied so it resolves the mirror, not the installation,
     as its base directory; scripts/ is copied so the fixture can install its
@@ -160,11 +160,12 @@ def make_retail_mirror(steam_root, mirror):
         raise PhysicsError("%s has no portal2_linux" % steam_root)
     (mirror / "portal2").mkdir(parents=True, exist_ok=True)
     for entry in steam_root.iterdir():
-        if entry.name in ("portal2", "portal2_linux"):
+        if entry.name in ("portal2", "portal2_linux", stage_portal2_runtime.RETAIL_WRITE_DIR):
             continue
         link = mirror / entry.name
         if not link.is_symlink():
             link.symlink_to(entry)
+    stage_portal2_runtime.private_retail_write_dir(steam_root, mirror)
     if not (mirror / "portal2_linux").is_file():
         shutil.copy2(steam_root / "portal2_linux", mirror / "portal2_linux")
     for entry in (steam_root / "portal2").iterdir():

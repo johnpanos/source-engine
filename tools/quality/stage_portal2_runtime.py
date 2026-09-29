@@ -3,6 +3,7 @@
 
 import argparse
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -15,6 +16,33 @@ import portal_boot
 # GameBin path per game directory. This engine's SDK 2013 filesystem does none
 # of that implicitly, so the staged gameinfo spells the same order out.
 RETAIL_OVERLAY_DIRS = ("update", "portal2_dlc2", "portal2_dlc1")
+# The first of them is retail's write path: portal2_linux saves config.cfg
+# (every archived ConVar) to update/cfg, and Steam Cloud syncs that file.
+RETAIL_WRITE_DIR = RETAIL_OVERLAY_DIRS[0]
+
+
+def private_retail_write_dir(steam_root, mirror):
+    """Give a retail mirror its own update/ directory with a private cfg/.
+
+    A mirror that links update/ whole lets the retail binary save a harness's
+    settings (hud_quickinfo 0, closecaption 0, ...) into the installation: into
+    the player's Steam Cloud config, and into every staged runtime, whose
+    gameinfo mounts that update/ ahead of its own cfg. update/ becomes a
+    directory of links to the installation's entries, and cfg/ a copy.
+    """
+    source = Path(steam_root).resolve() / RETAIL_WRITE_DIR
+    target = Path(mirror) / RETAIL_WRITE_DIR
+    if target.is_symlink():
+        target.unlink()
+    target.mkdir(parents=True, exist_ok=True)
+    for child in source.iterdir():
+        link = target / child.name
+        if child.name == "cfg" or link.exists() or link.is_symlink():
+            continue
+        link.symlink_to(child)
+    if not (target / "cfg").is_dir():
+        shutil.copytree(source / "cfg", target / "cfg", symlinks=True)
+    return target
 
 
 def retail_search_paths(contents, mount_custom=False):

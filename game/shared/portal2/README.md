@@ -294,9 +294,16 @@ shoots the views at 1024x768 on both sides.
   The same engine arguments as `./play_p2` apply (`+mat_colorcorrection 1`),
   plus `+sv_cheats 1`.
 - On retail, `portal2_linux` runs in a private symlink mirror of the install,
-  with its own `portal2/cfg` and `scripts`. A `mapspawn.nut` hook starts the
-  same scripts on the server VM. It runs under `mutter --headless` with SDL on
-  Xwayland.
+  with its own `portal2/cfg`, `update/cfg` and `scripts`. A `mapspawn.nut`
+  hook starts the same scripts on the server VM. It runs under
+  `mutter --headless` with SDL on Xwayland.
+  - Retail saves `config.cfg` to `update/cfg`, which Steam Cloud syncs and
+    every staged runtime mounts ahead of its own cfg. Until 2026-09-28 the
+    mirrors linked `update/` whole, so harness settings (`hud_quickinfo 0`
+    from the paint workload, `closecaption 0`, `snd_mute_losefocus 0`) were
+    saved into the player's config, and `./play_p2` lost its crosshair
+    brackets. `stage_portal2_runtime.private_retail_write_dir` now gives
+    every mirror a private `update/cfg`.
   - Retail needs a running Steam client ("Steam is not running" otherwise). The
     session uses the user's Steam when one is running. Only when none is running
     does it start one inside the compositor and shut it down afterwards.

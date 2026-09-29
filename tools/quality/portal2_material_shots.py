@@ -355,7 +355,7 @@ def finish_scenario(directory, name, result, screenshots, started, stdout):
 # ---------------------------------------------------------------------------
 
 def make_retail_mirror(steam_root, mirror):
-    """A symlink mirror of the install whose portal2/cfg and scripts are private copies.
+    """A symlink mirror of the install whose cfg directories and scripts are private copies.
 
     The executable is copied, not linked: the engine finds its base directory
     from the executable's resolved path.
@@ -364,10 +364,11 @@ def make_retail_mirror(steam_root, mirror):
     mirror.mkdir(parents=True, exist_ok=True)
     for entry in steam_root.iterdir():
         target = mirror / entry.name
-        if entry.name in ("portal2", "portal2_linux"):
+        if entry.name in ("portal2", "portal2_linux", stage_portal2_runtime.RETAIL_WRITE_DIR):
             continue
         if not target.exists() and not target.is_symlink():
             target.symlink_to(entry)
+    stage_portal2_runtime.private_retail_write_dir(steam_root, mirror)
     if not (mirror / "portal2_linux").is_file():
         shutil.copy2(steam_root / "portal2_linux", mirror / "portal2_linux")
     (mirror / "steam_appid.txt").write_text("620\n")
