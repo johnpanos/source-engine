@@ -303,6 +303,171 @@ foundation::Expected<ClusterGrid, ClusterError> CreateClusterGrid(
 	return grid;
 }
 
+foundation::Expected<ClusterGrid, ClusterError> SubdivideClusterGrid(
+    const ClusterGrid &grid, std::uint32_t tileDivisor, std::uint32_t sliceMultiplier )
+{
+	using foundation::MakeUnexpected;
+	const std::uint32_t tile = grid.limits.tileSizePixels;
+	if ( tileDivisor == 0 || sliceMultiplier == 0 || tile == 0 || tile % tileDivisor != 0 )
+		return MakeUnexpected( ClusterError::kInvalidLimits );
+	if ( grid.slices == 0 || grid.sliceDepths.size() != std::size_t( grid.slices ) + 1 ||
+	     grid.cornerRays.size() != std::size_t( grid.tilesX + 1 ) * ( grid.tilesY + 1 ) )
+		return MakeUnexpected( ClusterError::kInvalidDepthRange );
+
+	ClusterGrid fine;
+	fine.limits = grid.limits;
+	fine.limits.tileSizePixels = tile / tileDivisor;
+	fine.limits.depthSlices = grid.slices * sliceMultiplier;
+	fine.limits.maxFroxels = grid.limits.maxFroxels * tileDivisor * tileDivisor * sliceMultiplier;
+	fine.widthPixels = grid.widthPixels;
+	fine.heightPixels = grid.heightPixels;
+	fine.tilesX =
+	    ( grid.widthPixels + fine.limits.tileSizePixels - 1 ) / fine.limits.tileSizePixels;
+	fine.tilesY =
+	    ( grid.heightPixels + fine.limits.tileSizePixels - 1 ) / fine.limits.tileSizePixels;
+	fine.slices = fine.limits.depthSlices;
+	fine.nearZ = grid.nearZ;
+	fine.farZ = grid.farZ;
+	fine.view = grid.view;
+	fine.tileDivisor = tileDivisor;
+	fine.sliceMultiplier = sliceMultiplier;
+	fine.sliceScale = grid.sliceScale * float( sliceMultiplier );
+	fine.sliceBias = grid.sliceBias * float( sliceMultiplier );
+
+	// Slices: the parent's boundaries, and log-uniform divisions between them.
+	fine.sliceDepths.resize( std::size_t( fine.slices ) + 1 );
+	for ( std::uint32_t k = 0; k < grid.slices; ++k )
+	{
+		const double lo = std::log( double( grid.sliceDepths[k] ) );
+		const double hi = std::log( double( grid.sliceDepths[k + 1] ) );
+		fine.sliceDepths[std::size_t( k ) * sliceMultiplier] = grid.sliceDepths[k];
+		for ( std::uint32_t m = 1; m < sliceMultiplier; ++m )
+			fine.sliceDepths[std::size_t( k ) * sliceMultiplier + m] = static_cast<float>(
+			    std::exp( lo + ( hi - lo ) * double( m ) / double( sliceMultiplier ) ) );
+	}
+	fine.sliceDepths.back() = grid.sliceDepths.back();
+
+	// Corner rays: the parent's at shared corners; elsewhere bilinear in
+	// pixels between the parent's four around it (a view ray at distance 1 is
+	// an affine function of the pixel position, so this is exact).
+	const auto parentPixel = [&]( std::uint32_t index, std::uint32_t size )
+	{
+		return double( std::min<std::uint64_t>( std::uint64_t( index ) * tile, size ) );
+	};
+	const auto finePixel = [&]( std::uint32_t index, std::uint32_t size )
+	{
+		return double(
+		    std::min<std::uint64_t>( std::uint64_t( index ) * fine.limits.tileSizePixels, size ) );
+	};
+	// The parent span [ j, j + 1 ] holding a fine edge, and the fraction.
+	const auto span = [&]( std::uint32_t index, std::uint32_t parentTiles, std::uint32_t size,
+	                      std::uint32_t &j, double &f )
+	{
+		const double pixel = finePixel( index, size );
+		j = std::min( index / tileDivisor, parentTiles );
+		if ( j == parentTiles || pixel == parentPixel( j, size ) )
+		{
+			f = 0.0;
+			return;
+		}
+		const double a = parentPixel( j, size );
+		const double b = parentPixel( j + 1, size );
+		if ( pixel == b )
+		{
+			// The screen's edge inside the parent's last tile.
+			++j;
+			f = 0.0;
+			return;
+		}
+		f = ( pixel - a ) / ( b - a );
+	};
+	const std::uint32_t parentStride = grid.tilesX + 1;
+	const auto parentRay = [&]( std::uint32_t i, std::uint32_t j )
+	{
+		return grid.cornerRays[std::size_t( j ) * parentStride + i];
+	};
+	fine.cornerRays.resize( std::size_t( fine.tilesX + 1 ) * ( fine.tilesY + 1 ) );
+	for ( std::uint32_t row = 0; row <= fine.tilesY; ++row )
+	{
+		std::uint32_t pj = 0;
+		double fy = 0.0;
+		span( row, grid.tilesY, grid.heightPixels, pj, fy );
+		for ( std::uint32_t column = 0; column <= fine.tilesX; ++column )
+		{
+			std::uint32_t pi = 0;
+			double fx = 0.0;
+			span( column, grid.tilesX, grid.widthPixels, pi, fx );
+			float3 &out = fine.cornerRays[std::size_t( row ) * ( fine.tilesX + 1 ) + column];
+			if ( fx == 0.0 && fy == 0.0 )
+			{
+				out = parentRay( pi, pj );
+				continue;
+			}
+			const float3 a = parentRay( pi, pj );
+			const float3 b = parentRay( std::min( pi + 1, grid.tilesX ), pj );
+			const float3 c = parentRay( pi, std::min( pj + 1, grid.tilesY ) );
+			const float3 d =
+			    parentRay( std::min( pi + 1, grid.tilesX ), std::min( pj + 1, grid.tilesY ) );
+			const auto mix = [&]( float va, float vb, float vc, float vd )
+			{
+				const double top = double( va ) + ( double( vb ) - double( va ) ) * fx;
+				const double bottom = double( vc ) + ( double( vd ) - double( vc ) ) * fx;
+				return static_cast<float>( top + ( bottom - top ) * fy );
+			};
+			out = { mix( a.x, b.x, c.x, d.x ), mix( a.y, b.y, c.y, d.y ), -1.0f };
+		}
+	}
+
+	// Planes: the parent's at shared edges; elsewhere through the eye and the
+	// edge's corner rays, facing as the parent's plane at its span's start.
+	const auto planeThrough = [&]( const float3 &p, const float3 &q, const math::Plane &facing )
+	{
+		const float3 n = math::Cross( p, q );
+		const math::Plane plane = NormalizedPlane( n, 0.0f );
+		if ( math::Dot( plane.normal, facing.normal ) < 0.0f )
+			return math::Plane{ plane.normal * -1.0f, 0.0f };
+		return plane;
+	};
+	const std::uint32_t fineStride = fine.tilesX + 1;
+	fine.columnPlanes.resize( std::size_t( fine.tilesX ) + 1 );
+	for ( std::uint32_t column = 0; column <= fine.tilesX; ++column )
+	{
+		std::uint32_t pi = 0;
+		double f = 0.0;
+		span( column, grid.tilesX, grid.widthPixels, pi, f );
+		fine.columnPlanes[column] =
+		    f == 0.0 ? grid.columnPlanes[pi]
+		             : planeThrough( fine.cornerRays[column],
+		                   fine.cornerRays[std::size_t( fine.tilesY ) * fineStride + column],
+		                   grid.columnPlanes[pi] );
+	}
+	fine.rowPlanes.resize( std::size_t( fine.tilesY ) + 1 );
+	for ( std::uint32_t row = 0; row <= fine.tilesY; ++row )
+	{
+		std::uint32_t pj = 0;
+		double f = 0.0;
+		span( row, grid.tilesY, grid.heightPixels, pj, f );
+		fine.rowPlanes[row] =
+		    f == 0.0 ? grid.rowPlanes[pj]
+		             : planeThrough( fine.cornerRays[std::size_t( row ) * fineStride],
+		                   fine.cornerRays[std::size_t( row ) * fineStride + fine.tilesX],
+		                   grid.rowPlanes[pj] );
+	}
+	return fine;
+}
+
+std::uint32_t ParentFroxelIndex(
+    const ClusterGrid &fine, std::uint32_t x, std::uint32_t y, std::uint32_t slice )
+{
+	const std::uint32_t tile = fine.limits.tileSizePixels * fine.tileDivisor;
+	const std::uint32_t tilesX = ( fine.widthPixels + tile - 1 ) / tile;
+	const std::uint32_t tilesY = ( fine.heightPixels + tile - 1 ) / tile;
+	const std::uint32_t px = std::min( x / fine.tileDivisor, tilesX - 1 );
+	const std::uint32_t py = std::min( y / fine.tileDivisor, tilesY - 1 );
+	const std::uint32_t ps = slice / fine.sliceMultiplier;
+	return ( ps * tilesY + py ) * tilesX + px;
+}
+
 std::uint32_t SliceOfDepth( const ClusterGrid &grid, float viewDistance )
 {
 	if ( !( viewDistance > grid.nearZ ) )

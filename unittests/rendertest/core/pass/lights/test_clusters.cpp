@@ -19,7 +19,14 @@
 //			L6 directional and invalid lights are counted, never listed; an
 //			   unbounded light reaches every froxel of its cone;
 //			L7 PackClusterLights takes the lights AssignLights takes, in order;
-//			L8 assignment is deterministic.
+//			L8 assignment is deterministic;
+//			L9 SubdivideClusterGrid: the boundaries a fine grid shares with its
+//			   parent are the parent's, bitwise; every fine froxel lies inside
+//			   the parent froxel ParentFroxelIndex names (its corners by the
+//			   parent's planes and slice depths, its centre by FroxelAt); the
+//			   fine geometry matches the reference at the fine limits; a grid
+//			   whose slices do not subdivide the parent's and a parent map off
+//			   by one are both caught.
 //
 //=============================================================================//
 
@@ -29,6 +36,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 
 namespace
 {
@@ -172,6 +180,204 @@ void CheckGridGeometry( testing::Checks &checks, std::mt19937 &random )
 	checks.Equal( slices, 0, "L1 SliceOfDepth maps each slice's middle depth to that slice" );
 }
 
+using ParentMap = std::function<std::uint32_t(
+    const ClusterGrid &fine, std::uint32_t x, std::uint32_t y, std::uint32_t slice )>;
+
+// L9: what is wrong with `fine` as a subdivision of `parent` (0: nothing).
+std::uint64_t SubdivisionFindings( const Scene &scene, const ClusterGrid &parent,
+    const ClusterGrid &fine, std::uint32_t divisor, std::uint32_t multiplier,
+    const ParentMap &parentOf, std::mt19937 &random )
+{
+	std::uint64_t findings = 0;
+	lights::ClusterLimits fineLimits = scene.limits;
+	fineLimits.tileSizePixels = scene.limits.tileSizePixels / divisor;
+	fineLimits.depthSlices = scene.limits.depthSlices * multiplier;
+	const RefGrid g = MakeRefGrid( scene.desc, fineLimits );
+	if ( fine.tilesX != g.tilesX || fine.tilesY != g.tilesY || fine.slices != g.slices ||
+	     fine.sliceDepths.size() != std::size_t( g.slices ) + 1 ||
+	     fine.cornerRays.size() != std::size_t( g.tilesX + 1 ) * ( g.tilesY + 1 ) )
+		return 1000000;
+	// Shared slice boundaries are the parent's, bitwise; every fine slice
+	// lies within its parent slice; the depths match the reference.
+	for ( std::uint32_t k = 0; k <= parent.slices; ++k )
+		findings +=
+		    fine.sliceDepths[std::size_t( k ) * multiplier] == parent.sliceDepths[k] ? 0 : 1;
+	for ( std::uint32_t k = 0; k < fine.slices; ++k )
+	{
+		const std::uint32_t up = k / multiplier;
+		findings += fine.sliceDepths[k] >= parent.sliceDepths[up] &&
+		                    fine.sliceDepths[k + 1] <= parent.sliceDepths[up + 1] &&
+		                    fine.sliceDepths[k] < fine.sliceDepths[k + 1]
+		                ? 0
+		                : 1;
+		findings += std::fabs( fine.sliceDepths[k] - g.depths[k] ) <= 1e-5 * g.depths[k] ? 0 : 1;
+	}
+	// Shared corners are the parent's, bitwise; every corner matches the
+	// reference.
+	const std::uint32_t stride = fine.tilesX + 1;
+	for ( std::uint32_t j = 0; j <= fine.tilesY; ++j )
+	{
+		for ( std::uint32_t i = 0; i <= fine.tilesX; ++i )
+		{
+			const float3 ray = fine.cornerRays[std::size_t( j ) * stride + i];
+			const D3 ref = PixelPoint( g, std::min<double>( double( i ) * g.tile, g.width ),
+			    std::min<double>( double( j ) * g.tile, g.height ), 1.0 );
+			findings +=
+			    Len( ref - D3{ ray.x, ray.y, ray.z } ) <= 1e-5 * ( 1.0 + Len( ref ) ) ? 0 : 1;
+			if ( i % divisor == 0 && j % divisor == 0 )
+			{
+				const float3 shared =
+				    parent.cornerRays[std::size_t( j / divisor ) * ( parent.tilesX + 1 ) +
+				                      i / divisor];
+				findings += ray.x == shared.x && ray.y == shared.y && ray.z == shared.z ? 0 : 1;
+			}
+		}
+	}
+	// Sampled fine froxels: the parent map agrees with FroxelAt at the
+	// froxel's centre, and its corners (moved 1e-3 toward the centre) are
+	// inside that parent froxel.
+	const std::uint32_t count = fine.FroxelCount();
+	const std::uint32_t samples = std::min<std::uint32_t>( count, 1500 );
+	for ( std::uint32_t n = 0; n < samples; ++n )
+	{
+		const std::uint32_t index = samples == count ? n : std::uint32_t( random() % count );
+		const std::uint32_t x = index % fine.tilesX;
+		const std::uint32_t y = ( index / fine.tilesX ) % fine.tilesY;
+		const std::uint32_t slice = index / ( fine.tilesX * fine.tilesY );
+		const std::uint32_t mapped = parentOf( fine, x, y, slice );
+		const double x0 = double( x ) * g.tile;
+		const double x1 = std::min<double>( double( x + 1 ) * g.tile, g.width );
+		const double y0 = double( y ) * g.tile;
+		const double y1 = std::min<double>( double( y + 1 ) * g.tile, g.height );
+		const double d0 = fine.sliceDepths[slice];
+		const double d1 = fine.sliceDepths[slice + 1];
+		const double centreDepth = std::sqrt( d0 * d1 );
+		findings += lights::FroxelAt( parent, float( 0.5 * ( x0 + x1 ) ),
+		                float( 0.5 * ( y0 + y1 ) ), float( centreDepth ) ) == mapped
+		                ? 0
+		                : 1;
+		if ( mapped >= parent.FroxelCount() )
+		{
+			++findings;
+			continue;
+		}
+		const std::uint32_t px = mapped % parent.tilesX;
+		const std::uint32_t py = ( mapped / parent.tilesX ) % parent.tilesY;
+		const std::uint32_t ps = mapped / ( parent.tilesX * parent.tilesY );
+		for ( int corner = 0; corner < 8; ++corner )
+		{
+			const double cx =
+			    0.5 * ( x0 + x1 ) + ( ( corner & 1 ) ? 0.5 : -0.5 ) * ( x1 - x0 ) * 0.999;
+			const double cy =
+			    0.5 * ( y0 + y1 ) + ( ( corner & 2 ) ? 0.5 : -0.5 ) * ( y1 - y0 ) * 0.999;
+			const double depth = ( corner & 4 ) ? d1 - 1e-3 * ( d1 - d0 ) : d0 + 1e-3 * ( d1 - d0 );
+			const D3 point = PixelPoint( g, cx, cy, depth );
+			const float3 at = { float( point.x ), float( point.y ), float( point.z ) };
+			const float slack = 1e-4f * float( depth );
+			const bool inside = parent.columnPlanes[px].Distance( at ) >= -slack &&
+			                    parent.columnPlanes[px + 1].Distance( at ) <= slack &&
+			                    parent.rowPlanes[py].Distance( at ) >= -slack &&
+			                    parent.rowPlanes[py + 1].Distance( at ) <= slack &&
+			                    depth >= parent.sliceDepths[ps] &&
+			                    depth <= parent.sliceDepths[ps + 1];
+			findings += inside ? 0 : 1;
+		}
+	}
+	return findings;
+}
+
+void CheckSubdivision( testing::Checks &checks, std::mt19937 &random )
+{
+	const ParentMap real = lights::ParentFroxelIndex;
+	// Seeded: the parent's slice one too far for every fine slice past the
+	// first of its parent.
+	const ParentMap offByOne =
+	    []( const ClusterGrid &fine, std::uint32_t x, std::uint32_t y, std::uint32_t slice )
+	{
+		const std::uint32_t shifted =
+		    slice % fine.sliceMultiplier != 0 && slice + fine.sliceMultiplier < fine.slices
+		        ? slice + fine.sliceMultiplier
+		        : slice;
+		return lights::ParentFroxelIndex( fine, x, y, shifted );
+	};
+	std::uint64_t findings = 0;
+	std::uint64_t unaligned = 0;
+	std::uint64_t offByOneFindings = 0;
+	int failures = 0;
+	int scenes = 0;
+	int seededScenes = 0;
+	for ( int s = 0; s < 100; ++s )
+	{
+		const Scene scene = MakeScene( random );
+		auto parent = lights::CreateClusterGrid( scene.desc, scene.limits );
+		const std::uint32_t divisors[] = { 1, 2, 4, 8 };
+		const std::uint32_t divisor = divisors[random() % 4];
+		const std::uint32_t multiplier = 1 + random() % 4;
+		if ( !parent )
+		{
+			++failures;
+			continue;
+		}
+		auto fine = lights::SubdivideClusterGrid( parent.Value(), divisor, multiplier );
+		if ( !fine )
+		{
+			++failures;
+			continue;
+		}
+		++scenes;
+		findings += SubdivisionFindings(
+		    scene, parent.Value(), fine.Value(), divisor, multiplier, real, random );
+		if ( multiplier > 1 && parent.Value().slices > 1 )
+		{
+			++seededScenes;
+			offByOneFindings += SubdivisionFindings( scene, parent.Value(), fine.Value(), divisor,
+			                        multiplier, offByOne, random ) > 0;
+			// Seeded: a grid built directly at the fine limits plus one slice,
+			// which does not subdivide the parent's slices.
+			lights::ClusterLimits limits = scene.limits;
+			limits.tileSizePixels /= divisor;
+			limits.depthSlices = parent.Value().slices * multiplier + 1;
+			limits.maxFroxels = 1u << 30;
+			auto direct = lights::CreateClusterGrid( scene.desc, limits );
+			if ( direct )
+			{
+				ClusterGrid bad = direct.Value();
+				bad.tileDivisor = divisor;
+				bad.sliceMultiplier = multiplier;
+				bad.slices = parent.Value().slices * multiplier;
+				bad.sliceDepths.resize( std::size_t( bad.slices ) + 1 );
+				unaligned += SubdivisionFindings( scene, parent.Value(), bad, divisor, multiplier,
+				                 real, random ) > 0;
+			}
+		}
+	}
+	std::printf( "INFO subdivision scenes %d (seeded %d)\n", scenes, seededScenes );
+	checks.Equal( failures, 0, "L9 every seeded subdivision builds" );
+	checks.Equal( findings, 0ull,
+	    "L9 fine froxels subdivide their parents: shared boundaries bitwise, containment, map" );
+	checks.That( seededScenes >= 20, "L9 seeded subdivisions exercised" );
+	checks.Equal( offByOneFindings, std::uint64_t( seededScenes ),
+	    "L9 seeded parent map off by one is caught in every scene" );
+	checks.Equal( unaligned, std::uint64_t( seededScenes ),
+	    "L9 seeded grid whose slices do not subdivide the parent's is caught in every scene" );
+
+	lights::ClusterViewDesc desc = SimpleView();
+	auto parent = lights::CreateClusterGrid( desc, lights::DesktopClusterLimits() );
+	const auto error = [&]( std::uint32_t divisor, std::uint32_t multiplier )
+	{
+		auto fine = lights::SubdivideClusterGrid( parent.Value(), divisor, multiplier );
+		return fine ? -1 : int( fine.Error() );
+	};
+	checks.Equal( error( 0, 1 ), int( lights::ClusterError::kInvalidLimits ), "L9 divisor 0" );
+	checks.Equal( error( 1, 0 ), int( lights::ClusterError::kInvalidLimits ), "L9 multiplier 0" );
+	checks.Equal( error( 3, 1 ), int( lights::ClusterError::kInvalidLimits ),
+	    "L9 a divisor that does not divide the tile" );
+	auto same = lights::SubdivideClusterGrid( parent.Value(), 1, 1 );
+	checks.That( same && same.Value().sliceDepths == parent.Value().sliceDepths &&
+	                 same.Value().cornerRays.size() == parent.Value().cornerRays.size(),
+	    "L9 dividing by one is the grid itself" );
+}
+
 void CheckSmallCases( testing::Checks &checks )
 {
 	const lights::ClusterViewDesc desc = SimpleView();
@@ -270,6 +476,7 @@ int main()
 	CheckGridErrors( checks );
 	CheckGridGeometry( checks, random );
 	CheckSmallCases( checks );
+	CheckSubdivision( checks, random );
 
 	// L2-L4, L8.
 	Tally tally;

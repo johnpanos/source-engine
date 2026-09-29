@@ -10577,14 +10577,14 @@
       "contract": "unittests/rendertest/contracts/render.lights.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "render.lights.v1 (RFC 0016 K7, headless slice): froxel grid geometry against the projection; zero false negatives over 1,000 seeded scenes against an independent double-precision reference (exact distance for points, exact rejection plus witness search for spots), false-positive rates recorded under their ceilings; the FroxelAt lookup at random points; list invariants; exact overflow accounting under both policies; directional, invalid and unbounded lights; packed records; determinism. Honors CONFORMANCE_SEED.",
+      "description": "render.lights.v1 (RFC 0016 K7, headless slice): froxel grid geometry against the projection; zero false negatives over 1,000 seeded scenes against an independent double-precision reference (exact distance for points, exact rejection plus witness search for spots), false-positive rates recorded under their ceilings; the FroxelAt lookup at random points; list invariants; exact overflow accounting under both policies; directional, invalid and unbounded lights; packed records; determinism; SubdivideClusterGrid (L9, the volumetric fog's froxels): over 100 seeded subdivisions the shared slice depths and corner rays are the parent's bitwise, every fine froxel lies in the parent froxel ParentFroxelIndex names (its corners by the parent's planes and depths, its centre by FroxelAt), the fine geometry matches the reference at the fine limits, and a parent map off by one and a grid whose slices do not subdivide the parent's are caught in every seeded scene. Honors CONFORMANCE_SEED.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/math/matrix.cpp",
         "render/pass/lights/clusters.cpp",
         "unittests/rendertest/core/pass/lights/test_clusters.cpp"
       ],
-      "min_checks": 37,
+      "min_checks": 46,
       "extra_flags": [
         "-O2"
       ],

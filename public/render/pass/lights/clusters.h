@@ -119,6 +119,10 @@ struct ClusterGrid
 	// The view-space point at distance 1 (z = -1) under each tile corner,
 	// row-major from the top-left: index = row * ( tilesX + 1 ) + column.
 	std::vector<math::float3> cornerRays; // ( tilesX + 1 ) * ( tilesY + 1 )
+	// A grid SubdivideClusterGrid made: how its froxels divide its parent's
+	// (1 and 1 for a grid CreateClusterGrid made).
+	std::uint32_t tileDivisor = 1;
+	std::uint32_t sliceMultiplier = 1;
 
 	std::uint32_t FroxelCount() const { return tilesX * tilesY * slices; }
 	std::uint32_t FroxelIndex( std::uint32_t x, std::uint32_t y, std::uint32_t slice ) const
@@ -129,6 +133,26 @@ struct ClusterGrid
 
 [[nodiscard]] foundation::Expected<ClusterGrid, ClusterError> CreateClusterGrid(
     const ClusterViewDesc &desc, const ClusterLimits &limits );
+
+// A finer grid of the same view whose froxels subdivide `grid`'s (the
+// volumetric fog's froxels, RFC 0016 participating media): tiles of
+// tileSizePixels / tileDivisor pixels and slices * sliceMultiplier depth
+// slices, still spaced logarithmically, so the fine froxel (x, y, s) lies in
+// `grid`'s froxel ( x / tileDivisor, y / tileDivisor, s / sliceMultiplier )
+// (ParentFroxelIndex) and can read that froxel's light list. The boundaries
+// the two grids share are `grid`'s own values, bitwise: every
+// sliceMultiplier-th slice depth, and the corner rays and planes of every
+// tileDivisor-th column and row; the others divide them. The fine limits are
+// `grid`'s with the tile size, slice count and froxel capacity scaled.
+// kInvalidLimits when a factor is 0 or tileDivisor does not divide the tile
+// size; kInvalidDepthRange for a grid without its slice depths.
+[[nodiscard]] foundation::Expected<ClusterGrid, ClusterError> SubdivideClusterGrid(
+    const ClusterGrid &grid, std::uint32_t tileDivisor, std::uint32_t sliceMultiplier );
+
+// The index, in the grid a subdivided grid was made from, of the froxel
+// holding the subdivided grid's froxel ( x, y, slice ).
+std::uint32_t ParentFroxelIndex(
+    const ClusterGrid &fine, std::uint32_t x, std::uint32_t y, std::uint32_t slice );
 
 // The slice holding a view distance, clamped to the grid.
 std::uint32_t SliceOfDepth( const ClusterGrid &grid, float viewDistance );
