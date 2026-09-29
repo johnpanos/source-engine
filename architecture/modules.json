@@ -814,6 +814,7 @@
           "render.pass.lines",
           "render.pass.lights",
           "render.pass.volumetric",
+          "render.pass.ssr",
           "render.contracts",
           "jobs.graph",
           "testing.contracts"
@@ -918,6 +919,21 @@
           "render.math",
           "render.contracts",
           "render.device",
+          "render.shader-library"
+        ]
+      },
+      {
+        "id": "render.pass.ssr",
+        "description": "RFC 0016 render.lighting.v1 'Screen-space reflections' (render.ssr.v1): glossy reflections traced in the current frame's lit colour through a hierarchical depth walk, blended over the image-based specular by hit confidence.",
+        "paths": [
+          "public/render/pass/ssr/",
+          "render/pass/ssr/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.device",
+          "render.graph",
           "render.shader-library"
         ]
       },
@@ -1519,6 +1535,14 @@
           "render_shaderlib"
         ]
       },
+      "render_pass_ssr": {
+        "allowedUse": [
+          "render_graph",
+          "render_device",
+          "render_spv",
+          "render_shaderlib"
+        ]
+      },
       "render_pass_output": {
         "allowedUse": [
           "render_graph",
@@ -1555,7 +1579,7 @@
           "render_shaderlib"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr"]},
       "render_pass_debug": {
         "allowedUse": [
           "render_device",

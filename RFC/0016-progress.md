@@ -3345,3 +3345,50 @@ rebased tree the vrad rule gave fog nave 0.070 / 0.59 and side 0.076 / 0.38.
 With SpotFactor, fog nave is 0.075 / 0.59 and side 0.083 / 0.38; both still
 pass, slightly worse, which is the spot-rule difference above. The clear views
 are unchanged (0.098 / 1.08, 0.076 / 0.37).
+
+## K11 step f: screen-space reflections, `render.pass.ssr` (2026-09-29)
+
+Owned by source-engine-5c's d agent (approved by the render-core owner,
+source-engine-43, as scoped: the RFC 0016 owner row and gate). State:
+design and CPU reference; the GPU pass, the surface-program inputs and the
+mirror-corridor comparison are open.
+
+- **Definition:** `public/render/pass/ssr/ssr.h`, the term's one definition.
+  - Inputs per view: depth, an octahedral normal with the roughness the image
+    light used, the surface's specular weight (split-sum directional albedo
+    times specular occlusion), the image specular it added, and the current
+    frame's lit colour. No history.
+  - The trace: the reflected ray from the pixel, started one pixel footprint
+    off its surface, walked texel by texel through the depth buffer in screen
+    space. The GPU pass will skip cells through a min-depth pyramid.
+  - Hit and thickness: a texel whose depth the ray reaches while less than
+    `thickness` (8 units) behind it.
+  - Confidence: the product of the screen-edge fade (10 percent of the
+    screen), the thickness fade and the roughness fade (from 0.75 of the 0.4
+    cutoff).
+  - Spatial filter: a trilinear lookup in the lit colour's box pyramid at the
+    lobe's footprint, log2(2 r^2 L).
+  - Composite: lit + c (ssr - image specular), that is the rest plus
+    lerp(image specular, ssr, c). Roughness at or above the cutoff, the
+    background and c = 0 are written unchanged, bitwise.
+- **Surface-program inputs:** proposed to source-engine-43 as diffs after its
+  c1 and the step-d wiring land (behind its opt-in `kSsrTargets` guard). The
+  definition needs one more input than the agreed normal-roughness and image
+  specular targets: the specular weight (rgb), so SSR is weighted as the
+  image light it replaces. Until then the lab builds the inputs itself.
+- **Reference:** `render/lab/ssr_reference.{h,cpp}`: the definition in double
+  precision, walking every texel (Amanatides and Woo), with its own matrix
+  inverse and pyramid; no code or acceleration shared with the GPU trace.
+  `render/lab/ssr_scene.{h,cpp}` ray-casts analytic rectangle scenes into the
+  pass's inputs, with each pixel's true mirror reflection.
+- Contract clauses S1–S10: `unittests/rendertest/contracts/render.ssr.v1.md`.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Reference against analytic truth | `render.lab.ssr` (`render_lab suite ssr`): a mirror floor before a patterned wall with a thin floating bar, 256 x 192. All 15,324 floor pixels whose true reflection the camera sees hit within 1.5 px of it and reflect its light within 3 percent + 0.01. 132 (0.9 percent) stop at the bar within the thickness, the definition's screen-space ambiguity; the 2 percent bound was set after that ambiguity first showed. The thickness test passes 1,254 rays behind the bar that an unbounded thickness stops. 4,756 off-screen reflections all miss. 3,912 hits in the edge band fade below 1, and below 0.1 at 1 percent from the edge. The roughness fade holds at 0.35; at 0.45, rough surfaces and the background are unchanged bitwise. The octahedral round trip is within 2.4e-7 | pass (10 checks, g++ and clang++) |
+
+Next: the GPU pass (the pyramids and the hierarchical trace as compute
+passes on the graph), judged against the reference with seeded defects
+(thickness ignored, no edge fade, wrong mip). Then the lab's mirror-corridor
+inputs, the gallery before and after, and the fallback-seam walk against the
+0.047 gate with its hard-switch control.

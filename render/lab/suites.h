@@ -69,6 +69,7 @@ int RunReflectionProbesSuite( int argc, char **argv );
 int RunVolumetricSuite( int argc, char **argv );
 int RunClusteredLightsSuite( int argc, char **argv );
 int RunMapTermsSuite( int argc, char **argv );
+int RunSsrSuite( int argc, char **argv );
 
 } // namespace render::lab
 

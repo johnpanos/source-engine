@@ -9990,6 +9990,37 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.ssr",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "unittests/rendertest/contracts/render.ssr.v1.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K11 'Screen-space reflections' (render.ssr.v1, render/lab/ssr_suite.cpp, render_lab suite ssr): the pass's CPU reference (render/lab/ssr_reference.h, the definition of public/render/pass/ssr/ssr.h in double precision, walking every texel) judged on an analytic scene (a mirror floor, a patterned wall, a thin floating bar) against each pixel's true mirror reflection: hits within 1.5 px and reflected light within 3 percent + 0.01 wherever the camera sees the reflection; the thickness ambiguity at most 2 percent; the thickness test passes rays behind the bar that an unbounded thickness stops; off-screen reflections miss; the edge and roughness fades; roughness above the cutoff and the background unchanged bitwise; the octahedral normal round trip. The GPU pass's clauses (S5-S10) join as they land.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "ssr"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 10,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab"
+      ],
+      "sources": [
+        "public/render/pass/ssr/ssr.h",
+        "render/pass/ssr/ssr.cpp",
+        "render/lab/ssr_reference.cpp",
+        "render/lab/ssr_scene.cpp",
+        "render/lab/ssr_suite.cpp",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.ltc-table",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",
