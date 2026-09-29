@@ -286,14 +286,21 @@ measured for this RFC; measured numbers are quoted from their records.
 - Byte-identical pixels at the inversion gate; afterwards, every behavior
   change is a versioned decision with its own oracle.
 - GPU skinning, shadow maps for the sun, spot lights and flashlights,
-  clustered dynamic lights, float and MRT targets, and parallel command
-  recording where the adapter supports it.
+  clustered dynamic lights, float and MRT targets.
+- Parallel command recording in products: passes record as jobs on the
+  root's compute pool into their own encoders, the command stream equals the
+  serial executor's, and frame recording time falls as workers are added
+  (K5 "Pooled recording", K9 "Recording scales"; RFC 0003 goals J1 to J6).
+- The render sequence off the main thread in every shipped native profile,
+  so the main thread builds scene change sets and `FrameDesc` and records no
+  draws (K9 "Render off the main thread").
 - A second scene in the same process (Hammer's viewport, material previews,
   thumbnails) without globals.
 - A layer contract that a checker enforces, with seeded violations
   rejected.
-- Main-thread draw-submission cost reduced against its recorded budget, and
-  no regression of the Apple TV 60 fps budget.
+- Submission cost (`render_submission`: draws, recording and submission on
+  the submitting sequence) reduced against its recorded budget (K5), and no
+  regression of the Apple TV 60 fps budget.
 - The legacy API, content and mod shader DLLs keep working on the profiles
   that support them today.
 
@@ -820,6 +827,17 @@ ToGL or ToGLES on the SDL2 legacy-renderer profiles. ToGL stays for exactly this
 - Nothing recycles by frame index; per-slot fences are replaced by tokens.
 - The serial configuration (one thread, serial executors) remains a
   supported low-capacity mode and the oracle for every parallel path.
+- The core starts no threads (amended 2026-09-28). Its compute work
+  (culling, draw lists, pass recording) runs on the root's workers,
+  `RenderCoreConfig::computeWorkers`: in products the engine's compute pool,
+  lent through `CreateComputePoolWorkerBackend`. A render-sequence caller
+  never waits on a pool its own sequence runs on. RFC 0003 goal J3's thread
+  census checks the first rule.
+- Pass recording in parallel needs an encoder per job. The Vulkan adapter
+  gives each worker its own command pools and records passes into separate
+  command buffers, submitted in declaration order. Adapters without native
+  parallel recording (OpenGL) record CPU command lists in parallel and replay
+  them on the render sequence.
 
 ## Compatibility surface
 
@@ -933,7 +951,7 @@ move onto the graph in K2.
 | Record replay gone | static scan | `CVulkanContext::BeginFrame`'s record replay has no caller |
 | Products boot | `portal_boot.py` (K1 set) and a Portal 2 boot, both queued modes; `--resize-stress` | every run passes |
 | Threading | the queued TSan lane | no signature outside the K0 triage list |
-| Frame time | `frame_pacing.py` | within the frame allowance on desktop and the Fold7 |
+| Frame time | `frame_pacing.py` | within the frame allowance on desktop and the Fold7, in both queued modes (mode 2 added 2026-09-28: the products ship it) |
 
 ### K4: Shader library and materials
 
@@ -956,6 +974,7 @@ move onto the graph in K2.
 | Pixels | K0 views, world and prop draws | within tolerance |
 | Two scenes | `render.scene.multi` | two scenes with different content render independently in one process, and destroying one leaves the other's handles valid |
 | Submission cost | `frame_pacing.py` `render_submission` (amended below), both queued modes | on desktop, the median in `mat_queue_mode 2` at least 30 % below the K0 binaries measured interleaved in the same session (target set here, before optimizing), and mode 0 no worse than K0; within the frame allowance on the Fold7; the emit figure (`submission_*`) recorded beside it |
+| Pooled recording | the K0 views in the product, `-render-core-record serial` against pooled (proposed switch) | the core's world and prop passes recorded on the compute pool give command streams hash-equal to serial recording on every view; `render_submission` recorded at 1 and 4 workers |
 
 Culling amendment (2026-09-28, agent decision under the user's standing
 instruction): legacy tests a BSP leaf in an area it sees through an area
@@ -1031,6 +1050,8 @@ mirrors and monitors as view generators):
 | Frozen ABI holds | `legacy.render-abi` | all vtable fixtures pass |
 | Mods still render | `render.legacy.mod-fixture` | a mod-style client DLL that draws through `IMatRenderContext` renders its reference image on the native profile |
 | Dead code removed | static scan | the D3D9 translation code left in `materialsystem/shaderapivulkan/` has no caller, and `materialsystem/shaderapivulkan/shaders/` is empty and deleted |
+| Recording scales | `frame_pacing.py` `render_submission` on `portal-frame-pacing-v1`, compute pool at 1, 2 and 4 workers (RFC 0003 J5's control) | desktop: 4 workers at most 0.6x of 1 worker (target set 2026-09-28, before measuring); the Fold7 and the iPhone 16 Pro: 2 workers no slower than 1; 1 worker within the frame allowance of serial recording |
+| Render off the main thread | launcher census and `frame_pacing.py` per shipped native profile (Linux, Android, iOS, tvOS) | every shipped native profile runs the render sequence off the main thread (`mat_queue_mode 2` or its successor) with its frame budget passing; the main thread records no draws (zero `mesh_draw` and `record` cost on it) |
 
 ### K10: OpenGL adapter
 

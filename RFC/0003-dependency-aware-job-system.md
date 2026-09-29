@@ -7,6 +7,7 @@
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
 - Evidence: Static inspection of this repository at proposal time. Later scheduler microbenchmarks, pool budgets and in-game frame measurements are in the progress records; no frame, latency or mobile budget is set
+- Amended: 2026-09-28, [frame-wide scheduling goals](#frame-wide-scheduling-goals-amended-2026-09-28) and phase I (user direction: "update the RFCs to encode the goals we need", after a comparison with id Tech 6/7)
 - Implementation status: Partial; no phase gate is complete. The graph runtime, executors, engine-pool bridge, serial host frame graph, declared frame-graph regions and several cohort migrations are installed. State and evidence: [0003-progress.md](0003-progress.md) and the records it links
 
 ## Summary
@@ -74,6 +75,12 @@ migration decisions.
 - Make job lifetime, cancellation, completion, and shutdown behavior testable.
 - Measure critical-path time, scheduling overhead, contention, and tail latency.
 - Permit incremental adoption with a serial reference path and subsystem rollback.
+- Reach a frame whose CPU work runs as jobs on one process pool: a
+  continuous executor with no wave barriers, providers that start no threads,
+  render recording in parallel (RFC 0016), and a main thread that shrinks
+  toward admitting input, pumping affine work and committing ordered effects.
+  The measurable goals are in
+  [Frame-wide scheduling goals](#frame-wide-scheduling-goals-amended-2026-09-28).
 
 ## Non-goals
 
@@ -583,6 +590,50 @@ not starve behind lower-priority prerequisites; the implementation must provide
 dependency-aware priority handling or an equivalent bounded scheduling policy.
 Background admission must leave measured capacity for frame-critical work.
 
+## Frame-wide scheduling goals (amended 2026-09-28)
+
+**Why.** The graph runtime is installed and well verified, but in products it
+covers islands. The host frame is a serial graph of legacy phases, pooled
+cohorts (particles, bones, packing, query cache, carving) run as fork/join
+batches inside it, and `PooledExecutor` runs each graph in waves over a
+`ParallelFor` barrier, so a long job holds back the next wave's ready work.
+Measured on the headless Portal main thread (2026-09-24), draw submission is
+4.8 of 7.4 ms per frame, the server tick 0.35 ms, and particles and bones
+cost less than their pooled dispatch. Public descriptions of id Tech 6 and 7
+(a jobified frame, parallel command recording and, in id Tech 7, no main
+thread) are the reference point for the end state. They are not a
+specification, and this RFC still does not claim their internals.
+
+**End state.** Every frame's CPU work runs as jobs on the process compute
+pool. Dependencies come from declared access, not call order. Command
+recording is parallel (RFC 0016 owns it). The main thread admits input and
+packets, pumps main-thread-affine jobs, and commits ordered effects; it
+holds no subsystem work that a declaration could move. Two rules still stand
+on the way there: the latency rule
+([Latency and work spanning frames](#latency-and-work-spanning-frames)) and
+legacy-order preservation until a callback family is audited.
+
+Each goal below has a check a machine can decide. Checks marked *proposed*
+name tools that are not installed yet. Thresholds are set here, before any
+optimization, as RFC 0005 requires. They are agent decisions under the
+user's standing instruction and can be revised with a recorded reason.
+
+| Goal | Check | Passes when | Row |
+| --- | --- | --- | --- |
+| **J1. Continuous execution in products.** One ready-driven executor on the engine pool runs a frame's graph jobs; no wave barrier | `jobsystem.continuous` (proposed): the Q-JOBS model suite, adversarial schedules and a TSan lane against the product executor; a frame trace from a Portal boot | terminal states equal `DeterministicExecutor` on the 1,000 seeded graphs; with 4 workers, no worker parks while ready compute work is queued, apart from wake latency, whose p99 is recorded; `PooledExecutor`'s wave loop has no product caller | R20 |
+| **J2. Cross-node overlap.** Declared frame-graph regions overlap work across host nodes wherever declared access allows | declared-frame-graph oracle and a Portal frame trace | every pair of nodes the declarations leave unordered may overlap and is seen to overlap in the trace at least once per 100 frames; the oracle's legacy-order captures still match | R20, R35 |
+| **J3. Providers borrow the root's pool.** No first-party provider or subsystem starts compute threads. Roots lend `CreateComputePoolWorkerBackend` or an injected runner | thread census (proposed) of a `testchmb_a_00` boot, desktop and Fold7 | every live thread belongs to a declared owner: main, the compute pool, `MatQueue`, filesystem I/O, audio, a device or driver thread, or a declared blocking lane; a seeded provider that starts a thread fails the census. Shrink-only ratchet | R20, R42 |
+| **J4. Overhead stays small.** Scheduling costs little next to the work it schedules | frame trace with per-job timings | on the frame's critical path, queueing, wake and join time is at most 5 % of the pooled work it runs; a cohort that cannot meet this runs serially (the serial fast path) and says so in its record | R20 |
+| **J5. Low capacity holds.** One worker, and two performance cores, are supported configurations | `frame_pacing.py` with the compute pool held to 1 and 2 workers on desktop (J5 adds that control: `-threads` sizes only the global pool, not the engine's `CmpJob` pool); the iPhone 16 Pro and the Fold7 | pooled configurations are no slower than serial beyond each cohort's recorded regression budget; the serial configuration stays the oracle | R20, R21, R29 |
+| **J6. The main thread shrinks.** Main-thread frame work (busy time excluding waits for the pool, the render sequence and present) goes down cohort by cohort | frame trace; host-graph census of nodes that declare `FRAME_DOMAIN_ALL` | shrink-only ratchets on both: a cohort that moves work off the main thread lowers them, and no change raises them without a recorded decision | R30, R35, R38 |
+| **J7. Simulation as jobs.** The server tick runs as gather, compute and ordered commit per audited family, with entity command buffers ([Entity command buffers](#entity-command-buffers)) | per-family three-mode captures (legacy, serial graph, pooled graph) | each migrated family's captured gameplay equals legacy or records an approved behavior change; tick latency does not regress | R38 |
+
+J1 to J5 are scheduler work and gate phase I. J6 and J7 are portfolio
+targets that each migrating cohort advances. They close only when the
+cohorts they name are migrated, and no single change is expected to finish
+them. None of these goals permits adding a frame of input or prediction
+latency.
+
 ## Compatibility and incremental integration
 
 ### Legacy pool bridge
@@ -760,6 +811,7 @@ invent engine-wide gains or accept higher CPU utilization as proof of success.
 | F: New computation seams | Animation evaluation, render preparation, AI sensing/navigation, and streaming transforms | Stable inputs/outputs, cross-system dependencies, and per-subsystem budgets verified |
 | G: Stateful systems | Snapshot-send ownership refactor and selected entity/physics integration | Legacy-order equivalence or explicitly approved behavior change; no shared-state regressions |
 | H: Consolidation | Retire redundant compute queues/waits where safe; revise host overlap policy if measurements justify it | All affected callers migrated; total worker budget controlled; legacy adapters removed only when unused |
+| I: Frame-wide scheduling | The continuous product executor, cross-node overlap, the thread census, and overhead and low-capacity budgets ([goals](#frame-wide-scheduling-goals-amended-2026-09-28) J1 to J5) | J1 to J5 pass on desktop and the Fold7; the iPhone row recorded; J6 and J7 ratchets installed |
 
 Phase A establishes captured workloads, budgets, and the supported profiles.
 Phase B requires the independent model and legacy-versus-serial comparison;
@@ -839,7 +891,9 @@ Selecting a library does not remove the subsystem ownership work.
 ## Open implementation decisions
 
 - Exact storage representation and reuse policy for graph templates and frame bindings.
-- Production deque implementation and priority-propagation strategy.
+- Production deque implementation and priority-propagation strategy
+  (J1 needs it; it still requires its own correctness and performance
+  evidence before it replaces the synchronized queues).
 - Initial compute budget and worker-affinity policy for supported deployment classes.
 - Resource-token granularity for model-cache, spatial-partition, and entity domains.
 - First particle capture set and numerical acceptance budgets.
