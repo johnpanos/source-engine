@@ -52,6 +52,10 @@ in the change that replaces it. Where this RFC names
 `materialsystem/shaderapivulkan/` or the engine's CPU lighting path as the
 place for new work, read the render core instead. These rules are not
 negotiable, and only the user can change them.
+Performance gates never block work (rule 7): the effect is made to look
+right first, then optimized. Every time, cost or budget check in this RFC's
+gates is measured and recorded, and a miss becomes an optimization item,
+never a blocker and never a reason to cut an effect.
 
 ## Summary
 

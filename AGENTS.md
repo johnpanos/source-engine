@@ -25,7 +25,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0011](RFC/0011-runtime-indirect-lighting.md) | Runtime indirect light: probe volume with visibility, indirect policy, runtime light set, substitutable baked/radiosity/SDF/ray-query producers switchable at runtime (proposed; G0–G10 evidence on native Vulkan desktop, rows R70–R80 unranked) |
 | [0012](RFC/0012-antialiasing-msaa-specular-alpha-coverage.md) | Antialiasing: per-profile 4x MSAA target policy, alpha to coverage, PBR specular AA, offline normal-variance roughness and alpha-coverage mips (proposed) |
 | [0013](RFC/0013-opt-in-physics-capabilities.md) | Opt-in Box3D capabilities beside the IVP-parity contract: one versioned interface per capability, profile selection, per-capability benchmark gates; parallel step first (proposed) |
-| [0014](RFC/0014-native-vulkan-and-bsp2-debug-controls.md) | Native Vulkan and BSP2 debug controls: one device-owned view catalog in separate `DEBUG_VIEW` variants, draw pick/bisection, shader reload/capture, sync/reuse checks, BSP2 lump inspection (proposed) |
+| [0014](RFC/0014-native-vulkan-and-bsp2-debug-controls.md) | Render core and BSP2 debug controls (retargeted to the core 2026-09-28): one frame-owned view catalog as a neutral specialization constant, lighting-term isolation for `render_lab`, draw pick/bisection on draw lists, shader reload/capture, graph sync/reuse checks, BSP2 lump inspection (proposed) |
 | [0015](RFC/0015-asset-identity-content-build-graph.md) | Asset identity (`AssetRef`), one content build graph and compiler contract for every asset kind, legacy-format passthrough, per-profile packages with an asset index, runtime resolver, desktop live reload (proposed; rows R81–R85, R57 carries C2) |
 | [0016](RFC/0016-render-core.md) | Render core as ports and adapters beneath the frozen material API: backend-neutral `render.device.v2` with Vulkan, OpenGL and null adapters, render graph, GPU scene and views, material families, clustered lights and shadow atlas, one legacy frontend running `IMatRenderContext`/`IShaderAPI` as graph passes; layers enforced by archlint CAP011; ToGL kept for mods (proposed; rows R86–R92, R95–R96) |
 | [0017](RFC/0017-lan-discovery-and-coop-pairing.md) | LAN discovery contract (`platform.lan-discovery.v1`) with mDNS providers, and Portal 2 co-op pairing without Steam through the matchmaking framework's `lan` network type and a new lobby session (proposed; row R93) |
@@ -199,6 +199,12 @@ platform acceptance.
   - The old copy is deleted in the change that replaces it.
   - One owner per concept is settled before code, and each concept has one
     definition that other documents link to.
+  - Look first, then optimize: performance gates (frame time, GPU time,
+    cost, memory, budgets, speedups) never block render work, integration
+    or a dependent row. They are measured and recorded, and a miss is an
+    optimization item. An effect is never cut or turned off for being
+    over budget; only a missing capability or the user's decision on a
+    profile's shipped default turns one off.
 
 ## DRY and Liskov Substitution Principle
 
@@ -1569,16 +1575,22 @@ Keep the table concise and link details below or from the domain progress file.
   - 8 self-tests detect dropped, swapped and changed events.
   - The remaining R10 items closed in R10-SEQCHECK and R10-POOLRUNNER.
 
-- R32-DEBUG-CONTROLS: `planned` (2026-09-25, user direction). These are the
-  `cl_vk_debug_*` and `cl_bsp2_*` controls of
-  [RFC 0014](RFC/0014-native-vulkan-and-bsp2-debug-controls.md), in phases
-  D0–D7. Each control ships with an oracle and a negative control. With all
-  controls at default, shipped shader modules and pixels must be unchanged.
-  `mat_indirect_view` and `VK_DEBUG_LIGHTMAPPED` move into the new owner and
-  are deleted once their callers have moved. D6–D7 also support R53/R54/R56.
-  Nothing is implemented yet, and this closes no other row's criterion.
-  The backend's `-vkgputimers` flag already reports GPU time per pass, copy
-  and capture; D4's `cl_vk_debug_gpu_timers` should absorb it.
+- R95-DEBUG-CONTROLS (was R32-DEBUG-CONTROLS): `planned`. Added
+  2026-09-25 at the user's direction and retargeted to the render core on
+  2026-09-28 (user decision: "they must be on core").
+  - These are the `cl_render_debug_*` (was `cl_vk_debug_*`) and `cl_bsp2_*`
+    controls of [RFC 0014](RFC/0014-native-vulkan-and-bsp2-debug-controls.md),
+    in phases D0–D7.
+  - The debug state is part of `FrameDesc`. Views are one neutral
+    specialization constant of the core's programs. Draw pick and bisection
+    work on the core's draw lists, with legacy stream passes as one entry
+    each.
+  - Nothing is added to the frozen native backend.
+  - D0–D1 are how `render_lab` isolates the lighting-model terms (K11).
+  - `mat_indirect_view`, `VK_DEBUG_LIGHTMAPPED` and `-vkgputimers` are
+    deleted in the changes that replace them.
+  - D6–D7 also support R53, R54 and R56.
+  - Nothing is implemented yet, and this closes no other row's criterion.
 
 - R32-RENDER-BUDGETS: `partial` (2026-09-25, user direction). This sets
   per-profile render budgets, which close the `presentation.frame-budgets`
@@ -1603,8 +1615,8 @@ Keep the table concise and link details below or from the domain progress file.
   - Feature budgets stay with their owners: `indirect-light-v1.json`
     (RFC 0011), RFC 0012 A0 (MSAA) and RFC 0008 F10. The render file links
     to them and doesn't copy their numbers.
-  - Per-pass GPU rows can use `-vkgputimers` now; `cl_vk_debug_gpu_timers`
-    (R32-DEBUG-CONTROLS D4) replaces it later. The frame-level rows need
+  - Per-pass GPU rows can use `-vkgputimers` now; `cl_render_debug_gpu_timers`
+    (R95-DEBUG-CONTROLS D4) replaces it later. The frame-level rows need
     neither.
   - Done: both first profiles have recorded budgets and a passing check;
     the baseline entry is `recorded`; and an RFC 0001 progress record holds

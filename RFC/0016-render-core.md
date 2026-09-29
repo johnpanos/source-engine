@@ -254,6 +254,29 @@ replaced by a link in the same change. This section's lighting model table
 follows the rule: it names each term's owner and defines only the terms this
 RFC owns.
 
+**Rule 7: Look first, then optimize. Performance gates never block work.**
+Everywhere, on every profile and in every gate, the order is fixed:
+1. get the effect looking right, against its oracle and Cycles reference;
+2. integrate it;
+3. optimize it.
+
+A performance check (frame time, GPU time, submission cost, memory, a
+budget row, a speedup rule, the frame allowance) never blocks:
+- landing a change;
+- closing a quality check;
+- integrating a proven term;
+- starting a dependent row;
+- turning an effect on.
+
+Performance is still measured and recorded wherever a gate lists it, on the
+hardware available. A miss is recorded on the row as an optimization item
+with its numbers. It is not a failure of the work, and it is never a reason
+to cut, simplify or turn off an effect that looks right. An effect is
+turned off on a profile only when the profile lacks a required capability
+(declared by name), or when the user decides it for that profile's shipped
+default. Correctness checks that happen to involve time still block: a
+hang, a timeout, a frame that never presents, or a race.
+
 ### Enforcement
 
 - **Review.** Every change under `materialsystem/`, `engine/gl_lightmap.cpp`,
@@ -458,7 +481,8 @@ measured for this RFC; measured numbers are quoted from their records.
   rejected.
 - Submission cost (`render_submission`: draws, recording and submission on
   the submitting sequence) reduced against its recorded budget (K5), and no
-  regression of the Apple TV 60 fps budget.
+  regression of the Apple TV 60 fps budget. These are optimization goals:
+  they never block a change or a gate (binding rule 7).
 - The legacy API, content and mod shader DLLs keep working on the profiles
   that support them today.
 
@@ -1055,8 +1079,9 @@ Each phase closes when:
 - the claim rules take exactly the materials whose variables the term
   reads (`UnreadVariable`, no escape hatches), and the coverage row per game
   is recorded;
-- frame time and permutation count stay within the K5 Submission budget,
-  per profile (desktop, Fold7, iPhone, Apple TV).
+- frame time and permutation count are measured against the K5 Submission
+  budget per profile (desktop, Fold7, iPhone, Apple TV) and recorded; a miss
+  is an optimization item, not a blocker (binding rule 7).
 
 #### What stays outside the model
 
@@ -1178,8 +1203,9 @@ They are not assigned to froxels.
     a third light kind.
 
   A per-pixel loop with an early frustum reject is cheaper to build and to
-  prove. Revisit only if a profile's measured frame time with projectors on
-  screen exceeds its K7 budget; then assign projectors to froxels by their
+  prove. Revisit it as an optimization (binding rule 7) if a profile's
+  measured frame time with projectors on screen exceeds its K7 budget; then
+  assign projectors to froxels by their
   frustum planes, and the list stays the source of the records.
 - **Handover from the CPU path.** `IRenderCoreWorld::RuntimeLight(surface)`
   sets `kProjectedLights` for exactly the surfaces the core shades with the
@@ -1256,10 +1282,12 @@ Rules for the whole model:
   copy, and their C++ oracles are unchanged. Binding rule 4 deletes each old
   copy per surface set as its term moves; K12 and K9 check that none
   remains.
-- **Profiles declare, they don't skip.** A term that is over budget or
-  unsupported on a profile (for example SSR or volumetric fog on the Fold7)
-  is declared off by name in that profile's capability record. A term that
-  a profile declares is never silently dropped.
+- **Profiles declare, they don't skip.** A term that a profile cannot
+  support (a missing capability) is declared off by name in that profile's
+  capability record. Being over budget is not a reason to turn a term off
+  (binding rule 7); only the user can turn a term off for a profile's
+  shipped default. A term that a profile declares is never silently
+  dropped.
 
 ### Hard parts first, proven outside the game
 
@@ -1294,7 +1322,8 @@ The hard parts, in order of risk: the assembled surface program with
 every term; LTC area lights; clustered lights with both lobes and atlas
 shadows together; GTAO without double occlusion on baked light;
 screen-space reflections over the probes; volumetric fog with shadowed
-projectors and the sun; and the frame budget of all of them at once.
+projectors and the sun. Their combined cost comes after (binding rule 7):
+it is measured from the start, and optimized once they look right.
 
 ## Threading
 
@@ -1364,6 +1393,15 @@ negative controls detected and evidence recorded (revision, profile,
 inputs, counts, first divergence, reproduction commands). Missing required
 hardware leaves the gate unverified, never passed.
 
+**Performance checks do not block (binding rule 7).** Every check in these
+tables that judges time, cost, memory, speedup or a budget (frame time,
+submission cost, recording scales, budgets, the frame allowance) is a
+performance check, marked *(perf)*. Each is run and recorded, with its
+numbers, wherever its hardware is available. A failing or unmeasured
+performance check neither holds its gate open, nor blocks integration or a
+dependent row: it becomes an optimization item on the row. The other checks
+decide whether a gate passes.
+
 **Required profiles** for every gate: Linux desktop native Vulkan on
 Wayland and X11 (`linux-native-vulkan-gpu` runner) and the headless core
 runner. The Fold7 is required where a gate names it. Apple rows are
@@ -1377,9 +1415,10 @@ optional (AGENTS.md): run and record them when the runner is available.
 - *Byte-identical*: every pixel of every compared image equal.
 - *Within tolerance*: inside the per-case tolerance recorded, versioned,
   in the fixture before the comparison runs.
-- *Frame allowance*: `portal-frame-pacing-v1` warm median at most 1.05× and
-  p99 at most 1.10× the K0 record for the same profile, unless
-  `quality/budgets/render-v1.json` records a tighter row.
+- *Frame allowance* (perf): `portal-frame-pacing-v1` warm median at most
+  1.05× and p99 at most 1.10× the K0 record for the same profile, unless
+  `quality/budgets/render-v1.json` records a tighter row. It is an
+  optimization target, not a blocker.
 
 ### K0: Prerequisites and frozen oracles
 
@@ -1392,7 +1431,7 @@ optional (AGENTS.md): run and record them when the runner is available.
 | vtable fixtures | `legacy.render-abi` (legacy-cxx11 dialect) | slot offsets for `IMaterialSystem`, `IMatRenderContext`, `IMaterial`, `IMaterialVar`, `ITexture`, `IMesh`, `IMaterialProxy`, `IStudioRender` match their recorded tables; one seeded slot reorder per interface is detected (8 of 8) |
 | View oracles captured | `render.view-oracles` | captures exist for portal recursion at every depth up to the limit, water reflection and refraction, a monitor, glass, the legacy-ports view set, on `testchmb_a_00`, `testchmb_a_08` and one Portal 2 map; removing any single draw from any view is detected |
 | Per-draw fixtures captured | `render.draw-state` | per-draw state is recorded for the same maps; a seeded state change in one draw is detected |
-| Budgets recorded | budget script over `quality/budgets/render-v1.json` | desktop Wayland and Fold7 rows exist with p50, p95, p99, GPU time and main-thread submission time, and the script passes |
+| Budgets recorded (perf) | budget script over `quality/budgets/render-v1.json` | desktop Wayland and Fold7 rows exist with p50, p95, p99, GPU time and main-thread submission time, and the script passes |
 
 ### K1: Device port and the Vulkan and null adapters
 
@@ -1406,7 +1445,7 @@ optional (AGENTS.md): run and record them when the runner is available.
 | Pixels unchanged | `material_pixel_conformance.py` | pixel families byte-identical to K0 |
 | Boots and resize | `portal_boot.py` on `testchmb_a_01`, `testchmb_a_08`, `escape_00`, `escape_02` in `mat_queue_mode` 0 and 2; `--resize-stress` on Wayland and X11 | every run passes |
 | Feature support recorded | `render.device.vulkan-features` evidence | timeline, synchronization2 and dynamic rendering support recorded for Linux desktop and the Fold7 (required) and for the iPhone and Apple TV when their runners exist |
-| Frame time | `frame_pacing.py` | within the frame allowance on desktop and the Fold7; `tvos-portal-frame-pacing-60` still passes when its runner exists |
+| Frame time (perf) | `frame_pacing.py` | within the frame allowance on desktop and the Fold7; `tvos-portal-frame-pacing-60` still passes when its runner exists |
 
 K1 also supplies the resource, upload and synchronization contract evidence
 R32's done condition names.
@@ -1434,7 +1473,7 @@ move onto the graph in K2.
 | Record replay gone | static scan | `CVulkanContext::BeginFrame`'s record replay has no caller |
 | Products boot | `portal_boot.py` (K1 set) and a Portal 2 boot, both queued modes; `--resize-stress` | every run passes |
 | Threading | the queued TSan lane | no signature outside the K0 triage list |
-| Frame time | `frame_pacing.py` | within the frame allowance on desktop and the Fold7, in both queued modes (mode 2 added 2026-09-28: the products ship it) |
+| Frame time (perf) | `frame_pacing.py` | within the frame allowance on desktop and the Fold7, in both queued modes (mode 2 added 2026-09-28: the products ship it) |
 
 ### K4: Shader library and materials
 
@@ -1456,7 +1495,7 @@ move onto the graph in K2.
 | Serial equals pooled | same suite | serial and pooled culling give identical draw lists |
 | Pixels | K0 views, world and prop draws | within tolerance |
 | Two scenes | `render.scene.multi` | two scenes with different content render independently in one process, and destroying one leaves the other's handles valid |
-| Submission cost | `frame_pacing.py` `render_submission` (amended below), both queued modes | on desktop, the median in `mat_queue_mode 2` at least 30 % below the K0 binaries measured interleaved in the same session (target set here, before optimizing), and mode 0 no worse than K0; within the frame allowance on the Fold7; the emit figure (`submission_*`) recorded beside it |
+| Submission cost (perf) | `frame_pacing.py` `render_submission` (amended below), both queued modes | on desktop, the median in `mat_queue_mode 2` at least 30 % below the K0 binaries measured interleaved in the same session (target set here, before optimizing), and mode 0 no worse than K0; within the frame allowance on the Fold7; the emit figure (`submission_*`) recorded beside it |
 | Pooled recording | the K0 views in the product, `-render-core-record serial` against pooled (proposed switch) | the core's world and prop passes recorded on the compute pool give command streams hash-equal to serial recording on every view; `render_submission` recorded at 1 and 4 workers |
 
 Culling amendment (2026-09-28, agent decision under the user's standing
@@ -1513,7 +1552,7 @@ tolerance. Normals and tangents keep the flat 1e-3.
 | Projected lights | `render.lights.projected` (proposed) on native; `sp_a2_core` with `texturelight_wheatly_chamber` | judged pixels match `projected_light::IrradianceAt` times the shadow oracle; each surface's light is the same, within the cross-path tolerance, with `kProjectedLights` set (core) and unset (CPU lightmap); forcing both paths fails as doubled light; seeded defects are detected: a mirrored cookie axis, an ignored `cookieFrame`, the end falloff dropped, a shadow tile off by one |
 | Area lights | `render.lights.area-ltc` (proposed) | diffuse within tolerance of `area_light::IrradianceAt` over seeded rectangles and receivers (horizon-crossing included); GGX specular within tolerance of a Monte Carlo integral over roughness 0.05 to 1; the LUTs regenerate byte-identically from their generator; seeded defects detected (no horizon clip, a transposed LUT, a one-sided light lit from behind); at most 0.3 ms at 1080p on desktop for 8 lights (RFC 0011's target) |
 | Behavior decision | the dlight switch | the per-pixel and legacy dlight modes each match their own reference, and the decision is recorded. The per-pixel mode evaluates both lobes (diffuse and the surface's specular) for world surfaces, as for models |
-| Budgets | `render-v1.json` atlas rows | pass on desktop and the Fold7 |
+| Budgets (perf) | `render-v1.json` atlas rows | pass on desktop and the Fold7 |
 
 ### K8: Remaining cohorts
 
@@ -1535,8 +1574,8 @@ mirrors and monitors as view generators):
 | Frozen ABI holds | `legacy.render-abi` | all vtable fixtures pass |
 | Mods still render | `render.legacy.mod-fixture` | a mod-style client DLL that draws through `IMatRenderContext` renders its reference image on the native profile |
 | Dead code removed | static scan | the D3D9 translation code left in `materialsystem/shaderapivulkan/` has no caller, and `materialsystem/shaderapivulkan/shaders/` is empty and deleted |
-| Recording scales | `frame_pacing.py` `render_submission` on `portal-frame-pacing-v1`, compute pool at 1, 2 and 4 workers (RFC 0003 J5's control) | desktop: 4 workers at most 0.6x of 1 worker (target set 2026-09-28, before measuring); the Fold7 and the iPhone 16 Pro: 2 workers no slower than 1; 1 worker within the frame allowance of serial recording |
-| Render off the main thread | launcher census and `frame_pacing.py` per shipped native profile (Linux, Android, iOS, tvOS) | every shipped native profile runs the render sequence off the main thread (`mat_queue_mode 2` or its successor) with its frame budget passing; the main thread records no draws (zero `mesh_draw` and `record` cost on it) |
+| Recording scales (perf) | `frame_pacing.py` `render_submission` on `portal-frame-pacing-v1`, compute pool at 1, 2 and 4 workers (RFC 0003 J5's control) | desktop: 4 workers at most 0.6x of 1 worker (target set 2026-09-28, before measuring); the Fold7 and the iPhone 16 Pro: 2 workers no slower than 1; 1 worker within the frame allowance of serial recording |
+| Render off the main thread | launcher census and `frame_pacing.py` per shipped native profile (Linux, Android, iOS, tvOS) | every shipped native profile runs the render sequence off the main thread (`mat_queue_mode 2` or its successor) (its frame budget is recorded as a performance check, rule 7); the main thread records no draws (zero `mesh_draw` and `record` cost on it) |
 
 ### K10: OpenGL adapter
 
@@ -1566,7 +1605,7 @@ ahead of the product rows.
 | Screen-space reflections | `render.lab.ssr` (proposed) on the mirror corridor | on-screen hits within tolerance of Cycles; off-screen and occluded rays fall back to the probes with no seam larger than the R50 walk gate's step; surfaces rougher than the cutoff are unchanged bitwise; seeded defects detected (thickness ignored, no edge fade, the wrong mip) |
 | Volumetric fog | `render.lab.volumetric` (proposed) on the foggy hall | a homogeneous medium's transmittance is exp(-sigma_t d) within tolerance; single scattering from a point light matches a numerical integral; a shadowed projector's shaft is absent inside its shadow; density zero is bitwise the fog-only frame; after a camera cut no history remains |
 | Portal and Portal 2 chambers | the two rebuilt chambers, legacy points and modern points (the S9 rule table) | legacy points match the product's native ports within the family tolerances; modern points within tolerance of Cycles |
-| Lab budgets | `render_lab --time` (proposed), `render-v1.json` lighting rows | set before measuring: all terms at once at most 8 ms GPU at 1080p on the desktop runner for the heaviest fixture; per term: GTAO 0.5 ms, SSR 1.0 ms, volumetric 1.0 ms, LTC 0.3 ms; Fold7 rows recorded, and terms over budget there declared off by name |
+| Lab budgets (perf) | `render_lab --time` (proposed), `render-v1.json` lighting rows | set before measuring: all terms at once at most 8 ms GPU at 1080p on the desktop runner for the heaviest fixture; per term: GTAO 0.5 ms, SSR 1.0 ms, volumetric 1.0 ms, LTC 0.3 ms; Fold7 rows recorded; a miss is an optimization item, and no term is turned off for it |
 
 ### K12: Lighting model integrated in the product
 
@@ -1575,7 +1614,7 @@ ahead of the product rows.
 | One light per surface | the `RuntimeLight` census and the doubled-light control | every term the core evaluates has its flag set on exactly the surfaces it shades; forcing both paths fails as doubled light for each term |
 | One copy of the math | static scan | the model's GLSL exists only under `render/`; `world_pbr.frag`, `model_pbr.frag`, `probe_volume.glsl` and `reflection_probes.glsl` are gone from the native backend |
 | Game matches lab | the Portal and Portal 2 chambers booted with the lab's cameras | each in-game frame within tolerance of the same scene's `render_lab` frame |
-| Frame budgets | `portal-frame-pacing-v1` and a Portal 2 workload | within the frame allowance of K0 with every declared term on, per profile; the declared-off terms are listed per profile |
+| Frame budgets (perf) | `portal-frame-pacing-v1` and a Portal 2 workload | within the frame allowance of K0 with every declared term on, per profile; the declared-off terms are listed per profile |
 
 **Dependencies.** K0 is ready now (R02, R05, R10 and R16 are done). K1
 needs K0. K2 needs K1. K3 needs K2. K4 needs K3. K10 needs K4, because the
