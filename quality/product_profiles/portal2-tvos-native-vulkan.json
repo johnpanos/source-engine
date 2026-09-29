@@ -1,0 +1,50 @@
+{
+  "schema": "source-tvos-product-profile/v1",
+  "id": "portal2-tvos-native-vulkan-v1",
+  "extends": "portal-tvos-native-vulkan.json",
+  "description": "tvOS Portal 2 client: the Portal tvOS profile's static composition, pins, SDL3 app shell, Apple TV render defaults and native Vulkan renderer over MoltenVK, with the portal2 game target. Built on Linux by build-tvos-portal2-app.sh (build-ios-portal2-app.sh with this profile); signed and installed on a Mac.",
+  "target": {
+    "product": "portal2-client"
+  },
+  "intent": {
+    "support_scope": "tvOS build slice for the separate Portal 2 target (user direction, 2026-09-28: 'build portal 2 for tvos and deploy enough to boot sp_a2_core'). Product scope like the Portal tvOS profile; nothing of that profile's device evidence carries over.",
+    "packaging": ".app assembled on Linux, signed and installed on the Mac by ios-deploy.sh --profile with this profile. Licensed retail Portal 2 content is staged from a Steam installation by tools/quality/stage_portal2_runtime.py and copied into the app's Library/Caches separately.",
+    "physics_provider": "vphysics_box3d (Box3D), as in ./play_p2 and the Portal tvOS profile (launcher_main/ios_main.cpp)",
+    "video_provider": "none: the Bink provider needs FFmpeg, which no Apple profile pins; the menu uses the staged background image"
+  },
+  "tvos": {
+    "bundle_id": "com.panos.sourceengine.portal2",
+    "bundle_id_reason": "The Portal 2 iOS profile's bundle id, as the Portal tvOS profile shares the Portal iOS one: one app record can carry both platforms. Agent decision, 2026-09-28.",
+    "display_name": "Portal 2 (Source Engine)",
+    "build_directory": "build-tvos-p2",
+    "app_bundle": "Portal2.app"
+  },
+  "configure_options": {
+    "build_games": "portal2"
+  },
+  "static_composition": {
+    "additional_required_modules": [
+      "vscript"
+    ],
+    "note": "Portal 2's game modules declare the script manager as a shared app system in static products; the composition root links vscript and binds it (launcher_main/static_composition.cpp)."
+  },
+  "content": {
+    "stage_directory": "build-ios-p2-content",
+    "staging": "tools/quality/stage_portal2_runtime.py --mount-custom, shared with the Portal 2 iOS profile (the same retail search paths and staged directory)",
+    "directories": [
+      "platform",
+      "retail_platform",
+      "update",
+      "portal2_dlc2",
+      "portal2_dlc1",
+      "portal2"
+    ]
+  },
+  "evidence": {
+    "status": "unverified",
+    "known_blockers": [
+      "Retail Portal 2 content is about 12 GB, in Library/Caches, which tvOS may purge"
+    ],
+    "observations": []
+  }
+}

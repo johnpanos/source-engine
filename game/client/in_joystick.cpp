@@ -526,7 +526,13 @@ void CInput::Joystick_Advanced(void)
 	{
 		if ( joy_xcontroller_cfg_loaded.GetInt() < 2 )
 		{
+#ifdef PORTAL2
+			// Portal 2 ships joy_configuration.cfg instead of 360controller.cfg,
+			// and its retail client executes that (strings in client.so).
+			engine->ClientCmd_Unrestricted( "exec joy_configuration.cfg" );
+#else
 			engine->ClientCmd_Unrestricted( "exec 360controller.cfg" );
+#endif
 			if ( IsLinux () )
 			{
 				engine->ClientCmd_Unrestricted( "exec 360controller-linux.cfg" );

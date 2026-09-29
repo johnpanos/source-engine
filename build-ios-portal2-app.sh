@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Build the iOS Portal 2 client on Linux and stage its content.
 #
-#   ./build-ios-portal2-app.sh [--steam-root DIR] [--no-content] [--restage] [build-ios-app.sh options]
+#   ./build-ios-portal2-app.sh [--profile FILE] [--steam-root DIR] [--no-content] [--restage] [build-ios-app.sh options]
+#
+# --profile selects another Portal 2 Apple profile (build-tvos-portal2-app.sh
+# passes quality/product_profiles/portal2-tvos-native-vulkan.json).
 #
 # The Portal 2 profile (quality/product_profiles/portal2-ios-native-vulkan.json)
 # extends the Portal iOS profile, so the pins, SDK and app shell stay in one
@@ -20,7 +23,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="$ROOT/quality/product_profiles/portal2-ios-native-vulkan.json"
 P2_STEAM_ROOT="${P2_STEAM_ROOT:-$HOME/.local/share/Steam/steamapps/common/Portal 2}"
-STAGE="$ROOT/$(jq -er .content.stage_directory "$PROFILE")"
 
 args=()
 CONTENT=1
@@ -30,9 +32,9 @@ while [ $# -gt 0 ]; do
 	--steam-root) P2_STEAM_ROOT="$2"; shift ;;
 	--no-content) CONTENT=0 ;;
 	--restage) RESTAGE=1 ;;
-	--profile) echo "error: $0 always uses $PROFILE" >&2; exit 2 ;;
+	--profile) PROFILE="$(realpath "$2")"; shift ;;
 	-h|--help)
-		sed -n '2,16p' "$0"
+		sed -n '2,19p' "$0"
 		echo
 		"$ROOT/build-ios-app.sh" --help
 		exit 0 ;;
@@ -41,6 +43,7 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
+STAGE="$ROOT/$(jq -er .content.stage_directory "$PROFILE")"
 "$ROOT/build-ios-app.sh" --profile "$PROFILE" "${args[@]}"
 
 if [ "$CONTENT" = 1 ]; then
