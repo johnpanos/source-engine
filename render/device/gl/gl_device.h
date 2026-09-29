@@ -9,7 +9,9 @@
 //			- Submit validates every encoder against the usage state the
 //			  previous accepted submission left, then replays the lists in
 //			  order on the calling thread, with the context current, and ends
-//			  the submission with a fence sync object: its token.
+//			  the submission with a fence sync object: its token. A held
+//			  device (tests only, HoldSubmissions) keeps accepted submissions
+//			  unissued until it is released.
 //			- Tokens complete in order (one context, one command stream). Poll
 //			  frees released resources and ring ranges behind completed fences.
 //			- Bind groups map to fixed ranges of GL's flat slots
@@ -366,6 +368,10 @@ public:
 	std::uint64_t DeferredUploads() const;
 	void SimulateLoss();
 	void CountMessage();
+	// Tests only (gl::HoldSubmissions): while held, Submit accepts work and
+	// returns its token but issues nothing to GL; releasing issues the held
+	// submissions in order.
+	void Hold( bool held );
 
 	// For GlEncoder: copies an upload into the ring, or into the command
 	// when the ring is full. Any recording thread; no GL call.
@@ -391,6 +397,13 @@ private:
 	{
 		GLuint buffer;
 		std::uint64_t value;
+	};
+	// A submission accepted while held: its encoders, kept until issued.
+	struct HeldSubmission
+	{
+		std::vector<std::unique_ptr<IEncoderBackend>> backends;
+		std::vector<GlEncoder *> encoders;
+		CompletionToken token;
 	};
 
 	const GlApi &Gl() const { return m_Context->Api(); }
@@ -422,6 +435,10 @@ private:
 	bool ValidateDraw( const ValidationState &state, bool indexed ) const;
 	bool GroupsMatch( const ValidationState &state ) const;
 	void Execute( std::vector<GlEncoder *> &encoders, CompletionToken token );
+	// Replays one submission and ends it with its fence. Context current.
+	void Issue( std::vector<GlEncoder *> &encoders, CompletionToken token );
+	// Issues every held submission, in order, and flushes. Context current.
+	void IssueHeld();
 	GLuint Framebuffer( const std::vector<std::uint64_t> &colors, std::uint64_t depth );
 	void ForgetFramebuffers( std::uint64_t texture );
 
@@ -458,6 +475,8 @@ private:
 	// One sequence at a time calls the device (RFC 0016 "Threading"); the lock
 	// keeps a stray concurrent call from interleaving GL state.
 	mutable std::recursive_mutex m_Lock;
+	bool m_Holding = false;
+	std::deque<HeldSubmission> m_Held;
 };
 
 } // namespace render::device::gl

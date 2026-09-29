@@ -92,7 +92,11 @@ The legacy backend's depth-stencil format is `kD24UnormS8` or `kD32FloatS8`
 - **D7:** runs: `gl::SimulateContextLoss` reports `kLost` as a context reset
   (GL_KHR_robustness) would; `Recover` makes a new context and epoch.
 - **D10:** the ring is a persistently mapped, coherent buffer; a full ring
-  copies from the command's own storage (`glNamedBufferSubData`).
+  copies from the command's own storage (`glNamedBufferSubData`). The suite
+  runs D10 and D5 with submissions held (`gl::HoldSubmissions`, a test-only
+  hook: validated, not dispatched until release), the slowest schedule the
+  port allows, so an early reuse or an early release is observable on every
+  driver rather than only when the GPU happens to lag.
 - **D14:** encoders record CPU command lists on any thread; `Submit` replays
   them in order on the calling thread with the context current, and every
   device call restores the caller's own current context afterwards.

@@ -191,6 +191,9 @@ void GlDevice::DestroyContextObjects()
 	m_Transients.clear();
 	m_Fences.clear();
 	m_Releases.clear();
+	// Held work never runs. Its encoders were submitted, so they return no
+	// ring range, and the ring goes with the context.
+	m_Held.clear();
 }
 
 void GlDevice::QueryFacts()
@@ -675,11 +678,41 @@ DeviceResult<CompletionToken> GlDevice::Submit(
 			encoder->MarkSubmitted();
 		}
 	}
-	Execute( recorded, token );
-	const GlApi &gl = Gl();
-	m_Fences.push_back( { token.value, gl.FenceSync( GL_SYNC_GPU_COMMANDS_COMPLETE, 0 ) } );
-	gl.Flush();
+	if ( m_Holding )
+	{
+		m_Held.push_back( { std::move( backends ), std::move( recorded ), token } );
+		return token;
+	}
+	Issue( recorded, token );
+	Gl().Flush();
 	return token;
+}
+
+void GlDevice::Issue( std::vector<GlEncoder *> &encoders, CompletionToken token )
+{
+	Execute( encoders, token );
+	m_Fences.push_back( { token.value, Gl().FenceSync( GL_SYNC_GPU_COMMANDS_COMPLETE, 0 ) } );
+}
+
+void GlDevice::IssueHeld()
+{
+	if ( m_Held.empty() )
+		return;
+	for ( HeldSubmission &held : m_Held )
+		Issue( held.encoders, held.token );
+	m_Held.clear();
+	Gl().Flush();
+}
+
+void GlDevice::Hold( bool held )
+{
+	std::lock_guard<std::recursive_mutex> lock( m_Lock );
+	m_Holding = held;
+	if ( held || m_State != DeviceState::kAvailable )
+		return;
+	ContextScope scope( *m_Context );
+	if ( scope.Ok() )
+		IssueHeld();
 }
 
 void GlDevice::UpdateCompletion() const
@@ -792,6 +825,8 @@ DeviceResult<void> GlDevice::WaitIdle()
 	ContextScope scope( *m_Context );
 	if ( !scope.Ok() )
 		return Fail( DeviceStatus::kUnavailable, DeviceOperation::kSubmit );
+	// Idle means every accepted submission has run, held ones included.
+	IssueHeld();
 	Gl().Finish();
 	UpdateCompletion();
 	return {};
@@ -821,6 +856,7 @@ DeviceResult<void> GlDevice::Recover()
 	m_Transients.clear();
 	m_Fences.clear();
 	m_Releases.clear();
+	m_Held.clear();
 	m_Context.reset();
 	++m_Epoch;
 	m_Submitted = 0;
@@ -882,6 +918,14 @@ std::uint64_t DeferredUploads( const IRenderDevice2 &device )
 {
 	const GlDevice *gl = Of( device );
 	return gl ? gl->DeferredUploads() : 0;
+}
+
+bool HoldSubmissions( IRenderDevice2 &device, bool held )
+{
+	GlDevice *gl = Of( device );
+	if ( gl )
+		gl->Hold( held );
+	return gl != nullptr;
 }
 
 bool SimulateContextLoss( IRenderDevice2 &device )

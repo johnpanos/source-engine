@@ -8491,7 +8491,7 @@
       "contract": "unittests/rendertest/contracts/render.device.v2.md",
       "kind": "sensitivity",
       "profile": "linux-native-gl-gpu",
-      "description": "RFC 0016 K10, bad GL adapters: the shared device suite runs against render.device.gl with one sensitivity knob set (GlAdapterOptions::Sensitivity, never set by a product) and must fail each bad adapter on the clause it breaks and on no other, while the undecorated control passes: GL's own lower-left origin (D13 'clip y'), GL's own -1 to 1 clip depth (D13 'clip z'), a claimed async compute queue and a claimed transient aliasing it does not have (D15), write masks ignored (D17), specialization constants dropped (D20) and upload ranges retired at submission (D10).",
+      "description": "RFC 0016 K10, bad GL adapters: the shared device suite runs against render.device.gl with one sensitivity knob set (GlAdapterOptions::Sensitivity, never set by a product) and must fail each bad adapter on the clause it breaks and on no other, while the undecorated control passes: GL's own lower-left origin (D13 'clip y'), GL's own -1 to 1 clip depth (D13 'clip z'), a claimed async compute queue and a claimed transient aliasing it does not have (D15), write masks ignored (D17), specialization constants dropped (D20), upload ranges retired at submission (D10; its uploads are recorded with the queue held, gl::HoldSubmissions, so the reuse shows on every driver, llvmpipe included) and transmittance drawn as premultiplied (D21).",
       "result_protocol": "checks-v1",
       "sources": [
         "render/device/port.cpp",
@@ -8505,7 +8505,7 @@
         "render/device/gl/pipelines.cpp",
         "unittests/rendertest/core/device/test_device_gl.cpp"
       ],
-      "min_checks": 15,
+      "min_checks": 17,
       "extra_flags": [
         "-pthread",
         "-DRENDER_DEVICE_GL_SENSITIVITY"

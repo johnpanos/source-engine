@@ -55,6 +55,14 @@ struct DeviceDriver
 	// Tokens stay incomplete until complete() (manual adapters), so ordering
 	// before completion is observable.
 	bool holdsCompletion = false;
+	// Optional: holds the queue (true), so work submitted from then on does
+	// not start until it is released (false): the latest schedule a token
+	// allows. D10 records its uploads while held, so a range handed out again
+	// before its token completes is overwritten before anything reads it,
+	// and D5 checks a released resource while its token is still pending,
+	// however fast the driver runs. Unset: both rely on the queue being
+	// slower than the recording (a manual adapter holds by construction).
+	std::function<void( IRenderDevice2 &, bool )> hold;
 	// Draws produce pixels, so the conventions section runs.
 	bool rasterizes = false;
 	// D15: a compute fixture (layout( local_size_x = 64 ), set 3 binding 0 a
@@ -374,6 +382,10 @@ inline void Release( Suite &s )
 	encoder.Value().TransitionBuffer(
 	    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 	encoder.Value().WriteBuffer( buffer, 0, bytes );
+	// With the queue held the token is still incomplete below, so the
+	// liveness check runs however fast the driver is.
+	if ( s.m_Driver.hold )
+		s.m_Driver.hold( *device, true );
 	const std::optional<CompletionToken> token = s.Run( *device, encoder.Value() );
 	s.That( token.has_value(), "D5", "the submission that uses the resource is accepted" );
 	if ( !token )
@@ -385,6 +397,8 @@ inline void Release( Suite &s )
 		s.That( device->IsComplete( *token ) || device->LiveResourceCount() == live, "D5",
 		    "a released resource stays live until its token completes" );
 	}
+	if ( s.m_Driver.hold )
+		s.m_Driver.hold( *device, false );
 	if ( s.m_Driver.holdsCompletion )
 		s.That( !device->IsComplete( *token ), "D5", "the manual adapter held the token" );
 	s.That( s.Finish( *device, *token ), "D5", "the token completes" );
@@ -626,7 +640,11 @@ inline void UploadReuse( Suite &s )
 	if ( !device )
 		return;
 	// More upload bytes in flight than a small ring holds, all submitted
-	// before any completes. A range reused early corrupts an earlier write.
+	// before any completes. A range reused early corrupts an earlier write:
+	// with the queue held, always (the copy out of the range cannot have run).
+	// A device destroyed while held drops its held work.
+	if ( s.m_Driver.hold )
+		s.m_Driver.hold( *device, true );
 	constexpr std::size_t kBuffers = 24;
 	constexpr std::size_t kSize = 96 * 1024;
 	std::vector<BufferId> buffers;
@@ -652,6 +670,8 @@ inline void UploadReuse( Suite &s )
 		buffers.push_back( buffer );
 		tokens.push_back( *token );
 	}
+	if ( s.m_Driver.hold )
+		s.m_Driver.hold( *device, false );
 	s.That( s.Finish( *device, tokens.back() ), "D10", "the uploads complete" );
 	bool intact = true;
 	for ( std::size_t i = 0; i < kBuffers; ++i )

@@ -93,6 +93,10 @@ rendertest::DeviceDriver Driver( const char *name, gl::GlAdapterOptions options 
 	{
 		(void)gl::SimulateContextLoss( device );
 	};
+	driver.hold = []( IRenderDevice2 &device, bool held )
+	{
+		(void)gl::HoldSubmissions( device, held );
+	};
 	driver.rasterizes = true;
 	driver.doubleCompute = rendertest::shaders::kDoubleCompute;
 	driver.artifact = Artifact;
@@ -190,20 +194,11 @@ int main()
 	    { "early-upload-reuse", uploads, "under-test.D10 " },
 	    { "transmittance-as-premultiplied", transmittance, "under-test.D21 src + dst * a" },
 	};
-	// A driver that runs each copy as it is submitted (llvmpipe) has read the
-	// range before the ring can hand it out again: early reuse cannot show.
-	bool synchronous = false;
-	if ( auto probe = gl::Create( options ) )
-		synchronous =
-		    probe.Value()->Facts().adapterName.find( "llvmpipe" ) != std::string_view::npos;
+	// D10 records its uploads with the queue held (Driver's hold), so early
+	// reuse shows on every driver, including one that copies at submission
+	// (llvmpipe).
 	for ( const Case &c : cases )
 	{
-		if ( synchronous && c.defect.unsafeUploadReuse )
-		{
-			std::printf(
-			    "SKIP %s: the driver copies at submission, so early reuse cannot show\n", c.name );
-			continue;
-		}
 		gl::GlAdapterOptions broken = options;
 		broken.sensitivity = c.defect;
 		const std::string failures = FailuresOf( Driver( "under-test", broken ) );
@@ -212,7 +207,7 @@ int main()
 		checks.That(
 		    OnlyClause( failures, c.clause ), std::string( c.name ) + " fails no other clause" );
 		if ( !detected || !OnlyClause( failures, c.clause ) )
-			std::printf( "%s: %s", c.name, failures.c_str() );
+			std::printf( "%s:\n%s", c.name, failures.c_str() );
 	}
 	return checks.Report();
 }

@@ -73,6 +73,13 @@ std::uint64_t ValidationMessages( const IRenderDevice2 &device );
 // Uploads that found the ring full and were copied from the encoder's own
 // storage; 0 for a device not made by this adapter.
 std::uint64_t DeferredUploads( const IRenderDevice2 &device );
+// Tests only: while held (true), Submit accepts work and returns its token but
+// issues none of it to GL, as a driver that has not begun the work yet: the
+// latest schedule a token allows, so a ring range handed out again before its
+// token completes is overwritten before it is read, on any driver. Releasing
+// (false) issues the held submissions in order; WaitIdle issues them too.
+// False for a device not made by this adapter.
+bool HoldSubmissions( IRenderDevice2 &device, bool held );
 // Tests only: the device reports kLost, as it does when the context reports a
 // reset (GL_KHR_robustness), so the loss clause (D7) and Recover() run. False
 // for a device not made by this adapter.
