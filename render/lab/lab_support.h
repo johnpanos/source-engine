@@ -8,6 +8,7 @@
 #ifndef RENDER_LAB_LAB_SUPPORT_H
 #define RENDER_LAB_LAB_SUPPORT_H
 
+#include "mapcontainer/world_lightmap.h"
 #include "mdl/studio_model.h"
 #include "render/device/device.h"
 #include "render/frame/debug_controls.h"
@@ -92,6 +93,13 @@ struct LightmapLayerPages
 // not hold exactly that many texels.
 LightmapLayerPages SplitLightmapLayer(
     std::span<const std::byte> layer, std::uint32_t width, std::uint32_t height );
+
+// The LMAP layer a world surface's baked diffuse light comes from under
+// render.indirect-policy.v1's Baked policy (RFC 0011), with RFC 0016's rule
+// that each light counts once per surface: the total layer, or the indirect
+// layer when a runtime light the core evaluates owns the surface's direct
+// light (the bake's direct share is then the core's to draw).
+mapcontainer::WorldLightmapLayer BakedLightmapLayer( bool directOwnedByCore );
 
 // The lab's device: the Vulkan adapter (RENDER_VK_ADAPTER picks the physical
 // device), with the Khronos validation layer and synchronization validation

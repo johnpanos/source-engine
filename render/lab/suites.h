@@ -28,6 +28,11 @@
 //			                quadrature; neutral, one- and two-sided cases.
 //			                Seeded: no-horizon-clip, ltc-transposed,
 //			                no-magnitude.
+//			lightmap-basis  RFC 0016 K11: the lightmap basis (flat,
+//			                directional, RNM) against its oracle, the
+//			                directional page split and the baked layer rule.
+//			                Seeded: no-smooth-normal, no-gain-clamp,
+//			                rnm-unsquared, rnm-offset-from-zero, whole-page.
 //
 //=============================================================================//
 
@@ -42,6 +47,7 @@ int RunSuite( int argc, char **argv );
 int RunDebugViewsSuite( int argc, char **argv );
 int RunLightingControlsSuite( int argc, char **argv );
 int RunAreaLightsSuite( int argc, char **argv );
+int RunLightmapBasisSuite( int argc, char **argv );
 
 } // namespace render::lab
 

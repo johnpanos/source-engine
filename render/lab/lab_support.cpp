@@ -225,6 +225,12 @@ LightmapLayerPages SplitLightmapLayer(
 	return pages;
 }
 
+mapcontainer::WorldLightmapLayer BakedLightmapLayer( bool directOwnedByCore )
+{
+	return directOwnedByCore ? mapcontainer::WorldLightmapLayer::Indirect
+	                         : mapcontainer::WorldLightmapLayer::Total;
+}
+
 std::optional<std::string> CreateLabDevice(
     bool validate, std::atomic<std::uint64_t> &messages, std::unique_ptr<IRenderDevice2> &out )
 {

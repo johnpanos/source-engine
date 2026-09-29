@@ -6,8 +6,11 @@
 //			against Cycles before it reaches the product.
 //
 //			This slice ("Lab composes the core alone"): a BSP2 map's world
-//			mesh (WMSH) and its lightmap page (LMAP, the Total layer, linear
-//			RGBA16F), and optionally a studio model, drawn through the Vulkan
+//			mesh (WMSH) and its lightmap page (LMAP, linear RGBA16F: the
+//			total layer, or with --core-direct the indirect layer, since the
+//			core then draws the direct light; a directional page's halves
+//			staged as its flat and gradient pages), and optionally a studio
+//			model, drawn through the Vulkan
 //			adapter into a linear RGBA16F target and written as a PFM
 //			(portable float map, bottom row first). Materials come through
 //			render.material's importer and the one program resolver.
@@ -23,7 +26,8 @@
 //			Usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z
 //			           --forward x,y,z --up x,y,z --hfov degrees --size WxH
 //			           --out <file.pfm> [--model <models/x.mdl> --model-origin
-//			           x,y,z] [--validate] [--dump-mesh] [--debug-view n]
+//			           x,y,z] [--validate] [--dump-mesh] [--core-direct]
+//			           [--debug-view n]
 //			           [--debug-program name] [--debug-scale s]
 //			           [--debug-range r] [--debug-threshold t] [--debug-brdf n]
 //			           [--debug-furnace] [--debug-term name[,name...]]
@@ -97,8 +101,15 @@ struct Options
 	std::uint32_t height = 192;
 	bool validate = false;
 	bool dumpMesh = false;
+	// The core draws the map's direct light, so world surfaces read the
+	// bake's indirect layer (BakedLightmapLayer).
+	bool coreDirect = false;
 	frame::DebugControls debug;
 };
+
+// The texture cache's names of the map's lightmap pages.
+constexpr const char *kLightmapPage = "lab:lightmap";
+constexpr const char *kLightmapGradient = "lab:lightmap-gradient";
 
 int Fail( const std::string &why )
 {
@@ -129,6 +140,8 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			options.debug.furnace = true;
 		else if ( arg == "--dump-mesh" )
 			options.dumpMesh = true;
+		else if ( arg == "--core-direct" )
+			options.coreDirect = true;
 		else if ( !value )
 			return std::nullopt;
 		else if ( arg == "--game" )
@@ -293,10 +306,13 @@ int Run( const Options &options )
 	         lmap->data(), lmap->size(), lmapInfo.version, &layout );
 	    error != mapcontainer::WorldLightmapError::Ok )
 		return Fail( std::string( "LMAP: " ) + mapcontainer::WorldLightmapErrorName( error ) );
-	const int totalLayer =
-	    mapcontainer::WorldLightmapLayerIndex( layout, mapcontainer::WorldLightmapLayer::Total );
-	if ( totalLayer < 0 )
-		return Fail( "LMAP carries no Total layer" );
+	// The layer the world's baked diffuse light comes from; a map without it
+	// cannot be drawn so (no silent fallback to the total layer).
+	const mapcontainer::WorldLightmapLayer bakedRole = BakedLightmapLayer( options.coreDirect );
+	const int bakedLayer = mapcontainer::WorldLightmapLayerIndex( layout, bakedRole );
+	if ( bakedLayer < 0 )
+		return Fail( std::string( "LMAP carries no " ) +
+		             mapcontainer::WorldLightmapLayerName( bakedRole ) + " layer" );
 
 	// The debug controls, as the renderer validates a frame's.
 	if ( auto valid = frame::ValidateDebugControls(
@@ -319,23 +335,34 @@ int Run( const Options &options )
 		resources::TextureCache cache( *device );
 		material::GroupResidency groups( *device, cache );
 
-		// The lightmap page: linear light, sampled as it is (scale 1). A
-		// directional page's flat half; its gradient half is the lightmap
-		// basis's (K11 step d).
+		// The lightmap pages: linear light, sampled as it is (scale 1). The
+		// flat page, and the gradient page the lightmap basis reads (a
+		// directional page's right half; zero for a flat page, which is the
+		// flat light bitwise).
 		{
 			const LightmapLayerPages pages = SplitLightmapLayer(
-			    std::as_bytes( std::span( lmap->data() + layout.layerOffset[totalLayer],
+			    std::as_bytes( std::span( lmap->data() + layout.layerOffset[bakedLayer],
 			        std::size_t( layout.layerBytes ) ) ),
 			    layout.width, layout.height );
 			if ( pages.flat.empty() )
-				return Fail( "LMAP's Total layer does not split into pages" );
+				return Fail( std::string( "LMAP's " ) +
+				             mapcontainer::WorldLightmapLayerName( bakedRole ) +
+				             " layer does not split into pages" );
 			TextureDesc desc;
 			desc.format = Format::kRGBA16Float;
 			desc.width = pages.width;
 			desc.height = pages.height;
 			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
-			if ( !cache.Stage( "lab:lightmap-total", desc, pages.flat ) )
+			if ( !cache.Stage( kLightmapPage, desc, pages.flat ) )
 				return Fail( "the lightmap page was refused" );
+			const std::vector<std::byte> zero( pages.flat.size(), std::byte( 0 ) );
+			if ( !cache.Stage( kLightmapGradient, desc,
+			         pages.Directional() ? std::span<const std::byte>( pages.gradient )
+			                             : std::span<const std::byte>( zero ) ) )
+				return Fail( "the lightmap gradient page was refused" );
+			std::printf( "render_lab: LMAP v%u %ux%u, the %s layer%s\n", layout.version,
+			    layout.width, layout.height, mapcontainer::WorldLightmapLayerName( bakedRole ),
+			    pages.Directional() ? ", directional" : "" );
 		}
 
 		// The world's materials and their groups.
@@ -353,7 +380,7 @@ int Run( const Options &options )
 			const std::uint64_t drawLayout = m.program.request.drawLayout.value;
 			if ( m.program.request.drawLayout.IsValid() && !drawGroupOf.count( drawLayout ) )
 			{
-				auto request = resolver.Value()->DrawGroup( m.program, { "lab:lightmap-total" } );
+				auto request = resolver.Value()->DrawGroup( m.program, { kLightmapPage } );
 				if ( !request )
 					return std::string( "no draw group" );
 				drawGroupOf[drawLayout] = nextGroup++;
@@ -663,7 +690,7 @@ int main( int argc, char **argv )
 		std::fprintf( stderr,
 		    "usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z --forward x,y,z --up "
 		    "x,y,z --hfov degrees --size WxH --out <file.pfm> [--model <models/x.mdl> "
-		    "--model-origin x,y,z] [--validate] [--dump-mesh] [--debug-* ...]\n"
+		    "--model-origin x,y,z] [--validate] [--dump-mesh] [--core-direct] [--debug-* ...]\n"
 		    "       render_lab suite <name> [--validate] [--seeded <defect>]\n" );
 		return 2;
 	}

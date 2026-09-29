@@ -91,6 +91,7 @@ LIGHTS = "render/pass/lights"
 SHADOWS = "render/pass/shadows"
 DEBUG = "render/pass/debug"
 OUTPUT = "render/pass/output"
+LAB = "render/lab"
 LIGHTS_TESTS = "unittests/rendertest/core/pass/lights"
 SHADOWS_TESTS = "unittests/rendertest/core/pass/shadows"
 
@@ -217,6 +218,18 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_LTC_TRANSPOSED",)),
         ("kSurfaceLtcNoMagnitude", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_LTC_NO_MAGNITUDE",)))),
+    "lightmap_basis_check_spv.h": ("render::lab::spirv",
+        "render_lab's lightmap-basis suite's check kernel and its seeded variants "
+        "(render.lab.lightmap-basis, RFC 0016 K11)", (
+        ("kLightmapBasisCheck", LAB + "/lightmap_basis_check.comp", DEVICE_OPTIONS),
+        ("kLightmapBasisNoSmoothNormal", LAB + "/lightmap_basis_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_NO_SMOOTH_NORMAL",)),
+        ("kLightmapBasisNoGainClamp", LAB + "/lightmap_basis_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_NO_GAIN_CLAMP",)),
+        ("kLightmapBasisRnmUnsquared", LAB + "/lightmap_basis_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_RNM_UNSQUARED",)),
+        ("kLightmapBasisRnmOffsetFromZero", LAB + "/lightmap_basis_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_RNM_OFFSET_FROM_ZERO",)))),
     "debug_view_defects_spv.h": ("render::lab::spirv",
         "render_lab's debug-view suite's seeded programs (render.debug-views sensitivity, "
         "RFC 0014)", (

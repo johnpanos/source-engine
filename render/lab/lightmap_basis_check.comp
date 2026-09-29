@@ -1,0 +1,49 @@
+// render_lab suite lightmap-basis (RFC 0016 K11): evaluates the lightmap basis
+// (render/shaders/common/lightmap_basis.glsl) at each case, so the suite can
+// judge it against its C++ oracle. Per case it writes four vec4: the flat
+// page's light, the directional light at the case's normal, the RNM light at
+// its tangent-space normal, and the RNM weights.
+#version 450
+
+#include "../shaders/common/lightmap_basis.glsl"
+
+layout( local_size_x = 64 ) in;
+
+layout( set = 3, binding = 0 ) uniform texture2D flatPage;
+layout( set = 3, binding = 1 ) uniform texture2D gradientPage;
+layout( set = 3, binding = 2 ) uniform texture2D rnmPage;
+layout( set = 3, binding = 3 ) uniform sampler pageSampler;
+
+struct Case
+{
+	vec4 uv;           // xy: the lightmap coordinate, z: the RNM page offset
+	vec4 normal;       // the shading normal (world space)
+	vec4 smoothNormal; // the smooth normal the flat light was baked on
+	vec4 tangentNormal;
+};
+
+layout( std430, set = 3, binding = 4 ) readonly buffer Cases
+{
+	uvec4 header; // x: the case count
+	Case cases[];
+};
+
+layout( std430, set = 3, binding = 5 ) writeonly buffer Results
+{
+	vec4 results[];
+};
+
+void main()
+{
+	const uint i = gl_GlobalInvocationID.x;
+	if ( i >= header.x )
+		return;
+	const Case c = cases[i];
+	results[i * 4 + 0] = vec4( LightmapPageSample( flatPage, pageSampler, c.uv.xy ), 0.0 );
+	results[i * 4 + 1] = vec4( LightmapDirectionalSample( flatPage, gradientPage, pageSampler,
+	                               c.uv.xy, c.normal.xyz, c.smoothNormal.xyz ),
+	    0.0 );
+	results[i * 4 + 2] =
+	    vec4( LightmapRnmSample( rnmPage, pageSampler, c.uv.xy, c.uv.z, c.tangentNormal.xyz ), 0.0 );
+	results[i * 4 + 3] = vec4( LightmapRnmWeights( c.tangentNormal.xyz ), 0.0 );
+}

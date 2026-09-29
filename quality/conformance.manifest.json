@@ -9679,6 +9679,71 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.lightmap-basis",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K11 'Model assembly', the indirect diffuse term of static surfaces (render/lab/lightmap_basis_suite.cpp, render_lab suite lightmap-basis --validate): the lightmap basis (render/shaders/common/lightmap_basis.glsl, the one GLSL copy) evaluated by a check kernel against an oracle that shares no code with it. Flat: the page sampled with linear filtering equals the bilinear interpolation of its half-float texels within 2^-7 of the neighbours' spread plus 1e-5 relative at 128 random coordinates, and the texel at texel centres. Directional (tools/quality/lightmap_directional.py): E0 * clamp(1 + beta . (n - N), 0, 4) within 1e-5 relative + 1e-6 at 256 texel centres with gains beyond both clamps; n = N and a zero gradient page are the flat light bitwise. RNM (lightmappedgeneric_ps2_3_x.h): the squared clamped cosines of the bump basis, and the three bumped pages at one to three page offsets weighted by them over their sum. The directional page split (render_lab's SplitLightmapLayer) feeds the pages the kernel samples, so staging a whole 2:1 layer as flat light fails; the baked layer rule (BakedLightmapLayer) reads the total layer, or the indirect layer when the core owns a surface's direct light, and a map without that layer has none. 0 validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "lightmap-basis",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 19,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/lightmap_basis_suite.cpp",
+        "render/lab/lightmap_basis_check.comp",
+        "render/lab/lab_support.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/shaders/common/lightmap_basis.glsl",
+        "public/mapcontainer/world_lightmap.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.lightmap-basis.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "RFC 0016 K11 lightmap basis, seeded (lightmap_basis_check_spv.h, check kernels built from lightmap_basis.glsl, and one loader defect): the smooth normal ignored and the gain unclamped each fail a directional check; the RNM weights unsquared and the bumped pages read from the flat page each fail an RNM check; the whole 2:1 directional layer staged as the flat page (sp_gi_chamber_01's defect) fails the flat checks; the control passes.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "lightmap-basis",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 6,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/lightmap_basis_suite.cpp",
+        "render/lab/lightmap_basis_check.comp",
+        "render/shaders/common/lightmap_basis.glsl",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.ltc-table",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

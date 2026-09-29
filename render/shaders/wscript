@@ -68,6 +68,7 @@ def build(bld):
 	# Every GLSL a generated header embeds: the backend's, the render passes'
 	# and the device suite's fixtures (their GLSL 4.50 header, RFC 0016 K10).
 	for directory in (SHADERS, 'render/pass', 'render/material/families', 'render/shaders/common',
+			'render/lab',
 			'unittests/rendertest/core/device/shaders'):
 		inputs += root.ant_glob(' '.join('%s/**/*.%s' % (directory, ext)
 			for ext in ('vert', 'frag', 'comp', 'glsl')))
