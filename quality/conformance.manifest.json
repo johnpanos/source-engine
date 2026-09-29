@@ -13479,6 +13479,33 @@
       "expected_divergence": "FAIL k9.dead-code.legacy-shader-sources-deleted"
     },
     {
+      "id": "render.legacy-freeze",
+      "domain": "Q-ARCH",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "tools/render/retirement_scans.py",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0016 binding rule 1, freeze ratchet: the frozen legacy render paths gain nothing. The native backend's shader files and line counts, the stdshader source files, the frozen backends' QueryInterface answers, the functions of engine/gl_lightmap.cpp and engine/lightcache.cpp, and the ConVars, commands and launch switches of the frozen paths equal tools/render/legacy_freeze_ratchet.json exactly. Growth passes only in a Frozen-path commit (defect fix or explicit user request) that rewrites the ratchet with --write.",
+      "command": [
+        "{python}",
+        "tools/render/retirement_scans.py",
+        "legacy-freeze"
+      ],
+      "sources": [
+        "tools/render/retirement_scans.py",
+        "tools/quality/conformance_result.py",
+        "tools/render/legacy_freeze_ratchet.json"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 18,
+      "timeout_seconds": 300,
+      "requires": [
+        "executable:git"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.retirement-scans.sensitivity",
       "domain": "Q-ARCH",
       "rfc": "0016",

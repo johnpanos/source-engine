@@ -6,6 +6,7 @@
     python3 tools/render/retirement_scans.py record-replay   [--root DIR]
     python3 tools/render/retirement_scans.py legacy-stream   [--root DIR] [--write]
     python3 tools/render/retirement_scans.py dead-code       [--root DIR]
+    python3 tools/render/retirement_scans.py legacy-freeze   [--root DIR] [--write]
     python3 tools/render/retirement_scans.py sensitivity
 
   side-channels  K3 "Side channels gone": no first-party source names the
@@ -28,6 +29,23 @@
                  passes only at zero, which the check reports separately.
   dead-code      K9 "Dead code removed", static half: the legacy SPIR-V
                  sources in materialsystem/shaderapivulkan/shaders/ are gone.
+  legacy-freeze  RFC 0016 binding rule 1, "Freeze ratchet": the frozen legacy
+                 render paths gain nothing. Recorded exactly in
+                 tools/render/legacy_freeze_ratchet.json and compared:
+                 - the files of materialsystem/shaderapivulkan/shaders/ and
+                   each one's line count (a new file or more lines fails);
+                 - the source files of materialsystem/stdshaders/ (a new
+                   shader file fails);
+                 - the interface names the frozen backends answer in
+                   QueryInterface;
+                 - the functions defined in engine/gl_lightmap.cpp and
+                   engine/lightcache.cpp (the CPU runtime-lighting path);
+                 - the ConVars, console commands and launch switches defined
+                   in the frozen paths.
+                 Anything recorded that disappeared must be recorded too
+                 (the ratchet stays exact). A change that grows a set is a
+                 Frozen-path commit (defect fix or explicit user request)
+                 that rewrites the ratchet with --write in the same commit.
   sensitivity    seeded faults in private temporary trees must each be
                  rejected by the scan they target, and a clean tree accepted.
 
@@ -73,6 +91,24 @@ LEGACY_ACQUIRE = re.compile(r"\bCMatRenderContextPtr\b|\bGetRenderContext\s*\(")
 FIRST_PARTY = ("game/", "engine/", "vgui2/", "vguimatsurface/", "studiorender/", "particles/",
                "datacache/", "launcher/", "gameui/")
 LEGACY_SHADERS = "materialsystem/shaderapivulkan/shaders/"
+FREEZE_SCHEMA = "render-legacy-freeze-ratchet/v1"
+FREEZE_RATCHET = "tools/render/legacy_freeze_ratchet.json"
+# RFC 0016 binding rule 1: the frozen legacy render paths.
+FROZEN_DIRS = ("materialsystem/shaderapivulkan/", "materialsystem/shaderapidx9/",
+               "materialsystem/stdshaders/")
+FROZEN_LIGHTING = ("engine/gl_lightmap.cpp", "engine/lightcache.cpp")
+STDSHADERS = "materialsystem/stdshaders/"
+STDSHADER_EXTENSIONS = {".cpp", ".h", ".fxc", ".vsh", ".psh", ".inc"}
+CONVAR_DEF = re.compile(r'\bConVar\s+\w+\s*\(\s*"([^"]+)"')
+CONCOMMAND_DEF = re.compile(r'\b(?:CON_COMMAND(?:_F)?|ConCommand\s+\w+)\s*\(\s*"?(\w+)"?')
+SWITCH_USE = re.compile(r'\b(?:FindParm|CheckParm|ParmValue|HasParm)\s*\(\s*"(-[\w.-]+)"')
+INTERFACE_ANSWER = re.compile(r'\(\s*pInterfaceName\s*,\s*("[^"]+"|[A-Za-z_]\w*)\s*\)')
+# A function definition starting at column 0 (Source style): a return type,
+# the (possibly qualified) name, the parameter list, then a brace, possibly
+# on a later line. Declarations end in ';' and are skipped.
+FUNCTION_DEF = re.compile(
+    r"^(?:[A-Za-z_][\w:<>,\*&]*[\s\*&]+)+\**([A-Za-z_~][\w:~]*)\s*\(([^;{}]*?)\)\s*(?:const\s*)?\{",
+    re.M)
 
 
 def sources(root):
@@ -229,11 +265,112 @@ def check_dead_code(root, checks):
                  "%d file(s) remain in %s" % (len(remaining), LEGACY_SHADERS))
 
 
+def all_files(root):
+    """Every tracked plus untracked, non-ignored file (any extension)."""
+    root = Path(root)
+    if (root / ".git").exists():
+        listed = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard"],
+            capture_output=True, text=True, check=True).stdout.splitlines()
+    else:
+        listed = [p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()]
+    return sorted(set(p for p in listed if (root / p).is_file()))
+
+
+def freeze_snapshot(root):
+    files = all_files(root)
+    frozen_sources = [p for p in files
+                      if p.startswith(FROZEN_DIRS) and Path(p).suffix in EXTENSIONS]
+    frozen_sources += [p for p in FROZEN_LIGHTING if (Path(root) / p).is_file()]
+    shaders = {p: read(root, p).count("\n") for p in files if p.startswith(LEGACY_SHADERS)}
+    stdshaders = sorted(p for p in files
+                        if p.startswith(STDSHADERS) and Path(p).suffix in STDSHADER_EXTENSIONS)
+    interfaces, convars, switches = set(), set(), set()
+    for path in frozen_sources:
+        text = read(root, path)
+        code = strip_code(text)
+        for match in INTERFACE_ANSWER.finditer(text):
+            # a literal is kept; an identifier must survive comment stripping
+            if match.group(1).startswith('"') or re.search(
+                    r"\b%s\b" % re.escape(match.group(1)), code):
+                interfaces.add(match.group(1).strip('"'))
+        convars.update(CONVAR_DEF.findall(text))
+        convars.update(CONCOMMAND_DEF.findall(text))
+        switches.update(SWITCH_USE.findall(text))
+    functions = {}
+    for path in FROZEN_LIGHTING:
+        if (Path(root) / path).is_file():
+            code = strip_code(read(root, path))
+            names = sorted(set(m.group(1) for m in FUNCTION_DEF.finditer(code)
+                               if m.group(1) not in ("if", "for", "while", "switch", "return")))
+            functions[path] = names
+    return {"shader_sources": shaders, "stdshader_files": stdshaders,
+            "interfaces": sorted(interfaces), "functions": functions,
+            "convars": sorted(convars), "switches": sorted(switches)}
+
+
+def check_legacy_freeze(root, checks, write=False):
+    current = freeze_snapshot(root)
+    path = Path(root) / FREEZE_RATCHET
+    if write:
+        data = {"schema": FREEZE_SCHEMA,
+                "note": "RFC 0016 binding rule 1: the frozen legacy render paths. Exact; a set "
+                        "may grow only in a Frozen-path commit (defect fix or explicit user "
+                        "request) that rewrites this file with `retirement_scans.py "
+                        "legacy-freeze --write`. Deletions are recorded the same way.",
+                "frozen": current}
+        path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+        print("legacy-freeze: recorded %d shader source(s), %d stdshader file(s), %d interface(s), "
+              "%d ConVar/command(s), %d switch(es)"
+              % (len(current["shader_sources"]), len(current["stdshader_files"]),
+                 len(current["interfaces"]), len(current["convars"]), len(current["switches"])))
+    checks.check(path.exists(), "freeze.ratchet-exists", "no %s" % FREEZE_RATCHET)
+    if not path.exists():
+        return
+    data = json.loads(path.read_text())
+    checks.check(data.get("schema") == FREEZE_SCHEMA, "freeze.schema",
+                 "schema must be %s" % FREEZE_SCHEMA)
+    recorded = data.get("frozen", {})
+
+    def compare_set(key, cur, rec, label):
+        grew = sorted(set(cur) - set(rec))
+        gone = sorted(set(rec) - set(cur))
+        for item in grew[:40]:
+            print("legacy-freeze: new %s on a frozen path: %s" % (label, item))
+        for item in gone[:40]:
+            print("legacy-freeze: %s gone, record it with --write: %s" % (label, item))
+        checks.check(not grew, "freeze.%s.no-growth" % key, "%d new %s(s)" % (len(grew), label))
+        checks.check(not gone, "freeze.%s.exact" % key, "%d unrecorded removal(s)" % len(gone))
+
+    shaders, rec_shaders = current["shader_sources"], recorded.get("shader_sources", {})
+    compare_set("shader-files", shaders, rec_shaders, "native backend shader file")
+    longer = sorted(p for p in shaders if p in rec_shaders and shaders[p] > rec_shaders[p])
+    shorter = sorted(p for p in shaders if p in rec_shaders and shaders[p] < rec_shaders[p])
+    for p in longer:
+        print("legacy-freeze: %s grew from %d to %d lines" % (p, rec_shaders[p], shaders[p]))
+    for p in shorter:
+        print("legacy-freeze: %s shrank from %d to %d lines; record it with --write"
+              % (p, rec_shaders[p], shaders[p]))
+    checks.check(not longer, "freeze.shader-lines.no-growth", "%d shader(s) grew" % len(longer))
+    checks.check(not shorter, "freeze.shader-lines.exact", "%d unrecorded shrink(s)" % len(shorter))
+    compare_set("stdshader-files", current["stdshader_files"],
+                recorded.get("stdshader_files", []), "stdshader file")
+    compare_set("interfaces", current["interfaces"], recorded.get("interfaces", []),
+                "QueryInterface answer")
+    rec_functions = recorded.get("functions", {})
+    for path in FROZEN_LIGHTING:
+        compare_set("functions.%s" % Path(path).stem, current["functions"].get(path, []),
+                    rec_functions.get(path, []), "function in %s" % path)
+    compare_set("convars", current["convars"], recorded.get("convars", []), "ConVar or command")
+    compare_set("switches", current["switches"], recorded.get("switches", []), "launch switch")
+
+
 SCANS = {
     "side-channels": check_side_channels,
     "record-replay": check_record_replay,
     "legacy-stream": check_legacy_stream,
     "dead-code": check_dead_code,
+    "legacy-freeze": check_legacy_freeze,
 }
 
 
@@ -256,7 +393,19 @@ def sensitivity():
             "void Draw() { CMatRenderContextPtr pRenderContext( materials ); }\n")
         (base / "engine" / "note.cpp").write_text(
             'const char *s = "g_VulkanContext.BeginFrame( x )"; // not a call\n')
+        (base / "engine" / "gl_lightmap.cpp").write_text(
+            "static ConVar r_projected_lights( \"r_projected_lights\", \"1\" );\n"
+            "static void R_AddProjectedLights( int surf )\n{\n}\n"
+            "void R_AddDynamicLights( int surf ); // a declaration is not a definition\n")
+        (base / "engine" / "lightcache.cpp").write_text("void LightcacheStandIn()\n{\n}\n")
+        (base / "materialsystem" / "shaderapivulkan" / "api.cpp").write_text(
+            "void *Q( const char *pInterfaceName )\n{\n"
+            "\tif ( !Q_stricmp( pInterfaceName, SHADER_DEVICE_MGR_INTERFACE_VERSION ) ) return 0;\n"
+            "\tif ( CommandLine()->FindParm( \"-vkvalidate\" ) ) return 0;\n\treturn 0;\n}\n")
+        (base / "materialsystem" / "stdshaders").mkdir(parents=True)
+        (base / "materialsystem" / "stdshaders" / "lightmappedgeneric_dx9.cpp").write_text("\n")
         clean = run_scan("legacy-stream", base, write=True)
+        clean_freeze = run_scan("legacy-freeze", base, write=True)
         for name in SCANS:
             result = run_scan(name, base)
             checks.check(result.failures == 0, "control.%s-passes-a-clean-tree" % name,
@@ -286,10 +435,33 @@ def sensitivity():
                    "void Draw() { CMatRenderContextPtr a( materials ); CMatRenderContextPtr b( materials ); }\n"))
         seeded("stale-ratchet", "legacy-stream",
                lambda t: (t / "engine" / "view.cpp").write_text("void Draw() {}\n"))
+        seeded("freeze-new-native-shader", "legacy-freeze",
+               lambda t: ((t / LEGACY_SHADERS).mkdir(parents=True, exist_ok=True),
+                          (t / LEGACY_SHADERS / "new_effect.frag").write_text("void main() {}\n")))
+        seeded("freeze-new-stdshader", "legacy-freeze",
+               lambda t: (t / "materialsystem" / "stdshaders" / "newshader_dx9.cpp").write_text("\n"))
+        seeded("freeze-new-light-function", "legacy-freeze",
+               lambda t: (t / "engine" / "gl_lightmap.cpp").write_text(
+                   (t / "engine" / "gl_lightmap.cpp").read_text()
+                   + "static void R_AddVolumetricLights( int surf )\n{\n}\n"))
+        seeded("freeze-new-convar", "legacy-freeze",
+               lambda t: (t / "materialsystem" / "shaderapivulkan" / "fx.cpp").write_text(
+                   'static ConVar mat_vk_new_effect( "mat_vk_new_effect", "1" );\n'))
+        seeded("freeze-new-switch", "legacy-freeze",
+               lambda t: (t / "materialsystem" / "shaderapivulkan" / "sw.cpp").write_text(
+                   'bool F() { return CommandLine()->FindParm( "-vknewthing" ); }\n'))
+        seeded("freeze-new-side-channel", "legacy-freeze",
+               lambda t: (t / "materialsystem" / "shaderapivulkan" / "qi.cpp").write_text(
+                   'void *Q2( const char *pInterfaceName )\n{\n'
+                   '\tif ( !Q_stricmp( pInterfaceName, "RenderNewFeature001" ) ) return 0;\n'
+                   '\treturn 0;\n}\n'))
+        seeded("freeze-unrecorded-removal", "legacy-freeze",
+               lambda t: (t / "engine" / "lightcache.cpp").write_text("\n"))
         seeded("legacy-shader-left", "dead-code",
                lambda t: ((t / LEGACY_SHADERS).mkdir(parents=True),
                           (t / LEGACY_SHADERS / "x.frag").write_text("\n")))
         checks.check(clean.failures == 0, "control.ratchet-write-passes", "")
+        checks.check(clean_freeze.failures == 0, "control.freeze-write-passes", "")
     return checks
 
 
@@ -298,15 +470,16 @@ def main(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scan", choices=sorted(SCANS) + ["sensitivity"])
     parser.add_argument("--root", type=Path, default=ROOT)
-    parser.add_argument("--write", action="store_true", help="legacy-stream: record the counts")
+    parser.add_argument("--write", action="store_true",
+                        help="legacy-stream, legacy-freeze: record the current state")
     args = parser.parse_args(argv)
     if args.scan == "sensitivity":
         checks = sensitivity()
-    elif args.scan == "legacy-stream":
+    elif args.scan in ("legacy-stream", "legacy-freeze"):
         checks = run_scan(args.scan, args.root, write=args.write)
     else:
         if args.write:
-            parser.error("--write applies to legacy-stream only")
+            parser.error("--write applies to legacy-stream and legacy-freeze only")
         checks = run_scan(args.scan, args.root)
     return checks.report()
 

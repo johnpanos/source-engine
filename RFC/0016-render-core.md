@@ -277,22 +277,40 @@ turned off on a profile only when the profile lacks a required capability
 default. Correctness checks that happen to involve time still block: a
 hang, a timeout, a frame that never presents, or a race.
 
+Measuring is not optional (user decision, 2026-09-29). Every slice that
+changes what is drawn records, in its progress entry:
+- frame time on the desktop profile and on the Fold7, with the command and
+  the numbers;
+- or, for a device that was unavailable, "unavailable" and the reason.
+
+The numbers go into the rows of `quality/budgets/render-v1.json` as they
+exist, so the performance debt stays visible while it is not blocking.
+
 ### Enforcement
 
 - **Review.** Every change under `materialsystem/`, `engine/gl_lightmap.cpp`,
   `engine/lightcache.cpp` or `render/` is checked against rules 1–6 before
   it lands. A missing or false `Frozen-path:` line rejects the change.
-- **Freeze ratchet** (`render.legacy-freeze`, proposed, owned by R96). It
-  extends `tools/render/retirement_scans.py` and fails when any of these
-  grows:
-  - the file list and total size of `materialsystem/shaderapivulkan/shaders/`;
-  - the set of `QueryInterface` side-channel names the native backend
-    serves;
-  - the set of runtime light functions in `engine/gl_lightmap.cpp`;
-  - the set of ConVars defined in the frozen paths.
+- **Freeze ratchet** (`render.legacy-freeze`, installed 2026-09-29, first
+  step of the delivery order, owned by R95). The command is
+  `python3 tools/render/retirement_scans.py legacy-freeze`. It compares the
+  frozen paths exactly with `tools/render/legacy_freeze_ratchet.json`:
+  - the files of `materialsystem/shaderapivulkan/shaders/` and each one's
+    line count;
+  - the source files of `materialsystem/stdshaders/`;
+  - the interface names the frozen backends answer in `QueryInterface`;
+  - the functions defined in `engine/gl_lightmap.cpp` and
+    `engine/lightcache.cpp`;
+  - the ConVars, console commands and launch switches defined in the
+    frozen paths.
 
-  Growth passes only with a `Frozen-path:` commit whose exception is 1 or 3.
-  Until the ratchet is installed, review enforces the same thing by hand.
+  Any growth fails, and so does a removal that isn't recorded. A set may
+  grow only in a `Frozen-path:` commit whose exception is 1 or 3, and that
+  commit rewrites the ratchet (`--write`) itself, so the growth is visible
+  in review. A deletion under rule 4 records the removal the same way.
+  Seeded faults in `render.retirement-scans.sensitivity` cover each set.
+  The legacy material system's shading behavior has no static scan, and
+  review covers it.
 - **Gates.** K11 is the proof gate for rule 3. K12's "One copy of the math"
   and K9's "Dead code removed" are the deletion gates for rule 4.
 
@@ -1652,6 +1670,7 @@ ahead of the product rows.
 | Volumetric fog | `render.lab.volumetric` (proposed) on the foggy hall | a homogeneous medium's transmittance is exp(-sigma_t d) within tolerance; single scattering from a point light matches a numerical integral; a shadowed projector's shaft is absent inside its shadow; density zero is bitwise the fog-only frame; after a camera cut no history remains |
 | Portal and Portal 2 chambers | the two rebuilt chambers, legacy points and modern points (the S9 rule table) | legacy points match the product's native ports within the family tolerances; modern points within tolerance of Cycles |
 | Output on a display | `render.output` (Linux GPU); `render.lab.hdr` on the iPhone and the Apple TV through `render_lab`'s presenting host (`render/lab/app`) | `render.output.v1`'s clauses and seeded programs pass; each chart patch presented on the device equals the oracle at the frame's headroom; the extended range is granted and the headroom rises above 1; on tvOS the TV switches into HDR; a debug view presents untouched; a standard presentation shows the legacy point |
+| Gallery for review | a gallery page per term, published when the term's lab checks pass | each term's `render_lab` renders shown beside their Cycles references, with the term's negative control; the user's review is recorded in the progress entry. The user judges "looks right", which the tolerances cannot |
 | Lab budgets (perf) | `render_lab --time` (proposed), `render-v1.json` lighting rows | set before measuring: all terms at once at most 8 ms GPU at 1080p on the desktop runner for the heaviest fixture; per term: GTAO 0.5 ms, SSR 1.0 ms, volumetric 1.0 ms, LTC 0.3 ms; Fold7 rows recorded; a miss is an optimization item, and no term is turned off for it |
 
 ### K12: Lighting model integrated in the product

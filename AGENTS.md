@@ -853,8 +853,19 @@ Keep the table concise and link details below or from the domain progress file.
     and R96 directly after R90. Ranks from R92 down moved by one or two.
     R91 now depends on R96, because K9 deletes the native backend's copies
     of the lighting shaders.
-  - Nothing is implemented. `render_lab` and every `render.lab.*` suite
-    are proposed.
+  - Installed 2026-09-29: the `render.legacy-freeze` ratchet
+    (`tools/render/retirement_scans.py legacy-freeze`, 18 checks; 22 seeded
+    faults caught in the sensitivity suite), moved to the first step at the
+    user's direction.
+  - Split (user-approved, agreed with source-engine-43):
+    - source-engine-43: `render_lab` and every term;
+    - this session's subagents: the K11 lighting fixtures
+      (`quality/fixtures/lighting/`) and R92/K10 (the OpenGL adapter, in its
+      own worktree).
+  - Every slice that changes pixels records desktop and Fold7 frame time
+    (or "unavailable"). The lab publishes a gallery page per term for the
+    user's review.
+  - `render_lab` and every `render.lab.*` suite are still proposed.
 - R86–R92 (RFC 0016): R86–R91 added 2026-09-26 as `planned`. The user asked for "a
   real graphics system" that breaks free of the legacy pipeline while
   keeping compatibility.
