@@ -44,6 +44,7 @@
 #endif
 
 #include "debugoverlay_shared.h"
+#include "render/indirect_portals.h"
 
 // HACK: This define can really hose the following macro, so we need to undefine it for a moment while this sets up
 #undef CPortal_Base2D
@@ -952,3 +953,48 @@ void ProcessPortalTeleportations( void )
 	s_PortalTeleportationLog.RemoveAll();
 	s_PortalTeleportationLogMutex.Unlock();
 }
+
+//-----------------------------------------------------------------------------
+// RFC 0011 G10 / RFC 0016 K7: the open portal pairs, published to the engine
+// every frame for the producers that carry light through them (the indirect-
+// light producers and render.portal-lights.v1's dlight images). A portal is
+// open while it and its linked portal are activated.
+//-----------------------------------------------------------------------------
+class CIndirectLightPortalPublisher : public CAutoGameSystemPerFrame
+{
+public:
+	CIndirectLightPortalPublisher() : CAutoGameSystemPerFrame( "CIndirectLightPortalPublisher" ) {}
+
+	virtual void PreRender()
+	{
+		if ( !indirectlightportals )
+			return;
+		indirect_portals::PortalInput portals[indirect_portals::kMaxOpenPortals];
+		int count = 0;
+		for ( int i = 0; i < CPortal_Base2D_Shared::AllPortals.Count() &&
+		                 count < indirect_portals::kMaxOpenPortals;
+		    ++i )
+		{
+			C_Portal_Base2D *portal = CPortal_Base2D_Shared::AllPortals[i];
+			if ( !portal || !portal->IsActivedAndLinked() )
+				continue;
+			indirect_portals::PortalInput &out = portals[count++];
+			for ( int k = 0; k < 3; ++k )
+			{
+				out.origin[k] = portal->m_ptOrigin[k];
+				out.forward[k] = portal->m_vForward[k];
+				out.right[k] = portal->m_vRight[k];
+				out.up[k] = portal->m_vUp[k];
+			}
+			out.halfWidth = portal->GetHalfWidth();
+			out.halfHeight = portal->GetHalfHeight();
+			const VMatrix &toLinked = portal->MatrixThisToLinked();
+			for ( int row = 0; row < 3; ++row )
+				for ( int column = 0; column < 4; ++column )
+					out.toLinked[row * 4 + column] = toLinked.m[row][column];
+		}
+		indirectlightportals->SetOpenPortals( portals, count );
+	}
+};
+
+static CIndirectLightPortalPublisher s_IndirectLightPortalPublisher;

@@ -730,7 +730,9 @@ void C_Prop_Portal::UpdateTransformedLighting( void )
 				}
 
 				pFakeLight->die = gpGlobals->curtime + 1e10;
-				pFakeLight->flags = 0; // DLIGHT_NO_WORLD_ILLUMINATION;
+				// Lights its own side only: not imaged through the portal
+				// (render.portal-lights.v1).
+				pFakeLight->flags = DLIGHT_NO_PORTAL_IMAGE; // DLIGHT_NO_WORLD_ILLUMINATION;
 				pFakeLight->minlight = 0.0f;
 				pFakeLight->radius = kPortalLightRadius;
 				pFakeLight->m_InnerAngle = 0.0f; //r_portal_light_innerangle.GetFloat();

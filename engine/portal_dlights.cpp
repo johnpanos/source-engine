@@ -25,6 +25,11 @@ static ConVar r_portal_dlights( "r_portal_dlights", "1", 0,
 static ConVar r_portal_dlights_seed_noclip( "r_portal_dlights_seed_noclip", "0", FCVAR_CHEAT,
     "Test only: lights imaged through portals skip the portal clip (the leak the lab oracle must "
     "detect)." );
+// Sensitivity fixture for portal_dlight_lab.py --game portal2: lights flagged
+// DLIGHT_NO_PORTAL_IMAGE (a portal's own glow) are imaged anyway.
+static ConVar r_portal_dlights_seed_glowimage( "r_portal_dlights_seed_glowimage", "0", FCVAR_CHEAT,
+    "Test only: lights flagged DLIGHT_NO_PORTAL_IMAGE are imaged through portals (the defect the "
+    "lab oracle must detect)." );
 static ConVar r_portal_dlights_report( "r_portal_dlights_report", "0", 0,
     "Report the dynamic lights imaged through portals, and those dropped for want of a free "
     "dlight slot, whenever the counts change." );
@@ -81,14 +86,17 @@ void PortalDLights_Update()
 		return;
 
 	const float now = cl.GetTime();
+	const int excluded =
+	    DLIGHT_AREA | ( r_portal_dlights_seed_glowimage.GetBool() ? 0 : DLIGHT_NO_PORTAL_IMAGE );
 	// Sources: the live dlights before any image is written.
 	int sources[MAX_DLIGHTS];
 	int sourceCount = 0;
 	for ( int i = 0; i < MAX_DLIGHTS; ++i )
 	{
 		const dlight_t &dl = cl_dlights[i];
-		// Area lights (area_lights.h) are not imaged through portals yet.
-		if ( dl.die >= now && dl.IsRadiusGreaterThanZero() && ( dl.flags & DLIGHT_AREA ) == 0 )
+		// Area lights (area_lights.h) are not imaged through portals yet;
+		// DLIGHT_NO_PORTAL_IMAGE lights opt out.
+		if ( dl.die >= now && dl.IsRadiusGreaterThanZero() && ( dl.flags & excluded ) == 0 )
 			sources[sourceCount++] = i;
 	}
 	int imaged = 0;

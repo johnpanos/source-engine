@@ -521,10 +521,50 @@ the lightmapped world and on models, in every renderer. It is part of K7
   - elights (model-only lights);
   - displacements and the WMSH PBR per-pixel path, which need a clip in
     their consumers;
-  - Portal 2, whose client does not publish the portal set yet;
+  - ~~Portal 2, whose client does not publish the portal set yet~~ (done
+    2026-09-29, below);
   - recursive paths (one hop only);
   - shadowing along the path. Lightmap dlights cast no shadows; K7's
     shadow atlas is the path to that.
+
+### Portal 2 publishes its portals (2026-09-29, user request)
+
+The user asked to close the gap above for Portal 2. Lights now pass
+through Portal 2's portals as they do in Portal 1.
+
+- Client: `C_Portal_Base2D` publishes its open pairs every frame
+  (`game/client/portal2/portal/c_portal_base2d.cpp`), as Portal 1's
+  `C_Prop_Portal` does, so the engine's images, RFC 0011 G10's producers
+  and the radiosity links see Portal 2's portals.
+- Glow (contract clause P6): Portal 2's open portals each light their
+  surroundings with a point dlight in the portal's color
+  (`r_portal_use_dlights`, on here, off in retail). Imaged through its own
+  pair, each glow would tint the other portal's side in its color. The new
+  `DLIGHT_NO_PORTAL_IMAGE` flag (`public/dlight.h`) keeps a light out of the
+  images; the glow sets it.
+- Found on the way: Portal 2 places a portal (origin, angles, link
+  transform) only when it is activated by input or shot, as its maps open
+  theirs; a `prop_portal` spawned `Activated 1` stays at the world origin
+  on client and server. The Portal 2 lab run opens the portals with
+  `SetActivatedState 1`. The server gap is recorded, not changed: retail
+  maps do not spawn portals open.
+- Evidence (`build-p2`, native Vulkan, headless):
+  - `render.portal-lights.lab.portal2` (16 checks, `--game portal2`):
+    through the portal the floor brightens by 11.57 levels (Portal 1:
+    11.67), room A by 27.4; the out-of-opening point and the wall stay at
+    0.0 in every state. The engine reports 1 image through 2 open portals
+    with the test light, and 0 through 2 with only the glows lit. The glow
+    is off and exposure fixed (`mat_force_tonemap_scale 2`) for the pixel
+    views: Portal 2's auto exposure was still adapting at the first views
+    and moved unlit points by up to 4.6 levels.
+  - `render.portal-lights.lab.portal2.seeded-glowimage`: with
+    `r_portal_dlights_seed_glowimage` the engine reports 2 images and
+    `portal2.glow-not-imaged` fails, as required.
+  - `--seed noclip` in Portal 2 fails the leak check (+6.77).
+  - Portal 1 unchanged on `build`: 14 of 14, through-portal 11.67, the
+    noclip seed +6.70.
+- Not changed: the glow is still a point dlight, not an area light (a
+  separate step, not scheduled), and area lights are still not imaged.
 
 ## K1: device port and the Vulkan and null adapters (2026-09-28)
 

@@ -38,6 +38,11 @@ enum
 	// RFC 0011 light set v2: the slot carries an area light (engine/area_lights.h),
 	// its color black; only the engine sets it.
 	DLIGHT_AREA = 0x20,
+
+	// render.portal-lights.v1: the light is not imaged through open portals
+	// (engine/portal_dlights.h). A portal's own glow sets it: the glow stands
+	// for light leaving the portal's rim, not light entering the portal.
+	DLIGHT_NO_PORTAL_IMAGE = 0x40,
 };
 
 // This is the lighting value that is used to determine when something can be 

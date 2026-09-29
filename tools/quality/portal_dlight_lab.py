@@ -37,11 +37,26 @@ of each view's central 32x32 pixels: `direct` brightens in every lit state;
                           r_portal_dlights_seed_noclip lets images light
                           without the portal clip, and the no-leak checks
                           (`out`) must fail.
+
+    check --game portal2  the same views in Portal 2 (a Portal 2 build and a
+                          runtime staged by stage_portal2_runtime.py): its
+                          client publishes the open portals from
+                          C_Portal_Base2D. Portal 2's portals glow
+                          (r_portal_use_dlights), which would light the
+                          views near portal B, so the four states run with
+                          the glow off. A fifth state turns the glow on with
+                          the test light off: the glow lights its own side
+                          only (DLIGHT_NO_PORTAL_IMAGE), so the engine's
+                          report must show no image through the two open
+                          portals. `--seed glowimage` sets
+                          r_portal_dlights_seed_glowimage, which images the
+                          glow anyway, and that check must fail.
 """
 
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -77,6 +92,10 @@ STATES = (
     ("disabled", "r_portal_dlights 0"),
     ("closed", "r_portal_dlights 1; ent_fire portal_a SetActivatedState 0"),
 )
+# Portal 2 only: the portals' glow on, the test light off, portal A open again.
+GLOW_STATE = ("glow", "r_portal_dlight_test off; ent_fire portal_a SetActivatedState 1; "
+                      "r_portal_use_dlights 1")
+REPORT = re.compile(r"portal dlights: (\d+) imaged through (\d+) open portal\(s\)")
 LIT_DELTA = 8.0     # levels (0-255) a lit view must gain over "off"
 DARK_DELTA = 2.0    # levels a dark view may move
 SETTLE = 40
@@ -137,7 +156,11 @@ def build(args):
     return 0
 
 
-def script():
+def states(game):
+    return STATES + ((GLOW_STATE,) if game == "portal2" else ())
+
+
+def script(game="portal"):
     """Console lines for portal_boot's command cfg, as the view oracles
     script shots (tools/render/view_oracle.py console_script): every line of
     an exec'd cfg runs at once and a long wait chain on one line is not
@@ -146,7 +169,7 @@ def script():
     move across an opening teleports the player), and the camera is placed
     again right before the frame."""
     shots = []
-    for state, command in STATES:
+    for state, command in states(game):
         for index, (view, pos, ang) in enumerate(VIEWS):
             place = ["cmd setpos %s" % vec(pos), "cmd setang %s" % vec(ang)]
             steps = ([command, "wait 30"] if index == 0 else [])
@@ -155,6 +178,11 @@ def script():
                                                     "screenshot pdl_%s_%s" % (state, view), "wait %d" % AFTER]
             shots.append(steps)
     lines = ["noclip"]
+    if game == "portal2":
+        # Portal 2 places a portal (origin, angles, link transform) only when
+        # it is activated by input or shot, as its maps open theirs; one
+        # spawned active stays at the world origin.
+        lines.append("ent_fire portal_a SetActivatedState 1; ent_fire portal_b SetActivatedState 1")
     for index, steps in enumerate(shots):
         if index + 1 < len(shots):
             steps = steps + ["pdl_shot%d" % (index + 1)]
@@ -174,10 +202,11 @@ def central_mean(path):
 
 def check(args):
     out = Path(args.out).resolve()
-    frames = 200 + len(STATES) * (30 + len(VIEWS) * (SETTLE + AFTER + 10))
+    game = args.game
+    frames = 200 + len(states(game)) * (30 + len(VIEWS) * (SETTLE + AFTER + 10))
     command = [sys.executable, str(HERE / "portal_boot.py"), "--runtime", str(args.runtime),
                "--build", str(args.build), "--renderer", "native-vulkan", "--headless",
-               "--map", NAME, "--width", "1280", "--height", "720",
+               "--game", game, "--map", NAME, "--width", "1280", "--height", "720",
                "--capture-wait", str(frames), "--startup-command", "sv_cheats 1",
                "--startup-command", "r_portal_dlights_report 1",
                # Fixed 15 ms frames, so each wait is game time the server
@@ -187,16 +216,26 @@ def check(args):
                "--out", str(out)]
     if args.seed == "noclip":
         command += ["--startup-command", "r_portal_dlights_seed_noclip 1"]
-    for line in script():
+    if args.seed == "glowimage":
+        command += ["--startup-command", "r_portal_dlights_seed_glowimage 1"]
+    if game == "portal2":
+        # The portals' own glow lights the views near portal B; the glow
+        # state turns it back on.
+        command += ["--startup-command", "r_portal_use_dlights 0"]
+        # Portal 2's HDR auto exposure is still adapting at the first views;
+        # a fixed exposure (the top of its auto range, mat_autoexposure_max)
+        # keeps every state comparable.
+        command += ["--startup-command", "mat_force_tonemap_scale 2"]
+    for line in script(game):
         command += ["--console-command", line]
     if args.content_root:
         command += ["--content-root", str(args.content_root)]
     result = subprocess.run(command, capture_output=True, text=True)
     checks = Checks()
     checks.check(result.returncode == 0, "boot.passes", (result.stdout + result.stderr)[-400:])
-    directory = out / "runtime/portal/screenshots"
+    directory = out / "runtime" / game / "screenshots"
     shots = {(state, view): directory / ("pdl_%s_%s.tga" % (state, view))
-             for state, _ in STATES for view, _, _ in VIEWS}
+             for state, _ in states(game) for view, _, _ in VIEWS}
     missing = [str(path.name) for path in shots.values() if not path.exists()]
     checks.check(not missing, "boot.every-view-captured", "missing %s" % ", ".join(missing))
     if missing:
@@ -219,6 +258,17 @@ def check(args):
                      "%.2f" % delta[(state, "out")])
         checks.check(abs(delta[(state, "wall")]) <= DARK_DELTA, "wall.dark-behind-the-exit-%s" % state,
                      "%.2f" % delta[(state, "wall")])
+    if game == "portal2":
+        # The engine reports each change of its image count (r_portal_dlights_report):
+        # the test light makes one image through the two published portals,
+        # and with only the glow lit none remain.
+        log = "\n".join(path.read_text(errors="replace") for path in
+                        (out / "runtime" / game / "console.log", out / "stdout.log") if path.exists())
+        reports = [(int(imaged), int(portals)) for imaged, portals in REPORT.findall(log)]
+        checks.check((1, 2) in reports, "portal2.portals-published",
+                     "reports %s: no image of the test light through two open portals" % reports)
+        checks.check(bool(reports) and reports[-1] == (0, 2), "portal2.glow-not-imaged",
+                     "last report %s, expected 0 imaged through 2" % (reports[-1:] or "none"))
     return checks.report()
 
 
@@ -237,11 +287,15 @@ def main(argv=None):
     c.add_argument("--content-root", default=str(ROOT / "quality-results" / NAME / "content"),
                    help="where the built map lives (the build step's content package)")
     c.add_argument("--out", required=True)
-    c.add_argument("--seed", choices=("noclip",),
-                   help="sensitivity: images skip the portal clip; the no-leak checks must fail")
+    c.add_argument("--game", choices=("portal", "portal2"), default="portal")
+    c.add_argument("--seed", choices=("noclip", "glowimage"),
+                   help="sensitivity: images skip the portal clip (the no-leak checks must fail), "
+                        "or (portal2) the glow is imaged (portal2.glow-not-imaged must fail)")
     args = parser.parse_args(argv)
     if args.command == "check" and not args.build:
         parser.error("check needs --build or PORTAL_DLIGHT_LAB_BUILD")
+    if args.command == "check" and args.seed == "glowimage" and args.game != "portal2":
+        parser.error("--seed glowimage needs --game portal2")
     return build(args) if args.command == "build" else check(args)
 
 

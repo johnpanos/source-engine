@@ -2729,6 +2729,92 @@
       "expected_divergence": "FAIL out.no-leak-outside-the-opening-on"
     },
     {
+      "id": "render.portal-lights.lab.portal2",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R90",
+      "contract": "unittests/rendertest/contracts/render.portal-lights.v1.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "RFC 0016 K7 dynamic lights through portals in Portal 2 (portal_dlight_lab.py --game portal2): the Portal 2 client publishes its open portals from C_Portal_Base2D, and the lab's views pass as in Portal 1 (portals opened by SetActivatedState, as Portal 2 maps open theirs; the portals' glow off and exposure fixed for the pixel checks). A fifth state turns the glow on with the test light off: the glow lights its own side only (DLIGHT_NO_PORTAL_IMAGE), so the engine reports no image through the two open portals. Needs build-p2, a runtime staged by stage_portal2_runtime.py (run/runtime-p2) and the built map.",
+      "command": [
+        "{python}",
+        "tools/quality/portal_dlight_lab.py",
+        "check",
+        "--game",
+        "portal2",
+        "--build",
+        "build-p2",
+        "--runtime",
+        "run/runtime-p2",
+        "--out",
+        "{out}"
+      ],
+      "sources": [
+        "tools/quality/portal_dlight_lab.py",
+        "engine/portal_dlights.cpp",
+        "public/render/portal_lights.h",
+        "public/dlight.h",
+        "game/client/portal2/portal/c_portal_base2d.cpp",
+        "game/client/portal2/portal/c_prop_portal.cpp"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 16,
+      "timeout_seconds": 1200,
+      "requires": [
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py",
+        "path:run/runtime-p2/hl2_launcher",
+        "path:quality-results/portal_dlight_lab/content/maps/portal_dlight_lab.bsp"
+      ],
+      "optional": true,
+      "expect": "pass"
+    },
+    {
+      "id": "render.portal-lights.lab.portal2.seeded-glowimage",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R90",
+      "contract": "unittests/rendertest/contracts/render.portal-lights.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "seeded: r_portal_dlights_seed_glowimage (a cheat) images lights flagged DLIGHT_NO_PORTAL_IMAGE anyway, so each portal's glow is imaged through its pair and portal2.glow-not-imaged must fail.",
+      "command": [
+        "{python}",
+        "tools/quality/portal_dlight_lab.py",
+        "check",
+        "--game",
+        "portal2",
+        "--build",
+        "build-p2",
+        "--runtime",
+        "run/runtime-p2",
+        "--out",
+        "{out}",
+        "--seed",
+        "glowimage"
+      ],
+      "sources": [
+        "tools/quality/portal_dlight_lab.py",
+        "engine/portal_dlights.cpp",
+        "public/render/portal_lights.h",
+        "public/dlight.h",
+        "game/client/portal2/portal/c_portal_base2d.cpp",
+        "game/client/portal2/portal/c_prop_portal.cpp"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 1200,
+      "requires": [
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py",
+        "path:run/runtime-p2/hl2_launcher",
+        "path:quality-results/portal_dlight_lab/content/maps/portal_dlight_lab.bsp"
+      ],
+      "optional": true,
+      "expect": "fail",
+      "expected_divergence": "FAIL portal2.glow-not-imaged"
+    },
+    {
       "id": "render.direct-light-selection",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
