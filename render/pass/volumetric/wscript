@@ -1,0 +1,19 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.pass.volumetric (RFC 0016 layer 6 feature, the participating-media
+# term, K11 step g): the froxel volume's inject and integrate kernels and the
+# composite over the opaque frame (their SPIR-V generated into
+# spv/volumetric_spv.h by render_spv).
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.pass.volumetric',
+		target      = 'render_pass_volumetric',
+		name        = 'render_pass_volumetric',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_math', 'render_device', 'render_shaderlib', 'render_spv'],
+		idx         = bld.get_taskgen_count()
+	)

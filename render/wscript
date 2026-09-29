@@ -29,6 +29,7 @@ PORTABLE = [
 	'pass/lights',
 	'pass/shadows',
 	'pass/output',
+	'pass/volumetric',
 	'legacy',
 	'composition',
 ]

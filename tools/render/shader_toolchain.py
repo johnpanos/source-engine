@@ -91,6 +91,7 @@ LIGHTS = "render/pass/lights"
 SHADOWS = "render/pass/shadows"
 DEBUG = "render/pass/debug"
 OUTPUT = "render/pass/output"
+VOLUMETRIC = "render/pass/volumetric"
 LAB = "render/lab"
 LIGHTS_TESTS = "unittests/rendertest/core/pass/lights"
 SHADOWS_TESTS = "unittests/rendertest/core/pass/shadows"
@@ -173,6 +174,14 @@ GENERATED = {
         ("kShadowDepthVertex", SHADOWS + "/shadow_depth.vert", DEVICE_OPTIONS),
         ("kShadowReceiverVertex", SHADOWS + "/shadow_receiver.vert", DEVICE_OPTIONS),
         ("kShadowReceiverFragment", SHADOWS + "/shadow_receiver.frag", DEVICE_OPTIONS))),
+    "volumetric_spv.h": ("render::pass::volumetric::spirv",
+        "the volumetric fog pass: inject and composite (RFC 0016, the "
+        "participating-media term)", (
+        ("kVolumetricInjectCompute", VOLUMETRIC + "/volumetric_inject.comp", DEVICE_OPTIONS),
+        ("kVolumetricCompositeVertex", VOLUMETRIC + "/volumetric_composite.vert",
+         DEVICE_OPTIONS),
+        ("kVolumetricCompositeFragment", VOLUMETRIC + "/volumetric_composite.frag",
+         DEVICE_OPTIONS))),
     "skin_defects_spv.h": ("rendertest::skinning::spirv",
         "the skinning suites' seeded kernels (render.skinning sensitivity)", (
         ("kSkinBoneIndexError", SKINNING + "/skin.comp",
@@ -218,6 +227,17 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_LTC_TRANSPOSED",)),
         ("kSurfaceLtcNoMagnitude", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_LTC_NO_MAGNITUDE",)))),
+    "volumetric_defects_spv.h": ("render::lab::spirv",
+        "render_lab's volumetric suite's seeded stages (render.lab.volumetric sensitivity, "
+        "RFC 0016 K11)", (
+        ("kVolumetricPhaseIgnored", VOLUMETRIC + "/volumetric_inject.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_PHASE_IGNORED",)),
+        ("kVolumetricAlbedoIgnored", VOLUMETRIC + "/volumetric_inject.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_ALBEDO_IGNORED",)),
+        ("kVolumetricExtinctionTwice", VOLUMETRIC + "/volumetric_composite.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_EXTINCTION_TWICE",)),
+        ("kVolumetricSliceOffByOne", VOLUMETRIC + "/volumetric_composite.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SLICE_OFF_BY_ONE",)))),
     "lightmap_basis_check_spv.h": ("render::lab::spirv",
         "render_lab's lightmap-basis suite's check kernel and its seeded variants "
         "(render.lab.lightmap-basis, RFC 0016 K11)", (
@@ -285,7 +305,7 @@ GLSL_GENERATED = {
 # families embed) each have a GLSL 4.50 twin: <stem>_glsl.h in the namespace's
 # ::glsl sibling, with the same array names.
 CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "debug_spv.h", "families_spv.h", "lines_spv.h",
-                        "output_spv.h", "shadow_spv.h", "skin_spv.h")
+                        "output_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h")
 for _header in CORE_PROGRAM_HEADERS:
     _namespace, _purpose, _rows = GENERATED[_header]
     GLSL_GENERATED[_header.replace("_spv.h", "_glsl.h")] = (

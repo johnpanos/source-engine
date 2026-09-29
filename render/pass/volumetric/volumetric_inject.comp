@@ -1,0 +1,176 @@
+#version 450
+// render.pass.volumetric inject stage (RFC 0016, the participating-media
+// term): one invocation per froxel of the ClusterGrid the caller built. At
+// samplesXY^2 x samplesDepth stratified points of the froxel (uniform in
+// pixels across its tile and in view distance across its slice) it evaluates
+// the medium and the light scattered toward the eye, and stores the averages:
+// rgb the in-scattered radiance per unit length, a the extinction.
+//
+//     S(x) = emission + sum over lights of
+//            pi E(x) exp( -tau( light, x ) ) sum_i sigma_s,i HG( g_i, cos )
+//
+// E is the light's diffuse light at normal incidence (lightmap unit, so pi E
+// is irradiance), tau the optical depth from the light (exact for boxes, the
+// global density and the height fog) and cos the cosine between the light's
+// travel and the direction to the eye. Unshadowed in this slice (the atlas's
+// helper belongs to a sibling pass). See
+// public/render/pass/volumetric/volumetric.h.
+
+#include "volumetric_common.glsl"
+#include "medium_light.glsl"
+
+layout( local_size_x = 8, local_size_y = 8, local_size_z = 1 ) in;
+
+layout( std430, set = 3, binding = 2 ) readonly buffer Volumes
+{
+	FogVolume volumes[];
+};
+layout( std430, set = 3, binding = 3 ) readonly buffer Lights
+{
+	MediumLight lights[];
+};
+layout( std430, set = 3, binding = 4 ) readonly buffer Projectors
+{
+	MediumProjector projectors[];
+};
+layout( set = 3, binding = 8 ) uniform texture2DArray cookies;
+layout( set = 3, binding = 9 ) uniform sampler linearSampler;
+layout( set = 3, binding = 10, rgba16f ) uniform writeonly image3D injected;
+
+const int kMaxMedia = 8;
+
+// The media at a point: their total extinction and emission, and each
+// scattering medium's sigma_s and g (the global and height fog as one).
+struct Local
+{
+	float extinction;
+	vec3 emission;
+	int count;
+	float scattering[kMaxMedia];
+	float anisotropy[kMaxMedia];
+};
+
+void AddMedium( inout Local local, float extinction, float albedo, float g )
+{
+	if ( !( extinction > 0.0 ) )
+		return;
+	local.extinction += extinction;
+#ifdef SEEDED_ALBEDO_IGNORED
+	const float scattering = extinction;
+#else
+	const float scattering = extinction * albedo;
+#endif
+	if ( scattering > 0.0 && local.count < kMaxMedia )
+	{
+		local.scattering[local.count] = scattering;
+		local.anisotropy[local.count] = g;
+		++local.count;
+	}
+}
+
+Local MediumAt( vec3 p )
+{
+	Local local;
+	local.extinction = 0.0;
+	local.emission = vec3( 0.0 );
+	local.count = 0;
+	const float scale = params.screen.w;
+	AddMedium( local, ( params.fog0.x + HeightExtinction( p.z ) ) * scale, params.fog1.x,
+	    params.fog1.y );
+	for ( uint v = 0u; v < params.counts.y; ++v )
+	{
+		if ( InBox( p, volumes[v].minsExtinction.xyz, volumes[v].maxsAlbedo.xyz ) )
+		{
+			AddMedium( local, volumes[v].minsExtinction.w * scale, volumes[v].maxsAlbedo.w,
+			    volumes[v].emissionAnisotropy.w );
+			local.emission += volumes[v].emissionAnisotropy.xyz * scale;
+		}
+	}
+	return local;
+}
+
+// The optical depth of the medium along [a, b].
+float OpticalDepth( vec3 a, vec3 b )
+{
+	float tau = params.fog0.x * length( b - a ) + HeightOpticalDepth( a, b );
+	for ( uint v = 0u; v < params.counts.y; ++v )
+		tau += volumes[v].minsExtinction.w *
+		       SegmentInBox( a, b, volumes[v].minsExtinction.xyz, volumes[v].maxsAlbedo.xyz );
+	return tau * params.screen.w;
+}
+
+float Phase( Local local, float c )
+{
+	float phase = 0.0;
+	for ( int i = 0; i < local.count; ++i )
+		phase += local.scattering[i] * HenyeyGreenstein( local.anisotropy[i], c );
+	return phase;
+}
+
+vec3 InScattering( vec3 p, Local local )
+{
+	vec3 scattered = vec3( 0.0 );
+	if ( local.count == 0 )
+		return scattered;
+	const vec3 toEye = normalize( params.eye.xyz - p );
+	for ( uint i = 0u; i < params.counts.x; ++i )
+	{
+		const vec3 light = LightAt( lights[i], p );
+		if ( all( equal( light, vec3( 0.0 ) ) ) )
+			continue;
+		const vec3 origin = lights[i].positionKind.xyz;
+		const vec3 travel = normalize( p - origin );
+		scattered +=
+		    kPi * light * ( exp( -OpticalDepth( origin, p ) ) * Phase( local, dot( travel, toEye ) ) );
+	}
+	for ( uint i = 0u; i < params.counts.z; ++i )
+	{
+		vec2 uv;
+		float distance;
+		if ( !ProjectorProject( projectors[i], p, uv, distance ) )
+			continue;
+		const float atten = ProjectorAttenuation( projectors[i], distance );
+		if ( !( atten > 0.0 ) )
+			continue;
+		const vec3 cookie =
+		    textureLod( sampler2DArray( cookies, linearSampler ), vec3( uv, projectors[i].origin.w ), 0.0 )
+		        .rgb;
+		const vec3 origin = projectors[i].origin.xyz;
+		const vec3 travel = normalize( p - origin );
+		scattered += kPi * projectors[i].color.rgb * cookie *
+		             ( atten * exp( -OpticalDepth( origin, p ) ) * Phase( local, dot( travel, toEye ) ) );
+	}
+	return scattered;
+}
+
+void main()
+{
+	const uvec3 froxel = gl_GlobalInvocationID;
+	if ( any( greaterThanEqual( froxel, params.dims.xyz ) ) )
+		return;
+	const float near = sliceDepth[froxel.z];
+	const float far = sliceDepth[froxel.z + 1u];
+	const uint n = max( params.dims.w, 1u );
+	const uint nd = max( params.counts.w, 1u );
+	const float tile = params.screen.z;
+	vec3 scattered = vec3( 0.0 );
+	float extinction = 0.0;
+	for ( uint sy = 0u; sy < n; ++sy )
+	{
+		for ( uint sx = 0u; sx < n; ++sx )
+		{
+			const vec2 pixel = ( vec2( froxel.xy ) + ( vec2( sx, sy ) + 0.5 ) / float( n ) ) * tile;
+			const vec3 ray = ViewRay( pixel );
+			for ( uint sd = 0u; sd < nd; ++sd )
+			{
+				const float distance = mix( near, far, ( float( sd ) + 0.5 ) / float( nd ) );
+				const vec3 p = ( params.viewToWorld * vec4( ray * distance, 1.0 ) ).xyz;
+				const Local local = MediumAt( p );
+				extinction += local.extinction;
+				scattered += local.emission + InScattering( p, local );
+			}
+		}
+	}
+	const float count = float( n * n * nd );
+	imageStore( injected, ivec3( froxel ), vec4( scattered / count, extinction / count ) );
+}

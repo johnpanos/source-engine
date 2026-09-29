@@ -18,6 +18,19 @@
 //			base color times the lightmap's total light (the full surface is
 //			the Model assembly check).
 //
+//			Participating media (K11 step g): when the map's entity lump holds
+//			an env_volumetric_fog_volume or env_volumetric_fog_controller,
+//			render.pass.volumetric applies its fog to the opaque frame, on
+//			render.pass.lights' ClusterGrid subdivided 8 x 4 (lab_media.h),
+//			lit by the lump's lights and projectors (unshadowed in this
+//			slice). --fog-scale s multiplies every density (0: the fixture's
+//			density-zero state), --no-volumetric leaves the pass out, and
+//			--fog-samples xy,depth sets the inject stage's samples per froxel
+//			(default 2,4: 2 x 2 across and 4 along), --time n prints the
+//			pass's median time over n more submissions,
+//			and --inscatter-only clears the frame before the composite (the
+//			in-scattered light alone, as Cycles' Volume Direct pass).
+//
 //			The frame's debug controls (RFC 0014) apply through the --debug-*
 //			options, as cl_render_debug_* apply in the product: validated by
 //			render.frame, turned into each program's specialization, drawn
@@ -27,7 +40,7 @@
 //			           --forward x,y,z --up x,y,z --hfov degrees --size WxH
 //			           --out <file.pfm> [--model <models/x.mdl> --model-origin
 //			           x,y,z] [--validate] [--dump-mesh] [--core-direct]
-//			           [--debug-view n]
+//			           [--debug-view n] [--fog-scale s] [--no-volumetric] [--time n]
 //			           [--debug-program name] [--debug-scale s]
 //			           [--debug-range r] [--debug-threshold t] [--debug-brdf n]
 //			           [--debug-furnace] [--debug-term name[,name...]]
@@ -39,6 +52,7 @@
 //
 //=============================================================================//
 
+#include "lab_media.h"
 #include "lab_support.h"
 #include "suites.h"
 
@@ -57,12 +71,15 @@
 #include "render/material/program_resolver.h"
 #include "render/material/vmt_import.h"
 #include "render/math/matrix.h"
+#include "render/pass/lights/clusters.h"
+#include "render/pass/volumetric/volumetric.h"
 #include "render/resources/texture_cache.h"
 #include "texturecontainer/texture_image.h"
 #include "texturecontainer/vtf_image_reader.h"
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -104,6 +121,15 @@ struct Options
 	// The core draws the map's direct light, so world surfaces read the
 	// bake's indirect layer (BakedLightmapLayer).
 	bool coreDirect = false;
+	// Participating media: every density times this; the pass left out.
+	float fogScale = 1.0f;
+	bool noVolumetric = false;
+	// A diagnostic: the frame cleared to black before the composite, so the
+	// image is the medium's in-scattered light alone (Cycles' Volume Direct).
+	bool inscatterOnly = false;
+	std::uint32_t timeRepeats = 0;
+	// The inject stage's stratified samples per froxel (across, along).
+	pass::volumetric::VolumetricSampling fogSampling;
 	frame::DebugControls debug;
 };
 
@@ -142,6 +168,10 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			options.dumpMesh = true;
 		else if ( arg == "--core-direct" )
 			options.coreDirect = true;
+		else if ( arg == "--no-volumetric" )
+			options.noVolumetric = true;
+		else if ( arg == "--inscatter-only" )
+			options.inscatterOnly = true;
 		else if ( !value )
 			return std::nullopt;
 		else if ( arg == "--game" )
@@ -162,6 +192,14 @@ std::optional<Options> ParseOptions( int argc, char **argv )
 			take();
 		else if ( arg == "--hfov" )
 			options.horizontalFov = float( std::atof( take() ) );
+		else if ( arg == "--fog-scale" )
+			options.fogScale = float( std::atof( take() ) );
+		else if ( arg == "--time" )
+			options.timeRepeats = std::uint32_t( std::atoi( take() ) );
+		else if ( arg == "--fog-samples" &&
+		          std::sscanf( value, "%u,%u", &options.fogSampling.samplesXY,
+		              &options.fogSampling.samplesDepth ) == 2 )
+			take();
 		else if ( arg == "--size" &&
 		          std::sscanf( value, "%ux%u", &options.width, &options.height ) == 2 )
 			take();
@@ -313,6 +351,22 @@ int Run( const Options &options )
 	if ( bakedLayer < 0 )
 		return Fail( std::string( "LMAP carries no " ) +
 		             mapcontainer::WorldLightmapLayerName( bakedRole ) + " layer" );
+
+	// The entity lump's participating media and the lights it names.
+	LabMedia media;
+	{
+		mapcontainer::MapLumpInfo info{};
+		if ( container->FindLegacyLump( 0, &info ) && info.storedSize == info.uncompressedSize )
+		{
+			const auto parsed = ParseEntityLump(
+			    mapBytes->substr( std::size_t( info.offset ), std::size_t( info.storedSize ) ) );
+			if ( !parsed )
+				return Fail( options.map.string() + ": the entity lump does not parse" );
+			media = MediaFromEntities( *parsed );
+		}
+		media.medium.densityScale = options.fogScale;
+	}
+	const bool volumetric = media.present && !options.noVolumetric;
 
 	// The debug controls, as the renderer validates a frame's.
 	if ( auto valid = frame::ValidateDebugControls(
@@ -577,10 +631,12 @@ int Run( const Options &options )
 		colorDesc.format = colorFormat;
 		colorDesc.width = options.width;
 		colorDesc.height = options.height;
-		colorDesc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
+		colorDesc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource,
+		    ResourceUsage::kCopyDestination };
 		TextureDesc depthDesc = colorDesc;
 		depthDesc.format = depthFormat;
-		depthDesc.usages = { ResourceUsage::kDepthWrite };
+		// Sampled by the volumetric composite.
+		depthDesc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
 		auto color = device->CreateTexture( colorDesc );
 		auto depth = device->CreateTexture( depthDesc );
 		if ( !vertexBuffer.IsValid() || !indexBuffer.IsValid() || !readback.IsValid() || !color ||
@@ -599,6 +655,61 @@ int Run( const Options &options )
 		material::FamilyDrawConstants constants;
 		std::memcpy( constants.toClip, &toClip, sizeof( constants.toClip ) );
 
+		// The fog's froxels: the light grid of this view (render.pass.lights,
+		// its desktop limits) subdivided 8 x 4, the owner of the depth split.
+		std::unique_ptr<pass::volumetric::VolumetricRenderer> fog;
+		std::optional<pass::lights::ClusterGrid> fogGrid;
+		pass::volumetric::FroxelLayout fogLayout;
+		CookieArray cookies;
+		if ( volumetric )
+		{
+			pass::lights::ClusterViewDesc gridView;
+			gridView.view = view;
+			gridView.projection = projection;
+			gridView.widthPixels = options.width;
+			gridView.heightPixels = options.height;
+			gridView.nearZ = 1.0f;
+			gridView.farZ = 65536.0f;
+			auto lightGrid =
+			    pass::lights::CreateClusterGrid( gridView, pass::lights::DesktopClusterLimits() );
+			if ( !lightGrid )
+				return Fail( "the light grid does not build" );
+			auto fine = pass::lights::SubdivideClusterGrid( lightGrid.Value(), 8, 4 );
+			if ( !fine )
+				return Fail( "the fog's grid does not subdivide the light grid" );
+			fogGrid = std::move( fine ).Value();
+			fogLayout = FroxelLayoutOf( *fogGrid );
+			auto created = pass::volumetric::VolumetricRenderer::Create( *device, colorFormat );
+			if ( !created )
+				return Fail( "the volumetric pass was refused" );
+			fog = std::move( created ).Value();
+			if ( std::optional<std::string> why =
+			         cookies.Create( *device, files, media.cookieNames ) )
+				return Fail( *why );
+			std::printf(
+			    "render_lab: volumetric fog: %zu volumes, %zu lights (%u unsupported), %zu "
+			    "projectors, froxels %ux%ux%u, density scale %g\n",
+			    media.medium.volumes.size(), media.lights.size(), media.unsupportedLights,
+			    media.projectors.size(), fogLayout.tilesX, fogLayout.tilesY, fogLayout.slices,
+			    double( media.medium.densityScale ) );
+		}
+		pass::volumetric::VolumetricView fogView;
+		fogView.froxels = &fogLayout;
+		fogView.projection = projection;
+		fogView.eye = options.eye;
+		pass::volumetric::VolumetricFrame fogFrame;
+		fogFrame.medium = &media.medium;
+		fogFrame.lights = media.lights;
+		fogFrame.projectors = media.projectors;
+		fogFrame.sampling = options.fogSampling;
+		pass::volumetric::VolumetricTargets fogTargets;
+		fogTargets.color = color.Value();
+		fogTargets.depth = depth.Value();
+		fogTargets.depthUsage = ResourceUsage::kDepthWrite;
+		fogTargets.width = options.width;
+		fogTargets.height = options.height;
+		fogTargets.cookies = cookies.Texture();
+
 		// Record: uploads, the world and the model, the readback.
 		auto encoded = device->BeginEncoder( QueueKind::kGraphics );
 		if ( !encoded )
@@ -606,6 +717,8 @@ int Run( const Options &options )
 		CommandEncoder &encoder = encoded.Value();
 		cache.RecordUploads( encoder );
 		groups.RecordUploads( encoder );
+		if ( fog )
+			cookies.RecordUpload( encoder );
 		encoder.TransitionBuffer(
 		    vertexBuffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 		encoder.WriteBuffer( vertexBuffer, 0, vertexBytes );
@@ -662,6 +775,16 @@ int Run( const Options &options )
 			++drawn;
 		}
 		encoder.EndRendering();
+		if ( fog && options.inscatterOnly )
+		{
+			encoder.TransitionTexture(
+			    color.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopyDestination );
+			encoder.ClearTexture( color.Value(), { 0, 0, 0, 1 } );
+			encoder.TransitionTexture(
+			    color.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kColorAttachment );
+		}
+		if ( fog && status == 0 && !fog->Record( encoder, fogView, fogFrame, fogTargets ) )
+			status = Fail( "the volumetric pass did not record" );
 		encoder.TransitionTexture(
 		    color.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
 		encoder.TransitionBuffer(
@@ -674,6 +797,8 @@ int Run( const Options &options )
 		(void)device->WaitIdle();
 		cache.Retire( token.Value() );
 		groups.Retire( token.Value() );
+		if ( fog )
+			fog->Collect( token.Value() );
 		if ( status == 0 )
 		{
 			std::vector<std::byte> pixels( pixelBytes );
@@ -690,6 +815,38 @@ int Run( const Options &options )
 				return Fail( "cannot write " + options.out.string() );
 			std::printf( "render_lab: %zu draws, %zu vertices, %zu materials -> %s\n", drawn,
 			    vertices.size(), materials.size(), options.out.string().c_str() );
+		}
+		// The pass's time (perf, binding rule 7): its three stages in a
+		// submission of their own, submission to idle, median over the
+		// repeats. The frame is already read back; each repeat composites
+		// the fog over the target again.
+		if ( fog && status == 0 && options.timeRepeats > 0 )
+		{
+			std::vector<double> times;
+			for ( std::uint32_t i = 0; i < options.timeRepeats; ++i )
+			{
+				auto timed = device->BeginEncoder( QueueKind::kGraphics );
+				if ( !timed )
+					return Fail( "no encoder" );
+				timed.Value().TransitionTexture(
+				    color.Value(), ResourceUsage::kCopySource, ResourceUsage::kColorAttachment );
+				if ( !fog->Record( timed.Value(), fogView, fogFrame, fogTargets ) )
+					return Fail( "the volumetric pass did not record" );
+				timed.Value().TransitionTexture(
+				    color.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
+				const auto start = std::chrono::steady_clock::now();
+				auto timedToken = device->Submit( QueueKind::kGraphics, { &timed.Value(), 1 }, {} );
+				if ( !timedToken )
+					return Fail( "a timed submission was refused" );
+				(void)device->WaitIdle();
+				times.push_back( std::chrono::duration<double, std::milli>(
+				    std::chrono::steady_clock::now() - start )
+				        .count() );
+				fog->Collect( timedToken.Value() );
+			}
+			std::sort( times.begin(), times.end() );
+			std::printf( "render_lab: volumetric time median %.3f ms, min %.3f ms over %u\n",
+			    times[times.size() / 2], times.front(), options.timeRepeats );
 		}
 		for ( BufferId id : { vertexBuffer, indexBuffer, readback } )
 			(void)device->Release( id, token.Value() );
@@ -721,6 +878,7 @@ int main( int argc, char **argv )
 		    "usage: render_lab --game <dir> --map <file.bsp> --eye x,y,z --forward x,y,z --up "
 		    "x,y,z --hfov degrees --size WxH --out <file.pfm> [--model <models/x.mdl> "
 		    "--model-origin x,y,z] [--validate] [--dump-mesh] [--core-direct] [--debug-* ...]\n"
+		    "           [--fog-scale s] [--no-volumetric] [--time n]\n"
 		    "       render_lab suite <name> [--validate] [--seeded <defect>]\n" );
 		return 2;
 	}

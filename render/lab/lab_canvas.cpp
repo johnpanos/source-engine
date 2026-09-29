@@ -29,7 +29,8 @@ std::optional<std::string> Canvas::Create( IRenderDevice2 &device, std::uint32_t
 	color.debugName = "render_lab.canvas.color";
 	TextureDesc depth = color;
 	depth.format = kCanvasDepth;
-	depth.usages = { ResourceUsage::kDepthWrite };
+	// Sampled by passes that read the frame's depth (CanvasPost).
+	depth.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
 	depth.debugName = "render_lab.canvas.depth";
 	BufferDesc readback;
 	readback.size = std::uint64_t( width ) * height * 8;
@@ -79,7 +80,7 @@ BufferId Canvas::Vertices( std::span<const std::byte> bytes )
 
 std::optional<std::string> Canvas::Render( resources::TextureCache &textures,
     material::GroupResidency &groups, std::span<const CanvasDraw> draws, const ClearColor &clear,
-    CanvasImage *out )
+    CanvasImage *out, const CanvasPost &post )
 {
 	auto encoded = m_Device.BeginEncoder( QueueKind::kGraphics );
 	if ( !encoded )
@@ -122,6 +123,11 @@ std::optional<std::string> Canvas::Render( resources::TextureCache &textures,
 		encoder.Draw( draw.vertexCount, 1, 0, 0 );
 	}
 	encoder.EndRendering();
+	if ( post )
+	{
+		if ( std::optional<std::string> why = post( encoder, m_Color, m_Depth ) )
+			return why;
+	}
 	encoder.TransitionTexture(
 	    m_Color, ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
 	if ( out )
@@ -132,7 +138,8 @@ std::optional<std::string> Canvas::Render( resources::TextureCache &textures,
 	}
 	auto token = m_Device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
 	if ( !token )
-		return std::string( "the canvas frame was refused at submission" );
+		return "the canvas frame was refused at submission (device status " +
+		       std::to_string( static_cast<std::uint32_t>( token.Error().status ) ) + ")";
 	(void)m_Device.WaitIdle();
 	textures.Retire( token.Value() );
 	groups.Retire( token.Value() );

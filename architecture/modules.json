@@ -811,6 +811,8 @@
           "render.frame",
           "render.graph",
           "render.pass.lines",
+          "render.pass.lights",
+          "render.pass.volumetric",
           "render.contracts",
           "jobs.graph",
           "testing.contracts"
@@ -901,6 +903,20 @@
           "render.device",
           "render.graph",
           "render.resources",
+          "render.shader-library"
+        ]
+      },
+      {
+        "id": "render.pass.volumetric",
+        "paths": [
+          "public/render/pass/volumetric/",
+          "render/pass/volumetric/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.contracts",
+          "render.device",
           "render.shader-library"
         ]
       },
@@ -1494,6 +1510,14 @@
           "render_shaderlib"
         ]
       },
+      "render_pass_volumetric": {
+        "allowedUse": [
+          "render_math",
+          "render_device",
+          "render_spv",
+          "render_shaderlib"
+        ]
+      },
       "render_pass_output": {
         "allowedUse": [
           "render_graph",
@@ -1530,7 +1554,7 @@
           "render_shaderlib"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric"]},
       "render_pass_debug": {
         "allowedUse": [
           "render_device",

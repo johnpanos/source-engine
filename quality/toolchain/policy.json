@@ -442,6 +442,10 @@
       "dialect": "cxx20",
       "rfc": "0016"
     },
+    "render_pass_volumetric": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
     "render_pass_skinning": {
       "dialect": "cxx20",
       "rfc": "0016"

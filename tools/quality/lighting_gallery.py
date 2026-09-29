@@ -88,7 +88,18 @@ def probe_model(fixture):
     return model, origin
 
 
-def render_camera(lab, fixture, camera_name, out):
+def fog_scale(fixture, state):
+    """render_lab's --fog-scale for a state: 0 for a medium-free state of a
+    fixture whose other states have a medium (its map's entity lump carries
+    the medium for every state; the density-zero state scales it to 0), else
+    None (the map's own medium)."""
+    media = fixture["lighting"].get("media") or {}
+    if any(media.values()) and not media.get(state):
+        return 0.0
+    return None
+
+
+def render_camera(lab, fixture, camera_name, out, scale=None):
     camera = fixture["cameras"][camera_name]
     bsp = (lf.ROOT / fixture["lighting"]["map"]["bsp"]).resolve()
     game = str(bsp).rsplit("/maps/", 1)[0]
@@ -102,6 +113,8 @@ def render_camera(lab, fixture, camera_name, out):
     model = probe_model(fixture)
     if model:
         command += ["--model", model[0], "--model-origin", ",".join("%.4f" % v for v in model[1])]
+    if scale is not None:
+        command += ["--fog-scale", "%g" % scale]
     result = subprocess.run(command, env=lab_environment(lab), capture_output=True, text=True,
                             timeout=600)
     message = (result.stdout + result.stderr).strip().splitlines()
@@ -281,10 +294,13 @@ def cmd_gallery(args):
         for key in sorted(record["views"]):
             state, camera = key.split(".", 1)
             entry = {"fixture": name, "state": state, "camera": camera}
-            if camera not in rendered:
-                image = out / "lab" / ("%s.%s.pfm" % (name, camera))
-                rendered[camera] = render_camera(lab, fixture, camera, image) + (image,)
-            ok, message, model, image = rendered[camera]
+            scale = fog_scale(fixture, state)
+            view = (camera, scale)
+            if view not in rendered:
+                image = out / "lab" / ("%s.%s%s.pfm" % (
+                    name, camera, "" if scale is None else ".fog-scale-%g" % scale))
+                rendered[view] = render_camera(lab, fixture, camera, image, scale) + (image,)
+            ok, message, model, image = rendered[view]
             if not ok:
                 entry["error"] = message or "render_lab failed"
             else:

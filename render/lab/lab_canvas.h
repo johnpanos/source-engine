@@ -18,6 +18,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -38,6 +39,12 @@ struct CanvasDraw
 	std::uint32_t vertexCount = 0;
 	std::vector<std::byte> constants; // the draw constants the pipeline reads
 };
+
+// Work recorded after the draws, before the read back: the color target is
+// in kColorAttachment and the depth target in kDepthWrite, and the work leaves
+// them so (a pass that composites over the frame, render.pass.volumetric).
+using CanvasPost = std::function<std::optional<std::string>(
+    device::CommandEncoder &encoder, device::TextureId color, device::TextureId depth )>;
 
 // A linear image read back from a canvas: RGBA per texel, row 0 at the top.
 struct CanvasImage
@@ -73,11 +80,12 @@ public:
 	const device::TextureDesc &ColorDesc() const { return m_ColorDesc; }
 
 	// Records the caches' pending uploads and the pending vertex writes,
-	// clears the target to `clear`, draws the draws in order and waits; with
-	// `out`, reads the target back into it. The reason when it cannot.
+	// clears the target to `clear`, draws the draws in order, records `post`
+	// and waits; with `out`, reads the target back into it. The reason when
+	// it cannot.
 	std::optional<std::string> Render( resources::TextureCache &textures,
 	    material::GroupResidency &groups, std::span<const CanvasDraw> draws,
-	    const device::ClearColor &clear, CanvasImage *out );
+	    const device::ClearColor &clear, CanvasImage *out, const CanvasPost &post = {} );
 
 private:
 	explicit Canvas( device::IRenderDevice2 &device ) : m_Device( device ) {}
