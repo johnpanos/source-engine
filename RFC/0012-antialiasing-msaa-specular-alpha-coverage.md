@@ -265,7 +265,10 @@ fragment:
 - the split-sum table lookup (and so directional albedo and the diffuse
   weight);
 - probe and `$envmap` mip selection;
-- glass rough refraction.
+- glass rough refraction;
+- on the render core (RFC 0016 `render.lighting.v1`, amendment 2026-09-28),
+  also the clustered, LTC area-light and projected-light lobes and the
+  screen-space reflection cutoff and mip.
 
 The clear coat filters its own roughness with the geometric normal it already
 uses. The debug `INDIRECT_VIEW` variant is unchanged.

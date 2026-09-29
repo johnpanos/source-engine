@@ -684,6 +684,19 @@ So a switched-on lamp lights a wall and not the wall's reflection.
   and so does light a probe's own emitters or the sky change. Legacy
   `env_cubemap` probes have no G-buffer and are not relit.
 
+**Screen-space reflections and specular occlusion (amendment 2026-09-28).**
+RFC 0016's lighting model (`render.lighting.v1`) adds two terms to the
+image-based light, both implemented on the render core:
+- screen-space reflections, traced for roughness below a cutoff and blended
+  over these probes by hit confidence, with the probes as the fallback;
+- specular occlusion from GTAO and roughness (Lagarde and de Rousiers
+  2014), applied to image-based light only.
+
+The probes, their relighting and this BRDF keep their owner here. The
+Cycles references of Phase G are the ground truth for RFC 0016's
+`render_lab` (K11), which proves the full model outside the game before
+it is integrated.
+
 ### Platform tiers
 
 Mobile and MoltenVK profiles declare a PBR quality tier: fewer prefiltered mips,

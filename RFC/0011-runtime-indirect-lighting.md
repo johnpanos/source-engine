@@ -278,6 +278,13 @@ native types. RFC 0008 F5's clustered direct lighting consumes the same
 snapshot. That gives one owner for "which lights exist" and removes the need
 for the engine light cache and a renderer light list to be kept in sync.
 
+Render-core consumers (amendment 2026-09-28): RFC 0016's lighting model
+(`render.lighting.v1`) reads this snapshot for its clustered lights, its
+per-pixel LTC area lights, its per-view projector list and the in-scattering
+of its volumetric fog. The snapshot and its producers keep their owner here.
+Each term moves off the CPU lightmap path per surface through
+`IRenderCoreWorld::RuntimeLight`, so a light is never counted twice.
+
 ### Area lights (light set v2, amendment 2026-09-28)
 
 Added at the user's direction: emissive surfaces light their surroundings

@@ -287,6 +287,10 @@ measured for this RFC; measured numbers are quoted from their records.
   change is a versioned decision with its own oracle.
 - GPU skinning, shadow maps for the sun, spot lights and flashlights,
   clustered dynamic lights, float and MRT targets.
+- One lighting model at Source 2 quality or better
+  ([Lighting model](#lighting-model-renderlightingv1-amended-2026-09-28)):
+  every term with an owner, an oracle and a neutral value, proven against
+  Cycles in `render_lab` before it is integrated (K11, then K12).
 - Parallel command recording in products: passes record as jobs on the
   root's compute pool into their own encoders, the command stream equals the
   serial executor's, and frame recording time falls as workers are added
@@ -315,6 +319,9 @@ measured for this RFC; measured numbers are quoted from their records.
 - Running D3D bytecode from mod shader DLLs on the core
   ([Mod shader DLLs](#mod-shader-dlls)).
 - Temporal antialiasing or upscalers (RFC 0012 keeps these out of scope).
+- Screen-space global illumination. RFC 0011 rejects it; the lighting
+  model's screen-space reflections are glossy reflections over the probes,
+  not diffuse GI.
 - Mesh shaders, bindless descriptors or GPU-driven culling, until measured
   need ([Later work](#later-work)).
 - A new UI toolkit, particle system or animation system. Their rendering
@@ -817,7 +824,7 @@ pass kind), so a neutral term costs nothing at runtime.
 | Specular lobe (runtime lights) | exponent or roughness, mask, fresnel ranges, boost, tint, rim | none | `$phong*`, `$rimlight*` (Blinn-Phong points, not energy conserving) | GGX from the same roughness |
 | Coverage | base alpha × `$alpha` × vertex alpha; alpha test and reference; alpha to coverage; blend state (opaque, alpha, additive, mod2x) | opaque, no test | `$alphatest`, `$translucent`, `$additive`, `$vertexalpha`, `$allowalphatocoverage`, DecalModulate | the same, plus MSAA coverage (RFC 0012) |
 | View terms (frame) | fog (range, height), output encoding, tone scale | no fog | legacy fog modes, `$nofog` | exponential height fog, volumetrics later |
-| Projected lights | flashlight and `env_projectedtexture` through K7's clustered path | none | the legacy flashlight pass per material | shadowed projected lights for every material |
+| Projected lights | flashlight and `env_projectedtexture` through the view's projector list (K7, [Projected lights](#projected-lights-a-per-view-projector-list-amended-2026-09-28)) | empty list | the legacy flashlight pass per material | shadowed projected lights for every material |
 
 Quirks are defaults with one owner: the 0.7 alpha-test reference, the
 2.0 overbright, the LDR 2^2.2 and HDR 16 lightmap scales, the sRGB rules,
@@ -960,6 +967,172 @@ Each phase closes when:
   size and caster budget.
 - **Ownership.** RFC 0008 F5's clustered dynamic lights are delivered here
   (K7). RFC 0011 keeps producers and the light set.
+
+### Projected lights: a per-view projector list (amended 2026-09-28)
+
+`env_projectedtexture` is a light of RFC 0011's model
+(`render.projected-light.v1`, `public/render/projected_light.h`), published
+in the light set's `Snapshot::projected`, never in `lights`. The core shades
+projected lights per pixel from a projector list in the view bind group.
+They are not assigned to froxels.
+
+- **The list.** It holds at most `projected_light::kMaxProjectedLights` (16)
+  records, in the snapshot's order. Each record holds:
+  - world-to-projector clip: the matrix `BuildFlashlightShadowView` builds
+    from the light's basis, fields of view, near and far, so the cookie and
+    the shadow share one projection;
+  - color (linear, style folded in), attenuation (constant, linear,
+    quadratic) and far, for `projected_light::Attenuation`'s falloff and end
+    falloff;
+  - the cookie's layer in the view's cookie array;
+  - the shadow tile (`ShadowTileGpu`), or none when the light has
+    `shadows` false or the atlas refused it;
+  - `lightsWorld`: when false, world surfaces skip the record and models
+    take it.
+- **Evaluation.** The surface's projected-light term loops over the list.
+  For each record it takes the projector-space position, rejects points
+  outside the frustum or nearer than its near plane (`projected_light::Project`),
+  samples the cookie at that point, and applies `IrradianceAt`'s rule times
+  the shadow sample (`shadow_sample.glsl`). The neutral value is an empty
+  list, and a view with no projector binds an empty list. Diffuse takes the
+  contract's Lambert rule. Families with a specular lobe (the `pbr` point
+  and S7's `$phong` point) add their lobe for the light's direction, as
+  they do for clustered lights.
+- **Cookies.** Each view gets one 2D array texture with one layer per record,
+  at a size each profile sets (desktop 512², mobile 256² provisional, RGBA8
+  sRGB). A cookie is copied into its layer, resampled, when its name, frame
+  (`cookieFrame`) or version changes, not every frame. Unused layers are
+  white. One binding keeps the four-group ceiling, and it fits the OpenGL
+  adapter's minimum of 16 texture units per stage, which 16 separate cookie
+  bindings would use up. The price is a capped cookie resolution per
+  profile.
+- **Shadows.** Each shadowed record asks `PlanShadowAtlas` for a tile,
+  ranked by screen coverage like spot lights. Casters are the scene's
+  instances and the world, so moving objects shadow through the atlas
+  depth. The CPU path's 4-unit disk occluders are not carried over: their
+  penumbra comes from the lens radius (`kSourceRadius`), the atlas's from
+  its filter. That difference is part of the handover oracle's tolerance,
+  not a new behavior switch, because the legacy flashlight pass drew
+  projected light unshadowed and RFC 0011 already changed that.
+- **Why not froxels.**
+  - The count is bounded at 16, and a frame usually has one or two.
+  - A projector is a frustum with separate horizontal and vertical fields
+    of view. The cluster kernel's cone test would reach froxels outside it,
+    or would need frustum-plane tests.
+  - `ClusterLightGpu` (32 bytes) would have to carry a matrix, a cookie and
+    a tile. The assignment kernel and its independent reference would need
+    a third light kind.
+
+  A per-pixel loop with an early frustum reject is cheaper to build and to
+  prove. Revisit only if a profile's measured frame time with projectors on
+  screen exceeds its K7 budget; then assign projectors to froxels by their
+  frustum planes, and the list stays the source of the records.
+- **Handover from the CPU path.** `IRenderCoreWorld::RuntimeLight(surface)`
+  sets `kProjectedLights` for exactly the surfaces the core shades with the
+  list. The same change makes the core evaluate projected light, and
+  `R_AddProjectedLights` then skips those surfaces. Models drawn by a family
+  that reads the list stop taking the light cache's projected stand-in in
+  the same way.
+- **Not covered yet.** Lights limited to a target entity stay on the legacy
+  flashlight path. The contract has no target key, and adding one is a
+  `render.projected-light` version change. Displacements follow the world
+  pass's displacement support.
+
+## Lighting model (`render.lighting.v1`) (amended 2026-09-28)
+
+User direction (2026-09-28): the core's lighting must reach Source 2
+quality or better. Build the hard parts first and prove them in renders
+outside the game, then integrate them. This section fixes the complete
+model, the algorithm for each term and its owner. Gates K11 (prove) and
+K12 (integrate) carry it.
+
+### The model
+
+Every surface the core shades evaluates one sum. Legacy materials are
+points of it (the surface model above), and the frame applies media and
+output afterwards:
+
+```
+L_out = emission
+      + sum over lights of  f(n, v, l) * L_in * visibility * (n . l)   direct
+      + diffuse * (1 - E_spec) * E_indirect(n) * ao_diffuse               indirect diffuse
+      + E_spec' * L_specular(r, roughness) * ao_specular                  indirect specular
+then: participating media (fog, volumetric scattering), exposure and tone map, output encoding
+```
+
+`f` is the one BRDF. `E_spec` is its directional albedo and `E_spec'` the
+energy-compensated form. `roughness` is RFC 0012's filtered roughness,
+which feeds every term that reads roughness.
+
+| Term | Algorithm | Contract owner | Neutral |
+| --- | --- | --- | --- |
+| BRDF | GGX (Trowbridge-Reitz) distribution, height-correlated Smith visibility, Schlick Fresnel; multiple-scattering energy compensation (Kulla-Conty in Filament's form) from the split-sum table; Lambert diffuse weighted by 1 - `E_spec`; clear coat as a second GGX lobe with Kelemen visibility and IOR 1.5 | RFC 0007, `public/render/pbr_brdf.h` and its one GLSL mirror `render/shaders/common/pbr_brdf.glsl` | the legacy point's own lobe (Lambert, half-Lambert, Blinn-Phong `$phong`) |
+| Point and spot lights (dlights, spark lights, `light_dynamic`) | clustered: the froxel lists of K7, both lobes on every family, world surfaces included | `render.light-set.v1` (RFC 0011), `render.lights.v1` | no lights |
+| Sun | cascaded shadow maps: practical splits, bounding-sphere cascades, texel snapping, a blend band between cascades | `render.shadows.v1` | no sun |
+| Area lights | linearly transformed cosines (Heitz et al. 2016) for the GGX and diffuse lobes, polygon clipped to the horizon, LUTs in the frame group | `render.area-light.v1` (RFC 0011); oracle `area_light::IrradianceAt` (exact form factor) for diffuse, a Monte Carlo GGX integral for specular | no area lights |
+| Projected lights | the per-view projector list ([above](#projected-lights-a-per-view-projector-list-amended-2026-09-28)) | `render.projected-light.v1` | empty list |
+| Direct visibility | shadow atlas depth with a filtered comparison for spot lights, projectors and the sun; optional point-light cube shadows; moving objects shadow as atlas casters; unbaked lights without a tile keep RFC 0011's SDF shadow (decision 4); one visibility per light and surface | `render.shadows.v1`, RFC 0011 | visibility one |
+| Indirect diffuse, static surfaces | the lightmap basis at the mapped normal: flat page, RNM three pages, SH L1 once RFC 0007/0008 install it; RFC 0011's producer layer or change volume per `render.indirect-policy.v1` | RFC 0007 (values), RFC 0008 (encoding), RFC 0011 (policy) | lighting one (unlit) |
+| Indirect diffuse, dynamic surfaces | the probe volume with visibility (`render.probe-volume.v1`), the ambient cube where no volume covers the point | RFC 0011 | the ambient cube |
+| Ambient occlusion | material AO times ground-truth-based AO (GTAO, Jimenez et al. 2016) from depth and normals, with its multi-bounce fit, applied to indirect light only; on baked light it must not occlude twice what the bake already occludes (K11 oracle) | this RFC, `render.pass.ao` (proposed) | one |
+| Indirect specular | split-sum image-based light from RFC 0007's blended, parallax-corrected, relit reflection probes (R50), with distance-based roughness; runtime-prefiltered `env_cubemap` on legacy maps; then screen-space reflections: a hierarchical-depth trace for roughness below a cutoff (0.4 provisional), blended over the probes by hit confidence (screen edge, thickness, roughness fade), with spatial filtering only (no temporal accumulation: RFC 0012 keeps TAA out) | RFC 0007 (probes), this RFC (`render.pass.ssr`, proposed) | reflectance zero |
+| Specular occlusion | from AO and roughness (Lagarde and de Rousiers 2014), applied to indirect specular only | this RFC | one |
+| Emission | emissive radiance in scene units; surfaces that should light their surroundings also register RFC 0011 area lights | the surface model, RFC 0011 | zero |
+| Participating media | legacy range and height fog as the legacy point; volumetric fog on a frustum-aligned froxel volume matching the cluster grid: density from height fog and fog volumes, in-scattering from the light set, the sun's cascades and projectors (cookies and shadows included), Henyey-Greenstein phase, energy-conserving front-to-back integration (Hillaire 2015, after Wronski 2014). The volume may reproject its own history, and it drops the history on a camera cut; that is not screen TAA | this RFC, `render.pass.volumetric` (proposed) | density zero: legacy fog alone, bitwise |
+| Output | the existing exposure and tone map chain; one output encoding (`color_encoding.glsl`) | this RFC | — |
+
+Rules for the whole model:
+
+- **One owner and one oracle per term.** Each term has a C++ reference
+  that shares no code with its shader. A term at its neutral value is
+  bitwise the term absent, checked with seeded mutants.
+- **Each light counts once per surface.** `IRenderCoreWorld::RuntimeLight`
+  generalizes to every term that the CPU lightmap path also produces. A
+  term moves to the core in the same change that sets its flag.
+- **One copy of the math.** The model's GLSL lives in `render/shaders/common`
+  and the families. `world_pbr.frag`, `model_pbr.frag`, `probe_volume.glsl`
+  and `reflection_probes.glsl` in the native backend move there as the one
+  copy (their C++ oracles are unchanged), and the backend copies are deleted
+  (K9's dead-code check).
+- **Profiles declare, they don't skip.** A term that is over budget or
+  unsupported on a profile (for example SSR or volumetric fog on the Fold7)
+  is declared off by name in that profile's capability record. A term that
+  a profile declares is never silently dropped.
+
+### Hard parts first, proven outside the game
+
+Integration into the game is the cheap part once each hard part works; the
+reverse order is how renderers get stuck at "almost". So the hard parts of
+the model are built and proven first in **`render_lab`** (proposed), a
+headless program that composes the core with no engine, no material system
+and no legacy frontend:
+
+- It reads a scene from the formats the core already serves: BSP2 maps
+  through the `mapcontainer` readers (world mesh, `LMAP`, `PRBV`, `RPRB`,
+  entity lights), studio models through `mdl`, and materials through
+  `render.material`'s importers. It builds a `render.scene`, a light set
+  and a `FrameDesc`, and renders through the Vulkan adapter to an image.
+- Its fixtures are versioned scenes with cameras and Cycles references
+  rendered by RFC 0007's pinned baker. They extend the RFC 0011 gallery
+  (`quality/fixtures/gi/`, `tools/quality/gi_gallery.py`,
+  `gi_oracles.py`) with a lighting set: a Cornell box with a rough and a
+  polished floor, an area-lit room, a projector with a cookie, a sun
+  through a colonnade, a foggy spot-lit hall, a mirror corridor, a clear
+  coat and metal material sweep, and a Portal chamber and a Portal 2
+  chamber rebuilt from their maps.
+- "Source 2 quality" is judged objectively: against Cycles path-traced
+  references (ground truth, which Source 2 itself does not reach) and by
+  the relational oracles of the gallery, with a negative control for every
+  term. No Valve Source 2 asset is used.
+- Each hard part is done in the lab before its integration starts, and it
+  stays in the lab's required suite after. The lab is also the place to
+  tune a term: a lab render takes seconds, a game boot a minute.
+
+The hard parts, in order of risk: the assembled surface program with
+every term; LTC area lights; clustered lights with both lobes and atlas
+shadows together; GTAO without double occlusion on baked light;
+screen-space reflections over the probes; volumetric fog with shadowed
+projectors and the sun; and the frame budget of all of them at once.
 
 ## Threading
 
@@ -1175,7 +1348,9 @@ tolerance. Normals and tangents keep the flat 1e-3.
 | Light assignment | `render.lights.clusters` | over 1,000 seeded scenes, no light that reaches a froxel is missing from it (zero false negatives), and the false-positive rate is recorded |
 | Shadow oracles | `render.shadows` | a caster darkens its receiver, a non-caster does not, and cascade transitions stay within tolerance of a single-cascade reference render |
 | Flashlight | Portal flashlight scene on native | shadowed pixels match the reference within tolerance; the `SetFlashlightState` census is zero |
-| Behavior decision | the dlight switch | the per-pixel and legacy dlight modes each match their own reference, and the decision is recorded |
+| Projected lights | `render.lights.projected` (proposed) on native; `sp_a2_core` with `texturelight_wheatly_chamber` | judged pixels match `projected_light::IrradianceAt` times the shadow oracle; each surface's light is the same, within the cross-path tolerance, with `kProjectedLights` set (core) and unset (CPU lightmap); forcing both paths fails as doubled light; seeded defects are detected: a mirrored cookie axis, an ignored `cookieFrame`, the end falloff dropped, a shadow tile off by one |
+| Area lights | `render.lights.area-ltc` (proposed) | diffuse within tolerance of `area_light::IrradianceAt` over seeded rectangles and receivers (horizon-crossing included); GGX specular within tolerance of a Monte Carlo integral over roughness 0.05 to 1; the LUTs regenerate byte-identically from their generator; seeded defects detected (no horizon clip, a transposed LUT, a one-sided light lit from behind); at most 0.3 ms at 1080p on desktop for 8 lights (RFC 0011's target) |
+| Behavior decision | the dlight switch | the per-pixel and legacy dlight modes each match their own reference, and the decision is recorded. The per-pixel mode evaluates both lobes (diffuse and the surface's specular) for world surfaces, as for models |
 | Budgets | `render-v1.json` atlas rows | pass on desktop and the Fold7 |
 
 ### K8: Remaining cohorts
@@ -1212,15 +1387,45 @@ mirrors and monitors as view generators):
 | Product boot | `portal_boot.py` on the GL profile | `testchmb_a_01` boots and renders in both queued modes |
 | ToGL untouched | legacy renderer profile build | the ToGL legacy profile still builds and its existing checks pass |
 
+### K11: Lighting model proven in `render_lab`
+
+Every check runs in `render_lab` against its fixtures'
+Cycles references, with no engine in the process. K11 needs only K1, K2
+and K4 (all done) plus the K7 passes it drives, so it starts now and runs
+ahead of the product rows.
+
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Lab composes the core alone | `render.lab.composition` (proposed); link map | `render_lab` links no engine, material system, legacy frontend or SDL; it renders a BSP2 fixture and a studio model through the Vulkan adapter with sync validation silent |
+| Model assembly | `render.lighting.terms` (proposed) | one surface program evaluates every term of the model's table; each term's neutral value is bitwise the term absent (a seeded mutant per term detected); each term matches its C++ oracle on its synthetic cases |
+| Ground truth | `render.lab.cycles` (proposed) over the lighting set and the RFC 0011 gallery | each fixture within its recorded per-fixture tolerance of Cycles (mean and 99th-percentile error in linear light, tolerances fixed before the run); every relational oracle of the gallery holds; each term's negative control (the term removed or seeded wrong) fails its fixture |
+| Area, clustered and shadowed light together | the area-lit room, the spot-lit hall and the colonnade | 64 area lights and 256 clustered lights in one view within tolerance of Cycles; shadow edges of every light class in the right place (judged pixels as in `render.shadows.pixels`) |
+| Ambient occlusion | `render.lab.gtao` (proposed) | a flat open plane gives AO one bitwise; crease and corner cases within tolerance of a ray-traced visibility reference; a direct-light-only scene is unchanged bitwise (AO touches indirect only); a fully baked static fixture is not darker than Cycles beyond its tolerance, and the double-occlusion control (AO over the bake with no rule) fails |
+| Screen-space reflections | `render.lab.ssr` (proposed) on the mirror corridor | on-screen hits within tolerance of Cycles; off-screen and occluded rays fall back to the probes with no seam larger than the R50 walk gate's step; surfaces rougher than the cutoff are unchanged bitwise; seeded defects detected (thickness ignored, no edge fade, the wrong mip) |
+| Volumetric fog | `render.lab.volumetric` (proposed) on the foggy hall | a homogeneous medium's transmittance is exp(-sigma_t d) within tolerance; single scattering from a point light matches a numerical integral; a shadowed projector's shaft is absent inside its shadow; density zero is bitwise the fog-only frame; after a camera cut no history remains |
+| Portal and Portal 2 chambers | the two rebuilt chambers, legacy points and modern points (the S9 rule table) | legacy points match the product's native ports within the family tolerances; modern points within tolerance of Cycles |
+| Lab budgets | `render_lab --time` (proposed), `render-v1.json` lighting rows | set before measuring: all terms at once at most 8 ms GPU at 1080p on the desktop runner for the heaviest fixture; per term: GTAO 0.5 ms, SSR 1.0 ms, volumetric 1.0 ms, LTC 0.3 ms; Fold7 rows recorded, and terms over budget there declared off by name |
+
+### K12: Lighting model integrated in the product
+
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| One light per surface | the `RuntimeLight` census and the doubled-light control | every term the core evaluates has its flag set on exactly the surfaces it shades; forcing both paths fails as doubled light for each term |
+| One copy of the math | static scan | the model's GLSL exists only under `render/`; `world_pbr.frag`, `model_pbr.frag`, `probe_volume.glsl` and `reflection_probes.glsl` are gone from the native backend |
+| Game matches lab | the Portal and Portal 2 chambers booted with the lab's cameras | each in-game frame within tolerance of the same scene's `render_lab` frame |
+| Frame budgets | `portal-frame-pacing-v1` and a Portal 2 workload | within the frame allowance of K0 with every declared term on, per profile; the declared-off terms are listed per profile |
+
 **Dependencies.** K0 is ready now (R02, R05, R10 and R16 are done). K1
 needs K0. K2 needs K1. K3 needs K2. K4 needs K3. K10 needs K4, because the
 OpenGL adapter needs per-target artifacts and runs the legacy frontend. K5
 needs K4. K6 and K7 need K5 and are independent of each other. K8 needs
-K5, and its UI cohort needs RFC 0010's draw list. K9 needs K6, K7 and K8.
+K5, and its UI cohort needs RFC 0010's draw list. K9 needs K6, K7, K8 and
+K12. K11 needs K1, K2 and K4 and builds the K7 passes it needs; it does not
+wait for K5–K7 in the product. K12 needs K11, K5, K6 and K7.
 
-**The RFC is done** when K0–K10 have passed on their required profiles,
+**The RFC is done** when K0–K12 have passed on their required profiles,
 CAP011 and every suite above are required rows in the conformance manifest
-and `quality/baseline.json`, rows R86–R92 are `done` with linked evidence,
+and `quality/baseline.json`, rows R86–R92, R95 and R96 are `done` with linked evidence,
 and the optional Apple rows are recorded as passing or unavailable.
 
 ## Roadmap
@@ -1242,7 +1447,9 @@ than finding Vulkan assumptions later.
 | K10 | R92 |
 | K5–K6 | R89 |
 | K7 | R90; R56 depends on it for clustered dynamic lights |
-| K8–K9 | R91 |
+| K11 | R95, ranked directly after R88 (user direction, 2026-09-28: hard parts first, proven outside the game) |
+| K12 | R96, ranked directly after R90 |
+| K8–K9 | R91; needs R96 |
 
 ## Risks and mitigations
 
@@ -1396,6 +1603,14 @@ lights are proven (K8).
   `EnableAlphaToCoverage` stub is closed there, not in the old device.
 - **RFC 0014**: debug views read graph traces and scene handles; draw
   bisection works on draw lists.
+- **Lighting model (2026-09-28).** RFC 0007: the BRDF, bake values and
+  reflection probes keep their owner; its image-based lighting gains
+  screen-space reflections over the probes and GTAO-based specular
+  occlusion, both implemented here, and its Cycles references are
+  `render_lab`'s ground truth. RFC 0011: per-pixel LTC area lights, the
+  projector list and volumetric in-scattering are consumers of its light
+  set; screen-space GI stays rejected. RFC 0012: the filtered roughness
+  feeds the clustered, LTC, projected and SSR lobes too.
 
 ## Appendix A: File-level layout and wiring
 
