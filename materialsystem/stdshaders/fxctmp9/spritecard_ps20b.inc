@@ -232,6 +232,27 @@ public:
 		m_bDEPTHBLEND = true;
 #endif
 	}
+private:
+	int m_nMOD2X;
+#ifdef _DEBUG
+	bool m_bMOD2X;
+#endif
+public:
+	void SetMOD2X( int i )
+	{
+		Assert( i >= 0 && i <= 1 );
+		m_nMOD2X = i;
+#ifdef _DEBUG
+		m_bMOD2X = true;
+#endif
+	}
+	void SetMOD2X( bool i )
+	{
+		m_nMOD2X = i ? 1 : 0;
+#ifdef _DEBUG
+		m_bMOD2X = true;
+#endif
+	}
 public:
 	spritecard_ps20b_Static_Index( )
 	{
@@ -279,19 +300,23 @@ public:
 		m_bDEPTHBLEND = false;
 #endif // _DEBUG
 		m_nDEPTHBLEND = 0;
+#ifdef _DEBUG
+		m_bMOD2X = false;
+#endif // _DEBUG
+		m_nMOD2X = 0;
 	}
 	int GetIndex()
 	{
 		// Asserts to make sure that we aren't using any skipped combinations.
 		// Asserts to make sure that we are setting all of the combination vars.
 #ifdef _DEBUG
-		bool bAllStaticVarsDefined = m_bCONVERT_TO_SRGB && m_bDUALSEQUENCE && m_bSEQUENCE_BLEND_MODE && m_bADDBASETEXTURE2 && m_bMAXLUMFRAMEBLEND1 && m_bMAXLUMFRAMEBLEND2 && m_bEXTRACTGREENALPHA && m_bCOLORRAMP && m_bANIMBLEND && m_bADDSELF && m_bDEPTHBLEND;
+		bool bAllStaticVarsDefined = m_bCONVERT_TO_SRGB && m_bDUALSEQUENCE && m_bSEQUENCE_BLEND_MODE && m_bADDBASETEXTURE2 && m_bMAXLUMFRAMEBLEND1 && m_bMAXLUMFRAMEBLEND2 && m_bEXTRACTGREENALPHA && m_bCOLORRAMP && m_bANIMBLEND && m_bADDSELF && m_bDEPTHBLEND && m_bMOD2X;
 		Assert( bAllStaticVarsDefined );
 #endif // _DEBUG
-		return ( 1 * m_nCONVERT_TO_SRGB ) + ( 2 * m_nDUALSEQUENCE ) + ( 4 * m_nSEQUENCE_BLEND_MODE ) + ( 12 * m_nADDBASETEXTURE2 ) + ( 24 * m_nMAXLUMFRAMEBLEND1 ) + ( 48 * m_nMAXLUMFRAMEBLEND2 ) + ( 96 * m_nEXTRACTGREENALPHA ) + ( 192 * m_nCOLORRAMP ) + ( 384 * m_nANIMBLEND ) + ( 768 * m_nADDSELF ) + ( 1536 * m_nDEPTHBLEND ) + 0;
+		return ( 1 * m_nCONVERT_TO_SRGB ) + ( 2 * m_nDUALSEQUENCE ) + ( 4 * m_nSEQUENCE_BLEND_MODE ) + ( 12 * m_nADDBASETEXTURE2 ) + ( 24 * m_nMAXLUMFRAMEBLEND1 ) + ( 48 * m_nMAXLUMFRAMEBLEND2 ) + ( 96 * m_nEXTRACTGREENALPHA ) + ( 192 * m_nCOLORRAMP ) + ( 384 * m_nANIMBLEND ) + ( 768 * m_nADDSELF ) + ( 1536 * m_nDEPTHBLEND ) + ( 3072 * m_nMOD2X ) + 0;
 	}
 };
-#define shaderStaticTest_spritecard_ps20b psh_forgot_to_set_static_DUALSEQUENCE + psh_forgot_to_set_static_SEQUENCE_BLEND_MODE + psh_forgot_to_set_static_ADDBASETEXTURE2 + psh_forgot_to_set_static_MAXLUMFRAMEBLEND1 + psh_forgot_to_set_static_MAXLUMFRAMEBLEND2 + psh_forgot_to_set_static_EXTRACTGREENALPHA + psh_forgot_to_set_static_COLORRAMP + psh_forgot_to_set_static_ANIMBLEND + psh_forgot_to_set_static_ADDSELF + psh_forgot_to_set_static_DEPTHBLEND + 0
+#define shaderStaticTest_spritecard_ps20b psh_forgot_to_set_static_DUALSEQUENCE + psh_forgot_to_set_static_SEQUENCE_BLEND_MODE + psh_forgot_to_set_static_ADDBASETEXTURE2 + psh_forgot_to_set_static_MAXLUMFRAMEBLEND1 + psh_forgot_to_set_static_MAXLUMFRAMEBLEND2 + psh_forgot_to_set_static_EXTRACTGREENALPHA + psh_forgot_to_set_static_COLORRAMP + psh_forgot_to_set_static_ANIMBLEND + psh_forgot_to_set_static_ADDSELF + psh_forgot_to_set_static_DEPTHBLEND + psh_forgot_to_set_static_MOD2X + 0
 class spritecard_ps20b_Dynamic_Index
 {
 public:

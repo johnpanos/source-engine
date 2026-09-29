@@ -947,7 +947,8 @@ enum
 	kSpriteCardMaxLumFrameBlend = 32,
 	kSpriteCardDualSequence = 64,
 	kSpriteCardColorRamp = 128,
-	kSpriteCardDepthBlend = 256
+	kSpriteCardDepthBlend = 256,
+	kSpriteCardMod2x = 512
 };
 static std::vector<int> g_snapshotSpriteCard;
 static int g_CurrentSpriteCard = -1;
@@ -8058,6 +8059,9 @@ static int SnapshotSpriteCard( const CShaderShadowVulkan &shadow )
 		flags |= kSpriteCardAddSelf;
 	if ( ps20b && combo( 768 ) )
 		flags |= kSpriteCardDepthBlend;
+	// MOD2X follows DEPTHBLEND, which ps20 lacks: stride 3072 in ps20b, 768 in ps20.
+	if ( ( index / ( ps20b ? 3072 : 768 ) ) % 2 != 0 )
+		flags |= kSpriteCardMod2x;
 	return flags;
 }
 
@@ -8907,8 +8911,12 @@ static void CommitPassPixelConstants()
 	                              g_boundEnvmapHandle >= 0;
 	if ( spriteDepthBlend )
 		colorFlags |= render_vulkan::CVulkanContext::kFragmentSpriteDepthBlend;
+	const bool sky = ( colorFlags & render_vulkan::CVulkanContext::kFragmentSky ) != 0;
+	// spritecard_ps2x's MOD2X (DST_COLOR:SRC_COLOR blend) on the SpriteCard stage.
+	if ( g_CurrentSpriteCard >= 0 && ( g_CurrentSpriteCard & kSpriteCardMod2x ) )
+		colorFlags |= render_vulkan::CVulkanContext::kFragmentSpriteMod2x;
 	g_VulkanContext.SelectDynamicColorSpace( colorFlags );
-	if ( colorFlags & render_vulkan::CVulkanContext::kFragmentSky )
+	if ( sky )
 	{
 		// Sky_DX9's sky_ps2x.fxc reads $color from pixel constant c0.
 		g_VulkanContext.SetDynamicModulation( g_psConstants[0] );

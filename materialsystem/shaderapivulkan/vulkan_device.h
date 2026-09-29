@@ -1038,7 +1038,12 @@ public:
 		// base texture in texture space. It shares the bit of the envmap mask that
 		// only the other (LightmappedGeneric envmap) branch reads; every bit a
 		// float flag word holds exactly is in use.
-		kFragmentRefractLocal = kFragmentBaseAlphaEnvmapMask
+		kFragmentRefractLocal = kFragmentBaseAlphaEnvmapMask,
+		// With the SpriteCard stage only: spritecard_ps2x's MOD2X ($mod2x, a
+		// DST_COLOR:SRC_COLOR blend), whose output fades to 0.5 (the blend's
+		// identity) as alpha falls. It shares kFragmentSky's bit: sky draws take
+		// their own branch, and neither stage nor the device reads the bit.
+		kFragmentSpriteMod2x = kFragmentSky
 	};
 	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
 	// Linear scale applied to the textured pipeline's color before the sRGB

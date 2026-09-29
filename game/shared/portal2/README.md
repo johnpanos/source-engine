@@ -526,6 +526,62 @@ Still different, ranked by visible impact:
 The captures used for these numbers are under `quality-results/p2mat-*` and are
 not committed.
 
+#### SpriteCard `$mod2x`: white water rings at GLaDOS's shutdown (2026-09-28)
+
+The report: bright white "water" rings float in the air around GLaDOS in
+`sp_a2_core`.
+
+- **What they are.** `glados_box_eject` (particles/scene_fx.pcf, the map's
+  `fx_square_popout_01`, started by `glados_shutdown_particles_relay`) has the
+  child `glados_ripple_small`. That child draws flat rings (`orientation_type 2`)
+  with `particle/wake/ring_wake_mod.vmt`: SpriteCard, `$mod2x 1`,
+  `$addself 2.5`, `$overbrightfactor 3`.
+- **Cause.** SDK 2013's SpriteCard had no `$mod2x`, so the ring drew with the
+  ADDSELF blend (ONE:INVSRCALPHA) and came out saturated white. Retail
+  multiplies the frame by twice the output (DST_COLOR:SRC_COLOR), and the output
+  fades to 0.5 (the identity) as alpha falls. At the ring's alpha of 40–50, the
+  ring is almost invisible over the dark chamber. The rings are placed where
+  retail places them; only the blend was wrong.
+- **Fix** (CS:GO's SpriteCard):
+  - `$mod2x` and a `MOD2X` static combo in `spritecard.cpp` /
+    `spritecard_ps2x.fxc`. The selectors were regenerated with `fxc_prep.pl`.
+    The combo is the highest stride (3072 in ps20b, 768 in ps20), so every
+    existing combo index is unchanged.
+  - The `portal-start-chambers-shaders-v1` selector hash is updated. Its static
+    bases are unchanged, and `verify_selector` passes against the fxc_prep plan.
+  - Native Vulkan decodes the combo (`kSpriteCardMod2x`). The SpriteCard stage
+    applies the math with `kFragmentSpriteMod2x`, which shares
+    `kFragmentSky`'s bit: sky draws take their own branch, and the device never
+    reads the bit. The fade to 0.5 comes after the sRGB encode, so 0.5 stays the
+    blend's identity in the stored encoding. MOD2X output skips the tone-map
+    scale (TONEMAP_SCALE_NONE).
+  - The shipped D3D9 `.vcs` pack has no MOD2X combos until the next
+    source-matched pack build (`shader_artifacts.py`).
+- **Evidence.**
+  - Views: `sp_a2_core` with the relay fired, eye (250, -450, 80), yaw 115, six
+    shots 1.3 s apart, on this build and on retail (`portal2_material_shots.py
+    capture` with a scratch workload).
+  - In the ring band (x 430–660, y 425–462 of 1024×768), the fraction of
+    pixels with luma > 200:
+
+    | Frames | t3 | t4 | t5 | Max luma |
+    | --- | --- | --- | --- | --- |
+    | Retail | 0% | 0% | 0% | 195–196 |
+    | This build, before the fix | 1.46% | 2.67% | 0% | 255 |
+    | This build, after the fix | 0% | 0% | 0% | 196–197 |
+
+    The ring still draws (54 and 60 vertices in those frames, routed as
+    `spritecard_ps20b#5760` = MOD2X + DEPTHBLEND + ADDSELF + ANIMBLEND).
+  - Native `material_pixel_conformance.py` `softparticle` and `sprite` pass in
+    both HDR modes, and `test_shader_artifacts` passes (30 tests).
+- **Not done.**
+  - A permanent view in `portal2-materials-v1`, with a bright-fraction region
+    check on the ring band recorded from retail. The workload and the capture
+    tool had other uncommitted work at the time.
+  - D3D9/DXVK was not run.
+  - The other `$mod2x` SpriteCard material,
+    `particle/fluidexplosions/fluidexplosion_additive`, was not looked at.
+
 ### Portal 2 audio retail conformance (2026-09-25)
 
 `quality/workloads/portal2-audio-v1` plays a fixed sequence of soundscript

@@ -10,6 +10,7 @@
 // STATIC: "ANIMBLEND"				"0..1"
 // STATIC: "ADDSELF"				"0..1"
 // STATIC: "DEPTHBLEND"				"0..1"	[ps20b]
+// STATIC: "MOD2X"					"0..1"
 
 #define COMBINE_MODE_AVERAGE							0
 #define COMBINE_MODE_USE_FIRST_AS_ALPHA_MASK_ON_SECOND	1
@@ -180,11 +181,22 @@ float4 main( PS_INPUT i ) : COLOR
 		blended_rgb.rgb *= blended_rgb.a;
 		blended_rgb.rgb += fOverbrightFactor * fAdditiveSelfBlendWeight * i.argbcolor.a * blended_rgb;
 		blended_rgb.rgb *= i.argbcolor.rgb;
+#elif MOD2X
+		blended_rgb.rgb = lerp( 0.5f, blended_rgb.rgb, i.argbcolor.rgb );
+		blended_rgb.a *= i.argbcolor.a;
 #else
 		blended_rgb *= i.argbcolor;
 #endif
 	}
 
+#if MOD2X
+	// Portal 2 port (CS:GO's spritecard_ps2x.fxc): $mod2x blends DST_COLOR:SRC_COLOR,
+	// so 0.5 leaves the frame unchanged. Fade toward it as alpha falls, and don't
+	// tone map, since the frame is already scaled.
+	blended_rgb.rgb = saturate( lerp( 0.5f, blended_rgb.rgb, blended_rgb.a ) );
+	return FinalOutput( blended_rgb, 0, PIXEL_FOG_TYPE_NONE, TONEMAP_SCALE_NONE );
+#else
 	return FinalOutput( blended_rgb, 0, PIXEL_FOG_TYPE_NONE, TONEMAP_SCALE_LINEAR );
+#endif
 }
 

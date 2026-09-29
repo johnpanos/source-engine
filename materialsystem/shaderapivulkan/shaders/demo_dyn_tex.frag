@@ -234,6 +234,11 @@ vec4 SpriteCardColor( int flags )
 		blended.rgb *= fragVertexColor.rgb;
 		return blended;
 	}
+	// MOD2X (8192, kFragmentSpriteMod2x): the vertex color fades the frame
+	// toward 0.5, the DST_COLOR:SRC_COLOR blend's identity; main fades it again
+	// by alpha after the sRGB encode.
+	if ( ( flags & 8192 ) != 0 )
+		return vec4( mix( vec3( 0.5 ), blended.rgb, fragVertexColor.rgb ), blended.a * vertexAlpha );
 	return blended * vec4( fragVertexColor.rgb, vertexAlpha );
 }
 // Specialized to false (constant_id 0, CVulkanContext::BuildMaterialPipeline)
@@ -396,9 +401,16 @@ void main()
 	     ( ( flags & 8 ) != 0 ? result.a <= consts.alphaParams.x
 	                          : result.a < consts.alphaParams.x ) )
 		discard;
-	result.rgb *= consts.alphaParams.w;
+	// spritecard_ps2x's MOD2X output is not tone mapped (TONEMAP_SCALE_NONE), and
+	// fades to the blend's identity, 0.5, as alpha falls. The fade follows the
+	// sRGB encode so that 0.5 stays the identity in the stored encoding.
+	const bool spriteMod2x = consts.alphaParams.y > 2.5 && ( flags & 8192 ) != 0;
+	if ( !spriteMod2x )
+		result.rgb *= consts.alphaParams.w;
 	result.rgb = ApplyPixelFog( result.rgb );
 	if ( ( flags & 4 ) != 0 )
 		result.rgb = LinearToSrgb( result.rgb );
+	if ( spriteMod2x )
+		result.rgb = clamp( mix( vec3( 0.5 ), result.rgb, result.a ), 0.0, 1.0 );
 	outColor = result;
 }

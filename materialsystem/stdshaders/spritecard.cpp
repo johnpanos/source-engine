@@ -88,6 +88,8 @@ SHADER_PARAM( ZOOMANIMATESEQ2, SHADER_PARAM_TYPE_FLOAT, "1.0", "amount to gradua
 SHADER_PARAM( EXTRACTGREENALPHA, SHADER_PARAM_TYPE_INTEGER, "0", "grayscale data sitting in green/alpha channels")
 SHADER_PARAM( ADDOVERBLEND, SHADER_PARAM_TYPE_INTEGER, "0", "use ONE:INVSRCALPHA blending")
 SHADER_PARAM( ADDSELF, SHADER_PARAM_TYPE_FLOAT, "0.0", "amount of base texture to additively blend in" )
+// Portal 2 port (CS:GO's SpriteCard): e.g. particle/wake/ring_wake_mod.vmt.
+SHADER_PARAM( MOD2X, SHADER_PARAM_TYPE_BOOL, "0", "whether or not to multiply the result of the pixel shader * 2 against the framebuffer" )
 SHADER_PARAM( BLENDFRAMES, SHADER_PARAM_TYPE_BOOL, "1", "whether or not to smoothly blend between animated frames" )
 SHADER_PARAM( MINSIZE, SHADER_PARAM_TYPE_FLOAT, "0.0", "minimum screen fractional size of particle")
 SHADER_PARAM( STARTFADESIZE, SHADER_PARAM_TYPE_FLOAT, "10.0", "screen fractional size to start fading particle out")
@@ -217,6 +219,8 @@ SHADER_DRAW
 			bBlendFrames = false;
 		}
 		bool bAddSelf = params[ADDSELF]->GetFloatValue() != 0.0;
+		// The ps11 path has no MOD2X combo; it keeps the ADDSELF/ONE:INVSRCALPHA blend.
+		bool bMod2X = ( !bDX8 ) && ( params[MOD2X]->GetIntValue() != 0 );
 		bool bUseInstancing =  false;
 		if ( nSplineType )
 			bUseInstancing = false;
@@ -252,7 +256,11 @@ SHADER_DRAW
 
 		pShaderShadow->AlphaFunc( SHADER_ALPHAFUNC_GREATER, 0.01f );
 
-		if ( bAdditive2ndTexture || bAddOverBlend || bAddSelf )
+		if ( bMod2X )
+		{
+			EnableAlphaBlending( SHADER_BLEND_DST_COLOR, SHADER_BLEND_SRC_COLOR );
+		}
+		else if ( bAdditive2ndTexture || bAddOverBlend || bAddSelf )
 		{
 			EnableAlphaBlending( SHADER_BLEND_ONE, SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
 		}
@@ -368,6 +376,7 @@ SHADER_DRAW
 				SET_STATIC_PIXEL_SHADER_COMBO( COLORRAMP, bUseRampTexture );
 				SET_STATIC_PIXEL_SHADER_COMBO( EXTRACTGREENALPHA, bExtractGreenAlpha );
 				SET_STATIC_PIXEL_SHADER_COMBO( DEPTHBLEND, bDepthBlend );
+				SET_STATIC_PIXEL_SHADER_COMBO( MOD2X, bMod2X );
 				SET_STATIC_PIXEL_SHADER( spritecard_ps20b );
 			}
 			else
@@ -382,6 +391,7 @@ SHADER_DRAW
 				SET_STATIC_PIXEL_SHADER_COMBO( MAXLUMFRAMEBLEND2, bSecondSequence? params[MAXLUMFRAMEBLEND1]->GetIntValue() : 0 );
 				SET_STATIC_PIXEL_SHADER_COMBO( COLORRAMP, bUseRampTexture );
 				SET_STATIC_PIXEL_SHADER_COMBO( EXTRACTGREENALPHA, bExtractGreenAlpha );
+				SET_STATIC_PIXEL_SHADER_COMBO( MOD2X, bMod2X );
 				SET_STATIC_PIXEL_SHADER( spritecard_ps20 );
 			}
 
