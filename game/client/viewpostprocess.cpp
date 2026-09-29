@@ -1536,6 +1536,16 @@ void DumpTGAofRenderTarget( const int width, const int height, const char *pFile
 
 static bool s_bScreenEffectTextureIsUpdated = false;
 
+// The share of the blurred bloom texture the engine_post pass adds. Portal 2's
+// engine_post pixel shader computes fb + bloom * $bloomamount * 0.5 (retail
+// engine_post_ps20b), with the blur at 1.0; this tree's shared engine_post
+// adds the blurred bloom at 1.0, so Portal 2 halves the blur's scale.
+#ifdef PORTAL2
+static const float kEnginePostBloomFactor = 0.5f;
+#else
+static const float kEnginePostBloomFactor = 1.0f;
+#endif
+
 static void Generate8BitBloomTexture( IMatRenderContext *pRenderContext, float flBloomScale,
 										int x, int y, int w, int h )
 {
@@ -1590,7 +1600,7 @@ static void Generate8BitBloomTexture( IMatRenderContext *pRenderContext, float f
 	// Gaussian blur y rt1 to rt0
 	SetRenderTargetAndViewPort( dest_rt0 );
 	IMaterialVar *pBloomAmountVar = yblur_mat->FindVar( "$bloomamount", NULL );
-	pBloomAmountVar->SetFloatValue( flBloomScale );
+	pBloomAmountVar->SetFloatValue( kEnginePostBloomFactor * flBloomScale );
 	pRenderContext->DrawScreenSpaceRectangle(	yblur_mat, 0, 0, nSrcWidth / 4, nSrcHeight / 4,
 												0, 0, nSrcWidth / 4 - 1, nSrcHeight / 4 - 1,
 												nSrcWidth / 4, nSrcHeight / 4 );

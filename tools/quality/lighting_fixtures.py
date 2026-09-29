@@ -166,6 +166,15 @@ TERMS = {
                  "(render.pass.volumetric)",
         "negative_control": "density zero (the clear state's frame) judged against the fog "
                             "reference, and the projector's shaft drawn inside its shadow"},
+    "portal-transport": {
+        "owner": "unittests/rendertest/contracts/render.portal-lights.v1.md (RFC 0011; each "
+                 "term evaluated through open portal pairs by its images; decided by the "
+                 "render-core owner, source-engine-43, 2026-09-29)",
+        "negative_control": "the pair closed (no images, no view through it) judged against "
+                            "the open reference: room B's floor, walls and the view through "
+                            "the portal fail; the opening's rectangle in place of its ellipse "
+                            "(render.portal-lights.v1 P2's clip) shows as extra light at the "
+                            "corners of each through-portal pool"},
     "output": {
         "owner": "RFC/0016-render-core.md#output-renderoutputv1-amended-2026-09-28",
         "negative_control": "not judged by these fixtures: every comparison is of linear scene "
@@ -1023,8 +1032,224 @@ def material_sweep(Scene, out):
     return s.finish_lighting(with_probes())
 
 
+# ------------------------------------------------------------- portal pair
+
+def portal_frame(center, normal):
+    """A portal's frame: origin at the opening's centre, forward its normal
+    (into its room), up world Z, right = forward x up."""
+    forward = normalize(normal)
+    up = (0.0, 0.0, 1.0)
+    right = normalize((forward[1] * up[2] - forward[2] * up[1],
+                       forward[2] * up[0] - forward[0] * up[2],
+                       forward[0] * up[1] - forward[1] * up[0]))
+    return {"origin": tuple(center), "forward": forward, "right": right, "up": up}
+
+
+def portal_map_vector(source, target, v):
+    """The linked pair's rotation: entering `source` along +v leaves `target`
+    along the image of v (local forward and right negated, up kept), as
+    Source's MatrixThisToLinked."""
+    f = sum(a * b for a, b in zip(v, source["forward"]))
+    r = sum(a * b for a, b in zip(v, source["right"]))
+    u = sum(a * b for a, b in zip(v, source["up"]))
+    return tuple(-f * a - r * b + u * c for a, b, c in
+                 zip(target["forward"], target["right"], target["up"]))
+
+
+def portal_map_point(source, target, p):
+    local = tuple(a - b for a, b in zip(p, source["origin"]))
+    moved = portal_map_vector(source, target, local)
+    return tuple(a + b for a, b in zip(target["origin"], moved))
+
+
+def oriented(corners, normal):
+    """`corners` wound counter-clockwise about `normal` (Newell's normal)."""
+    n = [0.0, 0.0, 0.0]
+    for a, b in zip(corners, corners[1:] + corners[:1]):
+        n[0] += (a[1] - b[1]) * (a[2] + b[2])
+        n[1] += (a[2] - b[2]) * (a[0] + b[0])
+        n[2] += (a[0] - b[0]) * (a[1] + b[1])
+    return corners if sum(x * y for x, y in zip(n, normal)) >= 0 else corners[::-1]
+
+
+def portal_wall_faces(frame, r_range, u_range, half_width, half_height, segments):
+    """The wall a portal sits on, as (wall faces, plug faces) in meters: the
+    wall rectangle (r_range, u_range, relative to the portal's centre along
+    its right and up) with the portal's opening cut out, and the plug that
+    fills the opening. The opening is the portal's visible shape, the
+    ellipse inscribed in its half_width x half_height rectangle."""
+    o, r, u, f = frame["origin"], frame["right"], frame["up"], frame["forward"]
+
+    def at(a, b):
+        return tuple(o[k] + a * r[k] + b * u[k] for k in range(3))
+
+    rs = (r_range[0], -half_width, half_width, r_range[1])
+    us = (u_range[0], -half_height, half_height, u_range[1])
+    wall = []
+    for i in range(3):
+        for j in range(3):
+            if (i, j) == (1, 1):
+                continue
+            wall.append((oriented([at(rs[i], us[j]), at(rs[i + 1], us[j]),
+                                   at(rs[i + 1], us[j + 1]), at(rs[i], us[j + 1])], f), f))
+    ring = [(half_width * math.cos(2 * math.pi * k / segments),
+             half_height * math.sin(2 * math.pi * k / segments)) for k in range(segments)]
+    quarter = segments // 4
+    for q, (sr, su) in enumerate(((1, 1), (-1, 1), (-1, -1), (1, -1))):
+        corner = at(sr * half_width, su * half_height)
+        for k in range(q * quarter, (q + 1) * quarter):
+            a, b = ring[k], ring[(k + 1) % segments]
+            wall.append((oriented([corner, at(*a), at(*b)], f), f))
+    plug = [(oriented([at(*p) for p in ring], f), f)]
+    return wall, plug
+
+
+PORTAL_HALF_WIDTH_UNITS = 32.0   # Portal's prop_portal (portal_shareddefs.h)
+PORTAL_HALF_HEIGHT_UNITS = 54.0
+PORTAL_SEGMENTS = 64
+
+
+def portal_pair(Scene, out):
+    """Two sealed rooms joined only by a linked portal pair on perpendicular
+    walls. `closed` is the portal world the map is built from; `open` is the
+    Cycles reference: each room joined, through the opening, to a copy of the
+    other placed behind its portal wall by the pair's transform (for one pair
+    this is every path's exact equivalent, any number of crossings)."""
+    import gi_fixtures as gf
+    from pxr import UsdGeom
+    s = Scene(out, "portal-pair", "Light through a linked portal pair on perpendicular walls: "
+              "room A's ceiling rectangle and a spot aimed through portal A past a post light "
+              "room B, which has only a dim lamp of its own, through the pair's elliptical "
+              "opening; B's polished floor reflects what comes through, its probe sphere and "
+              "block take the light, and from A the view through portal A shows B lit by A. "
+              "Judged open (the rooms joined through the opening) and closed (sealed)",
+              ["brdf", "area-lights", "runtime-lights", "direct-visibility",
+               "indirect-diffuse-static", "indirect-diffuse-dynamic", "image-based-specular",
+               "portal-transport"])
+    s.pbr("Wall", (0.7, 0.7, 0.7), 0.9)
+    s.pbr("Red", (0.63, 0.065, 0.05), 0.9)
+    s.pbr("Teal", (0.08, 0.4, 0.38), 0.9)
+    s.pbr("Post", (0.5, 0.5, 0.5), 0.7)
+    s.pbr("FloorRough", (0.5, 0.5, 0.5), 0.6)
+    s.pbr("FloorPolished", (0.5, 0.5, 0.5), 0.06)
+    s.layout = "planar"
+    half_w = PORTAL_HALF_WIDTH_UNITS / SOURCE_UNITS_PER_METER
+    half_h = PORTAL_HALF_HEIGHT_UNITS / SOURCE_UNITS_PER_METER
+    centre_z = 1.4
+    # Room A: x 0..5, y 0..4; portal A in its east wall (x = 5) facing -X.
+    # Room B: x 11..15, y 0..5; portal B in its south wall (y = 0) facing +Y.
+    # Both portal walls are 4 x 3 m with the portal at their centre, so the
+    # pair's transform maps one wall onto the other: the copy of B joined
+    # behind A (x 5..10) and of A behind B (y -5..0) meet no other room.
+    a = portal_frame((5.0, 2.0, centre_z), (-1.0, 0.0, 0.0))
+    b = portal_frame((13.0, 0.0, centre_z), (0.0, 1.0, 0.0))
+    wall_r, wall_u = (-2.0, 2.0), (-centre_z, 3.0 - centre_z)
+    specs = {"A": [], "B": []}
+
+    def room_faces(room, prefix, lo, hi, skip, materials):
+        for face, corners, normal in gf.box_faces(lo, hi, inward=True, skip=skip):
+            specs[room].append((prefix + "_" + face, [(corners, normal)],
+                                materials.get(face, "Wall")))
+
+    room_faces("A", "A", (0.0, 0.0, 0.0), (5.0, 4.0, 3.0), ("Xp",), {"Yn": "Red"})
+    room_faces("B", "B", (11.0, 0.0, 0.0), (15.0, 5.0, 3.0), ("Yn", "Zn"), {"Xp": "Teal"})
+    specs["B"] += [("FloorRoughB", [gf.quad((11.0, 0.0, 0.0), (15.0, 2.5, 0.0), 2, 1)],
+                    "FloorRough"),
+                   ("FloorPolishedB", [gf.quad((11.0, 2.5, 0.0), (15.0, 5.0, 0.0), 2, 1)],
+                    "FloorPolished")]
+    # A post between A's spot and portal A: its shadow crosses the pair.
+    specs["A"].append(("PostA", [(c, n) for _, c, n in gi_gallery_box((2.95, 2.02, 0.0),
+                                                                        (3.07, 2.14, 3.0))],
+                       "Post"))
+    specs["B"].append(("BlockB", [(c, n) for _, c, n in gi_gallery_box((13.8, 3.2, 0.0),
+                                                                         (14.4, 3.8, 0.8))],
+                       "Wall"))
+    walls = {}
+    for name, frame in (("A", a), ("B", b)):
+        wall, plug = portal_wall_faces(frame, wall_r, wall_u, half_w, half_h, PORTAL_SEGMENTS)
+        walls[name] = ("PortalWall" + name, "Plug" + name)
+        s.mesh("PortalWall" + name, wall, "Wall")
+        s.mesh("Plug" + name, plug, "Wall")
+    for room, target, source in (("A", b, a), ("B", a, b)):
+        for name, faces, material in specs[room]:
+            s.mesh(name, faces, material)
+    s.solids += ["PostA", "BlockB"]
+    # The joined copies: room A behind portal B, room B behind portal A.
+    # Each room's own portal wall separates it from the copy (they coincide
+    # under the transform), so copies carry no portal wall.
+    stage = s.author.stage
+    copies = []
+    for room, source, target in (("A", a, b), ("B", b, a)):
+        for name, faces, material in specs[room]:
+            moved = [([portal_map_point(source, target, c) for c in corners],
+                      portal_map_vector(source, target, normal)) for corners, normal in faces]
+            copies.append(s.mesh("Joined" + name, moved, material))
+    s.probe("ProbeSphere", (12.2, 2.9, 0.9))
+    copies.append(s.sphere("JoinedProbeSphere", portal_map_point(b, a, (12.2, 2.9, 0.9)),
+                           gf.PROBE_RADIUS_M, "ProbeGrey"))
+    for name in copies:
+        UsdGeom.Imageable(stage.GetPrimAtPath("%s/World/%s" % (s.root, name))) \
+            .CreateVisibilityAttr().Set(UsdGeom.Tokens.invisible)
+    # Lights: room A's, room B's dim lamp, and the copies of A's behind B
+    # (B's lamp lights B' behind A the same way).
+    lamp_a = ("LampA", (2.5, 2.0, 2.99), (1.0, 1.0), (10.0, 10.0, 10.0))
+    lamp_b = ("LampB", (13.0, 4.2, 2.99), (0.5, 0.5), (1.5, 1.5, 1.5))
+    spot = ("SpotA", (1.0, 2.0, 2.8), normalize((4.0, 0.0, -1.9)),
+            (20000.0, 19000.0, 17000.0), 9.0, 14.0)
+    for name, center, size, radiance in (lamp_a, lamp_b):
+        s.rect_light(name, center, size, radiance)
+    s.spot_light(spot[0], spot[1], spot[2], spot[3], spot[4], spot[5])
+    joined_lights = []
+    for (name, center, size, radiance), source, target in ((lamp_a, a, b), (lamp_b, b, a)):
+        peak, norm = peak_and_norm(radiance)
+        s.rect("Joined" + name, portal_map_point(source, target, center), size, 0.0, norm,
+               portal_map_vector(source, target, (0.0, 0.0, -1.0)))
+        joined_lights.append(("Joined" + name, peak))
+    peak, norm = peak_and_norm(spot[3])
+    s.spot("Joined" + spot[0], portal_map_point(a, b, spot[1]), LIGHT_RADIUS_M, 0.0, norm,
+           portal_map_vector(a, b, spot[2]), spot[4], spot[5])
+    joined_lights.append(("Joined" + spot[0], peak))
+    for name, _ in joined_lights:
+        UsdGeom.Imageable(stage.GetPrimAtPath(s.light_path(name))).CreateVisibilityAttr() \
+            .Set(UsdGeom.Tokens.invisible)
+    s.portal("PortalA", a, False)
+    s.portal("PortalB", b, True)
+    joined_a = [n for n in copies if n.startswith("JoinedA") or n == "JoinedPostA"]
+    joined_b = [n for n in copies if n not in joined_a]
+    s.view("b-portal", (14.6, 4.7, 1.7), (12.5, 0.5, 0.7), {
+        "floor_rough": ["FloorRoughB"], "floor_polished": ["FloorPolishedB"],
+        "portal_wall": ["PortalWallB"], "walls": ["B_Xn", "B_Xp", "B_Zp"],
+        "block": ["BlockB"], "probe": ["ProbeSphere"], "through": joined_a + ["PlugB"]})
+    s.view("b-floor", (12.6, 4.8, 0.35), (13.4, 0.2, 1.0), {
+        "floor_polished": ["FloorPolishedB"], "floor_rough": ["FloorRoughB"],
+        "portal_wall": ["PortalWallB"], "walls": ["B_Xn", "B_Xp", "B_Zp"],
+        "block": ["BlockB"], "through": joined_a + ["PlugB"]})
+    s.view("a-portal", (0.5, 3.6, 1.7), (5.0, 1.6, 1.0), {
+        "portal_wall": ["PortalWallA"], "walls": ["A_Xn", "A_Yn", "A_Yp", "A_Zn", "A_Zp"],
+        "post": ["PostA"], "through": joined_b + ["PlugA"]})
+    s.spawn = ((14.0, 4.2, 1.7), (12.5, 0.5, 0.7))
+    s.base("closed", "the portal world: the pair closed (plugs in), the joined copies hidden; "
+                     "the map is built and baked from it")
+    s.state("open", "the pair open: the plugs out, each room joined through the opening to "
+                    "the copy of the other behind its portal wall",
+            [(s.author.root_path.AppendPath("World/" + walls[r][1]).pathString, "visibility",
+              None, UsdGeom.Tokens.invisible) for r in ("A", "B")] +
+            [("%s/World/%s" % (s.root, n), "visibility", None, UsdGeom.Tokens.inherited)
+             for n in copies] +
+            [(s.light_path(n), "visibility", None, UsdGeom.Tokens.inherited)
+             for n, _ in joined_lights] +
+            [e for n, peak in joined_lights for e in s.intensity(n, peak)])
+    return s.finish_lighting(with_probes())
+
+
+def gi_gallery_box(lo, hi):
+    """The outward faces of a solid box, as (name, corners, normal)."""
+    import gi_gallery
+    return gi_gallery.box_face_list(lo, hi, ())
+
+
 SYNTHETIC = (cornell_floors, area_room, projector_cookie, sun_colonnade, foggy_hall,
-             mirror_corridor, material_sweep)
+             mirror_corridor, material_sweep, portal_pair)
 
 # The two chambers reuse existing maps and their derived relight scenes; the
 # stages are build products (untracked), so the fixture records their paths,

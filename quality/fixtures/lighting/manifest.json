@@ -257,6 +257,43 @@
       ]
     },
     {
+      "bsp": "run/maps/lt_portal_pair/maps/lt_portal_pair.bsp",
+      "cameras": [
+        "a-portal",
+        "b-floor",
+        "b-portal"
+      ],
+      "directory": "portal-pair",
+      "entities": "entities.json",
+      "lights": {
+        "point": 0,
+        "rect": 2,
+        "sky": 0,
+        "spot": 1,
+        "sun": 0
+      },
+      "map": "lt_portal_pair",
+      "media": [],
+      "name": "portal-pair",
+      "projectors": 0,
+      "purpose": "Light through a linked portal pair on perpendicular walls: room A's ceiling rectangle and a spot aimed through portal A past a post light room B, which has only a dim lamp of its own, through the pair's elliptical opening; B's polished floor reflects what comes through, its probe sphere and block take the light, and from A the view through portal A shows B lit by A. Judged open (the rooms joined through the opening) and closed (sealed)",
+      "reused_map": false,
+      "states": [
+        "closed",
+        "open"
+      ],
+      "terms": [
+        "brdf",
+        "area-lights",
+        "runtime-lights",
+        "direct-visibility",
+        "indirect-diffuse-static",
+        "indirect-diffuse-dynamic",
+        "image-based-specular",
+        "portal-transport"
+      ]
+    },
+    {
       "bsp": "run/maps/testchmb_a_00_relit/maps/testchmb_a_00_relit.bsp",
       "cameras": [
         "room2",
@@ -341,7 +378,8 @@
         "cornell-floors",
         "area-room",
         "mirror-corridor",
-        "material-sweep"
+        "material-sweep",
+        "portal-pair"
       ],
       "negative_control": "each rectangle evaluated as a point at its centre (no LTC) and without horizon clipping: the glossy floor stripes' elongated highlights and the wall strips' grazing light fail",
       "owner": "RFC/0011-runtime-indirect-lighting.md#area-lights-light-set-v2-amendment-2026-09-28"
@@ -355,6 +393,7 @@
         "foggy-hall",
         "mirror-corridor",
         "material-sweep",
+        "portal-pair",
         "portal-chamber",
         "portal2-chamber"
       ],
@@ -368,6 +407,7 @@
         "projector-cookie",
         "sun-colonnade",
         "foggy-hall",
+        "portal-pair",
         "portal-chamber",
         "portal2-chamber"
       ],
@@ -398,6 +438,7 @@
         "area-room",
         "mirror-corridor",
         "material-sweep",
+        "portal-pair",
         "portal-chamber",
         "portal2-chamber"
       ],
@@ -407,7 +448,8 @@
     "indirect-diffuse-dynamic": {
       "fixtures": [
         "cornell-floors",
-        "sun-colonnade"
+        "sun-colonnade",
+        "portal-pair"
       ],
       "negative_control": "the probe volume replaced by a black ambient cube: the dynamic ProbeSphere's region leaves tolerance",
       "owner": "RFC/0011-runtime-indirect-lighting.md#probe-volume-contract-renderprobe-volumev1"
@@ -421,6 +463,7 @@
         "foggy-hall",
         "mirror-corridor",
         "material-sweep",
+        "portal-pair",
         "portal-chamber",
         "portal2-chamber"
       ],
@@ -440,6 +483,13 @@
       "negative_control": "density zero (the clear state's frame) judged against the fog reference, and the projector's shaft drawn inside its shadow",
       "owner": "RFC/0016-render-core.md#lighting-model-renderlightingv1-amended-2026-09-28 (render.pass.volumetric)"
     },
+    "portal-transport": {
+      "fixtures": [
+        "portal-pair"
+      ],
+      "negative_control": "the pair closed (no images, no view through it) judged against the open reference: room B's floor, walls and the view through the portal fail; the opening's rectangle in place of its ellipse (render.portal-lights.v1 P2's clip) shows as extra light at the corners of each through-portal pool",
+      "owner": "unittests/rendertest/contracts/render.portal-lights.v1.md (RFC 0011; each term evaluated through open portal pairs by its images; decided by the render-core owner, source-engine-43, 2026-09-29)"
+    },
     "projected-lights": {
       "fixtures": [
         "projector-cookie",
@@ -452,6 +502,7 @@
       "fixtures": [
         "foggy-hall",
         "material-sweep",
+        "portal-pair",
         "portal-chamber",
         "portal2-chamber"
       ],

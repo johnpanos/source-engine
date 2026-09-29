@@ -80,6 +80,15 @@
       "mean": 0.12,
       "p99": 1.0,
       "version": 1
+    },
+    {
+      "basis": "two rooms joined through an elliptical portal opening: direct light through the opening is exact by the contract; p99 is the opening's edge, the post's shadow edge carried through the pair and the polished floor's reflection of what comes through",
+      "digest": "5e9799659c0695726745e04dfec50bc4b41f02a1ef61790a51fea6e71a4b59b8",
+      "fixed": "2026-09-29T10:07:58+00:00",
+      "fixture": "portal-pair",
+      "mean": 0.07,
+      "p99": 0.8,
+      "version": 1
     }
   ],
   "metric": "manifest.json error_metric: e = max channel |lab - ref| / mean reference luminance over the judged pixels",

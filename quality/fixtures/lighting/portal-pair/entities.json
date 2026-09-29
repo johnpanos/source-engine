@@ -1,0 +1,153 @@
+{
+  "entities": [
+    {
+      "_fixture_light": "LampA",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "10.000000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 255.0000",
+      "height": "39.3700",
+      "origin": "98.4252 78.7402 117.7165",
+      "two_sided": "0",
+      "width": "39.3700"
+    },
+    {
+      "_fixture_light": "LampB",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "1.500000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 255.0000",
+      "height": "19.6850",
+      "origin": "511.8110 165.3543 117.7165",
+      "two_sided": "0",
+      "width": "19.6850"
+    },
+    {
+      "_cone": "14.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "SpotA",
+      "_inner_cone": "9.0000",
+      "_light": "255.0000 249.1234 236.8415 2040.0000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-25.4077 0.0000 0",
+      "classname": "light_spot",
+      "origin": "39.3701 78.7402 110.2362",
+      "pitch": "-25.4077"
+    },
+    {
+      "Activated": "1",
+      "LinkageGroupID": "0",
+      "PortalTwo": "0",
+      "angles": "-0.0000 180.0000 0.0000",
+      "classname": "prop_portal",
+      "origin": "196.8504 78.7402 55.1181",
+      "targetname": "PortalA"
+    },
+    {
+      "Activated": "1",
+      "LinkageGroupID": "0",
+      "PortalTwo": "1",
+      "angles": "-0.0000 90.0000 0.0000",
+      "classname": "prop_portal",
+      "origin": "511.8110 0.0000 55.1181",
+      "targetname": "PortalB"
+    }
+  ],
+  "fixture": "portal-pair",
+  "lights": [
+    {
+      "center_m": [
+        2.5,
+        2.0,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.5,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "LampA",
+      "radiance": [
+        10.0,
+        10.0,
+        10.0
+      ],
+      "size_m": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "center_m": [
+        13.0,
+        4.2,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.25,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "LampB",
+      "radiance": [
+        1.5,
+        1.5,
+        1.5
+      ],
+      "size_m": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "center_m": [
+        1.0,
+        2.0,
+        2.8
+      ],
+      "direction": [
+        0.9032775043542899,
+        0.0,
+        -0.42905681456828765
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 9.0,
+      "kind": "spot",
+      "name": "SpotA",
+      "outer_degrees": 14.0,
+      "radiance": [
+        20000.0,
+        19000.0,
+        17000.0
+      ]
+    }
+  ],
+  "schema": "lighting-entities/v1",
+  "units": "Source units"
+}

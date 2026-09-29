@@ -2816,6 +2816,15 @@ inline int FindModel( const CUtlVector<rmodel_t> &list, const model_t *pModel )
 // UNDONE: Build a similar pipeline for non-static prop models
 // UNDONE: Split this into several functions in a sub-object
 ConVar r_staticprop_lod("r_staticprop_lod", "-1");
+// A static prop's per-instance diffuse modulation (the lump's color), which
+// materials such as Portal 2's gel tubes ($blendtintbybasealpha) tint by.
+static void SetStaticPropColorModulation( IClientRenderable *pRenderable )
+{
+	float color[3];
+	pRenderable->GetColorModulation( color );
+	g_pStudioRender->SetColorModulation( color );
+}
+
 int CModelRender::DrawStaticPropArrayFast( StaticPropRenderInfo_t *pProps, int count, bool bShadowDepth )
 {
 #ifndef SWDS
@@ -3112,6 +3121,7 @@ int CModelRender::DrawStaticPropArrayFast( StaticPropRenderInfo_t *pProps, int c
 		info.m_pClientEntity = static_cast<void*>(obj.pRenderable);
 		info.m_Lod = obj.lod;
 		info.m_pColorMeshes = obj.pColorMeshes;
+		SetStaticPropColorModulation( obj.pRenderable );
 		g_pStudioRender->DrawModelStaticProp( info, *obj.pMatrix, drawFlags );
 	}
 
@@ -3143,6 +3153,7 @@ int CModelRender::DrawStaticPropArrayFast( StaticPropRenderInfo_t *pProps, int c
 			info.m_pClientEntity = static_cast<void*>(obj.pRenderable);
 			info.m_Lod = obj.lod;
 			info.m_pColorMeshes = obj.pColorMeshes;
+			SetStaticPropColorModulation( obj.pRenderable );
 			g_pStudioRender->DrawModelStaticProp( info, *obj.pMatrix, drawFlags );
 		}
 	}
@@ -3185,6 +3196,7 @@ int CModelRender::DrawStaticPropArrayFast( StaticPropRenderInfo_t *pProps, int c
 		info.m_pClientEntity = static_cast<void*>(obj.pRenderable);
 		info.m_Lod = obj.lod;
 		info.m_pColorMeshes = obj.pColorMeshes;
+		SetStaticPropColorModulation( obj.pRenderable );
 		g_pStudioRender->DrawStaticPropDecals( info, *obj.pMatrix );
 	}
 

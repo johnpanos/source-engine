@@ -22,6 +22,7 @@ Do not edit generated files by hand.
 | `foggy-hall` | 24 m hall with a homogeneous medium (scattering 0.06/m, absorption 0.01/m, g 0.3), 16 ceiling spots + 240 wall bulbs (256 clustered lights), a projector shaft shadowed by a pillar | participating-media, runtime-lights, projected-lights, direct-visibility, indirect-diffuse-static, brdf | `nave`, `side` | `fog`, `clear` (density zero) |
 | `mirror-corridor` | 18 m corridor, floor from a metal mirror (0.02) through gloss 0.1 and 0.25 to 0.5 (above the SSR cutoff), colored wall panels, ceiling strips, a block near the camera whose reflection leaves the screen | screen-space-reflections, image-based-specular, filtered-roughness, specular-occlusion, brdf, area-lights, indirect-diffuse-static | `down`, `low` | `default` |
 | `material-sweep` | a wall of 24 smooth spheres, roughness 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8, 1.0: gold metal, clear coat (coat roughness swept) over red, white dielectric; key rectangle and a rim spot | brdf, image-based-specular, filtered-roughness, area-lights, runtime-lights, indirect-diffuse-static, specular-occlusion | `front`, `grazing` | `default` |
+| `portal-pair` | two sealed rooms joined only by a linked `prop_portal` pair on perpendicular walls (A's east, B's south): A's ceiling rectangle and a spot aimed through portal A past a post; B has a dim lamp of its own, a rough/polished floor split, a block and a dynamic probe sphere | brdf, area-lights, runtime-lights, direct-visibility, indirect-diffuse-static, indirect-diffuse-dynamic, image-based-specular, portal-transport | `b-portal`, `b-floor`, `a-portal` | `closed` (the portal world; the map's bake), `open` |
 | `portal-chamber` | Portal's `testchmb_a_00` as relit by `legacy_bsp_relight.py` (map `testchmb_a_00_relit`) | brdf, runtime-lights, direct-visibility, indirect-diffuse-static, image-based-specular, emission | `vault`, `room2` (the K0 view-oracle poses) | `default` |
 | `portal2-chamber` | `sp_gi_chamber_01` as built by `portal2_gi_chamber.py` | brdf, runtime-lights, direct-visibility, indirect-diffuse-static, image-based-specular, emission, ambient-occlusion | `spawn`, `chamber` | `default` |
 
@@ -61,6 +62,38 @@ is the relight build's derived stage (`external_stage.path`, untracked under
 `quality-results/`), rebuilt by the command in `external_stage.rebuild`.
 Their maps are the published `run/maps/testchmb_a_00_relit` and
 `run/maps/sp_gi_chamber_01`, with the maps' own entity lumps.
+
+## Light through portals (`portal-pair`)
+
+The term `portal-transport` is how every other term is evaluated across an
+open, linked portal pair. Its owner is `render.portal-lights.v1`
+(`unittests/rendertest/contracts/render.portal-lights.v1.md`, RFC 0011), as
+the render-core owner decided on 2026-09-29. It is not a row of its own in
+the lighting model.
+
+- **The portal world** is the base state `closed`, which the map is built
+  and baked from. Each portal wall is the wall with the portal's opening cut
+  out, plus a plug that fills it. The pair is in the entity lump as
+  `prop_portal` (`Activated 1`, linkage group 0, `PortalTwo` on B). The
+  lighting block lists the portals (`portals`): centre, frame, half size in
+  Source units, and `aperture: ellipse`.
+- **The reference** is the state `open`. The plugs are out, and each room is
+  joined through the opening to a copy of the other room (`Joined*` meshes
+  and lights), placed behind its portal wall by the pair's transform. The
+  transform is Source's `MatrixThisToLinked`: local forward and right
+  negated, up kept. For one pair this is the exact equivalent of every light
+  path through the pair, with any number of crossings. The copies carry no
+  portal wall, because each room's own portal wall is the other's under the
+  transform.
+- **The opening is the portal's visible shape**: the ellipse inscribed in
+  Portal's 64 x 108 units (64 segments), as decided with the render-core
+  owner. `render.portal-lights.v1` P2 clips images with the rectangle. That
+  deviation shows up here as extra light at the corners of each
+  through-portal pool.
+- Every camera's `through` region is the copy seen through the opening in
+  `open`, and the plug in `closed`. The lab passes it only by drawing the
+  view through the portal.
+- The negative control is the pair closed, judged against `open`.
 
 ## Lights in the entity lump
 

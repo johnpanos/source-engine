@@ -480,6 +480,9 @@ CPortalMPGameRules::CPortalMPGameRules()
 	m_nCoopCreditsScanState = 0;
 	m_bCoopFadeCreditsState = false;
 	memset( m_bLevelCompletions, 0, sizeof( m_bLevelCompletions ) );
+	// Empty names are never sent (they match the zero baseline), so the
+	// client's copy must start empty, not with uninitialized memory.
+	memset( m_szLevelNames, 0, sizeof( m_szLevelNames ) );
 }
 
 const CViewVectors* CPortalMPGameRules::GetViewVectors()const
@@ -1538,6 +1541,7 @@ void CPortalMPGameRules::SetMapCompleteData( int nPlayer )
 		}
 	}
 
+	Msg( "[coopdbg] SetMapCompleteData %d player=%p\n", nPlayer, pPlayer );
 	if ( !pPlayer )
 		return;
 
@@ -1557,6 +1561,7 @@ void CPortalMPGameRules::SetMapCompleteData( int nPlayer )
 void CPortalMPGameRules::OnPlayerDataReceived( int nPlayer )
 {
 	m_bDataReceived[ nPlayer ] = true;
+	Msg( "[coopdbg] OnPlayerDataReceived %d -> %d %d wait=%d\n", nPlayer, m_bDataReceived[ 0 ], m_bDataReceived[ 1 ], mp_dev_wait_for_other_player.GetInt() );
 
 	if ( ( m_bDataReceived[ 0 ] && m_bDataReceived[ 1 ] ) || (!mp_dev_wait_for_other_player.GetBool() || (IsLocalSplitScreen() && IsCreditsMap()) ) || IsCommunityCoopHub() )
 	{
@@ -2434,6 +2439,7 @@ USER_MESSAGE_REGISTER( MPMapCompletedData );
 
 void CPortalMPGameRules::LoadMapCompleteData( void )
 {
+	Msg( "[coopdbg] client LoadMapCompleteData names=%d\n", (int)m_bMapNamesLoaded );
 	if ( !m_bMapNamesLoaded )
 		return;
 
@@ -2498,6 +2504,7 @@ void CPortalMPGameRules::LoadMapCompleteData( void )
 	}
 
 	// Let the server know that we loaded completion data on the client for this player
+	Msg( "[coopdbg] client sends %s\n", szCommand );
 	engine->ClientCmd( szCommand );
 }
 

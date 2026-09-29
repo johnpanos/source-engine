@@ -70,17 +70,24 @@ if [[ "$mode" == "--prepare" || "$mode" == "--configure-only" ]]; then
     exit 0
 fi
 
-# Replay the tree's own configure options if a wscript, Waf tool, toolchain
-# policy or profile changed since it was configured, as run.sh does.
-WAFLOCK="$P2_WAFLOCK" python3 "$ROOT/tools/quality/ensure_configured.py" --build "$P2_BUILD_DIR"
-# The ccache directory and size limit shared with ./play's tree (run.sh).
-. "$ROOT/tools/quality/launcher_ccache.sh"
-launcher_ccache "$P2_BUILD_DIR"
-(cd "$ROOT" && WAFLOCK="$P2_WAFLOCK" python3 ./waf build)
+# P2_NO_BUILD=1 starts the runtime as staged, for a second copy beside a
+# running one (./play_p2_coop): rebuilding and restaging under it gains nothing.
+if [[ "${P2_NO_BUILD:-}" != 1 ]]; then
+    # Replay the tree's own configure options if a wscript, Waf tool, toolchain
+    # policy or profile changed since it was configured, as run.sh does.
+    WAFLOCK="$P2_WAFLOCK" python3 "$ROOT/tools/quality/ensure_configured.py" --build "$P2_BUILD_DIR"
+    # The ccache directory and size limit shared with ./play's tree (run.sh).
+    . "$ROOT/tools/quality/launcher_ccache.sh"
+    launcher_ccache "$P2_BUILD_DIR"
+    (cd "$ROOT" && WAFLOCK="$P2_WAFLOCK" python3 ./waf build)
 
-python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \
-    --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME" --build "$P2_BUILD_DIR" \
-    --mount-published
+    python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \
+        --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME" --build "$P2_BUILD_DIR" \
+        --mount-published
+elif [[ ! -x "$P2_RUNTIME/hl2_launcher" ]]; then
+    echo "play_p2: P2_NO_BUILD=1 but $P2_RUNTIME has no staged launcher" >&2
+    exit 1
+fi
 
 cd "$P2_RUNTIME"
 export SteamAppId=620 SteamGameId=620

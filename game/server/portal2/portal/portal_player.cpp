@@ -1043,6 +1043,7 @@ void CPortal_Player::Spawn(void)
 	if ( GameRules() && GameRules()->IsMultiplayer() )
 	{
 		bool bIsBlue = GetTeamNumber() == TEAM_BLUE;
+		Msg( "[coopdbg] Spawn team=%d fully=%d\n", GetTeamNumber(), (int)IsFullyConnected() );
 		if ( IsFullyConnected() )
 		{
 			if ( bIsBlue )
@@ -1175,6 +1176,19 @@ void CPortal_Player::OnFullyConnected()
 	}
 
 	m_bIsFullyConnected = true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: The engine's ClientActive for Portal 2 (game/server/portal/
+//			portal_client.cpp), which stands in for retail's ClientFullyConnect
+//-----------------------------------------------------------------------------
+void Portal2_ClientFullyConnected( edict_t *pEdict )
+{
+	CPortal_Player *pPlayer = ToPortalPlayer( CBaseEntity::Instance( pEdict ) );
+	if ( pPlayer )
+	{
+		pPlayer->OnFullyConnected();
+	}
 }
 
 void CPortal_Player::NotifySystemEvent(CBaseEntity *pNotify, notify_system_event_t eventType, const notify_system_event_params_t &params )
@@ -2213,6 +2227,7 @@ void CPortal_Player::RespawnPlayer( void )
 
 void CPortal_Player::PlayerTransitionCompleteThink( void )
 {
+	Msg( "[coopdbg] PlayerTransitionCompleteThink team=%d\n", GetTeamNumber() );
 	const char *szVideoCommand = "stop_transition_videos_fadeout";
 	char szClientCmd[256];
 	Q_snprintf( szClientCmd, sizeof(szClientCmd), "%s %f\n", szVideoCommand, 1.5f );

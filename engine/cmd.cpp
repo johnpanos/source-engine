@@ -571,15 +571,18 @@ void Cmd_Exec_f( const CCommand &args )
 
 	int argc = args.ArgC();
 
-	if ( argc != 2 )
+	// An optional search path ID, as the later engines take it: host startup
+	// runs "exec modsettings.cfg mod" (the game's own settings only, e.g.
+	// Portal's bloom scale), which a two-argument exec refused.
+	if ( argc != 2 && argc != 3 )
 	{
-		ConMsg( "exec <filename>: execute a script file\n" );
+		ConMsg( "exec <filename> [path id]: execute a script file\n" );
 		return;
 	}
 
 	const char *szFile = args[1];
 
-	const char *pPathID = "*";
+	const char *pPathID = ( argc == 3 ) ? args[2] : "*";
 
 	Q_snprintf( fileName, sizeof( fileName ), "//%s/cfg/%s", pPathID, szFile );
 	Q_DefaultExtension( fileName, ".cfg", sizeof( fileName ) );

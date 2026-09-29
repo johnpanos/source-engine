@@ -391,10 +391,12 @@ struct StaticPropLump_t
 		m_nMaxDXLevel			= 0;
 		m_nLightmapResolutionX	= 0;
 		m_nLightmapResolutionY	= 0;
-		m_DiffuseModulation.r = 0;
-		m_DiffuseModulation.g = 0;
-		m_DiffuseModulation.b = 0;
-		m_DiffuseModulation.a = 0;
+		// Versions without per-instance modulation draw unmodulated (identity),
+		// as cstrike15's loader defaults them.
+		m_DiffuseModulation.r = 255;
+		m_DiffuseModulation.g = 255;
+		m_DiffuseModulation.b = 255;
+		m_DiffuseModulation.a = 255;
 
 		// Older versions don't want this.
 		m_Flags					|= STATIC_PROP_NO_PER_TEXEL_LIGHTING;		

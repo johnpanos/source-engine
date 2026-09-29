@@ -49,6 +49,10 @@ void ClientPutInServer( edict_t *pEdict, const char *playername )
 }
 
 
+#ifdef PORTAL2
+void Portal2_ClientFullyConnected( edict_t *pEdict );
+#endif
+
 void ClientActive( edict_t *pEdict, bool bLoadGame )
 {
 	CPortal_Player *pPlayer = dynamic_cast< CPortal_Player* >( CBaseEntity::Instance( pEdict ) );
@@ -60,6 +64,18 @@ void ClientActive( edict_t *pEdict, bool bLoadGame )
 	{
 		pPlayer->Spawn();
 	}
+
+#ifdef PORTAL2
+	// Retail's engine tells the game a client is fully connected through
+	// IServerGameClients::ClientFullyConnect; this engine has no such callback,
+	// and ClientActive is the same point in the sign-on. Without it a co-op
+	// player never counts as connected, so its respawn never fires
+	// player_spawn_blue/player_spawn_orange and co-op maps keep both players in
+	// their black start box (mp_coop_start waits on player_spawn_orange).
+	// This file sees Portal 1's CPortal_Player, so Portal 2's player code
+	// makes the call.
+	Portal2_ClientFullyConnected( pEdict );
+#endif
 }
 
 

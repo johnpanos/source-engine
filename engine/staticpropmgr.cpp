@@ -326,6 +326,10 @@ private:
 	// because the time at which the static props are unserialized
 	// doesn't necessarily match the time at which we can initialize the light cache
 	Vector					m_LightingOrigin;
+
+	// Per-instance diffuse modulation from the lump (Portal 2's gel tubes are
+	// tinted by it through $blendtintbybasealpha).
+	Vector					m_DiffuseModulation;
 };
 
 
@@ -548,6 +552,9 @@ bool CStaticProp::Init( int index, StaticPropLump_t &lump, model_t *pModel )
 	}
 
 	m_Alpha = 255;
+	m_DiffuseModulation.Init( lump.m_DiffuseModulation.r * ( 1.0f / 255.0f ),
+		lump.m_DiffuseModulation.g * ( 1.0f / 255.0f ),
+		lump.m_DiffuseModulation.b * ( 1.0f / 255.0f ) );
 	m_Skin = (unsigned char)lump.m_Skin;
 	m_Flags = ( lump.m_Flags & (STATIC_PROP_SCREEN_SPACE_FADE | STATIC_PROP_FLAG_FADES | STATIC_PROP_NO_PER_VERTEX_LIGHTING) );
 
@@ -788,7 +795,9 @@ int CStaticProp::GetFxBlend( )
 
 void CStaticProp::GetColorModulation( float* color )
 {
-	color[0] = color[1] = color[2] = 1.0f;
+	color[0] = m_DiffuseModulation.x;
+	color[1] = m_DiffuseModulation.y;
+	color[2] = m_DiffuseModulation.z;
 }
 
 
@@ -1016,6 +1025,7 @@ int	CStaticProp::DrawModelSlow( int flags )
 	}
 #endif
 
+	Vector color = m_DiffuseModulation;
 	if ( r_colorstaticprops.GetBool() )
 	{
 		// deterministic random sequence
@@ -1023,10 +1033,10 @@ int	CStaticProp::DrawModelSlow( int flags )
 		hash[0] = HashItem( m_ModelInstance );
 		hash[1] = HashItem( hash[0] );
 		hash[2] = HashItem( hash[1] );
-		r_colormod[0] = (float)hash[0] * 1.0f/65535.0f;
-		r_colormod[1] = (float)hash[1] * 1.0f/65535.0f;
-		r_colormod[2] = (float)hash[2] * 1.0f/65535.0f;
-		VectorNormalize( r_colormod );
+		color[0] = (float)hash[0] * 1.0f/65535.0f;
+		color[1] = (float)hash[1] * 1.0f/65535.0f;
+		color[2] = (float)hash[2] * 1.0f/65535.0f;
+		VectorNormalize( color );
 	}
 
 	flags |= STUDIO_STATIC_LIGHTING;
@@ -1042,14 +1052,18 @@ int	CStaticProp::DrawModelSlow( int flags )
 
 	ModelRenderInfo_t sInfo;
 	InitModelRenderInfo( sInfo, flags );
-	g_pStudioRender->SetColorModulation( r_colormod );
+	g_pStudioRender->SetColorModulation( color.Base() );
 	g_pStudioRender->SetAlphaModulation( r_blend );
 	// Restore the matrices if we're skinning
 	CMatRenderContextPtr pRenderContext( materials );
 	pRenderContext->MatrixMode( MATERIAL_MODEL );
 	pRenderContext->PushMatrix();
 	pRenderContext->LoadIdentity();
+	// DrawModelEx applies the global entity modulation; give it this prop's.
+	Vector savedColorMod( r_colormod[0], r_colormod[1], r_colormod[2] );
+	VectorCopy( color.Base(), r_colormod );
 	int drawn = modelrender->DrawModelEx( sInfo );
+	VectorCopy( savedColorMod.Base(), r_colormod );
 	pRenderContext->MatrixMode( MATERIAL_MODEL );
 	pRenderContext->PopMatrix();
 
@@ -1094,7 +1108,7 @@ int CStaticProp::DrawModel( int flags )
 
 	ModelRenderInfo_t sInfo;
 	InitModelRenderInfo( sInfo, flags );
-	g_pStudioRender->SetColorModulation( r_colormod );
+	g_pStudioRender->SetColorModulation( m_DiffuseModulation.Base() );
 	g_pStudioRender->SetAlphaModulation( r_blend );
 	// Restore the matrices if we're skinning
 	CMatRenderContextPtr pRenderContext( materials );
@@ -1940,6 +1954,7 @@ void CStaticPropMgr::DrawStaticProps_Fast( IClientRenderable **pProps, int count
 		sInfo.pLightingOrigin = &pProp->m_LightingOrigin;
 		sInfo.pModelToWorld = &pProp->m_ModelToWorld;
 		sInfo.pRenderable = pProps[i];
+		g_pStudioRender->SetColorModulation( pProp->m_DiffuseModulation.Base() );
 		modelrender->DrawModelExStaticProp( sInfo );
 	}
 	// Restore the matrices if we're skinning
