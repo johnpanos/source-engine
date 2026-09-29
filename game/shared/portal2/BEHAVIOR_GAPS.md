@@ -342,3 +342,11 @@ Newest last. Each entry names the build and the check that passed.
   reference to it; the map plays `credits_music`). Open: retail's drawing,
   which needs its draw functions decompiled. The 2010 dSYM credits code is
   still Portal 1's, so it is no reference for this.
+- 2026-09-29, G04 (build-p2, native Vulkan, Box3D): the turret holds fire
+  while a window stands between it and its enemy. `IsEnemyBehindGlass`
+  traces `CONTENTS_WINDOW` along the shot line (through the portal when it
+  aims through one), from the 2010 server dSYM; the retail server's
+  `ActiveThink` (vtable slot 0x9fc, 0x9806d0) calls the same function
+  (0x97ff40) on both its shot paths and skips the shot, dry fire included.
+  Headless `sp_a2_turret_intro`: a turret still shoots the player in the open
+  (`AddMultiDamage` hits). The glass case is not checked at runtime.

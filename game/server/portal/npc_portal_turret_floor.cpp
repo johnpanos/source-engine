@@ -1125,6 +1125,15 @@ void CNPC_Portal_FloorTurret::ActiveThink( void )
 			minCos3d = 0.7071; // 45 degrees
 		}
 
+#ifdef PORTAL2
+		// Glass stops the bullets, so hold fire (not even a dry fire) while
+		// the enemy is behind a window
+		if ( bCanShoot && IsEnemyBehindGlass( pPortal, pEnemy, vecMuzzle, vecDirToEnemy, m_flDistToEnemy ) )
+		{
+			bCanShoot = false;
+		}
+#endif
+
 		//Fire the gun
 		if ( bCanShoot ) // 10 degree slop XY
 		{
@@ -1178,6 +1187,42 @@ void CNPC_Portal_FloorTurret::ActiveThink( void )
 	//Turn to face
 	UpdateFacing();
 }
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Purpose: Whether a window (CONTENTS_WINDOW) other than the enemy stands on
+//			the shot line, through pPortal when the enemy is seen through one.
+//			From the 2010 server.dylib dSYM; retail server.so 0x97ff40 is the
+//			same, and its ActiveThink holds fire on both of its shot paths.
+//-----------------------------------------------------------------------------
+bool CNPC_Portal_FloorTurret::IsEnemyBehindGlass( CPortal_Base2D *pPortal, CBaseEntity *pEnemy, const Vector &vecMuzzle, const Vector &vecDirToEnemy, float flDistToEnemy )
+{
+	Ray_t rayToEnemy;
+	rayToEnemy.Init( vecMuzzle, vecMuzzle + vecDirToEnemy * flDistToEnemy );
+
+	CTraceFilterSimple filter( this, COLLISION_GROUP_NONE );
+	trace_t tr;
+	bool bHitPortal = UTIL_Portal_TraceRay_Bullets( pPortal, rayToEnemy, CONTENTS_WINDOW, &filter, &tr, false );
+
+	if ( g_debug_turret.GetBool() )
+	{
+		NDebugOverlay::Line( tr.startpos, tr.endpos, 255, 0, 0, true, 1.0f );
+		if ( bHitPortal )
+		{
+			const float flDistToPortal = ( pPortal->GetAbsOrigin() - vecMuzzle ).Length();
+			NDebugOverlay::Line( vecMuzzle, vecMuzzle + vecDirToEnemy * flDistToPortal, 0, 0, 255, true, 1.0f );
+		}
+		NDebugOverlay::Sphere( tr.endpos, 4.0f, 0, 255, 0, true, 1.0f );
+	}
+
+	if ( ( tr.fraction < 1.0f || tr.allsolid || tr.startsolid ) && tr.m_pEnt && tr.m_pEnt != pEnemy )
+	{
+		return ( tr.contents & CONTENTS_WINDOW ) != 0;
+	}
+
+	return false;
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Target doesn't exist or has eluded us, so search for one

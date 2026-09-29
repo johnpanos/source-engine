@@ -74,6 +74,7 @@ public:
 	virtual void	SuppressThink( void );
 	virtual void	DisabledThink( void );
 	virtual void	HackFindEnemy( void );
+	bool			IsEnemyBehindGlass( CPortal_Base2D *pPortal, CBaseEntity *pEnemy, const Vector &vecMuzzle, const Vector &vecDirToEnemy, float flDistToEnemy );
 	virtual void	BurnThink( void );
 
 	void			OnEnteredTractorBeam( void );
