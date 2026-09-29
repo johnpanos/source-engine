@@ -724,6 +724,28 @@
         ]
       },
       {
+        "id": "render.lab",
+        "description": "RFC 0016 K11: render_lab, the render core composed alone (no engine, material system, legacy frontend or SDL), rendering scenes from BSP2 maps, studio models and VMT materials through the Vulkan adapter to prove each lighting term against Cycles.",
+        "paths": [
+          "render/lab/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.math",
+          "render.device",
+          "render.device.vulkan",
+          "render.resources",
+          "render.material",
+          "world.map-container",
+          "content.studio-model",
+          "content.texture-contract",
+          "content.vtf-reader"
+        ],
+        "externalHeaders": [
+          "filesystem"
+        ]
+      },
+      {
         "id": "render.pass.lines",
         "paths": [
           "public/render/pass/lines/",
@@ -1376,6 +1398,7 @@
           "render_spv"
         ]
       },
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2"]},
       "render_pass_lines": {
         "allowedUse": [
           "render_resources",
@@ -1767,7 +1790,8 @@
             "render.composition"
           ],
           [
-            "render.core-tests"
+            "render.core-tests",
+            "render.lab"
           ]
         ],
         "externalBases": [
@@ -1775,7 +1799,9 @@
           "content.keyvalues-text",
           "content.texture-contract",
           "content.ktx2-reader",
-          "content.vtf-reader"
+          "content.vtf-reader",
+          "world.map-container",
+          "content.studio-model"
         ],
         "independent": [
           [
@@ -1798,7 +1824,8 @@
         },
         "adapterConsumers": [
           "render.composition",
-          "render.core-tests"
+          "render.core-tests",
+          "render.lab"
         ],
         "planned": [
           "render.device.gl"

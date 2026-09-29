@@ -27,6 +27,8 @@ std::optional<PixelFormat> FormatForVtf( ImageFormat format, bool srgb )
 	switch ( format )
 	{
 	case IMAGE_FORMAT_RGBA8888:
+	case IMAGE_FORMAT_RGB888:
+	case IMAGE_FORMAT_BGR888: // 24-bit texels expand to RGBA8 with opaque alpha
 		return srgb ? PixelFormat::Rgba8Srgb : PixelFormat::Rgba8Unorm;
 	case IMAGE_FORMAT_BGRA8888:
 		return srgb ? PixelFormat::Bgra8Srgb : PixelFormat::Bgra8Unorm;
@@ -94,8 +96,28 @@ foundation::Expected<TextureImage, ReadError> ReadVtfImage( std::span<const std:
 		ImageLevel level;
 		level.width = static_cast<std::uint32_t>( width );
 		level.height = static_cast<std::uint32_t>( height );
-		level.bytes.resize( bytes );
-		std::memcpy( level.bytes.data(), source, bytes );
+		const bool rgb = texture->Format() == IMAGE_FORMAT_RGB888;
+		const bool bgr = texture->Format() == IMAGE_FORMAT_BGR888;
+		if ( rgb || bgr )
+		{
+			const std::size_t texels = std::size_t( width ) * std::size_t( height );
+			if ( static_cast<std::size_t>( bytes ) != texels * 3 )
+				return foundation::MakeUnexpected( ReadError::InvalidImageSize );
+			level.bytes.resize( texels * 4 );
+			for ( std::size_t i = 0; i < texels; ++i )
+			{
+				const unsigned char *in = source + i * 3;
+				level.bytes[i * 4 + 0] = std::byte( bgr ? in[2] : in[0] );
+				level.bytes[i * 4 + 1] = std::byte( in[1] );
+				level.bytes[i * 4 + 2] = std::byte( bgr ? in[0] : in[2] );
+				level.bytes[i * 4 + 3] = std::byte( 255 );
+			}
+		}
+		else
+		{
+			level.bytes.resize( bytes );
+			std::memcpy( level.bytes.data(), source, bytes );
+		}
 		result.levels.push_back( std::move( level ) );
 		totalBytes += bytes;
 	}

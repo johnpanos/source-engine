@@ -1079,6 +1079,8 @@ def configure(conf):
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if conf.env.DEST_OS == 'linux' else [])
 		tool_projects += ( ['texturecontainer'] if conf.env.KTX_READ_ENABLED else [] ) + \
 			hammer_gtk_projects(conf)
+		# RFC 0016 K11: render_lab needs the core's Vulkan adapter and the texture readers.
+		tool_projects += ['render/lab'] if conf.env.RENDER_CORE_VULKAN and conf.env.KTX_READ_ENABLED else []
 		conf.add_subproject(tool_projects)
 	elif conf.options.DEDICATED:
 		if conf.env.DEBUGAPI:
@@ -1196,6 +1198,8 @@ def build(bld):
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if bld.env.DEST_OS == 'linux' else [])
 		tool_projects += ['texturecontainer'] if bld.env.KTX_READ_ENABLED else []
 		tool_projects += ['hammer/gtk'] if bld.env.HAMMER_GTK else []
+		# RFC 0016 K11: render_lab needs the core's Vulkan adapter and the texture readers.
+		tool_projects += ['render/lab'] if bld.env.RENDER_CORE_VULKAN and bld.env.KTX_READ_ENABLED else []
 		bld.add_subproject(tool_projects)
 	elif bld.env.DEDICATED:
 		# First: its protoc rule ends a build group that its consumers follow.

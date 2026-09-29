@@ -9040,6 +9040,60 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.composition",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "RFC 0016 K11 'Lab composes the core alone' (tools/render/lab.py composition): render_lab's NEEDED libraries are an allow list (tier0, the Vulkan loader, the C and C++ runtimes) and its defined symbols name no legacy frontend, composition root, engine, material system, studiorender or SDL code; it renders the RFC 0011 gallery's Cornell box (BSP2: WMSH world mesh and LMAP lightmap page, VMT materials through render.material's importer and program resolver) with the gallery's probe sphere studio model through the Vulkan adapter, with the Khronos validation layer and synchronization validation reporting no message (a missing layer fails the run), into a finite, lit linear image.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "composition",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 20,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "path:../source-engine/run/maps/gi_bleed_cornell/maps/gi_bleed_cornell.bsp",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/render_lab.cpp",
+        "public/mapcontainer/world_mesh_decode.h",
+        "tools/render/lab.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.composition.selftest",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "The lab link scans (lab.py selftest): a clean symbol list passes; a seeded symbol of the legacy frontend, the composition root, the engine binding, the material system, studiorender and SDL is each found; SDL and material-system libraries are outside the NEEDED allow list.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "selftest"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 10,
+      "sources": [
+        "tools/render/lab.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.math.builders",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

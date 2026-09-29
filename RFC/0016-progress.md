@@ -2132,3 +2132,42 @@ The rest is the long tail: SpriteCard, Water, Refract, the eye shaders,
 Cable, Portal, SolidEnergy, PaintBlob and engine-internal materials. Each
 gets a family on the same terms. Mods' shader DLLs stay on the legacy
 profiles.
+
+## K11 and RFC 0014: the lab first, then its instruments (2026-09-28)
+
+User goal (2026-09-28): the render core at Source 2 quality or better, in
+stack order. RFC 0014 D0–D1 (the debug view catalog and the lighting-model
+controls) come first because they are the lab's instruments; then K11 in
+`render_lab`; then K10, K5–K6, K7 and K12 in the product. Owner of every
+step: this session (source-engine-43, the render-core owner). R95 and
+R95-DEBUG-CONTROLS are `active`.
+
+### K11 slice: `render_lab` composes the core alone
+
+`render_lab` (`render/lab/`, module `render.lab`, a strict C++20 program of
+the tools product, built when the core's Vulkan adapter and the texture
+readers are configured) reads a BSP2 map's world mesh (`WMSH`, decoded by
+the format library's new `mapcontainer/world_mesh_decode.h`) and lightmap
+page (`LMAP`, the Total layer, linear RGBA16F), resolves every VMT through
+`render.material`'s importer and the one program resolver, stages the
+textures through `render.resources`, optionally adds a studio model through
+`mdl`, and draws through the Vulkan adapter into a linear RGBA16F target,
+written as a PFM. It links no engine, material system, legacy frontend,
+composition root or SDL. The VTF reader learned the 24-bit RGB888 and BGR888
+formats (expanded to RGBA8 with opaque alpha, with a reader test), which the
+gallery's content uses.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Lab composes the core alone | `render.lab.composition` (`tools/render/lab.py composition`): NEEDED is tier0, the Vulkan loader and the C/C++ runtimes; no defined symbol of the legacy frontend, composition root, engine, material system, studiorender or SDL; the RFC 0011 gallery's Cornell box (4 world batches) with its probe sphere model (5 draws, 496 vertices) under the Khronos validation layer with synchronization validation: 0 messages; a missing layer fails the run | pass (27 checks) |
+| Scans catch forbidden modules | `render.lab.composition.selftest`: six seeded symbols, SDL and material-system libraries outside the allow list | pass (10 checks) |
+
+Reproduce: `WAFLOCK=.lock-waf-rc-lab ./waf build --target=render_lab`, then
+`python3 tools/quality/conformance.py check --suite render.lab.composition
+--suite render.lab.composition.selftest`. The tree is configured with
+`./waf configure --tools --disable-warns -T release -o build-rc-lab
+--render-core-vulkan=on --ktx-source-root=… --ktx-build-root=…`.
+
+Open for K11: everything after composition. The lab still records its draws
+straight on the encoder; it moves onto the frame graph with the surface
+program (check "Model assembly").

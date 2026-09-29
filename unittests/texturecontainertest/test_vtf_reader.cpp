@@ -21,6 +21,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -86,6 +87,30 @@ std::vector<std::byte> LoadFixture( const std::string &path )
 	for ( std::size_t i = 0; i < source.size(); ++i )
 		result[i] = std::byte{ static_cast<unsigned char>( source[i] ) };
 	return result;
+}
+
+// A 2x2 24-bit VTF whose texels are (a, b, c) in its stored order.
+std::vector<std::byte> ThreeChannelVtf(
+    ImageFormat format, unsigned char a, unsigned char b, unsigned char c )
+{
+	std::unique_ptr<IVTFTexture, decltype( &DestroyVTFTexture )> texture(
+	    CreateVTFTexture(), &DestroyVTFTexture );
+	if ( !texture || !texture->Init( 2, 2, 1, format, TEXTUREFLAGS_NOMIP, 1, 1 ) )
+		return {};
+	unsigned char *pixels = texture->ImageData( 0, 0, 0 );
+	if ( !pixels || texture->ComputeMipSize( 0 ) != 12 )
+		return {};
+	for ( int texel = 0; texel < 4; ++texel )
+	{
+		pixels[texel * 3] = a;
+		pixels[texel * 3 + 1] = b;
+		pixels[texel * 3 + 2] = c;
+	}
+	CUtlBuffer buffer;
+	if ( !texture->Serialize( buffer ) || buffer.TellPut() <= 0 )
+		return {};
+	const auto *first = static_cast<const std::byte *>( buffer.Base() );
+	return std::vector<std::byte>( first, first + buffer.TellPut() );
 }
 
 } // namespace
@@ -162,6 +187,27 @@ int main( int argc, char **argv )
 		           ktxBc1.Value().levels.size() == 1 &&
 		           legacyBc1.Value().levels[0].bytes == ktxBc1.Value().levels[0].bytes,
 		    "VTF and KTX2 preserve the same BC1 blocks" );
+	}
+	// 24-bit VTFs (the GI gallery's generated textures are BGR888) expand to
+	// RGBA8 in red, green, blue order with opaque alpha.
+	for ( const auto &[format, expected] :
+	    { std::pair{ IMAGE_FORMAT_BGR888, std::array<int, 4>{ 30, 20, 10, 255 } },
+	        std::pair{ IMAGE_FORMAT_RGB888, std::array<int, 4>{ 10, 20, 30, 255 } } } )
+	{
+		const std::vector<std::byte> bytes = ThreeChannelVtf( format, 10, 20, 30 );
+		const auto image = texturecontainer::ReadVtfImage( bytes );
+		bool matches = image && image.Value().format == texturecontainer::PixelFormat::Rgba8Unorm &&
+		               image.Value().levels.size() == 1 &&
+		               image.Value().levels[0].bytes.size() == 16;
+		for ( int texel = 0; matches && texel < 4; ++texel )
+		{
+			for ( int c = 0; c < 4; ++c )
+				matches &= std::to_integer<int>( image.Value().levels[0].bytes[texel * 4 + c] ) ==
+				           expected[c];
+		}
+		check( matches, format == IMAGE_FORMAT_BGR888
+		                    ? "a BGR888 VTF reads as RGBA8, channels swapped, alpha opaque"
+		                    : "an RGB888 VTF reads as RGBA8 with opaque alpha" );
 	}
 	return testing::ReportConformance( checks, failures );
 }

@@ -1,0 +1,36 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# render_lab (RFC 0016 K11): the render core composed alone, rendering scenes
+# from BSP2 maps, studio models and VMT materials through the Vulkan adapter,
+# to prove each lighting term against Cycles before product wiring. Built with
+# the tools product when the core's Vulkan adapter and the texture readers
+# (--ktx-source-root/--ktx-build-root) are configured (render_lab_projects in
+# the top-level wscript).
+
+top = '.'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.program(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'render_lab.cpp' ],
+		target    = 'render_lab',
+		name      = 'render_lab',
+		arch_module = 'render.lab',
+		features  = 'cxx cxxprogram',
+		includes  = [ '../../public' ],
+		use       = [ 'render_device_vulkan', 'render_material', 'render_resources', 'render_device',
+		              'render_math', 'mapcontainer', 'mdl', 'vtf_texture_reader',
+		              # The VTF reader's legacy dependencies (a tier-free reader is
+		              # owned by the split of hammer.formats into content libraries).
+		              'vtf', 'bitmap', 'mathlib', 'tier0', 'tier1', 'tier2' ],
+		install_path = None,
+		subsystem = 'CONSOLE',
+		idx       = bld.get_taskgen_count()
+	)
