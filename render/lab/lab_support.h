@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -54,6 +55,12 @@ std::optional<std::string> StageImage( resources::TextureCache &cache, const std
 // holds width x height RGBA texels, row 0 at the top.
 bool WritePfm( const std::filesystem::path &path, std::uint32_t width, std::uint32_t height,
     const std::vector<float> &rgba );
+
+// Stages a 4x4 texture (a cube's six faces with `cube`) of one texel.
+bool StageConstant( resources::TextureCache &cache, const std::string &name, device::Format format,
+    std::span<const std::byte> texel, bool cube = false );
+// An RGBA8 texel.
+std::vector<std::byte> ByteTexel( int r, int g, int b, int a );
 
 float HalfToFloat( std::uint16_t half );
 // Round to nearest even; NaN stays NaN and out-of-range values become

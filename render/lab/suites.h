@@ -23,6 +23,11 @@
 //			                rough one reads below), the forced roughness and
 //			                metalness. --seeded term-ignored ignores
 //			                `baked`.
+//			area-lights     RFC 0016 K11: the area-light term (LTC) against
+//			                the contract's exact irradiance and a GGX
+//			                quadrature; neutral, one- and two-sided cases.
+//			                Seeded: no-horizon-clip, ltc-transposed,
+//			                no-magnitude.
 //
 //=============================================================================//
 
@@ -36,6 +41,7 @@ int RunSuite( int argc, char **argv );
 
 int RunDebugViewsSuite( int argc, char **argv );
 int RunLightingControlsSuite( int argc, char **argv );
+int RunAreaLightsSuite( int argc, char **argv );
 
 } // namespace render::lab
 

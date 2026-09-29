@@ -1088,7 +1088,7 @@
  },
  "families": {
   "surface": {
-   "description": "render.material program `surface` (RFC 0016 K11 \"Model assembly\"; the lightmapped, unlit, vertexlit and pbr families are its points): the frame group holds the frame's light terms (lightmap scale, output scale, fog, eye) and the split-sum table with its sampler; the material group holds the constants and the base, env map, env map mask, bump or normal map, detail, MRAO and emission textures with their samplers; the draw group holds the draw's lightmap page with its sampler and its model lighting; world-to-clip (and object-to-world for meshes) is a draw-constant block.",
+   "description": "render.material program `surface` (RFC 0016 K11 \"Model assembly\"; the lightmapped, unlit, vertexlit and pbr families are its points): the frame group holds the frame's light terms (lightmap scale, output scale, fog, eye) the split-sum table and the LTC table with their samplers, and the frame's area lights; the material group holds the constants and the base, env map, env map mask, bump or normal map, detail, MRAO and emission textures with their samplers; the draw group holds the draw's lightmap page with its sampler and its model lighting; world-to-clip (and object-to-world for meshes) is a draw-constant block.",
    "sources": [
     "render/material/families/surface_flat.vert",
     "render/material/families/surface_world.vert",
@@ -1116,6 +1116,20 @@
      },
      {
       "binding": 2,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 3,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 4,
       "kind": "sampler",
       "stages": [
        "fragment"

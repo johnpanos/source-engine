@@ -261,7 +261,7 @@ int main()
 			draw.groups.push_back( { device::BindGroupRole::kDraw, lighting.layout,
 			    lighting.constants, { &neutralSrgb }, true } );
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
-			    std::as_bytes( std::span( &frame, 1 ) ), { &neutral } } );
+			    std::as_bytes( std::span( &frame, 1 ) ), { &neutral, &neutral } } );
 			draw.vertices = std::as_bytes( std::span( quad ) );
 			draw.vertexCount = std::uint32_t( quad.size() );
 			draw.drawConstants = std::as_bytes( std::span( &drawConstants, 1 ) );

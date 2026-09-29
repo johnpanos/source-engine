@@ -290,7 +290,7 @@ int main()
 			SurfaceFrame frame;
 			std::copy( set->eye, set->eye + 3, frame.eye );
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
-			    std::as_bytes( std::span( &frame, 1 ) ), { &splitSum } } );
+			    std::as_bytes( std::span( &frame, 1 ) ), { &splitSum, &unused } } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),
 			    std::as_bytes( std::span( &lighting, 1 ) ), { &unused }, true } );
 			SurfaceConstants constants = claim.constants;

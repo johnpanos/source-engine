@@ -9588,6 +9588,97 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.area-lights",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K11 'Model assembly', the area-light term (render/lab/area_lights_suite.cpp, render_lab suite area-lights --validate): the surface program's pbr point on a receiver plane lit by render.area-light.v1 rectangles (a ceiling panel, a tilted one, one crossing the horizon, one whose reach ends on the receiver, 64 at once) from an overhead and a grazing view. The diffuse lobe matches the contract's exact irradiance (area_light::IrradianceAt times pbr_brdf.h's diffuse color) at every sampled pixel within 0.4 percent + 3e-4. The GGX lobe matches the term as defined (linearly transformed cosines, public/render/pbr_ltc_table.h, clipped to the surface's and the cosine's horizon, the split-sum magnitude and compensation) evaluated by an independent C++ implementation, within 2 percent + 2e-4, on four materials; pixels where the term moves by more than half that within 0.1 units are ill-conditioned and skipped, at most 5 percent of a case. The term off and no area lights are the same frame bitwise; a one-sided light seen from behind gives nothing; a two-sided one gives its front's light; diffuse plus specular is the full frame. The GGX lobe's accuracy against an exact quadrature is printed per case (INFO accuracy.*). 0 validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "area-lights",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 40,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/area_lights_suite.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/shaders/common/ltc.glsl",
+        "render/material/families/surface.frag",
+        "render/material/surface_program.cpp",
+        "public/render/area_light.h",
+        "public/render/pbr_ltc_table.h",
+        "public/render/pbr_brdf.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.area-lights.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "RFC 0016 K11 area-light term, seeded programs (area_light_defects_spv.h, built from surface.frag): no horizon clip fails diffuse.straddling; the LTC matrix transposed and the GGX magnitude dropped each fail a specular check; the control passes.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "area-lights",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "timeout_seconds": 900,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/area_lights_suite.cpp",
+        "render/shaders/common/ltc.glsl",
+        "render/material/families/surface.frag",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.ltc-table",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-host-corpus",
+      "kind": "positive",
+      "description": "RFC 0016 K11: public/render/pbr_ltc_table.h is the fit of tools/render/ltc_fit/ltc_fit.cpp (L1 Nelder-Mead fit of linearly transformed cosines to the RFC 0007 GGX lobe of pbr_brdf.h) within 1e-5 relative, complete, finite, isotropic at normal incidence (tools/render/ltc_table.py check).",
+      "command": [
+        "{python}",
+        "tools/render/ltc_table.py",
+        "check"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 5,
+      "timeout_seconds": 900,
+      "sources": [
+        "tools/render/ltc_table.py",
+        "tools/render/ltc_fit/ltc_fit.cpp",
+        "public/render/pbr_ltc_table.h"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.debug-views.product.mode0",
       "domain": "Q-PRESENTATION",
       "rfc": "0014",

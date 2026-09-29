@@ -6,6 +6,7 @@
 
 #include "render/material/surface_program.h"
 
+#include "render/pbr_ltc_table.h"
 #include "render/pbr_split_sum_table.h"
 #include "spv/families_spv.h"
 
@@ -73,6 +74,36 @@ PbrSplitSumTable SplitSumTable()
 	return table;
 }
 
+PbrSplitSumTable LtcTable()
+{
+	PbrSplitSumTable table;
+	table.width = table.height = std::uint32_t( pbr::kLtcSize );
+	table.texels.reserve( std::size( pbr::kLtcTable ) * 4 );
+	for ( const pbr::LtcInverse &entry : pbr::kLtcTable )
+	{
+		table.texels.push_back( entry.m00 );
+		table.texels.push_back( entry.m02 );
+		table.texels.push_back( entry.m20 );
+		table.texels.push_back( entry.m22 );
+	}
+	return table;
+}
+
+SurfaceAreaLight PackAreaLight( const area_light::AreaLight &light )
+{
+	SurfaceAreaLight packed;
+	for ( int k = 0; k < 3; ++k )
+	{
+		packed.center[k] = light.rect.center[k];
+		packed.halfU[k] = light.rect.halfU[k];
+		packed.halfV[k] = light.rect.halfV[k];
+		packed.radiance[k] = light.radiance[k];
+	}
+	packed.center[3] = light.rect.twoSided ? 1.0f : 0.0f;
+	packed.halfU[3] = light.reach;
+	return packed;
+}
+
 foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProgram::Create(
     IRenderDevice2 &device, Format colorFormat, Format depthFormat, std::uint32_t sampleCount,
     std::span<const std::uint32_t> fragmentModule )
@@ -84,7 +115,9 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	program->m_SampleCount = sampleCount;
 	const BindingDesc frame[] = { { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } },
 	    { 1, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 2, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 2, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 3, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 4, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	std::vector<BindingDesc> material = {
 	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } } };
 	for ( std::uint32_t texture = 0; texture < kMaterialTextures; ++texture )
@@ -143,6 +176,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 		return found->second;
 	std::vector<ReflectedBinding> fragmentBindings = { { 0, 0, BindingKind::kUniformBuffer },
 	    { 0, 1, BindingKind::kSampledTexture }, { 0, 2, BindingKind::kSampler },
+	    { 0, 3, BindingKind::kSampledTexture }, { 0, 4, BindingKind::kSampler },
 	    { 2, 0, BindingKind::kUniformBuffer }, { 3, 0, BindingKind::kSampledTexture },
 	    { 3, 1, BindingKind::kSampler }, { 3, 2, BindingKind::kUniformBuffer } };
 	for ( std::uint32_t texture = 0; texture < kMaterialTextures; ++texture )
@@ -258,7 +292,7 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
 }
 
 GroupRequest SurfaceProgram::FrameGroup(
-    const SurfaceFrame &frame, std::string splitSumTable ) const
+    const SurfaceFrame &frame, std::string splitSumTable, std::string ltcTable ) const
 {
 	GroupRequest request;
 	request.layout = m_FrameLayout;
@@ -268,6 +302,7 @@ GroupRequest SurfaceProgram::FrameGroup(
 	SamplerDesc clamped;
 	clamped.address = AddressMode::kClampToEdge;
 	request.textures.push_back( { 1, std::move( splitSumTable ), 2, clamped } );
+	request.textures.push_back( { 3, std::move( ltcTable ), 4, clamped } );
 	return request;
 }
 

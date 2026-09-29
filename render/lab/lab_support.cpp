@@ -283,4 +283,26 @@ bool ParseDebugOption( const std::string &option, const char *value, frame::Debu
 	return false;
 }
 
+bool StageConstant( resources::TextureCache &cache, const std::string &name, device::Format format,
+    std::span<const std::byte> texel, bool cube )
+{
+	device::TextureDesc desc;
+	desc.format = format;
+	desc.width = desc.height = 4;
+	if ( cube )
+	{
+		desc.dimension = device::TextureDimension::kCube;
+		desc.depthOrLayers = 6;
+	}
+	std::vector<std::byte> pixels;
+	for ( int i = 0; i < 16 * ( cube ? 6 : 1 ); ++i )
+		pixels.insert( pixels.end(), texel.begin(), texel.end() );
+	return cache.Stage( name, desc, pixels ).HasValue();
+}
+
+std::vector<std::byte> ByteTexel( int r, int g, int b, int a )
+{
+	return { std::byte( r ), std::byte( g ), std::byte( b ), std::byte( a ) };
+}
+
 } // namespace render::lab

@@ -16,7 +16,8 @@
 //			white texture or cube, material_programs.h):
 //			- frame (role kFrame): binding 0 the SurfaceFrame block, 1 the
 //			  split-sum table (SplitSumTable, read by the pbr point) and 2
-//			  its linear, clamped sampler;
+//			  its linear, clamped sampler, 3 the LTC table (LtcTable, the
+//			  pbr point's area lights) and 4 its sampler;
 //			- material (role kMaterial): binding 0 SurfaceConstants; 1 base,
 //			  3 env map (a cube), 5 env map mask, 7 bump or normal map, 9
 //			  detail, 11 MRAO and 13 emission, each with its sampler after it;
@@ -33,6 +34,7 @@
 #define RENDER_MATERIAL_SURFACE_PROGRAM_H
 
 #include "foundation/expected.h"
+#include "render/area_light.h"
 #include "render/device/device.h"
 #include "render/material/material_programs.h"
 #include "render/material/model_lighting.h"
@@ -81,6 +83,21 @@ struct SurfaceConstants
 };
 static_assert( sizeof( SurfaceConstants ) == 176 );
 
+// An area light as the frame block holds it (render.area-light.v1: the
+// rectangle, its radiance and its reach).
+struct SurfaceAreaLight
+{
+	float center[4] = {}; // w: 1 when two-sided
+	float halfU[4] = {};  // w: the reach
+	float halfV[4] = {};
+	float radiance[4] = {};
+};
+static_assert( sizeof( SurfaceAreaLight ) == 64 );
+inline constexpr int kSurfaceMaxAreaLights = 64;
+
+// Packs an area light (area_light::AreaLight, its reach set).
+SurfaceAreaLight PackAreaLight( const area_light::AreaLight &light );
+
 // The frame's terms (std140, the Frame block of surface.frag): one lightmap
 // term whose scale depends on how the pages encode light, and the output's
 // linear scale. LDR pages hold gamma light at half overbright (scale 2^2.2
@@ -106,8 +123,11 @@ struct SurfaceFrame
 	// point's view direction); w: ENV_MAP_SCALE, 16 in integer HDR (cube
 	// maps hold light / 16), else 1.
 	float eye[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	// The frame's area lights (the pbr point reads them): x their count.
+	float areaCount[4] = {};
+	SurfaceAreaLight areas[kSurfaceMaxAreaLights];
 };
-static_assert( sizeof( SurfaceFrame ) == 80 );
+static_assert( sizeof( SurfaceFrame ) == 96 + 64 * kSurfaceMaxAreaLights );
 
 // The flat vertex (surface_flat.vert): position, base and lightmap
 // coordinates, and color as UNORM8x4 (RGBA).
@@ -227,6 +247,10 @@ struct PbrSplitSumTable
 	std::vector<float> texels; // RGBA per texel
 };
 PbrSplitSumTable SplitSumTable();
+// The GGX linearly-transformed-cosine table (public/render/pbr_ltc_table.h)
+// in the same form: kRGBA32Float, sampled linearly with clamped addressing,
+// named by the frame group for the pbr point's area lights.
+PbrSplitSumTable LtcTable();
 
 enum class SurfaceStatus : std::uint8_t
 {
@@ -268,10 +292,12 @@ public:
 	foundation::Expected<ProgramRequest, SurfaceStatus> Request( const SurfaceVariant &variant,
 	    const SurfaceConstants &constants, const SurfaceTextures &textures,
 	    const device::SamplerDesc &sampler = {} );
-	// The frame group: the terms and the split-sum table ('splitSumTable', a
-	// TextureCache name of a texture holding SplitSumTable(); empty when no
-	// point of the frame reads it) with a linear, clamped sampler.
-	GroupRequest FrameGroup( const SurfaceFrame &frame, std::string splitSumTable = {} ) const;
+	// The frame group: the terms, the split-sum table ('splitSumTable', a
+	// TextureCache name of a texture holding SplitSumTable()) and the LTC
+	// table ('ltcTable', one holding LtcTable()), each with a linear,
+	// clamped sampler; a table no point of the frame reads is named empty.
+	GroupRequest FrameGroup( const SurfaceFrame &frame, std::string splitSumTable = {},
+	    std::string ltcTable = {} ) const;
 	// A draw group: the lightmap page ('page', a TextureCache name staged as
 	// sRGB; empty for a mesh) and the draw's model lighting.
 	GroupRequest DrawGroup( std::string page, const ModelLighting &lighting = {},
@@ -317,9 +343,10 @@ public:
 	{
 		return m_Program->DebugPipeline( shipped, debug );
 	}
-	GroupRequest FrameGroup( const SurfaceFrame &frame = {}, std::string splitSumTable = {} ) const
+	GroupRequest FrameGroup( const SurfaceFrame &frame = {}, std::string splitSumTable = {},
+	    std::string ltcTable = {} ) const
 	{
-		return m_Program->FrameGroup( frame, std::move( splitSumTable ) );
+		return m_Program->FrameGroup( frame, std::move( splitSumTable ), std::move( ltcTable ) );
 	}
 	// A draw group of a mesh: no lightmap page, the draw's model lighting
 	// (PackSourceModelLighting).

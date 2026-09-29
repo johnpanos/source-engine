@@ -26,6 +26,7 @@
 //=============================================================================//
 
 #include "lab_canvas.h"
+#include "lab_suite.h"
 #include "lab_support.h"
 #include "suites.h"
 
@@ -103,44 +104,6 @@ Rgb Hatch( std::uint32_t x, std::uint32_t y )
 	const float v = ( ( x + y ) & 7u ) < 4u ? 0.25f : 0.5f;
 	return { v, v, v };
 }
-
-// A check's outcome, named so the sensitivity runs can say which failed.
-struct Outcome
-{
-	std::string name;
-	bool passed = false;
-	std::string detail;
-};
-
-class Results
-{
-public:
-	void That( bool condition, std::string name, std::string detail = {} )
-	{
-		m_Outcomes.push_back( { std::move( name ), condition, std::move( detail ) } );
-	}
-	const std::vector<Outcome> &Outcomes() const { return m_Outcomes; }
-	bool Failed( std::string_view prefix ) const
-	{
-		for ( const Outcome &outcome : m_Outcomes )
-		{
-			if ( !outcome.passed && std::string_view( outcome.name ).starts_with( prefix ) )
-				return true;
-		}
-		return false;
-	}
-	std::size_t FailureCount() const
-	{
-		return std::size_t( std::count_if( m_Outcomes.begin(), m_Outcomes.end(),
-		    []( const Outcome &o )
-		    {
-			    return !o.passed;
-		    } ) );
-	}
-
-private:
-	std::vector<Outcome> m_Outcomes;
-};
 
 // Where a cell's quad lands on screen, and the ray through a pixel.
 class Camera
@@ -265,35 +228,12 @@ struct Inputs
 };
 
 // A 4x4 texture of one texel value, staged under `name`.
-bool StageConstant( resources::TextureCache &cache, const std::string &name, Format format,
-    std::span<const std::byte> texel, bool cube = false )
-{
-	TextureDesc desc;
-	desc.format = format;
-	desc.width = desc.height = 4;
-	if ( cube )
-	{
-		desc.dimension = TextureDimension::kCube;
-		desc.depthOrLayers = 6;
-	}
-	std::vector<std::byte> pixels;
-	for ( int i = 0; i < 16 * ( cube ? 6 : 1 ); ++i )
-		pixels.insert( pixels.end(), texel.begin(), texel.end() );
-	return cache.Stage( name, desc, pixels ).HasValue();
-}
 
 std::vector<std::byte> HalfTexel( float r, float g, float b, float a = 1.0f )
 {
 	const std::uint16_t half[4] = {
 	    FloatToHalf( r ), FloatToHalf( g ), FloatToHalf( b ), FloatToHalf( a ) };
 	return Bytes( half );
-}
-
-std::vector<std::byte> ByteTexel( int r, int g, int b, int a )
-{
-	const std::uint8_t texel[4] = {
-	    std::uint8_t( r ), std::uint8_t( g ), std::uint8_t( b ), std::uint8_t( a ) };
-	return Bytes( texel );
 }
 
 enum class Program
@@ -1735,13 +1675,6 @@ std::optional<std::string> LightingControlChecks( Lab &lab, Results &results )
 	return std::nullopt;
 }
 
-struct Seeded
-{
-	const char *name;
-	std::span<const std::uint32_t> module;
-	const char *breaks; // the check prefix the defect must fail
-};
-
 const Seeded kSeeded[] = {
     { "swapped-normal", spirv::kLightmappedSwappedNormal, "view.2.normal.lightmapped" },
     { "tone-maps", spirv::kLightmappedToneMaps, "view.8.baked.scale-2" },
@@ -1795,114 +1728,26 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 	return std::nullopt;
 }
 
-int RunControlsSuite( int argc, char **argv, SuiteKind kind )
-{
-	const std::span<const Seeded> seededSet = kind == SuiteKind::kLightingControls
-	                                              ? std::span<const Seeded>( kLightingSeeded )
-	                                              : std::span<const Seeded>( kSeeded );
-	const char *suite = kind == SuiteKind::kLightingControls ? "lighting-controls" : "debug-views";
-	bool validate = false;
-	bool sensitivity = false;
-	bool verbose = false;
-	std::string seeded;
-	for ( int i = 0; i < argc; ++i )
-	{
-		const std::string arg = argv[i];
-		if ( arg == "--validate" )
-			validate = true;
-		else if ( arg == "--verbose" )
-			verbose = true;
-		else if ( arg == "--sensitivity" )
-			sensitivity = true;
-		else if ( arg == "--seeded" && i + 1 < argc )
-			seeded = argv[++i];
-		else
-		{
-			std::fprintf( stderr, "render_lab suite %s: unknown option %s\n", suite, arg.c_str() );
-			return 2;
-		}
-	}
-	unsigned long checks = 0;
-	unsigned long failures = 0;
-	auto report = [&]( const Results &results )
-	{
-		for ( const Outcome &outcome : results.Outcomes() )
-		{
-			++checks;
-			if ( verbose && outcome.passed )
-				std::printf( "ok   %s%s%s\n", outcome.name.c_str(),
-				    outcome.detail.empty() ? "" : ": ", outcome.detail.c_str() );
-			if ( !outcome.passed )
-			{
-				++failures;
-				std::fprintf( stderr, "FAIL %s%s%s\n", outcome.name.c_str(),
-				    outcome.detail.empty() ? "" : ": ", outcome.detail.c_str() );
-			}
-		}
-	};
-	auto fail = [&]( const std::string &why )
-	{
-		std::fprintf( stderr, "FAIL render_lab %s: %s\n", suite, why.c_str() );
-		return testing::ReportConformance( checks + 1, failures + 1 );
-	};
-
-	if ( !sensitivity )
-	{
-		std::span<const std::uint32_t> module;
-		if ( !seeded.empty() )
-		{
-			const Seeded *found = nullptr;
-			for ( const Seeded &s : seededSet )
-				found = seeded == s.name ? &s : found;
-			if ( !found )
-				return fail( "no seeded defect " + seeded );
-			module = found->module;
-		}
-		Results results;
-		std::uint64_t messages = 0;
-		if ( std::optional<std::string> why = RunOnce( validate, module, results, messages, kind ) )
-			return fail( *why );
-		if ( validate )
-			results.That( messages == 0, "validation.silent",
-			    std::to_string( messages ) + " validation messages" );
-		report( results );
-		std::printf( "render_lab %s: %zu checks, %zu failed\n", suite, results.Outcomes().size(),
-		    results.FailureCount() );
-		return testing::ReportConformance( checks, failures );
-	}
-
-	// Sensitivity: the control passes, and each seeded program fails the
-	// checks its defect breaks.
-	Results control;
-	std::uint64_t messages = 0;
-	if ( std::optional<std::string> why = RunOnce( validate, {}, control, messages, kind ) )
-		return fail( *why );
-	Results verdicts;
-	verdicts.That( control.FailureCount() == 0, "sensitivity.control-passes",
-	    std::to_string( control.FailureCount() ) + " control failures" );
-	for ( const Seeded &s : seededSet )
-	{
-		Results results;
-		if ( std::optional<std::string> why =
-		         RunOnce( validate, s.module, results, messages, kind ) )
-			return fail( *why );
-		verdicts.That( results.Failed( s.breaks ), std::string( "sensitivity.detects." ) + s.name,
-		    std::string( "no failure of " ) + s.breaks );
-	}
-	report( verdicts );
-	return testing::ReportConformance( checks, failures );
-}
-
 } // namespace
 
 int RunDebugViewsSuite( int argc, char **argv )
 {
-	return RunControlsSuite( argc, argv, SuiteKind::kDebugViews );
+	return RunSeededSuite( argc, argv, "debug-views", kSeeded,
+	    []( bool validate, std::span<const std::uint32_t> module, Results &results,
+	        std::uint64_t &messages )
+	    {
+		    return RunOnce( validate, module, results, messages, SuiteKind::kDebugViews );
+	    } );
 }
 
 int RunLightingControlsSuite( int argc, char **argv )
 {
-	return RunControlsSuite( argc, argv, SuiteKind::kLightingControls );
+	return RunSeededSuite( argc, argv, "lighting-controls", kLightingSeeded,
+	    []( bool validate, std::span<const std::uint32_t> module, Results &results,
+	        std::uint64_t &messages )
+	    {
+		    return RunOnce( validate, module, results, messages, SuiteKind::kLightingControls );
+	    } );
 }
 
 } // namespace render::lab

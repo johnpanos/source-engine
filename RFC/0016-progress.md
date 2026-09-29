@@ -2453,6 +2453,82 @@ of the model table through this program with a neutral-is-absent mutant
 per term. It grows with steps (b) to (g), which add the terms the program
 lacks.
 
+### K11 step (b), slice b1: LTC area lights in the surface program (2026-09-29)
+
+The area-light term of `render.lighting.v1`. RFC 0011 defines the
+rectangle, its radiance, its window and one-sidedness
+(`render.area-light.v1`, `public/render/area_light.h`). This slice
+implements the per-pixel evaluation the model table assigns to the core.
+- **One GLSL copy**, `render/shaders/common/ltc.glsl`.
+  - Both lobes integrate a clamped cosine over the rectangle: the diffuse
+    lobe the cosine itself (the exact Lambert form factor), the GGX lobe the
+    cosine transformed by a fitted inverse matrix (Heitz, Dupuy, Hill and
+    Neubelt 2016).
+  - The rectangle is clipped twice: to the surface's horizon, below which
+    the BRDF is zero, and to the transformed cosine's own horizon.
+  - The edge integral is exact (atan2 of |a x b| and a . b).
+  - The table is filtered in full precision in the shader (four texel
+    fetches).
+- **The pbr point** reads up to 64 area lights from the frame block
+  (`SurfaceFrame::areas`, `PackAreaLight`) and the table at frame-group
+  bindings 3/4 (`LtcTable()`).
+  - The GGX lobe's magnitude and Fresnel split are the split-sum's A and B,
+    with the lobe's energy compensation, as the image light's are.
+  - `cl_render_debug_term area` turns it off.
+  - No legacy point reads area lights (K12's RuntimeLight decides that per
+    surface).
+- **The table** is `public/render/pbr_ltc_table.h` (64 x 64), fitted by
+  `tools/render/ltc_fit/ltc_fit.cpp` to the RFC 0007 lobe of
+  `pbr_brdf.h`; `tools/render/ltc_table.py write` regenerates it and
+  `check` verifies it. Two fitter defects were found and fixed:
+  - The Nelder-Mead stop test was absolute, and a rough lobe's error sits
+    far below it, so 586 of 4,096 fits stopped at step 0. It is relative
+    now; every fit converges (median 43 steps, maximum 199).
+  - The paper's cubed error favours the peak: at roughness 0.5 and N.V
+    0.5 the fitted lobe gave 0.74 of the BRDF straight overhead. The L1
+    distance, which bounds an area light's integral error, gives 0.96 there.
+  - A four-parameter fit (a second shear) was tried and dropped: it
+    overestimates the back tail up to 17-fold.
+- **Shared lab code**: the suite driver moved into `render/lab/lab_suite.{h,cpp}`
+  (outcomes, seeded programs, the command line); the debug-view suites use
+  it too.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Diffuse lobe exact | `render.lab.area-lights`: against `area_light::IrradianceAt` times `pbr_brdf.h`'s diffuse color, every sampled pixel within 0.4 percent + 3e-4, for a ceiling panel, a tilted one, one crossing the horizon, one whose reach ends on the receiver and 64 at once, from an overhead and a grazing view (worst 0.38 percent) | pass |
+| GGX lobe as defined | the same suite: against an independent C++ evaluation of the term (table, both clips, split-sum magnitude and compensation), within 2 percent + 2e-4, three lights, four materials, two views. Pixels where the term moves by more than half that band within 0.1 units are ill-conditioned (a narrow highlight's edge at a grazing view, where the rasterizer's position may differ by that much from the ray's) and are skipped, at most 5 percent of a case (worst case 18 of 576) | pass |
+| Neutral and sidedness | the term off and no area lights are the same frame bitwise; a one-sided light seen from behind gives the frame without it; a two-sided one gives its front's light within 0.08 percent; diffuse plus specular is the full frame within 0.09 percent | pass |
+| Seeded programs | `render.lab.area-lights.sensitivity`: no horizon clip, the LTC matrix transposed and the GGX magnitude dropped are each caught | pass (4) |
+| Table | `render.ltc-table`: the committed table is the fit | pass (5) |
+| Legacy points unchanged | the family, opaque, world, composition and Hammer rows (18) on g++ and clang++, with the larger frame block | pass |
+
+**Accuracy against the exact light (a measurement, not a pass).** The
+first version of the GGX check judged the lobe against an exact quadrature
+of `pbr_brdf.h` over the rectangle (mean error at most 5 percent, 90th
+percentile at most 15 percent, fixed before the run). The LTC
+approximation failed it: at grazing views and for lights near the
+horizon, the transformed cosine is too narrow across the plane of
+incidence and has no back-scatter tail. A CPU evaluation of the same table
+confirmed that the shader is not at fault: a vertical light near the
+horizon gets 0.69 of the exact integral at normal view and roughness 0.8.
+The RFC defines the term as LTC, so its "Model assembly" oracle is the
+term's own definition. The suite still prints the accuracy per case
+(`INFO accuracy.*`): energy-weighted mean error, averaged over the cases,
+is 5.1 percent from overhead and 17.7 percent at grazing; the worst are
+dielectric grazing cases, 34 to 40 percent, where Fresnel also varies
+across the lobe. Ground truth is judged by `render.lab.cycles` on the
+area-room and cornell-floors fixtures (slice b2). Improving the fit's
+representation at grazing (for example two lobes, or a table per Fresnel
+term) is an open quality item.
+
+Frame time: the lab only; no product change draws differently (the frame
+block grows by 4 KB, and no product path fills it). The Fold7 is locked.
+
+Open for step (b): b2, render_lab lighting `area-room` and `cornell-floors`
+from their `light_rect` entities, judged against their Cycles references
+(the 16-spp previews certify nothing; the 2048-spp renders are the
+fixture set's to produce).
+
 ## Output and `render_lab`'s presenting host on iPhone and Apple TV (2026-09-28)
 
 User request (2026-09-28): "complete these on tvOS and iOS - in renderlab".

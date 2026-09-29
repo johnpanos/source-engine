@@ -30,6 +30,7 @@
 #include "../../shaders/common/color_encoding.glsl"
 #include "../../shaders/common/debug_view.glsl"
 #include "../../shaders/common/pbr_brdf.glsl"
+#include "../../shaders/common/ltc.glsl"
 #include "surface_lighting.glsl"
 
 // The terms (the port's static combo bits where they exist).
@@ -52,6 +53,17 @@ const int kEmissionTexture = 4096;
 // The vertexlit point (its vertex stage reads kHalfLambert, 16).
 const int kVertexLit = 8192;
 
+// An area light (render.area-light.v1, area_light::AreaLight): its
+// rectangle, its radiance and its reach.
+struct AreaLight
+{
+	vec4 center; // w: 1 when two-sided
+	vec4 halfU;  // w: the reach
+	vec4 halfV;
+	vec4 radiance;
+};
+const int kMaxAreaLights = 64;
+
 layout( set = 0, binding = 0 ) uniform Frame
 {
 	// x: the lightmap scale for how the pages encode light (2^2.2 for LDR
@@ -70,10 +82,15 @@ layout( set = 0, binding = 0 ) uniform Frame
 	// xyz: the eye's world position (c10); w: ENV_MAP_SCALE (16 in integer
 	// HDR, where cube maps hold light / 16, else 1).
 	vec4 eye;
+	vec4 areaCount; // x: the frame's area lights (the pbr point reads them)
+	AreaLight areas[kMaxAreaLights];
 } frame;
 // The split-sum table (RFC 0007, pbr_split_sum_table.h), read by the pbr point.
 layout( set = 0, binding = 1 ) uniform texture2D splitSumTexture;
 layout( set = 0, binding = 2 ) uniform sampler splitSumSampler;
+// The GGX LTC table (public/render/pbr_ltc_table.h), read by the pbr point.
+layout( set = 0, binding = 3 ) uniform texture2D ltcTexture;
+layout( set = 0, binding = 4 ) uniform sampler ltcSampler;
 layout( set = 2, binding = 0 ) uniform Material
 {
 	vec4 tint;  // rgb: $color, a: $alpha
@@ -293,6 +310,54 @@ void PbrSurface()
 			                      compensation * normalDotLight;
 			color += specular;
 			direct += specular;
+		}
+	}
+	// Area lights (render.area-light.v1): both lobes by linearly transformed
+	// cosines, windowed by each light's reach. The GGX lobe's magnitude and
+	// Fresnel split are the split-sum's A and B, as the image light's are.
+	const int areaCount = DebugTermOn( kDebugTermArea ) && !furnace
+	                          ? min( int( frame.areaCount.x ), kMaxAreaLights )
+	                          : 0;
+	if ( areaCount > 0 )
+	{
+		const mat3 ltc =
+		    LtcInverse( LtcLookup( ltcTexture, ltcSampler, roughness, normalDotView ) );
+#ifdef SEEDED_LTC_NO_MAGNITUDE
+		const vec3 areaSpecular = vec3( 1.0 );
+#else
+		const vec3 areaSpecular = ( f0 * splitSum.x + vec3( splitSum.y ) ) * compensation;
+#endif
+		for ( int i = 0; i < kMaxAreaLights; ++i )
+		{
+			if ( i >= areaCount )
+				break;
+			const AreaLight light = frame.areas[i];
+			const float window = AreaLightWindow(
+			    light.center.xyz, light.halfU.xyz, light.halfV.xyz, light.halfU.w, worldPosition );
+			if ( window <= 0.0 )
+				continue;
+			const vec3 corners[4] = vec3[4]( light.center.xyz - light.halfU.xyz - light.halfV.xyz,
+			    light.center.xyz + light.halfU.xyz - light.halfV.xyz,
+			    light.center.xyz + light.halfU.xyz + light.halfV.xyz,
+			    light.center.xyz - light.halfU.xyz + light.halfV.xyz );
+			const bool twoSided = light.center.w > 0.5;
+			const vec3 radiance = light.radiance.rgb * window;
+			if ( diffuseLobe )
+			{
+				const vec3 diffuse = diffuseColor * radiance *
+				                     LtcRectangle( normal, view, worldPosition, mat3( 1.0 ),
+				                         corners, twoSided );
+				color += diffuse;
+				direct += diffuse;
+			}
+			if ( specularLobe )
+			{
+				const vec3 specular =
+				    areaSpecular * radiance *
+				    LtcRectangle( normal, view, worldPosition, ltc, corners, twoSided );
+				color += specular;
+				direct += specular;
+			}
 		}
 	}
 	vec3 imageSpecular = vec3( 0.0 );

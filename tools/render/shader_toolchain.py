@@ -208,6 +208,15 @@ GENERATED = {
         "the shadow suite's seeded receiver (render.shadows.pixels)", (
         ("kShadowReceiverDepthReversed", SHADOWS + "/shadow_receiver.frag",
          DEVICE_OPTIONS + ("-DSEEDED_DEPTH_REVERSED",)),)),
+    "area_light_defects_spv.h": ("render::lab::spirv",
+        "render_lab's area-light suite's seeded programs (render.lab.area-lights sensitivity, "
+        "RFC 0016 K11)", (
+        ("kSurfaceLtcNoHorizonClip", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_LTC_NO_HORIZON_CLIP",)),
+        ("kSurfaceLtcTransposed", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_LTC_TRANSPOSED",)),
+        ("kSurfaceLtcNoMagnitude", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_LTC_NO_MAGNITUDE",)))),
     "debug_view_defects_spv.h": ("render::lab::spirv",
         "render_lab's debug-view suite's seeded programs (render.debug-views sensitivity, "
         "RFC 0014)", (

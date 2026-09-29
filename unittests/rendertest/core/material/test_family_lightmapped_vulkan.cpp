@@ -249,7 +249,7 @@ int main()
 			        false ),
 			    bind( nullptr, device::Format::kRGBA8Unorm, false ),  // MRAO
 			    bind( nullptr, device::Format::kRGBA8Srgb, false ) }; // emission
-			// The frame's split-sum table, which no lightmapped point reads.
+			// The frame's split-sum and LTC tables, which no lightmapped point reads.
 			const CaseTexture *splitSum = bind( nullptr, device::Format::kRGBA8Unorm, false );
 			// The draw's model lighting: neutral on a world surface.
 			const ModelLighting lighting;
@@ -288,7 +288,7 @@ int main()
 			    std::as_bytes( std::span( &lighting, 1 ) ), { testCase.lightmap }, true } );
 			// The frame terms at their LDR defaults (the port's cases are LDR).
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
-			    std::as_bytes( std::span( &kLdrFrame, 1 ) ), { splitSum } } );
+			    std::as_bytes( std::span( &kLdrFrame, 1 ) ), { splitSum, splitSum } } );
 			draw.vertices = surface ? std::as_bytes( std::span( surfaceQuad ) )
 			                        : std::as_bytes( std::span( flat ) );
 			draw.vertexCount = std::uint32_t( flat.size() );
