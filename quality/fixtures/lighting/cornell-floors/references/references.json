@@ -1,5 +1,6 @@
 {
   "analytic": [],
+  "denoised": true,
   "fixture": "cornell-floors",
   "fixture_reference_digest": "f58aa7b6e2dff6ebb7cc2b99eef330fafc51bc7300c57e2a646a94a445a382c2",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
@@ -8,7 +9,11 @@
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "5abf9b5c343d3bc020dc99922b505c779659cbb9900ff43f65e2fe9c7649743b",
       "cycles_device": "CPU",
-      "denoising": false,
+      "denoising": {
+        "denoiser": "OPENIMAGEDENOISE",
+        "guides": "albedo+normal",
+        "prefilter": "ACCURATE"
+      },
       "extras_applied": {
         "medium": null,
         "projectors": []
@@ -25,18 +30,18 @@
       "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
-      "samples": 16,
+      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "samples": 256,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/cornell-floors/cornell-floors.usda": "e2468feaedc3f3fb4de7240610724447da5113e57243a143d785531ca12007bc"
       }
     }
   },
-  "samples": 16,
+  "samples": 256,
   "schema": "lighting-references/v1",
   "seed": 20260929,
-  "status": "preview",
+  "status": "denoised",
   "views": {
     "default.floor": {
       "camera": "floor",
@@ -50,13 +55,13 @@
         },
         "total": {
           "file": "default.floor.total.exr",
-          "sha256": "7d0ef95fc9df95ede49a1dca08b96f9bd9b2ce98bf24fb9886e1eea615d3f91c"
+          "sha256": "c69a8a2a7b1b68cb290df65cd2b9036139d3fbd25d9d09ef6b27dce8f54b8b60"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196608,
-      "mean_luminance": 0.1104836764510561,
+      "mean_luminance": 0.11053917850513757,
       "object_index": {
         "C_Xn": 1,
         "C_Xp": 2,
@@ -92,13 +97,13 @@
         },
         "total": {
           "file": "default.front.total.exr",
-          "sha256": "d3eea1768656dcc5582e97aba7cffcafc0728c708ab948d614d53d1078e98ced"
+          "sha256": "bcf6805af3ea3f5e42cd63054eddee80c158c438018657ed26dddf49a9bb4104"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196608,
-      "mean_luminance": 0.17505952372519298,
+      "mean_luminance": 0.17511719512761095,
       "object_index": {
         "C_Xn": 1,
         "C_Xp": 2,

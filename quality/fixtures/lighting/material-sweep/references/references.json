@@ -1,5 +1,6 @@
 {
   "analytic": [],
+  "denoised": true,
   "fixture": "material-sweep",
   "fixture_reference_digest": "39aaa061b587015d833d57cd7e3b085e53d0e3e4f160f67987b24ba02374d0fc",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
@@ -8,7 +9,11 @@
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "4594dbb4855738cc12e25ec2aa3bda25ed8ba6e589331a6f6402a4c468b26d18",
       "cycles_device": "CPU",
-      "denoising": false,
+      "denoising": {
+        "denoiser": "OPENIMAGEDENOISE",
+        "guides": "albedo+normal",
+        "prefilter": "ACCURATE"
+      },
       "extras_applied": {
         "medium": null,
         "projectors": []
@@ -25,18 +30,18 @@
       "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
-      "samples": 16,
+      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "samples": 256,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/material-sweep/material-sweep.usda": "544a23a7854272060ff66c95edae8ef9038b9d4837ac29cf09a1ec6e30c85759"
       }
     }
   },
-  "samples": 16,
+  "samples": 256,
   "schema": "lighting-references/v1",
   "seed": 20260929,
-  "status": "preview",
+  "status": "denoised",
   "views": {
     "default.front": {
       "camera": "front",
@@ -51,13 +56,13 @@
         },
         "total": {
           "file": "default.front.total.exr",
-          "sha256": "cc8545cbf9a0bbe25ff2959c60404dfd3abe0d0d0b3233dbca012ce80f090e37"
+          "sha256": "6d7d3d90768bc64594f228d88f9f752161bd39672e6612b6d274bcc37bd5e831"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196594,
-      "mean_luminance": 0.49768643917245503,
+      "mean_luminance": 0.526312633222119,
       "object_index": {
         "CoatSphere0": 1,
         "CoatSphere1": 2,
@@ -107,13 +112,13 @@
         },
         "total": {
           "file": "default.grazing.total.exr",
-          "sha256": "171569823e94e0a1e13d487ffb3665ce809fa506ea185b524544f20308ed6a75"
+          "sha256": "ecb7994310190a63fb2cee25c423192ea043f5ef6480d787abbac60a3705456d"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 196602,
-      "mean_luminance": 0.2472311681780171,
+      "mean_luminance": 0.24752233090692044,
       "object_index": {
         "CoatSphere0": 1,
         "CoatSphere1": 2,

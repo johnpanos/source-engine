@@ -1,5 +1,6 @@
 {
   "analytic": [],
+  "denoised": true,
   "fixture": "area-room",
   "fixture_reference_digest": "24307656471ade28c099551865acc59efdb8438ad195b534ee725a8da7383bfa",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
@@ -8,7 +9,11 @@
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "d1799435bc3a361f7dd08a3686db0822db0058304243f3dd3288c81cd22a2f42",
       "cycles_device": "CPU",
-      "denoising": false,
+      "denoising": {
+        "denoiser": "OPENIMAGEDENOISE",
+        "guides": "albedo+normal",
+        "prefilter": "ACCURATE"
+      },
       "extras_applied": {
         "medium": null,
         "projectors": []
@@ -25,18 +30,18 @@
       "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
-      "samples": 16,
+      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "samples": 256,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/area-room/area-room.usda": "37935720b98935db4bbce0f0c1d19f0b8a63a5bd9e5e7598e64da3dbc1042066"
       }
     }
   },
-  "samples": 16,
+  "samples": 256,
   "schema": "lighting-references/v1",
   "seed": 20260929,
-  "status": "preview",
+  "status": "denoised",
   "views": {
     "default.grazing": {
       "camera": "grazing",
@@ -113,13 +118,13 @@
         },
         "total": {
           "file": "default.grazing.total.exr",
-          "sha256": "64848ad2047e7b721c4512b642bd0e49ce0b586290812b87beff49b3a851a407"
+          "sha256": "53a568e690a7d7001b2b0041fd15bb19901346f4a95e547c2289a681da6e10f8"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 190771,
-      "mean_luminance": 0.3469340519293506,
+      "mean_luminance": 0.34744562259833245,
       "object_index": {
         "A_Xn": 1,
         "A_Xp": 2,
@@ -287,13 +292,13 @@
         },
         "total": {
           "file": "default.overview.total.exr",
-          "sha256": "e7a6ee725931c16dad07af2a2b0a95d847a0dcfc78b53720e62d87635d43f463"
+          "sha256": "2fe753343dfb9e964c4cb92e7b3b1568ee404dbd021064deecc20651e0fdbbfe"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 189383,
-      "mean_luminance": 0.3845318331226682,
+      "mean_luminance": 0.38522342270783,
       "object_index": {
         "A_Xn": 1,
         "A_Xp": 2,
@@ -461,13 +466,13 @@
         },
         "total": {
           "file": "default.wall.total.exr",
-          "sha256": "9fdb5d6d89757ec06078d76b97ec1c32881d90167748cf28db7425a25c4e9972"
+          "sha256": "336a1be6a60b96a77b85af63ab79e0b0c4b9305e5230f91fb109c61689afd9ba"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 194754,
-      "mean_luminance": 0.3852089586852609,
+      "mean_luminance": 0.3853402536003442,
       "object_index": {
         "A_Xn": 1,
         "A_Xp": 2,

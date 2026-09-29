@@ -1,5 +1,6 @@
 {
   "analytic": [],
+  "denoised": true,
   "fixture": "sun-colonnade",
   "fixture_reference_digest": "432ca41fd84dc7ca1291d7a03a227f1cd5a3de15c6ebac54fa12a6d5adb2799f",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
@@ -8,7 +9,11 @@
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "b32a167909d7d6a1a3bece9874ae6d8ca0374a5ef79d765d8abaf458c7696536",
       "cycles_device": "CPU",
-      "denoising": false,
+      "denoising": {
+        "denoiser": "OPENIMAGEDENOISE",
+        "guides": "albedo+normal",
+        "prefilter": "ACCURATE"
+      },
       "extras_applied": {
         "medium": null,
         "projectors": []
@@ -25,18 +30,18 @@
       "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
-      "samples": 16,
+      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "samples": 256,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/sun-colonnade/sun-colonnade.usda": "d5c18cc004436271eb96c98873fa859a59a4f4202194e1f05f9061d51933b6ae"
       }
     }
   },
-  "samples": 16,
+  "samples": 256,
   "schema": "lighting-references/v1",
   "seed": 20260929,
-  "status": "preview",
+  "status": "denoised",
   "views": {
     "default.along": {
       "camera": "along",
@@ -48,13 +53,13 @@
         },
         "total": {
           "file": "default.along.total.exr",
-          "sha256": "7bf3b05f677331968942671049ee49b4d17de1c2e0972921bf197330df953f85"
+          "sha256": "8a3c485901fae25668aedde39d62d51b0b70c9830998aabc4bfea6a2af7ce7b1"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 163392,
-      "mean_luminance": 0.3410098034734694,
+      "mean_luminance": 0.3412097522825739,
       "object_index": {
         "BackWall_Xn": 1,
         "BackWall_Xp": 2,
@@ -83,13 +88,13 @@
         },
         "total": {
           "file": "default.yard.total.exr",
-          "sha256": "bb44db8575a055eea07fca03e343fd8d4e5b4084e0f857ce4b07d717dd5b93f2"
+          "sha256": "bc5ea19d6a1c0b582b00c657b2b1546fd311d7465f9931d3849782cb62012baa"
         }
       },
       "finite": true,
       "index_from_state": "default",
       "judged_pixels": 100794,
-      "mean_luminance": 0.41739608445421544,
+      "mean_luminance": 0.4174677336713194,
       "object_index": {
         "BackWall_Xn": 1,
         "BackWall_Xp": 2,

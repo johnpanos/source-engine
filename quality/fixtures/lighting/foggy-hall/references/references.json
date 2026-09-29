@@ -1,5 +1,6 @@
 {
   "analytic": [],
+  "denoised": true,
   "fixture": "foggy-hall",
   "fixture_reference_digest": "1064f630141eec0a6f5a3c20a989e97a2b7b58056be55c512391208c49d2bb4e",
   "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
@@ -8,7 +9,11 @@
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "c2d3392b8d90a71c0985bfd1f01d531691ddb715c9e83c3fefdea0e7c4aa9a9d",
       "cycles_device": "CPU",
-      "denoising": false,
+      "denoising": {
+        "denoiser": "OPENIMAGEDENOISE",
+        "guides": "albedo+normal",
+        "prefilter": "ACCURATE"
+      },
       "extras_applied": {
         "medium": null,
         "projectors": [
@@ -27,8 +32,8 @@
       "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
-      "samples": 16,
+      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "samples": 256,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/foggy-hall/foggy-hall.usda": "75cf53bb589c5ac7779b68060a7bec3ba25ee71665f236da8fd24e3fd57f58d3",
@@ -39,7 +44,11 @@
       "blender": "5.2.2 LTS",
       "composed_stage_sha256": "a4ac23e27e94a9df1ecbf1bb401e6fa6ca95ce1b0c0307802434cda58b2077eb",
       "cycles_device": "CPU",
-      "denoising": false,
+      "denoising": {
+        "denoiser": "OPENIMAGEDENOISE",
+        "guides": "albedo+normal",
+        "prefilter": "ACCURATE"
+      },
       "extras_applied": {
         "medium": {
           "absorption_per_m": 0.01,
@@ -75,18 +84,18 @@
       "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
       "normal_maps": false,
       "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
-      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
-      "samples": 16,
+      "renderer_sha256": "be4345ca1b53205f3ca822e8ae1bf541f67b83ca19324555cfccf91f6a3496f9",
+      "samples": 256,
       "seed": 20260929,
       "stage_layers": {
         "quality/fixtures/lighting/foggy-hall/foggy-hall.usda": "75cf53bb589c5ac7779b68060a7bec3ba25ee71665f236da8fd24e3fd57f58d3"
       }
     }
   },
-  "samples": 16,
+  "samples": 256,
   "schema": "lighting-references/v1",
   "seed": 20260929,
-  "status": "preview",
+  "status": "denoised",
   "views": {
     "clear.nave": {
       "camera": "nave",
@@ -355,13 +364,13 @@
         },
         "total": {
           "file": "clear.nave.total.exr",
-          "sha256": "054ea84872b5ee50ff223b210c83803dc6563a0b25e9e4461a11a7cbfe1e263f"
+          "sha256": "bb75e95635b6e517fb651be563addfca64c85aaf727159034897cf102da121e9"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195916,
-      "mean_luminance": 0.7349346690899485,
+      "mean_luminance": 0.7366101490014897,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,
@@ -896,13 +905,13 @@
         },
         "total": {
           "file": "clear.side.total.exr",
-          "sha256": "f6721d87516f50fc7c7c0e11a6a442b312ff087727c8dc5407941fac6bb08d36"
+          "sha256": "bc12b221876b0046fcc6f9c2728ab5736eef26307305ff785f88d9ca0c1390cb"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195899,
-      "mean_luminance": 0.6951616772729262,
+      "mean_luminance": 0.695245501740486,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,
@@ -1437,13 +1446,13 @@
         },
         "total": {
           "file": "fog.nave.total.exr",
-          "sha256": "821b8b649a06ff011a9f390a5dc3cce0deeaba4807582fad994b28995e7a8989"
+          "sha256": "1638d469b6fcd714f71eb3066d195502b458d0c2f5ba135afc47d8ccd1227417"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195916,
-      "mean_luminance": 0.5447651272713646,
+      "mean_luminance": 0.5459856886922273,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,
@@ -1978,13 +1987,13 @@
         },
         "total": {
           "file": "fog.side.total.exr",
-          "sha256": "55fbc5507aeb0f04ea795683c58d8c98b1060f2a294bee0bea6a9ea83f5d2e54"
+          "sha256": "c297b5277e8d8228bd4d7ce4eee0ea0ae210f9c245ba2cd8ea8f0a19054284ce"
         }
       },
       "finite": true,
       "index_from_state": "clear",
       "judged_pixels": 195899,
-      "mean_luminance": 0.513297609709755,
+      "mean_luminance": 0.5164356558474773,
       "object_index": {
         "Floor": 1,
         "H_Xn": 2,
