@@ -26,6 +26,20 @@
     "libstdcxx-dual-abi": "seeds a libstdc++ dual-ABI mismatch (_GLIBCXX_USE_CXX11_ABI); the iOS toolchain's libc++ has one ABI, so the seeded defect cannot exist there"
   },
   "launch_overhead_seconds": 60,
+  "apps": {
+    "_comment": "Host apps other than the conformance host (ios_conformance.py --app NAME): the same dispatcher with the app's suites, under the bundle id of the app's product profile.",
+    "render_lab": {
+      "description": "render_lab's presenting host (RFC 0016 K11, render/lab/app): the HDR chart through render.pass.output and render.presentation.v1 on the device's display, and the output pass's own suite.",
+      "product_profile": "quality/product_profiles/portal2-ios-native-vulkan.json",
+      "product_profile_reason": "The Portal 2 app's bundle id, reused so no new App ID or provisioning profile is made (user direction, 2026-09-28: 'dont make a new bundle identifier, re-use the portal 2 one'). Installing the lab replaces the Portal 2 app on the device; its data container, and so the staged content, stays. Reinstall Portal 2 with ios-deploy.sh afterwards.",
+      "app_bundle": "RenderLab.app",
+      "display_name": "Render Lab",
+      "suites": [
+        "render.lab.hdr",
+        "render.output"
+      ]
+    }
+  },
   "platform_defines": {
     "_comment": "Suite rows that declare Linux platform defines compile with the iOS product's instead (wscript's iOS defines): the code the app ships.",
     "-DLINUX": [

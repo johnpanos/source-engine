@@ -206,6 +206,7 @@ enum class RenderCreateStatus : uint32_t
 	kSurfaceBusy,       // the surface already has a live presentation
 	kSurfaceLost,       // the surface's window is destroyed
 	kDeviceUnavailable, // the device is lost/fatal and cannot present now
+	kInvalidConfig,     // the presentation configuration contradicts itself
 };
 
 struct RenderCreateError

@@ -1,0 +1,18 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.pass.output (RFC 0016 layer 6 feature, render.output.v1): exposure,
+# the tone map and the output encoding, from the linear scene to the target a
+# presentation shows.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.pass.output',
+		target      = 'render_pass_output',
+		name        = 'render_pass_output',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_graph', 'render_device', 'render_spv'],
+		idx         = bld.get_taskgen_count()
+	)

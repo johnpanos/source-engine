@@ -1163,6 +1163,96 @@
       "expect": "pass"
     },
     {
+      "id": "render.presentation.edr",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "REND-PRESENT-001",
+      "contract": "unittests/rendertest/contracts/render.presentation.v1.md",
+      "kind": "positive",
+      "profile": "apple-uikit-device",
+      "description": "render.presentation.v1 \"Dynamic range\" on the SDL3-Vulkan pair on an iPhone or Apple TV (MoltenVK). An extended-linear kRGBA16Float presentation gets a half-float swapchain in extended linear sRGB, keeps 4.0 (four times SDR white) in the presented image, sets the Metal layer to high dynamic range, and sees the screen's current headroom rise above 1 while it presents. A standard presentation on the same window is the control: it clips 4.0 to white, reports headroom 1 and returns the layer to standard. The frames alternate SDR white and brighter-than-white. Runs through tools/quality/ios_conformance.py; unavailable on hosts.",
+      "result_protocol": "checks-v1",
+      "optional": true,
+      "requires": [
+        "env:CONFORMANCE_APPLE_DEVICE"
+      ],
+      "extra_flags": [
+        "-pthread",
+        "-isystemdependencies/vulkan-memory-allocator/include"
+      ],
+      "sources": [
+        "unittests/shaderapivulkantest/test_presentation_edr.cpp",
+        "render/bridge/sdl3-vulkan/sdl3_vulkan_presentation.cpp",
+        "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
+        "render/bridge/sdl3-vulkan/sdl3_dynamic_range_apple.mm",
+        "platform/sdl3/render_surface/sdl3_render_surfaces.cpp",
+        "render/device/vulkan/backend_v1/render_backend_v1.cpp",
+        "render/device/port.cpp",
+        "render/device/encoder.cpp",
+        "render/device/validation.cpp",
+        "render/device/vulkan/device.cpp",
+        "render/device/vulkan/encoder.cpp",
+        "render/device/vulkan/host_device.cpp",
+        "render/device/vulkan/instance.cpp",
+        "render/device/vulkan/memory.cpp",
+        "render/device/vulkan/pipelines.cpp",
+        "render/device/vulkan/resources.cpp",
+        "render/device/vulkan/transitions.cpp",
+        "render/device/vulkan/upload_ring.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.hdr",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "unittests/rendertest/contracts/render.output.v1.md",
+      "kind": "positive",
+      "profile": "apple-uikit-device",
+      "description": "render.output.v1 on a display (RFC 0016 K11): render_lab's presenting host (render/lab/app) shows its HDR chart (a gray ramp from 1/64 to 16 times SDR white, gray and warm patches from 0.18 to 16, saturated patches at 4) on an iPhone or Apple TV through render.pass.output and the SDL3-Vulkan bridge (MoltenVK), with the back buffer imported into the core as a port texture. The extended-linear range is granted and the Metal layer shows high range; the headroom rises above 1; on tvOS the window asks for the HDR mode and the TV switches into it (headroom at least 1.5, needs Match Dynamic Range on). Every patch of the presented swapchain image equals the output oracle's tone map at the frame's headroom within 0.4 percent, values above white reach the display, and a debug view presents the 16x patch untouched. Control: a standard 8-bit presentation at the legacy point shows the clip and sRGB within one level, and on tvOS withdraws the HDR request. RENDER_LAB_SHOW_SECONDS keeps the chart on screen afterwards. Runs through tools/quality/ios_conformance.py --app render_lab; unavailable on hosts.",
+      "result_protocol": "checks-v1",
+      "optional": true,
+      "requires": [
+        "env:CONFORMANCE_APPLE_DEVICE"
+      ],
+      "extra_flags": [
+        "-pthread",
+        "-isystemdependencies/vulkan-memory-allocator/include"
+      ],
+      "sources": [
+        "unittests/rendertest/lab/test_lab_hdr_device.cpp",
+        "render/lab/app/lab_app.cpp",
+        "render/pass/output/output.cpp",
+        "render/graph/builder.cpp",
+        "render/graph/compile.cpp",
+        "render/graph/execution_plan.cpp",
+        "render/graph/executor_serial.cpp",
+        "render/graph/executor_pooled.cpp",
+        "render/graph/validate.cpp",
+        "jobsystem/job_graph.cpp",
+        "render/bridge/sdl3-vulkan/sdl3_vulkan_presentation.cpp",
+        "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
+        "render/bridge/sdl3-vulkan/sdl3_dynamic_range_apple.mm",
+        "platform/sdl3/render_surface/sdl3_render_surfaces.cpp",
+        "render/device/vulkan/backend_v1/render_backend_v1.cpp",
+        "render/device/port.cpp",
+        "render/device/encoder.cpp",
+        "render/device/validation.cpp",
+        "render/device/vulkan/device.cpp",
+        "render/device/vulkan/encoder.cpp",
+        "render/device/vulkan/host_device.cpp",
+        "render/device/vulkan/instance.cpp",
+        "render/device/vulkan/memory.cpp",
+        "render/device/vulkan/pipelines.cpp",
+        "render/device/vulkan/resources.cpp",
+        "render/device/vulkan/transitions.cpp",
+        "render/device/vulkan/upload_ring.cpp"
+      ],
+      "timeout_seconds": 180,
+      "expect": "pass"
+    },
+    {
       "id": "platform.task_runner.tsan",
       "domain": "Q-FOUNDATION",
       "rfc": "0001",
@@ -10142,6 +10232,48 @@
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
       "timeout_seconds": 600,
+      "expect": "pass"
+    },
+    {
+      "id": "render.output",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "unittests/rendertest/contracts/render.output.v1.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "render.output.v1 (RFC 0016 \"Output\") on render.device.vulkan with real pixels: render.pass.output takes a chart of known linear values (a gray ramp from 1e-4 to 64 times SDR white, landmarks, seeded colors, negatives) through exposure, the tone map and the output encoding, judged against a double-precision C++ reference sharing no code with the GLSL. The legacy point: at SDR on an 8-bit target the pass equals the legacy clip plus sRGB encoding byte for byte (three exposures) and the sRGB oracle within one level; an sRGB-view target matches the shader encoding. Extended range: the clip alone when the headroom covers the scene peak; below it (headroom 1.2, 2, 4.5 against peak 16) the BT.2390 EETF within 0.3 percent, the peak lands on the headroom, a gray ramp stays monotonic, values below the knee pass unchanged and colors keep their channel ratios. A debug view gets the encoding alone. Invalid parameters, formats and extents are refused before any pass. Six seeded fragment programs are each detected. The Khronos validation layer reports no message. Honors CONFORMANCE_SEED.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "render/device/port.cpp",
+        "render/device/encoder.cpp",
+        "render/device/validation.cpp",
+        "render/device/vulkan/device.cpp",
+        "render/device/vulkan/encoder.cpp",
+        "render/device/vulkan/host_device.cpp",
+        "render/device/vulkan/instance.cpp",
+        "render/device/vulkan/memory.cpp",
+        "render/device/vulkan/pipelines.cpp",
+        "render/device/vulkan/resources.cpp",
+        "render/device/vulkan/transitions.cpp",
+        "render/device/vulkan/upload_ring.cpp",
+        "render/graph/builder.cpp",
+        "render/graph/compile.cpp",
+        "render/graph/execution_plan.cpp",
+        "render/graph/executor_serial.cpp",
+        "render/graph/executor_pooled.cpp",
+        "render/graph/validate.cpp",
+        "jobsystem/job_graph.cpp",
+        "render/pass/output/output.cpp",
+        "unittests/rendertest/core/pass/output/test_output_vulkan.cpp"
+      ],
+      "min_checks": 24,
+      "extra_flags": [
+        "-O2",
+        "-pthread",
+        "-isystemdependencies/vulkan-memory-allocator/include"
+      ],
+      "timeout_seconds": 300,
       "expect": "pass"
     },
     {

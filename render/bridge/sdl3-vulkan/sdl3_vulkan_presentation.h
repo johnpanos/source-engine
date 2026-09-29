@@ -42,8 +42,10 @@ class VulkanRenderBackend;
 class Sdl3VulkanPresentation;
 struct Sdl3VulkanRetiredNative;
 
-// Instance extensions SDL3 needs for Vulkan surfaces. Call after SDL video is
-// initialized; pass them in VulkanProviderOptions::instanceExtensions.
+// Instance extensions SDL3 needs for Vulkan surfaces, plus
+// VK_EXT_swapchain_colorspace where the loader offers it (the extended-linear
+// dynamic range needs it). Call after SDL video is initialized; pass them in
+// VulkanProviderOptions::instanceExtensions.
 bool Sdl3VulkanInstanceExtensions( std::vector<std::string> *outExtensions, std::string *outError );
 
 class Sdl3VulkanPresentationBridge : public render::IRenderPresentationBridgeFactory
@@ -75,6 +77,25 @@ public:
 	bool RequestCapture( render::IRenderPresentation &presentation );
 	bool ReadCapture( render::IRenderPresentation &presentation, std::vector<uint8_t> *outRgba,
 	    uint32_t *outWidth, uint32_t *outHeight );
+	// The same for a kRGBA16Float swapchain: linear RGBA floats, as presented
+	// (values above 1 are kept). False for an 8-bit swapchain.
+	bool ReadCaptureLinear( render::IRenderPresentation &presentation, std::vector<float> *outRgba,
+	    uint32_t *outWidth, uint32_t *outHeight );
+	// What the platform's presentation layer reports: whether it shows content
+	// above SDR white and whether its color space is extended linear sRGB.
+	// False where the platform has no layer to inspect (the non-Apple
+	// platforms) or off the main thread on Apple.
+	bool ReadNativeDynamicRange( render::IRenderPresentation &presentation,
+	    bool *outLayerExtended, bool *outExtendedLinearColorspace );
+	// tvOS's display mode request for the presentation's window: whether the
+	// user's "Match Dynamic Range" setting is on, whether a switch is under
+	// way, and whether the window asks for HDR; optionally the HDR modes the
+	// connected display can play (hlg 1, hdr10 2, dolbyVision 4) and whether
+	// it is eligible for HDR playback. False where there is no such request
+	// to read (not tvOS) or off the main thread.
+	bool ReadNativeDisplayMode( render::IRenderPresentation &presentation,
+	    bool *outMatchingEnabled, bool *outSwitching, bool *outAskedForHdr,
+	    unsigned *outHdrModes = nullptr, bool *outEligibleForHdr = nullptr );
 
 	// For presentations: park native objects that must outlive in-flight work.
 	void Park( Sdl3VulkanRetiredNative *retired );

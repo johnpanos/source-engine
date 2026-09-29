@@ -6,6 +6,8 @@
 
 #include "sdl3_vulkan_presentation.h"
 
+#include "sdl3_dynamic_range.h"
+
 #include "../../../materialsystem/shaderapivulkan/vulkan_present_mode.h"
 #include "../../device/vulkan/backend_v1/render_backend_v1.h"
 #include "../../device/vulkan/host_device.h"
@@ -56,10 +58,104 @@ VkFormat BackBufferFormat( RenderColorFormat format )
 		return VK_FORMAT_R8G8B8A8_SRGB;
 	case RenderColorFormat::kBGRA8Unorm:
 		return VK_FORMAT_B8G8R8A8_UNORM;
+	case RenderColorFormat::kRGBA16Float:
+		return VK_FORMAT_R16G16B16A16_SFLOAT;
 	case RenderColorFormat::kRGBA8Unorm:
 	default:
 		return VK_FORMAT_R8G8B8A8_UNORM;
 	}
+}
+
+// The swapchain format and color space for each output range
+// (render.presentation.v1 "Dynamic range"). kExtendedLinear is linear Rec. 709
+// in half floats, which MoltenVK shows through an extended linear sRGB Metal
+// layer and other platforms through scRGB.
+bool IsExtendedLinearSurfaceFormat( const VkSurfaceFormatKHR &f )
+{
+	return f.format == VK_FORMAT_R16G16B16A16_SFLOAT &&
+	       f.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
+}
+
+bool ChooseSurfaceFormat( const std::vector<VkSurfaceFormatKHR> &formats,
+    RenderDynamicRange range, VkSurfaceFormatKHR *outChosen )
+{
+	if ( range == RenderDynamicRange::kExtendedLinear )
+	{
+		for ( const VkSurfaceFormatKHR &f : formats )
+			if ( IsExtendedLinearSurfaceFormat( f ) )
+			{
+				*outChosen = f;
+				return true;
+			}
+		return false;
+	}
+	// Standard range: an 8-bit format in the SDR color space (with
+	// VK_EXT_swapchain_colorspace the list also offers the same formats in
+	// other color spaces).
+	const VkFormat preferred[] = { VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM };
+	for ( VkFormat want : preferred )
+		for ( const VkSurfaceFormatKHR &f : formats )
+			if ( f.format == want && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR )
+			{
+				*outChosen = f;
+				return true;
+			}
+	for ( const VkSurfaceFormatKHR &f : formats )
+		if ( f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR )
+		{
+			*outChosen = f;
+			return true;
+		}
+	if ( formats.empty() )
+		return false;
+	*outChosen = formats[0];
+	return true;
+}
+
+std::vector<VkSurfaceFormatKHR> SurfaceFormats( VkPhysicalDevice phys, VkSurfaceKHR surface )
+{
+	uint32_t count = 0;
+	vkGetPhysicalDeviceSurfaceFormatsKHR( phys, surface, &count, nullptr );
+	std::vector<VkSurfaceFormatKHR> formats( count );
+	if ( count )
+		vkGetPhysicalDeviceSurfaceFormatsKHR( phys, surface, &count, formats.data() );
+	formats.resize( count );
+	return formats;
+}
+
+uint32_t BytesPerPixel( VkFormat format )
+{
+	return format == VK_FORMAT_R16G16B16A16_SFLOAT ? 8 : 4;
+}
+
+float HalfToFloat( uint16_t h )
+{
+	const uint32_t sign = uint32_t( h & 0x8000 ) << 16;
+	const uint32_t exponent = ( h >> 10 ) & 0x1f;
+	uint32_t mantissa = h & 0x3ff;
+	uint32_t bits;
+	if ( exponent == 0 )
+	{
+		if ( mantissa == 0 )
+			bits = sign;
+		else
+		{
+			int e = -1;
+			do
+			{
+				++e;
+				mantissa <<= 1;
+			} while ( !( mantissa & 0x400 ) );
+			bits = sign | uint32_t( 112 - e ) << 23 | ( mantissa & 0x3ff ) << 13;
+		}
+	}
+	else if ( exponent == 31 )
+		bits = sign | 0x7f800000u | mantissa << 13;
+	else
+		bits = sign | ( exponent + 112 ) << 23 | mantissa << 13;
+	float value;
+	std::memcpy( &value, &bits, sizeof( value ) );
+	return value;
 }
 
 void ImageBarrier( VkCommandBuffer cmd, VkImage image, VkImageLayout from, VkImageLayout to,
@@ -183,6 +279,21 @@ public:
 			SDL_Vulkan_DestroySurface( m_Ep.Instance(), m_VkSurface, nullptr );
 			m_VkSurface = VK_NULL_HANDLE;
 			return false;
+		}
+		if ( m_Config.dynamicRange == RenderDynamicRange::kExtendedLinear )
+		{
+			VkSurfaceFormatKHR chosen = {};
+			if ( !ChooseSurfaceFormat(
+			         SurfaceFormats( m_Ep.PhysicalDevice(), m_VkSurface ), m_Config.dynamicRange,
+			         &chosen ) ||
+			     !Sdl3CanShowExtendedRange( window ) )
+			{
+				Fail( error, RenderCreateStatus::kSurfaceIncompatible,
+				    "the surface or display cannot show extended-linear output" );
+				SDL_Vulkan_DestroySurface( m_Ep.Instance(), m_VkSurface, nullptr );
+				m_VkSurface = VK_NULL_HANDLE;
+				return false;
+			}
 		}
 		m_SurfaceGeneration = generation;
 		return true;
@@ -430,6 +541,19 @@ public:
 		m_RetiredSwapchains.swap( pending );
 	}
 
+	RenderDynamicRangeState GetDynamicRange() const override
+	{
+		RenderDynamicRangeState state;
+		const Sdl3DisplayHeadroom headroom = Sdl3ReadHeadroom( m_Surfaces.NativeWindow( m_Surface ) );
+		state.potentialHeadroom = headroom.potential;
+		if ( m_Config.dynamicRange == RenderDynamicRange::kExtendedLinear )
+		{
+			state.range = RenderDynamicRange::kExtendedLinear;
+			state.currentHeadroom = headroom.current;
+		}
+		return state;
+	}
+
 	// -- IRenderSurfaceListener: the window is releasing its native surface --
 	void OnNativeSurfaceReleasing() override { ReleaseNative(); }
 
@@ -479,7 +603,7 @@ public:
 
 	bool ReadCapture( std::vector<uint8_t> *outRgba, uint32_t *outWidth, uint32_t *outHeight )
 	{
-		if ( !m_CaptureToken )
+		if ( !m_CaptureToken || BytesPerPixel( m_CaptureFormat ) != 4 )
 			return false;
 		WaitToken( m_Device, m_CaptureToken );
 		if ( !m_CaptureToken->IsComplete() )
@@ -501,6 +625,30 @@ public:
 		m_CaptureToken = nullptr;
 		return true;
 	}
+
+	bool ReadCaptureLinear( std::vector<float> *outRgba, uint32_t *outWidth, uint32_t *outHeight )
+	{
+		if ( !m_CaptureToken || m_CaptureFormat != VK_FORMAT_R16G16B16A16_SFLOAT )
+			return false;
+		WaitToken( m_Device, m_CaptureToken );
+		if ( !m_CaptureToken->IsComplete() )
+			return false;
+		void *mapped = nullptr;
+		const size_t values = size_t( m_CaptureExtent.width ) * m_CaptureExtent.height * 4;
+		if ( m_Ep.Host().Map( m_CaptureMemory, &mapped ) != VK_SUCCESS )
+			return false;
+		const uint16_t *halves = static_cast<const uint16_t *>( mapped );
+		outRgba->resize( values );
+		for ( size_t i = 0; i < values; ++i )
+			( *outRgba )[i] = HalfToFloat( halves[i] );
+		m_Ep.Host().Unmap( m_CaptureMemory );
+		*outWidth = m_CaptureExtent.width;
+		*outHeight = m_CaptureExtent.height;
+		m_CaptureToken = nullptr;
+		return true;
+	}
+
+	SDL_Window *NativeWindow() const { return m_Surfaces.NativeWindow( m_Surface ); }
 
 private:
 	struct RetiredSwapchain
@@ -611,22 +759,10 @@ private:
 		if ( !( caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT ) )
 			return false;
 
-		uint32_t count = 0;
-		vkGetPhysicalDeviceSurfaceFormatsKHR( phys, m_VkSurface, &count, nullptr );
-		std::vector<VkSurfaceFormatKHR> formats( count );
-		if ( count )
-			vkGetPhysicalDeviceSurfaceFormatsKHR( phys, m_VkSurface, &count, formats.data() );
 		VkSurfaceFormatKHR chosen = {};
-		chosen.format = VK_FORMAT_UNDEFINED;
-		const VkFormat preferred[] = { VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM };
-		for ( VkFormat want : preferred )
-		{
-			for ( const VkSurfaceFormatKHR &f : formats )
-				if ( f.format == want && chosen.format == VK_FORMAT_UNDEFINED )
-					chosen = f;
-		}
-		if ( chosen.format == VK_FORMAT_UNDEFINED && !formats.empty() )
-			chosen = formats[0];
+		if ( !ChooseSurfaceFormat(
+		         SurfaceFormats( phys, m_VkSurface ), m_Config.dynamicRange, &chosen ) )
+			return false;
 		VkFormatProperties fp = {};
 		vkGetPhysicalDeviceFormatProperties( phys, chosen.format, &fp );
 		if ( !( fp.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT ) )
@@ -675,6 +811,11 @@ private:
 		RetireSwapchain(); // the old one, behind the GPU work that may still use it
 		m_Swapchain = created;
 		m_SwapFormat = chosen.format;
+		// The platform layer shows the swapchain in the requested range (on Apple,
+		// MoltenVK set the color space; the layer's dynamic range is set here,
+		// both ways, since a window's layer can outlive a presentation).
+		Sdl3SetExtendedRange( m_Surfaces.NativeWindow( m_Surface ),
+		    m_Config.dynamicRange == RenderDynamicRange::kExtendedLinear );
 		m_SwapExtent = extent;
 		m_SwapDrawable = drawable;
 		m_SwapSurfaceExtent = caps.currentExtent;
@@ -695,7 +836,8 @@ private:
 
 	bool PrepareCaptureBuffer()
 	{
-		const VkDeviceSize bytes = VkDeviceSize( m_SwapExtent.width ) * m_SwapExtent.height * 4;
+		const VkDeviceSize bytes =
+		    VkDeviceSize( m_SwapExtent.width ) * m_SwapExtent.height * BytesPerPixel( m_SwapFormat );
 		if ( m_CaptureBuffer != VK_NULL_HANDLE && m_CaptureBytes >= bytes )
 		{
 			m_CaptureFormat = m_SwapFormat;
@@ -812,6 +954,16 @@ bool Sdl3VulkanInstanceExtensions( std::vector<std::string> *outExtensions, std:
 		return false;
 	}
 	outExtensions->assign( names, names + count );
+	// Surface formats in color spaces other than SDR sRGB (render.presentation.v1
+	// "Dynamic range"), where the loader offers them.
+	uint32_t available = 0;
+	vkEnumerateInstanceExtensionProperties( nullptr, &available, nullptr );
+	std::vector<VkExtensionProperties> properties( available );
+	if ( available )
+		vkEnumerateInstanceExtensionProperties( nullptr, &available, properties.data() );
+	for ( const VkExtensionProperties &p : properties )
+		if ( std::strcmp( p.extensionName, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME ) == 0 )
+			outExtensions->push_back( VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME );
 	return true;
 }
 
@@ -864,6 +1016,10 @@ IRenderPresentation *Sdl3VulkanPresentationBridge::CreatePresentation( IRenderDe
 	for ( Sdl3VulkanPresentation *p : m_Live )
 		if ( &p->Surface() == &surface )
 			return fail( RenderCreateStatus::kSurfaceBusy, "the surface is already presented" );
+	if ( config.dynamicRange == RenderDynamicRange::kExtendedLinear &&
+	     config.format != RenderColorFormat::kRGBA16Float )
+		return fail( RenderCreateStatus::kInvalidConfig,
+		    "extended-linear output needs a kRGBA16Float back buffer" );
 	// A destroyed presentation's native surface for this window goes first.
 	CollectParked( true, nullptr, &surface );
 
@@ -975,6 +1131,43 @@ bool Sdl3VulkanPresentationBridge::ReadCapture( IRenderPresentation &presentatio
 {
 	Sdl3VulkanPresentation *p = Find( presentation );
 	return p && p->ReadCapture( outRgba, outWidth, outHeight );
+}
+
+bool Sdl3VulkanPresentationBridge::ReadCaptureLinear( IRenderPresentation &presentation,
+    std::vector<float> *outRgba, uint32_t *outWidth, uint32_t *outHeight )
+{
+	Sdl3VulkanPresentation *p = Find( presentation );
+	return p && p->ReadCaptureLinear( outRgba, outWidth, outHeight );
+}
+
+bool Sdl3VulkanPresentationBridge::ReadNativeDynamicRange(
+    IRenderPresentation &presentation, bool *outLayerExtended, bool *outExtendedLinearColorspace )
+{
+	Sdl3VulkanPresentation *p = Find( presentation );
+	if ( !p )
+		return false;
+	const Sdl3LayerRange layer = Sdl3ReadLayerRange( p->NativeWindow() );
+	*outLayerExtended = layer.extended;
+	*outExtendedLinearColorspace = layer.extendedLinearColorspace;
+	return layer.known;
+}
+
+bool Sdl3VulkanPresentationBridge::ReadNativeDisplayMode( IRenderPresentation &presentation,
+    bool *outMatchingEnabled, bool *outSwitching, bool *outAskedForHdr, unsigned *outHdrModes,
+    bool *outEligibleForHdr )
+{
+	Sdl3VulkanPresentation *p = Find( presentation );
+	if ( !p )
+		return false;
+	const Sdl3DisplayMode mode = Sdl3ReadDisplayMode( p->NativeWindow() );
+	*outMatchingEnabled = mode.matchingEnabled;
+	*outSwitching = mode.switching;
+	*outAskedForHdr = mode.askedForHdr;
+	if ( outHdrModes )
+		*outHdrModes = mode.hdrModes;
+	if ( outEligibleForHdr )
+		*outEligibleForHdr = mode.eligibleForHdr;
+	return mode.known;
 }
 
 } // namespace render_vulkan

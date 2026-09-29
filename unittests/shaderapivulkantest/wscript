@@ -81,6 +81,7 @@ def build(bld):
 			'../../render/device/vulkan/backend_v1/render_backend_v1.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../render/bridge/sdl3-vulkan/sdl3_vulkan_presentation.cpp',
+			'../../render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp',
 			'../../platform/sdl3/render_surface/sdl3_render_surfaces.cpp'],
 		target='render_presentation_sdl3_vulkan_conformance',
 		name='render_presentation_sdl3_vulkan_conformance',

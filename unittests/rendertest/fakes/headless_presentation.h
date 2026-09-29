@@ -76,7 +76,14 @@ struct HeadlessBridgeDefects
 	bool keepNativeAfterRelease = false;   // lifetime.native_released_before_window
 	bool resizeDuringFrame = false;        // resize.rejected_during_frame
 	bool releaseDeviceWhileLive = false;   // lifetime.release_device_order
+	bool extendedReportsStandard = false;  // range.extended_reported
+	bool acceptExtended8Bit = false;       // range.extended_needs_float
+	bool standardReportsHeadroom = false;  // range.standard_headroom
 };
+
+// The headless display's headroom in multiples of SDR white: every headless
+// surface can show kExtendedLinear up to it.
+constexpr float kHeadlessDisplayHeadroom = 4.0f;
 
 // Builds the bridge joining 'surfaces' to 'provider'. Both must outlive it.
 std::unique_ptr<render::IRenderPresentationBridgeFactory> MakeHeadlessPresentationBridge(

@@ -22,6 +22,13 @@ same classification as conformance.py:
 
     python3 tools/quality/ios_conformance.py check --out quality-results/ios-conformance.json
     python3 tools/quality/ios_conformance.py check --suite foundation.expected --no-deploy
+    python3 tools/quality/ios_conformance.py check --app render_lab --device-profile tvos-arm64-device
+
+--app NAME builds one of the device profile's `apps` instead of the
+conformance host: the same host with that app's suites, bundle id (taken from
+the app's product profile), bundle name and display name, in
+<build_root>/apps/NAME. --env KEY=VALUE passes an environment variable to
+every launch, and --extra-timeout adds seconds to each suite's timeout.
 
 Suites the profile cannot run (a first-party shared library fixture, a
 sanitizer runtime) are reported as skipped with the profile's reason: never
@@ -43,6 +50,7 @@ import sys
 
 import conformance
 import ios_device
+import profile_extends
 import toolchain_policy
 
 ROOT = Path(conformance.repo_root())
@@ -76,9 +84,33 @@ def use_profile(profile):
     DEPS_PREFIX = build_root / "deps/prefix"
 
 
+def use_app(profile, name):
+    """The device profile as one of its `apps`: a host app with its own
+    suites, bundle and product profile (the bundle id comes from the product
+    profile, which owns it), built in <build_root>/apps/<name>."""
+    global BUILD_DIR
+    apps = {k: v for k, v in profile.get("apps", {}).items() if not k.startswith("_")}
+    if name not in apps:
+        raise SystemExit("%s declares no app %s (apps: %s)" % (
+            profile["id"], name, ", ".join(sorted(apps)) or "none"))
+    app = apps[name]
+    product = profile_extends.load_profile(ROOT / app["product_profile"])
+    merged = dict(profile)
+    merged.update({
+        "product_profile": app["product_profile"],
+        "bundle_id": product[product["target"]["os"]]["bundle_id"],
+        "app_bundle": app["app_bundle"],
+        "display_name": app["display_name"],
+        "app_suites": app["suites"],
+        "hosts": profile["hosts"] + [h for h in app.get("hosts", []) if h not in profile["hosts"]],
+    })
+    BUILD_DIR = ROOT / profile.get("build_root", "build-ios") / "apps" / name
+    return merged
+
+
 def target_os(profile):
     """The product profile's target OS: "ios" or "tvos"."""
-    product = json.loads((ROOT / profile["product_profile"]).read_text())
+    product = profile_extends.load_profile(ROOT / profile["product_profile"])
     return product["target"]["os"]
 
 
@@ -116,6 +148,8 @@ def unsupported_reason(profile, suite):
 def select(manifest, profile, args):
     hosts = set(profile["hosts"])
     suites = [s for s in manifest["suites"] if s["profile"] in hosts and not s.get("command")]
+    if profile.get("app_suites") and not args.suite:
+        suites = [s for s in suites if s["id"] in profile["app_suites"]]
     if args.suite:
         wanted = set(args.suite)
         unknown = wanted - {s["id"] for s in suites}
@@ -539,7 +573,7 @@ def link_app(env, profile, built, suites, link_flags, programs=(), product_modul
     ok, output = run_logged(command, log)
     if not ok:
         raise SystemExit("app link failed (%s):\n%s" % (log, output[-3000:]))
-    product = json.loads((ROOT / profile["product_profile"]).read_text())
+    product = profile_extends.load_profile(ROOT / profile["product_profile"])
     os_name = product["target"]["os"]
     os_keys = product[os_name]
     platform = {"ios": "iPhoneOS", "tvos": "AppleTVOS"}[os_name]
@@ -547,11 +581,11 @@ def link_app(env, profile, built, suites, link_flags, programs=(), product_modul
     sdk_settings = json.loads((sdk / "SDKSettings.json").read_text())
     plist = {
         "CFBundleDevelopmentRegion": "en",
-        "CFBundleDisplayName": "Conformance",
+        "CFBundleDisplayName": profile.get("display_name", "Conformance"),
         "CFBundleExecutable": profile["executable"],
         "CFBundleIdentifier": profile["bundle_id"],
         "CFBundleInfoDictionaryVersion": "6.0",
-        "CFBundleName": "Conformance",
+        "CFBundleName": profile.get("display_name", "Conformance"),
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": "1.0",
         "CFBundleVersion": "1",
@@ -609,7 +643,8 @@ def cmd_build(args, manifest, profile, suites):
     built = [(index_of[s["id"]], s) for s in todo if status[s["id"]][0] == "built"]
     link_flags = {f for _, s in built for f in s.get("link_flags", [])}
     programs, product_modules = [], []
-    for name, spec in sorted(profile.get("programs", {}).items()):
+    # An app (--app) hosts its own suites only, not the benchmark programs.
+    for name, spec in sorted({} if profile.get("app_suites") else profile.get("programs", {}).items()):
         if name.startswith("_"):
             continue
         ok, detail, modules = build_program(env, profile, name, spec, launcher)
@@ -652,13 +687,14 @@ def deploy(profile, app):
         raise SystemExit("ios-deploy.sh failed:\n" + proc.stdout[-3000:])
 
 
-def run_suite(device, profile, suite, seed, repeat, log_dir):
+def run_suite(device, profile, suite, seed, repeat, log_dir, environment=None, extra_timeout=0):
     result = conformance.new_result(suite)
     result["profile"] = profile["id"]
     result["host_profile"] = suite["profile"]
     result["build_ok"] = True
     expect = suite.get("expect", conformance.OUTCOME_PASS)
     timeout = suite.get("timeout_seconds", 60) + profile.get("launch_overhead_seconds", 60)
+    timeout += extra_timeout
     for attempt in range(repeat):
         start = datetime.datetime.now()
         marker = "conformance-host: running " + suite["id"]
@@ -667,7 +703,7 @@ def run_suite(device, profile, suite, seed, repeat, log_dir):
         # again, and record it. A run with output is never repeated.
         for _ in range(CAPTURE_ATTEMPTS):
             run = device.launch(profile["executable"], [suite["id"], str(seed), str(attempt)],
-                                timeout=timeout)
+                                timeout=timeout, environment=environment)
             if run["timed_out"] or marker in run["console"]:
                 break
             result.setdefault("capture_losses", []).append(conformance.tail(run["console"], 3))
@@ -760,7 +796,9 @@ def cmd_check(args, manifest, profile, suites):
         elif state != "built":
             result = not_run(profile, suite, conformance.OUTCOME_COMPILE_ERROR, detail)
         else:
-            result = run_suite(device, profile, suite, args.seed, args.repeat, log_dir)
+            environment = dict(item.split("=", 1) for item in args.env) if args.env else None
+            result = run_suite(device, profile, suite, args.seed, args.repeat, log_dir,
+                               environment, args.extra_timeout)
         results.append(result)
         print("  [%s] %-50s expect=%-6s got=%-12s checks=%s (%ss)" % (
             "ok  " if result["matched"] else ("skip" if result["outcome"] ==
@@ -798,6 +836,8 @@ def main(argv=None):
                        help="quality/profiles/<id>.json: ios-arm64-device (default) or "
                             "tvos-arm64-device")
         p.add_argument("--suite", action="append")
+        p.add_argument("--app", help="build one of the device profile's apps (its `apps`) "
+                                     "instead of the conformance host")
         p.add_argument("--domain", action="append")
         p.add_argument("--rfc", action="append")
         p.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
@@ -811,11 +851,18 @@ def main(argv=None):
             p.add_argument("--repeat", type=int, default=1)
             p.add_argument("--out")
             p.add_argument("--host", default=ios_device.DEFAULT_HOST)
+            p.add_argument("--env", action="append", metavar="KEY=VALUE",
+                           help="an environment variable for every launch")
+            p.add_argument("--extra-timeout", type=float, default=0,
+                           help="seconds added to every suite's timeout (a suite kept on "
+                                "screen by --env)")
     args = parser.parse_args(argv)
     manifest = conformance.load_manifest(str(ROOT / "quality/conformance.manifest.json"),
                                          root=str(ROOT))
     profile = load_profile(args.device_profile)
     use_profile(profile)
+    if args.app:
+        profile = use_app(profile, args.app)
     suites = select(manifest, profile, args)
     if not suites:
         raise SystemExit("no suites selected")

@@ -60,15 +60,49 @@ enum class RenderColorFormat : uint32_t
 	kRGBA8Unorm = 0,
 	kRGBA8Srgb,
 	kBGRA8Unorm,
+	kRGBA16Float, // linear values; required by RenderDynamicRange::kExtendedLinear
+};
+
+// The output range a presentation shows its back buffer in. Presentation owns
+// the swapchain's color format and color space (RFC 0001 "Window and render
+// interop"); the renderer's output encoding writes values for the range the
+// presentation reports.
+enum class RenderDynamicRange : uint32_t
+{
+	// The display's standard range: back-buffer values are encoded for SDR and
+	// clip at 1.
+	kStandard = 0,
+	// Linear Rec. 709 primaries in a kRGBA16Float back buffer, 1.0 being SDR
+	// reference white. Values above 1, up to the current headroom, are shown
+	// brighter than white (Apple EDR, scRGB); values beyond it are tone mapped
+	// or clipped by the platform.
+	kExtendedLinear,
 };
 
 // Requested presentation behavior. A zero 'extent' sizes the back buffer from
-// the surface's current drawable extent.
+// the surface's current drawable extent. kExtendedLinear with any format but
+// kRGBA16Float fails creation with kInvalidConfig; a surface or display that
+// cannot show it fails creation with kSurfaceIncompatible, creating nothing.
+// Nothing falls back to kStandard silently.
 struct RenderPresentationConfig
 {
 	RenderExtent extent;
 	RenderColorFormat format = RenderColorFormat::kRGBA8Unorm;
 	bool vsync = true;
+	RenderDynamicRange dynamicRange = RenderDynamicRange::kStandard;
+};
+
+// A presentation's output range and the display's headroom, in multiples of
+// SDR reference white. In kStandard the current headroom is 1. In
+// kExtendedLinear it is at least 1 and changes with the display's state (the
+// brightness setting, a mode switch, EDR ramping up after it is enabled), so a
+// renderer reads it every frame. The potential headroom is at least the
+// current one.
+struct RenderDynamicRangeState
+{
+	RenderDynamicRange range = RenderDynamicRange::kStandard;
+	float currentHeadroom = 1.0f;
+	float potentialHeadroom = 1.0f;
 };
 
 // Result of a frame operation.
@@ -168,6 +202,11 @@ public:
 	// Releases retired storage whose completion tokens report complete. Also run
 	// by BeginFrame and ResizeTo.
 	virtual void CollectRetired() = 0;
+
+	// The output range this presentation was created with and the display's
+	// current and potential headroom. Callable at any time from the thread that
+	// presents; never blocks on the window system.
+	virtual RenderDynamicRangeState GetDynamicRange() const = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -192,8 +231,9 @@ public:
 	// error for a device or surface from another provider (kForeignObject), a
 	// surface that already has a presentation (kSurfaceBusy), a destroyed surface
 	// (kSurfaceLost), an unusable device (kDeviceUnavailable), a surface the device
-	// cannot present to (kSurfaceIncompatible) or the presentation limit
-	// (kTooManyPresentations).
+	// cannot present to or show the requested dynamic range on
+	// (kSurfaceIncompatible), a contradictory configuration (kInvalidConfig) or
+	// the presentation limit (kTooManyPresentations).
 	virtual IRenderPresentation *CreatePresentation( IRenderDevice &device, IRenderSurface &surface,
 	    const RenderPresentationConfig &config, RenderCreateError *error ) = 0;
 

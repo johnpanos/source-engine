@@ -1158,6 +1158,30 @@ Keep the table concise and link details below or from the domain progress file.
   - Changes no row's state: R14 and R18 stay `partial`, and R16's hard-gate
     violation stays until R14 closes.
 
+- R16-DYNAMIC-RANGE: `partial` (2026-09-28, user request: HDR on iPhone and
+  tvOS). `render.presentation.v1` gains an extended-linear range
+  (`kRGBA16Float`, `GetDynamicRange()` with headroom). The SDL3-Vulkan
+  bridge sets up an extended linear sRGB swapchain, and on Apple the Metal
+  layer's dynamic range. `render.presentation.edr` passes 11 of 11 on the
+  iPhone 16 Pro (headroom 1.2 of 8) and the Apple TV 4K (1.2 of 1.2: the TV
+  is in SDR). Follow-up (2026-09-28, "complete these on tvOS and iOS - in
+  renderlab"):
+  - The layer's drawables are tagged with headroom, so EDR engages: the
+    iPhone reaches 7.23 of 8.
+  - tvOS switches the TV into HDR10 through `AVDisplayManager`. tvOS
+    reports no headroom for an HDR TV, so the declared HDR10 headroom 4.93
+    applies.
+  - RFC 0016's `render.pass.output` (`render.output.v1`: exposure,
+    BT.2390 tone map, output encoding) is proven in `render_lab`'s new
+    presenting host (`render/lab/app`, `ios_conformance.py --app
+    render_lab`, Portal 2 bundle id): `render.lab.hdr` passes 8 of 8 on the
+    iPhone and 12 of 12 on the Apple TV, and `render.output` passes on
+    Linux and both devices.
+  - Product wiring is open; R16's state is unchanged. See the
+    [record](RFC/0001-presentation-bridge-progress.md#dynamic-range-extended-linear-output-on-iphone-and-apple-tv-2026-09-28)
+    and
+    [RFC 0016's](RFC/0016-progress.md#output-and-render_labs-presenting-host-on-iphone-and-apple-tv-2026-09-28).
+
 - R16: `done` (2026-09-22) for the rank 9 scope:
   - Contract: `public/render/render_presentation.h` (`render.presentation.v1`).
     Devices no longer present; pair-specific bridges do, with structured

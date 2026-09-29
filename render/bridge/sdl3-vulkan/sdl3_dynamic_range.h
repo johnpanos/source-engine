@@ -1,0 +1,74 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: The window-system half of render.presentation.v1's dynamic range for
+//          the SDL3-Vulkan bridge. The bridge chooses the swapchain format and
+//          color space; these functions do what the platform needs beyond
+//          that:
+//          - On Apple, MoltenVK sets the Metal layer's color space but enables
+//            EDR only on macOS. The layer's dynamic range is set here, and the
+//            screen's headroom is read from UIKit. On tvOS the extended range
+//            also asks for the display's HDR mode (AVDisplayManager).
+//          - Elsewhere, SDL's window HDR properties report the headroom.
+//          Private to render.bridge.sdl3-vulkan. Implemented in
+//          sdl3_dynamic_range.cpp and sdl3_dynamic_range_apple.mm.
+//
+//===========================================================================//
+
+#ifndef RENDER_BRIDGE_SDL3_DYNAMIC_RANGE_H
+#define RENDER_BRIDGE_SDL3_DYNAMIC_RANGE_H
+
+struct SDL_Window;
+
+namespace render_vulkan
+{
+
+// The display's headroom in multiples of SDR reference white.
+struct Sdl3DisplayHeadroom
+{
+	float current = 1.0f;
+	float potential = 1.0f;
+};
+
+// Whether the platform can show extended-linear output in 'window' at all
+// (the API exists and the display has headroom above 1). The surface's format
+// list decides the rest.
+bool Sdl3CanShowExtendedRange( SDL_Window *window );
+
+// Sets the window's presentation layer to extended range, or back to
+// standard. Call after the swapchain is (re)built. False when the platform
+// refused. On tvOS the extended range also asks tvOS to switch the display
+// into HDR (HDR10 display criteria), and the standard range withdraws that.
+bool Sdl3SetExtendedRange( SDL_Window *window, bool extended );
+
+// The display's headroom now. Never blocks: off the main thread on Apple it
+// returns the value last read there and schedules a fresh read.
+Sdl3DisplayHeadroom Sdl3ReadHeadroom( SDL_Window *window );
+
+// Native test endpoint: what the platform layer reports. 'known' is false
+// where the platform has no layer to inspect.
+struct Sdl3LayerRange
+{
+	bool known = false;
+	bool extended = false;                 // the layer shows content above SDR white
+	bool extendedLinearColorspace = false; // the layer's color space is extended linear sRGB
+};
+Sdl3LayerRange Sdl3ReadLayerRange( SDL_Window *window );
+
+// Native test endpoint: tvOS's display mode request for the window. 'known'
+// is false where there is none (not tvOS, or off the main thread).
+struct Sdl3DisplayMode
+{
+	bool known = false;
+	bool matchingEnabled = false; // the user's "Match Dynamic Range" setting is on
+	bool switching = false;       // tvOS is switching the display's mode now
+	bool askedForHdr = false;     // the window's criteria ask for HDR
+	// What the connected display can play (AVPlayer.availableHDRModes): the
+	// bits hlg 1, hdr10 2, dolbyVision 4. Zero on a display without HDR.
+	unsigned hdrModes = 0;
+	bool eligibleForHdr = false; // AVPlayer.eligibleForHDRPlayback
+};
+Sdl3DisplayMode Sdl3ReadDisplayMode( SDL_Window *window );
+
+} // namespace render_vulkan
+
+#endif // RENDER_BRIDGE_SDL3_DYNAMIC_RANGE_H

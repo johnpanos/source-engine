@@ -2252,3 +2252,76 @@ The catalog now reaches the product.
 | Render sequence on its own thread | `render.debug-views.product.mode2`: the same counts, and the console shows `mat_queue_mode` 2 | pass (11 checks) |
 | Judges catch what they must | `render.debug-views.product.selftest`: a legacy HUD mark in a checker frame, a hatch one pixel out of phase, the checker as hatch, the hatch as filter grey | pass (11 checks) |
 | Default identity, product | `core_world_smoke.py run --game portal` on this build: 26 of 26 retail maps pass with the core drawing the world strictly | pass (27 checks) |
+
+## Output and `render_lab`'s presenting host on iPhone and Apple TV (2026-09-28)
+
+User request (2026-09-28): "complete these on tvOS and iOS - in renderlab".
+The three items were: HDR output encoding and tone map in the lab, the lab
+presenting through the new swapchain, and the tvOS HDR mode switch. The
+render-core owner (source-engine-43) agreed that this session owns
+`render.pass.output`. Their conditions: one copy of each curve, debug views
+bypass the tone map, and the SDR legacy point stays exact. The term is
+defined in
+[RFC 0016 "Output"](0016-render-core.md#output-renderoutputv1-amended-2026-09-28).
+The obligations are in `unittests/rendertest/contracts/render.output.v1.md`.
+
+- **`render.pass.output`**:
+  - `public/render/pass/output/output.h`, `render/pass/output/`, a strict
+    C++20 library that is Waf-registered.
+  - Exposure, then the tone map, which is the BT.2390 EETF on max(R, G, B)
+    in the PQ domain. It is the clip alone when the headroom covers the
+    scene peak.
+  - Then the encoding by target: 8-bit UNORM gets the sRGB curve, an sRGB
+    view is linear with hardware encoding, and a half-float target is
+    linear extended.
+  - The curves: `render/shaders/common/tone_map.glsl` (new) and
+    `color_encoding.glsl` (`OutputEncode`, added beside `LinearToSrgb`).
+  - A debug view (`toneMap` false) gets the encoding alone.
+- **Port change**: `IHostDevice::ImportImage` accepts `kExternal` as a host
+  image's home usage, meaning another API reads the image in GENERAL after
+  the port's writes. A presentation bridge's back buffer is imported that
+  way. Its description is validated like `CreateExported`'s.
+- **`render_lab`'s presenting host**:
+  - Files: `render/lab/app/lab_app.{h,cpp}`, module `render.lab.app`. The
+    headless `render_lab` still links no SDL.
+  - An SDL3 window, the R16 SDL3-Vulkan bridge and the `render.backend.v1`
+    provider on the adapter's host device. One Vulkan device serves both,
+    through `Host().Port()`.
+  - Each frame it imports the back buffer into the core and runs
+    `render.pass.output` through the frame graph at the presentation's
+    current headroom.
+  - It asks for the extended-linear range first and falls back to standard
+    only when the surface refuses (`kSurfaceIncompatible`). `Range()` says
+    which it got.
+  - The scene is an HDR chart: a gray ramp from 1/64 to 16 times white,
+    gray and warm patches from 0.18 to 16, and saturated patches at 4.
+- **Device app**:
+  - `tools/quality/ios_conformance.py --app render_lab` builds
+    `RenderLab.app` from the device profiles' new `apps` entries, under the
+    Portal 2 bundle id `com.panos.sourceengine.portal2`. The user asked for
+    no new bundle id. Installing it replaces the Portal 2 app; its data
+    container stays.
+  - `--env` passes environment variables and `--extra-timeout` extends
+    runs, for `RENDER_LAB_SHOW_SECONDS`, which keeps the chart on screen.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| `render.output` (Linux GPU) | 27 checks at `985a4a35` plus the tree; g++ and clang++ release. The SDR legacy point matches clip plus sRGB byte for byte at three exposures. Extended: clip-alone, EETF within 0.3 percent, peak lands on the headroom, monotonic, below-knee unchanged, hue kept. Debug view untouched. 7 refusals. 6 of 6 seeded programs are detected, each by the checks its defect breaks. Khronos validation reports 0 messages | pass |
+| `render.output` on devices | the same suite through `--app render_lab`: iPhone 16 Pro 26 checks, Apple TV 4K 26 checks (no Khronos layer there, so validation is not judged) | pass |
+| `render.lab.hdr`, iPhone 16 Pro (iOS 27) | extended range granted; layer high in extended linear sRGB; headroom 1.20 rising to 7.23 of 8.00 in 0.35 s; every patch of the presented swapchain image matches the oracle at headroom 7.23 (worst 0.001); brightest 7.23; debug view presents 16.0; the standard control shows the legacy point within one level | 8 of 8 |
+| `render.lab.hdr`, Apple TV 4K (tvOS 26.6) | as on the iPhone, plus: HDR10 requested, Match Dynamic Range on, the TV switches in 2.9 s, and the declared HDR10 headroom 4.93 applies; the chart matches the oracle at 4.93; the standard control withdraws the request and the TV switches back. The user watched the chart and confirmed the brighter-than-white patches show brighter on the TV | 12 of 12 |
+| Linux, headless mutter | the standard control passes (legacy point within one level) through the real bridge. The extended range is refused (mutter offers no HDR), and the first window stalls on FIFO acquires: the known headless-mutter stall | standard only |
+
+Reproduce:
+- `python3 tools/quality/conformance.py check --suite render.output`
+- `python3 tools/quality/ios_conformance.py check --app render_lab`
+- the same with `--device-profile tvos-arm64-device`
+- to watch the chart, add `--env RENDER_LAB_SHOW_SECONDS=120 --extra-timeout 130`
+
+Open:
+- The lab host shows the chart, not yet a map scene; the canvas now exposes
+  its color target, so that comes next.
+- No Waf target for the host yet: it builds through the manifest's source
+  list.
+- The product (K12 "Game output") is not wired.
+- PQ/HLG encodings are out of scope.

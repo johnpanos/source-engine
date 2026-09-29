@@ -23,7 +23,7 @@ that absence mechanically, and `architecture/modules.json` enforces it.
 | Pair (`windowSystem`, `renderBackend`) | Bridge | Evidence |
 | --- | --- | --- |
 | `headless`, `null` | `rendertest::MakeHeadlessPresentationBridge` | `render.presentation.headless`, `render.presentation.sensitivity` (conformance runner) |
-| `sdl3`, `vulkan` | `render_vulkan::Sdl3VulkanPresentationBridge` | `render_presentation_sdl3_vulkan_conformance` (Waf, native GPU and compositor) |
+| `sdl3`, `vulkan` | `render_vulkan::Sdl3VulkanPresentationBridge` | `render_presentation_sdl3_vulkan_conformance` (Waf, native GPU and compositor); `render.presentation.edr` (iPhone and Apple TV through `ios_conformance.py`: an extended-linear swapchain, values above 1 kept, the layer's dynamic range and the screen's headroom) |
 
 The legacy product path (`IShaderAPI::SetMode` in `shaderapivulkan`) reaches the
 window through the same pair's other half,
@@ -71,6 +71,24 @@ D3D9/DXVK pair keeps its SDL window interpretation inside
 - **Multiple surfaces.** One presentation per window, up to the bridge limit, on
   one device. Frames interleave, resizes stay independent, and destruction may
   happen in any order.
+- **Dynamic range** (amended 2026-09-28, user request: HDR on iPhone and
+  Apple TV). Presentation owns the output color format and color space, per
+  RFC 0001. A presentation reports its range and the display's headroom
+  through `GetDynamicRange()`. In `kStandard` the current headroom is exactly
+  1. `kExtendedLinear` means linear Rec. 709 values in a `kRGBA16Float` back
+  buffer, with 1.0 as SDR white. Values above 1 up to the current headroom
+  show brighter than white.
+  - A request for `kExtendedLinear` with an 8-bit format fails with
+    `kInvalidConfig`.
+  - A surface or display that cannot show it fails with
+    `kSurfaceIncompatible`.
+  - Both failures create nothing, and neither falls back to `kStandard`.
+  - A created extended presentation reports `kExtendedLinear`, a current
+    headroom of at least 1 and a potential headroom of at least the current
+    one, and presents frames.
+  - The renderer's output encoding and tone map (RFC 0016 "Output") read
+    that state every frame. This contract says nothing about how they use
+    it.
 
 ## 3. Threading
 
@@ -79,8 +97,11 @@ listener on the thread that drives presentation.
 
 ## 4. Sensitivity
 
-`render.presentation.sensitivity` injects 14 bridge defects, one per
-obligation, and requires the named check to fail for each. Examples: recycling on
+`render.presentation.sensitivity` injects 17 bridge defects, one per
+obligation, and requires the named check to fail for each. The three
+dynamic-range defects are an extended presentation that reports
+`kStandard`, one accepted with an 8-bit format, and a standard presentation
+that reports headroom above 1. Examples: recycling on
 resize, a resize that loses the device, a fatal zero size, ignoring window
 destruction, ignoring an unavailable surface, extent crosstalk, accepting a
 foreign device, a second presentation on one surface, a leak on destroy, a stale
@@ -108,7 +129,8 @@ pixel negative control.
 
 ## 6. Not covered
 
-- Concurrent or multi-threaded presentation, and HDR color spaces.
+- Concurrent or multi-threaded presentation, and HDR10 (PQ) or HLG output.
+  Only `kExtendedLinear` exists.
 - Fullscreen and exclusive modes, and display-mode changes.
 - Real device loss (`VK_ERROR_DEVICE_LOST`). Loss is simulated through the
   device contract.

@@ -9,6 +9,13 @@
   "include_roots": [
     "public"
   ],
+  "generated_include_roots": [
+    {
+      "id": "shaders",
+      "description": "RFC 0016 K4: the SPIR-V headers the build generates (not committed); sources include \"spv/<name>\"",
+      "command": ["{python}", "tools/render/shader_artifacts.py", "headers", "--out", "{out}/spv"]
+    }
+  ],
   "base_flags": [
     "-Wall",
     "-Wextra",

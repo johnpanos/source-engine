@@ -1266,7 +1266,7 @@ core implements.
 | Specular occlusion | this RFC: from AO and roughness (Lagarde and de Rousiers 2014), applied to indirect specular only | in the surface program | one |
 | Emission | the surface model ([above](#the-surface-model-legacy-materials-as-degenerate-cases-plan-2026-09-28)); RFC 0011 area lights for surfaces that light their surroundings | emissive radiance in scene units | zero |
 | Participating media | this RFC, `render.pass.volumetric` (proposed): the legacy range and height fog as the legacy point; volumetric fog on a frustum-aligned froxel volume matching the cluster grid, with density from height fog and fog volumes, in-scattering from the light set, the sun's cascades and the projectors (cookies and shadows included), a Henyey-Greenstein phase and energy-conserving front-to-back integration (Hillaire 2015, after Wronski 2014). The volume may reproject its own history and drops it on a camera cut; that is not screen TAA | the pass and its application to opaque and translucent surfaces | density zero: legacy fog alone, bitwise |
-| Output | this RFC: the existing exposure and tone-map chain; one output encoding (`color_encoding.glsl`) | the post pass | — |
+| Output | this RFC, [`render.output.v1`](#output-renderoutputv1-amended-2026-09-28): exposure, one tone map (`tone_map.glsl`) and one output encoding (`color_encoding.glsl`) for the presentation's range and headroom | `render.pass.output` | the legacy point: scene peak 1 and headroom 1, the clip and the sRGB encoding alone |
 
 Rules for the whole model:
 
@@ -1288,6 +1288,52 @@ Rules for the whole model:
   (binding rule 7); only the user can turn a term off for a profile's
   shipped default. A term that a profile declares is never silently
   dropped.
+
+### Output (`render.output.v1`) (amended 2026-09-28)
+
+User request (2026-09-28): HDR on the iPhone and the Apple TV, proven in
+`render_lab` first. Presentation (RFC 0001, `render.presentation.v1`
+"Dynamic range") owns the swapchain's format and color space and reports
+the display's headroom H, in multiples of SDR white, every frame. This term
+owns the values written for them, in `render.pass.output`:
+
+1. **Exposure.** The linear scene times the frame's exposure. The legacy
+   chain computes the exposure (auto exposure, the tone-map scale); the
+   term applies it.
+2. **Tone map** (`render/shaders/common/tone_map.glsl`, the one copy). Each
+   channel is clipped to the scene peak P, the brightest value the scene is
+   graded to (at most 10000/203, PQ's range). Then max(R, G, B) is mapped
+   from [0, P] onto [0, H] by the ITU-R BT.2390 EETF: the Hermite knee in the
+   SMPTE ST 2084 (PQ) domain, with reference white at 203 cd/m^2 (ITU-R
+   BT.2408) and black at 0. The three channels take one scale, so hue is
+   kept, and values below the knee pass unchanged. When H >= P, the term is
+   the clip alone.
+3. **Encoding** (`render/shaders/common/color_encoding.glsl`, the one
+   copy), chosen by the target: an 8-bit UNORM target gets the sRGB curve;
+   an 8-bit sRGB view gets linear values that its attachment encodes; a
+   half-float target gets linear values in extended linear sRGB (scRGB,
+   1.0 = SDR white) for a `kExtendedLinear` presentation. 8-bit targets
+   take H = 1 only.
+
+The legacy point is P = 1, H = 1: exactly the legacy clip and the sRGB
+encoding, checked byte for byte. SDR is that degenerate case, not a second
+path. A debug view (RFC 0014, "Post-processing is bypassed") gets the
+encoding alone. BT.2390 is chosen because it is the standard curve for
+showing graded HDR on a less capable display. It takes one input from the
+display (its peak), and it is the identity whenever the display covers the
+scene.
+
+Not in this term: PQ (HDR10) or HLG output encodings, which a presentation
+range needing them would add; a paper-white or brightness setting; auto
+exposure.
+
+Oracles:
+- `render.output` (Linux GPU): a double-precision C++ reference, sharing
+  no code with the GLSL, and six seeded fragment programs.
+- `render.lab.hdr` (iPhone, Apple TV): the lab's presented swapchain image
+  judged against the same reference.
+
+The obligations are in `unittests/rendertest/contracts/render.output.v1.md`.
 
 ### Hard parts first, proven outside the game
 
@@ -1605,6 +1651,7 @@ ahead of the product rows.
 | Screen-space reflections | `render.lab.ssr` (proposed) on the mirror corridor | on-screen hits within tolerance of Cycles; off-screen and occluded rays fall back to the probes with no seam larger than the R50 walk gate's step; surfaces rougher than the cutoff are unchanged bitwise; seeded defects detected (thickness ignored, no edge fade, the wrong mip) |
 | Volumetric fog | `render.lab.volumetric` (proposed) on the foggy hall | a homogeneous medium's transmittance is exp(-sigma_t d) within tolerance; single scattering from a point light matches a numerical integral; a shadowed projector's shaft is absent inside its shadow; density zero is bitwise the fog-only frame; after a camera cut no history remains |
 | Portal and Portal 2 chambers | the two rebuilt chambers, legacy points and modern points (the S9 rule table) | legacy points match the product's native ports within the family tolerances; modern points within tolerance of Cycles |
+| Output on a display | `render.output` (Linux GPU); `render.lab.hdr` on the iPhone and the Apple TV through `render_lab`'s presenting host (`render/lab/app`) | `render.output.v1`'s clauses and seeded programs pass; each chart patch presented on the device equals the oracle at the frame's headroom; the extended range is granted and the headroom rises above 1; on tvOS the TV switches into HDR; a debug view presents untouched; a standard presentation shows the legacy point |
 | Lab budgets (perf) | `render_lab --time` (proposed), `render-v1.json` lighting rows | set before measuring: all terms at once at most 8 ms GPU at 1080p on the desktop runner for the heaviest fixture; per term: GTAO 0.5 ms, SSR 1.0 ms, volumetric 1.0 ms, LTC 0.3 ms; Fold7 rows recorded; a miss is an optimization item, and no term is turned off for it |
 
 ### K12: Lighting model integrated in the product
@@ -1614,6 +1661,7 @@ ahead of the product rows.
 | One light per surface | the `RuntimeLight` census and the doubled-light control | every term the core evaluates has its flag set on exactly the surfaces it shades; forcing both paths fails as doubled light for each term |
 | One copy of the math | static scan | the model's GLSL exists only under `render/`; `world_pbr.frag`, `model_pbr.frag`, `probe_volume.glsl` and `reflection_probes.glsl` are gone from the native backend |
 | Game matches lab | the Portal and Portal 2 chambers booted with the lab's cameras | each in-game frame within tolerance of the same scene's `render_lab` frame |
+| Game output | Portal and Portal 2 on the iPhone and the Apple TV | the product presents through `render.presentation.v1` (no backend-owned swapchain), its frames reach it through `render.pass.output` at the presentation's headroom, and each profile records its declared range |
 | Frame budgets (perf) | `portal-frame-pacing-v1` and a Portal 2 workload | within the frame allowance of K0 with every declared term on, per profile; the declared-off terms are listed per profile |
 
 **Dependencies.** K0 is ready now (R02, R05, R10 and R16 are done). K1

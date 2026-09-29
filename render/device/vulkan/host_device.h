@@ -254,7 +254,10 @@ public:
 	// elsewhere), and the host's own accesses stay within home's stages and
 	// accesses or are made available by its own barriers. The adapter orders
 	// the port's first access after host work, and host work after the
-	// port's writes. The adapter owns only its views: Port().Release( id,
+	// port's writes. home may be kExternal (GENERAL): the host's own
+	// accesses then read the image as another API would, after the port's
+	// last writes, as a presentation bridge's blit reads its back buffer.
+	// The adapter owns only its views: Port().Release( id,
 	// token ) frees them after token, and the host keeps the image alive
 	// until then. False, with no texture, when desc names no usage, home is
 	// not one of them or has no image layout, or the device is lost.

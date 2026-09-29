@@ -9,6 +9,7 @@
 
 #include "render_presentation_conformance.h"
 
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -697,6 +698,91 @@ void CheckDeviceLoss( IRenderBackendProvider &provider, IRenderPresentationBridg
 
 } // namespace
 
+std::string DescribeRange( const RenderDynamicRangeState &state )
+{
+	char text[96];
+	std::snprintf( text, sizeof( text ), "%s, headroom %.2f of %.2f",
+	    state.range == RenderDynamicRange::kExtendedLinear ? "extended-linear" : "standard",
+	    state.currentHeadroom, state.potentialHeadroom );
+	return text;
+}
+
+// Dynamic range: a presentation reports the range it was created with and the
+// display's headroom; a contradictory request fails with kInvalidConfig; an
+// extended-linear request either presents in that range or fails with
+// kSurfaceIncompatible, creating nothing. Nothing falls back to kStandard.
+void CheckDynamicRange( IRenderDevice &device, IRenderPresentationBridgeFactory &bridge,
+    IPresentationHarness &harness, Report &report )
+{
+	IRenderSurface *surface = harness.CreateSurface( Extent( 256, 192 ) );
+	if ( !surface )
+	{
+		report.Record( "range.surface", false, "the harness could not open a window" );
+		return;
+	}
+
+	IRenderPresentation *standard =
+	    bridge.CreatePresentation( device, *surface, RenderPresentationConfig(), nullptr );
+	if ( standard )
+	{
+		const RenderDynamicRangeState state = standard->GetDynamicRange();
+		report.Record( "range.standard_headroom",
+		    state.range == RenderDynamicRange::kStandard && state.currentHeadroom == 1.0f &&
+		        state.potentialHeadroom >= 1.0f,
+		    "a default presentation is standard range with current headroom 1 (" +
+		        DescribeRange( state ) + ")" );
+		bridge.DestroyPresentation( standard );
+	}
+	else
+	{
+		report.Record( "range.standard_headroom", false, "presentation creation failed" );
+	}
+
+	const size_t live = bridge.GetLivePresentationCount();
+	RenderPresentationConfig eightBit;
+	eightBit.dynamicRange = RenderDynamicRange::kExtendedLinear;
+	RenderCreateError error;
+	IRenderPresentation *contradictory =
+	    bridge.CreatePresentation( device, *surface, eightBit, &error );
+	report.Record( "range.extended_needs_float",
+	    contradictory == nullptr && error.status == RenderCreateStatus::kInvalidConfig &&
+	        bridge.GetLivePresentationCount() == live,
+	    "extended-linear output with an 8-bit back buffer fails with kInvalidConfig" );
+	if ( contradictory )
+		bridge.DestroyPresentation( contradictory );
+
+	RenderPresentationConfig extended;
+	extended.format = RenderColorFormat::kRGBA16Float;
+	extended.dynamicRange = RenderDynamicRange::kExtendedLinear;
+	error = RenderCreateError();
+	IRenderPresentation *p = bridge.CreatePresentation( device, *surface, extended, &error );
+	if ( p )
+	{
+		const RenderDynamicRangeState state = p->GetDynamicRange();
+		report.Record( "range.extended_reported",
+		    state.range == RenderDynamicRange::kExtendedLinear && state.currentHeadroom >= 1.0f &&
+		        state.potentialHeadroom >= state.currentHeadroom,
+		    "an extended-linear presentation reports that range and headroom of at least 1 (" +
+		        DescribeRange( state ) + ")" );
+		report.Record( "range.extended_presents",
+		    RunFrameAllowingRebuild( device, *p, harness, 0 ) == RenderPresentStatus::kOk,
+		    "an extended-linear presentation presents a frame" );
+		bridge.DestroyPresentation( p );
+	}
+	else
+	{
+		report.Record( "range.extended_reported",
+		    error.status == RenderCreateStatus::kSurfaceIncompatible &&
+		        bridge.GetLivePresentationCount() == live,
+		    std::string( "a surface that cannot show extended-linear output fails with "
+		                 "kSurfaceIncompatible, creating nothing (" ) +
+		        error.message + ")" );
+	}
+	Drain( device, nullptr );
+	harness.DestroyWindow( *surface );
+	harness.DestroySurface( surface );
+}
+
 bool RunPresentationConformance( IRenderBackendProvider &provider,
     IRenderPresentationBridgeFactory &bridge, IPresentationHarness &harness, Report &report )
 {
@@ -711,6 +797,7 @@ bool RunPresentationConformance( IRenderBackendProvider &provider,
 	CheckFrames( *device, bridge, harness, report );
 	CheckDelayedCompletion( *device, bridge, harness, report );
 	CheckMultipleSurfaces( *device, bridge, harness, report );
+	CheckDynamicRange( *device, bridge, harness, report );
 	Drain( *device, nullptr );
 
 	// Destruction order: a live presentation pins the device; once none remain,

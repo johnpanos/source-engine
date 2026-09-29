@@ -1,0 +1,55 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: Dynamic range for the SDL3-Vulkan bridge on platforms other than
+//          Apple's (see sdl3_dynamic_range.h). The compositor takes the
+//          swapchain's color space as is; SDL reports the window's headroom.
+//
+//===========================================================================//
+
+#if !defined( __APPLE__ )
+
+#include "sdl3_dynamic_range.h"
+
+#include <SDL3/SDL.h>
+
+namespace render_vulkan
+{
+
+bool Sdl3CanShowExtendedRange( SDL_Window *window )
+{
+	return window != nullptr;
+}
+
+bool Sdl3SetExtendedRange( SDL_Window *window, bool extended )
+{
+	(void)extended;
+	return window != nullptr;
+}
+
+Sdl3DisplayHeadroom Sdl3ReadHeadroom( SDL_Window *window )
+{
+	Sdl3DisplayHeadroom headroom;
+	if ( !window )
+		return headroom;
+	const float reported = SDL_GetFloatProperty(
+	    SDL_GetWindowProperties( window ), SDL_PROP_WINDOW_HDR_HEADROOM_FLOAT, 1.0f );
+	headroom.current = reported > 1.0f ? reported : 1.0f;
+	headroom.potential = headroom.current;
+	return headroom;
+}
+
+Sdl3LayerRange Sdl3ReadLayerRange( SDL_Window *window )
+{
+	(void)window;
+	return Sdl3LayerRange();
+}
+
+Sdl3DisplayMode Sdl3ReadDisplayMode( SDL_Window *window )
+{
+	(void)window;
+	return Sdl3DisplayMode();
+}
+
+} // namespace render_vulkan
+
+#endif // !__APPLE__

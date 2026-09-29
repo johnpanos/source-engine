@@ -120,6 +120,24 @@ int main()
 		        d.releaseDeviceWhileLive = true;
 	        },
 	        "lifetime.release_device_order" },
+	    { "extendedReportsStandard",
+	        []( HeadlessBridgeDefects &d )
+	        {
+		        d.extendedReportsStandard = true;
+	        },
+	        "range.extended_reported" },
+	    { "acceptExtended8Bit",
+	        []( HeadlessBridgeDefects &d )
+	        {
+		        d.acceptExtended8Bit = true;
+	        },
+	        "range.extended_needs_float" },
+	    { "standardReportsHeadroom",
+	        []( HeadlessBridgeDefects &d )
+	        {
+		        d.standardReportsHeadroom = true;
+	        },
+	        "range.standard_headroom" },
 	};
 
 	int undetected = 0;

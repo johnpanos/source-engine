@@ -285,7 +285,18 @@ DeviceResult<TextureId> VulkanDevice::ImportImage(
 	     ScopeOf( home ).layout == VK_IMAGE_LAYOUT_UNDEFINED ||
 	     desc.usages.Has( ResourceUsage::kPresent ) || desc.dimension == TextureDimension::k3D )
 		return Fail( DeviceStatus::kInvalidDescription, op );
-	if ( auto valid = ValidateTexture( desc, m_Facts.limits ); !valid )
+	// kExternal names a host image that another API (the host's own work, such
+	// as a presentation bridge's blit) reads in its home layout; the rest of
+	// the description is validated as a created texture's.
+	TextureDesc plain = desc;
+	plain.usages = UsageSet();
+	for ( std::uint32_t bit = 0; bit < static_cast<std::uint32_t>( ResourceUsage::kCount ); ++bit )
+	{
+		const ResourceUsage usage = static_cast<ResourceUsage>( bit );
+		if ( usage != ResourceUsage::kExternal && desc.usages.Has( usage ) )
+			plain.usages.Add( usage );
+	}
+	if ( auto valid = ValidateTexture( plain, m_Facts.limits ); !valid )
 		return foundation::MakeUnexpected( valid.Error() );
 	const VkImageUsageFlags usage = ImageUsageFlags( desc.usages );
 	TextureRecord record;

@@ -90,6 +90,7 @@ SKINNING_TESTS = "unittests/rendertest/core/skinning"
 LIGHTS = "render/pass/lights"
 SHADOWS = "render/pass/shadows"
 DEBUG = "render/pass/debug"
+OUTPUT = "render/pass/output"
 LIGHTS_TESTS = "unittests/rendertest/core/pass/lights"
 SHADOWS_TESTS = "unittests/rendertest/core/pass/shadows"
 
@@ -189,6 +190,24 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_CONE_IGNORED",)),
         ("kClusterUncountedOverflow", LIGHTS + "/cluster_assign.comp",
          DEVICE_OPTIONS + ("-DSEEDED_UNCOUNTED_OVERFLOW",)))),
+    "output_spv.h": ("render::pass::output::spirv",
+        "the output pass: exposure, tone map and output encoding (RFC 0016, render.output.v1)", (
+        ("kOutputVertex", OUTPUT + "/output.vert", DEVICE_OPTIONS),
+        ("kOutputFragment", OUTPUT + "/output.frag", DEVICE_OPTIONS))),
+    "output_defects_spv.h": ("rendertest::output::spirv",
+        "the output suite's seeded fragment programs (render.output)", (
+        ("kOutputAlwaysCompress", OUTPUT + "/output.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_ALWAYS_COMPRESS",)),
+        ("kOutputPerChannel", OUTPUT + "/output.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_PER_CHANNEL",)),
+        ("kOutputKneeAtPeak", OUTPUT + "/output.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_KNEE_AT_PEAK",)),
+        ("kOutputHeadroomIgnored", OUTPUT + "/output.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_HEADROOM_IGNORED",)),
+        ("kOutputDebugViewToneMapped", OUTPUT + "/output.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEBUG_VIEW_TONE_MAPPED",)),
+        ("kOutputSrgbOnLinear", OUTPUT + "/output.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SRGB_ON_LINEAR",)))),
     "shadow_defects_spv.h": ("rendertest::shadows::spirv",
         "the shadow suite's seeded receiver (render.shadows.pixels)", (
         ("kShadowReceiverDepthReversed", SHADOWS + "/shadow_receiver.frag",

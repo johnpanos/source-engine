@@ -144,3 +144,92 @@ env -u DISPLAY WAYLAND_DISPLAY=r16-isolated SDL_VIDEO_DRIVER=wayland \
     build-r16/unittests/shaderapivulkantest/render_presentation_sdl3_vulkan_conformance
 # X11 profile: start mutter without --no-x11 and use its Xwayland display and auth file.
 ```
+
+## Dynamic range: extended-linear output on iPhone and Apple TV (2026-09-28)
+
+User request (2026-09-28): "when hdr is on, for ios, let's support HDR modes
+on iPhone and tvOS", then "let's test out the HDR path". This slice
+covers presentation only. RFC 0001 assigns the color format and color space
+to presentation. The output encoding and tone map that fill the range belong
+to RFC 0016's post pass ("Output"), and the render-core session owns them.
+No frozen path is touched.
+
+- **Contract** (`render.presentation.v1`, amended in place):
+  - `RenderColorFormat::kRGBA16Float` and
+    `RenderPresentationConfig::dynamicRange` (`kStandard`,
+    `kExtendedLinear`).
+  - `IRenderPresentation::GetDynamicRange()`: the range, plus current and
+    potential headroom in multiples of SDR white.
+  - `RenderCreateStatus::kInvalidConfig` for an extended request with an
+    8-bit format. A surface that cannot show the range fails with
+    `kSurfaceIncompatible`, and nothing falls back.
+- **SDL3-Vulkan bridge:**
+  - It enables `VK_EXT_swapchain_colorspace` where the loader offers it.
+  - Extended presentations get an `R16G16B16A16_SFLOAT` swapchain in
+    `VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT`. Standard presentations get an
+    8-bit format in the SDR color space; that filter is new, because the
+    extension lists the same formats in other color spaces too.
+  - `sdl3_dynamic_range_apple.mm` sets the Metal layer's range on every
+    swapchain build, both ways:
+    - `preferredDynamicRange = CADynamicRangeHigh` on iOS and tvOS 26, the
+      only EDR switch tvOS has;
+    - `wantsExtendedDynamicRangeContent` on iOS 16 to 25.
+  - It reads `UIScreen`'s current and potential EDR headroom on the main
+    thread and never blocks another thread.
+  - MoltenVK 1.4.2 maps the color space to the layer's extended linear sRGB,
+    but it enables EDR (and HDR metadata) only on macOS. Elsewhere, SDL's
+    window headroom property is used.
+- **Evidence:**
+  - `render.presentation.headless` (52 checks) and
+    `render.presentation.sensitivity` pass. The sensitivity suite now has
+    17 of 17 defects, including extended reported as standard, extended
+    accepted with 8 bits, and standard reporting headroom.
+  - The Waf SDL3-Vulkan suite passes 49 shared checks on isolated Wayland
+    (`build-r16`).
+  - `render.presentation.edr` (new, `apple-uikit-device`) passes 11 of 11 on
+    both devices, with the standard presentation as the in-test control:
+
+    | Device | Result |
+    | --- | --- |
+    | iPhone 16 Pro, iOS 27 | 4.0 survives in the presented 2622x1206 half-float image; the layer is high range in extended linear sRGB; headroom 1.20 current of 8.00 potential |
+    | Apple TV 4K, tvOS 26.6 | the same checks pass; headroom 1.20 of 1.20, so the TV is being driven in SDR |
+- **Follow-up (2026-09-28, same request, "complete these on tvOS and iOS - in
+  renderlab"):**
+  - EDR engages only for tagged content. On iOS and tvOS 26,
+    `preferredDynamicRange` needs content headroom above 1. The bridge now
+    tags the Metal layer's drawables with the display's potential headroom
+    (`contentsHeadroom`) and retags them when it changes. On iOS it also sets
+    `toneMapMode` to never, because the core's output term has already
+    mapped them. Untagged, the iPhone stayed at 1.2 of 8.0; tagged, it
+    reaches 7.23 of 8.0 in 0.35 s.
+  - tvOS HDR mode: an extended presentation sets HDR10 display criteria
+    (BT.2020, ST 2084, HEVC 10-bit, at the screen's refresh rate) on the
+    window's `AVDisplayManager`, and a standard presentation withdraws them.
+    The Apple TV 4K switches its television in 2.9 s, and back when the
+    request is withdrawn. The user's "Match Dynamic Range" setting must be
+    on. `ReadNativeDisplayMode` reports the request, the switch, the
+    display's HDR modes and HDR eligibility.
+  - Finding: tvOS reports no headroom for an HDR television. `UIScreen`
+    says 1.20 of 1.20 in SDR and 1.00 of 1.00 in HDR10. Yet the user saw
+    tagged content above white show brighter on the TV (2026-09-28). In
+    HDR10 the bridge therefore reports a declared headroom: the usual HDR10
+    mastering peak over reference white (1000/203, 4.93). It tags content
+    with it and leaves `toneMapMode` automatic, so tvOS maps it to the
+    television's real peak.
+  - The contract is unchanged: the range, the headroom read every frame,
+    and no silent fallback.
+  - Evidence: RFC 0016's `render.lab.hdr` (see the
+    [RFC 0016 record](0016-progress.md#output-and-render_labs-presenting-host-on-iphone-and-apple-tv-2026-09-28)).
+    It passes 8 of 8 on the iPhone 16 Pro (headroom 7.23) and 12 of 12 on
+    the Apple TV 4K (HDR10, 4.93).
+  - Known: in the first frame after the request, before tvOS reports the
+    switch as under way, the declared headroom applies for one frame.
+- **Not done:**
+  - A product composition that requests the range (the game still presents
+    through the frozen native backend's swapchain).
+  - HDR10 (PQ) or HLG output, and a run on a physical desktop session.
+  - The pinned `.clang-format` has no Objective-C section, so stylelint
+    errors on every `.mm` file ("Unsuitable"), this one included.
+- **Reproduction:**
+  - `python3 tools/quality/ios_conformance.py check --suite render.presentation.edr`
+  - the same with `--device-profile tvos-arm64-device`

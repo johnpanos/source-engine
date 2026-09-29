@@ -184,8 +184,9 @@ class HeadlessPresentation : public IRenderPresentation, public IRenderSurfaceLi
 {
 public:
 	HeadlessPresentation( HeadlessBridge &bridge, IRenderDevice &device, IRenderSurface &surface,
-	    RenderExtent extent )
-	    : m_Bridge( bridge ), m_Device( device ), m_Surface( surface ), m_Extent( extent )
+	    RenderExtent extent, const RenderDynamicRangeState &range )
+	    : m_Bridge( bridge ), m_Device( device ), m_Surface( surface ), m_Extent( extent ),
+	      m_Range( range )
 	{
 	}
 
@@ -213,6 +214,8 @@ public:
 		m_Retiring.swap( still );
 	}
 
+	RenderDynamicRangeState GetDynamicRange() const override { return m_Range; }
+
 	void OnNativeSurfaceReleasing() override;
 
 	// Retires every resource behind an ordering submission and detaches.
@@ -230,6 +233,7 @@ private:
 	IRenderDevice &m_Device;
 	IRenderSurface &m_Surface;
 	RenderExtent m_Extent;
+	RenderDynamicRangeState m_Range;
 	RenderResourceHandle m_BackBuffer = kInvalidResource;
 	RenderExtent m_BackBufferExtent;
 	std::vector<RenderResourceHandle> m_Retiring;
@@ -281,10 +285,23 @@ public:
 			return Fail(
 			    err, RenderCreateStatus::kTooManyPresentations, "presentation limit reached" );
 
+		const bool extended = config.dynamicRange == RenderDynamicRange::kExtendedLinear;
+		if ( extended && config.format != RenderColorFormat::kRGBA16Float &&
+		     !m_Defects.acceptExtended8Bit )
+			return Fail( err, RenderCreateStatus::kInvalidConfig,
+			    "extended-linear output needs a kRGBA16Float back buffer" );
+
 		const RenderExtent extent = ( config.extent.width == 0 && config.extent.height == 0 )
 		                                ? surface.GetDrawableExtent()
 		                                : config.extent;
-		HeadlessPresentation *p = new HeadlessPresentation( *this, device, surface, extent );
+		RenderDynamicRangeState range;
+		range.range = extended && !m_Defects.extendedReportsStandard
+		                  ? RenderDynamicRange::kExtendedLinear
+		                  : RenderDynamicRange::kStandard;
+		range.currentHeadroom =
+		    extended || m_Defects.standardReportsHeadroom ? kHeadlessDisplayHeadroom : 1.0f;
+		range.potentialHeadroom = kHeadlessDisplayHeadroom;
+		HeadlessPresentation *p = new HeadlessPresentation( *this, device, surface, extent, range );
 		if ( !surface.AttachListener( *p ) && !m_Defects.allowSecondPresentation )
 		{
 			delete p;

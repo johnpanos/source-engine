@@ -457,8 +457,10 @@
           "render.device.vulkan"
         ],
         "externalHeaders": [
+          "QuartzCore/QuartzCore.h",
           "SDL3/SDL.h",
           "SDL3/SDL_vulkan.h",
+          "UIKit/UIKit.h",
           "vulkan/vulkan.h"
         ],
         "uselib": [
@@ -471,6 +473,7 @@
         "kind": "native-test",
         "paths": [
           "unittests/shaderapivulkantest/test_sdl3_vulkan_presentation.cpp",
+          "unittests/shaderapivulkantest/test_presentation_edr.cpp",
           "unittests/shaderapivulkantest/test_pbr_pixels.cpp",
           "unittests/shaderapivulkantest/test_ktx2_pixels.cpp",
           "unittests/shaderapivulkantest/test_world_pbr_pixels.cpp",
@@ -727,6 +730,45 @@
         ]
       },
       {
+        "id": "render.lab.app",
+        "kind": "native-test",
+        "description": "RFC 0016 K11: render_lab's presenting host, the lab's scenes on a real display through render.pass.output and render.presentation.v1 (the SDL3-Vulkan bridge over the render.backend.v1 provider on the Vulkan adapter's host device). The headless render_lab keeps linking no window system.",
+        "paths": [
+          "render/lab/app/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.contracts",
+          "render.device",
+          "render.device.vulkan",
+          "render.graph",
+          "render.pass.output",
+          "render.bridge.sdl3-vulkan",
+          "platform.sdl3.render-surface"
+        ],
+        "externalHeaders": [
+          "SDL3/SDL.h"
+        ]
+      },
+      {
+        "id": "rendertest.lab-device",
+        "kind": "native-test",
+        "description": "RFC 0016 K11 device suites of render_lab's presenting host (render.lab.hdr), judged with the output oracle of render.core-tests.",
+        "paths": [
+          "unittests/rendertest/lab/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "testing.contracts",
+          "render.contracts",
+          "render.lab.app",
+          "render.core-tests"
+        ],
+        "externalHeaders": [
+          "SDL3/SDL.h"
+        ]
+      },
+      {
         "id": "render.lab",
         "kind": "native-test",
         "description": "RFC 0016 K11: render_lab, the render core composed alone (no engine, material system, legacy frontend or SDL), rendering scenes from BSP2 maps, studio models and VMT materials through the Vulkan adapter to prove each lighting term against Cycles.",
@@ -840,6 +882,19 @@
         ]
       },
       {
+        "id": "render.pass.output",
+        "paths": [
+          "public/render/pass/output/",
+          "render/pass/output/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.graph",
+          "render.shader-library"
+        ]
+      },
+      {
         "id": "render.legacy-frontend",
         "paths": [
           "public/render/legacy/",
@@ -915,6 +970,7 @@
           "render.pass.lines",
           "render.pass.lights",
           "render.pass.shadows",
+          "render.pass.output",
           "render.legacy-frontend",
           "render.legacy-provider-contract",
           "render.composition"
@@ -1400,6 +1456,13 @@
           "render_spv"
         ]
       },
+      "render_pass_output": {
+        "allowedUse": [
+          "render_graph",
+          "render_device",
+          "render_spv"
+        ]
+      },
       "render_pass_skinning": {
         "allowedUse": [
           "render_graph",
@@ -1827,7 +1890,8 @@
           ],
           [
             "render.core-tests",
-            "render.lab"
+            "render.lab",
+            "render.lab.app"
           ]
         ],
         "externalBases": [
@@ -1861,7 +1925,8 @@
         "adapterConsumers": [
           "render.composition",
           "render.core-tests",
-          "render.lab"
+          "render.lab",
+          "render.lab.app"
         ],
         "planned": [
           "render.device.gl"
