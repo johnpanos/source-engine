@@ -40,6 +40,21 @@
       "portal2"
     ]
   },
+  "app_icon": {
+    "url": "https://playtracker.net/cdn-cgi/image/format=auto/https://playtracker-apollo.fra1.cdn.digitaloceanspaces.com/thumbnails/game_thumb_118.jpg",
+    "sha256": "41d535fcc9663ba118cd808a9637547c3458869a52f0b541a211b60113c86faa",
+    "bytes": 44683,
+    "cache_archive": "portal2-thumb-460x215.jpg",
+    "fit": "contain",
+    "note": "Portal 2 store thumbnail (460x215 JPEG, wordmark across the width), chosen by the user (2026-09-28) for the home-screen icon. contain keeps its whole width on the 5:3 icon, with a blurred fill above and below. Fetched and verified by sha256, not committed; Valve's artwork, used for the user's own device builds."
+  },
+  "app_banner": {
+    "url": "https://playtracker.net/cdn-cgi/image/format=auto/https://playtracker-apollo.fra1.cdn.digitaloceanspaces.com/covers/api/game_cover_118.jpg",
+    "sha256": "553cfc3ae693fb971c4e355890347697c535274bb232e1d72126a97a202aa9b4",
+    "bytes": 252292,
+    "cache_archive": "portal2-cover-1920x620.jpg",
+    "note": "Portal 2 cover art (1920x620 JPEG), chosen by the user (2026-09-28) for the top-shelf images (1920x720 and 2320x720, cropped to each aspect). Fetched and verified by sha256, not committed; Valve's artwork, used for the user's own device builds."
+  },
   "evidence": {
     "status": "unverified",
     "known_blockers": [

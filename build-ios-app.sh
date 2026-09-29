@@ -510,10 +510,15 @@ else
 		tvos) ICON_NAME="App Icon & Top Shelf Image"; ICON_DEVICES="--target-device tv" ;;
 	esac
 	ART="$(fetch_file "$(pin_profile .app_icon)" .app_icon)"
+	icon_args=(--icon-fit "$(jq -r '.app_icon.fit // "cover"' "$PROFILE")")
+	# An optional separate top-shelf image (tvOS); otherwise the icon art.
+	if jq -e .app_banner "$PROFILE" >/dev/null; then
+		icon_args+=(--banner "$(fetch_file "$(pin_profile .app_banner)" .app_banner)")
+	fi
 	ASSETS="$OUT/assets"
 	rm -rf "$ASSETS"
 	mkdir -p "$ASSETS/compiled"
-	python3 "$ROOT/tools/ios/app_icons.py" --platform "$OS" --art "$ART" \
+	python3 "$ROOT/tools/ios/app_icons.py" --platform "$OS" --art "$ART" "${icon_args[@]}" \
 		--out "$ASSETS/Assets.xcassets" >/dev/null || die "could not make the icon asset catalog"
 	log "Compiling the home-screen icons with actool on $ASSETS_HOST"
 	REMOTE_ASSETS="/tmp/source-app-icons-$OS"
