@@ -1282,6 +1282,152 @@ Three follow-ups from R17-CORE, each with its own oracle. Contract
   - Blended batches sort per chunk batch, not per face.
   - There is no anisotropic filtering.
 
+### R17 follow-up: props and instances in the viewports (2026-09-28)
+
+The GTK viewports draw `func_instance` contents and studio-model entities
+(`prop_static`, `prop_dynamic`, `prop_physics` and every point entity whose
+`model` key or catalog `studio()` names a `.mdl`). Commits `d042aa31`,
+`825fdbd3`, `9b1ee250` and `2899db8a`.
+
+- **Model reader library** (`content.studio-model`: `mdl/`,
+  `public/mdl/studio_model.h`, Waf target `mdl`).
+  - A strict C++20 library with its own module and dialect row. Its only
+    edge is `foundation`: no tier0, mathlib or `studio.h`, so vbsp or the
+    engine can adopt it.
+  - It reads MDL 44 to 49, VVD 4 and VTX 7 from bytes. The three checksums
+    must agree, and the MDL version selects the VTX strip layout, as
+    `datacache/mdlcache.cpp` does.
+  - The output is LOD 0 of the chosen body: meshes with bind-pose
+    positions, normals and uv, and counter-clockwise triangles (the files
+    store them clockwise). It also gives bounds, skin families,
+    `$cdmaterials` and `ResolveMaterials`.
+  - Malformed input is `{status, file, offset}`, and nothing partial is
+    returned.
+  - Suites:
+    - `content.studio-model` (99 checks): an independent synthetic writer
+      covering versions 44 to 49, fixups, tristrips, body groups, skins
+      and the VTX file order; 23 malformed cases; every strict prefix of
+      each file fails; 3000 random byte-damage trials. It also passes under
+      clang++ ASan/UBSan, run by hand.
+    - `content.studio-model.corpus` (optional, `STUDIO_MODEL_CORPUS_VPKS`,
+      21 checks): all 199 Portal and 2033 Portal 2 models with a `.vvd`
+      parse. 99.0% of Portal 2's 6.4 million triangles face their normals.
+      Each game's `metal_box.mdl` matches the figures of an independent
+      Python walk of the records.
+- **Instances, headless.** Contracts `app.instance_preview.v1` and
+  `viewport.extraction.v1` ("Models and instances").
+  - `ports::IInstanceContent` is the port; `app::InstancePreview`
+    implements it over the codec and the file store.
+    - Lookup follows vbsp's `DeterminePath`: the map's directory, its
+      enclosing `maps/` directory, then the search roots.
+    - Placement uses the collapse rule, now `ops::PlaceInstanceContent`,
+      which `CollapseInstance` also calls. A preview therefore draws what a
+      collapse merges.
+    - Nested instances merge with fresh ids, and cycles are counted.
+    - Each file is decoded once, and each distinct instance is placed once.
+      `Refresh()` and path changes invalidate.
+  - The extraction adds one `InstanceDraw` per `func_instance` (content-local
+    ids, not pickable) and a `ModelKeys` (skin, `modelscale`,
+    `rendercolor`) on studio-model `EntityDraw`s. The snapshot cache
+    re-extracts instances when the port's revision moves. The snapshot stays
+    a value.
+  - `EditorWorkspace` owns the preview:
+    - `WorkspaceServices::instanceRoots`, `SetInstanceRoots` and
+      `RefreshInstances`;
+    - `SceneSerial()`, so a host can key its scene on every snapshot
+      change.
+  - Suites:
+    - `hammer.app.instance_preview` (36 checks): real VMF text, lookup
+      rules, a yaw-90 placement against hand-computed boxes and against
+      `CollapseInstance`, statuses, nesting, cycles, caching and refresh.
+    - `hammer.viewport.extraction.content` (32 checks): a hand-computed
+      placement oracle that rejects four seeded wrong transforms (yaw sign,
+      dropped translation, rotation after translation, pitch for yaw).
+    - Instance checks in the workspace suite (56 checks).
+- **Rendering** (`hammer.adapters.render`; contract
+  `render_adapter.viewport-geometry.v1` gains G12, G13, V10 and M1 to M5).
+  - `IModelSource` sits next to `IMaterialTextures`. Each model is read once
+    per path. Each (path, skin, tint) is staged once as indexed per-material
+    batches in model space, then drawn as scene instances with the entity's
+    world matrix, textured through the same unlit programs. Selected models
+    take the selection fill.
+  - In 2D a model draws its world box, as legacy Hammer does; in 3D the box
+    is drawn only when the model is selected. A missing, unparsable or empty
+    model draws its marker and is counted (`SceneStats::missingModels`).
+  - Each instance's content is a chunk of its own, tinted by
+    `kInstanceTint` (255, 255, 128) with edges in (128, 128, 0) unless the
+    instance is selected. Decision: legacy overlays instance content with
+    (128, 128, 0) at alpha 192, which hides the textures; the tint keeps the
+    hue as a multiply (`view_policy.h`).
+  - Suites:
+    - `hammer.adapters.render.models` (29 checks, null device).
+    - `hammer.adapters.render.viewport.models` (20 checks, Vulkan): a
+      synthetic model and a synthetic instance VMF appear where their
+      transforms put them, textured; a missing model draws its marker; the
+      instance tint shows; the validation layer is silent.
+    - Seeded faults in the Vulkan suite are all detected: a model world
+      matrix without rotation fails 5 checks, one without translation 4,
+      and dropping the instance tint 1.
+- **Shell** (`hammer/gtk`).
+  - `CatalogModels` implements `IModelSource` over its own mount of the
+    VPKs.
+  - The mount passes both sources and sets the instance roots.
+    `GameInstanceRoots` finds the game's `sdk_content/maps` and adds
+    `--instances DIR,...`.
+  - A 2-second tick calls `RefreshInstances`, so a file edited outside the
+    editor redraws, and the scene key is `SceneSerial`.
+  - `--textured` takes `--eye X,Y,Z,TX,TY,TZ` and reports model and
+    instance counts.
+- **Real maps** (`hammer_gtk --textured` with Portal 2's `pak01_dir.vpk`):
+  - `sp_a2_trust_fling`: 497 model entities from 85 model files, 1 drawn
+    as a marker, and 77 of 77 instances placed.
+  - `zoo_mechanics`: 218 model entities, 0 markers, and 15 of 15
+    instances placed.
+  - Inspected by eye: the paint droppers and tubes are textured and placed.
+    The tractor-beam frame, floor button and ceiling panels are tinted. The
+    faith plate stands in its bind pose (below).
+- **Checks.**
+  - Q-EDITOR headless on g++: 123 matched and 1 skipped (TSan).
+  - clang++ matched too, apart from 3 render-adapter rows built while their
+    source lists lagged; they pass since.
+  - The 7 render-adapter suites pass on g++ and clang++.
+  - `corpus.hammer.ui`: 32 checks, 0 failures, with this shell.
+  - `archlint check --all`: no new findings from this change.
+  - Style: clean on the touched files.
+- **Budget** (`hammer_viewport_budget.py --gtk`, load average about 11):
+
+  | Row | p95 | max |
+  | --- | --- | --- |
+  | trust_fling, flat | 4.48 ms | 4.81 ms |
+  | trust_fling, dmabuf | 3.76 ms | 4.11 ms |
+  | small room | 2.87 ms | 3.45 ms |
+  | trust_fling, textured | 11.92 ms | 12.31 ms |
+
+  Every row is within its limits. The textured row now draws the map's
+  models and instance content (R17 quality measured 3.51 ms p95 without
+  them). Its framed camera view has 1,145 draws, where it had 251: one draw
+  per model batch and entity.
+- **Open.**
+  - Models draw in their bind pose. A model whose reference skeleton
+    differs from its idle sequence draws as rigged: Portal 2's turret lies
+    on its side and the faith plate stands up. Fix: decode sequence 0,
+    frame 0 (bone animations and the zero-frame cache) in the model
+    library.
+  - Draw count: models are one draw per batch and entity, and there is no
+    distance fade (legacy stops drawing models beyond 400 units). Batching
+    by (variant, material) or instancing would cut the textured budget's
+    draws.
+  - Picking still uses the marker box, so a click on a prop's mesh away
+    from its origin selects nothing, and instance content is not
+    click-selectable through the instance. Both need model and content
+    bounds in `viewport::picking`.
+  - Model shading is baked in model space (it turns with the model).
+  - The instance `$fixup` auto-name is `InstanceAuto1` in the preview.
+    Names are not drawn.
+  - `hammer/gtk/app.cpp` at HEAD has not compiled since `3c24e1c3` (a
+    function split mid-body). The working tree holds the fix, uncommitted,
+    from the session that made it; this change's hunks apply on either.
+
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 
 A research agent assembled this from the Valve Developer Community Source 2
