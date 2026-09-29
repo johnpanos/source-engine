@@ -1614,3 +1614,7 @@ Also found:
 
 Frame time passes on the desktop. The Fold7 run remains, and K3 stays open
 for it alone. The device isn't attached.
+
+The K1 frame-time check is the same one, and the K0 binaries predate K1,
+so the measurement closes K1's desktop frame time too. K1 is open only for
+the Fold7.
