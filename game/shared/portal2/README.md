@@ -698,6 +698,61 @@ The report: bright white "water" rings float in the air around GLaDOS in
   - The other `$mod2x` SpriteCard material,
     `particle/fluidexplosions/fluidexplosion_additive`, was not looked at.
 
+#### Refract glass smeared up close (2026-09-29)
+
+The report: looking up at a ceiling light cover and at a broken observation
+window in a chapter 1 map, the glass showed long stretched streaks and a
+smeared copy of the wrong part of the frame.
+
+- **What they are.** Observation windows (`models/props_lab/glass_observation_*`,
+  `glasswindow_observation.vmt`) and broken-glass props
+  (`props_destruction/glass_*_normal`) are plain Refract, which warps the frame
+  copy behind them. Light covers (`glass_lightcover*`,
+  `glasswindow_refract01*`, `container_window_*`) are `$localrefract`, which
+  refracts their own base texture. Both are in every chapter 1 and 2 map.
+- **Causes.** Native Vulkan does these on its own textured family (the
+  refract port is opt-in), and it had two per-vertex shortcuts:
+  - The frame-copy coordinate was divided by w per vertex and then
+    interpolated. Retail (`Refract_vs20`, `vRefractXYW`) divides per pixel. Per
+    vertex, the coordinate bends across a large pane near the eye and folds
+    when a vertex is close to or behind the eye plane.
+  - `LOCALREFRACT` recomputes the eye vector per pixel in retail. Native
+    interpolated per-vertex unit vectors. Across a large cover seen up close
+    they point far off, so the `eye.xy / eye.z` offset grew until the clamped
+    lookup smeared the texture's edge into streaks.
+- **Fix** (a defect fix on the frozen backend):
+  - `demo_dyn_tex.frag` computes the screen coordinate per pixel from the clip
+    position (`ScreenUv()`, also used by SpriteCard depth feathering).
+    `fragScreenUv` is gone from both vertex shaders, and `world_mesh.vert` now
+    writes `fragClipPos` as well.
+  - The local-refract vertex record carries the tangent-space vertex-to-eye
+    vector unnormalized. On a flat pane it is affine in position, so the
+    interpolation is exact, and the fragment normalizes it.
+  - The emit reuse key now covers envmap and refract draws: their records read
+    the model matrix and the eye (c10, c11), which a portal view changes within
+    a frame.
+- **Evidence** (scratch workload views on this build, before against after,
+  with the pre-fix `libshaderapivulkan.so` swapped in for the baseline):
+  - `sp_a1_intro4`, eye (-60, 350, 150) toward the broken observation window:
+    before, the pane showed a smeared, misplaced copy of the frame; after, it
+    shows the dark room behind the cracked glass. 22% of pixels changed by
+    more than 16.
+  - `sp_a2_laser_over_goo`, looking up at the observation window from 65
+    units: before, the pane folded misplaced content; after, it is coherent,
+    with the normal map's ripple. 29% changed.
+  - Light covers in `sp_a2_bridge_intro` (32 units wide) change 1–2%.
+  - Native `material_pixel_conformance.py` `glass` and `softparticle` pass in
+    both HDR modes. A `testchmb_a_01` boot with `-vkvalidate` passes and logs
+    no validation messages.
+  - The retail reference: `sp_a2_fizzler_intro` passes.
+    `sp_a2_laser_over_goo.catcher.observation_glass` now misses by half a
+    level (24.5 against 24; the pre-fix build scored 18.2). The warp now lands
+    where retail's does, on more of the room behind the glass, which this
+    build overexposes (as `cable.rust_beams` records). The tolerance is
+    unchanged.
+- **Not done.** Permanent close-up views with retail references; the D3D9 and
+  refract-port paths were not run.
+
 ### Portal 2 audio retail conformance (2026-09-25)
 
 `quality/workloads/portal2-audio-v1` plays a fixed sequence of soundscript

@@ -16,12 +16,13 @@ layout( location = 1 ) out vec4 fragModulation;
 layout( location = 2 ) out vec2 fragLightmapUv;
 layout( location = 3 ) out vec4 fragVertexColor;
 layout( location = 4 ) out vec3 fragReflection;
-layout( location = 5 ) out vec2 fragScreenUv;
 layout( location = 6 ) out vec4 fragEnvTint;
 layout( location = 7 ) flat out vec4 fragFogColor;
 layout( location = 8 ) flat out vec4 fragFogParams;
 layout( location = 9 ) flat out vec4 fragFogMisc;
 layout( location = 10 ) out vec2 fragFogDepth;
+// The clip position's x, y and w, divided per pixel for screen lookups.
+layout( location = 11 ) out vec3 fragClipPos;
 layout( push_constant ) uniform Constants
 {
 	mat4 mvp;
@@ -55,12 +56,12 @@ void main()
 	fragLightmapUv = inLightmapUv;
 	fragVertexColor = vec4( 1.0 );
 	fragReflection = DecodeOct( inNormalOct );
-	fragScreenUv = ( gl_Position.xy / gl_Position.w * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
 	fragEnvTint = vec4( 1.0 );
 	fragFogColor = inFogColor;
 	fragFogParams = inFogParams;
 	fragFogMisc = inFogMisc;
 	fragFogDepth = vec2( gl_Position.z, dot( inFogWorldZ, vec4( inPos, 1.0 ) ) );
+	fragClipPos = gl_Position.xyw;
 #ifdef CLIP_PLANES
 	gl_ClipDistance[0] = dot( consts.clipPlanes[0], gl_Position );
 	gl_ClipDistance[1] = dot( consts.clipPlanes[1], gl_Position );

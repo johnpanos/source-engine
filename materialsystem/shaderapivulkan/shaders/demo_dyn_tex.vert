@@ -32,7 +32,6 @@ layout( location = 1 ) out vec4 fragModulation;
 layout( location = 2 ) out vec2 fragLightmapUv;
 layout( location = 3 ) out vec4 fragVertexColor; // read with flags 128, 256, 1024
 layout( location = 4 ) out vec3 fragReflection;
-layout( location = 5 ) out vec2 fragScreenUv;
 layout( location = 6 ) out vec4 fragEnvTint;
 layout( location = 7 ) flat out vec4 fragFogColor;
 layout( location = 8 ) flat out vec4 fragFogParams;
@@ -88,7 +87,6 @@ void main()
 	if ( ( flags & 32 ) != 0 )
 	{
 		gl_Position = vec4( inPos, 1.0 );
-		fragScreenUv = ( gl_Position.xy / gl_Position.w * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
 		fragClipPos = gl_Position.xyw;
 		fragUv = inUv;
 		ApplyClipPlanes();
@@ -96,7 +94,6 @@ void main()
 		return;
 	}
 	gl_Position = consts.mvp * vec4( inPos, 1.0 );
-	fragScreenUv = ( gl_Position.xy / gl_Position.w * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
 	fragClipPos = gl_Position.xyw;
 	ApplyClipPlanes();
 	PassFog();

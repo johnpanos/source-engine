@@ -24,7 +24,6 @@ layout( location = 1 ) in vec4 fragModulation;
 layout( location = 2 ) in vec2 fragLightmapUv;
 layout( location = 3 ) in vec4 fragVertexColor;
 layout( location = 4 ) in vec3 fragReflection;
-layout( location = 5 ) in vec2 fragScreenUv;
 layout( location = 6 ) in vec4 fragEnvTint;
 // The draw's pixel fog (CVulkanContext::DrawFog; see ApplyPixelFog).
 layout( location = 7 ) flat in vec4 fragFogColor;
@@ -141,15 +140,25 @@ vec4 ShadowProjection( int flags )
 		result = LinearToSrgb( result );
 	return vec4( result, 1.0 );
 }
+// The pixel's frame-copy coordinates: the clip position divided per pixel, as
+// refract_ps2x (vRefractXYW) and spritecard_ps2x (vScreenPos) do. Divided per
+// vertex and interpolated, they bend across a large surface near the eye and
+// break when a vertex is behind it.
+vec2 ScreenUv()
+{
+	return ( fragClipPos.xy / fragClipPos.z * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
+}
 // Portal 2's refract_ps2x.fxc with LOCALREFRACT and CUBEMAP (flag 1048576 with
 // 262144): sampler 0 is the base texture, refracted in texture space. The
 // tangent-space vertex-to-eye vector (vertex color) offsets the lookup by the
 // normal map, scaled by the base texture's aspect (c7.xy) and
 // $localrefractdepth (c7.z, in the modulation's alpha); the result is tinted by
 // c1 (modulation rgb) and darkened by the normal's z cubed. The shader
-// recomputes that eye vector per pixel; the interpolated one is normalized here.
-// The cubemap term adds c0 tint, c2 contrast, c3 saturation (the output scale's
-// slot) and Portal 2's fresnel. BLUR does not apply; alpha is the normal map's.
+// recomputes that eye vector per pixel; here the vertex record carries it
+// unnormalized (exact under interpolation on a flat pane) and it is normalized
+// per pixel. The cubemap term adds c0 tint, c2 contrast, c3 saturation (the
+// output scale's slot) and Portal 2's fresnel, which reads the unit vector.
+// BLUR does not apply; alpha is the normal map's.
 vec4 LocalRefract( int flags, vec4 normal )
 {
 	const vec3 normalTs = normal.xyz * 2.0 - 1.0;
@@ -173,9 +182,10 @@ vec4 LocalRefract( int flags, vec4 normal )
 	vec3 worldBinormal = normalize( cross( worldNormal, worldTangent ) ) * fragEnvTint.w;
 	vec3 bumpedWorldNormal = normalTs.x * worldTangent + normalTs.y * worldBinormal +
 	    normalTs.z * worldNormal;
-	// As refract_ps2x does, the world-space normal reflects the interpolated
-	// tangent-space eye vector (CalcReflectionVectorUnnormalized's inputs).
-	const vec3 eyeTangent = fragVertexColor.rgb;
+	// As refract_ps2x does, the world-space normal reflects the tangent-space
+	// eye vector (CalcReflectionVectorUnnormalized's inputs); its length
+	// matters only to the fresnel term's dot product.
+	const vec3 eyeTangent = eyeTs;
 	vec3 reflectDirection = 2.0 * dot( bumpedWorldNormal, eyeTangent ) * bumpedWorldNormal -
 	    dot( bumpedWorldNormal, bumpedWorldNormal ) * eyeTangent;
 	vec3 envTint = vec3( fragLightmapUv, fragVertexColor.a );
@@ -203,7 +213,7 @@ vec4 LocalRefract( int flags, vec4 normal )
 const float kOoDestAlphaDepthRange = 1.0 / 192.0;
 float SpriteDepthFeathering()
 {
-	const vec2 screen = ( fragClipPos.xy / fragClipPos.z * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
+	const vec2 screen = ScreenUv();
 	const float sceneDepth = texture( normalMaskTexture, screen ).a;
 	const float spriteDepth = fragFogDepth.x * kOoDestAlphaDepthRange;
 	float feathered = abs( sceneDepth - spriteDepth ) * fragModulation.a;
@@ -265,7 +275,7 @@ void main()
 			outColor = LocalRefract( flags, normal );
 			return;
 		}
-		vec2 warped = fragScreenUv + ( normal.xy * 2.0 - 1.0 ) *
+		vec2 warped = ScreenUv() + ( normal.xy * 2.0 - 1.0 ) *
 		    ( normal.a * consts.modulation.a );
 		vec3 color;
 		if ( ( flags & 524288 ) != 0 )

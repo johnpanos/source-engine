@@ -5027,6 +5027,8 @@ void CEmptyMesh::EmitToNativeQueue()
 	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLightmappedEnvmap ) != 0;
 	const bool refract =
 	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentRefract ) != 0;
+	const bool refractLocal =
+	    refract && ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentRefractLocal );
 	// SolidEnergy: world-space positions and tangent frame, like the skin shader.
 	const bool solidEnergy = g_CurrentSolidEnergy;
 	const bool solidEnergyModel =
@@ -5297,9 +5299,19 @@ void CEmptyMesh::EmitToNativeQueue()
 					eye[k] = g_psConstants[11][k] - worldPos[k];
 					eyeLength2 += eye[k] * eye[k];
 				}
-				const float invEyeLength = 1.0f / sqrtf( std::max( eyeLength2, 1e-20f ) );
-				for ( float &component : eye )
-					component *= invEyeLength;
+				// refract_vs20 normalizes the vertex-to-eye vector. LOCALREFRACT
+				// instead recomputes it per pixel from the eye and world
+				// position, so for it the vector stays unnormalized: in a flat
+				// pane's tangent frame it is affine in position, and
+				// interpolating it gives the per-pixel vector exactly, where
+				// interpolated unit vectors across a large pane seen up close
+				// point far off and smear the refracted texture.
+				if ( !refractLocal )
+				{
+					const float invEyeLength = 1.0f / sqrtf( std::max( eyeLength2, 1e-20f ) );
+					for ( float &component : eye )
+						component *= invEyeLength;
+				}
 				const float sign = nt[6];
 				const float binormal[3] = {
 				    ( worldNormal[1] * worldTangent[2] - worldNormal[2] * worldTangent[1] ) * sign,
@@ -5694,12 +5706,29 @@ void CEmptyMesh::EmitToNativeQueue()
 		    ( lightmappedFamily ? 4096u : 0u ) | ( shadowProjection ? 8192u : 0u ) |
 		    ( legacy ? 16384u : 0u ) | ( legacyBrushTangents ? 32768u : 0u ) |
 		    ( legacyObjectPosition ? 65536u : 0u ) | ( legacyObjectPositionExtra ? 131072u : 0u );
+		key.flags |= ( envmap ? 262144u : 0u ) | ( refract ? 524288u : 0u ) |
+		             ( refractLocal ? 1048576u : 0u );
 		key.skinLightCount = skinLightCount;
 		key.lightCount = lightCount;
 		// The constants the conversion reads, beyond the bones.
-		if ( g_NumBoneWeights <= 0 &&
-		     ( skin || vertexLighting || solidEnergy || lightmappedFamily || legacy ) )
+		if ( g_NumBoneWeights <= 0 && ( skin || vertexLighting || solidEnergy ||
+		                                  lightmappedFamily || legacy || envmap || refract ) )
 			inputs.insert( inputs.end(), ModelMatrix(), ModelMatrix() + 16 );
+		// The envmap record reflects about the eye (c10) with the material's
+		// contrast, saturation and fresnel; the refract record carries the
+		// tangent-space vector to the eye (c11) and the envmap tint (c0).
+		if ( envmap )
+		{
+			inputs.insert( inputs.end(), g_psConstants[10], g_psConstants[10] + 3 );
+			inputs.push_back( envContrast );
+			inputs.push_back( envSaturation );
+			inputs.push_back( fresnelReflection );
+		}
+		if ( refract )
+		{
+			inputs.insert( inputs.end(), g_psConstants[11], g_psConstants[11] + 3 );
+			inputs.insert( inputs.end(), g_psConstants[0], g_psConstants[0] + 3 );
+		}
 		if ( shadowProjection )
 			inputs.insert( inputs.end(), shadowJitter, shadowJitter + 2 );
 		for ( int i = 0; i < skinLightCount; ++i )
