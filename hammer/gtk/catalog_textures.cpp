@@ -10,8 +10,29 @@
 #include "hammer/adapters/source/ktx2_preview.h"
 #endif
 
+#include <cstdlib>
+
 namespace hammer::gtk
 {
+
+namespace
+{
+
+// A VMT number as the material system reads it (leading number, else the
+// default).
+float Number( const std::optional<std::string> &value, float fallback )
+{
+	if ( !value )
+	{
+		return fallback;
+	}
+	const char *begin = value->c_str();
+	char *end = nullptr;
+	const double parsed = std::strtod( begin, &end );
+	return end == begin ? fallback : float( parsed );
+}
+
+} // namespace
 
 std::unique_ptr<CatalogTextures> CatalogTextures::Open(
     const std::string &vpkList, std::string &errors )
@@ -69,6 +90,13 @@ std::optional<render_adapter::MaterialImage> CatalogTextures::BaseTexture(
 	out.width = static_cast<std::uint32_t>( image->width );
 	out.height = static_cast<std::uint32_t>( image->height );
 	out.rgba = image->rgba;
+	render_adapter::MaterialSurface &surface = out.surface;
+	surface.translucent = Number( m_Catalog->ResolveParameter( material, "$translucent" ), 0 ) != 0;
+	surface.additive = Number( m_Catalog->ResolveParameter( material, "$additive" ), 0 ) != 0;
+	surface.alphaTest = Number( m_Catalog->ResolveParameter( material, "$alphatest" ), 0 ) != 0;
+	surface.alphaTestReference =
+	    Number( m_Catalog->ResolveParameter( material, "$alphatestreference" ), 0 );
+	surface.alpha = Number( m_Catalog->ResolveParameter( material, "$alpha" ), 1 );
 	return out;
 }
 

@@ -8,8 +8,11 @@
 
 #include "render/graph/executor.h"
 #include "render/graph/graph_builder.h"
+#include "render/material/parameter_block.h"
+#include "render/material/vmt_mapping.h"
 #include "render/scene/draw_list.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -35,8 +38,11 @@ using ::render::pass::lines::Topology;
 
 constexpr device::Format kColorFormat = device::Format::kRGBA8Srgb;
 constexpr device::Format kDepthFormat = device::Format::kD32Float;
-constexpr std::uint64_t kUntextured = 1; // the untextured batch's material and mesh id
+constexpr std::uint64_t kUntextured = 1; // the untextured batch's material id
 constexpr const char *kWhite = "hammer-white";
+// The instances' view bits: the opaque pass's draw list, then the blended one.
+constexpr std::uint32_t kOpaqueBit = 0;
+constexpr std::uint32_t kBlendedBit = 1;
 
 // The clear colors as the editor shows them, in linear light for the sRGB target.
 float Linear( float display )
@@ -71,6 +77,16 @@ const std::array<std::uint8_t, 256> &Gamma22FromDisplay()
 std::string TextureName( const std::string &material )
 {
 	return "hammer-texture:" + material;
+}
+
+std::string FaceMeshName( std::uint64_t mesh )
+{
+	return "hammer-faces:" + std::to_string( mesh );
+}
+
+std::string EdgeMeshName( std::uint64_t chunk )
+{
+	return "hammer-edges:" + std::to_string( chunk );
 }
 
 ::render::math::Aabb BoundsOf( const std::vector<UnlitVertex> &vertices )
@@ -112,6 +128,16 @@ foundation::Expected<std::unique_ptr<ViewportRenderer>, ViewportStatus> Viewport
 	}
 	renderer->m_Lines = std::move( lines ).Value();
 	renderer->m_Unlit = std::move( unlit ).Value();
+	for ( const material::FamilyDesc &family :
+	    material::FamiliesFromMapping( material::BuiltinVmtMapping() ) )
+	{
+		(void)renderer->m_Families.Register( family );
+	}
+	renderer->m_UnlitSchema = renderer->m_Families.Find( "unlit" );
+	if ( !renderer->m_UnlitSchema )
+	{
+		return foundation::MakeUnexpected( ViewportStatus::kPass );
+	}
 	device::TextureDesc white;
 	white.format = kColorFormat;
 	white.width = white.height = 1;
@@ -119,7 +145,7 @@ foundation::Expected<std::unique_ptr<ViewportRenderer>, ViewportStatus> Viewport
 	const std::byte texel[4] = {
 	    std::byte( 255 ), std::byte( 255 ), std::byte( 255 ), std::byte( 255 ) };
 	if ( !renderer->m_Textures.Stage( kWhite, white, texel ) ||
-	     !renderer->AddProgram( kUntextured, kWhite ) )
+	     !renderer->AddProgram( kUntextured, kWhite, MaterialSurface() ) )
 	{
 		return foundation::MakeUnexpected( ViewportStatus::kDevice );
 	}
@@ -167,15 +193,39 @@ ViewportRenderer::~ViewportRenderer()
 	m_Lines.reset();
 }
 
-// The unlit family's program for a material id: its base texture (a
-// TextureCache name) modulated by the vertex colors (the editor's shading).
-foundation::Expected<std::uint64_t, ViewportStatus> ViewportRenderer::AddProgram(
-    std::uint64_t id, const std::string &texture )
+// The unlit family's claim on a material's surface, through the family's own
+// rules (ClaimUnlit): the vertex colors (the editor's shading) modulate the
+// base texture; $translucent blends, $additive adds, neither writes depth;
+// $alphatest cuts under its reference (the family's rule: 0.7 when the VMT
+// sets none, detail::AlphaTestReference). The family refuses $translucent with
+// $additive (no blend mode for the pair); such a material draws translucent.
+material::UnlitClaim ViewportRenderer::ClaimFor( const MaterialSurface &surface ) const
 {
-	material::UnlitClaim claim;
-	claim.claimed = true;
-	claim.constants.flags[0] = 1.0f; // $vertexcolor
-	auto request = m_Unlit->Request( claim, texture );
+	material::ParameterBlock block( *m_UnlitSchema );
+	(void)block.SetInt( "vertexcolor", 1 );
+	(void)block.SetInt( "translucent", surface.translucent ? 1 : 0 );
+	(void)block.SetInt( "additive", surface.additive && !surface.translucent ? 1 : 0 );
+	(void)block.SetInt( "alphatest", surface.alphaTest ? 1 : 0 );
+	(void)block.SetFloat( "alphatestreference", surface.alphaTestReference );
+	(void)block.SetFloat( "alpha", surface.alpha );
+	material::UnlitClaim claim = material::ClaimUnlit( block );
+	if ( !claim.claimed )
+	{
+		// Not reachable with the parameters set above; draw it as before.
+		claim = material::UnlitClaim();
+		claim.claimed = true;
+		claim.constants.flags[0] = 1.0f;
+	}
+	return claim;
+}
+
+// The unlit family's program for a material id: its base texture (a
+// TextureCache name) modulated by the vertex colors, drawn as the surface
+// claims.
+foundation::Expected<std::uint64_t, ViewportStatus> ViewportRenderer::AddProgram(
+    std::uint64_t id, const std::string &texture, const MaterialSurface &surface )
+{
+	auto request = m_Unlit->Request( ClaimFor( surface ), texture );
 	if ( !request || !m_Programs.Set( id, request.Value() ) )
 	{
 		return foundation::MakeUnexpected( ViewportStatus::kDevice );
@@ -183,17 +233,17 @@ foundation::Expected<std::uint64_t, ViewportStatus> ViewportRenderer::AddProgram
 	return id;
 }
 
-// Fetches the base texture of every material the snapshot names for the first
-// time (misses are kept too).
+// Fetches the base texture of every material the solids name for the first
+// time (misses are kept too) and stages its mip chain.
 foundation::Expected<void, ViewportStatus> ViewportRenderer::ResolveMaterials(
-    const viewport::RenderSnapshot &snapshot )
+    const std::vector<viewport::SolidDraw> &solids )
 {
 	if ( !m_Source )
 	{
 		return {};
 	}
 	std::set<std::string> named;
-	for ( const viewport::SolidDraw &solid : snapshot.solids )
+	for ( const viewport::SolidDraw &solid : solids )
 	{
 		for ( const viewport::FaceDraw &face : solid.faces )
 		{
@@ -207,26 +257,35 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::ResolveMaterials(
 	{
 		Material material;
 		std::optional<MaterialImage> image = m_Source->BaseTexture( name );
-		if ( image && image->width > 0 && image->height > 0 &&
-		     image->rgba.size() == std::size_t( image->width ) * image->height * 4 )
+		const std::vector<MipLevel> chain =
+		    image ? BuildMipChain( *image ) : std::vector<MipLevel>();
+		if ( !chain.empty() )
 		{
 			device::TextureDesc desc;
 			desc.format = kColorFormat;
 			desc.width = image->width;
 			desc.height = image->height;
+			desc.mipLevels = static_cast<std::uint32_t>( chain.size() );
 			desc.usages = {
 			    device::ResourceUsage::kCopyDestination, device::ResourceUsage::kSampled };
+			std::vector<std::span<const std::byte>> levels;
+			levels.reserve( chain.size() );
+			for ( const MipLevel &level : chain )
+			{
+				levels.push_back( std::as_bytes( std::span( level.rgba ) ) );
+			}
 			const std::string texture = TextureName( name );
-			if ( !m_Textures.Stage( texture, desc, std::as_bytes( std::span( image->rgba ) ) ) )
+			if ( !m_Textures.StageMips( texture, desc, levels ) )
 			{
 				return foundation::MakeUnexpected( ViewportStatus::kDevice );
 			}
 			material.id = m_NextMaterial++;
-			if ( auto added = AddProgram( material.id, texture ); !added )
+			if ( auto added = AddProgram( material.id, texture, image->surface ); !added )
 			{
 				return foundation::MakeUnexpected( added.Error() );
 			}
 			material.size = TextureSize{ image->width, image->height };
+			material.blended = ClaimFor( image->surface ).blend != device::BlendMode::kOpaque;
 			++m_Stats.textures;
 		}
 		else
@@ -317,40 +376,71 @@ void ViewportRenderer::ReturnFrame( std::uint64_t lease )
 	}
 }
 
-foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
-    const viewport::RenderSnapshot &snapshot, std::uint64_t key )
+void ViewportRenderer::DropChunk( Chunk &chunk, ::render::scene::ChangeSet &changes )
 {
-	if ( m_HaveScene && key == m_Stats.key )
+	for ( ::render::scene::InstanceId instance : chunk.instances )
 	{
+		changes.Remove( instance );
+	}
+	chunk.instances.clear();
+}
+
+foundation::Expected<void, ViewportStatus> ViewportRenderer::StageChunk(
+    std::uint64_t chunkId, Chunk staged, ::render::scene::ChangeSet &changes )
+{
+	auto resident = m_Chunks.find( chunkId );
+	if ( resident != m_Chunks.end() )
+	{
+		DropChunk( resident->second, changes );
+	}
+	if ( staged.solids.empty() && staged.entities.empty() )
+	{
+		// The chunk is gone: its meshes go behind the next submission.
+		if ( resident != m_Chunks.end() )
+		{
+			for ( const auto &[material, mesh] : resident->second.meshes )
+			{
+				(void)m_MeshCache.Evict( FaceMeshName( mesh ) );
+				m_FaceMeshes.entries.erase( mesh );
+			}
+			if ( resident->second.edges )
+			{
+				(void)m_MeshCache.Evict( EdgeMeshName( chunkId ) );
+			}
+			m_Chunks.erase( resident );
+		}
 		return {};
 	}
-	if ( auto resolved = ResolveMaterials( snapshot ); !resolved )
+	if ( auto resolved = ResolveMaterials( staged.solids ); !resolved )
 	{
 		return resolved;
 	}
-	const SceneGeometry geometry = BuildSceneGeometry( snapshot,
+	viewport::RenderSnapshot objects;
+	objects.solids = std::move( staged.solids );
+	objects.entities = std::move( staged.entities );
+	const SceneGeometry geometry = BuildSceneGeometry( objects,
 	    [this]( const std::string &material ) -> std::optional<TextureSize>
 	    {
 		    auto found = m_Materials.find( material );
 		    return found == m_Materials.end() ? std::nullopt : found->second.size;
 	    } );
+	staged.solids = std::move( objects.solids );
+	staged.entities = std::move( objects.entities );
 
-	// One mesh and one scene instance per batch, keyed by its material id.
-	::render::scene::ChangeSet changes;
-	for ( ::render::scene::InstanceId instance : m_Instances )
-	{
-		changes.Remove( instance );
-	}
-	m_Instances.clear();
-	std::map<std::uint64_t, ::render::resources::MeshEntry> meshes;
-	std::uint32_t faceVertices = 0;
-	std::uint32_t textured = 0;
+	// One mesh and one scene instance per batch; a (chunk, material) keeps
+	// its mesh id, so a restage replaces the mesh's buffers under its name.
+	const std::map<std::uint64_t, std::uint64_t> previous =
+	    resident == m_Chunks.end() ? std::map<std::uint64_t, std::uint64_t>()
+	                               : resident->second.meshes;
+	const std::array<std::uint8_t, 256> &encode = Gamma22FromDisplay();
 	for ( const FaceBatch &batch : geometry.faces )
 	{
-		const std::uint64_t id =
-		    batch.material.empty() ? kUntextured : m_Materials.at( batch.material ).id;
+		const Material *material =
+		    batch.material.empty() ? nullptr : &m_Materials.at( batch.material );
+		const std::uint64_t materialId = material ? material->id : kUntextured;
+		auto kept = previous.find( materialId );
+		const std::uint64_t mesh = kept != previous.end() ? kept->second : m_NextMesh++;
 		std::vector<UnlitVertex> vertices = batch.vertices;
-		const std::array<std::uint8_t, 256> &encode = Gamma22FromDisplay();
 		for ( UnlitVertex &vertex : vertices )
 		{
 			for ( int c = 0; c < 3; ++c )
@@ -359,53 +449,127 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
 		resources::MeshData data;
 		data.vertices = std::as_bytes( std::span<const UnlitVertex>( vertices ) );
 		data.vertexStride = sizeof( UnlitVertex );
-		auto entry = m_MeshCache.Stage( "hammer-faces:" + std::to_string( id ), data );
+		auto entry = m_MeshCache.Stage( FaceMeshName( mesh ), data );
 		if ( !entry )
 		{
 			return foundation::MakeUnexpected( ViewportStatus::kDevice );
 		}
-		meshes[id] = entry.Value();
+		m_FaceMeshes.entries[mesh] = entry.Value();
+		staged.meshes[materialId] = mesh;
+		++m_Stats.stagedMeshes;
+		const bool blended = material && material->blended;
 		::render::scene::MeshInstanceDesc desc;
-		desc.mesh = id;
-		desc.material = id;
+		desc.mesh = mesh;
+		desc.material = materialId;
 		desc.localBounds = BoundsOf( batch.vertices );
+		desc.viewMask = 1u << ( blended ? kBlendedBit : kOpaqueBit );
 		const ::render::scene::InstanceId instance = m_Scene->Reserve();
 		changes.Add( instance, desc );
-		m_Instances.push_back( instance );
-		faceVertices += static_cast<std::uint32_t>( batch.vertices.size() );
-		textured += batch.material.empty() ? 0 : 1;
+		staged.instances.push_back( instance );
+		staged.faceVertices += static_cast<std::uint32_t>( batch.vertices.size() );
+		staged.texturedBatches += material ? 1 : 0;
+		staged.blendedBatches += blended ? 1 : 0;
 	}
-	for ( const auto &[id, entry] : m_FaceMeshes.entries )
+	for ( const auto &[materialId, mesh] : previous )
 	{
-		if ( meshes.count( id ) == 0 )
+		if ( staged.meshes.count( materialId ) == 0 )
 		{
-			(void)m_MeshCache.Evict( "hammer-faces:" + std::to_string( id ) );
+			(void)m_MeshCache.Evict( FaceMeshName( mesh ) );
+			m_FaceMeshes.entries.erase( mesh );
 		}
-	}
-	m_FaceMeshes.entries = std::move( meshes );
-	if ( !m_Scene->Commit( changes ) )
-	{
-		return foundation::MakeUnexpected( ViewportStatus::kDevice );
 	}
 	if ( geometry.edges.empty() )
 	{
-		if ( m_Edges )
+		if ( resident != m_Chunks.end() && resident->second.edges )
 		{
-			(void)m_MeshCache.Evict( "hammer-edges" );
+			(void)m_MeshCache.Evict( EdgeMeshName( chunkId ) );
 		}
-		m_Edges.reset();
 	}
 	else
 	{
 		resources::MeshData data;
 		data.vertices = std::as_bytes( std::span<const LineVertex>( geometry.edges ) );
 		data.vertexStride = sizeof( LineVertex );
-		auto entry = m_MeshCache.Stage( "hammer-edges", data );
+		auto entry = m_MeshCache.Stage( EdgeMeshName( chunkId ), data );
 		if ( !entry )
 		{
 			return foundation::MakeUnexpected( ViewportStatus::kDevice );
 		}
-		m_Edges = entry.Value();
+		staged.edges = entry.Value();
+		++m_Stats.stagedMeshes;
+	}
+	staged.triangles = geometry.triangles;
+	staged.edgeVertices = static_cast<std::uint32_t>( geometry.edges.size() );
+	m_Chunks[chunkId] = std::move( staged );
+	++m_Stats.stagedChunks;
+	return {};
+}
+
+foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
+    const viewport::RenderSnapshot &snapshot, std::uint64_t key )
+{
+	if ( m_HaveScene && key == m_Stats.key )
+	{
+		return {};
+	}
+	// The snapshot's objects by chunk (id order within each).
+	std::map<std::uint64_t, std::pair<std::vector<const viewport::SolidDraw *>,
+	                            std::vector<const viewport::EntityDraw *>>>
+	    incoming;
+	for ( const viewport::SolidDraw &solid : snapshot.solids )
+	{
+		incoming[ChunkOf( solid.id )].first.push_back( &solid );
+	}
+	for ( const viewport::EntityDraw &entity : snapshot.entities )
+	{
+		incoming[ChunkOf( entity.id )].second.push_back( &entity );
+	}
+	auto same = []( const auto &staged, const auto &now )
+	{
+		return staged.size() == now.size() && std::equal( staged.begin(), staged.end(), now.begin(),
+		                                          []( const auto &a, const auto *b )
+		                                          {
+			                                          return a == *b;
+		                                          } );
+	};
+
+	m_Stats.stagedChunks = 0;
+	m_Stats.stagedMeshes = 0;
+	::render::scene::ChangeSet changes;
+	std::vector<std::uint64_t> gone;
+	for ( const auto &[chunk, resident] : m_Chunks )
+	{
+		if ( incoming.count( chunk ) == 0 )
+			gone.push_back( chunk );
+	}
+	for ( std::uint64_t chunk : gone )
+	{
+		if ( auto dropped = StageChunk( chunk, Chunk(), changes ); !dropped )
+		{
+			return dropped;
+		}
+	}
+	for ( const auto &[chunk, objects] : incoming )
+	{
+		auto resident = m_Chunks.find( chunk );
+		if ( resident != m_Chunks.end() && same( resident->second.solids, objects.first ) &&
+		     same( resident->second.entities, objects.second ) )
+		{
+			continue;
+		}
+		Chunk staged;
+		for ( const viewport::SolidDraw *solid : objects.first )
+			staged.solids.push_back( *solid );
+		for ( const viewport::EntityDraw *entity : objects.second )
+			staged.entities.push_back( *entity );
+		if ( auto rebuilt = StageChunk( chunk, std::move( staged ), changes ); !rebuilt )
+		{
+			return rebuilt;
+		}
+	}
+	if ( !m_Scene->Commit( changes ) )
+	{
+		return foundation::MakeUnexpected( ViewportStatus::kDevice );
 	}
 
 	// The uploads run in their own submission; later frames on the queue see
@@ -431,11 +595,18 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
 	m_Bounds = snapshot.bounds;
 	m_HaveScene = true;
 	m_Stats.key = key;
-	m_Stats.triangles = geometry.triangles;
-	m_Stats.faceVertices = faceVertices;
-	m_Stats.edgeVertices = static_cast<std::uint32_t>( geometry.edges.size() );
-	m_Stats.batches = static_cast<std::uint32_t>( geometry.faces.size() );
-	m_Stats.texturedBatches = textured;
+	m_Stats.triangles = m_Stats.faceVertices = m_Stats.edgeVertices = 0;
+	m_Stats.batches = m_Stats.texturedBatches = m_Stats.blendedBatches = 0;
+	for ( const auto &[id, chunk] : m_Chunks )
+	{
+		m_Stats.triangles += chunk.triangles;
+		m_Stats.faceVertices += chunk.faceVertices;
+		m_Stats.edgeVertices += chunk.edgeVertices;
+		m_Stats.batches += static_cast<std::uint32_t>( chunk.meshes.size() );
+		m_Stats.texturedBatches += chunk.texturedBatches;
+		m_Stats.blendedBatches += chunk.blendedBatches;
+	}
+	m_Stats.chunks = static_cast<std::uint32_t>( m_Chunks.size() );
 	++m_Stats.stagings;
 	return {};
 }
@@ -527,12 +698,26 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 	m_LastView = ViewStats();
 	if ( threeD )
 	{
+		// The opaque and alpha-tested batches write depth; the blended ones
+		// follow in a pass that loads the targets, back to front (ties keep
+		// the list's material and mesh order), so they cover what is behind
+		// them and never hide it.
 		::render::scene::ViewDesc viewDesc;
 		viewDesc.projection = view.worldToClip; // the view matrix stays identity
+		viewDesc.viewBit = kOpaqueBit;
 		const ::render::scene::SceneView sceneView = ::render::scene::MakeView( viewDesc );
+		viewDesc.viewBit = kBlendedBit;
+		const ::render::scene::SceneView blendedView = ::render::scene::MakeView( viewDesc );
 		const std::shared_ptr<const ::render::scene::SceneSnapshot> snapshot = m_Scene->Snapshot();
 		const ::render::scene::DrawList list =
 		    ::render::scene::BuildDrawList( *snapshot, sceneView );
+		::render::scene::DrawList blended =
+		    ::render::scene::BuildDrawList( *snapshot, blendedView );
+		std::stable_sort( blended.items.begin(), blended.items.end(),
+		    []( const ::render::scene::DrawItem &a, const ::render::scene::DrawItem &b )
+		    {
+			    return a.depth > b.depth;
+		    } );
 		pass::opaque::OpaqueTargets opaque{
 		    colorRef, depthRef, request.pixelWidth, request.pixelHeight, targets.clear };
 		auto drawn = pass::opaque::AddOpaquePasses(
@@ -541,7 +726,21 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 		{
 			return fail( ViewportStatus::kPass );
 		}
-		m_LastView = { drawn.Value().drawn, drawn.Value().unresolved };
+		m_LastView = { drawn.Value().drawn, drawn.Value().unresolved, 0 };
+		if ( !blended.items.empty() )
+		{
+			opaque.clearColor = false;
+			opaque.clearDepth = false;
+			auto over = pass::opaque::AddOpaquePasses(
+			    builder, *snapshot, blended, blendedView, { m_FaceMeshes, m_Programs }, opaque );
+			if ( !over )
+			{
+				return fail( ViewportStatus::kPass );
+			}
+			m_LastView.drawn += over.Value().drawn;
+			m_LastView.unresolved += over.Value().unresolved;
+			m_LastView.blended = over.Value().drawn;
+		}
 	}
 	else
 	{
@@ -558,9 +757,12 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 	LineList overlay;
 	AppendOverlay( request.overlay, overlay );
 	std::vector<MeshBatch> batches;
-	if ( m_Edges )
+	for ( const auto &[id, chunk] : m_Chunks )
 	{
-		batches.push_back( { *m_Edges, Topology::kLines, { Space::kWorld, threeD } } );
+		if ( chunk.edges )
+		{
+			batches.push_back( { *chunk.edges, Topology::kLines, { Space::kWorld, threeD } } );
+		}
 	}
 	LinesTargets scene = targets;
 	scene.clearColor = false;

@@ -7,6 +7,7 @@
 #include "render/resources/mesh_cache.h"
 #include "render/resources/texture_cache.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace render::resources
@@ -38,10 +39,32 @@ TextureCache::~TextureCache()
 foundation::Expected<TextureEntry, ResourceError> TextureCache::Stage(
     std::string_view name, const device::TextureDesc &desc, std::span<const std::byte> pixels )
 {
-	const std::uint64_t expected = static_cast<std::uint64_t>( desc.width ) * desc.height *
-	                               device::BytesPerTexel( desc.format );
-	if ( expected == 0 || pixels.size() != expected )
+	const std::span<const std::byte> levels[] = { pixels };
+	return StageMips( name, desc, levels );
+}
+
+foundation::Expected<TextureEntry, ResourceError> TextureCache::StageMips( std::string_view name,
+    const device::TextureDesc &desc, std::span<const std::span<const std::byte>> levels )
+{
+	if ( levels.empty() || levels.size() > desc.mipLevels )
 		return Fail( ResourceStatus::kSizeMismatch );
+	// Each level at a 16-byte aligned offset of one staging buffer: a
+	// multiple of every texel size, as a buffer-to-texture copy needs.
+	constexpr std::uint64_t kAlign = 16;
+	const std::uint32_t texel = device::BytesPerTexel( desc.format );
+	std::vector<Level> placed;
+	std::uint64_t total = 0;
+	for ( std::size_t m = 0; m < levels.size(); ++m )
+	{
+		const std::uint32_t width = std::max( desc.width >> m, 1u );
+		const std::uint32_t height = std::max( desc.height >> m, 1u );
+		const std::uint64_t expected = static_cast<std::uint64_t>( width ) * height * texel;
+		if ( desc.width == 0 || desc.height == 0 || expected == 0 || levels[m].size() != expected )
+			return Fail( ResourceStatus::kSizeMismatch );
+		total = ( total + kAlign - 1 ) / kAlign * kAlign;
+		placed.push_back( { total, width, height } );
+		total += expected;
+	}
 	device::TextureDesc resident = desc;
 	resident.usages.Add( device::ResourceUsage::kCopyDestination )
 	    .Add( device::ResourceUsage::kSampled );
@@ -67,7 +90,11 @@ foundation::Expected<TextureEntry, ResourceError> TextureCache::Stage(
 	{
 		m_Entries.emplace( std::string( name ), entry );
 	}
-	m_Uploads.push_back( { entry.texture, resident, { pixels.begin(), pixels.end() } } );
+	Upload upload{ entry.texture, resident, std::vector<std::byte>( total ), std::move( placed ) };
+	for ( std::size_t m = 0; m < levels.size(); ++m )
+		std::copy( levels[m].begin(), levels[m].end(),
+		    upload.pixels.begin() + std::ptrdiff_t( upload.levels[m].offset ) );
+	m_Uploads.push_back( std::move( upload ) );
 	return entry;
 }
 
@@ -113,8 +140,12 @@ std::size_t TextureCache::RecordUploads( device::CommandEncoder &encoder )
 		    device::ResourceUsage::kCopySource );
 		encoder.TransitionTexture( upload.texture, device::ResourceUsage::kUndefined,
 		    device::ResourceUsage::kCopyDestination );
-		encoder.CopyBufferToTexture(
-		    buffer.Value(), upload.texture, { 0, 0, 0, upload.desc.width, upload.desc.height } );
+		for ( std::size_t m = 0; m < upload.levels.size(); ++m )
+		{
+			const Level &level = upload.levels[m];
+			encoder.CopyBufferToTexture( buffer.Value(), upload.texture,
+			    { level.offset, static_cast<std::uint32_t>( m ), 0, level.width, level.height } );
+		}
 		encoder.TransitionTexture( upload.texture, device::ResourceUsage::kCopyDestination,
 		    device::ResourceUsage::kSampled );
 		++recorded;

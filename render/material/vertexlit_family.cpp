@@ -66,9 +66,8 @@ VertexLitClaim ClaimVertexLit( const ParameterBlock &block )
 	constants.flags[0] = ReadFlag( block, "halflambert" ) ? 1.0f : 0.0f;
 #endif
 	constants.flags[1] = alphaTest ? 1.0f : 0.0f;
-	// The port's alpha test holds its reference as a byte.
-	constants.flags[2] =
-	    std::floor( ReadParameter( block, "alphatestreference" ) * 255.0f ) / 255.0f;
+	// The port's alpha test holds its reference as a byte; 0.7 when unset.
+	constants.flags[2] = detail::AlphaTestReference( block );
 	claim.claimed = true;
 	return claim;
 }

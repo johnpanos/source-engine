@@ -34,6 +34,8 @@ and the `unlit` family (RFC 0016 K4), edges, grid and overlay through `render.pa
 | G7 | Each projection check rejects a seeded wrong view |
 | G8 | Textured preview: a face whose material has a texture size goes into that material's batch, colored by the shading alone (the selection tint over a selected solid or face), with uv = (dot(p, axis) / scale + shift) / size from the side's texture axes (`FaceDraw::uAxis`, `vAxis`); marker boxes stay untextured; a wrong size is rejected |
 | G9 | A material without a size, or with a zero size, stays in the untextured batch |
+| G10 | `BuildMipChain` (2026-09-28): an image has floor(log2(max(w, h))) + 1 levels down to 1x1, level m `max(1, size >> m)` per axis; each texel is the equally weighted box of its 2x2 source texels (the last box of an odd axis 3 wide, a one-texel axis 1 wide), color averaged in linear light (sRGB decode, mean, encode to the nearest byte), alpha as stored. A black and white 2x2 gives 188 (an encoded-byte mean, 128, is rejected); an image whose bytes do not match its size has no chain |
+| G11 | A solid's untextured fill is a function of its id, so it keeps its color when other solids are added or removed (a chunk restaged alone). `ChunkOf(id)` is the id's value over 64 |
 | V1 | The scene is staged once per caller key |
 | V2 | A 2D view runs the grid pass (clearing) and the scene pass (loading): edges then overlay. The 3D view runs the opaque pass (clearing; every batch resolves) and then the lines pass: edges, overlay |
 | V3 | Nothing blocks: `Take` returns nothing until the device completes the frame |
@@ -41,10 +43,15 @@ and the `unlit` family (RFC 0016 K4), edges, grid and overlay through `render.pa
 | V5 | Everything the renderer made is released once it is gone |
 | V6 | With a material source, the source is asked once per material (not per restage); a material with a texture gets its own batch and program; one without stays untextured; the camera view draws both batches, then the edges; everything is released |
 | V7 | On a device that exports no images, `CanExport()` is false and an external frame is refused with `kUnsupported` |
+| V8 | Surfaces (2026-09-28): `IMaterialTextures` returns a material's `$translucent`, `$additive`, `$alphatest`, `$alphatestreference` and `$alpha` with its image, and the renderer claims them through the unlit family (`ClaimUnlit`). A blended batch (`$translucent` or `$additive`) is drawn in a second opaque-pass instance that loads the targets and writes no depth, after every opaque and alpha-tested batch, back to front by instance depth (stable); `ViewStats::blended` counts it. `$alphatest` with no reference uses 0.7, the legacy default, by the family's rule (`detail::AlphaTestReference`). `$translucent` with `$additive`, which the family refuses, draws translucent. Every texture is staged with its full mip chain (`TextureCache::StageMips`), sampled trilinearly |
+| V9 | Per-chunk restaging (2026-09-28): an object's geometry is resident in chunk `ChunkOf(id)`, one face mesh per material and one edge mesh per chunk. A new key rebuilds only the chunks whose objects differ from the staged ones: moving one solid uploads exactly its chunk's face and edge meshes (the bytes equal that chunk's geometry, restated), the same content under a new key uploads nothing, and a chunk that empties is dropped and its meshes released. `SceneStats::stagedChunks` and `stagedMeshes` count the last restage; the resident totals equal the whole scene's geometry |
 | R1 | On a real device, the pixel under a top face's projected center has that face's built color within one level (the unlit family reads vertex colors as gamma 2.2; the renderer re-encodes the display colors for it) |
 | R2 | Edge, grid and overlay pixels land where the camera projects them, in their colors |
 | R3 | A restage follows the selection; the same inputs give byte-identical frames; the validation layer reports nothing |
 | R4 | Textured: where the side's axes put u in a texture's left (red) half the top face shows red, in its right (blue) half blue, each the texel times the shading in linear light within two levels; a source with no texture leaves the R1 colors |
+| R6 | Mipmaps: a one-texel black and white checker seen from afar shows the linear-light mid gray (188) times the shading at 49 points of the face within four levels (0 measured; mip 0 alone deviates by 59); from close the same face shows over 96 levels of contrast |
+| R7 | Blending: a translucent pane (blue, alpha 128) over an opaque wall (red) shows their blend in linear light within three levels, an opaque pane of the same texture only itself within two; an alpha-tested grate shows the wall through its transparent half and itself on its opaque half |
+| R8 | After one solid of a three-chunk scene moves, the restaged renderer (one chunk rebuilt) draws the 3D and top views byte-identical to a fresh renderer of the moved scene, and both frames differ from those before the move |
 | R5 | Exported frames (clause D18): an external frame's memory, mapped through its description, equals the read-back frame of the same view; a leased image is not drawn into (a second frame takes a new image), a returned one is, and a resize replaces the free images |
 | S1 | A job's pixels arrive only through the reply runner, never on the render thread, at the requested size |
 | S2 | Jobs reply in submission order |
@@ -81,5 +88,6 @@ material source and the renderer on its render sequence (RFC 0016 decision "thre
 
 Pure checks against independently restated rules (G), the null device's recorded command stream
 (V), relational pixel checks on Vulkan (R) and thread and lifetime checks on a real render thread
-(S), not golden images. Textures are sampled from mip 0 only (no mip chain yet), and translucent
-and alpha-tested materials draw opaque in the preview.
+(S), not golden images. Declared limits: the mip filter is a box (no coverage-preserving alpha
+mips, RFC 0012 R66, so alpha-tested texels thin with distance); blended batches sort per chunk
+batch, not per face; sampling is trilinear without anisotropy.

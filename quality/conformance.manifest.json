@@ -2747,7 +2747,7 @@
       "expect": "pass",
       "id": "hammer.adapters.render.geometry",
       "profile": "linux-headless-core",
-      "description": "The editor's viewport geometry on the render core (RFC 0016 'Editor viewports'): snapshot solids become fan triangles and side edges, entities shaded marker boxes; selection colors are data; faces carry the fixed two-light shading restated independently; every overlay kind maps to line items; grid lines lie on pixel centers; ViewFor projects exactly like the workspace's Camera2D and Camera3D, and seeded wrong views are rejected.",
+      "description": "The editor's viewport geometry on the render core (RFC 0016 'Editor viewports'): snapshot solids become fan triangles and side edges, entities shaded marker boxes; selection colors are data; faces carry the fixed two-light shading restated independently; every overlay kind maps to line items; grid lines lie on pixel centers; ViewFor projects exactly like the workspace's Camera2D and Camera3D, and seeded wrong views are rejected; BuildMipChain's levels, sizes and hand-checked linear-light texels (a black and white box gives 188, not the encoded-byte 128; an odd axis's last box takes three texels); a solid's fill follows its id, so it survives a chunk restaged alone (G10, G11).",
       "sources": [
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
@@ -2798,7 +2798,7 @@
       "expect": "pass",
       "id": "hammer.adapters.render.viewport.null",
       "profile": "linux-headless-core",
-      "description": "ViewportRenderer on render.device.null (manual completion): the scene stages once per key; a 2D view runs the grid and scene passes and draws grid, edges and overlay, the 3D view faces then edges; Take returns nothing before completion and width x height RGBA after; missing cameras, zero sizes and unknown tickets are refused; everything is released afterwards.",
+      "description": "ViewportRenderer on render.device.null (manual completion): the scene stages once per key; a 2D view runs the grid and scene passes and draws grid, edges and overlay, the 3D view faces then edges; Take returns nothing before completion and width x height RGBA after; missing cameras, zero sizes and unknown tickets are refused; everything is released afterwards; a $translucent batch is drawn in a second, blended pass after every opaque and alpha-tested one and each texture uploads its full mip chain (V8); moving one solid of a three-chunk scene uploads exactly its chunk's face and edge meshes, whose bytes equal that chunk's geometry, the same content under a new key uploads nothing, and an emptied chunk is released (V9).",
       "sources": [
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
@@ -2992,7 +2992,7 @@
       "expect": "pass",
       "id": "hammer.adapters.render.viewport",
       "profile": "linux-native-vulkan-gpu",
-      "description": "ViewportRenderer on render.device.vulkan with real pixels, judged by relations: top-face centers projected by the workspace's Camera3D show the built face colors (selection fill for the selected box); 2D box edges show the selection or plain edge color where the Camera2D projects them; grid and pending-box overlay pixels land at their projections; a restage follows the selection; repeated inputs give identical frames; the validation layer reports nothing.",
+      "description": "ViewportRenderer on render.device.vulkan with real pixels, judged by relations: top-face centers projected by the workspace's Camera3D show the built face colors (selection fill for the selected box); 2D box edges show the selection or plain edge color where the Camera2D projects them; grid and pending-box overlay pixels land at their projections; a restage follows the selection; repeated inputs give identical frames; a far one-texel checker shows the linear-light mid gray at every sampled point while a close one keeps its contrast (mipmaps, R6); a translucent pane blends over an opaque wall in linear light, an opaque control shows only the pane, and an alpha-tested grate shows the wall through its hole (R7); a one-chunk restage after a move draws byte-identical to a fresh renderer (R8); the validation layer reports nothing.",
       "sources": [
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
@@ -3050,7 +3050,7 @@
         "-pthread",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
-      "min_checks": 12
+      "min_checks": 33
     },
     {
       "domain": "Q-PRESENTATION",

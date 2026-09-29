@@ -3,6 +3,10 @@
 // Purpose: The textured preview's material source for the GTK shell (RFC
 //			0002 hammer.adapters.gtk; RFC 0016 K4): a
 //			hammer::render_adapter::IMaterialTextures over the game's VPKs.
+//			With the base texture it reads the material's surface parameters
+//			($translucent, $additive, $alphatest, $alphatestreference, $alpha)
+//			through the catalog's ResolveParameter, so patch materials resolve
+//			them as they resolve the texture.
 //			It mounts its own archives, search path and
 //			hammer::formats::MaterialCatalog (with the KTX2 preview decoder
 //			when the build has it), so the render sequence that owns it shares

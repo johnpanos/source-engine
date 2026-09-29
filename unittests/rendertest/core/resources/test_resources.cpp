@@ -4,7 +4,8 @@
 //			and mesh bytes land on the device, resources end in their use
 //			usage, replacements keep the old resource live until the submission
 //			that replaced it completes, and eviction and teardown release
-//			everything.
+//			everything. A staged mip chain uploads every level it is given
+//			(R6).
 //
 //=============================================================================//
 
@@ -13,6 +14,8 @@
 #include "render/resources/texture_cache.h"
 #include "testing/checks.h"
 
+#include <algorithm>
+#include <span>
 #include <vector>
 
 namespace
@@ -39,7 +42,7 @@ device::CompletionToken Run( device::IRenderDevice2 &device, device::CommandEnco
 }
 
 std::vector<std::byte> ReadTexture( device::IRenderDevice2 &device, device::TextureId texture,
-    std::uint32_t width, std::uint32_t height )
+    std::uint32_t width, std::uint32_t height, std::uint32_t mip = 0 )
 {
 	device::BufferDesc desc;
 	desc.size = static_cast<std::uint64_t>( width ) * height * 4;
@@ -49,7 +52,7 @@ std::vector<std::byte> ReadTexture( device::IRenderDevice2 &device, device::Text
 	auto encoder = device.BeginEncoder( device::QueueKind::kGraphics ).Value();
 	encoder.TransitionTexture( texture, ResourceUsage::kSampled, ResourceUsage::kCopySource );
 	encoder.TransitionBuffer( buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-	encoder.CopyTextureToBuffer( texture, buffer, { 0, 0, 0, width, height } );
+	encoder.CopyTextureToBuffer( texture, buffer, { 0, mip, 0, width, height } );
 	encoder.TransitionTexture( texture, ResourceUsage::kCopySource, ResourceUsage::kSampled );
 	const device::CompletionToken token = Run( device, encoder );
 	if ( !token.NamesSubmission() )
@@ -116,6 +119,48 @@ int main()
 		                 !textures.Evict( "wall" ),
 		    "R3.evict-removes-a-name-once" );
 		textures.Retire( token );
+
+		// R6: a mip chain, every level uploaded in one submission.
+		device::TextureDesc chain = desc;
+		chain.width = 8;
+		chain.height = 4;
+		chain.mipLevels = 4; // 8x4, 4x2, 2x1, 1x1
+		std::vector<std::vector<std::byte>> levels;
+		for ( std::uint32_t m = 0; m < chain.mipLevels; ++m )
+			levels.push_back(
+			    Bytes( std::size_t( std::max( 8u >> m, 1u ) ) * std::max( 4u >> m, 1u ) * 4,
+			        std::uint8_t( 10 + m ) ) );
+		std::vector<std::span<const std::byte>> views( levels.begin(), levels.end() );
+		auto mips = textures.StageMips( "chain", chain, views );
+		checks.That( mips.HasValue() && mips.Value().desc.mipLevels == 4, "R6.a-mip-chain-stages" );
+		std::vector<std::span<const std::byte>> wrong = views;
+		const std::vector<std::byte> shortLevel = Bytes( 7, 0 );
+		wrong[2] = shortLevel;
+		checks.That( !textures.StageMips( "wrong", chain, wrong ) && !textures.Find( "wrong" ),
+		    "R6.a-level-of-the-wrong-size-fails-and-stages-nothing" );
+		device::TextureDesc fewer = chain;
+		fewer.mipLevels = 2;
+		checks.That( !textures.StageMips( "fewer", fewer, views ) &&
+		                 !textures.StageMips( "none", chain, {} ),
+		    "R6.more-levels-than-the-texture-has-or-none-fail" );
+		auto third = device->BeginEncoder( device::QueueKind::kGraphics ).Value();
+		checks.Equal( textures.RecordUploads( third ), std::size_t( 1 ),
+		    "R6.one-upload-for-the-whole-chain" );
+		control->ClearRecorded();
+		const device::CompletionToken chainToken = Run( *device, third );
+		control->CompleteThrough( chainToken.queue, chainToken.value );
+		std::size_t copies = 0;
+		for ( const auto &command : control->Recorded() )
+			copies += command.op == device::null::RecordedOp::kCopyBufferToTexture ? 1 : 0;
+		checks.Equal( copies, std::size_t( 4 ), "R6.one-copy-per-level" );
+		textures.Retire( chainToken );
+		bool landed = mips.HasValue();
+		for ( std::uint32_t m = 0; landed && m < chain.mipLevels; ++m )
+			landed = ReadTexture( *device, mips.Value().texture, std::max( 8u >> m, 1u ),
+			             std::max( 4u >> m, 1u ), m ) == levels[m];
+		checks.That( landed, "R6.every-level-lands-in-its-mip" );
+		checks.That( textures.Evict( "chain" ).HasValue(), "R6.the-chain-evicts" );
+		textures.Retire( chainToken );
 
 		resources::MeshCache meshes( *device );
 		const std::vector<std::byte> vertices = Bytes( 96, 3 );

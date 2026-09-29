@@ -18,11 +18,16 @@
 //			    size) and its color the shading alone; every other face, the
 //			    displacement grids' blend tint and the entity marker boxes go
 //			    into the untextured batch (material ""), colored by per-solid
-//			    fill. Edges: every face outline, displacement triangle edges
+//			    fill (a hash of the solid's id, so a solid keeps its color
+//			    whatever else is added or removed). Edges: every face
+//			    outline, displacement triangle edges
 //			    and marker box edges. Selected solids, faces and entities
 //			    carry the selection colors (a tint over a texture).
 //			    Displacements take uv from their displaced positions, exact
 //			    when the texture axes lie in the face plane (the usual case).
+//			    The geometry of a snapshot is the concatenation of its
+//			    chunks' (ChunkOf), which ViewportRenderer stages separately.
+//			  * ChunkOf: the chunk an object's geometry is resident in.
 //			  * AppendOverlay: a tools::OverlayList as line items (world
 //			    lines, boxes and polygons; screen rects; filled screen
 //			    handles). Labels are not drawn (no text pass yet).
@@ -82,6 +87,16 @@ struct SceneGeometry
 	std::vector<LineVertex> edges; // line list
 	std::uint32_t triangles = 0;   // solid and displacement triangles (not markers)
 };
+
+// The chunk an object's geometry is staged in (ViewportRenderer): its id's
+// value over 64. Ids are stable across edits, so an edit restages only the
+// chunks of the objects it touched, and the chunk size bounds the draws (one
+// per material per chunk).
+constexpr unsigned kChunkShift = 6;
+constexpr std::uint64_t ChunkOf( scene::ObjectId id )
+{
+	return id.value >> kChunkShift;
+}
 
 // 'sizes' empty: every face is untextured (the flat preview).
 SceneGeometry BuildSceneGeometry(

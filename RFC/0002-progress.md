@@ -1071,10 +1071,9 @@ added exported images, recorded in the
 
 **Not done.**
 
-- Lit previews (R89/R90). Textures are sampled from mip 0 only, and
-  translucent and alpha-tested materials draw opaque.
+- Lit previews (R89/R90). Mipmaps, translucency and per-chunk restaging
+  followed in [R17 quality](#r17-quality-mipmaps-translucency-per-solid-restaging-2026-09-28).
 - The budget is desktop only, with no Fold7 or low-core row.
-- Each edit restages every batch; per-solid meshes would restage one.
 
 ### R17 closure: declared profiles, scale, capture, sharing, teardown and restoration (2026-09-28)
 
@@ -1202,6 +1201,86 @@ marked unverified. The legacy claims are read from this tree's MFC Hammer.
   Wayland row does not run it.
 - Model, sound, material and target pickers for those key types; they are
   text fields.
+
+### R17 quality: mipmaps, translucency, per-solid restaging (2026-09-28)
+
+Three follow-ups from R17-CORE, each with its own oracle. Contract
+`render_adapter.viewport-geometry.v1` gains G10, G11, V8, V9 and R6 to R8.
+
+- **Mipmaps.**
+  - `render.resources` gains `TextureCache::StageMips`, an additive API. Every
+    level uploads from one staging buffer with one copy per mip. `Stage` is
+    that call with mip 0 alone. Clause R6 is in `render.material.v2.md`, and
+    `render.resources` has 22 checks. The render-core session was told.
+  - The renderer builds each texture's chain on the render sequence with
+    `BuildMipChain` (`material_textures.h`). It is a pure 2x2 box filter in
+    linear light: sRGB decode, mean, encode. The sums use 1/65535 steps;
+    alpha is averaged as stored. Sampling is trilinear.
+  - Oracles:
+    - G10: level count and sizes; a black and white box gives 188, not the
+      encoded-byte 128; an odd axis's last box takes three texels.
+    - R6: a far one-texel checker is the mid gray times the shading at all 49
+      sampled points (worst deviation 0 levels), while a close one keeps over
+      96 levels of contrast. Seeding mip 0 only fails R6 at 59 levels.
+- **Translucent and alpha-tested materials.**
+  - `IMaterialTextures` returns a `MaterialSurface` with the image:
+    `$translucent`, `$additive`, `$alphatest`, `$alphatestreference` and
+    `$alpha`. `CatalogTextures` reads them through the new
+    `MaterialCatalog::ResolveParameter`, which follows a patch's
+    replace/insert and one include level as the base texture does. The
+    formats suite has 5 new checks.
+  - The renderer claims each surface through `ClaimUnlit`, which owns the
+    blend and depth-write rules. The 0.7 default reference is the family's
+    `detail::AlphaTestReference`, which `vertexlit` now uses too.
+  - Blended batches get view bit 1 and draw in a second opaque-pass
+    instance, after every opaque and alpha-tested batch. That pass loads the
+    targets, writes no depth and sorts back to front (stable); the edges
+    draw last.
+  - Oracles:
+    - V8 (null): the glass batch alone is blended and is the fourth of four
+      draws, in the second of three passes.
+    - R7 (Vulkan): a blue alpha-128 pane over a red wall measures 145 45 146
+      against 145 45 146 expected in linear light. The opaque control shows
+      only the pane (26 53 197). The grate shows the wall through its hole
+      and itself elsewhere.
+- **Per-chunk restaging.**
+  - Geometry is resident per chunk, `ChunkOf(id)` = id / 64. Each chunk has
+    one face mesh per material and one edge mesh.
+  - `SetScene` compares each chunk's objects with the staged copy and
+    rebuilds only the chunks that differ. A solid's untextured fill now
+    comes from its id (G11), so no chunk recolors another.
+    `SceneStats::stagedChunks` and `stagedMeshes` count the work.
+  - Oracles:
+    - V9 (null): moving one solid of a three-chunk scene writes exactly 2
+      buffers, and their bytes equal that chunk's geometry. The same content
+      under a new key writes nothing. An emptied chunk is released.
+    - R8 (Vulkan): the restaged renderer's 3D and top frames are
+      byte-identical to a fresh renderer's of the moved scene.
+- **Budget** (`hammer_viewport_budget.py --gtk`, scratch builds of the base
+  and the change, six interleaved rounds on a loaded host, medians):
+
+  | Row | Before p50 / p95 | After p50 / p95 |
+  | --- | --- | --- |
+  | trust_fling, flat | 2.97 / 3.86 ms | 2.42 / 3.13 ms |
+  | trust_fling, textured | 4.63 / 6.13 ms | 2.61 / 3.51 ms |
+
+  Every row stays within its limits (16 ms p95) except under load spikes:
+  one round on each binary exceeded them at load average 47. The textured
+  camera view draws 251 draws instead of 51. The mip chains add about
+  0.15 s of CPU the first time the 50 trust_fling materials resolve.
+- **Checks.** On g++ and clang++: the geometry, null, service, Vulkan
+  viewport, `render.resources`, `render.material.programs`,
+  `render.material.v2`, `render.opaque(.null)`, `render.family.unlit` and
+  `render.family.vertexlit` (plus its seeded row) suites, and the
+  `hammer.formats.material_catalog` suite.
+- **Open.**
+  - `hammer.adapters.render.service.vulkan` fails or crashes intermittently.
+    The same happens at HEAD without this change: 1 pass in 3 in a scratch
+    worktree.
+  - Box mips thin alpha-tested texels with distance; coverage-preserving
+    mips are RFC 0012 R66.
+  - Blended batches sort per chunk batch, not per face.
+  - There is no anisotropic filtering.
 
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 

@@ -41,9 +41,12 @@ constexpr Color kSelectedFace = { 1.00f, 0.35f, 0.35f };
 constexpr Color kDisplacementEdge = { 0.35f, 0.55f, 0.40f };
 constexpr Color kEntityDefault = { 0.85f, 0.35f, 0.85f };
 
-Color SolidFill( int index )
+// A solid's untextured fill, from its id so it keeps its color across edits
+// (a restage of one chunk cannot recolor another).
+Color SolidFill( scene::ObjectId id )
 {
-	const std::uint32_t h = static_cast<std::uint32_t>( index ) * 2654435761u;
+	const std::uint32_t h =
+	    static_cast<std::uint32_t>( id.value ^ ( id.value >> 32 ) ) * 2654435761u;
 	return { 0.45f + 0.5f * ( ( h & 0xFF ) / 255.0f ),
 	    0.45f + 0.5f * ( ( ( h >> 8 ) & 0xFF ) / 255.0f ),
 	    0.45f + 0.5f * ( ( ( h >> 16 ) & 0xFF ) / 255.0f ) };
@@ -196,14 +199,12 @@ SceneGeometry BuildSceneGeometry(
 		}
 		return found->second;
 	};
-	int solidIndex = 0;
 	for ( const viewport::SolidDraw &solid : snapshot.solids )
 	{
-		const Color fill = solid.selected ? kSelectedFill : SolidFill( solidIndex );
+		const Color fill = solid.selected ? kSelectedFill : SolidFill( solid.id );
 		const Color edge = solid.selected          ? kSelectedEdge
 		                   : solid.owner.IsValid() ? FromRgb( solid.color )
 		                                           : kEdge;
-		++solidIndex;
 		for ( const viewport::FaceDraw &face : solid.faces )
 		{
 			const std::optional<TextureSize> size = sizeOf( face.material );

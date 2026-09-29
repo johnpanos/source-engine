@@ -107,6 +107,27 @@ int main()
 	CHECK( catalog.ResolveBaseTexture( "custom/override" ) == "concrete/floor001a",
 	    "patch replace override resolves via ResolvedParam" );
 
+	// Parameters resolve as the base texture does: the material's own, a
+	// patch's replace/insert first, else the included material's (one level).
+	src.assets["materials/glass/pane.vmt"] =
+	    "\"UnlitGeneric\" { \"$basetexture\" \"concrete/floor001a\" \"$Translucent\" \"1\" "
+	    "\"$alpha\" \".5\" }";
+	src.assets["materials/glass/tinted.vmt"] =
+	    "\"patch\" { \"include\" \"materials/glass/pane.vmt\" \"replace\" { \"$alpha\" \".25\" } "
+	    "\"insert\" { \"$alphatest\" \"1\" } }";
+	CHECK( catalog.ResolveParameter( "Glass\\Pane", "$translucent" ) == std::string( "1" ),
+	    "a parameter resolves case-insensitively" );
+	CHECK( catalog.ResolveParameter( "glass/tinted", "$alpha" ) == std::string( ".25" ),
+	    "a patch's replace wins over the include" );
+	CHECK( catalog.ResolveParameter( "glass/tinted", "$alphatest" ) == std::string( "1" ),
+	    "a patch's insert resolves" );
+	CHECK( catalog.ResolveParameter( "glass/tinted", "$translucent" ) == std::string( "1" ),
+	    "a patch without the parameter takes the included material's" );
+	CHECK( !catalog.ResolveParameter( "glass/pane", "$additive" ) &&
+	           !catalog.ResolveParameter( "glass/missing", "$translucent" ) &&
+	           !catalog.ResolveParameter( "../escape", "$translucent" ),
+	    "an absent parameter, material or unsafe name resolves to nothing" );
+
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.material_catalog: %d FAILURE(S)\n", g_failures );

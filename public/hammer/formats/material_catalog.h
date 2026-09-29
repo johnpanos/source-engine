@@ -107,6 +107,15 @@ public:
 	// names no base texture. Cached.
 	std::string ResolveBaseTexture( const std::string &name );
 
+	// The value of a material parameter ("$translucent", any case) as the
+	// material resolves it: its own (a patch's replace, then insert, then
+	// top-level value), else, for a `patch` that does not set it, the included
+	// material's, following one level as ResolveBaseTexture does. Nothing
+	// when the material is absent or unparseable or no level sets the
+	// parameter. Reads the VMT on every call (not cached).
+	std::optional<std::string> ResolveParameter(
+	    const std::string &name, const std::string &parameter ) const;
+
 	// Decodes a material's base texture to RGBA, cached. Returns nullptr when the
 	// material, its base texture, or the decode is missing/invalid; the result
 	// (hit or miss) is cached and the pointer is stable for the catalog's lifetime.

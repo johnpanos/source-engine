@@ -15,6 +15,8 @@
 #include "hammer/viewport/extraction.h"
 #include "mapgeometry/vec3.h"
 
+#include <algorithm>
+
 namespace hammertest::viewport_render
 {
 
@@ -51,6 +53,72 @@ inline hammer::viewport::RenderSnapshot Snapshot( const Document &d, bool select
 	if ( selectLeft )
 		selection.objects.push_back( d.left );
 	return hammer::viewport::Extract( d.doc, selection );
+}
+
+inline void Translate( hammer::viewport::SolidDraw &solid, const Vec3d &by )
+{
+	for ( hammer::viewport::FaceDraw &face : solid.faces )
+	{
+		for ( Vec3d &v : face.vertices )
+			v = v + by;
+	}
+	solid.bounds.mins = solid.bounds.mins + by;
+	solid.bounds.maxs = solid.bounds.maxs + by;
+}
+
+inline void Rebound( hammer::viewport::RenderSnapshot &snapshot )
+{
+	snapshot.bounds.reset();
+	for ( const hammer::viewport::SolidDraw &solid : snapshot.solids )
+	{
+		if ( !snapshot.bounds )
+		{
+			snapshot.bounds = solid.bounds;
+			continue;
+		}
+		hammer::scene::Box &b = *snapshot.bounds;
+		b.mins = Vec3d( std::min( b.mins.x, solid.bounds.mins.x ),
+		    std::min( b.mins.y, solid.bounds.mins.y ), std::min( b.mins.z, solid.bounds.mins.z ) );
+		b.maxs = Vec3d( std::max( b.maxs.x, solid.bounds.maxs.x ),
+		    std::max( b.maxs.y, solid.bounds.maxs.y ), std::max( b.maxs.z, solid.bounds.maxs.z ) );
+	}
+}
+
+// The fixture's snapshot (nothing selected) and 'copies' more boxes like the
+// right one, ids 128 on (chunks 2 and up of the renderer's 64-id chunks; the
+// fixture's own ids carry the document serial), copy i moved 160 * (i + 1)
+// along y.
+inline hammer::viewport::RenderSnapshot Spread( const Document &d, int copies )
+{
+	hammer::viewport::RenderSnapshot snapshot = Snapshot( d, false );
+	hammer::viewport::SolidDraw right;
+	for ( const hammer::viewport::SolidDraw &solid : snapshot.solids )
+	{
+		if ( solid.id == d.right )
+			right = solid;
+	}
+	for ( int i = 0; i < copies; ++i )
+	{
+		hammer::viewport::SolidDraw copy = right;
+		copy.id = ObjectId{ std::uint64_t( 128 + i ) };
+		Translate( copy, Vec3d( 0, 160.0 * ( i + 1 ), 0 ) );
+		snapshot.solids.push_back( copy );
+	}
+	Rebound( snapshot );
+	return snapshot;
+}
+
+// 'snapshot' with solid 'id' moved by 'by'.
+inline hammer::viewport::RenderSnapshot Moved(
+    hammer::viewport::RenderSnapshot snapshot, ObjectId id, const Vec3d &by )
+{
+	for ( hammer::viewport::SolidDraw &solid : snapshot.solids )
+	{
+		if ( solid.id == id )
+			Translate( solid, by );
+	}
+	Rebound( snapshot );
+	return snapshot;
 }
 
 inline hammer::viewport::Camera2D TopCamera( int width = 256, int height = 192 )

@@ -8,6 +8,10 @@
 //			staging buffers and replaced textures behind it. Nothing is freed
 //			before the GPU is done with it.
 //
+//			StageMips stages a mip chain: every level it is given is uploaded
+//			from one staging buffer (each level at a 16-byte aligned offset),
+//			in the same submission. Stage is StageMips with mip 0 alone.
+//
 //			Staging and recording belong to one sequence (the render sequence);
 //			the cache is not thread-safe.
 //
@@ -49,6 +53,12 @@ public:
 	// pixels are mip 0, layer 0, rows tightly packed.
 	foundation::Expected<TextureEntry, ResourceError> Stage(
 	    std::string_view name, const device::TextureDesc &desc, std::span<const std::byte> pixels );
+	// levels[m] is mip m, layer 0, rows tightly packed, max(1, width >> m) by
+	// max(1, height >> m) texels; 1 <= levels.size() <= desc.mipLevels. Levels
+	// past the last one given are not uploaded (a sampler must not reach
+	// them). A level of the wrong size fails and stages nothing.
+	foundation::Expected<TextureEntry, ResourceError> StageMips( std::string_view name,
+	    const device::TextureDesc &desc, std::span<const std::span<const std::byte>> levels );
 	const TextureEntry *Find( std::string_view name ) const;
 	foundation::Expected<void, ResourceError> Evict( std::string_view name );
 
@@ -59,11 +69,19 @@ public:
 	std::size_t PendingUploads() const { return m_Uploads.size(); }
 
 private:
+	struct Level
+	{
+		std::uint64_t offset = 0; // in pixels
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+	};
+
 	struct Upload
 	{
 		device::TextureId texture;
 		device::TextureDesc desc;
-		std::vector<std::byte> pixels;
+		std::vector<std::byte> pixels; // every level, each at its offset
+		std::vector<Level> levels;
 	};
 
 	device::IRenderDevice2 &m_Device;

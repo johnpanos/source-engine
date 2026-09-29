@@ -179,6 +179,38 @@ std::string MaterialCatalog::ResolveBaseTexture( const std::string &name )
 	return canonicalBase;
 }
 
+std::optional<std::string> MaterialCatalog::ResolveParameter(
+    const std::string &name, const std::string &parameter ) const
+{
+	const std::string canonical = CanonicalizeMaterialName( name );
+	if ( !SafeMaterialPath( canonical ) )
+		return std::nullopt;
+	std::string vmt;
+	if ( !m_source.ReadAsset( "materials/" + canonical + ".vmt", vmt ) )
+		return std::nullopt;
+	std::optional<Material> material = ParseMaterial( vmt );
+	if ( !material )
+		return std::nullopt;
+	if ( const std::string *value = material->ResolvedParam( parameter ) )
+		return *value;
+	if ( !material->IsPatch() )
+		return std::nullopt;
+	const std::string *include = material->Param( "include" );
+	if ( !include )
+		return std::nullopt;
+	const std::string includeCanonical = CanonicalizeMaterialName( *include );
+	std::string includeVmt;
+	if ( !SafeMaterialPath( includeCanonical ) ||
+	     !m_source.ReadAsset( "materials/" + includeCanonical + ".vmt", includeVmt ) )
+		return std::nullopt;
+	std::optional<Material> included = ParseMaterial( includeVmt );
+	if ( !included )
+		return std::nullopt;
+	if ( const std::string *value = included->ResolvedParam( parameter ) )
+		return *value;
+	return std::nullopt;
+}
+
 const VtfImage *MaterialCatalog::BaseTextureImage( const std::string &name )
 {
 	const std::string canonical = CanonicalizeMaterialName( name );

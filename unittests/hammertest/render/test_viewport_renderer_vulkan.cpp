@@ -30,6 +30,21 @@
 //			   read-back frame of the same view; a returned lease's image is
 //			   drawn into again (no new image), an unreturned one is not, and
 //			   a resize replaces the free images;
+//			R6 mipmaps: a one-texel black and white checker seen from afar
+//			   shows the linear-light mid gray (188) times the shading at
+//			   every sampled point of the face, within four levels, where
+//			   mip 0 alone would alias to either extreme; seen from close,
+//			   the same face shows the checker (over 96 levels of contrast,
+//			   the control);
+//			R7 blending: a $translucent pane (blue, alpha 128) over an
+//			   opaque wall (red) shows their blend in linear light, where an
+//			   opaque pane of the same texture shows only the pane; an
+//			   $alphatest grate shows the wall through its transparent half
+//			   and itself on its opaque half;
+//			R8 per-chunk restaging: after one solid of a three-chunk scene
+//			   moves, the restaged renderer (one chunk rebuilt) draws the 3D
+//			   and top views byte-identical to a fresh renderer of the moved
+//			   scene, and the frame differs from the one before the move;
 //			the Khronos validation layer reports no message.
 //
 //=============================================================================//
@@ -192,6 +207,85 @@ double UFraction( const hammer::viewport::RenderSnapshot &snapshot, double x, do
 		}
 	}
 	return -1.0;
+}
+
+// Uniform or patterned textures by material, with surface parameters.
+class SurfaceTextures final : public IMaterialTextures
+{
+public:
+	std::optional<MaterialImage> BaseTexture( const std::string &material ) override
+	{
+		MaterialImage image;
+		image.width = image.height = 64;
+		for ( std::uint32_t y = 0; y < 64; ++y )
+		{
+			for ( std::uint32_t x = 0; x < 64; ++x )
+			{
+				Rgb c = kRed;
+				int alpha = 255;
+				if ( material == "CHECKER" )
+					c = ( x + y ) % 2 ? Rgb{ 255, 255, 255 } : Rgb{ 0, 0, 0 };
+				else if ( material == "GLASS" || material == "PANE" )
+				{
+					c = kBlue;
+					alpha = 128;
+				}
+				else if ( material == "GRATE" )
+				{
+					c = kGreen;
+					alpha = x < 32 ? 0 : 255;
+				}
+				image.rgba.insert(
+				    image.rgba.end(), { std::uint8_t( c.r ), std::uint8_t( c.g ),
+				                          std::uint8_t( c.b ), std::uint8_t( alpha ) } );
+			}
+		}
+		image.surface.translucent = material == "GLASS";
+		image.surface.alphaTest = material == "GRATE";
+		return image;
+	}
+	static constexpr Rgb kGreen{ 40, 200, 60 };
+};
+
+// A one-face solid: a 128 x 128 quad over the right box's top at height z,
+// u = x / 2 - 32 texels (the left half of a 64-texel texture over x 64..128).
+hammer::viewport::SolidDraw Pane( std::uint64_t id, const std::string &material, double z )
+{
+	hammer::viewport::SolidDraw solid;
+	solid.id = ObjectId{ id };
+	hammer::viewport::FaceDraw face;
+	face.material = material;
+	face.vertices = {
+	    Vec3d( 64, -64, z ), Vec3d( 192, -64, z ), Vec3d( 192, 64, z ), Vec3d( 64, 64, z ) };
+	face.normal = Vec3d( 0, 0, 1 );
+	face.uAxis = { Vec3d( 1, 0, 0 ), -32.0, 2.0 };
+	face.vAxis = { Vec3d( 0, -1, 0 ), 0.0, 2.0 };
+	solid.faces.push_back( face );
+	solid.bounds = { Vec3d( 64, -64, z ), Vec3d( 192, 64, z ) };
+	return solid;
+}
+
+// The linear-light blend of 'over' with alpha 'a' onto 'under', displayed.
+Rgb Blend( Rgb over, Rgb under, double a )
+{
+	auto channel = [a]( int o, int u )
+	{
+		return ToDisplay( a * ToLinear( o / 255.0 ) + ( 1.0 - a ) * ToLinear( u / 255.0 ) );
+	};
+	return { channel( over.r, under.r ), channel( over.g, under.g ), channel( over.b, under.b ) };
+}
+
+std::optional<ViewPixels> Frame(
+    foundation::Expected<std::unique_ptr<ViewportRenderer>, hammer::render_adapter::ViewportStatus>
+        &renderer,
+    const hammer::viewport::RenderSnapshot &scene, std::uint64_t key, const ViewRequest &request )
+{
+	if ( !renderer || !renderer.Value()->SetScene( scene, key ) )
+		return std::nullopt;
+	auto frame = renderer.Value()->RenderAndWait( request );
+	if ( !frame )
+		return std::nullopt;
+	return std::move( frame ).Value();
 }
 
 constexpr Rgb kSelectedEdge{ 255, 148, 38 };
@@ -358,6 +452,146 @@ int main()
 			            *rightColor, 1 ),
 			    "R4.a-source-without-the-texture-leaves-the-flat-colors" );
 		}
+		// R6.
+		{
+			const hammer::viewport::RenderSnapshot plain = Snapshot( d, false );
+			hammer::viewport::RenderSnapshot checker = plain;
+			for ( auto &solid : checker.solids )
+				for ( auto &face : solid.faces )
+					face.material = "CHECKER";
+			SurfaceTextures textures;
+			auto renderer = ViewportRenderer::Create( *device, &textures );
+			const auto shade = TopFaceColor(
+			    BuildSceneGeometry( checker,
+			        []( const std::string & )
+			        {
+				        return std::optional<hammer::render_adapter::TextureSize>( { 64, 64 } );
+			        } ),
+			    64, 64, 192 );
+			const Rgb mid = shade ? Modulated( { 188, 188, 188 }, *shade ) : Rgb{};
+			const auto far = Frame( renderer, checker, 1, request3D );
+			int sampled = 0;
+			int worst = 0;
+			if ( far )
+			{
+				for ( double x = 80; x <= 176; x += 16 )
+					for ( double y = -48; y <= 48; y += 16 )
+						if ( const auto p = eye.WorldToScreen( Vec3d( x, y, 64 ) ) )
+						{
+							const Rgb got = At( *far, int( p->x ), int( p->y ) );
+							worst = std::max( { worst, std::abs( got.r - mid.r ),
+							    std::abs( got.g - mid.g ), std::abs( got.b - mid.b ) } );
+							++sampled;
+						}
+			}
+			checks.That( shade && sampled == 49 && worst <= 4,
+			    "R6.a-far-checker-averages-to-the-linear-mid-gray" );
+			std::printf(
+			    "R6: far checker, worst deviation %d levels over %d points\n", worst, sampled );
+			hammer::viewport::Camera3D close;
+			close.SetViewport( 256, 192 );
+			close.SetPosition( Vec3d( 128, -4, 70 ) ); // several pixels per texel
+			close.LookAt( Vec3d( 128, 0, 64 ) );
+			ViewRequest near = request3D;
+			near.camera3D = &close;
+			auto nearFrame =
+			    renderer ? renderer.Value()->RenderAndWait( near )
+			             : foundation::Expected<ViewPixels, hammer::render_adapter::ViewportStatus>(
+			                   foundation::MakeUnexpected(
+			                       hammer::render_adapter::ViewportStatus::kDevice ) );
+			int darkest = 255;
+			int brightest = 0;
+			if ( nearFrame )
+			{
+				for ( int y = 64; y < 128; ++y )
+					for ( int x = 96; x < 160; ++x )
+					{
+						const Rgb got = At( nearFrame.Value(), x, y );
+						darkest = std::min( darkest, got.g );
+						brightest = std::max( brightest, got.g );
+					}
+			}
+			std::printf( "R6: close checker, green from %d to %d (shade %d)\n", darkest, brightest,
+			    shade ? shade->g : -1 );
+			// Bilinear between one-texel cells never reaches pure black at a
+			// few pixels per texel, so the control is the contrast.
+			checks.That( nearFrame && shade && brightest - darkest >= 96,
+			    "R6.the-close-checker-shows-both-extremes" );
+		}
+
+		// R7.
+		{
+			const hammer::viewport::RenderSnapshot plain = Snapshot( d, false );
+			SurfaceTextures textures;
+			auto renderer = ViewportRenderer::Create( *device, &textures );
+			const auto shade = TopFaceColor(
+			    BuildSceneGeometry( plain,
+			        []( const std::string & )
+			        {
+				        return std::optional<hammer::render_adapter::TextureSize>( { 64, 64 } );
+			        } ),
+			    64, 64, 192 );
+			auto with = [&]( const std::string &material )
+			{
+				hammer::viewport::RenderSnapshot scene = plain;
+				scene.solids.push_back( Pane( 500, material, 68 ) );
+				return scene;
+			};
+			const Rgb wall = shade ? Modulated( kRed, *shade ) : Rgb{};
+			const Rgb pane = shade ? Modulated( kBlue, *shade ) : Rgb{};
+			const Rgb grate = shade ? Modulated( SurfaceTextures::kGreen, *shade ) : Rgb{};
+			const Rgb blend = Blend( pane, wall, 128.0 / 255.0 );
+			const auto glassAt = eye.WorldToScreen( Vec3d( 100, -20, 68 ) );
+			const auto holeAt = eye.WorldToScreen( Vec3d( 90, -20, 68 ) );
+			const auto solidAt = eye.WorldToScreen( Vec3d( 160, -20, 68 ) );
+			const auto glass = Frame( renderer, with( "GLASS" ), 1, request3D );
+			const auto opaque = Frame( renderer, with( "PANE" ), 2, request3D );
+			const auto grated = Frame( renderer, with( "GRATE" ), 3, request3D );
+			const Rgb gotGlass =
+			    glass && glassAt ? At( *glass, int( glassAt->x ), int( glassAt->y ) ) : Rgb{};
+			const Rgb gotOpaque =
+			    opaque && glassAt ? At( *opaque, int( glassAt->x ), int( glassAt->y ) ) : Rgb{};
+			std::printf( "R7: glass %d %d %d (want %d %d %d), opaque %d %d %d (want %d %d %d)\n",
+			    gotGlass.r, gotGlass.g, gotGlass.b, blend.r, blend.g, blend.b, gotOpaque.r,
+			    gotOpaque.g, gotOpaque.b, pane.r, pane.g, pane.b );
+			checks.That( shade && !Within( blend, pane, 10 ) && !Within( blend, wall, 10 ),
+			    "R7.the-blend-differs-from-either-layer" );
+			checks.That( shade && Within( gotGlass, blend, 3 ),
+			    "R7.a-translucent-pane-blends-over-the-wall" );
+			checks.That(
+			    shade && Within( gotOpaque, pane, 2 ), "R7.an-opaque-pane-shows-only-itself" );
+			checks.That(
+			    shade && grated && holeAt && solidAt &&
+			        Within( At( *grated, int( holeAt->x ), int( holeAt->y ) ), wall, 2 ) &&
+			        Within( At( *grated, int( solidAt->x ), int( solidAt->y ) ), grate, 2 ),
+			    "R7.an-alpha-tested-grate-shows-the-wall-through-its-hole" );
+		}
+
+		// R8.
+		{
+			const hammer::viewport::RenderSnapshot spread = Spread( d, 70 );
+			const hammer::viewport::RenderSnapshot moved =
+			    Moved( spread, ObjectId{ 128 }, Vec3d( 16, 0, 0 ) );
+			auto restaged = ViewportRenderer::Create( *device );
+			auto fresh = ViewportRenderer::Create( *device );
+			const auto before3D = Frame( restaged, spread, 1, request3D );
+			const auto before2D = Frame( restaged, spread, 1, request2D );
+			const auto after3D = Frame( restaged, moved, 2, request3D );
+			const auto after2D = Frame( restaged, moved, 2, request2D );
+			const bool partial = restaged && restaged.Value()->Scene().stagedChunks == 1 &&
+			                     restaged.Value()->Scene().chunks == 3;
+			const auto fresh3D = Frame( fresh, moved, 1, request3D );
+			const auto fresh2D = Frame( fresh, moved, 1, request2D );
+			checks.That( partial && fresh && fresh.Value()->Scene().stagedChunks == 3,
+			    "R8.the-edit-restages-one-chunk-of-three" );
+			checks.That( after3D && fresh3D && after3D->rgba == fresh3D->rgba && after2D &&
+			                 fresh2D && after2D->rgba == fresh2D->rgba,
+			    "R8.the-restaged-frames-equal-a-fresh-renderers" );
+			checks.That( before3D && before2D && after3D && after2D &&
+			                 before3D->rgba != after3D->rgba && before2D->rgba != after2D->rgba,
+			    "R8.the-move-changes-both-frames" );
+		}
+
 		// R5.
 		if ( device->ExternalImages() )
 		{

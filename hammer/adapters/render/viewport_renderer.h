@@ -8,27 +8,42 @@
 //			(a GdkMemoryTexture now, a dmabuf later).
 //
 //			Solids draw through the material families (RFC 0016 K4): each
-//			face batch (scene_geometry.h) is a mesh and one instance of the
-//			renderer's own render.scene, drawn by render.pass.opaque with the
-//			unlit family. With a material source (IMaterialTextures) the
-//			camera view is textured: a material's base texture is fetched once
-//			on the render sequence, staged in a TextureCache and drawn through
-//			its own program; a face whose texture is missing draws untextured.
-//			Without a source every face is untextured (the flat preview).
-//			Edges, the grid and tool overlays draw through render.pass.lines.
+//			face batch (scene_geometry.h) of a chunk is a mesh and one
+//			instance of the renderer's own render.scene, drawn by
+//			render.pass.opaque with the unlit family. With a material source
+//			(IMaterialTextures) the camera view is textured: a material's
+//			base texture is fetched once on the render sequence, its mip
+//			chain built (BuildMipChain, linear light), staged in a
+//			TextureCache and drawn through its own program with trilinear
+//			filtering; a face whose texture is missing draws untextured.
+//			The material's surface parameters are claimed through the unlit
+//			family (ClaimUnlit): $translucent and $additive blend without
+//			writing depth, $alphatest cuts texels under its reference (the
+//			family's rule: 0.7 when the VMT sets none), and neither writes
+//			destination alpha. Without a source every face is untextured and
+//			opaque (the flat preview). Edges, the grid and tool overlays draw
+//			through render.pass.lines.
 //
-//			Scene geometry is resident: SetScene restages the batches and
-//			edges only when the caller's key changes (the snapshot revision
-//			and selection), so camera moves, hover and tool feedback upload
-//			only the per-view list (grid and overlay).
+//			Scene geometry is resident per chunk (ChunkOf: an object's id
+//			over 64): a chunk has one mesh per material and one edge mesh.
+//			SetScene does nothing when the caller's key (the snapshot
+//			revision and selection) is unchanged; otherwise it compares each
+//			chunk's objects with the ones it staged and rebuilds and uploads
+//			only the chunks that differ, so an edit of one solid restages
+//			its chunk's meshes and every other buffer stays. Camera moves,
+//			hover and tool feedback upload only the per-view list (grid and
+//			overlay).
 //
 //			A view renders as one graph: in the camera view the opaque pass
-//			(clearing), then the lines pass for the depth-tested, biased edges
-//			and the overlay; in 2D views the grid lines pass (clearing), then
-//			the edges and overlay; then a copy into a readback buffer. Nothing
-//			blocks: Render submits and returns a ticket, and Take returns the
-//			pixels once the device completes it (RenderAndWait polls for
-//			offscreen hosts and tests).
+//			(clearing) draws the opaque and alpha-tested batches (draw list
+//			of view bit 0), a second pass loading the targets draws the
+//			blended batches (view bit 1) back to front, then the lines pass
+//			draws the depth-tested, biased edges and the overlay; in 2D views
+//			the grid lines pass (clearing), then the edges and overlay; then
+//			a copy into a readback buffer. Nothing blocks: Render submits and
+//			returns a ticket, and Take returns the pixels once the device
+//			completes it (RenderAndWait polls for offscreen hosts and
+//			tests).
 //
 //			Lifetime: the renderer borrows the device and the material source
 //			and must be destroyed before them; its destructor waits for its
@@ -43,6 +58,7 @@
 #include "material_textures.h"
 #include "render/device/device.h"
 #include "render/material/material_programs.h"
+#include "render/material/registry.h"
 #include "render/material/unlit_family.h"
 #include "render/pass/lines/lines.h"
 #include "render/pass/opaque/opaque.h"
@@ -115,17 +131,22 @@ struct SceneStats
 	std::uint32_t faceVertices = 0;
 	std::uint32_t edgeVertices = 0;
 	std::uint32_t stagings = 0; // times the scene was restaged
-	std::uint32_t batches = 0;  // face batches (instances), the untextured one included
+	std::uint32_t batches = 0;  // face batches (instances) of every chunk, untextured ones included
 	std::uint32_t texturedBatches = 0;
+	std::uint32_t blendedBatches = 0;  // drawn after the opaque ones ($translucent, $additive)
 	std::uint32_t textures = 0;        // materials whose base texture is resident
 	std::uint32_t missingTextures = 0; // materials the source had no texture for
+	std::uint32_t chunks = 0;          // resident chunks
+	std::uint32_t stagedChunks = 0;    // chunks the last restage rebuilt
+	std::uint32_t stagedMeshes = 0;    // face and edge meshes the last restage uploaded
 };
 
-// What the last Render drew (its opaque pass).
+// What the last Render drew (its opaque and blended passes).
 struct ViewStats
 {
 	std::uint32_t drawn = 0;
 	std::uint32_t unresolved = 0;
+	std::uint32_t blended = 0; // of drawn, in the blended pass
 };
 
 class ViewportRenderer
@@ -189,6 +210,22 @@ private:
 	{
 		std::uint64_t id = 0;
 		std::optional<TextureSize> size; // nothing: no texture, drawn untextured
+		bool blended = false;            // drawn in the blended pass
+	};
+
+	// A chunk's objects as staged and its resident meshes.
+	struct Chunk
+	{
+		std::vector<viewport::SolidDraw> solids;
+		std::vector<viewport::EntityDraw> entities;
+		std::map<std::uint64_t, std::uint64_t> meshes; // material id -> mesh id
+		std::vector<::render::scene::InstanceId> instances;
+		std::optional<::render::resources::MeshEntry> edges;
+		std::uint32_t triangles = 0;
+		std::uint32_t faceVertices = 0;
+		std::uint32_t edgeVertices = 0;
+		std::uint32_t texturedBatches = 0;
+		std::uint32_t blendedBatches = 0;
 	};
 
 	class Meshes final : public ::render::pass::opaque::IMeshResolver
@@ -207,9 +244,15 @@ private:
 	foundation::Expected<int, ViewportStatus> ExternalSlotFor(
 	    std::uint32_t width, std::uint32_t height );
 	foundation::Expected<void, ViewportStatus> ResolveMaterials(
-	    const viewport::RenderSnapshot &snapshot );
+	    const std::vector<viewport::SolidDraw> &solids );
 	foundation::Expected<std::uint64_t, ViewportStatus> AddProgram(
-	    std::uint64_t id, const std::string &texture );
+	    std::uint64_t id, const std::string &texture, const MaterialSurface &surface );
+	::render::material::UnlitClaim ClaimFor( const MaterialSurface &surface ) const;
+	// Rebuilds one chunk from 'staged' (its objects now; empty: the chunk is
+	// gone) into 'changes'.
+	foundation::Expected<void, ViewportStatus> StageChunk(
+	    std::uint64_t chunk, Chunk staged, ::render::scene::ChangeSet &changes );
+	void DropChunk( Chunk &chunk, ::render::scene::ChangeSet &changes );
 
 	::render::device::IRenderDevice2 &m_Device;
 	IMaterialTextures *m_Source = nullptr;
@@ -219,11 +262,13 @@ private:
 	std::unique_ptr<::render::material::UnlitFamily> m_Unlit;
 	std::unique_ptr<::render::pass::lines::LinesRenderer> m_Lines;
 	std::unique_ptr<::render::scene::IRenderScene> m_Scene;
-	std::vector<::render::scene::InstanceId> m_Instances;
-	Meshes m_FaceMeshes; // by material id (one batch per material)
+	::render::material::FamilyRegistry m_Families;
+	const ::render::material::FamilySchema *m_UnlitSchema = nullptr;
+	Meshes m_FaceMeshes; // by mesh id (one per material per chunk)
 	std::map<std::string, Material> m_Materials;
 	std::uint64_t m_NextMaterial = 2; // 1 is the untextured batch
-	std::optional<::render::resources::MeshEntry> m_Edges;
+	std::uint64_t m_NextMesh = 1;
+	std::map<std::uint64_t, Chunk> m_Chunks;
 	std::optional<scene::Box> m_Bounds;
 	SceneStats m_Stats;
 	ViewStats m_LastView;

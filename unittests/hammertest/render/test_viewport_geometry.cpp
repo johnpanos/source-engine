@@ -29,10 +29,20 @@
 //			   side's texture axes over the size, restated here; markers stay
 //			   untextured;
 //			G9 a material without a size (or a zero size) stays in the
-//			   untextured batch, as with no sizes at all.
+//			   untextured batch, as with no sizes at all;
+//			G10 BuildMipChain: an 8x4 image has 4 levels, 8x4 down to 1x1;
+//			   a black and white 2x2 averages in linear light to the byte
+//			   restated here (188, where averaging the encoded bytes gives
+//			   128) and its alpha to the rounded mean; an odd axis's last
+//			   box takes three texels; an image whose bytes do not match
+//			   its size has no chain;
+//			G11 a solid's fill comes from its id: without its neighbor (a
+//			   chunk restaged alone) it keeps its color; ChunkOf is the id
+//			   over 64.
 //
 //=============================================================================//
 
+#include "hammer/adapters/render/material_textures.h"
 #include "hammer/adapters/render/scene_geometry.h"
 #include "testing/checks.h"
 #include "viewport_fixture.h"
@@ -46,7 +56,10 @@ namespace
 using namespace hammertest::viewport_render;
 using hammer::render_adapter::AppendGrid;
 using hammer::render_adapter::AppendOverlay;
+using hammer::render_adapter::BuildMipChain;
 using hammer::render_adapter::BuildSceneGeometry;
+using hammer::render_adapter::ChunkOf;
+using hammer::render_adapter::MaterialImage;
 using hammer::render_adapter::LineVertex;
 using hammer::render_adapter::SceneGeometry;
 using hammer::render_adapter::TextureSize;
@@ -187,6 +200,29 @@ bool EdgeColorsIn( const SceneGeometry &g, double x0, double x1, Rgb color )
 	return any;
 }
 
+// The sRGB byte of the mean of 'bytes' in linear light, restated.
+int LinearMean( std::initializer_list<int> bytes )
+{
+	double sum = 0.0;
+	for ( int b : bytes )
+	{
+		const double c = b / 255.0;
+		sum += c <= 0.04045 ? c / 12.92 : std::pow( ( c + 0.055 ) / 1.055, 2.4 );
+	}
+	const double l = sum / double( bytes.size() );
+	const double c = l <= 0.0031308 ? l * 12.92 : 1.055 * std::pow( l, 1.0 / 2.4 ) - 0.055;
+	return int( std::lround( c * 255.0 ) );
+}
+
+MaterialImage Image( std::uint32_t width, std::uint32_t height, std::vector<std::uint8_t> rgba )
+{
+	MaterialImage image;
+	image.width = width;
+	image.height = height;
+	image.rgba = std::move( rgba );
+	return image;
+}
+
 // Pixel of a world point through a pass view.
 std::optional<hammer::viewport::ScreenPoint> Project( const lines::LinesView &view, Vec3d p )
 {
@@ -315,6 +351,56 @@ int main()
 		                 Batch( missing, "" ).size() == Batch( g, "" ).size() &&
 		                 Batch( zero, "" ).size() == Batch( g, "" ).size(),
 		    "G9.a-material-without-a-size-stays-untextured" );
+	}
+
+	// G10.
+	{
+		const auto chain =
+		    BuildMipChain( Image( 8, 4, std::vector<std::uint8_t>( 8 * 4 * 4, 77 ) ) );
+		bool sizes = chain.size() == 4;
+		const std::uint32_t want[4][2] = { { 8, 4 }, { 4, 2 }, { 2, 1 }, { 1, 1 } };
+		for ( std::size_t m = 0; sizes && m < 4; ++m )
+			sizes = chain[m].width == want[m][0] && chain[m].height == want[m][1] &&
+			        chain[m].rgba.size() == std::size_t( want[m][0] ) * want[m][1] * 4;
+		checks.That( sizes, "G10.an-8x4-image-has-four-levels-down-to-1x1" );
+		checks.That( sizes && chain[3].rgba == std::vector<std::uint8_t>{ 77, 77, 77, 77 },
+		    "G10.a-uniform-image-stays-uniform" );
+		// Black, white / white, black; alpha 255, 255 / 0, 0.
+		const auto checker = BuildMipChain(
+		    Image( 2, 2, { 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0 } ) );
+		const int mid = LinearMean( { 0, 255, 255, 0 } );
+		checks.That( checker.size() == 2 && checker[1].rgba[0] == mid &&
+		                 checker[1].rgba[1] == mid && checker[1].rgba[2] == mid && mid == 188,
+		    "G10.a-black-and-white-box-averages-in-linear-light" );
+		checks.That( checker.size() == 2 && checker[1].rgba[0] != 128,
+		    "G10.the-encoded-byte-average-is-rejected" );
+		checks.That(
+		    checker.size() == 2 && checker[1].rgba[3] == 128, "G10.alpha-averages-as-stored" );
+		// 3x1: 255, 0, 0 in red; the 1x1 level takes all three.
+		const auto odd =
+		    BuildMipChain( Image( 3, 1, { 255, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255 } ) );
+		checks.That( odd.size() == 2 && odd[1].width == 1 && odd[1].height == 1 &&
+		                 odd[1].rgba[0] == LinearMean( { 255, 0, 0 } ) && odd[1].rgba[0] == 156,
+		    "G10.an-odd-axis-last-box-takes-three-texels" );
+		checks.That( BuildMipChain( Image( 2, 2, std::vector<std::uint8_t>( 15, 0 ) ) ).empty() &&
+		                 BuildMipChain( Image( 0, 0, {} ) ).empty(),
+		    "G10.an-inconsistent-image-has-no-chain" );
+	}
+
+	// G11.
+	{
+		auto snapshot = Snapshot( d, false );
+		const auto full = FaceColor( BuildSceneGeometry( snapshot ), 64, 64, 192 );
+		std::erase_if( snapshot.solids,
+		    [&]( const hammer::viewport::SolidDraw &solid )
+		    {
+			    return solid.id == d.left;
+		    } );
+		const auto alone = FaceColor( BuildSceneGeometry( snapshot ), 64, 64, 192 );
+		checks.That( full && alone && *full == *alone, "G11.a-solid-keeps-its-fill-alone" );
+		checks.That( ChunkOf( ObjectId{ 63 } ) == 0 && ChunkOf( ObjectId{ 64 } ) == 1 &&
+		                 ChunkOf( ObjectId{ 200 } ) == 3,
+		    "G11.a-chunk-is-the-id-over-64" );
 	}
 
 	// G4.

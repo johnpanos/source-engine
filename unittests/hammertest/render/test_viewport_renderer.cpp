@@ -25,15 +25,26 @@
 //			   the textured one, and a material without a texture stays
 //			   untextured;
 //			V7 the null device exports no images: a renderer cannot export,
-//			   and an external frame is refused with kUnsupported.
+//			   and an external frame is refused with kUnsupported;
+//			V8 a $translucent material's batch is blended and drawn in a
+//			   second pass after every opaque batch, $alphatest stays in
+//			   the opaque pass; its texture is staged with its full mip
+//			   chain;
+//			V9 restaging is per chunk (id over 64): moving one solid
+//			   uploads exactly its chunk's face and edge meshes (the bytes
+//			   written equal that chunk's geometry, restated here, less
+//			   than the scene's), the same content under a new key uploads
+//			   nothing, and a chunk that empties is released.
 //
 //=============================================================================//
 
+#include "hammer/adapters/render/scene_geometry.h"
 #include "hammer/adapters/render/viewport_renderer.h"
 #include "render/device/null/provider.h"
 #include "testing/checks.h"
 #include "viewport_fixture.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace
@@ -68,22 +79,81 @@ Trace Recorded( render::device::IRenderDevice2 &device )
 	return trace;
 }
 
-// A 4x4 gray texture for DEV/DEV_MEASUREGENERIC01B; nothing for other names.
+// A 4x4 gray texture for DEV/DEV_MEASUREGENERIC01B, GLASS ($translucent) and
+// GRATE ($alphatest); nothing for other names.
 class FakeTextures final : public IMaterialTextures
 {
 public:
 	std::optional<MaterialImage> BaseTexture( const std::string &material ) override
 	{
 		asked.push_back( material );
-		if ( material != "DEV/DEV_MEASUREGENERIC01B" )
+		if ( material != "DEV/DEV_MEASUREGENERIC01B" && material != "GLASS" && material != "GRATE" )
 			return std::nullopt;
 		MaterialImage image;
 		image.width = image.height = 4;
 		image.rgba.assign( 4 * 4 * 4, 128 );
+		image.surface.translucent = material == "GLASS";
+		image.surface.alphaTest = material == "GRATE";
 		return image;
 	}
 	std::vector<std::string> asked;
 };
+
+// A one-face solid (a 128 x 128 quad at height z) of 'material'.
+hammer::viewport::SolidDraw Pane( std::uint64_t id, const std::string &material, double z )
+{
+	hammer::viewport::SolidDraw solid;
+	solid.id = ObjectId{ id };
+	hammer::viewport::FaceDraw face;
+	face.material = material;
+	face.vertices = {
+	    Vec3d( 64, -64, z ), Vec3d( 192, -64, z ), Vec3d( 192, 64, z ), Vec3d( 64, 64, z ) };
+	face.normal = Vec3d( 0, 0, 1 );
+	face.uAxis.axis = Vec3d( 1, 0, 0 );
+	face.vAxis.axis = Vec3d( 0, -1, 0 );
+	solid.faces.push_back( face );
+	solid.bounds = { Vec3d( 64, -64, z ), Vec3d( 192, 64, z ) };
+	return solid;
+}
+
+// The bytes of the face and edge meshes of the objects of 'chunk' (id over
+// 64, restated), as the renderer stages them.
+std::uint64_t ChunkBytes( const hammer::viewport::RenderSnapshot &snapshot, std::uint64_t chunk )
+{
+	hammer::viewport::RenderSnapshot part;
+	for ( const auto &solid : snapshot.solids )
+		if ( solid.id.value / 64 == chunk )
+			part.solids.push_back( solid );
+	for ( const auto &entity : snapshot.entities )
+		if ( entity.id.value / 64 == chunk )
+			part.entities.push_back( entity );
+	const hammer::render_adapter::SceneGeometry g =
+	    hammer::render_adapter::BuildSceneGeometry( part );
+	std::uint64_t bytes = g.edges.size() * sizeof( hammer::render_adapter::LineVertex );
+	for ( const auto &batch : g.faces )
+		bytes += batch.vertices.size() * sizeof( hammer::render_adapter::UnlitVertex );
+	return bytes;
+}
+
+struct Writes
+{
+	std::size_t count = 0;
+	std::uint64_t bytes = 0;
+};
+
+Writes BufferWrites( render::device::IRenderDevice2 &device )
+{
+	Writes writes;
+	for ( const nulldev::RecordedCommand &command : nulldev::Control( device )->Recorded() )
+	{
+		if ( command.op == nulldev::RecordedOp::kWriteBuffer )
+		{
+			++writes.count;
+			writes.bytes += command.count;
+		}
+	}
+	return writes;
+}
 
 } // namespace
 
@@ -256,5 +326,112 @@ int main()
 		                 refused.Error() == ViewportStatus::kUnsupported,
 		    "V7.an-external-frame-without-an-exporter-is-refused" );
 	}
+
+	// V8.
+	{
+		FakeTextures textures;
+		auto made = ViewportRenderer::Create( *device, &textures );
+		if ( !checks.That( made.HasValue(), "V8.a-textured-renderer" ) )
+			return checks.Report();
+		ViewportRenderer &renderer = *made.Value();
+		hammer::viewport::RenderSnapshot scene = Snapshot( d, false );
+		scene.solids.push_back( Pane( 500, "GLASS", 68 ) );
+		scene.solids.push_back( Pane( 501, "GRATE", 80 ) );
+		control->ClearRecorded();
+		checks.That( renderer.SetScene( scene, 1 ).HasValue(), "V8.staged" );
+		control->CompleteAll();
+		std::size_t copies = 0;
+		for ( const nulldev::RecordedCommand &command : control->Recorded() )
+			copies += command.op == nulldev::RecordedOp::kCopyBufferToTexture ? 1 : 0;
+		// Three 4x4 textures (4x4, 2x2, 1x1) and the renderer's 1x1 white.
+		checks.Equal(
+		    copies, std::size_t( 3 * 3 + 1 ), "V8.each-texture-uploads-its-three-levels" );
+		checks.That( renderer.Scene().blendedBatches == 1 && renderer.Scene().texturedBatches == 3,
+		    "V8.the-translucent-batch-alone-is-blended" );
+		const hammer::viewport::Camera3D eye = EyeCamera();
+		ViewRequest request;
+		request.kind = ViewKind::Camera3D;
+		request.camera3D = &eye;
+		request.pixelWidth = 64;
+		request.pixelHeight = 48;
+		control->ClearRecorded();
+		auto ticket = renderer.Render( request );
+		control->CompleteAll();
+		const Trace trace = Recorded( *device );
+		checks.Equal( trace.passes, 3u, "V8.opaque-then-blended-then-edges" );
+		// The opaque pass draws three batches (untextured, DEV and the grate's
+		// 6 vertices, in the draw list's order), the blended pass the glass
+		// pane (6), then the edges of the two chunks.
+		const bool opaqueFirst =
+		    trace.draws.size() == 6 &&
+		    trace.draws[0] + trace.draws[1] + trace.draws[2] + 6 == renderer.Scene().faceVertices &&
+		    std::count( trace.draws.begin(), trace.draws.begin() + 3, 6 ) == 1;
+		checks.That( ticket.HasValue() && renderer.LastView().blended == 1 &&
+		                 renderer.LastView().drawn == 4 && renderer.LastView().unresolved == 0 &&
+		                 opaqueFirst && trace.draws[3] == 6,
+		    "V8.the-translucent-batch-draws-after-every-opaque-one" );
+		if ( ticket )
+			(void)renderer.Take( ticket.Value() );
+	}
+
+	// V9.
+	{
+		auto made = ViewportRenderer::Create( *device );
+		if ( !checks.That( made.HasValue(), "V9.a-renderer" ) )
+			return checks.Report();
+		ViewportRenderer &renderer = *made.Value();
+		const hammer::viewport::RenderSnapshot spread = Spread( d, 70 ); // ids 128 to 197
+		checks.That( renderer.SetScene( spread, 1 ).HasValue() && renderer.Scene().chunks == 3 &&
+		                 renderer.Scene().stagedChunks == 3,
+		    "V9.a-scene-of-three-chunks-stages-each" );
+		control->CompleteAll();
+		const hammer::viewport::RenderSnapshot moved =
+		    Moved( spread, ObjectId{ 130 }, Vec3d( 16, 0, 0 ) );
+		control->ClearRecorded();
+		checks.That( renderer.SetScene( moved, 2 ).HasValue(), "V9.restaged" );
+		control->CompleteAll();
+		const Writes writes = BufferWrites( *device );
+		const std::uint64_t chunkBytes = ChunkBytes( moved, 2 );
+		std::uint64_t sceneBytes = 0;
+		for ( std::uint64_t chunk : { d.left.value / 64, std::uint64_t( 2 ), std::uint64_t( 3 ) } )
+			sceneBytes += ChunkBytes( moved, chunk );
+		checks.That( renderer.Scene().stagedChunks == 1 && renderer.Scene().stagedMeshes == 2 &&
+		                 writes.count == 2,
+		    "V9.moving-one-solid-uploads-its-chunks-face-and-edge-meshes" );
+		checks.That( writes.bytes == chunkBytes && chunkBytes < sceneBytes,
+		    "V9.the-bytes-written-are-that-chunks-geometry" );
+		const hammer::render_adapter::SceneGeometry whole =
+		    hammer::render_adapter::BuildSceneGeometry( moved );
+		std::uint32_t faceVertices = 0;
+		for ( const auto &batch : whole.faces )
+			faceVertices += std::uint32_t( batch.vertices.size() );
+		checks.That( renderer.Scene().faceVertices == faceVertices &&
+		                 renderer.Scene().edgeVertices == whole.edges.size() &&
+		                 renderer.Scene().triangles == whole.triangles,
+		    "V9.the-resident-totals-are-the-whole-scenes" );
+		control->ClearRecorded();
+		checks.That( renderer.SetScene( moved, 3 ).HasValue() &&
+		                 renderer.Scene().stagedChunks == 0 && BufferWrites( *device ).count == 0,
+		    "V9.the-same-content-under-a-new-key-uploads-nothing" );
+		control->CompleteAll();
+		(void)device->Poll();
+		const std::size_t live = device->LiveResourceCount();
+		hammer::viewport::RenderSnapshot fewer = moved;
+		std::erase_if( fewer.solids,
+		    []( const hammer::viewport::SolidDraw &solid )
+		    {
+			    return solid.id.value >= 192 && solid.id.value < 256;
+		    } );
+		checks.That( renderer.SetScene( fewer, 4 ).HasValue() && renderer.Scene().chunks == 2 &&
+		                 renderer.Scene().stagedMeshes == 0,
+		    "V9.a-chunk-that-empties-is-dropped" );
+		control->CompleteAll();
+		(void)device->Poll();
+		checks.That( device->LiveResourceCount() < live, "V9.its-meshes-are-released" );
+	}
+	(void)device->Poll();
+	control->CompleteAll();
+	(void)device->Poll();
+	checks.Equal( device->LiveResourceCount(), baseline, "V9.everything-is-released" );
 	return checks.Report();
 }

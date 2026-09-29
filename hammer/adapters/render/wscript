@@ -17,7 +17,7 @@ def configure(conf):
 def build(bld):
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
-		source    = [ 'scene_geometry.cpp', 'viewport_renderer.cpp',
+		source    = [ 'material_textures.cpp', 'scene_geometry.cpp', 'viewport_renderer.cpp',
 		              'viewport_service.cpp' ],
 		target    = 'hammer_render',
 		name      = 'hammer_render',
