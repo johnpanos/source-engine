@@ -93,6 +93,11 @@ public:
 	// Return intersection point of ray with screen in barycentric coords
 	bool IntersectWithRay( const Ray_t &ray, float *u, float *v, float *t );
 
+	// The screen's quad in the world: its lower-left corner, its full width
+	// and height along its axes, and its front normal (the side it is drawn
+	// on). For lights it emits (emissive_area_lights.h).
+	void GetWorldQuad( Vector *pLowerLeft, Vector *pWidth, Vector *pHeight, Vector *pNormal );
+
 	// Is the screen turned on?
 	bool IsActive() const;
 

@@ -2258,6 +2258,269 @@
       "expect": "pass"
     },
     {
+      "id": "render.area-light",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.area-light.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0011 light set v2 area lights: the exact form factor (Lambert's polygon formula clipped to the receiver's hemisphere) against numerical integration and parallel closed forms, sidedness, limits, reach and window, the model stand-in light; the emissive emitter fit (sampling, power, orientation, two-sided closed shapes, splitting) and per-frame selection with hysteresis",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_area_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.area-light.no-clip",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.area-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a form factor not clipped to the receiver's hemisphere must be rejected",
+      "extra_flags": [
+        "-DAREA_LIGHT_SEEDED_NO_CLIP"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_area_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.area-light.two-sided",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.area-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a one-sided light that also lights behind itself must be rejected",
+      "extra_flags": [
+        "-DAREA_LIGHT_SEEDED_TWO_SIDED"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_area_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.area-light.point",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.area-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: an area light evaluated as a point light at its center must be rejected",
+      "extra_flags": [
+        "-DAREA_LIGHT_SEEDED_POINT"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_area_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.area-light.no-power",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.area-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: an emitter fit that takes the triangles' mean radiance instead of keeping their power must be rejected",
+      "extra_flags": [
+        "-DAREA_LIGHT_SEEDED_NO_POWER"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_area_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.area-light.no-keep",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.area-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a selection without hysteresis must be rejected",
+      "extra_flags": [
+        "-DAREA_LIGHT_SEEDED_NO_KEEP"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_area_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.area-light.no-split",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.area-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: one rectangle for distant emitting patches of one group must be rejected",
+      "extra_flags": [
+        "-DAREA_LIGHT_SEEDED_NO_SPLIT"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_area_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.dynamic-occlusion",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.dynamic-occlusion.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0011 light blocked by moving objects: the segment/box test against a marched oracle over 4,000 rotated boxes, containment, a receiver's own boxes, area and disk penumbrae, distant lights, and how shadows from several lights mix",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_dynamic_occlusion.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.dynamic-occlusion.aabb",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.dynamic-occlusion.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: boxes tested without their rotation must be rejected",
+      "extra_flags": [
+        "-DDYNAMIC_OCCLUSION_SEEDED_AABB"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_dynamic_occlusion.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.dynamic-occlusion.no-self",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.dynamic-occlusion.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a model shadowed by its own boxes must be rejected",
+      "extra_flags": [
+        "-DDYNAMIC_OCCLUSION_SEEDED_NO_SELF"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_dynamic_occlusion.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.dynamic-occlusion.hard",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.dynamic-occlusion.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a light blocked entirely when any sample is (no penumbra) must be rejected",
+      "extra_flags": [
+        "-DDYNAMIC_OCCLUSION_SEEDED_HARD"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_dynamic_occlusion.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.dynamic-occlusion.shared",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.dynamic-occlusion.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: one visibility applied to every light (shadows that do not mix) must be rejected",
+      "extra_flags": [
+        "-DDYNAMIC_OCCLUSION_SEEDED_SHARED"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_dynamic_occlusion.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.projected-light",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.projected-light.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0011 env_projectedtexture as a light: the frustum projection against an independent matrix oracle over 40,000 points, the legacy flashlight shader's attenuation and end falloff, the Lambert term, the cookie coordinates, and the frustum's bounding sphere",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_projected_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.projected-light.no-end-falloff",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.projected-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: attenuation without the far-plane falloff must be rejected",
+      "extra_flags": [
+        "-DPROJECTED_LIGHT_SEEDED_NO_END_FALLOFF"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_projected_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.projected-light.swapped-fov",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.projected-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: horizontal and vertical fields of view swapped must be rejected",
+      "extra_flags": [
+        "-DPROJECTED_LIGHT_SEEDED_SWAPPED_FOV"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_projected_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.projected-light.no-lambert",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.projected-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: light without the receiver's Lambert term must be rejected",
+      "extra_flags": [
+        "-DPROJECTED_LIGHT_SEEDED_NO_LAMBERT"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_projected_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.portal-lights",
       "kind": "positive",
       "description": "render.portal-lights.v1 (RFC 0016 K7): dynamic lights through open portals. ReachesThroughPortal, decided in the entry portal's frame, agrees exactly with a reference that builds each pair from two frames and decides reach in the exit portal's frame, over 200 random pairs and 100,000 light/receiver samples (samples within 0.01 of a rectangle edge excluded); EntersPortal agrees with a sampled distance to the rectangle; the image transform and its inverse round-trip.",

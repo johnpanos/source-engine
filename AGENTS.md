@@ -659,6 +659,48 @@ Keep the table concise and link details below or from the domain progress file.
   - No Apple, Mali or Fold7 run. This closes no R29 criterion. See the
     [record](RFC/0007-progress.md#energy-compensation-one-glsl-brdf-and-grouped-descriptor-sets-r47--r29-prep-2026-09-25).
 
+- RFC 0011 area lights (light set v2): `partial` (2026-09-28, user
+  request). Emissive `$selfillum` model materials, the Portal 2 chamber signs
+  and the elevator screens publish area lights (`render.area-light.v1`,
+  `Snapshot::areas`).
+  - Legacy lightmaps take the exact form factor, and models an
+    irradiance-matched stand-in.
+  - Per-pixel LTC belongs to RFC 0016 K7 (source-engine-43).
+  - `render.area-light` passes 34 checks; 6 of 6 seeded defects are
+    rejected.
+  - World faces and overlays (chamber icons, exit signs) publish through the
+    same fit since 2026-09-28; the render core registers no lights.
+  - Fixtures: `sp_a1_intro6` and `sp_a2_core`.
+  - Not done: no occlusion; no displacement, WMSH, static-prop or
+    UnlitGeneric emitters; no Fold7 run.
+  - See the
+    [record](RFC/0011-progress.md#emissive-surfaces-as-area-lights-2026-09-28-user-request).
+- RFC 0011 moving objects block light (light set v2): `partial` (2026-09-28,
+  user request). Props, physics objects, NPC parts and doors publish boxes
+  (`render.dynamic-occlusion.v1`, `Snapshot::occluders`, keyed by entity
+  handle).
+  - Every light's blocked share is removed per lightmap texel, calibrated to
+    the bake, and per model light, so shadows from several lights mix.
+  - Blob shadows are off while this is active.
+  - `render.dynamic-occlusion` passes 13 checks; 4 of 4 seeded defects are
+    rejected. It costs 0.002–0.02 ms/frame at rest.
+  - Not done: model ambient cube, static props, dlights and area lights; no
+    Fold7 run.
+  - See the
+    [record](RFC/0011-progress.md#moving-objects-block-light-2026-09-28-user-request).
+- RFC 0011 projected lights (light set v2): `partial` (2026-09-28, user
+  request). `env_projectedtexture` is a light of the light model
+  (`render.projected-light.v1`, `Snapshot::projected`).
+  - It lights world lightmaps and models by the flashlight shader's rule,
+    shadowed by the world and moving objects, and replaces the unshadowed
+    legacy flashlight pass.
+  - `render.projected-light` passes 9 checks; 3 of 3 seeded defects are
+    rejected.
+  - Fixed on the way: a projected-texture use-after-free that crashed
+    `sp_a2_core` with shadow depth on.
+  - Per-pixel evaluation belongs to K7.
+  - See the
+    [record](RFC/0011-progress.md#projected-lights-and-sp_a2_core-2026-09-28-user-request).
 - R50-PARALLAX: `partial` (2026-09-25, user direction), a bounded R50
   slice. Scene maps carry automatically placed reflection probes in RFC
   0008's `RPRB` lump:

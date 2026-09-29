@@ -53,6 +53,7 @@
 #include "tier1/lzmaDecoder.h"
 #include "ipooledvballocator.h"
 #include "shaderapi/ishaderapi.h"
+#include "dynamic_occlusion.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -296,8 +297,20 @@ bool WorldLightToMaterialLight( dworldlight_t* pWorldLight, LightDesc_t& light )
 // Sets the hardware lighting state
 //-----------------------------------------------------------------------------
 
+// A renderable's entity handle: the key its occluders are published under
+// (render.dynamic-occlusion.v1); 0 for one without an entity.
+static int R_RenderableEntityKey( IClientRenderable *pRenderable )
+{
+	IClientUnknown *pUnknown = pRenderable ? pRenderable->GetIClientUnknown() : NULL;
+	return pUnknown ? pUnknown->GetRefEHandle().ToInt() : 0;
+}
+
+// `pReceiver`: the model's lighting origin; each light is scaled by how much of
+// it moving objects let through (render.dynamic-occlusion.v1), the model's own
+// boxes (`nSelf`) ignored. Null: no occlusion.
 static void R_SetNonAmbientLightingState( int numLights, dworldlight_t *locallight[MAXLOCALLIGHTS],
-										  int *pNumLightDescs, LightDesc_t *pLightDescs, bool bUpdateStudioRenderLights )
+    int *pNumLightDescs, LightDesc_t *pLightDescs, bool bUpdateStudioRenderLights,
+    const Vector *pReceiver = NULL, int nSelf = 0 )
 {
 	Assert( numLights >= 0 && numLights <= MAXLOCALLIGHTS );
 
@@ -313,6 +326,10 @@ static void R_SetNonAmbientLightingState( int numLights, dworldlight_t *locallig
 
 		// Apply lightstyle
 		float bias = LightStyleValue( locallight[i]->style );
+
+		// and the share moving objects let through
+		if ( pReceiver && DynamicOcclusion_Enabled() )
+			bias *= DynamicOcclusion_ModelVisibility( *locallight[i], *pReceiver, nSelf );
 
 		// Deal with overbrighting + bias
 		pLightDesc->m_Color[0] *= bias;
@@ -1699,7 +1716,8 @@ void CModelRender::StudioSetupLighting( const DrawModelState_t &state, const Vec
 
 		pRenderContext->SetAmbientLight( 0.0, 0.0, 0.0 );
 		R_SetNonAmbientLightingState( pState->numlights, pState->locallight,
-			                          &drawInfo.m_nLocalLightCount, &drawInfo.m_LocalLightDescs[0], true );
+		    &drawInfo.m_nLocalLightCount, &drawInfo.m_LocalLightDescs[0], true, &vLightingOrigin,
+		    R_RenderableEntityKey( pInfo.pRenderable ) );
 
 		// Cache lighting for decals.
 		if( pModelInst && drawInfo.m_bStaticLighting && bHasDecals )
@@ -3116,7 +3134,9 @@ int CModelRender::DrawStaticPropArrayFast( StaticPropRenderInfo_t *pProps, int c
 			LightingState_t *pState = &lightStates[obj.lightIndex];
 			g_pStudioRender->SetAmbientLightColors( pState->r_boxcolor );
 			pRenderContext->SetLightingOrigin( *obj.pLightingOrigin );
-			R_SetNonAmbientLightingState( pState->numlights, pState->locallight, &nLocalLightCount, localLightDescs, true );
+			R_SetNonAmbientLightingState( pState->numlights, pState->locallight, &nLocalLightCount,
+			    localLightDescs, true, obj.pLightingOrigin,
+			    R_RenderableEntityKey( obj.pRenderable ) );
 			info.m_pStudioHdr = model.pStudioHdr;
 			info.m_pHardwareData = model.pStudioHWData;
 			info.m_Skin = obj.skin;
@@ -3156,7 +3176,8 @@ int CModelRender::DrawStaticPropArrayFast( StaticPropRenderInfo_t *pProps, int c
 		LightingState_t *pState = &lightStates[decalObjects[i].lightIndex];
 		g_pStudioRender->SetAmbientLightColors( pState->r_boxcolor );
 		pRenderContext->SetLightingOrigin( *obj.pLightingOrigin );
-		R_SetNonAmbientLightingState( pState->numlights, pState->locallight, &nLocalLightCount, localLightDescs, true );
+		R_SetNonAmbientLightingState( pState->numlights, pState->locallight, &nLocalLightCount,
+		    localLightDescs, true, obj.pLightingOrigin, R_RenderableEntityKey( obj.pRenderable ) );
 		info.m_pStudioHdr = model.pStudioHdr;
 		info.m_pHardwareData = model.pStudioHWData;
 		info.m_Decals = m_ModelInstances[obj.instance].m_DecalHandle;

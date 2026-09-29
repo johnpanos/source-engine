@@ -17,6 +17,7 @@
 //===========================================================================//
 
 #include "indirect_light_host.h"
+#include "dynamic_occlusion.h"
 #include "indirect_light_defaults.h"
 
 #include "bspflags.h"
@@ -438,12 +439,34 @@ gpu_compute::IGpuCompute *GpuCompute()
 	return RenderCoreHost_GpuCompute();
 }
 
-// Moving geometry the static field lacks: every drawn brush entity (a door,
-// a func_brush), as its world-space bounds. The producer takes the first
+// Moving geometry the static field lacks: the frame's moving objects
+// (render.dynamic-occlusion.v1: props, physics objects, doors, moving
+// brushes), each box as its world-space bounds; without them (a client that
+// publishes none) every drawn brush entity. The producer takes the first
 // kMaxProxies.
 void GatherProxies( std::vector<Proxy> *out )
 {
 	out->clear();
+	const std::vector<OccluderEntry> &boxes = DynamicOcclusion_Get( DynamicOcclusion_Generation() );
+	if ( !boxes.empty() )
+	{
+		for ( const OccluderEntry &entry : boxes )
+		{
+			if ( out->size() >= SdfTraceParams::kMaxProxies )
+				break;
+			Proxy proxy;
+			for ( int k = 0; k < 3; ++k )
+			{
+				const float extent = std::fabs( entry.box.axes[0][k] ) +
+				                     std::fabs( entry.box.axes[1][k] ) +
+				                     std::fabs( entry.box.axes[2][k] );
+				proxy.lo[k] = entry.box.center[k] - extent;
+				proxy.hi[k] = entry.box.center[k] + extent;
+			}
+			out->push_back( proxy );
+		}
+		return;
+	}
 	if ( !entitylist )
 		return;
 	const int highest = entitylist->GetHighestEntityIndex();

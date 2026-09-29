@@ -82,7 +82,7 @@
 #include "toolframework_client.h"
 #include "bonetoworldarray.h"
 #include "cmodel.h"
-
+#include "dynamic_occluders.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -2823,6 +2823,15 @@ void CClientShadowMgr::PreRender()
 	VPROF_BUDGET( "CClientShadowMgr::PreRender", VPROF_BUDGETGROUP_SHADOW_RENDERING );
 	MDLCACHE_CRITICAL_SECTION();
 
+	// Blob shadows give way to per-light occlusion when it turns on, and come
+	// back when it turns off (dynamic_occluders.h).
+	static bool s_bOccluding = false;
+	if ( DynamicOccluders_Active() != s_bOccluding )
+	{
+		s_bOccluding = DynamicOccluders_Active();
+		UpdateAllShadows();
+	}
+
 	//
 	// -- Shadow Depth Textures -----------------------
 	//
@@ -3066,6 +3075,16 @@ void CClientShadowMgr::UpdateShadow( ClientShadowHandle_t handle, bool force )
 		s_bBreak = false;
 	}
 #endif
+	// Moving objects block light through the engine (render.dynamic-occlusion.v1,
+	// dynamic_occluders.cpp): their light is shadowed per light in lightmaps and
+	// model lighting, so no blob shadow is drawn.
+	if ( DynamicOccluders_Active() )
+	{
+		shadowmgr->EnableShadow( shadow.m_ShadowHandle, false );
+		pRenderable->MarkShadowDirty( false );
+		return;
+	}
+
 	// Hierarchical children shouldn't be projecting shadows...
 	// Check to see if it's a child of an entity with a render-to-texture shadow...
 	if ( ShouldUseParentShadow( pRenderable ) || WillParentRenderBlobbyShadow( pRenderable ) )

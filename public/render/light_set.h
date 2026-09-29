@@ -21,6 +21,21 @@
 //          Units: positions in Source units, colors linear and scaled by the
 //          light's current scalar; no native or engine types.
 //
+//          Area lights (v2). Light that leaves an emitting surface
+//          (render/area_light.h: a rectangle, its radiance and reach) is
+//          published in `Snapshot::areas`, never in `lights`: a consumer that
+//          does not evaluate area lights ignores them rather than taking them
+//          for points. An area light is keyed like a dynamic light (its dlight
+//          slot and key) and is never baked.
+//
+//          Projected lights (v2). env_projectedtextures in
+//          `Snapshot::projected` (render/projected_light.h), never in `lights`,
+//          with versions.
+//
+//          Occluders (v2). The frame's moving objects as boxes
+//          (render/dynamic_occlusion.h) in `Snapshot::occluders`, keyed by
+//          entity handle and part, with versions that change when a box moves.
+//
 //===========================================================================//
 
 #ifndef RENDER_LIGHT_SET_H
@@ -28,6 +43,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "render/area_light.h"
+#include "render/dynamic_occlusion.h"
+#include "render/projected_light.h"
+
 #include <cmath>
 #include <map>
 #include <span>
@@ -41,6 +60,7 @@ enum class LightKind : uint8_t
 	World,   // LUMP_WORLDLIGHTS (or World Stage lights)
 	Dynamic, // dlight_t
 	Entity,  // elight (model-only dynamic light)
+	Area,    // an emitting surface (only in Snapshot::areas)
 };
 
 enum class LightShape : uint8_t
@@ -83,11 +103,40 @@ struct RuntimeLight
 	float styleScalar = 1.0f;
 };
 
+// An area light in the frame (render/area_light.h), its identity kept as a
+// dynamic light's is.
+struct RuntimeAreaLight
+{
+	uint32_t id = 0;
+	area_light::AreaLight light;
+};
+
+// A moving object's box in the frame (render/dynamic_occlusion.h), keyed by
+// ( entity handle, part ); its version changes whenever its pose does.
+struct RuntimeOccluder
+{
+	dynamic_occlusion::Box box;
+	uint32_t version = 0;
+};
+
+// An env_projectedtexture in the frame (render/projected_light.h): its frustum,
+// cookie and falloff, keyed by the client's key (its entity handle), with a
+// version that changes whenever the light does.
+struct RuntimeProjectedLight
+{
+	int key = 0;
+	uint32_t version = 0;
+	projected_light::Light light;
+};
+
 struct Snapshot
 {
 	uint64_t mapSerial = 0;
 	uint64_t epoch = 0; // advances by one per built frame
 	std::vector<RuntimeLight> lights;
+	std::vector<RuntimeAreaLight> areas;          // v2: emitting surfaces
+	std::vector<RuntimeOccluder> occluders;       // v2: moving objects that block light
+	std::vector<RuntimeProjectedLight> projected; // v2: projected textures
 	// Every light style's current scalar (1 is its baked value): the lights
 	// a map carries only in its bake (RTRN sources) are switched by style.
 	std::vector<float> styleScalars;
@@ -125,6 +174,13 @@ struct DynamicLightInput
 	float minLight = 0.0f;
 	LightFalloff falloff = LightFalloff::Legacy;
 	bool spot = false;
+};
+
+struct AreaLightInput
+{
+	uint32_t slot = 0;
+	int key = 0;
+	area_light::AreaLight light;
 };
 
 // A dynamic light's distance falloff, as Source adds a dlight to a lightmap
@@ -184,7 +240,8 @@ public:
 
 	// `styleScalars[s]` is style s's current scalar; a style outside it is 1.
 	[[nodiscard]] Snapshot Build( std::span<const WorldLightInput> world,
-	    std::span<const float> styleScalars, std::span<const DynamicLightInput> dynamic )
+	    std::span<const float> styleScalars, std::span<const DynamicLightInput> dynamic,
+	    std::span<const AreaLightInput> areas = {} )
 	{
 		Snapshot snapshot;
 		snapshot.mapSerial = m_mapSerial;
@@ -242,6 +299,19 @@ public:
 			light.sourceRadius =
 			    input.falloff == LightFalloff::InverseSquare ? kInverseSquareSourceRadius : 0.0f;
 			snapshot.lights.push_back( light );
+		}
+		for ( const AreaLightInput &input : areas )
+		{
+			const Key key{ uint8_t( LightKind::Area ), input.slot, input.key };
+			if ( live.count( key ) )
+				continue;
+			const auto previous = m_live.find( key );
+			const uint32_t id = previous != m_live.end() ? previous->second : m_nextDynamic++;
+			live[key] = id;
+			RuntimeAreaLight area;
+			area.id = id;
+			area.light = input.light;
+			snapshot.areas.push_back( area );
 		}
 		// A light absent this frame loses its identity: if its slot and key
 		// return, it is a new light.

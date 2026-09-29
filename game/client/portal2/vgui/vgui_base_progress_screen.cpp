@@ -199,6 +199,8 @@ CVGUI_Base_ProgressSignScreen::CVGUI_Base_ProgressSignScreen( vgui::Panel *pPare
 	m_bShownOnce = false;
 	m_nBaseBrightness = 0;
 	m_flDisabledIconAlpha = 0.0f;
+	m_bHasBoardRadiance = false;
+	m_BoardRadiance[0] = m_BoardRadiance[1] = m_BoardRadiance[2] = 0.0f;
 
 	SetScheme( "basemodui_scheme" );
 
@@ -216,6 +218,7 @@ CVGUI_Base_ProgressSignScreen::CVGUI_Base_ProgressSignScreen( vgui::Panel *pPare
 
 CVGUI_Base_ProgressSignScreen::~CVGUI_Base_ProgressSignScreen()
 {
+	EmissiveAreaLights_RemoveSource( this );
 	if ( vgui::surface() )
 	{
 		int nTextures[] = { m_nBoardTextureID, m_nNumbersTextureID, m_nBarTextureID, m_nIconsTextureID };
@@ -254,6 +257,10 @@ bool CVGUI_Base_ProgressSignScreen::Init( KeyValues *pKeyValues, VGuiScreenInitD
 
 	m_flDisabledIconAlpha = 134.0f;
 	m_nBaseBrightness = 140;
+
+	m_bHasBoardRadiance = EmissiveAreaLights_MaterialRadiance(
+	    "vgui/screens/vgui_coop_progress_board", m_BoardRadiance );
+	EmissiveAreaLights_AddSource( this );
 
 	vgui::ivgui()->AddTickSignal( GetVPanel() );
 
@@ -374,6 +381,44 @@ float CVGUI_Base_ProgressSignScreen::UpdateFlicker( void )
 	}
 
 	return flAlpha;
+}
+
+//-----------------------------------------------------------------------------
+// The lit board as an area light: the screen's quad, its board's mean color
+// at the brightness it paints (the startup flicker included; before it has
+// painted, its steady brightness).
+//-----------------------------------------------------------------------------
+int CVGUI_Base_ProgressSignScreen::GetAreaLights(
+    area_light::AreaLight *pLights, int *pKeys, int nMax )
+{
+	C_VGuiScreen *pScreen = dynamic_cast<C_VGuiScreen *>( GetEntity() );
+	if ( nMax < 1 || !m_bHasBoardRadiance || !pScreen || pScreen->IsDormant() ||
+	     !pScreen->IsActive() || pScreen->IsEffectActive( EF_NODRAW ) )
+		return 0;
+
+	Vector lowerLeft, width, height, normal;
+	pScreen->GetWorldQuad( &lowerLeft, &width, &height, &normal );
+	area_light::AreaLight &light = pLights[0];
+	light = area_light::AreaLight();
+	const Vector center = lowerLeft + 0.5f * width + 0.5f * height;
+	Vector halfU = 0.5f * width, halfV = 0.5f * height;
+	// Front (halfU x halfV) on the drawn side.
+	if ( DotProduct( CrossProduct( halfU, halfV ), normal ) < 0.0f )
+		halfV = -halfV;
+	for ( int k = 0; k < 3; ++k )
+	{
+		light.rect.center[k] = center[k];
+		light.rect.halfU[k] = halfU[k];
+		light.rect.halfV[k] = halfV[k];
+	}
+	const int nBrightness =
+	    ( m_bFlickering || m_nBrightness > 0 ) ? m_nBrightness : m_nBaseBrightness;
+	const float flScale = SrgbGammaToLinear( nBrightness / 255.0f );
+	for ( int k = 0; k < 3; ++k )
+		light.radiance[k] = m_BoardRadiance[k] * flScale;
+	light.reach = area_light::Reach( light.rect, light.radiance );
+	pKeys[0] = EmissiveAreaLights_PanelKey( pScreen->entindex() );
+	return light.reach > 0.0f ? 1 : 0;
 }
 
 void CVGUI_Base_ProgressSignScreen::PaintBoardBackground( void )

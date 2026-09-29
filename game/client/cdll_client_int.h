@@ -80,6 +80,21 @@ namespace indirect_portals
 class IIndirectLightPortals;
 }
 extern indirect_portals::IIndirectLightPortals *indirectlightportals;
+namespace area_light
+{
+class IAreaLights;
+}
+extern area_light::IAreaLights *arealights;
+namespace dynamic_occlusion
+{
+class IOccluders;
+}
+extern dynamic_occlusion::IOccluders *occluders;
+namespace projected_light
+{
+class IProjectedLights;
+}
+extern projected_light::IProjectedLights *projectedlights;
 extern IVRenderView *render;
 extern IVDebugOverlay *debugoverlay;
 extern IMaterialSystem *materials;

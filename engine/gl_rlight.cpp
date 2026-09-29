@@ -19,6 +19,7 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "portal_dlights.h"
+#include "area_lights.h"
 
 #include "tier0/memdbgon.h"
 
@@ -133,6 +134,17 @@ int R_TryLightMarkSurface( dlight_t *light, msurfacelighting_t *pLighting, Surfa
 	mtexinfo_t	*tex;
 
 	// FIXME: No worky for brush models
+
+	// An area light marks only surfaces that do not hold its current version
+	// (area_lights.h), so an unchanged light rebuilds nothing.
+	if ( light->flags & DLIGHT_AREA )
+	{
+		int slot = 0;
+		while ( slot < MAX_DLIGHTS && ( bit & ( 1 << slot ) ) == 0 )
+			++slot;
+		if ( !AreaLights_ShouldMark( slot, surfID, AreaLights_IsWorldSurface( surfID ) ) )
+			return 0;
+	}
 
 	// Find the perpendicular distance to the surface we're lighting
 	// NOTE: Allow some stuff that's slightly behind it because view models can get behind walls

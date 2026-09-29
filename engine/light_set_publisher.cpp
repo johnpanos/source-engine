@@ -7,6 +7,9 @@
 
 #include "light_set_publisher.h"
 
+#include "area_lights.h"
+#include "dynamic_occlusion.h"
+#include "projected_lights.h"
 #include "indirect_light_host.h"
 
 #include "cl_main.h"
@@ -57,7 +60,9 @@ void GatherDynamic( const dlight_t *lights, int count, LightKind kind, unsigned 
 	for ( int i = 0; i < count; ++i )
 	{
 		const dlight_t &dl = lights[i];
-		if ( !dl.IsRadiusGreaterThanZero() || ( skip & ( 1u << i ) ) != 0 )
+		// Area lights are published as areas (LightSet_PublishFrame), not points.
+		if ( !dl.IsRadiusGreaterThanZero() || ( skip & ( 1u << i ) ) != 0 ||
+		     ( dl.flags & DLIGHT_AREA ) != 0 )
 			continue;
 		DynamicLightInput input;
 		input.kind = kind;
@@ -130,7 +135,34 @@ void LightSet_PublishFrame()
 	GatherDynamic(
 	    cl_dlights, MAX_DLIGHTS, LightKind::Dynamic, PortalDLights_ImageMask(), &dynamic );
 	GatherDynamic( cl_elights, MAX_ELIGHTS, LightKind::Entity, 0, &dynamic );
-	Snapshot snapshot = s_builder.Build( worldLights, styles, dynamic );
+	std::vector<AreaLightInput> areas;
+	for ( int slot = 0; slot < MAX_DLIGHTS; ++slot )
+	{
+		const AreaLightSlot *area = AreaLights_ForSlot( slot );
+		if ( !area )
+			continue;
+		AreaLightInput input;
+		input.slot = uint32_t( slot );
+		input.key = area->key;
+		input.light = area->light;
+		areas.push_back( input );
+	}
+	Snapshot snapshot = s_builder.Build( worldLights, styles, dynamic, areas );
+	for ( const ProjectedLightEntry &entry : ProjectedLights_Get( ProjectedLights_Generation() ) )
+	{
+		RuntimeProjectedLight projected;
+		projected.key = entry.key;
+		projected.version = entry.version;
+		projected.light = entry.light;
+		snapshot.projected.push_back( projected );
+	}
+	for ( const OccluderEntry &entry : DynamicOcclusion_Get( DynamicOcclusion_Generation() ) )
+	{
+		RuntimeOccluder occluder;
+		occluder.box = entry.box;
+		occluder.version = entry.version;
+		snapshot.occluders.push_back( occluder );
+	}
 	// Renderers with a direct-light budget rank lights from the last main view.
 	snapshot.hasView = true;
 	for ( int k = 0; k < 3; ++k )
@@ -142,12 +174,21 @@ void LightSet_PublishFrame()
 	if ( r_lightset_report.GetBool() )
 	{
 		r_lightset_report.SetValue( 0 );
-		int counts[3] = {};
+		int counts[4] = {};
 		for ( const RuntimeLight &light : snapshot.lights )
 			++counts[int( light.kind )];
-		Msg( "light set map %llu epoch %llu: %d world, %d dynamic, %d entity\n",
+		Msg( "light set map %llu epoch %llu: %d world, %d dynamic, %d entity, %zu area, %zu "
+		     "projected, %zu occluder box(es)\n",
 		    (unsigned long long)snapshot.mapSerial, (unsigned long long)snapshot.epoch, counts[0],
-		    counts[1], counts[2] );
+		    counts[1], counts[2], snapshot.areas.size(), snapshot.projected.size(),
+		    snapshot.occluders.size() );
+		for ( const RuntimeAreaLight &area : snapshot.areas )
+		{
+			const area_light::AreaLight &l = area.light;
+			Msg( "  area %u: at %.0f %.0f %.0f area %.1f radiance %.3f %.3f %.3f reach %.0f\n",
+			    area.id, l.rect.center[0], l.rect.center[1], l.rect.center[2],
+			    area_light::Area( l.rect ), l.radiance[0], l.radiance[1], l.radiance[2], l.reach );
+		}
 		// The direct-light rank of each light (render/direct_light_selection.h);
 		// a renderer with a budget of N takes ranks 1..N.
 		const std::vector<size_t> ranked = SelectDirectLights( snapshot, snapshot.lights.size() );

@@ -278,6 +278,137 @@ native types. RFC 0008 F5's clustered direct lighting consumes the same
 snapshot. That gives one owner for "which lights exist" and removes the need
 for the engine light cache and a renderer light list to be kept in sync.
 
+### Area lights (light set v2, amendment 2026-09-28)
+
+Added at the user's direction: emissive surfaces light their surroundings
+from the surface itself, not from a point or a spot. The contract lives in
+`public/render/area_light.h` (`render.area-light.v1`); the light set carries
+it as version 2.
+
+- **Shape and units.** An area light is an oriented rectangle, one- or
+  two-sided, of uniform radiance in the lightmap's unit (radiance 1 shows a
+  white surface under lightmap 1). A receiver gets radiance times the form
+  factor clipped to its hemisphere (Lambert's polygon formula), times a
+  window that reaches 0 at the light's reach. The reach is where the on-axis
+  far-field light falls to 1/256, capped at 768 units. Every consumer applies
+  the same definitions; `area_light::IrradianceAt` is the oracle the CPU and
+  GPU evaluations are judged against.
+- **Snapshot.** Area lights are published in `Snapshot::areas`, never in
+  `lights`, so a consumer that does not evaluate them ignores them instead of
+  taking them for points. They are keyed like dynamic lights and are never
+  baked.
+- **Sources.** The client publishes them
+  (`game/client/emissive_area_lights.cpp`, `VEngineAreaLights001`):
+  - `$selfillum` model materials, fitted to rectangles per bone, material
+    and facing, with power kept (`public/render/emissive_area_lights.h`);
+  - lit screens that register as sources: the Portal 2 chamber signs and
+    elevator video screens.
+
+  At most `r_area_lights` are lit (8, the desktop budget), ranked at the
+  view.
+- **Consumers (first slice).**
+  - The engine carries each light in a black dlight slot flagged
+    `DLIGHT_AREA` (`engine/area_lights.cpp`).
+  - Legacy lightmaps take the exact form factor per luxel and bump basis.
+    A light marks only surfaces that don't hold its current version, so an
+    unchanged light costs no rebuild.
+  - Models take a stand-in point light, irradiance-matched at their lighting
+    origin.
+- **Consumers (later).**
+  - Per-pixel LTC (Heitz et al. 2016), diffuse plus GGX, belongs to RFC 0016
+    K7's clustered pass and the core's families (source-engine-43). Its LUTs
+    go in the frame group.
+  - The native legacy ports stay unchanged, because they are judged against
+    the retail bytecode.
+- **Known gaps.**
+  - There is no occlusion: a light reaches through a wall within its reach.
+    SDF shadowing is the later fix, and a failing sign-behind-a-wall fixture
+    will be its oracle.
+  - Displacements, the WMSH world and static props' emitters are not
+    covered, and area lights are not imaged through portals.
+  - Movie screens emit a fixed mean radiance, because their frames are not
+    on the CPU.
+- **Budget.** 8 area lights per view on desktop and 4 on the Fold7. The
+  CPU lightmap cost is measured per frame by `r_area_lights_report`. The
+  GPU cost target for K7's LTC is at most 0.3 ms at 1080p on desktop; the
+  Fold7 cost stays pending until it is measured.
+
+### Moving objects block light (light set v2, amendment 2026-09-28)
+
+Added at the user's direction. Shadows from anything that moves (props,
+physics objects, NPCs, doors) come from every light that reaches it, mix
+between lights, and follow one rule for every object and every receiver. The
+contract lives in `public/render/dynamic_occlusion.h`
+(`render.dynamic-occlusion.v1`); the light set carries the occluders as
+version 2 (`Snapshot::occluders`).
+
+- **Occluders.** Each frame the client publishes boxes
+  (`VEngineOccluders001`):
+  - hitboxes on bones for animated models;
+  - collision boxes for props and doors.
+
+  Boxes are keyed by entity handle and part; the render core's scene
+  instances use the same key. The engine versions each box and bumps the
+  version on any pose change. Hollow pieces larger than radius 160 (elevator
+  cars) are left out.
+- **Visibility.** A light reaches a receiver through the share of its samples
+  that no box blocks:
+  - point, spot and surface lights are sampled over a small disk, so shadows
+    have penumbrae;
+  - area lights are sampled over their rectangle;
+  - distant lights are sampled far up their direction.
+
+  Each light is judged on its own, so shadows mix. A model ignores its own
+  boxes.
+- **Consumers.**
+  - World lightmaps lose each light's blocked share of its direct light,
+    wherever the bake let that light reach the texel (a cached world trace).
+    The direct light comes from the engine's world-light formula, scaled to
+    the texel's baked light so a shadow never removes more than the texel
+    holds.
+  - Model lighting scales each local light by its visibility.
+  - The GI path's proxies (SDF, ray query, `DirectOcclusion`) take the same
+    boxes.
+  - The render core's K7 shadows render real meshes, and can key casters by
+    the same entity handles and versions.
+- **Replaces.** Blob and render-to-texture shadows are not drawn while this
+  is active (`r_dynamic_occlusion 1`, the default).
+- **Cost.**
+  - A box at rest costs nothing after its first build: each surface caches
+    its blocked light while the nearby boxes' versions hold.
+  - A changed box dirties the surfaces within its shadow reach (6 × its
+    radius, at most 384 units).
+- **Known gaps.**
+  - Boxes approximate shapes.
+  - The ambient cube of model lighting, static props' baked vertex light,
+    displacements, dlights and area lights are not occluded yet.
+
+### Projected lights (light set v2, amendment 2026-09-28)
+
+Added at the user's direction: an `env_projectedtexture` is a light of the
+light model, not a separate flashlight pass. The contract lives in
+`public/render/projected_light.h` (`render.projected-light.v1`); the light
+set carries it in `Snapshot::projected`, with versions.
+
+- **Rule.** The legacy flashlight shader's rule (`DoFlashlight`):
+
+      color x cookie x saturate( c + l / d + q / d^2 ) x endFalloff x N.L
+
+  over its perspective frustum, in the lightmap unit.
+- **Shadows.** The world shadows it (a cached trace) and moving objects shadow
+  it (`render.dynamic-occlusion.v1`). The legacy pass was unshadowed on native
+  Vulkan, which has no shadow depth textures.
+- **Consumers.**
+  - World lightmaps per texel, with bump vectors.
+  - Models and static props through an irradiance-matched stand-in, kept per
+    lightcache entry while the lights' versions hold.
+  - The render core's K7 shadow atlas renders it per pixel later.
+  - While this is active (`r_projected_lights 1`), the client draws no
+    flashlight pass for it. A light limited to its target entity keeps the
+    pass.
+- **Cost.** A projector at rest costs nothing after its first build. A
+  changed projector rebuilds the surfaces within its frustum's bounding sphere.
+
 ## Producer contract (`render.indirect-light.v1`)
 
 Illustrative shape (final names follow the header review):

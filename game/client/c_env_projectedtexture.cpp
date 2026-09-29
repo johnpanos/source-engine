@@ -13,6 +13,8 @@
 #include "view_shared.h"
 #include "texture_group_names.h"
 #include "tier0/icommandline.h"
+#include "materialsystem/MaterialSystemUtil.h"
+#include "projected_lights.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -72,6 +74,11 @@ private:
 	float	m_flNearZ;
 	float	m_flFarZ;
 	char	m_SpotlightTextureName[ MAX_PATH ];
+	// The spotlight texture, referenced while the light uses it: the engine's
+	// flashlight state keeps a raw pointer, and an unreferenced texture is
+	// freed when a map finishes loading.
+	CTextureReference m_SpotlightTexture;
+	char m_SpotlightTextureLoaded[MAX_PATH];
 	int		m_nSpotlightTextureFrame;
 	int		m_nShadowQuality;
 };
@@ -111,6 +118,7 @@ END_RECV_TABLE()
 C_EnvProjectedTexture::C_EnvProjectedTexture( void )
 {
 	m_LightHandle = CLIENTSHADOW_INVALID_HANDLE;
+	m_SpotlightTextureLoaded[0] = '\0';
 #ifdef PORTAL2
 	m_CurrentLinearFloatLightColor.Init();
 	m_flCurrentLinearFloatLightAlpha = -1.0f;	// snap to the first networked color
@@ -272,10 +280,48 @@ void C_EnvProjectedTexture::UpdateLight( bool bForceUpdate )
 	state.m_flShadowSlopeScaleDepthBias = mat_slopescaledepthbias_shadowmap.GetFloat();
 	state.m_flShadowDepthBias = mat_depthbias_shadowmap.GetFloat();
 	state.m_bEnableShadows = m_bEnableShadows;
-	state.m_pSpotlightTexture = materials->FindTexture( m_SpotlightTextureName, TEXTURE_GROUP_OTHER, false );
+	if ( !m_SpotlightTexture.IsValid() ||
+	     V_strcmp( m_SpotlightTextureLoaded, m_SpotlightTextureName ) != 0 )
+	{
+		m_SpotlightTexture.Init( m_SpotlightTextureName, TEXTURE_GROUP_OTHER, false );
+		V_strncpy(
+		    m_SpotlightTextureLoaded, m_SpotlightTextureName, sizeof( m_SpotlightTextureLoaded ) );
+	}
+	state.m_pSpotlightTexture = m_SpotlightTexture;
 	state.m_nSpotlightTextureFrame = m_nSpotlightTextureFrame;
 
 	state.m_nShadowQuality = m_nShadowQuality; // Allow entity to affect shadow quality
+
+	// RFC 0011 render.projected-light.v1: a light of the light model, lighting
+	// the world and models, shadowed by the world and moving objects, in place
+	// of the flashlight pass (projected_lights.h). A light limited to its
+	// target entity keeps the flashlight pass: the model cannot limit it yet.
+	if ( ProjectedLights_Active() && !m_bLightOnlyTarget )
+	{
+		ShutDownLightHandle();
+		projected_light::Light light;
+		for ( int k = 0; k < 3; ++k )
+		{
+			light.origin[k] = vPos[k];
+			light.forward[k] = vForward[k];
+			light.right[k] = vRight[k];
+			light.up[k] = vUp[k];
+			light.color[k] = state.m_Color[k];
+		}
+		light.horizontalFovDegrees = state.m_fHorizontalFOVDegrees;
+		light.verticalFovDegrees = state.m_fVerticalFOVDegrees;
+		light.nearZ = state.m_NearZ;
+		light.farZ = state.m_FarZ;
+		light.atten[0] = state.m_fConstantAtten;
+		light.atten[1] = state.m_fLinearAtten;
+		light.atten[2] = state.m_fQuadraticAtten;
+		V_strncpy( light.cookie, m_SpotlightTextureName, sizeof( light.cookie ) );
+		light.cookieFrame = m_nSpotlightTextureFrame;
+		light.shadows = m_bEnableShadows;
+		light.lightsWorld = m_bLightWorld;
+		ProjectedLights_Submit( GetRefEHandle().ToInt(), light );
+		return;
+	}
 
 	if( m_LightHandle == CLIENTSHADOW_INVALID_HANDLE )
 	{

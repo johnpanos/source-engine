@@ -22,6 +22,7 @@
 #include "engine/IEngineSound.h"
 #include "VGuiMatSurface/IMatSystemSurface.h"
 #include "c_movie_display.h"
+#include "emissive_area_lights.h"
 
 // NOTE: This has to be the last file included!
 #include "tier0/memdbgon.h"
@@ -43,7 +44,11 @@ struct VideoPlaybackInfo_t
 //-----------------------------------------------------------------------------
 // Control screen 
 //-----------------------------------------------------------------------------
-class CMovieDisplayScreen : public CVGuiScreenPanel
+// A playing screen lights its surroundings as an area light
+// (emissive_area_lights.h). The video's frames are not on the CPU, so it
+// emits a fixed mean radiance (kMovieDisplayRadiance) over the part of the
+// screen the video covers.
+class CMovieDisplayScreen : public CVGuiScreenPanel, public IEmissiveAreaLightSource
 {
 	DECLARE_CLASS( CMovieDisplayScreen, CVGuiScreenPanel );
 
@@ -56,6 +61,9 @@ public:
 	virtual bool Init( KeyValues* pKeyValues, VGuiScreenInitData_t* pInitData );
 	virtual void OnTick( void );
 	virtual void Paint( void );
+
+	// IEmissiveAreaLightSource
+	virtual int GetAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax );
 
 private:
 	bool	IsActive( void );
@@ -119,6 +127,7 @@ CMovieDisplayScreen::CMovieDisplayScreen( vgui::Panel *parent, const char *panel
 
 	// Add ourselves to the global list of movie displays
 	g_MovieDisplays.AddToTail( this );
+	EmissiveAreaLights_AddSource( this );
 
 	m_bLastActiveState = IsActive();
 }
@@ -128,6 +137,7 @@ CMovieDisplayScreen::CMovieDisplayScreen( vgui::Panel *parent, const char *panel
 //-----------------------------------------------------------------------------
 CMovieDisplayScreen::~CMovieDisplayScreen( void )
 {
+	EmissiveAreaLights_RemoveSource( this );
 	if ( m_pVideoMaterial != NULL )
 	{
 		if ( g_pVideo )
@@ -492,6 +502,47 @@ bool CMovieDisplayScreen::BeginPlayback( const char *pFilename )
 //-----------------------------------------------------------------------------
 // Purpose: Update and draw the frame
 //-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+// The mean linear radiance of a playing elevator screen: the Portal 2
+// elevator videos' mean drawn color, measured from captures of the screens
+// (RFC 0011 progress, "Emissive surfaces as area lights").
+//-----------------------------------------------------------------------------
+static const float kMovieDisplayRadiance[3] = { 0.20f, 0.24f, 0.28f };
+
+int CMovieDisplayScreen::GetAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax )
+{
+	C_VGuiScreen *pScreen = m_hVGUIScreen.Get();
+	if ( nMax < 1 || !pScreen || pScreen->IsDormant() || !IsActive() ||
+	     ( m_pVideoMaterial == NULL && !m_bSlaved ) || GetWide() <= 0 || GetTall() <= 0 )
+		return 0;
+
+	Vector lowerLeft, width, height, normal;
+	pScreen->GetWorldQuad( &lowerLeft, &width, &height, &normal );
+	area_light::AreaLight &light = pLights[0];
+	light = area_light::AreaLight();
+	const Vector center = lowerLeft + 0.5f * width + 0.5f * height;
+	Vector halfU = 0.5f * width, halfV = 0.5f * height;
+	if ( DotProduct( CrossProduct( halfU, halfV ), normal ) < 0.0f )
+		halfV = -halfV;
+	for ( int k = 0; k < 3; ++k )
+	{
+		light.rect.center[k] = center[k];
+		light.rect.halfU[k] = halfU[k];
+		light.rect.halfV[k] = halfV[k];
+	}
+	// The video covers the playback rectangle; the rest is black.
+	const bool bStretch = m_hScreenEntity != NULL && m_hScreenEntity->IsStretchingToFill();
+	const float flCovered = bStretch ? 1.0f
+	                                 : clamp( float( m_nPlaybackWidth ) * m_nPlaybackHeight /
+	                                              ( float( GetWide() ) * GetTall() ),
+	                                       0.0f, 1.0f );
+	for ( int k = 0; k < 3; ++k )
+		light.radiance[k] = kMovieDisplayRadiance[k] * flCovered;
+	light.reach = area_light::Reach( light.rect, light.radiance );
+	pKeys[0] = EmissiveAreaLights_PanelKey( pScreen->entindex() );
+	return light.reach > 0.0f ? 1 : 0;
+}
+
 void CMovieDisplayScreen::Paint( void )
 {
 	// Masters must keep the video updated

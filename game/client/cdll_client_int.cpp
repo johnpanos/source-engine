@@ -21,6 +21,9 @@
 #include "view.h"
 #include "ienginevgui.h"
 #include "iefx.h"
+#include "render/area_light.h"
+#include "render/dynamic_occlusion.h"
+#include "render/projected_light.h"
 #include "render/indirect_portals.h"
 #include "enginesprite.h"
 #include "networkstringtable_clientdll.h"
@@ -214,6 +217,9 @@ IVModelRender *modelrender = NULL;
 IVEfx *effects = NULL;
 // RFC 0011 G10: optional; the engine's indirect light takes the open portals.
 indirect_portals::IIndirectLightPortals *indirectlightportals = NULL;
+area_light::IAreaLights *arealights = NULL;
+dynamic_occlusion::IOccluders *occluders = NULL;
+projected_light::IProjectedLights *projectedlights = NULL;
 IVRenderView *render = NULL;
 IVDebugOverlay *debugoverlay = NULL;
 IMaterialSystemStub *materials_stub = NULL;
@@ -986,6 +992,13 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	// Optional: an engine without runtime indirect light does not expose it.
 	indirectlightportals = (indirect_portals::IIndirectLightPortals *)appSystemFactory(
 	    indirect_portals::kIndirectLightPortalsVersion, NULL );
+	// Optional: an engine without area lights (RFC 0011 light set v2).
+	arealights =
+	    (area_light::IAreaLights *)appSystemFactory( area_light::kAreaLightsVersion, NULL );
+	occluders = (dynamic_occlusion::IOccluders *)appSystemFactory(
+	    dynamic_occlusion::kOccludersVersion, NULL );
+	projectedlights = (projected_light::IProjectedLights *)appSystemFactory(
+	    projected_light::kProjectedLightsVersion, NULL );
 #ifdef PORTAL2
 	// Optional, as on the server: without a manager client scripts do not run.
 	scriptmanager = Portal2_ConnectScriptManager( appSystemFactory );

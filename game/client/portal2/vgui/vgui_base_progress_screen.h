@@ -22,6 +22,7 @@
 #include "c_vguiscreen.h"
 #include "igamesystem.h"
 #include "utlvector.h"
+#include "emissive_area_lights.h"
 
 #define LIGHTBOARD_MAX_ICONS		10
 #define LIGHTBOARD_DIRT_LEVELS		3
@@ -77,7 +78,9 @@ extern CProgressSignScreenKeys g_ProgressSignScreenKeys;
 //-----------------------------------------------------------------------------
 // Base lightboard screen
 //-----------------------------------------------------------------------------
-class CVGUI_Base_ProgressSignScreen : public CVGuiScreenPanel
+// The sign is a lit board: it lights its surroundings as an area light
+// (emissive_area_lights.h), its board's mean color at the brightness it paints.
+class CVGUI_Base_ProgressSignScreen : public CVGuiScreenPanel, public IEmissiveAreaLightSource
 {
 	DECLARE_CLASS( CVGUI_Base_ProgressSignScreen, CVGuiScreenPanel );
 
@@ -87,6 +90,9 @@ public:
 
 	virtual void OnTick( void );
 	virtual bool Init( KeyValues *pKeyValues, VGuiScreenInitData_t *pInitData );
+
+	// IEmissiveAreaLightSource
+	virtual int GetAreaLights( area_light::AreaLight *pLights, int *pKeys, int nMax );
 
 protected:
 	void ClearIcons( void );
@@ -130,6 +136,8 @@ protected:
 	float	m_flQuickFlickerDuration;
 	int		m_nDirtTextureIDs[ LIGHTBOARD_DIRT_LEVELS ];
 	bool	m_bShownOnce;
+	bool m_bHasBoardRadiance;
+	float m_BoardRadiance[3]; // the board's mean linear color at full brightness
 };
 
 #endif // VGUI_BASE_PROGRESS_SCREEN_H

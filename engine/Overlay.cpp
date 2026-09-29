@@ -141,6 +141,7 @@ public:
 	virtual void	RenderOverlays( int nSortGroup );
 
 	virtual void	SetOverlayBindProxy( int iOverlayID, void *pBindProxy );
+	virtual void EnumerateFragments( FragmentVisitor_t visit, void *pContext );
 
 private:
 	// Create, destroy material sort order ids...
@@ -745,6 +746,41 @@ void COverlayMgr::SetOverlayBindProxy( int iOverlayID, void *pBindProxy )
 	moverlay_t *pOverlay = GetOverlay( iOverlayID );
 	if ( pOverlay )
 		pOverlay->m_pBindProxy = pBindProxy;
+}
+
+//-----------------------------------------------------------------------------
+// RFC 0011 area lights: each overlay's fragments in world space.
+//-----------------------------------------------------------------------------
+void COverlayMgr::EnumerateFragments( FragmentVisitor_t visit, void *pContext )
+{
+	CUtlVector<Vector> positions;
+	CUtlVector<Vector2D> texCoords;
+	for ( int iOverlay = 0; iOverlay < m_aOverlays.Count(); ++iOverlay )
+	{
+		moverlay_t *pOverlay = &m_aOverlays[iOverlay];
+		mtexinfo_t *pTexInfo = &host_state.worldbrush->texinfo[pOverlay->m_nTexInfo];
+		if ( !pTexInfo || !pTexInfo->material )
+			continue;
+		for ( int hFrag = pOverlay->m_hFirstFragment; hFrag != OVERLAY_FRAGMENT_INVALID;
+		    hFrag = m_OverlayFragments.Next( hFrag ) )
+		{
+			const moverlayfragment_t &fragment = m_aFragments[m_OverlayFragments[hFrag]];
+			const int nCount = fragment.m_aPrimVerts.Count();
+			if ( nCount < 3 )
+				continue;
+			positions.SetCount( nCount );
+			texCoords.SetCount( nCount );
+			for ( int i = 0; i < nCount; ++i )
+			{
+				positions[i] = fragment.m_aPrimVerts[i].pos;
+				texCoords[i] = fragment.m_aPrimVerts[i].texCoord[0];
+			}
+			const Vector normal = fragment.m_SurfId ? MSurf_Plane( fragment.m_SurfId ).normal
+			                                        : pOverlay->m_vecBasis[2];
+			visit( pContext, iOverlay, pTexInfo->material, normal, positions.Base(),
+			    texCoords.Base(), nCount );
+		}
+	}
 }
 
 //-----------------------------------------------------------------------------

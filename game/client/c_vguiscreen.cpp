@@ -472,6 +472,15 @@ void C_VGuiScreen::ComputeEdges( Vector *pUpperLeft, Vector *pUpperRight, Vector
 	VectorMA( *pUpperLeft, m_flWidth, xaxis, *pUpperRight );
 }
 
+void C_VGuiScreen::GetWorldQuad(
+    Vector *pLowerLeft, Vector *pWidth, Vector *pHeight, Vector *pNormal )
+{
+	Vector upperLeft, upperRight;
+	ComputeEdges( &upperLeft, &upperRight, pLowerLeft );
+	*pWidth = upperRight - upperLeft;
+	*pHeight = upperLeft - *pLowerLeft;
+	GetVectors( NULL, NULL, pNormal );
+}
 
 //-----------------------------------------------------------------------------
 // Return intersection point of ray with screen in barycentric coords

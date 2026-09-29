@@ -87,7 +87,8 @@ void PortalDLights_Update()
 	for ( int i = 0; i < MAX_DLIGHTS; ++i )
 	{
 		const dlight_t &dl = cl_dlights[i];
-		if ( dl.die >= now && dl.IsRadiusGreaterThanZero() )
+		// Area lights (area_lights.h) are not imaged through portals yet.
+		if ( dl.die >= now && dl.IsRadiusGreaterThanZero() && ( dl.flags & DLIGHT_AREA ) == 0 )
 			sources[sourceCount++] = i;
 	}
 	int imaged = 0;

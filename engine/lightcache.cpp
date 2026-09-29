@@ -43,6 +43,8 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "portal_dlights.h"
+#include "area_lights.h"
+#include "projected_lights.h"
 
 #include "tier0/memdbgon.h"
 
@@ -204,7 +206,51 @@ public:
 
 	// env_cubemap texture associated with this entry.
 	ITexture *		m_pEnvCubemapTexture;
+
+	// RFC 0011 light set v2: the stand-in point light of each area light at
+	// this entry's origin (area_lights.h), which its lighting states point to.
+	dworldlight_t m_AreaLightReps[area_light::kMaxAreaLights];
+	// and of each projected light (projected_lights.h), kept while the
+	// projected lights' versions (m_ProjectedSignature) hold: the entry's
+	// origin is fixed.
+	dworldlight_t m_ProjectedLightReps[projected_light::kMaxProjectedLights];
+	int m_nProjectedLightReps = 0;
+	uint64 m_ProjectedSignature = 0;
 };
+
+// The projected lights' identity and versions, now.
+static uint64 ProjectedLightsSignature()
+{
+	uint64 signature = 1469598103934665603ull;
+	for ( const ProjectedLightEntry &entry : ProjectedLights_Get( ProjectedLights_Generation() ) )
+	{
+		signature = ( signature ^ uint64( uint32( entry.key ) ) ) * 1099511628211ull;
+		signature = ( signature ^ uint64( entry.version ) ) * 1099511628211ull;
+	}
+	return signature;
+}
+
+// A cache entry's projected-light stand-ins at its origin, rebuilt when a
+// projected light changes.
+static int ProjectedLightReps( CBaseLightCache *pCache, const Vector &origin )
+{
+	const uint64 signature = ProjectedLightsSignature();
+	if ( pCache->m_ProjectedSignature != signature )
+	{
+		pCache->m_ProjectedSignature = signature;
+		pCache->m_nProjectedLightReps = 0;
+		for ( const ProjectedLightEntry &entry :
+		    ProjectedLights_Get( ProjectedLights_Generation() ) )
+		{
+			if ( pCache->m_nProjectedLightReps >= projected_light::kMaxProjectedLights )
+				break;
+			if ( ProjectedLights_Representative(
+			         entry, origin, pCache->m_ProjectedLightReps[pCache->m_nProjectedLightReps] ) )
+				++pCache->m_nProjectedLightReps;
+		}
+	}
+	return pCache->m_nProjectedLightReps;
+}
 
 class lightcache_t : public CBaseLightCache
 {
@@ -1615,8 +1661,8 @@ static void AddLightStylesForStaticProp( PropLightcache_t *pcache, LightingState
 //-----------------------------------------------------------------------------
 static dworldlight_t s_pDynamicLight[MAX_DLIGHTS + MAX_ELIGHTS];
 
-static const byte* AddDLights( LightingStateInfo_t& info, LightingState_t& lightingState, 
-			const Vector& origin, int leaf, const byte* pVis )
+static const byte *AddDLights( LightingStateInfo_t &info, LightingState_t &lightingState,
+    const Vector &origin, int leaf, const byte *pVis, dworldlight_t *pAreaReps )
 {
 	if ( !g_bActiveDlights )
 		return pVis;
@@ -1626,6 +1672,7 @@ static const byte* AddDLights( LightingStateInfo_t& info, LightingState_t& light
 
 	// Next, add each world light with a lightstyle into the lighting state,
 	// ejecting less relevant local lights + folding them into the ambient cube
+	int nAreaReps = 0;
 	dlight_t* dl = cl_dlights;
 	for ( int i=0; i<MAX_DLIGHTS; ++i, ++dl )
 	{
@@ -1636,6 +1683,20 @@ static const byte* AddDLights( LightingStateInfo_t& info, LightingState_t& light
 		// If the light doesn't affect models, then continue
 		if (dl->flags & (DLIGHT_NO_MODEL_ILLUMINATION | DLIGHT_DISPLACEMENT_MASK)) 
 			continue;
+
+		// An area light reaches the model as its stand-in point light at the
+		// model's lighting origin (area_lights.h).
+		if ( dl->flags & DLIGHT_AREA )
+		{
+			if ( pAreaReps && nAreaReps < area_light::kMaxAreaLights &&
+			     AreaLights_Representative( i, origin, pAreaReps[nAreaReps] ) )
+			{
+				pVis = AddWorldLightToLightingState( &pAreaReps[nAreaReps], NULL, lightingState,
+				    info, origin, pVis, true, true, true );
+				++nAreaReps;
+			}
+			continue;
+		}
 
 		// A light imaged through a portal reaches the model only through it
 		// (portal_dlights.h); its image's leaf is behind the portal's wall, so
@@ -1724,12 +1785,19 @@ static const byte *ComputeDynamicLighting( lightcache_t* pCache, LightingState_t
 
 		pCache->m_DynamicLightingState.ZeroLightingState();
 
-		// Next, add each dlight one at a time 
-		pVis = AddDLights( info, pCache->m_DynamicLightingState, origin, leaf, pVis );
+		// Next, add each dlight one at a time
+		pVis = AddDLights(
+		    info, pCache->m_DynamicLightingState, origin, leaf, pVis, pCache->m_AreaLightReps );
 
 		// Finally, add in elights
 		// FIXME: Do we actually use these?
  		pVis = AddELights( info, pCache->m_DynamicLightingState, origin, leaf, pVis );
+
+		// and the projected lights (env_projectedtexture), as stand-in points.
+		const int nProjected = ProjectedLightReps( pCache, origin );
+		for ( int i = 0; i < nProjected; ++i )
+			pVis = AddWorldLightToLightingState( &pCache->m_ProjectedLightReps[i], NULL,
+			    pCache->m_DynamicLightingState, info, origin, pVis, true, true, true );
 
 		pCache->m_LastFrameUpdated_DynamicLighting = r_framecount;
 	}
@@ -1851,12 +1919,27 @@ static void AddDLightsForStaticProps( LightingStateInfo_t& info, LightingState_t
 		return;
 
 	// Iterate the relevant dlights and add them to the lighting state
+	int nAreaReps = 0;
 	dlight_t *dl = cl_dlights;
 	for ( int i=0; i<MAX_DLIGHTS; ++i, ++dl )
 	{
 		// If the light doesn't affect this model, then continue.
 		if( !( pCache->m_DLightActive & ( 1 << i ) ) )
 			continue;
+
+		// An area light: its stand-in at the prop's lighting origin.
+		if ( dl->flags & DLIGHT_AREA )
+		{
+			if ( nAreaReps < area_light::kMaxAreaLights &&
+			     AreaLights_Representative(
+			         i, pCache->m_LightingOrigin, pCache->m_AreaLightReps[nAreaReps] ) )
+			{
+				AddWorldLightToLightingStateForStaticProps(
+				    &pCache->m_AreaLightReps[nAreaReps], lightingState, info, pCache, true );
+				++nAreaReps;
+			}
+			continue;
+		}
 
 		// Construct a world light representing the dynamic light
 		// we're making a static list here because the lighting state
@@ -2361,7 +2444,13 @@ LightingState_t *LightcacheGetStatic( LightCacheHandle_t cache, ITexture **pEnvC
 
 	bool bRecalcStaticLighting = false;
 	bool bRecalcLightStyles = (pcache->HasLightStyle() && pcache->m_LastFrameUpdated_LightStyles != r_framecount) && !IsCachedLightStylesValid(pcache);
-	bool bRecalcDLights = pcache->HasDlights() && pcache->m_LastFrameUpdated_DynamicLighting != r_framecount;
+	// Projected lights reach static props as dynamic lights do (a prop no
+	// projected light reaches, before or now, skips this).
+	const int nProjectedBefore = pcache->m_nProjectedLightReps;
+	const bool bProjected =
+	    ProjectedLightReps( pcache, pcache->m_LightingOrigin ) > 0 || nProjectedBefore > 0;
+	bool bRecalcDLights = ( pcache->HasDlights() || bProjected ) &&
+	                      pcache->m_LastFrameUpdated_DynamicLighting != r_framecount;
 
 	if ( flags != pcache->m_Flags )
 	{
@@ -2435,6 +2524,10 @@ LightingState_t *LightcacheGetStatic( LightCacheHandle_t cache, ITexture **pEnvC
 		{	
 			// accumulate dynamic lights
 			AddDLightsForStaticProps( *( LightingStateInfo_t *)pcache, accumulatedState, pcache );
+			const int nProjected = ProjectedLightReps( pcache, pcache->m_LightingOrigin );
+			for ( int i = 0; i < nProjected; ++i )
+				AddWorldLightToLightingStateForStaticProps( &pcache->m_ProjectedLightReps[i],
+				    accumulatedState, *(LightingStateInfo_t *)pcache, pcache, true );
 			pcache->m_DynamicLightingState = accumulatedState;
 			pcache->m_LastFrameUpdated_DynamicLighting = r_framecount;
 		}
@@ -2837,6 +2930,10 @@ void ComputeDynamicLighting( const Vector& pt, const Vector* pNormal, Vector& co
 			if ( !PortalDLights_Reaches( i, pt ) )
 				continue;
 
+			// An area light is added exactly below.
+			if ( dl->flags & DLIGHT_AREA )
+				continue;
+
 			// Construct a world light representing the dynamic light
 			// we're making a static list here because the lighting state
 			// contains a set of pointers to dynamic lights
@@ -2880,6 +2977,16 @@ void ComputeDynamicLighting( const Vector& pt, const Vector* pNormal, Vector& co
 	else
 	{
 		VectorFill( color, 0 );
+	}
+
+	// Area lights (area_lights.h), exactly at the point and normal.
+	if ( g_bActiveDlights )
+	{
+		for ( i = 0; i < MAX_DLIGHTS; ++i )
+		{
+			if ( ( r_dlightactive & ( 1 << i ) ) != 0 && ( cl_dlights[i].flags & DLIGHT_AREA ) )
+				AreaLights_AddAtPoint( i, pt, *pNormal, color );
+		}
 	}
 }
 

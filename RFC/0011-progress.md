@@ -2003,6 +2003,340 @@ content consumer of G1–G10 and closes no gate.
   no direct light on the relit world mesh (only producer indirect). The
   chamber uses `light_dynamic` for its switched lights.
 
+## Emissive surfaces as area lights (2026-09-28, user request)
+
+The user asked for emissive textures (Wheatley's eye, the security cameras,
+the chamber doors, the chamber signs and the elevator screens) to light
+their surroundings, with the light leaving the surface itself rather than a
+point or a spot. The split was agreed with the render-core session
+(source-engine-43):
+
+- **This slice:** the contract, emitter extraction and transport, the CPU
+  lightmap form factor, and the model stand-in.
+- **RFC 0016 K7:** per-pixel LTC (diffuse plus GGX) in the clustered pass
+  and the core's families.
+- **The native legacy ports:** left unchanged, because they are judged
+  against the retail bytecode.
+
+The contract is the RFC's "Area lights (light set v2)" amendment.
+
+**Installed.**
+- `public/render/area_light.h` (`render.area-light.v1`): the rectangle, its
+  units, reach and window. `IrradianceAt` is the exact form factor clipped to
+  the receiver's hemisphere, and the shared oracle. `RepresentativeAt` gives
+  the model stand-in. `IAreaLights`/`VEngineAreaLights001` is the transport.
+- `public/render/light_set.h` (v2): `Snapshot::areas` with stable IDs. Area
+  lights never appear in `lights`.
+- `public/render/emissive_area_lights.h`:
+  - triangle sampling;
+  - the facing split: six axis bins, so a door's two faces never share a
+    rectangle;
+  - the spatial split;
+  - a power-keeping rectangle fit;
+  - per-frame selection with hysteresis.
+- `engine/area_lights.cpp`:
+  - black dlight slots flagged `DLIGHT_AREA`;
+  - versions with tolerance, and generations for queued lightmap builds;
+  - the applied and dirty bookkeeping per surface.
+- Engine consumers:
+  - `gl_lightmap.cpp`: exact per-luxel flat and bump evaluation on every
+    rebuild. A sphere test skips surfaces out of reach.
+  - `gl_rlight.cpp`: an unchanged light marks nothing.
+  - `lightcache.cpp`: the model and static-prop stand-in, and the exact point
+    query.
+  - `light_set_publisher.cpp`: the areas.
+  - `portal_dlights.cpp`: area lights are not imaged.
+- `game/client/emissive_area_lights.cpp`:
+  - model emitters from LOD 0 (.vvd through the model cache, .vtx read
+    directly, v49 strip headers flagged), oriented by vertex normals;
+  - the live `$selfillumtint` and render color, and bones;
+  - the sources: the progress sign (board mean times its painted
+    brightness, flicker included) and the movie screens (a fixed mean
+    radiance over the video's covered area; the frames are not on the CPU).
+- Cvars and commands:
+  - `r_area_lights`: 8 on desktop, 4 on Android;
+  - `r_area_lights_scale`: 1 is physical;
+  - `r_area_lights_list`: lists the emitters;
+  - `r_area_lights_report`: lit lights, facing, surfaces, dirty, luxels and
+    CPU time;
+  - `r_area_lights_debug`: cheat.
+
+**Evidence.**
+- `render.area-light` passes 34 checks on g++ and clang++, in the default
+  and `-O2 -DNDEBUG` configurations:
+  - form factors within 1.9e-4 of numerical integration over tilted and
+    perpendicular receivers;
+  - parallel closed forms;
+  - sidedness, limits, window and reach;
+  - the stand-in's direction and irradiance;
+  - sampling, power, the facing and spatial splits, and selection.
+- Six sensitivity builds are each rejected: `no-clip`, `two-sided`, `point`,
+  `no-power`, `no-keep` and `no-split`.
+- `render.light-set` still passes. A run of all 304 headless suites
+  mismatched only on `blobulator.tiler-mesh`, whose sources this slice
+  doesn't touch.
+- Fixtures (the user's choice), `sp_a1_intro6` and `sp_a2_core` through
+  `portal2_map_views.py`:
+  - emitters build for Wheatley's eye (bone 24, live tint), GLaDOS, turrets,
+    the portal gun, the chamber door and the elevator;
+  - with the chamber sign set active, it lights at 17,860 u² (radiance
+    ~0.10, reach 394);
+  - the elevator screens light at 64×128 (reach 432).
+- The door, with the tonemap fixed (`mat_force_tonemap_scale 1`):
+  - at `r_area_lights_scale 50` the floor in front turns cyan (mean
+    |on-off| 1.6/4.1/3.8), and the wall the door sits in stays dark;
+  - at physical strength the change is small (0.0/0.02/0.01 mean). That is
+    the honest result: the door's emission, spread over its rectangle, is
+    radiance ~0.05.
+- CPU: 0.02–0.04 ms per frame in R_AddAreaLights on `sp_a1_intro6`,
+  including the moving arrival elevator. Before the sphere test it was
+  0.25–0.3 ms. Budget rows are in `quality/budgets/indirect-light-v1.json`
+  (desktop 8 lights, CPU ≤ 0.3 ms, GPU ≤ 0.3 ms for K7; the Fold7 4 lights,
+  pending).
+
+**Found and fixed on the way.**
+- Studio strips wind clockwise, so geometric normals were flipped, and every
+  door emitter faced into the wall. Triangles are now oriented by their
+  vertex normals.
+- The door's two faces had merged into one rectangle; the facing split
+  fixes that.
+
+**Not done.**
+- There is no occlusion: a light reaches through walls within its reach. A
+  failing sign-behind-a-wall fixture still has to be written.
+- Displacements, the WMSH world, static props' own emitters (P2 cameras that
+  are static props) and portal imaging are not covered.
+- Movie screens use a fixed mean radiance.
+- Elevator emitters fit large sparse rectangles.
+- No Fold7 or Apple run, and no per-pixel evaluation (K7).
+
+## Moving objects block light (2026-09-28, user request)
+
+The user asked to fix the static blob shadow under props, with these
+requirements:
+
+- use the GI implementation for dynamic shadows where possible;
+- support multiple light sources from a prop, physics object and so on, and
+  let them mix;
+- standardize the lighting across everything that can move, doors included.
+
+The contract is the RFC's "Moving objects block light" amendment
+(`render.dynamic-occlusion.v1`). The render-core session agreed that
+occluders live in the light set, keyed by entity handle with versions.
+
+**Installed.**
+- `public/render/dynamic_occlusion.h`: boxes, samples (disk, rectangle,
+  distant), the segment/box test, `Visibility`, `MixLights`, and the
+  transport `IOccluders`/`VEngineOccluders001`.
+- `game/client/dynamic_occluders.cpp`:
+  - every drawn shadow-casting entity and brush entity, published after the
+    views are drawn;
+  - hitboxes on bones for animated models; collision boxes otherwise;
+  - boxes with radius over 160 left out.
+- `engine/dynamic_occlusion.cpp`: versions, generations, dirtying surfaces
+  within shadow reach, the static-visibility trace cache, and model
+  visibility with a sphere prefilter.
+- `engine/gl_lightmap.cpp` `R_ApplyDynamicOcclusion`:
+  - a per-surface cache of blocked (texel, light, visibility), keyed by the
+    nearby boxes' versions;
+  - the removal is calibrated to the baked light;
+  - bump vectors are handled.
+- `engine/l_studio.cpp`: model local lights times their visibility, the
+  model's own boxes ignored.
+- `engine/indirect_light_host.cpp`: `GatherProxies` takes the same boxes.
+- `game/client/clientshadowmgr.cpp`: blob shadows off while occlusion is
+  active, restored when it turns off.
+- `public/render/light_set.h`: `Snapshot::occluders`.
+- `r_dynamic_occlusion` (default 1) and `r_dynamic_occlusion_report`.
+
+**Evidence.**
+- `render.dynamic-occlusion` passes 13 checks on g++ and clang++, default and
+  release. The segment/box test agrees with a 4,000-step march on all 3,943
+  unambiguous random rotated cases.
+- Four sensitivity builds are each rejected: `aabb`, `no-self`, `hard` and
+  `shared`.
+- `render.area-light` and `render.light-set` still pass.
+- `sp_a1_intro6`, the cube from the user's screenshot, with the tonemap fixed:
+  - with occlusion on, the floor darkens under and around the cube, softly
+    and without clipping to black after the calibration;
+  - with it off, the blob shadow returns.
+- Cost (`r_dynamic_occlusion_report`), per frame:
+  - at rest: 0.008 ms (cube room), 0.016 ms (door) and 0.002 ms (`sp_a2_core`,
+    50 boxes);
+  - with the arrival elevator moving: 0.03–0.17 ms.
+
+  Before the per-surface cache, the door view cost 0.54 ms and the elevator
+  1.5 ms.
+- Model lights: 1,488 judged and 6 dimmed while objects moved on
+  `sp_a1_intro6`.
+
+**Found and fixed on the way.**
+- The first removal went black under shadows, because the analytic formula
+  exceeds the baked light. The removal is now calibrated.
+- Point lights gave razor edges; they now use disk samples.
+- The arrival elevator's solid 480-unit box blacked out its interior and
+  dirtied huge areas. Boxes over radius 160 are left out.
+
+**Not done.**
+- No test of shadows cast between two props on a live map, no measurement
+  with a physics object moving, and no Fold7 or Apple run.
+- The model ambient cube, static props, displacements, dlights and area
+  lights are not occluded.
+- The BSP2 `DirectOcclusion` takes the boxes as axis-aligned bounds.
+
+## Projected lights, and sp_a2_core (2026-09-28, user request)
+
+The user asked to make `env_projectedtexture` "a real light in our model" and
+to keep poking around `sp_a2_core`. The contract is the RFC's "Projected
+lights" amendment (`render.projected-light.v1`).
+
+**Installed.**
+- `public/render/projected_light.h`: the light, `Project`, the shader's
+  `Attenuation`, `IrradianceAt`, `BoundingSphere`, and
+  `IProjectedLights`/`VEngineProjectedLights001`.
+- `game/client/projected_lights.cpp`: per-frame submission and publication.
+  `C_EnvProjectedTexture::UpdateLight` submits its light and drops its
+  flashlight, unless the light is limited to a target entity.
+- `engine/projected_lights.cpp`: versions, dirtying the frustum's sphere, the
+  cookie cache (`public/vtf/vtf_sample.h`, now shared with the emissive
+  sampler), and the model stand-in with the world trace.
+- `engine/gl_lightmap.cpp` `R_AddProjectedLights`:
+  - per texel and bump vector;
+  - shadowed by the world (the static-visibility cache, keys 2048 and up) and
+    by moving objects (a 4-unit disk);
+  - a per-surface cache keyed by the lights' and nearby boxes' versions.
+- `engine/lightcache.cpp`: stand-ins for dynamic models and static props, kept
+  per entry by version.
+- `public/render/light_set.h`: `Snapshot::projected`.
+- `r_projected_lights` (default 1) and `r_projected_lights_report`.
+
+**Evidence.**
+- `render.projected-light` passes 9 checks on g++ and clang++, default and
+  release. The projection matches the matrix oracle on 39,999 of 39,999 points
+  (worst error 1.7e-7). Three sensitivity builds are each rejected.
+- `sp_a2_core` with `texturelight_wheatly_chamber` on, compared with
+  `r_projected_lights 0`:
+  - the projector's warm color now reaches the platform and the floor;
+  - GLaDOS's hitbox boxes and the world shadow part of the platform. The
+    legacy pass drew it unshadowed.
+- Cost: turning it on built 58 surfaces (2,473 texels) in 3.6 ms, once; at
+  rest, 0.03 ms over 57 frames.
+- Every area-light, occlusion, projected-light and light-set suite, including
+  sensitivity rows, passes (20 of 20, both compilers, both configurations).
+  archlint reports none of this work's headers; they are registered in
+  `render.contracts`.
+
+**Crashes found and fixed on `sp_a2_core`.**
+- With shadow depth on (`r_flashlightdepthtexture 1`), the map crashed in
+  `CBaseVSShader::DrawFlashlight_dx90`.
+  - Cause: `C_EnvProjectedTexture` kept a raw `FindTexture` pointer to its
+    spotlight texture without a reference. The texture was freed after map
+    load, and every flashlight pass bound freed memory.
+  - Fix: it holds a `CTextureReference`, re-initialized when the name
+    changes.
+- A second crash was this session's own: `CEmissiveAreaLights::PreRender`
+  cached `IMaterialVar` pointers, which a material reload (the shadow-depth
+  config change) frees.
+  - Fix: emitters hold their `IMaterial` with a reference and look up
+    `$selfillumtint` each frame with `FindVarFast`.
+- The map now runs with shadow depth on.
+
+**The user's platform stripes (not reproduced).** No stripes or wedges
+appeared in any state tried on `sp_a2_core`:
+- the map start, and after `debug_wheatley_swapped`;
+- the exit elevator (`debug_start_exit_elevator`);
+- `global_ents_core-environment_darkness`;
+- projected textures on;
+- `r_flashlightdepthtexture` 0 and 1;
+- area lights and occlusion on and off.
+
+The user's scene lacks the bright pool every capture shows. The exact moment
+(`getpos` and the story point, or a save) is still needed.
+
+**Not done.**
+- Per-pixel projected light: lightmap resolution blurs sharp cookies. That is
+  K7's shadow atlas.
+- Lights limited to a target entity, and displacements.
+- The second projector (`texturelight_glados_chamber`) did not light when
+  fired; not investigated.
+
+### Hand-off to the render core's K7 (agreed 2026-09-28 with source-engine-43)
+
+Area lights, projected lights and moving-object occlusion of world lights
+have one owner per surface: the render core decides. RFC 0016 K7 records the
+open item.
+
+- **The query.** `IRenderCoreWorld::RuntimeLight( surface )` returns
+  `RenderCoreRuntimeLight` flags: `kAreaLights`, `kProjectedLights` and
+  `kWorldLightOcclusion`. It is snapshotted once per frame on the main thread,
+  before `R_BuildLightMapGuts`.
+- **Until the K7 clustered pass lands,** it returns 0 for every surface and
+  the CPU lightmap path is the only producer. The pass sets the bits for the
+  surfaces it draws in the same change that makes it evaluate that light, so
+  no frame counts the light twice or misses it.
+- **This record's side, once the method exists:** `R_AddAreaLights`,
+  `R_AddProjectedLights` and `R_ApplyDynamicOcclusion` skip surfaces with the
+  matching bit set.
+- **Oracle.** A surface under one area light gives the same radiance with the
+  bits set or unset, within the cross-path tolerance. A negative control that
+  forces both paths must fail as doubled light.
+- **Today.** Checked against K5 step 4 (`cf7a3615`): core-drawn world surfaces
+  import the same lightmap pages the CPU path writes, and dirty surfaces still
+  rebuild through the legacy dlight lists. So `r_core_world 1` shows area
+  light, occlusion and projected light unchanged.
+
+## Self-illuminated world faces and overlays (2026-09-28)
+
+Agreed with source-engine-43: one producer of emissive area lights. The render
+core's surface-model phase S5 draws only a surface's own emission and
+registers no lights. World geometry therefore publishes through this record's
+transport and fit.
+
+**Installed.**
+- `public/materialsystem/selfillum_emission.h`: the one `$selfillum` emission
+  rule (base × mask × tint), used by client models and engine world geometry
+  alike.
+- `engine/sample_textures.cpp`: the engine's CPU texture cache, shared with
+  projected-light cookies.
+- `engine/world_emitters.cpp`: built once per map from `$selfillum` brush
+  faces and overlays.
+  - Overlays come from `IOverlayMgr::EnumerateFragments`, a new method: each
+    fragment in world space, with its texture coordinates and its surface's
+    normal.
+  - One group per overlay and one per face.
+  - Triangles are oriented by the surface normal, because the winding is
+    clockwise.
+  - Faces vrad baked as texture lights (the map's `emit_surface` world
+    lights) are skipped.
+  - `r_area_lights_world` (default 1).
+- `IAreaLights::GetWorldEmitters` (`VEngineAreaLights002`): the client ranks
+  world emitters with models and screens (one selection, one budget), at the
+  material's live `$selfillumtint`.
+- `emissive::kMaxEmitterExtent` 24 → 48, so a sign stays one rectangle.
+- The client's candidate cap went from 256 to 4096. It had silently dropped
+  world emitters on maps with many model emitters.
+
+**Evidence** (`sp_a1_intro6`).
+- 10 world emitters, one per sign:
+  - exit signs and arrows;
+  - fling icons (floor, facing up);
+  - box dispenser and box button (walls);
+  - each about 1,000 u², radiance 0.2–0.35, reach 140–170.
+- The nearby signs join the lit set at each view.
+- At `r_area_lights_scale 20` the wall above the fling icons lights (mean 0.6
+  levels over the frame). At physical strength the change is below one 8-bit
+  level in the dark, fixed-exposure frame, as expected for a 32-unit sign.
+- `render.area-light` (the extent change), the occlusion, projected-light and
+  light-set suites: 20 of 20 on g++ and clang++. Style and archlint are
+  clean for these files.
+
+**Not done.**
+- UnlitGeneric emissives (antline indicator lights, screens without
+  `$selfillum`).
+- Displacements, and brush entities (`func_brush` signs).
+- The world-face oracle suite (the fit is covered by `render.area-light`; the
+  engine walk has no headless test).
+
 ## Chamber signs light up and light the room: conformance cases (2026-09-28, user request)
 
 The user asked for tests of a test chamber sign lighting up and casting its

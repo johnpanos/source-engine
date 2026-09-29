@@ -28,6 +28,10 @@
 #include "materialsystem/imaterial.h"
 #include "modelloader.h"
 #include "mapcontainer/probe_volume.h"
+#include "area_lights.h"
+#include "dynamic_occlusion.h"
+#include "projected_lights.h"
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -395,6 +399,576 @@ static void R_ComputeSurfaceBasis( SurfaceHandle_t surfID, Vector *pBumpNormals,
 }
 
 //-----------------------------------------------------------------------------
+// RFC 0011 light set v2: the area lights of a generation (area_lights.h) that
+// reach a surface, added to blocklights exactly: each luxel takes the light's
+// form factor over its hemisphere (area_light::IrradianceAt), and each bump
+// basis the vector form factor's projection on it. Records the light
+// versions the lightmap now holds. Every rebuild does this, so a rebuild for
+// any reason keeps the surface's area light.
+//-----------------------------------------------------------------------------
+static void R_AddAreaLightsTimed(
+    SurfaceHandle_t surfID, const matrix3x4_t &entityToWorld, bool needsBumpmap, int generation );
+
+static void R_AddAreaLights(
+    SurfaceHandle_t surfID, const matrix3x4_t &entityToWorld, bool needsBumpmap, int generation )
+{
+	extern double g_AreaLightsSeconds;
+	extern int g_AreaLightsSurfaces;
+	const double start = Plat_FloatTime();
+	R_AddAreaLightsTimed( surfID, entityToWorld, needsBumpmap, generation );
+	g_AreaLightsSeconds += Plat_FloatTime() - start;
+	++g_AreaLightsSurfaces;
+}
+
+static void R_AddAreaLightsTimed(
+    SurfaceHandle_t surfID, const matrix3x4_t &entityToWorld, bool needsBumpmap, int generation )
+{
+	AreaLightSlot lights[area_light::kMaxAreaLights];
+	const int count = AreaLights_Get( generation, lights );
+	const bool worldSurface = AreaLights_IsWorldSurface( surfID );
+	AreaLightSlot reaching[area_light::kMaxAreaLights];
+	int reachingCount = 0;
+	if ( count == 0 )
+	{
+		AreaLights_Applied( surfID, worldSurface, reaching, 0 );
+		return;
+	}
+
+	const Vector &planeNormal = MSurf_Plane( surfID ).normal;
+	const float planeDist = MSurf_Plane( surfID ).dist;
+	Vector bumpNormals[NUM_BUMP_VECTS];
+	Vector luxelBase, surfaceCenter;
+	float surfaceRadius = 0.0f;
+	bool basis = false;
+	mtexinfo_t *tex = MSurf_TexInfo( surfID );
+	const float fixupFactor = tex->worldUnitsPerLuxel * tex->worldUnitsPerLuxel;
+	const int smax = MSurf_LightmapExtents( surfID )[0] + 1;
+	const int tmax = MSurf_LightmapExtents( surfID )[1] + 1;
+	const float n[3] = { planeNormal.x, planeNormal.y, planeNormal.z };
+
+	for ( int l = 0; l < count; ++l )
+	{
+		// Into the surface's space (brush entities move).
+		area_light::AreaLight light = lights[l].light;
+		Vector center( light.rect.center[0], light.rect.center[1], light.rect.center[2] );
+		Vector halfU( light.rect.halfU[0], light.rect.halfU[1], light.rect.halfU[2] );
+		Vector halfV( light.rect.halfV[0], light.rect.halfV[1], light.rect.halfV[2] );
+		Vector localCenter, localU, localV;
+		VectorITransform( center, entityToWorld, localCenter );
+		VectorIRotate( halfU, entityToWorld, localU );
+		VectorIRotate( halfV, entityToWorld, localV );
+		for ( int k = 0; k < 3; ++k )
+		{
+			light.rect.center[k] = localCenter[k];
+			light.rect.halfU[k] = localU[k];
+			light.rect.halfV[k] = localV[k];
+		}
+		// The plane must come within the light's reach of the rectangle, and
+		// some corner must be in front of the plane.
+		float corners[4][3];
+		area_light::Corners( light.rect, corners );
+		float nearest = FLT_MAX, farthestFront = -FLT_MAX;
+		for ( int c = 0; c < 4; ++c )
+		{
+			const float d =
+			    corners[c][0] * n[0] + corners[c][1] * n[1] + corners[c][2] * n[2] - planeDist;
+			nearest = fpmin( nearest, fabsf( d ) );
+			farthestFront = fpmax( farthestFront, d );
+		}
+		if ( nearest >= light.reach || farthestFront <= 0.0f )
+			continue;
+
+		if ( !basis )
+		{
+			R_ComputeSurfaceBasis( surfID, bumpNormals, luxelBase );
+			// The sphere around the surface's lightmap rectangle.
+			const Vector across =
+			    ( smax - 1 ) * fixupFactor * tex->lightmapVecsLuxelsPerWorldUnits[0].AsVector3D() +
+			    ( tmax - 1 ) * fixupFactor * tex->lightmapVecsLuxelsPerWorldUnits[1].AsVector3D();
+			const Vector other =
+			    ( smax - 1 ) * fixupFactor * tex->lightmapVecsLuxelsPerWorldUnits[0].AsVector3D() -
+			    ( tmax - 1 ) * fixupFactor * tex->lightmapVecsLuxelsPerWorldUnits[1].AsVector3D();
+			surfaceCenter = luxelBase + 0.5f * across;
+			surfaceRadius = 0.5f * MAX( across.Length(), other.Length() );
+			basis = true;
+		}
+		// No luxel within the light's reach of the rectangle: nothing to add.
+		const float lightRadius =
+		    sqrtf( area_light::detail::Dot( light.rect.halfU, light.rect.halfU ) +
+		           area_light::detail::Dot( light.rect.halfV, light.rect.halfV ) );
+		if ( ( surfaceCenter - localCenter ).Length() >= surfaceRadius + lightRadius + light.reach )
+			continue;
+		reaching[reachingCount++] = lights[l];
+		for ( int t = 0; t < tmax; ++t )
+		{
+			Vector position;
+			VectorMA( luxelBase, t * fixupFactor,
+			    tex->lightmapVecsLuxelsPerWorldUnits[1].AsVector3D(), position );
+			for ( int s = 0; s < smax; ++s )
+			{
+				const float p[3] = { position.x, position.y, position.z };
+				const float window =
+				    area_light::Window( area_light::DistanceTo( light.rect, p ), light.reach );
+				if ( window > 0.0f && area_light::Faces( light.rect, p ) )
+				{
+					const int idx = t * smax + s;
+					const float flat = area_light::FormFactor( light.rect, p, n ) * window;
+					for ( int k = 0; k < 3; ++k )
+						blocklights[0][idx][k] += flat * light.radiance[k];
+					if ( flat > 0.0f )
+					{
+						extern double g_AreaLightsAddedEnergy;
+						extern int g_AreaLightsLitLuxels;
+						g_AreaLightsAddedEnergy += flat * light.radiance[1];
+						++g_AreaLightsLitLuxels;
+					}
+					if ( needsBumpmap )
+					{
+						float v[3];
+						area_light::VectorFormFactor( corners, 4, p, v );
+						for ( int b = 0; b < NUM_BUMP_VECTS; ++b )
+						{
+							const float dot = v[0] * bumpNormals[b].x + v[1] * bumpNormals[b].y +
+							                  v[2] * bumpNormals[b].z;
+							if ( dot <= 0.0f )
+								continue;
+							for ( int k = 0; k < 3; ++k )
+								blocklights[b + 1][idx][k] += dot * window * light.radiance[k];
+						}
+					}
+				}
+				VectorMA( position, fixupFactor,
+				    tex->lightmapVecsLuxelsPerWorldUnits[0].AsVector3D(), position );
+			}
+		}
+	}
+	AreaLights_Applied( surfID, worldSurface, reaching, reachingCount );
+}
+
+//-----------------------------------------------------------------------------
+// RFC 0011 render.dynamic-occlusion.v1: moving objects (props, physics
+// objects, doors) block the world's lights. Each texel loses, for every world
+// light, the share of that light's direct light the boxes of a generation
+// block (dynamic_occlusion::Visibility), computed with the engine's world
+// light formula (falloff times angle, as models are lit), wherever the bake
+// let the light reach the texel. Lights are judged one by one, so shadows from
+// several lights mix. Bumped lightmaps lose the same light along its
+// direction, as a dlight adds it.
+//-----------------------------------------------------------------------------
+extern float Engine_WorldLightDistanceFalloff(
+    const dworldlight_t *wl, const Vector &delta, bool bNoRadiusCheck );
+extern float Engine_WorldLightAngle(
+    const dworldlight_t *wl, const Vector &lnormal, const Vector &snormal, const Vector &delta );
+
+// Direct light below this (the lightmap unit) is not worth a trace.
+static const float kOcclusionThreshold = 1.0f / 512.0f;
+
+// A surface's blocked light, kept while the boxes near it stay put: the texels
+// some light is blocked at, and for each the lights the bake let reach it with
+// the share the boxes let through. A rebuild for any other reason (a flickering
+// style, a dlight) then only redoes the light arithmetic.
+struct OcclusionTexel
+{
+	int idx;
+	int first; // into OcclusionCache::lights
+	int count;
+};
+struct OcclusionLight
+{
+	int light;
+	float visible;
+};
+struct OcclusionCache
+{
+	uint64_t signature = 0; // the near boxes' keys and versions
+	int map = -1;
+	std::vector<OcclusionTexel> texels;
+	std::vector<OcclusionLight> lights;
+};
+static std::unordered_map<SurfaceHandle_t, OcclusionCache> g_OcclusionCache;
+static std::mutex g_OcclusionCacheMutex;
+
+static void R_ApplyDynamicOcclusionTimed(
+    SurfaceHandle_t surfID, const matrix3x4_t &entityToWorld, bool needsBumpmap, int generation );
+
+static void R_ApplyDynamicOcclusion(
+    SurfaceHandle_t surfID, const matrix3x4_t &entityToWorld, bool needsBumpmap, int generation )
+{
+	extern double g_OcclusionSeconds;
+	extern int g_OcclusionSurfaces;
+	const double start = Plat_FloatTime();
+	R_ApplyDynamicOcclusionTimed( surfID, entityToWorld, needsBumpmap, generation );
+	g_OcclusionSeconds += Plat_FloatTime() - start;
+	++g_OcclusionSurfaces;
+}
+
+static void R_ApplyDynamicOcclusionTimed(
+    SurfaceHandle_t surfID, const matrix3x4_t &entityToWorld, bool needsBumpmap, int generation )
+{
+	extern int g_nMapLoadCount;
+	worldbrushdata_t *world = host_state.worldbrush;
+	if ( !world || world->numworldlights <= 0 || !AreaLights_IsWorldSurface( surfID ) )
+		return;
+	const std::vector<OccluderEntry> &entries = DynamicOcclusion_Get( generation );
+
+	// The surface's lightmap rectangle, as a sphere.
+	Vector bumpNormals[NUM_BUMP_VECTS];
+	Vector luxelBase;
+	R_ComputeSurfaceBasis( surfID, bumpNormals, luxelBase );
+	mtexinfo_t *tex = MSurf_TexInfo( surfID );
+	const float fixupFactor = tex->worldUnitsPerLuxel * tex->worldUnitsPerLuxel;
+	const int smax = MSurf_LightmapExtents( surfID )[0] + 1;
+	const int tmax = MSurf_LightmapExtents( surfID )[1] + 1;
+	const Vector stepS = fixupFactor * tex->lightmapVecsLuxelsPerWorldUnits[0].AsVector3D();
+	const Vector stepT = fixupFactor * tex->lightmapVecsLuxelsPerWorldUnits[1].AsVector3D();
+	const Vector across = ( smax - 1 ) * stepS + ( tmax - 1 ) * stepT;
+	const Vector other = ( smax - 1 ) * stepS - ( tmax - 1 ) * stepT;
+	const Vector surfaceCenter = luxelBase + 0.5f * across;
+	const float surfaceRadius = 0.5f * MAX( across.Length(), other.Length() );
+
+	// The boxes whose shadows can reach it, and their signature.
+	std::vector<dynamic_occlusion::Box> near;
+	uint64_t signature = 1469598103934665603ull;
+	for ( const OccluderEntry &entry : entries )
+	{
+		const Vector center( entry.box.center[0], entry.box.center[1], entry.box.center[2] );
+		if ( ( center - surfaceCenter ).Length() >= surfaceRadius +
+		                                                dynamic_occlusion::Radius( entry.box ) +
+		                                                DynamicOcclusion_Reach( entry.box ) )
+			continue;
+		near.push_back( entry.box );
+		const uint64_t words[3] = { uint64_t( uint32_t( entry.box.entity ) ),
+		    uint64_t( uint32_t( entry.box.part ) ), uint64_t( entry.version ) };
+		for ( uint64_t word : words )
+		{
+			signature ^= word;
+			signature *= 1099511628211ull;
+		}
+	}
+
+	std::lock_guard<std::mutex> lock( g_OcclusionCacheMutex );
+	if ( near.empty() )
+	{
+		g_OcclusionCache.erase( surfID );
+		return;
+	}
+	OcclusionCache &cache = g_OcclusionCache[surfID];
+	const Vector &n = MSurf_Plane( surfID ).normal;
+	if ( cache.map != g_nMapLoadCount || cache.signature != signature )
+	{
+		// Build: which lights the boxes block at which texels, and by how much.
+		cache.map = g_nMapLoadCount;
+		cache.signature = signature;
+		cache.texels.clear();
+		cache.lights.clear();
+		const float planeDist = MSurf_Plane( surfID ).dist;
+		std::vector<int> lights;
+		for ( int i = 0; i < world->numworldlights; ++i )
+		{
+			const dworldlight_t &wl = world->worldlights[i];
+			if ( wl.type == emit_skyambient || wl.type == emit_quakelight )
+				continue;
+			if ( wl.type == emit_skylight )
+			{
+				if ( DotProduct( wl.normal, n ) >= 0.0f )
+					continue;
+			}
+			else
+			{
+				if ( DotProduct( wl.origin, n ) - planeDist <= 0.0f )
+					continue;
+				if ( wl.radius > 0.0f &&
+				     ( wl.origin - surfaceCenter ).Length() > wl.radius + surfaceRadius )
+					continue;
+			}
+			lights.push_back( i );
+		}
+		std::vector<OcclusionLight> reaching;
+		for ( int t = 0; t < tmax; ++t )
+		{
+			Vector position = luxelBase + t * stepT;
+			for ( int s = 0; s < smax; ++s, position += stepS )
+			{
+				const int idx = t * smax + s;
+				const float p[3] = { position.x, position.y, position.z };
+				reaching.clear();
+				bool anyBlocked = false;
+				for ( int li : lights )
+				{
+					const dworldlight_t &wl = world->worldlights[li];
+					Vector delta = wl.type == emit_skylight ? -wl.normal : wl.origin - position;
+					const float falloff = Engine_WorldLightDistanceFalloff( &wl, delta, false );
+					if ( falloff <= 0.0f )
+						continue;
+					delta.NormalizeInPlace();
+					const float angle = Engine_WorldLightAngle( &wl, wl.normal, n, delta );
+					if ( angle <= 0.0f )
+						continue;
+					const Vector direct = wl.intensity * ( falloff * angle );
+					if ( MAX( direct.x, MAX( direct.y, direct.z ) ) < kOcclusionThreshold )
+						continue;
+					const float visible = dynamic_occlusion::Visibility(
+					    p, DynamicOcclusion_WorldLightSamples( wl, position ), near, 0 );
+					anyBlocked |= visible < 1.0f;
+					reaching.push_back( OcclusionLight{ li, visible } );
+				}
+				if ( !anyBlocked )
+					continue;
+				// Only light the bake let reach the texel counts.
+				OcclusionTexel texel = { idx, int( cache.lights.size() ), 0 };
+				bool blocked = false;
+				for ( const OcclusionLight &light : reaching )
+				{
+					if ( !DynamicOcclusion_StaticVisible( surfID, idx, light.light, position, n ) )
+						continue;
+					cache.lights.push_back( light );
+					++texel.count;
+					blocked |= light.visible < 1.0f;
+				}
+				if ( blocked )
+					cache.texels.push_back( texel );
+				else
+					cache.lights.resize( size_t( texel.first ) );
+			}
+		}
+	}
+
+	// Apply: the blocked share of each light, never more than the texel holds
+	// (the formula's light scaled to the bake's where the two disagree).
+	for ( const OcclusionTexel &texel : cache.texels )
+	{
+		const int idx = texel.idx;
+		const Vector position = luxelBase + ( idx / smax ) * stepT + ( idx % smax ) * stepS;
+		Vector bakedDirect( 0, 0, 0 ), blocked( 0, 0, 0 );
+		Vector removedDirection[64];
+		Vector removed[64];
+		int nRemoved = 0;
+		for ( int l = texel.first; l < texel.first + texel.count; ++l )
+		{
+			const OcclusionLight &light = cache.lights[size_t( l )];
+			const dworldlight_t &wl = world->worldlights[light.light];
+			Vector delta = wl.type == emit_skylight ? -wl.normal : wl.origin - position;
+			const float falloff = Engine_WorldLightDistanceFalloff( &wl, delta, false );
+			delta.NormalizeInPlace();
+			const float angle = Engine_WorldLightAngle( &wl, wl.normal, n, delta );
+			const Vector direct = wl.intensity * ( MAX( falloff, 0.0f ) * MAX( angle, 0.0f ) *
+			                                         LightStyleValue( wl.style ) );
+			bakedDirect += direct;
+			if ( light.visible < 1.0f && nRemoved < 64 )
+			{
+				removed[nRemoved] = direct * ( 1.0f - light.visible );
+				removedDirection[nRemoved] = delta;
+				blocked += removed[nRemoved];
+				++nRemoved;
+			}
+		}
+		const float bakedLuminance = 0.2126f * blocklights[0][idx][0] +
+		                             0.7152f * blocklights[0][idx][1] +
+		                             0.0722f * blocklights[0][idx][2];
+		const float directLuminance =
+		    0.2126f * bakedDirect.x + 0.7152f * bakedDirect.y + 0.0722f * bakedDirect.z;
+		if ( !( directLuminance > 0.0f ) || blocked.LengthSqr() <= 0.0f )
+			continue;
+		const float scale = MIN( 1.0f, MAX( bakedLuminance, 0.0f ) / directLuminance );
+		{
+			extern int g_OcclusionLuxels;
+			extern double g_OcclusionRemoved;
+			++g_OcclusionLuxels;
+			g_OcclusionRemoved += blocked.y * scale;
+		}
+		for ( int r = 0; r < nRemoved; ++r )
+		{
+			const Vector take = removed[r] * scale;
+			blocklights[0][idx].AsVector3D() -= take;
+			if ( needsBumpmap )
+			{
+				const float lDotN = MAX( DotProduct( removedDirection[r], n ), 1e-3f );
+				for ( int b = 0; b < NUM_BUMP_VECTS; ++b )
+				{
+					const float dot = DotProduct( removedDirection[r], bumpNormals[b] );
+					if ( dot > 0.0f )
+						blocklights[b + 1][idx].AsVector3D() -= take * ( dot / lDotN );
+				}
+			}
+		}
+		for ( int b = 0; b < ( needsBumpmap ? NUM_BUMP_VECTS + 1 : 1 ); ++b )
+			for ( int k = 0; k < 3; ++k )
+				blocklights[b][idx][k] = MAX( blocklights[b][idx][k], 0.0f );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// RFC 0011 render.projected-light.v1: env_projectedtextures light the world
+// like every other light. Each texel in a light's frustum takes its cookie x
+// attenuation x Lambert term (projected_light::IrradianceAt), shadowed by the
+// world (a cached trace) and by moving objects (render.dynamic-occlusion.v1);
+// bumped lightmaps take it along its direction, as a dlight adds light. A
+// surface keeps what it takes while the lights and the boxes near it stay put.
+//-----------------------------------------------------------------------------
+struct ProjectedContribution
+{
+	int idx;
+	Vector light; // flat
+	Vector direction;
+};
+struct ProjectedCache
+{
+	uint64_t signature = 0;
+	int map = -1;
+	std::vector<ProjectedContribution> contributions;
+};
+static std::unordered_map<SurfaceHandle_t, ProjectedCache> g_ProjectedCache;
+static std::mutex g_ProjectedCacheMutex;
+
+static void R_AddProjectedLights(
+    SurfaceHandle_t surfID, bool needsBumpmap, int generation, int occlusionGeneration )
+{
+	extern int g_nMapLoadCount;
+	const std::vector<ProjectedLightEntry> &lights = ProjectedLights_Get( generation );
+	if ( !AreaLights_IsWorldSurface( surfID ) )
+		return;
+	std::lock_guard<std::mutex> lock( g_ProjectedCacheMutex );
+	if ( lights.empty() )
+	{
+		g_ProjectedCache.erase( surfID );
+		return;
+	}
+
+	Vector bumpNormals[NUM_BUMP_VECTS];
+	Vector luxelBase;
+	R_ComputeSurfaceBasis( surfID, bumpNormals, luxelBase );
+	mtexinfo_t *tex = MSurf_TexInfo( surfID );
+	const float fixupFactor = tex->worldUnitsPerLuxel * tex->worldUnitsPerLuxel;
+	const int smax = MSurf_LightmapExtents( surfID )[0] + 1;
+	const int tmax = MSurf_LightmapExtents( surfID )[1] + 1;
+	const Vector stepS = fixupFactor * tex->lightmapVecsLuxelsPerWorldUnits[0].AsVector3D();
+	const Vector stepT = fixupFactor * tex->lightmapVecsLuxelsPerWorldUnits[1].AsVector3D();
+	const Vector across = ( smax - 1 ) * stepS + ( tmax - 1 ) * stepT;
+	const Vector other = ( smax - 1 ) * stepS - ( tmax - 1 ) * stepT;
+	const Vector surfaceCenter = luxelBase + 0.5f * across;
+	const float surfaceRadius = 0.5f * MAX( across.Length(), other.Length() );
+	const Vector &n = MSurf_Plane( surfID ).normal;
+	const float planeDist = MSurf_Plane( surfID ).dist;
+
+	// The lights that reach it, and the boxes near them: the signature.
+	std::vector<const ProjectedLightEntry *> reaching;
+	uint64_t signature = 1469598103934665603ull;
+	auto mix = [&signature]( uint64_t word )
+	{
+		signature ^= word;
+		signature *= 1099511628211ull;
+	};
+	for ( const ProjectedLightEntry &entry : lights )
+	{
+		if ( !entry.light.lightsWorld )
+			continue;
+		float center[3], radius;
+		projected_light::BoundingSphere( entry.light, center, &radius );
+		if ( ( Vector( center[0], center[1], center[2] ) - surfaceCenter ).Length() >=
+		     radius + surfaceRadius )
+			continue;
+		const Vector origin( entry.light.origin[0], entry.light.origin[1], entry.light.origin[2] );
+		if ( DotProduct( origin, n ) - planeDist <= 0.0f )
+			continue; // behind the surface
+		reaching.push_back( &entry );
+		mix( uint64_t( uint32_t( entry.key ) ) );
+		mix( entry.version );
+	}
+	if ( reaching.empty() )
+	{
+		g_ProjectedCache.erase( surfID );
+		return;
+	}
+	std::vector<dynamic_occlusion::Box> near;
+	for ( const OccluderEntry &box : DynamicOcclusion_Get( occlusionGeneration ) )
+	{
+		const Vector center( box.box.center[0], box.box.center[1], box.box.center[2] );
+		if ( ( center - surfaceCenter ).Length() >=
+		     surfaceRadius + dynamic_occlusion::Radius( box.box ) + kMaxShadowReach )
+			continue;
+		near.push_back( box.box );
+		mix( uint64_t( uint32_t( box.box.entity ) ) ^ ( uint64_t( box.box.part ) << 32 ) );
+		mix( box.version );
+	}
+
+	extern double g_ProjectedBuildSeconds, g_ProjectedApplySeconds;
+	extern int g_ProjectedBuilds, g_ProjectedTexels;
+	ProjectedCache &cache = g_ProjectedCache[surfID];
+	const double buildStart = Plat_FloatTime();
+	if ( cache.map != g_nMapLoadCount || cache.signature != signature )
+	{
+		++g_ProjectedBuilds;
+		cache.map = g_nMapLoadCount;
+		cache.signature = signature;
+		cache.contributions.clear();
+		for ( const ProjectedLightEntry *entry : reaching )
+		{
+			const projected_light::Light &light = entry->light;
+			const Vector origin( light.origin[0], light.origin[1], light.origin[2] );
+			const float lightSamples[3] = { light.origin[0], light.origin[1], light.origin[2] };
+			const int lightKey = 2048 | int( entry->version & 2047 );
+			for ( int t = 0; t < tmax; ++t )
+			{
+				Vector position = luxelBase + t * stepT;
+				for ( int s = 0; s < smax; ++s, position += stepS )
+				{
+					const float p[3] = { position.x, position.y, position.z };
+					const float normal[3] = { n.x, n.y, n.z };
+					float rgb[3];
+					projected_light::IrradianceAt(
+					    light, p, normal,
+					    [&light]( float u, float v, float out[3] )
+					    {
+						    ProjectedLights_Cookie( light, u, v, out );
+					    },
+					    rgb );
+					if ( MAX( rgb[0], MAX( rgb[1], rgb[2] ) ) < 1.0f / 1024.0f )
+						continue;
+					const int idx = t * smax + s;
+					float visible = 1.0f;
+					if ( light.shadows )
+					{
+						if ( !DynamicOcclusion_StaticVisibleTo(
+						         surfID, idx, lightKey, position, n, origin, false ) )
+							continue;
+						if ( !near.empty() )
+							visible = dynamic_occlusion::Visibility( p,
+							    dynamic_occlusion::DiskSamples(
+							        lightSamples, projected_light::kSourceRadius, p ),
+							    near, 0 );
+					}
+					if ( !( visible > 0.0f ) )
+						continue;
+					Vector direction = origin - position;
+					direction.NormalizeInPlace();
+					cache.contributions.push_back( ProjectedContribution{
+					    idx, Vector( rgb[0], rgb[1], rgb[2] ) * visible, direction } );
+					++g_ProjectedTexels;
+				}
+			}
+		}
+	}
+
+	const double applyStart = Plat_FloatTime();
+	g_ProjectedBuildSeconds += applyStart - buildStart;
+	for ( const ProjectedContribution &c : cache.contributions )
+	{
+		blocklights[0][c.idx].AsVector3D() += c.light;
+		if ( needsBumpmap )
+		{
+			const float lDotN = MAX( DotProduct( c.direction, n ), 1e-3f );
+			for ( int b = 0; b < NUM_BUMP_VECTS; ++b )
+			{
+				const float dot = DotProduct( c.direction, bumpNormals[b] );
+				if ( dot > 0.0f )
+					blocklights[b + 1][c.idx].AsVector3D() += c.light * ( dot / lDotN );
+			}
+		}
+	}
+	g_ProjectedApplySeconds += Plat_FloatTime() - applyStart;
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: Compute the mask of which dlights affect a surface
 //			NOTE: Also has the side effect of updating the surface lighting dlight flags!
 //-----------------------------------------------------------------------------
@@ -482,6 +1056,11 @@ void R_AddDynamicLights( dlight_t *pLights, SurfaceHandle_t surfID, const matrix
 	// Lights imaged through portals (portal_dlights.h) are clipped per luxel;
 	// displacements cannot clip yet, so they leave them out.
 	const unsigned int portalImages = PortalDLights_ImageMask();
+
+	// Area lights (area_lights.h) are added by R_AddAreaLights, not as points.
+	for ( int lnum = 0; lnum < MAX_DLIGHTS; ++lnum )
+		if ( pLights[lnum].flags & DLIGHT_AREA )
+			lightMask &= ~( 1u << lnum );
 
 	// Displacements do dynamic lights different
 	if( SurfaceHasDispInfo( surfID ) )
@@ -838,7 +1417,7 @@ static std::unordered_map<SurfaceHandle_t, std::vector<Vector4D>> g_ProbeLitSurf
 
 void R_BuildLightMapGuts( dlight_t *pLights, SurfaceHandle_t surfID,
     const matrix3x4_t &entityToWorld, unsigned int dlightMask, bool needsBumpmap,
-    bool needsLightmap );
+    bool needsLightmap, int areaGeneration, int occlusionGeneration, int projectedGeneration );
 
 static bool R_ProbeLitSamples( SurfaceHandle_t surfID, Vector4D *samples, int size )
 {
@@ -927,7 +1506,8 @@ static void ApplyProbeLitSurface( SurfaceHandle_t surfID, std::vector<Vector4D> 
 	g_ProbeLitSurfaces[surfID] = std::move( luxels );
 	matrix3x4_t identity;
 	SetIdentityMatrix( identity );
-	R_BuildLightMapGuts( NULL, surfID, identity, 0, SurfNeedsBumpedLightmaps( surfID ), true );
+	R_BuildLightMapGuts( NULL, surfID, identity, 0, SurfNeedsBumpedLightmaps( surfID ), true,
+	    AreaLights_Generation(), DynamicOcclusion_Generation(), ProjectedLights_Generation() );
 }
 
 static void ClearProbeLitSurfaces()
@@ -1059,7 +1639,9 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 	return true;
 }
 
-void R_BuildLightMapGuts( dlight_t *pLights, SurfaceHandle_t surfID, const matrix3x4_t& entityToWorld, unsigned int dlightMask, bool needsBumpmap, bool needsLightmap )
+void R_BuildLightMapGuts( dlight_t *pLights, SurfaceHandle_t surfID,
+    const matrix3x4_t &entityToWorld, unsigned int dlightMask, bool needsBumpmap,
+    bool needsLightmap, int areaGeneration, int occlusionGeneration, int projectedGeneration )
 {
 	VPROF_("R_BuildLightMapGuts", 1, VPROF_BUDGETGROUP_DLIGHT_RENDERING, false, 0);
 	int bumpID;
@@ -1149,6 +1731,15 @@ void R_BuildLightMapGuts( dlight_t *pLights, SurfaceHandle_t surfID, const matri
 		R_AddDynamicLights( pLights, surfID, entityToWorld, needsBumpmap, dlightMask );
 	}
 
+	// and the area lights that reach it (displacements take none yet), less
+	// the light moving objects block (render.dynamic-occlusion.v1)
+	if ( ( needsLightmap || needsBumpmap ) && !SurfaceHasDispInfo( surfID ) )
+	{
+		R_AddAreaLights( surfID, entityToWorld, needsBumpmap, areaGeneration );
+		R_ApplyDynamicOcclusion( surfID, entityToWorld, needsBumpmap, occlusionGeneration );
+		R_AddProjectedLights( surfID, needsBumpmap, projectedGeneration, occlusionGeneration );
+	}
+
 	// Update the texture state
 	UpdateLightmapTextures( surfID, needsBumpmap );
 }
@@ -1179,13 +1770,21 @@ void R_BuildLightMap( dlight_t *pLights, ICallQueue *pCallQueue, SurfaceHandle_t
 	if ( bOnlyUseLightStyles )
 		dlightMask = 0;
 
+	// The area lights and occluders current now, even if the build runs on
+	// another thread.
+	const int areaGeneration = AreaLights_Generation();
+	const int occlusionGeneration = DynamicOcclusion_Generation();
+	const int projectedGeneration = ProjectedLights_Generation();
 	if ( !pCallQueue )
 	{
-		R_BuildLightMapGuts( pLights, surfID, entityToWorld, dlightMask, needsBumpmap, needsLightmap );
+		R_BuildLightMapGuts( pLights, surfID, entityToWorld, dlightMask, needsBumpmap,
+		    needsLightmap, areaGeneration, occlusionGeneration, projectedGeneration );
 	}
 	else
 	{
-		pCallQueue->QueueCall( R_BuildLightMapGuts, pLights, surfID, RefToVal( entityToWorld ), dlightMask, needsBumpmap, needsLightmap );
+		pCallQueue->QueueCall( R_BuildLightMapGuts, pLights, surfID, RefToVal( entityToWorld ),
+		    dlightMask, needsBumpmap, needsLightmap, areaGeneration, occlusionGeneration,
+		    projectedGeneration );
 	}
 }
 
@@ -1404,6 +2003,9 @@ void FASTCALL R_RenderDynamicLightmaps ( dlight_t *pLights, ICallQueue *pCallQue
 	// was it dynamic this frame (pLighting->m_nDLightFrame == r_framecount) 
 	// or dynamic previously (pLighting->m_fDLightBits)
 	bool bDLightChanged = ( pLighting->m_nDLightFrame == r_framecount ) || pLighting->m_fDLightBits;
+	// or it holds an area light that is gone or changed (area_lights.h)
+	if ( !bDLightChanged && ( fSurfFlags & SURFDRAW_HASDLIGHT ) )
+		bDLightChanged = AreaLights_IsDirty( surfID ) || DynamicOcclusion_IsDirty( surfID );
 	bool bOnlyUseLightStyles = false;
 
 	if( r_dynamic.GetInt() == 0 )
