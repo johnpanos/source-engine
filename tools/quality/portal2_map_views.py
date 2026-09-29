@@ -34,6 +34,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import launch_sandbox  # noqa: E402
 import playable_maps  # noqa: E402
 import portal_boot  # noqa: E402
 import stage_portal2_runtime  # noqa: E402
@@ -104,14 +105,17 @@ def run(args):
     out.mkdir(parents=True, exist_ok=True)
     runtime = args.runtime.resolve()
     steps = [parse_step(s) for s in args.step]
+    # Checked before staging, which rewrites the runtime: never ./play_p2's.
+    sandbox = launch_sandbox.Sandbox(out / "sandbox", write_paths=[runtime])
     mounted = stage(runtime, args.steam_root, args.build.resolve())
+    sandbox.check_write_paths([runtime])
     game = runtime / "portal2"
     shots = game / "screenshots"
     shutil.rmtree(shots, ignore_errors=True)
     write_cfg(game / "cfg" / (CFG + ".cfg"), steps, args.settle, args.shot_frames)
     console = game / "console.log"
     console.unlink(missing_ok=True)
-    environment = dict(os.environ)
+    environment = sandbox.environment(os.environ)
     for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
         environment.pop(variable, None)
     environment.update({"SteamAppId": "620", "SteamGameId": "620",
@@ -160,7 +164,8 @@ def run(args):
     result = {"schema": SCHEMA, "map": args.map, "status": "fail" if failures else "pass",
               "failures": failures, "notes": notes, "views": captured, "steps": steps,
               "mounted_maps": len(mounted), "seconds": round(time.monotonic() - started, 1),
-              "returncode": process.returncode, "command": command}
+              "returncode": process.returncode, "command": command,
+              "sandbox": sandbox.finish()}
     (out / "views.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
 

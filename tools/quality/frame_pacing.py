@@ -24,6 +24,7 @@ import re
 import sys
 
 import conformance
+import launch_sandbox
 import portal_boot
 
 
@@ -512,7 +513,10 @@ def run_once(args, scenario, passes, build, output, extra_args=()):
         if len(" ".join(command)) >= ENGINE_COMMAND_LIMIT:
             raise ScenarioError("engine command line is %d characters (limit %d): use a shorter --out"
                                 % (len(" ".join(command)), ENGINE_COMMAND_LIMIT))
-        environment = dict(portal_boot.os.environ)
+        # A throwaway HOME/XDG; the stage and a shared pipeline store are the
+        # only write paths. The driver cache stays warm (launch_sandbox.py).
+        sandbox = launch_sandbox.Sandbox(output / "sandbox", write_paths=[stage, store])
+        environment = sandbox.environment(portal_boot.os.environ)
         environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
         environment["SteamAppId"] = environment["SteamGameId"] = "400"
         if args.cold_shader_cache:
@@ -533,6 +537,7 @@ def run_once(args, scenario, passes, build, output, extra_args=()):
         evidence["host_load_before"] = list(portal_boot.os.getloadavg())
         code, timed_out, _, seconds = portal_boot.run_product(
             command, stage, environment, args.timeout, output / "stdout.log")
+        evidence["sandbox"] = sandbox.finish()
         evidence["host_load_after"] = list(portal_boot.os.getloadavg())
         evidence.update(returncode=code, timed_out=timed_out, elapsed_seconds=round(seconds, 1))
         if timed_out:

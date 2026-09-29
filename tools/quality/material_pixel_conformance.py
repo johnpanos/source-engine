@@ -78,6 +78,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import conformance  # noqa: E402
+import launch_sandbox  # noqa: E402
 import material_pixel_frames  # noqa: E402
 import material_pixel_modellight  # noqa: E402
 import material_pixel_pbr_model  # noqa: E402
@@ -1212,7 +1213,9 @@ def run(args):
     pixels = output / "pixels.json"
     command = [str(harness), "-game", "portal", "-renderer", args.renderer, "-hdr", args.hdr,
                "-family", args.family, "-out", str(pixels)] + args.extra_arg
-    environment = os.environ.copy()
+    # A throwaway HOME/XDG for the harness process; the stage is its write path.
+    sandbox = launch_sandbox.Sandbox(output / "sandbox", write_paths=[stage])
+    environment = sandbox.environment(os.environ)
     environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
     # DXVK presents through SDL3 in these products; the native backend ignores it.
     environment["DXVK_WSI_DRIVER"] = "SDL3"
@@ -1235,10 +1238,12 @@ def run(args):
                                        stderr=subprocess.STDOUT, timeout=args.timeout)
             evidence["returncode"] = completed.returncode
         except subprocess.TimeoutExpired:
+            evidence["sandbox"] = sandbox.finish()
             evidence["returncode"] = None
             evidence["failures"] = ["harness timed out after %gs" % args.timeout]
             (output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
             return 2
+    evidence["sandbox"] = sandbox.finish()
     if evidence["returncode"] != 0 or not pixels.is_file():
         evidence["failures"] = ["harness exited %s without a capture" % evidence["returncode"]]
         (output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")

@@ -475,6 +475,172 @@ directories per profile. Nothing enforced that until now.
   Sessions that loaded the `wscript` before this change take no lock until
   their next invocation.
 
+## Launch sandbox: harness launches never write the player's saved state (2026-09-28)
+
+Retail Portal 2 mirrors linked `update/` whole, so harness runs saved test
+settings (`hud_quickinfo 0`, `closecaption 0`, `cc_subtitles 0`,
+`snd_mute_losefocus 0`) into the player's real, Steam Cloud-synced
+`update/cfg/config.cfg`. `bc11225f` gave the mirrors a private `update/cfg`.
+This slice makes isolation the default for every harness launch.
+
+**Inventory** (tools/quality at `71d986fa` plus the tree's uncommitted work).
+There are 15 direct launchers of a product binary on the host. None of them
+set `HOME`, so every one inherited the player's home. A headless
+`portal_boot` boot with an empty `HOME` wrote only `~/.cache/mesa_shader_cache`
+and `radv_builtin_shaders` there. The engine's own writes (`cfg/config.cfg`,
+`screenshots/`, `platform/config/*.vdf`, `steam_appid.txt`, pipeline cache,
+stats) went to the stage.
+
+| Launcher | Game write location before | Verdict before | Now |
+| --- | --- | --- | --- |
+| `portal_boot.py`, `frame_pacing.py`, `bsp2_dedicated.py` (+`usd_map_runtime`), `material_pixel_conformance.py` | private per-run stage | leaks HOME (driver caches, anything a library saves) | migrated |
+| `legacy_shader_conformance.py` | private stage | leaks HOME | deferred (busy file) |
+| `fstop_mechanics_check.py` | fixed `run/runtime-fstop-check`, shared by scenarios | leaks HOME; `--runtime run/runtime-fstop` wrote the player runtime and then `rmtree`'d it | migrated; refused before staging |
+| `portal2_scenarios.py` (+ build sides of material shots, physics) | persistent `run/runtime-p2-*` | leaks HOME; `--runtime run/runtime-p2` accepted | migrated; refused before staging |
+| `portal2_map_views.py` (+`portal2_gi_chamber --capture`) | `run/runtime-p2-views` | leaks HOME | migrated; refused before staging |
+| `portal2_audio.py` source side | `run/runtime-p2-audio` | leaks HOME | deferred (busy file) |
+| retail sides of `portal2_audio`, `portal2_material_shots`, `portal2_physics` | mirrors under `run/retail-p2-*` or `<out>` | leak into the install: `portal2/SAVE/<steamid>` (Steam Auto-Cloud), `update/save/game_instructor_counts.txt`, `update/glshaders.cfg`, sound caches; audio links `portal2_linux`, so its base directory is the install | write targets fixed in the shared owner; HOME deferred (busy files) |
+| `hammer_ui_test.py`, `hammer_viewport_budget.py`, `hammer_ktx2_preview.py` | output dir | leak HOME (`hammer_ui_test` has a private `XDG_CONFIG_HOME` only) | deferred: Hammer cohort |
+| `parity_wine.py` | build dir | writes the default `~/.wine` prefix | deferred (not a game) |
+
+A further 19 entry points launch through `portal_boot.py`, `bsp2_dedicated`,
+`portal2_scenarios`, `portal2_map_views` or `portal2_material_shots` and
+inherit their verdict: `gi_runtime`, `gi_probes`, `gi_swing`, `gi_soak`,
+`gi_temporal`, `gi_radiosity`, `reflection_runtime`, `legacy_ports_views`,
+`host_frame_baseline`, `portal_pedestal_carousel`, `spark_light_scene`,
+`portal_dlight_lab`, `pbrt_map_build --boot`, `vmf_map_build --boot`,
+`legacy_bsp_relight --boot`, `map_lighting`, `usd_map_runtime`,
+`portal2_paint` and `portal2_gi_chamber`. Five are device-only and write the
+app's container on the device, not the host: `frame_pacing_device`,
+`ios_frame_pacing`, `ios_conformance`, `game_center_e2e` (which also changes
+the signed-in Game Center account) and `gi_soak --android`. Intended writes
+outside output directories are unchanged: publishing to `run/maps`, recording
+fixtures under `quality/`, and the FXC cache in `~/.cache/source-engine/fxc`.
+
+**Helper.** [`tools/quality/launch_sandbox.py`](../tools/quality/launch_sandbox.py)
+is the one owner (`launch-sandbox/v1`).
+
+- Call pattern: `Sandbox(root, write_paths=[stage])`, then
+  `environment(os.environ)` for the child, then `finish()` into the evidence.
+- The child gets a throwaway `HOME` and private
+  `XDG_CONFIG_HOME`/`XDG_DATA_HOME`/`XDG_STATE_HOME` under `root`, recreated
+  per Sandbox. `XDG_RUNTIME_DIR` is kept, because it holds sockets.
+  `private_session.py` owns the D-Bus session.
+- `XDG_CACHE_HOME` is a shared harness cache,
+  `~/.cache/source-engine-harness`. Driver shader caches are content-addressed
+  and affect timing only, and frame budgets were recorded warm.
+  `cache="private"` gives a cold one.
+- Declared write paths must resolve outside the player's locations: the real
+  XDG config, data and state directories (these hold the Steam install),
+  `~/.steam`, the `./play*` runtimes (`run/runtime`, `-native`, `-dxvk`, `-p2`,
+  `-fstop`), and `SOURCE_HARNESS_PROTECTED`. For a tree, the check also covers
+  `cfg`, `save`, `SAVE`, `screenshots` and `config` in each real top-level
+  directory, and refuses a subpath linked out of the tree. Linked read-only
+  overlays, such as a staged Portal 2 runtime's `update/`, are skipped.
+  `check_write_paths()` applies the same rule before staging.
+- The player's `config.cfg` files are hashed before and after the launch. A
+  change is logged as a WARNING and recorded in `protected_changed`. It is
+  evidence, not a verdict, because the player may be playing.
+- Opt-outs are `grants={name: reason}` with a required reason. Each one is
+  printed as `launch-sandbox: OPT-OUT <grant>: <reason>` and recorded in
+  `opt_outs`. The grants are `real-home`; `steam` (a private home that links
+  only `~/.steam` and the Steam root, for retail `portal2_linux`); and
+  `player-write-paths`.
+
+`stage_portal2_runtime.private_retail_write_dir` builds on `bc11225f`.
+- It stays the shared owner of retail write locations, and all three mirror
+  builders already call it.
+- In `update/`, only VPKs, `resource/` and `scripts/` are linked. Every other
+  entry is a private copy, and `save/` starts empty.
+- `portal2/SAVE` and `portal2/screenshots` start empty and private.
+- A linked `portal2_linux` is replaced by a copy.
+- Links in existing mirrors are converted on the next run.
+- `RETAIL_WRITE_PATHS` names a mirror's write paths for the sandbox.
+
+**Tests.**
+
+- [`tests/test_launch_sandbox.py`](../tools/quality/tests/test_launch_sandbox.py)
+  has 16 tests over a fake home, a fake Steam install, a fake repository and a
+  fake engine. The engine saves `hud_quickinfo "0"` to its game cfg, to
+  `$XDG_CONFIG_HOME` and to the Steam root's `update/cfg`.
+  - Through the sandbox, both sentinel real-location configs stay
+    byte-identical.
+  - The negative control launches the same engine unsandboxed: the sentinel
+    changes, and `finish()` reports it.
+  - These are refused:
+    - a cfg/ linked into the install;
+    - a mirror whose `update/` is one link;
+    - a player runtime;
+    - a subpath linked out of the tree.
+  - Opt-outs are loud and recorded.
+- Static ratchet: no `tools/quality/*.py` may start a product binary without
+  `launch_sandbox.Sandbox(` in non-comment code. The binaries are
+  `hl2_launcher`, `dedicated_launcher`, `portal2_linux`, the `.sh` wrappers,
+  `srcds`, `hammer_gtk` and `material_pixel_conformance`.
+  - The test file's `ALLOWED` table is exact: 3 non-launches and 6 pending
+    files. An entry that migrates fails the test until it is removed.
+  - A scanner fixture detects a bare launch and a commented one.
+- `tests/test_stage_portal2_runtime.py` has 6 tests, 3 of them new: saves,
+  caches and the executable become private; the control shows a linked SAVE
+  writes into the install; and the sandbox refuses the old mirror layout and
+  accepts the converted one.
+- Seeded helper defects, each detected (5 of 5): an environment that passes
+  HOME through, a real `XDG_DATA_HOME`, no write-path check, a blind audit,
+  and a silent opt-out.
+- The whole `tools/quality/tests` discover: 1,391 tests, with one failure not
+  from this slice. `test_physics_filter_audit` reports another session's
+  uncommitted `game/server/fstop/npc_android_missile.cpp:282`.
+- Real products, headless, on private stages in a scratch directory:
+  - A `portal_boot --headless --renderer native-vulkan` boot passes. The
+    sandbox's HOME stayed empty, and `protected_changed` is `[]` over 7
+    sentinels.
+  - `portal2_scenarios --scenario sp_a1_intro5` on a fresh runtime passes
+    (9 checks). The retail `update/cfg/config.cfg` and
+    `run/runtime-p2/portal2/cfg/config.cfg` hashes are unchanged.
+  - `portal2_scenarios --runtime run/runtime-p2` and
+    `fstop_mechanics_check --runtime run/runtime-fstop` are refused before
+    staging, and both runtimes are untouched.
+
+**Remaining leakers.** Each needs the exact change below.
+
+- `portal2_audio.py`, both sides:
+  - Replace `dict(os.environ)` with `Sandbox(out / "sandbox", ...)` and its
+    `environment()`.
+  - The source side declares `write_paths=[runtime]`.
+  - The retail side declares
+    `write_paths=[mirror / p for p in RETAIL_WRITE_PATHS]`,
+    `grants={"steam": ...}`, and drops its own `XDG_CONFIG_HOME`.
+  - Record `finish()` in `run.json`.
+- The retail launches in `portal2_material_shots.retail_session` and
+  `portal2_physics.run_retail_scenario` need the same retail change. The
+  `steam -silent` start stays outside the sandbox.
+- `legacy_shader_conformance.run_harness` uses
+  `Sandbox(output / "sandbox", write_paths=[stage])`.
+- The Hammer cohort uses the sandbox environment. `hammer_ui_test` writes its
+  GSettings keyfile under the sandbox's `XDG_CONFIG_HOME`.
+- `parity_wine.py`: set a harness-owned `WINEPREFIX`.
+- Read side, not yet fixed: staged Portal 2 harness runtimes mount the
+  install's `update/` ahead of their own cfg, so they read the player's
+  `update/cfg/config.cfg`.
+  - Proposed change: `stage_content(..., private_write_dir=True)` for harness
+    callers, using `private_retail_write_dir`.
+  - Its owner must decide whether the private copy keeps the player's
+    `config.cfg`. Mirrors copy it today, so references carry ambient
+    settings.
+- Server-side state: WirePlumber saves stream volume and mute per
+  `application.name` (`hl2_launcher` and `portal2_linux` are shared with the
+  player's games) in `~/.local/state/wireplumber`. A client environment
+  cannot isolate that. Headless harnesses could use `SDL_AUDIO_DRIVER=dummy`,
+  but that is not decided.
+
+**Not verified.**
+
+- A retail launch under the `steam` grant: no retail run was made.
+- Windowed and `--renderdoc` runs under a private HOME.
+- Harness Steam libraries outside `~/.local/share/Steam`; add them through
+  `SOURCE_HARNESS_PROTECTED`.
+- The existing on-disk mirrors are converted on their next run, not now.
+
 ## Q-PRESENTATION: render backend contract (RFC 0001, contract-first)
 
 Registered two suites (`render.backend.null`, `render.backend.sensitivity`,

@@ -21,6 +21,7 @@ import tempfile
 import bsp2_server_compare
 import bsp2_reader
 import conformance
+import launch_sandbox
 import portal_boot
 import stage_runtime
 
@@ -107,7 +108,9 @@ def run_server(stage, name, log, timeout, port, pre_wait=120, extra=(),
                "-console", "-consolelog", str(log), "-insecure", "-port", str(port),
                *extra, "+map", name, "+wait", str(pre_wait), "+exec", config] + \
         (["+quit"] if quit_after else [])
-    environment = dict(os.environ)
+    sandbox = launch_sandbox.Sandbox(Path(log).parent / (Path(log).name + ".sandbox"),
+                                     write_paths=[stage])
+    environment = sandbox.environment(os.environ)
     environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
     try:
         completed = subprocess.run(command, cwd=stage, env=environment, input=b"",
@@ -122,6 +125,7 @@ def run_server(stage, name, log, timeout, port, pre_wait=120, extra=(),
         path.write_bytes(data)
         result[label] = str(path)
     result["console_log"] = str(log)
+    result["sandbox"] = sandbox.finish()
     return result
 
 
@@ -133,7 +137,9 @@ def run_client(stage, name, log, timeout, _port, pre_wait=180, extra=(),
                "+mat_queue_mode", "0", "+fps_max", "60", *extra, "+map", name,
                "+wait", str(pre_wait), "+exec", config] + \
         (["+wait", "10", "+quit"] if quit_after else [])
-    environment = dict(os.environ)
+    sandbox = launch_sandbox.Sandbox(Path(log).parent / (Path(log).name + ".sandbox"),
+                                     write_paths=[stage])
+    environment = sandbox.environment(os.environ)
     environment.update({"LD_LIBRARY_PATH": str(stage / "bin") + ":" +
                         environment.get("LD_LIBRARY_PATH", ""),
                         "SteamAppId": "400", "SteamGameId": "400",
@@ -157,6 +163,7 @@ def run_client(stage, name, log, timeout, _port, pre_wait=180, extra=(),
     if native_log.is_file():
         shutil.copyfile(native_log, log)
     result["console_log"] = str(log)
+    result["sandbox"] = sandbox.finish()
     return result
 
 

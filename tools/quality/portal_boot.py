@@ -18,6 +18,7 @@ import sys
 import time
 
 import conformance
+import launch_sandbox
 import render_trace
 import product_profile
 
@@ -889,7 +890,9 @@ def main(argv=None):
                                            "sizes": RESIZE_WORKLOAD, **resize_script}
         if args.require_provider_catalog:
             command += ["-moduleloadtelemetry"]
-        environment = os.environ.copy()
+        # A throwaway HOME/XDG for the product; the stage is its only game write path.
+        sandbox = launch_sandbox.Sandbox(output / "sandbox", write_paths=[stage])
+        environment = sandbox.environment(os.environ)
         if args.shader_debug:
             environment["SOURCE_VK_SHADER_DIR"] = shader_environment
         environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
@@ -931,6 +934,7 @@ def main(argv=None):
                                            ("DISPLAY", "WAYLAND_DISPLAY", "SDL_VIDEODRIVER", "GDK_BACKEND")}
         code, timed_out, loaded, seconds = run_product(command, stage, environment,
                                                        args.timeout, output / "stdout.log")
+        evidence["sandbox"] = sandbox.finish()
         log_paths = [output / "stdout.log", stage / "engine.log", stage / game / "console.log"]
         log = "\n".join(path.read_text(errors="replace") for path in log_paths if path.is_file())
         screenshots = [info for path in sorted(stage.rglob("screenshots/*.tga"))

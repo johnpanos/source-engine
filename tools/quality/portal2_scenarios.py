@@ -50,6 +50,7 @@ import sys
 import time
 
 import conformance
+import launch_sandbox
 import portal_view_trace
 import stage_portal2_runtime
 
@@ -413,7 +414,9 @@ def run_game(scenario, runtime, output, start_frames, width, height, tool_direct
              gdb_script, extra_args, wrapper):
     console = runtime / "portal2/console.log"
     console.unlink(missing_ok=True)
-    environment = dict(os.environ)
+    # A throwaway HOME/XDG; the staged runtime (never ./play_p2's) is the write path.
+    sandbox = launch_sandbox.Sandbox(Path(output).resolve() / "sandbox", write_paths=[runtime])
+    environment = sandbox.environment(os.environ)
     for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
         environment.pop(variable, None)
     environment.update({
@@ -459,6 +462,7 @@ def run_game(scenario, runtime, output, start_frames, width, height, tool_direct
     result = evaluate(scenario, log, process.returncode, timed_out)
     result["seconds"] = round(seconds, 1)
     result["command"] = command
+    result["sandbox"] = sandbox.finish()
     return result
 
 
@@ -521,6 +525,8 @@ def main(argv=None):
     }
     evidence_path = output / "evidence.json"
     try:
+        # Staging rewrites the runtime: refuse ./play_p2's before touching it.
+        launch_sandbox.check_write_paths([args.runtime])
         stage_portal2_runtime.stage_content(args.steam_root, args.runtime)
         evidence["installed"] = stage_portal2_runtime.portal_boot.install_build(
             args.build, args.runtime, game="portal2")

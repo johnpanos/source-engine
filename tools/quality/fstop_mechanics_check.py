@@ -41,6 +41,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import launch_sandbox  # noqa: E402
 import stage_fstop_runtime  # noqa: E402
 
 ROOT = HERE.parents[1]
@@ -257,7 +258,7 @@ def stage(runtime, content, build, bsp):
     shutil.copyfile(bsp, maps / (MAP + ".bsp"))
 
 
-def run(scenario, runtime, out):
+def run(scenario, runtime, out, sandbox):
     game = runtime / "fstop"
     cfg = game / "cfg"
     cfg.mkdir(parents=True, exist_ok=True)
@@ -269,7 +270,8 @@ def run(scenario, runtime, out):
     for stale in (log_path, runtime / "engine.log"):
         if stale.exists():
             stale.unlink()
-    env = dict(os.environ, SDL_VIDEODRIVER="offscreen", SDL_VIDEO_DRIVER="offscreen",
+    env = dict(sandbox.environment(os.environ), SDL_VIDEODRIVER="offscreen",
+               SDL_VIDEO_DRIVER="offscreen",
                SteamAppId="400", SteamGameId="400",
                LD_LIBRARY_PATH=str(runtime / "bin") + ":" + os.environ.get("LD_LIBRARY_PATH", ""))
     env.pop("WAYLAND_DISPLAY", None)
@@ -330,11 +332,15 @@ def main(argv=None):
         return 2
     args.out.mkdir(parents=True, exist_ok=True)
     runtime = args.runtime.resolve()
+    # Refused before staging: the runtime is written, then deleted, so it must
+    # never be a player runtime (./play_fstop's run/runtime-fstop).
+    sandbox = launch_sandbox.Sandbox(args.out.resolve() / "sandbox", write_paths=[runtime])
     stage(runtime, args.content_root, args.build, args.bsp)
     report, failed = {}, 0
     try:
+        sandbox.check_write_paths([runtime])
         for scenario in chosen:
-            results = run(scenario, runtime, args.out)
+            results = run(scenario, runtime, args.out, sandbox)
             ok = all(r[0] for r in results)
             failed += not ok
             report[scenario.name] = {"pass": ok, "checks": [{"pass": r[0], "detail": r[1]}
@@ -347,6 +353,7 @@ def main(argv=None):
         if not args.keep:
             shutil.rmtree(runtime, ignore_errors=True)
     (args.out / "report.json").write_text(json.dumps(report, indent=1))
+    (args.out / "sandbox.json").write_text(json.dumps(sandbox.finish(), indent=1) + "\n")
     print("fstop_mechanics_check: %d of %d scenario(s) passed (%s)"
           % (len(chosen) - failed, len(chosen), args.out / "report.json"))
     return 1 if failed else 0
