@@ -68,6 +68,15 @@ is an open error naming the block and line.
   shown as "(different values)", Apply (or Enter) and Cancel for the property
   draft. The entity schema comes from `--fgd FILE` (its `@include`s resolve
   beside it); without one, rows are raw text.
+- **Visgroups** (object bar; `visgroups_panel.cpp`): the document's visgroups
+  as a tree bound to the workspace's `VisgroupPanel`, with a show/hide check
+  per group (inconsistent while some members are hidden), member counts and a
+  mark where the selection holds members. New (a visgroup holding the
+  selection), Add, Remove and Move the selection, Mark (select the members),
+  Rename (F2), Delete, Move To, and dragging a row onto another (or onto the
+  list's empty area for the top level); a row's right-click menu has the same
+  items. Each is one undo step; hiding reaches every view through the
+  document, and the state saves as VMF `visgroupshown`.
 - **Rendering:** the 3D view shades brushes (with base textures when game assets
   are mounted), displacements and entity markers; the 2D views draw wireframes
   over the workspace's grid; selections, faces, pending boxes and handles are

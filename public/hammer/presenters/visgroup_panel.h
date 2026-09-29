@@ -17,6 +17,11 @@
 //			Actions go through app::SessionCommands, the one command authority
 //			(one undo step each, the command's label):
 //			  Create        visgroup_create name= [parent=]  (outputs the id)
+//			  CreateFromSelection visgroup_create name= [parent=] selection=1:
+//			                a new visgroup holding the selection, one step
+//			                (legacy "new visgroup" from the selection); an
+//			                empty selection is refused. SelectionVisgroupName()
+//			                is legacy's default name for it ("3 objects").
 //			  Rename        visgroup_rename visgroup= name=
 //			  Delete        visgroup_delete visgroup=
 //			  Move          visgroup_move visgroup= parent=
@@ -29,6 +34,9 @@
 //			  SelectMembers select ids=<members> [mode=] (legacy "Mark"); a
 //			                visgroup without members is refused
 //			Unknown visgroup ids are refused by the commands.
+//			MoveTargets(id) lists the visgroups 'id' may move under (every
+//			visgroup but itself and its descendants, in row order); 0, the
+//			top level, is always a target.
 //
 //			The subscription is RAII; the panel may be destroyed before or
 //			after its session, but calls need a live session and commands.
@@ -89,6 +97,9 @@ public:
 	void SetExpanded( int visgroupId, bool expanded );
 
 	app::CommandResult Create( const std::string &name, int parentId = 0 );
+	app::CommandResult CreateFromSelection( const std::string &name, int parentId = 0 );
+	std::string SelectionVisgroupName() const;
+	std::vector<int> MoveTargets( int visgroupId ) const;
 	app::CommandResult Rename( int visgroupId, const std::string &name );
 	app::CommandResult Delete( int visgroupId );
 	app::CommandResult Move( int visgroupId, int parentId );

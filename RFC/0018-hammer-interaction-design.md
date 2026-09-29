@@ -412,8 +412,17 @@ Rules:
   silently looks empty.
 - Every visgroup action is one undo step.
 
-Now: commands and presenters exist; the object bar's visgroup list is static
-sample data (dead control); no outliner view.
+Now: commands and presenters exist. The object bar's Visgroups panel
+(`hammer/gtk/visgroups_panel.cpp`, R08-UI-VISGROUPS, 2026-09-28) is bound to
+`VisgroupPanel`: the document's tree with show/hide checks (inconsistent for
+Mixed), member counts, New from the selection (`visgroup_create
+selection=1`, one step), Add, Remove, Move selection, Mark, Rename, Delete,
+Move To and drag to reparent; `corpus.hammer.ui` case `visgroups` judges the
+frames and the saved `visgroupshown`. **Decisions:** membership is edited
+in the panel (its rows mark the selection's groups), not in an Object
+Properties VisGroup page; Delete asks nothing (one undo step); drag
+reparents (legacy's combine-on-drop is not adopted). No outliner view; no
+auto visgroups (the presenter has none); no "N hidden" status yet.
 
 ### F7. The selection model
 
@@ -1024,7 +1033,7 @@ State at `3c24e1c3` plus the dirty tree. Pointers are where the fix goes.
 | F3 texturing | partial | Face inspector and material browser views; Alt+click lift (K3); drag-and-drop; stale Texture Application code | `app.cpp` Texture Application; `face_inspector.h`; `material_browser.h`; `camera_controller.cpp` |
 | F4 entities | partial | Class palette view (two hard-coded classes); Object Properties Outputs and Inputs pages; double-click to open | `app.cpp` `kEntityClasses`; `class_palette.h`; `hammer/gtk/properties_dialog.*` (installed: class, SmartEdit and raw rows, flags, Apply/Cancel/Settle; UI case `properties`) |
 | F5 I/O | missing (UI) | Outputs/Inputs tabs, target completion | `entity_inspector.h` `Outputs()`, `Inputs()` |
-| F6 grouping, visgroups, hiding | partial | Visgroup and outliner views; static list; `quickhide` VMF block rejected by the strict codec | `app.cpp` `MakeObjectBar`; `visgroup_panel.h`; `outliner.h`; VMF codec |
+| F6 grouping, visgroups, hiding | partial | Outliner view; auto visgroups; hidden count; `quickhide` VMF block rejected by the strict codec (visgroups panel installed, R08-UI-VISGROUPS) | `visgroups_panel.cpp`; `visgroup_panel.h`; `outliner.h`; VMF codec |
 | F7 selection | partial | Hit-list cycling; object-bar granularity toggles unwired and wrong default; Find dialog | `selection_tool.h`; `app.cpp` `MakeObjectBar` |
 | F8 navigation | partial | K1 fly gating, Z fly, K3 armed orbit, Ctrl+E, Shift+Z, 1–9, Ctrl zoom sync | `camera_controller.cpp`; `editor_workspace.cpp` `OnKey`; `app.cpp` layout |
 | F9 grid | implemented | Shift+R grid visibility | `action_catalog.cpp`; render adapter grid |
@@ -1037,7 +1046,7 @@ State at `3c24e1c3` plus the dirty tree. Pointers are where the fix goes.
 | Keys | partial | K1–K12 decisions; host accelerators into the catalog; F1 shortcuts dialog; Ctrl+Shift+Z; Shift+G; Ctrl+M; PgUp/PgDn | `action_catalog.cpp`; `app.cpp` `AddActions` |
 | Layout | partial | Right utility pane with tabs; bottom pane; layouts; persistence | `app.cpp` `OnActivate` |
 | Accessibility | partial | Names table; `HELP_TEXT`; F6 region cycling; Shift+F10 | `app.cpp` |
-| Dead controls | present | Remove Magnify, Camera, Apply Decal; wire or hide Clip, Vertex, Face buttons; texture-group dropdown; visgroup sample rows | `app.cpp` `MakeToolPalette`, `MakeObjectBar` |
+| Dead controls | present | Remove Magnify, Camera, Apply Decal; wire or hide Clip, Vertex, Face buttons; texture-group dropdown (visgroup sample rows removed) | `app.cpp` `MakeToolPalette`, `MakeObjectBar` |
 
 Top gaps, in order of harm:
 
@@ -1052,7 +1061,7 @@ Top gaps, in order of harm:
    arrive.
 5. **No texture adjustment UI** (F3) although `FaceInspector` exists.
 6. **Builds give no log, cancel or leak display** (F11).
-7. **Panels are unbound**: outliner, visgroups, history, problems.
+7. **Panels are unbound**: outliner, history, problems (visgroups bound).
 8. **One document only**, and the clipboard is per workspace.
 
 ## Delivery order

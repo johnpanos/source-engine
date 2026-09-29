@@ -28,6 +28,7 @@
 #include <cmath>
 #include <cstdio>
 #include <functional>
+#include <optional>
 #include <sstream>
 
 namespace hammer::app
@@ -1478,7 +1479,10 @@ const std::vector<CommandEntry> &Table()
 	        } },
 
 	    // --- Visgroups --------------------------------------------------------------
-	    { { "visgroup_create", { "name" }, { "parent" }, "Create a visgroup; outputs its id." },
+	    { { "visgroup_create", { "name" }, { "parent", "ids", "selection" },
+	          "Create a visgroup; outputs its id. ids= or selection=1 puts those objects "
+	          "(or the selection) in it in the same step (legacy \"new visgroup\" from the "
+	          "selection); nothing to add is refused." },
 	        []( const Context &c ) -> CommandResult
 	        {
 		        int parent = 0;
@@ -1487,11 +1491,21 @@ const std::vector<CommandEntry> &Table()
 			        TRY( p, c.Integer( "parent" ) );
 			        parent = p.Value();
 		        }
+		        TRY( fromSelection, c.Flag( "selection", false ) );
+		        std::optional<std::vector<ObjectId>> members;
+		        if ( c.Has( "ids" ) || fromSelection.Value() )
+		        {
+			        TRY( ids, c.Ids() );
+			        members = ids.Value();
+		        }
 		        int created = 0;
 		        auto result = c.Edit( "Create visgroup",
-		            [&]( scene::DocumentEdit &e )
+		            [&]( scene::DocumentEdit &e ) -> EditResult
 		            {
-			            return ops::CreateVisgroup( e, c.Arg( "name" ), parent, created );
+			            auto made = ops::CreateVisgroup( e, c.Arg( "name" ), parent, created );
+			            if ( !made || !members )
+				            return made;
+			            return ops::AddToVisgroup( e, *members, created );
 		            } );
 		        if ( !result )
 			        return result;

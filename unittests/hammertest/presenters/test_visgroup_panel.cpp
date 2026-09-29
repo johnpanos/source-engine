@@ -133,6 +133,33 @@ int main()
 	                 panel->Rows()[0].memberCount == 1,
 	    "remove the selection" );
 
+	// A new visgroup from the selection: one step, followed through undo/redo.
+	checks.That( session->SelectObjects( { b, c }, SelectMode::Replace ).HasValue() &&
+	                 panel->SelectionVisgroupName() == "2 objects",
+	    "legacy default name for the selection" );
+	const std::size_t beforeNew = session->History().Position();
+	auto picked = panel->CreateFromSelection( panel->SelectionVisgroupName(), wallsId );
+	const int pickedId = picked ? std::atoi( picked.Value().c_str() ) : 0;
+	{
+		const std::optional<std::size_t> row = panel->FindRow( pickedId );
+		checks.That( picked.HasValue() && session->History().Position() == beforeNew + 1 && row &&
+		                 panel->Rows()[*row].name == "2 objects" &&
+		                 panel->Rows()[*row].depth == 1 &&
+		                 panel->Rows()[*row].directMemberCount == 2 &&
+		                 panel->Rows()[*row].selected == SelectedMembers::All,
+		    "create from the selection: nested, holding the selection, one step" );
+	}
+	checks.That( panel->MoveTargets( wallsId ) == std::vector<int>{} &&
+	                 panel->MoveTargets( pickedId ) == std::vector<int>{ wallsId },
+	    "move targets exclude the visgroup and its descendants" );
+	checks.That( session->Undo().HasValue() && !panel->FindRow( pickedId ) &&
+	                 session->Redo().HasValue() && panel->FindRow( pickedId ),
+	    "rows follow undo and redo" );
+	(void)session->Undo();
+	checks.That( session->SelectObjects( {}, SelectMode::Replace ).HasValue() &&
+	                 !panel->CreateFromSelection( "none" ) && panel->Rows().size() == 1,
+	    "an empty selection makes no visgroup (negative)" );
+
 	checks.That(
 	    session->Replace( doc ).HasValue() && panel->Rows().empty() && panel->IsExpanded( wallsId ),
 	    "replacement clears the tree and expansion" );

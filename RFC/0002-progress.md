@@ -1202,6 +1202,93 @@ marked unverified. The legacy claims are read from this tree's MFC Hammer.
 - Model, sound, material and target pickers for those key types; they are
   text fields.
 
+### R08-UI-VISGROUPS: the Visgroups panel (slice done 2026-09-28)
+
+**Scope** (user direction 2026-09-28, through the Hammer session: "Make the
+GTK Hammer editor's visgroups UI work as intended"). The object bar's
+visgroup list showed four hard-coded sample rows and three dead buttons
+(RFC 0018 F6 and its gap table). It is replaced by a panel bound entirely to
+`presenters::VisgroupPanel`. Visibility reaches the views through the
+document (`scene::IsVisible`, the scene revision and the render snapshot);
+the panel filters nothing itself.
+
+**Documented behavior adopted, with sources.** The legacy claims are read
+from this tree's MFC Hammer; the Valve Developer Community wiki still
+refuses automated fetches (RFC 0018 "Sources").
+
+| Behavior | Source | Adopted as |
+| --- | --- | --- |
+| A visgroup tree with a check per group; a group whose members are partly hidden shows an intermediate check; clicking it shows the group | Legacy `hammer/filtercontrol.cpp` (`UpdateGroupListChecks`, `VisGroups_ShowVisGroup(pVisGroup, GetVisible() == VISGROUP_HIDDEN)`), `hammer/grouplist.cpp` | One row per `VisgroupRow`, indented by depth, with an expander; the check is inconsistent for `Mixed` and insensitive for `Empty`; a click is `ToggleVisible` |
+| "Mark" selects a visgroup's members | Legacy `CFilterControl::OnMarkMembers` | Mark button and menu item: `SelectMembers` |
+| A new visgroup from the selection, named "N objects" by default, optionally moving the objects out of other groups | Legacy `CMapDoc::ShowNewVisGroupsDialog` and `VisGroups_AddObjectsToVisGroup` (`hammer/mapdoc.cpp`) | New: `visgroup_create selection=1` (new command argument), one undo step, named by `SelectionVisgroupName()`; exclusive membership is the separate Move Sel. action (`visgroup_add exclusive=1`) |
+| Dragging a group onto another reparents it (right drag) or combines them (left drag, with a question); dropping outside deletes | Legacy `CFilterControl::OnListLeftDragDrop`, `OnListRightDragDrop` | Drag reparents onto a row; onto the list's empty area, to the top level. Combine and drop-to-delete are not adopted |
+| Delete asks for confirmation | Legacy `OnListLeftDragDrop` ("Delete group ...?") | No question: Delete is one undo step |
+| The Object Properties sheet has a VisGroup page listing the groups of the selected objects | Legacy `hammer/op_groups.cpp` | Not adopted this slice: the panel's rows already mark the groups that hold selected members (all or some), and Add/Remove act on the selection |
+| An "Auto" tab of generated visgroups (world geometry, entities, triggers) | Legacy `CFilterControl` tab 1, `m_bShowingAuto` | Not adopted: `VisgroupPanel` has no auto visgroups, and the sample rows that imitated them are deleted rather than faked |
+
+**Decisions** (agent, under the user's standing instruction): the three
+"not adopted" rows above; the panel stays in the object bar until RFC 0018's
+tabbed utility pane exists; button labels ellipsize, so the panel never
+widens the object bar (the first build narrowed the views by 60 px, which
+moved the properties case's click target into the properties window); the
+status line ellipsizes long messages, because an opened path's width made
+the window reallocate whenever the coordinate read-out changed, which broke
+the harness's view calibration in one case.
+
+**Delivered.**
+
+- **Command (headless):** `visgroup_create` takes `ids=` or `selection=1`
+  and adds those objects in the same edit; nothing to add is refused.
+- **Presenter (headless):** `VisgroupPanel::CreateFromSelection`,
+  `SelectionVisgroupName` and `MoveTargets`; contract
+  `presenters.visgroup_panel.v1` updated.
+- **Panel (`hammer/gtk/visgroups_panel.{h,cpp}`):** the tree above; buttons
+  New, Add, Remove, Mark, Rename (popover field, F2), Move Sel., Delete
+  (Delete key) and Move To (a menu of `MoveTargets` and Top Level); the same
+  items on a row's right-click menu; drag to reparent. It refreshes from
+  session events, so it follows undo, redo, open and new map. Accessible
+  names: the list "Visgroups", each check box its visgroup's name (its
+  description gives the member count and state), the buttons "New
+  Visgroup", "Add Selection to Visgroup", "Remove Selection from Visgroup",
+  "Select Visgroup Members", "Rename Visgroup", "Move Selection to
+  Visgroup", "Delete Visgroup", "Move Visgroup To", the field "Visgroup
+  name".
+- **Host (`hammer/gtk/app.cpp`):** the sample rows and dead buttons are
+  gone; `MakeObjectBar` adds the panel, whose changes refresh the scene and
+  the status line.
+
+**Evidence (2026-09-28).**
+
+| Check | Result |
+| --- | --- |
+| `hammer.presenters.visgroup_panel`, g++ and clang++ | 31 checks (was 26): create from the selection nested under a group, one step, rows following undo and redo, move targets excluding the subtree, an empty selection refused |
+| `hammer.app.session_commands`, g++ and clang++ | pass, with `visgroup_create selection=1` one undo step, an empty selection and `selection=2` refused |
+| Q-EDITOR headless, g++ and clang++ | 124 of 125 suites match; `hammer.adapters.render.service.tsan` skipped (no TSan runtime), as before |
+| `corpus.hammer.ui` (X11) | 46 checks pass (was 32). `visgroups`: at open the panel lists only the file's "Other"; the red block is selected by its centre in the top view; New Visgroup makes "1 object"; hidden, the camera frame's red share falls from 0.158 to 0 and the top frame's left-half edge pixels from 127 to 0 while the green block keeps 0.071 and 127; shown, both return; the hidden map has `"visgroupshown" "0"` on the red solid in the new visgroup, kept through `hammer_cli` open and save; three Ctrl+Z leave only "Other" in the map and the panel. `visgroups-other` hides "Other" and is rejected on `hidden.camera` (red kept, green gone). Each ran 3 or more times |
+| `corpus.hammer.ui.wayland` | 36 checks pass (was 22), both new cases included |
+| Conformance runner, `corpus.hammer.ui` and `.wayland` (builds the shell from source) | 47 and 37 checks (with `shell.built`), both match; `quality-results/conformance.20260929T022806Z.json` |
+| Frames, looked at | Before hiding: a red and a green cube in the camera view, two squares in the top view. Hidden: only the green cube and the right square. Shown: both again |
+| archlint `check --all`, `hammer --verify`; stylelint on the changed files | pass, apart from the two `game/shared/fstop` ARCH105 findings and CAP002s of other work |
+
+Reproduce:
+
+```sh
+python3 tools/quality/conformance.py check --suite hammer.presenters.visgroup_panel [--cxx clang++]
+python3 tools/quality/hammer_ui_test.py --cli build-r03-tools/hammer/cli/hammer_cli \
+    --out quality-results/hammer-ui --case visgroups --case visgroups-other [--backend wayland]
+```
+
+**Not done.**
+
+- Auto visgroups (no presenter support) and an Object Properties VisGroup
+  page (decided against for now, above).
+- The status bar's "N hidden" count (RFC 0018 F6 rule; `StatusBar` slice).
+- The UI case does not drive Rename, Delete, Move To, drag, Mark or the row
+  menu; those are covered headlessly by the presenter and command suites
+  only.
+- Quick hide (H) is separate editor state; the strict codec still rejects the
+  VMF `quickhide` block.
+
 ### R17 quality: mipmaps, translucency, per-solid restaging (2026-09-28)
 
 Three follow-ups from R17-CORE, each with its own oracle. Contract

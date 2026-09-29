@@ -45,7 +45,7 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R08",
-      "description": "UI-driven Hammer conformance (RFC/0002-progress.md, R08-UI-TEST): builds hammer_gtk from source and drives it in a private headless mutter session the way a user makes a map. Widgets are found by accessible name over AT-SPI; pointer and keys enter through the compositor's RemoteDesktop input; view positions come from the status-bar coordinates. Grid [ [, Block tool, drag a 384x384 block in the top view and its 128-unit height in the front view, Return, F (hollow), Entity tool, click a player start and (dropdown: light) a light into the front view, F9 (save and compile). The oracle judges the saved VMF (six world solids, one player start and one light inside the room), the build record (compiled, not leaked) and the frames the live editor's render-core viewports showed (the top view draws the room's walls, the camera view shaded geometry). Controls: no-hollow (walls must fail) and no-light (light must fail) drive the same UI with one step left out. About 45 s. The viewport case (R17) opens the sample room with a generated VPK of two VTF textures mounted and judges the live viewports: the camera frame is textured; each frame is its view's logical size times the window's scale; F12 writes captures equal to the frame shown; three reloads of the mounted assets (Ctrl+Shift+R) with frames in flight and a dragged view divider each bring the views back textured at the new size; Ctrl+Q exits cleanly with no device resource left by the viewports. The properties case (Object Properties window) opens two lights made by the command layer with a generated FGD (--fgd), selects both (Ctrl+A), opens the window (Alt+Enter), checks the differing _distance shows as '(different values)' and the differing flag as an inconsistent check box, types a new _distance and presses Enter (apply), toggles the flag, then saves, undoes, saves, undoes and saves; the oracle requires both lights edited, one undo taking back only the flag on both and a second the value on both. Its control, properties-cancel, presses Cancel instead (distance must fail). This row runs GTK as an X11 client (Xwayland); the .wayland row as a Wayland client, and the .scaled rows the viewport case at 2x on X11 and at a fractional monitor scale on Wayland.",
+      "description": "UI-driven Hammer conformance (RFC/0002-progress.md, R08-UI-TEST): builds hammer_gtk from source and drives it in a private headless mutter session the way a user makes a map. Widgets are found by accessible name over AT-SPI; pointer and keys enter through the compositor's RemoteDesktop input; view positions come from the status-bar coordinates. Grid [ [, Block tool, drag a 384x384 block in the top view and its 128-unit height in the front view, Return, F (hollow), Entity tool, click a player start and (dropdown: light) a light into the front view, F9 (save and compile). The oracle judges the saved VMF (six world solids, one player start and one light inside the room), the build record (compiled, not leaked) and the frames the live editor's render-core viewports showed (the top view draws the room's walls, the camera view shaded geometry). Controls: no-hollow (walls must fail) and no-light (light must fail) drive the same UI with one step left out. About 45 s. The viewport case (R17) opens the sample room with a generated VPK of two VTF textures mounted and judges the live viewports: the camera frame is textured; each frame is its view's logical size times the window's scale; F12 writes captures equal to the frame shown; three reloads of the mounted assets (Ctrl+Shift+R) with frames in flight and a dragged view divider each bring the views back textured at the new size; Ctrl+Q exits cleanly with no device resource left by the viewports. The properties case (Object Properties window) opens two lights made by the command layer with a generated FGD (--fgd), selects both (Ctrl+A), opens the window (Alt+Enter), checks the differing _distance shows as '(different values)' and the differing flag as an inconsistent check box, types a new _distance and presses Enter (apply), toggles the flag, then saves, undoes, saves, undoes and saves; the oracle requires both lights edited, one undo taking back only the flag on both and a second the value on both. Its control, properties-cancel, presses Cancel instead (distance must fail). The visgroups case (Visgroups panel, RFC 0018 F6) opens a red and a green block made by the command layer, the green one in the file's visgroup Other, with the viewport VPK mounted; it clicks the red block in the top view, presses New Visgroup, hides the new visgroup with its check box, shows it again and undoes three times, saving after each stage; the oracle requires the red block's pixels gone from the camera and top frames while hidden (the green block's kept) and back when shown, the hidden map to list the visgroup with the red solid in it and visgroupshown 0 (kept through a command-layer open and save), and three undos to leave only Other in the map and the panel. Its control, visgroups-other, hides Other instead (hidden.camera must fail). This row runs GTK as an X11 client (Xwayland); the .wayland row as a Wayland client, and the .scaled rows the viewport case at 2x on X11 and at a fractional monitor scale on Wayland.",
       "command": [
         "{python}",
         "tools/quality/hammer_ui_test.py",
@@ -55,7 +55,7 @@
         "{out}"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 32,
+      "min_checks": 46,
       "timeout_seconds": 900,
       "requires": [
         "path:build-r03-tools/hammer/cli/hammer_cli",
@@ -70,6 +70,7 @@
         "tools/quality/hammer_ui_test.py",
         "tools/quality/vmf_map_build.py",
         "hammer/gtk/app.cpp",
+        "hammer/gtk/visgroups_panel.cpp",
         "hammer/gtk/viewport_widget.cpp",
         "hammer/gtk/properties_dialog.cpp",
         "hammer/gtk/entity_schema.cpp",
@@ -77,6 +78,7 @@
         "hammer/gtk/build.sh",
         "hammer/adapters/render/viewport_renderer.cpp",
         "hammer/core/presenters/editor_workspace.cpp",
+        "hammer/core/presenters/visgroup_panel.cpp",
         "hammer/core/presenters/entity_inspector.cpp"
       ],
       "expect": "pass"
@@ -100,7 +102,7 @@
         "{out}"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 22,
+      "min_checks": 36,
       "timeout_seconds": 900,
       "requires": [
         "path:build-r03-tools/hammer/cli/hammer_cli",
@@ -115,11 +117,13 @@
         "tools/quality/hammer_ui_test.py",
         "tools/quality/vmf_map_build.py",
         "hammer/gtk/app.cpp",
+        "hammer/gtk/visgroups_panel.cpp",
         "hammer/gtk/viewport_widget.cpp",
         "hammer/gtk/wscript",
         "hammer/gtk/build.sh",
         "hammer/adapters/render/viewport_renderer.cpp",
-        "hammer/core/presenters/editor_workspace.cpp"
+        "hammer/core/presenters/editor_workspace.cpp",
+        "hammer/core/presenters/visgroup_panel.cpp"
       ],
       "expect": "pass"
     },

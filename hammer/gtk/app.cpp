@@ -56,6 +56,7 @@
 #include "properties_dialog.h"
 #include "glib_task_runner.h"
 #include "viewport_widget.h"
+#include "visgroups_panel.h"
 
 #include <algorithm>
 #include <array>
@@ -2066,35 +2067,17 @@ GtkWidget *MakeObjectBar( AppState *st )
 
 	gtk_box_append( GTK_BOX( bar ), gtk_separator_new( GTK_ORIENTATION_HORIZONTAL ) );
 
-	gtk_box_append( GTK_BOX( bar ), gtk_label_new( "VisGroups:" ) );
-	GtkWidget *vgScroll = gtk_scrolled_window_new();
-	gtk_widget_set_vexpand( vgScroll, TRUE );
-	GtkWidget *vg = gtk_list_box_new();
-	gtk_list_box_set_selection_mode( GTK_LIST_BOX( vg ), GTK_SELECTION_NONE );
-	for ( const char *name : { "World geometry", "Entities", "Displacements", "Triggers" } )
-	{
-		GtkWidget *row = gtk_list_box_row_new();
-		GtkWidget *box = gtk_box_new( GTK_ORIENTATION_HORIZONTAL, 6 );
-		GtkWidget *check = gtk_check_button_new();
-		gtk_check_button_set_active( GTK_CHECK_BUTTON( check ), TRUE );
-		GtkWidget *lbl = gtk_label_new( name );
-		gtk_box_append( GTK_BOX( box ), check );
-		gtk_box_append( GTK_BOX( box ), lbl );
-		gtk_list_box_row_set_child( GTK_LIST_BOX_ROW( row ), box );
-		gtk_list_box_append( GTK_LIST_BOX( vg ), row );
-	}
-	gtk_scrolled_window_set_child( GTK_SCROLLED_WINDOW( vgScroll ), vg );
-	gtk_box_append( GTK_BOX( bar ), vgScroll );
-
-	GtkWidget *vgBtns = gtk_box_new( GTK_ORIENTATION_HORIZONTAL, 0 );
-	gtk_widget_add_css_class( vgBtns, "linked" );
-	for ( const char *name : { "Show", "Edit", "Mark" } )
-	{
-		GtkWidget *b = gtk_button_new_with_label( name );
-		gtk_widget_set_hexpand( b, TRUE );
-		gtk_box_append( GTK_BOX( vgBtns ), b );
-	}
-	gtk_box_append( GTK_BOX( bar ), vgBtns );
+	// The document's visgroups (visgroups_panel.cpp, bound to the workspace's
+	// VisgroupPanel; RFC 0018 F6).
+	gtk_box_append( GTK_BOX( bar ), hammer::gtk::MakeVisgroupsPanel( st->workspace,
+	                                    [st]( const std::string &status )
+	                                    {
+		                                    if ( !status.empty() )
+		                                    {
+			                                    SetHelp( st, status );
+		                                    }
+		                                    RefreshScene( st );
+	                                    } ) );
 
 	return bar;
 }
@@ -2147,6 +2130,9 @@ GtkWidget *MakeStatusBar( AppState *st )
 	    gtk_label_new( "For Help, press F1  ·  drag to draw/select, MMB or scroll to pan" );
 	gtk_label_set_xalign( GTK_LABEL( help ), 0.0f );
 	gtk_widget_set_hexpand( help, TRUE );
+	// A long message (an opened path) must not widen the window: that moved
+	// the views whenever the coordinate read-out changed width.
+	gtk_label_set_ellipsize( GTK_LABEL( help ), PANGO_ELLIPSIZE_MIDDLE );
 	st->helpLabel = GTK_LABEL( help );
 	gtk_box_append( GTK_BOX( bar ), help );
 

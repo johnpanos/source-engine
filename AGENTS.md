@@ -1021,6 +1021,15 @@ Keep the table concise and link details below or from the domain progress file.
     and its `properties-cancel` control (32 checks, X11 only). Outputs and
     Inputs pages and double-click remain. See the
     [record](RFC/0002-progress.md#r08-ui-props-the-object-properties-window-slice-done-2026-09-28).
+  - R08-UI-VISGROUPS (2026-09-28): the object bar's sample visgroup rows are
+    replaced by a panel (`hammer/gtk/visgroups_panel.*`) bound to
+    `VisgroupPanel`: the document's tree with show/hide checks, New from the
+    selection (`visgroup_create selection=1`, one step), membership, Mark,
+    Rename, Delete, Move To and drag. `corpus.hammer.ui` gains `visgroups`
+    and its control `visgroups-other` (46 checks on X11, 36 on Wayland),
+    judged on frames and the saved `visgroupshown`. Auto visgroups and the
+    hidden count remain. See the
+    [record](RFC/0002-progress.md#r08-ui-visgroups-the-visgroups-panel-slice-done-2026-09-28).
   - The ledger has 28 migrations, 11 of them extracted format cores.
     The inventory has 46 authored records. `archlint hammer --coverage`
     reports 38 of 531 files classified, because 8 records were extracted into

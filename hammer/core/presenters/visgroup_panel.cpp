@@ -133,6 +133,42 @@ app::CommandResult VisgroupPanel::Create( const std::string &name, int parentId 
 	return m_commands.Execute( "visgroup_create", args );
 }
 
+app::CommandResult VisgroupPanel::CreateFromSelection( const std::string &name, int parentId )
+{
+	app::CommandArgs args{ { "name", name }, { "selection", "1" } };
+	if ( parentId != 0 )
+	{
+		args["parent"] = std::to_string( parentId );
+	}
+	return m_commands.Execute( "visgroup_create", args );
+}
+
+std::string VisgroupPanel::SelectionVisgroupName() const
+{
+	// Legacy CMapDoc::ShowNewVisGroupsDialog: "%d object%s".
+	const std::size_t count = m_session.CurrentSelection().objects.size();
+	return std::to_string( count ) + ( count == 1 ? " object" : " objects" );
+}
+
+std::vector<int> VisgroupPanel::MoveTargets( int visgroupId ) const
+{
+	const std::vector<int> subtree = app::ops::VisgroupSubtree( m_session.Document(), visgroupId );
+	std::vector<int> targets;
+	for ( const VisgroupRow &row : m_rows )
+	{
+		bool inside = false;
+		for ( int id : subtree )
+		{
+			inside = inside || id == row.id;
+		}
+		if ( !inside )
+		{
+			targets.push_back( row.id );
+		}
+	}
+	return targets;
+}
+
 app::CommandResult VisgroupPanel::Rename( int visgroupId, const std::string &name )
 {
 	return m_commands.Execute(

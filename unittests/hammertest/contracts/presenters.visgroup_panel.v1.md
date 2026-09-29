@@ -8,7 +8,8 @@ Migration: `R08-DOMAIN`
 ## 1. Purpose, consumers, scope
 
 The VisGroups tab (legacy `CFilterControl`): the visgroup tree with
-visibility and membership, and the visgroup actions.
+visibility and membership, and the visgroup actions. Consumers: the GTK
+shell's Visgroups panel (`hammer/gtk/visgroups_panel.cpp`).
 
 ## 2. Accepted inputs
 
@@ -25,6 +26,13 @@ exclusive flag, visibility and a selection mode.
   Empty ones; `SelectMembers` runs `select` with the recursive members and
   refuses an empty visgroup. Unknown ids are refused by the commands with
   nothing changed.
+- `CreateFromSelection` runs `visgroup_create selection=1`: the new
+  visgroup holds the selection's objects, in one undo step; an empty
+  selection is refused with nothing created. `SelectionVisgroupName` is
+  legacy's default name for it ("1 object", "3 objects").
+- `MoveTargets(id)` lists the visgroups `id` may move under, in row order:
+  every one but itself and its descendants (0, the top level, always
+  qualifies).
 - Expansion persists per visgroup id (default expanded) and clears on
   replacement.
 
@@ -42,5 +50,7 @@ Rebuild per event: O(visgroups x objects) through the membership queries.
 
 ## 7. Conformance suite and providers
 
-`test_visgroup_panel.cpp` (26 checks, gcc and clang); negative checks for
-empty visgroups, unknown ids, replacement and destruction order.
+`test_visgroup_panel.cpp` (31 checks, gcc and clang); negative checks for
+empty visgroups, unknown ids, an empty selection, replacement and
+destruction order. The GTK panel is judged by the `visgroups` case of
+`corpus.hammer.ui`.

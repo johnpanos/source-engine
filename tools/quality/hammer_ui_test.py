@@ -48,6 +48,19 @@ properties-cancel, presses Cancel instead of Enter; the distance check must
 fail. Both place the pointer in the properties window from its X11 origin, so
 the Wayland backend runs them only when named.
 
+The visgroups case (RFC 0018 F6, the Visgroups panel) opens two blocks made by
+the command layer, a red one on the left and a green one on the right already
+in the file's visgroup "Other", with the viewport case's VPK mounted. It clicks
+the red block's centre in the top view, presses New Visgroup (a visgroup
+holding the selection, named "1 object"), clicks the new visgroup's check box
+to hide it and again to show it, and presses Ctrl+Z three times, saving after
+each stage. The oracle judges the frames and the saved maps: hidden, the red
+block's pixels are gone from the camera and top frames while the green block's
+stay; shown, they return; the hidden map lists the visgroup with the red solid
+in it and "visgroupshown" "0", which survives the command layer opening and
+saving it again; three undos leave only "Other" in the map and in the panel.
+Its control, visgroups-other, hides "Other" instead (hidden.camera must fail).
+
 --backend runs GTK as an X11 client (under Xwayland) or a Wayland client of
 the private compositor, and --scale sets the display scale: GDK_SCALE for X11
 (integers), the compositor's monitor scale for Wayland (fractional, through
@@ -81,7 +94,8 @@ from conformance_result import Checks  # noqa: E402
 
 ROOT = HERE.parents[1]
 SCREEN = (1280, 800)
-CASES = ("room", "no-hollow", "no-light", "viewport", "properties", "properties-cancel")
+CASES = ("room", "no-hollow", "no-light", "viewport", "properties", "properties-cancel",
+         "visgroups", "visgroups-other")
 # Cases that place the pointer in a second toplevel from its X11 origin; the
 # Wayland backend runs them only when named.
 X11_ONLY_CASES = ("properties", "properties-cancel")
@@ -778,7 +792,7 @@ def inner(args):
             facts["monitor_scale"] = apply_monitor_scale(args.scale)
         command = [args.gtk, "--maximized", "--open", str(out / "author" / args.vmf_name),
                    "--builds", str(out / "builds"), "--no-publish"]
-        if args.case == "viewport":
+        if args.case == "viewport" or args.case.startswith("visgroups"):
             command += ["--mount", str(out / "author" / "viewport_dir.vpk")]
         if args.case.startswith("properties"):
             command += ["--fgd", str(out / "author" / "properties.fgd")]
@@ -795,6 +809,9 @@ def inner(args):
         elif args.case.startswith("properties"):
             drive_properties(args.case, args.backend, out, out / "author" / args.vmf_name, log,
                              facts)
+        elif args.case.startswith("visgroups"):
+            drive_visgroups(args.case, args.backend, out, out / "author" / args.vmf_name, log,
+                            facts)
         else:
             drive(args.case, args.backend, log)
     except Exception as error:  # the log records where the UI stopped responding
@@ -1023,6 +1040,255 @@ def drive_properties(case, backend, case_dir, map_path, log, facts):
     save_copy(d, map_path, saves, "undo2.vmf")
 
 
+# ---- Visgroups case: the Visgroups panel (RFC 0018 F6) --------------------------
+
+# Two blocks made by the command layer: a red one on the left (x < 0) and a
+# green one on the right, the green one already in the visgroup "Other". The
+# case selects the red block, makes a visgroup from it with the panel's New
+# button (legacy's default name "1 object"), hides and shows it with its check
+# box, and undoes; its control hides "Other" instead.
+VISGROUP_RED = "dev/dev_measurewall01a"
+VISGROUP_GREEN = "dev/dev_measuregeneric01b"
+VISGROUP_NEW = "1 object"
+VISGROUP_OTHER = "Other"
+
+
+def visgroups_script(vmf_name):
+    return "\n".join([
+        "new_map",
+        'create_block mins="-192 -64 0" maxs="-64 64 128" material=%s' % VISGROUP_RED,
+        'create_block mins="64 -64 0" maxs="192 64 128" material=%s' % VISGROUP_GREEN,
+        "visgroup_create name=%s" % VISGROUP_OTHER,
+        "visgroup_add visgroup=1",  # the green block, selected by its creation
+        "select_none",
+        "save path=%s" % vmf_name]) + "\n"
+
+
+def vmf_visgroups(text):
+    """{name: id} of every visgroup in a VMF, nested ones included."""
+    found = {}
+
+    def walk(body):
+        for name, inner_body in vmf_blocks(body):
+            if name == "visgroup":
+                found[keyvalue(inner_body, "name")] = keyvalue(inner_body, "visgroupid")
+                walk(inner_body)
+    for name, body in vmf_blocks(text):
+        if name == "visgroups":
+            walk(body)
+    return found
+
+
+def vmf_solid_editors(text):
+    """{material of its first side: its editor block's key values} per world solid."""
+    world = next((body for name, body in vmf_blocks(text) if name == "world"), "")
+    solids = {}
+    for name, body in vmf_blocks(world):
+        if name != "solid":
+            continue
+        blocks = vmf_blocks(body)
+        side = next((b for n, b in blocks if n == "side"), "")
+        editor = next((b for n, b in blocks if n == "editor"), "")
+        solids[keyvalue(side, "material")] = dict(re.findall(r'"([^"]+)"\s+"([^"]*)"', editor))
+    return solids
+
+
+def visgroup_measure(frames):
+    """What the live editor shows of each block: the camera frame's share of
+    each block's texture colour, and the top frame's edge pixels in its left
+    (red block) and right (green block) halves."""
+    width, height, camera = read_ppm(frames / "camera.ppm")
+    tw, th, top = read_ppm(frames / "top.ppm")
+    left = right = 0
+    for i in range(0, len(top) - 2, 3):
+        if tuple(top[i:i + 3]) in EDGE_COLORS:
+            if (i // 3) % tw < tw // 2:
+                left += 1
+            else:
+                right += 1
+    return {"red": round(colour_share(camera, VIEW_MATERIALS[VISGROUP_RED]), 4),
+            "green": round(colour_share(camera, VIEW_MATERIALS[VISGROUP_GREEN]), 4),
+            "left": left, "right": right, "camera": [width, height], "top": [tw, th]}
+
+
+def visgroup_frames(case_dir, frames, stamp, name, predicate, timeout=10.0):
+    """Waits for camera and top frames newer than 'stamp' that satisfy
+    'predicate' (or the timeout), copies them to case_dir as name.*.ppm and
+    returns their measurement."""
+    deadline = time.monotonic() + timeout
+    measure = {}
+    while time.monotonic() < deadline:
+        try:
+            fresh = min((frames / v).stat().st_mtime_ns for v in ("camera.ppm", "top.ppm")) > stamp
+        except OSError:
+            fresh = False
+        if fresh:
+            time.sleep(0.3)  # a frame in flight at 'stamp' may land just after it
+            measure = visgroup_measure(frames)
+            if predicate(measure):
+                break
+        time.sleep(0.2)
+    for view in ("camera", "top"):
+        if (frames / (view + ".ppm")).is_file():
+            shutil.copyfile(frames / (view + ".ppm"), case_dir / ("%s.%s.ppm" % (name, view)))
+    return measure
+
+
+def visgroup_check(d, name, timeout=10.0):
+    return wait_node(d, lambda n, r: r == "check box" and n == name,
+                     "visgroup check box %r" % name, timeout)
+
+
+def toggle_visgroup(d, name, want):
+    """Clicks a visgroup's check box (GTK check boxes offer no AT-SPI action)
+    and waits for its state ('hidden' or 'shown') in its description."""
+    x, y, w, h = d.extents(visgroup_check(d, name))
+    d.click(x + w / 2, y + h / 2)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        description = visgroup_check(d, name).get_description() or ""
+        if description.endswith(want):
+            return description
+        time.sleep(0.2)
+    raise RuntimeError("visgroup %r did not become %s" % (name, want))
+
+
+def drive_visgroups(case, backend, case_dir, map_path, log, facts):
+    """The Visgroups panel steps (RFC 0018 F6): select the red block in the top
+    view, New Visgroup, hide it with its check box, show it again, then undo
+    the three steps; saving a copy of the map after each stage."""
+    frames = case_dir / "frames"
+    saves = case_dir / "saves"
+    saves.mkdir(exist_ok=True)
+    d = Driver(log)
+    d.start_input()
+    if not d.find_app():
+        raise RuntimeError("hammer_gtk did not appear on the accessibility bus")
+    tx, ty, tw, th = d.extents(d.named("top (x/y)", "frame"))
+    d.click(tx + tw / 2, ty + th / 2)  # empty: between the blocks
+    d.wait_active(required=backend == "x11")
+    tap(d, "Shift")
+    facts["listed"] = sorted(n for _, n, r in d.nodes() if r == "check box" and n in
+                             (VISGROUP_OTHER, VISGROUP_NEW))
+    before = visgroup_frames(case_dir, frames, 0, "shown",
+                             lambda m: m["red"] >= 0.01 and m["green"] >= 0.01, timeout=30)
+    facts["shown"] = before
+    d.note("shown: %s" % before)
+
+    top = d.calibrate("top (x/y)")
+    d.click(*top(-128, 0))  # the red block's centre handle
+    d.wait_label(r".*·\s+1 selected$")
+    d.press(d.named("New Visgroup", "button"))
+    visgroup_check(d, VISGROUP_NEW)
+    d.note("created %r" % VISGROUP_NEW)
+    d.click(*top(0, 0))  # empty: clear the selection
+    d.wait_label(r"^\d+ brush\(es\)$")
+
+    target = VISGROUP_OTHER if case == "visgroups-other" else VISGROUP_NEW
+    stamp = time.time_ns()
+    facts["hidden_description"] = toggle_visgroup(d, target, "hidden")
+    facts["hidden"] = visgroup_frames(case_dir, frames, stamp, "hidden",
+                                      lambda m: m["red"] < 0.002 and m["left"] < 20)
+    d.note("hidden %r: %s" % (target, facts["hidden"]))
+    d.click(*top(0, 0))  # keys go to the editor window
+    save_copy(d, map_path, saves, "hidden.vmf")
+
+    stamp = time.time_ns()
+    facts["shown_description"] = toggle_visgroup(d, target, "shown")
+    facts["reshown"] = visgroup_frames(
+        case_dir, frames, stamp, "reshown",
+        lambda m: m["red"] >= before["red"] * 0.5 and m["left"] >= before["left"] * 0.5)
+    d.note("shown again: %s" % facts["reshown"])
+    d.click(*top(0, 0))
+    save_copy(d, map_path, saves, "shown.vmf")
+
+    for _ in range(3):  # show, hide, create
+        tap(d, "Control", "z")
+    deadline = time.monotonic() + 10
+    while visgroup_check_present(d, VISGROUP_NEW) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    facts["undo_removed_row"] = not visgroup_check_present(d, VISGROUP_NEW)
+    facts["undo_kept_other"] = visgroup_check_present(d, VISGROUP_OTHER)
+    save_copy(d, map_path, saves, "undone.vmf")
+
+
+def visgroup_check_present(d, name):
+    return d.find(lambda n, r: r == "check box" and n == name) is not None
+
+
+def judge_visgroups(case_dir, facts, cli):
+    """Check names -> (ok, detail) for the visgroups case and its control."""
+    saves = case_dir / "saves"
+    results = {}
+    results["listed"] = (facts.get("listed") == [VISGROUP_OTHER],
+                         "check boxes at open %s, want only the file's %r"
+                         % (facts.get("listed"), VISGROUP_OTHER))
+    shown, hidden, reshown = (facts.get(k, {}) for k in ("shown", "hidden", "reshown"))
+    results["frames.before"] = (shown.get("red", 0) >= 0.01 and shown.get("green", 0) >= 0.01 and
+                                shown.get("left", 0) >= 100 and shown.get("right", 0) >= 100,
+                                "before hiding: %s" % shown)
+    # Hidden: the red block's pixels are gone from both views; the green
+    # block's stay.
+    results["hidden.camera"] = (
+        hidden.get("red", 1) < 0.002 and hidden.get("green", 0) >= 0.5 * shown.get("green", 0),
+        "camera red %s (was %s), green %s (was %s)" % (hidden.get("red"), shown.get("red"),
+                                                       hidden.get("green"), shown.get("green")))
+    results["hidden.top"] = (
+        hidden.get("left", 1 << 30) < 0.1 * max(shown.get("left", 0), 1) and
+        hidden.get("right", 0) >= 0.5 * shown.get("right", 0),
+        "top edge pixels left %s (was %s), right %s (was %s)"
+        % (hidden.get("left"), shown.get("left"), hidden.get("right"), shown.get("right")))
+    results["shown.again"] = (
+        reshown.get("red", 0) >= 0.5 * shown.get("red", 1) and
+        reshown.get("left", 0) >= 0.5 * shown.get("left", 1),
+        "after showing: %s" % reshown)
+
+    hidden_text = (saves / "hidden.vmf").read_text() if (saves / "hidden.vmf").is_file() else ""
+    groups = vmf_visgroups(hidden_text)
+    solids = vmf_solid_editors(hidden_text)
+    red, green = solids.get(VISGROUP_RED, {}), solids.get(VISGROUP_GREEN, {})
+    new_id = groups.get(VISGROUP_NEW)
+    results["saved.visgroup"] = (
+        new_id is not None and red.get("visgroupid") == new_id and
+        green.get("visgroupid") == groups.get(VISGROUP_OTHER),
+        "visgroups %s; red solid in %s, green in %s"
+        % (groups, red.get("visgroupid"), green.get("visgroupid")))
+    results["saved.hidden"] = (red.get("visgroupshown") == "0" and green.get("visgroupshown") == "1",
+                               "visgroupshown red %s, green %s"
+                               % (red.get("visgroupshown"), green.get("visgroupshown")))
+    # The hidden state survives a reload: the command layer opens the saved map
+    # and saves it again.
+    reload_dir = case_dir / "reload"
+    reload_dir.mkdir(exist_ok=True)
+    if (saves / "hidden.vmf").is_file():
+        shutil.copyfile(saves / "hidden.vmf", reload_dir / "hidden.vmf")
+    (reload_dir / "reload.hcmd").write_text("open path=hidden.vmf\nsave path=reloaded.vmf\n")
+    subprocess.run([str(cli), "--script", str(reload_dir / "reload.hcmd"), "--root", str(reload_dir)],
+                   capture_output=True, text=True)
+    reloaded = reload_dir / "reloaded.vmf"
+    again = vmf_solid_editors(reloaded.read_text()) if reloaded.is_file() else {}
+    results["saved.reloaded"] = (
+        bool(again) and again.get(VISGROUP_RED, {}).get("visgroupshown") == "0" and
+        again.get(VISGROUP_RED, {}).get("visgroupid") == new_id and
+        vmf_visgroups(reloaded.read_text()) == groups,
+        "after open and save: red %s" % again.get(VISGROUP_RED))
+
+    shown_text = (saves / "shown.vmf").read_text() if (saves / "shown.vmf").is_file() else ""
+    shown_red = vmf_solid_editors(shown_text).get(VISGROUP_RED, {})
+    results["saved.shown"] = (shown_red.get("visgroupshown") == "1", "red after showing %s" % shown_red)
+
+    undone_text = (saves / "undone.vmf").read_text() if (saves / "undone.vmf").is_file() else ""
+    undone_groups = vmf_visgroups(undone_text)
+    undone_red = vmf_solid_editors(undone_text).get(VISGROUP_RED, {})
+    results["undo"] = (
+        undone_groups == {VISGROUP_OTHER: "1"} and "visgroupid" not in undone_red and
+        undone_red.get("visgroupshown") == "1" and facts.get("undo_removed_row") is True and
+        facts.get("undo_kept_other") is True,
+        "after three undos: visgroups %s, red %s, row removed %s, Other kept %s"
+        % (undone_groups, undone_red, facts.get("undo_removed_row"), facts.get("undo_kept_other")))
+    return results
+
+
 # ---- Outer harness -----------------------------------------------------------
 
 def run_case(case, args, out):
@@ -1035,6 +1301,15 @@ def run_case(case, args, out):
         # The sample room with its two materials in a generated VPK.
         shutil.copyfile(ROOT / "hammer/gtk/samples/room.vmf", author / vmf_name)
         (author / "viewport_dir.vpk").write_bytes(build_view_vpk())
+    elif case.startswith("visgroups"):
+        # Two textured blocks and a visgroup from the command layer.
+        (author / "viewport_dir.vpk").write_bytes(build_view_vpk())
+        script = author / "visgroups.hcmd"
+        script.write_text(visgroups_script(vmf_name))
+        created = subprocess.run([str(args.cli), "--script", str(script), "--root", str(author)],
+                                 capture_output=True, text=True)
+        if created.returncode:
+            return {"driver": "hammer_cli failed: " + created.stderr.strip()}, {}
     elif case.startswith("properties"):
         # Two lights from the command layer, and the schema the editor loads.
         (author / "properties.fgd").write_text(PROPERTIES_FGD)
@@ -1078,6 +1353,8 @@ def run_case(case, args, out):
         verdict = judge_viewport(case_dir, driver.get("facts", {}), args)
     elif case.startswith("properties"):
         verdict = judge_properties(case_dir, driver.get("facts", {}))
+    elif case.startswith("visgroups"):
+        verdict = judge_visgroups(case_dir, driver.get("facts", {}), args.cli)
     else:
         verdict = judge(author / vmf_name, case_dir / "builds" / stem / "build.json")
         verdict.update(judge_frames(case_dir / "frames"))
@@ -1127,7 +1404,7 @@ def main():
         summary["cases"][case] = {"driver": driver,
                                   "verdict": {k: {"ok": ok, "detail": detail}
                                               for k, (ok, detail) in verdict.items()}}
-        if case in ("room", "viewport", "properties"):
+        if case in ("room", "viewport", "properties", "visgroups"):
             checks.equal(driver.get("status"), "pass", case + ".driven")
             for name, (ok, detail) in verdict.items():
                 checks.check(ok, case + "." + name, detail)
@@ -1135,7 +1412,7 @@ def main():
             # The control must still be driven to the end (so its outputs exist),
             # and the oracle must reject exactly the step it leaves out.
             target = {"no-hollow": "walls", "no-light": "light",
-                      "properties-cancel": "distance"}[case]
+                      "properties-cancel": "distance", "visgroups-other": "hidden.camera"}[case]
             checks.equal(driver.get("status"), "pass", case + ".driven")
             ok, detail = verdict.get(target, (True, "not judged"))
             checks.check(not ok, case + ".rejected", "%s: %s" % (target, detail))

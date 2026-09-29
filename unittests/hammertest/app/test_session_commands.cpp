@@ -11,6 +11,7 @@
 //
 //=============================================================================//
 
+#include "hammer/app/ops/visgroup_ops.h"
 #include "hammer/app/session_commands.h"
 #include "testing/checks.h"
 
@@ -19,6 +20,7 @@
 #include "fakes/fake_map_codec.h"
 #include "fakes/fake_material_info.h"
 
+#include <cstdlib>
 #include <set>
 
 using namespace hammer;
@@ -317,6 +319,31 @@ int main()
 		    "rename it" );
 		checks.That(
 		    commands.Execute( "visgroup_delete", { { "visgroup", v } } ).HasValue(), "delete it" );
+
+		// A visgroup made from the selection is one undo step.
+		(void)commands.Execute( "select", { { "ids", blk } } );
+		const std::size_t historyBefore = session.History().Position();
+		auto fromSel =
+		    commands.Execute( "visgroup_create", { { "name", "picked" }, { "selection", "1" } } );
+		const scene::ObjectId blkId =
+		    commands.FromScriptId( static_cast<std::uint32_t>( std::stoul( blk ) ) );
+		const int picked = std::atoi( fromSel.ValueOr( std::string( "0" ) ).c_str() );
+		checks.That( fromSel.HasValue() && session.History().Position() == historyBefore + 1 &&
+		                 ops::VisgroupMembers( session.Document(), picked ) ==
+		                     std::vector<scene::ObjectId>{ blkId },
+		    "visgroup_create selection=1: created with the selection, one step" );
+		checks.That( session.Undo().HasValue() && session.Document().Settings().visgroups.empty() &&
+		                 session.Document().FindSolid( blkId )->editor.visgroupIds.empty(),
+		    "one undo takes back the visgroup and its membership" );
+		(void)commands.Execute( "select_none", {} );
+		const std::uint64_t revision = session.Revision();
+		checks.That(
+		    !commands.Execute( "visgroup_create", { { "name", "none" }, { "selection", "1" } } ) &&
+		        session.Revision() == revision && session.Document().Settings().visgroups.empty(),
+		    "an empty selection is refused with nothing created (negative)" );
+		checks.That(
+		    !commands.Execute( "visgroup_create", { { "name", "bad" }, { "selection", "2" } } ),
+		    "selection is 0 or 1 (negative)" );
 
 		auto cordon = commands.Execute(
 		    "cordon_add", { { "mins", "-512 -512 -512" }, { "maxs", "512 512 512" } } );
