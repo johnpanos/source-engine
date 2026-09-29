@@ -9978,6 +9978,74 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.clustered-lights",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K11 'Model assembly', the runtime-lights term (render/lab/clustered_lights_suite.cpp, render_lab suite clustered-lights --validate): the surface program's pbr point (kSurfaceClustered) lit by render.light-set.v1 point and spot lights through the view group (the view's cluster grid, froxel ranges, index list from render.pass.lights AssignLights, and SurfaceLightGpu records), judged against every light of the set with light_set.h's Falloff, InverseSquareFalloff and SpotFactor and pbr_brdf.h's lobes: a mixed set (legacy and inverse-square, bounded and unbounded, points and spots) and 256 small lights, on three materials from an overhead and a grazing view; each sampled pixel within 0.5 percent + 3e-4, widened by the oracle's own change within 0.1 units. No lights and the term off are the frame without the term, bitwise. 0 validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "clustered-lights",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 16,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/clustered_lights_suite.cpp",
+        "render/lab/lab_receiver.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/shaders/common/runtime_light.glsl",
+        "render/material/families/surface.frag",
+        "render/material/surface_program.cpp",
+        "render/pass/lights/clusters.cpp",
+        "public/render/light_set.h",
+        "public/render/pbr_brdf.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.clustered-lights.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "RFC 0016 K11 runtime-lights term, seeded programs (clustered_light_defects_spv.h, built from surface.frag): the froxel's slice off by one fails clustered.dense; each list's first light skipped fails a clustered check; the inverse-square window dropped fails clustered.mixed; the control passes.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "clustered-lights",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "timeout_seconds": 900,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/clustered_lights_suite.cpp",
+        "render/shaders/common/runtime_light.glsl",
+        "render/material/families/surface.frag",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.debug-views.product.mode0",
       "domain": "Q-PRESENTATION",
       "rfc": "0014",

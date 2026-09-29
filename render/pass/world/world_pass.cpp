@@ -42,6 +42,7 @@ struct Group
 {
 	BindGroupId group;
 	BufferId constants;
+	std::vector<BufferId> storage;
 	std::vector<SamplerId> samplers;
 };
 
@@ -68,6 +69,9 @@ struct Resources
 	std::map<std::pair<std::uint64_t, int>, Group> drawGroups;
 	// Frame groups by frame layout; their constants are written per slot.
 	std::map<std::uint64_t, Group> frameGroups;
+	// The programs' neutral view groups, by view layout (the world pass
+	// supplies no clustered lights yet).
+	std::map<std::uint64_t, Group> viewGroups;
 	// A 1x1 white texture for an absent input (a surface with no lightmap
 	// page samples white: the input's neutral value), a 1x1 black cube for an
 	// absent env map (its term is off, so it is never read), and their upload
@@ -167,6 +171,8 @@ struct WorldPass::State
 				(void)device->Release( group.group, after );
 			if ( group.constants.IsValid() )
 				(void)device->Release( group.constants, after );
+			for ( BufferId buffer : group.storage )
+				(void)device->Release( buffer, after );
 			for ( SamplerId sampler : group.samplers )
 				(void)device->Release( sampler, after );
 		}
@@ -182,6 +188,8 @@ struct WorldPass::State
 			for ( auto &[key, group] : old.drawGroups )
 				ReleaseGroup( group, after );
 			for ( auto &[key, group] : old.frameGroups )
+				ReleaseGroup( group, after );
+			for ( auto &[key, group] : old.viewGroups )
 				ReleaseGroup( group, after );
 			if ( old.neutralWhite.IsValid() )
 				(void)device->Release( old.neutralWhite, after );
@@ -620,6 +628,21 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			out.constants = constants.Value();
 			entries.push_back( { request.constantsBinding, out.constants, 0, 0, {}, {} } );
 		}
+		for ( const material::GroupBuffer &storage : request.storage )
+		{
+			BufferDesc desc;
+			desc.size = std::max<std::uint64_t>( storage.bytes.size(), 4 );
+			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
+			desc.debugName = "world group storage";
+			auto buffer = device.CreateBuffer( desc );
+			if ( !buffer )
+			{
+				*why = "a storage buffer was refused";
+				return false;
+			}
+			out.storage.push_back( buffer.Value() );
+			entries.push_back( { storage.binding, buffer.Value(), 0, 0, {}, {} } );
+		}
 		for ( const material::ProgramTexture &texture : request.textures )
 		{
 			const auto handle = handles.find( texture.name );
@@ -662,6 +685,15 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			encoder.WriteBuffer( out.constants, 0, request.constants );
 			encoder.TransitionBuffer(
 			    out.constants, ResourceUsage::kCopyDestination, ResourceUsage::kUniform );
+		}
+		for ( std::size_t i = 0; i < out.storage.size(); ++i )
+		{
+			encoder.TransitionBuffer(
+			    out.storage[i], ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			if ( !request.storage[i].bytes.empty() )
+				encoder.WriteBuffer( out.storage[i], 0, request.storage[i].bytes );
+			encoder.TransitionBuffer(
+			    out.storage[i], ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead );
 		}
 		return true;
 	};
@@ -781,6 +813,28 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		return &group;
 	};
 
+	// A program's view group: its neutral one (built once per layout).
+	auto viewGroupReady = [&]( const Resources::Material &m ) -> const Group *
+	{
+		const std::uint64_t layout = m.program.request.viewLayout.value;
+		Group &group = r.viewGroups[layout];
+		if ( group.group.IsValid() )
+			return &group;
+		if ( !m.program.request.neutralView )
+		{
+			note( "a program reads a view group and names no neutral one" );
+			return nullptr;
+		}
+		std::string why;
+		if ( !buildGroup( *m.program.request.neutralView, {}, group, &why ) )
+		{
+			s.ReleaseGroup( group, CompletionToken() );
+			note( "a view group: " + why );
+			return nullptr;
+		}
+		return &group;
+	};
+
 	// Resolve before rendering (uploads run outside it), then draw in
 	// (material, page) order so binds change least.
 	std::vector<std::uint32_t> order;
@@ -802,7 +856,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( !m ||
 		     ( m->program.request.drawLayout.IsValid() &&
 		         !drawGroupReady( *m, surface.lightmapPage ) ) ||
-		     ( m->program.request.frameLayout.IsValid() && !frameGroupReady( *m ) ) )
+		     ( m->program.request.frameLayout.IsValid() && !frameGroupReady( *m ) ) ||
+		     ( m->program.request.viewLayout.IsValid() && !viewGroupReady( *m ) ) )
 		{
 			complete = false;
 			continue;
@@ -873,6 +928,9 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			if ( m.program.request.frameLayout.IsValid() )
 				encoder.SetBindGroup( BindGroupRole::kFrame,
 				    r.frameGroups[m.program.request.frameLayout.value].group );
+			if ( m.program.request.viewLayout.IsValid() )
+				encoder.SetBindGroup(
+				    BindGroupRole::kView, r.viewGroups[m.program.request.viewLayout.value].group );
 			encoder.SetBindGroup( BindGroupRole::kMaterial, m.group.group );
 			encoder.SetVertexBuffer( 0, r.vertices, 0 );
 			encoder.SetIndexBuffer( r.indices, 0, IndexFormat::kUint32 );

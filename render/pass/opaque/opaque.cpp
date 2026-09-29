@@ -27,6 +27,9 @@ struct Draw
 	const material::DrawProgram *program = nullptr;
 	const material::DrawGroup *drawGroup = nullptr;
 	const material::DrawGroup *frameGroup = nullptr; // the frame group of its program's layout
+	// The view group: the frame's of the program's layout, else the
+	// program's neutral one.
+	const material::ResidentGroup *viewGroup = nullptr;
 	material::FamilyDrawConstants constants;
 };
 
@@ -88,8 +91,16 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 					frameGroup = candidate;
 			}
 		}
+		const material::ResidentGroup *viewGroup = nullptr;
+		if ( program->viewLayout.IsValid() )
+		{
+			if ( matches( sources.view, program->viewLayout ) )
+				viewGroup = &sources.view->resident;
+			else if ( program->hasNeutralView )
+				viewGroup = &program->neutralView;
+		}
 		if ( !matches( frameGroup, program->frameLayout ) ||
-		     !matches( sources.view, program->viewLayout ) )
+		     ( program->viewLayout.IsValid() && !viewGroup ) )
 		{
 			++stats.unresolved;
 			continue;
@@ -99,6 +110,7 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 		draw.program = program;
 		draw.drawGroup = drawGroup;
 		draw.frameGroup = program->frameLayout.IsValid() ? frameGroup : nullptr;
+		draw.viewGroup = viewGroup;
 		const math::float4x4 &world = instance.world;
 		Store( math::Multiply( view.viewProjection, world ), draw.constants.toClip );
 		Store( world, draw.constants.world );
@@ -111,6 +123,7 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 	std::map<std::uint64_t, graph::ResourceRef> vertexRefs;
 	std::map<std::uint64_t, graph::ResourceRef> indexRefs;
 	std::map<std::uint64_t, graph::ResourceRef> uniformRefs;
+	std::map<std::uint64_t, graph::ResourceRef> storageRefs;
 	std::map<std::uint64_t, graph::ResourceRef> textureRefs;
 	auto importBuffer = [&]( BufferId buffer, ResourceUsage usage,
 	                        std::map<std::uint64_t, graph::ResourceRef> &refs )
@@ -130,8 +143,7 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 			importBuffer( draw.mesh.indices, ResourceUsage::kIndex, indexRefs );
 		const material::ResidentGroup *frame =
 		    draw.frameGroup ? &draw.frameGroup->resident : nullptr;
-		const material::ResidentGroup *view =
-		    draw.program->viewLayout.IsValid() ? &sources.view->resident : nullptr;
+		const material::ResidentGroup *view = draw.viewGroup;
 		for ( const material::ResidentGroup *group : { &draw.program->material,
 		          draw.drawGroup ? &draw.drawGroup->resident : nullptr, frame, view } )
 		{
@@ -139,6 +151,8 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 				continue;
 			for ( BufferId uniform : group->uniforms )
 				importBuffer( uniform, ResourceUsage::kUniform, uniformRefs );
+			for ( BufferId storage : group->storage )
+				importBuffer( storage, ResourceUsage::kStorageRead, storageRefs );
 			for ( const material::SampledTexture &texture : group->textures )
 			{
 				if ( textureRefs.count( texture.texture.value ) == 0 )
@@ -158,12 +172,12 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 		pass.Read( ref, ResourceUsage::kIndex );
 	for ( const auto &[buffer, ref] : uniformRefs )
 		pass.Read( ref, ResourceUsage::kUniform );
+	for ( const auto &[buffer, ref] : storageRefs )
+		pass.Read( ref, ResourceUsage::kStorageRead );
 	for ( const auto &[texture, ref] : textureRefs )
 		pass.Read( ref, ResourceUsage::kSampled );
-	const device::BindGroupId viewGroup =
-	    sources.view ? sources.view->resident.group : device::BindGroupId();
 	pass.Execute(
-	    [draws, targets, viewGroup]( graph::RecordContext &context )
+	    [draws, targets]( graph::RecordContext &context )
 	    {
 		    CommandEncoder &encoder = context.Encoder();
 		    ColorAttachment color;
@@ -192,8 +206,8 @@ foundation::Expected<OpaqueStats, OpaqueStatus> AddOpaquePasses( graph::GraphBui
 				    if ( draw.frameGroup )
 					    encoder.SetBindGroup(
 					        BindGroupRole::kFrame, draw.frameGroup->resident.group );
-				    if ( draw.program->viewLayout.IsValid() )
-					    encoder.SetBindGroup( BindGroupRole::kView, viewGroup );
+				    if ( draw.viewGroup )
+					    encoder.SetBindGroup( BindGroupRole::kView, draw.viewGroup->group );
 				    encoder.SetBindGroup( BindGroupRole::kMaterial, draw.program->material.group );
 				    bound = draw.program;
 				    boundDraw = nullptr;

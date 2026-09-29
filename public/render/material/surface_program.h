@@ -21,6 +21,13 @@
 //			- material (role kMaterial): binding 0 SurfaceConstants; 1 base,
 //			  3 env map (a cube), 5 env map mask, 7 bump or normal map, 9
 //			  detail, 11 MRAO and 13 emission, each with its sampler after it;
+//			- view (role kView): the view's clustered runtime lights
+//			  (render.light-set.v1's point and spot lights; render.pass.lights
+//			  lists them per froxel, RFC 0016 K7): binding 0 SurfaceViewGpu,
+//			  1 the froxels' ranges, 2 the index list, 3 SurfaceLightGpu
+//			  records, in the order the index list counts them. Only a variant
+//			  with kSurfaceClustered reads them; the others bind the neutral
+//			  view group (NeutralViewGroup), which MaterialPrograms keeps;
 //			- draw (role kDraw): binding 0 the draw's lightmap page, 1 its
 //			  sampler, 2 its model lighting (model_lighting.h; neutral for a
 //			  world surface).
@@ -36,6 +43,7 @@
 #include "foundation/expected.h"
 #include "render/area_light.h"
 #include "render/device/device.h"
+#include "render/light_set.h"
 #include "render/material/material_programs.h"
 #include "render/material/model_lighting.h"
 #include "render/shaderlib/debug_view.h"
@@ -97,6 +105,32 @@ inline constexpr int kSurfaceMaxAreaLights = 64;
 
 // Packs an area light (area_light::AreaLight, its reach set).
 SurfaceAreaLight PackAreaLight( const area_light::AreaLight &light );
+
+// The view group's parameters (std140, binding 0): the cluster grid a
+// fragment's froxel is found in (render.pass.lights FroxelAt) and the view
+// distance of a world point.
+struct SurfaceViewGpu
+{
+	std::uint32_t grid[4] = {}; // tilesX, tilesY, slices, tile size in pixels
+	float slices[4] = {};       // sliceScale, sliceBias, nearZ, 0
+	// The view distance of a world point p: dot( xyz, p ) + w (the negated z
+	// row of world-to-view).
+	float viewDistance[4] = {};
+};
+static_assert( sizeof( SurfaceViewGpu ) == 48 );
+
+// A runtime point or spot light as the view group holds it (std430,
+// binding 3), light_set::RuntimeLight packed.
+struct SurfaceLightGpu
+{
+	float position[4] = {};  // w: radius (0 unbounded)
+	float color[4] = {};     // linear, times the style scalar; w: minLight
+	float direction[4] = {}; // the spot's axis; w: outerCos, or -2 for a point light
+	float cone[4] = {};      // innerCos, 1 for an inverse-square falloff, sourceRadius, 0
+};
+static_assert( sizeof( SurfaceLightGpu ) == 64 );
+
+SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light );
 
 // The frame's terms (std140, the Frame block of surface.frag): one lightmap
 // term whose scale depends on how the pages encode light, and the output's
@@ -198,6 +232,8 @@ inline constexpr std::uint32_t kSurfacePbr = 2048;
 inline constexpr std::uint32_t kSurfaceEmissionTexture = 4096;
 // The vertexlit point: Source's per-vertex model lighting (the model vertex).
 inline constexpr std::uint32_t kSurfaceVertexLit = 8192;
+// The view's clustered runtime lights (the view group), both lobes.
+inline constexpr std::uint32_t kSurfaceClustered = 16384;
 // The terms that read the normal (not on the flat vertex), and those the
 // model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =
@@ -273,6 +309,7 @@ public:
 	SurfaceProgram &operator=( const SurfaceProgram & ) = delete;
 
 	device::BindGroupLayoutId FrameLayout() const { return m_FrameLayout; }
+	device::BindGroupLayoutId ViewLayout() const { return m_ViewLayout; }
 	device::BindGroupLayoutId MaterialLayout() const { return m_MaterialLayout; }
 	device::BindGroupLayoutId DrawLayout() const { return m_DrawLayout; }
 
@@ -298,6 +335,13 @@ public:
 	// clamped sampler; a table no point of the frame reads is named empty.
 	GroupRequest FrameGroup( const SurfaceFrame &frame, std::string splitSumTable = {},
 	    std::string ltcTable = {} ) const;
+	// A view group: the view's parameters, its froxels' ranges (FroxelRange
+	// records), its index list (ClusterIndexHeader then indices) and its
+	// light records, as render.pass.lights lays them out.
+	GroupRequest ViewGroup( const SurfaceViewGpu &view, std::span<const std::byte> froxels,
+	    std::span<const std::byte> indices, std::span<const SurfaceLightGpu> lights ) const;
+	// The view group of a view with no clustered lights.
+	GroupRequest NeutralViewGroup() const;
 	// A draw group: the lightmap page ('page', a TextureCache name staged as
 	// sRGB; empty for a mesh) and the draw's model lighting.
 	GroupRequest DrawGroup( std::string page, const ModelLighting &lighting = {},
@@ -311,6 +355,7 @@ private:
 	device::Format m_DepthFormat = device::Format::kUnknown;
 	std::uint32_t m_SampleCount = 1;
 	device::BindGroupLayoutId m_FrameLayout;
+	device::BindGroupLayoutId m_ViewLayout;
 	device::BindGroupLayoutId m_MaterialLayout;
 	device::BindGroupLayoutId m_DrawLayout;
 	std::span<const std::uint32_t> m_FragmentModule;
@@ -336,6 +381,7 @@ public:
 
 	SurfaceProgram &Program() const { return *m_Program; }
 	device::BindGroupLayoutId FrameLayout() const { return m_Program->FrameLayout(); }
+	device::BindGroupLayoutId ViewLayout() const { return m_Program->ViewLayout(); }
 	device::BindGroupLayoutId MaterialLayout() const { return m_Program->MaterialLayout(); }
 	device::BindGroupLayoutId DrawLayout() const { return m_Program->DrawLayout(); }
 	foundation::Expected<device::PipelineId, SurfaceStatus> DebugPipeline(
@@ -348,6 +394,8 @@ public:
 	{
 		return m_Program->FrameGroup( frame, std::move( splitSumTable ), std::move( ltcTable ) );
 	}
+	// The view group of a view with no clustered lights.
+	GroupRequest NeutralViewGroup() const { return m_Program->NeutralViewGroup(); }
 	// A draw group of a mesh: no lightmap page, the draw's model lighting
 	// (PackSourceModelLighting).
 	GroupRequest LightingGroup( const ModelLighting &lighting ) const

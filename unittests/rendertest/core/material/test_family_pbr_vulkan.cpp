@@ -289,6 +289,7 @@ int main()
 			// emission); the draw's lightmap page (unused) and its lighting.
 			SurfaceFrame frame;
 			std::copy( set->eye, set->eye + 3, frame.eye );
+			draw.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
 			    std::as_bytes( std::span( &frame, 1 ) ), { &splitSum, &unused } } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),

@@ -41,6 +41,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -61,12 +63,21 @@ struct ProgramTexture
 	device::TextureDimension dimension = device::TextureDimension::k2D;
 };
 
+// A read-only storage buffer of a group: its binding and contents (at least
+// one byte).
+struct GroupBuffer
+{
+	std::uint32_t binding = 0;
+	std::vector<std::byte> bytes;
+};
+
 struct GroupRequest
 {
 	device::BindGroupLayoutId layout;
 	std::uint32_t constantsBinding = 0;
 	std::vector<std::byte> constants; // empty: the group has no uniform buffer
 	std::vector<ProgramTexture> textures;
+	std::vector<GroupBuffer> storage; // uploaded once, then in kStorageRead
 };
 
 struct ProgramRequest
@@ -78,6 +89,9 @@ struct ProgramRequest
 	device::BindGroupLayoutId frameLayout; // invalid when the family reads no frame group
 	device::BindGroupLayoutId viewLayout;  // invalid when the family reads no view group
 	GroupRequest material;                 // role kMaterial
+	// The view group a draw binds when its frame supplies none of viewLayout
+	// (MaterialPrograms keeps one per layout).
+	std::optional<GroupRequest> neutralView;
 };
 
 enum class ProgramStatus : std::uint8_t
@@ -113,6 +127,7 @@ private:
 	{
 		GroupRequest request;
 		device::BufferId constants;
+		std::vector<device::BufferId> storage; // per GroupRequest::storage
 		bool uploaded = false;
 		std::vector<std::uint64_t> revisions; // per texture, of the current group
 		ResidentGroup resident;               // resident.group invalid until ready
@@ -144,7 +159,7 @@ class MaterialPrograms final : public IDrawPrograms
 {
 public:
 	MaterialPrograms( device::IRenderDevice2 &device, const resources::TextureCache &textures )
-	    : m_Groups( device, textures )
+	    : m_Groups( device, textures ), m_Views( device, textures )
 	{
 	}
 
@@ -154,7 +169,11 @@ public:
 	// Records pending constant uploads and (re)creates the material groups
 	// whose textures became resident or were replaced; returns the uploads.
 	std::size_t RecordUploads( device::CommandEncoder &encoder );
-	void Retire( device::CompletionToken token ) { m_Groups.Retire( token ); }
+	void Retire( device::CompletionToken token )
+	{
+		m_Groups.Retire( token );
+		m_Views.Retire( token );
+	}
 
 	const DrawProgram *Program( std::uint64_t material ) const override;
 	std::size_t Count() const { return m_Programs.size(); }
@@ -163,6 +182,8 @@ public:
 
 private:
 	GroupResidency m_Groups;
+	GroupResidency m_Views; // the neutral view groups, by view layout
+	std::set<std::uint64_t> m_NeutralViewLayouts;
 	std::map<std::uint64_t, DrawProgram> m_Programs; // material group filled at RecordUploads
 };
 

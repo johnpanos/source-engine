@@ -76,8 +76,11 @@ void GroupResidency::Retiring( Entry &entry )
 		m_Replaced.push_back( entry.resident.group );
 	if ( entry.constants.IsValid() )
 		m_Replaced.push_back( entry.constants );
+	for ( BufferId buffer : entry.storage )
+		m_Replaced.push_back( buffer );
 	entry.resident = ResidentGroup();
 	entry.constants = BufferId();
+	entry.storage.clear();
 }
 
 foundation::Expected<void, ProgramStatus> GroupResidency::Set(
@@ -101,6 +104,19 @@ foundation::Expected<void, ProgramStatus> GroupResidency::Set(
 		if ( !buffer )
 			return foundation::MakeUnexpected( ProgramStatus::kDevice );
 		entry.constants = buffer.Value();
+	}
+	for ( const GroupBuffer &storage : request.storage )
+	{
+		BufferDesc desc;
+		desc.size = std::max<std::uint64_t>( storage.bytes.size(), 4 );
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
+		auto buffer = m_Device.CreateBuffer( desc );
+		if ( !buffer )
+		{
+			Retiring( entry );
+			return foundation::MakeUnexpected( ProgramStatus::kDevice );
+		}
+		entry.storage.push_back( buffer.Value() );
 	}
 	if ( auto found = m_Entries.find( id ); found != m_Entries.end() )
 	{
@@ -196,6 +212,8 @@ void GroupResidency::Refresh( Entry &entry )
 	if ( entry.constants.IsValid() )
 		bindings.push_back( { entry.request.constantsBinding, entry.constants, 0,
 		    entry.request.constants.size(), {}, {} } );
+	for ( std::size_t i = 0; i < entry.storage.size(); ++i )
+		bindings.push_back( { entry.request.storage[i].binding, entry.storage[i], 0, 0, {}, {} } );
 	for ( std::size_t i = 0; i < entry.request.textures.size(); ++i )
 	{
 		const ProgramTexture &texture = entry.request.textures[i];
@@ -218,6 +236,7 @@ void GroupResidency::Refresh( Entry &entry )
 	entry.resident.textures = std::move( sampled );
 	if ( entry.constants.IsValid() )
 		entry.resident.uniforms.push_back( entry.constants );
+	entry.resident.storage = entry.storage;
 	entry.revisions = std::move( revisions );
 }
 
@@ -282,6 +301,17 @@ std::size_t GroupResidency::RecordUploads( CommandEncoder &encoder )
 				    entry.constants, ResourceUsage::kCopyDestination, ResourceUsage::kUniform );
 				++recorded;
 			}
+			for ( std::size_t i = 0; i < entry.storage.size(); ++i )
+			{
+				const std::vector<std::byte> &bytes = entry.request.storage[i].bytes;
+				encoder.TransitionBuffer(
+				    entry.storage[i], ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+				if ( !bytes.empty() )
+					encoder.WriteBuffer( entry.storage[i], 0, bytes );
+				encoder.TransitionBuffer( entry.storage[i], ResourceUsage::kCopyDestination,
+				    ResourceUsage::kStorageRead );
+				++recorded;
+			}
 			entry.uploaded = true;
 		}
 		Refresh( entry );
@@ -333,6 +363,20 @@ foundation::Expected<void, ProgramStatus> MaterialPrograms::Set(
 	program.drawLayout = request.drawLayout;
 	program.frameLayout = request.frameLayout;
 	program.viewLayout = request.viewLayout;
+	// A neutral view group stands in only for its own layout.
+	if ( request.neutralView && request.viewLayout.IsValid() &&
+	     request.neutralView->layout == request.viewLayout )
+	{
+		if ( m_NeutralViewLayouts.insert( request.viewLayout.value ).second )
+		{
+			if ( auto view = m_Views.Set( request.viewLayout.value, *request.neutralView ); !view )
+			{
+				m_NeutralViewLayouts.erase( request.viewLayout.value );
+				return view;
+			}
+		}
+		program.hasNeutralView = true;
+	}
 	return {};
 }
 
@@ -344,11 +388,15 @@ void MaterialPrograms::Remove( std::uint64_t material )
 
 std::size_t MaterialPrograms::RecordUploads( CommandEncoder &encoder )
 {
-	const std::size_t recorded = m_Groups.RecordUploads( encoder );
+	const std::size_t recorded =
+	    m_Groups.RecordUploads( encoder ) + m_Views.RecordUploads( encoder );
 	for ( auto &[material, program] : m_Programs )
 	{
 		const ResidentGroup *group = m_Groups.Group( material );
 		program.material = group ? *group : ResidentGroup();
+		const ResidentGroup *view =
+		    program.hasNeutralView ? m_Views.Group( program.viewLayout.value ) : nullptr;
+		program.neutralView = view ? *view : ResidentGroup();
 	}
 	return recorded;
 }
@@ -356,7 +404,8 @@ std::size_t MaterialPrograms::RecordUploads( CommandEncoder &encoder )
 const DrawProgram *MaterialPrograms::Program( std::uint64_t material ) const
 {
 	auto found = m_Programs.find( material );
-	if ( found == m_Programs.end() || !found->second.material.group.IsValid() )
+	if ( found == m_Programs.end() || !found->second.material.group.IsValid() ||
+	     ( found->second.hasNeutralView && !found->second.neutralView.group.IsValid() ) )
 		return nullptr;
 	return &found->second;
 }

@@ -34,6 +34,8 @@ int RunSuite( int argc, char **argv )
 		return RunReflectionProbesSuite( argc - 1, argv + 1 );
 	if ( name == "volumetric" )
 		return RunVolumetricSuite( argc - 1, argv + 1 );
+	if ( name == "clustered-lights" )
+		return RunClusteredLightsSuite( argc - 1, argv + 1 );
 	std::fprintf( stderr, "render_lab suite: no suite %s\n", name.c_str() );
 	return 2;
 }

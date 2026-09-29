@@ -57,6 +57,7 @@ struct ResidentGroup
 	device::BindGroupId group;
 	std::vector<SampledTexture> textures;   // in kSampled
 	std::vector<device::BufferId> uniforms; // in kUniform
+	std::vector<device::BufferId> storage;  // in kStorageRead
 };
 
 struct DrawProgram
@@ -70,6 +71,11 @@ struct DrawProgram
 	// the pass's owner supplies per frame and view; invalid when it reads none.
 	device::BindGroupLayoutId frameLayout;
 	device::BindGroupLayoutId viewLayout;
+	// The program's neutral view group (role kView, a view with nothing in
+	// it), which a pass binds when the frame supplies no view group of
+	// viewLayout; no group when the program declares none.
+	ResidentGroup neutralView;
+	bool hasNeutralView = false;
 };
 
 struct DrawGroup

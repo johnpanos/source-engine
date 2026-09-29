@@ -221,6 +221,20 @@ struct AreaLightInput
 	return kInverseSquareReferenceDistance * kInverseSquareReferenceDistance / d2 * window;
 }
 
+// A spot light's cone at the cosine between its axis and the direction from
+// the light to the receiver: 0 outside the outer cone, 1 inside the inner
+// one, and a smoothstep between (a hard edge when the cones meet). The native
+// backend's world_pbr.frag evaluated this rule before it was defined here;
+// the render core's runtime_light.glsl mirrors it.
+[[nodiscard]] inline float SpotFactor( float cosine, float innerCos, float outerCos )
+{
+	if ( !( innerCos > outerCos + 1e-4f ) )
+		return cosine >= outerCos ? 1.0f : 0.0f;
+	float t = ( cosine - outerCos ) / ( innerCos - outerCos );
+	t = t < 0.0f ? 0.0f : ( t > 1.0f ? 1.0f : t );
+	return t * t * ( 3.0f - 2.0f * t );
+}
+
 // A world light matches its bake when its style scalar is the baked value.
 constexpr float kBakedStyleScalar = 1.0f;
 constexpr float kStyleScalarTolerance = 1.0e-4f;

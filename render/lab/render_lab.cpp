@@ -454,6 +454,7 @@ int Run( const Options &options )
 		std::uint64_t nextGroup = 1;
 		std::map<std::uint64_t, std::uint64_t> drawGroupOf; // draw layout -> group id
 		std::map<std::uint64_t, std::uint64_t> frameGroupOf;
+		std::map<std::uint64_t, std::uint64_t> viewGroupOf; // view layout -> neutral view group
 		material::FrameTerms terms;
 		terms.lightmapScale = 1.0f; // LMAP holds linear light
 		auto addGroups = [&]( SceneMaterial &m ) -> std::optional<std::string>
@@ -470,6 +471,15 @@ int Run( const Options &options )
 				drawGroupOf[drawLayout] = nextGroup++;
 				if ( !groups.Set( drawGroupOf[drawLayout], *request ) )
 					return std::string( "the draw group was refused" );
+			}
+			const std::uint64_t viewLayout = m.program.request.viewLayout.value;
+			if ( m.program.request.viewLayout.IsValid() && !viewGroupOf.count( viewLayout ) )
+			{
+				if ( !m.program.request.neutralView )
+					return std::string( "no view group" );
+				viewGroupOf[viewLayout] = nextGroup++;
+				if ( !groups.Set( viewGroupOf[viewLayout], *m.program.request.neutralView ) )
+					return std::string( "the view group was refused" );
 			}
 			const std::uint64_t frameLayout = m.program.request.frameLayout.value;
 			if ( m.program.request.frameLayout.IsValid() && !frameGroupOf.count( frameLayout ) )
@@ -763,6 +773,9 @@ int Run( const Options &options )
 			if ( m.program.request.frameLayout.IsValid() )
 				encoder.SetBindGroup( BindGroupRole::kFrame,
 				    groups.Group( frameGroupOf[m.program.request.frameLayout.value] )->group );
+			if ( m.program.request.viewLayout.IsValid() )
+				encoder.SetBindGroup( BindGroupRole::kView,
+				    groups.Group( viewGroupOf[m.program.request.viewLayout.value] )->group );
 			encoder.SetBindGroup( BindGroupRole::kMaterial, group->group );
 			if ( m.program.request.drawLayout.IsValid() )
 				encoder.SetBindGroup( BindGroupRole::kDraw,

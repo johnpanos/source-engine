@@ -44,6 +44,11 @@
 //			                nearest, direction-only, weights and relit.
 //			                Seeded: no-distance-roughness, no-facing,
 //			                relight-added-only.
+//			clustered-lights
+//			                RFC 0016 K11: the runtime point and spot lights
+//			                through the view's cluster lists against every
+//			                light of the set; neutral bitwise. Seeded:
+//			                slice-off-by-one, skips-first, falloff-unwindowed.
 //
 //=============================================================================//
 
@@ -62,6 +67,7 @@ int RunLightmapBasisSuite( int argc, char **argv );
 int RunProbeVolumeSuite( int argc, char **argv );
 int RunReflectionProbesSuite( int argc, char **argv );
 int RunVolumetricSuite( int argc, char **argv );
+int RunClusteredLightsSuite( int argc, char **argv );
 
 } // namespace render::lab
 

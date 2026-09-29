@@ -181,12 +181,14 @@ std::optional<std::string> Render(
 	}
 	const std::uint64_t frameGroup = lab.nextGroup++;
 	const std::uint64_t materialGroup = lab.nextGroup++;
+	const std::uint64_t viewGroup = lab.nextGroup++; // no clustered lights
 	material::UnlitClaim claim;
 	claim.claimed = true;
 	std::copy( scene.wall, scene.wall + 3, claim.constants.tint );
 	auto request = lab.family->Request( claim, "vol/white" );
 	if ( !request || !lab.groups.Set( frameGroup, lab.family->FrameGroup( terms ) ) ||
-	     !lab.groups.Set( materialGroup, request.Value().material ) )
+	     !lab.groups.Set( materialGroup, request.Value().material ) ||
+	     !lab.groups.Set( viewGroup, lab.family->NeutralViewGroup() ) )
 		return std::string( "a group was refused" );
 	if ( std::optional<std::string> why =
 	         lab.canvas->Render( lab.textures, lab.groups, {}, { 0, 0, 0, 1 }, nullptr ) )
@@ -202,6 +204,7 @@ std::optional<std::string> Render(
 	CanvasDraw draw;
 	draw.pipeline = pipeline.Value();
 	draw.groups[std::size_t( BindGroupRole::kFrame )] = group( frameGroup );
+	draw.groups[std::size_t( BindGroupRole::kView )] = group( viewGroup );
 	draw.groups[std::size_t( BindGroupRole::kMaterial )] = group( materialGroup );
 	draw.groups[std::size_t( BindGroupRole::kDraw )] = group( lab.drawGroup );
 	draw.vertices = lab.canvas->Vertices( lab.wall );
@@ -255,6 +258,7 @@ std::optional<std::string> Render(
 		renderer->Collect( CompletionToken() ); // the canvas waited idle
 	lab.groups.Remove( frameGroup );
 	lab.groups.Remove( materialGroup );
+	lab.groups.Remove( viewGroup );
 	return why;
 }
 

@@ -810,6 +810,7 @@
           "render.shader-library",
           "render.frame",
           "render.graph",
+          "render.pass.lights",
           "render.pass.lines",
           "render.pass.lights",
           "render.pass.volumetric",

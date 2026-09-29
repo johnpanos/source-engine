@@ -282,7 +282,9 @@ foundation::Expected<std::uint64_t, ViewportStatus> ViewportRenderer::GroupsFor(
 		}
 		m_Frames.emplace( request.frameLayout.value, id );
 	}
-	if ( request.viewLayout.IsValid() )
+	// A view group the editor has none of: the program's neutral one, which
+	// MaterialPrograms keeps and the opaque pass binds.
+	if ( request.viewLayout.IsValid() && !request.neutralView )
 	{
 		failure = "its program reads a view group, which the editor lacks";
 	}

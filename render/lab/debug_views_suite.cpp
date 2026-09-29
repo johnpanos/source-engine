@@ -316,6 +316,7 @@ struct Lab
 	std::uint64_t vertexLitFrameGroup = 0; // the vertexlit family's program's frame terms
 	std::uint64_t nextGroup = 1;
 	std::map<Program, std::uint64_t> materialGroups;
+	std::map<std::uint64_t, std::uint64_t> viewGroups;      // view layout -> neutral view group
 	material::ProgramRequest pbrRequest;                    // the default material's
 	std::map<std::string, device::PipelineId> pbrPipelines; // by material variant
 	material::ProgramRequest vertexLitRequest;
@@ -528,6 +529,22 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	     !lab.groups.Set( lab.vertexLitLighting, lab.vertexLit->LightingGroup( lighting ) ) ||
 	     !lab.groups.Set( lab.vertexLitFrameGroup, lab.vertexLit->FrameGroup() ) )
 		return std::string( "a vertexlit group was refused" );
+
+	// Each program's neutral view group (no clustered lights), by layout.
+	std::vector<const material::ProgramRequest *> requests = {
+	    &lab.pbrRequest, &lab.vertexLitRequest };
+	for ( const auto &[program, resolved] : lab.programs )
+		requests.push_back( &resolved.request );
+	for ( const material::ProgramRequest *request : requests )
+	{
+		if ( !request->viewLayout.IsValid() || !request->neutralView ||
+		     lab.viewGroups.count( request->viewLayout.value ) )
+			continue;
+		const std::uint64_t id = lab.nextGroup++;
+		if ( !lab.groups.Set( id, *request->neutralView ) )
+			return std::string( "a view group was refused" );
+		lab.viewGroups[request->viewLayout.value] = id;
+	}
 	return std::nullopt;
 }
 
@@ -614,6 +631,8 @@ std::optional<std::string> DrawFrame(
 				return std::string( "no pbr debug pipeline" );
 			draw.pipeline = pipeline.Value();
 			draw.groups[std::size_t( BindGroupRole::kFrame )] = group( lab.pbrFrameGroup );
+			draw.groups[std::size_t( BindGroupRole::kView )] =
+			    group( lab.viewGroups.at( lab.pbrRequest.viewLayout.value ) );
 			draw.groups[std::size_t( BindGroupRole::kDraw )] =
 			    group( lab.pbrLightings.at( c.pbrLighting ) );
 			draw.groups[std::size_t( BindGroupRole::kMaterial )] =
@@ -633,6 +652,8 @@ std::optional<std::string> DrawFrame(
 				return std::string( "no vertexlit debug pipeline" );
 			draw.pipeline = pipeline.Value();
 			draw.groups[std::size_t( BindGroupRole::kFrame )] = group( lab.vertexLitFrameGroup );
+			draw.groups[std::size_t( BindGroupRole::kView )] =
+			    group( lab.viewGroups.at( lab.vertexLitRequest.viewLayout.value ) );
 			draw.groups[std::size_t( BindGroupRole::kMaterial )] =
 			    group( lab.materialGroups[Program::kVertexLit] );
 			draw.groups[std::size_t( BindGroupRole::kDraw )] = group( lab.vertexLitLighting );
@@ -646,6 +667,8 @@ std::optional<std::string> DrawFrame(
 				return pipeline.Error();
 			draw.pipeline = pipeline.Value();
 			draw.groups[std::size_t( BindGroupRole::kFrame )] = group( lab.frameGroup );
+			draw.groups[std::size_t( BindGroupRole::kView )] =
+			    group( lab.viewGroups.at( program.request.viewLayout.value ) );
 			draw.groups[std::size_t( BindGroupRole::kMaterial )] =
 			    group( lab.materialGroups.at( c.program ) );
 			draw.groups[std::size_t( BindGroupRole::kDraw )] = group( lab.drawGroups.at( c.page ) );

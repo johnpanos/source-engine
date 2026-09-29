@@ -175,10 +175,16 @@ struct CaseGroup
 	render::device::BindGroupLayoutId layout;
 	std::span<const std::byte> constants;
 	std::vector<const CaseTexture *> textures;
-	// The bindings are the constants (0) then each texture and its sampler;
-	// with constantsLast the textures come first and the constants after them.
+	// The bindings are the constants (0), then each storage buffer, then each
+	// texture and its sampler; with constantsLast the textures come first and
+	// the constants after them.
 	bool constantsLast = false;
+	std::vector<std::span<const std::byte>> storage = {}; // read-only storage buffers
 };
+
+// The surface program's view group of a view with no clustered lights
+// (SurfaceProgram::NeutralViewGroup), for a draw that reads none.
+CaseGroup NeutralViewGroup( render::device::BindGroupLayoutId layout );
 
 struct CaseDraw
 {

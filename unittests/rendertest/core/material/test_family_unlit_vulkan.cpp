@@ -189,6 +189,7 @@ int main()
 			    { texture, &neutralCube, &neutral, &neutral, &neutral, &neutral, &neutralSrgb } } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),
 			    std::as_bytes( std::span( &lighting, 1 ) ), { &neutralSrgb }, true } );
+			draw.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
 			    std::as_bytes( std::span( &frame, 1 ) ), { &neutral, &neutral } } );
 			draw.vertices = std::as_bytes( std::span( quad ) );

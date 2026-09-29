@@ -92,6 +92,25 @@ PbrSplitSumTable LtcTable()
 	return table;
 }
 
+SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light )
+{
+	SurfaceLightGpu packed;
+	const bool spot = light.shape == light_set::LightShape::Spot;
+	for ( int k = 0; k < 3; ++k )
+	{
+		packed.position[k] = light.position[k];
+		packed.color[k] = light.color[k];
+		packed.direction[k] = light.direction[k];
+	}
+	packed.position[3] = light.radius;
+	packed.color[3] = light.minLight;
+	packed.direction[3] = spot ? light.outerCos : -2.0f;
+	packed.cone[0] = spot ? light.innerCos : 1.0f;
+	packed.cone[1] = light.falloff == light_set::LightFalloff::InverseSquare ? 1.0f : 0.0f;
+	packed.cone[2] = light.sourceRadius;
+	return packed;
+}
+
 SurfaceAreaLight PackAreaLight( const area_light::AreaLight &light )
 {
 	SurfaceAreaLight packed;
@@ -133,16 +152,23 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	const BindingDesc draw[] = { { 0, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 2, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } } };
+	const BindingDesc view[] = { { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } },
+	    { 1, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
+	    { 2, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
+	    { 3, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } } };
 	auto frameLayout = device.CreateBindGroupLayout( { BindGroupRole::kFrame, frame } );
+	auto viewLayout = device.CreateBindGroupLayout( { BindGroupRole::kView, view } );
 	auto materialLayout = device.CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
 	auto drawLayout = device.CreateBindGroupLayout( { BindGroupRole::kDraw, draw } );
 	if ( frameLayout )
 		program->m_FrameLayout = frameLayout.Value();
+	if ( viewLayout )
+		program->m_ViewLayout = viewLayout.Value();
 	if ( materialLayout )
 		program->m_MaterialLayout = materialLayout.Value();
 	if ( drawLayout )
 		program->m_DrawLayout = drawLayout.Value();
-	if ( !frameLayout || !materialLayout || !drawLayout )
+	if ( !frameLayout || !viewLayout || !materialLayout || !drawLayout )
 		return foundation::MakeUnexpected( SurfaceStatus::kDevice );
 	return program;
 }
@@ -151,7 +177,8 @@ SurfaceProgram::~SurfaceProgram()
 {
 	for ( const auto &[key, pipeline] : m_Pipelines )
 		(void)m_Device.Release( pipeline, CompletionToken() );
-	for ( BindGroupLayoutId layout : { m_DrawLayout, m_MaterialLayout, m_FrameLayout } )
+	for ( BindGroupLayoutId layout :
+	    { m_DrawLayout, m_MaterialLayout, m_ViewLayout, m_FrameLayout } )
 	{
 		if ( layout.IsValid() )
 			(void)m_Device.Release( layout, CompletionToken() );
@@ -211,7 +238,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	    { 3, VertexFormat::kFloat2, 40, 0 } };
 	const VertexBufferLayout buffers[] = { { SurfaceVertexStride( variant.layout ), false } };
 	const BindGroupLayoutId layouts[] = {
-	    m_FrameLayout, BindGroupLayoutId(), m_MaterialLayout, m_DrawLayout };
+	    m_FrameLayout, m_ViewLayout, m_MaterialLayout, m_DrawLayout };
 	const Format colors[] = { m_ColorFormat };
 	const BlendMode blends[] = { variant.blend };
 	const std::uint8_t writes[] = {
@@ -265,6 +292,8 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
 	request.drawConstantBytes = SurfaceDrawConstantBytes( variant.layout );
 	request.drawLayout = m_DrawLayout;
 	request.frameLayout = m_FrameLayout;
+	request.viewLayout = m_ViewLayout;
+	request.neutralView = NeutralViewGroup();
 	request.material.layout = m_MaterialLayout;
 	request.material.constantsBinding = 0;
 	SurfaceConstants packed = constants;
@@ -296,6 +325,41 @@ GroupRequest SurfaceProgram::FrameGroup(
 	request.textures.push_back( { 1, std::move( splitSumTable ), 2, clamped } );
 	request.textures.push_back( { 3, std::move( ltcTable ), 4, clamped } );
 	return request;
+}
+
+GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
+    std::span<const std::byte> froxels, std::span<const std::byte> indices,
+    std::span<const SurfaceLightGpu> lights ) const
+{
+	GroupRequest request;
+	request.layout = m_ViewLayout;
+	request.constantsBinding = 0;
+	const auto bytes = std::as_bytes( std::span( &view, 1 ) );
+	request.constants.assign( bytes.begin(), bytes.end() );
+	auto storage = [&]( std::uint32_t binding, std::span<const std::byte> data )
+	{
+		GroupBuffer buffer;
+		buffer.binding = binding;
+		buffer.bytes.assign( data.begin(), data.end() );
+		if ( buffer.bytes.empty() )
+			buffer.bytes.resize( 16 ); // a binding needs a size; the count says none
+		request.storage.push_back( std::move( buffer ) );
+	};
+	storage( 1, froxels );
+	storage( 2, indices );
+	storage( 3, std::as_bytes( lights ) );
+	return request;
+}
+
+GroupRequest SurfaceProgram::NeutralViewGroup() const
+{
+	// One froxel with no lights; no variant without kSurfaceClustered reads it.
+	SurfaceViewGpu view;
+	view.grid[0] = view.grid[1] = view.grid[2] = view.grid[3] = 1;
+	const std::uint32_t froxel[2] = { 0, 0 };
+	const std::uint32_t indices[4] = {};
+	return ViewGroup(
+	    view, std::as_bytes( std::span( froxel ) ), std::as_bytes( std::span( indices ) ), {} );
 }
 
 GroupRequest SurfaceProgram::DrawGroup(

@@ -10,6 +10,7 @@
 #include "kvtext/keyvalues.h"
 #include "render/graph/executor.h"
 #include "render/graph/graph_builder.h"
+#include "render/material/surface_program.h"
 #include "render/material/vmt_mapping.h"
 
 #include <algorithm>
@@ -474,6 +475,27 @@ CaseTexture NeutralCaseTexture( render::device::Format format, bool cube )
 	return texture;
 }
 
+CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
+{
+	// One froxel with no lights (SurfaceProgram::NeutralViewGroup).
+	static const render::material::SurfaceViewGpu kView = []
+	{
+		render::material::SurfaceViewGpu view;
+		view.grid[0] = view.grid[1] = view.grid[2] = view.grid[3] = 1;
+		return view;
+	}();
+	static const std::uint32_t kFroxel[2] = { 0, 0 };
+	static const std::uint32_t kIndices[4] = {};
+	static const render::material::SurfaceLightGpu kLight;
+	CaseGroup group;
+	group.role = device::BindGroupRole::kView;
+	group.layout = layout;
+	group.constants = std::as_bytes( std::span( &kView, 1 ) );
+	group.storage = { std::as_bytes( std::span( kFroxel ) ), std::as_bytes( std::span( kIndices ) ),
+	    std::as_bytes( std::span( &kLight, 1 ) ) };
+	return group;
+}
+
 Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 {
 	Drawn drawn;
@@ -482,6 +504,9 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 	{
 		device::BufferDesc constantsDesc;
 		device::BufferId constants;
+		std::vector<device::BufferDesc> storageDescs;
+		std::vector<device::BufferId> storage;
+		std::vector<graph::ResourceRef> storageRefs;
 		std::vector<device::TextureDesc> textureDescs;
 		std::vector<device::TextureId> textures;
 		std::vector<device::BufferDesc> stagingDescs;
@@ -541,6 +566,17 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 		};
 		if ( !request.constants.empty() && !request.constantsLast )
 			addConstants();
+		for ( std::span<const std::byte> bytes : request.storage )
+		{
+			device::BufferDesc desc;
+			desc.size = std::max<std::uint64_t>( bytes.size(), 4 );
+			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
+			device::BufferId buffer;
+			keep( device.CreateBuffer( desc ), buffer );
+			resources.storageDescs.push_back( desc );
+			resources.storage.push_back( buffer );
+			entries.push_back( { binding++, buffer, 0, 0, {}, {} } );
+		}
 		for ( const CaseTexture *texture : request.textures )
 		{
 			if ( !texture )
@@ -613,6 +649,9 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 			if ( resources.constants.IsValid() )
 				resources.constantsRef = import( "constants", resources.constants,
 				    resources.constantsDesc, ResourceUsage::kUniform );
+			for ( std::size_t b = 0; b < resources.storage.size(); ++b )
+				resources.storageRefs.push_back( import( "storage", resources.storage[b],
+				    resources.storageDescs[b], ResourceUsage::kStorageRead ) );
 			for ( std::size_t t = 0; t < resources.textures.size(); ++t )
 			{
 				resources.stagingRefs.push_back( import( "staging", resources.staging[t],
@@ -629,6 +668,8 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 			{
 				if ( resources.constants.IsValid() )
 					upload.Write( resources.constantsRef, ResourceUsage::kCopyDestination );
+				for ( graph::ResourceRef ref : resources.storageRefs )
+					upload.Write( ref, ResourceUsage::kCopyDestination );
 				for ( graph::ResourceRef ref : resources.stagingRefs )
 					upload.Write( ref, ResourceUsage::kCopyDestination );
 			}
@@ -642,6 +683,10 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 					    if ( groups[g].constants.IsValid() )
 						    encoder.WriteBuffer( context.Buffer( groups[g].constantsRef ), 0,
 						        draw.groups[g].constants );
+					    for ( std::size_t b = 0; b < groups[g].storageRefs.size(); ++b )
+						    if ( !draw.groups[g].storage[b].empty() )
+							    encoder.WriteBuffer( context.Buffer( groups[g].storageRefs[b] ), 0,
+							        draw.groups[g].storage[b] );
 					    for ( std::size_t t = 0; t < groups[g].stagingRefs.size(); ++t )
 						    encoder.WriteBuffer( context.Buffer( groups[g].stagingRefs[t] ), 0,
 						        std::as_bytes( std::span( draw.groups[g].textures[t]->texels ) ) );
@@ -687,6 +732,8 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 			{
 				if ( resources.constants.IsValid() )
 					pass.Read( resources.constantsRef, ResourceUsage::kUniform );
+				for ( graph::ResourceRef ref : resources.storageRefs )
+					pass.Read( ref, ResourceUsage::kStorageRead );
 				for ( graph::ResourceRef ref : resources.textureRefs )
 					pass.Read( ref, ResourceUsage::kSampled );
 			}

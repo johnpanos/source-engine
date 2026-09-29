@@ -31,6 +31,7 @@
 #include "../../shaders/common/debug_view.glsl"
 #include "../../shaders/common/pbr_brdf.glsl"
 #include "../../shaders/common/ltc.glsl"
+#include "../../shaders/common/runtime_light.glsl"
 #include "surface_lighting.glsl"
 
 // The terms (the port's static combo bits where they exist).
@@ -52,6 +53,8 @@ const int kPbr = 2048;
 const int kEmissionTexture = 4096;
 // The vertexlit point (its vertex stage reads kHalfLambert, 16).
 const int kVertexLit = 8192;
+// The view's clustered runtime lights (the view group).
+const int kClustered = 16384;
 
 // An area light (render.area-light.v1, area_light::AreaLight): its
 // rectangle, its radiance and its reach.
@@ -88,6 +91,36 @@ layout( set = 0, binding = 0 ) uniform Frame
 // The split-sum table (RFC 0007, pbr_split_sum_table.h), read by the pbr point.
 layout( set = 0, binding = 1 ) uniform texture2D splitSumTexture;
 layout( set = 0, binding = 2 ) uniform sampler splitSumSampler;
+// The view group: the view's clustered runtime lights (render.pass.lights
+// lists render.light-set.v1's point and spot lights per froxel). Read only
+// with kClustered.
+struct RuntimeLightRecord
+{
+	vec4 position;  // w: radius (0 unbounded)
+	vec4 color;     // w: minLight
+	vec4 direction; // w: outerCos, below -1 for a point light
+	vec4 cone;      // innerCos, 1 for an inverse-square falloff, sourceRadius
+};
+layout( set = 1, binding = 0 ) uniform ClusterView
+{
+	uvec4 grid;         // tilesX, tilesY, slices, tile size in pixels
+	vec4 slices;        // sliceScale, sliceBias, nearZ
+	vec4 viewDistance;  // a world point's view distance: dot( xyz, p ) + w
+} clusterView;
+layout( set = 1, binding = 1, std430 ) readonly buffer ClusterFroxels
+{
+	uvec2 froxelRanges[]; // offset, count into the index list
+};
+layout( set = 1, binding = 2, std430 ) readonly buffer ClusterIndices
+{
+	uvec4 clusterHeader;
+	uint clusterIndices[];
+};
+layout( set = 1, binding = 3, std430 ) readonly buffer ClusterLights
+{
+	RuntimeLightRecord runtimeLights[];
+};
+
 // The GGX LTC table (public/render/pbr_ltc_table.h), read by the pbr point.
 layout( set = 0, binding = 3 ) uniform texture2D ltcTexture;
 layout( set = 0, binding = 4 ) uniform sampler ltcSampler;
@@ -222,6 +255,34 @@ vec4 Output( vec3 lit, float alpha )
 	return vec4( lit, alpha );
 }
 
+// render.pass.lights FroxelAt: the froxel of a pixel position (x right, y
+// down) and a view distance, clamped to the grid.
+uint ClusterAxis( float pixel, uint count )
+{
+	const float t = floor( pixel / float( clusterView.grid.w ) );
+	if ( !( t > 0.0 ) )
+		return 0u;
+	return t < float( count - 1u ) ? uint( t ) : count - 1u;
+}
+
+uint ClusterFroxel( vec2 pixel, float distance )
+{
+	const uint slices = clusterView.grid.z;
+	uint slice = 0u;
+	if ( distance > clusterView.slices.z )
+	{
+		const float s = floor( log( distance ) * clusterView.slices.x + clusterView.slices.y );
+#ifdef SEEDED_CLUSTER_SLICE_OFF_BY_ONE
+		slice = s + 1.0 < float( slices - 1u ) ? ( s + 1.0 > 0.0 ? uint( s + 1.0 ) : 0u ) : slices - 1u;
+#else
+		slice = s < float( slices - 1u ) ? ( s > 0.0 ? uint( s ) : 0u ) : slices - 1u;
+#endif
+	}
+	const uint x = ClusterAxis( pixel.x, clusterView.grid.x );
+	const uint y = ClusterAxis( pixel.y, clusterView.grid.y );
+	return ( slice * clusterView.grid.y + y ) * clusterView.grid.x + x;
+}
+
 // The ambient cube (surface_lighting.glsl). In the furnace (RFC 0014) every
 // face is a uniform radiance of 1.
 vec3 AmbientCube( vec3 n )
@@ -310,6 +371,62 @@ void PbrSurface()
 			                      compensation * normalDotLight;
 			color += specular;
 			direct += specular;
+		}
+	}
+	// The view's clustered runtime lights (render.light-set.v1): each light
+	// of the fragment's froxel, its falloff and cone (runtime_light.glsl),
+	// both lobes. A light's color is its diffuse light on a surface facing it
+	// (the lightmap unit), so its irradiance is pi times that.
+	if ( Term( kClustered ) && DebugTermOn( kDebugTermClustered ) && !furnace )
+	{
+		const float distance =
+		    dot( clusterView.viewDistance.xyz, worldPosition ) + clusterView.viewDistance.w;
+		const uvec2 range = froxelRanges[ClusterFroxel( gl_FragCoord.xy, distance )];
+		for ( uint k = 0u; k < range.y; ++k )
+		{
+#ifdef SEEDED_CLUSTER_SKIPS_FIRST
+			if ( k == 0u )
+				continue;
+#endif
+			const RuntimeLightRecord runtime = runtimeLights[clusterIndices[range.x + k]];
+			const vec3 toLight = runtime.position.xyz - worldPosition;
+			const float distanceSquared = dot( toLight, toLight );
+#ifdef SEEDED_RUNTIME_FALLOFF_UNWINDOWED
+			float falloff = runtime.cone.y > 0.5
+			                    ? 1e4 / max( distanceSquared, runtime.cone.z * runtime.cone.z )
+			                    : RuntimeLightFalloffLegacy(
+			                          distanceSquared, runtime.position.w, runtime.color.w );
+#else
+			float falloff = runtime.cone.y > 0.5
+			                    ? RuntimeLightFalloffInverseSquare(
+			                          distanceSquared, runtime.position.w, runtime.cone.z )
+			                    : RuntimeLightFalloffLegacy(
+			                          distanceSquared, runtime.position.w, runtime.color.w );
+#endif
+			if ( falloff <= 0.0 )
+				continue;
+			const vec3 light = toLight * inversesqrt( max( distanceSquared, 1e-8 ) );
+			if ( runtime.direction.w >= -1.0 )
+				falloff *= RuntimeLightSpot( dot( -light, normalize( runtime.direction.xyz ) ),
+				    runtime.cone.x, runtime.direction.w );
+			const float normalDotLight = max( dot( normal, light ), 0.0 );
+			if ( falloff <= 0.0 || normalDotLight <= 0.0 )
+				continue;
+			const vec3 incident = runtime.color.rgb * falloff;
+			if ( diffuseLobe )
+			{
+				const vec3 diffuse = diffuseColor * incident * normalDotLight;
+				color += diffuse;
+				direct += diffuse;
+			}
+			if ( specularLobe )
+			{
+				const vec3 specular = kPi * incident *
+				                      PbrSpecular( normal, view, light, f0, roughness ) * compensation *
+				                      normalDotLight;
+				color += specular;
+				direct += specular;
+			}
 		}
 	}
 	// Area lights (render.area-light.v1): both lobes by linearly transformed

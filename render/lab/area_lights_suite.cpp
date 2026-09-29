@@ -47,6 +47,7 @@
 //=============================================================================//
 
 #include "lab_canvas.h"
+#include "lab_receiver.h"
 #include "lab_suite.h"
 #include "lab_support.h"
 #include "suites.h"
@@ -100,53 +101,20 @@ struct Rgb
 	float r = 0, g = 0, b = 0;
 };
 
-struct View
-{
-	float3 eye;
-	math::float4x4 toClip;
-	math::float4x4 fromClip;
-};
+// The receiver scene (lab_receiver.h).
+using View = ReceiverView;
+using Material = ReceiverMaterial;
+constexpr const ReceiverMaterial ( &kMaterials )[4] = kReceiverMaterials;
 
 View MakeView( float3 eye, float3 target )
 {
-	View view;
-	view.eye = eye;
-	view.toClip =
-	    math::Multiply( math::Perspective( 70.0f * 3.14159265f / 180.0f, 1.0f, 1.0f, 8192.0f ),
-	        math::LookAt( eye, target, float3{ 0, 0, 1 } ) );
-	view.fromClip = *math::Inverse( view.toClip );
-	return view;
+	return MakeReceiverView( eye, target, kSize );
 }
 
-// Where a pixel centre's ray meets the receiver plane z = 0, if it does.
 std::optional<float3> Hit( const View &view, std::uint32_t px, std::uint32_t py )
 {
-	const float nx = ( float( px ) + 0.5f ) / float( kSize ) * 2.0f - 1.0f;
-	const float ny = 1.0f - ( float( py ) + 0.5f ) / float( kSize ) * 2.0f;
-	const math::float4 a = math::Transform( view.fromClip, { nx, ny, 0.0f, 1.0f } );
-	const math::float4 b = math::Transform( view.fromClip, { nx, ny, 1.0f, 1.0f } );
-	const float3 near{ a.x / a.w, a.y / a.w, a.z / a.w };
-	const float3 far{ b.x / b.w, b.y / b.w, b.z / b.w };
-	if ( !( ( near.z > 0.0f ) != ( far.z > 0.0f ) ) )
-		return std::nullopt;
-	const float t = near.z / ( near.z - far.z );
-	const float3 p{ near.x + ( far.x - near.x ) * t, near.y + ( far.y - near.y ) * t, 0.0f };
-	if ( std::fabs( p.x ) > kReceiver * 0.98f || std::fabs( p.y ) > kReceiver * 0.98f )
-		return std::nullopt;
-	return p;
+	return ReceiverHit( view, px, py, kReceiver );
 }
-
-struct Material
-{
-	const char *name;
-	int metal; // MRAO bytes
-	int roughness;
-	float Metal() const { return float( metal ) / 255.0f; }
-	float Roughness() const { return std::max( float( roughness ) / 255.0f, 0.02f ); }
-};
-
-const Material kMaterials[] = { { "dielectric-r50", 0, 128 }, { "metal-r25", 255, 64 },
-    { "metal-r50", 255, 128 }, { "metal-r80", 255, 204 } };
 
 area_light::AreaLight Light(
     float3 center, float3 halfU, float3 halfV, float radiance, bool twoSided = false )
@@ -450,6 +418,7 @@ struct Lab
 	std::unique_ptr<material::PbrFamily> family;
 	std::map<std::string, std::uint64_t> materialGroups;
 	std::uint64_t drawGroup = 0;
+	std::uint64_t viewGroup = 0; // the program's neutral view group
 	std::uint64_t nextGroup = 1;
 	std::vector<std::byte> receiver;
 
@@ -500,24 +469,14 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> mod
 			return std::string( "a material group was refused" );
 		lab.materialGroups[m.name] = id;
 	}
+	lab.viewGroup = lab.nextGroup++;
+	if ( !lab.groups.Set( lab.viewGroup, lab.family->Program().NeutralViewGroup() ) )
+		return std::string( "the view group was refused" );
 	lab.drawGroup = lab.nextGroup++;
 	if ( !lab.groups.Set( lab.drawGroup, lab.family->LightingGroup( material::ModelLighting() ) ) )
 		return std::string( "the draw group was refused" );
 
-	// The receiver: the plane z = 0, facing +z, tangent +x.
-	const float corners[4][2] = { { -kReceiver, -kReceiver }, { kReceiver, -kReceiver },
-	    { kReceiver, kReceiver }, { -kReceiver, kReceiver } };
-	for ( int corner : { 0, 1, 2, 0, 2, 3 } )
-	{
-		material::SurfaceModelVertex vertex;
-		vertex.position[0] = corners[corner][0];
-		vertex.position[1] = corners[corner][1];
-		vertex.normal[2] = 1.0f;
-		vertex.tangent[0] = 1.0f;
-		vertex.tangent[3] = 1.0f;
-		const auto *bytes = reinterpret_cast<const std::byte *>( &vertex );
-		lab.receiver.insert( lab.receiver.end(), bytes, bytes + sizeof( vertex ) );
-	}
+	lab.receiver = ReceiverMesh( kReceiver );
 	return std::nullopt;
 }
 
@@ -559,6 +518,7 @@ std::optional<std::string> Render( Lab &lab, const Frame &frame, CanvasImage &im
 	CanvasDraw draw;
 	draw.pipeline = pipeline.Value();
 	draw.groups[std::size_t( BindGroupRole::kFrame )] = group( frameGroup );
+	draw.groups[std::size_t( BindGroupRole::kView )] = group( lab.viewGroup );
 	draw.groups[std::size_t( BindGroupRole::kMaterial )] =
 	    group( lab.materialGroups.at( frame.material->name ) );
 	draw.groups[std::size_t( BindGroupRole::kDraw )] = group( lab.drawGroup );
