@@ -2,7 +2,7 @@
   "carrier_entities": {
     "env_volumetric_fog_controller": "the one global volumetric fog controller: density, height_fog_density, height_fog_falloff, anisotropy",
     "env_volumetric_fog_volume": "a homogeneous box medium: origin, box_mins and box_maxs (relative), density (extinction per Source unit), albedo (scattering / extinction), anisotropy (Henyey-Greenstein g), emission",
-    "light_rect": "a rectangle light: origin (centre), angles (forward = the emission direction), width (along right) and height (along up) in Source units, color (linear 0..255) and brightness (radiance = color / 255 x brightness, lightmap unit), two_sided; render.area-light.v1's Rect and AreaLight",
+    "light_rect": "a rectangle light: origin (centre), angles (forward = the emission direction, the rectangle's normal), width along -right and height along up (halfU = -right x width/2, halfV = up x height/2) in Source units, color (linear 0..255) and brightness (radiance = color / 255 x brightness, lightmap unit), two_sided; render.area-light.v1's Rect and AreaLight",
     "status": "decided by the render-core owner (source-engine-43, 2026-09-29, binding rule 5) with Source 2's names; the game entities are RFC 0016 K12's"
   },
   "error_metric": {

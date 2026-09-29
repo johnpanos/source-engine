@@ -2769,8 +2769,9 @@ source-engine-43 owns `render_lab` and every lighting term.
   as world geometry. It now takes two or more digits.
 - **Entities** (decided by source-engine-43 on 2026-09-29 under rule 5,
   with Source 2's names):
-  - `light_rect`: `angles` (forward is the emission direction), `width` and
-    `height` along right and up, `color` (linear 0..255), `brightness`
+  - `light_rect`: `angles` (forward is the emission direction and the
+    rectangle's normal), `width` along -right and `height` along up (halfU =
+    -right × width/2, since Source's right × up = -forward), `color` (linear 0..255), `brightness`
     (radiance = color / 255 × brightness) and `two_sided`;
   - `env_volumetric_fog_volume`: `box_mins` and `box_maxs` relative to the
     origin, `density` (extinction per unit), `albedo`, `anisotropy` and

@@ -74,7 +74,7 @@ irradiance E shows E / pi):
 | point | `SphereLight`, radius 2 units | `light`, `_quadratic_attn 1` | vrad world light intensity L r^2 (r = 2 units) |
 | spot | `DiskLight` + `sourceEngine:cone*` | `light_spot`, `_inner_cone`, `_cone`, `_exponent`, `pitch`/`angles` | same, on axis |
 | sun + sky | `DistantLight` (normalized) + `DomeLight` | `light_environment`, `_light`, `_ambient`, `SunSpreadAngle` | sun world light E / pi; sky ambient the dome radiance |
-| rectangle | `RectLight` | `light_rect`: `origin`, `angles` (forward = emission direction), `width` (along right), `height` (along up), `color` (linear 0..255), `brightness`, `two_sided` | the `render.area-light.v1` `Rect` and radiance: radiance = color / 255 x brightness |
+| rectangle | `RectLight` | `light_rect`: `origin`, `angles` (forward = emission direction), `width` along -right and `height` along up (halfU = -right x width/2, halfV = up x height/2, so halfU x halfV = forward), `color` (linear 0..255), `brightness`, `two_sided` | the `render.area-light.v1` `Rect` and radiance: radiance = color / 255 x brightness |
 | projector | none (not bakeable) | `env_projectedtexture`: `angles`, `lightfov`, `nearz`, `farz`, `lightcolor`, `texturename` | Portal's attenuation (0, 100, 0), color GammaToLinear(rgb) x A / 255 |
 | medium | none | `env_volumetric_fog_volume`: `origin`, `box_mins`, `box_maxs` (relative), `density` (extinction per unit), `albedo`, `anisotropy`, `emission`; plus one `env_volumetric_fog_controller` (`density`, `height_fog_density`, `height_fog_falloff`, `anisotropy`; all 0 here) | homogeneous, Henyey-Greenstein |
 

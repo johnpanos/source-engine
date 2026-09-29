@@ -107,7 +107,8 @@ class EntityConversions(unittest.TestCase):
         self.assertGreater(np.dot(forward, direction), 0.9999)
         u = np.array(lf.units(light["half_u_m"]))
         v = np.array(lf.units(light["half_v_m"]))
-        self.assertGreater(abs(np.dot(right, u / np.linalg.norm(u))), 0.9999)
+        # halfU runs along -right: Source has right x up = -forward
+        self.assertGreater(np.dot(-right, u / np.linalg.norm(u)), 0.9999)
         self.assertGreater(np.dot(up, v / np.linalg.norm(v)), 0.9999)
         self.assertAlmostEqual(float(keys["width"]) * float(keys["height"]),
                                size[0] * size[1] * lf.SOURCE_UNITS_PER_METER ** 2, places=1)
