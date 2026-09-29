@@ -271,8 +271,12 @@ def main():
                         help="grid bounds in meters (min xyz, max xyz); default: the world "
                              "meshes' bounds, inset")
     parser.add_argument("--fit-limit", action="store_true",
-                        help="widen the spacing just enough for the grid to fit the PRBV "
-                             "probe limit, instead of failing (recorded in the receipt)")
+                        help="widen the spacing just enough for the grid to fit --max-probes, "
+                             "instead of failing (recorded in the receipt)")
+    parser.add_argument("--max-probes", type=int, default=probe_volume.MAX_PROBES,
+                        help="probe budget --fit-limit fits (at most the PRBV limit): every "
+                             "probe is traced and baked through its own receiver quads, so a "
+                             "whole retail map's million probes would take hours")
     parser.add_argument("--samples", type=int, required=True)
     parser.add_argument("--device", choices=pbrt_blender.DEVICES,
                         default=pbrt_blender.DEFAULT_DEVICE)
@@ -315,10 +319,11 @@ def main():
         raise ValueError("probe bounds are empty: %s .. %s" % (low, high))
     spacing = args.spacing
     if args.fit_limit:
-        spacing = probe_volume.fit_spacing(low, high, args.spacing)
+        spacing = probe_volume.fit_spacing(low, high, args.spacing,
+                                           min(args.max_probes, probe_volume.MAX_PROBES))
         if spacing > args.spacing:
-            print("probe spacing %.3g m widened to %.3g m to fit the PRBV limit" %
-                  (args.spacing, spacing), flush=True)
+            print("probe spacing %.3g m widened to %.3g m to fit %d probes" %
+                  (args.spacing, spacing, args.max_probes), flush=True)
     origin, step, dims = probe_volume.grid_for(low, high, spacing)
     count = int(np.prod(dims))
     if count > probe_volume.MAX_PROBES:
@@ -388,6 +393,7 @@ def main():
                         "dims": grid["dims"], "max_relocation": grid["max_relocation"],
                         "max_distance": grid["max_distance"]},
                "requested_spacing": args.spacing, "fit_limit": args.fit_limit,
+               "max_probes": args.max_probes if args.fit_limit else None,
                "probes": count, "active_probes": int(active.sum()),
                "relocated_probes": int((np.abs(offsets).max(axis=1) > 1e-9).sum()),
                "max_backface_fraction": float(backfaces.max()),
