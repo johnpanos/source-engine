@@ -147,6 +147,57 @@ std::string InstanceFile( const scene::Entity &entity )
 	return out;
 }
 
+foundation::Expected<MapFragment, std::string> PlaceInstanceContent( const scene::Entity &instance,
+    const MapFragment &instanceContent, const std::string &autoFixupName,
+    const ports::IEntityCatalog *catalog )
+{
+	using foundation::MakeUnexpected;
+	const std::optional<Vec3d> origin = instance.Origin();
+	if ( instance.Key( "origin" ) && !origin )
+	{
+		return MakeUnexpected( std::string( "the instance origin is malformed" ) );
+	}
+	const std::optional<Vec3d> angles = instance.Angles();
+	if ( instance.Key( "angles" ) && !angles )
+	{
+		return MakeUnexpected( std::string( "the instance angles are malformed" ) );
+	}
+	const std::string *styleText = instance.Key( "fixup_style" );
+	const std::optional<InstanceFixupStyle> style =
+	    ParseFixupStyle( styleText ? *styleText : std::string() );
+	if ( !style )
+	{
+		return MakeUnexpected( std::string( "unknown fixup_style" ) );
+	}
+	std::string fixup( instance.Name() );
+	if ( fixup.empty() )
+	{
+		const std::string *name = instance.Key( "name" );
+		fixup = name && !name->empty() ? *name : autoFixupName;
+	}
+	const std::vector<InstanceParameter> parameters = InstanceParameters( instance.keys );
+
+	MapFragment content = instanceContent;
+	for ( scene::MapObject &o : content.objects )
+	{
+		if ( scene::Entity *e = std::get_if<scene::Entity>( &o ) )
+		{
+			FixupEntity( *e, parameters, fixup, *style, catalog );
+		}
+	}
+	const Vec3d a = angles.value_or( Vec3d() );
+	const mapgeometry::Affine xf =
+	    mapgeometry::Compose( mapgeometry::Affine::Translation( origin.value_or( Vec3d() ) ),
+	        mapgeometry::Affine::About( mapgeometry::AngleMatrix( a.x, a.y, a.z ), Vec3d() ) );
+	std::optional<MapFragment> placed = TransformedFragment( content, xf );
+	if ( !placed )
+	{
+		return MakeUnexpected(
+		    std::string( "the instance transform would make a solid degenerate" ) );
+	}
+	return std::move( *placed );
+}
+
 EditResult CollapseInstance( scene::DocumentEdit &edit, ObjectId instanceEntity,
     const MapFragment &instanceContent, std::vector<ObjectId> *created,
     const ports::IEntityCatalog *catalog )
@@ -160,53 +211,21 @@ EditResult CollapseInstance( scene::DocumentEdit &edit, ObjectId instanceEntity,
 	{
 		return Reject( "a func_instance cannot own solids" );
 	}
-	const std::optional<Vec3d> origin = instance->Origin();
-	if ( instance->Key( "origin" ) && !origin )
-	{
-		return Reject( "the instance origin is malformed" );
-	}
-	const std::optional<Vec3d> angles = instance->Angles();
-	if ( instance->Key( "angles" ) && !angles )
-	{
-		return Reject( "the instance angles are malformed" );
-	}
-	const std::string *styleText = instance->Key( "fixup_style" );
-	const std::optional<InstanceFixupStyle> style =
-	    ParseFixupStyle( styleText ? *styleText : std::string() );
-	if ( !style )
-	{
-		return Reject( "unknown fixup_style" );
-	}
-	std::string fixup( instance->Name() );
-	if ( fixup.empty() )
-	{
-		const std::string *name = instance->Key( "name" );
-		fixup = name && !name->empty() ? *name : AutoFixupName( edit );
-	}
-	const std::vector<InstanceParameter> parameters = InstanceParameters( instance->keys );
 	const ObjectId instanceGroup = instance->group;
+	const std::string *nameKey = instance->Key( "name" );
+	const std::string autoName = instance->Name().empty() && ( !nameKey || nameKey->empty() )
+	                                 ? AutoFixupName( edit )
+	                                 : std::string();
+	auto placed = PlaceInstanceContent( *instance, instanceContent, autoName, catalog );
+	if ( !placed.HasValue() )
+	{
+		return Reject( placed.Error() );
+	}
 
 	std::vector<ObjectId> merged;
 	if ( !instanceContent.Empty() )
 	{
-		MapFragment content = instanceContent;
-		for ( scene::MapObject &o : content.objects )
-		{
-			if ( scene::Entity *e = std::get_if<scene::Entity>( &o ) )
-			{
-				FixupEntity( *e, parameters, fixup, *style, catalog );
-			}
-		}
-		const Vec3d a = angles.value_or( Vec3d() );
-		const mapgeometry::Affine xf =
-		    mapgeometry::Compose( mapgeometry::Affine::Translation( origin.value_or( Vec3d() ) ),
-		        mapgeometry::Affine::About( mapgeometry::AngleMatrix( a.x, a.y, a.z ), Vec3d() ) );
-		std::optional<MapFragment> placed = TransformedFragment( content, xf );
-		if ( !placed )
-		{
-			return Reject( "the instance transform would make a solid degenerate" );
-		}
-		if ( EditResult pasted = Paste( edit, *placed, PasteOptions{}, &merged ); !pasted )
+		if ( EditResult pasted = Paste( edit, placed.Value(), PasteOptions{}, &merged ); !pasted )
 		{
 			return pasted;
 		}

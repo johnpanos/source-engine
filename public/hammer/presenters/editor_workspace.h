@@ -15,6 +15,10 @@
 //			  EditorSettings::faceTexture), tools::ToolSettings and a
 //			  tools::CameraController; the Selection tool starts active;
 //			  three viewport::Camera2D (Top, Front, Side) and a Camera3D;
+//			  an app::InstancePreview when the codec and file store exist (the
+//			  snapshot's func_instance content; its document path follows
+//			  Open, Save, Build and New, its roots are
+//			  WorkspaceServices::instanceRoots);
 //			  a viewport::SnapshotCache kept current from session events
 //			  (Edited/Undone/Redone: Update with the change set and revisions;
 //			  Replaced: Rebuild; SelectionChanged: SetSelection);
@@ -70,7 +74,14 @@
 //
 //			Per-frame queries: Snapshot(), Overlay(view), CursorFor(view, x,
 //			y), GridLines(view) (2D; empty for 3D), ToolStatus() and the
-//			StatusBar() presenter.
+//			StatusBar() presenter. SceneSerial() changes whenever Snapshot()
+//			may have changed (an edit, a replacement, a selection, instance
+//			content), so a host keys its scene on it.
+//
+//			Instance files on disk: RefreshInstances() re-reads the files the
+//			instance content came from (InstancePreview::Refresh) and, when
+//			any changed, re-extracts every func_instance; hosts call it on a
+//			timer or when the window regains focus.
 //
 //			Threading: the session's single sequence. Not copyable.
 //
@@ -82,6 +93,7 @@
 #include "hammer/app/clipboard.h"
 #include "hammer/app/edit_session.h"
 #include "hammer/app/editor_settings.h"
+#include "hammer/app/instance_preview.h"
 #include "hammer/app/session_commands.h"
 #include "hammer/ports/entity_catalog.h"
 #include "hammer/ports/file_store.h"
@@ -121,6 +133,9 @@ struct WorkspaceServices
 	ports::IMapBuilder *builder = nullptr;
 	const ports::IEntityCatalog *catalog = nullptr;
 	const ports::IMaterialInfo *materials = nullptr;
+	// Where func_instance files are looked up after the map's own directory
+	// and its enclosing maps/ directory (the game's instance path).
+	std::vector<std::string> instanceRoots;
 };
 
 struct InputOutcome
@@ -195,10 +210,20 @@ public:
 	// --- Per-frame queries ----------------------------------------------------------------
 	const viewport::RenderSnapshot &Snapshot() const { return m_snapshot.Snapshot(); }
 	std::uint64_t SnapshotRevision() const { return m_snapshot.Revision(); }
+	std::uint64_t SceneSerial() const { return m_sceneSerial; }
 	tools::OverlayList Overlay( viewport::ViewKind view );
 	tools::Cursor CursorFor( viewport::ViewKind view, double x, double y );
 	std::vector<viewport::GridLine> GridLines( viewport::ViewKind view );
 	std::string ToolStatus() const { return m_tools.Status(); }
+
+	// --- Instance content ---------------------------------------------------------------
+	// Null without a codec and file store.
+	app::InstancePreview *Instances() { return m_instances.get(); }
+	// See "Instance files on disk". Returns whether the snapshot changed.
+	bool RefreshInstances();
+	// Replaces the instance search roots (the game's instance paths; a host
+	// learns them when it mounts a game) and re-extracts the instances.
+	void SetInstanceRoots( std::vector<std::string> roots );
 
 	// The chord ("Ctrl+Z", "Shift+B", "F9") a key event stands for.
 	static std::string ChordOf( const tools::KeyEvent &event );
@@ -209,6 +234,8 @@ private:
 	InputOutcome Finish(
 	    InputOutcome outcome, std::uint64_t revisionBefore, std::uint64_t selectionBefore );
 	InputOutcome ExecuteAction( const ActionSpec &spec );
+	// Points the instance preview at 'path' and re-extracts its content.
+	void SetInstanceDocumentPath( const std::string &path );
 
 	WorkspaceServices m_services;
 	app::EditSession m_session;
@@ -222,8 +249,10 @@ private:
 	std::array<viewport::Camera2D, 3> m_cameras2D; // Top, Front, Side
 	viewport::Camera3D m_camera3D;
 
+	std::unique_ptr<app::InstancePreview> m_instances; // before m_snapshot, which borrows it
 	viewport::SnapshotCache m_snapshot;
 	std::uint64_t m_selectionSerial = 0; // bumps on every selection change
+	std::uint64_t m_sceneSerial = 0;     // bumps on every snapshot change
 	std::string m_path;
 	app::SessionSubscription m_subscription;
 

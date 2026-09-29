@@ -15,7 +15,7 @@ tests.
 ## 2. Accepted inputs
 
 `WorkspaceServices` (codec, file store, map builder, entity catalog, material
-info; each nullable and borrowed). Normalized pointer, key and wheel events
+info; each nullable and borrowed; `instanceRoots`, the game's instance paths). Normalized pointer, key and wheel events
 per view; focus loss; frame time; viewport sizes; map paths.
 
 ## 3. Results and guarantees
@@ -39,6 +39,16 @@ per view; focus loss; frame time; viewport sizes; map paths.
 - `New`/`Open`/`Save`/`Build` run the commands and report through the status
   bar; replacement cancels the tool gesture (`DocumentReplaced`) and frames
   the cameras on the new map (the origin for an empty one).
+- Instance content (R17 follow-up): with a codec and a store the workspace owns
+  an `app::InstancePreview` (roots from `instanceRoots`) that the snapshot
+  borrows; its document path is the map's (set before an Open's replacement, so
+  the first extraction looks up from the new map; restored when the Open or New
+  fails; updated after Save and Build). `RefreshInstances()` re-reads the
+  instance files and, when any changed, re-extracts the instances. Without a
+  codec or store there is no preview and no `InstanceDraw`.
+- `SceneSerial()` changes on every snapshot change (edit, undo/redo,
+  replacement, selection, instance refresh or path change), so hosts key their
+  scene on it rather than on the document revision.
 
 ## 4. Ownership, threading
 

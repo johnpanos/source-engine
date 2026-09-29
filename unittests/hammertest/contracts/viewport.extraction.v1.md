@@ -57,6 +57,22 @@ selection flags as values, with a revision-keyed cache.
   leaves of ids whose selection changed.
 - `ProjectEdges2D`: unique edges (shared edges once), without edges that
   project to a point and without repeated screen segments.
+- Models and instances (R17 follow-up, 2026-09-28): an `EntityDraw` whose model
+  is a studio model (`IsStudioModelPath`: ends in `.mdl`, any case) carries
+  `ModelKeys` read by `ReadModelKeys` (`skin` a non-negative integer else 0,
+  `modelscale` a positive finite number else 1, `rendercolor` three 0..255
+  integers else none); other entities keep the defaults. With
+  `ExtractOptions::instances`, one `InstanceDraw` per shown `func_instance`
+  (id order) holds the port's status, the resolved file (or the failure's
+  detail), the content's solids (color: editor color, else the content owner's
+  catalog color, else world) and point entities (content-local ids, brush
+  entities as their solids), its content bounds, and selection/visibility of
+  the instance (a selected instance or container selects all content). The
+  instance keeps its `EntityDraw`; content is not in `bounds`. The cache
+  re-extracts every `func_instance` when the port's `Revision()` differs from
+  the one it last extracted with. `kInstanceTint` (255, 255, 128) and
+  `kInstanceEdgeColor` (128, 128, 0) are the instance presentation policy
+  (view_policy.h records the legacy overlay they replace).
 
 ## 4. Ownership, threading
 
@@ -91,6 +107,13 @@ selection flags as values, with a revision-keyed cache.
   create/modify/remove/recolor/unhide/brush-conversion change set, undo,
   selection-only updates, revision mismatch, and 40 generated edits each equal
   to a full rebuild; box and wedge edge dedupe and 2D projection.
+- `test_extraction_content.cpp` (`hammer.viewport.extraction.content`, 32
+  checks): model keys and their defaults, catalog studio models, sprites; the
+  instance draws through a real `InstancePreview` (`VmfMapCodec`, in-memory
+  store); a hand-computed placement oracle that accepts the content and
+  rejects four seeded wrong transforms; group selection, hidden and
+  `keepHidden`; a port revision re-extracting exactly the instances; an
+  instance move; cache equal to `Extract` throughout.
 - Negative controls: a cache not yet updated, and one updated with an empty
   change set after a real commit, both fail the equality oracle.
 - Runs headlessly with g++ and clang++ (`-std=c++20 -Wall -Wextra -Werror`).

@@ -50,6 +50,12 @@ entity catalog. The instance's `origin`, `angles` (absent = zero),
 - Refusals (`Rejected`, nothing staged): not a func_instance, an instance
   owning solids, malformed `origin`/`angles`, unknown `fixup_style`,
   degenerate transforms.
+- `PlaceInstanceContent` (2026-09-28, R17 follow-up) is steps 1 to 3 of the
+  rule without the paste: the placed fragment, or the refusal text for a
+  malformed `origin`/`angles`, an unknown `fixup_style` or a degenerate
+  transform; the caller supplies the automatic fixup name. `CollapseInstance`
+  places through it, and so does the viewports' `InstancePreview`
+  (`app.instance_preview.v1`), so a preview draws what a collapse merges.
 
 ## 4. Ownership, threading
 

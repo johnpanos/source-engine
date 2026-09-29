@@ -319,6 +319,52 @@ int main()
 		        "save_dialog",
 		    "Ctrl+S without a path asks for one" );
 		checks.That( !bare.Build( "a.vmf", true ), "build without a builder fails" );
+		checks.That( !bare.Instances() && !bare.RefreshInstances(),
+		    "no codec or store: no instance content" );
+	}
+
+	// --- Instance content: roots, snapshot, refresh ---------------------------------------
+	{
+		const auto file = [&]( double size )
+		{
+			scene::MapDocument content( 4 );
+			scene::DocumentEdit edit( content );
+			scene::FaceTexture tex;
+			tex.material = "DEV/DEV_MEASUREGENERIC01B";
+			edit.Add( scene::MakeBoxSolid( { Vec3d( 0, 0, 0 ), Vec3d( size, size, size ) }, tex ) );
+			scene::CommitEdit( content, edit );
+			return codec.Encode( content ).Value();
+		};
+		store.files["/game/instances/box.vmf"] = file( 16 );
+		WorkspaceServices withRoots = services;
+		withRoots.instanceRoots = { "/game" };
+		EditorWorkspace inst( withRoots );
+		checks.That( inst.Instances() != nullptr, "codec and store: an instance preview" );
+		const std::uint64_t serial = inst.SceneSerial();
+		auto added = inst.Session().Execute( "add instance",
+		    []( scene::DocumentEdit &edit ) -> app::EditResult
+		    {
+			    scene::Entity e;
+			    e.classname = "func_instance";
+			    e.SetKey( "file", "instances/box.vmf" );
+			    e.SetOrigin( Vec3d( 64, 0, 0 ) );
+			    edit.Add( e );
+			    return {};
+		    } );
+		checks.That(
+		    added.HasValue() && inst.SceneSerial() != serial, "an edit changes the scene serial" );
+		const auto &instances = inst.Snapshot().instances;
+		checks.That(
+		    instances.size() == 1 && instances[0].status == ports::InstanceStatus::Placed &&
+		        instances[0].solids.size() == 1 && instances[0].solids[0].bounds.maxs.x == 80,
+		    "the snapshot draws the instance from the search root" );
+		const std::uint64_t before = inst.SceneSerial();
+		checks.That( !inst.RefreshInstances() && inst.SceneSerial() == before,
+		    "nothing changed on disk: no refresh" );
+		store.files["/game/instances/box.vmf"] = file( 32 );
+		checks.That( inst.RefreshInstances() && inst.SceneSerial() != before &&
+		                 inst.Snapshot().instances[0].solids[0].bounds.maxs.x == 96,
+		    "a changed file re-extracts the instance and changes the scene serial" );
 	}
 
 	return checks.Report();

@@ -11,6 +11,7 @@
 #include "mapgeometry/vec3.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <iterator>
 #include <set>
@@ -69,6 +70,51 @@ struct Context
 	}
 };
 
+// The draw of one solid value; nothing when it has no faces.
+std::optional<SolidDraw> SolidDrawOf( const scene::Solid &solid, ObjectId id, scene::Rgb color,
+    bool selected, bool hidden, const std::vector<scene::FaceRef> *selectedFaces )
+{
+	mapgeometry::BrushSolid geometry = scene::BuildGeometry( solid );
+	if ( geometry.faces.empty() )
+	{
+		return std::nullopt;
+	}
+	SolidDraw draw;
+	draw.id = id;
+	draw.owner = solid.owner;
+	draw.bounds = { geometry.mins, geometry.maxs };
+	draw.color = color;
+	draw.selected = selected;
+	draw.hidden = hidden;
+	draw.faces.reserve( geometry.faces.size() );
+	for ( mapgeometry::BrushFace &face : geometry.faces )
+	{
+		FaceDraw faceDraw;
+		if ( face.sourcePlane >= 0 &&
+		     static_cast<std::size_t>( face.sourcePlane ) < solid.sides.size() )
+		{
+			const scene::Side &side = solid.sides[static_cast<std::size_t>( face.sourcePlane )];
+			faceDraw.side = side.vmfId;
+			faceDraw.uAxis = side.texture.u;
+			faceDraw.vAxis = side.texture.v;
+		}
+		faceDraw.material = std::move( face.material );
+		faceDraw.vertices = std::move( face.vertices );
+		faceDraw.normal = face.plane.normal;
+		if ( face.sourcePlane >= 0 &&
+		     solid.sides[static_cast<std::size_t>( face.sourcePlane )].displacement )
+		{
+			faceDraw.displacement =
+			    scene::BuildDisplacement( solid, static_cast<std::size_t>( face.sourcePlane ) );
+		}
+		faceDraw.selected =
+		    selectedFaces && std::binary_search( selectedFaces->begin(), selectedFaces->end(),
+		                         scene::FaceRef{ id, faceDraw.side } );
+		draw.faces.push_back( std::move( faceDraw ) );
+	}
+	return draw;
+}
+
 std::optional<SolidDraw> DrawSolid( const Context &ctx, ObjectId id )
 {
 	const scene::Solid *solid = ctx.doc.FindSolid( id );
@@ -81,44 +127,59 @@ std::optional<SolidDraw> DrawSolid( const Context &ctx, ObjectId id )
 	{
 		return std::nullopt;
 	}
-	mapgeometry::BrushSolid geometry = scene::BuildGeometry( *solid );
-	if ( geometry.faces.empty() )
+	return SolidDrawOf( *solid, id, SolidColor( ctx.doc, *solid, ctx.options.catalog ),
+	    ctx.Selected( id ), !shown, &ctx.selectedFaces );
+}
+
+// The draw of one point-entity value (selection and visibility unset);
+// nothing without a marker.
+std::optional<EntityDraw> EntityDrawOf(
+    const scene::Entity &entity, ObjectId id, const ExtractOptions &options )
+{
+	const std::optional<scene::Box> marker =
+	    EntityMarkerBox( entity, options.catalog, options.pointHalfSize );
+	if ( !marker )
 	{
 		return std::nullopt;
 	}
-	SolidDraw draw;
+	EntityDraw draw;
 	draw.id = id;
-	draw.owner = solid->owner;
-	draw.bounds = { geometry.mins, geometry.maxs };
-	draw.color = SolidColor( ctx.doc, *solid, ctx.options.catalog );
-	draw.selected = ctx.Selected( id );
-	draw.hidden = !shown;
-	draw.faces.reserve( geometry.faces.size() );
-	for ( mapgeometry::BrushFace &face : geometry.faces )
+	draw.classname = entity.classname;
+	draw.origin = entity.Origin().value_or( Vec3d() );
+	draw.angles = entity.Angles().value_or( Vec3d() );
+	draw.mins = marker->mins;
+	draw.maxs = marker->maxs;
+	draw.color = EntityColor( entity, options.catalog );
+	const ports::EntityClassInfo *info =
+	    options.catalog ? options.catalog->Find( entity.classname ) : nullptr;
+	if ( const std::string *model = entity.Key( "model" ); model && !model->empty() )
 	{
-		FaceDraw faceDraw;
-		if ( face.sourcePlane >= 0 &&
-		     static_cast<std::size_t>( face.sourcePlane ) < solid->sides.size() )
-		{
-			const scene::Side &side = solid->sides[static_cast<std::size_t>( face.sourcePlane )];
-			faceDraw.side = side.vmfId;
-			faceDraw.uAxis = side.texture.u;
-			faceDraw.vAxis = side.texture.v;
-		}
-		faceDraw.material = std::move( face.material );
-		faceDraw.vertices = std::move( face.vertices );
-		faceDraw.normal = face.plane.normal;
-		if ( face.sourcePlane >= 0 &&
-		     solid->sides[static_cast<std::size_t>( face.sourcePlane )].displacement )
-		{
-			faceDraw.displacement =
-			    scene::BuildDisplacement( *solid, static_cast<std::size_t>( face.sourcePlane ) );
-		}
-		faceDraw.selected = std::binary_search( ctx.selectedFaces.begin(), ctx.selectedFaces.end(),
-		    scene::FaceRef{ id, faceDraw.side } );
-		draw.faces.push_back( std::move( faceDraw ) );
+		draw.model = *model;
+	}
+	else if ( info )
+	{
+		draw.model = info->model;
+	}
+	if ( info )
+	{
+		draw.sprite = info->sprite;
+	}
+	if ( IsStudioModelPath( draw.model ) )
+	{
+		draw.modelKeys = ReadModelKeys( entity );
 	}
 	return draw;
+}
+
+bool IsInstanceClass( const std::string &classname )
+{
+	constexpr std::string_view kInstance = "func_instance";
+	return classname.size() == kInstance.size() &&
+	       std::equal( classname.begin(), classname.end(), kInstance.begin(),
+	           []( char a, char b )
+	           {
+		           return std::tolower( static_cast<unsigned char>( a ) ) == b;
+	           } );
 }
 
 std::optional<EntityDraw> DrawEntity( const Context &ctx, ObjectId id )
@@ -133,36 +194,109 @@ std::optional<EntityDraw> DrawEntity( const Context &ctx, ObjectId id )
 	{
 		return std::nullopt;
 	}
-	const std::optional<scene::Box> marker =
-	    EntityMarkerBox( *entity, ctx.options.catalog, ctx.options.pointHalfSize );
-	if ( !marker )
+	std::optional<EntityDraw> draw = EntityDrawOf( *entity, id, ctx.options );
+	if ( draw )
+	{
+		draw->selected = ctx.Selected( id );
+		draw->hidden = !shown;
+	}
+	return draw;
+}
+
+std::optional<InstanceDraw> DrawInstance( const Context &ctx, ObjectId id )
+{
+	const scene::Entity *entity = ctx.doc.FindEntity( id );
+	if ( !ctx.options.instances || !entity || !IsInstanceClass( entity->classname ) )
 	{
 		return std::nullopt;
 	}
-	EntityDraw draw;
+	const bool shown = IsShown( ctx.options.visible, ctx.doc, id );
+	if ( !shown && !ctx.options.keepHidden )
+	{
+		return std::nullopt;
+	}
+	const std::shared_ptr<const ports::InstanceContent> content =
+	    ctx.options.instances->Content( *entity );
+	if ( !content )
+	{
+		return std::nullopt;
+	}
+	InstanceDraw draw;
 	draw.id = id;
-	draw.classname = entity->classname;
-	draw.origin = entity->Origin().value_or( Vec3d() );
-	draw.angles = entity->Angles().value_or( Vec3d() );
-	draw.mins = marker->mins;
-	draw.maxs = marker->maxs;
-	draw.color = EntityColor( *entity, ctx.options.catalog );
-	const ports::EntityClassInfo *info =
-	    ctx.options.catalog ? ctx.options.catalog->Find( entity->classname ) : nullptr;
-	if ( const std::string *model = entity->Key( "model" ); model && !model->empty() )
-	{
-		draw.model = *model;
-	}
-	else if ( info )
-	{
-		draw.model = info->model;
-	}
-	if ( info )
-	{
-		draw.sprite = info->sprite;
-	}
+	draw.status = content->status;
+	draw.file = content->status == ports::InstanceStatus::Placed ? content->file : content->detail;
 	draw.selected = ctx.Selected( id );
 	draw.hidden = !shown;
+
+	// Content entities that own content solids are brush entities.
+	std::set<ObjectId> owners;
+	for ( const scene::MapObject &o : content->objects )
+	{
+		if ( const scene::Solid *solid = std::get_if<scene::Solid>( &o ) )
+		{
+			if ( solid->owner.IsValid() )
+			{
+				owners.insert( solid->owner );
+			}
+		}
+	}
+	const auto extend = [&]( const scene::Box &box )
+	{
+		if ( draw.bounds )
+		{
+			draw.bounds->Extend( box );
+		}
+		else
+		{
+			draw.bounds = box;
+		}
+	};
+	for ( const scene::MapObject &o : content->objects )
+	{
+		if ( const scene::Solid *solid = std::get_if<scene::Solid>( &o ) )
+		{
+			scene::Rgb color = kDefaultWorldColor;
+			if ( solid->editor.color )
+			{
+				color = *solid->editor.color;
+			}
+			else if ( solid->owner.IsValid() )
+			{
+				color = kDefaultEntityColor;
+				for ( const scene::MapObject &other : content->objects )
+				{
+					const scene::Entity *owner = std::get_if<scene::Entity>( &other );
+					if ( owner && owner->id == solid->owner )
+					{
+						color = CatalogColor( ctx.options.catalog, owner->classname )
+						            .value_or( kDefaultEntityColor );
+						break;
+					}
+				}
+			}
+			if ( std::optional<SolidDraw> solidDraw =
+			         SolidDrawOf( *solid, solid->id, color, draw.selected, draw.hidden, nullptr ) )
+			{
+				extend( solidDraw->bounds );
+				draw.solids.push_back( std::move( *solidDraw ) );
+			}
+		}
+		else if ( const scene::Entity *inner = std::get_if<scene::Entity>( &o ) )
+		{
+			if ( owners.count( inner->id ) )
+			{
+				continue;
+			}
+			if ( std::optional<EntityDraw> entityDraw =
+			         EntityDrawOf( *inner, inner->id, ctx.options ) )
+			{
+				entityDraw->selected = draw.selected;
+				entityDraw->hidden = draw.hidden;
+				extend( { entityDraw->mins, entityDraw->maxs } );
+				draw.entities.push_back( std::move( *entityDraw ) );
+			}
+		}
+	}
 	return draw;
 }
 
@@ -264,6 +398,10 @@ RenderSnapshot Extract( const scene::DocumentReader &doc, const SelectionInput &
 		{
 			snapshot.entities.push_back( std::move( *draw ) );
 		}
+		if ( std::optional<InstanceDraw> draw = DrawInstance( ctx, id ) )
+		{
+			snapshot.instances.push_back( std::move( *draw ) );
+		}
 	}
 	snapshot.bounds = BoundsOf( snapshot );
 	return snapshot;
@@ -280,6 +418,7 @@ void SnapshotCache::Rebuild(
 	m_selected = SortedUnique( selection.objects );
 	m_selectedFaces = SortedUnique( selection.faces );
 	m_revision = revision;
+	m_instanceRevision = m_options.instances ? m_options.instances->Revision() : 0;
 	m_built = true;
 	m_lastRebuilt = m_snapshot.solids.size() + m_snapshot.entities.size();
 }
@@ -331,6 +470,19 @@ SnapshotCache::UpdateKind SnapshotCache::Update( const scene::DocumentReader &do
 	m_selected = std::move( selected );
 	m_selectedFaces = std::move( faces );
 
+	// Instance content changed without an edit (a file on disk).
+	if ( m_options.instances && m_options.instances->Revision() != m_instanceRevision )
+	{
+		m_instanceRevision = m_options.instances->Revision();
+		for ( ObjectId id : doc.EntityIds() )
+		{
+			if ( IsInstanceClass( doc.FindEntity( id )->classname ) )
+			{
+				dirty.push_back( id );
+			}
+		}
+	}
+
 	RefreshObjects( doc, std::move( dirty ) );
 	m_revision = revision;
 	return UpdateKind::Incremental;
@@ -359,6 +511,8 @@ void SnapshotCache::RefreshObjects( const scene::DocumentReader &doc, std::vecto
 		    kind == scene::ObjectKind::Solid ? DrawSolid( ctx, id ) : std::nullopt );
 		Place( m_snapshot.entities, id,
 		    kind == scene::ObjectKind::Entity ? DrawEntity( ctx, id ) : std::nullopt );
+		Place( m_snapshot.instances, id,
+		    kind == scene::ObjectKind::Entity ? DrawInstance( ctx, id ) : std::nullopt );
 	}
 	m_lastRebuilt = ids.size();
 	RecomputeBounds();

@@ -102,9 +102,17 @@ EditorWorkspace::EditorWorkspace( const WorkspaceServices &services )
       m_commands( m_session, m_settings,
           app::SessionServices{ services.codec, services.store, services.builder, services.catalog,
               services.materials, &m_clipboard } ),
-      m_snapshot(
-          viewport::ExtractOptions{ services.catalog, {}, false, viewport::kDefaultPointHalfSize } )
+      m_instances( services.codec && services.store
+                       ? std::make_unique<app::InstancePreview>(
+                             *services.codec, *services.store, services.catalog )
+                       : nullptr ),
+      m_snapshot( viewport::ExtractOptions{
+          services.catalog, m_instances.get(), {}, false, viewport::kDefaultPointHalfSize } )
 {
+	if ( m_instances )
+	{
+		m_instances->SetSearchRoots( services.instanceRoots );
+	}
 	m_tools.Add( std::make_unique<tools::SelectionTool>() );
 	m_tools.Add( std::make_unique<tools::BlockTool>() );
 	m_tools.Add( std::make_unique<tools::EntityTool>() );
@@ -194,6 +202,10 @@ tools::ToolContext EditorWorkspace::ContextFor( ViewKind view )
 
 void EditorWorkspace::OnSessionEvent( const app::SessionEvent &event )
 {
+	if ( event.kind != app::SessionEventKind::Saved )
+	{
+		++m_sceneSerial;
+	}
 	const scene::MapDocument &doc = m_session.Document();
 	const viewport::SelectionInput selection = InputOf( m_session.CurrentSelection() );
 	switch ( event.kind )
@@ -472,9 +484,59 @@ InputOutcome EditorWorkspace::Advance( double seconds )
 	return out;
 }
 
+void EditorWorkspace::SetInstanceDocumentPath( const std::string &path )
+{
+	if ( !m_instances )
+	{
+		return;
+	}
+	const std::uint64_t before = m_instances->Revision();
+	m_instances->SetDocumentPath( path );
+	if ( m_instances->Revision() != before )
+	{
+		m_snapshot.SetSelection( m_session.Document(), InputOf( m_session.CurrentSelection() ) );
+		++m_sceneSerial;
+	}
+}
+
+void EditorWorkspace::SetInstanceRoots( std::vector<std::string> roots )
+{
+	if ( !m_instances )
+	{
+		return;
+	}
+	const std::uint64_t before = m_instances->Revision();
+	m_instances->SetSearchRoots( std::move( roots ) );
+	if ( m_instances->Revision() != before )
+	{
+		m_snapshot.SetSelection( m_session.Document(), InputOf( m_session.CurrentSelection() ) );
+		++m_sceneSerial;
+	}
+}
+
+bool EditorWorkspace::RefreshInstances()
+{
+	if ( !m_instances || !m_instances->Refresh() )
+	{
+		return false;
+	}
+	m_snapshot.SetSelection( m_session.Document(), InputOf( m_session.CurrentSelection() ) );
+	++m_sceneSerial;
+	return true;
+}
+
 app::CommandResult EditorWorkspace::New()
 {
+	const std::string previous = m_path;
+	if ( m_instances )
+	{
+		m_instances->SetDocumentPath( std::string() );
+	}
 	app::CommandResult result = m_commands.Execute( "new_map", {} );
+	if ( !result )
+	{
+		SetInstanceDocumentPath( previous );
+	}
 	if ( result )
 	{
 		m_path.clear();
@@ -489,7 +551,18 @@ app::CommandResult EditorWorkspace::New()
 
 app::CommandResult EditorWorkspace::Open( const std::string &path )
 {
+	// The instance lookups of the opened map use its path from the first
+	// extraction (the Replaced event).
+	const std::string previous = m_path;
+	if ( m_instances )
+	{
+		m_instances->SetDocumentPath( path );
+	}
 	app::CommandResult result = m_commands.Execute( "open", { { "path", path } } );
+	if ( !result )
+	{
+		SetInstanceDocumentPath( previous );
+	}
 	if ( result )
 	{
 		m_path = path;
@@ -508,6 +581,7 @@ app::CommandResult EditorWorkspace::Save( const std::string &path )
 	if ( result )
 	{
 		m_path = path;
+		SetInstanceDocumentPath( path );
 		m_statusBar->ShowMessage( "Saved " + path );
 	}
 	else
@@ -525,6 +599,7 @@ app::CommandResult EditorWorkspace::Build(
 	if ( result )
 	{
 		m_path = path;
+		SetInstanceDocumentPath( path );
 		m_statusBar->ShowMessage( "Built " + path );
 		if ( run && hostRequest )
 		{

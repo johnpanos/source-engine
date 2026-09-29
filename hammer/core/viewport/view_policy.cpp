@@ -11,6 +11,8 @@
 #include "mapgeometry/vec3.h"
 
 #include <algorithm>
+#include <cctype>
+#include <charconv>
 #include <cmath>
 
 namespace hammer::viewport
@@ -55,6 +57,75 @@ std::optional<scene::Box> EntityMarkerBox(
 	const double half = std::isfinite( pointHalfSize ) ? std::fabs( pointHalfSize ) : 0.0;
 	const Vec3d extent( half, half, half );
 	return scene::Box{ *origin - extent, *origin + extent };
+}
+
+bool IsStudioModelPath( std::string_view path )
+{
+	constexpr std::string_view kExtension = ".mdl";
+	if ( path.size() <= kExtension.size() )
+	{
+		return false;
+	}
+	const std::string_view tail = path.substr( path.size() - kExtension.size() );
+	return std::equal( tail.begin(), tail.end(), kExtension.begin(),
+	    []( char a, char b )
+	    {
+		    return std::tolower( static_cast<unsigned char>( a ) ) == b;
+	    } );
+}
+
+ModelKeys ReadModelKeys( const scene::Entity &entity )
+{
+	ModelKeys keys;
+	if ( const std::string *skin = entity.Key( "skin" ) )
+	{
+		int value = 0;
+		const char *end = skin->data() + skin->size();
+		if ( std::from_chars( skin->data(), end, value ).ptr == end && value >= 0 )
+		{
+			keys.skin = value;
+		}
+	}
+	if ( const std::string *scale = entity.Key( "modelscale" ) )
+	{
+		double value = 0.0;
+		const char *end = scale->data() + scale->size();
+		if ( std::from_chars( scale->data(), end, value ).ptr == end && std::isfinite( value ) &&
+		     value > 0.0 )
+		{
+			keys.scale = value;
+		}
+	}
+	if ( const std::string *color = entity.Key( "rendercolor" ) )
+	{
+		int channels[3] = {};
+		const char *at = color->data();
+		const char *end = color->data() + color->size();
+		bool ok = true;
+		for ( int &channel : channels )
+		{
+			while ( at < end && *at == ' ' )
+			{
+				++at;
+			}
+			const std::from_chars_result parsed = std::from_chars( at, end, channel );
+			if ( parsed.ec != std::errc() || channel < 0 || channel > 255 )
+			{
+				ok = false;
+				break;
+			}
+			at = parsed.ptr;
+		}
+		while ( at < end && *at == ' ' )
+		{
+			++at;
+		}
+		if ( ok && at == end )
+		{
+			keys.renderColor = scene::Rgb{ channels[0], channels[1], channels[2] };
+		}
+	}
+	return keys;
 }
 
 std::optional<scene::Rgb> CatalogColor(

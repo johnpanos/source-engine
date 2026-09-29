@@ -47,6 +47,7 @@
 #ifndef HAMMER_APP_OPS_INSTANCE_OPS_H
 #define HAMMER_APP_OPS_INSTANCE_OPS_H
 
+#include "foundation/expected.h"
 #include "hammer/app/clipboard.h"
 #include "hammer/app/edit_session.h"
 #include "hammer/ports/entity_catalog.h"
@@ -65,6 +66,18 @@ std::vector<scene::ObjectId> FindInstances( const scene::DocumentReader &doc );
 // into '/', ".vmf" appended when the name has no extension. Empty when the
 // entity is not a func_instance or has no file.
 std::string InstanceFile( const scene::Entity &entity );
+
+// The content 'instance' merges, placed: 'instanceContent' with steps 1 to 3
+// of the rule above applied (parameters, name fixup, transform), nested
+// func_instances kept as entities. The fixup name is the instance's
+// "targetname", else its "name" key, else 'autoFixupName' (CollapseInstance
+// passes the InstanceAuto<n> name). The error is the refusal CollapseInstance
+// reports for a malformed "origin"/"angles", an unknown "fixup_style" or a
+// transform that makes a solid degenerate. The one owner of the merge rule:
+// CollapseInstance and the viewports' instance preview both use it.
+foundation::Expected<MapFragment, std::string> PlaceInstanceContent( const scene::Entity &instance,
+    const MapFragment &instanceContent, const std::string &autoFixupName,
+    const ports::IEntityCatalog *catalog = nullptr );
 
 // Replaces func_instance 'instanceEntity' with 'instanceContent' (see the
 // rule above). 'created' receives the merged top-level objects. An empty

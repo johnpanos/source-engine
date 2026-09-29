@@ -13,7 +13,17 @@
 //			outward normal.
 //			One EntityDraw per shown point entity with a marker (id order). A
 //			brush entity has no EntityDraw: its solids carry it as 'owner'.
-//			Visibility, marker boxes and colors follow view_policy.h.
+//			Visibility, marker boxes and colors follow view_policy.h. A point
+//			entity whose model is a studio model (IsStudioModelPath) carries
+//			its ModelKeys; the renderer draws the model, the marker when it
+//			cannot.
+//			One InstanceDraw per shown func_instance entity (id order) when
+//			ExtractOptions::instances is set: the content the port places
+//			(ports/instance_content.h) as SolidDraws and EntityDraws (content-
+//			local ids; a content solid's 'owner' is its content entity), all
+//			selected when the instance is (or a container of it), none
+//			selectable or pickable on its own. The func_instance keeps its own
+//			EntityDraw marker. Content is not part of 'bounds'.
 //
 //			Selection is input, as values: the selected object ids and the
 //			selected faces. An object is drawn selected when its id or the id
@@ -33,7 +43,9 @@
 //			the owners before and after of a changed solid (brush-entity
 //			status); and the leaves of every id whose selection changed.
 //			Document settings are not drawn, so a settings-only change
-//			rebuilds nothing. Its snapshot always equals a full
+//			rebuilds nothing. When the instance port's Revision() differs from
+//			the one the snapshot was built with, every func_instance is
+//			rebuilt too (a file changed on disk). Its snapshot always equals a full
 //			Extract of the same inputs. It is keyed by a caller-supplied
 //			revision: an update whose base revision is not the cache's rebuilds
 //			everything. A custom visibility predicate must be a pure function
@@ -45,6 +57,7 @@
 #define HAMMER_VIEWPORT_EXTRACTION_H
 
 #include "hammer/ports/entity_catalog.h"
+#include "hammer/ports/instance_content.h"
 #include "hammer/scene/change_set.h"
 #include "hammer/scene/map_document.h"
 #include "hammer/scene/displacement_geometry.h"
@@ -100,17 +113,34 @@ struct EntityDraw
 	scene::Rgb color;
 	std::string model;  // the "model" key, else the catalog model
 	std::string sprite; // the catalog sprite
+	// For a studio model (IsStudioModelPath( model )); defaults otherwise.
+	ModelKeys modelKeys;
 	bool selected = false;
 	bool hidden = false;
 
 	friend bool operator==( const EntityDraw &, const EntityDraw & ) = default;
 };
 
+struct InstanceDraw
+{
+	scene::ObjectId id; // the func_instance
+	ports::InstanceStatus status = ports::InstanceStatus::NoFile;
+	std::string file; // the resolved file, or the detail of a failure
+	std::vector<SolidDraw> solids;
+	std::vector<EntityDraw> entities;
+	std::optional<scene::Box> bounds; // of the content
+	bool selected = false;
+	bool hidden = false;
+
+	friend bool operator==( const InstanceDraw &, const InstanceDraw & ) = default;
+};
+
 struct RenderSnapshot
 {
 	std::vector<SolidDraw> solids;    // id order
 	std::vector<EntityDraw> entities; // id order
-	std::optional<scene::Box> bounds; // of everything not hidden
+	std::vector<InstanceDraw> instances; // id order
+	std::optional<scene::Box> bounds;    // of everything not hidden (instance content excluded)
 
 	friend bool operator==( const RenderSnapshot &, const RenderSnapshot & ) = default;
 };
@@ -118,7 +148,8 @@ struct RenderSnapshot
 struct ExtractOptions
 {
 	const ports::IEntityCatalog *catalog = nullptr;
-	VisibilityPredicate visible; // empty = scene::IsVisible
+	ports::IInstanceContent *instances = nullptr; // null: no InstanceDraws
+	VisibilityPredicate visible;                  // empty = scene::IsVisible
 	bool keepHidden = false;
 	double pointHalfSize = kDefaultPointHalfSize;
 };
@@ -169,6 +200,7 @@ private:
 	std::vector<scene::ObjectId> m_selected;     // sorted, unique
 	std::vector<scene::FaceRef> m_selectedFaces; // sorted, unique
 	std::uint64_t m_revision = 0;
+	std::uint64_t m_instanceRevision = 0; // the instance port's, at the last extraction
 	bool m_built = false;
 	std::size_t m_lastRebuilt = 0;
 };

@@ -27,6 +27,20 @@
 //			edges listed once (endpoints equal within kEdgeEpsilon, in either
 //			direction).
 //
+//			Models. A point entity whose "model" (or catalog studio model)
+//			names a ".mdl" file (case-insensitive) is drawn as that model
+//			(IsStudioModelPath); "skin" (an integer, else 0), "modelscale" (a
+//			positive number, else 1) and "rendercolor" ("r g b", 0..255,
+//			else none) are read as values (ModelKeys).
+//
+//			Instances. A func_instance's content draws with the instance
+//			tint: legacy Hammer overlays instance content with (128, 128, 0)
+//			at alpha 192 (hammer/Render.h InstanceColor), which hides the
+//			textures; the tint keeps that hue as a multiply,
+//			kInstanceTint (255, 255, 128), so the content stays readable. Its
+//			2D edges use kInstanceEdgeColor, the legacy (128, 128, 0). A
+//			selected instance draws its content selected instead.
+//
 //=============================================================================//
 
 #ifndef HAMMER_VIEWPORT_VIEW_POLICY_H
@@ -36,8 +50,10 @@
 #include "hammer/scene/map_document.h"
 #include "hammer/scene/solid_geometry.h"
 
+#include <cstdint>
 #include <functional>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace hammer::viewport
@@ -65,6 +81,22 @@ std::optional<scene::Box> EntityMarkerBox( const scene::Entity &entity,
 // a class color are legacy magenta.
 constexpr scene::Rgb kDefaultWorldColor{ 0, 178, 178 };
 constexpr scene::Rgb kDefaultEntityColor{ 220, 30, 220 };
+
+constexpr scene::Rgb kInstanceTint{ 255, 255, 128 };
+constexpr scene::Rgb kInstanceEdgeColor{ 128, 128, 0 };
+
+// Whether 'path' names a studio model (ends in ".mdl", any case).
+bool IsStudioModelPath( std::string_view path );
+
+struct ModelKeys
+{
+	std::int32_t skin = 0;
+	double scale = 1.0;
+	std::optional<scene::Rgb> renderColor;
+
+	friend bool operator==( const ModelKeys &, const ModelKeys & ) = default;
+};
+ModelKeys ReadModelKeys( const scene::Entity &entity );
 
 // The catalog class color of 'classname', if the catalog declares one.
 std::optional<scene::Rgb> CatalogColor(
