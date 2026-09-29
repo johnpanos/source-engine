@@ -2485,3 +2485,124 @@ Open:
   list.
 - The product (K12 "Game output") is not wired.
 - PQ/HLG encodings are out of scope.
+
+## K8 monitors: the legacy baseline and the view-generator proposal (2026-09-29)
+
+Portal 2's Wheatley monitors draw since `f8eb21c2`: the client now defines
+`USE_MONITORS` for `PORTAL2`, and `corpus.portal2.monitors` is their product
+oracle. They draw through the legacy path, `CViewRender::DrawMonitors`:
+
+- Every active `point_camera` is drawn, in full `ViewDrawScene` (world,
+  renderables, particles), serially before the main view.
+- A camera is active while a linked monitor is in the player's PVS, whether
+  or not its screen is on screen.
+- Every camera draws into the one 256x256 `_rt_Camera` (the size Portal 2's
+  client passes), which has no mips.
+
+This section measures that path before the K8 work (binding rule 7: look
+first, then optimize). It measures; it closes no check.
+
+### Workload and method
+
+- `quality/workloads/portal2-monitors-frame-pacing-v1.json` loads
+  `sp_a4_intro` with its five monitors deployed. It measures two phases, 300
+  frames each:
+  - `facing`: 190 units in front of `wheatley_monitor1`;
+  - `away`: turned 180 degrees, so the screen is off screen but still in the
+    PVS.
+- `tools/quality/frame_pacing.py` takes a scenario `game` key (`portal`, the
+  default, or `portal2`), and stages through `portal_boot` for that game.
+- The run is an interleaved A/B on one private snapshot of `build-p2`
+  (HEAD `7a6af4b3`, plus the shared tree's uncommitted work at 01:56):
+  - A: monitors on;
+  - B: `+cl_drawmonitors 0`.
+- Both sides run with `mat_queue_mode 2` and `./play_p2`'s job arguments,
+  `+mat_colorcorrection 1` excepted (the 512-character command limit), on
+  Box3D. There are 5 rounds of 3 passes, with the warm pass judged.
+- Desktop: Radeon 8060S at 1280x720, under a host load average of 17-23.
+
+### Results (warm pass; medians of 5 rounds; the paired difference is on minus off per round)
+
+| Phase | Metric | Monitors on | Off | Paired difference |
+| --- | --- | --- | --- | --- |
+| facing | frame interval | 2.94 ms | 2.62 ms | +0.64 ms (4 of 5 rounds +0.63 to +0.74) |
+| facing | engine CPU | 2.41 ms | 2.12 ms | +0.29 ms |
+| facing | `render_submission` | 2.13 ms | 1.77 ms | +0.36 ms |
+| facing | GPU render | 1.03 ms | 0.92 ms | +0.11 ms |
+| facing | converted draws per frame | 89.7 | 82.7 | +7 |
+| away | frame interval | 11.26 ms | 10.08 ms | +0.77 ms (range -2.84 to +2.20: noise) |
+| away | converted draws per frame | 284 | 277 | +7 |
+
+Reading:
+
+- The camera view costs about 7 draws and 0.3-0.6 ms of CPU a frame on
+  desktop, most of it in engine CPU and submission. It costs about 0.1 ms
+  of GPU, because the camera sees a small hidden room.
+- It costs the same with the screen off screen: the legacy path does not
+  gate on the screen's visibility.
+
+The Fold7 is unavailable: it is connected but locked (keyguard). It is
+unmeasured, as is the iPhone.
+
+### Proposal: monitors as `render.scene` view generators (K8 cohort)
+
+1. **Object.** A `Monitor` view generator in the scene holds:
+   - its screen surfaces (mesh instances whose material samples the
+     generator's output);
+   - the camera: pose, FOV, fog, and aspect policy (`UseScreenAspectRatio`);
+   - the active flag, which the game publishes through the change set.
+
+   The game stops drawing into a global target.
+2. **Visibility gating.** The generator's view and passes enter the frame
+   graph only when one of its screens passes the main view's culling in the
+   same frame. The monitor view is culled on the pool like any view (K5
+   "Pooled recording").
+3. **Resolution and filtering.** The target size follows the screen's
+   projected size, about one texel per pixel. It is bucketed in powers of
+   two from the graph's transient pool and clamped to 64-1024. The target
+   gets a mip chain, so the screen samples it with anisotropy; MSAA follows
+   RFC 0012. Each generator gets its own target, not one shared
+   `_rt_Camera`.
+4. **Lighting.** The view runs the same surface program and
+   `render.lighting.v1` terms as the main view, into an HDR target. The
+   screen material (`dev/dev_tvmonitor1a`: UnlitTwoTexture with a
+   scrolling scanline layer and noise proxies) is a point of the one
+   surface model, with the view's output as its base layer. No family names
+   "monitor".
+5. **Reuse.** The last image is kept while the camera's pose and FOV, and
+   the scene revisions of the objects in its view, are unchanged. Wheatley
+   animates, so his screens redraw; a static security camera's do not.
+6. **Lab first (`render_lab`).** A fixture with a camera on a skinned model
+   and a screen quad seen at several distances. Oracles:
+   - the screen's pixels match a direct render from that camera at the
+     chosen size;
+   - the chosen size follows the projected size;
+   - an off-screen or occluded screen records no monitor pass (a pass
+     census);
+   - reuse skips redraws exactly when the inputs are unchanged.
+
+   Negative controls: a stale target, a generator drawn while hidden, a
+   wrong camera, and a fixed 256 size.
+7. **Product.** When R89 draws the world and models from the scene:
+   - `corpus.portal2.monitors` is the unchanged gate;
+   - this workload's A/B is recorded, and the `away` phase is expected to
+     cost nothing;
+   - first-party `DrawMonitors` and `_rt_Camera` are deleted in the same
+     change.
+
+   A mod client that draws its own monitors keeps them through the legacy
+   frontend (K9 "Mods still render").
+
+Owner of the lab slice and its terms: source-engine-43, by the K11 split.
+The product integration waits on R89.
+
+Reproduce (the host must not rebuild `build-p2` during the run; snapshot it):
+
+    rsync -a --prune-empty-dirs --include='*/' --include='*.so' \
+      --include='hl2_launcher' --include='c4che/*_cache.py' --exclude='*' build-p2/ <snap>/
+    python3 tools/quality/frame_pacing.py --runtime <p2 content runtime> --build <snap> \
+      --ab-build <snap> --ab-extra-arg=+cl_drawmonitors --ab-extra-arg=0 --rounds 5 \
+      --scenario quality/workloads/portal2-monitors-frame-pacing-v1.json --out <short dir> \
+      --physics vphysics_box3d --mat-queue-mode 2 --extra-arg=+cl_render_start_graph \
+      --extra-arg=2 --extra-arg=+sv_querycache_job_graph --extra-arg=2 \
+      --extra-arg=-vkemitparallel --extra-arg=1

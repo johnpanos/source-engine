@@ -1,0 +1,36 @@
+{
+  "schema": "frame-pacing-scenario/v1",
+  "id": "portal2-monitors-frame-pacing-v1",
+  "description": "Portal 2 sp_a4_intro with its five Wheatley monitors deployed (relay_deploy_straight). Each monitor is a func_monitor showing @wheatley_camera through _rt_Camera. The player (noclip) stands 190 units in front of wheatley_monitor1, the placement tools/quality/portal2_monitors.py derives from the BSP. Phases: facing (the screen fills the middle of the view) and away (turned 180 degrees: the screen is off-screen but still in the PVS, so the camera stays active and the legacy path still renders it). Run it as an A/B with --ab-build equal to --build and --ab-extra-arg +cl_drawmonitors 0 to measure what the monitor view costs. Frames come from the native Vulkan renderer (-vkframestats).",
+  "game": "portal2",
+  "map": "sp_a4_intro",
+  "passes": 3,
+  "host_framerate": 60,
+  "setup": [
+    "god",
+    "notarget",
+    "noclip",
+    "r_drawviewmodel 0",
+    "crosshair 0",
+    "ent_fire wheatley_monitor1-relay_deploy_straight trigger",
+    "ent_fire wheatley_monitor2-relay_deploy_straight trigger",
+    "ent_fire wheatley_monitor3-relay_deploy_straight trigger",
+    "ent_fire wheatley_monitor4-relay_deploy_straight trigger",
+    "ent_fire wheatley_monitor5-relay_deploy_straight trigger",
+    "wait 360"
+  ],
+  "body": [
+    "setpos -62 -344.62 63.1",
+    "setang 0 -90 0",
+    "wait 60",
+    "vk_frame_mark facing",
+    "wait 300",
+    "setang 0 90 0",
+    "wait 30",
+    "vk_frame_mark away",
+    "wait 300",
+    "vk_frame_mark settle",
+    "wait 30"
+  ],
+  "budgets": {}
+}

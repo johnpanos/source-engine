@@ -29,6 +29,8 @@ import portal_boot
 
 
 SCENARIO_SCHEMA = "frame-pacing-scenario/v1"
+# Games a scenario may name, with their Steam app ids.
+STEAM_APP_IDS = {"portal": "400", "portal2": "620"}
 STATS_SCHEMA = "vulkan-frame-stats/v1"
 EVIDENCE_SCHEMA = "frame-pacing-evidence/v1"
 CFG_PREFIX = "frame_pacing_scenario"
@@ -76,6 +78,9 @@ def load_scenario(path):
     rate = scenario.get("host_framerate")
     if not isinstance(rate, int) or not 10 <= rate <= 1000:
         raise ScenarioError("host_framerate must be an integer in [10, 1000]")
+    # The game the map belongs to; portal_boot owns each game's staging.
+    if scenario.get("game", "portal") not in STEAM_APP_IDS:
+        raise ScenarioError("game must be one of %s" % sorted(STEAM_APP_IDS))
     return scenario
 
 
@@ -475,26 +480,27 @@ def run_once(args, scenario, passes, build, output, extra_args=()):
     failures = []
     try:
         stage = output / "runtime"
-        evidence["staging"] = portal_boot.stage_runtime(args.runtime, stage)
-        evidence["build_overrides"] = portal_boot.install_build(build, stage)
+        game = scenario.get("game", "portal")
+        evidence["staging"] = portal_boot.stage_runtime(args.runtime, stage, game=game)
+        evidence["build_overrides"] = portal_boot.install_build(build, stage, game=game)
         if args.content_root:
             # A map built outside the runtime (e.g. pbrt_map_build.py content/).
-            evidence["content_overrides"] = portal_boot.install_content(args.content_root, stage)
-        (stage / "portal/cfg").mkdir(parents=True, exist_ok=True)
+            evidence["content_overrides"] = portal_boot.install_content(args.content_root, stage, game=game)
+        (stage / game / "cfg").mkdir(parents=True, exist_ok=True)
         cfgs = scenario_cfgs(scenario_commands(scenario, passes))
         for name, text in cfgs.items():
-            (stage / "portal/cfg" / name).write_text(text)
+            (stage / game / "cfg" / name).write_text(text)
         stats_path = output / "frame-stats.jsonl"
         # The backend's pipeline store (vulkan_pipelines.keys/.cache). By default
         # it is the private staged mod directory, so every run starts without one
         # (a first run); --pipeline-store shares one between runs (a later run).
-        store = (args.pipeline_store.resolve() if args.pipeline_store else stage / "portal")
+        store = (args.pipeline_store.resolve() if args.pipeline_store else stage / game)
         store.mkdir(parents=True, exist_ok=True)
         keys = store / "vulkan_pipelines.keys"
         evidence["pipeline_store"] = {
             "directory": str(store), "shared": bool(args.pipeline_store),
             "keys_at_start": max(0, len(keys.read_text().splitlines()) - 1) if keys.is_file() else 0}
-        command = [str(stage / "hl2_launcher"), "-game", "portal", "-renderer", args.renderer,
+        command = [str(stage / "hl2_launcher"), "-game", game, "-renderer", args.renderer,
                    "-windowed", "-w", str(args.width), "-h", str(args.height), "-multirun",
                    "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", args.physics,
                    "-vkframestats", str(stats_path)] + (
@@ -518,7 +524,7 @@ def run_once(args, scenario, passes, build, output, extra_args=()):
         sandbox = launch_sandbox.Sandbox(output / "sandbox", write_paths=[stage, store])
         environment = sandbox.environment(portal_boot.os.environ)
         environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
-        environment["SteamAppId"] = environment["SteamGameId"] = "400"
+        environment["SteamAppId"] = environment["SteamGameId"] = STEAM_APP_IDS[game]
         if args.cold_shader_cache:
             # The driver's own on-disk shader cache hides pipeline compilation
             # on a developer machine; a first run (and a mobile driver without

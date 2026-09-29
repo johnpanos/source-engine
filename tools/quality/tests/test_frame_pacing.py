@@ -88,6 +88,19 @@ class ScenarioTests(unittest.TestCase):
             with self.assertRaises(pacing.ScenarioError):
                 load(bad)
 
+    def test_game_defaults_to_portal_and_names_a_known_game(self):
+        self.assertNotIn("game", load(scenario()))
+        self.assertEqual(load(scenario(game="portal2"))["game"], "portal2")
+        for bad in ("hl2", "portal2/../x", ""):
+            with self.assertRaises(pacing.ScenarioError):
+                load(scenario(game=bad))
+
+    def test_checked_in_portal2_monitor_scenario_is_valid(self):
+        loaded = pacing.load_scenario(REPO / "quality/workloads/portal2-monitors-frame-pacing-v1.json")
+        self.assertEqual((loaded["game"], loaded["map"]), ("portal2", "sp_a4_intro"))
+        marks = [step.split()[1] for step in loaded["body"] if step.startswith("vk_frame_mark")]
+        self.assertEqual(marks, ["facing", "away", "settle"])
+
 
 class ConsoleChainTests(unittest.TestCase):
     def test_passes_are_bracketed_and_the_run_quits(self):
