@@ -48,12 +48,27 @@
 //			   ray's depth meets d inside the texel (its entry when already
 //			   behind).
 //			4. Confidence c = edge * thicknessFade * roughnessFade, or 0 with
-//			   no hit:
-//			   - edge = smoothstep( 0, 1, min( u, 1 - u, v, 1 - v ) /
-//			     edgeFade ) at the hit's screen position (u, v in [0, 1]);
-//			   - thicknessFade = 1 - smoothstep( 0.5 thickness, thickness,
-//			     behind ), `behind` the view-space distance the ray is behind
-//			     the texel's surface at the hit (0 at a crossing);
+//			   no hit. The fades are continuous in the ray's own parameters
+//			   (render-core owner's decision, 2026-09-29, after the first
+//			   fallback-seam measurement):
+//			   - the hit's footprint J: how far the hit moves on the screen
+//			     per pixel of the reflecting surface, a ray differential.
+//			     For each screen axis, the camera ray through the pixel centre
+//			     one pixel along it meets the pixel's own plane (P, N) at P',
+//			     reflects about N from P' + N w, and meets the hit's plane
+//			     (the hit point, the normal read at the hit texel) at X';
+//			     J_axis is the screen distance from the hit to X', and
+//			     J = max( 1, J_x, J_y ); J = 1 where a plane is parallel to
+//			     its ray or X' is behind the eye;
+//			   - edge = smoothstep( 0, 1, min( x / ( edgeFade W J ),
+//			     ( W - x ) / ( edgeFade W J ), y / ( edgeFade H J ),
+//			     ( H - y ) / ( edgeFade H J ) ) ), ( x, y ) the hit's screen
+//			     position in pixels and W x H the view: the fade spans
+//			     edgeFade of the screen per pixel of the surface, however
+//			     stretched its reflection;
+//			   - thicknessFade = 1 - smoothstep( 0, thickness, behind ),
+//			     `behind` the view-space distance the ray is behind the
+//			     texel's surface at the hit (0 at a crossing);
 //			   - roughnessFade = 1 - smoothstep( fadeStart, cutoff, r ),
 //			     fadeStart = roughnessFadeStart * cutoff.
 //			5. The reflected light: `lit`'s pyramid (mip k a 2 x 2 box of mip

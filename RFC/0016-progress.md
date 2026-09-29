@@ -3430,3 +3430,59 @@ measured.
 Next: the lab's mirror-corridor inputs (its own depth, normal and weight
 pass until 43's `kSsrTargets` diff lands), the gallery before and after, and
 the fallback-seam walk against the 0.047 gate with its hard-switch control.
+
+### The fallback seam, slice 3 (2026-09-29): continuous fades, thin-bar stress
+
+- **Walk harness:** `render.lab.ssr` walks the analytic mirror scene at
+  512 x 384 over 16 stations (camera 48 units up, advancing 150 units while
+  its target rises 60), with the metric of `render.ssr.v1.md` S9 (the largest
+  |c(p) - c(q)| between adjacent traced floor pixels, except pairs whose hits
+  differ in clip w by more than the thickness) and a seeded hard-switch trace
+  (`SEEDED_SSR_HARD_SWITCH`, `kSsrTraceHardSwitch`) as its control.
+- **First measurement, then a decision after the data:** the rule was fixed
+  before the first run, but the owner's instruction to wait for its
+  confirmation arrived while the run was going, so the decision is post-data
+  (disclosed in the contract). First result, with the first definition's
+  fades: largest step 1.0; 24,280 pairs above 0.047, 18,752 of them both hits
+  by the thickness fade and 3,740 by the edge fade.
+- **Decision (source-engine-43):** the metric stays; the thickness fade is
+  a ramp over behind in [0, T] and the edge fade spans edgeFade of the screen
+  times the hit's footprint J (a ray differential per screen axis, ssr.h
+  step 4); the gating walk is mirror-corridor; the thin-bar walk is a stress
+  case, recorded; behind-occluder pairs are measured on mirror-corridor, not
+  declared away; the hard-switch control stays at least 0.6.
+- **Definition, reference, then pass:** ssr.h step 4 first, then
+  `ReferenceSsr` (J in double from the camera rays through the pixel's
+  neighbours) and `ssr_trace.comp` (the hit's world position interpolated in
+  1 / w along the screen segment, the hit plane's normal read at the hit
+  texel).
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Reference and GPU under the new fades | `render.lab.ssr --validate`, g++ and clang++: the 20 checks of slices 1-2 and the hard-switch control | pass (21 checks) |
+| Seeded traces | `render.lab.ssr.sensitivity`, g++ and clang++ | pass (4 checks) |
+| Hard-switch control | the seeded trace's largest step on counted pairs | 1.0 (at least 0.6: pass) |
+| Thin-bar stress walk (not gating) | largest step, at station 0 between (189,183) and (190,183): one hits a bar texel it crosses, the other enters the bar's texels 214.9 units behind and reaches the far plane; the reference's walk agrees | 1.0, recorded |
+
+Of the stress walk's 32,552 pairs above 0.047: 522 a hit beside a miss that
+left the screen, 494 behind an occluder, 444 passing behind a visible
+surface by the thickness or more, 0 by the edge fade, 30,854 by the thickness
+fade, 238 other. 30,852 of the thickness-fade pairs have both hits on one
+rectangle, with the larger `behind` at median 4.2 and 90th percentile 6.8
+units: the depth buffer's one depth per texel makes a grazing ray enter a
+texel already behind by up to its depth span, and the [0, T] ramp reads that
+staircase as confidence. Measuring `behind` against the hit texel's plane is
+a candidate definition fix, left to the owner and to be judged on
+mirror-corridor.
+
+Mirror-corridor (the gate, S8 and S9) is not yet drawable as the pbr point
+in the lab: `ProgramResolver::Resolve` claims only `lightmapped` and
+`unlit`, the lab maps PBRMetalRough world materials to their LightmappedGeneric
+diffuse point (`ResolveMaterial`), and `PbrFamily` draws only on the model
+vertex with model lighting. The surface program accepts
+kWorld | kSurfacePbr with the lightmap basis and map probes (the step d
+wiring), but no family or resolver requests it: that is source-engine-43's
+b2. `kSsrTargets` follows 43's c2.
+
+Performance (recorded): the suite runs in 21 s on the clang++ lab tree with the walk
+(each station runs the CPU reference for the diagnosis).

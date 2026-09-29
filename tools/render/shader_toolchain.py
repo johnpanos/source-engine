@@ -215,7 +215,9 @@ GENERATED = {
         ("kSsrTraceNoEdgeFade", SSR + "/ssr_trace.comp",
          DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_NO_EDGE_FADE")),
         ("kSsrTraceWrongMip", SSR + "/ssr_trace.comp",
-         DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_WRONG_MIP")))),
+         DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_WRONG_MIP")),
+        ("kSsrTraceHardSwitch", SSR + "/ssr_trace.comp",
+         DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_HARD_SWITCH")))),
     "output_defects_spv.h": ("rendertest::output::spirv",
         "the output suite's seeded fragment programs (render.output)", (
         ("kOutputAlwaysCompress", OUTPUT + "/output.frag",

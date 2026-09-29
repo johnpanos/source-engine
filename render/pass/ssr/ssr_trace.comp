@@ -9,7 +9,8 @@
 // SSR_DIAGNOSTICS writes each pixel's hit, confidence and mip to binding 10
 // (a suite's variant). SEEDED_SSR_THICKNESS_IGNORED, SEEDED_SSR_NO_EDGE_FADE
 // and SEEDED_SSR_WRONG_MIP build the defective variants the lab's suite must
-// reject; no product uses them.
+// reject, and SEEDED_SSR_HARD_SWITCH its fallback-seam control (no edge and
+// no thickness fade); no product uses them.
 #version 450
 
 layout( local_size_x = 8, local_size_y = 8 ) in;
@@ -116,7 +117,8 @@ void main()
 
 	// 2. The origin clear of the surface, and the screen segment.
 	const vec3 right = World( centre + vec2( 1.0, 0.0 ), depth );
-	const vec3 O = P + N * length( right - P );
+	const float originOffset = length( right - P );
+	const vec3 O = P + N * originOffset;
 	const vec4 c0 = view.toClip * vec4( O, 1.0 );
 	const vec4 dc = view.toClip * vec4( R, 0.0 );
 	if ( !( c0.w > 0.0 ) || c0.z < 0.0 )
@@ -181,6 +183,7 @@ void main()
 	int level = 0;
 	bool hit = false;
 	vec2 hitPosition = vec2( 0.0 );
+	float hitU = 0.0;
 	ivec2 hitTexel = ivec2( 0 );
 	float behind = 0.0;
 	for ( int iteration = 0; iteration < 4096 && u < uHigh; ++iteration )
@@ -237,6 +240,7 @@ void main()
 			{
 				hit = true;
 				hitPosition = h.xy;
+				hitU = uHit;
 				hitTexel = texel;
 				behind = b;
 				break;
@@ -251,15 +255,54 @@ void main()
 		return;
 	}
 
-	// 4. Confidence.
-	const vec2 uv = hitPosition / size;
-	const float edgeDistance = min( min( uv.x, 1.0 - uv.x ), min( uv.y, 1.0 - uv.y ) );
-#ifdef SEEDED_SSR_NO_EDGE_FADE
+	// 4. Confidence. The hit's footprint J, a ray differential per screen
+	// axis: the camera ray one pixel along it, through the pixel's plane,
+	// reflected, to the hit's plane. The hit's world position is the
+	// segment's point at hitU, interpolated perspective-correctly (1 / w is
+	// affine along the screen segment).
+	const vec3 E = O + tEnd * R;
+	const vec3 X = ( O * invW0 + hitU * ( E * invW1 - O * invW0 ) ) /
+	               ( invW0 + hitU * ( invW1 - invW0 ) );
+	const vec3 Nh = OctDecode(
+	    texelFetch( sampler2D( normalRoughnessTexture, pointSampler ), hitTexel, 0 ).xy );
+	float J = 1.0;
+	for ( int axis = 0; axis < 2; ++axis )
+	{
+		const vec2 s = centre + ( axis == 0 ? vec2( 1.0, 0.0 ) : vec2( 0.0, 1.0 ) );
+		const vec3 nearPoint = World( s, 0.0 );
+		const vec3 D = World( s, 1.0 ) - nearPoint;
+		const float toPlane = dot( D, N );
+		if ( abs( toPlane ) < 1e-12 )
+			continue;
+		const vec3 Pa = nearPoint + D * ( dot( P - nearPoint, N ) / toPlane );
+		const vec3 Va = normalize( view.eye.xyz - Pa );
+		const vec3 Ra = N * ( 2.0 * dot( N, Va ) ) - Va;
+		const vec3 Oa = Pa + N * originOffset;
+		const float toHitPlane = dot( Ra, Nh );
+		if ( abs( toHitPlane ) < 1e-12 )
+			continue;
+		const float t = dot( X - Oa, Nh ) / toHitPlane;
+		if ( !( t > 0.0 ) )
+			continue;
+		const vec4 c = view.toClip * vec4( Oa + Ra * t, 1.0 );
+		if ( !( c.w > 0.0 ) )
+			continue;
+		const vec2 sa = vec2( ( c.x / c.w + 1.0 ) * 0.5 * size.x, ( 1.0 - c.y / c.w ) * 0.5 * size.y );
+		J = max( J, length( sa - hitPosition ) );
+	}
+	const vec2 fadeSize = view.params.w * size * J;
+	const vec2 low = hitPosition / fadeSize;
+	const vec2 high = ( size - hitPosition ) / fadeSize;
+#if defined( SEEDED_SSR_NO_EDGE_FADE ) || defined( SEEDED_SSR_HARD_SWITCH )
 	const float edge = 1.0;
 #else
-	const float edge = smoothstep( 0.0, 1.0, edgeDistance / view.params.w );
+	const float edge = smoothstep( 0.0, 1.0, min( min( low.x, high.x ), min( low.y, high.y ) ) );
 #endif
-	const float thicknessFade = 1.0 - smoothstep( 0.5 * thickness, thickness, behind );
+#ifdef SEEDED_SSR_HARD_SWITCH
+	const float thicknessFade = 1.0;
+#else
+	const float thicknessFade = 1.0 - smoothstep( 0.0, thickness, behind );
+#endif
 	const float roughnessFade = 1.0 - smoothstep( view.params.y, cutoff, roughness );
 	const float confidence = edge * thicknessFade * roughnessFade;
 

@@ -326,6 +326,7 @@ std::vector<SsrReferencePixel> ReferenceSsr( const SsrReferenceInputs &inputs,
 							pixel.hit = true;
 							pixel.hitX = far.x;
 							pixel.hitY = far.y;
+							pixel.hitDepth = far.z;
 							pixel.hitTexelX = std::uint32_t( tx );
 							pixel.hitTexelY = std::uint32_t( ty );
 							pixel.behind = 0.0;
@@ -340,11 +341,19 @@ std::vector<SsrReferencePixel> ReferenceSsr( const SsrReferenceInputs &inputs,
 						const Vec3 h = at( uHit );
 						const double behind =
 						    a.z < d ? 0.0 : view.W( h.x, h.y, h.z ) - view.W( h.x, h.y, d );
+						if ( !( behind < params.thickness ) && pixel.passedBehind++ == 0 )
+						{
+							pixel.firstBehindX = std::uint32_t( tx );
+							pixel.firstBehindY = std::uint32_t( ty );
+							pixel.firstBehind = behind;
+						}
 						if ( behind < params.thickness )
 						{
 							pixel.hit = true;
+							pixel.end = SsrReferencePixel::End::kHit;
 							pixel.hitX = h.x;
 							pixel.hitY = h.y;
+							pixel.hitDepth = h.z;
 							pixel.hitTexelX = std::uint32_t( tx );
 							pixel.hitTexelY = std::uint32_t( ty );
 							pixel.behind = behind;
@@ -366,18 +375,64 @@ std::vector<SsrReferencePixel> ReferenceSsr( const SsrReferenceInputs &inputs,
 				}
 			}
 			if ( !pixel.hit )
+			{
+				pixel.end = pixel.steps >= params.maxSteps ? SsrReferencePixel::End::kMaxSteps
+				            : uHigh < 1.0                  ? SsrReferencePixel::End::kScreenEdge
+				                                           : SsrReferencePixel::End::kRayEnd;
 				continue;
+			}
 
-			// 4. Confidence.
-			const double u = pixel.hitX / W, v = pixel.hitY / H;
-			const double edge = Smoothstep(
-			    0.0, 1.0, std::min( { u, 1.0 - u, v, 1.0 - v } ) / double( params.edgeFade ) );
-			const double thicknessFade =
-			    1.0 - Smoothstep( 0.5 * params.thickness, params.thickness, pixel.behind );
+			// 4. Confidence. The hit's footprint J: a ray differential per
+			// screen axis, from the camera ray one pixel along it, through the
+			// pixel's plane and the hit's plane.
+			const Vec3 X = view.World( pixel.hitX, pixel.hitY, pixel.hitDepth );
+			const std::size_t hitIndex = std::size_t( pixel.hitTexelY ) * W + pixel.hitTexelX;
+			const float *hitNr = &inputs.normalRoughness[hitIndex * 4];
+			float hitDecoded[3];
+			pass::ssr::OctDecode( { hitNr[0], hitNr[1] }, hitDecoded );
+			const Vec3 Nh{ hitDecoded[0], hitDecoded[1], hitDecoded[2] };
+			double J = 1.0;
+			for ( int axis = 0; axis < 2; ++axis )
+			{
+				const double sx = cx + ( axis == 0 ? 1.0 : 0.0 );
+				const double sy = cy + ( axis == 1 ? 1.0 : 0.0 );
+				const Vec3 nearPoint = view.World( sx, sy, 0.0 );
+				const Vec3 D = view.World( sx, sy, 1.0 ) - nearPoint;
+				const double toPlane = Dot( D, N );
+				if ( std::fabs( toPlane ) < 1e-12 )
+					continue;
+				const Vec3 Pa = nearPoint + D * ( Dot( P - nearPoint, N ) / toPlane );
+				const Vec3 Va = Normalized( eye - Pa );
+				const Vec3 Ra = N * ( 2.0 * Dot( N, Va ) ) - Va;
+				const Vec3 Oa = Pa + N * footprint;
+				const double toHitPlane = Dot( Ra, Nh );
+				if ( std::fabs( toHitPlane ) < 1e-12 )
+					continue;
+				const double s = Dot( X - Oa, Nh ) / toHitPlane;
+				if ( !( s > 0.0 ) )
+					continue;
+				const Vec3 Xa = Oa + Ra * s;
+				const Vec4 c = Apply( view.toClip, { Xa.x, Xa.y, Xa.z, 1.0 } );
+				if ( !( c[3] > 0.0 ) )
+					continue;
+				const double hx = ( c[0] / c[3] + 1.0 ) * 0.5 * W;
+				const double hy = ( 1.0 - c[1] / c[3] ) * 0.5 * H;
+				J = std::max( J, std::hypot( hx - pixel.hitX, hy - pixel.hitY ) );
+			}
+			pixel.footprint = J;
+			const double fadeW = double( params.edgeFade ) * W * J;
+			const double fadeH = double( params.edgeFade ) * H * J;
+			const double edge = Smoothstep( 0.0, 1.0,
+			    std::min( { pixel.hitX / fadeW, ( W - pixel.hitX ) / fadeW, pixel.hitY / fadeH,
+			        ( H - pixel.hitY ) / fadeH } ) );
+			const double thicknessFade = 1.0 - Smoothstep( 0.0, params.thickness, pixel.behind );
 			const double fadeStart = double( params.roughnessFadeStart ) * params.roughnessCutoff;
 			const double roughnessFade =
 			    1.0 - Smoothstep( fadeStart, params.roughnessCutoff, roughness );
 			pixel.confidence = edge * thicknessFade * roughnessFade;
+			pixel.edge = edge;
+			pixel.thicknessFade = thicknessFade;
+			pixel.roughnessFade = roughnessFade;
 
 			// 5. The reflected light: the pyramid at the lobe's footprint.
 			const double L = std::hypot( pixel.hitX - cx, pixel.hitY - cy );

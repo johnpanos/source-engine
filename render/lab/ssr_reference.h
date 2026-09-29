@@ -45,10 +45,30 @@ struct SsrReferencePixel
 	double hitY = 0.0;
 	std::uint32_t hitTexelX = 0; // the depth texel hit
 	std::uint32_t hitTexelY = 0;
+	double hitDepth = 0.0;  // the ray's depth at the hit
+	double footprint = 1.0; // the hit's footprint J (ssr.h step 4)
 	double behind = 0.0; // view-space distance behind the surface at the hit
 	double confidence = 0.0;
 	double mip = 0.0;
-	std::uint32_t steps = 0;          // texels walked
+	std::uint32_t steps = 0; // texels walked
+	// Diagnosis (no part of the result): the confidence's factors, and for
+	// the walk, the texels passed behind by the thickness or more (the first
+	// one and its `behind`), and why a walk without a hit ended.
+	double edge = 0.0;
+	double thicknessFade = 0.0;
+	double roughnessFade = 0.0;
+	std::uint32_t passedBehind = 0;
+	std::uint32_t firstBehindX = 0;
+	std::uint32_t firstBehindY = 0;
+	double firstBehind = 0.0;
+	enum class End : std::uint8_t
+	{
+		kNotWalked,
+		kHit,
+		kScreenEdge, // the segment left the screen
+		kRayEnd,     // the ray reached the near or far plane
+		kMaxSteps,
+	} end = End::kNotWalked;
 	float reflected[3] = { 0, 0, 0 }; // the lit pyramid at the hit
 	float out[4] = { 0, 0, 0, 0 };    // the composited pixel
 };

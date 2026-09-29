@@ -707,6 +707,277 @@ std::optional<std::string> GpuScene( device::IRenderDevice2 &device,
 	return std::nullopt;
 }
 
+// ---------------------------------------------------------------------------
+// The fallback seam (render.ssr.v1 S9, "The fallback seam").
+
+struct Seam
+{
+	double step = 0.0;
+	std::string where;
+};
+
+// The largest SSR-share step between adjacent traced floor pixels of one
+// station, except pairs whose hits differ in view depth by more than the
+// thickness.
+Seam StationSeam( const SsrSceneImages &images, const GpuResult &gpu, double thickness,
+    const std::string &station )
+{
+	const SsrReferenceInputs &in = images.inputs;
+	const std::uint32_t W = in.width, H = in.height;
+	const math::float4x4 fromClip = *math::Inverse( in.toClip );
+	const auto clipW = [&]( std::uint32_t x, std::uint32_t y )
+	{
+		const float depth = in.depth[std::size_t( y ) * W + x];
+		const math::float4 h = math::Transform(
+		    fromClip, { ( float( x ) + 0.5f ) / float( W ) * 2.0f - 1.0f,
+		                  1.0f - ( float( y ) + 0.5f ) / float( H ) * 2.0f, depth, 1.0f } );
+		return 1.0 / double( h.w );
+	};
+	const auto floor = [&]( std::uint32_t x, std::uint32_t y )
+	{
+		const std::size_t i = std::size_t( y ) * W + x;
+		return images.truth[i].quad == kFloor &&
+		       in.normalRoughness[i * 4 + 2] < pass::ssr::SsrParams().roughnessCutoff;
+	};
+	Seam seam;
+	for ( std::uint32_t y = 0; y < H; ++y )
+	{
+		for ( std::uint32_t x = 0; x < W; ++x )
+		{
+			if ( !floor( x, y ) )
+				continue;
+			const std::size_t a = std::size_t( y ) * W + x;
+			for ( auto [nx, ny] : { std::pair{ x + 1, y }, std::pair{ x, y + 1 } } )
+			{
+				if ( nx >= W || ny >= H || !floor( nx, ny ) )
+					continue;
+				const std::size_t b = std::size_t( ny ) * W + nx;
+				const float *da = &gpu.diagnostics[a * 8], *db = &gpu.diagnostics[b * 8];
+				const bool hitA = da[6] > 0.5f, hitB = db[6] > 0.5f;
+				if ( hitA && hitB &&
+				     std::fabs( clipW( std::uint32_t( da[4] ), std::uint32_t( da[5] ) ) -
+				                clipW( std::uint32_t( db[4] ), std::uint32_t( db[5] ) ) ) >
+				         thickness )
+					continue; // an edge in the reflected image
+				const double ca = hitA ? da[2] : 0.0, cb = hitB ? db[2] : 0.0;
+				const double step = std::fabs( ca - cb );
+				if ( step > seam.step )
+				{
+					seam.step = step;
+					seam.where = station +
+					             Text( " pixels %g,%g and %g,%g", double( x ), double( y ),
+					                 double( nx ), double( ny ) ) +
+					             Text( ": c %.3f and %.3f", ca, cb );
+				}
+			}
+		}
+	}
+	return seam;
+}
+
+// Diagnosis of the seam (printed, no check): each pair above the gate,
+// classified from the reference's walk.
+struct SeamCauses
+{
+	std::size_t pairs = 0, screenEdge = 0, behindOccluder = 0, thickness = 0, edgeFade = 0,
+	            thicknessFade = 0, other = 0, referenceDisagrees = 0;
+	// Of the thickness-fade pairs: both hits on one rectangle, and the
+	// larger behind of the two (the depth buffer's staircase on a surface the
+	// ray meets at a grazing angle).
+	std::size_t thicknessFadeOneSurface = 0;
+	std::vector<double> thicknessFadeBehind;
+};
+
+const char *EndName( SsrReferencePixel::End end )
+{
+	switch ( end )
+	{
+	case SsrReferencePixel::End::kHit:
+		return "hit";
+	case SsrReferencePixel::End::kScreenEdge:
+		return "left the screen";
+	case SsrReferencePixel::End::kRayEnd:
+		return "reached the near or far plane";
+	case SsrReferencePixel::End::kMaxSteps:
+		return "max steps";
+	default:
+		return "not walked";
+	}
+}
+
+void DescribeMarch( const SsrSceneImages &images, const std::vector<SsrReferencePixel> &ref,
+    const GpuResult &gpu, std::uint32_t x, std::uint32_t y )
+{
+	const std::uint32_t W = images.inputs.width;
+	const std::size_t i = std::size_t( y ) * W + x;
+	const SsrReferencePixel &r = ref[i];
+	const float *d = &gpu.diagnostics[i * 8];
+	const SsrTruth &t = images.truth[i];
+	std::printf( "INFO seam.march pixel %u,%u: reference %s after %u texels (hit texel %u,%u at "
+	             "%.2f,%.2f, behind %.3f), %u texels passed behind by the thickness or more "
+	             "(first %u,%u by %.2f); c %.4f = edge %.4f x thickness %.4f x roughness %.4f; GPU "
+	             "hit %.0f texel %.0f,%.0f c %.4f; true reflection on rectangle %d at %.1f,%.1f "
+	             "(on screen %d, seen %d)\n",
+	    x, y, EndName( r.end ), r.steps, r.hitTexelX, r.hitTexelY, r.hitX, r.hitY, r.behind,
+	    r.passedBehind, r.firstBehindX, r.firstBehindY, r.firstBehind, r.confidence, r.edge,
+	    r.thicknessFade, r.roughnessFade, d[6], d[4], d[5], d[2], t.reflectedQuad, t.reflectedX,
+	    t.reflectedY, int( t.reflectedOnScreen ), int( t.reflectedVisible ) );
+}
+
+void ClassifySeams( const SsrSceneImages &images, const std::vector<SsrReferencePixel> &ref,
+    const GpuResult &gpu, double thickness, SeamCauses &causes )
+{
+	const SsrReferenceInputs &in = images.inputs;
+	const std::uint32_t W = in.width, H = in.height;
+	const math::float4x4 fromClip = *math::Inverse( in.toClip );
+	const auto clipW = [&]( std::uint32_t x, std::uint32_t y )
+	{
+		const float depth = in.depth[std::size_t( y ) * W + x];
+		const math::float4 h = math::Transform(
+		    fromClip, { ( float( x ) + 0.5f ) / float( W ) * 2.0f - 1.0f,
+		                  1.0f - ( float( y ) + 0.5f ) / float( H ) * 2.0f, depth, 1.0f } );
+		return 1.0 / double( h.w );
+	};
+	const auto floor = [&]( std::uint32_t x, std::uint32_t y )
+	{
+		const std::size_t i = std::size_t( y ) * W + x;
+		return images.truth[i].quad == kFloor &&
+		       in.normalRoughness[i * 4 + 2] < pass::ssr::SsrParams().roughnessCutoff;
+	};
+	for ( std::uint32_t y = 0; y < H; ++y )
+	{
+		for ( std::uint32_t x = 0; x < W; ++x )
+		{
+			if ( !floor( x, y ) )
+				continue;
+			const std::size_t a = std::size_t( y ) * W + x;
+			for ( auto [nx, ny] : { std::pair{ x + 1, y }, std::pair{ x, y + 1 } } )
+			{
+				if ( nx >= W || ny >= H || !floor( nx, ny ) )
+					continue;
+				const std::size_t b = std::size_t( ny ) * W + nx;
+				const float *da = &gpu.diagnostics[a * 8], *db = &gpu.diagnostics[b * 8];
+				const bool hitA = da[6] > 0.5f, hitB = db[6] > 0.5f;
+				if ( hitA && hitB &&
+				     std::fabs( clipW( std::uint32_t( da[4] ), std::uint32_t( da[5] ) ) -
+				                clipW( std::uint32_t( db[4] ), std::uint32_t( db[5] ) ) ) >
+				         thickness )
+					continue;
+				const double ca = hitA ? da[2] : 0.0, cb = hitB ? db[2] : 0.0;
+				if ( !( std::fabs( ca - cb ) > 0.047 ) )
+					continue;
+				++causes.pairs;
+				if ( std::fabs( ref[a].confidence - ref[b].confidence ) <= 0.047 )
+					++causes.referenceDisagrees;
+				if ( hitA != hitB )
+				{
+					const SsrReferencePixel &miss = hitA ? ref[b] : ref[a];
+					const SsrTruth &truth = images.truth[hitA ? b : a];
+					if ( miss.passedBehind > 0 && truth.reflectedOnScreen &&
+					     !truth.reflectedVisible )
+						++causes.behindOccluder;
+					else if ( miss.passedBehind > 0 )
+						++causes.thickness;
+					else if ( miss.end == SsrReferencePixel::End::kScreenEdge )
+						++causes.screenEdge;
+					else
+						++causes.other;
+					continue;
+				}
+				const SsrReferencePixel &pa = ref[a], &pb = ref[b];
+				const double edge = std::fabs( pa.edge - pb.edge );
+				const double fade = std::fabs( pa.thicknessFade - pb.thicknessFade );
+				if ( edge >= fade && edge > 0.0 )
+					++causes.edgeFade;
+				else if ( fade > 0.0 )
+				{
+					++causes.thicknessFade;
+					const auto quadAt = [&]( const SsrReferencePixel &r )
+					{
+						return images.truth[std::size_t( r.hitTexelY ) * W + r.hitTexelX].quad;
+					};
+					if ( quadAt( pa ) == quadAt( pb ) )
+						++causes.thicknessFadeOneSurface;
+					causes.thicknessFadeBehind.push_back( std::max( pa.behind, pb.behind ) );
+				}
+				else
+					++causes.other;
+			}
+		}
+	}
+}
+
+std::optional<std::string> SeamChecks( device::IRenderDevice2 &device, Results &results )
+{
+	const pass::ssr::SsrParams params;
+	auto pass = pass::ssr::ScreenSpaceReflections::CreateWithTrace(
+	    device, params, spirv::kSsrTraceDiagnostics );
+	auto hard = pass::ssr::ScreenSpaceReflections::CreateWithTrace(
+	    device, params, spirv::kSsrTraceHardSwitch );
+	if ( !pass || !hard )
+		return std::string( "the SSR pass was refused" );
+	Seam worst, worstHard;
+	SeamCauses causes;
+	constexpr int kStations = 16;
+	for ( int k = 0; k < kStations; ++k )
+	{
+		const float t = float( k ) / float( kStations - 1 );
+		SsrScene scene = MirrorScene( 0.05f );
+		scene.width = 512;
+		scene.height = 384;
+		scene.eye = { 150.0f * t, 0.0f, 48.0f };
+		scene.target = { 150.0f * t + 400.0f, 0.0f, 60.0f * t };
+		const SsrSceneImages images = RayCastScene( scene );
+		const SsrReferenceInputs in = AsUploaded( images.inputs );
+		const std::string station = Text( "station %g", double( k ) );
+		for ( auto [which, seam] : { std::pair{ pass.Value().get(), &worst },
+		          std::pair{ hard.Value().get(), &worstHard } } )
+		{
+			GpuResult gpu;
+			if ( std::optional<std::string> why = RunGpu( device, *which, in, gpu ) )
+				return why;
+			const Seam s = StationSeam( images, gpu, params.thickness, station );
+			if ( s.step > seam->step )
+				*seam = s;
+			if ( which != pass.Value().get() )
+				continue;
+			// The diagnosis (printed only).
+			const std::vector<SsrReferencePixel> ref = ReferenceSsr( in, params );
+			ClassifySeams( images, ref, gpu, params.thickness, causes );
+			if ( k == 0 )
+				for ( std::uint32_t x : { 189u, 190u } )
+					DescribeMarch( images, ref, gpu, x, 183 );
+		}
+	}
+	std::printf( "INFO seam.causes: %zu adjacent pairs above 0.047 over %d stations: %zu hit "
+	             "beside a miss that left the screen, %zu behind an occluder (the true point "
+	             "hidden), %zu passing behind a visible surface by the thickness or more, %zu both "
+	             "hits by the edge fade, %zu both hits by the thickness fade, %zu other; the "
+	             "reference's own c agrees within 0.047 on %zu of them\n",
+	    causes.pairs, kStations, causes.screenEdge, causes.behindOccluder, causes.thickness,
+	    causes.edgeFade, causes.thicknessFade, causes.other, causes.referenceDisagrees );
+	if ( !causes.thicknessFadeBehind.empty() )
+	{
+		std::vector<double> &b = causes.thicknessFadeBehind;
+		std::sort( b.begin(), b.end() );
+		std::printf( "INFO seam.thickness-fade-pairs: %zu of %zu with both hits on one rectangle; "
+		             "the larger behind of the two: median %.3f, 90th percentile %.3f, largest "
+		             "%.3f (thickness %.1f)\n",
+		    causes.thicknessFadeOneSurface, b.size(), b[b.size() / 2], b[b.size() * 9 / 10],
+		    b.back(), double( params.thickness ) );
+	}
+	// The thin-bar walk is a stress case (render.ssr.v1, "The fallback
+	// seam"): its number is recorded, not gated; the gate is mirror-corridor.
+	std::printf( "INFO seam.stress-walk-largest-step %.4f%s (not gating; R50 gate 0.047)\n",
+	    worst.step, worst.where.empty() ? "" : ( " at " + worst.where ).c_str() );
+	std::printf( "INFO seam.hard-switch-largest-step %.4f%s\n", worstHard.step,
+	    worstHard.where.empty() ? "" : ( " at " + worstHard.where ).c_str() );
+	results.That( worstHard.step >= 0.6, "seam.hard-switch-control-seams",
+	    Text( "largest step %.4f", worstHard.step ) +
+	        ( worstHard.where.empty() ? "" : " at " + worstHard.where ) );
+	return std::nullopt;
+}
+
 std::optional<std::string> GpuChecks( bool validate, std::span<const std::uint32_t> module,
     Results &results, std::uint64_t &messages )
 {
@@ -733,6 +1004,12 @@ std::optional<std::string> GpuChecks( bool validate, std::span<const std::uint32
 		{
 			if ( std::optional<std::string> why = GpuScene( *device, *pass.Value(), scene.name,
 			         MirrorScene( scene.roughness ), scene.minimumJudged, results ) )
+				return why;
+		}
+		// The seam walk judges the product trace: once, in the unseeded run.
+		if ( module.empty() )
+		{
+			if ( std::optional<std::string> why = SeamChecks( *device, results ) )
 				return why;
 		}
 		(void)device->WaitIdle();
