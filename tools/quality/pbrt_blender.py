@@ -6,6 +6,7 @@ Cycles reference render, the lightmap bake and the reflection probe build
 identical materials (every texture channel), emitters, sun lamps and sky.
 """
 
+import contextlib
 import math
 from pathlib import Path
 
@@ -568,6 +569,32 @@ def configure_light_paths(policy):
         "max_bounces", "diffuse_bounces", "glossy_bounces", "transmission_bounces",
         "sample_clamp_direct", "sample_clamp_indirect")}}
 
+
+
+# Bounce limits of a DIRECT-only bake. Cycles' DIRECT bake pass (light
+# reaching the surface straight from a lamp, emitter, sun or sky) is
+# bit-identical at every bounce limit: 0, 1, 4, 8 and 64 bounces gave
+# byte-equal EXRs on sp_gi_chamber_01's atlas (19 emitters) and on
+# gi_room_states' sun, latlong sky and emitter (2026-09-29). The configured
+# limit still traces every path's continuation, which cost the chamber's
+# direct layer 1.8x. Transparent bounces stay: shadow rays pass cut-outs.
+DIRECT_ONLY_BOUNCES = {"max_bounces": 0, "diffuse_bounces": 0, "glossy_bounces": 0,
+                       "transmission_bounces": 0}
+
+
+@contextlib.contextmanager
+def direct_only_light_paths():
+    """Run the enclosed DIRECT-only bakes without bounces, then restore the
+    scene's light-path policy."""
+    cycles = bpy.context.scene.cycles
+    saved = {key: getattr(cycles, key) for key in DIRECT_ONLY_BOUNCES}
+    try:
+        for key, value in DIRECT_ONLY_BOUNCES.items():
+            setattr(cycles, key, value)
+        yield
+    finally:
+        for key, value in saved.items():
+            setattr(cycles, key, value)
 
 # Bakes pin their sampling rather than inherit Blender's defaults, and record
 # it: a fixed seed, no adaptive stopping (every texel or pixel takes all its

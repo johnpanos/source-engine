@@ -24,6 +24,7 @@ shadowed by this mask, as Source 2 does for its static sun.
 """
 
 import argparse
+import contextlib
 import hashlib
 import json
 import math
@@ -404,9 +405,12 @@ def bake_light(image, pass_filter, label, size, render, keep=None):
     save as <dir>/<keep>-a.exr and -b.exr. Returns the halves (None when
     baked once)."""
     import numpy as np
+    paths = (pbrt_blender.direct_only_light_paths() if set(pass_filter) == {"DIRECT"}
+             else contextlib.nullcontext())
     if NOISE_PAIR["dir"] is None:
         announce(label, size)
-        bpy.ops.object.bake(type="DIFFUSE", pass_filter=pass_filter)
+        with paths:
+            bpy.ops.object.bake(type="DIFFUSE", pass_filter=pass_filter)
         return None
     samples, seed = render.cycles.samples, render.cycles.seed
     halves = []
@@ -415,7 +419,8 @@ def bake_light(image, pass_filter, label, size, render, keep=None):
         for index in range(2):
             render.cycles.seed = seed + index
             announce("%s half %d" % (label, index + 1), size)
-            bpy.ops.object.bake(type="DIFFUSE", pass_filter=pass_filter)
+            with paths:
+                bpy.ops.object.bake(type="DIFFUSE", pass_filter=pass_filter)
             halves.append(np.array(image.pixels[:], dtype=np.float32))
     finally:
         render.cycles.samples, render.cycles.seed = samples, seed
@@ -470,7 +475,8 @@ def bake_sun_visibility(merged, scene, path, size, render):
             target.image = image
             material.node_tree.nodes.active = target
         announce("sun %s" % ("shadowed" if shadows else "unshadowed"), size)
-        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT"})
+        with pbrt_blender.direct_only_light_paths():
+            bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT"})
         planes.append(np.array(image.pixels[:], dtype=np.float64).reshape(size, size, 4))
     sun.data.use_shadow = True
     render.cycles.samples = samples
