@@ -40,7 +40,12 @@ The block:
       "host": "user@gpu-box",               # ssh destination
       "blender": "/opt/blender/blender",    # the host's Blender
       "ssh": ["ssh", "-o", "BatchMode=yes"],   # optional transport
-      "steps": ["bake", "probe", "probe-volume", "radiosity", "sdf", "render"]   # optional
+      "steps": ["bake", "probe", "probe-volume", "radiosity", "sdf", "render"],   # optional
+      # optional: the post-bake Python steps on the host too (TOOL_STEPS), so
+      # their large EXR outputs are made there instead of uploaded from here
+      "python": "/opt/blender/5.2/python/bin/python3.13",
+      "env": {"PYTHONPATH": "...", "LD_LIBRARY_PATH": "..."},
+      "tools": {"openimagedenoise": {"version": "2.4.0", "sha256": "..."}}
     }
 
 `render` is the reference renders run through `gi_reference.Tools.blender`
@@ -70,6 +75,11 @@ import light_baker  # noqa: E402
 # and the reference renders (`gi_reference.Tools.blender`).
 REFERENCE_RENDER = "render"
 REMOTE_STEPS = tuple(light_baker.OPERATIONS) + (REFERENCE_RENDER,)
+# Post-bake steps that are one Python script (numpy, scipy, imageio,
+# OpenImageIO, OIDN): opt-in, with the block's `python`. ktx2 and the USD
+# steps stay local (their tools are this host's builds, and ktx2 comes after
+# the last remote step, so nothing it writes would be uploaded).
+TOOL_STEPS = ("noise", "denoise", "directional", "rprb")
 DEFAULT_SSH = ("ssh", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=30")
 # Repository trees the Blender scripts read besides their inputs: the scripts
 # and their imports, and the export/product profiles some of them load.
@@ -85,9 +95,16 @@ class RemoteBlender:
         self.blender = config["blender"]
         self.ssh = list(config.get("ssh") or DEFAULT_SSH)
         self.steps = tuple(config.get("steps") or REMOTE_STEPS)
-        unknown = set(self.steps) - set(REMOTE_STEPS) - {"stage"}
+        unknown = set(self.steps) - set(REMOTE_STEPS) - set(TOOL_STEPS) - {"stage"}
         if unknown:
-            raise ValueError("remote_blender steps must be Blender steps, not %s" % sorted(unknown))
+            raise ValueError("remote_blender steps must be Blender or tool steps, not %s"
+                             % sorted(unknown))
+        self.python = config.get("python")
+        self.env = dict(config.get("env") or {})
+        self.tools = dict(config.get("tools") or {})
+        if set(self.steps) & set(TOOL_STEPS) and not self.python:
+            raise ValueError("remote_blender tool steps %s need the host's `python`"
+                             % sorted(set(self.steps) & set(TOOL_STEPS)))
         self.root = Path(root)
         self._identity = None
 
@@ -135,6 +152,21 @@ class RemoteBlender:
             shlex.quote(str(self.root)), exports, shlex.quote(self.blender),
             " ".join(shlex.quote(str(a)) for a in arguments))
         return self.ssh + [self.host, line]
+
+    def tool_command(self, arguments, env):
+        """The local command that runs a Python tool step (`arguments` after
+        the interpreter) on the host with its `python` and `env`."""
+        merged = dict(self.env, **env)
+        exports = " ".join("%s=%s" % (k, shlex.quote(str(v))) for k, v in sorted(merged.items()))
+        line = "cd %s && env %s %s %s" % (
+            shlex.quote(str(self.root)), exports, shlex.quote(self.python),
+            " ".join(shlex.quote(str(a)) for a in arguments))
+        return self.ssh + [self.host, line]
+
+    def tool_identity(self, name):
+        """A pinned tool's identity on the host (the block's `tools`), or None."""
+        identity = self.tools.get(name)
+        return dict(identity, remote=True) if identity else None
 
     # ------------------------------------------------------------- identity
     def identity(self):

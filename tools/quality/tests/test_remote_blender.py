@@ -54,6 +54,25 @@ class RemoteBlenderTest(unittest.TestCase):
         self.assertEqual(remote.cache_identity(), other.cache_identity())
         self.assertNotIn("host", remote.cache_identity())
 
+    def test_tool_steps_are_opt_in_and_need_a_python(self):
+        self.assertFalse(self.remote().applies("denoise"))
+        with self.assertRaises(ValueError):
+            self.remote(steps=["bake", "denoise"])
+        remote = self.remote(steps=["bake", "denoise"], python="/opt/py/python3.13",
+                             env={"PYTHONPATH": "/opt/site"},
+                             tools={"openimagedenoise": {"version": "2.4.0", "sha256": "ab"}})
+        self.assertTrue(remote.applies("denoise"))
+        command = remote.tool_command(
+            ["/src/engine/tools/quality/lightmap_denoise.py", "--exr", "/src/engine/o/a b.exr"],
+            {"EXTRA": "1"})
+        self.assertEqual(shlex.split(command[-1]),
+                         ["cd", "/src/engine", "&&", "env", "EXTRA=1", "PYTHONPATH=/opt/site",
+                          "/opt/py/python3.13", "/src/engine/tools/quality/lightmap_denoise.py",
+                          "--exr", "/src/engine/o/a b.exr"])
+        self.assertEqual(remote.tool_identity("openimagedenoise"),
+                         {"version": "2.4.0", "sha256": "ab", "remote": True})
+        self.assertIsNone(remote.tool_identity("ktx"))
+
     def test_toolchain_without_a_block_stays_local(self):
         self.assertIsNone(remote_blender.from_toolchain({"blender": "blender"}))
 

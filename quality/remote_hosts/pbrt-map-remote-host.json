@@ -1,0 +1,44 @@
+{
+  "schema": "source-host-tool-profile/v1",
+  "id": "pbrt-map-remote-gpu-host-linux-x86_64-v1",
+  "description": "What a rented Linux GPU host (tools/quality/vast_blender.py) installs to run the map pipeline's remote steps (remote_blender.py): the profile's Blender for the Cycles steps and reference renders, and a Python with the OIDN library for the post-bake steps (noise, denoise, directional, rprb), so their large EXR outputs stay on the host. Everything is pinned by digest; the Python packages match the local host's versions (pbrt-map-linux-tools) and run on the Blender's bundled CPython 3.13. The OIDN build is upstream's, not Fedora's oidn-libs 2.4.0: same release, different binary, so denoised results can differ slightly from local ones (step cache keys record which).",
+  "target": {"product": "map-lighting-remote-host", "os": "linux", "architecture": "x86_64"},
+  "blender": {
+    "version": "5.2.2",
+    "urls": [
+      "https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz",
+      "https://mirrors.ocf.berkeley.edu/blender/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz",
+      "https://mirror.clarkson.edu/blender/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz",
+      "https://ftp.nluug.nl/pub/graphics/blender/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz"
+    ],
+    "sha256": "84098912789dc450e95697c4184fb8a90acbe5111c2ba4aede3fecb57806a168",
+    "directory": "/opt/blender-5.2.2-linux-x64",
+    "executable": "blender",
+    "python": "5.2/python/bin/python3.13"
+  },
+  "oidn": {
+    "version": "2.4.0",
+    "urls": ["https://github.com/RenderKit/oidn/releases/download/v2.4.0/oidn-2.4.0.x86_64.linux.tar.gz"],
+    "sha256": "9ec7a60688de12c41f8437b42e0c29508bc13b03733af536f48e473d1a9fa677",
+    "directory": "/opt/oidn-2.4.0.x86_64.linux",
+    "library": "lib/libOpenImageDenoise.so.2"
+  },
+  "freeimage": {
+    "version": "3.16.0",
+    "urls": ["https://github.com/imageio/imageio-binaries/raw/master/freeimage/libfreeimage-3.16.0-linux64.so"],
+    "sha256": "8ba7be1e5d2bc8ffc94d111cb05f7de3dbbfd4af4d502a54eb22c4708021897c",
+    "path": "/opt/freeimage/libfreeimage-3.16.0-linux64.so",
+    "why": "imageio reads and writes EXR through its FreeImage plugin (IMAGEIO_FREEIMAGE_LIB); the same binary the local host's imageio fetched into ~/.imageio/freeimage"
+  },
+  "python_packages": {
+    "target": "/opt/source-python",
+    "wheels": [
+      {"name": "numpy", "version": "2.4.4", "file": "numpy-2.4.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", "sha256": "c901b15172510173f5cb310eae652908340f8dede90fff9e3bf6c0d8dfd92f83"},
+      {"name": "scipy", "version": "1.16.2", "file": "scipy-1.16.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", "sha256": "c2275ff105e508942f99d4e3bc56b6ef5e4b3c0af970386ca56b777608ce95b7"},
+      {"name": "imageio", "version": "2.37.3", "file": "imageio-2.37.3-py3-none-any.whl", "sha256": "46f5bb8522cd421c0f5ae104d8268f569d856b29eb1a13b92829d1970f32c9f0"},
+      {"name": "pillow", "version": "12.3.0", "file": "pillow-12.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", "sha256": "0847a763afefb695bc912d7c131e7e0632d4edc1d8698f58ddabec8e46b8b6d3"},
+      {"name": "OpenImageIO", "version": "3.1.17.0", "file": "openimageio-3.1.17.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", "sha256": "420a2cbfc7358c281a0902e9daa4ee229e7cb9071be4704ddf8943930c184f78"}
+    ]
+  },
+  "remote_tool_steps": ["noise", "denoise", "directional", "rprb"]
+}

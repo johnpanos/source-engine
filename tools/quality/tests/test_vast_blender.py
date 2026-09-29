@@ -86,11 +86,27 @@ class VastBlenderTest(unittest.TestCase):
         self.assertEqual(remote.blender, vast_blender.BLENDER_REMOTE)
         self.assertEqual(remote.command([], {})[:len(ssh)], ssh)
         self.assertTrue(remote.applies("render") and remote.applies("bake"))
+        # The tool steps run there too, with the host's pinned OIDN as their identity.
+        for step in ("noise", "denoise", "directional", "rprb"):
+            self.assertTrue(remote.applies(step), step)
+        self.assertFalse(remote.applies("ktx2"))
+        self.assertEqual(remote.tool_identity("openimagedenoise")["sha256"],
+                         vast_blender.HOST["oidn"]["sha256"])
+        blender_only = vast_blender.write_toolchain(ssh, "root@1.2.3.4", 9, base,
+                                                    self.tmp / "b.json", tools=False)
+        self.assertFalse(remote_blender.from_toolchain(
+            json.loads(blender_only.read_text())).applies("denoise"))
 
     def test_provisioning_verifies_the_pinned_tarball(self):
         script = vast_blender.provision_script(Path("/src/engine"))
         self.assertIn(vast_blender.BLENDER_SHA256 + "  blender.tar.xz' | sha256sum -c", script)
         self.assertIn("mkdir -p /src/engine", script)
+        self.assertIn(vast_blender.HOST["oidn"]["sha256"] + "  oidn.tar.gz' | sha256sum -c", script)
+        self.assertIn("--require-hashes", script)
+        for wheel in vast_blender.HOST["python_packages"]["wheels"]:
+            self.assertIn("%s==%s --hash=sha256:%s" % (wheel["name"], wheel["version"],
+                                                        wheel["sha256"]), script)
+        self.assertNotIn("oidn.tar.gz", vast_blender.provision_script(Path("/x"), tools=False))
         self.assertTrue(vast_blender.BLENDER_REMOTE.startswith("/opt/blender-%s-"
                                                                % vast_blender.BLENDER_VERSION))
 

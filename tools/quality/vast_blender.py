@@ -71,16 +71,16 @@ BASE_TOOLCHAIN = ROOT / "build/toolchains/pbrt-map-toolchain.json"
 VAST_TOOLCHAIN = ROOT / "build/toolchains/pbrt-map-toolchain-vast.json"
 LABEL = "source-engine-blender"
 
-# The profile's Blender (quality/product_profiles/pbrt-map-linux-tools.json),
-# pinned by the digest download.blender.org publishes for the tarball.
-BLENDER_VERSION = "5.2.2"
-# download.blender.org first, then its mirrors: the digest makes any of them safe.
-BLENDER_URLS = tuple(base + "/Blender5.2/blender-5.2.2-linux-x64.tar.xz" for base in (
-    "https://download.blender.org/release", "https://mirrors.ocf.berkeley.edu/blender/release",
-    "https://mirror.clarkson.edu/blender/release",
-    "https://ftp.nluug.nl/pub/graphics/blender/release"))
-BLENDER_SHA256 = "84098912789dc450e95697c4184fb8a90acbe5111c2ba4aede3fecb57806a168"
-BLENDER_REMOTE = "/opt/blender-5.2.2-linux-x64/blender"
+# What the rented host installs, pinned by digest: the profile's Blender, the
+# OIDN library and the Python packages of the post-bake tool steps.
+HOST_PROFILE = ROOT / "quality/remote_hosts/pbrt-map-remote-host.json"
+HOST = json.loads(HOST_PROFILE.read_text())
+BLENDER_VERSION = HOST["blender"]["version"]
+BLENDER_SHA256 = HOST["blender"]["sha256"]
+BLENDER_REMOTE = HOST["blender"]["directory"] + "/" + HOST["blender"]["executable"]
+REMOTE_PYTHON = HOST["blender"]["directory"] + "/" + HOST["blender"]["python"]
+OIDN_LIB_DIR = str(Path(HOST["oidn"]["directory"]) / Path(HOST["oidn"]["library"]).parent)
+PYTHON_TARGET = HOST["python_packages"]["target"]
 # Blender needs only the driver's libcuda/libnvoptix, which the NVIDIA
 # container runtime mounts; `all` capabilities include OptiX.
 IMAGE = "nvidia/cuda:12.4.1-base-ubuntu22.04"
@@ -317,30 +317,86 @@ def ssh_transport(instance_id, port):
             "-o", "ServerAliveInterval=30", "-o", "LogLevel=ERROR"]
 
 
-def provision_script(root):
-    return "\n".join([
+def fetch_pinned(package, archive):
+    """Shell lines that download `package` (a HOST entry) into /opt/<archive>,
+    verify its digest and unpack it, unless its directory exists. A dropped
+    transfer resumes (-C -); a bad or stuck source moves to the next URL."""
+    return [
+        "if [ ! -d %s ]; then" % shlex.quote(package["directory"]),
+        "  cd /opt",
+        "  for url in %s; do" % " ".join(shlex.quote(u) for u in package["urls"]),
+        "    for try in 1 2 3; do",
+        "      curl -fsSL --retry 3 --retry-all-errors --speed-limit 1000000 --speed-time 30 "
+        "-C - -o %s \"$url\" && break" % archive,
+        "    done",
+        "    echo '%s  %s' | sha256sum -c --quiet - && break" % (package["sha256"], archive),
+        "    rm -f %s" % archive,
+        "  done",
+        "  test -f %s" % archive,
+        "  tar xf %s && rm %s" % (archive, archive),
+        "fi",
+    ]
+
+
+def fetch_pinned_file(package):
+    """Shell lines that download one pinned file to its `path` and verify it."""
+    path = shlex.quote(package["path"])
+    return [
+        "if ! echo '%s  %s' | sha256sum -c --quiet - >/dev/null 2>&1; then"
+        % (package["sha256"], package["path"]),
+        "  mkdir -p %s" % shlex.quote(str(Path(package["path"]).parent)),
+        "  for url in %s; do" % " ".join(shlex.quote(u) for u in package["urls"]),
+        "    curl -fsSL --retry 3 --retry-all-errors -o %s \"$url\" && "
+        "echo '%s  %s' | sha256sum -c --quiet - && break" % (path, package["sha256"],
+                                                             package["path"]),
+        "    rm -f %s" % path,
+        "  done",
+        "  test -f %s" % path,
+        "fi",
+    ]
+
+
+def tool_env():
+    """The environment of the Python tool steps on the host: the pinned
+    packages, the OIDN library and imageio's EXR codec."""
+    return {"PYTHONPATH": PYTHON_TARGET, "LD_LIBRARY_PATH": OIDN_LIB_DIR,
+            "IMAGEIO_FREEIMAGE_LIB": HOST["freeimage"]["path"]}
+
+
+def provision_script(root, tools=True):
+    lines = [
         "set -eu",
         "export DEBIAN_FRONTEND=noninteractive",
         "apt-get update -qq",
         "apt-get install -y -qq --no-install-recommends rsync xz-utils curl ca-certificates "
         + BLENDER_LIBS + " >/dev/null",
-        "if [ ! -x %s ]; then" % BLENDER_REMOTE,
-        "  cd /opt",
-        # A dropped transfer resumes (-C -); a bad or stuck source moves to the next.
-        "  for url in %s; do" % " ".join(shlex.quote(u) for u in BLENDER_URLS),
-        "    for try in 1 2 3; do",
-        "      curl -fsSL --retry 3 --retry-all-errors --speed-limit 1000000 --speed-time 30 "
-        "-C - -o blender.tar.xz \"$url\" && break",
-        "    done",
-        "    echo '%s  blender.tar.xz' | sha256sum -c --quiet - && break" % BLENDER_SHA256,
-        "    rm -f blender.tar.xz",
-        "  done",
-        "  test -f blender.tar.xz",
-        "  tar xf blender.tar.xz && rm blender.tar.xz",
-        "fi",
-        "mkdir -p %s" % shlex.quote(str(root)),
-        "echo PROVISIONED",
-    ])
+    ] + fetch_pinned(HOST["blender"], "blender.tar.xz")
+    if tools:
+        requirements = "\n".join("%s==%s --hash=sha256:%s" % (w["name"], w["version"], w["sha256"])
+                                  for w in HOST["python_packages"]["wheels"])
+        python = shlex.quote(REMOTE_PYTHON)
+        lines += fetch_pinned(HOST["oidn"], "oidn.tar.gz")
+        lines += fetch_pinned_file(HOST["freeimage"]) + [
+            "%s -m pip --version >/dev/null 2>&1 || %s -m ensurepip --default-pip >/dev/null"
+            % (python, python),
+            "printf '%s\\n' > /opt/source-python.new" % requirements,
+            "if ! cmp -s /opt/source-python.new /opt/source-python.txt; then",
+            "  %s -m pip install --quiet --disable-pip-version-check --root-user-action=ignore "
+            "--no-deps --only-binary :all: --require-hashes --upgrade --target %s "
+            "-r /opt/source-python.new" % (python, shlex.quote(PYTHON_TARGET)),
+            "  mv /opt/source-python.new /opt/source-python.txt",
+            "fi",
+            "env %s %s -c %s" % (" ".join("%s=%s" % i for i in sorted(tool_env().items())), python,
+                                 shlex.quote("import ctypes, numpy, scipy, imageio.v3 as iio, "
+                                             "OpenImageIO, PIL; "
+                                             "ctypes.CDLL('libOpenImageDenoise.so.2'); "
+                                             "iio.imwrite('/tmp/check.exr', numpy.ones((4, 4, 4), "
+                                             "numpy.float32)); "
+                                             "assert iio.imread('/tmp/check.exr').shape "
+                                             "== (4, 4, 4); "
+                                             "print('TOOLS', numpy.__version__)")),
+        ]
+    return "\n".join(lines + ["mkdir -p %s" % shlex.quote(str(root)), "echo PROVISIONED"])
 
 
 # ================================================================ lifecycle
@@ -460,9 +516,16 @@ def wait_ready(vast, instance_id, timeout):
     raise RuntimeError("instance %d not reachable over SSH within %d s" % (instance_id, timeout))
 
 
-def write_toolchain(ssh, host, instance_id, base, out):
+def write_toolchain(ssh, host, instance_id, base, out, tools=True):
     toolchain = json.loads(Path(base).read_text())
-    toolchain["remote_blender"] = {"host": host, "blender": BLENDER_REMOTE, "ssh": ssh}
+    block = {"host": host, "blender": BLENDER_REMOTE, "ssh": ssh}
+    if tools:
+        block.update({
+            "steps": list(remote_blender.REMOTE_STEPS) + list(HOST["remote_tool_steps"]),
+            "python": REMOTE_PYTHON, "env": tool_env(),
+            "tools": {"openimagedenoise": {"version": HOST["oidn"]["version"],
+                                           "sha256": HOST["oidn"]["sha256"]}}})
+    toolchain["remote_blender"] = block
     toolchain["vast"] = {"instance": instance_id}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(toolchain, indent=2) + "\n")
@@ -478,11 +541,12 @@ def up(args):
     try:
         ssh, host = wait_ready(vast, instance_id, args.start_timeout)
         log("provisioning %s (Blender %s)" % (host, BLENDER_VERSION))
-        result = subprocess.run(ssh + [host, "bash -s"], input=provision_script(ROOT),
+        tools = args.tool_steps
+        result = subprocess.run(ssh + [host, "bash -s"], input=provision_script(ROOT, tools),
                                 capture_output=True, text=True)
         if result.returncode or "PROVISIONED" not in result.stdout:
             raise RuntimeError("provisioning failed:\n" + (result.stdout + result.stderr)[-2000:])
-        out = write_toolchain(ssh, host, instance_id, args.toolchain, args.out)
+        out = write_toolchain(ssh, host, instance_id, args.toolchain, args.out, tools)
         remote = remote_blender.RemoteBlender(json.loads(out.read_text())["remote_blender"])
         facts, problems = remote_blender.check(remote, BLENDER_VERSION, smoke=True)
         log("host check: " + json.dumps(facts))
@@ -594,6 +658,10 @@ def main():
     renting.add_argument("--start-timeout", type=int, default=900, help="seconds")
     renting.add_argument("--toolchain", type=Path, default=BASE_TOOLCHAIN)
     renting.add_argument("--out", type=Path, default=VAST_TOOLCHAIN)
+    renting.add_argument("--tool-steps", action="store_true",
+                         help="also run the post-bake Python steps (remote_blender.TOOL_STEPS) "
+                              "on the host; measured 2026-09-29 as about even with running "
+                              "them here over a 3-4 MB/s link")
     renting.add_argument("--dry-run", action="store_true",
                          help="choose an offer and check the budget; rent nothing")
     commands.add_parser("up", parents=[renting], help="rent and provision a host")

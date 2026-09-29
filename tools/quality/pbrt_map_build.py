@@ -523,7 +523,20 @@ class Pipeline:
         """Run a step's command, its output going to logs/<step>.log; the
         lines `progress.feed` returns for its output are shown as they come.
         With `silence` (seconds), a command that prints nothing for that long
-        is killed and the step fails (run_logged)."""
+        is killed and the step fails (run_logged). A Python tool step the
+        toolchain's remote_blender block takes (remote_blender.TOOL_STEPS)
+        runs on that host, as the Blender steps do."""
+        if (self.remote and step in remote_blender.TOOL_STEPS and self.remote.applies(step)
+                and str(command[0]) == sys.executable):
+            print("[%s] on %s" % (step, self.remote.host), flush=True)
+            self.remote.push([a for a in command[1:] if str(a).startswith("/")], self.out)
+            seconds = self.run_command(step, self.remote.tool_command(command[1:], env or {}),
+                                       None, progress, silence)
+            self.remote.pull(self.out)
+            return seconds
+        return self.run_command(step, command, env, progress, silence)
+
+    def run_command(self, step, command, env=None, progress=None, silence=None):
         self.logs.mkdir(parents=True, exist_ok=True)
         log = self.logs / (step + ".log")
         started = time.monotonic()
@@ -616,6 +629,12 @@ class Pipeline:
     def step_tool_identity(self, step, tool):
         if tool == "blender" and self.remote and self.remote.applies(step):
             return dict(self.remote.cache_identity(), remote=True)
+        if self.remote and step in remote_blender.TOOL_STEPS and self.remote.applies(step):
+            remote = self.remote.tool_identity(tool)
+            if remote is None:
+                raise SystemExit("remote_blender runs %s but names no identity for its %s "
+                                 "(the block's `tools`)" % (step, tool))
+            return remote
         return self.identity(tool)
 
     def set_aside(self, name, outputs):
