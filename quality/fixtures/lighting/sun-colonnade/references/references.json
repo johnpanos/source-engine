@@ -1,0 +1,112 @@
+{
+  "analytic": [],
+  "fixture": "sun-colonnade",
+  "fixture_reference_digest": "432ca41fd84dc7ca1291d7a03a227f1cd5a3de15c6ebac54fa12a6d5adb2799f",
+  "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
+  "renders": {
+    "default": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "b32a167909d7d6a1a3bece9874ae6d8ca0374a5ef79d765d8abaf458c7696536",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "extras_applied": {
+        "medium": null,
+        "projectors": []
+      },
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "normal_maps": false,
+      "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 16,
+      "seed": 20260929,
+      "stage_layers": {
+        "quality/fixtures/lighting/sun-colonnade/sun-colonnade.usda": "d5c18cc004436271eb96c98873fa859a59a4f4202194e1f05f9061d51933b6ae"
+      }
+    }
+  },
+  "samples": 16,
+  "schema": "lighting-references/v1",
+  "seed": 20260929,
+  "status": "preview",
+  "views": {
+    "default.along": {
+      "camera": "along",
+      "emitter_indices": [],
+      "files": {
+        "index": {
+          "file": "default.along.index.png",
+          "sha256": "6aea868deb6b97b81c78deae851ead14211ab42def957dd85967b0b0fa22cfa2"
+        },
+        "total": {
+          "file": "default.along.total.exr",
+          "sha256": "7bf3b05f677331968942671049ee49b4d17de1c2e0972921bf197330df953f85"
+        }
+      },
+      "finite": true,
+      "index_from_state": "default",
+      "judged_pixels": 163392,
+      "mean_luminance": 0.3410098034734694,
+      "object_index": {
+        "BackWall_Xn": 1,
+        "BackWall_Xp": 2,
+        "BackWall_Yn": 3,
+        "BackWall_Yp": 4,
+        "BackWall_Zp": 5,
+        "Columns": 6,
+        "ProbeSphereShape": 7,
+        "Roof_Xn": 8,
+        "Roof_Xp": 9,
+        "Roof_Yn": 10,
+        "Roof_Yp": 11,
+        "Roof_Zn": 12,
+        "Roof_Zp": 13,
+        "Yard": 14
+      },
+      "state": "default"
+    },
+    "default.yard": {
+      "camera": "yard",
+      "emitter_indices": [],
+      "files": {
+        "index": {
+          "file": "default.yard.index.png",
+          "sha256": "ef4eb6c1814c0d2b2a2206dc74d655c2cada717b810812f97c23aef85cd30749"
+        },
+        "total": {
+          "file": "default.yard.total.exr",
+          "sha256": "bb44db8575a055eea07fca03e343fd8d4e5b4084e0f857ce4b07d717dd5b93f2"
+        }
+      },
+      "finite": true,
+      "index_from_state": "default",
+      "judged_pixels": 100794,
+      "mean_luminance": 0.41739608445421544,
+      "object_index": {
+        "BackWall_Xn": 1,
+        "BackWall_Xp": 2,
+        "BackWall_Yn": 3,
+        "BackWall_Yp": 4,
+        "BackWall_Zp": 5,
+        "Columns": 6,
+        "ProbeSphereShape": 7,
+        "Roof_Xn": 8,
+        "Roof_Xp": 9,
+        "Roof_Yn": 10,
+        "Roof_Yp": 11,
+        "Roof_Zn": 12,
+        "Roof_Zp": 13,
+        "Yard": 14
+      },
+      "state": "default"
+    }
+  }
+}

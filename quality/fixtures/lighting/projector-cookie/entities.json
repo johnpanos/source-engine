@@ -1,0 +1,68 @@
+{
+  "entities": [
+    {
+      "classname": "lab_light_rect",
+      "halfu": "19.6850 0.0000 0.0000",
+      "halfv": "0.0000 -19.6850 0.0000",
+      "origin": "39.3701 118.1102 137.4016",
+      "radiance": "1.5000 1.5000 1.5000",
+      "targetname": "Fill",
+      "twosided": "0"
+    },
+    {
+      "angles": "18.0000 0.0000 0",
+      "cameraspace": "0",
+      "classname": "env_projectedtexture",
+      "enableshadows": "1",
+      "farz": "330.0000",
+      "lightcolor": "255.0000 245.5162 230.4041 637.5000",
+      "lightfov": "55.0000",
+      "lightonlytarget": "0",
+      "lightworld": "1",
+      "nearz": "4.0000",
+      "origin": "23.6220 118.1102 102.3622",
+      "shadowquality": "1",
+      "spawnflags": "1",
+      "targetname": "Projector",
+      "texturename": "lighting/cookies/window_gobo"
+    }
+  ],
+  "fixture": "projector-cookie",
+  "lights": [
+    {
+      "center_m": [
+        1.0,
+        3.0,
+        3.49
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.5,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Fill",
+      "radiance": [
+        1.5,
+        1.5,
+        1.5
+      ],
+      "size_m": [
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "schema": "lighting-entities/v1",
+  "units": "Source units"
+}

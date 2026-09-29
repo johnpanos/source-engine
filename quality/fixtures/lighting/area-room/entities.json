@@ -1,0 +1,2697 @@
+{
+  "entities": [
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "23.6220 19.6850 117.7165",
+      "radiance": "5.0000 2.7500 2.7500",
+      "targetname": "Panel00",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "23.6220 59.0551 117.7165",
+      "radiance": "5.0000 5.0000 2.7500",
+      "targetname": "Panel01",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "23.6220 98.4252 117.7165",
+      "radiance": "2.7500 5.0000 2.7500",
+      "targetname": "Panel02",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "23.6220 137.7953 117.7165",
+      "radiance": "2.7500 5.0000 5.0000",
+      "targetname": "Panel03",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "23.6220 177.1654 117.7165",
+      "radiance": "2.7500 2.7500 5.0000",
+      "targetname": "Panel04",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "23.6220 216.5354 117.7165",
+      "radiance": "5.0000 2.7500 5.0000",
+      "targetname": "Panel05",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "62.9921 19.6850 117.7165",
+      "radiance": "5.0000 4.4375 2.7500",
+      "targetname": "Panel06",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "62.9921 59.0551 117.7165",
+      "radiance": "3.3125 5.0000 2.7500",
+      "targetname": "Panel07",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "62.9921 98.4252 117.7165",
+      "radiance": "2.7500 5.0000 4.4375",
+      "targetname": "Panel08",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "62.9921 137.7953 117.7165",
+      "radiance": "2.7500 3.3125 5.0000",
+      "targetname": "Panel09",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "62.9921 177.1654 117.7165",
+      "radiance": "4.4375 2.7500 5.0000",
+      "targetname": "Panel10",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "62.9921 216.5354 117.7165",
+      "radiance": "5.0000 2.7500 3.3125",
+      "targetname": "Panel11",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "102.3622 19.6850 117.7165",
+      "radiance": "3.8750 5.0000 2.7500",
+      "targetname": "Panel12",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "102.3622 59.0551 117.7165",
+      "radiance": "2.7500 5.0000 3.8750",
+      "targetname": "Panel13",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "102.3622 98.4252 117.7165",
+      "radiance": "2.7500 3.8750 5.0000",
+      "targetname": "Panel14",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "102.3622 137.7953 117.7165",
+      "radiance": "3.8750 2.7500 5.0000",
+      "targetname": "Panel15",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "102.3622 177.1654 117.7165",
+      "radiance": "5.0000 2.7500 3.8750",
+      "targetname": "Panel16",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "102.3622 216.5354 117.7165",
+      "radiance": "5.0000 3.8750 2.7500",
+      "targetname": "Panel17",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "141.7323 19.6850 117.7165",
+      "radiance": "2.7500 5.0000 3.3125",
+      "targetname": "Panel18",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "141.7323 59.0551 117.7165",
+      "radiance": "2.7500 4.4375 5.0000",
+      "targetname": "Panel19",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "141.7323 98.4252 117.7165",
+      "radiance": "3.3125 2.7500 5.0000",
+      "targetname": "Panel20",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "141.7323 137.7953 117.7165",
+      "radiance": "5.0000 2.7500 4.4375",
+      "targetname": "Panel21",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "141.7323 177.1654 117.7165",
+      "radiance": "5.0000 3.3125 2.7500",
+      "targetname": "Panel22",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "141.7323 216.5354 117.7165",
+      "radiance": "4.4375 5.0000 2.7500",
+      "targetname": "Panel23",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "181.1024 19.6850 117.7165",
+      "radiance": "2.7500 5.0000 5.0000",
+      "targetname": "Panel24",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "181.1024 59.0551 117.7165",
+      "radiance": "2.7500 2.7500 5.0000",
+      "targetname": "Panel25",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "181.1024 98.4252 117.7165",
+      "radiance": "5.0000 2.7500 5.0000",
+      "targetname": "Panel26",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "181.1024 137.7953 117.7165",
+      "radiance": "5.0000 2.7500 2.7500",
+      "targetname": "Panel27",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "181.1024 177.1654 117.7165",
+      "radiance": "5.0000 5.0000 2.7500",
+      "targetname": "Panel28",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "181.1024 216.5354 117.7165",
+      "radiance": "2.7500 5.0000 2.7500",
+      "targetname": "Panel29",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "220.4724 19.6850 117.7165",
+      "radiance": "2.7500 3.3125 5.0000",
+      "targetname": "Panel30",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "220.4724 59.0551 117.7165",
+      "radiance": "4.4375 2.7500 5.0000",
+      "targetname": "Panel31",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "220.4724 98.4252 117.7165",
+      "radiance": "5.0000 2.7500 3.3125",
+      "targetname": "Panel32",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "220.4724 137.7953 117.7165",
+      "radiance": "5.0000 4.4375 2.7500",
+      "targetname": "Panel33",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "220.4724 177.1654 117.7165",
+      "radiance": "3.3125 5.0000 2.7500",
+      "targetname": "Panel34",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "220.4724 216.5354 117.7165",
+      "radiance": "2.7500 5.0000 4.4375",
+      "targetname": "Panel35",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "259.8425 19.6850 117.7165",
+      "radiance": "3.8750 2.7500 5.0000",
+      "targetname": "Panel36",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "259.8425 59.0551 117.7165",
+      "radiance": "5.0000 2.7500 3.8750",
+      "targetname": "Panel37",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "259.8425 98.4252 117.7165",
+      "radiance": "5.0000 3.8750 2.7500",
+      "targetname": "Panel38",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "259.8425 137.7953 117.7165",
+      "radiance": "3.8750 5.0000 2.7500",
+      "targetname": "Panel39",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "259.8425 177.1654 117.7165",
+      "radiance": "2.7500 5.0000 3.8750",
+      "targetname": "Panel40",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "259.8425 216.5354 117.7165",
+      "radiance": "2.7500 3.8750 5.0000",
+      "targetname": "Panel41",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "299.2126 19.6850 117.7165",
+      "radiance": "5.0000 2.7500 4.4375",
+      "targetname": "Panel42",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "299.2126 59.0551 117.7165",
+      "radiance": "5.0000 3.3125 2.7500",
+      "targetname": "Panel43",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "299.2126 98.4252 117.7165",
+      "radiance": "4.4375 5.0000 2.7500",
+      "targetname": "Panel44",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "299.2126 137.7953 117.7165",
+      "radiance": "2.7500 5.0000 3.3125",
+      "targetname": "Panel45",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "299.2126 177.1654 117.7165",
+      "radiance": "2.7500 4.4375 5.0000",
+      "targetname": "Panel46",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "7.8740 0.0000 0.0000",
+      "halfv": "0.0000 -7.8740 0.0000",
+      "origin": "299.2126 216.5354 117.7165",
+      "radiance": "3.3125 2.7500 5.0000",
+      "targetname": "Panel47",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "11.8110 0.0000 0.0000",
+      "origin": "19.6850 0.3937 13.7795",
+      "radiance": "10.0000 7.0000 7.0000",
+      "targetname": "StripS0",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "-11.8110 0.0000 0.0000",
+      "origin": "19.6850 235.8268 13.7795",
+      "radiance": "10.0000 7.0000 7.0000",
+      "targetname": "StripN0",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "11.8110 0.0000 0.0000",
+      "origin": "59.0551 0.3937 13.7795",
+      "radiance": "10.0000 8.5000 7.0000",
+      "targetname": "StripS1",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "-11.8110 0.0000 0.0000",
+      "origin": "59.0551 235.8268 13.7795",
+      "radiance": "10.0000 8.5000 7.0000",
+      "targetname": "StripN1",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "11.8110 0.0000 0.0000",
+      "origin": "98.4252 0.3937 13.7795",
+      "radiance": "10.0000 10.0000 7.0000",
+      "targetname": "StripS2",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "-11.8110 0.0000 0.0000",
+      "origin": "98.4252 235.8268 13.7795",
+      "radiance": "10.0000 10.0000 7.0000",
+      "targetname": "StripN2",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "11.8110 0.0000 0.0000",
+      "origin": "137.7953 0.3937 13.7795",
+      "radiance": "8.5000 10.0000 7.0000",
+      "targetname": "StripS3",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "-11.8110 0.0000 0.0000",
+      "origin": "137.7953 235.8268 13.7795",
+      "radiance": "8.5000 10.0000 7.0000",
+      "targetname": "StripN3",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "11.8110 0.0000 0.0000",
+      "origin": "177.1654 0.3937 13.7795",
+      "radiance": "7.0000 10.0000 7.0000",
+      "targetname": "StripS4",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "-11.8110 0.0000 0.0000",
+      "origin": "177.1654 235.8268 13.7795",
+      "radiance": "7.0000 10.0000 7.0000",
+      "targetname": "StripN4",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "11.8110 0.0000 0.0000",
+      "origin": "216.5354 0.3937 13.7795",
+      "radiance": "7.0000 10.0000 8.5000",
+      "targetname": "StripS5",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "-11.8110 0.0000 0.0000",
+      "origin": "216.5354 235.8268 13.7795",
+      "radiance": "7.0000 10.0000 8.5000",
+      "targetname": "StripN5",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "11.8110 0.0000 0.0000",
+      "origin": "255.9055 0.3937 13.7795",
+      "radiance": "7.0000 10.0000 10.0000",
+      "targetname": "StripS6",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "-11.8110 0.0000 0.0000",
+      "origin": "255.9055 235.8268 13.7795",
+      "radiance": "7.0000 10.0000 10.0000",
+      "targetname": "StripN6",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "11.8110 0.0000 0.0000",
+      "origin": "295.2756 0.3937 13.7795",
+      "radiance": "7.0000 8.5000 10.0000",
+      "targetname": "StripS7",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "0.0000 0.0000 1.9685",
+      "halfv": "-11.8110 0.0000 0.0000",
+      "origin": "295.2756 235.8268 13.7795",
+      "radiance": "7.0000 8.5000 10.0000",
+      "targetname": "StripN7",
+      "twosided": "0"
+    }
+  ],
+  "fixture": "area-room",
+  "lights": [
+    {
+      "center_m": [
+        0.6,
+        0.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel00",
+      "radiance": [
+        5.0,
+        2.75,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        0.6,
+        1.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel01",
+      "radiance": [
+        5.0,
+        5.0,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        0.6,
+        2.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel02",
+      "radiance": [
+        2.75,
+        5.0,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        0.6,
+        3.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel03",
+      "radiance": [
+        2.75,
+        5.0,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        0.6,
+        4.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel04",
+      "radiance": [
+        2.75,
+        2.75,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        0.6,
+        5.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel05",
+      "radiance": [
+        5.0,
+        2.75,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        1.6,
+        0.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel06",
+      "radiance": [
+        5.0,
+        4.4375,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        1.6,
+        1.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel07",
+      "radiance": [
+        3.3125,
+        5.0,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        1.6,
+        2.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel08",
+      "radiance": [
+        2.75,
+        5.0,
+        4.4375
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        1.6,
+        3.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel09",
+      "radiance": [
+        2.75,
+        3.3125,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        1.6,
+        4.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel10",
+      "radiance": [
+        4.4375,
+        2.75,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        1.6,
+        5.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel11",
+      "radiance": [
+        5.0,
+        2.75,
+        3.3125
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        2.6,
+        0.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel12",
+      "radiance": [
+        3.875,
+        5.0,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        2.6,
+        1.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel13",
+      "radiance": [
+        2.75,
+        5.0,
+        3.875
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        2.6,
+        2.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel14",
+      "radiance": [
+        2.75,
+        3.875,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        2.6,
+        3.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel15",
+      "radiance": [
+        3.875,
+        2.75,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        2.6,
+        4.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel16",
+      "radiance": [
+        5.0,
+        2.75,
+        3.875
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        2.6,
+        5.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel17",
+      "radiance": [
+        5.0,
+        3.875,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        3.6,
+        0.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel18",
+      "radiance": [
+        2.75,
+        5.0,
+        3.3125
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        3.6,
+        1.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel19",
+      "radiance": [
+        2.75,
+        4.4375,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        3.6,
+        2.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel20",
+      "radiance": [
+        3.3125,
+        2.75,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        3.6,
+        3.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel21",
+      "radiance": [
+        5.0,
+        2.75,
+        4.4375
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        3.6,
+        4.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel22",
+      "radiance": [
+        5.0,
+        3.3125,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        3.6,
+        5.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel23",
+      "radiance": [
+        4.4375,
+        5.0,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        4.6,
+        0.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel24",
+      "radiance": [
+        2.75,
+        5.0,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        4.6,
+        1.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel25",
+      "radiance": [
+        2.75,
+        2.75,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        4.6,
+        2.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel26",
+      "radiance": [
+        5.0,
+        2.75,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        4.6,
+        3.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel27",
+      "radiance": [
+        5.0,
+        2.75,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        4.6,
+        4.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel28",
+      "radiance": [
+        5.0,
+        5.0,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        4.6,
+        5.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel29",
+      "radiance": [
+        2.75,
+        5.0,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        5.6,
+        0.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel30",
+      "radiance": [
+        2.75,
+        3.3125,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        5.6,
+        1.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel31",
+      "radiance": [
+        4.4375,
+        2.75,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        5.6,
+        2.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel32",
+      "radiance": [
+        5.0,
+        2.75,
+        3.3125
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        5.6,
+        3.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel33",
+      "radiance": [
+        5.0,
+        4.4375,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        5.6,
+        4.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel34",
+      "radiance": [
+        3.3125,
+        5.0,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        5.6,
+        5.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel35",
+      "radiance": [
+        2.75,
+        5.0,
+        4.4375
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        6.6,
+        0.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel36",
+      "radiance": [
+        3.875,
+        2.75,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        6.6,
+        1.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel37",
+      "radiance": [
+        5.0,
+        2.75,
+        3.875
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        6.6,
+        2.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel38",
+      "radiance": [
+        5.0,
+        3.875,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        6.6,
+        3.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel39",
+      "radiance": [
+        3.875,
+        5.0,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        6.6,
+        4.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel40",
+      "radiance": [
+        2.75,
+        5.0,
+        3.875
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        6.6,
+        5.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel41",
+      "radiance": [
+        2.75,
+        3.875,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        7.6,
+        0.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel42",
+      "radiance": [
+        5.0,
+        2.75,
+        4.4375
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        7.6,
+        1.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel43",
+      "radiance": [
+        5.0,
+        3.3125,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        7.6,
+        2.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel44",
+      "radiance": [
+        4.4375,
+        5.0,
+        2.75
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        7.6,
+        3.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel45",
+      "radiance": [
+        2.75,
+        5.0,
+        3.3125
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        7.6,
+        4.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel46",
+      "radiance": [
+        2.75,
+        4.4375,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        7.6,
+        5.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.2,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.2,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Panel47",
+      "radiance": [
+        3.3125,
+        2.75,
+        5.0
+      ],
+      "size_m": [
+        0.4,
+        0.4
+      ]
+    },
+    {
+      "center_m": [
+        0.5,
+        0.01,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripS0",
+      "radiance": [
+        10.0,
+        7.0,
+        7.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        0.5,
+        5.99,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripN0",
+      "radiance": [
+        10.0,
+        7.0,
+        7.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        1.5,
+        0.01,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripS1",
+      "radiance": [
+        10.0,
+        8.5,
+        7.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        1.5,
+        5.99,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripN1",
+      "radiance": [
+        10.0,
+        8.5,
+        7.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        2.5,
+        0.01,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripS2",
+      "radiance": [
+        10.0,
+        10.0,
+        7.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        2.5,
+        5.99,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripN2",
+      "radiance": [
+        10.0,
+        10.0,
+        7.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        3.5,
+        0.01,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripS3",
+      "radiance": [
+        8.5,
+        10.0,
+        7.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        3.5,
+        5.99,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripN3",
+      "radiance": [
+        8.5,
+        10.0,
+        7.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        0.01,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripS4",
+      "radiance": [
+        7.0,
+        10.0,
+        7.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        5.99,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripN4",
+      "radiance": [
+        7.0,
+        10.0,
+        7.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        5.5,
+        0.01,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripS5",
+      "radiance": [
+        7.0,
+        10.0,
+        8.5
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        5.5,
+        5.99,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripN5",
+      "radiance": [
+        7.0,
+        10.0,
+        8.5
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        6.5,
+        0.01,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripS6",
+      "radiance": [
+        7.0,
+        10.0,
+        10.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        6.5,
+        5.99,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripN6",
+      "radiance": [
+        7.0,
+        10.0,
+        10.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        7.5,
+        0.01,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripS7",
+      "radiance": [
+        7.0,
+        8.5,
+        10.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    },
+    {
+      "center_m": [
+        7.5,
+        5.99,
+        0.35
+      ],
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "half_u_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "half_v_m": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "StripN7",
+      "radiance": [
+        7.0,
+        8.5,
+        10.0
+      ],
+      "size_m": [
+        0.6,
+        0.1
+      ]
+    }
+  ],
+  "schema": "lighting-entities/v1",
+  "units": "Source units"
+}

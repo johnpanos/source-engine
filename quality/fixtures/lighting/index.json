@@ -1,0 +1,15 @@
+{
+  "fixtures": [
+    "area-room",
+    "cornell-floors",
+    "foggy-hall",
+    "material-sweep",
+    "mirror-corridor",
+    "portal-chamber",
+    "portal2-chamber",
+    "projector-cookie",
+    "sun-colonnade"
+  ],
+  "generator": "tools/quality/lighting_fixtures.py",
+  "schema": "gi-fixture-index/v1"
+}

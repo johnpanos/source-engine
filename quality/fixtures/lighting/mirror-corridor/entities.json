@@ -1,0 +1,261 @@
+{
+  "entities": [
+    {
+      "classname": "lab_light_rect",
+      "halfu": "31.4961 0.0000 0.0000",
+      "halfv": "0.0000 -5.9055 0.0000",
+      "origin": "59.0551 59.0551 125.5906",
+      "radiance": "9.0000 9.0000 8.5000",
+      "targetname": "Strip0",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "31.4961 0.0000 0.0000",
+      "halfv": "0.0000 -5.9055 0.0000",
+      "origin": "177.1654 59.0551 125.5906",
+      "radiance": "9.0000 9.0000 8.5000",
+      "targetname": "Strip1",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "31.4961 0.0000 0.0000",
+      "halfv": "0.0000 -5.9055 0.0000",
+      "origin": "295.2756 59.0551 125.5906",
+      "radiance": "9.0000 9.0000 8.5000",
+      "targetname": "Strip2",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "31.4961 0.0000 0.0000",
+      "halfv": "0.0000 -5.9055 0.0000",
+      "origin": "413.3858 59.0551 125.5906",
+      "radiance": "9.0000 9.0000 8.5000",
+      "targetname": "Strip3",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "31.4961 0.0000 0.0000",
+      "halfv": "0.0000 -5.9055 0.0000",
+      "origin": "531.4961 59.0551 125.5906",
+      "radiance": "9.0000 9.0000 8.5000",
+      "targetname": "Strip4",
+      "twosided": "0"
+    },
+    {
+      "classname": "lab_light_rect",
+      "halfu": "31.4961 0.0000 0.0000",
+      "halfv": "0.0000 -5.9055 0.0000",
+      "origin": "649.6063 59.0551 125.5906",
+      "radiance": "9.0000 9.0000 8.5000",
+      "targetname": "Strip5",
+      "twosided": "0"
+    }
+  ],
+  "fixture": "mirror-corridor",
+  "lights": [
+    {
+      "center_m": [
+        1.5,
+        1.5,
+        3.19
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.8,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.15,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Strip0",
+      "radiance": [
+        9.0,
+        9.0,
+        8.5
+      ],
+      "size_m": [
+        0.3,
+        1.6
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        1.5,
+        3.19
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.8,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.15,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Strip1",
+      "radiance": [
+        9.0,
+        9.0,
+        8.5
+      ],
+      "size_m": [
+        0.3,
+        1.6
+      ]
+    },
+    {
+      "center_m": [
+        7.5,
+        1.5,
+        3.19
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.8,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.15,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Strip2",
+      "radiance": [
+        9.0,
+        9.0,
+        8.5
+      ],
+      "size_m": [
+        0.3,
+        1.6
+      ]
+    },
+    {
+      "center_m": [
+        10.5,
+        1.5,
+        3.19
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.8,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.15,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Strip3",
+      "radiance": [
+        9.0,
+        9.0,
+        8.5
+      ],
+      "size_m": [
+        0.3,
+        1.6
+      ]
+    },
+    {
+      "center_m": [
+        13.5,
+        1.5,
+        3.19
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.8,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.15,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Strip4",
+      "radiance": [
+        9.0,
+        9.0,
+        8.5
+      ],
+      "size_m": [
+        0.3,
+        1.6
+      ]
+    },
+    {
+      "center_m": [
+        16.5,
+        1.5,
+        3.19
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.8,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.15,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Strip5",
+      "radiance": [
+        9.0,
+        9.0,
+        8.5
+      ],
+      "size_m": [
+        0.3,
+        1.6
+      ]
+    }
+  ],
+  "schema": "lighting-entities/v1",
+  "units": "Source units"
+}

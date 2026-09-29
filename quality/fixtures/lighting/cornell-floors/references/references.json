@@ -1,0 +1,126 @@
+{
+  "analytic": [],
+  "fixture": "cornell-floors",
+  "fixture_reference_digest": "f58aa7b6e2dff6ebb7cc2b99eef330fafc51bc7300c57e2a646a94a445a382c2",
+  "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
+  "renders": {
+    "default": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "5abf9b5c343d3bc020dc99922b505c779659cbb9900ff43f65e2fe9c7649743b",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "extras_applied": {
+        "medium": null,
+        "projectors": []
+      },
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "normal_maps": false,
+      "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 16,
+      "seed": 20260929,
+      "stage_layers": {
+        "quality/fixtures/lighting/cornell-floors/cornell-floors.usda": "e2468feaedc3f3fb4de7240610724447da5113e57243a143d785531ca12007bc"
+      }
+    }
+  },
+  "samples": 16,
+  "schema": "lighting-references/v1",
+  "seed": 20260929,
+  "status": "preview",
+  "views": {
+    "default.floor": {
+      "camera": "floor",
+      "emitter_indices": [
+        8
+      ],
+      "files": {
+        "index": {
+          "file": "default.floor.index.png",
+          "sha256": "24c89ef8ef349c8df0a3faafd1b1a91456630e342ac481a148d0d497b696d4e6"
+        },
+        "total": {
+          "file": "default.floor.total.exr",
+          "sha256": "7d0ef95fc9df95ede49a1dca08b96f9bd9b2ce98bf24fb9886e1eea615d3f91c"
+        }
+      },
+      "finite": true,
+      "index_from_state": "default",
+      "judged_pixels": 196608,
+      "mean_luminance": 0.1104836764510561,
+      "object_index": {
+        "C_Xn": 1,
+        "C_Xp": 2,
+        "C_Yn": 3,
+        "C_Yp": 4,
+        "C_Zp": 5,
+        "FloorPolishedHalf": 6,
+        "FloorRoughHalf": 7,
+        "LightQuad00": 8,
+        "ProbeSphereShape": 9,
+        "Short_Xn": 10,
+        "Short_Xp": 11,
+        "Short_Yn": 12,
+        "Short_Yp": 13,
+        "Short_Zp": 14,
+        "Tall_Xn": 15,
+        "Tall_Xp": 16,
+        "Tall_Yn": 17,
+        "Tall_Yp": 18,
+        "Tall_Zp": 19
+      },
+      "state": "default"
+    },
+    "default.front": {
+      "camera": "front",
+      "emitter_indices": [
+        8
+      ],
+      "files": {
+        "index": {
+          "file": "default.front.index.png",
+          "sha256": "4ccd05536561bcc1e6ceb71c66f5503f97960b613a30806e484e6ff0c938ac01"
+        },
+        "total": {
+          "file": "default.front.total.exr",
+          "sha256": "d3eea1768656dcc5582e97aba7cffcafc0728c708ab948d614d53d1078e98ced"
+        }
+      },
+      "finite": true,
+      "index_from_state": "default",
+      "judged_pixels": 196608,
+      "mean_luminance": 0.17505952372519298,
+      "object_index": {
+        "C_Xn": 1,
+        "C_Xp": 2,
+        "C_Yn": 3,
+        "C_Yp": 4,
+        "C_Zp": 5,
+        "FloorPolishedHalf": 6,
+        "FloorRoughHalf": 7,
+        "LightQuad00": 8,
+        "ProbeSphereShape": 9,
+        "Short_Xn": 10,
+        "Short_Xp": 11,
+        "Short_Yn": 12,
+        "Short_Yp": 13,
+        "Short_Zp": 14,
+        "Tall_Xn": 15,
+        "Tall_Xp": 16,
+        "Tall_Yn": 17,
+        "Tall_Yp": 18,
+        "Tall_Zp": 19
+      },
+      "state": "default"
+    }
+  }
+}

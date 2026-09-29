@@ -1,0 +1,236 @@
+{
+  "analytic": [
+    {
+      "check": "projector direct light = render.projected-light.v1 IrradianceAt",
+      "median_ratio": 0.9999774868776949,
+      "ok": true,
+      "pixels": 20168,
+      "view": "projector.room",
+      "within_10_percent": 0.9574573581911939
+    },
+    {
+      "check": "projector direct light = render.projected-light.v1 IrradianceAt",
+      "median_ratio": 0.9999909033249736,
+      "ok": true,
+      "pixels": 54390,
+      "view": "projector.wall",
+      "within_10_percent": 0.9853833425261996
+    }
+  ],
+  "fixture": "projector-cookie",
+  "fixture_reference_digest": "7adccaa1286053948128bcd889bb6d97aefe0c627137ac3ccde983cfe663121b",
+  "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
+  "renders": {
+    "default": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "e6da9b063c1beb3c41feb1cfb3f55e6b4e12c5425f1910bed17bad71362a142e",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "extras_applied": {
+        "medium": null,
+        "projectors": [
+          "Projector00"
+        ]
+      },
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "normal_maps": false,
+      "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 16,
+      "seed": 20260929,
+      "stage_layers": {
+        "quality/fixtures/lighting/projector-cookie/projector-cookie.usda": "d3a3d30495ea60d3592779cc3beab32ae39d99c2dcccf04b774b4e86e02dd473"
+      }
+    },
+    "projector": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "5b05e971bfca694813597e80dcf65f85f68d61085e2757b4a6e81fc4ce04c28f",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "extras_applied": {
+        "medium": null,
+        "projectors": [
+          "Projector00"
+        ]
+      },
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "normal_maps": false,
+      "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 16,
+      "seed": 20260929,
+      "stage_layers": {
+        "quality/fixtures/lighting/projector-cookie/projector-cookie.usda": "d3a3d30495ea60d3592779cc3beab32ae39d99c2dcccf04b774b4e86e02dd473",
+        "quality/fixtures/lighting/projector-cookie/states/projector.usda": "0782072e03ea99242952d9dc3b7780f4d800d0bfcc8942f67dca65d9fca6b67d"
+      }
+    }
+  },
+  "samples": 16,
+  "schema": "lighting-references/v1",
+  "seed": 20260929,
+  "status": "preview",
+  "views": {
+    "default.room": {
+      "camera": "room",
+      "emitter_indices": [
+        4
+      ],
+      "files": {
+        "index": {
+          "file": "default.room.index.png",
+          "sha256": "380c54bf1fe5e6c62212ca25e61dd54003e48507b3776e9d1aeb1c7463712951"
+        },
+        "total": {
+          "file": "default.room.total.exr",
+          "sha256": "aba2645e8341c287ee5921ad85347c878e5a0c3b28eaaca849f6142b83c7867d"
+        }
+      },
+      "finite": true,
+      "index_from_state": "default",
+      "judged_pixels": 196608,
+      "mean_luminance": 0.05416142865489182,
+      "object_index": {
+        "BackWall": 1,
+        "Floor": 2,
+        "GlossSphere": 3,
+        "LightQuad00": 4,
+        "P_Xn": 5,
+        "P_Yn": 6,
+        "P_Yp": 7,
+        "P_Zp": 8,
+        "Pillar_Xn": 9,
+        "Pillar_Xp": 10,
+        "Pillar_Yn": 11,
+        "Pillar_Yp": 12,
+        "Pillar_Zp": 13
+      },
+      "state": "default"
+    },
+    "default.wall": {
+      "camera": "wall",
+      "emitter_indices": [
+        4
+      ],
+      "files": {
+        "index": {
+          "file": "default.wall.index.png",
+          "sha256": "07c4f01da2e88f098438561372d04c0552ca5c11f5c77f06a6235fc894c88cc0"
+        },
+        "total": {
+          "file": "default.wall.total.exr",
+          "sha256": "fdad40468bb82c2ac2fc694c7af024a94eca0f23349e697967777a5e09ea5802"
+        }
+      },
+      "finite": true,
+      "index_from_state": "default",
+      "judged_pixels": 196608,
+      "mean_luminance": 0.18276086895112675,
+      "object_index": {
+        "BackWall": 1,
+        "Floor": 2,
+        "GlossSphere": 3,
+        "LightQuad00": 4,
+        "P_Xn": 5,
+        "P_Yn": 6,
+        "P_Yp": 7,
+        "P_Zp": 8,
+        "Pillar_Xn": 9,
+        "Pillar_Xp": 10,
+        "Pillar_Yn": 11,
+        "Pillar_Yp": 12,
+        "Pillar_Zp": 13
+      },
+      "state": "default"
+    },
+    "projector.room": {
+      "camera": "room",
+      "emitter_indices": [
+        4
+      ],
+      "files": {
+        "index": {
+          "file": "projector.room.index.png",
+          "sha256": "380c54bf1fe5e6c62212ca25e61dd54003e48507b3776e9d1aeb1c7463712951"
+        },
+        "total": {
+          "file": "projector.room.total.exr",
+          "sha256": "9c43d1b74b7cf906fe52bba6fa671761829588cbd054af910300fc122b99d3f5"
+        }
+      },
+      "finite": true,
+      "index_from_state": "projector",
+      "judged_pixels": 196608,
+      "mean_luminance": 0.04838136739967617,
+      "object_index": {
+        "BackWall": 1,
+        "Floor": 2,
+        "GlossSphere": 3,
+        "LightQuad00": 4,
+        "P_Xn": 5,
+        "P_Yn": 6,
+        "P_Yp": 7,
+        "P_Zp": 8,
+        "Pillar_Xn": 9,
+        "Pillar_Xp": 10,
+        "Pillar_Yn": 11,
+        "Pillar_Yp": 12,
+        "Pillar_Zp": 13
+      },
+      "state": "projector"
+    },
+    "projector.wall": {
+      "camera": "wall",
+      "emitter_indices": [
+        4
+      ],
+      "files": {
+        "index": {
+          "file": "projector.wall.index.png",
+          "sha256": "07c4f01da2e88f098438561372d04c0552ca5c11f5c77f06a6235fc894c88cc0"
+        },
+        "total": {
+          "file": "projector.wall.total.exr",
+          "sha256": "93efa36369df3515b15bcc7575d4d4f0de2e0453d753043e7cab0066089ddc6e"
+        }
+      },
+      "finite": true,
+      "index_from_state": "projector",
+      "judged_pixels": 196608,
+      "mean_luminance": 0.1777269192955834,
+      "object_index": {
+        "BackWall": 1,
+        "Floor": 2,
+        "GlossSphere": 3,
+        "LightQuad00": 4,
+        "P_Xn": 5,
+        "P_Yn": 6,
+        "P_Yp": 7,
+        "P_Zp": 8,
+        "Pillar_Xn": 9,
+        "Pillar_Xp": 10,
+        "Pillar_Yn": 11,
+        "Pillar_Yp": 12,
+        "Pillar_Zp": 13
+      },
+      "state": "projector"
+    }
+  }
+}

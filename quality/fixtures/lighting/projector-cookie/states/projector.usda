@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryProjectorCookie"
+    metersPerUnit = 1
+    subLayers = [
+        @../projector-cookie.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryProjectorCookie"
+{
+    over "Lights"
+    {
+        over "Fill"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

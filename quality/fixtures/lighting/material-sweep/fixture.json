@@ -1,0 +1,269 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "front": {
+      "eye": [
+        5.0,
+        0.35,
+        1.5
+      ],
+      "forward": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "grazing": {
+      "eye": [
+        0.5,
+        2.2,
+        1.5
+      ],
+      "forward": [
+        0.9623737903724554,
+        0.2717290702228109,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "lighting",
+  "film": {
+    "height": 384,
+    "width": 512
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": false,
+  "lighting": {
+    "entities": "entities.json",
+    "lights": {
+      "point": 0,
+      "rect": 1,
+      "sky": 0,
+      "spot": 1,
+      "sun": 0
+    },
+    "map": {
+      "baked_state": "default",
+      "bsp": "run/maps/lt_material_sweep/maps/lt_material_sweep.bsp",
+      "layout": "planar",
+      "name": "lt_material_sweep",
+      "overrides": {
+        "lightmap": {
+          "samples": 64
+        },
+        "probe_volume": {
+          "samples": 256
+        },
+        "radiosity": null,
+        "reflection_probe": {
+          "face_size": 128,
+          "light_paths": "gi-reference",
+          "samples": 16,
+          "width": 512
+        },
+        "sdf_volume": null
+      },
+      "solid_meshes": []
+    },
+    "media": {},
+    "projectors": [],
+    "terms": [
+      "brdf",
+      "image-based-specular",
+      "filtered-roughness",
+      "area-lights",
+      "runtime-lights",
+      "indirect-diffuse-static",
+      "specular-occlusion"
+    ]
+  },
+  "map_manifest": null,
+  "name": "material-sweep",
+  "oracles": [],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Three rows of eight smooth spheres at roughness 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8 and 1.0: gold metal, a clear coat (coat roughness swept) over a red base, and a white dielectric, in a studio with colored walls under a key rectangle and a spot",
+  "regions": {
+    "front": {
+      "CoatSphere0": [
+        "CoatSphere0"
+      ],
+      "CoatSphere1": [
+        "CoatSphere1"
+      ],
+      "CoatSphere2": [
+        "CoatSphere2"
+      ],
+      "CoatSphere3": [
+        "CoatSphere3"
+      ],
+      "CoatSphere4": [
+        "CoatSphere4"
+      ],
+      "CoatSphere5": [
+        "CoatSphere5"
+      ],
+      "CoatSphere6": [
+        "CoatSphere6"
+      ],
+      "CoatSphere7": [
+        "CoatSphere7"
+      ],
+      "DielectricSphere0": [
+        "DielectricSphere0"
+      ],
+      "DielectricSphere1": [
+        "DielectricSphere1"
+      ],
+      "DielectricSphere2": [
+        "DielectricSphere2"
+      ],
+      "DielectricSphere3": [
+        "DielectricSphere3"
+      ],
+      "DielectricSphere4": [
+        "DielectricSphere4"
+      ],
+      "DielectricSphere5": [
+        "DielectricSphere5"
+      ],
+      "DielectricSphere6": [
+        "DielectricSphere6"
+      ],
+      "DielectricSphere7": [
+        "DielectricSphere7"
+      ],
+      "GoldSphere0": [
+        "GoldSphere0"
+      ],
+      "GoldSphere1": [
+        "GoldSphere1"
+      ],
+      "GoldSphere2": [
+        "GoldSphere2"
+      ],
+      "GoldSphere3": [
+        "GoldSphere3"
+      ],
+      "GoldSphere4": [
+        "GoldSphere4"
+      ],
+      "GoldSphere5": [
+        "GoldSphere5"
+      ],
+      "GoldSphere6": [
+        "GoldSphere6"
+      ],
+      "GoldSphere7": [
+        "GoldSphere7"
+      ],
+      "S_Yp": [
+        "S_Yp"
+      ],
+      "S_Zn": [
+        "S_Zn"
+      ]
+    },
+    "grazing": {
+      "CoatSphere0": [
+        "CoatSphere0"
+      ],
+      "CoatSphere1": [
+        "CoatSphere1"
+      ],
+      "CoatSphere2": [
+        "CoatSphere2"
+      ],
+      "CoatSphere3": [
+        "CoatSphere3"
+      ],
+      "CoatSphere4": [
+        "CoatSphere4"
+      ],
+      "CoatSphere5": [
+        "CoatSphere5"
+      ],
+      "CoatSphere6": [
+        "CoatSphere6"
+      ],
+      "CoatSphere7": [
+        "CoatSphere7"
+      ],
+      "DielectricSphere0": [
+        "DielectricSphere0"
+      ],
+      "DielectricSphere1": [
+        "DielectricSphere1"
+      ],
+      "DielectricSphere2": [
+        "DielectricSphere2"
+      ],
+      "DielectricSphere3": [
+        "DielectricSphere3"
+      ],
+      "DielectricSphere4": [
+        "DielectricSphere4"
+      ],
+      "DielectricSphere5": [
+        "DielectricSphere5"
+      ],
+      "DielectricSphere6": [
+        "DielectricSphere6"
+      ],
+      "DielectricSphere7": [
+        "DielectricSphere7"
+      ],
+      "GoldSphere0": [
+        "GoldSphere0"
+      ],
+      "GoldSphere1": [
+        "GoldSphere1"
+      ],
+      "GoldSphere2": [
+        "GoldSphere2"
+      ],
+      "GoldSphere3": [
+        "GoldSphere3"
+      ],
+      "GoldSphere4": [
+        "GoldSphere4"
+      ],
+      "GoldSphere5": [
+        "GoldSphere5"
+      ],
+      "GoldSphere6": [
+        "GoldSphere6"
+      ],
+      "GoldSphere7": [
+        "GoldSphere7"
+      ],
+      "S_Xp": [
+        "S_Xp"
+      ],
+      "S_Yp": [
+        "S_Yp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "material-sweep.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "key rectangle and rim spot on"
+    }
+  }
+}

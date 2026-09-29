@@ -1,0 +1,164 @@
+{
+  "analytic": [],
+  "fixture": "mirror-corridor",
+  "fixture_reference_digest": "35d7bdeb4d7d608668ef35525fc3f130baba367aef2cab08682d6c5b3b6cadaf",
+  "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white Lambertian); total = Combined, linear scene radiance",
+  "renders": {
+    "default": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "52ec9a3e85a7b32c214ec4ed59b0dbb7565dbd33124ba6c066812f72d100c7df",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "extras_applied": {
+        "medium": null,
+        "projectors": []
+      },
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "lighting_renderer_sha256": "705e0f077037989b20bc53e65ba150958ea310ef62ae5306be08efb0e8160c73",
+      "normal_maps": false,
+      "ocio_configuration_sha256": "7812ed39935cb1f7ab5392293c914c0c0f595720af22fc1b289bf19cc0af7ef6",
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 16,
+      "seed": 20260929,
+      "stage_layers": {
+        "quality/fixtures/lighting/mirror-corridor/mirror-corridor.usda": "89189eff8df6b179b5ca4e04bc2de87ed459493bbe1f42ed0a44c26bb6c02294"
+      }
+    }
+  },
+  "samples": 16,
+  "schema": "lighting-references/v1",
+  "seed": 20260929,
+  "status": "preview",
+  "views": {
+    "default.down": {
+      "camera": "down",
+      "emitter_indices": [
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "files": {
+        "index": {
+          "file": "default.down.index.png",
+          "sha256": "1c87ae85a6b18ba4d46979a5225b41b2f69902aa818f9f2f3e0bea7d6d84fdbb"
+        },
+        "total": {
+          "file": "default.down.total.exr",
+          "sha256": "d1cec575f60985b521a3884083c47559660bfa1a783412c1e294c8a3b0afea05"
+        }
+      },
+      "finite": true,
+      "index_from_state": "default",
+      "judged_pixels": 195512,
+      "mean_luminance": 0.15537814231625358,
+      "object_index": {
+        "Ball": 1,
+        "Block_Xn": 2,
+        "Block_Xp": 3,
+        "Block_Yn": 4,
+        "Block_Yp": 5,
+        "Block_Zp": 6,
+        "Floor0": 7,
+        "Floor1": 8,
+        "Floor2": 9,
+        "Floor3": 10,
+        "K_Xn": 11,
+        "K_Xp": 12,
+        "K_Yn": 13,
+        "K_Yp": 14,
+        "K_Zp": 15,
+        "LightQuad00": 16,
+        "LightQuad01": 17,
+        "LightQuad02": 18,
+        "LightQuad03": 19,
+        "LightQuad04": 20,
+        "LightQuad05": 21,
+        "PanelN0": 22,
+        "PanelN1": 23,
+        "PanelN2": 24,
+        "PanelN3": 25,
+        "PanelN4": 26,
+        "PanelN5": 27,
+        "PanelS0": 28,
+        "PanelS1": 29,
+        "PanelS2": 30,
+        "PanelS3": 31,
+        "PanelS4": 32,
+        "PanelS5": 33
+      },
+      "state": "default"
+    },
+    "default.low": {
+      "camera": "low",
+      "emitter_indices": [
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "files": {
+        "index": {
+          "file": "default.low.index.png",
+          "sha256": "9809a539fab146b7ebee0f2ff7779286a559e3d1c673c20fffeda496ba4c9434"
+        },
+        "total": {
+          "file": "default.low.total.exr",
+          "sha256": "c1aac28ce298139987e3de06defeb0cedba3edbdee787a2829173541db4dab81"
+        }
+      },
+      "finite": true,
+      "index_from_state": "default",
+      "judged_pixels": 195830,
+      "mean_luminance": 0.17975695580412085,
+      "object_index": {
+        "Ball": 1,
+        "Block_Xn": 2,
+        "Block_Xp": 3,
+        "Block_Yn": 4,
+        "Block_Yp": 5,
+        "Block_Zp": 6,
+        "Floor0": 7,
+        "Floor1": 8,
+        "Floor2": 9,
+        "Floor3": 10,
+        "K_Xn": 11,
+        "K_Xp": 12,
+        "K_Yn": 13,
+        "K_Yp": 14,
+        "K_Zp": 15,
+        "LightQuad00": 16,
+        "LightQuad01": 17,
+        "LightQuad02": 18,
+        "LightQuad03": 19,
+        "LightQuad04": 20,
+        "LightQuad05": 21,
+        "PanelN0": 22,
+        "PanelN1": 23,
+        "PanelN2": 24,
+        "PanelN3": 25,
+        "PanelN4": 26,
+        "PanelN5": 27,
+        "PanelS0": 28,
+        "PanelS1": 29,
+        "PanelS2": 30,
+        "PanelS3": 31,
+        "PanelS4": 32,
+        "PanelS5": 33
+      },
+      "state": "default"
+    }
+  }
+}

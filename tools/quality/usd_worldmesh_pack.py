@@ -30,7 +30,7 @@ from worldmesh_seam_weld import weld_material
 
 SOURCE_UNITS_PER_METER = 39.37007874015748
 IMPORTED_FACE_BASE = 0x80000000
-EMITTER_NAME = r"Light(?:Quad|Disk)\d{2}"
+EMITTER_NAME = r"Light(?:Quad|Disk)\d{2,}"
 
 
 def normal_bucket(normal):

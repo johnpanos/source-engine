@@ -1,0 +1,90 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "chamber": {
+      "eye": [
+        -16.256,
+        -3.81,
+        3.81
+      ],
+      "forward": [
+        0.7290787057830651,
+        0.6427693423144414,
+        -0.23514211310259
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "spawn": {
+      "eye": [
+        -28.0416,
+        0.0,
+        1.6256
+      ],
+      "forward": [
+        0.9992629164106211,
+        0.0,
+        -0.03838780908751993
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "external_stage": {
+    "path": "quality-results/portal2-maps/sp_gi_chamber_01-preview/relight/legacy-scene/scene.usda",
+    "rebuild": "python3 tools/quality/portal2_gi_chamber.py (profile portal2-chamber-preview)",
+    "units": "Source units (metersPerUnit 0.0254)"
+  },
+  "family": "lighting",
+  "film": {
+    "height": 384,
+    "width": 512
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": false,
+  "lighting": {
+    "entities": null,
+    "entity_lump": "the map's own (stock Source lights)",
+    "map": {
+      "baked_state": "default",
+      "bsp": "run/maps/sp_gi_chamber_01/maps/sp_gi_chamber_01.bsp",
+      "name": "sp_gi_chamber_01",
+      "overrides": null,
+      "reused": true
+    },
+    "media": {},
+    "projectors": [],
+    "terms": [
+      "brdf",
+      "runtime-lights",
+      "direct-visibility",
+      "indirect-diffuse-static",
+      "image-based-specular",
+      "emission",
+      "ambient-occlusion"
+    ]
+  },
+  "map_manifest": null,
+  "name": "portal2-chamber",
+  "oracles": [],
+  "purpose": "The clean-Aperture Portal 2 test chamber sp_gi_chamber_01 built by portal2_gi_chamber.py: triple-laser tiles ($ssbump as normal and AO), light_spot panels and switchable light_dynamic accents",
+  "regions": {
+    "chamber": {},
+    "spawn": {}
+  },
+  "schema": "gi-fixture/v1",
+  "stage": null,
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "the map's lights as compiled"
+    }
+  }
+}

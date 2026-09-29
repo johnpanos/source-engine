@@ -2606,3 +2606,57 @@ Reproduce (the host must not rebuild `build-p2` during the run; snapshot it):
       --physics vphysics_box3d --mat-queue-mode 2 --extra-arg=+cl_render_start_graph \
       --extra-arg=2 --extra-arg=+sv_querycache_job_graph --extra-arg=2 \
       --extra-arg=-vkemitparallel --extra-arg=1
+
+## K11 slice: the lighting fixture set and its Cycles references (2026-09-29)
+
+These are the fixtures that K11's "Ground truth" check compares `render_lab`
+against: data plus tools, and no `render/` code. A subagent of
+source-engine-5c built them under the split agreed with source-engine-43.
+source-engine-43 owns `render_lab` and every lighting term.
+
+- **Fixtures** (`quality/fixtures/lighting/`, schema `lighting-fixtures/v1`):
+  1. cornell-floors: rough and polished halves;
+  2. area-room: 64 rectangle lights;
+  3. projector-cookie: `env_projectedtexture` with a window cookie;
+  4. sun-colonnade;
+  5. foggy-hall: a medium with 256 lights and a projector;
+  6. mirror-corridor: floor roughness from 0.02 to 0.5;
+  7. material-sweep: gold, clear coat and dielectric at 8 roughness levels;
+  8. portal-chamber: `testchmb_a_00_relit` at the K0 view-oracle poses;
+  9. portal2-chamber: `sp_gi_chamber_01`.
+
+  Each fixture has fixed cameras, the lights once as declared and once as
+  entity-lump entities, and a BSP2 map built by the one lighting back end.
+  All nine maps are built and published (`run/maps/lt_*`).
+- **References:** linear half-float EXR (Combined) plus a 16-bit object
+  index per view, rendered by `gi_reference_blender.py`, extended in
+  `lighting_reference_blender.py` with a projector lamp that follows
+  `projected_light.h`. They are **preview** quality (16 spp, reduced bakes),
+  and certify no K11 check. The final references (2,048 spp, full bakes)
+  are documented in the README and not run, per the user's rule against long
+  Cycles builds during pipeline work.
+- **Error metric and tolerances:**
+  - Per pixel, the largest channel difference divided by the reference's
+    mean luminance, skipping background and visible emitters. Each fixture
+    has a mean and a p99 bound.
+  - `tolerances.json` was fixed at 2026-09-29T08:35Z, before any
+    comparison. It is digest-protected, and `check` rejects an edit in
+    place, a tolerance fixed after a recorded comparison, and a comparison
+    against a changed reference.
+- **Tools:** `tools/quality/lighting_fixtures.py` (generate, render, build,
+  check, compare). `test_lighting_fixtures.py`: 37 tests, including negative
+  cases for missing or changed references, late or edited tolerances, stale
+  comparisons, unknown terms, missing cameras, wrong sample labels and
+  entity-lump mismatches.
+- **Fixed along the way:** `usd_worldmesh_pack.py` read an emitter name as
+  `Light(Quad|Disk)` plus exactly two digits, so the 101st light was packed
+  as world geometry. It now takes two or more digits.
+- **Open for source-engine-43:**
+  - rectangle lights and media have no Source entity; `lab_light_rect` and
+    `lab_medium` are proposals for the owner to decide (rule 5);
+  - the two chamber stages are rebuilt from untracked `quality-results/`,
+    with the steps recorded in each fixture;
+  - `gi_reference.py` writes its environment maps with imageio's lossy
+    half-float EXR compression, which zeroed 5% of the texels in a test. The
+    RFC 0011 sky fixtures' references may be affected. This is not verified
+    on those fixtures.

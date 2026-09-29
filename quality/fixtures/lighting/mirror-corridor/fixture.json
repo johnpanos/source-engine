@@ -1,0 +1,161 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "down": {
+      "eye": [
+        0.4,
+        1.5,
+        1.6
+      ],
+      "forward": [
+        0.9980525784828885,
+        0.0,
+        -0.06237828615518053
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "low": {
+      "eye": [
+        2.2,
+        0.5,
+        0.4
+      ],
+      "forward": [
+        0.9840428807770039,
+        0.17070131605315372,
+        0.05020626942739815
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "lighting",
+  "film": {
+    "height": 384,
+    "width": 512
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": false,
+  "lighting": {
+    "entities": "entities.json",
+    "lights": {
+      "point": 0,
+      "rect": 6,
+      "sky": 0,
+      "spot": 0,
+      "sun": 0
+    },
+    "map": {
+      "baked_state": "default",
+      "bsp": "run/maps/lt_mirror_corridor/maps/lt_mirror_corridor.bsp",
+      "layout": "planar",
+      "name": "lt_mirror_corridor",
+      "overrides": {
+        "lightmap": {
+          "samples": 64
+        },
+        "probe_volume": {
+          "samples": 256
+        },
+        "radiosity": null,
+        "reflection_probe": {
+          "face_size": 128,
+          "light_paths": "gi-reference",
+          "samples": 16,
+          "width": 512
+        },
+        "sdf_volume": null
+      },
+      "solid_meshes": []
+    },
+    "media": {},
+    "projectors": [],
+    "terms": [
+      "screen-space-reflections",
+      "image-based-specular",
+      "filtered-roughness",
+      "specular-occlusion",
+      "brdf",
+      "area-lights",
+      "indirect-diffuse-static"
+    ]
+  },
+  "map_manifest": null,
+  "name": "mirror-corridor",
+  "oracles": [],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "An 18 m corridor whose floor runs from a mirror (metal, roughness 0.02) through gloss 0.1 and 0.25 to 0.5 (above the SSR cutoff), between colored wall panels, under ceiling strips, with a block near the camera whose reflection leaves the screen (probe fallback)",
+  "regions": {
+    "down": {
+      "Ball": [
+        "Ball"
+      ],
+      "Floor0": [
+        "Floor0"
+      ],
+      "Floor1": [
+        "Floor1"
+      ],
+      "Floor2": [
+        "Floor2"
+      ],
+      "Floor3": [
+        "Floor3"
+      ],
+      "K_Xp": [
+        "K_Xp"
+      ],
+      "K_Zp": [
+        "K_Zp"
+      ],
+      "PanelN1": [
+        "PanelN1"
+      ],
+      "PanelS1": [
+        "PanelS1"
+      ]
+    },
+    "low": {
+      "Ball": [
+        "Ball"
+      ],
+      "Floor0": [
+        "Floor0"
+      ],
+      "Floor1": [
+        "Floor1"
+      ],
+      "Floor2": [
+        "Floor2"
+      ],
+      "Floor3": [
+        "Floor3"
+      ],
+      "K_Yp": [
+        "K_Yp"
+      ],
+      "PanelN2": [
+        "PanelN2"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "mirror-corridor.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "ceiling strips on"
+    }
+  }
+}

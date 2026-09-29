@@ -1,0 +1,209 @@
+{
+  "baked_state": "fog",
+  "cameras": {
+    "nave": {
+      "eye": [
+        1.0,
+        4.0,
+        1.7
+      ],
+      "forward": [
+        0.9992352826211244,
+        0.0,
+        0.03910051105908748
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "side": {
+      "eye": [
+        10.0,
+        0.7,
+        1.5
+      ],
+      "forward": [
+        0.0,
+        0.9739395288041126,
+        0.22680783547493036
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "lighting",
+  "film": {
+    "height": 384,
+    "width": 512
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": false,
+  "lighting": {
+    "entities": "entities.json",
+    "lights": {
+      "point": 240,
+      "rect": 0,
+      "sky": 0,
+      "spot": 16,
+      "sun": 0
+    },
+    "map": {
+      "baked_state": "fog",
+      "bsp": "run/maps/lt_foggy_hall/maps/lt_foggy_hall.bsp",
+      "layout": null,
+      "name": "lt_foggy_hall",
+      "overrides": {
+        "lightmap": {
+          "samples": 64
+        },
+        "probe_volume": {
+          "samples": 256
+        },
+        "radiosity": null,
+        "sdf_volume": null
+      },
+      "solid_meshes": [
+        "Pillars"
+      ]
+    },
+    "media": {
+      "clear": null,
+      "fog": {
+        "absorption_per_m": 0.01,
+        "anisotropy": 0.3,
+        "bounds_m": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            24.0,
+            8.0,
+            6.0
+          ]
+        ],
+        "name": "Fog",
+        "scattering_per_m": 0.06
+      }
+    },
+    "projectors": [
+      {
+        "attenuation": [
+          0.0,
+          100.0,
+          0.0
+        ],
+        "color": [
+          3.5,
+          3.5,
+          3.2
+        ],
+        "cookie_image": "window_gobo.png",
+        "far_z": 1000.0,
+        "forward": [
+          -0.9902680687415704,
+          1.2127286206821952e-16,
+          -0.13917310096006544
+        ],
+        "horizontal_fov_degrees": 40.0,
+        "name": "Projector",
+        "near_z": 4.0,
+        "origin_m": [
+          23.4,
+          4.0,
+          3.0
+        ],
+        "origin_units": [
+          921.2598,
+          157.4803,
+          118.1102
+        ],
+        "pitch": 8.0,
+        "right": [
+          1.2246467991473532e-16,
+          1.0,
+          0.0
+        ],
+        "texture": "lighting/cookies/window_gobo",
+        "up": [
+          -0.13917310096006544,
+          1.7043789261815557e-17,
+          0.9902680687415704
+        ],
+        "vertical_fov_degrees": 40.0,
+        "yaw": 180.0
+      }
+    ],
+    "terms": [
+      "participating-media",
+      "runtime-lights",
+      "projected-lights",
+      "direct-visibility",
+      "indirect-diffuse-static",
+      "brdf"
+    ]
+  },
+  "map_manifest": null,
+  "name": "foggy-hall",
+  "oracles": [],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A 24 m hall filled with a homogeneous medium (scattering 0.06/m, absorption 0.01/m, anisotropy 0.3): 16 ceiling spots draw shafts, 240 colored bulbs line the walls (256 clustered lights), and a projector at the far end throws a shaft that a pillar shadows; the clear state is the same hall with density zero",
+  "regions": {
+    "nave": {
+      "Floor": [
+        "Floor"
+      ],
+      "H_Xp": [
+        "H_Xp"
+      ],
+      "H_Yn": [
+        "H_Yn"
+      ],
+      "H_Yp": [
+        "H_Yp"
+      ],
+      "H_Zp": [
+        "H_Zp"
+      ],
+      "Pillars": [
+        "Pillars"
+      ]
+    },
+    "side": {
+      "Floor": [
+        "Floor"
+      ],
+      "H_Yp": [
+        "H_Yp"
+      ],
+      "H_Zp": [
+        "H_Zp"
+      ],
+      "Pillars": [
+        "Pillars"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "foggy-hall.usda",
+  "states": {
+    "clear": {
+      "layer": "states/clear.usda",
+      "note": "density zero: the same hall and lights with no medium"
+    },
+    "fog": {
+      "layer": null,
+      "note": "the medium on (scattering 0.06/m, absorption 0.01/m, g 0.3)"
+    }
+  }
+}

@@ -1,0 +1,194 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "grazing": {
+      "eye": [
+        7.6,
+        0.8,
+        0.35
+      ],
+      "forward": [
+        -0.9110054076761993,
+        0.41059398655828705,
+        -0.03849318623983941
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "overview": {
+      "eye": [
+        0.4,
+        3.0,
+        2.4
+      ],
+      "forward": [
+        0.9670745372626464,
+        0.0,
+        -0.2544932992796438
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "wall": {
+      "eye": [
+        4.0,
+        3.3,
+        1.1
+      ],
+      "forward": [
+        0.0,
+        -0.9647638212377321,
+        -0.2631174057921088
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "lighting",
+  "film": {
+    "height": 384,
+    "width": 512
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": false,
+  "lighting": {
+    "entities": "entities.json",
+    "lights": {
+      "point": 0,
+      "rect": 64,
+      "sky": 0,
+      "spot": 0,
+      "sun": 0
+    },
+    "map": {
+      "baked_state": "default",
+      "bsp": "run/maps/lt_area_room/maps/lt_area_room.bsp",
+      "layout": null,
+      "name": "lt_area_room",
+      "overrides": {
+        "lightmap": {
+          "samples": 64
+        },
+        "probe_volume": {
+          "samples": 256
+        },
+        "radiosity": null,
+        "reflection_probe": {
+          "face_size": 128,
+          "light_paths": "gi-reference",
+          "samples": 16,
+          "width": 512
+        },
+        "sdf_volume": null
+      },
+      "solid_meshes": []
+    },
+    "media": {},
+    "projectors": [],
+    "terms": [
+      "area-lights",
+      "brdf",
+      "direct-visibility",
+      "indirect-diffuse-static",
+      "emission",
+      "image-based-specular"
+    ]
+  },
+  "map_manifest": null,
+  "name": "area-room",
+  "oracles": [],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "An 8 x 6 m room lit by 64 rectangular lights: 48 colored ceiling panels and 16 low wall strips whose light grazes the floor (horizon clipping), over floor stripes of roughness 0.1, 0.3 and 0.6 that stretch each panel's highlight, with pedestals casting soft shadows and an emissive sign that is not a light",
+  "regions": {
+    "grazing": {
+      "A_Xn": [
+        "A_Xn"
+      ],
+      "A_Yp": [
+        "A_Yp"
+      ],
+      "FloorStripe0": [
+        "FloorStripe0"
+      ],
+      "FloorStripe1": [
+        "FloorStripe1"
+      ],
+      "FloorStripe2": [
+        "FloorStripe2"
+      ],
+      "PedestalA_Xp": [
+        "PedestalA_Xp"
+      ],
+      "PedestalB_Xp": [
+        "PedestalB_Xp"
+      ]
+    },
+    "overview": {
+      "A_Xp": [
+        "A_Xp"
+      ],
+      "A_Yn": [
+        "A_Yn"
+      ],
+      "A_Yp": [
+        "A_Yp"
+      ],
+      "A_Zp": [
+        "A_Zp"
+      ],
+      "EmissiveSign": [
+        "EmissiveSign"
+      ],
+      "FloorStripe0": [
+        "FloorStripe0"
+      ],
+      "FloorStripe1": [
+        "FloorStripe1"
+      ],
+      "FloorStripe2": [
+        "FloorStripe2"
+      ],
+      "PedestalA_Yn": [
+        "PedestalA_Yn"
+      ],
+      "PedestalB_Xn": [
+        "PedestalB_Xn"
+      ]
+    },
+    "wall": {
+      "A_Yn": [
+        "A_Yn"
+      ],
+      "FloorStripe0": [
+        "FloorStripe0"
+      ],
+      "FloorStripe1": [
+        "FloorStripe1"
+      ],
+      "FloorStripe2": [
+        "FloorStripe2"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "area-room.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "all 64 rectangles and the sign on"
+    }
+  }
+}

@@ -1,0 +1,492 @@
+{
+  "carrier_entities": {
+    "lab_light_rect": "a rectangle light: origin (centre), halfu, halfv (Source units; front = halfu x halfv), radiance (lightmap unit), twosided; the fields of render.area-light.v1's Rect and AreaLight",
+    "lab_medium": "a homogeneous medium: mins, maxs, scattering and absorption per Source unit, anisotropy (Henyey-Greenstein g)",
+    "status": "proposed fixture carriers; the render-core owner decides the product form (binding rule 5)"
+  },
+  "error_metric": {
+    "definition": "e(p) = max over R, G, B of |lab(p) - ref(p)| / Y_ref, with Y_ref the mean Rec. 709 luminance of the reference over the judged pixels; mean is the average of e over the judged pixels and p99 its 99th percentile",
+    "judged_pixels": "pixels whose reference object index is a scene mesh (not the background or sky, index 0) and not a light's own visible emitter shape (LightQuad*/LightDisk* meshes: the lab draws no light shapes)",
+    "space": "linear scene radiance in the pipeline's lightmap unit, before exposure, tone map and output encoding; the lab image is a linear PFM of the same film and pose"
+  },
+  "extends": "quality/fixtures/gi/ (RFC 0011 gallery)",
+  "film": {
+    "height": 384,
+    "width": 512
+  },
+  "fixtures": [
+    {
+      "bsp": "run/maps/lt_cornell_floors/maps/lt_cornell_floors.bsp",
+      "cameras": [
+        "floor",
+        "front"
+      ],
+      "directory": "cornell-floors",
+      "entities": "entities.json",
+      "lights": {
+        "point": 0,
+        "rect": 1,
+        "sky": 0,
+        "spot": 0,
+        "sun": 0
+      },
+      "map": "lt_cornell_floors",
+      "media": [],
+      "name": "cornell-floors",
+      "projectors": 0,
+      "purpose": "The Cornell box with its floor split into a rough half (roughness 0.5) and a polished half (0.05): the ceiling rectangle's direct light and soft shadows, the colored bleed, and on the polished half the reflections of the walls and blocks (image-based and screen-space specular)",
+      "reused_map": false,
+      "states": [
+        "default"
+      ],
+      "terms": [
+        "brdf",
+        "filtered-roughness",
+        "area-lights",
+        "direct-visibility",
+        "indirect-diffuse-static",
+        "indirect-diffuse-dynamic",
+        "image-based-specular",
+        "screen-space-reflections",
+        "ambient-occlusion",
+        "specular-occlusion"
+      ]
+    },
+    {
+      "bsp": "run/maps/lt_area_room/maps/lt_area_room.bsp",
+      "cameras": [
+        "grazing",
+        "overview",
+        "wall"
+      ],
+      "directory": "area-room",
+      "entities": "entities.json",
+      "lights": {
+        "point": 0,
+        "rect": 64,
+        "sky": 0,
+        "spot": 0,
+        "sun": 0
+      },
+      "map": "lt_area_room",
+      "media": [],
+      "name": "area-room",
+      "projectors": 0,
+      "purpose": "An 8 x 6 m room lit by 64 rectangular lights: 48 colored ceiling panels and 16 low wall strips whose light grazes the floor (horizon clipping), over floor stripes of roughness 0.1, 0.3 and 0.6 that stretch each panel's highlight, with pedestals casting soft shadows and an emissive sign that is not a light",
+      "reused_map": false,
+      "states": [
+        "default"
+      ],
+      "terms": [
+        "area-lights",
+        "brdf",
+        "direct-visibility",
+        "indirect-diffuse-static",
+        "emission",
+        "image-based-specular"
+      ]
+    },
+    {
+      "bsp": "run/maps/lt_projector_cookie/maps/lt_projector_cookie.bsp",
+      "cameras": [
+        "room",
+        "wall"
+      ],
+      "directory": "projector-cookie",
+      "entities": "entities.json",
+      "lights": {
+        "point": 0,
+        "rect": 1,
+        "sky": 0,
+        "spot": 0,
+        "sun": 0
+      },
+      "map": "lt_projector_cookie",
+      "media": [],
+      "name": "projector-cookie",
+      "projectors": 1,
+      "purpose": "A dark room where an env_projectedtexture shines a window cookie onto a Lambertian floor and back wall past a pillar that shadows it and a glossy sphere that reflects it, under a dim fill rectangle; Portal's attenuation (linear 100 / d, clamped) and end falloff past 0.6 far",
+      "reused_map": false,
+      "states": [
+        "default",
+        "projector"
+      ],
+      "terms": [
+        "projected-lights",
+        "direct-visibility",
+        "brdf",
+        "indirect-diffuse-static"
+      ]
+    },
+    {
+      "bsp": "run/maps/lt_sun_colonnade/maps/lt_sun_colonnade.bsp",
+      "cameras": [
+        "along",
+        "yard"
+      ],
+      "directory": "sun-colonnade",
+      "entities": "entities.json",
+      "lights": {
+        "point": 0,
+        "rect": 0,
+        "sky": 1,
+        "spot": 0,
+        "sun": 1
+      },
+      "map": "lt_sun_colonnade",
+      "media": [],
+      "name": "sun-colonnade",
+      "projectors": 0,
+      "purpose": "A 30 m portico: ten columns under a roof slab, a back wall and a sunlit yard, lit by a low warm sun (35 degrees) and a blue sky, seen along the colonnade so column shadows run from near to far (cascades) and from the yard",
+      "reused_map": false,
+      "states": [
+        "default"
+      ],
+      "terms": [
+        "sun",
+        "direct-visibility",
+        "indirect-diffuse-static",
+        "indirect-diffuse-dynamic",
+        "ambient-occlusion",
+        "brdf"
+      ]
+    },
+    {
+      "bsp": "run/maps/lt_foggy_hall/maps/lt_foggy_hall.bsp",
+      "cameras": [
+        "nave",
+        "side"
+      ],
+      "directory": "foggy-hall",
+      "entities": "entities.json",
+      "lights": {
+        "point": 240,
+        "rect": 0,
+        "sky": 0,
+        "spot": 16,
+        "sun": 0
+      },
+      "map": "lt_foggy_hall",
+      "media": [
+        "fog"
+      ],
+      "name": "foggy-hall",
+      "projectors": 1,
+      "purpose": "A 24 m hall filled with a homogeneous medium (scattering 0.06/m, absorption 0.01/m, anisotropy 0.3): 16 ceiling spots draw shafts, 240 colored bulbs line the walls (256 clustered lights), and a projector at the far end throws a shaft that a pillar shadows; the clear state is the same hall with density zero",
+      "reused_map": false,
+      "states": [
+        "clear",
+        "fog"
+      ],
+      "terms": [
+        "participating-media",
+        "runtime-lights",
+        "projected-lights",
+        "direct-visibility",
+        "indirect-diffuse-static",
+        "brdf"
+      ]
+    },
+    {
+      "bsp": "run/maps/lt_mirror_corridor/maps/lt_mirror_corridor.bsp",
+      "cameras": [
+        "down",
+        "low"
+      ],
+      "directory": "mirror-corridor",
+      "entities": "entities.json",
+      "lights": {
+        "point": 0,
+        "rect": 6,
+        "sky": 0,
+        "spot": 0,
+        "sun": 0
+      },
+      "map": "lt_mirror_corridor",
+      "media": [],
+      "name": "mirror-corridor",
+      "projectors": 0,
+      "purpose": "An 18 m corridor whose floor runs from a mirror (metal, roughness 0.02) through gloss 0.1 and 0.25 to 0.5 (above the SSR cutoff), between colored wall panels, under ceiling strips, with a block near the camera whose reflection leaves the screen (probe fallback)",
+      "reused_map": false,
+      "states": [
+        "default"
+      ],
+      "terms": [
+        "screen-space-reflections",
+        "image-based-specular",
+        "filtered-roughness",
+        "specular-occlusion",
+        "brdf",
+        "area-lights",
+        "indirect-diffuse-static"
+      ]
+    },
+    {
+      "bsp": "run/maps/lt_material_sweep/maps/lt_material_sweep.bsp",
+      "cameras": [
+        "front",
+        "grazing"
+      ],
+      "directory": "material-sweep",
+      "entities": "entities.json",
+      "lights": {
+        "point": 0,
+        "rect": 1,
+        "sky": 0,
+        "spot": 1,
+        "sun": 0
+      },
+      "map": "lt_material_sweep",
+      "media": [],
+      "name": "material-sweep",
+      "projectors": 0,
+      "purpose": "Three rows of eight smooth spheres at roughness 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8 and 1.0: gold metal, a clear coat (coat roughness swept) over a red base, and a white dielectric, in a studio with colored walls under a key rectangle and a spot",
+      "reused_map": false,
+      "states": [
+        "default"
+      ],
+      "terms": [
+        "brdf",
+        "image-based-specular",
+        "filtered-roughness",
+        "area-lights",
+        "runtime-lights",
+        "indirect-diffuse-static",
+        "specular-occlusion"
+      ]
+    },
+    {
+      "bsp": "run/maps/testchmb_a_00_relit/maps/testchmb_a_00_relit.bsp",
+      "cameras": [
+        "room2",
+        "vault"
+      ],
+      "directory": "portal-chamber",
+      "entities": null,
+      "lights": null,
+      "map": "testchmb_a_00_relit",
+      "media": [],
+      "name": "portal-chamber",
+      "projectors": 0,
+      "purpose": "Portal's testchmb_a_00 relit by the one lighting back end: its world faces, VMT materials and vrad world lights as a derived USD scene",
+      "reused_map": true,
+      "states": [
+        "default"
+      ],
+      "terms": [
+        "brdf",
+        "runtime-lights",
+        "direct-visibility",
+        "indirect-diffuse-static",
+        "image-based-specular",
+        "emission"
+      ]
+    },
+    {
+      "bsp": "run/maps/sp_gi_chamber_01/maps/sp_gi_chamber_01.bsp",
+      "cameras": [
+        "chamber",
+        "spawn"
+      ],
+      "directory": "portal2-chamber",
+      "entities": null,
+      "lights": null,
+      "map": "sp_gi_chamber_01",
+      "media": [],
+      "name": "portal2-chamber",
+      "projectors": 0,
+      "purpose": "The clean-Aperture Portal 2 test chamber sp_gi_chamber_01 built by portal2_gi_chamber.py: triple-laser tiles ($ssbump as normal and AO), light_spot panels and switchable light_dynamic accents",
+      "reused_map": true,
+      "states": [
+        "default"
+      ],
+      "terms": [
+        "brdf",
+        "runtime-lights",
+        "direct-visibility",
+        "indirect-diffuse-static",
+        "image-based-specular",
+        "emission",
+        "ambient-occlusion"
+      ]
+    }
+  ],
+  "gate": "RFC/0016-render-core.md#k11-lighting-model-proven-in-render_lab",
+  "generator": "tools/quality/lighting_fixtures.py",
+  "horizontal_fov_degrees": 90.0,
+  "reference_policy": {
+    "denoising": false,
+    "device": "cpu",
+    "final_samples": 2048,
+    "light_paths": "gi-reference (64 diffuse, 16 glossy bounces, no clamping, no volume bounces: single scattering)",
+    "preview_is_diagnostic": "a comparison against a preview reference is recorded but certifies nothing",
+    "preview_samples": 16,
+    "renderer": "tools/quality/lighting_reference_blender.py over gi_reference_blender.py (usd_scene.py extract, pbrt_blender material and emitter policy)",
+    "seed": 20260929
+  },
+  "schema": "lighting-fixtures/v1",
+  "terms": {
+    "ambient-occlusion": {
+      "fixtures": [
+        "cornell-floors",
+        "sun-colonnade",
+        "portal2-chamber"
+      ],
+      "negative_control": "GTAO over the baked indirect light with no rule (double occlusion), or applied to direct light: contact regions darken past tolerance",
+      "owner": "RFC/0016-render-core.md#lighting-model-renderlightingv1-amended-2026-09-28 (render.pass.ao)"
+    },
+    "area-lights": {
+      "fixtures": [
+        "cornell-floors",
+        "area-room",
+        "mirror-corridor",
+        "material-sweep"
+      ],
+      "negative_control": "each rectangle evaluated as a point at its centre (no LTC) and without horizon clipping: the glossy floor stripes' elongated highlights and the wall strips' grazing light fail",
+      "owner": "RFC/0011-runtime-indirect-lighting.md#area-lights-light-set-v2-amendment-2026-09-28"
+    },
+    "brdf": {
+      "fixtures": [
+        "cornell-floors",
+        "area-room",
+        "projector-cookie",
+        "sun-colonnade",
+        "foggy-hall",
+        "mirror-corridor",
+        "material-sweep",
+        "portal-chamber",
+        "portal2-chamber"
+      ],
+      "negative_control": "the lobe seeded wrong: energy compensation off (as cl_render_debug_brdf 3), or a Lambert lobe in place of GGX: the rough metal spheres and the polished floor leave tolerance",
+      "owner": "RFC/0007-physically-based-lighting-pipeline.md#shading-model"
+    },
+    "direct-visibility": {
+      "fixtures": [
+        "cornell-floors",
+        "area-room",
+        "projector-cookie",
+        "sun-colonnade",
+        "foggy-hall",
+        "portal-chamber",
+        "portal2-chamber"
+      ],
+      "negative_control": "visibility one (shadows off): the pillar, block and column shadows vanish and p99 fails",
+      "owner": "RFC/0016-render-core.md#lights-and-shadows-renderlightsv1-rendershadowsv1"
+    },
+    "emission": {
+      "fixtures": [
+        "area-room",
+        "portal-chamber",
+        "portal2-chamber"
+      ],
+      "negative_control": "emission zero: the area room's sign and the light it casts are missing",
+      "owner": "RFC/0016-render-core.md#the-surface-model-legacy-materials-as-degenerate-cases-plan-2026-09-28"
+    },
+    "filtered-roughness": {
+      "fixtures": [
+        "cornell-floors",
+        "mirror-corridor",
+        "material-sweep"
+      ],
+      "negative_control": "input roughness in place of the filtered roughness: the distant mirror and polished floor texels sparkle above the p99 tolerance",
+      "owner": "RFC/0012-antialiasing-msaa-specular-alpha-coverage.md#specular-antialiasing-renderpbr-specular-aav1"
+    },
+    "image-based-specular": {
+      "fixtures": [
+        "cornell-floors",
+        "area-room",
+        "mirror-corridor",
+        "material-sweep",
+        "portal-chamber",
+        "portal2-chamber"
+      ],
+      "negative_control": "reflectance zero, or the wrong prefiltered mip: glossy spheres and floors lose their reflections",
+      "owner": "RFC/0007-physically-based-lighting-pipeline.md#image-based-lighting"
+    },
+    "indirect-diffuse-dynamic": {
+      "fixtures": [
+        "cornell-floors",
+        "sun-colonnade"
+      ],
+      "negative_control": "the probe volume replaced by a black ambient cube: the dynamic ProbeSphere's region leaves tolerance",
+      "owner": "RFC/0011-runtime-indirect-lighting.md#probe-volume-contract-renderprobe-volumev1"
+    },
+    "indirect-diffuse-static": {
+      "fixtures": [
+        "cornell-floors",
+        "area-room",
+        "projector-cookie",
+        "sun-colonnade",
+        "foggy-hall",
+        "mirror-corridor",
+        "material-sweep",
+        "portal-chamber",
+        "portal2-chamber"
+      ],
+      "negative_control": "the lightmap's indirect layer zero (or the total layer used with runtime direct light, doubling it): every closed room fails its mean",
+      "owner": "RFC/0011-runtime-indirect-lighting.md#indirect-light-policy-renderindirect-policyv1"
+    },
+    "output": {
+      "fixtures": [],
+      "judged_by": "render.output",
+      "negative_control": "not judged by these fixtures: every comparison is of linear scene radiance before exposure and output; render.output owns the term",
+      "owner": "RFC/0016-render-core.md#output-renderoutputv1-amended-2026-09-28"
+    },
+    "participating-media": {
+      "fixtures": [
+        "foggy-hall"
+      ],
+      "negative_control": "density zero (the clear state's frame) judged against the fog reference, and the projector's shaft drawn inside its shadow",
+      "owner": "RFC/0016-render-core.md#lighting-model-renderlightingv1-amended-2026-09-28 (render.pass.volumetric)"
+    },
+    "projected-lights": {
+      "fixtures": [
+        "projector-cookie",
+        "foggy-hall"
+      ],
+      "negative_control": "the cookie ignored (white) or its v axis flipped: the window pattern on the back wall leaves tolerance",
+      "owner": "public/render/projected_light.h (RFC 0011 render.projected-light.v1)"
+    },
+    "runtime-lights": {
+      "fixtures": [
+        "foggy-hall",
+        "material-sweep",
+        "portal-chamber",
+        "portal2-chamber"
+      ],
+      "negative_control": "every other clustered light dropped from its cluster lists (a seeded assignment defect): the hall's wall pools go dark",
+      "owner": "RFC/0011-runtime-indirect-lighting.md#runtime-light-set-renderlight-setv1"
+    },
+    "screen-space-reflections": {
+      "fixtures": [
+        "cornell-floors",
+        "mirror-corridor"
+      ],
+      "negative_control": "thickness ignored, no edge fade or the wrong mip (the K11 seeded defects), and SSR off: the mirror corridor's on-screen hits fail",
+      "owner": "RFC/0016-render-core.md#lighting-model-renderlightingv1-amended-2026-09-28 (render.pass.ssr)"
+    },
+    "specular-occlusion": {
+      "fixtures": [
+        "cornell-floors",
+        "mirror-corridor",
+        "material-sweep"
+      ],
+      "negative_control": "specular occlusion one: probe reflections leak into the creases under the blocks and pillars",
+      "owner": "RFC/0016-render-core.md#lighting-model-renderlightingv1-amended-2026-09-28"
+    },
+    "sun": {
+      "fixtures": [
+        "sun-colonnade"
+      ],
+      "negative_control": "the cascades' splits swapped, or the sun removed: the colonnade's far shadows and sunlit floor leave tolerance",
+      "owner": "RFC/0016-render-core.md#lighting-model-renderlightingv1-amended-2026-09-28"
+    }
+  },
+  "tolerances": "tolerances.json",
+  "units": {
+    "light": "the pipeline's lightmap unit: a white Lambertian surface under irradiance E shows E / pi (Cycles diffuse passes)",
+    "map": "Source units (39.37007874 per meter)",
+    "stage": "meters, Z up (metersPerUnit 1) for the synthetic fixtures"
+  },
+  "version": 1
+}

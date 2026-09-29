@@ -1,0 +1,49 @@
+{
+  "entities": [
+    {
+      "SunSpreadAngle": "0.5300",
+      "_AmbientScaleHDR": "1",
+      "_ambient": "186.0837 211.1129 255.0000 127.5000",
+      "_ambientHDR": "-1 -1 -1 1",
+      "_fixture_light": "Sun",
+      "_light": "255.0000 240.6052 219.6298 405.8451",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "angles": "-35.0000 125.0000 0",
+      "classname": "light_environment",
+      "origin": "0.0000 0.0000 0.0000",
+      "pitch": "-35.0000"
+    }
+  ],
+  "fixture": "sun-colonnade",
+  "lights": [
+    {
+      "angle_degrees": 0.53,
+      "azimuth_degrees": -55.0,
+      "elevation_degrees": 35.0,
+      "irradiance": [
+        5.0,
+        4.4,
+        3.6
+      ],
+      "kind": "sun",
+      "name": "Sun",
+      "travel": [
+        -0.46984631039295427,
+        0.6710100716628343,
+        -0.573576436351046
+      ]
+    },
+    {
+      "kind": "sky",
+      "name": "Sky",
+      "radiance": [
+        0.25,
+        0.33,
+        0.5
+      ]
+    }
+  ],
+  "schema": "lighting-entities/v1",
+  "units": "Source units"
+}

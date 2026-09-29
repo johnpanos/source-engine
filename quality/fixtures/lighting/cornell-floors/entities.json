@@ -1,0 +1,51 @@
+{
+  "entities": [
+    {
+      "classname": "lab_light_rect",
+      "halfu": "14.7638 0.0000 0.0000",
+      "halfv": "0.0000 -14.7638 0.0000",
+      "origin": "59.0551 59.0551 117.7165",
+      "radiance": "12.0000 12.0000 12.0000",
+      "targetname": "Lamp",
+      "twosided": "0"
+    }
+  ],
+  "fixture": "cornell-floors",
+  "lights": [
+    {
+      "center_m": [
+        1.5,
+        1.5,
+        2.99
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "half_u_m": [
+        0.375,
+        0.0,
+        0.0
+      ],
+      "half_v_m": [
+        0.0,
+        -0.375,
+        0.0
+      ],
+      "kind": "rect",
+      "name": "Lamp",
+      "radiance": [
+        12.0,
+        12.0,
+        12.0
+      ],
+      "size_m": [
+        0.75,
+        0.75
+      ]
+    }
+  ],
+  "schema": "lighting-entities/v1",
+  "units": "Source units"
+}

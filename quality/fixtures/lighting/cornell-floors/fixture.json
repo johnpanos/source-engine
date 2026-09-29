@@ -1,0 +1,178 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "floor": {
+      "eye": [
+        2.8,
+        0.15,
+        0.45
+      ],
+      "forward": [
+        -0.5528638004143216,
+        0.8292957006214826,
+        -0.08130350006092966
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "front": {
+      "eye": [
+        1.5,
+        0.12,
+        1.5
+      ],
+      "forward": [
+        0.0,
+        0.9946184088907779,
+        -0.10360608425945605
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "lighting",
+  "film": {
+    "height": 384,
+    "width": 512
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": false,
+  "lighting": {
+    "entities": "entities.json",
+    "lights": {
+      "point": 0,
+      "rect": 1,
+      "sky": 0,
+      "spot": 0,
+      "sun": 0
+    },
+    "map": {
+      "baked_state": "default",
+      "bsp": "run/maps/lt_cornell_floors/maps/lt_cornell_floors.bsp",
+      "layout": null,
+      "name": "lt_cornell_floors",
+      "overrides": {
+        "lightmap": {
+          "samples": 64
+        },
+        "probe_volume": {
+          "samples": 256
+        },
+        "radiosity": null,
+        "reflection_probe": {
+          "face_size": 128,
+          "light_paths": "gi-reference",
+          "samples": 16,
+          "width": 512
+        },
+        "sdf_volume": null
+      },
+      "solid_meshes": []
+    },
+    "media": {},
+    "projectors": [],
+    "terms": [
+      "brdf",
+      "filtered-roughness",
+      "area-lights",
+      "direct-visibility",
+      "indirect-diffuse-static",
+      "indirect-diffuse-dynamic",
+      "image-based-specular",
+      "screen-space-reflections",
+      "ambient-occlusion",
+      "specular-occlusion"
+    ]
+  },
+  "map_manifest": null,
+  "name": "cornell-floors",
+  "oracles": [],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "The Cornell box with its floor split into a rough half (roughness 0.5) and a polished half (0.05): the ceiling rectangle's direct light and soft shadows, the colored bleed, and on the polished half the reflections of the walls and blocks (image-based and screen-space specular)",
+  "regions": {
+    "floor": {
+      "C_Xn": [
+        "C_Xn"
+      ],
+      "C_Yp": [
+        "C_Yp"
+      ],
+      "FloorPolishedHalf": [
+        "FloorPolishedHalf"
+      ],
+      "FloorRoughHalf": [
+        "FloorRoughHalf"
+      ],
+      "Short_Xn": [
+        "Short_Xn"
+      ],
+      "Short_Yn": [
+        "Short_Yn"
+      ],
+      "Tall_Xp": [
+        "Tall_Xp"
+      ],
+      "Tall_Yn": [
+        "Tall_Yn"
+      ]
+    },
+    "front": {
+      "C_Xn": [
+        "C_Xn"
+      ],
+      "C_Xp": [
+        "C_Xp"
+      ],
+      "C_Yp": [
+        "C_Yp"
+      ],
+      "C_Zp": [
+        "C_Zp"
+      ],
+      "FloorPolishedHalf": [
+        "FloorPolishedHalf"
+      ],
+      "FloorRoughHalf": [
+        "FloorRoughHalf"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "Short_Xn": [
+        "Short_Xn"
+      ],
+      "Short_Yn": [
+        "Short_Yn"
+      ],
+      "Tall_Xp": [
+        "Tall_Xp"
+      ],
+      "Tall_Yn": [
+        "Tall_Yn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "cornell-floors.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "ceiling rectangle on"
+    }
+  }
+}

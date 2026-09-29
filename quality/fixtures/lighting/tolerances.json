@@ -1,0 +1,94 @@
+{
+  "entries": [
+    {
+      "basis": "closed diffuse room with one rectangle; the polished half's reflections and the block contact regions carry the p99",
+      "digest": "3b03320c670f227f1978d517830b729d65912e2b28d690d49befc1d3409e4b20",
+      "fixed": "2026-09-29T08:35:25+00:00",
+      "fixture": "cornell-floors",
+      "mean": 0.06,
+      "p99": 0.6,
+      "version": 1
+    },
+    {
+      "basis": "64 rectangles by LTC fits (Heitz et al. 2016) carry fitting error on the glossy stripes and grazing strips",
+      "digest": "46edc2e6042505eb56483d938183492279e59621193131594251d53da4d67bca",
+      "fixed": "2026-09-29T08:35:25+00:00",
+      "fixture": "area-room",
+      "mean": 0.08,
+      "p99": 0.75,
+      "version": 1
+    },
+    {
+      "basis": "direct light is exact by the contract; p99 is the cookie's mullion edges and the pillar's shadow edge under a filtered atlas lookup",
+      "digest": "2476ddadeccbf8eaca8ebf95c7b29e7f74be4d3f69d4f955dae037363e5c4d5a",
+      "fixed": "2026-09-29T08:35:25+00:00",
+      "fixture": "projector-cookie",
+      "mean": 0.06,
+      "p99": 0.8,
+      "version": 1
+    },
+    {
+      "basis": "one sun and a sky; p99 is cascade shadow edges and the sun's 0.53 degree penumbra",
+      "digest": "02d11a18d30d22dde337e3862c972b5ce72bd585000748368e7f6e11a58e0f03",
+      "fixed": "2026-09-29T08:35:25+00:00",
+      "fixture": "sun-colonnade",
+      "mean": 0.06,
+      "p99": 0.7,
+      "version": 1
+    },
+    {
+      "basis": "froxel single scattering against a path-traced homogeneous medium; 256 point and spot lights",
+      "digest": "f13d529eb675d096698727e62482ddb4d62fc0863c31f35fe0728757ae8f8c68",
+      "fixed": "2026-09-29T08:35:25+00:00",
+      "fixture": "foggy-hall",
+      "mean": 0.1,
+      "p99": 0.9,
+      "version": 1
+    },
+    {
+      "basis": "screen-space hits against traced reflections, off-screen and occluded rays falling back to probes",
+      "digest": "4508b259efc8e7b1d7ed3eeefb0741adccb00a14009d7a4bd3bbfc8aef162f2e",
+      "fixed": "2026-09-29T08:35:25+00:00",
+      "fixture": "mirror-corridor",
+      "mean": 0.1,
+      "p99": 1.0,
+      "version": 1
+    },
+    {
+      "basis": "the BRDF against Cycles' Principled BSDF on smooth spheres; highlights of the key rectangle carry the p99",
+      "digest": "f89cffca026660b8dfe875266afd0ea1d65a92329f809c13cf065648c49a8648",
+      "fixed": "2026-09-29T08:35:25+00:00",
+      "fixture": "material-sweep",
+      "mean": 0.05,
+      "p99": 0.5,
+      "version": 1
+    },
+    {
+      "basis": "derived legacy materials and textures (legacy_bsp_scene.py), modern points of the surface model",
+      "digest": "8f35509540bd433162ae99bde9949874df3d3328d613b6cf6b6184384de0ceda",
+      "fixed": "2026-09-29T08:35:25+00:00",
+      "fixture": "portal-chamber",
+      "mean": 0.12,
+      "p99": 1.0,
+      "version": 1
+    },
+    {
+      "basis": "derived legacy materials, $ssbump as normal and occlusion, modern points of the surface model",
+      "digest": "26a3b3cc5831368c0fb70a914be3109b23af9382951ac03fd0788f4059242f15",
+      "fixed": "2026-09-29T08:35:25+00:00",
+      "fixture": "portal2-chamber",
+      "mean": 0.12,
+      "p99": 1.0,
+      "version": 1
+    }
+  ],
+  "metric": "manifest.json error_metric: e = max channel |lab - ref| / mean reference luminance over the judged pixels",
+  "rules": [
+    "An entry is fixed before any comparison uses it and is never edited: its digest covers fixture, version, mean, p99 and fixed.",
+    "A changed tolerance is a new version with a later `fixed` time and a `reason`; a version fixed after a recorded comparison of its fixture without a reason is rejected by `lighting_fixtures.py check`.",
+    "A comparison records the version and digest it used; one whose tolerance was fixed after it, or changed since, is rejected.",
+    "Comparisons against preview references (16 samples) are diagnostic and certify nothing."
+  ],
+  "schema": "lighting-tolerances/v1",
+  "set_by": "RFC 0016 K11 fixture work, 2026-09-29, before any render_lab comparison existed; the gallery's runtime oracles used 10% region tolerances"
+}

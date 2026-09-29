@@ -1,0 +1,182 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "room": {
+      "eye": [
+        0.3,
+        0.5,
+        1.9
+      ],
+      "forward": [
+        0.8682328640776628,
+        0.4721968208141674,
+        -0.15232155510134432
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "wall": {
+      "eye": [
+        1.8,
+        3.0,
+        1.6
+      ],
+      "forward": [
+        0.9954954725939523,
+        0.0,
+        -0.09480909262799549
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "lighting",
+  "film": {
+    "height": 384,
+    "width": 512
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": false,
+  "lighting": {
+    "entities": "entities.json",
+    "lights": {
+      "point": 0,
+      "rect": 1,
+      "sky": 0,
+      "spot": 0,
+      "sun": 0
+    },
+    "map": {
+      "baked_state": "default",
+      "bsp": "run/maps/lt_projector_cookie/maps/lt_projector_cookie.bsp",
+      "layout": "planar",
+      "name": "lt_projector_cookie",
+      "overrides": {
+        "lightmap": {
+          "samples": 64
+        },
+        "probe_volume": {
+          "samples": 256
+        },
+        "radiosity": null,
+        "sdf_volume": null
+      },
+      "solid_meshes": []
+    },
+    "media": {},
+    "projectors": [
+      {
+        "attenuation": [
+          0.0,
+          100.0,
+          0.0
+        ],
+        "color": [
+          2.5,
+          2.3,
+          2.0
+        ],
+        "cookie_image": "window_gobo.png",
+        "far_z": 330.0,
+        "forward": [
+          0.9510565162951535,
+          0.0,
+          -0.3090169943749474
+        ],
+        "horizontal_fov_degrees": 55.0,
+        "name": "Projector",
+        "near_z": 4.0,
+        "origin_m": [
+          0.6,
+          3.0,
+          2.6
+        ],
+        "origin_units": [
+          23.622,
+          118.1102,
+          102.3622
+        ],
+        "pitch": 18.0,
+        "right": [
+          0.0,
+          -1.0,
+          0.0
+        ],
+        "texture": "lighting/cookies/window_gobo",
+        "up": [
+          0.3090169943749474,
+          0.0,
+          0.9510565162951535
+        ],
+        "vertical_fov_degrees": 55.0,
+        "yaw": 0.0
+      }
+    ],
+    "terms": [
+      "projected-lights",
+      "direct-visibility",
+      "brdf",
+      "indirect-diffuse-static"
+    ]
+  },
+  "map_manifest": null,
+  "name": "projector-cookie",
+  "oracles": [],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A dark room where an env_projectedtexture shines a window cookie onto a Lambertian floor and back wall past a pillar that shadows it and a glossy sphere that reflects it, under a dim fill rectangle; Portal's attenuation (linear 100 / d, clamped) and end falloff past 0.6 far",
+  "regions": {
+    "room": {
+      "BackWall": [
+        "BackWall"
+      ],
+      "Floor": [
+        "Floor"
+      ],
+      "GlossSphere": [
+        "GlossSphere"
+      ],
+      "P_Yp": [
+        "P_Yp"
+      ],
+      "Pillar_Xn": [
+        "Pillar_Xn"
+      ],
+      "Pillar_Yn": [
+        "Pillar_Yn"
+      ]
+    },
+    "wall": {
+      "BackWall": [
+        "BackWall"
+      ],
+      "Floor": [
+        "Floor"
+      ],
+      "Pillar_Xn": [
+        "Pillar_Xn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "projector-cookie.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "projector and fill"
+    },
+    "projector": {
+      "layer": "states/projector.usda",
+      "note": "projector alone (fill off): the direct projected light, judged against projected_light::IrradianceAt"
+    }
+  }
+}

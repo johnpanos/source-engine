@@ -1,0 +1,6645 @@
+{
+  "entities": [
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot00",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "59.0551 110.2362 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot01",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "59.0551 204.7244 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot02",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "177.1654 110.2362 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot03",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "177.1654 204.7244 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot04",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "295.2756 110.2362 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot05",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "295.2756 204.7244 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot06",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "413.3858 110.2362 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot07",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "413.3858 204.7244 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot08",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "531.4961 110.2362 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot09",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "531.4961 204.7244 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot10",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "649.6063 110.2362 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot11",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "649.6063 204.7244 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot12",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "767.7165 110.2362 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot13",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "767.7165 204.7244 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot14",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "885.8268 110.2362 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_cone": "24.0000",
+      "_constant_attn": "0",
+      "_exponent": "1.0000",
+      "_fixture_light": "Spot15",
+      "_inner_cone": "14.0000",
+      "_light": "255.0000 251.0860 242.1149 2743.8000",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "angles": "-90.0000 0.0000 0",
+      "classname": "light_spot",
+      "origin": "885.8268 204.7244 232.2835",
+      "pitch": "-90.0000"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb000",
+      "_light": "255.0000 232.5737 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "11.8110 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb001",
+      "_light": "255.0000 242.9733 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "35.4331 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb002",
+      "_light": "255.0000 252.8643 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "59.0551 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb003",
+      "_light": "247.4278 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "82.6772 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb004",
+      "_light": "237.2632 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "106.2992 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb005",
+      "_light": "226.5471 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "129.9213 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb006",
+      "_light": "215.1851 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "153.5433 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb007",
+      "_light": "203.0531 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "177.1654 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb008",
+      "_light": "189.9818 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "200.7874 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb009",
+      "_light": "177.3820 255.0000 179.0154 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "224.4094 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb010",
+      "_light": "177.3820 255.0000 192.9787 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "248.0315 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb011",
+      "_light": "177.3820 255.0000 205.8236 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "271.6535 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb012",
+      "_light": "177.3820 255.0000 217.7717 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "295.2756 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb013",
+      "_light": "177.3820 255.0000 228.9806 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "318.8976 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb014",
+      "_light": "177.3820 255.0000 239.5669 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "342.5197 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb015",
+      "_light": "177.3820 255.0000 249.6195 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "366.1417 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb016",
+      "_light": "177.3820 250.7066 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "389.7638 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb017",
+      "_light": "177.3820 240.7087 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "413.3858 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb018",
+      "_light": "177.3820 230.1857 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "437.0079 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb019",
+      "_light": "177.3820 219.0511 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "460.6299 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb020",
+      "_light": "177.3820 207.1920 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "484.2520 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb021",
+      "_light": "177.3820 194.4563 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "507.8740 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb022",
+      "_light": "177.3820 180.6310 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "531.4961 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb023",
+      "_light": "188.4620 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "555.1181 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb024",
+      "_light": "201.6509 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "578.7402 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb025",
+      "_light": "213.8779 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "602.3622 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb026",
+      "_light": "225.3186 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "625.9843 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb027",
+      "_light": "236.1014 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "649.6063 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb028",
+      "_light": "246.3233 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "673.2283 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb029",
+      "_light": "255.0000 177.3820 253.9348 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "696.8504 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb030",
+      "_light": "255.0000 177.3820 244.0960 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "720.4724 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb031",
+      "_light": "255.0000 177.3820 233.7566 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "744.0945 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb032",
+      "_light": "255.0000 177.3820 222.8369 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "767.7165 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb033",
+      "_light": "255.0000 177.3820 211.2339 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "791.3386 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb034",
+      "_light": "255.0000 177.3820 198.8105 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "814.9606 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb035",
+      "_light": "255.0000 177.3820 185.3772 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "838.5827 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb036",
+      "_light": "255.0000 183.8116 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "862.2047 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb037",
+      "_light": "255.0000 197.3720 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "885.8268 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb038",
+      "_light": "255.0000 209.8971 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "909.4488 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb039",
+      "_light": "255.0000 221.5837 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "933.0709 9.8425 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb040",
+      "_light": "222.8369 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "11.8110 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb041",
+      "_light": "211.2339 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "35.4331 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb042",
+      "_light": "198.8105 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "59.0551 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb043",
+      "_light": "185.3772 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "82.6772 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb044",
+      "_light": "177.3820 255.0000 183.8116 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "106.2992 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb045",
+      "_light": "177.3820 255.0000 197.3720 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "129.9213 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb046",
+      "_light": "177.3820 255.0000 209.8971 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "153.5433 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb047",
+      "_light": "177.3820 255.0000 221.5837 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "177.1654 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb048",
+      "_light": "177.3820 255.0000 232.5737 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "200.7874 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb049",
+      "_light": "177.3820 255.0000 242.9733 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "224.4094 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb050",
+      "_light": "177.3820 255.0000 252.8643 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "248.0315 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb051",
+      "_light": "177.3820 247.4278 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "271.6535 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb052",
+      "_light": "177.3820 237.2632 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "295.2756 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb053",
+      "_light": "177.3820 226.5471 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "318.8976 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb054",
+      "_light": "177.3820 215.1851 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "342.5197 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb055",
+      "_light": "177.3820 203.0531 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "366.1417 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb056",
+      "_light": "177.3820 189.9818 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "389.7638 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb057",
+      "_light": "179.0154 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "413.3858 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb058",
+      "_light": "192.9787 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "437.0079 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb059",
+      "_light": "205.8236 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "460.6299 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb060",
+      "_light": "217.7717 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "484.2520 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb061",
+      "_light": "228.9806 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "507.8740 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb062",
+      "_light": "239.5669 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "531.4961 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb063",
+      "_light": "249.6195 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "555.1181 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb064",
+      "_light": "255.0000 177.3820 250.7066 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "578.7402 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb065",
+      "_light": "255.0000 177.3820 240.7087 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "602.3622 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb066",
+      "_light": "255.0000 177.3820 230.1857 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "625.9843 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb067",
+      "_light": "255.0000 177.3820 219.0511 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "649.6063 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb068",
+      "_light": "255.0000 177.3820 207.1920 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "673.2283 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb069",
+      "_light": "255.0000 177.3820 194.4563 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "696.8504 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb070",
+      "_light": "255.0000 177.3820 180.6310 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "720.4724 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb071",
+      "_light": "255.0000 188.4620 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "744.0945 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb072",
+      "_light": "255.0000 201.6509 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "767.7165 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb073",
+      "_light": "255.0000 213.8779 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "791.3386 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb074",
+      "_light": "255.0000 225.3186 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "814.9606 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb075",
+      "_light": "255.0000 236.1014 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "838.5827 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb076",
+      "_light": "255.0000 246.3233 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "862.2047 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb077",
+      "_light": "253.9348 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "885.8268 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb078",
+      "_light": "244.0960 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "909.4488 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb079",
+      "_light": "233.7566 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "933.0709 9.8425 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb080",
+      "_light": "177.3820 255.0000 201.6509 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "11.8110 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb081",
+      "_light": "177.3820 255.0000 213.8779 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "35.4331 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb082",
+      "_light": "177.3820 255.0000 225.3186 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "59.0551 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb083",
+      "_light": "177.3820 255.0000 236.1014 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "82.6772 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb084",
+      "_light": "177.3820 255.0000 246.3233 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "106.2992 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb085",
+      "_light": "177.3820 253.9348 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "129.9213 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb086",
+      "_light": "177.3820 244.0960 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "153.5433 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb087",
+      "_light": "177.3820 233.7566 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "177.1654 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb088",
+      "_light": "177.3820 222.8369 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "200.7874 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb089",
+      "_light": "177.3820 211.2339 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "224.4094 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb090",
+      "_light": "177.3820 198.8105 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "248.0315 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb091",
+      "_light": "177.3820 185.3772 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "271.6535 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb092",
+      "_light": "183.8116 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "295.2756 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb093",
+      "_light": "197.3720 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "318.8976 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb094",
+      "_light": "209.8971 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "342.5197 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb095",
+      "_light": "221.5837 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "366.1417 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb096",
+      "_light": "232.5737 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "389.7638 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb097",
+      "_light": "242.9733 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "413.3858 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb098",
+      "_light": "252.8643 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "437.0079 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb099",
+      "_light": "255.0000 177.3820 247.4278 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "460.6299 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb100",
+      "_light": "255.0000 177.3820 237.2632 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "484.2520 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb101",
+      "_light": "255.0000 177.3820 226.5471 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "507.8740 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb102",
+      "_light": "255.0000 177.3820 215.1851 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "531.4961 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb103",
+      "_light": "255.0000 177.3820 203.0531 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "555.1181 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb104",
+      "_light": "255.0000 177.3820 189.9818 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "578.7402 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb105",
+      "_light": "255.0000 179.0154 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "602.3622 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb106",
+      "_light": "255.0000 192.9787 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "625.9843 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb107",
+      "_light": "255.0000 205.8236 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "649.6063 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb108",
+      "_light": "255.0000 217.7717 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "673.2283 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb109",
+      "_light": "255.0000 228.9806 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "696.8504 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb110",
+      "_light": "255.0000 239.5669 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "720.4724 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb111",
+      "_light": "255.0000 249.6195 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "744.0945 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb112",
+      "_light": "250.7066 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "767.7165 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb113",
+      "_light": "240.7087 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "791.3386 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb114",
+      "_light": "230.1857 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "814.9606 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb115",
+      "_light": "219.0511 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "838.5827 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb116",
+      "_light": "207.1920 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "862.2047 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb117",
+      "_light": "194.4563 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "885.8268 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb118",
+      "_light": "180.6310 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "909.4488 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb119",
+      "_light": "177.3820 255.0000 188.4620 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "933.0709 9.8425 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb120",
+      "_light": "177.3820 255.0000 232.5737 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "11.8110 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb121",
+      "_light": "177.3820 255.0000 242.9733 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "35.4331 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb122",
+      "_light": "177.3820 255.0000 252.8643 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "59.0551 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb123",
+      "_light": "177.3820 247.4278 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "82.6772 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb124",
+      "_light": "177.3820 237.2632 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "106.2992 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb125",
+      "_light": "177.3820 226.5471 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "129.9213 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb126",
+      "_light": "177.3820 215.1851 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "153.5433 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb127",
+      "_light": "177.3820 203.0531 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "177.1654 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb128",
+      "_light": "177.3820 189.9818 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "200.7874 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb129",
+      "_light": "179.0154 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "224.4094 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb130",
+      "_light": "192.9787 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "248.0315 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb131",
+      "_light": "205.8236 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "271.6535 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb132",
+      "_light": "217.7717 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "295.2756 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb133",
+      "_light": "228.9806 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "318.8976 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb134",
+      "_light": "239.5669 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "342.5197 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb135",
+      "_light": "249.6195 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "366.1417 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb136",
+      "_light": "255.0000 177.3820 250.7066 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "389.7638 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb137",
+      "_light": "255.0000 177.3820 240.7087 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "413.3858 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb138",
+      "_light": "255.0000 177.3820 230.1857 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "437.0079 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb139",
+      "_light": "255.0000 177.3820 219.0511 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "460.6299 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb140",
+      "_light": "255.0000 177.3820 207.1920 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "484.2520 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb141",
+      "_light": "255.0000 177.3820 194.4563 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "507.8740 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb142",
+      "_light": "255.0000 177.3820 180.6310 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "531.4961 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb143",
+      "_light": "255.0000 188.4620 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "555.1181 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb144",
+      "_light": "255.0000 201.6509 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "578.7402 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb145",
+      "_light": "255.0000 213.8779 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "602.3622 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb146",
+      "_light": "255.0000 225.3186 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "625.9843 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb147",
+      "_light": "255.0000 236.1014 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "649.6063 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb148",
+      "_light": "255.0000 246.3233 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "673.2283 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb149",
+      "_light": "253.9348 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "696.8504 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb150",
+      "_light": "244.0960 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "720.4724 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb151",
+      "_light": "233.7566 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "744.0945 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb152",
+      "_light": "222.8369 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "767.7165 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb153",
+      "_light": "211.2339 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "791.3386 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb154",
+      "_light": "198.8105 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "814.9606 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb155",
+      "_light": "185.3772 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "838.5827 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb156",
+      "_light": "177.3820 255.0000 183.8116 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "862.2047 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb157",
+      "_light": "177.3820 255.0000 197.3720 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "885.8268 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb158",
+      "_light": "177.3820 255.0000 209.8971 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "909.4488 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb159",
+      "_light": "177.3820 255.0000 221.5837 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "933.0709 305.1181 39.3701"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb160",
+      "_light": "177.3820 222.8369 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "11.8110 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb161",
+      "_light": "177.3820 211.2339 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "35.4331 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb162",
+      "_light": "177.3820 198.8105 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "59.0551 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb163",
+      "_light": "177.3820 185.3772 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "82.6772 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb164",
+      "_light": "183.8116 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "106.2992 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb165",
+      "_light": "197.3720 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "129.9213 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb166",
+      "_light": "209.8971 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "153.5433 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb167",
+      "_light": "221.5837 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "177.1654 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb168",
+      "_light": "232.5737 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "200.7874 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb169",
+      "_light": "242.9733 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "224.4094 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb170",
+      "_light": "252.8643 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "248.0315 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb171",
+      "_light": "255.0000 177.3820 247.4278 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "271.6535 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb172",
+      "_light": "255.0000 177.3820 237.2632 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "295.2756 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb173",
+      "_light": "255.0000 177.3820 226.5471 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "318.8976 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb174",
+      "_light": "255.0000 177.3820 215.1851 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "342.5197 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb175",
+      "_light": "255.0000 177.3820 203.0531 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "366.1417 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb176",
+      "_light": "255.0000 177.3820 189.9818 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "389.7638 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb177",
+      "_light": "255.0000 179.0154 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "413.3858 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb178",
+      "_light": "255.0000 192.9787 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "437.0079 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb179",
+      "_light": "255.0000 205.8236 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "460.6299 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb180",
+      "_light": "255.0000 217.7717 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "484.2520 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb181",
+      "_light": "255.0000 228.9806 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "507.8740 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb182",
+      "_light": "255.0000 239.5669 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "531.4961 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb183",
+      "_light": "255.0000 249.6195 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "555.1181 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb184",
+      "_light": "250.7066 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "578.7402 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb185",
+      "_light": "240.7087 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "602.3622 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb186",
+      "_light": "230.1857 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "625.9843 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb187",
+      "_light": "219.0511 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "649.6063 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb188",
+      "_light": "207.1920 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "673.2283 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb189",
+      "_light": "194.4563 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "696.8504 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb190",
+      "_light": "180.6310 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "720.4724 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb191",
+      "_light": "177.3820 255.0000 188.4620 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "744.0945 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb192",
+      "_light": "177.3820 255.0000 201.6509 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "767.7165 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb193",
+      "_light": "177.3820 255.0000 213.8779 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "791.3386 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb194",
+      "_light": "177.3820 255.0000 225.3186 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "814.9606 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb195",
+      "_light": "177.3820 255.0000 236.1014 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "838.5827 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb196",
+      "_light": "177.3820 255.0000 246.3233 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "862.2047 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb197",
+      "_light": "177.3820 253.9348 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "885.8268 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb198",
+      "_light": "177.3820 244.0960 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "909.4488 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb199",
+      "_light": "177.3820 233.7566 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "933.0709 305.1181 86.6142"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb200",
+      "_light": "201.6509 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "11.8110 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb201",
+      "_light": "213.8779 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "35.4331 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb202",
+      "_light": "225.3186 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "59.0551 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb203",
+      "_light": "236.1014 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "82.6772 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb204",
+      "_light": "246.3233 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "106.2992 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb205",
+      "_light": "255.0000 177.3820 253.9348 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "129.9213 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb206",
+      "_light": "255.0000 177.3820 244.0960 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "153.5433 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb207",
+      "_light": "255.0000 177.3820 233.7566 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "177.1654 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb208",
+      "_light": "255.0000 177.3820 222.8369 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "200.7874 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb209",
+      "_light": "255.0000 177.3820 211.2339 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "224.4094 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb210",
+      "_light": "255.0000 177.3820 198.8105 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "248.0315 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb211",
+      "_light": "255.0000 177.3820 185.3772 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "271.6535 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb212",
+      "_light": "255.0000 183.8116 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "295.2756 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb213",
+      "_light": "255.0000 197.3720 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "318.8976 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb214",
+      "_light": "255.0000 209.8971 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "342.5197 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb215",
+      "_light": "255.0000 221.5837 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "366.1417 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb216",
+      "_light": "255.0000 232.5737 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "389.7638 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb217",
+      "_light": "255.0000 242.9733 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "413.3858 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb218",
+      "_light": "255.0000 252.8643 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "437.0079 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb219",
+      "_light": "247.4278 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "460.6299 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb220",
+      "_light": "237.2632 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "484.2520 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb221",
+      "_light": "226.5471 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "507.8740 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb222",
+      "_light": "215.1851 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "531.4961 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb223",
+      "_light": "203.0531 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "555.1181 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb224",
+      "_light": "189.9818 255.0000 177.3820 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "578.7402 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb225",
+      "_light": "177.3820 255.0000 179.0154 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "602.3622 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb226",
+      "_light": "177.3820 255.0000 192.9787 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "625.9843 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb227",
+      "_light": "177.3820 255.0000 205.8236 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "649.6063 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb228",
+      "_light": "177.3820 255.0000 217.7717 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "673.2283 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb229",
+      "_light": "177.3820 255.0000 228.9806 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "696.8504 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb230",
+      "_light": "177.3820 255.0000 239.5669 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "720.4724 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb231",
+      "_light": "177.3820 255.0000 249.6195 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "744.0945 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb232",
+      "_light": "177.3820 250.7066 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "767.7165 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb233",
+      "_light": "177.3820 240.7087 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "791.3386 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb234",
+      "_light": "177.3820 230.1857 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "814.9606 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb235",
+      "_light": "177.3820 219.0511 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "838.5827 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb236",
+      "_light": "177.3820 207.1920 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "862.2047 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb237",
+      "_light": "177.3820 194.4563 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "885.8268 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb238",
+      "_light": "177.3820 180.6310 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "909.4488 305.1181 133.8583"
+    },
+    {
+      "_constant_attn": "0",
+      "_fixture_light": "Bulb239",
+      "_light": "188.4620 177.3820 255.0000 4.5900",
+      "_lightHDR": "-1 -1 -1 1",
+      "_lightscaleHDR": "1",
+      "_linear_attn": "0",
+      "_quadratic_attn": "1",
+      "classname": "light",
+      "origin": "933.0709 305.1181 133.8583"
+    },
+    {
+      "angles": "8.0000 180.0000 0",
+      "cameraspace": "0",
+      "classname": "env_projectedtexture",
+      "enableshadows": "1",
+      "farz": "1000.0000",
+      "lightcolor": "255.0000 255.0000 244.8218 892.5000",
+      "lightfov": "40.0000",
+      "lightonlytarget": "0",
+      "lightworld": "1",
+      "nearz": "4.0000",
+      "origin": "921.2598 157.4803 118.1102",
+      "shadowquality": "1",
+      "spawnflags": "1",
+      "targetname": "Projector",
+      "texturename": "lighting/cookies/window_gobo"
+    },
+    {
+      "absorption": "0.00025400",
+      "anisotropy": "0.3000",
+      "classname": "lab_medium",
+      "maxs": "944.8819 314.9606 236.2205",
+      "mins": "0.0000 0.0000 0.0000",
+      "origin": "472.4409 157.4803 118.1102",
+      "phase": "henyey-greenstein",
+      "scattering": "0.00152400",
+      "targetname": "Fog"
+    }
+  ],
+  "fixture": "foggy-hall",
+  "lights": [
+    {
+      "center_m": [
+        1.5,
+        2.8,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot00",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        1.5,
+        5.2,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot01",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        2.8,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot02",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        5.2,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot03",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        7.5,
+        2.8,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot04",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        7.5,
+        5.2,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot05",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        10.5,
+        2.8,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot06",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        10.5,
+        5.2,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot07",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        13.5,
+        2.8,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot08",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        13.5,
+        5.2,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot09",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        16.5,
+        2.8,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot10",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        16.5,
+        5.2,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot11",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        19.5,
+        2.8,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot12",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        19.5,
+        5.2,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot13",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        22.5,
+        2.8,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot14",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        22.5,
+        5.2,
+        5.9
+      ],
+      "direction": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "exponent": 1.0,
+      "inner_degrees": 14.0,
+      "kind": "spot",
+      "name": "Spot15",
+      "outer_degrees": 24.0,
+      "radiance": [
+        26900.0,
+        26000.0,
+        24000.0
+      ]
+    },
+    {
+      "center_m": [
+        0.3,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb000",
+      "radiance": [
+        45.0,
+        36.750015000000005,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        0.8999999999999999,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb001",
+      "radiance": [
+        45.0,
+        40.462515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        1.5,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb002",
+      "radiance": [
+        45.0,
+        44.175014999999995,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        2.0999999999999996,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb003",
+      "radiance": [
+        42.112485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        2.6999999999999997,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb004",
+      "radiance": [
+        38.399985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        3.3,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb005",
+      "radiance": [
+        34.687485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        3.8999999999999995,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb006",
+      "radiance": [
+        30.974985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb007",
+      "radiance": [
+        27.262484999999998,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        5.1,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb008",
+      "radiance": [
+        23.549985000000003,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        5.699999999999999,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb009",
+      "radiance": [
+        20.25,
+        45.0,
+        20.662515
+      ]
+    },
+    {
+      "center_m": [
+        6.3,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb010",
+      "radiance": [
+        20.25,
+        45.0,
+        24.375015
+      ]
+    },
+    {
+      "center_m": [
+        6.8999999999999995,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb011",
+      "radiance": [
+        20.25,
+        45.0,
+        28.087515
+      ]
+    },
+    {
+      "center_m": [
+        7.499999999999999,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb012",
+      "radiance": [
+        20.25,
+        45.0,
+        31.800015000000002
+      ]
+    },
+    {
+      "center_m": [
+        8.1,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb013",
+      "radiance": [
+        20.25,
+        45.0,
+        35.512515
+      ]
+    },
+    {
+      "center_m": [
+        8.700000000000001,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb014",
+      "radiance": [
+        20.25,
+        45.0,
+        39.225015
+      ]
+    },
+    {
+      "center_m": [
+        9.3,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb015",
+      "radiance": [
+        20.25,
+        45.0,
+        42.937515
+      ]
+    },
+    {
+      "center_m": [
+        9.9,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb016",
+      "radiance": [
+        20.25,
+        43.349985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        10.5,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb017",
+      "radiance": [
+        20.25,
+        39.637485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        11.1,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb018",
+      "radiance": [
+        20.25,
+        35.924985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        11.700000000000001,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb019",
+      "radiance": [
+        20.25,
+        32.212485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        12.3,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb020",
+      "radiance": [
+        20.25,
+        28.499985000000002,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        12.9,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb021",
+      "radiance": [
+        20.25,
+        24.787485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        13.5,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb022",
+      "radiance": [
+        20.25,
+        21.074985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        14.1,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb023",
+      "radiance": [
+        23.137515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        14.7,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb024",
+      "radiance": [
+        26.850015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        15.3,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb025",
+      "radiance": [
+        30.562514999999998,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        15.9,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb026",
+      "radiance": [
+        34.275014999999996,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        16.5,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb027",
+      "radiance": [
+        37.987515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        17.1,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb028",
+      "radiance": [
+        41.700015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        17.7,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb029",
+      "radiance": [
+        45.0,
+        20.25,
+        44.587485
+      ]
+    },
+    {
+      "center_m": [
+        18.3,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb030",
+      "radiance": [
+        45.0,
+        20.25,
+        40.874984999999995
+      ]
+    },
+    {
+      "center_m": [
+        18.9,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb031",
+      "radiance": [
+        45.0,
+        20.25,
+        37.162485000000004
+      ]
+    },
+    {
+      "center_m": [
+        19.5,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb032",
+      "radiance": [
+        45.0,
+        20.25,
+        33.449985
+      ]
+    },
+    {
+      "center_m": [
+        20.1,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb033",
+      "radiance": [
+        45.0,
+        20.25,
+        29.737485
+      ]
+    },
+    {
+      "center_m": [
+        20.7,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb034",
+      "radiance": [
+        45.0,
+        20.25,
+        26.024985
+      ]
+    },
+    {
+      "center_m": [
+        21.3,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb035",
+      "radiance": [
+        45.0,
+        20.25,
+        22.312485000000002
+      ]
+    },
+    {
+      "center_m": [
+        21.9,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb036",
+      "radiance": [
+        45.0,
+        21.900015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        22.5,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb037",
+      "radiance": [
+        45.0,
+        25.612515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        23.1,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb038",
+      "radiance": [
+        45.0,
+        29.325015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        23.7,
+        0.25,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb039",
+      "radiance": [
+        45.0,
+        33.037515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        0.3,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb040",
+      "radiance": [
+        33.449985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        0.8999999999999999,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb041",
+      "radiance": [
+        29.737485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        1.5,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb042",
+      "radiance": [
+        26.024985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        2.0999999999999996,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb043",
+      "radiance": [
+        22.312485000000002,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        2.6999999999999997,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb044",
+      "radiance": [
+        20.25,
+        45.0,
+        21.900015
+      ]
+    },
+    {
+      "center_m": [
+        3.3,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb045",
+      "radiance": [
+        20.25,
+        45.0,
+        25.612515
+      ]
+    },
+    {
+      "center_m": [
+        3.8999999999999995,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb046",
+      "radiance": [
+        20.25,
+        45.0,
+        29.325015
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb047",
+      "radiance": [
+        20.25,
+        45.0,
+        33.037515
+      ]
+    },
+    {
+      "center_m": [
+        5.1,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb048",
+      "radiance": [
+        20.25,
+        45.0,
+        36.750015000000005
+      ]
+    },
+    {
+      "center_m": [
+        5.699999999999999,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb049",
+      "radiance": [
+        20.25,
+        45.0,
+        40.462515
+      ]
+    },
+    {
+      "center_m": [
+        6.3,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb050",
+      "radiance": [
+        20.25,
+        45.0,
+        44.175014999999995
+      ]
+    },
+    {
+      "center_m": [
+        6.8999999999999995,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb051",
+      "radiance": [
+        20.25,
+        42.112485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        7.499999999999999,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb052",
+      "radiance": [
+        20.25,
+        38.399985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        8.1,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb053",
+      "radiance": [
+        20.25,
+        34.687485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        8.700000000000001,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb054",
+      "radiance": [
+        20.25,
+        30.974985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        9.3,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb055",
+      "radiance": [
+        20.25,
+        27.262484999999998,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        9.9,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb056",
+      "radiance": [
+        20.25,
+        23.549985000000003,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        10.5,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb057",
+      "radiance": [
+        20.662515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        11.1,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb058",
+      "radiance": [
+        24.375015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        11.700000000000001,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb059",
+      "radiance": [
+        28.087515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        12.3,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb060",
+      "radiance": [
+        31.800015000000002,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        12.9,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb061",
+      "radiance": [
+        35.512515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        13.5,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb062",
+      "radiance": [
+        39.225015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        14.1,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb063",
+      "radiance": [
+        42.937515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        14.7,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb064",
+      "radiance": [
+        45.0,
+        20.25,
+        43.349985
+      ]
+    },
+    {
+      "center_m": [
+        15.3,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb065",
+      "radiance": [
+        45.0,
+        20.25,
+        39.637485
+      ]
+    },
+    {
+      "center_m": [
+        15.9,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb066",
+      "radiance": [
+        45.0,
+        20.25,
+        35.924985
+      ]
+    },
+    {
+      "center_m": [
+        16.5,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb067",
+      "radiance": [
+        45.0,
+        20.25,
+        32.212485
+      ]
+    },
+    {
+      "center_m": [
+        17.1,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb068",
+      "radiance": [
+        45.0,
+        20.25,
+        28.499985000000002
+      ]
+    },
+    {
+      "center_m": [
+        17.7,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb069",
+      "radiance": [
+        45.0,
+        20.25,
+        24.787485
+      ]
+    },
+    {
+      "center_m": [
+        18.3,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb070",
+      "radiance": [
+        45.0,
+        20.25,
+        21.074985
+      ]
+    },
+    {
+      "center_m": [
+        18.9,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb071",
+      "radiance": [
+        45.0,
+        23.137515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        19.5,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb072",
+      "radiance": [
+        45.0,
+        26.850015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        20.1,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb073",
+      "radiance": [
+        45.0,
+        30.562514999999998,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        20.7,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb074",
+      "radiance": [
+        45.0,
+        34.275014999999996,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        21.3,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb075",
+      "radiance": [
+        45.0,
+        37.987515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        21.9,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb076",
+      "radiance": [
+        45.0,
+        41.700015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        22.5,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb077",
+      "radiance": [
+        44.587485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        23.1,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb078",
+      "radiance": [
+        40.874984999999995,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        23.7,
+        0.25,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb079",
+      "radiance": [
+        37.162485000000004,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        0.3,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb080",
+      "radiance": [
+        20.25,
+        45.0,
+        26.850015
+      ]
+    },
+    {
+      "center_m": [
+        0.8999999999999999,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb081",
+      "radiance": [
+        20.25,
+        45.0,
+        30.562514999999998
+      ]
+    },
+    {
+      "center_m": [
+        1.5,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb082",
+      "radiance": [
+        20.25,
+        45.0,
+        34.275014999999996
+      ]
+    },
+    {
+      "center_m": [
+        2.0999999999999996,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb083",
+      "radiance": [
+        20.25,
+        45.0,
+        37.987515
+      ]
+    },
+    {
+      "center_m": [
+        2.6999999999999997,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb084",
+      "radiance": [
+        20.25,
+        45.0,
+        41.700015
+      ]
+    },
+    {
+      "center_m": [
+        3.3,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb085",
+      "radiance": [
+        20.25,
+        44.587485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        3.8999999999999995,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb086",
+      "radiance": [
+        20.25,
+        40.874984999999995,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb087",
+      "radiance": [
+        20.25,
+        37.162485000000004,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        5.1,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb088",
+      "radiance": [
+        20.25,
+        33.449985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        5.699999999999999,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb089",
+      "radiance": [
+        20.25,
+        29.737485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        6.3,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb090",
+      "radiance": [
+        20.25,
+        26.024985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        6.8999999999999995,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb091",
+      "radiance": [
+        20.25,
+        22.312485000000002,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        7.499999999999999,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb092",
+      "radiance": [
+        21.900015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        8.1,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb093",
+      "radiance": [
+        25.612515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        8.700000000000001,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb094",
+      "radiance": [
+        29.325015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        9.3,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb095",
+      "radiance": [
+        33.037515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        9.9,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb096",
+      "radiance": [
+        36.750015000000005,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        10.5,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb097",
+      "radiance": [
+        40.462515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        11.1,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb098",
+      "radiance": [
+        44.175014999999995,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        11.700000000000001,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb099",
+      "radiance": [
+        45.0,
+        20.25,
+        42.112485
+      ]
+    },
+    {
+      "center_m": [
+        12.3,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb100",
+      "radiance": [
+        45.0,
+        20.25,
+        38.399985
+      ]
+    },
+    {
+      "center_m": [
+        12.9,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb101",
+      "radiance": [
+        45.0,
+        20.25,
+        34.687485
+      ]
+    },
+    {
+      "center_m": [
+        13.5,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb102",
+      "radiance": [
+        45.0,
+        20.25,
+        30.974985
+      ]
+    },
+    {
+      "center_m": [
+        14.1,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb103",
+      "radiance": [
+        45.0,
+        20.25,
+        27.262484999999998
+      ]
+    },
+    {
+      "center_m": [
+        14.7,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb104",
+      "radiance": [
+        45.0,
+        20.25,
+        23.549985000000003
+      ]
+    },
+    {
+      "center_m": [
+        15.3,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb105",
+      "radiance": [
+        45.0,
+        20.662515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        15.9,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb106",
+      "radiance": [
+        45.0,
+        24.375015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        16.5,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb107",
+      "radiance": [
+        45.0,
+        28.087515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        17.1,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb108",
+      "radiance": [
+        45.0,
+        31.800015000000002,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        17.7,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb109",
+      "radiance": [
+        45.0,
+        35.512515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        18.3,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb110",
+      "radiance": [
+        45.0,
+        39.225015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        18.9,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb111",
+      "radiance": [
+        45.0,
+        42.937515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        19.5,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb112",
+      "radiance": [
+        43.349985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        20.1,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb113",
+      "radiance": [
+        39.637485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        20.7,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb114",
+      "radiance": [
+        35.924985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        21.3,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb115",
+      "radiance": [
+        32.212485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        21.9,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb116",
+      "radiance": [
+        28.499985000000002,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        22.5,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb117",
+      "radiance": [
+        24.787485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        23.1,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb118",
+      "radiance": [
+        21.074985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        23.7,
+        0.25,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb119",
+      "radiance": [
+        20.25,
+        45.0,
+        23.137515
+      ]
+    },
+    {
+      "center_m": [
+        0.3,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb120",
+      "radiance": [
+        20.25,
+        45.0,
+        36.750015000000005
+      ]
+    },
+    {
+      "center_m": [
+        0.8999999999999999,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb121",
+      "radiance": [
+        20.25,
+        45.0,
+        40.462515
+      ]
+    },
+    {
+      "center_m": [
+        1.5,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb122",
+      "radiance": [
+        20.25,
+        45.0,
+        44.175014999999995
+      ]
+    },
+    {
+      "center_m": [
+        2.0999999999999996,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb123",
+      "radiance": [
+        20.25,
+        42.112485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        2.6999999999999997,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb124",
+      "radiance": [
+        20.25,
+        38.399985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        3.3,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb125",
+      "radiance": [
+        20.25,
+        34.687485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        3.8999999999999995,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb126",
+      "radiance": [
+        20.25,
+        30.974985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb127",
+      "radiance": [
+        20.25,
+        27.262484999999998,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        5.1,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb128",
+      "radiance": [
+        20.25,
+        23.549985000000003,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        5.699999999999999,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb129",
+      "radiance": [
+        20.662515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        6.3,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb130",
+      "radiance": [
+        24.375015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        6.8999999999999995,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb131",
+      "radiance": [
+        28.087515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        7.499999999999999,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb132",
+      "radiance": [
+        31.800015000000002,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        8.1,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb133",
+      "radiance": [
+        35.512515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        8.700000000000001,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb134",
+      "radiance": [
+        39.225015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        9.3,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb135",
+      "radiance": [
+        42.937515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        9.9,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb136",
+      "radiance": [
+        45.0,
+        20.25,
+        43.349985
+      ]
+    },
+    {
+      "center_m": [
+        10.5,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb137",
+      "radiance": [
+        45.0,
+        20.25,
+        39.637485
+      ]
+    },
+    {
+      "center_m": [
+        11.1,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb138",
+      "radiance": [
+        45.0,
+        20.25,
+        35.924985
+      ]
+    },
+    {
+      "center_m": [
+        11.700000000000001,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb139",
+      "radiance": [
+        45.0,
+        20.25,
+        32.212485
+      ]
+    },
+    {
+      "center_m": [
+        12.3,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb140",
+      "radiance": [
+        45.0,
+        20.25,
+        28.499985000000002
+      ]
+    },
+    {
+      "center_m": [
+        12.9,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb141",
+      "radiance": [
+        45.0,
+        20.25,
+        24.787485
+      ]
+    },
+    {
+      "center_m": [
+        13.5,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb142",
+      "radiance": [
+        45.0,
+        20.25,
+        21.074985
+      ]
+    },
+    {
+      "center_m": [
+        14.1,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb143",
+      "radiance": [
+        45.0,
+        23.137515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        14.7,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb144",
+      "radiance": [
+        45.0,
+        26.850015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        15.3,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb145",
+      "radiance": [
+        45.0,
+        30.562514999999998,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        15.9,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb146",
+      "radiance": [
+        45.0,
+        34.275014999999996,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        16.5,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb147",
+      "radiance": [
+        45.0,
+        37.987515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        17.1,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb148",
+      "radiance": [
+        45.0,
+        41.700015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        17.7,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb149",
+      "radiance": [
+        44.587485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        18.3,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb150",
+      "radiance": [
+        40.874984999999995,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        18.9,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb151",
+      "radiance": [
+        37.162485000000004,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        19.5,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb152",
+      "radiance": [
+        33.449985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        20.1,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb153",
+      "radiance": [
+        29.737485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        20.7,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb154",
+      "radiance": [
+        26.024985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        21.3,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb155",
+      "radiance": [
+        22.312485000000002,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        21.9,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb156",
+      "radiance": [
+        20.25,
+        45.0,
+        21.900015
+      ]
+    },
+    {
+      "center_m": [
+        22.5,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb157",
+      "radiance": [
+        20.25,
+        45.0,
+        25.612515
+      ]
+    },
+    {
+      "center_m": [
+        23.1,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb158",
+      "radiance": [
+        20.25,
+        45.0,
+        29.325015
+      ]
+    },
+    {
+      "center_m": [
+        23.7,
+        7.75,
+        1.0
+      ],
+      "kind": "point",
+      "name": "Bulb159",
+      "radiance": [
+        20.25,
+        45.0,
+        33.037515
+      ]
+    },
+    {
+      "center_m": [
+        0.3,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb160",
+      "radiance": [
+        20.25,
+        33.449985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        0.8999999999999999,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb161",
+      "radiance": [
+        20.25,
+        29.737485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        1.5,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb162",
+      "radiance": [
+        20.25,
+        26.024985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        2.0999999999999996,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb163",
+      "radiance": [
+        20.25,
+        22.312485000000002,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        2.6999999999999997,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb164",
+      "radiance": [
+        21.900015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        3.3,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb165",
+      "radiance": [
+        25.612515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        3.8999999999999995,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb166",
+      "radiance": [
+        29.325015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb167",
+      "radiance": [
+        33.037515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        5.1,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb168",
+      "radiance": [
+        36.750015000000005,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        5.699999999999999,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb169",
+      "radiance": [
+        40.462515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        6.3,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb170",
+      "radiance": [
+        44.175014999999995,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        6.8999999999999995,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb171",
+      "radiance": [
+        45.0,
+        20.25,
+        42.112485
+      ]
+    },
+    {
+      "center_m": [
+        7.499999999999999,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb172",
+      "radiance": [
+        45.0,
+        20.25,
+        38.399985
+      ]
+    },
+    {
+      "center_m": [
+        8.1,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb173",
+      "radiance": [
+        45.0,
+        20.25,
+        34.687485
+      ]
+    },
+    {
+      "center_m": [
+        8.700000000000001,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb174",
+      "radiance": [
+        45.0,
+        20.25,
+        30.974985
+      ]
+    },
+    {
+      "center_m": [
+        9.3,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb175",
+      "radiance": [
+        45.0,
+        20.25,
+        27.262484999999998
+      ]
+    },
+    {
+      "center_m": [
+        9.9,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb176",
+      "radiance": [
+        45.0,
+        20.25,
+        23.549985000000003
+      ]
+    },
+    {
+      "center_m": [
+        10.5,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb177",
+      "radiance": [
+        45.0,
+        20.662515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        11.1,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb178",
+      "radiance": [
+        45.0,
+        24.375015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        11.700000000000001,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb179",
+      "radiance": [
+        45.0,
+        28.087515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        12.3,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb180",
+      "radiance": [
+        45.0,
+        31.800015000000002,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        12.9,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb181",
+      "radiance": [
+        45.0,
+        35.512515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        13.5,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb182",
+      "radiance": [
+        45.0,
+        39.225015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        14.1,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb183",
+      "radiance": [
+        45.0,
+        42.937515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        14.7,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb184",
+      "radiance": [
+        43.349985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        15.3,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb185",
+      "radiance": [
+        39.637485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        15.9,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb186",
+      "radiance": [
+        35.924985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        16.5,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb187",
+      "radiance": [
+        32.212485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        17.1,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb188",
+      "radiance": [
+        28.499985000000002,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        17.7,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb189",
+      "radiance": [
+        24.787485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        18.3,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb190",
+      "radiance": [
+        21.074985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        18.9,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb191",
+      "radiance": [
+        20.25,
+        45.0,
+        23.137515
+      ]
+    },
+    {
+      "center_m": [
+        19.5,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb192",
+      "radiance": [
+        20.25,
+        45.0,
+        26.850015
+      ]
+    },
+    {
+      "center_m": [
+        20.1,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb193",
+      "radiance": [
+        20.25,
+        45.0,
+        30.562514999999998
+      ]
+    },
+    {
+      "center_m": [
+        20.7,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb194",
+      "radiance": [
+        20.25,
+        45.0,
+        34.275014999999996
+      ]
+    },
+    {
+      "center_m": [
+        21.3,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb195",
+      "radiance": [
+        20.25,
+        45.0,
+        37.987515
+      ]
+    },
+    {
+      "center_m": [
+        21.9,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb196",
+      "radiance": [
+        20.25,
+        45.0,
+        41.700015
+      ]
+    },
+    {
+      "center_m": [
+        22.5,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb197",
+      "radiance": [
+        20.25,
+        44.587485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        23.1,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb198",
+      "radiance": [
+        20.25,
+        40.874984999999995,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        23.7,
+        7.75,
+        2.2
+      ],
+      "kind": "point",
+      "name": "Bulb199",
+      "radiance": [
+        20.25,
+        37.162485000000004,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        0.3,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb200",
+      "radiance": [
+        26.850015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        0.8999999999999999,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb201",
+      "radiance": [
+        30.562514999999998,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        1.5,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb202",
+      "radiance": [
+        34.275014999999996,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        2.0999999999999996,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb203",
+      "radiance": [
+        37.987515,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        2.6999999999999997,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb204",
+      "radiance": [
+        41.700015,
+        20.25,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        3.3,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb205",
+      "radiance": [
+        45.0,
+        20.25,
+        44.587485
+      ]
+    },
+    {
+      "center_m": [
+        3.8999999999999995,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb206",
+      "radiance": [
+        45.0,
+        20.25,
+        40.874984999999995
+      ]
+    },
+    {
+      "center_m": [
+        4.5,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb207",
+      "radiance": [
+        45.0,
+        20.25,
+        37.162485000000004
+      ]
+    },
+    {
+      "center_m": [
+        5.1,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb208",
+      "radiance": [
+        45.0,
+        20.25,
+        33.449985
+      ]
+    },
+    {
+      "center_m": [
+        5.699999999999999,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb209",
+      "radiance": [
+        45.0,
+        20.25,
+        29.737485
+      ]
+    },
+    {
+      "center_m": [
+        6.3,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb210",
+      "radiance": [
+        45.0,
+        20.25,
+        26.024985
+      ]
+    },
+    {
+      "center_m": [
+        6.8999999999999995,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb211",
+      "radiance": [
+        45.0,
+        20.25,
+        22.312485000000002
+      ]
+    },
+    {
+      "center_m": [
+        7.499999999999999,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb212",
+      "radiance": [
+        45.0,
+        21.900015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        8.1,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb213",
+      "radiance": [
+        45.0,
+        25.612515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        8.700000000000001,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb214",
+      "radiance": [
+        45.0,
+        29.325015,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        9.3,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb215",
+      "radiance": [
+        45.0,
+        33.037515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        9.9,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb216",
+      "radiance": [
+        45.0,
+        36.750015000000005,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        10.5,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb217",
+      "radiance": [
+        45.0,
+        40.462515,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        11.1,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb218",
+      "radiance": [
+        45.0,
+        44.175014999999995,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        11.700000000000001,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb219",
+      "radiance": [
+        42.112485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        12.3,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb220",
+      "radiance": [
+        38.399985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        12.9,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb221",
+      "radiance": [
+        34.687485,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        13.5,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb222",
+      "radiance": [
+        30.974985,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        14.1,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb223",
+      "radiance": [
+        27.262484999999998,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        14.7,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb224",
+      "radiance": [
+        23.549985000000003,
+        45.0,
+        20.25
+      ]
+    },
+    {
+      "center_m": [
+        15.3,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb225",
+      "radiance": [
+        20.25,
+        45.0,
+        20.662515
+      ]
+    },
+    {
+      "center_m": [
+        15.9,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb226",
+      "radiance": [
+        20.25,
+        45.0,
+        24.375015
+      ]
+    },
+    {
+      "center_m": [
+        16.5,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb227",
+      "radiance": [
+        20.25,
+        45.0,
+        28.087515
+      ]
+    },
+    {
+      "center_m": [
+        17.1,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb228",
+      "radiance": [
+        20.25,
+        45.0,
+        31.800015000000002
+      ]
+    },
+    {
+      "center_m": [
+        17.7,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb229",
+      "radiance": [
+        20.25,
+        45.0,
+        35.512515
+      ]
+    },
+    {
+      "center_m": [
+        18.3,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb230",
+      "radiance": [
+        20.25,
+        45.0,
+        39.225015
+      ]
+    },
+    {
+      "center_m": [
+        18.9,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb231",
+      "radiance": [
+        20.25,
+        45.0,
+        42.937515
+      ]
+    },
+    {
+      "center_m": [
+        19.5,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb232",
+      "radiance": [
+        20.25,
+        43.349985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        20.1,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb233",
+      "radiance": [
+        20.25,
+        39.637485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        20.7,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb234",
+      "radiance": [
+        20.25,
+        35.924985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        21.3,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb235",
+      "radiance": [
+        20.25,
+        32.212485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        21.9,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb236",
+      "radiance": [
+        20.25,
+        28.499985000000002,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        22.5,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb237",
+      "radiance": [
+        20.25,
+        24.787485,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        23.1,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb238",
+      "radiance": [
+        20.25,
+        21.074985,
+        45.0
+      ]
+    },
+    {
+      "center_m": [
+        23.7,
+        7.75,
+        3.4
+      ],
+      "kind": "point",
+      "name": "Bulb239",
+      "radiance": [
+        23.137515,
+        20.25,
+        45.0
+      ]
+    }
+  ],
+  "schema": "lighting-entities/v1",
+  "units": "Source units"
+}
