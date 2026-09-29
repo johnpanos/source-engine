@@ -56,7 +56,13 @@ DECLARE_VGUI_SCREEN_FACTORY( CNeurotoxinCountdownScreen, "neurotoxin_countdown_s
 // Constructor: 
 //-----------------------------------------------------------------------------
 CNeurotoxinCountdownScreen::CNeurotoxinCountdownScreen( vgui::Panel *parent, const char *panelName )
+#ifdef PORTAL2
+	// Portal 2 keeps the countdown's font and colour in the BaseModUI scheme
+	// (retail client.so); it ships no NeurotoxinCountdownScreen.res
+	: BaseClass( parent, "CNeurotoxinCountdownScreen", vgui::scheme()->LoadSchemeFromFileEx( enginevgui->GetPanel( PANEL_CLIENTDLL ), "resource/basemodui_scheme.res", "NeuroToxinScreen" ) ) 
+#else
 	: BaseClass( parent, "CNeurotoxinCountdownScreen", vgui::scheme()->LoadSchemeFromFileEx( enginevgui->GetPanel( PANEL_CLIENTDLL ), "resource/NeurotoxinCountdownScreen.res", "NeuroToxinScreen" ) ) 
+#endif
 {
 	m_pDisplayTextLabel = new vgui::Label( this, "NumberDisplay", "x" );
 	iLastSlideIndex = 0;
@@ -147,11 +153,21 @@ void CNeurotoxinCountdownScreen::Update( C_NeurotoxinCountdown *pNeurotoxinCount
 	char szSecondsBuff[ 4 ];
 	char szMillisecondsBuff[ 4 ];
 
+#ifdef PORTAL2
+	// Portal 2 shows the entity's own countdown (2010 client.dylib)
+	float flTime = pNeurotoxinCountdown->GetCountdownTime();
+	int iMinutes = (int)flTime / 60;
+	int iSeconds = (int)flTime % 60;
+	int iMilliseconds = (int)( ( flTime - iSeconds - iMinutes * 60 ) * 100.0f );
+
+	if ( iMinutes <= 0 && iSeconds <= 0 && iMilliseconds <= 0 )
+#else
 	int iMinutes = pNeurotoxinCountdown->GetMinutes();
 	int iSeconds = pNeurotoxinCountdown->GetSeconds();
 	int iMilliseconds;
 	
 	if ( iMinutes <= 0 && iSeconds <= 0 )
+#endif
 	{
 		iMinutes = 0;
 		iSeconds = 0;
@@ -162,7 +178,9 @@ void CNeurotoxinCountdownScreen::Update( C_NeurotoxinCountdown *pNeurotoxinCount
 	}
 	else
 	{
+#ifndef PORTAL2
 		iMilliseconds = pNeurotoxinCountdown->GetMilliseconds();
+#endif
 		m_pDisplayTextLabel->SetVisible( true );
 	}
 

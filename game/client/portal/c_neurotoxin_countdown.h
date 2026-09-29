@@ -23,6 +23,13 @@ public:
 
 	bool IsEnabled( void ) { return m_bEnabled; }
 
+#ifdef PORTAL2
+	virtual void Spawn( void );
+	virtual void ClientThink( void );
+
+	float GetCountdownTime( void );
+#endif
+
 	int GetMinutes( void );
 	int GetSeconds( void );
 	int GetMilliseconds( void );
@@ -30,6 +37,9 @@ public:
 private:
 
 	bool	m_bEnabled;
+#ifdef PORTAL2
+	float	m_flCountdownTime;
+#endif
 };
 
 

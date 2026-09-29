@@ -33,6 +33,9 @@ public:
 	virtual void SetTransmit( CCheckTransmitInfo *pInfo, bool bAlways );
 
 	virtual void Spawn( void );
+#ifdef PORTAL2
+	virtual void Think( void );
+#endif
 	virtual void Precache( void );
 	virtual void OnRestore( void );
 
@@ -55,6 +58,11 @@ private:
 private:
 
 	CNetworkVar( bool, m_bEnabled );
+#ifdef PORTAL2
+	// Portal 2: seconds left, from the map's "countdown" key; runs down while
+	// enabled (2010 server.dylib dSYM, and the retail DT_NeurotoxinCountdown).
+	CNetworkVar( float, m_flCountdownTime );
+#endif
 
 	int		m_iScreenWidth;
 	int		m_iScreenHeight;
@@ -74,6 +82,9 @@ BEGIN_DATADESC( CNeurotoxinCountdown )
 
 	DEFINE_KEYFIELD( m_iScreenWidth, FIELD_INTEGER, "width" ),
 	DEFINE_KEYFIELD( m_iScreenHeight, FIELD_INTEGER, "height" ),
+#ifdef PORTAL2
+	DEFINE_KEYFIELD( m_flCountdownTime, FIELD_FLOAT, "countdown" ),
+#endif
 
 	//DEFINE_UTLVECTOR( m_hScreens, FIELD_EHANDLE ),
 
@@ -84,6 +95,9 @@ END_DATADESC()
 
 IMPLEMENT_SERVERCLASS_ST( CNeurotoxinCountdown, DT_NeurotoxinCountdown )
 	SendPropBool( SENDINFO(m_bEnabled) ),
+#ifdef PORTAL2
+	SendPropFloat( SENDINFO(m_flCountdownTime) ),
+#endif
 END_SEND_TABLE()
 
 
@@ -167,7 +181,28 @@ void CNeurotoxinCountdown::Spawn( void )
 	SpawnControlPanels();
 
 	ScreenVisible( m_bEnabled );
+
+#ifdef PORTAL2
+	SetThink( &CNeurotoxinCountdown::Think );
+	SetNextThink( gpGlobals->curtime );
+#endif
 }
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Portal 2: count down every tick while enabled. The value is not clamped;
+// the screen blinks zeros once it reaches zero.
+//-----------------------------------------------------------------------------
+void CNeurotoxinCountdown::Think( void )
+{
+	if ( m_bEnabled )
+	{
+		m_flCountdownTime = m_flCountdownTime - gpGlobals->frametime;
+	}
+
+	SetNextThink( gpGlobals->curtime );
+}
+#endif
 
 void CNeurotoxinCountdown::Precache( void )
 {

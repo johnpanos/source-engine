@@ -71,7 +71,7 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | G18 | `npc_personality_core` `ModelSkin`, `AltModel`, `EnableReceivingFlashlight`/`DisableReceivingFlashlight` | todo |
 | G19 | `info_placement_helper` `target_size`, `usesizelimit` | todo |
 | G20 | `prop_vehicle_choreo_generic` view limits (`SetMin/MaxPitch/Yaw`), `SetCanShoot`, `UseAttachmentEyes`, `PlayerCanShoot`; `logic_playerproxy` `LowerWeapon` | todo (`PaintPlayerWithPortalPaint` done 2026-09-28, see log) |
-| G21 | `prop_tractor_beam` `NoEmitterParticles`; `vgui_screen` `IsTransparent`; `vgui_neurotoxin_countdown` `countdown`; `npc_bullseye` `AlwaysTransmit`; `point_viewcontrol` `TrackSpeed` | todo |
+| G21 | `prop_tractor_beam` `NoEmitterParticles`; `vgui_screen` `IsTransparent`; `vgui_neurotoxin_countdown` `countdown` (done, see log); `npc_bullseye` `AlwaysTransmit`; `point_viewcontrol` `TrackSpeed` | todo |
 | G22 | Retail-networked base classes (`func_brush`, `func_movelinear`, `func_button`, `prop_door_rotating`, `func_portal_bumper`) and co-op stats (`portal_mp_stats`) | todo |
 
 ### Portal rendering
@@ -289,3 +289,18 @@ Newest last. Each entry names the build and the check that passed.
   - The pre-fix client fails 4 of the 10 checks run without controls (eye
     0 % on both maps).
   - The selftest (`corpus.portal2.monitors.selftest`) passes 11 of 11.
+- 2026-09-29, G21 `vgui_neurotoxin_countdown` (build-p2, native Vulkan,
+  Box3D): the Portal 2 build compiled Portal 1's countdown, whose screen
+  showed the player's bonus progress, so the finale's neurotoxin, destruction
+  and world timers (`sp_a4_finale4`) and the `sp_a2_bts1` door timers read
+  00:00. Rebuilt under `#ifdef PORTAL2` from the 2010 server/client dSYMs
+  (`CNeurotoxinCountdown::Think`, `C_NeurotoxinCountdown::ClientThink` and
+  `GetCountdownTime`, the screen's `Update`) and the retail tables and strings
+  (`m_flCountdownTime` on `DT_NeurotoxinCountdown`, and the screen's scheme
+  `resource/basemodui_scheme.res`; Portal 2 ships no
+  `NeurotoxinCountdownScreen.res`, so the digits had no font). The `countdown`
+  key seeds the time, the server runs it down each tick while enabled, and the
+  client runs its copy down between updates. Headless `sp_a2_bts1`:
+  `ent_dump` reads 4.54, 3.59, then 0.12 after `Enable`. Headless
+  `sp_a4_finale4` with `mat_force_tonemap_scale 1`: the monitor shows
+  `04:58:09`, then the 120 s world timer. Not compared against retail frames.
