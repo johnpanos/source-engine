@@ -73,6 +73,25 @@
 //			Numeric types refuse the empty string. Keys without a schema
 //			definition take any text.
 //
+//			Class choices (ClassChoices; legacy COP_Entity::LoadClassList, and
+//			the kind rule ops::SetClass enforces): the catalog's classes a
+//			class change may pick, sorted as the catalog lists them, without
+//			"worldspawn": solid classes when every inspected entity is a brush
+//			entity (owns solids), point and point-like classes when none is,
+//			and none when the selection mixes both or shows the world. A
+//			Single class the list lacks (unknown, or no catalog) is put first,
+//			so a view can always show it.
+//
+//			Colours (ColorOfRow, ValueWithColor; legacy's colour picker for
+//			color255/color1 keys): the red, green and blue a picker shows and
+//			the value text a picked colour becomes. Components after the
+//			third (brightness) are kept.
+//
+//			Settle(), for a host closing its view: a valid draft is committed
+//			(as Commit), an invalid one is discarded and reported (Rejected,
+//			LastError names each key), no draft does nothing. Closing a view
+//			must not leave a draft that would veto later selection changes.
+//
 //			Immediate operations (one undo step each, never drafted): class
 //			change (ops::SetClass), flag toggles (ops::SetSpawnFlag), key
 //			removal and output add/replace/remove (ops::RemoveConnectionAt). A
@@ -160,6 +179,24 @@ struct InputRow
 	bool inputKnown = true; // false only when the target's class is known and lacks it
 };
 
+// A colour in 0..1 per channel.
+struct KeyColor
+{
+	double r = 0.0;
+	double g = 0.0;
+	double b = 0.0;
+};
+
+// The colour a Color255 or Color1 row shows: its draft, else its Single
+// value, else (Unset) its default. Nothing for other types, for a Mixed row
+// without a draft, and for text that does not hold three numbers.
+std::optional<KeyColor> ColorOfRow( const KeyRow &row );
+// The value text for 'row' with its colour replaced by 'color' (clamped to
+// 0..1): Color255 as integers 0..255, Color1 as numbers of up to four
+// decimals. Components after the third are kept from the row's draft, Single
+// value or default, in that order of preference; "" for other types.
+std::string ValueWithColor( const KeyRow &row, const KeyColor &color );
+
 // Why 'value' is not acceptable for a key of definition 'definition' (nullptr:
 // no schema), or nothing when it is. See the header comment for the rules.
 std::optional<std::string> ValidateKeyValue(
@@ -190,6 +227,8 @@ public:
 	const std::vector<FlagRow> &Flags() const { return m_flags; }
 	const std::vector<OutputRow> &Outputs() const { return m_outputs; }
 	const std::vector<InputRow> &Inputs() const { return m_inputs; }
+	// The classes a class change may pick (see "Class choices").
+	const std::vector<std::string> &ClassChoices() const { return m_classChoices; }
 
 	bool SmartEdit() const { return m_smartEdit; }
 	void SetSmartEdit( bool on );
@@ -208,6 +247,8 @@ public:
 	std::vector<std::string> DraftErrors() const;
 	Result Commit();
 	void Cancel();
+	// For a host closing its view (see "Settle").
+	Result Settle();
 
 	// --- Immediate operations -----------------------------------------------------
 	Result SetClass( const std::string &classname );
@@ -254,6 +295,11 @@ private:
 	std::vector<FlagRow> m_flags;
 	std::vector<OutputRow> m_outputs;
 	std::vector<InputRow> m_inputs;
+	std::vector<std::string> m_classChoices;
+	// The catalog's classes for the last kind listed (see Rebuild), so the
+	// catalog is walked again only when the kind changes.
+	std::vector<std::string> m_kindClasses;
+	int m_kindListed = -1;
 
 	std::vector<std::pair<std::string, std::string>> m_draft;
 	std::vector<scene::ObjectId> m_draftTargets;

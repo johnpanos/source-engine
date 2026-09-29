@@ -61,6 +61,13 @@ is an open error naming the block and line.
   paste/duplicate, hide/unhide, grid **[ ]**, snap, group/ungroup, tie to entity,
   carve, **F** make hollow, apply material, texture lock, selection granularity,
   check/fix problems, **F9** build and **Shift+F9** build and run.
+- **Object Properties** (**Alt+Enter**, Edit ▸ Properties; `properties_dialog.cpp`):
+  a non-modal window over the workspace's `EntityInspector` that follows the
+  selection. Class dropdown, SmartEdit typed editors (text, numbers, choices,
+  booleans, colours) or raw keys with Add/Remove, a Flags page, mixed values
+  shown as "(different values)", Apply (or Enter) and Cancel for the property
+  draft. The entity schema comes from `--fgd FILE` (its `@include`s resolve
+  beside it); without one, rows are raw text.
 - **Rendering:** the 3D view shades brushes (with base textures when game assets
   are mounted), displacements and entity markers; the 2D views draw wireframes
   over the workspace's grid; selections, faces, pending boxes and handles are

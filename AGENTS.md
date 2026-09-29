@@ -991,6 +991,14 @@ Keep the table concise and link details below or from the domain progress file.
     - `corpus.hammer.ui` passes with the asynchronous F9.
     - Contract clause 5 is refined for main-loop runners.
     - Not done: cancelling a running compile, and a streamed build log.
+  - R08-UI-PROPS (2026-09-28): the GTK Object Properties window
+    (`hammer/gtk/properties_dialog.*`, Alt+Enter), bound to
+    `EntityInspector` with new headless `ClassChoices`, colour helpers and
+    `Settle`, and the shell's `--fgd` schema. The inspector suite has 128
+    checks on both compilers; `corpus.hammer.ui` gains the `properties` case
+    and its `properties-cancel` control (32 checks, X11 only). Outputs and
+    Inputs pages and double-click remain. See the
+    [record](RFC/0002-progress.md#r08-ui-props-the-object-properties-window-slice-done-2026-09-28).
   - The ledger has 28 migrations, 11 of them extracted format cores.
     The inventory has 46 authored records. `archlint hammer --coverage`
     reports 38 of 531 files classified, because 8 records were extracted into

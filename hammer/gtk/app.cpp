@@ -51,6 +51,8 @@
 #endif
 
 #include "catalog_textures.h"
+#include "entity_schema.h"
+#include "properties_dialog.h"
 #include "glib_task_runner.h"
 #include "viewport_widget.h"
 
@@ -122,9 +124,10 @@ struct SceneKey
 
 struct AppState
 {
-	AppState( std::string builds, bool publish, std::string lighting )
+	AppState( std::string builds, bool publish, std::string lighting,
+	    const hammer::ports::IEntityCatalog *schema = nullptr )
 	    : buildsRoot( std::move( builds ) ), publishBuilds( publish ),
-	      buildLighting( std::move( lighting ) )
+	      buildLighting( std::move( lighting ) ), entitySchema( schema )
 	{
 	}
 	~AppState() { frameReturns->service = nullptr; } // before the service goes
@@ -136,6 +139,8 @@ struct AppState
 	const std::string buildsRoot;
 	const bool publishBuilds;
 	const std::string buildLighting;
+	// The entity schema (--fgd), owned by main; null without one.
+	const hammer::ports::IEntityCatalog *const entitySchema;
 
 	// Services the workspace borrows: the strict VMF codec, the disk store and
 	// the map builder over the platform tool-process provider (the editor runs
@@ -151,7 +156,7 @@ struct AppState
 		    return path;
 	    } };
 	hammer::presenters::EditorWorkspace workspace{
-	    hammer::presenters::WorkspaceServices{ &codec, &store, &builder, nullptr, nullptr } };
+	    hammer::presenters::WorkspaceServices{ &codec, &store, &builder, entitySchema, nullptr } };
 
 	// F9 compiles off the UI thread: the queue runs the builder on its own
 	// thread and replies on the GTK main loop. Declaration order is teardown
@@ -722,7 +727,17 @@ void Apply( AppState *st, const hammer::presenters::InputOutcome &outcome )
 	}
 	else if ( outcome.hostRequest == "properties" )
 	{
-		SetHelp( st, "Properties: not in this shell yet" );
+		// Object Properties (Alt+Enter, Edit > Properties): non-modal, bound to
+		// the workspace's entity inspector.
+		hammer::gtk::ShowPropertiesDialog( GTK_WINDOW( st->window ), st->workspace,
+		    [st]( const std::string &status )
+		    {
+			    if ( !status.empty() )
+			    {
+				    SetHelp( st, status );
+			    }
+			    RefreshScene( st );
+		    } );
 	}
 	if ( outcome.actionId == "tools.face" )
 	{
@@ -2760,6 +2775,7 @@ int main( int argc, char **argv )
 	bool publishBuilds = true;
 	std::string buildLighting;
 	std::string mountVpks;
+	std::string fgdPath;
 	int width = 1024;
 	int height = 768;
 
@@ -2831,6 +2847,10 @@ int main( int argc, char **argv )
 		{
 			mountVpks = argv[++i];
 		}
+		else if ( a == "--fgd" && i + 1 < argc )
+		{
+			fgdPath = argv[++i];
+		}
 		else if ( a == "--width" && i + 1 < argc )
 		{
 			width = std::atoi( argv[++i] );
@@ -2843,7 +2863,7 @@ int main( int argc, char **argv )
 		{
 			std::printf(
 			    "Usage: hammer_gtk [--open MAP.vmf] [--maximized] [--builds DIR] "
-			    "[--no-publish] [--lighting PROFILE]\n"
+			    "[--no-publish] [--lighting PROFILE] [--fgd FILE]\n"
 			    "       hammer_gtk --screenshot OUT.ppm MAP.vmf [--width W --height H]\n"
 			    "       hammer_gtk --quad OUT.ppm MAP.vmf [--width W --height H]\n"
 			    "       hammer_gtk --demo OUT.ppm [--width W --height H]\n"
@@ -2876,7 +2896,20 @@ int main( int argc, char **argv )
 		return RenderTexturedScreenshot( texturedIn, texturedOut, width, height, texturedVpks );
 	}
 
-	AppState st( buildsRoot, publishBuilds, buildLighting );
+	// The entity schema (optional): class lists, typed properties, defaults.
+	std::optional<hammer::formats::FgdEntityCatalog> schema;
+	if ( !fgdPath.empty() )
+	{
+		auto loaded = hammer::gtk::LoadEntitySchema( fgdPath );
+		if ( !loaded )
+		{
+			std::fprintf( stderr, "hammer_gtk: %s:%zu: %s\n", loaded.Error().file.c_str(),
+			    loaded.Error().line, loaded.Error().message.c_str() );
+			return 1;
+		}
+		schema.emplace( std::move( loaded ).Value() );
+	}
+	AppState st( buildsRoot, publishBuilds, buildLighting, schema ? &*schema : nullptr );
 	st.openOnStart = openPath;
 	st.startMaximized = maximized;
 	st.mountOnStart = mountVpks;

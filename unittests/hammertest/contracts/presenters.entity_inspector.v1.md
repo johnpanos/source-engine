@@ -10,8 +10,9 @@ Migration: `R08-DOMAIN`
 The Object Properties model (legacy `ObjectPage`/`op_entity` SmartEdit,
 `op_flags`, `op_output`, `op_input`) with no toolkit: class, key rows, flags,
 outputs and inputs of the entities the selection stands for
-(`ops::EntitiesOf`), plus the property draft. Consumers: the GTK inspector
-widget, scripts. Required for property editing.
+(`ops::EntitiesOf`), plus the property draft. Consumers: the GTK shell's
+Object Properties window (`hammer/gtk/properties_dialog.cpp`), scripts.
+Required for property editing.
 
 ## 2. Accepted inputs
 
@@ -47,6 +48,19 @@ flag bit, key removal, output add/replace/remove.
   selection); a commit the session refuses vetoes the change.
 - A draft whose entities change without the guard (undo/redo, edits that
   select) is discarded and reported, never applied elsewhere.
+- `ClassChoices()` (legacy `COP_Entity::LoadClassList`, and the kind rule
+  `ops::SetClass` enforces): the catalog's solid classes when every inspected
+  entity owns solids, its point and point-like classes when none does, none
+  for a mix or the world; never `worldspawn`; a Single class the list lacks
+  (unknown, or no catalog) first. Every class offered is one `SetClass`
+  accepts.
+- `ColorOfRow` / `ValueWithColor` (color255 and color1 rows): the colour a
+  picker shows (draft, else Single value, else the default when Unset; none
+  when Mixed or unparsable) and the value text a picked colour becomes,
+  keeping components after the third (brightness).
+- `Settle()` for a host closing its view: a valid draft commits as `Commit`,
+  an invalid one is discarded and reported (Rejected), no draft does nothing;
+  a closed view never leaves a draft that vetoes later selection changes.
 - Class change, flag toggle, key removal and output edits are one labeled undo
   step each ("Change class to X", "Set flag L"/"Clear flag L", "Remove key K",
   "Add output O", "Edit output O", "Remove output O" via
@@ -65,10 +79,14 @@ only through `EditSession::Execute` with ops.
 ## 6. Side effects and performance
 
 Rebuilds on every session event: O(selected entities x keys) plus O(entities x
-connections) for outputs/inputs.
+connections) for outputs/inputs, plus one owned-solids query per inspected
+entity; the catalog's class list is walked again only when the inspected kind
+(point, brush, none) changes.
 
 ## 7. Conformance suite and providers
 
-`test_entity_inspector.cpp` (102 checks, gcc and clang) with the fake catalog;
+`test_entity_inspector.cpp` (128 checks, gcc and clang) with the fake catalog;
 negative checks for invalid drafts, reserved/read-only keys, vetoes,
-world-refused operations, discarded drafts, replacement and destruction order.
+world-refused operations, discarded drafts, replacement and destruction order,
+class choices for mixed kinds and the world, a class not offered, non-colour
+and unparsable colour rows, and an invalid draft discarded by `Settle`.

@@ -8,11 +8,13 @@
 
 #include "hammer/app/ops/entity_ops.h"
 #include "hammer/presenters/object_label.h"
+#include "hammer/scene/map_queries.h"
 #include "presenter_text.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <set>
 
@@ -231,6 +233,92 @@ std::optional<std::string> ValidateKeyValue(
 	default:
 		return std::nullopt;
 	}
+}
+
+namespace
+{
+
+// The text a colour row's picker reads: its draft, else its Single value,
+// else its default when the value is Unset (or 'mixedDefault' allows it).
+const std::string *ColorSource( const KeyRow &row, bool mixedDefault )
+{
+	if ( row.drafted )
+	{
+		return &row.draftValue;
+	}
+	if ( row.value.IsSingle() )
+	{
+		return &row.value.Value();
+	}
+	if ( row.value.IsUnset() || mixedDefault )
+	{
+		return &row.defaultValue;
+	}
+	return nullptr;
+}
+
+bool IsColorType( ports::KeyType type )
+{
+	return type == ports::KeyType::Color255 || type == ports::KeyType::Color1;
+}
+
+} // namespace
+
+std::optional<KeyColor> ColorOfRow( const KeyRow &row )
+{
+	if ( !IsColorType( row.type ) )
+	{
+		return std::nullopt;
+	}
+	const std::string *text = ColorSource( row, false );
+	if ( !text )
+	{
+		return std::nullopt;
+	}
+	const std::optional<std::vector<double>> numbers = ParseNumbers( *text );
+	if ( !numbers || numbers->size() < 3 )
+	{
+		return std::nullopt;
+	}
+	const double scale = row.type == ports::KeyType::Color255 ? 255.0 : 1.0;
+	auto channel = [&]( double v )
+	{
+		return std::clamp( v / scale, 0.0, 1.0 );
+	};
+	return KeyColor{
+	    channel( ( *numbers )[0] ), channel( ( *numbers )[1] ), channel( ( *numbers )[2] ) };
+}
+
+std::string ValueWithColor( const KeyRow &row, const KeyColor &color )
+{
+	if ( !IsColorType( row.type ) )
+	{
+		return std::string();
+	}
+	std::string out;
+	for ( double v : { color.r, color.g, color.b } )
+	{
+		const double c = std::clamp( std::isfinite( v ) ? v : 0.0, 0.0, 1.0 );
+		char buf[32];
+		if ( row.type == ports::KeyType::Color255 )
+		{
+			std::snprintf( buf, sizeof( buf ), "%d", static_cast<int>( std::lround( c * 255.0 ) ) );
+		}
+		else
+		{
+			std::snprintf( buf, sizeof( buf ), "%.4g", std::round( c * 10000.0 ) / 10000.0 );
+		}
+		out += ( out.empty() ? "" : " " ) + std::string( buf );
+	}
+	if ( const std::string *text = ColorSource( row, true ) )
+	{
+		const std::vector<std::string> words = detail::Words( *text );
+		for ( std::size_t i = 3; i < words.size(); ++i )
+		{
+			out += " " + words[i];
+		}
+	}
+	return out;
 }
 
 EntityInspector::EntityInspector( app::EditSession &session, const ports::IEntityCatalog *catalog )
@@ -517,6 +605,23 @@ EntityInspector::Result EntityInspector::Commit()
 	return {};
 }
 
+EntityInspector::Result EntityInspector::Settle()
+{
+	if ( m_draft.empty() )
+	{
+		return {};
+	}
+	if ( std::optional<std::string> problem = DraftProblem() )
+	{
+		m_draft.clear();
+		m_draftTargets.clear();
+		m_lastError = "Pending property edits were discarded: " + *problem;
+		Rebuild();
+		return foundation::MakeUnexpected( EditError{ EditErrorCode::Rejected, m_lastError } );
+	}
+	return Commit();
+}
+
 EntityInspector::Result EntityInspector::SetClass( const std::string &classname )
 {
 	if ( m_world )
@@ -709,6 +814,40 @@ void EntityInspector::Rebuild()
 			}
 		}
 	}
+	// Class choices (see the header): the kind is 0 point, 1 brush, 2 none.
+	int kind = world ? 2 : -1;
+	for ( ObjectId id : m_entities )
+	{
+		const int brush = scene::EntitySolids( doc, id ).empty() ? 0 : 1;
+		kind = kind == -1 || kind == brush ? brush : 2;
+	}
+	if ( kind != m_kindListed )
+	{
+		m_kindListed = kind;
+		m_kindClasses.clear();
+		for ( const std::string &name :
+		    ( m_catalog && kind != 2 ) ? m_catalog->ClassNames() : std::vector<std::string>() )
+		{
+			const ports::EntityClassInfo *info = m_catalog->Find( name );
+			if ( info && !detail::EqualsNoCase( name, "worldspawn" ) &&
+			     ( info->kind == ports::EntityClassKind::Solid ) == ( kind == 1 ) )
+			{
+				m_kindClasses.push_back( name );
+			}
+		}
+	}
+	m_classChoices.clear();
+	if ( m_class.IsSingle() && !world &&
+	     std::none_of( m_kindClasses.begin(), m_kindClasses.end(),
+	         [&]( const std::string &name )
+	         {
+		         return detail::EqualsNoCase( name, m_class.Value() );
+	         } ) )
+	{
+		m_classChoices.push_back( m_class.Value() );
+	}
+	m_classChoices.insert( m_classChoices.end(), m_kindClasses.begin(), m_kindClasses.end() );
+
 	m_flagsKey.clear();
 	const ports::KeyDefinition *flagsDef = nullptr;
 	for ( const ports::KeyDefinition *def : m_schema )

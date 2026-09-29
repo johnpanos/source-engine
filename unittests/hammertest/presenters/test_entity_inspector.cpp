@@ -28,6 +28,8 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 using namespace hammer;
@@ -441,6 +443,101 @@ int main()
 	checks.That( *session->Document().Settings().WorldKey( "detailvbsp" ) == "detail.vbsp" &&
 	                 !session->Document().FindEntity( lamp1 )->Key( "detailvbsp" ),
 	    "and lands on the world, not the new selection" );
+
+	// --- Class choices (legacy LoadClassList; ops::SetClass's kind rule) --------------------------
+	using Names = std::vector<std::string>;
+	checks.That( session->SelectObjects( { lamp1, spot }, SelectMode::Replace ).HasValue() &&
+	                 inspector->ClassChoices() == Names{ "light", "light_spot" },
+	    "point entities: the point classes, no worldspawn" );
+	checks.That( session->SelectObjects( { button }, SelectMode::Replace ).HasValue() &&
+	                 inspector->ClassChoices() == Names{ "func_button" },
+	    "a brush entity: the solid classes" );
+	checks.That( session->SelectObjects( { lamp1, button }, SelectMode::Replace ).HasValue() &&
+	                 inspector->ClassChoices().empty(),
+	    "brush and point entities together: no class fits (negative)" );
+	checks.That( session->ClearSelection().HasValue() && inspector->ClassChoices().empty(),
+	    "the world: no class change (negative)" );
+	for ( const std::string &name : Names{ "light", "light_spot" } )
+	{
+		checks.That( session->SelectObjects( { spot }, SelectMode::Replace ).HasValue() &&
+		                 inspector->SetClass( name ).HasValue(),
+		    "every offered class is one SetClass accepts: " + name );
+	}
+	checks.That(
+	    !inspector->SetClass( "func_button" ), "a class not offered is refused (negative)" );
+	checks.That(
+	    session->Undo().HasValue() && session->Undo().HasValue(), "undo the class changes" );
+	{
+		EntityInspector bare( *session, nullptr );
+		checks.That( session->SelectObjects( { lamp1 }, SelectMode::Replace ).HasValue() &&
+		                 bare.ClassChoices() == Names{ "light" },
+		    "no catalog: only the current class, so a view can show it" );
+	}
+
+	// --- Colours -------------------------------------------------------------------------------
+	checks.That( session->SelectObjects( { lamp1 }, SelectMode::Replace ).HasValue(), "one lamp" );
+	{
+		const KeyRow *row = FindRow( *inspector, "_light" );
+		const std::optional<KeyColor> c = row ? ColorOfRow( *row ) : std::nullopt;
+		checks.That( c && c->r == 1.0 && c->g == 1.0 && c->b == 1.0, "a color255 value's colour" );
+		checks.Equal( row ? ValueWithColor( *row, KeyColor{ 1.0, 0.5, 0.0 } ) : std::string(),
+		    std::string( "255 128 0 200" ), "a picked colour keeps the brightness" );
+		checks.That( !ColorOfRow( *FindRow( *inspector, "style" ) ) &&
+		                 ValueWithColor( *FindRow( *inspector, "style" ), KeyColor{} ).empty(),
+		    "not a colour key: no colour (negative)" );
+	}
+	checks.That(
+	    session->SelectObjects( { lamp1, lamp2 }, SelectMode::Replace ).HasValue(), "both lamps" );
+	{
+		const KeyRow *row = FindRow( *inspector, "_light" );
+		checks.That(
+		    row && row->value.IsMixed() && !ColorOfRow( *row ), "a mixed colour shows no colour" );
+		checks.Equal( row ? ValueWithColor( *row, KeyColor{ 0.0, 0.0, 1.0 } ) : std::string(),
+		    std::string( "0 0 255 200" ), "a mixed colour takes the default's brightness" );
+		checks.That( inspector->SetDraft( "_light", "10 20 30 40" ).HasValue() &&
+		                 ColorOfRow( *FindRow( *inspector, "_light" ) ) &&
+		                 ColorOfRow( *FindRow( *inspector, "_light" ) )->g == 20.0 / 255.0,
+		    "the draft is the colour shown" );
+		inspector->Cancel();
+	}
+	{
+		KeyRow unit;
+		unit.type = ports::KeyType::Color1;
+		unit.value = app::PropertyValue::Single( "0.5 0.25 1" );
+		const std::optional<KeyColor> c = ColorOfRow( unit );
+		checks.That( c && c->r == 0.5 && c->g == 0.25 && c->b == 1.0, "a color1 value's colour" );
+		checks.Equal( ValueWithColor( unit, KeyColor{ 0.125, 2.0, -1.0 } ),
+		    std::string( "0.125 1 0" ), "color1 text, clamped" );
+		unit.value = app::PropertyValue::Single( "red green blue" );
+		checks.That( !ColorOfRow( unit ), "unparsable colour text: no colour (negative)" );
+	}
+
+	// --- Settle (a host closing its view) ------------------------------------------------------
+	checks.That( inspector->Settle().HasValue(), "settle without a draft does nothing" );
+	{
+		checks.That( inspector->SetDraft( "_light", "1 2 3 4" ).HasValue() &&
+		                 inspector->Settle().HasValue() && !inspector->HasDraft(),
+		    "settle commits a valid draft" );
+		checks.That( session->History().UndoEntry()->label == "Edit properties" &&
+		                 *session->Document().FindEntity( lamp1 )->Key( "_light" ) == "1 2 3 4" &&
+		                 *session->Document().FindEntity( lamp2 )->Key( "_light" ) == "1 2 3 4",
+		    "on both lamps" );
+		checks.That(
+		    session->Undo().HasValue() &&
+		        *session->Document().FindEntity( lamp1 )->Key( "_light" ) == "255 255 255 200" &&
+		        *session->Document().FindEntity( lamp2 )->Key( "_light" ) == "255 0 0 200" &&
+		        session->Redo().HasValue(),
+		    "one undo step restores both" );
+		const std::size_t history = session->History().Size();
+		checks.That( inspector->SetDraft( "_light", "bright" ).HasValue() && !inspector->Settle() &&
+		                 !inspector->HasDraft() &&
+		                 inspector->LastError().find( "_light" ) != std::string::npos,
+		    "settle discards an invalid draft and names the key (negative)" );
+		checks.That( session->History().Size() == history &&
+		                 *session->Document().FindEntity( lamp1 )->Key( "_light" ) == "1 2 3 4" &&
+		                 session->SelectObjects( { spot }, SelectMode::Replace ).HasValue(),
+		    "nothing applied, and the selection is free again" );
+	}
 
 	// --- Lifetime -------------------------------------------------------------------------------
 	session.reset();

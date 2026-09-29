@@ -36,6 +36,18 @@ dragged view divider (a resize) each bring the views back, textured and at the
 new size; Ctrl+Q closes the editor, which exits cleanly and reports no device
 resource left by the viewports.
 
+The properties case (RFC 0002, the Object Properties window) opens two lights
+made by the command layer, with an FGD of typed keys (--fgd): Ctrl+A, Alt+Enter,
+then in the window it records that the lights' differing _distance shows as
+"(different values)", types a new value into that field and presses Enter
+(apply), and toggles the mixed "Initially dark" flag (an inconsistent check
+box). Back in the editor it saves, undoes, saves, undoes and saves. The oracle
+judges the saved maps: both lights edited; one undo takes back only the flag on
+both, a second the value on both (each edit was one undo step). Its control,
+properties-cancel, presses Cancel instead of Enter; the distance check must
+fail. Both place the pointer in the properties window from its X11 origin, so
+the Wayland backend runs them only when named.
+
 --backend runs GTK as an X11 client (under Xwayland) or a Wayland client of
 the private compositor, and --scale sets the display scale: GDK_SCALE for X11
 (integers), the compositor's monitor scale for Wayland (fractional, through
@@ -70,6 +82,9 @@ from conformance_result import Checks  # noqa: E402
 ROOT = HERE.parents[1]
 SCREEN = (1280, 800)
 CASES = ("room", "no-hollow", "no-light", "viewport", "properties", "properties-cancel")
+# Cases that place the pointer in a second toplevel from its X11 origin; the
+# Wayland backend runs them only when named.
+X11_ONLY_CASES = ("properties", "properties-cancel")
 BACKENDS = ("x11", "wayland")
 ENTITY_CLASSES = ("info_player_start", "light")  # the dropdown's order (hammer/gtk/app.cpp)
 
@@ -778,7 +793,8 @@ def inner(args):
             except subprocess.TimeoutExpired:
                 facts["exit"] = "still running"
         elif args.case.startswith("properties"):
-            drive_properties(args.case, out, out / "author" / args.vmf_name, log, facts)
+            drive_properties(args.case, args.backend, out, out / "author" / args.vmf_name, log,
+                             facts)
         else:
             drive(args.case, args.backend, log)
     except Exception as error:  # the log records where the UI stopped responding
@@ -915,6 +931,15 @@ def focus_widget(d, node, title):
     raise RuntimeError("could not focus %r in %r" % (node.get_name(), title))
 
 
+def click_widget(d, node, title):
+    """Clicks the middle of 'node', a widget of the toplevel 'title'."""
+    origin = x11_window_origin(title)
+    if origin is None:
+        raise RuntimeError("no X11 window %r" % title)
+    x, y, w, h = d.extents(node)
+    d.click(origin[0] + x + w / 2, origin[1] + y + h / 2)
+
+
 def wait_node(d, predicate, what, timeout=10.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -939,11 +964,14 @@ def save_copy(d, map_path, saves, name):
     d.note("saved " + name)
 
 
-def drive_properties(case, case_dir, map_path, log, facts):
+def drive_properties(case, backend, case_dir, map_path, log, facts):
     """The Object Properties steps: select both lights (Ctrl+A), open the window
     (Alt+Enter), type a new _distance into the mixed field and apply it (the
     control cancels instead), toggle the mixed "Initially dark" flag, then save,
     undo, save, undo, save from the editor window."""
+    if backend != "x11":
+        raise RuntimeError("the properties case needs --backend x11: it places the pointer in "
+                           "the properties window from its X11 origin")
     saves = case_dir / "saves"
     saves.mkdir(exist_ok=True)
     d = Driver(log)
@@ -956,16 +984,14 @@ def drive_properties(case, case_dir, map_path, log, facts):
     d.wait_active()
     tap(d, "Shift")
     tap(d, "Control", "a")
-    d.wait_label(r".*· 2 selected$")
+    d.wait_label(r".*·\s+2 selected$")
     tap(d, "Alt", "Return")
-    wait_node(d, lambda n, r: r == "frame" and n == "Object Properties", "Object Properties window")
+    wait_node(d, lambda n, r: r == "dialog" and n == "Object Properties", "Object Properties dialog")
     d.note("properties open")
     wait_node(d, lambda n, r: r == "label" and n == "2 entities", "2-entity summary")
     distance = wait_node(d, lambda n, r: n == "_distance" and r in ("entry", "text"),
                          "_distance field")
     facts["distance_description"] = distance.get_description()
-    flag = d.named("Initially dark", "check box")
-    facts["flag_indeterminate"] = flag.get_state_set().contains(d.Atspi.StateType.INDETERMINATE)
 
     focus_widget(d, distance, "Object Properties")
     for digit in PROPERTIES_DISTANCE:
@@ -973,11 +999,15 @@ def drive_properties(case, case_dir, map_path, log, facts):
     wait_node(d, lambda n, r: r == "label" and n == "Maximum distance *", "drafted row")
     d.note("typed %s" % PROPERTIES_DISTANCE)
     if case == "properties-cancel":
-        d.press(d.named("Cancel", "push button"))
+        click_widget(d, wait_node(d, lambda n, r: n == "Cancel" and "button" in r, "Cancel button"),
+                     "Object Properties")
     else:
         tap(d, "Return")  # Enter in a field applies, as the Apply button does
     wait_node(d, lambda n, r: r == "label" and n == "Maximum distance", "applied row")
-    d.press(flag)
+    click_widget(d, d.named("Flags", "page tab"), "Object Properties")
+    flag = wait_node(d, lambda n, r: r == "check box" and n == "Initially dark", "flag check box")
+    facts["flag_indeterminate"] = flag.get_state_set().contains(d.Atspi.StateType.INDETERMINATE)
+    click_widget(d, flag, "Object Properties")
     deadline = time.monotonic() + 5
     while flag.get_state_set().contains(d.Atspi.StateType.INDETERMINATE) and \
             time.monotonic() < deadline:
@@ -1091,7 +1121,8 @@ def main():
         if built.returncode:
             return checks.report()
     summary = {"schema": "hammer-ui/v1", "cases": {}}
-    for case in args.case or CASES:
+    default = [c for c in CASES if args.backend == "x11" or c not in X11_ONLY_CASES]
+    for case in args.case or default:
         driver, verdict = run_case(case, args, out)
         summary["cases"][case] = {"driver": driver,
                                   "verdict": {k: {"ok": ok, "detail": detail}

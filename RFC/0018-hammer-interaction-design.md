@@ -354,11 +354,12 @@ surface under the pointer in 3D; invalid values per `ValidateKeyValue`.
 
 Undo: one step per placement, class change, flag toggle and draft commit.
 
-Now: partial. Placement works; the class dropdown offers two classes; the
-Object Properties window is in progress in another session
-(`hammer/gtk/properties_dialog.*`). Brush entities: Ctrl+T ties the
-selected solids to a new entity of the palette's brush class, Ctrl+Shift+W
-moves them back to the world (both installed as actions).
+Now: partial. Placement works; the class dropdown offers two classes. The
+Object Properties window (`hammer/gtk/properties_dialog.*`, R08-UI-PROPS in
+the RFC 0002 record) does steps 3 to 7 except the Outputs and Inputs pages.
+Brush entities: Ctrl+T ties the selected solids to a new entity of the
+palette's brush class, Ctrl+Shift+W moves them back to the world (both
+installed as actions).
 
 ### F5. Entity I/O
 
@@ -949,7 +950,7 @@ the same commit.
 | Entity class chooser | `Entity Class` | `combo box`, then a search `entry` | planned (today: named by the selected class) |
 | Status regions | `Help`, `Selection`, `Size`, `Pointer`, `Grid`, `Tool`, `Build` | `label` | planned |
 | Panels | `Tool Properties`, `Properties`, `Outliner`, `Visgroups`, `Materials`, `Classes`, `History`, `Problems`, `Build Log` | `panel` / `tab` | planned |
-| Object Properties window | `Object Properties` | `dialog` | in progress |
+| Object Properties window | `Object Properties` | `dialog` | installed; editors are named by their key |
 
 - Views set `HELP_TEXT` naming their non-standard keys [G1] ("Arrows nudge
   the selection; Tab cycles axes; Shift+F10 opens the menu").
@@ -1021,7 +1022,7 @@ State at `3c24e1c3` plus the dirty tree. Pointers are where the fix goes.
 | F1 block, hollow | implemented | Tool Properties panel; hollow thickness from grid; keyboard-only block | `hammer/gtk/app.cpp`; `action_catalog.cpp` (`tools.hollow` args) |
 | F2 carve, clip, vertex | partial | K2 (Shift+X cycling); dead palette buttons; 3D clip and vertex drags; Ctrl clip-line move; Ctrl+F split | `editor_workspace.cpp` `ExecuteAction`; `clip_tool.h`; `vertex_tool.h` |
 | F3 texturing | partial | Face inspector and material browser views; Alt+click lift (K3); drag-and-drop; stale Texture Application code | `app.cpp` Texture Application; `face_inspector.h`; `material_browser.h`; `camera_controller.cpp` |
-| F4 entities | partial | Class palette view (two hard-coded classes); Object Properties (in progress); double-click to open | `app.cpp` `kEntityClasses`; `class_palette.h`; `hammer/gtk/properties_dialog.*` (other session) |
+| F4 entities | partial | Class palette view (two hard-coded classes); Object Properties Outputs and Inputs pages; double-click to open | `app.cpp` `kEntityClasses`; `class_palette.h`; `hammer/gtk/properties_dialog.*` (installed: class, SmartEdit and raw rows, flags, Apply/Cancel/Settle; UI case `properties`) |
 | F5 I/O | missing (UI) | Outputs/Inputs tabs, target completion | `entity_inspector.h` `Outputs()`, `Inputs()` |
 | F6 grouping, visgroups, hiding | partial | Visgroup and outliner views; static list; `quickhide` VMF block rejected by the strict codec | `app.cpp` `MakeObjectBar`; `visgroup_panel.h`; `outliner.h`; VMF codec |
 | F7 selection | partial | Hit-list cycling; object-bar granularity toggles unwired and wrong default; Find dialog | `selection_tool.h`; `app.cpp` `MakeObjectBar` |

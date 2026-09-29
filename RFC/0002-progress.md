@@ -1124,6 +1124,85 @@ GTK profiles. Each now has a check.
     textured. SV3 checks that a view resized and back equals its first
     frame.
 
+### R08-UI-PROPS: the Object Properties window (slice done 2026-09-28)
+
+**Scope** (user direction 2026-09-28, through the Hammer session: "Build the
+Object Properties dialog for the GTK Hammer editor"). A GTK4 window bound
+entirely to `presenters::EntityInspector`, opened by the catalog's
+`edit.properties` action (Alt+Enter, Edit ▸ Properties). Outputs, inputs,
+double-click to open, and a docked layout are not in this slice.
+
+**Documented behavior adopted, with sources.** AGENTS.md asks each GTK UI
+slice to record the Source 2 behavior it adopts first. The Valve Developer
+Community wiki still refuses automated fetches (HTTP 403, 2026-09-28), so the
+Source 2 claims come from search excerpts, and anything they do not show is
+marked unverified. The legacy claims are read from this tree's MFC Hammer.
+
+| Behavior | Source | Adopted as |
+| --- | --- | --- |
+| Object Properties holds everything that defines an entity, with Outputs and Inputs tabs beside the keys | Source 2 *Hammer Overview* (VDC, `Source_2/Docs/Level_Design/Hammer_Overview`, search excerpt) | Class, keys and flags now; Outputs/Inputs pages open (the presenter already has `Outputs()`/`Inputs()`) |
+| SmartEdit shows each key's description and a typed control; off shows raw key/value pairs with Add and Delete | Legacy `hammer/op_entity.cpp` (`SetSmartedit`, the `g_DumbEditControls` shown only with SmartEdit off); Source 2 keeps the SmartEdit mode (search excerpt of the same VDC pages, unverified in detail) | SmartEdit check box over `EntityInspector::SetSmartEdit`; raw mode rows with Remove, and an Add row |
+| The class list offers only classes of the entity's kind (solid for brush entities, point for point entities); worldspawn shows only itself | Legacy `COP_Entity::LoadClassList` | New `EntityInspector::ClassChoices()` (headless, the same kind rule `ops::SetClass` enforces) |
+| Colour keys get a colour picker beside their text | Legacy `op_entity.cpp` (`m_cPickColor`) | `GtkColorDialogButton`; the text a picked colour becomes is the presenter's (`ValueWithColor`, keeps brightness) |
+| Flags are a page of check boxes | Legacy `op_flags.cpp` | Flags page; a flag the entities disagree on is an inconsistent check box |
+| The sheet is modeless and follows the selection | Legacy `CObjectProperties` (modeless sheet, updated on selection change); Source 2's docked Object Properties panel (unverified: no excerpt) | A non-modal window, transient for the editor, refreshed from session events |
+| Key edits wait for Apply | Legacy Apply button. Source 2 applies each edit at once (unverified) | Kept: the presenter owns a draft (contract `presenters.entity_inspector.v1`). Enter in a field applies, and a valid draft is committed when the selection changes (presenter rule) |
+
+**Decisions** (agent, under the user's standing instruction):
+
+- A separate window, not a docked panel: the shell's layout is being changed
+  by other work, and docking is a layout decision for later. The window is
+  one per editor window, hidden on close and destroyed with its parent.
+- Closing the window settles the draft (new `EntityInspector::Settle`: a
+  valid draft commits, an invalid one is discarded and reported), so a closed
+  window never holds a draft that vetoes selection changes. Escape in a
+  drafted field reverts that field; elsewhere it closes the window. This is
+  RFC 0018's F4 flow, and the window's accessible role is `dialog`, as its
+  AT-SPI table names it.
+- A value the dropdowns cannot select (mixed, unset or free text) is a
+  leading placeholder item ("(different values)", "(not set)", the raw
+  value). A `GtkDropDown` always shows a selected item, and an invalid
+  position showed the first choice as if it were set.
+- The shell gains `--fgd FILE` (`hammer/gtk/entity_schema.{h,cpp}`, the same
+  loading rule as `hammer_cli`). The workspace takes the catalog at
+  construction, so `AppState` borrows one that `main` owns. Without it the
+  inspector has no schema and rows are raw text, as before.
+
+**Delivered.**
+
+- **Presenter (headless):** `EntityInspector::ClassChoices()`, `Settle()`,
+  and the free functions `ColorOfRow` and `ValueWithColor`. The contract
+  `presenters.entity_inspector.v1` is updated.
+- **Window (`hammer/gtk/properties_dialog.{h,cpp}`):** class dropdown with
+  search, SmartEdit toggle, typed editors (text and numbers as entries with
+  the presenter's validation message under them, choices, booleans, colours),
+  raw rows with Add and Remove, a Flags page, a status line
+  (`LastError()`, else the draft errors), Apply and Cancel enabled only with
+  a draft. Every edit is one inspector call; the window holds widgets only.
+  Each editor's accessible name is its key.
+- **Host (`hammer/gtk/app.cpp`):** the `properties` host request opens the
+  window (the Edit menu entry comes from the catalog), and `--fgd`.
+
+**Evidence (2026-09-28).**
+
+| Check | Result |
+| --- | --- |
+| `hammer.presenters.entity_inspector`, g++ and clang++ | 128 checks (was 102): class choices for point, brush, mixed and world selections, every offered class accepted and one not offered refused, no-catalog choices; colours for color255, color1, mixed, drafted, non-colour and unparsable rows; `Settle` commits a valid multi-entity draft as one undo step and discards an invalid one without applying it |
+| Q-EDITOR headless, g++ and clang++ | 121 of 122 suites match; `hammer.adapters.render.service.tsan` skipped (no TSan runtime here), as before |
+| `corpus.hammer.ui` (X11) | 32 checks pass (was 22). `properties`: two lights, Ctrl+A, Alt+Enter; `_distance` shows "(different values)" and the flag is inconsistent; typing 256 and Enter edits both lights; the flag toggles on both; one undo takes back only the flag on both, a second only the value on both. `properties-cancel` (Cancel instead of Enter) is rejected on `distance`. Both repeated 3 times |
+| Exploratory runs (not a gate) | SmartEdit off shows raw rows; Add `zz 5` + Apply lands on both lights; Remove takes a key off both; the class dropdown changes both lights to `info_player_start`; Escape in a drafted field reverts it and a second Escape closes the window; reopened after the selection was cleared, it shows the world's properties |
+| archlint `check --all`, `hammer --verify`; stylelint on the changed files | pass, apart from the two `game/shared/fstop` ARCH105 findings (other work) |
+
+**Not done.**
+
+- Outputs and Inputs pages (the presenter has them).
+- Double-click on an entity to open the window: the host passes no click
+  count, and the workspace has no policy for it.
+- The UI case places the pointer in the window from its X11 origin, so the
+  Wayland row does not run it.
+- Model, sound, material and target pickers for those key types; they are
+  text fields.
+
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 
 A research agent assembled this from the Valve Developer Community Source 2
