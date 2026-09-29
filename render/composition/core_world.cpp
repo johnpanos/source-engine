@@ -95,7 +95,7 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 }
 
 bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
-    const float worldToClip[16], const float viewport[6] )
+    const float worldToClip[16], const float viewport[6], unsigned long long hostFrame )
 {
 	legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots();
 	if ( !slots || count == 0 )
@@ -105,6 +105,7 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	std::memcpy( view.toClip, worldToClip, sizeof( view.toClip ) );
 	view.viewport = {
 	    viewport[0], viewport[1], viewport[2], viewport[3], viewport[4], viewport[5] };
+	view.hostFrame = hostFrame;
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
 	if ( tag == 0 )
 		return false;
@@ -130,6 +131,7 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->viewsQueued = stats.viewsQueued;
 	out->viewsDrawn = stats.viewsDrawn;
 	out->viewsFailed = stats.viewsFailed;
+	out->viewsSkipped = stats.viewsSkipped;
 	out->surfacesDrawn = stats.surfacesDrawn;
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );
 	std::size_t used = 0;

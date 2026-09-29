@@ -756,7 +756,8 @@ A graph is built each frame on the render sequence:
   are stepping stones folded into that model. A claim that refuses a
   material is a gap in the model to close, not a boundary to keep.
   Passes (world, props, models) never name a family: they resolve a
-  material to a program through one resolver.
+  material to a program through one resolver. The plan and its phases are
+  in "The surface model" below.
 - **No escape hatches (user direction, 2026-09-28).** A claim is exact: the
   model takes a material only when it reads every variable the material
   sets, or when each variable it does not read holds legacy's neutral value
@@ -786,6 +787,126 @@ and their materials follow the missing-shader rule. The legacy D3D9
 profiles keep running them: native D3D9 on Windows, DXVK on Linux, and
 ToGL or ToGLES on the SDL2 legacy-renderer profiles. ToGL stays for exactly this reason (user decision,
 2026-09-26). Retiring it would be a separate decision about those profiles.
+
+### The surface model: legacy materials as degenerate cases (plan, 2026-09-28)
+
+User direction (2026-09-28): keep the legacy material system's intent and
+exceed it, with its special cases as degenerate cases of one expanded model;
+Source 2 parity or better; no escape hatches. This section is the plan. Its
+progress lives in RFC/0016-progress.md, and K4, K5, K7 and K8 carry the
+gates.
+
+#### One surface, terms with neutral values
+
+A material is one program, `surface`, with a parameter block. Every term
+has a neutral value, and a term at its neutral value is exactly the term
+absent: bitwise, checked per term. Each legacy shader and branch is then a
+point in the parameter space. The per-material static permutation is the
+set of non-neutral terms (specialization constants, a bounded axis set per
+pass kind), so a neutral term costs nothing at runtime.
+
+| Term | Inputs | Neutral | Legacy points it covers | Modern point |
+| --- | --- | --- | --- | --- |
+| Layers | up to two base layers, blend from vertex alpha, `$blendmodulatetexture` | one layer (blend 0) | LightmappedGeneric; WorldVertexTransition | height-blended layers |
+| Albedo | base texture, `$color`, `$color2`, vertex color, `$srgbtint` | white | every shader's base pass | base color |
+| Detail | texture, scale, blend mode (0–9), factor, tint, alpha mask | no texture (the mode's identity) | `$detail` by `$detailblendmode` | detail as a second layer or micro-normal |
+| Normal | normal map with transform; ssbump basis weights | flat (0,0,1) | `$bumpmap`, `$ssbump`, `$bumpmap2` | tangent-space normal |
+| Diffuse light | a baked basis (1 page flat, 3 pages RNM), probes (ambient cube, SH L1), runtime lights (clustered), lightwarp ramp | lighting one (unlit) | UnlitGeneric (one); flat lightmap = basis 1; bumped lightmap = RNM with the normal; VertexLitGeneric = probes plus model lights; `$lightwarptexture` = transfer ramp (identity neutral); `$halflambert` = a wrap parameter | RFC 0007 SH L1 or RNM from the Cycles baker, RFC 0011 probe volume, RFC 0016 K7 clustered and area lights |
+| Emission | mask (base alpha, `$selfillummask`, detail modes 5/6), tint, fresnel | zero | `$selfillum`, `$selfillumtint`, `$selfillumfresnel`, detail self-illum | emissive radiance in scene units, and an area light (RFC 0011) when it should light its surroundings |
+| Specular image | reflection source (`env_cubemap`, named cube, RPRB probe set), mask source (base alpha, normal alpha, `$envmapmask` with transform), tint, legacy fresnel, contrast, saturation, roughness | reflectance zero | `$envmap` and all its masks and knobs: legacy is roughness 0, mip 0, additive (no diffuse energy compensation), `$fresnelreflection` lerp, contrast/saturation as a color transform (identity at 0/1) | GGX split-sum IBL from parallax-corrected, relit probes (R50) with energy compensation |
+| Specular lobe (runtime lights) | exponent or roughness, mask, fresnel ranges, boost, tint, rim | none | `$phong*`, `$rimlight*` (Blinn-Phong points, not energy conserving) | GGX from the same roughness |
+| Coverage | base alpha × `$alpha` × vertex alpha; alpha test and reference; alpha to coverage; blend state (opaque, alpha, additive, mod2x) | opaque, no test | `$alphatest`, `$translucent`, `$additive`, `$vertexalpha`, `$allowalphatocoverage`, DecalModulate | the same, plus MSAA coverage (RFC 0012) |
+| View terms (frame) | fog (range, height), output encoding, tone scale | no fog | legacy fog modes, `$nofog` | exponential height fog, volumetrics later |
+| Projected lights | flashlight and `env_projectedtexture` through K7's clustered path | none | the legacy flashlight pass per material | shadowed projected lights for every material |
+
+Quirks are defaults with one owner: the 0.7 alpha-test reference, the
+2.0 overbright, the LDR 2^2.2 and HDR 16 lightmap scales, the sRGB rules,
+the half-Lambert wrap and the D3D9 half-pixel offset.
+
+#### Exact legacy points, then modern points
+
+Each legacy point reproduces its legacy port (the native backend's GLSL
+ports of stdshader_dx9, R32-LEGACY-SHADERS) within the family's pixel
+tolerance. The ports are the oracle, and the oracle compares against the
+port through the same frame, so the core's arithmetic can't drift from
+legacy. A modern point is the same program at other parameter values with
+richer inputs (Cycles SH lightmaps, relit parallax probes, clustered and
+area lights). Modernizing a material is then data, not code:
+
+- a legacy material imports to its exact legacy point by default;
+- an opt-in rule table (per game, per material family, reviewed) maps
+  legacy parameters to modern ones: `$phongexponent` to roughness, env map
+  tint and mask to F0 and roughness, `$selfillum` to emissive radiance and
+  an area light, bump plus RNM to normal plus SH L1. It is checked against
+  Cycles references (RFC 0007 G) with negative controls;
+- per-material overrides are authored beside the VMT (a `.surface` sidecar
+  owned by RFC 0015's asset graph). The VMT itself stays untouched, so the
+  legacy path and mods keep working.
+
+#### Order, from the inventory
+
+The numbers come from an inventory of 6,000 Portal VMTs (Portal plus the
+HL2 VPKs it mounts) and 3,738 Portal 2 VMTs: patches, fallbacks and
+conditionals applied, and only keys that change rendering counted
+(`tools/render/material_inventory.py`).
+
+- Portal materials: LightmappedGeneric 2,200, VertexLitGeneric 1,550,
+  UnlitGeneric 1,177. Portal 2: VertexLitGeneric 1,211, UnlitGeneric 1,039,
+  LightmappedGeneric 811.
+- The current model (opaque base, lightmap, vertex color, `$color`/`$alpha`,
+  alpha test) covers 22.7% of Portal's materials and 19.8% of Portal 2's.
+- Portal's chambers are 97.3% LightmappedGeneric by world area. Portal 2's
+  area is dominated by huge `tools/toolsblack` faces, so it is weighted by
+  faces.
+- Through S8 the model takes 92.9% of Portal's materials and 88.3% of
+  Portal 2's. The rest is the long tail below.
+
+Cumulative coverage after each phase (`tools/render/material_inventory.py
+--phases`; world area and faces from testchmb_a_00–11 and Portal 2's 63
+`sp_a*` maps):
+
+| Phase | Terms | Portal materials / world area | Portal 2 materials / world faces | Notes |
+| --- | --- | --- | --- | --- |
+| S0 current | base, lightmap or lighting one, vertex color and alpha, `$color`/`$alpha`, alpha test; opaque | 22.7% / 2.2% | 19.8% / 41.6% | step 4b |
+| S1 Coverage and state | blending in the translucent stage (alpha, additive, mod2x), `$decal`, `$nocull`, `$ignorez`, `$nofog`; the fog view term | 45.4% / 2.4% | 55.7% / 42.0% | the biggest step by material count: decals and UI. A second world slot at the translucent stage. Fog admits the escape maps' views |
+| S2 Specular image | `$envmap` (env_cubemap patches, named cubes), base-alpha, normal-alpha and `$envmapmask` masks, tint, contrast, saturation, `$fresnelreflection`, Portal 2's `$envmaplightscale` | 53.4% / 7.4% | 57.3% / 42.6% | needs cube textures in the port and in `ICoreTextures` |
+| S3 Normal and basis light | `$bumpmap` with RNM (three bumped lightmap pages), `$ssbump`, texture transforms and proxy-driven parameters | 58.2% / 57.5% | 62.2% / 77.6% | per-frame parameter blocks for the 383 Portal and 173 Portal 2 materials with proxies |
+| S4 Detail | `$detailblendmode` 0 (1,061 Portal materials), then 7, 2, 5, 10, 1, 8 | 75.4% / 89.5% | 64.9% / 97.8% | mode 0 is mod2x in gamma; 7 is its linear twin |
+| S5 Emission | `$selfillum`, `$selfillummask`, tint, fresnel, detail modes 5 and 6 | 80.7% / 97.6% | 72.6% / 98.1% | emissive surfaces can register RFC 0011 area lights (the lit test-chamber sign tests) |
+| S6 Layers | WorldVertexTransition, `$blendmodulatetexture`, `$seamless_scale` | 81.7% / 97.6% | 73.0% / 98.5% | Portal 2's world area to 97.3% |
+| S7 Model surfaces | VertexLitGeneric through probes, the ambient cube and clustered lights; `$phong` (exponent, exponent texture, boost, fresnel ranges, albedo tint), `$rimlight`, `$halflambert`, `$lightwarptexture`, `$color2` | 85.4% | 84.4% | with K5's props and K6's skinned models |
+| S8 Unlit points | Sprite, UnlitTwoTexture, SubRect, Sky (HDR encodings), distance-field alpha | 92.9% | 88.3% | lighting one; SubRect is a texture rectangle |
+| S9 Modern points | the rule table and sidecars, checked against Cycles references | — | — | per game, opt-in, reviewed; never changes a legacy point |
+
+Portal's world needs S2 to S4 together: its largest term sets are bump,
+ssbump and detail mode 0 (28% of area), and bump, ssbump and env map with
+tint and contrast (38%).
+
+Legacy draws each phase's materials until that phase's claims take them,
+and only then (no escape hatches).
+
+Each phase closes when:
+- the term's neutral value is bitwise the term absent (a suite with
+  seeded mutants);
+- each legacy point it adds matches its port on the material pixel families
+  and in the isolated world oracle (`r_core_world_isolate`), within the
+  recorded tolerance;
+- the claim rules take exactly the materials whose variables the term
+  reads (`UnreadVariable`, no escape hatches), and the coverage row per game
+  is recorded;
+- frame time and permutation count stay within the K5 Submission budget,
+  per profile (desktop, Fold7, iPhone, Apple TV).
+
+#### What stays outside the model
+
+- Mods' own shader DLLs: the D3D9/ToGL legacy profiles.
+- The long tail, shaders whose legacy output is not a lit surface:
+  SpriteCard (83 Portal / 143 Portal 2), Water (46 / 59),
+  Refract and PortalRefract (44 / 44), Eyeball, Eyes, Teeth and EyeRefract
+  (88 / 0), Cable (14 / 5), Portal (7 / 7), SolidEnergy (0 / 14), PaintBlob
+  (0 / 4), and about 100 engine-internal materials. Each gets its own
+  family on the same terms (refract and glass as a transmission term, water as transmission
+  plus reflection plus flow, sky, spritecard, eyes), not a new model.
 
 ## Frame and views (`render.frame.v1`)
 

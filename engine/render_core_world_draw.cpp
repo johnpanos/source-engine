@@ -11,6 +11,7 @@
 #include "render_core_world.h"
 #include "render/composition/render_core_world.h"
 #include "gl_matsysiface.h"
+#include "host.h"
 #include "materialsystem/imaterial.h"
 #include "materialsystem/imaterialvar.h"
 #include "materialsystem/IShader.h"
@@ -437,8 +438,8 @@ void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount )
 	pRenderContext->GetViewport( x, y, width, height );
 	const float viewport[6] = {
 	    float( x ), float( y ), float( width ), float( height ), 0.0f, 1.0f };
-	state.viewActive = pWorld->DrawView(
-	    reinterpret_cast<const unsigned int *>( pSurfaces ), nCount, toClip, viewport );
+	state.viewActive = pWorld->DrawView( reinterpret_cast<const unsigned int *>( pSurfaces ),
+	    nCount, toClip, viewport, static_cast<unsigned long long>( host_framecount ) + 1 );
 }
 
 void RenderCoreWorldDraw_EndView()
@@ -465,10 +466,10 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 	RenderCoreWorldStats stats;
 	pWorld->GetStats( &stats );
 	Msg( "r_core_world_stats: materials %u claimed %u surfaces %u claimed %u views queued %llu "
-	     "drawn %llu failed %llu surfaces drawn %llu last failure '%s'\n",
+	     "drawn %llu failed %llu skipped %llu surfaces drawn %llu last failure '%s'\n",
 	    stats.materials, stats.claimedMaterials, stats.surfaces, stats.claimedSurfaces,
-	    stats.viewsQueued, stats.viewsDrawn, stats.viewsFailed, stats.surfacesDrawn,
-	    stats.lastFailure );
+	    stats.viewsQueued, stats.viewsDrawn, stats.viewsFailed, stats.viewsSkipped,
+	    stats.surfacesDrawn, stats.lastFailure );
 	if ( stats.gaps[0] )
 		Msg( "r_core_world_stats: gaps:\n%s", stats.gaps );
 	if ( stats.claimed[0] )

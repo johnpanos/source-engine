@@ -23,6 +23,9 @@
 //			W9 A variable the model does not read keeps a material out unless
 //			   it holds its shader's neutral value (declared defaults), and a
 //			   variable with no neutral value keeps it out.
+//			W10 Views of a host frame the backend never recorded are skipped,
+//			   not failed; a view whose slot never recorded while another slot
+//			   of its frame did is a failure.
 //			W8 Objects a frame used outlive it: a level change, or a second
 //			   target format, between two slots of one submission leaves the
 //			   first slot's objects alive, and they are released at a later
@@ -118,13 +121,14 @@ WorldData TestWorld()
 	return world;
 }
 
-WorldView View( std::vector<std::uint32_t> surfaces )
+WorldView View( std::vector<std::uint32_t> surfaces, std::uint64_t hostFrame = 0 )
 {
 	WorldView view;
 	view.surfaces = std::move( surfaces );
 	for ( int i = 0; i < 4; ++i )
 		view.toClip[i * 5] = 1.0f;
 	view.viewport = { 0, 0, 64, 64, 0, 1 };
+	view.hostFrame = hostFrame;
 	return view;
 }
 
@@ -328,6 +332,25 @@ int main()
 		    "W8.a-later-frame-releases-the-retired-world" );
 		if ( unorm )
 			(void)device.Release( unorm.Value(), {} );
+	}
+
+	// W10: host frame 100 never records; frame 101 records one of its two.
+	{
+		const std::uint64_t failures = pass.Failures();
+		const std::uint64_t skipped = pass.Stats().viewsSkipped;
+		(void)pass.QueueView( View( { 0 }, 100 ) );
+		(void)pass.QueueView( View( { 1 }, 100 ) );
+		const std::uint32_t lost = pass.QueueView( View( { 0 }, 101 ) );
+		const std::uint32_t drawn = pass.QueueView( View( { 1 }, 101 ) );
+		(void)lost;
+		target.frame = 15;
+		(void)RecordSlot( device, pass, drawn, target );
+		checks.That( pass.Stats().viewsSkipped == skipped + 2,
+		    "W10.views-of-an-unrecorded-frame-are-skipped" );
+		checks.That(
+		    pass.Failures() == failures + 1 &&
+		        pass.Stats().lastFailure.find( "frame that recorded" ) != std::string::npos,
+		    "W10.a-lost-slot-of-a-recorded-frame-fails" );
 	}
 
 	pass.ReleaseDevice( device );

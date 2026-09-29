@@ -1957,6 +1957,50 @@ RENDER_TSAN_BUILD=<tsan install> python3 tools/render/tsan_triage.py run --build
   --engine-arg=+r_core_world --engine-arg=1
 ```
 
-Open, in order: the material-model expansion plan (next section), the fog
-view term, the env map term, detail and bump, render-target and nested
-views, the Submission cost row, static props.
+- **Skipped is not failed** (source-engine-60, 2026-09-28): each queued view
+  carries its host frame (`WorldView::hostFrame`, `host_framecount`). A view
+  whose slot never recorded is `viewsSkipped` when no slot of its host
+  frame recorded: the backend never recorded that frame (a resize, a lost
+  surface, a dropped queued frame). If another slot of its frame recorded,
+  it is a failure and fatal under strict. `render.world.null` W10 covers
+  both. `portal_boot --resize-stress --resize-mode queued` passes with
+  `r_core_world 1` and strict on. The sync resize-stress fails with the
+  core world off as well ("2 presents scaled the back buffer … at settled
+  sizes", 3 of 3 runs), so that failure predates this work; R32-RESIZE
+  owns it.
+
+Open, in order: the surface-model phases (next section), starting with S1
+(the translucent-stage world slot, render state and the fog view term); then
+render-target and nested views, the Submission cost row, and static props.
+
+## The surface-model plan (2026-09-28)
+
+User direction: "have a plan for how to modernize most materials with them
+being degenerate cases in the new expanded system". The plan is RFC 0016's
+section "The surface model: legacy materials as degenerate cases". It gives:
+- one `surface` program whose terms all have neutral values;
+- legacy shaders as exact points, checked against the native ports;
+- modern points as opt-in data (a rule table and sidecars, checked against
+  Cycles);
+- phases S0–S9 ordered from an inventory of 6,000 Portal and 3,738 Portal 2
+  VMTs.
+
+`tools/render/material_inventory.py --out DIR --phases` reproduces the
+coverage per phase:
+
+| Phase | Portal materials / world area / faces | Portal 2 materials / world area / faces |
+| --- | --- | --- |
+| S0 (now) | 22.7% / 2.2% / 19.1% | 19.8% / 61.1% / 41.6% |
+| S1 coverage and state | 45.4% / 2.4% / 20.1% | 55.7% / 61.7% / 42.0% |
+| S2 specular image | 53.4% / 7.4% / 36.8% | 57.3% / 61.8% / 42.6% |
+| S3 normal and basis light | 58.2% / 57.5% / 77.9% | 62.2% / 84.6% / 77.6% |
+| S4 detail | 75.4% / 89.5% / 88.4% | 64.9% / 88.2% / 97.8% |
+| S5 emission | 80.7% / 97.6% / 99.4% | 72.6% / 88.3% / 98.1% |
+| S6 layers | 81.7% / 97.6% / 99.4% | 73.0% / 97.3% / 98.5% |
+| S7 model surfaces | 85.4% | 84.4% |
+| S8 unlit points | 92.9% | 88.3% |
+
+The rest is the long tail: SpriteCard, Water, Refract, the eye shaders,
+Cable, Portal, SolidEnergy, PaintBlob and engine-internal materials. Each
+gets a family on the same terms. Mods' shader DLLs stay on the legacy
+profiles.

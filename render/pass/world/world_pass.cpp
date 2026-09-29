@@ -117,7 +117,29 @@ struct WorldPass::State
 	// stream again for an on-demand capture (a screenshot), with the same
 	// slots, which must draw the same views.
 	std::deque<Queued> recorded;
+	// Host frames with a recorded slot, newest last.
+	std::deque<std::uint64_t> recordedFrames;
 	WorldStats stats;
+
+	// A queued view dropped because its slot never recorded (lock held): a
+	// failure when a slot of its host frame recorded (or its frame is
+	// unknown), else skipped with its frame.
+	void Drop( const Queued &dropped, std::uint64_t recordingFrame )
+	{
+		const std::uint64_t frame = dropped.view.hostFrame;
+		const bool frameRecorded = frame == 0 || frame == recordingFrame ||
+		                           std::find( recordedFrames.begin(), recordedFrames.end(),
+		                               frame ) != recordedFrames.end();
+		if ( frameRecorded )
+		{
+			++stats.viewsFailed;
+			stats.lastFailure = "a queued view's slot never recorded in a frame that recorded";
+		}
+		else
+		{
+			++stats.viewsSkipped;
+		}
+	}
 
 	// Render sequence only: the current world's objects, one set per target
 	// format (most recently used last), and earlier sets with the frame that
@@ -301,9 +323,8 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 	constexpr std::size_t kMaxQueued = 256;
 	if ( s.views.size() >= kMaxQueued )
 	{
+		s.Drop( s.views.front(), 0 );
 		s.views.pop_front();
-		++s.stats.viewsFailed;
-		s.stats.lastFailure = "a queued view's slot never recorded";
 	}
 	s.views.push_back( { serial, s.generation, std::move( view ) } );
 	++s.stats.viewsQueued;
@@ -365,11 +386,16 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		}
 		// Views are queued in stream order: earlier ones whose slots did not
 		// record are dropped; a slot older than every queued view takes none.
+		std::uint64_t recordingFrame = 0;
+		for ( const State::Queued &queued : s.views )
+		{
+			if ( queued.serial == serial )
+				recordingFrame = queued.view.hostFrame;
+		}
 		while ( !again && !s.views.empty() && IssuedBefore( s.views.front().serial, serial ) )
 		{
+			s.Drop( s.views.front(), recordingFrame );
 			s.views.pop_front();
-			++s.stats.viewsFailed;
-			s.stats.lastFailure = "a queued view's slot never recorded";
 		}
 		if ( !again && !s.views.empty() && s.views.front().serial == serial )
 		{
@@ -377,6 +403,14 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			// the queue; this holds if a slot records across the change).
 			found = s.views.front().generation == s.generation;
 			view = s.views.front().view;
+			if ( view.hostFrame != 0 &&
+			     ( s.recordedFrames.empty() || s.recordedFrames.back() != view.hostFrame ) )
+			{
+				s.recordedFrames.push_back( view.hostFrame );
+				constexpr std::size_t kFramesKept = 64;
+				while ( s.recordedFrames.size() > kFramesKept )
+					s.recordedFrames.pop_front();
+			}
 			s.recorded.push_back( std::move( s.views.front() ) );
 			s.views.pop_front();
 			constexpr std::size_t kRecordedKept = 64; // a frame's views, with room

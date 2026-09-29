@@ -139,6 +139,11 @@ struct WorldView
 	std::vector<std::uint32_t> surfaces; // into WorldData::surfaces
 	float toClip[16] = {};               // world to clip, row-major, D3D9 conventions
 	device::Viewport viewport;
+	// The host frame that queued the view (views of one frame share it; 0
+	// when unknown). A view whose slot never records is skipped, not failed,
+	// only when no slot of its frame recorded: the backend never recorded
+	// that frame (a resize, a lost surface, a dropped queued frame).
+	std::uint64_t hostFrame = 0;
 };
 
 struct WorldStats
@@ -149,7 +154,8 @@ struct WorldStats
 	std::uint32_t claimedSurfaces = 0;
 	std::uint64_t viewsQueued = 0;
 	std::uint64_t viewsDrawn = 0;
-	std::uint64_t viewsFailed = 0; // claimed work not drawn: never legacy's
+	std::uint64_t viewsFailed = 0;  // claimed work not drawn: never legacy's
+	std::uint64_t viewsSkipped = 0; // views of a host frame the backend never recorded
 	std::uint64_t surfacesDrawn = 0;
 	std::string lastFailure;
 	// Why materials stay legacy: reason and count, most frequent first.

@@ -53,6 +53,7 @@ struct RenderCoreWorldStats
 	unsigned long long viewsQueued;
 	unsigned long long viewsDrawn;
 	unsigned long long viewsFailed;
+	unsigned long long viewsSkipped; // views of host frames the backend never recorded
 	unsigned long long surfacesDrawn;
 	char lastFailure[256];
 	char gaps[1024];    // "count reason" lines, most frequent first
@@ -71,12 +72,13 @@ public:
 	// Whether the core draws the material's surfaces.
 	virtual bool Draws( unsigned int material ) const = 0;
 	// Queues a view's visible surfaces that the core draws, with the view's
-	// world-to-clip (row-major, column vectors, D3D9 conventions) and viewport
-	// (x, y, width, height, min and max depth), and marks its slot at this
-	// point of the frame's stream. False when nothing was queued (no
-	// surface, or no backend slots): then the caller draws them itself.
+	// world-to-clip (row-major, column vectors, D3D9 conventions), viewport
+	// (x, y, width, height, min and max depth) and host frame, and marks its
+	// slot at this point of the frame's stream. False when nothing was queued
+	// (no surface, or no backend slots): then the caller draws them itself.
+	// A view of a host frame the backend never records counts as skipped.
 	virtual bool DrawView( const unsigned int *surfaces, unsigned int count,
-	    const float worldToClip[16], const float viewport[6] ) = 0;
+	    const float worldToClip[16], const float viewport[6], unsigned long long hostFrame ) = 0;
 	// Views and claimed materials the core failed to draw, so far (never
 	// drawn by legacy instead: the caller's policy decides what a failure
 	// costs).
