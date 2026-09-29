@@ -3486,3 +3486,20 @@ b2. `kSsrTargets` follows 43's c2.
 
 Performance (recorded): the suite runs in 21 s on the clang++ lab tree with the walk
 (each station runs the CPU reference for the diagnosis).
+
+### What the gallery shows that the metric missed (2026-09-29, user review)
+
+The user reviewed the gallery and found four gaps. Two of them the K11
+metric can't see, because it skips visible emitters and weighs a pixel-wide
+edge like any other pixel. Each gap is now a K11 check in RFC 0016:
+
+| Gap | Cause | Owner and next step |
+| --- | --- | --- |
+| material-sweep's gold renders flat yellow | the lab's resolver serves only the lightmapped and unlit families, so world PBRMetalRough is silently remapped to the lightmapped point: no image specular, no metal | render-core owner, b2 (the resolver serves the world pbr point); K11 "World PBR materials" |
+| The bulbs are missing | a fixture light is a `light` point entity with no geometry; Cycles shows the SphereLight's surface | fixtures (source-engine-5c): emissive bulb meshes, camera-only in the reference and excluded from the bake; the lab draws them through the emission term (render-core owner's S5). New rule: "lights have no visible shape; content supplies it". K11 "Visible emitters drawn" |
+| Jagged silhouettes (pillars) | the lab draws one sample per pixel; the denoised reference averages 256 | RFC 0012's multisampled targets, pulled forward as a lab-first slice; K11 "Antialiased edges" with an edge metric |
+| Smeared bulb halos in fog | a bulb's halo is smaller than a froxel (8 px, 96 slices) | the volumetric pass: an analytic per-light single-scattering term; K11 "Small-light fog halos" |
+
+The antialiasing check pulls RFC 0012's multisampled-target work (R65) ahead
+of its rank, for the lab. This is a K11 requirement, not a change to R65's
+product scope.
