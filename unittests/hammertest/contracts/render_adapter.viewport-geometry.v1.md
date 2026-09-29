@@ -67,7 +67,7 @@ and the `unlit` family (RFC 0016 K4), edges, grid and overlay through `render.pa
 | S4 | Destroying the service with jobs in flight: no reply runs afterwards, and once the destructor has returned and the device has polled, it holds nothing the renderer made |
 | S5 | A shut-down render runner refuses jobs, and destroying the service then does not wait |
 | S6 | A material source set on the service is asked only on the render thread and is destroyed there with the service |
-| SV1 | On a real device, two documents with their own services and render threads share one device: their views, submitted interleaved, equal what a lone renderer draws of each view (`hammer.adapters.render.service.vulkan`) |
+| SV1 | On a real device, two documents with their own services share one device and its one render sequence (the device port allows concurrent encoder recording only): their views, submitted interleaved, equal what a lone renderer draws of each view (`hammer.adapters.render.service.vulkan`) |
 | SV2 | Restoration after a remount: a replaced material source with the same textures gives the frame drawn before |
 | SV3 | Restoration after a resize: a view drawn smaller and then at its size again equals its first frame |
 | SV4 | Teardown: a service destroyed with jobs in flight, exported frames still leased and a source swap queued leaves the device holding what it held before the service existed |

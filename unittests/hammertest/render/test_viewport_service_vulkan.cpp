@@ -6,9 +6,12 @@
 //			render.device.vulkan, as the GTK shell composes it, judged against
 //			frames a lone renderer draws of the same inputs.
 //
-//			SV1 sharing: two documents, each with its own service and render
-//			    thread, on one device; their four views each, submitted
-//			    interleaved, equal what a lone renderer draws of the same view;
+//			SV1 sharing: two documents, each with its own service, on one
+//			    device and its one render sequence (the device port promises
+//			    concurrency only for encoder recording, so every service of a
+//			    device runs on the same sequence); their four views each,
+//			    submitted interleaved, equal what a lone renderer draws of the
+//			    same view;
 //			SV2 restoration after a remount: a replaced material source (the
 //			    same textures) gives the frame drawn before it;
 //			SV3 restoration after a resize: a view drawn smaller and then at
@@ -189,10 +192,9 @@ int main()
 
 	// SV1.
 	{
-		platform::ThreadTaskRunner renderA( "viewport-a" );
-		platform::ThreadTaskRunner renderB( "viewport-b" );
-		ViewportService a( *device, renderA, reply, std::make_unique<FlatTextures>() );
-		ViewportService b( *device, renderB, reply );
+		platform::ThreadTaskRunner render( "viewport-render" );
+		ViewportService a( *device, render, reply, std::make_unique<FlatTextures>() );
+		ViewportService b( *device, render, reply );
 		std::vector<std::optional<ViewPixels>> framesA( views.size() );
 		std::vector<std::optional<ViewPixels>> framesB( views.size() );
 		std::size_t arrived = 0;

@@ -22,6 +22,11 @@
 //			them. Without a material source the views are the flat preview;
 //			without a model source model entities draw their markers.
 //
+//			Sharing: several services (documents) may use one device, but
+//			all of them must be given that device's one render sequence: the
+//			device port allows concurrent encoder recording only, not
+//			resource creation or submission from several threads.
+//
 //			Lifetime: the device and both runners outlive the service. The
 //			destructor stops replies at once and waits, on the render
 //			sequence, for the renderer (and its frames) and the material
