@@ -31,8 +31,8 @@ struct SsrReferenceInputs
 	float eye[3] = { 0, 0, 0 };         // world position
 	std::vector<float> depth;           // 0 near .. 1 far
 	std::vector<float> normalRoughness; // octahedral normal xy, roughness
+	std::vector<float> iblRadiance;
 	std::vector<float> specularWeight;
-	std::vector<float> imageSpecular;
 	std::vector<float> lit;
 };
 
@@ -52,9 +52,19 @@ struct SsrReferencePixel
 	float out[4] = { 0, 0, 0, 0 };    // the composited pixel
 };
 
+// A seeded defect of the reference, for its suite's controls.
+enum class SsrReferenceDefect
+{
+	kNone,
+	// The thickness applied in front of the surface instead of behind: a ray
+	// stops within `thickness` in front of a texel, and behind it at any
+	// distance.
+	kThicknessInFront,
+};
+
 // The pass's result per pixel (row 0 at the top).
-std::vector<SsrReferencePixel> ReferenceSsr(
-    const SsrReferenceInputs &inputs, const pass::ssr::SsrParams &params );
+std::vector<SsrReferencePixel> ReferenceSsr( const SsrReferenceInputs &inputs,
+    const pass::ssr::SsrParams &params, SsrReferenceDefect defect = SsrReferenceDefect::kNone );
 
 // The lit pyramid the reference samples: mip k is a 2 x 2 box of mip k - 1,
 // sizes halved and at least 1; level 0 is `lit`. Each level's RGBA texels.

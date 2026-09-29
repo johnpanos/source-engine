@@ -87,10 +87,11 @@ SsrSceneImages RayCastScene( const SsrScene &scene )
 	in.depth.assign( pixels, 1.0f );
 	in.normalRoughness.assign( pixels * 4, 0.0f );
 	in.specularWeight.assign( pixels * 4, 0.0f );
-	in.imageSpecular.assign( pixels * 4, 0.0f );
+	in.iblRadiance.assign( pixels * 4, 0.0f );
 	in.lit.assign( pixels * 4, 0.0f );
 	images.truth.assign( pixels, SsrTruth() );
-	std::vector<float3> points( pixels );
+	images.points.assign( pixels, float3{} );
+	std::vector<float3> &points = images.points;
 
 	for ( std::uint32_t y = 0; y < H; ++y )
 	{
@@ -121,9 +122,10 @@ SsrSceneImages RayCastScene( const SsrScene &scene )
 			for ( int c = 0; c < 3; ++c )
 			{
 				in.specularWeight[i * 4 + std::size_t( c )] = quad.weight[std::size_t( c )];
-				in.imageSpecular[i * 4 + std::size_t( c )] = quad.imageSpecular[std::size_t( c )];
+				in.iblRadiance[i * 4 + std::size_t( c )] = quad.iblRadiance[std::size_t( c )];
 				in.lit[i * 4 + std::size_t( c )] =
-				    radiance[std::size_t( c )] + quad.imageSpecular[std::size_t( c )];
+				    radiance[std::size_t( c )] +
+				    quad.weight[std::size_t( c )] * quad.iblRadiance[std::size_t( c )];
 			}
 		}
 	}
@@ -171,6 +173,17 @@ SsrSceneImages RayCastScene( const SsrScene &scene )
 		}
 	}
 	return images;
+}
+
+int CastCamera(
+    const SsrScene &scene, const SsrReferenceInputs &inputs, double sx, double sy, float3 &point )
+{
+	const math::float4x4 fromClip = *math::Inverse( inputs.toClip );
+	const float nx = float( sx / inputs.width * 2.0 - 1.0 );
+	const float ny = float( 1.0 - sy / inputs.height * 2.0 );
+	const float3 nearPoint = math::TransformPoint( fromClip, { nx, ny, 0.0f } );
+	const float3 farPoint = math::TransformPoint( fromClip, { nx, ny, 1.0f } );
+	return Nearest( scene, nearPoint, Sub( farPoint, nearPoint ), 0.0f, point );
 }
 
 } // namespace render::lab

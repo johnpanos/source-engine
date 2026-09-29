@@ -12,12 +12,18 @@
 //			- normalRoughness: the shading normal, octahedrally encoded
 //			  (xy in [-1, 1]; OctEncode below), and the perceptual roughness
 //			  the image-based specular used (z);
-//			- specularWeight: what the surface multiplied its image light by
+//			- iblRadiance: the image-based specular radiance the surface
+//			  read (rgb, before its weight);
+//			- specularWeight: the weight w it multiplied that radiance by
 //			  (rgb: the split-sum directional albedo times specular
 //			  occlusion);
-//			- imageSpecular: the image-based specular the surface added
-//			  (rgb);
-//			- lit: the lit frame, image specular included (linear, RGBA16F).
+//			- lit: the lit frame (linear, RGBA16F), which holds
+//			  w * iblRadiance by construction.
+//			The surface program writes the first three as its kSsrTargets
+//			outputs (an opt-in pipeline guard; a family without it keeps one
+//			target, bitwise): (1) the octahedral normal and roughness, (2)
+//			iblRadiance and (3) w, the very factors of its own image-specular
+//			expression, not a recomputation.
 //			The trace reads `lit` and a depth pyramid built from `depth`; it
 //			keeps no history (RFC 0012 keeps temporal methods out).
 //
@@ -55,9 +61,9 @@
 //			   hit at mip clamp( log2( max( 1, 2 r^2 L ) ), 0, maxMip ), L the
 //			   hit's distance from the pixel in pixels: the reflection lobe's
 //			   footprint, the one spatial filter.
-//			6. ssr = reflected * specularWeight, and the pixel becomes
-//			   lit + c ( ssr - imageSpecular ), that is the rest of the light
-//			   plus lerp( imageSpecular, ssr, c ).
+//			6. The pixel becomes lit + c w ( reflected - iblRadiance ): the
+//			   image specular w iblRadiance replaced by w lerp( iblRadiance,
+//			   reflected, c ).
 //			Everything else is written unchanged, bitwise: background,
 //			r >= roughnessCutoff, and c = 0.
 //

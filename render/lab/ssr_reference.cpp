@@ -198,8 +198,8 @@ std::vector<SsrPyramidLevel> ReferencePyramid(
 	return levels;
 }
 
-std::vector<SsrReferencePixel> ReferenceSsr(
-    const SsrReferenceInputs &inputs, const pass::ssr::SsrParams &params )
+std::vector<SsrReferencePixel> ReferenceSsr( const SsrReferenceInputs &inputs,
+    const pass::ssr::SsrParams &params, SsrReferenceDefect defect )
 {
 	const std::uint32_t W = inputs.width, H = inputs.height;
 	View view{ W, H, ToDouble( inputs.toClip ), {} };
@@ -312,7 +312,25 @@ std::vector<SsrReferencePixel> ReferenceSsr(
 					++pixel.steps;
 					const double d = depthAt( std::uint32_t( tx ), std::uint32_t( ty ) );
 					const Vec3 a = at( uEnter ), b = at( uExit );
-					if ( std::max( a.z, b.z ) >= d )
+					if ( defect == SsrReferenceDefect::kThicknessInFront )
+					{
+						// Seeded: within the thickness in front, or behind at any
+						// distance.
+						const Vec3 far = a.z > b.z ? a : b;
+						const double front =
+						    view.W( far.x, far.y, d ) - view.W( far.x, far.y, far.z );
+						if ( far.z >= d || front < params.thickness )
+						{
+							pixel.hit = true;
+							pixel.hitX = far.x;
+							pixel.hitY = far.y;
+							pixel.hitTexelX = std::uint32_t( tx );
+							pixel.hitTexelY = std::uint32_t( ty );
+							pixel.behind = 0.0;
+							break;
+						}
+					}
+					else if ( std::max( a.z, b.z ) >= d )
 					{
 						double uHit = uEnter;
 						if ( a.z < d )
@@ -375,13 +393,13 @@ std::vector<SsrReferencePixel> ReferenceSsr(
 			if ( !( pixel.confidence > 0.0 ) )
 				continue;
 			const float *weight = &inputs.specularWeight[index * 4];
-			const float *ibl = &inputs.imageSpecular[index * 4];
+			const float *ibl = &inputs.iblRadiance[index * 4];
 			for ( int k = 0; k < 3; ++k )
 			{
 				const double reflected = low[k] * ( 1.0 - f ) + high[k] * f;
 				pixel.reflected[k] = float( reflected );
-				const double ssr = reflected * weight[k];
-				pixel.out[k] = float( double( lit[k] ) + pixel.confidence * ( ssr - ibl[k] ) );
+				pixel.out[k] = float(
+				    double( lit[k] ) + pixel.confidence * weight[k] * ( reflected - ibl[k] ) );
 			}
 		}
 	}

@@ -3366,26 +3366,40 @@ mirror-corridor comparison are open.
   - Confidence: the product of the screen-edge fade (10 percent of the
     screen), the thickness fade and the roughness fade (from 0.75 of the 0.4
     cutoff).
+  - Inputs from the surface: the image-specular radiance and its weight w,
+    not the product (see the composite below).
   - Spatial filter: a trilinear lookup in the lit colour's box pyramid at the
     lobe's footprint, log2(2 r^2 L).
-  - Composite: lit + c (ssr - image specular), that is the rest plus
-    lerp(image specular, ssr, c). Roughness at or above the cutoff, the
-    background and c = 0 are written unchanged, bitwise.
+  - Composite: lit + c w (reflected - iblRadiance). Roughness at or above
+    the cutoff, the background and c = 0 are written unchanged, bitwise.
 - **Surface-program inputs:** proposed to source-engine-43 as diffs after its
-  c1 and the step-d wiring land (behind its opt-in `kSsrTargets` guard). The
-  definition needs one more input than the agreed normal-roughness and image
-  specular targets: the specular weight (rgb), so SSR is weighted as the
-  image light it replaces. Until then the lab builds the inputs itself.
+  c1 and the step-d wiring land (behind its opt-in `kSsrTargets` guard).
+  Until then the lab builds the inputs itself.
 - **Reference:** `render/lab/ssr_reference.{h,cpp}`: the definition in double
   precision, walking every texel (Amanatides and Woo), with its own matrix
   inverse and pyramid; no code or acceleration shared with the GPU trace.
   `render/lab/ssr_scene.{h,cpp}` ray-casts analytic rectangle scenes into the
   pass's inputs, with each pixel's true mirror reflection.
 - Contract clauses S1–S10: `unittests/rendertest/contracts/render.ssr.v1.md`.
+- **Composite (agreed with source-engine-43):** lit + c w (ssr - iblRadiance),
+  with the surface's `kSsrTargets` outputs (1) octahedral normal and
+  roughness, (2) the image-specular radiance and (3) its weight w, the very
+  factors of the pbr point's image-specular expression, so the lit colour
+  holds w iblRadiance by construction.
+- **The first version's post-hoc bound withdrawn:** it bounded the rays that
+  stop at a thin occluder within the thickness at 2 percent, set after the 0.9
+  percent was seen. The check is now the exact set comparison above, and the
+  classification rule was written into the contract before it ran. Its first
+  runs exposed two false premises in the rule (the pixel's own rectangle
+  excluded; a step considering only the rectangle at its own point), fixed and
+  recorded in the contract with no band changed. A nearer bar was added to
+  the scene: at the far bar the ray moves about 5 units of depth per pixel,
+  wider than half the thickness, so no pixel there is certainly ambiguous and
+  the set's ambiguous side would have been vacuous.
 
 | Check | Evidence | Result |
 | --- | --- | --- |
-| Reference against analytic truth | `render.lab.ssr` (`render_lab suite ssr`): a mirror floor before a patterned wall with a thin floating bar, 256 x 192. All 15,324 floor pixels whose true reflection the camera sees hit within 1.5 px of it and reflect its light within 3 percent + 0.01. 132 (0.9 percent) stop at the bar within the thickness, the definition's screen-space ambiguity; the 2 percent bound was set after that ambiguity first showed. The thickness test passes 1,254 rays behind the bar that an unbounded thickness stops. 4,756 off-screen reflections all miss. 3,912 hits in the edge band fade below 1, and below 0.1 at 1 percent from the edge. The roughness fade holds at 0.35; at 0.45, rough surfaces and the background are unchanged bitwise. The octahedral round trip is within 2.4e-7 | pass (10 checks, g++ and clang++) |
+| Reference against analytic truth | `render.lab.ssr` (`render_lab suite ssr`): a mirror floor before a patterned wall with two thin floating bars, 256 x 192. The rays that stop early are exactly the screen-space ambiguity set, computed from the analytic scene by the rule in `render.ssr.v1.md` ("The ambiguity set"): of 13,666 floor pixels whose true reflection the camera sees, 252 are ambiguous and all stop early, and 550 are unclassified (a step within the discretisation band of a surface, or at an edge) and excluded. Every clear pixel hits within 1.5 px of its reflection and reflects its light within 3 percent + 0.01 (0 violations). The seeded reference with the thickness in front of the surface fails the set comparison (10,014 violations). The thickness test passes 594 rays behind the far bar that an unbounded thickness stops. 4,756 off-screen reflections all miss. 3,828 hits in the edge band fade below 1, and below 0.1 at 1 percent from the edge. The roughness fade holds at 0.35; at 0.45, rough surfaces and the background are unchanged bitwise. The octahedral round trip is within 2.4e-7 | pass (10 checks, g++ and clang++) |
 
 Next: the GPU pass (the pyramids and the hierarchical trace as compute
 passes on the graph), judged against the reference with seeded defects
