@@ -1213,6 +1213,119 @@ inline void ColorWriteMasks( Suite &s )
 	s.That( kept, "D17", "a red-and-alpha mask writes red and alpha and keeps green and blue" );
 }
 
+// D20 specialization constants: a stage lists each id at most once (else
+// kInvalidDescription); an id the stage does not declare is ignored; on
+// rasterizing adapters a constant's value reaches the shader (specialized.frag
+// draws red by default, green with constant 7 at 1).
+inline void SpecializationConstants( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	BindGroupLayoutId layouts[kMaxBindGroups];
+	for ( std::uint32_t role = 0; role < kMaxBindGroups; ++role )
+	{
+		auto layout = device->CreateBindGroupLayout( { static_cast<BindGroupRole>( role ), {} } );
+		if ( !s.That( layout.HasValue(), "D20", "an empty layout is created" ) )
+			return;
+		layouts[role] = layout.Value();
+	}
+	const Format colors[] = { Format::kRGBA8Unorm };
+	auto pipelineWith = [&]( std::span<const SpecializationConstant> constants )
+	{
+		const ShaderArtifactView stages[] = {
+		    { ShaderStage::kVertex, device->Facts().artifactFormat,
+		        Code( shaders::kFullScreenVertex ), "main", {} },
+		    { ShaderStage::kFragment, device->Facts().artifactFormat,
+		        Code( shaders::kSpecializedFragment ), "main", {} } };
+		PipelineDesc desc;
+		desc.stages = stages;
+		desc.constants = constants;
+		desc.layouts = layouts;
+		desc.colorFormats = colors;
+		desc.raster.cull = CullMode::kNone;
+		return device->CreatePipeline( desc );
+	};
+	const SpecializationConstant twice[] = {
+	    { ShaderStage::kFragment, 7, 1 }, { ShaderStage::kFragment, 7, 0 } };
+	auto duplicate = pipelineWith( twice );
+	s.That( !duplicate && duplicate.Error().status == DeviceStatus::kInvalidDescription, "D20",
+	    "an id listed twice in a stage fails kInvalidDescription" );
+	const SpecializationConstant undeclared[] = { { ShaderStage::kFragment, 99, 1 } };
+	s.That( pipelineWith( undeclared ).HasValue(), "D20", "an undeclared id is ignored" );
+	auto plain = pipelineWith( {} );
+	const SpecializationConstant green[] = { { ShaderStage::kFragment, 7, 1 } };
+	auto specialized = pipelineWith( green );
+	if ( !s.That( plain.HasValue() && specialized.HasValue(), "D20",
+	         "pipelines with and without the constant are created" ) )
+		return;
+
+	constexpr std::uint32_t kSize = 8;
+	const std::uint64_t outBytes = std::uint64_t( kSize ) * kSize * 4;
+	TextureDesc target;
+	target.format = Format::kRGBA8Unorm;
+	target.width = kSize;
+	target.height = kSize;
+	target.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
+	PipelineId pipelines[2] = { plain.Value(), specialized.Value() };
+	BufferId outs[2];
+	auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	CommandEncoder &e = encoder.Value();
+	for ( int i = 0; i < 2; ++i )
+	{
+		auto color = device->CreateTexture( target );
+		if ( !s.That( color.HasValue(), "D20", "a target is created" ) )
+			return;
+		outs[i] = s.Buffer(
+		    *device, outBytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+		e.TransitionTexture(
+		    color.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+		const ColorAttachment attachments[] = {
+		    { color.Value(), LoadOp::kClear, StoreOp::kStore, { 0, 0, 1, 1 }, {} } };
+		RenderingDesc rendering;
+		rendering.colors = attachments;
+		rendering.width = kSize;
+		rendering.height = kSize;
+		e.BeginRendering( rendering );
+		e.SetViewport( { 0, 0, float( kSize ), float( kSize ), 0, 1 } );
+		e.SetPipeline( pipelines[i] );
+		e.Draw( 3 );
+		e.EndRendering();
+		e.TransitionTexture(
+		    color.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
+		e.TransitionBuffer( outs[i], ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.CopyTextureToBuffer( color.Value(), outs[i], { 0, 0, 0, kSize, kSize } );
+		e.TransitionBuffer( outs[i], ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	}
+	const std::optional<CompletionToken> token = s.Run( *device, e );
+	s.That( token.has_value(), "D20", "the two draws submit" );
+	if ( !token || !s.m_Driver.rasterizes )
+	{
+		if ( !s.m_Driver.rasterizes )
+			std::printf(
+			    "SKIP %s.D20 pixels: the adapter does not rasterize\n", s.m_Driver.name.c_str() );
+		return;
+	}
+	if ( !s.Finish( *device, *token ) )
+		return;
+	bool drawn[2] = { true, true };
+	for ( int i = 0; i < 2; ++i )
+	{
+		const std::vector<std::byte> pixels = s.ReadBack( *device, outs[i], outBytes );
+		drawn[i] = pixels.size() == outBytes;
+		for ( std::size_t p = 0; drawn[i] && p < outBytes; p += 4 )
+		{
+			drawn[i] = pixels[p] == std::byte( i == 0 ? 255 : 0 ) &&
+			           pixels[p + 1] == std::byte( i == 0 ? 0 : 255 ) &&
+			           pixels[p + 2] == std::byte{ 0 };
+		}
+	}
+	s.That( drawn[0], "D20", "without the constant the shader's default applies (red)" );
+	s.That( drawn[1], "D20", "the constant's value reaches the shader (green)" );
+}
+
 // D18 external images: the exporter exists exactly when kExternalImages is
 // claimed; a plain texture never takes kExternal; an exported image's memory,
 // mapped through its description (offset, stride), holds what the port reads
@@ -1568,6 +1681,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::Conventions( suite );
 	detail::DrawConstants( suite );
 	detail::ColorWriteMasks( suite );
+	detail::SpecializationConstants( suite );
 	detail::ExternalImagesClause( suite );
 	detail::BlockCompressedFormats( suite );
 	detail::CapabilityHonesty( suite );

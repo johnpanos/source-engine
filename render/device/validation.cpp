@@ -121,6 +121,17 @@ DeviceResult<void> ValidatePipeline(
 			return Fail( DeviceStatus::kLayoutMismatch, op );
 	}
 
+	// D20: each specialization constant id at most once per stage.
+	for ( std::size_t i = 0; i < desc.constants.size(); ++i )
+	{
+		for ( std::size_t j = i + 1; j < desc.constants.size(); ++j )
+		{
+			if ( desc.constants[i].stage == desc.constants[j].stage &&
+			     desc.constants[i].id == desc.constants[j].id )
+				return Fail( DeviceStatus::kInvalidDescription, op );
+		}
+	}
+
 	bool vertex = false;
 	bool fragment = false;
 	bool compute = false;
@@ -130,6 +141,7 @@ DeviceResult<void> ValidatePipeline(
 			return Fail( DeviceStatus::kUnsupported, op );
 		if ( stage.code.empty() )
 			return Fail( DeviceStatus::kInvalidDescription, op );
+
 		vertex |= stage.stage == ShaderStage::kVertex;
 		fragment |= stage.stage == ShaderStage::kFragment;
 		compute |= stage.stage == ShaderStage::kCompute;

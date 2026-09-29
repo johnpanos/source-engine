@@ -2006,6 +2006,23 @@ Open: the lamp residual (next), then the rest of S1: blending in the
 translucent stage, `$decal`, `$nocull`, `$ignorez`, `$nofog`, and the
 per-material fog color (black for additive, grey for mod2x).
 
+## Port clause D20: specialization constants (2026-09-28)
+
+The surface model's permutations are the set of non-neutral terms, so a
+neutral term should cost nothing at runtime (the tvOS 60 fps work showed that
+specialized combos matter on tile GPUs). The port had no specialization
+constants, and they are now clause D20: `PipelineDesc::constants` holds
+`{stage, id, 32-bit value}`, validation refuses a duplicate id in a stage, and
+the Vulkan adapter passes them as `VkSpecializationInfo`.
+`unittests/rendertest/core/device/shaders/specialized.frag` is a new
+committed fixture, built byte-identically by the pinned compiler
+(`shader_toolchain.py check`: 62 passed, 0 failed).
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Shared suite | D20 on null (437 checks) and Vulkan (850): a duplicate id fails `kInvalidDescription`, an undeclared id is ignored, the default draws red and constant 7 = 1 draws green. g++ and clang++ | pass |
+| Mutant | the Vulkan adapter with its specialization info dropped fails "the constant's value reaches the shader" | detected |
+
 ## The surface-model plan (2026-09-28)
 
 User direction: "have a plan for how to modernize most materials with them

@@ -117,6 +117,8 @@ EMBEDDED = (
      DEVICE_OPTIONS),
     (DEVICE + "/test_shaders.h", "kConstantFragment", DEVICE + "/shaders/constant.frag",
      DEVICE_OPTIONS),
+    (DEVICE + "/test_shaders.h", "kSpecializedFragment", DEVICE + "/shaders/specialized.frag",
+     DEVICE_OPTIONS),
     (DEVICE + "/test_device_vulkan.cpp", "kDoubleCompute", DEVICE + "/shaders/double.comp",
      DEVICE_OPTIONS),
     (DEVICE + "/test_device_vulkan.cpp", "kSampledFragment", DEVICE + "/shaders/sampled.frag",

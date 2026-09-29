@@ -485,6 +485,10 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 	std::vector<std::string> entryPoints;
 	std::vector<VkPipelineShaderStageCreateInfo> stages;
 	entryPoints.reserve( desc.stages.size() );
+	// D20: each stage's specialization constants, as 4-byte entries.
+	std::vector<std::vector<VkSpecializationMapEntry>> specEntries( desc.stages.size() );
+	std::vector<std::vector<std::uint32_t>> specValues( desc.stages.size() );
+	std::vector<VkSpecializationInfo> specInfos( desc.stages.size() );
 	for ( const ShaderArtifactView &stage : desc.stages )
 	{
 		// Copied so the words are aligned whatever the caller's bytes are.
@@ -512,6 +516,25 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		stageInfo.stage = StageBit( stage.stage );
 		stageInfo.module = module;
 		stageInfo.pName = entryPoints.back().c_str();
+		const std::size_t index = stages.size();
+		for ( const SpecializationConstant &constant : desc.constants )
+		{
+			if ( constant.stage != stage.stage )
+				continue;
+			specEntries[index].push_back(
+			    { constant.id, std::uint32_t( specValues[index].size() * sizeof( std::uint32_t ) ),
+			        sizeof( std::uint32_t ) } );
+			specValues[index].push_back( constant.value );
+		}
+		if ( !specEntries[index].empty() )
+		{
+			VkSpecializationInfo &spec = specInfos[index];
+			spec.mapEntryCount = std::uint32_t( specEntries[index].size() );
+			spec.pMapEntries = specEntries[index].data();
+			spec.dataSize = specValues[index].size() * sizeof( std::uint32_t );
+			spec.pData = specValues[index].data();
+			stageInfo.pSpecializationInfo = &spec;
+		}
 		stages.push_back( stageInfo );
 	}
 

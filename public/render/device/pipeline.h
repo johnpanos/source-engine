@@ -52,6 +52,16 @@ struct ShaderArtifactView
 	std::uint32_t drawConstantBytes = 0; // reflected: the draw-constant bytes the stage reads
 };
 
+// A specialization constant (clause D20): the 32-bit value (the bits of a bool,
+// int, uint or float) of a stage's constant with this id. An id the stage does
+// not declare is ignored; a stage takes each id at most once.
+struct SpecializationConstant
+{
+	ShaderStage stage = ShaderStage::kFragment;
+	std::uint32_t id = 0;
+	std::uint32_t value = 0;
+};
+
 enum class VertexFormat : std::uint8_t
 {
 	kFloat2,
@@ -162,6 +172,8 @@ struct PipelineDesc
 	Format depthFormat = Format::kUnknown;
 	std::uint32_t sampleCount = 1;
 	std::string_view debugName;
+	// The stages' specialization constants (D20).
+	std::span<const SpecializationConstant> constants;
 };
 
 } // namespace render::device
