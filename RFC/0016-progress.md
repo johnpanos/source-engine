@@ -3119,6 +3119,7 @@ into the product (binding rule 3).
 | No history after a camera cut | the frame after a cut is bitwise a new renderer's frame | pass |
 | Seeded stages | `render.lab.volumetric.sensitivity`: phase ignored and albedo ignored (inject) fail scatter.point; extinction applied twice and the slice off by one (composite) fail transmittance | pass (5) |
 | Shadowed projector shaft | not built: shadows wait for the shared view-level types (below) | open |
+| Foggy-hall fog views against Cycles (K11 "Volumetric fog" and "Ground truth") | `lighting_fixtures.py gallery`, denoised references, tolerance mean 0.10 / p99 0.9; the fog state rendered from its own map baked with the medium (`e0099728`, `lt_foggy_hall_fog` built in the main checkout) | pass: nave 0.070 / 0.59, side 0.076 / 0.38 |
 
 The suites pass with 0 validation messages (synchronization validation on).
 - `render.lab.composition` passes 27 checks with the new libraries linked.
