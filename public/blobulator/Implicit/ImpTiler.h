@@ -94,6 +94,16 @@ public:
 		m_ppRenderContext = ppRenderContext;
 	}
 
+	// Runs pProcess( pContext, i ) for every i in [0, nCount), in any order and
+	// possibly at once on other threads, and returns when all have run. With
+	// one, drawSurface polygonizes the tiles through it (each tile into its own
+	// buffers, joined in tile order afterwards, so the surface is the one a
+	// serial build makes); without one (NULL), one tile after another. Kept
+	// until endFrame, like the render context.
+	typedef void ( *ParallelFor_t )(
+	    void *pContext, int nCount, void ( *pProcess )( void *, int ) );
+	void SetParallelFor( ParallelFor_t pParallelFor ) { m_pParallelFor = pParallelFor; }
+
 	// offset: origin of the grid. bNoMargin and bDeferDraw are accepted for the
 	// retail signature; this tiler has no margin cells and always draws in
 	// endFrame().
@@ -137,14 +147,25 @@ private:
 		float flSortDist;
 	};
 
+	// One tile's triangles: its vertices, indices into them, and the edge
+	// cache it shares vertices through.
+	struct TileOutput_t
+	{
+		SmartArray<Vertex_t, false, 16> vertices;
+		SmartArray<int, false, 16> indices;
+		SmartArray<int, false, 16> edgeCache;
+	};
+
 	void UpdateThreshold();
 	ImpTileBlock_t *FindOrCreateTile( int bx, int by, int bz );
 	void ScatterParticle( int nParticle );
 	void EvaluateAt( const int *pParticles, int nParticles, const Vector &vecPoint, float *pValue,
 	    Vector *pGrad, Vector *pColor, Vector *pTangent ) const;
-	void PolygonizeTile( ImpTileBlock_t *pTile );
-	int EdgeVertex( ImpTileBlock_t *pTile, int x, int y, int z, int nDir, int *pEdgeCache );
-	void EmitTriangle( int a, int b, int c, const Vector &vecOut );
+	static void PolygonizeTileJob( void *pContext, int nTile );
+	void PolygonizeTile( const ImpTileBlock_t *pTile, TileOutput_t &out ) const;
+	int EdgeVertex(
+	    const ImpTileBlock_t *pTile, int x, int y, int z, int nDir, TileOutput_t &out ) const;
+	static void EmitTriangle( int a, int b, int c, const Vector &vecOut, TileOutput_t &out );
 	void BuildSurface( const Point3D *pEye );
 	void DrawTriangles();
 	void ReleaseFrame();
@@ -163,7 +184,8 @@ private:
 	SmartArray<Vertex_t, false, 16> m_Vertices;
 	SmartArray<int, false, 16> m_Indices;
 	SmartArray<TileRange_t, false, 16> m_TileRanges; // draw order
-	SmartArray<int, false, 16> m_EdgeCache;
+	SmartArray<TileOutput_t *, false, 16> m_TileOutputs; // one per tile, reused
+	ParallelFor_t m_pParallelFor;
 	int m_nLastTile;
 
 	ImpTiler( const ImpTiler & );

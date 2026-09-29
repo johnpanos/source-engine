@@ -11,6 +11,7 @@
 #include "materialsystem/imaterial.h"
 #include "materialsystem/imaterialsystem.h"
 #include "blobulator/Implicit/ImpTiler.h"
+#include "vstdlib/jobgraph_parallel.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -26,6 +27,38 @@ static ConVar r_surface_blr_cutoff_radius( "r_surface_blr_cutoff_radius", "3.3",
 // VertexLitGeneric family; Portal 2's PaintBlob shader is not ported here.
 static ConVar r_surface_shader( "r_surface_shader", "fstop/blob_surface_bounce",
 	FCVAR_CHEAT, "Material the blob NPCs draw with" );
+static ConVar r_surface_blr_parallel( "r_surface_blr_parallel", "1", 0,
+    "Polygonize the blob surface's tiles on the compute pool (0: one after another on the "
+    "main thread; the surface is the same)" );
+
+namespace
+{
+// The tiler's parallel-for over the engine's compute pool. The tiler joins the
+// tiles' triangles in tile order afterwards, so the order they run in does not
+// matter.
+struct BlobTileBatch
+{
+	void *pContext;
+	void ( *pProcess )( void *, int );
+	void Process( int &nTile ) { pProcess( pContext, nTile ); }
+};
+
+void BlobTilesParallelFor( void *pContext, int nCount, void ( *pProcess )( void *, int ) )
+{
+	CUtlVector<int> tiles;
+	tiles.SetCount( nCount );
+	for ( int i = 0; i < nCount; ++i )
+		tiles[i] = i;
+	BlobTileBatch batch = { pContext, pProcess };
+	// False only before any tile ran (no pool, a bad batch): run them here.
+	if ( !JobGraphParallelProcess( "C_NPC_Surface::PolygonizeTiles", tiles.Base(), (unsigned)nCount,
+	         &batch, &BlobTileBatch::Process ) )
+	{
+		for ( int i = 0; i < nCount; ++i )
+			pProcess( pContext, i );
+	}
+}
+} // namespace
 
 IMPLEMENT_CLIENTCLASS_DT( C_NPC_Surface, DT_NPC_Surface, CNPC_Surface )
 	RecvPropUtlVector( RECVINFO_UTLVECTOR( m_iParticlePositionIndex ), MAX_SURFACE_ELEMENTS,
@@ -158,6 +191,7 @@ int C_NPC_Surface::DrawModel( int flags )
 	pTiler->SetCutoffRadius( flScale * r_surface_blr_cutoff_radius.GetFloat() );
 	IMatRenderContext *pContext = pRenderContext;
 	pTiler->SetRenderContext( &pContext );
+	pTiler->SetParallelFor( r_surface_blr_parallel.GetBool() ? &BlobTilesParallelFor : NULL );
 
 	pTiler->beginFrame( Point3D( 0.0f, 0.0f, 0.0f ), true, false );
 	for ( int i = 0; i < nCount; ++i )

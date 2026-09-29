@@ -30,12 +30,19 @@ static ConVar r_dynamic_occlusion( "r_dynamic_occlusion", "1", 0,
     "blob shadows are not drawn" );
 static ConVar r_dynamic_occlusion_report( "r_dynamic_occlusion_report", "0", FCVAR_CHEAT,
     "Print the next published occluders and the surfaces they dirtied, once" );
+static ConVar r_dynamic_occlusion_verify( "r_dynamic_occlusion_verify", "0", FCVAR_CHEAT,
+    "Check every lightmap occlusion build against one from nothing with every box near the "
+    "surface (the texel regions each box can shadow are a prefilter, and builds redo only the "
+    "regions of boxes that changed); mismatches are counted in the report" );
 
 // Diagnostics since the last report (gl_lightmap.cpp R_ApplyDynamicOcclusion).
 double g_OcclusionSeconds = 0.0;
 double g_OcclusionRemoved = 0.0;
 int g_OcclusionLuxels = 0;
 int g_OcclusionSurfaces = 0;
+int g_OcclusionVerified = 0;        // texels checked (r_dynamic_occlusion_verify)
+int g_OcclusionMismatches = 0;      // of them, a different result
+int g_OcclusionTexelsEvaluated = 0; // texels evaluated again by lightmap builds
 static int s_nReportFrame = 0;
 static int s_nModelLights = 0;        // model lights judged
 static int s_nModelLightsBlocked = 0; // of them, dimmed by a box
@@ -197,6 +204,12 @@ public:
 			    g_OcclusionLuxels, g_OcclusionRemoved );
 			Msg( "  model lights: %d judged, %d dimmed by a box\n", s_nModelLights,
 			    s_nModelLightsBlocked );
+			Msg( "  lightmap builds evaluated %d texel(s) again\n", g_OcclusionTexelsEvaluated );
+			if ( r_dynamic_occlusion_verify.GetBool() )
+				Msg( "  verify: %d texel(s) rebuilt from nothing against every near box, %d "
+				     "mismatch(es)\n",
+				    g_OcclusionVerified, g_OcclusionMismatches );
+			g_OcclusionVerified = g_OcclusionMismatches = g_OcclusionTexelsEvaluated = 0;
 			s_nModelLights = s_nModelLightsBlocked = 0;
 			s_nReportFrame = host_framecount;
 			g_OcclusionSeconds = g_OcclusionRemoved = 0.0;
@@ -343,10 +356,20 @@ dynamic_occlusion::Samples DynamicOcclusion_WorldLightSamples(
 	}
 	const float p[3] = { light.origin.x, light.origin.y, light.origin.z };
 	const float r[3] = { receiver.x, receiver.y, receiver.z };
-	return dynamic_occlusion::DiskSamples( p,
-	    light.type == emit_surface ? dynamic_occlusion::kSurfaceLightRadius
-	                               : dynamic_occlusion::kPointLightRadius,
-	    r );
+	return dynamic_occlusion::DiskSamples( p, DynamicOcclusion_WorldLightRadius( light ), r );
+}
+
+float DynamicOcclusion_WorldLightRadius( const dworldlight_t &light )
+{
+	if ( light.type == emit_skylight )
+		return 0.0f;
+	return light.type == emit_surface ? dynamic_occlusion::kSurfaceLightRadius
+	                                  : dynamic_occlusion::kPointLightRadius;
+}
+
+bool DynamicOcclusion_Verify()
+{
+	return r_dynamic_occlusion_verify.GetBool();
 }
 
 float DynamicOcclusion_ModelVisibility(

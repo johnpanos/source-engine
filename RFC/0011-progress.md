@@ -2184,6 +2184,79 @@ occluders live in the light set, keyed by entity handle with versions.
   lights are not occluded.
 - The BSP2 `DirectOcclusion` takes the boxes as axis-aligned bounds.
 
+### Moving NPCs: lightmap occlusion cost (2026-09-28, user request)
+
+The user reported 28 fps on F-Stop's `fstop_mechanics` (`./play_fstop`).
+A headless profile put 73% of all samples in `dynamic_occlusion::Visibility`
+on the material thread, called from `R_ApplyDynamicOcclusion`.
+
+**Why it rebuilt so much.**
+- The map's NPCs publish their hitboxes (13 to 29 per model). Walking and
+  idling move 27 to 171 of them past the 0.05-unit tolerance each frame.
+- Each change dirties every surface within shadow reach, so about 150
+  surfaces of the hall stayed dirty.
+- Each rebuild tested every texel, reaching world light, disk sample and
+  near box (up to about 200). It cost 12 ms on average, and the material
+  thread spent 12.8 of every 15 s on it.
+
+**Changed** (`engine/gl_lightmap.cpp`, `engine/dynamic_occlusion.*`). The
+result is exact, and the contract is unchanged.
+- **Regions.** A box can block a texel only inside its region for that
+  light. The region is the texel bounds of where the box's sphere, grown by
+  the light's disk radius, shadows the lightmap lattice's plane.
+  - Point, spot and surface lights: the square pyramid around the sphere's
+    cone from the light. It is empty when all four edges point away from
+    the plane.
+  - Sky lights: the parallel projection of the sphere's bounding cube.
+  - The whole lattice only when the light is inside the sphere or the cone
+    reaches the horizon.
+  - Texels outside every region are skipped; a texel tests only the boxes
+    whose regions hold it.
+- **Incremental builds.** The cache keeps the boxes it was built with. A
+  rebuild evaluates again only the texels in the regions of boxes that
+  changed, arrived or left, at their old and new poses.
+- **Verifier.** `r_dynamic_occlusion_verify` (cheat) compares every build
+  with a build from nothing against every near box. The count is in
+  `r_dynamic_occlusion_report`, which also prints the texels evaluated
+  again.
+- A 1-unit tolerance was tried and not kept: the NPCs really move.
+
+**Blob surfaces.** The F-Stop blob NPCs' isosurface (the Portal 2 clean-room
+`ImpTiler`) cost about 8 ms per frame on the main thread.
+- `ImpTiler::SetParallelFor` polygonizes tiles into their own buffers and
+  joins them in tile order, so the mesh is the serial one.
+- `C_NPC_Surface` passes a parallel-for over the engine's compute pool
+  (`JobGraphParallelProcess`).
+- `r_surface_blr_parallel 0` is the serial rollback. Portal 2's paint blobs
+  pass none and stay serial.
+
+**Evidence.** Headless native Vulkan, 1024x640, Box3D, `god`/`notarget`
+tour, HEAD engine and serial tiler against this change, interleaved over
+two rounds:
+
+| View | Before | After |
+| --- | --- | --- |
+| Atrium, down the concourse | 29.7 / 20.8 fps (p50 10.5 / 13.2 ms, one 393 ms p95) | 108.0 / 113.2 fps (p50 7.3 / 7.2 ms) |
+| Atrium, spawn view | 117 / 121 fps | 223 / 180 fps |
+| Blob store | 85 / 81 fps (p50 10.4 / 11.0 ms) | 169 / 86 fps (p50 5.5 / 6.9 ms) |
+| Androids | 224 / 247 fps | 373 / 405 fps |
+
+- After the change, `Visibility` is 3.6% of samples. The largest cost left
+  is the native backend's CPU vertex conversion (frozen path).
+- The verifier found 0 mismatches over about 135,000 texels at five stops,
+  with 27 to 102 boxes changing per report.
+- Three seeded faults are caught: no regions (3,565 mismatches), no
+  growth or margin (3,958) and old poses not marked stale (12 and 4).
+- `blobulator.tiler-mesh`: 509 checks on g++ and clang++, default and
+  release. The 19 new checks pass: reverse-order and 4-thread
+  parallel-for give a bitwise-equal mesh, the parallel-for is released at
+  `endFrame`, and a seeded tile loss is caught.
+- The suite's other 21 failures (`normals-outward` and
+  `control.baseline-passes`) are the same at HEAD without this change.
+
+**Not done.** No GPU-bound measurement at the user's 1920x1080, no Fold7
+run, and no measurement of server frame time (`sv` in `net_graph`).
+
 ## Projected lights, and sp_a2_core (2026-09-28, user request)
 
 The user asked to make `env_projectedtexture` "a real light in our model" and

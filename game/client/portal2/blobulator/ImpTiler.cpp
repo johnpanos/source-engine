@@ -111,7 +111,7 @@ static const int s_DirOffset[7][3] = {
 //-----------------------------------------------------------------------------
 ImpTiler::ImpTiler()
     : m_flCubeWidth( 1.0f ), m_flRenderR( 1.3f ), m_flCutoffR( 5.5f ), m_flThreshold( 0.0f ),
-      m_nTileIndexToDraw( -1 ), m_ppRenderContext( NULL ), m_nLastTile( -1 )
+      m_nTileIndexToDraw( -1 ), m_ppRenderContext( NULL ), m_pParallelFor( NULL ), m_nLastTile( -1 )
 {
 	UpdateThreshold();
 }
@@ -122,6 +122,9 @@ ImpTiler::~ImpTiler()
 	for ( int i = 0; i < m_FreeTiles.size; ++i )
 		delete m_FreeTiles[i];
 	m_FreeTiles.size = 0;
+	for ( int i = 0; i < m_TileOutputs.size; ++i )
+		delete m_TileOutputs[i];
+	m_TileOutputs.size = 0;
 }
 
 void ImpTiler::SetCubeWidth( float flCubeWidth )
@@ -151,10 +154,13 @@ void ImpTiler::UpdateThreshold()
 
 void ImpTiler::beginFrame( const Point3D &offset, bool bNoMargin, bool bDeferDraw )
 {
-	// Release unfinished geometry without discarding this frame's configured draw target.
+	// Release unfinished geometry without discarding this frame's configured
+	// draw target and parallel-for.
 	IMatRenderContext **ppRenderContext = m_ppRenderContext;
+	ParallelFor_t pParallelFor = m_pParallelFor;
 	ReleaseFrame();
 	m_ppRenderContext = ppRenderContext;
+	m_pParallelFor = pParallelFor;
 	m_Offset = offset;
 }
 
@@ -364,10 +370,11 @@ float ImpTiler::EvaluateField( const Vector &vecPoint ) const
 }
 
 // Returns the vertex on the edge from corner (x,y,z) of the tile in direction nDir.
-int ImpTiler::EdgeVertex( ImpTileBlock_t *pTile, int x, int y, int z, int nDir, int *pEdgeCache )
+int ImpTiler::EdgeVertex(
+    const ImpTileBlock_t *pTile, int x, int y, int z, int nDir, TileOutput_t &out ) const
 {
 	int nCornerA = CornerIndex( x, y, z );
-	int &nCached = pEdgeCache[nCornerA * 7 + nDir];
+	int &nCached = out.edgeCache.a[nCornerA * 7 + nDir];
 	if ( nCached >= 0 )
 		return nCached;
 
@@ -444,7 +451,7 @@ int ImpTiler::EdgeVertex( ImpTileBlock_t *pTile, int x, int y, int z, int nDir, 
 	}
 	t = clamp( t, 0.0f, 1.0f );
 
-	Vertex_t &vert = m_Vertices.pushAutoSize();
+	Vertex_t &vert = out.vertices.pushAutoSize();
 	vert.pos = vecA + vecEdge * t;
 
 	float flWeight;
@@ -479,20 +486,20 @@ int ImpTiler::EdgeVertex( ImpTileBlock_t *pTile, int x, int y, int z, int nDir, 
 	vert.uv[0] = DotProduct( vert.pos, vert.tangentS ) * flUVScale;
 	vert.uv[1] = DotProduct( vert.pos, vert.tangentT ) * flUVScale;
 
-	nCached = m_Vertices.size - 1;
+	nCached = out.vertices.size - 1;
 	return nCached;
 }
 
 // vecOut: a direction from the tetrahedron's inside corners to its outside
 // corners; the triangle is wound counter-clockwise around it.
-void ImpTiler::EmitTriangle( int a, int b, int c, const Vector &vecOut )
+void ImpTiler::EmitTriangle( int a, int b, int c, const Vector &vecOut, TileOutput_t &out )
 {
 	if ( a == b || b == c || a == c )
 		return; // collapsed onto a shared vertex
 
-	const Vertex_t &va = m_Vertices[a];
-	const Vertex_t &vb = m_Vertices[b];
-	const Vertex_t &vc = m_Vertices[c];
+	const Vertex_t &va = out.vertices[a];
+	const Vertex_t &vb = out.vertices[b];
+	const Vertex_t &vc = out.vertices[c];
 
 	Vector vecFace = CrossProduct( vb.pos - va.pos, vc.pos - va.pos );
 	if ( DotProduct( vecFace, vecOut ) < 0.0f )
@@ -502,12 +509,12 @@ void ImpTiler::EmitTriangle( int a, int b, int c, const Vector &vecOut )
 		c = tmp;
 	}
 
-	m_Indices.pushAutoSize( a );
-	m_Indices.pushAutoSize( b );
-	m_Indices.pushAutoSize( c );
+	out.indices.pushAutoSize( a );
+	out.indices.pushAutoSize( b );
+	out.indices.pushAutoSize( c );
 }
 
-void ImpTiler::PolygonizeTile( ImpTileBlock_t *pTile )
+void ImpTiler::PolygonizeTile( const ImpTileBlock_t *pTile, TileOutput_t &out ) const
 {
 	const float flThreshold = m_flThreshold;
 
@@ -522,9 +529,8 @@ void ImpTiler::PolygonizeTile( ImpTileBlock_t *pTile )
 	if ( nInsideCorners == 0 || nInsideCorners == CORNERS_PER_TILE )
 		return;
 
-	m_EdgeCache.resize( CORNERS_PER_TILE * 7 );
-	int *pEdgeCache = m_EdgeCache.a;
-	memset( pEdgeCache, 0xff, CORNERS_PER_TILE * 7 * sizeof( int ) );
+	out.edgeCache.resize( CORNERS_PER_TILE * 7 );
+	memset( out.edgeCache.a, 0xff, CORNERS_PER_TILE * 7 * sizeof( int ) );
 
 	static const int s_CornerOffset[8] = {
 	    0,
@@ -560,7 +566,7 @@ void ImpTiler::PolygonizeTile( ImpTileBlock_t *pTile )
 						p1 = tmp;
 					}
 					int nDir = EdgeDirection( p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2] );
-					return EdgeVertex( pTile, x + p0[0], y + p0[1], z + p0[2], nDir, pEdgeCache );
+					return EdgeVertex( pTile, x + p0[0], y + p0[1], z + p0[2], nDir, out );
 				};
 
 				for ( int t = 0; t < 6; ++t )
@@ -592,12 +598,12 @@ void ImpTiler::PolygonizeTile( ImpTileBlock_t *pTile )
 					if ( nIn == 1 )
 					{
 						EmitTriangle( edge( in[0], outside[0] ), edge( in[0], outside[1] ),
-						    edge( in[0], outside[2] ), vecOut );
+						    edge( in[0], outside[2] ), vecOut, out );
 					}
 					else if ( nIn == 3 )
 					{
 						EmitTriangle( edge( outside[0], in[0] ), edge( outside[0], in[1] ),
-						    edge( outside[0], in[2] ), vecOut );
+						    edge( outside[0], in[2] ), vecOut, out );
 					}
 					else
 					{
@@ -605,11 +611,21 @@ void ImpTiler::PolygonizeTile( ImpTileBlock_t *pTile )
 						int e01 = edge( in[0], outside[1] );
 						int e10 = edge( in[1], outside[0] );
 						int e11 = edge( in[1], outside[1] );
-						EmitTriangle( e00, e01, e11, vecOut );
-						EmitTriangle( e00, e11, e10, vecOut );
+						EmitTriangle( e00, e01, e11, vecOut, out );
+						EmitTriangle( e00, e11, e10, vecOut, out );
 					}
 				}
 			}
+}
+
+void ImpTiler::PolygonizeTileJob( void *pContext, int nTile )
+{
+	const ImpTiler *pTiler = static_cast<const ImpTiler *>( pContext );
+	TileOutput_t &out = *pTiler->m_TileOutputs[nTile];
+	out.vertices.size = 0;
+	out.indices.size = 0;
+	if ( pTiler->m_nTileIndexToDraw < 0 || pTiler->m_nTileIndexToDraw == nTile )
+		pTiler->PolygonizeTile( pTiler->m_Tiles[nTile], out );
 }
 
 void ImpTiler::BuildSurface( const Point3D *pEye )
@@ -621,12 +637,33 @@ void ImpTiler::BuildSurface( const Point3D *pEye )
 	for ( int i = 0; i < m_Particles.size; ++i )
 		ScatterParticle( i );
 
+	// Each tile polygonizes on its own (it reads only the particles and its
+	// own corners) into its own buffers, perhaps at once on other threads.
+	while ( m_TileOutputs.size < m_Tiles.size )
+		m_TileOutputs.pushAutoSize( new TileOutput_t );
+	if ( m_pParallelFor && m_Tiles.size > 1 )
+		m_pParallelFor( this, m_Tiles.size, &ImpTiler::PolygonizeTileJob );
+	else
+	{
+		for ( int i = 0; i < m_Tiles.size; ++i )
+			PolygonizeTileJob( this, i );
+	}
+
+	// Joined in tile order: the vertices and indices a serial build appends.
 	for ( int i = 0; i < m_Tiles.size; ++i )
 	{
+		const TileOutput_t &out = *m_TileOutputs[i];
 		TileRange_t &range = m_TileRanges.pushAutoSize();
 		range.nFirstIndex = m_Indices.size;
-		if ( m_nTileIndexToDraw < 0 || m_nTileIndexToDraw == i )
-			PolygonizeTile( m_Tiles[i] );
+		const int nBase = m_Vertices.size;
+		m_Vertices.ensureAdditionalCapacity( out.vertices.size );
+		memcpy( (void *)( m_Vertices.a + nBase ), out.vertices.a,
+		    out.vertices.size * sizeof( Vertex_t ) );
+		m_Vertices.size += out.vertices.size;
+		m_Indices.ensureAdditionalCapacity( out.indices.size );
+		for ( int k = 0; k < out.indices.size; ++k )
+			m_Indices.a[m_Indices.size + k] = nBase + out.indices.a[k];
+		m_Indices.size += out.indices.size;
 		range.nIndexCount = m_Indices.size - range.nFirstIndex;
 		range.flSortDist = pEye ? getTileOffset( i ).lengthSq( *pEye ) : 0.0f;
 	}
@@ -753,6 +790,7 @@ void ImpTiler::ReleaseFrame()
 	m_Indices.size = 0;
 	m_TileRanges.size = 0;
 	m_ppRenderContext = NULL;
+	m_pParallelFor = NULL;
 }
 
 //-----------------------------------------------------------------------------

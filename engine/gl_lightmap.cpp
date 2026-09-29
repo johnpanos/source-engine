@@ -566,7 +566,9 @@ static const float kOcclusionThreshold = 1.0f / 512.0f;
 // A surface's blocked light, kept while the boxes near it stay put: the texels
 // some light is blocked at, and for each the lights the bake let reach it with
 // the share the boxes let through. A rebuild for any other reason (a flickering
-// style, a dlight) then only redoes the light arithmetic.
+// style, a dlight) then only redoes the light arithmetic. When boxes move, only
+// the texels in their regions (R_OcclusionRegion) at their old and new poses
+// are evaluated again: every other texel has the same boxes in reach.
 struct OcclusionTexel
 {
 	int idx;
@@ -582,11 +584,143 @@ struct OcclusionCache
 {
 	uint64_t signature = 0; // the near boxes' keys and versions
 	int map = -1;
+	std::vector<OccluderEntry> boxes; // the near boxes it holds, with their versions
+	std::vector<int> surfaceLights;   // the world lights that can reach the surface
 	std::vector<OcclusionTexel> texels;
 	std::vector<OcclusionLight> lights;
 };
 static std::unordered_map<SurfaceHandle_t, OcclusionCache> g_OcclusionCache;
 static std::mutex g_OcclusionCacheMutex;
+
+// Where a box can block a world light on a surface: the texels of the lightmap
+// lattice (base + s stepS + t stepT) whose path to the light can cross the box.
+// A texel's path to any of the light's samples stays within the samples' disk
+// radius of its path to the light's center (a distant light: its one sample),
+// so the box blocks it only if that path meets the box's bounding sphere grown
+// by the radius: only at texels inside the shadow of the sphere's bounding cube
+// cast from the light's center (along a distant light's direction) on the
+// lattice's plane, the convex hull of the cube's eight projected corners. The
+// region is that hull's texel bounds, a texel wider; it is the whole lattice
+// where the projection does not bound it (a corner at or above the light).
+// Visibility over the boxes whose regions hold a texel therefore equals
+// Visibility over every box (r_dynamic_occlusion_verify checks it).
+struct OcclusionLattice
+{
+	Vector base, stepS, stepT, normal;
+	float ss, st, tt, det; // the Gram matrix of stepS and stepT, and its determinant
+	int smax, tmax;
+	bool valid;
+};
+
+struct OcclusionRegion
+{
+	int box;            // into the surface's near boxes
+	int s0, s1, t0, t1; // inclusive texel bounds
+};
+
+static OcclusionLattice R_OcclusionLattice( const Vector &base, const Vector &stepS,
+    const Vector &stepT, const Vector &planeNormal, int smax, int tmax )
+{
+	OcclusionLattice lattice;
+	lattice.base = base;
+	lattice.stepS = stepS;
+	lattice.stepT = stepT;
+	lattice.smax = smax;
+	lattice.tmax = tmax;
+	lattice.normal = CrossProduct( stepS, stepT );
+	const float length = lattice.normal.NormalizeInPlace();
+	if ( DotProduct( lattice.normal, planeNormal ) < 0.0f )
+		lattice.normal = -lattice.normal;
+	lattice.ss = DotProduct( stepS, stepS );
+	lattice.st = DotProduct( stepS, stepT );
+	lattice.tt = DotProduct( stepT, stepT );
+	lattice.det = lattice.ss * lattice.tt - lattice.st * lattice.st;
+	lattice.valid = length > 1e-6f && lattice.det > 1e-6f * lattice.ss * lattice.tt;
+	return lattice;
+}
+
+// Whether the box's region for the light holds any texel; `out` is the region.
+static bool R_OcclusionRegion( const OcclusionLattice &lattice, const dworldlight_t &wl,
+    const dynamic_occlusion::Box &box, int boxIndex, OcclusionRegion &out )
+{
+	out = OcclusionRegion{ boxIndex, 0, lattice.smax - 1, 0, lattice.tmax - 1 };
+	if ( !lattice.valid )
+		return true;
+	// A unit more than the radii, for the texel positions' rounding.
+	const float grow =
+	    dynamic_occlusion::Radius( box ) + DynamicOcclusion_WorldLightRadius( wl ) + 1.0f;
+	const Vector center( box.center[0], box.center[1], box.center[2] );
+	float sMin = FLT_MAX, sMax = -FLT_MAX, tMin = FLT_MAX, tMax = -FLT_MAX;
+	auto include = [&]( const Vector &q )
+	{
+		const Vector d = q - lattice.base;
+		const float u = DotProduct( d, lattice.stepS ), w = DotProduct( d, lattice.stepT );
+		const float s = ( lattice.tt * u - lattice.st * w ) / lattice.det;
+		const float t = ( lattice.ss * w - lattice.st * u ) / lattice.det;
+		sMin = MIN( sMin, s );
+		sMax = MAX( sMax, s );
+		tMin = MIN( tMin, t );
+		tMax = MAX( tMax, t );
+	};
+	if ( wl.type == emit_skylight )
+	{
+		// Along the light's direction: the sphere's bounding cube's corners,
+		// projected in parallel.
+		Vector direction = wl.normal;
+		direction.NormalizeInPlace();
+		const float directionDotN = DotProduct( direction, lattice.normal );
+		if ( fabsf( directionDotN ) < 1e-3f )
+			return true;
+		for ( int corner = 0; corner < 8; ++corner )
+		{
+			const Vector v( center.x + ( corner & 1 ? grow : -grow ),
+			    center.y + ( corner & 2 ? grow : -grow ),
+			    center.z + ( corner & 4 ? grow : -grow ) );
+			include( v - direction *
+			                 ( DotProduct( v - lattice.base, lattice.normal ) / directionDotN ) );
+		}
+	}
+	else
+	{
+		// From the light's center: the sphere's cone, inside the square pyramid
+		// around it, whose four edges bound where the cone meets the plane.
+		const float lightHeight = DotProduct( wl.origin - lattice.base, lattice.normal );
+		const Vector toBox = center - wl.origin;
+		const float distance = toBox.Length();
+		if ( !( lightHeight > 0.0f ) || !( distance > grow * 1.001f ) )
+			return true; // the light is behind the lattice, or inside the sphere
+		const Vector axis = toBox / distance;
+		const float spread = grow / sqrtf( distance * distance - grow * grow ); // tan(half angle)
+		Vector side = fabsf( axis.x ) < 0.9f ? Vector( 1, 0, 0 ) : Vector( 0, 1, 0 );
+		Vector u = CrossProduct( axis, side );
+		u.NormalizeInPlace();
+		const Vector v = CrossProduct( axis, u );
+		Vector edges[4];
+		int toward = 0, away = 0;
+		for ( int i = 0; i < 4; ++i )
+		{
+			edges[i] = axis + spread * ( ( i & 1 ? u : -u ) + ( i & 2 ? v : -v ) );
+			const float e = DotProduct( edges[i], lattice.normal );
+			toward += e < -1e-4f;
+			away += e >= 0.0f;
+		}
+		if ( away == 4 )
+			return false; // every path from the plane to the light misses it
+		if ( toward < 4 )
+			return true; // the cone reaches the plane's horizon
+		for ( const Vector &e : edges )
+			include( wl.origin + e * ( lightHeight / -DotProduct( e, lattice.normal ) ) );
+	}
+	if ( !IsFinite( sMin ) || !IsFinite( sMax ) || !IsFinite( tMin ) || !IsFinite( tMax ) )
+		return true;
+	// Clamped before the integer conversion; a texel wider on each side.
+	const float sLimit = float( lattice.smax + 1 ), tLimit = float( lattice.tmax + 1 );
+	out.s0 = MAX( 0, int( floorf( clamp( sMin, -2.0f, sLimit ) ) ) - 1 );
+	out.s1 = MIN( lattice.smax - 1, int( ceilf( clamp( sMax, -2.0f, sLimit ) ) ) + 1 );
+	out.t0 = MAX( 0, int( floorf( clamp( tMin, -2.0f, tLimit ) ) ) - 1 );
+	out.t1 = MIN( lattice.tmax - 1, int( ceilf( clamp( tMax, -2.0f, tLimit ) ) ) + 1 );
+	return out.s0 <= out.s1 && out.t0 <= out.t1;
+}
 
 static void R_ApplyDynamicOcclusionTimed(
     SurfaceHandle_t surfID, const matrix3x4_t &entityToWorld, bool needsBumpmap, int generation );
@@ -627,6 +761,7 @@ static void R_ApplyDynamicOcclusionTimed(
 	const float surfaceRadius = 0.5f * MAX( across.Length(), other.Length() );
 
 	// The boxes whose shadows can reach it, and their signature.
+	std::vector<OccluderEntry> nearEntries;
 	std::vector<dynamic_occlusion::Box> near;
 	uint64_t signature = 1469598103934665603ull;
 	for ( const OccluderEntry &entry : entries )
@@ -636,6 +771,7 @@ static void R_ApplyDynamicOcclusionTimed(
 		                                                dynamic_occlusion::Radius( entry.box ) +
 		                                                DynamicOcclusion_Reach( entry.box ) )
 			continue;
+		nearEntries.push_back( entry );
 		near.push_back( entry.box );
 		const uint64_t words[3] = { uint64_t( uint32_t( entry.box.entity ) ),
 		    uint64_t( uint32_t( entry.box.part ) ), uint64_t( entry.version ) };
@@ -654,82 +790,232 @@ static void R_ApplyDynamicOcclusionTimed(
 	}
 	OcclusionCache &cache = g_OcclusionCache[surfID];
 	const Vector &n = MSurf_Plane( surfID ).normal;
-	if ( cache.map != g_nMapLoadCount || cache.signature != signature )
+	const bool verify = DynamicOcclusion_Verify();
+	if ( cache.map != g_nMapLoadCount || cache.signature != signature || verify )
 	{
-		// Build: which lights the boxes block at which texels, and by how much.
-		cache.map = g_nMapLoadCount;
-		cache.signature = signature;
-		cache.texels.clear();
-		cache.lights.clear();
-		const float planeDist = MSurf_Plane( surfID ).dist;
-		std::vector<int> lights;
-		for ( int i = 0; i < world->numworldlights; ++i )
+		extern int g_OcclusionVerified, g_OcclusionMismatches, g_OcclusionTexelsEvaluated;
+		const bool fresh = cache.map != g_nMapLoadCount;
+		if ( fresh )
 		{
-			const dworldlight_t &wl = world->worldlights[i];
-			if ( wl.type == emit_skyambient || wl.type == emit_quakelight )
-				continue;
-			if ( wl.type == emit_skylight )
+			cache.map = g_nMapLoadCount;
+			cache.boxes.clear();
+			cache.texels.clear();
+			cache.lights.clear();
+			// The lights that can reach the surface at all.
+			cache.surfaceLights.clear();
+			const float planeDist = MSurf_Plane( surfID ).dist;
+			for ( int i = 0; i < world->numworldlights; ++i )
 			{
-				if ( DotProduct( wl.normal, n ) >= 0.0f )
+				const dworldlight_t &wl = world->worldlights[i];
+				if ( wl.type == emit_skyambient || wl.type == emit_quakelight )
 					continue;
-			}
-			else
-			{
-				if ( DotProduct( wl.origin, n ) - planeDist <= 0.0f )
-					continue;
-				if ( wl.radius > 0.0f &&
-				     ( wl.origin - surfaceCenter ).Length() > wl.radius + surfaceRadius )
-					continue;
-			}
-			lights.push_back( i );
-		}
-		std::vector<OcclusionLight> reaching;
-		for ( int t = 0; t < tmax; ++t )
-		{
-			Vector position = luxelBase + t * stepT;
-			for ( int s = 0; s < smax; ++s, position += stepS )
-			{
-				const int idx = t * smax + s;
-				const float p[3] = { position.x, position.y, position.z };
-				reaching.clear();
-				bool anyBlocked = false;
-				for ( int li : lights )
+				if ( wl.type == emit_skylight )
 				{
-					const dworldlight_t &wl = world->worldlights[li];
-					Vector delta = wl.type == emit_skylight ? -wl.normal : wl.origin - position;
-					const float falloff = Engine_WorldLightDistanceFalloff( &wl, delta, false );
-					if ( falloff <= 0.0f )
+					if ( DotProduct( wl.normal, n ) >= 0.0f )
 						continue;
-					delta.NormalizeInPlace();
-					const float angle = Engine_WorldLightAngle( &wl, wl.normal, n, delta );
-					if ( angle <= 0.0f )
-						continue;
-					const Vector direct = wl.intensity * ( falloff * angle );
-					if ( MAX( direct.x, MAX( direct.y, direct.z ) ) < kOcclusionThreshold )
-						continue;
-					const float visible = dynamic_occlusion::Visibility(
-					    p, DynamicOcclusion_WorldLightSamples( wl, position ), near, 0 );
-					anyBlocked |= visible < 1.0f;
-					reaching.push_back( OcclusionLight{ li, visible } );
 				}
-				if ( !anyBlocked )
-					continue;
-				// Only light the bake let reach the texel counts.
-				OcclusionTexel texel = { idx, int( cache.lights.size() ), 0 };
-				bool blocked = false;
-				for ( const OcclusionLight &light : reaching )
-				{
-					if ( !DynamicOcclusion_StaticVisible( surfID, idx, light.light, position, n ) )
-						continue;
-					cache.lights.push_back( light );
-					++texel.count;
-					blocked |= light.visible < 1.0f;
-				}
-				if ( blocked )
-					cache.texels.push_back( texel );
 				else
-					cache.lights.resize( size_t( texel.first ) );
+				{
+					if ( DotProduct( wl.origin, n ) - planeDist <= 0.0f )
+						continue;
+					if ( wl.radius > 0.0f &&
+					     ( wl.origin - surfaceCenter ).Length() > wl.radius + surfaceRadius )
+						continue;
+				}
+				cache.surfaceLights.push_back( i );
 			}
+		}
+		const std::vector<int> &lights = cache.surfaceLights;
+		const OcclusionLattice lattice =
+		    R_OcclusionLattice( luxelBase, stepS, stepT, n, smax, tmax );
+		const size_t texelCount = size_t( smax * tmax );
+		auto stamp = [&]( const OcclusionRegion &region, std::vector<uint8_t> &mask )
+		{
+			for ( int t = region.t0; t <= region.t1; ++t )
+				memset(
+				    &mask[size_t( t * smax + region.s0 )], 1, size_t( region.s1 - region.s0 + 1 ) );
+		};
+
+		// Each light's regions of the boxes now near; a texel no region holds
+		// keeps every light.
+		std::vector<std::vector<OcclusionRegion>> regions( lights.size() );
+		std::vector<uint8_t> covered( texelCount, 0 );
+		for ( size_t j = 0; j < lights.size(); ++j )
+		{
+			const dworldlight_t &wl = world->worldlights[lights[size_t( j )]];
+			for ( size_t k = 0; k < near.size(); ++k )
+			{
+				OcclusionRegion region;
+				if ( !R_OcclusionRegion( lattice, wl, near[k], int( k ), region ) )
+					continue;
+				regions[j].push_back( region );
+				stamp( region, covered );
+			}
+		}
+
+		// The texels to evaluate again: all of them for a new cache, otherwise
+		// the regions of the boxes that changed, arrived or left (old and new
+		// poses).
+		std::vector<uint8_t> stale( texelCount, fresh ? 1 : 0 );
+		if ( !fresh && cache.signature != signature )
+		{
+			std::unordered_map<uint64_t, uint32_t> before, after;
+			auto key = []( const dynamic_occlusion::Box &box )
+			{
+				return ( uint64_t( uint32_t( box.entity ) ) << 32 ) | uint32_t( box.part );
+			};
+			for ( const OccluderEntry &entry : cache.boxes )
+				before[key( entry.box )] = entry.version;
+			for ( const OccluderEntry &entry : nearEntries )
+				after[key( entry.box )] = entry.version;
+			auto markChanged = [&]( const std::vector<OccluderEntry> &boxes,
+			                       const std::unordered_map<uint64_t, uint32_t> &others )
+			{
+				for ( const OccluderEntry &entry : boxes )
+				{
+					const auto found = others.find( key( entry.box ) );
+					if ( found != others.end() && found->second == entry.version )
+						continue;
+					for ( int li : lights )
+					{
+						OcclusionRegion region;
+						if ( R_OcclusionRegion(
+						         lattice, world->worldlights[li], entry.box, 0, region ) )
+							stamp( region, stale );
+					}
+				}
+			};
+			markChanged( cache.boxes, after );
+			markChanged( nearEntries, before );
+		}
+
+		// One texel's blocked lights, appended to (texels, lightsOut): the lights
+		// the bake let reach it, with the share the boxes (`all`: every near box,
+		// otherwise those whose regions hold it) let through.
+		std::vector<dynamic_occlusion::Box> candidates;
+		std::vector<OcclusionLight> reaching;
+		auto evaluate = [&]( int s, int t, bool all, std::vector<OcclusionTexel> &texelsOut,
+		                    std::vector<OcclusionLight> &lightsOut )
+		{
+			const int idx = t * smax + s;
+			const Vector position = luxelBase + t * stepT + s * stepS;
+			const float p[3] = { position.x, position.y, position.z };
+			reaching.clear();
+			bool anyBlocked = false;
+			for ( size_t j = 0; j < lights.size(); ++j )
+			{
+				const int li = lights[j];
+				const dworldlight_t &wl = world->worldlights[li];
+				Vector delta = wl.type == emit_skylight ? -wl.normal : wl.origin - position;
+				const float falloff = Engine_WorldLightDistanceFalloff( &wl, delta, false );
+				if ( falloff <= 0.0f )
+					continue;
+				delta.NormalizeInPlace();
+				const float angle = Engine_WorldLightAngle( &wl, wl.normal, n, delta );
+				if ( angle <= 0.0f )
+					continue;
+				const Vector direct = wl.intensity * ( falloff * angle );
+				if ( MAX( direct.x, MAX( direct.y, direct.z ) ) < kOcclusionThreshold )
+					continue;
+				candidates.clear();
+				if ( !all )
+				{
+					for ( const OcclusionRegion &region : regions[j] )
+						if ( s >= region.s0 && s <= region.s1 && t >= region.t0 && t <= region.t1 )
+							candidates.push_back( near[size_t( region.box )] );
+				}
+				const std::vector<dynamic_occlusion::Box> &boxes = all ? near : candidates;
+				const float visible =
+				    boxes.empty()
+				        ? 1.0f
+				        : dynamic_occlusion::Visibility(
+				              p, DynamicOcclusion_WorldLightSamples( wl, position ), boxes, 0 );
+				anyBlocked |= visible < 1.0f;
+				reaching.push_back( OcclusionLight{ li, visible } );
+			}
+			if ( !anyBlocked )
+				return;
+			// Only light the bake let reach the texel counts.
+			OcclusionTexel texel = { idx, int( lightsOut.size() ), 0 };
+			bool blocked = false;
+			for ( const OcclusionLight &light : reaching )
+			{
+				if ( !DynamicOcclusion_StaticVisible( surfID, idx, light.light, position, n ) )
+					continue;
+				lightsOut.push_back( light );
+				++texel.count;
+				blocked |= light.visible < 1.0f;
+			}
+			if ( blocked )
+				texelsOut.push_back( texel );
+			else
+				lightsOut.resize( size_t( texel.first ) );
+		};
+
+		if ( cache.signature != signature || fresh )
+		{
+			// Keep the texels outside the stale regions; evaluate the stale ones
+			// the boxes now cover.
+			std::vector<OcclusionTexel> texels;
+			std::vector<OcclusionLight> kept;
+			for ( const OcclusionTexel &texel : cache.texels )
+			{
+				if ( stale[size_t( texel.idx )] )
+					continue;
+				OcclusionTexel copy = { texel.idx, int( kept.size() ), texel.count };
+				kept.insert( kept.end(), cache.lights.begin() + texel.first,
+				    cache.lights.begin() + texel.first + texel.count );
+				texels.push_back( copy );
+			}
+			for ( int t = 0; t < tmax; ++t )
+				for ( int s = 0; s < smax; ++s )
+				{
+					const size_t idx = size_t( t * smax + s );
+					if ( !stale[idx] || !covered[idx] )
+						continue;
+					++g_OcclusionTexelsEvaluated;
+					evaluate( s, t, false, texels, kept );
+				}
+			cache.texels = std::move( texels );
+			cache.lights = std::move( kept );
+			cache.boxes = nearEntries;
+			cache.signature = signature;
+		}
+
+		if ( verify )
+		{
+			// Every texel against every near box, as if built from nothing.
+			std::vector<OcclusionTexel> texels;
+			std::vector<OcclusionLight> full;
+			for ( int t = 0; t < tmax; ++t )
+				for ( int s = 0; s < smax; ++s )
+					evaluate( s, t, true, texels, full );
+			std::unordered_map<int, const OcclusionTexel *> held;
+			for ( const OcclusionTexel &texel : cache.texels )
+				held[texel.idx] = &texel;
+			g_OcclusionVerified += int( texelCount );
+			int differ = 0, common = 0;
+			for ( const OcclusionTexel &texel : texels )
+			{
+				const auto found = held.find( texel.idx );
+				if ( found == held.end() )
+				{
+					++differ; // blocked only in the build from nothing
+					continue;
+				}
+				++common;
+				const OcclusionTexel &mine = *found->second;
+				bool same = mine.count == texel.count;
+				for ( int l = 0; same && l < texel.count; ++l )
+				{
+					const OcclusionLight &a = cache.lights[size_t( mine.first + l )];
+					const OcclusionLight &b = full[size_t( texel.first + l )];
+					same = a.light == b.light && a.visible == b.visible;
+				}
+				differ += !same;
+			}
+			differ += int( held.size() ) - common; // blocked only in the cache
+			g_OcclusionMismatches += differ;
 		}
 	}
 

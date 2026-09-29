@@ -54,6 +54,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -1369,6 +1370,102 @@ void TestNegativeControls()
 
 } // namespace
 
+//-----------------------------------------------------------------------------
+// Parallel polygonization (ImpTiler::SetParallelFor)
+//-----------------------------------------------------------------------------
+int g_nParallelForCalls = 0;
+
+// Tiles in reverse order: the join, not the run order, fixes the surface.
+void ReverseParallelFor( void *pContext, int nCount, void ( *pProcess )( void *, int ) )
+{
+	++g_nParallelForCalls;
+	for ( int i = nCount - 1; i >= 0; --i )
+		pProcess( pContext, i );
+}
+
+// Tiles on four threads, interleaved.
+void ThreadParallelFor( void *pContext, int nCount, void ( *pProcess )( void *, int ) )
+{
+	++g_nParallelForCalls;
+	std::vector<std::thread> threads;
+	for ( int t = 0; t < 4; ++t )
+		threads.emplace_back(
+		    [=]()
+		    {
+			    for ( int i = t; i < nCount; i += 4 )
+				    pProcess( pContext, i );
+		    } );
+	for ( std::thread &thread : threads )
+		thread.join();
+}
+
+// A broken parallel-for that never runs tile g_nSkipTile (negative control).
+int g_nSkipTile = -1;
+void SkippingParallelFor( void *pContext, int nCount, void ( *pProcess )( void *, int ) )
+{
+	++g_nParallelForCalls;
+	for ( int i = 0; i < nCount; ++i )
+		if ( i != g_nSkipTile )
+			pProcess( pContext, i );
+}
+
+void TestParallelFor()
+{
+	for ( const Config &config : s_Configs )
+	{
+		std::string name = Format( "parallel.%s", config.pszName );
+		std::vector<Particle> particles = Cluster( config, 24, 4242u );
+		ImpTiler serial;
+		Mesh expected = Build( serial, config, particles );
+		const int nTiles = serial.getNoTiles();
+		Check( nTiles > 1 && expected.TriangleCount() > 0, name + " several-tiles",
+		    Format( "%d tiles", nTiles ) );
+
+		const ImpTiler::ParallelFor_t runners[] = { &ReverseParallelFor, &ThreadParallelFor };
+		const char *runnerNames[] = { "reverse", "threads" };
+		for ( int r = 0; r < 2; ++r )
+		{
+			ImpTiler tiler;
+			tiler.SetParallelFor( runners[r] );
+			const int nCalls = g_nParallelForCalls;
+			Mesh mesh = Build( tiler, config, particles );
+			Check( g_nParallelForCalls == nCalls + 1, name + "." + runnerNames[r] + " used" );
+			Check( BitwiseEqual( mesh, expected ), name + "." + runnerNames[r] + " same-surface" );
+		}
+
+		// endFrame releases the parallel-for, as it does the render context.
+		ImpTiler tiler;
+		tiler.SetParallelFor( &ThreadParallelFor );
+		Build( tiler, config, particles );
+		tiler.endFrame( false );
+		const int nCalls = g_nParallelForCalls;
+		Mesh next = Build( tiler, config, particles );
+		Check( g_nParallelForCalls == nCalls && BitwiseEqual( next, expected ),
+		    name + " released-at-end-frame" );
+	}
+}
+
+void TestParallelForControl()
+{
+	// A parallel-for that loses a tile holding triangles must change the
+	// surface the checks read (some tiles hold none).
+	const Config &config = s_Fine;
+	std::vector<Particle> particles = Cluster( config, 24, 4242u );
+	ImpTiler serial;
+	Mesh expected = Build( serial, config, particles );
+	const int nTiles = serial.getNoTiles();
+	int nDetected = 0;
+	for ( g_nSkipTile = 0; g_nSkipTile < nTiles; ++g_nSkipTile )
+	{
+		ImpTiler tiler;
+		tiler.SetParallelFor( &SkippingParallelFor );
+		nDetected += !BitwiseEqual( Build( tiler, config, particles ), expected );
+	}
+	g_nSkipTile = -1;
+	Check( nDetected > 0, "control.parallel-for-skipped-tile",
+	    Format( "%d of %d skipped tiles changed the surface", nDetected, nTiles ) );
+}
+
 int main()
 {
 	TestLoneParticles();
@@ -1376,6 +1473,8 @@ int main()
 	TestTwoParticles();
 	TestCluster();
 	TestDeterminism();
+	TestParallelFor();
+	TestParallelForControl();
 	TestFactories();
 	TestNegativeControls();
 	return testing::ReportConformance( g_nChecks, g_nFailures );

@@ -15,7 +15,10 @@
 //          pose is dirtied and rebuilt once (when drawn); a box at rest costs
 //          nothing. Every rebuild evaluates the boxes of its generation that
 //          reach the surface (gl_lightmap.cpp R_ApplyDynamicOcclusion), so a
-//          rebuild for any other reason keeps their shadows. Lightmap builds
+//          rebuild for any other reason keeps their shadows. A texel is tested
+//          only against the boxes whose shadow region from each light holds it,
+//          and a rebuild evaluates again only the texels in the regions of the
+//          boxes that changed. Lightmap builds
 //          on the material system's thread read the generation current when
 //          they were queued.
 //
@@ -87,6 +90,15 @@ float DynamicOcclusion_VisibilityFrom(
 // The samples of world light `light` as seen from `receiver`.
 dynamic_occlusion::Samples DynamicOcclusion_WorldLightSamples(
     const dworldlight_t &light, const Vector &receiver );
+
+// The radius of the disk those samples lie on around the light (0: a point, or
+// a distant light's one sample).
+float DynamicOcclusion_WorldLightRadius( const dworldlight_t &light );
+
+// Lightmaps: whether each occlusion build is checked against a build from
+// nothing with every near box (r_dynamic_occlusion_verify); mismatches are
+// counted in the report.
+bool DynamicOcclusion_Verify();
 
 // Models: the visibility of a world or dynamic light (as a world light) at a
 // model's lighting origin, the model's own boxes ignored (`self`: its entity
