@@ -1583,3 +1583,34 @@ scene) and submission cost.
     views.
 - **Not done:** the product still draws the world and props through the
   legacy lists. Pixels, the frame-time budget and the Fold7 remain.
+
+## K3 frame time on desktop (2026-09-28)
+
+The frame allowance is 1.05x the median and 1.10x the p99 against K0. It
+was judged by `frame_pacing.py` at 1920x1080, mode 0, interleaved against
+the binaries the K0 record was measured with
+(`/tmp/claude-1000/rc/desk-1/runtime`, 2026-09-26). The K0 record's
+absolute 4.434 ms doesn't reproduce on this host today even with those
+binaries (5.3 to 6.7 ms per round), so the allowance is applied to the
+same-session reference, as RFC 0005 does on a noisy host.
+
+| Run | Current (A) | K0 binaries (B) | A/B | Allowance |
+| --- | --- | --- | --- | --- |
+| 5 rounds, host load 4 to 8: median of round medians | 5.939 ms | 5.777 ms | 1.028 | 1.05 pass |
+| same: median of round p99s | 10.22 ms | 9.35 ms | 1.093 | 1.10 pass |
+| 3 rounds, host load 3 to 4 | 5.436 ms | 5.391 ms | 1.008 | pass |
+
+Also found:
+
+- The hitch counts differ between runs because the host's frame times are
+  bimodal: runs sit near 5.5 ms or near 10 to 14 ms. The hitch threshold is
+  relative to each run's own median, so the counts don't separate the
+  builds. A core-on run with a 5.8 ms median had its p90 at 14 ms.
+- The profile of a core-on run puts the core's own frame work (graph build
+  and compile, the stage-pass executor, the null device's encoder) under
+  0.5% of samples.
+- Emit is 13% slower than with the K0 binaries (3.38 against 2.99 ms). It
+  sits inside the frame allowance and is recorded for R32-FRAME-PACING.
+
+Frame time passes on the desktop. The Fold7 run remains, and K3 stays open
+for it alone. The device isn't attached.
