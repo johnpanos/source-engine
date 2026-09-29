@@ -24,8 +24,14 @@
 class CThreadPoolWorkerBackend : public jobsystem::IWorkerBackend
 {
 public:
-	CThreadPoolWorkerBackend( IThreadPool *pPool, int nWorkers )
-	    : m_pPool( pPool ), m_nWorkers( nWorkers )
+	// nWorkers < 0 follows the pool's thread count at each call (a borrowed pool
+	// the engine starts and stops). With bInlineOnOwnWorkers, a call made on one
+	// of the pool's workers runs inline and is counted instead of queuing
+	// runners behind its caller.
+	CThreadPoolWorkerBackend(
+	    IThreadPool *pPool, int nWorkers, bool bOwnsPool = false, bool bInlineOnOwnWorkers = false )
+	    : m_pPool( pPool ), m_bOwnsPool( bOwnsPool ), m_nWorkers( nWorkers ),
+	      m_bInlineOnOwnWorkers( bInlineOnOwnWorkers ), m_nNestedCalls( 0 )
 	{
 	}
 	virtual ~CThreadPoolWorkerBackend() {}
@@ -37,7 +43,8 @@ public:
 
 		// No workers, or a single item: run inline. Avoids pool overhead and the
 		// documented risk of helping unrelated queued work while waiting.
-		if ( !m_pPool || m_nWorkers <= 0 || n == 1 )
+		const int nWorkers = WorkerCount();
+		if ( !m_pPool || nWorkers <= 0 || n == 1 || NestedOnOwnWorker() )
 		{
 			for ( int i = 0; i < n; ++i )
 				body( i );
@@ -47,7 +54,7 @@ public:
 		// This call owns every runner and callback borrow. Queue at most one
 		// runner per available worker, including a pool with just one worker.
 		// The caller claims only this call's indices and never helps other jobs.
-		const int nRunners = n - 1 < m_nWorkers ? n - 1 : m_nWorkers;
+		const int nRunners = n - 1 < nWorkers ? n - 1 : nWorkers;
 		std::vector<CJob *> jobs;
 		jobs.reserve( (size_t)nRunners );
 		ParallelRun run( (unsigned)n, body );
@@ -64,7 +71,8 @@ public:
 	virtual void ParallelForWithCaller(
 	    int n, const std::function<void( int )> &body, const std::function<void()> &caller )
 	{
-		if ( n <= 0 || !m_pPool || m_nWorkers <= 0 )
+		const int nWorkers = WorkerCount();
+		if ( n <= 0 || !m_pPool || nWorkers <= 0 || NestedOnOwnWorker() )
 		{
 			caller();
 			for ( int i = 0; i < n; ++i )
@@ -74,7 +82,7 @@ public:
 
 		// The caller is busy with caller() first, so queue a runner per index
 		// up to the worker count.
-		const int nRunners = n < m_nWorkers ? n : m_nWorkers;
+		const int nRunners = n < nWorkers ? n : nWorkers;
 		std::vector<CJob *> jobs;
 		jobs.reserve( (size_t)nRunners );
 		ParallelRun run( (unsigned)n, body );
@@ -86,11 +94,27 @@ public:
 		JoinRunners( jobs );
 	}
 
-	virtual int WorkerCount() const { return m_nWorkers; }
+	virtual int WorkerCount() const
+	{
+		if ( m_nWorkers >= 0 )
+			return m_nWorkers;
+		return m_pPool ? m_pPool->NumThreads() : 0;
+	}
+
+	unsigned NestedCalls() const { return m_nNestedCalls.load( std::memory_order_relaxed ); }
 
 	IThreadPool *m_pPool;
+	const bool m_bOwnsPool;
 
 private:
+	bool NestedOnOwnWorker()
+	{
+		if ( !m_bInlineOnOwnWorkers || !IsThreadPoolWorkerThread( m_pPool ) )
+			return false;
+		m_nNestedCalls.fetch_add( 1, std::memory_order_relaxed );
+		return true;
+	}
+
 	static void JoinRunners( std::vector<CJob *> &jobs )
 	{
 		for ( CJob *job : jobs )
@@ -134,7 +158,9 @@ private:
 		std::atomic<unsigned> m_next;
 	};
 
-	int m_nWorkers;
+	const int m_nWorkers;
+	const bool m_bInlineOnOwnWorkers;
+	std::atomic<unsigned> m_nNestedCalls;
 };
 
 VSTDLIB_INTERFACE bool RunThreadPoolJobBatch(
@@ -168,7 +194,7 @@ VSTDLIB_INTERFACE jobsystem::IWorkerBackend *CreateThreadPoolWorkerBackend( int 
 	params.bExecOnThreadPoolThreadsOnly = false;
 	pPool->Start( params );
 
-	return new CThreadPoolWorkerBackend( pPool, pPool->NumThreads() );
+	return new CThreadPoolWorkerBackend( pPool, pPool->NumThreads(), true );
 }
 
 VSTDLIB_INTERFACE void DestroyThreadPoolWorkerBackend( jobsystem::IWorkerBackend *pBackend )
@@ -177,10 +203,28 @@ VSTDLIB_INTERFACE void DestroyThreadPoolWorkerBackend( jobsystem::IWorkerBackend
 		return;
 
 	CThreadPoolWorkerBackend *pImpl = static_cast< CThreadPoolWorkerBackend * >( pBackend );
-	if ( pImpl->m_pPool )
+	if ( pImpl->m_pPool && pImpl->m_bOwnsPool )
 	{
 		pImpl->m_pPool->Stop();
 		DestroyThreadPool( pImpl->m_pPool );
 	}
 	delete pImpl;
+}
+
+//-----------------------------------------------------------------------------
+
+VSTDLIB_INTERFACE jobsystem::IWorkerBackend *CreateComputePoolWorkerBackend()
+{
+	return new CThreadPoolWorkerBackend( g_pThreadPool, -1, false, true );
+}
+
+VSTDLIB_INTERFACE void DestroyComputePoolWorkerBackend( jobsystem::IWorkerBackend *pBackend )
+{
+	delete static_cast<CThreadPoolWorkerBackend *>( pBackend );
+}
+
+VSTDLIB_INTERFACE unsigned ComputePoolWorkerBackendNestedCalls(
+    const jobsystem::IWorkerBackend *pBackend )
+{
+	return pBackend ? static_cast<const CThreadPoolWorkerBackend *>( pBackend )->NestedCalls() : 0;
 }

@@ -955,7 +955,7 @@ move onto the graph in K2.
 | Serial equals pooled | same suite | serial and pooled culling give identical draw lists |
 | Pixels | K0 views, world and prop draws | within tolerance |
 | Two scenes | `render.scene.multi` | two scenes with different content render independently in one process, and destroying one leaves the other's handles valid |
-| Submission cost | `frame_pacing.py` main-thread submission time | at least 30 % below K0 on desktop (target set here, before optimizing), and within the frame allowance on the Fold7 |
+| Submission cost | `frame_pacing.py` `render_submission` (amended below), both queued modes | on desktop, the median in `mat_queue_mode 2` at least 30 % below the K0 binaries measured interleaved in the same session (target set here, before optimizing), and mode 0 no worse than K0; within the frame allowance on the Fold7; the emit figure (`submission_*`) recorded beside it |
 
 Culling amendment (2026-09-28, agent decision under the user's standing
 instruction): legacy tests a BSP leaf in an area it sees through an area
@@ -965,6 +965,23 @@ the view's own planes. The first run found 757 such leaves across the four
 K0 scenarios, every one outside the view frustum under legacy's own box
 test, and no other difference. The check therefore requires equality except
 for those items, and lists and verifies each one.
+
+Submission amendment (2026-09-28, agent decision under the user's standing
+instruction, agreed with the render-core owner): the check first read
+"main-thread submission time", and `frame_pacing.py`'s `submission_*` is the
+backend's emit alone, on whichever thread runs the backend. Neither measures
+the cost K5 is meant to cut. A world the core draws is never emitted, so emit
+falls even if the core's own recording costs as much. In `mat_queue_mode 2`
+the main thread submits nothing, so moving work onto the render sequence would
+pass with no saving. The check therefore reads `render_submission`: per frame,
+the time the submitting sequence spends in `mesh_draw` (the legacy draws with
+their emits), `record` (the stream replay, with the core's passes recorded
+inside it) and `submit`, from `-vkframestats`. Work the core runs on the
+compute pool counts as the time the sequence waits for it. A core pass
+recorded outside `record` must add its own cost kind to the sum before its
+numbers count. Mode 2 decides, because the products ship it. The reference is
+the K0 binaries measured interleaved in the same session, as for K3's frame
+time, since the K0 record holds only the emit figure.
 
 ### K6: Skinned models
 

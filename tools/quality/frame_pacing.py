@@ -197,6 +197,15 @@ def summarize(frames):
     summary["submission_median_ms"] = round(percentile(emit, 0.5), 3)
     summary["submission_p95_ms"] = round(percentile(emit, 0.95), 3)
     summary["submission_p99_ms"] = round(percentile(emit, 0.99), 3)
+    # The submitting sequence's frame building (RFC 0016 K5 "Submission cost"):
+    # the legacy draws with their emits (mesh_draw holds emit), the stream
+    # replay with the core's passes (record) and the submission, on whichever
+    # thread runs the backend in either queued mode.
+    sequence = [sum(frame.get("cost", {}).get(kind, [0, 0])[1] for kind in ("mesh_draw", "record", "submit")) / 1000.0
+                for frame in frames]
+    summary["render_submission_median_ms"] = round(percentile(sequence, 0.5), 3)
+    summary["render_submission_p95_ms"] = round(percentile(sequence, 0.95), 3)
+    summary["render_submission_p99_ms"] = round(percentile(sequence, 0.99), 3)
     convert = summarize_convert(frames)
     if convert:
         summary["convert"] = convert

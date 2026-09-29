@@ -19,10 +19,14 @@
 #include "jobsystem/pooled_executor.h"
 #include "jobsystem/pilot_particles.h"
 #include "vstdlib/jobgraph_pool_bridge.h"
+#include "vstdlib/jobthread.h"
+#include "testing/conformance_result.h"
 
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <mutex>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -220,6 +224,152 @@ static void Test_RealPoolOverlapsCallerJobs()
 	}
 }
 
+// The process compute pool (g_pThreadPool) as the borrowed backend roots lend
+// providers (CreateComputePoolWorkerBackend): it follows the pool the engine
+// starts and stops, runs a call made on one of the pool's own workers inline,
+// and leaves calls from another pool's worker (the material system's MatQueue
+// thread) pooled.
+
+// Runs body on whichever thread calls Run, recording what the backend did.
+struct ComputeProbe
+{
+	IWorkerBackend *backend = nullptr;
+	std::atomic<bool> done{ false };
+	bool onComputeWorker = false;
+	std::thread::id self;
+	std::mutex mutex;
+	std::set<std::thread::id> bodyThreads;
+	int bodies = 0;
+	unsigned nestedBefore = 0, nestedAfter = 0;
+	RunResult graph;
+	uint32_t graphJobs = 0;
+
+	void Run()
+	{
+		self = std::this_thread::get_id();
+		onComputeWorker = IsThreadPoolWorkerThread( g_pThreadPool );
+		nestedBefore = ComputePoolWorkerBackendNestedCalls( backend );
+		backend->ParallelFor( 16,
+		    [this]( int )
+		    {
+			    std::lock_guard<std::mutex> lock( mutex );
+			    bodyThreads.insert( std::this_thread::get_id() );
+			    ++bodies;
+		    } );
+		std::vector<int> runs;
+		JobGraphBuilder b;
+		BuildStressGraph( b, runs, 3, 6 );
+		SealedGraph g = b.Seal().Value();
+		graphJobs = g.JobCount();
+		graph = PooledExecutor( backend ).Execute( g, RunOptions{} );
+		nestedAfter = ComputePoolWorkerBackendNestedCalls( backend );
+		done = true;
+	}
+};
+
+static void StartComputePool( int nThreads )
+{
+	ThreadPoolStartParams_t params;
+	params.nThreads = nThreads;
+	g_pThreadPool->Start( params, "CmpJob" );
+}
+
+static void Test_ComputePoolFollowsEnginePool()
+{
+	IWorkerBackend *backend = CreateComputePoolWorkerBackend();
+	CHECK( backend->WorkerCount() == 0 ); // not started: inline
+	int inlineRuns = 0;
+	backend->ParallelFor( 8,
+	    [&]( int )
+	    {
+		    ++inlineRuns;
+	    } );
+	CHECK( inlineRuns == 8 );
+
+	StartComputePool( 3 );
+	CHECK( backend->WorkerCount() == 3 );
+	std::vector<int> serialRuns;
+	JobGraphBuilder sb;
+	BuildStressGraph( sb, serialRuns, 6, 8 );
+	SealedGraph sg = sb.Seal().Value();
+	RunResult serial = DeterministicExecutor().Execute( sg, RunOptions{} );
+	for ( int rep = 0; rep < 8; ++rep )
+	{
+		std::vector<int> runs;
+		JobGraphBuilder b;
+		BuildStressGraph( b, runs, 6, 8 );
+		SealedGraph g = b.Seal().Value();
+		RunResult r = PooledExecutor( backend ).Execute( g, RunOptions{} );
+		CHECK( r.states == serial.states );
+		bool once = true;
+		for ( int x : runs )
+			once = once && x == 1;
+		CHECK( once );
+	}
+	CHECK( ComputePoolWorkerBackendNestedCalls( backend ) == 0 ); // main thread is no worker
+	CHECK( !IsThreadPoolWorkerThread( g_pThreadPool ) );
+
+	// Destroying the backend leaves the borrowed pool running.
+	DestroyComputePoolWorkerBackend( backend );
+	CHECK( g_pThreadPool->NumThreads() == 3 );
+	g_pThreadPool->Stop();
+	CHECK( g_pThreadPool->NumThreads() == 0 );
+}
+
+static void Test_ComputePoolNestedCallRunsInline()
+{
+	StartComputePool( 3 );
+	IWorkerBackend *backend = CreateComputePoolWorkerBackend();
+	ComputeProbe probe;
+	probe.backend = backend;
+	CJob *job = g_pThreadPool->QueueCall( &probe, &ComputeProbe::Run );
+	CHECK( AwaitFlag( probe.done ) );
+	CHECK( probe.onComputeWorker );
+	// Every body ran on the calling worker, and the call was counted.
+	CHECK( probe.bodies == 16 );
+	CHECK( probe.bodyThreads.size() == 1 && *probe.bodyThreads.begin() == probe.self );
+	// The graph ran inline too: its waves' ParallelForWithCaller calls counted.
+	CHECK( probe.graph.succeeded == probe.graphJobs );
+	CHECK( probe.nestedAfter > probe.nestedBefore + 1 );
+	job->Release();
+	DestroyComputePoolWorkerBackend( backend );
+	g_pThreadPool->Stop();
+}
+
+static void Test_ComputePoolFromAnotherPoolStaysPooled()
+{
+	StartComputePool( 3 );
+	IWorkerBackend *backend = CreateComputePoolWorkerBackend();
+	// A one-thread pool in the MatQueue pool's place: its worker is not one of
+	// the compute pool's, so its calls queue runners on the compute pool.
+	IThreadPool *queue = CreateThreadPool();
+	ThreadPoolStartParams_t params;
+	params.nThreads = 1;
+	queue->Start( params, "MatQueue" );
+	ComputeProbe probe;
+	probe.backend = backend;
+	CJob *job = queue->QueueCall( &probe, &ComputeProbe::Run );
+	CHECK( AwaitFlag( probe.done ) );
+	CHECK( !probe.onComputeWorker );
+	CHECK( IsThreadPoolWorkerThread( queue ) == false ); // the test thread is neither
+	CHECK( probe.bodies == 16 );
+	CHECK( probe.graph.succeeded == probe.graphJobs );
+	CHECK( probe.nestedAfter == probe.nestedBefore ); // not counted: not nested
+	job->Release();
+	queue->Stop();
+	DestroyThreadPool( queue );
+	DestroyComputePoolWorkerBackend( backend );
+	g_pThreadPool->Stop();
+}
+
+// Null arguments are harmless.
+static void Test_ComputePoolNullArguments()
+{
+	CHECK( ComputePoolWorkerBackendNestedCalls( nullptr ) == 0 );
+	CHECK( !IsThreadPoolWorkerThread( nullptr ) );
+	DestroyComputePoolWorkerBackend( nullptr );
+}
+
 int main()
 {
 	std::printf( "enginebridgetest (RFC 0003 real vstdlib pool executes job graphs)\n" );
@@ -229,6 +379,10 @@ int main()
 	RUN( Test_RealPoolFailurePropagation );
 	RUN( Test_RealPoolZeroWorkersInline );
 	RUN( Test_RealPoolOverlapsCallerJobs );
+	RUN( Test_ComputePoolFollowsEnginePool );
+	RUN( Test_ComputePoolNestedCallRunsInline );
+	RUN( Test_ComputePoolFromAnotherPoolStaysPooled );
+	RUN( Test_ComputePoolNullArguments );
 	std::printf( "\n%d checks, %d failures\n", g_checks, g_failures );
-	return g_failures == 0 ? 0 : 1;
+	return testing::ReportConformance( g_checks, g_failures );
 }

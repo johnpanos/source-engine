@@ -301,6 +301,32 @@
       "expect": "pass"
     },
     {
+      "id": "corpus.jobs.pool-bridge",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R20",
+      "description": "Job graphs on the real engine CThreadPool through vstdlib/jobgraph_pool_bridge (RFC/0003-progress.md): pooled particle frames equal the serial reference, graph states equal the deterministic executor, failures cancel dependents, and caller jobs overlap compute jobs; and the process compute pool as the borrowed backend roots lend providers (CreateComputePoolWorkerBackend, the render core's culling since 2026-09-28): it follows the pool the engine starts and stops, leaves it running when destroyed, runs a call made on one of the pool's own workers inline and counts it (RFC 0003's forbidden nested wait), and keeps a call from another pool's worker (the MatQueue pool's place) pooled and uncounted. Runs the Waf-built test from the --tests tree.",
+      "command": [
+        "sh",
+        "-c",
+        "LD_LIBRARY_PATH=build-r03-tests/tier0:build-r03-tests/tier1:build-r03-tests/vstdlib exec build-r03-tests/unittests/jobsystemtest/jobsystembridgetest"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 168,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-r03-tests/unittests/jobsystemtest/jobsystembridgetest"
+      ],
+      "sources": [
+        "vstdlib/jobgraph_pool_bridge.cpp",
+        "vstdlib/jobthread.cpp",
+        "unittests/jobsystemtest/enginebridgetest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "corpus.hammer.glib-runner",
       "domain": "Q-EDITOR",
       "rfc": "0002",

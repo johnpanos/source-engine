@@ -470,6 +470,10 @@ JOB_INTERFACE void GetThreadPoolSchedulingStats(
 // Changes the bound; entries already queued above a lowered bound stay queued.
 JOB_INTERFACE void SetThreadPoolSharedQueueCapacity( IThreadPool *pPool, int nCapacity );
 
+// Whether the calling thread is one of pPool's started workers. False for a
+// null pool, a pool that is not started, and every other thread.
+JOB_INTERFACE bool IsThreadPoolWorkerThread( IThreadPool *pPool );
+
 //-------------------------------------
 
 JOB_INTERFACE void RunThreadPoolTests();

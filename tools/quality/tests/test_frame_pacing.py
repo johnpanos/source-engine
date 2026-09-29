@@ -199,6 +199,25 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(summary["gpu_render_median_ms"], 10.0)
         self.assertEqual(summary["gpu_render_p99_ms"], 12.0)
 
+    def test_render_submission_sums_draws_replay_and_submit_but_not_nested_emit(self):
+        costs = {i: {"mesh_draw": [40, 3000 + i * 100], "emit": [40, 2000], "record": [1, 1000],
+                     "submit": [1, 500]} for i in range(1, 5)}
+        summary = pacing.summarize(stream([16.7] * 4, costs=costs))
+        # mesh_draw already holds emit, so emit is not added again.
+        self.assertEqual(summary["render_submission_median_ms"], 4.7)
+        self.assertEqual(summary["render_submission_p99_ms"], 4.9)
+        self.assertEqual(summary["submission_median_ms"], 2.0)
+
+    def test_render_submission_counts_a_world_the_core_records_instead_of_emitting(self):
+        # The world leaves mesh_draw and emit for the core's recording in
+        # record: emit falls by the world's share, render_submission does not.
+        legacy = {1: {"mesh_draw": [40, 5000], "emit": [40, 3000], "record": [1, 1000], "submit": [1, 500]}}
+        core = {1: {"mesh_draw": [10, 2000], "emit": [10, 1000], "record": [1, 4000], "submit": [1, 500]}}
+        before = pacing.summarize(stream([16.7], costs=legacy))
+        after = pacing.summarize(stream([16.7], costs=core))
+        self.assertLess(after["submission_median_ms"], before["submission_median_ms"] * 0.7)
+        self.assertEqual(after["render_submission_median_ms"], before["render_submission_median_ms"])
+
     def test_gpu_passes_total_per_label_and_count_absent_frames_as_zero(self):
         frames = stream([16.7] * 2)
         frames[0]["gpu_passes"] = [["pass back buffer 1920x1080", 2, 6000], ["copy to _rt_x 64x64", 1, 1000]]

@@ -318,6 +318,7 @@ private:
 	friend class CJobThread;
 	friend void GetThreadPoolSchedulingStats( IThreadPool *, ThreadPoolSchedulingStats_t * );
 	friend void SetThreadPoolSharedQueueCapacity( IThreadPool *, int );
+	friend bool IsThreadPoolWorkerThread( IThreadPool * );
 
 	CJobQueue				m_SharedQueue;
 	CInterlockedInt			m_nIdleThreads;
@@ -625,6 +626,11 @@ JOB_INTERFACE void SetThreadPoolSharedQueueCapacity( IThreadPool *pPool, int nCa
 {
 	Assert( nCapacity >= 1 );
 	static_cast<CThreadPool *>( pPool )->m_SharedQueue.SetCapacity( MAX( nCapacity, 1 ) );
+}
+
+JOB_INTERFACE bool IsThreadPoolWorkerThread( IThreadPool *pPool )
+{
+	return pPool && static_cast<CThreadPool *>( pPool )->FindCurrentWorker() != NULL;
 }
 
 //-----------------------------------------------------------------------------

@@ -30,4 +30,23 @@ namespace jobsystem { class IWorkerBackend; }
 VSTDLIB_INTERFACE jobsystem::IWorkerBackend *CreateThreadPoolWorkerBackend( int nThreads );
 VSTDLIB_INTERFACE void DestroyThreadPoolWorkerBackend( jobsystem::IWorkerBackend *pBackend );
 
+// The process compute pool (g_pThreadPool, which the engine starts as "CmpJob")
+// as a borrowed worker backend: the backend for application roots to hand to
+// providers that run compute work, so providers start no threads of their own
+// and stay inside the process worker budget (RFC 0003 "capacity policy").
+// It never starts or stops the pool, and WorkerCount() follows it: 0, so work
+// runs inline on the caller, until the engine starts the pool and after it
+// stops it. The pool's size must not change during a call.
+//
+// It binds no other pool, so a root cannot give a provider a pool its callers
+// run on (the material system's MatQueue pool, say). A call made on one of the
+// compute pool's own workers runs inline on that worker and is counted instead
+// of queuing runners behind it: the nested wait RFC 0003 forbids.
+VSTDLIB_INTERFACE jobsystem::IWorkerBackend *CreateComputePoolWorkerBackend();
+VSTDLIB_INTERFACE void DestroyComputePoolWorkerBackend( jobsystem::IWorkerBackend *pBackend );
+// Calls a compute-pool backend has run inline because the caller was one of the
+// pool's workers. For diagnostics and evidence.
+VSTDLIB_INTERFACE unsigned ComputePoolWorkerBackendNestedCalls(
+    const jobsystem::IWorkerBackend *pBackend );
+
 #endif // VSTDLIB_JOBGRAPH_POOL_BRIDGE_H

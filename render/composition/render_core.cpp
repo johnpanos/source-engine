@@ -6,7 +6,7 @@
 
 #include "render/composition/render_core.h"
 
-#include "jobsystem/parallel_executor.h"
+#include "jobsystem/pooled_executor.h"
 #include "render/device/null/provider.h"
 #include "render/legacy/core_backend.h"
 #include "render/pass/present/feature.h"
@@ -29,9 +29,9 @@ struct RenderCore
 	std::unique_ptr<render::frame::IRenderer> renderer;
 	std::string deviceName;
 	RenderCoreBinding binding;
-	// The pooled culling executor, created on first use (the world scene's
-	// culling check; the product does not cull on it yet).
-	std::unique_ptr<jobsystem::ParallelExecutor> cullJobs;
+	// Pooled culling over the root's compute workers (RenderCoreConfig::
+	// computeWorkers); inline on the caller when the root gave none.
+	std::unique_ptr<jobsystem::PooledExecutor> cullJobs;
 
 	~RenderCore()
 	{
@@ -51,15 +51,11 @@ struct RenderCore
 namespace
 {
 
-constexpr int kCullWorkers = 4;
-
 foundation::Expected<render::scene::DrawList, render::scene::CullStatus> BuildDrawListPooledOnCore(
     void *context, const render::scene::SceneSnapshot &snapshot,
     const render::scene::SceneView &view, render::scene::IVisibilityProvider *provider )
 {
 	RenderCore &core = *static_cast<RenderCore *>( context );
-	if ( !core.cullJobs )
-		core.cullJobs = std::make_unique<jobsystem::ParallelExecutor>( kCullWorkers );
 	return render::scene::BuildDrawListPooled( snapshot, view, *core.cullJobs, provider );
 }
 
@@ -108,6 +104,9 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 		    std::string( "render device '" ) + config->device + "' is not linked in this product" );
 
 	auto core = std::make_unique<RenderCore>();
+	// The core starts no threads: compute work runs on the workers the root
+	// lends it (RFC 0003 "capacity policy").
+	core->cullJobs = std::make_unique<jobsystem::PooledExecutor>( config->computeWorkers );
 	render::device::DeviceRequest request;
 	request.validation = config->validation;
 	auto device = descriptor->create( request );

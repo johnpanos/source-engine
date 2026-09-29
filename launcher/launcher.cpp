@@ -101,6 +101,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #endif
 #include "render/legacy/material_blocks.h"
 #include "render/legacy/stage_markers.h"
+#include "vstdlib/jobgraph_pool_bridge.h"
 #endif
 #include "tier0/memdbgon.h"
 
@@ -623,6 +624,8 @@ private:
 	// RFC 0016: the render core this root composed; destroyed after every
 	// app system and module (Destroy), since they borrow it.
 	RenderCore *m_pRenderCore = nullptr;
+	// The process compute pool lent to the core; destroyed after it.
+	jobsystem::IWorkerBackend *m_pRenderCoreWorkers = nullptr;
 #endif
 };
 
@@ -937,6 +940,10 @@ bool CSourceAppSystemGroup::Create()
 		config.legacyBackend = selected;
 		config.validation = CommandLine()->FindParm( "-render-validation" ) != 0;
 		config.corePasses = CommandLine()->ParmValue( "-render-core-passes", "" );
+		// The core's compute work borrows the engine's compute pool, which the
+		// engine starts later; until then it runs inline.
+		m_pRenderCoreWorkers = CreateComputePoolWorkerBackend();
+		config.computeWorkers = m_pRenderCoreWorkers;
 		RenderCoreResult result;
 		m_pRenderCore = RenderCore_Create( &config, &result );
 		if ( !m_pRenderCore )
@@ -1117,6 +1124,8 @@ void CSourceAppSystemGroup::Destroy()
 #endif
 	RenderCore_Destroy( m_pRenderCore );
 	m_pRenderCore = nullptr;
+	DestroyComputePoolWorkerBackend( m_pRenderCoreWorkers );
+	m_pRenderCoreWorkers = nullptr;
 #endif
 
 #ifdef WIN32

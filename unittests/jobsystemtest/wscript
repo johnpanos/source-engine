@@ -67,7 +67,7 @@ def build(bld):
 			target       = target,
 			name         = target,
 			features     = 'c cxx cxxprogram',
-			includes     = includes + (['../../public/tier0'] if target in cxx11 + [ 'jobsystempoolrunnertest' ] else []) +
+			includes     = includes + (['../../public/tier0'] if target in cxx11 + [ 'jobsystempoolrunnertest', 'jobsystembridgetest' ] else []) +
 				(['../..'] if target == 'jobsystemportalcarvetest' else []),
 			defines      = [],
 			linkflags    = linkflags,

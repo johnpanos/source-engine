@@ -31,6 +31,11 @@ class IRenderMaterialBlocks; // render/legacy/material_blocks.h (legacy-interop)
 #include "render/legacy_shader_provider.h"
 #include "render/scene/scene.h"
 
+namespace jobsystem
+{
+class IWorkerBackend;
+}
+
 struct RenderCoreConfig
 {
 	// "null", "vulkan" or "gl"; the root takes it from -render-device, with
@@ -47,6 +52,14 @@ struct RenderCoreConfig
 	// "empty" a label-only pass at each view's opaque stage, "seeded-clear"
 	// its negative control. The root takes it from -render-core-passes.
 	const char *corePasses = nullptr;
+	// The root's compute workers, borrowed: they must outlive the core, and the
+	// core starts no threads of its own. Null runs the core's compute work
+	// (pooled culling) inline on the caller, the serial reference. Products
+	// pass the process compute pool (CreateComputePoolWorkerBackend in
+	// vstdlib/jobgraph_pool_bridge.h), never a pool the core's callers run on,
+	// such as the material system's MatQueue pool: the core's pooled work would
+	// then wait behind its own caller (RFC 0003's forbidden nested wait).
+	jobsystem::IWorkerBackend *computeWorkers = nullptr;
 };
 
 enum RenderCoreStatus

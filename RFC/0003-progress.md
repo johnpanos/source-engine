@@ -610,6 +610,57 @@ RFC 0003 phases A and B:
 The `portal-native` tree was rebuilt for the capture. The other product
 trees rebuild the changed `jobsystem` and `vstdlib` on their next build.
 
+## R20-COMPUTE-POOL: the render core borrows the engine's compute pool (slice done 2026-09-28)
+
+**Scope.** Found in a review of RFC 0016 K3/K5 with the render-core owner.
+Product culling (`render/composition/render_core.cpp`) ran on a private
+`jobsystem::ParallelExecutor` with four threads of its own, a fixed number,
+outside the process worker budget. K5 step 4 would run it every frame. The
+core now borrows the root's pool, as R67 P2 made physics do.
+
+- **`CreateComputePoolWorkerBackend`** (`public/vstdlib/jobgraph_pool_bridge.h`):
+  `g_pThreadPool`, the pool the engine starts as `CmpJob`, as a borrowed
+  `IWorkerBackend`. It never starts or stops the pool, and its worker count
+  follows the pool: 0 (inline on the caller) until the engine starts it and
+  after it stops it. It binds no other pool, so a root cannot lend a provider
+  a pool its callers run on, such as the material system's `MatQueue` pool.
+  Destroying it leaves the pool running (`DestroyThreadPoolWorkerBackend`
+  now stops only pools it owns).
+- **Nested-call guard.** A call made on one of the compute pool's own workers
+  runs inline on that worker and is counted
+  (`ComputePoolWorkerBackendNestedCalls`) instead of queuing runners behind
+  itself, which is RFC 0003's forbidden nested wait. `IsThreadPoolWorkerThread`
+  (`public/vstdlib/jobthread.h`, a new export beside
+  `GetThreadPoolSchedulingStats`; no vtable change) tells the backend. Private
+  pool backends and the stack-bound bridges used by the cohorts keep their
+  behavior.
+- **Render core.** `RenderCoreConfig::computeWorkers` takes the root's
+  backend, borrowed. The core's pooled culling is a `jobsystem::PooledExecutor`
+  over it, created at composition. Null runs inline on the caller, the serial
+  reference; Hammer passes none. The launcher lends the compute pool and
+  destroys the backend after the core.
+- **Composition check.** The render-core owner asked for a composition-time
+  check that refuses the `MatQueue` pool. That pool doesn't exist when the
+  launcher composes the core: the material system creates it later, on first
+  use. So the guarantee is structural instead. The only factory a root has
+  binds the compute pool alone, and a nested call on that pool is caught at
+  run time.
+
+**Evidence (2026-09-28).**
+
+| Check | Result |
+| --- | --- |
+| `corpus.jobs.pool-bridge` (`jobsystembridgetest`, now checks-v1 and in the manifest) | 168 checks, pass; 5 of 5 direct runs and 3 of 3 runner repeats. New cases: follows the pool from not started through started (3 workers) to stopped; pooled graphs equal `DeterministicExecutor`; destroying the backend leaves the pool running; a `ParallelFor` and a pooled graph from a compute worker run inline on it and are counted; the same from another pool's worker (the `MatQueue` pool's place) stay pooled and uncounted |
+| Seeded defect: guard disabled | detected: the nested case's bodies spread across threads and nothing is counted (2 failures) |
+| `jobsystem.pooled` | 180 checks, pass |
+| Product: `tools/render/culling_capture.py suite --scenario portal2_sp_a1_wakeup` on the `build-p2` tree installed to a private destdir | 39 checks, 0 failures, including the pooled draw list equal to the serial one item for item on every shot; the boot's compute pool has 3 threads |
+| `archlint check --all` | 2 new ARCH105 occurrences, both in `game/shared/fstop/blob_networkbypass.*`, not this slice |
+| stylelint on this slice's files | clean |
+
+**Not claimed:** K5 itself; a Portal 1 capture (the P2 scenario covers the
+product path); TSan of the product with core culling on, which the K5 step-4
+evidence adds.
+
 ## Module layout
 
 ```
