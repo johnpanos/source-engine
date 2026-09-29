@@ -1102,7 +1102,10 @@ GTK profiles. Each now has a check.
   frame as `<map>-<view>.png`. The check is that the camera capture equals
   the frame shown when F12 was pressed, pixel for pixel.
 - **Sharing.** `hammer.adapters.render.service.vulkan` SV1 puts two
-  documents, each with its own service and render thread, on one device.
+  documents, each with its own service, on one device and its one render
+  sequence (2758f5ae: the device port allows concurrent encoder recording
+  only, so a second render thread raced; ViewportService's header states
+  the rule).
   Their views, submitted interleaved, equal what a lone renderer draws of
   each view, and the two documents differ. In the live editor, four views
   share one service and device.
@@ -1122,6 +1125,35 @@ GTK profiles. Each now has a check.
   - Resize: a dragged view divider brings the view back at its new size,
     textured. SV3 checks that a view resized and back equals its first
     frame.
+
+
+**R17 closure evidence (2026-09-28, at 9b2a5b3e plus the launch-sandbox
+migration of `hammer_ui_test.py`).** Every R17 criterion has a check, and
+R17 is `done`.
+
+| Check | Result |
+| --- | --- |
+| `corpus.hammer.ui` (X11 client) | 47 checks: room, controls, viewport, properties and visgroups cases |
+| `corpus.hammer.ui.wayland` (Wayland client) | 37 checks |
+| `corpus.hammer.ui.scaled-x11` (GDK_SCALE=2) | 9 checks |
+| `corpus.hammer.ui.scaled-wayland` (monitor scale 1.33) | 9 checks |
+| `hammer.adapters.render.{geometry,viewport.null,viewport,service,service.vulkan,models,viewport.models}` | pass on g++ and clang++ |
+| `corpus.hammer.viewport-budget` | pass |
+| `hammer_ktx2_preview.py` (RFC 0008) | pass |
+
+The UI suite launches the compositor and the editor inside
+`launch_sandbox.Sandbox`, whose throwaway HOME and XDG directories keep the
+user's configuration untouched; its evidence goes in each case's driver
+record.
+
+The quality fixes (f6ed36d8), props and instances (2899db8a), the
+properties dialog (3f609db8) and the visgroups panel (9b2a5b3e) landed on
+the same viewports during the closure. The next row is R25, the GTK
+editor workflow.
+
+Not covered: a hosted CI lane, a run on a physical desktop session (the
+checks run in a private headless compositor), and animated model poses
+(props draw in their bind pose).
 
 ### R08-UI-PROPS: the Object Properties window (slice done 2026-09-28)
 

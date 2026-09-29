@@ -91,6 +91,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from conformance_result import Checks  # noqa: E402
+import launch_sandbox  # noqa: E402
 
 ROOT = HERE.parents[1]
 SCREEN = (1280, 800)
@@ -1331,13 +1332,16 @@ def run_case(case, args, out):
     started = time.monotonic()
     display = "hammer-ui-%d-%s" % (os.getpid(), case)
     screen = SCREEN if args.scale < 1.5 else (SCREEN[0] * 2, SCREEN[1] * 2)
-    # The session's settings live in a private keyfile, never the user's: it
+    # The compositor, the driver and the editor run with a throwaway HOME and
+    # XDG directories (RFC 0005, launch sandbox). The session's settings live
+    # in a keyfile under the sandbox's config directory, never the user's: it
     # enables fractional monitor scales for the Wayland scale runs.
-    config = case_dir / "config"
-    keyfile = config / "glib-2.0" / "settings" / "keyfile"
+    sandbox = launch_sandbox.Sandbox(case_dir / "sandbox")
+    env = sandbox.environment(os.environ)
+    keyfile = Path(env["XDG_CONFIG_HOME"]) / "glib-2.0" / "settings" / "keyfile"
     keyfile.parent.mkdir(parents=True, exist_ok=True)
     keyfile.write_text("[org/gnome/mutter]\nexperimental-features=['scale-monitor-framebuffer']\n")
-    env = dict(os.environ, GSETTINGS_BACKEND="keyfile", XDG_CONFIG_HOME=str(config))
+    env["GSETTINGS_BACKEND"] = "keyfile"
     session = subprocess.run(
         ["dbus-run-session", "--", "mutter", "--headless", "--virtual-monitor",
          "%dx%d" % screen, "--wayland-display", display, "--",
@@ -1348,6 +1352,7 @@ def run_case(case, args, out):
     (case_dir / "session.log").write_text(session.stdout + session.stderr)
     driver = json.loads((case_dir / "driver.json").read_text()) if (case_dir / "driver.json").is_file() \
         else {"status": "no driver record (session exit %d)" % session.returncode}
+    driver["sandbox"] = sandbox.finish()
     stem = vmf_name[:-4]
     if case == "viewport":
         verdict = judge_viewport(case_dir, driver.get("facts", {}), args)
