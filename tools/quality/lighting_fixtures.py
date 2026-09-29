@@ -73,6 +73,11 @@ FILM = {"width": 512, "height": 384}
 HORIZONTAL_FOV = 90.0
 PREVIEW_SAMPLES = 16
 FINAL_SAMPLES = 2048
+# User goal (2026-09-29): render_lab is judged against denoised Cycles. A
+# denoised reference (OpenImageDenoise, albedo and normal guides) at this
+# many samples or more has status "denoised" and certifies like "final".
+DENOISED_SAMPLES = 256
+REFERENCE_STATUSES = ("preview", "denoised", "final")
 SEED = 20260929
 # Point and spot lights are spheres and disks of vrad's normalization radius
 # (legacy_bsp_scene.py LIGHT_RADIUS_UNITS), so Cycles, the bake and the
@@ -1175,6 +1180,16 @@ def load_manifest(root=None):
     return manifest
 
 
+def reference_status(samples, denoised):
+    """preview, denoised (OpenImageDenoise at DENOISED_SAMPLES or more) or final
+    (unbiased at FINAL_SAMPLES or more)."""
+    if samples >= FINAL_SAMPLES and not denoised:
+        return "final"
+    if denoised and samples >= DENOISED_SAMPLES:
+        return "denoised"
+    return "preview"
+
+
 def load_fixture(name, root=None):
     root = Path(root or FIXTURES)
     path = root / name / "fixture.json"
@@ -1297,7 +1312,8 @@ def cmd_render(args):
             print("[%s/%s] rendering at %d samples..." % (name, state, args.samples),
                   flush=True)
             results[state] = render_state(tools, fixture, state, args.work / name,
-                                          args.samples, args.seed, args.device, map_scene, np)
+                                          args.samples, args.seed, args.device, map_scene, np,
+                                          denoise=args.denoise)
         record = write_references(fixture, results, args.samples, args.seed, np, gi_reference)
         print("[%s] %s (%s)" % (name, record["status"], "; ".join(
             "%s: %s" % (c["check"], "ok" if c["ok"] else "FAIL") for c in record["analytic"])
@@ -1306,7 +1322,8 @@ def cmd_render(args):
     return status
 
 
-def render_state(tools, fixture, state, work, samples, seed, device, map_scene, np):
+def render_state(tools, fixture, state, work, samples, seed, device, map_scene, np,
+                 denoise=False):
     directory = work / state
     if directory.exists():
         shutil.rmtree(directory)
@@ -1337,7 +1354,8 @@ def render_state(tools, fixture, state, work, samples, seed, device, map_scene, 
     try:
         tools.blender("lighting_reference_blender.py", arguments + [
             "--cameras", cameras, "--out-dir", directory / "render", "--samples", str(samples),
-            "--seed", str(seed), "--device", device, "--light-paths", "gi-reference"], log)
+            "--seed", str(seed), "--device", device, "--light-paths", "gi-reference"] + (
+            ["--denoise"] if denoise else []), log)
     finally:
         os.environ.pop("LIGHTING_EXTRAS", None)
     receipt = json.loads((directory / "render" / "render.json").read_text())
@@ -1421,12 +1439,14 @@ def write_references(fixture, results, samples, seed, np, gi_reference):
                                         lighting["projectors"][0])
                 check["view"] = stem
                 analytic.append(check)
-    status = "final" if samples >= FINAL_SAMPLES else "preview"
+    denoised = all(bool(r.get("denoising")) for r in renders.values()) if renders else False
+    status = reference_status(samples, denoised)
     if not all(c["ok"] for c in analytic) or not all(v["finite"] for v in views.values()):
         status = "fail"
     record = {"schema": REFERENCES_SCHEMA, "fixture": fixture["name"],
               "fixture_reference_digest": reference_digest(fixture), "samples": samples,
-              "seed": seed, "status": status, "renders": renders, "views": views,
+              "seed": seed, "denoised": denoised, "status": status, "renders": renders,
+              "views": views,
               "analytic": analytic,
               "light_units": "the pipeline's lightmap unit (Cycles E / pi for a white "
                              "Lambertian); total = Combined, linear scene radiance"}
@@ -1712,13 +1732,13 @@ def check_references(fixture, root):
     problems = []
     if record.get("schema") != REFERENCES_SCHEMA:
         return ["%s: references schema" % name]
-    if record.get("status") not in ("preview", "final"):
+    if record.get("status") not in REFERENCE_STATUSES:
         problems.append("%s: references status %s" % (name, record.get("status")))
     if record.get("fixture_reference_digest") != reference_digest(fixture):
         problems.append("%s: the fixture's stage, states, cameras, projectors or media changed "
                         "since its references were rendered" % name)
-    expected_status = "final" if record.get("samples", 0) >= FINAL_SAMPLES else "preview"
-    if record.get("status") in ("preview", "final") and record["status"] != expected_status:
+    expected_status = reference_status(record.get("samples", 0), record.get("denoised", False))
+    if record.get("status") in REFERENCE_STATUSES and record["status"] != expected_status:
         problems.append("%s: status %s does not match %s samples" % (
             name, record["status"], record.get("samples")))
     for state in fixture["states"]:
@@ -1869,7 +1889,7 @@ def compare(fixture_name, state, camera, image_path, root=None, now=None):
             "reference_sha256": view["files"]["total"]["sha256"],
             "reference_status": record["status"], "image": str(image_path),
             "image_sha256": sha256(image_path), **stats,
-            "pass": passed, "certifies": passed and record["status"] == "final"}
+            "pass": passed, "certifies": passed and record["status"] in ("denoised", "final")}
 
 
 def cmd_compare(args):
@@ -1882,7 +1902,7 @@ def cmd_compare(args):
                                                       stamp)), result)
     if not result["pass"]:
         return 1
-    if result["reference_status"] != "final":
+    if result["reference_status"] not in ("denoised", "final"):
         print("note: the reference is a preview; this comparison certifies nothing")
     return 0
 
@@ -1903,6 +1923,9 @@ def main():
     r.add_argument("--device", choices=("cpu", "gpu", "auto"), default="cpu")
     r.add_argument("--work", type=Path, default=WORK / "references")
     r.add_argument("--toolchain", type=Path)
+    r.add_argument("--denoise", action="store_true",
+                   help="OpenImageDenoise the references (status denoised at %d+ samples)"
+                        % DENOISED_SAMPLES)
     b = commands.add_parser("build")
     b.add_argument("--fixture", action="append")
     b.add_argument("--work", type=Path, default=WORK / "maps")

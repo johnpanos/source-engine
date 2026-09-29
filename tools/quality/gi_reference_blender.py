@@ -8,8 +8,11 @@ pipeline exports, with the pipeline's material policy (`pbrt_blender`).
 
 Per camera it writes one uncompressed multilayer EXR holding Combined,
 DiffDir, DiffInd, DiffCol, GlossDir, GlossInd, Emit, Env, IndexOB and Depth.
-Denoising is off: the references are unbiased estimates, and the recorded
-seed and sample count reproduce them on the recorded device.
+Denoising is off by default: the references are unbiased estimates, and the
+recorded seed and sample count reproduce them on the recorded device.
+`--denoise` runs Cycles' OpenImageDenoise on Combined with albedo and normal
+guides (the RFC 0016 K11 lighting references, user goal 2026-09-29); the
+receipt records it.
 
 Dynamic models (map_scene props) are receivers only: seen by the camera and
 lit by the world, but invisible to diffuse, glossy, transmission and shadow
@@ -87,6 +90,8 @@ def main():
     parser.add_argument("--device", choices=cycles_device.DEVICES,
                         default=cycles_device.CHECK_DEVICE)
     parser.add_argument("--light-paths", default="gi-reference")
+    parser.add_argument("--denoise", action="store_true",
+                        help="OpenImageDenoise on Combined, with albedo and normal guides")
     args = parser.parse_args(arguments)
     if not os.environ.get("OCIO") or not Path(os.environ["OCIO"]).is_file():
         parser.error("a readable OCIO configuration is required for color fidelity")
@@ -117,7 +122,13 @@ def main():
     render = bpy.context.scene
     device = pbrt_blender.configure_cycles(args.samples, args.device)
     light_paths = pbrt_blender.configure_light_paths(args.light_paths)
-    render.cycles.use_denoising = False
+    render.cycles.use_denoising = bool(args.denoise)
+    if args.denoise:
+        render.cycles.denoiser = "OPENIMAGEDENOISE"
+        render.cycles.denoising_input_passes = "RGB_ALBEDO_NORMAL"
+        render.cycles.denoising_prefilter = "ACCURATE"
+        for layer in render.view_layers:
+            layer.cycles.use_denoising = True
     render.cycles.seed = args.seed
     render.cycles.use_animated_seed = False
     render.cycles.use_adaptive_sampling = False
@@ -152,7 +163,9 @@ def main():
     receipt = {"schema": "gi-cycles-render/v1", "status": "pass",
                "blender": bpy.app.version_string,
                "cycles_device": device, "samples": args.samples, "seed": args.seed,
-               "denoising": False, "adaptive_sampling": False, "light_paths": light_paths,
+               "denoising": ({"denoiser": "OPENIMAGEDENOISE", "guides": "albedo+normal",
+                              "prefilter": "ACCURATE"} if args.denoise else False),
+               "adaptive_sampling": False, "light_paths": light_paths,
                "normal_maps": False,
                "film": film, "horizontal_fov_degrees": views["horizontal_fov_degrees"],
                "scene_sha256": scene["source_sha256"], "stage_sha256": sha256(args.stage),
