@@ -343,13 +343,24 @@ int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &out
 	{
 		placed += instance.status == hammer::ports::InstanceStatus::Placed ? 1 : 0;
 	}
+	std::uint32_t ignored = 0;
+	for ( const auto &[variable, materials] : scene.ignored )
+	{
+		ignored += materials;
+	}
 	std::printf( "%s: wrote %s (%dx%d), %u triangles, %u of %u materials textured, "
-	             "%u without a texture, %u draws, %u model entities (%u drawn as markers, "
+	             "%u without a texture (%u failed), %u approximated (%u ignored variables "
+	             "set, %zu distinct), %u draws, %u model entities (%u drawn as markers, "
 	             "%u model files), %zu of %zu instances placed\n",
 	    tag, outPpm.c_str(), width, height, scene.triangles, scene.textures,
-	    scene.textures + scene.missingTextures, scene.missingTextures,
+	    scene.textures + scene.missingTextures, scene.missingTextures, scene.failedMaterials,
+	    scene.approximatedMaterials, ignored, scene.ignored.size(),
 	    views.renderer->LastView().drawn, scene.modelEntities + scene.missingModels,
 	    scene.missingModels, scene.models, placed, editor.workspace.Snapshot().instances.size() );
+	for ( const auto &[material, why] : scene.failures )
+	{
+		std::fprintf( stderr, "%s: material %s: %s\n", tag, material.c_str(), why.c_str() );
+	}
 	views.renderer.reset(); // it borrows the textures and models
 	return 0;
 }

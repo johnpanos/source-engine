@@ -1547,6 +1547,113 @@ The GTK viewports draw `func_instance` contents and studio-model entities
     function split mid-body). The working tree holds the fix, uncommitted,
     from the session that made it; this change's hunks apply on either.
 
+### Viewports on ResolvePreview (2026-09-28)
+
+The viewports draw every material through the render core's editor preview,
+`render::material::ProgramResolver::ResolvePreview` (RFC 0016 K5,
+`render.material.v2` F-PREVIEW), instead of their own `UnlitFamily::Request`
+claim. Contract `render_adapter.viewport-geometry.v1` gains G14 and V11; V8
+and R1 are restated.
+
+- **One VMT reader.** `IMaterialTextures::Material( name )` returns a
+  `SourceMaterial`: the VMT as `render::material::ImportVmt` imports it
+  (patches through the source's own files, conditions, fallback blocks) and
+  the decoded base texture keyed by the importer's normalized name.
+  `ImportSourceMaterial` (hammer.adapters.render) does the import;
+  `CatalogTextures` gives it its asset source and decodes through the new
+  `MaterialCatalog::TextureImage` (KTX2 first, else VTF; one cache with
+  `BaseTextureImage`). `MaterialSurface` and
+  `MaterialCatalog::ResolveParameter`, which only fed the old flags, are
+  deleted, with their 5 formats checks (2 `TextureImage` checks added).
+- **The renderer.** Each material resolves with `ResolvePreview`. Every
+  texture the program samples is staged by the program's name with its mip
+  chain (shared between materials). The draw group gets a neutral lightmap
+  page, the 1x1 white, because lighting is one. The frame group gets the LDR
+  terms without shader encoding, since the target is sRGB. Drawing goes
+  through `render.pass.opaque` with `OpaqueSources::drawGroups` and `frames`,
+  opaque then blended back to front as before. Untextured faces, markers and
+  the flat preview use a neutral `UnlitGeneric` material with the white base
+  texture on the same path. Faces carry display colors (`FaceVertex`, now
+  Hammer's own type), converted to the program's 32-byte `PreviewVertex`; a
+  program with another stride is a named failure. `AddProgram`, `ClaimFor`,
+  the unlit family and the Hammer-side family registry are gone from the
+  renderer.
+- **Nothing silent.** `SceneStats::failures` names each material that did not
+  import or resolve (drawn untextured), and `ignored` counts each variable
+  the preview does not read, by material. `approximatedMaterials` counts the
+  materials that set one. `--textured` prints them. trust_fling: 162 of 165
+  materials textured (unchanged), 0 failed, and 107 approximated over 85
+  distinct ignored variables (706 settings).
+- **Frames** (`--textured` of `sp_a2_trust_fling.vmf` with Portal 2's
+  `pak01_dir.vpk` at 1024x768, framed and at five `--eye` positions inside the
+  map, before and after, each image looked at):
+  - The flat `--screenshot` and `--quad` frames are within 1 level.
+  - Textured frames differ, up to 25 levels. The cause is 7 tool materials:
+    `toolstrigger`, `toolsclip`, `toolsplayerclip`, `toolsinvisible`,
+    `toolsareaportal`, `toolshint` and `toolsskip`. Their VMTs set
+    `"srgb?$basetexture" "Tools/<name>-dx10"`, the texture authored for sRGB
+    sampling. The importer takes it for the default profile; the old catalog
+    read the top-level gamma texture and sampled it as sRGB. The trigger
+    volumes over the chamber floors are a little darker. This is a
+    correctness gain.
+  - A diagnostic build that decoded the old names for those 7 textures
+    shows the rest: within 4 levels, in dark instance-tinted faces (the
+    vertex color precision below). No other material draws differently.
+  - The KTX2 smoke (`hammer_ktx2_preview.py`) passes with the same 89,854 red
+    pixels.
+- **Vertex color precision (open, sent to the render-core session).** The
+  preview program (lightmapped.vert, lighting one) reads vertex colors
+  unconverted, where the unlit family decoded gamma 2.2. The renderer
+  therefore stores each display byte's linear value in the UNORM8 color.
+  That holds within one level from display 49 up (exact from 124 up) but
+  loses up to 6 levels below. Requested of source-engine-43: decode the
+  vertex color as gamma 2.2 when lighting is one. That also fixes strict
+  `Resolve` of `unlit` materials with `$vertexcolor`, which now draw darker
+  tints than the UnlitGeneric port. The table becomes the old gamma one when
+  it lands.
+- **Behavior change by the preview's rules.** `$translucent` with `$additive`
+  now draws additive (it drew translucent), and `$vertexalpha` blends.
+- **Evidence.** Suites on g++ and clang++:
+  - `hammer.adapters.render.geometry`: 36 to 41 checks (G14).
+  - `.viewport.null`: 41 to 46 (V11, the unmapped-variable check).
+  - `.models` 29, `.viewport.models` 20, `.viewport` 33 (R1, R4, R6, R7, R8
+    unchanged), `.service` 11 and `.service.vulkan` 11.
+  - `.service.tsan` 11 (clang, `CONFORMANCE_TSAN=1`).
+  - `hammer.formats.material_catalog` 15, `.sensitivity` 8,
+    `hammer.formats.material_info` 26 and `render.pbr-material-schema` 31.
+  - UI rows with the new binary: `corpus.hammer.ui` 46 checks,
+    `.wayland` 36, `.scaled-x11` 8 and `.scaled-wayland` 8, all passing.
+  - archlint `check --all` shows no finding in these paths; `archlint hammer
+    --verify` passes; stylelint is clean on the edited regions.
+- **Budget** (`hammer_viewport_budget.py --gtk`, scratch builds of the base
+  and the change, p95; the host ran other sessions' GPU work, 64% GPU busy
+  and load average 6 to 10):
+
+  | Row | Before | After |
+  | --- | --- | --- |
+  | trust_fling, flat (first run) | 3.27 ms | 4.49 ms |
+  | trust_fling, flat (2 interleaved pairs) | 3.71, 4.78 ms | 4.50, 5.22 ms |
+  | trust_fling, dmabuf (first run) | 3.49 ms | 4.37 ms |
+  | small room (first run) | 1.20 ms | 2.27 ms |
+  | trust_fling, textured (first runs) | 8.34, 8.73 ms | 11.79 ms |
+  | trust_fling, textured (7 interleaved pairs, median) | 13.73 ms | 14.37 ms |
+
+  Every flat row is within its limits in every run. The textured row
+  reached its 16 ms limit on both builds while the GPU was shared (before
+  16.00 and 15.43, after 16.05 and 20.96 in the worst pairs), so it needs a
+  quiet host to judge. The interleaved medians differ by about 0.6 ms
+  (5%), within the pairs' spread. The likely real cost is the 32-byte
+  vertex (was 24), a third more upload per restaged face.
+
+- **Decisions** (agent, under the user's standing instruction):
+  - The VMT import runs in hammer.adapters.render (`ImportSourceMaterial`),
+    so `hammer.adapters.gtk` needs no `render.material` edge. The source
+    passes the VMT path from `formats::CanonicalizeMaterialName`, which stays
+    the one owner of the editor's name rule.
+  - The white texture is also every program's neutral lightmap page.
+  - Hammer keeps its own `PreviewVertex`, checked against the program's
+    stride, the pattern `render.pass.world` uses with `WorldVertex`.
+
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 
 A research agent assembled this from the Valve Developer Community Source 2

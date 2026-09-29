@@ -107,19 +107,17 @@ public:
 	// names no base texture. Cached.
 	std::string ResolveBaseTexture( const std::string &name );
 
-	// The value of a material parameter ("$translucent", any case) as the
-	// material resolves it: its own (a patch's replace, then insert, then
-	// top-level value), else, for a `patch` that does not set it, the included
-	// material's, following one level as ResolveBaseTexture does. Nothing
-	// when the material is absent or unparseable or no level sets the
-	// parameter. Reads the VMT on every call (not cached).
-	std::optional<std::string> ResolveParameter(
-	    const std::string &name, const std::string &parameter ) const;
-
 	// Decodes a material's base texture to RGBA, cached. Returns nullptr when the
 	// material, its base texture, or the decode is missing/invalid; the result
 	// (hit or miss) is cached and the pointer is stable for the catalog's lifetime.
 	const VtfImage *BaseTextureImage( const std::string &name );
+
+	// Decodes a texture by name (any spelling CanonicalizeMaterialName takes: a
+	// VMT's texture value or the VMT importer's "materials/..." reference) to
+	// RGBA, packaged KTX2 first, else VTF. Cached per canonical texture (hit or
+	// miss), shared with BaseTextureImage; the pointer is stable for the
+	// catalog's lifetime.
+	const VtfImage *TextureImage( const std::string &texture );
 
 	// Validates the PBR VMT's required fields and follows its fallback material
 	// through bounded patch includes. A valid result means the supplied provider
@@ -134,7 +132,7 @@ private:
 	std::map<std::string, std::string> m_baseTextures; // canonical material -> canonical image name
 	std::set<std::string> m_baseTextureMisses;
 	std::map<std::string, std::unique_ptr<VtfImage>>
-	    m_images; // canonical material -> image (null = miss)
+	    m_images; // canonical texture -> image (null = miss)
 };
 
 } // namespace hammer::formats

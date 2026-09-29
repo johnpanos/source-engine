@@ -4,7 +4,8 @@
 //			material-name canonicalization, catalog enumeration, and the full
 //			VMT -> $basetexture -> VTF -> RGBA resolution (including one-level patch
 //			include) through an in-memory asset source, built on the shared VMT
-//			parser (hammer::formats::ParseMaterial). Build/run via the conformance
+//			parser (hammer::formats::ParseMaterial), and TextureImage by the VMT
+//			importer's texture name. Build/run via the conformance
 //			manifest (linux-headless-core).
 //
 //=============================================================================//
@@ -98,6 +99,14 @@ int main()
 	// Caching returns the same stable pointer.
 	CHECK( catalog.BaseTextureImage( "concrete/floor001a" ) == img, "image cache stable pointer" );
 
+	// A texture decodes by the VMT importer's name too, sharing the cache; a
+	// missing or unsafe texture is nothing.
+	CHECK( catalog.TextureImage( "materials/concrete/floor001a" ) == img,
+	    "texture by importer name shares the cached image" );
+	CHECK( catalog.TextureImage( "materials/concrete/missing" ) == nullptr &&
+	           catalog.TextureImage( "materials/../escape" ) == nullptr,
+	    "missing or unsafe texture decodes to nothing" );
+
 	// Patch resolves its base texture through the include.
 	CHECK( catalog.ResolveBaseTexture( "custom/wall" ) == "concrete/floor001a",
 	    "patch resolves base texture via include" );
@@ -106,27 +115,6 @@ int main()
 	// Patch with a replace-block override resolves via the parser's ResolvedParam.
 	CHECK( catalog.ResolveBaseTexture( "custom/override" ) == "concrete/floor001a",
 	    "patch replace override resolves via ResolvedParam" );
-
-	// Parameters resolve as the base texture does: the material's own, a
-	// patch's replace/insert first, else the included material's (one level).
-	src.assets["materials/glass/pane.vmt"] =
-	    "\"UnlitGeneric\" { \"$basetexture\" \"concrete/floor001a\" \"$Translucent\" \"1\" "
-	    "\"$alpha\" \".5\" }";
-	src.assets["materials/glass/tinted.vmt"] =
-	    "\"patch\" { \"include\" \"materials/glass/pane.vmt\" \"replace\" { \"$alpha\" \".25\" } "
-	    "\"insert\" { \"$alphatest\" \"1\" } }";
-	CHECK( catalog.ResolveParameter( "Glass\\Pane", "$translucent" ) == std::string( "1" ),
-	    "a parameter resolves case-insensitively" );
-	CHECK( catalog.ResolveParameter( "glass/tinted", "$alpha" ) == std::string( ".25" ),
-	    "a patch's replace wins over the include" );
-	CHECK( catalog.ResolveParameter( "glass/tinted", "$alphatest" ) == std::string( "1" ),
-	    "a patch's insert resolves" );
-	CHECK( catalog.ResolveParameter( "glass/tinted", "$translucent" ) == std::string( "1" ),
-	    "a patch without the parameter takes the included material's" );
-	CHECK( !catalog.ResolveParameter( "glass/pane", "$additive" ) &&
-	           !catalog.ResolveParameter( "glass/missing", "$translucent" ) &&
-	           !catalog.ResolveParameter( "../escape", "$translucent" ),
-	    "an absent parameter, material or unsafe name resolves to nothing" );
 
 	if ( g_failures != 0 )
 	{

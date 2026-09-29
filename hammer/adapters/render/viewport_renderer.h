@@ -7,22 +7,30 @@
 //			binding->device), offscreen, into sRGB RGBA8 pixels the host shows
 //			(a GdkMemoryTexture now, a dmabuf later).
 //
-//			Solids draw through the material families (RFC 0016 K4): each
-//			face batch (scene_geometry.h) of a chunk is a mesh and one
-//			instance of the renderer's own render.scene, drawn by
-//			render.pass.opaque with the unlit family. With a material source
-//			(IMaterialTextures) the camera view is textured: a material's
-//			base texture is fetched once on the render sequence, its mip
-//			chain built (BuildMipChain, linear light), staged in a
-//			TextureCache and drawn through its own program with trilinear
-//			filtering; a face whose texture is missing draws untextured.
-//			The material's surface parameters are claimed through the unlit
-//			family (ClaimUnlit): $translucent and $additive blend without
-//			writing depth, $alphatest cuts texels under its reference (the
-//			family's rule: 0.7 when the VMT sets none), and neither writes
-//			destination alpha. Without a source every face is untextured and
-//			opaque (the flat preview). Edges, the grid and tool overlays draw
-//			through render.pass.lines.
+//			Solids draw through the render core's editor preview (RFC 0016
+//			K5, render::material::ProgramResolver::ResolvePreview): each face
+//			batch (scene_geometry.h) of a chunk is a mesh and one instance of
+//			the renderer's own render.scene, drawn by render.pass.opaque. With
+//			a material source (IMaterialTextures) the camera view is
+//			textured: a material is fetched once on the render sequence as
+//			its imported MaterialDesc and decoded textures, resolved with
+//			ResolvePreview (the base texture times $color and $alpha, the
+//			material's blend and alpha test, the vertex color on, lighting
+//			one), and every texture the program samples is staged by the
+//			program's name with its mip chain (BuildMipChain, linear light) and
+//			sampled trilinearly. The program's draw group gets a neutral
+//			lightmap page (white; lighting one reads none) and its frame
+//			group the LDR terms for this sRGB target. A material the preview
+//			approximates counts each variable it ignores
+//			(SceneStats::ignored); one that does not import or resolve is a
+//			named failure (SceneStats::failures); both, and a material whose
+//			texture is missing, draw untextured. Untextured faces, markers and
+//			the flat preview (no source) draw through the same path: a
+//			neutral material whose base texture is white. Selection tint and
+//			shading stay in the vertex colors. Blended materials ($translucent,
+//			$vertexalpha, $additive) write no depth and draw after the opaque
+//			ones. Edges, the grid and tool overlays draw through
+//			render.pass.lines.
 //
 //			Studio models (R17 follow-up): with a model source
 //			(IModelSource) a point entity whose model is a studio model is
@@ -78,8 +86,7 @@
 #include "model_source.h"
 #include "render/device/device.h"
 #include "render/material/material_programs.h"
-#include "render/material/registry.h"
-#include "render/material/unlit_family.h"
+#include "render/material/program_resolver.h"
 #include "render/pass/lines/lines.h"
 #include "render/pass/opaque/opaque.h"
 #include "render/resources/mesh_cache.h"
@@ -93,6 +100,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace hammer::render_adapter
@@ -146,6 +154,18 @@ enum class ViewportStatus : std::uint8_t
 	kUnsupported    // an external frame on a device that does not export images
 };
 
+// The vertex the preview program draws (ResolvePreview: the lightmapped
+// program with lighting one): position, base uv, lightmap uv (unused) and
+// color. The renderer refuses a program whose stride differs.
+struct PreviewVertex
+{
+	float position[3] = {};
+	float uv[2] = {};
+	float lightmapUv[2] = {};
+	std::uint8_t color[4] = { 255, 255, 255, 255 };
+};
+static_assert( sizeof( PreviewVertex ) == 32 );
+
 struct SceneStats
 {
 	std::uint64_t key = 0;
@@ -157,15 +177,21 @@ struct SceneStats
 	std::uint32_t texturedBatches = 0;
 	std::uint32_t blendedBatches = 0;  // drawn after the opaque ones ($translucent, $additive)
 	std::uint32_t textures = 0;        // materials whose base texture is resident
-	std::uint32_t missingTextures = 0; // materials the source had no texture for
-	std::uint32_t chunks = 0;          // resident chunks
-	std::uint32_t stagedChunks = 0;    // chunks the last restage rebuilt
-	std::uint32_t stagedMeshes = 0;    // face and edge meshes the last restage uploaded
-	std::uint32_t models = 0;          // model files read (parsed or not)
-	std::uint32_t modelVariants = 0;   // staged (model, skin, tint) mesh sets
-	std::uint32_t modelEntities = 0;   // entities drawn as models
-	std::uint32_t missingModels = 0;   // model entities drawn as markers instead
-	std::uint32_t instanceChunks = 0;  // resident func_instance content chunks
+	std::uint32_t missingTextures = 0; // materials drawn untextured (a failure, or no texture)
+	std::uint32_t failedMaterials = 0; // of those, the ones in 'failures'
+	std::uint32_t approximatedMaterials = 0; // drawn with variables the preview ignores
+	std::uint32_t chunks = 0;                // resident chunks
+	std::uint32_t stagedChunks = 0;          // chunks the last restage rebuilt
+	std::uint32_t stagedMeshes = 0;          // face and edge meshes the last restage uploaded
+	std::uint32_t models = 0;                // model files read (parsed or not)
+	std::uint32_t modelVariants = 0;         // staged (model, skin, tint) mesh sets
+	std::uint32_t modelEntities = 0;         // entities drawn as models
+	std::uint32_t missingModels = 0;         // model entities drawn as markers instead
+	std::uint32_t instanceChunks = 0;        // resident func_instance content chunks
+	// Materials that did not import or resolve, with the reason (drawn untextured).
+	std::map<std::string, std::string> failures;
+	// Each variable the preview ignored, with the number of materials that set it.
+	std::map<std::string, std::uint32_t> ignored;
 };
 
 // What the last Render drew (its opaque and blended passes).
@@ -240,6 +266,16 @@ private:
 		std::uint64_t id = 0;
 		std::optional<TextureSize> size; // nothing: no texture, drawn untextured
 		bool blended = false;            // drawn in the blended pass
+		std::uint64_t drawGroup = 0;     // its program's draw group (DrawGroups id)
+	};
+
+	// What resolving a material's preview gave.
+	struct Preview
+	{
+		std::optional<Material> material; // nothing: drawn untextured
+		bool missingTexture = false;      // a texture the program samples is missing
+		std::string failure;              // why it did not resolve (not a missing texture)
+		std::vector<std::string> ignored;
 	};
 
 	// A chunk's objects as staged and its resident meshes.
@@ -266,6 +302,7 @@ private:
 	{
 		std::uint64_t material = 0; // program id
 		std::uint64_t mesh = 0;
+		std::uint64_t drawGroup = 0;
 		bool blended = false;
 		::render::math::Aabb bounds; // model space
 	};
@@ -301,9 +338,16 @@ private:
 	ModelEntry *ModelFor( const viewport::EntityDraw &entity );
 	foundation::Expected<const std::vector<ModelMesh> *, ViewportStatus> VariantFor(
 	    ModelEntry &entry, std::int32_t skin, const scene::Rgb &tint );
-	foundation::Expected<std::uint64_t, ViewportStatus> AddProgram(
-	    std::uint64_t id, const std::string &texture, const MaterialSurface &surface );
-	::render::material::UnlitClaim ClaimFor( const MaterialSurface &surface ) const;
+	// Resolves a material's preview, stages the textures its program samples
+	// and its draw and frame groups, and sets the program under 'id'.
+	foundation::Expected<Preview, ViewportStatus> AddPreview(
+	    std::uint64_t id, const SourceMaterial &source );
+	// The neutral draw group (a white lightmap page) and the frame group of a
+	// resolved program's layouts, made on first use.
+	foundation::Expected<std::uint64_t, ViewportStatus> GroupsFor(
+	    const ::render::material::ResolvedProgram &program, std::string &failure );
+	// The batch's vertices as the program reads them.
+	static std::vector<PreviewVertex> ToPreview( const std::vector<FaceVertex> &vertices );
 	// Rebuilds one chunk from 'staged' (its objects now; empty: the chunk is
 	// gone) into 'changes'.
 	foundation::Expected<void, ViewportStatus> StageChunk(
@@ -316,15 +360,19 @@ private:
 	::render::resources::MeshCache m_MeshCache;
 	::render::resources::TextureCache m_Textures;
 	::render::material::MaterialPrograms m_Programs;
-	std::unique_ptr<::render::material::UnlitFamily> m_Unlit;
+	::render::material::DrawGroups m_Groups; // neutral lightmap pages and frame groups
+	std::unique_ptr<::render::material::ProgramResolver> m_Resolver;
 	std::unique_ptr<::render::pass::lines::LinesRenderer> m_Lines;
 	std::unique_ptr<::render::scene::IRenderScene> m_Scene;
-	::render::material::FamilyRegistry m_Families;
-	const ::render::material::FamilySchema *m_UnlitSchema = nullptr;
 	Meshes m_FaceMeshes; // by mesh id (one per material per chunk)
 	std::map<std::string, Material> m_Materials;
+	Material m_Untextured;                              // the neutral material
+	std::set<std::string> m_StagedTextures;             // by the programs' names
+	std::map<std::uint64_t, std::uint64_t> m_DrawPages; // draw layout -> group id
+	std::map<std::uint64_t, std::uint64_t> m_Frames;    // frame layout -> group id
+	std::uint64_t m_NextGroup = 1;
 	std::map<std::string, ModelEntry> m_Models; // by canonical model path
-	std::uint64_t m_NextMaterial = 2; // 1 is the untextured batch
+	std::uint64_t m_NextMaterial = 2;           // 1 is the untextured batch
 	std::uint64_t m_NextMesh = 1;
 	std::map<std::uint64_t, Chunk> m_Chunks;
 	std::optional<scene::Box> m_Bounds;

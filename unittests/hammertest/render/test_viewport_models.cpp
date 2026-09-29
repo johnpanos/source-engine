@@ -119,14 +119,16 @@ public:
 class FakeTextures final : public IMaterialTextures
 {
 public:
-	std::optional<MaterialImage> BaseTexture( const std::string &material ) override
+	foundation::Expected<hammer::render_adapter::SourceMaterial, std::string> Material(
+	    const std::string &material ) override
 	{
 		if ( material != "m/crate" && material != "m/rust" )
-			return std::nullopt;
+			return foundation::MakeUnexpected( material + " is missing" );
 		MaterialImage image;
 		image.width = image.height = 4;
 		image.rgba.assign( 4 * 4 * 4, 200 );
-		return image;
+		return hammer::render_adapter::SourceMaterialFromVariables( "VertexLitGeneric",
+		    { { "$basetexture", material } }, { { "materials/" + material, std::move( image ) } } );
 	}
 };
 

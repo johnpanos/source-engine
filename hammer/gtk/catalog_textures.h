@@ -1,16 +1,16 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: The textured preview's material source for the GTK shell (RFC
-//			0002 hammer.adapters.gtk; RFC 0016 K4): a
+//			0002 hammer.adapters.gtk; RFC 0016 K5 ResolvePreview): a
 //			hammer::render_adapter::IMaterialTextures over the game's VPKs.
-//			With the base texture it reads the material's surface parameters
-//			($translucent, $additive, $alphatest, $alphatestreference, $alpha)
-//			through the catalog's ResolveParameter, so patch materials resolve
-//			them as they resolve the texture.
-//			It mounts its own archives, search path and
-//			hammer::formats::MaterialCatalog (with the KTX2 preview decoder
-//			when the build has it), so the render sequence that owns it shares
-//			nothing with the window's material browser.
+//			A material is imported by render::material::ImportVmt
+//			(render_adapter::ImportSourceMaterial) from its own asset source,
+//			which resolves patch includes, and its base texture is decoded by
+//			hammer::formats::MaterialCatalog::TextureImage (KTX2 first, with
+//			the KTX2 preview decoder when the build has it, else VTF).
+//			It mounts its own archives, search path and catalog, so the
+//			render sequence that owns it shares nothing with the window's
+//			material browser.
 //
 //=============================================================================//
 
@@ -37,7 +37,7 @@ public:
 	// mounts; 'errors' names each path that failed.
 	static std::unique_ptr<CatalogTextures> Open( const std::string &vpkList, std::string &errors );
 
-	std::optional<render_adapter::MaterialImage> BaseTexture(
+	foundation::Expected<render_adapter::SourceMaterial, std::string> Material(
 	    const std::string &material ) override;
 	std::size_t ArchiveCount() const { return m_Archives.size(); }
 

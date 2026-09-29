@@ -7,8 +7,8 @@
 //			device:
 //
 //			  * BuildSceneGeometry: a viewport::RenderSnapshot as face batches
-//			    for the material families (render.material's unlit vertex:
-//			    position, uv, color) and an edge set in the LineVertex layout.
+//			    (FaceVertex: position, uv, display color; the renderer
+//			    writes them in the preview program's vertex) and an edge set in the LineVertex layout.
 //			    Faces: triangles with the editor's fixed two-light shading
 //			    baked into the vertex colors (fullbright preview, RFC 0016
 //			    decision "lighting"). A face whose material's base texture
@@ -66,7 +66,6 @@
 #include "hammer/viewport/camera.h"
 #include "hammer/viewport/extraction.h"
 #include "hammer/viewport/grid.h"
-#include "render/material/unlit_family.h"
 #include "render/pass/lines/lines.h"
 
 #include <cstdint>
@@ -81,7 +80,16 @@ namespace hammer::render_adapter
 
 using ::render::pass::lines::LineVertex;
 
-using ::render::material::UnlitVertex;
+// A face vertex as the editor presents it: position, the base texture's uv
+// and the display (sRGB) color, the shading and tint included. It names no
+// program's layout; ViewportRenderer converts it to the one its program
+// reads.
+struct FaceVertex
+{
+	float position[3] = {};
+	float uv[2] = {};
+	std::uint8_t color[4] = { 255, 255, 255, 255 };
+};
 
 struct TextureSize
 {
@@ -94,8 +102,8 @@ using TextureSizes = std::function<std::optional<TextureSize>( const std::string
 
 struct FaceBatch
 {
-	std::string material;              // as authored; "" for the untextured batch
-	std::vector<UnlitVertex> vertices; // triangle list
+	std::string material;             // as authored; "" for the untextured batch
+	std::vector<FaceVertex> vertices; // triangle list
 };
 
 struct SceneGeometry
@@ -128,7 +136,7 @@ struct ModelAsset
 struct ModelBatch
 {
 	std::string material; // as a VMF names it; "" for the untextured batch
-	std::vector<UnlitVertex> vertices;
+	std::vector<FaceVertex> vertices;
 	std::vector<std::uint32_t> indices; // triangle list
 };
 

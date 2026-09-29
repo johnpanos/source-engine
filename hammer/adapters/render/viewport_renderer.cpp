@@ -8,8 +8,6 @@
 
 #include "render/graph/executor.h"
 #include "render/graph/graph_builder.h"
-#include "render/material/parameter_block.h"
-#include "render/material/vmt_mapping.h"
 #include "render/scene/draw_list.h"
 
 #include <algorithm>
@@ -39,7 +37,10 @@ using ::render::pass::lines::Topology;
 constexpr device::Format kColorFormat = device::Format::kRGBA8Srgb;
 constexpr device::Format kDepthFormat = device::Format::kD32Float;
 constexpr std::uint64_t kUntextured = 1; // the untextured batch's material id
-constexpr const char *kWhite = "hammer-white";
+// The neutral material's base texture (a 1x1 white, by the importer's name),
+// also every program's neutral lightmap page.
+constexpr const char *kWhiteTexture = "hammer/white";
+constexpr const char *kWhite = "materials/hammer/white";
 // The instances' view bits: the opaque pass's draw list, then the blended one.
 constexpr std::uint32_t kOpaqueBit = 0;
 constexpr std::uint32_t kBlendedBit = 1;
@@ -55,28 +56,22 @@ device::ClearColor Clear( float r, float g, float b )
 	return { Linear( r ), Linear( g ), Linear( b ), 1.0f };
 }
 
-// The unlit family reads vertex colors as gamma 2.2 (Source's convention); the
-// editor's shading colors are display (sRGB) values. This table re-encodes a
-// display byte so the family's decode gives its sRGB linear value, and the
-// sRGB target shows the byte again (within a level of quantization).
-const std::array<std::uint8_t, 256> &Gamma22FromDisplay()
+// The preview program multiplies by the vertex color unconverted, in linear
+// light (lightmapped.vert); the editor's shading colors are display (sRGB)
+// values. This table stores a display byte's sRGB linear value, so the sRGB
+// target shows the byte again: within one level from display 49 up (exact
+// from 124 up), up to 6 levels below it (8-bit linear has few dark steps; a
+// gamma read when lighting is one would keep every byte within one level).
+const std::array<std::uint8_t, 256> &ProgramColorFromDisplay()
 {
 	static const std::array<std::uint8_t, 256> table = []
 	{
 		std::array<std::uint8_t, 256> out{};
 		for ( int i = 0; i < 256; ++i )
-		{
-			const double linear = Linear( float( i ) / 255.0f );
-			out[i] = std::uint8_t( std::lround( std::pow( linear, 1.0 / 2.2 ) * 255.0 ) );
-		}
+			out[i] = std::uint8_t( std::lround( Linear( float( i ) / 255.0f ) * 255.0 ) );
 		return out;
 	}();
 	return table;
-}
-
-std::string TextureName( const std::string &material )
-{
-	return "hammer-texture:" + material;
 }
 
 std::string FaceMeshName( std::uint64_t mesh )
@@ -106,10 +101,10 @@ constexpr std::uint64_t kInstanceChunk = std::uint64_t( 1 ) << 63;
 // The untextured fill of a model mesh whose material has no texture.
 constexpr scene::Rgb kModelFill{ 200, 200, 200 };
 
-::render::math::Aabb BoundsOf( const std::vector<UnlitVertex> &vertices )
+::render::math::Aabb BoundsOf( const std::vector<FaceVertex> &vertices )
 {
 	::render::math::Aabb bounds;
-	for ( const UnlitVertex &v : vertices )
+	for ( const FaceVertex &v : vertices )
 	{
 		const ::render::math::float3 p = { v.position[0], v.position[1], v.position[2] };
 		if ( bounds.IsEmpty() )
@@ -130,7 +125,7 @@ constexpr scene::Rgb kModelFill{ 200, 200, 200 };
 ViewportRenderer::ViewportRenderer(
     device::IRenderDevice2 &device, IMaterialTextures *textures, IModelSource *models )
     : m_Device( device ), m_Source( textures ), m_ModelSource( models ), m_MeshCache( device ),
-      m_Textures( device ), m_Programs( device, m_Textures ),
+      m_Textures( device ), m_Programs( device, m_Textures ), m_Groups( device, m_Textures ),
       m_Scene( ::render::scene::CreateRenderScene() )
 {
 }
@@ -140,34 +135,34 @@ foundation::Expected<std::unique_ptr<ViewportRenderer>, ViewportStatus> Viewport
 {
 	std::unique_ptr<ViewportRenderer> renderer( new ViewportRenderer( device, textures, models ) );
 	auto lines = pass::lines::LinesRenderer::Create( device, kColorFormat, kDepthFormat );
-	auto unlit = material::UnlitFamily::Create( device, kColorFormat, kDepthFormat );
-	if ( !lines || !unlit )
+	auto resolver = material::ProgramResolver::Create( device, kColorFormat, kDepthFormat );
+	if ( !lines || !resolver )
 	{
 		return foundation::MakeUnexpected( ViewportStatus::kPass );
 	}
 	renderer->m_Lines = std::move( lines ).Value();
-	renderer->m_Unlit = std::move( unlit ).Value();
-	for ( const material::FamilyDesc &family :
-	    material::FamiliesFromMapping( material::BuiltinVmtMapping() ) )
-	{
-		(void)renderer->m_Families.Register( family );
-	}
-	renderer->m_UnlitSchema = renderer->m_Families.Find( "unlit" );
-	if ( !renderer->m_UnlitSchema )
+	renderer->m_Resolver = std::move( resolver ).Value();
+	// The neutral material: its white base texture is staged by AddPreview.
+	MaterialImage white;
+	white.width = white.height = 1;
+	white.rgba = { 255, 255, 255, 255 };
+	auto neutral = SourceMaterialFromVariables(
+	    "UnlitGeneric", { { "$basetexture", kWhiteTexture } }, { { kWhite, white } } );
+	if ( !neutral )
 	{
 		return foundation::MakeUnexpected( ViewportStatus::kPass );
 	}
-	device::TextureDesc white;
-	white.format = kColorFormat;
-	white.width = white.height = 1;
-	white.usages = { device::ResourceUsage::kCopyDestination, device::ResourceUsage::kSampled };
-	const std::byte texel[4] = {
-	    std::byte( 255 ), std::byte( 255 ), std::byte( 255 ), std::byte( 255 ) };
-	if ( !renderer->m_Textures.Stage( kWhite, white, texel ) ||
-	     !renderer->AddProgram( kUntextured, kWhite, MaterialSurface() ) )
+	auto added = renderer->AddPreview( kUntextured, neutral.Value() );
+	if ( !added )
 	{
-		return foundation::MakeUnexpected( ViewportStatus::kDevice );
+		return foundation::MakeUnexpected( added.Error() );
 	}
+	if ( !added.Value().material || !added.Value().ignored.empty() ||
+	     added.Value().material->blended )
+	{
+		return foundation::MakeUnexpected( ViewportStatus::kPass );
+	}
+	renderer->m_Untextured = *added.Value().material;
 	return renderer;
 }
 
@@ -212,44 +207,164 @@ ViewportRenderer::~ViewportRenderer()
 	m_Lines.reset();
 }
 
-// The unlit family's claim on a material's surface, through the family's own
-// rules (ClaimUnlit): the vertex colors (the editor's shading) modulate the
-// base texture; $translucent blends, $additive adds, neither writes depth;
-// $alphatest cuts under its reference (the family's rule: 0.7 when the VMT
-// sets none, detail::AlphaTestReference). The family refuses $translucent with
-// $additive (no blend mode for the pair); such a material draws translucent.
-material::UnlitClaim ViewportRenderer::ClaimFor( const MaterialSurface &surface ) const
+std::vector<PreviewVertex> ViewportRenderer::ToPreview( const std::vector<FaceVertex> &vertices )
 {
-	material::ParameterBlock block( *m_UnlitSchema );
-	(void)block.SetInt( "vertexcolor", 1 );
-	(void)block.SetInt( "translucent", surface.translucent ? 1 : 0 );
-	(void)block.SetInt( "additive", surface.additive && !surface.translucent ? 1 : 0 );
-	(void)block.SetInt( "alphatest", surface.alphaTest ? 1 : 0 );
-	(void)block.SetFloat( "alphatestreference", surface.alphaTestReference );
-	(void)block.SetFloat( "alpha", surface.alpha );
-	material::UnlitClaim claim = material::ClaimUnlit( block );
-	if ( !claim.claimed )
+	const std::array<std::uint8_t, 256> &encode = ProgramColorFromDisplay();
+	std::vector<PreviewVertex> out( vertices.size() );
+	for ( std::size_t i = 0; i < vertices.size(); ++i )
 	{
-		// Not reachable with the parameters set above; draw it as before.
-		claim = material::UnlitClaim();
-		claim.claimed = true;
-		claim.constants.flags[0] = 1.0f;
+		const FaceVertex &in = vertices[i];
+		PreviewVertex &v = out[i];
+		std::copy( in.position, in.position + 3, v.position );
+		std::copy( in.uv, in.uv + 2, v.uv );
+		for ( int c = 0; c < 3; ++c )
+			v.color[c] = encode[in.color[c]];
+		v.color[3] = in.color[3];
 	}
-	return claim;
+	return out;
 }
 
-// The unlit family's program for a material id: its base texture (a
-// TextureCache name) modulated by the vertex colors, drawn as the surface
-// claims.
-foundation::Expected<std::uint64_t, ViewportStatus> ViewportRenderer::AddProgram(
-    std::uint64_t id, const std::string &texture, const MaterialSurface &surface )
+foundation::Expected<std::uint64_t, ViewportStatus> ViewportRenderer::GroupsFor(
+    const material::ResolvedProgram &program, std::string &failure )
 {
-	auto request = m_Unlit->Request( ClaimFor( surface ), texture );
-	if ( !request || !m_Programs.Set( id, request.Value() ) )
+	std::uint64_t drawGroup = 0;
+	const material::ProgramRequest &request = program.request;
+	if ( request.drawLayout.IsValid() )
+	{
+		auto found = m_DrawPages.find( request.drawLayout.value );
+		if ( found == m_DrawPages.end() )
+		{
+			// Lighting is one: the lightmap is bound, not read, so a white page
+			// serves every input.
+			std::vector<std::string> inputs;
+			for ( const std::string &input : program.drawInputs )
+			{
+				if ( input != "lightmap" )
+				{
+					failure = "its program reads draw input " + input + ", which the editor lacks";
+					return std::uint64_t( 0 );
+				}
+				inputs.push_back( kWhite );
+			}
+			const std::optional<material::GroupRequest> group =
+			    m_Resolver->DrawGroup( program, inputs );
+			if ( !group )
+			{
+				failure = "its draw group did not resolve";
+				return std::uint64_t( 0 );
+			}
+			const std::uint64_t id = m_NextGroup++;
+			if ( !m_Groups.Set( id, *group ) )
+			{
+				return foundation::MakeUnexpected( ViewportStatus::kDevice );
+			}
+			found = m_DrawPages.emplace( request.drawLayout.value, id ).first;
+		}
+		drawGroup = found->second;
+	}
+	if ( request.frameLayout.IsValid() && m_Frames.count( request.frameLayout.value ) == 0 )
+	{
+		// The LDR terms (lighting one reads no lightmap scale); the target has
+		// an sRGB view, so the shader does not encode.
+		const std::optional<material::GroupRequest> group =
+		    m_Resolver->FrameGroup( program, material::FrameTerms{} );
+		if ( !group )
+		{
+			failure = "its frame group did not resolve";
+			return std::uint64_t( 0 );
+		}
+		const std::uint64_t id = m_NextGroup++;
+		if ( !m_Groups.Set( id, *group ) )
+		{
+			return foundation::MakeUnexpected( ViewportStatus::kDevice );
+		}
+		m_Frames.emplace( request.frameLayout.value, id );
+	}
+	if ( request.viewLayout.IsValid() )
+	{
+		failure = "its program reads a view group, which the editor lacks";
+	}
+	return drawGroup;
+}
+
+foundation::Expected<ViewportRenderer::Preview, ViewportStatus> ViewportRenderer::AddPreview(
+    std::uint64_t id, const SourceMaterial &source )
+{
+	Preview out;
+	auto resolved = m_Resolver->ResolvePreview( source.desc );
+	if ( !resolved )
+	{
+		out.failure = resolved.Error();
+		return out;
+	}
+	material::ResolvedProgram &program = resolved.Value().program;
+	if ( program.request.vertexStride != sizeof( PreviewVertex ) )
+	{
+		out.failure = "its program reads another vertex than the preview's";
+		return out;
+	}
+	// The textures the program samples, by its names; the first is the base
+	// texture, whose size maps the faces' texture axes.
+	std::optional<TextureSize> size;
+	for ( const material::ProgramTexture &texture : program.request.material.textures )
+	{
+		auto image = source.textures.find( texture.name );
+		if ( m_StagedTextures.count( texture.name ) == 0 )
+		{
+			const std::vector<MipLevel> chain = image == source.textures.end()
+			                                        ? std::vector<MipLevel>()
+			                                        : BuildMipChain( image->second );
+			if ( chain.empty() )
+			{
+				out.missingTexture = true;
+				return out;
+			}
+			device::TextureDesc desc;
+			desc.format = kColorFormat;
+			desc.width = chain.front().width;
+			desc.height = chain.front().height;
+			desc.mipLevels = static_cast<std::uint32_t>( chain.size() );
+			desc.usages = {
+			    device::ResourceUsage::kCopyDestination, device::ResourceUsage::kSampled };
+			std::vector<std::span<const std::byte>> levels;
+			levels.reserve( chain.size() );
+			for ( const MipLevel &level : chain )
+			{
+				levels.push_back( std::as_bytes( std::span( level.rgba ) ) );
+			}
+			if ( !m_Textures.StageMips( texture.name, desc, levels ) )
+			{
+				return foundation::MakeUnexpected( ViewportStatus::kDevice );
+			}
+			m_StagedTextures.insert( texture.name );
+		}
+		const resources::TextureEntry *staged = m_Textures.Find( texture.name );
+		if ( !size && staged )
+		{
+			size = TextureSize{ staged->desc.width, staged->desc.height };
+		}
+	}
+	auto drawGroup = GroupsFor( program, out.failure );
+	if ( !drawGroup )
+	{
+		return foundation::MakeUnexpected( drawGroup.Error() );
+	}
+	if ( !out.failure.empty() )
+	{
+		return out;
+	}
+	if ( !m_Programs.Set( id, program.request ) )
 	{
 		return foundation::MakeUnexpected( ViewportStatus::kDevice );
 	}
-	return id;
+	Material material;
+	material.id = id;
+	material.size = size;
+	material.blended = program.blend != device::BlendMode::kOpaque;
+	material.drawGroup = drawGroup.Value();
+	out.material = material;
+	out.ignored = std::move( resolved.Value().ignored );
+	return out;
 }
 
 // Fetches the base texture of every material the solids name for the first
@@ -281,43 +396,38 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::ResolveMaterialName
 		{
 			continue;
 		}
-		Material material;
-		std::optional<MaterialImage> image = m_Source->BaseTexture( name );
-		const std::vector<MipLevel> chain =
-		    image ? BuildMipChain( *image ) : std::vector<MipLevel>();
-		if ( !chain.empty() )
+		Material material; // no size: drawn untextured
+		auto source = m_Source->Material( name );
+		if ( !source )
 		{
-			device::TextureDesc desc;
-			desc.format = kColorFormat;
-			desc.width = image->width;
-			desc.height = image->height;
-			desc.mipLevels = static_cast<std::uint32_t>( chain.size() );
-			desc.usages = {
-			    device::ResourceUsage::kCopyDestination, device::ResourceUsage::kSampled };
-			std::vector<std::span<const std::byte>> levels;
-			levels.reserve( chain.size() );
-			for ( const MipLevel &level : chain )
-			{
-				levels.push_back( std::as_bytes( std::span( level.rgba ) ) );
-			}
-			const std::string texture = TextureName( name );
-			if ( !m_Textures.StageMips( texture, desc, levels ) )
-			{
-				return foundation::MakeUnexpected( ViewportStatus::kDevice );
-			}
-			material.id = m_NextMaterial++;
-			if ( auto added = AddProgram( material.id, texture, image->surface ); !added )
-			{
-				return foundation::MakeUnexpected( added.Error() );
-			}
-			material.size = TextureSize{ image->width, image->height };
-			material.blended = ClaimFor( image->surface ).blend != device::BlendMode::kOpaque;
-			++m_Stats.textures;
+			m_Stats.failures[name] = source.Error();
 		}
 		else
 		{
+			auto preview = AddPreview( m_NextMaterial, source.Value() );
+			if ( !preview )
+			{
+				return foundation::MakeUnexpected( preview.Error() );
+			}
+			if ( preview.Value().material )
+			{
+				material = *preview.Value().material;
+				++m_NextMaterial;
+				++m_Stats.textures;
+				for ( const std::string &variable : preview.Value().ignored )
+					++m_Stats.ignored[variable];
+				m_Stats.approximatedMaterials += preview.Value().ignored.empty() ? 0 : 1;
+			}
+			else if ( !preview.Value().missingTexture )
+			{
+				m_Stats.failures[name] = preview.Value().failure;
+			}
+		}
+		if ( !material.size )
+		{
 			++m_Stats.missingTextures;
 		}
+		m_Stats.failedMaterials = static_cast<std::uint32_t>( m_Stats.failures.size() );
 		m_Materials.emplace( name, material );
 	}
 	return {};
@@ -453,26 +563,21 @@ ViewportRenderer::VariantFor( ModelEntry &entry, std::int32_t skin, const scene:
 		    return found == m_Materials.end() ? std::nullopt : found->second.size;
 	    },
 	    tint, kModelFill );
-	const std::array<std::uint8_t, 256> &encode = Gamma22FromDisplay();
 	std::vector<ModelMesh> meshes;
 	for ( const ModelBatch &batch : batches )
 	{
-		const Material *material =
-		    batch.material.empty() ? nullptr : &m_Materials.at( batch.material );
-		std::vector<UnlitVertex> vertices = batch.vertices;
-		for ( UnlitVertex &vertex : vertices )
-		{
-			for ( int c = 0; c < 3; ++c )
-				vertex.color[c] = encode[vertex.color[c]];
-		}
+		const Material &material =
+		    batch.material.empty() ? m_Untextured : m_Materials.at( batch.material );
+		const std::vector<PreviewVertex> vertices = ToPreview( batch.vertices );
 		ModelMesh mesh;
-		mesh.material = material ? material->id : kUntextured;
-		mesh.blended = material && material->blended;
+		mesh.material = material.id;
+		mesh.drawGroup = material.drawGroup;
+		mesh.blended = material.blended;
 		mesh.mesh = m_NextMesh++;
 		mesh.bounds = BoundsOf( batch.vertices );
 		resources::MeshData data;
-		data.vertices = std::as_bytes( std::span<const UnlitVertex>( vertices ) );
-		data.vertexStride = sizeof( UnlitVertex );
+		data.vertices = std::as_bytes( std::span<const PreviewVertex>( vertices ) );
+		data.vertexStride = sizeof( PreviewVertex );
 		data.indices = std::as_bytes( std::span<const std::uint32_t>( batch.indices ) );
 		data.indexFormat = device::IndexFormat::kUint32;
 		auto staged = m_MeshCache.Stage( ModelMeshName( mesh.mesh ), data );
@@ -575,23 +680,17 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::StageChunk(
 	const std::map<std::uint64_t, std::uint64_t> previous =
 	    resident == m_Chunks.end() ? std::map<std::uint64_t, std::uint64_t>()
 	                               : resident->second.meshes;
-	const std::array<std::uint8_t, 256> &encode = Gamma22FromDisplay();
 	for ( const FaceBatch &batch : geometry.faces )
 	{
-		const Material *material =
-		    batch.material.empty() ? nullptr : &m_Materials.at( batch.material );
-		const std::uint64_t materialId = material ? material->id : kUntextured;
+		const bool textured = !batch.material.empty();
+		const Material &material = textured ? m_Materials.at( batch.material ) : m_Untextured;
+		const std::uint64_t materialId = material.id;
 		auto kept = previous.find( materialId );
 		const std::uint64_t mesh = kept != previous.end() ? kept->second : m_NextMesh++;
-		std::vector<UnlitVertex> vertices = batch.vertices;
-		for ( UnlitVertex &vertex : vertices )
-		{
-			for ( int c = 0; c < 3; ++c )
-				vertex.color[c] = encode[vertex.color[c]];
-		}
+		const std::vector<PreviewVertex> vertices = ToPreview( batch.vertices );
 		resources::MeshData data;
-		data.vertices = std::as_bytes( std::span<const UnlitVertex>( vertices ) );
-		data.vertexStride = sizeof( UnlitVertex );
+		data.vertices = std::as_bytes( std::span<const PreviewVertex>( vertices ) );
+		data.vertexStride = sizeof( PreviewVertex );
 		auto entry = m_MeshCache.Stage( FaceMeshName( mesh ), data );
 		if ( !entry )
 		{
@@ -600,17 +699,18 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::StageChunk(
 		m_FaceMeshes.entries[mesh] = entry.Value();
 		staged.meshes[materialId] = mesh;
 		++m_Stats.stagedMeshes;
-		const bool blended = material && material->blended;
+		const bool blended = material.blended;
 		::render::scene::MeshInstanceDesc desc;
 		desc.mesh = mesh;
 		desc.material = materialId;
+		desc.drawGroup = material.drawGroup;
 		desc.localBounds = BoundsOf( batch.vertices );
 		desc.viewMask = 1u << ( blended ? kBlendedBit : kOpaqueBit );
 		const ::render::scene::InstanceId instance = m_Scene->Reserve();
 		changes.Add( instance, desc );
 		staged.instances.push_back( instance );
 		staged.faceVertices += static_cast<std::uint32_t>( batch.vertices.size() );
-		staged.texturedBatches += material ? 1 : 0;
+		staged.texturedBatches += textured ? 1 : 0;
 		staged.blendedBatches += blended ? 1 : 0;
 	}
 	for ( std::size_t i = 0; i < staged.entities.size(); ++i )
@@ -633,6 +733,7 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::StageChunk(
 			::render::scene::MeshInstanceDesc desc;
 			desc.mesh = mesh.mesh;
 			desc.material = mesh.material;
+			desc.drawGroup = mesh.drawGroup;
 			desc.world = world;
 			desc.localBounds = mesh.bounds;
 			desc.viewMask = 1u << ( mesh.blended ? kBlendedBit : kOpaqueBit );
@@ -793,6 +894,7 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
 	m_MeshCache.RecordUploads( encoder.Value() );
 	m_Textures.RecordUploads( encoder.Value() );
 	m_Programs.RecordUploads( encoder.Value() );
+	m_Groups.RecordUploads( encoder.Value() );
 	device::CommandEncoder encoders[] = { std::move( encoder ).Value() };
 	auto token = m_Device.Submit( device::QueueKind::kGraphics, encoders, {} );
 	if ( !token )
@@ -802,6 +904,7 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
 	m_MeshCache.Retire( token.Value() );
 	m_Textures.Retire( token.Value() );
 	m_Programs.Retire( token.Value() );
+	m_Groups.Retire( token.Value() );
 	m_LastToken = token.Value();
 	m_Bounds = snapshot.bounds;
 	m_HaveScene = true;
@@ -935,8 +1038,19 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 		    } );
 		pass::opaque::OpaqueTargets opaque{
 		    colorRef, depthRef, request.pixelWidth, request.pixelHeight, targets.clear };
-		auto drawn = pass::opaque::AddOpaquePasses(
-		    builder, *snapshot, list, sceneView, { .meshes = m_FaceMeshes, .programs = m_Programs, .frames = {} }, opaque );
+		// The programs' frame groups (one per frame layout) and neutral pages.
+		std::vector<const material::DrawGroup *> frames;
+		for ( const auto &[layout, id] : m_Frames )
+		{
+			if ( const material::DrawGroup *group = m_Groups.Group( id ) )
+				frames.push_back( group );
+		}
+		const pass::opaque::OpaqueSources sources{ .meshes = m_FaceMeshes,
+		    .programs = m_Programs,
+		    .drawGroups = &m_Groups,
+		    .frames = frames };
+		auto drawn =
+		    pass::opaque::AddOpaquePasses( builder, *snapshot, list, sceneView, sources, opaque );
 		if ( !drawn )
 		{
 			return fail( ViewportStatus::kPass );
@@ -947,7 +1061,7 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 			opaque.clearColor = false;
 			opaque.clearDepth = false;
 			auto over = pass::opaque::AddOpaquePasses(
-			    builder, *snapshot, blended, blendedView, { .meshes = m_FaceMeshes, .programs = m_Programs, .frames = {} }, opaque );
+			    builder, *snapshot, blended, blendedView, sources, opaque );
 			if ( !over )
 			{
 				return fail( ViewportStatus::kPass );

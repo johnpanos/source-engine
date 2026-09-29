@@ -10,29 +10,11 @@
 #include "hammer/adapters/source/ktx2_preview.h"
 #endif
 
-#include <cstdlib>
+#include <cstddef>
+#include <string_view>
 
 namespace hammer::gtk
 {
-
-namespace
-{
-
-// A VMT number as the material system reads it (leading number, else the
-// default).
-float Number( const std::optional<std::string> &value, float fallback )
-{
-	if ( !value )
-	{
-		return fallback;
-	}
-	const char *begin = value->c_str();
-	char *end = nullptr;
-	const double parsed = std::strtod( begin, &end );
-	return end == begin ? fallback : float( parsed );
-}
-
-} // namespace
 
 std::unique_ptr<CatalogTextures> CatalogTextures::Open(
     const std::string &vpkList, std::string &errors )
@@ -77,27 +59,34 @@ std::unique_ptr<CatalogTextures> CatalogTextures::Open(
 	return textures;
 }
 
-std::optional<render_adapter::MaterialImage> CatalogTextures::BaseTexture(
+foundation::Expected<render_adapter::SourceMaterial, std::string> CatalogTextures::Material(
     const std::string &material )
 {
-	const formats::VtfImage *image = m_Catalog->BaseTextureImage( material );
-	if ( !image || image->width <= 0 || image->height <= 0 ||
-	     image->rgba.size() != std::size_t( image->width ) * std::size_t( image->height ) * 4 )
+	render_adapter::MaterialFiles files;
+	files.read = [this]( std::string_view path ) -> std::optional<std::string>
 	{
-		return std::nullopt;
-	}
-	render_adapter::MaterialImage out;
-	out.width = static_cast<std::uint32_t>( image->width );
-	out.height = static_cast<std::uint32_t>( image->height );
-	out.rgba = image->rgba;
-	render_adapter::MaterialSurface &surface = out.surface;
-	surface.translucent = Number( m_Catalog->ResolveParameter( material, "$translucent" ), 0 ) != 0;
-	surface.additive = Number( m_Catalog->ResolveParameter( material, "$additive" ), 0 ) != 0;
-	surface.alphaTest = Number( m_Catalog->ResolveParameter( material, "$alphatest" ), 0 ) != 0;
-	surface.alphaTestReference =
-	    Number( m_Catalog->ResolveParameter( material, "$alphatestreference" ), 0 );
-	surface.alpha = Number( m_Catalog->ResolveParameter( material, "$alpha" ), 1 );
-	return out;
+		std::string bytes;
+		if ( !m_Assets.ReadAsset( std::string( path ), bytes ) )
+			return std::nullopt;
+		return bytes;
+	};
+	files.decode = [this](
+	                   const std::string &texture ) -> std::optional<render_adapter::MaterialImage>
+	{
+		const formats::VtfImage *image = m_Catalog->TextureImage( texture );
+		if ( !image || image->width <= 0 || image->height <= 0 ||
+		     image->rgba.size() != std::size_t( image->width ) * std::size_t( image->height ) * 4 )
+		{
+			return std::nullopt;
+		}
+		render_adapter::MaterialImage out;
+		out.width = static_cast<std::uint32_t>( image->width );
+		out.height = static_cast<std::uint32_t>( image->height );
+		out.rgba = image->rgba;
+		return out;
+	};
+	return render_adapter::ImportSourceMaterial(
+	    "materials/" + formats::CanonicalizeMaterialName( material ) + ".vmt", files );
 }
 
 } // namespace hammer::gtk

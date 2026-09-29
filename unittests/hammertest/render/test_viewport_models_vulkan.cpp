@@ -114,7 +114,7 @@ int ToDisplay( double linear )
 	return int( std::lround( std::clamp( v, 0.0, 1.0 ) * 255.0 ) );
 }
 
-// texel x shade in linear light, as the unlit family draws a textured face.
+// texel x shade in linear light, as the preview program draws a textured face.
 Rgb Modulated( Rgb texel, Rgb shade )
 {
 	auto channel = []( int t, int s )
@@ -158,16 +158,19 @@ public:
 class RedCrate final : public IMaterialTextures
 {
 public:
-	std::optional<MaterialImage> BaseTexture( const std::string &material ) override
+	foundation::Expected<hammer::render_adapter::SourceMaterial, std::string> Material(
+	    const std::string &material ) override
 	{
 		if ( material != kCrate )
-			return std::nullopt;
+			return foundation::MakeUnexpected( material + " is missing" );
 		MaterialImage image;
 		image.width = image.height = 64;
 		for ( int i = 0; i < 64 * 64; ++i )
 			image.rgba.insert( image.rgba.end(),
 			    { std::uint8_t( kRed.r ), std::uint8_t( kRed.g ), std::uint8_t( kRed.b ), 255 } );
-		return image;
+		return hammer::render_adapter::SourceMaterialFromVariables( "VertexLitGeneric",
+		    { { "$basetexture", material } },
+		    { { render::material::VmtTextureReference( material ), std::move( image ) } } );
 	}
 };
 

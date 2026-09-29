@@ -11,7 +11,8 @@
 //			V2 a 2D view with a grid runs two render passes (the grid clears,
 //			   the scene loads) and draws the edges and the overlay; the 3D
 //			   view runs two (the solids through render.pass.opaque and the
-//			   unlit family, then the edges) and resolves every batch;
+//			   preview program, ResolvePreview, then the edges) and resolves
+//			   every batch;
 //			V3 nothing blocks: Take returns nothing while the device has not
 //			   completed the frame and the pixels (width x height RGBA) once
 //			   it has;
@@ -34,7 +35,11 @@
 //			   uploads exactly its chunk's face and edge meshes (the bytes
 //			   written equal that chunk's geometry, restated here, less
 //			   than the scene's), the same content under a new key uploads
-//			   nothing, and a chunk that empties is released.
+//			   nothing, and a chunk that empties is released;
+//			V11 a material setting a variable the preview does not read
+//			   ($envmap) still draws textured and is counted
+//			   (approximatedMaterials, ignored["$envmap"]), and a material the
+//			   source cannot import is a named failure drawn untextured.
 //
 //=============================================================================//
 
@@ -53,6 +58,7 @@ namespace
 using namespace hammertest::viewport_render;
 using hammer::render_adapter::IMaterialTextures;
 using hammer::render_adapter::MaterialImage;
+using hammer::render_adapter::SourceMaterial;
 using hammer::render_adapter::ViewportRenderer;
 using hammer::render_adapter::ViewportStatus;
 using hammer::render_adapter::ViewRequest;
@@ -80,21 +86,31 @@ Trace Recorded( render::device::IRenderDevice2 &device )
 }
 
 // A 4x4 gray texture for DEV/DEV_MEASUREGENERIC01B, GLASS ($translucent) and
-// GRATE ($alphatest); nothing for other names.
+// GRATE ($alphatest), each named by its own material; nothing for other
+// names. UNMAPPED sets a variable the preview does not read ($envmap).
 class FakeTextures final : public IMaterialTextures
 {
 public:
-	std::optional<MaterialImage> BaseTexture( const std::string &material ) override
+	foundation::Expected<SourceMaterial, std::string> Material(
+	    const std::string &material ) override
 	{
 		asked.push_back( material );
-		if ( material != "DEV/DEV_MEASUREGENERIC01B" && material != "GLASS" && material != "GRATE" )
-			return std::nullopt;
+		if ( material != "DEV/DEV_MEASUREGENERIC01B" && material != "GLASS" &&
+		     material != "GRATE" && material != "UNMAPPED" )
+			return foundation::MakeUnexpected( material + " is missing" );
 		MaterialImage image;
 		image.width = image.height = 4;
 		image.rgba.assign( 4 * 4 * 4, 128 );
-		image.surface.translucent = material == "GLASS";
-		image.surface.alphaTest = material == "GRATE";
-		return image;
+		std::vector<render::material::VmtPair> variables = { { "$basetexture", material } };
+		if ( material == "GLASS" )
+			variables.push_back( { "$translucent", "1" } );
+		if ( material == "GRATE" )
+			variables.push_back( { "$alphatest", "1" } );
+		if ( material == "UNMAPPED" )
+			variables.push_back( { "$envmap", "env_cubemap" } );
+		return hammer::render_adapter::SourceMaterialFromVariables( "LightmappedGeneric",
+		    std::move( variables ),
+		    { { render::material::VmtTextureReference( material ), std::move( image ) } } );
 	}
 	std::vector<std::string> asked;
 };
@@ -131,7 +147,7 @@ std::uint64_t ChunkBytes( const hammer::viewport::RenderSnapshot &snapshot, std:
 	    hammer::render_adapter::BuildSceneGeometry( part );
 	std::uint64_t bytes = g.edges.size() * sizeof( hammer::render_adapter::LineVertex );
 	for ( const auto &batch : g.faces )
-		bytes += batch.vertices.size() * sizeof( hammer::render_adapter::UnlitVertex );
+		bytes += batch.vertices.size() * sizeof( hammer::render_adapter::PreviewVertex );
 	return bytes;
 }
 
@@ -370,6 +386,44 @@ int main()
 		                 renderer.LastView().drawn == 4 && renderer.LastView().unresolved == 0 &&
 		                 opaqueFirst && trace.draws[3] == 6,
 		    "V8.the-translucent-batch-draws-after-every-opaque-one" );
+		if ( ticket )
+			(void)renderer.Take( ticket.Value() );
+	}
+
+	// V11.
+	{
+		FakeTextures textures;
+		auto made = ViewportRenderer::Create( *device, &textures );
+		if ( !checks.That( made.HasValue(), "V11.a-textured-renderer" ) )
+			return checks.Report();
+		ViewportRenderer &renderer = *made.Value();
+		hammer::viewport::RenderSnapshot scene;
+		scene.solids.push_back( Pane( 600, "UNMAPPED", 68 ) );
+		scene.solids.push_back( Pane( 601, "BROKEN", 80 ) );
+		checks.That( renderer.SetScene( scene, 1 ).HasValue(), "V11.staged" );
+		const hammer::render_adapter::SceneStats &stats = renderer.Scene();
+		auto ignored = stats.ignored.find( "$envmap" );
+		checks.That( stats.textures == 1 && stats.texturedBatches == 1 &&
+		                 stats.approximatedMaterials == 1 && ignored != stats.ignored.end() &&
+		                 ignored->second == 1 && stats.ignored.size() == 1,
+		    "V11.an-unmapped-variable-draws-textured-and-is-counted" );
+		auto failure = stats.failures.find( "BROKEN" );
+		checks.That( stats.failedMaterials == 1 && stats.missingTextures == 1 &&
+		                 failure != stats.failures.end() &&
+		                 failure->second.find( "missing" ) != std::string::npos,
+		    "V11.a-material-that-does-not-import-is-a-named-failure" );
+		control->CompleteAll();
+		const hammer::viewport::Camera3D eye = EyeCamera();
+		ViewRequest request;
+		request.kind = ViewKind::Camera3D;
+		request.camera3D = &eye;
+		request.pixelWidth = 64;
+		request.pixelHeight = 48;
+		auto ticket = renderer.Render( request );
+		control->CompleteAll();
+		checks.That( ticket.HasValue() && renderer.LastView().drawn == 2 &&
+		                 renderer.LastView().unresolved == 0,
+		    "V11.both-draw" );
 		if ( ticket )
 			(void)renderer.Take( ticket.Value() );
 	}

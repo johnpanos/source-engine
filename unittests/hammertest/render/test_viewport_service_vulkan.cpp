@@ -56,13 +56,15 @@ constexpr std::uint32_t kHeight = 192;
 class FlatTextures final : public IMaterialTextures
 {
 public:
-	std::optional<MaterialImage> BaseTexture( const std::string & ) override
+	foundation::Expected<hammer::render_adapter::SourceMaterial, std::string> Material(
+	    const std::string & ) override
 	{
 		MaterialImage image;
 		image.width = image.height = 16;
 		for ( int i = 0; i < 16 * 16; ++i )
 			image.rgba.insert( image.rgba.end(), { 190, 120, 60, 255 } );
-		return image;
+		return hammer::render_adapter::SourceMaterialFromVariables( "LightmappedGeneric",
+		    { { "$basetexture", "flat" } }, { { "materials/flat", std::move( image ) } } );
 	}
 };
 

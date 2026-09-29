@@ -79,10 +79,11 @@ public:
 	{
 	}
 	~Source() override { m_DestroyedOn = std::this_thread::get_id() == m_Test ? 2 : 1; }
-	std::optional<MaterialImage> BaseTexture( const std::string & ) override
+	foundation::Expected<hammer::render_adapter::SourceMaterial, std::string> Material(
+	    const std::string &material ) override
 	{
 		m_Asked += std::this_thread::get_id() == m_Test ? 1000 : 1;
-		return std::nullopt;
+		return foundation::MakeUnexpected( material + " is missing" );
 	}
 
 private:

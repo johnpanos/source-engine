@@ -38,7 +38,13 @@
 //			   its size has no chain;
 //			G11 a solid's fill comes from its id: without its neighbor (a
 //			   chunk restaged alone) it keeps its color; ChunkOf is the id
-//			   over 64.
+//			   over 64;
+//			G14 ImportSourceMaterial: a patch material imports through its
+//			   include (ImportVmt, one reader) with the patch's replacement,
+//			   and its base texture is decoded under the importer's
+//			   normalized name; a missing VMT, a missing include and an
+//			   unknown shader are refused with the reason; a base texture
+//			   that does not decode is absent, not an error.
 //
 //=============================================================================//
 
@@ -48,7 +54,9 @@
 #include "viewport_fixture.h"
 
 #include <cmath>
+#include <map>
 #include <random>
+#include <string>
 
 namespace
 {
@@ -63,7 +71,7 @@ using hammer::render_adapter::MaterialImage;
 using hammer::render_adapter::LineVertex;
 using hammer::render_adapter::SceneGeometry;
 using hammer::render_adapter::TextureSize;
-using hammer::render_adapter::UnlitVertex;
+using hammer::render_adapter::FaceVertex;
 using hammer::render_adapter::ViewFor;
 using hammer::viewport::ViewKind;
 namespace lines = render::pass::lines;
@@ -81,15 +89,15 @@ Rgb ColorOf( const LineVertex &v )
 	return { int( v.color & 0xFF ), int( ( v.color >> 8 ) & 0xFF ), int( ( v.color >> 16 ) & 0xFF ) };
 }
 
-Rgb ColorOf( const UnlitVertex &v )
+Rgb ColorOf( const FaceVertex &v )
 {
 	return { v.color[0], v.color[1], v.color[2] };
 }
 
 // The batch of 'material' ("" is the untextured one), or an empty list.
-const std::vector<UnlitVertex> &Batch( const SceneGeometry &g, const std::string &material )
+const std::vector<FaceVertex> &Batch( const SceneGeometry &g, const std::string &material )
 {
-	static const std::vector<UnlitVertex> none;
+	static const std::vector<FaceVertex> none;
 	for ( const auto &batch : g.faces )
 	{
 		if ( batch.material == material )
@@ -123,8 +131,7 @@ Rgb Shaded( double r, double g, double b, Vec3d n )
 
 // The color of the first face triangle of a batch whose vertices all have
 // z == 'z' and x within [x0, x1].
-std::optional<Rgb> FaceColor(
-    const std::vector<UnlitVertex> &faces, double z, double x0, double x1 )
+std::optional<Rgb> FaceColor( const std::vector<FaceVertex> &faces, double z, double x0, double x1 )
 {
 	for ( std::size_t i = 0; i + 2 < faces.size(); i += 3 )
 	{
@@ -147,10 +154,10 @@ std::optional<Rgb> FaceColor( const SceneGeometry &g, double z, double x0, doubl
 
 // Whether every vertex of 'faces' has the uv of some face of the snapshot
 // that holds its position: texels = dot(p, axis) / scale + shift, over the size.
-bool UvsFollowTheAxes( const std::vector<UnlitVertex> &faces,
+bool UvsFollowTheAxes( const std::vector<FaceVertex> &faces,
     const hammer::viewport::RenderSnapshot &snapshot, TextureSize size )
 {
-	for ( const UnlitVertex &v : faces )
+	for ( const FaceVertex &v : faces )
 	{
 		const Vec3d p( v.position[0], v.position[1], v.position[2] );
 		bool matched = false;
@@ -469,6 +476,54 @@ int main()
 		turned.Look( 5.0, 0.0 );
 		checks.That( !Agrees3D( ViewFor( turned, Snapshot( d ).bounds ), eye ),
 		    "G7.a-wrong-3d-view-is-rejected" );
+	}
+
+	// G14.
+	{
+		const std::map<std::string, std::string> files = {
+		    { "materials/a/base.vmt",
+		        "\"LightmappedGeneric\" { \"$basetexture\" \"A\\Wall\" \"$alpha\" \"1\" }" },
+		    { "materials/a/patched.vmt", "\"patch\" { \"include\" \"materials/a/base.vmt\" "
+		                                 "\"replace\" { \"$basetexture\" \"a/other\" } }" },
+		    { "materials/a/orphan.vmt", "\"patch\" { \"include\" \"materials/a/gone.vmt\" }" },
+		    { "materials/a/odd.vmt", "\"NoSuchShader\" { \"$basetexture\" \"a/wall\" }" } };
+		std::vector<std::string> decoded;
+		hammer::render_adapter::MaterialFiles source;
+		source.read = [&]( std::string_view path ) -> std::optional<std::string>
+		{
+			auto found = files.find( std::string( path ) );
+			return found == files.end() ? std::nullopt : std::optional( found->second );
+		};
+		source.decode = [&]( const std::string &texture ) -> std::optional<MaterialImage>
+		{
+			decoded.push_back( texture );
+			if ( texture != "materials/a/wall" )
+				return std::nullopt;
+			MaterialImage image;
+			image.width = image.height = 1;
+			image.rgba = { 1, 2, 3, 4 };
+			return image;
+		};
+		auto base = hammer::render_adapter::ImportSourceMaterial( "materials/a/base.vmt", source );
+		checks.That( base && base.Value().textures.size() == 1 &&
+		                 base.Value().textures.count( "materials/a/wall" ) == 1 &&
+		                 base.Value().desc.shader == "LightmappedGeneric",
+		    "G14.the-base-texture-is-decoded-under-the-importers-name" );
+		auto patched =
+		    hammer::render_adapter::ImportSourceMaterial( "materials/a/patched.vmt", source );
+		checks.That( patched && patched.Value().textures.empty() && !decoded.empty() &&
+		                 decoded.back() == "materials/a/other",
+		    "G14.a-patch-imports-through-its-include-with-its-replacement" );
+		auto missing = hammer::render_adapter::ImportSourceMaterial( "materials/a/no.vmt", source );
+		auto orphan =
+		    hammer::render_adapter::ImportSourceMaterial( "materials/a/orphan.vmt", source );
+		auto odd = hammer::render_adapter::ImportSourceMaterial( "materials/a/odd.vmt", source );
+		checks.That( !missing && missing.Error().find( "missing" ) != std::string::npos,
+		    "G14.a-missing-vmt-is-refused" );
+		checks.That( !orphan && orphan.Error().find( "missing-include" ) != std::string::npos,
+		    "G14.a-missing-include-is-refused-with-its-reason" );
+		checks.That( !odd && odd.Error().find( "unknown-shader" ) != std::string::npos,
+		    "G14.an-unknown-shader-is-refused-with-its-reason" );
 	}
 	return checks.Report();
 }

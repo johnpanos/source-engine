@@ -179,54 +179,26 @@ std::string MaterialCatalog::ResolveBaseTexture( const std::string &name )
 	return canonicalBase;
 }
 
-std::optional<std::string> MaterialCatalog::ResolveParameter(
-    const std::string &name, const std::string &parameter ) const
-{
-	const std::string canonical = CanonicalizeMaterialName( name );
-	if ( !SafeMaterialPath( canonical ) )
-		return std::nullopt;
-	std::string vmt;
-	if ( !m_source.ReadAsset( "materials/" + canonical + ".vmt", vmt ) )
-		return std::nullopt;
-	std::optional<Material> material = ParseMaterial( vmt );
-	if ( !material )
-		return std::nullopt;
-	if ( const std::string *value = material->ResolvedParam( parameter ) )
-		return *value;
-	if ( !material->IsPatch() )
-		return std::nullopt;
-	const std::string *include = material->Param( "include" );
-	if ( !include )
-		return std::nullopt;
-	const std::string includeCanonical = CanonicalizeMaterialName( *include );
-	std::string includeVmt;
-	if ( !SafeMaterialPath( includeCanonical ) ||
-	     !m_source.ReadAsset( "materials/" + includeCanonical + ".vmt", includeVmt ) )
-		return std::nullopt;
-	std::optional<Material> included = ParseMaterial( includeVmt );
-	if ( !included )
-		return std::nullopt;
-	if ( const std::string *value = included->ResolvedParam( parameter ) )
-		return *value;
-	return std::nullopt;
-}
-
 const VtfImage *MaterialCatalog::BaseTextureImage( const std::string &name )
 {
-	const std::string canonical = CanonicalizeMaterialName( name );
+	const std::string base = ResolveBaseTexture( CanonicalizeMaterialName( name ) );
+	return base.empty() ? nullptr : TextureImage( base );
+}
+
+const VtfImage *MaterialCatalog::TextureImage( const std::string &texture )
+{
+	const std::string canonical = CanonicalizeMaterialName( texture );
 
 	auto cached = m_images.find( canonical );
 	if ( cached != m_images.end() )
 		return cached->second.get();
-
-	const std::string base = ResolveBaseTexture( canonical );
-	if ( base.empty() )
+	if ( !SafeMaterialPath( canonical ) )
 	{
 		m_images.emplace( canonical, nullptr );
 		return nullptr;
 	}
 
-	const std::string ktxPath = "materials/" + base + ".ktx2";
+	const std::string ktxPath = "materials/" + canonical + ".ktx2";
 	if ( m_source.HasAsset( ktxPath ) )
 	{
 		std::string bytes;
@@ -245,7 +217,7 @@ const VtfImage *MaterialCatalog::BaseTextureImage( const std::string &name )
 	}
 
 	std::string vtf;
-	if ( !m_source.ReadAsset( "materials/" + base + ".vtf", vtf ) )
+	if ( !m_source.ReadAsset( "materials/" + canonical + ".vtf", vtf ) )
 	{
 		m_images.emplace( canonical, nullptr );
 		return nullptr;

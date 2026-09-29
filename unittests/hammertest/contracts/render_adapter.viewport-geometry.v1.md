@@ -18,7 +18,8 @@ presents (`viewport::RenderSnapshot`, the workspace's cameras, grid lines and th
 `tools::OverlayList`) into per-material face batches for the material families and line items for
 `render.pass.lines`; `ViewportRenderer` draws one view per call offscreen on the device the
 composition root passes in and hands back sRGB RGBA8 pixels: solids through `render.pass.opaque`
-and the `unlit` family (RFC 0016 K4), edges, grid and overlay through `render.pass.lines`.
+and the render core's editor preview, `render::material::ProgramResolver::ResolvePreview` (RFC
+0016 K5; `render.material.v2` F-PREVIEW), edges, grid and overlay through `render.pass.lines`.
 `ViewportService` runs the renderer on a render sequence and replies on the host's.
 
 ## Obligations
@@ -34,6 +35,7 @@ and the `unlit` family (RFC 0016 K4), edges, grid and overlay through `render.pa
 | G7 | Each projection check rejects a seeded wrong view |
 | G8 | Textured preview: a face whose material has a texture size goes into that material's batch, colored by the shading alone (the selection tint over a selected solid or face), with uv = (dot(p, axis) / scale + shift) / size from the side's texture axes (`FaceDraw::uAxis`, `vAxis`); marker boxes stay untextured; a wrong size is rejected |
 | G9 | A material without a size, or with a zero size, stays in the untextured batch |
+| G14 | `ImportSourceMaterial` (2026-09-28, "Viewports on ResolvePreview"): a material is its VMT imported by `render::material::ImportVmt` (the one VMT reader: patches through the source's own files, conditions, fallback blocks) and the decoded image of its base texture (the last `$basetexture`, as `ResolvePreview` reads it) keyed by the importer's normalized name (`materials/a/b`). A patch imports through its include with its replacement; a missing VMT, a missing include and an unknown shader are refused with the reason; a texture that does not decode is absent, not an error. `SourceMaterialFromVariables` maps a shader's variables (`MapVariables`) for sources without VMT text |
 | G10 | `BuildMipChain` (2026-09-28): an image has floor(log2(max(w, h))) + 1 levels down to 1x1, level m `max(1, size >> m)` per axis; each texel is the equally weighted box of its 2x2 source texels (the last box of an odd axis 3 wide, a one-texel axis 1 wide), color averaged in linear light (sRGB decode, mean, encode to the nearest byte), alpha as stored. A black and white 2x2 gives 188 (an encoded-byte mean, 128, is rejected); an image whose bytes do not match its size has no chain |
 | G11 | A solid's untextured fill is a function of its id, so it keeps its color when other solids are added or removed (a chunk restaged alone). `ChunkOf(id)` is the id's value over 64 |
 | G12 | Models and instances (R17 follow-up, 2026-09-28; `hammer.adapters.render.models`): with `GeometryOptions::modelBox`, an entity drawn as a model has no marker faces; its model box goes to `edges2D` (drawn in 2D views only) in its color when unselected and to `edges` in the selection color when selected (legacy `CMapStudioModel`: the bounds in 2D, a box in 3D only when selected). An entity without a model box keeps its marker. Instance content (`tint`) multiplies every face and marker color by `kInstanceTint` and draws unselected edges in `kInstanceEdgeColor` |
@@ -44,11 +46,12 @@ and the `unlit` family (RFC 0016 K4), edges, grid and overlay through `render.pa
 | V4 | A view without its camera, a zero size and an unknown ticket are refused |
 | V5 | Everything the renderer made is released once it is gone |
 | V6 | With a material source, the source is asked once per material (not per restage); a material with a texture gets its own batch and program; one without stays untextured; the camera view draws both batches, then the edges; everything is released |
+| V11 | Preview (2026-09-28): every material resolves through `ResolvePreview`; the renderer stages each texture its program samples by the program's name (shared between materials that name it) with its mip chain, gives its draw group a neutral lightmap page (the 1x1 white; lighting is one) and its frame group the LDR terms without shader encoding (the target has an sRGB view), and draws through `render.pass.opaque` with `OpaqueSources::drawGroups` and `frames`. A program whose vertex stride is not `PreviewVertex`'s, or that reads another draw input or a view group, is a named failure. A material setting a variable the preview does not read still draws textured and is counted: `SceneStats::approximatedMaterials` and `ignored` (variable -> materials). A material the source refuses or the resolver refuses is named in `SceneStats::failures` (and `failedMaterials`) and draws untextured; nothing is silent. Untextured faces, markers and the flat preview draw through the same path: a neutral `UnlitGeneric` material whose base texture is the white. Faces carry display colors (`FaceVertex`); the renderer converts them to the program's vertex, storing each display byte's linear value because the preview program reads vertex colors unconverted (within one level from display 49 up, up to 6 below) |
 | V7 | On a device that exports no images, `CanExport()` is false and an external frame is refused with `kUnsupported` |
-| V8 | Surfaces (2026-09-28): `IMaterialTextures` returns a material's `$translucent`, `$additive`, `$alphatest`, `$alphatestreference` and `$alpha` with its image, and the renderer claims them through the unlit family (`ClaimUnlit`). A blended batch (`$translucent` or `$additive`) is drawn in a second opaque-pass instance that loads the targets and writes no depth, after every opaque and alpha-tested batch, back to front by instance depth (stable); `ViewStats::blended` counts it. `$alphatest` with no reference uses 0.7, the legacy default, by the family's rule (`detail::AlphaTestReference`). `$translucent` with `$additive`, which the family refuses, draws translucent. Every texture is staged with its full mip chain (`TextureCache::StageMips`), sampled trilinearly |
+| V8 | Surfaces (2026-09-28; since V11 by `ResolvePreview`'s rules): a blended batch (`$translucent` or `$vertexalpha` alpha, `$additive` additive) is drawn in a second opaque-pass instance that loads the targets and writes no depth, after every opaque and alpha-tested batch, back to front by instance depth (stable); `ViewStats::blended` counts it. `$alphatest` with no reference uses 0.7, the legacy default (`detail::AlphaTestReference`). `$translucent` with `$additive` draws additive (the preview's rule; before V11 it drew translucent). Every texture is staged with its full mip chain (`TextureCache::StageMips`), sampled trilinearly |
 | V9 | Per-chunk restaging (2026-09-28): an object's geometry is resident in chunk `ChunkOf(id)`, one face mesh per material and one edge mesh per chunk. A new key rebuilds only the chunks whose objects differ from the staged ones: moving one solid uploads exactly its chunk's face and edge meshes (the bytes equal that chunk's geometry, restated), the same content under a new key uploads nothing, and a chunk that empties is dropped and its meshes released. `SceneStats::stagedChunks` and `stagedMeshes` count the last restage; the resident totals equal the whole scene's geometry |
 | V10 | Models (`hammer.adapters.render.models`, render.device.null): with an `IModelSource` a studio-model entity is read once per canonical path, staged once per (skin, tint) as indexed batches in model space, and drawn as one scene instance (and one indexed draw) per batch with `ModelWorld`; a missing, unparsable or empty model draws its marker (`SceneStats::missingModels`); moving a model entity restages its chunk without reading or staging the model again; each `InstanceDraw` is one chunk keyed apart from the id chunks (`SceneStats::instanceChunks`); everything is released with the renderer |
-| R1 | On a real device, the pixel under a top face's projected center has that face's built color within one level (the unlit family reads vertex colors as gamma 2.2; the renderer re-encodes the display colors for it) |
+| R1 | On a real device, the pixel under a top face's projected center has that face's built color within one level (the preview program reads vertex colors as linear light; the renderer stores the display colors' linear values, within one level from display 49 up) |
 | R2 | Edge, grid and overlay pixels land where the camera projects them, in their colors |
 | R3 | A restage follows the selection; the same inputs give byte-identical frames; the validation layer reports nothing |
 | R4 | Textured: where the side's axes put u in a texture's left (red) half the top face shows red, in its right (blue) half blue, each the texel times the shading in linear light within two levels; a source with no texture leaves the R1 colors |
@@ -76,7 +79,8 @@ and the `unlit` family (RFC 0016 K4), edges, grid and overlay through `render.pa
 
 A `RenderSnapshot` and a caller key (the snapshot revision and selection); per view a
 `ViewRequest` (kind, the workspace's camera, grid lines, overlay, framebuffer size); optionally an
-`IMaterialTextures` source of base textures (sRGB RGBA8) and an `IModelSource` of studio models
+`IMaterialTextures` source of materials (`SourceMaterial`: the imported `MaterialDesc` and its
+textures, sRGB RGBA8, by the importer's names) and an `IModelSource` of studio models
 (`ModelAsset`: a `content.studio-model` model and its resolved materials). Output: sRGB RGBA8 rows, top first, or with `ViewRequest::external` an exported image
 (`ExternalFrame`: a dmabuf handle and plane, and a lease). The image is not drawn into again until
 the host returns the lease (`ReturnFrame`); the handle stays the renderer's.
@@ -85,6 +89,8 @@ the host returns the lease (`ReturnFrame`); the handle stays the renderer's.
 
 Refusals are `ViewportStatus` values; a refused view submits nothing and leaks nothing. A missing
 or undecodable texture draws its faces untextured (counted in `SceneStats::missingTextures`); a
+material that does not import or resolve too, and is named with its reason in
+`SceneStats::failures`; variables the preview ignores are counted in `SceneStats::ignored`; a
 missing, malformed or empty model draws its entity's marker (counted in `SceneStats::missingModels`); a
 draw the opaque pass cannot resolve is counted in `ViewStats::unresolved`.
 
@@ -98,7 +104,10 @@ material source and the renderer on its render sequence (RFC 0016 decision "thre
 
 Pure checks against independently restated rules (G), the null device's recorded command stream
 (V), relational pixel checks on Vulkan (R) and thread and lifetime checks on a real render thread
-(S), not golden images. Declared limits: the mip filter is a box (no coverage-preserving alpha
+(S), not golden images. Declared limits: the preview approximates by contract (base texture times
+`$color` and `$alpha`, blend and alpha test; bump maps, detail, env maps and the rest are counted,
+not drawn); dark vertex colors (display below 49) lose up to 6 levels in the program's linear
+UNORM8 vertex color; the mip filter is a box (no coverage-preserving alpha
 mips, RFC 0012 R66, so alpha-tested texels thin with distance); blended batches sort per chunk
 batch, not per face; sampling is trilinear without anisotropy. Models draw in their bind pose (no
 sequence), so a model whose reference skeleton differs from its idle sequence (Portal 2's turret

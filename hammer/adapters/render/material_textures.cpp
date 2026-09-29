@@ -8,8 +8,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <utility>
 
 namespace hammer::render_adapter
 {
@@ -106,7 +108,72 @@ MipLevel Reduce( const MipLevel &above )
 	return level;
 }
 
+// The texture names the preview samples, as the importer normalizes them:
+// the base texture (the last $basetexture, as ResolvePreview reads it).
+std::vector<std::string> PreviewTextures( const ::render::material::MaterialDesc &desc )
+{
+	const ::render::material::VmtPair *base = nullptr;
+	for ( const ::render::material::VmtPair &variable : desc.variables )
+	{
+		std::string key = variable.key;
+		for ( char &c : key )
+			c = char( std::tolower( static_cast<unsigned char>( c ) ) );
+		if ( key == "$basetexture" )
+			base = &variable;
+	}
+	if ( !base )
+		return {};
+	return { ::render::material::VmtTextureReference( base->value ) };
+}
+
 } // namespace
+
+foundation::Expected<SourceMaterial, std::string> ImportSourceMaterial(
+    std::string_view vmtPath, const MaterialFiles &files )
+{
+	const std::optional<std::string> text =
+	    files.read ? files.read( vmtPath ) : std::optional<std::string>();
+	if ( !text )
+		return foundation::MakeUnexpected( std::string( vmtPath ) + " is missing" );
+	::render::material::VmtImportContext context;
+	context.resolve = files.read;
+	context.path = vmtPath;
+	auto imported = ::render::material::ImportVmt( *text, context );
+	if ( !imported )
+	{
+		return foundation::MakeUnexpected(
+		    std::string( vmtPath ) + " does not import (" +
+		    std::string( ::render::material::ImportStatusName( imported.Error().status ) ) + ": " +
+		    imported.Error().detail + ")" );
+	}
+	SourceMaterial material;
+	material.desc = std::move( imported ).Value();
+	if ( files.decode )
+	{
+		for ( const std::string &texture : PreviewTextures( material.desc ) )
+		{
+			if ( std::optional<MaterialImage> image = files.decode( texture ) )
+				material.textures.emplace( texture, std::move( *image ) );
+		}
+	}
+	return material;
+}
+
+foundation::Expected<SourceMaterial, std::string> SourceMaterialFromVariables(
+    std::string_view shader, std::vector<::render::material::VmtPair> variables,
+    std::map<std::string, MaterialImage> textures )
+{
+	auto mapped = ::render::material::MapVariables( shader, std::move( variables ), {} );
+	if ( !mapped )
+	{
+		return foundation::MakeUnexpected(
+		    "shader " + std::string( shader ) + " does not map (" + mapped.Error().detail + ")" );
+	}
+	SourceMaterial material;
+	material.desc = std::move( mapped ).Value();
+	material.textures = std::move( textures );
+	return material;
+}
 
 std::vector<MipLevel> BuildMipChain( const MaterialImage &image )
 {

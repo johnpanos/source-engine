@@ -26,8 +26,9 @@ viewport. Required for material browsing and textured rendering.
   slash, optional leading slash, optional `materials/` prefix, optional
   `.vmt`/`.vtf`/`.ktx2`).
 - `MaterialCatalog( source, optionalKtxDecoder )`, then `MaterialNames()`, `ResolveBaseTexture( name )`,
-  `BaseTextureImage( name )`, `ResolveParameter( name, parameter )` — `name` in any authored spelling,
-  `parameter` a VMT parameter name in any case.
+  `BaseTextureImage( name )` — `name` in any authored spelling — and
+  `TextureImage( texture )`, a texture in any spelling `CanonicalizeMaterialName` takes
+  (a VMT texture value or the VMT importer's `materials/...` reference).
 
 ## 3. Results and guarantees
 
@@ -35,18 +36,18 @@ viewport. Required for material browsing and textured rendering.
 - `ResolveBaseTexture()` returns the canonical `$basetexture` name, following one
   level of a `patch` shader's `include`; empty when the material is
   absent/unparseable or names no base texture. Cached (hit and miss).
-- `ResolveParameter()` (2026-09-28, for the viewports' translucency) returns a
-  parameter's value as the material resolves it: its own (a patch's `replace`,
-  then `insert`, then top-level value, through `Material::ResolvedParam`), else,
-  for a `patch` that does not set it, the included material's, one level as
-  `ResolveBaseTexture()` follows it. Nothing when the material is absent,
-  unparseable or not a safe path, or no level sets the parameter. Not cached.
 - `BaseTextureImage()` selects `materials/<baseTexture>.ktx2` when it is present,
   and otherwise decodes the legacy `.vtf`. A present KTX2 must have a configured
   decoder and a valid, bounded RGBA8 preview; decode/read failure returns
   `nullptr` and never silently selects a VTF. Missing/invalid VTF also returns
   `nullptr`. Cached;
   the returned pointer is stable for the catalog's lifetime.
+- `TextureImage()` (2026-09-28, for the viewports on `ResolvePreview`) decodes a
+  texture by name by the same rule (KTX2 first, else VTF; unsafe paths and misses
+  are `nullptr`), cached per canonical texture and shared with `BaseTextureImage()`.
+  The editor's viewports read VMTs through `render::material::ImportVmt` and decode
+  the names it gives here; `ResolveParameter()`, which served their former
+  translucency flags, is removed.
 
 ## 4. Ownership, threading
 
@@ -62,9 +63,8 @@ viewport. Required for material browsing and textured rendering.
   overrides via the parser's `ResolvedParam`. When the patch declares none, this
   catalog follows its `include` one level and reads the base material's
   `$basetexture`. Deeper include chains (>1 level) are not followed.
-- Resolves `$basetexture`, and other parameters' raw values through
-  `ResolveParameter()`; it interprets none of them (bumpmaps, proxies, blend flags are
-  the consumer's). HDR/float VTF formats and cubemaps follow the `vtf_image.v1` limits.
+- Resolves `$basetexture` only; it interprets no other parameter (bumpmaps, proxies,
+  blend flags are the consumer's, through the VMT importer). HDR/float VTF formats and cubemaps follow the `vtf_image.v1` limits.
 - The current KTX2 adapter shares the runtime reader and previews packaged 2D
   RGBA8/BGRA8 levels. BC, ASTC, ETC2 and EAC packages are explicitly
   unpreviewable until a decoder or GPU preview path is added.

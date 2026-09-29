@@ -102,9 +102,9 @@ LineVertex Vertex( const Vec3d &p, Rgba8 color )
 	return v;
 }
 
-UnlitVertex FaceVertex( const Vec3d &p, Rgba8 color, float u = 0.0f, float v = 0.0f )
+FaceVertex MakeFaceVertex( const Vec3d &p, Rgba8 color, float u = 0.0f, float v = 0.0f )
 {
-	UnlitVertex vertex;
+	FaceVertex vertex;
 	vertex.position[0] = float( p.x );
 	vertex.position[1] = float( p.y );
 	vertex.position[2] = float( p.z );
@@ -143,7 +143,7 @@ void PushBoxEdges( std::vector<LineVertex> &edges, const Vec3d &lo, const Vec3d 
 	}
 }
 
-void PushBox( std::vector<UnlitVertex> &faces, std::vector<LineVertex> &edges, const Vec3d &lo,
+void PushBox( std::vector<FaceVertex> &faces, std::vector<LineVertex> &edges, const Vec3d &lo,
     const Vec3d &hi, const Color &fill, Rgba8 edge )
 {
 	const std::array<Vec3d, 8> p = { Vec3d( lo.x, lo.y, lo.z ), Vec3d( hi.x, lo.y, lo.z ),
@@ -162,7 +162,7 @@ void PushBox( std::vector<UnlitVertex> &faces, std::vector<LineVertex> &edges, c
 		const Rgba8 shaded = ToRgba( Shade( fill, q.n ) );
 		for ( int i : { q.a, q.b, q.c, q.a, q.c, q.d } )
 		{
-			faces.push_back( FaceVertex( p[i], shaded ) );
+			faces.push_back( MakeFaceVertex( p[i], shaded ) );
 		}
 	}
 	static const int kEdges[12][2] = { { 0, 1 }, { 1, 2 }, { 2, 3 }, { 3, 0 }, { 4, 5 }, { 5, 6 },
@@ -212,8 +212,8 @@ SceneGeometry BuildSceneGeometry(
 	const Color white{};
 	const Color tintAll = options.tint ? FromRgb( *options.tint ) : white;
 	SceneGeometry geometry;
-	std::map<std::string, std::vector<UnlitVertex>> batches; // "" sorts first
-	std::vector<UnlitVertex> &untextured = batches[std::string()];
+	std::map<std::string, std::vector<FaceVertex>> batches; // "" sorts first
+	std::vector<FaceVertex> &untextured = batches[std::string()];
 	std::map<std::string, std::optional<TextureSize>> known;
 	auto sizeOf = [&]( const std::string &material ) -> std::optional<TextureSize>
 	{
@@ -239,7 +239,7 @@ SceneGeometry BuildSceneGeometry(
 		for ( const viewport::FaceDraw &face : solid.faces )
 		{
 			const std::optional<TextureSize> size = sizeOf( face.material );
-			std::vector<UnlitVertex> &out = size ? batches[face.material] : untextured;
+			std::vector<FaceVertex> &out = size ? batches[face.material] : untextured;
 			// Over a texture the color is the shading and the selection (or
 			// instance) tint only.
 			const Color tint = face.selected    ? kSelectedFace
@@ -247,10 +247,10 @@ SceneGeometry BuildSceneGeometry(
 			                                    : tintAll;
 			auto textured = [&]( const Vec3d &p, const Color &color )
 			{
-				return size
-				           ? FaceVertex( p, ToRgba( color ), TexCoord( p, face.uAxis, size->width ),
-				                 TexCoord( p, face.vAxis, size->height ) )
-				           : FaceVertex( p, ToRgba( color ) );
+				return size ? MakeFaceVertex( p, ToRgba( color ),
+				                  TexCoord( p, face.uAxis, size->width ),
+				                  TexCoord( p, face.vAxis, size->height ) )
+				            : MakeFaceVertex( p, ToRgba( color ) );
 			};
 			if ( face.displacement )
 			{
@@ -384,8 +384,9 @@ std::vector<ModelBatch> BuildModelBatches( const ModelAsset &asset, std::int32_t
 		{
 			const Vec3d normal( v.normal.x, v.normal.y, v.normal.z );
 			const Color color = Shade( size ? tintColor : fillColor, normal );
-			batch.vertices.push_back( FaceVertex( Vec3d( v.position.x, v.position.y, v.position.z ),
-			    ToRgba( color ), size ? v.u : 0.0f, size ? v.v : 0.0f ) );
+			batch.vertices.push_back(
+			    MakeFaceVertex( Vec3d( v.position.x, v.position.y, v.position.z ), ToRgba( color ),
+			        size ? v.u : 0.0f, size ? v.v : 0.0f ) );
 		}
 		for ( std::uint32_t index : mesh.indices )
 		{

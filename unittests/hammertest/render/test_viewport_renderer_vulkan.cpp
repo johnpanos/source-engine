@@ -8,10 +8,11 @@
 //
 //			R1 3D: the pixel under each box's top-face center (projected by
 //			   the view's own Camera3D) has that face's color as the geometry
-//			   builds it, within one level (the unlit family decodes vertex
-//			   colors as gamma 2.2 and the renderer re-encodes the display
-//			   colors for it): the selected box the shaded selection fill, the
-//			   other its own fill;
+//			   builds it, within one level (the preview program reads vertex
+//			   colors as linear light and the renderer stores the display
+//			   colors' linear values, within one level from display 49 up,
+//			   where these fills are): the selected box the shaded selection
+//			   fill, the other its own fill;
 //			R2 2D: the pixel on a box edge (projected by the Camera2D) has the
 //			   edge color (selection orange for the selected box, the plain
 //			   edge color otherwise); a grid line shows where no geometry is;
@@ -145,7 +146,7 @@ int ToDisplay( double linear )
 	return int( std::lround( std::clamp( v, 0.0, 1.0 ) * 255.0 ) );
 }
 
-// texel x shade in linear light, as the unlit family draws a textured face.
+// texel x shade in linear light, as the preview program draws a textured face.
 Rgb Modulated( Rgb texel, Rgb shade )
 {
 	auto channel = []( int t, int s )
@@ -166,10 +167,11 @@ class HalfTextures final : public IMaterialTextures
 {
 public:
 	explicit HalfTextures( bool none ) : m_None( none ) {}
-	std::optional<MaterialImage> BaseTexture( const std::string & ) override
+	foundation::Expected<hammer::render_adapter::SourceMaterial, std::string> Material(
+	    const std::string &material ) override
 	{
 		if ( m_None )
-			return std::nullopt;
+			return foundation::MakeUnexpected( material + " is missing" );
 		MaterialImage image;
 		image.width = kTextureWidth;
 		image.height = 2;
@@ -182,7 +184,8 @@ public:
 				    { std::uint8_t( c.r ), std::uint8_t( c.g ), std::uint8_t( c.b ), 255 } );
 			}
 		}
-		return image;
+		return hammer::render_adapter::SourceMaterialFromVariables( "LightmappedGeneric",
+		    { { "$basetexture", "half" } }, { { "materials/half", std::move( image ) } } );
 	}
 
 private:
@@ -213,7 +216,8 @@ double UFraction( const hammer::viewport::RenderSnapshot &snapshot, double x, do
 class SurfaceTextures final : public IMaterialTextures
 {
 public:
-	std::optional<MaterialImage> BaseTexture( const std::string &material ) override
+	foundation::Expected<hammer::render_adapter::SourceMaterial, std::string> Material(
+	    const std::string &material ) override
 	{
 		MaterialImage image;
 		image.width = image.height = 64;
@@ -240,9 +244,14 @@ public:
 				                          std::uint8_t( c.b ), std::uint8_t( alpha ) } );
 			}
 		}
-		image.surface.translucent = material == "GLASS";
-		image.surface.alphaTest = material == "GRATE";
-		return image;
+		std::vector<render::material::VmtPair> variables = { { "$basetexture", material } };
+		if ( material == "GLASS" )
+			variables.push_back( { "$translucent", "1" } );
+		if ( material == "GRATE" )
+			variables.push_back( { "$alphatest", "1" } );
+		return hammer::render_adapter::SourceMaterialFromVariables( "LightmappedGeneric",
+		    std::move( variables ),
+		    { { render::material::VmtTextureReference( material ), std::move( image ) } } );
 	}
 	static constexpr Rgb kGreen{ 40, 200, 60 };
 };
