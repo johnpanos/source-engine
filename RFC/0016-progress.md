@@ -2922,3 +2922,75 @@ So the lab's baked diffuse (lightmap × albedo) is close to Cycles. What's
 missing is everything that makes the Source 2 look: specular from lights
 and probes, reflections, emission, projected light and media. These are K11
 steps b–g, in order, so the table is the expected state.
+
+## K11 fixture: light through a portal pair (`portal-pair`, 2026-09-29, user request)
+
+User request: a `gi_portal_light`-like fixture for `render_lab`, so light
+through portals reaches Source 2 quality. The fixture is source-engine-07's.
+The lab side (reading the pair, portal views, images and their shadows) is
+the render-core owner's (source-engine-43).
+
+**Decisions (render-core owner, 2026-09-29).**
+- The term is `portal-transport`, owned by `render.portal-lights.v1` (RFC
+  0011). It is how every term is evaluated across an open, linked pair, not
+  a row of its own. RFC 0016's model section gains one line when the lab
+  side lands.
+- The opening is the portal's visible ellipse, inscribed in 64 x 108 units.
+  `render.portal-lights.v1` P2's rectangle clip is a known deviation, and
+  the fixture exposes it.
+
+**The fixture** (`quality/fixtures/lighting/portal-pair`, generator
+`portal_pair` in `lighting_fixtures.py`):
+- Room A (5 x 4 m): a 1 m ceiling rectangle, and a spot aimed through
+  portal A past a post.
+- Room B (4 x 5 m, 6 m away): only a dim 0.5 m lamp of its own, a rough and
+  polished floor, a block and the dynamic probe sphere.
+- The pair sits on perpendicular walls (A's east, B's south), so the
+  transform is a rotation, not a translation.
+- `closed` is the portal world, and the map `lt_portal_pair` is built and
+  baked from it. Its entity lump carries the pair as `prop_portal`s, which
+  `check` now compares like the lights.
+- `open` is the reference. Each room is joined through the opening to a copy
+  of the other behind its portal wall, placed by Source's
+  `MatrixThisToLinked` (forward and right negated). For one pair this is
+  exact for every path, any number of crossings included.
+- Cameras: `b-portal`, `b-floor` (the polished floor's reflection of the
+  opening) and `a-portal` (the view into B through A). Each has a `through`
+  region that the lab passes only by drawing the view through the portal.
+- References: denoised Cycles at 256 samples. Open room B is 14.6x (`b-portal`)
+  and 17.5x (`b-floor`) brighter than closed, so transport is most of its
+  light.
+- Tolerance fixed before any comparison: mean 0.07, p99 0.8.
+
+**Baseline** (`lighting_fixtures.py gallery --fixture portal-pair`, the lab
+at `build-rc-lab`, diagnostic): the lab draws one frame per camera from the
+closed bake, so `open` fails everywhere, as the term's negative control must
+(mean 0.55–1.42).
+- `closed` `a-portal` passes (mean 0.035).
+- `closed` room B fails only because the lab draws the probe sphere unlit
+  white (dynamic-model lighting is a later K11 step). The world's median
+  radiance equals the reference's (0.0048 against 0.0048).
+
+**Fixed on the way.**
+- `lighting_fixtures.py render` exited 1 for every denoised render; it now
+  accepts every reference status.
+- The opening's wall generator skips empty cells when the opening meets the
+  wall's edge, and rejects an opening larger than its wall.
+
+**Tests.** `test_lighting_fixtures.py` has 5 new cases (the pair's frames and
+transform, the opening's area and winding, the entity, the checked-in
+fixture); 46 tests pass. `lighting_fixtures.py check` passes on the whole
+set, and `generate --check` matches.
+
+**Next (render-core owner).** The lab reads the pair from the lump and
+draws the view through each portal (the K8 view generator, in the lab). It
+images lights through the pair with their shadows (atlas depth from the
+image). Indirect and specular light cross the pair. A glow state
+(source-engine-71, next) adds each portal's own light.
+
+Reproduce:
+
+    python3 tools/quality/lighting_fixtures.py build --fixture portal-pair
+    PYTHONPATH=<usd_pythonpath> /usr/bin/python3.12 tools/quality/lighting_fixtures.py \
+        render --fixture portal-pair --samples 256 --denoise
+    python3 tools/quality/lighting_fixtures.py gallery --fixture portal-pair

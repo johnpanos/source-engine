@@ -1085,10 +1085,14 @@ def portal_wall_faces(frame, r_range, u_range, half_width, half_height, segments
 
     rs = (r_range[0], -half_width, half_width, r_range[1])
     us = (u_range[0], -half_height, half_height, u_range[1])
+    if any(b < a for a, b in zip(rs, rs[1:])) or any(b < a for a, b in zip(us, us[1:])):
+        raise ValueError("the portal's opening does not fit its wall")
     wall = []
     for i in range(3):
         for j in range(3):
-            if (i, j) == (1, 1):
+            # The centre cell holds the opening; an opening flush with the
+            # wall's edge leaves an empty row or column, which has no face.
+            if (i, j) == (1, 1) or rs[i + 1] - rs[i] < 1e-9 or us[j + 1] - us[j] < 1e-9:
                 continue
             wall.append((oriented([at(rs[i], us[j]), at(rs[i + 1], us[j]),
                                    at(rs[i + 1], us[j + 1]), at(rs[i], us[j + 1])], f), f))
@@ -1569,7 +1573,7 @@ def cmd_render(args):
         print("[%s] %s (%s)" % (name, record["status"], "; ".join(
             "%s: %s" % (c["check"], "ok" if c["ok"] else "FAIL") for c in record["analytic"])
             or "no closed form"), flush=True)
-        status |= record["status"] not in ("preview", "final")
+        status |= record["status"] not in REFERENCE_STATUSES
     return status
 
 
@@ -1887,11 +1891,14 @@ def map_entities(bsp):
 
 LIGHT_CLASSES = ("light", "light_spot", "light_environment", "env_projectedtexture",
                  RECT_CLASS, MEDIUM_CLASS, FOG_CONTROLLER_CLASS)
+# The entities a fixture declares in entities.json: its lights, and the
+# portal pairs light travels through (portal-transport).
+FIXTURE_CLASSES = LIGHT_CLASSES + ("prop_portal",)
 
 
 def check_map(fixture):
     """The fixture's published map exists and its entity lump carries exactly
-    the fixture's light entities (for reused maps: that it exists)."""
+    the fixture's light and portal entities (for reused maps: that it exists)."""
     name, lighting = fixture["name"], fixture["lighting"]
     bsp = ROOT / lighting["map"]["bsp"]
     if not bsp.is_file():
@@ -1900,13 +1907,13 @@ def check_map(fixture):
     if not lighting.get("entities"):
         return []
     want = json.loads((fixture["directory"] / lighting["entities"]).read_text())["entities"]
-    have = [e for e in map_entities(bsp) if e.get("classname") in LIGHT_CLASSES]
+    have = [e for e in map_entities(bsp) if e.get("classname") in FIXTURE_CLASSES]
     strip = lambda e: {k: v for k, v in e.items() if k not in ("hammerid", "id")}
     key = lambda e: (e.get("classname"), e.get("targetname") or e.get("_fixture_light"))
     want_by, have_by = {key(e): e for e in want}, {key(e): strip(e) for e in have}
     problems = ["%s: map lacks entity %s %s" % ((name,) + k) for k in want_by
                 if k not in have_by]
-    problems += ["%s: map has an undeclared light entity %s %s" % ((name,) + k)
+    problems += ["%s: map has an undeclared fixture entity %s %s" % ((name,) + k)
                  for k in have_by if k not in want_by]
     problems += ["%s: map entity %s %s differs from entities.json" % ((name,) + k)
                  for k, e in want_by.items() if k in have_by and have_by[k] != e]

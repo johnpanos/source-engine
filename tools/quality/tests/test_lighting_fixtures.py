@@ -490,6 +490,91 @@ class Check(unittest.TestCase):
         self.assertRejected("camera side is not in the fixture")
 
 
+def polygon_area(corners, normal):
+    total = [0.0, 0.0, 0.0]
+    for a, b in zip(corners, corners[1:] + corners[:1]):
+        total = [total[0] + a[1] * b[2] - a[2] * b[1], total[1] + a[2] * b[0] - a[0] * b[2],
+                 total[2] + a[0] * b[1] - a[1] * b[0]]
+    return 0.5 * sum(t * n for t, n in zip(total, normal))
+
+
+class PortalPair(unittest.TestCase):
+    A = lf.portal_frame((5.0, 2.0, 1.4), (-1.0, 0.0, 0.0))
+    B = lf.portal_frame((13.0, 0.0, 1.4), (0.0, 1.0, 0.0))
+
+    def test_frames_are_right_handed_with_up_z(self):
+        for frame in (self.A, self.B):
+            f, r, u = frame["forward"], frame["right"], frame["up"]
+            self.assertEqual(u, (0.0, 0.0, 1.0))
+            self.assertAlmostEqual(sum(a * b for a, b in zip(f, r)), 0.0)
+            cross = (f[1] * u[2] - f[2] * u[1], f[2] * u[0] - f[0] * u[2],
+                     f[0] * u[1] - f[1] * u[0])
+            for a, b in zip(cross, r):
+                self.assertAlmostEqual(a, b)
+
+    def test_transform_links_the_openings_and_inverts(self):
+        # The centre maps to the centre; a point in front of A lands behind B
+        # (entering A leaves B into B's room); B then A is the identity.
+        for a, b in zip(lf.portal_map_point(self.A, self.B, self.A["origin"]),
+                        self.B["origin"]):
+            self.assertAlmostEqual(a, b)
+        front_of_a = (4.0, 2.5, 2.0)
+        image = lf.portal_map_point(self.A, self.B, front_of_a)
+        self.assertLess(image[1], 0.0)
+        back = lf.portal_map_point(self.B, self.A, image)
+        for a, b in zip(back, front_of_a):
+            self.assertAlmostEqual(a, b)
+        # A ray entering A (along -forward) leaves B along B's forward.
+        leaving = lf.portal_map_vector(self.A, self.B, tuple(-c for c in self.A["forward"]))
+        for a, b in zip(leaving, self.B["forward"]):
+            self.assertAlmostEqual(a, b)
+        # Up is kept, and lengths are kept.
+        up = lf.portal_map_vector(self.A, self.B, (0.0, 0.0, 1.0))
+        self.assertAlmostEqual(up[2], 1.0)
+        v = (0.3, -0.7, 0.2)
+        self.assertAlmostEqual(sum(c * c for c in lf.portal_map_vector(self.A, self.B, v)),
+                               sum(c * c for c in v))
+
+    def test_opening_is_the_ellipse_and_faces_forward(self):
+        hw, hh, n = 0.8, 1.4, 64
+        wall, plug = lf.portal_wall_faces(self.A, (-2.0, 2.0), (-1.4, 1.6), hw, hh, n)
+        normal = self.A["forward"]
+        areas = [polygon_area(c, normal) for c, _ in wall]
+        self.assertTrue(all(a > 0 for a in areas), "every wall face winds about forward")
+        plug_area = polygon_area(plug[0][0], normal)
+        polygon = 0.5 * n * hw * hh * math.sin(2 * math.pi / n)
+        self.assertAlmostEqual(plug_area, polygon, places=9)
+        self.assertLess(abs(plug_area - math.pi * hw * hh) / (math.pi * hw * hh), 0.002)
+        # Wall plus plug is the whole wall rectangle: no gap, no overlap. The
+        # opening here is flush with the floor (u from -1.4): no empty faces.
+        self.assertAlmostEqual(sum(areas) + plug_area, 4.0 * 3.0, places=9)
+        self.assertEqual(len(wall), 5 + 64)
+        with self.assertRaises(ValueError):
+            lf.portal_wall_faces(self.A, (-0.5, 0.5), (-1.4, 1.6), hw, hh, n)
+        for corners, face_normal in wall + plug:
+            self.assertEqual(face_normal, normal)
+            for p in corners:
+                self.assertAlmostEqual(p[0], 5.0)
+
+    def test_portal_entity(self):
+        portal = {"name": "PortalB", "portal_two": True, "linkage_group": 0,
+                  "origin_units": [511.811, 0.0, 55.118], "angles": [0.0, 90.0, 0.0]}
+        keys = lf.portal_entity(portal)
+        self.assertEqual(keys["classname"], "prop_portal")
+        self.assertEqual((keys["Activated"], keys["PortalTwo"], keys["LinkageGroupID"]),
+                         ("1", "1", "0"))
+        self.assertEqual(keys["angles"], "0.0000 90.0000 0.0000")
+
+    def test_checked_in_fixture_declares_its_pair(self):
+        fixture = lf.load_fixture("portal-pair")
+        portals = fixture["lighting"]["portals"]
+        self.assertEqual(sorted(p["name"] for p in portals), ["PortalA", "PortalB"])
+        self.assertTrue(all(p["aperture"] == "ellipse" for p in portals))
+        self.assertIn("portal-transport", fixture["lighting"]["terms"])
+        self.assertEqual(sorted(fixture["states"]), ["closed", "open"])
+        self.assertEqual(fixture["baked_state"], "closed")
+
+
 class CheckedInSet(unittest.TestCase):
     def test_checked_in_fixtures_pass(self):
         # The published maps are local build products (run/maps, untracked);
