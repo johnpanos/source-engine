@@ -83,14 +83,6 @@ def fibonacci_sphere(count):
     return np.stack([r * np.cos(phi), r * np.sin(phi), z], axis=-1)
 
 
-def grid_for(bounds_min, bounds_max, spacing):
-    """origin, spacing (per axis) and dims of a grid spanning the bounds."""
-    extent = np.maximum(np.asarray(bounds_max) - np.asarray(bounds_min), 0.0)
-    dims = np.maximum(np.ceil(extent / spacing).astype(int) + 1, 2)
-    step = np.where(extent > 0, extent / (dims - 1), spacing)
-    return np.asarray(bounds_min, dtype=np.float64), step, dims
-
-
 def world_bvh(objects):
     vertices, polygons = [], []
     for obj in objects:
@@ -278,6 +270,9 @@ def main():
     parser.add_argument("--bounds", type=float, nargs=6,
                         help="grid bounds in meters (min xyz, max xyz); default: the world "
                              "meshes' bounds, inset")
+    parser.add_argument("--fit-limit", action="store_true",
+                        help="widen the spacing just enough for the grid to fit the PRBV "
+                             "probe limit, instead of failing (recorded in the receipt)")
     parser.add_argument("--samples", type=int, required=True)
     parser.add_argument("--device", choices=pbrt_blender.DEVICES,
                         default=pbrt_blender.DEFAULT_DEVICE)
@@ -318,7 +313,13 @@ def main():
         low, high = low + inset, high - inset
     if (high <= low).any():
         raise ValueError("probe bounds are empty: %s .. %s" % (low, high))
-    origin, step, dims = grid_for(low, high, args.spacing)
+    spacing = args.spacing
+    if args.fit_limit:
+        spacing = probe_volume.fit_spacing(low, high, args.spacing)
+        if spacing > args.spacing:
+            print("probe spacing %.3g m widened to %.3g m to fit the PRBV limit" %
+                  (args.spacing, spacing), flush=True)
+    origin, step, dims = probe_volume.grid_for(low, high, spacing)
     count = int(np.prod(dims))
     if count > probe_volume.MAX_PROBES:
         raise ValueError("%d probes exceed the PRBV limit" % count)
@@ -386,6 +387,7 @@ def main():
                "grid": {"origin": grid["origin"], "spacing": grid["spacing"],
                         "dims": grid["dims"], "max_relocation": grid["max_relocation"],
                         "max_distance": grid["max_distance"]},
+               "requested_spacing": args.spacing, "fit_limit": args.fit_limit,
                "probes": count, "active_probes": int(active.sum()),
                "relocated_probes": int((np.abs(offsets).max(axis=1) > 1e-9).sum()),
                "max_backface_fraction": float(backfaces.max()),

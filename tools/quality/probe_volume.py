@@ -89,6 +89,25 @@ def oct_encode(direction):
     return p
 
 
+def grid_for(bounds_min, bounds_max, spacing):
+    """origin, spacing (per axis) and dims of a grid spanning the bounds."""
+    extent = np.maximum(np.asarray(bounds_max) - np.asarray(bounds_min), 0.0)
+    dims = np.maximum(np.ceil(extent / spacing).astype(int) + 1, 2)
+    step = np.where(extent > 0, extent / (dims - 1), spacing)
+    return np.asarray(bounds_min, dtype=np.float64), step, dims
+
+
+def fit_spacing(bounds_min, bounds_max, spacing, limit=MAX_PROBES):
+    """The smallest spacing, at least `spacing`, whose grid over the bounds
+    holds at most `limit` probes (a large map's volume at the declared
+    spacing may not fit one PRBV)."""
+    fitted = float(spacing)
+    while int(np.prod(grid_for(bounds_min, bounds_max, fitted)[2])) > limit:
+        count = int(np.prod(grid_for(bounds_min, bounds_max, fitted)[2]))
+        fitted *= max((count / limit) ** (1.0 / 3.0), 1.001)
+    return fitted
+
+
 def oct_decode(p):
     p = np.asarray(p, dtype=np.float64)
     z = 1.0 - np.abs(p[..., 0]) - np.abs(p[..., 1])

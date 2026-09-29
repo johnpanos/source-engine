@@ -966,6 +966,8 @@ class Pipeline:
                            "--out", p["prbv"], "--work", p["prbv_work"]] + env_args
             if volume.get("bounds_m"):
                 volume_args += ["--bounds"] + [str(value) for value in volume["bounds_m"]]
+            if volume.get("fit_limit"):
+                volume_args += ["--fit-limit"]
             self.step("probe-volume", [p["stage"]] + self.scene_sources() +
                       ([environment] if environment else []),
                       dict(volume, light_paths=self.lightmap["light_paths"]),
