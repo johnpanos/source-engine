@@ -155,8 +155,8 @@ struct AppState
 	    {
 		    return path;
 	    } };
-	hammer::presenters::EditorWorkspace workspace{
-	    hammer::presenters::WorkspaceServices{ &codec, &store, &builder, entitySchema, nullptr } };
+	hammer::presenters::EditorWorkspace workspace{ hammer::presenters::WorkspaceServices{
+	    &codec, &store, &builder, entitySchema, nullptr, {} } };
 
 	// F9 compiles off the UI thread: the queue runs the builder on its own
 	// thread and replies on the GTK main loop. Declaration order is teardown

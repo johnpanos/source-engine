@@ -78,7 +78,7 @@ struct Editor
 	hammer::formats::VmfMapCodec codec;
 	hammer::adapters::platform::DiskFileStore store;
 	hammer::presenters::EditorWorkspace workspace{
-	    hammer::presenters::WorkspaceServices{ &codec, &store, nullptr, nullptr, nullptr } };
+	    hammer::presenters::WorkspaceServices{ &codec, &store, nullptr, nullptr, nullptr, {} } };
 
 	void SetSize( int width, int height )
 	{
