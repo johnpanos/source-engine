@@ -56,19 +56,21 @@ device::ClearColor Clear( float r, float g, float b )
 	return { Linear( r ), Linear( g ), Linear( b ), 1.0f };
 }
 
-// The preview program multiplies by the vertex color unconverted, in linear
-// light (lightmapped.vert); the editor's shading colors are display (sRGB)
-// values. This table stores a display byte's sRGB linear value, so the sRGB
-// target shows the byte again: within one level from display 49 up (exact
-// from 124 up), up to 6 levels below it (8-bit linear has few dark steps; a
-// gamma read when lighting is one would keep every byte within one level).
-const std::array<std::uint8_t, 256> &ProgramColorFromDisplay()
+// The preview program decodes vertex colors as gamma 2.2 (lightmapped.vert,
+// ResolvePreview sets the gamma term, Source's convention); the editor's
+// shading colors are display (sRGB) values. This table re-encodes a display
+// byte so the decode gives its sRGB linear value, and the sRGB target shows
+// the byte again (within a level of quantization).
+const std::array<std::uint8_t, 256> &Gamma22FromDisplay()
 {
 	static const std::array<std::uint8_t, 256> table = []
 	{
 		std::array<std::uint8_t, 256> out{};
 		for ( int i = 0; i < 256; ++i )
-			out[i] = std::uint8_t( std::lround( Linear( float( i ) / 255.0f ) * 255.0 ) );
+		{
+			const double linear = Linear( float( i ) / 255.0f );
+			out[i] = std::uint8_t( std::lround( std::pow( linear, 1.0 / 2.2 ) * 255.0 ) );
+		}
 		return out;
 	}();
 	return table;
@@ -209,7 +211,7 @@ ViewportRenderer::~ViewportRenderer()
 
 std::vector<PreviewVertex> ViewportRenderer::ToPreview( const std::vector<FaceVertex> &vertices )
 {
-	const std::array<std::uint8_t, 256> &encode = ProgramColorFromDisplay();
+	const std::array<std::uint8_t, 256> &encode = Gamma22FromDisplay();
 	std::vector<PreviewVertex> out( vertices.size() );
 	for ( std::size_t i = 0; i < vertices.size(); ++i )
 	{

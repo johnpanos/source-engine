@@ -8,11 +8,11 @@
 //
 //			R1 3D: the pixel under each box's top-face center (projected by
 //			   the view's own Camera3D) has that face's color as the geometry
-//			   builds it, within one level (the preview program reads vertex
-//			   colors as linear light and the renderer stores the display
-//			   colors' linear values, within one level from display 49 up,
-//			   where these fills are): the selected box the shaded selection
-//			   fill, the other its own fill;
+//			   builds it, within one level (the preview program decodes vertex
+//			   colors as gamma 2.2 and the renderer re-encodes the display
+//			   colors for it): the selected box the shaded selection fill, the
+//			   other its own fill, and a dark fill (display below 49, where a
+//			   linear read lost up to 6 levels) its own;
 //			R2 2D: the pixel on a box edge (projected by the Camera2D) has the
 //			   edge color (selection orange for the selected box, the plain
 //			   edge color otherwise); a grid line shows where no geometry is;
@@ -354,6 +354,35 @@ int main()
 			        Within( At( frame3D.Value(), int( rightCenter->x ), int( rightCenter->y ) ),
 			            *rightColor, 1 ),
 			    "R1.the-other-top-face-shows-its-own-fill" );
+		}
+		{
+			// Dark fills too: the program decodes vertex colors as gamma 2.2,
+			// so a display byte below 49 keeps its level (a linear read lost
+			// up to 6). Solid fills are never dark; an entity's marker takes
+			// its own color, so the light's marker becomes a dark slab over
+			// the right box.
+			hammer::viewport::RenderSnapshot dark = Snapshot( d, false );
+			for ( hammer::viewport::EntityDraw &entity : dark.entities )
+			{
+				if ( entity.id == d.light )
+				{
+					entity.color = { 24, 36, 48 };
+					entity.mins = Vec3d( 64, -64, 64 );
+					entity.maxs = Vec3d( 192, 64, 80 );
+				}
+			}
+			const SceneGeometry darkGeometry = BuildSceneGeometry( dark );
+			auto darkMade = ViewportRenderer::Create( *device );
+			const auto center = eye.WorldToScreen( Vec3d( 128, 0, 80 ) );
+			const auto want = TopFaceColor( darkGeometry, 80, 64, 192 );
+			bool kept = false;
+			if ( darkMade && darkMade.Value()->SetScene( dark, 1 ).HasValue() && center && want )
+			{
+				auto frame = darkMade.Value()->RenderAndWait( request3D );
+				kept = frame && want->r < 49 &&
+				       Within( At( frame.Value(), int( center->x ), int( center->y ) ), *want, 1 );
+			}
+			checks.That( kept, "R1.a-dark-top-face-keeps-its-fill" );
 		}
 
 		// R2.

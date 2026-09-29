@@ -1611,6 +1611,15 @@ and R1 are restated.
   `Resolve` of `unlit` materials with `$vertexcolor`, which now draw darker
   tints than the UnlitGeneric port. The table becomes the old gamma one when
   it lands.
+  - Closed 2026-09-28: render core 8e671774 (`render-core@acffcafb`) adds a
+    per-vertex gamma 2.2 decode term (`LightmappedConstants::state.y`), set
+    by `ResolvePreview` and by strict `Resolve`'s unlit case. The renderer's
+    table is the gamma one again (`Gamma22FromDisplay`). New check
+    `R1.a-dark-top-face-keeps-its-fill`: a display (24, 36, 48) marker
+    shows its built color (22, 32, 43) within one level, measured (21, 32,
+    43). `.viewport` has 34 checks and passes on g++;
+    `.viewport.null`, `.geometry` and `.service.vulkan` pass on g++ and
+    clang++.
 - **Behavior change by the preview's rules.** `$translucent` with `$additive`
   now draws additive (it drew translucent), and `$vertexalpha` blends.
 - **Evidence.** Suites on g++ and clang++:
