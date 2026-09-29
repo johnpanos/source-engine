@@ -234,11 +234,39 @@ inline constexpr std::uint32_t kSurfaceEmissionTexture = 4096;
 inline constexpr std::uint32_t kSurfaceVertexLit = 8192;
 // The view's clustered runtime lights (the view group), both lobes.
 inline constexpr std::uint32_t kSurfaceClustered = 16384;
+// The pbr point on a world surface: the indirect diffuse is the draw's
+// lightmap basis (render/shaders/common/lightmap_basis.glsl) in place of the
+// ambient cube; with kSurfaceDirectionalLightmap the draw group's gradient
+// page is read too (a directional LMAP page's right half).
+inline constexpr std::uint32_t kSurfaceBakedLightmap = 32768;
+inline constexpr std::uint32_t kSurfaceDirectionalLightmap = 65536;
+// The pbr point with the map's probe volume (indirect diffuse where no
+// lightmap is read) and reflection probes (the specular image light): the
+// frame group's SurfaceMapTextures.
+inline constexpr std::uint32_t kSurfaceProbeVolume = 131072;
+inline constexpr std::uint32_t kSurfaceReflectionProbes = 262144;
 // The terms that read the normal (not on the flat vertex), and those the
 // model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =
     kSurfaceBump | kSurfaceSsbump | kSurfaceEnvmap | kSurfacePbr | kSurfaceVertexLit;
 inline constexpr std::uint32_t kSurfaceModelTerms = kSurfaceVertexLit;
+// The terms that read the lightmap coordinates (not on the model vertex).
+inline constexpr std::uint32_t kSurfaceLightmapTerms =
+    kSurfaceBakedLightmap | kSurfaceDirectionalLightmap;
+// The terms that read the map's probes (the pbr point's).
+inline constexpr std::uint32_t kSurfaceMapProbeTerms =
+    kSurfaceProbeVolume | kSurfaceReflectionProbes;
+
+// The map's textures a frame group names (TextureCache names; empty when
+// the map has none, which the terms must then not ask for): the PRBV atlas
+// (RGBA16F) and grid table (RGBA32F, WriteProbeGridTable), and the RPRB
+// texture (RGBA16F, WriteReflectionProbeTexture).
+struct SurfaceMapTextures
+{
+	std::string probeAtlas;
+	std::string probeGrids;
+	std::string reflectionProbes;
+};
 
 // One point of the program: its pipeline state and specialization.
 struct SurfaceVariant
@@ -334,7 +362,7 @@ public:
 	// table ('ltcTable', one holding LtcTable()), each with a linear,
 	// clamped sampler; a table no point of the frame reads is named empty.
 	GroupRequest FrameGroup( const SurfaceFrame &frame, std::string splitSumTable = {},
-	    std::string ltcTable = {} ) const;
+	    std::string ltcTable = {}, const SurfaceMapTextures &map = {} ) const;
 	// A view group: the view's parameters, its froxels' ranges (FroxelRange
 	// records), its index list (ClusterIndexHeader then indices) and its
 	// light records, as render.pass.lights lays them out.
@@ -343,9 +371,11 @@ public:
 	// The view group of a view with no clustered lights.
 	GroupRequest NeutralViewGroup() const;
 	// A draw group: the lightmap page ('page', a TextureCache name staged as
-	// sRGB; empty for a mesh) and the draw's model lighting.
+	// sRGB; empty for a mesh), the draw's model lighting and a directional
+	// page's gradient page ('gradient', read under
+	// kSurfaceDirectionalLightmap; empty otherwise).
 	GroupRequest DrawGroup( std::string page, const ModelLighting &lighting = {},
-	    const device::SamplerDesc &sampler = {} ) const;
+	    const device::SamplerDesc &sampler = {}, std::string gradient = {} ) const;
 
 private:
 	explicit SurfaceProgram( device::IRenderDevice2 &device ) : m_Device( device ) {}

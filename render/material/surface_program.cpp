@@ -139,7 +139,13 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	    { 1, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 2, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
 	    { 3, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
-	    { 4, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	    { 4, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 5, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 6, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 7, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 8, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
+	    { 9, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 10, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	std::vector<BindingDesc> material = {
 	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } } };
 	for ( std::uint32_t texture = 0; texture < kMaterialTextures; ++texture )
@@ -151,7 +157,9 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
 	}
 	const BindingDesc draw[] = { { 0, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } },
-	    { 2, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } } };
+	    { 2, BindingKind::kUniformBuffer, 1, { ShaderStage::kVertex, ShaderStage::kFragment } },
+	    { 3, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 4, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
 	const BindingDesc view[] = { { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } },
 	    { 1, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
 	    { 2, BindingKind::kStorageBuffer, 1, { ShaderStage::kFragment } },
@@ -200,6 +208,15 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	if ( variant.layout == SurfaceVertexLayout::kFlat && ( variant.terms & kSurfaceNormalTerms ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	if ( variant.layout != SurfaceVertexLayout::kModel && ( variant.terms & kSurfaceModelTerms ) )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	// The map's probes are the pbr point's.
+	if ( ( variant.terms & kSurfaceMapProbeTerms ) && !( variant.terms & kSurfacePbr ) )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	// The lightmap basis is the pbr point's, on a world surface.
+	if ( ( variant.terms & kSurfaceLightmapTerms ) &&
+	     ( variant.layout != SurfaceVertexLayout::kWorld || !( variant.terms & kSurfacePbr ) ||
+	         ( ( variant.terms & kSurfaceDirectionalLightmap ) &&
+	             !( variant.terms & kSurfaceBakedLightmap ) ) ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	const auto key = std::make_pair( variant, debug );
 	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
@@ -312,8 +329,8 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
 	return request;
 }
 
-GroupRequest SurfaceProgram::FrameGroup(
-    const SurfaceFrame &frame, std::string splitSumTable, std::string ltcTable ) const
+GroupRequest SurfaceProgram::FrameGroup( const SurfaceFrame &frame, std::string splitSumTable,
+    std::string ltcTable, const SurfaceMapTextures &map ) const
 {
 	GroupRequest request;
 	request.layout = m_FrameLayout;
@@ -324,6 +341,11 @@ GroupRequest SurfaceProgram::FrameGroup(
 	clamped.address = AddressMode::kClampToEdge;
 	request.textures.push_back( { 1, std::move( splitSumTable ), 2, clamped } );
 	request.textures.push_back( { 3, std::move( ltcTable ), 4, clamped } );
+	// The probe atlas is filtered, clamped to edge (probe_volume.glsl); its
+	// grid table is fetched. The probe texture is fetched and filtered.
+	request.textures.push_back( { 5, map.probeAtlas, 6, clamped } );
+	request.textures.push_back( { 7, map.probeGrids, 8, clamped } );
+	request.textures.push_back( { 9, map.reflectionProbes, 10, clamped } );
 	return request;
 }
 
@@ -362,8 +384,8 @@ GroupRequest SurfaceProgram::NeutralViewGroup() const
 	    view, std::as_bytes( std::span( froxel ) ), std::as_bytes( std::span( indices ) ), {} );
 }
 
-GroupRequest SurfaceProgram::DrawGroup(
-    std::string page, const ModelLighting &lighting, const SamplerDesc &sampler ) const
+GroupRequest SurfaceProgram::DrawGroup( std::string page, const ModelLighting &lighting,
+    const SamplerDesc &sampler, std::string gradient ) const
 {
 	GroupRequest request;
 	request.layout = m_DrawLayout;
@@ -371,6 +393,8 @@ GroupRequest SurfaceProgram::DrawGroup(
 	const auto bytes = std::as_bytes( std::span( &lighting, 1 ) );
 	request.constants.assign( bytes.begin(), bytes.end() );
 	request.textures.push_back( { 0, std::move( page ), 1, sampler, true } );
+	// The gradient page is signed linear data, filtered as the page is.
+	request.textures.push_back( { 3, std::move( gradient ), 4, sampler } );
 	return request;
 }
 

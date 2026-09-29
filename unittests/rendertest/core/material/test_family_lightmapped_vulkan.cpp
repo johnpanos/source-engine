@@ -285,11 +285,12 @@ int main()
 			    { device::BindGroupRole::kMaterial, family.Value()->MaterialLayout(),
 			        std::as_bytes( std::span( &constants, 1 ) ), materialTextures } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),
-			    std::as_bytes( std::span( &lighting, 1 ) ), { testCase.lightmap }, true } );
+			    std::as_bytes( std::span( &lighting, 1 ) ), { testCase.lightmap, splitSum }, 1 } );
 			// The frame terms at their LDR defaults (the port's cases are LDR).
 			draw.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
-			    std::as_bytes( std::span( &kLdrFrame, 1 ) ), { splitSum, splitSum } } );
+			    std::as_bytes( std::span( &kLdrFrame, 1 ) ),
+			    { splitSum, splitSum, splitSum, splitSum, splitSum } } );
 			draw.vertices = surface ? std::as_bytes( std::span( surfaceQuad ) )
 			                        : std::as_bytes( std::span( flat ) );
 			draw.vertexCount = std::uint32_t( flat.size() );

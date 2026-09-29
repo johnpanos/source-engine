@@ -555,30 +555,40 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 		GroupResources &resources = groups[g];
 		std::vector<device::BindGroupEntry> entries;
 		std::uint32_t binding = 0;
+		// The constants, then each storage buffer, once, where constantsAfter
+		// places them.
+		bool constantsPlaced = false;
 		const auto addConstants = [&]
 		{
-			resources.constantsDesc.size = request.constants.size();
-			resources.constantsDesc.usages = {
-			    ResourceUsage::kCopyDestination, ResourceUsage::kUniform };
-			keep( device.CreateBuffer( resources.constantsDesc ), resources.constants );
-			entries.push_back(
-			    { binding++, resources.constants, 0, request.constants.size(), {}, {} } );
+			if ( constantsPlaced )
+				return;
+			constantsPlaced = true;
+			if ( !request.constants.empty() )
+			{
+				resources.constantsDesc.size = request.constants.size();
+				resources.constantsDesc.usages = {
+				    ResourceUsage::kCopyDestination, ResourceUsage::kUniform };
+				keep( device.CreateBuffer( resources.constantsDesc ), resources.constants );
+				entries.push_back(
+				    { binding++, resources.constants, 0, request.constants.size(), {}, {} } );
+			}
+			for ( std::span<const std::byte> bytes : request.storage )
+			{
+				device::BufferDesc desc;
+				desc.size = std::max<std::uint64_t>( bytes.size(), 4 );
+				desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
+				device::BufferId buffer;
+				keep( device.CreateBuffer( desc ), buffer );
+				resources.storageDescs.push_back( desc );
+				resources.storage.push_back( buffer );
+				entries.push_back( { binding++, buffer, 0, 0, {}, {} } );
+			}
 		};
-		if ( !request.constants.empty() && !request.constantsLast )
-			addConstants();
-		for ( std::span<const std::byte> bytes : request.storage )
+		for ( std::size_t index = 0; index < request.textures.size(); ++index )
 		{
-			device::BufferDesc desc;
-			desc.size = std::max<std::uint64_t>( bytes.size(), 4 );
-			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
-			device::BufferId buffer;
-			keep( device.CreateBuffer( desc ), buffer );
-			resources.storageDescs.push_back( desc );
-			resources.storage.push_back( buffer );
-			entries.push_back( { binding++, buffer, 0, 0, {}, {} } );
-		}
-		for ( const CaseTexture *texture : request.textures )
-		{
+			const CaseTexture *texture = request.textures[index];
+			if ( index == request.constantsAfter )
+				addConstants();
 			if ( !texture )
 			{
 				ok = false;
@@ -619,8 +629,7 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 		}
 		if ( !ok )
 			break;
-		if ( !request.constants.empty() && request.constantsLast )
-			addConstants();
+		addConstants();
 		auto group = device.CreateBindGroup( { request.layout, entries } );
 		if ( !group )
 		{

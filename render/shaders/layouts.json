@@ -1134,6 +1134,48 @@
       "stages": [
        "fragment"
       ]
+     },
+     {
+      "binding": 5,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 6,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 7,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 8,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 9,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 10,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
      }
     ],
     "view": [
@@ -1294,6 +1336,20 @@
       "kind": "uniform-buffer",
       "stages": [
        "vertex",
+       "fragment"
+      ]
+     },
+     {
+      "binding": 3,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 4,
+      "kind": "sampler",
+      "stages": [
        "fragment"
       ]
      }

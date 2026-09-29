@@ -175,10 +175,11 @@ struct CaseGroup
 	render::device::BindGroupLayoutId layout;
 	std::span<const std::byte> constants;
 	std::vector<const CaseTexture *> textures;
-	// The bindings are the constants (0), then each storage buffer, then each
-	// texture and its sampler; with constantsLast the textures come first and
-	// the constants after them.
-	bool constantsLast = false;
+	// The bindings are each texture and its sampler, with the constants and
+	// then each storage buffer placed after the first constantsAfter textures
+	// (0: the constants at binding 0; the surface draw group: after its page,
+	// before its gradient page).
+	std::uint32_t constantsAfter = 0;
 	std::vector<std::span<const std::byte>> storage = {}; // read-only storage buffers
 };
 

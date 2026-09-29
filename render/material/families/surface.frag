@@ -14,7 +14,20 @@
 //   the probe volume or clear coat. Units follow Source's model lighting: a
 //   local light is incident radiance pi * color * attenuation, the ambient
 //   cube a Lambertian return, and the cube in the reflected direction the
-//   specular image light.
+//   specular image light. On a world surface (kBakedLightmap) the indirect
+//   diffuse is the draw's lightmap basis (lightmap_basis.glsl) at the mapped
+//   normal in place of the ambient cube: the flat page, or with
+//   kDirectionalLightmap the page and its gradient page. The draw's page is
+//   the LMAP layer the indirect policy picks (the indirect layer where the
+//   core draws the direct light, so no light counts twice). With
+//   kProbeVolume a surface without a lightmap takes its indirect diffuse
+//   from the map's probe volume (probe_volume.glsl, with visibility), the
+//   ambient cube where no grid covers the point; with kReflectionProbes the
+//   specular image light is the map's reflection probes
+//   (reflection_probes.glsl: blended, parallax-corrected, relit), the
+//   ambient cube in the reflected direction where none carries light. Both
+//   are weighted as before (the diffuse color; the split-sum directional
+//   albedo).
 // - the `unlit` point (kUnlit) is UnlitGeneric: the lightmapped point with
 //   the lighting fixed at one and UnlitGeneric's vertex color and alpha;
 // - the `vertexlit` point (kVertexLit) is VertexLitGeneric's lit path: the
@@ -32,6 +45,7 @@
 #include "../../shaders/common/pbr_brdf.glsl"
 #include "../../shaders/common/ltc.glsl"
 #include "../../shaders/common/runtime_light.glsl"
+#include "../../shaders/common/lightmap_basis.glsl"
 #include "surface_lighting.glsl"
 
 // The terms (the port's static combo bits where they exist).
@@ -55,6 +69,14 @@ const int kEmissionTexture = 4096;
 const int kVertexLit = 8192;
 // The view's clustered runtime lights (the view group).
 const int kClustered = 16384;
+// The pbr point on a world surface: its indirect diffuse from the draw's
+// lightmap page, and the page's gradient page when it is directional.
+const int kBakedLightmap = 32768;
+const int kDirectionalLightmap = 65536;
+// The pbr point with the map's probe volume and reflection probes (frame
+// group bindings 5 to 10).
+const int kProbeVolume = 131072;
+const int kReflectionProbes = 262144;
 
 // An area light (render.area-light.v1, area_light::AreaLight): its
 // rectangle, its radiance and its reach.
@@ -124,6 +146,29 @@ layout( set = 1, binding = 3, std430 ) readonly buffer ClusterLights
 // The GGX LTC table (public/render/pbr_ltc_table.h), read by the pbr point.
 layout( set = 0, binding = 3 ) uniform texture2D ltcTexture;
 layout( set = 0, binding = 4 ) uniform sampler ltcSampler;
+// The map's probe volume (PRBV: its atlas and grid table) and reflection
+// probes (RPRB, WriteReflectionProbeTexture's form), read under
+// kProbeVolume and kReflectionProbes.
+layout( set = 0, binding = 5 ) uniform texture2D probeAtlas;
+layout( set = 0, binding = 6 ) uniform sampler probeAtlasSampler;
+layout( set = 0, binding = 7 ) uniform texture2D probeGrids;
+layout( set = 0, binding = 8 ) uniform sampler probeGridsSampler;
+layout( set = 0, binding = 9 ) uniform texture2D reflectionProbes;
+layout( set = 0, binding = 10 ) uniform sampler reflectionProbesSampler;
+#include "../../shaders/common/probe_volume.glsl"
+
+vec4 ReflectionProbesFetch( ivec2 texel )
+{
+	return texelFetch( sampler2D( reflectionProbes, reflectionProbesSampler ), texel, 0 );
+}
+
+vec4 ReflectionProbesSample( vec2 texel )
+{
+	return textureLod( sampler2D( reflectionProbes, reflectionProbesSampler ),
+	    texel / vec2( textureSize( sampler2D( reflectionProbes, reflectionProbesSampler ), 0 ) ),
+	    0.0 );
+}
+#include "../../shaders/common/reflection_probes.glsl"
 layout( set = 2, binding = 0 ) uniform Material
 {
 	vec4 tint;  // rgb: $color, a: $alpha
@@ -159,6 +204,9 @@ layout( set = 2, binding = 14 ) uniform sampler emissionSampler;
 // with others. So is the model lighting (surface_lighting.glsl, binding 2).
 layout( set = 3, binding = 0 ) uniform texture2D lightmap;
 layout( set = 3, binding = 1 ) uniform sampler lightmapSampler;
+// A directional page's gradient page (kDirectionalLightmap).
+layout( set = 3, binding = 3 ) uniform texture2D lightmapGradient;
+layout( set = 3, binding = 4 ) uniform sampler lightmapGradientSampler;
 
 layout( location = 0 ) in vec2 baseUv;
 layout( location = 1 ) in vec2 lightmapUv;
@@ -314,6 +362,7 @@ void PbrSurface()
 
 	const vec3 view = normalize( frame.eye.xyz - worldPosition );
 	vec3 normal = dot( worldNormal, worldNormal ) > 1e-12 ? normalize( worldNormal ) : view;
+	const vec3 smoothNormal = normal;
 	vec3 mapped = vec3( 0.0, 0.0, 1.0 );
 	if ( normalMap )
 	{
@@ -339,9 +388,30 @@ void PbrSurface()
 	const bool diffuseLobe = kDebugBrdf != kDebugBrdfSpecularOnly;
 	const bool specularLobe = kDebugBrdf != kDebugBrdfDiffuseOnly;
 
-	vec3 color = diffuseLobe && DebugTermOn( kDebugTermProbes )
-	                 ? diffuseColor * AmbientCube( normal ) * occlusion
-	                 : vec3( 0.0 );
+	// Indirect diffuse: the lightmap basis on a world surface (the `baked`
+	// term), else the ambient cube (`probes`).
+	const bool lightmapped = Term( kBakedLightmap );
+	vec3 baked = vec3( 0.0 );
+	if ( lightmapped )
+	{
+		baked = LightmapPageSample( lightmap, lightmapSampler, lightmapUv );
+		if ( Term( kDirectionalLightmap ) )
+			baked = LightmapDirectional( baked,
+			    LightmapPageSample( lightmapGradient, lightmapGradientSampler, lightmapUv ), normal,
+			    smoothNormal );
+		baked = furnace ? vec3( 1.0 ) : baked * frame.light.x;
+	}
+	vec3 color = vec3( 0.0 );
+	if ( diffuseLobe && lightmapped && DebugTermOn( kDebugTermBaked ) )
+		color = diffuseColor * baked * occlusion;
+	else if ( diffuseLobe && !lightmapped && DebugTermOn( kDebugTermProbes ) )
+	{
+		vec3 irradiance;
+		if ( furnace || !Term( kProbeVolume ) ||
+		     !ProbeIrradiance( worldPosition, normal, 0, true, irradiance ) )
+			irradiance = AmbientCube( normal );
+		color = diffuseColor * irradiance * occlusion;
+	}
 	vec3 direct = vec3( 0.0 );
 	const int count = DebugTermOn( kDebugTermClustered ) && !furnace ? int( lighting.eye.w ) : 0;
 	for ( int i = 0; i < 4; ++i )
@@ -480,7 +550,12 @@ void PbrSurface()
 	vec3 imageSpecular = vec3( 0.0 );
 	if ( specularLobe && DebugTermOn( kDebugTermIbl ) )
 	{
-		imageSpecular = AmbientCube( reflect( -view, normal ) ) * directionalAlbedo * occlusion;
+		const vec3 reflected = reflect( -view, normal );
+		vec3 radiance;
+		if ( furnace || !Term( kReflectionProbes ) ||
+		     !ReflectionProbesRadiance( worldPosition, smoothNormal, reflected, roughness, radiance ) )
+			radiance = AmbientCube( reflected );
+		imageSpecular = radiance * directionalAlbedo * occlusion;
 		color += imageSpecular;
 	}
 	vec3 emission = vec3( 0.0 );
@@ -508,6 +583,11 @@ void PbrSurface()
 		inputs.ao = occlusion;
 		inputs.direct = direct;
 		inputs.imageSpecular = imageSpecular;
+		if ( lightmapped )
+		{
+			inputs.mask |= kDebugHasBaked;
+			inputs.baked = baked;
+		}
 		if ( emissive )
 		{
 			inputs.mask |= kDebugHasEmission;
