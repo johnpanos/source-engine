@@ -98,6 +98,12 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "lightmapped", "$bumpframe", "bumpframe", ValueKind::kInt, "0" },
     { "lightmapped", "$bumpmap2", "bumpmap2", ValueKind::kTexture, "" },
     { "lightmapped", "$ssbump", "ssbump", ValueKind::kBool, "0" },
+    // Portal 2's LightmappedGeneric parameters this SDK's shader does not
+    // declare (the backend's port reads them from the material).
+    { "lightmapped", "$ssbumpmathfix", "ssbumpmathfix", ValueKind::kBool, "0" },
+    { "lightmapped", "$envmaplightscale", "envmaplightscale", ValueKind::kFloat, "0" },
+    { "lightmapped", "$envmaplightscaleminmax", "envmaplightscaleminmax", ValueKind::kFloat2,
+        "[0 1]" },
     { "lightmapped", "$blendmodulatetexture", "blendmodulatetexture", ValueKind::kTexture, "" },
     { "lightmapped", "$seamless_scale", "seamless_scale", ValueKind::kFloat, "0" },
     { "lightmapped", "$fresnelreflection", "fresnelreflection", ValueKind::kFloat, "1" },

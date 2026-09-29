@@ -3164,6 +3164,21 @@ public:
 		render_vulkan::CVulkanContext::CorePassTerms terms;
 		terms.lightmapScale = integerHdr ? 16.0f : powf( 2.0f, 2.2f );
 		terms.outputScale = CurrentHDRType() == HDR_TYPE_NONE ? 1.0f : g_ToneMappingScale.x;
+		// The env map's terms: the eye (c10), ENV_MAP_SCALE (c30.z) and
+		// whether the material system shows specular (the env map tint is
+		// zero otherwise: mat_fastspecular off, or mat_fullbright 2).
+		{
+			float eye[4];
+			g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
+			std::copy( eye, eye + 3, terms.eye );
+			terms.envmapScale = integerHdr ? 16.0f : 1.0f;
+			static ConVarRef fastSpecular( "mat_fastspecular" );
+			static ConVarRef fullbright( "mat_fullbright" );
+			terms.specular = ( !fastSpecular.IsValid() || fastSpecular.GetBool() ) &&
+			                 ( !fullbright.IsValid() || fullbright.GetInt() != 2 );
+			// The ssbump policy has one owner, which the port reads too.
+			terms.ssbumpNormalized = SsbumpBasisNormalized();
+		}
 		// The view's fog as SetPixelShaderFogParams and UpdatePixelFogColorConstant
 		// give it to a pass that writes sRGB and fogs to the scene's color.
 		if ( g_Fog.sceneMode == MATERIAL_FOG_LINEAR ||

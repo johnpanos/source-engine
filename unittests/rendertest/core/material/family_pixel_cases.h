@@ -43,6 +43,7 @@ struct CaseTexture
 	std::uint32_t height = 0;
 	bool clamp = false;
 	bool point = false;
+	bool cube = false; // six faces (+x -x +y -y +z -z), one after the other
 	render::device::Format format = render::device::Format::kRGBA8Srgb;
 	std::vector<std::uint8_t> texels; // bytes in `format`, row 0 at the top
 };
@@ -53,6 +54,9 @@ struct CaseVertex
 	float uv0[2] = {};
 	float uv1[2] = {};
 	float normal[3] = {};
+	float tangentS[3] = {};
+	float tangentT[3] = {};
+	float uv2[2] = {}; // TEXCOORD2: x, the bumped lightmap pages' offset
 	std::uint8_t color[4] = { 255, 255, 255, 255 };
 };
 

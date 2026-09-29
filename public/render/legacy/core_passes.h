@@ -81,6 +81,15 @@ struct CorePassTarget
 	// pages encode light, and the output's linear (tone-mapping) scale.
 	float lightmapScale = 1.0f;
 	float outputScale = 1.0f;
+	// The eye's world position (c10), ENV_MAP_SCALE (16 in integer HDR, else
+	// 1), and whether specular shows (mat_fastspecular, and not
+	// mat_fullbright 2: else env map tints are zero).
+	float eye[3] = { 0.0f, 0.0f, 0.0f };
+	float envmapScale = 1.0f;
+	bool specular = true;
+	// The running game's shaders scale every ssbump's basis weights by
+	// 1/sqrt(3) (Portal 2's LightmappedGeneric; the backend's policy).
+	bool ssbumpNormalized = false;
 	CorePassFog fog; // the view's fog at the slot
 };
 
@@ -89,8 +98,9 @@ struct CorePassTarget
 // lightmap page's), imported on first use in the usage it rests in between
 // uses (kSampled) and released, behind the frame being recorded, when the
 // backend deletes or replaces it. Called on the render sequence while a slot
-// records. An invalid id when the handle names no uploaded, single-layer,
-// non-volume image, a render target, or a format with no port format.
+// records. A cube map (six layers) imports as a kCube texture. An invalid id
+// when the handle names no uploaded 2D or cube image (a volume, an array), a
+// render target, or a format with no port format.
 class ICoreTextures
 {
 public:

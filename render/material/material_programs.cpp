@@ -39,6 +39,33 @@ GroupResidency::~GroupResidency()
 		(void)m_Device.Release( resource, m_LastToken );
 	for ( const auto &[desc, sampler] : m_Samplers )
 		(void)m_Device.Release( sampler, m_LastToken );
+	for ( TextureId neutral : { m_Neutral2D, m_NeutralCube } )
+	{
+		if ( neutral.IsValid() )
+			(void)m_Device.Release( neutral, m_LastToken );
+	}
+	if ( m_NeutralStaging.IsValid() )
+		(void)m_Device.Release( m_NeutralStaging, m_LastToken );
+}
+
+TextureId GroupResidency::Neutral( TextureDimension dimension )
+{
+	TextureId &slot = dimension == TextureDimension::kCube ? m_NeutralCube : m_Neutral2D;
+	if ( slot.IsValid() )
+		return slot;
+	TextureDesc desc;
+	desc.dimension = dimension;
+	desc.format = Format::kRGBA8Unorm;
+	desc.width = desc.height = 1;
+	desc.depthOrLayers = dimension == TextureDimension::kCube ? 6 : 1;
+	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	desc.debugName = "material neutral texture";
+	auto texture = m_Device.CreateTexture( desc );
+	if ( !texture )
+		return {};
+	slot = texture.Value();
+	m_NeutralUploaded = false; // a new one to fill
+	return slot;
 }
 
 // Queues an entry's group and buffer for release at the next Retire (they may
@@ -118,6 +145,25 @@ void GroupResidency::Refresh( Entry &entry )
 	bool complete = true;
 	for ( const ProgramTexture &texture : entry.request.textures )
 	{
+		// An input named empty is off: it takes the neutral texture of its
+		// dimension, which the program does not read.
+		if ( texture.name.empty() )
+		{
+			const TextureId neutral = Neutral( texture.dimension );
+			if ( !neutral.IsValid() || !m_NeutralUploaded )
+			{
+				complete = false;
+				continue;
+			}
+			TextureDesc desc;
+			desc.dimension = texture.dimension;
+			desc.format = Format::kRGBA8Unorm;
+			desc.width = desc.height = 1;
+			desc.depthOrLayers = texture.dimension == TextureDimension::kCube ? 6 : 1;
+			sampled.push_back( { neutral, desc } );
+			revisions.push_back( 0 );
+			continue;
+		}
 		const resources::TextureEntry *found = m_Textures.Find( texture.name );
 		if ( !found )
 		{
@@ -178,6 +224,51 @@ void GroupResidency::Refresh( Entry &entry )
 std::size_t GroupResidency::RecordUploads( CommandEncoder &encoder )
 {
 	std::size_t recorded = 0;
+	// The neutral textures any entry names: made on first sight, filled once.
+	for ( auto &[id, entry] : m_Entries )
+	{
+		for ( const ProgramTexture &texture : entry.request.textures )
+		{
+			if ( texture.name.empty() )
+				(void)Neutral( texture.dimension );
+		}
+	}
+	if ( !m_NeutralUploaded && ( m_Neutral2D.IsValid() || m_NeutralCube.IsValid() ) )
+	{
+		if ( !m_NeutralStaging.IsValid() )
+		{
+			BufferDesc staging;
+			staging.size = 4;
+			staging.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+			auto buffer = m_Device.CreateBuffer( staging );
+			if ( buffer )
+				m_NeutralStaging = buffer.Value();
+		}
+		if ( m_NeutralStaging.IsValid() )
+		{
+			const std::byte white[4] = {
+			    std::byte( 255 ), std::byte( 255 ), std::byte( 255 ), std::byte( 255 ) };
+			encoder.TransitionBuffer(
+			    m_NeutralStaging, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			encoder.WriteBuffer( m_NeutralStaging, 0, white );
+			encoder.TransitionBuffer(
+			    m_NeutralStaging, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+			for ( TextureId neutral : { m_Neutral2D, m_NeutralCube } )
+			{
+				if ( !neutral.IsValid() )
+					continue;
+				const std::uint32_t layers = neutral == m_NeutralCube ? 6 : 1;
+				encoder.TransitionTexture(
+				    neutral, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+				for ( std::uint32_t layer = 0; layer < layers; ++layer )
+					encoder.CopyBufferToTexture( m_NeutralStaging, neutral, { 0, 0, layer, 1, 1 } );
+				encoder.TransitionTexture(
+				    neutral, ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
+			}
+			m_NeutralUploaded = true;
+			++recorded;
+		}
+	}
 	for ( auto &[id, entry] : m_Entries )
 	{
 		if ( !entry.uploaded )

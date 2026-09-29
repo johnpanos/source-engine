@@ -6675,6 +6675,10 @@ void CVulkanContext::RecordCorePassSections( render::device::CommandEncoder &enc
 			const CorePassTerms &terms = m_corePassTerms[d.corePassTerms];
 			target.lightmapScale = terms.lightmapScale;
 			target.outputScale = terms.outputScale;
+			std::copy( terms.eye, terms.eye + 3, target.eye );
+			target.envmapScale = terms.envmapScale;
+			target.specular = terms.specular;
+			target.ssbumpNormalized = terms.ssbumpNormalized;
 			target.fog = terms.fog;
 		}
 		m_corePassRecorder->RecordSlot( d.corePass, encoder, target );
@@ -6821,8 +6825,11 @@ render::device::TextureId CVulkanContext::ImportManagedTexture( int handle, bool
 	if ( srgb && linearStorage )
 		srgb = false;
 	const render::device::Format format = srgb ? SrgbPortFormat( stored ) : stored;
+	// A 2D image, or a cube map (six layers, sampled as a cube).
+	const bool cube = texture.layers == 6;
 	if ( texture.image == VK_NULL_HANDLE || !texture.uploaded || texture.renderTarget ||
-	     texture.layers != 1 || texture.depth > 1 || format == render::device::Format::kUnknown ||
+	     ( texture.layers != 1 && !cube ) || texture.depth > 1 ||
+	     format == render::device::Format::kUnknown ||
 	     ( srgb && texture.srgbView == VK_NULL_HANDLE ) )
 		return {};
 	if ( m_coreTextureImports.size() < m_managedTextures.size() )
@@ -6833,9 +6840,12 @@ render::device::TextureId CVulkanContext::ImportManagedTexture( int handle, bool
 	if ( import.id[srgb].IsValid() )
 		return import.id[srgb];
 	render::device::TextureDesc desc;
+	desc.dimension =
+	    cube ? render::device::TextureDimension::kCube : render::device::TextureDimension::k2D;
 	desc.format = format;
 	desc.width = texture.width;
 	desc.height = texture.height;
+	desc.depthOrLayers = cube ? 6 : 1;
 	desc.mipLevels = texture.mipLevels;
 	desc.usages = { ResourceUsage::kSampled };
 	desc.debugName = texture.debugName.empty() ? "managed texture" : texture.debugName.c_str();

@@ -153,6 +153,7 @@ GENERATED = {
         ("kUnlitVertex", FAMILIES + "/unlit.vert", DEVICE_OPTIONS),
         ("kUnlitFragment", FAMILIES + "/unlit.frag", DEVICE_OPTIONS),
         ("kLightmappedVertex", FAMILIES + "/lightmapped.vert", DEVICE_OPTIONS),
+        ("kLightmappedSurfaceVertex", FAMILIES + "/lightmapped_surface.vert", DEVICE_OPTIONS),
         ("kLightmappedFragment", FAMILIES + "/lightmapped.frag", DEVICE_OPTIONS),
         ("kPbrVertex", FAMILIES + "/pbr.vert", DEVICE_OPTIONS),
         ("kPbrFragment", FAMILIES + "/pbr.frag", DEVICE_OPTIONS),

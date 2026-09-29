@@ -21,6 +21,7 @@
 #include "tier1/convar.h"
 #include "tier1/utldict.h"
 #include "tier2/tier2.h"
+#include "vtf/vtf.h"
 #include "tier1/utlvector.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -57,6 +58,9 @@ struct CoreWorldState
 	bool viewActive = false;
 	unsigned long long failuresSeen = 0;
 	CUtlVector<unsigned char> takes; // per surface index
+	// Per surface index: its entry in the core's world (only eligible
+	// surfaces have one), or -1. Views name the core's entries.
+	CUtlVector<int> entryOf;
 };
 
 CoreWorldState &State()
@@ -171,6 +175,7 @@ void ReadVariables( IMaterial *pMaterial, NeutralMaterials &neutrals, MaterialVa
 	const int nParams = pMaterial->ShaderParamCount();
 	IShader *pShader = FindShader( pMaterial->GetShaderName() );
 	IMaterial *pNeutral = neutrals.For( pMaterial->GetShaderName() );
+	CUtlVector<const char *> pendingKeys; // flag-like keys from texture properties
 	for ( int i = 0; i < nParams; ++i )
 	{
 		IMaterialVar *pVar = ppParams[i];
@@ -186,6 +191,14 @@ void ReadVariables( IMaterial *pMaterial, NeutralMaterials &neutrals, MaterialVa
 		out.values.AddToTail( CUtlString( pVar->GetStringValue() ) );
 		out.textures.AddToTail(
 		    pVar->GetType() == MATERIAL_VAR_TYPE_TEXTURE ? pVar->GetTextureValue() : NULL );
+		// A detail texture flagged as an ssbump selects the ssbump detail
+		// modes (10, 11): a key the model does not read yet, so it is named.
+		if ( pVar->GetType() == MATERIAL_VAR_TYPE_TEXTURE && pVar->GetTextureValue() &&
+		     !V_stricmp( pVar->GetName(), "$detail" ) &&
+		     ( pVar->GetTextureValue()->GetFlags() & TEXTUREFLAGS_SSBUMP ) )
+		{
+			pendingKeys.AddToTail( "$detail_ssbump" );
+		}
 		// The neutral material's value; else the shader's declared default
 		// (the material's parameters are its shader's, in order).
 		bool found = false;
@@ -200,6 +213,14 @@ void ReadVariables( IMaterial *pMaterial, NeutralMaterials &neutrals, MaterialVa
 			    CUtlString( declared ? pShader->GetParamDefault( i ) : "" ) );
 		out.hasDefault.AddToTail(
 		    ( found && pNeutralVar && pNeutralVar->IsDefined() ) || declared );
+	}
+	for ( int i = 0; i < pendingKeys.Count(); ++i )
+	{
+		out.keys.AddToTail( CUtlString( pendingKeys[i] ) );
+		out.values.AddToTail( CUtlString( "1" ) );
+		out.textures.AddToTail( NULL );
+		out.defaultValues.AddToTail( CUtlString( "" ) );
+		out.hasDefault.AddToTail( false );
 	}
 	for ( const auto &flag : s_FlagKeys )
 	{
@@ -262,6 +283,7 @@ void RenderCoreWorldDraw_LevelInit()
 	CoreWorldState &state = State();
 	state.loaded = false;
 	state.takes.RemoveAll();
+	state.entryOf.RemoveAll();
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
 	if ( pWorld )
 		state.failuresSeen = pWorld->Failures();
@@ -297,15 +319,37 @@ void RenderCoreWorldDraw_LevelInit()
 			ReadVariables( pMaterial, neutrals, materials[material] );
 		}
 
+		// The vertex as BuildMSurfaceVertexArrays builds the world's static
+		// mesh: coordinates, the vertex normal, the tangent basis on tangent
+		// space surfaces and the bumped pages' offset on bumped ones.
 		SurfaceCtx_t ctx;
 		SurfSetupSurfaceContext( ctx, surfID );
+		Vector tVect( 0, 0, 0 );
+		bool negate = false;
+		const bool tangentSpace = ( MSurf_Flags( surfID ) & SURFDRAW_TANGENTSPACE ) != 0;
+		if ( tangentSpace )
+			negate = TangentSpaceSurfaceSetup( surfID, tVect );
+		const float bumpOffset =
+		    ( MSurf_Flags( surfID ) & SURFDRAW_BUMPLIGHT ) ? ctx.m_BumpSTexCoordOffset : 0.0f;
 		const unsigned int firstVertex = vertices.Count();
 		const int nVerts = MSurf_VertCount( surfID );
 		for ( int v = 0; v < nVerts; ++v )
 		{
 			const int vertIndex = pBrush->vertindices[MSurf_FirstVertIndex( surfID ) + v];
 			Vector &position = pBrush->vertexes[vertIndex].position;
-			RenderCoreWorldVertex vertex;
+			RenderCoreWorldVertex vertex = {};
+			const Vector &normal =
+			    pBrush->vertnormals[pBrush->vertnormalindices[MSurf_FirstVertNormal( surfID ) + v]];
+			Vector tangentS( 1, 0, 0 ), tangentT( 0, 1, 0 );
+			if ( tangentSpace )
+				TangentSpaceComputeBasis( tangentS, tangentT, normal, tVect, negate );
+			for ( int c = 0; c < 3; ++c )
+			{
+				vertex.normal[c] = normal[c];
+				vertex.tangentS[c] = tangentS[c];
+				vertex.tangentT[c] = tangentT[c];
+			}
+			vertex.lightmapOffset = bumpOffset;
 			vertex.position[0] = position.x;
 			vertex.position[1] = position.y;
 			vertex.position[2] = position.z;
@@ -364,6 +408,7 @@ void RenderCoreWorldDraw_LevelInit()
 		state.takes[i] = entry >= 0 && pWorld->Draws( surfaces[entry].material ) ? 1 : 0;
 		nTaken += state.takes[i];
 	}
+	state.entryOf.Swap( surfaceOfIndex );
 	state.loaded = true;
 	RenderCoreWorldStats stats;
 	pWorld->GetStats( &stats );
@@ -382,6 +427,7 @@ void RenderCoreWorldDraw_LevelShutdown()
 	state.loaded = false;
 	state.viewActive = false;
 	state.takes.RemoveAll();
+	state.entryOf.RemoveAll();
 	if ( IRenderCoreWorld *pWorld = RenderCoreHost_World() )
 	{
 		CheckFailures( pWorld );
@@ -438,8 +484,21 @@ void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount )
 	pRenderContext->GetViewport( x, y, width, height );
 	const float viewport[6] = {
 	    float( x ), float( y ), float( width ), float( height ), 0.0f, 1.0f };
-	state.viewActive = pWorld->DrawView( reinterpret_cast<const unsigned int *>( pSurfaces ),
-	    nCount, toClip, viewport, static_cast<unsigned long long>( host_framecount ) + 1 );
+	// The view names surface indices; the core's world holds only the
+	// eligible surfaces, as entries (a displacement, a sky or water face has
+	// none, and a taken surface always has one).
+	CUtlVector<unsigned int> entries;
+	entries.EnsureCapacity( nCount );
+	for ( int i = 0; i < nCount; ++i )
+	{
+		const unsigned int index = pSurfaces[i];
+		if ( index < unsigned( state.entryOf.Count() ) && state.entryOf[index] >= 0 )
+			entries.AddToTail( unsigned( state.entryOf[index] ) );
+	}
+	if ( entries.Count() == 0 )
+		return;
+	state.viewActive = pWorld->DrawView( entries.Base(), entries.Count(), toClip, viewport,
+	    static_cast<unsigned long long>( host_framecount ) + 1 );
 }
 
 void RenderCoreWorldDraw_EndView()

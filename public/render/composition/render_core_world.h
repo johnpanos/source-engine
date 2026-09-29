@@ -19,6 +19,10 @@ struct RenderCoreWorldVertex
 	float uv[2];
 	float lightmapUv[2]; // in the page, offset applied
 	unsigned char color[4];
+	float normal[3];
+	float tangentS[3];
+	float tangentT[3];
+	float lightmapOffset; // the bumped pages' offset in the page (0 for a flat lightmap)
 };
 
 struct RenderCoreWorldSurface

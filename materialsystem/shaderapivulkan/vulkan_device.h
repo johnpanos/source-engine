@@ -325,6 +325,10 @@ public:
 	{
 		float lightmapScale = 1.0f;
 		float outputScale = 1.0f;
+		float eye[3] = { 0.0f, 0.0f, 0.0f };
+		float envmapScale = 1.0f;
+		bool specular = true;
+		bool ssbumpNormalized = false;
 		render::legacy::CorePassFog fog;
 	};
 	void QueueCorePass( uint32_t tag, const CorePassTerms &terms );

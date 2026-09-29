@@ -1091,6 +1091,7 @@
    "description": "render.material family `lightmapped` (RFC 0016 K4, K5): the frame group holds the frame's light terms (lightmap scale for the pages' encoding, output tone-map scale); the material group holds the constants, the base texture and its sampler; the draw group holds the draw's lightmap page and its sampler; world-to-clip is a draw-constant block.",
    "sources": [
     "render/material/families/lightmapped.vert",
+    "render/material/families/lightmapped_surface.vert",
     "render/material/families/lightmapped.frag"
    ],
    "push_constants": [
@@ -1124,6 +1125,62 @@
      },
      {
       "binding": 2,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 3,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 4,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 5,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 6,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 7,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 8,
+      "kind": "sampler",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 9,
+      "kind": "sampled-texture",
+      "stages": [
+       "fragment"
+      ]
+     },
+     {
+      "binding": 10,
       "kind": "sampler",
       "stages": [
        "fragment"

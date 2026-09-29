@@ -21,7 +21,10 @@ static_assert(
     sizeof( RenderCoreWorldVertex ) == sizeof( pass::world::WorldVertex ) &&
         offsetof( RenderCoreWorldVertex, lightmapUv ) ==
             offsetof( pass::world::WorldVertex, lightmapUv ) &&
-        offsetof( RenderCoreWorldVertex, color ) == offsetof( pass::world::WorldVertex, color ),
+        offsetof( RenderCoreWorldVertex, color ) == offsetof( pass::world::WorldVertex, color ) &&
+        offsetof( RenderCoreWorldVertex, normal ) == offsetof( pass::world::WorldVertex, normal ) &&
+        offsetof( RenderCoreWorldVertex, lightmapOffset ) ==
+            offsetof( pass::world::WorldVertex, lightmapOffset ),
     "the engine's world vertex is the pass's" );
 
 namespace
@@ -58,6 +61,10 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 		std::copy( vertices[i].uv, vertices[i].uv + 2, out.uv );
 		std::copy( vertices[i].lightmapUv, vertices[i].lightmapUv + 2, out.lightmapUv );
 		std::copy( vertices[i].color, vertices[i].color + 4, out.color );
+		std::copy( vertices[i].normal, vertices[i].normal + 3, out.normal );
+		std::copy( vertices[i].tangentS, vertices[i].tangentS + 3, out.tangentS );
+		std::copy( vertices[i].tangentT, vertices[i].tangentT + 3, out.tangentT );
+		out.lightmapOffset = vertices[i].lightmapOffset;
 	}
 	data.indices.assign( indices, indices + indexCount );
 	data.surfaces.reserve( surfaceCount );
@@ -181,6 +188,10 @@ void CoreWorld::RecordSlot(
 	world.frame = target.frame;
 	world.lightmapScale = target.lightmapScale;
 	world.outputScale = target.outputScale;
+	std::copy( target.eye, target.eye + 3, world.eye );
+	world.envmapScale = target.envmapScale;
+	world.specular = target.specular;
+	world.ssbumpNormalized = target.ssbumpNormalized;
 	world.fogType = target.fog.type;
 	std::copy( target.fog.color, target.fog.color + 3, world.fogColor );
 	std::copy( target.fog.params, target.fog.params + 4, world.fogParams );

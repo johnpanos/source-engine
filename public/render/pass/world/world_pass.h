@@ -60,13 +60,18 @@
 namespace render::pass::world
 {
 
-// The `lightmapped` family's vertex (material::LightmappedVertex).
+// The surface vertex (material::LightmappedSurfaceVertex): the programs'
+// bump and env map terms read its normal, tangents and bumped pages' offset.
 struct WorldVertex
 {
 	float position[3] = {};
 	float uv[2] = {};
 	float lightmapUv[2] = {};
 	std::uint8_t color[4] = { 255, 255, 255, 255 };
+	float normal[3] = { 0.0f, 0.0f, 1.0f };
+	float tangentS[3] = { 1.0f, 0.0f, 0.0f };
+	float tangentT[3] = { 0.0f, 1.0f, 0.0f };
+	float lightmapOffset = 0.0f;
 };
 
 struct WorldMaterial
@@ -135,6 +140,12 @@ struct WorldTarget
 	// The frame's light terms at the slot (material::FrameTerms).
 	float lightmapScale = 1.0f;
 	float outputScale = 1.0f;
+	// The eye's world position, ENV_MAP_SCALE, and whether specular shows
+	// (material::FrameTerms).
+	float eye[3] = { 0.0f, 0.0f, 0.0f };
+	float envmapScale = 1.0f;
+	bool specular = true;
+	bool ssbumpNormalized = false; // the game scales every ssbump (Portal 2)
 	// The view's fog at the slot (material::FrameTerms, legacy::CorePassFog).
 	float fogType = -1.0f;
 	float fogColor[3] = { 0.0f, 0.0f, 0.0f };

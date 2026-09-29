@@ -207,6 +207,7 @@ std::optional<CaseSet> LoadCases(
 		texture.height = std::uint32_t( Numbers( node.Find( "height" ) ).at( 0 ) );
 		texture.clamp = node.Find( "clamp" ) && *node.Find( "clamp" ) == "1";
 		texture.point = node.Find( "point" ) && *node.Find( "point" ) == "1";
+		texture.cube = node.Find( "cube" ) && *node.Find( "cube" ) == "1";
 		for ( float value : Numbers( node.Find( "texels" ) ) )
 			texture.texels.push_back( std::uint8_t( value ) );
 		set.textures[Normalized( *node.Find( "name" ) )] = texture;
@@ -248,10 +249,19 @@ std::optional<CaseSet> LoadCases(
 			const std::vector<float> uv1 = Numbers( child.Find( "uv1" ) );
 			const std::vector<float> rgba = Numbers( child.Find( "color" ) );
 			const std::vector<float> normal = Numbers( child.Find( "normal" ) );
+			const std::vector<float> tangentS = Numbers( child.Find( "tangents" ) );
+			const std::vector<float> tangentT = Numbers( child.Find( "tangentt" ) );
+			const std::vector<float> uv2 = Numbers( child.Find( "uv2" ) );
 			for ( std::size_t i = 0; i < 3 && i < pos.size(); ++i )
 				vertex.position[i] = pos[i];
 			for ( std::size_t i = 0; i < 3 && i < normal.size(); ++i )
 				vertex.normal[i] = normal[i];
+			for ( std::size_t i = 0; i < 3 && i < tangentS.size(); ++i )
+				vertex.tangentS[i] = tangentS[i];
+			for ( std::size_t i = 0; i < 3 && i < tangentT.size(); ++i )
+				vertex.tangentT[i] = tangentT[i];
+			for ( std::size_t i = 0; i < 2 && i < uv2.size(); ++i )
+				vertex.uv2[i] = uv2[i];
 			for ( std::size_t i = 0; i < 2 && i < uv0.size(); ++i )
 				vertex.uv0[i] = uv0[i];
 			for ( std::size_t i = 0; i < 2 && i < uv1.size(); ++i )
@@ -530,6 +540,11 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 			desc.format = texture->format;
 			desc.width = texture->width;
 			desc.height = texture->height;
+			if ( texture->cube )
+			{
+				desc.dimension = device::TextureDimension::kCube;
+				desc.depthOrLayers = 6;
+			}
 			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
 			device::BufferDesc stagingDesc;
 			stagingDesc.size = texture->texels.size();
@@ -637,10 +652,16 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 					    for ( std::size_t t = 0; t < groups[g].textureRefs.size(); ++t )
 					    {
 						    const CaseTexture &texture = *draw.groups[g].textures[t];
-						    context.Encoder().CopyBufferToTexture(
-						        context.Buffer( groups[g].stagingRefs[t] ),
-						        context.Texture( groups[g].textureRefs[t] ),
-						        { 0, 0, 0, texture.width, texture.height } );
+						    // A cube's faces follow one another in its texels.
+						    const std::uint32_t layers = texture.cube ? 6 : 1;
+						    const std::uint64_t faceBytes =
+						        texture.texels.size() / std::max<std::uint32_t>( layers, 1 );
+						    for ( std::uint32_t layer = 0; layer < layers; ++layer )
+							    context.Encoder().CopyBufferToTexture(
+							        context.Buffer( groups[g].stagingRefs[t] ),
+							        context.Texture( groups[g].textureRefs[t] ),
+							        { layer * faceBytes, 0, layer, texture.width,
+							            texture.height } );
 					    }
 				    }
 			    } );

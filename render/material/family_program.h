@@ -32,6 +32,8 @@ std::optional<std::string> UnclaimedParameter(
 float ReadParameter(
     const ParameterBlock &block, std::string_view name, std::size_t component = 0 );
 bool ReadFlag( const ParameterBlock &block, std::string_view name );
+// Whether the block binds a texture to the parameter.
+bool TextureBound( const ParameterBlock &block, std::string_view name );
 
 // The alpha test's reference as the legacy shaders set it: the block's
 // $alphatestreference when above zero (BaseVSShader and the generic helpers

@@ -56,6 +56,9 @@ struct ProgramTexture
 	// Sampled through an sRGB view of its format (the family decodes it
 	// before filtering, as D3D9's SRGBTEXTURE does).
 	bool srgb = false;
+	// A cube map binding takes a kCube texture (an absent one, a neutral
+	// cube).
+	device::TextureDimension dimension = device::TextureDimension::k2D;
 };
 
 struct GroupRequest
@@ -125,6 +128,14 @@ private:
 	std::map<std::uint64_t, Entry> m_Entries;
 	std::vector<std::pair<device::SamplerDesc, device::SamplerId>> m_Samplers;
 	std::vector<device::ResourceId> m_Replaced; // released at Retire
+	// The neutral textures an input named empty takes (a term that is off):
+	// a 1x1 white 2D texture and a 1x1 cube, made at the first such input and
+	// filled at the next RecordUploads.
+	device::TextureId m_Neutral2D;
+	device::TextureId m_NeutralCube;
+	device::BufferId m_NeutralStaging;
+	bool m_NeutralUploaded = false;
+	device::TextureId Neutral( device::TextureDimension dimension );
 	std::uint32_t m_Failures = 0;
 	device::CompletionToken m_LastToken;
 };

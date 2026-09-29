@@ -68,8 +68,11 @@ struct Resources
 	// Frame groups by frame layout; their constants are written per slot.
 	std::map<std::uint64_t, Group> frameGroups;
 	// A 1x1 white texture for an absent input (a surface with no lightmap
-	// page samples white: the input's neutral value), and its upload buffer.
+	// page samples white: the input's neutral value), a 1x1 black cube for an
+	// absent env map (its term is off, so it is never read), and their upload
+	// buffer.
 	TextureId neutralWhite;
+	TextureId neutralCube;
 	BufferId neutralStaging;
 	bool uploaded = false;
 };
@@ -181,6 +184,8 @@ struct WorldPass::State
 				ReleaseGroup( group, after );
 			if ( old.neutralWhite.IsValid() )
 				(void)device->Release( old.neutralWhite, after );
+			if ( old.neutralCube.IsValid() )
+				(void)device->Release( old.neutralCube, after );
 			if ( old.neutralStaging.IsValid() )
 				(void)device->Release( old.neutralStaging, after );
 			if ( old.vertices.IsValid() )
@@ -495,8 +500,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	    } );
 	if ( !r.resolver )
 	{
-		auto resolver = material::ProgramResolver::Create(
-		    device, target.colorFormat, target.depthFormat, target.samples );
+		auto resolver = material::ProgramResolver::Create( device, target.colorFormat,
+		    target.depthFormat, target.samples, material::VertexLayout::kSurface );
 		if ( !resolver )
 		{
 			s.Fail( resolver.Error() );
@@ -542,49 +547,56 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		r.uploaded = true;
 	}
 
-	// The neutral white texture, made on first use.
-	auto neutralWhite = [&]() -> TextureId
+	// The neutral textures, made on first use: a white 2D texture and a
+	// black cube, filled from one 4-byte white upload (the cube's term is off
+	// wherever it is bound; filling it keeps it defined).
+	auto neutral = [&]( TextureDimension dimension ) -> TextureId
 	{
-		if ( r.neutralWhite.IsValid() )
-			return r.neutralWhite;
+		TextureId &slot = dimension == TextureDimension::kCube ? r.neutralCube : r.neutralWhite;
+		if ( slot.IsValid() )
+			return slot;
+		if ( !r.neutralStaging.IsValid() )
+		{
+			BufferDesc staging;
+			staging.size = 4;
+			staging.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+			auto buffer = device.CreateBuffer( staging );
+			if ( !buffer )
+				return {};
+			r.neutralStaging = buffer.Value();
+			const std::byte white[4] = {
+			    std::byte( 255 ), std::byte( 255 ), std::byte( 255 ), std::byte( 255 ) };
+			encoder.TransitionBuffer(
+			    r.neutralStaging, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			encoder.WriteBuffer( r.neutralStaging, 0, white );
+			encoder.TransitionBuffer(
+			    r.neutralStaging, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		}
 		TextureDesc desc;
+		desc.dimension = dimension;
 		desc.format = Format::kRGBA8Unorm;
 		desc.width = desc.height = 1;
+		desc.depthOrLayers = dimension == TextureDimension::kCube ? 6 : 1;
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
-		desc.debugName = "world neutral white";
-		BufferDesc staging;
-		staging.size = 4;
-		staging.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+		desc.debugName =
+		    dimension == TextureDimension::kCube ? "world neutral cube" : "world neutral white";
 		auto texture = device.CreateTexture( desc );
-		auto buffer = device.CreateBuffer( staging );
-		if ( !texture || !buffer )
-		{
-			if ( texture )
-				(void)device.Release( texture.Value(), CompletionToken() );
-			if ( buffer )
-				(void)device.Release( buffer.Value(), CompletionToken() );
+		if ( !texture )
 			return {};
-		}
-		const std::byte white[4] = {
-		    std::byte( 255 ), std::byte( 255 ), std::byte( 255 ), std::byte( 255 ) };
-		encoder.TransitionBuffer(
-		    buffer.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.WriteBuffer( buffer.Value(), 0, white );
-		encoder.TransitionBuffer(
-		    buffer.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
 		encoder.TransitionTexture(
 		    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.CopyBufferToTexture( buffer.Value(), texture.Value(), { 0, 0, 0, 1, 1 } );
+		for ( std::uint32_t layer = 0; layer < desc.depthOrLayers; ++layer )
+			encoder.CopyBufferToTexture( r.neutralStaging, texture.Value(), { 0, 0, layer, 1, 1 } );
 		encoder.TransitionTexture(
 		    texture.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
-		r.neutralWhite = texture.Value();
-		r.neutralStaging = buffer.Value();
-		return r.neutralWhite;
+		slot = texture.Value();
+		return slot;
 	};
 
 	// A group from its request: the constants uploaded here, the textures
-	// imported by the names' handles, with the backend's samplers; a handle
-	// of 0 (an absent input) takes the neutral white texture.
+	// imported by the names' handles, with the backend's samplers; an input
+	// the program names empty (a term that is off) or a handle of 0 (an
+	// absent input) takes the neutral texture of its dimension.
 	auto buildGroup = [&]( const material::GroupRequest &request,
 	                      const std::map<std::string, int> &handles, Group &out,
 	                      std::string *why ) -> bool
@@ -608,10 +620,12 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		for ( const material::ProgramTexture &texture : request.textures )
 		{
 			const auto handle = handles.find( texture.name );
-			const bool absent = handle != handles.end() && handle->second == 0;
-			const TextureId id = handle == handles.end() ? TextureId()
-			                     : absent ? neutralWhite()
-			                              : textures.Import( handle->second, texture.srgb );
+			const bool absent =
+			    texture.name.empty() || ( handle != handles.end() && handle->second == 0 );
+			const TextureId id = absent ? neutral( texture.dimension )
+			                     : handle == handles.end()
+			                         ? TextureId()
+			                         : textures.Import( handle->second, texture.srgb );
 			if ( !id.IsValid() )
 			{
 				*why = handle == handles.end()
@@ -723,6 +737,10 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	std::copy( target.fogColor, target.fogColor + 3, terms.fogColor );
 	std::copy( target.fogParams, target.fogParams + 4, terms.fogParams );
 	terms.fogEyeZ = target.fogEyeZ;
+	std::copy( target.eye, target.eye + 3, terms.eye );
+	terms.envmapScale = target.envmapScale;
+	terms.specular = target.specular;
+	terms.ssbumpNormalized = target.ssbumpNormalized;
 	std::map<std::uint64_t, bool> framesWritten;
 	auto frameGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{

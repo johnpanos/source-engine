@@ -2023,6 +2023,60 @@ committed fixture, built byte-identically by the pinned compiler
 | Shared suite | D20 on null (437 checks) and Vulkan (850): a duplicate id fails `kInvalidDescription`, an undeclared id is ignored, the default draws red and constant 7 = 1 draws green. g++ and clang++ | pass |
 | Mutant | the Vulkan adapter with its specialization info dropped fails "the constant's value reaches the shader" | detected |
 
+## S2–S5 for LightmappedGeneric: the surface term matches its port (2026-09-28)
+
+The `lightmapped` family grew into the lit surface term the plan describes.
+It is the port's LightmappedGeneric arithmetic, with each term a
+specialization constant (D20):
+- bump: RNM with the three bumped pages, ssbump, `$nodiffusebumplighting`;
+- env map: cube maps with `$envmapmask`, base-alpha and normal-alpha masks,
+  tint, contrast, saturation and fresnel, including the pixel fast path's
+  quirk (contrast applies only with saturation, else 0 or 1);
+- detail: TextureCombine modes 0–4 and 7–9, and 0 and 1 over a bump map.
+  Detail reads through sRGB only in mode 1, as the helper's
+  `EnableSRGBRead( SAMPLER12, mode == 1 )` does;
+- self-illumination with its tint;
+- Portal 2's `$ssbumpmathfix` and `$envmaplightscale`.
+
+The material layout is fixed: base, env map (a cube), mask, bump map and
+detail, and a term that is off binds a neutral texture of its dimension.
+`GroupResidency` provides those for every program user (the opaque pass,
+Hammer's viewport), and the world pass provides its own.
+
+Other parts of the slice:
+- A second vertex layout, the surface vertex (72 bytes: normal, tangents,
+  the bumped pages' offset). `ProgramResolver::Create` takes a
+  `VertexLayout`: flat by default (Hammer), surface for the world pass. A
+  flat resolver refuses surface terms by name.
+- The engine's extraction builds the surface vertex as
+  `BuildMSurfaceVertexArrays` builds the static mesh.
+- A detail texture flagged `TEXTUREFLAGS_SSBUMP` (modes 10 and 11) sends
+  `$detail_ssbump`, which the model doesn't read, so it is named as a gap.
+- Per-view textures (`env_cubemap`, `_rt_*`) are named gaps.
+- `ICoreTextures::Import` imports cube maps.
+- The frame terms add the eye, ENV_MAP_SCALE, mat_specular and the running
+  game's ssbump policy. The backend's `SsbumpBasisNormalized` is its one
+  owner: Portal 2's shaders scale every ssbump by 1/√3.
+- Fixed: the engine queued brush surface indices where the world pass
+  expects its own entries. Portal 1's chambers happened to match, because
+  every surface is eligible. Portal 2's maps don't, and
+  `./play_p2 --core-world sp_a2_core` failed strictly with "a view named
+  surfaces the pass does not draw", as the user found. The engine now
+  translates indices through `entryOf`.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Family against the port | `render.family.lightmapped`: 17 cases, 9 of them new (bump, nodiffusebumplighting, ssbump, detail mod2x with tint, detail additive over a bump, three env map cases, selfillum tint), port pixels recorded (`legacy_shader_conformance.py … -vklegacylightmapped`). Worst difference 0 on every case, g++ and clang++. Mutants: an unnormalized RNM sum fails the bump case; the Vulkan adapter dropping specialization constants fails D20 | pass |
+| Suites | family (192 checks), unlit, world (26), composition, opaque (Vulkan and null, with neutral textures), material v2, VMT corpus, material programs; g++ and clang++ | pass |
+| testchmb_a_01 | 124 of 133 materials, 5,064 of 5,398 surfaces (was 6 and 848). Isolated against legacy: 2 pixels over 8 levels (max 20). Negative control: 783,959 | pass |
+| sp_a2_core (Portal 2) | 38 of 52 materials, 2,494 of 4,623 surfaces, 206 views, 0 failed. Isolated against legacy: max 2 levels, 0 pixels over 2 (before the ssbump policy: 80,705 over 8) | pass |
+| Validation | sp_a2_core, `mat_queue_mode 2`, `-vkvalidate`: 12 messages, the same 12 with the core world off (a legacy vertex output at location 5 with no fragment input; a cube view at the legacy port's base texture binding): pre-existing, Portal 2's legacy native path | not the core's |
+
+Open: the retail-map smoke test (every Portal and Portal 2 map with the core
+world on, strict; a subagent is building it), two base textures (WVT),
+texture transforms, blending in the translucent stage, the models' surface
+(S7).
+
 ## The surface-model plan (2026-09-28)
 
 User direction: "have a plan for how to modernize most materials with them

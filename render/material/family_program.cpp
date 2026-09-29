@@ -84,6 +84,16 @@ std::optional<std::string> UnclaimedParameter(
 	return std::nullopt;
 }
 
+bool TextureBound( const ParameterBlock &block, std::string_view name )
+{
+	const FamilySchema &family = block.Family();
+	const std::optional<std::size_t> index = family.IndexOf( name );
+	if ( !index )
+		return false;
+	const ParameterLayout &layout = family.layout[*index];
+	return layout.type == ParameterType::kTexture && block.Textures()[layout.offset].IsValid();
+}
+
 float ReadParameter( const ParameterBlock &block, std::string_view name, std::size_t component )
 {
 	const FamilySchema &family = block.Family();

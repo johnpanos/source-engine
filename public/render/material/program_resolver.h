@@ -54,6 +54,25 @@ struct FrameTerms
 	float fogColor[3] = { 0.0f, 0.0f, 0.0f };
 	float fogParams[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
 	float fogEyeZ = 0.0f;
+	// The eye's world position (the env map's reflection), ENV_MAP_SCALE (16
+	// in integer HDR, else 1), and whether specular shows (mat_fastspecular):
+	// when not, env map tints are zero.
+	float eye[3] = { 0.0f, 0.0f, 0.0f };
+	float envmapScale = 1.0f;
+	bool specular = true;
+	// The running game's shaders scale every ssbump by 1/sqrt(3) (Portal 2).
+	bool ssbumpNormalized = false;
+};
+
+// The vertex a resolver's programs read: the flat vertex (position, base and
+// lightmap coordinates, color), or the surface vertex, which adds the normal,
+// tangents and the bumped lightmap pages' offset that bump and env map terms
+// read (material::LightmappedSurfaceVertex). A flat resolver refuses those
+// terms by name.
+enum class VertexLayout : std::uint8_t
+{
+	kFlat,
+	kSurface
 };
 
 struct ResolvedProgram
@@ -71,7 +90,7 @@ public:
 	// sample count.
 	static foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> Create(
 	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
-	    std::uint32_t sampleCount = 1 );
+	    std::uint32_t sampleCount = 1, VertexLayout layout = VertexLayout::kFlat );
 	~ProgramResolver();
 	ProgramResolver( const ProgramResolver & ) = delete;
 	ProgramResolver &operator=( const ProgramResolver & ) = delete;

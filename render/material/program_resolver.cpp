@@ -148,8 +148,18 @@ std::optional<ParameterBlock> BlockFor( const MaterialDesc &material, std::strin
 	}
 	for ( const MaterialValue &value : material.values )
 	{
-		if ( value.kind == ValueKind::kTexture )
-			(void)block.SetTexture( value.parameter, device::TextureId( 1 ) );
+		if ( value.kind != ValueKind::kTexture )
+			continue;
+		// A per-view texture (the view's local env_cubemap, a render target)
+		// has no one image for the material.
+		if ( value.text == "env_cubemap" || value.text.starts_with( "_rt_" ) ||
+		     value.text.starts_with( "[" ) )
+		{
+			*why = "the model does not bind the per-view texture " + value.text + " (" + value.key +
+			       ")";
+			return std::nullopt;
+		}
+		(void)block.SetTexture( value.parameter, device::TextureId( 1 ) );
 	}
 	return block;
 }
@@ -170,6 +180,7 @@ struct ProgramResolver::State
 {
 	explicit State( device::IRenderDevice2 &device ) : device( device ) {}
 	device::IRenderDevice2 &device;
+	LightmappedVertexLayout layout = LightmappedVertexLayout::kFlat;
 	std::unique_ptr<LightmappedFamily> lightmapped;
 	std::unique_ptr<UnlitFamily> unlit;
 };
@@ -181,9 +192,11 @@ ProgramResolver::~ProgramResolver() = default;
 
 foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResolver::Create(
     device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
-    std::uint32_t sampleCount )
+    std::uint32_t sampleCount, VertexLayout layout )
 {
 	auto state = std::make_unique<State>( device );
+	state->layout = layout == VertexLayout::kSurface ? LightmappedVertexLayout::kSurface
+	                                                 : LightmappedVertexLayout::kFlat;
 	auto lightmapped = LightmappedFamily::Create( device, colorFormat, depthFormat, sampleCount );
 	auto unlit = UnlitFamily::Create( device, colorFormat, depthFormat, sampleCount );
 	if ( !lightmapped || !unlit )
@@ -230,10 +243,19 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		const LightmappedClaim claim = ClaimLightmapped( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
-		auto request = s.lightmapped->Request( claim, TextureOf( material, "basetexture" ) );
+		LightmappedTextures textures;
+		textures.base = TextureOf( material, "basetexture" );
+		textures.envmap = TextureOf( material, "envmap" );
+		textures.envmapMask = TextureOf( material, "envmapmask" );
+		textures.bump = TextureOf( material, "bumpmap" );
+		textures.detail = TextureOf( material, "detail" );
+		auto request = s.lightmapped->Request( claim, textures, s.layout );
 		if ( !request )
 			return foundation::MakeUnexpected(
-			    std::string( "a lightmapped pipeline was refused" ) );
+			    std::string( request.Error() == LightmappedStatus::kInvalidRequest
+			                     ? "its bump or env map term reads the surface vertex, and the "
+			                       "resolver's is flat"
+			                     : "a lightmapped pipeline was refused" ) );
 		out.request = std::move( request ).Value();
 		out.blend = claim.blend;
 		out.drawInputs = { "lightmap" };
@@ -256,7 +278,9 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		claim.constants.flags[2] = unlit.constants.flags[3]; // its reference
 		claim.constants.flags[3] = 1.0f;                     // lighting is one
 		claim.constants.state[1] = 1.0f;                     // gamma vertex color
-		auto request = s.lightmapped->Request( claim, TextureOf( material, "basetexture" ) );
+		LightmappedTextures textures;
+		textures.base = TextureOf( material, "basetexture" );
+		auto request = s.lightmapped->Request( claim, textures, s.layout );
 		if ( !request )
 			return foundation::MakeUnexpected(
 			    std::string( "a lightmapped pipeline was refused" ) );
@@ -375,6 +399,10 @@ std::optional<GroupRequest> ProgramResolver::FrameGroup(
 		frame.fogColor[3] = terms.fogType;
 		std::copy( terms.fogParams, terms.fogParams + 4, frame.fogParams );
 		frame.fogMisc[0] = terms.fogEyeZ;
+		frame.light[3] = terms.specular ? 1.0f : 0.0f;
+		std::copy( terms.eye, terms.eye + 3, frame.eye );
+		frame.eye[3] = terms.envmapScale;
+		frame.fogMisc[1] = terms.ssbumpNormalized ? 1.0f : 0.0f;
 		return s.lightmapped->FrameGroup( frame );
 	}
 	return std::nullopt;

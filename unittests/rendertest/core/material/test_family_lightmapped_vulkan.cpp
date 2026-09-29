@@ -86,10 +86,10 @@ int main()
 			const LightmappedClaim claim = ClaimLightmapped( block );
 			return !claim.claimed && claim.reason.find( named ) != std::string::npos;
 		};
-		checks.That(
-		    refused(
-		        "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$bumpmap\" \"b\" }", "bumpmap" ),
-		    "claim.refuses-a-bump-map-by-name" );
+		checks.That( refused( "\"WorldVertexTransition\" { \"$basetexture\" \"a\" "
+		                      "\"$bumpmap\" \"b\" \"$bumpmap2\" \"c\" }",
+		                 "bumpmap2" ),
+		    "claim.refuses-a-second-bump-map-by-name" );
 		checks.That( refused( "\"WorldVertexTransition\" { \"$basetexture\" \"a\" "
 		                      "\"$basetexture2\" \"b\" }",
 		                 "basetexture2" ),
@@ -98,15 +98,51 @@ int main()
 		    refused( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$additive\" \"1\" }",
 		        "additive" ),
 		    "claim.refuses-additive-by-name" );
-		checks.That( refused( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$envmapcontrast\" "
-		                      "\"0.5\" }",
-		                 "envmapcontrast" ),
-		    "claim.refuses-an-env-map-parameter-by-name" );
+		checks.That(
+		    refused( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$envmapmasktransform\" "
+		             "\"center .5 .5 scale 2 2 rotate 0 translate 0 0\" }",
+		        "envmapmasktransform" ),
+		    "claim.refuses-an-env-map-mask-transform-by-name" );
 		checks.That(
 		    refused( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$basetexturetransform\" "
 		             "\"center .5 .5 scale 2 2 rotate 0 translate 0 0\" }",
 		        "basetexturetransform" ),
 		    "claim.refuses-a-texture-transform-by-name" );
+	}
+
+	// The env map's knobs as the port's fast and slow paths use them: contrast
+	// takes effect only with saturation, and otherwise is 0 or 1.
+	{
+		auto claimOf = [&]( const char *vmt ) -> std::optional<LightmappedClaim>
+		{
+			VmtImportContext context;
+			auto imported = ImportVmt( vmt, context );
+			if ( !imported )
+				return std::nullopt;
+			ParameterBlock block( *lightmapped );
+			if ( !ApplyValues( imported.Value(), block ) )
+				return std::nullopt;
+			(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+			(void)block.SetTexture( "envmap", device::TextureId( 2 ) );
+			const LightmappedClaim claim = ClaimLightmapped( block );
+			return claim.claimed ? std::optional<LightmappedClaim>( claim ) : std::nullopt;
+		};
+		auto fast = claimOf( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$envmap\" \"e\" "
+		                     "\"$envmapcontrast\" \"0.4\" }" );
+		auto slow = claimOf( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$envmap\" \"e\" "
+		                     "\"$envmapcontrast\" \"0.4\" \"$envmapsaturation\" \"0.5\" }" );
+		auto one = claimOf( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$envmap\" \"e\" "
+		                    "\"$envmapcontrast\" \"1\" }" );
+		checks.That( fast && fast->constants.envContrast[0] == 0.0f &&
+		                 fast->constants.envSaturation[0] == 1.0f,
+		    "claim.contrast-without-saturation-takes-the-fast-path" );
+		checks.That( slow && slow->constants.envContrast[0] == 0.4f &&
+		                 slow->constants.envSaturation[0] == 0.5f,
+		    "claim.contrast-with-saturation-takes-effect" );
+		checks.That( one && one->constants.envContrast[0] == 1.0f,
+		    "claim.contrast-one-is-fastpathenvmapcontrast" );
+		checks.That(
+		    fast && ( fast->terms & kLightmappedEnvmap ) != 0, "claim.an-env-map-is-a-term" );
 	}
 
 	// The alpha test's reference as the legacy shaders set it: 0.7 when the
@@ -160,12 +196,19 @@ int main()
 			const ImportedCase imported = ImportCase( checks, testCase, *lightmapped );
 			if ( !imported.block || testCase.triangles.empty() )
 				continue;
-			const CaseTexture *texture = nullptr;
-			for ( const MaterialValue &value : imported.material.values )
+			// The material's textures by binding, in the formats the family
+			// reads them (gamma images through sRGB, data as unorm), and the
+			// neutral ones for inputs the material leaves out.
+			auto textureOf = [&]( std::string_view parameter ) -> const CaseTexture *
 			{
-				if ( value.parameter == "basetexture" )
-					texture = FindTexture( *set, value.text );
-			}
+				for ( const MaterialValue &value : imported.material.values )
+				{
+					if ( value.parameter == parameter )
+						return FindTexture( *set, value.text );
+				}
+				return nullptr;
+			};
+			const CaseTexture *texture = textureOf( "basetexture" );
 			if ( !checks.That( texture != nullptr, "import." + name + ".base-texture-resolves" ) ||
 			     !checks.That(
 			         testCase.lightmap != nullptr, "case." + name + ".lightmap-resolves" ) )
@@ -173,32 +216,77 @@ int main()
 			const LightmappedClaim claim = ClaimLightmapped( *imported.block );
 			if ( !That( checks, claim.claimed, "claim." + name, claim.reason ) )
 				continue;
-			auto pipeline = family.Value()->Pipeline( claim );
+			const bool surface = ( claim.terms & kLightmappedSurfaceTerms ) != 0;
+			const LightmappedVertexLayout layout =
+			    surface ? LightmappedVertexLayout::kSurface : LightmappedVertexLayout::kFlat;
+			auto pipeline = family.Value()->Pipeline( claim, layout );
 			if ( !checks.That( pipeline.HasValue(), "pipeline." + name ) )
 				continue;
+			std::vector<CaseTexture> bound;
+			bound.reserve( 5 );
+			auto bind = [&]( const CaseTexture *source, device::Format format, bool cube )
+			{
+				CaseTexture copy;
+				if ( source )
+					copy = *source;
+				else
+				{
+					copy.width = copy.height = 1;
+					copy.cube = cube;
+					copy.texels.assign( cube ? 24 : 4, 255 );
+				}
+				copy.format = format;
+				bound.push_back( std::move( copy ) );
+				return &bound.back();
+			};
+			const std::vector<const CaseTexture *> materialTextures = {
+			    bind( texture, device::Format::kRGBA8Srgb, false ),
+			    bind( textureOf( "envmap" ), device::Format::kRGBA8Srgb, true ),
+			    bind( textureOf( "envmapmask" ), device::Format::kRGBA8Unorm, false ),
+			    bind( textureOf( "bumpmap" ), device::Format::kRGBA8Unorm, false ),
+			    bind( textureOf( "detail" ),
+			        claim.detailMode == 1 ? device::Format::kRGBA8Srgb
+			                              : device::Format::kRGBA8Unorm,
+			        false ) };
 
-			std::vector<LightmappedVertex> quad;
+			std::vector<LightmappedVertex> flat;
+			std::vector<LightmappedSurfaceVertex> surfaceQuad;
 			for ( const CaseVertex &corner : testCase.triangles )
 			{
-				LightmappedVertex vertex;
+				LightmappedSurfaceVertex vertex;
 				std::copy( corner.position, corner.position + 3, vertex.position );
 				std::copy( corner.uv0, corner.uv0 + 2, vertex.uv );
 				std::copy( corner.uv1, corner.uv1 + 2, vertex.lightmapUv );
 				std::copy( corner.color, corner.color + 4, vertex.color );
-				quad.push_back( vertex );
+				std::copy( corner.normal, corner.normal + 3, vertex.normal );
+				std::copy( corner.tangentS, corner.tangentS + 3, vertex.tangentS );
+				std::copy( corner.tangentT, corner.tangentT + 3, vertex.tangentT );
+				vertex.lightmapOffset = corner.uv2[0];
+				surfaceQuad.push_back( vertex );
+				LightmappedVertex plain;
+				std::copy( corner.position, corner.position + 3, plain.position );
+				std::copy( corner.uv0, corner.uv0 + 2, plain.uv );
+				std::copy( corner.uv1, corner.uv1 + 2, plain.lightmapUv );
+				std::copy( corner.color, corner.color + 4, plain.color );
+				flat.push_back( plain );
 			}
+			// The constants as Request packs them.
+			LightmappedConstants constants = claim.constants;
+			constants.state[0] =
+			    claim.blend == device::BlendMode::kOpaque && claim.alphaWrite ? 1.0f : 0.0f;
 			CaseDraw draw;
 			draw.pipeline = pipeline.Value();
 			draw.groups.push_back(
 			    { device::BindGroupRole::kMaterial, family.Value()->MaterialLayout(),
-			        std::as_bytes( std::span( &claim.constants, 1 ) ), { texture } } );
+			        std::as_bytes( std::span( &constants, 1 ) ), materialTextures } );
 			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(), {},
 			    { testCase.lightmap } } );
 			// The frame terms at their LDR defaults (the port's cases are LDR).
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
 			    std::as_bytes( std::span( &kLdrFrame, 1 ) ), {} } );
-			draw.vertices = std::as_bytes( std::span( quad ) );
-			draw.vertexCount = std::uint32_t( quad.size() );
+			draw.vertices = surface ? std::as_bytes( std::span( surfaceQuad ) )
+			                        : std::as_bytes( std::span( flat ) );
+			draw.vertexCount = std::uint32_t( flat.size() );
 			std::copy( testCase.clear, testCase.clear + 4, draw.clear );
 			const Drawn drawn = DrawCase( *device, draw );
 			if ( !checks.That( drawn.ok, "draw." + name ) )
@@ -248,7 +336,7 @@ int main()
 			That( checks, worst <= 2, "fog.range-fog-mixes-a-quarter-toward-its-color",
 			    "worst " + std::to_string( worst ) + " levels" );
 		}
-		checks.That( drawnCases == 8, "cases.every-case-drew" );
+		checks.That( drawnCases == int( set->cases.size() ), "cases.every-case-drew" );
 		checks.That( fogChecked, "fog.an-opaque-case-was-fogged" );
 		(void)device->WaitIdle();
 	}
