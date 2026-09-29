@@ -18,6 +18,78 @@
     "___error": "CTextureManager::ForceAllTexturesIntoHardware's precache draws (ForceTextureIntoHardware binds each texture on the error material and draws a degenerate mesh); nothing a view shows. Every backtrace of these drops (gdb on NoteDroppedMaterial, sp_a2_triple_laser) ends in that path."
   },
   "shots": {
+    "sp_a1_wakeup": {
+      "held_core": {
+        "regions": {
+          "beside_core_left": {
+            "rect": [
+              250,
+              440,
+              340,
+              620
+            ],
+            "mean_tolerance": 16,
+            "std_ratio": [
+              0.6,
+              1.5
+            ],
+            "pins": "Wheatley held in front of the view (the view model grab controller's C_PlayerHeldObjectClone) is drawn with the world's FOV, as retail does: CViewRender::DrawViewModels draws only C_BaseViewModel entities with the view model FOV. With every view model group renderable at cl_viewmodelfov (50) he was drawn about 2.1x too large and his shell covers this patch of the elevator door and floor"
+          },
+          "beside_core_right": {
+            "rect": [
+              650,
+              400,
+              740,
+              560
+            ],
+            "mean_tolerance": 16,
+            "std_ratio": [
+              0.5,
+              1.6
+            ],
+            "pins": "the right side of the same: background beside the held core at retail's size, the shell of a core drawn with the view model FOV"
+          }
+        }
+      },
+      "debris": {
+        "regions": {
+          "debris_sky": {
+            "rect": [
+              560,
+              40,
+              1000,
+              260
+            ],
+            "mean_tolerance": 28,
+            "std_ratio": [
+              0.5,
+              2.0
+            ],
+            "bright_tolerance": 0.02,
+            "pins": "the hanging chamber debris (models/props_hub/glados_chamber_dest01, models/npcs/glados/glados_temp) uses Portal 2's Black shader, a fogged black silhouette; without the shader the material system drew it with the wireframe error shader, white triangle edges across the sky"
+          }
+        }
+      },
+      "debris_side": {
+        "regions": {
+          "debris_sky": {
+            "rect": [
+              600,
+              0,
+              1024,
+              200
+            ],
+            "mean_tolerance": 28,
+            "std_ratio": [
+              0.5,
+              1.6
+            ],
+            "bright_tolerance": 0.02,
+            "pins": "the same Black debris seen from the catwalk: silhouettes, not white wireframe"
+          }
+        }
+      }
+    },
     "sp_a2_bridge_intro": {
       "projector": {
         "regions": {

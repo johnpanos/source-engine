@@ -1103,9 +1103,11 @@ void CNPC_SecurityCamera::InputDisable( inputdata_t &inputdata )
 
 void CNPC_SecurityCamera::InputRagdoll( inputdata_t &inputdata )
 {
-	if ( !m_bEnabled )
+	// Already fallen (a portal placed nearby fires this repeatedly)
+	IPhysicsObject *pFallen = VPhysicsGetObject();
+	if ( !pFallen || pFallen->IsMotionEnabled() )
 		return;
-	
+
 	// Leave decal on wall (may want to disable this once decal for where cam touches wall is made)
 	Vector vForward;
 	GetVectors( &vForward, NULL, NULL );

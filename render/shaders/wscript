@@ -84,6 +84,10 @@ def build(bld):
 	# any GLSL, include, layout or pin rebuilds the artifacts. Consumers name
 	# `render_spv` in `use`: that posts this task even under --targets and adds
 	# the generated include root (export_includes).
+	# Waf rescans `deps` only when one of the previously scanned files changed,
+	# so a new GLSL file (a new legacy port) would not rebuild the artifacts:
+	# the list of input paths is part of the task's signature as well.
+	bld.env.RENDER_SPV_INPUTS = sorted(node.path_from(root) for node in inputs)
 	bld(rule=build_artifacts, source=inputs[:1], deps=inputs[1:], target=[index] + headers,
 		name='render_spv', export_includes=[bld.path.find_or_declare('generated')],
-		color='CYAN', idx=bld.get_taskgen_count())
+		vars=['RENDER_SPV_INPUTS'], color='CYAN', idx=bld.get_taskgen_count())

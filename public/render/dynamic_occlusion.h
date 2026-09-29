@@ -1,12 +1,16 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Light blocked by moving objects (render.dynamic-occlusion.v1,
-//          RFC 0011): one rule for every moving thing (a prop, a physics
-//          object, an NPC, a door, a moving brush) and every light.
+//          RFC 0011): one rule for every moving thing that casts a shadow (a
+//          prop, a physics object, an NPC, a door model) and every light.
 //
 //          Occluders. Each frame the client publishes every drawn moving
-//          object as oriented boxes: a studio model's hitboxes on their
-//          bones, a brush entity's model box. A box belongs to one entity,
+//          object that casts a dynamic shadow in the game's shadow model (the
+//          render-to-texture casters these shadows replace: a studio model
+//          unless its shadow is disabled, a physics brush; not func_brush or
+//          func_door, whose light the bake owns) as oriented boxes: a studio
+//          model's hitboxes on their bones, otherwise its collision box. A
+//          box belongs to one entity,
 //          keyed by its entity handle (index and serial: the key the render
 //          core's scene instances use) and its part (the box's index within
 //          the entity). The engine versions each box: any change of its

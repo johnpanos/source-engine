@@ -1765,6 +1765,12 @@ void CProp_Portal::WakeNearbyEntities( void )
 					}
 				}
 
+				// A portal opened over a security camera's mount cuts it off the wall
+				if( FClassnameIs( pEntity, "npc_security_camera" ) )
+				{
+					pEntity->AcceptInput( "Ragdoll", this, this, variant_t(), 0 );
+				}
+
 				pEntity->WakeRestingObjects();
 				//pEntity->SetGroundEntity( NULL );
 

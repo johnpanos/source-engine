@@ -201,5 +201,68 @@ class MergeTest(unittest.TestCase):
         self.assertGreater(text.count("\"case\""), 0)
 
 
+def legacy_report(*cases):
+    return {"family": "legacy",
+            "cases": [{"name": name, "material": "conformance/legacy/" + name,
+                       "pixels": [{"x": x, "y": 8, "rgba": list(rgba)}
+                                  for x, rgba in enumerate(pixels)]}
+                      for name, pixels in cases]}
+
+
+class NativeFamilyTest(unittest.TestCase):
+    """compare_native_family: the native family (drawn without the -vklegacy*
+    switch) against the port run of the same cases."""
+
+    PORT = legacy_report(("fog", [(120, 110, 100, 255), (60, 70, 80, 255)]),
+                         ("plain", [(10, 20, 30, 255)]))
+
+    def compare(self, native, native_passes=(), tolerance=2):
+        return oracle.compare_native_family(self.PORT, native, list(native_passes), tolerance)
+
+    def test_equal_pixels_pass(self):
+        failures, details = self.compare(copy.deepcopy(self.PORT))
+        self.assertEqual(failures, [])
+        self.assertEqual([detail["max_error"] for detail in details], [0, 0])
+
+    def test_unfogged_native_family_is_detected(self):
+        # The native skin family before it applied pixel fog: the fogged
+        # pixels keep the lit color.
+        native = legacy_report(("fog", [(79, 71, 60, 255), (60, 70, 80, 255)]),
+                               ("plain", [(10, 20, 30, 255)]))
+        failures, _ = self.compare(native)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("fog: pixel (0, 8) native family", failures[0])
+
+    def test_error_at_the_tolerance_passes_and_beyond_fails(self):
+        native = legacy_report(("fog", [(122, 110, 100, 255), (60, 70, 80, 255)]),
+                               ("plain", [(10, 20, 30, 255)]))
+        self.assertEqual(self.compare(native)[0], [])
+        native["cases"][0]["pixels"][0]["rgba"][0] = 123
+        self.assertEqual(len(self.compare(native)[0]), 1)
+
+    def test_port_drawing_in_the_native_run_fails(self):
+        # Without it the check could compare the port with itself.
+        failures, _ = self.compare(copy.deepcopy(self.PORT),
+                                   native_passes=[{"material": "Conformance/Legacy/Plain"}])
+        self.assertEqual(failures, ["plain: a legacy port drew the material in the native run"])
+
+    def test_alpha_is_not_compared(self):
+        # Native passes leave destination alpha to the frame copy.
+        native = copy.deepcopy(self.PORT)
+        native["cases"][1]["pixels"][0]["rgba"][3] = 0
+        self.assertEqual(self.compare(native)[0], [])
+
+    def test_missing_or_mismatched_cases_fail(self):
+        native = legacy_report(("other", [(1, 2, 3, 255)]))
+        self.assertEqual(self.compare(native)[0], ["other: no port run of the case"])
+        native = copy.deepcopy(self.PORT)
+        native["cases"][0]["pixels"][0]["x"] = 5
+        self.assertEqual(self.compare(native)[0], ["fog: the runs sampled different pixels"])
+        self.assertEqual(self.compare({"family": "legacy", "cases": []})[0],
+                         ["native run: no cases"])
+        self.assertEqual(self.compare({"family": "modellight", "cases": []})[0],
+                         ["native pixels hold family 'modellight', not legacy"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -621,6 +621,52 @@ def evaluate(report, passes, source, tolerance=DEFAULT_TOLERANCE):
     return failures, details
 
 
+def compare_native_family(port_report, native_report, native_passes, tolerance=DEFAULT_TOLERANCE):
+    """Failures (strings) and per-case details for a native family's pixels.
+
+    The port run drew every case through a legacy port (a -vklegacy* switch,
+    judged against the bytecode by evaluate); the native run drew the same
+    cases without the switch, so the native family (shaders/skin.*, ...) drew
+    them. Each native case must have been drawn by no port, else the check
+    would compare the port with itself, and its color must equal the port's
+    within the tolerance. Alpha is not compared: native passes do not write
+    destination alpha (a frame copy derives it from depth, depth_to_alpha.frag).
+    """
+    failures = []
+    if native_report.get("family") != "legacy":
+        return ["native pixels hold family %r, not legacy" % native_report.get("family")], []
+    ported = {record["material"].lower() for record in native_passes}
+    port_cases = {case["name"]: case for case in port_report.get("cases", [])}
+    details = []
+    if not native_report.get("cases"):
+        failures.append("native run: no cases")
+    for case in native_report.get("cases", []):
+        name = case["name"]
+        detail = {"name": name}
+        details.append(detail)
+        if case["material"].lower() in ported:
+            failures.append("%s: a legacy port drew the material in the native run" % name)
+            continue
+        port = port_cases.get(name)
+        if port is None:
+            failures.append("%s: no port run of the case" % name)
+            continue
+        if [(p["x"], p["y"]) for p in port["pixels"]] != [(p["x"], p["y"]) for p in case["pixels"]]:
+            failures.append("%s: the runs sampled different pixels" % name)
+            continue
+        limit = case.get("tolerance", tolerance)
+        worst = 0
+        for got, want in zip(case["pixels"], port["pixels"]):
+            error = max(abs(got["rgba"][k] - want["rgba"][k]) for k in range(3))
+            worst = max(worst, error)
+            if error > limit:
+                failures.append("%s: pixel (%d, %d) native family %s, port %s (error %d > %d)"
+                                % (name, got["x"], got["y"], got["rgba"][:3], want["rgba"][:3],
+                                   error, limit))
+        detail["max_error"] = worst
+    return failures, details
+
+
 def make_source(kind, fxc_cache=None, vpk=None):
     """The reference bytecode: this tree's .fxc compiled, or the retail .vcs."""
     if kind == "source":

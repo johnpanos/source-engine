@@ -7,8 +7,9 @@
 // read under their register names below. The static combos come as flags
 // (params.y): 1 FASTPATH_NOBUMP, 2 LIGHTWARPTEXTURE, 4 PHONGWARPTEXTURE,
 // 8 SELFILLUM, 16 SELFILLUMFRESNEL, 32 RIMLIGHT, 64 BLENDTINTBYBASEALPHA.
-// CUBEMAP, DETAILTEXTURE, WRINKLEMAP and fog are not ported (the shader API
-// reports those combos unimplemented).
+// CUBEMAP, DETAILTEXTURE and WRINKLEMAP are not ported (the shader API reports
+// those combos unimplemented). FinalOutput's pixel fog comes from the draw's fog
+// record (CVulkanContext::DrawFog; see demo_dyn_tex.frag's ApplyPixelFog).
 //
 // params: x alpha-test reference (< 0 disables), y combo flags, z kColor*
 // flags (1 sRGB base, 4 sRGB output, 8 GREATER alpha test), w FinalOutput's
@@ -20,6 +21,10 @@ layout( location = 3 ) in vec3 vTangentS;
 layout( location = 4 ) in vec3 vTangentT;
 layout( location = 5 ) in vec3 vNormal;
 layout( location = 6 ) in vec3 vWorldPos;
+layout( location = 7 ) flat in vec4 fragFogColor;
+layout( location = 8 ) flat in vec4 fragFogParams;
+layout( location = 9 ) flat in vec4 fragFogMisc;
+layout( location = 10 ) in vec2 fragFogDepth;
 layout( location = 0 ) out vec4 outColor;
 layout( set = 0, binding = 0 ) uniform sampler2D BaseTextureSampler;    // s0
 layout( set = 1, binding = 0 ) uniform sampler2D SpecularWarpSampler;   // s1
@@ -116,6 +121,34 @@ vec3 DiffuseTerm( vec3 worldNormal, vec3 lightDir, bool bDoLightingWarp )
 	if ( bDoLightingWarp )
 		fOut = 2.0 * texture( DiffuseWarpSampler, vec2( fResult, 0.5 ) ).rgb; // tex1D
 	return fOut;
+}
+
+// common_ps_fxc.h CalcPixelFogFactor for the draw's fog (the inputs of
+// demo_dyn_tex.frag's ApplyPixelFog): type -1 (none), 0 range, 1 height.
+float PixelFogFactor()
+{
+	const float fogType = fragFogColor.w;
+	if ( fogType < -0.5 )
+		return 0.0;
+	const float projZ = fragFogDepth.x;
+	if ( fogType < 0.5 )
+		return clamp( min( fragFogParams.z, projZ * fragFogParams.w - fragFogParams.x ), 0.0, 1.0 );
+	const float worldZ = fragFogDepth.y;
+	const float depthFromWater = fragFogParams.y - worldZ;
+	const float depthFromEye = fragFogMisc.x - worldZ;
+	const float f = clamp( depthFromWater * ( 1.0 / depthFromEye ), 0.0, 1.0 );
+	return clamp( f * projZ * fragFogParams.w, 0.0, 1.0 );
+}
+
+// BlendPixelFog: range fog squares its factor.
+vec3 BlendPixelFog( vec3 color, float factor )
+{
+	const float fogType = fragFogColor.w;
+	if ( fogType < -0.5 )
+		return color;
+	if ( fogType < 0.5 )
+		factor *= factor;
+	return mix( color, fragFogColor.rgb, factor );
 }
 
 // Custom Fresnel, ranges encoded ( ( mid - min ) * 2, mid, ( max - mid ) * 2 ).
@@ -295,8 +328,10 @@ void main()
 	if ( kAlphaTest && consts.params.x >= 0.0 &&
 	     ( ( flags & 8 ) != 0 ? alpha <= consts.params.x : alpha < consts.params.x ) )
 		discard;
-	// FinalOutput( ..., TONEMAP_SCALE_LINEAR ).
+	// FinalOutput( ..., fogFactor, PIXELFOGTYPE, TONEMAP_SCALE_LINEAR ): the
+	// tone-mapping scale, then the fog, then the sRGB encode.
 	result *= consts.params.w;
+	result = BlendPixelFog( result, PixelFogFactor() );
 	if ( ( flags & 4 ) != 0 )
 		result = LinearToSrgb( result );
 	outColor = vec4( result, alpha );

@@ -151,6 +151,14 @@ with the gun and:
   them and walks through twice;
 - `sp_a2_triple_laser_cube_removed`: a redirection cube carrying a laser is
   removed;
+- `sp_a2_triple_laser_pillar_corner`: blue on the pillar's south face, orange
+  on its east face (facing +x, angles 0 0 0), walked through both ways. A new
+  `CPortalSimulator` holds an invalid (NaN) center, and under `-ffast-math`
+  (GCC's `comiss` without a parity test) its `MoveTo` "not moving" check took
+  NaN as equal, so a first move to angles (0 0 0) was skipped: the simulator
+  was never placed and the player stopped at both portals' surfaces.
+  `MoveTo` now requires a valid stored center; with that test removed the
+  scenario fails all four crossing checks;
 - `qa_portal_crowd`: 248 animated props (personality spheres and Chell
   models) appear in doubling waves between two facing portals while the
   player looks into them and turns.
@@ -437,9 +445,11 @@ rendered on native Vulkan, compared with retail Portal 2 from matched
 screenshots.
 
 `quality/workloads/portal2-materials-v1` holds fixed views: an eye point with a
-pitch and yaw, noclip, no HUD or view model. There are 13 views on five maps:
-`sp_a2_bridge_intro`, `sp_a2_fizzler_intro`, `sp_a2_laser_over_goo`,
-`sp_a2_triple_laser` and `sp_a4_tb_intro`.
+pitch and yaw, noclip, no HUD or view model. There are 16 views on six maps:
+`sp_a1_wakeup`, `sp_a2_bridge_intro`, `sp_a2_fizzler_intro`,
+`sp_a2_laser_over_goo`, `sp_a2_triple_laser` and `sp_a4_tb_intro`.
+`sp_a1_wakeup` keeps the view models on: its views show Wheatley carried in
+front of the eye.
 
 [`tools/quality/portal2_material_shots.py`](../../../tools/quality/portal2_material_shots.py)
 shoots the views at 1024x768 on both sides.
@@ -488,7 +498,8 @@ Rows in `quality/conformance.manifest.json` (profile `linux-host-corpus`):
 
 | Suite | Kind | Now |
 | --- | --- | --- |
-| `corpus.portal2.video-retail` | 60 checks, known failure | 34 pass, 26 fail; first divergence `sp_a2_bridge_intro.projector.tiles` (the white void, item 2 below) |
+| `corpus.portal2.video-retail` | 74 checks, known failure | 63 pass, 11 fail (2026-09-28); first divergence `sp_a2_bridge_intro.projector.tiles` (the white void, item 2 below) |
+| `...video-retail.wakeup` | the 5 checks pinning the held core and the Black debris | pass; the pre-fix client fails the 2 held-core regions, the pre-fix shader library the other 3 |
 | `...video-retail.cables` / `.seeded-no-ropes` (`+r_drawropes 0`) | region + negative control | pass / rejected |
 | `...video-retail.ssbump-floor` / `.seeded-ssbump-unscaled` (`+mat_ssbump_normalize 0`) | region + negative control | pass / rejected |
 | `...video-retail.comparator` and 4 `.comparator.seeded-*` rows | synthetic frames, no content | pass / all 4 rejected |
@@ -496,6 +507,9 @@ Rows in `quality/conformance.manifest.json` (profile `linux-host-corpus`):
 The in-game rows are optional. They need `SOURCE_PORTAL2_STEAM_ROOT` (a Portal 2
 install), a GPU and a built `build-p2`; `SOURCE_PORTAL2_BUILD` selects another
 tree. Without them the rows are skipped and never certified.
+
+`record --scenario <map>` records only that map's views and keeps every other
+map's entry, so a new map needs only its own retail capture.
 
 ```sh
 python3 tools/quality/portal2_material_shots.py capture --side retail --out quality-results/p2mat-retail
@@ -561,6 +575,31 @@ Fixed, each confirmed against retail by the checks above (before -> after):
   `viewpostprocess.cpp`.
 - **Light bridges crashed the client.** The paint agent fixed this in
   `c_projectedwallentity.cpp`; the bridge view found it.
+- **Held Wheatley twice retail's size** (2026-09-28). Portal 2 carries
+  personality cores with the view model grab controller: a
+  `C_PlayerHeldObjectClone` in the view model render groups, 65 units in front
+  of the eye.
+  - This SDK's `CViewRender::DrawViewModels` drew every view model group
+    renderable with the view model FOV (`cl_viewmodelfov` 50 against the
+    world's 90), about 2.1x magnification.
+  - Retail's (CS:GO's) draws only `C_BaseViewModel` entities with it and the
+    rest with the world's FOV in a second pass, which `viewrender.cpp` now does
+    for Portal 2.
+  - `sp_a1_wakeup.held_core.beside_core_*` pin it. With the previous client
+    they fail at mean 74/75 against retail's 42/49; now they pass.
+- **White wireframe across `sp_a1_wakeup`'s sky** (2026-09-28). The hanging
+  chamber debris (`models/props_hub/glados_chamber_dest01`,
+  `models/npcs/glados/glados_temp`) uses Portal 2's `Black` shader, a
+  silhouette fogged to the fog colour. This library lacked it, so the material
+  system drew both with its wireframe error shader.
+  - `black.cpp` with `black_vs20`/`black_ps2x` ports it onto this engine's
+    pixel fog (black blended by the squared range fog factor, what the CS:GO-era
+    vertex stage computed). The native backend draws it through the
+    `black_ps20b` legacy port, which matches the pinned-FXC bytecode
+    (`quality/fixtures/legacy-shaders/black.vdf`, both HDR modes).
+  - `sp_a1_wakeup.shaders` and the `debris*.debris_sky` regions pin it; with
+    the previous shader library the sky region has 10.6% bright pixels
+    (retail 0%) and fails.
 
 Still different, ranked by visible impact:
 

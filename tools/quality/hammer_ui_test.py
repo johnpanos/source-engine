@@ -92,6 +92,7 @@ sys.path.insert(0, str(HERE))
 
 from conformance_result import Checks  # noqa: E402
 import launch_sandbox  # noqa: E402
+import private_session  # noqa: E402
 
 ROOT = HERE.parents[1]
 SCREEN = (1280, 800)
@@ -1343,7 +1344,8 @@ def run_case(case, args, out):
     keyfile.write_text("[org/gnome/mutter]\nexperimental-features=['scale-monitor-framebuffer']\n")
     env["GSETTINGS_BACKEND"] = "keyfile"
     session = subprocess.run(
-        ["dbus-run-session", "--", "mutter", "--headless", "--virtual-monitor",
+        private_session.dbus_run_session(case_dir / "dbus") +
+        ["mutter", "--headless", "--virtual-monitor",
          "%dx%d" % screen, "--wayland-display", display, "--",
          sys.executable, str(Path(__file__).resolve()), "--inner", "--case", case,
          "--case-dir", str(case_dir), "--vmf-name", vmf_name, "--gtk", str(args.gtk.resolve()),

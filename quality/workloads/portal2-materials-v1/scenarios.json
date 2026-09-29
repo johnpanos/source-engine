@@ -7,6 +7,17 @@
   ],
   "scenarios": [
     {
+      "name": "sp_a1_wakeup",
+      "map": "sp_a1_wakeup",
+      "script": "mat_sp_a1_wakeup.nut",
+      "timeout_seconds": 150,
+      "required_checks": [
+        "view.held_core",
+        "view.debris",
+        "view.debris_side"
+      ]
+    },
+    {
       "name": "sp_a2_bridge_intro",
       "map": "sp_a2_bridge_intro",
       "script": "mat_sp_a2_bridge_intro.nut",

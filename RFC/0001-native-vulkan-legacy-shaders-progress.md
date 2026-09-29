@@ -139,6 +139,47 @@ the user's approval on Wayland, the glass oracle, the `forced/` files and the
 frame time above, the default-on gate is met. The row stays `partial` for the
 items under "Not ported, or not verified".
 
+### Pixel fog on the native skin family (2026-09-28)
+
+The user saw VertexLitGeneric `$phong` models in sp_a2_core (GLaDOS, her
+cables) drawn without the chamber fog. The native skin family, which draws
+most `skin_ps20b` combos, never applied FinalOutput's pixel fog: `skin.frag`
+left it out, and `SnapshotPixelFog` did not list `skin_ps2*`, so its draws
+carried no fog record. The `forced/skin_native_combos.vdf` fog cases passed
+only because they run with `-vklegacyskin`, which judges the port, not the
+native family.
+
+- **Fix.** `SnapshotPixelFog` lists `skin_ps2*` (the PIXELFOGTYPE combo,
+  `g_FogParams` c12, eye z in c11.z). The skin pipeline's vertex input takes
+  the fog stream (`DrawFog`, vertex binding 1, locations 7..10, as the
+  textured stage). `skin.vert` passes it on, and `skin.frag` applies
+  `CalcPixelFogFactor`/`BlendPixelFog` after the tone-mapping scale and
+  before the sRGB encode. Skin positions are already in world space, so
+  `CommitPassFog` gives skin draws the identity world-z row.
+- **Oracle.** `legacy_shader_conformance.py --native-against-port SWITCH`
+  draws the cases with SWITCH (the port, judged against the bytecode), then
+  without it (the native family). The native colour must equal the port's
+  within the tolerance, and no port may draw a case in the native run
+  (`legacy_shader_oracle.compare_native_family`). Alpha is not compared,
+  because native passes do not write destination alpha. Six self-tests
+  (`NativeFamilyTest`) cover an unfogged native family, the tolerance edge,
+  a port drawing in the native run, and missing cases.
+
+| Check | Result |
+| --- | --- |
+| `forced/skin_native_combos.vdf --native-against-port=-vklegacyskin`, both HDR modes | pass; 22 / 22 cases, maximum error 0 (the port run also passes the bytecode) |
+| Negative control: the same cases with the `fog` blocks removed, native against the fogged port | `skin_native_fog` 41, `skin_native_fog_below` 43 levels; the other 20 cases 0 |
+| `forced/vertexlitgeneric_textured_combos.vdf --native-against-port=-vklegacyvertexlit`, both HDR modes | pass |
+| `forced/lightmappedgeneric_native_combos.vdf --native-against-port=-vklegacylightmapped` | fail, open: `lmg_native_ssbump_detail_ssbump_bump` 3-6 levels darker in the native family; the other 25 cases pass |
+| Default run (all top-level `*.vdf`, `--hdr none`) | 258 of 273 cases pass; the 15 failures are all `flashlight.vdf` (flashlight is not ported) |
+| `flex` and `pbr-model` pixel families (these share the skin vertex input) | pass |
+| sp_a2_core, GLaDOS from two views, forced range fog, `mat_force_tonemap_scale 1`, native against `-vklegacyskin` | 0.001 % and 0.034 % of pixels beyond 16/255 (fog off: 0.031 %); fog on against fog off changes 91 % |
+
+Open: the native skin family does not write the height-fog factor to
+destination alpha (`WRITEWATERFOGTODESTALPHA`), and the frame copy's
+depth-to-alpha does not rebuild it, so skin models under water fog are
+missing from the water's dest-alpha fog.
+
 ## How it works
 
 The porting guide is `materialsystem/shaderapivulkan/shaders/legacy/README.md`.
@@ -406,6 +447,11 @@ python3 tools/quality/legacy_shader_conformance.py --runtime <portal runtime> \
     --extra-arg=-vklegacyskin
 # likewise forced/refract.vdf (-vklegacyrefract), forced/bloomadd.vdf
 # (-vklegacybloomadd) and forced/sky.vdf (-vklegacysky, both HDR modes)
+# The native families against their ports (skin, vertexlit, lightmapped):
+python3 tools/quality/legacy_shader_conformance.py --runtime <portal runtime> \
+    --build build-vk --out qr/<new dir> [--hdr integer] \
+    --cases quality/fixtures/legacy-shaders/forced/skin_native_combos.vdf \
+    --native-against-port=-vklegacyskin
 python3 tools/quality/conformance.py check --suite render.vulkan.legacy-constants --out qr/<dir>
 python3 -m unittest tools.quality.tests.test_legacy_shader_oracle \
     tools.quality.tests.test_shader_artifacts tools.quality.tests.test_d3d9_shader_vm

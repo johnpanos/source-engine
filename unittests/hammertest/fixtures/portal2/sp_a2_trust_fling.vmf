@@ -2,7 +2,7 @@ versioninfo
 {
 	"editorversion" "400"
 	"editorbuild" "5195"
-	"mapversion" "1326"
+	"mapversion" "1327"
 	"formatversion" "100"
 	"prefab" "0"
 }
@@ -50,7 +50,7 @@ viewsettings
 world
 {
 	"id" "1"
-	"mapversion" "1326"
+	"mapversion" "1327"
 	"classname" "worldspawn"
 	"detailmaterial" "detail/detailsprites"
 	"detailvbsp" "detail.vbsp"
@@ -368,7 +368,7 @@ world
 		side
 		{
 			"id" "1470"
-			"plane" "(768 -960 1.52588e-005) (768 -960 -448) (896 -960 -448)"
+			"plane" "(768 -960 1.52588e-05) (768 -960 -448) (896 -960 -448)"
 			"material" "METAL/BLACK_WALL_METAL_005A"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -379,7 +379,7 @@ world
 		side
 		{
 			"id" "1469"
-			"plane" "(896 -992 1.52588e-005) (896 -992 -448) (768 -992 -448)"
+			"plane" "(896 -992 1.52588e-05) (896 -992 -448) (768 -992 -448)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 0.00781631] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -401,7 +401,7 @@ world
 		side
 		{
 			"id" "1467"
-			"plane" "(768 -992 1.52588e-005) (768 -992 -448) (768 -960 -448)"
+			"plane" "(768 -992 1.52588e-05) (768 -992 -448) (768 -960 -448)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[0 -1 0 255.996] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -412,7 +412,7 @@ world
 		side
 		{
 			"id" "1466"
-			"plane" "(896 -960 1.52588e-005) (896 -960 -448) (896 -992 -448)"
+			"plane" "(896 -960 1.52588e-05) (896 -960 -448) (896 -992 -448)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[0 -1 0 255.996] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -423,7 +423,7 @@ world
 		side
 		{
 			"id" "1465"
-			"plane" "(896 -992 1.52588e-005) (768 -992 1.52588e-005) (768 -960 1.52588e-005)"
+			"plane" "(896 -992 1.52588e-05) (768 -992 1.52588e-05) (768 -960 1.52588e-05)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 255.996] 0.25"
 			"vaxis" "[0 -1 0 -768.008] 0.25"
@@ -792,7 +792,7 @@ world
 		side
 		{
 			"id" "6166"
-			"plane" "(-1152 -448 -0) (-1152 -576 -0) (-768 -576 -0)"
+			"plane" "(-1152 -448 0) (-1152 -576 0) (-768 -576 0)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[0 -1 0 255.996] 0.25"
 			"vaxis" "[-1 0 0 0] 0.25"
@@ -4776,7 +4776,7 @@ world
 		side
 		{
 			"id" "6374"
-			"plane" "(-128 1120 256) (-128 1120 0) (-0 1120 0)"
+			"plane" "(-128 1120 256) (-128 1120 0) (0 1120 0)"
 			"material" "TOOLS/TOOLSNODRAW"
 			"uaxis" "[1 0 0 0.00781631] 0.25"
 			"vaxis" "[0 0 -1 0] 0.25"
@@ -4787,7 +4787,7 @@ world
 		side
 		{
 			"id" "6373"
-			"plane" "(-0 1088 256) (-0 1088 0) (-128 1088 0)"
+			"plane" "(0 1088 256) (0 1088 0) (-128 1088 0)"
 			"material" "METAL/BLACK_WALL_METAL_002A"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -5536,7 +5536,7 @@ world
 		side
 		{
 			"id" "5008"
-			"plane" "(1088 -992 -128) (1120 -992 -128) (1120 -992 -0)"
+			"plane" "(1088 -992 -128) (1120 -992 -128) (1120 -992 0)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -7360,7 +7360,7 @@ world
 		side
 		{
 			"id" "5020"
-			"plane" "(960 -992 -128) (1088 -992 -128) (1088 -992 -0)"
+			"plane" "(960 -992 -128) (1088 -992 -128) (1088 -992 0)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -7371,7 +7371,7 @@ world
 		side
 		{
 			"id" "5019"
-			"plane" "(1088 -1024 -128) (960 -1024 -128) (960 -1024 -0)"
+			"plane" "(1088 -1024 -128) (960 -1024 -128) (960 -1024 0)"
 			"material" "METAL/BLACK_WALL_METAL_005C_TOP"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -7447,7 +7447,7 @@ world
 		side
 		{
 			"id" "5013"
-			"plane" "(960 -1024 -128) (928 -1024 -128) (928 -1024 -0)"
+			"plane" "(960 -1024 -128) (928 -1024 -128) (928 -1024 0)"
 			"material" "METAL/BLACK_WALL_METAL_005B_TOP"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 0 -1 0] 0.25"
@@ -13212,7 +13212,7 @@ world
 		side
 		{
 			"id" "21612"
-			"plane" "(-128 576 548) (-128 1088 548) (-0 1088 548)"
+			"plane" "(-128 576 548) (-128 1088 548) (0 1088 548)"
 			"material" "TOOLS/TOOLSNODRAW"
 			"uaxis" "[0 -1 0 63.996] 0.25"
 			"vaxis" "[-1 0 0 -0.00781631] 0.25"
@@ -13223,7 +13223,7 @@ world
 		side
 		{
 			"id" "21611"
-			"plane" "(-0 1088 528) (0 1088 548) (-128 1088 548)"
+			"plane" "(0 1088 528) (0 1088 548) (-128 1088 548)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 0.00781631] 0.25"
 			"vaxis" "[0 0 -1 -496] 0.25"
@@ -13256,7 +13256,7 @@ world
 		side
 		{
 			"id" "21608"
-			"plane" "(-128 576 528) (-128 576 548) (-0 576 548)"
+			"plane" "(-128 576 528) (-128 576 548) (0 576 548)"
 			"material" "ANIM_WP/FRAMEWORK/SQUAREBEAMS_RUSTY_01"
 			"uaxis" "[0 0 1 -26] 0.25"
 			"vaxis" "[1 0 0 -256] 0.25"
@@ -15883,7 +15883,7 @@ world
 		side
 		{
 			"id" "21599"
-			"plane" "(-128 192 528) (-128 192 544) (-0 192 544)"
+			"plane" "(-128 192 528) (-128 192 544) (0 192 544)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 0.00781631] 0.25"
 			"vaxis" "[0 0 -1 -768] 0.25"
@@ -15916,7 +15916,7 @@ world
 		side
 		{
 			"id" "21596"
-			"plane" "(-0 448 528) (0 448 544) (-128 448 544)"
+			"plane" "(0 448 528) (0 448 544) (-128 448 544)"
 			"material" "ANIM_WP/FRAMEWORK/SQUAREBEAMS_RUSTY_01"
 			"uaxis" "[0 0 1 -26] 0.25"
 			"vaxis" "[-1 0 0 -256] 0.25"
@@ -15927,7 +15927,7 @@ world
 		side
 		{
 			"id" "21595"
-			"plane" "(-128 448 528) (-128 192 528) (-0 192 528)"
+			"plane" "(-128 448 528) (-128 192 528) (0 192 528)"
 			"material" "TOOLS/TOOLSNODRAW"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 -1 0 0] 0.25"
@@ -16024,7 +16024,7 @@ world
 		side
 		{
 			"id" "21576"
-			"plane" "(-64 448 544) (-64 512 544) (-0 512 544)"
+			"plane" "(-64 448 544) (-64 512 544) (0 512 544)"
 			"material" "TOOLS/TOOLSNODRAW"
 			"uaxis" "[0 -1 0 -0.0039978] 0.25"
 			"vaxis" "[-1 0 0 63.992] 0.25"
@@ -16057,7 +16057,7 @@ world
 		side
 		{
 			"id" "21573"
-			"plane" "(-0 512 528) (0 512 544) (-64 512 544)"
+			"plane" "(0 512 528) (0 512 544) (-64 512 544)"
 			"material" "ANIM_WP/FRAMEWORK/SQUAREBEAMS_RUSTY_01"
 			"uaxis" "[0 0 1 -26] 0.25"
 			"vaxis" "[-1 0 0 0] 0.25"
@@ -16068,7 +16068,7 @@ world
 		side
 		{
 			"id" "21572"
-			"plane" "(-64 448 528) (-64 448 544) (-0 448 544)"
+			"plane" "(-64 448 528) (-64 448 544) (0 448 544)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 -256] 0.25"
 			"vaxis" "[0 0 -1 0] 0.25"
@@ -16079,7 +16079,7 @@ world
 		side
 		{
 			"id" "21571"
-			"plane" "(-64 512 528) (-64 448 528) (-0 448 528)"
+			"plane" "(-64 512 528) (-64 448 528) (0 448 528)"
 			"material" "TOOLS/TOOLSNODRAW"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 -1 0 0] 0.25"
@@ -16860,7 +16860,7 @@ world
 		side
 		{
 			"id" "8948"
-			"plane" "(-128 -960 0) (-128 -960 -384) (-0 -960 -384)"
+			"plane" "(-128 -960 0) (-128 -960 -384) (0 -960 -384)"
 			"material" "METAL/BLACK_WALL_METAL_005A"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -16871,7 +16871,7 @@ world
 		side
 		{
 			"id" "8947"
-			"plane" "(-0 -992 0) (0 -992 -384) (-128 -992 -384)"
+			"plane" "(0 -992 0) (0 -992 -384) (-128 -992 -384)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 0.00781631] 0.25"
 			"vaxis" "[0 0 -1 -768] 0.25"
@@ -20443,7 +20443,7 @@ world
 		side
 		{
 			"id" "8551"
-			"plane" "(640 192 544) (640 704 544) (-0 704 544)"
+			"plane" "(640 192 544) (640 704 544) (0 704 544)"
 			"material" "METAL/METALWALL_BTS_006A_CHEAP"
 			"uaxis" "[1 0 0 0.00402832] 0.25"
 			"vaxis" "[0 -1 0 127.992] 0.25"
@@ -20487,7 +20487,7 @@ world
 		side
 		{
 			"id" "8547"
-			"plane" "(-0 704 544) (0 704 800) (0 192 800)"
+			"plane" "(0 704 544) (0 704 800) (0 192 800)"
 			"material" "ANIM_WP/FRAMEWORK/BACKPANELS_COLOR01_CHEAP"
 			"uaxis" "[0 1 0 -256] 0.25"
 			"vaxis" "[0 0 -1 128] 0.25"
@@ -22636,7 +22636,7 @@ world
 		side
 		{
 			"id" "8930"
-			"plane" "(-0 -960 128) (0 -960 256) (-128 -960 256)"
+			"plane" "(0 -960 128) (0 -960 256) (-128 -960 256)"
 			"material" "METAL/BLACK_WALL_METAL_005A"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -22647,7 +22647,7 @@ world
 		side
 		{
 			"id" "8929"
-			"plane" "(-128 -992 128) (-128 -992 256) (-0 -992 256)"
+			"plane" "(-128 -992 128) (-128 -992 256) (0 -992 256)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 0.00781631] 0.25"
 			"vaxis" "[0 0 -1 -768] 0.25"
@@ -24080,7 +24080,7 @@ world
 		side
 		{
 			"id" "9314"
-			"plane" "(-1312 1408 -9.53674e-007) (-1280 1408 -9.53674e-007) (-1280 1408 128)"
+			"plane" "(-1312 1408 -9.53674e-07) (-1280 1408 -9.53674e-07) (-1280 1408 128)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 -767.992] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -24091,7 +24091,7 @@ world
 		side
 		{
 			"id" "9313"
-			"plane" "(-1280 1344 -9.53674e-007) (-1312 1344 -9.53674e-007) (-1312 1344 128)"
+			"plane" "(-1280 1344 -9.53674e-07) (-1312 1344 -9.53674e-07) (-1312 1344 128)"
 			"material" "METAL/BLACK_WALL_METAL_002B"
 			"uaxis" "[1 0 0 -767.992] 0.25"
 			"vaxis" "[0 0 -1 0] 0.25"
@@ -24102,7 +24102,7 @@ world
 		side
 		{
 			"id" "9312"
-			"plane" "(-1280 1408 -9.53674e-007) (-1312 1408 -9.53674e-007) (-1312 1344 -9.53674e-007)"
+			"plane" "(-1280 1408 -9.53674e-07) (-1312 1408 -9.53674e-07) (-1312 1344 -9.53674e-07)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 -256.004] 0.25"
 			"vaxis" "[0 -1 0 1023.99] 0.25"
@@ -24124,7 +24124,7 @@ world
 		side
 		{
 			"id" "9310"
-			"plane" "(-1280 1408 128) (-1280 1408 -9.53674e-007) (-1280 1344 -9.53674e-007)"
+			"plane" "(-1280 1408 128) (-1280 1408 -9.53674e-07) (-1280 1344 -9.53674e-07)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[0 1 0 512] 0.25"
 			"vaxis" "[0 0 -1 0] 0.25"
@@ -24135,7 +24135,7 @@ world
 		side
 		{
 			"id" "9309"
-			"plane" "(-1312 1344 128) (-1312 1344 -9.53674e-007) (-1312 1408 -9.53674e-007)"
+			"plane" "(-1312 1344 128) (-1312 1344 -9.53674e-07) (-1312 1408 -9.53674e-07)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[0 1 0 512] 0.25"
 			"vaxis" "[0 0 -1 0] 0.25"
@@ -34529,7 +34529,7 @@ world
 		side
 		{
 			"id" "18568"
-			"plane" "(1184 -576 7.62939e-006) (1184 -576 -128) (1152 -576 -128)"
+			"plane" "(1184 -576 7.62939e-06) (1184 -576 -128) (1152 -576 -128)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 0.00781631] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -34540,7 +34540,7 @@ world
 		side
 		{
 			"id" "18567"
-			"plane" "(1184 -448 7.62939e-006) (1184 -448 -128) (1184 -576 -128)"
+			"plane" "(1184 -448 7.62939e-06) (1184 -448 -128) (1184 -576 -128)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[0 -1 0 447.996] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -34551,7 +34551,7 @@ world
 		side
 		{
 			"id" "18566"
-			"plane" "(1152 -576 7.62939e-006) (1152 -576 -128) (1152 -448 -128)"
+			"plane" "(1152 -576 7.62939e-06) (1152 -576 -128) (1152 -448 -128)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[0 -1 0 255.996] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -34573,7 +34573,7 @@ world
 		side
 		{
 			"id" "18564"
-			"plane" "(1152 -448 7.62939e-006) (1152 -448 -128) (1184 -448 -128)"
+			"plane" "(1152 -448 7.62939e-06) (1152 -448 -128) (1184 -448 -128)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[-1 0 0 -0.00781631] 0.25"
 			"vaxis" "[0 0 -1 -512] 0.25"
@@ -34584,7 +34584,7 @@ world
 		side
 		{
 			"id" "18563"
-			"plane" "(1184 -576 7.62939e-006) (1152 -576 7.62939e-006) (1152 -448 7.62939e-006)"
+			"plane" "(1184 -576 7.62939e-06) (1152 -576 7.62939e-06) (1152 -448 7.62939e-06)"
 			"material" "NATURE/DIRTFLOOR004C"
 			"uaxis" "[0 -1 0 191.996] 0.25"
 			"vaxis" "[-1 0 0 -0.00402832] 0.25"
@@ -37569,7 +37569,7 @@ world
 		side
 		{
 			"id" "21570"
-			"plane" "(-64 512 512) (-64 448 512) (-0 448 512)"
+			"plane" "(-64 512 512) (-64 448 512) (0 448 512)"
 			"material" "METAL/BLACK_WALL_METAL_005A"
 			"uaxis" "[1 0 0 256.004] 0.25"
 			"vaxis" "[0 -1 0 511.992] 0.25"
@@ -37602,7 +37602,7 @@ world
 		side
 		{
 			"id" "21567"
-			"plane" "(-64 512 512) (-0 512 512) (-0 512 528)"
+			"plane" "(-64 512 512) (0 512 512) (0 512 528)"
 			"material" "METAL/BLACK_WALL_METAL_005A"
 			"uaxis" "[1 0 0 256.004] 0.25"
 			"vaxis" "[0 0 -1 511.992] 0.25"
@@ -37624,7 +37624,7 @@ world
 		side
 		{
 			"id" "21565"
-			"plane" "(-64 448 528) (-64 512 528) (-0 512 528)"
+			"plane" "(-64 448 528) (-64 512 528) (0 512 528)"
 			"material" "TOOLS/TOOLSNODRAW"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 -1 0 0] 0.25"
@@ -37721,7 +37721,7 @@ world
 		side
 		{
 			"id" "21594"
-			"plane" "(-128 448 512) (-128 192 512) (-0 192 512)"
+			"plane" "(-128 448 512) (-128 192 512) (0 192 512)"
 			"material" "METAL/BLACK_WALL_METAL_005A"
 			"uaxis" "[1 0 0 512.004] 0.25"
 			"vaxis" "[0 -1 0 767.992] 0.25"
@@ -37765,7 +37765,7 @@ world
 		side
 		{
 			"id" "21590"
-			"plane" "(-128 448 512) (-0 448 512) (-0 448 528)"
+			"plane" "(-128 448 512) (0 448 512) (0 448 528)"
 			"material" "METAL/BLACK_WALL_METAL_005A"
 			"uaxis" "[1 0 0 512.004] 0.25"
 			"vaxis" "[0 0 -1 1023.99] 0.25"
@@ -37808,7 +37808,7 @@ world
 		side
 		{
 			"id" "21605"
-			"plane" "(-128 1088 516) (-0 1088 516) (-0 1088 528)"
+			"plane" "(-128 1088 516) (0 1088 516) (0 1088 528)"
 			"material" "METAL/BLACK_WALL_METAL_005C"
 			"uaxis" "[1 0 0 0.00781631] 0.25"
 			"vaxis" "[0 0 -1 -496] 0.25"
@@ -37852,7 +37852,7 @@ world
 		side
 		{
 			"id" "21601"
-			"plane" "(-128 576 528) (-128 1088 528) (-0 1088 528)"
+			"plane" "(-128 576 528) (-128 1088 528) (0 1088 528)"
 			"material" "TOOLS/TOOLSNODRAW"
 			"uaxis" "[1 0 0 0] 0.25"
 			"vaxis" "[0 -1 0 0] 0.25"
@@ -44820,6 +44820,7 @@ entity
 	"id" "153591"
 	"classname" "logic_relay"
 	"targetname" "open_button_escape_panels"
+	"origin" "-117.728 1079 -177.3"
 	connections
 	{
 		"OnTrigger" "button_escape_route_panel_4instance:ramp_open;Trigger1.5-1"
@@ -44829,7 +44830,6 @@ entity
 		"OnTrigger" "close_button_escape_panelsCancelPending0-1"
 		"OnTrigger" "escape_panels_close_triggerEnable0-1"
 	}
-	"origin" "-117.728 1079 -177.3"
 	editor
 	{
 		"color" "220 30 220"
@@ -44890,6 +44890,7 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "wall_fall2_relay"
+	"origin" "-1569 1272 -264"
 	connections
 	{
 		"OnTrigger" "//wall_fall_13instance:panel_fall_relay;Trigger0-1"
@@ -44898,7 +44899,6 @@ entity
 		"OnTrigger" "wall_fall_16instance:panel_fall_relay;Trigger0.25-1"
 		"OnTrigger" "wall_fall_12instance:panel_fall_relay;Trigger0.75-1"
 	}
-	"origin" "-1569 1272 -264"
 	editor
 	{
 		"color" "220 30 220"
@@ -44912,6 +44912,7 @@ entity
 	"id" "65373"
 	"classname" "logic_relay"
 	"targetname" "row_1_up_relay"
+	"origin" "1280 -661.88 -179.859"
 	connections
 	{
 		"OnTrigger" "row_1_panel_1instance:floor_panel_up;Trigger0.2-1"
@@ -44920,7 +44921,6 @@ entity
 		"OnTrigger" "row_1_panel_4instance:floor_panel_up;Trigger0.1-1"
 		"OnTrigger" "row_1_panel_5instance:floor_panel_up;Trigger0.2-1"
 	}
-	"origin" "1280 -661.88 -179.859"
 	editor
 	{
 		"color" "220 30 220"
@@ -54198,11 +54198,11 @@ entity
 	"spawnflags" "1"
 	"StartDisabled" "0"
 	"targetname" "button_press_dialog_relay"
+	"origin" "800 -1463 512"
 	connections
 	{
 		"OnTrigger" "@gladosRunScriptCodesp_a2_trust_fling_button_press_reminder()01"
 	}
-	"origin" "800 -1463 512"
 	editor
 	{
 		"color" "220 30 220"
@@ -54233,11 +54233,11 @@ entity
 	"id" "205367"
 	"classname" "logic_auto"
 	"spawnflags" "1"
+	"origin" "3326 -1784 48"
 	connections
 	{
 		"OnMapSpawn" "global_entsinstance:environment_destroyed_b;Trigger0-1"
 	}
-	"origin" "3326 -1784 48"
 	editor
 	{
 		"color" "220 220 220"
@@ -55883,11 +55883,11 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "puzzlecomplete_relay"
+	"origin" "-1040.17 1287.45 217"
 	connections
 	{
 		"OnTrigger" "@gladosRunScriptCodePuzzleCompleted()01"
 	}
-	"origin" "-1040.17 1287.45 217"
 	editor
 	{
 		"color" "220 30 220"
@@ -55902,11 +55902,11 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "button_fully_pressed_relay"
+	"origin" "-137 1293.91 -188.579"
 	connections
 	{
 		"OnTrigger" "puzzlecompletetriggerEnable2-1"
 	}
-	"origin" "-137 1293.91 -188.579"
 	editor
 	{
 		"color" "220 30 220"
@@ -55947,6 +55947,7 @@ entity
 	"skin" "0"
 	"spawnflags" "256"
 	"targetname" "malfunctioning_dropper_item_5"
+	"origin" "736 -1344 544"
 	connections
 	{
 		"OnUser1" "radio_songVolume00-1"
@@ -55955,7 +55956,6 @@ entity
 		"OnUser2" "sstv_songPlaySound0-1"
 		"OnFizzled" "sstv_songVolume00-1"
 	}
-	"origin" "736 -1344 544"
 	editor
 	{
 		"color" "220 30 220"
@@ -56176,12 +56176,12 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "disable_push"
+	"origin" "-137 1310.99 -142.985"
 	connections
 	{
 		"OnTrigger" "cube_pushDisable2-1"
 		"OnTrigger" "box_collisionDisable2-1"
 	}
-	"origin" "-137 1310.99 -142.985"
 	editor
 	{
 		"color" "220 30 220"
@@ -56196,12 +56196,12 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "enable_push"
+	"origin" "-137 1278.99 -142.985"
 	connections
 	{
 		"OnTrigger" "cube_pushEnable0-1"
 		"OnTrigger" "box_collisionEnable0-1"
 	}
-	"origin" "-137 1278.99 -142.985"
 	editor
 	{
 		"color" "220 30 220"
@@ -56651,6 +56651,7 @@ hidden
 		"spawnflags" "0"
 		"StartDisabled" "0"
 		"targetname" "plaform_animation_01"
+		"origin" "1859.08 756.247 -193.693"
 		connections
 		{
 			"OnTrigger" "robo_trustflings_platfor_a04SetAnimationtrustflings_platfor_a040-1"
@@ -56662,7 +56663,6 @@ hidden
 			"OnTrigger" "robo_trustflings_platfor_a03SetDefaultAnimationtrustflings_platfor_a03_idleend0-1"
 			"OnTrigger" "robo_trustflings_platfor_a04SetDefaultAnimationtrustflings_platfor_a04_idleend0-1"
 		}
-		"origin" "1859.08 756.247 -193.693"
 		editor
 		{
 			"color" "220 30 220"
@@ -56793,6 +56793,7 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "wall_fall_relay"
+	"origin" "-1601 1272 -200"
 	connections
 	{
 		"OnTrigger" "//wall_fall_01instance:panel_fall_relay;Trigger0-1"
@@ -56806,7 +56807,6 @@ entity
 		"OnTrigger" "//wall_fall_11instance:panel_fall_relay;Trigger0.25-1"
 		"OnTrigger" "//wall_fall_12instance:panel_fall_relay;Trigger0.75-1"
 	}
-	"origin" "-1601 1272 -200"
 	editor
 	{
 		"color" "220 30 220"
@@ -56878,6 +56878,7 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "first_press_object_drop_start"
+	"origin" "615.137 -604.261 503"
 	connections
 	{
 		"OnTrigger" "cube_dropper_droptriggerDisable2-1"
@@ -56886,7 +56887,6 @@ entity
 		"OnTrigger" "dropper_malfunction_small_sparkSparkOnce2-1"
 		"OnTrigger" "dropper_malfunction_soundPlaySound0-1"
 	}
-	"origin" "615.137 -604.261 503"
 	editor
 	{
 		"color" "220 30 220"
@@ -56902,13 +56902,13 @@ entity
 	"spawnflags" "0"
 	"StartDisabled" "1"
 	"targetname" "regular_press_relay"
+	"origin" "-975.433 1015.26 9.00001"
 	connections
 	{
 		"OnTrigger" "cube_dropperinstance:@cube_dropper;Trigger0-1"
 		"OnTrigger" "autosaveSaveDangerous301"
 		"OnTrigger" "button_press_dialog_relayKill01"
 	}
-	"origin" "-975.433 1015.26 9.00001"
 	editor
 	{
 		"color" "220 30 220"
@@ -57029,6 +57029,7 @@ entity
 	"id" "65375"
 	"classname" "logic_relay"
 	"targetname" "row_1_down_relay"
+	"origin" "1280 -645.88 -179.859"
 	connections
 	{
 		"OnTrigger" "row_1_panel_1instance:floor_panel_down;Trigger0.2-1"
@@ -57037,7 +57038,6 @@ entity
 		"OnTrigger" "row_1_panel_4instance:floor_panel_down;Trigger0.1-1"
 		"OnTrigger" "row_1_panel_5instance:floor_panel_down;Trigger0.2-1"
 	}
-	"origin" "1280 -645.88 -179.859"
 	editor
 	{
 		"color" "220 30 220"
@@ -57052,12 +57052,12 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "first_press_relay"
+	"origin" "-978.375 1055.98 9"
 	connections
 	{
 		"OnTrigger" "first_press_object_drop_startTrigger11"
 		"OnTrigger" "cube_dropperinstance:@cube_dropper;Trigger01"
 	}
-	"origin" "-978.375 1055.98 9"
 	editor
 	{
 		"color" "220 30 220"
@@ -57581,11 +57581,11 @@ entity
 	"skin" "0"
 	"spawnflags" "256"
 	"targetname" "malfunctioning_dropper_item_6"
+	"origin" "736 -1376 544"
 	connections
 	{
 		"OnPlayerPickup" "garbage_pickup_relayTrigger0-1"
 	}
-	"origin" "736 -1376 544"
 	editor
 	{
 		"color" "220 30 220"
@@ -58502,6 +58502,7 @@ entity
 	"classname" "math_counter"
 	"max" "7"
 	"targetname" "malfunctioning_dropper_item_1_counter"
+	"origin" "731.351 -729.982 503"
 	connections
 	{
 		"OnHitMax" "malfunctioning_dropper_drop_timerDisable0-1"
@@ -58512,7 +58513,6 @@ entity
 		"OnHitMax" "@gladosRunScriptCodeTrustFlingCatapultMalfunctionEnd()4-1"
 		"OnHitMax" "PovertyTriggerEnable41"
 	}
-	"origin" "731.351 -729.982 503"
 	editor
 	{
 		"color" "220 30 220"
@@ -58793,6 +58793,7 @@ entity
 	"id" "153593"
 	"classname" "logic_relay"
 	"targetname" "close_button_escape_panels"
+	"origin" "-89.2548 1079 -179.11"
 	connections
 	{
 		"OnTrigger" "open_button_escape_panelsCancelPending0-1"
@@ -58801,7 +58802,6 @@ entity
 		"OnTrigger" "button_escape_route_panel_3instance:ramp_close;Trigger0.5-1"
 		"OnTrigger" "button_escape_route_panel_4instance:ramp_close;Trigger0-1"
 	}
-	"origin" "-89.2548 1079 -179.11"
 	editor
 	{
 		"color" "220 30 220"
@@ -58875,6 +58875,7 @@ entity
 	"angles" "0 180 0"
 	"Delay" "2"
 	"targetname" "dropper_button"
+	"origin" "-928 1024 16.255"
 	connections
 	{
 		"OnPressed" "first_press_relayTrigger0-1"
@@ -58883,7 +58884,6 @@ entity
 		"OnPressed" "debris_objects_catapultEnable0-1"
 		"OnPressed" "@gladosRunScriptCodesp_a2_trust_fling_garbage_spawn()01"
 	}
-	"origin" "-928 1024 16.255"
 	editor
 	{
 		"color" "220 30 220"
@@ -59291,6 +59291,7 @@ entity
 	"id" "156648"
 	"classname" "logic_case"
 	"targetname" "malfunctioning_dropper_drop_random_case"
+	"origin" "625.502 -673.54 471"
 	connections
 	{
 		"OnCase01" "malfunctioning_dropper_item_2_makerForcespawn0-1"
@@ -59299,7 +59300,6 @@ entity
 		"OnCase04" "malfunctioning_dropper_item_5_makerForcespawn0-1"
 		"OnCase05" "malfunctioning_dropper_item_6_makerForcespawn0-1"
 	}
-	"origin" "625.502 -673.54 471"
 	editor
 	{
 		"color" "220 30 220"
@@ -59401,12 +59401,12 @@ entity
 	"id" "36027"
 	"classname" "logic_relay"
 	"targetname" "trick_door_peek"
+	"origin" "1104 -1008 -143.682"
 	connections
 	{
 		"OnTrigger" "trick_door_random_open_leftEnable0-1"
 		"OnTrigger" "trick_door_random_open_rightEnable0-1"
 	}
-	"origin" "1104 -1008 -143.682"
 	editor
 	{
 		"color" "220 30 220"
@@ -59508,11 +59508,11 @@ entity
 	"classname" "math_counter"
 	"max" "2"
 	"targetname" "debris_sphere_catapult_counter"
+	"origin" "-216.753 1360.38 -207"
 	connections
 	{
 		"OnHitMax" "debris_objects_catapultKill0-1"
 	}
-	"origin" "-216.753 1360.38 -207"
 	editor
 	{
 		"color" "220 30 220"
@@ -59883,6 +59883,7 @@ entity
 	"Branch01" "cube_helper_player_branch"
 	"Branch02" "cube_helper_cube_branch"
 	"targetname" "cube_helper_listener"
+	"origin" "-137 1202.01 -50.5328"
 	connections
 	{
 		"OnAllFalse" "box_collisionEnable0-1"
@@ -59898,7 +59899,6 @@ entity
 		"OnAllTrue" "cube_pushDisable0-1"
 		"OnAllTrue" "box_collisionDisable0-1"
 	}
-	"origin" "-137 1202.01 -50.5328"
 	editor
 	{
 		"color" "220 30 220"
@@ -60896,11 +60896,11 @@ entity
 	"skin" "0"
 	"spawnflags" "256"
 	"targetname" "malfunctioning_dropper_item_4"
+	"origin" "736 -1312 536"
 	connections
 	{
 		"OnPlayerPickup" "garbage_pickup_relayTrigger0-1"
 	}
-	"origin" "736 -1312 536"
 	editor
 	{
 		"color" "220 30 220"
@@ -60969,6 +60969,7 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "ceiling_fall2_relay"
+	"origin" "-1569 1272 -232"
 	connections
 	{
 		"OnTrigger" "//ceiling_replace_11instance:panel_fall_relay;Trigger0-1"
@@ -60977,7 +60978,6 @@ entity
 		"OnTrigger" "//ceiling_replace_15instance:panel_fall_relay;Trigger0.5-1"
 		"OnTrigger" "//ceiling_replace_14instance:panel_fall_relay;Trigger1-1"
 	}
-	"origin" "-1569 1272 -232"
 	editor
 	{
 		"color" "220 30 220"
@@ -61061,11 +61061,11 @@ entity
 	"skin" "0"
 	"spawnflags" "256"
 	"targetname" "disk"
+	"origin" "736 -1248 544"
 	connections
 	{
 		"OnPlayerPickup" "garbage_pickup_relayTrigger0-1"
 	}
-	"origin" "736 -1248 544"
 	editor
 	{
 		"color" "220 30 220"
@@ -61970,6 +61970,7 @@ entity
 	"id" "65383"
 	"classname" "logic_relay"
 	"targetname" "row_2_down_relay"
+	"origin" "1280 -581.88 -179.859"
 	connections
 	{
 		"OnTrigger" "row_2_panel_1instance:floor_panel_down;Trigger0.2-1"
@@ -61978,7 +61979,6 @@ entity
 		"OnTrigger" "row_2_panel_4instance:floor_panel_down;Trigger0.1-1"
 		"OnTrigger" "row_2_panel_5instance:floor_panel_down;Trigger0.2-1"
 	}
-	"origin" "1280 -581.88 -179.859"
 	editor
 	{
 		"color" "220 30 220"
@@ -62039,6 +62039,7 @@ hidden
 		"id" "201818"
 		"classname" "logic_auto"
 		"spawnflags" "1"
+		"origin" "1859.08 788.247 -161.693"
 		connections
 		{
 			"OnMapSpawn" "robo_trustflings_platfor_a01SetDefaultAnimationtrustflings_platfor_a01_idle0-1"
@@ -62052,7 +62053,6 @@ hidden
 			"OnMapSpawn" "plaform_animation_02Trigger1-1"
 			"OnMapSpawn" "plaform_animation_01Trigger1-1"
 		}
-		"origin" "1859.08 788.247 -161.693"
 		editor
 		{
 			"color" "220 30 220"
@@ -62619,11 +62619,11 @@ entity
 	"id" "146807"
 	"classname" "logic_auto"
 	"spawnflags" "1"
+	"origin" "625.289 -544.459 503"
 	connections
 	{
 		"OnMapSpawn" "cube_dropper_boxKill2-1"
 	}
-	"origin" "625.289 -544.459 503"
 	editor
 	{
 		"color" "220 30 220"
@@ -62738,11 +62738,11 @@ entity
 	"PostSpawnDirectionVariance" "0"
 	"spawnflags" "0"
 	"targetname" "malfunctioning_dropper_item_5_maker"
+	"origin" "752 -576 640"
 	connections
 	{
 		"OnEntitySpawned" "radio_songPlaySound1-1"
 	}
-	"origin" "752 -576 640"
 	editor
 	{
 		"color" "220 30 220"
@@ -62797,6 +62797,7 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "ceiling_fall_relay"
+	"origin" "-1601 1272 -168"
 	connections
 	{
 		"OnTrigger" "//ceiling_replace_01instance:panel_fall_relay;Trigger0-1"
@@ -62811,7 +62812,6 @@ entity
 		"OnTrigger" "ceiling_replace_06binstance:panel_fall_relay;Trigger1.5-1"
 		"OnTrigger" "ceiling_replace_06cinstance:panel_fall_relay;Trigger0.7-1"
 	}
-	"origin" "-1601 1272 -168"
 	editor
 	{
 		"color" "220 30 220"
@@ -63380,6 +63380,7 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "exit_button_pressed_relay"
+	"origin" "-137 1307.53 -208.508"
 	connections
 	{
 		"OnTrigger" "flingroom_1_laser_6_texturetoggleSetTextureIndex10-1"
@@ -63390,7 +63391,6 @@ entity
 		"OnTrigger" "disable_pushTrigger0-1"
 		"OnTrigger" "@elevator_tube_anim_start_rlTrigger01"
 	}
-	"origin" "-137 1307.53 -208.508"
 	editor
 	{
 		"color" "220 30 220"
@@ -63405,6 +63405,7 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "wall_replace_01_relay"
+	"origin" "-1633 1272 -200"
 	connections
 	{
 		"OnTrigger" "wall_replace_01_physbox5EnableMotion0-1"
@@ -63412,7 +63413,6 @@ entity
 		"OnTrigger" "//wall_fall_relayTrigger0-1"
 		"OnTrigger" "wall_rotate_relayTrigger3-1"
 	}
-	"origin" "-1633 1272 -200"
 	editor
 	{
 		"color" "220 30 220"
@@ -63723,11 +63723,11 @@ entity
 	"id" "146342"
 	"classname" "logic_auto"
 	"spawnflags" "1"
+	"origin" "-1656 1293.35 -197.491"
 	connections
 	{
 		"OnMapSpawn" "wall_replace_01instance:panel_open;Trigger6-1"
 	}
-	"origin" "-1656 1293.35 -197.491"
 	editor
 	{
 		"color" "220 30 220"
@@ -63788,6 +63788,7 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "wall_rotate_relay"
+	"origin" "-1537 1272 -264"
 	connections
 	{
 		"OnTrigger" "wall_rotate_1instance:panel_rotate_relay;Trigger1.25-1"
@@ -63800,7 +63801,6 @@ entity
 		"OnTrigger" "wall_rotate_8instance:panel_rotate_relay;Trigger1.5-1"
 		"OnTrigger" "wall_rotate_10instance:panel_rotate_relay;Trigger0.75-1"
 	}
-	"origin" "-1537 1272 -264"
 	editor
 	{
 		"color" "220 30 220"
@@ -63962,6 +63962,7 @@ hidden
 		"spawnflags" "0"
 		"StartDisabled" "0"
 		"targetname" "plaform_animation_02"
+		"origin" "1861.08 418.659 -31.6948"
 		connections
 		{
 			"OnTrigger" "robo_trustflings_platfor_b04SetDefaultAnimationtrustflings_platfor_b04_idleend0-1"
@@ -63973,7 +63974,6 @@ hidden
 			"OnTrigger" "robo_trustflings_platfor_b03SetAnimationtrustflings_platfor_b030-1"
 			"OnTrigger" "robo_trustflings_platfor_b04SetAnimationtrustflings_platfor_b040-1"
 		}
-		"origin" "1861.08 418.659 -31.6948"
 		editor
 		{
 			"color" "220 30 220"
@@ -64661,6 +64661,7 @@ entity
 	"id" "65381"
 	"classname" "logic_relay"
 	"targetname" "row_2_up_relay"
+	"origin" "1280 -597.88 -179.859"
 	connections
 	{
 		"OnTrigger" "row_2_panel_1instance:floor_panel_up;Trigger0.2-1"
@@ -64669,7 +64670,6 @@ entity
 		"OnTrigger" "row_2_panel_4instance:floor_panel_up;Trigger0.1-1"
 		"OnTrigger" "row_2_panel_5instance:floor_panel_up;Trigger0.2-1"
 	}
-	"origin" "1280 -597.88 -179.859"
 	editor
 	{
 		"color" "220 30 220"
@@ -64831,6 +64831,7 @@ entity
 	"id" "65379"
 	"classname" "logic_relay"
 	"targetname" "floor_down_relay"
+	"origin" "1280 -576 -224"
 	connections
 	{
 		"OnTrigger" "row_1_down_relayTrigger0-1"
@@ -64844,7 +64845,6 @@ entity
 		"OnTrigger" "row_7_down_relayTrigger1.2-1"
 		"OnTrigger" "row_6_down_relayTrigger1-1"
 	}
-	"origin" "1280 -576 -224"
 	editor
 	{
 		"color" "220 30 220"
@@ -64976,6 +64976,7 @@ entity
 	"classname" "logic_relay"
 	"spawnflags" "0"
 	"targetname" "exit_button_unpressed_relay"
+	"origin" "-137 1278.99 -206.985"
 	connections
 	{
 		"OnTrigger" "flingroom_1_laser_6_texturetoggleSetTextureIndex00-1"
@@ -64984,7 +64985,6 @@ entity
 		"OnTrigger" "enable_pushTrigger0-1"
 		"OnTrigger" "puzzlecompletetriggerDisable0-1"
 	}
-	"origin" "-137 1278.99 -206.985"
 	editor
 	{
 		"color" "220 30 220"
@@ -65570,11 +65570,11 @@ entity
 	"PaintPower" "4"
 	"skin" "4"
 	"targetname" "malfunctioning_dropper_item_1"
+	"origin" "736 -1184 544"
 	connections
 	{
 		"OnPlayerPickup" "garbage_pickup_relayTrigger0-1"
 	}
-	"origin" "736 -1184 544"
 	editor
 	{
 		"color" "220 30 220"
@@ -65832,11 +65832,11 @@ entity
 	"spawnflags" "1"
 	"StartDisabled" "1"
 	"targetname" "garbage_pickup_relay"
+	"origin" "809.17 -1463 531.487"
 	connections
 	{
 		"OnTrigger" "@gladosRunScriptCodesp_a2_trust_fling_garbage_pickup()01"
 	}
-	"origin" "809.17 -1463 531.487"
 	editor
 	{
 		"color" "220 30 220"
@@ -65885,12 +65885,12 @@ entity
 	"StartDisabled" "1"
 	"target" "catapulted_turret"
 	"targetname" "catapulted_turret_aisc"
+	"origin" "736 -1290.64 496"
 	connections
 	{
 		"OnConditionsSatisfied" "@gladosRunScriptCodeTrustFlingCatapultTurretNoticesPlayer()01"
 		"OnConditionsSatisfied" "!selfKill0.11"
 	}
-	"origin" "736 -1290.64 496"
 	editor
 	{
 		"color" "220 30 220"
@@ -65988,11 +65988,11 @@ entity
 	"spawnflags" "0"
 	"StartDisabled" "1"
 	"targetname" "malfunctioning_dropper_drop_timer"
+	"origin" "620.723 -635.744 503"
 	connections
 	{
 		"OnTimer" "malfunctioning_dropper_item_1_counterAdd10-1"
 	}
-	"origin" "620.723 -635.744 503"
 	editor
 	{
 		"color" "220 30 220"
@@ -66310,12 +66310,12 @@ entity
 	"angles" "-0 0 0"
 	"file" "instances/buttons/floor_button_black_intact.vmf"
 	"targetname" "button_1"
+	"origin" "-192 1312 -264"
 	connections
 	{
 		"instance:button;OnPressed" "exit_button_pressed_relayTrigger0-1"
 		"instance:button;OnUnPressed" "exit_button_unpressed_relayTrigger0-1"
 	}
-	"origin" "-192 1312 -264"
 	editor
 	{
 		"color" "220 30 220"
@@ -67622,11 +67622,11 @@ entity
 	"targetname" "catapulted_turret"
 	"TurretRange" "1024"
 	"UsedAsActor" "1"
+	"origin" "736 -1280 507"
 	connections
 	{
 		"OnPlayerPickup" "garbage_pickup_relayTrigger0-1"
 	}
-	"origin" "736 -1280 507"
 	editor
 	{
 		"color" "220 30 220"
@@ -67738,6 +67738,7 @@ entity
 	"Case06" "6"
 	"Case07" "7"
 	"targetname" "malfunctioning_dropper_drop_fixed_case"
+	"origin" "625.502 -673.54 503"
 	connections
 	{
 		"OnCase01" "malfunctioning_dropper_item_1_makerForcespawn0-1"
@@ -67748,7 +67749,6 @@ entity
 		"OnCase06" "malfunctioning_dropper_drop_random_casePickRandomShuffle0-1"
 		"OnCase07" "malfunctioning_dropper_item_1_makerForceSpawn0-1"
 	}
-	"origin" "625.502 -673.54 503"
 	editor
 	{
 		"color" "220 30 220"
@@ -67762,6 +67762,7 @@ entity
 	"id" "65377"
 	"classname" "logic_relay"
 	"targetname" "floor_up_relay"
+	"origin" "1280 -608.001 -224"
 	connections
 	{
 		"OnTrigger" "row_1_up_relayTrigger0-1"
@@ -67775,7 +67776,6 @@ entity
 		"OnTrigger" "row_9_up_relayTrigger1.6-1"
 		"OnTrigger" "row_10_up_relayTrigger1.8-1"
 	}
-	"origin" "1280 -608.001 -224"
 	editor
 	{
 		"color" "220 30 220"
@@ -68324,11 +68324,11 @@ entity
 	"PostSpawnDirectionVariance" "0"
 	"spawnflags" "0"
 	"targetname" "malfunctioning_dropper_item_3_maker"
+	"origin" "768 -576 640"
 	connections
 	{
 		"OnEntitySpawned" "catapulted_turret_aiscEnable1-1"
 	}
-	"origin" "768 -576 640"
 	editor
 	{
 		"color" "220 30 220"

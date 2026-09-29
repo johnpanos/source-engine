@@ -21,8 +21,10 @@ reference:
                          reference.json) from a retail capture: per shot a
                          coarse tile grid of mean colours and the statistics
                          of each declared region. Numbers only; no retail
-                         pixels are stored in the repository.
-  check                  judges a build capture against the reference and
+                         pixels are stored in the repository. With
+                         --scenario it records only those scenarios and
+                         keeps the others' entries.
+  check                 judges a build capture against the reference and
                          prints one checks-v1 record
   suite                  capture --side build, then check (the manifest row)
   self-test              the comparator on synthetic frames, with seeded
@@ -65,6 +67,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import conformance  # noqa: E402
 import conformance_result  # noqa: E402
 import portal2_scenarios  # noqa: E402
+import private_session  # noqa: E402
 import stage_portal2_runtime  # noqa: E402
 
 
@@ -439,9 +442,9 @@ def capture_retail(args, workload_path, workload, scenarios):
     environment = dict(os.environ, XDG_CONFIG_HOME=str(config))
     for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
         environment.pop(variable, None)
-    command = ["dbus-run-session", "--", "mutter", "--headless", "--wayland",
-               "--virtual-monitor", "1920x1080@60",
-               "--wayland-display", "p2-material-shots-%d" % os.getpid(), "--"] + inner
+    command = private_session.dbus_run_session(out / "dbus") + [
+        "mutter", "--headless", "--wayland", "--virtual-monitor", "1920x1080@60",
+        "--wayland-display", "p2-material-shots-%d" % os.getpid(), "--"] + inner
     # The session starts (and afterwards shuts down) a Steam client only when
     # none is running; a user's own Steam is never restarted or stopped.
     with (out / "compositor.log").open("wb") as log:
@@ -551,7 +554,24 @@ def record_reference(args, checks):
                  "retail_capture_started_utc": capture["started_utc"],
                  "tiles": {"columns": grid["columns"], "rows": grid["rows"]},
                  "scenarios": {}}
+    selected = getattr(args, "scenario", None) or []
+    unknown = set(selected) - set(checks["shots"])
+    if unknown:
+        raise ShotError("no checks for scenario %s" % ", ".join(sorted(unknown)))
+    if selected:
+        # Only these scenarios are recorded from the capture; every other
+        # scenario keeps its entry (and capture time) from the existing reference.
+        previous = json.loads(Path(args.reference).read_text())
+        if previous.get("schema") != REFERENCE_SCHEMA or \
+                previous.get("tiles") != reference["tiles"]:
+            raise ShotError("%s cannot be merged into" % args.reference)
+        reference["retail_capture_started_utc"] = previous["retail_capture_started_utc"]
+        for scenario, entry in previous["scenarios"].items():
+            if scenario not in selected:
+                reference["scenarios"][scenario] = entry
     for scenario, shots in checks["shots"].items():
+        if selected and scenario not in selected:
+            continue
         record = capture["scenarios"].get(scenario)
         if not record or record["status"] != "pass":
             raise ShotError("retail scenario %s did not pass" % scenario)
@@ -559,6 +579,8 @@ def record_reference(args, checks):
                  "missing_proxies": record["missing_proxies"],
                  "unrecognized_conditionals": unrecognized_conditionals(retail / scenario),
                  "shots": {}}
+        if selected:
+            entry["retail_capture_started_utc"] = capture["started_utc"]
         for shot, spec in shots.items():
             image = load_rgb(retail / scenario / "shots" / (shot + ".png"))
             entry["shots"][shot] = {
@@ -789,6 +811,9 @@ def main(argv=None):
     p = sub.add_parser("record", help="write the reference from a retail capture")
     p.add_argument("--retail", type=Path, required=True)
     p.add_argument("--reference", type=Path, default=WORKLOAD / "reference.json")
+    p.add_argument("--scenario", action="append", default=[],
+                   help="record only this scenario (repeatable) and keep the others' "
+                        "entries in the existing reference")
 
     p = sub.add_parser("check", help="judge a build capture against retail")
     p.add_argument("--capture", type=Path, required=True)

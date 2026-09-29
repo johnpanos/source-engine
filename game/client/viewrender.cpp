@@ -80,6 +80,12 @@
 
 #include "render_stage_marks.h"
 
+#ifdef PORTAL2
+// DrawViewModels tells the view models apart from the other renderables of the
+// view model groups (the held object clones).
+#include "baseviewmodel_shared.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -1140,7 +1146,13 @@ void CViewRender::DrawViewModels( const CViewSetup &view, bool drawViewmodel )
 	// Force clipped down range
 	if( bUseDepthHack )
 		pRenderContext->DepthRange( 0.0f, 0.1f );
-	
+
+#ifdef PORTAL2
+	// The view model groups' other renderables, drawn with the world's FOV.
+	CUtlVector<IClientRenderable *> opaqueNormalFOVList;
+	CUtlVector<IClientRenderable *> translucentNormalFOVList;
+#endif
+
 	if ( bShouldDrawPlayerViewModel || bShouldDrawToolViewModels )
 	{
 
@@ -1174,6 +1186,31 @@ void CViewRender::DrawViewModels( const CViewSetup &view, bool drawViewmodel )
 			}
 		}
 
+#ifdef PORTAL2
+		// As Portal 2 (CViewRender::DrawViewModels in its engine branch): only
+		// view models take the view model FOV. The rest of the view model
+		// groups, the view model grab controller's held object clone
+		// (C_PlayerHeldObjectClone: Wheatley and the cubes), sit at their real
+		// distance in front of the eye and are drawn with the world's FOV in a
+		// second pass, still in front of the world.
+		for ( int i = opaqueViewModelList.Count() - 1; i >= 0; --i )
+		{
+			if ( !dynamic_cast<C_BaseViewModel *>( opaqueViewModelList[i] ) )
+			{
+				opaqueNormalFOVList.AddToTail( opaqueViewModelList[i] );
+				opaqueViewModelList.FastRemove( i );
+			}
+		}
+		for ( int i = translucentViewModelList.Count() - 1; i >= 0; --i )
+		{
+			if ( !dynamic_cast<C_BaseViewModel *>( translucentViewModelList[i] ) )
+			{
+				translucentNormalFOVList.AddToTail( translucentViewModelList[i] );
+				translucentViewModelList.FastRemove( i );
+			}
+		}
+#endif
+
 		if ( !UpdateRefractIfNeededByList( opaqueViewModelList ) )
 		{
 			UpdateRefractIfNeededByList( translucentViewModelList );
@@ -1188,6 +1225,31 @@ void CViewRender::DrawViewModels( const CViewSetup &view, bool drawViewmodel )
 		pRenderContext->DepthRange( depthmin, depthmax );
 
 	render->PopView( GetFrustum() );
+
+#ifdef PORTAL2
+	if ( opaqueNormalFOVList.Count() > 0 || translucentNormalFOVList.Count() > 0 )
+	{
+		viewModelSetup.fov = view.fov;
+		render->Push3DView( viewModelSetup, 0, pRTColor, GetFrustum(), pRTDepth );
+
+		// The same depth range hack as the view models.
+		if ( bUseDepthHack )
+			pRenderContext->DepthRange( 0.0f, 0.1f );
+
+		if ( !UpdateRefractIfNeededByList( opaqueNormalFOVList ) )
+		{
+			UpdateRefractIfNeededByList( translucentNormalFOVList );
+		}
+
+		DrawRenderablesInList( opaqueNormalFOVList );
+		DrawRenderablesInList( translucentNormalFOVList, STUDIO_TRANSPARENCY );
+
+		if ( bUseDepthHack )
+			pRenderContext->DepthRange( depthmin, depthmax );
+
+		render->PopView( GetFrustum() );
+	}
+#endif
 
 	// Restore the matrices
 	pRenderContext->MatrixMode( MATERIAL_PROJECTION );

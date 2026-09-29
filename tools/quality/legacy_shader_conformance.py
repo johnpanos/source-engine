@@ -12,6 +12,13 @@ against the shipped D3D9 bytecode (legacy_shader_oracle.py).
 
 Writes <out>/evidence.json (legacy-shader-conformance/v1) with the per-case
 results, and exits 0 only when every case drew through a port and matched.
+
+With --native-against-port SWITCH (for example -vklegacyskin), the cases are
+drawn twice: with SWITCH, so the legacy port draws them and the bytecode judges
+it, then without it, so the native family draws them (shaders/skin.* for
+-vklegacyskin). The native family's color must then equal the port's within
+the tolerance, and no port may draw a case in the native run
+(legacy_shader_oracle.compare_native_family).
 """
 
 import argparse
@@ -27,6 +34,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import conformance  # noqa: E402
+import launch_sandbox  # noqa: E402
 import legacy_shader_oracle  # noqa: E402
 import material_pixel_conformance  # noqa: E402
 import portal_boot  # noqa: E402
@@ -71,6 +79,10 @@ def main(argv=None):
     parser.add_argument("--vpk", type=Path, help="with --shaders retail, the VPK holding shaders/fxc")
     parser.add_argument("--extra-arg", action="append", default=[],
                         help="extra harness argument (repeatable), e.g. --extra-arg=-vkvalidate")
+    parser.add_argument("--native-against-port", metavar="SWITCH",
+                        help="also draw the cases without SWITCH (the -vklegacy* switch that "
+                             "sends a native family's combos to the port) and require the "
+                             "native family's pixels to equal the port's")
     args = parser.parse_args(argv)
 
     output = args.out.resolve()
@@ -100,11 +112,18 @@ def main(argv=None):
     evidence["harness_sha256"] = portal_boot.sha256(harness)
     pixels = output / "pixels.json"
     capture = output / "capture.jsonl"
-    command = [str(harness), "-game", "portal", "-renderer", args.renderer, "-hdr", args.hdr,
-               "-family", "legacy", "-cases", str(cases), "-vklegacyports",
-               "-vklegacycapture", str(capture),
-               "-out", str(pixels)] + args.extra_arg
-    environment = os.environ.copy()
+    port_switch = [args.native_against_port] if args.native_against_port else []
+
+    def harness_command(pixels_path, capture_path, switches):
+        return [str(harness), "-game", "portal", "-renderer", args.renderer, "-hdr", args.hdr,
+                "-family", "legacy", "-cases", str(cases), "-vklegacyports",
+                "-vklegacycapture", str(capture_path),
+                "-out", str(pixels_path)] + args.extra_arg + switches
+
+    command = harness_command(pixels, capture, port_switch)
+    # A throwaway HOME/XDG for the harness process; the stage is its write path.
+    sandbox = launch_sandbox.Sandbox(output / "sandbox", write_paths=[stage])
+    environment = sandbox.environment(os.environ)
     environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
     if args.display == "headless":
         environment["SDL_VIDEODRIVER"] = "offscreen"
@@ -113,6 +132,7 @@ def main(argv=None):
     evidence["command"] = command
 
     def finish(failures, code):
+        evidence["sandbox"] = sandbox.finish()
         evidence["failures"] = failures
         evidence["status"] = "pass" if not failures else "fail"
         (output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
@@ -122,13 +142,18 @@ def main(argv=None):
             print("  " + failure)
         return code
 
-    with open(output / "harness.log", "w") as log:
-        try:
-            completed = subprocess.run(command, cwd=stage, env=environment, stdout=log,
-                                       stderr=subprocess.STDOUT, timeout=args.timeout)
-            evidence["returncode"] = completed.returncode
-        except subprocess.TimeoutExpired:
-            return finish(["harness timed out after %gs" % args.timeout], 2)
+    def run_harness(run_command, log_name):
+        """The harness's exit status, or None when it timed out."""
+        with open(output / log_name, "w") as log:
+            try:
+                return subprocess.run(run_command, cwd=stage, env=environment, stdout=log,
+                                      stderr=subprocess.STDOUT, timeout=args.timeout).returncode
+            except subprocess.TimeoutExpired:
+                return None
+
+    evidence["returncode"] = run_harness(command, "harness.log")
+    if evidence["returncode"] is None:
+        return finish(["harness timed out after %gs" % args.timeout], 2)
     if evidence["returncode"] != 0 or not pixels.is_file():
         return finish(["harness exited %s without a report" % evidence["returncode"]], 2)
     try:
@@ -146,6 +171,25 @@ def main(argv=None):
     evidence["pixels_sha256"] = portal_boot.sha256(pixels)
     evidence["cases"] = details
     evidence["case_count"] = len(details)
+    if args.native_against_port:
+        native_pixels = output / "native-pixels.json"
+        native_capture = output / "native-capture.jsonl"
+        native_command = harness_command(native_pixels, native_capture, [])
+        native = {"switch": args.native_against_port, "command": native_command}
+        evidence["native_family"] = native
+        native["returncode"] = run_harness(native_command, "native-harness.log")
+        if native["returncode"] is None:
+            return finish(failures + ["native run: harness timed out after %gs" % args.timeout],
+                          2)
+        if native["returncode"] != 0 or not native_pixels.is_file():
+            return finish(failures + ["native run: harness exited %s without a report"
+                                      % native["returncode"]], 2)
+        native_passes = (legacy_shader_oracle.load_capture(native_capture)
+                         if native_capture.is_file() else [])
+        native_failures, native["cases"] = legacy_shader_oracle.compare_native_family(
+            report, json.loads(native_pixels.read_text()), native_passes, args.tolerance)
+        native["pixels_sha256"] = portal_boot.sha256(native_pixels)
+        failures = failures + native_failures
     return finish(failures, 0 if not failures else 1)
 
 

@@ -28,6 +28,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0014](RFC/0014-native-vulkan-and-bsp2-debug-controls.md) | Native Vulkan and BSP2 debug controls: one device-owned view catalog in separate `DEBUG_VIEW` variants, draw pick/bisection, shader reload/capture, sync/reuse checks, BSP2 lump inspection (proposed) |
 | [0015](RFC/0015-asset-identity-content-build-graph.md) | Asset identity (`AssetRef`), one content build graph and compiler contract for every asset kind, legacy-format passthrough, per-profile packages with an asset index, runtime resolver, desktop live reload (proposed; rows R81–R85, R57 carries C2) |
 | [0016](RFC/0016-render-core.md) | Render core as ports and adapters beneath the frozen material API: backend-neutral `render.device.v2` with Vulkan, OpenGL and null adapters, render graph, GPU scene and views, material families, clustered lights and shadow atlas, one legacy frontend running `IMatRenderContext`/`IShaderAPI` as graph passes; layers enforced by archlint CAP011; ToGL kept for mods (proposed; rows R86–R92, R95–R96) |
+| [0017](RFC/0017-lan-discovery-and-coop-pairing.md) | LAN discovery contract (`platform.lan-discovery.v1`) with mDNS providers, and Portal 2 co-op pairing without Steam through the matchmaking framework's `lan` network type and a new lobby session (proposed; row R93) |
 | [0018](RFC/0018-hammer-interaction-design.md) | Hammer interaction and UI/UX: flows with entry points, states, errors and undo; tool state machines, focus and key routing, the shortcut map reconciled with `ActionCatalog`, pointer gestures, layout, HiDPI, theming and AT-SPI names; a UI-driven case per flow; gap table and slice order UX1–UX12 (proposed; children of R08, R17, R23–R25, R60) |
 
 RFC status and implementation status are separate. A proposed interface, tool,
@@ -185,6 +186,19 @@ platform acceptance.
 - Deliver bounded migrations with named callers and a deletion condition.
   Extracting a directory, increasing worker count, or adding interfaces is not
   an architectural outcome by itself.
+- **Render work follow RFC 0016's binding rules** (user decision,
+  2026-09-28; mandatory, not negotiable, and only the user can change them):
+  [binding rules](RFC/0016-render-core.md#binding-rules-for-all-render-work-user-decision-2026-09-28).
+  - The legacy render paths (`materialsystem/shaderapivulkan/`, the D3D9
+    backend and stdshaders, the legacy material system's shading, and the
+    engine's CPU runtime-lighting path) are frozen. They take only defect
+    fixes, core plumbing, or a specific explicit user request, and each
+    such commit carries a `Frozen-path:` line.
+  - New render work lands on the core in its owning module and is proven
+    in `render_lab` before any integration.
+  - The old copy is deleted in the change that replaces it.
+  - One owner per concept is settled before code, and each concept has one
+    definition that other documents link to.
 
 ## DRY and Liskov Substitution Principle
 
@@ -460,6 +474,7 @@ marks no implementation gate done.
 | 79 / R44 | IVP simulation retirement; 0004 F first gate | R37 | Declared profiles no longer depend on IVP simulation; gameplay/save/package gates pass and rollback/support decision recorded; decoder dependency remains explicit | planned |
 | 80 / R45 | Independent collision decoding/cooking; 0004 F second gate | R40, R44 | Legacy/native format corpus and tool compatibility pass without IVP code; dependency audit clean; schema and old-content policy explicit | planned |
 | 81 / R46 | Tier-global/domain retirement; 0001 rank 21 | R39, R41, R42, R43, R45 | All declared domain cohorts use explicit ownership; old globals have zero consumers; cohesive targets pass architecture/product gates; tiers removed only when empty | planned |
+| 82 / R93 | LAN discovery and Portal 2 co-op pairing; 0017 G0–G6 | R06, R10 (Apple/Android gates also R29) | `platform.lan-discovery.v1` suite catches its bad providers; Linux mDNS provider passes its fuzz corpus and coexists with Avahi; two `play_p2` processes pair through the real PC co-op menus (required UI-driven test) and reach a shared map, with wrong-code and lobby-full negative controls; Apple providers pass on device or stay unverified (optional runner); Android passes on the Fold7, or the row stays `partial` | planned ([RFC 0017](RFC/0017-lan-discovery-and-coop-pairing.md); rank is an agent placement, 2026-09-28, movable by the user) |
 | 83 / R94 | Frame-wide scheduling; 0003 I (goals J1–J5; J6–J7 ratchets) | R20, R21 | One continuous ready-driven executor on the engine pool in products (no wave barriers); declared regions overlap across host nodes; thread census shows no first-party compute threads outside declared owners; scheduling at most 5 % of pooled critical-path work; 1- and 2-worker configurations hold their budgets on desktop, the Fold7 and the iPhone; J6/J7 shrink-only ratchets installed | planned ([RFC 0003 goals](RFC/0003-dependency-aware-job-system.md#frame-wide-scheduling-goals-amended-2026-09-28); rank is an agent placement, 2026-09-28, movable by the user) |
 
 R39–R46 describe completion gates, not a reason to retain dead code until late.
@@ -1715,6 +1730,13 @@ Keep the table concise and link details below or from the domain progress file.
     contract (158 checks) covers the flex layout; a testchmb_a_01 frame is
     within 6 levels of the pre-change frame (static-prop color pooling now
     on) with no validation messages.
+  - Native skin family fog (2026-09-28, user report from sp_a2_core): the
+    native `$phong` family now applies pixel fog. The new
+    `--native-against-port` check judges a native family's pixels against its
+    port: skin 22 of 22 in both HDR modes; the fog-free negative control is
+    off by 41-43 levels. Open: one lightmapped ssbump-detail case is 3-6
+    levels dark, and skin models do not write water fog to dest alpha
+    ([record](RFC/0001-native-vulkan-legacy-shaders-progress.md#pixel-fog-on-the-native-skin-family-2026-09-28)).
   - Unverified or open: flashlight passes.
   - No gate closes. See the
     [legacy shader record](RFC/0001-native-vulkan-legacy-shaders-progress.md).

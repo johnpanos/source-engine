@@ -5,9 +5,17 @@
 //          NPC and door, published to the engine, which blocks each light they
 //          stand in front of in world lightmaps and model lighting.
 //
-//          Which: every drawn entity that casts a shadow (a studio model whose
-//          ShadowCastType is not none) and every brush entity (doors, moving
-//          brushes), within kMaxDistance of the view, nearest first.
+//          Which: every drawn entity that casts a dynamic shadow in the game's
+//          own shadow model (ShadowCastType is not none: the render-to-texture
+//          shadows these occluders replace), within kMaxDistance of the view,
+//          nearest first. So the map's authoring holds: disableshadows
+//          (EF_NOSHADOW) turns an object's shadow off, and brush entities
+//          (func_brush, func_door, iris panels, pit housings) cast none, as in
+//          retail, where the bake owns their light. Physics brushes
+//          (func_physbox) and every studio model that casts keep casting.
+//          (Brush entities were occluders until 2026-09-28: their solid model
+//          boxes, sunk in floors and pits, shadowed the static floor around
+//          sp_a2_core's receptacle and stalemate button; RFC/0011-progress.md.)
 //
 //          Boxes larger than kMaxBoxRadius are left out: they are hollow
 //          environment pieces (elevator cars), which a solid box would black
@@ -84,7 +92,8 @@ bool BoxFromBounds( const Vector &mins, const Vector &maxs, const matrix3x4_t &t
 	return true;
 }
 
-// Whether the entity blocks light as a moving object.
+// Whether the entity blocks light as a moving object: the same set that casts
+// render-to-texture shadows without occlusion.
 bool IsOccluder( C_BaseEntity *pEnt )
 {
 	if ( pEnt->IsDormant() || pEnt->IsEffectActive( EF_NODRAW ) ||
@@ -94,9 +103,11 @@ bool IsOccluder( C_BaseEntity *pEnt )
 	if ( !pModel )
 		return false;
 	const int nType = modelinfo->GetModelType( pModel );
-	if ( nType == mod_brush )
-		return true;
-	return nType == mod_studio && pEnt->ShadowCastType() != SHADOWS_NONE && pEnt->ShouldDraw();
+	if ( nType != mod_brush && nType != mod_studio )
+		return false;
+	// The retail shadow caster set: a brush entity casts only where its class
+	// says so (C_PhysBox), a studio model unless its shadow is disabled.
+	return pEnt->ShadowCastType() != SHADOWS_NONE && pEnt->ShouldDraw();
 }
 
 // Appends the entity's boxes.

@@ -23,6 +23,8 @@
 #include "materialsystem/MaterialSystemUtil.h"
 #include "trace.h"
 #include "tier1/utlsoacontainer.h"
+#include "particles/particle_operator_strength.h"
+#include "particles/particle_visibility_inputs.h"
 
 #if defined( CLIENT_DLL )
 #include "c_pixel_visibility.h"
@@ -157,21 +159,6 @@ enum ParticleFunctionType_t
     FUNCTION_FORCEGENERATOR,
     FUNCTION_CONSTRAINT,
 	PARTICLE_FUNCTION_COUNT
-};
-
-struct CParticleVisibilityInputs
-{
-	float	m_flCameraBias;
-	float	m_flInputMin;
-	float	m_flInputMax;
-	float	m_flAlphaScaleMin;
-	float	m_flAlphaScaleMax;
-	float	m_flRadiusScaleMin;
-	float	m_flRadiusScaleMax;
-	float	m_flProxyRadius;
-	float	m_flBBoxScale;
-	bool	m_bUseBBox;
-	int		m_nCPin;
 };
 
 struct ModelHitBoxInfo_t
@@ -600,7 +587,10 @@ public:
 //-----------------------------------------------------------------------------
 // Particle operators
 //-----------------------------------------------------------------------------
-class CParticleOperatorInstance
+// The modulation fields (fade window, per-instance time offset, time scale and
+// strength scale, end cap state) come from ParticleOperatorModulation_t, whose
+// rule CParticleCollection::CheckIfOperatorShouldRun applies.
+class CParticleOperatorInstance : public ParticleOperatorModulation_t
 {
 public:
 	// custom allocators so we can be simd aligned
@@ -815,16 +805,6 @@ public:
 		return 0.0f;
 	}
 
-	float m_flOpStartFadeInTime;
-	float m_flOpEndFadeInTime;
-	float m_flOpStartFadeOutTime;
-	float m_flOpEndFadeOutTime;
-	float m_flOpFadeOscillatePeriod;
-
-	// Portal 2 port (CS:GO): -1 runs always, 0 only while the system plays,
-	// 1 only in its end cap (after StopEmission( ..., bPlayEndCap )).
-	int m_nOpEndCapState;
-
 	virtual ~CParticleOperatorInstance( void )
 	{
 		// so that sheet references, etc can be cleaned up
@@ -935,6 +915,19 @@ private:
 	DMXELEMENT_UNPACK_FIELD( "operator start fadeout", "0", float, m_flOpStartFadeOutTime )        \
 	DMXELEMENT_UNPACK_FIELD( "operator end fadeout", "0", float, m_flOpEndFadeOutTime )            \
 	DMXELEMENT_UNPACK_FIELD( "operator fade oscillate", "0", float, m_flOpFadeOscillatePeriod )    \
+	DMXELEMENT_UNPACK_FIELD( "operator time offset seed", "0", int, m_nOpTimeOffsetSeed )          \
+	DMXELEMENT_UNPACK_FIELD( "operator time offset min", "0", float, m_flOpTimeOffsetMin )         \
+	DMXELEMENT_UNPACK_FIELD( "operator time offset max", "0", float, m_flOpTimeOffsetMax )         \
+	DMXELEMENT_UNPACK_FIELD( "operator time scale seed", "0", int, m_nOpTimeScaleSeed )            \
+	DMXELEMENT_UNPACK_FIELD( "operator time scale min", "1", float, m_flOpTimeScaleMin )           \
+	DMXELEMENT_UNPACK_FIELD( "operator time scale max", "1", float, m_flOpTimeScaleMax )           \
+	DMXELEMENT_UNPACK_FIELD(                                                                       \
+	    "operator time strength random scale max", "1", float, m_flOpStrengthMaxScale )            \
+	DMXELEMENT_UNPACK_FIELD( "operator strength scale seed", "0", int, m_nOpStrengthScaleSeed )    \
+	DMXELEMENT_UNPACK_FIELD(                                                                       \
+	    "operator strength random scale min", "1", float, m_flOpStrengthMinScale )                 \
+	DMXELEMENT_UNPACK_FIELD(                                                                       \
+	    "operator strength random scale max", "1", float, m_flOpStrengthMaxScale )                 \
 	DMXELEMENT_UNPACK_FIELD( "operator end cap state", "-1", int, m_nOpEndCapState )
 
 #define END_PARTICLE_OPERATOR_UNPACK( _className )		\
@@ -946,10 +939,15 @@ private:
 	DMXELEMENT_UNPACK_FIELD( "Visibility Proxy Radius", "1.0", float, VisibilityInputs.m_flProxyRadius )				\
 	DMXELEMENT_UNPACK_FIELD( "Visibility input minimum","0", float, VisibilityInputs.m_flInputMin )					\
 	DMXELEMENT_UNPACK_FIELD( "Visibility input maximum","1", float, VisibilityInputs.m_flInputMax )					\
+	DMXELEMENT_UNPACK_FIELD( "Visibility input dot minimum", "0", float, VisibilityInputs.m_flDotInputMin )	\
+	DMXELEMENT_UNPACK_FIELD( "Visibility input dot maximum", "0", float, VisibilityInputs.m_flDotInputMax )	\
+	DMXELEMENT_UNPACK_FIELD( "Visibility input distance minimum", "0", float, VisibilityInputs.m_flDistanceInputMin )	\
+	DMXELEMENT_UNPACK_FIELD( "Visibility input distance maximum", "0", float, VisibilityInputs.m_flDistanceInputMax )	\
 	DMXELEMENT_UNPACK_FIELD( "Visibility Alpha Scale minimum","0", float, VisibilityInputs.m_flAlphaScaleMin )		\
 	DMXELEMENT_UNPACK_FIELD( "Visibility Alpha Scale maximum","1", float, VisibilityInputs.m_flAlphaScaleMax )		\
 	DMXELEMENT_UNPACK_FIELD( "Visibility Radius Scale minimum","1", float, VisibilityInputs.m_flRadiusScaleMin )		\
 	DMXELEMENT_UNPACK_FIELD( "Visibility Radius Scale maximum","1", float, VisibilityInputs.m_flRadiusScaleMax )	\
+	DMXELEMENT_UNPACK_FIELD( "Visibility Radius FOV Scale base", "0", float, VisibilityInputs.m_flRadiusScaleFOVBase )	\
 	DMXELEMENT_UNPACK_FIELD( "Visibility Camera Depth Bias", "0", float, VisibilityInputs.m_flCameraBias )
 
 //	DMXELEMENT_UNPACK_FIELD( "Visibility Use Bounding Box for Proxy", "0", bool, VisibilityInputs.m_bUseBBox )		

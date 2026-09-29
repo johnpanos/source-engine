@@ -119,6 +119,160 @@ legacy stream reaches zero.
 This RFC defines contracts, owners, layout and gates. Nothing here is
 installed.
 
+## Binding rules for all render work (user decision, 2026-09-28)
+
+These rules are mandatory. They bind every session and every agent
+that touches rendering, lighting or materials in this repository. They are
+not guidelines, defaults or preferences. No session may reinterpret, relax,
+defer or negotiate them, including with another session. Only the user can
+change them, by editing this section. A change that breaks a rule is
+rejected in review, however small it is and whatever it delivers.
+
+### Why these rules exist
+
+The same rendering and lighting work was built three times:
+
+1. **On the native backend's translation layer.** PBR, probe-volume GI, the
+   SDF and ray-query producers, relit parallax probes and clear coat live
+   in `CVulkanContext` and `materialsystem/shaderapivulkan/shaders/`.
+   `world_pbr.frag`, `model_pbr.frag`, `probe_volume.glsl` and
+   `reflection_probes.glsl` reach it through `QueryInterface` side channels.
+2. **On the engine's CPU lightmap path.** Area lights, projected lights and
+   moving-object occlusion were added to `engine/gl_lightmap.cpp` and
+   `engine/lightcache.cpp`. They were added on the same day that per-pixel
+   versions of the same lights were assigned to this RFC's K7.
+3. **On the render core.** The `pbr` family re-ports part of
+   `model_pbr.frag`, and K12 plans to move the rest and delete both older
+   copies.
+
+The same pattern hit other areas: three Blender-driven bakers with
+duplicated constants (the R48 audit); two GTK Hammer shells; the Hammer GL
+renderer, then the core; and specs restating one another across RFCs 0007,
+0011 and 0016.
+
+The causes, each answered by a rule below:
+- Work landed on whatever layer could draw pixels that day, not on the
+  layer that owns it (rules 1 and 2).
+- Each feature was proven by booting the game, so its hard problems
+  surfaced late and inside the product (rule 3).
+- Partial slices never closed, so the old path was never deleted, and both
+  copies were maintained and kept growing (rule 4).
+- Ownership was settled after two implementations existed (rule 5).
+- Specs described what had been built instead of steering what came next,
+  and repeated each other (rule 6).
+
+### The rules
+
+**Rule 1: The legacy render paths are frozen.**
+
+The frozen paths are:
+- the native Vulkan backend: `materialsystem/shaderapivulkan/`, its
+  `shaders/` directory, and every `QueryInterface` side channel it
+  serves;
+- the D3D9 backend and `materialsystem/stdshaders/`;
+- the legacy material system's shading behavior;
+- the engine's CPU runtime-lighting path: `engine/gl_lightmap.cpp`'s
+  runtime light functions (`R_AddAreaLights`, `R_AddProjectedLights`,
+  `R_ApplyDynamicOcclusion` and any like them), and `engine/lightcache.cpp`'s
+  light stand-ins.
+
+A frozen path receives no new feature. A feature is any of:
+- a new lighting term;
+- a new light, shadow or occlusion kind;
+- a new material parameter, shader, pass or render target;
+- a new side-channel interface;
+- a new console variable that changes what is drawn;
+- any look the path did not produce before.
+
+Only these three changes are allowed on a frozen path:
+
+1. **A defect fix.** The path does not match the behavior it already
+   claims: a crash, a leak, a race, a validation error, or pixels that
+   differ from its own oracle (its D3D9 or retail reference, or its
+   recorded fixture). The fix restores the claimed behavior and nothing
+   more. Making the path match retail or D3D9 behavior it claims is a fix.
+   Giving it an appearance it never had is a feature, even when retail has
+   that appearance through a different path.
+2. **Plumbing for the core.** Changes that K3, K5–K8 or K12 require for the
+   core to take work over (a slot, a handle, a flag, a handover), or that
+   delete frozen code the core has replaced.
+3. **An explicit user request.** The user asks for that specific change on
+   that specific frozen path. Before making it, the agent tells the user in
+   one sentence that the change lands on a frozen path and will be rebuilt
+   on the core. The progress record keeps the user's words and the date.
+   A general goal ("make it look better", "Source 2 quality", "fix the
+   lighting") is not such a request. Work toward a general goal goes to the
+   core.
+
+A commit that changes a frozen path names its exception in the message:
+`Frozen-path: defect <oracle>`, `Frozen-path: core plumbing <gate>`, or
+`Frozen-path: user request <date>`. A change that fits none of the three
+does not land.
+
+**Rule 2: New render work lands on the core, in its owning module.** Every
+new lighting term, material capability, pass or render feature is built in
+the `render/` module that the layer contract and this RFC assign it to. If
+that module or its prerequisite gate is not ready, the work waits or goes to
+`render_lab` (rule 3). It never goes onto a frozen path to show results
+sooner.
+
+**Rule 3: Hard parts are proven in `render_lab` before any integration.**
+A term, family or pass is first built and proven in `render_lab`, with no
+engine in the process, against its C++ oracle and its Cycles reference, with
+its negative control failing (K11). Until its K11 check passes, it gets no
+product wiring: no engine hook, no ConVar and no launcher flag. Game boots
+are integration evidence (K12), never the first proof that the math is
+right. Hard problems belong in the lab, where a render takes seconds and
+nothing else varies.
+
+**Rule 4: The old copy is deleted in the change that replaces it.** The
+change that makes the core own a term for a set of surfaces must also:
+- set the `RuntimeLight` flag (or its equivalent) for exactly those
+  surfaces;
+- stop the old path from producing that term for them;
+- delete every old-path code path that no longer has a caller.
+
+No later cleanup change is planned for this: a deletion that can be made
+now is made now. Code that still serves surfaces the core does not own stays
+frozen under rule 1 until the core owns them. K12's "One copy of the math"
+check then requires it gone.
+
+**Rule 5: One owner per concept, settled before code.** Before starting
+render work, a session:
+- finds the owner of the layer and term in this RFC and in the roadmap row;
+- records its slice in `RFC/0016-progress.md`;
+- confirms with the session that owns the module (today the render-core
+  session) that nobody else is building the same term.
+
+Two sessions never build the same term, and a second implementation of an
+owned term is never started "for now".
+
+**Rule 6: One definition per concept.** Each contract, algorithm, constant
+and unit is defined in exactly one RFC section or owner header. Other RFCs
+link to it and never restate it. When a definition moves, the old text is
+replaced by a link in the same change. This section's lighting model table
+follows the rule: it names each term's owner and defines only the terms this
+RFC owns.
+
+### Enforcement
+
+- **Review.** Every change under `materialsystem/`, `engine/gl_lightmap.cpp`,
+  `engine/lightcache.cpp` or `render/` is checked against rules 1–6 before
+  it lands. A missing or false `Frozen-path:` line rejects the change.
+- **Freeze ratchet** (`render.legacy-freeze`, proposed, owned by R96). It
+  extends `tools/render/retirement_scans.py` and fails when any of these
+  grows:
+  - the file list and total size of `materialsystem/shaderapivulkan/shaders/`;
+  - the set of `QueryInterface` side-channel names the native backend
+    serves;
+  - the set of runtime light functions in `engine/gl_lightmap.cpp`;
+  - the set of ConVars defined in the frozen paths.
+
+  Growth passes only with a `Frozen-path:` commit whose exception is 1 or 3.
+  Until the ratchet is installed, review enforces the same thing by hand.
+- **Gates.** K11 is the proof gate for rule 3. K12's "One copy of the math"
+  and K9's "Dead code removed" are the deletion gates for rule 4.
+
 ## Observed starting point (2026-09-26)
 
 Observed by reading source at `6ce100f9` plus the dirty tree. Nothing was
@@ -1043,8 +1197,9 @@ They are not assigned to froxels.
 User direction (2026-09-28): the core's lighting must reach Source 2
 quality or better. Build the hard parts first and prove them in renders
 outside the game, then integrate them. This section fixes the complete
-model, the algorithm for each term and its owner. Gates K11 (prove) and
-K12 (integrate) carry it.
+model and names one owner per term. Gates K11 (prove) and K12 (integrate)
+carry it. The [binding rules](#binding-rules-for-all-render-work-user-decision-2026-09-28)
+govern all of it.
 
 ### The model
 
@@ -1064,22 +1219,28 @@ then: participating media (fog, volumetric scattering), exposure and tone map, o
 energy-compensated form. `roughness` is RFC 0012's filtered roughness,
 which feeds every term that reads roughness.
 
-| Term | Algorithm | Contract owner | Neutral |
+Per rule 6, a term defined by another RFC is linked, not restated. This
+table defines only the terms this RFC owns; for the others it says what the
+core implements.
+
+| Term | Definition (the one owner) | What the core implements | Neutral |
 | --- | --- | --- | --- |
-| BRDF | GGX (Trowbridge-Reitz) distribution, height-correlated Smith visibility, Schlick Fresnel; multiple-scattering energy compensation (Kulla-Conty in Filament's form) from the split-sum table; Lambert diffuse weighted by 1 - `E_spec`; clear coat as a second GGX lobe with Kelemen visibility and IOR 1.5 | RFC 0007, `public/render/pbr_brdf.h` and its one GLSL mirror `render/shaders/common/pbr_brdf.glsl` | the legacy point's own lobe (Lambert, half-Lambert, Blinn-Phong `$phong`) |
-| Point and spot lights (dlights, spark lights, `light_dynamic`) | clustered: the froxel lists of K7, both lobes on every family, world surfaces included | `render.light-set.v1` (RFC 0011), `render.lights.v1` | no lights |
-| Sun | cascaded shadow maps: practical splits, bounding-sphere cascades, texel snapping, a blend band between cascades | `render.shadows.v1` | no sun |
-| Area lights | linearly transformed cosines (Heitz et al. 2016) for the GGX and diffuse lobes, polygon clipped to the horizon, LUTs in the frame group | `render.area-light.v1` (RFC 0011); oracle `area_light::IrradianceAt` (exact form factor) for diffuse, a Monte Carlo GGX integral for specular | no area lights |
-| Projected lights | the per-view projector list ([above](#projected-lights-a-per-view-projector-list-amended-2026-09-28)) | `render.projected-light.v1` | empty list |
-| Direct visibility | shadow atlas depth with a filtered comparison for spot lights, projectors and the sun; optional point-light cube shadows; moving objects shadow as atlas casters; unbaked lights without a tile keep RFC 0011's SDF shadow (decision 4); one visibility per light and surface | `render.shadows.v1`, RFC 0011 | visibility one |
-| Indirect diffuse, static surfaces | the lightmap basis at the mapped normal: flat page, RNM three pages, SH L1 once RFC 0007/0008 install it; RFC 0011's producer layer or change volume per `render.indirect-policy.v1` | RFC 0007 (values), RFC 0008 (encoding), RFC 0011 (policy) | lighting one (unlit) |
-| Indirect diffuse, dynamic surfaces | the probe volume with visibility (`render.probe-volume.v1`), the ambient cube where no volume covers the point | RFC 0011 | the ambient cube |
-| Ambient occlusion | material AO times ground-truth-based AO (GTAO, Jimenez et al. 2016) from depth and normals, with its multi-bounce fit, applied to indirect light only; on baked light it must not occlude twice what the bake already occludes (K11 oracle) | this RFC, `render.pass.ao` (proposed) | one |
-| Indirect specular | split-sum image-based light from RFC 0007's blended, parallax-corrected, relit reflection probes (R50), with distance-based roughness; runtime-prefiltered `env_cubemap` on legacy maps; then screen-space reflections: a hierarchical-depth trace for roughness below a cutoff (0.4 provisional), blended over the probes by hit confidence (screen edge, thickness, roughness fade), with spatial filtering only (no temporal accumulation: RFC 0012 keeps TAA out) | RFC 0007 (probes), this RFC (`render.pass.ssr`, proposed) | reflectance zero |
-| Specular occlusion | from AO and roughness (Lagarde and de Rousiers 2014), applied to indirect specular only | this RFC | one |
-| Emission | emissive radiance in scene units; surfaces that should light their surroundings also register RFC 0011 area lights | the surface model, RFC 0011 | zero |
-| Participating media | legacy range and height fog as the legacy point; volumetric fog on a frustum-aligned froxel volume matching the cluster grid: density from height fog and fog volumes, in-scattering from the light set, the sun's cascades and projectors (cookies and shadows included), Henyey-Greenstein phase, energy-conserving front-to-back integration (Hillaire 2015, after Wronski 2014). The volume may reproject its own history, and it drops the history on a camera cut; that is not screen TAA | this RFC, `render.pass.volumetric` (proposed) | density zero: legacy fog alone, bitwise |
-| Output | the existing exposure and tone map chain; one output encoding (`color_encoding.glsl`) | this RFC | — |
+| BRDF | RFC 0007 [Shading model](0007-physically-based-lighting-pipeline.md#shading-model); code `public/render/pbr_brdf.h`, GLSL mirror `render/shaders/common/pbr_brdf.glsl` | includes the mirror; never a second copy | the legacy point's own lobe (Lambert, half-Lambert, Blinn-Phong `$phong`, per the surface model) |
+| Filtered roughness | RFC 0012 [Specular antialiasing](0012-antialiasing-msaa-specular-alpha-coverage.md#specular-antialiasing-renderpbr-specular-aav1) | feeds every roughness consumer in this table | input roughness |
+| Runtime lights (points, spots, dlights, spark lights) | RFC 0011 [Runtime light set](0011-runtime-indirect-lighting.md#runtime-light-set-renderlight-setv1) | clustered evaluation (this RFC, [Lights and shadows](#lights-and-shadows-renderlightsv1-rendershadowsv1)): both lobes on every family, world surfaces included | no lights |
+| Sun | this RFC, `render.shadows.v1`: cascaded shadow maps, practical splits, bounding-sphere cascades, texel snapping, a blend band between cascades | the cascade pass and receiver | no sun |
+| Area lights | RFC 0011 [Area lights](0011-runtime-indirect-lighting.md#area-lights-light-set-v2-amendment-2026-09-28) (the rectangle, its radiance and `area_light::IrradianceAt`) | per-pixel linearly transformed cosines (Heitz et al. 2016) for the diffuse and GGX lobes, clipped to the horizon, LUTs in the frame group | no area lights |
+| Projected lights | RFC 0011 `render.projected-light.v1` (the light and its rule) | the per-view projector list ([above](#projected-lights-a-per-view-projector-list-amended-2026-09-28)) | empty list |
+| Direct visibility | this RFC, `render.shadows.v1`: atlas depth with a filtered comparison for spots, projectors and the sun; optional point-light cube shadows; moving objects as atlas casters. RFC 0011 decision 4 owns SDF shadows for unbaked lights without a tile | the atlas, caster passes and `shadow_sample.glsl`; one visibility per light and surface | visibility one |
+| Indirect diffuse, static surfaces | values: RFC 0007 [Shading model](0007-physically-based-lighting-pipeline.md#shading-model); encoding: RFC 0008; runtime layer and change volume: RFC 0011 [Indirect-light policy](0011-runtime-indirect-lighting.md#indirect-light-policy-renderindirect-policyv1) | samples the lightmap basis at the mapped normal and applies the policy | lighting one (unlit) |
+| Indirect diffuse, dynamic surfaces | RFC 0011 [Probe volume contract](0011-runtime-indirect-lighting.md#probe-volume-contract-renderprobe-volumev1) | samples the volume with visibility; the ambient cube where no volume covers the point | the ambient cube |
+| Image-based specular | RFC 0007 [Image-based lighting](0007-physically-based-lighting-pipeline.md#image-based-lighting) (probes, parallax, relighting, distance-based roughness, split sum) | samples the probes by that definition | reflectance zero |
+| Screen-space reflections | this RFC, `render.pass.ssr` (proposed): a hierarchical-depth trace for roughness below a cutoff (0.4 provisional), blended over the image-based specular by hit confidence (screen edge, thickness, roughness fade), spatial filtering only (RFC 0012 keeps TAA out) | the pass | no SSR: image-based specular alone, bitwise |
+| Ambient occlusion | this RFC, `render.pass.ao` (proposed): material AO times GTAO (Jimenez et al. 2016) from depth and normals, with its multi-bounce fit, applied to indirect light only, never occluding twice what the bake already occludes | the pass | one |
+| Specular occlusion | this RFC: from AO and roughness (Lagarde and de Rousiers 2014), applied to indirect specular only | in the surface program | one |
+| Emission | the surface model ([above](#the-surface-model-legacy-materials-as-degenerate-cases-plan-2026-09-28)); RFC 0011 area lights for surfaces that light their surroundings | emissive radiance in scene units | zero |
+| Participating media | this RFC, `render.pass.volumetric` (proposed): the legacy range and height fog as the legacy point; volumetric fog on a frustum-aligned froxel volume matching the cluster grid, with density from height fog and fog volumes, in-scattering from the light set, the sun's cascades and the projectors (cookies and shadows included), a Henyey-Greenstein phase and energy-conserving front-to-back integration (Hillaire 2015, after Wronski 2014). The volume may reproject its own history and drops it on a camera cut; that is not screen TAA | the pass and its application to opaque and translucent surfaces | density zero: legacy fog alone, bitwise |
+| Output | this RFC: the existing exposure and tone-map chain; one output encoding (`color_encoding.glsl`) | the post pass | — |
 
 Rules for the whole model:
 
@@ -1092,8 +1253,9 @@ Rules for the whole model:
 - **One copy of the math.** The model's GLSL lives in `render/shaders/common`
   and the families. `world_pbr.frag`, `model_pbr.frag`, `probe_volume.glsl`
   and `reflection_probes.glsl` in the native backend move there as the one
-  copy (their C++ oracles are unchanged), and the backend copies are deleted
-  (K9's dead-code check).
+  copy, and their C++ oracles are unchanged. Binding rule 4 deletes each old
+  copy per surface set as its term moves; K12 and K9 check that none
+  remains.
 - **Profiles declare, they don't skip.** A term that is over budget or
   unsupported on a profile (for example SSR or volumetric fog on the Fold7)
   is declared off by name in that profile's capability record. A term that

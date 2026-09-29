@@ -530,6 +530,7 @@ static bool SsbumpBasisNormalized()
 	}();
 	return s_bPortal2;
 }
+
 // RFC 0011 indirect-light debug view (CVulkanContext::SetIndirectLightView).
 // R50-PARALLAX: the map's RPRB reflection probes (shaders/reflection_probes.glsl).
 static ConVar mat_reflection_probes( "mat_reflection_probes", "1", FCVAR_CHEAT,
@@ -1256,6 +1257,10 @@ public:
 	// selected. Called from CShaderAPIVulkan::RenderPass, i.e. AFTER the material's
 	// shader has run BeginPass and set its constants/textures.
 	void EmitToNativeQueue();
+	// EmitToNativeQueue for each range of the draw in progress: the one range
+	// of Draw( first, count ), or every list of Draw( CPrimList * ), as
+	// CMeshDX8::RenderPass draws each list with the pass's state.
+	void EmitDrawRanges();
 	// The geometry the next EmitToNativeQueue draws, for -vklegacycapture: a
 	// JSON fragment with the primitive type, the drawn indices (into the listed
 	// vertices) and each vertex's attributes as the mesh builder wrote them.
@@ -1380,6 +1385,10 @@ private:
 	// Index range recorded by the last Draw() call, replayed by EmitToNativeQueue.
 	int m_drawFirst = 0;
 	int m_drawCount = 0;
+	// The primitive lists of a Draw( CPrimList * ) in progress (displacements
+	// draw this way); each pass emits every list (EmitDrawRanges).
+	const CPrimList *m_pDrawPrims = nullptr;
+	int m_nDrawPrims = 0;
 	// Topology the mesh builder declared for this geometry. The native pipelines
 	// all rasterize a triangle list, so EmitToNativeQueue assembles the triangles
 	// this type implies rather than assuming the indices already form one.
@@ -4088,6 +4097,18 @@ void CEmptyMesh::SetPrimitiveType( MaterialPrimitiveType_t type )
 // material's selected shader, modulation, textures and blend state.
 static IMaterialInternal *g_pBoundMaterial = nullptr;
 
+// The scale of the bound material's ssbump diffuse sum: 1/sqrt(3) where the
+// game's shader applies it (SsbumpBasisNormalized, or $ssbumpmathfix), else 1.
+static float BoundMaterialSsbumpScale()
+{
+	if ( SsbumpBasisNormalized() )
+		return 0.57735025882720947f;
+	bool found = false;
+	IMaterialVar *var =
+	    g_pBoundMaterial ? g_pBoundMaterial->FindVar( "$ssbumpmathfix", &found, false ) : nullptr;
+	return ( found && var && var->GetIntValue() != 0 ) ? 0.57735025882720947f : 1.0f;
+}
+
 // Stable small ids for material names, so each recorded draw can say which
 // material produced it without the device knowing about materials.
 static std::vector<std::string> g_MaterialTags;
@@ -5833,6 +5854,10 @@ std::string CEmptyMesh::LegacyCaptureGeometry() const
 	return json;
 }
 
+// The engine's displacements (DispInfo_DrawPrimLists) draw index lists of a
+// static mesh this way. As CMeshDX8::DrawInternal: nothing is drawn when every
+// list is empty; otherwise the material runs once and each pass draws every
+// non-empty list (EmitDrawRanges).
 void CEmptyMesh::Draw( CPrimList *pPrims, int nPrims )
 {
 	if ( g_pShaderUtil && !g_pShaderUtil->OnDrawMesh( this, pPrims, nPrims ) )
@@ -5840,7 +5865,53 @@ void CEmptyMesh::Draw( CPrimList *pPrims, int nPrims )
 		MarkAsDrawn();
 		return;
 	}
-	VK_UNIMPLEMENTED();
+	NoteDeviceUse( "IMesh::Draw(CPrimList)" );
+	int firstList = 0;
+	while ( firstList < nPrims && pPrims[firstList].m_NumIndices <= 0 )
+		++firstList;
+	if ( firstList == nPrims )
+		return;
+	const CEmptyMesh &vertices = m_pVertexSource ? *m_pVertexSource : *this;
+	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() || m_worldMeshBatch ||
+	     vertices.m_numVerts <= 0 )
+		return;
+
+	render_vulkan::CFrameCostScope cost(
+	    g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostMeshDraw );
+	// The first list stands for the draw where one range is described (the
+	// view oracle, draw-state fixtures).
+	m_drawFirst = pPrims[firstList].m_FirstIndex;
+	m_drawCount = pPrims[firstList].m_NumIndices;
+	m_pDrawPrims = pPrims;
+	m_nDrawPrims = nPrims;
+	g_pRenderMesh = this;
+	if ( g_pBoundMaterial )
+		g_pBoundMaterial->DrawMesh( VERTEX_COMPRESSION_NONE );
+	else
+	{
+		CommitPassPixelConstants();
+		EmitDrawRanges();
+	}
+	g_pRenderMesh = nullptr;
+	m_pDrawPrims = nullptr;
+	m_nDrawPrims = 0;
+}
+
+void CEmptyMesh::EmitDrawRanges()
+{
+	if ( !m_pDrawPrims )
+	{
+		EmitToNativeQueue();
+		return;
+	}
+	for ( int i = 0; i < m_nDrawPrims; ++i )
+	{
+		if ( m_pDrawPrims[i].m_NumIndices <= 0 )
+			continue;
+		m_drawFirst = m_pDrawPrims[i].m_FirstIndex;
+		m_drawCount = m_pDrawPrims[i].m_NumIndices;
+		EmitToNativeQueue();
+	}
 }
 
 // Copy verts and/or indices to a mesh builder. This only works for temp meshes!
@@ -7618,11 +7689,9 @@ static void CommitLightmappedConstants( const CShaderAPIVulkan &api )
 	// the Portal 2/CS:GO helper packs c20.zw).
 	if ( g_pBoundMaterial )
 	{
+		c.ps[23][1] = BoundMaterialSsbumpScale();
 		bool found = false;
-		IMaterialVar *var = g_pBoundMaterial->FindVar( "$ssbumpmathfix", &found, false );
-		if ( SsbumpBasisNormalized() || ( found && var && var->GetIntValue() != 0 ) )
-			c.ps[23][1] = 0.57735025882720947f;
-		var = g_pBoundMaterial->FindVar( "$envmaplightscale", &found, false );
+		IMaterialVar *var = g_pBoundMaterial->FindVar( "$envmaplightscale", &found, false );
 		if ( found && var )
 			c.ps[23][2] = var->GetFloatValue();
 		float minMax[2] = { 0.0f, 1.0f };
@@ -7709,6 +7778,19 @@ static void CommitLegacyConstants( const CShaderAPIVulkan &api )
 	// no-texture read.
 	g_CurrentLegacyConstants.bools[2] |=
 	    static_cast<int32_t>( static_cast<uint32_t>( g_CurrentEnabledSamplers & 0xFFFFu ) << 16 );
+	// lightmappedgeneric_ps20b's ssbump diffuse sum (BUMPMAP 2 with
+	// DIFFUSEBUMPMAP) times the game's ssbump scale, as the native family applies
+	// it (c23.y): the sum is scaled by g_TintValuesAndLightmapScale.rgb (c12)
+	// alone, so the port and the bytecode oracle read the scale there.
+	static const int s_lightmappedProgram =
+	    render_vulkan::FindLegacyProgram( "lightmappedgeneric_ps20b", "lightmappedgeneric_vs20" );
+	if ( g_CurrentLegacyProgram == s_lightmappedProgram && s_lightmappedProgram >= 0 &&
+	     ( g_CurrentLegacyPsStatic / 768 ) % 3 == 2 && ( g_CurrentLegacyPsStatic / 147456 ) % 2 )
+	{
+		const float scale = BoundMaterialSsbumpScale();
+		for ( int i = 0; i < 3; ++i )
+			g_CurrentLegacyConstants.ps[12][i] *= scale;
+	}
 	// The lighting registers, as CShaderAPIDx8 commits them: the ambient cube
 	// (c21..c26), cLightInfo for the enabled lights in SortLights order
 	// (c27..c46), i0 the light count loop and b0..b3 the enabled lights.
@@ -8144,7 +8226,7 @@ static PixelFogInputs SnapshotPixelFog( const CShaderShadowVulkan &shadow )
 		fog.eyeRegister = 20;
 	}
 	else if ( is( "cable_ps2" ) || is( "monitorscreen_ps2" ) || is( "refract_ps2" ) ||
-	          is( "unlittwotexture_ps2" ) || is( "sprite_ps2" ) )
+	          is( "unlittwotexture_ps2" ) || is( "sprite_ps2" ) || is( "skin_ps2" ) )
 	{
 		fog.mode = kPixelFogCombo;
 		fog.paramsRegister = 12; // PSREG_FOG_PARAMS
@@ -8929,8 +9011,9 @@ static void CommitPassFog()
 		memcpy( fog.params, g_psConstants[g_CurrentPixelFog.paramsRegister], sizeof( fog.params ) );
 		fog.misc[0] = g_psConstants[g_CurrentPixelFog.eyeRegister][2];
 		fog.misc[1] = g_CurrentPixelFog.mode == kPixelFogDecal ? 1.0f : 0.0f;
-		// LightmappedGeneric's positions arrive in world space, like skinned ones.
-		if ( g_NumBoneWeights <= 0 && g_CurrentLightmappedCombos < 0 )
+		// LightmappedGeneric's and the skin family's positions arrive in world
+		// space, like skinned ones.
+		if ( g_NumBoneWeights <= 0 && g_CurrentLightmappedCombos < 0 && g_CurrentSkinCombos < 0 )
 		{
 			const float *model = ModelMatrix();
 			fog.worldZ[0] = model[2];
@@ -9357,7 +9440,7 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		++census.draws;
 		if ( census.material.empty() && g_pBoundMaterial )
 			census.material = g_pBoundMaterial->GetName();
-		g_pRenderMesh->EmitToNativeQueue();
+		g_pRenderMesh->EmitDrawRanges();
 	}
 	if ( drawstatefixture::Instance().Enabled() )
 		RecordDrawStateFixture( nPass, nPassCount );

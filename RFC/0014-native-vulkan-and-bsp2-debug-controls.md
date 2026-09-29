@@ -20,6 +20,16 @@
   owns MSAA and alpha to coverage (R65)
 - Verification: [RFC 0005](0005-quality-and-correctness-harnesses.md)
 
+**Binding render rules (user decision, 2026-09-28).** All rendering, lighting and
+material implementation for this RFC is bound by
+[RFC 0016's binding rules](0016-render-core.md#binding-rules-for-all-render-work-user-decision-2026-09-28).
+The legacy render paths are frozen. New work lands on the render core,
+is proven in `render_lab` before any integration, and deletes the old copy
+in the change that replaces it. Where this RFC names
+`materialsystem/shaderapivulkan/` or the engine's CPU lighting path as the
+place for new work, read the render core instead. These rules are not
+negotiable, and only the user can change them.
+
 ## Decision and boundary
 
 Native Vulkan bugs are found today with RenderDoc, environment variables,

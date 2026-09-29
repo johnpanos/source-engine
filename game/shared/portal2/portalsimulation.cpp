@@ -385,7 +385,12 @@ void CPortalSimulator::SetSize( float fHalfWidth, float fHalfHeight )
 
 void CPortalSimulator::MoveTo( const Vector &ptCenter, const QAngle &angles )
 {
-	if( (m_InternalData.Placement.ptCenter == ptCenter) && (m_InternalData.Placement.qAngles == angles) ) //not actually moving at all
+	// An unplaced simulator's center is invalid (NaN). Under -ffast-math a NaN
+	// compares equal to anything, so without the IsValid() test the first move
+	// to angles (0 0 0) (a wall portal facing +x) was taken for "not moving"
+	// and the simulator was never placed: no hole, no teleport.
+	if( m_InternalData.Placement.ptCenter.IsValid() &&
+		(m_InternalData.Placement.ptCenter == ptCenter) && (m_InternalData.Placement.qAngles == angles) ) //not actually moving at all
 		return;
 
 	CREATEDEBUGTIMER( functionTimer );

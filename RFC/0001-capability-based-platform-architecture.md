@@ -8,6 +8,16 @@
 - Implementation: [Phase A](0001-phase-a-progress.md) and [Phase B](0001-phase-b-progress.md) complete in their documented scope; [Portal SDL3/Wayland/Vulkan slice and Phase C–D progress](0001-portal-vulkan-progress.md) verified separately; later slices in the [render seam](0001-render-seam-progress.md), [presentation bridge](0001-presentation-bridge-progress.md), [native Vulkan](0001-native-vulkan-progress.md), [dedicated composition](0001-dedicated-composition-progress.md), [Phase E](0001-phase-e-progress.md) and [capability conformance](0001-conformance-progress.md) records
 - Current native outcome (2026-09-25): Portal renders lit, textured chambers through the native Vulkan backend on SDL3, and DXVK Native remains the compatibility waypoint; R28, R32 and global Phase D retirement remain open (see the update below)
 
+**Binding render rules (user decision, 2026-09-28).** All rendering, lighting and
+material implementation for this RFC is bound by
+[RFC 0016's binding rules](0016-render-core.md#binding-rules-for-all-render-work-user-decision-2026-09-28).
+The legacy render paths are frozen. New work lands on the render core,
+is proven in `render_lab` before any integration, and deletes the old copy
+in the change that replaces it. Where this RFC names
+`materialsystem/shaderapivulkan/` or the engine's CPU lighting path as the
+place for new work, read the render core instead. These rules are not
+negotiable, and only the user can change them.
+
 ## Summary
 
 Source currently organizes shared code into numbered tiers. The tiers provide a

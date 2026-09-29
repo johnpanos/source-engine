@@ -149,6 +149,22 @@
       ]
     },
     {
+      "name": "sp_a2_triple_laser_pillar_corner",
+      "map": "sp_a2_triple_laser",
+      "script": "sp_a2_triple_laser_pillar_corner.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "blue.placed",
+        "blue.faces_south",
+        "orange.placed",
+        "orange.faces_east",
+        "cross.orange_to_blue",
+        "cross.orange_to_blue_heading",
+        "cross.blue_to_orange",
+        "cross.blue_to_orange_heading"
+      ]
+    },
+    {
       "name": "qa_portal_crowd",
       "map": "qa_portal_walk",
       "script": "qa_portal_crowd.nut",

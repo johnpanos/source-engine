@@ -1633,56 +1633,15 @@ void CParticleCollection::VisualizeOperator( const DmObjectId_t *pOpId )
 }
 
 
-float FadeInOut( float flFadeInStart, float flFadeInEnd, float flFadeOutStart, float flFadeOutEnd, float flCurTime )
-{
-	if ( flFadeInStart > flCurTime )						// started yet?
-		return 0.0;
-
-	if ( ( flFadeOutEnd > 0. ) && ( flFadeOutEnd < flCurTime ) ) // timed out?
-		return 0.;
-
-	// handle out of order cases
-	flFadeInEnd = max( flFadeInEnd, flFadeInStart );
-	flFadeOutStart = max( flFadeOutStart, flFadeInEnd );
-	flFadeOutEnd = max( flFadeOutEnd, flFadeOutStart );
-
-	float flStrength = 1.0;
-	if (
-		( flFadeInEnd > flCurTime ) &&
-		( flFadeInEnd > flFadeInStart ) )
-		flStrength = min( flStrength, FLerp( 0, 1, flFadeInStart, flFadeInEnd, flCurTime ) );
-
-	if ( ( flCurTime > flFadeOutStart) &&
-		 ( flFadeOutEnd > flFadeOutStart) )
-		flStrength = min ( flStrength, FLerp( 0, 1, flFadeOutEnd, flFadeOutStart, flCurTime ) );
-
-	return flStrength;
-
-}
-
-bool CParticleCollection::CheckIfOperatorShouldRun( 
+bool CParticleCollection::CheckIfOperatorShouldRun(
 	CParticleOperatorInstance const * pOp ,
 	float *pflCurStrength)
 {
-	if ( pOp->m_nOpEndCapState != -1 )
-	{
-		if ( m_bInEndCap != ( pOp->m_nOpEndCapState == 1 ) )
-		{
-			if ( pflCurStrength )
-				*pflCurStrength = 0.0f;
-			return false;
-		}
-	}
-
-	float flTime=m_flCurTime;
-	if ( pOp->m_flOpFadeOscillatePeriod > 0.0 )
-	{
-		flTime=fmod( m_flCurTime*( 1.0/pOp->m_flOpFadeOscillatePeriod ), 1.0 );
-	}
-
-	float flStrength = FadeInOut( pOp->m_flOpStartFadeInTime, pOp->m_flOpEndFadeInTime,
-								  pOp->m_flOpStartFadeOutTime, pOp->m_flOpEndFadeOutTime,
-								  flTime );
+	// Portal 2 port (CS:GO): the operator's end cap state, fade window and its
+	// per-instance time offset, time scale and strength scale, drawn from this
+	// instance's own random stream (ParticleOperatorStrength::Compute).
+	float flStrength = ParticleOperatorStrength::Compute( *pOp, m_bInEndCap, m_flCurTime,
+		[this]( int nSampleId, float flMin, float flMax ) { return RandomFloat( nSampleId, flMin, flMax ); } );
 	if ( pflCurStrength )
 		*pflCurStrength = flStrength;
 	return ( flStrength > 0.0 );

@@ -412,16 +412,31 @@ def reason_group(reason):
 # Expectations
 
 
-def expectations(results, known, game, checks, ran_all):
+def matches(entry, record):
+    return (record["verdict"] == entry["verdict"] and
+            entry["reason"] in (record.get("reason") or ""))
+
+
+def expectations(results, known, game, checks, ran_all, intermittent=()):
     """Count one check per map against the workload's known failures;
-    unexpected results print first, then the known failures."""
+    unexpected results print first, then the known failures.
+
+    An intermittent entry names a failure reason (and optionally the maps it
+    is seen on): a map failing with it is a known failure, and the same map
+    passing is no news."""
     known_by_map = {item["map"].lower(): item for item in known if item["game"] == game}
+    flaky = [item for item in intermittent if item["game"] == game]
     known_failing = []
     for record in results:
         name = record["map"]
         entry = known_by_map.get(name.lower())
         ok = record["verdict"] in PASSING
         if entry is None:
+            entry = next((item for item in flaky if not ok and matches(item, record) and
+                          name.lower() in [m.lower() for m in item.get("maps", [name])]), None)
+            if entry is not None:
+                known_failing.append((record, entry))
+                continue
             checks.check(ok, "unexpected.%s.%s" % (game, name),
                          "%s: %s" % (record["verdict"], record.get("reason", "")))
             continue
@@ -430,8 +445,7 @@ def expectations(results, known, game, checks, ran_all):
                          "known failure (%s, owner %s) now %s: remove it from the workload"
                          % (entry["verdict"], entry["owner"], record["verdict"]))
             continue
-        same = (record["verdict"] == entry["verdict"] and
-                entry["reason"] in record.get("reason", ""))
+        same = matches(entry, record)
         checks.check(same, "unexpected.%s.%s" % (game, name),
                      "known %s (%s) but got %s: %s" % (entry["verdict"], entry["reason"],
                                                       record["verdict"], record.get("reason")))
@@ -444,7 +458,9 @@ def expectations(results, known, game, checks, ran_all):
                          "known failure names a map that is not in the content")
     for record, entry in known_failing:
         checks.check(False, "known-failure.%s.%s" % (game, record["map"]),
-                     "%s (owner %s): %s" % (record["verdict"], entry["owner"], record["reason"]))
+                     "%s%s (owner %s): %s" % (record["verdict"],
+                                              " (intermittent)" if "map" not in entry else "",
+                                              entry["owner"], record["reason"]))
 
 
 # ---------------------------------------------------------------------------
@@ -639,12 +655,18 @@ def load_workload(path):
     if workload.get("schema") != WORKLOAD_SCHEMA:
         raise ValueError("workload schema must be " + WORKLOAD_SCHEMA)
     for key in ("settle_frames", "map_timeout_seconds", "startup_timeout_seconds",
-                "engine_args", "startup_commands", "exclusions", "known_failures"):
+                "engine_args", "startup_commands", "exclusions", "known_failures",
+                "intermittent_failures"):
         if key not in workload:
             raise ValueError("workload lacks " + key)
     for item in workload["exclusions"]:
         if not item.get("reason") or item.get("game") not in GAME_LAYERS:
             raise ValueError("every exclusion needs a game and a written reason")
+    for item in workload["intermittent_failures"]:
+        if not all(item.get(key) for key in ("game", "verdict", "reason", "owner")) or \
+                "map" in item:
+            raise ValueError("every intermittent failure needs game, verdict, reason and owner, "
+                             "and names no single map")
     for item in workload["known_failures"]:
         if not all(item.get(key) for key in ("game", "map", "verdict", "reason", "owner")):
             raise ValueError("every known failure needs game, map, verdict, reason and owner")
@@ -670,6 +692,28 @@ def summarize(game, results, excluded):
         lines.append("    " + " ".join(names))
     return counts, [{"verdict": verdict, "reason": reason, "maps": names}
                     for (verdict, reason), names in groups.items()], lines
+
+
+def control_sequence(failing, records):
+    """The control run's maps: each failing map after the map its core-run
+    process loaded before it (the same level change), if any. Returns the
+    groups, each kept whole in one control process."""
+    sequence, seen = [], set()
+    for index, name in failing:
+        record = records.get(index, {})
+        before = [other for other in records.values()
+                  if other.get("shard") == record.get("shard") and
+                  other.get("process") == record.get("process") and other["index"] < index]
+        pair = []
+        if before:
+            previous = max(before, key=lambda other: other["index"])
+            pair.append((previous["index"], previous["map"]))
+        pair.append((index, name))
+        group = [item for item in pair if item[0] not in seen]
+        seen.update(item[0] for item in group)
+        if group:
+            sequence.append(group)
+    return sequence
 
 
 def split(items, parts):
@@ -747,6 +791,8 @@ def command_run(args):
         info = staged_runtime(game, args, stage)
         records, processes = sweep(game, stage, shard, workload, core_world, output, tools,
                                    extra, args.width, args.height, "%s%d" % (label, number))
+        for record in records.values():
+            record["shard"] = number
         if not args.keep_runtime:
             shutil.rmtree(stage, ignore_errors=True)
         return info, records, processes
@@ -768,7 +814,8 @@ def command_run(args):
         if failing and not args.no_control:
             print("core_world_smoke: control run (r_core_world 0) of %d failing map(s)"
                   % len(failing), flush=True)
-            control_shards = split(failing, args.jobs)
+            control_shards = [[item for group in groups for item in group]
+                              for groups in split(control_sequence(failing, records), args.jobs)]
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(control_shards)) as pool:
                 futures = [pool.submit(run_shard, number, shard, False, "control")
                            for number, shard in enumerate(control_shards)]
@@ -797,6 +844,7 @@ def command_run(args):
     evidence.update(results=results, counts=counts, failure_groups=groups, processes=processes,
                     staging=staging, elapsed_seconds=round(time.monotonic() - started, 1))
     expectations(results, workload["known_failures"], game, checks,
+                 intermittent=workload["intermittent_failures"],
                  ran_all=not args.map)
     evidence["checks"] = {"checks": checks.checks, "failures": checks.failures}
     evidence["status"] = "pass" if checks.failures == 0 else "fail"
@@ -967,6 +1015,20 @@ def command_self_test(args):
     checks.equal([line.split(":")[0] for line in lines],
                  ["FAIL unexpected.portal.a", "FAIL unexpected.portal.c",
                   "FAIL known-failure.portal.b"], "self_test.expectation-order")
+    # An intermittent reason: a failing map with it is known, a passing map
+    # is no news, a failing map with another reason is unexpected.
+    stream = io.StringIO()
+    inner = conformance_result.Checks(stream)
+    flaky = [{"game": "portal", "verdict": "core-failure", "reason": "core: flake",
+              "owner": "R89"}]
+    expectations([{"map": "d", "verdict": "pass"},
+                  {"map": "e", "verdict": "core-failure", "reason": "core: flake here"},
+                  {"map": "f", "verdict": "core-failure", "reason": "core: other"}],
+                 [], "portal", inner, ran_all=True, intermittent=flaky)
+    lines = [line for line in stream.getvalue().splitlines() if line.startswith("FAIL")]
+    checks.equal([line.split(":")[0] for line in lines],
+                 ["FAIL unexpected.portal.f", "FAIL known-failure.portal.e"],
+                 "self_test.expectation-intermittent")
     stream = io.StringIO()
     inner = conformance_result.Checks(stream)
     expectations([{"map": "b", "verdict": "core-failure", "reason": "core: x"}], known[:1],

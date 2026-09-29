@@ -3427,8 +3427,10 @@ bool CVulkanContext::InitSkinPipeline( std::string *outError )
 	m_skinAttrs[6].location = 6;
 	m_skinAttrs[6].format = VK_FORMAT_R32_SFLOAT;
 	m_skinAttrs[6].offset = sizeof( float ) * 17;
+	// The draw's pixel fog (DrawFog, vertex binding 1), as the textured stage.
+	std::memcpy( m_skinAttrs + 7, m_texTemplate.attrs + 7, sizeof( m_skinAttrs[0] ) * 4 );
 	m_skinVin = m_texTemplate.vin;
-	m_skinVin.vertexAttributeDescriptionCount = 7;
+	m_skinVin.vertexAttributeDescriptionCount = 11;
 	m_skinVin.pVertexAttributeDescriptions = m_skinAttrs;
 	if ( DescriptorSetLimit() < 7 )
 	{

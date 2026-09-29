@@ -25,6 +25,8 @@ bik_ps14.psh
 bik_ps2x.fxc
 bik_vs11.vsh
 bik_vs20.fxc
+black_ps2x.fxc
+black_vs20.fxc
 
 Bloom_ps2x.fxc
 

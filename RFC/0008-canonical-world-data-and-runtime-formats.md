@@ -43,6 +43,16 @@
   `LICENSES/`); Cycles as recorded in RFC 0007. The KTX tool build is feasibility
   evidence, not a runtime integration or platform support claim.
 
+**Binding render rules (user decision, 2026-09-28).** All rendering, lighting and
+material implementation for this RFC is bound by
+[RFC 0016's binding rules](0016-render-core.md#binding-rules-for-all-render-work-user-decision-2026-09-28).
+The legacy render paths are frozen. New work lands on the render core,
+is proven in `render_lab` before any integration, and deletes the old copy
+in the change that replaces it. Where this RFC names
+`materialsystem/shaderapivulkan/` or the engine's CPU lighting path as the
+place for new work, read the render core instead. These rules are not
+negotiable, and only the user can change them.
+
 ## Summary
 
 The user directed that the renderer, BSP, and intermediate formats may be

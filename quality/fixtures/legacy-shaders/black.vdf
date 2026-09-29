@@ -1,0 +1,48 @@
+// Black (black_ps20b / black_vs20): an opaque surface drawn black and fogged
+// to the fog color (Portal 2's distant set dressing, e.g. sp_a1_wakeup's
+// hanging chamber debris). Without fog it is black; range fog blends it to the
+// fog color by the squared fog factor, and height fog (below the fog plane) by
+// the water fog alpha. Varied vertex depths move the fog factor across the quad.
+"LegacyShaderCases"
+{
+	"case"
+	{
+		"name" "black"
+		"shader" "Black"
+		"clear" "180 90 200 255"
+		"material"
+		{
+		}
+		"points" "0.25 0.25 0.75 0.25 0.25 0.75 0.75 0.75"
+	}
+	"case"
+	{
+		"name" "black_range_fog"
+		"shader" "Black"
+		"clear" "180 90 200 255"
+		"material"
+		{
+		}
+		"fog" { "mode" "linear" "start" "0.1" "end" "0.9" "color" "90 140 170" }
+		"vertex" { "pos" "-1 1 0.1" "uv0" "0 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" }
+		"vertex" { "pos" "1 -1 0.9" "uv0" "1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" }
+		"points" "0.1 0.1 0.3 0.2 0.6 0.3 0.8 0.8 0.25 0.75 0.5 0.5 0.9 0.4"
+	}
+	"case"
+	{
+		"name" "black_height_fog"
+		"shader" "Black"
+		"clear" "180 90 200 255"
+		"material"
+		{
+		}
+		"fog" { "mode" "below" "start" "0.1" "end" "1.5" "color" "40 200 90" "z" "0.3" "maxdensity" "0.9" }
+		"vertex" { "pos" "-1 1 0.1" "uv0" "0 0" }
+		"vertex" { "pos" "1 1 0.5" "uv0" "1 0" }
+		"vertex" { "pos" "1 -1 0.9" "uv0" "1 1" }
+		"vertex" { "pos" "-1 -1 0.5" "uv0" "0 1" }
+		"points" "0.1 0.1 0.3 0.2 0.6 0.3 0.8 0.8 0.25 0.75 0.5 0.5 0.9 0.4"
+	}
+}

@@ -47,6 +47,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import conformance_result  # noqa: E402
+import private_session  # noqa: E402
 
 SCHEMA = "portal2-audio/v1"
 METRICS_SCHEMA = "portal2-audio-metrics/v1"
@@ -855,8 +856,9 @@ def capture_retail(args, workload, out):
         "XDG_CONFIG_HOME": str(out / "xdg"),
     })
     display = "p2audio-%d" % os.getpid()
-    command = ["dbus-run-session", "--", "mutter", "--headless", "--wayland", "--virtual-monitor",
-               "1024x768@60", "--wayland-display", display, "--",
+    command = private_session.dbus_run_session(out / "dbus") + [
+               "mutter", "--headless", "--wayland", "--virtual-monitor", "1024x768@60",
+               "--wayland-display", display, "--",
                "./portal2_linux", "-game", "portal2", "-nobreakpad", "-novid", "-multirun",
                "-condebug", "-windowed", "-w", "1024", "-h", "768", "+snd_mute_losefocus", "0",
                "+snd_surround_speakers", "2", *args.extra_arg, "+map", workload["map"]]

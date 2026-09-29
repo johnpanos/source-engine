@@ -25,5 +25,50 @@
     "volume 0"
   ],
   "exclusions": [],
-  "known_failures": []
+  "known_failures": [
+    {
+      "game": "portal2",
+      "map": "sp_a3_crazy_box",
+      "verdict": "core-failure",
+      "reason": "texture materials/metal/metalwall_bts_001a_normal has no material system handle",
+      "owner": "R89 (render core, source-engine-43)",
+      "note": "2026-09-28 at b4773b13: the core claims the cubemap-patched brush material maps/sp_a3_crazy_box/metal/metalwall_bts_001b_1792_-256_-160 and fails its first view: its bump map texture reaches the core without a material system handle. Deterministic; the map loads with r_core_world 0."
+    },
+    {
+      "game": "portal2",
+      "map": "mp_coop_tbeam_polarity2",
+      "verdict": "core-failure",
+      "reason": "a slot names no queued view of the current world",
+      "owner": "R89 (render core, source-engine-43)",
+      "note": "2026-09-28 at b4773b13: fatal when the process changes level to it from mp_coop_tbeam_polarity (the map before it in the sweep); it passes when loaded first. Reproduced in three sweeps and as the pair alone. WorldPass's slot record found no queued view of the current world (render/pass/world/world_pass.cpp): a slot recorded across the level change under mat_queue_mode 2, as a changelevel would in play."
+    },
+    {
+      "game": "portal2",
+      "map": "sp_a3_03",
+      "verdict": "core-failure",
+      "reason": "a slot names no queued view of the current world",
+      "owner": "R89 (render core, source-engine-43)",
+      "note": "2026-09-28 at b4773b13: fatal when the process changes level to it from sp_a3_01 (the map before it in the sweep); it passes when loaded first. Reproduced in three sweeps and as the pair alone. WorldPass's slot record found no queued view of the current world (render/pass/world/world_pass.cpp): a slot recorded across the level change under mat_queue_mode 2, as a changelevel would in play."
+    },
+    {
+      "game": "portal2",
+      "map": "sp_a3_speed_ramp",
+      "verdict": "core-failure",
+      "reason": "a slot names no queued view of the current world",
+      "owner": "R89 (render core, source-engine-43)",
+      "note": "2026-09-28 at b4773b13: fatal when the process changes level to it from sp_a3_speed_flings (the map before it in the sweep); it passes when loaded first. Reproduced in three sweeps and as the pair alone. WorldPass's slot record found no queued view of the current world (render/pass/world/world_pass.cpp): a slot recorded across the level change under mat_queue_mode 2, as a changelevel would in play."
+    }
+  ],
+  "intermittent_failures": [
+    {
+      "game": "portal2",
+      "maps": [
+        "sp_a1_intro1"
+      ],
+      "verdict": "core-failure",
+      "reason": "process died: signal 11",
+      "owner": "R89 (render core, source-engine-43)",
+      "note": "2026-09-28 at b4773b13: one SIGSEGV loading sp_a1_intro1 after mp_coop_wall_intro (a co-op map) with the core on, right after 'Redownloading all lightmaps'; it did not recur in two more sweeps or three runs of the same pair, and the map loads with r_core_world 0. No core dump was retained; the process's engine.log and stdout.log are in the run's evidence. Untriaged: the crash may not be the core's."
+    }
+  ]
 }

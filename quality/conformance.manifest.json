@@ -2735,6 +2735,110 @@
       "expect": "pass"
     },
     {
+      "id": "particles.operator-strength",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0003",
+      "migration": "R21",
+      "contract": "unittests/particlestest/contracts/particles.operator-strength.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "An operator's strength in one particle system instance (public/particles/particle_operator_strength.h, applied by CParticleCollection::CheckIfOperatorShouldRun): hand-computed Portal 2 / CS:GO cases for the per-instance time offset, time scale and strength scale seeds (retail's squared fade strength included) and the end cap state; absent modulation fields give the previous fade-only rule's exact bits over 648,270 cases and draw nothing; and 257 instances with br_train_effects.pcf's seeded operators over 150 ticks give bitwise-equal strengths in the serial and pooled job-graph batches (r_particle_job_graph 1 and 2) and in reverse order, and no longer run in lockstep",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "unittests/particlestest/test_operator_strength.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "particles.operator-strength.no-modulation",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0003",
+      "migration": "R21",
+      "contract": "unittests/particlestest/contracts/particles.operator-strength.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: the fade-only rule, without the per-instance modulation, must be rejected",
+      "extra_flags": [
+        "-pthread",
+        "-DPARTICLE_OPERATOR_STRENGTH_SEEDED_NO_MODULATION"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "unittests/particlestest/test_operator_strength.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "particles.visibility-inputs",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "contract": "unittests/particlestest/contracts/particles.visibility-inputs.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "How a sprite renderer's visibility inputs scale its particles' alpha and radius (public/particles/particle_visibility_inputs.h, applied by SetupParticleVisibility): hand-computed cases from retail Portal 2 renderers for the distance (paint_blob_splat2, rain_sheet), view-dot (br_window_lightbeam), pixel-visibility (env_sparks_d, impact_metal_child_glow) and FOV inputs; renderers that set none of the new inputs keep the previous rule's exact alpha and radius bits over 9,434,880 cases",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/particlestest/test_visibility_inputs.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "particles.visibility-inputs.legacy",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "contract": "unittests/particlestest/contracts/particles.visibility-inputs.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: the previous rule (the pixel visibility remapped through the input range, no distance, dot or FOV input) must be rejected",
+      "extra_flags": [
+        "-DPARTICLE_VISIBILITY_SEEDED_LEGACY"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/particlestest/test_visibility_inputs.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.particles.pcf-fields",
+      "domain": "Q-CONTENT",
+      "rfc": "0005",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "Retail particle files against the particle library's unpack lists (tools/quality/pcf_fields.py): every per-operator modulation field and renderer visibility input the Portal 2 VPKs PCF_PORTAL2_VPKS names set (68 files; about 800 operators each, 1 to 99 renderers) is read with its retail DMX type, and the renderers that set them read the renderer list; an unpack list without \"operator strength scale seed\" is rejected; and the legacy VPKs PCF_LEGACY_VPKS names (Portal's portal/portal_pak_dir.vpk and hl2/hl2_misc_dir.vpk) set none of them and no visibility control point, so the no-op defaults cover all their effects. Not in the repository, so the row is optional.",
+      "command": [
+        "{python}",
+        "tools/quality/pcf_fields.py",
+        "check"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 20,
+      "timeout_seconds": 120,
+      "sources": [
+        "tools/quality/pcf_fields.py",
+        "tools/quality/source_content.py",
+        "public/particles/particles.h",
+        "particles/builtin_particle_render_ops.cpp"
+      ],
+      "requires": [
+        "env:PCF_PORTAL2_VPKS",
+        "env:PCF_LEGACY_VPKS"
+      ],
+      "optional": true,
+      "expect": "pass"
+    },
+    {
       "id": "render.present-policy",
       "domain": "Q-PRESENTATION",
       "rfc": "0001",
@@ -11840,7 +11944,7 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R32",
-      "description": "Portal 2 video retail conformance (game/shared/portal2/README.md, 'Portal 2 video retail conformance'). Shoots quality/workloads/portal2-materials-v1's fixed views (5 maps, 13 views) on build-p2 at 1024x768 through tools/quality/portal2_scenarios.py (SDL offscreen, native Vulkan) and judges each shot against the retail reference (reference.json: 16x12 tile means and per-feature region statistics recorded from retail portal2_linux; numbers only, no retail pixels): tiles, named regions that each pin one defect, unknown shaders, missing proxies and VMT conditionals the material system did not understand against retail's console, and the native backend's per-screenshot dropped-draw census. Known failure while the defects it pins are open (no projected-texture shadow depth, so the void above the bridge chamber keeps a black clear where retail's is white; toxic goo Water not implemented natively, the laser emitter glow, the tractor beam column pale, dev/motion_blur dropped, rusty models and blown-out exteriors); the first is the bridge view's tiles against that void. Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT) and a built build-p2 (SOURCE_PORTAL2_BUILD selects another tree); about 6 minutes.",
+      "description": "Portal 2 video retail conformance (game/shared/portal2/README.md, 'Portal 2 video retail conformance'). Shoots quality/workloads/portal2-materials-v1's fixed views (6 maps, 16 views) on build-p2 at 1024x768 through tools/quality/portal2_scenarios.py (SDL offscreen, native Vulkan) and judges each shot against the retail reference (reference.json: 16x12 tile means and per-feature region statistics recorded from retail portal2_linux; numbers only, no retail pixels): tiles, named regions that each pin one defect, unknown shaders, missing proxies and VMT conditionals the material system did not understand against retail's console, and the native backend's per-screenshot dropped-draw census. Known failure while the defects it pins are open (no projected-texture shadow depth, so the void above the bridge chamber keeps a black clear where retail's is white; toxic goo Water not implemented natively, the laser emitter glow, the tractor beam column pale, dev/motion_blur dropped, rusty models and blown-out exteriors); the first is the bridge view's tiles against that void. Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT) and a built build-p2 (SOURCE_PORTAL2_BUILD selects another tree); about 6 minutes.",
       "command": [
         "{python}",
         "tools/quality/portal2_material_shots.py",
@@ -11849,7 +11953,7 @@
         "{out}"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 60,
+      "min_checks": 74,
       "timeout_seconds": 1800,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
@@ -11867,6 +11971,7 @@
         "quality/workloads/portal2-materials-v1/reference.json",
         "quality/workloads/portal2-materials-v1/materials_views.nut",
         "quality/workloads/portal2-wheatley-v1/qa_driver.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a1_wakeup.nut",
         "quality/workloads/portal2-materials-v1/mat_sp_a2_bridge_intro.nut",
         "quality/workloads/portal2-materials-v1/mat_sp_a2_fizzler_intro.nut",
         "quality/workloads/portal2-materials-v1/mat_sp_a2_laser_over_goo.nut",
@@ -11875,6 +11980,48 @@
       ],
       "expect": "fail",
       "expected_divergence": "FAIL sp_a2_bridge_intro.projector.tiles"
+    },
+    {
+      "id": "corpus.portal2.video-retail.wakeup",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R32",
+      "description": "The checks of corpus.portal2.video-retail that pin two sp_a1_wakeup defects, alone (game/shared/portal2/README.md, 'Portal 2 video retail conformance'): Wheatley carried with the view model grab controller is drawn with the world's FOV, as retail's CViewRender::DrawViewModels draws every view model group renderable that is not a C_BaseViewModel (held_core.beside_core_left/right; with the view model FOV he was about 2.1x retail's size and the pre-fix client fails both at mean 74/75 against retail's 42/49), and the hanging chamber debris uses Portal 2's Black shader (materialsystem/stdshaders/black.cpp, legacy port black_ps20b), a fogged silhouette rather than the wireframe error shader (sp_a1_wakeup.shaders and debris*.debris_sky; the pre-fix shader library fails them with 'Black' unknown and 10% bright pixels against retail's 0%).",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_material_shots.py",
+        "suite",
+        "--out",
+        "{out}",
+        "--scenario",
+        "sp_a1_wakeup",
+        "--only",
+        "^sp_a1_wakeup\\.(shaders|held_core\\.beside_core_|debris(_side)?\\.debris_sky)"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 5,
+      "timeout_seconds": 600,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-materials-v1/scenarios.json",
+        "quality/workloads/portal2-materials-v1/checks.json",
+        "quality/workloads/portal2-materials-v1/reference.json",
+        "quality/workloads/portal2-materials-v1/materials_views.nut",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut",
+        "quality/workloads/portal2-materials-v1/mat_sp_a1_wakeup.nut"
+      ],
+      "expect": "pass"
     },
     {
       "id": "corpus.portal2.video-retail.cables",
@@ -13461,6 +13608,62 @@
       "expected_divergence": "FAIL sp_a1_intro6.info_panel.core-world.core-draws-receivers"
     },
     {
+      "id": "corpus.portal2.mover-shadow.selftest",
+      "kind": "self-test",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "profile": "linux-host-corpus",
+      "description": "The mover-shadow oracle (tools/quality/portal2_mover_shadow.py) against synthetic shots and occlusion reports, no game: an unchanged frame passes; a hard shadow over a third of a region, a faint shadow over a whole region, animated regions, missing shots and a missing occlusion report are each rejected; a region brighter with occlusion on is not a shadow; the control's published box is found and a box elsewhere rejected; the report parser and the console line. Needs numpy and Pillow; about 1 s.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_mover_shadow.py",
+        "selftest"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 19,
+      "timeout_seconds": 300,
+      "sources": [
+        "tools/quality/portal2_mover_shadow.py",
+        "tools/quality/conformance_result.py",
+        "tools/quality/legacy_bsp.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.mover-shadow",
+      "kind": "positive",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "profile": "linux-host-corpus",
+      "description": "Movers at rest cast no shadow on the static world (RFC 0011 render.dynamic-occlusion.v1; the user's sp_a2_core reports of 2026-09-28): tools/quality/portal2_mover_shadow.py suite boots Portal 2's sp_a2_core headless on native Vulkan (build-p2, portal_boot.py, 1024x768, mat_force_tonemap_scale 1) and shoots two scenes with occlusion on, on again and off (r_dynamic_occlusion 0): the Wheatley receptacle deployed with the chamber's projected lights on (its func_brush frame, func_door movers, func_tank pointer and func_door_rotating iris panels), and the stalemate button on its pedestal (func_door button_platform). Checks per scene: facts.brush-movers (the map's movers there are brush entities), boot, static (regions unchanged between the two on shots), occlusion-active (a published occlusion generation) and no-mover-shadow (in regions on the floor and on the pedestal and arm models the old occluder set darkened, occlusion on is at most 0.5 levels darker on average and at most 1 % of pixels darker by more than 4 levels). Live negative control, which must be rejected on no-mover-shadow: a shadow-casting copy of the housing model (prop_dynamic just_elevator.mdl) set at the deployed housing's pose, sunk in the pit as the old frame box was (r_shadows 0), whose boxes must be published. With the pre-fix client (every brush entity published) the receptacle floor darkens by 2.6 levels on 30 % of its pixels and the stalemate pedestal by 10.3 levels. Needs a local Portal 2 install and a GPU; about 2 minutes.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_mover_shadow.py",
+        "suite",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 14,
+      "timeout_seconds": 2400,
+      "requires": [
+        "path:build-p2/c4che/_cache.py",
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/quality/portal2_mover_shadow.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/legacy_bsp.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/conformance_result.py",
+        "game/client/dynamic_occluders.cpp",
+        "public/render/dynamic_occlusion.h",
+        "engine/dynamic_occlusion.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "corpus.core-world.portal",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",
@@ -13496,6 +13699,47 @@
         "engine/render_core_world_draw.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "corpus.core-world.portal2",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R89",
+      "description": "corpus.core-world.portal for Portal 2: every retail map of the Steam installation's portal2, DLC1 and DLC2 search path (SOURCE_PORTAL2_STEAM_ROOT), staged with stage_portal2_runtime.py and the build-p2 products, in two processes (--jobs 2). Maps failing today are known failures in the workload, owned by R89 (render core); they print after any unexpected result, so the row matches only while the known set is exactly what fails.",
+      "command": [
+        "{python}",
+        "tools/quality/core_world_smoke.py",
+        "run",
+        "--game",
+        "portal2",
+        "--jobs",
+        "2",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 118,
+      "timeout_seconds": 5400,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "path:build-p2/c4che/_cache.py",
+        "vulkan-device:gpu"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/core_world_smoke.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/source_content.py",
+        "tools/quality/launch_sandbox.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/core-world-smoke-v1.json",
+        "engine/render_core_world_draw.cpp"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL known-failure.portal2."
     },
     {
       "id": "corpus.core-world.seeded-failure",
@@ -13545,14 +13789,14 @@
       "kind": "self-test",
       "profile": "linux-host-corpus",
       "migration": "R89",
-      "description": "The core-world smoke test's log parser, verdicts and expectations on synthetic engine logs, no game: clean maps pass; no-claims; a strict Sys_Error on the second of three maps (the first passes, the second fails with the core's reason); a missing stats line; failed > 0; process-wide cumulative counters; a map that never loaded; a crash; a timeout; claimed surfaces outside every view (no-claims); control classification; unexpected results printed before known failures.",
+      "description": "The core-world smoke test's log parser, verdicts and expectations on synthetic engine logs, no game: clean maps pass; no-claims; a strict Sys_Error on the second of three maps (the first passes, the second fails with the core's reason); a missing stats line; failed > 0; process-wide cumulative counters; a map that never loaded; a crash; a timeout; claimed surfaces outside every view (no-claims); control classification; unexpected results printed before known failures; intermittent failures matched by reason.",
       "command": [
         "{python}",
         "tools/quality/core_world_smoke.py",
         "self-test"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 20,
+      "min_checks": 21,
       "sources": [
         "tools/quality/core_world_smoke.py",
         "tools/quality/conformance_result.py"

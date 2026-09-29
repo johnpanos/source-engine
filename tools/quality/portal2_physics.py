@@ -53,6 +53,7 @@ import time
 import conformance
 import conformance_result
 import portal2_scenarios
+import private_session
 import stage_portal2_runtime
 
 
@@ -223,8 +224,9 @@ def run_retail_scenario(scenario, mirror, output, tool_directory, extra_args=())
     game = ["./portal2_linux", "-game", "portal2", "-novid", "-multirun", "-condebug",
             "-windowed", "-w", "1024", "-h", "768", "+snd_mute_losefocus", "0", "+volume", "0",
             *extra_args, "+map", scenario["map"]]
-    command = ["dbus-run-session", "--", "mutter", "--headless", "--wayland",
-               "--virtual-monitor", "1024x768@60", "--wayland-display", display, "--", *game]
+    command = private_session.dbus_run_session(output / "dbus") + [
+        "mutter", "--headless", "--wayland", "--virtual-monitor", "1024x768@60",
+        "--wayland-display", display, "--", *game]
     started = time.monotonic()
     timed_out = False
     with (output / "stdout.log").open("wb") as stream:

@@ -225,7 +225,6 @@ ALLOWED = {
     "portal2_audio.py": "pending: retail cohort (links the retail binary; busy file)",
     "portal2_material_shots.py": "pending: retail cohort (busy file)",
     "portal2_physics.py": "pending: retail cohort (busy file)",
-    "legacy_shader_conformance.py": "pending: busy file",
 }
 
 

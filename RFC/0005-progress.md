@@ -494,7 +494,7 @@ stats) went to the stage.
 | Launcher | Game write location before | Verdict before | Now |
 | --- | --- | --- | --- |
 | `portal_boot.py`, `frame_pacing.py`, `bsp2_dedicated.py` (+`usd_map_runtime`), `material_pixel_conformance.py` | private per-run stage | leaks HOME (driver caches, anything a library saves) | migrated |
-| `legacy_shader_conformance.py` | private stage | leaks HOME | deferred (busy file) |
+| `legacy_shader_conformance.py` | private stage | leaks HOME | migrated (2026-09-28, both runs of `--native-against-port`) |
 | `fstop_mechanics_check.py` | fixed `run/runtime-fstop-check`, shared by scenarios | leaks HOME; `--runtime run/runtime-fstop` wrote the player runtime and then `rmtree`'d it | migrated; refused before staging |
 | `portal2_scenarios.py` (+ build sides of material shots, physics) | persistent `run/runtime-p2-*` | leaks HOME; `--runtime run/runtime-p2` accepted | migrated; refused before staging |
 | `portal2_map_views.py` (+`portal2_gi_chamber --capture`) | `run/runtime-p2-views` | leaks HOME | migrated; refused before staging |

@@ -902,8 +902,11 @@ void CStudioRenderContext::R_StudioBuildMeshStrips( studiomeshgroup_t* pMeshGrou
 	int i;
 	int stripDataSize = 0;
 
-	size_t stripHdrSize = (pStripGroup->flags & OptimizedModel::STRIPGROUP_IS_MDL49)
-		? sizeof(OptimizedModel::StripHeader_v49_t) : sizeof(OptimizedModel::StripHeader_t);
+	// Every consumer indexes m_pStripData as StripHeader_t, so MDL 49 strips
+	// (StripHeader_v49_t: the same fields plus topology) are stored in that
+	// layout. Mixing the two strides shifted each later strip's bone state
+	// changes by one entry per strip, skinning its vertices to the wrong bones.
+	const size_t stripHdrSize = sizeof(OptimizedModel::StripHeader_t);
 
 	for( i = 0; i < pStripGroup->numStrips; ++i )
 	{

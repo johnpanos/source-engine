@@ -1998,7 +1998,7 @@ private:
 	VkDescriptorPool m_skinUboPool = VK_NULL_HANDLE;
 	VkShaderModule m_skinVert = VK_NULL_HANDLE;
 	VkShaderModule m_skinFrag = VK_NULL_HANDLE;
-	VkVertexInputAttributeDescription m_skinAttrs[7] = {};
+	VkVertexInputAttributeDescription m_skinAttrs[11] = {};
 	VkPipelineVertexInputStateCreateInfo m_skinVin = {};
 	struct SkinUniformBuffer
 	{

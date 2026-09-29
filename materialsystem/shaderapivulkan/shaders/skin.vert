@@ -11,13 +11,18 @@
 //
 // Inputs (the shared dynamic vertex): 0 world position, 1 light attenuation of
 // lights 0..2, 2 texture coordinate, 4 world normal, 5 world tangent S with the
-// flip in w, 6 light attenuation of light 3.
+// flip in w, 6 light attenuation of light 3; 7..10 the draw's pixel fog
+// (CVulkanContext::DrawFog, one record per instance), passed to the pixel stage.
 layout( location = 0 ) in vec3 inPos;
 layout( location = 1 ) in vec3 inLightAtten;
 layout( location = 2 ) in vec2 inUv;
 layout( location = 4 ) in vec3 inNormal;
 layout( location = 5 ) in vec4 inTangent;
 layout( location = 6 ) in float inAtten3;
+layout( location = 7 ) in vec4 inFogColor;
+layout( location = 8 ) in vec4 inFogParams;
+layout( location = 9 ) in vec4 inFogWorldZ;
+layout( location = 10 ) in vec4 inFogMisc;
 layout( location = 0 ) out vec2 vBaseUv;
 layout( location = 1 ) out vec4 vLightAtten;
 layout( location = 2 ) out vec3 vWorldVertToEye;
@@ -25,6 +30,10 @@ layout( location = 3 ) out vec3 vTangentS;
 layout( location = 4 ) out vec3 vTangentT;
 layout( location = 5 ) out vec3 vNormal;
 layout( location = 6 ) out vec3 vWorldPos;
+layout( location = 7 ) flat out vec4 fragFogColor;
+layout( location = 8 ) flat out vec4 fragFogParams;
+layout( location = 9 ) flat out vec4 fragFogMisc;
+layout( location = 10 ) out vec2 fragFogDepth;
 layout( push_constant ) uniform Constants
 {
 	mat4 viewProj;   // cViewProj (laid out like demo_dyn.vert's mvp)
@@ -60,6 +69,11 @@ void main()
 	vTangentS = worldTangentS;
 	vTangentT = worldTangentT;
 	vNormal = worldNormal;
+
+	fragFogColor = inFogColor;
+	fragFogParams = inFogParams;
+	fragFogMisc = inFogMisc;
+	fragFogDepth = vec2( projPos.z, dot( inFogWorldZ, vec4( inPos, 1.0 ) ) );
 
 	gl_ClipDistance[0] = dot( consts.clipPlanes[0], projPos );
 	gl_ClipDistance[1] = dot( consts.clipPlanes[1], projPos );

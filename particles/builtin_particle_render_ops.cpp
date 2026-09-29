@@ -49,38 +49,58 @@ static inline int GetMaxParticlesPerBatch( IMatRenderContext *pRenderContext, IM
 		return min( (nMaxVertices / 4), (nMaxIndices / 6) );
 }
 
-void SetupParticleVisibility( CParticleCollection *pParticles, CParticleVisibilityData *pVisibilityData, const CParticleVisibilityInputs *pVisibilityInputs, int *nQueryHandle )
+//-----------------------------------------------------------------------------
+// Portal 2 port (CS:GO): the renderer's visibility scales from its pixel
+// visibility, view-dot and distance inputs at the visibility control point, and
+// its FOV base (ParticleVisibility in particle_visibility_inputs.h owns the
+// rule). The view origin of the dot input is the camera of the view being
+// drawn; retail asks the client for CurrentViewOrigin(), the same point.
+//-----------------------------------------------------------------------------
+void SetupParticleVisibility( CParticleCollection *pParticles, CParticleVisibilityData *pVisibilityData,
+	const CParticleVisibilityInputs *pVisibilityInputs, int *nQueryHandle, IMatRenderContext *pRenderContext )
 {
-	float flScale = pVisibilityInputs->m_flProxyRadius;
-	Vector vecOrigin;
-	/*
-	if ( pVisibilityInputs->m_bUseBBox )
-	{
-		Vector vecMinBounds;
-		Vector vecMaxBounds;
-		Vector mins;
-		Vector maxs;
-
-		pParticles->GetBounds( &vecMinBounds, &vecMaxBounds );
-
-		vecOrigin = ( ( vecMinBounds + vecMaxBounds ) / 2 );
-
-		Vector vecBounds = ( vecMaxBounds - vecMinBounds );
-
-		flScale = ( max(vecBounds.x, max (vecBounds.y, vecBounds.z) ) * pVisibilityInputs->m_flBBoxScale );
-	}
+	float flPixelVisibility = 1.0f;
+	float flDot = 0.0f;
+	float flDistance = 0.0f;
 	if ( pVisibilityInputs->m_nCPin >= 0 )
 	{
-		vecOrigin = pParticles->GetControlPointAtCurrentTime( pVisibilityInputs->m_nCPin );
+		const Vector &vecOrigin = pParticles->GetControlPointAtCurrentTime( pVisibilityInputs->m_nCPin );
+		if ( ParticleVisibility::UsesPixelVisibility( *pVisibilityInputs ) )
+		{
+			flPixelVisibility = g_pParticleSystemMgr->Query()->GetPixelVisibility(
+				nQueryHandle, vecOrigin, pVisibilityInputs->m_flProxyRadius );
+		}
+		if ( ParticleVisibility::UsesDot( *pVisibilityInputs ) || ParticleVisibility::UsesDistance( *pVisibilityInputs ) )
+		{
+			Vector vecCameraPos;
+			pRenderContext->GetWorldSpaceCameraPosition( &vecCameraPos );
+			if ( ParticleVisibility::UsesDot( *pVisibilityInputs ) )
+			{
+				Vector vecForward, vecRight, vecUp;
+				pParticles->GetControlPointOrientationAtCurrentTime(
+					pVisibilityInputs->m_nCPin, &vecForward, &vecRight, &vecUp );
+				Vector vecToControlPoint = vecOrigin - vecCameraPos;
+				VectorNormalize( vecToControlPoint );
+				flDot = DotProduct( vecForward, vecToControlPoint );
+			}
+			if ( ParticleVisibility::UsesDistance( *pVisibilityInputs ) )
+			{
+				Vector vecDelta = vecOrigin - vecCameraPos;
+				flDistance = vecDelta.Length();
+			}
+		}
 	}
-	*/
-	vecOrigin = pParticles->GetControlPointAtCurrentTime( pVisibilityInputs->m_nCPin );
-	float flVisibility = g_pParticleSystemMgr->Query()->GetPixelVisibility( nQueryHandle, vecOrigin, flScale );
 
-	pVisibilityData->m_flAlphaVisibility = RemapValClamped( flVisibility, pVisibilityInputs->m_flInputMin, 
-		pVisibilityInputs->m_flInputMax, pVisibilityInputs->m_flAlphaScaleMin, pVisibilityInputs->m_flAlphaScaleMax  );
-	pVisibilityData->m_flRadiusVisibility = RemapValClamped( flVisibility, pVisibilityInputs->m_flInputMin, 
-		pVisibilityInputs->m_flInputMax, pVisibilityInputs->m_flRadiusScaleMin, pVisibilityInputs->m_flRadiusScaleMax  );
+	float flVisibility = ParticleVisibility::Compute( *pVisibilityInputs, flPixelVisibility, flDot, flDistance );
+	pVisibilityData->m_flAlphaVisibility = ParticleVisibility::AlphaScale( *pVisibilityInputs, flVisibility );
+	pVisibilityData->m_flRadiusVisibility = ParticleVisibility::RadiusScale( *pVisibilityInputs, flVisibility );
+	if ( ParticleVisibility::UsesFOV( *pVisibilityInputs ) )
+	{
+		matrix3x4_t projMatrix;
+		pRenderContext->GetMatrix( MATERIAL_PROJECTION, &projMatrix );
+		pVisibilityData->m_flRadiusVisibility *=
+			ParticleVisibility::FOVRadiusScale( *pVisibilityInputs, projMatrix.m_flMatVal[0][0] );
+	}
 
 	pVisibilityData->m_flCameraBias = pVisibilityInputs->m_flCameraBias;
 }
@@ -300,10 +320,7 @@ class C_OP_RenderSprites : public C_OP_RenderPoints
 		C_OP_RenderSpritesContext_t *pCtx = reinterpret_cast<C_OP_RenderSpritesContext_t *>( pContext );
 		pCtx->m_nOrientationVarToken = 0;
 		pCtx->m_nOrientationMatrixVarToken = 0;
-		if ( VisibilityInputs.m_nCPin >= 0 )
-			pCtx->m_VisibilityData.m_bUseVisibility = true;
-		else
-			pCtx->m_VisibilityData.m_bUseVisibility = false;
+		pCtx->m_VisibilityData.m_bUseVisibility = ParticleVisibility::IsUsed( VisibilityInputs );
 
 		pCtx->m_VisibilityData.m_flCameraBias = VisibilityInputs.m_flCameraBias;
 	}
@@ -1225,7 +1242,7 @@ void C_OP_RenderSprites::Render( IMatRenderContext *pRenderContext, CParticleCol
 
 	if ( pCtx->m_VisibilityData.m_bUseVisibility )
 	{
-		SetupParticleVisibility( pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle );
+		SetupParticleVisibility( pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle, pRenderContext );
 	}
 
 
@@ -1428,10 +1445,7 @@ class C_OP_RenderSpritesTrail : public CParticleRenderOperatorInstance
 	virtual void InitializeContextData( CParticleCollection *pParticles, void *pContext ) const
 	{
 		C_OP_RenderSpriteTrailContext_t *pCtx = reinterpret_cast<C_OP_RenderSpriteTrailContext_t *>( pContext );
-		if ( VisibilityInputs.m_nCPin >= 0 )
-			pCtx->m_VisibilityData.m_bUseVisibility = true;
-		else
-			pCtx->m_VisibilityData.m_bUseVisibility = false;
+		pCtx->m_VisibilityData.m_bUseVisibility = ParticleVisibility::IsUsed( VisibilityInputs );
 		pCtx->m_VisibilityData.m_flCameraBias = VisibilityInputs.m_flCameraBias;
 	}
 
@@ -1766,7 +1780,7 @@ void C_OP_RenderSpritesTrail::Render( IMatRenderContext *pRenderContext, CPartic
 
 	if ( pCtx->m_VisibilityData.m_bUseVisibility )
 	{
-		SetupParticleVisibility( pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle );
+		SetupParticleVisibility( pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle, pRenderContext );
 	}
 
 	bool bSpriteCard = pMaterial->IsSpriteCard();
@@ -2404,10 +2418,7 @@ class C_OP_RenderBlobs : public CParticleRenderOperatorInstance
 	virtual void InitializeContextData( CParticleCollection *pParticles, void *pContext ) const
 	{
 		C_OP_RenderBlobsContext_t *pCtx = reinterpret_cast<C_OP_RenderBlobsContext_t *>( pContext );
-		if ( VisibilityInputs.m_nCPin >= 0 )
-			pCtx->m_VisibilityData.m_bUseVisibility = true;
-		else
-			pCtx->m_VisibilityData.m_bUseVisibility = false;
+		pCtx->m_VisibilityData.m_bUseVisibility = ParticleVisibility::IsUsed( VisibilityInputs );
 		pCtx->m_VisibilityData.m_flCameraBias = VisibilityInputs.m_flCameraBias;
 	}
 
@@ -2447,7 +2458,7 @@ void C_OP_RenderBlobs::Render( IMatRenderContext *pRenderContext, CParticleColle
 
 	if ( pCtx->m_VisibilityData.m_bUseVisibility )
 	{
-		SetupParticleVisibility( pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle );
+		SetupParticleVisibility( pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle, pRenderContext );
 	}
 
 
@@ -2571,10 +2582,7 @@ class C_OP_RenderScreenVelocityRotate : public CParticleRenderOperatorInstance
 	virtual void InitializeContextData( CParticleCollection *pParticles, void *pContext ) const
 	{
 		C_OP_RenderScreenVelocityRotateContext_t *pCtx = reinterpret_cast<C_OP_RenderScreenVelocityRotateContext_t *>( pContext );
-		if ( VisibilityInputs.m_nCPin >= 0 )
-			pCtx->m_VisibilityData.m_bUseVisibility = true;
-		else
-			pCtx->m_VisibilityData.m_bUseVisibility = false;
+		pCtx->m_VisibilityData.m_bUseVisibility = ParticleVisibility::IsUsed( VisibilityInputs );
 		pCtx->m_VisibilityData.m_flCameraBias = VisibilityInputs.m_flCameraBias;
 	}
 	uint32 GetWrittenAttributes( void ) const
@@ -2603,7 +2611,7 @@ void C_OP_RenderScreenVelocityRotate::Render( IMatRenderContext *pRenderContext,
 	C_OP_RenderScreenVelocityRotateContext_t *pCtx = reinterpret_cast<C_OP_RenderScreenVelocityRotateContext_t *>( pContext );
 	if ( pCtx->m_VisibilityData.m_bUseVisibility )
 	{
-		SetupParticleVisibility( pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle );
+		SetupParticleVisibility( pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle, pRenderContext );
 	}
 
 
@@ -2914,7 +2922,7 @@ class C_OP_RenderBlobs : public CParticleRenderOperatorInstance
 	virtual void InitializeContextData( CParticleCollection *pParticles, void *pContext ) const
 	{
 		C_OP_RenderBlobsContext_t *pCtx = reinterpret_cast<C_OP_RenderBlobsContext_t *>( pContext );
-		pCtx->m_VisibilityData.m_bUseVisibility = ( VisibilityInputs.m_nCPin >= 0 );
+		pCtx->m_VisibilityData.m_bUseVisibility = ParticleVisibility::IsUsed( VisibilityInputs );
 		pCtx->m_VisibilityData.m_flCameraBias = VisibilityInputs.m_flCameraBias;
 	}
 
@@ -2944,7 +2952,7 @@ void C_OP_RenderBlobs::Render(
 	if ( pCtx->m_VisibilityData.m_bUseVisibility )
 	{
 		SetupParticleVisibility(
-		    pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle );
+		    pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle, pRenderContext );
 	}
 
 	IMaterial *pMaterial = pParticles->m_pDef->GetMaterial();

@@ -1087,6 +1087,12 @@ void CPortal_Base2D::WakeNearbyEntities( void )
 			if( IsOBBIntersectingOBB( ptOrigin, qAngles, vLocalMins, vLocalMaxs, 
 				ptEntityCenter, pEntCollision->GetCollisionAngles(), pEntCollision->OBBMins(), pEntCollision->OBBMaxs() ) )
 			{
+				// A portal opened over a security camera's mount cuts it off the wall
+				if( FClassnameIs( pEntity, "npc_security_camera" ) )
+				{
+					pEntity->AcceptInput( "Ragdoll", this, this, variant_t(), 0 );
+				}
+
 				pEntity->WakeRestingObjects();
 				//pEntity->SetGroundEntity( NULL );
 
