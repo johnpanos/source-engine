@@ -470,3 +470,136 @@ policy exception, not a recorded gap.
 Not covered: Apple and MSVC toolchains (optional), and hosted CI runs of the
 toolchain lanes.
 
+
+## Fast-math NaN audit (slice, 2026-09-28)
+
+Trigger: Portal 2 portals facing +x could not be entered
+(`sp_a2_triple_laser_pillar_corner`). A new `CPortalSimulator` starts with
+an `Invalidate()`d (NaN) center, and `MoveTo`'s "not moving" test compared
+it with `==`. The fix there (a `ptCenter.IsValid()` guard) belongs to
+another session and is not part of this slice.
+
+Flags (`scripts/waifulib/compiler_optimizations.py`, observed in
+`build-p2` and `build-p2-asan`):
+
+- Release, all compilers: `-O2 -funsafe-math-optimizations -ftree-vectorize
+  -ffast-math`, plus `-march=core2 -mfpmath=sse` on x86 from the root
+  `wscript`. `-ffast-math` implies `-ffinite-math-only` and
+  `-fno-signed-zeros`. `fast` is `-Ofast`, and gcc `fastnative` is
+  `-funsafe-math-optimizations`.
+- Debug: `-g -O0`, IEEE.
+- Exceptions: strict `cxx20` capability targets drop `-ffast-math`
+  (`strict_cpp20.py`); `debugapi` and `box3d-c17` drop it too.
+- Clang builds the Android, iOS and tvOS products.
+
+Probed with GCC 16.2.1 and clang 22.1.8 under those flags, with inputs from
+`volatile` bits so nothing is constant-folded:
+
+- A NaN is `==` to everything and `!=` to nothing, and `x != x` is false.
+- `std::isnan` and `isnan` fold to false. `std::isfinite` folds to true,
+  for infinity too.
+- Ordered comparisons depend on the codegen. Under GCC, `NaN > 0` held.
+  Under clang, `IsEntityPositionReasonable(NaN)` returned true, and
+  `fabsf(NaN) < 1e30f` held.
+- Clang marks by-value float parameters `nofpclass(nan inf)`, so a plain
+  bit test of a parameter can fold (`AlmostEqual`).
+
+Helper decision:
+
+- tier0 `IsFinite` (with its clang asm guard), `Vector`/`QAngle` `IsValid`
+  and mathlib `IS_NAN` (it masks against the extern `nanmask`) are
+  bit-based. They are correct under both compilers and are unchanged.
+- New `public/foundation/float_classify.h` (`foundation::IsNaN` and
+  `foundation::IsFinite`, float and double) serves code without tier0:
+  capability libraries, tools and `double` values. It takes its argument
+  by reference, copies the bits and puts an empty-asm barrier on them. It
+  does not include `<cstring>` on GCC/clang, because tier1 headers
+  redefine `strncpy`.
+- Limit: clang may still assume that a value computed by fast-math
+  arithmetic in the same function, or a by-value parameter, is finite. The
+  tests are reliable for stored, loaded or passed-in values.
+
+Fixed (broken under the release flags):
+
+- `game/server/portal2/portal/prop_mirror.cpp` (3 sites) and
+  `game/client/portal2/portal/c_prop_mirror.cpp` (5 sites). Each is an
+  `Invalidate()`d cache compared with `==`/`!=`, so an unset cache counted
+  as a hit and a mirror's reflection matrix or polygon was never built. An
+  `IsValid()` guard restores the IEEE (debug build) behavior.
+- `game/shared/baseentity_shared.h`: the five `IsEntity*Reasonable`
+  helpers now test `IsFinite`/`IsValid` first; they let NaN through under
+  clang. `CheckEntityVelocity` rejects a NaN velocity (-1) first; before,
+  it could accept it or "clamp" it to NaN.
+- `game/shared/blobulator/PhysTiler.cpp`: GCC mapped a NaN coordinate to
+  `INT64_MIN`, and callers then add -1 to it (signed overflow), instead of
+  the lowest cell.
+- `mathlib/almostequal.cpp`: a NaN is now rejected before the infinity
+  test's `a == b` (GCC returned inf == NaN), and `AE_IsNan` uses the
+  barrier helper (clang returned NaN == NaN).
+- `mapcontainer/{probe_volume,radiosity_transfer,sdf_volume,reflection_probes}.cpp`:
+  the BSP2 lump validators' `std::isfinite`, so malformed NaN or infinity
+  lumps were accepted.
+- `inputsystem/gamepad_rumble.cpp` and `vibrator_policy.cpp`: GCC gave
+  `MotorLevel(NaN)` = `INT_MIN`, and infinity drove the motors at full.
+- `utils/vbsp/authoredmap.cpp` (2 sites, input validation) and
+  `utils/vbsp/worldstage.cpp` (2 sites, BSP plane and winding checks).
+- `unittests/physicstest/test_vphysics_conformance.cpp`: the
+  `IsFiniteVec` oracle depended on NaN failing a magnitude comparison.
+
+Fine (no change):
+
+- The 18 `IS_NAN` uses.
+- The 107 `vec3_invalid` uses. It is `FLT_MAX`, which is finite.
+- `VEC_T_NAN`/`FLOAT32_NAN` writes under `_DEBUG` (debug is IEEE), and
+  the `FLOAT32_NAN_BITS` integer compares.
+- `portal_mp_gamerules` (tier0 `IsFinite`) and `portal_base2d` (`IsValid`).
+- 50 `isnan`/`isfinite` calls in IEEE targets, and 36 in suites that the
+  conformance runner or the Android gyro script build without fast-math.
+- `worldstage.cpp:479`: an `istream` never yields a non-finite value.
+- Not built on any declared profile: `common/ihfx` (`x != x`), MFC
+  `hammer/`, `compressed_3d_unitvec.h`.
+
+Deferred:
+
+- `ivp` is an upstream submodule (nillerusr/source-physics).
+  `hk_Rigid_Body_Core::apply_impulses`' `isnan(impulse_strength[0])`
+  guard folds to false. The bit-test patch is in the audit report and
+  needs a submodule decision.
+- `quality/conformance.manifest.json` had another session's uncommitted
+  edits, so the suite rows below are not registered yet.
+- `mapcontainer/reflection_probes.cpp` seeds min/max searches with
+  `INFINITY`, which clang flags as UB under fast-math. It runs correctly
+  on x86-64 with both compilers, so it is not changed.
+- `world.reflection-probes` under clang fast-math fails
+  `light removed scales the capture` by exact float equality. That is
+  reassociation, not NaN handling, and belongs to R50.
+
+Regression suite: `unittests/mathlibtest/fastmath_nan_conformance.cpp`
+(checks-v1, 64 checks). It covers the helpers above, the unset-cache guard,
+`AlmostEqual` and the motor policies, all built with the release flags.
+Pending manifest rows (reproduce with a manifest holding just these rows,
+`conformance.py --manifest <file> check --cxx g++|clang++`):
+
+- `fastmath.nan-classify`: pass.
+- `.naive`: `-DFASTMATH_NAN_NAIVE` swaps in `x != x`, `std::isnan`,
+  `std::isfinite` and a plain `!=`, and must fail at `FAIL float.isnan.0`.
+  24 of 64 checks fail.
+- `.naive-ieee`: the same build without fast-math, which passes.
+- `world.{probe-volume,radiosity-transfer,sdf-volume}.fastmath`: these
+  build the product sources with the release flags and keep the oracle
+  IEEE.
+
+Evidence:
+
+- All 6 rows match on g++ and clang++, in the default and release
+  configurations.
+- Built from the `HEAD` product sources, the rows fail: the audit suite
+  (g++ 5 checks, clang 4), probe-volume ("NaN origin"), radiosity-transfer
+  ("patch-nan") and sdf-volume (g++ "max-distance").
+- 21 existing headless suites over the edited files pass on both
+  compilers (2 optional TSan rows skipped).
+- Every edited product TU compiles with its recorded `build-p2`,
+  `build-p2-asan`, `build-fstop` and tools-tree command lines.
+
+Not run: a full product rebuild, a game session with a `prop_mirror`,
+Android and iOS devices, and `-m32` legacy builds of the new header.

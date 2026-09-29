@@ -9,6 +9,8 @@
 
 #include "blobulator/physics/PhysTiler.h"
 
+#include "foundation/float_classify.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -35,7 +37,9 @@ long long CellCoordinate( float flValue, float flOrigin, double flCellWidth )
 	// Floats are exact in double, so the subtraction is exact and only the
 	// division rounds (relative 1e-16, inside CELL_MARGIN).
 	double flCell = std::floor( ( double( flValue ) - double( flOrigin ) ) / flCellWidth );
-	if ( !( flCell >= double( -CELL_LIMIT ) ) )		// also catches NaN
+	// NaN goes to the lowest cell. The NaN test is bit-based: under the
+	// products' -ffast-math the comparison lets NaN through (GCC).
+	if ( foundation::IsNaN( flCell ) || !( flCell >= double( -CELL_LIMIT ) ) )
 		return -CELL_LIMIT;
 	if ( flCell > double( CELL_LIMIT - 1 ) )
 		return CELL_LIMIT - 1;

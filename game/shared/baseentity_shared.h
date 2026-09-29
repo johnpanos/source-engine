@@ -255,19 +255,19 @@ extern float k_flMaxEntityEulerAngle;
 extern float k_flMaxEntitySpeed;
 extern float k_flMaxEntitySpinRate;
 
+// These reject NaN with the bit-based IsFinite/IsValid first: under the
+// products' -ffast-math a NaN may pass the range comparisons (clang does).
+
 inline bool IsEntityCoordinateReasonable ( const vec_t c )
 {
 	float r = k_flMaxEntityPosCoord;
-	return c > -r && c < r;
+	return IsFinite( c ) && c > -r && c < r;
 }
 
 inline bool IsEntityPositionReasonable( const Vector &v )
 {
 	float r = k_flMaxEntityPosCoord;
-	return
-		v.x > -r && v.x < r &&
-		v.y > -r && v.y < r &&
-		v.z > -r && v.z < r;
+	return v.IsValid() && v.x > -r && v.x < r && v.y > -r && v.y < r && v.z > -r && v.z < r;
 }
 
 // Returns:
@@ -279,30 +279,21 @@ extern int CheckEntityVelocity( Vector &v );
 inline bool IsEntityQAngleReasonable( const QAngle &q )
 {
 	float r = k_flMaxEntityEulerAngle;
-	return
-		q.x > -r && q.x < r &&
-		q.y > -r && q.y < r &&
-		q.z > -r && q.z < r;
+	return q.IsValid() && q.x > -r && q.x < r && q.y > -r && q.y < r && q.z > -r && q.z < r;
 }
 
 // Angular velocity in exponential map form
 inline bool IsEntityAngularVelocityReasonable( const Vector &q )
 {
 	float r = k_flMaxEntitySpinRate;
-	return
-		q.x > -r && q.x < r &&
-		q.y > -r && q.y < r &&
-		q.z > -r && q.z < r;
+	return q.IsValid() && q.x > -r && q.x < r && q.y > -r && q.y < r && q.z > -r && q.z < r;
 }
 
 // Angular velocity of each Euler angle.
 inline bool IsEntityQAngleVelReasonable( const QAngle &q )
 {
 	float r = k_flMaxEntitySpinRate;
-	return
-		q.x > -r && q.x < r &&
-		q.y > -r && q.y < r &&
-		q.z > -r && q.z < r;
+	return q.IsValid() && q.x > -r && q.x < r && q.y > -r && q.y < r && q.z > -r && q.z < r;
 }
 
 extern bool CheckEmitReasonablePhysicsSpew();

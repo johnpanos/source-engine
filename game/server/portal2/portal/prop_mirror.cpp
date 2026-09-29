@@ -185,7 +185,12 @@ void CProp_Mirror::UpdateReflectionPlane( void )
 		qMirrorAttachmentAngles = GetAbsAngles();
 	}
 
-	if( (m_CachedReflectedData.vAttachmentOrigin != vMirrorAttachmentOrigin) || (m_CachedReflectedData.qAttachmentAngle != qMirrorAttachmentAngles) )
+	// The cache starts Invalidate()d (NaN). Under the products' -ffast-math a NaN
+	// compares equal to anything, so the IsValid() tests keep an unset cache a miss.
+	if ( !m_CachedReflectedData.vAttachmentOrigin.IsValid() ||
+	     !m_CachedReflectedData.qAttachmentAngle.IsValid() ||
+	     ( m_CachedReflectedData.vAttachmentOrigin != vMirrorAttachmentOrigin ) ||
+	     ( m_CachedReflectedData.qAttachmentAngle != qMirrorAttachmentAngles ) )
 	{
 		m_CachedReflectedData.vAttachmentOrigin = vMirrorAttachmentOrigin;
 		m_CachedReflectedData.qAttachmentAngle = qMirrorAttachmentAngles;		
@@ -236,8 +241,14 @@ void CProp_Mirror::UpdateReflectionPolygon( void )
 		QAngle qLocalAttachmentAngles;
 		GetAttachmentLocal( m_iMirrorFaceAttachment, vLocalAttachmentOrigin, qLocalAttachmentAngles );
 
-		if( (vMins == m_CachedReflectedData.vLocalOBB_Mins) && (vMaxs == m_CachedReflectedData.vLocalOBB_Maxs) && 
-			(vLocalAttachmentOrigin == m_CachedReflectedData.vLocalSpaceAttachmentOrigin) && (qLocalAttachmentAngles == m_CachedReflectedData.qLocalSpaceAttachmentAngles) )
+		// IsValid(): an Invalidate()d (NaN) entry compares equal under -ffast-math.
+		if ( m_CachedReflectedData.vLocalOBB_Maxs.IsValid() &&
+		     m_CachedReflectedData.vLocalSpaceAttachmentOrigin.IsValid() &&
+		     m_CachedReflectedData.qLocalSpaceAttachmentAngles.IsValid() &&
+		     ( vMins == m_CachedReflectedData.vLocalOBB_Mins ) &&
+		     ( vMaxs == m_CachedReflectedData.vLocalOBB_Maxs ) &&
+		     ( vLocalAttachmentOrigin == m_CachedReflectedData.vLocalSpaceAttachmentOrigin ) &&
+		     ( qLocalAttachmentAngles == m_CachedReflectedData.qLocalSpaceAttachmentAngles ) )
 		{
 			return; //nothing to update
 		}
@@ -286,7 +297,10 @@ void CProp_Mirror::UpdateReflectionPolygon( void )
 	}
 	else
 	{
-		if( (m_CachedReflectedData.vLocalOBB_Maxs.x == m_fWidth) && (m_CachedReflectedData.vLocalOBB_Maxs.y == m_fHeight) )
+		// IsValid(): an Invalidate()d (NaN) entry compares equal under -ffast-math.
+		if ( m_CachedReflectedData.vLocalOBB_Maxs.IsValid() &&
+		     ( m_CachedReflectedData.vLocalOBB_Maxs.x == m_fWidth ) &&
+		     ( m_CachedReflectedData.vLocalOBB_Maxs.y == m_fHeight ) )
 			return;
 
 		m_LocalSpaceReflectionPolygonVertCount = 4;

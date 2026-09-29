@@ -9,6 +9,8 @@
 
 #include "mapcontainer/probe_volume.h"
 
+#include "foundation/float_classify.h"
+
 #include <cmath>
 #include <cstring>
 
@@ -63,12 +65,13 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 	layout.lightCount = U32( p + 44 );
 	layout.maxDistance = F32( p + 48 );
 	const uint64_t count = uint64_t( layout.dims[0] ) * layout.dims[1] * layout.dims[2];
-	bool finite = std::isfinite( layout.origin[0] ) && std::isfinite( layout.origin[1] ) &&
-	              std::isfinite( layout.origin[2] );
-	if ( !finite || !( layout.voxel > 0.0f ) || !std::isfinite( layout.voxel ) ||
+	bool finite = foundation::IsFinite( layout.origin[0] ) &&
+	              foundation::IsFinite( layout.origin[1] ) &&
+	              foundation::IsFinite( layout.origin[2] );
+	if ( !finite || !( layout.voxel > 0.0f ) || !foundation::IsFinite( layout.voxel ) ||
 	     layout.dims[0] < 2 || layout.dims[1] < 2 || layout.dims[2] < 2 || count > kSdfMaxVoxels ||
 	     layout.lightCount > kSdfMaxLights || !( layout.maxDistance > 0.0f ) ||
-	     !std::isfinite( layout.maxDistance ) )
+	     !foundation::IsFinite( layout.maxDistance ) )
 		return SdfVolumeError::InvalidGrid;
 	layout.voxelOffset = headerBytes;
 	layout.lightOffset = layout.voxelOffset + count * kSdfVoxelBytes;
@@ -89,9 +92,10 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 		layout.cellSize = F32( p + 76 );
 		layout.cellEntries = U32( p + 92 );
 		cellCount = uint64_t( layout.cellDims[0] ) * layout.cellDims[1] * layout.cellDims[2];
-		if ( !std::isfinite( layout.cellOrigin[0] ) || !std::isfinite( layout.cellOrigin[1] ) ||
-		     !std::isfinite( layout.cellOrigin[2] ) || !( layout.cellSize > 0.0f ) ||
-		     !std::isfinite( layout.cellSize ) || layout.cellDims[0] < 1 ||
+		if ( !foundation::IsFinite( layout.cellOrigin[0] ) ||
+		     !foundation::IsFinite( layout.cellOrigin[1] ) ||
+		     !foundation::IsFinite( layout.cellOrigin[2] ) || !( layout.cellSize > 0.0f ) ||
+		     !foundation::IsFinite( layout.cellSize ) || layout.cellDims[0] < 1 ||
 		     layout.cellDims[1] < 1 || layout.cellDims[2] < 1 || cellCount > kSdfMaxCells )
 			return SdfVolumeError::InvalidCells;
 		layout.cellOffset = lightsEnd;
@@ -106,14 +110,14 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 	{
 		const unsigned char *v = p + layout.voxelOffset + i * kSdfVoxelBytes;
 		const float distance = Half( v );
-		if ( !std::isfinite( distance ) || std::fabs( distance ) > limit )
+		if ( !foundation::IsFinite( distance ) || std::fabs( distance ) > limit )
 			return SdfVolumeError::InvalidVoxel;
 		for ( int c = 0; c < 3; ++c )
 		{
 			const float reflectance = Half( v + 2 + 2 * c );
 			const float emission = Half( v + 8 + 2 * c );
-			if ( !std::isfinite( reflectance ) || reflectance < 0.0f || reflectance > 1.0f ||
-			     !std::isfinite( emission ) || emission < 0.0f )
+			if ( !foundation::IsFinite( reflectance ) || reflectance < 0.0f || reflectance > 1.0f ||
+			     !foundation::IsFinite( emission ) || emission < 0.0f )
 				return SdfVolumeError::InvalidVoxel;
 		}
 		const uint16_t source = uint16_t( v[14] | ( v[15] << 8 ) );
@@ -127,10 +131,12 @@ SdfVolumeError ValidateSdfVolume( const void *pData, size_t size, SdfVolumeLayou
 		const uint32_t lastKind =
 		    uint32_t( version == 1 ? SdfLightKind::Dome : SdfLightKind::Spot );
 		bool ok = light.kind <= lastKind && light.style >= -1 && light.style <= 63 &&
-		          std::isfinite( light.reserved[0] ) && std::isfinite( light.reserved[1] );
+		          foundation::IsFinite( light.reserved[0] ) &&
+		          foundation::IsFinite( light.reserved[1] );
 		for ( int k = 0; k < 3 && ok; ++k )
-			ok = std::isfinite( light.rgb[k] ) && light.rgb[k] >= 0.0f && std::isfinite( light.a[k] ) &&
-			     std::isfinite( light.b[k] ) && std::isfinite( light.c[k] );
+			ok = foundation::IsFinite( light.rgb[k] ) && light.rgb[k] >= 0.0f &&
+			     foundation::IsFinite( light.a[k] ) && foundation::IsFinite( light.b[k] ) &&
+			     foundation::IsFinite( light.c[k] );
 		const auto length = []( const float *v )
 		{
 			return std::sqrt( v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );

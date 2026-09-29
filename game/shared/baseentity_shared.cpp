@@ -1135,6 +1135,11 @@ int	CBaseEntity::GetNextThinkTick( int nContextIndex ) const
 
 int CheckEntityVelocity( Vector &v )
 {
+	// A NaN velocity is rejected, bit-based: under the products' -ffast-math it
+	// may pass the range test below or be "clamped" to NaN.
+	if ( !v.IsValid() )
+		return -1;
+
 	float r = k_flMaxEntitySpeed;
 	if (
 		v.x > -r && v.x < r &&

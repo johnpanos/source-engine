@@ -18,6 +18,7 @@
 #include "KeyValues.h"
 #include "tier1/keyvaluesjson.h"
 #include "tier1/strtools.h"
+#include "foundation/float_classify.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -105,7 +106,8 @@ static void ReadNumbers(
 	for ( KeyValues *pValue = pArray ? pArray->GetFirstSubKey() : NULL; pValue;
 	    pValue = pValue->GetNextKey() )
 	{
-		if ( nRead == nCount || !ReadNumber( pValue, pOut[nRead] ) || !isfinite( pOut[nRead] ) )
+		if ( nRead == nCount || !ReadNumber( pValue, pOut[nRead] ) ||
+		     !foundation::IsFinite( pOut[nRead] ) )
 			AuthoredError( pszContext, "\"%s\" must be %d finite numbers", pszWhat, nCount );
 		++nRead;
 	}
@@ -383,7 +385,8 @@ static void LoadAuthoredConnections(
 		const char *pszParameter = ConnectionField( pConnection, "parameter", true, pszObject );
 		KeyValues *pDelay = pConnection->FindKey( "delay" );
 		double delay = 0.0;
-		if ( !pDelay || !ReadNumber( pDelay, delay ) || !isfinite( delay ) || delay < 0.0 )
+		if ( !pDelay || !ReadNumber( pDelay, delay ) || !foundation::IsFinite( delay ) ||
+		     delay < 0.0 )
 			AuthoredError( pszObject, "connection \"delay\" must be a finite number >= 0" );
 		KeyValues *pTimes = pConnection->FindKey( "times" );
 		if ( !pTimes || pTimes->GetDataType() != KeyValues::TYPE_INT ||

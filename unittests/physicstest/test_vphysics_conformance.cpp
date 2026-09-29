@@ -132,11 +132,12 @@ bool NearVec( const Vector &a, const Vector &b, float tol )
 	return Near( a.x, b.x, tol ) && Near( a.y, b.y, tol ) && Near( a.z, b.z, tol );
 }
 
-// Engine targets build with fast-math, where isfinite() may fold to true. A
-// magnitude comparison is false for NaN and infinity under any FP mode.
+// Engine targets build with fast-math, where isfinite() folds to true and a
+// NaN may pass a magnitude comparison (clang: fabsf( NaN ) < 1e30f holds), so
+// NaN and infinity are rejected on their bits (Vector::IsValid) first.
 bool IsFiniteVec( const Vector &v )
 {
-	return fabsf( v.x ) < 1e30f && fabsf( v.y ) < 1e30f && fabsf( v.z ) < 1e30f;
+	return v.IsValid() && fabsf( v.x ) < 1e30f && fabsf( v.y ) < 1e30f && fabsf( v.z ) < 1e30f;
 }
 
 //-----------------------------------------------------------------------------

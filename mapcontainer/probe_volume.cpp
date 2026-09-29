@@ -7,6 +7,8 @@
 
 #include "mapcontainer/probe_volume.h"
 
+#include "foundation/float_classify.h"
+
 #include <cmath>
 #include <cstring>
 
@@ -39,9 +41,10 @@ float Half( const unsigned char *p )
 	return HalfToFloat( uint16_t( p[0] | ( p[1] << 8 ) ) );
 }
 
+// Bit-based: std::isfinite folds to true under the products' -ffast-math.
 bool Finite( float v )
 {
-	return std::isfinite( v );
+	return foundation::IsFinite( v );
 }
 
 struct Rect

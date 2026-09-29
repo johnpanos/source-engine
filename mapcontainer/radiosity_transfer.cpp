@@ -7,6 +7,8 @@
 
 #include "mapcontainer/radiosity_transfer.h"
 
+#include "foundation/float_classify.h"
+
 #include <cmath>
 #include <cstring>
 #include <initializer_list>
@@ -38,9 +40,10 @@ uint64_t Align16( uint64_t value )
 	return ( value + 15 ) & ~uint64_t( 15 );
 }
 
+// Bit-based: std::isfinite folds to true under the products' -ffast-math.
 bool Finite( float v )
 {
-	return std::isfinite( v );
+	return foundation::IsFinite( v );
 }
 
 uint64_t Fnv( const unsigned char *p, size_t n, uint64_t state )

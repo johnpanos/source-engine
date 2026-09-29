@@ -7,6 +7,8 @@
 
 #include "vibrator_policy.h"
 
+#include "foundation/float_classify.h"
+
 #include <math.h>
 #include <stdlib.h>
 
@@ -15,8 +17,9 @@ namespace vibrator
 
 static float MotorValue( float flMotor )
 {
-	// NaN fails the comparison; infinity is not a motor speed either.
-	return ( flMotor > 0.f && isfinite( flMotor ) ) ? flMotor : 0.f;
+	// NaN and infinity are not motor speeds. The test is bit-based: under
+	// -ffast-math isfinite() folds to true and NaN > 0 may hold.
+	return ( foundation::IsFinite( flMotor ) && flMotor > 0.f ) ? flMotor : 0.f;
 }
 
 float MixMotors( float flLeft, float flRight )

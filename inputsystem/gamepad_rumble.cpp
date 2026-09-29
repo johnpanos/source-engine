@@ -7,6 +7,8 @@
 
 #include "gamepad_rumble.h"
 
+#include "foundation/float_classify.h"
+
 #include <math.h>
 #include <stdlib.h>
 
@@ -15,8 +17,9 @@ namespace gamepadrumble
 
 int MotorLevel( float flMotor )
 {
-	// NaN fails the comparison; infinity is not a motor speed either.
-	if ( !( flMotor > 0.f ) || !isfinite( flMotor ) )
+	// NaN and infinity are not motor speeds. The test is bit-based: under
+	// -ffast-math isfinite() folds to true and NaN > 0 may hold.
+	if ( !foundation::IsFinite( flMotor ) || !( flMotor > 0.f ) )
 		return 0;
 	if ( flMotor >= 1.f )
 		return kMaxLevel;

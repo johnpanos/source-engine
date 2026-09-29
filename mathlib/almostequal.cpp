@@ -10,6 +10,7 @@
 #include <math.h>
 
 #include "mathlib/mathlib.h"
+#include "foundation/float_classify.h"
 
 static inline bool AE_IsInfinite(float a)
 {
@@ -26,11 +27,9 @@ static inline bool AE_IsNan(float a)
 {
     // a NAN has an exponent of 255 (shifted left 23 positions) and
     // a non-zero mantissa.
-    int exp = *(int*)&a & 0x7F800000;
-    int mantissa = *(int*)&a & 0x007FFFFF;
-    if (exp == 0x7F800000 && mantissa != 0)
-        return true;
-    return false;
+	// Bit-based behind an optimization barrier: under -ffast-math clang
+	// assumes a float parameter is not a NaN and folds a plain bit test.
+	return foundation::IsNaN( a );
 }
 
 static inline int AE_Sign(float a)
@@ -42,7 +41,7 @@ static inline int AE_Sign(float a)
 // This is the 'final' version of the AlmostEqualUlps function.
 // The optional checks are included for completeness, but in many
 // cases they are not necessary, or even not desirable.
-bool AlmostEqual(float a, float b, int maxUlps)
+static bool AE_AlmostEqual( float a, float b, int maxUlps )
 {
     // There are several optional checks that you can do, depending
     // on what behavior you want from your floating point comparisons.
@@ -94,4 +93,11 @@ bool AlmostEqual(float a, float b, int maxUlps)
     return false;
 }
 
-
+// NaN is rejected before AE_AlmostEqual's infinity test: under the products'
+// -ffast-math its a == b is true for an infinity and a NaN.
+bool AlmostEqual( float a, float b, int maxUlps )
+{
+	if ( AE_IsNan( a ) || AE_IsNan( b ) )
+		return false;
+	return AE_AlmostEqual( a, b, maxUlps );
+}

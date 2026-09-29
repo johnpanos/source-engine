@@ -6,6 +6,7 @@
 
 #include "worldstage.h"
 
+#include "foundation/float_classify.h"
 #include "foundation/units.h"
 
 #include "utils/worldstage/sourceEntityAPI.h"
@@ -273,7 +274,7 @@ bool GatherWorldFaces( std::vector<FaceGeometry> &faces, std::string &error )
 		const Vector &planeNormal = dplanes[face.planenum].normal;
 		geometry.normal = pxr::GfVec3f( planeNormal.x, planeNormal.y, planeNormal.z );
 		const float normalLength = pxr::GfGetLength( geometry.normal );
-		if ( !std::isfinite( normalLength ) || std::abs( normalLength - 1.0f ) > 1e-3f )
+		if ( !foundation::IsFinite( normalLength ) || std::abs( normalLength - 1.0f ) > 1e-3f )
 		{
 			error = "world face has an invalid plane normal";
 			return false;
@@ -317,7 +318,7 @@ bool GatherWorldFaces( std::vector<FaceGeometry> &faces, std::string &error )
 			newell += pxr::GfCross( current, next );
 		}
 		const float alignment = pxr::GfDot( newell, geometry.normal );
-		if ( !std::isfinite( alignment ) )
+		if ( !foundation::IsFinite( alignment ) )
 		{
 			error = "world face has a non-finite winding";
 			return false;

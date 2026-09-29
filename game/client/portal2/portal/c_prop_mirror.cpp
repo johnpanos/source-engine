@@ -184,8 +184,14 @@ void C_Prop_Mirror::UpdateReflectionPolygon( void )
 		QAngle qLocalAttachmentAngles;
 		GetAttachmentLocal( m_iMirrorFaceAttachment, vLocalAttachmentOrigin, qLocalAttachmentAngles );
 
-		if( (vMins == m_CachedReflectedData.vRenderOBB_Mins) && (vMaxs == m_CachedReflectedData.vRenderOBB_Maxs) && 
-			(vLocalAttachmentOrigin == m_CachedReflectedData.vLocalSpaceAttachmentOrigin) && (qLocalAttachmentAngles == m_CachedReflectedData.qLocalSpaceAttachmentAngles) )
+		// IsValid(): an Invalidate()d (NaN) entry compares equal under -ffast-math.
+		if ( m_CachedReflectedData.vRenderOBB_Maxs.IsValid() &&
+		     m_CachedReflectedData.vLocalSpaceAttachmentOrigin.IsValid() &&
+		     m_CachedReflectedData.qLocalSpaceAttachmentAngles.IsValid() &&
+		     ( vMins == m_CachedReflectedData.vRenderOBB_Mins ) &&
+		     ( vMaxs == m_CachedReflectedData.vRenderOBB_Maxs ) &&
+		     ( vLocalAttachmentOrigin == m_CachedReflectedData.vLocalSpaceAttachmentOrigin ) &&
+		     ( qLocalAttachmentAngles == m_CachedReflectedData.qLocalSpaceAttachmentAngles ) )
 		{
 			return; //nothing to update
 		}
@@ -234,7 +240,10 @@ void C_Prop_Mirror::UpdateReflectionPolygon( void )
 	}
 	else
 	{
-		if( (m_CachedReflectedData.vRenderOBB_Maxs.x == m_fWidth) && (m_CachedReflectedData.vRenderOBB_Maxs.y == m_fHeight) )
+		// IsValid(): an Invalidate()d (NaN) entry compares equal under -ffast-math.
+		if ( m_CachedReflectedData.vRenderOBB_Maxs.IsValid() &&
+		     ( m_CachedReflectedData.vRenderOBB_Maxs.x == m_fWidth ) &&
+		     ( m_CachedReflectedData.vRenderOBB_Maxs.y == m_fHeight ) )
 			return;
 
 		m_LocalSpaceReflectionPolygonVertCount = 4;
@@ -257,8 +266,10 @@ void C_Prop_Mirror::OnDataChanged( DataUpdateType_t type )
 		Vector vMirrorAttachmentOrigin;
 		QAngle qMirrorAttachmentAngles;
 		GetAttachment( m_iMirrorFaceAttachment, vMirrorAttachmentOrigin, qMirrorAttachmentAngles );
-		
-		if( (m_ptOrigin != vMirrorAttachmentOrigin) || (m_CachedReflectedData.qAttachmentAngle != qMirrorAttachmentAngles) )
+
+		if ( !m_ptOrigin.IsValid() || !m_CachedReflectedData.qAttachmentAngle.IsValid() ||
+		     ( m_ptOrigin != vMirrorAttachmentOrigin ) ||
+		     ( m_CachedReflectedData.qAttachmentAngle != qMirrorAttachmentAngles ) )
 		{
 			m_ptOrigin = vMirrorAttachmentOrigin;
 			m_CachedReflectedData.qAttachmentAngle = qMirrorAttachmentAngles;
@@ -268,7 +279,9 @@ void C_Prop_Mirror::OnDataChanged( DataUpdateType_t type )
 	}
 	else
 	{
-		if( (m_ptOrigin != GetRenderOrigin()) || (m_CachedReflectedData.qAttachmentAngle != GetRenderAngles()) )
+		if ( !m_ptOrigin.IsValid() || !m_CachedReflectedData.qAttachmentAngle.IsValid() ||
+		     ( m_ptOrigin != GetRenderOrigin() ) ||
+		     ( m_CachedReflectedData.qAttachmentAngle != GetRenderAngles() ) )
 		{
 			m_ptOrigin = GetRenderOrigin();
 			m_CachedReflectedData.qAttachmentAngle = GetRenderAngles();
@@ -289,8 +302,10 @@ void C_Prop_Mirror::ClientThink( void )
 		Vector vMirrorAttachmentOrigin;
 		QAngle qMirrorAttachmentAngles;
 		GetAttachment( m_iMirrorFaceAttachment, vMirrorAttachmentOrigin, qMirrorAttachmentAngles );
-		
-		if( (m_ptOrigin != vMirrorAttachmentOrigin) || (m_CachedReflectedData.qAttachmentAngle != qMirrorAttachmentAngles) )
+
+		if ( !m_ptOrigin.IsValid() || !m_CachedReflectedData.qAttachmentAngle.IsValid() ||
+		     ( m_ptOrigin != vMirrorAttachmentOrigin ) ||
+		     ( m_CachedReflectedData.qAttachmentAngle != qMirrorAttachmentAngles ) )
 		{
 			m_ptOrigin = vMirrorAttachmentOrigin;
 			AngleVectors( qMirrorAttachmentAngles, &m_vForward, &m_vRight, &m_vUp );

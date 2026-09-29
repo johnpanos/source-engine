@@ -11,6 +11,8 @@
 
 #include "mapcontainer/probe_volume.h"
 
+#include "foundation/float_classify.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -173,7 +175,7 @@ ReflectionProbesError ValidateReflectionProbes(
 		std::memcpy( probe.influenceMax, values + 13, sizeof( probe.influenceMax ) );
 		bool valid = probe.fade > 0.0f;
 		for ( float value : values )
-			valid = valid && std::isfinite( value ) &&
+			valid = valid && foundation::IsFinite( value ) &&
 			        std::fabs( value ) <= kReflectionProbesMaxCoordinate;
 		for ( int axis = 0; axis < 3; ++axis )
 			valid = valid && probe.boxMin[axis] < probe.boxMax[axis] &&
