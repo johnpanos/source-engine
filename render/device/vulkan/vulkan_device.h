@@ -486,6 +486,7 @@ struct DeviceDispatch
 	PFN_vkCmdEndRendering cmdEndRendering = nullptr;
 	PFN_vkGetSemaphoreCounterValue getSemaphoreCounterValue = nullptr;
 	PFN_vkWaitSemaphores waitSemaphores = nullptr;
+	PFN_vkSignalSemaphore signalSemaphore = nullptr; // tests only (Hold)
 };
 
 class Translator;
@@ -539,6 +540,10 @@ public:
 
 	std::uint64_t ValidationMessageCount() const;
 	std::uint64_t DeferredUploadCount() const { return m_DeferredUploads.load(); }
+	// Tests only (vulkan::HoldSubmissions): while held, each submission also
+	// waits on the hold semaphore's next value, which releasing signals from
+	// the host. False if the hold semaphore cannot be made.
+	bool Hold( bool held );
 
 	// For VulkanEncoder (any recording thread) --------------------------------
 
@@ -688,6 +693,14 @@ private:
 	mutable std::atomic<DeviceState> m_State{ DeviceState::kAvailable };
 	std::uint32_t m_Epoch = 1;
 	std::uint64_t m_Submitted = 0; // the last signaled timeline value
+	// Tests only (Hold): a timeline semaphore of the logical device, made on
+	// the first hold. While m_Holding, submissions wait on m_HoldValue + 1.
+	VkSemaphore m_Hold = VK_NULL_HANDLE;
+	std::uint64_t m_HoldValue = 0;
+	bool m_Holding = false;
+	// Signals the pending hold value, so held work runs (or, on a lost
+	// device, is dropped with it). Before every idle wait and teardown.
+	void ReleaseHold();
 	mutable std::atomic<std::uint64_t> m_Completed{ 0 };
 	std::atomic<std::uint64_t> m_DeferredUploads{ 0 };
 	std::uint64_t m_NextId = 0;

@@ -66,6 +66,7 @@ VulkanDevice::VulkanDevice( const VulkanAdapterOptions &options, const HostDevic
 
 VulkanDevice::~VulkanDevice()
 {
+	ReleaseHold(); // held work must be able to finish before the idle wait
 	if ( m_Device != VK_NULL_HANDLE )
 		(void)vkDeviceWaitIdle( m_Device ); // reviewed: teardown
 	DestroyLogical();
@@ -359,6 +360,8 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 	    m_Device, "vkGetSemaphoreCounterValue", "vkGetSemaphoreCounterValueKHR" );
 	m_Vk.waitSemaphores =
 	    LoadDevice<PFN_vkWaitSemaphores>( m_Device, "vkWaitSemaphores", "vkWaitSemaphoresKHR" );
+	m_Vk.signalSemaphore =
+	    LoadDevice<PFN_vkSignalSemaphore>( m_Device, "vkSignalSemaphore", "vkSignalSemaphoreKHR" );
 	if ( !m_Vk.cmdPipelineBarrier2 || !m_Vk.queueSubmit2 || !m_Vk.cmdBeginRendering ||
 	     !m_Vk.cmdEndRendering || !m_Vk.getSemaphoreCounterValue || !m_Vk.waitSemaphores )
 	{
@@ -479,6 +482,10 @@ void VulkanDevice::DestroyLogical()
 	m_EmptySetLayout = VK_NULL_HANDLE;
 	vkDestroySemaphore( m_Device, m_Timeline, nullptr );
 	m_Timeline = VK_NULL_HANDLE;
+	vkDestroySemaphore( m_Device, m_Hold, nullptr );
+	m_Hold = VK_NULL_HANDLE;
+	m_HoldValue = 0;
+	m_Holding = false;
 	m_Memory.Destroy();
 	vkDestroyDevice( m_Device, nullptr );
 	m_Device = VK_NULL_HANDLE;
@@ -747,6 +754,8 @@ DeviceResult<void> VulkanDevice::WaitIdle()
 {
 	if ( m_Device == VK_NULL_HANDLE )
 		return {};
+	// Idle means every accepted submission has run, held ones included.
+	ReleaseHold();
 	const VkResult result = vkDeviceWaitIdle( m_Device ); // reviewed: the port's WaitIdle
 	if ( result == VK_ERROR_DEVICE_LOST )
 	{
@@ -769,6 +778,7 @@ DeviceResult<void> VulkanDevice::Recover()
 		return Fail( DeviceStatus::kUnsupported, DeviceOperation::kCreateDevice );
 	m_State = DeviceState::kRecovering;
 	// Reviewed idle wait: loss recovery. A lost device returns at once.
+	ReleaseHold();
 	if ( m_Device != VK_NULL_HANDLE )
 		(void)vkDeviceWaitIdle( m_Device );
 	DestroyLogical();
@@ -780,6 +790,52 @@ DeviceResult<void> VulkanDevice::Recover()
 	}
 	m_State = DeviceState::kAvailable;
 	return {};
+}
+
+// Test hold -------------------------------------------------------------------
+
+bool VulkanDevice::Hold( bool held )
+{
+	if ( !held )
+	{
+		ReleaseHold();
+		return true;
+	}
+	if ( m_Device == VK_NULL_HANDLE || !m_Vk.signalSemaphore )
+		return false;
+	if ( m_Hold == VK_NULL_HANDLE )
+	{
+		VkSemaphoreTypeCreateInfo type{};
+		type.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+		type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+		type.initialValue = 0;
+		VkSemaphoreCreateInfo semaphore{};
+		semaphore.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+		semaphore.pNext = &type;
+		if ( vkCreateSemaphore( m_Device, &semaphore, nullptr, &m_Hold ) != VK_SUCCESS )
+		{
+			m_Hold = VK_NULL_HANDLE;
+			return false;
+		}
+		Name( VK_OBJECT_TYPE_SEMAPHORE, reinterpret_cast<std::uint64_t>( m_Hold ),
+		    "render.device.vulkan test hold" );
+	}
+	m_Holding = true;
+	return true;
+}
+
+void VulkanDevice::ReleaseHold()
+{
+	if ( !m_Holding )
+		return;
+	m_Holding = false;
+	++m_HoldValue;
+	VkSemaphoreSignalInfo signal{};
+	signal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
+	signal.semaphore = m_Hold;
+	signal.value = m_HoldValue;
+	if ( m_Vk.signalSemaphore( m_Device, &signal ) == VK_ERROR_DEVICE_LOST )
+		MarkLost();
 }
 
 // Encoders and readback --------------------------------------------------------
@@ -878,6 +934,12 @@ std::uint64_t DeferredUploads( const IRenderDevice2 &device )
 {
 	const VulkanDevice *vulkan = dynamic_cast<const VulkanDevice *>( &device );
 	return vulkan ? vulkan->DeferredUploadCount() : 0;
+}
+
+bool HoldSubmissions( IRenderDevice2 &device, bool held )
+{
+	VulkanDevice *vulkan = dynamic_cast<VulkanDevice *>( &device );
+	return vulkan && vulkan->Hold( held );
 }
 
 } // namespace render::device::vulkan

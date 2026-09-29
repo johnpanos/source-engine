@@ -51,6 +51,7 @@ struct VulkanAdapterOptions
 		bool staleExport = false;           // D18: the export names memory the image does not use
 		bool nullExternalImages = false;    // D18: claims kExternalImages, exports nothing
 		bool transmittanceAsPremultiplied = false; // D21: kTransmittance drawn as kPremultiplied
+		bool unsafeUploadReuse = false;            // D10: ring ranges retire at submission
 	};
 	Sensitivity sensitivity;
 };
@@ -64,6 +65,14 @@ std::uint64_t ValidationMessages( const IRenderDevice2 &device );
 // Uploads that found the ring full and took a dedicated staging buffer; 0
 // for a device not made by this adapter.
 std::uint64_t DeferredUploads( const IRenderDevice2 &device );
+// Tests only: while held (true), every submission also waits on a timeline
+// semaphore of the adapter's that releasing (false) signals from the host, so
+// no submitted work starts before the release: the latest schedule a token
+// allows. A ring range handed out again before its token completes is then
+// overwritten before it is read. WaitIdle, Recover and destruction release
+// the hold first, so nothing waits on it forever. False for a device not
+// made by this adapter, or if the hold semaphore cannot be made.
+bool HoldSubmissions( IRenderDevice2 &device, bool held );
 // True when the Khronos validation layer is installed.
 bool ValidationLayerAvailable();
 

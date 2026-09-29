@@ -1330,6 +1330,16 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	std::vector<VkSemaphoreSubmitInfo> signalInfos{ signal };
 	if ( waitValue > 0 )
 		waitInfos.push_back( wait );
+	if ( m_Holding )
+	{
+		// Tests only (Hold): the work starts once the host releases the hold.
+		VkSemaphoreSubmitInfo hold{};
+		hold.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		hold.semaphore = m_Hold;
+		hold.value = m_HoldValue + 1;
+		hold.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		waitInfos.push_back( hold );
+	}
 	for ( VulkanEncoder *encoder : recorded )
 	{
 		waitInfos.insert( waitInfos.end(), encoder->Waits().begin(), encoder->Waits().end() );
@@ -1358,7 +1368,12 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	for ( VulkanEncoder *encoder : recorded )
 	{
 		for ( std::uint64_t allocation : encoder->RingAllocations() )
-			m_Ring.Submit( allocation, value );
+		{
+			if ( m_Options.sensitivity.unsafeUploadReuse )
+				m_Ring.Abandon( allocation );
+			else
+				m_Ring.Submit( allocation, value );
+		}
 		for ( HostBuffer &staging : encoder->Staging() )
 			context.staging.push_back( staging );
 		encoder->Staging().clear();

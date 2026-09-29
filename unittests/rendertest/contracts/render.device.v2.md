@@ -35,7 +35,7 @@ Check names in the suite are `<driver>.<clause> <what>`.
 | D7 | After a device loss, `Submit` rejects waits on old-epoch tokens with `kStaleEpoch`; recovery starts a new epoch with nothing live | drops old-epoch waits (skipped, and reported, where loss cannot be forced) |
 | D8 | Encoders run in `Submit` order; a submission with an erroring encoder fails with `kInvalidState` and none of it runs | drops erroring encoders and runs the rest |
 | D9 | Written, copied and cleared bytes read back unchanged | — (covered by D8, D10) |
-| D10 | Upload ranges are reused only after their token completes; a full ring defers | retires ranges at submission |
+| D10 | Upload ranges are reused only after their token completes; a full ring defers | retires ranges at submission (on GL and on Vulkan, `unsafeUploadReuse`; both suites run D10 and D5 with submissions held, so the defect is observable every run) |
 | D11 | Recording one encoder from a second thread is diagnosed (`SequenceViolations`); the check lives in the port | — (port-owned) |
 | D12 | Transitions name the resource's current usage and a usage it was created with; clears, copies and attachments need their usage. The current usage is the state after every accepted submission, complete or not: a submission may continue from one still running | accepts transitions from any usage |
 | D14 | Distinct encoders may be recorded concurrently, one thread per encoder, and submitted together; recording shares the upload ring safely and their bytes land | — (TSan lane of the pooled graph executor) |

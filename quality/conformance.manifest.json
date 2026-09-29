@@ -8398,7 +8398,7 @@
       "contract": "unittests/rendertest/contracts/render.device.v2.md",
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
-      "description": "render.device.v2 on render.device.vulkan (RFC 0016 K1): the shared suite with real pixels (D13 conventions: clip depth 0 to 1, clip Y up, row 0 at the top), a small-ring run, ring reuse, compute, sampling, an indexed 4x MSAA draw with resolve, a pass under the Khronos validation layer with synchronization validation that must report no message, the host interop (vulkan.host), and host images imported as port textures (vulkan.import, RFC 0016 K5: host work and port commands in one encoder read each other's writes, an import away from its home usage at host work or at the end is refused, release frees only the views; synchronization validation on the host instance is silent, and a host that skips its barrier is reported). D7 is skipped: loss cannot be forced on Vulkan. D19 on Vulkan also samples a BC1 block in its three-color mode: it decodes as D3D9's DXT1, one-bit alpha kept.",
+      "description": "render.device.v2 on render.device.vulkan (RFC 0016 K1): the shared suite with real pixels (D13 conventions: clip depth 0 to 1, clip Y up, row 0 at the top), a small-ring run, ring reuse, compute, sampling, an indexed 4x MSAA draw with resolve, the test hold (vulkan.hold: held work does not start before its release, and WaitIdle and destruction release it first), a pass under the Khronos validation layer with synchronization validation that must report no message, the host interop (vulkan.host), and host images imported as port textures (vulkan.import, RFC 0016 K5: host work and port commands in one encoder read each other's writes, an import away from its home usage at host work or at the end is refused, release frees only the views; synchronization validation on the host instance is silent, and a host that skips its barrier is reported). D7 is skipped: loss cannot be forced on Vulkan. D19 on Vulkan also samples a BC1 block in its three-color mode: it decodes as D3D9's DXT1, one-bit alpha kept.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/device/port.cpp",
@@ -8430,7 +8430,7 @@
       "contract": "unittests/rendertest/contracts/render.device.v2.md",
       "kind": "sensitivity",
       "profile": "linux-native-vulkan-gpu",
-      "description": "RFC 0016 K1 'Bad adapters', GPU lane: the shared device suite runs against render.device.vulkan with one sensitivity knob set (VulkanAdapterOptions::Sensitivity, never set by a product) and must fail each bad adapter on the clause it breaks and on no other, while the undecorated control passes: clip Y pointing down (D13 'clip y'), clip depth -1 to 1 mapped onto 0 to 1 (D13 'clip z'), a claimed async compute queue it does not have (D15) and a claimed transient aliasing no port operation implements (D15).",
+      "description": "RFC 0016 K1 'Bad adapters', GPU lane: the shared device suite runs against render.device.vulkan with one sensitivity knob set (VulkanAdapterOptions::Sensitivity, never set by a product) and must fail each bad adapter on the clause it breaks and on no other, while the undecorated control passes: clip Y pointing down (D13 'clip y'), clip depth -1 to 1 mapped onto 0 to 1 (D13 'clip z'), a claimed async compute queue it does not have (D15), a claimed transient aliasing no port operation implements (D15), and upload ranges retired at submission (D10; its uploads are recorded with the queue held, vulkan::HoldSubmissions, a timeline semaphore the host signals, so the reuse shows however fast the GPU copies).",
       "result_protocol": "checks-v1",
       "sources": [
         "render/device/port.cpp",
@@ -8447,7 +8447,7 @@
         "render/device/vulkan/upload_ring.cpp",
         "unittests/rendertest/core/device/test_device_vulkan.cpp"
       ],
-      "min_checks": 9,
+      "min_checks": 19,
       "extra_flags": [
         "-pthread",
         "-isystemdependencies/vulkan-memory-allocator/include",

@@ -9,6 +9,8 @@
 //			- vulkan.ring: a full ring defers exactly the upload that cannot
 //			  fit, an abandoned encoder returns its range, and ranges are reused
 //			  once their token completes;
+//			- vulkan.hold: the test hold keeps submitted work from starting
+//			  until released, and WaitIdle and destruction release it first;
 //			- vulkan.compute, vulkan.sampled, vulkan.multisample: the paths the
 //			  shared suite does not reach (dispatch ordering on a storage
 //			  buffer, sampled textures and samplers, vertex and index input,
@@ -74,6 +76,10 @@ rendertest::DeviceDriver Driver( const char *name, vulkan::VulkanAdapterOptions 
 		return std::move( device ).Value();
 	};
 	driver.complete = WaitFor;
+	driver.hold = []( IRenderDevice2 &device, bool held )
+	{
+		(void)vulkan::HoldSubmissions( device, held );
+	};
 	driver.holdsCompletion = false;
 	driver.rasterizes = true;
 	driver.doubleCompute = rendertest::shaders::kDoubleCompute;
@@ -987,6 +993,64 @@ void DescriptorClauses( testing::Checks &checks )
 	    "vulkan.descriptor a required capability it lacks fails creation with kUnsupported" );
 }
 
+// The test hold (vulkan::HoldSubmissions): held work does not start before
+// the release, the release runs it, and WaitIdle or destroying the device
+// while held neither hangs nor leaves work waiting: both release first.
+void HoldClauses( testing::Checks &checks, const rendertest::DeviceDriver &driver )
+{
+	rendertest::detail::Suite suite( checks, driver );
+	constexpr std::size_t kSize = 4096;
+	const std::vector<std::byte> bytes = rendertest::detail::Pattern( kSize, 5 );
+	const auto upload = [&]( IRenderDevice2 &device ) -> std::optional<CompletionToken>
+	{
+		const BufferId buffer = suite.Buffer(
+		    device, kSize, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+		auto encoder = device.BeginEncoder( QueueKind::kGraphics );
+		if ( !encoder )
+			return std::nullopt;
+		encoder.Value().TransitionBuffer(
+		    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		encoder.Value().WriteBuffer( buffer, 0, bytes );
+		encoder.Value().TransitionBuffer(
+		    buffer, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		return suite.Run( device, encoder.Value() );
+	};
+	{
+		std::unique_ptr<IRenderDevice2> device = suite.Create();
+		if ( !device )
+			return;
+		checks.That(
+		    vulkan::HoldSubmissions( *device, true ), "vulkan.hold the device takes a hold" );
+		const std::optional<CompletionToken> token = upload( *device );
+		std::this_thread::sleep_for( std::chrono::milliseconds( 20 ) );
+		checks.That( token && !device->IsComplete( *token ),
+		    "vulkan.hold held work has not completed 20 ms after its submission" );
+		checks.That(
+		    vulkan::HoldSubmissions( *device, false ) && token && WaitFor( *device, *token ),
+		    "vulkan.hold releasing the hold runs the held work" );
+	}
+	{
+		std::unique_ptr<IRenderDevice2> device = suite.Create();
+		if ( !device )
+			return;
+		(void)vulkan::HoldSubmissions( *device, true );
+		const std::optional<CompletionToken> token = upload( *device );
+		checks.That( token && device->WaitIdle().HasValue() && device->IsComplete( *token ),
+		    "vulkan.hold WaitIdle releases the hold and the held work completes" );
+	}
+	{
+		std::unique_ptr<IRenderDevice2> device = suite.Create();
+		if ( !device )
+			return;
+		(void)vulkan::HoldSubmissions( *device, true );
+		const std::optional<CompletionToken> token = upload( *device );
+		const auto start = std::chrono::steady_clock::now();
+		device.reset();
+		checks.That( token && std::chrono::steady_clock::now() - start < std::chrono::seconds( 5 ),
+		    "vulkan.hold destroying a device with held work returns (the hold is released)" );
+	}
+}
+
 // A 64 KiB ring and 40 KiB uploads: two in one encoder cannot both fit, since
 // the first is not submitted yet, so exactly one takes a staging buffer.
 void RingClauses( testing::Checks &checks, const rendertest::DeviceDriver &driver,
@@ -1129,6 +1193,8 @@ int main()
 	nullExporter.nullExternalImages = true;
 	vulkan::VulkanAdapterOptions::Sensitivity transmittance;
 	transmittance.transmittanceAsPremultiplied = true;
+	vulkan::VulkanAdapterOptions::Sensitivity uploads;
+	uploads.unsafeUploadReuse = true;
 	const Case cases[] = {
 	    { "flipped-y", flipY, "under-test.D13 clip y" },
 	    { "gl-depth-range", glDepth, "under-test.D13 clip z" },
@@ -1138,7 +1204,10 @@ int main()
 	    { "stale-export", staleExport, "under-test.D18 the exported memory" },
 	    { "null-exporter", nullExporter, "under-test.D18 the exporter is present" },
 	    { "transmittance-as-premultiplied", transmittance, "under-test.D21 src + dst * a" },
+	    { "early-upload-reuse", uploads, "under-test.D10 " },
 	};
+	// D10 records its uploads with the queue held (Driver's hold), so early
+	// reuse shows however fast the GPU copies.
 	for ( const Case &c : cases )
 	{
 		vulkan::VulkanAdapterOptions broken = options;
@@ -1149,7 +1218,7 @@ int main()
 		checks.That(
 		    OnlyClause( failures, c.clause ), std::string( c.name ) + " fails no other clause" );
 		if ( !detected || !OnlyClause( failures, c.clause ) )
-			std::printf( "%s: %s", c.name, failures.c_str() );
+			std::printf( "%s:\n%s", c.name, failures.c_str() );
 	}
 	return checks.Report();
 }
@@ -1181,6 +1250,7 @@ int main()
 	rendertest::RunDeviceConformance( checks, Driver( "vulkan-small-ring", small ) );
 	DescriptorClauses( checks );
 	RingClauses( checks, Driver( "vulkan", options ), options );
+	HoldClauses( checks, Driver( "vulkan", options ) );
 	rendertest::RunRasterConformance( checks, Driver( "vulkan", options ) );
 	HostClauses( checks, false );
 	ImportClauses( checks, layer );
@@ -1199,6 +1269,7 @@ int main()
 		validated.adapterIndex = options.adapterIndex;
 		rendertest::RunDeviceConformance( checks, Driver( "vulkan-validated", validated ) );
 		RingClauses( checks, Driver( "vulkan-validated", validated ), validated );
+		HoldClauses( checks, Driver( "vulkan-validated", validated ) );
 		rendertest::RunRasterConformance( checks, Driver( "vulkan-validated", validated ) );
 	}
 	{
