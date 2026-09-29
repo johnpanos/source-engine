@@ -236,6 +236,10 @@ def execute(ssh, host, line, stream=None, sleep=time.sleep):
     """Run `line` on the host as a detached job; stream its output to
     `stream` (stdout's bytes); return its exit status."""
     stream = stream or sys.stdout.buffer
+    if stream is sys.stdout.buffer:
+        # ssh switches the descriptors it inherits to non-blocking; ours
+        # share their open file with the pipeline's log pipe.
+        os.set_blocking(sys.stdout.fileno(), True)
     directory = "%s/%s" % (JOBS, uuid.uuid4().hex)
     started = subprocess.run(ssh + [host, "bash -s"], input=start_script(directory, line),
                              capture_output=True, text=True)
@@ -246,11 +250,12 @@ def execute(ssh, host, line, stream=None, sleep=time.sleep):
 
     def heartbeat():
         while not stop.wait(HEARTBEAT_S):
-            subprocess.run(ssh + [host, "touch %s/hb" % directory], capture_output=True)
+            subprocess.run(ssh + [host, "touch %s/hb" % directory], capture_output=True,
+                           stdin=subprocess.DEVNULL)
 
     def cancel(*_):
         subprocess.run(ssh + [host, "kill -TERM -$(cat %s/pid) 2>/dev/null" % directory],
-                       capture_output=True)
+                       capture_output=True, stdin=subprocess.DEVNULL)
         raise SystemExit(143)
 
     threading.Thread(target=heartbeat, daemon=True).start()
@@ -260,7 +265,8 @@ def execute(ssh, host, line, stream=None, sleep=time.sleep):
         while True:
             tail = subprocess.Popen(ssh + [host, "tail -c +%d --pid=$(cat %s/pid) -f %s/out"
                                            % (offset + 1, directory, directory)],
-                                    stdout=subprocess.PIPE)
+                                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL)
             for chunk in iter(lambda: tail.stdout.read1(65536), b""):
                 stream.write(chunk)
                 stream.flush()
@@ -275,7 +281,7 @@ def execute(ssh, host, line, stream=None, sleep=time.sleep):
             sleep(10)
         for _ in range(10):
             status = subprocess.run(ssh + [host, "cat %s/rc" % directory],
-                                    capture_output=True, text=True)
+                                    capture_output=True, text=True, stdin=subprocess.DEVNULL)
             if status.returncode == 0 and status.stdout.strip():
                 return int(status.stdout.strip())
             sleep(3)

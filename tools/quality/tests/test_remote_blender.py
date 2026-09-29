@@ -3,6 +3,8 @@ import json
 import shlex
 import sys
 import tempfile
+import subprocess
+import time
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -87,6 +89,13 @@ class RemoteBlenderTest(unittest.TestCase):
 # connection does (exit 255).
 FAKE_SSH = """
 import os, subprocess, sys
+# Real ssh makes the descriptors it inherits non-blocking (its stdout it
+# writes itself, handling EAGAIN; stdin and stderr are shared with its parent).
+for fd in (0, 2):
+    try:
+        os.set_blocking(fd, False)
+    except OSError:
+        pass
 command = sys.argv[2]
 flag = os.environ.get("FAKE_SSH_DROP")
 if flag and command.startswith("tail") and not os.path.exists(flag):
@@ -126,6 +135,23 @@ class DetachedJobTest(unittest.TestCase):
         self.assertIn("connection lost", text)
         self.assertEqual(text.replace("[remote_blender] connection lost; reconnecting\n", ""),
                          "abcdefghijkl")
+
+    def test_a_large_burst_through_a_real_pipe_survives_non_blocking_ssh(self):
+        """The client, as the pipeline runs it (stdout and stderr one pipe),
+        streams a burst larger than the pipe buffer while ssh sets its
+        inherited descriptors non-blocking."""
+        script = ("import sys; sys.path.insert(0, %r); import remote_blender as r; "
+                  "r.JOBS = %r; sys.exit(r.execute(%r, 'host', "
+                  "'head -c 3000000 /dev/zero | tr \\\\0 x; echo; exit 5'))"
+                  % (str(Path(remote_blender.__file__).parent), remote_blender.JOBS, self.ssh))
+        reader = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT)
+        received = 0
+        for chunk in iter(lambda: reader.stdout.read(4096), b""):
+            received += len(chunk)
+            time.sleep(0.0005)   # a slow reader, as the pipeline's log loop is
+        self.assertEqual(reader.wait(), 5)
+        self.assertGreaterEqual(received, 3000000)
 
     def test_the_job_runs_detached_with_a_watchdog(self):
         script = remote_blender.start_script("/tmp/remote-blender/x", "blender -b")
