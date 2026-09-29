@@ -2797,3 +2797,45 @@ session), taken on the slice 1-4 report:
    SPIR-V and waits until K11 step b lands (port owner's timing condition),
    so the world pass does not run on GL yet.
 3. **Product boot:** blocked on K8/K9 (see the table).
+
+## K11: the lab gallery, and where render_lab stands against Cycles (2026-09-29)
+
+User request: "make that easy to replicate, and add it to the rfcs … being
+able to produce these comparisons visually for me easily".
+
+`python3 tools/quality/lighting_fixtures.py gallery` renders every view of
+every lighting fixture in `render_lab`. It finds render_lab through `--lab`,
+`$RENDER_LAB` or a `build-rc-lab` tree, and places the probe model from the
+stage. It scores each view with `lighting_fixtures.compare`, so the metric
+and tolerance are the ones the K11 "Ground truth" check uses.
+
+It writes one self-contained HTML page to
+`quality-results/lighting-gallery/<time>/index.html`. Per view, the page shows:
+- render_lab and Cycles at the same exposure;
+- the error map (red at twice the p99 tolerance, grey where the metric
+  skips);
+- mean and p99 against the tolerance.
+
+The command records nothing. `lighting_gallery.py` holds the code, and
+`test_lighting_gallery.py` (3 tests) covers the display math and the page.
+K11's "Gallery for review" row names the command.
+
+First run (render-core worktree's `build-rc-lab`, preview references,
+diagnostic only; 0 of 23 views pass):
+
+| Fixture | mean / tolerance | What the lab lacks against Cycles |
+| --- | --- | --- |
+| sun-colonnade (yard, along) | 0.094, 0.202 / 0.06 | nearly there; the yard's p99 passes. Mostly reference noise |
+| cornell-floors | 0.229, 0.258 / 0.06 | the floor's specular (rough and polished halves) |
+| area-room | 0.21–0.27 / 0.08 | specular reflections of the 64 rect lights; the emissive sign draws black |
+| foggy-hall | clear 0.40–0.43, fog 0.68–0.78 / 0.10 | specular; no participating media |
+| mirror-corridor | 0.63–0.66 / 0.10 | no reflections: the mirror floor draws as its albedo |
+| material-sweep | 0.53–0.73 / 0.05 | no specular lobe or image-based light; gold draws flat yellow |
+| portal-chamber | 0.70–0.98 / 0.12 | specular, and a black ceiling patch (a material the lab draws black) |
+| projector-cookie | 1.03–1.23 / 0.06 | no projected light at all |
+| portal2-chamber | 4.5–9.4 / 0.12 | garbage texturing: the lab mis-decodes this map's materials. A lab defect |
+
+So the lab's baked diffuse (lightmap × albedo) is close to Cycles. What's
+missing is everything that makes the Source 2 look: specular from lights
+and probes, reflections, emission, projected light and media. These are K11
+steps b–g, in order, so the table is the expected state.

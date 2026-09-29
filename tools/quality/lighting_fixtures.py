@@ -1921,7 +1921,15 @@ def main():
     m.add_argument("--camera", required=True)
     m.add_argument("--image", type=Path, required=True, help="a linear PFM (or EXR)")
     m.add_argument("--record", action="store_true")
+    y = commands.add_parser("gallery", help="render_lab beside Cycles for every view, as one "
+                                            "HTML page (lighting_gallery.py)")
+    y.add_argument("--lab", help="the render_lab binary (default: $RENDER_LAB, then build-rc-lab)")
+    y.add_argument("--fixture", action="append")
+    y.add_argument("--out", type=Path)
     args = parser.parse_args()
+    if args.command == "gallery":
+        import lighting_gallery
+        return lighting_gallery.cmd_gallery(args)
     return {"generate": cmd_generate, "render": cmd_render, "build": cmd_build,
             "check": cmd_check, "compare": cmd_compare}[args.command](args)
 

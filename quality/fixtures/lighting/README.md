@@ -208,6 +208,10 @@ python3 tools/quality/lighting_fixtures.py check
 # score a lab image (linear PFM or EXR, same film and pose)
 python3 tools/quality/lighting_fixtures.py compare --fixture cornell-floors \
     --state default --camera front --image lab.pfm [--record]
+# the visual comparison for review: render_lab beside Cycles and the error map for
+# every view, one self-contained HTML page (render_lab from --lab, $RENDER_LAB or a
+# build-rc-lab tree); prints the page's path
+python3 tools/quality/lighting_fixtures.py gallery [--fixture NAME]... [--lab PATH] [--out DIR]
 # self-tests (negative fixtures included)
 python3 -m unittest tools/quality/tests/test_lighting_fixtures.py
 ```
