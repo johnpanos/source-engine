@@ -86,8 +86,11 @@ PROJECTOR_ATTENUATION = (0.0, 100.0, 0.0)
 EMITTER_PREFIXES = ("LightQuad", "LightDisk")
 # Fixture-carrier entity classes (proposed; the render-core owner decides the
 # product form). Every other light uses a stock Source entity.
-RECT_CLASS = "lab_light_rect"
-MEDIUM_CLASS = "lab_medium"
+# Entity classes decided by the render-core owner (source-engine-43,
+# 2026-09-29, binding rule 5), with Source 2's names.
+RECT_CLASS = "light_rect"
+MEDIUM_CLASS = "env_volumetric_fog_volume"
+FOG_CONTROLLER_CLASS = "env_volumetric_fog_controller"
 
 # The lighting model's terms (RFC 0016 "Lighting model"); each names its
 # owning definition and the negative control that must fail its fixtures.
@@ -277,6 +280,30 @@ def angle_vectors(pitch, yaw):
     return ([cp * cy, cp * sy, -sp], [sy, -cy, 0.0], [sp * cy, sp * sy, cp])
 
 
+def angle_vectors_roll(pitch, yaw, roll):
+    """The engine's AngleVectors: forward, right, up."""
+    sp, cp = math.sin(math.radians(pitch)), math.cos(math.radians(pitch))
+    sy, cy = math.sin(math.radians(yaw)), math.cos(math.radians(yaw))
+    sr, cr = math.sin(math.radians(roll)), math.cos(math.radians(roll))
+    forward = [cp * cy, cp * sy, -sp]
+    right = [-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp]
+    up = [cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp]
+    return forward, right, up
+
+
+def angles_for(forward, up):
+    """Source angles (pitch, yaw, roll) whose forward is `forward` and whose up
+    is `up` projected perpendicular to it."""
+    f = normalize(forward)
+    pitch = math.degrees(math.asin(max(-1.0, min(1.0, -f[2]))))
+    yaw = math.degrees(math.atan2(f[1], f[0]))
+    _, right0, up0 = angle_vectors_roll(pitch, yaw, 0.0)
+    # up(roll) = cos(roll) up0 + sin(roll) right0
+    roll = math.degrees(math.atan2(sum(a * b for a, b in zip(up, right0)),
+                                   sum(a * b for a, b in zip(up, up0))))
+    return pitch, yaw, roll
+
+
 def point_entity(light):
     """A `light` whose compiled world light is the sphere's: intensity
     L r^2 (units^2, lightmap unit) with inverse-square falloff."""
@@ -317,13 +344,25 @@ def environment_entity(sun, sky):
 
 
 def rect_entity(light):
-    """A rectangle light (render.area-light.v1 Rect + radiance): front is
-    halfU x halfV, the direction the light emits along."""
-    return {"classname": RECT_CLASS, "targetname": light["name"],
+    """A `light_rect` (render.area-light.v1 Rect + radiance). The entity's
+    forward is the direction it emits along (front = halfU x halfV), `width`
+    is the full extent along its right axis (the rectangle's U axis) and
+    `height` along its up axis (V). `color` is linear 0..255 and
+    `brightness` scales it: radiance = color / 255 x brightness, in the
+    lightmap unit."""
+    u, v = units(light["half_u_m"]), units(light["half_v_m"])
+    front = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
+    pitch, yaw, roll = angles_for(front, v)
+    peak, norm = peak_and_norm(light["radiance"])
+    length = lambda w: math.sqrt(sum(c * c for c in w))
+    # No targetname: vbsp gives every named light* entity a switchable style
+    # (at most 32), as it does for stock lights.
+    return {"classname": RECT_CLASS, "_fixture_light": light["name"],
             "origin": vec_text(units(light["center_m"])),
-            "halfu": vec_text(units(light["half_u_m"])),
-            "halfv": vec_text(units(light["half_v_m"])),
-            "radiance": vec_text(light["radiance"]), "twosided": "0"}
+            "angles": "%.4f %.4f %.4f" % (pitch, yaw, roll),
+            "width": "%.4f" % (2.0 * length(u)), "height": "%.4f" % (2.0 * length(v)),
+            "color": vec_text([255.0 * c for c in norm]), "brightness": "%.6f" % peak,
+            "two_sided": "0"}
 
 
 def projector_entity(projector):
@@ -340,14 +379,31 @@ def projector_entity(projector):
 
 
 def medium_entity(medium):
+    """An `env_volumetric_fog_volume`: a homogeneous box medium. `density` is
+    the extinction coefficient per Source unit (scattering + absorption),
+    `albedo` the single-scattering albedo (scattering / extinction),
+    `anisotropy` the Henyey-Greenstein g, `emission` zero. `box_mins` and
+    `box_maxs` are relative to `origin`."""
     lo, hi = units(medium["bounds_m"][0]), units(medium["bounds_m"][1])
+    center = [(a + b) / 2 for a, b in zip(lo, hi)]
+    scattering = medium["scattering_per_m"] / SOURCE_UNITS_PER_METER
+    absorption = medium["absorption_per_m"] / SOURCE_UNITS_PER_METER
+    extinction = scattering + absorption
     return {"classname": MEDIUM_CLASS, "targetname": medium["name"],
-            "origin": vec_text([(a + b) / 2 for a, b in zip(lo, hi)]),
-            "mins": vec_text(lo), "maxs": vec_text(hi),
-            # Per Source unit, as the engine measures distance.
-            "scattering": "%.8f" % (medium["scattering_per_m"] / SOURCE_UNITS_PER_METER),
-            "absorption": "%.8f" % (medium["absorption_per_m"] / SOURCE_UNITS_PER_METER),
-            "anisotropy": "%.4f" % medium["anisotropy"], "phase": "henyey-greenstein"}
+            "origin": vec_text(center),
+            "box_mins": vec_text([a - c for a, c in zip(lo, center)]),
+            "box_maxs": vec_text([b - c for b, c in zip(hi, center)]),
+            "density": "%.8f" % extinction,
+            "albedo": "%.6f" % (scattering / extinction if extinction > 0 else 0.0),
+            "anisotropy": "%.4f" % medium["anisotropy"], "emission": "0 0 0"}
+
+
+def fog_controller_entity():
+    """The one `env_volumetric_fog_controller`: no global height fog here; the
+    fixture's medium is its fog volume alone."""
+    return {"classname": FOG_CONTROLLER_CLASS, "targetname": "FogController",
+            "density": "0", "height_fog_density": "0", "height_fog_falloff": "0",
+            "anisotropy": "0"}
 
 
 def expected_world_lights(lights):
@@ -559,6 +615,7 @@ def lighting_scene_class():
             entities += [projector_entity(p) for p in self.projectors]
             if self.medium:
                 entities.append(medium_entity(self.medium))
+                entities.append(fog_controller_entity())
             return entities
 
         def finish_lighting(self, map_overrides, cameras_note=None):
@@ -1046,13 +1103,20 @@ def manifest_record(records):
                                          "recorded but certifies nothing"},
             "tolerances": "tolerances.json", "error_metric": ERROR_METRIC,
             "carrier_entities": {
-                RECT_CLASS: "a rectangle light: origin (centre), halfu, halfv (Source units; "
-                            "front = halfu x halfv), radiance (lightmap unit), twosided; the "
-                            "fields of render.area-light.v1's Rect and AreaLight",
-                MEDIUM_CLASS: "a homogeneous medium: mins, maxs, scattering and absorption per "
-                              "Source unit, anisotropy (Henyey-Greenstein g)",
-                "status": "proposed fixture carriers; the render-core owner decides the "
-                          "product form (binding rule 5)"},
+                RECT_CLASS: "a rectangle light: origin (centre), angles (forward = the "
+                            "emission direction), width (along right) and height (along up) "
+                            "in Source units, color (linear 0..255) and brightness "
+                            "(radiance = color / 255 x brightness, lightmap unit), two_sided; "
+                            "render.area-light.v1's Rect and AreaLight",
+                MEDIUM_CLASS: "a homogeneous box medium: origin, box_mins and box_maxs "
+                              "(relative), density (extinction per Source unit), albedo "
+                              "(scattering / extinction), anisotropy (Henyey-Greenstein g), "
+                              "emission",
+                FOG_CONTROLLER_CLASS: "the one global volumetric fog controller: density, "
+                                      "height_fog_density, height_fog_falloff, anisotropy",
+                "status": "decided by the render-core owner (source-engine-43, 2026-09-29, "
+                          "binding rule 5) with Source 2's names; the game entities are "
+                          "RFC 0016 K12's"},
             "terms": terms, "fixtures": fixtures}
 
 
@@ -1551,7 +1615,7 @@ def map_entities(bsp):
 
 
 LIGHT_CLASSES = ("light", "light_spot", "light_environment", "env_projectedtexture",
-                 RECT_CLASS, MEDIUM_CLASS)
+                 RECT_CLASS, MEDIUM_CLASS, FOG_CONTROLLER_CLASS)
 
 
 def check_map(fixture):

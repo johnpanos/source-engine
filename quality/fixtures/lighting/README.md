@@ -74,15 +74,16 @@ irradiance E shows E / pi):
 | point | `SphereLight`, radius 2 units | `light`, `_quadratic_attn 1` | vrad world light intensity L r^2 (r = 2 units) |
 | spot | `DiskLight` + `sourceEngine:cone*` | `light_spot`, `_inner_cone`, `_cone`, `_exponent`, `pitch`/`angles` | same, on axis |
 | sun + sky | `DistantLight` (normalized) + `DomeLight` | `light_environment`, `_light`, `_ambient`, `SunSpreadAngle` | sun world light E / pi; sky ambient the dome radiance |
-| rectangle | `RectLight` | `lab_light_rect`: `origin`, `halfu`, `halfv`, `radiance`, `twosided` | the `render.area-light.v1` `Rect` and radiance; front = halfu x halfv |
+| rectangle | `RectLight` | `light_rect`: `origin`, `angles` (forward = emission direction), `width` (along right), `height` (along up), `color` (linear 0..255), `brightness`, `two_sided` | the `render.area-light.v1` `Rect` and radiance: radiance = color / 255 x brightness |
 | projector | none (not bakeable) | `env_projectedtexture`: `angles`, `lightfov`, `nearz`, `farz`, `lightcolor`, `texturename` | Portal's attenuation (0, 100, 0), color GammaToLinear(rgb) x A / 255 |
-| medium | none | `lab_medium`: `mins`, `maxs`, `scattering`, `absorption` (per unit), `anisotropy` | homogeneous, Henyey-Greenstein |
+| medium | none | `env_volumetric_fog_volume`: `origin`, `box_mins`, `box_maxs` (relative), `density` (extinction per unit), `albedo`, `anisotropy`, `emission`; plus one `env_volumetric_fog_controller` (`density`, `height_fog_density`, `height_fog_falloff`, `anisotropy`; all 0 here) | homogeneous, Henyey-Greenstein |
 
-Stock lights carry their declared name as `_fixture_light`, not
-`targetname`: vbsp makes every named light a switchable style and stops at
-32. `lab_light_rect` and `lab_medium` are proposed fixture carriers: Source has
-no entity for either, and the render-core owner decides their product form
-(binding rule 5). `build` compiles the entities with vbsp/vrad and requires
+Stock lights and `light_rect` carry their declared name as `_fixture_light`,
+not `targetname`: vbsp makes every named light* a switchable style and stops at
+32. `light_rect`, `env_volumetric_fog_volume` and `env_volumetric_fog_controller`
+were decided by the render-core owner (source-engine-43, 2026-09-29, binding
+rule 5) with Source 2's names; the game entities themselves are RFC 0016
+K12's. `build` compiles the entities with vbsp/vrad and requires
 vrad's compiled world lights to equal the stage's lights within 1%
 (`world-lights.json` in the build directory); the unit tests replay vrad's
 arithmetic on the converters.

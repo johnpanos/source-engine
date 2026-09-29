@@ -1,13 +1,15 @@
 {
   "entities": [
     {
-      "classname": "lab_light_rect",
-      "halfu": "19.6850 0.0000 0.0000",
-      "halfv": "0.0000 -19.6850 0.0000",
+      "_fixture_light": "Fill",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "1.500000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 255.0000",
+      "height": "39.3700",
       "origin": "39.3701 118.1102 137.4016",
-      "radiance": "1.5000 1.5000 1.5000",
-      "targetname": "Fill",
-      "twosided": "0"
+      "two_sided": "0",
+      "width": "39.3700"
     },
     {
       "angles": "18.0000 0.0000 0",

@@ -2914,15 +2914,23 @@
       "texturename": "lighting/cookies/window_gobo"
     },
     {
-      "absorption": "0.00025400",
+      "albedo": "0.857143",
       "anisotropy": "0.3000",
-      "classname": "lab_medium",
-      "maxs": "944.8819 314.9606 236.2205",
-      "mins": "0.0000 0.0000 0.0000",
+      "box_maxs": "472.4409 157.4803 118.1102",
+      "box_mins": "-472.4409 -157.4803 -118.1102",
+      "classname": "env_volumetric_fog_volume",
+      "density": "0.00177800",
+      "emission": "0 0 0",
       "origin": "472.4409 157.4803 118.1102",
-      "phase": "henyey-greenstein",
-      "scattering": "0.00152400",
       "targetname": "Fog"
+    },
+    {
+      "anisotropy": "0",
+      "classname": "env_volumetric_fog_controller",
+      "density": "0",
+      "height_fog_density": "0",
+      "height_fog_falloff": "0",
+      "targetname": "FogController"
     }
   ],
   "fixture": "foggy-hall",

@@ -2691,9 +2691,20 @@ source-engine-43 owns `render_lab` and every lighting term.
 - **Fixed along the way:** `usd_worldmesh_pack.py` read an emitter name as
   `Light(Quad|Disk)` plus exactly two digits, so the 101st light was packed
   as world geometry. It now takes two or more digits.
+- **Entities** (decided by source-engine-43 on 2026-09-29 under rule 5,
+  with Source 2's names):
+  - `light_rect`: `angles` (forward is the emission direction), `width` and
+    `height` along right and up, `color` (linear 0..255), `brightness`
+    (radiance = color / 255 × brightness) and `two_sided`;
+  - `env_volumetric_fog_volume`: `box_mins` and `box_maxs` relative to the
+    origin, `density` (extinction per unit), `albedo`, `anisotropy` and
+    `emission`;
+  - one `env_volumetric_fog_controller`.
+
+  Rect lights carry their name as `_fixture_light`, because vbsp turns
+  every named `light*` entity into a switchable style (at most 32). All
+  seven maps were rebuilt, and `check` passes.
 - **Open for source-engine-43:**
-  - rectangle lights and media have no Source entity; `lab_light_rect` and
-    `lab_medium` are proposals for the owner to decide (rule 5);
   - the two chamber stages are rebuilt from untracked `quality-results/`,
     with the steps recorded in each fixture;
   - `gi_reference.py` writes its environment maps with imageio's lossy

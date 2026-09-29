@@ -100,12 +100,33 @@ class EntityConversions(unittest.TestCase):
                  "half_u_m": [c * size[1] / 2 for c in y],
                  "half_v_m": [c * size[0] / 2 for c in x], "radiance": [14.0, 13.5, 12.5]}
         keys = lf.rect_entity(light)
-        u = np.array([float(v) for v in keys["halfu"].split()])
-        v = np.array([float(v) for v in keys["halfv"].split()])
-        front = np.cross(u, v)
-        self.assertGreater(np.dot(front / np.linalg.norm(front), direction), 0.9999)
-        self.assertAlmostEqual(4 * np.linalg.norm(u) * np.linalg.norm(v),
+        self.assertEqual(keys["classname"], "light_rect")
+        pitch, yaw, roll = (float(a) for a in keys["angles"].split())
+        forward, right, up = (np.array(w) for w in lf.angle_vectors_roll(pitch, yaw, roll))
+        # forward is the emission direction; width lies along right (U), height along up (V)
+        self.assertGreater(np.dot(forward, direction), 0.9999)
+        u = np.array(lf.units(light["half_u_m"]))
+        v = np.array(lf.units(light["half_v_m"]))
+        self.assertGreater(abs(np.dot(right, u / np.linalg.norm(u))), 0.9999)
+        self.assertGreater(np.dot(up, v / np.linalg.norm(v)), 0.9999)
+        self.assertAlmostEqual(float(keys["width"]) * float(keys["height"]),
                                size[0] * size[1] * lf.SOURCE_UNITS_PER_METER ** 2, places=1)
+        color = [float(c) for c in keys["color"].split()]
+        radiance = [c / 255.0 * float(keys["brightness"]) for c in color]
+        for got, want in zip(radiance, light["radiance"]):
+            self.assertAlmostEqual(got, want, places=3)
+
+    def test_fog_volume_keeps_extinction_and_albedo(self):
+        medium = {"name": "Fog", "bounds_m": [[0.0, 0.0, 0.0], [4.0, 2.0, 3.0]],
+                  "scattering_per_m": 0.06, "absorption_per_m": 0.01, "anisotropy": 0.3}
+        keys = lf.medium_entity(medium)
+        self.assertEqual(keys["classname"], "env_volumetric_fog_volume")
+        density, albedo = float(keys["density"]), float(keys["albedo"])
+        self.assertAlmostEqual(density * lf.SOURCE_UNITS_PER_METER, 0.07, places=6)
+        self.assertAlmostEqual(albedo, 0.06 / 0.07, places=5)
+        origin = np.array([float(c) for c in keys["origin"].split()])
+        hi = origin + np.array([float(c) for c in keys["box_maxs"].split()])
+        self.assertTrue(np.allclose(hi, lf.units([4.0, 2.0, 3.0]), atol=1e-3))
 
     def test_world_light_comparison_catches_a_wrong_light(self):
         lights = [{"kind": "point", "name": "A", "center_m": [0.0, 0.0, 1.0],

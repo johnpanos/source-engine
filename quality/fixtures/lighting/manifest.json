@@ -1,8 +1,9 @@
 {
   "carrier_entities": {
-    "lab_light_rect": "a rectangle light: origin (centre), halfu, halfv (Source units; front = halfu x halfv), radiance (lightmap unit), twosided; the fields of render.area-light.v1's Rect and AreaLight",
-    "lab_medium": "a homogeneous medium: mins, maxs, scattering and absorption per Source unit, anisotropy (Henyey-Greenstein g)",
-    "status": "proposed fixture carriers; the render-core owner decides the product form (binding rule 5)"
+    "env_volumetric_fog_controller": "the one global volumetric fog controller: density, height_fog_density, height_fog_falloff, anisotropy",
+    "env_volumetric_fog_volume": "a homogeneous box medium: origin, box_mins and box_maxs (relative), density (extinction per Source unit), albedo (scattering / extinction), anisotropy (Henyey-Greenstein g), emission",
+    "light_rect": "a rectangle light: origin (centre), angles (forward = the emission direction), width (along right) and height (along up) in Source units, color (linear 0..255) and brightness (radiance = color / 255 x brightness, lightmap unit), two_sided; render.area-light.v1's Rect and AreaLight",
+    "status": "decided by the render-core owner (source-engine-43, 2026-09-29, binding rule 5) with Source 2's names; the game entities are RFC 0016 K12's"
   },
   "error_metric": {
     "definition": "e(p) = max over R, G, B of |lab(p) - ref(p)| / Y_ref, with Y_ref the mean Rec. 709 luminance of the reference over the judged pixels; mean is the average of e over the judged pixels and p99 its 99th percentile",

@@ -1,13 +1,15 @@
 {
   "entities": [
     {
-      "classname": "lab_light_rect",
-      "halfu": "14.7638 0.0000 0.0000",
-      "halfv": "0.0000 -14.7638 0.0000",
+      "_fixture_light": "Lamp",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "12.000000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 255.0000",
+      "height": "29.5276",
       "origin": "59.0551 59.0551 117.7165",
-      "radiance": "12.0000 12.0000 12.0000",
-      "targetname": "Lamp",
-      "twosided": "0"
+      "two_sided": "0",
+      "width": "29.5276"
     }
   ],
   "fixture": "cornell-floors",

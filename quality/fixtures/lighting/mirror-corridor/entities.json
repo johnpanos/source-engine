@@ -1,58 +1,70 @@
 {
   "entities": [
     {
-      "classname": "lab_light_rect",
-      "halfu": "31.4961 0.0000 0.0000",
-      "halfv": "0.0000 -5.9055 0.0000",
+      "_fixture_light": "Strip0",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "9.000000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 240.8333",
+      "height": "11.8110",
       "origin": "59.0551 59.0551 125.5906",
-      "radiance": "9.0000 9.0000 8.5000",
-      "targetname": "Strip0",
-      "twosided": "0"
+      "two_sided": "0",
+      "width": "62.9922"
     },
     {
-      "classname": "lab_light_rect",
-      "halfu": "31.4961 0.0000 0.0000",
-      "halfv": "0.0000 -5.9055 0.0000",
+      "_fixture_light": "Strip1",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "9.000000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 240.8333",
+      "height": "11.8110",
       "origin": "177.1654 59.0551 125.5906",
-      "radiance": "9.0000 9.0000 8.5000",
-      "targetname": "Strip1",
-      "twosided": "0"
+      "two_sided": "0",
+      "width": "62.9922"
     },
     {
-      "classname": "lab_light_rect",
-      "halfu": "31.4961 0.0000 0.0000",
-      "halfv": "0.0000 -5.9055 0.0000",
+      "_fixture_light": "Strip2",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "9.000000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 240.8333",
+      "height": "11.8110",
       "origin": "295.2756 59.0551 125.5906",
-      "radiance": "9.0000 9.0000 8.5000",
-      "targetname": "Strip2",
-      "twosided": "0"
+      "two_sided": "0",
+      "width": "62.9922"
     },
     {
-      "classname": "lab_light_rect",
-      "halfu": "31.4961 0.0000 0.0000",
-      "halfv": "0.0000 -5.9055 0.0000",
+      "_fixture_light": "Strip3",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "9.000000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 240.8333",
+      "height": "11.8110",
       "origin": "413.3858 59.0551 125.5906",
-      "radiance": "9.0000 9.0000 8.5000",
-      "targetname": "Strip3",
-      "twosided": "0"
+      "two_sided": "0",
+      "width": "62.9922"
     },
     {
-      "classname": "lab_light_rect",
-      "halfu": "31.4961 0.0000 0.0000",
-      "halfv": "0.0000 -5.9055 0.0000",
+      "_fixture_light": "Strip4",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "9.000000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 240.8333",
+      "height": "11.8110",
       "origin": "531.4961 59.0551 125.5906",
-      "radiance": "9.0000 9.0000 8.5000",
-      "targetname": "Strip4",
-      "twosided": "0"
+      "two_sided": "0",
+      "width": "62.9922"
     },
     {
-      "classname": "lab_light_rect",
-      "halfu": "31.4961 0.0000 0.0000",
-      "halfv": "0.0000 -5.9055 0.0000",
+      "_fixture_light": "Strip5",
+      "angles": "90.0000 0.0000 90.0000",
+      "brightness": "9.000000",
+      "classname": "light_rect",
+      "color": "255.0000 255.0000 240.8333",
+      "height": "11.8110",
       "origin": "649.6063 59.0551 125.5906",
-      "radiance": "9.0000 9.0000 8.5000",
-      "targetname": "Strip5",
-      "twosided": "0"
+      "two_sided": "0",
+      "width": "62.9922"
     }
   ],
   "fixture": "mirror-corridor",
