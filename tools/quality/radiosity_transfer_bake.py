@@ -484,45 +484,11 @@ def fan_out(function, jobs, workers):
 
 def receiver_mesh(quads):
     """One small quad per (position, normal) receiver, each on its own bake
-    texel (probe_volume_bake's receiver construction)."""
-    height = max(1, (len(quads) + BAKE_WIDTH - 1) // BAKE_WIDTH)
-    vertices, faces, uvs = [], [], []
-    for texel, (position, normal) in enumerate(quads):
-        tx, ty = texel % BAKE_WIDTH, texel // BAKE_WIDTH
-        d = Vector(normal).normalized()
-        a = d.orthogonal().normalized()
-        b = d.cross(a)
-        base = len(vertices)
-        for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
-            vertices.append(Vector(position) + (a * su + b * sv) * QUAD_HALF_METERS)
-            uvs.append(((tx + 0.5 + su * 0.5) / BAKE_WIDTH, (ty + 0.5 + sv * 0.5) / height))
-        faces.append((base, base + 1, base + 2, base + 3))
-    mesh = bpy.data.meshes.new("RadiosityReceivers")
-    mesh.from_pydata(vertices, [], faces)
-    mesh.update()
-    layer = mesh.uv_layers.new(name="receivers")
-    for loop in mesh.loops:
-        layer.data[loop.index].uv = uvs[loop.vertex_index]
-    for polygon in mesh.polygons:
-        polygon.use_smooth = False
-    obj = bpy.data.objects.new("RadiosityReceivers", mesh)
-    bpy.context.scene.collection.objects.link(obj)
-    obj.visible_diffuse = obj.visible_glossy = obj.visible_transmission = False
-    obj.visible_shadow = obj.visible_volume_scatter = False
-    obj.visible_camera = True
-    material = bpy.data.materials.new("RadiosityReceiver")
-    material.use_nodes = True
-    tree = material.node_tree
-    tree.nodes.clear()
-    output = tree.nodes.new("ShaderNodeOutputMaterial")
-    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
-    diffuse.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    tree.links.new(diffuse.outputs["BSDF"], output.inputs["Surface"])
-    target = tree.nodes.new("ShaderNodeTexImage")
-    target.name = "BakeTarget"
-    tree.nodes.active = target
-    mesh.materials.append(material)
-    return obj, target, height
+    texel (pbrt_blender.receiver_mesh, shared with the probe volume bake)."""
+    positions = np.array([position for position, _ in quads], dtype=np.float64).reshape(-1, 3)
+    normals = np.array([normal for _, normal in quads], dtype=np.float64).reshape(-1, 3)
+    return pbrt_blender.receiver_mesh("RadiosityReceivers", "receivers", positions, normals,
+                                      QUAD_HALF_METERS, BAKE_WIDTH, normalize=True)
 
 
 def bake_direct(obj, target, height, name, work, passes=None):

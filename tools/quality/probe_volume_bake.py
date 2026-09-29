@@ -190,56 +190,14 @@ def trace_probes(bvh, homes, rays, lobes, spacing_min, max_distance, workers):
 
 def receiver_mesh(positions, directions):
     """One tiny quad per (probe, texel direction), each mapped to its own bake
-    texel; returns the object and the image height."""
-    count = len(positions) * len(directions)
-    height = max(1, (count + BAKE_WIDTH - 1) // BAKE_WIDTH)
-    vertices, faces, uvs = [], [], []
-    for p, position in enumerate(positions):
-        for t, d in enumerate(directions):
-            texel = p * len(directions) + t
-            tx, ty = texel % BAKE_WIDTH, texel // BAKE_WIDTH
-            d = Vector(d)
-            a = d.orthogonal().normalized()
-            b = d.cross(a)
-            base = len(vertices)
-            for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
-                vertices.append(Vector(position) + (a * su + b * sv) * QUAD_HALF_METERS)
-                # The quad covers its whole texel: Cycles jitters bake samples
-                # across the texel, and any that fall off the quad are lost.
-                uvs.append(((tx + 0.5 + su * 0.5) / BAKE_WIDTH,
-                            (ty + 0.5 + sv * 0.5) / height))
-            faces.append((base, base + 1, base + 2, base + 3))
-    mesh = bpy.data.meshes.new("ProbeReceivers")
-    mesh.from_pydata(vertices, [], faces)
-    mesh.update()
-    # from_pydata orders each quad counter-clockwise about a x b = d.
-    layer = mesh.uv_layers.new(name="probe")
-    for loop in mesh.loops:
-        layer.data[loop.index].uv = uvs[loop.vertex_index]
-    for polygon in mesh.polygons:
-        polygon.use_smooth = False
-    obj = bpy.data.objects.new("ProbeReceivers", mesh)
-    bpy.context.scene.collection.objects.link(obj)
-    # Invisible to every light-transport ray, so the quads, which all pass
-    # through their probe's centre, cannot occlude one another. Cycles skips
-    # baking an object with no ray visibility at all; camera visibility,
-    # which a bake never traces, keeps it bakeable.
-    obj.visible_diffuse = obj.visible_glossy = obj.visible_transmission = False
-    obj.visible_shadow = obj.visible_volume_scatter = False
-    obj.visible_camera = True
-    material = bpy.data.materials.new("ProbeReceiver")
-    material.use_nodes = True
-    tree = material.node_tree
-    tree.nodes.clear()
-    output = tree.nodes.new("ShaderNodeOutputMaterial")
-    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
-    diffuse.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    tree.links.new(diffuse.outputs["BSDF"], output.inputs["Surface"])
-    target = tree.nodes.new("ShaderNodeTexImage")
-    target.name = "BakeTarget"
-    tree.nodes.active = target
-    mesh.materials.append(material)
-    return obj, target, height
+    texel (probe p's direction t is texel p * len(directions) + t); returns
+    the object, its BakeTarget node and the image height."""
+    positions = np.asarray(positions, dtype=np.float64)
+    directions = np.asarray(directions, dtype=np.float64)
+    return pbrt_blender.receiver_mesh(
+        "ProbeReceivers", "probe", np.repeat(positions, len(directions), axis=0),
+        np.tile(directions, (len(positions), 1)), QUAD_HALF_METERS, BAKE_WIDTH,
+        normalize=False)
 
 
 def bake(obj, target, height, passes, name, out_dir):

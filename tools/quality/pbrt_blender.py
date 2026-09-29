@@ -11,6 +11,7 @@ import math
 from pathlib import Path
 
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 
 import cycles_device
@@ -661,3 +662,82 @@ def configure_cycles(samples, device=DEFAULT_DEVICE):
     if device == "gpu":
         raise RuntimeError("no Cycles GPU device is available")
     return "CPU"
+
+
+def _unit_rows(v):
+    """Rows of `v` (float32) scaled to unit length; zero rows stay zero."""
+    squared = v[:, 0] * v[:, 0] + v[:, 1] * v[:, 1] + v[:, 2] * v[:, 2]
+    ok = squared > 1e-35
+    scale = np.float32(1.0) / np.sqrt(np.where(ok, squared, np.float32(1.0)))
+    return np.where(ok[:, None], v * scale[:, None], np.float32(0.0))
+
+
+def receiver_mesh(name, uv_name, positions, normals, quad_half, bake_width, normalize=True):
+    """One tiny quad per (position, normal) receiver, each mapped to its own
+    bake texel of a `bake_width`-wide image, as (object, BakeTarget node,
+    image height). The object is invisible to light-transport rays (the
+    quads cannot occlude one another) but bakeable (camera visibility).
+
+    Built with numpy (float32, as mathutils): the probe volume and radiosity
+    bakes build one per probe direction, millions on a whole retail map,
+    where a Python loop of mathutils Vectors ran for over half an hour. The
+    corners match that loop's to within one float32 rounding. Each quad is
+    counter-clockwise about a x b = d."""
+    d = np.asarray(normals, dtype=np.float32).reshape(-1, 3)
+    if normalize:
+        d = _unit_rows(d)
+    count = len(d)
+    # mathutils' Vector.orthogonal (Blender's ortho_v3_v3): built from the
+    # dominant axis.
+    x, y, z = d[:, 0], d[:, 1], d[:, 2]
+    magnitude = np.abs(d)
+    axis = np.where(magnitude[:, 0] > magnitude[:, 1],
+                    np.where(magnitude[:, 0] > magnitude[:, 2], 0, 2),
+                    np.where(magnitude[:, 1] > magnitude[:, 2], 1, 2))
+    other = np.stack([z, z, -x - y], axis=1)
+    first, second = axis == 0, axis == 1
+    other[first] = np.stack([-y[first] - z[first], x[first], x[first]], axis=1)
+    other[second] = np.stack([y[second], -x[second] - z[second], y[second]], axis=1)
+    a = _unit_rows(other)
+    b = np.cross(d, a).astype(np.float32)
+    origin = np.asarray(positions, dtype=np.float32).reshape(-1, 3)
+    height = max(1, (count + bake_width - 1) // bake_width)
+    texel = np.arange(count)
+    tx, ty = texel % bake_width, texel // bake_width
+    half = np.float32(quad_half)
+    corners, uvs = [], []
+    for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+        corners.append(origin + (a * np.float32(su) + b * np.float32(sv)) * half)
+        uvs.append(np.stack([(tx + 0.5 + su * 0.5) / bake_width,
+                             (ty + 0.5 + sv * 0.5) / height], axis=1))
+    vertices = np.stack(corners, axis=1).reshape(-1, 3)
+    loop_uvs = np.stack(uvs, axis=1).reshape(-1, 2).astype(np.float32)
+    mesh = bpy.data.meshes.new(name)
+    mesh.vertices.add(len(vertices))
+    mesh.vertices.foreach_set("co", vertices.ravel())
+    mesh.loops.add(len(vertices))
+    mesh.loops.foreach_set("vertex_index", np.arange(len(vertices), dtype=np.int32))
+    mesh.polygons.add(count)
+    mesh.polygons.foreach_set("loop_start", np.arange(0, len(vertices), 4, dtype=np.int32))
+    mesh.update()
+    layer = mesh.uv_layers.new(name=uv_name)
+    layer.data.foreach_set("uv", loop_uvs.ravel())
+    mesh.polygons.foreach_set("use_smooth", np.zeros(count, dtype=bool))
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    obj.visible_diffuse = obj.visible_glossy = obj.visible_transmission = False
+    obj.visible_shadow = obj.visible_volume_scatter = False
+    obj.visible_camera = True
+    material = bpy.data.materials.new(name.rstrip("s"))
+    material.use_nodes = True
+    tree = material.node_tree
+    tree.nodes.clear()
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    tree.links.new(diffuse.outputs["BSDF"], output.inputs["Surface"])
+    target = tree.nodes.new("ShaderNodeTexImage")
+    target.name = "BakeTarget"
+    tree.nodes.active = target
+    mesh.materials.append(material)
+    return obj, target, height
