@@ -308,6 +308,9 @@ exist, so the performance debt stays visible while it is not blocking.
   grow only in a `Frozen-path:` commit whose exception is 1 or 3, and that
   commit rewrites the ratchet (`--write`) itself, so the growth is visible
   in review. A deletion under rule 4 records the removal the same way.
+  In a checkout shared with other sessions, record from your own commit
+  (`--write --rev <commit>`), so another session's uncommitted work is never
+  recorded under your commit. `--rev HEAD` checks committed source only.
   Seeded faults in `render.retirement-scans.sensitivity` cover each set.
   The legacy material system's shading behavior has no static scan, and
   review covers it.

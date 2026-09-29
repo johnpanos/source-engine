@@ -6,7 +6,7 @@
     python3 tools/render/retirement_scans.py record-replay   [--root DIR]
     python3 tools/render/retirement_scans.py legacy-stream   [--root DIR] [--write]
     python3 tools/render/retirement_scans.py dead-code       [--root DIR]
-    python3 tools/render/retirement_scans.py legacy-freeze   [--root DIR] [--write]
+    python3 tools/render/retirement_scans.py legacy-freeze   [--root DIR] [--write] [--rev REV]
     python3 tools/render/retirement_scans.py sensitivity
 
   side-channels  K3 "Side channels gone": no first-party source names the
@@ -46,6 +46,12 @@
                  (the ratchet stays exact). A change that grows a set is a
                  Frozen-path commit (defect fix or explicit user request)
                  that rewrites the ratchet with --write in the same commit.
+                 --rev REV reads the frozen paths (and, when checking, the
+                 ratchet) from a git revision instead of the working tree.
+                 In a checkout shared with other sessions, record with
+                 `--write --rev <your commit>` or check that the ratchet's
+                 diff holds only your own items, so other sessions'
+                 uncommitted work is never recorded under your commit.
   sensitivity    seeded faults in private temporary trees must each be
                  rejected by the scan they target, and a clean tree accepted.
 
@@ -309,8 +315,28 @@ def freeze_snapshot(root):
             "convars": sorted(convars), "switches": sorted(switches)}
 
 
-def check_legacy_freeze(root, checks, write=False):
-    current = freeze_snapshot(root)
+def export_revision(root, rev, dest):
+    """The frozen paths and the ratchet at `rev`, extracted under `dest`."""
+    wanted = [p for p in FROZEN_DIRS + FROZEN_LIGHTING + (FREEZE_RATCHET,)
+              if subprocess.run(["git", "-C", str(root), "cat-file", "-e", "%s:%s" % (rev, p.rstrip("/"))],
+                                capture_output=True).returncode == 0]
+    archive = subprocess.run(["git", "-C", str(root), "archive", rev] + wanted,
+                             capture_output=True, check=True).stdout
+    subprocess.run(["tar", "-x", "-C", str(dest)], input=archive, check=True)
+
+
+def check_legacy_freeze(root, checks, write=False, rev=None):
+    if rev:
+        with tempfile.TemporaryDirectory() as tmp:
+            export_revision(root, rev, tmp)
+            snapshot_root = Path(tmp)
+            current = freeze_snapshot(snapshot_root)
+            if not write:
+                ratchet = snapshot_root / FREEZE_RATCHET
+                _check_freeze_against(ratchet, current, checks)
+                return
+    else:
+        current = freeze_snapshot(root)
     path = Path(root) / FREEZE_RATCHET
     if write:
         data = {"schema": FREEZE_SCHEMA,
@@ -324,6 +350,10 @@ def check_legacy_freeze(root, checks, write=False):
               "%d ConVar/command(s), %d switch(es)"
               % (len(current["shader_sources"]), len(current["stdshader_files"]),
                  len(current["interfaces"]), len(current["convars"]), len(current["switches"])))
+    _check_freeze_against(path, current, checks)
+
+
+def _check_freeze_against(path, current, checks):
     checks.check(path.exists(), "freeze.ratchet-exists", "no %s" % FREEZE_RATCHET)
     if not path.exists():
         return
@@ -462,6 +492,27 @@ def sensitivity():
                           (t / LEGACY_SHADERS / "x.frag").write_text("\n")))
         checks.check(clean.failures == 0, "control.ratchet-write-passes", "")
         checks.check(clean_freeze.failures == 0, "control.freeze-write-passes", "")
+
+        # --rev: another session's uncommitted ConVar in a shared checkout is
+        # neither recorded by `--write --rev HEAD` nor seen by `--rev HEAD`,
+        # while the working-tree check still reports it.
+        repo = Path(tmp) / "shared"
+        shutil.copytree(base, repo)
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run(git[:3] + ["init", "-q"], check=True)
+        subprocess.run(git + ["add", "-A"], check=True)
+        subprocess.run(git + ["commit", "-qm", "base"], check=True)
+        (repo / "materialsystem" / "shaderapivulkan" / "wip.cpp").write_text(
+            'static ConVar mat_vk_wip( "mat_vk_wip", "0" );\n')
+        run_scan("legacy-freeze", repo, write=True, rev="HEAD")
+        recorded = json.loads((repo / FREEZE_RATCHET).read_text())["frozen"]["convars"]
+        checks.check("mat_vk_wip" not in recorded, "control.freeze-rev-write-ignores-wip",
+                     "--write --rev HEAD recorded uncommitted work")
+        subprocess.run(git + ["commit", "-q", "--allow-empty", "-am", "ratchet"], check=True)
+        checks.check(run_scan("legacy-freeze", repo, rev="HEAD").failures == 0,
+                     "control.freeze-rev-check-passes-head", "")
+        checks.check(run_scan("legacy-freeze", repo).failures > 0,
+                     "detects.freeze-uncommitted-growth", "the working-tree check passed")
     return checks
 
 
@@ -470,12 +521,17 @@ def main(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scan", choices=sorted(SCANS) + ["sensitivity"])
     parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument("--rev", help="legacy-freeze: read the frozen paths from this git revision")
     parser.add_argument("--write", action="store_true",
                         help="legacy-stream, legacy-freeze: record the current state")
     args = parser.parse_args(argv)
     if args.scan == "sensitivity":
         checks = sensitivity()
-    elif args.scan in ("legacy-stream", "legacy-freeze"):
+    elif args.scan == "legacy-freeze":
+        checks = run_scan(args.scan, args.root, write=args.write, rev=args.rev)
+    elif args.scan == "legacy-stream":
+        if args.rev:
+            parser.error("--rev applies to legacy-freeze only")
         checks = run_scan(args.scan, args.root, write=args.write)
     else:
         if args.write:
