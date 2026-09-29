@@ -55,10 +55,16 @@ struct DeviceDriver
 	bool holdsCompletion = false;
 	// Draws produce pixels, so the conventions section runs.
 	bool rasterizes = false;
-	// D15: a compute artifact in the adapter's format (layout( local_size_x =
-	// 64 ), set 3 binding 0 a storage buffer of uints, values[i] =
-	// values[i] * 2 + 1), so claimed compute capabilities can be exercised.
+	// D15: a compute fixture (layout( local_size_x = 64 ), set 3 binding 0 a
+	// storage buffer of uints, values[i] = values[i] * 2 + 1), so claimed
+	// compute capabilities can be exercised; its SPIR-V, mapped through
+	// `artifact` like every fixture.
 	std::span<const std::uint32_t> doubleCompute;
+	// The suite's fixtures (test_shaders.h, SPIR-V) in the adapter's artifact
+	// format: given a fixture's SPIR-V, its artifact (the OpenGL adapter's
+	// GLSL 4.50, from the generated spv/device_fixtures_glsl.h). Unset: the
+	// adapter takes the SPIR-V itself.
+	std::function<std::span<const std::byte>( std::span<const std::uint32_t> spirv )> artifact;
 };
 
 namespace detail
@@ -88,6 +94,14 @@ public:
 	Suite( testing::Checks &checks, const DeviceDriver &driver )
 	    : m_Checks( checks ), m_Driver( driver )
 	{
+	}
+
+	// A fixture in the adapter's artifact format (DeviceDriver::artifact).
+	std::span<const std::byte> Code( std::span<const std::uint32_t> spirv ) const
+	{
+		if ( m_Driver.artifact )
+			return m_Driver.artifact( spirv );
+		return detail::Code( spirv.data(), spirv.size() );
 	}
 
 	bool That( bool condition, const char *clause, const char *what )
@@ -242,7 +256,7 @@ inline void BindGroupLimit( Suite &s )
 	const std::size_t live = device->LiveResourceCount();
 
 	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device->Facts().artifactFormat,
-	    Code( shaders::kFullScreenVertex ), "main", {} } };
+	    s.Code( shaders::kFullScreenVertex ), "main", {} } };
 	const Format colors[] = { Format::kRGBA8Unorm };
 	PipelineDesc desc;
 	desc.stages = stages;
@@ -266,7 +280,7 @@ struct ColorPipeline
 };
 
 inline ColorPipeline MakeColorPipeline(
-    IRenderDevice2 &device, std::span<const std::uint32_t> vertex, bool depth )
+    const Suite &s, IRenderDevice2 &device, std::span<const std::uint32_t> vertex, bool depth )
 {
 	ColorPipeline result;
 	static const BindingDesc material[] = {
@@ -282,9 +296,9 @@ inline ColorPipeline MakeColorPipeline(
 		result.layouts[role] = layout.Value();
 	}
 	static const ReflectedBinding used[] = { { 2, 0, BindingKind::kUniformBuffer } };
-	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device.Facts().artifactFormat,
-	                                          Code( vertex.data(), vertex.size() ), "main", {} },
-	    { ShaderStage::kFragment, device.Facts().artifactFormat, Code( shaders::kColorFragment ),
+	const ShaderArtifactView stages[] = {
+	    { ShaderStage::kVertex, device.Facts().artifactFormat, s.Code( vertex ), "main", {} },
+	    { ShaderStage::kFragment, device.Facts().artifactFormat, s.Code( shaders::kColorFragment ),
 	        "main", used } };
 	const Format colors[] = { Format::kRGBA8Unorm };
 	PipelineDesc desc;
@@ -311,7 +325,7 @@ inline void PipelineLayouts( Suite &s )
 	auto device = s.Create();
 	if ( !device )
 		return;
-	const ColorPipeline good = MakeColorPipeline( *device, shaders::kFullScreenVertex, false );
+	const ColorPipeline good = MakeColorPipeline( s, *device, shaders::kFullScreenVertex, false );
 	s.That( good.ok, "D4", "a pipeline whose reflected bindings are in its layouts is created" );
 
 	const std::size_t live = device->LiveResourceCount();
@@ -319,8 +333,8 @@ inline void PipelineLayouts( Suite &s )
 	const BindGroupLayoutId onlyFrame[] = { frame ? frame.Value() : BindGroupLayoutId{} };
 	static const ReflectedBinding used[] = { { 2, 0, BindingKind::kUniformBuffer } };
 	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device->Facts().artifactFormat,
-	                                          Code( shaders::kFullScreenVertex ), "main", {} },
-	    { ShaderStage::kFragment, device->Facts().artifactFormat, Code( shaders::kColorFragment ),
+	                                          s.Code( shaders::kFullScreenVertex ), "main", {} },
+	    { ShaderStage::kFragment, device->Facts().artifactFormat, s.Code( shaders::kColorFragment ),
 	        "main", used } };
 	const Format colors[] = { Format::kRGBA8Unorm };
 	PipelineDesc desc;
@@ -811,7 +825,7 @@ inline Rendered RenderFixture(
     Suite &s, IRenderDevice2 &device, std::span<const std::uint32_t> vertex, std::uint32_t size )
 {
 	Rendered out;
-	const ColorPipeline pipeline = MakeColorPipeline( device, vertex, true );
+	const ColorPipeline pipeline = MakeColorPipeline( s, device, vertex, true );
 	if ( !pipeline.ok )
 		return out;
 	const float color[4] = { 1.0f, 0.2f, 0.0f, 1.0f };
@@ -936,10 +950,10 @@ inline void DrawConstants( Suite &s )
 	auto describe = [&]( std::span<const std::uint32_t> vertex, std::uint32_t reflected,
 	                    std::uint32_t declared, ShaderArtifactView( &stages )[2] )
 	{
-		stages[0] = { ShaderStage::kVertex, device->Facts().artifactFormat,
-		    Code( vertex.data(), vertex.size() ), "main", {} };
+		stages[0] = {
+		    ShaderStage::kVertex, device->Facts().artifactFormat, s.Code( vertex ), "main", {} };
 		stages[1] = { ShaderStage::kFragment, device->Facts().artifactFormat,
-		    Code( shaders::kConstantFragment ), "main", {}, reflected };
+		    s.Code( shaders::kConstantFragment ), "main", {}, reflected };
 		PipelineDesc desc;
 		desc.stages = stages;
 		desc.layouts = layouts;
@@ -1126,9 +1140,9 @@ inline void ColorWriteMasks( Suite &s )
 	}
 	const Format colors[] = { Format::kRGBA8Unorm };
 	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device->Facts().artifactFormat,
-	                                          Code( shaders::kFullScreenVertex ), "main", {} },
+	                                          s.Code( shaders::kFullScreenVertex ), "main", {} },
 	    { ShaderStage::kFragment, device->Facts().artifactFormat,
-	        Code( shaders::kConstantFragment ), "main", {}, 16 } };
+	        s.Code( shaders::kConstantFragment ), "main", {}, 16 } };
 	PipelineDesc desc;
 	desc.stages = stages;
 	desc.layouts = layouts;
@@ -1235,9 +1249,9 @@ inline void SpecializationConstants( Suite &s )
 	{
 		const ShaderArtifactView stages[] = {
 		    { ShaderStage::kVertex, device->Facts().artifactFormat,
-		        Code( shaders::kFullScreenVertex ), "main", {} },
+		        s.Code( shaders::kFullScreenVertex ), "main", {} },
 		    { ShaderStage::kFragment, device->Facts().artifactFormat,
-		        Code( shaders::kSpecializedFragment ), "main", {} } };
+		        s.Code( shaders::kSpecializedFragment ), "main", {} } };
 		PipelineDesc desc;
 		desc.stages = stages;
 		desc.constants = constants;
@@ -1456,7 +1470,7 @@ inline bool DoublesOn( Suite &s, IRenderDevice2 &device, QueueKind queue, const 
 	const BindGroupLayoutId layouts[] = { {}, {}, {}, layout.Value() };
 	static const ReflectedBinding used[] = { { 3, 0, BindingKind::kStorageBuffer } };
 	const ShaderArtifactView stage[] = { { ShaderStage::kCompute, device.Facts().artifactFormat,
-	    Code( s.m_Driver.doubleCompute.data(), s.m_Driver.doubleCompute.size() ), "main", used } };
+	    s.Code( s.m_Driver.doubleCompute ), "main", used } };
 	PipelineDesc desc;
 	desc.kind = PipelineKind::kCompute;
 	desc.stages = stage;
@@ -1660,7 +1674,336 @@ inline void CapabilityHonesty( Suite &s )
 	}
 }
 
+// Raster clauses: work on real pixels and data that every executing adapter
+// must get right, beyond the numbered clauses' minimal fixtures. Check names
+// are "<driver>.compute", "<driver>.sampled" and "<driver>.multisample".
+
+// Copies a texture in kCopySource out through a buffer and reads it back.
+inline std::vector<std::byte> ReadTexture(
+    Suite &s, IRenderDevice2 &device, CommandEncoder &e, TextureId texture, std::uint32_t size )
+{
+	const std::uint64_t bytes = std::uint64_t( size ) * size * 4;
+	const BufferId out =
+	    s.Buffer( device, bytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	e.TransitionBuffer( out, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyTextureToBuffer( texture, out, { 0, 0, 0, size, size } );
+	e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	const std::optional<CompletionToken> token = s.Run( device, e );
+	if ( !token || !s.Finish( device, *token ) )
+		return {};
+	return s.ReadBack( device, out, bytes );
+}
+
+inline bool Near( std::byte actual, int expected )
+{
+	const int value = static_cast<int>( actual );
+	return value >= expected - 1 && value <= expected + 1;
+}
+
+inline bool Raster( Suite &s, bool condition, const char *area, const char *what )
+{
+	return s.m_Checks.That( condition, s.m_Driver.name + "." + area + " " + what );
+}
+
+// Two dispatches on one storage buffer (the second reads what the first
+// wrote, in the same usage, so the adapter must order them).
+inline void ComputeClauses( Suite &s, IRenderDevice2 &device )
+{
+	if ( !device.Facts().capabilities.Has( Capability::kCompute ) )
+	{
+		std::printf( "SKIP %s.compute the adapter claims no compute\n", s.m_Driver.name.c_str() );
+		return;
+	}
+	constexpr std::uint32_t kCount = 256;
+	static const BindingDesc storage[] = {
+	    { 0, BindingKind::kStorageBuffer, 1, { ShaderStage::kCompute } } };
+	auto layout = device.CreateBindGroupLayout( { BindGroupRole::kDraw, storage } );
+	if ( !layout )
+		return;
+	const BindGroupLayoutId layouts[] = { {}, {}, {}, layout.Value() };
+	static const ReflectedBinding used[] = { { 3, 0, BindingKind::kStorageBuffer } };
+	const ShaderArtifactView stage[] = { { ShaderStage::kCompute, device.Facts().artifactFormat,
+	    s.Code( shaders::kDoubleCompute ), "main", used } };
+	PipelineDesc desc;
+	desc.kind = PipelineKind::kCompute;
+	desc.stages = stage;
+	desc.layouts = layouts;
+	auto pipeline = device.CreatePipeline( desc );
+	Raster( s, pipeline.HasValue(), "compute", "a compute pipeline is created" );
+	const BufferId data = s.Buffer( device, kCount * 4,
+	    { ResourceUsage::kCopyDestination, ResourceUsage::kStorageWrite,
+	        ResourceUsage::kCopySource } );
+	const BindGroupEntry entry[] = { { 0, data, 0, 0, {}, {} } };
+	auto group = device.CreateBindGroup( { layout.Value(), entry } );
+	auto encoder = device.BeginEncoder( QueueKind::kGraphics );
+	if ( !pipeline || !group || !encoder )
+		return;
+	std::vector<std::uint32_t> values( kCount );
+	for ( std::uint32_t i = 0; i < kCount; ++i )
+		values[i] = i;
+	CommandEncoder &e = encoder.Value();
+	e.TransitionBuffer( data, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.WriteBuffer( data, 0, std::as_bytes( std::span<const std::uint32_t>( values ) ) );
+	e.TransitionBuffer( data, ResourceUsage::kCopyDestination, ResourceUsage::kStorageWrite );
+	e.SetPipeline( pipeline.Value() );
+	e.SetBindGroup( BindGroupRole::kDraw, group.Value() );
+	e.Dispatch( kCount / 64 );
+	e.Dispatch( kCount / 64 );
+	e.TransitionBuffer( data, ResourceUsage::kStorageWrite, ResourceUsage::kCopySource );
+	const std::optional<CompletionToken> token = s.Run( device, e );
+	Raster( s, token && s.Finish( device, *token ), "compute", "two dispatches submit" );
+	const std::vector<std::byte> read = s.ReadBack( device, data, kCount * 4 );
+	bool ordered = read.size() == kCount * 4;
+	for ( std::uint32_t i = 0; ordered && i < kCount; ++i )
+	{
+		std::uint32_t value = 0;
+		std::memcpy( &value, read.data() + i * 4, 4 );
+		ordered = value == 4 * i + 3;
+	}
+	Raster( s, ordered, "compute", "the second dispatch reads the first one's writes" );
+}
+
+// A 4x4 texture of `format` holding `texels`, drawn full screen with a point
+// sampler into an RGBA8 target: the pixels must equal `expected`.
+inline bool SampleTexture( Suite &s, IRenderDevice2 &device, Format format,
+    const std::vector<std::byte> &texels, const std::vector<std::byte> &expected, const char *what )
+{
+	constexpr std::uint32_t kSize = 4;
+	static const BindingDesc material[] = {
+	    { 0, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	auto layout = device.CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
+	if ( !layout )
+		return false;
+	const BindGroupLayoutId layouts[] = { {}, {}, layout.Value() };
+	static const ReflectedBinding used[] = {
+	    { 2, 0, BindingKind::kSampledTexture }, { 2, 1, BindingKind::kSampler } };
+	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device.Facts().artifactFormat,
+	                                          s.Code( shaders::kFullScreenVertex ), "main", {} },
+	    { ShaderStage::kFragment, device.Facts().artifactFormat,
+	        s.Code( shaders::kSampledFragment ), "main", used } };
+	const Format colors[] = { Format::kRGBA8Unorm };
+	PipelineDesc desc;
+	desc.stages = stages;
+	desc.layouts = layouts;
+	desc.colorFormats = colors;
+	desc.raster.cull = CullMode::kNone;
+	auto pipeline = device.CreatePipeline( desc );
+
+	TextureDesc image;
+	image.format = format;
+	image.width = kSize;
+	image.height = kSize;
+	image.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	auto texture = device.CreateTexture( image );
+	image.format = Format::kRGBA8Unorm;
+	image.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
+	auto target = device.CreateTexture( image );
+	SamplerDesc point;
+	point.minFilter = point.magFilter = point.mipFilter = Filter::kNearest;
+	point.address = AddressMode::kClampToEdge;
+	auto sampler = device.CreateSampler( point );
+	Raster( s, pipeline && texture && target && sampler, "sampled",
+	    "a sampling pipeline, texture and sampler are created" );
+	if ( !pipeline || !texture || !target || !sampler )
+		return false;
+	const BindGroupEntry entries[] = {
+	    { 0, {}, 0, 0, texture.Value(), {} }, { 1, {}, 0, 0, {}, sampler.Value() } };
+	auto group = device.CreateBindGroup( { layout.Value(), entries } );
+	const BufferId staging = s.Buffer(
+	    device, texels.size(), { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	auto encoder = device.BeginEncoder( QueueKind::kGraphics );
+	if ( !group || !encoder )
+		return false;
+	CommandEncoder &e = encoder.Value();
+	e.TransitionBuffer( staging, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.WriteBuffer( staging, 0, texels );
+	e.TransitionBuffer( staging, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionTexture(
+	    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyBufferToTexture( staging, texture.Value(), { 0, 0, 0, kSize, kSize } );
+	e.TransitionTexture(
+	    texture.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
+	e.TransitionTexture(
+	    target.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+	const ColorAttachment attachment[] = {
+	    { target.Value(), LoadOp::kClear, StoreOp::kStore, {}, {} } };
+	RenderingDesc rendering;
+	rendering.colors = attachment;
+	rendering.width = kSize;
+	rendering.height = kSize;
+	e.BeginRendering( rendering );
+	e.SetPipeline( pipeline.Value() );
+	e.SetBindGroup( BindGroupRole::kMaterial, group.Value() );
+	e.Draw( 3 );
+	e.EndRendering();
+	e.TransitionTexture(
+	    target.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
+	const std::vector<std::byte> pixels = ReadTexture( s, device, e, target.Value(), kSize );
+	return Raster( s, pixels == expected, "sampled", what );
+}
+
+// A texture uploaded through a buffer, sampled with a nearest sampler at
+// texel centers: every texel lands on the pixel with the same coordinates
+// (row 0 at the top for textures and framebuffers alike).
+inline void SampledClauses( Suite &s, IRenderDevice2 &device )
+{
+	const std::vector<std::byte> texels = Pattern( 4 * 4 * 4, 5 );
+	(void)SampleTexture( s, device, Format::kRGBA8Unorm, texels, texels,
+	    "texels sampled at their centers land on the same pixels (row 0 on top)" );
+	if ( !device.Facts().capabilities.Has( Capability::kTextureCompressionBC ) )
+		return;
+	// D19: one BC1 block in its three-color mode (color0 <= color1): each row
+	// is color0 (blue), color1 (red) and two transparent blacks, which D3D9's
+	// DXT1 keeps (one-bit alpha).
+	const std::uint8_t block[8] = { 0x1f, 0x00, 0x00, 0xf8, 0xf4, 0xf4, 0xf4, 0xf4 };
+	std::vector<std::byte> bc1( 8 );
+	std::memcpy( bc1.data(), block, sizeof( block ) );
+	static const std::uint8_t row[16] = { 0, 0, 255, 255, 255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0 };
+	std::vector<std::byte> decoded;
+	for ( int y = 0; y < 4; ++y )
+	{
+		for ( const std::uint8_t value : row )
+			decoded.push_back( std::byte( value ) );
+	}
+	(void)SampleTexture( s, device, Format::kBC1Unorm, bc1, decoded,
+	    "D19 a BC1 block decodes as D3D9's DXT1, one-bit alpha kept" );
+}
+
+// An indexed draw from a vertex buffer into a 4x multisampled target that
+// resolves: a counter-clockwise quad on the left half blends additively over
+// the clear color; a clockwise quad on the right half is culled as a back face.
+inline void MultisampleClauses( Suite &s, IRenderDevice2 &device )
+{
+	constexpr std::uint32_t kSize = 8;
+	if ( !( device.Facts().limits.sampleCounts & 4u ) )
+	{
+		std::printf(
+		    "SKIP %s.multisample the adapter has no 4x sample count\n", s.m_Driver.name.c_str() );
+		return;
+	}
+	static const BindingDesc material[] = {
+	    { 0, BindingKind::kUniformBuffer, 1, { ShaderStage::kFragment } } };
+	auto layout = device.CreateBindGroupLayout( { BindGroupRole::kMaterial, material } );
+	if ( !layout )
+		return;
+	const BindGroupLayoutId layouts[] = { {}, {}, layout.Value() };
+	static const ReflectedBinding used[] = { { 2, 0, BindingKind::kUniformBuffer } };
+	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device.Facts().artifactFormat,
+	                                          s.Code( shaders::kPositionVertex ), "main", {} },
+	    { ShaderStage::kFragment, device.Facts().artifactFormat, s.Code( shaders::kColorFragment ),
+	        "main", used } };
+	const VertexAttribute attributes[] = { { 0, VertexFormat::kFloat2, 0, 0 } };
+	const VertexBufferLayout buffers[] = { { 8, false } };
+	const Format colors[] = { Format::kRGBA8Unorm };
+	const BlendMode blends[] = { BlendMode::kAdditive };
+	PipelineDesc desc;
+	desc.stages = stages;
+	desc.layouts = layouts;
+	desc.vertex = { attributes, buffers };
+	desc.colorFormats = colors;
+	desc.blends = blends;
+	desc.raster = { CullMode::kBack, true };
+	desc.sampleCount = 4;
+	auto pipeline = device.CreatePipeline( desc );
+
+	TextureDesc target;
+	target.format = Format::kRGBA8Unorm;
+	target.width = kSize;
+	target.height = kSize;
+	target.sampleCount = 4;
+	target.usages = { ResourceUsage::kColorAttachment };
+	auto multisampled = device.CreateTexture( target );
+	target.sampleCount = 1;
+	target.usages = { ResourceUsage::kResolveDestination, ResourceUsage::kCopySource };
+	auto resolved = device.CreateTexture( target );
+	Raster( s, pipeline && multisampled && resolved, "multisample",
+	    "a 4x pipeline and its targets are created" );
+	if ( !pipeline || !multisampled || !resolved )
+		return;
+
+	// Left half counter-clockwise (front), right half clockwise (back), clip Y up.
+	const float vertices[] = { -1, -1, 0, -1, 0, 1, -1, 1, 0, -1, 0, 1, 1, 1, 1, -1 };
+	const std::uint16_t indices[] = { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7 };
+	const float color[4] = { 0.4f, 0.2f, 0.0f, 1.0f };
+	const UsageSet upload{ ResourceUsage::kCopyDestination };
+	const BufferId vertexBuffer =
+	    s.Buffer( device, sizeof( vertices ), UsageSet( upload ).Add( ResourceUsage::kVertex ) );
+	const BufferId indexBuffer =
+	    s.Buffer( device, sizeof( indices ), UsageSet( upload ).Add( ResourceUsage::kIndex ) );
+	const BufferId uniform =
+	    s.Buffer( device, 256, UsageSet( upload ).Add( ResourceUsage::kUniform ) );
+	const BindGroupEntry entry[] = { { 0, uniform, 0, 16, {}, {} } };
+	auto group = device.CreateBindGroup( { layout.Value(), entry } );
+	auto encoder = device.BeginEncoder( QueueKind::kGraphics );
+	if ( !group || !encoder )
+		return;
+	CommandEncoder &e = encoder.Value();
+	auto fill = [&]( BufferId buffer, std::span<const std::byte> bytes, ResourceUsage usage )
+	{
+		e.TransitionBuffer( buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.WriteBuffer( buffer, 0, bytes );
+		e.TransitionBuffer( buffer, ResourceUsage::kCopyDestination, usage );
+	};
+	fill( vertexBuffer, std::as_bytes( std::span( vertices ) ), ResourceUsage::kVertex );
+	fill( indexBuffer, std::as_bytes( std::span( indices ) ), ResourceUsage::kIndex );
+	fill( uniform, std::as_bytes( std::span( color ) ), ResourceUsage::kUniform );
+	e.TransitionTexture(
+	    multisampled.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+	e.TransitionTexture(
+	    resolved.Value(), ResourceUsage::kUndefined, ResourceUsage::kResolveDestination );
+	const ColorAttachment attachment[] = { { multisampled.Value(), LoadOp::kClear,
+	    StoreOp::kDiscard, { 0.2f, 0.0f, 0.0f, 1.0f }, resolved.Value() } };
+	RenderingDesc rendering;
+	rendering.colors = attachment;
+	rendering.width = kSize;
+	rendering.height = kSize;
+	e.BeginRendering( rendering );
+	e.SetPipeline( pipeline.Value() );
+	e.SetBindGroup( BindGroupRole::kMaterial, group.Value() );
+	e.SetVertexBuffer( 0, vertexBuffer );
+	e.SetIndexBuffer( indexBuffer, 0, IndexFormat::kUint16 );
+	e.DrawIndexed( 12 );
+	e.EndRendering();
+	e.TransitionTexture(
+	    resolved.Value(), ResourceUsage::kResolveDestination, ResourceUsage::kCopySource );
+	const std::vector<std::byte> pixels = ReadTexture( s, device, e, resolved.Value(), kSize );
+	bool left = pixels.size() == kSize * kSize * 4;
+	bool right = left;
+	for ( std::uint32_t y = 0; left && y < kSize; ++y )
+	{
+		for ( std::uint32_t x = 0; x < kSize; ++x )
+		{
+			const std::byte *p = pixels.data() + ( y * kSize + x ) * 4;
+			if ( x < kSize / 2 )
+				left &=
+				    Near( p[0], 153 ) && Near( p[1], 51 ) && Near( p[2], 0 ) && Near( p[3], 255 );
+			else
+				right &=
+				    Near( p[0], 51 ) && Near( p[1], 0 ) && Near( p[2], 0 ) && Near( p[3], 255 );
+		}
+	}
+	Raster( s, left, "multisample",
+	    "the front-facing quad blends additively and resolves on the left" );
+	Raster( s, right, "multisample", "the back-facing quad is culled (CCW front, Y up)" );
+}
+
 } // namespace detail
+
+// The raster clauses (compute, sampling, multisampling and facing) on one
+// device of an adapter that executes work.
+inline void RunRasterConformance( testing::Checks &checks, const DeviceDriver &driver )
+{
+	detail::Suite suite( checks, driver );
+	std::unique_ptr<IRenderDevice2> device = suite.Create();
+	if ( !device )
+		return;
+	detail::ComputeClauses( suite, *device );
+	detail::SampledClauses( suite, *device );
+	detail::MultisampleClauses( suite, *device );
+	(void)device->WaitIdle();
+	(void)device->Poll();
+}
 
 inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &driver )
 {

@@ -82,6 +82,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -126,6 +127,38 @@ PORT_KINDS = {"uniform-buffer", "storage-buffer", "sampled-texture", "sampler",
 OP_DECORATE = 71
 DECORATION_BINDING = 33
 DECORATION_DESCRIPTOR_SET = 34
+# The GL adapter's contract with the GLSL 4.50 artifacts (render/device/gl,
+# RFC 0016 K10), besides the flattened slots:
+# - a sampled texture of group g, binding b is named rg_t<g>_<b> and a sampler
+#   rg_s<g>_<b>, so SPIRV-Cross names each combined sampler it builds
+#   SPIRV_Cross_Combinedrg_t<g>_<b>rg_s<g>_<b> (a texel fetch without a sampler:
+#   ...SPIRV_Cross_DummySampler) on the texture's slot, and the adapter binds
+#   that sampler to the slot;
+# - the draw constants (D16) are the uniform block GL_DRAW_CONSTANTS_BLOCK,
+#   which the adapter binds at GL_DRAW_CONSTANTS_SLOT;
+# - specialization constant n (D20) is SPIRV-Cross's macro
+#   SPIRV_CROSS_CONSTANT_ID_n (its default when nothing defines it); the line
+#   after #version, GL_SPECIALIZATION_LINE, lists each constant's id and type
+#   (int, uint, float, bool), so the adapter can define the macro as a literal
+#   of that type (GLSL has no constant-expression bit cast).
+GL_SPECIALIZATION_LINE = "// render.device.gl specialization"
+GL_SPECIALIZATION_TYPES = ("int", "uint", "float", "bool")
+GL_DRAW_CONSTANTS_BLOCK = "RenderDrawConstants"
+GL_DRAW_CONSTANTS_SLOT = MAX_GROUPS * GL_SLOTS_PER_GROUP
+GL_TEXTURE_PREFIX = "rg_t"
+GL_SAMPLER_PREFIX = "rg_s"
+OP_NAME = 5
+OP_MEMBER_NAME = 6
+OP_TYPE_IMAGE = 25
+OP_TYPE_SAMPLER = 26
+OP_TYPE_ARRAY = 28
+OP_TYPE_RUNTIME_ARRAY = 29
+OP_TYPE_POINTER = 32
+OP_VARIABLE = 59
+STORAGE_UNIFORM_CONSTANT = 0
+STORAGE_PUSH_CONSTANT = 9
+# Module-layout instructions that come before the debug names (SPIR-V 2.4).
+PRELUDE_OPS = {17, 10, 11, 14, 15, 16, 331, 7, 2, 3, 4}
 
 
 class ArtifactError(Exception):
@@ -298,14 +331,135 @@ def flatten_bindings(spirv):
     return bytes_of(words)
 
 
+def instructions(words):
+    """(index, word count, opcode) of every instruction after the header."""
+    index = 5
+    while index < len(words):
+        count, opcode = words[index] >> 16, words[index] & 0xFFFF
+        if count == 0:
+            raise ArtifactError("malformed SPIR-V: zero-length instruction at word %d" % index)
+        yield index, count, opcode
+        index += count
+
+
+def string_words(text):
+    data = text.encode() + b"\0"
+    data += b"\0" * (-len(data) % 4)
+    return words_of(data)
+
+
+def gl_names(spirv):
+    """{id: name} the GL adapter reads back (GL_TEXTURE_PREFIX, GL_SAMPLER_PREFIX,
+    GL_DRAW_CONSTANTS_BLOCK) for the module's sampled textures, samplers and
+    draw-constant block type, from their original (set, binding)."""
+    words = words_of(spirv)
+    sets, bindings, types, pointers, variables = {}, {}, {}, {}, []
+    for index, count, opcode in instructions(words):
+        operands = words[index + 1:index + count]
+        if opcode == OP_DECORATE and len(operands) >= 3:
+            if operands[1] == DECORATION_DESCRIPTOR_SET:
+                sets[operands[0]] = operands[2]
+            elif operands[1] == DECORATION_BINDING:
+                bindings[operands[0]] = operands[2]
+        elif opcode == OP_TYPE_IMAGE:
+            # Sampled: 1 a sampled image, 2 a storage image.
+            types[operands[0]] = ("image", operands[6] if len(operands) > 6 else 0)
+        elif opcode == OP_TYPE_SAMPLER:
+            types[operands[0]] = ("sampler", 0)
+        elif opcode in (OP_TYPE_ARRAY, OP_TYPE_RUNTIME_ARRAY):
+            types[operands[0]] = ("array", operands[1])
+        elif opcode == OP_TYPE_POINTER:
+            pointers[operands[0]] = (operands[1], operands[2])
+        elif opcode == OP_VARIABLE:
+            variables.append((operands[1], operands[0], operands[2]))
+
+    def element(type_id):
+        while types.get(type_id, ("", 0))[0] == "array":
+            type_id = types[type_id][1]
+        return type_id
+
+    names = {}
+    for variable, pointer, storage in variables:
+        if pointer not in pointers:
+            continue
+        pointee = element(pointers[pointer][1])
+        if storage == STORAGE_PUSH_CONSTANT:
+            names[pointee] = GL_DRAW_CONSTANTS_BLOCK
+            continue
+        if storage != STORAGE_UNIFORM_CONSTANT or variable not in bindings:
+            continue
+        kind, sampled = types.get(pointee, ("", 0))
+        where = "%d_%d" % (sets.get(variable, 0), bindings[variable])
+        if kind == "image" and sampled == 1:
+            names[variable] = GL_TEXTURE_PREFIX + where
+        elif kind == "sampler":
+            names[variable] = GL_SAMPLER_PREFIX + where
+    return names
+
+
+def rename(spirv, names):
+    """A copy of the module whose OpName for each id in names is names[id]."""
+    words = words_of(spirv)
+    out, insert_at = words[:5], None
+    for index, count, opcode in instructions(words):
+        if insert_at is None and opcode not in PRELUDE_OPS:
+            insert_at = len(out)
+        if opcode == OP_NAME and words[index + 1] in names:
+            continue
+        out.extend(words[index:index + count])
+    added = []
+    for target, name in sorted(names.items()):
+        operands = [target] + string_words(name)
+        added += [((len(operands) + 1) << 16) | OP_NAME] + operands
+    if insert_at is None:
+        insert_at = len(out)
+    return bytes_of(out[:insert_at] + added + out[insert_at:])
+
+
+def mark_specialization(text, constants):
+    """The GLSL with GL_SPECIALIZATION_LINE after its #version line, listing
+    each specialization constant as id:type, when it has any. Every constant
+    must be of a GL_SPECIALIZATION_TYPES type and have SPIRV-Cross's macro."""
+    if not constants:
+        return text
+    entries = []
+    for constant in sorted(constants, key=lambda c: c["id"]):
+        kind = constant.get("type")
+        if kind not in GL_SPECIALIZATION_TYPES:
+            raise ArtifactError("specialization constant %d has type %s, which the GL "
+                                "artifacts do not carry" % (constant["id"], kind))
+        if "#define SPIRV_CROSS_CONSTANT_ID_%d " % constant["id"] not in text:
+            raise ArtifactError("SPIRV-Cross wrote no macro for specialization constant %d"
+                                % constant["id"])
+        entries.append("%d:%s" % (constant["id"], kind))
+    version, _, rest = text.partition("\n")
+    if not version.startswith("#version"):
+        raise ArtifactError("SPIRV-Cross's GLSL does not start with #version")
+    return "%s\n%s %s\n%s" % (version, GL_SPECIALIZATION_LINE, " ".join(entries), rest)
+
+
 def cross_compile(spirv, stage):
+    """The GLSL 4.50 artifact of a SPIR-V module for the GL adapter: slots
+    flattened, resources named, the draw constants a uniform block, combined
+    samplers on their textures' slots, specialization constants listed with
+    their types. It must compile as OpenGL GLSL with the pinned
+    glslangValidator."""
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "module.spv"
-        path.write_bytes(flatten_bindings(spirv))
-        result = run([st.spirv_cross(), str(path), "--version", "450", "--no-es"],
+        path.write_bytes(spirv)
+        constants = json.loads(run([st.spirv_cross(), str(path), "--reflect"],
+                                   "spirv-cross --reflect").stdout).get(
+                                       "specialization_constants", [])
+        path.write_bytes(flatten_bindings(rename(spirv, gl_names(spirv))))
+        result = run([st.spirv_cross(), str(path), "--version", "450", "--no-es",
+                      "--combined-samplers-inherit-bindings", "--glsl-emit-push-constant-as-ubo"],
                      "spirv-cross --version 450")
-        text = result.stdout
-        # The artifact must compile as OpenGL GLSL.
+        text = mark_specialization(result.stdout, constants)
+        text, bound = re.subn(r"layout\(std140\) uniform %s\b" % GL_DRAW_CONSTANTS_BLOCK,
+                              "layout(binding = %d, std140) uniform %s"
+                              % (GL_DRAW_CONSTANTS_SLOT, GL_DRAW_CONSTANTS_BLOCK), text)
+        if bound != text.count("uniform " + GL_DRAW_CONSTANTS_BLOCK):
+            raise ArtifactError("SPIRV-Cross wrote the draw constants in an unexpected form")
         check = Path(tmp) / ("artifact" + {v: k for k, v in STAGES.items()}[stage])
         check.write_text(text)
         run([st.glslang_validator(), str(check)], "glslangValidator (OpenGL) on the GLSL 4.50")
@@ -596,6 +750,7 @@ def write_headers(units, words, out_dir, root=ROOT):
         words[array] = future.result()
     for header in st.GENERATED:
         written[header] = st.render_generated(header, lambda array: words[array])
+    written.update(glsl_headers(words, root))
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, text in written.items():
@@ -604,6 +759,26 @@ def write_headers(units, words, out_dir, root=ROOT):
         if not target.is_file() or target.read_text() != text:
             target.write_text(text)
     return sorted(written)
+
+
+def glsl_headers(words, root=ROOT):
+    """{name: text} of the GLSL_GENERATED headers: each row's SPIR-V (its
+    artifact when the row is a unit or a GENERATED row, else compiled here)
+    through cross_compile."""
+    rows = [row for _, _, header_rows in st.GLSL_GENERATED.values() for row in header_rows]
+    compiler = st.glslc()
+
+    def text_of(row):
+        array, source, options = row
+        spirv = words.get(array)
+        if spirv is None:
+            spirv = st.compile_module(compiler, Path(root) / source, list(options))
+        return cross_compile(bytes_of(spirv), STAGES[Path(source).suffix])
+
+    with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as pool:
+        texts = dict(zip((row[0] for row in rows), pool.map(text_of, rows)))
+    return {header: st.render_glsl(header, lambda array: texts[array])
+            for header in st.GLSL_GENERATED}
 
 
 def generate_headers(out_dir, root=ROOT):

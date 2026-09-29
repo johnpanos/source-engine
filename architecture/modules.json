@@ -611,6 +611,26 @@
         ]
       },
       {
+        "id": "render.device.gl",
+        "paths": [
+          "public/render/device/gl/",
+          "render/device/gl/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device"
+        ],
+        "kind": "backend",
+        "externalHeaders": [
+          "EGL/egl.h",
+          "EGL/eglext.h",
+          "GL/glcorearb.h"
+        ],
+        "uselib": [
+          "EGL"
+        ]
+      },
+      {
         "id": "render.graph",
         "paths": [
           "public/render/graph/",
@@ -958,6 +978,7 @@
           "render.device",
           "render.device.null",
           "render.device.vulkan",
+          "render.device.gl",
           "render.graph",
           "render.shader-library",
           "render.resources",
@@ -981,6 +1002,8 @@
         "externalHeaders": [
           "random",
           "vulkan/vulkan.h",
+          "EGL/egl.h",
+          "EGL/eglext.h",
           "linux/dma-buf.h",
           "sys/ioctl.h",
           "sys/mman.h"
@@ -1389,6 +1412,12 @@
         "allowedUse": [
           "render_device",
           "VULKAN"
+        ]
+      },
+      "render_device_gl": {
+        "allowedUse": [
+          "render_device",
+          "EGL"
         ]
       },
       "render_graph": {
@@ -1931,9 +1960,7 @@
           "render.lab",
           "render.lab.app"
         ],
-        "planned": [
-          "render.device.gl"
-        ],
+        "planned": [],
         "outside": [
           {
             "owner": "R91",

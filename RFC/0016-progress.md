@@ -2711,3 +2711,78 @@ source-engine-43 owns `render_lab` and every lighting term.
     half-float EXR compression, which zeroed 5% of the texels in a test. The
     RFC 0011 sky fixtures' references may be affected. This is not verified
     on those fixtures.
+
+## K10: OpenGL adapter, slices 1–4 (2026-09-29)
+
+State: `render.device.gl` exists and passes the port suite on the Linux
+desktop (radeonsi) and on llvmpipe. Rebased onto K11 a2 (`04756591`): the
+counts below are from that base (g++ and clang++; Vulkan device suite 851). K10 stays open: capability negotiation,
+pixels, the product boot and the ToGL build each wait on a decision (below).
+Owner: a K10 subagent session, on a worktree branch the main session lands.
+
+- **The adapter** (`render/device/gl`, `public/render/device/gl/provider.h`,
+  strict C++20, `arch_module = render.device.gl`, links EGL alone):
+  - an OpenGL 4.5 core context of its own on an EGL surfaceless display, so
+    no window; GL entry points through `eglGetProcAddress`;
+  - encoders record CPU command lists on any thread; `Submit` validates them
+    as the Vulkan adapter does and replays them in order on the calling
+    thread; each device call makes the context current and restores the
+    caller's own afterwards (the render sequence moves between the main and
+    `MatQueue` threads);
+  - tokens are fence sync objects; the upload ring is a persistently mapped
+    coherent buffer; programs are cached by stage sources and constants;
+  - conventions by `glClipControl( GL_UPPER_LEFT, GL_ZERO_TO_ONE )`: facing
+    stays judged in clip space, so the Vulkan multisample clause's culling
+    holds unchanged;
+  - claims compute, storage buffers and BC (with S3TC and sRGB S3TC); not
+    external images, aliasing, parallel recording, async queues or ray query;
+  - narrower than Vulkan, by status: `kD24UnormS8` texture copies, sRGB or
+    depth storage textures, a binding past slot 15 of its group.
+- **Artifacts** (`tools/render/shader_artifacts.py` `cross_compile` owns the
+  form; the contract section "OpenGL adapter" in
+  `unittests/rendertest/contracts/render.device.v2.md` lists it): flat slots
+  `group * 16 + binding`; sampled textures and samplers named after their
+  slots, so each combined sampler SPIRV-Cross builds sits on its texture's
+  slot and names its sampler; the draw constants the block
+  `RenderDrawConstants` at uniform slot 64; a line after `#version` listing
+  each specialization constant's type (GLSL has no constant bit cast, so the
+  adapter writes typed literals). `GLSL_GENERATED` headers: the suite's
+  fixtures and a `<stem>_glsl.h` twin of every core program header.
+- **Suite changes:** the Vulkan-local fixtures joined `test_shaders.h`;
+  `DeviceDriver::artifact` maps each fixture to the adapter's format; the
+  compute, sampling and multisample clauses moved from
+  `test_device_vulkan.cpp` into the shared `RunRasterConformance` (same check
+  names).
+
+| K10 check | Evidence | Result |
+| --- | --- | --- |
+| Port suite | `render.device.v2.gl` (profile `linux-native-gl-gpu`): shared suite, raster clauses, small ring, a debug-output pass (0 messages), facts, ring, viewport origin, cross-thread submission, context restoration, masked capability. D7 runs (a simulated context reset, then `Recover`). 822 checks on radeonsi (g++, clang++), 819 on llvmpipe. Unclaimed capabilities are listed (INFO), not failed | pass |
+| Bad adapters (K1 clauses on GL) | `render.device.v2.gl.sensitivity`: lower-left origin (D13 y), −1..1 depth (D13 z), false async compute and false aliasing (D15), ignored write masks (D17), dropped specialization (D20), early upload reuse (D10): 7 of 7, each only its clause. On llvmpipe the D10 case cannot show (copies run at submission) and is skipped, so the row fails its minimum there | pass on radeonsi |
+| Artifacts per target | `render.shader-artifacts.gl`: the 11 core programs of K11 a2's program set (the surface program with its flat, world and model vertex stages, lines, both debug programs, output, shadow depth and receiver, skinning, cluster assignment) link on GL; a truncated artifact fails. `shader.toolchain-pin` (84) and `render.shader-artifacts` (1,346) pass at K11 a2 (`04756591`); the `.sensitivity` rows passed at a1 | pass |
+| No portable changes needed | archlint `check --all`: no finding in these files (4 findings elsewhere predate this work); CAP011 rule 5 finds no portable comparison of `diagnosticBackend` | pass |
+| Capability negotiation | `gl.mask` shows the adapter side (compute masked: not claimed, refused by status). The composition side does not exist: see decisions | open |
+| Product boot | blocked on K8/K9 (port owner's decision, 2026-09-29): no legacy path draws through a GL device (the frozen-path rules forbid building one) and there is no `render.bridge.sdl3-gl`; `portal-linux-gl` boots once the cohorts are on the core | blocked |
+| Pixels | the pixel families run through the product (`material_pixel_conformance.py`), so blocked with the boot | blocked |
+| ToGL untouched | no ToGL or legacy-renderer build input changed; not rebuilt | unverified |
+
+Decisions needed before slices 5 and 6 (for the render-core session and the
+user):
+1. **Composition** (`render.composition`, render-core owned) links only
+   null and Vulkan; `RENDER_CORE_GL` needs a `FindDevice` entry. "Selects CPU
+   skinning" has no mechanism: skinning is a kernel, not a catalog feature,
+   and `FeatureRequirements` has no declared fallback. Proposed: a feature
+   declares `fallback` (a feature name) beside `required` in
+   `render/frame/feature.h` (a port change), and composition reports each
+   substitution by name in `RenderCoreResult`.
+2. **Artifact selection:** every family and pass hard-codes
+   `ArtifactFormat::kSpirv` and the `spv/` arrays, so on GL every pipeline
+   fails `kUnsupported`. `render.shader-library`'s `Resolve( recipe, source,
+   format )` exists but has no consumer. Proposed: consumers resolve through
+   one artifact store the build fills from the generated SPIR-V and GLSL
+   headers.
+3. **Product boot on GL:** the legacy stream reaches the core through the
+   native Vulkan backend (`shaderapivulkan` on the Vulkan adapter's
+   `host_device.h`); no legacy backend draws through a GL device, and there
+   is no `render.bridge.sdl3-gl`. `portal-linux-gl` needs either a legacy
+   backend on GL (ToGL is D3D9-shaped and stays for mods, decision 2) or the
+   K8/K9 cohorts on the core first.

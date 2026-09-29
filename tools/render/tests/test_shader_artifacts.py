@@ -101,6 +101,77 @@ class FlattenTest(unittest.TestCase):
             sa.flatten_bindings(sa.bytes_of(MAGIC_HEADER + [0]))
 
 
+def op(opcode, *operands):
+    return [((len(operands) + 1) << 16) | opcode] + list(operands)
+
+
+def names(spirv):
+    """{target: name} of a module's OpName instructions."""
+    found = {}
+    for index, count, opcode in sa.instructions(sa.words_of(spirv)):
+        if opcode == sa.OP_NAME:
+            raw = sa.bytes_of(sa.words_of(spirv)[index + 2:index + count])
+            found[sa.words_of(spirv)[index + 1]] = raw.split(b"\0")[0].decode()
+    return found
+
+
+# A module with a sampled texture (id 20, set 2 binding 1), a sampler (21,
+# set 2 binding 2), a storage image (22) and a push-constant block (type 30).
+GL_MODULE = module(
+    op(17, 1),                                   # OpCapability Shader
+    op(15, 4, 1, *sa.string_words("main")),      # OpEntryPoint Fragment %1 "main"
+    op(sa.OP_NAME, 20, *sa.string_words("image")),
+    decorate(20, sa.DECORATION_DESCRIPTOR_SET, 2), decorate(20, sa.DECORATION_BINDING, 1),
+    decorate(21, sa.DECORATION_DESCRIPTOR_SET, 2), decorate(21, sa.DECORATION_BINDING, 2),
+    decorate(22, sa.DECORATION_DESCRIPTOR_SET, 3), decorate(22, sa.DECORATION_BINDING, 0),
+    op(22, 2, 32),                               # OpTypeFloat %2 32
+    op(sa.OP_TYPE_IMAGE, 10, 2, 1, 0, 0, 0, 1, 0),  # sampled image
+    op(sa.OP_TYPE_SAMPLER, 11),
+    op(sa.OP_TYPE_IMAGE, 12, 2, 1, 0, 0, 0, 2, 1),  # storage image
+    op(30, 30, 2),                               # OpTypeStruct %30 { float }
+    op(sa.OP_TYPE_POINTER, 40, sa.STORAGE_UNIFORM_CONSTANT, 10),
+    op(sa.OP_TYPE_POINTER, 41, sa.STORAGE_UNIFORM_CONSTANT, 11),
+    op(sa.OP_TYPE_POINTER, 42, sa.STORAGE_UNIFORM_CONSTANT, 12),
+    op(sa.OP_TYPE_POINTER, 43, sa.STORAGE_PUSH_CONSTANT, 30),
+    op(sa.OP_VARIABLE, 40, 20, sa.STORAGE_UNIFORM_CONSTANT),
+    op(sa.OP_VARIABLE, 41, 21, sa.STORAGE_UNIFORM_CONSTANT),
+    op(sa.OP_VARIABLE, 42, 22, sa.STORAGE_UNIFORM_CONSTANT),
+    op(sa.OP_VARIABLE, 43, 23, sa.STORAGE_PUSH_CONSTANT))
+
+
+class GlArtifactTest(unittest.TestCase):
+    def test_textures_samplers_and_draw_constants_are_named_for_the_adapter(self):
+        found = sa.gl_names(GL_MODULE)
+        self.assertEqual(found, {20: sa.GL_TEXTURE_PREFIX + "2_1", 21: sa.GL_SAMPLER_PREFIX + "2_2",
+                                 30: sa.GL_DRAW_CONSTANTS_BLOCK})
+
+    def test_rename_replaces_names_before_the_annotations(self):
+        renamed = sa.rename(GL_MODULE, sa.gl_names(GL_MODULE))
+        self.assertEqual(names(renamed)[20], "rg_t2_1")
+        self.assertEqual(names(renamed)[30], sa.GL_DRAW_CONSTANTS_BLOCK)
+        self.assertEqual(sum(1 for n in names(renamed) if n == 20), 1)
+        # Every OpName precedes the first decoration (the module's layout).
+        opcodes = [opcode for _, _, opcode in sa.instructions(sa.words_of(renamed))]
+        self.assertLess(max(i for i, o in enumerate(opcodes) if o == sa.OP_NAME),
+                        opcodes.index(sa.OP_DECORATE))
+
+    def test_specialization_constants_are_listed_after_the_version(self):
+        text = ("#version 450\n"
+                "#ifndef SPIRV_CROSS_CONSTANT_ID_9\n#define SPIRV_CROSS_CONSTANT_ID_9 1.5\n#endif\n"
+                "#ifndef SPIRV_CROSS_CONSTANT_ID_7\n#define SPIRV_CROSS_CONSTANT_ID_7 0\n#endif\n")
+        out = sa.mark_specialization(text, [{"id": 9, "type": "float"}, {"id": 7, "type": "int"}])
+        self.assertEqual(out.splitlines()[1], sa.GL_SPECIALIZATION_LINE + " 7:int 9:float")
+        self.assertEqual(out.splitlines()[2:], text.splitlines()[1:])
+        self.assertEqual(sa.mark_specialization(text, []), text)
+
+    def test_a_constant_without_a_macro_or_of_another_type_fails(self):
+        with self.assertRaises(sa.ArtifactError):
+            sa.mark_specialization("#version 450\n", [{"id": 3, "type": "int"}])
+        with self.assertRaises(sa.ArtifactError):
+            sa.mark_specialization("#version 450\n#define SPIRV_CROSS_CONSTANT_ID_3 0.0lf\n",
+                                   [{"id": 3, "type": "double"}])
+
+
 class InventoryTest(unittest.TestCase):
     def test_every_backend_unit_has_a_unique_key(self):
         units = sa.inventory()

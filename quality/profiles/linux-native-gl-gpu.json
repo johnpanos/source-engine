@@ -1,0 +1,37 @@
+{
+  "schema": "conformance-profile/v1",
+  "id": "linux-native-gl-gpu",
+  "description": "Linux x86_64 OpenGL 4.5 core on a real GPU (RFC 0016 K10; RFC 0005 Q-PRESENTATION). Suites link libEGL and make their own surfaceless context (EGL_MESA_platform_surfaceless), so no window reaches a desktop and no display is needed. Runs only on a runner with a physical GPU (`--runner gpu`); LIBGL_ALWAYS_SOFTWARE=1 in the environment selects Mesa's llvmpipe instead, an additional configuration, not a replacement.",
+  "os": "linux",
+  "arch": "x86_64",
+  "runner": "gpu",
+  "dialect": "cxx20",
+  "include_roots": [
+    "public",
+    "."
+  ],
+  "generated_include_roots": [
+    {
+      "id": "shaders",
+      "description": "RFC 0016 K4/K10: the SPIR-V and GLSL 4.50 headers the build generates (not committed); sources include \"spv/<name>\"",
+      "command": ["{python}", "tools/render/shader_artifacts.py", "headers", "--out", "{out}/spv"]
+    }
+  ],
+  "base_flags": [
+    "-Wall",
+    "-Wextra",
+    "-Werror"
+  ],
+  "link_flags": [
+    "-lEGL"
+  ],
+  "requires": [
+    "path:/dev/dri/renderD128"
+  ],
+  "run_env_unset": [
+    "WAYLAND_DISPLAY",
+    "DISPLAY"
+  ],
+  "memory_limit_mb": 16384,
+  "timeout_seconds": 180
+}

@@ -6,10 +6,15 @@ Contract headers: `public/render/device/` (`device.h`, `encoder.h`, `usage.h`,
 `errors.h`, `conventions.h`, `validation.h`, `provider.h`)
 Shared suite: `unittests/rendertest/core/device/device_conformance.h`
 Adapters: `render.device.null` (`test_device_null.cpp`),
-`render.device.vulkan` (`test_device_vulkan.cpp`, GPU runner);
-`render.device.gl` is RFC 0016 K10.
-Sensitivity: `unittests/rendertest/core/device/test_device_negative.cpp`
-Rows: R86 (RFC 0016 K1)
+`render.device.vulkan` (`test_device_vulkan.cpp`, GPU runner),
+`render.device.gl` (`test_device_gl.cpp`, GPU runner, RFC 0016 K10).
+Raster clauses (`RunRasterConformance`: ordered dispatches, texel centers, a BC1
+block decoded as DXT1, a 4x resolve with back faces culled) run on every
+adapter that executes work.
+Sensitivity: `unittests/rendertest/core/device/test_device_negative.cpp`;
+`test_device_vulkan.cpp` and `test_device_gl.cpp` built with their
+`RENDER_DEVICE_*_SENSITIVITY` define.
+Rows: R86 (RFC 0016 K1), R92 (K10)
 
 The backend-neutral device port. Portable render code records work through it;
 only `render.composition` and test fixtures name an adapter (archlint CAP011).
@@ -57,9 +62,46 @@ layer is, reports nothing, and a host that skips its own barrier is reported.
 The legacy backend's depth-stencil format is `kD24UnormS8` or `kD32FloatS8`
 (RADV has no D24S8).
 
+## OpenGL adapter (render.device.gl, K10)
+
+- **Artifacts:** GLSL 4.50 (`ArtifactFormat::kGlsl450`), cross-compiled at build
+  time from the SPIR-V with the pinned SPIRV-Cross; the form is owned by
+  `tools/render/shader_artifacts.py` `cross_compile`. Binding (group, b) is GL
+  slot `group * 16 + b` of its kind; a sampled texture and a sampler are named
+  `rg_t<g>_<b>` and `rg_s<g>_<b>`, so each combined sampler SPIRV-Cross builds
+  sits on its texture's slot and names its sampler, which the adapter binds to
+  that unit. The suite's fixtures are the generated
+  `spv/device_fixtures_glsl.h` (`DeviceDriver::artifact` maps each).
+- **D16:** the draw constants are the uniform block `RenderDrawConstants` at
+  uniform slot 64; each submission's blocks go into one buffer, one range per
+  draw or dispatch.
+- **D20:** the line after `#version` lists each specialization constant's id
+  and type; the adapter defines SPIRV-Cross's `SPIRV_CROSS_CONSTANT_ID_<n>`
+  macro as a literal of that type after the `#version` line (a non-finite
+  float value fails the pipeline). Programs are cached by their stage sources
+  and constants.
+- **D13:** `glClipControl( GL_UPPER_LEFT, GL_ZERO_TO_ONE )`. Facing is judged
+  in clip space, so a counter-clockwise triangle with clip Y up is front, as on
+  Vulkan.
+- **Tokens (D5, D6):** one fence sync object per submission on the one
+  context; fences complete in order.
+- **D7:** runs: `gl::SimulateContextLoss` reports `kLost` as a context reset
+  (GL_KHR_robustness) would; `Recover` makes a new context and epoch.
+- **D10:** the ring is a persistently mapped, coherent buffer; a full ring
+  copies from the command's own storage (`glNamedBufferSubData`).
+- **D14:** encoders record CPU command lists on any thread; `Submit` replays
+  them in order on the calling thread with the context current, and every
+  device call restores the caller's own current context afterwards.
+- **D18:** not claimed (no exporter). **D19:** claimed with
+  `EXT_texture_compression_s3tc` and sRGB S3TC; RGTC is core.
+- **Narrower than Vulkan:** texture copies of `kD24UnormS8` are refused (GL has
+  no 32-bit transfer that equals the port's depth-aspect copy); storage
+  textures of sRGB or depth formats are `kUnsupported`; a layout binding past
+  slot 15 of its group is `kUnsupported`.
+
 ## Obligations not yet enforced by the shared rules
 
-The Vulkan adapter applies these at `Submit` or creation; the null adapter does
+The Vulkan and OpenGL adapters apply these at `Submit` or creation; the null adapter does
 not yet, which is a substitution risk until they move into `validation.cpp`:
 draws need a pipeline whose formats and sample count match the attachments,
 bound vertex slots and index buffer, and bind groups of the pipeline's layouts;

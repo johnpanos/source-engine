@@ -8438,6 +8438,91 @@
       "expect": "pass"
     },
     {
+      "id": "render.device.v2.gl",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R92",
+      "contract": "unittests/rendertest/contracts/render.device.v2.md",
+      "kind": "positive",
+      "profile": "linux-native-gl-gpu",
+      "description": "render.device.v2 on render.device.gl (RFC 0016 K10 'Port suite'): the shared suite on an OpenGL 4.5 core context of the adapter's own (EGL surfaceless, no window), with the GLSL 4.50 artifacts the build cross-compiles from the fixtures' SPIR-V (spv/device_fixtures_glsl.h, pinned SPIRV-Cross), in the default and a small-ring configuration and once more under GL debug output, which must report nothing. D7 runs: the adapter's loss hook reports kLost as a context reset would, and Recover makes a new context and epoch. D13 conventions come from glClipControl (upper-left, zero to one). D18 is not claimed (external images), so its exporter is absent. Also the raster clauses (two ordered dispatches, texel centers, a BC1 block decoded as DXT1, a 4x resolve with back faces culled), the adapter's facts (unclaimed capabilities are listed, not failed), the ring, a viewport's top-left origin, submissions from another thread, the caller's current context kept, and a masked compute capability refused by status. LIBGL_ALWAYS_SOFTWARE=1 runs it on llvmpipe.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "render/device/port.cpp",
+        "render/device/encoder.cpp",
+        "render/device/validation.cpp",
+        "render/device/gl/context.cpp",
+        "render/device/gl/device.cpp",
+        "render/device/gl/encoder.cpp",
+        "render/device/gl/execute.cpp",
+        "render/device/gl/formats.cpp",
+        "render/device/gl/pipelines.cpp",
+        "unittests/rendertest/core/device/test_device_gl.cpp"
+      ],
+      "min_checks": 819,
+      "extra_flags": [
+        "-pthread"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.device.v2.gl.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R92",
+      "contract": "unittests/rendertest/contracts/render.device.v2.md",
+      "kind": "sensitivity",
+      "profile": "linux-native-gl-gpu",
+      "description": "RFC 0016 K10, bad GL adapters: the shared device suite runs against render.device.gl with one sensitivity knob set (GlAdapterOptions::Sensitivity, never set by a product) and must fail each bad adapter on the clause it breaks and on no other, while the undecorated control passes: GL's own lower-left origin (D13 'clip y'), GL's own -1 to 1 clip depth (D13 'clip z'), a claimed async compute queue and a claimed transient aliasing it does not have (D15), write masks ignored (D17), specialization constants dropped (D20) and upload ranges retired at submission (D10).",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "render/device/port.cpp",
+        "render/device/encoder.cpp",
+        "render/device/validation.cpp",
+        "render/device/gl/context.cpp",
+        "render/device/gl/device.cpp",
+        "render/device/gl/encoder.cpp",
+        "render/device/gl/execute.cpp",
+        "render/device/gl/formats.cpp",
+        "render/device/gl/pipelines.cpp",
+        "unittests/rendertest/core/device/test_device_gl.cpp"
+      ],
+      "min_checks": 15,
+      "extra_flags": [
+        "-pthread",
+        "-DRENDER_DEVICE_GL_SENSITIVITY"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.shader-artifacts.gl",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R92",
+      "contract": "unittests/rendertest/contracts/render.device.v2.md",
+      "kind": "positive",
+      "profile": "linux-native-gl-gpu",
+      "description": "RFC 0016 K10 'Artifacts per target' on the OpenGL adapter: every core program's GLSL 4.50 artifacts, as the build generates them from the SPIR-V with the pinned SPIRV-Cross (spv/<stem>_glsl.h: the material families' surface program with its flat, world and model vertex stages, lines, debug, output, shadow, skinning and cluster assignment), compile and link as pipelines on render.device.gl, the adapter reading their form (combined-sampler names, the draw-constant slot, the specialization line). A truncated artifact must fail kInvalidDescription.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "render/device/port.cpp",
+        "render/device/encoder.cpp",
+        "render/device/validation.cpp",
+        "render/device/gl/context.cpp",
+        "render/device/gl/device.cpp",
+        "render/device/gl/encoder.cpp",
+        "render/device/gl/execute.cpp",
+        "render/device/gl/formats.cpp",
+        "render/device/gl/pipelines.cpp",
+        "unittests/rendertest/core/shaderlib/test_programs_gl.cpp"
+      ],
+      "min_checks": 13,
+      "extra_flags": [
+        "-pthread"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.graph.v1",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

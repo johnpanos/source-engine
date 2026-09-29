@@ -65,8 +65,10 @@ def build(bld):
 		root.find_node('tools/render/shader_toolchain.py'),
 		root.find_node('quality/toolchain/shader-compiler.json'),
 		bld.path.find_node('layouts.json')]
-	# Every GLSL a generated header embeds: the backend's and the render passes'.
-	for directory in (SHADERS, 'render/pass', 'render/material/families', 'render/shaders/common'):
+	# Every GLSL a generated header embeds: the backend's, the render passes'
+	# and the device suite's fixtures (their GLSL 4.50 header, RFC 0016 K10).
+	for directory in (SHADERS, 'render/pass', 'render/material/families', 'render/shaders/common',
+			'unittests/rendertest/core/device/shaders'):
 		inputs += root.ant_glob(' '.join('%s/**/*.%s' % (directory, ext)
 			for ext in ('vert', 'frag', 'comp', 'glsl')))
 	inputs += root.ant_glob(SHADERS + '/regen_*.py')

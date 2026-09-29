@@ -475,12 +475,12 @@ def options(opt):
 	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl'], default='null',
 		dest='RENDER_CORE_DEVICE',
 		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
-			'names another; vulkan needs the native Vulkan backend, gl is RFC 0016 K10 [default: %default]')
+			'names another; vulkan needs the native Vulkan backend, gl needs --render-core-gl [default: %default]')
 	grp.add_option('--render-core-features', default='legacy-stream,present',
 		dest='RENDER_CORE_FEATURES',
 		help='RFC 0016 render core: the frame features a client composes, in order [default: %default]')
 	grp.add_option('--render-core-gl', action='store_true', default=False, dest='RENDER_CORE_GL',
-		help='build the OpenGL 4.5 device adapter of the render core (RFC 0016 K10) [default: %default]')
+		help='build the OpenGL 4.5 device adapter of the render core (RFC 0016 K10; needs EGL) [default: %default]')
 	grp.add_option('--render-core-vulkan', choices=['auto', 'on', 'off'], default='auto',
 		dest='RENDER_CORE_VULKAN',
 		help='RFC 0016 render core: build the Vulkan device adapter for the tools product (the '
@@ -1152,8 +1152,11 @@ def configure_render_core(conf):
 	conf.env.RENDER_CORE_GL = bool(conf.env.RENDER_CORE and conf.options.RENDER_CORE_GL)
 	conf.env.RENDER_CORE_DEVICE = conf.options.RENDER_CORE_DEVICE
 	conf.env.RENDER_CORE_FEATURES = conf.options.RENDER_CORE_FEATURES
-	if conf.env.RENDER_CORE_GL and not os.path.isfile(os.path.join(conf.path.abspath(), 'render/device/gl/wscript')):
-		conf.fatal('--render-core-gl: the OpenGL device adapter is RFC 0016 K10 work and does not exist yet')
+	# The OpenGL adapter makes its own EGL context and loads GL through
+	# eglGetProcAddress: it links EGL alone.
+	if conf.env.RENDER_CORE_GL:
+		conf.check_cfg(package='egl', uselib_store='EGL', args=['--cflags', '--libs'],
+			msg='Checking for EGL (render core OpenGL adapter)', mandatory=True)
 	if conf.options.RENDER_CORE_DEVICE == 'vulkan' and not conf.env.RENDER_CORE_VULKAN:
 		conf.fatal('--render-core-device=vulkan needs the native Vulkan backend (--render-backend=native-vulkan)')
 	if conf.options.RENDER_CORE_DEVICE == 'gl' and not conf.env.RENDER_CORE_GL:

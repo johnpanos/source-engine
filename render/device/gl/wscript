@@ -1,0 +1,19 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.device.gl (RFC 0016 K10 adapter): render.device.v2 over OpenGL 4.5
+# core, with its own EGL surfaceless context. The only render target that sees
+# GL or EGL; its public header is a factory. GL entry points are loaded
+# through eglGetProcAddress, so it links EGL alone.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.device.gl',
+		target      = 'render_device_gl',
+		name        = 'render_device_gl',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_device', 'EGL'],
+		idx         = bld.get_taskgen_count()
+	)
