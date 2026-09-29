@@ -3029,3 +3029,27 @@ The remaining gaps are the unbuilt terms:
 - projected light (projector-cookie, about 1.0);
 - media (foggy-hall fog, 0.42–0.50);
 - portals (portal-pair, which K8 draws; room B is dark in the lab).
+
+### K11 step g decisions, from the render-core owner (2026-09-29)
+
+- **Fog froxel grid:** derived from the light grid by
+  `SubdivideClusterGrid(grid, tileDivisor, sliceMultiplier)` in
+  render.pass.lights, the one owner of the depth split. Each fine froxel
+  lies in exactly one light froxel, which a clusters-suite check with a
+  seeded mismatch proves. The lab uses 8 px tiles and 96 slices (4× the
+  light grid's 24).
+- **Layer contract:** CAP011 keeps render.pass.* independent siblings, so
+  render.pass.volumetric reads neither lights nor shadows. The interim is a
+  plain `FroxelLayout` input that render_lab fills from the grid. Where the
+  shared view-level types live (the froxel layout, ShadowTileGpu and
+  shadow_sample.glsl) is open with the owner; the recommendation is
+  render.frame and render/shaders/common. Fog in-scattering is unshadowed
+  until then, a recorded gap.
+- **Unbounded lights:** radius-0 lights (inverse-square bulbs) reach every
+  froxel and overflow its light list. Step c adds a separate "global lights"
+  list, read by the surface program and the fog. Until then, the fog loops
+  over the whole light list per froxel (a rule-7 performance item).
+- **Legacy fog:** at density zero the composite is bitwise the frame without
+  it, legacy range and height fog included (a suite check). The rule that
+  turns legacy fog off where volumetric fog is on is the owner's frame-group
+  diff, a recorded gap.
