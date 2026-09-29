@@ -1,0 +1,76 @@
+{
+  "schema": "source-product-profile/v1",
+  "id": "hammer-gtk-linux-v1",
+  "description": "Linux x86_64 GTK4/libadwaita Hammer editor (hammer_gtk) with its viewports on the RFC 0016 render core (Vulkan), on X11 and Wayland displays (RFC 0002 R17).",
+  "target": {
+    "product": "hammer-gtk",
+    "os": "linux",
+    "architecture": "x86_64"
+  },
+  "intent": {
+    "render_provider": "render-core-vulkan",
+    "frame_transport": "dmabuf (render.device clause D18) with a read-back fallback",
+    "display_profiles": [
+      {
+        "id": "x11",
+        "runtime_environment": { "GDK_BACKEND": "x11" },
+        "scales": [1, 2],
+        "checks": ["corpus.hammer.ui", "corpus.hammer.ui.scaled-x11"]
+      },
+      {
+        "id": "wayland",
+        "runtime_environment": { "GDK_BACKEND": "wayland" },
+        "scales": [1, 1.33, 2],
+        "checks": ["corpus.hammer.ui.wayland", "corpus.hammer.ui.scaled-wayland"]
+      }
+    ],
+    "support_scope": "The editor's viewports: textured Source materials, captures, asset reload, resize, sharing one device between documents, and teardown. Not the full R25 editor workflow.",
+    "packaging": "hammer/gtk/build.sh: the Waf tools product with --render-core-vulkan=on in its own tree (build-hammer-gtk), copied to the path given; KTX2 previews with KTX_SOURCE_ROOT/KTX_BUILD_ROOT (build-hammer-gtk-ktx)"
+  },
+  "toolchain": {
+    "cxx": "g++",
+    "family": "gcc",
+    "version": "16.2.1",
+    "standard_library": "libstdc++",
+    "dialect_policy": "quality/toolchain/policy.json",
+    "build_type": "release"
+  },
+  "dependencies": {
+    "pkg_config": {
+      "gtk4": "4.22.5",
+      "libadwaita-1": "1.9.4",
+      "vulkan": "1.4.341",
+      "epoxy": "1.5.10"
+    },
+    "compositor": {
+      "mutter": "50.5",
+      "note": "The isolated test compositor (headless, a virtual monitor, Xwayland for the X11 profile); never the user's session."
+    }
+  },
+  "configure_options": {
+    "tools": true,
+    "render_core_vulkan": "on"
+  },
+  "required_checks": [
+    "hammer.adapters.render.geometry",
+    "hammer.adapters.render.viewport.null",
+    "hammer.adapters.render.viewport",
+    "hammer.adapters.render.service",
+    "hammer.adapters.render.service.vulkan",
+    "corpus.hammer.ui",
+    "corpus.hammer.ui.wayland",
+    "corpus.hammer.ui.scaled-x11",
+    "corpus.hammer.ui.scaled-wayland",
+    "corpus.hammer.viewport-budget",
+    "Source architecture and changed-region style checks"
+  ],
+  "evidence": {
+    "status": "verified-local",
+    "recorded_host_observations": {
+      "date": "2026-09-28",
+      "gpu": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+      "compositor": "mutter 50.5 headless"
+    },
+    "note": "Local runs in the isolated compositor; see RFC/0002-progress.md, R17 closure. No hosted CI lane and no run on a physical desktop session."
+  }
+}

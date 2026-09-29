@@ -1076,6 +1076,54 @@ added exported images, recorded in the
 - The budget is desktop only, with no Fold7 or low-core row.
 - Each edit restages every batch; per-solid meshes would restage one.
 
+### R17 closure: declared profiles, scale, capture, sharing, teardown and restoration (2026-09-28)
+
+R17's remaining criteria were measurements and robustness on the declared
+GTK profiles. Each now has a check.
+
+- **Declared profiles.** `quality/product_profiles/hammer-gtk-linux.json`
+  declares two display profiles, X11 and Wayland, with their scales and
+  checks, and `quality/baseline.json` points to it.
+  - The UI suite runs the editor in the private headless compositor as an
+    X11 client under Xwayland (`corpus.hammer.ui`) and as a Wayland client
+    (`corpus.hammer.ui.wayland`).
+  - Every case passes on both. A Wayland toplevel never reports ACTIVE over
+    AT-SPI here (GTK 4.22, mutter 50), although it has keyboard focus, so on
+    Wayland each key is judged by its effect.
+- **Scale.** A frame is its view's logical size times the window surface's
+  scale (`gdk_surface_get_scale`, fractional on Wayland), rounded to the
+  nearest pixel. A scale change re-renders.
+  - `corpus.hammer.ui.scaled-x11` runs at GDK_SCALE=2.
+  - `corpus.hammer.ui.scaled-wayland` runs at the supported monitor scale
+    nearest 1.5: 1.33 at 1280x800. It is set through the private session's
+    keyfile settings, never the user's.
+  - Frames matched within 2 px: 864x656 for a 432x328 view at 2x, and
+    697x705 for a 523x529 view at 1.33.
+- **Capture.** F12 (File ▸ Save View Captures) writes each view's current
+  frame as `<map>-<view>.png`. The check is that the camera capture equals
+  the frame shown when F12 was pressed, pixel for pixel.
+- **Sharing.** `hammer.adapters.render.service.vulkan` SV1 puts two
+  documents, each with its own service and render thread, on one device.
+  Their views, submitted interleaved, equal what a lone renderer draws of
+  each view, and the two documents differ. In the live editor, four views
+  share one service and device.
+- **Teardown.**
+  - SV4: a service destroyed with jobs in flight, exported frames still
+    leased and a source swap queued leaves the device as it was.
+  - The editor reports `render teardown: N device resource(s) left by the
+    viewports` on exit, after draining. The UI case quits with Ctrl+Q and
+    requires exit 0 and N = 0 on every profile.
+  - The main window's destruction now clears the views' widgets, so no late
+    reply or idle reaches them. Before this, GTK logged
+    `gtk_widget_get_width` criticals at exit.
+- **Restoration.**
+  - Remount: Ctrl+Shift+R (File ▸ Reload Game Assets) mounts the same
+    archives again. Three reloads with frames in flight bring the views back
+    textured, and SV2 checks that a remount restores the frame drawn before.
+  - Resize: a dragged view divider brings the view back at its new size,
+    textured. SV3 checks that a view resized and back equals its first
+    frame.
+
 ### Source 2 ergonomics brief (slice 3 design input, 2026-09-25)
 
 A research agent assembled this from the Valve Developer Community Source 2

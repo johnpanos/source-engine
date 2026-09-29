@@ -22,7 +22,8 @@ G_BEGIN_DECLS
 #define HAMMER_TYPE_VIEWPORT ( hammer_viewport_get_type() )
 G_DECLARE_FINAL_TYPE( HammerViewport, hammer_viewport, HAMMER, VIEWPORT, GtkWidget )
 
-// Called after each allocation with the new logical size.
+// Called after each allocation with the new logical size, and when the
+// window's scale changes (the logical size then stays the same).
 typedef void ( *HammerViewportResized )(
     HammerViewport *viewport, int width, int height, gpointer user_data );
 
@@ -32,6 +33,12 @@ void hammer_viewport_set_resized(
     HammerViewport *viewport, HammerViewportResized resized, gpointer user_data );
 // Takes a reference; nullptr clears the frame.
 void hammer_viewport_set_texture( HammerViewport *viewport, GdkTexture *texture );
+// The frame shown now (borrowed), or nullptr.
+GdkTexture *hammer_viewport_get_texture( HammerViewport *viewport );
+// The framebuffer size a frame should have: the logical size times the
+// window surface's scale (fractional on a fractionally scaled output), rounded
+// to the nearest pixel. Zero before the widget has a size.
+void hammer_viewport_get_pixel_size( HammerViewport *viewport, int *width, int *height );
 
 G_END_DECLS
 

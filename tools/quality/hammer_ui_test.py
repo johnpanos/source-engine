@@ -27,6 +27,20 @@ with one step left out; the oracle must reject each:
   no-hollow  skips F: the saved map is one solid block (room.walls fails).
   no-light   places no light (room.light fails).
 
+The viewport case (RFC 0002 R17) opens the sample room with a VPK of two
+generated VTF textures mounted and judges the viewports as a user sees them:
+the camera view is textured; each frame's size is the view's logical size
+times the window's scale; F12 writes view captures equal to the frames shown;
+Ctrl+Shift+R (reload assets, three times while frames are in flight) and a
+dragged view divider (a resize) each bring the views back, textured and at the
+new size; Ctrl+Q closes the editor, which exits cleanly and reports no device
+resource left by the viewports.
+
+--backend runs GTK as an X11 client (under Xwayland) or a Wayland client of
+the private compositor, and --scale sets the display scale: GDK_SCALE for X11
+(integers), the compositor's monitor scale for Wayland (fractional, through
+the private session's keyfile settings, never the user's).
+
   hammer_ui_test.py --cli build-r03-tools/hammer/cli/hammer_cli --out quality-results/hammer-ui
 
 The shell is built from the current source into the output directory
@@ -55,7 +69,8 @@ from conformance_result import Checks  # noqa: E402
 
 ROOT = HERE.parents[1]
 SCREEN = (1280, 800)
-CASES = ("room", "no-hollow", "no-light")
+CASES = ("room", "no-hollow", "no-light", "viewport", "properties", "properties-cancel")
+BACKENDS = ("x11", "wayland")
 ENTITY_CLASSES = ("info_player_start", "light")  # the dropdown's order (hammer/gtk/app.cpp)
 
 # The authored room: a block from (-192,-192,0) to (192,192,128), hollowed with
@@ -133,6 +148,41 @@ def judge_frame_path(log_path):
                             path + ("; a dmabuf import was refused" if refused else ""))}
 
 
+def judge_viewport(case_dir, facts, args):
+    """Check names -> (ok, detail) for the viewport case (R17)."""
+    results = {}
+    first = facts.get("first", {})
+    results["textured"] = (first.get("textured", 0) >= 0.02,
+                           "%.1f%% of the camera frame shows a texture colour"
+                           % (100 * first.get("textured", 0)))
+    # Frames are the view's logical size times the window's scale.
+    scale = facts.get("monitor_scale", args.scale)
+
+    def sized(entry):
+        (fw, fh), (lw, lh) = entry.get("frame", [0, 0]), entry.get("logical", [0, 0])
+        return (lw > 0 and abs(fw - lw * scale) <= 2 and abs(fh - lh * scale) <= 2,
+                "%dx%d frame for a %dx%d view at scale %s" % (fw, fh, lw, lh, scale))
+    results["pixel-size"] = sized(first)
+    w, h, capture = read_png(case_dir / "captures" / "ui_viewport-camera.png")
+    shown = [read_ppm(case_dir / name) for name in ("camera-before-capture.ppm",
+                                                    "camera-after-capture.ppm")]
+    results["capture"] = (bool(capture) and any((w, h, capture) == frame for frame in shown),
+                          "%dx%d capture against the frames shown %s"
+                          % (w, h, [(fw, fh) for fw, fh, _ in shown]))
+    reload = facts.get("reload", {})
+    results["reload-restored"] = (reload.get("new_frame", False) and reload.get("textured", 0) >= 0.02,
+                                  "after three reloads: %s" % reload)
+    resize = facts.get("resize", {})
+    ok, detail = sized(resize)
+    results["resize-restored"] = (ok and resize.get("textured", 0) >= 0.02, "after a resize: " + detail)
+    log = (case_dir / "hammer_gtk.log").read_text(errors="replace") \
+        if (case_dir / "hammer_gtk.log").is_file() else ""
+    left = re.search(r"render teardown: (\d+) device resource", log)
+    results["teardown"] = (facts.get("exit") == 0 and left is not None and left.group(1) == "0",
+                           "exit %s, %s left" % (facts.get("exit"), left.group(1) if left else "none reported"))
+    return results
+
+
 def judge(vmf_path, build_path):
     """Check names -> (ok, detail) for one case's outputs."""
     results = {}
@@ -166,6 +216,118 @@ def judge(vmf_path, build_path):
     return results
 
 
+# ---- Viewport case: assets and image files ----------------------------------
+
+# The sample room's two materials, each a flat VTF colour the frames can find.
+VIEW_MATERIALS = {"dev/dev_measurewall01a": (200, 40, 40), "dev/dev_measuregeneric01b": (40, 170, 60)}
+
+
+def vtf_rgba8888(width, height, rgb):
+    """A VTF 7.2 file of one RGBA8888 mip, no low-res image."""
+    import struct
+    header = bytearray(0x50)
+    header[0:4] = b"VTF\0"
+    struct.pack_into("<IIIHHIHH", header, 4, 7, 2, 0x50, width, height, 0, 1, 0)
+    struct.pack_into("<f", header, 0x30, 1.0)
+    struct.pack_into("<iBiBBH", header, 0x34, 0, 1, -1, 0, 0, 1)
+    return bytes(header) + bytes(rgb + (255,)) * (width * height)
+
+
+def build_view_vpk():
+    """A _dir.vpk (version 2, everything in the directory file) holding the
+    sample room's materials and their VTFs."""
+    import struct
+    from collections import defaultdict
+    files = {}
+    for name, rgb in VIEW_MATERIALS.items():
+        files["materials/%s.vmt" % name] = ('"LightmappedGeneric" { "$basetexture" "%s" }' % name).encode()
+        files["materials/%s.vtf" % name] = vtf_rgba8888(16, 16, rgb)
+    branches = defaultdict(lambda: defaultdict(list))
+    for path, data in files.items():
+        stem, extension = path.rsplit(".", 1)
+        directory, name = stem.rsplit("/", 1)
+        branches[extension][directory].append((name, data))
+    tree, payload = bytearray(), bytearray()
+    for extension, directories in sorted(branches.items()):
+        tree += extension.encode() + b"\0"
+        for directory, entries in sorted(directories.items()):
+            tree += directory.encode() + b"\0"
+            for name, data in sorted(entries):
+                tree += name.encode() + b"\0"
+                tree += struct.pack("<IHHIIH", 0, 0, 0x7FFF, len(payload), len(data), 0xFFFF)
+                payload += data
+            tree += b"\0"
+        tree += b"\0"
+    tree += b"\0"
+    return struct.pack("<IIIIIII", 0x55AA1234, 2, len(tree), len(payload), 0, 0, 0) + tree + payload
+
+
+def read_png(path):
+    """(width, height, RGB bytes) of an 8-bit RGB or RGBA, non-interlaced PNG."""
+    import struct
+    import zlib
+    data = path.read_bytes() if path.is_file() else b""
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return 0, 0, b""
+    i, idat, width, height, colour = 8, bytearray(), 0, 0, 0
+    while i < len(data):
+        length, kind = struct.unpack(">I4s", data[i:i + 8])
+        body = data[i + 8:i + 8 + length]
+        if kind == b"IHDR":
+            width, height, depth, colour, _, _, interlace = struct.unpack(">IIBBBBB", body)
+            if depth != 8 or colour not in (2, 6) or interlace:
+                return 0, 0, b""
+        elif kind == b"IDAT":
+            idat += body
+        i += 12 + length
+    raw = zlib.decompress(bytes(idat))
+    channels = 4 if colour == 6 else 3
+    stride = width * channels
+    rows, previous = [], bytearray(stride)
+    for y in range(height):
+        kind, line = raw[y * (stride + 1)], bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        for x in range(stride):
+            a = line[x - channels] if x >= channels else 0
+            b = previous[x]
+            c = previous[x - channels] if x >= channels else 0
+            if kind == 1:
+                line[x] = (line[x] + a) & 0xFF
+            elif kind == 2:
+                line[x] = (line[x] + b) & 0xFF
+            elif kind == 3:
+                line[x] = (line[x] + (a + b) // 2) & 0xFF
+            elif kind == 4:
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 0xFF
+        rows.append(bytes(line))
+        previous = line
+    rgb = bytearray()
+    for line in rows:
+        for x in range(width):
+            rgb += line[x * channels:x * channels + 3]
+    return width, height, bytes(rgb)
+
+
+def colour_share(rgb, colour, tolerance=60):
+    """The share of pixels near a texture colour (any shade of it: the
+    camera view modulates textures by its shading)."""
+    count = len(rgb) // 3
+    if not count:
+        return 0.0
+    r0, g0, b0 = colour
+    hits = 0
+    for i in range(0, len(rgb) - 2, 3):
+        r, g, b = rgb[i], rgb[i + 1], rgb[i + 2]
+        peak = max(r, g, b)
+        if peak < 40:
+            continue
+        scale = max(r0, g0, b0) / float(peak)
+        if abs(r * scale - r0) + abs(g * scale - g0) + abs(b * scale - b0) < tolerance:
+            hits += 1
+    return hits / float(count)
+
+
 # ---- Driver (runs inside the private compositor session) ---------------------
 
 class Driver:
@@ -176,6 +338,9 @@ class Driver:
         self.Atspi = Atspi
         self.log = log
         self.app = None
+        # Screen pixels per AT-SPI (logical) unit: an X11 client under
+        # GDK_SCALE takes pointer input in device pixels.
+        self.pointer_scale = 1.0
 
     def note(self, message):
         self.log.append("%.2f %s" % (time.monotonic(), message))
@@ -233,8 +398,12 @@ class Driver:
                   re.match(r"^(Grid|\d+ brush|For Help|Built|build_map)", n)]
         raise RuntimeError("no label matching %r (status bar: %s)" % (pattern, status))
 
-    def wait_active(self, timeout=5.0):
-        """Waits until the editor's window is the active (keyboard-focused) one."""
+    def wait_active(self, timeout=5.0, required=True):
+        """Waits until the editor's window is the active (keyboard-focused) one.
+        A Wayland client's toplevel never reports ACTIVE over AT-SPI here
+        (GTK 4.22 under mutter 50), although it has keyboard focus; with
+        required=False the wait ends there and each key is judged by its own
+        effect instead."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             frame = self.find(lambda n, r: r == "frame" and (n or "").startswith("Hammer - "))
@@ -242,7 +411,12 @@ class Driver:
                 self.note("window active")
                 return
             time.sleep(0.1)
-        raise RuntimeError("the editor window never became active")
+        frames = [(n, [s.value_nick for s in node.get_state_set().get_states()])
+                  for node, n, r in self.nodes() if r == "frame" and (n or "").startswith("Hammer")]
+        if not required:
+            self.note("no ACTIVE state reported: %s" % frames)
+            return
+        raise RuntimeError("the editor window never became active: %s" % frames)
 
     def extents(self, node):
         e = node.get_extents(self.Atspi.CoordType.WINDOW)
@@ -253,7 +427,8 @@ class Driver:
         time.sleep(0.2)
 
     # Linux input-event codes (the compositor takes evdev keycodes).
-    KEYS = {"Shift": 42, "[": 26, "f": 33, "Return": 28, "Down": 108, "F9": 67}
+    KEYS = {"Shift": 42, "[": 26, "f": 33, "Return": 28, "Down": 108, "F9": 67, "F12": 88,
+            "Control": 29, "r": 19, "q": 16}
     BTN_LEFT = 0x110
 
     def remote(self, method, signature=None, *values):
@@ -277,11 +452,22 @@ class Driver:
             time.sleep(0.05)
         time.sleep(0.2)
 
+    def chord(self, *names):
+        """Presses the keys in order and releases them in reverse (Ctrl+Shift+R)."""
+        for name in names:
+            self.remote("NotifyKeyboardKeycode", "(ub)", self.KEYS[name], True)
+            time.sleep(0.05)
+        for name in reversed(names):
+            self.remote("NotifyKeyboardKeycode", "(ub)", self.KEYS[name], False)
+            time.sleep(0.05)
+        time.sleep(0.2)
+
     def move(self, x, y):
         """Pointer to screen (x, y): home against the top-left corner, then move
         by the offset (the session has no absolute stream without a screencast)."""
         self.remote("NotifyPointerMotionRelative", "(dd)", -10000.0, -10000.0)
-        self.remote("NotifyPointerMotionRelative", "(dd)", float(round(x)), float(round(y)))
+        self.remote("NotifyPointerMotionRelative", "(dd)", float(round(x * self.pointer_scale)),
+                    float(round(y * self.pointer_scale)))
         self.pointer = (round(x), round(y))
         time.sleep(0.1)
 
@@ -301,7 +487,8 @@ class Driver:
         px, py = round(x0), round(y0)
         for i in range(1, steps + 1):
             nx, ny = round(x0 + (x1 - x0) * i / steps), round(y0 + (y1 - y0) * i / steps)
-            self.remote("NotifyPointerMotionRelative", "(dd)", float(nx - px), float(ny - py))
+            self.remote("NotifyPointerMotionRelative", "(dd)", float((nx - px) * self.pointer_scale),
+                        float((ny - py) * self.pointer_scale))
             px, py = nx, ny
             time.sleep(0.05)
         self.button(False)
@@ -383,7 +570,7 @@ class Driver:
         return False
 
 
-def drive(case, log):
+def drive(case, backend, log):
     """The user steps for one case. Raises on a UI that does not respond."""
     d = Driver(log)
     d.start_input()
@@ -393,7 +580,7 @@ def drive(case, log):
     top_view = d.named("top (x/y)", "frame")
     tx, ty, tw, th = d.extents(top_view)
     d.click(tx + tw / 2, ty + th / 2)  # focus the window (the Select tool ignores an empty click)
-    d.wait_active()
+    d.wait_active(required=backend == "x11")
     # The first key from a new virtual keyboard carries its keymap to Xwayland and
     # is not delivered as a key; a lone Shift absorbs that.
     d.key("Shift")
@@ -441,12 +628,124 @@ def drive(case, log):
     d.note("build reported: " + text)
 
 
+def frame_state(frames):
+    """(mtime_ns, width, height, rgb) of the camera frame the editor last showed."""
+    path = frames / "camera.ppm"
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return 0, 0, 0, b""
+    width, height, rgb = read_ppm(path)
+    return stamp, width, height, rgb
+
+
+def textured(rgb):
+    return max(colour_share(rgb, c) for c in VIEW_MATERIALS.values())
+
+
+def wait_frame(frames, after=0, predicate=lambda state: True, timeout=20.0):
+    """The first camera frame newer than 'after' for which predicate holds."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        state = frame_state(frames)
+        if state[0] > after and state[1] and predicate(state):
+            return state
+        time.sleep(0.2)
+    return None
+
+
+def drive_viewport(case_dir, backend, scale, log, facts):
+    """The viewport steps (R17): records what the judge needs in 'facts'."""
+    frames = case_dir / "frames"
+    d = Driver(log)
+    d.pointer_scale = scale if backend == "x11" else 1.0
+    d.start_input()
+    if not d.find_app():
+        raise RuntimeError("hammer_gtk did not appear on the accessibility bus")
+    camera = d.named("camera", "frame")
+    tx, ty, tw, th = d.extents(d.named("top (x/y)", "frame"))
+    d.click(tx + tw / 2, ty + th / 2)
+    d.wait_active(required=backend == "x11")
+    d.key("Shift")
+
+    first = wait_frame(frames, predicate=lambda s: textured(s[3]) >= 0.02)
+    if first is None:
+        raise RuntimeError("no textured camera frame")
+    _, _, cw, ch = d.extents(camera)
+    facts["first"] = {"frame": [first[1], first[2]], "logical": [cw, ch],
+                      "textured": round(textured(first[3]), 4)}
+    d.note("textured frame %dx%d for a %dx%d view" % (first[1], first[2], cw, ch))
+
+    # Capture: F12 writes each view's current frame.
+    (case_dir / "captures").mkdir(exist_ok=True)
+    # The capture must equal the frame shown when F12 was pressed: the one
+    # before, or one that landed while the capture ran.
+    (case_dir / "camera-before-capture.ppm").write_bytes((frames / "camera.ppm").read_bytes())
+    d.key("F12")
+    deadline = time.monotonic() + 5
+    capture = case_dir / "captures" / "ui_viewport-camera.png"
+    while not capture.is_file() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    time.sleep(0.3)
+    (case_dir / "camera-after-capture.ppm").write_bytes((frames / "camera.ppm").read_bytes())
+    d.note("capture %s" % capture.is_file())
+
+    # Reload the mounted assets three times while frames are in flight.
+    before = frame_state(frames)[0]
+    for _ in range(3):
+        d.chord("Control", "Shift", "r")
+    reloaded = wait_frame(frames, after=before, predicate=lambda s: textured(s[3]) >= 0.02)
+    facts["reload"] = {"new_frame": reloaded is not None,
+                       "textured": round(textured(reloaded[3]), 4) if reloaded else 0.0}
+    d.note("reload -> %s" % facts["reload"])
+
+    # Resize: drag the divider between the camera and top views to the left.
+    cx, cy, cw, ch = d.extents(camera)
+    tx, ty, tw, th = d.extents(d.named("top (x/y)", "frame"))
+    divider = ((cx + cw + tx) / 2.0, cy + ch / 2.0)
+    before = frame_state(frames)[0]
+    d.drag(divider[0], divider[1], divider[0] - 120, divider[1])
+    time.sleep(0.5)
+    resized = wait_frame(frames, after=before,
+                         predicate=lambda s: abs(s[1] - first[1]) > 20 and textured(s[3]) >= 0.02)
+    _, _, nw, nh = d.extents(camera)
+    facts["resize"] = {"frame": [resized[1], resized[2]] if resized else [0, 0],
+                       "logical": [nw, nh],
+                       "textured": round(textured(resized[3]), 4) if resized else 0.0}
+    d.note("resize -> %s" % facts["resize"])
+
+    d.chord("Control", "q")
+    d.note("quit")
+
+
+def apply_monitor_scale(scale):
+    """Sets the private compositor's monitor to the supported scale nearest
+    'scale' (org.gnome.Mutter.DisplayConfig); returns the scale applied."""
+    from gi.repository import Gio, GLib
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+
+    def call(method, args=None):
+        return bus.call_sync("org.gnome.Mutter.DisplayConfig", "/org/gnome/Mutter/DisplayConfig",
+                             "org.gnome.Mutter.DisplayConfig", method, args, None,
+                             Gio.DBusCallFlags.NONE, -1, None).unpack()
+    serial, monitors, _, _ = call("GetCurrentState")
+    (connector, _, _, _), modes, _ = monitors[0]
+    mode = next(m for m in modes if m[6].get("is-current", False))
+    chosen = min(mode[5], key=lambda s: abs(s - scale))
+    logical = [(0, 0, chosen, 0, True, [(connector, mode[0], {})])]
+    call("ApplyMonitorsConfig", GLib.Variant("(uua(iiduba(ssa{sv}))a{sv})",
+                                             (serial, 1, logical, {})))
+    time.sleep(1.0)
+    return chosen
+
+
 def inner(args):
     """Inside the compositor: start the accessibility bus, the editor and the
     driver; write the driver log."""
     out = Path(args.case_dir)
     procs = []
     log = []
+    facts = {}
     status = "pass"
     try:
         for command in (["/usr/libexec/at-spi-bus-launcher", "--launch-immediately"],
@@ -455,14 +754,33 @@ def inner(args):
             time.sleep(1)
         frames = out / "frames"
         frames.mkdir(parents=True, exist_ok=True)
-        env = dict(os.environ, GDK_BACKEND="x11", GTK_CSD="1", GTK_A11Y="atspi",
-                   HAMMER_GTK_FRAME_DIR=str(frames))
+        env = dict(os.environ, GDK_BACKEND=args.backend, GTK_CSD="1", GTK_A11Y="atspi",
+                   HAMMER_GTK_FRAME_DIR=str(frames),
+                   HAMMER_GTK_CAPTURE_DIR=str(out / "captures"))
+        if args.backend == "x11" and args.scale != 1:
+            env["GDK_SCALE"] = str(int(round(args.scale)))
+        if args.backend == "wayland" and args.scale != 1:
+            facts["monitor_scale"] = apply_monitor_scale(args.scale)
+        command = [args.gtk, "--maximized", "--open", str(out / "author" / args.vmf_name),
+                   "--builds", str(out / "builds"), "--no-publish"]
+        if args.case == "viewport":
+            command += ["--mount", str(out / "author" / "viewport_dir.vpk")]
+        if args.case.startswith("properties"):
+            command += ["--fgd", str(out / "author" / "properties.fgd")]
         app_log = open(out / "hammer_gtk.log", "w")
-        procs.append(subprocess.Popen(
-            [args.gtk, "--maximized", "--open", str(out / "author" / args.vmf_name),
-             "--builds", str(out / "builds"), "--no-publish"],
-            cwd=str(ROOT), env=env, stdout=app_log, stderr=subprocess.STDOUT))
-        drive(args.case, log)
+        app = subprocess.Popen(command, cwd=str(ROOT), env=env, stdout=app_log,
+                               stderr=subprocess.STDOUT)
+        procs.append(app)
+        if args.case == "viewport":
+            drive_viewport(out, args.backend, args.scale, log, facts)
+            try:
+                facts["exit"] = app.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                facts["exit"] = "still running"
+        elif args.case.startswith("properties"):
+            drive_properties(args.case, out, out / "author" / args.vmf_name, log, facts)
+        else:
+            drive(args.case, args.backend, log)
     except Exception as error:  # the log records where the UI stopped responding
         status = "driver-error: %s" % error
     finally:
@@ -473,8 +791,206 @@ def inner(args):
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
-        (out / "driver.json").write_text(json.dumps({"status": status, "log": log}, indent=2) + "\n")
+        (out / "driver.json").write_text(
+            json.dumps({"status": status, "log": log, "facts": facts}, indent=2) + "\n")
     return 0
+
+
+# ---- Properties case: the Object Properties window (RFC 0002) -------------------
+
+# The case's entity schema, given to the editor with --fgd: a light with a
+# typed key of each kind the window edits.
+PROPERTIES_FGD = """@SolidClass = worldspawn : "World" [ skyname(string) : "Sky" : "sky_day01_01" ]
+@PointClass = light : "A light"
+[
+    targetname(target_source) : "Name"
+    _light(color255) : "Brightness" : "255 255 255 200"
+    _distance(integer) : "Maximum distance" : 0
+    style(choices) : "Appearance" : 0 = [ 0 : "Normal" 10 : "Fluorescent flicker" ]
+    spawnflags(flags) = [ 1 : "Initially dark" : 0 ]
+]
+@PointClass = info_player_start : "Player start" []
+"""
+# Two lights that differ in _distance and in the "Initially dark" flag, made
+# by the command layer (the headless host), and nothing selected.
+PROPERTIES_LIGHTS = (("-64 0 32", "100", "1"), ("64 0 32", "200", "0"))
+PROPERTIES_DISTANCE = "256"
+# evdev codes of the keys this case types (Driver.KEYS is the room case's).
+PROPERTIES_KEYS = {"Shift": 42, "Control": 29, "Alt": 56, "Return": 28, "a": 30, "s": 31,
+                   "z": 44, "2": 3, "5": 6, "6": 7}
+
+
+def properties_script(vmf_name):
+    lines = ["new_map"]
+    for origin, distance, flags in PROPERTIES_LIGHTS:
+        lines += ['place_entity classname=light origin="%s"' % origin,
+                  "set_key key=_distance value=%s" % distance,
+                  "set_key key=spawnflags value=%s" % flags]
+    return "\n".join(lines + ["select_none", "save path=%s" % vmf_name]) + "\n"
+
+
+def light_keys(path):
+    """(origin, _distance, spawnflags) of each light in a saved VMF, by origin."""
+    text = path.read_text() if path.is_file() else ""
+    lights = [(keyvalue(body, "origin"), keyvalue(body, "_distance"), keyvalue(body, "spawnflags"))
+              for name, body in vmf_blocks(text)
+              if name == "entity" and keyvalue(body, "classname") == "light"]
+    return sorted(lights)
+
+
+def judge_properties(case_dir, facts):
+    """The saved maps after each step: the edit (both lights), then one undo
+    per step. Check names -> (ok, detail)."""
+    saves = case_dir / "saves"
+    edited, undo1, undo2 = (light_keys(saves / n) for n in ("edited.vmf", "undo1.vmf", "undo2.vmf"))
+    origins = sorted(o for o, _, _ in PROPERTIES_LIGHTS)
+    original = sorted(PROPERTIES_LIGHTS)
+    results = {"saved": (len(edited) == 2 and [o for o, _, _ in edited] == origins,
+                         "edited lights %s" % edited)}
+    results["mixed.shown"] = (facts.get("distance_description") == "(different values)" and
+                              facts.get("flag_indeterminate") is True,
+                              "_distance %r, flag indeterminate %s" % (
+                                  facts.get("distance_description"),
+                                  facts.get("flag_indeterminate")))
+    results["distance"] = (len(edited) == 2 and all(d == PROPERTIES_DISTANCE for _, d, _ in edited),
+                           "edited _distance %s" % [d for _, d, _ in edited])
+    results["flag"] = (len(edited) == 2 and all(f is not None and int(f) & 1 for _, _, f in edited),
+                       "edited spawnflags %s" % [f for _, _, f in edited])
+    # One undo takes back the flag toggle on both lights and nothing else; a
+    # second takes back the value edit on both: each was one step.
+    results["undo.flag"] = (
+        [f for _, _, f in undo1] == [f for _, _, f in original] and
+        [d for _, d, _ in undo1] == [d for _, d, _ in edited],
+        "after one undo %s" % undo1)
+    results["undo.distance"] = (undo2 == original, "after two undos %s, want %s" % (undo2, original))
+    return results
+
+
+def tap(d, *names):
+    """Presses the keys in order and releases them in reverse."""
+    for name in names:
+        d.remote("NotifyKeyboardKeycode", "(ub)", PROPERTIES_KEYS[name], True)
+        time.sleep(0.05)
+    for name in reversed(names):
+        d.remote("NotifyKeyboardKeycode", "(ub)", PROPERTIES_KEYS[name], False)
+        time.sleep(0.05)
+    time.sleep(0.25)
+
+
+def x11_window_origin(title):
+    """The screen origin of the client area of the X11 toplevel named 'title'
+    (its GTK client-side frame extents excluded), or None."""
+    from Xlib import X, display as xdisplay
+    dpy = xdisplay.Display()
+    root = dpy.screen().root
+    name_atom, extents_atom = dpy.intern_atom("_NET_WM_NAME"), dpy.intern_atom("_GTK_FRAME_EXTENTS")
+    stack = [root]
+    while stack:
+        window = stack.pop()
+        try:
+            name = window.get_full_property(name_atom, 0)
+            if name is not None and name.value.decode("utf-8", "replace") == title:
+                origin = window.translate_coords(root, 0, 0)
+                frame = window.get_full_property(extents_atom, X.AnyPropertyType)
+                left, _, top, _ = frame.value if frame is not None else (0, 0, 0, 0)
+                return -origin.x + left, -origin.y + top
+            stack.extend(window.query_tree().children)
+        except Exception:
+            continue
+    return None
+
+
+def focus_widget(d, node, title):
+    """Clicks 'node' (a widget of the toplevel 'title') until it reports
+    keyboard focus; its WINDOW extents are relative to that toplevel."""
+    focused = d.Atspi.StateType.FOCUSED
+    for _ in range(20):
+        origin = x11_window_origin(title)
+        if origin is not None:
+            x, y, w, h = d.extents(node)
+            d.click(origin[0] + x + min(w / 2, 40), origin[1] + y + h / 2)
+            if node.get_state_set().contains(focused):
+                return
+        time.sleep(0.25)
+    raise RuntimeError("could not focus %r in %r" % (node.get_name(), title))
+
+
+def wait_node(d, predicate, what, timeout=10.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        node = d.find(predicate)
+        if node is not None:
+            return node
+        time.sleep(0.2)
+    raise RuntimeError("no " + what)
+
+
+def save_copy(d, map_path, saves, name):
+    """Ctrl+S in the editor, then a copy of the saved map once written."""
+    before = map_path.stat().st_mtime_ns
+    tap(d, "Control", "s")
+    deadline = time.monotonic() + 10
+    while map_path.stat().st_mtime_ns == before and time.monotonic() < deadline:
+        time.sleep(0.1)
+    if map_path.stat().st_mtime_ns == before:
+        raise RuntimeError("Ctrl+S did not save for " + name)
+    time.sleep(0.2)
+    shutil.copyfile(map_path, saves / name)
+    d.note("saved " + name)
+
+
+def drive_properties(case, case_dir, map_path, log, facts):
+    """The Object Properties steps: select both lights (Ctrl+A), open the window
+    (Alt+Enter), type a new _distance into the mixed field and apply it (the
+    control cancels instead), toggle the mixed "Initially dark" flag, then save,
+    undo, save, undo, save from the editor window."""
+    saves = case_dir / "saves"
+    saves.mkdir(exist_ok=True)
+    d = Driver(log)
+    d.start_input()
+    if not d.find_app():
+        raise RuntimeError("hammer_gtk did not appear on the accessibility bus")
+    tx, ty, tw, th = d.extents(d.named("top (x/y)", "frame"))
+    corner = (tx + tw - 24, ty + 24)  # clear of the lights and of the properties window
+    d.click(*corner)
+    d.wait_active()
+    tap(d, "Shift")
+    tap(d, "Control", "a")
+    d.wait_label(r".*· 2 selected$")
+    tap(d, "Alt", "Return")
+    wait_node(d, lambda n, r: r == "frame" and n == "Object Properties", "Object Properties window")
+    d.note("properties open")
+    wait_node(d, lambda n, r: r == "label" and n == "2 entities", "2-entity summary")
+    distance = wait_node(d, lambda n, r: n == "_distance" and r in ("entry", "text"),
+                         "_distance field")
+    facts["distance_description"] = distance.get_description()
+    flag = d.named("Initially dark", "check box")
+    facts["flag_indeterminate"] = flag.get_state_set().contains(d.Atspi.StateType.INDETERMINATE)
+
+    focus_widget(d, distance, "Object Properties")
+    for digit in PROPERTIES_DISTANCE:
+        tap(d, digit)
+    wait_node(d, lambda n, r: r == "label" and n == "Maximum distance *", "drafted row")
+    d.note("typed %s" % PROPERTIES_DISTANCE)
+    if case == "properties-cancel":
+        d.press(d.named("Cancel", "push button"))
+    else:
+        tap(d, "Return")  # Enter in a field applies, as the Apply button does
+    wait_node(d, lambda n, r: r == "label" and n == "Maximum distance", "applied row")
+    d.press(flag)
+    deadline = time.monotonic() + 5
+    while flag.get_state_set().contains(d.Atspi.StateType.INDETERMINATE) and \
+            time.monotonic() < deadline:
+        time.sleep(0.1)
+    d.note("flag pressed")
+
+    d.click(*corner)  # back to the editor window
+    d.wait_active()
+    save_copy(d, map_path, saves, "edited.vmf")
+    tap(d, "Control", "z")
+    save_copy(d, map_path, saves, "undo1.vmf")
+    tap(d, "Control", "z")
+    save_copy(d, map_path, saves, "undo2.vmf")
 
 
 # ---- Outer harness -----------------------------------------------------------
@@ -485,28 +1001,56 @@ def run_case(case, args, out):
     author = case_dir / "author"
     author.mkdir(parents=True, exist_ok=True)
     vmf_name = "ui_" + case.replace("-", "_") + ".vmf"
-    # The editor opens a saved, empty map so F9 has a path: the same command
-    # layer, from the headless host.
-    script = author / "new.hcmd"
-    script.write_text("new_map\nsave path=%s\n" % vmf_name)
-    created = subprocess.run([str(args.cli), "--script", str(script), "--root", str(author)],
-                             capture_output=True, text=True)
-    if created.returncode:
-        return {"driver": "hammer_cli failed: " + created.stderr.strip()}, {}
+    if case == "viewport":
+        # The sample room with its two materials in a generated VPK.
+        shutil.copyfile(ROOT / "hammer/gtk/samples/room.vmf", author / vmf_name)
+        (author / "viewport_dir.vpk").write_bytes(build_view_vpk())
+    elif case.startswith("properties"):
+        # Two lights from the command layer, and the schema the editor loads.
+        (author / "properties.fgd").write_text(PROPERTIES_FGD)
+        script = author / "lights.hcmd"
+        script.write_text(properties_script(vmf_name))
+        created = subprocess.run([str(args.cli), "--script", str(script), "--root", str(author)],
+                                 capture_output=True, text=True)
+        if created.returncode:
+            return {"driver": "hammer_cli failed: " + created.stderr.strip()}, {}
+    else:
+        # The editor opens a saved, empty map so F9 has a path: the same command
+        # layer, from the headless host.
+        script = author / "new.hcmd"
+        script.write_text("new_map\nsave path=%s\n" % vmf_name)
+        created = subprocess.run([str(args.cli), "--script", str(script), "--root", str(author)],
+                                 capture_output=True, text=True)
+        if created.returncode:
+            return {"driver": "hammer_cli failed: " + created.stderr.strip()}, {}
     started = time.monotonic()
     display = "hammer-ui-%d-%s" % (os.getpid(), case)
+    screen = SCREEN if args.scale < 1.5 else (SCREEN[0] * 2, SCREEN[1] * 2)
+    # The session's settings live in a private keyfile, never the user's: it
+    # enables fractional monitor scales for the Wayland scale runs.
+    config = case_dir / "config"
+    keyfile = config / "glib-2.0" / "settings" / "keyfile"
+    keyfile.parent.mkdir(parents=True, exist_ok=True)
+    keyfile.write_text("[org/gnome/mutter]\nexperimental-features=['scale-monitor-framebuffer']\n")
+    env = dict(os.environ, GSETTINGS_BACKEND="keyfile", XDG_CONFIG_HOME=str(config))
     session = subprocess.run(
         ["dbus-run-session", "--", "mutter", "--headless", "--virtual-monitor",
-         "%dx%d" % SCREEN, "--wayland-display", display, "--",
+         "%dx%d" % screen, "--wayland-display", display, "--",
          sys.executable, str(Path(__file__).resolve()), "--inner", "--case", case,
-         "--case-dir", str(case_dir), "--vmf-name", vmf_name, "--gtk", str(args.gtk.resolve())],
-        capture_output=True, text=True, timeout=args.timeout)
+         "--case-dir", str(case_dir), "--vmf-name", vmf_name, "--gtk", str(args.gtk.resolve()),
+         "--backend", args.backend, "--scale", str(args.scale)],
+        capture_output=True, text=True, timeout=args.timeout, env=env)
     (case_dir / "session.log").write_text(session.stdout + session.stderr)
     driver = json.loads((case_dir / "driver.json").read_text()) if (case_dir / "driver.json").is_file() \
         else {"status": "no driver record (session exit %d)" % session.returncode}
     stem = vmf_name[:-4]
-    verdict = judge(author / vmf_name, case_dir / "builds" / stem / "build.json")
-    verdict.update(judge_frames(case_dir / "frames"))
+    if case == "viewport":
+        verdict = judge_viewport(case_dir, driver.get("facts", {}), args)
+    elif case.startswith("properties"):
+        verdict = judge_properties(case_dir, driver.get("facts", {}))
+    else:
+        verdict = judge(author / vmf_name, case_dir / "builds" / stem / "build.json")
+        verdict.update(judge_frames(case_dir / "frames"))
     verdict.update(judge_frame_path(case_dir / "hammer_gtk.log"))
     driver["elapsed_seconds"] = round(time.monotonic() - started, 2)
     return driver, verdict
@@ -524,6 +1068,10 @@ def main():
     parser.add_argument("--inner", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--case-dir", help=argparse.SUPPRESS)
     parser.add_argument("--vmf-name", help=argparse.SUPPRESS)
+    parser.add_argument("--backend", choices=BACKENDS, default="x11",
+                        help="GTK's display backend inside the private compositor")
+    parser.add_argument("--scale", type=float, default=1.0,
+                        help="display scale (X11: integer GDK_SCALE; Wayland: monitor scale)")
     args = parser.parse_args()
     if args.inner:
         args.case = args.case[0]
@@ -548,14 +1096,15 @@ def main():
         summary["cases"][case] = {"driver": driver,
                                   "verdict": {k: {"ok": ok, "detail": detail}
                                               for k, (ok, detail) in verdict.items()}}
-        if case == "room":
-            checks.equal(driver.get("status"), "pass", "room.driven")
+        if case in ("room", "viewport", "properties"):
+            checks.equal(driver.get("status"), "pass", case + ".driven")
             for name, (ok, detail) in verdict.items():
-                checks.check(ok, "room." + name, detail)
+                checks.check(ok, case + "." + name, detail)
         else:
             # The control must still be driven to the end (so its outputs exist),
             # and the oracle must reject exactly the step it leaves out.
-            target = {"no-hollow": "walls", "no-light": "light"}[case]
+            target = {"no-hollow": "walls", "no-light": "light",
+                      "properties-cancel": "distance"}[case]
             checks.equal(driver.get("status"), "pass", case + ".driven")
             ok, detail = verdict.get(target, (True, "not judged"))
             checks.check(not ok, case + ".rejected", "%s: %s" % (target, detail))

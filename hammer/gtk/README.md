@@ -121,6 +121,20 @@ For KTX2 material previews, build with the pinned KTX reader:
 KTX_SOURCE_ROOT=/path/to/ktx KTX_BUILD_ROOT=/path/to/ktx/build hammer/gtk/build.sh
 ```
 
+Viewport frames are the view's logical size times the window's scale, which
+is fractional on a fractionally scaled Wayland output (`gdk_surface_get_scale`).
+F12 (File ▸ Save View Captures) writes each view's current frame as
+`<map>-<view>.png` into `HAMMER_GTK_CAPTURE_DIR`, or beside the map.
+Ctrl+Shift+R (File ▸ Reload Game Assets) mounts the same archives again, so
+edited textures show without a restart. On exit the log reports
+`hammer_gtk: render teardown: N device resource(s) left by the viewports`; N is
+0 when the viewports released everything.
+
+The UI-driven suites run the editor in a private headless compositor as an X11
+client (`corpus.hammer.ui`), as a Wayland client (`.wayland`), and scaled
+(`.scaled-x11` at 2x, `.scaled-wayland` at a fractional scale). The product
+profile is `quality/product_profiles/hammer-gtk-linux.json`.
+
 ## Verify without a window server
 
 The offscreen modes open maps through the same `EditorWorkspace` and draw them
