@@ -40,8 +40,12 @@ The block:
       "host": "user@gpu-box",               # ssh destination
       "blender": "/opt/blender/blender",    # the host's Blender
       "ssh": ["ssh", "-o", "BatchMode=yes"],   # optional transport
-      "steps": ["bake", "probe", "probe-volume", "radiosity", "sdf"]   # optional
+      "steps": ["bake", "probe", "probe-volume", "radiosity", "sdf", "render"]   # optional
     }
+
+`render` is the reference renders run through `gi_reference.Tools.blender`
+(`gi_reference.py`, `lighting_fixtures.py`, `gi_probes.py`). `vast_blender.py`
+rents a vast.ai host and writes a toolchain with this block.
 
 A step's cache key includes the remote Blender's identity (host, version and
 binary digest), so switching hosts rebakes, as switching local Blender does.
@@ -61,8 +65,10 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 import light_baker  # noqa: E402
 
-# The baker seam's operations: every light-transport product a map carries.
-REMOTE_STEPS = tuple(light_baker.OPERATIONS)
+# The baker seam's operations: every light-transport product a map carries,
+# and the reference renders (`gi_reference.Tools.blender`).
+REFERENCE_RENDER = "render"
+REMOTE_STEPS = tuple(light_baker.OPERATIONS) + (REFERENCE_RENDER,)
 DEFAULT_SSH = ("ssh", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=30")
 # Repository trees the Blender scripts read besides their inputs: the scripts
 # and their imports, and the export/product profiles some of them load.
@@ -93,13 +99,15 @@ class RemoteBlender:
         return subprocess.run(self.ssh + [self.host, command], capture_output=capture, text=True,
                               check=check)
 
-    def rsync(self, sources, destination, delete=False, relative=True):
+    def rsync(self, sources, destination, delete=False, relative=True, update=False):
         command = ["rsync", "-a", "-e", " ".join(shlex.quote(p) for p in self.ssh)]
         command += ["--exclude=" + e for e in EXCLUDES]
         if relative:
             command.append("--relative")
         if delete:
             command.append("--delete")
+        if update:
+            command.append("--update")
         subprocess.run(command + [str(s) for s in sources] + [destination], check=True,
                        capture_output=True, text=True)
 
@@ -113,8 +121,11 @@ class RemoteBlender:
         if extra:
             self.rsync(extra, self.host + ":/")
 
-    def pull(self, mirror):
-        self.rsync(["%s:%s/" % (self.host, mirror)], str(mirror) + "/", relative=False)
+    def pull(self, mirror, update=False):
+        """Bring `mirror` back; `update` keeps local files newer than the host's
+        (a log appended here while the host ran)."""
+        self.rsync(["%s:%s/" % (self.host, mirror)], str(mirror) + "/", relative=False,
+                   update=update)
 
     def command(self, arguments, env):
         """The local command that runs Blender with `arguments` on the host."""

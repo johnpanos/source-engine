@@ -372,7 +372,48 @@ they must pass the pipeline's noise and denoise gates rather than match a CPU
 bake. The remote Blender's host, version and binary digest are part of each
 step's cache key: switching hosts rebakes. The transport was rehearsed on this
 machine with a stand-in `ssh` that runs commands locally, on the chamber
-preview (all five steps, gameplay identity passing); a real host is untested.
+preview (all five steps, gameplay identity passing).
+
+The reference renders (`gi_reference.Tools.blender`: `gi_reference.py`,
+`lighting_fixtures.py render`, `gi_probes.py`) take the same block, as the
+`render` step (the probe bake as `probe-volume`): the render's work directory
+is mirrored, and its log stays local.
+
+### A rented vast.ai host
+
+`tools/quality/vast_blender.py` (tests: `tests/test_vast_blender.py`) rents a
+one-GPU NVIDIA host on vast.ai, installs the pinned Blender (tarball digest
+checked, from download.blender.org or a mirror), checks it with
+`remote_blender.check --smoke`, and writes
+`build/toolchains/pbrt-map-toolchain-vast.json`:
+
+```sh
+# rent, run N commands (each gets --toolchain <vast toolchain>), destroy
+python3 tools/quality/vast_blender.py run \
+  --render "python3 tools/quality/lighting_fixtures.py render --fixture cornell-floors --device gpu" \
+  --render "python3 tools/quality/lighting_fixtures.py render --fixture area-room --device gpu"
+python3 tools/quality/vast_blender.py up      # or by hand: up, any --toolchain command, down
+python3 tools/quality/vast_blender.py down
+python3 tools/quality/vast_blender.py status  # account instances, credit, spend against the cap
+```
+
+The API key is read from `~/.vast.env` (`API_KEY=`). Spending is capped
+(default $10, `budget --cap` changes it) by a ledger in
+`~/.local/state/source-engine/vast-ledger.json`: spend is the larger of the
+ledger's estimate and the credit vast has billed, and a rental is refused
+unless its worst case (hourly rate, storage included, times `--hours`, plus a
+transfer allowance) fits. A detached reaper destroys every rental at its
+deadline even if the session dies, and `run` destroys the host when its
+commands end or fail. Pass `--device gpu`; the render tools default to the CPU.
+
+Evidence (2026-09-29): `run` with three `lighting_fixtures.py render`
+previews (cornell-floors, area-room, material-sweep; 16 samples) rented an
+RTX 3090 at $0.18/h, was ready in 2 min 18 s, rendered on `OPTIX: NVIDIA
+GeForce RTX 3090` (the receipts' device) in 54, 37 and 30 s, and destroyed the
+host 4 min 20 s after renting it. An earlier attempt whose Blender download
+dropped destroyed its host on the failure path. vast billed $0.065 for both.
+The map pipeline's own steps (`bake` and the rest) have not run on a rented
+host yet.
 
 ## Owners
 
@@ -414,6 +455,7 @@ preview (all five steps, gameplay identity passing); a real host is untested.
 | The Portal 2 GI test chamber (layout, puzzle, light rig, review views) | `tools/quality/portal2_gi_chamber.py` |
 | Headless Portal 2 view capture | `tools/quality/portal2_map_views.py` |
 | Cycles steps on another host's GPU (sync, run, pull, host check) | `tools/quality/remote_blender.py` (tests: `tests/test_remote_blender.py`) |
+| Renting that host on vast.ai under a spending cap | `tools/quality/vast_blender.py` (tests: `tests/test_vast_blender.py`) |
 
 ## Known limits (preview, not RFC 0008 acceptance)
 

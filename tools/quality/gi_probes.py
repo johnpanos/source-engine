@@ -118,7 +118,7 @@ def cmd_bake(args):
         arguments += ["--environment", environment]
     # The map lighting back end's baker seam, as an oracle harness uses it.
     baker = light_baker.CyclesBaker(lambda operation, script, argv: tools.blender(script, argv,
-                                                                                   log))
+                                                                                   log, operation))
     baker.bake("probe-volume", arguments)
     print("[%s/%s] baked %s" % (args.fixture, args.state, directory / "probes.prbv"))
     return 0

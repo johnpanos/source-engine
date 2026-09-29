@@ -55,6 +55,7 @@ import cycles_device  # noqa: E402
 import gi_oracles  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
+import remote_blender  # noqa: E402
 
 # GI_FIXTURES_ROOT points experiments at a scratch copy of the fixtures.
 FIXTURES = Path(os.environ.get("GI_FIXTURES_ROOT", ROOT / "quality/fixtures/gi"))
@@ -286,11 +287,18 @@ def analytic_checks(fixture, regions_by_view):
 
 # ------------------------------------------------------------------ render
 
+# Environment the Blender scripts read besides OCIO (the lighting fixtures'
+# extras), forwarded to a remote Blender.
+BLENDER_ENV = ("LIGHTING_EXTRAS",)
+
+
 class Tools:
     def __init__(self, toolchain_path=None):
         profile, _ = pbrt_map_toolchain.load_profiles()
         self.values = pbrt_map_toolchain.load(
             toolchain_path or ROOT / profile["layout"]["toolchain_file"])
+        # Blender on another host's GPU (remote_blender.py, vast_blender.py).
+        self.remote = remote_blender.from_toolchain(self.values)
 
     def usd_python(self, script, arguments, log):
         env = dict(os.environ, PYTHONPATH=self.values["usd_pythonpath"],
@@ -298,11 +306,24 @@ class Tools:
                                            "share/sourceWorld"))
         run([self.values["usd_python"], HERE / script] + arguments, env, log)
 
-    def blender(self, script, arguments, log):
-        env = dict(os.environ, OCIO=str(ROOT / self.values["ocio"])
-                   if not os.path.isabs(self.values["ocio"]) else self.values["ocio"])
-        run([self.values["blender"], "-b", "--factory-startup", "--python-exit-code", "9",
-             "--python", HERE / script, "--"] + arguments, env, log)
+    def blender(self, script, arguments, log, step=None):
+        env = {"OCIO": str(ROOT / self.values["ocio"])
+               if not os.path.isabs(self.values["ocio"]) else self.values["ocio"]}
+        env.update({name: os.environ[name] for name in BLENDER_ENV if name in os.environ})
+        options = ["-b", "--factory-startup", "--python-exit-code", "9",
+                   "--python", HERE / script, "--"] + arguments
+        step = step or remote_blender.REFERENCE_RENDER
+        if self.remote and self.remote.applies(step):
+            # Mirror the work directory (the log's) and every input to the
+            # host, run there, and bring the directory back.
+            work = log.parent.resolve()
+            work.mkdir(parents=True, exist_ok=True)
+            paths = [Path(a) if os.path.isabs(str(a)) else ROOT / str(a) for a in arguments]
+            self.remote.push(paths + [Path(v) for v in env.values() if os.path.isabs(v)], work)
+            run(self.remote.command(options, env), os.environ, log)
+            self.remote.pull(work, update=True)
+            return
+        run([self.values["blender"]] + options, dict(os.environ, **env), log)
 
 
 def run(command, env, log):
