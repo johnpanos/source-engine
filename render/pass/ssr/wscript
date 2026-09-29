@@ -13,6 +13,6 @@ def build(bld):
 		name        = 'render_pass_ssr',
 		source      = bld.path.ant_glob('*.cpp'),
 		includes    = ['../../../public'],
-		use         = ['render_graph', 'render_device', 'render_shaderlib', 'render_spv'],
+		use         = ['render_graph', 'render_device', 'render_math', 'render_shaderlib', 'render_spv'],
 		idx         = bld.get_taskgen_count()
 	)

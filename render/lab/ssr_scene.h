@@ -79,6 +79,9 @@ SsrSceneImages RayCastScene( const SsrScene &scene );
 // left) and where; -1 when none.
 int CastCamera( const SsrScene &scene, const SsrReferenceInputs &inputs, double sx, double sy,
     math::float3 &point );
+// The same with the inverse of inputs.toClip given.
+int CastCamera( const SsrScene &scene, const SsrReferenceInputs &inputs,
+    const math::float4x4 &fromClip, double sx, double sy, math::float3 &point );
 
 } // namespace render::lab
 

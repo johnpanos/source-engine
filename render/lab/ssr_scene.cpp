@@ -178,7 +178,12 @@ SsrSceneImages RayCastScene( const SsrScene &scene )
 int CastCamera(
     const SsrScene &scene, const SsrReferenceInputs &inputs, double sx, double sy, float3 &point )
 {
-	const math::float4x4 fromClip = *math::Inverse( inputs.toClip );
+	return CastCamera( scene, inputs, *math::Inverse( inputs.toClip ), sx, sy, point );
+}
+
+int CastCamera( const SsrScene &scene, const SsrReferenceInputs &inputs,
+    const math::float4x4 &fromClip, double sx, double sy, float3 &point )
+{
 	const float nx = float( sx / inputs.width * 2.0 - 1.0 );
 	const float ny = float( 1.0 - sy / inputs.height * 2.0 );
 	const float3 nearPoint = math::TransformPoint( fromClip, { nx, ny, 0.0f } );

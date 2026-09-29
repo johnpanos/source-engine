@@ -1,0 +1,74 @@
+// render.pass.ssr (render.ssr.v1): one level of the pass's pyramids per
+// dispatch.
+// - Mode 0, the min-depth pyramid: level 0 is the depth buffer; level k's
+//   cell (i, j) is the least of the level k - 1 cells (2i + a, 2j + b) that
+//   exist, sizes halved rounding up, so each cell covers every level-0 texel
+//   under it (the trace's skip test is conservative).
+// - Mode 1, the lit pyramid (ssr.h step 5): level 0 is the lit frame; level
+//   k's texel (i, j) is the mean of the level k - 1 texels (2i + a, 2j + b),
+//   each clamped to that level's edge, sizes halved rounding down and at
+//   least 1.
+#version 450
+
+layout( local_size_x = 8, local_size_y = 8 ) in;
+
+#include "ssr_view.glsl"
+
+layout( push_constant ) uniform Step
+{
+	uvec4 step; // x: the mode, y: the level
+}
+s;
+
+void main()
+{
+	const ivec2 p = ivec2( gl_GlobalInvocationID.xy );
+	const int level = int( s.step.y );
+	if ( s.step.x == 0u )
+	{
+		const uvec4 l = view.depthLevels[level];
+		if ( p.x >= int( l.y ) || p.y >= int( l.z ) )
+			return;
+		float value;
+		if ( level == 0 )
+			value = texelFetch( sampler2D( depthTexture, pointSampler ), p, 0 ).r;
+		else
+		{
+			const uvec4 previous = view.depthLevels[level - 1];
+			value = 1.0e30;
+			for ( int b = 0; b < 2; ++b )
+			{
+				for ( int a = 0; a < 2; ++a )
+				{
+					const ivec2 child = 2 * p + ivec2( a, b );
+					if ( child.x < int( previous.y ) && child.y < int( previous.z ) )
+						value = min( value, PyramidDepth( level - 1, child ) );
+				}
+			}
+		}
+		depthPyramid[l.x + uint( p.y ) * l.y + uint( p.x )] = value;
+		return;
+	}
+	const uvec4 l = view.colorLevels[level];
+	if ( p.x >= int( l.y ) || p.y >= int( l.z ) )
+		return;
+	vec4 value;
+	if ( level == 0 )
+		value = texelFetch( sampler2D( litTexture, pointSampler ), p, 0 );
+	else
+	{
+		const uvec4 previous = view.colorLevels[level - 1];
+		vec4 sum = vec4( 0.0 );
+		for ( int b = 0; b < 2; ++b )
+		{
+			for ( int a = 0; a < 2; ++a )
+			{
+				const ivec2 child = min( 2 * p + ivec2( a, b ),
+				    ivec2( int( previous.y ) - 1, int( previous.z ) - 1 ) );
+				sum += PyramidColor( level - 1, child );
+			}
+		}
+		value = sum * 0.25;
+	}
+	colorPyramid[l.x + uint( p.y ) * l.y + uint( p.x )] = value;
+}

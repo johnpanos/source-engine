@@ -15,6 +15,7 @@
 #include "render/math/matrix.h"
 #include "render/pass/ssr/ssr.h"
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -63,8 +64,11 @@ enum class SsrReferenceDefect
 };
 
 // The pass's result per pixel (row 0 at the top).
+// `tilt` is added to each reflected ray before it is normalized (the GPU
+// comparison's stability test); zero for the definition.
 std::vector<SsrReferencePixel> ReferenceSsr( const SsrReferenceInputs &inputs,
-    const pass::ssr::SsrParams &params, SsrReferenceDefect defect = SsrReferenceDefect::kNone );
+    const pass::ssr::SsrParams &params, SsrReferenceDefect defect = SsrReferenceDefect::kNone,
+    const std::array<double, 3> &tilt = {} );
 
 // The lit pyramid the reference samples: mip k is a 2 x 2 box of mip k - 1,
 // sizes halved and at least 1; level 0 is `lit`. Each level's RGBA texels.

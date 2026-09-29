@@ -1,0 +1,291 @@
+// render.pass.ssr (render.ssr.v1): the trace and the composite, one
+// invocation per pixel, as public/render/pass/ssr/ssr.h defines them. The
+// walk is hierarchical (Uludag, "Hi-Z Screen-Space Cone-Traced
+// Reflections", GPU Pro 5, 2014): a cell of the min-depth pyramid whose
+// least depth the ray stays in front of over its span is skipped whole, and
+// the level rises; otherwise the level falls; at level 0 each texel gets the
+// definition's hit test (step 3), so the hit is the texel-by-texel walk's.
+//
+// SSR_DIAGNOSTICS writes each pixel's hit, confidence and mip to binding 10
+// (a suite's variant). SEEDED_SSR_THICKNESS_IGNORED, SEEDED_SSR_NO_EDGE_FADE
+// and SEEDED_SSR_WRONG_MIP build the defective variants the lab's suite must
+// reject; no product uses them.
+#version 450
+
+layout( local_size_x = 8, local_size_y = 8 ) in;
+
+#include "ssr_view.glsl"
+
+layout( set = 3, binding = 9, rgba16f ) uniform writeonly image2D outputImage;
+
+struct SsrDiagnostic
+{
+	vec4 hit;   // x, y: the hit's screen position; z: confidence; w: mip
+	vec4 texel; // x, y: the hit texel; z: 1 on a hit; w: behind
+};
+
+layout( std430, set = 3, binding = 10 ) writeonly buffer Diagnostics
+{
+	SsrDiagnostic diagnostics[];
+};
+
+vec3 Ndc( vec2 s, float depth )
+{
+	return vec3( s.x / view.extent.x * 2.0 - 1.0, 1.0 - s.y / view.extent.y * 2.0, depth );
+}
+
+vec3 World( vec2 s, float depth )
+{
+	const vec4 h = view.fromClip * vec4( Ndc( s, depth ), 1.0 );
+	return h.xyz / h.w;
+}
+
+// 1 / the clip w (view-space distance) of a screen point.
+float InverseW( vec2 s, float depth )
+{
+	return ( view.fromClip * vec4( Ndc( s, depth ), 1.0 ) ).w;
+}
+
+vec3 OctDecode( vec2 e )
+{
+	vec3 n = vec3( e, 1.0 - abs( e.x ) - abs( e.y ) );
+	if ( n.z < 0.0 )
+		n.xy = ( vec2( 1.0 ) - abs( e.yx ) ) *
+		       vec2( e.x >= 0.0 ? 1.0 : -1.0, e.y >= 0.0 ? 1.0 : -1.0 );
+	return normalize( n );
+}
+
+// Bilinear in the lit pyramid, clamped to the level's edges; `s` in level-0
+// pixels.
+vec3 ColorBilinear( int level, vec2 s )
+{
+	const uvec4 l = view.colorLevels[level];
+	vec2 t = s * vec2( float( l.y ), float( l.z ) ) / view.extent.xy - 0.5;
+	const vec2 f0 = floor( t );
+	const vec2 f = t - f0;
+	const ivec2 maxTexel = ivec2( int( l.y ) - 1, int( l.z ) - 1 );
+	const ivec2 a = clamp( ivec2( f0 ), ivec2( 0 ), maxTexel );
+	const ivec2 b = clamp( ivec2( f0 ) + ivec2( 1 ), ivec2( 0 ), maxTexel );
+	const vec3 top = mix( PyramidColor( level, ivec2( a.x, a.y ) ).rgb,
+	    PyramidColor( level, ivec2( b.x, a.y ) ).rgb, f.x );
+	const vec3 bottom = mix( PyramidColor( level, ivec2( a.x, b.y ) ).rgb,
+	    PyramidColor( level, ivec2( b.x, b.y ) ).rgb, f.x );
+	return mix( top, bottom, f.y );
+}
+
+void Finish( ivec2 p, vec4 value, vec4 hit, vec4 texel )
+{
+	imageStore( outputImage, p, value );
+#ifdef SSR_DIAGNOSTICS
+	const uint index = uint( p.y ) * uint( view.extent.x ) + uint( p.x );
+	diagnostics[index].hit = hit;
+	diagnostics[index].texel = texel;
+#endif
+}
+
+void main()
+{
+	const ivec2 p = ivec2( gl_GlobalInvocationID.xy );
+	const vec2 size = view.extent.xy;
+	if ( p.x >= int( size.x ) || p.y >= int( size.y ) )
+		return;
+	const vec4 lit = texelFetch( sampler2D( litTexture, pointSampler ), p, 0 );
+	const float depth = PyramidDepth( 0, p );
+	const vec4 nr = texelFetch( sampler2D( normalRoughnessTexture, pointSampler ), p, 0 );
+	const float roughness = nr.z;
+	const float cutoff = view.params.x;
+	const float thickness = view.params.z;
+	const vec4 none = vec4( 0.0 );
+	if ( !( depth < 1.0 ) || !( roughness < cutoff ) )
+	{
+		Finish( p, lit, none, none );
+		return;
+	}
+
+	// 1. The surface and the reflected ray.
+	const vec2 centre = vec2( p ) + 0.5;
+	const vec3 P = World( centre, depth );
+	const vec3 N = OctDecode( nr.xy );
+	const vec3 V = normalize( view.eye.xyz - P );
+	const vec3 R = N * ( 2.0 * dot( N, V ) ) - V;
+	if ( !( dot( R, N ) > 0.0 ) )
+	{
+		Finish( p, lit, none, none );
+		return;
+	}
+
+	// 2. The origin clear of the surface, and the screen segment.
+	const vec3 right = World( centre + vec2( 1.0, 0.0 ), depth );
+	const vec3 O = P + N * length( right - P );
+	const vec4 c0 = view.toClip * vec4( O, 1.0 );
+	const vec4 dc = view.toClip * vec4( R, 0.0 );
+	if ( !( c0.w > 0.0 ) || c0.z < 0.0 )
+	{
+		Finish( p, lit, none, none );
+		return;
+	}
+	float tEnd = 1e7;
+	if ( dc.z < 0.0 )
+		tEnd = min( tEnd, -c0.z / dc.z );
+	if ( dc.z - dc.w > 0.0 )
+		tEnd = min( tEnd, ( c0.w - c0.z ) / ( dc.z - dc.w ) );
+	if ( dc.w < 0.0 )
+		tEnd = min( tEnd, 0.999999 * ( -c0.w / dc.w ) );
+	const vec4 c1 = c0 + tEnd * dc;
+	const vec3 s0 = vec3( ( c0.x / c0.w + 1.0 ) * 0.5 * size.x, ( 1.0 - c0.y / c0.w ) * 0.5 * size.y,
+	    c0.z / c0.w );
+	const vec3 s1 = vec3( ( c1.x / c1.w + 1.0 ) * 0.5 * size.x, ( 1.0 - c1.y / c1.w ) * 0.5 * size.y,
+	    c1.z / c1.w );
+	const vec3 delta = s1 - s0;
+	const float invW0 = 1.0 / c0.w;
+	const float invW1 = 1.0 / c1.w;
+	// Clip u in [0, 1] to the screen (Liang-Barsky).
+	float uLow = 0.0, uHigh = 1.0;
+	bool inside = true;
+	const float ps[4] = float[4]( -delta.x, delta.x, -delta.y, delta.y );
+	const float qs[4] = float[4]( s0.x, size.x - s0.x, s0.y, size.y - s0.y );
+	for ( int i = 0; i < 4; ++i )
+	{
+		if ( ps[i] == 0.0 )
+		{
+			inside = inside && qs[i] >= 0.0;
+			continue;
+		}
+		const float r = qs[i] / ps[i];
+		if ( ps[i] < 0.0 )
+			uLow = max( uLow, r );
+		else
+			uHigh = min( uHigh, r );
+	}
+	if ( !inside || uLow > uHigh || uLow > 0.0 )
+	{
+		Finish( p, lit, none, none );
+		return;
+	}
+
+	// 3. The hierarchical walk, from the exit of the texel holding O.
+	const vec2 dir = delta.xy;
+	const vec2 stepSign = vec2( dir.x > 0.0 ? 1.0 : -1.0, dir.y > 0.0 ? 1.0 : -1.0 );
+	const ivec2 originTexel = ivec2( floor( s0.xy ) );
+	const int maxLevel = int( view.extent.z ) - 1;
+	const float maxSteps = view.limits.y;
+	// The parameter where the segment leaves the cell [lo, hi) it is in.
+	float u = uHigh;
+	{
+		const vec2 lo = vec2( originTexel ), hi = lo + 1.0;
+		const vec2 boundary = mix( lo, hi, greaterThan( dir, vec2( 0.0 ) ) );
+		const float ux = dir.x != 0.0 ? ( boundary.x - s0.x ) / dir.x : 1e30;
+		const float uy = dir.y != 0.0 ? ( boundary.y - s0.y ) / dir.y : 1e30;
+		u = min( min( ux, uy ), uHigh );
+	}
+	int level = 0;
+	bool hit = false;
+	vec2 hitPosition = vec2( 0.0 );
+	ivec2 hitTexel = ivec2( 0 );
+	float behind = 0.0;
+	for ( int iteration = 0; iteration < 4096 && u < uHigh; ++iteration )
+	{
+		// The cell the segment is in just after u.
+		const vec3 here = s0 + u * delta;
+		const vec2 probe = here.xy + stepSign * 1e-4;
+		const float cellSize = float( 1 << level );
+		const ivec2 cell = ivec2( floor( probe / cellSize ) );
+		const ivec2 texel = ivec2( floor( probe ) );
+		const float crossings =
+		    float( abs( texel.x - originTexel.x ) + abs( texel.y - originTexel.y ) );
+		if ( crossings > maxSteps )
+			break;
+		const vec2 lo = vec2( cell ) * cellSize;
+		const vec2 hi = lo + cellSize;
+		const vec2 boundary = mix( lo, hi, greaterThan( dir, vec2( 0.0 ) ) );
+		const float ux = dir.x != 0.0 ? ( boundary.x - s0.x ) / dir.x : 1e30;
+		const float uy = dir.y != 0.0 ? ( boundary.y - s0.y ) / dir.y : 1e30;
+		const float uExit = min( min( ux, uy ), uHigh );
+		const float zIn = here.z;
+		const float zOut = s0.z + uExit * delta.z;
+		if ( level > 0 )
+		{
+			if ( max( zIn, zOut ) < PyramidDepth( level, cell ) )
+			{
+				u = uExit;
+				level = min( level + 1, maxLevel );
+			}
+			else
+				--level;
+			continue;
+		}
+		const float d = PyramidDepth( 0, texel );
+		if ( max( zIn, zOut ) >= d )
+		{
+			// Where the ray meets d, and how far behind it is: the same
+			// quantities as in depth, computed in 1 / w, which is affine along
+			// the screen segment too and keeps its precision where depth
+			// crowds towards 1.
+			const float invWIn = invW0 + u * ( invW1 - invW0 );
+			const float invWOut = invW0 + uExit * ( invW1 - invW0 );
+			const float invWSurface = InverseW( here.xy, d );
+			float uHit = u;
+			if ( zIn < d )
+				uHit = u + ( invWSurface - invWIn ) / ( invWOut - invWIn ) * ( uExit - u );
+			const vec3 h = s0 + uHit * delta;
+			const float b = zIn < d ? 0.0 : 1.0 / invWIn - 1.0 / invWSurface;
+#ifdef SEEDED_SSR_THICKNESS_IGNORED
+			if ( true )
+#else
+			if ( b < thickness )
+#endif
+			{
+				hit = true;
+				hitPosition = h.xy;
+				hitTexel = texel;
+				behind = b;
+				break;
+			}
+		}
+		u = uExit;
+		level = min( level + 1, maxLevel );
+	}
+	if ( !hit )
+	{
+		Finish( p, lit, none, vec4( 0.0 ) );
+		return;
+	}
+
+	// 4. Confidence.
+	const vec2 uv = hitPosition / size;
+	const float edgeDistance = min( min( uv.x, 1.0 - uv.x ), min( uv.y, 1.0 - uv.y ) );
+#ifdef SEEDED_SSR_NO_EDGE_FADE
+	const float edge = 1.0;
+#else
+	const float edge = smoothstep( 0.0, 1.0, edgeDistance / view.params.w );
+#endif
+	const float thicknessFade = 1.0 - smoothstep( 0.5 * thickness, thickness, behind );
+	const float roughnessFade = 1.0 - smoothstep( view.params.y, cutoff, roughness );
+	const float confidence = edge * thicknessFade * roughnessFade;
+
+	// 5. The reflected light: the pyramid at the lobe's footprint.
+	const float L = length( hitPosition - centre );
+	const float highest = view.limits.x;
+#ifdef SEEDED_SSR_WRONG_MIP
+	const float mip = clamp( log2( max( 1.0, 2.0 * roughness * L ) ), 0.0, highest );
+#else
+	const float mip = clamp( log2( max( 1.0, 2.0 * roughness * roughness * L ) ), 0.0, highest );
+#endif
+	const float lower = floor( mip );
+	const float upper = min( lower + 1.0, highest );
+	const vec3 reflected = mix( ColorBilinear( int( lower ), hitPosition ),
+	    ColorBilinear( int( upper ), hitPosition ), mip - lower );
+	const vec4 diagnosticHit = vec4( hitPosition, confidence, mip );
+	const vec4 diagnosticTexel = vec4( vec2( hitTexel ), 1.0, behind );
+	if ( !( confidence > 0.0 ) )
+	{
+		Finish( p, lit, diagnosticHit, diagnosticTexel );
+		return;
+	}
+
+	// 6. The composite: lit + c w ( reflected - iblRadiance ).
+	const vec3 w = texelFetch( sampler2D( specularWeightTexture, pointSampler ), p, 0 ).rgb;
+	const vec3 ibl = texelFetch( sampler2D( iblRadianceTexture, pointSampler ), p, 0 ).rgb;
+	Finish( p, vec4( lit.rgb + confidence * w * ( reflected - ibl ), lit.a ), diagnosticHit,
+	    diagnosticTexel );
+}

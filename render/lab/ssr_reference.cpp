@@ -199,7 +199,8 @@ std::vector<SsrPyramidLevel> ReferencePyramid(
 }
 
 std::vector<SsrReferencePixel> ReferenceSsr( const SsrReferenceInputs &inputs,
-    const pass::ssr::SsrParams &params, SsrReferenceDefect defect )
+    const pass::ssr::SsrParams &params, SsrReferenceDefect defect,
+    const std::array<double, 3> &tilt )
 {
 	const std::uint32_t W = inputs.width, H = inputs.height;
 	View view{ W, H, ToDouble( inputs.toClip ), {} };
@@ -235,7 +236,8 @@ std::vector<SsrReferencePixel> ReferenceSsr( const SsrReferenceInputs &inputs,
 			pass::ssr::OctDecode( { nr[0], nr[1] }, decoded );
 			const Vec3 N{ decoded[0], decoded[1], decoded[2] };
 			const Vec3 V = Normalized( eye - P );
-			const Vec3 R = N * ( 2.0 * Dot( N, V ) ) - V;
+			const Vec3 R =
+			    Normalized( N * ( 2.0 * Dot( N, V ) ) - V + Vec3{ tilt[0], tilt[1], tilt[2] } );
 			if ( !( Dot( R, N ) > 0.0 ) )
 				continue;
 

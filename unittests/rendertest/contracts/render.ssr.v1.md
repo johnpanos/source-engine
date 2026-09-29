@@ -17,12 +17,12 @@ Rows: R95 (proven in `render_lab`), R96 (product integration)
 | S2 | The thickness test is live: a ray whose screen path crosses a surface it passes far behind is not stopped by it, and is with an unbounded thickness | reference: pass |
 | S3 | A reflection whose true point is off the screen does not hit; hits within `edgeFade` of the screen's edge have confidence below 1, and within 1 percent of it below 0.1 | reference: pass |
 | S4 | Roughness at or above the cutoff, the background and every pixel of confidence 0 are the lit input, bitwise; between the fade start and the cutoff the confidence is at most the fade | reference: pass |
-| S5 | The GPU pass (hierarchical depth walk) agrees with the reference: the same hit texel, confidence and composited value within tolerance, on the analytic scenes | planned |
-| S6 | Seeded defects are caught: the thickness ignored, no edge fade, the wrong mip | planned |
+| S5 | The GPU pass (hierarchical depth walk) agrees with the reference on the analytic scenes (see "GPU against the reference" below) | pass |
+| S6 | Seeded defects are caught: the thickness ignored, no edge fade, the wrong mip | pass |
 | S7 | "No SSR" (the pass not run, or every confidence 0) is the image-specular frame, bitwise | planned |
 | S8 | On the mirror-corridor fixture, on-screen hits are within the fixture's tolerance of the Cycles reference (`lighting_fixtures.py gallery`) | planned |
 | S9 | The fallback seam: along a camera walk where rays leave the screen or are occluded, the frame-to-frame step between SSR and the probes is at most the R50 walk gate's 0.047; a control that switches without the confidence fade fails | planned |
-| S10 | The Khronos validation layer (synchronization validation) reports no message | planned |
+| S10 | The Khronos validation layer (synchronization validation) reports no message | pass (analytic scenes) |
 
 ## The ambiguity set (S1), fixed before its first run
 
@@ -61,3 +61,19 @@ clear (14 pixels).
 The check is set equality: every ambiguous pixel stops early, and every pixel
 that stops early is ambiguous or unclassified. A seeded reference that
 applies the thickness in front of the surface instead of behind must fail it.
+
+## GPU against the reference (S5, S6), fixed before its first run
+
+The suite uploads a scene's inputs (depth R32F, normal and roughness
+RGBA32F, the rest RGBA16F) and gives the reference the same values (the
+half-float ones rounded to half). A pixel is judged when the reference's
+outcome is stable: the same hit texel, or no hit, when its reflected ray is
+tilted by 1e-4 along each world axis both ways (six runs). On every judged
+pixel the GPU agrees: hit or no hit, the same hit texel, confidence and mip
+within 1e-3, and the output within 2e-3 of its magnitude + 1e-3 (the output
+is half float). On every pixel the reference leaves unchanged (not traced,
+no hit, confidence 0) the GPU's output is the lit input, bitwise, whether
+judged or not when the GPU also leaves it unchanged; a judged pixel the GPU
+changes there fails. Unjudged pixels are counted in the detail. The seeded
+traces (the thickness ignored, no edge fade, the wrong mip) must each fail a
+GPU check.

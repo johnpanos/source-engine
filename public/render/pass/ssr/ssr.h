@@ -77,10 +77,18 @@
 #ifndef RENDER_PASS_SSR_SSR_H
 #define RENDER_PASS_SSR_SSR_H
 
+#include "foundation/expected.h"
+#include "render/device/device.h"
+#include "render/math/matrix.h"
+
 #include <cmath>
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace render::pass::ssr
 {
@@ -92,7 +100,10 @@ struct SsrParams
 	float thickness = 8.0f;           // Source units behind a surface that still hit
 	float edgeFade = 0.1f;            // of the screen, from each edge
 	std::uint32_t maxMip = 6;         // of the lit pyramid
-	std::uint32_t maxSteps = 256;     // walk steps before a ray gives up (no hit)
+	// Texels walked (boundaries crossed from the origin's texel) before a
+	// ray gives up with no hit; the default exceeds any screen's width plus
+	// height up to 4096 pixels, so it binds only there.
+	std::uint32_t maxSteps = 8192;
 };
 
 // Why parameters are refused (nullopt: valid): the cutoff in (0, 1], the
@@ -141,6 +152,95 @@ inline void OctDecode( Octahedral e, float out[3] )
 	out[1] = y / length;
 	out[2] = z / length;
 }
+
+enum class SsrStatus : std::uint8_t
+{
+	kInvalidParams,  // ValidateParams refused them
+	kInvalidTargets, // a missing texture, or a zero extent
+	kDevice,         // the device refused a layout, pipeline, buffer or group
+};
+
+// The view the pass traces in.
+struct SsrView
+{
+	math::float4x4 toClip; // world to clip (math::Perspective's depth range)
+	float eye[3] = { 0.0f, 0.0f, 0.0f };
+};
+
+// The pass recorded straight into an encoder. Every input is in kSampled
+// before and after it and has the output's extent; the output (RGBA16F,
+// usable as kStorageWrite) is in `outputUsage` before and after, and is
+// written whole.
+struct SsrDirectTargets
+{
+	device::TextureId depth;           // D32
+	device::TextureId normalRoughness; // RGBA16F or wider: oct xy, roughness
+	device::TextureId iblRadiance;
+	device::TextureId specularWeight;
+	device::TextureId lit;
+	device::TextureId output;
+	device::ResourceUsage outputUsage = device::ResourceUsage::kStorageWrite;
+	std::uint32_t width = 0;
+	std::uint32_t height = 0;
+};
+
+class ScreenSpaceReflections
+{
+public:
+	static foundation::Expected<std::unique_ptr<ScreenSpaceReflections>, SsrStatus> Create(
+	    device::IRenderDevice2 &device, const SsrParams &params );
+	// Test endpoint: the pass with another trace program (a suite's
+	// diagnostics or seeded variant of render/pass/ssr/ssr_trace.comp, SPIR-V,
+	// with the same interface).
+	static foundation::Expected<std::unique_ptr<ScreenSpaceReflections>, SsrStatus> CreateWithTrace(
+	    device::IRenderDevice2 &device, const SsrParams &params,
+	    std::span<const std::uint32_t> traceSpirv );
+	~ScreenSpaceReflections();
+	ScreenSpaceReflections( const ScreenSpaceReflections & ) = delete;
+	ScreenSpaceReflections &operator=( const ScreenSpaceReflections & ) = delete;
+
+	// Records the pyramids, the trace and the composite. The pass must
+	// outlive the submission; Collect releases what it recorded.
+	foundation::Expected<void, SsrStatus> Record(
+	    device::CommandEncoder &encoder, const SsrDirectTargets &targets, const SsrView &view );
+	void Collect( device::CompletionToken token );
+
+	// The diagnostics buffer a trace built with SSR_DIAGNOSTICS writes (two
+	// vec4 per pixel, row 0 first: hit x, y, confidence, mip; hit texel x, y,
+	// 1 on a hit, behind), left in kStorageWrite; usable as kCopySource.
+	device::BufferId Diagnostics() const { return m_Diagnostics; }
+	std::uint32_t RecordFailures() const;
+
+private:
+	explicit ScreenSpaceReflections( device::IRenderDevice2 &device ) : m_Device( device ) {}
+	foundation::Expected<void, SsrStatus> Resize( std::uint32_t width, std::uint32_t height );
+
+	struct Level
+	{
+		std::uint32_t first = 0;
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+	};
+
+	device::IRenderDevice2 &m_Device;
+	SsrParams m_Params;
+	device::BindGroupLayoutId m_Layout;
+	device::SamplerId m_Sampler;
+	device::PipelineId m_Pyramid;
+	device::PipelineId m_Trace;
+	std::uint32_t m_Width = 0;
+	std::uint32_t m_Height = 0;
+	std::vector<Level> m_DepthLevels;
+	std::vector<Level> m_ColorLevels;
+	device::BufferId m_DepthPyramid;
+	device::BufferId m_ColorPyramid;
+	device::BufferId m_Diagnostics;
+	device::BufferId m_Constants;
+	mutable std::mutex m_PendingLock;
+	std::vector<device::ResourceId> m_Pending;
+	std::uint32_t m_RecordFailures = 0;
+	device::CompletionToken m_LastToken;
+};
 
 } // namespace render::pass::ssr
 

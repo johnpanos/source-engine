@@ -3401,8 +3401,32 @@ mirror-corridor comparison are open.
 | --- | --- | --- |
 | Reference against analytic truth | `render.lab.ssr` (`render_lab suite ssr`): a mirror floor before a patterned wall with two thin floating bars, 256 x 192. The rays that stop early are exactly the screen-space ambiguity set, computed from the analytic scene by the rule in `render.ssr.v1.md` ("The ambiguity set"): of 13,666 floor pixels whose true reflection the camera sees, 252 are ambiguous and all stop early, and 550 are unclassified (a step within the discretisation band of a surface, or at an edge) and excluded. Every clear pixel hits within 1.5 px of its reflection and reflects its light within 3 percent + 0.01 (0 violations). The seeded reference with the thickness in front of the surface fails the set comparison (10,014 violations). The thickness test passes 594 rays behind the far bar that an unbounded thickness stops. 4,756 off-screen reflections all miss. 3,828 hits in the edge band fade below 1, and below 0.1 at 1 percent from the edge. The roughness fade holds at 0.35; at 0.45, rough surfaces and the background are unchanged bitwise. The octahedral round trip is within 2.4e-7 | pass (10 checks, g++ and clang++) |
 
-Next: the GPU pass (the pyramids and the hierarchical trace as compute
-passes on the graph), judged against the reference with seeded defects
-(thickness ignored, no edge fade, wrong mip). Then the lab's mirror-corridor
-inputs, the gallery before and after, and the fallback-seam walk against the
-0.047 gate with its hard-switch control.
+- **The GPU pass:** `render/pass/ssr/` (`ssr_pyramid.comp`,
+  `ssr_trace.comp`, `ssr_view.glsl`, core artifacts in `ssr_spv.h`),
+  `ScreenSpaceReflections::Record` on an encoder: one dispatch per level of
+  the min-depth pyramid (rounding up, so a cell covers every texel under it)
+  and of the lit pyramid, then the trace and the composite, one invocation
+  per pixel. The walk skips a pyramid cell whose least depth the ray stays
+  in front of over its span and rises a level, else falls one; at level 0
+  it applies the definition's hit test, so its hit is the texel walk's.
+  The crossing and `behind` are computed in 1 / w, which is affine along the
+  screen segment as depth is but keeps its precision where depth crowds
+  towards 1: computed in depth, two pixels' confidences differed from the
+  reference by 0.0026 (a 0.05-pixel shift of the crossing), outside the
+  check's 1e-3; in 1 / w they agree. This is a numerical change of the
+  implementation, not of the definition or the check.
+- `maxSteps` is now 8192 texels (it bound some rays at 256 in the reference's
+  256 x 192 scene).
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| GPU against the reference | `render.lab.ssr` (`--validate`): the pass with its diagnostics trace on three scenes (the mirror floor, glossy at 0.35, rough at 0.45), by the rule in `render.ssr.v1.md` ("GPU against the reference", written before its first run). Mirror and glossy: 23,419 judged pixels each (15,497 hits), 1,215 unstable under the six ray tilts and not judged; the same hit texel, confidence and mip within 1e-3 and the composite within 2e-3 of its magnitude + 1e-3 on every judged pixel; every pixel the reference leaves unchanged is the lit input, bitwise. Rough: nothing traced, every pixel bitwise. 0 validation messages (synchronization validation) | pass (20 checks, g++ and clang++) |
+| Seeded traces | `render.lab.ssr.sensitivity`: the thickness ignored (2,020 hits differ), no edge fade (5,075) and the wrong mip (15,497 mips differ) each fail a GPU check | pass (4 checks) |
+
+Performance (rule 7, recorded, not judged): the suite runs in about 50 s,
+mostly the CPU reference and its tilted runs; the pass's GPU time is not yet
+measured.
+
+Next: the lab's mirror-corridor inputs (its own depth, normal and weight
+pass until 43's `kSsrTargets` diff lands), the gallery before and after, and
+the fallback-seam walk against the 0.047 gate with its hard-switch control.

@@ -93,6 +93,7 @@ DEBUG = "render/pass/debug"
 OUTPUT = "render/pass/output"
 VOLUMETRIC = "render/pass/volumetric"
 LAB = "render/lab"
+SSR = "render/pass/ssr"
 LIGHTS_TESTS = "unittests/rendertest/core/pass/lights"
 SHADOWS_TESTS = "unittests/rendertest/core/pass/shadows"
 
@@ -200,6 +201,21 @@ GENERATED = {
         "the output pass: exposure, tone map and output encoding (RFC 0016, render.output.v1)", (
         ("kOutputVertex", OUTPUT + "/output.vert", DEVICE_OPTIONS),
         ("kOutputFragment", OUTPUT + "/output.frag", DEVICE_OPTIONS))),
+    "ssr_spv.h": ("render::pass::ssr::spirv",
+        "render.pass.ssr: the pyramids and the trace (RFC 0016 K11, render.ssr.v1)", (
+        ("kSsrPyramidCompute", SSR + "/ssr_pyramid.comp", DEVICE_OPTIONS),
+        ("kSsrTraceCompute", SSR + "/ssr_trace.comp", DEVICE_OPTIONS))),
+    "ssr_variants_spv.h": ("render::lab::spirv",
+        "render_lab's ssr suite's trace variants: diagnostics, and the seeded defects "
+        "(render.lab.ssr, RFC 0016 K11)", (
+        ("kSsrTraceDiagnostics", SSR + "/ssr_trace.comp",
+         DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS",)),
+        ("kSsrTraceThicknessIgnored", SSR + "/ssr_trace.comp",
+         DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_THICKNESS_IGNORED")),
+        ("kSsrTraceNoEdgeFade", SSR + "/ssr_trace.comp",
+         DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_NO_EDGE_FADE")),
+        ("kSsrTraceWrongMip", SSR + "/ssr_trace.comp",
+         DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_WRONG_MIP")))),
     "output_defects_spv.h": ("rendertest::output::spirv",
         "the output suite's seeded fragment programs (render.output)", (
         ("kOutputAlwaysCompress", OUTPUT + "/output.frag",
@@ -314,7 +330,8 @@ GLSL_GENERATED = {
 # families embed) each have a GLSL 4.50 twin: <stem>_glsl.h in the namespace's
 # ::glsl sibling, with the same array names.
 CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "debug_spv.h", "families_spv.h", "lines_spv.h",
-                        "output_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h")
+                        "output_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h",
+                        "ssr_spv.h")
 for _header in CORE_PROGRAM_HEADERS:
     _namespace, _purpose, _rows = GENERATED[_header]
     GLSL_GENERATED[_header.replace("_spv.h", "_glsl.h")] = (
