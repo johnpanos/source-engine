@@ -178,7 +178,11 @@ required").
 Declared gap: Portal 2's client compiles monitor rendering out
 (`USE_MONITORS` is defined only for the HL2 and CS:S clients), so the monitor
 view is captured on the two Portal maps only. Retail Portal 2 renders
-monitors; that parity gap is outside K0.
+monitors; that parity gap is outside K0. Closed 2026-09-29: the Portal 2
+client defines `USE_MONITORS`, and `corpus.portal2.monitors` checks the
+Wheatley monitors of `sp_a4_tb_intro` and `sp_a4_intro`. The K0 captures are
+unchanged, because `sp_a1_wakeup` has no `point_camera`, so `DrawMonitors`
+returns before drawing.
 
 Determinism: the oracles need `-deterministicrender` (new, off by default,
 plus `host_framerate 0.015` and `-nosound`). It seeds particles from their

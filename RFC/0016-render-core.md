@@ -11,7 +11,8 @@
   [progress record](0016-progress.md). Where that slice settled a proposed
   spelling differently, this RFC now says what was built. Every K0 check
   passes (2026-09-26), with the Portal 2 monitor view declared absent: the
-  Portal 2 client compiles monitors out
+  Portal 2 client compiled monitors out (drawn since 2026-09-29; the K0
+  Portal 2 scenario, `sp_a1_wakeup`, has no camera)
 - Date: 2026-09-26
 - Scope: The engine's renderer beneath the frozen material-system API: an
   explicit, backend-neutral GPU device port with Vulkan, OpenGL and null

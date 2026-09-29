@@ -14175,6 +14175,66 @@
       "expect": "pass"
     },
     {
+      "id": "corpus.portal2.monitors.selftest",
+      "kind": "self-test",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "profile": "linux-host-corpus",
+      "description": "The Portal 2 monitor oracle (tools/quality/portal2_monitors.py) against synthetic shots, no game: a screen showing the eye that shrinks when the FOV doubles passes; a black screen, a stale screen (the eye unchanged), a narrowed view, a missing shot and a blue-grey wall are each rejected; the VMT $basetexture reader, the yaw rotation and the console line. Needs numpy and Pillow; about 1 s.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_monitors.py",
+        "selftest"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 11,
+      "timeout_seconds": 300,
+      "sources": [
+        "tools/quality/portal2_monitors.py",
+        "tools/quality/conformance_result.py",
+        "tools/quality/legacy_bsp.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.monitors",
+      "kind": "positive",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "profile": "linux-host-corpus",
+      "description": "Portal 2's Wheatley monitors show the live point_camera view (the user's report of 2026-09-29: black monitors; cause: the client compiled CViewRender::DrawMonitors out, USE_MONITORS being HL2/CS:S only). tools/quality/portal2_monitors.py suite boots sp_a4_tb_intro and sp_a4_intro headless on native Vulkan (build-p2, portal_boot.py, 1024x768, mat_force_tonemap_scale 1), deploys one prefab monitor (relay_deploy_straight), places a noclip camera 190 units in front of the screen from the BSP (func_monitor origin, screen face normal turned by its yaw) and shoots it at the camera's authored FOV and at double (ChangeFOV). Checks per map: facts.screen-material (the screen face's VMT $basetexture is _rt_Camera, read from the VPK), facts.camera-target (the func_monitor targets one point_camera), boot, screen-shows-camera (Wheatley's eye, B >= 110 and B - R >= 60, covers at least 0.3 % of the screen region; measured 1.55-1.58 %) and view-is-live (doubling the FOV leaves the eye at most 0.6 of its area; measured 0.25-0.26). Live negative controls on sp_a4_tb_intro, each rejected: cl_drawmonitors 0 from startup (the defect as reported, rejected on screen-shows-camera) and cl_drawmonitors 0 after the first shot (a stale _rt_Camera, rejected on view-is-live). The pre-fix client fails screen-shows-camera and view-is-live on both maps. Needs a local Portal 2 install and a GPU; about 90 s.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_monitors.py",
+        "suite",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 14,
+      "timeout_seconds": 1800,
+      "requires": [
+        "path:build-p2/c4che/_cache.py",
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/quality/portal2_monitors.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/legacy_bsp.py",
+        "tools/quality/source_content.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/conformance_result.py",
+        "game/client/viewrender.cpp",
+        "game/client/view.cpp",
+        "game/client/c_point_camera.cpp",
+        "game/server/point_camera.cpp",
+        "game/server/info_camera_link.cpp",
+        "game/server/hl2/Func_Monitor.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "corpus.core-world.portal",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

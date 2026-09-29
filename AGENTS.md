@@ -948,9 +948,11 @@ Keep the table concise and link details below or from the domain progress file.
     `sp_a1_wakeup` (21,632 draws, every single-draw removal detected) under
     a new opt-in `-deterministicrender`; `render-v1.json` has desktop and
     Fold7 k0_records (the Fold7 limits revised at the user's direction after
-    its first measurement). Gap: the Portal 2 client compiles monitors out
+    its first measurement). Gap: the Portal 2 client compiled monitors out
     (`USE_MONITORS`), a parity gap against retail, so its monitor view is
-    not captured. See the
+    not captured. The client draws them since 2026-09-29
+    (`corpus.portal2.monitors`); `sp_a1_wakeup` has no camera, so the K0
+    captures are unchanged. See the
     [K0 record](RFC/0016-progress.md#k0-prerequisites-and-frozen-oracles-2026-09-26).
 - R61–R64 (RFC 0008 F8–F11): added 2026-09-23 as `planned` for versioned native
   map spatial data, a modern model asset path, visual parity and geometry

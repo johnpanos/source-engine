@@ -81,6 +81,7 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | G23 | Portal 2's stencil fast path (bitmask stencil, batched portal quads, early-Z, scissor) ran only in queued material mode, which native Vulkan never uses, so the Portal 1-style `_Old` path always ran; early-Z had no caller | Portal 2 done (see log); Portal 1 backport todo |
 | G24 | Gel streams: the server never created the paint blob pool (crash on a sprayer's first blob), the blob materials were bound unreferenced, the `paintblob` shader was absent and Valve's blobulator library is unavailable | done on native Vulkan (see log); retail stream shape and the erase gel's opacity compared 2026-09-28; flashlight unverified |
 | G25 | Portal ghosts: `portalstaticoverlay` was the Portal 1 shader, without Portal 2's `$ghostoverlay`, so the through-wall ring and brackets were drawn over every visible portal | done on native Vulkan (see log); DXVK source-matched `.vcs` packs need the new combos |
+| G26 | Monitors: the client compiled `CViewRender::DrawMonitors` out (`USE_MONITORS` was defined only for `HL2_CLIENT_DLL` and `CSTRIKE_DLL`; Portal 1 defines the first, Portal 2 neither), so nothing drew `_rt_Camera` and every `func_monitor` screen (`dev/dev_tvmonitor1a`), including Act 4's Wheatley monitors, stayed black | done on native Vulkan (see log) |
 
 ### Low
 
@@ -270,3 +271,21 @@ Newest last. Each entry names the build and the check that passed.
     screen effect it starts is still never drawn: nothing calls
     `C_Portal_Player::RenderLocalScreenSpaceEffect`, and this tree has no
     `engine_post` shader to composite it.
+- 2026-09-29, G26 (build-p2, native Vulkan, Box3D; the user's report of black
+  Wheatley monitors): `game/client/viewrender.cpp` and `view.cpp` define
+  `USE_MONITORS` for `PORTAL2` too. The server half was already built:
+  `func_monitor`, `info_camera_link`, `point_camera` and the player's
+  `PointCameraSetupVisibility`.
+  - Oracle: `tools/quality/portal2_monitors.py suite` (checks-v1,
+    `corpus.portal2.monitors`), 14 of 14. It deploys one prefab monitor on
+    each of `sp_a4_tb_intro` and `sp_a4_intro`, derives the camera placement
+    from the BSP, and shoots the screen at the camera's authored FOV of 30
+    and at 60 (`ChangeFOV`).
+  - Measured: Wheatley's eye covers 1.58 % and 1.55 % of the screen region,
+    and the FOV change leaves it at 0.25 and 0.26 of that area.
+  - Controls, each rejected: `cl_drawmonitors 0` from startup (0 %, as
+    reported); `cl_drawmonitors 0` after the first shot (a stale
+    `_rt_Camera`, ratio 1.00).
+  - The pre-fix client fails 4 of the 10 checks run without controls (eye
+    0 % on both maps).
+  - The selftest (`corpus.portal2.monitors.selftest`) passes 11 of 11.
