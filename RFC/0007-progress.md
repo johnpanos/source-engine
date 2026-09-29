@@ -859,6 +859,117 @@ one place, behind it.
 - Not done here: the `ILightBaker` contract and its suite, the vrad provider,
   the RNM/L1 owners, and a lit USD-native map through a complete bake.
 
+### Fast relights: sample budget and denoising (2026-09-29)
+
+User request: "relight / render maps using cycles without taking forever",
+then relight the maps in order of how cool they are. A full `portal2-chamber`
+bake of `sp_gi_chamber_01` was estimated at 10–12 h on this CPU. Its first
+direct half-pass alone took 39 min. Measured on that chamber's 2048 atlas
+with `gi-reference` light paths, on a host shared with other bakes and game
+sessions (timings are noisy):
+
+- **Where the time goes.** The direct and indirect layers cost about the
+  same per sample. Each of the directional page's three RNM-basis passes
+  costs about as much as the indirect layer. A 4096-sample reference took
+  48 min (direct 20 min, indirect 26 min).
+- **Direct light ignores bounce limits** (`4d84a5f7`). Cycles' DIRECT bake
+  pass is byte-identical at 0, 1, 4, 8 and 64 bounces. This was checked on
+  the chamber (19 emitters) and on `gi_room_states` (sun, latlong sky and
+  emitter). Yet the configured limit still traces each path's continuation.
+  `pbrt_blender.direct_only_light_paths()` now bakes the direct layer and
+  sun visibility without bounces. A bake through the changed script matches
+  the old one byte for byte (direct, indirect, sun visibility, atlas). The
+  speedup is unsettled: 31 s → 17 s at one bounce in one run, about equal
+  in another, under load.
+- **Bounces are not a lever.** Eight diffuse bounces give the same indirect
+  light as 64 to 0.1% here. Russian roulette already ends most paths.
+- **Samples are the lever, with OIDN.** Luminance-weighted mean absolute
+  error of the per-chart-denoised total against the denoised 4096-sample
+  bake:
+
+  | samples | error | cost |
+  | --- | --- | --- |
+  | 16 | 6.6% (visible blotches) | 1/256 |
+  | 64 | 3.1% (faint lines along triangle edges; OIDN keeps them as detail) | 1/64 |
+  | 256 | 1.7% (no visible difference in crops) | 1/16 |
+
+- **Directional page.** Its fit keeps only the denoised luminance gradient
+  relative to the flat atlas. Between 64- and 256-sample RNM bakes, that
+  gradient moves by 0.038 (luminance-weighted |Δβ|), about 1% of a
+  normal-mapped texel's light.
+- **Why the release gate asks for 4096.** Its p99 statistic (the denoised
+  halves' residual, floored at 2% of the median) lives in near-black
+  texels and one-texel groove faces. Failing texels sit at a median 1.1%
+  of the map's light and hold 3% of its energy. It measured 0.51 at 128
+  samples and asks for about 1500. An energy-weighted variant was tried as
+  a replacement, but it separates 8 samples (4.6%) from 128 (2.1%) too
+  weakly to be a gate. So the release gate is unchanged.
+- **Neighbour context for the denoiser** was prototyped: pad each chart
+  with the light of other charts at the same world position. It is not
+  needed. The chamber has 94 charts, and its walls are single charts.
+
+Installed (`77bf2d73`): profiles `legacy-relight-fast` and
+`portal2-chamber-fast`. They are their release profiles with the lightmap
+at 256 samples, the RNM passes at 64 (new lightmap setting
+`directional_samples`, passed as `--directional-samples`) and reflection
+probes at 128 (Cycles-denoised), without the noise gate. The 4096 atlas,
+light paths, layers, probe volume, radiosity and SDFV are unchanged. The
+release profiles `legacy-relight` and `portal2-chamber` are unchanged.
+
+Also fixed (`9d15f31c`): the relight bake's sideways-normal gate compared
+corners with each triangle's own normal, which is noise on a sliver.
+Retail `sp_a1_wakeup` has five triangles 0.004 units wide, whose own
+normals are 88° off their plane. The gate now uses the area-weighted
+normal of the triangles on the same BSP plane, and its Blender test has
+a sliver case.
+
+Also fixed (`2ea5ade0`): retail maps are larger than one PRBV holds at 2 m.
+escape_02 spans 326 × 286 × 287 m (3.3M probes), sp_a2_core needs 1.3M and
+sp_a2_bts6 2.3M, against the 1M limit. The probe-volume step failed there
+after a finished bake. The new `probe_volume.fit_limit` setting takes the
+smallest spacing that fits (`probe_volume.fit_spacing`) and records the
+requested and actual spacing in the receipt, as the SDFV already grows its
+voxel under its cap. The fast profiles opt in.
+
+Whole retail maps also exposed three steps that scale with map size in
+single-threaded Python. Each was built at test-chamber scale:
+
+- **Probe volume** (`1e5b2a36`). Every probe is traced with Python ray
+  casts and baked through 36 receiver quads built one `Vector` at a time.
+  At 1M probes, sp_a2_core spent 18 min building receivers before tracing
+  anything. `fit_limit` now fits a profile budget (`max_probes`, 50000 in
+  the fast profiles), which gives sp_a2_core 6.1 m spacing. 50000 is the
+  scale the release profile's 2 m was chosen for: a whole Portal map of
+  about 100 × 60 × 40 m, about 30000 probes.
+- **Reflection-probe placement** (`1d7c0adf`). It fits a box with 2048 rays
+  per walkable sample and tests visibility between sample pairs. At 0.75 m
+  a whole retail map has tens of thousands of samples, and placement ran
+  20+ min before rendering anything. The placement parameter
+  `max_walkable` (2000 in `portal2-chamber-fast`) widens the sample grid.
+  sp_a2_core's probe step now takes 133 s.
+- **Radiosity transfer** (`48f071be`, `34610fc1`). It casts transfer and
+  gather rays one at a time on one core (about 200M casts at 50000 probes).
+  They now fan out over forked workers, with rays drawn in the parent in
+  serial order: sp_gi_chamber_01-preview's RTRN is byte-identical at 1 and
+  16 workers, with transfer 75 → 9 s and gather 37 → 4 s. Its per-source
+  DIRECT bakes (one per light: 66 passes on sp_a1_wakeup, 159 on
+  sp_a2_bts6) now run without bounces (byte-identical). In the fast
+  profiles they bake at 256 samples.
+- **Denoise input scale** (`9ff41bc4`). On sp_a2_core, 85% of covered
+  texels get no static light, so the scale (1 / median) fell back to 1 and
+  the filter raised the mean light 3.7×. The scale now comes from the lit
+  texels' median (drift 0.2%). The noise gate shares the same function.
+
+Open finding, not changed here: Portal 2's lights use
+`_fifty_percent_distance`, which vrad stores as attenuation
+(c = d50², l = 0, q = 1), nearly flat out to d50. `legacy_bsp_scene`
+matches each light to an inverse square at 100 units, so surfaces
+toward d50 (~700 units) get 5–25× less light than vrad gives them. The
+relit sp_a2_core has 85% unlit texels, where vrad's lightmap has 4%. A
+faithful fix belongs in the one light model: vrad's falloff as a Light
+Falloff factor d²/(c + l·d + q·d²) on the Cycles emitter, plus the SDFV
+light records and the runtime light set.
+
 ### Scope
 
 1. `utils/lighting/` (strict C++20):
