@@ -61,6 +61,11 @@
       "id": "sdl.audio",
       "reason": "SDL audio device thread against the mixer: an existing family, not queue-specific",
       "frames": ["SDL_.*Audio", "CAudioDeviceSDL", "audio_sdl"]
+    },
+    {
+      "id": "driver.mesa-queue-barrier",
+      "reason": "added at K5 step 4 (2026-09-28, agent decision in the threading review): Mesa RADV's own queue thread (the shader disk cache, 'disk$N'), started at the first pipeline the core creates, reports pthread_barrier_wait against pthread_barrier_destroy on its start barrier. Both accesses are inside the uninstrumented driver (libvulkan_radeon.so); the render core appears only in the thread's creation stack. This is TSan's known false positive for barriers in uninstrumented code. No first-party code uses pthread barriers (git grep), so the pattern matches only driver internals",
+      "frames": ["pthread_barrier_(wait|destroy)"]
     }
   ]
 }

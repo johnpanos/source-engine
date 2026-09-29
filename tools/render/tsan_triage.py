@@ -57,6 +57,9 @@ CORE_PATH = re.compile(
     r"material|shaderlib|resources|math)/|engine/render_core_host\.cpp)")
 
 
+# The core's namespaces (render::...), not the legacy backend's render_vulkan::.
+CORE_FUNCTION = re.compile(r"^(non-virtual thunk to )?render::")
+
 REPORT_START = re.compile(r"^WARNING: ThreadSanitizer: (?P<kind>.+?)(?: \(pid=\d+\))?\s*$")
 FRAME = re.compile(r"^\s+#\d+\s+(?P<func>.+?)\s+(?P<loc>\S+?)(?::\d+)*(?::\d+)?\s+\((?P<obj>[^)]*)\)\s*$")
 STACK_HEAD = re.compile(r"^\s{2}(?:Previous |Atomic )?(?:[Ww]rite|[Rr]ead|Mutex|Thread|Location)")
@@ -113,6 +116,14 @@ def in_core(report):
             rel = repo_relative(loc)
             if rel and CORE_PATH.match(rel):
                 return rel
+    # A release TSan build leaves many frames without a source path (<null>,
+    # or a bare file name), so the two access stacks are also checked by
+    # function: a core function racing is a core report wherever its source
+    # line went. Thread-creation stacks are not accesses and don't count.
+    for stack in report["stacks"][:2]:
+        for func, _ in stack:
+            if CORE_FUNCTION.match(func):
+                return func
     return None
 
 
@@ -190,6 +201,7 @@ def run(args):
                    "--out", str(out / "boot")]
         if args.content_root:
             command += ["--content-root", args.content_root]
+        command += ["--engine-arg=" + argument for argument in args.engine_arg or []]
         result = subprocess.run(command, env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True)
         tail = result.stdout.strip().splitlines()[-1:] or [""]
@@ -222,6 +234,10 @@ def selftest():
         "unknown": ({"a": "CNewThing::Poke()", "afile": str(ROOT / "engine/new.cpp"), "b": "CNewThing::Peek()"}, False),
         "core-in-family": ({"a": "CMaterialVar::SetFloatValue(float)",
                             "afile": str(ROOT / "render/legacy/frame_executor.cpp"), "b": "CProxy::OnBind()"}, False),
+        # A core function with no source path (a release TSan build), racing
+        # a triaged frame: still a core report.
+        "core-by-function": ({"a": "render::pass::world::WorldPass::Record(unsigned int)",
+                              "afile": "world_pass.cpp", "b": "CMaterialVar::SetFloatValue(float)"}, False),
     }
     with tempfile.TemporaryDirectory() as tmp:
         for name, (fields, accept) in cases.items():
@@ -259,6 +275,8 @@ def main():
     run_parser.add_argument("--mode", type=int, action="append", choices=(0, 2))
     run_parser.add_argument("--map", default="testchmb_a_01")
     run_parser.add_argument("--timeout", type=int, default=1200)
+    run_parser.add_argument("--engine-arg", action="append",
+                            help="an extra engine argument for both boots, e.g. +r_core_world")
     run_parser.add_argument("--content-root",
                             help="a compiled map's content (portal_boot --content-root)")
     check_parser = sub.add_parser("check")
