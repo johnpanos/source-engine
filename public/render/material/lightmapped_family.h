@@ -87,34 +87,26 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block );
 // kInvalidRequest: the claim's terms read the normal, and the layout is flat.
 using LightmappedStatus = SurfaceStatus;
 
-// The family's view of the surface program: its claims drawn as the
-// program's points.
-class LightmappedFamily
+class LightmappedFamily : public SurfaceFamily
 {
 public:
+	using SurfaceFamily::SurfaceFamily;
 	// fragmentModule: a replacement fragment program (SPIR-V words) for the
 	// debug suites' seeded programs; empty for the program's own.
 	static foundation::Expected<std::unique_ptr<LightmappedFamily>, LightmappedStatus> Create(
 	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
-	    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {} );
-	LightmappedFamily( const LightmappedFamily & ) = delete;
-	LightmappedFamily &operator=( const LightmappedFamily & ) = delete;
+	    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {} )
+	{
+		return CreateSurfaceFamily<LightmappedFamily>(
+		    device, colorFormat, depthFormat, sampleCount, fragmentModule );
+	}
 
-	SurfaceProgram &Program() { return *m_Program; }
-	device::BindGroupLayoutId MaterialLayout() const { return m_Program->MaterialLayout(); }
-	device::BindGroupLayoutId DrawLayout() const { return m_Program->DrawLayout(); }
-	device::BindGroupLayoutId FrameLayout() const { return m_Program->FrameLayout(); }
 	// The pipeline for a claim on a vertex layout (SurfaceProgram::Pipeline).
 	foundation::Expected<device::PipelineId, LightmappedStatus> Pipeline(
 	    const LightmappedClaim &claim, SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat,
-	    const shaderlib::DebugSpecialization &debug = {} )
+	    const shaderlib::DebugSpecialization &debug = {} ) const
 	{
-		return m_Program->Pipeline( claim.Variant( layout ), debug );
-	}
-	foundation::Expected<device::PipelineId, LightmappedStatus> DebugPipeline(
-	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug )
-	{
-		return m_Program->DebugPipeline( shipped, debug );
+		return Program().Pipeline( claim.Variant( layout ), debug );
 	}
 	// The claim as a MaterialPrograms request (SurfaceProgram::Request): the
 	// base texture at 1, the env map at 3, its mask at 5, the bump map at 7
@@ -123,33 +115,19 @@ public:
 	// (LightmapGroup).
 	foundation::Expected<ProgramRequest, LightmappedStatus> Request( const LightmappedClaim &claim,
 	    const SurfaceTextures &textures, SurfaceVertexLayout layout,
-	    const device::SamplerDesc &sampler = {} )
+	    const device::SamplerDesc &sampler = {} ) const
 	{
-		return m_Program->Request( claim.Variant( layout ), claim.constants, textures, sampler );
+		return Program().Request( claim.Variant( layout ), claim.constants, textures, sampler );
 	}
 	// The flat vertex and the base texture alone.
 	foundation::Expected<ProgramRequest, LightmappedStatus> Request( const LightmappedClaim &claim,
-	    std::string baseTexture, const device::SamplerDesc &sampler = {} );
+	    std::string baseTexture, const device::SamplerDesc &sampler = {} ) const;
 	// A draw group for a lightmap page ('page', a TextureCache name staged as
 	// sRGB), with neutral model lighting.
 	GroupRequest LightmapGroup( std::string page, const device::SamplerDesc &sampler = {} ) const
 	{
-		return m_Program->DrawGroup( std::move( page ), {}, sampler );
+		return Program().DrawGroup( std::move( page ), {}, sampler );
 	}
-	// The frame group for these terms (no split-sum table: no lightmapped
-	// point reads it).
-	GroupRequest FrameGroup( const SurfaceFrame &frame ) const
-	{
-		return m_Program->FrameGroup( frame );
-	}
-
-private:
-	explicit LightmappedFamily( std::unique_ptr<SurfaceProgram> program )
-	    : m_Program( std::move( program ) )
-	{
-	}
-
-	std::unique_ptr<SurfaceProgram> m_Program;
 };
 
 } // namespace render::material

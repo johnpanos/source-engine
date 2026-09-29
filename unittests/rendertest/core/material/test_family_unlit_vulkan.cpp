@@ -112,7 +112,7 @@ int main()
 				return -1.0f;
 			(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
 			const UnlitClaim claim = ClaimUnlit( block );
-			return claim.claimed ? claim.constants.flags[3] : -1.0f;
+			return claim.claimed ? claim.constants.flags[2] : -1.0f;
 		};
 		checks.That(
 		    reference( "\"UnlitGeneric\" { \"$basetexture\" \"a\" \"$alphatest\" \"1\" }" ) ==
@@ -140,6 +140,13 @@ int main()
 		    UnlitFamily::Create( *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
 		if ( !checks.That( family.HasValue(), "family.creates" ) )
 			return checks.Report();
+		// The surface program's unread inputs: env map, mask, bump, detail,
+		// MRAO, emission, the split-sum table and the lightmap page.
+		const CaseTexture neutral = NeutralCaseTexture( device::Format::kRGBA8Unorm );
+		const CaseTexture neutralSrgb = NeutralCaseTexture( device::Format::kRGBA8Srgb );
+		const CaseTexture neutralCube = NeutralCaseTexture( device::Format::kRGBA8Srgb, true );
+		const SurfaceFrame frame;
+		const ModelLighting lighting;
 
 		for ( const FamilyCase &testCase : set->cases )
 		{
@@ -162,10 +169,10 @@ int main()
 			if ( !checks.That( pipeline.HasValue(), "pipeline." + name ) )
 				continue;
 
-			std::vector<UnlitVertex> quad;
+			std::vector<SurfaceFlatVertex> quad;
 			for ( const CaseVertex &corner : testCase.triangles )
 			{
-				UnlitVertex vertex;
+				SurfaceFlatVertex vertex;
 				std::copy( corner.position, corner.position + 3, vertex.position );
 				std::copy( corner.uv0, corner.uv0 + 2, vertex.uv );
 				std::copy( corner.color, corner.color + 4, vertex.color );
@@ -173,9 +180,17 @@ int main()
 			}
 			CaseDraw draw;
 			draw.pipeline = pipeline.Value();
-			draw.groups.push_back(
-			    { device::BindGroupRole::kMaterial, family.Value()->MaterialLayout(),
-			        std::as_bytes( std::span( &claim.constants, 1 ) ), { texture } } );
+			// The constants as Request packs them.
+			SurfaceConstants constants = claim.constants;
+			constants.state[0] =
+			    claim.blend == device::BlendMode::kOpaque && claim.alphaWrite ? 1.0f : 0.0f;
+			draw.groups.push_back( { device::BindGroupRole::kMaterial,
+			    family.Value()->MaterialLayout(), std::as_bytes( std::span( &constants, 1 ) ),
+			    { texture, &neutralCube, &neutral, &neutral, &neutral, &neutral, &neutralSrgb } } );
+			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),
+			    std::as_bytes( std::span( &lighting, 1 ) ), { &neutralSrgb }, true } );
+			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
+			    std::as_bytes( std::span( &frame, 1 ) ), { &neutral } } );
 			draw.vertices = std::as_bytes( std::span( quad ) );
 			draw.vertexCount = std::uint32_t( quad.size() );
 			std::copy( testCase.clear, testCase.clear + 4, draw.clear );

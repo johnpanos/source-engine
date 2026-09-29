@@ -37,6 +37,7 @@ layout( location = 6 ) out vec3 tangentS;
 layout( location = 7 ) out vec3 tangentT;
 layout( location = 8 ) out float lightmapOffset;
 layout( location = 9 ) out vec4 lightAtten; // the model lights' attenuations (none here)
+layout( location = 10 ) out vec3 vertexLighting; // the vertexlit point's (none here)
 
 void main()
 {
@@ -54,4 +55,5 @@ void main()
 	tangentT = inTangentTOffset.xyz;
 	lightmapOffset = inTangentTOffset.w;
 	lightAtten = vec4( 0.0 );
+	vertexLighting = vec3( 0.0 );
 }

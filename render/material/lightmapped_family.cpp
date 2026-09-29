@@ -157,20 +157,8 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 	return claim;
 }
 
-foundation::Expected<std::unique_ptr<LightmappedFamily>, LightmappedStatus>
-LightmappedFamily::Create( IRenderDevice2 &device, Format colorFormat, Format depthFormat,
-    std::uint32_t sampleCount, std::span<const std::uint32_t> fragmentModule )
-{
-	auto program =
-	    SurfaceProgram::Create( device, colorFormat, depthFormat, sampleCount, fragmentModule );
-	if ( !program )
-		return foundation::MakeUnexpected( program.Error() );
-	return std::unique_ptr<LightmappedFamily>(
-	    new LightmappedFamily( std::move( program.Value() ) ) );
-}
-
 foundation::Expected<ProgramRequest, LightmappedStatus> LightmappedFamily::Request(
-    const LightmappedClaim &claim, std::string baseTexture, const SamplerDesc &sampler )
+    const LightmappedClaim &claim, std::string baseTexture, const SamplerDesc &sampler ) const
 {
 	SurfaceTextures textures;
 	textures.base = std::move( baseTexture );

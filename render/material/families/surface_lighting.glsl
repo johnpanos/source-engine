@@ -4,7 +4,7 @@
 // four sorted local lights, packed as CShaderAPIDx8::SetLight packs cLightInfo
 // (PackSourceModelLighting in model_lighting.h mirrors this block). World
 // draws bind a neutral block (no lights, a black cube); their terms read none
-// of it.
+// of it. The model vertex stage and the pixel stage both read it.
 #ifndef SURFACE_LIGHTING_GLSL
 #define SURFACE_LIGHTING_GLSL
 
@@ -23,5 +23,16 @@ layout( set = 3, binding = 2 ) uniform ModelLighting
 	vec4 cube[6]; // +x, -x, +y, -y, +z, -z
 	ModelLight lights[4];
 } lighting;
+
+// PixelShaderAmbientLight (and the vertex term's AmbientLight): the faces
+// weighted by the squared normal.
+vec3 ModelAmbientCube( vec3 n )
+{
+	const vec3 squared = n * n;
+	const bvec3 positive = greaterThanEqual( n, vec3( 0.0 ) );
+	return squared.x * ( positive.x ? lighting.cube[0] : lighting.cube[1] ).rgb +
+	       squared.y * ( positive.y ? lighting.cube[2] : lighting.cube[3] ).rgb +
+	       squared.z * ( positive.z ? lighting.cube[4] : lighting.cube[5] ).rgb;
+}
 
 #endif // SURFACE_LIGHTING_GLSL

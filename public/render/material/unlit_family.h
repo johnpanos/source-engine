@@ -1,9 +1,10 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: The `unlit` material family's program (RFC 0016 K4): its claim on a
-//			material, the packing of a parameter block into the family's
-//			shader constants, its material bind group and its pipelines on
-//			render.device.v2.
+// Purpose: The `unlit` material family (RFC 0016 K4): its claim on a
+//			material and the packing of a parameter block into the surface
+//			program's constants. The family's draws are the unlit point of
+//			the one surface program (surface_program.h, RFC 0016 K11:
+//			kSurfaceUnlit), which owns the bind groups and pipelines.
 //
 //			The family claims this subset of UnlitGeneric: $basetexture,
 //			$color, $alpha, $vertexcolor, $vertexalpha, $alphatest with
@@ -17,11 +18,10 @@
 //			owns.
 //
 //			The arithmetic is the vertexlit_and_unlit_generic port's without
-//			lighting, in linear light: the base texture is sampled as sRGB
-//			and the target is sRGB, as the port draws (tests compare the two
-//			within the family's tolerance). The draw constants carry the
-//			draw's world-to-clip matrix; the material bind group (role
-//			kMaterial) holds the constants, the base texture and its sampler.
+//			lighting, in linear light: the base texture times $color (Source's
+//			GammaToLinear), times the vertex color (decoded per vertex) with
+//			$vertexcolor; $alpha times the base alpha, times the vertex alpha
+//			with $vertexalpha. The base texture is sampled as sRGB.
 //
 //=============================================================================//
 
@@ -33,41 +33,15 @@
 #include "render/material/material_programs.h"
 #include "render/shaderlib/debug_view.h"
 #include "render/material/parameter_block.h"
+#include "render/material/surface_program.h"
 
 #include <cstdint>
-#include <tuple>
-#include <optional>
-#include <map>
 #include <memory>
 #include <string>
 #include <utility>
 
 namespace render::material
 {
-
-// The family's shader constants (std140, the Material block of unlit.frag).
-struct UnlitConstants
-{
-	float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f }; // rgb: $color, a: $alpha
-	float flags[4] = {};                         // vertexcolor, vertexalpha, alphatest, reference
-};
-static_assert( sizeof( UnlitConstants ) == 32 );
-
-// The draw constants (unlit.vert): row-major with column vectors.
-struct UnlitDrawConstants
-{
-	float toClip[16] = {};
-};
-static_assert( sizeof( UnlitDrawConstants ) == 64 );
-
-// The vertex the family draws: position, uv0, and color as UNORM8x4 (RGBA).
-struct UnlitVertex
-{
-	float position[3] = {};
-	float uv[2] = {};
-	std::uint8_t color[4] = { 255, 255, 255, 255 };
-};
-static_assert( sizeof( UnlitVertex ) == 24 );
 
 struct UnlitClaim
 {
@@ -77,57 +51,54 @@ struct UnlitClaim
 	// Whether the draw writes destination alpha: the port leaves it for
 	// translucent and alpha-tested draws (write mask, clause D17).
 	bool alphaWrite = true;
-	UnlitConstants constants;
+	// tint: $color and $alpha; flags.x $vertexcolor, .y $alphatest, .z its
+	// reference; state.y 1 (gamma vertex colors); state.w $vertexalpha.
+	SurfaceConstants constants;
+
+	// The program's point for this claim on a vertex layout.
+	SurfaceVariant Variant( SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat ) const
+	{
+		return { blend, alphaWrite, kSurfaceUnlit, 0, layout };
+	}
 };
 
 // Whether the family draws this block's material, and how. The block must be
 // of the `unlit` family's schema (FamiliesFromMapping).
 UnlitClaim ClaimUnlit( const ParameterBlock &block );
 
-enum class UnlitStatus : std::uint8_t
-{
-	kDevice = 1 // a layout, sampler or pipeline was refused
-};
+using UnlitStatus = SurfaceStatus;
 
-class UnlitFamily
+class UnlitFamily : public SurfaceFamily
 {
 public:
+	using SurfaceFamily::SurfaceFamily;
 	static foundation::Expected<std::unique_ptr<UnlitFamily>, UnlitStatus> Create(
 	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
-	    std::uint32_t sampleCount = 1 );
-	~UnlitFamily();
-	UnlitFamily( const UnlitFamily & ) = delete;
-	UnlitFamily &operator=( const UnlitFamily & ) = delete;
+	    std::uint32_t sampleCount = 1 )
+	{
+		return CreateSurfaceFamily<UnlitFamily>( device, colorFormat, depthFormat, sampleCount );
+	}
 
-	device::BindGroupLayoutId MaterialLayout() const { return m_MaterialLayout; }
-	// The pipeline for a claim's blend mode and alpha write (created on first use).
-	// With a debug specialization (RFC 0014) that is not neutral, the same
-	// program with the debug constants.
-	foundation::Expected<device::PipelineId, UnlitStatus> Pipeline(
-	    const UnlitClaim &claim, const shaderlib::DebugSpecialization &debug = {} );
-	// The debug variant of a pipeline this family made; the pipeline itself
-	// for a neutral specialization; nullopt when the family did not make it.
-	std::optional<device::PipelineId> DebugPipeline(
-	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug );
-	// The claim as a MaterialPrograms request: the pipeline, the material
-	// layout, the packed constants (binding 0) and 'baseTexture', a
-	// TextureCache name, at binding 1 with its sampler at binding 2. Stage the
-	// base texture as an sRGB format, as the family samples it.
-	foundation::Expected<ProgramRequest, UnlitStatus> Request(
-	    const UnlitClaim &claim, std::string baseTexture, const device::SamplerDesc &sampler = {} );
-
-private:
-	explicit UnlitFamily( device::IRenderDevice2 &device ) : m_Device( device ) {}
-
-	device::IRenderDevice2 &m_Device;
-	device::Format m_ColorFormat = device::Format::kUnknown;
-	device::Format m_DepthFormat = device::Format::kUnknown;
-	std::uint32_t m_SampleCount = 1;
-	device::BindGroupLayoutId m_MaterialLayout;
-	std::map<std::tuple<device::BlendMode, bool, shaderlib::DebugSpecialization>,
-	    device::PipelineId>
-	    m_Pipelines;
-	std::map<std::uint64_t, UnlitClaim> m_Shipped; // the claim behind each shipped pipeline
+	// The pipeline for a claim on a vertex layout (created on first use).
+	foundation::Expected<device::PipelineId, UnlitStatus> Pipeline( const UnlitClaim &claim,
+	    SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat,
+	    const shaderlib::DebugSpecialization &debug = {} ) const
+	{
+		return Program().Pipeline( claim.Variant( layout ), debug );
+	}
+	// The claim as a MaterialPrograms request with 'baseTexture', a
+	// TextureCache name staged as an sRGB format. The draws bind a draw group
+	// (a neutral one: DrawGroup(), which reads no page) and a frame group.
+	foundation::Expected<ProgramRequest, UnlitStatus> Request( const UnlitClaim &claim,
+	    std::string baseTexture, SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat,
+	    const device::SamplerDesc &sampler = {} ) const
+	{
+		SurfaceTextures textures;
+		textures.base = std::move( baseTexture );
+		return Program().Request( claim.Variant( layout ), claim.constants, textures, sampler );
+	}
+	// The draw group an unlit draw binds: no page, neutral lighting.
+	GroupRequest DrawGroup() const { return Program().DrawGroup( {} ); }
 };
 
 } // namespace render::material

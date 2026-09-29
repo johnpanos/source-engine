@@ -68,7 +68,7 @@ ModelLightType LightType( const std::string &type )
 
 // The case's lighting as the legacy frontend hands it over: the harness's
 // eye at the origin, its cube and its lights.
-VertexLitLighting CaseLighting( const FamilyCase &testCase )
+ModelLighting CaseLighting( const FamilyCase &testCase )
 {
 	std::vector<ModelLightDesc> lights;
 	for ( const ModelLight &light : testCase.lights )
@@ -182,6 +182,12 @@ int main()
 		    *device, device::Format::kRGBA8Srgb, device::Format::kUnknown );
 		if ( !checks.That( family.HasValue(), "family.creates" ) )
 			return checks.Report();
+		// The surface program's unread inputs: env map, mask, bump, detail,
+		// MRAO, emission, the split-sum table and the lightmap page.
+		const CaseTexture neutral = NeutralCaseTexture( device::Format::kRGBA8Unorm );
+		const CaseTexture neutralSrgb = NeutralCaseTexture( device::Format::kRGBA8Srgb );
+		const CaseTexture neutralCube = NeutralCaseTexture( device::Format::kRGBA8Srgb, true );
+		const SurfaceFrame frame;
 
 		// The requests MaterialPrograms and DrawGroups take.
 		{
@@ -193,16 +199,17 @@ int main()
 			        request.Value().pipeline.IsValid() &&
 			        request.Value().drawLayout == family.Value()->DrawLayout() &&
 			        request.Value().material.layout == family.Value()->MaterialLayout() &&
-			        request.Value().vertexStride == sizeof( VertexLitVertex ) &&
+			        request.Value().vertexStride == sizeof( SurfaceModelVertex ) &&
 			        request.Value().drawConstantBytes == sizeof( FamilyDrawConstants ) &&
-			        request.Value().material.constants.size() == sizeof( VertexLitConstants ) &&
-			        request.Value().material.textures.size() == 1,
+			        request.Value().material.constants.size() == sizeof( SurfaceConstants ) &&
+			        request.Value().material.textures.size() == 7 &&
+			        request.Value().material.textures[0].name == "a",
 			    "request.names-the-draw-layout-and-the-material-group" );
-			const VertexLitLighting lighting;
+			const ModelLighting lighting;
 			const GroupRequest group = family.Value()->LightingGroup( lighting );
 			checks.That( group.layout == family.Value()->DrawLayout() &&
-			                 group.constants.size() == sizeof( VertexLitLighting ) &&
-			                 group.textures.empty(),
+			                 group.constants.size() == sizeof( ModelLighting ) &&
+			                 group.textures.size() == 1 && group.textures[0].name.empty(),
 			    "request.lighting-is-the-draw-group" );
 		}
 
@@ -227,28 +234,34 @@ int main()
 			if ( !checks.That( pipeline.HasValue(), "pipeline." + name ) )
 				continue;
 
-			std::vector<VertexLitVertex> quad;
+			std::vector<SurfaceModelVertex> quad;
 			for ( const CaseVertex &corner : testCase.triangles )
 			{
-				VertexLitVertex vertex;
+				SurfaceModelVertex vertex;
 				std::copy( corner.position, corner.position + 3, vertex.position );
 				std::copy( corner.normal, corner.normal + 3, vertex.normal );
 				std::copy( corner.uv0, corner.uv0 + 2, vertex.uv );
 				quad.push_back( vertex );
 			}
 			const GroupRequest lighting = family.Value()->LightingGroup( CaseLighting( testCase ) );
-			VertexLitDrawConstants drawConstants;
+			FamilyDrawConstants drawConstants;
 			const std::array<float, 16> toClip = CaseToClip();
 			std::copy( toClip.begin(), toClip.end(), drawConstants.toClip );
 			for ( int i = 0; i < 4; ++i )
 				drawConstants.world[i * 5] = 1.0f;
 			CaseDraw draw;
 			draw.pipeline = pipeline.Value();
-			draw.groups.push_back(
-			    { device::BindGroupRole::kMaterial, family.Value()->MaterialLayout(),
-			        std::as_bytes( std::span( &claim.constants, 1 ) ), { texture } } );
-			draw.groups.push_back(
-			    { device::BindGroupRole::kDraw, lighting.layout, lighting.constants, {} } );
+			// The constants as Request packs them.
+			SurfaceConstants constants = claim.constants;
+			constants.state[0] =
+			    claim.blend == device::BlendMode::kOpaque && claim.alphaWrite ? 1.0f : 0.0f;
+			draw.groups.push_back( { device::BindGroupRole::kMaterial,
+			    family.Value()->MaterialLayout(), std::as_bytes( std::span( &constants, 1 ) ),
+			    { texture, &neutralCube, &neutral, &neutral, &neutral, &neutral, &neutralSrgb } } );
+			draw.groups.push_back( { device::BindGroupRole::kDraw, lighting.layout,
+			    lighting.constants, { &neutralSrgb }, true } );
+			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
+			    std::as_bytes( std::span( &frame, 1 ) ), { &neutral } } );
 			draw.vertices = std::as_bytes( std::span( quad ) );
 			draw.vertexCount = std::uint32_t( quad.size() );
 			draw.drawConstants = std::as_bytes( std::span( &drawConstants, 1 ) );

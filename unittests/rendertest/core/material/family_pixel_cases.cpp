@@ -464,6 +464,16 @@ std::array<float, 16> CaseToClip()
 	return toClip;
 }
 
+CaseTexture NeutralCaseTexture( render::device::Format format, bool cube )
+{
+	CaseTexture texture;
+	texture.width = texture.height = 1;
+	texture.cube = cube;
+	texture.format = format;
+	texture.texels.assign( cube ? 24 : 4, 255 );
+	return texture;
+}
+
 Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 {
 	Drawn drawn;

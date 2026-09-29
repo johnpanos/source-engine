@@ -181,8 +181,9 @@ struct ProgramResolver::State
 	explicit State( device::IRenderDevice2 &device ) : device( device ) {}
 	device::IRenderDevice2 &device;
 	SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat;
+	// Owns the surface program; every point the resolver makes is drawn
+	// through it.
 	std::unique_ptr<LightmappedFamily> lightmapped;
-	std::unique_ptr<UnlitFamily> unlit;
 };
 
 ProgramResolver::ProgramResolver( std::unique_ptr<State> state ) : m_State( std::move( state ) )
@@ -209,11 +210,9 @@ foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResol
 	    layout == VertexLayout::kSurface ? SurfaceVertexLayout::kWorld : SurfaceVertexLayout::kFlat;
 	auto lightmapped = LightmappedFamily::Create(
 	    device, colorFormat, depthFormat, sampleCount, modules.lightmappedFragment );
-	auto unlit = UnlitFamily::Create( device, colorFormat, depthFormat, sampleCount );
-	if ( !lightmapped || !unlit )
-		return foundation::MakeUnexpected( std::string( "a family's layouts were refused" ) );
+	if ( !lightmapped )
+		return foundation::MakeUnexpected( std::string( "the surface program was refused" ) );
 	state->lightmapped = std::move( lightmapped ).Value();
-	state->unlit = std::move( unlit ).Value();
 	return std::unique_ptr<ProgramResolver>( new ProgramResolver( std::move( state ) ) );
 }
 
@@ -275,27 +274,16 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	}
 	if ( material.family == "unlit" )
 	{
-		// Unlit is the lightmapped term with the lighting fixed at one: the
-		// same program and vertex, the unlit claim's constants.
-		const UnlitClaim unlit = ClaimUnlit( *block );
-		if ( !unlit.claimed )
-			return foundation::MakeUnexpected( unlit.reason );
-		LightmappedClaim claim;
-		claim.claimed = true;
-		claim.blend = unlit.blend;
-		claim.alphaWrite = unlit.alphaWrite;
-		std::copy( unlit.constants.color, unlit.constants.color + 4, claim.constants.tint );
-		claim.constants.flags[0] = unlit.constants.flags[0]; // $vertexcolor
-		claim.constants.flags[1] = unlit.constants.flags[2]; // $alphatest
-		claim.constants.flags[2] = unlit.constants.flags[3]; // its reference
-		claim.constants.flags[3] = 1.0f;                     // lighting is one
-		claim.constants.state[1] = 1.0f;                     // gamma vertex color
+		// Unlit is the surface program's unlit point, on the resolver's vertex.
+		const UnlitClaim claim = ClaimUnlit( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
-		auto request = s.lightmapped->Request( claim, textures, s.layout );
+		auto request = s.lightmapped->Program().Request(
+		    claim.Variant( s.layout ), claim.constants, textures );
 		if ( !request )
-			return foundation::MakeUnexpected(
-			    std::string( "a lightmapped pipeline was refused" ) );
+			return foundation::MakeUnexpected( std::string( "an unlit pipeline was refused" ) );
 		out.name = "unlit";
 		out.request = std::move( request ).Value();
 		out.blend = claim.blend;
@@ -367,7 +355,9 @@ foundation::Expected<ProgramResolver::Preview, std::string> ProgramResolver::Res
 		}
 	}
 
-	LightmappedClaim claim;
+	// The preview is the unlit point with the editor's (gamma) vertex colors
+	// and alpha.
+	UnlitClaim claim;
 	claim.claimed = true;
 	const bool alphaTest = flag( "$alphatest" );
 	claim.blend = flag( "$additive" )                                ? device::BlendMode::kAdditive
@@ -385,13 +375,15 @@ foundation::Expected<ProgramResolver::Preview, std::string> ProgramResolver::Res
 	claim.constants.flags[0] = 1.0f; // the vertex color
 	claim.constants.flags[1] = alphaTest ? 1.0f : 0.0f;
 	claim.constants.flags[2] = detail::AlphaTestReference( scalar( "$alphatestreference", 0.0f ) );
-	claim.constants.flags[3] = 1.0f; // lighting is one
 	claim.constants.state[1] = 1.0f; // display (gamma) vertex colors, as the editor's are
+	claim.constants.state[3] = 1.0f; // and the vertex alpha
 	const VmtPair *base = find( "$basetexture" );
-	auto request =
-	    s.lightmapped->Request( claim, base ? VmtTextureReference( base->value ) : std::string() );
+	SurfaceTextures textures;
+	textures.base = base ? VmtTextureReference( base->value ) : std::string();
+	auto request = s.lightmapped->Program().Request(
+	    claim.Variant( SurfaceVertexLayout::kFlat ), claim.constants, textures );
 	if ( !request )
-		return foundation::MakeUnexpected( std::string( "a lightmapped pipeline was refused" ) );
+		return foundation::MakeUnexpected( std::string( "a preview pipeline was refused" ) );
 	out.program.name = "preview";
 	out.program.request = std::move( request ).Value();
 	out.program.blend = claim.blend;

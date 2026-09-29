@@ -6,13 +6,22 @@
 // 3x3, as the model port does, and normalized per pixel. Each model light's
 // attenuation is Source's per-vertex term (common_vs_fxc.h
 // GetVertexAttenForLight), interpolated as the port does. A mesh has no
-// lightmap coordinates and a white vertex color.
+// lightmap coordinates and a white vertex color. The vertexlit point
+// (kVertexLit) also evaluates the port's lit, non-bumped vertex lighting
+// (common_vs_fxc.h DoLighting with static control flow): each light's color
+// times its cosine term (Lambert, or half-Lambert squared with
+// kHalfLambert) times its attenuation, in order, then the ambient cube.
 #version 450
 
 layout( location = 0 ) in vec3 position;
 layout( location = 1 ) in vec3 normal;
 layout( location = 2 ) in vec4 tangent; // w: the bitangent's sign
 layout( location = 3 ) in vec2 uv0;
+
+// The program's terms (surface.frag's kTerms).
+layout( constant_id = 0 ) const int kTerms = 0;
+const int kHalfLambert = 16;
+const int kVertexLit = 8192;
 
 layout( push_constant ) uniform Draw
 {
@@ -32,6 +41,7 @@ layout( location = 6 ) out vec3 tangentS;
 layout( location = 7 ) out vec3 tangentT;
 layout( location = 8 ) out float lightmapOffset;
 layout( location = 9 ) out vec4 lightAtten;
+layout( location = 10 ) out vec3 vertexLighting;
 
 // GetVertexAttenForLight: distance falloff, the spot cone, and 1 for
 // directional lights.
@@ -49,6 +59,18 @@ float VertexAttenuation( int i, vec3 position )
 	spot = clamp( pow( max( 0.0001, spot ), light.spot.x ), 0.0, 1.0 );
 	const float atten = distanceAtten + ( distanceAtten * spot - distanceAtten ) * light.direction.w;
 	return atten + ( 1.0 - atten ) * light.color.w;
+}
+
+// CosineTermInternal: Lambert, or half-Lambert squared.
+float CosineTerm( int i, vec3 position, vec3 normal )
+{
+	vec3 toLight = normalize( lighting.lights[i].position.xyz - position );
+	toLight = mix( toLight, -lighting.lights[i].direction.xyz, lighting.lights[i].color.w );
+	const float normalDotLight = dot( normal, toLight );
+	if ( ( kTerms & kHalfLambert ) == 0 )
+		return max( 0.0, normalDotLight );
+	const float halfLambert = normalDotLight * 0.5 + 0.5;
+	return halfLambert * halfLambert;
 }
 
 void main()
@@ -73,4 +95,16 @@ void main()
 			atten[i] = VertexAttenuation( i, world.xyz );
 	}
 	lightAtten = atten;
+	vertexLighting = vec3( 0.0 );
+	if ( ( kTerms & kVertexLit ) != 0 )
+	{
+		const vec3 n = normalize( worldNormal );
+		vec3 sum = vec3( 0.0 );
+		for ( int i = 0; i < 4; ++i )
+		{
+			if ( i < count )
+				sum += lighting.lights[i].color.xyz * CosineTerm( i, world.xyz, n ) * atten[i];
+		}
+		vertexLighting = sum + ModelAmbientCube( n );
+	}
 }

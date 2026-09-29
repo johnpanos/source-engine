@@ -373,6 +373,7 @@ struct Lab
 	std::map<std::string, std::array<float, 4>>
 	    pbrMrao; // variant -> metal, rough, ao, emission scale
 	std::uint64_t vertexLitLighting = 0;
+	std::uint64_t vertexLitFrameGroup = 0; // the vertexlit family's program's frame terms
 	std::uint64_t nextGroup = 1;
 	std::map<Program, std::uint64_t> materialGroups;
 	material::ProgramRequest pbrRequest;                    // the default material's
@@ -507,7 +508,7 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	// light, and the light under a black cube.
 	lab.pbrFrameGroup = lab.nextGroup++;
 	if ( !lab.groups.Set( lab.pbrFrameGroup,
-	         lab.pbr->FrameGroup( "lab/pbr/splitsum", material::SurfaceFrame() ) ) )
+	         lab.pbr->FrameGroup( material::SurfaceFrame(), "lab/pbr/splitsum" ) ) )
 		return std::string( "the pbr frame group was refused" );
 	struct PbrVariant
 	{
@@ -574,16 +575,18 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	// vertexlit: the same lighting.
 	material::VertexLitClaim vertexLitClaim;
 	vertexLitClaim.claimed = true;
-	std::copy( in.vertexLitColor, in.vertexLitColor + 3, vertexLitClaim.constants.color );
+	std::copy( in.vertexLitColor, in.vertexLitColor + 3, vertexLitClaim.constants.tint );
 	auto vertexLitRequest = lab.vertexLit->Request( vertexLitClaim, "lab/vl/base" );
 	if ( !vertexLitRequest )
 		return std::string( "the vertexlit program was refused" );
 	lab.vertexLitRequest = vertexLitRequest.Value();
 	lab.materialGroups[Program::kVertexLit] = lab.nextGroup++;
 	lab.vertexLitLighting = lab.nextGroup++;
+	lab.vertexLitFrameGroup = lab.nextGroup++;
 	if ( !lab.groups.Set(
 	         lab.materialGroups[Program::kVertexLit], lab.vertexLitRequest.material ) ||
-	     !lab.groups.Set( lab.vertexLitLighting, lab.vertexLit->LightingGroup( lighting ) ) )
+	     !lab.groups.Set( lab.vertexLitLighting, lab.vertexLit->LightingGroup( lighting ) ) ||
+	     !lab.groups.Set( lab.vertexLitFrameGroup, lab.vertexLit->FrameGroup() ) )
 		return std::string( "a vertexlit group was refused" );
 	return std::nullopt;
 }
@@ -609,9 +612,11 @@ std::vector<std::byte> QuadVertices( const Lab &lab, Program program, int cell )
 		}
 		else if ( program == Program::kVertexLit )
 		{
-			material::VertexLitVertex v;
+			material::SurfaceModelVertex v;
 			std::memcpy( v.position, &corner.position, sizeof( v.position ) );
 			std::memcpy( v.normal, &in.normal, sizeof( v.normal ) );
+			std::memcpy( v.tangent, &in.tangentS, sizeof( float ) * 3 );
+			v.tangent[3] = 1.0f;
 			v.uv[0] = corner.u;
 			v.uv[1] = corner.v;
 			const auto b = Bytes( v );
@@ -686,7 +691,8 @@ std::optional<std::string> DrawFrame(
 			auto pipeline = lab.vertexLit->DebugPipeline( lab.vertexLitRequest.pipeline, debug );
 			if ( !pipeline )
 				return std::string( "no vertexlit debug pipeline" );
-			draw.pipeline = *pipeline;
+			draw.pipeline = pipeline.Value();
+			draw.groups[std::size_t( BindGroupRole::kFrame )] = group( lab.vertexLitFrameGroup );
 			draw.groups[std::size_t( BindGroupRole::kMaterial )] =
 			    group( lab.materialGroups[Program::kVertexLit] );
 			draw.groups[std::size_t( BindGroupRole::kDraw )] = group( lab.vertexLitLighting );
@@ -1312,7 +1318,7 @@ void IdentityChecks( Lab &lab, Results &results )
 	results.That( pbr && pbr.Value() == lab.pbrRequest.pipeline,
 	    "identity.neutral-is-the-shipped-pbr-pipeline" );
 	auto vertexLit = lab.vertexLit->DebugPipeline( lab.vertexLitRequest.pipeline, {} );
-	results.That( vertexLit && *vertexLit == lab.vertexLitRequest.pipeline,
+	results.That( vertexLit && vertexLit.Value() == lab.vertexLitRequest.pipeline,
 	    "identity.neutral-is-the-shipped-vertexlit-pipeline" );
 	shaderlib::DebugSpecialization view;
 	view.view = 1;

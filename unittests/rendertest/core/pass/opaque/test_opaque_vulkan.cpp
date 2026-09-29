@@ -151,19 +151,14 @@ int main()
 		checks.That(
 		    missing.ok && missing.rgba == frameA.rgba, "O4.unresolved-draws-are-not-drawn" );
 		auto c = SceneC();
-		const material::DrawGroup *frameGroup = materials->drawGroups.Group( kPbrFrameGroup );
+		const material::DrawGroup *frameGroup = materials->drawGroups.Group( kFrameGroup );
 		const material::DrawGroup *lightingGroup = materials->drawGroups.Group( kPbrLighting );
-		// The lightmapped family's frame terms are another frame layout.
-		const material::DrawGroup *const lightmappedFrame[] = {
-		    materials->drawGroups.Group( kLightmappedFrameGroup ) };
-		const FrameResult frameC = DrawScene(
-		    *device, programs, *meshes, *c->Snapshot(), frameGroup, nullptr, lightmappedFrame );
+		const FrameResult frameC = DrawScene( *device, programs, *meshes, *c->Snapshot() );
 		if ( !checks.That( frameGroup && lightingGroup && frameC.ok && frameC.stats.drawn == 3 &&
 		                       frameC.stats.unresolved == 0,
 		         "O6.lightmapped-and-pbr-draws-resolve" ) )
-			std::printf( "O6: ok %d drawn %u unresolved %u lightmapped frame group %s\n",
-			    int( frameC.ok ), frameC.stats.drawn, frameC.stats.unresolved,
-			    lightmappedFrame[0] ? "set" : "missing" );
+			std::printf( "O6: ok %d drawn %u unresolved %u\n", int( frameC.ok ), frameC.stats.drawn,
+			    frameC.stats.unresolved );
 		const Rgb page{ Unorm( SrgbToLinear( kPageTexel[0] ) * material::kLightmapScaleLinear ),
 		    Unorm( SrgbToLinear( kPageTexel[1] ) * material::kLightmapScaleLinear ),
 		    Unorm( SrgbToLinear( kPageTexel[2] ) * material::kLightmapScaleLinear ) };
@@ -177,8 +172,7 @@ int main()
 		checks.That( Near( At( frameC, Pixel( view, { 0.0f, 1.6f, -5.5f } ) ), vertexLit ),
 		    "O6.the-vertexlit-cube-shows-its-draw-group-s-lighting" );
 		auto unlit = SceneC( false );
-		const FrameResult noLighting = DrawScene(
-		    *device, programs, *meshes, *unlit->Snapshot(), frameGroup, nullptr, lightmappedFrame );
+		const FrameResult noLighting = DrawScene( *device, programs, *meshes, *unlit->Snapshot() );
 		checks.That( noLighting.ok && noLighting.stats.drawn == 2 &&
 		                 noLighting.stats.unresolved == 1 &&
 		                 At( noLighting, Pixel( view, { 1.5f, 0.0f, -5.25f } ) ) == kClear,

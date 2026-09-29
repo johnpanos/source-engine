@@ -68,23 +68,14 @@ PbrClaim ClaimPbr( const ParameterBlock &block )
 	return claim;
 }
 
-foundation::Expected<std::unique_ptr<PbrFamily>, PbrStatus> PbrFamily::Create(
-    IRenderDevice2 &device, Format colorFormat, Format depthFormat )
-{
-	auto program = SurfaceProgram::Create( device, colorFormat, depthFormat );
-	if ( !program )
-		return foundation::MakeUnexpected( program.Error() );
-	return std::unique_ptr<PbrFamily>( new PbrFamily( std::move( program.Value() ) ) );
-}
-
 foundation::Expected<ProgramRequest, PbrStatus> PbrFamily::Request(
-    const PbrClaim &claim, SurfaceTextures textures, const SamplerDesc &sampler )
+    const PbrClaim &claim, SurfaceTextures textures, const SamplerDesc &sampler ) const
 {
 	if ( !claim.normalMap )
 		textures.bump.clear();
 	if ( !claim.emission )
 		textures.emission.clear();
-	return m_Program->Request( claim.Variant(), claim.constants, textures, sampler );
+	return Program().Request( claim.Variant(), claim.constants, textures, sampler );
 }
 
 } // namespace render::material

@@ -136,6 +136,8 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 {
 	if ( variant.layout == SurfaceVertexLayout::kFlat && ( variant.terms & kSurfaceNormalTerms ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	if ( variant.layout != SurfaceVertexLayout::kModel && ( variant.terms & kSurfaceModelTerms ) )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	const auto key = std::make_pair( variant, debug );
 	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
 		return found->second;
@@ -165,6 +167,9 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	        "main", fragmentBindings, 0 } };
 	std::vector<SpecializationConstant> constants = { { ShaderStage::kFragment, 0, variant.terms },
 	    { ShaderStage::kFragment, 1, variant.detailMode } };
+	// The model vertex reads the terms too (the vertexlit point's lighting).
+	if ( model )
+		constants.push_back( { ShaderStage::kVertex, 0, variant.terms } );
 	shaderlib::AppendDebugConstants( debug, ShaderStage::kFragment, constants );
 	const VertexAttribute flatAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
 	    { 1, VertexFormat::kFloat2, 12, 0 }, { 2, VertexFormat::kFloat2, 20, 0 },

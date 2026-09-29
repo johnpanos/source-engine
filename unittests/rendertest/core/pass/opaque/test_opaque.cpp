@@ -61,11 +61,7 @@ int main()
 	    !refused && refused.Error() == OpaqueStatus::kInvalidTargets && builder.Passes().empty(),
 	    "N3.invalid-targets-fail-before-adding-passes" );
 	auto c = SceneC();
-	// The lightmapped family's frame terms are another frame layout.
-	const material::DrawGroup *const lightmappedFrame[] = {
-	    materials->drawGroups.Group( kLightmappedFrameGroup ) };
-	const FrameResult families = DrawScene( *device, *materials, *meshes, *c->Snapshot(),
-	    materials->drawGroups.Group( kPbrFrameGroup ), nullptr, lightmappedFrame );
+	const FrameResult families = DrawScene( *device, *materials, *meshes, *c->Snapshot() );
 	checks.That( families.ok && families.stats.drawn == 3 && families.stats.unresolved == 0,
 	    "N4.lightmapped-and-pbr-draw-with-their-groups" );
 	checks.Equal( materials->programs.GroupFailures(), 0u, "N1.groups-without-failure" );

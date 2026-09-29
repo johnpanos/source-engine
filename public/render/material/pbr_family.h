@@ -69,56 +69,30 @@ PbrClaim ClaimPbr( const ParameterBlock &block );
 
 using PbrStatus = SurfaceStatus;
 
-// The family's view of the surface program.
-class PbrFamily
+class PbrFamily : public SurfaceFamily
 {
 public:
+	using SurfaceFamily::SurfaceFamily;
 	static foundation::Expected<std::unique_ptr<PbrFamily>, PbrStatus> Create(
-	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat );
-	PbrFamily( const PbrFamily & ) = delete;
-	PbrFamily &operator=( const PbrFamily & ) = delete;
+	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat )
+	{
+		return CreateSurfaceFamily<PbrFamily>( device, colorFormat, depthFormat );
+	}
 
-	SurfaceProgram &Program() { return *m_Program; }
-	device::BindGroupLayoutId FrameLayout() const { return m_Program->FrameLayout(); }
-	device::BindGroupLayoutId MaterialLayout() const { return m_Program->MaterialLayout(); }
-	device::BindGroupLayoutId DrawLayout() const { return m_Program->DrawLayout(); }
 	// The claim's pipeline (SurfaceProgram::Pipeline).
 	foundation::Expected<device::PipelineId, PbrStatus> Pipeline(
-	    const PbrClaim &claim, const shaderlib::DebugSpecialization &debug = {} )
+	    const PbrClaim &claim, const shaderlib::DebugSpecialization &debug = {} ) const
 	{
-		return m_Program->Pipeline( claim.Variant(), debug );
-	}
-	foundation::Expected<device::PipelineId, PbrStatus> DebugPipeline(
-	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug )
-	{
-		return m_Program->DebugPipeline( shipped, debug );
+		return Program().Pipeline( claim.Variant(), debug );
 	}
 	// The claim as a MaterialPrograms request. 'textures' names base, bump
 	// (the normal map), MRAO and emission; stage base and emission as sRGB,
 	// MRAO and the normal map as linear data. A slot the claim does not read
-	// takes the neutral texture.
-	foundation::Expected<ProgramRequest, PbrStatus> Request(
-	    const PbrClaim &claim, SurfaceTextures textures, const device::SamplerDesc &sampler = {} );
-	// The frame group: the split-sum table ('table', a TextureCache name of a
-	// texture holding SplitSumTable()) and the frame's terms, whose eye is
-	// the view's.
-	GroupRequest FrameGroup( std::string table, const SurfaceFrame &frame ) const
-	{
-		return m_Program->FrameGroup( frame, std::move( table ) );
-	}
-	// A draw group holding the draw's model lighting (PackSourceModelLighting).
-	GroupRequest LightingGroup( const ModelLighting &lighting ) const
-	{
-		return m_Program->DrawGroup( {}, lighting );
-	}
-
-private:
-	explicit PbrFamily( std::unique_ptr<SurfaceProgram> program )
-	    : m_Program( std::move( program ) )
-	{
-	}
-
-	std::unique_ptr<SurfaceProgram> m_Program;
+	// takes the neutral texture. The frame group names the split-sum table
+	// (FrameGroup with a texture holding SplitSumTable()); the draw group
+	// holds the draw's model lighting (LightingGroup).
+	foundation::Expected<ProgramRequest, PbrStatus> Request( const PbrClaim &claim,
+	    SurfaceTextures textures, const device::SamplerDesc &sampler = {} ) const;
 };
 
 } // namespace render::material

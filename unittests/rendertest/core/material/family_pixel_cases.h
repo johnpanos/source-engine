@@ -165,6 +165,10 @@ bool That(
 
 // One bind group of a draw: binding 0 the constants when there are any, then
 // a texture and its sampler per case texture.
+// A 1x1 white texture (six faces for a cube) in `format`: the neutral input
+// an unread slot of the surface program takes.
+CaseTexture NeutralCaseTexture( render::device::Format format, bool cube = false );
+
 struct CaseGroup
 {
 	render::device::BindGroupRole role = render::device::BindGroupRole::kMaterial;

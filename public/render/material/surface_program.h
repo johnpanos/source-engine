@@ -58,15 +58,14 @@ inline constexpr float kLightmapScaleLinear = 4.5947938f;
 struct SurfaceConstants
 {
 	float tint[4] = { 1.0f, 1.0f, 1.0f, 1.0f }; // $color, $alpha
-	// vertexcolor, alphatest, reference, 1 when lighting is one (an unlit
-	// material drawn as this term's degenerate case)
-	float flags[4] = {};
+	float flags[4] = {};                        // $vertexcolor, $alphatest, reference, unused
 	// x: 1 when the material is fully opaque (no blend, no alpha test), where
 	// height fog writes its factor to the output alpha (the port's
 	// WRITEWATERFOGTODESTALPHA); set by Request from the variant. y: 1 when
 	// the vertex color is gamma-encoded and decoded per vertex (pow 2.2, as
 	// UnlitGeneric's port reads it); LightmappedGeneric's is used unconverted.
 	// z: the ssbump weights' scale (0.57735 with $ssbumpmathfix, else 1).
+	// w: $vertexalpha (the unlit point).
 	float state[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
 	float envTint[4] = { 1.0f, 1.0f, 1.0f, 1.0f };       // $envmaptint, $fresnelreflection
 	float envContrast[4] = { 0.0f, 0.0f, 0.0f, 0.0f };   // in effect; a: 1 - $fresnelreflection
@@ -162,9 +161,13 @@ std::uint32_t SurfaceDrawConstantBytes( SurfaceVertexLayout layout );
 
 // The terms (surface.frag's kTerms bits, the port's static combo bits where
 // they exist).
+// The unlit point: the lighting fixed at one, UnlitGeneric's vertex color
+// and alpha.
+inline constexpr std::uint32_t kSurfaceUnlit = 1;
 inline constexpr std::uint32_t kSurfaceDetail = 2;
 inline constexpr std::uint32_t kSurfaceBump = 4; // the pbr point's normal map too
 inline constexpr std::uint32_t kSurfaceSsbump = 8;
+inline constexpr std::uint32_t kSurfaceHalfLambert = 16; // with kSurfaceVertexLit
 inline constexpr std::uint32_t kSurfaceEnvmap = 32;
 inline constexpr std::uint32_t kSurfaceEnvmapMask = 64;
 inline constexpr std::uint32_t kSurfaceBaseAlphaEnvmapMask = 128;
@@ -173,9 +176,13 @@ inline constexpr std::uint32_t kSurfaceNormalMapAlphaEnvmapMask = 512;
 inline constexpr std::uint32_t kSurfaceDiffuseBump = 1024;
 inline constexpr std::uint32_t kSurfacePbr = 2048;
 inline constexpr std::uint32_t kSurfaceEmissionTexture = 4096;
-// The terms that read the normal (not on the flat vertex).
+// The vertexlit point: Source's per-vertex model lighting (the model vertex).
+inline constexpr std::uint32_t kSurfaceVertexLit = 8192;
+// The terms that read the normal (not on the flat vertex), and those the
+// model vertex alone evaluates.
 inline constexpr std::uint32_t kSurfaceNormalTerms =
-    kSurfaceBump | kSurfaceSsbump | kSurfaceEnvmap | kSurfacePbr;
+    kSurfaceBump | kSurfaceSsbump | kSurfaceEnvmap | kSurfacePbr | kSurfaceVertexLit;
+inline constexpr std::uint32_t kSurfaceModelTerms = kSurfaceVertexLit;
 
 // One point of the program: its pipeline state and specialization.
 struct SurfaceVariant
@@ -223,8 +230,10 @@ PbrSplitSumTable SplitSumTable();
 
 enum class SurfaceStatus : std::uint8_t
 {
-	kDevice = 1,    // a layout or pipeline was refused
-	kInvalidRequest // the variant's terms read the normal, and the layout is flat
+	kDevice = 1, // a layout or pipeline was refused
+	// the variant's terms read the normal and the layout is flat, or they
+	// need the model vertex and the layout is another
+	kInvalidRequest
 };
 
 class SurfaceProgram
@@ -284,6 +293,58 @@ private:
 	// The variant behind each shipped (neutral) pipeline, for DebugPipeline.
 	std::map<std::uint64_t, SurfaceVariant> m_Shipped;
 };
+
+// A family's view of the program: the family's claims are drawn as the
+// program's points. It owns its program, or borrows one that outlives it (a
+// root that draws several families with one set of layouts).
+class SurfaceFamily
+{
+public:
+	explicit SurfaceFamily( std::unique_ptr<SurfaceProgram> program )
+	    : m_Owned( std::move( program ) ), m_Program( m_Owned.get() )
+	{
+	}
+	explicit SurfaceFamily( SurfaceProgram &program ) : m_Program( &program ) {}
+	SurfaceFamily( const SurfaceFamily & ) = delete;
+	SurfaceFamily &operator=( const SurfaceFamily & ) = delete;
+
+	SurfaceProgram &Program() const { return *m_Program; }
+	device::BindGroupLayoutId FrameLayout() const { return m_Program->FrameLayout(); }
+	device::BindGroupLayoutId MaterialLayout() const { return m_Program->MaterialLayout(); }
+	device::BindGroupLayoutId DrawLayout() const { return m_Program->DrawLayout(); }
+	foundation::Expected<device::PipelineId, SurfaceStatus> DebugPipeline(
+	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug ) const
+	{
+		return m_Program->DebugPipeline( shipped, debug );
+	}
+	GroupRequest FrameGroup( const SurfaceFrame &frame = {}, std::string splitSumTable = {} ) const
+	{
+		return m_Program->FrameGroup( frame, std::move( splitSumTable ) );
+	}
+	// A draw group of a mesh: no lightmap page, the draw's model lighting
+	// (PackSourceModelLighting).
+	GroupRequest LightingGroup( const ModelLighting &lighting ) const
+	{
+		return m_Program->DrawGroup( {}, lighting );
+	}
+
+private:
+	std::unique_ptr<SurfaceProgram> m_Owned;
+	SurfaceProgram *m_Program = nullptr;
+};
+
+// A family that owns a new program.
+template <typename Family>
+foundation::Expected<std::unique_ptr<Family>, SurfaceStatus> CreateSurfaceFamily(
+    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
+    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {} )
+{
+	auto program =
+	    SurfaceProgram::Create( device, colorFormat, depthFormat, sampleCount, fragmentModule );
+	if ( !program )
+		return foundation::MakeUnexpected( program.Error() );
+	return std::make_unique<Family>( std::move( program ).Value() );
+}
 
 } // namespace render::material
 

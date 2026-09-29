@@ -52,8 +52,11 @@ constexpr std::uint64_t kPbrCubeMesh = 4;
 constexpr std::uint64_t kLightmappedMaterial = 20;
 constexpr std::uint64_t kPbrMaterial = 21;
 constexpr std::uint64_t kLightmapPage = 40; // the lightmapped cube's draw group
-constexpr std::uint64_t kPbrFrameGroup = 41;
-constexpr std::uint64_t kLightmappedFrameGroup = 44; // the LDR lightmap scale, output scale 1
+// The one frame group of the fixtures' surface program: the LDR lightmap
+// scale, output scale 1, no fog, the eye at the origin and the split-sum table.
+constexpr std::uint64_t kFrameGroup = 41;
+// The draw group of a draw that reads no page and no model lighting.
+constexpr std::uint64_t kNeutralDraw = 44;
 constexpr std::uint64_t kPbrLighting = 42;           // the pbr cube's draw group
 constexpr std::uint64_t kVertexLitCubeMesh = 5;
 constexpr std::uint64_t kVertexLitMaterial = 22;
@@ -65,15 +68,15 @@ constexpr float kAmbient[3] = { 0.5f, 0.25f, 0.125f };
 // camera) only.
 constexpr float kVertexLitAmbient[3] = { 0.125f, 0.5f, 0.25f };
 
-// A unit cube around the origin: 8 corners, 12 triangles, in the unlit
-// family's vertex (uv 0, white).
+// A unit cube around the origin: 8 corners, 12 triangles, in the surface
+// program's flat vertex (uv 0, white).
 inline resources::MeshData CubeData(
-    std::vector<material::UnlitVertex> &vertices, std::vector<std::uint16_t> &indices )
+    std::vector<material::SurfaceFlatVertex> &vertices, std::vector<std::uint16_t> &indices )
 {
 	vertices.clear();
 	for ( int corner = 0; corner < 8; ++corner )
 	{
-		material::UnlitVertex vertex;
+		material::SurfaceFlatVertex vertex;
 		vertex.position[0] = ( corner & 1 ) ? 0.5f : -0.5f;
 		vertex.position[1] = ( corner & 2 ) ? 0.5f : -0.5f;
 		vertex.position[2] = ( corner & 4 ) ? 0.5f : -0.5f;
@@ -82,30 +85,21 @@ inline resources::MeshData CubeData(
 	indices = { 0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5, 0, 4, 5, 0, 5, 1, 2, 3, 7, 2, 7, 6, 0, 2, 6, 0,
 	    6, 4, 1, 5, 7, 1, 7, 3 };
 	resources::MeshData data;
-	data.vertices = std::as_bytes( std::span<const material::UnlitVertex>( vertices ) );
-	data.vertexStride = sizeof( material::UnlitVertex );
+	data.vertices = std::as_bytes( std::span<const material::SurfaceFlatVertex>( vertices ) );
+	data.vertexStride = sizeof( material::SurfaceFlatVertex );
 	data.indices = std::as_bytes( std::span<const std::uint16_t>( indices ) );
 	data.indexFormat = device::IndexFormat::kUint16;
 	return data;
 }
 
-// The cube in the lightmapped family's vertex: the unlit cube's corners,
-// every lightmap coordinate at the page's center.
+// The cube for the lightmapped family: every lightmap coordinate at the
+// page's center.
 inline resources::MeshData LightmappedCubeData(
     std::vector<material::SurfaceFlatVertex> &vertices, std::vector<std::uint16_t> &indices )
 {
-	std::vector<material::UnlitVertex> corners;
-	resources::MeshData data = CubeData( corners, indices );
-	vertices.clear();
-	for ( const material::UnlitVertex &corner : corners )
-	{
-		material::SurfaceFlatVertex vertex;
-		std::copy( corner.position, corner.position + 3, vertex.position );
+	resources::MeshData data = CubeData( vertices, indices );
+	for ( material::SurfaceFlatVertex &vertex : vertices )
 		vertex.lightmapUv[0] = vertex.lightmapUv[1] = 0.5f;
-		vertices.push_back( vertex );
-	}
-	data.vertices = std::as_bytes( std::span<const material::SurfaceFlatVertex>( vertices ) );
-	data.vertexStride = sizeof( material::SurfaceFlatVertex );
 	return data;
 }
 
@@ -146,26 +140,6 @@ inline resources::MeshData PbrCubeData(
 	return data;
 }
 
-// The cube in the vertexlit family's vertex: the pbr cube's faces with
-// their normals.
-inline resources::MeshData VertexLitCubeData(
-    std::vector<material::VertexLitVertex> &vertices, std::vector<std::uint16_t> &indices )
-{
-	std::vector<material::SurfaceModelVertex> faces;
-	resources::MeshData data = PbrCubeData( faces, indices );
-	vertices.clear();
-	for ( const material::SurfaceModelVertex &face : faces )
-	{
-		material::VertexLitVertex vertex;
-		std::copy( face.position, face.position + 3, vertex.position );
-		std::copy( face.normal, face.normal + 3, vertex.normal );
-		vertices.push_back( vertex );
-	}
-	data.vertices = std::as_bytes( std::span<const material::VertexLitVertex>( vertices ) );
-	data.vertexStride = sizeof( material::VertexLitVertex );
-	return data;
-}
-
 class Meshes final : public IMeshResolver
 {
 public:
@@ -195,6 +169,9 @@ struct Materials
 			(void)device.Release( layout, device::CompletionToken() );
 	}
 	device::IRenderDevice2 &device;
+	// The one surface program every family below borrows (declared first:
+	// it outlives them).
+	std::unique_ptr<material::SurfaceProgram> surface;
 	std::unique_ptr<material::UnlitFamily> family;
 	std::unique_ptr<material::LightmappedFamily> lightmapped;
 	std::unique_ptr<material::PbrFamily> pbr;
@@ -209,9 +186,9 @@ inline material::UnlitClaim FlatClaim( float r, float g, float b )
 {
 	material::UnlitClaim claim;
 	claim.claimed = true;
-	claim.constants.color[0] = r;
-	claim.constants.color[1] = g;
-	claim.constants.color[2] = b;
+	claim.constants.tint[0] = r;
+	claim.constants.tint[1] = g;
+	claim.constants.tint[2] = b;
 	return claim;
 }
 
@@ -223,6 +200,7 @@ inline scene::MeshInstanceDesc Cube(
 	desc.material = material;
 	desc.world = math::Multiply( math::Translation( center ), math::Scale( { size, size, size } ) );
 	desc.localBounds = { { -0.5f, -0.5f, -0.5f }, { 0.5f, 0.5f, 0.5f } };
+	desc.drawGroup = kNeutralDraw;
 	return desc;
 }
 
@@ -245,6 +223,7 @@ inline std::unique_ptr<scene::IRenderScene> SceneA( bool withMissing = false )
 		changes.Add(
 		    result->Reserve(), Cube( { 3.0f, -3.0f, -10.0f }, 1.0f, 1, kPositionOnlyMesh ) );
 		scene::MeshInstanceDesc noGroup = Cube( { 0.0f, 0.0f, -20.0f }, 1.0f, kDrawGroupMaterial );
+		noGroup.drawGroup = 0;
 		scene::MeshInstanceDesc wrongGroup = noGroup;
 		wrongGroup.world = math::Translation( { 1.0f, 0.0f, -20.0f } );
 		wrongGroup.drawGroup = kOtherLayoutGroup;
@@ -275,8 +254,7 @@ inline std::unique_ptr<scene::IRenderScene> SceneC( bool pbrLighting = true )
 	lit.drawGroup = kLightmapPage;
 	changes.Add( result->Reserve(), lit );
 	scene::MeshInstanceDesc pbr = Cube( { 1.5f, 0.0f, -6.0f }, 1.5f, kPbrMaterial, kPbrCubeMesh );
-	if ( pbrLighting )
-		pbr.drawGroup = kPbrLighting;
+	pbr.drawGroup = pbrLighting ? kPbrLighting : 0;
 	changes.Add( result->Reserve(), pbr );
 	scene::MeshInstanceDesc vertexlit =
 	    Cube( { 0.0f, 1.6f, -6.0f }, 1.0f, kVertexLitMaterial, kVertexLitCubeMesh );
@@ -332,6 +310,8 @@ inline FrameResult DrawScene( device::IRenderDevice2 &device, const Materials &m
     std::span<const material::DrawGroup *const> frames = {} )
 {
 	FrameResult result;
+	if ( !frame )
+		frame = materials.drawGroups.Group( kFrameGroup );
 	const scene::SceneView view = View();
 	const scene::DrawList list = scene::BuildDrawList( snapshot, view );
 	device::TextureDesc colorDesc;
@@ -416,12 +396,12 @@ bool Upload( device::IRenderDevice2 &device, Record record, device::CompletionTo
 inline std::optional<Meshes> StageCube(
     device::IRenderDevice2 &device, resources::MeshCache &cache )
 {
-	std::vector<material::UnlitVertex> vertices;
+	std::vector<material::SurfaceFlatVertex> vertices;
 	std::vector<std::uint16_t> indices;
 	auto entry = cache.Stage( "cube", CubeData( vertices, indices ) );
 	resources::MeshData positions = CubeData( vertices, indices );
 	std::vector<float> packed;
-	for ( const material::UnlitVertex &vertex : vertices )
+	for ( const material::SurfaceFlatVertex &vertex : vertices )
 		packed.insert( packed.end(), vertex.position, vertex.position + 3 );
 	positions.vertices = std::as_bytes( std::span<const float>( packed ) );
 	positions.vertexStride = 12;
@@ -433,12 +413,8 @@ inline std::optional<Meshes> StageCube(
 	std::vector<material::SurfaceModelVertex> pbrVertices;
 	std::vector<std::uint16_t> pbrIndices;
 	auto pbr = cache.Stage( "pbr-cube", PbrCubeData( pbrVertices, pbrIndices ) );
-	std::vector<material::VertexLitVertex> vertexLitVertices;
-	std::vector<std::uint16_t> vertexLitIndices;
-	auto vertexlit =
-	    cache.Stage( "vertexlit-cube", VertexLitCubeData( vertexLitVertices, vertexLitIndices ) );
 	device::CompletionToken token;
-	if ( !entry || !positionOnly || !lightmapped || !pbr || !vertexlit ||
+	if ( !entry || !positionOnly || !lightmapped || !pbr ||
 	     !Upload(
 	         device,
 	         [&]( device::CommandEncoder &encoder )
@@ -453,27 +429,22 @@ inline std::optional<Meshes> StageCube(
 	meshes.entries[kPositionOnlyMesh] = positionOnly.Value();
 	meshes.entries[kLightmappedCubeMesh] = lightmapped.Value();
 	meshes.entries[kPbrCubeMesh] = pbr.Value();
-	meshes.entries[kVertexLitCubeMesh] = vertexlit.Value();
+	meshes.entries[kVertexLitCubeMesh] = pbr.Value(); // the model vertex serves both
 	return meshes;
 }
 
-// Scene C's families, textures, programs and groups: a lightmapped
-// material over the white texture whose draw group holds the page, a pbr
+// Scene C's families, textures, programs and groups, and the frame group: a
+// lightmapped material over the white texture whose draw group holds the
+// page, a pbr
 // dielectric (white base, MRAO rough and unoccluded) whose frame group holds
 // the split-sum table and whose draw group holds a uniform ambient cube, and
 // a vertexlit material over the white texture whose draw group holds its
 // lighting (an ambient cube lit on +z only, no lights).
-inline bool StageSceneCMaterials( device::IRenderDevice2 &device, Materials &materials,
-    device::Format color, device::Format depth )
+inline bool StageSceneCMaterials( Materials &materials )
 {
-	auto lightmapped = material::LightmappedFamily::Create( device, color, depth );
-	auto pbr = material::PbrFamily::Create( device, color, depth );
-	auto vertexlit = material::VertexLitFamily::Create( device, color, depth );
-	if ( !lightmapped || !pbr || !vertexlit )
-		return false;
-	materials.lightmapped = std::move( lightmapped ).Value();
-	materials.pbr = std::move( pbr ).Value();
-	materials.vertexlit = std::move( vertexlit ).Value();
+	materials.lightmapped = std::make_unique<material::LightmappedFamily>( *materials.surface );
+	materials.pbr = std::make_unique<material::PbrFamily>( *materials.surface );
+	materials.vertexlit = std::make_unique<material::VertexLitFamily>( *materials.surface );
 	auto stage = [&]( const char *name, device::Format format, std::uint32_t size,
 	                 std::span<const std::byte> pixels )
 	{
@@ -498,9 +469,7 @@ inline bool StageSceneCMaterials( device::IRenderDevice2 &device, Materials &mat
 	auto lit = materials.lightmapped->Request( litClaim, "white" );
 	if ( !lit || !materials.programs.Set( kLightmappedMaterial, lit.Value() ) ||
 	     !materials.drawGroups.Set(
-	         kLightmapPage, materials.lightmapped->LightmapGroup( "page" ) ) ||
-	     !materials.drawGroups.Set(
-	         kLightmappedFrameGroup, materials.lightmapped->FrameGroup( {} ) ) )
+	         kLightmapPage, materials.lightmapped->LightmapGroup( "page" ) ) )
 		return false;
 
 	material::PbrClaim pbrClaim;
@@ -516,7 +485,7 @@ inline bool StageSceneCMaterials( device::IRenderDevice2 &device, Materials &mat
 	const material::ModelLighting lighting = material::PackSourceModelLighting( eye, cube, {} );
 	if ( !program || !materials.programs.Set( kPbrMaterial, program.Value() ) ||
 	     !materials.drawGroups.Set(
-	         kPbrFrameGroup, materials.pbr->FrameGroup( "splitsum", material::SurfaceFrame() ) ) ||
+	         kFrameGroup, materials.pbr->FrameGroup( material::SurfaceFrame(), "splitsum" ) ) ||
 	     !materials.drawGroups.Set( kPbrLighting, materials.pbr->LightingGroup( lighting ) ) )
 		return false;
 
@@ -525,7 +494,7 @@ inline bool StageSceneCMaterials( device::IRenderDevice2 &device, Materials &mat
 	auto vertexLitProgram = materials.vertexlit->Request( vertexLitClaim, "white" );
 	float faces[6][3] = {};
 	std::copy( kVertexLitAmbient, kVertexLitAmbient + 3, faces[4] );
-	const material::VertexLitLighting vertexLitLighting =
+	const material::ModelLighting vertexLitLighting =
 	    material::PackSourceModelLighting( eye, faces, {} );
 	return vertexLitProgram &&
 	       materials.programs.Set( kVertexLitMaterial, vertexLitProgram.Value() ) &&
@@ -539,10 +508,11 @@ inline std::unique_ptr<Materials> StageMaterials(
     device::IRenderDevice2 &device, device::Format color, device::Format depth )
 {
 	auto materials = std::make_unique<Materials>( device );
-	auto family = material::UnlitFamily::Create( device, color, depth );
-	if ( !family )
+	auto surface = material::SurfaceProgram::Create( device, color, depth );
+	if ( !surface )
 		return nullptr;
-	materials->family = std::move( family ).Value();
+	materials->surface = std::move( surface ).Value();
+	materials->family = std::make_unique<material::UnlitFamily>( *materials->surface );
 	device::TextureDesc white;
 	white.format = device::Format::kRGBA8Srgb;
 	white.width = white.height = 1;
@@ -589,7 +559,8 @@ inline std::unique_ptr<Materials> StageMaterials(
 	     !materials->programs.Set( kDrawGroupMaterial, grouped.Value() ) ||
 	     !materials->drawGroups.Set( kOtherLayoutGroup, other ) )
 		return nullptr;
-	if ( !StageSceneCMaterials( device, *materials, color, depth ) )
+	if ( !StageSceneCMaterials( *materials ) ||
+	     !materials->drawGroups.Set( kNeutralDraw, materials->family->DrawGroup() ) )
 		return nullptr;
 	device::CompletionToken token;
 	if ( !Upload(

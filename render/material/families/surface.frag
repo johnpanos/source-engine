@@ -6,8 +6,7 @@
 //   flat lightmap, or the three bumped pages weighted by the normal map (RNM)
 //   or by an ssbump's basis weights; the env map with its mask (base alpha,
 //   normal map alpha or $envmapmask), tint, contrast, saturation and fresnel;
-//   detail (TextureCombine) and self-illumination. Unlit is this point with
-//   the lighting fixed at one;
+//   detail (TextureCombine) and self-illumination;
 // - the `pbr` point (kPbr) is the RFC 0007 layered metal/roughness BRDF
 //   (render/shaders/common/pbr_brdf.glsl, the one GLSL copy of
 //   public/render/pbr_brdf.h) under the draw's model lighting: the model
@@ -16,7 +15,12 @@
 //   local light is incident radiance pi * color * attenuation, the ambient
 //   cube a Lambertian return, and the cube in the reflected direction the
 //   specular image light.
-// Both end in the view's fog and the output encoding. Blending is pipeline
+// - the `unlit` point (kUnlit) is UnlitGeneric: the lightmapped point with
+//   the lighting fixed at one and UnlitGeneric's vertex color and alpha;
+// - the `vertexlit` point (kVertexLit) is VertexLitGeneric's lit path: the
+//   model vertex stage evaluates Source's per-vertex lighting (DoLighting),
+//   and the pixel is the base texture times $color times that lighting.
+// All end in the view's fog and the output encoding. Blending is pipeline
 // state. The debug views and lighting-model controls (RFC 0014) come from
 // debug_view.glsl; at their neutral values they are dead code. In the pbr
 // point the local lights answer to the `clustered` term, the ambient cube to
@@ -31,6 +35,7 @@
 // The terms (the port's static combo bits where they exist).
 layout( constant_id = 0 ) const int kTerms = 0;
 layout( constant_id = 1 ) const int kDetailMode = 0;
+const int kUnlit = 1;
 const int kDetailTexture = 2;
 const int kBumpmap = 4;
 const int kSsbump = 8;
@@ -44,6 +49,8 @@ const int kDiffuseBumpmap = 1024;
 // normal map (two channels), and kEmissionTexture its emission texture.
 const int kPbr = 2048;
 const int kEmissionTexture = 4096;
+// The vertexlit point (its vertex stage reads kHalfLambert, 16).
+const int kVertexLit = 8192;
 
 layout( set = 0, binding = 0 ) uniform Frame
 {
@@ -70,10 +77,10 @@ layout( set = 0, binding = 2 ) uniform sampler splitSumSampler;
 layout( set = 2, binding = 0 ) uniform Material
 {
 	vec4 tint;  // rgb: $color, a: $alpha
-	vec4 flags; // x: $vertexcolor, y: $alphatest, z: $alphatestreference, w: 1 when lighting is one (unlit)
+	vec4 flags; // x: $vertexcolor, y: $alphatest, z: $alphatestreference
 	// x: 1 when fully opaque (height fog's factor is the output alpha), y:
 	// gamma vertex color (vertex stage), z: the ssbump weights' scale
-	// (0.57735 with $ssbumpmathfix, else 1), w: unused
+	// (0.57735 with $ssbumpmathfix, else 1), w: $vertexalpha (the unlit point)
 	vec4 state;
 	vec4 envTint;       // rgb: $envmaptint, a: $fresnelreflection
 	vec4 envContrast;   // rgb: the contrast in effect, a: 1 - $fresnelreflection
@@ -113,6 +120,7 @@ layout( location = 6 ) in vec3 tangentS;
 layout( location = 7 ) in vec3 tangentT;
 layout( location = 8 ) in float lightmapOffset; // the bumped pages' offset (TEXCOORD2.x)
 layout( location = 9 ) in vec4 lightAtten;      // each model light's vertex attenuation
+layout( location = 10 ) in vec3 vertexLighting; // the vertexlit point's DoLighting
 layout( location = 0 ) out vec4 outColor;
 
 // common_fxc.h
@@ -197,17 +205,16 @@ vec4 Output( vec3 lit, float alpha )
 	return vec4( lit, alpha );
 }
 
-// PixelShaderAmbientLight: the faces weighted by the squared normal. In the
-// furnace (RFC 0014) every face is a uniform radiance of 1.
+// The ambient cube (surface_lighting.glsl). In the furnace (RFC 0014) every
+// face is a uniform radiance of 1.
 vec3 AmbientCube( vec3 n )
 {
-	const vec3 squared = n * n;
 	if ( DebugFurnace() )
+	{
+		const vec3 squared = n * n;
 		return vec3( squared.x + squared.y + squared.z );
-	const bvec3 positive = greaterThanEqual( n, vec3( 0.0 ) );
-	return squared.x * ( positive.x ? lighting.cube[0] : lighting.cube[1] ).rgb +
-	       squared.y * ( positive.y ? lighting.cube[2] : lighting.cube[3] ).rgb +
-	       squared.z * ( positive.z ? lighting.cube[4] : lighting.cube[5] ).rgb;
+	}
+	return ModelAmbientCube( n );
 }
 
 // The pbr point. Base and emission are sampled as sRGB, MRAO and the normal
@@ -338,6 +345,32 @@ void PbrSurface()
 	outColor = Output( color, baseSample.a );
 }
 
+// The vertexlit point: the vertexlit_and_unlit_generic port's DIFFUSELIGHTING
+// path, the vertex lighting mixing the ambient cube and the lights, so no
+// light term is separable; the furnace takes albedo 1 under a uniform
+// radiance of 1.
+void VertexLitSurface()
+{
+	const bool furnace = DebugFurnace();
+	const vec4 baseColor = texture( sampler2D( baseTexture, baseSampler ), baseUv );
+	const vec3 albedo = furnace ? vec3( 1.0 ) : baseColor.rgb * material.tint.rgb;
+	const float alpha = material.tint.a * baseColor.a;
+	if ( material.flags.y != 0.0 && alpha < material.flags.z )
+		discard;
+	const vec3 lit = albedo * ( furnace ? vec3( 1.0 ) : vertexLighting );
+	if ( DebugViewActive() )
+	{
+		DebugInputs inputs = DebugInputsNone();
+		inputs.mask = kDebugHasAlbedo | kDebugHasAo | kDebugHasUv0;
+		inputs.albedo = albedo;
+		inputs.uv0 = baseUv;
+		inputs.final = lit;
+		outColor = DebugOutput( inputs );
+		return;
+	}
+	outColor = Output( lit, alpha );
+}
+
 void main()
 {
 	if ( Term( kPbr ) )
@@ -345,10 +378,15 @@ void main()
 		PbrSurface();
 		return;
 	}
+	if ( Term( kVertexLit ) )
+	{
+		VertexLitSurface();
+		return;
+	}
 	const bool bumpmap = Term( kBumpmap | kSsbump );
 	const bool ssbump = Term( kSsbump );
 	const bool diffuseBumpmap = bumpmap && Term( kDiffuseBumpmap );
-	const bool lightingOne = material.flags.w != 0.0;
+	const bool lightingOne = Term( kUnlit );
 
 	const vec4 base = texture( sampler2D( baseTexture, baseSampler ), baseUv );
 	// GetBaseTextureAndNormal: the bump map is read at the base coordinates;
@@ -375,7 +413,16 @@ void main()
 		                        baseUv * material.detailScale.xy );
 		albedo = TextureCombine( vec4( albedo, base.a ), detail, material.detailTint.a ).rgb;
 	}
-	if ( material.flags.x != 0.0 )
+	if ( lightingOne )
+	{
+		// UnlitGeneric: $alpha once, the vertex color and the vertex alpha
+		// each by its own flag.
+		if ( material.flags.x != 0.0 )
+			albedo *= color.rgb;
+		if ( material.state.w != 0.0 )
+			alpha *= color.a;
+	}
+	else if ( material.flags.x != 0.0 )
 	{
 		// Off the vertex fast path (detail) the modulation alpha multiplies
 		// the vertex alpha instead of being replaced by it.

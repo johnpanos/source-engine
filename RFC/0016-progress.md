@@ -2365,6 +2365,54 @@ product (K12). The `rc-tools` and `build-hammer-gtk` trees fail before
 building ("Can't find env cache mdl", a configuration older than this
 slice); the Hammer suites above cover the viewport code.
 
+### K11 step (a), slice a2: unlit and vertexlit are points too (2026-09-29)
+
+The last two family programs join the surface program. Every legacy family
+is now a claim over it:
+- **unlit** (`kSurfaceUnlit`): the lighting fixed at one, with
+  UnlitGeneric's own vertex rules. `$alpha` applies once, the vertex color
+  by `$vertexcolor`, and the vertex alpha by `$vertexalpha`. The product
+  resolver and the Hammer preview draw this same point.
+- **vertexlit** (`kSurfaceVertexLit`, and `kSurfaceHalfLambert`): the model
+  vertex stage evaluates Source's per-vertex `DoLighting` from the draw's
+  model lighting. It reuses the stage's per-light attenuation and one
+  ambient-cube function (`ModelAmbientCube`, shared with the pbr point).
+  The family's vertex is now the model vertex.
+- `unlit.{vert,frag}` and `vertexlit.{vert,frag}` are deleted (rule 4), and
+  `layouts.json` has only the `surface` family.
+- `SurfaceFamily` is the families' one adapter base. It owns a program or
+  borrows one, so a root can draw every family through one set of layouts.
+  The opaque fixtures now do: one frame group, and a neutral draw group
+  for a plain cube.
+
+**Found and fixed: the product's unlit point squared `$alpha`.** The
+resolver drew UnlitGeneric as the lightmapped point with the lighting at
+one. That point takes LightmappedGeneric's alpha rule, so without
+`$vertexcolor` it applied `$alpha` twice, and it ignored `$vertexalpha`.
+The unlit family's port suite now runs through the product's point
+(`family_unlit_translucent_alpha` and `_vertexcolor_alpha` are worst 0).
+Only unlit materials with `$alpha` below one, or with `$vertexalpha`,
+change pixels.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Legacy points unchanged against their ports | `render.family.unlit` 68, `.vertexlit` 113, `.lightmapped` 192, `.pbr` 85: worst difference 0 on every unlit, vertexlit and lightmapped case, and 1 on the lit pbr cases as before; g++ and clang++ | pass |
+| Seeded families caught | `unlit.seeded-ignore-vertex-color`, `vertexlit.seeded-ignore-half-lambert`, `lightmapped.seeded-gamma-color`, `pbr.seeded-ignore-normal-map` fail as expected | pass |
+| One program for every family in a pass | `render.opaque` 20: scenes A–C draw through one borrowed program, one frame group and neutral draw groups; the unresolved cases (no group, a group of another layout, a missing view group) still count; `render.opaque.null` 10 | pass |
+| Lab and debug views | `render.debug-views` 82, `.sensitivity` 5, `render.lighting-controls` 32, `.sensitivity` 2, `render.lab.composition` 27 | pass |
+| Hammer, world, composition | the six Hammer render suites, `render.world.null` 26, `render.composition` 22 (its row now lists the output pass's sources, which the peer's `CoreOutput` needs); g++ and clang++ | pass |
+| Static | stylelint, archlint (the F-Stop ARCH105 findings are another session's), `shader_artifacts.py check` 1,338, `shader_toolchain.py check` 78 | pass |
+| Product | the installed client: `core_world_smoke.py run --game portal` 26 of 26 retail maps with the core drawing the world strictly (27 checks); `debug_views_product.py run --queue-mode 2` 20 checks (the unlit claims, the views, the hatch, `legacy 1`, the furnace) | pass |
+
+Frame time: the pixel change is the unlit alpha fix, on a handful of
+translucent unlit materials. No frame-time rows were taken for it. The
+Fold7 is securely locked, so it is unavailable.
+
+Open for step (a): `render.lighting.terms`, the suite that runs every term
+of the model table through this program with a neutral-is-absent mutant
+per term. It grows with steps (b) to (g), which add the terms the program
+lacks.
+
 ## Output and `render_lab`'s presenting host on iPhone and Apple TV (2026-09-28)
 
 User request (2026-09-28): "complete these on tvOS and iOS - in renderlab".
