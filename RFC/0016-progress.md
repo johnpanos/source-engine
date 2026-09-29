@@ -1700,6 +1700,30 @@ Present, gamma, MSAA resolve, capture and queued compute run as passes of
 the frame graph (K3 slice 3). Their commands are still the backend's own,
 and their resources become port textures with the K5 plan's step 2.
 
+## K1 and K3 closure: done under binding rule 7 (2026-09-28)
+
+User decision (2026-09-28): "close perf gates". Binding rule 7 ("Look first,
+then optimize") makes every time, cost and budget check a *(perf)* check.
+Such a check is measured and recorded, and it never holds a gate open. K1
+and K3 each had one open item, the Fold7 frame time, which is a *(perf)*
+check. Every other check of both gates passes on its required profiles:
+
+- K1: see the [K1 record](#k1-device-port-and-the-vulkan-and-null-adapters-2026-09-28).
+  Port suite, bad adapters, backend-neutral port, one Vulkan stack, no idle
+  waits, pixels, boots and resize, and feature support all pass.
+- K3: see [K3 slice 3](#k3-slice-3-stage-passes-and-the-queued-tsan-lane-2026-09-28).
+  Stage passes, side channels gone, pixels, views and draw state unchanged
+  in both queued modes, boots, and the queued TSan lane all pass.
+- K0 was met, and K2 [closed](#k2-closure-done-2026-09-28).
+
+So K1 (R86, with K0) and K3 (R87, with K2) are `done`.
+
+| *(perf)* check | Recorded | Optimization item |
+| --- | --- | --- |
+| K1/K3 frame time, desktop | [interleaved against the K0 binaries](#k3-frame-time-on-desktop-2026-09-28): median 1.028x, p99 1.093x, within the allowance | none |
+| K1/K3 frame time, Fold7 | not measured: the device was folded and locked, then not attached | run `frame_pacing_device.py --platform android` (install with `adb install -r` only, never uninstall) and record the result against the Fold7 K0 row |
+| Emit on desktop | 13% slower than the K0 binaries (3.38 against 2.99 ms), inside the allowance | R32-FRAME-PACING |
+
 ## K5 steps 2 and 3a: imported scene targets and host-run sections (2026-09-28)
 
 Step 2 of the K5 plan, and the adapter half of step 3. Both are host interop,
