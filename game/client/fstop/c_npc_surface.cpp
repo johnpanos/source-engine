@@ -11,6 +11,7 @@
 #include "materialsystem/imaterial.h"
 #include "materialsystem/imaterialsystem.h"
 #include "blobulator/Implicit/ImpTiler.h"
+#include "clienteffectprecachesystem.h"
 #include "vstdlib/jobgraph_parallel.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -27,6 +28,23 @@ static ConVar r_surface_blr_cutoff_radius( "r_surface_blr_cutoff_radius", "3.3",
 // VertexLitGeneric family; Portal 2's PaintBlob shader is not ported here.
 static ConVar r_surface_shader( "r_surface_shader", "fstop/blob_surface_bounce",
 	FCVAR_CHEAT, "Material the blob NPCs draw with" );
+
+// Vertex budgets. The queued material system records a frame's dynamic
+// vertices in a fixed 16 MB stack (CMatQueuedRenderContext), which a big blob
+// drawn in several views overran: on Linux the allocation fails without a
+// crash and the frame's memory is corrupted. A surface over the per-draw
+// budget is rebuilt with coarser cubes; a view past the frame's budget skips
+// the blob.
+static ConVar r_surface_blr_max_vertices( "r_surface_blr_max_vertices", "24576", FCVAR_CHEAT,
+    "Most vertices one blob surface draw may emit; coarser cubes keep it under" );
+static ConVar r_surface_blr_frame_vertices( "r_surface_blr_frame_vertices", "98304", FCVAR_CHEAT,
+    "Most vertices all blob surface draws of one frame may emit" );
+
+// Precached with the client's effects: a material first bound uncached draws
+// with the error texture on native Vulkan.
+CLIENTEFFECT_REGISTER_BEGIN( PrecacheBlobSurface )
+CLIENTEFFECT_MATERIAL( "fstop/blob_surface_bounce" )
+CLIENTEFFECT_REGISTER_END()
 static ConVar r_surface_blr_parallel( "r_surface_blr_parallel", "1", 0,
     "Polygonize the blob surface's tiles on the compute pool (0: one after another on the "
     "main thread; the surface is the same)" );
@@ -178,26 +196,88 @@ int C_NPC_Surface::DrawModel( int flags )
 
 	const Vector &vecOrigin = GetRenderOrigin();
 	CMatRenderContextPtr pRenderContext( materials );
+
+	// Light the surface like a model at the particles' center, as Portal 2's
+	// paint stream does: without this a VertexLitGeneric blob draws with
+	// whatever lighting state the previous draw left.
+	Vector vecCenter( 0.0f, 0.0f, 0.0f );
+	for ( int i = 0; i < nCount; ++i )
+		vecCenter += s_Particles[i].center.AsVector();
+	vecCenter = vecOrigin + vecCenter / nCount;
+	modelrender->SetupLighting( vecCenter );
+	Vector vecLight, boxColors[6];
+	engine->ComputeLighting( vecCenter, NULL, false, vecLight, boxColors );
+	Vector4D lightCube[6];
+	for ( int i = 0; i < 6; ++i )
+	{
+		bool bFinite =
+		    IsFinite( boxColors[i].x ) && IsFinite( boxColors[i].y ) && IsFinite( boxColors[i].z );
+		lightCube[i].Init( bFinite ? MAX( boxColors[i].x, 0.0f ) : 0.0f,
+		    bFinite ? MAX( boxColors[i].y, 0.0f ) : 0.0f,
+		    bFinite ? MAX( boxColors[i].z, 0.0f ) : 0.0f, 1.0f );
+	}
+	pRenderContext->SetAmbientLightCube( lightCube );
+
 	pRenderContext->MatrixMode( MATERIAL_MODEL );
 	pRenderContext->Bind( pMaterial, this );
 	pRenderContext->PushMatrix();
 	pRenderContext->LoadIdentity();
 	pRenderContext->Translate( vecOrigin.x, vecOrigin.y, vecOrigin.z );
 
+	static int s_nBudgetFrame = -1;
+	static int s_nFrameVertices = 0;
+	if ( s_nBudgetFrame != gpGlobals->framecount )
+	{
+		s_nBudgetFrame = gpGlobals->framecount;
+		s_nFrameVertices = 0;
+	}
+	int nBudget = MIN( r_surface_blr_max_vertices.GetInt(),
+	    r_surface_blr_frame_vertices.GetInt() - s_nFrameVertices );
+
 	float flScale = m_flRadius * r_surface_blr_scale.GetFloat();
 	ImpTiler *pTiler = ImpTilerFactory::factory->getTiler();
-	pTiler->SetCubeWidth( flScale * r_surface_blr_cubewidth.GetFloat() );
 	pTiler->SetRenderRadius( flScale * r_surface_blr_render_radius.GetFloat() );
 	pTiler->SetCutoffRadius( flScale * r_surface_blr_cutoff_radius.GetFloat() );
 	IMatRenderContext *pContext = pRenderContext;
-	pTiler->SetRenderContext( &pContext );
-	pTiler->SetParallelFor( r_surface_blr_parallel.GetBool() ? &BlobTilesParallelFor : NULL );
-
-	pTiler->beginFrame( Point3D( 0.0f, 0.0f, 0.0f ), true, false );
-	for ( int i = 0; i < nCount; ++i )
-		pTiler->insertParticle( &s_Particles[i] );
-	pTiler->drawSurface( false );
+	bool bWithinBudget = false;
+	for ( int nTry = 0; nBudget > 0 && nTry < 3; ++nTry )
+	{
+		pTiler->SetCubeWidth( flScale * r_surface_blr_cubewidth.GetFloat() * m_flCubeCoarsen );
+		pTiler->SetRenderContext( &pContext );
+		pTiler->SetParallelFor( r_surface_blr_parallel.GetBool() ? &BlobTilesParallelFor : NULL );
+		// beginFrame also drops an over-budget attempt's geometry.
+		pTiler->beginFrame( Point3D( 0.0f, 0.0f, 0.0f ), true, false );
+		for ( int i = 0; i < nCount; ++i )
+			pTiler->insertParticle( &s_Particles[i] );
+		pTiler->drawSurface( false );
+		int nVertices = pTiler->GetVertexCount();
+		if ( nVertices <= nBudget )
+		{
+			bWithinBudget = true;
+			s_nFrameVertices += nVertices;
+			// Relax back toward full resolution once well under budget.
+			if ( nVertices < nBudget / 2 )
+				m_flCubeCoarsen = MAX( 1.0f, m_flCubeCoarsen * 0.98f );
+			break;
+		}
+		// The vertex count goes as the inverse square of the cube width.
+		m_flCubeCoarsen *= sqrtf( (float)nVertices / nBudget ) * 1.05f;
+	}
+	if ( !bWithinBudget )
+	{
+		pTiler->beginFrame( Point3D( 0.0f, 0.0f, 0.0f ), true, false );
+		pTiler->endFrame( false );
+		ImpTilerFactory::factory->returnTiler( pTiler );
+		pRenderContext->MatrixMode( MATERIAL_MODEL );
+		pRenderContext->PopMatrix();
+		return 0;
+	}
+	// The tiler winds triangles counter-clockwise around the outward normal
+	// (blobulator.tiler-mesh); Source's front faces are clockwise, so the
+	// default cull mode would draw the blob inside out.
+	pRenderContext->CullMode( MATERIAL_CULLMODE_CW );
 	pTiler->endFrame( false );
+	pRenderContext->CullMode( MATERIAL_CULLMODE_CCW );
 	ImpTilerFactory::factory->returnTiler( pTiler );
 
 	pRenderContext->MatrixMode( MATERIAL_MODEL );

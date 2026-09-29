@@ -17,6 +17,7 @@
 #include "kbutton.h"
 #include "ehandle.h"
 #include "inputsystem/AnalogCode.h"
+#include "tier0/threadtools.h"
 
 typedef unsigned int CRC32_t;
 
@@ -269,6 +270,9 @@ private:
 
 #if defined( HL2_CLIENT_DLL )
 	CUtlVector< CEntityGroundContact > m_EntityGroundContact;
+	// Pooled bone setup (C_BaseAnimating::ThreadedBoneSetup) appends from
+	// several workers; CreateMove reads on the main thread after the batch.
+	CThreadFastMutex m_EntityGroundContactMutex;
 #endif
 };
 

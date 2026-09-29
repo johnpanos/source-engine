@@ -81,8 +81,10 @@ void CWeaponPortalgun::Precache()
 	PrecacheParticleSystem( "portal_1_projectile_stream_pedestal" );
 	PrecacheParticleSystem( "portal_2_projectile_stream" );
 	PrecacheParticleSystem( "portal_2_projectile_stream_pedestal" );
+#ifndef FSTOP
 	PrecacheParticleSystem( "portal_1_charge" );
 	PrecacheParticleSystem( "portal_2_charge" );
+#endif // !FSTOP
 #endif
 }
 

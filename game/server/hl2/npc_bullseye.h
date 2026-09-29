@@ -61,6 +61,9 @@ protected:
 	bool			m_bPerfectAccuracy;	// Entities that shoot at me should be perfectly accurate
 	float			m_fAutoaimRadius;	// How much to influence player's autoaim.
 	float			m_flMinDistValidEnemy;
+#ifdef FSTOP
+	int				m_nTargetObjectSize;	// Size an object must be to care about this bullseye
+#endif // FSTOP
 
 	DECLARE_DATADESC();
 };

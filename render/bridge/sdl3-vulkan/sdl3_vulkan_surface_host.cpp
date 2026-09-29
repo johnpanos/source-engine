@@ -6,8 +6,12 @@
 
 #include "sdl3_vulkan_surface_host.h"
 
+#include "sdl3_dynamic_range.h"
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
+
+#include <cstring>
 
 namespace render_vulkan
 {
@@ -33,6 +37,15 @@ public:
 			return false;
 		}
 		outExtensions->assign( names, names + count );
+		// Extended-linear swapchains need the color space extension, where the
+		// loader offers it.
+		uint32_t available = 0;
+		vkEnumerateInstanceExtensionProperties( nullptr, &available, nullptr );
+		std::vector<VkExtensionProperties> properties( available );
+		vkEnumerateInstanceExtensionProperties( nullptr, &available, properties.data() );
+		for ( const VkExtensionProperties &p : properties )
+			if ( std::strcmp( p.extensionName, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME ) == 0 )
+				outExtensions->push_back( VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME );
 		return true;
 	}
 
@@ -65,6 +78,17 @@ public:
 	}
 
 	bool IsNativeSurfaceAvailable() const override { return CurrentNativeWindow() != nullptr; }
+	bool CanShowExtendedRange() const override { return Sdl3CanShowExtendedRange( m_Window ); }
+	bool SetExtendedRange( bool extended ) override
+	{
+		return Sdl3SetExtendedRange( m_Window, extended );
+	}
+	void ReadHeadroom( float *outCurrent, float *outPotential ) const override
+	{
+		const Sdl3DisplayHeadroom headroom = Sdl3ReadHeadroom( m_Window );
+		*outCurrent = headroom.current;
+		*outPotential = headroom.potential;
+	}
 
 	uint64_t GetNativeSurfaceGeneration() const override
 	{

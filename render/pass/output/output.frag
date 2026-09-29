@@ -13,15 +13,22 @@ layout( set = 3, binding = 1 ) uniform sampler sceneSampler;
 layout( push_constant ) uniform Constants
 {
 	vec4 params; // x: exposure; y: scene peak; z: headroom
-	uvec4 modes; // x: the encoding (kOutputEncoding*); y: 1 to tone map, 0 for a debug view
+	uvec4 modes; // x: the encoding (kOutputEncoding*); y: 1 to tone map, 0 for a debug view;
+	             // z: 1 when the scene's extent differs from the target's
+	vec4 extent; // xy: the target's extent in pixels
 } constants;
 
 layout( location = 0 ) out vec4 outColor;
 
 void main()
 {
-	vec3 color =
-	    texelFetch( sampler2D( sceneTexture, sceneSampler ), ivec2( gl_FragCoord.xy ), 0 ).rgb;
+	// The texel under the pixel, or, when the extents differ, the scene
+	// filtered at the pixel's center (the sampler is then linear).
+	vec3 color = constants.modes.z != 0u
+	                 ? texture( sampler2D( sceneTexture, sceneSampler ),
+	                       gl_FragCoord.xy / constants.extent.xy ).rgb
+	                 : texelFetch( sampler2D( sceneTexture, sceneSampler ),
+	                       ivec2( gl_FragCoord.xy ), 0 ).rgb;
 #if defined( SEEDED_DEBUG_VIEW_TONE_MAPPED )
 	const bool toneMap = true;
 #else

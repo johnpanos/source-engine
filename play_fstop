@@ -5,7 +5,8 @@
 # (tools/quality/stage_fstop_runtime.py). FSTOP_CONTENT is that depot, extracted:
 # its top level holds portal2/ and portal2_tempcontent/.
 #
-#   ./play_fstop                 build, stage and boot $MAP (dev_fstop)
+#   ./play_fstop                 build, stage and boot $MAP (fstop_mechanics, the
+#                                F-Stop mechanics mall: tools/quality/fstop_mechanics_map.py)
 #   ./play_fstop +map lab_01     extra arguments go to the launcher; a later +map wins
 #   ./play_fstop --prepare       configure and stage only
 #
@@ -19,7 +20,6 @@ FSTOP_RUNTIME="${FSTOP_RUNTIME:-$ROOT/run/runtime-fstop}"
 FSTOP_BASE_RUNTIME="${FSTOP_BASE_RUNTIME:-$ROOT/run/runtime}"
 FSTOP_CONTENT="${FSTOP_CONTENT:-$HOME/Downloads/portal2-steam2-research/852_0}"
 FSTOP_WAFLOCK=.lock-waf-fstop
-#MAP="${MAP:-dev_fstop}"
 MAP="${MAP:-fstop_mechanics}"
 WIDTH="${WIDTH:-1920}"
 HEIGHT="${HEIGHT:-1080}"

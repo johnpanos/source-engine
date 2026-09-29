@@ -21,6 +21,9 @@
 #include "weapon_portalgun_shared.h"
 #include "physicsshadowclone.h"
 #include "particle_parse.h"
+#ifdef FSTOP
+#include "info_placement_helper.h"
+#endif // FSTOP
 
 
 #define BLAST_SPEED_NON_PLAYER 1000.0f
@@ -249,12 +252,16 @@ void CWeaponPortalgun::OpenProngs( bool bOpenProngs )
 
 void CWeaponPortalgun::InputChargePortal1( inputdata_t &inputdata )
 {
+#ifndef FSTOP // F-Stop has no charge particles
 	DispatchParticleEffect( "portal_1_charge", PATTACH_POINT_FOLLOW, this, "muzzle" );
+#endif // !FSTOP
 }
 
 void CWeaponPortalgun::InputChargePortal2( inputdata_t &inputdata )
 {
+#ifndef FSTOP // F-Stop has no charge particles
 	DispatchParticleEffect( "portal_2_charge", PATTACH_POINT_FOLLOW, this, "muzzle" );
+#endif // !FSTOP
 }
 
 void CWeaponPortalgun::FirePortal1( inputdata_t &inputdata )
@@ -404,6 +411,18 @@ float CWeaponPortalgun::TraceFirePortal( bool bPortal2, const Vector &vTraceStar
 
 		return PORTAL_ANALOG_SUCCESS_PASSTHROUGH_SURFACE;
 	}
+
+#ifdef FSTOP
+	// F-Stop: a shot landing near an info_placement_helper is steered to it
+	CInfoPlacementHelper *pHelper = UTIL_FindPlacementHelper( tr.endpos );
+	if ( pHelper != NULL )
+	{
+		// Trace to see where the portal hit
+		Vector vecDir = ( pHelper->GetAbsOrigin() - vTraceStart );
+		VectorNormalize( vecDir );
+		UTIL_TraceLine( vTraceStart, vTraceStart + ( vecDir * m_fMaxRange1 ), MASK_SHOT_PORTAL, &traceFilterPortalShot, &tr );
+	}
+#endif // FSTOP
 
 	// Trace to the surface to see if there's a rotating door in the way
 	CBaseEntity *list[1024];

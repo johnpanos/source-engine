@@ -55,6 +55,20 @@ public:
 	// Changes whenever the platform replaces the window's native surface; a
 	// surface created before the change must be rebuilt.
 	virtual uint64_t GetNativeSurfaceGeneration() const = 0;
+
+	// Extended dynamic range (render.presentation.v1 "Dynamic range", which
+	// the bridge's own presentations follow too). Whether the platform can
+	// show extended-linear output in the window at all (the surface's format
+	// list decides the rest); after each swapchain build, the platform's
+	// presentation layer set to the swapchain's range; and the display's
+	// headroom in multiples of SDR white, read every frame. The defaults are
+	// a platform without it.
+	virtual bool CanShowExtendedRange() const { return false; }
+	virtual bool SetExtendedRange( bool extended ) { return !extended; }
+	virtual void ReadHeadroom( float *outCurrent, float *outPotential ) const
+	{
+		*outCurrent = *outPotential = 1.0f;
+	}
 };
 
 } // namespace render_vulkan

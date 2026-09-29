@@ -17,6 +17,10 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+static ConVar sv_blob_demomonster_repulse( "sv_blob_demomonster_repulse", "1", 0,
+    "Demo monster: push its spheres apart and let arm spheres float (0: Valve's F-Stop snapshot, "
+    "which had this compiled out and settles as one puddle)" );
+
 //-----------------------------------------------------------------------------
 //
 // CNPC_BlobDemoMonster
@@ -189,9 +193,14 @@ bool CNPC_BlobDemoMonster::CreateVPhysics( bool bFromRestore )
 
 bool CNPC_BlobDemoMonster::CreateVPhysics()
 {
-	// FIXME: don't hardcode the number of particles
-	m_nActiveParticles = 256;
-	m_flRadius = 6.5;
+	// The map's particlecount and particle_radius keyfields win; Valve's
+	// prototype overwrote them with 256 spheres of radius 6.5, which stay the
+	// defaults. CNPC_Surface::Spawn has already applied DEFAULT_PARTICLE_RADIUS
+	// (6.5) and sv_surface_radius_multiplier to the radius.
+	if ( m_nActiveParticles <= 0 )
+	{
+		m_nActiveParticles = 256;
+	}
 
 	bool result = BaseClass::CreateVPhysics();
 
@@ -462,7 +471,7 @@ void CNPC_BlobDemoMonster::RepulseNeighbors()
 
 void CNPC_BlobDemoMonster::RepulseNeighbors()
 {
-	//float flIdealDistance = m_flRadius * sv_surface_ideal.GetFloat();
+	float flIdealDistance = m_flRadius * sv_surface_ideal.GetFloat();
 	float flNearbyDistance = m_flRadius * sv_surface_nearby.GetFloat();
 
 	m_physParticles.resize( m_nActiveParticles );
@@ -496,7 +505,16 @@ void CNPC_BlobDemoMonster::RepulseNeighbors()
 		}
 	}
 
-#if 0
+	// Valve's snapshot compiled the rest out (#if 0), which left nothing
+	// keeping the spheres apart (they do not collide with each other) and no
+	// sphere floating on an arm, so the monster could only settle as one puddle.
+	if ( !sv_blob_demomonster_repulse.GetBool() )
+	{
+		pPhysTiler->endFrame();
+		PhysTilerFactory::factory->returnTiler( pPhysTiler );
+		return;
+	}
+
 	pPhysTiler->processTiles();
 
 	PhysParticleCache* pCache = pPhysTiler->getParticleCache();
@@ -545,7 +563,7 @@ void CNPC_BlobDemoMonster::RepulseNeighbors()
 					// repluse if they're too close, and they're not in the same group, and they're on an arm
 					dir = (estPos - estEffectorPos);
 					VectorNormalize( dir );
-					delta += dir * min( (flIdealDist2 - flDist2), 100 );
+					delta += dir * min( ( flIdealDist2 - flDist2 ), 100.0f );
 					//NDebugOverlay::Line(m_vecSurfacePos[i], m_vecSurfacePos[j], 255, 0, 0, true, .1);
 				}
 				/*
@@ -616,7 +634,6 @@ void CNPC_BlobDemoMonster::RepulseNeighbors()
 
 		// NDebugOverlay::Box(m_vecSurfacePos[i], Vector( -2, -2, -2 ), Vector( 2, 2, 2 ), 0, 255, 0, 20, .1);
 	}
-#endif
 
 	pPhysTiler->endFrame();
 

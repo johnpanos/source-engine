@@ -939,7 +939,8 @@
           "render.pass.world",
           "render.legacy-frontend",
           "render.legacy-provider-contract",
-          "render.pass.debug"
+          "render.pass.debug",
+          "render.pass.output"
         ]
       },
       {
@@ -1519,6 +1520,7 @@
           "render_renderer",
           "render_pass_present",
           "render_pass_world",
+          "render_pass_output",
           "render_legacy",
           "render_scene",
           "render_frame",

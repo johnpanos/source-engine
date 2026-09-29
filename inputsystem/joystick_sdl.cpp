@@ -324,6 +324,25 @@ static void SetJoyXControllerFound( bool found )
 	}
 }
 
+#if defined( USE_SDL3 )
+// Whether gamepad joystickId maps both sticks. One gamepad is active at a
+// time, and the Apple TV's Siri Remote is a gamepad with no right stick that
+// connects before any controller; a gamepad that can move and aim takes over
+// from one that can't, so a paired controller isn't ignored behind the remote.
+static bool GamepadHasBothSticks( SDL_JoystickID joystickId )
+{
+	SDL_Gamepad *gamepad = SDL_OpenGamepad( joystickId );
+	if ( gamepad == NULL )
+	{
+		return false;
+	}
+	const bool bBothSticks = SDL_GamepadHasAxis( gamepad, SDL_GAMEPAD_AXIS_LEFTX ) &&
+	                         SDL_GamepadHasAxis( gamepad, SDL_GAMEPAD_AXIS_RIGHTX );
+	SDL_CloseGamepad( gamepad );
+	return bBothSticks;
+}
+#endif
+
 void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 {
 #if defined( USE_SDL3 )
@@ -367,12 +386,24 @@ void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 	JoystickInfo_t& info = m_pJoystickInfo[ 0 ];
 	if ( activeJoystick < 0 )
 	{
-		// Only opportunistically open devices if we don't have one open already.
+		// Only opportunistically open devices if we don't have one open already,
+		// unless the new one has both sticks and the open one doesn't.
 		if ( info.m_nDeviceId != -1 )
 		{
-			Msg( "Detected supported joystick #%i '%s'. Currently active joystick is #%i.\n",
+#if defined( USE_SDL3 )
+			const bool bTakesOver =
+			    !GamepadHasBothSticks( info.m_nDeviceId ) && GamepadHasBothSticks( joystickId );
+#else
+			const bool bTakesOver = false;
+#endif
+			if ( !bTakesOver )
+			{
+				Msg( "Detected supported joystick #%i '%s'. Currently active joystick is #%i.\n",
+				    joystickId, pJoystickName, info.m_nDeviceId );
+				return;
+			}
+			Msg( "Joystick #%i '%s' has both sticks; it replaces active joystick #%i.\n",
 			    joystickId, pJoystickName, info.m_nDeviceId );
-			return;
 		}
 	}
 	else if ( activeJoystick != joystickId )

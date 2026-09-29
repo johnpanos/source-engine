@@ -94,11 +94,22 @@ class VpkDirectory:
             return preload + stream.read(length)
 
 
+# A staged F-Stop runtime (tools/quality/stage_fstop_runtime.py) is searched in
+# fstop/gameinfo.txt order: the fstop game directory, the Portal order, then
+# Valve's F-Stop-era depot content (lower-case mirrors).
+FSTOP_SEARCH_PATHS = [("dir", "fstop")] + SEARCH_PATHS + [
+    ("dir", "fstop_valve"),
+    ("dir", "fstop_valve_tempcontent"),
+]
+
+
 class ContentResolver:
     def __init__(self, runtime):
         self.layers = []
         portal2 = os.path.isfile(os.path.join(runtime, "portal2/pak01_dir.vpk"))
-        for kind, relative in PORTAL2_SEARCH_PATHS if portal2 else SEARCH_PATHS:
+        fstop = os.path.isfile(os.path.join(runtime, "fstop/gameinfo.txt"))
+        order = PORTAL2_SEARCH_PATHS if portal2 else FSTOP_SEARCH_PATHS if fstop else SEARCH_PATHS
+        for kind, relative in order:
             path = os.path.join(runtime, relative)
             if kind == "vpk" and os.path.isfile(path):
                 self.layers.append(("vpk", path, VpkDirectory(path)))
@@ -112,7 +123,10 @@ class ContentResolver:
             if kind == "vpk":
                 data = vpk.read(relative)
             else:
+                # The engine folds path case; the F-Stop mirrors are lower case.
                 candidate = os.path.join(path, relative)
+                if not os.path.isfile(candidate):
+                    candidate = os.path.join(path, relative.lower())
                 data = open(candidate, "rb").read() if os.path.isfile(candidate) else None
             if data is not None:
                 return data, "%s:%s" % (os.path.basename(path), relative)

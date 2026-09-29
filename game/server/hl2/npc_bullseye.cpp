@@ -89,6 +89,9 @@ BEGIN_DATADESC( CNPC_Bullseye )
 	DEFINE_KEYFIELD( m_fAutoaimRadius, FIELD_FLOAT, "autoaimradius" ),
 	DEFINE_KEYFIELD( m_flFieldOfView, FIELD_FLOAT, "minangle" ),
 	DEFINE_KEYFIELD( m_flMinDistValidEnemy, FIELD_FLOAT, "mindist" ),
+#ifdef FSTOP
+	DEFINE_KEYFIELD( m_nTargetObjectSize, FIELD_INTEGER, "target_size" ),
+#endif // FSTOP
 	// DEFINE_FIELD( m_bPerfectAccuracy, FIELD_BOOLEAN ),	// Don't save
 
 	// Function Pointers
@@ -117,6 +120,9 @@ CNPC_Bullseye::CNPC_Bullseye( void )
 	g_BullseyeList.AddToList( this );
 	m_flFieldOfView = 360;
 	m_flMinDistValidEnemy = 0;
+#ifdef FSTOP
+	m_nTargetObjectSize = 0;
+#endif // FSTOP
 }
 
 CNPC_Bullseye::~CNPC_Bullseye( void )
@@ -369,6 +375,17 @@ bool CNPC_Bullseye::CanBeAnEnemyOf( CBaseEntity *pEnemy )
 			return false;
 		}
 	}
+
+#ifdef FSTOP
+	// Entities must match in size expectations
+	CBaseAnimating *pAnim = pEnemy->GetBaseAnimating();
+	if ( pAnim )
+	{
+		if ( m_nTargetObjectSize != pAnim->GetObjectScaleLevel() )
+			return false;
+	}
+#endif // FSTOP
+
 	return BaseClass::CanBeAnEnemyOf( pEnemy );
 }
 

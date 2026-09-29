@@ -50,6 +50,9 @@ private:
 
 	Vector m_vecRenderMins;
 	Vector m_vecRenderMaxs;
+	// Multiplies the surface's cube width while its mesh is over the vertex
+	// budget (r_surface_blr_max_vertices); 1 is Valve's resolution.
+	float m_flCubeCoarsen = 1.0f;
 };
 
 class C_NPC_BlobFountain : public C_NPC_Surface

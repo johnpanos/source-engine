@@ -14,6 +14,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace hammer::adapters::platform
 {
@@ -23,9 +24,12 @@ class ToolProcessMapBuilder final : public ports::IMapBuilder
 public:
 	// `repoRoot` holds tools/quality/vmf_map_build.py; each build writes to
 	// <outRoot>/<map>. `diskPath` turns a file-store path into a disk path.
-	// Borrows the provider, which must outlive this object.
+	// `buildArgs` are passed on to every vmf_map_build.py run (e.g. --runtime
+	// DIR for a product's staged content). Borrows the provider, which must
+	// outlive this object.
 	ToolProcessMapBuilder( ::platform::IToolProcessProvider &provider, std::string repoRoot,
-	    std::string outRoot, std::function<std::string( const std::string & )> diskPath );
+	    std::string outRoot, std::function<std::string( const std::string & )> diskPath,
+	    std::vector<std::string> buildArgs = {} );
 
 	ports::MapBuildResult Build( const ports::MapBuildRequest &request ) override;
 
@@ -34,6 +38,7 @@ private:
 	std::string m_repoRoot;
 	std::string m_outRoot;
 	std::function<std::string( const std::string & )> m_diskPath;
+	std::vector<std::string> m_buildArgs;
 };
 
 } // namespace hammer::adapters::platform

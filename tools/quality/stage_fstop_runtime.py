@@ -137,6 +137,14 @@ AUTHORED_SOUND_SCRIPTS = ("game_sounds_fstop.txt",)
 AUTHORED_TOKENS = {"FSTOP_Camera": "CAMERA", "FSTOP_Placement": "PHOTOS"}
 VALVE_TOKEN_PREFIX = "fstop_"
 # Resource files the F-Stop HUD loads (LoadControlSettings) that Portal lacks.
+# Retail Portal 2 assets the F-Stop maps use (fstop_mechanics' shop doors), copied
+# from a staged Portal 2 runtime (tools/quality/stage_portal2_runtime.py) into the
+# fstop game directory with the materials their models name.
+PORTAL2_MODELS = ("models/props/portal_door_combined",)
+PORTAL2_MODEL_FILES = (".mdl", ".vvd", ".dx90.vtx", ".vtx", ".phy")
+PORTAL2_TEXTURE_KEYS = ("$basetexture", "$bumpmap", "$normalmap", "$envmapmask",
+                        "$selfillummask", "$phongexponenttexture", "$detail")
+
 RESOURCE_FILES = ("photoinventory.res", "controlhelper.res", "indicator.res")
 # F-Stop HUD elements (game/client/fstop) the staged HUD layout must place.
 HUD_ELEMENTS = ("HudControlHelper", "HudPhotoInventory", "HudViewfinder", "HudIndicator")
@@ -146,10 +154,14 @@ PORTAL_OWNED_PATHS = {"|gameinfo_path|.", "portal/bin"}
 # Kept ahead of everything, as in the Portal gameinfo (portal_boot.shader_search_path).
 SHADER_OVERLAY = "source-engine-shaders"
 
+# HL2's glueblob texture is in no mounted content (the blobs drew as the
+# missing-texture checker); a white base takes $color2's blue, and a weak,
+# blue envmap tint keeps the reflection from washing it out to white.
 BLUE_BLOB_MATERIAL = '''"VertexLitGeneric"
 {
-    "$basetexture" "models/Weapons/V_physics_gun/glueblob"
+    "$basetexture" "vgui/white"
     "$envmap" "env_cubemap"
+    "$envmaptint" "[0.08 0.2 0.3]"
     "$color2" "[0.1 0.6 0.9]"
 }
 '''
@@ -321,6 +333,56 @@ def write_blob_material(runtime):
                                                         encoding="ascii")
 
 
+def model_materials(mdl):
+    """The material names a studio model uses (its cdmaterials x texture names)."""
+    import struct
+    def text(offset):
+        return mdl[offset:mdl.index(b"\0", offset)].decode("ascii", "replace")
+    count, index = struct.unpack_from("<ii", mdl, 0xcc)
+    names = [text(index + 64 * i + struct.unpack_from("<i", mdl, index + 64 * i)[0])
+             for i in range(count)]
+    cd_count, cd_index = struct.unpack_from("<ii", mdl, 0xd4)
+    folders = [text(struct.unpack_from("<i", mdl, cd_index + 4 * i)[0])
+               for i in range(cd_count)] or [""]
+    return [(folder + name).replace("\\", "/").lower() for folder in folders for name in names]
+
+
+def write_portal2_assets(runtime, portal2_runtime):
+    """Copy PORTAL2_MODELS and their materials and textures into the fstop game directory."""
+    if portal2_runtime is None or not (Path(portal2_runtime) / "portal2").is_dir():
+        return []
+    resolver = source_content.ContentResolver(str(portal2_runtime))
+    game = runtime / GAME
+    copied = []
+
+    def copy(relative):
+        data, _ = resolver.read(relative)
+        if data is None:
+            return None
+        target = game / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        return data
+
+    for model in PORTAL2_MODELS:
+        mdl = copy(model + ".mdl")
+        if mdl is None:
+            raise SystemExit("stage_fstop_runtime: %s has no %s.mdl" % (portal2_runtime, model))
+        for extension in PORTAL2_MODEL_FILES[1:]:
+            copy(model + extension)
+        for material in model_materials(mdl):
+            vmt = copy("materials/%s.vmt" % material)
+            if vmt is None:
+                continue
+            for key in PORTAL2_TEXTURE_KEYS:
+                match = re.search(r'"?%s"?\s+"?([^"\s]+)' % re.escape(key),
+                                  vmt.decode("utf-8", "replace"), re.IGNORECASE)
+                if match:
+                    copy("materials/%s.vtf" % match.group(1).replace("\\", "/").lower())
+        copied.append(model)
+    return copied
+
+
 def decode_localization(data):
     if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
         return data.decode("utf-16")
@@ -370,7 +432,7 @@ def write_localization(runtime, content_resource):
     return len(extra)
 
 
-def stage(runtime, base_runtime, content_root, build=None):
+def stage(runtime, base_runtime, content_root, build=None, portal2_runtime=None):
     runtime = Path(runtime).resolve()
     content_root = Path(content_root).resolve()
     roots = {name: find_child(content_root, name) if content_root.is_dir() else None
@@ -407,6 +469,12 @@ def stage(runtime, base_runtime, content_root, build=None):
     particles = write_particles(runtime)
     hud = write_hud_layout(runtime, content_scripts)
     tokens = write_localization(runtime, find_child(valve, "resource") or valve / "resource")
+    if portal2_runtime is None:
+        portal2_runtime = Path(__file__).resolve().parents[2] / "run/runtime-p2"
+    portal2 = write_portal2_assets(runtime, portal2_runtime)
+    print("stage_fstop_runtime: Portal 2 models %s" % (",".join(portal2) or
+                                                      "- (no Portal 2 runtime at %s)"
+                                                      % portal2_runtime))
     print("stage_fstop_runtime: Valve content %s (%d case duplicates skipped); Valve sound "
           "scripts %s; particles %s; %d HUD elements; %d F-Stop tokens"
           % (",".join(linked) or "-", shadowed, ",".join(copied) or "-",
@@ -427,8 +495,11 @@ def main(argv=None):
     parser.add_argument("--content-root", type=Path, required=True,
                         help="Valve's extracted depot 852 tree (portal2/, portal2_tempcontent/)")
     parser.add_argument("--build", type=Path, help="a Waf tree configured with --build-games=fstop")
+    parser.add_argument("--portal2-runtime", type=Path,
+                        help="a staged Portal 2 runtime for PORTAL2_MODELS "
+                             "(default: run/runtime-p2)")
     args = parser.parse_args(argv)
-    stage(args.runtime, args.base_runtime, args.content_root, args.build)
+    stage(args.runtime, args.base_runtime, args.content_root, args.build, args.portal2_runtime)
     return 0
 
 

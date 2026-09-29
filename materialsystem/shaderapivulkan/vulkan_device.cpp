@@ -512,6 +512,45 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 			m_srgbAttachments = false;
 	}
 
+	// The swapchain's own format: the back buffers' 8-bit format, or, when
+	// extended output is asked for and everything it needs is here, linear
+	// half floats in the extended linear sRGB color space (RFC 0016 "Output";
+	// render.presentation.v1 "Dynamic range"). A declined request says why.
+	m_presentFormat = m_swapFormat;
+	m_presentColorSpace = m_swapColorSpace;
+	m_swapchainExtendedRequest = m_requestedExtendedOutput;
+	m_extendedOutput = false;
+	if ( m_requestedExtendedOutput )
+	{
+		const char *declined = nullptr;
+		if ( !m_corePassRecorder )
+			declined = "no core-pass recorder records the frame's output";
+		else if ( !m_srgbAttachments )
+			declined = "the back buffer has no sRGB view to read linear values through";
+		else if ( !m_host->CanShowExtendedRange() )
+			declined = "the window cannot show extended range";
+		else
+		{
+			declined = "the surface offers no extended-linear half-float format";
+			for ( const VkSurfaceFormatKHR &f : formats )
+			{
+				if ( f.format == VK_FORMAT_R16G16B16A16_SFLOAT &&
+				     f.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT )
+				{
+					m_presentFormat = f.format;
+					m_presentColorSpace = f.colorSpace;
+					m_extendedOutput = true;
+					declined = nullptr;
+					break;
+				}
+			}
+		}
+		if ( declined )
+			Log( "extended output declined: %s; presenting in the standard range\n", declined );
+		else
+			Log( "extended output: half-float swapchain in extended linear sRGB\n" );
+	}
+
 	// Present mode: render.present-policy.v1 over what the surface offers.
 	{
 		uint32_t pmCount = 0;
@@ -567,8 +606,8 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 	info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	info.surface = m_surface;
 	info.minImageCount = imageCount;
-	info.imageFormat = m_swapFormat;
-	info.imageColorSpace = m_swapColorSpace;
+	info.imageFormat = m_presentFormat;
+	info.imageColorSpace = m_presentColorSpace;
 	info.imageExtent = m_presentExtent;
 	info.imageArrayLayers = 1;
 	// The swapchain image only receives the scaled back buffer (RecordPresentBlit).
@@ -579,7 +618,10 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 	}
 	info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	// ... and, where the surface allows, a copy source for RequestPresentedCapture.
-	m_presentCapturable = ( caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT ) != 0;
+	// (not a half-float one: the capture image holds the back buffers' 8-bit
+	// format).
+	m_presentCapturable = ( caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT ) != 0 &&
+	                      !m_extendedOutput;
 	if ( m_presentCapturable )
 		info.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	// The back buffer is drawn in the window's orientation and the compositor
@@ -622,6 +664,12 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 	if ( !GrowRenderFinished( actual, outError ) )
 		return false;
 	m_imageValue.assign( actual, 0 );
+	// The window's presentation layer follows the swapchain's range (both
+	// ways).
+	if ( ( m_extendedOutput || m_requestedExtendedOutput ) &&
+	     !m_host->SetExtendedRange( m_extendedOutput ) )
+		Log( "the window refused its presentation layer's %s range\n",
+		    m_extendedOutput ? "extended" : "standard" );
 	return CreateBackBuffers( outError );
 }
 
@@ -6497,8 +6545,9 @@ bool CVulkanContext::PrepareFrame( bool *outSkip, std::string *outError )
 	                               ( m_requestedBackBuffer.width != m_swapExtent.width ||
 	                                   m_requestedBackBuffer.height != m_swapExtent.height );
 	const bool presentModePending = m_requestedVSync != m_swapchainVSync;
+	const bool outputRangePending = m_requestedExtendedOutput != m_swapchainExtendedRequest;
 	// A new back-buffer size alone keeps the swapchain (RecreateBackBuffers).
-	if ( drawableChanged || presentModePending || m_acquireTimedOut ||
+	if ( drawableChanged || presentModePending || outputRangePending || m_acquireTimedOut ||
 	     ( backBufferPending && m_swapchain == VK_NULL_HANDLE ) )
 	{
 		if ( !RecreateSwapchain( outError ) )
@@ -6641,6 +6690,7 @@ void CVulkanContext::AttachFrameStage( FrameStage stage, render::device::Command
 		RecordCorePassSections( encoder );
 	if ( stage != kFrameStagePresent )
 		return;
+	RecordOutputSection( encoder );
 	// Only the present (a blit, or the gamma pass's color writes) touches the
 	// acquired swapchain image; rendering into the back buffer need not wait
 	// for the acquire. The wait and signal apply to the whole submission.
@@ -6899,6 +6949,133 @@ void CVulkanContext::ReleaseManagedImport( int handle )
 		}
 	}
 	import = CoreTextureImport();
+}
+
+render::legacy::CoreOutputTargets CVulkanContext::CoreOutputTargetsFor()
+{
+	using render::device::ResourceUsage;
+	using render::device::TextureId;
+	render::legacy::CoreOutputTargets out;
+	const uint32_t i = m_acquiredImage;
+	if ( !m_hostDevice || i >= m_swapImages.size() || i >= m_presentImages.size() )
+		return out;
+	out.device = Port();
+	out.sceneFormat = SrgbPortFormat( PortFormat( m_swapFormat ) );
+	out.sceneWidth = m_swapExtent.width;
+	out.sceneHeight = m_swapExtent.height;
+	out.targetFormat = PortFormat( m_presentFormat );
+	out.width = m_presentExtent.width;
+	out.height = m_presentExtent.height;
+	out.submitted = { render::device::QueueKind::kGraphics, m_hostDevice->Port().Epoch(),
+		m_hostDevice->SubmittedValue() };
+	const auto import = [&]( VkImage image, render::device::Format format,
+	                        render::device::UsageSet usages, uint32_t width, uint32_t height,
+	                        const char *name, TextureId *id )
+	{
+		if ( id->IsValid() || image == VK_NULL_HANDLE ||
+		     format == render::device::Format::kUnknown )
+			return;
+		render::device::TextureDesc desc;
+		desc.format = format;
+		desc.width = width;
+		desc.height = height;
+		desc.usages = usages;
+		desc.debugName = name;
+		if ( !m_hostDevice->ImportImage( image, desc, ResourceUsage::kColorAttachment, id ) )
+			*id = TextureId();
+	};
+	m_outputScene.resize( m_swapImages.size() );
+	m_outputTarget.resize( m_presentImages.size() );
+	import( m_swapImages[i], out.sceneFormat,
+	    { ResourceUsage::kColorAttachment, ResourceUsage::kSampled }, out.sceneWidth,
+	    out.sceneHeight, "back buffer (output, sRGB)", &m_outputScene[i] );
+	import( m_presentImages[i], out.targetFormat, { ResourceUsage::kColorAttachment }, out.width,
+	    out.height, "swapchain image (output)", &m_outputTarget[i] );
+	out.scene = m_outputScene[i];
+	out.target = m_outputTarget[i];
+	// The back buffer holds display values: the output is the clip and the
+	// encoding for the display's headroom (scene peak 1).
+	float potential = 1.0f;
+	m_host->ReadHeadroom( &out.headroom, &potential );
+	out.headroom = std::max( 1.0f, out.headroom );
+	return out;
+}
+
+void CVulkanContext::RecordOutputSection( render::device::CommandEncoder &encoder )
+{
+	m_outputSectionRecorded = false;
+	if ( !m_extendedOutput || !m_corePassRecorder )
+		return;
+	const render::legacy::CoreOutputTargets targets = CoreOutputTargetsFor();
+	m_hostDevice->BeginSection( encoder );
+	if ( targets.scene.IsValid() && targets.target.IsValid() )
+		m_outputSectionRecorded = m_corePassRecorder->RecordOutput( encoder, targets );
+	m_hostDevice->EndSection( encoder );
+	if ( !m_outputSectionRecorded && !m_outputFallbackLogged )
+	{
+		// Visible: the 8-bit back buffer blitted into a linear swapchain
+		// shows too bright.
+		Log( "extended output: the frame's output was not recorded; blitting the back buffer\n" );
+		m_outputFallbackLogged = true;
+	}
+}
+
+void CVulkanContext::RecordPresentOutput(
+    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout )
+{
+	ScopedDebugLabel label( m_debugUtils, "present: output" );
+	VkImageMemoryBarrier pre[2] = {};
+	uint32_t count = 0;
+	// The back buffer rests in its home (color attachment) for the output's
+	// section; a capture left it a transfer source.
+	if ( backBufferLayout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL )
+	{
+		VkImageMemoryBarrier &b = pre[count++];
+		b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		b.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+		b.image = m_swapImages[imageIndex];
+		b.oldLayout = backBufferLayout;
+		b.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		b.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		b.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+	}
+	// The acquired swapchain image: its old contents are not needed. The
+	// source stage chains to the acquire semaphore's wait.
+	{
+		VkImageMemoryBarrier &b = pre[count++];
+		b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		b.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+		b.image = m_presentImages[imageIndex];
+		b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		b.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		b.srcAccessMask = 0;
+		b.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	}
+	vkCmdPipelineBarrier( cmd,
+	    VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
+	    nullptr, 0, nullptr, count, pre );
+	m_hostDevice->RunSection( cmd, 0 );
+	RecordPresentedCaptureAndRelease( cmd, imageIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, false );
+}
+
+void CVulkanContext::ReleaseOutputImports( bool swapchainToo )
+{
+	render::device::IRenderDevice2 *port = Port();
+	// The images go now: nothing submitted uses them any more.
+	const auto release = [&]( std::vector<render::device::TextureId> &ids )
+	{
+		for ( render::device::TextureId &id : ids )
+			if ( id.IsValid() && port )
+				(void)port->Release( id, render::device::CompletionToken() );
+		ids.clear();
+	};
+	release( m_outputScene );
+	if ( swapchainToo )
+		release( m_outputTarget );
 }
 
 void CVulkanContext::ReleaseCorePassImports( bool msaaOnly )
@@ -8308,9 +8485,13 @@ void CVulkanContext::RecordFramePresent( VkCommandBuffer cmd )
 	if ( m_gpuTimerPool != VK_NULL_HANDLE )
 		GpuTimerMark( cmd, "present (waits for the swapchain image)" );
 	ApplyPublishedGammaRamp();
+	// An extended-linear swapchain takes the frame through the core's output
+	// (RFC 0016 "Output"), which the monitor gamma ramp does not apply to.
+	if ( m_outputSectionRecorded )
+		RecordPresentOutput( cmd, imageIndex, backBufferLayout );
 	// RFC 0014: a frame the core alone draws presents without the ramp.
-	if ( !m_gammaActive || m_frameLegacyOff ||
-	     !RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
+	else if ( !m_gammaActive || m_frameLegacyOff ||
+	          !RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
 		RecordPresentBlit( cmd, imageIndex, backBufferLayout, capturePresented );
 	m_captureRequested = m_capturePresented = false;
 
@@ -8773,7 +8954,7 @@ void CVulkanContext::ApplyPublishedGammaRamp()
 
 bool CVulkanContext::EnsurePresentGamma( std::string *outError )
 {
-	if ( m_gammaPipeline != VK_NULL_HANDLE && m_gammaFormat == m_swapFormat )
+	if ( m_gammaPipeline != VK_NULL_HANDLE && m_gammaFormat == m_presentFormat )
 		return true;
 	DestroyPresentGamma();
 
@@ -8790,7 +8971,7 @@ bool CVulkanContext::EnsurePresentGamma( std::string *outError )
 	// as a color attachment for the explicit capture/present transition. The
 	// external dependency chains to the acquire semaphore's wait stage.
 	VkAttachmentDescription color = {};
-	color.format = m_swapFormat;
+	color.format = m_presentFormat;
 	color.samples = VK_SAMPLE_COUNT_1_BIT;
 	color.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -8989,7 +9170,7 @@ bool CVulkanContext::EnsurePresentGamma( std::string *outError )
 		DestroyPresentGamma();
 		return false;
 	}
-	m_gammaFormat = m_swapFormat;
+	m_gammaFormat = m_presentFormat;
 	return true;
 }
 
@@ -9006,7 +9187,7 @@ bool CVulkanContext::EnsurePresentGammaTargets( std::string *outError )
 		iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		iv.image = m_presentImages[i];
 		iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		iv.format = m_swapFormat;
+		iv.format = m_presentFormat;
 		iv.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 		VkFramebufferCreateInfo fb = {};
 		fb.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -9748,6 +9929,7 @@ bool CVulkanContext::ResolveCapturedPixels( std::string *outError )
 
 void CVulkanContext::DestroySwapchainObjects()
 {
+	ReleaseOutputImports( true );
 	DestroyPresentGammaTargets();
 	DestroyBackBuffers();
 	m_presentImages.clear();
@@ -9763,6 +9945,7 @@ void CVulkanContext::DestroySwapchainObjects()
 void CVulkanContext::DestroyBackBuffers()
 {
 	ReleaseCorePassImports( false );
+	ReleaseOutputImports( false );
 	for ( VkFramebuffer fb : m_framebuffers )
 		if ( fb != VK_NULL_HANDLE )
 			vkDestroyFramebuffer( m_device, fb, nullptr );

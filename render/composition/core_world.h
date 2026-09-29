@@ -14,6 +14,7 @@
 #ifndef RENDER_COMPOSITION_CORE_WORLD_H
 #define RENDER_COMPOSITION_CORE_WORLD_H
 
+#include "core_output.h"
 #include "render/composition/render_core.h"
 #include "render/legacy/core_backend.h"
 #include "render/frame/renderer.h"
@@ -65,10 +66,16 @@ public:
 	std::uint32_t SlotStages() const override { return 0; }
 	void RecordSlot( std::uint32_t tag, device::CommandEncoder &encoder,
 	    const legacy::CorePassTarget &target ) override;
+	bool RecordOutput( device::CommandEncoder &encoder,
+	    const legacy::CoreOutputTargets &targets ) override
+	{
+		return m_Output.Record( encoder, targets );
+	}
 	void ReleaseDevice( device::IRenderDevice2 &device ) override
 	{
 		m_Pass.ReleaseDevice( device );
 		m_Overlays.ReleaseDevice( device );
+		m_Output.ReleaseDevice( device );
 	}
 
 private:
@@ -89,6 +96,7 @@ private:
 	std::atomic<unsigned long long> m_Hatches{ 0 };
 	std::atomic<unsigned long long> m_Tints{ 0 };
 	std::atomic<unsigned long long> m_Redrawn{ 0 };
+	CoreOutput m_Output;
 };
 
 } // namespace render::composition

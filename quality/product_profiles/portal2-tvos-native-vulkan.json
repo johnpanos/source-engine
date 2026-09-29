@@ -41,12 +41,12 @@
     ]
   },
   "app_icon": {
-    "url": "https://playtracker.net/cdn-cgi/image/format=auto/https://playtracker-apollo.fra1.cdn.digitaloceanspaces.com/thumbnails/game_thumb_118.jpg",
-    "sha256": "41d535fcc9663ba118cd808a9637547c3458869a52f0b541a211b60113c86faa",
-    "bytes": 44683,
-    "cache_archive": "portal2-thumb-460x215.jpg",
-    "fit": "contain",
-    "note": "Portal 2 store thumbnail (460x215 JPEG, wordmark across the width), chosen by the user (2026-09-28) for the home-screen icon. contain keeps its whole width on the 5:3 icon, with a blurred fill above and below. Fetched and verified by sha256, not committed; Valve's artwork, used for the user's own device builds."
+    "url": "https://assets.nintendo.com/image/upload/q_auto/f_auto/store/software/switch/70010000050313/75484f73fedd25cb830c5d93fbb3fca643a5ec0b09df2815291ead880bc7d6b1",
+    "sha256": "3343a75f5505774b3f416bb76bb5c7806195344d84223717764a1ebe98b9031a",
+    "bytes": 142579,
+    "cache_archive": "portal2-keyart-1920x1080.jpg",
+    "fit": "cover",
+    "note": "Portal 2 key art (1920x1080 JPEG: Atlas between two portals, wordmark at the top), chosen by the user (2026-09-28) for the home-screen icon, replacing the 460x215 store thumbnail. cover crops the 16:9 art to the 5:3 icon, trimming only the sides. Fetched and verified by sha256 (curl's default Accept yields this JPEG from the f_auto URL), not committed; Valve's artwork, used for the user's own device builds."
   },
   "app_banner": {
     "url": "https://playtracker.net/cdn-cgi/image/format=auto/https://playtracker-apollo.fra1.cdn.digitaloceanspaces.com/covers/api/game_cover_118.jpg",

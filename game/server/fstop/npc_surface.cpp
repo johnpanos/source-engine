@@ -434,13 +434,28 @@ void CNPC_Surface::CreateBlobPhysics()
 	m_vecPhysParticles.EnsureCapacity( MAX_SURFACE_ELEMENTS );
 	m_iParticlePositionIndex.EnsureCapacity( MAX_SURFACE_ELEMENTS );
 
-	for (int i = 0; i < m_nActiveParticles; i++)
+	int nRequestedParticles = MIN( m_nActiveParticles.Get(), MAX_SURFACE_ELEMENTS );
+	for ( int i = 0; i < nRequestedParticles; i++ )
 	{
 		IPhysicsObject *pPhysObject = CreateParticlePhysics();
-		//pPhysObject->SetPosition( BLOBPARTICLEPOSITION( m_iParticlePositionIndex[i] ), GetAbsAngles(), true );
+		if ( !pPhysObject )
+			continue;
+		// Point this particle's slot at its network bypass entry. Valve's
+		// prototype skipped this, so every particle of an NPC built here (the
+		// demo monster) shared bypass entry 0: the client drew them all at
+		// another blob's first particle, and the server's forces read one
+		// position for every sphere. npc_fountain does the same per particle.
+		int index = m_vecPhysParticles.AddToTail( pPhysObject );
+		SetParticleEntityIndex( pPhysObject, index );
+		// Spread the spheres over the spawn point as Teleport does, rather
+		// than stacking them all at the origin.
+		Vector vecStart =
+		    GetAbsOrigin() +
+		    Vector( RandomFloat( -1, 1 ), RandomFloat( -1, 1 ), RandomFloat( 0, 2 ) ) * m_flRadius;
+		BLOBPARTICLEPOSITION( m_iParticlePositionIndex[index] ) = vecStart;
+		pPhysObject->SetPosition( vecStart, GetAbsAngles(), true );
 		Vector vVelocity = Vector( RandomFloat( -1, 1 ), RandomFloat( -1, 1 ), RandomFloat( -1, 1 ) ) * 10.0f;
 		pPhysObject->SetVelocity( &vVelocity, NULL );
-		m_vecPhysParticles.AddToTail(pPhysObject);
 	}
 
 	// If any physics objects failed to be created, this adjusts m_nActiveParticles

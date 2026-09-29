@@ -1240,6 +1240,16 @@ public:
 	// on the thread that owns the device.
 	void RequestVSync( bool vsync ) { m_requestedVSync = vsync; }
 	bool VSyncRequested() const { return m_requestedVSync; }
+	// mat_hdr_output (RFC 0016 "Output", render.output.v1; the swapchain side
+	// follows render.presentation.v1 "Dynamic range"). Asks for an
+	// extended-linear half-float swapchain, taken by the next swapchain build
+	// when the surface offers one, the window can show it, the back buffer
+	// has an sRGB view and a core-pass recorder records the frame's output.
+	// Otherwise the build says why and presents as before. Applied like
+	// RequestVSync.
+	void RequestExtendedOutput( bool extended ) { m_requestedExtendedOutput = extended; }
+	// Whether the current swapchain is extended-linear.
+	bool ExtendedOutput() const { return m_extendedOutput; }
 	// The present mode of the current swapchain, and a count of swapchains
 	// created since Init (each resize, mode or present-mode change adds one).
 	VkPresentModeKHR PresentMode() const { return m_presentMode; }
@@ -1419,6 +1429,19 @@ private:
 	void ReleaseCorePassImports( bool msaaOnly );
 	// The scene stage's sections: one per slot record, in stream order.
 	void RecordCorePassSections( render::device::CommandEncoder &encoder );
+	// The frame's output (RFC 0016 "Output") on an extended-linear swapchain:
+	// the back buffer through its sRGB view (linear values) and the acquired
+	// swapchain image, imported as port textures (home kColorAttachment) and
+	// handed to the recorder as the present stage's section.
+	render::legacy::CoreOutputTargets CoreOutputTargetsFor();
+	void RecordOutputSection( render::device::CommandEncoder &encoder );
+	void RecordPresentOutput(
+	    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout );
+	void ReleaseOutputImports( bool swapchainToo );
+	std::vector<render::device::TextureId> m_outputScene;  // per back buffer
+	std::vector<render::device::TextureId> m_outputTarget; // per swapchain image
+	bool m_outputSectionRecorded = false; // this frame's present runs the output
+	bool m_outputFallbackLogged = false;
 	render::legacy::ICorePassRecorder *m_corePassRecorder = nullptr;
 	// Managed textures imported for core passes (ICoreTextures), by handle:
 	// the image imported and its port texture.
@@ -1557,8 +1580,16 @@ private:
 	VkQueue m_presentQueue = VK_NULL_HANDLE;
 
 	VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
+	// The back buffers', render targets' and passes' color format (8-bit)
+	// and the swapchain's own format and color space: the same unless the
+	// swapchain is extended-linear (RequestExtendedOutput).
 	VkFormat m_swapFormat = VK_FORMAT_UNDEFINED;
 	VkColorSpaceKHR m_swapColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	VkFormat m_presentFormat = VK_FORMAT_UNDEFINED;
+	VkColorSpaceKHR m_presentColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	bool m_requestedExtendedOutput = false;
+	bool m_swapchainExtendedRequest = false; // the request the swapchain was built for
+	bool m_extendedOutput = false;
 	VkPresentModeKHR m_presentMode = VK_PRESENT_MODE_FIFO_KHR;
 	VulkanAdapterCaps m_adapterCaps;
 	int m_requestedSamples = 1;

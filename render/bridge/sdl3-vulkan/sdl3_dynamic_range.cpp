@@ -1,12 +1,17 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Dynamic range for the SDL3-Vulkan bridge on platforms other than
-//          Apple's (see sdl3_dynamic_range.h). The compositor takes the
+//          iOS and tvOS (see sdl3_dynamic_range.h). The compositor takes the
 //          swapchain's color space as is; SDL reports the window's headroom.
 //
 //===========================================================================//
 
-#if !defined( __APPLE__ )
+#if defined( __APPLE__ )
+#include <TargetConditionals.h>
+#endif
+
+// UIKit platforms (iOS, tvOS) have sdl3_dynamic_range_apple.mm.
+#if !defined( __APPLE__ ) || !TARGET_OS_IPHONE
 
 #include "sdl3_dynamic_range.h"
 
@@ -52,4 +57,4 @@ Sdl3DisplayMode Sdl3ReadDisplayMode( SDL_Window *window )
 
 } // namespace render_vulkan
 
-#endif // !__APPLE__
+#endif // !UIKit

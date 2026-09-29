@@ -887,6 +887,17 @@ void UTIL_BloodDecalTrace( trace_t *pTrace, int bloodColor )
 		{
 			UTIL_DecalTrace( pTrace, "Blood" );
 		}
+#ifdef FSTOP
+		else if ( bloodColor == BLOOD_COLOR_BLOB )
+		{
+			UTIL_DecalTrace( pTrace, "BlobBlood" );
+		}
+		//don't draw a any decals if the blob is frozen
+		else if ( bloodColor == BLOOD_COLOR_BLOB_FROZEN )
+		{
+			return;
+		}
+#endif // FSTOP
 		else
 		{
 			UTIL_DecalTrace( pTrace, "YellowBlood" );

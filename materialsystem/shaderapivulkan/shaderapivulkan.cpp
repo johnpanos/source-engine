@@ -232,8 +232,16 @@ static_assert( static_cast<int>( render::legacy::LegacyFrameStage::kComputeAndUp
                        render_vulkan::CVulkanContext::kFrameStageCount,
     "the context's frame stages are the frontend's" );
 
+// RFC 0016 "Output" (render.output.v1): present through an extended-linear
+// half-float swapchain, the frame taken there by the core's output pass at
+// the display's headroom. Taken at the next swapchain build when the display
+// can show it; the log says when it is declined.
+static ConVar mat_hdr_output( "mat_hdr_output", "0", FCVAR_ARCHIVE,
+    "Present in the display's extended (HDR/EDR) range where it can show it" );
+
 static bool RunVulkanFrame( std::string *outError )
 {
+	g_VulkanContext.RequestExtendedOutput( mat_hdr_output.GetBool() );
 	if ( g_FrameExecutor && g_VulkanContext.Port() )
 	{
 		CVulkanFrameSource source;

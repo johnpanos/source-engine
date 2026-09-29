@@ -13,6 +13,9 @@
 #include <KeyValues.h>
 #include "filesystem.h"
 #include "iinput.h"
+#ifdef FSTOP
+#include "c_basehlplayer.h"
+#endif // FSTOP
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -431,11 +434,38 @@ void CBaseHudWeaponSelection::UserCmd_Close(void)
 	CancelWeaponSelection();
 }
 
+#ifdef FSTOP
+//-----------------------------------------------------------------------------
+// Purpose: F-Stop's camera zooms and its placement tool scales the photo with
+//			the wheel (CBaseCombatWeapon::OnMouseWheel, reached through the
+//			server's mwheel_up/mwheel_down). The wheel is bound to invprev and
+//			invnext, so while the viewfinder is up or a photo is being placed
+//			it goes to the weapon instead of the weapon menu.
+//-----------------------------------------------------------------------------
+static bool FStop_SendWheelToWeapon( bool bUp )
+{
+	C_BaseHLPlayer *pPlayer = dynamic_cast<C_BaseHLPlayer *>( C_BasePlayer::GetLocalPlayer() );
+	if ( pPlayer == NULL )
+		return false;
+
+	if ( !pPlayer->m_HL2Local.m_bPlacingPhoto && !pPlayer->m_HL2Local.m_bZooming )
+		return false;
+
+	engine->ClientCmd( bUp ? "mwheel_up" : "mwheel_down" );
+	return true;
+}
+#endif // FSTOP
+
 //-----------------------------------------------------------------------------
 // Purpose: Selects the next item in the weapon menu
 //-----------------------------------------------------------------------------
 void CBaseHudWeaponSelection::UserCmd_NextWeapon(void)
 {
+#ifdef FSTOP
+	if ( FStop_SendWheelToWeapon( false ) )
+		return;
+#endif // FSTOP
+
 	// If we're not allowed to draw, ignore weapon selections
 	if ( !BaseClass::ShouldDraw() )
 		return;
@@ -453,6 +483,11 @@ void CBaseHudWeaponSelection::UserCmd_NextWeapon(void)
 //-----------------------------------------------------------------------------
 void CBaseHudWeaponSelection::UserCmd_PrevWeapon(void)
 {
+#ifdef FSTOP
+	if ( FStop_SendWheelToWeapon( true ) )
+		return;
+#endif // FSTOP
+
 	// If we're not allowed to draw, ignore weapon selections
 	if ( !BaseClass::ShouldDraw() )
 		return;

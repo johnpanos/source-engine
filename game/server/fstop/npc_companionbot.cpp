@@ -105,26 +105,18 @@ class CAI_CompanionBotExpresser : public CAI_ExpresserWithFollowup
 public:
 	CAI_CompanionBotExpresser( CBaseFlex *pOuter = NULL ) : CAI_ExpresserWithFollowup( pOuter ) {}
 
-	virtual bool Speak( AIConcept_t &speechConcept, const char *modifiers = NULL, char *pszOutResponseChosen = NULL, size_t bufsize = 0, IRecipientFilter *filter = NULL )
+	// CAI_Expresser::Speak is not virtual, so the bookkeeping hooks the virtual
+	// dispatch, which runs once a response was found (as the original did in its
+	// Speak) and also covers followups dispatched to this bot.
+	virtual bool SpeakDispatchResponse( AIConcept_t &speechConcept, AI_Response *response, AI_CriteriaSet *criteria, IRecipientFilter *filter = NULL )
 	{
 		CNPC_CompanionBot *pBot = dynamic_cast<CNPC_CompanionBot *>( GetOuter() );
-		if ( !pBot )
-			return CAI_ExpresserWithFollowup::Speak( speechConcept, modifiers, pszOutResponseChosen, bufsize, filter );
-
-		// The original set these once a response was found, before dispatching it;
-		// on no response they are left as they were.
-		EHANDLE hOldTopic = pBot->GetConversationTopic();
-		EHANDLE hOldSpeaker = pBot->GetLastSpeaker();
-		pBot->SetConversationTopic( speechConcept.GetTopic() );
-		pBot->SetLastSpeaker( speechConcept.GetSpeaker() );
-		SpeechMsg( GetOuter(), "%s (%p) spoke %s (%f)\n", STRING(GetOuter()->GetEntityName()), GetOuter(), speechConcept.GetStringConcept(), gpGlobals->curtime );
-		bool spoke = CAI_ExpresserWithFollowup::Speak( speechConcept, modifiers, pszOutResponseChosen, bufsize, filter );
-		if ( !spoke )
+		if ( pBot )
 		{
-			pBot->SetConversationTopic( hOldTopic );
-			pBot->SetLastSpeaker( hOldSpeaker );
+			pBot->SetConversationTopic( speechConcept.GetTopic() );
+			pBot->SetLastSpeaker( speechConcept.GetSpeaker() );
 		}
-		return spoke;
+		return CAI_ExpresserWithFollowup::SpeakDispatchResponse( speechConcept, response, criteria, filter );
 	}
 };
 

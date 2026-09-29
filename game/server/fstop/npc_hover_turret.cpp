@@ -857,7 +857,6 @@ void CNPC_HoverTurret::Spawn(void)
 	m_fHeadYaw = 0;
 
 	NPCInit();
-	CreateVPhysics();
 
 	// HoverTurrets are designed to slam into things, so don't take much damage from it!
 	SetImpactEnergyScale( 0.001 );

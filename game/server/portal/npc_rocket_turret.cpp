@@ -1328,6 +1328,34 @@ void CRocket_Turret_Projectile::DoExplosion( void )
 	ExplosionCreate( GetAbsOrigin(), GetAbsAngles(), GetOwnerEntity(), 200, 25, 
 		SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE, 100.0f, this);
 
+#ifdef FSTOP
+	// F-Stop: knock floor turrets and physics props the blast can see
+	string_t strTurretName = AllocPooledString( "npc_portal_turret_floor" );
+	string_t strPropName = AllocPooledString( "prop_physics" );
+
+	Vector vecRadius(128,128,128);
+	CBaseEntity *pEnts[128];
+	int nNumFound = UTIL_EntitiesInBox( pEnts, ARRAYSIZE(pEnts), GetAbsOrigin()-vecRadius, GetAbsOrigin()+vecRadius, 0 );
+	for ( int i = 0; i < nNumFound; i++ )
+	{
+		if ( pEnts[i] == NULL )
+			continue;
+
+		if ( pEnts[i]->m_iClassname != strTurretName && pEnts[i]->m_iClassname != strPropName )
+			continue;
+
+		trace_t tr;
+		UTIL_TraceLine( GetAbsOrigin(), pEnts[i]->WorldSpaceCenter(), MASK_SOLID_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr );
+		if ( tr.fraction < 1.0f )
+			continue;
+
+		CTakeDamageInfo info( this, this, 200, DMG_BLAST );
+		info.SetDamagePosition( GetAbsOrigin() );
+		CalculateExplosiveDamageForce( &info, (pEnts[i]->GetAbsOrigin() - GetAbsOrigin()), GetAbsOrigin() );
+
+		pEnts[i]->VPhysicsTakeDamage( info );
+	}
+#else
 	// Hackish: Knock turrets in the area
 	CBaseEntity* pTurretIter = NULL;
 
@@ -1339,6 +1367,7 @@ void CRocket_Turret_Projectile::DoExplosion( void )
 
 		pTurretIter->VPhysicsTakeDamage( info );
 	}	
+#endif // FSTOP
 }
 
 void CRocket_Turret_Projectile::CreateSounds()

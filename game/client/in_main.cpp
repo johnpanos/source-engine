@@ -1553,6 +1553,7 @@ void CInput::AddIKGroundContactInfo( int entindex, float minheight, float maxhei
 	data.minheight = minheight;
 	data.maxheight = maxheight;
 
+	AUTO_LOCK( m_EntityGroundContactMutex );
 	if (m_EntityGroundContact.Count() >= MAX_EDICTS)
 	{
 		// some overflow here, probably bogus anyway

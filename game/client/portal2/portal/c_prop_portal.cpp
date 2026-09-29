@@ -548,10 +548,36 @@ void C_Prop_Portal::DestroyAttachedParticles( void )
 //ConVar r_portal_light_innerangle( "r_portal_light_innerangle", "90.0", FCVAR_CLIENTDLL );
 //ConVar r_portal_light_outerangle( "r_portal_light_outerangle", "90.0", FCVAR_CLIENTDLL );
 //ConVar r_portal_light_forward( "r_portal_light_forward", "0.0", FCVAR_CLIENTDLL );
-ConVar r_portal_use_dlights( "r_portal_use_dlights", "0", FCVAR_CLIENTDLL );
+static void PortalDlightsChanged( IConVar *pConVar, const char *pOldValue, float flOldValue )
+{
+	for ( int i = 0; i != CProp_Portal_Shared::AllPortals.Count(); ++i )
+		CProp_Portal_Shared::AllPortals[i]->UpdateTransformedLighting();
+}
+
+// On by default here (retail: 0): an open portal keeps the light its opening
+// sparks give (portal_success) for as long as it stays open.
+ConVar r_portal_use_dlights( "r_portal_use_dlights", "1", FCVAR_CLIENTDLL,
+	"Open portals light their surroundings in their color, as their opening sparks do.",
+	PortalDlightsChanged );
+
+// The open portal's light: the spark light at its full burst (particles_new.cpp),
+// a little in front of the portal, where the opening sparks fly.
+static const int kPortalLightExponent = 2;
+static const float kPortalLightRadius = 160.0f;
+static const float kPortalLightForward = 16.0f;
 
 void C_Prop_Portal::UpdateTransformedLighting( void )
 {
+	if ( !IsActive() || !r_portal_use_dlights.GetBool() )
+	{
+		if ( TransformedLighting.m_pEntityLight )
+		{
+			TransformedLighting.m_pEntityLight->die = gpGlobals->curtime;
+			TransformedLighting.m_pEntityLight = NULL;
+		}
+		return;
+	}
+
 	// C_Prop_Portal *pRemote = (C_Prop_Portal *)m_hLinkedPortal.Get();
 	
 	Vector ptForwardOrigin = m_ptOrigin + m_vForward;// * 3.0f;
@@ -629,7 +655,8 @@ void C_Prop_Portal::UpdateTransformedLighting( void )
 				if ( pPlayer )
 					nTeam = pPlayer->GetTeamNumber();
 
-				Color clrPortal = UTIL_Portal_Color( (m_bIsPortal2)?(2):(1), nTeam );
+				// The opening sparks' tint (CreateFizzleEffect's control point 2).
+				Color clrPortal = UTIL_Portal_Color_Particles( (m_bIsPortal2)?(2):(1), nTeam );
 				Vector vecPortalColor
 					(
 						(float)(clrPortal.r()) / 255.0f, 
@@ -649,7 +676,7 @@ void C_Prop_Portal::UpdateTransformedLighting( void )
 				{
 					vColor = vecPortalColor;
 					vLightForward = m_vForward;
-					ptLightOrigin = m_ptOrigin;
+					ptLightOrigin = m_ptOrigin + m_vForward * kPortalLightForward;
 				}
 
 				//clamp color values
@@ -659,7 +686,8 @@ void C_Prop_Portal::UpdateTransformedLighting( void )
 				if( vColor.z > fColorScale )
 					fColorScale = vColor.z;
 
-				if( fColorScale > 1.0f )
+				// brightest channel 1, as the spark light's tint
+				if( fColorScale > 0.0f )
 					vClampedColor = vColor * (1.0f / fColorScale);
 				else
 					vClampedColor = vColor;
@@ -680,12 +708,9 @@ void C_Prop_Portal::UpdateTransformedLighting( void )
 					vColor.z = 1.0f;*/
 			}
 
-			// Turn on the dlight
-			if ( r_portal_use_dlights.GetBool() )
-			{
-				if( pFakeLight == NULL )
-					pFakeLight = effects->CL_AllocDlight( LIGHT_INDEX_TE_DYNAMIC + entindex() ); //is there a difference between DLight and ELight when only lighting ents?
-			}
+			// Turn on the dlight (r_portal_use_dlights was checked above)
+			if( pFakeLight == NULL )
+				pFakeLight = effects->CL_AllocDlight( LIGHT_INDEX_TE_DYNAMIC + entindex() ); //is there a difference between DLight and ELight when only lighting ents?
 
 			if ( pFakeLight != NULL ) //be absolutely sure that light allocation hasn't failed
 			{
@@ -701,24 +726,26 @@ void C_Prop_Portal::UpdateTransformedLighting( void )
 				{
 					//remote light is greater, fake at local portal
 					TransformedLighting.m_pEntityLight = pFakeLight;
-					pFakeLight->key = index;					
+					pFakeLight->key = LIGHT_INDEX_TE_DYNAMIC + entindex();
 				}
 
 				pFakeLight->die = gpGlobals->curtime + 1e10;
 				pFakeLight->flags = 0; // DLIGHT_NO_WORLD_ILLUMINATION;
 				pFakeLight->minlight = 0.0f;
-				pFakeLight->radius = 128.0f;
+				pFakeLight->radius = kPortalLightRadius;
 				pFakeLight->m_InnerAngle = 0.0f; //r_portal_light_innerangle.GetFloat();
-				pFakeLight->m_OuterAngle = 120.0f; //r_portal_light_outerangle.GetFloat();
+				pFakeLight->m_OuterAngle = 0.0f; // a point light, as the sparks' (retail: a 120 degree spot)
 				pFakeLight->style = 0;
 				
 				pFakeLight->origin = ptLightOrigin;
 				pFakeLight->m_Direction = vLightForward;
 
-				pFakeLight->color.r = vClampedColor.x * 255;
-				pFakeLight->color.g = vClampedColor.y * 255;
-				pFakeLight->color.b = vClampedColor.z * 255;
-				pFakeLight->color.exponent = 0.0f;
+				// The spark light's color (SparkLightParams) in the sparks' tint.
+				const SparkLightParams_t params = SparkLightParams( kPortalLightExponent, kPortalLightRadius );
+				pFakeLight->color.r = (byte)( params.m_Color[0] * vClampedColor.x + 0.5f );
+				pFakeLight->color.g = (byte)( params.m_Color[1] * vClampedColor.y + 0.5f );
+				pFakeLight->color.b = (byte)( params.m_Color[2] * vClampedColor.z + 0.5f );
+				pFakeLight->color.exponent = params.m_nExponent;
 
 				// pFakeLight->color.exponent = ((signed int)(((*((unsigned int *)(&fColorScale))) & 0x7F800000) >> 23)) - 125; //strip the exponent from our maximum color
 				

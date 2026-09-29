@@ -25,6 +25,10 @@
 #include "paint_color_manager.h"
 #include "portal_grabcontroller_shared.h"
 #endif
+#ifdef FSTOP
+#include "explode.h"
+#include "props_shared.h"
+#endif // FSTOP
 
 #define SF_FLOOR_TURRET_AUTOACTIVATE		0x00000020
 #define SF_FLOOR_TURRET_STARTINACTIVE		0x00000040
@@ -188,6 +192,12 @@ public:
 
 private:
 
+#ifdef FSTOP
+	// F-Stop: the portal laser (env_portal_laser) sets turrets on fire.
+	virtual bool	AllowedToIgnite( void ) { return true; }
+	bool			OnBurning( void );
+#endif // FSTOP
+
 	CHandle<CRopeKeyframe>	m_hRopes[ PORTAL_FLOOR_TURRET_NUM_ROPES ];
 
 	CNetworkVar( bool, m_bOutOfAmmo );
@@ -334,6 +344,9 @@ void CNPC_Portal_FloorTurret::Precache( void )
 
 	m_sLaserHaloSprite = PrecacheModel( "sprites/redlaserglow.vmt" );
 	PrecacheModel("effects/redlaser1.vmt");
+#ifdef FSTOP
+	PrecacheScriptSound( "Portal.Glados_core.Death" );
+#endif // FSTOP
 
 #ifdef PORTAL2
 	// Retail precaches the variants only on request, then applies ModelIndex.
@@ -399,6 +412,11 @@ void CNPC_Portal_FloorTurret::Spawn( void )
 	if ( m_nCollisionType == 1 )
 		SetCollisionGroup( COLLISION_GROUP_DEBRIS_TRIGGER );
 #endif
+#ifdef FSTOP
+	// FIXME: Temp! (Valve's F-Stop: ten burn ticks before the turret explodes)
+	SetMaxHealth( 10 );
+	SetHealth( 10 );
+#endif // FSTOP
 }
 
 //-----------------------------------------------------------------------------
@@ -524,12 +542,61 @@ void CNPC_Portal_FloorTurret::NotifySystemEvent(CBaseEntity *pNotify, notify_sys
 	BaseClass::NotifySystemEvent( pNotify, eventType, params );
 }
 
+#ifdef FSTOP
+//-----------------------------------------------------------------------------
+// Purpose: Handles turrets being set on fire by lasers
+//-----------------------------------------------------------------------------
+bool CNPC_Portal_FloorTurret::OnBurning( void )
+{
+	// Tick down
+	m_iHealth -= 1;
+
+	if ( gpGlobals->curtime > m_fNextTalk )
+	{
+		EmitSound( "Portal.Glados_core.Death" );
+		m_fNextTalk = gpGlobals->curtime + 1.75f;
+	}
+
+	if ( m_iHealth <= 0 )
+	{
+		ExplosionCreate( WorldSpaceCenter(), vec3_angle, this, 1000, 500.0f, 
+			SF_ENVEXPLOSION_NODAMAGE | SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS	|
+			SF_ENVEXPLOSION_NOSMOKE  | SF_ENVEXPLOSION_NOFIREBALLSMOKE, 0 );
+
+		UTIL_ScreenShake( WorldSpaceCenter(), 25.0, 150.0, 1.0, 750.0f, SHAKE_START );
+
+		CPVSFilter filter( WorldSpaceCenter() );
+		Vector gibVelocity = RandomVector(-150,150);
+		int iModelIndex = modelinfo->GetModelIndex( g_PropDataSystem.GetRandomChunkModel( "MetalChunks" ) );	
+		for ( int i = 0; i < 32; i++ )
+		{
+			te->BreakModel( filter, 0.0, WorldSpaceCenter(), vec3_angle, Vector(16,16,72), gibVelocity, iModelIndex, 400, 1, 2.5, BREAK_METAL );
+		}
+
+		AddEffects( EF_NODRAW );
+		SetThink( &CBaseEntity::SUB_Remove );
+		SetNextThink( gpGlobals->curtime + 0.1f );
+		return false;
+	}
+
+	return true;
+}
+#endif // FSTOP
+
 //-----------------------------------------------------------------------------
 // Purpose: Allows a generic think function before the others are called
 // Input  : state - which state the turret is currently in
 //-----------------------------------------------------------------------------
 bool CNPC_Portal_FloorTurret::PreThink( turretState_e state )
 {
+#ifdef FSTOP
+	if ( IsOnFire() )
+	{
+		if ( OnBurning() == false )
+			return false;
+	}
+#endif // FSTOP
+
 	// Working 2 enums into one integer
 	int iNewState = state;
 

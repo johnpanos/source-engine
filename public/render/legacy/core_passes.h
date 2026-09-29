@@ -158,6 +158,31 @@ protected:
 	~ICorePassSlots() = default;
 };
 
+// The frame's output (RFC 0016 "Output", render.output.v1) in the backend's
+// present stage: the scene (the back buffer, read as linear values: an 8-bit
+// one through its sRGB view) to the acquired swapchain image, both port
+// textures in their home usage kColorAttachment. The extents may differ (the
+// video mode on a larger drawable). The headroom is the presentation's,
+// read for this frame; exactly 1 for an 8-bit swapchain.
+struct CoreOutputTargets
+{
+	device::IRenderDevice2 *device = nullptr;
+	device::TextureId scene;
+	device::Format sceneFormat = device::Format::kUnknown;
+	std::uint32_t sceneWidth = 0;
+	std::uint32_t sceneHeight = 0;
+	device::TextureId target;
+	device::Format targetFormat = device::Format::kUnknown;
+	std::uint32_t width = 0;
+	std::uint32_t height = 0;
+	float exposure = 1.0f;
+	float scenePeak = 1.0f;
+	float headroom = 1.0f;
+	bool toneMap = true; // false for a debug view (RFC 0014): the encoding alone
+	// No earlier than every submission made before this frame's.
+	device::CompletionToken submitted;
+};
+
 // What records a slot's pass (the frontend's, bound by the composition root).
 class ICorePassRecorder
 {
@@ -172,6 +197,12 @@ public:
 	// records, once per slot in stream order.
 	virtual void RecordSlot(
 	    std::uint32_t tag, device::CommandEncoder &encoder, const CorePassTarget &target ) = 0;
+	// Records the frame's output into `encoder` as a section of the present
+	// stage, outside rendering, leaving both textures in their home usages.
+	// False when it recorded nothing (then the backend presents as before).
+	// Called on the render sequence while the present stage records.
+	virtual bool RecordOutput(
+	    device::CommandEncoder &encoder, const CoreOutputTargets &targets ) = 0;
 	// The backend's device is about to go, after an idle wait: release every
 	// object made on it now (later releases would reach a destroyed device).
 	virtual void ReleaseDevice( device::IRenderDevice2 &device ) = 0;

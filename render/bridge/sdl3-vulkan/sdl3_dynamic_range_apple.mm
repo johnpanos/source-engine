@@ -31,6 +31,10 @@
 //===========================================================================//
 
 #if defined( __APPLE__ )
+#include <TargetConditionals.h>
+#endif
+
+#if defined( __APPLE__ ) && TARGET_OS_IPHONE
 
 #include "sdl3_dynamic_range.h"
 
@@ -364,4 +368,4 @@ Sdl3DisplayMode Sdl3ReadDisplayMode( SDL_Window *window )
 
 } // namespace render_vulkan
 
-#endif // __APPLE__
+#endif // UIKit

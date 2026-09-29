@@ -368,8 +368,10 @@ void CProp_Portal::OnRestore()
 
 	if ( m_bActivated )
 	{
+#ifndef FSTOP // F-Stop portals have no swirl or edge particles
 		DispatchParticleEffect( ( ( m_bIsPortal2 ) ? ( "portal_2_particles" ) : ( "portal_1_particles" ) ), PATTACH_POINT_FOLLOW, this, "particles_2", true );
 		DispatchParticleEffect( ( ( m_bIsPortal2 ) ? ( "portal_2_edge" ) : ( "portal_1_edge" ) ), PATTACH_POINT_FOLLOW, this, "particlespin" );
+#endif // !FSTOP
 	}
 }
 
@@ -2126,7 +2128,9 @@ void CProp_Portal::PlacePortal( const Vector &vOrigin, const QAngle &qAngles, fl
 	Vector vNewOrigin = vOrigin;
 	QAngle qNewAngles = qAngles;
 
+#ifndef FSTOP
 	UTIL_TestForOrientationVolumes( qNewAngles, vNewOrigin, this );
+#endif // !FSTOP
 
 	if ( sv_portal_placement_never_fail.GetBool() )
 	{
@@ -2237,8 +2241,10 @@ void CProp_Portal::NewLocation( const Vector &vOrigin, const QAngle &qAngles )
 		controller.SoundChangeVolume( m_pAmbientSound, 0.4, 0.1 );
 	}
 
+#ifndef FSTOP // F-Stop portals have no swirl or edge particles
 	DispatchParticleEffect( ( ( m_bIsPortal2 ) ? ( "portal_2_particles" ) : ( "portal_1_particles" ) ), PATTACH_POINT_FOLLOW, this, "particles_2", true );
 	DispatchParticleEffect( ( ( m_bIsPortal2 ) ? ( "portal_2_edge" ) : ( "portal_1_edge" ) ), PATTACH_POINT_FOLLOW, this, "particlespin" );
+#endif // !FSTOP
 
 	//if the other portal should be static, let's not punch stuff resting on it
 	bool bOtherShouldBeStatic = false;
@@ -2314,8 +2320,10 @@ void CProp_Portal::InputSetActivatedState( inputdata_t &inputdata )
 				controller.SoundChangeVolume( m_pAmbientSound, 0.4, 0.1 );
 			}
 
+#ifndef FSTOP // F-Stop portals have no swirl or edge particles
 			DispatchParticleEffect( ( ( m_bIsPortal2 ) ? ( "portal_2_particles" ) : ( "portal_1_particles" ) ), PATTACH_POINT_FOLLOW, this, "particles_2", true );
 			DispatchParticleEffect( ( ( m_bIsPortal2 ) ? ( "portal_2_edge" ) : ( "portal_1_edge" ) ), PATTACH_POINT_FOLLOW, this, "particlespin" );
+#endif // !FSTOP
 
 			if ( m_bIsPortal2 )
 			{

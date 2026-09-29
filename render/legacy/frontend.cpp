@@ -100,6 +100,14 @@ public:
 		(void)tag;
 	}
 
+	// The output belongs to the composition's forwarded recorder, which may
+	// name the output pass (a feature, beside this frontend in the layers).
+	bool RecordOutput(
+	    device::CommandEncoder &encoder, const CoreOutputTargets &targets ) override
+	{
+		return m_Forwarded && m_Forwarded->RecordOutput( encoder, targets );
+	}
+
 	void ReleaseDevice( device::IRenderDevice2 &device ) override
 	{
 		if ( m_Forwarded )

@@ -605,8 +605,13 @@ def check_deps(conf):
 		frameworks = ['Foundation', 'CoreFoundation', 'CoreGraphics', 'CoreAudio',
 			'AudioToolbox', 'SystemConfiguration', 'UIKit', 'CoreServices', 'CFNetwork',
 			'GameKit']
+		# QuartzCore: the Metal layer's dynamic range (render/bridge/sdl3-vulkan).
+		frameworks += ['QuartzCore']
 		if conf.env.APPLE_PLATFORM != 'tvos':
 			frameworks += ['CoreMotion'] # not in the tvOS SDK
+		else:
+			# tvOS's HDR display mode (AVDisplayManager, AVDisplayCriteria).
+			frameworks += ['AVFoundation', 'AVKit', 'CoreMedia']
 		for framework in frameworks:
 			conf.env['FRAMEWORK_' + framework.upper()] = framework
 

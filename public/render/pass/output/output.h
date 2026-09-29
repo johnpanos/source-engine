@@ -29,9 +29,11 @@
 //			encoding alone is applied, so a view's linear values reach the
 //			target untouched.
 //
-//			The pass reads the scene texel under each target pixel: the scene
-//			and the target have the same extent (scaling to the drawable is
-//			presentation's). Nothing falls back: invalid targets or
+//			The pass reads the scene texel under each target pixel when the
+//			scene and the target have the same extent. When they differ (a
+//			game's video mode shown on a larger drawable), it samples the scene
+//			with a bilinear filter at each pixel's center, as a scaling
+//			present blit does. Nothing falls back: invalid targets or
 //			parameters fail before any pass is added.
 //
 //=============================================================================//
@@ -85,6 +87,25 @@ struct OutputTargets
 {
 	graph::ResourceRef scene;  // a float texture the pass samples
 	graph::ResourceRef target; // written whole as a color attachment
+	std::uint32_t width = 0;   // the target's extent
+	std::uint32_t height = 0;
+	// The scene's extent; 0 for the target's.
+	std::uint32_t sceneWidth = 0;
+	std::uint32_t sceneHeight = 0;
+};
+
+// The same pass recorded straight into an encoder, for a host's section
+// (render/device/vulkan/host_device.h): the textures are in `sceneUsage` and
+// `targetUsage` (the host's home usages) before and after it; the pass moves
+// the scene to kSampled and the target to kColorAttachment and back.
+struct OutputDirectTargets
+{
+	device::TextureId scene;
+	device::ResourceUsage sceneUsage = device::ResourceUsage::kSampled;
+	std::uint32_t sceneWidth = 0;
+	std::uint32_t sceneHeight = 0;
+	device::TextureId target;
+	device::ResourceUsage targetUsage = device::ResourceUsage::kColorAttachment;
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
 };
@@ -115,6 +136,10 @@ public:
 	foundation::Expected<void, OutputStatus> AddPass(
 	    graph::GraphBuilder &builder, const OutputTargets &targets, const OutputParams &params );
 
+	// Records the pass into `encoder` outside any rendering (a section).
+	foundation::Expected<void, OutputStatus> Record( device::CommandEncoder &encoder,
+	    const OutputDirectTargets &targets, const OutputParams &params );
+
 	// Releases the bind groups of executions up to `token` once it completes.
 	void Collect( device::CompletionToken token );
 	// Record-time failures (a bind group the device refused); 0 when every
@@ -124,11 +149,17 @@ public:
 private:
 	OutputRenderer( device::IRenderDevice2 &device ) : m_Device( device ) {}
 
+	// Records the draw; false when the device refused its bind group.
+	bool RecordDraw( device::CommandEncoder &encoder, device::TextureId scene,
+	    device::TextureId target, std::uint32_t width, std::uint32_t height, bool scaled,
+	    const void *constants );
+
 	device::IRenderDevice2 &m_Device;
 	device::Format m_TargetFormat = device::Format::kUnknown;
 	OutputEncoding m_Encoding = OutputEncoding::kSrgb;
 	device::BindGroupLayoutId m_Layout;
-	device::SamplerId m_Sampler;
+	device::SamplerId m_Sampler;       // nearest: a texel per pixel
+	device::SamplerId m_LinearSampler; // bilinear: a scaled scene
 	device::PipelineId m_Pipeline;
 	mutable std::mutex m_PendingLock;
 	std::vector<device::BindGroupId> m_Pending;

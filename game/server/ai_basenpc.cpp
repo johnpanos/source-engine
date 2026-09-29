@@ -6580,8 +6580,20 @@ float CAI_BaseNPC::ThrowLimit(	const Vector &vecStart,
 //-----------------------------------------------------------------------------
 void CAI_BaseNPC::SetupVPhysicsHull()
 {
+#ifdef FSTOP
+	// Bail if we don't need a physics shadow.
+	if ( GetMoveType() == MOVETYPE_VPHYSICS )
+		return;
+
+	// Bail if we don't done move. If in stasis, test based on the 
+	// movetype we'd be returning to once removed from stasis
+	bool bBailOnMovetypeNone = IsInStasis() ? (m_PreStasisMoveType == MOVETYPE_NONE) : (GetMoveType() == MOVETYPE_NONE);
+	if ( bBailOnMovetypeNone )
+		return;
+#else
 	if ( GetMoveType() == MOVETYPE_VPHYSICS || GetMoveType() == MOVETYPE_NONE )
 		return;
+#endif // FSTOP
 
 	if ( VPhysicsGetObject() )
 	{
@@ -7692,6 +7704,12 @@ bool CAI_BaseNPC::IsValidEnemy( CBaseEntity *pEnemy )
 
 bool CAI_BaseNPC::CanBeAnEnemyOf( CBaseEntity *pEnemy )	
 { 
+#ifdef FSTOP
+	// Held in a photo: hidden and not solid, so nothing can target it
+	if ( IsInStasis() )
+		return false;
+#endif // FSTOP
+
 	if ( GetSleepState() > AISS_WAITING_FOR_THREAT )
 		return false;
 

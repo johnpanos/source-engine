@@ -348,6 +348,16 @@ int main( int, char ** )
 		argv[argc++] = const_cast<char *>( "1" );
 		SDL_Log( "Source: console UI (gameui_xbox 1)" );
 	}
+#if !defined( PLATFORM_TVOS )
+	// The iPhone presents in its extended (EDR) range through the core's
+	// output (RFC 0016 "Output", user request 2026-09-29); commandline.txt may
+	// ask for '+mat_hdr_output 0'.
+	if ( !HasArgument( argv, argc, "+mat_hdr_output" ) && argc + 2 < mobileapp::kMaxArgs )
+	{
+		argv[argc++] = const_cast<char *>( "+mat_hdr_output" );
+		argv[argc++] = const_cast<char *>( "1" );
+	}
+#endif
 	argv[argc] = NULL;
 
 	SDL_Log( "Source: bundle=%s content=%s", bundleDir, contentDir );

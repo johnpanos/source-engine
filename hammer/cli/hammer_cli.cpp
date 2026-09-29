@@ -11,6 +11,9 @@
 //			hammer_cli --mcp --root <dir>                 serve MCP on stdin/stdout
 //			hammer_cli --commands                         list the command catalog
 //			  [--fgd FILE]  entity schema (its @includes resolve beside it)
+//			  [--runtime DIR] [--install-game-dir DIR]  passed to build_map's
+//			                vmf_map_build.py (a product's staged content, and the
+//			                game directory the built map is copied into)
 //
 //			Script paths are relative to --root (default: the working
 //			directory). Absolute paths and ".." components are rejected.
@@ -34,6 +37,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -96,7 +100,7 @@ int Usage()
 {
 	std::fprintf( stderr,
 	    "usage: hammer_cli (--script FILE | --mcp) [--root DIR] [--repo DIR] [--builds DIR] "
-	    "[--fgd FILE] | --commands\n" );
+	    "[--fgd FILE] [--runtime DIR] [--install-game-dir DIR] | --commands\n" );
 	return 2;
 }
 
@@ -123,6 +127,7 @@ int main( int argc, char **argv )
 	std::string repo = ".";
 	std::string builds;
 	std::string fgd;
+	std::vector<std::string> buildArgs;
 	bool mcp = false;
 	for ( int i = 1; i < argc; ++i )
 	{
@@ -141,6 +146,11 @@ int main( int argc, char **argv )
 			builds = argv[++i];
 		else if ( arg == "--fgd" && i + 1 < argc )
 			fgd = argv[++i];
+		else if ( ( arg == "--runtime" || arg == "--install-game-dir" ) && i + 1 < argc )
+		{
+			buildArgs.emplace_back( arg );
+			buildArgs.emplace_back( argv[++i] );
+		}
 		else
 			return Usage();
 	}
@@ -180,12 +190,13 @@ int main( int argc, char **argv )
 	// tool-process provider, with file-store paths resolved under --root.
 	const std::unique_ptr<platform::IToolProcessProvider> processes =
 	    platform::CreatePosixToolProcessProvider();
-	hammer::adapters::platform::ToolProcessMapBuilder builder( *processes, repo,
-	    builds.empty() ? repo + "/quality-results/hammer-builds" : builds,
+	hammer::adapters::platform::ToolProcessMapBuilder builder(
+	    *processes, repo, builds.empty() ? repo + "/quality-results/hammer-builds" : builds,
 	    [&root]( const std::string &path )
 	    {
 		    return root.empty() ? path : root + "/" + path;
-	    } );
+	    },
+	    buildArgs );
 	hammer::app::SessionServices services;
 	services.codec = &codec;
 	services.store = &store;

@@ -58,6 +58,7 @@ def build(bld):
 		'vulkan_world_mesh_upload.cpp',
 		# The SDL3-Vulkan pair bridge: the only source here that includes SDL.
 		'../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp',
+		'../../render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]
 
@@ -75,6 +76,13 @@ def build(bld):
 	libs = ['tier0','tier1','vstdlib','mathlib','bitmap','VULKAN','SDL3','vulkan_texture_image',
 		'vulkan_debug',
 		'mapcontainer', 'render_spv']
+	# The pair's dynamic range on Apple: the Metal layer's range and the
+	# screen's headroom (UIKit), and tvOS's HDR mode (AVKit, CoreMedia).
+	if bld.env.DEST_OS == 'ios':
+		source += ['../../render/bridge/sdl3-vulkan/sdl3_dynamic_range_apple.mm']
+		libs += ['FOUNDATION', 'UIKIT', 'QUARTZCORE']
+		if bld.env.APPLE_PLATFORM == 'tvos':
+			libs += ['AVFOUNDATION', 'AVKIT', 'COREMEDIA']
 	if bld.env.KTX_READ_ENABLED:
 		libs += ['texturecontainer', 'KTXREAD']
 		defines += ['RFC0008_KTX_READER']

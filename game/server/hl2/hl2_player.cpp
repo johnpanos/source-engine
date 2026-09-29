@@ -505,7 +505,9 @@ void CHL2_Player::EquipSuit( bool bPlayEffects )
 
 	if ( bPlayEffects == true )
 	{
+#ifndef FSTOP
 		StartAdmireGlovesAnimation();
+#endif // !FSTOP
 	}
 }
 

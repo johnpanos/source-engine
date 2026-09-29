@@ -15,9 +15,10 @@ namespace hammer::adapters::platform
 
 ToolProcessMapBuilder::ToolProcessMapBuilder( ::platform::IToolProcessProvider &provider,
     std::string repoRoot, std::string outRoot,
-    std::function<std::string( const std::string & )> diskPath )
+    std::function<std::string( const std::string & )> diskPath, std::vector<std::string> buildArgs )
     : m_provider( provider ), m_repoRoot( std::move( repoRoot ) ),
-      m_outRoot( std::move( outRoot ) ), m_diskPath( std::move( diskPath ) )
+      m_outRoot( std::move( outRoot ) ), m_diskPath( std::move( diskPath ) ),
+      m_buildArgs( std::move( buildArgs ) )
 {
 }
 
@@ -30,6 +31,7 @@ ports::MapBuildResult ToolProcessMapBuilder::Build( const ports::MapBuildRequest
 	::platform::ToolProcessRequest run;
 	run.argv = { "python3", m_repoRoot + "/tools/quality/vmf_map_build.py", "build", "--vmf", vmf,
 	    "--out", m_outRoot + "/" + stem, "--quality", request.fullQuality ? "full" : "fast" };
+	run.argv.insert( run.argv.end(), m_buildArgs.begin(), m_buildArgs.end() );
 	if ( request.publish )
 	{
 		run.argv.push_back( "--publish" );
