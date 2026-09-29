@@ -50,6 +50,7 @@
 #define RENDER_PASS_WORLD_WORLD_PASS_H
 
 #include "render/device/device.h"
+#include "render/frame/debug_controls.h"
 
 #include <cstdint>
 #include <memory>
@@ -163,6 +164,10 @@ struct WorldView
 	// only when no slot of its frame recorded: the backend never recorded
 	// that frame (a resize, a lost surface, a dropped queued frame).
 	std::uint64_t hostFrame = 0;
+	// The frame's debug controls (RFC 0014), as the renderer applied them
+	// when the view was queued: the render sequence draws with the main
+	// thread's frame value, in either queued mode.
+	frame::DebugControls debug;
 };
 
 struct WorldStats
@@ -183,11 +188,13 @@ struct WorldStats
 	std::vector<std::pair<std::string, std::uint32_t>> claimed;
 };
 
-// A world tag: the high bit set, then the view's serial.
+// A world tag: the high bit set, then the view's serial in the low 30 bits
+// (bit 30 is the core-pass slots' kCorePassLegacyOff).
 inline constexpr std::uint32_t kWorldTag = 0x80000000u;
+inline constexpr std::uint32_t kWorldSerialMask = 0x3fffffffu;
 inline bool IsWorldTag( std::uint32_t tag )
 {
-	return ( tag & kWorldTag ) != 0;
+	return ( tag & kWorldTag ) != 0 && ( tag & ~( kWorldTag | kWorldSerialMask ) ) == 0;
 }
 
 class WorldPass

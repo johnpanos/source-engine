@@ -7,6 +7,7 @@
 
 #include "render/pass/world/world_pass.h"
 
+#include "render/frame/debug_specialization.h"
 #include "render/material/draw_program.h"
 #include "render/material/program_resolver.h"
 #include "render/material/vmt_import.h"
@@ -85,11 +86,11 @@ std::string Lower( std::string text )
 }
 
 // Whether serial a was issued before serial b (serials wrap within the
-// tag's low 31 bits).
+// tag's serial bits).
 bool IssuedBefore( std::uint32_t a, std::uint32_t b )
 {
-	const std::uint32_t distance = ( b - a ) & ~kWorldTag;
-	return distance != 0 && distance < ( kWorldTag >> 1 );
+	const std::uint32_t distance = ( b - a ) & kWorldSerialMask;
+	return distance != 0 && distance < ( ( kWorldSerialMask + 1 ) >> 1 );
 }
 
 std::string PageName( int handle )
@@ -320,7 +321,7 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 	if ( !s.world )
 		return 0;
 	const std::uint32_t serial = s.nextSerial;
-	s.nextSerial = ( s.nextSerial + 1 ) & ~kWorldTag;
+	s.nextSerial = ( s.nextSerial + 1 ) & kWorldSerialMask;
 	if ( s.nextSerial == 0 )
 		s.nextSerial = 1;
 	// A view whose slot never records (a skipped frame) is dropped when a
@@ -368,7 +369,7 @@ std::uint64_t WorldPass::Failures() const
 void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldTarget &target )
 {
 	State &s = *m_State;
-	const std::uint32_t serial = tag & ~kWorldTag;
+	const std::uint32_t serial = tag & kWorldSerialMask;
 	std::shared_ptr<const WorldData> world;
 	std::shared_ptr<const std::vector<Claimed>> claims;
 	std::uint64_t generation = 0;
@@ -843,13 +844,30 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	std::uint32_t boundMaterial = ~0u;
 	int boundPage = 0;
 	bool pageBound = false;
+	// The frame's debug controls (RFC 0014), as the view was queued: each
+	// program's pipeline under its specialization (the shipped one when the
+	// controls are neutral). A refused debug pipeline fails the view loudly.
+	const bool debugNeutral = frame::DebugControlsNeutral( view.debug );
 	for ( const std::uint32_t index : order )
 	{
 		const WorldSurface &surface = world->surfaces[index];
 		const Resources::Material &m = r.materials[surface.material];
 		if ( surface.material != boundMaterial )
 		{
-			encoder.SetPipeline( m.program.request.pipeline );
+			PipelineId pipeline = m.program.request.pipeline;
+			if ( !debugNeutral )
+			{
+				auto debug = r.resolver->DebugPipeline(
+				    m.program, frame::DebugSpecializationFor( view.debug, m.program.name ) );
+				if ( !debug )
+				{
+					note( "debug view: " + debug.Error() );
+					complete = false;
+					continue;
+				}
+				pipeline = debug.Value();
+			}
+			encoder.SetPipeline( pipeline );
 			if ( m.program.request.frameLayout.IsValid() )
 				encoder.SetBindGroup( BindGroupRole::kFrame,
 				    r.frameGroups[m.program.request.frameLayout.value].group );

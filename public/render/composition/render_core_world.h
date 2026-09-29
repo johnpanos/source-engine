@@ -83,6 +83,12 @@ public:
 	// A view of a host frame the backend never records counts as skipped.
 	virtual bool DrawView( const unsigned int *surfaces, unsigned int count,
 	    const float worldToClip[16], const float viewport[6], unsigned long long hostFrame ) = 0;
+	// Main thread, at the start of each frame, after the renderer began it
+	// (its debug controls are applied). Under a pixel view or
+	// cl_render_debug_legacy 2 (RFC 0014) it marks the frame's first slot:
+	// the core draws the not-applicable hatch there, and the legacy stream is
+	// off from it to the frame's end. Otherwise it marks nothing.
+	virtual void BeginFrame() = 0;
 	// Views and claimed materials the core failed to draw, so far (never
 	// drawn by legacy instead: the caller's policy decides what a failure
 	// costs).

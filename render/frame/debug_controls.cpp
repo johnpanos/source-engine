@@ -98,6 +98,36 @@ foundation::Expected<void, DebugControlsError> ValidateDebugControls(
 	return {};
 }
 
+bool ParseDebugTerms(
+    const char *names, std::uint32_t *bits, char *unknown, std::size_t unknownBytes )
+{
+	*bits = 0;
+	if ( unknown && unknownBytes )
+		unknown[0] = '\0';
+	std::string_view rest = names ? std::string_view( names ) : std::string_view();
+	while ( !rest.empty() )
+	{
+		const std::size_t comma = rest.find( ',' );
+		std::string_view name = rest.substr( 0, comma );
+		rest = comma == std::string_view::npos ? std::string_view() : rest.substr( comma + 1 );
+		while ( !name.empty() && name.front() == ' ' )
+			name.remove_prefix( 1 );
+		while ( !name.empty() && name.back() == ' ' )
+			name.remove_suffix( 1 );
+		if ( name.empty() )
+			continue;
+		const std::uint32_t bit = shaderlib::DebugTermBit( name );
+		if ( bit == 0 )
+		{
+			if ( unknown && unknownBytes )
+				std::snprintf( unknown, unknownBytes, "%.*s", int( name.size() ), name.data() );
+			return false;
+		}
+		*bits |= bit;
+	}
+	return true;
+}
+
 bool PixelViewActive( const DebugControls &controls )
 {
 	return controls.view != 0;

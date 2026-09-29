@@ -89,6 +89,7 @@ FAMILIES = "render/material/families"
 SKINNING_TESTS = "unittests/rendertest/core/skinning"
 LIGHTS = "render/pass/lights"
 SHADOWS = "render/pass/shadows"
+DEBUG = "render/pass/debug"
 LIGHTS_TESTS = "unittests/rendertest/core/pass/lights"
 SHADOWS_TESTS = "unittests/rendertest/core/pass/shadows"
 
@@ -163,6 +164,10 @@ GENERATED = {
         "the lines pass: wireframe, grid and overlays (RFC 0016, Hammer viewports)", (
         ("kLinesVertex", LINES + "/lines.vert", DEVICE_OPTIONS),
         ("kLinesFragment", LINES + "/lines.frag", DEVICE_OPTIONS))),
+    "debug_spv.h": ("render::pass::debug::spirv",
+        "render.pass.debug: the not-applicable hatch (RFC 0014)", (
+        ("kFullscreenVertex", DEBUG + "/fullscreen.vert", DEVICE_OPTIONS),
+        ("kHatchFragment", DEBUG + "/hatch.frag", DEVICE_OPTIONS))),
     "cluster_assign_spv.h": ("render::pass::lights::spirv",
         "the clustered light assignment pass (RFC 0016 K7)", (
         ("kClusterAssignCompute", LIGHTS + "/cluster_assign.comp", DEVICE_OPTIONS),)),

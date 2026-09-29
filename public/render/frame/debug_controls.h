@@ -86,6 +86,12 @@ bool PixelViewActive( const DebugControls &controls );
 // Whether the controls change nothing (every control at its default).
 bool DebugControlsNeutral( const DebugControls &controls );
 
+// Comma-separated term names (cl_render_debug_term: "ao,ibl"; spaces are
+// ignored, empty is no term) as shaderlib::DebugTerm bits. False, with the
+// first unknown name in `unknown`, when a name is not a term.
+bool ParseDebugTerms(
+    const char *names, std::uint32_t *bits, char *unknown, std::size_t unknownBytes );
+
 } // namespace render::frame
 
 #endif // RENDER_FRAME_DEBUG_CONTROLS_H

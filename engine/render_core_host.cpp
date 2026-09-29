@@ -18,7 +18,9 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
+#include <string>
 #include <vector>
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -47,6 +49,91 @@ RenderCoreHostState &Host()
 {
 	static RenderCoreHostState s_State;
 	return s_State;
+}
+
+// RFC 0014: the render core's debug controls. They are read once per frame
+// into the FrameDesc (DebugControlsFromConVars); no shader, pass or engine
+// module reads them otherwise. The renderer validates the frame's value and
+// keeps the last valid one when a new one is refused.
+void DebugProgramChanged( IConVar *var, const char *, float );
+
+ConVar cl_render_debug_view( "cl_render_debug_view", "0", FCVAR_CHEAT,
+    "Render core debug view (RFC 0014): 0 off; 1 albedo, 2 world normal, 3 normal map, "
+    "4 roughness, 5 filtered roughness, 6 metalness, 7 AO, 8 baked light, 9 direct light, "
+    "10 image specular, 11 SSR, 12 emission, 13 UV checker, 14 vertex color, 15 linear depth, "
+    "16 NaN/Inf/negative, 17 over-range. What the core does not draw shows a grey hatch." );
+ConVar cl_render_debug_view_program( "cl_render_debug_view_program", "", FCVAR_CHEAT,
+    "Applies the debug view, BRDF mode and overrides to one core program; others draw flat "
+    "grey. ? lists the programs.",
+    DebugProgramChanged );
+ConVar cl_render_debug_view_scale(
+    "cl_render_debug_view_scale", "1", FCVAR_CHEAT, "Linear exposure of the radiometric views." );
+ConVar cl_render_debug_view_range( "cl_render_debug_view_range", "4096", FCVAR_CHEAT,
+    "Divisor of the linear depth view, in units." );
+ConVar cl_render_debug_view_threshold( "cl_render_debug_view_threshold", "1", FCVAR_CHEAT,
+    "Luminance threshold of the over-range view." );
+ConVar cl_render_debug_brdf( "cl_render_debug_brdf", "0", FCVAR_CHEAT,
+    "0 full; 1 diffuse lobe only; 2 specular lobe only; 3 energy compensation off; 4 the "
+    "split-sum table sample." );
+ConVar cl_render_debug_furnace( "cl_render_debug_furnace", "0", FCVAR_CHEAT,
+    "Albedo 1 in a uniform environment of radiance 1; direct lights off." );
+ConVar cl_render_debug_term( "cl_render_debug_term", "", FCVAR_CHEAT,
+    "Comma-separated lighting-model terms to turn off: clustered, sun, area, projected, baked, "
+    "probes, ibl, ssr, ao, specular_occlusion, emission, volumetric." );
+ConVar cl_render_debug_force_roughness( "cl_render_debug_force_roughness", "-1", FCVAR_CHEAT,
+    "-1 off; otherwise the roughness every material takes." );
+ConVar cl_render_debug_force_metalness( "cl_render_debug_force_metalness", "-1", FCVAR_CHEAT,
+    "-1 off; otherwise the metalness every material takes." );
+ConVar cl_render_debug_legacy( "cl_render_debug_legacy", "0", FCVAR_CHEAT,
+    "0 off; 2 skips the legacy stream, leaving the grey hatch where the core draws nothing." );
+
+void DebugProgramChanged( IConVar *var, const char *, float )
+{
+	ConVarRef program( var );
+	if ( std::strcmp( program.GetString(), "?" ) != 0 )
+		return;
+	RenderCoreHostState &host = Host();
+	if ( host.renderer )
+	{
+		Msg( "Render core programs:" );
+		for ( std::size_t i = 0; i < host.renderer->DebugProgramCount(); ++i )
+			Msg( " %s", host.renderer->DebugProgramName( i ) );
+		Msg( "\n" );
+	}
+	program.SetValue( "" );
+}
+
+render::frame::DebugControls DebugControlsFromConVars( const RenderCoreHostState &host )
+{
+	render::frame::DebugControls debug;
+	debug.view = (uint32)cl_render_debug_view.GetInt();
+	V_strncpy( debug.program, cl_render_debug_view_program.GetString(), sizeof( debug.program ) );
+	if ( V_strlen( cl_render_debug_view_program.GetString() ) >= (int)sizeof( debug.program ) )
+		std::memset( debug.program, 'x', sizeof( debug.program ) ); // refused as unterminated
+	debug.viewScale = cl_render_debug_view_scale.GetFloat();
+	debug.viewRange = cl_render_debug_view_range.GetFloat();
+	debug.viewThreshold = cl_render_debug_view_threshold.GetFloat();
+	debug.brdf = (uint32)cl_render_debug_brdf.GetInt();
+	debug.furnace = cl_render_debug_furnace.GetBool();
+	char unknown[64];
+	uint32 terms = 0;
+	if ( !host.renderer->ParseDebugTerms(
+	         cl_render_debug_term.GetString(), &terms, unknown, sizeof( unknown ) ) )
+	{
+		static std::string s_Reported;
+		if ( s_Reported != cl_render_debug_term.GetString() )
+		{
+			Warning(
+			    "cl_render_debug_term: %s is not a term; the frame keeps its terms.\n", unknown );
+			s_Reported = cl_render_debug_term.GetString();
+		}
+		terms = ~0u; // no term: the renderer refuses the value and keeps the last
+	}
+	debug.termsOff = terms;
+	debug.forceRoughness = cl_render_debug_force_roughness.GetFloat();
+	debug.forceMetalness = cl_render_debug_force_metalness.GetFloat();
+	debug.legacy = render::frame::DebugLegacy( (uint32)cl_render_debug_legacy.GetInt() );
+	return debug;
 }
 
 } // namespace
@@ -110,7 +197,29 @@ void RenderCoreHost_BeginFrame()
 	desc.frame = ++host.frame;
 	desc.width = videomode ? (uint32)MAX( 1, videomode->GetModeWidth() ) : 1u;
 	desc.height = videomode ? (uint32)MAX( 1, videomode->GetModeHeight() ) : 1u;
+	desc.debug = DebugControlsFromConVars( host );
+	const uint64 refusedBefore = host.renderer->Totals().debugRejected;
 	host.inFrame = host.renderer->BeginFrame( desc ).HasValue();
+	if ( host.inFrame )
+	{
+		// A refused debug value prints why, once per reason.
+		static std::string s_Reported;
+		if ( host.renderer->Totals().debugRejected != refusedBefore )
+		{
+			const char *why = host.renderer->LastDebugRejection().message;
+			if ( s_Reported != why )
+			{
+				Warning( "Render core: %s; the frame keeps its debug controls.\n", why );
+				s_Reported = why;
+			}
+		}
+		else
+			s_Reported.clear();
+		// Under a pixel view the core draws the frame alone from its first
+		// slot (RFC 0014).
+		if ( host.world )
+			host.world->BeginFrame();
+	}
 	RenderCoreWorld_BeginFrame();
 }
 

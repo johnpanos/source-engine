@@ -16,7 +16,9 @@
 
 #include "render/composition/render_core.h"
 #include "render/legacy/core_backend.h"
+#include "render/frame/renderer.h"
 #include "render/legacy/core_passes.h"
+#include "render/pass/debug/debug_overlays.h"
 #include "render/pass/world/world_pass.h"
 
 namespace render::composition
@@ -25,7 +27,10 @@ namespace render::composition
 class CoreWorld final : public IRenderCoreWorld, public legacy::ICorePassRecorder
 {
 public:
-	explicit CoreWorld( legacy::ILegacyFrontend &frontend ) : m_Frontend( frontend ) {}
+	CoreWorld( legacy::ILegacyFrontend &frontend, const frame::IRenderer &renderer )
+	    : m_Frontend( frontend ), m_Renderer( renderer )
+	{
+	}
 
 	void BindHost( const legacy::RenderCallQueueHost *host ) { m_Host = host; }
 
@@ -38,6 +43,7 @@ public:
 	bool Draws( unsigned int material ) const override { return m_Pass.Draws( material ); }
 	bool DrawView( const unsigned int *surfaces, unsigned int count, const float worldToClip[16],
 	    const float viewport[6], unsigned long long hostFrame ) override;
+	void BeginFrame() override;
 	unsigned long long Failures() const override;
 	void GetStats( RenderCoreWorldStats *out ) const override;
 
@@ -48,12 +54,15 @@ public:
 	void ReleaseDevice( device::IRenderDevice2 &device ) override
 	{
 		m_Pass.ReleaseDevice( device );
+		m_Overlays.ReleaseDevice( device );
 	}
 
 private:
 	legacy::ILegacyFrontend &m_Frontend;
+	const frame::IRenderer &m_Renderer;
 	const legacy::RenderCallQueueHost *m_Host = nullptr;
 	pass::world::WorldPass m_Pass;
+	pass::debug::DebugOverlays m_Overlays;
 };
 
 } // namespace render::composition

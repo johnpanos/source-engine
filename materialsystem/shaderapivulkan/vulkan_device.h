@@ -1627,6 +1627,9 @@ private:
 	uint64_t m_appliedRampRevision = 0;
 	render::GammaRamp16 m_activeRamp = {};
 	bool m_gammaActive = false;
+	// The frame being recorded turned the legacy stream off (RFC 0014,
+	// render::legacy::kCorePassLegacyOff): it presents without the ramp.
+	bool m_frameLegacyOff = false;
 	bool m_gammaUnavailable = false; // the pass failed to build; presents blit
 	uint64_t m_gammaPresentCount = 0;
 	VkFormat m_gammaFormat = VK_FORMAT_UNDEFINED; // what the pass was built for

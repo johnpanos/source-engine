@@ -51,6 +51,7 @@ public:
 		{
 			m_LastDebugRejection = valid.Error();
 			++m_Current.debugRejected;
+			++m_Totals.debugRejected; // counted at once: the caller reports it this frame
 		}
 		m_Frame.debug = m_AppliedDebug;
 		m_Tracker.Reset();
@@ -132,7 +133,6 @@ public:
 		m_Totals.transitions += m_Current.transitions;
 		m_Totals.transientsCreated += m_Current.transientsCreated;
 		m_Totals.transientsReused += m_Current.transientsReused;
-		m_Totals.debugRejected += m_Current.debugRejected;
 		m_Totals.lastToken = m_Current.lastToken;
 		return m_Current;
 	}
@@ -142,6 +142,16 @@ public:
 	const frame::DebugControlsError &LastDebugRejection() const override
 	{
 		return m_LastDebugRejection;
+	}
+	std::size_t DebugProgramCount() const override { return m_DebugPrograms.size(); }
+	const char *DebugProgramName( std::size_t index ) const override
+	{
+		return index < m_DebugPrograms.size() ? m_DebugPrograms[index].c_str() : nullptr;
+	}
+	bool ParseDebugTerms( const char *names, std::uint32_t *bits, char *unknown,
+	    std::size_t unknownBytes ) const override
+	{
+		return frame::ParseDebugTerms( names, bits, unknown, unknownBytes );
 	}
 
 	void AddStageHooks( frame::IRenderStageHooks *hooks ) override

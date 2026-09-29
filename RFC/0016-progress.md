@@ -2215,3 +2215,40 @@ and D0 closes only after it passes. Decisions are recorded in
 
 Open for D0: the product slice on native Vulkan Linux with the render
 sequence on and off the main thread; the Fold7 run (required for D0).
+
+### RFC 0014 D0 in the product: the views on native Vulkan (2026-09-28)
+
+The catalog now reaches the product.
+
+- **Engine.** The engine's render core host parses the `cl_render_debug_*`
+  ConVars (cheat) once per frame into `FrameDesc::debug`.
+  - A refused value prints its reason once, and the frame keeps its
+    controls.
+  - `cl_render_debug_view_program ?` lists the programs.
+  - Term names parse through `IRenderer::ParseDebugTerms`: the engine
+    reaches the core only through its ports.
+- **World pass.** The composition's world gives each queued view the
+  renderer's applied controls (`WorldView::debug`). The render sequence
+  therefore draws with the frame's value in either queued mode. Each
+  program is drawn with its debug pipeline, and a refused debug pipeline
+  fails the view loudly.
+- **Frame begin.** Under a pixel view (or `cl_render_debug_legacy 2`), the
+  composition marks the frame's first slot with
+  `kCorePassForwarded | kCorePassLegacyOff`
+  (`render/legacy/core_passes.h`). At that slot it records the
+  not-applicable hatch over the target (`render.pass.debug`, a new core
+  module with `hatch.frag` over `debug_view.glsl`).
+- **Backend (core plumbing on a frozen path).** From such a slot to the
+  frame's end, the backend's replay records no legacy draw, copy or scene
+  capture and only the depth and stencil parts of clears. It presents
+  without the monitor gamma ramp; its slots still run. The legacy post
+  chain (bloom, color correction) is legacy stream draws, so it is bypassed
+  with them. World view tags keep 30 serial bits, so bit 30 is free for the
+  flag.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Views in the product, render sequence on the main thread | `render.debug-views.product.mode0` (`tools/render/debug_views_product.py run --queue-mode 0`), testchmb_a_01. Checker: 391,471 black, 392,995 white, 1,966 edge blends, no other pixel. Reserved view 18 refused, the console naming why, and the checker kept. The program filter greys all 786,432 pixels (every one is lightmapped world). With the core drawing nothing, 786,432 of 786,432 pixels are the hatch at their own coordinates. Neutral controls give a normal frame, which the judge rejects. `legacy 2` keeps the core's shading | pass (11 checks) |
+| Render sequence on its own thread | `render.debug-views.product.mode2`: the same counts, and the console shows `mat_queue_mode` 2 | pass (11 checks) |
+| Judges catch what they must | `render.debug-views.product.selftest`: a legacy HUD mark in a checker frame, a hatch one pixel out of phase, the checker as hatch, the hatch as filter grey | pass (11 checks) |
+| Default identity, product | `core_world_smoke.py run --game portal` on this build: 26 of 26 retail maps pass with the core drawing the world strictly | pass (27 checks) |

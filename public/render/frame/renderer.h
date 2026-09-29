@@ -94,6 +94,12 @@ public:
 	// the last refused one was refused (status 0 before any refusal).
 	virtual const DebugControls &AppliedDebug() const = 0;
 	virtual const DebugControlsError &LastDebugRejection() const = 0;
+	// The programs cl_render_debug_view_program may name.
+	virtual std::size_t DebugProgramCount() const = 0;
+	virtual const char *DebugProgramName( std::size_t index ) const = 0;
+	// cl_render_debug_term's names as term bits (frame::ParseDebugTerms).
+	virtual bool ParseDebugTerms(
+	    const char *names, std::uint32_t *bits, char *unknown, std::size_t unknownBytes ) const = 0;
 
 	// Hooks outlive their registration.
 	virtual void AddStageHooks( IRenderStageHooks *hooks ) = 0;

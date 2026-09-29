@@ -7295,10 +7295,21 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 		// Whether the latest scene capture holds this view's depth (glass reads it).
 		bool sceneDepthValid = false;
 		size_t labelCursor = 0;
+		// RFC 0014 core plumbing (render/legacy/core_passes.h kCorePassLegacyOff):
+		// from a slot so tagged, the core alone draws the frame.
+		bool legacyOff = false;
+		m_frameLegacyOff = false;
 		for ( size_t recordIndex = 0; recordIndex < m_dynDrawRecords.size(); ++recordIndex )
 		{
 			ReplayFrameLabels( &labelCursor, recordIndex );
 			const DynDraw &d = m_dynDrawRecords[recordIndex];
+			if ( d.kind == kRecordCorePass && ( d.corePass & render::legacy::kCorePassForwarded ) &&
+			     ( d.corePass & render::legacy::kCorePassLegacyOff ) )
+				legacyOff = m_frameLegacyOff = true;
+			if ( legacyOff && ( d.kind == kRecordDraw || d.kind == kRecordCopy ||
+			                      d.kind == kRecordSceneCapture ||
+			                      ( d.kind == kRecordClear && !d.clearDepth && !d.clearStencil ) ) )
+				continue;
 			if ( d.kind == kRecordCorePass )
 			{
 				// Outside any pass, like a copy: the slot's section runs here,
@@ -7451,7 +7462,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					continue;
 				VkClearAttachment clears[2] = {};
 				uint32_t clearCount = 0;
-				if ( d.clearColor )
+				if ( d.clearColor && !legacyOff )
 				{
 					clears[clearCount].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 					clears[clearCount].colorAttachment = 0;
@@ -8297,7 +8308,8 @@ void CVulkanContext::RecordFramePresent( VkCommandBuffer cmd )
 	if ( m_gpuTimerPool != VK_NULL_HANDLE )
 		GpuTimerMark( cmd, "present (waits for the swapchain image)" );
 	ApplyPublishedGammaRamp();
-	if ( !m_gammaActive ||
+	// RFC 0014: a frame the core alone draws presents without the ramp.
+	if ( !m_gammaActive || m_frameLegacyOff ||
 	     !RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
 		RecordPresentBlit( cmd, imageIndex, backBufferLayout, capturePresented );
 	m_captureRequested = m_capturePresented = false;

@@ -721,7 +721,9 @@
           "foundation",
           "render.math",
           "render.device",
-          "render.material"
+          "render.material",
+          "render.frame",
+          "render.shader-library"
         ]
       },
       {
@@ -751,6 +753,19 @@
         ],
         "externalHeaders": [
           "filesystem"
+        ]
+      },
+      {
+        "id": "render.pass.debug",
+        "description": "RFC 0014: what the debug controls draw that no program draws (the not-applicable hatch over a target under a pixel view).",
+        "paths": [
+          "public/render/pass/debug/",
+          "render/pass/debug/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.shader-library"
         ]
       },
       {
@@ -867,7 +882,8 @@
           "render.pass.present",
           "render.pass.world",
           "render.legacy-frontend",
-          "render.legacy-provider-contract"
+          "render.legacy-provider-contract",
+          "render.pass.debug"
         ]
       },
       {
@@ -1405,10 +1421,18 @@
         "allowedUse": [
           "render_material",
           "render_device",
-          "render_spv"
+          "render_spv",
+          "render_frame",
+          "render_shaderlib"
         ]
       },
       "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines"]},
+      "render_pass_debug": {
+        "allowedUse": [
+          "render_device",
+          "render_spv"
+        ]
+      },
       "render_pass_lines": {
         "allowedUse": [
           "render_resources",
@@ -1441,7 +1465,8 @@
           "render_device_null",
           "render_device",
           "render_math",
-          "render_device_vulkan"
+          "render_device_vulkan",
+          "render_pass_debug"
         ]
       },
       "jobsystem": {

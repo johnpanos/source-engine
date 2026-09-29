@@ -11,6 +11,7 @@
 #include "core_world.h"
 #include "render/legacy/core_backend.h"
 #include "render/pass/present/feature.h"
+#include "render/material/program_resolver.h"
 #include "render/renderer/renderer_factory.h"
 #if defined( RENDER_CORE_VULKAN )
 #include "render/device/vulkan/provider.h"
@@ -144,6 +145,10 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 			    "render feature '" + std::string( name ) + "' is not linked in this product" );
 		deps.features.push_back( std::move( feature ) );
 	}
+	// The programs cl_render_debug_view_program may name: the world pass's
+	// (RFC 0014), through the one resolver.
+	for ( std::string_view program : render::material::ProgramResolver::ProgramNames() )
+		deps.debugPrograms.emplace_back( program );
 	auto renderer = render::renderer::CreateRenderer( std::move( deps ) );
 	if ( !renderer )
 		return Fail( result, RENDER_CORE_MISSING_CAPABILITY,
@@ -173,7 +178,8 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 		return Fail( result, RENDER_CORE_INVALID_CONFIG,
 		    "core passes '" + std::string( probe ) + "' are not empty or seeded-clear" );
 	core->binding.corePasses = core->frontend->CorePasses();
-	core->world = std::make_unique<render::composition::CoreWorld>( *core->frontend );
+	core->world =
+	    std::make_unique<render::composition::CoreWorld>( *core->frontend, *core->renderer );
 	core->frontend->SetForwardedRecorder( core->world.get() );
 	core->binding.world = core->world.get();
 	core->binding.deviceName = core->deviceName.c_str();

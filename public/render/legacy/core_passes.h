@@ -133,6 +133,13 @@ inline std::uint32_t CorePassTagDepth( std::uint32_t tag )
 // A tag with the high bit set was marked by a pass the composition root
 // forwards to (ILegacyFrontend::SetForwardedRecorder), not by a stage.
 inline constexpr std::uint32_t kCorePassForwarded = 0x80000000u;
+// A forwarded tag with this bit too turns the legacy stream off from its slot
+// to the end of the frame (RFC 0014: a pixel view, or cl_render_debug_legacy
+// 2). The backend's replay then records no legacy draw, copy or scene capture
+// and clears only depth and stencil, and the frame presents without the
+// monitor gamma ramp; its slots still run. The composition root marks it at
+// the frame's first slot, where it records the not-applicable hatch.
+inline constexpr std::uint32_t kCorePassLegacyOff = 0x40000000u;
 
 // A backend's slots (LegacyShaderServices::corePassSlots). Called in frame
 // order on the thread that replays the material system's calls.

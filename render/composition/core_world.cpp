@@ -113,11 +113,21 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	view.viewport = {
 	    viewport[0], viewport[1], viewport[2], viewport[3], viewport[4], viewport[5] };
 	view.hostFrame = hostFrame;
+	view.debug = m_Renderer.AppliedDebug();
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
 	if ( tag == 0 )
 		return false;
 	slots->MarkSlot( tag );
 	return true;
+}
+
+void CoreWorld::BeginFrame()
+{
+	const frame::DebugControls &debug = m_Renderer.AppliedDebug();
+	if ( !frame::PixelViewActive( debug ) && debug.legacy != frame::DebugLegacy::kSkip )
+		return;
+	if ( legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots() )
+		slots->MarkSlot( legacy::kCorePassForwarded | legacy::kCorePassLegacyOff );
 }
 
 unsigned long long CoreWorld::Failures() const
@@ -168,6 +178,21 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 void CoreWorld::RecordSlot(
     std::uint32_t tag, device::CommandEncoder &encoder, const legacy::CorePassTarget &target )
 {
+	if ( tag & legacy::kCorePassLegacyOff )
+	{
+		// The frame's first slot under a pixel view: every pixel the core does
+		// not draw shows the not-applicable hatch (RFC 0014).
+		pass::debug::HatchTarget hatch;
+		hatch.encodeOutput = !target.colorSrgb.IsValid();
+		hatch.color = hatch.encodeOutput ? target.color : target.colorSrgb;
+		hatch.format = hatch.encodeOutput ? target.colorFormat : target.colorSrgbFormat;
+		hatch.width = target.width;
+		hatch.height = target.height;
+		hatch.samples = target.samples;
+		if ( target.device )
+			(void)m_Overlays.RecordHatch( *target.device, encoder, hatch );
+		return;
+	}
 	std::optional<Textures> textures;
 	if ( target.textures )
 		textures.emplace( *target.textures );
