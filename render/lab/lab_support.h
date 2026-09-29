@@ -67,6 +67,32 @@ float HalfToFloat( std::uint16_t half );
 // infinities.
 std::uint16_t FloatToHalf( float value );
 
+// One LMAP layer as the lightmap basis reads it (RFC 0008's LMAP;
+// tools/quality/lightmap_directional.py writes the directional form, and the
+// native backend's world_pbr.frag reads it). A flat page holds the diffuse
+// light (irradiance / pi) at every texel. A directional page is twice as wide
+// as it is tall: its left half is that flat light E0, baked on the smooth
+// normal N, and its right half holds at the same texel the signed world-space
+// luminance gradient beta of E(n) = a + g . n, relative to E0. The world
+// mesh's lightmap coordinates span the flat half, so the halves become two
+// pages of the same size; sampled whole, a directional page reads beta as
+// light.
+struct LightmapLayerPages
+{
+	std::uint32_t width = 0; // of each page
+	std::uint32_t height = 0;
+	std::vector<std::byte> flat;     // RGBA16F texels, row 0 at the top
+	std::vector<std::byte> gradient; // RGBA16F beta; empty for a flat page
+
+	bool Directional() const { return !gradient.empty(); }
+};
+
+// Splits one layer of `width` x `height` RGBA16F texels; a page whose width
+// is twice its height is directional. No page (flat empty) when `layer` does
+// not hold exactly that many texels.
+LightmapLayerPages SplitLightmapLayer(
+    std::span<const std::byte> layer, std::uint32_t width, std::uint32_t height );
+
 // The lab's device: the Vulkan adapter (RENDER_VK_ADAPTER picks the physical
 // device), with the Khronos validation layer and synchronization validation
 // when asked, counting its messages into `messages`. The reason when there is

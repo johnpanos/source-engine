@@ -319,16 +319,22 @@ int Run( const Options &options )
 		resources::TextureCache cache( *device );
 		material::GroupResidency groups( *device, cache );
 
-		// The lightmap page: linear light, sampled as it is (scale 1).
+		// The lightmap page: linear light, sampled as it is (scale 1). A
+		// directional page's flat half; its gradient half is the lightmap
+		// basis's (K11 step d).
 		{
+			const LightmapLayerPages pages = SplitLightmapLayer(
+			    std::as_bytes( std::span( lmap->data() + layout.layerOffset[totalLayer],
+			        std::size_t( layout.layerBytes ) ) ),
+			    layout.width, layout.height );
+			if ( pages.flat.empty() )
+				return Fail( "LMAP's Total layer does not split into pages" );
 			TextureDesc desc;
 			desc.format = Format::kRGBA16Float;
-			desc.width = layout.width;
-			desc.height = layout.height;
+			desc.width = pages.width;
+			desc.height = pages.height;
 			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
-			const auto page = std::as_bytes( std::span(
-			    lmap->data() + layout.layerOffset[totalLayer], std::size_t( layout.layerBytes ) ) );
-			if ( !cache.Stage( "lab:lightmap-total", desc, page ) )
+			if ( !cache.Stage( "lab:lightmap-total", desc, pages.flat ) )
 				return Fail( "the lightmap page was refused" );
 		}
 

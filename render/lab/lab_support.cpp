@@ -197,6 +197,34 @@ std::uint16_t FloatToHalf( float value )
 	return std::uint16_t( sign | half );
 }
 
+LightmapLayerPages SplitLightmapLayer(
+    std::span<const std::byte> layer, std::uint32_t width, std::uint32_t height )
+{
+	constexpr std::size_t kTexel = 8; // RGBA16F
+	LightmapLayerPages pages;
+	if ( layer.size() != std::size_t( width ) * height * kTexel )
+		return pages; // no page: the caller reports it
+	pages.height = height;
+	if ( width != 2 * height )
+	{
+		pages.width = width;
+		pages.flat.assign( layer.begin(), layer.end() );
+		return pages;
+	}
+	pages.width = height;
+	const std::size_t row = std::size_t( width ) * kTexel;
+	const std::size_t half = std::size_t( pages.width ) * kTexel;
+	pages.flat.resize( std::size_t( height ) * half );
+	pages.gradient.resize( std::size_t( height ) * half );
+	for ( std::uint32_t y = 0; y < height; ++y )
+	{
+		const std::byte *from = layer.data() + std::size_t( y ) * row;
+		std::copy( from, from + half, pages.flat.data() + std::size_t( y ) * half );
+		std::copy( from + half, from + row, pages.gradient.data() + std::size_t( y ) * half );
+	}
+	return pages;
+}
+
 std::optional<std::string> CreateLabDevice(
     bool validate, std::atomic<std::uint64_t> &messages, std::unique_ptr<IRenderDevice2> &out )
 {
