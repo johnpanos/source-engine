@@ -248,10 +248,15 @@ for _header in CORE_PROGRAM_HEADERS:
         _namespace.replace("::spirv", "::glsl"), _purpose, _rows)
 del _header, _namespace, _purpose, _rows
 
-# Every generated header's name (the regenerators', GENERATED's and
-# GLSL_GENERATED's).
+# The core artifact store's table (public/render/shaderlib/core_artifacts.h):
+# every CORE_PROGRAM_HEADERS row in both formats with its reflection, written
+# by tools/render/shader_artifacts.py store_header.
+STORE_HEADER = "core_artifact_table.h"
+
+# Every generated header's name (the regenerators', GENERATED's,
+# GLSL_GENERATED's and the store's).
 GENERATED_NAMES = tuple(sorted({n for _, _, names in REGENERATORS for n in names} |
-                               set(GENERATED) | set(GLSL_GENERATED)))
+                               set(GENERATED) | set(GLSL_GENERATED) | {STORE_HEADER}))
 
 
 def generated_rows():
@@ -674,8 +679,10 @@ def seed_copies(seeded_root, generated_dir, root=ROOT):
         shutil.copyfile(Path(root) / relative, target)
         seeded[relative] = flip_one_byte(target)
     for name in GENERATED_NAMES:
-        # The GLSL headers hold no SPIR-V: the GL suites compile them.
-        if not name.endswith("_index.h") and name not in GLSL_GENERATED:
+        # The GLSL headers and the store's table hold no SPIR-V: the GL suites
+        # compile the former, the store's users read the latter.
+        if not name.endswith("_index.h") and name not in GLSL_GENERATED and \
+                name != STORE_HEADER:
             seeded[name] = flip_one_byte(Path(generated_dir) / name)
     return seeded
 

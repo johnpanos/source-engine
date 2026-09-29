@@ -937,6 +937,11 @@ bool CSourceAppSystemGroup::Create()
 		RenderCoreConfig config;
 		config.device = CommandLine()->ParmValue( "-render-device", RENDER_CORE_DEFAULT_DEVICE );
 		config.features = CommandLine()->ParmValue( "-render-features", RENDER_CORE_FEATURES );
+		// RFC 0016 K10: the product profile's declared fallbacks and masked
+		// capabilities; every substitution is reported below.
+		config.fallbacks = CommandLine()->ParmValue( "-render-fallbacks", RENDER_CORE_FALLBACKS );
+		config.maskedCapabilities =
+		    CommandLine()->ParmValue( "-render-masked-capabilities", RENDER_CORE_MASKED );
 		config.legacyBackend = selected;
 		config.validation = CommandLine()->FindParm( "-render-validation" ) != 0;
 		config.corePasses = CommandLine()->ParmValue( "-render-core-passes", "" );
@@ -968,6 +973,8 @@ bool CSourceAppSystemGroup::Create()
 		NativeVulkanShaderBackend_BindCorePassRecorder( binding->corePasses );
 #endif
 		Msg( "Render core: device %s, features %s\n", binding->deviceName, config.features );
+		if ( result.substitutionCount )
+			Msg( "Render core substitutions: %s\n", result.substitutions );
 	}
 #endif
 	if ( !MaterialSystem_BindShaderProvider( pMaterialSystem, bound ) )

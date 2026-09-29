@@ -14,6 +14,7 @@ Rows: R87 (RFC 0016 K3; this is the wiring slice)
 | F3 | Begin/end misuse fails without breaking the next frame |
 | F4 | Stage hooks see each stage with its view depth |
 | F5 | A feature needing a capability the device lacks fails renderer creation, naming both |
+| F6 | Capability negotiation (RFC 0016 K10; `render/composition/negotiation.h`, suites `render.composition.capabilities` and `.gl`): a feature whose requirements the device lacks is replaced by its `FeatureRequirements::fallback` only when the product profile declares `feature=fallback` (`RenderCoreConfig::fallbacks`, `-render-fallbacks`); every substitution is named in `RenderCoreResult::substitutions`; an undeclared fallback fails `RENDER_CORE_UNDECLARED_FALLBACK` naming it, and a feature without one fails `RENDER_CORE_MISSING_CAPABILITY`. A profile masks capabilities through the adapter (`RenderCoreConfig::maskedCapabilities`); an adapter that cannot mask fails composition. Seeded bad compositions (an undeclared fallback taken, a silent substitution) fail the suite's oracle |
 | P1 | `RenderCore_Create` composes device, frontend and renderer, or fails with a structured result naming the unknown device or feature |
 | P2 | The frontend's legacy provider keeps the wrapped backend's id and module and forwards creation through `createFor` (no global) |
 | P3 | `RenderStageMarkers001` forwards the client's marks; the engine owns frame begin and end |

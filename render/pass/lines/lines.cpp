@@ -6,7 +6,7 @@
 
 #include "render/pass/lines/lines.h"
 
-#include "spv/lines_spv.h"
+#include "render/shaderlib/core_artifacts.h"
 #include "render/graph/executor.h"
 
 #include <cmath>
@@ -210,29 +210,29 @@ foundation::Expected<PipelineId, LinesStatus> LinesRenderer::PipelineFor(
 	{
 		return found->second;
 	}
-	const ShaderArtifactView stages[] = {
-	    { ShaderStage::kVertex, ArtifactFormat::kSpirv,
-	        std::as_bytes( std::span( spirv::kLinesVertex ) ), "main", {}, sizeof( Constants ) },
-	    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
-	        std::as_bytes( std::span( spirv::kLinesFragment ) ), "main", {}, 0 } };
+	// The program in the device's artifact format (RFC 0016 K10).
+	shaderlib::PipelineRecipe recipe =
+	    shaderlib::CoreRecipe( { "render/pass/lines/lines.vert", "render/pass/lines/lines.frag" } );
+	recipe.topology = topology == Topology::kFilled ? PrimitiveTopology::kTriangleList
+	                                                : PrimitiveTopology::kLineList;
+	recipe.raster.cull = CullMode::kNone;
+	recipe.depthStencil = { depthTest, depthTest, CompareOp::kLessEqual };
+	recipe.colorFormats = { m_ColorFormat };
+	recipe.blends = { BlendMode::kAlpha };
+	recipe.depthFormat = m_DepthFormat;
+	recipe.debugName = "render.pass.lines";
+	auto resolved =
+	    shaderlib::Resolve( recipe, shaderlib::CoreArtifacts(), m_Device.Facts().artifactFormat );
+	if ( !resolved )
+	{
+		return foundation::MakeUnexpected( LinesStatus::kDevice );
+	}
 	const VertexAttribute attributes[] = {
 	    { 0, VertexFormat::kFloat3, 0, 0 }, { 1, VertexFormat::kUnorm8x4, 12, 0 } };
 	const VertexBufferLayout buffers[] = { { sizeof( LineVertex ), false } };
-	const Format colors[] = { m_ColorFormat };
-	const BlendMode blends[] = { BlendMode::kAlpha };
-	PipelineDesc desc;
-	desc.kind = PipelineKind::kGraphics;
-	desc.stages = stages;
+	PipelineDesc desc = resolved.Value().Desc();
 	desc.drawConstantBytes = sizeof( Constants );
 	desc.vertex = { attributes, buffers };
-	desc.topology = topology == Topology::kFilled ? PrimitiveTopology::kTriangleList
-	                                              : PrimitiveTopology::kLineList;
-	desc.raster.cull = CullMode::kNone;
-	desc.depthStencil = { depthTest, depthTest, CompareOp::kLessEqual };
-	desc.colorFormats = colors;
-	desc.blends = blends;
-	desc.depthFormat = m_DepthFormat;
-	desc.debugName = "render.pass.lines";
 	std::vector<SpecializationConstant> constants;
 	shaderlib::AppendDebugConstants( debug, ShaderStage::kFragment, constants );
 	desc.constants = constants;

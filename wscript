@@ -479,6 +479,12 @@ def options(opt):
 	grp.add_option('--render-core-features', default='legacy-stream,present',
 		dest='RENDER_CORE_FEATURES',
 		help='RFC 0016 render core: the frame features a client composes, in order [default: %default]')
+	grp.add_option('--render-core-fallbacks', default='', dest='RENDER_CORE_FALLBACKS',
+		help='RFC 0016 K10: the "feature=fallback" substitutions the product profile declares, '
+			'comma-separated, e.g. skinning=skinning-cpu; composition takes no other [default: none]')
+	grp.add_option('--render-core-masked-capabilities', default='', dest='RENDER_CORE_MASKED',
+		help='RFC 0016 K10: device capabilities the product profile masks, comma-separated '
+			'(render::device::CapabilityName), e.g. compute,storage-buffers [default: none]')
 	grp.add_option('--render-core-gl', action='store_true', default=False, dest='RENDER_CORE_GL',
 		help='build the OpenGL 4.5 device adapter of the render core (RFC 0016 K10; needs EGL) [default: %default]')
 	grp.add_option('--render-core-vulkan', choices=['auto', 'on', 'off'], default='auto',
@@ -1152,6 +1158,8 @@ def configure_render_core(conf):
 	conf.env.RENDER_CORE_GL = bool(conf.env.RENDER_CORE and conf.options.RENDER_CORE_GL)
 	conf.env.RENDER_CORE_DEVICE = conf.options.RENDER_CORE_DEVICE
 	conf.env.RENDER_CORE_FEATURES = conf.options.RENDER_CORE_FEATURES
+	conf.env.RENDER_CORE_FALLBACKS = conf.options.RENDER_CORE_FALLBACKS
+	conf.env.RENDER_CORE_MASKED = conf.options.RENDER_CORE_MASKED
 	# The OpenGL adapter makes its own EGL context and loads GL through
 	# eglGetProcAddress: it links EGL alone.
 	if conf.env.RENDER_CORE_GL:

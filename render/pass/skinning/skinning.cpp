@@ -8,7 +8,7 @@
 
 #include "render/graph/executor.h"
 
-#include "spv/skin_spv.h"
+#include "render/shaderlib/core_artifacts.h"
 
 #include <algorithm>
 #include <cmath>
@@ -142,32 +142,29 @@ foundation::Expected<std::unique_ptr<SkinningKernel>, SkinningStatus> SkinningKe
 {
 	if ( !device.Facts().capabilities.Has( Capability::kCompute ) )
 		return foundation::MakeUnexpected( SkinningStatus::kNoCompute );
-	if ( code.empty() )
-		code = spirv::kSkinCompute;
 	std::unique_ptr<SkinningKernel> kernel( new SkinningKernel( device ) );
 
 	BindingDesc bindings[kBindingCount];
-	ReflectedBinding reflected[kBindingCount];
 	for ( std::uint32_t b = 0; b < kBindingCount; ++b )
-	{
 		bindings[b] = { b, BindingKind::kStorageBuffer, 1, { ShaderStage::kCompute } };
-		reflected[b] = {
-		    static_cast<std::uint32_t>( BindGroupRole::kDraw ), b, BindingKind::kStorageBuffer };
-	}
 	auto layout = device.CreateBindGroupLayout( { BindGroupRole::kDraw, bindings } );
 	if ( !layout )
 		return foundation::MakeUnexpected( SkinningStatus::kDevice );
 	kernel->m_Layout = layout.Value();
 
-	const BindGroupLayoutId layouts[kMaxBindGroups] = { {}, {}, {}, kernel->m_Layout };
-	const ShaderArtifactView stage[] = { { ShaderStage::kCompute, ArtifactFormat::kSpirv,
-	    std::as_bytes( code ), "main", reflected } };
-	PipelineDesc desc;
-	desc.kind = PipelineKind::kCompute;
-	desc.stages = stage;
-	desc.layouts = layouts;
-	desc.debugName = "render.pass.skinning";
-	auto pipeline = device.CreatePipeline( desc );
+	// The kernel in the device's artifact format (RFC 0016 K10); a suite's
+	// seeded kernel replaces the core one, on a SPIR-V device only.
+	constexpr const char *kKernel = "render/pass/skinning/skin.comp";
+	shaderlib::ArtifactOverlay artifacts( shaderlib::CoreArtifacts() );
+	if ( !code.empty() && !artifacts.ReplaceSpirv( kKernel, code, device.Facts().artifactFormat ) )
+		return foundation::MakeUnexpected( SkinningStatus::kDevice );
+	shaderlib::PipelineRecipe recipe = shaderlib::CoreRecipe( { kKernel }, PipelineKind::kCompute );
+	recipe.layouts = { {}, {}, {}, kernel->m_Layout };
+	recipe.debugName = "render.pass.skinning";
+	auto resolved = shaderlib::Resolve( recipe, artifacts, device.Facts().artifactFormat );
+	if ( !resolved )
+		return foundation::MakeUnexpected( SkinningStatus::kDevice );
+	auto pipeline = device.CreatePipeline( resolved.Value().Desc() );
 	if ( !pipeline )
 		return foundation::MakeUnexpected( SkinningStatus::kDevice );
 	kernel->m_Pipeline = pipeline.Value();

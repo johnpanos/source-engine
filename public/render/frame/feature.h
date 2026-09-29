@@ -3,7 +3,8 @@
 // Purpose: render.frame.v1 features (RFC 0016). A feature adds its passes to
 //			each frame's graph and declares the device capabilities it needs;
 //			composition fails, naming the feature and capability, when the
-//			device lacks one. Features never depend on each other or on the
+//			device lacks one, unless the feature names a fallback the product
+//			profile declares (FeatureRequirements::fallback). Features never depend on each other or on the
 //			renderer (CAP011 rule 2); they meet only in the graph.
 //
 //=============================================================================//
@@ -22,6 +23,12 @@ namespace render::frame
 struct FeatureRequirements
 {
 	device::CapabilitySet required;
+	// The feature composition may take instead when the device lacks one of
+	// `required` (its catalog name; null for none), such as CPU skinning for
+	// compute skinning. Composition substitutes it only when the product
+	// profile declares that substitution, and reports every substitution by
+	// name; an undeclared one fails composition, and none is ever silent.
+	const char *fallback = nullptr;
 };
 
 struct FeatureContext

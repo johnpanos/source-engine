@@ -13,13 +13,18 @@
 #include "render/pass/present/feature.h"
 #include "render/material/program_resolver.h"
 #include "render/renderer/renderer_factory.h"
+#include "negotiation.h"
 #if defined( RENDER_CORE_VULKAN )
 #include "render/device/vulkan/provider.h"
+#endif
+#if defined( RENDER_CORE_GL )
+#include "render/device/gl/provider.h"
 #endif
 
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -76,6 +81,9 @@ const render::device::DeviceProviderDescriptor *FindDevice( std::string_view nam
 #if defined( RENDER_CORE_VULKAN )
 	    &render::device::vulkan::Describe(),
 #endif
+#if defined( RENDER_CORE_GL )
+	    &render::device::gl::Describe(),
+#endif
 	};
 	for ( const render::device::DeviceProviderDescriptor *descriptor : linked )
 	{
@@ -83,6 +91,78 @@ const render::device::DeviceProviderDescriptor *FindDevice( std::string_view nam
 			return descriptor;
 	}
 	return nullptr;
+}
+
+// The capabilities named in a comma-separated list; nullopt, with the unknown
+// name, when one is not a capability.
+std::optional<render::device::CapabilitySet> ParseCapabilities(
+    std::string_view list, std::string &unknown )
+{
+	render::device::CapabilitySet set;
+	while ( !list.empty() )
+	{
+		const std::size_t comma = list.find( ',' );
+		const std::string_view name = list.substr( 0, comma );
+		list = comma == std::string_view::npos ? std::string_view() : list.substr( comma + 1 );
+		if ( name.empty() )
+			continue;
+		bool found = false;
+		for ( std::uint32_t bit = 0;
+		    bit < static_cast<std::uint32_t>( render::device::Capability::kCount ); ++bit )
+		{
+			const auto capability = static_cast<render::device::Capability>( bit );
+			if ( name == render::device::CapabilityName( capability ) )
+			{
+				set.Add( capability );
+				found = true;
+			}
+		}
+		if ( !found )
+		{
+			unknown = std::string( name );
+			return std::nullopt;
+		}
+	}
+	return set;
+}
+
+// The device, with the profile's masked capabilities never claimed. Masking
+// is an adapter option, so only adapters that offer it take a mask; another
+// fails kUnsupported.
+render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> CreateDevice(
+    const render::device::DeviceProviderDescriptor &descriptor,
+    const render::device::DeviceRequest &request, render::device::CapabilitySet masked )
+{
+	if ( masked.Bits() == 0 )
+		return descriptor.create( request );
+	auto allow = [&]( render::device::CapabilitySet set )
+	{
+		for ( std::uint32_t bit = 0;
+		    bit < static_cast<std::uint32_t>( render::device::Capability::kCount ); ++bit )
+		{
+			if ( masked.Has( static_cast<render::device::Capability>( bit ) ) )
+				set.Remove( static_cast<render::device::Capability>( bit ) );
+		}
+		return set;
+	};
+	if ( descriptor.id == "null" )
+	{
+		render::device::null::NullOptions options;
+		options.capabilities = allow( options.capabilities );
+		return render::device::null::Create( options );
+	}
+#if defined( RENDER_CORE_GL )
+	if ( descriptor.id == "gl" )
+	{
+		render::device::gl::GlAdapterOptions options;
+		options.validation = request.validation;
+		options.allowed = allow( options.allowed );
+		return render::device::gl::Create( options );
+	}
+#endif
+	return foundation::MakeUnexpected(
+	    render::device::DeviceError{ render::device::DeviceStatus::kUnsupported,
+	        render::device::DeviceOperation::kCreateDevice, 0 } );
 }
 
 RenderCore *Fail( RenderCoreResult *result, RenderCoreStatus status, const std::string &message )
@@ -113,17 +193,25 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 		return Fail( result, RENDER_CORE_UNKNOWN_DEVICE,
 		    std::string( "render device '" ) + config->device + "' is not linked in this product" );
 
+	std::string unknownCapability;
+	const std::optional<render::device::CapabilitySet> masked = ParseCapabilities(
+	    config->maskedCapabilities ? config->maskedCapabilities : "", unknownCapability );
+	if ( !masked )
+		return Fail( result, RENDER_CORE_INVALID_CONFIG,
+		    "masked capability '" + unknownCapability + "' is not a render device capability" );
+
 	auto core = std::make_unique<RenderCore>();
 	// The core starts no threads: compute work runs on the workers the root
 	// lends it (RFC 0003 "capacity policy").
 	core->cullJobs = std::make_unique<jobsystem::PooledExecutor>( config->computeWorkers );
 	render::device::DeviceRequest request;
 	request.validation = config->validation;
-	auto device = descriptor->create( request );
+	auto device = CreateDevice( *descriptor, request, *masked );
 	if ( !device )
 		return Fail( result, RENDER_CORE_DEVICE_FAILED,
-		    std::string( "render device '" ) + config->device +
-		        "' failed: " + render::device::DescribeStatus( device.Error().status ) + " in " +
+		    std::string( "render device '" ) + config->device + "' failed" +
+		        ( masked->Bits() ? " with capabilities masked" : "" ) + ": " +
+		        render::device::DescribeStatus( device.Error().status ) + " in " +
 		        render::device::DescribeOperation( device.Error().operation ) );
 	core->device = std::move( device ).Value();
 	core->deviceName = std::string( descriptor->id );
@@ -131,22 +219,28 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 
 	render::renderer::RendererDeps deps;
 	deps.device = core->device.get();
-	std::string_view features = config->features;
-	while ( !features.empty() )
+	// Capability negotiation (RFC 0016 K10): declared fallbacks only, each
+	// reported by name.
+	render::composition::Negotiation negotiated = render::composition::Negotiate( config->features,
+	    config->fallbacks ? config->fallbacks : "", core->device->Facts().capabilities,
+	    [&core]( std::string_view name )
+	    {
+		    return RenderCore_CreateFeature( name, *core->frontend );
+	    } );
+	switch ( negotiated.status )
 	{
-		const std::size_t comma = features.find( ',' );
-		const std::string_view name = features.substr( 0, comma );
-		features =
-		    comma == std::string_view::npos ? std::string_view() : features.substr( comma + 1 );
-		if ( name.empty() )
-			continue;
-		std::unique_ptr<render::frame::IRenderFeature> feature =
-		    RenderCore_CreateFeature( name, *core->frontend );
-		if ( !feature )
-			return Fail( result, RENDER_CORE_UNKNOWN_FEATURE,
-			    "render feature '" + std::string( name ) + "' is not linked in this product" );
-		deps.features.push_back( std::move( feature ) );
+	case render::composition::NegotiationStatus::kOk:
+		break;
+	case render::composition::NegotiationStatus::kUnknownFeature:
+		return Fail( result, RENDER_CORE_UNKNOWN_FEATURE, negotiated.message );
+	case render::composition::NegotiationStatus::kMissingCapability:
+		return Fail( result, RENDER_CORE_MISSING_CAPABILITY,
+		    negotiated.message + " (device '" + core->deviceName + "')" );
+	case render::composition::NegotiationStatus::kUndeclaredFallback:
+		return Fail( result, RENDER_CORE_UNDECLARED_FALLBACK,
+		    negotiated.message + " (device '" + core->deviceName + "')" );
 	}
+	deps.features = std::move( negotiated.features );
 	// The programs cl_render_debug_view_program may name: the world pass's
 	// (RFC 0014), through the one resolver.
 	for ( std::string_view program : render::material::ProgramResolver::ProgramNames() )
@@ -186,6 +280,12 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->frontend->SetForwardedRecorder( core->world.get() );
 	core->binding.world = core->world.get();
 	core->binding.deviceName = core->deviceName.c_str();
+	if ( result )
+	{
+		std::snprintf( result->substitutions, sizeof( result->substitutions ), "%s",
+		    render::composition::DescribeSubstitutions( negotiated.substitutions ).c_str() );
+		result->substitutionCount = static_cast<unsigned int>( negotiated.substitutions.size() );
+	}
 	return core.release();
 }
 

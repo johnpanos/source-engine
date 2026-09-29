@@ -11,6 +11,6 @@ def build(bld):
 		name        = 'render_shaderlib',
 		source      = bld.path.ant_glob('*.cpp'),
 		includes    = ['../../public'],
-		use         = ['render_device'],
+		use         = ['render_device', 'render_spv'],
 		idx         = bld.get_taskgen_count()
 	)

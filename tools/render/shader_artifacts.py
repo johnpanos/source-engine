@@ -751,6 +751,7 @@ def write_headers(units, words, out_dir, root=ROOT):
     for header in st.GENERATED:
         written[header] = st.render_generated(header, lambda array: words[array])
     written.update(glsl_headers(words, root))
+    written[st.STORE_HEADER] = store_header(words)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, text in written.items():
@@ -759,6 +760,120 @@ def write_headers(units, words, out_dir, root=ROOT):
         if not target.is_file() or target.read_text() != text:
             target.write_text(text)
     return sorted(written)
+
+
+PORT_BINDING_KINDS = {
+    "uniform-buffer": "kUniformBuffer", "storage-buffer": "kStorageBuffer",
+    "sampled-texture": "kSampledTexture", "storage-texture": "kStorageTexture",
+    "sampler": "kSampler"}
+STAGE_ENUMS = {"vertex": "kVertex", "fragment": "kFragment", "compute": "kCompute"}
+SCALAR_BYTES = {"float": 4, "int": 4, "uint": 4, "bool": 4}
+
+
+def type_bytes(name, member, types):
+    """Bytes a push-constant member of reflected type `name` spans."""
+    if name in types:
+        return block_bytes(types[name]["members"], types)
+    base = name.rstrip("0123456789x")
+    digits = name[len(base):]
+    if base in ("vec", "ivec", "uvec", "bvec") and digits.isdigit():
+        size = 4 * int(digits)
+    elif base == "mat" and digits:
+        columns, _, rows = digits.partition("x")
+        columns, rows = int(columns), int(rows or columns)
+        size = member.get("matrix_stride", 16) * (rows if member.get("row_major") else columns)
+    elif name in SCALAR_BYTES:
+        size = SCALAR_BYTES[name]
+    else:
+        raise ArtifactError("draw constants: no size for reflected type %s" % name)
+    if "array" in member:
+        count = 1
+        for extent in member["array"]:
+            count *= extent
+        size = member.get("array_stride", size) * count
+    return size
+
+
+def block_bytes(members, types):
+    return max((m.get("offset", 0) + type_bytes(m["type"], m, types) for m in members),
+               default=0)
+
+
+def reflect_port(spirv):
+    """(bindings as (set, binding, port kind enum), draw-constant bytes) of a
+    module, for the artifact store."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "module.spv"
+        path.write_bytes(spirv)
+        data = json.loads(run([st.spirv_cross(), str(path), "--reflect"],
+                              "spirv-cross --reflect").stdout)
+    bindings = []
+    for binding in reflect(spirv)["bindings"]:
+        kind = PORT_BINDING_KINDS.get(binding["kind"])
+        if kind is None:
+            raise ArtifactError("binding (%d, %d) is a %s, which the port has no kind for"
+                                % (binding["set"], binding["binding"], binding["kind"]))
+        bindings.append((binding["set"], binding["binding"], kind))
+    push = 0
+    for block in data.get("push_constants", []):
+        push = max(push, block_bytes(data["types"][block["type"]]["members"], data["types"]))
+    return bindings, push
+
+
+def store_header(words):
+    """spv/core_artifact_table.h: the artifact store's table (public/render/
+    shaderlib/core_artifacts.h), one entry per core program row and format:
+    source, stage, format, code (the generated SPIR-V and GLSL 4.50 arrays),
+    reflected bindings and draw-constant bytes."""
+    pin = st.load_pin()
+    compiler = compiler_identities(pin)["glsl450"]
+    includes, bindings_out, entries = [], [], []
+    for header in st.CORE_PROGRAM_HEADERS:
+        namespace, _, rows = st.GENERATED[header]
+        includes += [header, header.replace("_spv.h", "_glsl.h")]
+        for array, source, _ in rows:
+            spirv = bytes_of(words[array])
+            reflected, push = reflect_port(spirv)
+            table = "kBindings_%s" % array
+            if reflected:
+                bindings_out.append("inline constexpr device::ReflectedBinding %s[] = { %s };\n"
+                                    % (table, ", ".join(
+                                        "{ %d, %d, device::BindingKind::%s }" % b
+                                        for b in reflected)))
+            span = table if reflected else "{}"
+            stage = STAGE_ENUMS[STAGES[Path(source).suffix]]
+            glsl_namespace = namespace.replace("::spirv", "::glsl")
+            entries.append('    { "%s", device::ShaderStage::%s, device::ArtifactFormat::kSpirv,\n'
+                           '        std::as_bytes( std::span( %s::%s ) ), %s, %d },\n'
+                           % (source, stage, namespace, array, span, push))
+            entries.append('    { "%s", device::ShaderStage::%s, device::ArtifactFormat::kGlsl450,\n'
+                           '        std::as_bytes( std::span( %s::%s ).first( sizeof( %s::%s ) - 1 ) ),'
+                           ' %s, %d },\n'
+                           % (source, stage, glsl_namespace, array, glsl_namespace, array, span,
+                              push))
+    return "".join(
+        ["//========= Copyright Valve Corporation, All rights reserved. ============//\n",
+         "//\n",
+         "// Purpose: The core artifact store's table (render/shaderlib/core_artifacts.cpp):\n",
+         "//          every core program's SPIR-V and GLSL 4.50 with its reflection. GENERATED\n",
+         "//          by tools/render/shader_artifacts.py headers; not committed, do not edit.\n",
+         "//\n",
+         "//=============================================================================//\n\n",
+         "#ifndef GENERATED_CORE_ARTIFACTS_H\n#define GENERATED_CORE_ARTIFACTS_H\n\n",
+         '#include "render/device/pipeline.h"\n'] +
+        ['#include "spv/%s"\n' % name for name in includes] +
+        ["\n#include <cstddef>\n#include <cstdint>\n#include <span>\n\n",
+         "namespace render::shaderlib::generated\n{\n\n",
+         'inline constexpr const char *kCompiler = "%s";\n\n' % compiler,
+         "struct CoreArtifact\n{\n",
+         "\tconst char *source;\n\tdevice::ShaderStage stage;\n",
+         "\tdevice::ArtifactFormat format;\n\tstd::span<const std::byte> code;\n",
+         "\tstd::span<const device::ReflectedBinding> bindings;\n",
+         "\tstd::uint32_t drawConstantBytes;\n};\n\n"] +
+        bindings_out +
+        ["\ninline const CoreArtifact kCoreArtifacts[] = {\n"] + entries +
+        ["};\n\n} // namespace render::shaderlib::generated\n\n",
+         "#endif // GENERATED_CORE_ARTIFACTS_H\n"])
 
 
 def glsl_headers(words, root=ROOT):

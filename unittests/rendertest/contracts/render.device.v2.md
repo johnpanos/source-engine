@@ -72,6 +72,9 @@ The legacy backend's depth-stencil format is `kD24UnormS8` or `kD32FloatS8`
   sits on its texture's slot and names its sampler, which the adapter binds to
   that unit. The suite's fixtures are the generated
   `spv/device_fixtures_glsl.h` (`DeviceDriver::artifact` maps each).
+- **Selection:** consumers take artifacts from the core store
+  (`render/shaderlib/core_artifacts.h`) through `Resolve` with the device's
+  `Facts().artifactFormat`; no consumer names a format.
 - **D16:** the draw constants are the uniform block `RenderDrawConstants` at
   uniform slot 64; each submission's blocks go into one buffer, one range per
   draw or dispatch.

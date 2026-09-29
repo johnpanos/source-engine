@@ -65,7 +65,9 @@ def build(bld):
 		libs += ['render_composition', 'jobsystem']
 		defines += ['LINKED_RENDER_CORE',
 			'RENDER_CORE_DEFAULT_DEVICE="%s"' % bld.env.RENDER_CORE_DEVICE,
-			'RENDER_CORE_FEATURES="%s"' % bld.env.RENDER_CORE_FEATURES]
+			'RENDER_CORE_FEATURES="%s"' % bld.env.RENDER_CORE_FEATURES,
+			'RENDER_CORE_FALLBACKS="%s"' % bld.env.RENDER_CORE_FALLBACKS,
+			'RENDER_CORE_MASKED="%s"' % bld.env.RENDER_CORE_MASKED]
 	if bld.env.OPUS or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 		libs += ['vaudio_opus']
 	libs += ['engine', 'inputsystem', 'materialsystem', 'datacache', 'studiorender',

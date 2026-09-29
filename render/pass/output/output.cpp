@@ -6,7 +6,7 @@
 
 #include "render/pass/output/output.h"
 
-#include "spv/output_spv.h"
+#include "render/shaderlib/core_artifacts.h"
 #include "render/graph/executor.h"
 
 #include <cmath>
@@ -78,7 +78,7 @@ foundation::Expected<OutputEncoding, OutputStatus> EncodingFor( Format target )
 foundation::Expected<std::unique_ptr<OutputRenderer>, OutputStatus> OutputRenderer::Create(
     IRenderDevice2 &device, Format targetFormat )
 {
-	return CreateWithFragment( device, targetFormat, spirv::kOutputFragment );
+	return CreateWithFragment( device, targetFormat, {} );
 }
 
 foundation::Expected<std::unique_ptr<OutputRenderer>, OutputStatus>
@@ -111,25 +111,26 @@ OutputRenderer::CreateWithFragment(
 		return foundation::MakeUnexpected( OutputStatus::kDevice );
 	renderer->m_LinearSampler = linear.Value();
 
-	const ReflectedBinding fragmentBindings[] = {
-	    { 3, 0, BindingKind::kSampledTexture }, { 3, 1, BindingKind::kSampler } };
-	const ShaderArtifactView stages[] = {
-	    { ShaderStage::kVertex, ArtifactFormat::kSpirv,
-	        std::as_bytes( std::span( spirv::kOutputVertex ) ), "main", {}, 0 },
-	    { ShaderStage::kFragment, ArtifactFormat::kSpirv, std::as_bytes( fragmentSpirv ), "main",
-	        fragmentBindings, sizeof( Constants ) } };
-	const BindGroupLayoutId layouts[] = {
+	// The program in the device's artifact format (RFC 0016 K10); a suite's
+	// seeded fragment replaces the core one, on a SPIR-V device only.
+	constexpr const char *kFragment = "render/pass/output/output.frag";
+	shaderlib::ArtifactOverlay artifacts( shaderlib::CoreArtifacts() );
+	if ( !fragmentSpirv.empty() &&
+	     !artifacts.ReplaceSpirv( kFragment, fragmentSpirv, device.Facts().artifactFormat ) )
+		return foundation::MakeUnexpected( OutputStatus::kDevice );
+	shaderlib::PipelineRecipe recipe =
+	    shaderlib::CoreRecipe( { "render/pass/output/output.vert", kFragment } );
+	recipe.layouts = {
 	    BindGroupLayoutId(), BindGroupLayoutId(), BindGroupLayoutId(), renderer->m_Layout };
-	const Format colors[] = { targetFormat };
-	PipelineDesc desc;
-	desc.kind = PipelineKind::kGraphics;
-	desc.stages = stages;
-	desc.layouts = layouts;
+	recipe.topology = PrimitiveTopology::kTriangleList;
+	recipe.raster.cull = CullMode::kNone;
+	recipe.colorFormats = { targetFormat };
+	recipe.debugName = "render.pass.output";
+	auto resolved = shaderlib::Resolve( recipe, artifacts, device.Facts().artifactFormat );
+	if ( !resolved )
+		return foundation::MakeUnexpected( OutputStatus::kDevice );
+	PipelineDesc desc = resolved.Value().Desc();
 	desc.drawConstantBytes = sizeof( Constants );
-	desc.topology = PrimitiveTopology::kTriangleList;
-	desc.raster.cull = CullMode::kNone;
-	desc.colorFormats = colors;
-	desc.debugName = "render.pass.output";
 	auto pipeline = device.CreatePipeline( desc );
 	if ( !pipeline )
 		return foundation::MakeUnexpected( OutputStatus::kDevice );

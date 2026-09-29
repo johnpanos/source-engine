@@ -2758,31 +2758,42 @@ Owner: a K10 subagent session, on a worktree branch the main session lands.
 | --- | --- | --- |
 | Port suite | `render.device.v2.gl` (profile `linux-native-gl-gpu`): shared suite, raster clauses, small ring, a debug-output pass (0 messages), facts, ring, viewport origin, cross-thread submission, context restoration, masked capability. D7 runs (a simulated context reset, then `Recover`). 822 checks on radeonsi (g++, clang++), 819 on llvmpipe. Unclaimed capabilities are listed (INFO), not failed | pass |
 | Bad adapters (K1 clauses on GL) | `render.device.v2.gl.sensitivity`: lower-left origin (D13 y), −1..1 depth (D13 z), false async compute and false aliasing (D15), ignored write masks (D17), dropped specialization (D20), early upload reuse (D10): 7 of 7, each only its clause. On llvmpipe the D10 case cannot show (copies run at submission) and is skipped, so the row fails its minimum there | pass on radeonsi |
-| Artifacts per target | `render.shader-artifacts.gl`: the 11 core programs of K11 a2's program set (the surface program with its flat, world and model vertex stages, lines, both debug programs, output, shadow depth and receiver, skinning, cluster assignment) link on GL; a truncated artifact fails. `shader.toolchain-pin` (84) and `render.shader-artifacts` (1,346) pass at K11 a2 (`04756591`); the `.sensitivity` rows passed at a1 | pass |
+| Artifacts per target | `render.shader-artifacts.gl` (19 checks, g++ and clang++): the core artifact store holds every core program stage in SPIR-V and GLSL 4.50 with one reflection and `Resolve` takes the format asked for; the 11 core programs of K11 a2's set, resolved for GL, link; a truncated artifact fails; the output pass and the skinning and cluster kernels create their programs on GL, and a seeded SPIR-V kernel is refused there. `shader.toolchain-pin` (85) and `.sensitivity` (19), `render.shader-artifacts` (1,347) pass | pass |
 | No portable changes needed | archlint `check --all`: no finding in these files (4 findings elsewhere predate this work); CAP011 rule 5 finds no portable comparison of `diagnosticBackend` | pass |
-| Capability negotiation | `gl.mask` shows the adapter side (compute masked: not claimed, refused by status). The composition side does not exist: see decisions | open |
+| Capability negotiation | Slice 5: `render.composition.capabilities` (null, headless) and `.gl` (OpenGL, compute and storage buffers masked through the adapter), 14 checks each, g++ and clang++: CPU skinning composed under the declared `skinning=skinning-cpu` and named in `RenderCoreResult`; `RENDER_CORE_UNDECLARED_FALLBACK` without the declaration; an independent oracle passes the good negotiations and catches both seeded bad compositions (an undeclared fallback taken, a silent substitution); a feature with no fallback fails `kMissingCapability` naming it | pass |
 | Product boot | blocked on K8/K9 (port owner's decision, 2026-09-29): no legacy path draws through a GL device (the frozen-path rules forbid building one) and there is no `render.bridge.sdl3-gl`; `portal-linux-gl` boots once the cohorts are on the core | blocked |
 | Pixels | the pixel families run through the product (`material_pixel_conformance.py`), so blocked with the boot | blocked |
 | ToGL untouched | no ToGL or legacy-renderer build input changed; not rebuilt | unverified |
 
-Decisions needed before slices 5 and 6 (for the render-core session and the
-user):
-1. **Composition** (`render.composition`, render-core owned) links only
-   null and Vulkan; `RENDER_CORE_GL` needs a `FindDevice` entry. "Selects CPU
-   skinning" has no mechanism: skinning is a kernel, not a catalog feature,
-   and `FeatureRequirements` has no declared fallback. Proposed: a feature
-   declares `fallback` (a feature name) beside `required` in
-   `render/frame/feature.h` (a port change), and composition reports each
-   substitution by name in `RenderCoreResult`.
-2. **Artifact selection:** every family and pass hard-codes
-   `ArtifactFormat::kSpirv` and the `spv/` arrays, so on GL every pipeline
-   fails `kUnsupported`. `render.shader-library`'s `Resolve( recipe, source,
-   format )` exists but has no consumer. Proposed: consumers resolve through
-   one artifact store the build fills from the generated SPIR-V and GLSL
-   headers.
-3. **Product boot on GL:** the legacy stream reaches the core through the
-   native Vulkan backend (`shaderapivulkan` on the Vulkan adapter's
-   `host_device.h`); no legacy backend draws through a GL device, and there
-   is no `render.bridge.sdl3-gl`. `portal-linux-gl` needs either a legacy
-   backend on GL (ToGL is D3D9-shaped and stays for mods, decision 2) or the
-   K8/K9 cohorts on the core first.
+Decisions (port owner, source-engine-43, 2026-09-29, relayed by the main
+session), taken on the slice 1-4 report:
+1. **Composition fallback (slice 5, done):** `FeatureRequirements::fallback`
+   beside `required` (`public/render/frame/feature.h`). Composition
+   (`render/composition/negotiation.{h,cpp}`) substitutes a fallback only
+   when the product profile declares it (`RenderCoreConfig::fallbacks`, Waf
+   `--render-core-fallbacks`, `-render-fallbacks`) and names every
+   substitution in `RenderCoreResult::substitutions`; an undeclared one fails
+   `RENDER_CORE_UNDECLARED_FALLBACK`. A profile masks capabilities through the
+   adapter's options (`RenderCoreConfig::maskedCapabilities`, Waf
+   `--render-core-masked-capabilities`); an adapter without a mask option
+   (Vulkan today) fails composition. The first user is
+   `render.pass.skinning`'s `skinning`/`skinning-cpu` pair
+   (`public/render/pass/skinning/feature.h`), which adds no passes until K6's
+   product skinning feeds skinned meshes. The launcher reads both settings
+   and logs substitutions; no client product was rebuilt for it.
+2. **Shader selection (slice 6, done except the surface program):** one
+   artifact store, `CoreArtifacts()` (`public/render/shaderlib/core_artifacts.h`),
+   built once from the table the build generates (`spv/core_artifact_table.h`,
+   `shader_artifacts.py store_header`: every core program row in both
+   formats with its reflected bindings and draw-constant bytes, keyed by
+   source, `CoreCompiler()`, format and permutation 0). The lines, debug,
+   output, shadow depth and receiver passes and the skinning and cluster
+   kernels resolve their programs with `Resolve( CoreRecipe( ... ),
+   CoreArtifacts(), device.Facts().artifactFormat )`; none names a format.
+   A suite's seeded SPIR-V variant goes through an `ArtifactOverlay`
+   (`ReplaceSpirv`), which refuses a device of another format instead of
+   running the unseeded program. The surface program
+   (`render/material/surface_program.{h,cpp}`, `surface.frag`) still passes
+   SPIR-V and waits until K11 step b lands (port owner's timing condition),
+   so the world pass does not run on GL yet.
+3. **Product boot:** blocked on K8/K9 (see the table).

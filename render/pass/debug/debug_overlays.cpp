@@ -6,7 +6,7 @@
 
 #include "render/pass/debug/debug_overlays.h"
 
-#include "spv/debug_spv.h"
+#include "render/shaderlib/core_artifacts.h"
 
 #include <algorithm>
 #include <span>
@@ -40,28 +40,23 @@ PipelineId DebugOverlays::PipelineFor(
 	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
 		return found->second;
 	const bool tint = program == 1;
-	const ShaderArtifactView stages[] = {
-	    { ShaderStage::kVertex, ArtifactFormat::kSpirv,
-	        std::as_bytes( std::span( spirv::kFullscreenVertex ) ), "main", {}, 0 },
-	    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
-	        tint
-	            ? std::span<const std::byte>( std::as_bytes( std::span( spirv::kTintFragment ) ) )
-	            : std::span<const std::byte>( std::as_bytes( std::span( spirv::kHatchFragment ) ) ),
-	        "main", {}, tint ? 16u : 0u } };
+	// The program in the device's artifact format (RFC 0016 K10).
+	shaderlib::PipelineRecipe recipe = shaderlib::CoreRecipe( { "render/pass/debug/fullscreen.vert",
+	    tint ? "render/pass/debug/tint.frag" : "render/pass/debug/hatch.frag" } );
+	recipe.topology = PrimitiveTopology::kTriangleList;
+	recipe.raster.cull = CullMode::kNone;
+	recipe.colorFormats = { target.format };
+	recipe.blends = { tint ? BlendMode::kAlpha : BlendMode::kOpaque };
+	recipe.sampleCount = target.samples;
+	recipe.debugName = tint ? "render.pass.debug.tint" : "render.pass.debug.hatch";
+	auto resolved =
+	    shaderlib::Resolve( recipe, shaderlib::CoreArtifacts(), device.Facts().artifactFormat );
+	if ( !resolved )
+		return PipelineId();
 	const SpecializationConstant constants[] = {
 	    { ShaderStage::kFragment, 0, target.encodeOutput ? 1u : 0u } };
-	const Format colors[] = { target.format };
-	const BlendMode blends[] = { tint ? BlendMode::kAlpha : BlendMode::kOpaque };
-	PipelineDesc desc;
-	desc.kind = PipelineKind::kGraphics;
-	desc.stages = stages;
+	PipelineDesc desc = resolved.Value().Desc();
 	desc.drawConstantBytes = tint ? 16u : 0u;
-	desc.topology = PrimitiveTopology::kTriangleList;
-	desc.raster.cull = CullMode::kNone;
-	desc.colorFormats = colors;
-	desc.blends = blends;
-	desc.sampleCount = target.samples;
-	desc.debugName = tint ? "render.pass.debug.tint" : "render.pass.debug.hatch";
 	desc.constants = constants;
 	auto pipeline = device.CreatePipeline( desc );
 	if ( !pipeline )

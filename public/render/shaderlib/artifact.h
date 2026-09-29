@@ -37,11 +37,13 @@ struct ShaderArtifact
 	std::string entryPoint = "main";
 	std::vector<std::byte> code;
 	std::vector<device::ReflectedBinding> bindings;
+	// Reflected: the draw-constant bytes the stage reads (clause D16).
+	std::uint32_t drawConstantBytes = 0;
 
 	// A view for PipelineDesc; valid while this artifact lives.
 	device::ShaderArtifactView View() const
 	{
-		return { stage, key.format, code, entryPoint, bindings };
+		return { stage, key.format, code, entryPoint, bindings, drawConstantBytes };
 	}
 };
 

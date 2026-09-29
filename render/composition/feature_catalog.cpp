@@ -8,6 +8,7 @@
 
 #include "render/legacy/core_backend.h"
 #include "render/pass/present/feature.h"
+#include "render/pass/skinning/feature.h"
 
 #include <memory>
 #include <string_view>
@@ -19,5 +20,9 @@ std::unique_ptr<render::frame::IRenderFeature> RenderCore_CreateFeature(
 		return frontend.CreateStreamFeature();
 	if ( name == "present" )
 		return render::pass::present::CreatePresentFeature( {} );
+	if ( name == render::pass::skinning::kSkinningFeature )
+		return render::pass::skinning::CreateSkinningFeature();
+	if ( name == render::pass::skinning::kCpuSkinningFeature )
+		return render::pass::skinning::CreateCpuSkinningFeature();
 	return nullptr;
 }

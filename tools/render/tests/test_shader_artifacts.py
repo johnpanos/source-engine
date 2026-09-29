@@ -172,6 +172,22 @@ class GlArtifactTest(unittest.TestCase):
                                    [{"id": 3, "type": "double"}])
 
 
+class StoreReflectionTest(unittest.TestCase):
+    def test_draw_constant_bytes_span_the_last_member(self):
+        types = {"_11": {"members": [
+            {"type": "mat4", "offset": 0, "matrix_stride": 16, "row_major": True},
+            {"type": "vec4", "offset": 64}]},
+            "_12": {"members": [
+                {"type": "float", "offset": 0, "array": [2], "array_stride": 16},
+                {"type": "_11", "offset": 32}]}}
+        self.assertEqual(sa.block_bytes(types["_11"]["members"], types), 80)
+        self.assertEqual(sa.block_bytes(types["_12"]["members"], types), 112)
+
+    def test_an_unknown_type_fails(self):
+        with self.assertRaises(sa.ArtifactError):
+            sa.block_bytes([{"type": "dvec2", "offset": 0}], {})
+
+
 class InventoryTest(unittest.TestCase):
     def test_every_backend_unit_has_a_unique_key(self):
         units = sa.inventory()

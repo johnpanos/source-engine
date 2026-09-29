@@ -855,6 +855,7 @@
         "allowedEdges": [
           "foundation",
           "render.device",
+          "render.frame",
           "render.graph",
           "render.shader-library"
         ]
@@ -948,6 +949,8 @@
           "render.device",
           "render.device.null",
           "render.device.vulkan",
+          "render.device.gl",
+          "render.pass.skinning",
           "render.graph",
           "render.shader-library",
           "render.resources",
@@ -1428,7 +1431,8 @@
       },
       "render_shaderlib": {
         "allowedUse": [
-          "render_device"
+          "render_device",
+          "render_spv"
         ]
       },
       "render_resources": {
@@ -1475,7 +1479,8 @@
           "render_math",
           "render_graph",
           "render_device",
-          "render_spv"
+          "render_spv",
+          "render_shaderlib"
         ]
       },
       "render_pass_shadows": {
@@ -1484,21 +1489,25 @@
           "render_graph",
           "render_device",
           "render_resources",
-          "render_spv"
+          "render_spv",
+          "render_shaderlib"
         ]
       },
       "render_pass_output": {
         "allowedUse": [
           "render_graph",
           "render_device",
-          "render_spv"
+          "render_spv",
+          "render_shaderlib"
         ]
       },
       "render_pass_skinning": {
         "allowedUse": [
+          "render_frame",
           "render_graph",
           "render_device",
-          "render_spv"
+          "render_spv",
+          "render_shaderlib"
         ]
       },
       "render_pass_opaque": {
@@ -1524,7 +1533,8 @@
       "render_pass_debug": {
         "allowedUse": [
           "render_device",
-          "render_spv"
+          "render_spv",
+          "render_shaderlib"
         ]
       },
       "render_pass_lines": {
@@ -1561,6 +1571,8 @@
           "render_device",
           "render_math",
           "render_device_vulkan",
+          "render_device_gl",
+          "render_pass_skinning",
           "render_pass_debug"
         ]
       },

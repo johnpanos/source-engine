@@ -8,7 +8,7 @@
 #include "render/pass/shadows/shadow_passes.h"
 
 #include "render/graph/executor.h"
-#include "spv/shadow_spv.h"
+#include "render/shaderlib/core_artifacts.h"
 
 #include <algorithm>
 #include <utility>
@@ -155,22 +155,22 @@ foundation::Expected<PipelineId, ShadowPassStatus> ShadowDepthRenderer::Pipeline
 {
 	if ( auto found = m_Pipelines.find( stride ); found != m_Pipelines.end() )
 		return found->second;
-	static const ReflectedBinding bindings[] = {
-	    { static_cast<std::uint32_t>( BindGroupRole::kDraw ), 0, BindingKind::kStorageBuffer } };
-	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, ArtifactFormat::kSpirv,
-	    std::as_bytes( std::span( spirv::kShadowDepthVertex ) ), "main", bindings } };
-	const BindGroupLayoutId layouts[kMaxBindGroups] = { {}, {}, {}, m_DrawLayout };
+	// The program in the device's artifact format (RFC 0016 K10).
+	shaderlib::PipelineRecipe recipe =
+	    shaderlib::CoreRecipe( { "render/pass/shadows/shadow_depth.vert" } );
+	recipe.layouts = { {}, {}, {}, m_DrawLayout };
+	recipe.raster.cull = CullMode::kNone;
+	recipe.depthStencil = { true, true, CompareOp::kLess };
+	recipe.depthFormat = m_DepthFormat;
+	recipe.debugName = "render.pass.shadows.depth";
+	auto resolved =
+	    shaderlib::Resolve( recipe, shaderlib::CoreArtifacts(), m_Device.Facts().artifactFormat );
+	if ( !resolved )
+		return foundation::MakeUnexpected( ShadowPassStatus::kDevice );
 	const VertexAttribute attributes[] = { { 0, VertexFormat::kFloat3, 0, 0 } };
 	const VertexBufferLayout buffers[] = { { stride, false } };
-	PipelineDesc desc;
-	desc.kind = PipelineKind::kGraphics;
-	desc.stages = stages;
-	desc.layouts = layouts;
+	PipelineDesc desc = resolved.Value().Desc();
 	desc.vertex = { attributes, buffers };
-	desc.raster.cull = CullMode::kNone;
-	desc.depthStencil = { true, true, CompareOp::kLess };
-	desc.depthFormat = m_DepthFormat;
-	desc.debugName = "render.pass.shadows.depth";
 	auto pipeline = m_Device.CreatePipeline( desc );
 	if ( !pipeline )
 		return foundation::MakeUnexpected( ShadowPassStatus::kDevice );
@@ -304,8 +304,7 @@ ShadowReceiverRenderer::Create(
 {
 	std::unique_ptr<ShadowReceiverRenderer> renderer( new ShadowReceiverRenderer( device ) );
 	renderer->m_ColorFormat = colorFormat;
-	if ( fragmentCode.empty() )
-		fragmentCode = spirv::kShadowReceiverFragment;
+	// A suite's seeded fragment (SPIR-V); empty for the core program.
 	renderer->m_Fragment.assign( fragmentCode.begin(), fragmentCode.end() );
 	SamplerDesc point;
 	point.minFilter = point.magFilter = point.mipFilter = Filter::kNearest;
@@ -352,33 +351,26 @@ foundation::Expected<PipelineId, ShadowPassStatus> ShadowReceiverRenderer::Pipel
 {
 	if ( auto found = m_Pipelines.find( stride ); found != m_Pipelines.end() )
 		return found->second;
-	constexpr std::uint32_t kFrame = static_cast<std::uint32_t>( BindGroupRole::kFrame );
-	constexpr std::uint32_t kView = static_cast<std::uint32_t>( BindGroupRole::kView );
-	constexpr std::uint32_t kDraw = static_cast<std::uint32_t>( BindGroupRole::kDraw );
-	static const ReflectedBinding vertexBindings[] = {
-	    { kView, 0, BindingKind::kUniformBuffer }, { kDraw, 0, BindingKind::kStorageBuffer } };
-	static const ReflectedBinding fragmentBindings[] = {
-	    { kFrame, 0, BindingKind::kSampledTexture }, { kFrame, 1, BindingKind::kSampler },
-	    { kView, 0, BindingKind::kUniformBuffer } };
-	const ShaderArtifactView stages[] = {
-	    { ShaderStage::kVertex, ArtifactFormat::kSpirv,
-	        std::as_bytes( std::span( spirv::kShadowReceiverVertex ) ), "main", vertexBindings },
-	    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
-	        std::as_bytes( std::span<const std::uint32_t>( m_Fragment ) ), "main",
-	        fragmentBindings } };
-	const BindGroupLayoutId layouts[kMaxBindGroups] = {
-	    m_FrameLayout, m_ViewLayout, {}, m_DrawLayout };
+	// The program in the device's artifact format (RFC 0016 K10); a suite's
+	// seeded fragment replaces the core one, on a SPIR-V device only.
+	constexpr const char *kFragment = "render/pass/shadows/shadow_receiver.frag";
+	shaderlib::ArtifactOverlay artifacts( shaderlib::CoreArtifacts() );
+	if ( !m_Fragment.empty() &&
+	     !artifacts.ReplaceSpirv( kFragment, m_Fragment, m_Device.Facts().artifactFormat ) )
+		return foundation::MakeUnexpected( ShadowPassStatus::kDevice );
+	shaderlib::PipelineRecipe recipe =
+	    shaderlib::CoreRecipe( { "render/pass/shadows/shadow_receiver.vert", kFragment } );
+	recipe.layouts = { m_FrameLayout, m_ViewLayout, {}, m_DrawLayout };
+	recipe.raster.cull = CullMode::kNone;
+	recipe.colorFormats = { m_ColorFormat };
+	recipe.debugName = "render.pass.shadows.receiver";
+	auto resolved = shaderlib::Resolve( recipe, artifacts, m_Device.Facts().artifactFormat );
+	if ( !resolved )
+		return foundation::MakeUnexpected( ShadowPassStatus::kDevice );
 	const VertexAttribute attributes[] = { { 0, VertexFormat::kFloat3, 0, 0 } };
 	const VertexBufferLayout buffers[] = { { stride, false } };
-	const Format colors[] = { m_ColorFormat };
-	PipelineDesc desc;
-	desc.kind = PipelineKind::kGraphics;
-	desc.stages = stages;
-	desc.layouts = layouts;
+	PipelineDesc desc = resolved.Value().Desc();
 	desc.vertex = { attributes, buffers };
-	desc.raster.cull = CullMode::kNone;
-	desc.colorFormats = colors;
-	desc.debugName = "render.pass.shadows.receiver";
 	auto pipeline = m_Device.CreatePipeline( desc );
 	if ( !pipeline )
 		return foundation::MakeUnexpected( ShadowPassStatus::kDevice );

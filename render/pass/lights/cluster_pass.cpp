@@ -6,7 +6,7 @@
 
 #include "render/pass/lights/cluster_pass.h"
 
-#include "spv/cluster_assign_spv.h"
+#include "render/shaderlib/core_artifacts.h"
 #include "render/graph/executor.h"
 
 #include <algorithm>
@@ -81,33 +81,33 @@ foundation::Expected<std::unique_ptr<ClusterKernel>, ClusterKernelStatus> Cluste
 {
 	if ( !device.Facts().capabilities.Has( Capability::kCompute ) )
 		return foundation::MakeUnexpected( ClusterKernelStatus::kNoCompute );
-	if ( code.empty() )
-		code = spirv::kClusterAssignCompute;
 	std::unique_ptr<ClusterKernel> kernel( new ClusterKernel( device ) );
 
 	BindingDesc bindings[kBindingCount];
-	ReflectedBinding reflected[kBindingCount];
 	for ( std::uint32_t b = 0; b < kBindingCount; ++b )
 	{
 		const BindingKind kind =
 		    b == kParams ? BindingKind::kUniformBuffer : BindingKind::kStorageBuffer;
 		bindings[b] = { b, kind, 1, { ShaderStage::kCompute } };
-		reflected[b] = { static_cast<std::uint32_t>( BindGroupRole::kDraw ), b, kind };
 	}
 	auto layout = device.CreateBindGroupLayout( { BindGroupRole::kDraw, bindings } );
 	if ( !layout )
 		return foundation::MakeUnexpected( ClusterKernelStatus::kDevice );
 	kernel->m_Layout = layout.Value();
 
-	const BindGroupLayoutId layouts[kMaxBindGroups] = { {}, {}, {}, kernel->m_Layout };
-	const ShaderArtifactView stage[] = { { ShaderStage::kCompute, ArtifactFormat::kSpirv,
-	    std::as_bytes( code ), "main", reflected } };
-	PipelineDesc desc;
-	desc.kind = PipelineKind::kCompute;
-	desc.stages = stage;
-	desc.layouts = layouts;
-	desc.debugName = "render.pass.lights.assign";
-	auto pipeline = device.CreatePipeline( desc );
+	// The kernel in the device's artifact format (RFC 0016 K10); a suite's
+	// seeded kernel replaces the core one, on a SPIR-V device only.
+	constexpr const char *kKernel = "render/pass/lights/cluster_assign.comp";
+	shaderlib::ArtifactOverlay artifacts( shaderlib::CoreArtifacts() );
+	if ( !code.empty() && !artifacts.ReplaceSpirv( kKernel, code, device.Facts().artifactFormat ) )
+		return foundation::MakeUnexpected( ClusterKernelStatus::kDevice );
+	shaderlib::PipelineRecipe recipe = shaderlib::CoreRecipe( { kKernel }, PipelineKind::kCompute );
+	recipe.layouts = { {}, {}, {}, kernel->m_Layout };
+	recipe.debugName = "render.pass.lights.assign";
+	auto resolved = shaderlib::Resolve( recipe, artifacts, device.Facts().artifactFormat );
+	if ( !resolved )
+		return foundation::MakeUnexpected( ClusterKernelStatus::kDevice );
+	auto pipeline = device.CreatePipeline( resolved.Value().Desc() );
 	if ( !pipeline )
 		return foundation::MakeUnexpected( ClusterKernelStatus::kDevice );
 	kernel->m_Pipeline = pipeline.Value();

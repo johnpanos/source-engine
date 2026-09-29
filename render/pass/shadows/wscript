@@ -14,6 +14,6 @@ def build(bld):
 		name        = 'render_pass_shadows',
 		source      = bld.path.ant_glob('*.cpp'),
 		includes    = ['../../../public'],
-		use         = ['render_math', 'render_graph', 'render_device', 'render_resources', 'render_spv'],
+		use         = ['render_math', 'render_graph', 'render_device', 'render_resources', 'render_shaderlib', 'render_spv'],
 		idx         = bld.get_taskgen_count()
 	)

@@ -45,6 +45,16 @@ struct RenderCoreConfig
 	// Comma-separated feature names from the product profile, in frame
 	// order, e.g. "legacy-stream,present".
 	const char *features = "legacy-stream,present";
+	// Comma-separated "feature=fallback" substitutions the product profile
+	// declares (RFC 0016 K10 "Capability negotiation"): a feature the device
+	// cannot run is replaced by its declared fallback only when listed here,
+	// and RenderCoreResult::substitutions names each one. The root takes it
+	// from -render-fallbacks, with the product profile's default.
+	const char *fallbacks = "";
+	// Comma-separated capability names (render::device::CapabilityName) the
+	// device must not claim: a profile takes the path that works without
+	// them. An adapter that cannot mask fails composition by name.
+	const char *maskedCapabilities = "";
 	// The linked legacy backend the frontend wraps; may be null.
 	const render::LegacyShaderProvider *legacyBackend = nullptr;
 	bool validation = false;
@@ -67,16 +77,21 @@ enum RenderCoreStatus
 {
 	RENDER_CORE_OK = 0,
 	RENDER_CORE_INVALID_CONFIG,
-	RENDER_CORE_UNKNOWN_DEVICE,    // not an adapter this product links
-	RENDER_CORE_DEVICE_FAILED,     // the adapter could not create a device
-	RENDER_CORE_UNKNOWN_FEATURE,   // not a feature this product links
-	RENDER_CORE_MISSING_CAPABILITY // a feature needs what the device lacks
+	RENDER_CORE_UNKNOWN_DEVICE,     // not an adapter this product links
+	RENDER_CORE_DEVICE_FAILED,      // the adapter could not create a device
+	RENDER_CORE_UNKNOWN_FEATURE,    // not a feature this product links
+	RENDER_CORE_MISSING_CAPABILITY, // a feature needs what the device lacks, with no fallback
+	RENDER_CORE_UNDECLARED_FALLBACK // a feature's fallback is not in RenderCoreConfig::fallbacks
 };
 
 struct RenderCoreResult
 {
 	RenderCoreStatus status = RENDER_CORE_OK;
 	char message[256] = {};
+	// Every substitution composition made, "feature -> fallback (lacks
+	// capability)", comma-separated; empty when none. Set on success.
+	char substitutions[256] = {};
+	unsigned int substitutionCount = 0;
 };
 
 namespace render::device
