@@ -78,6 +78,13 @@ public:
 	virtual bool IsSelfAnimating() { return false; };
 
 private:
+	// Portal 2: view limits changed by SetMin/MaxYaw and SetMin/MaxPitch ease
+	// toward their new values instead of snapping the view.
+	void UpdateViewClamps( void );
+	float m_flPitchMaxCurrent;
+	float m_flPitchMinCurrent;
+	float m_flYawMaxCurrent;
+	float m_flYawMinCurrent;
 
 	CHandle<C_BasePlayer>	m_hPlayer;
 	CHandle<C_BasePlayer>	m_hPrevPlayer;
@@ -90,8 +97,11 @@ private:
 	ViewSmoothingData_t		m_ViewSmoothingData;
 
 	vehicleview_t m_vehicleView;
+	bool m_bForceEyesToAttachment;
 };
 
+// Source receive-table macros require their declaration layout.
+// clang-format off
 IMPLEMENT_CLIENTCLASS_DT(C_PropVehicleChoreoGeneric, DT_PropVehicleChoreoGeneric, CPropVehicleChoreoGeneric)
 	RecvPropEHandle( RECVINFO(m_hPlayer) ),
 	RecvPropBool( RECVINFO( m_bEnterAnimOn ) ),
@@ -107,12 +117,14 @@ IMPLEMENT_CLIENTCLASS_DT(C_PropVehicleChoreoGeneric, DT_PropVehicleChoreoGeneric
 	RecvPropFloat( RECVINFO( m_vehicleView.flYawMax ) ),
 	RecvPropFloat( RECVINFO( m_vehicleView.flPitchMin ) ),
 	RecvPropFloat( RECVINFO( m_vehicleView.flPitchMax ) ),
+	RecvPropBool( RECVINFO( m_bForceEyesToAttachment ) ),
 END_RECV_TABLE()
 
 
 BEGIN_DATADESC( C_PropVehicleChoreoGeneric )
 	DEFINE_EMBEDDED( m_ViewSmoothingData ),
-END_DATADESC()
+END_DATADESC();
+// clang-format on
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -127,6 +139,9 @@ C_PropVehicleChoreoGeneric::C_PropVehicleChoreoGeneric( void )
 	m_ViewSmoothingData.flRollCurveZero = ROLL_CURVE_ZERO;
 	m_ViewSmoothingData.flRollCurveLinear = ROLL_CURVE_LINEAR;
 	m_flFOV = 0;
+	m_flPitchMaxCurrent = m_flPitchMinCurrent = 0.0f;
+	m_flYawMaxCurrent = m_flYawMinCurrent = 0.0f;
+	m_bForceEyesToAttachment = false;
 }
 
 //-----------------------------------------------------------------------------
@@ -146,6 +161,14 @@ void C_PropVehicleChoreoGeneric::PreDataUpdate( DataUpdateType_t updateType )
 void C_PropVehicleChoreoGeneric::PostDataUpdate( DataUpdateType_t updateType )
 {
 	BaseClass::PostDataUpdate( updateType );
+
+	if ( updateType == DATA_UPDATE_CREATED )
+	{
+		m_flPitchMaxCurrent = m_vehicleView.flPitchMax;
+		m_flPitchMinCurrent = m_vehicleView.flPitchMin;
+		m_flYawMaxCurrent = m_vehicleView.flYawMax;
+		m_flYawMinCurrent = m_vehicleView.flYawMin;
+	}
 
 	// NVNT if we have entered this vehicle notify the haptics system
 	if ( m_hPlayer && !m_hPrevPlayer )
@@ -206,12 +229,8 @@ int	C_PropVehicleChoreoGeneric::GetPassengerRole( C_BaseCombatCharacter *pPassen
 //-----------------------------------------------------------------------------
 void C_PropVehicleChoreoGeneric::GetVehicleViewPosition( int nRole, Vector *pAbsOrigin, QAngle *pAbsAngles, float *pFOV /*=NULL*/ )
 {
-	SharedVehicleViewSmoothing( m_hPlayer, 
-								pAbsOrigin, pAbsAngles, 
-								m_bEnterAnimOn, m_bExitAnimOn, 
-								m_vecEyeExitEndpoint, 
-								&m_ViewSmoothingData, 
-								pFOV );
+	SharedVehicleViewSmoothing( m_hPlayer, pAbsOrigin, pAbsAngles, m_bEnterAnimOn, m_bExitAnimOn,
+	    m_vecEyeExitEndpoint, &m_ViewSmoothingData, pFOV, m_bForceEyesToAttachment );
 }
 
 
@@ -227,17 +246,40 @@ void C_PropVehicleChoreoGeneric::UpdateViewAngles( C_BasePlayer *pLocalPlayer, C
 	QAngle vehicleEyeAngles;
 	GetAttachmentLocal( eyeAttachmentIndex, vehicleEyeOrigin, vehicleEyeAngles );
 
+	UpdateViewClamps();
+
 	// Limit the yaw.
 	float flAngleDiff = AngleDiff( pCmd->viewangles.y, vehicleEyeAngles.y );
-	flAngleDiff = clamp( flAngleDiff, (float) m_vehicleView.flYawMin, (float) m_vehicleView.flYawMax );
+	flAngleDiff = clamp( flAngleDiff, m_flYawMinCurrent, m_flYawMaxCurrent );
 	pCmd->viewangles.y = vehicleEyeAngles.y + flAngleDiff;
 
 	// Limit the pitch -- don't let them look down into the empty pod!
 	flAngleDiff = AngleDiff( pCmd->viewangles.x, vehicleEyeAngles.x );
-	flAngleDiff = clamp( flAngleDiff, (float) m_vehicleView.flPitchMin, (float) m_vehicleView.flPitchMax );
+	flAngleDiff = clamp( flAngleDiff, m_flPitchMinCurrent, m_flPitchMaxCurrent );
 	pCmd->viewangles.x = vehicleEyeAngles.x + flAngleDiff;
 }
 
+static float InterpolateViewClamp( float flValue, float flDesired )
+{
+	if ( CloseEnough( flValue, flDesired, 1e-3 ) == false )
+	{
+		float delta = flDesired - flValue;
+		delta = delta * ExponentialDecay( 0.2, 0.5, gpGlobals->frametime );
+		return flDesired - delta;
+	}
+	else
+	{
+		return flDesired;
+	}
+}
+
+void C_PropVehicleChoreoGeneric::UpdateViewClamps( void )
+{
+	m_flPitchMaxCurrent = InterpolateViewClamp( m_flPitchMaxCurrent, m_vehicleView.flPitchMax );
+	m_flPitchMinCurrent = InterpolateViewClamp( m_flPitchMinCurrent, m_vehicleView.flPitchMin );
+	m_flYawMaxCurrent = InterpolateViewClamp( m_flYawMaxCurrent, m_vehicleView.flYawMax );
+	m_flYawMinCurrent = InterpolateViewClamp( m_flYawMinCurrent, m_vehicleView.flYawMin );
+}
 
 //-----------------------------------------------------------------------------
 // Futzes with the clip planes

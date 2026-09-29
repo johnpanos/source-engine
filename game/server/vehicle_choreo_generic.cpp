@@ -87,12 +87,25 @@ class CChoreoGenericServerVehicle : public CBaseServerVehicle
 
 // IServerVehicle
 public:
+	CChoreoGenericServerVehicle( void ) : m_bUsingStandardWeapons( false ) {}
+
 	void GetVehicleViewPosition( int nRole, Vector *pAbsOrigin, QAngle *pAbsAngles, float *pFOV = NULL );
 	virtual void ItemPostFrame( CBasePlayer *pPlayer );
+	virtual bool IsPassengerUsingStandardWeapons( int nRole = VEHICLE_ROLE_DRIVER )
+	{
+		return m_bUsingStandardWeapons;
+	}
+
+	// Portal 2: lets the passenger use (or stow) their weapon while seated.
+	void SetUsingStandardWeapons( bool bUsing );
+	void RestoreUsingStandardWeapons( bool bUsing ) { m_bUsingStandardWeapons = bUsing; }
 
 protected:
 
 	CPropVehicleChoreoGeneric *GetVehicle( void );
+
+private:
+	bool m_bUsingStandardWeapons;
 };
 
 
@@ -112,6 +125,8 @@ public:
 		m_ServerVehicle.SetVehicle( this );
 		m_bIgnoreMoveParent = false;
 		m_bForcePlayerEyePoint = false;
+		m_bPlayerCanShoot = false;
+		m_bForceEyesToAttachment = false;
 	}
 
 	~CPropVehicleChoreoGeneric( void )
@@ -121,6 +136,7 @@ public:
 	// CBaseEntity
 	virtual void	Precache( void );
 	void			Spawn( void );
+	virtual void OnRestore( void );
 	void			Think(void);
 	virtual int		ObjectCaps( void ) { return BaseClass::ObjectCaps() | FCAP_IMPULSE_USE; };
 	virtual void	Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
@@ -161,6 +177,12 @@ public:
 	void InputOpen( inputdata_t &inputdata );
 	void InputClose( inputdata_t &inputdata );
 	void InputViewlock( inputdata_t &inputdata );
+	void InputSetCanShoot( inputdata_t &inputdata );
+	void InputUseAttachmentEyes( inputdata_t &inputdata );
+	void InputSetMaxPitch( inputdata_t &inputdata );
+	void InputSetMinPitch( inputdata_t &inputdata );
+	void InputSetMaxYaw( inputdata_t &inputdata );
+	void InputSetMinYaw( inputdata_t &inputdata );
 
 	bool ShouldIgnoreParent( void ) { return m_bIgnoreMoveParent; }
 
@@ -216,6 +238,10 @@ private:
 	bool				m_bForcedExit;
 	bool				m_bIgnoreMoveParent;
 	bool				m_bIgnorePlayerCollisions;
+	// Passenger may use their weapon (Portal 2 finale)
+	bool m_bPlayerCanShoot;
+	// View is the 'vehicle_driver_eyes' attachment itself
+	CNetworkVar( bool, m_bForceEyesToAttachment );
 
 	// Vehicle script filename
 	string_t			m_vehicleScript;
@@ -228,6 +254,8 @@ private:
 
 LINK_ENTITY_TO_CLASS( prop_vehicle_choreo_generic, CPropVehicleChoreoGeneric );
 
+// Source datadesc and send-table macros require their declaration layout.
+// clang-format off
 BEGIN_DATADESC( CPropVehicleChoreoGeneric )
 
 	// Inputs
@@ -239,6 +267,12 @@ BEGIN_DATADESC( CPropVehicleChoreoGeneric )
 	DEFINE_INPUTFUNC( FIELD_VOID, "Open", InputOpen ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "Close", InputClose ),
 	DEFINE_INPUTFUNC( FIELD_BOOLEAN, "Viewlock", InputViewlock ),
+	DEFINE_INPUTFUNC( FIELD_BOOLEAN, "SetCanShoot", InputSetCanShoot ),
+	DEFINE_INPUTFUNC( FIELD_BOOLEAN, "UseAttachmentEyes", InputUseAttachmentEyes ),
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetMaxPitch", InputSetMaxPitch ),
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetMinPitch", InputSetMinPitch ),
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetMaxYaw", InputSetMaxYaw ),
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetMinYaw", InputSetMinYaw ),
 
 	// Keys
 	DEFINE_EMBEDDED( m_ServerVehicle ),
@@ -255,6 +289,8 @@ BEGIN_DATADESC( CPropVehicleChoreoGeneric )
 	DEFINE_KEYFIELD( m_bIgnoreMoveParent, FIELD_BOOLEAN, "ignoremoveparent" ),
 	DEFINE_KEYFIELD( m_bIgnorePlayerCollisions, FIELD_BOOLEAN, "ignoreplayer" ),
 	DEFINE_KEYFIELD( m_bForcePlayerEyePoint, FIELD_BOOLEAN, "useplayereyes" ),
+	DEFINE_KEYFIELD( m_bPlayerCanShoot, FIELD_BOOLEAN, "playercanshoot" ),
+	DEFINE_KEYFIELD( m_bForceEyesToAttachment, FIELD_BOOLEAN, "useattachmenteyes" ),
 
 	DEFINE_OUTPUT( m_playerOn, "PlayerOn" ),
 	DEFINE_OUTPUT( m_playerOff, "PlayerOff" ),
@@ -281,8 +317,9 @@ IMPLEMENT_SERVERCLASS_ST(CPropVehicleChoreoGeneric, DT_PropVehicleChoreoGeneric)
 	SendPropFloat( SENDINFO_STRUCTELEM( m_vehicleView.flYawMax ) ),
 	SendPropFloat( SENDINFO_STRUCTELEM( m_vehicleView.flPitchMin ) ),
 	SendPropFloat( SENDINFO_STRUCTELEM( m_vehicleView.flPitchMax ) ),
+	SendPropBool( SENDINFO( m_bForceEyesToAttachment ) ),
 END_SEND_TABLE();
-
+// clang-format on
 
 bool ShouldVehicleIgnoreEntity( CBaseEntity *pVehicle, CBaseEntity *pCollide )
 {
@@ -337,9 +374,23 @@ void CPropVehicleChoreoGeneric::Spawn( void )
 
 	SetNextThink( gpGlobals->curtime );
 
+	// Apply the 'playercanshoot' keyvalue to the contained server vehicle.
+	m_ServerVehicle.SetUsingStandardWeapons( m_bPlayerCanShoot );
+
 	ParseViewParams( STRING(m_vehicleScript) );
 }
 
+//------------------------------------------------
+// OnRestore
+//------------------------------------------------
+void CPropVehicleChoreoGeneric::OnRestore( void )
+{
+	BaseClass::OnRestore();
+
+	// The passenger's weapon state is restored with the passenger; only the
+	// server vehicle's flag needs to follow the saved keyvalue.
+	m_ServerVehicle.RestoreUsingStandardWeapons( m_bPlayerCanShoot );
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -515,8 +566,46 @@ void CPropVehicleChoreoGeneric::InputViewlock( inputdata_t &inputdata )
 	}
 }
 
+//------------------------------------------------------------------------------
+// Purpose: Portal 2: allow or forbid the passenger's weapon (sp_a4_finale4's
+//			moon shot gives control back with SetCanShoot 1).
+//------------------------------------------------------------------------------
+void CPropVehicleChoreoGeneric::InputSetCanShoot( inputdata_t &inputdata )
+{
+	m_bPlayerCanShoot = inputdata.value.Bool();
+	m_ServerVehicle.SetUsingStandardWeapons( m_bPlayerCanShoot );
+}
 
+//------------------------------------------------------------------------------
+// Purpose: Portal 2: lock the view to the 'vehicle_driver_eyes' attachment.
+//------------------------------------------------------------------------------
+void CPropVehicleChoreoGeneric::InputUseAttachmentEyes( inputdata_t &inputdata )
+{
+	m_bForceEyesToAttachment = inputdata.value.Bool();
+}
 
+//------------------------------------------------------------------------------
+// Purpose: Portal 2: change one view limit. The client eases toward it.
+//------------------------------------------------------------------------------
+void CPropVehicleChoreoGeneric::InputSetMaxPitch( inputdata_t &inputdata )
+{
+	m_vehicleView.flPitchMax.Set( inputdata.value.Float() );
+}
+
+void CPropVehicleChoreoGeneric::InputSetMinPitch( inputdata_t &inputdata )
+{
+	m_vehicleView.flPitchMin.Set( inputdata.value.Float() );
+}
+
+void CPropVehicleChoreoGeneric::InputSetMaxYaw( inputdata_t &inputdata )
+{
+	m_vehicleView.flYawMax.Set( inputdata.value.Float() );
+}
+
+void CPropVehicleChoreoGeneric::InputSetMinYaw( inputdata_t &inputdata )
+{
+	m_vehicleView.flYawMin.Set( inputdata.value.Float() );
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -839,6 +928,38 @@ void CChoreoGenericServerVehicle::ItemPostFrame( CBasePlayer *player )
 	}
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: Stow or draw the passenger's weapon as retail Portal 2 does when
+//			the vehicle's SetCanShoot changes.
+//-----------------------------------------------------------------------------
+void CChoreoGenericServerVehicle::SetUsingStandardWeapons( bool bUsing )
+{
+	if ( m_bUsingStandardWeapons == bUsing )
+		return;
+
+	m_bUsingStandardWeapons = bUsing;
+
+	CBaseCombatCharacter *pPassenger = GetPassenger( VEHICLE_ROLE_DRIVER );
+	if ( !pPassenger || !pPassenger->IsPlayer() )
+		return;
+
+	CBasePlayer *pPlayer = static_cast<CBasePlayer *>( pPassenger );
+	CBaseCombatWeapon *pWeapon = pPlayer->GetActiveWeapon();
+	if ( !pWeapon )
+		return;
+
+	if ( bUsing )
+	{
+		pPlayer->ShowCrosshair( true );
+		pWeapon->Deploy();
+		pWeapon->SendViewModelAnim( pWeapon->LookupSequence( "end_draw" ) );
+	}
+	else
+	{
+		pWeapon->Holster( NULL );
+		pPlayer->ShowCrosshair( false );
+	}
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: 

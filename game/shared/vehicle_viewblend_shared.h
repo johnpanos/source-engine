@@ -69,11 +69,8 @@ struct ViewSmoothingData_t
 };
 
 // TEMP: Shared vehicle view smoothing
-void SharedVehicleViewSmoothing(CBasePlayer *pPlayer, 
-								Vector *pAbsOrigin, QAngle *pAbsAngles, 
-								bool bEnterAnimOn, bool bExitAnimOn, 
-								const Vector &vecEyeExitEndpoint, 
-								ViewSmoothingData_t *pData, 
-								float *pFOV );
+void SharedVehicleViewSmoothing( CBasePlayer *pPlayer, Vector *pAbsOrigin, QAngle *pAbsAngles,
+    bool bEnterAnimOn, bool bExitAnimOn, const Vector &vecEyeExitEndpoint,
+    ViewSmoothingData_t *pData, float *pFOV, bool bForceViewToAttachment = false );
 
 #endif // VEHICLE_VIEWBLEND_SHARED_H

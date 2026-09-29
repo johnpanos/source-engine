@@ -950,6 +950,11 @@ C_BaseEntity::C_BaseEntity() :
 	m_iCurrentThinkContext = NO_THINK_CONTEXT;
 
 #endif
+	// An entity networked at the world origin with zero angles never marks its
+	// abs transform dirty, so without this EntityToWorldTransform() stays all
+	// zeros (later branches initialize it here too; sp_a4_finale4's
+	// ending_vehicle sits at 0 0 0 and its eye attachment read back as zero).
+	SetIdentityMatrix( m_rgflCoordinateFrame );
 
 	m_nSimulationTick = -1;
 

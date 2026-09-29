@@ -70,7 +70,7 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | G17 | `env_portal_laser` `AutoAimEnabled`, `NoPlacementHelper` | todo |
 | G18 | `npc_personality_core` `ModelSkin`, `AltModel`, `EnableReceivingFlashlight`/`DisableReceivingFlashlight` | todo |
 | G19 | `info_placement_helper` `target_size`, `usesizelimit` | todo |
-| G20 | `prop_vehicle_choreo_generic` view limits (`SetMin/MaxPitch/Yaw`), `SetCanShoot`, `UseAttachmentEyes`, `PlayerCanShoot`; `logic_playerproxy` `LowerWeapon` | todo (`PaintPlayerWithPortalPaint` done 2026-09-28, see log) |
+| G20 | `prop_vehicle_choreo_generic` view limits (`SetMin/MaxPitch/Yaw`), `SetCanShoot`, `UseAttachmentEyes`, `PlayerCanShoot` (done 2026-09-29, see log); `logic_playerproxy` `LowerWeapon` | todo (`PaintPlayerWithPortalPaint` done 2026-09-28, see log) |
 | G21 | `prop_tractor_beam` `NoEmitterParticles`; `vgui_screen` `IsTransparent`; `vgui_neurotoxin_countdown` `countdown` (done, see log); `npc_bullseye` `AlwaysTransmit`; `point_viewcontrol` `TrackSpeed` | todo |
 | G22 | Retail-networked base classes (`func_brush`, `func_movelinear`, `func_button`, `prop_door_rotating`, `func_portal_bumper`) and co-op stats (`portal_mp_stats`) | todo |
 
@@ -304,3 +304,26 @@ Newest last. Each entry names the build and the check that passed.
   `ent_dump` reads 4.54, 3.59, then 0.12 after `Enable`. Headless
   `sp_a4_finale4` with `mat_force_tonemap_scale 1`: the monitor shows
   `04:58:09`, then the 120 s world timer. Not compared against retail frames.
+- 2026-09-29, G20 `prop_vehicle_choreo_generic` (build-p2, native Vulkan,
+  Box3D; the user's report that the `sp_a4_finale4` moon shot "does nothing"
+  once control returns). The finale seats the player in `ending_vehicle` and
+  `vehicle_shoot_relay` sends `SetCanShoot 1` and `SetMin/MaxPitch/Yaw`; none
+  of these inputs existed, so the gun stayed holstered and the view stayed
+  locked. Ported from retail `server.so` (datadesc and Ghidra:
+  `m_bPlayerCanShoot`/`playercanshoot`, `m_bForceEyesToAttachment`/
+  `useattachmenteyes`, the server vehicle's standard-weapons flag, which on a
+  change holsters the gun and hides the crosshair or shows it, deploys and
+  plays `end_draw`) and from the CS:GO client (view limits that ease toward
+  new values, `SharedVehicleViewSmoothing`'s attachment-eyes view and
+  Portal 2 FOV). A second bug kept the view frozen after that: an entity
+  networked at the world origin with zero angles never computed its
+  coordinate frame on the client, so `ending_vehicle`'s (at `0 0 0`)
+  `EntityToWorldTransform()` was all zeros, its local eye attachment read
+  `(0 0 0)` and `UpdateViewAngles` pinned the view level. `C_BaseEntity`'s
+  constructor now starts it at identity, as CS:GO's does. Headless run of
+  `stalemate_ending_relay`: the view follows the eye attachment up to the
+  moon (pitch -81), the gun draws at 16 s, and a shot at the moon's centre
+  places a portal at (384, 32, 1544); `moon_portal_detector` fires and
+  `ending_relay` plays the moon ending. Before the fix the inputs were
+  "unhandled" and the view read `setang 0 0 0` whatever the input. Not
+  compared against retail frames.

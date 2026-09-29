@@ -208,12 +208,9 @@ void RemapViewAngles( ViewSmoothingData_t *pData, QAngle &vehicleEyeAngles )
 //-----------------------------------------------------------------------------
 // Purpose: Vehicle dampening shared between server and client
 //-----------------------------------------------------------------------------
-void SharedVehicleViewSmoothing(CBasePlayer *pPlayer, 
-								Vector *pAbsOrigin, QAngle *pAbsAngles, 
-								bool bEnterAnimOn, bool bExitAnimOn, 
-								const Vector &vecEyeExitEndpoint, 
-								ViewSmoothingData_t *pData, 
-								float *pFOV )
+void SharedVehicleViewSmoothing( CBasePlayer *pPlayer, Vector *pAbsOrigin, QAngle *pAbsAngles,
+    bool bEnterAnimOn, bool bExitAnimOn, const Vector &vecEyeExitEndpoint,
+    ViewSmoothingData_t *pData, float *pFOV, bool bForceViewToAttachment /*= false*/ )
 {
 	int eyeAttachmentIndex = pData->pVehicle->LookupAttachment( "vehicle_driver_eyes" );
 	matrix3x4_t vehicleEyePosToWorld;
@@ -221,6 +218,19 @@ void SharedVehicleViewSmoothing(CBasePlayer *pPlayer,
 	QAngle vehicleEyeAngles;
 	pData->pVehicle->GetAttachment( eyeAttachmentIndex, vehicleEyeOrigin, vehicleEyeAngles );
 	AngleMatrix( vehicleEyeAngles, vehicleEyePosToWorld );
+
+	// Portal 2 (prop_vehicle_choreo_generic UseAttachmentEyes): the view is the
+	// eye attachment itself, ignoring the player's eye angles.
+	if ( bForceViewToAttachment )
+	{
+		*pAbsOrigin = vehicleEyeOrigin;
+		*pAbsAngles = vehicleEyeAngles;
+		if ( pFOV != NULL )
+		{
+			*pFOV = pData->flFOV;
+		}
+		return;
+	}
 
 	// Dampen the eye positional change as we drive around.
 	*pAbsAngles = pPlayer->EyeAngles();
@@ -398,19 +408,27 @@ void SharedVehicleViewSmoothing(CBasePlayer *pPlayer,
 			
 			if ( pFOV != NULL )
 			{
+#if defined( PORTAL2 )
+				*pFOV = Lerp( flFracFOV, flDefaultFOV, pData->flFOV );
+#else
 				if ( pData->flFOV > flDefaultFOV )
 				{
 					*pFOV = Lerp( flFracFOV, flDefaultFOV, pData->flFOV );
 				}
+#endif
 			}
 		}
 	}
 	else if ( pFOV != NULL )
 	{
+#if defined( PORTAL2 )
+		*pFOV = pData->flFOV;
+#else
 		if ( pData->flFOV > flDefaultFOV )
 		{
 			// Not running an entry/exit anim. Just use the vehicle's FOV.
 			*pFOV = pData->flFOV;
 		}
+#endif
 	}
 }
