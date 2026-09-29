@@ -1,7 +1,7 @@
 {
   "schema": "map-export-profile/v1",
   "name": "legacy-relight",
-  "description": "Relight of a compiled legacy map (tools/quality/legacy_bsp_relight.py): the gi-fixture light paths (64 diffuse bounces, no clamping) baked at 4096 samples (on the CPU) into a 4096 atlas with separated direct and indirect LMAP v2 layers (the total is their sum), denoised per chart as a finishing step; the noise gate requires the halves' residual difference after that denoise to stay under 15% at the 99th percentile (testchmb_a_00 at 2048 texels measured 28% at 256 samples and 17% at 1024; raw noise falls as 1 / sqrt(samples)), a PRBV probe volume at 2 m (a whole Portal map spans about 100 x 60 x 40 m), a radiosity transfer at 1 m patches and an SDFV at 0.4 m voxels for the SDF-traced producer. The map's nodraw brush sides (relight_occluder) occlude in every bake but get no atlas space and are left out of the world mesh. No reflection probe, directional page or pipeline reference render; the SDFV's light cells are 2 m, culled by range (0.001), side and the map's PVS.",
+  "description": "Relight of a compiled legacy map (tools/quality/legacy_bsp_relight.py): the gi-fixture light paths (64 diffuse bounces, no clamping) baked at 4096 samples (on the CPU) into a 4096 atlas with separated direct and indirect LMAP v2 layers (the total is their sum), denoised per chart as a finishing step; the noise gate requires the halves' residual difference after that denoise to stay under 15% at the 99th percentile (testchmb_a_00 at 2048 texels measured 28% at 256 samples and 17% at 1024; raw noise falls as 1 / sqrt(samples)), a PRBV probe volume at 2 m (a whole Portal map spans about 100 x 60 x 40 m), a radiosity transfer at 1 m patches and an SDFV at 0.4 m voxels for the SDF-traced producer. The map's nodraw brush sides (relight_occluder) occlude in every bake but get no atlas space and are left out of the world mesh. No reflection probe, directional page or pipeline reference render; the SDFV's light cells are 2 m, culled by range (0.001), side and the map's PVS. A map whose volume at 2 m would exceed 50000 probes gets the smallest spacing that fits (fit_limit, max_probes; recorded in the PRBV receipt), as in the fast profile: whole retail maps (escape_02 3.3M probes at 2 m, sp_a2_core 1.3M, sp_a2_bts6 2.3M) exceed the PRBV's 1M and would take hours to trace; maps within 50000 keep 2 m.",
   "lightmap": {
     "size": 4096,
     "samples": 4096,
@@ -21,7 +21,9 @@
   },
   "probe_volume": {
     "spacing_m": 2.0,
-    "samples": 1024
+    "samples": 1024,
+    "fit_limit": true,
+    "max_probes": 50000
   },
   "radiosity": {
     "patch_size_m": 1.0,

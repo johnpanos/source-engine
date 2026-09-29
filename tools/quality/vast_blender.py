@@ -270,15 +270,20 @@ def offer_query(args):
              "inet_up_cost": {"lte": args.max_transfer_cost},
              "inet_down_cost": {"lte": args.max_transfer_cost},
              "direct_port_count": {"gte": 1}, "dph_total": {"lte": args.max_dph},
+             "cpu_cores_effective": {"gte": args.min_cpus},
+             "cpu_ram": {"gte": args.min_ram_gb * 1024},
              "order": [["dph_total", "asc"]], "type": "on-demand", "limit": 20,
              "allocated_storage": args.disk}
     return query
 
 
 def describe(offer):
-    return "offer %d: %s, $%.3f/h (+$%.4f/h storage), %s, reliability %.3f, driver %s" % (
-        offer["id"], offer["gpu_name"], offer["dph_total"], offer.get("storage_total_cost") or 0,
-        offer.get("geolocation"), offer.get("reliability2", 0), offer.get("driver_version"))
+    return ("offer %d: %s, %.0f CPUs, %.0f GB RAM, $%.3f/h (+$%.4f/h storage), %s, "
+            "reliability %.3f, driver %s" % (
+                offer["id"], offer["gpu_name"], offer.get("cpu_cores_effective") or 0,
+                (offer.get("cpu_ram") or 0) / 1024.0, offer["dph_total"],
+                offer.get("storage_total_cost") or 0, offer.get("geolocation"),
+                offer.get("reliability2", 0), offer.get("driver_version")))
 
 
 # ===================================================================== ssh
@@ -577,6 +582,10 @@ def main():
     renting.add_argument("--max-dph", type=float, default=0.60, help="max $/hour")
     renting.add_argument("--gpu", action="append", help="allowed GPU names (default: RTX class)")
     renting.add_argument("--disk", type=int, default=40, help="GB")
+    renting.add_argument("--min-cpus", type=float, default=8,
+                         help="effective CPU cores (the radiosity and probe steps' Python "
+                              "workers run on the host's CPU)")
+    renting.add_argument("--min-ram-gb", type=float, default=32)
     renting.add_argument("--min-reliability", type=float, default=0.98)
     renting.add_argument("--max-transfer-cost", type=float, default=0.02, help="$/GB")
     renting.add_argument("--transfer-gb", type=float, default=5.0,

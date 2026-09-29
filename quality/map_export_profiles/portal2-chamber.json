@@ -1,7 +1,7 @@
 {
   "schema": "map-export-profile/v1",
   "name": "portal2-chamber",
-  "description": "A relit Portal 2 test chamber (tools/quality/portal2_gi_chamber.py): the legacy-relight bake, plus what Portal 2's clean Aperture materials need. The directional page makes the baked light follow the tiles' normal maps (their self-shadowed bump maps, converted by legacy_bsp_scene.py), and automatically placed reflection probes with relight bands (RPRB v2) give the black metal and white tile their reflections, relit by the runtime lights.",
+  "description": "A relit Portal 2 test chamber (tools/quality/portal2_gi_chamber.py): the legacy-relight bake, plus what Portal 2's clean Aperture materials need. The directional page makes the baked light follow the tiles' normal maps (their self-shadowed bump maps, converted by legacy_bsp_scene.py), and automatically placed reflection probes with relight bands (RPRB v2) give the black metal and white tile their reflections, relit by the runtime lights. A map whose volume at 2 m would exceed 50000 probes gets the smallest spacing that fits (fit_limit, max_probes; recorded in the PRBV receipt), as in the fast profile: whole retail maps (escape_02 3.3M probes at 2 m, sp_a2_core 1.3M, sp_a2_bts6 2.3M) exceed the PRBV's 1M and would take hours to trace; maps within 50000 keep 2 m. Reflection-probe placement widens its walkable sample grid past 2000 samples (max_walkable), as a whole retail map would otherwise place for 20+ min.",
   "lightmap": {
     "size": 4096,
     "samples": 4096,
@@ -21,7 +21,9 @@
   },
   "probe_volume": {
     "spacing_m": 2.0,
-    "samples": 1024
+    "samples": 1024,
+    "fit_limit": true,
+    "max_probes": 50000
   },
   "radiosity": {
     "patch_size_m": 1.0,
@@ -44,7 +46,10 @@
     "face_size": 256,
     "samples": 512,
     "light_paths": "gi-reference",
-    "relight": true
+    "relight": true,
+    "placement": {
+      "max_walkable": 2000
+    }
   },
   "reference": null,
   "runtime_gate": null,
