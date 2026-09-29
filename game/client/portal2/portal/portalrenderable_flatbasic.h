@@ -92,6 +92,10 @@ public:
 
 	bool ComputeClipSpacePortalCorners( Vector4D *pClipSpacePortalCornersOut, const VMatrix &matViewProj ) const;
 
+	// The TEXCOORD1 decal offset CreateMeshForPortals() gave this portal's quad
+	// in the mesh it built last (see CPortalShaderDecalOffset).
+	float GetQuadMeshDecalOffset( void ) const { return m_flQuadMeshDecalOffset; }
+
 protected:
 	void			ClipFixToBoundingAreaAndDraw( PortalMeshPoint_t *pVerts, const IMaterial *pMaterial );
 	void			Internal_DrawRenderFixMesh( IMatRenderContext *pRenderContext, const IMaterial *pMaterial );
@@ -135,6 +139,7 @@ public:
 
 private:
 	float			m_fHalfWidth, m_fHalfHeight;
+	mutable float m_flQuadMeshDecalOffset;
 	static CUtlStack<Vector4D> ms_clipPlaneStack;
 
 public:
@@ -143,6 +148,31 @@ public:
 	inline Vector	GetLocalMins( void ) const { return Vector( 0.0f, -m_fHalfWidth, -m_fHalfHeight ); }
 	inline Vector	GetLocalMaxs( void ) const { return Vector( 64.0f, m_fHalfWidth, m_fHalfHeight ); }
 	inline void		SetHalfSizes( float fHalfWidth, float fHalfHeight ) { m_fHalfWidth = fHalfWidth; m_fHalfHeight = fHalfHeight; }
+};
+
+// Portal 2 port: retail Portal 2's Portal and PortalRefract vertex shaders
+// (CS:GO portal_vs20.fxc, portal_refract_vs20.fxc) push each vertex along its
+// object-space normal by its TEXCOORD1.x, the "decal offset" the portal meshes
+// carry, so the portal does not z-fight with its own wall; in portal views
+// nested more than one deep they push by 1 unit. This engine's shaders are
+// Portal 1's: they read no offset (Portal 1 moves its mesh on the CPU and puts
+// texture coordinates in TEXCOORD1), and the client meshes sit in the wall's
+// plane. While in scope, this applies the same push to a draw as an
+// object-space model translation, only for the two shaders that take it; other
+// materials drawn with the same mesh (WriteZ, static overlays) stay in the
+// wall's plane as in retail.
+class CPortalShaderDecalOffset
+{
+public:
+	CPortalShaderDecalOffset( IMatRenderContext *pRenderContext, const IMaterial *pMaterial,
+	    const Vector &vObjectNormal, float flMeshDecalOffset );
+	~CPortalShaderDecalOffset( void );
+
+	// The distance retail's shader would push a vertex carrying flMeshDecalOffset.
+	static float Compute( const IMaterial *pMaterial, float flMeshDecalOffset );
+
+private:
+	IMatRenderContext *m_pRenderContext;
 };
 
 #endif //#ifndef PORTALRENDERABLE_FLATBASIC_H

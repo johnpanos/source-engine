@@ -538,8 +538,9 @@ void C_Prop_Portal::DestroyAttachedParticles( void )
 	// Shut down our effect if we have it
 	if ( m_hEffect && m_hEffect.IsValid() )
 	{
-		// Portal 2 port: this particle system has no instant-removal or end-cap stop options.
-		ParticleProp()->StopEmission( m_hEffect, false, true );
+		// Play the edge's end cap: its end cap operators fade and scatter the
+		// ring and then kill it (portals.pcf portal_edge*).
+		ParticleProp()->StopEmission( m_hEffect, false, true, false, true );
 		m_hEffect = NULL;
 	}
 }

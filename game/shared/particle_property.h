@@ -85,7 +85,9 @@ public:
 	void				SetControlPointParent( int iEffectIndex, int whichControlPoint, int parentIdx );
 
 	// Commands
-	void				StopEmission( CNewParticleEffect *pEffect = NULL, bool bWakeOnStop = false, bool bDestroyAsleepSystems = false );
+	void StopEmission( CNewParticleEffect *pEffect = NULL, bool bWakeOnStop = false,
+	    bool bDestroyAsleepSystems = false, bool bForceRemoveInstantly = false,
+	    bool bPlayEndCap = false );
 	void				StopEmissionAndDestroyImmediately( CNewParticleEffect *pEffect = NULL );
 
 	// kill all particle systems involving a given entity for their control points

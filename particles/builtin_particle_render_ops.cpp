@@ -225,6 +225,59 @@ struct SpriteRenderInfo_t
 	}
 };
 
+//-----------------------------------------------------------------------------
+// Portal 2 port (CS:GO): cull systems by control point attributes. Cull when
+// dot( camera.Position - controlpoint.Position, controlpoint.up ) < -0.1 in
+// views at least m_nViewRecursionDepthStart portals deep (a portal's edge
+// effect, seen from behind its wall in the view through the other portal).
+//-----------------------------------------------------------------------------
+#define CULL_CP_NORMAL_DESCRIPTOR "cull system when CP normal faces away from camera"
+#define CULL_RECURSION_DEPTH_DESCRIPTOR "cull system starting at this recursion depth"
+
+struct CullSystemByControlPointData_t
+{
+	int m_nCullControlPoint;        // control point to cull by (-1 for no culling)
+	int m_nViewRecursionDepthStart; // first view recursion depth culled (-1 for no culling)
+};
+
+// The two fields in a renderer's unpack list (a member m_cullData).
+#define DMXELEMENT_UNPACK_CULL_FIELDS()                                                            \
+	DMXELEMENT_UNPACK_FIELD(                                                                       \
+	    CULL_CP_NORMAL_DESCRIPTOR, "-1", int, m_cullData.m_nCullControlPoint )                     \
+	DMXELEMENT_UNPACK_FIELD(                                                                       \
+	    CULL_RECURSION_DEPTH_DESCRIPTOR, "-1", int, m_cullData.m_nViewRecursionDepthStart )
+
+static bool ShouldCullParticleSystem( const CullSystemByControlPointData_t *pCullData,
+    CParticleCollection *pParticles, IMatRenderContext *pRenderContext, int nViewRecursionDepth )
+{
+	// If recursiondepthstart is -1 or m_nCullControlPoint is -1, then culling is disabled
+	if ( pCullData->m_nCullControlPoint == -1 || pCullData->m_nViewRecursionDepthStart == -1 )
+		return false;
+
+	// Make sure we're at or past the recursion depth start
+	if ( nViewRecursionDepth < pCullData->m_nViewRecursionDepthStart )
+		return false;
+
+	// Otherwise cull when the control point is facing away from the camera
+	Vector vCameraPos;
+	pRenderContext->GetWorldSpaceCameraPosition( &vCameraPos );
+	const Vector &vCullPosition =
+	    pParticles->GetControlPointAtCurrentTime( pCullData->m_nCullControlPoint );
+	Vector vRight;
+	Vector vUp;
+	Vector vControlPointForward;
+	// As CS:GO: the third vector (the control point's up) is the one tested.
+	pParticles->GetControlPointOrientationAtCurrentTime(
+	    pCullData->m_nCullControlPoint, &vRight, &vUp, &vControlPointForward );
+
+	Vector vControlPointToCamera = vCameraPos - vCullPosition;
+	vControlPointToCamera.NormalizeInPlace();
+	float flDot = DotProduct( vControlPointToCamera, vControlPointForward );
+
+	const float flCosAngleThreshold = -0.10f; // MAGIC NUMBER: cos of ~95 degrees
+	return ( flDot < flCosAngleThreshold ) ? true : false;
+}
+
 class C_OP_RenderSprites : public C_OP_RenderPoints
 {
 	DECLARE_PARTICLE_OPERATOR( C_OP_RenderSprites );
@@ -296,6 +349,15 @@ class C_OP_RenderSprites : public C_OP_RenderPoints
 
 
 	int m_nOrientationControlPoint;
+
+	CullSystemByControlPointData_t m_cullData;
+
+	virtual bool ShouldCullSystem( CParticleCollection *pParticles,
+	    IMatRenderContext *pRenderContext, int nViewRecursionDepth ) const
+	{
+		return ShouldCullParticleSystem(
+		    &m_cullData, pParticles, pRenderContext, nViewRecursionDepth );
+	}
 };
 
 DEFINE_PARTICLE_OPERATOR( C_OP_RenderSprites, "render_animated_sprites", OPERATOR_GENERIC );
@@ -307,6 +369,7 @@ BEGIN_PARTICLE_RENDER_OPERATOR_UNPACK( C_OP_RenderSprites )
 	DMXELEMENT_UNPACK_FIELD( "orientation control point", "-1", int, m_nOrientationControlPoint )
 	DMXELEMENT_UNPACK_FIELD( "second sequence animation rate", "0", float, m_flAnimationRate2 )
 	DMXELEMENT_UNPACK_FIELD( "use animation rate as FPS", "0", bool, m_bAnimateInFPS )
+	DMXELEMENT_UNPACK_CULL_FIELDS()
 END_PARTICLE_OPERATOR_UNPACK( C_OP_RenderSprites )
 
 void C_OP_RenderSprites::InitParams( CParticleSystemDefinition *pDef, CDmxElement *pElement )
@@ -1404,6 +1467,15 @@ class C_OP_RenderSpritesTrail : public CParticleRenderOperatorInstance
 	float m_flMinLength;
 	bool m_bConstrainRadius;
 	bool m_bIgnoreDT;
+
+	CullSystemByControlPointData_t m_cullData;
+
+	virtual bool ShouldCullSystem( CParticleCollection *pParticles,
+	    IMatRenderContext *pRenderContext, int nViewRecursionDepth ) const
+	{
+		return ShouldCullParticleSystem(
+		    &m_cullData, pParticles, pRenderContext, nViewRecursionDepth );
+	}
 };
 
 DEFINE_PARTICLE_OPERATOR( C_OP_RenderSpritesTrail, "render_sprite_trail", OPERATOR_SINGLETON );
@@ -1416,6 +1488,7 @@ BEGIN_PARTICLE_RENDER_OPERATOR_UNPACK( C_OP_RenderSpritesTrail )
     DMXELEMENT_UNPACK_FIELD( "constrain radius to length", "1", bool, m_bConstrainRadius )
     DMXELEMENT_UNPACK_FIELD( "ignore delta time", "0", bool, m_bIgnoreDT )
     DMXELEMENT_UNPACK_FIELD( "tail color and alpha scale factor", "1 1 1 1", Vector4D, m_FadeColor )
+    DMXELEMENT_UNPACK_CULL_FIELDS()
     END_PARTICLE_OPERATOR_UNPACK( C_OP_RenderSpritesTrail )
 
     float C_OP_RenderSpritesTrail::GetOODt( CParticleCollection *pParticles ) const
@@ -1830,8 +1903,9 @@ class C_OP_RenderRope : public CParticleOperatorInstance
 
 	uint32 GetReadAttributes( void ) const
 	{
-		return PARTICLE_ATTRIBUTE_XYZ_MASK | PARTICLE_ATTRIBUTE_RADIUS_MASK | 
-			PARTICLE_ATTRIBUTE_TINT_RGB_MASK | PARTICLE_ATTRIBUTE_ALPHA_MASK;
+		return PARTICLE_ATTRIBUTE_XYZ_MASK | PARTICLE_ATTRIBUTE_RADIUS_MASK |
+		       PARTICLE_ATTRIBUTE_TINT_RGB_MASK | PARTICLE_ATTRIBUTE_ALPHA_MASK |
+		       PARTICLE_ATTRIBUTE_ALPHA2_MASK;
 	}
 
 	virtual void InitializeContextData( CParticleCollection *pParticles, void *pContext ) const
@@ -1885,6 +1959,14 @@ class C_OP_RenderRope : public CParticleOperatorInstance
 	float	m_flTextureScrollRate;
 	float	m_flTStep;
 
+	CullSystemByControlPointData_t m_cullData;
+
+	virtual bool ShouldCullSystem( CParticleCollection *pParticles,
+	    IMatRenderContext *pRenderContext, int nViewRecursionDepth ) const
+	{
+		return ShouldCullParticleSystem(
+		    &m_cullData, pParticles, pRenderContext, nViewRecursionDepth );
+	}
 };
 
 DEFINE_PARTICLE_OPERATOR( C_OP_RenderRope, "render_rope", OPERATOR_SINGLETON );
@@ -1893,6 +1975,7 @@ BEGIN_PARTICLE_OPERATOR_UNPACK( C_OP_RenderRope )
 	DMXELEMENT_UNPACK_FIELD( "subdivision_count", "3", int, m_nSubdivCount )
 	DMXELEMENT_UNPACK_FIELD( "texel_size", "4.0f", float, m_flTexelSizeInUnits )
 	DMXELEMENT_UNPACK_FIELD( "texture_scroll_rate", "0.0f", float, m_flTextureScrollRate )
+	DMXELEMENT_UNPACK_CULL_FIELDS()
 END_PARTICLE_OPERATOR_UNPACK( C_OP_RenderRope )
 
 
@@ -1943,21 +2026,33 @@ int C_OP_RenderRope::GetParticlesToRender( CParticleCollection *pParticles,
 }
 
 
-#define OUTPUT_2SPLINE_VERTS( t ) 																								   \
-			meshBuilder.Color4ub( FastFToC( vecColor.x ), FastFToC( vecColor.y), FastFToC( vecColor.z), FastFToC( vecColor.w ) );  \
-			meshBuilder.Position3f( (t), flU, 0 );																				   \
-			meshBuilder.TexCoord4fv( 0, vecP0.Base() );																			   \
-			meshBuilder.TexCoord4fv( 1, vecP1.Base() );																			   \
-			meshBuilder.TexCoord4fv( 2, vecP2.Base() );																			   \
-			meshBuilder.TexCoord4fv( 3, vecP3.Base() );																			   \
-            meshBuilder.AdvanceVertex();																						   \
-			meshBuilder.Color4ub( FastFToC( vecColor.x ), FastFToC( vecColor.y), FastFToC( vecColor.z), FastFToC( vecColor.w ) );  \
-			meshBuilder.Position3f( (t), flU, 1 );																				   \
-			meshBuilder.TexCoord4fv( 0, vecP0.Base() );																			   \
-			meshBuilder.TexCoord4fv( 1, vecP1.Base() );																			   \
-			meshBuilder.TexCoord4fv( 2, vecP2.Base() );																			   \
-			meshBuilder.TexCoord4fv( 3, vecP3.Base() );																			   \
-			meshBuilder.AdvanceVertex();
+// Portal 2 port: the spline card vertex of CS:GO's rope (FastRopeVertexNormal_t).
+// POSITION = ( t along the segment, v, side ), TEXCOORD0..3 = the segment's
+// Catmull-Rom points ( xyz, radius ), TEXCOORD4 = the sheet range ( u0 v0 u1 v1;
+// the whole texture), TEXCOORD5 = the color at the segment's end point, and
+// TEXCOORD6/7 = the particle normals at its two ends, which $orientation 3
+// orients the rope by. SpriteCard's spline format has TEXCOORD4/5 (and 6/7 for
+// $orientation 3); texcoords a material's format lacks go to a dummy buffer.
+static void OutputSplineVertex( CMeshBuilder &meshBuilder, const Vector4D &vecColor, float flT, float flU, float flSide,
+	const Vector4D &vecP0, const Vector4D &vecP1, const Vector4D &vecP2, const Vector4D &vecP3,
+	const Vector4D &vecEndPointColor, const Vector &vecNorm0, const Vector &vecNorm1 )
+{
+	meshBuilder.Color4ub( FastFToC( vecColor.x ), FastFToC( vecColor.y ), FastFToC( vecColor.z ), FastFToC( vecColor.w ) );
+	meshBuilder.Position3f( flT, flU, flSide );
+	meshBuilder.TexCoord4fv( 0, vecP0.Base() );
+	meshBuilder.TexCoord4fv( 1, vecP1.Base() );
+	meshBuilder.TexCoord4fv( 2, vecP2.Base() );
+	meshBuilder.TexCoord4fv( 3, vecP3.Base() );
+	meshBuilder.TexCoord4f( 4, 0.0f, 0.0f, 1.0f, 1.0f );
+	meshBuilder.TexCoord4fv( 5, vecEndPointColor.Base() );
+	meshBuilder.TexCoord3fv( 6, vecNorm0.Base() );
+	meshBuilder.TexCoord3fv( 7, vecNorm1.Base() );
+	meshBuilder.AdvanceVertex();
+}
+
+#define OUTPUT_2SPLINE_VERTS( t ) \
+			OutputSplineVertex( meshBuilder, vecColor, (t), flU, 0.0f, vecP0, vecP1, vecP2, vecP3, vecEndPointColor, vecNorm0, vecNorm1 ); \
+			OutputSplineVertex( meshBuilder, vecColor, (t), flU, 1.0f, vecP0, vecP1, vecP2, vecP3, vecEndPointColor, vecNorm0, vecNorm1 );
 
 void C_OP_RenderRope::RenderSpriteCard( CParticleCollection *pParticles, void *pContext, IMaterial *pMaterial ) const
 {
@@ -1988,6 +2083,10 @@ void C_OP_RenderRope::RenderSpriteCard( CParticleCollection *pParticles, void *p
 		PARTICLE_ATTRIBUTE_RADIUS, 0 );
 	const float *pAlpha = pParticles->GetFloatAttributePtr( 
 		PARTICLE_ATTRIBUTE_ALPHA, 0 );
+	const float *pAlpha2 = pParticles->GetFloatAttributePtr( 
+		PARTICLE_ATTRIBUTE_ALPHA2, 0 );
+	const float *pNorm = pParticles->GetFloatAttributePtr( 
+		PARTICLE_ATTRIBUTE_NORMAL, 0 );
 	
 	IMesh* pMesh = pRenderContext->GetDynamicMesh( true );
 	CMeshBuilder meshBuilder;
@@ -2003,7 +2102,12 @@ void C_OP_RenderRope::RenderSpriteCard( CParticleCollection *pParticles, void *p
 	Vector4D vecP1( pXYZ[0], pXYZ[4], pXYZ[8], pRadius[0] );
 	Vector4D vecP2( pXYZ[1], pXYZ[5], pXYZ[9], pRadius[1] );
 	Vector4D vecP0 = vecP1;
-	Vector4D vecColor( pColor[0], pColor[4], pColor[8], pAlpha[0] );
+	Vector vecNorm0( pNorm[0], pNorm[4], pNorm[8] );
+	Vector vecNorm1( pNorm[1], pNorm[5], pNorm[9] );
+	// Portal 2 port: each segment fades from its start particle's color to its
+	// end particle's (TEXCOORD5), with alpha * alpha2, as CS:GO's rope does.
+	Vector4D vecColor( pColor[0], pColor[4], pColor[8], pAlpha[0] * pAlpha2[0] );
+	Vector4D vecEndPointColor( pColor[1], pColor[5], pColor[9], pAlpha[1] * pAlpha2[1] );
 	Vector4D vecDelta = vecP2;
 	vecDelta -= vecP1;
 	vecP0 -= vecDelta;
@@ -2079,17 +2183,27 @@ void C_OP_RenderRope::RenderSpriteCard( CParticleCollection *pParticles, void *p
 			vecP0 = vecP1;
 			vecP1 = vecP2;
 			vecP2 = vecP3;
+			vecColor = vecEndPointColor;
+			vecNorm0 = vecNorm1;
 			pRadius = pParticles->GetFloatAttributePtr( 
 				PARTICLE_ATTRIBUTE_RADIUS, nPnt );
 			pAlpha = pParticles->GetFloatAttributePtr( 
-				PARTICLE_ATTRIBUTE_ALPHA, nPnt -2  );
-			vecColor.Init( pColor[0], pColor[4], pColor[8], pAlpha[0] );
+				PARTICLE_ATTRIBUTE_ALPHA, nPnt - 1 );
+			pAlpha2 = pParticles->GetFloatAttributePtr( 
+				PARTICLE_ATTRIBUTE_ALPHA2, nPnt - 1 );
+			pColor = pParticles->GetFloatAttributePtr( 
+				PARTICLE_ATTRIBUTE_TINT_RGB, nPnt - 1 );
+			vecEndPointColor.Init( pColor[0], pColor[4], pColor[8], pAlpha[0] * pAlpha2[0] );
 
 			if ( nPnt < nParticles )
 			{
 				pXYZ = pParticles->GetFloatAttributePtr( 
 					PARTICLE_ATTRIBUTE_XYZ, nPnt );
 				vecP3.Init( pXYZ[0], pXYZ[4], pXYZ[8], pRadius[0] );
+				// CS:GO takes this normal from the particle past the new end point.
+				pNorm = pParticles->GetFloatAttributePtr( 
+					PARTICLE_ATTRIBUTE_NORMAL, nPnt );
+				vecNorm1.Init( pNorm[0], pNorm[4], pNorm[8] );
 				nPnt++;
 			}
 			else

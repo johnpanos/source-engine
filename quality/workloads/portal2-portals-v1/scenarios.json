@@ -161,6 +161,20 @@
         "orange.faces_north",
         "crowd.spawned"
       ]
+    },
+    {
+      "name": "qa_portal_surface",
+      "map": "qa_portal_walk",
+      "script": "qa_portal_surface.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "gun.held",
+        "blue.placed",
+        "blue.faces_south",
+        "orange.placed",
+        "orange.faces_north",
+        "surface.survived"
+      ]
     }
   ],
   "includes": [

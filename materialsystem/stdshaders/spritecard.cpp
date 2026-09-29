@@ -278,14 +278,16 @@ SHADER_DRAW
 			4,				// 6 = second sequence bounding uvs, frame1
 			4,				// 7 = second sequence frame blend, ?,?,?
 		};
-		static int s_TexCoordSizeSpline[]={4,				// 0 = sheet bounding uvs, frame0
-			4,				// 1 = sheet bounding uvs, frame 1
-			4,				// 2 = frame blend, rot, radius, ???
-			4,				// 3 = corner identifier ( 0/0,1/0,1/1, 1/0 )
-			4,				// 4 = texture 2 bounding uvs
-			4,				// 5 = second sequence bounding uvs, frame0
-			4,				// 6 = second sequence bounding uvs, frame1
-			4,				// 7 = second sequence frame blend, ?,?,?
+		// Portal 2 port: CS:GO's spline card format (splinecard_vsxx.fxc).
+		static int s_TexCoordSizeSpline[] = {
+		    4, // 0 = xyz rad pt0
+		    4, // 1 = xyz rad pt1
+		    4, // 2 = xyz rad pt2
+		    4, // 3 = xyz rad pt3
+		    4, // 4 = texture range u0,v0-u1,v1
+		    4, // 5 = rgba pt1
+		    3, // 6 = normal0 ($orientation 3: use the particle normals)
+		    3, // 7 = normal1
 		};
 
 		int numTexCoords = 4;
@@ -298,11 +300,13 @@ SHADER_DRAW
 			// the whole shebang - 2 sequences, with a possible multi-image sequence first
 			numTexCoords = 8;
 		}
-		if ( nSplineType && ( numTexCoords < 6 ) )
+		if ( nSplineType )
 		{
-			// Spline trails (Portal 2 render_sprite_trail) also send
-			// TEXCOORD4 = sheet uv range and TEXCOORD5 = tail color/alpha
-			numTexCoords = 6;
+			// Spline trails and ropes (Portal 2 render_sprite_trail, render_rope)
+			// also send TEXCOORD4 = sheet uv range and TEXCOORD5 = the end point's
+			// color/alpha, and with $orientation 3 ( "use normal", as CS:GO's
+			// spritecard ) the particle normals at both ends in TEXCOORD6/7.
+			numTexCoords = ( params[ORIENTATION]->GetIntValue() == 3 ) ? 8 : 6;
 		}
 		pShaderShadow->VertexShaderVertexFormat( flags,
 			numTexCoords, 

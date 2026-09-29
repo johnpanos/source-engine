@@ -745,11 +745,17 @@ void CPortalRender::DrawEarlyZPortals( CViewRender *pViewRender )
 			CPortalRenderable *pCurrentPortal = actualActivePortals[i];
 
 			IMaterial *pMat = pCurrentPortal->IsPropPortal() ? C_Prop_Portal::m_Materials.m_Portal_Stencil_Hole : C_Portal_Base2D::m_Materials.m_Portal_Stencil_Hole;
-			pRenderContext->Bind( pMat, assert_cast< CPortalRenderable_FlatBasic* >( pCurrentPortal )->GetClientRenderable() );
+			CPortalRenderable_FlatBasic *pFlatPortal =
+			    assert_cast<CPortalRenderable_FlatBasic *>( pCurrentPortal );
+			pRenderContext->Bind( pMat, pFlatPortal->GetClientRenderable() );
 
 			int nStartIndex = actualActivePortalQuadVBIndex[i] * 6;
 			int nIndexCount = 6;
-			pPortalQuadMesh->Draw( nStartIndex, nIndexCount );
+			{
+				CPortalShaderDecalOffset decalOffset( pRenderContext, pMat, pFlatPortal->m_vForward,
+				    pFlatPortal->GetQuadMeshDecalOffset() );
+				pPortalQuadMesh->Draw( nStartIndex, nIndexCount );
+			}
 			if ( ( m_iViewRecursionLevel == 0 ) && ( m_clampedPortalMeshRenderInfos[ actualActivePortalQuadVBIndex[i] ].nStartIndex >= 0 ) )
 			{
 				// Draw near plane cap
@@ -1065,7 +1071,10 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 				CPortalRenderable *pCurrentPortal = portalRenderablesToDraw[i];
 				//pCurrentPortal->DrawPreStencilMask( pRenderContext );
 
-				pRenderContext->Bind( C_Prop_Portal::m_Materials.m_Portal_Refract, assert_cast< CPortalRenderable_FlatBasic* >( pCurrentPortal )->GetClientRenderable() );
+				CPortalRenderable_FlatBasic *pFlatPortal =
+				    assert_cast<CPortalRenderable_FlatBasic *>( pCurrentPortal );
+				pRenderContext->Bind( C_Prop_Portal::m_Materials.m_Portal_Refract,
+				    pFlatPortal->GetClientRenderable() );
 
 				if ( !bRefractTextureInitialized )
 				{
@@ -1076,6 +1085,9 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 
 				int nStartIndex = portalsRenderablesToDrawVBIndex[i] * 6;
 				int nIndexCount = 6;
+				CPortalShaderDecalOffset decalOffset( pRenderContext,
+				    C_Prop_Portal::m_Materials.m_Portal_Refract, pFlatPortal->m_vForward,
+				    pFlatPortal->GetQuadMeshDecalOffset() );
 				pPortalQuadMesh->Draw( nStartIndex, nIndexCount );
 			}
 		}
@@ -1125,11 +1137,17 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 			Portal2_SetStencilState( pRenderContext, m_StencilState );
 			
 			IMaterial *pMat = pCurrentPortal->IsPropPortal() ? C_Prop_Portal::m_Materials.m_Portal_Stencil_Hole : C_Portal_Base2D::m_Materials.m_Portal_Stencil_Hole;
-			pRenderContext->Bind( pMat, assert_cast< CPortalRenderable_FlatBasic* >( pCurrentPortal )->GetClientRenderable() );
-			
+			CPortalRenderable_FlatBasic *pFlatPortal =
+			    assert_cast<CPortalRenderable_FlatBasic *>( pCurrentPortal );
+			pRenderContext->Bind( pMat, pFlatPortal->GetClientRenderable() );
+
 			int nStartIndex = portalsRenderablesToDrawVBIndex[i] * 6;
 			int nIndexCount = 6;
-			pPortalQuadMesh->Draw( nStartIndex, nIndexCount );
+			{
+				CPortalShaderDecalOffset decalOffset( pRenderContext, pMat, pFlatPortal->m_vForward,
+				    pFlatPortal->GetQuadMeshDecalOffset() );
+				pPortalQuadMesh->Draw( nStartIndex, nIndexCount );
+			}
 			if ( ( m_iViewRecursionLevel == 0 ) && ( m_clampedPortalMeshRenderInfos[ portalsRenderablesToDrawVBIndex[i] ].nStartIndex >= 0 ) )
 			{
 				// Draw near plane cap
@@ -1425,9 +1443,16 @@ void CPortalRender::RenderPortalEffects( IMatRenderContext *pRenderContext, IMes
 			pRenderContext->LoadIdentity();
 		}
 
+		// The ring mesh is in portal space (normal +z); the quad is in world space.
+		const Vector vObjectNormal =
+		    bDrawRing ? Vector( 0.0f, 0.0f, 1.0f ) : pPropPortal->m_vForward;
+		const float flMeshDecalOffset = bDrawRing ? 0.25f : pPropPortal->GetQuadMeshDecalOffset();
+
 		if ( nRenderPassCount > 0 )
 		{
 			// Draw first pass
+			CPortalShaderDecalOffset decalOffset( pRenderContext,
+			    pRenderContext->GetCurrentMaterial(), vObjectNormal, flMeshDecalOffset );
 			pPortalQuadMesh->Draw( nStartIndex, nIndexCount );
 		}
 		if ( nRenderPassCount > 1 )
@@ -1435,6 +1460,8 @@ void CPortalRender::RenderPortalEffects( IMatRenderContext *pRenderContext, IMes
 			bool bDummy;
 			pCurrentPortal->BindPortalMaterial( pRenderContext, 1, &bDummy );
 			// Draw 2nd pass
+			CPortalShaderDecalOffset decalOffset( pRenderContext,
+			    pRenderContext->GetCurrentMaterial(), vObjectNormal, flMeshDecalOffset );
 			pPortalQuadMesh->Draw( nStartIndex, nIndexCount );
 		}
 		Assert( nRenderPassCount <= 2 );

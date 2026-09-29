@@ -284,6 +284,7 @@ CParticleSystemDefinition* CParticleSystemDictionary::FindParticleSystem( const 
 //-----------------------------------------------------------------------------
 BEGIN_DMXELEMENT_UNPACK( ParticleChildrenInfo_t ) 
 	DMXELEMENT_UNPACK_FIELD( "delay", "0.0", float, m_flDelay )
+	DMXELEMENT_UNPACK_FIELD( "end cap effect", "0", bool, m_bEndCap )
 END_DMXELEMENT_UNPACK( ParticleChildrenInfo_t, s_ChildrenInfoUnpack )
 
 class CChildOperatorDefinition : public IParticleOperatorDefinition
@@ -337,6 +338,7 @@ BEGIN_DMXELEMENT_UNPACK( CParticleSystemDefinition )
 	DMXELEMENT_UNPACK_FIELD( "minimum rendered frames", "0", int, m_nMinimumFrames )
 	DMXELEMENT_UNPACK_FIELD( "control point to disable rendering if it is the camera", "-1", int, m_nSkipRenderControlPoint )
 	DMXELEMENT_UNPACK_FIELD( "maximum draw distance", "100000.0", float, m_flMaxDrawDistance )
+	DMXELEMENT_UNPACK_FIELD( "maximum portal recursion depth", "8", int, m_nMaxRecursionDepth )
 	DMXELEMENT_UNPACK_FIELD( "time to sleep when not drawn", "8", float, m_flNoDrawTimeToGoToSleep )
 	DMXELEMENT_UNPACK_FIELD( "Sort particles", "1", bool, m_bShouldSort )
 	DMXELEMENT_UNPACK_FIELD( "batch particle systems", "0", bool, m_bShouldBatch )
@@ -960,6 +962,7 @@ CParticleCollection::CParticleCollection( )
 	m_bDormant = false;
 	m_bEmissionStopped = false;
 	m_bRequiresOrderInvariance = false;
+	m_bInEndCap = false;
 	m_nSimulatedFrames = 0;
 
 	m_nNumParticlesToKill = 0;
@@ -1119,6 +1122,11 @@ void CParticleCollection::Init( CParticleSystemDefinition *pDef, float flDelay, 
 			pChild->m_pParent = this;
 			m_Children.AddToTail( pChild );
 			m_nControlPointReadMask |= pChild->m_nControlPointReadMask;
+			if ( pDef->m_Children[i].m_bEndCap )
+			{
+				// An end cap child waits until StopEmission( ..., bPlayEndCap ) starts it.
+				pChild->m_flCurTime = -FLT_MAX;
+			}
 		}
 	}
 
@@ -1656,6 +1664,16 @@ bool CParticleCollection::CheckIfOperatorShouldRun(
 	CParticleOperatorInstance const * pOp ,
 	float *pflCurStrength)
 {
+	if ( pOp->m_nOpEndCapState != -1 )
+	{
+		if ( m_bInEndCap != ( pOp->m_nOpEndCapState == 1 ) )
+		{
+			if ( pflCurStrength )
+				*pflCurStrength = 0.0f;
+			return false;
+		}
+	}
+
 	float flTime=m_flCurTime;
 	if ( pOp->m_flOpFadeOscillatePeriod > 0.0 )
 	{
@@ -1696,7 +1714,8 @@ void CParticleCollection::Restart()
 //-----------------------------------------------------------------------------
 // Main entry point for rendering
 //-----------------------------------------------------------------------------
-void CParticleCollection::Render( IMatRenderContext *pRenderContext, bool bTranslucentOnly, void *pCameraObject )
+void CParticleCollection::Render( IMatRenderContext *pRenderContext, bool bTranslucentOnly,
+    void *pCameraObject, int nViewRecursionDepth )
 {
 	if ( !IsValid() )
 		return;
@@ -1710,7 +1729,9 @@ void CParticleCollection::Render( IMatRenderContext *pRenderContext, bool bTrans
 			int nCount = m_pDef->m_Renderers.Count();
 			for( int i = 0; i < nCount; i++ )
 			{
-				if ( CheckIfOperatorShouldRun( m_pDef->m_Renderers[i] ) )
+				if ( CheckIfOperatorShouldRun( m_pDef->m_Renderers[i] ) &&
+				     !m_pDef->m_Renderers[i]->ShouldCullSystem(
+				         this, pRenderContext, nViewRecursionDepth ) )
 				{
 // 					pRenderContext->MatrixMode( MATERIAL_VIEW );
 // 					pRenderContext->PushMatrix();
@@ -1733,7 +1754,7 @@ void CParticleCollection::Render( IMatRenderContext *pRenderContext, bool bTrans
 	// let children render
 	for( CParticleCollection *p = m_Children.m_pHead; p; p = p->m_pNext )
 	{
-		p->Render( pRenderContext, bTranslucentOnly, pCameraObject );
+		p->Render( pRenderContext, bTranslucentOnly, pCameraObject, nViewRecursionDepth );
 	}
 
 	// Visualize specific ops for debugging/editing
@@ -2522,9 +2543,13 @@ bool CParticleCollection::IsFinished( void )
 	}
 
 	// make sure all children are finished
-	for( CParticleCollection *i = m_Children.m_pHead; i; i=i->m_pNext )
+	CParticleCollection *pChild = m_Children.m_pHead;
+	for ( int i = 0; pChild != NULL; pChild = pChild->m_pNext, i++ )
 	{
-		if ( !i->IsFinished() )
+		if ( !pChild->IsFinished() && !m_pDef->m_Children[i].m_bEndCap )
+			return false;
+		// return false if we're currently playing our endcap effect and not finished with it
+		if ( m_pDef->m_Children[i].m_bEndCap && !pChild->IsFinished() && m_bInEndCap )
 			return false;
 	}
 
@@ -2534,7 +2559,8 @@ bool CParticleCollection::IsFinished( void )
 //-----------------------------------------------------------------------------
 // Purpose: Stop emitting particles
 //-----------------------------------------------------------------------------
-void CParticleCollection::StopEmission( bool bInfiniteOnly, bool bRemoveAllParticles, bool bWakeOnStop )
+void CParticleCollection::StopEmission(
+    bool bInfiniteOnly, bool bRemoveAllParticles, bool bWakeOnStop, bool bPlayEndCap )
 {
 	if ( !m_pDef )
 		return;
@@ -2564,9 +2590,30 @@ void CParticleCollection::StopEmission( bool bInfiniteOnly, bool bRemoveAllParti
 	}
 
 	// Stop our children as well
-	for( CParticleCollection *p = m_Children.m_pHead; p; p = p->m_pNext )
+	if ( bPlayEndCap )
 	{
-		p->StopEmission( bInfiniteOnly, bRemoveAllParticles );
+		CParticleCollection *pChild;
+		int i;
+		m_bInEndCap = true;
+		for ( i = 0, pChild = m_Children.m_pHead; pChild != NULL; pChild = pChild->m_pNext, i++ )
+		{
+			pChild->m_bInEndCap = true;
+			if ( m_pDef->m_Children[i].m_bEndCap )
+			{
+				pChild->m_flCurTime = 0.0f;
+				pChild->StartEmission( bInfiniteOnly );
+			}
+			else
+				pChild->StopEmission(
+				    bInfiniteOnly, bRemoveAllParticles, bWakeOnStop, bPlayEndCap );
+		}
+	}
+	else
+	{
+		for ( CParticleCollection *p = m_Children.m_pHead; p; p = p->m_pNext )
+		{
+			p->StopEmission( bInfiniteOnly, bRemoveAllParticles );
+		}
 	}
 }
 
@@ -2585,10 +2632,15 @@ void CParticleCollection::StartEmission( bool bInfiniteOnly )
 		m_pDef->m_Emitters[i]->StartEmission( this, m_pOperatorContextData + m_pDef->m_nEmittersCtxOffsets[i], bInfiniteOnly );
 	}
 
-	// Stop our children as well
-	for( CParticleCollection *p = m_Children.m_pHead; p; p = p->m_pNext )
+	// Start our children as well
+	CParticleCollection *pChild = m_Children.m_pHead;
+	for ( int i = 0; pChild != NULL; pChild = pChild->m_pNext, i++ )
 	{
-		p->StartEmission( bInfiniteOnly );
+		// Don't start End Cap Effects - these only play when stopping emission.
+		if ( !m_pDef->m_Children[i].m_bEndCap )
+		{
+			pChild->StartEmission( bInfiniteOnly );
+		}
 	}
 
 	// Set our sleep time to some time in the future so we update again

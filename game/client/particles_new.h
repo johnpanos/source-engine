@@ -82,7 +82,8 @@ public:
 
 	// CParticleCollection overrides
 public:
-	void StopEmission( bool bInfiniteOnly = false, bool bRemoveAllParticles = false, bool bWakeOnStop = false );
+	void StopEmission( bool bInfiniteOnly = false, bool bRemoveAllParticles = false,
+	    bool bWakeOnStop = false, bool bPlayEndCap = false );
 	void SetDormant( bool bDormant );
 	void SetControlPoint( int nWhichPoint, const Vector &v );
 	void SetControlPointEntity( int nWhichPoint, CBaseEntity *pEntity );

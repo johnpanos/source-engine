@@ -16,6 +16,9 @@
 #include "model_types.h"
 #include "vprof.h"
 #include "input.h"
+#ifdef PORTAL2
+#include "portalrender.h"
+#endif
 
 extern ConVar cl_particleeffect_aabb_buffer;
 
@@ -277,7 +280,8 @@ bool CNewParticleEffect::IsTwoPass( void )
 //-----------------------------------------------------------------------------
 // Overrides for recording
 //-----------------------------------------------------------------------------
-void CNewParticleEffect::StopEmission( bool bInfiniteOnly, bool bRemoveAllParticles, bool bWakeOnStop )
+void CNewParticleEffect::StopEmission(
+    bool bInfiniteOnly, bool bRemoveAllParticles, bool bWakeOnStop, bool bPlayEndCap )
 {
 	if ( m_nToolParticleEffectId != TOOLPARTICLESYSTEMID_INVALID && clienttools->IsInRecordingMode() )
 	{
@@ -292,7 +296,8 @@ void CNewParticleEffect::StopEmission( bool bInfiniteOnly, bool bRemoveAllPartic
 		ToolFramework_PostToolMessage( HTOOLHANDLE_INVALID, msg );
 	}
 
-	CParticleCollection::StopEmission( bInfiniteOnly, bRemoveAllParticles, bWakeOnStop );
+	CParticleCollection::StopEmission(
+	    bInfiniteOnly, bRemoveAllParticles, bWakeOnStop, bPlayEndCap );
 }
 
 //-----------------------------------------------------------------------------
@@ -620,7 +625,18 @@ int CNewParticleEffect::DrawModel( int flags )
 	{
 		return 0;
 	}
-	
+
+	int nViewRecursionLevel = 0;
+#ifdef PORTAL2
+	// As CS:GO's Portal 2 client: systems stop drawing past their maximum
+	// portal view depth, and renderers may cull themselves by view depth.
+	nViewRecursionLevel = g_pPortalRender->GetViewRecursionLevel();
+	if ( m_pDef->m_nMaxRecursionDepth < nViewRecursionLevel )
+	{
+		return 0;
+	}
+#endif
+
 	// do distance cull check here. We do it here instead of in particles so we can easily only do
 	// it for root objects, not bothering to cull children individually
 	CMatRenderContextPtr pRenderContext( materials );
@@ -675,7 +691,7 @@ int CNewParticleEffect::DrawModel( int flags )
 		pRenderContext->MatrixMode( MATERIAL_MODEL );
 		pRenderContext->PushMatrix();
 		pRenderContext->LoadIdentity();
-		Render( pRenderContext, IsTwoPass(), pCameraObject );
+		Render( pRenderContext, IsTwoPass(), pCameraObject, nViewRecursionLevel );
 		pRenderContext->MatrixMode( MATERIAL_MODEL );
 		pRenderContext->PopMatrix();
 	}

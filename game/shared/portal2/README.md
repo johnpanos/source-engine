@@ -276,6 +276,83 @@ lands 155 units short of retail); `engine.frame_time`; and
 same before and after the bridge change. The funnel, fling and bridge
 scenarios pass under ASan.
 
+### Portal surface: z-fighting and edge particles (2026-09-28)
+
+User report: "Portal Base2D has glitched particles and z-fighting". The new
+`qa_portal_surface` scenario (`portal2-portals-v1`) places both portals on
+facing walls of `qa_portal_walk` and shoots blue close, far and at grazing
+angles, and orange close. It ran on this build and on retail (the retail
+capture recipe of `portal2_material_shots.py`, on a mirror whose
+`portal2/maps` holds the same BSP).
+
+Reproduced: stripes and wall-coloured patches across the portal view and rim,
+the view lost at grazing angles, and pink, orange and rainbow shards around
+the rim. Retail shows none of them.
+
+Fixed:
+
+- **Z-fighting.** Retail's `Portal` and `PortalRefract` vertex shaders (CS:GO
+  `portal_vs20`, `portal_refract_vs20`) push each vertex along its normal by
+  its TEXCOORD1.x, the decal offset the portal meshes carry (up to 0.24 units
+  toward the camera, 1 unit in views nested more than one deep). This
+  engine's shaders are Portal 1's and read no offset, and the Portal 2 client
+  had dropped its own CPU offset, so the stencil hole, the pre-stencil
+  refract pass and the rim effects were drawn in the wall's plane.
+  `CPortalShaderDecalOffset` (`portalrenderable_flatbasic.h`) applies the
+  same push as an object-space model translation, only when the bound shader
+  is `Portal*`/`PortalRefract*`; WriteZ and the static overlays stay in the
+  wall's plane, as in retail. Shared shaders and Portal 1 are unchanged.
+- **Rainbow shards.** SpriteCard's spline format has declared TEXCOORD4 (sheet
+  range) and TEXCOORD5 (end colour) since the Portal 2 sprite-trail port, but
+  `render_rope` wrote only TEXCOORD0-3, so the native backend read stale
+  vertex memory as UVs and tail colour. The rope now writes CS:GO's vertex
+  (`FastRopeVertexNormal_t`): full sheet range, the end particle's colour
+  (alpha x alpha2) and, for `$orientation 3`, both end normals in
+  TEXCOORD6/7. SpriteCard declares 8 texcoords for `$orientation 3` spline
+  cards, and the native backend orients those cards by the interpolated
+  normals (CS:GO `splinecard_vsxx.fxc` ORIENTATION 3). The D3D9 splinecard
+  shader still faces the camera.
+- **End caps.** The particle library ignored `operator end cap state` (168
+  operators in retail PCFs set it). `portal_edge`'s decay, alpha ramp, drift and
+  scatter operators run only in its end cap, so here the ring particles died
+  after 1.5 s (the root rope had 0 particles), faded to alpha 0 and drifted up
+  to 50 units off the wall. Ported from CS:GO: `m_nOpEndCapState` gates
+  operators, renderers and emitters; `StopEmission( ..., bPlayEndCap )` runs
+  the end cap and starts "end cap effect" children (`fire_01.pcf`).
+  `CParticleProperty::StopEmission` takes CS:GO's `bForceRemoveInstantly` and
+  `bPlayEndCap`. The portal edge and the tractor beam arms
+  (`tractor_beam_arm_b` decays only in its end cap) stop with their end cap.
+- **The exit portal's edge in the portal view.** The pink and orange shards
+  inside the rim were the other portal's edge particles, seen from behind its
+  wall by the view through the portal. Ported CS:GO's renderer culling ("cull
+  system when CP normal faces away from camera", "cull system starting at
+  this recursion depth") for `render_animated_sprites`, `render_sprite_trail`
+  and `render_rope`, and the system's "maximum portal recursion depth";
+  `CNewParticleEffect::DrawModel` passes the Portal 2 view recursion level.
+
+Evidence (build-p2, native Vulkan, private runtime): `portal2-portals-v1`
+passes 7 of 7 scenarios; `client.particle-plane-crossing` and `.original` pass.
+In `qa_portal_surface` the stripes, patches and shards are gone; with
+`r_portal_fastpath 0`, `r_portal_earlyz 0`, ghosting off, stencil depth 1 and
+complex frustums off the portal draws the same. `portal2_material_shots.py
+suite` gives 60 pass, 10 fail: `sp_a2_triple_laser.portal_b.tiles` now fails
+(82.3%, was 87.0% on a 2026-09-25 capture) because the orange rim is drawn
+whole instead of broken by the wall. The rim itself is brighter and thicker
+than retail's, which `portal_a`/`portal_b.portal_rim` already pin.
+
+Open: retail draws a soft glow band just outside the rim (+44 blue inside the
+band with particles on; 16,896 band pixels at 1024x768). Overriding
+`particle/beam_portaledge_04_oriented_add` with `$overbrightfactor 40` in a
+retail `portal2_dlc3/pak01_dir.vpk` (VPK version 1; loose files there are not
+read) lights exactly that band, so it is `portal_edge`'s root rope. Here the
+same rope lands mostly under the rim (2,024 band pixels, +5 blue): its
+particles sit at 0.94 of the portal's size, and the edge texture is brightest
+on the ribbon's centre line. Its simulation inputs (ring, radius, alpha,
+normals, control points) match the PCF; the cause is not found.
+Also open: `info_particle_system` has no `StopPlayEndCap` input
+(`sp_a2_bts3`, `sp_a4_finale4` fire it); adding it changes that entity's
+networked table for every game.
+
 ### Portal 2 video retail conformance (2026-09-25)
 
 This section covers materials, shaders, proxies, textures and particles as

@@ -4563,6 +4563,12 @@ static void SpriteCardBuildFrame( SpriteCardFrame &f, const CEmptyMesh &vertices
 	f.orientation = g_VertexShaderDynamicIndex % 3;
 	f.spline = ( g_CurrentSpriteCard & kSpriteCardSpline ) != 0;
 	f.splineRange = vertices.WideTexCoordSize( 4 ) >= 4;
+	// splinecard_vs20 has no orientation combo (it faces the camera); SpriteCard
+	// declares the end normals (TEXCOORD6/7) only for $orientation 3, which
+	// CS:GO's splinecard orients the card by.
+	if ( f.spline )
+		f.orientation =
+		    ( vertices.WideTexCoordSize( 6 ) >= 3 && vertices.WideTexCoordSize( 7 ) >= 3 ) ? 3 : 0;
 	f.animBlend = ( g_CurrentSpriteCard & kSpriteCardAnimBlend ) != 0;
 	f.addSelf = ( g_CurrentSpriteCard & kSpriteCardAddSelf ) ? g_psConstants[0][2] : -1.0f;
 }
@@ -4729,8 +4735,9 @@ static void SpriteCardCatmullRomTangent( const float *a, const float *b, const f
 
 // One vertex of a spline card (a rope segment or a sprite trail): POSITION is
 // ( t along the segment, v, side ), TEXCOORD0..3 the Catmull-Rom points
-// ( xyz, width ). Portal 2 trails add the sheet range (TEXCOORD4) and the end
-// point's color (TEXCOORD5).
+// ( xyz, width ). Portal 2 trails and ropes add the sheet range (TEXCOORD4) and
+// the end point's color (TEXCOORD5), and with $orientation 3 the particle
+// normals at the segment's ends (TEXCOORD6/7).
 static void ExpandSplineCardVertex( const SpriteCardFrame &f, const float *parms,
     const unsigned char *bgra, const float *tc, float *out )
 {
@@ -4742,6 +4749,13 @@ static void ExpandSplineCardVertex( const SpriteCardFrame &f, const float *parms
 	{
 		for ( int k = 0; k < 3; ++k )
 			v2p[k] = posrad[k] - f.eye[k];
+	}
+	else if ( f.orientation == 3 )
+	{
+		const float *normal0 = tc + 24;
+		const float *normal1 = tc + 28;
+		for ( int k = 0; k < 3; ++k )
+			v2p[k] = normal0[k] + ( normal1[k] - normal0[k] ) * t;
 	}
 	float tangent[3];
 	SpriteCardCatmullRomTangent( tc, tc + 4, tc + 8, tc + 12, t, tangent );

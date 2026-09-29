@@ -647,6 +647,15 @@ public:
 	{
 	}
 
+	// Portal 2 port (CS:GO): a renderer that skips the system in this view
+	// ("cull system when CP normal faces away from camera", "cull system
+	// starting at this recursion depth") overrides this.
+	virtual bool ShouldCullSystem( CParticleCollection *pParticles,
+	    IMatRenderContext *pRenderContext, int nViewRecursionDepth ) const
+	{
+		return false;
+	}
+
 	virtual bool IsBatchable() const
 	{
 		return true;
@@ -812,6 +821,10 @@ public:
 	float m_flOpEndFadeOutTime;
 	float m_flOpFadeOscillatePeriod;
 
+	// Portal 2 port (CS:GO): -1 runs always, 0 only while the system plays,
+	// 1 only in its end cap (after StopEmission( ..., bPlayEndCap )).
+	int m_nOpEndCapState;
+
 	virtual ~CParticleOperatorInstance( void )
 	{
 		// so that sheet references, etc can be cleaned up
@@ -915,13 +928,14 @@ private:
 #define DEFINE_PARTICLE_OPERATOR_OBSOLETE( _className, _operatorName, _id )	\
 	static CParticleOperatorDefinition<_className> s_##_className##Factory( _operatorName, _id, true )
 
-#define BEGIN_PARTICLE_OPERATOR_UNPACK( _className )										\
-	BEGIN_DMXELEMENT_UNPACK( _className )													\
-	DMXELEMENT_UNPACK_FIELD( "operator start fadein","0", float, m_flOpStartFadeInTime )	\
-	DMXELEMENT_UNPACK_FIELD( "operator end fadein","0", float, m_flOpEndFadeInTime )		\
-	DMXELEMENT_UNPACK_FIELD( "operator start fadeout","0", float, m_flOpStartFadeOutTime )	\
-	DMXELEMENT_UNPACK_FIELD( "operator end fadeout","0", float, m_flOpEndFadeOutTime ) \
-    DMXELEMENT_UNPACK_FIELD( "operator fade oscillate","0", float, m_flOpFadeOscillatePeriod )
+#define BEGIN_PARTICLE_OPERATOR_UNPACK( _className )                                               \
+	BEGIN_DMXELEMENT_UNPACK( _className )                                                          \
+	DMXELEMENT_UNPACK_FIELD( "operator start fadein", "0", float, m_flOpStartFadeInTime )          \
+	DMXELEMENT_UNPACK_FIELD( "operator end fadein", "0", float, m_flOpEndFadeInTime )              \
+	DMXELEMENT_UNPACK_FIELD( "operator start fadeout", "0", float, m_flOpStartFadeOutTime )        \
+	DMXELEMENT_UNPACK_FIELD( "operator end fadeout", "0", float, m_flOpEndFadeOutTime )            \
+	DMXELEMENT_UNPACK_FIELD( "operator fade oscillate", "0", float, m_flOpFadeOscillatePeriod )    \
+	DMXELEMENT_UNPACK_FIELD( "operator end cap state", "-1", int, m_nOpEndCapState )
 
 #define END_PARTICLE_OPERATOR_UNPACK( _className )		\
 	END_DMXELEMENT_UNPACK_TEMPLATE( _className, CParticleOperatorDefinition<_className>::m_pUnpackParams )
@@ -1123,7 +1137,9 @@ public:
 	void SkipToTime( float t );
 
 	// the camera objetc may be compared for equality against control point objects
-	void Render( IMatRenderContext *pRenderContext, bool bTranslucentOnly = false, void *pCameraObject = NULL );
+	// nViewRecursionDepth: how many portal views deep this view is (0 for the main view).
+	void Render( IMatRenderContext *pRenderContext, bool bTranslucentOnly = false,
+	    void *pCameraObject = NULL, int nViewRecursionDepth = 0 );
 
 	bool IsValid( void ) const;
 	const char *GetName() const;
@@ -1139,7 +1155,8 @@ public:
 	void SetNActiveParticles( int nCount );
 	void KillParticle(int nPidx);
 
-	void StopEmission( bool bInfiniteOnly = false, bool bRemoveAllParticles = false, bool bWakeOnStop = false );
+	void StopEmission( bool bInfiniteOnly = false, bool bRemoveAllParticles = false,
+	    bool bWakeOnStop = false, bool bPlayEndCap = false );
 	void StartEmission( bool bInfiniteOnly = false );
 	void SetDormant( bool bDormant );
 
@@ -1332,6 +1349,7 @@ public:
 	bool m_bDormant;
 	bool m_bEmissionStopped;
 	bool m_bRequiresOrderInvariance;
+	bool m_bInEndCap; // stopped with bPlayEndCap: end cap operators and children run
 
 	int m_LocalLightingCP;
 	Color m_LocalLighting;
@@ -2013,6 +2031,7 @@ struct ParticleChildrenInfo_t
 	CUtlString m_Name;
 	bool m_bUseNameBasedLookup;
 	float m_flDelay;		// How much to delay this system after the parent starts
+	bool m_bEndCap;         // This child only plays when an effect is stopped with endcap effects.
 };
 
 
@@ -2133,6 +2152,9 @@ public:
 	float m_flMaxDrawDistance;								// distance at which to not draw. 
 	float m_flNoDrawTimeToGoToSleep;						// after not beeing seen for this long, the system will sleep
 
+	// Portal view depth past which the system is not drawn ( "maximum portal recursion depth" ).
+	int m_nMaxRecursionDepth;
+
 	int m_nMaxParticles;
 	int m_nSkipRenderControlPoint;							// if the camera is attached to the
 															// object associated with this control
@@ -2191,6 +2213,7 @@ inline CParticleSystemDefinition::CParticleSystemDefinition( void )
 	m_flCullRadius = 0.0f;
 	m_flCullFillCost = 1.0f;
 	m_nRetireCheckFrame = 0;
+	m_nMaxRecursionDepth = 8;
 }
 
 inline CParticleSystemDefinition::~CParticleSystemDefinition( void )

@@ -257,17 +257,21 @@ void CParticleProperty::SetControlPointParent( int iEffectIndex, int whichContro
 // Purpose: Stop effects from emitting more particles. If no effect is 
 //			specified, all effects attached to this entity are stopped.
 //-----------------------------------------------------------------------------
-void CParticleProperty::StopEmission( CNewParticleEffect *pEffect, bool bWakeOnStop, bool bDestroyAsleepSystems )
+void CParticleProperty::StopEmission( CNewParticleEffect *pEffect, bool bWakeOnStop,
+    bool bDestroyAsleepSystems, bool bForceRemoveInstantly, bool bPlayEndCap )
 {
 	// If we return from dormancy and are then told to stop emitting,
 	// we should have died while dormant. Remove ourselves immediately.
 	bool bRemoveInstantly = (m_iDormancyChangedAtFrame == gpGlobals->framecount);
 
+	// force remove particles instantly if caller specified
+	bRemoveInstantly |= bForceRemoveInstantly;
+
 	if ( pEffect )
 	{
 		if ( FindEffect( pEffect ) != -1 )
 		{
-			pEffect->StopEmission( false, bRemoveInstantly, bWakeOnStop );
+			pEffect->StopEmission( false, bRemoveInstantly, bWakeOnStop, bPlayEndCap );
 		}
 	}
 	else
@@ -284,7 +288,7 @@ void CParticleProperty::StopEmission( CNewParticleEffect *pEffect, bool bWakeOnS
 				m_ParticleEffects.Remove( i );
 				pTmp->SetOwner( NULL );
 			}
-			pTmp->StopEmission( false, bRemoveSystem, !bRemoveSystem && bWakeOnStop );
+			pTmp->StopEmission( false, bRemoveSystem, !bRemoveSystem && bWakeOnStop, bPlayEndCap );
 		}
 	}
 }

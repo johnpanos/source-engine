@@ -185,7 +185,7 @@ void C_PropTractorBeamProjector::CreateEffect( void )
 	{
 		if ( m_hEmitterEffect[i] )
 		{
-			ParticleProp()->StopEmission( m_hEmitterEffect[i], false, false );
+			ParticleProp()->StopEmission( m_hEmitterEffect[i], false, false, false, true );
 			m_hEmitterEffect[i] = NULL;
 		}
 
@@ -237,7 +237,8 @@ void C_PropTractorBeamProjector::StopEffect( void )
 	{
 		if ( m_hEmitterEffect[i] )
 		{
-			ParticleProp()->StopEmission( m_hEmitterEffect[i], false, false );
+			// Play the arms' end cap: tractor_beam_arm_b decays only there.
+			ParticleProp()->StopEmission( m_hEmitterEffect[i], false, false, false, true );
 			m_hEmitterEffect[i] = NULL;
 		}
 	}

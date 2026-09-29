@@ -39,6 +39,7 @@ CPortalRenderable_FlatBasic::CPortalRenderable_FlatBasic( void )
 	m_vRight( 0.0f, 1.0f, 0.0f ),
 	m_bIsPortal2( false )
 {
+	m_flQuadMeshDecalOffset = 0.0f;
 	m_InternallyMaintainedData.m_VisData.m_fDistToAreaPortalTolerance = 64.0f;
 	m_InternallyMaintainedData.m_VisData.m_vecVisOrigin = Vector(0,0,0);
 	m_InternallyMaintainedData.m_VisData.m_bTrimFrustumToPortalCorners = false;
@@ -915,6 +916,55 @@ static void CreateRingMesh( CMeshBuilder &meshBuilder, int nSegs, float flHalfWi
 	*pIndexCountOut = nSegs * 6;
 }
 
+// The shader a material resolved to is named after its fallback ("PortalRefract_dx9",
+// "Portal_DX90"); PortalStaticOverlay is a different shader.
+static bool IsShaderFamily( const char *pszShader, const char *pszFamily )
+{
+	int nLength = V_strlen( pszFamily );
+	return V_strnicmp( pszShader, pszFamily, nLength ) == 0 &&
+	       ( pszShader[nLength] == '\0' || pszShader[nLength] == '_' );
+}
+
+float CPortalShaderDecalOffset::Compute( const IMaterial *pMaterial, float flMeshDecalOffset )
+{
+	if ( pMaterial == NULL )
+		return 0.0f;
+
+	const char *pszShader = pMaterial->GetShaderName();
+	if ( pszShader == NULL || !( IsShaderFamily( pszShader, "Portal" ) ||
+	                              IsShaderFamily( pszShader, "PortalRefract" ) ) )
+		return 0.0f;
+
+	// portal_refract_helper.cpp without fast clipping: g_vIsRecursivePortalView
+	// is set in views nested deeper than one portal.
+	if ( g_pPortalRender->GetViewRecursionLevel() > 1 )
+		return 1.0f;
+
+	return flMeshDecalOffset;
+}
+
+CPortalShaderDecalOffset::CPortalShaderDecalOffset( IMatRenderContext *pRenderContext,
+    const IMaterial *pMaterial, const Vector &vObjectNormal, float flMeshDecalOffset )
+    : m_pRenderContext( pRenderContext )
+{
+	m_pRenderContext->MatrixMode( MATERIAL_MODEL );
+	m_pRenderContext->PushMatrix();
+
+	float flOffset = Compute( pMaterial, flMeshDecalOffset );
+	if ( flOffset != 0.0f )
+	{
+		// Translate() multiplies on the right: the push is in object space, as the shader's is.
+		m_pRenderContext->Translate(
+		    vObjectNormal.x * flOffset, vObjectNormal.y * flOffset, vObjectNormal.z * flOffset );
+	}
+}
+
+CPortalShaderDecalOffset::~CPortalShaderDecalOffset( void )
+{
+	m_pRenderContext->MatrixMode( MATERIAL_MODEL );
+	m_pRenderContext->PopMatrix();
+}
+
 inline float ComputePointToPortalDistance( const Vector &vPt, const CPortalRenderable_FlatBasic *pPortal, const Vector &vAdjustedOrigin )
 {
 	// Transform point into portal space
@@ -1000,6 +1050,7 @@ IMesh *CPortalRenderable_FlatBasic::CreateMeshForPortals( IMatRenderContext *pRe
 		Vector vDir( vCameraPos - pPortal->m_ptOrigin );
 		float flCameraDistToPortalPlane = DotProduct( vDir, pPortal->m_vForward );
 		pMaxDecalOffsets[i] = clamp( flCameraDistToPortalPlane, 0.02f, 0.251f ) - 0.01f;
+		pPortal->m_flQuadMeshDecalOffset = pMaxDecalOffsets[i];
 
 		Color clrPortal = UTIL_Portal_Color( pPortal->m_bIsPortal2 ? 2 : 1, pPortal->GetTeamNumber() );
 		pGhostColors[i].x = float( clrPortal.r() ) / 255.0f;
@@ -1250,6 +1301,14 @@ void CPortalRenderable_FlatBasic::DrawSimplePortalMesh( IMatRenderContext *pRend
 	// Disable offset modifier, put it in shader code in portal and portal_refract shaders instead
 	// FIXME: Remove this from the code
 	fForwardOffsetModifier = 0;
+
+	// Portal 2 port: the shader's push for the 0.25 in TEXCOORD1 below (see CPortalShaderDecalOffset).
+	float flShaderDecalOffset = CPortalShaderDecalOffset::Compute( pMaterial, 0.25f );
+	if ( flShaderDecalOffset != 0.0f )
+	{
+		pRenderContext->Translate( m_vForward.x * flShaderDecalOffset,
+		    m_vForward.y * flShaderDecalOffset, m_vForward.z * flShaderDecalOffset );
+	}
 
 	Vector ptCenter = m_ptOrigin + (m_vForward * fForwardOffsetModifier);
 
