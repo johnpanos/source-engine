@@ -400,6 +400,10 @@ class Pipeline:
                          "preview_gain": lightmap.get("preview_gain", 1.0),
                          "denoise": lightmap.get("denoise", True),
                          "directional": lightmap.get("directional", False),
+                         # Samples of the directional page's RNM-basis bakes
+                         # (None: the atlas's). They feed only its denoised
+                         # gradient relative to the flat atlas.
+                         "directional_samples": lightmap.get("directional_samples"),
                          "device": lightmap.get("device", cycles_device.BAKE_DEVICE),
                          "light_paths": lightmap.get("light_paths", "blender-default"),
                          # RFC 0011 separated light: LMAP v2 layers beside the total.
@@ -795,6 +799,8 @@ class Pipeline:
         directional = self.lightmap["directional"]
         if directional:
             bake_args += ["--directional-dir", p["directional_bakes"]]
+            if self.lightmap["directional_samples"]:
+                bake_args += ["--directional-samples", str(self.lightmap["directional_samples"])]
         layers = self.lightmap["layers"]
         if layers:
             bake_args += ["--layers", ",".join(layers), "--layers-dir", p["layers"]]
@@ -806,7 +812,9 @@ class Pipeline:
                   dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
                                                       "device", "directional", "light_paths",
                                                       "layers", "seed", "layout",
-                                                      "noise_target")}),
+                                                      "noise_target")},
+                       **({"directional_samples": self.lightmap["directional_samples"]}
+                          if self.lightmap["directional_samples"] else {})),
                   SCENE_SCRIPTS + self.baker.scripts("bake"),
                   [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]] +
                   ([p["directional_bakes"]] if directional else []) +

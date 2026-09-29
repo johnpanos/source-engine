@@ -546,9 +546,20 @@ def bake_separated_layers(merged, layers, out_dir, size, render, parts=None):
     return result
 
 
-def bake_rnm(merged, out_dir, size, render):
-    """Bake diffuse irradiance for each RNM basis normal; return EXR hashes."""
+def bake_rnm(merged, out_dir, size, render, samples=None):
+    """Bake diffuse irradiance for each RNM basis normal, at `samples` (the
+    atlas's when None); return EXR hashes and the samples used."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    atlas_samples = render.cycles.samples
+    render.cycles.samples = samples or atlas_samples
+    try:
+        return dict(bake_rnm_passes(merged, out_dir, size, render),
+                    samples=render.cycles.samples)
+    finally:
+        render.cycles.samples = atlas_samples
+
+
+def bake_rnm_passes(merged, out_dir, size, render):
     hashes = []
     for index, basis in enumerate(RNM_BASIS):
         image = bpy.data.images.new("PbrtLightmapRnm%d" % index, width=size, height=size,
@@ -670,6 +681,10 @@ def main():
                              "empty for a reflection probe band")
     parser.add_argument("--directional-dir", type=Path,
                         help="also bake RNM-basis irradiance and the tangent frame here")
+    parser.add_argument("--directional-samples", type=int,
+                        help="samples of the RNM-basis bakes (default --samples): the "
+                             "directional fit keeps only their denoised luminance gradient "
+                             "relative to the flat atlas (lightmap_directional.py)")
     parser.add_argument("--layers", default="",
                         help="comma-separated separated-light layers to bake beside the total "
                              "atlas (direct, indirect): LMAP v2 layers (RFC 0011)")
@@ -886,7 +901,8 @@ def main():
                                   args.size, render)
     directional = None
     if args.directional_dir:
-        directional = bake_rnm(merged, args.directional_dir, args.size, render)
+        directional = bake_rnm(merged, args.directional_dir, args.size, render,
+                               args.directional_samples)
     if args.out_coverage_exr:
         coverage = bpy.data.images.new("PbrtUvCoverage", width=args.size, height=args.size,
                                        alpha=True, float_buffer=True)
