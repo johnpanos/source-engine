@@ -102,6 +102,10 @@
 #include "ai_addon.h"
 #endif
 
+#ifdef PORTAL2
+#include "potatos_speaker.h"
+#endif
+
 extern ConVar sk_healthkit;
 
 // dvs: for opening doors -- these should probably not be here
@@ -6798,7 +6802,7 @@ void CAI_BaseNPC::NPCInit ( void )
 	}
 
 #ifdef PORTAL2
-	V_strncpy( m_szNetworkedName.GetForModify(), STRING( GetEntityName() ), NETWORKED_NAME_LENGTH );
+	UpdateNetworkedName();
 #endif
 
 	if( IsWaitingToRappel() )
@@ -11108,8 +11112,24 @@ void CAI_BaseNPC::OnRestore()
 	}
 	BaseClass::OnRestore();
 	m_bCheckContacts = true;
+
+#ifdef PORTAL2
+	// The networked name is not saved.
+	UpdateNetworkedName();
+#endif
 }
 
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Purpose: Networks the entity name, and with it whether this NPC voices
+//          PotatOS (see UpdateTransmitState).
+//-----------------------------------------------------------------------------
+void CAI_BaseNPC::UpdateNetworkedName()
+{
+	V_strncpy( m_szNetworkedName.GetForModify(), STRING( GetEntityName() ), NETWORKED_NAME_LENGTH );
+	DispatchUpdateTransmitState();
+}
+#endif
 
 //-------------------------------------
 
@@ -11460,6 +11480,17 @@ int CAI_BaseNPC::UpdateTransmitState()
 	{
 		return SetTransmitState( FL_EDICT_ALWAYS );
 	}
+
+#ifdef PORTAL2
+	// PotatOS's light (the client's LightedMouth proxy) follows the mouth of
+	// the actor that voices her, which maps place far from the player. A
+	// PVS-culled actor never reaches the client, and the light stays on
+	// instead of following her speech.
+	if ( IsPotatosSpeakerName( m_szNetworkedName.Get() ) )
+	{
+		return SetTransmitState( FL_EDICT_ALWAYS );
+	}
+#endif
 
 	return BaseClass::UpdateTransmitState();
 }

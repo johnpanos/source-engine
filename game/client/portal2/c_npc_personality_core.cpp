@@ -260,8 +260,8 @@ void CLightedMouthProxy::OnBind( void *pC_BaseEntity )
 		return;
 	}
 
-	C_BaseEntity *pSpeaker = GetPotatosSpeaker();
-	if ( !pSpeaker )
+	float flMouthOpen;
+	if ( !GetPotatosMouthOpen( &flMouthOpen ) )
 	{
 		SetFloatResult( 1.0f );
 		return;
@@ -271,8 +271,6 @@ void CLightedMouthProxy::OnBind( void *pC_BaseEntity )
 	C_Portal_Player *pPlayer = C_Portal_Player::GetLocalPortalPlayer();
 	float flIdleLight = ( !pPlayer || pPlayer->IsPotatosOn() ) ? 0.2f : 0.0f;
 
-	CMouthInfo *pMouth = pSpeaker->GetMouth();
-	float flMouthOpen = pMouth ? pMouth->mouthopen : 0.0f;
 	SetFloatResult( PotatosMouthLight( flMouthOpen, flIdleLight ) );
 }
 

@@ -14,6 +14,10 @@
 
 #include "death_pose.h"
 
+#ifdef PORTAL2
+#include "potatos_speaker.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -38,15 +42,6 @@ IMPLEMENT_CLIENTCLASS_DT( C_AI_BaseNPC, DT_AI_BaseNPC, CAI_BaseNPC )
 #endif
 END_RECV_TABLE();
 // clang-format on
-
-#ifdef PORTAL2
-static CHandle<C_BaseEntity> s_hPotatosSpeaker;
-
-C_BaseEntity *GetPotatosSpeaker( void )
-{
-	return s_hPotatosSpeaker.Get();
-}
-#endif
 
 extern ConVar cl_npc_speedmod_intime;
 
@@ -158,16 +153,63 @@ void C_AI_BaseNPC::ClientThink( void )
 #endif
 }
 
+#ifdef PORTAL2
+// A map can hold more than one (sp_a3_speed_ramp has two @glados), and the
+// scene that speaks picks one by name, so every candidate is kept.
+static CHandle<C_BaseEntity> s_hPotatosSpeakers[4];
+
+bool GetPotatosMouthOpen( float *pflMouthOpen )
+{
+	bool bFound = false;
+	float flMouthOpen = 0.0f;
+	for ( int i = 0; i < ARRAYSIZE( s_hPotatosSpeakers ); i++ )
+	{
+		C_BaseEntity *pSpeaker = s_hPotatosSpeakers[i].Get();
+		if ( !pSpeaker )
+			continue;
+
+		bFound = true;
+		CMouthInfo *pMouth = pSpeaker->GetMouth();
+		if ( pMouth )
+		{
+			flMouthOpen = MAX( flMouthOpen, (float)pMouth->mouthopen );
+		}
+	}
+	*pflMouthOpen = flMouthOpen;
+	return bFound;
+}
+
+static void AddPotatosSpeaker( C_BaseEntity *pSpeaker )
+{
+	CHandle<C_BaseEntity> *pSlot = NULL;
+	for ( int i = 0; i < ARRAYSIZE( s_hPotatosSpeakers ); i++ )
+	{
+		if ( s_hPotatosSpeakers[i].Get() == pSpeaker )
+			return;
+		if ( !pSlot && !s_hPotatosSpeakers[i].Get() )
+			pSlot = &s_hPotatosSpeakers[i];
+	}
+	if ( pSlot )
+	{
+		*pSlot = pSpeaker;
+	}
+	else
+	{
+		Warning( "More than %d PotatOS speakers; %s is ignored\n",
+		    (int)ARRAYSIZE( s_hPotatosSpeakers ), pSpeaker->GetDebugName() );
+	}
+}
+#endif
+
 void C_AI_BaseNPC::OnDataChanged( DataUpdateType_t type )
 {
 	BaseClass::OnDataChanged( type );
 
 #ifdef PORTAL2
 	// As in the retail client, PotatOS's light follows the actor that voices her.
-	if ( type == DATA_UPDATE_CREATED && ( !V_stricmp( m_szNetworkedName, "@glados" ) ||
-	                                        !V_stricmp( m_szNetworkedName, "@actor_potatos" ) ) )
+	if ( type == DATA_UPDATE_CREATED && IsPotatosSpeakerName( m_szNetworkedName ) )
 	{
-		s_hPotatosSpeaker = this;
+		AddPotatosSpeaker( this );
 		MouthInfo().ActivateEnvelope();
 	}
 #endif

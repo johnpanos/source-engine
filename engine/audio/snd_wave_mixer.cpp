@@ -28,6 +28,7 @@ class CAudioMixerWave8Mono : public CAudioMixerWave
 public:
 	CAudioMixerWave8Mono( IWaveData *data ) : CAudioMixerWave( data ) {}
 	virtual int GetMixSampleSize() { return CalcSampleSize(8, 1); }
+	virtual int GetMixSampleBits() { return 8; }
 	virtual void Mix( IAudioDevice *pDevice, channel_t *pChannel, void *pData, int outputOffset, int inputOffset, fixedint fracRate, int outCount, int timecompress )
 	{
 		pDevice->Mix8Mono( pChannel, (char *)pData, outputOffset, inputOffset, fracRate, outCount, timecompress );
@@ -42,6 +43,7 @@ class CAudioMixerWave8Stereo : public CAudioMixerWave
 public:
 	CAudioMixerWave8Stereo( IWaveData *data ) : CAudioMixerWave( data ) {}
 	virtual int GetMixSampleSize( ) { return CalcSampleSize(8, 2); }
+	virtual int GetMixSampleBits() { return 8; }
 	virtual void Mix( IAudioDevice *pDevice, channel_t *pChannel, void *pData, int outputOffset, int inputOffset, fixedint fracRate, int outCount, int timecompress )
 	{
 		pDevice->Mix8Stereo( pChannel, (char *)pData, outputOffset, inputOffset, fracRate, outCount, timecompress );
@@ -708,7 +710,11 @@ int CAudioMixerWave::MixDataToDevice_( IAudioDevice *pDevice, channel_t *pChanne
 		{
 			break;
 		}
-		
+
+		int mixSampleBits = GetMixSampleBits();
+		SND_MoveMouthEnvelope( pChannel, pData, samples_loaded, mixSampleBits,
+		    GetMixSampleSize() / ( mixSampleBits / 8 ) );
+
 		// get sample fraction from 0th sample in copy buffer
 		double sampleFraction = m_fsample_index - floor( m_fsample_index );
 		

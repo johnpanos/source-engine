@@ -61,9 +61,10 @@ private:
 };
 
 #ifdef PORTAL2
-// The NPC that speaks for PotatOS (@glados or @actor_potatos), whose mouth
-// drives the LightedMouth material proxy; NULL until one is networked.
-C_BaseEntity *GetPotatosSpeaker( void );
+// The mouth opening (0-255) of the NPCs that speak for PotatOS (@glados or
+// @actor_potatos), the widest of them, which drives the LightedMouth material
+// proxy. False until one is networked.
+bool GetPotatosMouthOpen( float *pflMouthOpen );
 #endif
 
 #endif // C_AI_BASENPC_H

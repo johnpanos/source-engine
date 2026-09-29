@@ -2180,6 +2180,7 @@ public:
 		NETWORKED_NAME_LENGTH = 64
 	};
 	CNetworkString( m_szNetworkedName, NETWORKED_NAME_LENGTH );
+	void UpdateNetworkedName();
 #endif
 
 	void				InputActivateSpeedModifier( inputdata_t &inputdata ) { m_bSpeedModActive = true; }

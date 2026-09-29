@@ -80,6 +80,8 @@ extern void Mix16MonoWavtype( channel_t *pChannel, portable_samplepair_t *pOutpu
 extern void Mix16StereoWavtype( channel_t *pChannel, portable_samplepair_t *pOutput, int *volume, short *pData, int inputOffset, fixedint rateScaleFix, int outCount );
 
 extern void SND_MoveMouth8(channel_t *pChannel, CAudioSource *pSource, int count);
+extern void SND_MoveMouthEnvelope(
+	channel_t *pChannel, const void *pData, int sampleCount, int bits, int channels );
 extern void SND_CloseMouth(channel_t *pChannel);
 extern void SND_InitMouth( channel_t *pChannel );
 extern void SND_UpdateMouth( channel_t *pChannel );

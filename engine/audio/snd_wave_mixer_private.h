@@ -33,6 +33,11 @@ public:
 	bool					ShouldContinueMixing( void );
 
 	virtual void			Mix( IAudioDevice *pDevice, channel_t *pChannel, void *pData, int outputOffset, int inputOffset, fixedint fracRate, int outCount, int timecompress ) = 0;
+	// Bits per sample of the data Mix() takes (decoded, so 16 for compressed sources).
+	virtual int GetMixSampleBits( void )
+	{
+		return 16;
+	}
 	virtual int				GetOutputData( void **pData, int sampleCount, char copyBuf[AUDIOSOURCE_COPYBUF_SIZE] );
 
 	virtual CAudioSource*	GetSource( void );

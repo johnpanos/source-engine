@@ -4035,14 +4035,8 @@ void SND_CloseMouth(channel_t *pChannel)
 #define CAVGSAMPLES 10
 // need this to make the debug code below work.
 //#include "snd_wave_source.h"
-void SND_MoveMouth8( channel_t *ch, CAudioSource *pSource, int count ) 
+void SND_MoveMouth8( channel_t *ch, CAudioSource *pSource, int /* count */ )
 {
-	int 	data;
-	char	*pdata = NULL;
-	int		i;
-	int		savg;
-	int		scount;
-
 	CMouthInfo *pMouth = GetMouthInfoForChannel( ch );
 	
 	if ( !pMouth )
@@ -4086,44 +4080,54 @@ void SND_MoveMouth8( channel_t *ch, CAudioSource *pSource, int count )
 		}
 	}
 
-	
-
-	if ( pMouth->NeedsEnvelope() )
-	{
-		int availableSamples = pSource->GetOutputData((void**)&pdata, ch->pMixer->GetSamplePosition(), count, NULL );
-
-		if( pdata == NULL )
-			return;
-		
-		i = 0;
-		scount = pMouth->sndcount;
-		savg = 0;
-
-		while ( i < availableSamples && scount < CAVGSAMPLES )
-		{
-			data = pdata[i];
-			savg += abs(data);	
-
-			i += 80 + ((byte)data & 0x1F);
-			scount++;
-		}
-
-		pMouth->sndavg += savg;
-		pMouth->sndcount = (byte) scount;
-
-		if ( pMouth->sndcount >= CAVGSAMPLES ) 
-		{
-			pMouth->mouthopen = pMouth->sndavg / CAVGSAMPLES;
-			pMouth->sndavg = 0;
-			pMouth->sndcount = 0;
-		}
-	}
-	else
+	// An envelope mouth follows the decoded samples as the channel mixes them
+	// (SND_MoveMouthEnvelope). The source's own data is compressed for MP3 and
+	// ADPCM, and indexed in bytes rather than samples.
+	if ( !pMouth->NeedsEnvelope() )
 	{
 		pMouth->mouthopen = 0;
 	}
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: Opens an envelope mouth (CMouthInfo::ActivateEnvelope) by the level
+//          of the decoded samples a channel mixes: the mean magnitude, in 8-bit
+//          units, of CAVGSAMPLES sparse samples of the first channel.
+//-----------------------------------------------------------------------------
+void SND_MoveMouthEnvelope(
+    channel_t *ch, const void *pData, int sampleCount, int bits, int channels )
+{
+	if ( !pData || !SND_IsMouth( ch ) )
+		return;
+
+	CMouthInfo *pMouth = GetMouthInfoForChannel( ch );
+	if ( !pMouth || !pMouth->NeedsEnvelope() )
+		return;
+
+	int i = 0;
+	int scount = pMouth->sndcount;
+	int savg = 0;
+
+	while ( i < sampleCount && scount < CAVGSAMPLES )
+	{
+		int data = ( bits == 8 ) ? ( (const signed char *)pData )[i * channels]
+		                         : ( (const short *)pData )[i * channels] >> 8;
+		savg += abs( data );
+
+		i += 80 + ( (byte)data & 0x1F );
+		scount++;
+	}
+
+	pMouth->sndavg += savg;
+	pMouth->sndcount = (byte)scount;
+
+	if ( pMouth->sndcount >= CAVGSAMPLES )
+	{
+		pMouth->mouthopen = pMouth->sndavg / CAVGSAMPLES;
+		pMouth->sndavg = 0;
+		pMouth->sndcount = 0;
+	}
+}
 
 void SND_UpdateMouth( channel_t *pChannel )
 {
