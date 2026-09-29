@@ -231,6 +231,56 @@ mapcontainer::WorldLightmapLayer BakedLightmapLayer( bool directOwnedByCore )
 	                         : mapcontainer::WorldLightmapLayer::Total;
 }
 
+std::optional<std::string> StageProbeVolume( resources::TextureCache &cache,
+    const std::string &name, std::span<const std::byte> lump,
+    mapcontainer::ProbeVolumeLayout &layout )
+{
+	if ( const mapcontainer::ProbeVolumeError error =
+	         mapcontainer::ValidateProbeVolume( lump.data(), lump.size(), &layout );
+	    error != mapcontainer::ProbeVolumeError::Ok )
+		return std::string( "PRBV: " ) + mapcontainer::ProbeVolumeErrorName( error );
+	TextureDesc atlas;
+	atlas.format = Format::kRGBA16Float;
+	atlas.width = layout.atlasWidth;
+	atlas.height = layout.atlasHeight;
+	atlas.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	std::vector<float> table(
+	    std::size_t( layout.gridCount ) * mapcontainer::kProbeGridTableFloats );
+	mapcontainer::WriteProbeGridTable( layout, table.data() );
+	TextureDesc grids;
+	grids.format = Format::kRGBA32Float;
+	grids.width = mapcontainer::kProbeGridTableTexels;
+	grids.height = layout.gridCount;
+	grids.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	if ( !cache.Stage( name + "-atlas", atlas,
+	         lump.subspan(
+	             std::size_t( layout.atlasOffset ), std::size_t( layout.atlasBytes ) ) ) ||
+	     !cache.Stage( name + "-grids", grids, std::as_bytes( std::span( table ) ) ) )
+		return std::string( "PRBV: its textures were refused" );
+	return std::nullopt;
+}
+
+std::optional<std::string> StageReflectionProbes( resources::TextureCache &cache,
+    const std::string &name, std::span<const std::byte> lump,
+    mapcontainer::ReflectionProbeMode mode, bool relight,
+    mapcontainer::ReflectionProbesLayout &layout )
+{
+	if ( const mapcontainer::ReflectionProbesError error =
+	         mapcontainer::ValidateReflectionProbes( lump.data(), lump.size(), &layout );
+	    error != mapcontainer::ReflectionProbesError::Ok )
+		return std::string( "RPRB: " ) + mapcontainer::ReflectionProbesErrorName( error );
+	TextureDesc desc;
+	desc.format = Format::kRGBA16Float;
+	desc.width = layout.atlasWidth;
+	desc.height = mapcontainer::ReflectionProbeTextureRows( layout );
+	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	std::vector<std::uint16_t> texels( std::size_t( desc.width ) * desc.height * 4 );
+	mapcontainer::WriteReflectionProbeTexture( lump.data(), layout, mode, texels.data(), relight );
+	if ( !cache.Stage( name, desc, std::as_bytes( std::span( texels ) ) ) )
+		return std::string( "RPRB: its texture was refused" );
+	return std::nullopt;
+}
+
 std::optional<std::string> CreateLabDevice(
     bool validate, std::atomic<std::uint64_t> &messages, std::unique_ptr<IRenderDevice2> &out )
 {

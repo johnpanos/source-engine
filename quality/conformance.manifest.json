@@ -9704,6 +9704,7 @@
       "sources": [
         "render/lab/lightmap_basis_suite.cpp",
         "render/lab/lightmap_basis_check.comp",
+        "render/lab/lab_compute.cpp",
         "render/lab/lab_support.cpp",
         "render/lab/lab_suite.cpp",
         "render/shaders/common/lightmap_basis.glsl",
@@ -9739,6 +9740,140 @@
         "render/lab/lightmap_basis_suite.cpp",
         "render/lab/lightmap_basis_check.comp",
         "render/shaders/common/lightmap_basis.glsl",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.probe-volume",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K11 'Model assembly', the indirect diffuse term of dynamic surfaces (render/lab/probe_volume_suite.cpp, render_lab suite probe-volume --validate): the probe volume (render/shaders/common/probe_volume.glsl, the core's one copy, a line-for-line port of mapcontainer::ProbeVolumeView::SampleGrid) evaluated by a check kernel over the checked-in PRBV fixtures (quality/fixtures/gi/prbv: analytic, contract, gpu, leak), staged by render_lab's StageProbeVolume, against ProbeVolumeView::Sample. The fixtures' sample table and 384 seeded random cases each (inside and outside the grids, both layers and an absent one, with and without visibility): coverage agrees and the irradiance is within 2e-3 + 1e-3 relative; outside every grid the result is zero; ProbeIrradiancePair's first result is ProbeIrradiance within 1e-5 and its second atlas (irradiance changed, states and moments kept) matches the oracle over that atlas; an absent layer covers nothing; cases whose oracle moves by more than half the bound within a thousandth of the smallest spacing are ill-conditioned and skipped, at most 5 percent per fixture; the leak fixture's visibility changes its light. 0 validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "probe-volume",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 38,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/probe_volume_suite.cpp",
+        "render/lab/probe_volume_check.comp",
+        "render/lab/lab_compute.cpp",
+        "render/lab/lab_support.cpp",
+        "render/shaders/common/probe_volume.glsl",
+        "mapcontainer/probe_volume.cpp",
+        "public/mapcontainer/probe_volume.h",
+        "quality/fixtures/gi/prbv/samples.txt",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.probe-volume.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "RFC 0016 K11 probe volume, seeded check kernels built from probe_volume.glsl (probe_volume_check_spv.h): no normal bias, inactive probes used, the visibility test ignored and no weight crush each fail a probe check; the control passes.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "probe-volume",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 5,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/probe_volume_suite.cpp",
+        "render/lab/probe_volume_check.comp",
+        "render/shaders/common/probe_volume.glsl",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.reflection-probes",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K11 'Model assembly', the image-based specular term (render/lab/reflection_probes_suite.cpp, render_lab suite reflection-probes --validate): the map's RPRB reflection probes (render/shaders/common/reflection_probes.glsl, the core's one copy, a line-for-line mirror of mapcontainer::ReflectionProbesView), blended and parallax-corrected with distance-based roughness and relit, evaluated by a check kernel over the checked-in RPRB fixtures (quality/fixtures/reflection/rprb: valid.rprb, valid-relight.rprb) staged by render_lab's StageReflectionProbes. The fixture's shading samples and 400 seeded random rays in each selection mode (blended, nearest, direction only, the weight view) all agree with ReflectionProbesView::Radiance within 2e-3 + 1e-3 relative, and each mode's results are rejected by every other mode's reference; a texture without the marker carries no probes; relit by the fixture's analytic light and moving occluder each mode agrees with the relit reference, is rejected by the unrelit one (and, blended, by the one without the occluder), and with the relight switch off agrees with the unrelit reference. 0 validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "reflection-probes",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 30,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/reflection_probes_suite.cpp",
+        "render/lab/reflection_probes_check.comp",
+        "render/lab/lab_compute.cpp",
+        "render/lab/lab_support.cpp",
+        "render/shaders/common/reflection_probes.glsl",
+        "mapcontainer/reflection_probes.cpp",
+        "public/mapcontainer/reflection_probes.h",
+        "quality/fixtures/reflection/rprb/samples.txt",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.reflection-probes.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R95",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "RFC 0016 K11 reflection probes, seeded check kernels built from reflection_probes.glsl (reflection_probes_check_spv.h): distance-based roughness dropped, the facing term dropped and removed light relit additively each fail an rprb check; the control passes. The fixtures carry two probes, so the blend's third-share subtraction is not exercised.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "reflection-probes",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/reflection_probes_suite.cpp",
+        "render/lab/reflection_probes_check.comp",
+        "render/shaders/common/reflection_probes.glsl",
         "tools/render/shader_toolchain.py"
       ],
       "expect": "pass"

@@ -230,6 +230,28 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_RNM_UNSQUARED",)),
         ("kLightmapBasisRnmOffsetFromZero", LAB + "/lightmap_basis_check.comp",
          DEVICE_OPTIONS + ("-DSEEDED_LIGHTMAP_RNM_OFFSET_FROM_ZERO",)))),
+    "probe_volume_check_spv.h": ("render::lab::spirv",
+        "render_lab's probe-volume suite's check kernel and its seeded variants "
+        "(render.lab.probe-volume, RFC 0016 K11)", (
+        ("kProbeVolumeCheck", LAB + "/probe_volume_check.comp", DEVICE_OPTIONS),
+        ("kProbeVolumeNoNormalBias", LAB + "/probe_volume_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_PROBE_NO_NORMAL_BIAS",)),
+        ("kProbeVolumeStateIgnored", LAB + "/probe_volume_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_PROBE_STATE_IGNORED",)),
+        ("kProbeVolumeVisibilityIgnored", LAB + "/probe_volume_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_PROBE_VISIBILITY_IGNORED",)),
+        ("kProbeVolumeNoCrush", LAB + "/probe_volume_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_PROBE_NO_CRUSH",)))),
+    "reflection_probes_check_spv.h": ("render::lab::spirv",
+        "render_lab's reflection-probes suite's check kernel and its seeded variants "
+        "(render.lab.reflection-probes, RFC 0016 K11)", (
+        ("kReflectionProbesCheck", LAB + "/reflection_probes_check.comp", DEVICE_OPTIONS),
+        ("kReflectionProbesNoDistanceRoughness", LAB + "/reflection_probes_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_RPRB_NO_DISTANCE_ROUGHNESS",)),
+        ("kReflectionProbesNoFacing", LAB + "/reflection_probes_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_RPRB_NO_FACING",)),
+        ("kReflectionProbesRelightAddedOnly", LAB + "/reflection_probes_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_RPRB_RELIGHT_ADDED_ONLY",)))),
     "debug_view_defects_spv.h": ("render::lab::spirv",
         "render_lab's debug-view suite's seeded programs (render.debug-views sensitivity, "
         "RFC 0014)", (

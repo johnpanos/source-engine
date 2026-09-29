@@ -19,9 +19,10 @@ def configure(conf):
 def build(bld):
 	bld.program(
 		env       = bld.strict_cpp20_env(),
-		source    = [ 'render_lab.cpp', 'lab_support.cpp', 'lab_canvas.cpp', 'lab_suite.cpp',
-		              'suites.cpp', 'debug_views_suite.cpp', 'area_lights_suite.cpp',
-		              'lightmap_basis_suite.cpp' ],
+		source    = [ 'render_lab.cpp', 'lab_support.cpp', 'lab_canvas.cpp', 'lab_compute.cpp',
+		              'lab_suite.cpp', 'suites.cpp', 'debug_views_suite.cpp',
+		              'area_lights_suite.cpp', 'lightmap_basis_suite.cpp',
+		              'probe_volume_suite.cpp', 'reflection_probes_suite.cpp' ],
 		target    = 'render_lab',
 		name      = 'render_lab',
 		arch_module = 'render.lab',

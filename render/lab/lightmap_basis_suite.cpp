@@ -36,6 +36,7 @@
 //
 //=============================================================================//
 
+#include "lab_compute.h"
 #include "lab_suite.h"
 #include "lab_support.h"
 #include "suites.h"
@@ -226,144 +227,20 @@ std::string Describe( std::size_t index, const float *expected, const float *act
 	return text;
 }
 
-class Kernel
+// One dispatch of the check kernel over its three pages.
+std::optional<std::string> Dispatch( CheckKernel &kernel, resources::TextureCache &cache,
+    TextureId flat, TextureId gradient, TextureId rnm, std::span<const GpuCase> cases,
+    Outputs &out )
 {
-public:
-	explicit Kernel( IRenderDevice2 &device ) : m_Device( device ) {}
-	~Kernel()
-	{
-		for ( ResourceId id : m_Owned )
-			(void)m_Device.Release( id, {} );
-	}
-	Kernel( const Kernel & ) = delete;
-	Kernel &operator=( const Kernel & ) = delete;
-
-	std::optional<std::string> Create( std::span<const std::uint32_t> module )
-	{
-		if ( !m_Device.Facts().capabilities.Has( Capability::kCompute ) )
-			return std::string( "the device has no compute" );
-		const ShaderStageSet compute{ ShaderStage::kCompute };
-		const BindingDesc bindings[] = { { 0, BindingKind::kSampledTexture, 1, compute },
-		    { 1, BindingKind::kSampledTexture, 1, compute },
-		    { 2, BindingKind::kSampledTexture, 1, compute },
-		    { 3, BindingKind::kSampler, 1, compute },
-		    { 4, BindingKind::kStorageBuffer, 1, compute },
-		    { 5, BindingKind::kStorageBuffer, 1, compute } };
-		auto layout = m_Device.CreateBindGroupLayout( { BindGroupRole::kDraw, bindings } );
-		if ( !layout )
-			return std::string( "the kernel's layout was refused" );
-		m_Layout = layout.Value();
-		m_Owned.push_back( m_Layout );
-		const ReflectedBinding reflected[] = { { 3, 0, BindingKind::kSampledTexture },
-		    { 3, 1, BindingKind::kSampledTexture }, { 3, 2, BindingKind::kSampledTexture },
-		    { 3, 3, BindingKind::kSampler }, { 3, 4, BindingKind::kStorageBuffer },
-		    { 3, 5, BindingKind::kStorageBuffer } };
-		const std::span<const std::uint32_t> words =
-		    module.empty() ? std::span<const std::uint32_t>( spirv::kLightmapBasisCheck ) : module;
-		const ShaderArtifactView stage{ ShaderStage::kCompute, ArtifactFormat::kSpirv,
-		    std::as_bytes( words ), "main", reflected, 0 };
-		const BindGroupLayoutId layouts[] = { {}, {}, {}, m_Layout };
-		PipelineDesc desc;
-		desc.kind = PipelineKind::kCompute;
-		desc.stages = { &stage, 1 };
-		desc.layouts = layouts;
-		desc.debugName = "render_lab.lightmap-basis-check";
-		auto pipeline = m_Device.CreatePipeline( desc );
-		if ( !pipeline )
-			return std::string( "the check kernel was refused" );
-		m_Pipeline = pipeline.Value();
-		m_Owned.push_back( m_Pipeline );
-		SamplerDesc samplerDesc;
-		samplerDesc.address = AddressMode::kClampToEdge;
-		auto sampler = m_Device.CreateSampler( samplerDesc );
-		if ( !sampler )
-			return std::string( "the sampler was refused" );
-		m_Sampler = sampler.Value();
-		m_Owned.push_back( m_Sampler );
-		return std::nullopt;
-	}
-
-	std::optional<std::string> Run( resources::TextureCache &cache, TextureId flat,
-	    TextureId gradient, TextureId rnm, std::span<const GpuCase> cases, Outputs &out )
-	{
-		const std::uint64_t caseBytes = 16 + cases.size() * sizeof( GpuCase );
-		const std::uint64_t resultBytes = cases.size() * 4 * 16;
-		auto buffer = [&]( std::uint64_t size, std::initializer_list<ResourceUsage> usages,
-		                  MemoryKind memory ) -> BufferId
-		{
-			BufferDesc desc;
-			desc.size = size;
-			desc.usages = UsageSet( usages );
-			desc.memory = memory;
-			auto made = m_Device.CreateBuffer( desc );
-			return made ? made.Value() : BufferId();
-		};
-		const BufferId input =
-		    buffer( caseBytes, { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead },
-		        MemoryKind::kDeviceLocal );
-		const BufferId results =
-		    buffer( resultBytes, { ResourceUsage::kStorageWrite, ResourceUsage::kCopySource },
-		        MemoryKind::kDeviceLocal );
-		const BufferId readback =
-		    buffer( resultBytes, { ResourceUsage::kCopyDestination }, MemoryKind::kReadback );
-		if ( !input.IsValid() || !results.IsValid() || !readback.IsValid() )
-			return std::string( "a buffer was refused" );
-		const BindGroupEntry entries[] = { { 0, {}, 0, 0, flat, {} }, { 1, {}, 0, 0, gradient, {} },
-		    { 2, {}, 0, 0, rnm, {} }, { 3, {}, 0, 0, {}, m_Sampler },
-		    { 4, input, 0, caseBytes, {}, {} }, { 5, results, 0, resultBytes, {}, {} } };
-		auto group = m_Device.CreateBindGroup( { m_Layout, entries } );
-		if ( !group )
-			return std::string( "the kernel's group was refused" );
-
-		std::vector<std::byte> bytes( caseBytes );
-		const std::uint32_t header[4] = { std::uint32_t( cases.size() ), 0, 0, 0 };
-		std::memcpy( bytes.data(), header, sizeof( header ) );
-		std::memcpy( bytes.data() + 16, cases.data(), cases.size() * sizeof( GpuCase ) );
-
-		auto encoded = m_Device.BeginEncoder( QueueKind::kGraphics );
-		if ( !encoded )
-			return std::string( "no encoder" );
-		CommandEncoder &encoder = encoded.Value();
-		cache.RecordUploads( encoder );
-		encoder.TransitionBuffer(
-		    input, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.WriteBuffer( input, 0, bytes );
-		encoder.TransitionBuffer(
-		    input, ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead );
-		encoder.TransitionBuffer(
-		    results, ResourceUsage::kUndefined, ResourceUsage::kStorageWrite );
-		encoder.SetPipeline( m_Pipeline );
-		encoder.SetBindGroup( BindGroupRole::kDraw, group.Value() );
-		encoder.Dispatch( std::uint32_t( ( cases.size() + 63 ) / 64 ) );
-		encoder.TransitionBuffer(
-		    results, ResourceUsage::kStorageWrite, ResourceUsage::kCopySource );
-		encoder.TransitionBuffer(
-		    readback, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-		encoder.CopyBuffer( results, readback, { 0, 0, resultBytes } );
-		auto token = m_Device.Submit( QueueKind::kGraphics, { &encoder, 1 }, {} );
-		if ( !token )
-			return std::string( "the dispatch was refused at submission" );
-		(void)m_Device.WaitIdle();
-		cache.Retire( token.Value() );
-		std::vector<std::byte> pixels( resultBytes );
-		const bool read = bool( m_Device.ReadBuffer( readback, 0, pixels ) );
-		for ( BufferId id : { input, results, readback } )
-			(void)m_Device.Release( id, token.Value() );
-		(void)m_Device.Release( group.Value(), token.Value() );
-		if ( !read )
-			return std::string( "the results did not read back" );
-		out.values.resize( cases.size() * 4 );
-		std::memcpy( out.values.data(), pixels.data(), resultBytes );
-		return std::nullopt;
-	}
-
-private:
-	IRenderDevice2 &m_Device;
-	BindGroupLayoutId m_Layout;
-	PipelineId m_Pipeline;
-	SamplerId m_Sampler;
-	std::vector<ResourceId> m_Owned;
-};
+	const TextureId textures[] = { flat, gradient, rnm };
+	std::vector<std::byte> bytes;
+	if ( std::optional<std::string> why = kernel.Run( cache, textures,
+	         std::uint32_t( cases.size() ), std::as_bytes( cases ), cases.size() * 4 * 16, bytes ) )
+		return why;
+	out.values.resize( cases.size() * 4 );
+	std::memcpy( out.values.data(), bytes.data(), bytes.size() );
+	return std::nullopt;
+}
 
 std::optional<std::string> Stage( resources::TextureCache &cache, const std::string &name,
     std::uint32_t width, std::uint32_t height, std::span<const std::byte> texels, TextureId &out )
@@ -497,18 +374,20 @@ std::optional<std::string> BasisChecks( IRenderDevice2 &device,
 	for ( GpuCase &c : gpuRnm )
 		c.uv[0] = c.uv[3];
 
-	Kernel kernel( device );
-	if ( std::optional<std::string> why = kernel.Create( module ) )
+	CheckKernel kernel( device );
+	if ( std::optional<std::string> why = kernel.Create(
+	         module.empty() ? std::span<const std::uint32_t>( spirv::kLightmapBasisCheck ) : module,
+	         3, 1, "render_lab.lightmap-basis-check" ) )
 		return why;
 	Outputs main, rnmRun, zero;
 	if ( std::optional<std::string> why =
-	         kernel.Run( cache, flatPage, gradientPage, rnmPage, gpu, main ) )
+	         Dispatch( kernel, cache, flatPage, gradientPage, rnmPage, gpu, main ) )
 		return why;
 	if ( std::optional<std::string> why =
-	         kernel.Run( cache, flatPage, gradientPage, rnmPage, gpuRnm, rnmRun ) )
+	         Dispatch( kernel, cache, flatPage, gradientPage, rnmPage, gpuRnm, rnmRun ) )
 		return why;
 	if ( std::optional<std::string> why =
-	         kernel.Run( cache, flatPage, zeroPage, rnmPage, gpu, zero ) )
+	         Dispatch( kernel, cache, flatPage, zeroPage, rnmPage, gpu, zero ) )
 		return why;
 
 	std::size_t filterFailures = 0, centreFailures = 0, directionalFailures = 0,

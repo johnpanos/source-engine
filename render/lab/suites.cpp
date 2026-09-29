@@ -28,6 +28,10 @@ int RunSuite( int argc, char **argv )
 		return RunAreaLightsSuite( argc - 1, argv + 1 );
 	if ( name == "lightmap-basis" )
 		return RunLightmapBasisSuite( argc - 1, argv + 1 );
+	if ( name == "probe-volume" )
+		return RunProbeVolumeSuite( argc - 1, argv + 1 );
+	if ( name == "reflection-probes" )
+		return RunReflectionProbesSuite( argc - 1, argv + 1 );
 	std::fprintf( stderr, "render_lab suite: no suite %s\n", name.c_str() );
 	return 2;
 }

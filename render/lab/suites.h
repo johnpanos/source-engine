@@ -33,6 +33,17 @@
 //			                directional page split and the baked layer rule.
 //			                Seeded: no-smooth-normal, no-gain-clamp,
 //			                rnm-unsquared, rnm-offset-from-zero, whole-page.
+//			probe-volume    RFC 0016 K11: the probe volume (probe_volume.glsl)
+//			                against mapcontainer::ProbeVolumeView over the
+//			                PRBV fixtures. Seeded: no-normal-bias,
+//			                state-ignored, visibility-ignored, no-crush.
+//			reflection-probes
+//			                RFC 0016 K11: the RPRB probes
+//			                (reflection_probes.glsl) against
+//			                mapcontainer::ReflectionProbesView, blended,
+//			                nearest, direction-only, weights and relit.
+//			                Seeded: no-distance-roughness, no-facing,
+//			                relight-added-only.
 //
 //=============================================================================//
 
@@ -48,6 +59,8 @@ int RunDebugViewsSuite( int argc, char **argv );
 int RunLightingControlsSuite( int argc, char **argv );
 int RunAreaLightsSuite( int argc, char **argv );
 int RunLightmapBasisSuite( int argc, char **argv );
+int RunProbeVolumeSuite( int argc, char **argv );
+int RunReflectionProbesSuite( int argc, char **argv );
 
 } // namespace render::lab
 

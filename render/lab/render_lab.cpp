@@ -365,6 +365,36 @@ int Run( const Options &options )
 			    pages.Directional() ? ", directional" : "" );
 		}
 
+		// The map's probe volume (PRBV) for probe_volume.glsl, when it has
+		// one: lab:probe-volume-atlas and lab:probe-volume-grids.
+		if ( const std::optional<std::string> prbv = lump( mapcontainer::kLumpProbeVolume ) )
+		{
+			mapcontainer::ProbeVolumeLayout probeLayout{};
+			if ( std::optional<std::string> why = StageProbeVolume( cache, "lab:probe-volume",
+			         std::as_bytes( std::span( prbv->data(), prbv->size() ) ), probeLayout ) )
+				return Fail( *why );
+			std::printf( "render_lab: PRBV %u grid%s, %u layer%s, %u active probes\n",
+			    probeLayout.gridCount, probeLayout.gridCount == 1 ? "" : "s",
+			    probeLayout.layerCount, probeLayout.layerCount == 1 ? "" : "s",
+			    probeLayout.activeProbes );
+		}
+
+		// The map's reflection probes (RPRB) for reflection_probes.glsl, when
+		// it has them: lab:reflection-probes, blended, relit when they carry
+		// relight bands.
+		if ( const std::optional<std::string> rprb = lump( mapcontainer::kLumpReflectionProbes ) )
+		{
+			mapcontainer::ReflectionProbesLayout probesLayout{};
+			if ( std::optional<std::string> why =
+			         StageReflectionProbes( cache, "lab:reflection-probes",
+			             std::as_bytes( std::span( rprb->data(), rprb->size() ) ),
+			             mapcontainer::ReflectionProbeMode::Blend, true, probesLayout ) )
+				return Fail( *why );
+			std::printf( "render_lab: RPRB %u probe%s, %u mips from %u wide%s\n",
+			    probesLayout.count, probesLayout.count == 1 ? "" : "s", probesLayout.mipCount,
+			    probesLayout.width, probesLayout.relight ? ", relightable" : "" );
+		}
+
 		// The world's materials and their groups.
 		std::vector<SceneMaterial> materials( mesh.materials.size() );
 		std::uint64_t nextGroup = 1;

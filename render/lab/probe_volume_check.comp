@@ -1,0 +1,52 @@
+// render_lab suite probe-volume (RFC 0016 K11): evaluates the probe volume
+// (render/shaders/common/probe_volume.glsl) at each case, so the suite can
+// judge it against its oracle, mapcontainer::ProbeVolumeView. Per case it
+// writes three vec4: ProbeIrradiance (w: 1 when the point is covered), and
+// ProbeIrradiancePair's first and second results (w: covered).
+#version 450
+
+layout( local_size_x = 64 ) in;
+
+layout( set = 3, binding = 0 ) uniform texture2D probeAtlas;
+layout( set = 3, binding = 1 ) uniform texture2D probeSecondAtlas;
+layout( set = 3, binding = 2 ) uniform texture2D probeGrids;
+layout( set = 3, binding = 3 ) uniform sampler probeAtlasSampler;
+layout( set = 3, binding = 4 ) uniform sampler probeGridsSampler;
+
+#define PROBE_VOLUME_SECOND
+#include "../shaders/common/probe_volume.glsl"
+
+struct Case
+{
+	vec4 position; // w: the layer
+	vec4 normal;   // unit; w: 1 to use the visibility test
+};
+
+layout( std430, set = 3, binding = 5 ) readonly buffer Cases
+{
+	uvec4 header; // x: the case count
+	Case cases[];
+};
+
+layout( std430, set = 3, binding = 6 ) writeonly buffer Results
+{
+	vec4 results[];
+};
+
+void main()
+{
+	const uint i = gl_GlobalInvocationID.x;
+	if ( i >= header.x )
+		return;
+	const Case c = cases[i];
+	const int layer = int( c.position.w );
+	const bool visibility = c.normal.w > 0.5;
+	vec3 single;
+	const bool covered = ProbeIrradiance( c.position.xyz, c.normal.xyz, layer, visibility, single );
+	vec3 first, second;
+	const bool pairCovered =
+	    ProbeIrradiancePair( c.position.xyz, c.normal.xyz, layer, visibility, first, second );
+	results[i * 3 + 0] = vec4( single, covered ? 1.0 : 0.0 );
+	results[i * 3 + 1] = vec4( first, pairCovered ? 1.0 : 0.0 );
+	results[i * 3 + 2] = vec4( second, pairCovered ? 1.0 : 0.0 );
+}

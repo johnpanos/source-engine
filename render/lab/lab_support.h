@@ -8,6 +8,8 @@
 #ifndef RENDER_LAB_LAB_SUPPORT_H
 #define RENDER_LAB_LAB_SUPPORT_H
 
+#include "mapcontainer/probe_volume.h"
+#include "mapcontainer/reflection_probes.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mdl/studio_model.h"
 #include "render/device/device.h"
@@ -100,6 +102,24 @@ LightmapLayerPages SplitLightmapLayer(
 // layer when a runtime light the core evaluates owns the surface's direct
 // light (the bake's direct share is then the core's to draw).
 mapcontainer::WorldLightmapLayer BakedLightmapLayer( bool directOwnedByCore );
+
+// A PRBV lump (RFC 0011 render.probe-volume.v1) staged as
+// render/shaders/common/probe_volume.glsl reads it: the atlas (RGBA16F) as
+// `<name>-atlas` and the grid table (RGBA32F, WriteProbeGridTable) as
+// `<name>-grids`. The reason when it does not validate or is refused.
+std::optional<std::string> StageProbeVolume( resources::TextureCache &cache,
+    const std::string &name, std::span<const std::byte> lump,
+    mapcontainer::ProbeVolumeLayout &layout );
+
+// An RPRB lump (RFC 0008's reflection probes, R50) staged as
+// render/shaders/common/reflection_probes.glsl reads it:
+// WriteReflectionProbeTexture's GPU form (RGBA16F) in `mode`, relit when the
+// probes carry relight bands and `relight` asks, as `name`. The reason when
+// it does not validate or is refused.
+std::optional<std::string> StageReflectionProbes( resources::TextureCache &cache,
+    const std::string &name, std::span<const std::byte> lump,
+    mapcontainer::ReflectionProbeMode mode, bool relight,
+    mapcontainer::ReflectionProbesLayout &layout );
 
 // The lab's device: the Vulkan adapter (RENDER_VK_ADAPTER picks the physical
 // device), with the Khronos validation layer and synchronization validation
