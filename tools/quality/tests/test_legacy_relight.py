@@ -136,6 +136,61 @@ class GeometryTests(unittest.TestCase):
         self.assertEqual(st.tolist(), [[0.0, 1.0], [1.0, 0.5]])
 
 
+class ZeroAreaTrianglesTest(unittest.TestCase):
+    """No zero-area triangle reaches the bake (testchmb_a_00_relit's black wall,
+    2026-09-29), and the bake refuses a planar face shaded from behind."""
+
+    def test_a_collinear_face_gives_no_triangle(self):
+        square = [np.array(p, float) for p in ((0, 0, 0), (64, 0, 0), (64, 64, 0), (0, 64, 0))]
+        line = [np.array(p, float) for p in ((0, 0, 0), (32, 0, 0), (64, 0, 0))]
+        points, counts, indices, _n, _st, sources = scene.indexed_triangles(
+            [square, line], [np.zeros((4, 2)), np.zeros((3, 2))], [(0, 0, 1), (0, 0, 1)])
+        self.assertEqual(sources, [0, 0])
+        corners = np.asarray(points)[np.asarray(indices).reshape(-1, 3)]
+        areas = np.linalg.norm(np.cross(corners[:, 1] - corners[:, 0],
+                                        corners[:, 2] - corners[:, 0]), axis=1)
+        self.assertTrue((areas > 0).all())
+
+    def test_the_bake_refuses_sideways_planar_normals(self):
+        import shutil
+        import subprocess
+        import tempfile
+        blender = shutil.which("blender")
+        if not blender:
+            self.skipTest("blender is not installed")
+        probe = (
+            "import bpy, sys\n"
+            "sys.path.insert(0, %r)\n"
+            "import pbrt_lightmap_bake as b\n"
+            "bpy.ops.wm.read_factory_settings(use_empty=True)\n"
+            "bpy.ops.wm.usd_import(filepath=sys.argv[-1], import_materials=False)\n"
+            "print('GATE', len(b.sideways_planar_normals("
+            "[o for o in bpy.data.objects if o.type == 'MESH'])))\n" % str(ROOT / "tools" / "quality"))
+        stage = ('#usda 1.0\n(\n    upAxis = "Z"\n)\ndef Mesh "wall"\n{\n'
+                 "    int[] faceVertexCounts = [3, 3]\n"
+                 "    int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]\n"
+                 "    point3f[] points = [(0,0,0), (1,0,0), (1,1,0), (0,1,0)]\n"
+                 '    normal3f[] normals = [%s] (\n        interpolation = "faceVarying"\n    )\n'
+                 '    int[] primvars:sourceEngine:plane = [7, 7] (\n'
+                 '        interpolation = "uniform"\n    )\n}\n')
+        flat = ",".join(["(0,0,1)"] * 6)
+        sideways = "(0,0,1),(0,0,1),(0,0,1),(1,0,0.02),(1,0,0.02),(0,0,1)"
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "probe.py"
+            script.write_text(probe)
+            counts = {}
+            for name, normals in (("flat", flat), ("sideways", sideways)):
+                path = Path(tmp) / (name + ".usda")
+                path.write_text(stage % normals)
+                out = subprocess.run([blender, "-b", "--factory-startup", "--python",
+                                      str(script), "--", str(path)],
+                                     capture_output=True, text=True, timeout=300).stdout
+                line = [l for l in out.splitlines() if l.startswith("GATE ")]
+                self.assertTrue(line, out[-500:])
+                counts[name] = int(line[0].split()[1])
+        self.assertEqual(counts, {"flat": 0, "sideways": 1})
+
+
 class SharedVerticesTest(unittest.TestCase):
     def test_faces_share_points_by_bsp_vertex_index(self):
         """Two quads naming the same two BSP vertices share those points: the

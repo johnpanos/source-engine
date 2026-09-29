@@ -755,6 +755,10 @@ def clean_winding(keys):
     return keep if len(keep) >= 3 else []
 
 
+# A triangle below this area (square Source units) is zero-area.
+ZERO_AREA_UNITS2 = 1e-6
+
+
 def indexed_triangles(polygons, uvs, plane_normals, vertex_ids=None):
     """Triangulate polygons into one indexed mesh (widest_triangulation).
 
@@ -764,7 +768,8 @@ def indexed_triangles(polygons, uvs, plane_normals, vertex_ids=None):
     piece, which the lightmap bake then charted alone - a seam along every
     triangle edge. Normals and material UVs stay per corner (faceVarying).
     Returns (points, counts, indices, normals, st, sources): sources[i] is the
-    polygon triangle i came from (faces with no area give none).
+    polygon triangle i came from (faces with no area give none, and no
+    zero-area triangle is emitted).
     """
     points, counts, indices, normals, st, sources = [], [], [], [], [], []
     shared = {}
@@ -786,6 +791,13 @@ def indexed_triangles(polygons, uvs, plane_normals, vertex_ids=None):
                      range(len(polygon) - 1, -1, -1))
         ordered = np.asarray(polygon, dtype=np.float64)[order]
         for triangle in widest_triangulation(ordered, np.asarray(normal, dtype=np.float64)):
+            a, b, c = (ordered[i] for i in triangle)
+            if not np.linalg.norm(np.cross(b - a, c - a)) > ZERO_AREA_UNITS2 * 2.0:
+                # A face that is only collinear points (three distinct ones
+                # survive clean_winding). A zero-area triangle covers nothing,
+                # and Blender's split normals turn sideways next to one, which
+                # bakes its neighbours black (testchmb_a_00_relit, 2026-09-29).
+                continue
             for corner in (order[i] for i in triangle):
                 key = corner_ids[corner]
                 if key not in shared:

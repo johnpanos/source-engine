@@ -608,6 +608,39 @@ def bake_frame(merged, out_dir, size, render):
     return hashes
 
 
+# A relit BSP face (it carries this face attribute, from legacy_bsp_scene's
+# `sourceEngine:plane` primvar) is planar, so every corner's shading normal
+# must face out of it. A corner normal more than about 84 degrees off its
+# face's normal bakes the face from behind: black. That happened next to
+# zero-area triangles on testchmb_a_00_relit (2026-09-29; corner cosines -0.05
+# to 0.41). A clean stage's worst is 0.5, on one small face.
+PLANE_ATTRIBUTE = "sourceEngine:plane"
+SIDEWAYS_COS = 0.1
+
+
+def sideways_planar_normals(meshes):
+    """(mesh, polygon, cosine or "zero area") for every planar-face corner
+    normal the bake would shade from behind."""
+    import numpy as np
+    found = []
+    for obj in meshes:
+        mesh = obj.data
+        if PLANE_ATTRIBUTE not in mesh.attributes:
+            continue
+        normals = np.empty(len(mesh.corner_normals) * 3)
+        mesh.corner_normals.foreach_get("vector", normals)
+        normals = normals.reshape(-1, 3)
+        for polygon in mesh.polygons:
+            if not polygon.area > 1e-9:
+                found.append((obj.name, polygon.index, "zero area"))
+                continue
+            corners = normals[polygon.loop_start:polygon.loop_start + polygon.loop_total]
+            cosine = float((corners @ np.asarray(polygon.normal)).min())
+            if cosine < SIDEWAYS_COS:
+                found.append((obj.name, polygon.index, cosine))
+    return found
+
+
 def main():
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser(description=__doc__)
@@ -670,6 +703,11 @@ def main():
     assignments = {shape["name"]: shape["material"] for shape in scene["shapes"]}
     if sorted(obj.name for obj in meshes) != sorted(assignments):
         raise ValueError("USD stage meshes differ from the PBRT scene")
+    sideways = sideways_planar_normals(meshes)
+    if sideways:
+        raise ValueError("%d planar BSP face(s) would bake from behind (a corner normal more "
+                         "than ~84 degrees off the face, or a zero-area face), first: %s" %
+                         (len(sideways), sideways[:5]))
     baked = []
     # Dynamic models are not static lighting: their stand-ins neither get
     # atlas space nor take part in the bake's light transport.
