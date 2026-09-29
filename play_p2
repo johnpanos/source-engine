@@ -4,6 +4,9 @@
 # uses IVP, and an explicit -physics argument wins. PHYSICS_ARGS carries the
 # physics launch flags, as in run.conf: -physics_shape_inertia by default
 # (RFC 0013 shape inertia); PHYSICS_ARGS= ./play_p2 rolls back.
+# Render switches come first, as in ./play (./play_p2 --render-help): --native,
+# --null, --core-world, --no-core, --core-probe=MODE, --no-legacy-ports,
+# --validate. The Portal 2 tree builds native Vulkan only, so --dxvk is refused.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -24,6 +27,19 @@ JOB_ARGS="${JOB_ARGS-+cl_render_start_graph 2 +sv_querycache_job_graph 2 -vkemit
 # is 0 in a runtime staged from a retail install; the maps' color_correction
 # entities need it on.
 MAT_ARGS="${MAT_ARGS-+mat_colorcorrection 1}"
+
+# Render switches (tools/quality/render_flags.sh).
+. "$ROOT/tools/quality/render_flags.sh"
+render_flags_parse "$@"
+set -- ${RENDER_REST[@]+"${RENDER_REST[@]}"}
+render_args=(${RENDER_GAME_ARGS[@]+"${RENDER_GAME_ARGS[@]}"})
+case "$RENDER_BACKEND" in
+    native) ;;
+    null) render_args+=(-renderer null) ;;
+    dxvk)
+        echo "play_p2: the Portal 2 tree builds native Vulkan only; --dxvk is ./play's" >&2
+        exit 1 ;;
+esac
 
 if [[ "${1:-}" == "--retail" ]]; then
     shift
@@ -77,4 +93,8 @@ for arg in "$@"; do
 done
 # shellcheck disable=SC2206  # the ConVar lists are intentionally word-split
 config_args=($PHYSICS_ARGS $JOB_ARGS $MAT_ARGS)
-exec ./hl2_launcher -game portal2 "${physics_args[@]}" "${config_args[@]}" "$@"
+if [[ ${#render_args[@]} -gt 0 ]]; then
+    echo "play_p2: render switches: ${render_args[*]}"
+fi
+exec ./hl2_launcher -game portal2 "${physics_args[@]}" "${config_args[@]}" \
+    ${render_args[@]+"${render_args[@]}"} "$@"

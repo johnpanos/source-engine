@@ -7,6 +7,9 @@
 #   ./play native testchmb_a_02 -console      a map, then any game arguments
 #   ./play living_room        a PBRT map published by pbrt_map_build.py
 #                             (list: python3 tools/quality/playable_maps.py list)
+#   ./play --core-world testchmb_a_01    render switches first (./play --render-help):
+#                             --native --dxvk --null --core-world --no-core
+#                             --core-probe=MODE --no-legacy-ports --validate
 #
 # It picks the build tree and renderer id that belong together, builds that tree
 # incrementally, stages it into its own runtime (run/runtime-<backend>, seeded
@@ -17,10 +20,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-backend=native
+# Render switches (tools/quality/render_flags.sh), then the backend word.
+. tools/quality/render_flags.sh
+render_flags_parse "$@"
+set -- ${RENDER_REST[@]+"${RENDER_REST[@]}"}
+backend=$RENDER_BACKEND
 case "${1:-}" in
     native|dxvk) backend=$1; shift ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
 esac
 # A leading word that is not an option is the map.
 if [ $# -gt 0 ] && [ "${1#[-+]}" = "$1" ]; then
@@ -31,6 +38,7 @@ fi
 case "$backend" in
     native) build_dir=build; renderer=native-vulkan ;;
     dxvk) build_dir=build-portal-vulkan; renderer=vulkan-compat ;;
+    null) build_dir=build; renderer=null ;;
 esac
 if [ ! -d "$build_dir" ]; then
     echo "play: $build_dir is not configured; see RFC/0001-native-vulkan-progress.md" >&2
@@ -38,8 +46,14 @@ if [ ! -d "$build_dir" ]; then
 fi
 
 export BUILD_DIR=$build_dir RENDERER=$renderer
-export RUNTIME=${RUNTIME:-run/runtime-$backend}
+# The null renderer shares the native tree and its runtime.
+runtime_backend=$backend
+[ "$backend" = null ] && runtime_backend=native
+export RUNTIME=${RUNTIME:-run/runtime-$runtime_backend}
 if [ -z "${BASE_RUNTIME:-}" ] && [ -f run/runtime/portal/gameinfo.txt ]; then
     export BASE_RUNTIME=run/runtime
 fi
-exec ./run.sh "$@"
+if [ ${#RENDER_GAME_ARGS[@]} -gt 0 ]; then
+    echo "play: render switches: ${RENDER_GAME_ARGS[*]}"
+fi
+exec ./run.sh "$@" ${RENDER_GAME_ARGS[@]+"${RENDER_GAME_ARGS[@]}"}
