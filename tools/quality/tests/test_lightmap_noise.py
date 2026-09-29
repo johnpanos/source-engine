@@ -59,6 +59,30 @@ class NoiseTest(unittest.TestCase):
         a, b, coverage = pair(0.03, seed=4)
         self.assertEqual(noise.measure(a, b, coverage, 1024, 0.01)["status"], "fail")
 
+    def test_record_only_writes_a_failing_receipt_without_failing(self):
+        """lightmap.noise_gate "record": the CLI records the measurement and
+        the samples that would meet it, and exits 0; enforcing exits non-zero."""
+        import json
+        import subprocess
+        import tempfile
+        import imageio.v3 as iio
+        a, b, coverage = pair(0.03, seed=4)
+        work = Path(tempfile.mkdtemp())
+        iio.imwrite(work / "a.exr", a.astype(np.float32))
+        iio.imwrite(work / "b.exr", b.astype(np.float32))
+        iio.imwrite(work / "c.exr", np.dstack([coverage.astype(np.float32)] * 4))
+        command = [sys.executable, str(Path(noise.__file__)), "--first", str(work / "a.exr"),
+                   "--second", str(work / "b.exr"), "--coverage", str(work / "c.exr"),
+                   "--samples", "1024", "--target", "0.01", "--out", str(work / "n.json")]
+        enforced = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(enforced.returncode, 0)
+        self.assertEqual(json.loads((work / "n.json").read_text())["gate"], "enforced")
+        recorded = subprocess.run(command + ["--record-only"], capture_output=True, text=True)
+        self.assertEqual(recorded.returncode, 0, recorded.stderr)
+        receipt = json.loads((work / "n.json").read_text())
+        self.assertEqual((receipt["status"], receipt["gate"]), ("fail", "recorded"))
+        self.assertGreater(receipt["required_samples"], 1024)
+
     def test_identical_halves_are_rejected(self):
         """Equal halves mean the second bake reused the seed: no noise
         measurement, not zero noise."""

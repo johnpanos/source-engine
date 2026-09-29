@@ -115,6 +115,9 @@ def main():
                         help="largest relative noise allowed at the percentile")
     parser.add_argument("--after-denoise", action="store_true",
                         help="gate on the halves' difference after per-chart denoising")
+    parser.add_argument("--record-only", action="store_true",
+                        help="measure and record, but do not fail above the target "
+                             "(lightmap.noise_gate \"record\")")
     parser.add_argument("--oidn-library", default="libOpenImageDenoise.so.2")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -131,12 +134,17 @@ def main():
         if denoiser is not None:
             denoiser.close()
     result.update({"first_sha256": sha256(args.first), "second_sha256": sha256(args.second),
-                   "coverage_sha256": sha256(args.coverage)})
+                   "coverage_sha256": sha256(args.coverage),
+                   "gate": "recorded" if args.record_only else "enforced"})
     args.out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print("LIGHTMAP_NOISE " + json.dumps({k: result[k] for k in (
         "status", "judged", "relative_noise", "target", "samples", "required_samples")},
         sort_keys=True))
-    if result["status"] != "pass":
+    if result["status"] != "pass" and args.record_only:
+        print("lightmap noise %.4g exceeds %.4g at %d samples (about %d would meet it); "
+              "recorded, not enforced" % (result["relative_noise"], args.target, args.samples,
+                                          result["required_samples"]))
+    elif result["status"] != "pass":
         raise SystemExit("lightmap noise %.4g exceeds %.4g at %d samples; about %d samples "
                          "would meet it" % (result["relative_noise"], args.target, args.samples,
                                             result["required_samples"]))

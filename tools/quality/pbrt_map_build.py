@@ -69,7 +69,8 @@ whose light the radiosity transfer owns). Steps:
     noise        (lightmap.noise_target) lightmap_noise.py: the bake's measured Monte Carlo
                  noise (every light page is the mean of two half-sample bakes) must be under
                  the target, or the step reports the sample count that would meet it; with
-                 lightmap.denoise it judges what remains after the per-chart denoise
+                 lightmap.denoise it judges what remains after the per-chart denoise;
+                 lightmap.noise_gate "record" measures and records without failing
     denoise      OpenImageDenoise RTLightmap filter (manifest lightmap.denoise, default on)
     seams        lightmap_seams.py extract --check: the lighting stage's chart seams, and a
                  gate on its chart invariants (no overlap, bleed, escaped UVs or split
@@ -436,7 +437,13 @@ class Pipeline:
                          # Blender's smart-project charting, kept for comparison.
                          "layout": lightmap.get("layout", "planar"),
                          # Largest relative bake noise allowed (lightmap_noise.py), or None.
-                         "noise_target": lightmap.get("noise_target")}
+                         "noise_target": lightmap.get("noise_target"),
+                         # "enforce" fails the build above the target; "record"
+                         # measures and records the noise and the samples that
+                         # would meet it.
+                         "noise_gate": lightmap.get("noise_gate", "enforce")}
+        if self.lightmap["noise_gate"] not in ("enforce", "record"):
+            raise SystemExit("lightmap.noise_gate must be \"enforce\" or \"record\"")
         # The lightmap bake's participating medium (opt-in; see the docstring).
         self.medium = load_medium(manifest)
         if self.lightmap["layout"] not in ("blender", "planar"):
@@ -865,16 +872,22 @@ class Pipeline:
             halves = [p["noise_pair"] / "total-a.exr", p["noise_pair"] / "total-b.exr"]
             mean_samples = 2 * max(1, (self.lightmap["samples"] + 1) // 2)
             denoised = ["--after-denoise"] if self.lightmap["denoise"] else []
-            self.step("noise", halves + [p["coverage"]],
-                      {"target": noise_target, "samples": mean_samples,
-                       "after_denoise": bool(denoised)}, ["lightmap_noise.py"],
+            noise_settings = {"target": noise_target, "samples": mean_samples,
+                              "after_denoise": bool(denoised)}
+            record = []
+            if self.lightmap["noise_gate"] == "record":
+                # Only a recording map names it, so enforcing maps keep their keys.
+                noise_settings["gate"] = "record"
+                record = ["--record-only"]
+            self.step("noise", halves + [p["coverage"]], noise_settings, ["lightmap_noise.py"],
                       [p["noise_receipt"]],
                       lambda: self.run("noise", [sys.executable, HERE / "lightmap_noise.py",
                                                  "--first", halves[0], "--second", halves[1],
                                                  "--coverage", p["coverage"],
                                                  "--samples", str(mean_samples),
                                                  "--target", str(noise_target),
-                                                 "--out", p["noise_receipt"]] + denoised))
+                                                 "--out", p["noise_receipt"]] + denoised +
+                                                record))
         atlas, atlas_receipt, scope = p["atlas"], p["atlas_receipt"], BAKE_SCOPE
         denoised_layers = {role: p["layers"] / (role + "-denoised.exr") for role in layers}
 
