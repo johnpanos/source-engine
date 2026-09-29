@@ -3217,3 +3217,51 @@ The Fold7 is unavailable (the keyguard is showing).
 - Clamping at the screen edge in the half froxel beyond the first and last
   column and row centres.
 - The pass has no render.graph form yet (a direct `Record`).
+
+### K11 step g: the fog state's surfaces, baked through the medium (2026-09-29)
+
+The foggy hall's one map was baked without its medium, so the lab's fog-state
+surfaces kept 0.65 to 0.68 of the clear frame, against Cycles' 0.47 to 0.49.
+The fog state now has its own map, baked on the one lighting back end with the
+medium as an explicit input. There are no environment variables and no side
+files.
+
+- `tools/quality/participating_medium.py` holds the one Cycles form of a
+  homogeneous medium: the world volume the K11 references render.
+  `lighting_reference_blender.py` now calls it; before, it carried its own
+  copy.
+- `pbrt_lightmap_bake.py --medium <json>` is opt-in and recorded in the bake
+  receipt. The back-end manifest key `medium` is validated and enters the
+  bake step's cache key only when given. `map_lighting.light(medium=...)` and
+  `--medium` pass it through.
+- The published map carries `lightmap-medium.json`, taken from the bake
+  receipt. The pipeline refuses a receipt whose medium differs from the
+  manifest's. Only the lightmap bake takes the medium: the probe,
+  probe-volume, radiosity and SDF bakes don't, and the build log says so.
+- In the fixture, a state may own a map (`lighting.state_maps`,
+  `lighting_fixtures.map_for`):
+  - `build` lights the same compiled BSP again with the state's medium;
+  - the gallery renders each state from its own map;
+  - `check` requires a state map to carry exactly its state's medium and the
+    base map to carry none.
+- foggy-hall's fog state renders from `lt_foggy_hall_fog`, and the clear
+  state keeps `lt_foggy_hall`.
+
+| Check | Result |
+| --- | --- |
+| Outputs unchanged without a medium | `lt_foggy_hall` rebuilt with the new code (bake rerun) is byte-identical to the published map (BSP2 sha256 `047aced6…`) |
+| Tests | `test_lighting_fixtures` and `test_lighting_gallery` pass 50 tests, including `StateMaps`: a state map's published bake medium must match its state's medium and the base map must carry none, with three seeded mismatches caught; the manifest names a medium only when given; bad media are refused. `generate --check` and `check` pass (the other fixtures' maps are linked read-only from the shared checkout). `test_legacy_relight`, `test_pbrt_map_build_run`, `test_pbrt_gates`, `test_playable_maps`, `test_vmf_map_build`, `test_lightmap_variants`, `test_pbrt_scene` and `test_lighting_back_end` pass 122 tests |
+
+**Gallery** (foggy-hall, denoised references, tolerance mean 0.10, p99 0.9):
+
+| View | Base map (before) | State map (after) |
+| --- | --- | --- |
+| fog nave | 0.281 / 0.78 | 0.070 / 0.59 (pass) |
+| fog side | 0.315 / 0.92 | 0.076 / 0.38 (pass) |
+| clear nave | 0.098 / 1.08 | 0.098 / 1.08 |
+| clear side | 0.076 / 0.37 | 0.076 / 0.37 |
+
+On the nave, the lab's surface part is now 0.483 of the clear frame, against
+Cycles' 0.490. The clear nave's p99 was already 1.08 before this change.
+The likely cause, unverified, is the projector's light on surfaces, which the
+lab doesn't draw yet (the projected-light term).

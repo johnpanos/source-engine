@@ -225,12 +225,26 @@ projector's cookie is compiled by VTEX into the published map as
 Built on 2026-09-29 (preview bake, CPU): `lt_cornell_floors` (39 s),
 `lt_area_room` (68 s), `lt_projector_cookie` (24 s), `lt_sun_colonnade`
 (78 s), `lt_mirror_corridor` (61 s), `lt_material_sweep` (61 s).
-`lt_foggy_hall` is **not built**: its compile passes and all 256 compiled
-world lights match the stage, but the pack step
-(`usd_worldmesh_pack.py`, `EMITTER_NAME = r"Light(?:Quad|Disk)\d{2}"`)
-takes the 101st UsdLux emitter mesh, `LightQuad100`, for an unbound world
-mesh and stops. Widening the pattern to `\d{2,}` (its owner's change) lets
-`build --fixture foggy-hall` finish; until then `check` fails on that map.
+`lt_foggy_hall` was blocked by the pack step's emitter pattern
+(`usd_worldmesh_pack.py` took the 101st emitter, `LightQuad100`, for world
+geometry); since `\d{2,}` it builds.
+
+**State maps.** A state may own a map (`lighting.state_maps`, with
+`lighting_fixtures.map_for`): the same compiled BSP and baked state, lit
+again with the state's medium (`lighting.media`) as an explicit input of
+the lightmap bake (`map_lighting.light(medium=...)`, the back-end manifest's
+`medium`, `pbrt_lightmap_bake.py --medium`, applied by
+`participating_medium.py`, the one Cycles form the references use too).
+The bake receipt records the medium, and the published map carries it
+beside itself as `lightmap-medium.json`. `check` requires a state map to
+carry exactly its state's medium, and the base map to carry none.
+- foggy-hall's `fog` state renders from `lt_foggy_hall_fog`, whose surfaces
+  receive light through the medium as Cycles' do.
+- Its `clear` state keeps `lt_foggy_hall` (at `--fog-scale 0` in the
+  gallery).
+- Rebuilt 2026-09-29 (preview, CPU): `lt_foggy_hall` came out byte-identical
+  to the previously published map (no medium given), and `lt_foggy_hall_fog`
+  is the new state map.
 
 The final bakes (not run) drop the preview overrides for the profiles'
 sample counts (lightmap 2048, probe volume 4096; reflection probes 1024

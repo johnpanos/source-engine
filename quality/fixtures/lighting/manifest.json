@@ -175,6 +175,9 @@
       "projectors": 1,
       "purpose": "A 24 m hall filled with a homogeneous medium (scattering 0.06/m, absorption 0.01/m, anisotropy 0.3): 16 ceiling spots draw shafts, 240 colored bulbs line the walls (256 clustered lights), and a projector at the far end throws a shaft that a pillar shadows; the clear state is the same hall with density zero",
       "reused_map": false,
+      "state_maps": {
+        "fog": "lt_foggy_hall_fog"
+      },
       "states": [
         "clear",
         "fog"

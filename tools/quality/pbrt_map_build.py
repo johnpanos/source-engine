@@ -30,6 +30,14 @@ one of three combinations:
                  (run/runtime-p2 for a Portal 2 map) in place of the toolchain's
     bsp + scene  a compiled BSP lit with an authored scene in the map's space
 
+An optional `medium` (participating_medium.py: scattering_per_m,
+absorption_per_m, anisotropy, bounds_m) is a homogeneous participating
+medium the lightmap bake's light paths cross (`bake --medium`, recorded in
+the bake receipt and the step's cache key). It is explicit and opt-in: a
+manifest without it bakes exactly as before. Only the `bake` step takes it;
+the probe, probe-volume, radiosity and SDF bakes do not, and they say so in
+the build log.
+
 Every later step reads the scene through `map_scene`. The toolchain file
 (`pbrt-map-toolchain/v1`) holds machine paths; `pbrt_map_toolchain.py
 provision` builds the pinned tools under build/toolchains/ and writes the
@@ -136,6 +144,7 @@ import pbrt_traversal  # noqa: E402
 import playable_maps  # noqa: E402
 import gameplay_identity  # noqa: E402
 import light_baker  # noqa: E402
+import participating_medium  # noqa: E402
 import radiosity_transfer  # noqa: E402
 import reference_compare  # noqa: E402
 import remote_blender  # noqa: E402
@@ -239,6 +248,17 @@ def load_manifest(path):
     manifest["scene_format"] = "usd" if map_scene.is_usd(manifest["scene"]) else "pbrt"
     manifest.setdefault("quality", DEFAULT_QUALITY)
     return manifest
+
+
+# Published beside a map whose lightmap bake crossed a participating medium:
+# the medium as the bake receipt records it.
+MEDIUM_SIDECAR = "lightmap-medium.json"
+
+
+def load_medium(manifest):
+    """The manifest's participating medium (validated), or None."""
+    medium = manifest.get("medium")
+    return participating_medium.validate(medium) if medium is not None else None
 
 
 def load_profile(name):
@@ -417,6 +437,8 @@ class Pipeline:
                          "layout": lightmap.get("layout", "planar"),
                          # Largest relative bake noise allowed (lightmap_noise.py), or None.
                          "noise_target": lightmap.get("noise_target")}
+        # The lightmap bake's participating medium (opt-in; see the docstring).
+        self.medium = load_medium(manifest)
         if self.lightmap["layout"] not in ("blender", "planar"):
             raise ValueError("unknown lightmap layout " + str(self.lightmap["layout"]))
         self.authored_exclusions = set(
@@ -807,14 +829,25 @@ class Pipeline:
         noise_target = self.lightmap["noise_target"]
         if noise_target:
             bake_args += ["--noise-pair-dir", p["noise_pair"]]
+        bake_settings = {k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
+                                                       "device", "directional", "light_paths",
+                                                       "layers", "seed", "layout",
+                                                       "noise_target")}
+        if self.lightmap["directional_samples"]:
+            bake_settings["directional_samples"] = self.lightmap["directional_samples"]
+        if self.medium:
+            # Only a map with a medium names one, so every other map's cache
+            # key is unchanged.
+            bake_args += ["--medium", json.dumps(self.medium, sort_keys=True)]
+            bake_settings["medium"] = self.medium
+            print("[bake] participating medium %s: scattering %g/m, absorption %g/m, g %g "
+                  "(the lightmap bake only; probe, probe-volume, radiosity and SDF bakes take "
+                  "no medium)" % (self.medium.get("name", "(unnamed)"),
+                                  self.medium["scattering_per_m"],
+                                  self.medium["absorption_per_m"], self.medium["anisotropy"]))
         self.step("bake", [bake_stage] + self.scene_sources() +
                   ([environment] if environment else []),
-                  dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
-                                                      "device", "directional", "light_paths",
-                                                      "layers", "seed", "layout",
-                                                      "noise_target")},
-                       **({"directional_samples": self.lightmap["directional_samples"]}
-                          if self.lightmap["directional_samples"] else {})),
+                  bake_settings,
                   SCENE_SCRIPTS + self.baker.scripts("bake"),
                   [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]] +
                   ([p["directional_bakes"]] if directional else []) +
@@ -1257,10 +1290,22 @@ class Pipeline:
                              if path.is_file()},
                    "steps": {name: self.state[name]["seconds"] for name in STEPS
                              if name in self.state}}
+        # The medium the lightmap bake applied, from its receipt (the bake's
+        # own evidence), published beside the map; a map baked without one
+        # carries no such record.
+        baked_medium = json.loads(p["atlas_receipt"].read_text()).get("medium") \
+            if p["atlas_receipt"].is_file() else None
+        if baked_medium != self.medium:
+            raise SystemExit("the bake receipt's medium %r is not the manifest's %r" %
+                             (baked_medium, self.medium))
+        if baked_medium:
+            summary["lightmap_medium"] = baked_medium
         (self.out / "build.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps(summary, indent=2))
         if self.publish:
-            playable_maps.publish(summary)
+            playable_maps.publish(summary, sidecars={
+                MEDIUM_SIDECAR: json.dumps(baked_medium, indent=2, sort_keys=True) + "\n"}
+                if baked_medium else None)
             print("published to %s; play it with ./play %s" %
                   (playable_maps.STORE / self.map, self.map))
         if self.failed_gates:

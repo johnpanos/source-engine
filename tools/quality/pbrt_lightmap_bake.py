@@ -21,6 +21,12 @@ direct diffuse bake with shadows divided by the same bake without them, so
 texels hold the sun's [0, 1] visibility (soft penumbrae included). Its diffuse
 light stays in the atlas; the runtime adds the sun's specular dynamically,
 shadowed by this mask, as Source 2 does for its static sun.
+
+With `--medium` (opt-in, JSON) a homogeneous participating medium is the
+world volume every baked light path crosses (participating_medium.py, the
+form the K11 lighting references render), so the atlas holds the light that
+reaches each surface through it. The receipt records the medium; a bake
+without one names none.
 """
 
 import argparse
@@ -39,6 +45,7 @@ import bake_progress  # noqa: E402
 import cycles_device  # noqa: E402
 import pbrt_blender  # noqa: E402
 import map_scene  # noqa: E402
+import participating_medium  # noqa: E402
 
 SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
 # Source's radiosity normal mapping basis (tangent space), 54.74 degrees from N.
@@ -712,11 +719,22 @@ def main():
                              "unchanged; blender: chart and pack in Blender")
     parser.add_argument("--margin-texels", type=int, default=2,
                         help="gap between packed charts; bake dilation uses half")
+    parser.add_argument("--medium",
+                        help="a homogeneous participating medium as JSON (participating_medium: "
+                             "scattering_per_m, absorption_per_m, anisotropy, bounds_m), the "
+                             "world volume every baked light path crosses; recorded in the "
+                             "receipt. Opt-in: without it the bake has no medium")
     args = parser.parse_args(arguments)
     if args.size < 256 or args.samples < 1 or not os.environ.get("OCIO"):
         parser.error("valid atlas size, samples and OCIO are required")
     if args.stage.resolve() == args.out_stage.resolve():
         parser.error("output stage must differ from input stage")
+    medium = None
+    if args.medium is not None:
+        try:
+            medium = participating_medium.validate(json.loads(args.medium))
+        except ValueError as error:
+            parser.error("--medium: %s" % error)
     layers = [role for role in args.layers.split(",") if role]
     if any(role not in SEPARATED_PASSES for role in layers) or len(set(layers)) != len(layers):
         parser.error("--layers takes distinct roles from: " + ", ".join(SEPARATED_PASSES))
@@ -828,6 +846,8 @@ def main():
     pbrt_blender.rebind_materials(scene, normal_maps=False)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
+    if medium:
+        participating_medium.apply_world_medium(medium)
     for obj in meshes:
         if obj.name in props:
             obj.hide_render = True
@@ -989,6 +1009,10 @@ def main():
                 "linear_exr_sample_count": len(sampled), "linear_exr_max_sample_error": error,
                 "uv_extents": extents, "blender": bpy.app.version_string,
                 "ocio_configuration_sha256": sha256(os.environ["OCIO"])}
+    if medium:
+        # Only a bake with a medium names one: receipts of bakes without it
+        # are unchanged.
+        evidence["medium"] = medium
     args.out_exr.with_name(args.out_exr.name + ".json").write_text(
         json.dumps(evidence, indent=2, sort_keys=True) + "\n")
     print("PBRT_LIGHTMAP_BAKE " + json.dumps({k: evidence[k] for k in

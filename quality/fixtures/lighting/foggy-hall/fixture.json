@@ -141,6 +141,13 @@
         "yaw": 180.0
       }
     ],
+    "state_maps": {
+      "fog": {
+        "bake": "the base map's compiled BSP and baked state; the lightmap bake crosses this state's medium (lighting.media)",
+        "bsp": "run/maps/lt_foggy_hall_fog/maps/lt_foggy_hall_fog.bsp",
+        "name": "lt_foggy_hall_fog"
+      }
+    },
     "terms": [
       "participating-media",
       "runtime-lights",

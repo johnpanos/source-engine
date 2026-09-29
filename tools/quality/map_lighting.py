@@ -21,7 +21,12 @@ lighting lumps into a BSP2, gates that the map's gameplay lumps are carried
 byte for byte (`gameplay_identity.py`), and publishes it for ./play.
 
     python3 tools/quality/map_lighting.py --bsp maps/room.bsp --map room \\
-        [--scene room.usda] [--quality legacy-relight-preview] [--runtime run/runtime-p2]
+        [--scene room.usda] [--quality legacy-relight-preview] [--runtime run/runtime-p2] \\
+        [--medium '{"scattering_per_m": 0.06, "absorption_per_m": 0.01, "anisotropy": 0.3}']
+
+`--medium` (the manifest's `medium`, participating_medium.py) is an explicit,
+opt-in participating medium the lightmap bake's light paths cross; without it
+the map bakes exactly as before.
 """
 
 import argparse
@@ -43,7 +48,7 @@ def load_toolchain(path=None):
 
 
 def manifest_for(bsp, name, scene=None, quality=None, game=None, runtime=None, device=None,
-                 extra=None):
+                 extra=None, medium=None):
     """The back end's manifest for `bsp` (and an authored `scene`)."""
     manifest = {"schema": "pbrt-map-manifest/v1", "map": name, "bsp": str(Path(bsp).resolve()),
                 "quality": quality or pbrt_map_build.LEGACY_QUALITY,
@@ -58,11 +63,16 @@ def manifest_for(bsp, name, scene=None, quality=None, game=None, runtime=None, d
     if device:
         manifest["lightmap"] = {"device": device}
     manifest.update(extra or {})
+    if medium is not None:
+        if "medium" in (extra or {}):
+            raise ValueError("the medium is given once: as `medium`, not in `extra`")
+        manifest["medium"] = medium
     return manifest
 
 
 def light(bsp, name, out, toolchain, scene=None, quality=None, game=None, runtime=None,
-          device=None, force_from=None, boot=False, keep_going=False, publish=True, extra=None):
+          device=None, force_from=None, boot=False, keep_going=False, publish=True, extra=None,
+          medium=None):
     """Light the compiled map `bsp` as map `name`, built in `out`.
 
     `scene` is an authored visual scene (PBRT or USD, in the map's space);
@@ -70,14 +80,17 @@ def light(bsp, name, out, toolchain, scene=None, quality=None, game=None, runtim
     BSP was compiled against (vbsp/vrad `-game`), searched for materials
     first; `runtime` is the staged game runtime the materials come from
     (default the toolchain's; run/runtime-p2 for Portal 2). `device`
-    overrides every bake's Cycles device. Returns the gameplay identity;
+    overrides every bake's Cycles device. `medium` (participating_medium.py)
+    is a participating medium the lightmap bake's light paths cross, recorded
+    in the bake receipt; None bakes without one. Returns the gameplay identity;
     raises SystemExit when a step or the identity gate fails (the input BSP is
     never written). A published build is playable with ./play (./play_p2)."""
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     manifest_path = out / "manifest.json"
     manifest_path.write_text(json.dumps(manifest_for(bsp, name, scene, quality, game, runtime,
-                                                     device, extra), indent=2) + "\n")
+                                                     device, extra, medium),
+                                        indent=2) + "\n")
     manifest = pbrt_map_build.load_manifest(manifest_path)
     pipeline = pbrt_map_build.Pipeline(manifest, toolchain, out, force_from, boot, keep_going,
                                        publish=publish)
@@ -113,11 +126,14 @@ def main():
     parser.add_argument("--from", dest="force_from", choices=pbrt_map_build.STEPS)
     parser.add_argument("--keep-going", action="store_true")
     parser.add_argument("--no-publish", action="store_true")
+    parser.add_argument("--medium", type=json.loads,
+                        help="a participating medium for the lightmap bake, as JSON "
+                             "(participating_medium.py)")
     args = parser.parse_args()
     light(args.bsp, args.map, args.out or ROOT / "quality-results/lighting" / args.map,
           load_toolchain(args.toolchain), args.scene, args.quality, args.game, args.runtime,
           args.device, args.force_from, keep_going=args.keep_going,
-          publish=not args.no_publish)
+          publish=not args.no_publish, medium=args.medium)
     return 0
 
 

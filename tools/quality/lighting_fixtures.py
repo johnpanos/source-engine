@@ -38,7 +38,9 @@ lights against the stage's lights.
 renderer plus projectors and media). `build` makes each map: the scene front
 end's collision VMF (`pbrt_collision_vmf.py`) plus the fixture's entities,
 compiled by `vmf_map_build.py`, then lit with the authored scene by the one
-lighting back end (`map_lighting.py`) and published (./play <map>).
+lighting back end (`map_lighting.py`) and published (./play <map>); a state
+that owns a map (`lighting.state_maps`, a medium state) gets the same BSP lit
+again with its medium in the lightmap bake (`map_lighting.light(medium=...)`).
 `check` validates manifest, references, tolerances and recorded comparisons;
 `compare` scores a lab image against a reference with the fixture's
 tolerance, fixed in tolerances.json before any comparison.
@@ -500,6 +502,9 @@ def lighting_scene_class():
             self.projectors = []
             self.medium = None
             self.media_states = {}
+            # States with their own map: the base map's compiled BSP, its
+            # lightmap bake crossing the state's medium (lighting.state_maps).
+            self.own_map_states = []
             self.map_overrides = {}
             self.cookies = {}
             self.portals = []
@@ -683,6 +688,16 @@ def lighting_scene_class():
             media = {state: (self.medium if self.media_states.get(state, True) else None)
                      for state in states} if self.medium else {}
             map_name = "lt_" + self.name.replace("-", "_")
+            state_maps = {}
+            for state in self.own_map_states:
+                if not media.get(state):
+                    raise ValueError("%s: state %s owns a map but has no medium" % (
+                        self.name, state))
+                name = "%s_%s" % (map_name, state)
+                state_maps[state] = {
+                    "name": name, "bsp": "run/maps/%s/maps/%s.bsp" % (name, name),
+                    "bake": "the base map's compiled BSP and baked state; the lightmap bake "
+                            "crosses this state's medium (lighting.media)"}
             lighting = {
                 "terms": self.terms, "entities": "entities.json",
                 "lights": {kind: sum(l["kind"] == kind for l in self.lights)
@@ -692,7 +707,8 @@ def lighting_scene_class():
                 "map": {"name": map_name, "bsp": "run/maps/%s/maps/%s.bsp" % (map_name,
                                                                                 map_name),
                         "baked_state": baked, "overrides": map_overrides,
-                        "solid_meshes": list(self.solids), "layout": self.layout}}
+                        "solid_meshes": list(self.solids), "layout": self.layout},
+                **({"state_maps": state_maps} if state_maps else {})}
             extra = {"family": "lighting", "oracles": self.oracles, "film": FILM,
                      "horizontal_fov_degrees": HORIZONTAL_FOV, "lambertian": False,
                      "lighting": lighting}
@@ -959,6 +975,9 @@ def foggy_hall(Scene, out):
     s.base("fog", "the medium on (scattering 0.06/m, absorption 0.01/m, g 0.3)")
     s.state("clear", "density zero: the same hall and lights with no medium", [])
     s.media_states = {"fog": True, "clear": False}
+    # The fog state's surfaces receive light through the medium, as Cycles'
+    # do: its own map, baked with the medium (the clear state keeps the base).
+    s.own_map_states = ["fog"]
     return s.finish_lighting(dict(PREVIEW_BAKE))
 
 
@@ -1373,6 +1392,9 @@ def manifest_record(records):
             "terms": lighting["terms"], "states": sorted(record["states"]),
             "cameras": sorted(record["cameras"]), "map": lighting["map"]["name"],
             "bsp": lighting["map"]["bsp"], "reused_map": bool(lighting["map"].get("reused")),
+            **({"state_maps": {state: entry["name"] for state, entry in
+                               sorted(lighting["state_maps"].items())}}
+               if lighting.get("state_maps") else {}),
             "entities": lighting.get("entities"), "lights": lighting.get("lights"),
             "projectors": len(lighting.get("projectors", [])),
             "media": sorted(s for s, m in lighting.get("media", {}).items() if m)})
@@ -1507,6 +1529,13 @@ def reference_digest(fixture):
     fields["projectors"] = lighting.get("projectors")
     fields["media"] = lighting.get("media")
     return digest_json(fields)
+
+
+def map_for(fixture, state):
+    """The map a state renders from: its own (lighting.state_maps), else the
+    fixture's."""
+    lighting = fixture["lighting"]
+    return (lighting.get("state_maps") or {}).get(state) or lighting["map"]
 
 
 def stage_path(fixture, state):
@@ -1821,14 +1850,28 @@ def cmd_build(args):
                                       quality="gi-fixture", extra=overrides,
                                       keep_going=args.keep_going)
         cookies = install_cookies(fixture, map_name, tools, toolchain)
+        # States with their own map: the same compiled BSP and baked state, the
+        # lightmap bake crossing the state's medium (map_lighting's `medium`).
+        state_maps = {}
+        for state, entry in sorted((lighting.get("state_maps") or {}).items()):
+            medium = (lighting.get("media") or {}).get(state)
+            state_identity = map_lighting.light(
+                bsp, entry["name"], work / ("lighting-" + state), toolchain, scene=baked,
+                quality="gi-fixture", extra=overrides, keep_going=args.keep_going,
+                medium=medium)
+            state_maps[state] = {"map": entry["name"], "medium": medium,
+                                 "identity": state_identity.get("status"),
+                                 "cookies": install_cookies(fixture, entry["name"], tools,
+                                                            toolchain)}
         write_json(work / "build.json", {"schema": "lighting-fixture-build/v1",
                                          "fixture": name, "map": map_name,
                                          "bake": "final" if args.final else "preview",
                                          "identity": identity.get("status"),
                                          "world_lights": len(compiled), "cookies": cookies,
-                                         "overrides": overrides})
-        print("[%s] built and published %s (identity %s)" % (name, map_name,
-                                                             identity.get("status")))
+                                         "overrides": overrides, "state_maps": state_maps})
+        print("[%s] built and published %s%s (identity %s)" % (
+            name, map_name, "".join(", " + e["map"] for e in state_maps.values()),
+            identity.get("status")))
     return status
 
 
@@ -1938,14 +1981,37 @@ LIGHT_CLASSES = ("light", "light_spot", "light_environment", "env_projectedtextu
 FIXTURE_CLASSES = LIGHT_CLASSES + ("prop_portal",)
 
 
-def check_map(fixture):
-    """The fixture's published map exists and its entity lump carries exactly
-    the fixture's light and portal entities (for reused maps: that it exists)."""
+def check_map(fixture, root=None):
+    """Every published map of the fixture (its own and its states') exists,
+    carries exactly the fixture's light and portal entities (for reused maps:
+    that it exists), and was baked with the medium it should have: a state
+    map with its state's medium, recorded by the bake receipt and published
+    beside the map (pbrt_map_build.MEDIUM_SIDECAR); the base map with none."""
+    lighting = fixture["lighting"]
+    maps = [(lighting["map"], None)] + [
+        (entry, (lighting.get("media") or {}).get(state))
+        for state, entry in sorted((lighting.get("state_maps") or {}).items())]
+    problems = []
+    for entry, medium in maps:
+        problems += check_one_map(fixture, entry, medium, Path(root or ROOT))
+    return problems
+
+
+def check_one_map(fixture, entry, medium, root):
+    import participating_medium
+    import pbrt_map_build
     name, lighting = fixture["name"], fixture["lighting"]
-    bsp = ROOT / lighting["map"]["bsp"]
+    bsp = root / entry["bsp"]
     if not bsp.is_file():
         return ["%s: map %s is not built (run lighting_fixtures.py build --fixture %s)" % (
-            name, lighting["map"]["bsp"], name)]
+            name, entry["bsp"], name)]
+    sidecar = bsp.parent.parent / pbrt_map_build.MEDIUM_SIDECAR
+    baked = json.loads(sidecar.read_text()) if sidecar.is_file() else None
+    want_medium = participating_medium.validate(medium) if medium else None
+    if baked != want_medium:
+        return ["%s: map %s was baked with medium %s, not %s" % (
+            name, entry.get("name", entry["bsp"]), baked and baked.get("name", baked), want_medium and
+            want_medium.get("name", want_medium))]
     if not lighting.get("entities"):
         return []
     want = json.loads((fixture["directory"] / lighting["entities"]).read_text())["entities"]

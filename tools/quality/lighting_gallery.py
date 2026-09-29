@@ -65,9 +65,9 @@ def lab_environment(lab):
     return env
 
 
-def probe_model(fixture):
+def probe_model(fixture, state=None):
     """The fixture's dynamic model for render_lab (--model, --model-origin in
-    Source units), from its stage, or None."""
+    Source units), from its stage, or None; published with the state's map."""
     probe = fixture.get("probe_model")
     if not probe or not fixture.get("dynamic_models"):
         return None
@@ -82,26 +82,30 @@ def probe_model(fixture):
     origin = [float(v) * METERS_TO_UNITS for v in match.group(1).split(",")]
     # The map pipeline publishes the stage's model per map as
     # models/<map>/probesphere.mdl; the stage names the source model.
-    game = str((lf.ROOT / fixture["lighting"]["map"]["bsp"]).resolve()).rsplit("/maps/", 1)[0]
-    published = "models/%s/probesphere.mdl" % fixture["lighting"]["map"]["name"]
+    entry = lf.map_for(fixture, state)
+    game = str((lf.ROOT / entry["bsp"]).resolve()).rsplit("/maps/", 1)[0]
+    published = "models/%s/probesphere.mdl" % entry["name"]
     model = published if (Path(game) / published).is_file() else probe["model"]
     return model, origin
 
 
 def fog_scale(fixture, state):
     """render_lab's --fog-scale for a state: 0 for a medium-free state of a
-    fixture whose other states have a medium (its map's entity lump carries
-    the medium for every state; the density-zero state scales it to 0), else
-    None (the map's own medium)."""
+    fixture whose other states have a medium (every map's entity lump carries
+    the medium; the density-zero state scales it to 0), else None (the map's
+    own medium)."""
     media = fixture["lighting"].get("media") or {}
     if any(media.values()) and not media.get(state):
         return 0.0
     return None
 
 
-def render_camera(lab, fixture, camera_name, out, scale=None):
+def render_camera(lab, fixture, camera_name, out, scale=None, state=None):
+    """render_lab's frame of a camera from the state's map (lf.map_for: a
+    state that owns a map, such as a medium state baked with its medium,
+    renders from it)."""
     camera = fixture["cameras"][camera_name]
-    bsp = (lf.ROOT / fixture["lighting"]["map"]["bsp"]).resolve()
+    bsp = (lf.ROOT / lf.map_for(fixture, state)["bsp"]).resolve()
     game = str(bsp).rsplit("/maps/", 1)[0]
     film = fixture.get("film", {"width": 512, "height": 384})
     command = [str(lab), "--game", game, "--map", str(bsp),
@@ -110,7 +114,7 @@ def render_camera(lab, fixture, camera_name, out, scale=None):
                "--up", ",".join("%.6f" % v for v in camera["up"]),
                "--hfov", str(fixture.get("horizontal_fov_degrees", 90)),
                "--size", "%dx%d" % (film["width"], film["height"]), "--out", str(out)]
-    model = probe_model(fixture)
+    model = probe_model(fixture, state)
     if model:
         command += ["--model", model[0], "--model-origin", ",".join("%.4f" % v for v in model[1])]
     if scale is not None:
@@ -295,11 +299,14 @@ def cmd_gallery(args):
             state, camera = key.split(".", 1)
             entry = {"fixture": name, "state": state, "camera": camera}
             scale = fog_scale(fixture, state)
-            view = (camera, scale)
+            map_name = lf.map_for(fixture, state)["name"]
+            view = (camera, scale, map_name)
             if view not in rendered:
-                image = out / "lab" / ("%s.%s%s.pfm" % (
-                    name, camera, "" if scale is None else ".fog-scale-%g" % scale))
-                rendered[view] = render_camera(lab, fixture, camera, image, scale) + (image,)
+                image = out / "lab" / ("%s.%s%s%s.pfm" % (
+                    name, camera, "" if map_name == fixture["lighting"]["map"]["name"]
+                    else "." + map_name, "" if scale is None else ".fog-scale-%g" % scale))
+                rendered[view] = render_camera(lab, fixture, camera, image, scale,
+                                               state) + (image,)
             ok, message, model, image = rendered[view]
             if not ok:
                 entry["error"] = message or "render_lab failed"

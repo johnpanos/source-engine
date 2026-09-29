@@ -15,11 +15,13 @@ named by the LIGHTING_EXTRAS environment variable:
               lights only paths of depth 1 (camera-ray surface hits and single
               scattering on camera rays): its own bounce is not part of the
               reference, as it is not part of the model's baked indirect light.
-  medium      a homogeneous participating medium as the world volume (the
-              fixture's hall is sealed): scattering and absorption
-              coefficients per meter and a Henyey-Greenstein anisotropy. The
-              gi-reference light paths have no volume bounces, so the medium
-              adds single scattering of the lights and attenuates everything.
+  medium      a homogeneous participating medium as the world volume
+              (participating_medium.py, the one form the lightmap bake's
+              --medium shares; the fixture's hall is sealed): scattering and
+              absorption coefficients per meter and a Henyey-Greenstein
+              anisotropy. The gi-reference light paths have no volume bounces,
+              so the medium adds single scattering of the lights and
+              attenuates everything.
 
 It also turns on the Position and Normal passes (for the projector's analytic
 check) and writes `lighting-extras.json` beside the render receipt with this
@@ -40,6 +42,7 @@ from mathutils import Matrix, Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gi_reference_blender  # noqa: E402
+import participating_medium  # noqa: E402
 import pbrt_blender  # noqa: E402
 
 SOURCE_UNITS_PER_METER = 39.37007874015748
@@ -158,32 +161,6 @@ def add_projector(index, projector, directory):
     return lamp
 
 
-def add_medium(medium):
-    """The fixture's homogeneous medium as the world volume."""
-    world = bpy.context.scene.world or bpy.data.worlds.new("LightingWorld")
-    bpy.context.scene.world = world
-    world.use_nodes = True
-    tree = world.node_tree
-    output = next(node for node in tree.nodes if node.type == "OUTPUT_WORLD")
-    scatter = tree.nodes.new("ShaderNodeVolumeScatter")
-    scatter.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    scatter.inputs["Density"].default_value = medium["scattering_per_m"]
-    scatter.inputs["Anisotropy"].default_value = medium["anisotropy"]
-    shader = scatter.outputs[0]
-    if medium["absorption_per_m"] > 0:
-        absorb = tree.nodes.new("ShaderNodeVolumeAbsorption")
-        absorb.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
-        # Absorption color c absorbs density x (1 - c): black absorbs it all.
-        absorb.inputs["Density"].default_value = medium["absorption_per_m"]
-        add = tree.nodes.new("ShaderNodeAddShader")
-        tree.links.new(shader, add.inputs[0])
-        tree.links.new(absorb.outputs[0], add.inputs[1])
-        shader = add.outputs[0]
-    tree.links.new(shader, output.inputs["Volume"])
-    if hasattr(world.cycles, "homogeneous_volume"):
-        world.cycles.homogeneous_volume = True
-
-
 def main():
     extras_path = Path(os.environ["LIGHTING_EXTRAS"])
     extras = json.loads(extras_path.read_text())
@@ -196,7 +173,7 @@ def main():
         for index, projector in enumerate(extras.get("projectors", [])):
             applied["projectors"].append(add_projector(index, projector, directory).name)
         if extras.get("medium"):
-            add_medium(extras["medium"])
+            participating_medium.apply_world_medium(extras["medium"])
             applied["medium"] = extras["medium"]
         layer = bpy.context.scene.view_layers[0]
         layer.use_pass_position = True

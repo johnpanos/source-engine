@@ -617,6 +617,78 @@ class PortalPair(unittest.TestCase):
                               block[:block.index("}")], (state, name))
 
 
+class StateMaps(unittest.TestCase):
+    """A medium state's own map: baked with the state's medium (the bake
+    receipt's medium, published beside the map), and the base map without."""
+
+    MEDIUM = {"name": "Fog", "bounds_m": [[0.0, 0.0, 0.0], [24.0, 8.0, 6.0]],
+              "scattering_per_m": 0.06, "absorption_per_m": 0.01, "anisotropy": 0.3}
+
+    def published(self, root, name, medium):
+        import pbrt_map_build
+        maps = root / "run/maps" / name
+        (maps / "maps").mkdir(parents=True)
+        (maps / "maps" / (name + ".bsp")).write_bytes(b"VBSP")
+        if medium is not None:
+            (maps / pbrt_map_build.MEDIUM_SIDECAR).write_text(json.dumps(medium))
+        return "run/maps/%s/maps/%s.bsp" % (name, name)
+
+    def fixture(self, root, base_medium, state_medium):
+        return {"name": "fx", "directory": root, "lighting": {
+            "media": {"fog": self.MEDIUM, "clear": None},
+            "map": {"name": "lt_fx", "bsp": self.published(root, "lt_fx", base_medium)},
+            "state_maps": {"fog": {"name": "lt_fx_fog", "bsp": self.published(
+                root, "lt_fx_fog", state_medium)}}}}
+
+    def test_state_map_bake_receipt_carries_the_medium_and_the_base_map_none(self):
+        import participating_medium
+        baked = participating_medium.validate(self.MEDIUM)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "ok"
+            self.assertEqual(lf.check_map(self.fixture(root, None, baked), root), [])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            problems = lf.check_map(self.fixture(root, baked, baked), root)
+            self.assertTrue(any("lt_fx was baked with medium Fog" in p for p in problems),
+                            problems)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            problems = lf.check_map(self.fixture(root, None, None), root)
+            self.assertTrue(any("lt_fx_fog was baked with medium None" in p for p in problems),
+                            problems)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            other = dict(baked, scattering_per_m=0.03)
+            problems = lf.check_map(self.fixture(root, None, other), root)
+            self.assertTrue(any("lt_fx_fog was baked" in p for p in problems), problems)
+
+    def test_the_map_manifest_names_a_medium_only_when_given(self):
+        import map_lighting
+        import pbrt_map_build
+        bsp = ROOT / "tools/quality/lighting_fixtures.py"  # any existing file
+        without = map_lighting.manifest_for(bsp, "lt_fx")
+        self.assertNotIn("medium", without)
+        self.assertIsNone(pbrt_map_build.load_medium(without))
+        with_medium = map_lighting.manifest_for(bsp, "lt_fx_fog", medium=self.MEDIUM)
+        self.assertEqual(pbrt_map_build.load_medium(with_medium)["scattering_per_m"], 0.06)
+        with self.assertRaises(ValueError):
+            map_lighting.manifest_for(bsp, "x", extra={"medium": {}}, medium=self.MEDIUM)
+        for bad in ({"scattering_per_m": -1.0, "absorption_per_m": 0.0},
+                    {"scattering_per_m": 0.0, "absorption_per_m": 0.0},
+                    dict(self.MEDIUM, anisotropy=1.0), dict(self.MEDIUM, colour=1),
+                    dict(self.MEDIUM, bounds_m=[[1, 0, 0], [0, 1, 1]])):
+            with self.assertRaises(ValueError):
+                pbrt_map_build.load_medium({"medium": bad})
+
+    def test_foggy_hall_fog_state_owns_its_map(self):
+        fixture = lf.load_fixture("foggy-hall")
+        self.assertEqual(lf.map_for(fixture, "fog")["name"], "lt_foggy_hall_fog")
+        self.assertEqual(lf.map_for(fixture, "clear")["name"], "lt_foggy_hall")
+        self.assertTrue(fixture["lighting"]["media"]["fog"])
+        entry = next(f for f in lf.load_manifest()["fixtures"] if f["name"] == "foggy-hall")
+        self.assertEqual(entry["state_maps"], {"fog": "lt_foggy_hall_fog"})
+
+
 class CheckedInSet(unittest.TestCase):
     def test_checked_in_fixtures_pass(self):
         # The published maps are local build products (run/maps, untracked);
