@@ -112,6 +112,8 @@ void Host_DumpMemoryStats( void );
 void Host_UpdateMapList( void );
 float Host_GetSoundDuration( const char *pSample );
 bool Host_IsSinglePlayerGame( void );
+// host_timescale as the host clock applies it (1 when cheats disallow it).
+float Host_GetTimescale( void );
 int Host_GetServerCount( void );
 bool Host_AllowQueuedMaterialSystem( bool bAllow );
 

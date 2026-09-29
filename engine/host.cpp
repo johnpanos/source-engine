@@ -632,6 +632,15 @@ static bool IsHostTimescaleAllowed()
 		;
 }
 
+//-----------------------------------------------------------------------------
+// The host_timescale that scales the host clock: 1 unless cheats (or demo
+// playback) allow it. The mixer pitches sound by the same value.
+//-----------------------------------------------------------------------------
+float Host_GetTimescale( void )
+{
+	return IsHostTimescaleAllowed() ? host_timescale.GetFloat() : 1.0f;
+}
+
 class CEngineGameTimescale : public IEngineGameTimescale
 {
 public:
@@ -1650,7 +1659,7 @@ void Host_AccumulateTime( float dt )
 	{
 		// The cheat-protected host_timescale times the game-controlled scale
 		// (IEngineGameTimescale), which needs no cheats.
-		float fullscale = ( IsHostTimescaleAllowed() ? host_timescale.GetFloat() : 1.0f ) * g_flGameTimescale;
+		float fullscale = Host_GetTimescale() * g_flGameTimescale;
 
 #if !defined(SWDS)
 		if ( demoplayer->IsPlayingBack() )

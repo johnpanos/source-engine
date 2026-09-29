@@ -19,6 +19,7 @@
 #include "demo.h"
 #include "replay_internal.h"
 #endif
+#include "host.h"
 #ifdef GNUC
 // we don't suport the ASM in this file right now under GCC, fallback to C libs
 #undef id386
@@ -471,8 +472,9 @@ void MIX_MixChannelsToPaintbuffer( CChannelList &list, int endtime, int flags, i
 	if ( sampleCount <= 0 )
 		return;
 
-	// Apply a global pitch shift if we're playing back a time-scaled replay
-	float flGlobalPitchScale = 1.0f;
+	// Apply a global pitch shift so sound plays at the speed of the host
+	// clock: host_timescale, or a time-scaled replay's playback scale
+	float flGlobalPitchScale = Host_GetTimescale();
 
 #if defined( REPLAY_ENABLED )
 	extern IDemoPlayer *g_pReplayDemoPlayer;
