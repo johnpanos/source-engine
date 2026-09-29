@@ -179,16 +179,25 @@ class ZeroAreaTrianglesTest(unittest.TestCase):
             script = Path(tmp) / "probe.py"
             script.write_text(probe)
             counts = {}
-            for name, normals in (("flat", flat), ("sideways", sideways)):
+            # A sliver (sp_a1_wakeup, 2026-09-29): its own geometric normal is
+            # tilted 80 degrees, but it lies on the wall's plane 7 and its
+            # authored normals follow that plane.
+            sliver = stage.replace("[3, 3]", "[3, 3, 3]").replace(
+                "[0, 1, 2, 0, 2, 3]", "[0, 1, 2, 0, 2, 3, 0, 4, 1]").replace(
+                "(0,1,0)]", "(0,1,0), (0.5,0.0001,0.0006)]").replace("[7, 7]", "[7, 7, 7]")
+            for name, text, normals in (
+                    ("flat", stage, flat), ("sideways", stage, sideways),
+                    ("sliver", sliver, ",".join(["(0,0,1)"] * 9)),
+                    ("sliver-sideways", sliver, sideways + ",(0,0,1),(0,0,1),(0,0,1)")):
                 path = Path(tmp) / (name + ".usda")
-                path.write_text(stage % normals)
+                path.write_text(text % normals)
                 out = subprocess.run([blender, "-b", "--factory-startup", "--python",
                                       str(script), "--", str(path)],
                                      capture_output=True, text=True, timeout=300).stdout
                 line = [l for l in out.splitlines() if l.startswith("GATE ")]
                 self.assertTrue(line, out[-500:])
                 counts[name] = int(line[0].split()[1])
-        self.assertEqual(counts, {"flat": 0, "sideways": 1})
+        self.assertEqual(counts, {"flat": 0, "sideways": 1, "sliver": 0, "sliver-sideways": 1})
 
 
 class SharedVerticesTest(unittest.TestCase):

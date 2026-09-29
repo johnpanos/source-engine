@@ -627,10 +627,14 @@ def bake_frame(merged, out_dir, size, render):
 
 # A relit BSP face (it carries this face attribute, from legacy_bsp_scene's
 # `sourceEngine:plane` primvar) is planar, so every corner's shading normal
-# must face out of it. A corner normal more than about 84 degrees off its
-# face's normal bakes the face from behind: black. That happened next to
+# must face out of its plane. A corner normal more than about 84 degrees off
+# the plane's normal bakes the face from behind: black. That happened next to
 # zero-area triangles on testchmb_a_00_relit (2026-09-29; corner cosines -0.05
-# to 0.41). A clean stage's worst is 0.5, on one small face.
+# to 0.41). A clean stage's worst is 0.5, on one small face. The plane's
+# normal is the area-weighted normal of the mesh's triangles on that plane,
+# not each triangle's own: a sliver's geometric normal is noise (the retail
+# sp_a1_wakeup has triangles 0.004 units wide whose own normal is 88 degrees
+# off the plane their authored corner normals correctly follow).
 PLANE_ATTRIBUTE = "sourceEngine:plane"
 SIDEWAYS_COS = 0.1
 
@@ -647,12 +651,20 @@ def sideways_planar_normals(meshes):
         normals = np.empty(len(mesh.corner_normals) * 3)
         mesh.corner_normals.foreach_get("vector", normals)
         normals = normals.reshape(-1, 3)
+        planes = np.empty(len(mesh.polygons), dtype=np.int64)
+        mesh.attributes[PLANE_ATTRIBUTE].data.foreach_get("value", planes)
+        weighted = {}
+        for polygon in mesh.polygons:
+            weighted[planes[polygon.index]] = (weighted.get(planes[polygon.index], 0.0) +
+                                               polygon.area * np.asarray(polygon.normal))
         for polygon in mesh.polygons:
             if not polygon.area > 1e-9:
                 found.append((obj.name, polygon.index, "zero area"))
                 continue
+            plane = weighted[planes[polygon.index]]
+            plane = plane / max(float(np.linalg.norm(plane)), 1e-12)
             corners = normals[polygon.loop_start:polygon.loop_start + polygon.loop_total]
-            cosine = float((corners @ np.asarray(polygon.normal)).min())
+            cosine = float((corners @ plane).min())
             if cosine < SIDEWAYS_COS:
                 found.append((obj.name, polygon.index, cosine))
     return found
