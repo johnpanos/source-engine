@@ -1,9 +1,12 @@
-// render.material family `pbr` (RFC 0016 K4): PBRMetalRough on meshes. The
-// draw constants are the FamilyDrawConstants prefix: the draw's object-to-clip
-// and object-to-world matrices (row-major with column vectors). Normals and tangents are
-// transformed by object-to-world's upper 3x3, as the model port does, and
-// normalized per pixel. Each light's attenuation is Source's per-vertex term
-// (common_vs_fxc.h GetVertexAttenForLight), interpolated as the port does.
+// render.material program `surface` (RFC 0016 K4, K11), the model vertex
+// (SurfaceModelVertex): position, normal, tangent (w: the bitangent's sign) and uv0 of
+// a mesh. The draw constants are the FamilyDrawConstants prefix: the draw's
+// object-to-clip and object-to-world matrices (row-major with column
+// vectors). Normals and tangents are transformed by object-to-world's upper
+// 3x3, as the model port does, and normalized per pixel. Each model light's
+// attenuation is Source's per-vertex term (common_vs_fxc.h
+// GetVertexAttenForLight), interpolated as the port does. A mesh has no
+// lightmap coordinates and a white vertex color.
 #version 450
 
 layout( location = 0 ) in vec3 position;
@@ -17,14 +20,18 @@ layout( push_constant ) uniform Draw
 	layout( row_major ) mat4 world;
 } draw;
 
-#include "pbr_lighting.glsl"
+#include "surface_lighting.glsl"
 
-layout( location = 0 ) out vec2 uv;
-layout( location = 1 ) out vec4 lightAtten;
-layout( location = 2 ) out vec3 worldPosition;
-layout( location = 3 ) out vec3 worldNormal;
-layout( location = 4 ) out vec3 tangentS;
-layout( location = 5 ) out vec3 tangentT;
+layout( location = 0 ) out vec2 baseUv;
+layout( location = 1 ) out vec2 lightmapUv;
+layout( location = 2 ) out vec4 color;
+layout( location = 3 ) out vec2 fogDepth; // the clip-space z (D3D9's projPos.z) and world z
+layout( location = 4 ) out vec3 worldPosition;
+layout( location = 5 ) out vec3 worldNormal;
+layout( location = 6 ) out vec3 tangentS;
+layout( location = 7 ) out vec3 tangentT;
+layout( location = 8 ) out float lightmapOffset;
+layout( location = 9 ) out vec4 lightAtten;
 
 // GetVertexAttenForLight: distance falloff, the spot cone, and 1 for
 // directional lights.
@@ -48,12 +55,16 @@ void main()
 {
 	const vec4 world = draw.world * vec4( position, 1.0 );
 	gl_Position = draw.toClip * vec4( position, 1.0 );
-	uv = uv0;
+	baseUv = uv0;
+	lightmapUv = vec2( 0.0 );
+	color = vec4( 1.0 );
+	fogDepth = vec2( gl_Position.z, world.z );
 	worldPosition = world.xyz;
 	const mat3 basis = mat3( draw.world );
 	worldNormal = basis * normal;
 	tangentS = basis * tangent.xyz;
 	tangentT = cross( worldNormal, tangentS ) * tangent.w;
+	lightmapOffset = 0.0;
 	const int count = int( lighting.eye.w );
 	vec4 atten = vec4( 0.0 );
 	for ( int i = 0; i < 4; ++i )

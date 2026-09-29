@@ -376,11 +376,11 @@ int Run( const Options &options )
 		}
 
 		// The world's vertices as the program reads them.
-		std::vector<material::LightmappedVertex> vertices( mesh.vertices.size() );
+		std::vector<material::SurfaceFlatVertex> vertices( mesh.vertices.size() );
 		for ( std::size_t i = 0; i < mesh.vertices.size(); ++i )
 		{
 			const mapcontainer::WorldMeshVertex &from = mesh.vertices[i];
-			material::LightmappedVertex &to = vertices[i];
+			material::SurfaceFlatVertex &to = vertices[i];
 			std::copy( from.position, from.position + 3, to.position );
 			std::copy( from.uv, from.uv + 2, to.uv );
 			std::copy( from.lightmapUv, from.lightmapUv + 2, to.lightmapUv );
@@ -474,7 +474,7 @@ int Run( const Options &options )
 				const std::uint32_t base = std::uint32_t( vertices.size() );
 				for ( const mdl::Vertex &v : part.vertices )
 				{
-					material::LightmappedVertex to;
+					material::SurfaceFlatVertex to;
 					to.position[0] = v.position.x + options.modelOrigin.x;
 					to.position[1] = v.position.y + options.modelOrigin.y;
 					to.position[2] = v.position.z + options.modelOrigin.z;
@@ -533,7 +533,7 @@ int Run( const Options &options )
 		const math::float4x4 view = math::LookAt( options.eye, target, options.up );
 		const math::float4x4 projection = math::Perspective( vertical, aspect, 1.0f, 65536.0f );
 		const math::float4x4 toClip = math::Multiply( projection, view );
-		material::LightmappedDrawConstants constants;
+		material::FamilyDrawConstants constants;
 		std::memcpy( constants.toClip, &toClip, sizeof( constants.toClip ) );
 
 		// Record: uploads, the world and the model, the readback.

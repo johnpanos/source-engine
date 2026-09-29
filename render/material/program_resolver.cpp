@@ -180,7 +180,7 @@ struct ProgramResolver::State
 {
 	explicit State( device::IRenderDevice2 &device ) : device( device ) {}
 	device::IRenderDevice2 &device;
-	LightmappedVertexLayout layout = LightmappedVertexLayout::kFlat;
+	SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat;
 	std::unique_ptr<LightmappedFamily> lightmapped;
 	std::unique_ptr<UnlitFamily> unlit;
 };
@@ -205,8 +205,8 @@ foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResol
     std::uint32_t sampleCount, VertexLayout layout, const ProgramModules &modules )
 {
 	auto state = std::make_unique<State>( device );
-	state->layout = layout == VertexLayout::kSurface ? LightmappedVertexLayout::kSurface
-	                                                 : LightmappedVertexLayout::kFlat;
+	state->layout =
+	    layout == VertexLayout::kSurface ? SurfaceVertexLayout::kWorld : SurfaceVertexLayout::kFlat;
 	auto lightmapped = LightmappedFamily::Create(
 	    device, colorFormat, depthFormat, sampleCount, modules.lightmappedFragment );
 	auto unlit = UnlitFamily::Create( device, colorFormat, depthFormat, sampleCount );
@@ -254,7 +254,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		const LightmappedClaim claim = ClaimLightmapped( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
-		LightmappedTextures textures;
+		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
 		textures.envmap = TextureOf( material, "envmap" );
 		textures.envmapMask = TextureOf( material, "envmapmask" );
@@ -290,7 +290,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		claim.constants.flags[2] = unlit.constants.flags[3]; // its reference
 		claim.constants.flags[3] = 1.0f;                     // lighting is one
 		claim.constants.state[1] = 1.0f;                     // gamma vertex color
-		LightmappedTextures textures;
+		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
 		auto request = s.lightmapped->Request( claim, textures, s.layout );
 		if ( !request )
@@ -419,7 +419,7 @@ std::optional<GroupRequest> ProgramResolver::FrameGroup(
 		return std::nullopt;
 	if ( program.request.frameLayout == s.lightmapped->FrameLayout() )
 	{
-		LightmappedFrame frame;
+		SurfaceFrame frame;
 		frame.light[0] = terms.lightmapScale;
 		frame.light[1] = terms.outputScale;
 		frame.light[2] = terms.encodeOutput ? 1.0f : 0.0f;

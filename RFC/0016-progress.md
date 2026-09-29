@@ -2303,6 +2303,64 @@ D0 and D1 pass every non-perf check on Linux in both queued modes.
 R95-DEBUG-CONTROLS stays `active`: D0–D1 are done apart from the Fold7 run,
 and D2–D7 are step 7 of the goal.
 
+### K11 step (a), slice a1: one surface program, and `pbr` is its point (2026-09-29)
+
+"Model assembly" asks for one surface program that evaluates every term.
+This slice makes the two lit programs one:
+- `render/material/families/surface.frag` holds the lightmapped point
+  (LightmappedGeneric's arithmetic, unchanged) and the pbr point
+  (`kSurfacePbr`: the RFC 0007 BRDF under Source's model lighting, from the
+  former `pbr.frag`). One output tail (tone scale, fog, encoding) and one
+  debug-view tail serve both.
+- Three vertex stages: `surface_flat.vert` and `surface_world.vert` (the
+  former lightmapped stages) and `surface_model.vert` (the former
+  `pbr.vert`). They share one interface; the model lighting block is
+  `surface_lighting.glsl`.
+- `pbr.frag`, `pbr.vert`, `pbr_lighting.glsl`, `lightmapped.{vert,frag}`
+  and `lightmapped_surface.vert` are gone (rule 4).
+- One C++ owner, `render::material::SurfaceProgram`
+  (`public/render/material/surface_program.h`): its bind groups, vertex
+  layouts, pipelines, debug variants and group requests.
+  `LightmappedFamily` and `PbrFamily` keep only their claims and delegate
+  the rest. `SurfaceConstants`, `SurfaceFrame`, the vertex structs and the
+  `kSurface*` term bits have one definition there. Source's model lighting
+  (`ModelLighting`, `PackSourceModelLighting`) moves to `model_lighting.h`,
+  which the vertexlit family also reads.
+- One set of groups for every point:
+  - frame: the terms plus the split-sum table;
+  - material: the constants plus base, env map, mask, bump or normal map,
+    detail, MRAO and emission;
+  - draw: the lightmap page plus the model lighting.
+
+  A point that reads none of an input binds the neutral texture or block.
+  So the pbr point's lighting is now a draw group (it was a view group),
+  and its view direction comes from the frame's eye. `layouts.json` declares
+  the program once as `surface`.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Legacy points unchanged | `render.family.lightmapped` 192 checks, worst difference 0 on every case; `render.family.pbr` 85 checks, worst 1 on the lit cases, as before the change; g++ and clang++ | pass |
+| Seeded families still caught | `.seeded-gamma-color`, `.seeded-ignore-normal-map`, `render.family.vertexlit.seeded-ignore-half-lambert` fail as expected | pass |
+| Groups and passes | `render.opaque` 20 (O6: the pbr cube reads its lighting from its draw group; without that group it is counted and not drawn), `render.opaque.null` 10, `render.world.null` 26, `render.composition` 22, `render.family.vertexlit` 113 | pass |
+| Debug views and controls on the one program | `render.debug-views` 82, `.sensitivity` 5 (the seeded programs are built from `surface.frag`), `render.lighting-controls` 32, `.sensitivity` 2, `render.lab.composition` 27, `.selftest` 10 | pass |
+| Hammer viewports | `hammer.adapters.render.viewport`, `.viewport.null`, `.models`, `.viewport.models`, `.service`, `.service.vulkan` on g++ and clang++. V8 counts one more upload: the frame group's neutral split-sum texture, in the residency that holds frame groups | pass |
+| Shader artifacts and layouts | `shader_artifacts.py check` (1,379 checks: reflection against the `surface` layout), `shader_toolchain.py check` (82) | pass |
+| Product | `core_world_smoke.py run --game portal` on the installed client: the core draws the world strictly on 26 of 26 retail maps (27 checks) | pass |
+
+Frame time: this slice changes no pixels (every family and debug suite is
+unchanged), so it records none. The product's world draw groups each gain
+a 432-byte neutral lighting block. The Fold7 is still securely locked
+(`mScreenLocked=true`).
+
+Not claimed here: the vertexlit and unlit programs are still their own
+(`vertexlit.frag`, `unlit.frag`), and `render.lighting.terms` does not exist
+yet. Both are the next slices of step (a). The two families each own a
+`SurfaceProgram` instance, which is one definition but two sets of layout
+objects; the resolver will share one instance when the pbr point enters the
+product (K12). The `rc-tools` and `build-hammer-gtk` trees fail before
+building ("Can't find env cache mdl", a configuration older than this
+slice); the Hammer suites above cover the viewport code.
+
 ## Output and `render_lab`'s presenting host on iPhone and Apple TV (2026-09-28)
 
 User request (2026-09-28): "complete these on tvOS and iOS - in renderlab".

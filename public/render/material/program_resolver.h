@@ -68,7 +68,7 @@ struct FrameTerms
 // The vertex a resolver's programs read: the flat vertex (position, base and
 // lightmap coordinates, color), or the surface vertex, which adds the normal,
 // tangents and the bumped lightmap pages' offset that bump and env map terms
-// read (material::LightmappedSurfaceVertex). A flat resolver refuses those
+// read (material::SurfaceWorldVertex). A flat resolver refuses those
 // terms by name.
 enum class VertexLayout : std::uint8_t
 {

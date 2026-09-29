@@ -55,11 +55,11 @@ namespace vulkan = render::device::vulkan;
 
 const char *const kFixture = "quality/fixtures/render-families/pbr-port-v1.vdf";
 
-PbrLightType LightType( const std::string &type )
+ModelLightType LightType( const std::string &type )
 {
 	if ( type == "spot" )
-		return PbrLightType::kSpot;
-	return type == "directional" ? PbrLightType::kDirectional : PbrLightType::kPoint;
+		return ModelLightType::kSpot;
+	return type == "directional" ? ModelLightType::kDirectional : ModelLightType::kPoint;
 }
 
 // A texture's copy in the format the family samples it with.
@@ -143,18 +143,18 @@ int main()
 
 	// PackSourceModelLighting sorts spot, point, directional, stably.
 	{
-		PbrLightDesc lights[3];
-		lights[0].type = PbrLightType::kDirectional;
+		ModelLightDesc lights[3];
+		lights[0].type = ModelLightType::kDirectional;
 		lights[0].color[0] = 1.0f;
-		lights[1].type = PbrLightType::kPoint;
+		lights[1].type = ModelLightType::kPoint;
 		lights[1].color[0] = 2.0f;
-		lights[2].type = PbrLightType::kSpot;
+		lights[2].type = ModelLightType::kSpot;
 		lights[2].color[0] = 3.0f;
 		lights[2].theta = 0.5f;
 		lights[2].phi = 1.0f;
 		const float eye[3] = {};
 		const float cube[6][3] = {};
-		const PbrModelLighting packed = PackSourceModelLighting( eye, cube, lights );
+		const ModelLighting packed = PackSourceModelLighting( eye, cube, lights );
 		checks.That( packed.eye[3] == 3.0f && packed.lights[0].color[0] == 3.0f &&
 		                 packed.lights[1].color[0] == 2.0f && packed.lights[2].color[0] == 1.0f,
 		    "lighting.lights-sort-spot-point-directional" );
@@ -193,6 +193,11 @@ int main()
 		unused.width = unused.height = 1;
 		unused.format = device::Format::kRGBA8Unorm;
 		unused.texels = { 0, 0, 0, 255 };
+		CaseTexture unusedCube = unused;
+		unusedCube.cube = true;
+		unusedCube.texels.resize( 6 * 4 );
+		for ( std::size_t texel = 3; texel < unusedCube.texels.size(); texel += 4 )
+			unusedCube.texels[texel] = 255;
 
 		for ( const ModelCase &modelCase : set->cases )
 		{
@@ -226,10 +231,10 @@ int main()
 			if ( !checks.That( base && mrao, "import." + name + ".textures-resolve" ) )
 				continue;
 
-			std::vector<PbrLightDesc> lights;
+			std::vector<ModelLightDesc> lights;
 			for ( const ModelLight &light : modelCase.lights )
 			{
-				PbrLightDesc desc;
+				ModelLightDesc desc;
 				desc.type = LightType( light.type );
 				std::copy( light.color, light.color + 3, desc.color );
 				std::copy( light.position, light.position + 3, desc.position );
@@ -240,16 +245,16 @@ int main()
 				desc.falloff = light.falloff;
 				lights.push_back( desc );
 			}
-			const PbrModelLighting lighting =
+			const ModelLighting lighting =
 			    PackSourceModelLighting( set->eye, modelCase.cube, lights );
 
-			std::vector<PbrVertex> vertices;
+			std::vector<SurfaceModelVertex> vertices;
 			const float uvs[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
 			for ( const ModelQuad &quad : set->quads )
 			{
 				for ( int corner : { 0, 1, 2, 0, 2, 3 } )
 				{
-					PbrVertex vertex;
+					SurfaceModelVertex vertex;
 					vertex.position[0] = quad.corners[corner][0];
 					vertex.position[1] = quad.corners[corner][1];
 					vertex.position[2] = set->quadZ;
@@ -261,7 +266,7 @@ int main()
 			}
 			// Object-to-clip: the harness's clip space with the D3D9 half-pixel
 			// shift, after the case's placement.
-			PbrDrawConstants drawConstants;
+			FamilyDrawConstants drawConstants;
 			std::copy( modelCase.modelMatrix, modelCase.modelMatrix + 12, drawConstants.world );
 			drawConstants.world[15] = 1.0f;
 			const std::array<float, 16> shift = CaseToClip();
@@ -278,13 +283,21 @@ int main()
 
 			CaseDraw draw;
 			draw.pipeline = pipeline.Value();
+			// The surface program's groups: the frame's terms (the eye is the
+			// view's) and the split-sum table; the material group's seven
+			// textures (base, env map, mask, normal map, detail, MRAO,
+			// emission); the draw's lightmap page (unused) and its lighting.
+			SurfaceFrame frame;
+			std::copy( set->eye, set->eye + 3, frame.eye );
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
-			    {}, { &splitSum } } );
-			draw.groups.push_back( { device::BindGroupRole::kView, family.Value()->ViewLayout(),
-			    std::as_bytes( std::span( &lighting, 1 ) ), {} } );
+			    std::as_bytes( std::span( &frame, 1 ) ), { &splitSum } } );
+			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),
+			    std::as_bytes( std::span( &lighting, 1 ) ), { &unused }, true } );
+			SurfaceConstants constants = claim.constants;
+			constants.state[0] = 1.0f; // opaque, as Request packs it
 			draw.groups.push_back( { device::BindGroupRole::kMaterial,
-			    family.Value()->MaterialLayout(), std::as_bytes( std::span( &claim.constants, 1 ) ),
-			    { &*base, &*mrao, normal ? &*normal : &unused,
+			    family.Value()->MaterialLayout(), std::as_bytes( std::span( &constants, 1 ) ),
+			    { &*base, &unusedCube, &unused, normal ? &*normal : &unused, &unused, &*mrao,
 			        emission ? &*emission : &unused } } );
 			draw.vertices = std::as_bytes( std::span( vertices ) );
 			draw.vertexCount = std::uint32_t( vertices.size() );

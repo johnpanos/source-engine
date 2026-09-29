@@ -154,11 +154,10 @@ GENERATED = {
         "the material families' programs (RFC 0016 K4, render.material)", (
         ("kUnlitVertex", FAMILIES + "/unlit.vert", DEVICE_OPTIONS),
         ("kUnlitFragment", FAMILIES + "/unlit.frag", DEVICE_OPTIONS),
-        ("kLightmappedVertex", FAMILIES + "/lightmapped.vert", DEVICE_OPTIONS),
-        ("kLightmappedSurfaceVertex", FAMILIES + "/lightmapped_surface.vert", DEVICE_OPTIONS),
-        ("kLightmappedFragment", FAMILIES + "/lightmapped.frag", DEVICE_OPTIONS),
-        ("kPbrVertex", FAMILIES + "/pbr.vert", DEVICE_OPTIONS),
-        ("kPbrFragment", FAMILIES + "/pbr.frag", DEVICE_OPTIONS),
+        ("kSurfaceFlatVertex", FAMILIES + "/surface_flat.vert", DEVICE_OPTIONS),
+        ("kSurfaceWorldVertex", FAMILIES + "/surface_world.vert", DEVICE_OPTIONS),
+        ("kSurfaceModelVertex", FAMILIES + "/surface_model.vert", DEVICE_OPTIONS),
+        ("kSurfaceFragment", FAMILIES + "/surface.frag", DEVICE_OPTIONS),
         ("kVertexLitVertex", FAMILIES + "/vertexlit.vert", DEVICE_OPTIONS),
         ("kVertexLitFragment", FAMILIES + "/vertexlit.frag", DEVICE_OPTIONS))),
     "lines_spv.h": ("render::pass::lines::spirv",
@@ -216,15 +215,15 @@ GENERATED = {
     "debug_view_defects_spv.h": ("render::lab::spirv",
         "render_lab's debug-view suite's seeded programs (render.debug-views sensitivity, "
         "RFC 0014)", (
-        ("kLightmappedSwappedNormal", FAMILIES + "/lightmapped.frag",
+        ("kLightmappedSwappedNormal", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_DEBUG_SWAPPED_NORMAL",)),
-        ("kLightmappedToneMaps", FAMILIES + "/lightmapped.frag",
+        ("kLightmappedToneMaps", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_DEBUG_TONE_MAPS",)),
-        ("kLightmappedMissesNan", FAMILIES + "/lightmapped.frag",
+        ("kLightmappedMissesNan", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_DEBUG_MISS_NAN",)),
-        ("kLightmappedNoHatch", FAMILIES + "/lightmapped.frag",
+        ("kLightmappedNoHatch", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_DEBUG_NO_HATCH",)),
-        ("kLightmappedTermIgnored", FAMILIES + "/lightmapped.frag",
+        ("kLightmappedTermIgnored", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_DEBUG_TERM_IGNORED",)))),
 }
 

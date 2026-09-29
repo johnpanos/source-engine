@@ -54,7 +54,7 @@ constexpr std::uint64_t kPbrMaterial = 21;
 constexpr std::uint64_t kLightmapPage = 40; // the lightmapped cube's draw group
 constexpr std::uint64_t kPbrFrameGroup = 41;
 constexpr std::uint64_t kLightmappedFrameGroup = 44; // the LDR lightmap scale, output scale 1
-constexpr std::uint64_t kPbrViewGroup = 42;
+constexpr std::uint64_t kPbrLighting = 42;           // the pbr cube's draw group
 constexpr std::uint64_t kVertexLitCubeMesh = 5;
 constexpr std::uint64_t kVertexLitMaterial = 22;
 constexpr std::uint64_t kVertexLitLighting = 43; // the vertexlit cube's draw group
@@ -92,27 +92,27 @@ inline resources::MeshData CubeData(
 // The cube in the lightmapped family's vertex: the unlit cube's corners,
 // every lightmap coordinate at the page's center.
 inline resources::MeshData LightmappedCubeData(
-    std::vector<material::LightmappedVertex> &vertices, std::vector<std::uint16_t> &indices )
+    std::vector<material::SurfaceFlatVertex> &vertices, std::vector<std::uint16_t> &indices )
 {
 	std::vector<material::UnlitVertex> corners;
 	resources::MeshData data = CubeData( corners, indices );
 	vertices.clear();
 	for ( const material::UnlitVertex &corner : corners )
 	{
-		material::LightmappedVertex vertex;
+		material::SurfaceFlatVertex vertex;
 		std::copy( corner.position, corner.position + 3, vertex.position );
 		vertex.lightmapUv[0] = vertex.lightmapUv[1] = 0.5f;
 		vertices.push_back( vertex );
 	}
-	data.vertices = std::as_bytes( std::span<const material::LightmappedVertex>( vertices ) );
-	data.vertexStride = sizeof( material::LightmappedVertex );
+	data.vertices = std::as_bytes( std::span<const material::SurfaceFlatVertex>( vertices ) );
+	data.vertexStride = sizeof( material::SurfaceFlatVertex );
 	return data;
 }
 
 // The cube in the pbr family's vertex: four corners per face with the
 // face's normal and a tangent along it.
 inline resources::MeshData PbrCubeData(
-    std::vector<material::PbrVertex> &vertices, std::vector<std::uint16_t> &indices )
+    std::vector<material::SurfaceModelVertex> &vertices, std::vector<std::uint16_t> &indices )
 {
 	vertices.clear();
 	indices.clear();
@@ -125,7 +125,7 @@ inline resources::MeshData PbrCubeData(
 			const std::uint16_t first = std::uint16_t( vertices.size() );
 			for ( int corner = 0; corner < 4; ++corner )
 			{
-				material::PbrVertex vertex;
+				material::SurfaceModelVertex vertex;
 				vertex.position[axis] = 0.5f * sign;
 				vertex.position[u] = ( corner & 1 ) ? 0.5f : -0.5f;
 				vertex.position[v] = ( corner & 2 ) ? 0.5f : -0.5f;
@@ -139,8 +139,8 @@ inline resources::MeshData PbrCubeData(
 		}
 	}
 	resources::MeshData data;
-	data.vertices = std::as_bytes( std::span<const material::PbrVertex>( vertices ) );
-	data.vertexStride = sizeof( material::PbrVertex );
+	data.vertices = std::as_bytes( std::span<const material::SurfaceModelVertex>( vertices ) );
+	data.vertexStride = sizeof( material::SurfaceModelVertex );
 	data.indices = std::as_bytes( std::span<const std::uint16_t>( indices ) );
 	data.indexFormat = device::IndexFormat::kUint16;
 	return data;
@@ -151,10 +151,10 @@ inline resources::MeshData PbrCubeData(
 inline resources::MeshData VertexLitCubeData(
     std::vector<material::VertexLitVertex> &vertices, std::vector<std::uint16_t> &indices )
 {
-	std::vector<material::PbrVertex> faces;
+	std::vector<material::SurfaceModelVertex> faces;
 	resources::MeshData data = PbrCubeData( faces, indices );
 	vertices.clear();
-	for ( const material::PbrVertex &face : faces )
+	for ( const material::SurfaceModelVertex &face : faces )
 	{
 		material::VertexLitVertex vertex;
 		std::copy( face.position, face.position + 3, vertex.position );
@@ -265,7 +265,8 @@ inline std::unique_ptr<scene::IRenderScene> SceneB()
 	return result;
 }
 
-inline std::unique_ptr<scene::IRenderScene> SceneC()
+// pbrLighting false leaves the pbr cube without its draw group.
+inline std::unique_ptr<scene::IRenderScene> SceneC( bool pbrLighting = true )
 {
 	auto result = scene::CreateRenderScene();
 	scene::ChangeSet changes;
@@ -273,8 +274,10 @@ inline std::unique_ptr<scene::IRenderScene> SceneC()
 	    Cube( { -1.5f, 0.0f, -6.0f }, 1.5f, kLightmappedMaterial, kLightmappedCubeMesh );
 	lit.drawGroup = kLightmapPage;
 	changes.Add( result->Reserve(), lit );
-	changes.Add(
-	    result->Reserve(), Cube( { 1.5f, 0.0f, -6.0f }, 1.5f, kPbrMaterial, kPbrCubeMesh ) );
+	scene::MeshInstanceDesc pbr = Cube( { 1.5f, 0.0f, -6.0f }, 1.5f, kPbrMaterial, kPbrCubeMesh );
+	if ( pbrLighting )
+		pbr.drawGroup = kPbrLighting;
+	changes.Add( result->Reserve(), pbr );
 	scene::MeshInstanceDesc vertexlit =
 	    Cube( { 0.0f, 1.6f, -6.0f }, 1.0f, kVertexLitMaterial, kVertexLitCubeMesh );
 	vertexlit.drawGroup = kVertexLitLighting;
@@ -423,11 +426,11 @@ inline std::optional<Meshes> StageCube(
 	positions.vertices = std::as_bytes( std::span<const float>( packed ) );
 	positions.vertexStride = 12;
 	auto positionOnly = cache.Stage( "positions", positions );
-	std::vector<material::LightmappedVertex> lightmappedVertices;
+	std::vector<material::SurfaceFlatVertex> lightmappedVertices;
 	std::vector<std::uint16_t> lightmappedIndices;
 	auto lightmapped = cache.Stage(
 	    "lightmapped-cube", LightmappedCubeData( lightmappedVertices, lightmappedIndices ) );
-	std::vector<material::PbrVertex> pbrVertices;
+	std::vector<material::SurfaceModelVertex> pbrVertices;
 	std::vector<std::uint16_t> pbrIndices;
 	auto pbr = cache.Stage( "pbr-cube", PbrCubeData( pbrVertices, pbrIndices ) );
 	std::vector<material::VertexLitVertex> vertexLitVertices;
@@ -457,7 +460,7 @@ inline std::optional<Meshes> StageCube(
 // Scene C's families, textures, programs and groups: a lightmapped
 // material over the white texture whose draw group holds the page, a pbr
 // dielectric (white base, MRAO rough and unoccluded) whose frame group holds
-// the split-sum table and whose view group holds a uniform ambient cube, and
+// the split-sum table and whose draw group holds a uniform ambient cube, and
 // a vertexlit material over the white texture whose draw group holds its
 // lighting (an ambient cube lit on +z only, no lights).
 inline bool StageSceneCMaterials( device::IRenderDevice2 &device, Materials &materials,
@@ -502,15 +505,19 @@ inline bool StageSceneCMaterials( device::IRenderDevice2 &device, Materials &mat
 
 	material::PbrClaim pbrClaim;
 	pbrClaim.claimed = true;
-	auto program = materials.pbr->Request( pbrClaim, { "white", "mrao", "", "", "white" } );
+	material::SurfaceTextures pbrTextures;
+	pbrTextures.base = "white";
+	pbrTextures.mrao = "mrao";
+	auto program = materials.pbr->Request( pbrClaim, pbrTextures );
 	const float eye[3] = {};
 	float cube[6][3];
 	for ( auto &face : cube )
 		std::copy( kAmbient, kAmbient + 3, face );
-	const material::PbrModelLighting lighting = material::PackSourceModelLighting( eye, cube, {} );
+	const material::ModelLighting lighting = material::PackSourceModelLighting( eye, cube, {} );
 	if ( !program || !materials.programs.Set( kPbrMaterial, program.Value() ) ||
-	     !materials.drawGroups.Set( kPbrFrameGroup, materials.pbr->FrameGroup( "splitsum" ) ) ||
-	     !materials.drawGroups.Set( kPbrViewGroup, materials.pbr->ViewGroup( lighting ) ) )
+	     !materials.drawGroups.Set(
+	         kPbrFrameGroup, materials.pbr->FrameGroup( "splitsum", material::SurfaceFrame() ) ) ||
+	     !materials.drawGroups.Set( kPbrLighting, materials.pbr->LightingGroup( lighting ) ) )
 		return false;
 
 	material::VertexLitClaim vertexLitClaim;

@@ -50,7 +50,7 @@
 #include "render/material/material_programs.h"
 #include "render/shaderlib/debug_view.h"
 #include "render/material/parameter_block.h"
-#include "render/material/pbr_family.h"
+#include "render/material/model_lighting.h"
 
 #include <cstdint>
 #include <tuple>
@@ -85,12 +85,12 @@ struct VertexLitVertex
 static_assert( sizeof( VertexLitVertex ) == 32 );
 
 // The draw group's lighting (std140, the Lighting block of vertexlit.vert):
-// Source's model lighting as PackSourceModelLighting packs it (pbr_family.h,
+// Source's model lighting as PackSourceModelLighting packs it (model_lighting.h,
 // the one owner of that packing): eye (w: the light count), the ambient cube
 // (+x, -x, +y, -y, +z, -z) and up to four lights sorted spot, point,
 // directional, each as CShaderAPIDx8::SetLight builds cLightInfo. The family
 // reads the count, the cube and the lights, in world space.
-using VertexLitLighting = PbrModelLighting;
+using VertexLitLighting = ModelLighting;
 
 struct VertexLitClaim
 {

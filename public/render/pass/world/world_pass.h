@@ -61,7 +61,7 @@
 namespace render::pass::world
 {
 
-// The surface vertex (material::LightmappedSurfaceVertex): the programs'
+// The surface vertex (material::SurfaceWorldVertex): the programs'
 // bump and env map terms read its normal, tangents and bumped pages' offset.
 struct WorldVertex
 {

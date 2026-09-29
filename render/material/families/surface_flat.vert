@@ -1,19 +1,16 @@
-// render.material family `lightmapped` (RFC 0016 K5), the surface vertex
-// (LightmappedSurfaceVertex): the flat vertex's position, coordinates and
-// color, and the world normal, tangents S and T and the bumped lightmap
-// pages' offset (lightmappedgeneric_vs20's TEXCOORD2.x) the bump and env map
-// terms read. Positions are in world space (the world pass draws the BSP
-// world); the draw constants carry world-to-clip.
+// render.material program `surface` (RFC 0016 K4, K5, K11), the flat vertex:
+// position, base and lightmap coordinates and color (SurfaceFlatVertex).
+// Terms that read the surface's normal and tangents take the world vertex
+// (surface_world.vert); here they are zero, as are the model lights'
+// attenuations (surface_model.vert). The draw constants carry the
+// draw's world-to-clip matrix (row-major with column vectors, as render.math
+// stores them).
 #version 450
 
 layout( location = 0 ) in vec3 position;
 layout( location = 1 ) in vec2 uv0;
 layout( location = 2 ) in vec2 uv1;
 layout( location = 3 ) in vec4 vertexColor;
-layout( location = 4 ) in vec3 normal;
-layout( location = 5 ) in vec3 inTangentS;
-// Tangent T in xyz and the bumped pages' offset in w (adjacent in the vertex).
-layout( location = 6 ) in vec4 inTangentTOffset;
 
 layout( set = 2, binding = 0 ) uniform Material
 {
@@ -36,6 +33,7 @@ layout( location = 5 ) out vec3 worldNormal;
 layout( location = 6 ) out vec3 tangentS;
 layout( location = 7 ) out vec3 tangentT;
 layout( location = 8 ) out float lightmapOffset;
+layout( location = 9 ) out vec4 lightAtten; // the model lights' attenuations (none here)
 
 void main()
 {
@@ -48,8 +46,9 @@ void main()
 	                                 : vertexColor;
 	fogDepth = vec2( gl_Position.z, position.z );
 	worldPosition = position;
-	worldNormal = normal;
-	tangentS = inTangentS;
-	tangentT = inTangentTOffset.xyz;
-	lightmapOffset = inTangentTOffset.w;
+	worldNormal = vec3( 0.0 );
+	tangentS = vec3( 0.0 );
+	tangentT = vec3( 0.0 );
+	lightmapOffset = 0.0;
+	lightAtten = vec4( 0.0 );
 }

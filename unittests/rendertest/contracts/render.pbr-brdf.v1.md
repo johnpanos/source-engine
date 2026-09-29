@@ -62,7 +62,7 @@ failure.
 `render/shaders/common/pbr_brdf.glsl` is the one GPU copy of
 these functions; every native PBR stage (`pbr_direct.frag`, `world_pbr.frag`,
 `world_pbr_glass.frag`, `model_pbr.frag`) and the render.material `pbr`
-family (`render/material/families/pbr.frag`) include it and defines no BRDF of
+family (`render/material/families/surface.frag`, the pbr point) include it and defines no BRDF of
 its own. The `render.pbr-brdf.glsl` GPU suite evaluates GGX, Smith, Schlick,
 the lobe, the compensation, the directional albedo and the clear coat in a
 compute program (`pbr_brdf_check.comp`) on 1,080 cases and requires each value

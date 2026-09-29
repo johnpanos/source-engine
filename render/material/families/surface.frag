@@ -1,20 +1,32 @@
-// render.material family `lightmapped` (RFC 0016 K4, K5 surface model): the
-// lit surface term, LightmappedGeneric's arithmetic (the port's
-// lightmapped.frag, from lightmappedgeneric_ps2_3_x.h) in linear light. Each
-// term is a specialization constant, so a neutral term costs nothing:
-// - the flat lightmap, or the three bumped pages weighted by the normal map
-//   (RNM) or by an ssbump's basis weights;
-// - the env map with its mask (base alpha, normal map alpha or $envmapmask),
-//   tint, contrast, saturation and fresnel;
-// - detail (TextureCombine) and self-illumination;
-// - the view's fog.
-// Unlit is this term with the lighting fixed at one. Blending is pipeline state.
-// The debug views and lighting-model controls (RFC 0014) come from
-// debug_view.glsl; at their neutral values they are dead code.
+// render.material program `surface` (RFC 0016 K11 "Model assembly"): the one
+// surface program. Each lighting-model term is a specialization constant, so
+// a neutral term costs nothing, and the legacy families are points of it:
+// - the `lightmapped` point is LightmappedGeneric's arithmetic (the port's
+//   lightmapped.frag, from lightmappedgeneric_ps2_3_x.h) in linear light: the
+//   flat lightmap, or the three bumped pages weighted by the normal map (RNM)
+//   or by an ssbump's basis weights; the env map with its mask (base alpha,
+//   normal map alpha or $envmapmask), tint, contrast, saturation and fresnel;
+//   detail (TextureCombine) and self-illumination. Unlit is this point with
+//   the lighting fixed at one;
+// - the `pbr` point (kPbr) is the RFC 0007 layered metal/roughness BRDF
+//   (render/shaders/common/pbr_brdf.glsl, the one GLSL copy of
+//   public/render/pbr_brdf.h) under the draw's model lighting: the model
+//   port's arithmetic (model_pbr.frag) without map probes, environment maps,
+//   the probe volume or clear coat. Units follow Source's model lighting: a
+//   local light is incident radiance pi * color * attenuation, the ambient
+//   cube a Lambertian return, and the cube in the reflected direction the
+//   specular image light.
+// Both end in the view's fog and the output encoding. Blending is pipeline
+// state. The debug views and lighting-model controls (RFC 0014) come from
+// debug_view.glsl; at their neutral values they are dead code. In the pbr
+// point the local lights answer to the `clustered` term, the ambient cube to
+// `probes` and the cube in the reflected direction to `ibl`.
 #version 450
 
 #include "../../shaders/common/color_encoding.glsl"
 #include "../../shaders/common/debug_view.glsl"
+#include "../../shaders/common/pbr_brdf.glsl"
+#include "surface_lighting.glsl"
 
 // The terms (the port's static combo bits where they exist).
 layout( constant_id = 0 ) const int kTerms = 0;
@@ -28,6 +40,10 @@ const int kBaseAlphaEnvmapMask = 128;
 const int kSelfIllum = 256;
 const int kNormalMapAlphaEnvmapMask = 512;
 const int kDiffuseBumpmap = 1024;
+// The pbr point: the metal/roughness BRDF; kBumpmap is then its tangent-space
+// normal map (two channels), and kEmissionTexture its emission texture.
+const int kPbr = 2048;
+const int kEmissionTexture = 4096;
 
 layout( set = 0, binding = 0 ) uniform Frame
 {
@@ -48,6 +64,9 @@ layout( set = 0, binding = 0 ) uniform Frame
 	// HDR, where cube maps hold light / 16, else 1).
 	vec4 eye;
 } frame;
+// The split-sum table (RFC 0007, pbr_split_sum_table.h), read by the pbr point.
+layout( set = 0, binding = 1 ) uniform texture2D splitSumTexture;
+layout( set = 0, binding = 2 ) uniform sampler splitSumSampler;
 layout( set = 2, binding = 0 ) uniform Material
 {
 	vec4 tint;  // rgb: $color, a: $alpha
@@ -63,6 +82,7 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 detailTint;    // rgb: $detailtint, a: $detailblendfactor
 	vec4 detailScale;   // xy: $detailscale
 	vec4 envLightScale; // x: min, y: min + max, z: $envmaplightscale (Portal 2)
+	vec4 emission;      // x: $emissionscale (the pbr point)
 } material;
 layout( set = 2, binding = 1 ) uniform texture2D baseTexture;
 layout( set = 2, binding = 2 ) uniform sampler baseSampler;
@@ -74,8 +94,12 @@ layout( set = 2, binding = 7 ) uniform texture2D bumpTexture;
 layout( set = 2, binding = 8 ) uniform sampler bumpSampler;
 layout( set = 2, binding = 9 ) uniform texture2D detailTexture;
 layout( set = 2, binding = 10 ) uniform sampler detailSampler;
+layout( set = 2, binding = 11 ) uniform texture2D mraoTexture;
+layout( set = 2, binding = 12 ) uniform sampler mraoSampler;
+layout( set = 2, binding = 13 ) uniform texture2D emissionTexture;
+layout( set = 2, binding = 14 ) uniform sampler emissionSampler;
 // The lightmap page is the draw's: surfaces of one material share pages
-// with others.
+// with others. So is the model lighting (surface_lighting.glsl, binding 2).
 layout( set = 3, binding = 0 ) uniform texture2D lightmap;
 layout( set = 3, binding = 1 ) uniform sampler lightmapSampler;
 
@@ -88,6 +112,7 @@ layout( location = 5 ) in vec3 worldNormal;
 layout( location = 6 ) in vec3 tangentS;
 layout( location = 7 ) in vec3 tangentT;
 layout( location = 8 ) in float lightmapOffset; // the bumped pages' offset (TEXCOORD2.x)
+layout( location = 9 ) in vec4 lightAtten;      // each model light's vertex attenuation
 layout( location = 0 ) out vec4 outColor;
 
 // common_fxc.h
@@ -144,8 +169,182 @@ vec4 TextureCombine( vec4 baseColor, vec4 detailColor, float blendFactor )
 	return baseColor;
 }
 
+// The debug view's pixel, encoded as the output is.
+vec4 DebugOutput( DebugInputs inputs )
+{
+	vec4 view = DebugViewOutput( inputs );
+	if ( frame.light.z != 0.0 )
+		view.rgb = LinearToSrgb( view.rgb );
+	return view;
+}
+
+// Every point's output: the tone-mapping scale, then the view's fog (its
+// color is scaled too): range fog squares its factor; a fully opaque surface
+// under height fog writes the factor to alpha. Then the encoding.
+vec4 Output( vec3 lit, float alpha )
+{
+	lit *= frame.light.y;
+	const float fogType = frame.fogColor.w;
+	if ( fogType > -0.5 )
+	{
+		const float factor = FogFactor();
+		if ( fogType > 0.5 && material.state.x != 0.0 )
+			alpha = factor;
+		lit = mix( lit, frame.fogColor.rgb, fogType < 0.5 ? factor * factor : factor );
+	}
+	if ( frame.light.z != 0.0 )
+		lit = LinearToSrgb( lit );
+	return vec4( lit, alpha );
+}
+
+// PixelShaderAmbientLight: the faces weighted by the squared normal. In the
+// furnace (RFC 0014) every face is a uniform radiance of 1.
+vec3 AmbientCube( vec3 n )
+{
+	const vec3 squared = n * n;
+	if ( DebugFurnace() )
+		return vec3( squared.x + squared.y + squared.z );
+	const bvec3 positive = greaterThanEqual( n, vec3( 0.0 ) );
+	return squared.x * ( positive.x ? lighting.cube[0] : lighting.cube[1] ).rgb +
+	       squared.y * ( positive.y ? lighting.cube[2] : lighting.cube[3] ).rgb +
+	       squared.z * ( positive.z ? lighting.cube[4] : lighting.cube[5] ).rgb;
+}
+
+// The pbr point. Base and emission are sampled as sRGB, MRAO and the normal
+// map as linear data.
+void PbrSurface()
+{
+	const bool furnace = DebugFurnace();
+	const bool normalMap = Term( kBumpmap );
+	const bool emissive = Term( kEmissionTexture );
+	const vec2 uv = baseUv;
+	const vec4 baseSample = texture( sampler2D( baseTexture, baseSampler ), uv );
+	const vec3 base = furnace ? vec3( 1.0 ) : baseSample.rgb;
+	const vec3 mrao = texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb;
+	const float metalness =
+	    kDebugForceMetalness >= 0.0 ? kDebugForceMetalness : clamp( mrao.r, 0.0, 1.0 );
+	const float roughness =
+	    max( kDebugForceRoughness >= 0.0 ? kDebugForceRoughness : mrao.g, 0.02 );
+	const float occlusion = DebugTermOn( kDebugTermAo ) ? clamp( mrao.b, 0.0, 1.0 ) : 1.0;
+
+	const vec3 view = normalize( frame.eye.xyz - worldPosition );
+	vec3 normal = dot( worldNormal, worldNormal ) > 1e-12 ? normalize( worldNormal ) : view;
+	vec3 mapped = vec3( 0.0, 0.0, 1.0 );
+	if ( normalMap )
+	{
+		const vec2 xy = texture( sampler2D( bumpTexture, bumpSampler ), uv ).rg * 2.0 - 1.0;
+		mapped = vec3( xy, sqrt( max( 0.0, 1.0 - dot( xy, xy ) ) ) );
+		normal = normalize( normalize( tangentS ) * mapped.x + normalize( tangentT ) * mapped.y +
+		                    normal * mapped.z );
+	}
+	const float normalDotView = max( dot( normal, view ), 0.0 );
+	const vec3 f0 = mix( vec3( 0.04 ), base, metalness );
+	const vec2 splitSum = texture( sampler2D( splitSumTexture, splitSumSampler ),
+	    PbrSplitSumCoordinate( vec2( textureSize( sampler2D( splitSumTexture, splitSumSampler ), 0 ) ),
+	        normalDotView, roughness ) )
+	                          .rg;
+	// cl_render_debug_brdf 3: multiple-scattering compensation off.
+	const bool compensate = kDebugBrdf != kDebugBrdfNoEnergyCompensation;
+	const vec3 compensation = compensate ? PbrEnergyCompensation( f0, splitSum ) : vec3( 1.0 );
+	const vec3 directionalAlbedo = compensate
+	                                   ? PbrDirectionalAlbedo( f0, splitSum )
+	                                   : min( vec3( 1.0 ), f0 * splitSum.x + vec3( splitSum.y ) );
+	const vec3 diffuseColor = base * ( 1.0 - metalness ) * ( vec3( 1.0 ) - directionalAlbedo );
+	// cl_render_debug_brdf 1 and 2: one lobe.
+	const bool diffuseLobe = kDebugBrdf != kDebugBrdfSpecularOnly;
+	const bool specularLobe = kDebugBrdf != kDebugBrdfDiffuseOnly;
+
+	vec3 color = diffuseLobe && DebugTermOn( kDebugTermProbes )
+	                 ? diffuseColor * AmbientCube( normal ) * occlusion
+	                 : vec3( 0.0 );
+	vec3 direct = vec3( 0.0 );
+	const int count = DebugTermOn( kDebugTermClustered ) && !furnace ? int( lighting.eye.w ) : 0;
+	for ( int i = 0; i < 4; ++i )
+	{
+		if ( i >= count )
+			break;
+		// A directional light shines along its direction. (The port's pixel
+		// constants place it 10,000 units from the lighting origin against
+		// that direction, CommitPixelShaderLighting; the vertex term reads
+		// the light's own position, which is 1 for it.)
+		const vec3 light = lighting.lights[i].color.w > 0.5
+		                       ? -normalize( lighting.lights[i].direction.xyz )
+		                       : normalize( lighting.lights[i].position.xyz - worldPosition );
+		const float normalDotLight = max( dot( normal, light ), 0.0 );
+		if ( normalDotLight <= 0.0 )
+			continue;
+		const vec3 incident = lighting.lights[i].color.rgb * lightAtten[i];
+		if ( diffuseLobe )
+		{
+			const vec3 diffuse = diffuseColor * incident * normalDotLight;
+			color += diffuse;
+			direct += diffuse;
+		}
+		if ( specularLobe )
+		{
+			const vec3 specular = kPi * incident * PbrSpecular( normal, view, light, f0, roughness ) *
+			                      compensation * normalDotLight;
+			color += specular;
+			direct += specular;
+		}
+	}
+	vec3 imageSpecular = vec3( 0.0 );
+	if ( specularLobe && DebugTermOn( kDebugTermIbl ) )
+	{
+		imageSpecular = AmbientCube( reflect( -view, normal ) ) * directionalAlbedo * occlusion;
+		color += imageSpecular;
+	}
+	vec3 emission = vec3( 0.0 );
+	if ( emissive && DebugTermOn( kDebugTermEmission ) && !furnace )
+	{
+		emission =
+		    texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb * material.emission.x;
+		color += emission;
+	}
+
+	if ( DebugViewActive() )
+	{
+		DebugInputs inputs = DebugInputsNone();
+		inputs.mask = kDebugHasAlbedo | kDebugHasNormal | kDebugHasRoughness | kDebugHasMetalness |
+		              kDebugHasAo | kDebugHasDirect | kDebugHasImageSpecular | kDebugHasUv0;
+		inputs.albedo = base;
+		inputs.normal = normal;
+		if ( normalMap )
+		{
+			inputs.mask |= kDebugHasNormalMap;
+			inputs.normalMap = mapped;
+		}
+		inputs.roughness = roughness;
+		inputs.metalness = metalness;
+		inputs.ao = occlusion;
+		inputs.direct = direct;
+		inputs.imageSpecular = imageSpecular;
+		if ( emissive )
+		{
+			inputs.mask |= kDebugHasEmission;
+			inputs.emission = emission;
+		}
+		inputs.uv0 = uv;
+		inputs.final = color;
+		outColor = DebugOutput( inputs );
+		return;
+	}
+	// cl_render_debug_brdf 4: the split-sum table's sample as red and green.
+	if ( kDebugBrdf == kDebugBrdfSplitSumSample )
+	{
+		outColor = vec4( splitSum, 0.0, 1.0 );
+		return;
+	}
+	outColor = Output( color, baseSample.a );
+}
+
 void main()
 {
+	if ( Term( kPbr ) )
+	{
+		PbrSurface();
+		return;
+	}
 	const bool bumpmap = Term( kBumpmap | kSsbump );
 	const bool ssbump = Term( kSsbump );
 	const bool diffuseBumpmap = bumpmap && Term( kDiffuseBumpmap );
@@ -346,26 +545,8 @@ void main()
 		inputs.uv0 = baseUv;
 		inputs.vertexColor = color;
 		inputs.final = lit;
-		vec4 view = DebugViewOutput( inputs );
-		if ( frame.light.z != 0.0 )
-			view.rgb = LinearToSrgb( view.rgb );
-		outColor = view;
+		outColor = DebugOutput( inputs );
 		return;
 	}
-
-	lit *= frame.light.y;
-	// The view's fog, after the tone-mapping scale (its color is scaled too):
-	// range fog squares its factor; a fully opaque surface under height fog
-	// writes the factor to alpha.
-	const float fogType = frame.fogColor.w;
-	if ( fogType > -0.5 )
-	{
-		const float factor = FogFactor();
-		if ( fogType > 0.5 && material.state.x != 0.0 )
-			alpha = factor;
-		lit = mix( lit, frame.fogColor.rgb, fogType < 0.5 ? factor * factor : factor );
-	}
-	if ( frame.light.z != 0.0 )
-		lit = LinearToSrgb( lit );
-	outColor = vec4( lit, alpha );
+	outColor = Output( lit, alpha );
 }

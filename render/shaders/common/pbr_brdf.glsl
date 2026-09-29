@@ -1,9 +1,10 @@
 // The RFC 0007 metal/roughness BRDF on the GPU: the one GLSL copy of
 // public/render/pbr_brdf.h, included by every PBR stage (pbr_direct.frag,
 // world_pbr.frag, world_pbr_glass.frag, model_pbr.frag) and by the
-// render.material `pbr` family (render/material/families/pbr.frag). The
-// render.pbr-brdf.glsl suite runs these functions in a compute program
-// (pbr_brdf_check.comp) and compares them with the C++ on the same inputs.
+// render.material surface program's pbr point
+// (render/material/families/surface.frag). The render.pbr-brdf.glsl suite
+// runs these functions in a compute program (pbr_brdf_check.comp) and
+// compares them with the C++ on the same inputs.
 // Roughness is perceptual (alpha = roughness^2) as in the C++; dot products
 // are clamped by the caller.
 #ifndef PBR_BRDF_GLSL

@@ -23,7 +23,7 @@ SHADERS = "materialsystem/shaderapivulkan/shaders/"
 LIBRARY = "pbr_brdf.glsl"  # its file name; render/shaders/common/ holds it
 PBR_STAGES = tuple(SHADERS + name for name in (
     "pbr_direct.frag", "world_pbr.frag", "world_pbr_glass.frag", "model_pbr.frag")) + (
-    "render/material/families/pbr.frag",)
+    "render/material/families/surface.frag",)
 # Grouped stages: frame (0), material (1), constants (2).
 GROUPED_STAGES = tuple(SHADERS + name for name in (
     "world_pbr.frag", "world_pbr_glass.frag", "model_pbr.frag"))

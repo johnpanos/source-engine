@@ -171,6 +171,9 @@ struct CaseGroup
 	render::device::BindGroupLayoutId layout;
 	std::span<const std::byte> constants;
 	std::vector<const CaseTexture *> textures;
+	// The bindings are the constants (0) then each texture and its sampler;
+	// with constantsLast the textures come first and the constants after them.
+	bool constantsLast = false;
 };
 
 struct CaseDraw

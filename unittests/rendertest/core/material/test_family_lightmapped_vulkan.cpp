@@ -50,7 +50,7 @@ using namespace render::material;
 using namespace rendertest::families;
 namespace vulkan = render::device::vulkan;
 
-const LightmappedFrame kLdrFrame;
+const SurfaceFrame kLdrFrame;
 
 const char *const kCaseFile = "quality/fixtures/legacy-shaders/families/lightmapped.vdf";
 const char *const kFixture = "quality/fixtures/render-families/lightmapped-port-v1.vdf";
@@ -141,8 +141,7 @@ int main()
 		    "claim.contrast-with-saturation-takes-effect" );
 		checks.That( one && one->constants.envContrast[0] == 1.0f,
 		    "claim.contrast-one-is-fastpathenvmapcontrast" );
-		checks.That(
-		    fast && ( fast->terms & kLightmappedEnvmap ) != 0, "claim.an-env-map-is-a-term" );
+		checks.That( fast && ( fast->terms & kSurfaceEnvmap ) != 0, "claim.an-env-map-is-a-term" );
 	}
 
 	// The alpha test's reference as the legacy shaders set it: 0.7 when the
@@ -216,14 +215,14 @@ int main()
 			const LightmappedClaim claim = ClaimLightmapped( *imported.block );
 			if ( !That( checks, claim.claimed, "claim." + name, claim.reason ) )
 				continue;
-			const bool surface = ( claim.terms & kLightmappedSurfaceTerms ) != 0;
-			const LightmappedVertexLayout layout =
-			    surface ? LightmappedVertexLayout::kSurface : LightmappedVertexLayout::kFlat;
+			const bool surface = ( claim.terms & kSurfaceNormalTerms ) != 0;
+			const SurfaceVertexLayout layout =
+			    surface ? SurfaceVertexLayout::kWorld : SurfaceVertexLayout::kFlat;
 			auto pipeline = family.Value()->Pipeline( claim, layout );
 			if ( !checks.That( pipeline.HasValue(), "pipeline." + name ) )
 				continue;
 			std::vector<CaseTexture> bound;
-			bound.reserve( 5 );
+			bound.reserve( 8 );
 			auto bind = [&]( const CaseTexture *source, device::Format format, bool cube )
 			{
 				CaseTexture copy;
@@ -247,13 +246,19 @@ int main()
 			    bind( textureOf( "detail" ),
 			        claim.detailMode == 1 ? device::Format::kRGBA8Srgb
 			                              : device::Format::kRGBA8Unorm,
-			        false ) };
+			        false ),
+			    bind( nullptr, device::Format::kRGBA8Unorm, false ),  // MRAO
+			    bind( nullptr, device::Format::kRGBA8Srgb, false ) }; // emission
+			// The frame's split-sum table, which no lightmapped point reads.
+			const CaseTexture *splitSum = bind( nullptr, device::Format::kRGBA8Unorm, false );
+			// The draw's model lighting: neutral on a world surface.
+			const ModelLighting lighting;
 
-			std::vector<LightmappedVertex> flat;
-			std::vector<LightmappedSurfaceVertex> surfaceQuad;
+			std::vector<SurfaceFlatVertex> flat;
+			std::vector<SurfaceWorldVertex> surfaceQuad;
 			for ( const CaseVertex &corner : testCase.triangles )
 			{
-				LightmappedSurfaceVertex vertex;
+				SurfaceWorldVertex vertex;
 				std::copy( corner.position, corner.position + 3, vertex.position );
 				std::copy( corner.uv0, corner.uv0 + 2, vertex.uv );
 				std::copy( corner.uv1, corner.uv1 + 2, vertex.lightmapUv );
@@ -263,7 +268,7 @@ int main()
 				std::copy( corner.tangentT, corner.tangentT + 3, vertex.tangentT );
 				vertex.lightmapOffset = corner.uv2[0];
 				surfaceQuad.push_back( vertex );
-				LightmappedVertex plain;
+				SurfaceFlatVertex plain;
 				std::copy( corner.position, corner.position + 3, plain.position );
 				std::copy( corner.uv0, corner.uv0 + 2, plain.uv );
 				std::copy( corner.uv1, corner.uv1 + 2, plain.lightmapUv );
@@ -271,7 +276,7 @@ int main()
 				flat.push_back( plain );
 			}
 			// The constants as Request packs them.
-			LightmappedConstants constants = claim.constants;
+			SurfaceConstants constants = claim.constants;
 			constants.state[0] =
 			    claim.blend == device::BlendMode::kOpaque && claim.alphaWrite ? 1.0f : 0.0f;
 			CaseDraw draw;
@@ -279,11 +284,11 @@ int main()
 			draw.groups.push_back(
 			    { device::BindGroupRole::kMaterial, family.Value()->MaterialLayout(),
 			        std::as_bytes( std::span( &constants, 1 ) ), materialTextures } );
-			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(), {},
-			    { testCase.lightmap } } );
+			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),
+			    std::as_bytes( std::span( &lighting, 1 ) ), { testCase.lightmap }, true } );
 			// The frame terms at their LDR defaults (the port's cases are LDR).
 			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
-			    std::as_bytes( std::span( &kLdrFrame, 1 ) ), {} } );
+			    std::as_bytes( std::span( &kLdrFrame, 1 ) ), { splitSum } } );
 			draw.vertices = surface ? std::as_bytes( std::span( surfaceQuad ) )
 			                        : std::as_bytes( std::span( flat ) );
 			draw.vertexCount = std::uint32_t( flat.size() );
@@ -301,7 +306,7 @@ int main()
 			if ( fogChecked || claim.blend != device::BlendMode::kOpaque )
 				continue;
 			fogChecked = true;
-			LightmappedFrame fogged;
+			SurfaceFrame fogged;
 			const float fogColor[3] = { 0.8f, 0.2f, 0.05f };
 			std::copy( fogColor, fogColor + 3, fogged.fogColor );
 			fogged.fogColor[3] = 0.0f;

@@ -338,7 +338,7 @@ struct Case
 	    expect;
 	float tolerance = kTolerance;
 	// pbr: the material and lighting variants (Prepare's names) and a mesh
-	// that replaces the quad (PbrVertex triangles).
+	// that replaces the quad (SurfaceModelVertex triangles).
 	std::string pbrMaterial = "default";
 	std::string pbrLighting = "default";
 	std::vector<std::byte> mesh;
@@ -368,14 +368,15 @@ struct Lab
 	std::uint64_t frameGroup = 0;
 	std::uint64_t pbrFrameGroup = 0;
 	std::map<std::string, std::uint64_t> pbrMaterials; // variant -> material group
-	std::map<std::string, std::uint64_t> pbrLightings; // variant -> view group
-	std::map<std::string, material::PbrModelLighting> pbrLightingValues;
+	std::map<std::string, std::uint64_t> pbrLightings; // variant -> draw group
+	std::map<std::string, material::ModelLighting> pbrLightingValues;
 	std::map<std::string, std::array<float, 4>>
 	    pbrMrao; // variant -> metal, rough, ao, emission scale
 	std::uint64_t vertexLitLighting = 0;
 	std::uint64_t nextGroup = 1;
 	std::map<Program, std::uint64_t> materialGroups;
-	material::ProgramRequest pbrRequest;
+	material::ProgramRequest pbrRequest;                    // the default material's
+	std::map<std::string, device::PipelineId> pbrPipelines; // by material variant
 	material::ProgramRequest vertexLitRequest;
 
 	explicit Lab( IRenderDevice2 &d ) : device( d ), textures( d ), groups( d, textures ) {}
@@ -505,7 +506,8 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	// ambient cube of 0.2 and one directional light, the same without the
 	// light, and the light under a black cube.
 	lab.pbrFrameGroup = lab.nextGroup++;
-	if ( !lab.groups.Set( lab.pbrFrameGroup, lab.pbr->FrameGroup( "lab/pbr/splitsum" ) ) )
+	if ( !lab.groups.Set( lab.pbrFrameGroup,
+	         lab.pbr->FrameGroup( "lab/pbr/splitsum", material::SurfaceFrame() ) ) )
 		return std::string( "the pbr frame group was refused" );
 	struct PbrVariant
 	{
@@ -524,17 +526,17 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 		material::PbrClaim claim;
 		claim.claimed = true;
 		claim.emission = variant.emission;
-		claim.constants.flags[1] = variant.emission ? 1.0f : 0.0f;
-		claim.constants.flags[2] = variant.emission ? 1.5f : 0.0f;
-		material::PbrTextures pbrTextures;
+		claim.constants.emission[0] = variant.emission ? 1.5f : 0.0f;
+		material::SurfaceTextures pbrTextures;
 		pbrTextures.base = "lab/pbr/base";
 		pbrTextures.mrao = variant.mrao;
 		pbrTextures.emission = variant.emission ? "lab/pbr/emission" : "";
-		pbrTextures.placeholder = "lab/pbr/mrao";
 		auto pbrRequest = lab.pbr->Request( claim, pbrTextures );
 		if ( !pbrRequest )
 			return std::string( "the pbr program was refused" );
-		lab.pbrRequest = pbrRequest.Value(); // one pipeline for every variant
+		if ( std::string_view( variant.name ) == "default" )
+			lab.pbrRequest = pbrRequest.Value();
+		lab.pbrPipelines[variant.name] = pbrRequest.Value().pipeline;
 		const std::uint64_t id = lab.nextGroup++;
 		if ( !lab.groups.Set( id, pbrRequest.Value().material ) )
 			return std::string( "a pbr material group was refused" );
@@ -547,8 +549,8 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	const float cube[6][3] = { { 0.2f, 0.2f, 0.2f }, { 0.2f, 0.2f, 0.2f }, { 0.2f, 0.2f, 0.2f },
 	    { 0.2f, 0.2f, 0.2f }, { 0.2f, 0.2f, 0.2f }, { 0.2f, 0.2f, 0.2f } };
 	const float black[6][3] = {};
-	material::PbrLightDesc sun;
-	sun.type = material::PbrLightType::kDirectional;
+	material::ModelLightDesc sun;
+	sun.type = material::ModelLightType::kDirectional;
 	sun.color[0] = 1.0f;
 	sun.color[1] = 0.9f;
 	sun.color[2] = 0.8f;
@@ -563,11 +565,11 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	for ( const auto &[name, value] : lab.pbrLightingValues )
 	{
 		const std::uint64_t id = lab.nextGroup++;
-		if ( !lab.groups.Set( id, lab.pbr->ViewGroup( value ) ) )
-			return std::string( "a pbr view group was refused" );
+		if ( !lab.groups.Set( id, lab.pbr->LightingGroup( value ) ) )
+			return std::string( "a pbr lighting group was refused" );
 		lab.pbrLightings[name] = id;
 	}
-	const material::PbrModelLighting &lighting = lab.pbrLightingValues["default"];
+	const material::ModelLighting &lighting = lab.pbrLightingValues["default"];
 
 	// vertexlit: the same lighting.
 	material::VertexLitClaim vertexLitClaim;
@@ -595,7 +597,7 @@ std::vector<std::byte> QuadVertices( const Lab &lab, Program program, int cell )
 	{
 		if ( program == Program::kPbr )
 		{
-			material::PbrVertex v;
+			material::SurfaceModelVertex v;
 			std::memcpy( v.position, &corner.position, sizeof( v.position ) );
 			std::memcpy( v.normal, &in.normal, sizeof( v.normal ) );
 			std::memcpy( v.tangent, &in.tangentS, sizeof( float ) * 3 );
@@ -617,7 +619,7 @@ std::vector<std::byte> QuadVertices( const Lab &lab, Program program, int cell )
 		}
 		else
 		{
-			material::LightmappedSurfaceVertex v;
+			material::SurfaceWorldVertex v;
 			std::memcpy( v.position, &corner.position, sizeof( v.position ) );
 			v.uv[0] = corner.u;
 			v.uv[1] = corner.v;
@@ -662,12 +664,12 @@ std::optional<std::string> DrawFrame(
 		};
 		if ( c.program == Program::kPbr )
 		{
-			auto pipeline = lab.pbr->DebugPipeline( lab.pbrRequest.pipeline, debug );
+			auto pipeline = lab.pbr->DebugPipeline( lab.pbrPipelines.at( c.pbrMaterial ), debug );
 			if ( !pipeline )
 				return std::string( "no pbr debug pipeline" );
-			draw.pipeline = *pipeline;
+			draw.pipeline = pipeline.Value();
 			draw.groups[std::size_t( BindGroupRole::kFrame )] = group( lab.pbrFrameGroup );
-			draw.groups[std::size_t( BindGroupRole::kView )] =
+			draw.groups[std::size_t( BindGroupRole::kDraw )] =
 			    group( lab.pbrLightings.at( c.pbrLighting ) );
 			draw.groups[std::size_t( BindGroupRole::kMaterial )] =
 			    group( lab.pbrMaterials.at( c.pbrMaterial ) );
@@ -675,7 +677,8 @@ std::optional<std::string> DrawFrame(
 			if ( !c.mesh.empty() )
 			{
 				draw.vertices = lab.canvas->Vertices( c.mesh );
-				draw.vertexCount = std::uint32_t( c.mesh.size() / sizeof( material::PbrVertex ) );
+				draw.vertexCount =
+				    std::uint32_t( c.mesh.size() / sizeof( material::SurfaceModelVertex ) );
 			}
 		}
 		else if ( c.program == Program::kVertexLit )
@@ -700,9 +703,7 @@ std::optional<std::string> DrawFrame(
 			draw.groups[std::size_t( BindGroupRole::kMaterial )] =
 			    group( lab.materialGroups.at( c.program ) );
 			draw.groups[std::size_t( BindGroupRole::kDraw )] = group( lab.drawGroups.at( c.page ) );
-			material::LightmappedDrawConstants lightmapped;
-			std::memcpy( lightmapped.toClip, constants.toClip, sizeof( lightmapped.toClip ) );
-			draw.constants = Bytes( lightmapped );
+			draw.constants = Bytes( constants.toClip );
 		}
 		for ( const BindGroupId &id : draw.groups )
 			(void)id;
@@ -917,15 +918,15 @@ std::vector<Case> PixelCases( const Lab &lab )
 	};
 
 	// The lightmapped constants the resolver packed (the formulas read them).
-	material::LightmappedConstants lightmapped;
+	material::SurfaceConstants lightmapped;
 	std::memcpy( &lightmapped,
 	    lab.programs.at( Program::kLightmapped ).request.material.constants.data(),
 	    sizeof( lightmapped ) );
-	material::LightmappedConstants envmapped;
+	material::SurfaceConstants envmapped;
 	std::memcpy( &envmapped,
 	    lab.programs.at( Program::kEnvmapped ).request.material.constants.data(),
 	    sizeof( envmapped ) );
-	material::LightmappedConstants selfIllum;
+	material::SurfaceConstants selfIllum;
 	std::memcpy( &selfIllum,
 	    lab.programs.at( Program::kSelfIllum ).request.material.constants.data(),
 	    sizeof( selfIllum ) );
@@ -1308,8 +1309,8 @@ void IdentityChecks( Lab &lab, Results &results )
 	results.That( neutral && neutral.Value() == program.request.pipeline,
 	    "identity.neutral-is-the-shipped-lightmapped-pipeline" );
 	auto pbr = lab.pbr->DebugPipeline( lab.pbrRequest.pipeline, {} );
-	results.That(
-	    pbr && *pbr == lab.pbrRequest.pipeline, "identity.neutral-is-the-shipped-pbr-pipeline" );
+	results.That( pbr && pbr.Value() == lab.pbrRequest.pipeline,
+	    "identity.neutral-is-the-shipped-pbr-pipeline" );
 	auto vertexLit = lab.vertexLit->DebugPipeline( lab.vertexLitRequest.pipeline, {} );
 	results.That( vertexLit && *vertexLit == lab.vertexLitRequest.pipeline,
 	    "identity.neutral-is-the-shipped-vertexlit-pipeline" );
@@ -1374,7 +1375,7 @@ struct PbrTerms
 PbrTerms PbrOracle( const Lab &lab, const std::string &material, const std::string &lighting,
     float3 hit, bool compensate )
 {
-	const material::PbrModelLighting &l = lab.pbrLightingValues.at( lighting );
+	const material::ModelLighting &l = lab.pbrLightingValues.at( lighting );
 	const std::array<float, 4> &mrao = lab.pbrMrao.at( material );
 	const Rgb base = lab.inputs.pbrBase;
 	const float metal = std::clamp( mrao[0], 0.0f, 1.0f );
@@ -1439,7 +1440,7 @@ PbrTerms PbrOracle( const Lab &lab, const std::string &material, const std::stri
 	    { split.a, split.b, 0.0f } };
 }
 
-// A UV sphere of PbrVertex triangles.
+// A UV sphere of SurfaceModelVertex triangles.
 std::vector<std::byte> SphereMesh( float3 centre, float radius )
 {
 	constexpr int kRings = 32, kSegments = 48;
@@ -1450,7 +1451,7 @@ std::vector<std::byte> SphereMesh( float3 centre, float radius )
 		const float phi = 2.0f * 3.14159265f * float( segment ) / float( kSegments );
 		const float3 n{ std::sin( theta ) * std::cos( phi ), std::sin( theta ) * std::sin( phi ),
 		    std::cos( theta ) };
-		material::PbrVertex v;
+		material::SurfaceModelVertex v;
 		v.position[0] = centre.x + radius * n.x;
 		v.position[1] = centre.y + radius * n.y;
 		v.position[2] = centre.z + radius * n.z;

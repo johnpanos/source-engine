@@ -1,0 +1,290 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: The one surface program (RFC 0016 K11 "Model assembly"): the
+//			owner of surface.frag's bind groups, vertex stages and pipelines on
+//			render.device.v2. Each lighting-model term is a specialization
+//			constant (clause D20), so a term at its neutral value costs
+//			nothing, and the legacy families are points of the program: the
+//			`lightmapped` family (lightmapped_family.h) claims
+//			LightmappedGeneric's terms, the `pbr` family (pbr_family.h) the
+//			RFC 0007 metal/roughness point (kSurfacePbr). A family owns its
+//			claim and the packing of its parameters into SurfaceConstants; the
+//			program owns everything the GPU sees.
+//
+//			Bind groups, one set for every point (a point that does not read
+//			an input binds the neutral one: an input named empty takes a 1x1
+//			white texture or cube, material_programs.h):
+//			- frame (role kFrame): binding 0 the SurfaceFrame block, 1 the
+//			  split-sum table (SplitSumTable, read by the pbr point) and 2
+//			  its linear, clamped sampler;
+//			- material (role kMaterial): binding 0 SurfaceConstants; 1 base,
+//			  3 env map (a cube), 5 env map mask, 7 bump or normal map, 9
+//			  detail, 11 MRAO and 13 emission, each with its sampler after it;
+//			- draw (role kDraw): binding 0 the draw's lightmap page, 1 its
+//			  sampler, 2 its model lighting (model_lighting.h; neutral for a
+//			  world surface).
+//			The draw constants are the FamilyDrawConstants prefix: world-to-
+//			clip for the flat and world vertices, object-to-clip and object-
+//			to-world for the model vertex.
+//
+//=============================================================================//
+
+#ifndef RENDER_MATERIAL_SURFACE_PROGRAM_H
+#define RENDER_MATERIAL_SURFACE_PROGRAM_H
+
+#include "foundation/expected.h"
+#include "render/device/device.h"
+#include "render/material/material_programs.h"
+#include "render/material/model_lighting.h"
+#include "render/shaderlib/debug_view.h"
+
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <span>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace render::material
+{
+
+// The lightmap scale in linear light: the port's 2.0 overbright, gamma to
+// linear (pow 2.2).
+inline constexpr float kLightmapScaleLinear = 4.5947938f;
+
+// The program's material constants (std140, the Material block of
+// surface.frag).
+struct SurfaceConstants
+{
+	float tint[4] = { 1.0f, 1.0f, 1.0f, 1.0f }; // $color, $alpha
+	// vertexcolor, alphatest, reference, 1 when lighting is one (an unlit
+	// material drawn as this term's degenerate case)
+	float flags[4] = {};
+	// x: 1 when the material is fully opaque (no blend, no alpha test), where
+	// height fog writes its factor to the output alpha (the port's
+	// WRITEWATERFOGTODESTALPHA); set by Request from the variant. y: 1 when
+	// the vertex color is gamma-encoded and decoded per vertex (pow 2.2, as
+	// UnlitGeneric's port reads it); LightmappedGeneric's is used unconverted.
+	// z: the ssbump weights' scale (0.57735 with $ssbumpmathfix, else 1).
+	float state[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
+	float envTint[4] = { 1.0f, 1.0f, 1.0f, 1.0f };       // $envmaptint, $fresnelreflection
+	float envContrast[4] = { 0.0f, 0.0f, 0.0f, 0.0f };   // in effect; a: 1 - $fresnelreflection
+	float envSaturation[4] = { 1.0f, 1.0f, 1.0f, 0.0f }; // in effect
+	float selfIllumTint[4] = { 1.0f, 1.0f, 1.0f, 0.0f }; // in effect
+	float detailTint[4] = { 1.0f, 1.0f, 1.0f, 1.0f };    // $detailtint, $detailblendfactor
+	float detailScale[4] = { 4.0f, 4.0f, 0.0f, 0.0f };   // $detailscale
+	// Portal 2's $envmaplightscale: the cube map darkened where the diffuse
+	// light is dark. x: the min of $envmaplightscaleminmax, y: min + max (as
+	// the Portal 2 helper packs them), z: $envmaplightscale (0 off).
+	float envLightScale[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
+	float emission[4] = { 1.0f, 0.0f, 0.0f, 0.0f }; // x: $emissionscale (the pbr point)
+};
+static_assert( sizeof( SurfaceConstants ) == 176 );
+
+// The frame's terms (std140, the Frame block of surface.frag): one lightmap
+// term whose scale depends on how the pages encode light, and the output's
+// linear scale. LDR pages hold gamma light at half overbright (scale 2^2.2
+// after sRGB decode); integer-HDR pages hold linear light / 16 (scale 16);
+// the output scale is the frame's linear tone-mapping scale (1 without HDR).
+// The defaults are LDR's, where the family's pixel cases sit.
+//
+// The view's fog is a frame term too (legacy::CorePassFog): its color (linear,
+// tone-scaled in integer HDR) with its type in w (-1 none, 0 range, 1 height),
+// its parameters, and the eye's world z. The default is no fog.
+struct SurfaceFrame
+{
+	// lightmap scale, output scale, 1 to encode sRGB in the shader (a target
+	// without an sRGB view), 1 when specular shows
+	float light[4] = { kLightmapScaleLinear, 1.0f, 0.0f, 1.0f };
+	float fogColor[4] = { 0.0f, 0.0f, 0.0f, -1.0f };
+	float fogParams[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
+	// x: the eye's world z; y: 1 when the running game's shaders scale every
+	// ssbump's basis weights by 1/sqrt(3) (Portal 2's do; this SDK's only
+	// with $ssbumpmathfix: the backend's SsbumpBasisNormalized owns it).
+	float fogMisc[4] = {};
+	// xyz: the eye's world position (the env map's reflection, the pbr
+	// point's view direction); w: ENV_MAP_SCALE, 16 in integer HDR (cube
+	// maps hold light / 16), else 1.
+	float eye[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+};
+static_assert( sizeof( SurfaceFrame ) == 80 );
+
+// The flat vertex (surface_flat.vert): position, base and lightmap
+// coordinates, and color as UNORM8x4 (RGBA).
+struct SurfaceFlatVertex
+{
+	float position[3] = {};
+	float uv[2] = {};
+	float lightmapUv[2] = {};
+	std::uint8_t color[4] = { 255, 255, 255, 255 };
+};
+static_assert( sizeof( SurfaceFlatVertex ) == 32 );
+
+// The world vertex (surface_world.vert): the flat vertex, then the world
+// normal, tangents S and T, and the bumped lightmap pages' offset in the page
+// (lightmappedgeneric_vs20's TEXCOORD2.x: the flat page's width, as a
+// coordinate), read with tangent T as one four-component attribute.
+struct SurfaceWorldVertex
+{
+	float position[3] = {};
+	float uv[2] = {};
+	float lightmapUv[2] = {};
+	std::uint8_t color[4] = { 255, 255, 255, 255 };
+	float normal[3] = { 0.0f, 0.0f, 1.0f };
+	float tangentS[3] = { 1.0f, 0.0f, 0.0f };
+	float tangentT[3] = { 0.0f, 1.0f, 0.0f };
+	float lightmapOffset = 0.0f;
+};
+static_assert( sizeof( SurfaceWorldVertex ) == 72 );
+
+// The model vertex (surface_model.vert): position, normal, tangent (w: the
+// bitangent's sign) and uv0 of a mesh, in object space.
+struct SurfaceModelVertex
+{
+	float position[3] = {};
+	float normal[3] = {};
+	float tangent[4] = {};
+	float uv[2] = {};
+};
+static_assert( sizeof( SurfaceModelVertex ) == 48 );
+
+enum class SurfaceVertexLayout : std::uint8_t
+{
+	kFlat,  // SurfaceFlatVertex: the terms that read no normal
+	kWorld, // SurfaceWorldVertex: every term
+	kModel  // SurfaceModelVertex: every term; no lightmap coordinates
+};
+
+std::uint32_t SurfaceVertexStride( SurfaceVertexLayout layout );
+// The FamilyDrawConstants prefix the layout's vertex stage reads.
+std::uint32_t SurfaceDrawConstantBytes( SurfaceVertexLayout layout );
+
+// The terms (surface.frag's kTerms bits, the port's static combo bits where
+// they exist).
+inline constexpr std::uint32_t kSurfaceDetail = 2;
+inline constexpr std::uint32_t kSurfaceBump = 4; // the pbr point's normal map too
+inline constexpr std::uint32_t kSurfaceSsbump = 8;
+inline constexpr std::uint32_t kSurfaceEnvmap = 32;
+inline constexpr std::uint32_t kSurfaceEnvmapMask = 64;
+inline constexpr std::uint32_t kSurfaceBaseAlphaEnvmapMask = 128;
+inline constexpr std::uint32_t kSurfaceSelfIllum = 256;
+inline constexpr std::uint32_t kSurfaceNormalMapAlphaEnvmapMask = 512;
+inline constexpr std::uint32_t kSurfaceDiffuseBump = 1024;
+inline constexpr std::uint32_t kSurfacePbr = 2048;
+inline constexpr std::uint32_t kSurfaceEmissionTexture = 4096;
+// The terms that read the normal (not on the flat vertex).
+inline constexpr std::uint32_t kSurfaceNormalTerms =
+    kSurfaceBump | kSurfaceSsbump | kSurfaceEnvmap | kSurfacePbr;
+
+// One point of the program: its pipeline state and specialization.
+struct SurfaceVariant
+{
+	device::BlendMode blend = device::BlendMode::kOpaque;
+	// Whether the draw writes destination alpha: the port leaves it for
+	// translucent and alpha-tested draws (write mask, clause D17).
+	bool alphaWrite = true;
+	std::uint32_t terms = 0;      // kSurface* bits
+	std::uint32_t detailMode = 0; // $detailblendmode, with kSurfaceDetail
+	SurfaceVertexLayout layout = SurfaceVertexLayout::kFlat;
+
+	auto operator<=>( const SurfaceVariant & ) const = default;
+	bool operator==( const SurfaceVariant & ) const = default;
+};
+
+// A point's textures by TextureCache name (empty when absent: the neutral
+// texture). Base, env map and emission are gamma images (sRGB views; an HDR
+// cube holds linear light and passes as it is); the mask, the bump or normal
+// map and MRAO are data. A detail texture reads through sRGB only in mode 1
+// (additive): the other modes combine its gamma values as they are
+// (lightmappedgeneric_dx9_helper.cpp: EnableSRGBRead( SAMPLER12, mode == 1 )).
+struct SurfaceTextures
+{
+	std::string base;
+	std::string envmap; // a cube map
+	std::string envmapMask;
+	std::string bump;
+	std::string detail;
+	std::string mrao;
+	std::string emission;
+};
+
+// The split-sum table (RFC 0007, pbr_split_sum_table.h): the texels for a
+// kRGBA32Float texture sampled linearly with clamped addressing, which the
+// frame group names for the pbr point.
+struct PbrSplitSumTable
+{
+	std::uint32_t width = 0;
+	std::uint32_t height = 0;
+	device::Format format = device::Format::kRGBA32Float;
+	std::vector<float> texels; // RGBA per texel
+};
+PbrSplitSumTable SplitSumTable();
+
+enum class SurfaceStatus : std::uint8_t
+{
+	kDevice = 1,    // a layout or pipeline was refused
+	kInvalidRequest // the variant's terms read the normal, and the layout is flat
+};
+
+class SurfaceProgram
+{
+public:
+	// fragmentModule: a replacement fragment program (SPIR-V words) for the
+	// debug suites' seeded programs; empty for the program's own.
+	static foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> Create(
+	    device::IRenderDevice2 &device, device::Format colorFormat, device::Format depthFormat,
+	    std::uint32_t sampleCount = 1, std::span<const std::uint32_t> fragmentModule = {} );
+	~SurfaceProgram();
+	SurfaceProgram( const SurfaceProgram & ) = delete;
+	SurfaceProgram &operator=( const SurfaceProgram & ) = delete;
+
+	device::BindGroupLayoutId FrameLayout() const { return m_FrameLayout; }
+	device::BindGroupLayoutId MaterialLayout() const { return m_MaterialLayout; }
+	device::BindGroupLayoutId DrawLayout() const { return m_DrawLayout; }
+
+	// The pipeline for a variant (created on first use). With a debug
+	// specialization (RFC 0014) that is not neutral, the same program with
+	// the debug constants.
+	foundation::Expected<device::PipelineId, SurfaceStatus> Pipeline(
+	    const SurfaceVariant &variant, const shaderlib::DebugSpecialization &debug = {} );
+	// The debug variant of a pipeline this program made (Pipeline with a
+	// neutral specialization); kInvalidRequest when it did not make it. A
+	// neutral specialization returns the pipeline itself.
+	foundation::Expected<device::PipelineId, SurfaceStatus> DebugPipeline(
+	    device::PipelineId shipped, const shaderlib::DebugSpecialization &debug );
+	// A point as a MaterialPrograms request: the pipeline, the frame and draw
+	// layouts, and the material group (the constants, with state.x set from
+	// the variant, and the seven textures, one sampler description for all).
+	foundation::Expected<ProgramRequest, SurfaceStatus> Request( const SurfaceVariant &variant,
+	    const SurfaceConstants &constants, const SurfaceTextures &textures,
+	    const device::SamplerDesc &sampler = {} );
+	// The frame group: the terms and the split-sum table ('splitSumTable', a
+	// TextureCache name of a texture holding SplitSumTable(); empty when no
+	// point of the frame reads it) with a linear, clamped sampler.
+	GroupRequest FrameGroup( const SurfaceFrame &frame, std::string splitSumTable = {} ) const;
+	// A draw group: the lightmap page ('page', a TextureCache name staged as
+	// sRGB; empty for a mesh) and the draw's model lighting.
+	GroupRequest DrawGroup( std::string page, const ModelLighting &lighting = {},
+	    const device::SamplerDesc &sampler = {} ) const;
+
+private:
+	explicit SurfaceProgram( device::IRenderDevice2 &device ) : m_Device( device ) {}
+
+	device::IRenderDevice2 &m_Device;
+	device::Format m_ColorFormat = device::Format::kUnknown;
+	device::Format m_DepthFormat = device::Format::kUnknown;
+	std::uint32_t m_SampleCount = 1;
+	device::BindGroupLayoutId m_FrameLayout;
+	device::BindGroupLayoutId m_MaterialLayout;
+	device::BindGroupLayoutId m_DrawLayout;
+	std::span<const std::uint32_t> m_FragmentModule;
+	std::map<std::pair<SurfaceVariant, shaderlib::DebugSpecialization>, device::PipelineId>
+	    m_Pipelines;
+	// The variant behind each shipped (neutral) pipeline, for DebugPipeline.
+	std::map<std::uint64_t, SurfaceVariant> m_Shipped;
+};
+
+} // namespace render::material
+
+#endif // RENDER_MATERIAL_SURFACE_PROGRAM_H

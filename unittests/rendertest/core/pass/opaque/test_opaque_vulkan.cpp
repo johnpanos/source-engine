@@ -152,13 +152,13 @@ int main()
 		    missing.ok && missing.rgba == frameA.rgba, "O4.unresolved-draws-are-not-drawn" );
 		auto c = SceneC();
 		const material::DrawGroup *frameGroup = materials->drawGroups.Group( kPbrFrameGroup );
-		const material::DrawGroup *viewGroup = materials->drawGroups.Group( kPbrViewGroup );
+		const material::DrawGroup *lightingGroup = materials->drawGroups.Group( kPbrLighting );
 		// The lightmapped family's frame terms are another frame layout.
 		const material::DrawGroup *const lightmappedFrame[] = {
 		    materials->drawGroups.Group( kLightmappedFrameGroup ) };
 		const FrameResult frameC = DrawScene(
-		    *device, programs, *meshes, *c->Snapshot(), frameGroup, viewGroup, lightmappedFrame );
-		if ( !checks.That( frameGroup && viewGroup && frameC.ok && frameC.stats.drawn == 3 &&
+		    *device, programs, *meshes, *c->Snapshot(), frameGroup, nullptr, lightmappedFrame );
+		if ( !checks.That( frameGroup && lightingGroup && frameC.ok && frameC.stats.drawn == 3 &&
 		                       frameC.stats.unresolved == 0,
 		         "O6.lightmapped-and-pbr-draws-resolve" ) )
 			std::printf( "O6: ok %d drawn %u unresolved %u lightmapped frame group %s\n",
@@ -171,16 +171,18 @@ int main()
 		    "O6.the-lightmapped-cube-shows-its-page" );
 		const Rgb ambient{ Unorm( kAmbient[0] ), Unorm( kAmbient[1] ), Unorm( kAmbient[2] ) };
 		checks.That( Near( At( frameC, Pixel( view, { 1.5f, 0.0f, -5.25f } ) ), ambient ),
-		    "O6.the-pbr-cube-returns-the-view-s-ambient-cube" );
+		    "O6.the-pbr-cube-returns-its-ambient-cube" );
 		const Rgb vertexLit{ Unorm( kVertexLitAmbient[0] ), Unorm( kVertexLitAmbient[1] ),
 		    Unorm( kVertexLitAmbient[2] ) };
 		checks.That( Near( At( frameC, Pixel( view, { 0.0f, 1.6f, -5.5f } ) ), vertexLit ),
 		    "O6.the-vertexlit-cube-shows-its-draw-group-s-lighting" );
-		const FrameResult noView = DrawScene(
-		    *device, programs, *meshes, *c->Snapshot(), frameGroup, nullptr, lightmappedFrame );
-		checks.That( noView.ok && noView.stats.drawn == 2 && noView.stats.unresolved == 1 &&
-		                 At( noView, Pixel( view, { 1.5f, 0.0f, -5.25f } ) ) == kClear,
-		    "O6.without-the-view-group-the-pbr-draw-is-unresolved" );
+		auto unlit = SceneC( false );
+		const FrameResult noLighting = DrawScene(
+		    *device, programs, *meshes, *unlit->Snapshot(), frameGroup, nullptr, lightmappedFrame );
+		checks.That( noLighting.ok && noLighting.stats.drawn == 2 &&
+		                 noLighting.stats.unresolved == 1 &&
+		                 At( noLighting, Pixel( view, { 1.5f, 0.0f, -5.25f } ) ) == kClear,
+		    "O6.without-its-lighting-group-the-pbr-draw-is-unresolved" );
 		checks.Equal( materials->drawGroups.GroupFailures(), 0u, "O6.draw-groups-without-failure" );
 		checks.Equal( materials->programs.GroupFailures(), 0u, "O1.groups-without-failure" );
 		(void)device->WaitIdle();

@@ -65,8 +65,7 @@ int main()
 	const material::DrawGroup *const lightmappedFrame[] = {
 	    materials->drawGroups.Group( kLightmappedFrameGroup ) };
 	const FrameResult families = DrawScene( *device, *materials, *meshes, *c->Snapshot(),
-	    materials->drawGroups.Group( kPbrFrameGroup ), materials->drawGroups.Group( kPbrViewGroup ),
-	    lightmappedFrame );
+	    materials->drawGroups.Group( kPbrFrameGroup ), nullptr, lightmappedFrame );
 	checks.That( families.ok && families.stats.drawn == 3 && families.stats.unresolved == 0,
 	    "N4.lightmapped-and-pbr-draw-with-their-groups" );
 	checks.Equal( materials->programs.GroupFailures(), 0u, "N1.groups-without-failure" );

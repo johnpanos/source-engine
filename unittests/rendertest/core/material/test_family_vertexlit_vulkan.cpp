@@ -57,23 +57,23 @@ namespace vulkan = render::device::vulkan;
 const char *const kCaseFile = "quality/fixtures/legacy-shaders/families/vertexlit.vdf";
 const char *const kFixture = "quality/fixtures/render-families/vertexlit-port-v1.vdf";
 
-PbrLightType LightType( const std::string &type )
+ModelLightType LightType( const std::string &type )
 {
 	if ( type == "spot" )
-		return PbrLightType::kSpot;
+		return ModelLightType::kSpot;
 	if ( type == "directional" )
-		return PbrLightType::kDirectional;
-	return PbrLightType::kPoint;
+		return ModelLightType::kDirectional;
+	return ModelLightType::kPoint;
 }
 
 // The case's lighting as the legacy frontend hands it over: the harness's
 // eye at the origin, its cube and its lights.
 VertexLitLighting CaseLighting( const FamilyCase &testCase )
 {
-	std::vector<PbrLightDesc> lights;
+	std::vector<ModelLightDesc> lights;
 	for ( const ModelLight &light : testCase.lights )
 	{
-		PbrLightDesc desc;
+		ModelLightDesc desc;
 		desc.type = LightType( light.type );
 		std::copy( light.color, light.color + 3, desc.color );
 		std::copy( light.position, light.position + 3, desc.position );

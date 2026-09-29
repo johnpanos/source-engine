@@ -359,11 +359,13 @@ int main()
 		std::size_t copies = 0;
 		for ( const nulldev::RecordedCommand &command : control->Recorded() )
 			copies += command.op == nulldev::RecordedOp::kCopyBufferToTexture ? 1 : 0;
-		// Three 4x4 textures (4x4, 2x2, 1x1), the renderer's 1x1 white and the
+		// Three 4x4 textures (4x4, 2x2, 1x1), the renderer's 1x1 white, the
 		// programs' neutral textures for the terms that are off (a 1x1 2D and
-		// a 1x1 cube's six faces; MaterialPrograms makes them).
-		checks.Equal(
-		    copies, std::size_t( 3 * 3 + 1 + 1 + 6 ), "V8.each-texture-uploads-its-three-levels" );
+		// a 1x1 cube's six faces; MaterialPrograms makes them) and the frame
+		// group's neutral 2D for the surface program's unread split-sum slot
+		// (the group residency that holds it makes its own).
+		checks.Equal( copies, std::size_t( 3 * 3 + 1 + 1 + 6 + 1 ),
+		    "V8.each-texture-uploads-its-three-levels" );
 		checks.That( renderer.Scene().blendedBatches == 1 && renderer.Scene().texturedBatches == 3,
 		    "V8.the-translucent-batch-alone-is-blended" );
 		const hammer::viewport::Camera3D eye = EyeCamera();

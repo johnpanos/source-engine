@@ -520,7 +520,7 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 		GroupResources &resources = groups[g];
 		std::vector<device::BindGroupEntry> entries;
 		std::uint32_t binding = 0;
-		if ( !request.constants.empty() )
+		const auto addConstants = [&]
 		{
 			resources.constantsDesc.size = request.constants.size();
 			resources.constantsDesc.usages = {
@@ -528,7 +528,9 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 			keep( device.CreateBuffer( resources.constantsDesc ), resources.constants );
 			entries.push_back(
 			    { binding++, resources.constants, 0, request.constants.size(), {}, {} } );
-		}
+		};
+		if ( !request.constants.empty() && !request.constantsLast )
+			addConstants();
 		for ( const CaseTexture *texture : request.textures )
 		{
 			if ( !texture )
@@ -571,6 +573,8 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 		}
 		if ( !ok )
 			break;
+		if ( !request.constants.empty() && request.constantsLast )
+			addConstants();
 		auto group = device.CreateBindGroup( { request.layout, entries } );
 		if ( !group )
 		{
