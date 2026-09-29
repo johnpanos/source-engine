@@ -58,6 +58,10 @@ struct CorePassTarget
 	// No earlier than every submission made before this frame's: what the
 	// previous frames used can be released behind it.
 	device::CompletionToken submitted;
+	// The serial of the frame being recorded: it rises with each frame
+	// submission (a frame recorded again for a capture keeps or raises it).
+	// 0 when the backend does not count frames.
+	std::uint64_t frame = 0;
 	// The frame's light terms at the slot: the lightmap scale for how the
 	// pages encode light, and the output's linear (tone-mapping) scale.
 	float lightmapScale = 1.0f;

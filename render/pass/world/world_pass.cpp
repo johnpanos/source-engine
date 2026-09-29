@@ -44,10 +44,10 @@ struct Group
 	std::vector<SamplerId> samplers;
 };
 
-// The device objects of one world, made on the render sequence.
+// The device objects of one world for one target format, made on the
+// render sequence.
 struct Resources
 {
-	std::uint64_t generation = 0;
 	Format colorFormat = Format::kUnknown;
 	Format depthFormat = Format::kUnknown;
 	std::uint32_t samples = 1;
@@ -60,6 +60,7 @@ struct Resources
 		Group group;
 		bool ready = false;
 		bool failed = false;
+		std::string failure; // why, when failed
 	};
 	std::vector<Material> materials;
 	// Draw groups by (draw layout, lightmap page).
@@ -78,6 +79,14 @@ std::string Lower( std::string text )
 	for ( char &c : text )
 		c = char( std::tolower( static_cast<unsigned char>( c ) ) );
 	return text;
+}
+
+// Whether serial a was issued before serial b (serials wrap within the
+// tag's low 31 bits).
+bool IssuedBefore( std::uint32_t a, std::uint32_t b )
+{
+	const std::uint32_t distance = ( b - a ) & ~kWorldTag;
+	return distance != 0 && distance < ( kWorldTag >> 1 );
 }
 
 std::string PageName( int handle )
@@ -110,9 +119,12 @@ struct WorldPass::State
 	std::deque<Queued> recorded;
 	WorldStats stats;
 
-	// Render sequence only.
-	Resources resources;
-	std::vector<Resources> retired;
+	// Render sequence only: the current world's objects, one set per target
+	// format (most recently used last), and earlier sets with the frame that
+	// retired them.
+	std::uint64_t variantsGeneration = 0;
+	std::vector<Resources> variants;
+	std::vector<std::pair<std::uint64_t, Resources>> retired;
 
 	void Fail( const std::string &why )
 	{
@@ -162,13 +174,8 @@ WorldPass::WorldPass() : m_State( std::make_unique<State>() )
 {
 }
 
-WorldPass::~WorldPass()
-{
-	State &s = *m_State;
-	s.Release( s.resources, CompletionToken() );
-	for ( Resources &old : s.retired )
-		s.Release( old, CompletionToken() );
-}
+// Without ReleaseDevice the device may be gone: the handles are dropped.
+WorldPass::~WorldPass() = default;
 
 void WorldPass::SetWorld( WorldData data )
 {
@@ -192,6 +199,8 @@ void WorldPass::SetWorld( WorldData data )
 		else
 		{
 			claimed.desc = std::move( mapped ).Value();
+			for ( const auto &[key, value] : source.defaults )
+				claimed.desc.declaredDefaults.push_back( { key, value } );
 			// Texture handles by the importer's names, matched by variable key.
 			for ( const material::MaterialValue &value : claimed.desc.values )
 			{
@@ -230,8 +239,14 @@ void WorldPass::SetWorld( WorldData data )
 	std::vector<std::pair<std::string, std::uint32_t>> claimedNames;
 	for ( std::size_t m = 0; m < data.materials.size(); ++m )
 	{
-		if ( ( *claims )[m].draws )
-			claimedNames.emplace_back( data.materials[m].name, perMaterial[m] );
+		if ( !( *claims )[m].draws )
+			continue;
+		// How many of a claimed material's keys the model does not read (each
+		// at its neutral value, or the material would not be claimed).
+		std::string name = data.materials[m].name;
+		if ( const std::size_t unread = ( *claims )[m].desc.unmapped.size() )
+			name += " (" + std::to_string( unread ) + " unread keys at neutral)";
+		claimedNames.emplace_back( std::move( name ), perMaterial[m] );
 	}
 	std::vector<std::pair<std::string, std::uint32_t>> ranked( gaps.begin(), gaps.end() );
 	std::stable_sort( ranked.begin(), ranked.end(),
@@ -243,8 +258,7 @@ void WorldPass::SetWorld( WorldData data )
 	s.world = std::make_shared<const WorldData>( std::move( data ) );
 	s.claims = std::move( claims );
 	++s.generation;
-	s.views.clear();
-	s.recorded.clear();
+	s.views.clear(); // recorded views stay: a re-recorded slot of theirs fails alone
 	s.stats.materials = counts.materials;
 	s.stats.claimedMaterials = counts.claimedMaterials;
 	s.stats.surfaces = counts.surfaces;
@@ -260,8 +274,7 @@ void WorldPass::ClearWorld()
 	s.world.reset();
 	s.claims.reset();
 	++s.generation;
-	s.views.clear();
-	s.recorded.clear();
+	s.views.clear(); // recorded views stay: a re-recorded slot of theirs fails alone
 }
 
 bool WorldPass::Draws( std::uint32_t material ) const
@@ -302,8 +315,10 @@ void WorldPass::ReleaseDevice( IRenderDevice2 &device )
 	State &s = *m_State;
 	if ( s.device != &device )
 		return;
-	s.Release( s.resources, CompletionToken() );
-	for ( Resources &old : s.retired )
+	for ( Resources &variant : s.variants )
+		s.Release( variant, CompletionToken() );
+	s.variants.clear();
+	for ( auto &[frame, old] : s.retired )
 		s.Release( old, CompletionToken() );
 	s.retired.clear();
 	(void)device.Poll();
@@ -315,6 +330,13 @@ WorldStats WorldPass::Stats() const
 	const State &s = *m_State;
 	std::lock_guard<std::mutex> guard( s.lock );
 	return s.stats;
+}
+
+std::uint64_t WorldPass::Failures() const
+{
+	const State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	return s.stats.viewsFailed;
 }
 
 void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldTarget &target )
@@ -329,24 +351,27 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	{
 		std::lock_guard<std::mutex> guard( s.lock );
 		// A slot recorded again (the same stream for a capture) draws the
-		// view it drew the first time.
-		for ( auto again = s.recorded.rbegin(); again != s.recorded.rend() && !found; ++again )
+		// view it drew the first time; one of an earlier world draws nothing
+		// and leaves the queue (the next frame's views) alone.
+		bool again = false;
+		for ( auto kept = s.recorded.rbegin(); kept != s.recorded.rend() && !again; ++kept )
 		{
-			if ( again->serial == serial )
+			if ( kept->serial == serial )
 			{
-				found = again->generation == s.generation;
-				view = again->view;
+				again = true;
+				found = kept->generation == s.generation;
+				view = kept->view;
 			}
 		}
 		// Views are queued in stream order: earlier ones whose slots did not
-		// record are dropped.
-		while ( !found && !s.views.empty() && s.views.front().serial != serial )
+		// record are dropped; a slot older than every queued view takes none.
+		while ( !again && !s.views.empty() && IssuedBefore( s.views.front().serial, serial ) )
 		{
 			s.views.pop_front();
 			++s.stats.viewsFailed;
 			s.stats.lastFailure = "a queued view's slot never recorded";
 		}
-		if ( !found && !s.views.empty() )
+		if ( !again && !s.views.empty() && s.views.front().serial == serial )
 		{
 			// Only against the world it was queued for (SetWorld also clears
 			// the queue; this holds if a slot records across the change).
@@ -383,28 +408,57 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	if ( s.device != target.device )
 	{
 		// A new backend device: the old one's objects went with it.
-		s.resources = Resources();
+		s.variants.clear();
 		s.retired.clear();
 		s.device = target.device;
 	}
 	IRenderDevice2 &device = *s.device;
 	IWorldTextures &textures = *target.textures;
 
-	// The world's device objects, for this world and these formats.
-	Resources &r = s.resources;
-	if ( r.generation != generation || r.colorFormat != target.colorFormat ||
-	     r.depthFormat != target.depthFormat || r.samples != target.samples )
+	// The world's device objects for these formats. Objects of an earlier
+	// world, or a set pushed out, retire with this frame: slots earlier in
+	// it may have used them, so they are released at a later frame's slot,
+	// whose submitted token covers this frame.
+	constexpr std::size_t kMaxVariants = 4;
+	if ( s.variantsGeneration != generation )
 	{
-		s.retired.push_back( std::move( r ) );
-		r = Resources();
-		r.generation = generation;
-		r.colorFormat = target.colorFormat;
-		r.depthFormat = target.depthFormat;
-		r.samples = target.samples;
+		for ( Resources &variant : s.variants )
+			s.retired.emplace_back( target.frame, std::move( variant ) );
+		s.variants.clear();
+		s.variantsGeneration = generation;
 	}
-	for ( Resources &old : s.retired )
-		s.Release( old, target.submitted );
-	s.retired.clear();
+	auto variant = std::find_if( s.variants.begin(), s.variants.end(),
+	    [&]( const Resources &v )
+	    {
+		    return v.colorFormat == target.colorFormat && v.depthFormat == target.depthFormat &&
+		           v.samples == target.samples;
+	    } );
+	if ( variant == s.variants.end() )
+	{
+		if ( s.variants.size() >= kMaxVariants )
+		{
+			s.retired.emplace_back( target.frame, std::move( s.variants.front() ) );
+			s.variants.erase( s.variants.begin() );
+		}
+		Resources made;
+		made.colorFormat = target.colorFormat;
+		made.depthFormat = target.depthFormat;
+		made.samples = target.samples;
+		s.variants.push_back( std::move( made ) );
+	}
+	else if ( variant + 1 != s.variants.end() )
+	{
+		std::rotate( variant, variant + 1, s.variants.end() );
+	}
+	Resources &r = s.variants.back();
+	std::erase_if( s.retired,
+	    [&]( std::pair<std::uint64_t, Resources> &old )
+	    {
+		    if ( target.frame == 0 || old.first >= target.frame )
+			    return false;
+		    s.Release( old.second, target.submitted );
+		    return true;
+	    } );
 	if ( !r.resolver )
 	{
 		auto resolver = material::ProgramResolver::Create(
@@ -526,8 +580,10 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			                              : textures.Import( handle->second, texture.srgb );
 			if ( !id.IsValid() )
 			{
-				*why = "texture " + texture.name + " did not import" +
-				       ( texture.srgb ? " through an sRGB view" : "" );
+				*why = handle == handles.end()
+				           ? "texture " + texture.name + " has no material system handle"
+				           : "texture " + texture.name + " did not import" +
+				                 ( texture.srgb ? " through an sRGB view" : "" );
 				return false;
 			}
 			auto sampler =
@@ -559,9 +615,18 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		return true;
 	};
 
+	// The view's first failure; the view counts once.
+	std::string failure;
+	auto note = [&]( std::string why )
+	{
+		if ( failure.empty() )
+			failure = std::move( why );
+	};
 	auto materialReady = [&]( std::uint32_t index ) -> Resources::Material *
 	{
 		Resources::Material &m = r.materials[index];
+		if ( m.failed )
+			note( m.failure );
 		if ( m.ready || m.failed )
 			return m.ready ? &m : nullptr;
 		const Claimed &claimed = ( *claims )[index];
@@ -577,7 +642,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( !why.empty() )
 		{
 			m.failed = true;
-			s.Fail( "material " + name + ": " + why );
+			m.failure = "material " + name + ": " + why;
+			note( m.failure );
 			return nullptr;
 		}
 		m.program = std::move( program ).Value();
@@ -596,7 +662,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		{
 			if ( input != "lightmap" )
 			{
-				s.Fail( "a program reads draw input " + input + ", which the world lacks" );
+				note( "a program reads draw input " + input + ", which the world lacks" );
 				return nullptr;
 			}
 			inputs.push_back( PageName( page ) );
@@ -608,7 +674,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		if ( !request || !buildGroup( *request, handles, group, &why ) )
 		{
 			s.ReleaseGroup( group, CompletionToken() );
-			s.Fail( "a draw group: " + ( why.empty() ? std::string( "not resolved" ) : why ) );
+			note( "a draw group: " + ( why.empty() ? std::string( "not resolved" ) : why ) );
 			return nullptr;
 		}
 		return &group;
@@ -627,7 +693,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 		    r.resolver->FrameGroup( m.program, terms );
 		if ( !request )
 		{
-			s.Fail( "a frame group was not resolved" );
+			note( "a frame group was not resolved" );
 			return nullptr;
 		}
 		Group &group = r.frameGroups[layout];
@@ -637,7 +703,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 			if ( !buildGroup( *request, {}, group, &why ) )
 			{
 				s.ReleaseGroup( group, CompletionToken() );
-				s.Fail( "a frame group: " + why );
+				note( "a frame group: " + why );
 				return nullptr;
 			}
 			framesWritten[layout] = true; // buildGroup wrote this slot's terms
@@ -663,6 +729,7 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	{
 		if ( index >= world->surfaces.size() )
 		{
+			note( "a view named a surface the world does not have" );
 			complete = false;
 			continue;
 		}
@@ -756,8 +823,8 @@ void WorldPass::Record( std::uint32_t tag, CommandEncoder &encoder, const WorldT
 	if ( !complete )
 	{
 		++s.stats.viewsFailed;
-		if ( s.stats.lastFailure.empty() )
-			s.stats.lastFailure = "a view named surfaces the pass does not draw";
+		s.stats.lastFailure =
+		    failure.empty() ? "a view named surfaces the pass does not draw" : failure;
 	}
 }
 

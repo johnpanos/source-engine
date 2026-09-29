@@ -39,6 +39,9 @@ struct RenderCoreWorldMaterial
 	// The texture variables' textures, parallel to keys (null where the
 	// variable holds no texture).
 	ITexture *const *textures;
+	// The shader's declared default of each variable, parallel to keys (null
+	// where the variable is not a shader parameter).
+	const char *const *defaults;
 };
 
 struct RenderCoreWorldStats
@@ -74,6 +77,10 @@ public:
 	// surface, or no backend slots): then the caller draws them itself.
 	virtual bool DrawView( const unsigned int *surfaces, unsigned int count,
 	    const float worldToClip[16], const float viewport[6] ) = 0;
+	// Views and claimed materials the core failed to draw, so far (never
+	// drawn by legacy instead: the caller's policy decides what a failure
+	// costs).
+	virtual unsigned long long Failures() const = 0;
 	virtual void GetStats( RenderCoreWorldStats *out ) const = 0;
 
 protected:

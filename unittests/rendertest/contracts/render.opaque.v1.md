@@ -37,3 +37,7 @@ instance storage, and the submission-cost target.
 | W3 | A slot recorded again (the backend re-records a frame's stream for a capture) draws the same view |
 | W4 | A slot whose view was queued against an earlier world draws nothing, and a view naming a surface the pass does not draw is counted; neither is silent |
 | W5 | The stats name the claimed materials and their surface counts |
+| W6 | A claimed material the render sequence fails (a texture that does not import) is a counted failure naming the material and why; the pass still claims it and never hands it back to legacy (RFC 0016 "No escape hatches") |
+| W7 | A slot of an earlier world recorded again (a capture across a level change) fails alone: the next world's queued views stay queued and draw |
+| W8 | Objects a frame's slots used outlive that frame: a level change or a second target format between two slots of one submission leaves the first slot's objects alive; they are released at a later frame's slot, behind its submitted token (`WorldTarget::frame`) |
+| W9 | A variable the model does not read keeps its material out unless it holds its shader's neutral value (`MaterialDesc::declaredDefaults`); one with no neutral value keeps it out too; the gap names the variable |

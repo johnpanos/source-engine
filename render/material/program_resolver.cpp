@@ -13,6 +13,10 @@
 #include "render/material/unlit_family.h"
 #include "render/material/vmt_mapping.h"
 
+#include <cctype>
+#include <cmath>
+#include <cstdlib>
+
 namespace render::material
 {
 
@@ -31,6 +35,93 @@ const FamilyRegistry &Registry()
 	return registry;
 }
 
+bool SameKey( std::string_view a, std::string_view b )
+{
+	if ( a.size() != b.size() )
+		return false;
+	for ( std::size_t i = 0; i < a.size(); ++i )
+	{
+		if ( std::tolower( static_cast<unsigned char>( a[i] ) ) !=
+		     std::tolower( static_cast<unsigned char>( b[i] ) ) )
+			return false;
+	}
+	return true;
+}
+
+// The numbers of a value ("0.5", "[1 1 1]", "{255 255 255}"), when it is
+// only numbers.
+std::optional<std::vector<double>> Numbers( const std::string &value )
+{
+	std::vector<double> numbers;
+	const char *at = value.c_str();
+	while ( *at )
+	{
+		if ( std::isspace( static_cast<unsigned char>( *at ) ) || *at == '[' || *at == ']' ||
+		     *at == '{' || *at == '}' )
+		{
+			++at;
+			continue;
+		}
+		char *end = nullptr;
+		const double number = std::strtod( at, &end );
+		if ( end == at )
+			return std::nullopt;
+		numbers.push_back( number );
+		at = end;
+	}
+	return numbers;
+}
+
+// Whether a variable's value is its declared default: equal numbers, or equal
+// text ignoring case. An empty declared default is 0 for a number.
+bool AtDefault( const std::string &value, const std::string &declared )
+{
+	const std::optional<std::vector<double>> a = Numbers( value );
+	std::optional<std::vector<double>> b = Numbers( declared );
+	if ( a && b && b->empty() && a->size() == 1 )
+		b = std::vector<double>{ 0.0 };
+	if ( a && b && !a->empty() )
+	{
+		if ( a->size() != b->size() )
+			return false;
+		for ( std::size_t i = 0; i < a->size(); ++i )
+		{
+			if ( std::fabs( ( *a )[i] - ( *b )[i] ) > 1e-4 )
+				return false;
+		}
+		return true;
+	}
+	return SameKey( value, declared );
+}
+
+// No escape hatch: a variable the model does not read keeps the material
+// out unless it holds its legacy shader's declared default.
+std::optional<std::string> UnreadVariable( const MaterialDesc &material )
+{
+	for ( const std::string &key : material.unmapped )
+	{
+		const VmtPair *set = nullptr;
+		for ( const VmtPair &variable : material.variables )
+		{
+			if ( SameKey( variable.key, key ) )
+				set = &variable;
+		}
+		const VmtPair *declared = nullptr;
+		for ( const VmtPair &item : material.declaredDefaults )
+		{
+			if ( SameKey( item.key, key ) )
+				declared = &item;
+		}
+		if ( !set )
+			continue;
+		if ( !declared )
+			return "the model does not read " + key;
+		if ( !AtDefault( set->value, declared->value ) )
+			return "the model does not read " + key + " " + set->value;
+	}
+	return std::nullopt;
+}
+
 // The material's block, with a stand-in for every texture it binds (a claim
 // asks only whether one is bound).
 std::optional<ParameterBlock> BlockFor( const MaterialDesc &material, std::string *why )
@@ -40,6 +131,11 @@ std::optional<ParameterBlock> BlockFor( const MaterialDesc &material, std::strin
 	{
 		*why = "shader " + material.shader + " maps to no family the model draws (" +
 		       material.family + ")";
+		return std::nullopt;
+	}
+	if ( std::optional<std::string> unread = UnreadVariable( material ) )
+	{
+		*why = *unread;
 		return std::nullopt;
 	}
 	ParameterBlock block( *family );

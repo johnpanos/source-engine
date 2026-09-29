@@ -25,12 +25,17 @@
 //			and the lightmap pages imported from the backend (IWorldTextures)
 //			with the backend's samplers.
 //			Device objects are made on the render sequence at the first Record
-//			after SetWorld, and the previous world's are released behind the
-//			frames that used them.
+//			after SetWorld, one set per target format, and the previous
+//			world's are released at a slot of a later frame, behind the
+//			submissions of the frames that used them.
 //
-//			Nothing is dropped silently: a view the pass cannot draw (no sRGB
-//			target, several samples, a texture that does not import) counts in
-//			WorldStats with the reason.
+//			Nothing is dropped silently, and nothing the pass claimed goes
+//			back to legacy: a view or a claimed material the pass fails to draw
+//			(a texture that does not import, a refused pipeline, a slot with no
+//			queued view) counts in WorldStats::viewsFailed with the reason.
+//			The composition root decides what a failure costs (the engine's
+//			r_core_world_strict makes it fatal). Only a material the model does
+//			not draw is legacy's, decided at SetWorld.
 //
 //			Threads: SetWorld, ClearWorld, Draws and QueueView on the main
 //			thread; Record on the render sequence. The queue between them is
@@ -68,6 +73,9 @@ struct WorldMaterial
 	std::vector<std::pair<std::string, std::string>> variables; // "$key", value
 	// The material system handle of each texture variable ("$key", handle).
 	std::vector<std::pair<std::string, int>> textures;
+	// The legacy shader's declared default of each parameter ("$key",
+	// default): a variable the model does not read must hold it.
+	std::vector<std::pair<std::string, std::string>> defaults;
 };
 
 struct WorldSurface
@@ -113,9 +121,14 @@ struct WorldTarget
 	std::uint32_t height = 0;
 	std::uint32_t samples = 1;
 	IWorldTextures *textures = nullptr;
-	// A token no earlier than every submission made so far: the previous
-	// world's objects are released behind it.
+	// A token no earlier than every submission made so far; at a slot of
+	// frame F it covers every frame before F. Objects a frame used are
+	// released behind it at a slot of a later frame.
 	device::CompletionToken submitted;
+	// The serial of the frame being recorded (rises with each frame's
+	// submission; a frame recorded again keeps or raises it). 0 when the
+	// target does not know: retired objects then wait for ReleaseDevice.
+	std::uint64_t frame = 0;
 	// The frame's light terms at the slot (material::FrameTerms).
 	float lightmapScale = 1.0f;
 	float outputScale = 1.0f;
@@ -136,7 +149,7 @@ struct WorldStats
 	std::uint32_t claimedSurfaces = 0;
 	std::uint64_t viewsQueued = 0;
 	std::uint64_t viewsDrawn = 0;
-	std::uint64_t viewsFailed = 0;
+	std::uint64_t viewsFailed = 0; // claimed work not drawn: never legacy's
 	std::uint64_t surfacesDrawn = 0;
 	std::string lastFailure;
 	// Why materials stay legacy: reason and count, most frequent first.
@@ -168,10 +181,14 @@ public:
 	// The tag of the slot to mark for the view; 0 when there is nothing to draw.
 	std::uint32_t QueueView( WorldView view );
 	WorldStats Stats() const;
+	// WorldStats::viewsFailed alone (cheap, for a per-view policy check).
+	std::uint64_t Failures() const;
 
 	// Render sequence: draws the view a slot's tag names.
 	void Record( std::uint32_t tag, device::CommandEncoder &encoder, const WorldTarget &target );
 	// The device is about to go (after an idle wait): its objects are released.
+	// A pass destroyed without it drops its handles without calling a device
+	// (which may be gone by then).
 	void ReleaseDevice( device::IRenderDevice2 &device );
 
 private:

@@ -13,8 +13,10 @@
 #include "gl_matsysiface.h"
 #include "materialsystem/imaterial.h"
 #include "materialsystem/imaterialvar.h"
+#include "materialsystem/IShader.h"
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "materialsystem/itexture.h"
+#include "tier1/KeyValues.h"
 #include "tier1/convar.h"
 #include "tier1/utldict.h"
 #include "tier2/tier2.h"
@@ -32,6 +34,19 @@ static ConVar r_core_world_isolate( "r_core_world_isolate", "0", FCVAR_CHEAT,
     "RFC 0016 K5 pixel oracle: the legacy world chains draw only the surfaces the core's model "
     "takes (1), with r_core_world 0 or 1, so a frame compares exactly those surfaces" );
 
+// No escape hatch (user direction, 2026-09-28): what the core claimed, legacy
+// never draws. Only a material the model cannot draw is legacy's, decided at
+// level load and named in r_core_world_stats.
+static ConVar r_core_world_strict( "r_core_world_strict", "1", 0,
+    "RFC 0016 K5: a view or claimed material the render core fails to draw is fatal (1, the "
+    "default). 0 reports each failure and leaves the surfaces undrawn; legacy never draws what "
+    "the core claimed" );
+
+static ConVar r_core_world_seed_failure( "r_core_world_seed_failure", "", FCVAR_CHEAT,
+    "RFC 0016 K5 negative control: the named material reaches the core without its texture "
+    "handles, so the core claims it and fails it at its first view (fatal under "
+    "r_core_world_strict). Read at level load" );
+
 namespace
 {
 
@@ -39,6 +54,7 @@ struct CoreWorldState
 {
 	bool loaded = false;
 	bool viewActive = false;
+	unsigned long long failuresSeen = 0;
 	CUtlVector<unsigned char> takes; // per surface index
 };
 
@@ -57,27 +73,149 @@ struct MaterialVars
 	CUtlVector<const char *> keyPtrs;
 	CUtlVector<const char *> valuePtrs;
 	CUtlVector<ITexture *> textures;
+	// Each variable's neutral value (its shader's, see NeutralMaterial), or
+	// an empty string with a null pointer where there is none.
+	CUtlVector<CUtlString> defaultValues;
+	CUtlVector<bool> hasDefault;
+	CUtlVector<const char *> defaults;
 };
 
-void ReadVariables( IMaterial *pMaterial, MaterialVars &out )
+// The material flags by their VMT keys (CShaderSystem::ShaderStateString's
+// names): the material system folds them into $flags, and the core reads
+// them as keys.
+const struct
+{
+	MaterialVarFlags_t flag;
+	const char *key;
+} s_FlagKeys[] = {
+    { MATERIAL_VAR_NO_DRAW, "$no_draw" },
+    { MATERIAL_VAR_VERTEXCOLOR, "$vertexcolor" },
+    { MATERIAL_VAR_VERTEXALPHA, "$vertexalpha" },
+    { MATERIAL_VAR_SELFILLUM, "$selfillum" },
+    { MATERIAL_VAR_ADDITIVE, "$additive" },
+    { MATERIAL_VAR_ALPHATEST, "$alphatest" },
+    { MATERIAL_VAR_MULTIPASS, "$multipass" },
+    { MATERIAL_VAR_ZNEARER, "$znearer" },
+    { MATERIAL_VAR_MODEL, "$model" },
+    { MATERIAL_VAR_FLAT, "$flat" },
+    { MATERIAL_VAR_NOCULL, "$nocull" },
+    { MATERIAL_VAR_NOFOG, "$nofog" },
+    { MATERIAL_VAR_IGNOREZ, "$ignorez" },
+    { MATERIAL_VAR_DECAL, "$decal" },
+    { MATERIAL_VAR_ENVMAPSPHERE, "$envmapsphere" },
+    { MATERIAL_VAR_NOALPHAMOD, "$noalphamod" },
+    { MATERIAL_VAR_ENVMAPCAMERASPACE, "$envmapcameraspace" },
+    { MATERIAL_VAR_BASEALPHAENVMAPMASK, "$basealphaenvmapmask" },
+    { MATERIAL_VAR_TRANSLUCENT, "$translucent" },
+    { MATERIAL_VAR_NORMALMAPALPHAENVMAPMASK, "$normalmapalphaenvmapmask" },
+    { MATERIAL_VAR_ENVMAPMODE, "$envmapmode" },
+    { MATERIAL_VAR_HALFLAMBERT, "$halflambert" },
+    { MATERIAL_VAR_WIREFRAME, "$wireframe" },
+    { MATERIAL_VAR_ALLOWALPHATOCOVERAGE, "$allowalphatocoverage" },
+    { MATERIAL_VAR_IGNORE_ALPHA_MODULATION, "$ignore_alpha_modulation" },
+};
+
+// Legacy's neutral values for a shader's parameters: a material of that
+// shader with no VMT parameters, initialized by the shader (its InitParams
+// sets what an absent parameter means). One per shader, for one level load.
+struct NeutralMaterials
+{
+	CUtlDict<IMaterial *, int> byShader;
+
+	IMaterial *For( const char *pShader )
+	{
+		const int found = byShader.Find( pShader );
+		if ( found != byShader.InvalidIndex() )
+			return byShader[found];
+		char name[256];
+		V_snprintf( name, sizeof( name ), "__render_core_neutral/%s", pShader );
+		IMaterial *pMaterial = materials->CreateMaterial( name, new KeyValues( pShader ) );
+		byShader.Insert( pShader, pMaterial );
+		return pMaterial;
+	}
+	~NeutralMaterials()
+	{
+		for ( int i = byShader.First(); i != byShader.InvalidIndex(); i = byShader.Next( i ) )
+		{
+			if ( IMaterial *pMaterial = byShader[i] )
+			{
+				pMaterial->DecrementReferenceCount();
+				pMaterial->DeleteIfUnreferenced();
+			}
+		}
+	}
+};
+
+// The shader a material runs (after fallback), by name.
+IShader *FindShader( const char *pName )
+{
+	static CUtlVector<IShader *> s_Shaders;
+	if ( s_Shaders.Count() != materials->ShaderCount() )
+	{
+		s_Shaders.SetCount( materials->ShaderCount() );
+		s_Shaders.SetCount( materials->GetShaders( 0, s_Shaders.Count(), s_Shaders.Base() ) );
+	}
+	for ( int i = 0; i < s_Shaders.Count(); ++i )
+	{
+		if ( s_Shaders[i] && !V_stricmp( s_Shaders[i]->GetName(), pName ) )
+			return s_Shaders[i];
+	}
+	return NULL;
+}
+
+void ReadVariables( IMaterial *pMaterial, NeutralMaterials &neutrals, MaterialVars &out )
 {
 	out.material = pMaterial;
 	IMaterialVar **ppParams = pMaterial->GetShaderParams();
 	const int nParams = pMaterial->ShaderParamCount();
+	IShader *pShader = FindShader( pMaterial->GetShaderName() );
+	IMaterial *pNeutral = neutrals.For( pMaterial->GetShaderName() );
 	for ( int i = 0; i < nParams; ++i )
 	{
 		IMaterialVar *pVar = ppParams[i];
 		if ( !pVar || !pVar->IsDefined() )
 			continue;
+		// The flag words: their flags follow as keys.
+		if ( !V_stricmp( pVar->GetName(), "$flags" ) ||
+		     !V_stricmp( pVar->GetName(), "$flags_defined" ) ||
+		     !V_stricmp( pVar->GetName(), "$flags2" ) ||
+		     !V_stricmp( pVar->GetName(), "$flags_defined2" ) )
+			continue;
 		out.keys.AddToTail( CUtlString( pVar->GetName() ) );
 		out.values.AddToTail( CUtlString( pVar->GetStringValue() ) );
 		out.textures.AddToTail(
 		    pVar->GetType() == MATERIAL_VAR_TYPE_TEXTURE ? pVar->GetTextureValue() : NULL );
+		// The neutral material's value; else the shader's declared default
+		// (the material's parameters are its shader's, in order).
+		bool found = false;
+		IMaterialVar *pNeutralVar =
+		    pNeutral ? pNeutral->FindVar( pVar->GetName(), &found, false ) : NULL;
+		const bool declared = pShader && i < pShader->GetNumParams() &&
+		                      !V_stricmp( pShader->GetParamName( i ), pVar->GetName() );
+		if ( found && pNeutralVar && pNeutralVar->IsDefined() )
+			out.defaultValues.AddToTail( CUtlString( pNeutralVar->GetStringValue() ) );
+		else
+			out.defaultValues.AddToTail(
+			    CUtlString( declared ? pShader->GetParamDefault( i ) : "" ) );
+		out.hasDefault.AddToTail(
+		    ( found && pNeutralVar && pNeutralVar->IsDefined() ) || declared );
+	}
+	for ( const auto &flag : s_FlagKeys )
+	{
+		if ( !pMaterial->GetMaterialVarFlag( flag.flag ) )
+			continue;
+		out.keys.AddToTail( CUtlString( flag.key ) );
+		out.values.AddToTail( CUtlString( "1" ) );
+		out.textures.AddToTail( NULL );
+		out.defaultValues.AddToTail(
+		    CUtlString( pNeutral && pNeutral->GetMaterialVarFlag( flag.flag ) ? "1" : "0" ) );
+		out.hasDefault.AddToTail( true );
 	}
 	for ( int i = 0; i < out.keys.Count(); ++i )
 	{
 		out.keyPtrs.AddToTail( out.keys[i].Get() );
 		out.valuePtrs.AddToTail( out.values[i].Get() );
+		out.defaults.AddToTail( out.hasDefault[i] ? out.defaultValues[i].Get() : NULL );
 	}
 }
 
@@ -91,6 +229,31 @@ bool SurfaceEligible( SurfaceHandle_t surfID )
 	return pTexInfo && pTexInfo->material;
 }
 
+// The core's failures since the last check, under r_core_world_strict (the
+// render sequence records a frame behind the main thread in queued mode, so
+// a failure surfaces here within a frame or two).
+void CheckFailures( IRenderCoreWorld *pWorld )
+{
+	CoreWorldState &state = State();
+	const unsigned long long failures = pWorld->Failures();
+	if ( failures == state.failuresSeen )
+		return;
+	RenderCoreWorldStats stats;
+	pWorld->GetStats( &stats );
+	const unsigned long long newFailures = failures - state.failuresSeen;
+	state.failuresSeen = failures;
+	if ( r_core_world_strict.GetBool() )
+	{
+		Sys_Error( "r_core_world: the render core failed %llu claimed view(s): %s "
+		           "(r_core_world_strict 0 reports failures instead; legacy never draws what the "
+		           "core claimed)\n",
+		    newFailures, stats.lastFailure );
+	}
+	Warning( "r_core_world: the render core failed %llu claimed view(s), surfaces left undrawn: "
+	         "%s\n",
+	    newFailures, stats.lastFailure );
+}
+
 } // namespace
 
 void RenderCoreWorldDraw_LevelInit()
@@ -99,6 +262,8 @@ void RenderCoreWorldDraw_LevelInit()
 	state.loaded = false;
 	state.takes.RemoveAll();
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
+	if ( pWorld )
+		state.failuresSeen = pWorld->Failures();
 	worldbrushdata_t *pBrush = host_state.worldbrush;
 	if ( !pWorld || !pBrush )
 		return;
@@ -106,6 +271,7 @@ void RenderCoreWorldDraw_LevelInit()
 	CUtlVector<unsigned int> indices;
 	CUtlVector<RenderCoreWorldSurface> surfaces;
 	CUtlVector<MaterialVars> materials;
+	NeutralMaterials neutrals;
 	CUtlVector<int> surfaceOfIndex; // per surface index: its surface entry, or -1
 	surfaceOfIndex.SetCount( pBrush->numsurfaces );
 	for ( int i = 0; i < pBrush->numsurfaces; ++i )
@@ -127,7 +293,7 @@ void RenderCoreWorldDraw_LevelInit()
 		if ( material < 0 )
 		{
 			material = materials.AddToTail();
-			ReadVariables( pMaterial, materials[material] );
+			ReadVariables( pMaterial, neutrals, materials[material] );
 		}
 
 		SurfaceCtx_t ctx;
@@ -176,6 +342,13 @@ void RenderCoreWorldDraw_LevelInit()
 		desc.keys = materials[m].keyPtrs.Base();
 		desc.values = materials[m].valuePtrs.Base();
 		desc.textures = materials[m].textures.Base();
+		desc.defaults = materials[m].defaults.Base();
+		if ( r_core_world_seed_failure.GetString()[0] &&
+		     !V_stricmp( desc.name, r_core_world_seed_failure.GetString() ) )
+		{
+			for ( int t = 0; t < materials[m].textures.Count(); ++t )
+				materials[m].textures[t] = NULL;
+		}
 		materialDescs.AddToTail( desc );
 	}
 	pWorld->SetWorld( vertices.Base(), vertices.Count(), indices.Base(), indices.Count(),
@@ -209,7 +382,10 @@ void RenderCoreWorldDraw_LevelShutdown()
 	state.viewActive = false;
 	state.takes.RemoveAll();
 	if ( IRenderCoreWorld *pWorld = RenderCoreHost_World() )
+	{
+		CheckFailures( pWorld );
 		pWorld->ClearWorld();
+	}
 }
 
 bool RenderCoreWorldDraw_ViewEligible( unsigned long flags )
@@ -238,7 +414,10 @@ void RenderCoreWorldDraw_BeginView( const unsigned int *pSurfaces, int nCount )
 	CoreWorldState &state = State();
 	state.viewActive = false;
 	IRenderCoreWorld *pWorld = RenderCoreHost_World();
-	if ( !pWorld || nCount <= 0 )
+	if ( !pWorld )
+		return;
+	CheckFailures( pWorld );
+	if ( nCount <= 0 )
 		return;
 	if ( r_core_world.GetInt() == 3 )
 	{

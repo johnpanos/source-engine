@@ -111,6 +111,11 @@ struct MaterialDesc
 	std::vector<MaterialValue> values; // family parameters the VMT sets, in key-row order
 	std::vector<VmtPair> variables;    // every variable after conditions, fallback and patches
 	std::vector<std::string> unmapped; // variables the family does not map (lower case)
+	// The legacy shader's declared default for each of its parameters (its
+	// IShader's), when the caller has them: an unmapped variable at its
+	// declared default is neutral; any other unmapped variable keeps the
+	// material out of the model (program_resolver.h).
+	std::vector<VmtPair> declaredDefaults;
 	std::vector<VmtPair> metadata;     // keys read outside the renderer
 	std::vector<VmtPair> editorKeys;   // '%' keys
 	std::vector<ProxyDesc> proxies;

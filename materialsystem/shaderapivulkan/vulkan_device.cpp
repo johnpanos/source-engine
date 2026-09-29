@@ -6750,6 +6750,7 @@ render::legacy::CorePassTarget CVulkanContext::CorePassTargetFor( int target )
 	if ( m_hostDevice )
 		out.submitted = { render::device::QueueKind::kGraphics, m_hostDevice->Port().Epoch(),
 		    m_hostDevice->SubmittedValue() };
+	out.frame = m_submitSerial + 1;
 	// Render-target textures are not imported yet.
 	if ( target != -1 || !m_hostDevice || m_acquiredImage >= m_swapImages.size() )
 		return out;

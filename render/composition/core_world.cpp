@@ -83,6 +83,8 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 		{
 			const char *key = source.keys[v] ? source.keys[v] : "";
 			material.variables.emplace_back( key, source.values[v] ? source.values[v] : "" );
+			if ( source.defaults && source.defaults[v] )
+				material.defaults.emplace_back( key, source.defaults[v] );
 			ITexture *texture = source.textures ? source.textures[v] : nullptr;
 			if ( texture && m_Host && m_Host->textureHandle )
 				material.textures.emplace_back( key, m_Host->textureHandle( texture ) );
@@ -108,6 +110,11 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 		return false;
 	slots->MarkSlot( tag );
 	return true;
+}
+
+unsigned long long CoreWorld::Failures() const
+{
+	return m_Pass.Failures();
 }
 
 void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
@@ -169,6 +176,7 @@ void CoreWorld::RecordSlot(
 	world.samples = target.samples;
 	world.textures = textures ? &*textures : nullptr;
 	world.submitted = target.submitted;
+	world.frame = target.frame;
 	world.lightmapScale = target.lightmapScale;
 	world.outputScale = target.outputScale;
 	m_Pass.Record( tag, encoder, world );

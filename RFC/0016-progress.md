@@ -665,6 +665,18 @@ points) replaced it.
   - the light-set publisher feeding the pass;
   - families (K4) including `shadow_sample.glsl`;
   - tile reuse across frames, and point-light cube shadows.
+- Runtime-light ownership (agreed with source-engine-70, 2026-09-28): the
+  render core owns the split between CPU-baked runtime light and per-pixel
+  light, following RFC 0011's indirect policy.
+  - `IRenderCoreWorld::RuntimeLight(surface)` returns
+    `RenderCoreRuntimeLight` flags (kAreaLights, kProjectedLights,
+    kWorldLightOcclusion). It is snapshotted once per frame before
+    R_BuildLightMapGuts.
+  - It returns 0 until the clustered pass evaluates that light. The same
+    change sets the bits, and R_AddAreaLights, R_AddProjectedLights and
+    R_ApplyDynamicOcclusion skip those surfaces.
+  - Oracle: one area light's radiance on a surface agrees with the bits set
+    and unset. A control with both paths forced must fail as doubled light.
 
 Reproduce:
 
@@ -1880,3 +1892,71 @@ Open, in order:
 - render-target and nested views (stencil-equal and clip-plane oracle cases);
 - the Submission cost row (render_submission, both queued modes);
 - static props.
+
+## K5 step 4b: exact claims, no escape hatches, and the review fixes (2026-09-28)
+
+User direction (2026-09-28): "make it fail terribly. Config it with a convar
+to prevent escape hatches. Mods and materials that can't be ported get
+legacy, but nothing else." RFC 0016 "Materials" records the rule.
+
+- **Failures are fatal.** `r_core_world_strict` (default 1) makes a view or
+  a claimed material that the core fails to draw a `Sys_Error` naming the
+  reason. It is checked on the main thread at each view and at level
+  shutdown, so it fires within a frame or two in queued mode. With 0, each
+  failure is a warning and the surfaces stay undrawn. Legacy never draws
+  what the core claimed. `IRenderCoreWorld::Failures()` is the cheap
+  counter. `r_core_world_seed_failure <material>` is the negative control:
+  that material reaches the core without texture handles.
+- **Claims are exact.** The engine now sends the material flags as their
+  VMT keys (`$translucent`, `$alphatest`, `$allowalphatocoverage`, …); the
+  `$flags` words used to hide them. Every variable the model does not read
+  must hold legacy's neutral value for its shader. That value comes from a
+  material of the same shader with no VMT variables, initialized by the
+  shader (`NeutralMaterials` in render_core_world_draw.cpp), falling back to
+  the shader's declared default (`MaterialDesc::declaredDefaults`,
+  `UnreadVariable` in program_resolver.cpp). A variable with no neutral
+  value keeps the material out.
+  - Correction to step 4's evidence: the 13 materials it claimed included
+    `metal/metalgrate018` (alpha-to-coverage) and `metalgrate018b`
+    (translucent), which the core drew opaque because it never saw their
+    flags. That was the "alpha-tested grate residual". Honest coverage on
+    testchmb_a_01 is 6 of 133 materials, 848 of 5,398 surfaces.
+- **Review fixes** (source-engine-60's review of cf7a3615):
+  - retired objects are released at a slot of a later frame, behind that
+    frame's submitted token (`CorePassTarget::frame`, the backend's
+    `m_submitSerial + 1`), not behind the host's `SubmittedValue` inside
+    the frame that used them;
+  - one set of objects per target format (at most four), so an MSAA toggle
+    mid-frame no longer retires the world;
+  - a capture that re-records an earlier world's slot fails alone, and the
+    next world's queued views stay (recorded views outlive SetWorld, and the
+    queue pops only views issued before the slot);
+  - the destructor drops handles without calling a device that may be gone.
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Suites | `render.world.null` 20 checks (W6–W9 new). Mutants: releasing in the same frame fails W8; the old queue pop fails W7. The material, family, opaque and composition suites (15) pass on g++ and clang++ (`render.composition` needed `jobsystem/pooled_executor.cpp` in its sources) | pass |
+| Coverage, testchmb_a_01 | 6 of 133 materials, 848 of 5,398 surfaces. Gaps: `$envmap` 98, `$detail` 17, Refract 4, `$selfillum` 4, blended 2, `$allowalphatocoverage` 1, `$bumpmap` 1 | recorded |
+| Strict boot | `r_core_world 1`: 205 views drawn, 0 failed, no `Sys_Error` | pass |
+| Seeded failure | `r_core_world_seed_failure metal/metalwall_bts_005a`, strict: `Sys_Error` naming the material and its texture, and the boot fails. Strict 0: every view warns, and 615 surfaces drawn instead of 4,510; legacy draws none of the claimed surfaces | pass |
+| Level change | `mat_queue_mode 2`, `-vkvalidate`, testchmb_a_01, then `map testchmb_a_02`: both worlds taken (848, then 401 surfaces), no failure, 0 validation messages | pass |
+| Pixels, isolated | `-deterministicrender`, `r_core_world_isolate 1`: core against legacy 12 pixels over 8 levels (max 31), 78 over 2. Two legacy runs: 1 over 8 (max 10). Negative control (`r_core_world 3`): 861 pixels over 8 (max 111) | pass |
+| Queued TSan lane (source-engine-60, on cf7a3615) | build-tsan-queued, testchmb_a_01 in `mat_queue_mode` 0 and 2 with `r_core_world 1`: 3,889 reports, 0 in the render core, all in triaged families; one new family, `driver.mesa-queue-barrier` (RADV's disk-cache thread, a known TSan barrier false positive inside the driver). `tsan_triage.py` now also flags `render::` frames in access stacks (64c3e738) | pass |
+
+Reproduce (headless, from the worktree):
+
+```sh
+python3 tools/quality/conformance.py check --cxx g++ --suite render.world.null
+python3 tools/quality/portal_boot.py --runtime ../source-engine/run/runtime --build <install> \
+  --renderer native-vulkan --headless --map testchmb_a_01 --engine-arg=+sv_cheats \
+  --engine-arg=1 --engine-arg=+r_core_world --engine-arg=1 \
+  [--engine-arg=+r_core_world_seed_failure --engine-arg=metal/metalwall_bts_005a] \
+  --console-command=r_core_world_stats --out <dir>
+RENDER_TSAN_BUILD=<tsan install> python3 tools/render/tsan_triage.py run --build <tsan install> \
+  --runtime run/runtime --out <dir> --engine-arg=+sv_cheats --engine-arg=1 \
+  --engine-arg=+r_core_world --engine-arg=1
+```
+
+Open, in order: the material-model expansion plan (next section), the fog
+view term, the env map term, detail and bump, render-target and nested
+views, the Submission cost row, static props.

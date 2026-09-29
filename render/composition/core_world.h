@@ -38,6 +38,7 @@ public:
 	bool Draws( unsigned int material ) const override { return m_Pass.Draws( material ); }
 	bool DrawView( const unsigned int *surfaces, unsigned int count, const float worldToClip[16],
 	    const float viewport[6] ) override;
+	unsigned long long Failures() const override;
 	void GetStats( RenderCoreWorldStats *out ) const override;
 
 	// legacy::ICorePassRecorder (the backend, render sequence).

@@ -15,6 +15,18 @@
 //			   nothing and is counted; a view naming a surface the pass does not
 //			   draw is counted.
 //			W5 Stats name the claimed materials.
+//			W6 A claimed material the render sequence fails (a texture that
+//			   does not import) is a counted, named failure; the pass still
+//			   claims it (nothing claimed goes back to legacy).
+//			W7 A slot of an earlier world recorded again (a capture across a
+//			   level change) fails alone: the next world's queued views stay.
+//			W9 A variable the model does not read keeps a material out unless
+//			   it holds its shader's neutral value (declared defaults), and a
+//			   variable with no neutral value keeps it out.
+//			W8 Objects a frame used outlive it: a level change, or a second
+//			   target format, between two slots of one submission leaves the
+//			   first slot's objects alive, and they are released at a later
+//			   frame's slot.
 //
 //=============================================================================//
 
@@ -212,6 +224,111 @@ int main()
 	stats = pass.Stats();
 	checks.That( stats.viewsDrawn == 3 && stats.surfacesDrawn == 5 && stats.viewsFailed == 2,
 	    "W4.a-surface-the-pass-does-not-draw-is-counted" );
+
+	// W9: unread variables against their neutral values.
+	{
+		WorldData world = TestWorld();
+		world.materials[0].variables.push_back( { "$outline", "0" } );
+		world.materials[0].defaults = { { "$outline", "0" } };
+		world.materials[1].variables.push_back( { "$outline", "1" } );
+		world.materials[1].defaults = { { "$outline", "0" } };
+		world.materials[2] = world.materials[0];
+		world.materials[2].variables.push_back( { "$mystery", "2" } );
+		WorldPass unread;
+		unread.SetWorld( std::move( world ) );
+		bool named = false;
+		bool unknown = false;
+		for ( const auto &[reason, count] : unread.Stats().gaps )
+		{
+			named = named || reason.find( "does not read $outline 1" ) != std::string::npos;
+			unknown = unknown || reason == "unlit: the model does not read $mystery" ||
+			          reason.find( "does not read $mystery" ) != std::string::npos;
+		}
+		checks.That( unread.Draws( 0 ), "W9.an-unread-variable-at-neutral-is-claimed" );
+		checks.That( !unread.Draws( 1 ) && named, "W9.an-unread-variable-set-is-a-named-gap" );
+		checks.That(
+		    !unread.Draws( 2 ) && unknown, "W9.an-unread-variable-without-neutral-is-a-gap" );
+	}
+
+	// W6: the lit material's texture does not import.
+	{
+		WorldData broken = TestWorld();
+		broken.materials[0].textures = { { "$basetexture", -5 } };
+		pass.SetWorld( std::move( broken ) );
+		const std::uint64_t before = pass.Failures();
+		const std::uint32_t failing = pass.QueueView( View( { 0, 1 } ) );
+		target.frame = 10;
+		(void)RecordSlot( device, pass, failing, target );
+		stats = pass.Stats();
+		checks.That( pass.Failures() == before + 1 && stats.viewsFailed == before + 1 &&
+		                 stats.lastFailure.find( "lit" ) != std::string::npos &&
+		                 stats.lastFailure.find( "did not import" ) != std::string::npos,
+		    "W6.a-claimed-material-that-fails-is-a-named-failure" );
+		checks.That( pass.Draws( 0 ), "W6.the-failed-material-stays-claimed" );
+	}
+
+	// W7: a capture re-records an earlier world's slot after the change.
+	{
+		pass.SetWorld( TestWorld() );
+		const std::uint32_t old = pass.QueueView( View( { 0 } ) );
+		target.frame = 11;
+		(void)RecordSlot( device, pass, old, target );
+		pass.SetWorld( TestWorld() );
+		const std::uint32_t next = pass.QueueView( View( { 0, 1 } ) );
+		const std::uint64_t before = pass.Failures();
+		const std::uint64_t drawn = pass.Stats().viewsDrawn;
+		target.frame = 12;
+		(void)RecordSlot( device, pass, old, target );
+		checks.That( pass.Failures() == before + 1, "W7.the-earlier-worlds-slot-fails" );
+		(void)RecordSlot( device, pass, next, target );
+		checks.That( pass.Failures() == before + 1 && pass.Stats().viewsDrawn == drawn + 1,
+		    "W7.the-next-worlds-view-is-still-queued-and-draws" );
+	}
+
+	// W8: two slots of one submission, a level change and a new format
+	// between them.
+	{
+		TextureDesc unormDesc = colorDesc;
+		unormDesc.format = Format::kRGBA8Unorm;
+		auto unorm = device.CreateTexture( unormDesc );
+		auto prepare = device.BeginEncoder( QueueKind::kGraphics );
+		if ( unorm && prepare )
+		{
+			prepare.Value().TransitionTexture(
+			    unorm.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+			(void)device.Submit( QueueKind::kGraphics, { &prepare.Value(), 1 }, {} );
+		}
+		WorldTarget unormTarget = target;
+		unormTarget.color = unorm ? unorm.Value() : TextureId();
+		unormTarget.colorFormat = Format::kRGBA8Unorm;
+		unormTarget.encodeOutput = true;
+
+		const std::uint64_t before = pass.Failures();
+		const std::uint32_t first = pass.QueueView( View( { 0, 1 } ) );
+		auto encoder = device.BeginEncoder( QueueKind::kGraphics );
+		bool accepted = false;
+		if ( encoder )
+		{
+			target.frame = unormTarget.frame = 13;
+			pass.Record( first, encoder.Value(), target );
+			pass.SetWorld( TestWorld() );
+			const std::uint32_t second = pass.QueueView( View( { 0, 1 } ) );
+			pass.Record( second, encoder.Value(), target );
+			const std::uint32_t third = pass.QueueView( View( { 0 } ) );
+			pass.Record( third, encoder.Value(), unormTarget );
+			accepted =
+			    device.Submit( QueueKind::kGraphics, { &encoder.Value(), 1 }, {} ).HasValue();
+		}
+		checks.That( accepted && pass.Failures() == before,
+		    "W8.a-submission-keeps-what-its-earlier-slots-used" );
+		// A later frame's slot releases the retired world behind its token.
+		const std::uint32_t later = pass.QueueView( View( { 0 } ) );
+		target.frame = 14;
+		checks.That( RecordSlot( device, pass, later, target ) && pass.Failures() == before,
+		    "W8.a-later-frame-releases-the-retired-world" );
+		if ( unorm )
+			(void)device.Release( unorm.Value(), {} );
+	}
 
 	pass.ReleaseDevice( device );
 	(void)device.WaitIdle();

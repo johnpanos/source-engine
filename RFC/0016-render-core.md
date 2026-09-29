@@ -757,6 +757,16 @@ A graph is built each frame on the render sequence:
   material is a gap in the model to close, not a boundary to keep.
   Passes (world, props, models) never name a family: they resolve a
   material to a program through one resolver.
+- **No escape hatches (user direction, 2026-09-28).** A claim is exact: the
+  model takes a material only when it reads every variable the material
+  sets, or when each variable it does not read holds legacy's neutral value
+  for its shader (the shader's own initialization of a material without
+  that variable). The material flags count as variables. Legacy draws only
+  what the model does not claim: a material or a mod the model can't port
+  yet, named as a gap. Once the core claims work (a material, a view), a
+  failure to draw it is fatal (`r_core_world_strict 1`, the default). With
+  the switch off, the failure is reported and the surfaces stay undrawn.
+  It never falls back to legacy.
 - **Material proxies.** `IMaterialProxy::OnBind` keeps its timing: the
   legacy frontend calls proxies when a renderable's draw is extracted, which
   is when the legacy path binds the material. `IMaterialVar` writes land in
