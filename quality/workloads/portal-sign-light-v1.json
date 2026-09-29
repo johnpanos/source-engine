@@ -1,0 +1,110 @@
+{
+  "schema": "portal-sign-light-workload/v1",
+  "description": "Test chamber signs that light up, and the light they cast at runtime. Portal 2's sign (primary, sp_a1_intro6): a vgui_screen drawing sp_progress_sign, set inactive at map spawn and activated through the map's trigger, proxy and relay (SetActive); it publishes an RFC 0011 area light (IEmissiveAreaLightSource). Portal's sign: a prop_dynamic of models/props_animsigns/signage_numNN.mdl whose skin the map's relay flickers from 1 (unlit) to 6 (lit, $selfillum backing), published through its model emitters. Each scenario frames one sign with a fixed noclip camera at 1024x768, takes an unlit shot, sends what the map's trigger sends, and shoots the lit sign, the sign switched off at runtime (SetInactive, or its initial skin), lit again (SetActive, or its lit skin) and the receivers' albedo (mat_fullbright 1). Regions are fractions of the frame [x0, y0, x1, y1]: 'sign' is the sign itself; 'near' and 'far' are receivers in front of it at two distances; 'behind' lies behind or in the plane of the sign's emitting surface (a one-sided emitter must not light it, and it holds any global exposure change). Everything outside the regions (for example testchmb_a_01's observation window, whose view changes on its own) is ignored. A scenario's 'thresholds' override the defaults; 'controls' runs the live negative controls on it. Consumed by tools/quality/portal_sign_light.py.",
+  "width": 1024,
+  "height": 768,
+  "startup_commands": [
+    "mat_force_tonemap_scale 1",
+    "host_framerate 0.016667",
+    "r_drawviewmodel 0",
+    "crosshair 0"
+  ],
+  "paths": {
+    "legacy": {
+      "description": "native Vulkan, the legacy world path (engine default)",
+      "console": []
+    },
+    "core-world": {
+      "description": "native Vulkan with the RFC 0016 render core drawing the BSP world surfaces its material model takes (r_core_world 1, ./play --core-world); a closing r_core_world 3 shot (neither legacy nor the core draws those surfaces) proves which receivers the core drew",
+      "console": ["r_core_world 1"],
+      "diagnostics": ["r_core_world_stats"],
+      "coverage_console": "r_core_world 3"
+    }
+  },
+  "controls": {
+    "no-trigger": {
+      "description": "every sign input withheld: the relay is not fired and the runtime skin changes are not sent",
+      "withhold_inputs": true,
+      "must_fail": ["sign-on", "casts-light.near"]
+    },
+    "no-emission": {
+      "description": "the sign lights, but emissive area lights are switched off (r_area_lights 0)",
+      "startup_commands": ["r_area_lights 0"],
+      "must_fail": ["casts-light.near", "emitter-at-sign"]
+    }
+  },
+  "thresholds": {
+    "sign_on_min_luma": 80.0,
+    "sign_lit_luma": 160.0,
+    "sign_lit_fraction_on": 0.5,
+    "sign_lit_fraction_off": 0.05,
+    "sign_return_max": 2.0,
+    "near_min_delta": 5.0,
+    "falloff_ratio": 1.25,
+    "far_min_delta": -0.5,
+    "hue_max_distance": 0.05,
+    "return_max": 1.0,
+    "behind_max": 1.0,
+    "emitter_box_margin": 4.0,
+    "coverage_min_delta": 20.0
+  },
+  "frames": {
+    "settle": 120,
+    "after_trigger": 240,
+    "after_toggle": 120,
+    "report": 5,
+    "after_shot": 10
+  },
+  "scenarios": [
+    {
+      "name": "sp_a1_intro6.info_panel",
+      "game": "portal2",
+      "map": "sp_a1_intro6",
+      "sign": "info_panel-info_panel",
+      "controls": true,
+      "camera": {"setpos": [368, -560, -128], "setang": [5, 90, 0]},
+      "receiver_materials": ["nature/dirtfloor004c"],
+      "thresholds": {
+        "sign_on_min_luma": 50.0,
+        "sign_lit_luma": 100.0,
+        "sign_lit_fraction_on": 0.3,
+        "near_min_delta": 1.5
+      },
+      "regions": {
+        "sign": [0.43, 0.17, 0.57, 0.56],
+        "near": [0.43, 0.59, 0.57, 0.64],
+        "far": [0.35, 0.80, 0.65, 0.90],
+        "behind": [0.05, 0.32, 0.30, 0.55]
+      }
+    },
+    {
+      "name": "testchmb_a_01.sign_02",
+      "game": "portal",
+      "controls": true,
+      "map": "testchmb_a_01",
+      "sign": "sign_02",
+      "camera": {"setpos": [448, 260, 40], "setang": [8, 270, 0]},
+      "receiver_materials": ["concrete/concrete_modular_floor001a", "concrete/concrete_modular_wall001a"],
+      "regions": {
+        "sign": [0.39, 0.02, 0.61, 0.60],
+        "near": [0.40, 0.72, 0.60, 0.80],
+        "far": [0.30, 0.93, 0.70, 1.00],
+        "behind": [0.21, 0.36, 0.32, 0.58]
+      }
+    },
+    {
+      "name": "testchmb_a_04.sign_08",
+      "game": "portal",
+      "map": "testchmb_a_04",
+      "sign": "sign_08",
+      "camera": {"setpos": [-640, 30, 40], "setang": [22, 90, 0]},
+      "receiver_materials": ["concrete/concrete_modular_floor001a", "concrete/concrete_modular_wall001a"],
+      "regions": {
+        "sign": [0.38, 0.02, 0.62, 0.46],
+        "near": [0.42, 0.60, 0.58, 0.68],
+        "far": [0.35, 0.88, 0.65, 0.98],
+        "behind": [0.13, 0.05, 0.30, 0.45]
+      }
+    }
+  ]
+}

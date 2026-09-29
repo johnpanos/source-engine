@@ -2002,3 +2002,152 @@ content consumer of G1–G10 and closes no gate.
   switchable named `light`, which the relight leaves out of the bake, gets
   no direct light on the relit world mesh (only producer indirect). The
   chamber uses `light_dynamic` for its switched lights.
+
+## Chamber signs light up and light the room: conformance cases (2026-09-28, user request)
+
+The user asked for tests of a test chamber sign lighting up and casting its
+light around it at runtime. At the coordinator's direction, Portal 2's sign
+is the primary case and Portal's the second.
+
+**The signs (facts from the maps and the content).**
+- Portal 2, `sp_a1_intro6`: the sign is `vgui_screen info_panel-info_panel`.
+  It sits at (321, -255, -127), is 94×190, faces -Y and draws
+  `sp_progress_sign` (`CVGUI_Base_ProgressSignScreen`). A `logic_auto` sends
+  `SetInactive` at map spawn. The trigger_once at (428, -624, -64) sends
+  `info_panel-proxy OnProxyRelay1`, and the proxy's relay sends `SetActive`.
+  Once lit, it publishes one area light as an `IEmissiveAreaLightSource`:
+  17,860 u², radiance 0.097/0.102/0.107, reach 394.
+- Portal, `testchmb_a_NN`: the sign is a `prop_dynamic` of
+  `models/props_animsigns/signage_numNN.mdl`, spawned at skin 1. A
+  trigger_once fires `relay_signNN`. That relay fires
+  `relay_animate_sign_NN`, which flickers the skin (2, 3, 4, 3, 4, 5, 4, 5)
+  and leaves it at skin 6 by 1.8 s.
+  - Skin 6's backing, `newsignage_back02`, is `$selfillum 1`. Skin 1's
+    backing, `newsignage_back00`, has `$selfillum` commented out.
+  - The hazard icons (`awe_total`, `awe_total_grey`) are translucent and not
+    self-illuminated.
+  - The lit sign publishes four model emitters from `newsignage_back02`, at
+    radiance of about 0.36 and reach 276–559.
+- Retail lights the room around either sign only through baked lightmaps.
+  No light entity is switched with the sign.
+- World `$selfillum` overlays (source-engine-70's world emitters, uncommitted
+  on this date) are not part of either sign. On `sp_a1_intro6` the icon
+  overlays (fling, box dispenser, box button) sit 580–1,850 units from the
+  sign and stay lit, so these cases neither cover nor toggle them.
+
+**Installed.**
+- `tools/quality/portal_sign_light.py`: `suite --path legacy|core-world`,
+  `selftest` and `facts`.
+- The workload `quality/workloads/portal-sign-light-v1.json`, with three
+  scenarios:
+  - `sp_a1_intro6.info_panel` (Portal 2, on `build-p2`);
+  - `testchmb_a_01.sign_02` and `testchmb_a_04.sign_08` (Portal, on
+    `build`).
+- How a run works: each scenario boots headless on native Vulkan through
+  `portal_boot.py`, with a fixed noclip camera at 1024×768,
+  `mat_force_tonemap_scale 1` and `host_framerate`. It shoots the sign in
+  this order:
+  1. off;
+  2. lit by what the map's trigger sends (the chain is read from the entity
+     lump);
+  3. switched off at runtime (`SetInactive`, or the initial skin);
+  4. lit again (`SetActive`, or the lit skin);
+  5. the albedo shot (`mat_fullbright 1`).
+
+  `r_area_lights_report 1` is recorded at every step.
+- The checks:
+  - sign-on, sign-off and sign-relight;
+  - emitter-at-sign: a published light lies inside the sign's world box and
+    faces out of it while the sign is lit, and none does while it is off;
+  - casts-light.near: the receiver in front brightens by the scenario's
+    measured minimum;
+  - casts-light.falloff: the near receiver brightens at least 1.25 times as
+    much as the far one;
+  - casts-light.hue: the change's linear chromaticity is within 0.05 of the
+    published light reflected by the receiver's albedo;
+  - casts-light.returns and casts-light.relight;
+  - casts-light.behind: a surface behind the sign, or in its plane, does not
+    change. This also holds any exposure change.
+- Baked light can't pass: every casts-light check compares shots from one
+  boot at one camera, with the sign switched at runtime.
+- The core-world path sets `r_core_world 1` and checks that the console
+  variable took effect. It adds `core-draws-receivers`: a closing
+  `r_core_world 3` shot must change each receiver by at least 20 levels. The
+  failure message names the receivers and the core's gaps from
+  `r_core_world_stats`.
+- Two live negative controls run on `sp_a1_intro6` and `testchmb_a_01`, and
+  the suite requires the judge to reject each:
+  - every sign input withheld: sign-on and casts-light.near must fail;
+  - `r_area_lights 0`: casts-light.near and emitter-at-sign must fail.
+- Manifest rows:
+  - `corpus.portal.sign-light.selftest` (47 checks);
+  - `corpus.portal.sign-light.legacy` (53);
+  - `corpus.portal.sign-light.core-world` (59), expected to fail with
+    `FAIL sp_a1_intro6.info_panel.core-world.core-draws-receivers`, owner
+    R89.
+
+**Evidence.** The run was on 2026-09-28 at `9cf9fce9`, with a dirty tree that
+includes source-engine-70's uncommitted area-light and world-emitter slices.
+The builds were private Waf trees configured like `build` and `build-p2`
+(`build-sign-light`, `build-sign-light-p2`; the shared trees predate
+`cf7a3615`).
+
+| Scenario | Sign luma rise | Near / far change | Hue distance | Behind |
+| --- | --- | --- | --- | --- |
+| `sp_a1_intro6.info_panel` | 84.2 | 2.73 / 0.40 | 0.001 | 0.00 |
+| `testchmb_a_01.sign_02` | 168.9 | 14.16 / 7.65 | 0.014 | 0.00 |
+| `testchmb_a_04.sign_08` | 184.1 | 24.07 / 9.40 | 0.031 | 0.02 |
+
+- Legacy world path: 53 of 53 checks pass. Switching off returns every
+  receiver to exactly its unlit pixels. Both controls are rejected on their
+  named checks.
+- Core-world path: 56 of 59 pass. Every sign and casts-light check passes,
+  and so does each control rejection. `core-draws-receivers` fails on all
+  three scenarios.
+- Self-test: 47 of 47 pass. The good case passes, and so does a blue receiver
+  whose albedo explains its bluer change. Each of these is rejected on its
+  own check:
+  - inputs withheld;
+  - emission off;
+  - baked light only;
+  - no return;
+  - no relight;
+  - an orange light;
+  - no falloff;
+  - exposure;
+  - a light away from the sign;
+  - a light still published when the sign is off;
+  - a light facing into the wall;
+  - an ignored albedo;
+  - an undrawn core.
+
+- Through the runner (`conformance.py check`, the two private trees selected
+  with `SOURCE_SIGN_LIGHT_BUILD` and `SOURCE_PORTAL2_BUILD`): all 3 rows
+  matched. The self-test passed 47 checks, legacy passed 53 in 127 s, and
+  core-world failed as expected in 141 s.
+
+**Known gap (R89, RFC 0016 K5 step 4).** On the core-world path the verdicts
+are the legacy world's, because the core draws none of the receivers:
+- Portal: the core's model takes 6 of 133 materials on `testchmb_a_01` and 6
+  of 86 on `testchmb_a_04`. `concrete/concrete_modular_floor001a` and
+  `_wall001a` (ssbump with `$detail`) are gaps.
+- Portal 2: `nature/dirtfloor004c` is outside the model, and
+  `r_core_world_stats` reports no view queued or drawn on `sp_a1_intro6`. The
+  core world never ran on the Portal 2 client there.
+- The row passes once the core draws the receivers, and that includes
+  applying the area-light lightmap updates.
+
+**Not covered.** The sign's intermediate flicker frames are not compared with
+retail. Other sign kinds (`func_brush` signs, UnlitGeneric antlines) are the
+gaps named in the area-light record. No Fold7 or Apple run.
+
+Reproduce:
+
+    python3 tools/quality/portal_sign_light.py selftest
+    SOURCE_PORTAL2_STEAM_ROOT=~/.local/share/Steam/steamapps/common/Portal\ 2 \
+        python3 tools/quality/conformance.py check \
+        --suite corpus.portal.sign-light.legacy \
+        --suite corpus.portal.sign-light.core-world
+    # or directly, with other trees:
+    python3 tools/quality/portal_sign_light.py suite --path legacy \
+        --build build --p2-build build-p2 --out /tmp/sign-light
