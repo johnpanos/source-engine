@@ -89,8 +89,7 @@ def measure(first, second, coverage, samples, target, denoiser=None):
     if denoiser is not None:
         import lightmap_denoise
         mean = (first[..., :3].astype(np.float32) + second[..., :3]) / 2
-        level = float(np.median(mean[coverage].mean(axis=1)))
-        scale = 1.0 / level if level > 0 else 1.0
+        scale = lightmap_denoise.input_scale_for(mean[coverage])
         halves = [lightmap_denoise.denoise_charts(half[..., :3].astype(np.float32), coverage,
                                                   denoiser, input_scale=scale)[0]
                   for half in (first, second)]

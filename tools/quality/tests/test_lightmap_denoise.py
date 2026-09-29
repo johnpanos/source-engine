@@ -158,6 +158,25 @@ class PerChartDenoiseTest(unittest.TestCase):
         self.assertLess(after.std(), 0.5 * before.std())
         self.assertAlmostEqual(after.mean() / before.mean(), 1.0, delta=0.03)
 
+    def test_a_mostly_unlit_dim_atlas_keeps_its_light(self):
+        """sp_a2_core (2026-09-29): most covered texels get no static light
+        and the lit ones are near 1e-4. The input scale comes from the lit
+        texels' median; the covered median (0) fell back to a scale of 1 and
+        the filter raised the mean light 3.7x (the negative control)."""
+        dim = np.where(self.covered, 0.0, 0.0)[..., None] * np.ones(3, np.float32)
+        rows = np.arange(96)[:, None] < 20
+        dim[self.covered & rows] = self.color[self.covered & rows] * 2.5e-4
+        dim = dim.astype(np.float32)
+        lit = dim[self.covered].mean(axis=1) > 0
+        self.assertLess(lit.mean(), 0.2)
+        self.assertAlmostEqual(denoise.input_scale_for(dim[self.covered]),
+                               1.0 / float(np.median(dim[self.covered].mean(axis=1)[lit])))
+        before = dim[self.covered].mean()
+        out, _ = denoise.denoise_charts(dim, self.covered, self.denoiser)
+        self.assertAlmostEqual(out[self.covered].mean() / before, 1.0, delta=0.05)
+        old, _ = denoise.denoise_charts(dim, self.covered, self.denoiser, input_scale=1.0)
+        self.assertGreater(abs(old[self.covered].mean() / before - 1.0), 0.05)
+
 
     def test_edge_residual_below_nearest_copy(self):
         """Variant: two noise draws of one chart; after denoising, the edge

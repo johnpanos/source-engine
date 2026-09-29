@@ -111,14 +111,12 @@ def denoise_charts(color, covered, denoiser, pad=CHART_PAD, input_scale=None):
     A chart is cropped with `pad` texels of border, filled with the chart's
     own light smoothed (chart_fill), so the filter sees only that chart: no
     neighbouring chart, however close in the atlas, reaches it. One input
-    scale (1 / the covered median unless given) serves
+    scale (input_scale_for the covered texels unless given) serves
     every chart. Covered texels get the result; others keep `color`.
     Returns (image, record)."""
     result = np.array(color, dtype=np.float32, copy=True)
-    values = color[covered]
     if input_scale is None:
-        level = float(np.median(values.mean(axis=1))) if len(values) else 0.0
-        input_scale = 1.0 / level if level > 0 else 1.0
+        input_scale = input_scale_for(color[covered])
     labels, count = ndimage.label(covered, structure=np.ones((3, 3)))
     boxes = ndimage.find_objects(labels)
     height, width = covered.shape
@@ -131,6 +129,18 @@ def denoise_charts(color, covered, denoiser, pad=CHART_PAD, input_scale=None):
         region = result[y0:y1, x0:x1]
         region[own] = filtered[own]
     return result, {"charts": int(count), "pad": pad, "input_scale": float(input_scale)}
+
+
+def input_scale_for(values):
+    """The filter's fixed input scale for (N, 3) covered texels: 1 / the
+    median light of the lit ones. Unlit texels are left out: on sp_a2_core
+    (2026-09-29) 85% of the covered texels get no static light, the median
+    over all of them was 0, and the fallback scale of 1 left the lit texels
+    around 1e-4, where the filter raised the atlas's mean light 3.7x."""
+    level = values.mean(axis=1) if len(values) else np.zeros(0)
+    lit = level[level > 0]
+    median = float(np.median(lit)) if len(lit) else 0.0
+    return 1.0 / median if median > 0 else 1.0
 
 
 def chart_fill(crop, own, sigma=CHART_FILL_SIGMA):
