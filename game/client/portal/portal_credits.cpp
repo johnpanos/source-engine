@@ -75,6 +75,7 @@ public:
 	CHudPortalCredits( const char *pElementName );
 	virtual void Init( void );
 	virtual void LevelShutdown( void );
+	vgui::HScheme GetCreditsScheme();
 
 	int GetStringPixelWidth ( wchar_t *pString, vgui::HFont hFont );
 	int GetPixelWidth( char *pString, vgui::HFont hFont );
@@ -262,8 +263,27 @@ CHudPortalCredits::CHudPortalCredits( const char *pElementName ) : CHudElement( 
 	vgui::Panel *pParent = g_pClientMode->GetViewport();
 	SetParent( pParent );
 
+#ifdef PORTAL2
+	// Portal 2 defines the credits fonts (CreditsOutroText) only in the
+	// BaseModUI scheme; retail's constructor sets it on this panel
+	SetScheme( GetBaseModUIScheme() );
+#endif
+
 	m_nLayoutTall = 0;
 	m_nLayoutLineTall = 0;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: The scheme the credits fonts come from: this panel's scheme on
+//			Portal 2 (basemodui_scheme), the client scheme on Portal.
+//-----------------------------------------------------------------------------
+vgui::HScheme CHudPortalCredits::GetCreditsScheme()
+{
+#ifdef PORTAL2
+	return GetScheme();
+#else
+	return vgui::scheme()->GetScheme( "ClientScheme" );
+#endif
 }
 
 void CHudPortalCredits::LevelShutdown()
@@ -438,7 +458,7 @@ void CHudPortalCredits::ReadLyrics( KeyValues *pKeyValue )
 //-----------------------------------------------------------------------------
 void CHudPortalCredits::LayoutLyrics( void )
 {
-	vgui::HFont m_hTFont = GetClientSchemeFont( "CreditsOutroText", true );
+	vgui::HFont m_hTFont = vgui::scheme()->GetIScheme( GetCreditsScheme() )->GetFont( "CreditsOutroText", true );
 	const int iLineTall = surface()->GetFontTall( m_hTFont ) + m_flSeparation;
 
 	int iHeight = 0;
@@ -607,7 +627,7 @@ void CHudPortalCredits::DrawOutroCreditsName( void )
 		if ( pCredit == NULL )
 			 continue;
 
-		vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+		vgui::HScheme scheme = GetCreditsScheme();
 		vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( pCredit->szFontName, true );
 
 		int iFontTall = surface()->GetFontTall ( m_hTFont );
@@ -721,7 +741,7 @@ void CHudPortalCredits::DrawPortalOutroCreditsName( void )
 				m_iXOffset = 1;
 				m_iYOffset += 1;
 	
-				vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+				vgui::HScheme scheme = GetCreditsScheme();
 				vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( m_CreditsList[m_iYOffset].szFontName, true );
 				int iFontTall = surface()->GetFontTall ( m_hTFont )+ m_flSeparation;
 	
@@ -732,7 +752,7 @@ void CHudPortalCredits::DrawPortalOutroCreditsName( void )
 						portalcreditname_t *pCredit = &m_CreditsList[i];
 						if ( pCredit == NULL )
 							continue;
-						vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+						vgui::HScheme scheme = GetCreditsScheme();
 						vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( pCredit->szFontName, true );
 						int iFontTall = surface()->GetFontTall ( m_hTFont )+ m_flSeparation;
 						pCredit->flYPos -= iFontTall;
@@ -749,7 +769,7 @@ void CHudPortalCredits::DrawPortalOutroCreditsName( void )
 		if ( pCredit == NULL )
 			 continue;
 
-		vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+		vgui::HScheme scheme = GetCreditsScheme();
 		vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( pCredit->szFontName, true );
 
 		int iFontTall = surface()->GetFontTall ( m_hTFont );
@@ -873,7 +893,7 @@ void CHudPortalCredits::DrawPortalAsciiArt( void )
 		if ( pCredit == NULL )
 			 continue;
 
-		vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+		vgui::HScheme scheme = GetCreditsScheme();
 		//vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( pCredit->szFontName, true );
 		vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( m_szAsciiArtFont, true );
 
@@ -943,7 +963,11 @@ void CHudPortalCredits::DrawPortalOutroCreditsLyrics( void )
 
 	if (m_bStartSong && flCurTime>= m_flSongStartTime)
 	{
+#ifndef PORTAL2
+		// Portal 2's credits map plays its own song (credits_music); retail
+		// client.so has no reference to Portal's
 		surface()->PlaySound( "music/portal_still_alive.mp3" );
+#endif
 		m_bStartSong=false;
 		//engine->ClientCmd( "play music/portal_still_alive.mp3" );
 	}
@@ -972,7 +996,7 @@ void CHudPortalCredits::DrawPortalOutroCreditsLyrics( void )
 				m_iXOffset = Q_wcslen(pCredit->szLyricLine);
 		}
 
-		vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+		vgui::HScheme scheme = GetCreditsScheme();
 		vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( pCredit->szFontName, true );
 
 		int iFontTall = surface()->GetFontTall ( m_hTFont )+ (int) m_flSeparation;
@@ -1074,7 +1098,7 @@ void CHudPortalCredits::DrawPortalOutroCreditsLyrics( void )
 
 		if (pCredit->flYPos < 0) break;
 
-		vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+		vgui::HScheme scheme = GetCreditsScheme();
 		vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( pCredit->szFontName, true );
 		int iFontTall = surface()->GetFontTall ( m_hTFont );
 
@@ -1225,7 +1249,7 @@ void CHudPortalCredits::DrawLogo( void )
 		Q_snprintf( szLogoFont, sizeof( szLogoFont ), "WeaponIcons" );
 	}
 
-	vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+	vgui::HScheme scheme = GetCreditsScheme();
 	vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( szLogoFont );
 
 	int iFontTall = surface()->GetFontTall ( m_hTFont );
@@ -1312,7 +1336,7 @@ void CHudPortalCredits::DrawIntroCreditsName( void )
 		if ( pCredit->bActive == false )
 			 continue;
 				
-		vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+		vgui::HScheme scheme = GetCreditsScheme();
 		vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( pCredit->szFontName );
 
 		float localTime = gpGlobals->curtime - pCredit->flTimeStart;
@@ -1435,7 +1459,7 @@ void CHudPortalCredits::PrepareOutroCredits( void )
 		if ( pCredit == NULL )
 			 continue;
 
-		vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+		vgui::HScheme scheme = GetCreditsScheme();
 		vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( pCredit->szFontName, true );
 
 		pCredit->flYPos = iHeight;
@@ -1490,7 +1514,7 @@ void CHudPortalCredits::PreparePortalOutroCredits( void )
 		if ( pCredit == NULL )
 			 continue;
 
-		vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+		vgui::HScheme scheme = GetCreditsScheme();
 		vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( pCredit->szFontName, true );
 
 		if (iHeight == -1) iHeight = (iTall/2) - (surface()->GetFontTall ( m_hTFont ) + m_flSeparation);
@@ -1569,7 +1593,7 @@ int CHudPortalCredits::GetOutroLineTall( void )
 	if ( m_CreditsList.Count() == 0 )
 		return 0;
 
-	vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+	vgui::HScheme scheme = GetCreditsScheme();
 	vgui::HFont hFont =
 	    vgui::scheme()->GetIScheme( scheme )->GetFont( m_CreditsList[0].szFontName, true );
 	return surface()->GetFontTall( hFont ) + (int)m_flSeparation;
@@ -1620,7 +1644,7 @@ void CHudPortalCredits::UpdateLayoutForScreenSize( void )
 		{
 			int iAreaWide, iAreaTall;
 			GetPortalOutroSize( iAreaWide, iAreaTall );
-			vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+			vgui::HScheme scheme = GetCreditsScheme();
 			BuildBorder( iAreaWide, vgui::scheme()->GetIScheme( scheme )->GetFont(
 			                            m_CreditsList[0].szFontName, true ) );
 		}
@@ -1645,7 +1669,7 @@ void CHudPortalCredits::PrepareIntroCredits( void )
 		if ( pCredit == NULL )
 			 continue;
 
-		vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
+		vgui::HScheme scheme = GetCreditsScheme();
 		vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( pCredit->szFontName );
 
 		pCredit->flYPos = m_flY + ( iSlot * surface()->GetFontTall ( m_hTFont ) );

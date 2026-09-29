@@ -199,6 +199,9 @@ extern CHud gHUD;
 //-----------------------------------------------------------------------------
 extern vgui::HFont g_hFontTrebuchet24;
 vgui::HFont GetClientSchemeFont( const char *pchFontName, bool bProportional = false );
+#if defined( PORTAL2 )
+vgui::HScheme GetBaseModUIScheme();
+#endif
 
 void LoadHudTextures( CUtlDict< CHudTexture *, int >& list, const char *szFilenameWithoutExtension, const unsigned char *pICEKey );
 

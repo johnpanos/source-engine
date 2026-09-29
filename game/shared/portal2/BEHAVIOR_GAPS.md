@@ -82,6 +82,7 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | G24 | Gel streams: the server never created the paint blob pool (crash on a sprayer's first blob), the blob materials were bound unreferenced, the `paintblob` shader was absent and Valve's blobulator library is unavailable | done on native Vulkan (see log); retail stream shape and the erase gel's opacity compared 2026-09-28; flashlight unverified |
 | G25 | Portal ghosts: `portalstaticoverlay` was the Portal 1 shader, without Portal 2's `$ghostoverlay`, so the through-wall ring and brackets were drawn over every visible portal | done on native Vulkan (see log); DXVK source-matched `.vcs` packs need the new combos |
 | G26 | Monitors: the client compiled `CViewRender::DrawMonitors` out (`USE_MONITORS` was defined only for `HL2_CLIENT_DLL` and `CSTRIKE_DLL`; Portal 1 defines the first, Portal 2 neither), so nothing drew `_rt_Camera` and every `func_monitor` screen (`dev/dev_tvmonitor1a`), including Act 4's Wheatley monitors, stayed black | done on native Vulkan (see log) |
+| G27 | Ending credits (`env_portal_credits`, `sp_a4_finale4` and `sp_a5_credits`) draw nothing: the client is Portal 1's `CHudPortalCredits`. Its lyric and border colour comes from Portal 1's `color` parameter, which Portal 2's `credits.txt` replaces with `color_lyrics` and `color_credits`, so they draw black on black. Retail rewrote the reader and the drawing (fonts resolved when read, margins from the HUD aspect, subtitles moved onto the panel) | partial: scheme and song (see log); drawing todo |
 
 ### Low
 
@@ -327,3 +328,17 @@ Newest last. Each entry names the build and the check that passed.
   `ending_relay` plays the moon ending. Before the fix the inputs were
   "unhandled" and the view read `setang 0 0 0` whatever the input. Not
   compared against retail frames.
+- 2026-09-29, G27 (partial; build-p2, native Vulkan): `sp_a5_credits` renders
+  black. Under gdb on the release client, the outro reads 328 names, 114
+  lyric lines and 300 ASCII-art lines, and draws them with a valid font, but
+  in the colour `0 0 0 192`. Portal 2's `credits.txt` has no `color` key,
+  only `color_lyrics` (`240 182 0 70`) and `color_credits` (`0 0 0 192`).
+  Retail `ReadParams` (client.so 0xbe8d80) reads only `scrolltime`,
+  `separation`, `cursorblinktime`, `scrollcreditsstart`, `songstarttime`
+  and those two colours. Fixed so far, as retail does: the panel takes
+  `basemodui_scheme` (the only scheme with `CreditsOutroText`), shared with
+  `GetClientSchemeFont` through a new `GetBaseModUIScheme()`, and the client
+  no longer plays Portal's `music/portal_still_alive.mp3` (retail has no
+  reference to it; the map plays `credits_music`). Open: retail's drawing,
+  which needs its draw functions decompiled. The 2010 dSYM credits code is
+  still Portal 1's, so it is no reference for this.
