@@ -27,6 +27,22 @@
 //			    when the texture axes lie in the face plane (the usual case).
 //			    The geometry of a snapshot is the concatenation of its
 //			    chunks' (ChunkOf), which ViewportRenderer stages separately.
+//			    With GeometryOptions: entities drawn as models (modelBox
+//			    answers their world box) get no marker faces; their box
+//			    edges go to edges2D (drawn in 2D views only) when unselected
+//			    and to edges in the selection color when selected (legacy
+//			    CMapStudioModel: the bounds in 2D, a wireframe box in 3D
+//			    only when selected). Instance content (tint) multiplies its
+//			    face colors by the tint and draws unselected edges in
+//			    edgeColor.
+//			  * BuildModelBatches: a model's meshes for one skin as
+//			    per-material indexed batches in model space, uv as the model
+//			    stores it, shaded by the model-space normal (the shading
+//			    turns with the model: a preview approximation), times a
+//			    tint.
+//			  * ModelWorld / ModelWorldBox: a model entity's placement
+//			    (origin, Source angles through mapgeometry::AngleMatrix,
+//			    uniform model scale) and its world box.
 //			  * ChunkOf: the chunk an object's geometry is resident in.
 //			  * AppendOverlay: a tools::OverlayList as line items (world
 //			    lines, boxes and polygons; screen rects; filled screen
@@ -45,6 +61,7 @@
 #define HAMMER_ADAPTERS_RENDER_SCENE_GEOMETRY_H
 
 #include "hammer/scene/solid_geometry.h"
+#include "mdl/studio_model.h"
 #include "hammer/tools/input.h"
 #include "hammer/viewport/camera.h"
 #include "hammer/viewport/extraction.h"
@@ -83,9 +100,36 @@ struct FaceBatch
 
 struct SceneGeometry
 {
-	std::vector<FaceBatch> faces;  // by material, the untextured batch first
-	std::vector<LineVertex> edges; // line list
-	std::uint32_t triangles = 0;   // solid and displacement triangles (not markers)
+	std::vector<FaceBatch> faces;    // by material, the untextured batch first
+	std::vector<LineVertex> edges;   // line list
+	std::vector<LineVertex> edges2D; // line list drawn in 2D views only
+	std::uint32_t triangles = 0;     // solid and displacement triangles (not markers)
+};
+
+struct GeometryOptions
+{
+	TextureSizes sizes; // empty: every face is untextured (the flat preview)
+	// The world box of an entity the renderer draws as a model; nothing for
+	// an entity drawn as its marker. Empty: every entity is a marker.
+	std::function<std::optional<scene::Box>( const viewport::EntityDraw & )> modelBox;
+	// Instance content: face colors times 'tint', unselected edges in 'edgeColor'.
+	std::optional<scene::Rgb> tint;
+	std::optional<scene::Rgb> edgeColor;
+};
+
+// A model file as the preview draws it: the parsed model and the material
+// each texture resolves to (mdl::ResolveMaterials).
+struct ModelAsset
+{
+	mdl::Model model;
+	std::vector<mdl::ResolvedMaterial> materials;
+};
+
+struct ModelBatch
+{
+	std::string material; // as a VMF names it; "" for the untextured batch
+	std::vector<UnlitVertex> vertices;
+	std::vector<std::uint32_t> indices; // triangle list
 };
 
 // The chunk an object's geometry is staged in (ViewportRenderer): its id's
@@ -101,6 +145,27 @@ constexpr std::uint64_t ChunkOf( scene::ObjectId id )
 // 'sizes' empty: every face is untextured (the flat preview).
 SceneGeometry BuildSceneGeometry(
     const viewport::RenderSnapshot &snapshot, const TextureSizes &sizes = {} );
+SceneGeometry BuildSceneGeometry(
+    const viewport::RenderSnapshot &snapshot, const GeometryOptions &options );
+
+// The model's meshes drawn with 'skin' (mdl::TextureIndex), one batch per
+// material (the untextured batch first, then by name): a mesh whose material
+// resolved and has a texture size in 'sizes' is textured, colored by the
+// shading times 'tint'; any other mesh is untextured, colored by the shading
+// times 'fill' times 'tint'. Empty for a model without triangles.
+std::vector<ModelBatch> BuildModelBatches( const ModelAsset &asset, std::int32_t skin,
+    const TextureSizes &sizes, const scene::Rgb &tint, const scene::Rgb &fill );
+
+// The tint a model entity's meshes are drawn with: the selection fill when
+// selected; else its render color (white when none), times kInstanceTint for
+// instance content.
+scene::Rgb ModelTint( const viewport::EntityDraw &entity, bool instanceContent );
+
+// The entity's model-to-world transform: translate(origin) * rotate(angles) *
+// scale(modelKeys.scale).
+::render::math::float4x4 ModelWorld( const viewport::EntityDraw &entity );
+// The world box of the model's bounds (its eight corners) under ModelWorld.
+scene::Box ModelWorldBox( const mdl::Model &model, const viewport::EntityDraw &entity );
 
 // Tool feedback is drawn over the scene in every view (no depth test), as the
 // editor has always drawn it: a pending box inside a wall stays visible.

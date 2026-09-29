@@ -89,6 +89,23 @@ std::string EdgeMeshName( std::uint64_t chunk )
 	return "hammer-edges:" + std::to_string( chunk );
 }
 
+std::string Edge2DMeshName( std::uint64_t chunk )
+{
+	return "hammer-edges-2d:" + std::to_string( chunk );
+}
+
+std::string ModelMeshName( std::uint64_t mesh )
+{
+	return "hammer-model:" + std::to_string( mesh );
+}
+
+// Instance content chunks are keyed apart from the id chunks (ChunkOf is at
+// most 2^58).
+constexpr std::uint64_t kInstanceChunk = std::uint64_t( 1 ) << 63;
+
+// The untextured fill of a model mesh whose material has no texture.
+constexpr scene::Rgb kModelFill{ 200, 200, 200 };
+
 ::render::math::Aabb BoundsOf( const std::vector<UnlitVertex> &vertices )
 {
 	::render::math::Aabb bounds;
@@ -110,16 +127,18 @@ std::string EdgeMeshName( std::uint64_t chunk )
 
 } // namespace
 
-ViewportRenderer::ViewportRenderer( device::IRenderDevice2 &device, IMaterialTextures *textures )
-    : m_Device( device ), m_Source( textures ), m_MeshCache( device ), m_Textures( device ),
-      m_Programs( device, m_Textures ), m_Scene( ::render::scene::CreateRenderScene() )
+ViewportRenderer::ViewportRenderer(
+    device::IRenderDevice2 &device, IMaterialTextures *textures, IModelSource *models )
+    : m_Device( device ), m_Source( textures ), m_ModelSource( models ), m_MeshCache( device ),
+      m_Textures( device ), m_Programs( device, m_Textures ),
+      m_Scene( ::render::scene::CreateRenderScene() )
 {
 }
 
 foundation::Expected<std::unique_ptr<ViewportRenderer>, ViewportStatus> ViewportRenderer::Create(
-    device::IRenderDevice2 &device, IMaterialTextures *textures )
+    device::IRenderDevice2 &device, IMaterialTextures *textures, IModelSource *models )
 {
-	std::unique_ptr<ViewportRenderer> renderer( new ViewportRenderer( device, textures ) );
+	std::unique_ptr<ViewportRenderer> renderer( new ViewportRenderer( device, textures, models ) );
 	auto lines = pass::lines::LinesRenderer::Create( device, kColorFormat, kDepthFormat );
 	auto unlit = material::UnlitFamily::Create( device, kColorFormat, kDepthFormat );
 	if ( !lines || !unlit )
@@ -238,23 +257,30 @@ foundation::Expected<std::uint64_t, ViewportStatus> ViewportRenderer::AddProgram
 foundation::Expected<void, ViewportStatus> ViewportRenderer::ResolveMaterials(
     const std::vector<viewport::SolidDraw> &solids )
 {
-	if ( !m_Source )
-	{
-		return {};
-	}
 	std::set<std::string> named;
 	for ( const viewport::SolidDraw &solid : solids )
 	{
 		for ( const viewport::FaceDraw &face : solid.faces )
 		{
-			if ( !face.material.empty() && m_Materials.count( face.material ) == 0 )
-			{
-				named.insert( face.material );
-			}
+			named.insert( face.material );
 		}
 	}
-	for ( const std::string &name : named )
+	return ResolveMaterialNames( named );
+}
+
+foundation::Expected<void, ViewportStatus> ViewportRenderer::ResolveMaterialNames(
+    const std::set<std::string> &names )
+{
+	if ( !m_Source )
 	{
+		return {};
+	}
+	for ( const std::string &name : names )
+	{
+		if ( name.empty() || m_Materials.count( name ) != 0 )
+		{
+			continue;
+		}
 		Material material;
 		std::optional<MaterialImage> image = m_Source->BaseTexture( name );
 		const std::vector<MipLevel> chain =
@@ -376,6 +402,92 @@ void ViewportRenderer::ReturnFrame( std::uint64_t lease )
 	}
 }
 
+ViewportRenderer::ModelEntry *ViewportRenderer::ModelFor( const viewport::EntityDraw &entity )
+{
+	if ( !m_ModelSource || !viewport::IsStudioModelPath( entity.model ) )
+	{
+		return nullptr;
+	}
+	const std::string path = mdl::CanonicalModelPath( entity.model );
+	auto found = m_Models.find( path );
+	if ( found == m_Models.end() )
+	{
+		ModelEntry entry;
+		auto loaded = m_ModelSource->Model( path );
+		if ( loaded && loaded.Value().model.TriangleCount() > 0 )
+		{
+			entry.asset = std::move( loaded ).Value();
+		}
+		found = m_Models.emplace( path, std::move( entry ) ).first;
+		++m_Stats.models;
+	}
+	return found->second.asset ? &found->second : nullptr;
+}
+
+foundation::Expected<const std::vector<ViewportRenderer::ModelMesh> *, ViewportStatus>
+ViewportRenderer::VariantFor( ModelEntry &entry, std::int32_t skin, const scene::Rgb &tint )
+{
+	const std::array<int, 4> key = { skin, tint.r, tint.g, tint.b };
+	if ( auto found = entry.variants.find( key ); found != entry.variants.end() )
+	{
+		return &found->second;
+	}
+	// The model's textures resolve like any face material.
+	std::set<std::string> names;
+	for ( const mdl::ResolvedMaterial &material : entry.asset->materials )
+	{
+		if ( material.found )
+		{
+			names.insert( material.name );
+		}
+	}
+	if ( auto resolved = ResolveMaterialNames( names ); !resolved )
+	{
+		return foundation::MakeUnexpected( resolved.Error() );
+	}
+	const std::vector<ModelBatch> batches = BuildModelBatches(
+	    *entry.asset, skin,
+	    [this]( const std::string &material ) -> std::optional<TextureSize>
+	    {
+		    auto found = m_Materials.find( material );
+		    return found == m_Materials.end() ? std::nullopt : found->second.size;
+	    },
+	    tint, kModelFill );
+	const std::array<std::uint8_t, 256> &encode = Gamma22FromDisplay();
+	std::vector<ModelMesh> meshes;
+	for ( const ModelBatch &batch : batches )
+	{
+		const Material *material =
+		    batch.material.empty() ? nullptr : &m_Materials.at( batch.material );
+		std::vector<UnlitVertex> vertices = batch.vertices;
+		for ( UnlitVertex &vertex : vertices )
+		{
+			for ( int c = 0; c < 3; ++c )
+				vertex.color[c] = encode[vertex.color[c]];
+		}
+		ModelMesh mesh;
+		mesh.material = material ? material->id : kUntextured;
+		mesh.blended = material && material->blended;
+		mesh.mesh = m_NextMesh++;
+		mesh.bounds = BoundsOf( batch.vertices );
+		resources::MeshData data;
+		data.vertices = std::as_bytes( std::span<const UnlitVertex>( vertices ) );
+		data.vertexStride = sizeof( UnlitVertex );
+		data.indices = std::as_bytes( std::span<const std::uint32_t>( batch.indices ) );
+		data.indexFormat = device::IndexFormat::kUint32;
+		auto staged = m_MeshCache.Stage( ModelMeshName( mesh.mesh ), data );
+		if ( !staged )
+		{
+			return foundation::MakeUnexpected( ViewportStatus::kDevice );
+		}
+		m_FaceMeshes.entries[mesh.mesh] = staged.Value();
+		++m_Stats.stagedMeshes;
+		meshes.push_back( mesh );
+	}
+	++m_Stats.modelVariants;
+	return &entry.variants.emplace( key, std::move( meshes ) ).first->second;
+}
+
 void ViewportRenderer::DropChunk( Chunk &chunk, ::render::scene::ChangeSet &changes )
 {
 	for ( ::render::scene::InstanceId instance : chunk.instances )
@@ -407,6 +519,10 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::StageChunk(
 			{
 				(void)m_MeshCache.Evict( EdgeMeshName( chunkId ) );
 			}
+			if ( resident->second.edges2D )
+			{
+				(void)m_MeshCache.Evict( Edge2DMeshName( chunkId ) );
+			}
 			m_Chunks.erase( resident );
 		}
 		return {};
@@ -415,15 +531,42 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::StageChunk(
 	{
 		return resolved;
 	}
+	// Entities drawn as models: their model is read (and its variant staged)
+	// here; the others draw their markers.
+	std::vector<ModelEntry *> models( staged.entities.size(), nullptr );
+	for ( std::size_t i = 0; i < staged.entities.size(); ++i )
+	{
+		const viewport::EntityDraw &entity = staged.entities[i];
+		models[i] = ModelFor( entity );
+		if ( viewport::IsStudioModelPath( entity.model ) && m_ModelSource )
+		{
+			++( models[i] ? staged.modelEntities : staged.missingModels );
+		}
+	}
+	GeometryOptions options;
+	options.sizes = [this]( const std::string &material ) -> std::optional<TextureSize>
+	{
+		auto found = m_Materials.find( material );
+		return found == m_Materials.end() ? std::nullopt : found->second.size;
+	};
+	if ( staged.instanceContent )
+	{
+		options.tint = viewport::kInstanceTint;
+		options.edgeColor = viewport::kInstanceEdgeColor;
+	}
 	viewport::RenderSnapshot objects;
 	objects.solids = std::move( staged.solids );
 	objects.entities = std::move( staged.entities );
-	const SceneGeometry geometry = BuildSceneGeometry( objects,
-	    [this]( const std::string &material ) -> std::optional<TextureSize>
-	    {
-		    auto found = m_Materials.find( material );
-		    return found == m_Materials.end() ? std::nullopt : found->second.size;
-	    } );
+	options.modelBox = [&]( const viewport::EntityDraw &entity ) -> std::optional<scene::Box>
+	{
+		const auto at = static_cast<std::size_t>( &entity - objects.entities.data() );
+		if ( at >= models.size() || !models[at] )
+		{
+			return std::nullopt;
+		}
+		return ModelWorldBox( models[at]->asset->model, entity );
+	};
+	const SceneGeometry geometry = BuildSceneGeometry( objects, options );
 	staged.solids = std::move( objects.solids );
 	staged.entities = std::move( objects.entities );
 
@@ -470,6 +613,34 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::StageChunk(
 		staged.texturedBatches += material ? 1 : 0;
 		staged.blendedBatches += blended ? 1 : 0;
 	}
+	for ( std::size_t i = 0; i < staged.entities.size(); ++i )
+	{
+		ModelEntry *entry = models[i];
+		if ( !entry )
+		{
+			continue;
+		}
+		const viewport::EntityDraw &entity = staged.entities[i];
+		auto variant = VariantFor(
+		    *entry, entity.modelKeys.skin, ModelTint( entity, staged.instanceContent ) );
+		if ( !variant )
+		{
+			return foundation::MakeUnexpected( variant.Error() );
+		}
+		const ::render::math::float4x4 world = ModelWorld( entity );
+		for ( const ModelMesh &mesh : *variant.Value() )
+		{
+			::render::scene::MeshInstanceDesc desc;
+			desc.mesh = mesh.mesh;
+			desc.material = mesh.material;
+			desc.world = world;
+			desc.localBounds = mesh.bounds;
+			desc.viewMask = 1u << ( mesh.blended ? kBlendedBit : kOpaqueBit );
+			const ::render::scene::InstanceId instance = m_Scene->Reserve();
+			changes.Add( instance, desc );
+			staged.instances.push_back( instance );
+		}
+	}
 	for ( const auto &[materialId, mesh] : previous )
 	{
 		if ( staged.meshes.count( materialId ) == 0 )
@@ -498,8 +669,29 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::StageChunk(
 		staged.edges = entry.Value();
 		++m_Stats.stagedMeshes;
 	}
+	if ( geometry.edges2D.empty() )
+	{
+		if ( resident != m_Chunks.end() && resident->second.edges2D )
+		{
+			(void)m_MeshCache.Evict( Edge2DMeshName( chunkId ) );
+		}
+	}
+	else
+	{
+		resources::MeshData data;
+		data.vertices = std::as_bytes( std::span<const LineVertex>( geometry.edges2D ) );
+		data.vertexStride = sizeof( LineVertex );
+		auto entry = m_MeshCache.Stage( Edge2DMeshName( chunkId ), data );
+		if ( !entry )
+		{
+			return foundation::MakeUnexpected( ViewportStatus::kDevice );
+		}
+		staged.edges2D = entry.Value();
+		++m_Stats.stagedMeshes;
+	}
 	staged.triangles = geometry.triangles;
-	staged.edgeVertices = static_cast<std::uint32_t>( geometry.edges.size() );
+	staged.edgeVertices =
+	    static_cast<std::uint32_t>( geometry.edges.size() + geometry.edges2D.size() );
 	m_Chunks[chunkId] = std::move( staged );
 	++m_Stats.stagedChunks;
 	return {};
@@ -512,10 +704,15 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
 	{
 		return {};
 	}
-	// The snapshot's objects by chunk (id order within each).
-	std::map<std::uint64_t, std::pair<std::vector<const viewport::SolidDraw *>,
-	                            std::vector<const viewport::EntityDraw *>>>
-	    incoming;
+	// The snapshot's objects by chunk (id order within each); each
+	// instance's content is a chunk of its own.
+	struct Incoming
+	{
+		std::vector<const viewport::SolidDraw *> first;
+		std::vector<const viewport::EntityDraw *> second;
+		bool instance = false;
+	};
+	std::map<std::uint64_t, Incoming> incoming;
 	for ( const viewport::SolidDraw &solid : snapshot.solids )
 	{
 		incoming[ChunkOf( solid.id )].first.push_back( &solid );
@@ -523,6 +720,19 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
 	for ( const viewport::EntityDraw &entity : snapshot.entities )
 	{
 		incoming[ChunkOf( entity.id )].second.push_back( &entity );
+	}
+	for ( const viewport::InstanceDraw &instance : snapshot.instances )
+	{
+		if ( instance.solids.empty() && instance.entities.empty() )
+		{
+			continue;
+		}
+		Incoming &content = incoming[kInstanceChunk | instance.id.value];
+		content.instance = true;
+		for ( const viewport::SolidDraw &solid : instance.solids )
+			content.first.push_back( &solid );
+		for ( const viewport::EntityDraw &entity : instance.entities )
+			content.second.push_back( &entity );
 	}
 	auto same = []( const auto &staged, const auto &now )
 	{
@@ -558,6 +768,7 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
 			continue;
 		}
 		Chunk staged;
+		staged.instanceContent = objects.instance;
 		for ( const viewport::SolidDraw *solid : objects.first )
 			staged.solids.push_back( *solid );
 		for ( const viewport::EntityDraw *entity : objects.second )
@@ -597,8 +808,12 @@ foundation::Expected<void, ViewportStatus> ViewportRenderer::SetScene(
 	m_Stats.key = key;
 	m_Stats.triangles = m_Stats.faceVertices = m_Stats.edgeVertices = 0;
 	m_Stats.batches = m_Stats.texturedBatches = m_Stats.blendedBatches = 0;
+	m_Stats.modelEntities = m_Stats.missingModels = m_Stats.instanceChunks = 0;
 	for ( const auto &[id, chunk] : m_Chunks )
 	{
+		m_Stats.modelEntities += chunk.modelEntities;
+		m_Stats.missingModels += chunk.missingModels;
+		m_Stats.instanceChunks += chunk.instanceContent ? 1 : 0;
 		m_Stats.triangles += chunk.triangles;
 		m_Stats.faceVertices += chunk.faceVertices;
 		m_Stats.edgeVertices += chunk.edgeVertices;
@@ -762,6 +977,10 @@ foundation::Expected<ViewportRenderer::Ticket, ViewportStatus> ViewportRenderer:
 		if ( chunk.edges )
 		{
 			batches.push_back( { *chunk.edges, Topology::kLines, { Space::kWorld, threeD } } );
+		}
+		if ( chunk.edges2D && !threeD )
+		{
+			batches.push_back( { *chunk.edges2D, Topology::kLines, { Space::kWorld, false } } );
 		}
 	}
 	LinesTargets scene = targets;

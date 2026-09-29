@@ -15,10 +15,12 @@
 //			never blocks on the GPU); the pixels come back through the reply
 //			runner. Jobs run in submission order.
 //
-//			The textured preview's material source (IMaterialTextures) is
-//			owned by the service and used only on the render sequence;
-//			SetMaterialSource replaces it there, and the next job restages
-//			the scene with it. Without one the views are the flat preview.
+//			The textured preview's material source (IMaterialTextures) and
+//			model source (IModelSource; the same mount) are owned by the
+//			service and used only on the render sequence; SetMaterialSource
+//			replaces both there, and the next job restages the scene with
+//			them. Without a material source the views are the flat preview;
+//			without a model source model entities draw their markers.
 //
 //			Lifetime: the device and both runners outlive the service. The
 //			destructor stops replies at once and waits, on the render
@@ -60,10 +62,11 @@ public:
 	using Result = foundation::Expected<ViewPixels, ViewportStatus>;
 	using Done = std::function<void( Result )>;
 
-	// Borrows the device and both runners; owns 'textures' (may be null). The
-	// renderer is created on 'render' with the first job.
+	// Borrows the device and both runners; owns 'textures' and 'models' (each
+	// may be null). The renderer is created on 'render' with the first job.
 	ViewportService( ::render::device::IRenderDevice2 &device, platform::ITaskRunner &render,
-	    platform::ISequencedTaskRunner &reply, std::unique_ptr<IMaterialTextures> textures = {} );
+	    platform::ISequencedTaskRunner &reply, std::unique_ptr<IMaterialTextures> textures = {},
+	    std::unique_ptr<IModelSource> models = {} );
 	~ViewportService();
 
 	ViewportService( const ViewportService & ) = delete;
@@ -74,9 +77,11 @@ public:
 	[[nodiscard]] bool Submit( std::shared_ptr<const viewport::RenderSnapshot> scene,
 	    std::uint64_t key, ViewJob job, Done done );
 
-	// Replaces the material source (null: the flat preview) after the jobs
-	// already posted. False when the render runner refused it.
-	[[nodiscard]] bool SetMaterialSource( std::unique_ptr<IMaterialTextures> textures );
+	// Replaces the material and model sources (null: the flat preview, marker
+	// boxes) after the jobs already posted. False when the render runner
+	// refused it.
+	[[nodiscard]] bool SetMaterialSource(
+	    std::unique_ptr<IMaterialTextures> textures, std::unique_ptr<IModelSource> models = {} );
 
 	// The host no longer shows an external frame (ViewportRenderer::
 	// ReturnFrame, on the render sequence). A lease of a renderer since

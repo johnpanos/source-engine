@@ -16,12 +16,13 @@ def configure(conf):
 	conf.load('strict_cpp20', tooldir='scripts/waifulib')
 
 def build(bld):
-	source = [ 'app.cpp', 'catalog_textures.cpp', 'entity_schema.cpp', 'glib_task_runner.cpp',
-	           'offscreen.cpp', 'properties_dialog.cpp', 'viewport_widget.cpp' ]
+	source = [ 'app.cpp', 'catalog_models.cpp', 'catalog_textures.cpp', 'entity_schema.cpp',
+	           'glib_task_runner.cpp', 'offscreen.cpp', 'properties_dialog.cpp',
+	           'viewport_widget.cpp' ]
 	use = [ 'hammer_render', 'hammer_presenters', 'hammer_tools', 'hammer_viewport',
 	        'hammer_formats', 'hammer_app', 'hammer_ports', 'hammer_scene',
 	        'hammer_platform', 'platform_posix', 'platform_runners', 'render_composition',
-	        'vmf', 'kvtext', 'mapgeometry', 'GTK4', 'ADWAITA' ]
+	        'vmf', 'kvtext', 'mapgeometry', 'mdl', 'GTK4', 'ADWAITA' ]
 	defines = []
 	# KTX2 previews in the material catalog when the tree is configured with
 	# the pinned KTX-Software reader (--ktx-source-root/--ktx-build-root).

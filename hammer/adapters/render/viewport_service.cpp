@@ -19,8 +19,9 @@ namespace hammer::render_adapter
 struct ViewportService::State
 {
 	State( ::render::device::IRenderDevice2 &d, platform::ITaskRunner &r,
-	    platform::ISequencedTaskRunner &p, std::unique_ptr<IMaterialTextures> t )
-	    : device( d ), render( r ), reply( p ), textures( std::move( t ) )
+	    platform::ISequencedTaskRunner &p, std::unique_ptr<IMaterialTextures> t,
+	    std::unique_ptr<IModelSource> m )
+	    : device( d ), render( r ), reply( p ), textures( std::move( t ) ), models( std::move( m ) )
 	{
 	}
 
@@ -28,6 +29,7 @@ struct ViewportService::State
 	platform::ITaskRunner &render;
 	platform::ISequencedTaskRunner &reply;
 	std::unique_ptr<IMaterialTextures> textures; // the render sequence's; outlives the renderer
+	std::unique_ptr<IModelSource> models;        // likewise
 	std::unique_ptr<ViewportRenderer> renderer;
 	std::atomic<bool> alive{ true };
 };
@@ -82,8 +84,9 @@ void Poll( const std::shared_ptr<State> &state, ViewportRenderer::Ticket ticket,
 
 ViewportService::ViewportService( ::render::device::IRenderDevice2 &device,
     platform::ITaskRunner &render, platform::ISequencedTaskRunner &reply,
-    std::unique_ptr<IMaterialTextures> textures )
-    : m_State( std::make_shared<State>( device, render, reply, std::move( textures ) ) )
+    std::unique_ptr<IMaterialTextures> textures, std::unique_ptr<IModelSource> models )
+    : m_State( std::make_shared<State>(
+          device, render, reply, std::move( textures ), std::move( models ) ) )
 {
 }
 
@@ -100,6 +103,7 @@ ViewportService::~ViewportService()
 	         {
 		         state->renderer.reset();
 		         state->textures.reset();
+		         state->models.reset();
 		         gone->set_value();
 	         } ) == platform::PostResult::kAccepted )
 	{
@@ -110,6 +114,7 @@ ViewportService::~ViewportService()
 		// The render runner is already shut down, so nothing else runs there.
 		m_State->renderer.reset();
 		m_State->textures.reset();
+		m_State->models.reset();
 	}
 }
 
@@ -125,17 +130,21 @@ bool ViewportService::ReturnFrame( std::uint64_t lease )
 	           } ) == platform::PostResult::kAccepted;
 }
 
-bool ViewportService::SetMaterialSource( std::unique_ptr<IMaterialTextures> textures )
+bool ViewportService::SetMaterialSource(
+    std::unique_ptr<IMaterialTextures> textures, std::unique_ptr<IModelSource> models )
 {
 	std::shared_ptr<State> state = m_State;
-	auto shared = std::make_shared<std::unique_ptr<IMaterialTextures>>( std::move( textures ) );
+	auto shared = std::make_shared<
+	    std::pair<std::unique_ptr<IMaterialTextures>, std::unique_ptr<IModelSource>>>(
+	    std::move( textures ), std::move( models ) );
 	return state->render.PostTask(
 	           [state, shared]
 	           {
-		           // The renderer borrows the source, so it goes first; the next
+		           // The renderer borrows the sources, so it goes first; the next
 		           // job makes a new one, which restages the scene.
 		           state->renderer.reset();
-		           state->textures = std::move( *shared );
+		           state->textures = std::move( shared->first );
+		           state->models = std::move( shared->second );
 	           } ) == platform::PostResult::kAccepted;
 }
 
@@ -153,7 +162,8 @@ bool ViewportService::Submit( std::shared_ptr<const viewport::RenderSnapshot> sc
 		           }
 		           if ( !state->renderer )
 		           {
-			           auto made = ViewportRenderer::Create( state->device, state->textures.get() );
+			           auto made = ViewportRenderer::Create(
+			               state->device, state->textures.get(), state->models.get() );
 			           if ( !made )
 			           {
 				           Reply( state, foundation::MakeUnexpected( made.Error() ),

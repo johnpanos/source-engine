@@ -24,6 +24,25 @@
 //			opaque (the flat preview). Edges, the grid and tool overlays draw
 //			through render.pass.lines.
 //
+//			Studio models (R17 follow-up): with a model source
+//			(IModelSource) a point entity whose model is a studio model is
+//			drawn as the model. Its file is read once per path; its meshes
+//			are staged once per (path, skin, tint) as indexed per-material
+//			batches in model space (BuildModelBatches) and drawn as scene
+//			instances with the entity's world matrix (ModelWorld), textured
+//			through the same material programs. The tint is the selection
+//			fill when selected, else its render color times the instance
+//			tint for instance content. Its box (ModelWorldBox) is drawn in
+//			2D views, and in the camera view only when selected. A model
+//			that is missing, fails to parse or has no triangles draws its
+//			marker box instead and is counted (missingModels).
+//
+//			Instances: each InstanceDraw is one chunk of its own (keyed by
+//			the func_instance's id, apart from the id chunks), staged like a
+//			document chunk with the instance tint (kInstanceTint on faces
+//			and content models, kInstanceEdgeColor on edges) unless the
+//			instance is selected.
+//
 //			Scene geometry is resident per chunk (ChunkOf: an object's id
 //			over 64): a chunk has one mesh per material and one edge mesh.
 //			SetScene does nothing when the caller's key (the snapshot
@@ -56,6 +75,7 @@
 
 #include "foundation/expected.h"
 #include "material_textures.h"
+#include "model_source.h"
 #include "render/device/device.h"
 #include "render/material/material_programs.h"
 #include "render/material/registry.h"
@@ -68,9 +88,11 @@
 #include "scene_geometry.h"
 
 #include <cstdint>
+#include <array>
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <vector>
 
 namespace hammer::render_adapter
@@ -139,6 +161,11 @@ struct SceneStats
 	std::uint32_t chunks = 0;          // resident chunks
 	std::uint32_t stagedChunks = 0;    // chunks the last restage rebuilt
 	std::uint32_t stagedMeshes = 0;    // face and edge meshes the last restage uploaded
+	std::uint32_t models = 0;          // model files read (parsed or not)
+	std::uint32_t modelVariants = 0;   // staged (model, skin, tint) mesh sets
+	std::uint32_t modelEntities = 0;   // entities drawn as models
+	std::uint32_t missingModels = 0;   // model entities drawn as markers instead
+	std::uint32_t instanceChunks = 0;  // resident func_instance content chunks
 };
 
 // What the last Render drew (its opaque and blended passes).
@@ -154,9 +181,11 @@ class ViewportRenderer
 public:
 	using Ticket = std::uint64_t;
 
-	// 'textures' null: the flat preview.
+	// 'textures' null: the flat preview. 'models' null: model entities draw
+	// their markers.
 	static foundation::Expected<std::unique_ptr<ViewportRenderer>, ViewportStatus> Create(
-	    ::render::device::IRenderDevice2 &device, IMaterialTextures *textures = nullptr );
+	    ::render::device::IRenderDevice2 &device, IMaterialTextures *textures = nullptr,
+	    IModelSource *models = nullptr );
 	~ViewportRenderer();
 
 	ViewportRenderer( const ViewportRenderer & ) = delete;
@@ -218,14 +247,33 @@ private:
 	{
 		std::vector<viewport::SolidDraw> solids;
 		std::vector<viewport::EntityDraw> entities;
+		bool instanceContent = false;                  // a func_instance's content (tinted)
 		std::map<std::uint64_t, std::uint64_t> meshes; // material id -> mesh id
 		std::vector<::render::scene::InstanceId> instances;
 		std::optional<::render::resources::MeshEntry> edges;
+		std::optional<::render::resources::MeshEntry> edges2D; // drawn in 2D views only
+		std::uint32_t modelEntities = 0;
+		std::uint32_t missingModels = 0;
 		std::uint32_t triangles = 0;
 		std::uint32_t faceVertices = 0;
 		std::uint32_t edgeVertices = 0;
 		std::uint32_t texturedBatches = 0;
 		std::uint32_t blendedBatches = 0;
+	};
+
+	// One staged batch of a model variant.
+	struct ModelMesh
+	{
+		std::uint64_t material = 0; // program id
+		std::uint64_t mesh = 0;
+		bool blended = false;
+		::render::math::Aabb bounds; // model space
+	};
+	// A model file and its staged variants, keyed by (skin, tint r, g, b).
+	struct ModelEntry
+	{
+		std::optional<ModelAsset> asset; // nothing: missing, malformed or without triangles
+		std::map<std::array<int, 4>, std::vector<ModelMesh>> variants;
 	};
 
 	class Meshes final : public ::render::pass::opaque::IMeshResolver
@@ -239,12 +287,20 @@ private:
 		}
 	};
 
-	ViewportRenderer( ::render::device::IRenderDevice2 &device, IMaterialTextures *textures );
+	ViewportRenderer( ::render::device::IRenderDevice2 &device, IMaterialTextures *textures,
+	    IModelSource *models );
 	void Release( const Pending &pending );
 	foundation::Expected<int, ViewportStatus> ExternalSlotFor(
 	    std::uint32_t width, std::uint32_t height );
 	foundation::Expected<void, ViewportStatus> ResolveMaterials(
 	    const std::vector<viewport::SolidDraw> &solids );
+	foundation::Expected<void, ViewportStatus> ResolveMaterialNames(
+	    const std::set<std::string> &names );
+	// The model an entity names, read on first use; null when the entity
+	// draws its marker (no model source, not a studio model, or unusable).
+	ModelEntry *ModelFor( const viewport::EntityDraw &entity );
+	foundation::Expected<const std::vector<ModelMesh> *, ViewportStatus> VariantFor(
+	    ModelEntry &entry, std::int32_t skin, const scene::Rgb &tint );
 	foundation::Expected<std::uint64_t, ViewportStatus> AddProgram(
 	    std::uint64_t id, const std::string &texture, const MaterialSurface &surface );
 	::render::material::UnlitClaim ClaimFor( const MaterialSurface &surface ) const;
@@ -256,6 +312,7 @@ private:
 
 	::render::device::IRenderDevice2 &m_Device;
 	IMaterialTextures *m_Source = nullptr;
+	IModelSource *m_ModelSource = nullptr;
 	::render::resources::MeshCache m_MeshCache;
 	::render::resources::TextureCache m_Textures;
 	::render::material::MaterialPrograms m_Programs;
@@ -266,6 +323,7 @@ private:
 	const ::render::material::FamilySchema *m_UnlitSchema = nullptr;
 	Meshes m_FaceMeshes; // by mesh id (one per material per chunk)
 	std::map<std::string, Material> m_Materials;
+	std::map<std::string, ModelEntry> m_Models; // by canonical model path
 	std::uint64_t m_NextMaterial = 2; // 1 is the untextured batch
 	std::uint64_t m_NextMesh = 1;
 	std::map<std::uint64_t, Chunk> m_Chunks;

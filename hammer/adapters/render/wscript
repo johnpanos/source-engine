@@ -28,7 +28,7 @@ def build(bld):
 		use       = [ 'hammer_tools', 'hammer_viewport', 'hammer_scene', 'render_pass_lines',
 		              'render_pass_opaque', 'render_material',
 		              'render_resources', 'render_graph', 'render_device', 'render_scene',
-		              'render_math', 'mapgeometry' ],
+		              'render_math', 'mapgeometry', 'mdl' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)

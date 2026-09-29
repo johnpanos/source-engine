@@ -50,6 +50,7 @@
 #include "hammer/adapters/source/ktx2_preview.h"
 #endif
 
+#include "catalog_models.h"
 #include "catalog_textures.h"
 #include "entity_schema.h"
 #include "properties_dialog.h"
@@ -209,6 +210,7 @@ struct AppState
 	// keeps them alive together and destroyed in the correct (reverse) order.
 	hammer::adapters::platform::DiskByteStore byteStore;
 	std::string mounted;         // the list mounted now ("Reload Game Assets" remounts it)
+	std::string instanceRoots;   // --instances: more func_instance search roots (comma-separated)
 	// The device's live resources once the viewports were composed, so
 	// teardown can report what they left behind.
 	render::device::IRenderDevice2 *device = nullptr;
@@ -347,7 +349,7 @@ void ScheduleRender( AppState *st );
 // changed snapshot revision or selection gives the renderer a new scene key.
 void RefreshScene( AppState *st )
 {
-	SceneKey key{ st->workspace.SnapshotRevision(), st->workspace.Session().CurrentSelection() };
+	SceneKey key{ st->workspace.SceneSerial(), st->workspace.Session().CurrentSelection() };
 	if ( !( key == st->sceneKey ) )
 	{
 		st->sceneKey = key;
@@ -442,6 +444,22 @@ void SetCurrentMaterial( AppState *st, const std::string &name )
 	}
 }
 
+// Re-reads the func_instance files the viewports draw and redraws when one
+// changed on disk (EditorWorkspace::RefreshInstances). Ends with the window.
+gboolean OnInstanceFilesTick( gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( !st->window )
+	{
+		return G_SOURCE_REMOVE;
+	}
+	if ( st->workspace.RefreshInstances() )
+	{
+		RefreshScene( st );
+	}
+	return G_SOURCE_CONTINUE;
+}
+
 // Mounts a comma-separated list of _dir.vpk paths into the asset search path,
 // (re)builds the material catalog, and re-textures every viewport. Returns the
 // number of materials the catalog can enumerate (0 on total failure).
@@ -507,8 +525,11 @@ std::size_t MountAssets( AppState *st, const std::string &vpkList )
 	if ( st->views )
 	{
 		std::string errors;
-		(void)st->views->SetMaterialSource( hammer::gtk::CatalogTextures::Open( vpkList, errors ) );
+		(void)st->views->SetMaterialSource( hammer::gtk::CatalogTextures::Open( vpkList, errors ),
+		    hammer::gtk::CatalogModels::Open( vpkList, errors ) );
 	}
+	// The mounted game's instance path (and --instances) for func_instance files.
+	st->workspace.SetInstanceRoots( hammer::gtk::GameInstanceRoots( vpkList, st->instanceRoots ) );
 	RefreshScene( st );
 	char msg[128];
 	std::snprintf( msg, sizeof( msg ), "Mounted %zu archive(s); %zu materials available",
@@ -2277,6 +2298,12 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 	{
 		MountAssets( st, st->mountOnStart );
 	}
+	else if ( !st->instanceRoots.empty() )
+	{
+		st->workspace.SetInstanceRoots( hammer::gtk::GameInstanceRoots( "", st->instanceRoots ) );
+	}
+	// func_instance files edited outside the editor show up within two seconds.
+	g_timeout_add_seconds( 2, OnInstanceFilesTick, st );
 
 	if ( !st->openOnStart.empty() )
 	{
@@ -2748,7 +2775,7 @@ void ShutdownRenderer( AppState *st )
 int RenderQuad( const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH );
 int RenderWorkspaceDemo( const std::string &outPpm, int tileW, int tileH );
 int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &outPpm, int width,
-    int height, const std::string &vpkList );
+    int height, const std::string &vpkList, const std::string &eye );
 int RenderEditBudget( const std::string &vmfPath, const std::string &outJson, int width, int height,
     int warmup, int edits, const std::string &vpkList, bool external );
 
@@ -2763,6 +2790,7 @@ int main( int argc, char **argv )
 	std::string texturedOut;
 	std::string texturedIn;
 	std::string texturedVpks;
+	std::string texturedEye;
 	std::string openPath;
 	std::string budgetOut;
 	std::string budgetIn;
@@ -2775,6 +2803,7 @@ int main( int argc, char **argv )
 	bool publishBuilds = true;
 	std::string buildLighting;
 	std::string mountVpks;
+	std::string instanceRoots;
 	std::string fgdPath;
 	int width = 1024;
 	int height = 768;
@@ -2801,6 +2830,10 @@ int main( int argc, char **argv )
 			texturedOut = argv[++i];
 			texturedIn = argv[++i];
 			texturedVpks = argv[++i];
+		}
+		else if ( a == "--eye" && i + 1 < argc )
+		{
+			texturedEye = argv[++i];
 		}
 		else if ( a == "--viewport-budget" && i + 2 < argc )
 		{
@@ -2847,6 +2880,10 @@ int main( int argc, char **argv )
 		{
 			mountVpks = argv[++i];
 		}
+		else if ( a == "--instances" && i + 1 < argc )
+		{
+			instanceRoots = argv[++i];
+		}
 		else if ( a == "--fgd" && i + 1 < argc )
 		{
 			fgdPath = argv[++i];
@@ -2863,11 +2900,13 @@ int main( int argc, char **argv )
 		{
 			std::printf(
 			    "Usage: hammer_gtk [--open MAP.vmf] [--maximized] [--builds DIR] "
-			    "[--no-publish] [--lighting PROFILE] [--fgd FILE]\n"
+			    "[--no-publish] [--lighting PROFILE] [--fgd FILE] [--mount VPK[,VPK...]] "
+			    "[--instances DIR[,DIR...]]\n"
 			    "       hammer_gtk --screenshot OUT.ppm MAP.vmf [--width W --height H]\n"
 			    "       hammer_gtk --quad OUT.ppm MAP.vmf [--width W --height H]\n"
 			    "       hammer_gtk --demo OUT.ppm [--width W --height H]\n"
-			    "       hammer_gtk --textured OUT.ppm MAP.vmf VPK[,VPK...] [--width W --height H]\n"
+			    "       hammer_gtk --textured OUT.ppm MAP.vmf VPK[,VPK...] [--width W --height H] "
+			    "[--eye X,Y,Z,TX,TY,TZ]\n"
 			    "       hammer_gtk --viewport-budget OUT.json MAP.vmf [--width W --height H] "
 			    "[--edits N --warmup N] [--textures VPK[,VPK...]] [--dmabuf]\n" );
 			return 0;
@@ -2893,7 +2932,8 @@ int main( int argc, char **argv )
 	}
 	if ( !texturedOut.empty() )
 	{
-		return RenderTexturedScreenshot( texturedIn, texturedOut, width, height, texturedVpks );
+		return RenderTexturedScreenshot(
+		    texturedIn, texturedOut, width, height, texturedVpks, texturedEye );
 	}
 
 	// The entity schema (optional): class lists, typed properties, defaults.
@@ -2913,5 +2953,6 @@ int main( int argc, char **argv )
 	st.openOnStart = openPath;
 	st.startMaximized = maximized;
 	st.mountOnStart = mountVpks;
+	st.instanceRoots = instanceRoots;
 	return RunApp( &st, argv );
 }

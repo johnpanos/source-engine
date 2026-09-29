@@ -6,6 +6,7 @@
 
 #include "scene_geometry.h"
 
+#include "mapgeometry/transform.h"
 #include "mapgeometry/vec3.h"
 #include "render/math/matrix.h"
 
@@ -55,6 +56,11 @@ Color SolidFill( scene::ObjectId id )
 Color FromRgb( const scene::Rgb &c )
 {
 	return { c.r / 255.0f, c.g / 255.0f, c.b / 255.0f };
+}
+
+Color Times( const Color &a, const Color &b )
+{
+	return { a.r * b.r, a.g * b.g, a.b * b.b };
 }
 
 std::uint8_t Byte( float v )
@@ -124,6 +130,19 @@ void PushEdge( std::vector<LineVertex> &out, const Vec3d &a, const Vec3d &b, Rgb
 	out.push_back( Vertex( b, color ) );
 }
 
+void PushBoxEdges( std::vector<LineVertex> &edges, const Vec3d &lo, const Vec3d &hi, Rgba8 edge )
+{
+	const std::array<Vec3d, 8> p = { Vec3d( lo.x, lo.y, lo.z ), Vec3d( hi.x, lo.y, lo.z ),
+	    Vec3d( hi.x, hi.y, lo.z ), Vec3d( lo.x, hi.y, lo.z ), Vec3d( lo.x, lo.y, hi.z ),
+	    Vec3d( hi.x, lo.y, hi.z ), Vec3d( hi.x, hi.y, hi.z ), Vec3d( lo.x, hi.y, hi.z ) };
+	static const int kEdges[12][2] = { { 0, 1 }, { 1, 2 }, { 2, 3 }, { 3, 0 }, { 4, 5 }, { 5, 6 },
+	    { 6, 7 }, { 7, 4 }, { 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 } };
+	for ( const auto &e : kEdges )
+	{
+		PushEdge( edges, p[e[0]], p[e[1]], edge );
+	}
+}
+
 void PushBox( std::vector<UnlitVertex> &faces, std::vector<LineVertex> &edges, const Vec3d &lo,
     const Vec3d &hi, const Color &fill, Rgba8 edge )
 {
@@ -181,6 +200,17 @@ Color RoleColor( tools::OverlayRole role )
 SceneGeometry BuildSceneGeometry(
     const viewport::RenderSnapshot &snapshot, const TextureSizes &sizes )
 {
+	GeometryOptions options;
+	options.sizes = sizes;
+	return BuildSceneGeometry( snapshot, options );
+}
+
+SceneGeometry BuildSceneGeometry(
+    const viewport::RenderSnapshot &snapshot, const GeometryOptions &options )
+{
+	const TextureSizes &sizes = options.sizes;
+	const Color white{};
+	const Color tintAll = options.tint ? FromRgb( *options.tint ) : white;
 	SceneGeometry geometry;
 	std::map<std::string, std::vector<UnlitVertex>> batches; // "" sorts first
 	std::vector<UnlitVertex> &untextured = batches[std::string()];
@@ -201,19 +231,20 @@ SceneGeometry BuildSceneGeometry(
 	};
 	for ( const viewport::SolidDraw &solid : snapshot.solids )
 	{
-		const Color fill = solid.selected ? kSelectedFill : SolidFill( solid.id );
+		const Color fill = solid.selected ? kSelectedFill : Times( SolidFill( solid.id ), tintAll );
 		const Color edge = solid.selected          ? kSelectedEdge
+		                   : options.edgeColor     ? FromRgb( *options.edgeColor )
 		                   : solid.owner.IsValid() ? FromRgb( solid.color )
 		                                           : kEdge;
 		for ( const viewport::FaceDraw &face : solid.faces )
 		{
 			const std::optional<TextureSize> size = sizeOf( face.material );
 			std::vector<UnlitVertex> &out = size ? batches[face.material] : untextured;
-			// Over a texture the color is the shading and the selection tint only.
-			const Color white{};
+			// Over a texture the color is the shading and the selection (or
+			// instance) tint only.
 			const Color tint = face.selected    ? kSelectedFace
 			                   : solid.selected ? kSelectedFill
-			                                    : white;
+			                                    : tintAll;
 			auto textured = [&]( const Vec3d &p, const Color &color )
 			{
 				return size
@@ -243,12 +274,13 @@ SceneGeometry BuildSceneGeometry(
 						                         ? disp.vertexAlphas[i]
 						                         : 0.0;
 						const float t = static_cast<float>( alpha ) / 255.0f;
-						const Color base =
-						    size            ? tint
-						    : face.selected ? kSelectedFace
-						    : solid.selected
-						        ? kSelectedFill
-						        : Color{ 0.32f + t * 0.20f, 0.48f - t * 0.08f, 0.28f + t * 0.02f };
+						const Color base = size            ? tint
+						                   : face.selected ? kSelectedFace
+						                   : solid.selected
+						                       ? kSelectedFill
+						                       : Times( Color{ 0.32f + t * 0.20f, 0.48f - t * 0.08f,
+						                                    0.28f + t * 0.02f },
+						                             tintAll );
 						const Vec3d normal = i < static_cast<int>( disp.vertexNormals.size() )
 						                         ? disp.vertexNormals[i]
 						                         : face.normal;
@@ -293,8 +325,21 @@ SceneGeometry BuildSceneGeometry(
 		const Color color = entity.selected                              ? kSelectedFill
 		                    : ( rgb.r == 0 && rgb.g == 0 && rgb.b == 0 ) ? kEntityDefault
 		                                                                 : FromRgb( rgb );
-		PushBox( untextured, geometry.edges, entity.mins, entity.maxs, color,
-		    ToRgba( entity.selected ? kSelectedEdge : color ) );
+		const Rgba8 edge = ToRgba( entity.selected     ? kSelectedEdge
+		                           : options.edgeColor ? FromRgb( *options.edgeColor )
+		                                               : color );
+		if ( options.modelBox )
+		{
+			if ( const std::optional<scene::Box> box = options.modelBox( entity ) )
+			{
+				// Drawn as its model: the bounds in 2D; in 3D only when selected.
+				PushBoxEdges( entity.selected ? geometry.edges : geometry.edges2D, box->mins,
+				    box->maxs, edge );
+				continue;
+			}
+		}
+		PushBox( untextured, geometry.edges, entity.mins, entity.maxs,
+		    entity.selected ? color : Times( color, tintAll ), edge );
 	}
 	for ( auto &[material, vertices] : batches )
 	{
@@ -302,6 +347,124 @@ SceneGeometry BuildSceneGeometry(
 			geometry.faces.push_back( { material, std::move( vertices ) } );
 	}
 	return geometry;
+}
+
+std::vector<ModelBatch> BuildModelBatches( const ModelAsset &asset, std::int32_t skin,
+    const TextureSizes &sizes, const scene::Rgb &tint, const scene::Rgb &fill )
+{
+	std::map<std::string, ModelBatch> batches; // "" (untextured) sorts first
+	const Color tintColor = FromRgb( tint );
+	const Color fillColor = Times( FromRgb( fill ), tintColor );
+	for ( const mdl::Mesh &mesh : asset.model.meshes )
+	{
+		const std::int32_t texture = mdl::TextureIndex( asset.model, mesh, skin );
+		std::string material;
+		if ( texture >= 0 && static_cast<std::size_t>( texture ) < asset.materials.size() &&
+		     asset.materials[static_cast<std::size_t>( texture )].found )
+		{
+			material = asset.materials[static_cast<std::size_t>( texture )].name;
+		}
+		std::optional<TextureSize> size;
+		if ( sizes && !material.empty() )
+		{
+			size = sizes( material );
+			if ( size && ( size->width == 0 || size->height == 0 ) )
+			{
+				size.reset();
+			}
+		}
+		if ( !size )
+		{
+			material.clear();
+		}
+		ModelBatch &batch = batches[material];
+		batch.material = material;
+		const std::uint32_t base = static_cast<std::uint32_t>( batch.vertices.size() );
+		for ( const mdl::Vertex &v : mesh.vertices )
+		{
+			const Vec3d normal( v.normal.x, v.normal.y, v.normal.z );
+			const Color color = Shade( size ? tintColor : fillColor, normal );
+			batch.vertices.push_back( FaceVertex( Vec3d( v.position.x, v.position.y, v.position.z ),
+			    ToRgba( color ), size ? v.u : 0.0f, size ? v.v : 0.0f ) );
+		}
+		for ( std::uint32_t index : mesh.indices )
+		{
+			batch.indices.push_back( base + index );
+		}
+	}
+	std::vector<ModelBatch> out;
+	for ( auto &[material, batch] : batches )
+	{
+		if ( !batch.indices.empty() )
+		{
+			out.push_back( std::move( batch ) );
+		}
+	}
+	return out;
+}
+
+scene::Rgb ModelTint( const viewport::EntityDraw &entity, bool instanceContent )
+{
+	if ( entity.selected )
+	{
+		return { Byte( kSelectedFill.r ), Byte( kSelectedFill.g ), Byte( kSelectedFill.b ) };
+	}
+	scene::Rgb tint = entity.modelKeys.renderColor.value_or( scene::Rgb{ 255, 255, 255 } );
+	if ( instanceContent )
+	{
+		const scene::Rgb &by = viewport::kInstanceTint;
+		tint = { ( tint.r * by.r + 127 ) / 255, ( tint.g * by.g + 127 ) / 255,
+		    ( tint.b * by.b + 127 ) / 255 };
+	}
+	return tint;
+}
+
+::render::math::float4x4 ModelWorld( const viewport::EntityDraw &entity )
+{
+	const mapgeometry::Mat3 rotation =
+	    mapgeometry::AngleMatrix( entity.angles.x, entity.angles.y, entity.angles.z );
+	const double scale = entity.modelKeys.scale;
+	::render::math::float4x4 world;
+	float *rows[3] = { &world.rows[0].x, &world.rows[1].x, &world.rows[2].x };
+	const double origin[3] = { entity.origin.x, entity.origin.y, entity.origin.z };
+	for ( int r = 0; r < 3; ++r )
+	{
+		for ( int c = 0; c < 3; ++c )
+		{
+			rows[r][c] = float( rotation.m[r][c] * scale );
+		}
+		rows[r][3] = float( origin[r] );
+	}
+	return world;
+}
+
+scene::Box ModelWorldBox( const mdl::Model &model, const viewport::EntityDraw &entity )
+{
+	const ::render::math::float4x4 world = ModelWorld( entity );
+	std::optional<scene::Box> box;
+	for ( int i = 0; i < 8; ++i )
+	{
+		const float x = i & 1 ? model.maxs.x : model.mins.x;
+		const float y = i & 2 ? model.maxs.y : model.mins.y;
+		const float z = i & 4 ? model.maxs.z : model.mins.z;
+		Vec3d p;
+		double *out[3] = { &p.x, &p.y, &p.z };
+		const float *rows[3] = { &world.rows[0].x, &world.rows[1].x, &world.rows[2].x };
+		for ( int r = 0; r < 3; ++r )
+		{
+			*out[r] = double( rows[r][0] ) * x + double( rows[r][1] ) * y +
+			          double( rows[r][2] ) * z + double( rows[r][3] );
+		}
+		if ( box )
+		{
+			box->Extend( p );
+		}
+		else
+		{
+			box = scene::PointBox( p );
+		}
+	}
+	return *box;
 }
 
 void AppendOverlay( const tools::OverlayList &overlay, LineList &out )
