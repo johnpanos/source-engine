@@ -9,6 +9,11 @@ import os
 import json
 import subprocess
 
+# One writing Waf command per output directory at a time; concurrent sessions
+# share this checkout (scripts/waifulib/output_lock.py).
+import output_lock
+output_lock.install()
+
 VERSION = '1.0'
 APPNAME = 'source-engine'
 top = '.'

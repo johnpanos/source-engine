@@ -424,6 +424,57 @@ runner, based on this triage:
 - Evidence in `quality-results/` is per run and git-ignored. A linked old run
   cannot certify new code.
 
+## Build output lock: one writer per Waf output directory (2026-09-28)
+
+Several sessions build in this checkout at once. A session reported its build
+tree being rebuilt by another session at the same time. Two writing Waf runs on
+one output directory corrupt each other (half-written objects, a clobbered
+`c4che`, a reconfigure under a running build), and a tree written that way
+cannot give trustworthy evidence. AGENTS.md asks for clean isolated output
+directories per profile. Nothing enforced that until now.
+
+- `scripts/waifulib/output_lock.py`, installed by the top-level `wscript`,
+  wraps `Scripting.run_command`. Before the first writing command of an
+  invocation (configure, build, install, clean, and any command not listed as
+  read-only), it takes an exclusive `flock` on `<out>/.lock-output-dir` and
+  holds it until the process exits. The kernel releases it when the holder
+  dies. The descriptor is not inherited, and `waf clean` keeps `.lock*`
+  files. The packed `waf` is unchanged.
+- The lock is keyed by the output directory's real path, so different trees
+  never block each other. `list`, `dist`, `distcheck` and `--help` take no
+  lock.
+- On contention the command waits. It prints one line naming the directory
+  and the holder (PID, command, start time and argv, from the lock file),
+  then a reminder every `WAF_OUTPUT_LOCK_REMINDER` seconds (default 60).
+  `WAF_OUTPUT_LOCK=0` bypasses the lock for emergencies.
+  `WAF_OUTPUT_LOCK_TIMEOUT=<s>` fails the command with an error instead of
+  waiting longer.
+- Nested Waf: the holder exports `WAF_OUTPUT_LOCK_HELD=<dir>=<pid>`. A child
+  Waf on that directory runs under the parent's lock only when the recorded
+  holder is its ancestor (checked through `/proc` on Linux; elsewhere, the
+  holder must be alive). A forged or inherited marker from anyone else still
+  waits. No nested same-directory Waf call was found in the tree's scripts.
+- Self-test: `python3 -m unittest tools/quality/tests/test_waf_output_lock.py -v`
+  (14 tests, about 17 s; also run by `composition.yml`'s discover). It drives
+  the repository's `./waf` on temporary projects. It checks that a second
+  writer on the same directory waits and never overlaps; a different
+  directory does not wait; a SIGKILLed holder releases the lock; the opt-out,
+  the timeout, `list`, nested Waf, a forged marker and `clean`. The negative
+  control runs the same overlap oracle on a project without the lock and sees
+  the two builds overlap. Six seeded mutants of the module (no install, no
+  nesting, ancestor check always true, a lock name `clean` deletes, `list`
+  locking, no opt-out) are each detected.
+- End-to-end on the real `wscript`: two concurrent
+  `waf configure -T release -o build-waflock-test` runs serialized. The second
+  printed the waiting line with the first's PID and finished after it. The
+  private tree was deleted afterwards.
+- Not verified: macOS, FreeBSD and Windows (`fcntl` is POSIX-only, so Windows Waf
+  runs without the lock). Network file systems whose `flock` is not
+  shared across hosts. Build steps a SIGKILLed holder left running (compilers
+  are separate processes and may still write after the lock is released).
+  Sessions that loaded the `wscript` before this change take no lock until
+  their next invocation.
+
 ## Q-PRESENTATION: render backend contract (RFC 0001, contract-first)
 
 Registered two suites (`render.backend.null`, `render.backend.sensitivity`,
