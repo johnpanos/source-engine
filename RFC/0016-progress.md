@@ -1963,11 +1963,15 @@ RENDER_TSAN_BUILD=<tsan install> python3 tools/render/tsan_triage.py run --build
   frame recorded: the backend never recorded that frame (a resize, a lost
   surface, a dropped queued frame). If another slot of its frame recorded,
   it is a failure and fatal under strict. `render.world.null` W10 covers
-  both. `portal_boot --resize-stress --resize-mode queued` passes with
-  `r_core_world 1` and strict on. The sync resize-stress fails with the
-  core world off as well ("2 presents scaled the back buffer … at settled
-  sizes", 3 of 3 runs), so that failure predates this work; R32-RESIZE
-  owns it.
+  both. Resize stress, run in a private D-Bus session and headless mutter
+  (`--no-mouse`, 1920x1080): queued and sync both pass with `r_core_world
+  1` and strict on, as does the sync control with the core world off. No
+  failure, no skip turned fatal.
+  - Correction: an earlier version of this entry reported a sync failure
+    ("presents scaled … at settled sizes") that predated this work. Those
+    runs weren't isolated: `portal_boot --resize-stress` makes no
+    compositor, and they ran on the user's live session. They are not
+    evidence. source-engine-60 found no failure at HEAD either.
 
 Open, in order: the surface-model phases (next section), starting with S1
 (the translucent-stage world slot, render state and the fog view term); then
