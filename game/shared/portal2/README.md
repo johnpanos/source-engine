@@ -353,6 +353,83 @@ Also open: `info_particle_system` has no `StopPlayEndCap` input
 (`sp_a2_bts3`, `sp_a4_finale4` fire it); adding it changes that entity's
 networked table for every game.
 
+### `sp_a1_wakeup` story beats on player input (2026-09-28)
+
+`quality/workloads/portal2-storybeats-v1` plays `sp_a1_wakeup` from the
+spawn to the level change on the player's own input, on this build and on
+retail Portal 2, and screenshots 24 story beats: arrival carrying Wheatley,
+the observation hall, the gantry door, "there she is", the chamber's far
+door, the stairwell, the lip of the shaft, the landing, the basement, the
+catwalk ("don't look down"), the breaker room and its cage, Wheatley in the
+socket, the breakers, the platform rising, GLaDOS asleep, waking and "it's
+you", the claw taking the player and its camera ride past GLaDOS, the
+incinerator and the fall. From the lift the shaft hides GLaDOS on both
+builds (the lift's cage and walls), so her face is shot during the claw's
+camera ride. `tools/quality/portal2_storybeats.py`
+runs it (`capture --side build|retail`, `sheet`, `check`, `record`, `suite`).
+
+`qa_walker.nut` plans every walk with A* over a 16-unit grid it measures in
+the running game with `TraceLine`, then drives the player only through
+console input: `+forward`, `+left`/`+right` at a `cl_yawspeed` proportional to
+the heading error, `+lookup`/`+lookdown` (with `cl_mouselook 0`) and `+jump`.
+Nothing sets the player's position or angles. What it had to learn about the
+game, on both builds alike:
+
+- `TraceLine` (`MASK_NPCWORLDSTATIC`) sees neither player clips nor any
+  brush entity that moves: the trace filter's standard rules skip
+  `MOVETYPE_PUSH` entities unless the mask has `CONTENTS_MOVEABLE`. The
+  chamber is fenced by clips, and the breaker room's lift
+  (`func_tracktrain breaker_train`) was invisible, so the cage floor read as
+  the shaft 140 units down. The harness extracts the map's world player
+  clips and its door, train and non-toggled `func_brush` brushes from the
+  BSP at run time (`qa/qa_clips.nut`; nothing from the map is stored), and
+  the walker places each entity's brushes at its current origin.
+- The server's player angles are the body's: yaw lags the view by up to 45
+  degrees while standing, and pitch is always 0. The walker keeps its own
+  view from the spawn angles and the turns it commands.
+- Squirrel ends a call that runs longer than 30 ms, so planning is spread
+  over ticks.
+- The socket rises under Wheatley while the player stands in the cage; if
+  it does not take him, the walker walks to where the held core reaches it
+  and aims by his actual position.
+
+Scripted beats are shot a fixed time after the map's own output fires
+(`socket_powered_rl`, `basement_breakers_start`, `basement_breakers_up`,
+`basement_elevator_complete_rl`, `relay_start_claw_pickup`, `ghostAnim`
+`OnAnimationDone`, `@transition_from_map`), so both builds shoot the same
+moment. `check` requires each side's run to pass (every walk arrived, every
+story trigger fired, 59 checks), a shot per beat, the same beats on both
+sides, and each shot within 96 units (160 in height) of retail's. `record`
+keeps retail's beat order and positions as numbers (`reference.json`), which
+the manifest row `corpus.portal2.storybeats-wakeup` (`suite`) judges this
+build against; `corpus.portal2.storybeats.comparator` and its three seeded
+rows test the comparator.
+
+Result (build-p2 at `6f8cf6d0` plus the shared tree's work in progress,
+retail Portal 2 from Steam, run side by side): both sides pass all 59 checks
+and shoot all 24 beats; the routes overlap, and at each beat the players
+stood 0 to 63 units apart (the most after the drop down the shaft, where
+this build backed off a stall and replanned). The sheet shows this build's
+gaps against retail: no projected-texture lights, so the breaker room and
+the lift shaft are dark where retail's spotlights light them; the chamber's
+floor stains are saturated yellow where retail's are brown; the held core's
+tether sparks are orange where retail's are pale green; and Wheatley's eye
+is lit in the claw where retail's is dark.
+
+The manifest row passes through the runner against the recorded reference
+(`conformance.py check --suite corpus.portal2.storybeats-wakeup`: 27 checks
+in 289 s), as do the comparator row and its three seeded rows.
+
+Reproduce (about 5 minutes each; retail starts and stops a Steam client if
+none is running):
+
+    python3 tools/quality/portal2_storybeats.py capture --side build --out <dir>/build
+    python3 tools/quality/portal2_storybeats.py capture --side retail --out <dir>/retail
+    python3 tools/quality/portal2_storybeats.py sheet --build-capture <dir>/build \
+        --retail-capture <dir>/retail --out <dir>/sheet
+    python3 tools/quality/portal2_storybeats.py check --build-capture <dir>/build \
+        --retail-capture <dir>/retail
+
 ### Portal 2 video retail conformance (2026-09-25)
 
 This section covers materials, shaders, proxies, textures and particles as

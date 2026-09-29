@@ -12059,6 +12059,134 @@
       "expected_divergence": "FAIL selftest.census"
     },
     {
+      "id": "corpus.portal2.storybeats-wakeup",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "Portal 2 story beats on the player's own input (game/shared/portal2/README.md, 'sp_a1_wakeup story beats on player input'). Plays sp_a1_wakeup from spawn to the level change on build-p2: quality/workloads/portal2-storybeats-v1/qa_walker.nut plans every walk with A* over a grid it measures in the running game (TraceLine plus the map's player clips and brush entities, which tools/quality/portal2_storybeats.py extracts from the BSP at run time) and drives the player only through console input (+forward, +left/+right at a proportional cl_yawspeed, +lookup/+lookdown, +jump); nothing sets the player's position or angles. Screenshots each of 24 story beats and judges the run (every walk arrived, every story trigger fired) and where the player stood at each beat against the retail reference (reference.json: beat order and retail's positions and views; numbers only). Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT) and a built build-p2; about 4 minutes. Retail runs and the side-by-side sheet: portal2_storybeats.py capture --side retail, sheet.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_storybeats.py",
+        "suite",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 27,
+      "timeout_seconds": 1200,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu",
+        "path:build-p2/c4che/_cache.py"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_storybeats.py",
+        "tools/quality/portal2_material_shots.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/stage_portal2_runtime.py",
+        "tools/quality/legacy_bsp.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-storybeats-v1/scenarios.json",
+        "quality/workloads/portal2-storybeats-v1/reference.json",
+        "quality/workloads/portal2-storybeats-v1/qa_walker.nut",
+        "quality/workloads/portal2-storybeats-v1/sp_a1_wakeup_walk.nut",
+        "quality/workloads/portal2-wheatley-v1/qa_driver.nut"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.storybeats.comparator",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "self-test",
+      "profile": "linux-host-corpus",
+      "description": "The Portal 2 story-beat comparator on synthetic captures, no game or content: a matching retail/build pair must pass, and a missing beat, a beat 200 units from retail's and a failed run must each fail the check.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_storybeats.py",
+        "self-test"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "sources": [
+        "tools/quality/portal2_storybeats.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.storybeats.comparator.seeded-missing-beat",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "description": "Negative control for corpus.portal2.storybeats.comparator: seeded fault 'missing-beat' (a build capture without one of retail's beats) must be rejected.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_storybeats.py",
+        "self-test",
+        "--seed-fault",
+        "missing-beat"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tools/quality/portal2_storybeats.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL self_test.clean"
+    },
+    {
+      "id": "corpus.portal2.storybeats.comparator.seeded-moved-beat",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "description": "Negative control for corpus.portal2.storybeats.comparator: seeded fault 'moved-beat' (a beat shot 200 units from retail's position) must be rejected.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_storybeats.py",
+        "self-test",
+        "--seed-fault",
+        "moved-beat"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tools/quality/portal2_storybeats.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL self_test.clean"
+    },
+    {
+      "id": "corpus.portal2.storybeats.comparator.seeded-failed-run",
+      "domain": "Q-PRODUCT",
+      "rfc": "0005",
+      "kind": "sensitivity",
+      "profile": "linux-host-corpus",
+      "description": "Negative control for corpus.portal2.storybeats.comparator: seeded fault 'failed-run' (a build run with a failed walk check) must be rejected.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_storybeats.py",
+        "self-test",
+        "--seed-fault",
+        "failed-run"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tools/quality/portal2_storybeats.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL self_test.clean"
+    },
+    {
       "id": "corpus.portal2.video-retail.ssbump-floor",
       "domain": "Q-PRESENTATION",
       "rfc": "0001",
