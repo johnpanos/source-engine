@@ -558,6 +558,13 @@ class Pipeline:
             # the build directory back.
             inputs = self.current[1] if self.current[0] == step else ()
             paths = list(inputs) + [a for a in arguments if str(a).startswith("/")]
+            # The scene's layers and textures, which may live outside the build
+            # directory (an extracted USD model stands for them in cache keys).
+            scene = self.scene
+            if scene is None and Path(self.scene_file).is_file():
+                scene = map_scene.parse(self.scene_file)
+            if scene is not None:
+                paths += map_scene.input_files(scene)
             print("[%s] on %s" % (step, self.remote.host), flush=True)
             self.remote.push(paths, self.out)
             seconds = self.run(step, self.remote.command(options, env),
