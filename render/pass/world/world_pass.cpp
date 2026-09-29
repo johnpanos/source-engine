@@ -271,7 +271,9 @@ void WorldPass::SetWorld( WorldData data )
 			continue;
 		// How many of a claimed material's keys the model does not read (each
 		// at its neutral value, or the material would not be claimed).
-		std::string name = data.materials[m].name;
+		// The program that draws it first (cl_render_debug_view_program's
+		// name for it): the family the resolver dispatches the material to.
+		std::string name = ( *claims )[m].desc.family + " " + data.materials[m].name;
 		if ( const std::size_t unread = ( *claims )[m].desc.unmapped.size() )
 			name += " (" + std::to_string( unread ) + " unread keys at neutral)";
 		claimedNames.emplace_back( std::move( name ), perMaterial[m] );

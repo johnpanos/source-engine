@@ -15,6 +15,14 @@
 //			                every seeded program and passes when the control
 //			                passes and each seeded program fails the checks
 //			                it breaks.
+//			lighting-controls
+//			                RFC 0014 D1: cl_render_debug_term (each term off
+//			                is the frame without its input, bitwise), the
+//			                BRDF modes against pbr_brdf.h, the furnace
+//			                (white spheres read 1; with compensation off a
+//			                rough one reads below), the forced roughness and
+//			                metalness. --seeded term-ignored ignores
+//			                `baked`.
 //
 //=============================================================================//
 
@@ -27,6 +35,7 @@ namespace render::lab
 int RunSuite( int argc, char **argv );
 
 int RunDebugViewsSuite( int argc, char **argv );
+int RunLightingControlsSuite( int argc, char **argv );
 
 } // namespace render::lab
 

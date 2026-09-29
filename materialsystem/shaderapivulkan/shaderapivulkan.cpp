@@ -5000,24 +5000,6 @@ void CEmptyMesh::EmitToNativeQueue()
 		return;
 	}
 
-	// VK_DEBUG_LIGHTMAPPED=1: the first vertex's lightmap coordinate and bumped
-	// page offset (TEXCOORD1, TEXCOORD2.x) once per lightmapped material.
-	static const bool s_debugLightmappedVerts = getenv( "VK_DEBUG_LIGHTMAPPED" ) != nullptr;
-	if ( s_debugLightmappedVerts && g_CurrentLightmappedCombos >= 0 && g_pBoundMaterial )
-	{
-		static std::unordered_set<std::string> s_seenVerts;
-		if ( s_seenVerts.insert( g_pBoundMaterial->GetName() ).second )
-		{
-			const unsigned char *base = vertices.m_vertexData.data();
-			float lm[2], tc2[2];
-			memcpy( lm, base + 24, sizeof( lm ) );
-			memcpy( tc2, base + kMeshTexCoord2Offset, sizeof( tc2 ) );
-			fprintf( stderr, "[vulkan] lightmapped-vertex %s lm=(%g %g) tc2=(%g %g) wide=%d fmt=%#llx\n",
-			    g_pBoundMaterial->GetName(), lm[0], lm[1], tc2[0], tc2[1],
-			    vertices.HasWideTexCoords() ? 1 : 0, static_cast<unsigned long long>( vertices.m_format ) );
-		}
-	}
-
 	// SpriteCard and spline cards: the corners are built from the vertices'
 	// wide texture coordinates, and the uv they produce is final.
 	const bool spriteCard = g_CurrentSpriteCard >= 0 && vertices.HasWideTexCoords();
@@ -7700,20 +7682,6 @@ static void CommitLightmappedConstants( const CShaderAPIVulkan &api )
 			var->GetVecValue( minMax, 2 );
 		c.ps[21][0] = minMax[0];
 		c.ps[21][1] = minMax[1] + minMax[0];
-	}
-	// VK_DEBUG_LIGHTMAPPED=1: each material's combos once (diagnosis).
-	static const bool s_debugLightmapped = getenv( "VK_DEBUG_LIGHTMAPPED" ) != nullptr;
-	if ( s_debugLightmapped && g_pBoundMaterial )
-	{
-		static std::unordered_set<std::string> s_seen;
-		if ( s_seen.insert( g_pBoundMaterial->GetName() ).second )
-		{
-			fprintf( stderr, "[vulkan] lightmapped %s combos=%#x detail=%d vs=%d psdyn=%d fast=%d c12=(%g %g %g) c8=(%g %g %g %g) ssbumpscale=%g envlight=%g\n",
-			    g_pBoundMaterial->GetName(), g_CurrentLightmappedCombos, g_CurrentLightmappedDetailMode,
-			    g_CurrentLightmappedVsCombos, g_PixelShaderDynamicIndex, vsFastPath ? 1 : 0,
-			    c.ps[12][0], c.ps[12][1], c.ps[12][2], c.ps[8][0], c.ps[8][1], c.ps[8][2], c.ps[8][3],
-			    c.ps[23][1], c.ps[23][2] );
-		}
 	}
 	MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), c.viewProj );
 	c.eyePos[3] = 0.0f;

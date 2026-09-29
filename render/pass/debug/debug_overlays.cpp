@@ -8,6 +8,7 @@
 
 #include "spv/debug_spv.h"
 
+#include <algorithm>
 #include <span>
 
 namespace render::pass::debug
@@ -29,41 +30,50 @@ void DebugOverlays::ReleaseDevice( IRenderDevice2 &device )
 	m_Device = nullptr;
 }
 
-bool DebugOverlays::RecordHatch(
-    IRenderDevice2 &device, CommandEncoder &encoder, const HatchTarget &target )
+PipelineId DebugOverlays::PipelineFor(
+    IRenderDevice2 &device, int program, const HatchTarget &target )
 {
-	if ( !target.color.IsValid() || target.width == 0 || target.height == 0 )
-		return false;
 	if ( m_Device && m_Device != &device )
 		ReleaseDevice( *m_Device );
 	m_Device = &device;
-	const auto key = std::make_tuple( target.format, target.samples, target.encodeOutput );
-	auto found = m_Pipelines.find( key );
-	if ( found == m_Pipelines.end() )
-	{
-		const ShaderArtifactView stages[] = {
-		    { ShaderStage::kVertex, ArtifactFormat::kSpirv,
-		        std::as_bytes( std::span( spirv::kFullscreenVertex ) ), "main", {}, 0 },
-		    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
-		        std::as_bytes( std::span( spirv::kHatchFragment ) ), "main", {}, 0 } };
-		const SpecializationConstant constants[] = {
-		    { ShaderStage::kFragment, 0, target.encodeOutput ? 1u : 0u } };
-		const Format colors[] = { target.format };
-		PipelineDesc desc;
-		desc.kind = PipelineKind::kGraphics;
-		desc.stages = stages;
-		desc.topology = PrimitiveTopology::kTriangleList;
-		desc.raster.cull = CullMode::kNone;
-		desc.colorFormats = colors;
-		desc.sampleCount = target.samples;
-		desc.debugName = "render.pass.debug.hatch";
-		desc.constants = constants;
-		auto pipeline = device.CreatePipeline( desc );
-		if ( !pipeline )
-			return false;
-		found = m_Pipelines.emplace( key, pipeline.Value() ).first;
-	}
-	encoder.BeginLabel( "debug hatch (RFC 0014)" );
+	const auto key = std::make_tuple( program, target.format, target.samples, target.encodeOutput );
+	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
+		return found->second;
+	const bool tint = program == 1;
+	const ShaderArtifactView stages[] = {
+	    { ShaderStage::kVertex, ArtifactFormat::kSpirv,
+	        std::as_bytes( std::span( spirv::kFullscreenVertex ) ), "main", {}, 0 },
+	    { ShaderStage::kFragment, ArtifactFormat::kSpirv,
+	        tint
+	            ? std::span<const std::byte>( std::as_bytes( std::span( spirv::kTintFragment ) ) )
+	            : std::span<const std::byte>( std::as_bytes( std::span( spirv::kHatchFragment ) ) ),
+	        "main", {}, tint ? 16u : 0u } };
+	const SpecializationConstant constants[] = {
+	    { ShaderStage::kFragment, 0, target.encodeOutput ? 1u : 0u } };
+	const Format colors[] = { target.format };
+	const BlendMode blends[] = { tint ? BlendMode::kAlpha : BlendMode::kOpaque };
+	PipelineDesc desc;
+	desc.kind = PipelineKind::kGraphics;
+	desc.stages = stages;
+	desc.drawConstantBytes = tint ? 16u : 0u;
+	desc.topology = PrimitiveTopology::kTriangleList;
+	desc.raster.cull = CullMode::kNone;
+	desc.colorFormats = colors;
+	desc.blends = blends;
+	desc.sampleCount = target.samples;
+	desc.debugName = tint ? "render.pass.debug.tint" : "render.pass.debug.hatch";
+	desc.constants = constants;
+	auto pipeline = device.CreatePipeline( desc );
+	if ( !pipeline )
+		return PipelineId();
+	m_Pipelines.emplace( key, pipeline.Value() );
+	return pipeline.Value();
+}
+
+void DebugOverlays::RecordFullTarget( CommandEncoder &encoder, const HatchTarget &target,
+    PipelineId pipeline, std::span<const std::byte> constants, const char *label )
+{
+	encoder.BeginLabel( label );
 	const ColorAttachment colors[] = {
 	    { target.color, LoadOp::kLoad, StoreOp::kStore, { 0, 0, 0, 1 }, {} } };
 	RenderingDesc rendering;
@@ -72,11 +82,40 @@ bool DebugOverlays::RecordHatch(
 	rendering.height = target.height;
 	encoder.BeginRendering( rendering );
 	encoder.SetViewport( { 0, 0, float( target.width ), float( target.height ), 0, 1 } );
-	encoder.SetPipeline( found->second );
+	encoder.SetPipeline( pipeline );
+	if ( !constants.empty() )
+		encoder.SetDrawConstants( 0, constants );
 	encoder.Draw( 3, 1, 0, 0 );
 	encoder.EndRendering();
 	encoder.EndLabel();
+}
+
+bool DebugOverlays::RecordHatch(
+    IRenderDevice2 &device, CommandEncoder &encoder, const HatchTarget &target )
+{
+	if ( !target.color.IsValid() || target.width == 0 || target.height == 0 )
+		return false;
+	const PipelineId pipeline = PipelineFor( device, 0, target );
+	if ( !pipeline.IsValid() )
+		return false;
+	RecordFullTarget( encoder, target, pipeline, {}, "debug hatch (RFC 0014)" );
 	++m_Hatches;
+	return true;
+}
+
+bool DebugOverlays::RecordTint( IRenderDevice2 &device, CommandEncoder &encoder,
+    const HatchTarget &target, const float rgba[4] )
+{
+	if ( !target.color.IsValid() || target.width == 0 || target.height == 0 )
+		return false;
+	const PipelineId pipeline = PipelineFor( device, 1, target );
+	if ( !pipeline.IsValid() )
+		return false;
+	float color[4];
+	std::copy( rgba, rgba + 4, color );
+	RecordFullTarget(
+	    encoder, target, pipeline, std::as_bytes( std::span( color ) ), "debug tint (RFC 0014)" );
+	++m_Tints;
 	return true;
 }
 

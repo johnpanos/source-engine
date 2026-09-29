@@ -59,6 +59,12 @@ struct RenderCoreWorldStats
 	unsigned long long viewsFailed;
 	unsigned long long viewsSkipped; // views of host frames the backend never recorded
 	unsigned long long surfacesDrawn;
+	// RFC 0014 debug slots: frames hatched (a pixel view or legacy 2),
+	// frames tinted (legacy 1) and the top-level views drawn again over the
+	// tint.
+	unsigned long long debugHatches;
+	unsigned long long debugTints;
+	unsigned long long debugViewsRedrawn;
 	char lastFailure[256];
 	char gaps[1024];    // "count reason" lines, most frequent first
 	char claimed[1024]; // "surfaces material" lines the core draws
@@ -89,6 +95,10 @@ public:
 	// the core draws the not-applicable hatch there, and the legacy stream is
 	// off from it to the frame's end. Otherwise it marks nothing.
 	virtual void BeginFrame() = 0;
+	// Main thread, after the frame's last draw and before its present. Under
+	// cl_render_debug_legacy 1 (RFC 0014) it marks the frame's last slot, where
+	// the core tints magenta what it did not draw. Otherwise it marks nothing.
+	virtual void EndFrame() = 0;
 	// Views and claimed materials the core failed to draw, so far (never
 	// drawn by legacy instead: the caller's policy decides what a failure
 	// costs).

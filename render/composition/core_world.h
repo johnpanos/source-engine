@@ -21,10 +21,19 @@
 #include "render/pass/debug/debug_overlays.h"
 #include "render/pass/world/world_pass.h"
 
+#include <atomic>
+#include <map>
+#include <mutex>
+#include <set>
+#include <utility>
+#include <vector>
+
 namespace render::composition
 {
 
-class CoreWorld final : public IRenderCoreWorld, public legacy::ICorePassRecorder
+class CoreWorld final : public IRenderCoreWorld,
+                        public legacy::ICorePassRecorder,
+                        public frame::IRenderStageHooks
 {
 public:
 	CoreWorld( legacy::ILegacyFrontend &frontend, const frame::IRenderer &renderer )
@@ -44,6 +53,11 @@ public:
 	bool DrawView( const unsigned int *surfaces, unsigned int count, const float worldToClip[16],
 	    const float viewport[6], unsigned long long hostFrame ) override;
 	void BeginFrame() override;
+	void EndFrame() override;
+	// frame::IRenderStageHooks (the main thread): the open views' depth, so a
+	// queued view knows whether it is the frame's top level (not a portal,
+	// mirror or monitor view inside another).
+	void OnStage( frame::Stage stage, std::uint32_t depth ) override;
 	unsigned long long Failures() const override;
 	void GetStats( RenderCoreWorldStats *out ) const override;
 
@@ -63,6 +77,18 @@ private:
 	const legacy::RenderCallQueueHost *m_Host = nullptr;
 	pass::world::WorldPass m_Pass;
 	pass::debug::DebugOverlays m_Overlays;
+	// cl_render_debug_legacy 1: the tags of top-level views (main thread
+	// writes, render sequence reads), and per recorded frame serial the
+	// top-level world slots it recorded, with their color targets (render
+	// sequence). A frame recorded again for a capture records its slots
+	// again, under the same or a higher serial, so nothing is consumed.
+	std::uint32_t m_ViewDepth = 0;
+	std::mutex m_TopLevelLock;
+	std::set<std::uint32_t> m_TopLevel;
+	std::map<std::uint64_t, std::vector<std::pair<std::uint32_t, device::TextureId>>> m_FrameViews;
+	std::atomic<unsigned long long> m_Hatches{ 0 };
+	std::atomic<unsigned long long> m_Tints{ 0 };
+	std::atomic<unsigned long long> m_Redrawn{ 0 };
 };
 
 } // namespace render::composition

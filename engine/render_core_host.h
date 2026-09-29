@@ -42,6 +42,9 @@ IRenderCoreWorld *RenderCoreHost_World();
 // Host render steps (host_render_steps.h): EngineFrameBegin and EngineFrameEnd.
 void RenderCoreHost_BeginFrame();
 void RenderCoreHost_EndFrame();
+// After the frame's last draw and before its present (RFC 0014: the frame's
+// last slot, where cl_render_debug_legacy 1 tints what the core did not draw).
+void RenderCoreHost_MarkFrameEnd();
 
 // CRender::Push3DView and PopView of a 3D view (gl_rmain.cpp).
 void RenderCoreHost_MarkViewBegin();

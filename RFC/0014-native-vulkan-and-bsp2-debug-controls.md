@@ -337,6 +337,49 @@ has the evidence.
 - **Cube textures.** `render.resources`' `TextureCache` stages all six
   faces of a cube. The lab needs this for its env maps and probes.
 
+### Implementation decisions (D0 product and D1, 2026-09-29)
+
+Agent decisions by the render-core owner, under the user's standing
+instruction. The [progress record](0016-progress.md#rfc-0014-d1-the-lighting-model-controls-in-the-lab-and-the-product-2026-09-29)
+has the evidence.
+
+- **The frame's first and last slots.** A pixel view and
+  `cl_render_debug_legacy 2` work through a forwarded slot marked at frame
+  begin with `kCorePassLegacyOff` (`render/legacy/core_passes.h`):
+  - the composition records the hatch there;
+  - from there to the frame's end, the backend's replay records no legacy
+    draw, copy or scene capture and only the depth and stencil parts of
+    clears (core plumbing);
+  - the frame presents without the gamma ramp.
+
+  `cl_render_debug_legacy 1` works through a forwarded slot marked just
+  before the present (`kCorePassFrameEnd`).
+- **What `cl_render_debug_legacy 1` shows.** The stencil design above needs
+  a stencil write in every legacy draw's pipeline, which the frozen backend
+  cannot take as plumbing, because Portal's stencil use would conflict with
+  it. The port also has no multisampled sampling or not-equal depth test to
+  build a coverage mask. So at the frame-end slot:
+  - the core tints the target magenta at 50 %;
+  - it then records the frame's top-level world views again, and their depth
+    test restores exactly the pixels where the core's surface is still the
+    one visible.
+
+  What stays magenta is what the core did not draw, or what legacy drew in
+  front of it with a depth write: props, unclaimed opaque materials, the
+  whole frame without the core. Legacy draws without depth writes over the
+  core's surfaces (translucent glass, the HUD) are covered by the restored
+  surface in this mode. Portal, mirror and monitor views are not redrawn and
+  stay tinted.
+- **Claims.** `cl_render_debug_claims` prints the core's world claims per
+  program (each claimed material's family, which is its program's name)
+  and per material, the gaps by reason, and the debug slots' counts. The two
+  `VK_DEBUG_LIGHTMAPPED` diagnostics are deleted from the frozen backend
+  (with a `Frozen-path:` line).
+- **The furnace on legacy points.** Albedo is 1 after every modulation, and
+  the light is a uniform radiance of 1 in place of the lightmap and the env
+  map. Emission is off, since it is not light the environment gives. AO is
+  the material's.
+
 ## What is this pixel, and which draw is broken (`render.debug-draws.v1`)
 
 ### Frame draw records

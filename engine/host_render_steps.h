@@ -168,6 +168,8 @@ static void HostRender_ViewRender( HostRenderState_t & )
 
 static void HostRender_Present( HostRenderState_t & )
 {
+	// The frame's last slot, before the present (RFC 0014).
+	RenderCoreHost_MarkFrameEnd();
 	CL_TakeSnapshotAndSwap();
 
 #if defined( REPLAY_ENABLED )

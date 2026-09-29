@@ -46,6 +46,8 @@ struct RenderCore
 			frontend->BindRenderer( nullptr );
 			frontend->SetForwardedRecorder( nullptr );
 		}
+		if ( renderer && world )
+			renderer->RemoveStageHooks( world.get() );
 		world.reset();
 		renderer.reset();
 		cullJobs.reset();
@@ -180,6 +182,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->binding.corePasses = core->frontend->CorePasses();
 	core->world =
 	    std::make_unique<render::composition::CoreWorld>( *core->frontend, *core->renderer );
+	core->renderer->AddStageHooks( core->world.get() );
 	core->frontend->SetForwardedRecorder( core->world.get() );
 	core->binding.world = core->world.get();
 	core->binding.deviceName = core->deviceName.c_str();

@@ -250,8 +250,10 @@ void main()
 	// cl_render_debug_brdf 2 (specular only) drops the diffuse lobe.
 	if ( !lightingOne && furnace )
 		diffuse = baked = vec3( 1.0 );
+#ifndef SEEDED_DEBUG_TERM_IGNORED
 	if ( !lightingOne && !DebugTermOn( kDebugTermBaked ) )
 		diffuse = vec3( 0.0 );
+#endif
 
 	vec3 lit = kDebugBrdf == kDebugBrdfSpecularOnly ? vec3( 0.0 ) : albedo * diffuse;
 	// Self-illumination replaces the diffuse term by its tint times albedo

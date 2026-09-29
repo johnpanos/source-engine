@@ -6,6 +6,11 @@
 //			cl_render_debug_legacy 2), so every pixel the core does not draw
 //			shows it (RFC 0014 "Legacy stream passes under a view").
 //
+//			And a flat color blended over a whole target: cl_render_debug_legacy
+//			1's magenta, which the core then draws its own surfaces over again
+//			(render.composition), so what stays tinted is what the core does
+//			not draw.
+//
 //			Render sequence. Pipelines are made on first use, one per target
 //			format and encoding, and released by ReleaseDevice or with the
 //			overlays.
@@ -19,6 +24,7 @@
 
 #include <cstdint>
 #include <map>
+#include <span>
 #include <tuple>
 
 namespace render::pass::debug
@@ -47,6 +53,10 @@ public:
 	// the pipeline is refused (nothing is recorded).
 	bool RecordHatch( device::IRenderDevice2 &device, device::CommandEncoder &encoder,
 	    const HatchTarget &target );
+	// Records `rgba` (linear color, a the blend weight) blended over the
+	// whole target, outside rendering. False when the pipeline is refused.
+	bool RecordTint( device::IRenderDevice2 &device, device::CommandEncoder &encoder,
+	    const HatchTarget &target, const float rgba[4] );
 	// The device is about to go: its pipelines are released now.
 	void ReleaseDevice( device::IRenderDevice2 &device );
 
@@ -54,8 +64,14 @@ public:
 
 private:
 	device::IRenderDevice2 *m_Device = nullptr;
-	// By (format, samples, encode).
-	std::map<std::tuple<device::Format, std::uint32_t, bool>, device::PipelineId> m_Pipelines;
+	// By (program: 0 hatch, 1 tint; format, samples, encode).
+	std::map<std::tuple<int, device::Format, std::uint32_t, bool>, device::PipelineId> m_Pipelines;
+	std::uint64_t m_Tints = 0;
+
+	device::PipelineId PipelineFor(
+	    device::IRenderDevice2 &device, int program, const HatchTarget &target );
+	void RecordFullTarget( device::CommandEncoder &encoder, const HatchTarget &target,
+	    device::PipelineId pipeline, std::span<const std::byte> constants, const char *label );
 	std::uint64_t m_Hatches = 0;
 };
 

@@ -41,6 +41,7 @@
 #include "render/material/vmt_import.h"
 #include "render/math/matrix.h"
 #include "render/pass/lines/lines.h"
+#include "render/pbr_brdf.h"
 #include "render/shaderlib/debug_view.h"
 #include "spv/debug_view_defects_spv.h"
 #include "testing/conformance_result.h"
@@ -297,11 +298,12 @@ std::vector<std::byte> ByteTexel( int r, int g, int b, int a )
 
 enum class Program
 {
-	kLightmapped, // LightmappedGeneric, the base texture
-	kBumped,      // + $bumpmap
-	kEnvmapped,   // + $envmap with $envmaptint
-	kSelfIllum,   // + $selfillum with $selfillumtint
-	kUnlit,       // UnlitGeneric with $vertexcolor
+	kLightmapped,   // LightmappedGeneric, the base texture
+	kBumped,        // + $bumpmap
+	kEnvmapped,     // + $envmap with $envmaptint
+	kSelfIllum,     // + $selfillum with $selfillumtint
+	kSelfIllumZero, // + $selfillum with $selfillumtint 0 (the emission term's neutral value)
+	kUnlit,         // UnlitGeneric with $vertexcolor
 	kPbr,
 	kVertexLit,
 	kLines
@@ -335,6 +337,11 @@ struct Case
 	std::function<std::optional<Rgb>( std::uint32_t x, std::uint32_t y, float3 hit, int cell )>
 	    expect;
 	float tolerance = kTolerance;
+	// pbr: the material and lighting variants (Prepare's names) and a mesh
+	// that replaces the quad (PbrVertex triangles).
+	std::string pbrMaterial = "default";
+	std::string pbrLighting = "default";
+	std::vector<std::byte> mesh;
 };
 
 frame::DebugControls View( std::uint32_t view )
@@ -360,7 +367,11 @@ struct Lab
 	std::map<std::string, std::uint64_t> drawGroups; // lightmap page -> group id
 	std::uint64_t frameGroup = 0;
 	std::uint64_t pbrFrameGroup = 0;
-	std::uint64_t pbrViewGroup = 0;
+	std::map<std::string, std::uint64_t> pbrMaterials; // variant -> material group
+	std::map<std::string, std::uint64_t> pbrLightings; // variant -> view group
+	std::map<std::string, material::PbrModelLighting> pbrLightingValues;
+	std::map<std::string, std::array<float, 4>>
+	    pbrMrao; // variant -> metal, rough, ao, emission scale
 	std::uint64_t vertexLitLighting = 0;
 	std::uint64_t nextGroup = 1;
 	std::map<Program, std::uint64_t> materialGroups;
@@ -418,6 +429,15 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	        cache, "lab/pbr/base", Format::kRGBA8Srgb, ByteTexel( 200, 150, 100, 255 ) ) &&
 	    StageConstant(
 	        cache, "lab/pbr/mrao", Format::kRGBA8Unorm, ByteTexel( 64, 153, 204, 255 ) ) &&
+	    StageConstant(
+	        cache, "lab/pbr/mrao-ao1", Format::kRGBA8Unorm, ByteTexel( 64, 153, 255, 255 ) ) &&
+	    StageConstant(
+	        cache, "lab/pbr/mrao-rough102", Format::kRGBA8Unorm, ByteTexel( 64, 102, 204, 255 ) ) &&
+	    StageConstant( cache, "lab/pbr/mrao-metal102", Format::kRGBA8Unorm,
+	        ByteTexel( 102, 153, 204, 255 ) ) &&
+	    StageConstant(
+	        cache, "lab/pbr/emission", Format::kRGBA8Srgb, ByteTexel( 60, 120, 180, 255 ) ) &&
+	    StageConstant( cache, "lab:page:zero", Format::kRGBA16Float, HalfTexel( 0, 0, 0 ) ) &&
 	    StageConstant( cache, "lab/vl/base", Format::kRGBA8Srgb, ByteTexel( 100, 200, 50, 255 ) );
 	{
 		const material::PbrSplitSumTable table = material::SplitSumTable();
@@ -458,6 +478,8 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	            { base, { "$envmap", "lab/cube" }, { "$envmaptint", "[0.5 0.5 0.5]" } } },
 	        { Program::kSelfIllum, "LightmappedGeneric",
 	            { base, { "$selfillum", "1" }, { "$selfillumtint", "[2 1 0.5]" } } },
+	        { Program::kSelfIllumZero, "LightmappedGeneric",
+	            { base, { "$selfillum", "1" }, { "$selfillumtint", "[0 0 0]" } } },
 	        { Program::kUnlit, "UnlitGeneric", { base, { "$vertexcolor", "1" } } } } )
 	{
 		if ( std::optional<std::string> why = resolve( program, shader, variables ) )
@@ -470,7 +492,7 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	if ( !frame || !lab.groups.Set( lab.frameGroup, *frame ) )
 		return std::string( "the lightmapped frame group was refused" );
 	for ( const char *page : { "lab:page:normal", "lab:page:nan", "lab:page:inf",
-	          "lab:page:negative", "lab:page:bright" } )
+	          "lab:page:negative", "lab:page:bright", "lab:page:zero" } )
 	{
 		const auto group = lab.resolver->DrawGroup( lab.programs[Program::kLightmapped], { page } );
 		const std::uint64_t id = lab.nextGroup++;
@@ -479,23 +501,52 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 		lab.drawGroups[page] = id;
 	}
 
-	// pbr: an ambient cube of 0.2 and one directional light.
-	material::PbrClaim claim;
-	claim.claimed = true;
-	material::PbrTextures pbrTextures;
-	pbrTextures.base = "lab/pbr/base";
-	pbrTextures.mrao = "lab/pbr/mrao";
-	pbrTextures.placeholder = "lab/pbr/mrao";
-	auto pbrRequest = lab.pbr->Request( claim, pbrTextures );
-	if ( !pbrRequest )
-		return std::string( "the pbr program was refused" );
-	lab.pbrRequest = pbrRequest.Value();
-	lab.materialGroups[Program::kPbr] = lab.nextGroup++;
+	// pbr: material variants (MRAO and emission) and lighting variants: an
+	// ambient cube of 0.2 and one directional light, the same without the
+	// light, and the light under a black cube.
 	lab.pbrFrameGroup = lab.nextGroup++;
-	lab.pbrViewGroup = lab.nextGroup++;
+	if ( !lab.groups.Set( lab.pbrFrameGroup, lab.pbr->FrameGroup( "lab/pbr/splitsum" ) ) )
+		return std::string( "the pbr frame group was refused" );
+	struct PbrVariant
+	{
+		const char *name;
+		const char *mrao;
+		std::array<int, 3> texel;
+		bool emission;
+	};
+	for ( const PbrVariant &variant :
+	    { PbrVariant{ "default", "lab/pbr/mrao", { 64, 153, 204 }, false },
+	        PbrVariant{ "ao1", "lab/pbr/mrao-ao1", { 64, 153, 255 }, false },
+	        PbrVariant{ "rough102", "lab/pbr/mrao-rough102", { 64, 102, 204 }, false },
+	        PbrVariant{ "metal102", "lab/pbr/mrao-metal102", { 102, 153, 204 }, false },
+	        PbrVariant{ "emission", "lab/pbr/mrao", { 64, 153, 204 }, true } } )
+	{
+		material::PbrClaim claim;
+		claim.claimed = true;
+		claim.emission = variant.emission;
+		claim.constants.flags[1] = variant.emission ? 1.0f : 0.0f;
+		claim.constants.flags[2] = variant.emission ? 1.5f : 0.0f;
+		material::PbrTextures pbrTextures;
+		pbrTextures.base = "lab/pbr/base";
+		pbrTextures.mrao = variant.mrao;
+		pbrTextures.emission = variant.emission ? "lab/pbr/emission" : "";
+		pbrTextures.placeholder = "lab/pbr/mrao";
+		auto pbrRequest = lab.pbr->Request( claim, pbrTextures );
+		if ( !pbrRequest )
+			return std::string( "the pbr program was refused" );
+		lab.pbrRequest = pbrRequest.Value(); // one pipeline for every variant
+		const std::uint64_t id = lab.nextGroup++;
+		if ( !lab.groups.Set( id, pbrRequest.Value().material ) )
+			return std::string( "a pbr material group was refused" );
+		lab.pbrMaterials[variant.name] = id;
+		lab.pbrMrao[variant.name] = { variant.texel[0] / 255.0f, variant.texel[1] / 255.0f,
+		    variant.texel[2] / 255.0f, variant.emission ? 1.5f : 0.0f };
+	}
+	lab.materialGroups[Program::kPbr] = lab.pbrMaterials["default"];
 	const float eye[3] = { 0, 0, 0 };
 	const float cube[6][3] = { { 0.2f, 0.2f, 0.2f }, { 0.2f, 0.2f, 0.2f }, { 0.2f, 0.2f, 0.2f },
 	    { 0.2f, 0.2f, 0.2f }, { 0.2f, 0.2f, 0.2f }, { 0.2f, 0.2f, 0.2f } };
+	const float black[6][3] = {};
 	material::PbrLightDesc sun;
 	sun.type = material::PbrLightType::kDirectional;
 	sun.color[0] = 1.0f;
@@ -504,12 +555,19 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> lig
 	sun.direction[0] = 0.8f;
 	sun.direction[1] = -0.3f;
 	sun.direction[2] = -0.52f;
-	const material::PbrModelLighting lighting =
+	lab.pbrLightingValues["default"] =
 	    material::PackSourceModelLighting( eye, cube, std::span( &sun, 1 ) );
-	if ( !lab.groups.Set( lab.materialGroups[Program::kPbr], lab.pbrRequest.material ) ||
-	     !lab.groups.Set( lab.pbrFrameGroup, lab.pbr->FrameGroup( "lab/pbr/splitsum" ) ) ||
-	     !lab.groups.Set( lab.pbrViewGroup, lab.pbr->ViewGroup( lighting ) ) )
-		return std::string( "a pbr group was refused" );
+	lab.pbrLightingValues["no-lights"] = material::PackSourceModelLighting( eye, cube, {} );
+	lab.pbrLightingValues["cube-zero"] =
+	    material::PackSourceModelLighting( eye, black, std::span( &sun, 1 ) );
+	for ( const auto &[name, value] : lab.pbrLightingValues )
+	{
+		const std::uint64_t id = lab.nextGroup++;
+		if ( !lab.groups.Set( id, lab.pbr->ViewGroup( value ) ) )
+			return std::string( "a pbr view group was refused" );
+		lab.pbrLightings[name] = id;
+	}
+	const material::PbrModelLighting &lighting = lab.pbrLightingValues["default"];
 
 	// vertexlit: the same lighting.
 	material::VertexLitClaim vertexLitClaim;
@@ -609,10 +667,16 @@ std::optional<std::string> DrawFrame(
 				return std::string( "no pbr debug pipeline" );
 			draw.pipeline = *pipeline;
 			draw.groups[std::size_t( BindGroupRole::kFrame )] = group( lab.pbrFrameGroup );
-			draw.groups[std::size_t( BindGroupRole::kView )] = group( lab.pbrViewGroup );
+			draw.groups[std::size_t( BindGroupRole::kView )] =
+			    group( lab.pbrLightings.at( c.pbrLighting ) );
 			draw.groups[std::size_t( BindGroupRole::kMaterial )] =
-			    group( lab.materialGroups[Program::kPbr] );
+			    group( lab.pbrMaterials.at( c.pbrMaterial ) );
 			draw.constants = Bytes( constants );
+			if ( !c.mesh.empty() )
+			{
+				draw.vertices = lab.canvas->Vertices( c.mesh );
+				draw.vertexCount = std::uint32_t( c.mesh.size() / sizeof( material::PbrVertex ) );
+			}
 		}
 		else if ( c.program == Program::kVertexLit )
 		{
@@ -1262,6 +1326,408 @@ void IdentityChecks( Lab &lab, Results &results )
 	    "identity.a-foreign-pipeline-has-no-variant" );
 }
 
+// ---------------------------------------------------------------------------
+// RFC 0014 D1: the lighting-model controls (render_lab suite lighting-controls)
+// ---------------------------------------------------------------------------
+
+constexpr int kControlCell = 27;
+
+// One case alone in a frame, in the control cell.
+std::optional<std::string> RenderOne( Lab &lab, const Case &c, CanvasImage &image )
+{
+	const int cell = kControlCell;
+	return DrawFrame( lab, std::span( &c, 1 ), std::span( &cell, 1 ), image );
+}
+
+Case Make( Program program, frame::DebugControls debug = {} )
+{
+	Case c;
+	c.program = program;
+	c.debug = debug;
+	return c;
+}
+
+frame::DebugControls TermsOff( std::uint32_t terms )
+{
+	frame::DebugControls debug;
+	debug.termsOff = terms;
+	return debug;
+}
+
+// Whether two frames are equal bit for bit, and whether they differ at all.
+bool SameBits( const CanvasImage &a, const CanvasImage &b )
+{
+	return a.rgba.size() == b.rgba.size() &&
+	       std::memcmp( a.rgba.data(), b.rgba.data(), a.rgba.size() * sizeof( float ) ) == 0;
+}
+
+// The pbr program's terms at a pixel of its quad, from pbr_brdf.h (the CPU
+// copy of the BRDF) and the packed lighting and material: what
+// cl_render_debug_brdf 1 (diffuse) and 2 (specular) must show.
+struct PbrTerms
+{
+	Rgb diffuse;
+	Rgb specular;
+	Rgb splitSum; // A, B, 0
+};
+
+PbrTerms PbrOracle( const Lab &lab, const std::string &material, const std::string &lighting,
+    float3 hit, bool compensate )
+{
+	const material::PbrModelLighting &l = lab.pbrLightingValues.at( lighting );
+	const std::array<float, 4> &mrao = lab.pbrMrao.at( material );
+	const Rgb base = lab.inputs.pbrBase;
+	const float metal = std::clamp( mrao[0], 0.0f, 1.0f );
+	const float rough = std::max( mrao[1], 0.02f );
+	const float occlusion = std::clamp( mrao[2], 0.0f, 1.0f );
+	const float3 view = math::Normalize( { l.eye[0] - hit.x, l.eye[1] - hit.y, l.eye[2] - hit.z } );
+	const float3 n = math::Normalize( lab.inputs.normal );
+	const float normalDotView = std::max( math::Dot( n, view ), 0.0f );
+	const float baseChannels[3] = { base.r, base.g, base.b };
+	float f0[3], compensation[3], albedo[3], diffuseColor[3];
+	const pbr::SplitSumCoefficients split = pbr::SampleSplitSum( normalDotView, rough );
+	for ( int c = 0; c < 3; ++c )
+	{
+		f0[c] = 0.04f + ( baseChannels[c] - 0.04f ) * metal;
+		compensation[c] = compensate ? pbr::SpecularEnergyCompensation( f0[c], split ) : 1.0f;
+		albedo[c] = compensate ? pbr::SpecularDirectionalAlbedo( f0[c], split )
+		                       : std::min( 1.0f, f0[c] * split.a + split.b );
+		diffuseColor[c] = baseChannels[c] * ( 1.0f - metal ) * ( 1.0f - albedo[c] );
+	}
+	const auto ambient = [&]( float3 d, int c )
+	{
+		const float sq[3] = { d.x * d.x, d.y * d.y, d.z * d.z };
+		return sq[0] * l.cube[d.x >= 0 ? 0 : 1][c] + sq[1] * l.cube[d.y >= 0 ? 2 : 3][c] +
+		       sq[2] * l.cube[d.z >= 0 ? 4 : 5][c];
+	};
+	float diffuse[3], specular[3];
+	for ( int c = 0; c < 3; ++c )
+		diffuse[c] = diffuseColor[c] * ambient( n, c ) * occlusion;
+	for ( int c = 0; c < 3; ++c )
+		specular[c] = 0.0f;
+	const int count = int( l.eye[3] );
+	for ( int i = 0; i < count && i < 4; ++i )
+	{
+		const auto &light = l.lights[i];
+		const float3 toLight = light.color[3] > 0.5f
+		                           ? math::Normalize( { -light.direction[0], -light.direction[1],
+		                                 -light.direction[2] } )
+		                           : math::Normalize( { light.position[0] - hit.x,
+		                                 light.position[1] - hit.y, light.position[2] - hit.z } );
+		const float normalDotLight = std::max( math::Dot( n, toLight ), 0.0f );
+		if ( normalDotLight <= 0.0f )
+			continue;
+		const float3 half =
+		    math::Normalize( { view.x + toLight.x, view.y + toLight.y, view.z + toLight.z } );
+		const pbr::Color single = pbr::EvaluateSpecular( { f0[0], f0[1], f0[2] }, normalDotView,
+		    normalDotLight, std::max( math::Dot( n, half ), 0.0f ),
+		    std::max( math::Dot( view, half ), 0.0f ), rough );
+		const float lobe[3] = { single.red, single.green, single.blue };
+		for ( int c = 0; c < 3; ++c )
+		{
+			const float incident = light.color[c]; // a directional light's attenuation is 1
+			diffuse[c] += diffuseColor[c] * incident * normalDotLight;
+			specular[c] += pbr::kPi * incident * lobe[c] * compensation[c] * normalDotLight;
+		}
+	}
+	const float d = math::Dot( view, n );
+	const float3 reflected{
+	    2.0f * d * n.x - view.x, 2.0f * d * n.y - view.y, 2.0f * d * n.z - view.z };
+	for ( int c = 0; c < 3; ++c )
+		specular[c] += ambient( reflected, c ) * albedo[c] * occlusion;
+	return { { diffuse[0], diffuse[1], diffuse[2] }, { specular[0], specular[1], specular[2] },
+	    { split.a, split.b, 0.0f } };
+}
+
+// A UV sphere of PbrVertex triangles.
+std::vector<std::byte> SphereMesh( float3 centre, float radius )
+{
+	constexpr int kRings = 32, kSegments = 48;
+	std::vector<std::byte> bytes;
+	auto vertex = [&]( int ring, int segment )
+	{
+		const float theta = 3.14159265f * float( ring ) / float( kRings );
+		const float phi = 2.0f * 3.14159265f * float( segment ) / float( kSegments );
+		const float3 n{ std::sin( theta ) * std::cos( phi ), std::sin( theta ) * std::sin( phi ),
+		    std::cos( theta ) };
+		material::PbrVertex v;
+		v.position[0] = centre.x + radius * n.x;
+		v.position[1] = centre.y + radius * n.y;
+		v.position[2] = centre.z + radius * n.z;
+		v.normal[0] = n.x;
+		v.normal[1] = n.y;
+		v.normal[2] = n.z;
+		v.tangent[0] = -std::sin( phi );
+		v.tangent[1] = std::cos( phi );
+		v.tangent[3] = 1.0f;
+		v.uv[0] = float( segment ) / kSegments;
+		v.uv[1] = float( ring ) / kRings;
+		const auto b = Bytes( v );
+		bytes.insert( bytes.end(), b.begin(), b.end() );
+	};
+	for ( int ring = 0; ring < kRings; ++ring )
+	{
+		for ( int segment = 0; segment < kSegments; ++segment )
+		{
+			vertex( ring, segment );
+			vertex( ring + 1, segment );
+			vertex( ring + 1, segment + 1 );
+			vertex( ring, segment );
+			vertex( ring + 1, segment + 1 );
+			vertex( ring, segment + 1 );
+		}
+	}
+	return bytes;
+}
+
+// The sphere's pixels away from its silhouette: the view ray's cosine to the
+// surface normal is at least 0.4.
+std::vector<std::pair<std::uint32_t, std::uint32_t>> SpherePixels(
+    const Camera &camera, float3 centre, float radius )
+{
+	std::vector<std::pair<std::uint32_t, std::uint32_t>> pixels;
+	for ( std::uint32_t y = 0; y < kSize; ++y )
+	{
+		for ( std::uint32_t x = 0; x < kSize; ++x )
+		{
+			const float3 d = math::Normalize( camera.Hit( x, y ) );
+			const float b = math::Dot( d, centre );
+			const float c = math::Dot( centre, centre ) - radius * radius;
+			const float disc = b * b - c;
+			if ( disc <= 0.0f )
+				continue;
+			const float tHit = b - std::sqrt( disc );
+			const float3 p{ d.x * tHit, d.y * tHit, d.z * tHit };
+			const float3 n = math::Normalize( { p.x - centre.x, p.y - centre.y, p.z - centre.z } );
+			if ( -math::Dot( n, d ) >= 0.4f )
+				pixels.emplace_back( x, y );
+		}
+	}
+	return pixels;
+}
+
+std::optional<std::string> LightingControlChecks( Lab &lab, Results &results )
+{
+	// Terms: each term off is the frame without that input, bit for bit, and
+	// the term on differs from it (the check is not vacuous).
+	struct TermCase
+	{
+		const char *name;
+		Case off;
+		Case without;
+		Case on;
+	};
+	auto pbrCase = []( const char *material, const char *lighting, frame::DebugControls debug )
+	{
+		Case c = Make( Program::kPbr, debug );
+		c.pbrMaterial = material;
+		c.pbrLighting = lighting;
+		return c;
+	};
+	Case zeroPage = Make( Program::kLightmapped );
+	zeroPage.page = "lab:page:zero";
+	const TermCase terms[] = {
+	    { "term.baked.lightmapped-is-a-zero-page",
+	        Make( Program::kLightmapped, TermsOff( shaderlib::kDebugTermBaked ) ), zeroPage,
+	        Make( Program::kLightmapped ) },
+	    { "term.emission.selfillum-is-tint-zero",
+	        Make( Program::kSelfIllum, TermsOff( shaderlib::kDebugTermEmission ) ),
+	        Make( Program::kSelfIllumZero ), Make( Program::kSelfIllum ) },
+	    { "term.ibl.envmapped-is-without-envmap",
+	        Make( Program::kEnvmapped, TermsOff( shaderlib::kDebugTermIbl ) ),
+	        Make( Program::kLightmapped ), Make( Program::kEnvmapped ) },
+	    { "term.clustered.pbr-is-without-lights",
+	        pbrCase( "default", "default", TermsOff( shaderlib::kDebugTermClustered ) ),
+	        pbrCase( "default", "no-lights", {} ), pbrCase( "default", "default", {} ) },
+	    { "term.probes-and-ibl.pbr-is-a-black-cube",
+	        pbrCase( "default", "default",
+	            TermsOff( shaderlib::kDebugTermProbes | shaderlib::kDebugTermIbl ) ),
+	        pbrCase( "default", "cube-zero", {} ), pbrCase( "default", "default", {} ) },
+	    { "term.ao.pbr-is-ao-one",
+	        pbrCase( "default", "default", TermsOff( shaderlib::kDebugTermAo ) ),
+	        pbrCase( "ao1", "default", {} ), pbrCase( "default", "default", {} ) },
+	    { "term.emission.pbr-is-without-emission",
+	        pbrCase( "emission", "default", TermsOff( shaderlib::kDebugTermEmission ) ),
+	        pbrCase( "default", "default", {} ), pbrCase( "emission", "default", {} ) } };
+	for ( const TermCase &term : terms )
+	{
+		CanvasImage off, without, on;
+		if ( auto why = RenderOne( lab, term.off, off ) )
+			return why;
+		if ( auto why = RenderOne( lab, term.without, without ) )
+			return why;
+		if ( auto why = RenderOne( lab, term.on, on ) )
+			return why;
+		results.That( SameBits( off, without ), std::string( term.name ) + ".bitwise" );
+		results.That( !SameBits( on, off ), std::string( term.name ) + ".the-term-contributes" );
+	}
+
+	// The BRDF modes against pbr_brdf.h, pixel by pixel.
+	struct Mode
+	{
+		std::uint32_t brdf;
+		const char *name;
+	};
+	CanvasImage full, diffuseOnly, specularOnly;
+	for ( const Mode &mode : { Mode{ 0, "brdf.0.full" }, Mode{ 1, "brdf.1.diffuse-lobe" },
+	          Mode{ 2, "brdf.2.specular-lobe" }, Mode{ 3, "brdf.3.no-energy-compensation" },
+	          Mode{ 4, "brdf.4.split-sum-sample" } } )
+	{
+		frame::DebugControls debug;
+		debug.brdf = mode.brdf;
+		CanvasImage image;
+		if ( auto why = RenderOne( lab, pbrCase( "default", "default", debug ), image ) )
+			return why;
+		if ( mode.brdf == 0 )
+			full = image;
+		if ( mode.brdf == 1 )
+			diffuseOnly = image;
+		if ( mode.brdf == 2 )
+			specularOnly = image;
+		std::string failure;
+		std::size_t compared = 0;
+		for ( auto [x, y] : lab.camera.Interior( kControlCell ) )
+		{
+			const PbrTerms oracle =
+			    PbrOracle( lab, "default", "default", lab.camera.Hit( x, y ), mode.brdf != 3 );
+			Rgb expected;
+			if ( mode.brdf == 1 )
+				expected = oracle.diffuse;
+			else if ( mode.brdf == 2 )
+				expected = oracle.specular;
+			else if ( mode.brdf == 4 )
+				expected = oracle.splitSum;
+			else
+				expected = { oracle.diffuse.r + oracle.specular.r,
+				    oracle.diffuse.g + oracle.specular.g, oracle.diffuse.b + oracle.specular.b };
+			const float *actual = image.At( x, y );
+			++compared;
+			const float tolerance = 3.0f * kTolerance;
+			if ( failure.empty() && !( Near( expected.r, actual[0], tolerance ) &&
+			                            Near( expected.g, actual[1], tolerance ) &&
+			                            Near( expected.b, actual[2], tolerance ) ) )
+				failure = "pixel (" + std::to_string( x ) + ", " + std::to_string( y ) +
+				          "): " + Describe( expected, actual );
+		}
+		results.That( compared >= 8 && failure.empty(),
+		    std::string( mode.name ) + ".matches-pbr_brdf.h", failure );
+	}
+	{
+		// The lobes add up to the full frame.
+		float worst = 0.0f;
+		for ( auto [x, y] : lab.camera.Interior( kControlCell ) )
+		{
+			for ( int c = 0; c < 3; ++c )
+				worst =
+				    std::max( worst, std::fabs( diffuseOnly.At( x, y )[c] +
+				                                specularOnly.At( x, y )[c] - full.At( x, y )[c] ) );
+		}
+		results.That( worst <= 2.0f * kTolerance, "brdf.lobes-sum-to-the-full-frame",
+		    "worst " + std::to_string( worst ) );
+	}
+
+	// The furnace: an energy-compensated white metal sphere reads 1 at every
+	// roughness; with compensation off (cl_render_debug_brdf 3) a rough one
+	// reads below it. A white dielectric reads 1 too, as does a lightmapped
+	// surface (albedo 1 under a uniform radiance of 1).
+	const float3 centre{ kDepth, 0.0f, 0.0f };
+	const float radius = 45.0f;
+	const std::vector<std::byte> sphere = SphereMesh( centre, radius );
+	const auto spherePixels = SpherePixels( lab.camera, centre, radius );
+	auto furnace = [&]( float metal, float rough, std::uint32_t brdf, float &mean,
+	                   float &worst ) -> std::optional<std::string>
+	{
+		frame::DebugControls debug;
+		debug.furnace = true;
+		debug.forceMetalness = metal;
+		debug.forceRoughness = rough;
+		debug.brdf = brdf;
+		Case c = pbrCase( "ao1", "default", debug );
+		c.mesh = sphere;
+		CanvasImage image;
+		if ( auto why = RenderOne( lab, c, image ) )
+			return why;
+		double sum = 0.0;
+		worst = 0.0f;
+		for ( auto [x, y] : spherePixels )
+		{
+			for ( int ch = 0; ch < 3; ++ch )
+			{
+				sum += image.At( x, y )[ch];
+				worst = std::max( worst, std::fabs( image.At( x, y )[ch] - 1.0f ) );
+			}
+		}
+		mean = spherePixels.empty() ? 0.0f : float( sum / double( spherePixels.size() * 3 ) );
+		return std::nullopt;
+	};
+	results.That( spherePixels.size() > 2000, "furnace.sphere-covers-the-frame",
+	    std::to_string( spherePixels.size() ) + " pixels" );
+	for ( float rough : { 0.05f, 0.3f, 0.6f, 1.0f } )
+	{
+		float mean = 0, worst = 0;
+		if ( auto why = furnace( 1.0f, rough, 0, mean, worst ) )
+			return why;
+		char name[96];
+		std::snprintf(
+		    name, sizeof( name ), "furnace.white-metal-reads-one.roughness-%.2f", rough );
+		results.That( worst <= 2.0f * kTolerance, name,
+		    "mean " + std::to_string( mean ) + ", worst " + std::to_string( worst ) );
+	}
+	{
+		float mean = 0, worst = 0;
+		if ( auto why = furnace( 0.0f, 0.5f, 0, mean, worst ) )
+			return why;
+		results.That( worst <= 2.0f * kTolerance, "furnace.white-dielectric-reads-one",
+		    "mean " + std::to_string( mean ) + ", worst " + std::to_string( worst ) );
+		if ( auto why = furnace( 1.0f, 1.0f, 3, mean, worst ) )
+			return why;
+		results.That( mean < 0.98f, "furnace.no-compensation-loses-energy-when-rough",
+		    "mean " + std::to_string( mean ) );
+		float smoothMean = 0;
+		if ( auto why = furnace( 1.0f, 0.05f, 3, smoothMean, worst ) )
+			return why;
+		results.That( smoothMean > mean, "furnace.no-compensation-loses-more-when-rougher",
+		    std::to_string( smoothMean ) + " at 0.05, " + std::to_string( mean ) + " at 1" );
+	}
+	{
+		frame::DebugControls debug;
+		debug.furnace = true;
+		CanvasImage image;
+		if ( auto why = RenderOne( lab, Make( Program::kLightmapped, debug ), image ) )
+			return why;
+		float worst = 0.0f;
+		for ( auto [x, y] : lab.camera.Interior( kControlCell ) )
+			for ( int c = 0; c < 3; ++c )
+				worst = std::max( worst, std::fabs( image.At( x, y )[c] - 1.0f ) );
+		results.That( worst <= kTolerance, "furnace.lightmapped-reads-one",
+		    "worst " + std::to_string( worst ) );
+	}
+
+	// The overrides: a forced value is the material authored with it.
+	struct Override
+	{
+		const char *name;
+		const char *authored;
+		bool roughness;
+	};
+	for ( const Override &override : { Override{ "force.roughness-is-authored", "rough102", true },
+	          Override{ "force.metalness-is-authored", "metal102", false } } )
+	{
+		frame::DebugControls debug;
+		( override.roughness ? debug.forceRoughness : debug.forceMetalness ) = 102.0f / 255.0f;
+		CanvasImage forced, authored;
+		if ( auto why = RenderOne( lab, pbrCase( "default", "default", debug ), forced ) )
+			return why;
+		if ( auto why = RenderOne( lab, pbrCase( override.authored, "default", {} ), authored ) )
+			return why;
+		float worst = 0.0f;
+		for ( std::size_t i = 0; i < forced.rgba.size(); ++i )
+			worst = std::max( worst, std::fabs( forced.rgba[i] - authored.rgba[i] ) );
+		results.That( worst <= 1.0f / 1024.0f, override.name, "worst " + std::to_string( worst ) );
+	}
+	return std::nullopt;
+}
+
 struct Seeded
 {
 	const char *name;
@@ -1275,9 +1741,18 @@ const Seeded kSeeded[] = {
     { "misses-nan", spirv::kLightmappedMissesNan, "view.16.nan" },
     { "no-hatch", spirv::kLightmappedNoHatch, "view.4.hatch.lightmapped" } };
 
-// One run of every check with the lightmapped program's module.
+enum class SuiteKind
+{
+	kDebugViews,
+	kLightingControls
+};
+
+const Seeded kLightingSeeded[] = {
+    { "term-ignored", spirv::kLightmappedTermIgnored, "term.baked.lightmapped-is-a-zero-page" } };
+
+// One run of a suite's checks with the lightmapped program's module.
 std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t> module,
-    Results &results, std::uint64_t &messages )
+    Results &results, std::uint64_t &messages, SuiteKind kind )
 {
 	std::atomic<std::uint64_t> counter{ 0 };
 	std::unique_ptr<IRenderDevice2> device;
@@ -1291,13 +1766,21 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 		if ( std::optional<std::string> why =
 		         lab.canvas->Render( lab.textures, lab.groups, {}, { 0, 0, 0, 1 }, nullptr ) )
 			return why;
-		ControlChecks( results );
-		IdentityChecks( lab, results );
-		const std::vector<Case> cases = PixelCases( lab );
-		if ( std::optional<std::string> why = RunCases( lab, cases, results ) )
-			return why;
-		if ( std::optional<std::string> why = RelationalCases( lab, results ) )
-			return why;
+		if ( kind == SuiteKind::kLightingControls )
+		{
+			if ( std::optional<std::string> why = LightingControlChecks( lab, results ) )
+				return why;
+		}
+		else
+		{
+			ControlChecks( results );
+			IdentityChecks( lab, results );
+			const std::vector<Case> cases = PixelCases( lab );
+			if ( std::optional<std::string> why = RunCases( lab, cases, results ) )
+				return why;
+			if ( std::optional<std::string> why = RelationalCases( lab, results ) )
+				return why;
+		}
 		(void)device->WaitIdle();
 	}
 	device.reset();
@@ -1305,47 +1788,54 @@ std::optional<std::string> RunOnce( bool validate, std::span<const std::uint32_t
 	return std::nullopt;
 }
 
-} // namespace
-
-int RunDebugViewsSuite( int argc, char **argv )
+int RunControlsSuite( int argc, char **argv, SuiteKind kind )
 {
+	const std::span<const Seeded> seededSet = kind == SuiteKind::kLightingControls
+	                                              ? std::span<const Seeded>( kLightingSeeded )
+	                                              : std::span<const Seeded>( kSeeded );
+	const char *suite = kind == SuiteKind::kLightingControls ? "lighting-controls" : "debug-views";
 	bool validate = false;
 	bool sensitivity = false;
+	bool verbose = false;
 	std::string seeded;
 	for ( int i = 0; i < argc; ++i )
 	{
 		const std::string arg = argv[i];
 		if ( arg == "--validate" )
 			validate = true;
+		else if ( arg == "--verbose" )
+			verbose = true;
 		else if ( arg == "--sensitivity" )
 			sensitivity = true;
 		else if ( arg == "--seeded" && i + 1 < argc )
 			seeded = argv[++i];
 		else
 		{
-			std::fprintf(
-			    stderr, "render_lab suite debug-views: unknown option %s\n", arg.c_str() );
+			std::fprintf( stderr, "render_lab suite %s: unknown option %s\n", suite, arg.c_str() );
 			return 2;
 		}
 	}
 	unsigned long checks = 0;
 	unsigned long failures = 0;
-	auto report = [&]( const Results &results, const char *prefix )
+	auto report = [&]( const Results &results )
 	{
 		for ( const Outcome &outcome : results.Outcomes() )
 		{
 			++checks;
+			if ( verbose && outcome.passed )
+				std::printf( "ok   %s%s%s\n", outcome.name.c_str(),
+				    outcome.detail.empty() ? "" : ": ", outcome.detail.c_str() );
 			if ( !outcome.passed )
 			{
 				++failures;
-				std::fprintf( stderr, "FAIL %s%s%s%s\n", prefix, outcome.name.c_str(),
+				std::fprintf( stderr, "FAIL %s%s%s\n", outcome.name.c_str(),
 				    outcome.detail.empty() ? "" : ": ", outcome.detail.c_str() );
 			}
 		}
 	};
 	auto fail = [&]( const std::string &why )
 	{
-		std::fprintf( stderr, "FAIL render_lab debug-views: %s\n", why.c_str() );
+		std::fprintf( stderr, "FAIL render_lab %s: %s\n", suite, why.c_str() );
 		return testing::ReportConformance( checks + 1, failures + 1 );
 	};
 
@@ -1355,7 +1845,7 @@ int RunDebugViewsSuite( int argc, char **argv )
 		if ( !seeded.empty() )
 		{
 			const Seeded *found = nullptr;
-			for ( const Seeded &s : kSeeded )
+			for ( const Seeded &s : seededSet )
 				found = seeded == s.name ? &s : found;
 			if ( !found )
 				return fail( "no seeded defect " + seeded );
@@ -1363,13 +1853,13 @@ int RunDebugViewsSuite( int argc, char **argv )
 		}
 		Results results;
 		std::uint64_t messages = 0;
-		if ( std::optional<std::string> why = RunOnce( validate, module, results, messages ) )
+		if ( std::optional<std::string> why = RunOnce( validate, module, results, messages, kind ) )
 			return fail( *why );
 		if ( validate )
 			results.That( messages == 0, "validation.silent",
 			    std::to_string( messages ) + " validation messages" );
-		report( results, "" );
-		std::printf( "render_lab debug-views: %zu checks, %zu failed\n", results.Outcomes().size(),
+		report( results );
+		std::printf( "render_lab %s: %zu checks, %zu failed\n", suite, results.Outcomes().size(),
 		    results.FailureCount() );
 		return testing::ReportConformance( checks, failures );
 	}
@@ -1378,21 +1868,34 @@ int RunDebugViewsSuite( int argc, char **argv )
 	// checks its defect breaks.
 	Results control;
 	std::uint64_t messages = 0;
-	if ( std::optional<std::string> why = RunOnce( validate, {}, control, messages ) )
+	if ( std::optional<std::string> why = RunOnce( validate, {}, control, messages, kind ) )
 		return fail( *why );
 	Results verdicts;
 	verdicts.That( control.FailureCount() == 0, "sensitivity.control-passes",
 	    std::to_string( control.FailureCount() ) + " control failures" );
-	for ( const Seeded &s : kSeeded )
+	for ( const Seeded &s : seededSet )
 	{
 		Results results;
-		if ( std::optional<std::string> why = RunOnce( validate, s.module, results, messages ) )
+		if ( std::optional<std::string> why =
+		         RunOnce( validate, s.module, results, messages, kind ) )
 			return fail( *why );
 		verdicts.That( results.Failed( s.breaks ), std::string( "sensitivity.detects." ) + s.name,
 		    std::string( "no failure of " ) + s.breaks );
 	}
-	report( verdicts, "" );
+	report( verdicts );
 	return testing::ReportConformance( checks, failures );
+}
+
+} // namespace
+
+int RunDebugViewsSuite( int argc, char **argv )
+{
+	return RunControlsSuite( argc, argv, SuiteKind::kDebugViews );
+}
+
+int RunLightingControlsSuite( int argc, char **argv )
+{
+	return RunControlsSuite( argc, argv, SuiteKind::kLightingControls );
 }
 
 } // namespace render::lab

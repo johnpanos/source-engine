@@ -184,14 +184,16 @@ struct WorldStats
 	std::string lastFailure;
 	// Why materials stay legacy: reason and count, most frequent first.
 	std::vector<std::pair<std::string, std::uint32_t>> gaps;
-	// The materials the pass draws, and their surface counts.
+	// The materials the pass draws ("program material"), and their surface
+	// counts.
 	std::vector<std::pair<std::string, std::uint32_t>> claimed;
 };
 
-// A world tag: the high bit set, then the view's serial in the low 30 bits
-// (bit 30 is the core-pass slots' kCorePassLegacyOff).
+// A world tag: the high bit set, then the view's serial in the low 29 bits
+// (bits 30 and 29 are the core-pass slots' kCorePassLegacyOff and
+// kCorePassFrameEnd).
 inline constexpr std::uint32_t kWorldTag = 0x80000000u;
-inline constexpr std::uint32_t kWorldSerialMask = 0x3fffffffu;
+inline constexpr std::uint32_t kWorldSerialMask = 0x1fffffffu;
 inline bool IsWorldTag( std::uint32_t tag )
 {
 	return ( tag & kWorldTag ) != 0 && ( tag & ~( kWorldTag | kWorldSerialMask ) ) == 0;

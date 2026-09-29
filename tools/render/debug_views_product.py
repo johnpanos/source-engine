@@ -26,7 +26,15 @@ cl_render_debug_* ConVars set, and judges each:
   which the uv-checker judge must reject (the judge's negative control);
 - legacy-skip (cl_render_debug_legacy 2, no view): the core world keeps its
   shading and the legacy stream is off (the checker judge rejects it, and no
-  pixel is the HUD's).
+  pixel is the HUD's);
+- legacy-tint (cl_render_debug_legacy 1): what the core did not draw (the
+  legacy glass, the HUD) is tinted magenta, the core's world is not; with the
+  core drawing nothing (r_core_world 0) the whole frame is tinted;
+- furnace (cl_render_debug_furnace 1): the core's world is albedo 1 under a
+  radiance of 1, so white (env-mapped surfaces add their specular over it);
+- term-baked (cl_render_debug_term baked): the core's lightmapped world takes
+  a zero lightmap, so it goes dark; cl_render_debug_claims names the program
+  of each claimed material.
 
 `selftest` runs the judges on synthetic frames: each must accept its own
 frame and reject the others' (checks-v1).
@@ -65,6 +73,14 @@ SHOTS = [
     ("hatch", ["cl_render_debug_view_program \"\"", "cl_render_debug_view 13", "r_core_world 0"]),
     ("neutral", ["r_core_world 1", "cl_render_debug_view 0"]),
     ("legacy-skip", ["cl_render_debug_legacy 2"]),
+    ("legacy-tint-yaw000", ["cl_render_debug_legacy 1", "cmd setang 0 0 0"]),
+    ("legacy-tint-yaw090", ["cmd setang 0 90 0"]),
+    ("legacy-tint-yaw180", ["cmd setang 0 180 0"]),
+    ("legacy-tint-yaw270", ["cmd setang 0 270 0"]),
+    ("legacy-tint-no-core", ["r_core_world 0"]),
+    ("furnace", ["r_core_world 1", "cl_render_debug_legacy 0", "cl_render_debug_furnace 1"]),
+    ("term-baked", ["cl_render_debug_furnace 0", "cl_render_debug_term baked",
+                    "cl_render_debug_claims"]),
 ]
 
 
@@ -92,11 +108,15 @@ def load_tga(path):
 def classify(width, height, pixels):
     """Counts of black, white, hatch-correct, edge blends and other pixels."""
     counts = {"black": 0, "white": 0, "hatch": 0, "hatch-wrong": 0, "blend": 0, "grey": 0,
-              "other": 0}
+              "other": 0, "tinted": 0, "dark": 0}
     for y in range(height):
         row = y * width * 3
         for x in range(width):
             r, g, b = pixels[row + x * 3: row + x * 3 + 3]
+            if max(r, g, b) <= 12:
+                counts["dark"] += 1
+            if r >= 188 and b >= 188 and r - g >= 30 and b - g >= 30:
+                counts["tinted"] += 1
             if r != g or g != b:
                 counts["other"] += 1
                 continue
@@ -257,7 +277,26 @@ def run(args):
         elif name == "legacy-skip":
             checks.check(not judge_checker(counts, total) and counts["other"] > total // 3,
                          "legacy-skip.core-keeps-its-shading", str(counts))
+        elif name.startswith("legacy-tint-yaw"):
+            checks.check(total - counts["tinted"] >= total * 3 // 10,
+                         "legacy-tint.%s.core-untinted" % name[len("legacy-tint-"):], str(counts))
+        elif name == "legacy-tint-no-core":
+            checks.check(counts["tinted"] >= total * 97 // 100,
+                         "legacy-tint.everything-legacy-without-the-core", str(counts))
+        elif name == "furnace":
+            checks.check(counts["white"] >= total // 3, "furnace.core-world-white", str(counts))
+        elif name == "term-baked":
+            checks.check(counts["dark"] >= total // 5, "term-baked.core-world-unlit",
+                         str(counts))
+    tinted = [results[name]["tinted"] for name in results if name.startswith("legacy-tint-yaw")]
+    # A legacy-drawn prop is in view at one of the yaws (testchmb_a_01: the
+    # next room's model behind the glass, about 500 pixels).
+    checks.check(bool(tinted) and max(tinted) >= 200,
+                 "legacy-tint.legacy-drawn-surfaces-magenta",
+                 "tinted pixels per yaw: %s" % tinted)
     checks.check("its terms are not on the core yet" in text, "refused.console-names-why")
+    checks.check("cl_render_debug_claims: program lightmapped:" in text,
+                 "claims.names-the-programs")
     checks.check('"mat_queue_mode" = "%d"' % args.queue_mode in text,
                  "boot.render-sequence-mode-%d" % args.queue_mode, "the console does not show it")
     (out / "judged.json").write_text(json.dumps(results, indent=2) + "\n")

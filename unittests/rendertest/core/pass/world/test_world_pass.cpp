@@ -172,9 +172,10 @@ int main()
 		blendedGap = blendedGap || reason.find( "blended" ) != std::string::npos;
 	}
 	checks.That( envmapGap && blendedGap, "W1.gaps-are-named" );
-	checks.That( loaded.claimed.size() == 2 && loaded.claimed[0].first == "lit" &&
-	                 loaded.claimed[1].first == "unlit",
-	    "W5.stats-name-the-claimed-materials" );
+	// "program material": the program that draws it (cl_render_debug_claims).
+	checks.That( loaded.claimed.size() == 2 && loaded.claimed[0].first == "lightmapped lit" &&
+	                 loaded.claimed[1].first == "unlit unlit",
+	    "W5.stats-name-the-claimed-materials-and-their-programs" );
 
 	// The slot's target: color and depth in their home usages.
 	TextureDesc colorDesc;

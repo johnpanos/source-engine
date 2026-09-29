@@ -534,3 +534,63 @@ CON_COMMAND( r_core_world_stats, "RFC 0016 K5: the core world's surfaces, views 
 	if ( stats.claimed[0] )
 		Msg( "r_core_world_stats: drawn by the core:\n%s", stats.claimed );
 }
+
+// RFC 0014: what the core claims, per program and material, and each named gap
+// (the one report of claims; VK_DEBUG_LIGHTMAPPED's diagnostics are gone).
+CON_COMMAND( cl_render_debug_claims,
+    "RFC 0014: what the render core claims, per program and material, and why the rest is not" )
+{
+	IRenderCoreWorld *pWorld = RenderCoreHost_World();
+	if ( !pWorld )
+	{
+		Msg( "cl_render_debug_claims: no render core\n" );
+		return;
+	}
+	RenderCoreWorldStats stats;
+	pWorld->GetStats( &stats );
+	Msg( "cl_render_debug_claims: world: %u of %u materials, %u of %u surfaces claimed\n",
+	    stats.claimedMaterials, stats.materials, stats.claimedSurfaces, stats.surfaces );
+	Msg( "cl_render_debug_claims: debug slots: %llu hatched frames, %llu tinted frames, %llu "
+	     "views drawn again over the tint\n",
+	    stats.debugHatches, stats.debugTints, stats.debugViewsRedrawn );
+	// "surfaces program material" lines, grouped by program.
+	CUtlVector<CUtlString> programs;
+	for ( const char *line = stats.claimed; *line; )
+	{
+		const char *end = strchr( line, '\n' );
+		const int length = end ? int( end - line ) : V_strlen( line );
+		char entry[512];
+		V_strncpy( entry, line, MIN( length + 1, (int)sizeof( entry ) ) );
+		char program[64] = {};
+		unsigned int surfaces = 0;
+		if ( sscanf( entry, "%u %63s", &surfaces, program ) == 2 )
+		{
+			bool known = false;
+			for ( int i = 0; i < programs.Count(); ++i )
+				known = known || V_strcmp( programs[i].Get(), program ) == 0;
+			if ( !known )
+				programs.AddToTail( CUtlString( program ) );
+		}
+		line = end ? end + 1 : line + length;
+	}
+	for ( int i = 0; i < programs.Count(); ++i )
+	{
+		Msg( "cl_render_debug_claims: program %s:\n", programs[i].Get() );
+		for ( const char *line = stats.claimed; *line; )
+		{
+			const char *end = strchr( line, '\n' );
+			const int length = end ? int( end - line ) : V_strlen( line );
+			char entry[512];
+			V_strncpy( entry, line, MIN( length + 1, (int)sizeof( entry ) ) );
+			char program[64] = {};
+			unsigned int surfaces = 0;
+			int name = 0;
+			if ( sscanf( entry, "%u %63s %n", &surfaces, program, &name ) == 2 &&
+			     V_strcmp( program, programs[i].Get() ) == 0 )
+				Msg( "  %u surfaces  %s\n", surfaces, entry + name );
+			line = end ? end + 1 : line + length;
+		}
+	}
+	if ( stats.gaps[0] )
+		Msg( "cl_render_debug_claims: not claimed (count, reason):\n%s", stats.gaps );
+}

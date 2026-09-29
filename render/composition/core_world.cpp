@@ -7,6 +7,7 @@
 #include "core_world.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -117,8 +118,28 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
 	if ( tag == 0 )
 		return false;
+	if ( m_Renderer.AppliedDebug().legacy == frame::DebugLegacy::kTint && m_ViewDepth <= 1 )
+	{
+		std::lock_guard<std::mutex> guard( m_TopLevelLock );
+		m_TopLevel.insert( tag );
+		while ( m_TopLevel.size() > 256 )
+			m_TopLevel.erase( m_TopLevel.begin() );
+	}
 	slots->MarkSlot( tag );
 	return true;
+}
+
+void CoreWorld::OnStage( frame::Stage, std::uint32_t depth )
+{
+	m_ViewDepth = depth;
+}
+
+void CoreWorld::EndFrame()
+{
+	if ( m_Renderer.AppliedDebug().legacy != frame::DebugLegacy::kTint )
+		return;
+	if ( legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots() )
+		slots->MarkSlot( legacy::kCorePassForwarded | legacy::kCorePassFrameEnd );
 }
 
 void CoreWorld::BeginFrame()
@@ -150,6 +171,9 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 	out->viewsFailed = stats.viewsFailed;
 	out->viewsSkipped = stats.viewsSkipped;
 	out->surfacesDrawn = stats.surfacesDrawn;
+	out->debugHatches = m_Hatches.load( std::memory_order_relaxed );
+	out->debugTints = m_Tints.load( std::memory_order_relaxed );
+	out->debugViewsRedrawn = m_Redrawn.load( std::memory_order_relaxed );
 	std::snprintf( out->lastFailure, sizeof( out->lastFailure ), "%s", stats.lastFailure.c_str() );
 	std::size_t used = 0;
 	for ( const auto &[reason, count] : stats.gaps )
@@ -178,6 +202,42 @@ void CoreWorld::GetStats( RenderCoreWorldStats *out ) const
 void CoreWorld::RecordSlot(
     std::uint32_t tag, device::CommandEncoder &encoder, const legacy::CorePassTarget &target )
 {
+	if ( tag & legacy::kCorePassFrameEnd )
+	{
+		// cl_render_debug_legacy 1: magenta over the frame, then the frame's
+		// top-level world views again; their depth test brings back exactly
+		// the pixels where the core's surface is still the one seen. What
+		// stays tinted is what the core did not draw (or legacy drew over).
+		pass::debug::HatchTarget whole;
+		whole.encodeOutput = !target.colorSrgb.IsValid();
+		whole.color = whole.encodeOutput ? target.color : target.colorSrgb;
+		whole.format = whole.encodeOutput ? target.colorFormat : target.colorSrgbFormat;
+		whole.width = target.width;
+		whole.height = target.height;
+		whole.samples = target.samples;
+		const float magenta[4] = { 1.0f, 0.0f, 1.0f, 0.5f };
+		if ( target.device && m_Overlays.RecordTint( *target.device, encoder, whole, magenta ) )
+			m_Tints.fetch_add( 1, std::memory_order_relaxed );
+		const auto frame = m_FrameViews.find( target.frame );
+		if ( frame != m_FrameViews.end() )
+		{
+			const std::vector<std::pair<std::uint32_t, device::TextureId>> views = frame->second;
+			for ( const auto &[view, color] : views )
+			{
+				if ( color != target.color )
+					continue;
+				RecordSlot( view, encoder, target );
+				m_Redrawn.fetch_add( 1, std::memory_order_relaxed );
+			}
+		}
+		// Frames older than a few are done.
+		std::erase_if( m_FrameViews,
+		    [&]( const auto &entry )
+		    {
+			    return entry.first + 4 < target.frame;
+		    } );
+		return;
+	}
 	if ( tag & legacy::kCorePassLegacyOff )
 	{
 		// The frame's first slot under a pixel view: every pixel the core does
@@ -189,8 +249,8 @@ void CoreWorld::RecordSlot(
 		hatch.width = target.width;
 		hatch.height = target.height;
 		hatch.samples = target.samples;
-		if ( target.device )
-			(void)m_Overlays.RecordHatch( *target.device, encoder, hatch );
+		if ( target.device && m_Overlays.RecordHatch( *target.device, encoder, hatch ) )
+			m_Hatches.fetch_add( 1, std::memory_order_relaxed );
 		return;
 	}
 	std::optional<Textures> textures;
@@ -222,6 +282,18 @@ void CoreWorld::RecordSlot(
 	std::copy( target.fog.params, target.fog.params + 4, world.fogParams );
 	world.fogEyeZ = target.fog.eyeZ;
 	m_Pass.Record( tag, encoder, world );
+	bool topLevel = false;
+	{
+		std::lock_guard<std::mutex> guard( m_TopLevelLock );
+		topLevel = m_TopLevel.count( tag ) != 0;
+	}
+	if ( topLevel )
+	{
+		auto &views = m_FrameViews[target.frame];
+		const auto entry = std::make_pair( tag, target.color );
+		if ( std::find( views.begin(), views.end(), entry ) == views.end() && views.size() < 64 )
+			views.push_back( entry );
+	}
 }
 
 } // namespace render::composition

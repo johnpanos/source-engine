@@ -9284,6 +9284,68 @@
       "expect": "pass"
     },
     {
+      "id": "render.lighting-controls",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0014",
+      "migration": "R95",
+      "contract": "RFC/0014-native-vulkan-and-bsp2-debug-controls.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "RFC 0014 D1 in render_lab (render_lab suite lighting-controls --validate): each cl_render_debug_term the programs have is the frame without that input, bit for bit, and the term on differs from it (lightmapped baked = a zero lightmap page, emission = $selfillumtint 0, ibl = no $envmap; pbr clustered = no lights, probes and ibl = a black ambient cube, ao = AO 1, emission = no emission); the pbr program's cl_render_debug_brdf modes against pbr_brdf.h pixel by pixel (1 diffuse lobe, 2 specular lobe, 3 compensation off, 4 the split-sum sample) and the lobes summing to the full frame; the furnace: a white metal sphere reads 1 within one fp16 step at roughness 0.05 to 1 and a white dielectric too, with compensation off a rough white metal reads below 0.98 and below a smooth one, a lightmapped surface reads 1; the forced roughness and metalness equal the material authored with them; 0 validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "lighting-controls",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 32,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/debug_views_suite.cpp",
+        "render/material/families/lightmapped.frag",
+        "render/material/families/pbr.frag",
+        "public/render/pbr_brdf.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lighting-controls.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0014",
+      "migration": "R95",
+      "contract": "RFC/0014-native-vulkan-and-bsp2-debug-controls.md",
+      "kind": "sensitivity",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "RFC 0014 D1's negative program: the lighting-controls suite passes with the shipped lightmapped program and fails its baked-term check with the program built to ignore cl_render_debug_term baked (SEEDED_DEBUG_TERM_IGNORED, debug_view_defects_spv.h); the built-in negative is the furnace with compensation off, which must lose energy.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "lighting-controls",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 2,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/debug_views_suite.cpp",
+        "render/material/families/lightmapped.frag",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.debug-views.product.mode0",
       "domain": "Q-PRESENTATION",
       "rfc": "0014",
@@ -9291,7 +9353,7 @@
       "contract": "RFC/0014-native-vulkan-and-bsp2-debug-controls.md",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0014 D0 in the product (tools/render/debug_views_product.py run --queue-mode 0): Portal's testchmb_a_01 headless on native Vulkan with the render core drawing the world (r_core_world 1), the render sequence on the main thread (mat_queue_mode 0), and a chain of screenshots under the cl_render_debug_* ConVars. The UV checker view has only the core's black and white, the hatch and edge blends (the legacy stream drew nothing); a reserved view (18) is refused with the reason on the console and the frame keeps the checker; the program filter greys the lightmapped world to 18%; with the core drawing nothing every pixel is the hatch at its own coordinates; neutral controls give a normal frame, which the checker judge rejects; cl_render_debug_legacy 2 keeps the core world's shading with the legacy stream off; the console shows the requested mat_queue_mode.",
+      "description": "RFC 0014 D0 in the product (tools/render/debug_views_product.py run --queue-mode 0): Portal's testchmb_a_01 headless on native Vulkan with the render core drawing the world (r_core_world 1), the render sequence on the main thread (mat_queue_mode 0), and a chain of screenshots under the cl_render_debug_* ConVars. The UV checker view has only the core's black and white, the hatch and edge blends (the legacy stream drew nothing); a reserved view (18) is refused with the reason on the console and the frame keeps the checker; the program filter greys the lightmapped world to 18%; with the core drawing nothing every pixel is the hatch at its own coordinates; neutral controls give a normal frame, which the checker judge rejects; cl_render_debug_legacy 2 keeps the core world's shading with the legacy stream off; the console shows the requested mat_queue_mode. RFC 0014 D1: cl_render_debug_legacy 1 tints magenta what the core did not draw (a legacy-drawn prop at one of four yaws) and leaves the core world untinted, and with the core drawing nothing tints the whole frame; cl_render_debug_furnace 1 turns the core world white; cl_render_debug_term baked darkens it; cl_render_debug_claims names each claimed material\u0027s program.",
       "command": [
         "{python}",
         "tools/render/debug_views_product.py",
@@ -9302,7 +9364,7 @@
         "{out}"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 11,
+      "min_checks": 20,
       "timeout_seconds": 900,
       "requires": [
         "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",
@@ -9328,7 +9390,7 @@
       "contract": "RFC/0014-native-vulkan-and-bsp2-debug-controls.md",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0014 D0 in the product (tools/render/debug_views_product.py run --queue-mode 2): Portal's testchmb_a_01 headless on native Vulkan with the render core drawing the world (r_core_world 1), the render sequence on its own thread (mat_queue_mode 2), and a chain of screenshots under the cl_render_debug_* ConVars. The UV checker view has only the core's black and white, the hatch and edge blends (the legacy stream drew nothing); a reserved view (18) is refused with the reason on the console and the frame keeps the checker; the program filter greys the lightmapped world to 18%; with the core drawing nothing every pixel is the hatch at its own coordinates; neutral controls give a normal frame, which the checker judge rejects; cl_render_debug_legacy 2 keeps the core world's shading with the legacy stream off; the console shows the requested mat_queue_mode.",
+      "description": "RFC 0014 D0 in the product (tools/render/debug_views_product.py run --queue-mode 2): Portal's testchmb_a_01 headless on native Vulkan with the render core drawing the world (r_core_world 1), the render sequence on its own thread (mat_queue_mode 2), and a chain of screenshots under the cl_render_debug_* ConVars. The UV checker view has only the core's black and white, the hatch and edge blends (the legacy stream drew nothing); a reserved view (18) is refused with the reason on the console and the frame keeps the checker; the program filter greys the lightmapped world to 18%; with the core drawing nothing every pixel is the hatch at its own coordinates; neutral controls give a normal frame, which the checker judge rejects; cl_render_debug_legacy 2 keeps the core world's shading with the legacy stream off; the console shows the requested mat_queue_mode. RFC 0014 D1: cl_render_debug_legacy 1 tints magenta what the core did not draw (a legacy-drawn prop at one of four yaws) and leaves the core world untinted, and with the core drawing nothing tints the whole frame; cl_render_debug_furnace 1 turns the core world white; cl_render_debug_term baked darkens it; cl_render_debug_claims names each claimed material\u0027s program.",
       "command": [
         "{python}",
         "tools/render/debug_views_product.py",
@@ -9339,7 +9401,7 @@
         "{out}"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 11,
+      "min_checks": 20,
       "timeout_seconds": 900,
       "requires": [
         "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",

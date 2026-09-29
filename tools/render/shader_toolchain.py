@@ -168,7 +168,8 @@ GENERATED = {
     "debug_spv.h": ("render::pass::debug::spirv",
         "render.pass.debug: the not-applicable hatch (RFC 0014)", (
         ("kFullscreenVertex", DEBUG + "/fullscreen.vert", DEVICE_OPTIONS),
-        ("kHatchFragment", DEBUG + "/hatch.frag", DEVICE_OPTIONS))),
+        ("kHatchFragment", DEBUG + "/hatch.frag", DEVICE_OPTIONS),
+        ("kTintFragment", DEBUG + "/tint.frag", DEVICE_OPTIONS))),
     "cluster_assign_spv.h": ("render::pass::lights::spirv",
         "the clustered light assignment pass (RFC 0016 K7)", (
         ("kClusterAssignCompute", LIGHTS + "/cluster_assign.comp", DEVICE_OPTIONS),)),
@@ -222,7 +223,9 @@ GENERATED = {
         ("kLightmappedMissesNan", FAMILIES + "/lightmapped.frag",
          DEVICE_OPTIONS + ("-DSEEDED_DEBUG_MISS_NAN",)),
         ("kLightmappedNoHatch", FAMILIES + "/lightmapped.frag",
-         DEVICE_OPTIONS + ("-DSEEDED_DEBUG_NO_HATCH",)))),
+         DEVICE_OPTIONS + ("-DSEEDED_DEBUG_NO_HATCH",)),
+        ("kLightmappedTermIgnored", FAMILIES + "/lightmapped.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEBUG_TERM_IGNORED",)))),
 }
 
 # GENERATED headers holding material-family programs: artifact units that a

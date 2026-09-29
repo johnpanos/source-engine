@@ -223,6 +223,13 @@ void RenderCoreHost_BeginFrame()
 	RenderCoreWorld_BeginFrame();
 }
 
+void RenderCoreHost_MarkFrameEnd()
+{
+	RenderCoreHostState &host = Host();
+	if ( host.bound && host.inFrame && host.world )
+		host.world->EndFrame();
+}
+
 void RenderCoreHost_EndFrame()
 {
 	RenderCoreHostState &host = Host();

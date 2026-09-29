@@ -140,6 +140,11 @@ inline constexpr std::uint32_t kCorePassForwarded = 0x80000000u;
 // monitor gamma ramp; its slots still run. The composition root marks it at
 // the frame's first slot, where it records the not-applicable hatch.
 inline constexpr std::uint32_t kCorePassLegacyOff = 0x40000000u;
+// A forwarded tag with this bit marks the end of the frame's stream, after
+// every draw and before the present (RFC 0014 cl_render_debug_legacy 1: the
+// composition root tints what the core did not draw there). The backend runs
+// it as any slot.
+inline constexpr std::uint32_t kCorePassFrameEnd = 0x20000000u;
 
 // A backend's slots (LegacyShaderServices::corePassSlots). Called in frame
 // order on the thread that replays the material system's calls.

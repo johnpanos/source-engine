@@ -2253,6 +2253,36 @@ The catalog now reaches the product.
 | Judges catch what they must | `render.debug-views.product.selftest`: a legacy HUD mark in a checker frame, a hatch one pixel out of phase, the checker as hatch, the hatch as filter grey | pass (11 checks) |
 | Default identity, product | `core_world_smoke.py run --game portal` on this build: 26 of 26 retail maps pass with the core drawing the world strictly | pass (27 checks) |
 
+### RFC 0014 D1: the lighting-model controls, in the lab and the product (2026-09-29)
+
+D1's controls are `cl_render_debug_brdf`, `_furnace`, `_term`,
+`_force_roughness`, `_force_metalness`, `_legacy` and `_claims`. Their
+programs' side landed with D0 and is now checked. The product side adds the
+frame-end slot for `cl_render_debug_legacy 1` and the claims report, and
+deletes the two frozen `VK_DEBUG_LIGHTMAPPED` diagnostics. The decisions are
+recorded in
+[RFC 0014](0014-native-vulkan-and-bsp2-debug-controls.md#implementation-decisions-d0-product-and-d1-2026-09-29).
+Views 18–20 wait for the indirect terms on the core (K11, step d).
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Each term off is the frame without its input | `render.lighting-controls`, bit for bit, and each term on differs. Lightmapped: baked off = a zero page, emission off = `$selfillumtint 0`, ibl off = no `$envmap`. pbr: clustered off = no lights, probes and ibl off = a black cube, ao off = AO 1, emission off = no emission | pass |
+| BRDF modes against `pbr_brdf.h` | Modes 1, 2, 3 and 4 match the CPU terms at every pixel of a lit pbr quad within 3/255. Diffuse plus specular equals the full frame within 1.2e-4 | pass |
+| Furnace | A white metal sphere reads 1 within 4.9e-4 (one fp16 step) at roughness 0.05, 0.3, 0.6 and 1.0, and a white dielectric too. With compensation off, a rough white metal reads 0.38 (the single-scatter A+B), below the smooth one's 0.9997. A lightmapped surface reads exactly 1 | pass |
+| Overrides | Forced roughness and metalness of 102/255 equal the materials authored with them, worst difference 0 | pass |
+| Negative program | `render.lighting-controls.sensitivity`: the program built to ignore `baked` fails the term check | pass |
+| Product, both queued modes | `render.debug-views.product.mode0` and `.mode2`, 20 checks each. D0's shots, plus four more. `legacy 1` over four yaws of testchmb_a_01 leaves the core's world untinted and shows a legacy-drawn prop magenta (504 pixels at yaw 180). With the core drawing nothing, all 786,432 pixels are tinted. The furnace turns 783,911 pixels white. `term baked` darkens 681,109 pixels. `cl_render_debug_claims` names each program | pass |
+
+Found while building `legacy 1`: the backend records a frame's scene a second
+time for a capture, and screenshots and RenderDoc frames are those second
+recordings. Per-frame state on the composition's side must therefore be keyed
+by the target's frame serial, not consumed by the first recording (RenderDoc
+capture `testchmb_a_01_frame492`: the tint was the frame's last draw, and the
+redraw was missing).
+
+Open for D0–D1: the Fold7 run (required for D0), and the recorded frame-time
+A/B (binding rule 7).
+
 ## Output and `render_lab`'s presenting host on iPhone and Apple TV (2026-09-28)
 
 User request (2026-09-28): "complete these on tvOS and iOS - in renderlab".

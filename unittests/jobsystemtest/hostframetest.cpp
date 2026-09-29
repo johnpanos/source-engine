@@ -632,6 +632,9 @@ void RenderCoreHost_BeginFrame()
 void RenderCoreHost_EndFrame()
 {
 }
+void RenderCoreHost_MarkFrameEnd()
+{
+}
 void V_RenderView()
 {
 	Record( "V_RenderView" );
