@@ -42,6 +42,7 @@ probe's 6 x 6 octahedral direct light, in the PRBV's texel order.
 """
 
 import argparse
+import contextlib
 import hashlib
 import json
 import math
@@ -531,8 +532,14 @@ def bake_direct(obj, target, height, name, work, passes=None):
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
-    if bpy.ops.object.bake(type="DIFFUSE", pass_filter=passes or {"DIRECT"}) != {"FINISHED"}:
-        raise RuntimeError("Cycles could not bake the radiosity receivers")
+    passes = passes or {"DIRECT"}
+    # A DIRECT-only bake is the same at any bounce limit (pbrt_blender.
+    # DIRECT_ONLY_BOUNCES); without bounces Cycles traces no continuations.
+    paths = (pbrt_blender.direct_only_light_paths() if passes == {"DIRECT"}
+             else contextlib.nullcontext())
+    with paths:
+        if bpy.ops.object.bake(type="DIFFUSE", pass_filter=passes) != {"FINISHED"}:
+            raise RuntimeError("Cycles could not bake the radiosity receivers")
     path = work / (name + ".exr")
     scene = bpy.context.scene
     scene.render.image_settings.file_format = "OPEN_EXR"
