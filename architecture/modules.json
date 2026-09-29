@@ -677,7 +677,8 @@
         "allowedEdges": [
           "foundation",
           "render.device",
-          "render.graph"
+          "render.graph",
+          "render.shader-library"
         ]
       },
       {
@@ -725,6 +726,7 @@
       },
       {
         "id": "render.lab",
+        "kind": "native-test",
         "description": "RFC 0016 K11: render_lab, the render core composed alone (no engine, material system, legacy frontend or SDL), rendering scenes from BSP2 maps, studio models and VMT materials through the Vulkan adapter to prove each lighting term against Cycles.",
         "paths": [
           "render/lab/"
@@ -739,7 +741,13 @@
           "world.map-container",
           "content.studio-model",
           "content.texture-contract",
-          "content.vtf-reader"
+          "content.vtf-reader",
+          "render.shader-library",
+          "render.frame",
+          "render.graph",
+          "render.pass.lines",
+          "jobs.graph",
+          "testing.contracts"
         ],
         "externalHeaders": [
           "filesystem"
@@ -1330,7 +1338,8 @@
           "render_device",
           "render_resources",
           "kvtext",
-          "render_spv"
+          "render_spv",
+          "render_shaderlib"
         ]
       },
       "render_scene": {
@@ -1342,7 +1351,8 @@
       "render_frame": {
         "allowedUse": [
           "render_graph",
-          "render_device"
+          "render_device",
+          "render_shaderlib"
         ]
       },
       "render_renderer": {
@@ -1398,14 +1408,15 @@
           "render_spv"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf", "bitmap", "mathlib", "tier0", "tier1", "tier2", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines"]},
       "render_pass_lines": {
         "allowedUse": [
           "render_resources",
           "render_graph",
           "render_device",
           "render_math",
-          "render_spv"
+          "render_spv",
+          "render_shaderlib"
         ]
       },
       "render_legacy": {

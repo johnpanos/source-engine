@@ -3146,6 +3146,7 @@
       "profile": "linux-headless-core",
       "description": "The editor's viewport geometry on the render core (RFC 0016 'Editor viewports'): snapshot solids become fan triangles and side edges, entities shaded marker boxes; selection colors are data; faces carry the fixed two-light shading restated independently; every overlay kind maps to line items; grid lines lie on pixel centers; ViewFor projects exactly like the workspace's Camera2D and Camera3D, and seeded wrong views are rejected; BuildMipChain's levels, sizes and hand-checked linear-light texels (a black and white box gives 188, not the encoded-byte 128; an odd axis's last box takes three texels); a solid's fill follows its id, so it survives a chunk restaged alone (G10, G11); ImportSourceMaterial imports a patch through its include with ImportVmt, decodes the base texture under the importer's name, and refuses a missing VMT, a missing include and an unknown shader with the reason (G14).",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
         "hammer/core/viewport/camera.cpp",
@@ -3201,6 +3202,7 @@
       "description": "R17 follow-up (props and instances), clauses G12, G13 and V10 of render_adapter.viewport-geometry.v1: model entities have no marker faces and their model box in 2D edges (selected: every view, selection color); instance content faces are multiplied by the tint and its edges drawn in the instance edge color; BuildModelBatches (untextured first, model uv, shading times tint, skin families, indices in range), ModelWorld, ModelWorldBox and ModelTint; G14 posed models (ModelSequence: label, else index, else 0, -1 without sequences; PosedModel stands a Y-up reference along z by its root's first frame; the world box bounds the posed model); V11 staging per (sequence, skin, tint); on render.device.null the renderer reads each model once, stages it once per (skin, tint), draws one indexed draw per batch and entity, counts a missing model, restages only the moved entity's chunk without restaging the model, and releases everything.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
         "hammer/core/viewport/camera.cpp",
@@ -3267,6 +3269,7 @@
       "profile": "linux-headless-core",
       "description": "ViewportRenderer on render.device.null (manual completion): the scene stages once per key; a 2D view runs the grid and scene passes and draws grid, edges and overlay, the 3D view faces then edges; Take returns nothing before completion and width x height RGBA after; missing cameras, zero sizes and unknown tickets are refused; everything is released afterwards; a $translucent batch is drawn in a second, blended pass after every opaque and alpha-tested one and each texture uploads its full mip chain (V8); moving one solid of a three-chunk scene uploads exactly its chunk's face and edge meshes, whose bytes equal that chunk's geometry, the same content under a new key uploads nothing, and an emptied chunk is released (V9); materials resolve through ProgramResolver::ResolvePreview: one setting a variable the preview does not read ($envmap) still draws textured and is counted (approximatedMaterials, ignored), and one the source cannot import is a named failure drawn untextured (V11).",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
         "hammer/core/viewport/camera.cpp",
@@ -3331,6 +3334,7 @@
       "profile": "linux-headless-core",
       "description": "ViewportService (RFC 0016 decision 'threading'): the editor's viewports on a render sequence. On a real render thread over render.device.null, a job's pixels arrive only through the reply runner at the requested size, jobs reply in submission order, invalid jobs reply kInvalidView, destroying the service with jobs in flight runs no later reply and leaves the device holding nothing the renderer made, and a shut-down render runner refuses jobs without the destructor waiting.",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
         "hammer/core/viewport/camera.cpp",
@@ -3398,6 +3402,7 @@
       "profile": "linux-headless-core",
       "description": "hammer.adapters.render.service under ThreadSanitizer. Needs a compiler with a TSan runtime: CONFORMANCE_TSAN=1 python3 tools/quality/conformance.py check --cxx clang++ --suite hammer.adapters.render.service.tsan",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
         "hammer/core/viewport/camera.cpp",
@@ -3473,6 +3478,7 @@
       "profile": "linux-native-vulkan-gpu",
       "description": "R17 follow-up (props and instances) on render.device.vulkan with real pixels, judged by relations: a scene extracted with an InstancePreview over real VMF text and a synthetic MDL/VVD/VTX box read by content.studio-model. A prop at yaw 90 shows the texel times its shading where its rotated footprint projects and the background where only the unrotated one would lie; a missing model draws its marker and is counted, each model file is read once; the func_instance's box shows its fill times the instance tint where its placement puts it (differing from the untinted fill) and its prop the tinted texel; in 2D the rotated model box is drawn in the entity color (not the unrotated one) and instance edges in the instance edge color; selecting the prop tints its model with the selection fill; the validation layer reports nothing.",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
         "hammer/core/viewport/camera.cpp",
@@ -3570,6 +3576,7 @@
       "profile": "linux-native-vulkan-gpu",
       "description": "ViewportRenderer on render.device.vulkan with real pixels, judged by relations: top-face centers projected by the workspace's Camera3D show the built face colors (selection fill for the selected box); 2D box edges show the selection or plain edge color where the Camera2D projects them; grid and pending-box overlay pixels land at their projections; a restage follows the selection; repeated inputs give identical frames; a far one-texel checker shows the linear-light mid gray at every sampled point while a close one keeps its contrast (mipmaps, R6); a translucent pane blends over an opaque wall in linear light, an opaque control shows only the pane, and an alpha-tested grate shows the wall through its hole (R7); a one-chunk restage after a move draws byte-identical to a fresh renderer (R8); the validation layer reports nothing.",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
         "hammer/core/viewport/camera.cpp",
@@ -3644,6 +3651,7 @@
       "profile": "linux-native-vulkan-gpu",
       "description": "RFC 0002 R17: ViewportService on render.device.vulkan as the GTK shell composes it (contract render_adapter.viewport-geometry.v1, SV1-SV4): two documents with their own services and render threads on one device give, interleaved, the frames a lone renderer draws of each view; a remount (replaced material source) restores the frame drawn before; a view resized and back equals its first frame; a service destroyed with jobs in flight, exported frames leased and a source swap queued leaves the device as before.",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "hammer/core/viewport/extraction.cpp",
         "hammer/core/viewport/view_policy.cpp",
         "hammer/core/viewport/camera.cpp",
@@ -8402,6 +8410,7 @@
       "description": "render.pass.world (RFC 0016 K5, the BSP world drawn by the core) on render.device.null: materials are claimed through the one program resolver (LightmappedGeneric, and UnlitGeneric as the lightmapped term with lighting one) and the others stay legacy with named gaps ($envmap, blended); a queued view records at its slot with its lightmap pages and a neutral white for a surface without one; a slot recorded again (a capture) draws the same view; a view queued against an earlier world, or naming a surface the pass does not draw, is counted; a claimed material the render sequence fails is a named failure and stays claimed (no escape hatch); a capture re-recording an earlier world's slot leaves the next world's views queued; objects a submission's earlier slots used outlive a level change or format change and are released at a later frame; a variable the model does not read keeps its material out unless at its shader's neutral value; views of a host frame the backend never recorded are skipped, and a view lost from a recorded frame fails.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8438,6 +8447,7 @@
       "description": "render.pass.opaque (RFC 0016 K5, drawing through K4's material families) on render.device.null, which validates every transition and binding: the draw and readback passes run and frames create no device objects; draws whose mesh or program does not resolve, whose material's texture is not resident, or whose mesh stride is not the program's are counted, not drawn; invalid targets fail before any pass is added. Materials are the unlit family's flat $color over a white texture, through MaterialPrograms.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8483,6 +8493,7 @@
       "description": "render.pass.opaque (RFC 0016 K5, drawing through K4's material families) on render.device.vulkan with real pixels, the materials being the unlit family's flat $color over a white texture through MaterialPrograms: a near cube wins the depth test although the far one draws after it; two scenes render independently in one process and destroying one leaves the other's frame byte-identical ('Two scenes'); unresolved draws (missing mesh, unknown material, absent texture, wrong stride) are counted and not drawn; the Khronos validation layer (synchronization validation) reports no message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8537,6 +8548,7 @@
       "description": "render.pass.lines (RFC 0016 decision 'lines and overlays') on render.device.null, which validates every transition and binding and records the executed commands: the upload, render and readback passes run; resident batches and the list's six slots draw in the documented order, one draw each after its 80-byte draw-constant write; pipelines are made once per topology and depth mode; invalid targets, depth-tested items without a depth format and a mesh in another layout are refused before any pass; an empty list still clears.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8570,6 +8582,7 @@
       "description": "render.pass.lines (RFC 0016) on render.device.vulkan with real pixels through the identity box view: screen quads cover exactly their pixel rectangle (origin top-left, y down); world lines land on their projected row; depth-tested lines hide behind faces while untested ones draw over; the depth bias moves lines, not triangles; handles draw over screen lines; straight alpha blends; resident batches draw and frames repeat byte-identically; the Khronos validation layer reports no message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8613,6 +8626,7 @@
       "description": "RFC 0016 K4 'Families match ports' for the unlit family: each case of quality/fixtures/legacy-shaders/families/unlit.vdf is imported with the VMT importer, claimed by ClaimUnlit and drawn with the family's pipeline on render.device.vulkan into a 256x256 sRGB target; the sampled pixels must match the legacy port's within 2 levels per channel (quality/fixtures/render-families/unlit-port-v1.vdf, recorded by tools/render/family_port_pixels.py from a legacy_shader_conformance.py run judged against the retail D3D9 bytecode; the fixture names the case file's sha256). No validation message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8659,6 +8673,7 @@
       "description": "seeded: the family packs $vertexcolor as off; the vertex-color cases must leave the port's tolerance",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8706,6 +8721,7 @@
       "description": "RFC 0016 K4 'Families match ports' for the lightmapped family: each case of quality/fixtures/legacy-shaders/families/lightmapped.vdf is imported with the VMT importer, claimed by ClaimLightmapped and drawn with the family's pipeline on render.device.vulkan (the material group, and a draw group holding the case's lightmap) into a 256x256 sRGB target; the sampled pixels must match the legacy port's within 2 levels per channel (quality/fixtures/render-families/lightmapped-port-v1.vdf, recorded by tools/render/family_port_pixels.py from a legacy_shader_conformance.py run judged against the retail D3D9 bytecode; the fixture names the case file's sha256). Bump maps, second base textures, env maps and $additive are refused by name. No validation message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8752,6 +8768,7 @@
       "description": "seeded: the family gamma-converts $color as unlit does and the port does not; the $color case must leave the port's tolerance",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8799,6 +8816,7 @@
       "description": "RFC 0016 K4 'Families match ports' for the vertexlit family: each case of quality/fixtures/legacy-shaders/families/vertexlit.vdf is imported with the VMT importer, claimed by ClaimVertexLit and drawn with the family's pipeline on render.device.vulkan (the material group, and a draw group holding the case's ambient cube and lights as PackSourceModelLighting packs them) into a 256x256 sRGB target; the sampled pixels must match the legacy port's within 2 levels per channel (quality/fixtures/render-families/vertexlit-port-v1.vdf, recorded by tools/render/family_port_pixels.py from a legacy_shader_conformance.py run with -vklegacyvertexlit judged against the retail D3D9 bytecode; the fixture names the case file's sha256). Bump maps, env maps, detail, self-illumination, $phong, rim lights, light warps and $additive are refused by name; blending follows the port's blend requirements. No validation message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8846,6 +8864,7 @@
       "description": "seeded: the family drops $halflambert and lights with plain Lambert; the half-Lambert case must leave the port's tolerance",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8894,6 +8913,7 @@
       "description": "RFC 0016 K4 'Families match ports' for the pbr family (RFC 0007 PBRMetalRough on meshes): quality/fixtures/render-families/pbr-port-v1.vdf is a passing native pbr-model material pixel run (judged per pixel against an independent BRDF model), recorded by tools/render/family_port_pixels.py record-model with the harness's own inputs; each case's material is imported, claimed by ClaimPbr and drawn with the family on render.device.vulkan (the split-sum table in the frame group, Source model lighting packed by PackSourceModelLighting in the view group, the material group, and world-to-clip plus the case's placement as draw constants) into a 256x256 sRGB target; the port's pixels must be matched within 2 levels per channel. Environment maps, alpha test, clear coat, glass and a missing MRAO texture are refused by name; the light packing sorts spot, point, directional. No validation message.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -8940,6 +8960,7 @@
       "description": "seeded: the family claims every material without its normal map; the bumped case must leave the port's tolerance",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -9090,6 +9111,74 @@
       "sources": [
         "tools/render/lab.py",
         "tools/quality/conformance_result.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.debug-views",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0014",
+      "migration": "R95",
+      "contract": "RFC/0014-native-vulkan-and-bsp2-debug-controls.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "RFC 0014 D0 in render_lab (render/lab/debug_views_suite.cpp): every installed view of the catalog (cl_render_debug_view 1-17) drawn by the core's programs (lightmapped with bump, env map and self-illumination terms, unlit, pbr, vertexlit, lines) on analytic 18-unit quads with known inputs (constant sRGB base, bump and cube textures, lightmap pages of known light and of NaN, infinity, a negative value and 4.0, vertex colors, a tilted normal, known MRAO) and compared with the view's formula within one 8-bit step: albedo, world normal (flat and bumped), normal map, roughness, metalness, AO, baked light (with scale 2 and the RNM basis), image specular from the program's constants, emission, the UV checker, vertex color (raw and gamma-decoded), linear depth (1 / gl_FragCoord.w over the range), NaN/Inf/negative, over-range; the pbr direct-light and image-specular views equal the frame minus the frame with that term off; every view a program lacks draws the 8-pixel 25%/50% hatch; the program filter greys other programs; render.frame's validation rejects unknown, reserved and malformed controls; neutral controls give the shipped pipeline and append no specialization constant; the Khronos validation layer with synchronization validation reports nothing.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "debug-views",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 80,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/debug_views_suite.cpp",
+        "render/lab/lab_canvas.cpp",
+        "render/shaders/common/debug_view.glsl",
+        "render/shaderlib/debug_view.cpp",
+        "render/frame/debug_controls.cpp",
+        "render/material/families/lightmapped.frag",
+        "render/material/families/pbr.frag",
+        "render/material/families/vertexlit.frag",
+        "render/material/families/unlit.frag",
+        "render/pass/lines/lines.frag",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.debug-views.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0014",
+      "migration": "R95",
+      "contract": "RFC/0014-native-vulkan-and-bsp2-debug-controls.md",
+      "kind": "sensitivity",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "RFC 0014 D0's negative programs: the debug-views suite passes with the shipped lightmapped program and fails, on the checks each defect breaks, with the program built with a swapped normal encoding (SEEDED_DEBUG_SWAPPED_NORMAL), a view that tone maps (SEEDED_DEBUG_TONE_MAPS), a NaN view that misses an injected NaN (SEEDED_DEBUG_MISS_NAN) and normal shading where the hatch belongs (SEEDED_DEBUG_NO_HATCH), each generated by the pinned shader toolchain (debug_view_defects_spv.h).",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "debug-views",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 5,
+      "timeout_seconds": 900,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/debug_views_suite.cpp",
+        "render/shaders/common/debug_view.glsl",
+        "tools/render/shader_toolchain.py"
       ],
       "expect": "pass"
     },
@@ -9761,6 +9850,8 @@
       "description": "render.frame.v1 and render.renderer (RFC 0016 K3, wiring slice) on render.device.null: the legacy stage order with nested views, feature passes run in order, frame misuse, stage hooks, missing capabilities named.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
+        "render/frame/debug_controls.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
@@ -9967,6 +10058,8 @@
       "description": "render.composition and render.legacy-frontend (RFC 0016 A.7) through the launcher's C entry points: RenderCore_Create composes or fails naming the unknown device or feature; the frontend's provider keeps the backend identity and forwards creation; RenderStageMarkers001 marks stages of engine frames; a frame runs legacy-stream then present. P6 (RFC 0016 K5): -render-core-passes selects the frontend's core-pass probe and refuses an unknown one by name; with a probe the frontend queues one slot on the backend at each view's opaque stage, tagged with the stage and view depth, and none without one.",
       "result_protocol": "checks-v1",
       "sources": [
+        "render/shaderlib/debug_view.cpp",
+        "render/frame/debug_controls.cpp",
         "render/device/port.cpp",
         "render/device/encoder.cpp",
         "render/device/validation.cpp",
