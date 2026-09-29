@@ -45,6 +45,8 @@ import argparse
 import hashlib
 import json
 import math
+import multiprocessing
+import os
 import sys
 import time
 from pathlib import Path
@@ -436,6 +438,47 @@ def first_hits(bvh, owner, patches, origins, directions, limit):
     return hits
 
 
+# Ray casting fans out over forked workers, as probe_volume_bake.py's probe
+# trace does: the BVH, owner table and patch index reach them by fork. The
+# parent draws every ray in the serial order and each worker returns one
+# patch's or one probe's sums, so the result does not depend on the worker
+# count. Workers do no BLAS (see probe_volume_bake.trace_run).
+_RAYS = {}
+TRANSFER_BLOCK = 4096
+
+
+def _transfer_row(job):
+    p, origins, directions = job
+    job_state = _RAYS
+    row = {}
+    for q in first_hits(job_state["bvh"], job_state["owner"], job_state["patches"], origins,
+                        directions, job_state["limit"]):
+        if q >= 0 and q != p:
+            row[q] = row.get(q, 0.0) + 1.0 / job_state["transfer_rays"]
+    return row
+
+
+def _gather_entry(i):
+    job_state = _RAYS
+    rays = job_state["rays"]
+    entry = {}
+    hits = first_hits(job_state["bvh"], job_state["owner"], job_state["patches"],
+                      np.repeat(job_state["positions"][i][None], len(rays), 0), rays,
+                      job_state["limit"])
+    for k, q in enumerate(hits):
+        if q >= 0:
+            entry[q] = entry.get(q, 0.0) + job_state["basis"][k] * job_state["weight"]
+    return entry
+
+
+def fan_out(function, jobs, workers):
+    """[function(job) for job in jobs], on forked workers when there are several."""
+    if workers > 1 and len(jobs) > 1:
+        with multiprocessing.get_context("fork").Pool(min(workers, len(jobs))) as pool:
+            return pool.map(function, jobs, chunksize=max(1, len(jobs) // (8 * workers)))
+    return [function(job) for job in jobs]
+
+
 # ---------------------------------------------------------------- receivers
 
 def receiver_mesh(quads):
@@ -517,6 +560,9 @@ def main():
     parser.add_argument("--light-paths", default="gi-reference")
     parser.add_argument("--out", type=Path, required=True, help="RTRN file")
     parser.add_argument("--work", type=Path, required=True)
+    parser.add_argument("--trace-workers", type=int, default=os.cpu_count() or 1,
+                        help="processes casting the transfer and gather rays (the result does "
+                             "not depend on it)")
     args = parser.parse_args(arguments)
     started = time.monotonic()
     rng = np.random.default_rng(SEED)
@@ -569,32 +615,31 @@ def main():
 
     # Form factors.
     count = len(patches.members)
-    transfer = [dict() for _ in range(count)]
-    for p in range(count):
-        members = patches.members[p]
-        chosen = members[rng.integers(0, len(members), args.transfer_rays)]
-        directions = cosine_directions(samples["normal"][chosen] * patches.side[p], rng)
-        origins = samples["position"][chosen] + \
-            samples["normal"][chosen] * patches.side[p] * RAY_OFFSET
-        for q in first_hits(bvh, owner, patches, origins, directions, limit):
-            if q >= 0 and q != p:
-                transfer[p][q] = transfer[p].get(q, 0.0) + 1.0 / args.transfer_rays
-    traced = time.monotonic()
-
-    # Probe gather.
     rays = probe_volume_bake_directions(args.gather_rays)
     basis = radiosity_transfer.sh_basis(rays) * radiosity_transfer.BAND_SCALE
-    weight = 4 * math.pi / len(rays)
-    gather = []
-    for i, position in enumerate(probe_positions):
-        entry = {}
-        if probe_active[i]:
-            hits = first_hits(bvh, owner, patches, np.repeat(position[None], len(rays), 0),
-                              rays, limit)
-            for k, q in enumerate(hits):
-                if q >= 0:
-                    entry[q] = entry.get(q, 0.0) + basis[k] * weight
-        gather.append(entry)
+    _RAYS.update(bvh=bvh, owner=owner, patches=patches, limit=limit,
+                 transfer_rays=args.transfer_rays, rays=rays, basis=basis,
+                 weight=4 * math.pi / len(rays), positions=probe_positions)
+    try:
+        transfer = []
+        for first in range(0, count, TRANSFER_BLOCK):
+            jobs = []
+            for p in range(first, min(first + TRANSFER_BLOCK, count)):
+                members = patches.members[p]
+                chosen = members[rng.integers(0, len(members), args.transfer_rays)]
+                directions = cosine_directions(samples["normal"][chosen] * patches.side[p], rng)
+                origins = samples["position"][chosen] + \
+                    samples["normal"][chosen] * patches.side[p] * RAY_OFFSET
+                jobs.append((p, origins, directions))
+            transfer += fan_out(_transfer_row, jobs, args.trace_workers)
+        traced = time.monotonic()
+
+        # Probe gather.
+        active = [i for i in range(len(probe_positions)) if probe_active[i]]
+        entries = dict(zip(active, fan_out(_gather_entry, active, args.trace_workers)))
+        gather = [entries.get(i, {}) for i in range(len(probe_positions))]
+    finally:
+        _RAYS.clear()
     gathered = time.monotonic()
 
     # Keep the patches whose light reaches a probe, directly or through others.
