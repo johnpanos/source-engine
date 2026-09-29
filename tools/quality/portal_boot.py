@@ -711,6 +711,30 @@ def run_product(command, stage, environment, timeout, output):
     return returncode, timed_out, sorted(loaded), time.monotonic() - started
 
 
+def login_session_displays():
+    """The login session's WAYLAND_DISPLAY and DISPLAY, from the systemd user
+    manager; empty where there is no user manager (CI, containers)."""
+    try:
+        result = subprocess.run(["systemctl", "--user", "show-environment"],
+                                capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if result.returncode != 0:
+        return {}
+    shown = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+    return {key: shown[key] for key in ("WAYLAND_DISPLAY", "DISPLAY") if shown.get(key)}
+
+
+def user_display_in_use(environment, login):
+    """The login-session display variables a windowed run would use: a window
+    there opens on the user's live desktop. Empty for offscreen runs and for
+    a private compositor's own displays."""
+    if environment.get("SDL_VIDEODRIVER") == "offscreen":
+        return []
+    return ["%s=%s" % (key, environment[key]) for key, value in sorted(login.items())
+            if environment.get(key) == value]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, required=True)
@@ -754,6 +778,10 @@ def main(argv=None):
     parser.add_argument("--capture-wait", type=int, default=600,
                         help="frames between the console commands and the final screenshot and "
                              "quit (a longer cfg sequence, e.g. several screenshots, needs more)")
+    parser.add_argument("--allow-user-display", action="store_true",
+                        help="permit a window on the login session's own display; without it a "
+                             "windowed run must be inside a private compositor (private_session."
+                             "dbus_run_session plus mutter --headless)")
     parser.add_argument("--headless", action="store_true",
                         help="render offscreen on the GPU (SDL offscreen driver) with the "
                              "volume muted")
@@ -928,6 +956,12 @@ def main(argv=None):
             # RenderDoc must follow children to reach the game process.
             command = [renderdoccmd, "capture", "--opt-hook-children", "-w", "-c",
                        str(output / "renderdoc" / args.map)] + command
+        shared = user_display_in_use(environment, login_session_displays())
+        if shared and not args.allow_user_display:
+            raise ValueError("this run would open a window on the user's live desktop (%s); use "
+                             "--headless, or run inside a private compositor "
+                             "(private_session.dbus_run_session plus mutter --headless), or pass "
+                             "--allow-user-display" % ", ".join(shared))
         evidence["command"] = command
         evidence["requirements"] = requirements
         evidence["display_environment"] = {key: environment.get(key) for key in

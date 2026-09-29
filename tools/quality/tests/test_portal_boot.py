@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import re
 import struct
@@ -95,6 +96,44 @@ class AcceptanceTests(unittest.TestCase):
         self.assertTrue(self.evaluate(log=STATUS + PROVIDERS,
                                       requirements=("vulkan", "sdl3"),
                                       loaded=("/libvulkan/cache/libother.so", "/tmp/fakelibSDL3.so")))
+
+
+class UserDisplayTests(unittest.TestCase):
+    LOGIN = {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}
+
+    def test_a_windowed_run_on_the_login_session_is_caught(self):
+        self.assertEqual(boot.user_display_in_use(
+            {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}, self.LOGIN),
+            ["DISPLAY=:0", "WAYLAND_DISPLAY=wayland-0"])
+        self.assertEqual(boot.user_display_in_use({"DISPLAY": ":0"}, self.LOGIN),
+                         ["DISPLAY=:0"])
+
+    def test_offscreen_and_private_compositor_runs_pass(self):
+        self.assertEqual(boot.user_display_in_use(
+            {"SDL_VIDEODRIVER": "offscreen", "DISPLAY": ":0"}, self.LOGIN), [])
+        self.assertEqual(boot.user_display_in_use(
+            {"WAYLAND_DISPLAY": "wl-resize-42"}, self.LOGIN), [])
+        self.assertEqual(boot.user_display_in_use({"DISPLAY": ":3"}, self.LOGIN), [])
+
+    def test_no_login_session_means_no_guard(self):
+        self.assertEqual(boot.user_display_in_use({"DISPLAY": ":0"}, {}), [])
+
+    def test_main_refuses_a_live_desktop_run_before_the_product_starts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime, output = Path(tmp) / "original", Path(tmp) / "boot"
+            (runtime / "portal").mkdir(parents=True)
+            (runtime / "portal/gameinfo.txt").write_text("gameinfo")
+            (runtime / "hl2_launcher").write_bytes(b"launcher")
+            product = mock.Mock()
+            with mock.patch.dict(os.environ, {"WAYLAND_DISPLAY": "wayland-0"}), mock.patch.object(
+                    boot, "run_product", product), mock.patch.object(
+                    boot, "login_session_displays", return_value=self.LOGIN), mock.patch.object(
+                    boot.conformance, "source_identity", return_value={}), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                result = boot.main(["--runtime", str(runtime), "--out", str(output)])
+            self.assertNotEqual(result, 0)
+            product.assert_not_called()
+            self.assertIn("live desktop", json.dumps(json.loads((output / "evidence.json").read_text())))
 
 
 class ResizeAcceptanceTests(unittest.TestCase):
@@ -834,8 +873,11 @@ class TraceCaptureTests(unittest.TestCase):
                     '{"event":"present"}\n' if write_trace == "invalid" else contents)
             return 0, False, [], 1.0
 
+        # The fake product opens no window, so the live-desktop guard has no
+        # login session to protect here.
         with mock.patch.object(boot, "run_product", side_effect=product), mock.patch.object(
-                boot.conformance, "source_identity", return_value={}), contextlib.redirect_stdout(io.StringIO()):
+                boot.conformance, "source_identity", return_value={}), mock.patch.object(
+                boot, "login_session_displays", return_value={}), contextlib.redirect_stdout(io.StringIO()):
             result = boot.main(["--runtime", str(runtime), "--out", str(output), "--render-trace"])
         return result, json.loads((output / "evidence.json").read_text())
 
