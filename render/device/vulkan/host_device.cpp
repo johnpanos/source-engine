@@ -29,6 +29,20 @@ public:
 		if ( VulkanEncoder *backend = Backend( encoder ) )
 			backend->Native( record, user );
 	}
+	void BeginSection( CommandEncoder &encoder ) override
+	{
+		if ( VulkanEncoder *backend = Backend( encoder ) )
+			backend->BeginSection();
+	}
+	void EndSection( CommandEncoder &encoder ) override
+	{
+		if ( VulkanEncoder *backend = Backend( encoder ) )
+			backend->EndSection();
+	}
+	bool RunSection( VkCommandBuffer cmd, std::uint32_t index ) override
+	{
+		return m_Device->RunSection( cmd, index );
+	}
 	void AddSubmitWait(
 	    CommandEncoder &encoder, VkSemaphore semaphore, VkPipelineStageFlags2 stage ) override
 	{
@@ -39,6 +53,15 @@ public:
 	{
 		if ( VulkanEncoder *backend = Backend( encoder ) )
 			backend->AddSignal( semaphore );
+	}
+	bool ImportImage(
+	    VkImage image, const TextureDesc &desc, ResourceUsage home, TextureId *texture ) override
+	{
+		auto imported = m_Device->ImportImage( image, desc, home );
+		if ( !imported )
+			return false;
+		*texture = imported.Value();
+		return true;
 	}
 	bool SubmitNative( NativeRecord record, void *user, VkSemaphore wait,
 	    VkPipelineStageFlags2 waitStage, VkSemaphore signal, CompletionToken *token ) override

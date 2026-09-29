@@ -33,6 +33,13 @@ float ReadParameter(
     const ParameterBlock &block, std::string_view name, std::size_t component = 0 );
 bool ReadFlag( const ParameterBlock &block, std::string_view name );
 
+// The alpha test's reference as the legacy shaders set it: the block's
+// $alphatestreference when above zero (BaseVSShader and the generic helpers
+// call AlphaFunc only then), else the default render state's 0.7
+// (CShaderShadowDX8::SetDefaultState); held as a byte, as D3DRS_ALPHAREF
+// holds it ((int)( reference * 255 )).
+float AlphaTestReference( const ParameterBlock &block );
+
 // Source's GammaToLinear for a material color component (mathlib
 // color_conversion.cpp): values above one pass unchanged, values from 0.95
 // are one, the rest go through the 256-entry pow(2.2) table, indexed by

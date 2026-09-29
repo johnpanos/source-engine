@@ -176,6 +176,8 @@ VkFormat ToVkFormat( Format format )
 		return VK_FORMAT_D32_SFLOAT;
 	case Format::kD24UnormS8:
 		return VK_FORMAT_D24_UNORM_S8_UINT;
+	case Format::kD32FloatS8:
+		return VK_FORMAT_D32_SFLOAT_S8_UINT;
 	case Format::kUnknown:
 	case Format::kCount:
 		break;
@@ -185,7 +187,7 @@ VkFormat ToVkFormat( Format format )
 
 VkImageAspectFlags BarrierAspects( Format format )
 {
-	if ( format == Format::kD24UnormS8 )
+	if ( HasStencil( format ) )
 		return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
 	return IsDepthFormat( format ) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 }

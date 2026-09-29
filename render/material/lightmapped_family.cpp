@@ -62,7 +62,7 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 	constants.tint[3] = ReadParameter( block, "alpha" );
 	constants.flags[0] = ReadFlag( block, "vertexcolor" ) ? 1.0f : 0.0f;
 	constants.flags[1] = ReadFlag( block, "alphatest" ) ? 1.0f : 0.0f;
-	constants.flags[2] = ReadParameter( block, "alphatestreference" );
+	constants.flags[2] = detail::AlphaTestReference( block );
 	claim.claimed = true;
 	return claim;
 }

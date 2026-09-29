@@ -98,6 +98,31 @@ int main()
 		    "claim.refuses-a-texture-transform-by-name" );
 	}
 
+	// The alpha test's reference as the legacy shaders set it: 0.7 when the
+	// material gives none, and held as a byte.
+	{
+		auto reference = [&]( const char *vmt ) -> float
+		{
+			VmtImportContext context;
+			auto imported = ImportVmt( vmt, context );
+			if ( !imported )
+				return -1.0f;
+			ParameterBlock block( *unlit );
+			if ( !ApplyValues( imported.Value(), block ) )
+				return -1.0f;
+			(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+			const UnlitClaim claim = ClaimUnlit( block );
+			return claim.claimed ? claim.constants.flags[3] : -1.0f;
+		};
+		checks.That(
+		    reference( "\"UnlitGeneric\" { \"$basetexture\" \"a\" \"$alphatest\" \"1\" }" ) ==
+		        178.0f / 255.0f,
+		    "claim.alpha-test-without-a-reference-uses-0.7" );
+		checks.That( reference( "\"UnlitGeneric\" { \"$basetexture\" \"a\" \"$alphatest\" \"1\" "
+		                        "\"$alphatestreference\" \"0.5\" }" ) == 127.0f / 255.0f,
+		    "claim.alpha-test-reference-is-a-byte" );
+	}
+
 	const bool layer = vulkan::ValidationLayerAvailable();
 	std::atomic<std::uint64_t> messages{ 0 };
 	vulkan::VulkanAdapterOptions options;

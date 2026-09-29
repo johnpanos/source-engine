@@ -125,6 +125,7 @@ std::vector<std::byte> EncodeTexel( Format format, const ClearColor &color )
 	}
 	case Format::kR32Float:
 	case Format::kD32Float:
+	case Format::kD32FloatS8:
 		putBytes( 0, &color.r, sizeof( float ) );
 		break;
 	case Format::kRGBA32Float:

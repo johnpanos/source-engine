@@ -124,6 +124,7 @@ std::uint32_t BytesPerTexel( Format format )
 	case Format::kR32Float:
 	case Format::kD32Float:
 	case Format::kD24UnormS8:
+	case Format::kD32FloatS8: // the depth aspect, as copies address it
 		return 4;
 	case Format::kRGBA16Float:
 		return 8;
@@ -138,7 +139,12 @@ std::uint32_t BytesPerTexel( Format format )
 
 bool IsDepthFormat( Format format )
 {
-	return format == Format::kD32Float || format == Format::kD24UnormS8;
+	return format == Format::kD32Float || HasStencil( format );
+}
+
+bool HasStencil( Format format )
+{
+	return format == Format::kD24UnormS8 || format == Format::kD32FloatS8;
 }
 
 } // namespace render::device

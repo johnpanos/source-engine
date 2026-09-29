@@ -1623,12 +1623,16 @@ the Fold7.
 
 This is the design for K5's open checks ("Pixels", "Submission cost").
 K6–K8's product items rest on the same steps. It was written from the
-current code, and nothing below is implemented yet.
+current code. Step 2 and the adapter half of step 3 are done; see the next
+section.
 
 Facts:
-- The frame runs as stage passes on the core's device, which is the null
-  device in the Portal product. The backend records its GPU work into its
-  own command buffers (host work).
+- Two graphs run each frame. The legacy frame executor runs the backend's
+  stage passes on the backend's own device, the host device's port
+  (`ILegacyFrameSource::Device()`), which is a real Vulkan device. The core
+  renderer's bookkeeping frame (legacy-stream and present features, stage
+  markers) runs on the composed device, which is null in the Portal
+  product.
 - The backend's `VkDevice` is already an adapter `VulkanDevice`: K1's "one
   Vulkan stack" (`host_binding.h`).
 - The backend buffers each frame as an ordered stream of draw records
@@ -1639,12 +1643,10 @@ Facts:
   scene stage would be cleared or drawn over.
 
 Steps, each its own slice with its own oracle:
-1. **One device for the frame.** The host device exposes its port device,
-   and the core's renderer adopts it when the backend creates its device
-   (a late binding, since the core is composed before the video mode is
-   set). Dedicated and test products keep the null device. Oracle: the
-   stage passes record on a Vulkan encoder, and the pixel families and view
-   oracles are unchanged.
+1. **One device for the frame.** The legacy executor's graph already runs
+   on the backend's device, so core passes join that graph. Folding the
+   renderer's bookkeeping frame into it, so there is one graph per frame,
+   follows. Dedicated and test products keep the null device.
 2. **The backend's scene targets as port textures.** The adapter imports a
    native image and its current layout as a `TextureId` that the backend
    keeps in step as it transitions. This is private to the Vulkan family
@@ -1652,10 +1654,11 @@ Steps, each its own slice with its own oracle:
    sync validation silent.
 3. **A core pass inside the stream.** A new record kind marks where the
    core draws. The frontend inserts it when the client marks
-   `RENDER_STAGE_OPAQUE` for a view. At record time the backend closes its
-   rendering scope, runs the core's pass on a port encoder over the same
-   command buffer, and reopens. Oracle: an empty core pass leaves every
-   pixel family byte-identical.
+   `RENDER_STAGE_OPAQUE` for a view. The scene stage records the core
+   pass's port commands as a section after its host record, and the
+   backend's replay runs the section at the marker, between closing its
+   render pass and reopening it (so the replay loop is not split). Oracle:
+   an empty core pass leaves every pixel family byte-identical.
 4. **World and props content.**
    - World: batches per (material, lightmap page) from the BSP surfaces,
      in `render.resources`' mesh cache.
@@ -1677,10 +1680,57 @@ Order: 1, 2, 3, then the world, then static props.
 | Graph suite | `render.graph.v1` null (31, g++/clang++, TSan lane) and `render.graph.v1.vulkan` (the 1,000 random graphs with real work, serial and pooled, on RADV) | pass |
 | Independent model agrees | G7 on 1,000 seeded graphs | pass |
 | Bad graphs caught | `render.graph.v1.sensitivity`, 5 of 5 | pass |
-| Synchronization validated | sync validation (the adapter always enables it under `-vkvalidate`) over all 16 pixel families in both HDR modes: 32 runs, 0 validation messages; and a `testchmb_a_01` product boot: 0 messages. Integer `sky` keeps its recorded, unrelated magenta failure (R32-LEGACY-SHADERS) with no message | pass |
+| Synchronization validated | the validation layer over all 16 pixel families in both HDR modes: 32 runs, 0 validation messages; and a `testchmb_a_01` product boot: 0 messages. Integer `sky` keeps its recorded, unrelated magenta failure (R32-LEGACY-SHADERS) with no message. **Correction (same day):** these runs had the layer without synchronization validation. The adapter enables it on its own instance, but the host instance the backend creates under `-vkvalidate` did not. The host instance now enables it too (next section), and the 32 runs and the boot were repeated with it on: 0 messages | pass |
 | Serial equals pooled | G9 (`render.graph.recording`) on the 1,000 graphs | pass |
 | Pixels unchanged | the pixel families are byte-identical before and after the graph frames (K1 record, 17 families both HDR modes; K3 record, 32 of 32) | pass |
 
 Present, gamma, MSAA resolve, capture and queued compute run as passes of
 the frame graph (K3 slice 3). Their commands are still the backend's own,
 and their resources become port textures with the K5 plan's step 2.
+
+## K5 steps 2 and 3a: imported scene targets and host-run sections (2026-09-28)
+
+Step 2 of the K5 plan, and the adapter half of step 3. Both are host interop,
+private to the Vulkan family (`render/device/vulkan/host_device.h`, CAP007).
+
+- **`IHostDevice::ImportImage`.** A host image becomes a port `TextureId`
+  with a *home* usage, the one whose layout the host keeps it in. Host work
+  in the same encoder must find it at home, and so must the end of the
+  submission; `Submit` refuses otherwise (`kInvalidState`). The adapter
+  orders the port's first access after host work, and host work after the
+  port's writes. It owns only the views: `Release` frees them after the
+  token and leaves the image with the host.
+- **Sections.** `BeginSection`/`EndSection` bracket port commands recorded
+  after a `RecordNative`, and the native record calls `RunSection( cmd,
+  index )` at the point the section belongs. Sections run once each and in
+  order: asking for one runs the earlier ones, and the ones never asked for
+  run when the record returns. Validation treats a section's bounds as host
+  work boundaries. The backend's scene replay can then run a core pass at
+  a record of its stream without splitting its loop.
+- **`Format::kD32FloatS8`.** RADV has no D24S8, so the backend's scene
+  depth is D32S8. The port gains the format, and `HasStencil()` replaces the
+  D24S8 special cases in the Vulkan adapter.
+- **Synchronization validation on the host instance.** The host instance
+  now enables it whenever the layer is on, as the adapter's own instance
+  does. This corrects the K2 closure's evidence (see its table).
+
+| Check | Evidence | Result |
+| --- | --- | --- |
+| Import clauses | `render.device.v2.vulkan`: `vulkan.import` and `vulkan.section`. Host work, port commands and host work in one encoder, over an RGBA8 and a D32S8 image; each side reads the other's writes. A section runs mid-record between the host's clear and its readback. Asking for section 1 runs section 0 first, and an unasked section runs after the record. Bad homes, imports away from home at host work or at the end, and 5 of 5 bad sections are refused. Release leaves the image. 745 checks on RADV, g++ and clang++ (was 595) | pass |
+| Sync validation silent | the import and section runs report 0 messages. The negative control, a host that skips its own barrier, is reported (`WRITE_AFTER_WRITE`), so validation is on | pass |
+| Product unchanged | the backend is unchanged except for the host instance. All 16 pixel families in both HDR modes pass under `-vkvalidate` with synchronization validation: 32 runs, 0 messages (integer `sky` keeps its recorded failure). A `testchmb_a_01` boot: 0 messages | pass |
+
+Also in this slice, from the Hammer session's report: the `unlit` and
+`lightmapped` families passed `$alphatestreference` through unchanged, so
+`$alphatest` with no reference cut nothing. The legacy shaders call
+`AlphaFunc` only for a reference above zero, which leaves the default
+state's 0.7, and D3D9 holds the reference as a byte. `detail::AlphaTestReference`
+owns that rule for both families. Each suite gains two claim checks (0.7 as
+178/255, and 0.5 as 127/255). The port-pixel cases still pass: unlit 68 and
+lightmapped 95 checks. `vertexlit` already held the byte, and its 0.7 is
+the Hammer session's to adopt.
+
+Next: step 3's backend half, a core-pass record in the stream. The frontend
+queues it in frame order, as its capability adapters queue calls; the
+scene's host record calls `RunSection` at it. The oracle is an empty core
+pass with every pixel family byte-identical.

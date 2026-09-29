@@ -234,13 +234,38 @@ void VulkanEncoder::DrawIndexed( std::uint32_t indexCount, std::uint32_t instanc
 
 void VulkanEncoder::Native( void ( *record )( void *, VkCommandBuffer ), void *user )
 {
-	// Host work runs outside the port's rendering.
-	if ( m_Rendering || !record )
+	// Host work runs outside the port's rendering and outside any section.
+	if ( m_Rendering || !record || m_InSection )
 		m_Error = true;
 	Command command;
 	command.op = Op::kNative;
 	command.native = record;
 	command.nativeUser = user;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::BeginSection()
+{
+	// A section follows its host work, or the host work's previous section.
+	const bool follows = !m_Commands.empty() && ( m_Commands.back().op == Op::kNative ||
+	                                                m_Commands.back().op == Op::kSectionEnd );
+	if ( m_Rendering || m_InSection || !follows )
+		m_Error = true;
+	m_InSection = true;
+	m_SectionLabels = m_Labels;
+	Command command;
+	command.op = Op::kSectionBegin;
+	Push( std::move( command ) );
+}
+
+void VulkanEncoder::EndSection()
+{
+	// Its labels close inside it: host work runs between sections.
+	if ( m_Rendering || !m_InSection || m_Labels != m_SectionLabels )
+		m_Error = true;
+	m_InSection = false;
+	Command command;
+	command.op = Op::kSectionEnd;
 	Push( std::move( command ) );
 }
 
@@ -372,6 +397,18 @@ bool VulkanDevice::ValidateDraw( const ValidationState &state, bool indexed ) co
 	if ( indexed && !state.index )
 		return false;
 	return GroupsMatch( state );
+}
+
+bool VulkanDevice::ImportsAtHome( const std::unordered_map<std::uint64_t, ResourceUsage> &states )
+{
+	for ( std::uint64_t id : m_Imported )
+	{
+		const auto found = states.find( id );
+		const TextureRecord *texture = LiveTexture( id );
+		if ( found != states.end() && texture && found->second != texture->home )
+			return false;
+	}
+	return true;
 }
 
 bool VulkanDevice::Validate(
@@ -566,8 +603,12 @@ bool VulkanDevice::Validate(
 				return false;
 			break;
 		case Op::kNative:
-			// Host work leaves nothing bound for the port.
-			if ( v.rendering )
+		case Op::kSectionBegin:
+		case Op::kSectionEnd:
+			// Host work leaves nothing bound for the port, and finds each
+			// imported texture in its home usage; a section runs between host
+			// work (its commands are validated where they are recorded).
+			if ( v.rendering || !ImportsAtHome( states ) )
 				return false;
 			v.pipeline = nullptr;
 			v.groups.fill( 0 );
@@ -605,7 +646,22 @@ public:
 		m_Groups.fill( 0 );
 		m_Viewport.reset();
 		for ( std::size_t i = 0; i < commands.size(); ++i )
-			Translate( commands, i );
+		{
+			if ( commands[i].op == Op::kNative )
+				i = Native( commands, i );
+			else
+				Translate( commands, i );
+		}
+	}
+
+	// Host work asks for section `index` of the record being translated:
+	// it runs with every earlier section not run yet.
+	bool RunSection( VkCommandBuffer cmd, std::uint32_t index )
+	{
+		if ( cmd != m_Cmd || !m_Commands || index >= m_Sections.size() )
+			return false;
+		RunSectionsThrough( index + 1 );
+		return true;
 	}
 
 	// Device writes become visible to the host (ReadBuffer) at completion.
@@ -713,6 +769,24 @@ private:
 		}
 		track.usage = after;
 		track.dirty = false;
+	}
+
+	// Host work next: the port's writes to imported textures become visible
+	// in their home usage (Validate put each one there).
+	void HostBoundary()
+	{
+		for ( std::uint64_t id : m_D.Imported() )
+		{
+			if ( m_Tracks.find( id ) != m_Tracks.end() )
+				Access( id, false );
+		}
+	}
+
+	// The host may have written any imported texture in its home usage.
+	void HostWrote()
+	{
+		for ( std::uint64_t id : m_D.Imported() )
+			TrackOf( id ).dirty = true;
 	}
 
 	// Orders an access after an unbarriered write in the same usage.
@@ -864,7 +938,7 @@ private:
 		info.pColorAttachments = colors.data();
 		info.pDepthAttachment = depthTexture ? &depth : nullptr;
 		info.pStencilAttachment =
-		    depthTexture && depthTexture->desc.format == Format::kD24UnormS8 ? &stencil : nullptr;
+		    depthTexture && HasStencil( depthTexture->desc.format ) ? &stencil : nullptr;
 		m_D.m_Vk.cmdBeginRendering( m_Cmd, &info );
 		m_Width = command.width;
 		m_Height = command.height;
@@ -1025,13 +1099,9 @@ private:
 			vkCmdDrawIndexed( m_Cmd, command.params[0], command.params[1], command.params[2],
 			    command.vertexOffset, command.params[3] );
 			break;
-		case Op::kNative:
-			command.native( command.nativeUser, m_Cmd );
-			// The host may have bound anything: rebind before the next use.
-			m_Pipeline = nullptr;
-			m_Groups.fill( 0 );
-			m_GroupDirty.fill( true );
-			m_Viewport.reset();
+		case Op::kNative: // Native()
+		case Op::kSectionBegin:
+		case Op::kSectionEnd:
 			break;
 		case Op::kSetDrawConstants:
 			vkCmdPushConstants( m_Cmd, m_Pipeline->pipelineLayout,
@@ -1059,8 +1129,62 @@ private:
 		}
 	}
 
+	// Host work at `index`, with the sections recorded after it; returns the
+	// last command it consumed.
+	std::size_t Native( const std::vector<Command> &commands, std::size_t index )
+	{
+		m_Sections.clear();
+		std::size_t next = index + 1;
+		while ( next < commands.size() && commands[next].op == Op::kSectionBegin )
+		{
+			std::size_t end = next + 1;
+			while ( commands[end].op != Op::kSectionEnd ) // Validate closed it
+				++end;
+			m_Sections.push_back( { next + 1, end } );
+			next = end + 1;
+		}
+		m_Commands = &commands;
+		m_SectionsRun = 0;
+		HostBoundary();
+		const Command &command = commands[index];
+		command.native( command.nativeUser, m_Cmd );
+		// Sections the host work never asked for run after it.
+		RunSectionsThrough( m_Sections.size() );
+		m_Commands = nullptr;
+		HostWrote();
+		HostRebinds();
+		return next - 1;
+	}
+
+	void RunSectionsThrough( std::size_t count )
+	{
+		for ( ; m_SectionsRun < count; ++m_SectionsRun )
+		{
+			const auto [begin, end] = m_Sections[m_SectionsRun];
+			HostWrote();
+			HostRebinds();
+			for ( std::size_t i = begin; i < end; ++i )
+				Translate( *m_Commands, i );
+			HostBoundary();
+		}
+	}
+
+	// Host work may have bound anything: the port rebinds before its next use.
+	void HostRebinds()
+	{
+		m_Pipeline = nullptr;
+		m_Groups.fill( 0 );
+		m_GroupDirty.fill( true );
+		m_Viewport.reset();
+	}
+
 	VulkanDevice &m_D;
 	VkCommandBuffer m_Cmd;
+	// The host work being translated and its sections ([first, end) command
+	// ranges), for RunSection.
+	const std::vector<Command> *m_Commands = nullptr;
+	std::vector<std::pair<std::size_t, std::size_t>> m_Sections;
+	std::size_t m_SectionsRun = 0;
 	std::unordered_map<std::uint64_t, Track> m_Tracks;
 	const PipelineRecord *m_Pipeline = nullptr;
 	std::array<std::uint64_t, kMaxBindGroups> m_Groups{};
@@ -1072,6 +1196,11 @@ private:
 };
 
 // Submission -------------------------------------------------------------------
+
+bool VulkanDevice::RunSection( VkCommandBuffer cmd, std::uint32_t index )
+{
+	return m_Translating && m_Translating->RunSection( cmd, index );
+}
 
 DeviceResult<VulkanDevice::CommandContext> VulkanDevice::AcquireContext()
 {
@@ -1142,6 +1271,9 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 			return Fail( DeviceStatus::kInvalidState, op );
 		recorded.push_back( encoder );
 	}
+	// The host resumes after the submission, too.
+	if ( !ImportsAtHome( states ) )
+		return Fail( DeviceStatus::kInvalidState, op );
 
 	RecycleCompleted();
 	auto acquired = AcquireContext();
@@ -1166,8 +1298,10 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	if ( result != VK_SUCCESS )
 		return giveBack( result );
 	Translator translator( *this, context.buffer );
+	m_Translating = &translator;
 	for ( VulkanEncoder *encoder : recorded )
 		translator.Encoder( encoder->Commands() );
+	m_Translating = nullptr;
 	translator.Finish();
 	result = vkEndCommandBuffer( context.buffer );
 	if ( result != VK_SUCCESS )

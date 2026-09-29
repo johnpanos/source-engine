@@ -111,6 +111,12 @@ bool ReadFlag( const ParameterBlock &block, std::string_view name )
 	return ReadParameter( block, name ) != 0.0f;
 }
 
+float AlphaTestReference( const ParameterBlock &block )
+{
+	const float reference = ReadParameter( block, "alphatestreference" );
+	return std::floor( ( reference > 0.0f ? reference : 0.7f ) * 255.0f ) / 255.0f;
+}
+
 float SourceGammaToLinear( float gamma )
 {
 	if ( gamma > 1.0f )

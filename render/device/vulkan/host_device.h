@@ -45,6 +45,7 @@
 
 // HostDeviceFactory(): the composition root hands it to the host
 // (NativeVulkanShaderBackend_BindDeviceFactory); GPU suites call it directly.
+#include "render/device/resources.h"
 #include "render/device/vulkan/host_binding.h"
 
 #include <vulkan/vulkan.h>
@@ -214,6 +215,23 @@ public:
 	// fails its submission.
 	using NativeRecord = void ( * )( void *user, VkCommandBuffer cmd );
 	virtual void RecordNative( CommandEncoder &encoder, NativeRecord record, void *user ) = 0;
+	// Port commands that host work runs where it chooses (RFC 0016 K5: core
+	// passes inside the legacy scene). BeginSection and EndSection bracket
+	// port commands recorded right after a RecordNative or after another
+	// section of it; the record calls RunSection( cmd, index ) at the point
+	// its section `index` belongs, outside any rendering of its own. Sections
+	// run once each and in order: asking for one runs every earlier one not
+	// yet run, and those never asked for run when the record returns. A
+	// section begins and ends outside the port's rendering with every
+	// imported texture in its home usage, closes the labels it opens, and
+	// binds what it uses; the adapter orders it against the host work around
+	// it as it orders host work against the port. An encoder that breaks
+	// these rules fails its submission. RunSection is false outside a
+	// record's translation, for another command buffer, or past the record's
+	// last section.
+	virtual void BeginSection( CommandEncoder &encoder ) = 0;
+	virtual void EndSection( CommandEncoder &encoder ) = 0;
+	virtual bool RunSection( VkCommandBuffer cmd, std::uint32_t index ) = 0;
 	// Binary semaphores the encoder's submission waits on (before `stage`)
 	// and signals: a swapchain image's acquire and present.
 	virtual void AddSubmitWait(
@@ -225,6 +243,23 @@ public:
 	// with the submission's token, or false when the port refused it.
 	virtual bool SubmitNative( NativeRecord record, void *user, VkSemaphore wait,
 	    VkPipelineStageFlags2 waitStage, VkSemaphore signal, CompletionToken *token ) = 0;
+
+	// A host image as a port texture (RFC 0016 K5: core passes that draw
+	// into the legacy scene's targets). desc describes the image as the host
+	// created it (format, extent, samples, mips) and names the usages the
+	// port may put it in, all of which the image was created for. home is
+	// the usage whose layout the host keeps the image in: it is there at
+	// import, at every RecordNative point of a submission that uses it and
+	// when the submission ends (Submit refuses a submission that leaves it
+	// elsewhere), and the host's own accesses stay within home's stages and
+	// accesses or are made available by its own barriers. The adapter orders
+	// the port's first access after host work, and host work after the
+	// port's writes. The adapter owns only its views: Port().Release( id,
+	// token ) frees them after token, and the host keeps the image alive
+	// until then. False, with no texture, when desc names no usage, home is
+	// not one of them or has no image layout, or the device is lost.
+	virtual bool ImportImage(
+	    VkImage image, const TextureDesc &desc, ResourceUsage home, TextureId *texture ) = 0;
 };
 
 // An instance several host devices share (a provider that enumerates

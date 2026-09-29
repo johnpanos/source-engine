@@ -39,6 +39,22 @@ Check names in the suite are `<driver>.<clause> <what>`.
 | D18 | External images (`external_images.h`): `IRenderDevice2::ExternalImages()` is non-null exactly when the facts claim `kExternalImages`; `CreateTexture` refuses `kExternal` (`kInvalidDescription`); `CreateExported` makes a 2D texture of one mip and layer whose usages include `kExternal`, in `kRGBA8Unorm`, `kRGBA8Srgb`, `kBGRA8Unorm` or `kBGRA8Srgb` (another format fails `kUnsupported`, a description outside the rules `kInvalidDescription`), and returns a handle and one plane's description (a dmabuf fd, DRM fourcc and modifier, offset, stride; opaque integers). After a submission whose last use is `kExternal` completes, the memory read through the description equals what the port reads back from the texture. Vulkan: LINEAR (`DRM_FORMAT_MOD_LINEAR`) images in dedicated exportable memory, host-visible where a device-local type allows, `kExternal` is `GENERAL` | Vulkan sensitivity knobs `staleExport` (the export names other memory) and `nullExternalImages` (claims the capability, exports nothing) |
 | D13 | Conventions on real pixels: clip depth 0 to 1, clip Y up, row 0 at the top (rasterizing adapters only) | not yet: a flipped-Y and a −1..1-depth adapter need the GPU lane |
 
+## Vulkan host interop (private to the Vulkan family)
+
+`render/device/vulkan/host_device.h` is not part of the port: only the
+Vulkan adapter, the legacy native Vulkan backend and their suites use it
+(CAP007). Its clauses run in `test_device_vulkan.cpp` as `vulkan.host`
+(memory, completion, host work inside port encoders, binary semaphores) and
+`vulkan.import` (RFC 0016 K5): `ImportImage` makes a host image a port
+texture with a home usage. Host work in the same encoder finds it in its home
+usage (a submission whose host work or end finds it elsewhere fails with
+`kInvalidState`); the port reads what host work wrote before it and host work
+reads what the port wrote; releasing the texture frees only the adapter's
+views. Synchronization validation, enabled on the host instance whenever the
+layer is, reports nothing, and a host that skips its own barrier is reported.
+The legacy backend's depth-stencil format is `kD24UnormS8` or `kD32FloatS8`
+(RADV has no D24S8).
+
 ## Obligations not yet enforced by the shared rules
 
 The Vulkan adapter applies these at `Submit` or creation; the null adapter does

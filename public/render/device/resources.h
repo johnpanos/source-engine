@@ -70,11 +70,14 @@ enum class Format : std::uint8_t
 	kRGBA32Float,
 	kD32Float,
 	kD24UnormS8,
+	kD32FloatS8, // D32 depth with an 8-bit stencil
 	kCount
 };
 
 std::uint32_t BytesPerTexel( Format format );
 bool IsDepthFormat( Format format );
+// A depth format with a stencil aspect.
+bool HasStencil( Format format );
 
 enum class MemoryKind : std::uint8_t
 {

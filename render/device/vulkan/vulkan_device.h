@@ -45,6 +45,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace render::device::vulkan
@@ -73,7 +74,7 @@ const UsageScope &ScopeOf( ResourceUsage usage );
 VkBufferUsageFlags BufferUsageFlags( UsageSet usages );
 VkImageUsageFlags ImageUsageFlags( UsageSet usages );
 VkFormat ToVkFormat( Format format );
-// Every aspect of format (depth and stencil for kD24UnormS8).
+// Every aspect of format (depth and stencil for a format with stencil).
 VkImageAspectFlags BarrierAspects( Format format );
 // The aspect copies address: depth only for depth formats.
 VkImageAspectFlags CopyAspect( Format format );
@@ -254,6 +255,10 @@ struct TextureRecord
 	VkImageView attachmentView = VK_NULL_HANDLE; // mip 0, layer 0, for rendering
 	// An exported image's own dedicated memory (else the allocator's).
 	VkDeviceMemory exported = VK_NULL_HANDLE;
+	// A host image (IHostDevice::ImportImage): the adapter owns only the
+	// views. home is the usage whose layout the host keeps it in.
+	bool imported = false;
+	ResourceUsage home = ResourceUsage::kUndefined;
 	Track track;
 	bool released = false;
 
@@ -350,7 +355,9 @@ enum class Op : std::uint8_t
 	kBeginLabel,
 	kEndLabel,
 	kSetDrawConstants,
-	kNative // host work (host_device.h RecordNative)
+	kNative,       // host work (host_device.h RecordNative)
+	kSectionBegin, // port commands host work runs (host_device.h BeginSection)
+	kSectionEnd
 };
 
 struct Command
@@ -422,7 +429,7 @@ public:
 	void EndLabel() override;
 	bool HasError() const override { return m_Error; }
 
-	bool Complete() const { return !m_Error && !m_Rendering && m_Labels == 0; }
+	bool Complete() const { return !m_Error && !m_Rendering && m_Labels == 0 && !m_InSection; }
 	VulkanDevice &Device() const { return m_Device; }
 	QueueKind Queue() const { return m_Queue; }
 	const std::vector<Command> &Commands() const { return m_Commands; }
@@ -432,6 +439,8 @@ public:
 	void SetError() { m_Error = true; }
 	// Host interop (host_device.h).
 	void Native( void ( *record )( void *, VkCommandBuffer ), void *user );
+	void BeginSection();
+	void EndSection();
 	void AddWait( VkSemaphore semaphore, VkPipelineStageFlags2 stage );
 	void AddSignal( VkSemaphore semaphore );
 	const std::vector<VkSemaphoreSubmitInfo> &Waits() const { return m_Waits; }
@@ -461,6 +470,8 @@ private:
 	bool m_Error = false;
 	bool m_Submitted = false;
 	std::uint32_t m_Labels = 0;
+	bool m_InSection = false;
+	std::uint32_t m_SectionLabels = 0; // labels open when the section began
 };
 
 // The device ---------------------------------------------------------------
@@ -555,6 +566,14 @@ public:
 		void *object = nullptr;
 	};
 	void ReleaseHostAfter( const HostRelease &release );
+	// A host image as a texture (host_device.h ImportImage).
+	DeviceResult<TextureId> ImportImage(
+	    VkImage image, const TextureDesc &desc, ResourceUsage home );
+	// The imported textures, for the host-work boundaries of a submission.
+	const std::unordered_set<std::uint64_t> &Imported() const { return m_Imported; }
+	// Runs section `index` of the host work being translated (host_device.h
+	// RunSection); false outside host work or past its last section.
+	bool RunSection( VkCommandBuffer cmd, std::uint32_t index );
 	std::size_t CollectHost();
 	std::size_t PendingHostReleases() const;
 	std::mutex &QueueMutex() { return m_QueueMutex; }
@@ -611,8 +630,10 @@ private:
 	std::size_t CollectReleases();
 	void Erase( ResourceId resource );
 	// Destroys a texture's views, image and memory (the allocator's or its
-	// exported dedicated memory).
+	// exported dedicated memory); an imported texture's views only.
 	void DestroyTexture( TextureRecord &record );
+	// The views a texture's usages need (resources.cpp).
+	VkResult CreateTextureViews( TextureRecord &record, VkImageUsageFlags usage );
 	bool *ReleasedFlag( ResourceId resource );
 
 	// Descriptors (pipelines.cpp).
@@ -623,6 +644,8 @@ private:
 	// Submission (encoder.cpp).
 	bool Validate( const std::vector<Command> &commands,
 	    std::unordered_map<std::uint64_t, ResourceUsage> &states );
+	// Whether every imported texture the states name is in its home usage.
+	bool ImportsAtHome( const std::unordered_map<std::uint64_t, ResourceUsage> &states );
 	bool ValidateDraw( const ValidationState &state, bool indexed ) const;
 	bool GroupsMatch( const ValidationState &state ) const;
 	DeviceResult<CommandContext> AcquireContext();
@@ -669,11 +692,13 @@ private:
 	std::uint64_t m_NextId = 0;
 	std::unordered_map<std::uint64_t, BufferRecord> m_Buffers;
 	std::unordered_map<std::uint64_t, TextureRecord> m_Textures;
+	std::unordered_set<std::uint64_t> m_Imported; // host images among m_Textures
 	std::unordered_map<std::uint64_t, SamplerRecord> m_Samplers;
 	std::unordered_map<std::uint64_t, LayoutRecord> m_Layouts;
 	std::unordered_map<std::uint64_t, BindGroupRecord> m_BindGroups;
 	std::unordered_map<std::uint64_t, PipelineRecord> m_Pipelines;
 	std::vector<PendingRelease> m_Releases;
+	Translator *m_Translating = nullptr; // during Submit's translation only
 	mutable std::mutex m_HostReleaseMutex;
 	std::deque<HostRelease> m_HostReleases;
 };

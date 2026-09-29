@@ -163,9 +163,9 @@ DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )
 	const VkImageUsageFlags usage = ImageUsageFlags( desc.usages );
 	if ( usage == 0 )
 		return Fail( DeviceStatus::kInvalidDescription, op );
-	const bool attachment = ( usage & ( VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-	                                      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ) ) != 0;
-	if ( attachment && desc.dimension == TextureDimension::k3D )
+	if ( ( usage & ( VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+	                   VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ) ) != 0 &&
+	     desc.dimension == TextureDimension::k3D )
 		return Fail( DeviceStatus::kUnsupported, op );
 
 	TextureRecord record;
@@ -212,6 +212,19 @@ DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )
 	if ( result != VK_SUCCESS )
 		return Fail( StatusOf( result ), op, result );
 
+	result = CreateTextureViews( record, usage );
+	if ( result != VK_SUCCESS )
+		return Fail( StatusOf( result ), op, result );
+	Name( VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>( record.image ), desc.debugName );
+	undo.Dismiss();
+	const TextureId id{ ++m_NextId };
+	m_Textures.emplace( id.value, std::move( record ) );
+	return id;
+}
+
+VkResult VulkanDevice::CreateTextureViews( TextureRecord &record, VkImageUsageFlags usage )
+{
+	const TextureDesc &desc = record.desc;
 	VkImageViewCreateInfo view{};
 	view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	view.image = record.image;
@@ -233,28 +246,70 @@ DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )
 			view.viewType = VK_IMAGE_VIEW_TYPE_3D;
 			break;
 		}
-		result = vkCreateImageView( m_Device, &view, nullptr, &record.view );
+		const VkResult result = vkCreateImageView( m_Device, &view, nullptr, &record.view );
 		if ( result != VK_SUCCESS )
 		{
 			record.view = VK_NULL_HANDLE;
-			return Fail( StatusOf( result ), op, result );
+			return result;
 		}
 	}
-	if ( attachment )
+	if ( usage &
+	     ( VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ) )
 	{
 		view.viewType = VK_IMAGE_VIEW_TYPE_2D;
 		view.subresourceRange = { BarrierAspects( desc.format ), 0, 1, 0, 1 };
-		result = vkCreateImageView( m_Device, &view, nullptr, &record.attachmentView );
+		const VkResult result =
+		    vkCreateImageView( m_Device, &view, nullptr, &record.attachmentView );
 		if ( result != VK_SUCCESS )
 		{
 			record.attachmentView = VK_NULL_HANDLE;
-			return Fail( StatusOf( result ), op, result );
+			return result;
 		}
 	}
-	Name( VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>( record.image ), desc.debugName );
+	return VK_SUCCESS;
+}
+
+// The host created the image with at least desc's usages (and no others the
+// port would need to know of), and keeps it in home's layout between its
+// uses; see host_device.h ImportImage.
+DeviceResult<TextureId> VulkanDevice::ImportImage(
+    VkImage image, const TextureDesc &desc, ResourceUsage home )
+{
+	const DeviceOperation op = DeviceOperation::kCreateTexture;
+	if ( m_State != DeviceState::kAvailable )
+		return Fail( DeviceStatus::kDeviceLost, op );
+	if ( image == VK_NULL_HANDLE || !desc.usages.Has( home ) ||
+	     ScopeOf( home ).layout == VK_IMAGE_LAYOUT_UNDEFINED ||
+	     desc.usages.Has( ResourceUsage::kPresent ) || desc.dimension == TextureDimension::k3D )
+		return Fail( DeviceStatus::kInvalidDescription, op );
+	if ( auto valid = ValidateTexture( desc, m_Facts.limits ); !valid )
+		return foundation::MakeUnexpected( valid.Error() );
+	const VkImageUsageFlags usage = ImageUsageFlags( desc.usages );
+	TextureRecord record;
+	record.desc = desc;
+	record.desc.debugName = {};
+	record.layers = desc.depthOrLayers;
+	record.format = ToVkFormat( desc.format );
+	record.image = image;
+	record.imported = true;
+	record.home = home;
+	record.track.usage = home;
+	// The host's last work on it is not ordered with the port's first.
+	record.track.dirty = true;
+	if ( record.format == VK_FORMAT_UNDEFINED || usage == 0 )
+		return Fail( DeviceStatus::kInvalidDescription, op );
+	Undo undo(
+	    [&]
+	    {
+		    DestroyTexture( record );
+	    } );
+	const VkResult result = CreateTextureViews( record, usage );
+	if ( result != VK_SUCCESS )
+		return Fail( StatusOf( result ), op, result );
 	undo.Dismiss();
 	const TextureId id{ ++m_NextId };
 	m_Textures.emplace( id.value, std::move( record ) );
+	m_Imported.insert( id.value );
 	return id;
 }
 
@@ -347,7 +402,11 @@ void VulkanDevice::DestroyTexture( TextureRecord &record )
 {
 	vkDestroyImageView( m_Device, record.attachmentView, nullptr );
 	vkDestroyImageView( m_Device, record.view, nullptr );
-	if ( record.exported != VK_NULL_HANDLE )
+	if ( record.imported )
+	{
+		// The image and its memory are the host's.
+	}
+	else if ( record.exported != VK_NULL_HANDLE )
 	{
 		vkDestroyImage( m_Device, record.image, nullptr );
 		vkFreeMemory( m_Device, record.exported, nullptr );

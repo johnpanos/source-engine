@@ -69,7 +69,7 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 #endif
 	constants.flags[1] = ReadFlag( block, "vertexalpha" ) ? 1.0f : 0.0f;
 	constants.flags[2] = ReadFlag( block, "alphatest" ) ? 1.0f : 0.0f;
-	constants.flags[3] = ReadParameter( block, "alphatestreference" );
+	constants.flags[3] = detail::AlphaTestReference( block );
 	claim.claimed = true;
 	return claim;
 }

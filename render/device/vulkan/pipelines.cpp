@@ -625,9 +625,8 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		rendering.colorAttachmentCount = static_cast<std::uint32_t>( colorFormats.size() );
 		rendering.pColorAttachmentFormats = colorFormats.data();
 		rendering.depthAttachmentFormat = ToVkFormat( desc.depthFormat );
-		rendering.stencilAttachmentFormat = desc.depthFormat == Format::kD24UnormS8
-		                                        ? VK_FORMAT_D24_UNORM_S8_UINT
-		                                        : VK_FORMAT_UNDEFINED;
+		rendering.stencilAttachmentFormat =
+		    HasStencil( desc.depthFormat ) ? ToVkFormat( desc.depthFormat ) : VK_FORMAT_UNDEFINED;
 
 		VkGraphicsPipelineCreateInfo info{};
 		info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;

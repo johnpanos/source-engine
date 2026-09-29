@@ -340,10 +340,16 @@ DeviceResult<std::unique_ptr<InstanceHandle>> CreateHostInstance(
 	    ( request.validation || request.requireValidation ) && HasLayer( kValidationLayer );
 	if ( request.requireValidation && !layer )
 		return Fail( DeviceStatus::kUnavailable, op );
+	bool validationFeatures = false;
 	if ( layer )
 	{
 		layers.push_back( kValidationLayer );
 		handle->validation = true;
+		if ( HasInstanceExtension( kValidationLayer, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME ) )
+		{
+			add( VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME );
+			validationFeatures = true;
+		}
 	}
 	handle->debugUtils = layer || ( request.debugUtils && HasInstanceExtension( nullptr,
 	                                                          VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) );
@@ -376,6 +382,16 @@ DeviceResult<std::unique_ptr<InstanceHandle>> CreateHostInstance(
 	info.ppEnabledLayerNames = layers.data();
 	info.enabledExtensionCount = static_cast<std::uint32_t>( extensions.size() );
 	info.ppEnabledExtensionNames = extensions.data();
+	// A host's work is checked as the adapter's is: synchronization
+	// validation over every barrier either records.
+	const VkValidationFeatureEnableEXT enables[] = {
+	    VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT };
+	VkValidationFeaturesEXT features{};
+	features.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+	features.enabledValidationFeatureCount = 1;
+	features.pEnabledValidationFeatures = enables;
+	if ( validationFeatures )
+		info.pNext = &features;
 	const VkResult created = vkCreateInstance( &info, nullptr, &handle->instance );
 	if ( created != VK_SUCCESS )
 	{
