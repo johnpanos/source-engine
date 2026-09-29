@@ -9,6 +9,9 @@
 - Assets and builds: [RFC 0015](0015-asset-identity-content-build-graph.md)
   (proposed) owns asset identity, the asset index the catalog reads, and the
   content build graph that editor builds submit to
+- Interaction design: [RFC 0018](0018-hammer-interaction-design.md) (proposed)
+  owns the user-facing flows, key map, layout and UI-driven acceptance built
+  on this RFC's contracts
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
 - Source inspection reference: `b5eb9915bdebf5af1045c5821d4ac3d9af15dbb2`

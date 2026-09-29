@@ -1157,6 +1157,11 @@ The interaction model is:
 Tool keys follow Source 2: Shift+B, Shift+E and Shift+S; T translate; R
 rotate; Space cycles selection modes; F9 builds; Ctrl+S saves.
 
+[RFC 0018](0018-hammer-interaction-design.md) (2026-09-28) supersedes this
+brief as the interaction specification. It keeps legacy Space-hold panning
+instead of Space cycling selection modes, and records each binding decision
+with its sources.
+
 **P2:**
 
 - per-face material (right-click, Faces mode);
