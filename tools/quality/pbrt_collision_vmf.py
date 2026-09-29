@@ -84,6 +84,16 @@ def dynamic_light(entity_id, name, origin, rgb, parent=None):
              '\t"_cone" "0"', '\t"_inner_cone" "0"', '\t"style" "0"', "}"])
 
 
+def portal_placement(values):
+    """A portal's origin (Source units) and "pitch yaw 0" angles from its centre and
+    normal in meters (stage space)."""
+    centre = [v * SOURCE_UNITS_PER_METER for v in values[0:3]]
+    nx, ny, nz = values[3:6]
+    pitch = -math.degrees(math.asin(max(-1.0, min(1.0, nz))))
+    yaw = math.degrees(math.atan2(ny, nx))
+    return centre, (pitch, yaw)
+
+
 KDOP_DIRECTIONS = [(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, -1, 0), (1, 0, 1),
                    (1, 0, -1), (0, 1, 1), (0, 1, -1)]
 
@@ -380,6 +390,17 @@ def main():
                         help="a map-placed, activated prop_portal of linkage group 0: its centre "
                              "and normal in meters (stage space) and 1 for the pair's second "
                              "portal")
+    parser.add_argument("--portal-cycle", action="append", default=[],
+                        metavar="NAME,PORTAL,OPEN,CLOSED",
+                        help="a looping logic_relay NAME, started at map spawn, that moves the "
+                             "named --portal PORTAL through its --portal-stop places in order, "
+                             "open OPEN seconds at each and closed CLOSED seconds between them; "
+                             "`ent_fire NAME_stop Trigger` ends the loop with PORTAL open at "
+                             "its first stop")
+    parser.add_argument("--portal-stop", action="append", default=[],
+                        metavar="CYCLE,X,Y,Z,NX,NY,NZ",
+                        help="a place of the --portal-cycle CYCLE's portal, in order: its centre "
+                             "and normal in meters (stage space)")
     parser.add_argument("--door", action="append", default=[],
                         metavar="NAME,X0,Y0,Z0,X1,Y1,Z1[,MATERIAL]",
                         help="a moving box (meters) the static bake lacks: a func_brush named "
@@ -526,15 +547,61 @@ def main():
         fields = spec.split(",")
         values = [float(v) for v in fields[:7]]
         name = fields[7] if len(fields) > 7 else None
-        centre = [v * SOURCE_UNITS_PER_METER for v in values[0:3]]
-        nx, ny, nz = values[3:6]
-        pitch = -math.degrees(math.asin(max(-1.0, min(1.0, nz))))
-        yaw = math.degrees(math.atan2(ny, nx))
+        centre, angles = portal_placement(values)
         lines.extend(["entity", "{", '\t"id" "%d"' % (80 + index), '\t"classname" "prop_portal"',
                       '\t"origin" "%.3f %.3f %.3f"' % tuple(centre),
-                      '\t"angles" "%g %g 0"' % (pitch, yaw), '\t"Activated" "1"',
+                      '\t"angles" "%g %g 0"' % angles, '\t"Activated" "1"',
                       '\t"PortalTwo" "%d"' % int(values[6]), '\t"LinkageGroupID" "0"'] +
                      (['\t"targetname" "%s"' % name] if name else []) + ["}"])
+    # Portal cycles: a looping logic_relay NAME that moves PORTAL through its
+    # stops, open OPEN seconds at each and closed CLOSED seconds between them
+    # (NewLocation places a portal and opens it). NAME_stop ends the loop and
+    # puts the portal open at its first stop, the state a test measures.
+    cycles = {}
+    for spec in args.portal_cycle:
+        name, portal, *values = spec.split(",")
+        open_s, closed_s = (float(v) for v in values)
+        if open_s <= 0 or closed_s < 0:
+            parser.error("portal cycle %s: OPEN must be positive and CLOSED not negative" % name)
+        cycles[name] = {"name": name, "portal": portal, "open_seconds": open_s,
+                        "closed_seconds": closed_s, "stops": []}
+    for spec in args.portal_stop:
+        cycle, *values = spec.split(",")
+        if cycle not in cycles:
+            parser.error("portal stop rides unknown cycle %s" % cycle)
+        centre, angles = portal_placement([float(v) for v in values])
+        cycles[cycle]["stops"].append({"origin_source_units": centre,
+                                       "angles": [angles[0], angles[1], 0.0]})
+    for index, cycle in enumerate(cycles.values()):
+        if not cycle["stops"]:
+            parser.error("portal cycle %s has no stops" % cycle["name"])
+        name, portal = cycle["name"], cycle["portal"]
+        period = cycle["open_seconds"] + cycle["closed_seconds"]
+        place = ["%.3f %.3f %.3f %g %g %g" % tuple(stop["origin_source_units"] + stop["angles"])
+                 for stop in cycle["stops"]]
+        outputs = []
+        for k, location in enumerate(place):
+            outputs += [(portal, "NewLocation", location, k * period),
+                        (portal, "SetActivatedState", "0", k * period + cycle["open_seconds"])]
+        outputs.append((name, "Trigger", "", len(place) * period))
+        stop = [(name, "Disable", "", 0), (name, "CancelPending", "", 0),
+                (portal, "NewLocation", place[0], 0.1)]
+        base = 600 + index * 4
+        # 2: fast retrigger, so the loop's own Trigger is never refused.
+        for entity_id, classname, keyvalues, connections in (
+                (base, "logic_relay", {"targetname": name, "spawnflags": "2"}, outputs),
+                (base + 1, "logic_relay", {"targetname": name + "_stop", "spawnflags": "2"},
+                 stop),
+                (base + 2, "logic_auto", {"spawnflags": "1"},
+                 [(name, "Trigger", "", 0)])):
+            event = "OnMapSpawn" if classname == "logic_auto" else "OnTrigger"
+            lines.extend(["entity", "{", '\t"id" "%d"' % entity_id,
+                          '\t"classname" "%s"' % classname] +
+                         ['\t"%s" "%s"' % item for item in keyvalues.items()] +
+                         ['\t"origin" "%.3f %.3f %.3f"' % tuple(cycle["stops"][0][
+                             "origin_source_units"]), "\tconnections", "\t{"] +
+                         ['\t\t"%s" "%s,%s,%s,%g,-1"' % ((event,) + connection)
+                          for connection in connections] + ["\t}", "}"])
     # Switchable baked lights: the runtime owns their light (the radiosity
     # transfer and its style scalar); vrad adds none.
     for index, name in enumerate(args.light_control):
@@ -707,6 +774,7 @@ def main():
                "spawn": spawn, "walkable_tops": tops, "dynamic_models": placed,
                "fallback_light": not args.no_fallback_light,
                "portals": args.portal,
+               "portal_cycles": list(cycles.values()),
                "doors": doors,
                "lamps": lamps,
                "dynamic_lights": bulbs,

@@ -8,8 +8,11 @@ The map (quality-results/rfc0011-maps/portal-light, or --map-build) has room
 A, lit by a ceiling panel, and room B, with no light of its own, sealed and
 6 m apart; a map-placed, linked, activated prop_portal pair (`PortalA` on A's
 east wall, `PortalB` on B's west wall) is their only connection. Room B's
-bake is black. The Cycles reference joins the rooms at one wall plane with a
-portal-sized opening (`open`), or plugs it (`closed`).
+bake is black. In play the map moves `PortalB` around room B on a timer
+(`PortalCycle`); each capture first fires `PortalCycle_stop`, which ends the
+tour with the pair open at `PortalB`'s placed stop. The Cycles reference
+joins the rooms at one wall plane with a portal-sized opening (`open`), or
+plugs it (`closed`).
 
 Each capture views room B from the `room` camera (judged against the joined
 `joined` reference camera) in the diffuse view (mat_indirect_view 3: the
@@ -18,6 +21,11 @@ producer's warm-up and its 64-frame convergence:
 
   <producer>-open             the pair open: every world region of room B
                               must match Cycles `open` (DiffDir + DiffInd)
+  <producer>-open-after-map-change
+                              booted on a legacy map, then `map gi_portal_light`:
+                              must match `open` too (a device-lost flag left
+                              set between maps once kept the volume from the
+                              renderer, and room B black)
   <producer>-closed           `ent_fire PortalA SetActivatedState 0`: room B
                               must be dark, judged at `open`'s light level
   radiosity-open, -closed     radiosity's portal links (the patches and the
@@ -48,19 +56,24 @@ MAPS = ROOT / "quality-results" / "rfc0011-maps"
 WARM_FRAMES = 150
 CHANGE_FRAMES = 64
 RESPONSE_TOLERANCE = 0.1
+# A legacy map (no probe volume) played before the fixture's.
+MAP_CHANGE_BOOT = "testchmb_a_00"
 
 
 def select(producer):
-    return "r_indirect_report 1; r_indirect_producer %s" % producer
+    # In play PortalB tours room B (the map's PortalCycle); every capture
+    # first ends the tour with the pair open at its placed stop.
+    return "ent_fire PortalCycle_stop Trigger; r_indirect_report 1; r_indirect_producer %s" % (
+        producer)
 
 
-def capture(args, name, command):
+def capture(args, name, command, boot_map=None):
     target = Path(args.out) / name
     run = [sys.executable, HERE / "gi_runtime.py", "capture", "--fixture", "portal-light",
            "--camera", "room", "--map-build", Path(args.map_build or MAPS / "portal-light"),
            "--out", target, "--build", args.build, "--console-command", command,
            "--capture-wait", str(gi_runtime.PLACEMENT_FRAMES + WARM_FRAMES + CHANGE_FRAMES),
-           "--view", "3"]
+           "--view", "3"] + (["--boot-map", boot_map] if boot_map else [])
     booted = subprocess.run([str(part) for part in run], capture_output=True, text=True,
                             timeout=1800).returncode == 0
     return target, booted
@@ -97,6 +110,8 @@ def main():
                                                                          CHANGE_FRAMES)
     captures = {
         producer + "-open": ("open", "%s; %s" % (select(producer), settle), True),
+        producer + "-open-after-map-change": (
+            "open", "%s; %s" % (select(producer), settle), True, MAP_CHANGE_BOOT),
         producer + "-closed": ("closed", "%s; %s" % (select(producer), close), True),
         "baked-open": ("open", "%s; %s" % (select("baked"), settle), False),
         "radiosity-open": ("open", "%s; %s" % (select("radiosity"), settle), True),
@@ -105,8 +120,8 @@ def main():
             "open", "r_indirect_portals 0; %s; %s" % (select(producer), settle), False),
     }
     results, passed = {}, True
-    for name, (state, command, should_pass) in captures.items():
-        target, booted = capture(args, name, command)
+    for name, (state, command, should_pass, *boot_map) in captures.items():
+        target, booted = capture(args, name, command, *boot_map)
         gate = compare(target, state)
         ok = booted and bool(gate) and (gate.get("status") == "pass") == should_pass
         passed &= ok

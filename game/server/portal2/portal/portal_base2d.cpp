@@ -342,6 +342,10 @@ void CPortal_Base2D::Spawn( void )
 	AddEFlags( EFL_USE_PARTITION_WHEN_NOT_SOLID );
 
 	m_vPortalSpawnLocation = GetAbsOrigin();
+	// A map-placed portal that starts active is never moved by NewLocation:
+	// its cached placement is its spawn transform, or it sits at the origin.
+	m_ptOrigin = GetAbsOrigin();
+	m_qAbsAngle = GetAbsAngles();
 }
 
 void CPortal_Base2D::OnRestore()

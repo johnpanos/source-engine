@@ -1608,6 +1608,14 @@ void RestoreMaterialSystemObjects( int nChangeFlags )
 		modelrender->RestoreAllStaticPropColorData();
 #endif
 	}
+#ifndef SWDS
+	else
+	{
+		// A restore between maps: the device is back all the same, or the next
+		// map never uploads its probe volume and shadow field (RFC 0011).
+		IndirectLight_DeviceRestored();
+	}
+#endif
 
 #ifndef DEDICATED
 	cl.ForceFullUpdate();

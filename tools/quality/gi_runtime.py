@@ -72,6 +72,8 @@ CAPTURE_WAIT = 420
 # the line (reference_compare.camera_commands' waits plus `wait 5`) before
 # --console-command runs.
 PLACEMENT_FRAMES = 245
+# A --boot-map capture's frames between `map <fixture map>` and the camera.
+MAP_CHANGE_FRAMES = 300
 
 
 def sha256(path):
@@ -176,15 +178,20 @@ def capture(args):
         view = ["mat_indirect_view %d" % args.view,
                 "mat_indirect_view_scale %g" % args.scale] + list(args.console_command)
         steps = prelude + ["screenshot", "wait 5"] + (commands if proof != camera else []) + view
+        # A boot map is played first; the fixture's map follows it by `map`.
+        boot_map = getattr(args, "boot_map", None)
+        change = ["map " + manifest["map"], "wait %d" % MAP_CHANGE_FRAMES] if boot_map else []
         # One line: `wait` applies only within a single script line.
-        line = "; ".join(["r_drawvgui 0"] + steps)
+        line = "; ".join(["r_drawvgui 0"] + change + steps)
         boot = out / camera
+        wait = (getattr(args, "capture_wait", None) or CAPTURE_WAIT) + (
+            MAP_CHANGE_FRAMES if boot_map else 0)
         result = subprocess.run(
             [sys.executable, HERE / "portal_boot.py", "--runtime", runtime, "--build", build,
              "--content-root", content, "--renderer", "native-vulkan", "--headless",
-             "--map", manifest["map"], "--width", str(CAPTURE_WIDTH),
+             "--map", boot_map or manifest["map"], "--width", str(CAPTURE_WIDTH),
              "--height", str(CAPTURE_HEIGHT),
-             "--capture-wait", str(getattr(args, "capture_wait", None) or CAPTURE_WAIT),
+             "--capture-wait", str(wait),
              "--console-command", line, "--out", boot] +
             (["--renderdoc", "--shader-debug"] if getattr(args, "renderdoc", False) else []),
             cwd=ROOT, capture_output=True, text=True)
@@ -208,6 +215,7 @@ def capture(args):
                            "returncode": result.returncode}
         print("[%s/%s] boot %s" % (args.fixture, camera, evidence.get("status")), flush=True)
     record = {"schema": CAPTURE_SCHEMA, "fixture": args.fixture, "map": manifest["map"],
+              "boot_map": getattr(args, "boot_map", None),
               "map_build": str(Path(args.map_build).resolve()), "build": str(build),
               "view": args.view, "scale": args.scale, "cameras": records,
               "map_bsp_sha256": sha256(content / "maps" / (manifest["map"] + ".bsp"))}
@@ -485,6 +493,9 @@ def main():
                    help="frames from the start of the console line to the scored screenshot "
                         "(default %d; the camera placement uses %d of them)" % (
                             CAPTURE_WAIT, PLACEMENT_FRAMES))
+    c.add_argument("--boot-map",
+                   help="a map to boot first; the fixture's map is loaded from it by `map` "
+                        "(a map change, as a player makes one)")
     c.add_argument("--scale", default="1",
                    help="indirect view exposure (mat_indirect_view_scale), or `auto`: the "
                         "power of two that keeps the reference peak below %g" % AUTO_PEAK)

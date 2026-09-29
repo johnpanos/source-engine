@@ -941,6 +941,23 @@ def portal_light(out):
          "portal_two": False, "name": "PortalA"},
         {"center_m": [4.0 + offset, PORTAL_CENTRE[0], PORTAL_CENTRE[1]], "normal": [1, 0, 0],
          "portal_two": True, "name": "PortalB"}]
+    # In play, PortalB tours room B's walls, floor and ceiling, closing between
+    # stops. Its first stop is the placed one; captures fire PortalCycle_stop
+    # to measure it there, open (gi_portal.py).
+    b0, b1, height = 4.0 + offset, 8.0 + offset, 3.0
+    middle = (b0 + b1) / 2
+    stops = [((b0, PORTAL_CENTRE[0], PORTAL_CENTRE[1]), (1, 0, 0)),
+             ((b0, 1.0, PORTAL_CENTRE[1]), (1, 0, 0)),
+             ((middle, 0.0, PORTAL_CENTRE[1]), (0, 1, 0)),
+             ((middle, 2.0, 0.0), (0, 0, 1)),
+             ((b1, 2.0, PORTAL_CENTRE[1]), (-1, 0, 0)),
+             ((middle + 0.5, 4.0, PORTAL_CENTRE[1]), (0, -1, 0)),
+             ((middle - 0.5, 2.0, height), (0, 0, -1)),
+             ((b0, 3.0, PORTAL_CENTRE[1]), (1, 0, 0))]
+    manifest["collision"]["portal_cycles"] = [
+        {"name": "PortalCycle", "portal": "PortalB", "open_s": 5.0, "closed_s": 1.5,
+         "stops": [{"center_m": list(centre), "normal": list(normal)}
+                   for centre, normal in stops]}]
     write_json(directory / "map.json", manifest)
 
 

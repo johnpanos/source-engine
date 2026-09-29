@@ -2558,3 +2558,67 @@ Reproduce:
     # or directly, with other trees:
     python3 tools/quality/portal_sign_light.py suite --path legacy \
         --build build --p2-build build-p2 --out /tmp/sign-light
+
+## `gi_portal_light` after a map change, the portal tour, and Portal 2's placed portals (2026-09-29, user report)
+
+The user played `gi_portal_light` and found room B black: the world got no
+light through the portal pair.
+
+**Cause: a device-lost flag left set between maps.**
+`ReleaseMaterialSystemObjects` marks the indirect-light host's device lost
+(`IndirectLight_DeviceLost`). `RestoreMaterialSystemObjects` cleared it
+(`IndirectLight_DeviceRestored`) only when a world was loaded. A
+release/restore between maps (booting `testchmb_a_01`, then `map
+gi_portal_light`) left `deviceLost` set. From then on every GI map skipped
+its probe-volume and SDF shadow-field uploads: no `[NativeVulkan] PRBV
+ready` line, and the renderer sampled nothing. A direct boot of the map
+was never affected, so the G10 gate had not seen it.
+- Fix (`engine/matsys_interface.cpp`): a restore with no world loaded
+  clears the flag too.
+- Regression capture `sdf-open-after-map-change` in `gi_portal.py`: boot
+  `testchmb_a_00`, then `map gi_portal_light`; it must match Cycles `open`.
+  `gi_runtime.py capture --boot-map` provides the map change.
+  - Without the fix: portal wall 0.0000 against 0.0626, side wall 0.0001
+    against 0.0869; fail.
+  - With the fix: 0.0729 and 0.1034; pass.
+
+**The portal tour (user request: "open/close the portal on a timer/move it
+around").** The map manifest's `collision.portal_cycles` compiles, through
+`pbrt_collision_vmf.py --portal-cycle/--portal-stop`, a looping
+`logic_relay`:
+- `PortalCycle` moves `PortalB` through eight stops in room B: three on the
+  west wall, the south, east and north walls, the floor and the ceiling.
+  It is open 5 s at each stop and closed 1.5 s between stops (a 52 s loop).
+  A `logic_auto` starts it at map spawn.
+- `PortalCycle_stop` ends the tour and puts `PortalB` open at its placed
+  stop. Every `gi_portal.py` capture fires it first, so the gate measures
+  the state it declares.
+- `gi_fixtures.py` generates the manifest entry (`--check` passes). The map
+  was rebuilt: only the bake re-ran (8 min), because its scripts had
+  changed since 2026-09-25.
+
+**Portal 2 placed portals.** In `./play_p2 gi_portal_light`, `PortalA` sat
+at the origin, in room A's floor corner. The server's
+`CPortal_Base2D::Spawn` never set the networked `m_ptOrigin`/`m_qAbsAngle`
+(only `OnRestore` and `NewLocation` did). A portal that starts active from
+the map therefore kept `0 0 0`, while the moving `PortalB` was right.
+`Spawn` now caches the spawn transform. `portal_report` gives `157.480
+78.740 55.118 / 0 180 0` for `PortalA`, and the tour runs in Portal 2 as
+well.
+
+**Evidence** (Linux desktop, native Vulkan):
+- `gi_portal.py` (sdf): 7 of 7 captures as expected.
+- Portal 1 tour: the `sv_portal_placement_log` placements come every
+  6.5 s, and room B's light follows the portal and goes dark between
+  stops.
+- Portal 2: `portal_report` before and after the tour stop, room-A and
+  room-B frames, and placements at the first four stops.
+- Not run: the ray-query gate (`--producer rayquery`), and any device.
+
+Reproduce (keep `--out` short: deep paths crash the headless boot in
+`CHudBattery::Reset`, because the filesystem cannot open resource files):
+
+    OMP_NUM_THREADS=1 python3 tools/quality/pbrt_map_build.py \
+        --manifest quality/fixtures/gi/portal-light/map.json \
+        --out quality-results/rfc0011-maps/portal-light
+    python3 tools/quality/gi_portal.py --out /tmp/g10

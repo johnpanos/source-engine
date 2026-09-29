@@ -1118,6 +1118,14 @@ class Pipeline:
                 ["%g" % v for v in list(portal["center_m"]) + list(portal["normal"]) +
                  [1 if portal.get("portal_two") else 0]] +
                 ([portal["name"]] if portal.get("name") else []))]
+        for cycle in collision.get("portal_cycles", []):
+            collision_args += ["--portal-cycle", ",".join(
+                [cycle["name"], cycle["portal"], "%g" % cycle["open_s"],
+                 "%g" % cycle["closed_s"]])]
+            for stop in cycle["stops"]:
+                collision_args += ["--portal-stop", ",".join(
+                    [cycle["name"]] + ["%g" % v for v in list(stop["center_m"]) +
+                                       list(stop["normal"])])]
         for flag, key in (("--envelope-mesh", "envelope_meshes"),
                           ("--solid-material", "solid_materials"),
                           ("--solid-mesh", "solid_meshes")):

@@ -548,6 +548,12 @@ through Portal 2's portals as they do in Portal 1.
   on client and server. The Portal 2 lab run opens the portals with
   `SetActivatedState 1`. The server gap is recorded, not changed: retail
   maps do not spawn portals open.
+  - Closed 2026-09-29: `CPortal_Base2D::Spawn` caches its spawn transform
+    in `m_ptOrigin`/`m_qAbsAngle`, so a portal spawned `Activated 1` is
+    where the map puts it (`gi_portal_light` in Portal 2; `portal_report`;
+    RFC 0011 progress). The lab still opens its portals by input, and
+    `render.portal-lights.lab.portal2` passes 16 of 16 on the fixed
+    `build-p2`.
 - Evidence (`build-p2`, native Vulkan, headless):
   - `render.portal-lights.lab.portal2` (16 checks, `--game portal2`):
     through the portal the floor brightens by 11.57 levels (Portal 1:
