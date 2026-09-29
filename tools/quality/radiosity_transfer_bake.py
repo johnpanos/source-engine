@@ -47,7 +47,6 @@ import hashlib
 import json
 import math
 import multiprocessing
-import os
 import sys
 import time
 from pathlib import Path
@@ -59,6 +58,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils.kdtree import KDTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cpu_budget  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_blender  # noqa: E402
 import probe_volume  # noqa: E402
@@ -472,12 +472,29 @@ def _gather_entry(i):
     return entry
 
 
-def fan_out(function, jobs, workers):
-    """[function(job) for job in jobs], on forked workers when there are several."""
-    if workers > 1 and len(jobs) > 1:
-        with multiprocessing.get_context("fork").Pool(min(workers, len(jobs))) as pool:
-            return pool.map(function, jobs, chunksize=max(1, len(jobs) // (8 * workers)))
+@contextlib.contextmanager
+def worker_pool(workers):
+    """One pool of forked workers for every fan_out of a trace (None with one
+    worker): forked once, after _RAYS holds the scene, instead of once per
+    transfer block (each fork copies the whole Blender process)."""
+    if workers <= 1:
+        yield None
+        return
+    with multiprocessing.get_context("fork").Pool(workers) as pool:
+        yield pool
+
+
+def fan_out(pool, function, jobs, workers):
+    """[function(job) for job in jobs], on the pool's workers when it has any."""
+    if pool is not None and len(jobs) > 1:
+        return pool.map(function, jobs, chunksize=max(1, len(jobs) // (8 * workers)))
     return [function(job) for job in jobs]
+
+
+def progress(message):
+    """A PROGRESS line (bake_progress shows it; any line keeps the pipeline's
+    silence timer from stopping a long ray-cast phase)."""
+    print("PROGRESS " + json.dumps({"message": message}), flush=True)
 
 
 # ---------------------------------------------------------------- receivers
@@ -533,7 +550,7 @@ def main():
     parser.add_argument("--light-paths", default="gi-reference")
     parser.add_argument("--out", type=Path, required=True, help="RTRN file")
     parser.add_argument("--work", type=Path, required=True)
-    parser.add_argument("--trace-workers", type=int, default=os.cpu_count() or 1,
+    parser.add_argument("--trace-workers", type=int, default=cpu_budget.available_cpus(),
                         help="processes casting the transfer and gather rays (the result does "
                              "not depend on it)")
     args = parser.parse_args(arguments)
@@ -593,24 +610,35 @@ def main():
     _RAYS.update(bvh=bvh, owner=owner, patches=patches, limit=limit,
                  transfer_rays=args.transfer_rays, rays=rays, basis=basis,
                  weight=4 * math.pi / len(rays), positions=probe_positions)
+    blocks = (count + TRANSFER_BLOCK - 1) // TRANSFER_BLOCK
+    progress("radiosity transfer: %d patches in %d blocks on %d workers"
+             % (count, blocks, args.trace_workers))
     try:
-        transfer = []
-        for first in range(0, count, TRANSFER_BLOCK):
-            jobs = []
-            for p in range(first, min(first + TRANSFER_BLOCK, count)):
-                members = patches.members[p]
-                chosen = members[rng.integers(0, len(members), args.transfer_rays)]
-                directions = cosine_directions(samples["normal"][chosen] * patches.side[p], rng)
-                origins = samples["position"][chosen] + \
-                    samples["normal"][chosen] * patches.side[p] * RAY_OFFSET
-                jobs.append((p, origins, directions))
-            transfer += fan_out(_transfer_row, jobs, args.trace_workers)
-        traced = time.monotonic()
+        with worker_pool(args.trace_workers) as pool:
+            transfer, begun = [], time.monotonic()
+            for block, first in enumerate(range(0, count, TRANSFER_BLOCK), 1):
+                jobs = []
+                for p in range(first, min(first + TRANSFER_BLOCK, count)):
+                    members = patches.members[p]
+                    chosen = members[rng.integers(0, len(members), args.transfer_rays)]
+                    directions = cosine_directions(samples["normal"][chosen] * patches.side[p],
+                                                   rng)
+                    origins = samples["position"][chosen] + \
+                        samples["normal"][chosen] * patches.side[p] * RAY_OFFSET
+                    jobs.append((p, origins, directions))
+                transfer += fan_out(pool, _transfer_row, jobs, args.trace_workers)
+                elapsed = time.monotonic() - begun
+                progress("radiosity transfer: block %d/%d, %.0fs elapsed, ~%.0fs left"
+                         % (block, blocks, elapsed, elapsed / block * (blocks - block)))
+            traced = time.monotonic()
 
-        # Probe gather.
-        active = [i for i in range(len(probe_positions)) if probe_active[i]]
-        entries = dict(zip(active, fan_out(_gather_entry, active, args.trace_workers)))
-        gather = [entries.get(i, {}) for i in range(len(probe_positions))]
+            # Probe gather.
+            active = [i for i in range(len(probe_positions)) if probe_active[i]]
+            progress("radiosity gather: %d probes" % len(active))
+            entries = dict(zip(active, fan_out(pool, _gather_entry, active,
+                                               args.trace_workers)))
+            gather = [entries.get(i, {}) for i in range(len(probe_positions))]
+            progress("radiosity gather: done in %.0fs" % (time.monotonic() - traced))
     finally:
         _RAYS.clear()
     gathered = time.monotonic()

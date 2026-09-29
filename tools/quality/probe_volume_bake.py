@@ -36,7 +36,6 @@ import hashlib
 import json
 import math
 import multiprocessing
-import os
 import sys
 import time
 from pathlib import Path
@@ -47,6 +46,7 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cpu_budget  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_blender  # noqa: E402
 import probe_volume  # noqa: E402
@@ -241,7 +241,7 @@ def main():
     parser.add_argument("--light-paths", default="gi-reference")
     parser.add_argument("--out", type=Path, required=True, help="PRBV file")
     parser.add_argument("--work", type=Path, required=True, help="bake images and receipt")
-    parser.add_argument("--trace-workers", type=int, default=os.cpu_count() or 1,
+    parser.add_argument("--trace-workers", type=int, default=cpu_budget.available_cpus(),
                         help="processes placing and tracing probes (the result does not "
                              "depend on it)")
     args = parser.parse_args(arguments)
