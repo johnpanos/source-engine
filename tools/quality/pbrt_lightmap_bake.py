@@ -412,11 +412,14 @@ def bake_light(image, pass_filter, label, size, render, keep=None):
     save as <dir>/<keep>-a.exr and -b.exr. Returns the halves (None when
     baked once)."""
     import numpy as np
-    paths = (pbrt_blender.direct_only_light_paths() if set(pass_filter) == {"DIRECT"}
-             else contextlib.nullcontext())
+    # A fresh context per bake: a generator context manager is single-use,
+    # and the noise pair bakes twice.
+    def paths():
+        return (pbrt_blender.direct_only_light_paths() if set(pass_filter) == {"DIRECT"}
+                else contextlib.nullcontext())
     if NOISE_PAIR["dir"] is None:
         announce(label, size)
-        with paths:
+        with paths():
             bpy.ops.object.bake(type="DIFFUSE", pass_filter=pass_filter)
         return None
     samples, seed = render.cycles.samples, render.cycles.seed
@@ -426,7 +429,7 @@ def bake_light(image, pass_filter, label, size, render, keep=None):
         for index in range(2):
             render.cycles.seed = seed + index
             announce("%s half %d" % (label, index + 1), size)
-            with paths:
+            with paths():
                 bpy.ops.object.bake(type="DIFFUSE", pass_filter=pass_filter)
             halves.append(np.array(image.pixels[:], dtype=np.float32))
     finally:
