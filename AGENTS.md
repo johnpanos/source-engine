@@ -1402,6 +1402,14 @@ Keep the table concise and link details below or from the domain progress file.
       - mobile budgets (`scheduler-v1.json` has an iPhone row since
         2026-09-26; Android is missing);
       - full-product TSan.
+    - Providers borrow the root's pool (2026-09-28, R20-COMPUTE-POOL,
+      `93c36188`): `CreateComputePoolWorkerBackend` lends the engine's
+      `CmpJob` pool, and a call made on one of its own workers runs inline and
+      is counted. The RFC 0016 render core's pooled culling uses it in place
+      of the four threads it had started. `corpus.jobs.pool-bridge`
+      (168 checks) and the K5 culling capture on Portal 2 (39 of 39) pass.
+      Changes no row's state. See the
+      [record](RFC/0003-progress.md#r20-compute-pool-the-render-core-borrows-the-engines-compute-pool-slice-done-2026-09-28).
 
 - R10-RUNNERS: done as a slice (2026-09-26); R10 closed the same day. RFC 0001's
   execution vocabulary now exists:

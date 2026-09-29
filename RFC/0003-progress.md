@@ -661,6 +661,17 @@ core now borrows the root's pool, as R67 P2 made physics do.
 product path); TSan of the product with core culling on, which the K5 step-4
 evidence adds.
 
+**Commands** (repository root):
+
+```sh
+WAFLOCK=.lock-waf-r03-tests ./waf build --targets=jobsystembridgetest,vstdlib
+python3 tools/quality/conformance.py check --suite corpus.jobs.pool-bridge --repeat 3 --out <dir>
+python3 -m unittest tools.quality.tests.test_frame_pacing
+WAFLOCK=.lock-waf-p2 ./waf install --destdir=<dest>
+python3 tools/render/culling_capture.py suite --out <dir> --scenario portal2_sp_a1_wakeup \
+    --p2-build <dest>/usr/local --p2-runtime <Portal 2 content runtime>
+```
+
 ## Module layout
 
 ```
